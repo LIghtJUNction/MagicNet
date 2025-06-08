@@ -1,12 +1,12 @@
 id = "MagicNet"
 name = "MagicNet"
 requires_rmm = ">=0.1.0"
-versionCode = "2025060904"
+versionCode = "2025060905"
 updateJson = "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json"
 readme = "README.MD"
 changelog = "CHANGELOG.MD"
 lecense = "LICENSE"
-version = "v1.0.1-1df5af8"
+version = "v1.0.2-9e874aa"
 [[dependencies]]
 "dep?" = "?version"
 
