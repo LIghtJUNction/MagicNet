@@ -1,7 +1,7 @@
 id=MagicNet
 name=MagicNet
-version=1.0.0.250507_release
-versionCode=2025050701
+version=v1.0.1-1df5af8
+versionCode=2025060904
 author=LIghtJUNction
-description=mihomo内核_ksu模块
-updateJson=http://raw.githubusercontent.com/LIghtJUNction/RootManage-Module-Model/MagicNet/update.json
+description=RMM项目 MagicNet
+updateJson=https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json

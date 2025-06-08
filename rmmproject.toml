@@ -1,0 +1,28 @@
+id = "MagicNet"
+name = "MagicNet"
+requires_rmm = ">=0.1.0"
+versionCode = "2025060904"
+updateJson = "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json"
+readme = "README.MD"
+changelog = "CHANGELOG.MD"
+lecense = "LICENSE"
+version = "v1.0.1-1df5af8"
+[[dependencies]]
+"dep?" = "?version"
+
+[[authors]]
+name = "LIghtJUNction"
+email = "email"
+
+[[scripts]]
+build = "rmm build"
+
+[urls]
+github = "https://github.com/LIghtJUNction/MagicNet"
+
+[git]
+git_root = "C:\\Users\\light\\Documents\\GitHub\\MagicNet"
+remote_url = "https://github.com/LIghtJUNction/MagicNet.git"
+username = "LIghtJUNction"
+repo_name = "MagicNet"
+is_in_repo_root = "True"
