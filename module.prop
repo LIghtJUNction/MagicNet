@@ -1,7 +1,7 @@
 id=MagicNet
 name=MagicNet
-version=v1.0.1-1df5af8
-versionCode=2025060904
+version=v1.0.2-9e874aa
+versionCode=2025060905
 author=LIghtJUNction
 description=RMM项目 MagicNet
 updateJson=https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json
