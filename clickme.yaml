@@ -1,0 +1,46 @@
+proxy-providers:
+  "myclash": # 代理提供者名称
+    type: http         
+    path: ./myclash.yaml # 默认只允许存储在 mihomo 的 Home Dir，如果想存储到任意位置，添加环境变量 SKIP_SAFE_PATH_CHECK=1
+    url: "订阅链接"               # 此处填写订阅url
+    interval: 3600
+    health-check:
+      enable: true
+      url: http://www.gstatic.com/generate_204
+      interval: 3600
+
+# 代理提供者在上############################################
+
+# 配置组一             端口类
+port: 7890
+socks-port: 7891
+mixed-port: 7892
+redir-port: 9797
+tproxy-port: 9898
+
+# 外部控制 (API)
+external-controller: 127.0.0.1:9090 # 外部控制器，可以使用 RESTful API 来控制你的 Clash 内核；API 监听地址，你可以将 127.0.0.1 修改为 0.0.0.0 来监听所有 IP；访问地址：http://127.0.0.1:9090
+# external-controller-tls: 127.0.0.1:9443 # HTTPS-API 监听地址，需要配置 tls 部分证书和其私钥配置，使用 TLS 也必须填写 external-controller
+# secret: "lightjunction" # API 的访问密钥 默认不添加
+external-ui: "./ui" # 外部用户界面路径，可以为绝对路径，或者 Clash 工作目录的相对径
+external-ui-name: "lightjunction" # 自定义外部用户界面名字
+external-ui-url: "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip" # 自定义外部用户界面下载地址 
+
+# 配置组二            布尔类
+ipv6: false
+allow-lan: true
+tcp-concurrent: true
+unified-delay: true
+geodata-mode: true # 是否启用 geodata 规则集和geodata都启用
+geo-auto-update: true # 是否自动更新 geodata
+geo-update-interval: 24 # 更新间隔，单位：小时
+keep-alive-interval: 1800  # 减少移动端设备耗电
+
+# 配置组三           选择类
+mode: rule  # rule（默认） global（需要在GLOBAL策略组选择）direct 
+log-level: error #免得日志太多
+global-client-fingerprint: random # 随机指纹 （全局客户端指纹）
+geodata-loader: standard # memconservative（小内存）
+find-process-mode: strict
+bind-address: '*'
+
