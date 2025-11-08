@@ -19,18 +19,6 @@ A module that's as streamlined as possible, and easy for everyone to understand.
 - **多规则集内置，使用简单**  
   Multiple rule sets built-in, easy to use.
 
-## Installation 📥
-
-1. **Clone the repository**:  
-   克隆仓库：
-   ```sh
-   git clone https://github.com/LIghtJUNction/RootManage-Module-Model.git
-   ```
-2. **Navigate to the project directory**:  
-   进入项目目录：
-   ```sh
-   cd RootManage-Module-Model
-   ```
 
 ## Usage 🛠️
 
