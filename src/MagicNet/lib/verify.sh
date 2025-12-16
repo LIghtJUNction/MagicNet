@@ -1,5 +1,4 @@
-#!/system/bin/sh
-#
+# shellcheck shell=ash
 # This file is part of LSPosed.
 #
 # LSPosed is free software: you can redistribute it and/or modify

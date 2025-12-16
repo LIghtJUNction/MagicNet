@@ -1,4 +1,4 @@
-#!/system/bin/sh
+# shellcheck shell=ash
 # copy from：
 # https://github.com/osm0sis/PlayIntegrityFork/blob/main/module%2Fcommon_func.sh
 
