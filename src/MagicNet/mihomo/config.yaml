@@ -1122,6 +1122,7 @@ rule-providers: # https://github.com/Loyalsoldier/clash-rules 项目地址    �
     interval: 86400
 
 # 接下来添加DIY_rule  # https://github.com/LIghtJUNction/CONFIG_RULE_DIY
+# 已经弃坑...
 #  DIY-XXXX: # DIY 规则
 #    type: http
 #    behavior: classical

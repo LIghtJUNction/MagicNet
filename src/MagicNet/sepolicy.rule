@@ -1,0 +1,31 @@
+# sepolicy.rule
+#
+# This file allows you to add custom SELinux policy rules.
+# Each line is treated as a policy statement.
+#
+# KernelSU loads these rules during the post-fs-data stage.
+#
+# ---------------------------------------------------------------------------------------
+# SYNTAX
+# ---------------------------------------------------------------------------------------
+# The syntax generally follows the standard magiskpolicy/supolicy format:
+# allow <source_class> <target_class> <class> <permission>
+# create <class> <name>
+# attradd <class> <attribute>
+#
+# ---------------------------------------------------------------------------------------
+# EXAMPLES
+# ---------------------------------------------------------------------------------------
+#
+# Allow a specific app (untrusted_app) to read a specific device file:
+# allow untrusted_app my_device_device chr_file { read write open ioctl }
+#
+# Allow system_server to access a custom service:
+# allow system_server my_custom_service service_manager find
+#
+# Grant permissive to a specific domain (use with caution!):
+# permissive my_custom_domain
+#
+# ---------------------------------------------------------------------------------------
+
+# Add your custom rules below:

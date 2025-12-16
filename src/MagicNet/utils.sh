@@ -13,12 +13,21 @@ green="\033[1;32m"
 yellow="\033[1;33m"
 blue="\033[1;34m"
 
-config_file="magicnet.yaml"
+set_module_description_fallback() {
+     # 将描述中的 '/' 转义，避免 sed 命令出错
+     local escaped_desc="${1//\//\\/}"
+     sed -i "s/^description=.*/description=$escaped_desc/" "$MODULE_PROP"
+ }
 
-set_module_description(){
-    local new_description="$1"
-    sed -i "s/^description=.*/description=$(printf '%s' "${new_description//\//\\/}")/" "${MODULE_PROP}"
-}
+set_module_description() {
+     # 尝试用 ksud 设置
+     if ksud module config set override.description "$1" >/dev/null 2>&1; then
+         return 0
+     fi
+     set_module_description_fallback "$1"
+ }
+ # --- 使用示例 ---
+ # set_module_description "你的自定义描述"
 
 formatted_date() {
     date +"%Y-%m-%d %H:%M:%S.%3N"
@@ -59,6 +68,15 @@ create_tun() {
 
 
 mihomo_run() {
+    if [ -f $MODDIR/yacd ]; then
+        log INFO "使用yacd"
+        sed -i 's|http://127.0.0.1:9090/ui/|https://yacd.haishan.me/|' ./webroot/index.html || log ERROR "替换 URL 链接失败。"
+    else
+        log INFO "使用默认前端"
+        sed -i 's|https://yacd.haishan.me/|http://127.0.0.1:9090/ui/|' ./webroot/index.html || log ERROR "替换 URL 链接失败。"
+    fi
+
+    log INFO "脚本执行完毕"
     if [ -x "${mihomo}" ]; then
         # 启动 mihomo 内核，并将日志记录到指定文件
         "${mihomo}" -d "${mihomo_dir}" -f "${mihomo_config}" >> "${LOG_FILE}" 2>&1 &
@@ -67,10 +85,4 @@ mihomo_run() {
         log ERROR "未找到或不可执行的 ${mihomo}"
         exit 1
     fi
-}
-
-sync_config() {
-    # 执行同步脚本
-    sh $MODDIR/sync_configs.sh || sleep 10 && sh $MODDIR/sync_configs.sh || log ERROR "同步配置文件失败!!!!" 
-
 }

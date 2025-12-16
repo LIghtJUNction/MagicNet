@@ -1,20 +1,20 @@
 [prop]
 id = "MagicNet"
 name = "MagicNet"
-version = "1.0.0"
+version = "1.0.3"
 versionCode = 1765911767573
 author = "lightjunction"
 description = "[mihomo]"
-updateJson = ""
+updateJson = "https://github.com/LIghtJUNction/MagicNet/"
 metamodule = false
 
 [mmrl.repo]
 license = "MIT"
 license_file = "LICENSE"
-homepage = ""
-readme = ""
+homepage = "https://github.com/LIghtJUNction/MagicNet"
+readme = "https://github.com/LIghtJUNction/MagicNet/blob/main/README.md"
 readme_file = "README.md"
-changelog = ""
+changelog = "https://github.com/LIghtJUNction/MagicNet/blob/main/CHANGELOG.md"
 changelog_file = "CHANGELOG.md"
 screenshots = []
 categories = ["tools"]
@@ -25,10 +25,10 @@ keywords = [
     "template",
 ]
 maintainers = []
-repository = ""
+repository = "https://github.com/LIghtJUNction/MagicNet"
 documentation = ""
-issues = ""
-funding = "https://github.com/sponsors/LightJunction"
+issues = "https://github.com/LIghtJUNction/MagicNet/issues"
+funding = "https://github.com/sponsors/LIghtJUNction"
 support = ""
 donate = ""
 cover = ""
