@@ -1,7 +1,3 @@
-# Rmmp - Rmm Project 
-An [Rmm](https://github.com/LIghtJUNction/RootManageModuleModel) project . Magic + Net
-
-
 # MagicNet
 
 ![image](https://github.com/user-attachments/assets/f46c5c92-27df-4edd-851d-cae77ebd8540)
@@ -21,11 +17,6 @@ A module that's as streamlined as possible, and easy for everyone to understand.
 
 
 ## Usage 🛠️
-
-- 修改示例模块以适应您的需求。  
-  Modify the example modules to suit your needs.
-- 按照提供的工作流程进行快速发布和部署。  
-  Follow the provided workflows for quick release and deployment.
 
 ## Contribution Guidelines 🤝
 
