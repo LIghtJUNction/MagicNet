@@ -4,6 +4,7 @@
 # - module.prop in module directory ($KAM_MODULE_ROOT/module.prop)
 # - update.json in project root ($KAM_PROJECT_ROOT/update.json)
 
+# shellcheck source=hooks/lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 
 require_command kam "kam CLI not found; cannot export files"

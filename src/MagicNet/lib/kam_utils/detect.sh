@@ -6,6 +6,7 @@
 
 # 加载内部模块
 _kam_utils_dir="$(dirname "${0}")"
+# shellcheck source=_detect.sh
 [ -f "${_kam_utils_dir}/_detect.sh" ] && . "${_kam_utils_dir}/_detect.sh"
 
 # 检测系统架构

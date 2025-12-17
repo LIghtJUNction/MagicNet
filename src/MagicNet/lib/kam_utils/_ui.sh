@@ -10,19 +10,19 @@ _get_key_impl() {
 }
 
 # 等待任意按键（内部实现）
-_wait_key_any_impl() { 
+_wait_key_any_impl() {
     null _get_key_impl
 }
 
 # 等待上下键（内部实现）
 _wait_key_up_down_impl() {
-    local key
+    _wait_key_up_down_impl_key=""
     while :; do
-        key=$(_get_key_impl)
-        case "$key" in
-            KEY_VOLUMEUP|KEY_VOLUMEDOWN) 
-                echo "$key" | sed 's/KEY_VOLUME//' | tr '[:upper:]' '[:lower:]'
-                return 
+        _wait_key_up_down_impl_key=$(_get_key_impl)
+        case "$_wait_key_up_down_impl_key" in
+            KEY_VOLUMEUP|KEY_VOLUMEDOWN)
+                echo "$_wait_key_up_down_impl_key" | sed 's/KEY_VOLUME//' | tr '[:upper:]' '[:lower:]'
+                return
                 ;;
         esac
     done
@@ -30,17 +30,17 @@ _wait_key_up_down_impl() {
 
 # 等待上下键+电源键（内部实现）
 _wait_key_up_down_power_impl() {
-    local key
+    _wait_key_up_down_power_impl_key=""
     while :; do
-        key=$(_get_key_impl)
-        case "$key" in
-            KEY_VOLUMEUP|KEY_VOLUMEDOWN|KEY_POWER) 
-                case "$key" in
+        _wait_key_up_down_power_impl_key=$(_get_key_impl)
+        case "$_wait_key_up_down_power_impl_key" in
+            KEY_VOLUMEUP|KEY_VOLUMEDOWN|KEY_POWER)
+                case "$_wait_key_up_down_power_impl_key" in
                     KEY_VOLUMEUP) echo "up" ;;
                     KEY_VOLUMEDOWN) echo "down" ;;
                     KEY_POWER) echo "power" ;;
                 esac
-                return 
+                return
                 ;;
         esac
     done
@@ -48,28 +48,28 @@ _wait_key_up_down_power_impl() {
 
 # 等待上键（内部实现）
 _wait_key_up_impl() {
-    local key
+    _wait_key_up_impl_key=""
     while :; do
-        key=$(_get_key_impl)
-        [ "$key" = "KEY_VOLUMEUP" ] && return
+        _wait_key_up_impl_key=$(_get_key_impl)
+        [ "$_wait_key_up_impl_key" = "KEY_VOLUMEUP" ] && return
     done
 }
 
 # 等待下键（内部实现）
 _wait_key_down_impl() {
-    local key
+    _wait_key_down_impl_key=""
     while :; do
-        key=$(_get_key_impl)
-        [ "$key" = "KEY_VOLUMEDOWN" ] && return
+        _wait_key_down_impl_key=$(_get_key_impl)
+        [ "$_wait_key_down_impl_key" = "KEY_VOLUMEDOWN" ] && return
     done
 }
 
 # 等待电源键（内部实现）
 _wait_key_power_impl() {
-    local key
+    _wait_key_power_impl_key=""
     while :; do
-        key=$(_get_key_impl)
-        [ "$key" = "KEY_POWER" ] && return
+        _wait_key_power_impl_key=$(_get_key_impl)
+        [ "$_wait_key_power_impl_key" = "KEY_POWER" ] && return
     done
 }
 

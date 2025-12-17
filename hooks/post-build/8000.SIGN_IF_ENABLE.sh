@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# shellcheck source=../lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 
 # Sign artifacts in $KAM_DIST_DIR if KAM_SIGN_ENABLED=1

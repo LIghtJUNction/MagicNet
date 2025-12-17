@@ -5,17 +5,15 @@ _get_mihomo_moddir() {
     if [ -n "$MODDIR" ]; then
         echo "$MODDIR"
     else
-        local dir
-        dir=$(dirname "$0")
-        dir=$(dirname "$dir")
-        dirname "$dir"
+        _get_mihomo_moddir_dir=$(dirname "$0")
+        _get_mihomo_moddir_dir=$(dirname "$_get_mihomo_moddir_dir")
+        dirname "$_get_mihomo_moddir_dir"
     fi
 }
 
 _get_mihomo_logfile() {
-    local moddir
-    moddir=$(_get_mihomo_moddir)
-    echo "${moddir}/MagicNet.log"
+    _get_mihomo_logfile_moddir=$(_get_mihomo_moddir)
+    echo "${_get_mihomo_logfile_moddir}/MagicNet.log"
 }
 
 _create_tun_impl() {
@@ -32,28 +30,26 @@ _create_tun_impl() {
 }
 
 _mihomo_run_impl() {
-    local moddir
-    moddir=$(_get_mihomo_moddir)
-    local mihomo_dir="${moddir}/mihomo/"
-    local mihomo_config="${moddir}/mihomo/config.yaml"
-    local mihomo="${moddir}/system/bin/mihomo"
-    local logfile
-    logfile=$(_get_mihomo_logfile)
-    
-    if [ -f "$moddir/yacd" ]; then
+    _mihomo_run_impl_moddir=$(_get_mihomo_moddir)
+    _mihomo_run_impl_mihomo_dir="${_mihomo_run_impl_moddir}/mihomo/"
+    _mihomo_run_impl_mihomo_config="${_mihomo_run_impl_moddir}/mihomo/config.yaml"
+    _mihomo_run_impl_mihomo="${_mihomo_run_impl_moddir}/system/bin/mihomo"
+    _mihomo_run_impl_logfile=$(_get_mihomo_logfile)
+
+    if [ -f "${_mihomo_run_impl_moddir}/yacd" ]; then
         log INFO "Using yacd"
-        sed -i 's|http://127.0.0.1:9090/ui/|https://yacd.haishan.me/|' "${moddir}/webroot/index.html" || log ERROR "Failed to replace URL"
+        sed -i 's|http://127.0.0.1:9090/ui/|https://yacd.haishan.me/|' "${_mihomo_run_impl_moddir}/webroot/index.html" || log ERROR "Failed to replace URL"
     else
         log INFO "Using default frontend"
-        sed -i 's|https://yacd.haishan.me/|http://127.0.0.1:9090/ui/|' "${moddir}/webroot/index.html" || log ERROR "Failed to replace URL"
+        sed -i 's|https://yacd.haishan.me/|http://127.0.0.1:9090/ui/|' "${_mihomo_run_impl_moddir}/webroot/index.html" || log ERROR "Failed to replace URL"
     fi
 
     log INFO "Starting mihomo"
-    if [ -x "${mihomo}" ]; then
-        "${mihomo}" -d "${mihomo_dir}" -f "${mihomo_config}" >> "${logfile}" 2>&1 &
+    if [ -x "${_mihomo_run_impl_mihomo}" ]; then
+        "${_mihomo_run_impl_mihomo}" -d "${_mihomo_run_impl_mihomo_dir}" -f "${_mihomo_run_impl_mihomo_config}" >> "${_mihomo_run_impl_logfile}" 2>&1 &
         set_module_description "mihomo started! $(date '+%Y-%m-%d %H:%M:%S')"
     else
-        log ERROR "mihomo not found or not executable: ${mihomo}"
+        log ERROR "mihomo not found or not executable: ${_mihomo_run_impl_mihomo}"
         exit 1
     fi
 }
@@ -76,40 +72,37 @@ _mihomo_status_impl() {
 }
 
 _mihomo_toggle_ui_impl() {
-    local moddir
-    moddir=$(_get_mihomo_moddir)
-    
-    if [ -f "$moddir/yacd" ]; then
-        rm "$moddir/yacd"
+    _mihomo_toggle_ui_impl_moddir=$(_get_mihomo_moddir)
+
+    if [ -f "${_mihomo_toggle_ui_impl_moddir}/yacd" ]; then
+        rm "${_mihomo_toggle_ui_impl_moddir}/yacd"
         msg "Switched to default frontend"
     else
-        touch "$moddir/yacd"
+        touch "${_mihomo_toggle_ui_impl_moddir}/yacd"
         msg "Switched to yacd frontend"
     fi
 }
 
 _set_module_description_impl() {
-    local description="$1"
-    local moddir
-    moddir=$(_get_mihomo_moddir)
-    local module_prop="${moddir}/module.prop"
-    
-    if command -v ksud >/dev/null 2>&1 && ksud module config set override.description "$description" >/dev/null 2>&1; then
+    _set_module_description_impl_description="$1"
+    _set_module_description_impl_moddir=$(_get_mihomo_moddir)
+    _set_module_description_impl_module_prop="${_set_module_description_impl_moddir}/module.prop"
+
+    if command -v ksud >/dev/null 2>&1 && ksud module config set override.description "$_set_module_description_impl_description" >/dev/null 2>&1; then
         return 0
     fi
-    
-    if [ -f "$module_prop" ]; then
-        sed -i "s|^description=.*|description=$description|" "$module_prop"
+
+    if [ -f "${_set_module_description_impl_module_prop}" ]; then
+        sed -i "s|^description=.*|description=$_set_module_description_impl_description|" "${_set_module_description_impl_module_prop}"
     fi
 }
 
 _log_impl() {
-    local logfile
-    logfile=$(_get_mihomo_logfile)
-    local old_logfile="$LOG_FILE"
-    LOG_FILE="$logfile"
+    _log_impl_logfile=$(_get_mihomo_logfile)
+    _log_impl_old_logfile="$LOG_FILE"
+    LOG_FILE="$_log_impl_logfile"
     log "$1" "$2"
-    LOG_FILE="$old_logfile"
+    LOG_FILE="$_log_impl_old_logfile"
 }
 
 # 格式化日期实现（使用 base 模块的 fdate 函数）
