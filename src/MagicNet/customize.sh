@@ -106,15 +106,29 @@
 # CUSTOM INSTALLATION LOGIC
 # ---------------------------------------------------------------------------------------
 # ---------------------------------------------------------------------------------
-# Use Nga utils 👇
+# Use KAM utils 👇
 # -----------------------------------------------------------------------------------
-[ -f "$MODPATH/lib/nga-utils.sh" ] && . "$MODPATH/lib/nga-utils.sh" || abort '! File "nga-utils.sh" does not exist!'
-nga_install_init # Don't write code before this line!
+[ -f "$MODPATH/lib/kam-utils.sh" ] && . "$MODPATH/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
 
-# 🚨中文提示：如果需要启用nga-utils请取消以上注释
+# 初始化 KAM 环境
+kam_init
+
+# 版本要求检查
+# 最低支持版本要求：
+# - Magisk (稳定版): 28.0+
+# - Magisk (Alpha版): alpha28001+  
+# - KernelSU 内核模块: build 11986 / KernelSU v1.0.2+
+# - (M/R)KernelSU (NEXT): build 12300+
+ui_print "- Checking version requirements..."
+require_version "magisk:>=28000" "ksu:>=11986" --mode=abort --message="MagicNet 需要更高的版本才能正常安装"
 
 # ---------------------------------------------------------------------------------
-# Use Nga utils 👆
+# Use KAM utils 👇
+# -----------------------------------------------------------------------------------
+# kam-utils.sh 已经在文件开头加载
+
+# ---------------------------------------------------------------------------------
+# Use KAM utils 👆
 # -----------------------------------------------------------------------------------
 
 ui_print "- Installing MagicNet..."
@@ -125,6 +139,14 @@ if [ "$KSU" = "true" ]; then
 else
   ui_print "- Running in Magisk/Other environment"
 fi
+
+# 设置项目特定的 i18n 文本
+set_i18n "toggle_service" "zh" "停止或启动服务？" "en" "Stop or start service?" "ja" "サービスを停止または開始しますか？" "ko" "서비스를 중지하거나 시작하시겠습니까?"
+set_i18n "toggle_yacd" "zh" "启用或禁用 yacd？（下次运行生效）" "en" "Enable or disable yacd? (Effective on next run)" "ja" "yacdを有効または無効にしますか？(次回の実行時に有効)" "ko" "yacd를 활성화 또는 비활성화하시겠습니까?(다음 실행 시 적용)"
+set_i18n "use_yacd" "zh" "是否使用 yacd？" "en" "Use yacd or default?" "ja" "yacdを使用しますか？" "ko" "yacd를 사용하시겠습니까?"
+set_i18n "give_star" "zh" "给个星星吧！" "en" "Give me a star!" "ja" "スターをくれ！" "ko" "별을 주세요!"
+set_i18n "feed_star" "zh" "投喂星光" "en" "Feed star" "ja" "星を餌付け" "ko" "별에게 먹이를 주세요"
+set_i18n "refuse" "zh" "残忍拒绝" "en" "Refuse" "ja" "拒否" "ko" "거절"
 
 # Example: Check Android Version
 # if [ "$API" -lt 26 ]; then
@@ -175,23 +197,15 @@ set_perm_recursive $MODPATH 0 0 0755 0755
 # echo $(until_key_up_down) # 输出按下的按键，只能为 up 或 down
 # echo $(until_key_up_down_power) # 输出按下的按键，只能为 up 或 down 或 power
 
-print_lines "Do you want to use yacd or the default? " "你想使用yacd嘛？"
-print_lines "👆:yacd" "👇:default"
-if [ $(until_key_up_down) = "KEY_VOLUMEUP" ]; then
-    touch $MODPATH/yacd
-else
-    ui_print "default"
-fi
+ask "use_yacd" "enable" "default" \
+    'touch $MODPATH/yacd' \
+    'ui_print "default"'
 newline
 
 
-print_lines "Give me a star! " "我靠吸食星光活着，是否投喂？"
-print_lines "👆:OK" "👇:NO"
-if [ $(until_key_up_down) = "KEY_VOLUMEUP" ]; then
-    goto_url "https://github.com/LIghtJUNction/MagicNet"
-else
-    ui_print "All right"
-fi
+ask "give_star" "feed_star" "refuse" \
+    'open_url "https://github.com/LIghtJUNction/MagicNet"' \
+    'ui_print "All right"'
 newline
 
 # echo $(until_key_up) # 输出按下的按键，只能为 up
@@ -209,5 +223,7 @@ newline
 
 
 # ---------------------------------------------------------------------------------
-# 🚨 中文提示：如果用nga-utils记得取消注释以下内容
-nga_install_done # Don't write code after this line!
+# 安装完成
+
+# 清理并显示摘要信息
+kam_end

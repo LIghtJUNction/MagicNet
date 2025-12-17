@@ -52,9 +52,9 @@ device_check() {
   for i in /system /vendor /odm /product; do
     if [ -f "$i/build.prop" ]; then
       for j in "ro.product.$type" "ro.build.$type" "ro.product.vendor.$type" "ro.vendor.product.$type"; do
-        [ "$(sed -n "s/^$j=//p" "$i/build.prop" 2>/dev/null | head -n 1 | tr '[:upper:]' '[:lower:]')" == "$prop" ] && return 0
+        [ "$(sed -n "s/^$j=//p" "$i/build.prop" 2>/dev/null | head -n 1 | tr '[:upper:]' '[:lower:]')" = "$prop" ] && return 0
       done
-      [ "$type" == "device" ] && [ "$(sed -n "s/^ro.build.product=//p" "$i/build.prop" 2>/dev/null | head -n 1 | tr '[:upper:]' '[:lower:]')" == "$prop" ] && return 0
+      [ "$type" = "device" ] && [ "$(sed -n "s/^ro.build.product=//p" "$i/build.prop" 2>/dev/null | head -n 1 | tr '[:upper:]' '[:lower:]')" = "$prop" ] && return 0
     fi
   done
   return 1
@@ -85,7 +85,7 @@ cp_ch() {
   for OFILE in ${OFILES}; do
     local FILE
     if $FOL; then
-      if [ "$(basename "$SRC")" == "$(basename "$DEST")" ]; then
+      if [ "$(basename "$SRC")" = "$(basename "$DEST")" ]; then
         FILE=$(echo "$OFILE" | sed "s|$SRC|$DEST|")
       else
         FILE=$(echo "$OFILE" | sed "s|$SRC|$DEST/$(basename "$SRC")|")
@@ -153,7 +153,7 @@ install_script() {
 prop_process() {
   sed -i -e "/^#/d" -e "/^ *$/d" $1
   [ -f $MODPATH/system.prop ] || mktouch $MODPATH/system.prop
-  while read LINE; do
+  while read -r LINE; do
     echo "$LINE" >> $MODPATH/system.prop
   done < $1
 }
@@ -190,7 +190,7 @@ ui_print " "
 $KSU && { [ $KSU_VER_CODE -lt 11184 ] && require_new_ksu; }
 # APatch is fork of KSU, treat same
 [ -z $APATCH ] && APATCH=false
-[ "$APATCH" == "true" ] && KSU=true
+[ "$APATCH" = "true" ] && KSU=true
 
 # Start debug
 set -x
@@ -218,7 +218,7 @@ elif [ "$(magisk --path 2>/dev/null)" ]; then
   else
     ORIGDIR="$(magisk --path 2>/dev/null)/.magisk/mirror"
   fi
-elif [ "$(echo $MAGISKTMP | awk -F/ '{ print $NF}')" == ".magisk" ]; then
+elif [ "$(echo $MAGISKTMP | awk -F/ '{ print $NF}')" = ".magisk" ]; then
   ORIGDIR="$MAGISKTMP/mirror"
 else
   ORIGDIR="$MAGISKTMP/.magisk/mirror"
@@ -232,7 +232,7 @@ else
 fi
 # Detect extra partition compatibility (KernelSU or Magisk Delta/Kitsune)
 EXTRAPART=false
-if $KSU || [ "$(echo $MAGISK_VER | awk -F- '{ print $NF}')" == "delta" ] || [ "$(echo $MAGISK_VER | awk -F- '{ print $NF}')" == "kitsune" ]; then
+if $KSU || [ "$(echo $MAGISK_VER | awk -F- '{ print $NF}')" = "delta" ] || [ "$(echo $MAGISK_VER | awk -F- '{ print $NF}')" = "kitsune" ]; then
   EXTRAPART=true
 elif ! $PARTOVER; then
   unset PARTITIONS
@@ -267,8 +267,8 @@ fi
 ui_print "- Removing old files"
 
 if [ -f $INFO ]; then
-  while read LINE; do
-    if [ "$(echo -n $LINE | tail -c 1)" == "~" ]; then
+  while read -r LINE; do
+    if [ "$(echo -n $LINE | tail -c 1)" = "~" ]; then
       continue
     elif [ -f "$LINE~" ]; then
       mv -f $LINE~ $LINE
@@ -320,7 +320,7 @@ if $DYNLIB; then
     esac
     mkdir -p $(dirname $MODPATH/system/vendor/$FILE)
     mv -f $MODPATH/system/$FILE $MODPATH/system/vendor/$FILE
-    [ "$(ls -A `dirname $MODPATH/system/$FILE`)" ] || rm -rf `dirname $MODPATH/system/$FILE`
+    [ "$(ls -A $(dirname "$MODPATH/system/$FILE"))" ] || rm -rf "$(dirname "$MODPATH/system/$FILE")"
   done
   # Delete empty lib folders (busybox find doesn't have this capability)
   toybox find $MODPATH/system/lib* -type d -empty -delete >/dev/null 2>&1

@@ -1,4 +1,5 @@
 #!/system/bin/sh
+# shellcheck shell=ash
 #
 # service.sh
 #
@@ -39,6 +40,10 @@ MODDIR=${0%/*}
 # Example: Apply settings that need to happen late
 # resetprop my.late.prop value
 
-[ -f "$MODDIR/lib/nga-utils.sh" ] && . "$MODDIR/lib/nga-utils.sh" || abort '! File "nga-utils.sh" does not exist!'
+[ -f "$MODDIR/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
 
-magisk_run_completed $MODDIR
+# 按需加载基础模块
+kam_load base
+
+# 注释掉避免与 boot-completed.sh 冲突
+# kam_boot_completed $MODDIR
