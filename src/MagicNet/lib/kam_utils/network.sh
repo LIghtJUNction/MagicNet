@@ -17,16 +17,16 @@ check_network() {
 
 # 获取本机IP地址
 get_local_ip() {
-    local ip
-    ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $7; exit}')
-    [ -n "$ip" ] && echo "$ip" || echo "未知"
+    _get_local_ip_ip=""
+    _get_local_ip_ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $7; exit}')
+    [ -n "$_get_local_ip_ip" ] && echo "$_get_local_ip_ip" || echo "未知"
 }
 
 # 下载文件
 download_file() {
-    local url="$1" output="$2"
+    url="$1" output="$2"
     [ -z "$output" ] && output="$(basename "$url")"
-    
+
     if cmd curl; then
         curl -L -o "$output" "$url"
     elif cmd wget; then

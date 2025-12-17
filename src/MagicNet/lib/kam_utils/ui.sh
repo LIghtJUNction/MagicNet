@@ -6,6 +6,7 @@
 
 # 加载内部模块
 _kam_utils_dir="$(dirname "${0}")"
+# shellcheck source=_ui.sh
 [ -f "${_kam_utils_dir}/_ui.sh" ] && . "${_kam_utils_dir}/_ui.sh"
 
 # 获取按键事件
@@ -14,7 +15,7 @@ get_key() {
 }
 
 # 等待任意按键
-wait_key_any() { 
+wait_key_any() {
     null get_key
 }
 
@@ -46,40 +47,40 @@ wait_key_power() {
 # 二选一交互
 # 用法: ask "问题" "选项1文本" "选项2文本" "选项1命令" "选项2命令"
 ask() {
-    local question="$1" opt1_text="$2" opt2_text="$3" opt1_cmd="$4" opt2_cmd="$5"
-    
+    question="$1" opt1_text="$2" opt2_text="$3" opt1_cmd="$4" opt2_cmd="$5"
+
     # 检查是否为 i18n 键值（不包含空格或特殊字符）
-    if [[ "$question" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+    if printf '%s' "$question" | grep -q '^[[:alpha:]_][[:alnum:]_]*$'; then
         question=$(i18n "$question")
     fi
-    
-    if [[ "$opt1_text" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+
+    if printf '%s' "$opt1_text" | grep -q '^[[:alpha:]_][[:alnum:]_]*$'; then
         opt1_text=$(i18n "$opt1_text")
     fi
-    
-    if [[ "$opt2_text" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+
+    if printf '%s' "$opt2_text" | grep -q '^[[:alpha:]_][[:alnum:]_]*$'; then
         opt2_text=$(i18n "$opt2_text")
     fi
-    
+
     msg "$question"
     msg "👆:$opt1_text"
     msg "👇:$opt2_text"
     msg "$(i18n 'volume_key_hint')"
-    
+
     # 等待按键
-    local key
-    key=$(wait_key_up_down_power)
-    
-    case "$key" in
+    _ask_key=""
+    _ask_key=$(wait_key_up_down_power)
+
+    case "$_ask_key" in
         up)
             newline
             msg "$(i18n 'selected'): $opt1_text"
-            eval "$opt1_cmd"
+            sh -c "$opt1_cmd"
             ;;
         down)
             newline
             msg "$(i18n 'selected'): $opt2_text"
-            eval "$opt2_cmd"
+            sh -c "$opt2_cmd"
             ;;
         power)
             newline
@@ -92,11 +93,11 @@ ask() {
 # 确认对话框
 # 用法: confirm "确定要删除吗？" && 命令
 confirm() {
-    local message="$1"
-    local result
-    result=$(choice "$message" "确定" "取消" --default=1)
-    
-    case "$result" in
+    message="$1"
+    _confirm_result=""
+    _confirm_result=$(choice "$message" "确定" "取消" --default=1)
+
+    case "$_confirm_result" in
         0) return 0 ;;  # 确定
         1|cancel) return 1 ;;  # 取消
     esac

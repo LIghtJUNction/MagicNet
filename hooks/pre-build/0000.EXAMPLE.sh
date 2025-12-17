@@ -2,6 +2,7 @@
 # Example pre-build hook script
 # This script runs before the build process starts.
 
+# shellcheck source=hooks/lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 
 log_info "Running tmpl pre-build hook..."

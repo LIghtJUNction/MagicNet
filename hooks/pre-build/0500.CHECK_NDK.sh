@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck source=hooks/lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 # Optional: enable debug tracing if requested
 if [ "${KAM_DEBUG:-0}" = "1" ]; then

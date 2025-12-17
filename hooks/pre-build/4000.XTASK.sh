@@ -1,5 +1,6 @@
 #!/bin/bash
 # 4000.XTASK.sh — optional xtask pre-build hook (template-provided)
+# shellcheck source=hooks/lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 
 # Optional: enable debug tracing if requested
