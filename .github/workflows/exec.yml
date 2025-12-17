@@ -10,71 +10,67 @@ on:
         required: false
         type: string
         default: kam version patch && kam build -a -s -r
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Cache Cargo & Rustup
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.rustup
-          key: ${{ runner.os }}-rust-cache-${{ hashFiles('**/Cargo.lock') }}-${{ runner.os }}-v1
-          restore-keys: |
-            ${{ runner.os }}-rust-cache-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') || github.sha }}-v1
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      - name: Cache JavaScript package manager caches (npm / yarn / pnpm / bun)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.npm
-            ~/.cache/yarn
-            ~/.yarn/cache
-            ~/.pnpm-store
-            ~/.bun
-          # Use lockfiles to version cache; fallback to OS-based key if none found
-          key: ${{ runner.os }}-js-cache-${{ hashFiles('**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml', '**/bun.lockb') || github.sha }}-v1
-          restore-keys: |
-            ${{ runner.os }}-js-cache-
-      - name: Setup kam
-        uses: MemDeco-WG/setup-kam@main
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-cache: "true"
-          private-key: ${{ secrets.KAM_PRIVATE_KEY }}
-
-      - name: Verify kam installation
-        run: kam --version
-      - name: Run kam command
-        shell: bash
-        run: |
-          kam build --help
-          rm -rf dist
-          chmod +x hooks/**/*
-          chmod +x src/**/*
-          echo "Executing: ${{ github.event.inputs.kam-command }}"
-          ${{ github.event.inputs.kam-command }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Auto-commit changes
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: |
-            chore: apply config - Template: ${{ github.event.inputs.template-url || 'No template' }} - Command: ${{ github.event.inputs.init-command || github.event.inputs.kam-command }}
-          file_pattern: |
-            *
-          push_options: --force-with-lease
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Cache Cargo & Rustup
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.rustup
+        key: ${{ runner.os }}-rust-cache-${{ hashFiles('**/Cargo.lock') }}-${{ runner.os }}-v1
+        restore-keys: |
+          ${{ runner.os }}-rust-cache-
+    - name: Cache pip
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') || github.sha }}-v1
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    - name: Cache JavaScript package manager caches (npm / yarn / pnpm / bun)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.npm
+          ~/.cache/yarn
+          ~/.yarn/cache
+          ~/.pnpm-store
+          ~/.bun
+        key: ${{ runner.os }}-js-cache-${{ hashFiles('**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml', '**/bun.lockb') || github.sha }}-v1
+        restore-keys: |
+          ${{ runner.os }}-js-cache-
+    - name: Setup kam
+      uses: MemDeco-WG/setup-kam@main
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        enable-cache: 'true'
+        private-key: ${{ secrets.KAM_PRIVATE_KEY }}
+    - name: Verify kam installation
+      run: kam --version
+    - name: Run kam command
+      shell: bash
+      run: |
+        kam build --help
+        rm -rf dist
+        chmod +x hooks/**/*
+        chmod +x src/**/*
+        echo "Executing: ${{ github.event.inputs.kam-command }}"
+        ${{ github.event.inputs.kam-command }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+    - name: Auto-commit changes
+      uses: stefanzweifel/git-auto-commit-action@v7
+      with:
+        commit_message: |
+          chore: apply config - Template: ${{ github.event.inputs.template-url || 'No template' }} - Command: ${{ github.event.inputs.init-command || github.event.inputs.kam-command }}
+        file_pattern: |
+          *
+        push_options: --force-with-lease
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -25,18 +25,18 @@
 # ---------------------------------------------------------------------------------------
 
 MODDIR=${0%/*}
-source $MODPATH/utils.sh
-[ -f "$MODPATH/lib/nga-utils.sh" ] && . "$MODPATH/lib/nga-utils.sh" || abort '! File "nga-utils.sh" does not exist!'
+[ -f "$MODDIR/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
 
-until_unlock 10
+# 按需加载模块
+kam_load wait mihomo
 
-if [ -f $LOG_FILE ]; then
-    echo > $LOG_FILE # 每次重启清空日志
-fi
+wait_unlock 10
 
+# 清空日志
+LOG_FILE="${MODDIR}/MagicNet.log"
+[ -f "$LOG_FILE" ] && echo > "$LOG_FILE"
 
-# 运行mihomo内核
-
+# 运行 mihomo 内核
 create_tun
 mihomo_run
 

@@ -101,7 +101,7 @@ str_eq() {
 	return 1
 }
 
-pure_print() {
+pprint() {
 	{ run2null type ui_print && ui_print "$1"; } || {
 		# shellcheck disable=SC3036
 		[ -z "$OUTFD" ] && echo -e "$1" || echo -e "ui_print $1\nui_print" >>"/proc/self/fd/$OUTFD"
@@ -110,16 +110,16 @@ pure_print() {
 
 nga_abort() {
 	{ run2null type abort && abort "⚠️ $1"; } || {
-		pure_print "⚠️ $1"
+		pprint "⚠️ $1"
 		[ -n "$TMPDIR" ] && del -rf "$TMPDIR"
 		exit 1
 	}
 }
 
-nga_print() { pure_print "> $1"; }
+nga_print() { pprint "> $1"; }
 
 # shellcheck disable=SC2120
-newline() { for _ in $(seq 1 "${1:-1}"); do pure_print ''; done; }
+newline() { for _ in $(seq 1 "${1:-1}"); do pprint ''; done; }
 
 print_lines() { for line in "$@"; do echo "$line"; done; }
 
@@ -433,8 +433,8 @@ nga_install_done() {
 
 [ -n "$MAGISK_VER_CODE" ] \
 	&& is_magisk && [ "$MAGISK_VER_CODE" -lt 27008 ] \
-	&& pure_print '⚠️ WARNING!!! OLD VERSION OF MAGISK DETECTED!'
+	&& pprint '⚠️ WARNING!!! OLD VERSION OF MAGISK DETECTED!'
 
-[ "$KSU_SUKISU" = true ] && pure_print '⚠️ WARNING!!! SUKISU DETECTED!'
+[ "$KSU_SUKISU" = true ] && pprint '⚠️ WARNING!!! SUKISU DETECTED!'
 
 : Okay!
