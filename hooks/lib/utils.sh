@@ -28,23 +28,23 @@ log_error() {
 # If --return (or -r) is passed as second arg, the function returns 1 instead of exiting.
 # This implementation is Bash-only and relies on $EUID (no POSIX fallbacks).
 exit_if_sudo() {
-    local message="${1:-Do not run this script as root or via sudo. Please run as a normal user.}"
-    local do_return=0
+    _exit_if_sudo_message="${1:-Do not run this script as root or via sudo. Please run as a normal user.}"
+    _exit_if_sudo_do_return=0
 
     case "$2" in
-        --return|-r) do_return=1 ;;
+        --return|-r) _exit_if_sudo_do_return=1 ;;
     esac
 
     # Running as root or invoked via sudo (Bash-only).
     if (( EUID == 0 )) || [[ -n "${SUDO_USER:-}" ]] || [[ -n "${SUDO_UID:-}" ]] || [[ -n "${SUDO_COMMAND:-}" ]]; then
         if declare -F log_error >/dev/null 2>&1; then
-            log_error "$message"
+            log_error "$_exit_if_sudo_message"
         else
-            printf '%s\n' "$message" >&2
+            printf '%s\n' "$_exit_if_sudo_message" >&2
         fi
 
         # Explicit request to return instead of exit
-        if (( do_return != 0 )); then
+        if (( _exit_if_sudo_do_return != 0 )); then
             return 1
         fi
 
@@ -61,14 +61,14 @@ exit_if_sudo() {
 
 # Check if a command exists
 has_command() {
-    cmd="$1"
+    _has_command_cmd="$1"
 
-    if [ -z "$cmd" ]; then
+    if [ -z "$_has_command_cmd" ]; then
         log_error "has_command: command name is required"
         return 1  # Changed to return 1 instead of exit to avoid terminating the script
     fi
 
-    if command -v "$cmd" >/dev/null 2>&1; then
+    if command -v "$_has_command_cmd" >/dev/null 2>&1; then
         return 0
     else
         return 1
@@ -79,16 +79,16 @@ has_command() {
 # If the command is not available and a custom message is provided, it will be printed;
 # otherwise a default error message is shown.
 require_command() {
-    cmd="$1"
-    msg="$2"
+    _require_command_cmd="$1"
+    _require_command_msg="$2"
 
-    if has_command "$cmd"; then
+    if has_command "$_require_command_cmd"; then
         return 0
     else
-        if [ -n "$msg" ]; then
-            log_error "$msg"
+        if [ -n "$_require_command_msg" ]; then
+            log_error "$_require_command_msg"
         else
-            log_error "Command '$cmd' is required but not found."
+            log_error "Command '$_require_command_cmd' is required but not found."
         fi
         exit 1
     fi
@@ -96,10 +96,11 @@ require_command() {
 
 # Check if a variable is set
 require_env() {
-    var_name="$1"
-    eval value=\$$var_name
-    if [ -z "$value" ]; then
-        log_error "Environment variable '$var_name' is not set."
+    _require_env_var_name="$1"
+    # Use indirect expansion to avoid eval and improve safety
+    _require_env_value="${!_require_env_var_name}"
+    if [ -z "$_require_env_value" ]; then
+        log_error "Environment variable '$_require_env_var_name' is not set."
         exit 1
     fi
 }
@@ -160,7 +161,7 @@ ci_install() {
     # Usage: ci_install <pkg1> [pkg2 ...]
     # Try multiple package managers in CI (apt-get, apk, pacman, dnf, yum, zypper, pkg, brew).
     if ! is_ci; then
-        log_warn "ci_install: not running in a recognized CI environment; skipping installation: $*"
+        log_warn "ci_install: not running in a recognized CI environment; skipping installation: ${_ci_install_pkgs[*]}"
         return 1
     fi
 
@@ -169,15 +170,15 @@ ci_install() {
         return 1
     fi
 
-    pkgs=( "$@" )
+    _ci_install_pkgs=( "$@" )
 
     # Debian/Ubuntu: apt-get
     if command -v apt-get >/dev/null 2>&1; then
-        log_info "ci_install: attempting apt-get install: ${pkgs[*]}"
+        log_info "ci_install: attempting apt-get install: ${_ci_install_pkgs[*]}"
         # update - ignore failures
         run_as_root apt-get update || true
-        if run_as_root apt-get install -y "${pkgs[@]}"; then
-            log_success "ci_install: installed ${pkgs[*]} via apt-get"
+        if run_as_root apt-get install -y "${_ci_install_pkgs[@]}"; then
+            log_success "ci_install: installed ${_ci_install_pkgs[*]} via apt-get"
             return 0
         fi
         log_warn "ci_install: apt-get install failed"
@@ -185,9 +186,9 @@ ci_install() {
 
     # Alpine: apk
     if command -v apk >/dev/null 2>&1; then
-        log_info "ci_install: attempting apk add: ${pkgs[*]}"
-        if run_as_root apk add --no-cache "${pkgs[@]}"; then
-            log_success "ci_install: installed ${pkgs[*]} via apk"
+        log_info "ci_install: attempting apk add: ${_ci_install_pkgs[*]}"
+        if run_as_root apk add --no-cache "${_ci_install_pkgs[@]}"; then
+            log_success "ci_install: installed ${_ci_install_pkgs[*]} via apk"
             return 0
         fi
         log_warn "ci_install: apk add failed"
@@ -195,9 +196,9 @@ ci_install() {
 
     # Arch: pacman
     if command -v pacman >/dev/null 2>&1; then
-        log_info "ci_install: attempting pacman -S: ${pkgs[*]}"
-        if run_as_root pacman -S --noconfirm "${pkgs[@]}"; then
-            log_success "ci_install: installed ${pkgs[*]} via pacman"
+        log_info "ci_install: attempting pacman -S: ${_ci_install_pkgs[*]}"
+        if run_as_root pacman -S --noconfirm "${_ci_install_pkgs[@]}"; then
+            log_success "ci_install: installed ${_ci_install_pkgs[*]} via pacman"
             return 0
         fi
         log_warn "ci_install: pacman install failed"
@@ -205,9 +206,9 @@ ci_install() {
 
     # Fedora/RHEL (dnf)
     if command -v dnf >/dev/null 2>&1; then
-        log_info "ci_install: attempting dnf install: ${pkgs[*]}"
-        if run_as_root dnf install -y "${pkgs[@]}"; then
-            log_success "ci_install: installed ${pkgs[*]} via dnf"
+        log_info "ci_install: attempting dnf install: ${_ci_install_pkgs[*]}"
+        if run_as_root dnf install -y "${_ci_install_pkgs[@]}"; then
+            log_success "ci_install: installed ${_ci_install_pkgs[*]} via dnf"
             return 0
         fi
         log_warn "ci_install: dnf install failed"
@@ -215,9 +216,9 @@ ci_install() {
 
     # RHEL/CentOS (yum)
     if command -v yum >/dev/null 2>&1; then
-        log_info "ci_install: attempting yum install: ${pkgs[*]}"
-        if run_as_root yum install -y "${pkgs[@]}"; then
-            log_success "ci_install: installed ${pkgs[*]} via yum"
+        log_info "ci_install: attempting yum install: ${_ci_install_pkgs[*]}"
+        if run_as_root yum install -y "${_ci_install_pkgs[@]}"; then
+            log_success "ci_install: installed ${_ci_install_pkgs[*]} via yum"
             return 0
         fi
         log_warn "ci_install: yum install failed"
@@ -225,9 +226,9 @@ ci_install() {
 
     # openSUSE (zypper)
     if command -v zypper >/dev/null 2>&1; then
-        log_info "ci_install: attempting zypper install: ${pkgs[*]}"
-        if run_as_root zypper --non-interactive install "${pkgs[@]}"; then
-            log_success "ci_install: installed ${pkgs[*]} via zypper"
+        log_info "ci_install: attempting zypper install: ${_ci_install_pkgs[*]}"
+        if run_as_root zypper --non-interactive install "${_ci_install_pkgs[@]}"; then
+            log_success "ci_install: installed ${_ci_install_pkgs[*]} via zypper"
             return 0
         fi
         log_warn "ci_install: zypper install failed"
@@ -235,9 +236,9 @@ ci_install() {
 
     # FreeBSD pkg
     if command -v pkg >/dev/null 2>&1; then
-        log_info "ci_install: attempting pkg install: ${pkgs[*]}"
-        if run_as_root pkg install -y "${pkgs[@]}"; then
-            log_success "ci_install: installed ${pkgs[*]} via pkg"
+        log_info "ci_install: attempting pkg install: ${_ci_install_pkgs[*]}"
+        if run_as_root pkg install -y "${_ci_install_pkgs[@]}"; then
+            log_success "ci_install: installed ${_ci_install_pkgs[*]} via pkg"
             return 0
         fi
         log_warn "ci_install: pkg install failed"
@@ -245,15 +246,15 @@ ci_install() {
 
     # Homebrew (macOS)
     if command -v brew >/dev/null 2>&1; then
-        log_info "ci_install: attempting brew install: ${pkgs[*]}"
-        if brew install "${pkgs[@]}"; then
-            log_success "ci_install: installed ${pkgs[*]} via brew"
+        log_info "ci_install: attempting brew install: ${_ci_install_pkgs[*]}"
+        if brew install "${_ci_install_pkgs[@]}"; then
+            log_success "ci_install: installed ${_ci_install_pkgs[*]} via brew"
             return 0
         fi
         log_warn "ci_install: brew install failed"
     fi
 
-    log_error "ci_install: failed to install packages: ${pkgs[*]} using supported package managers"
+    log_error "ci_install: failed to install packages: ${_ci_install_pkgs[*]} using supported package managers"
     return 1
 }
 
@@ -348,7 +349,8 @@ prompt() {
     # Non-interactive mode - prefer defaults or fail
     if [ "${KAM_NONINTERACTIVE:-}" = "1" ] || [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then
         if [ -n "$default" ]; then
-            eval "$target_var=\"\$default\""
+            # Use printf -v to safely assign into the caller's environment (bash only)
+            printf -v "$target_var" "%s" "$default"
             return 0
         else
             log_error "Non-interactive environment and no default for prompt: $prompt_msg"
@@ -386,7 +388,7 @@ prompt() {
 
         if [ -n "$value" ]; then
             # assign to the requested variable name in the calling shell
-            eval "$target_var=\"\$value\""
+            printf -v "$target_var" "%s" "$value"
             return 0
         fi
 
@@ -448,7 +450,7 @@ choice() {
 
     # Non-interactive mode - choose the default automatically
     if [ "${KAM_NONINTERACTIVE:-}" = "1" ] || [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then
-        eval "$target_var=\"\$default_val\""
+        printf -v "$target_var" "%s" "$default_val"
         return 0
     fi
 
@@ -480,7 +482,7 @@ choice() {
                 cur=1
                 for opt in "$@"; do
                     if [ "$cur" -eq "$sel_idx" ]; then
-                        eval "$target_var=\"\$opt\""
+                        printf -v "$target_var" "%s" "$opt"
                         return 0
                     fi
                     cur=$((cur + 1))
@@ -491,7 +493,7 @@ choice() {
             cur=1
             for opt in "$@"; do
                 if [ "$opt" = "$ans" ]; then
-                    eval "$target_var=\"\$opt\""
+                    printf -v "$target_var" "%s" "$opt"
                     return 0
                 fi
                 cur=$((cur + 1))
@@ -502,6 +504,7 @@ choice() {
     done
 }
 
+# shellcheck source=/etc/os-release
 if [ -f /etc/os-release ]; then
     . /etc/os-release
 fi

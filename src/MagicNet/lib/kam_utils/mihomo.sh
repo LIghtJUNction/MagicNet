@@ -6,6 +6,7 @@
 
 # 加载内部模块
 _kam_utils_dir="$(dirname "${0}")"
+# shellcheck source=_mihomo.sh
 [ -f "${_kam_utils_dir}/_mihomo.sh" ] && . "${_kam_utils_dir}/_mihomo.sh"
 
 # 创建 TUN 设备

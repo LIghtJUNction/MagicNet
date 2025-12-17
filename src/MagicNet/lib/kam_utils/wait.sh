@@ -6,6 +6,7 @@
 
 # 加载内部模块
 _kam_utils_dir="$(dirname "${0}")"
+# shellcheck source=_wait.sh
 [ -f "${_kam_utils_dir}/_wait.sh" ] && . "${_kam_utils_dir}/_wait.sh"
 
 # 等待启动完成

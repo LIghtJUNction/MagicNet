@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# shellcheck source=../lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 
 # If release disabled, skip
@@ -72,7 +73,7 @@ if [ "${KAM_PRE_RELEASE:-0}" = "1" ]; then
 fi
 if [ -d "$DIST" ] && [ "$(ls -A "$DIST")" ]; then
     log_info "Creating GitHub release $TAG and uploading assets from $DIST"
-    gh release create "$TAG" --title "${KAM_MODULE_ID}-${KAM_MODULE_VERSION_CODE}-${KAM_MODULE_VERSION}" --notes-file "$TMP_CHANGELOG" $PRE_FLAG "$DIST"/* || { log_error "Failed to create release $TAG and upload assets"; exit 1; }
+    gh release create "$TAG" --title "${KAM_MODULE_ID}-${KAM_MODULE_VERSION_CODE}-${KAM_MODULE_VERSION}" --notes-file "$TMP_CHANGELOG" "$PRE_FLAG" "$DIST"/* || { log_error "Failed to create release $TAG and upload assets"; exit 1; }
 else
     log_warn "Dist directory not found or empty: $DIST"
 fi

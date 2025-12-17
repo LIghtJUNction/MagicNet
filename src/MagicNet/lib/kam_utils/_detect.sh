@@ -7,10 +7,10 @@
 # 检测系统架构（内部实现）
 _detect_arch_impl() {
     [ -n "$ARCH" ] && return 0
-    
-    local abi
-    abi="$(getprop ro.product.cpu.abi)"
-    
+
+    abi=""
+    abi=$(getprop ro.product.cpu.abi)
+
     case "$abi" in
         arm64-v8a)
             export ARCH="arm64"
@@ -64,18 +64,22 @@ _detect_arch_impl() {
 # 检测 Root 管理器（内部实现）
 _detect_root_type_impl() {
     [ -n "$ROOT_TYPE" ] && return 0
-    
-    [ "$KSU" = "true" ] || [ -n "$KSU_VER" ] && export ROOT_TYPE="ksu"
-    [ "$MAGISK_VER" != "" ] && [ "$BOOTMODE" = "true" ] && export ROOT_TYPE="magisk"
-    [ "$APATCH" = "true" ] || [ -n "$APATCH_VER" ] && export ROOT_TYPE="apatch"
-    [ "$KERNELPATCH" = "true" ] || [ -n "$KERNELPATCH_VERSION" ] && export ROOT_TYPE="kernelpatch"
-    [ -z "$ROOT_TYPE" ] && export ROOT_TYPE="unknown"
+
+    if [ "$KSU" = "true" ] || [ -n "$KSU_VER" ]; then
+        export ROOT_TYPE="ksu"
+    elif [ -n "$MAGISK_VER" ] && [ "$BOOTMODE" = "true" ]; then
+        export ROOT_TYPE="magisk"
+    elif [ "$APATCH" = "true" ] || [ -n "$APATCH_VER" ]; then
+        export ROOT_TYPE="apatch"
+    else
+        export ROOT_TYPE="unknown"
+    fi
 }
 
 # 设置模块目录（内部实现）
 _setup_mod_dir_impl() {
     [ -n "$MOD_DIR" ] && return 0
-    
+
     [ -n "$MODPATH" ] && export MOD_DIR="$MODPATH"
     [ -n "$KSU_MODULE" ] && export MOD_DIR="/data/adb/modules/$KSU_MODULE"
     [ -z "$MOD_DIR" ] && export MOD_DIR="/data/adb/modules/$(basename "$0")"
@@ -83,9 +87,15 @@ _setup_mod_dir_impl() {
 
 # 检测启动模式（内部实现）
 _detect_boot_mode_impl() {
+    # magisk 由于可以从rec安装模块，这里可以为0.
+    # 其余管理器永远是1
     [ -n "$BOOTMODE" ] && return 0
-    
-    pgrep zygote >/dev/null 2>&1 && export BOOTMODE=true || export BOOTMODE=false
+
+    if pgrep zygote >/dev/null 2>&1; then
+        export BOOTMODE=true
+    else
+        export BOOTMODE=false
+    fi
 }
 
 # 检查是否为 KernelSU（内部使用）
