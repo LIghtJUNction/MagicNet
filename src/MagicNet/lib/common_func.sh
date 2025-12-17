@@ -68,11 +68,11 @@ resetprop_hexpatch() {
 
     printf "Patch '$NAME' to '$NEWVALUE' in '$PROPFILE' @ 0x%08x -> \n[0000??$NEWHEX]\n" $((NAMEOFFSET-96))
 
-    echo -ne "\x00\x00" \
+    printf "\x00\x00" \
         | dd obs=1 count=2 seek=$((NAMEOFFSET-96)) conv=notrunc of="$PROPFILE"
     local hex_escaped
     hex_escaped="$(printf '%s' "$NEWHEX" | sed -e 's/.\{2\}/&\\x/g' -e 's/^/\\x/' -e 's/\\x$//')"
-    echo -ne "$hex_escaped" \
+    printf '%s' "$hex_escaped" \
         | dd obs=1 count=93 seek=$((NAMEOFFSET-93)) conv=notrunc of="$PROPFILE"
 }
 
@@ -92,7 +92,9 @@ resetprop_if_match() {
     local CONTAINS="$2"
     local VALUE="$3"
 
-    [[ "$(resetprop "$NAME")" = *"$CONTAINS"* ]] && $RESETPROP "$NAME" "$VALUE"
+    case "$(resetprop "$NAME")" in
+        *"$CONTAINS"*) $RESETPROP "$NAME" "$VALUE" ;;
+    esac
 }
 
 # stub for boot-time
