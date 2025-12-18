@@ -10,7 +10,7 @@ MODDIR=${MODDIR:-${0%/*}}
 export PATH=${MODDIR}/.local/bin/:$PATH
 export LD_LIBRARY_PATH=${MODDIR}/.local/lib/:$LD_LIBRARY_PATH
 export HOME=${MODDIR}
-
+ui_print $MODDIR
 # =============================================================================
 # kam_load 按需加载工具库
 # =============================================================================
