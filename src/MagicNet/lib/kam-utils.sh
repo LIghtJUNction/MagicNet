@@ -18,19 +18,46 @@ kam_load() {
         return 1
     }
 
-    # 获取 kam_utils 目录（脚本当前目录）
-    _kam_load_kam_utils_dir="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)/kam_utils"
+    # 获取 kam_utils 目录
+    # 优先使用 MODPATH，如果不存在则使用脚本自身路径
+    _kam_load_kam_utils_dir=""
+    if [ -n "${MODPATH:-}" ] && [ -d "${MODPATH}/lib/kam_utils" ]; then
+        _kam_load_kam_utils_dir="${MODPATH}/lib/kam_utils"
+    else
+        # 获取当前脚本所在目录
+        _kam_load_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || _kam_load_script_dir="$(pwd)"
+        if [ -d "${_kam_load_script_dir}/kam_utils" ]; then
+            _kam_load_kam_utils_dir="${_kam_load_script_dir}/kam_utils"
+        elif [ -d "${_kam_load_script_dir}/lib/kam_utils" ]; then
+            _kam_load_kam_utils_dir="${_kam_load_script_dir}/lib/kam_utils"
+        else
+            echo "错误: 无法找到 kam_utils 目录" >&2
+            return 1
+        fi
+    fi
+
+    # 设置全局变量供模块使用
+    export _KAM_UTILS_DIR="${_kam_load_kam_utils_dir}"
 
     # 加载指定模块
     for module in "$@"; do
+        # 检查是否已加载（防止重复加载）
+        _kam_load_var_name="_KAM_MODULE_LOADED_$(echo "$module" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
+        eval "_kam_load_is_loaded=\${${_kam_load_var_name}:-0}"
+        if [ "$_kam_load_is_loaded" = "1" ]; then
+            continue
+        fi
+
         module_file="${_kam_load_kam_utils_dir}/${module}.sh"
         if [ -f "$module_file" ]; then
             . "$module_file" || {
                 echo "加载模块失败: $module" >&2
                 return 1
             }
+            # 标记为已加载
+            eval "${_kam_load_var_name}=1"
         else
-            echo "模块不存在: $module" >&2
+            echo "模块不存在: $module (${module_file})" >&2
             return 1
         fi
     done
@@ -43,14 +70,20 @@ kam_load() {
 # 通用初始化
 # 从 .kam 文件夹提取合适架构的二进制文件到对应目录
 kam_init() {
-    moddir="${MODDIR:-$(pwd)}"
+    moddir="${MODPATH:-$(pwd)}"
     kam_dir="${moddir}/.kam"
+
+    # 加载必需的基础模块
+    # base 必须最先加载，因为其他模块依赖它
+    kam_load base ui depends install detect || {
+        echo "! Failed to load required modules" >&2
+        return 1
+    }
 
     # 检查 .kam 目录是否存在
     [ ! -d "$kam_dir" ] && return 0
 
     # 检测架构（使用检测模块）
-    kam_load detect >/dev/null 2>&1 || true
     detect_arch >/dev/null 2>&1
     arch="${ARCH:-unknown}"
 
@@ -66,7 +99,7 @@ kam_init() {
 # 通用结束函数
 # 删除 .kam 文件夹
 kam_end() {
-    moddir="${MODDIR:-$(pwd)}"
+    moddir="${MODPATH:-$(pwd)}"
     kam_dir="${moddir}/.kam"
 
     # 删除 .kam 目录

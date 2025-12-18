@@ -20,9 +20,15 @@
 #   protector.sh require_module mymod '>=1.2.0' --message "Please update moudle"
 # =============================================================================
 
-_kam_utils_dir="$(dirname "${0}")"
+# 获取当前脚本所在目录
+_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_depends.sh
-[ -f "${_kam_utils_dir}/_depends.sh" ] && . "${_kam_utils_dir}/_depends.sh"
+if [ -f "${_kam_utils_dir}/_depends.sh" ]; then
+    . "${_kam_utils_dir}/_depends.sh"
+else
+    echo "错误: 无法找到 _depends.sh: ${_kam_utils_dir}/_depends.sh" >&2
+    return 1
+fi
 
 _depends__warn() {
     msg="$1"
@@ -31,6 +37,11 @@ _depends__warn() {
     else
         printf 'WARN: %s\n' "$msg" >&2
     fi
+}
+
+# 版本要求检查
+require_version() {
+    _require_version_impl "$@"
 }
 
 _depends__error() {
@@ -200,10 +211,13 @@ require_module() {
 # -------------------------
 # Simple CLI for convenience
 # -------------------------
-if [ "${1:-}" != "" ]; then
-    cmd="$1"
-    shift
-    case "$cmd" in
+# 只有当脚本被直接执行时才处理 CLI 参数（检查 $0 是否包含脚本名）
+case "$(basename "$0" 2>/dev/null)" in
+    depends.sh)
+        if [ "${1:-}" != "" ]; then
+            cmd="$1"
+            shift
+            case "$cmd" in
         check_app)
             check_app "$@"; exit $?
             ;;
@@ -234,7 +248,9 @@ USAGE
             printf 'Unknown command: %s\n' "$cmd" >&2
             exit 2
             ;;
-    esac
-fi
+            esac
+        fi
+        ;;
+esac
 
 # EOF

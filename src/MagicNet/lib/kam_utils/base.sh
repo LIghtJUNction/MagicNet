@@ -10,34 +10,20 @@
 # 注意：不要在本文件中放入大量实现逻辑，修改实现请放到 `_base.sh`。
 #
 # 载入内部实现（_base.sh）
-_kam_utils_dir="$(dirname "${0}")"
+_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_base.sh
-[ -f "${_kam_utils_dir}/_base.sh" ] && . "${_kam_utils_dir}/_base.sh"
+if [ -f "${_kam_utils_dir}/_base.sh" ]; then
+    . "${_kam_utils_dir}/_base.sh"
+else
+    echo "错误: 无法找到 _base.sh: ${_kam_utils_dir}/_base.sh" >&2
+    return 1
+fi
 
 # -------------------------
 # 公共 wrapper（直接调用单下划线内部实现）
 # -------------------------
 
-pprint() {
-    # 直接调用内部实现 `_pprint`（优先）
-    # 如果内部实现不存在或返回非 0，则回退到 ui_print / OUTFD / printf
-    if command -v _pprint >/dev/null 2>&1; then
-        _pprint "$@"
-        return $?
-    fi
-
-    if command -v ui_print >/dev/null 2>&1; then
-        ui_print "$1"
-        return 0
-    fi
-
-    if [ -z "$OUTFD" ]; then
-        printf '%s\n' "$1"
-    else
-        printf '%s\n' "ui_print $1" >>"/proc/self/fd/$OUTFD"
-        printf '%s\n' "ui_print" >>"/proc/self/fd/$OUTFD"
-    fi
-}
+pprint() { _pprint "$@"; }
 
 msg()         { _msg "$@"; }
 err()         { _err "$@"; }
@@ -68,6 +54,12 @@ one_of()      { _one_of "$@"; }
 fdate()       { _fdate "$@"; }
 
 log()         { _log "$@"; }
+
+# 模块管理
+register_module()  { _register_module "$@"; }
+get_module_desc()  { _get_module_desc "$@"; }
+load_module()      { _load_module "$@"; }
+get_kam_utils_dir() { _get_kam_utils_dir "$@"; }
 
 # 交互式提示（如果内部实现未能加载，给出轻量提示）
 if [ -t 1 ] && ! command -v _pprint >/dev/null 2>&1; then

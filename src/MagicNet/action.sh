@@ -2,7 +2,6 @@
 MODDIR=${0%/*}
 [ -f "$MODDIR/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
 
-# 按需加载模块
 kam_load ui mihomo
 
 ask "toggle_service" "stop" "start" \

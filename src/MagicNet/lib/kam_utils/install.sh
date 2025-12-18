@@ -21,9 +21,14 @@
 # =============================================================================
 
 # 加载内部实现
-_kam_utils_dir="$(dirname "${0}")"
+_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_install.sh
-[ -f "${_kam_utils_dir}/_install.sh" ] && . "${_kam_utils_dir}/_install.sh"
+if [ -f "${_kam_utils_dir}/_install.sh" ]; then
+    . "${_kam_utils_dir}/_install.sh"
+else
+    echo "错误: 无法找到 _install.sh: ${_kam_utils_dir}/_install.sh" >&2
+    return 1
+fi
 
 # 安装单个模块（公开 API）
 # 用法: module_install "/path/to/module.zip"
