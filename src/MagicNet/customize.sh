@@ -3,7 +3,7 @@
 #
 # -----------------------------------------------------------------------------------
 
-[ -f "$MODPATH/lib/kam-utils.sh" ] && . "$MODPATH/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
+{[ -f "$MODPATH/lib/kam-utils.sh" ] && . "$MODPATH/lib/kam-utils.sh" }|| abort '! File "kam-utils.sh" does not exist!'
 
 # 初始化 KAM 环境
 kam_init
