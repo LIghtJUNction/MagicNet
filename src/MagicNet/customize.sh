@@ -1,7 +1,6 @@
 # shellcheck shell=ash
 # MagicNet customize.sh
 #
-# 简洁版安装自定义脚本（返回到精简风格、移除过度防御逻辑）
 # -----------------------------------------------------------------------------------
 MODDIR=${0%/*}
 [ -f "$MODDIR/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
@@ -12,67 +11,8 @@ kam_init
 # 加载导航模块
 kam_load navigation
 
-# status helper - use tput to print inline statuses elegantly
-status_msg() {
-    STATUS_MSG="$1"
-    if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
-        # print message without newline and save cursor
-        printf '%s' "$STATUS_MSG"
-        tput sc 2>/dev/null || true
-    else
-        printf '%s' "$STATUS_MSG"
-    fi
-}
-
-status_ok() {
-    if [ -z "${STATUS_MSG:-}" ]; then
-        if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
-            tput bold 2>/dev/null || true
-            tput setaf 2 2>/dev/null || true
-            printf '%s\n' "[OK]"
-            tput sgr0 2>/dev/null || true
-        else
-            printf '%s\n' "[OK]"
-        fi
-    else
-        if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
-            tput rc 2>/dev/null || true
-            tput el 2>/dev/null || true
-            tput bold 2>/dev/null || true
-            tput setaf 2 2>/dev/null || true
-            printf '%s %s\n' "$STATUS_MSG" "[OK]"
-            tput sgr0 2>/dev/null || true
-        else
-            printf '%s %s\n' "$STATUS_MSG" "[OK]"
-        fi
-        unset STATUS_MSG
-    fi
-}
-
-status_fail() {
-    if [ -z "${STATUS_MSG:-}" ]; then
-        if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
-            tput bold 2>/dev/null || true
-            tput setaf 1 2>/dev/null || true
-            printf '%s\n' "[FAILED]"
-            tput sgr0 2>/dev/null || true
-        else
-            printf '%s\n' "[FAILED]"
-        fi
-    else
-        if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
-            tput rc 2>/dev/null || true
-            tput el 2>/dev/null || true
-            tput bold 2>/dev/null || true
-            tput setaf 1 2>/dev/null || true
-            printf '%s %s\n' "$STATUS_MSG" "[FAILED]"
-            tput sgr0 2>/dev/null || true
-        else
-            printf '%s %s\n' "$STATUS_MSG" "[FAILED]"
-        fi
-        unset STATUS_MSG
-    fi
-}
+# status helpers are provided by a reusable module; import them from the library
+kam_load status
 
 # 项目 i18n 文本（保留）
 set_i18n "mihomo_config" "zh" "Mihomo 配置选项" "en" "Mihomo Configuration" "ja" "Mihomo設定" "ko" "Mihomo 구성"
