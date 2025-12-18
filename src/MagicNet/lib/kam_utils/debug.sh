@@ -11,12 +11,7 @@
 # 使用全局变量 _KAM_UTILS_DIR（由 kam_load 设置）或 MODPATH
 _kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_debug.sh
-if [ -f "${_kam_utils_dir}/_debug.sh" ]; then
-    . "${_kam_utils_dir}/_debug.sh"
-else
-    echo "错误: 无法找到 _debug.sh: ${_kam_utils_dir}/_debug.sh" >&2
-    return 1
-fi
+kam_source_impl debug || { echo "错误: 无法加载内部实现: ${_kam_utils_dir}/_debug.sh" >&2; return 1; }
 
 # 开启调试模式
 # 用法: debug_on

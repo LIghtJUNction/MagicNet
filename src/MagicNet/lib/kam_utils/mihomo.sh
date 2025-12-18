@@ -4,15 +4,10 @@
 # Mihomo 模块 - 管理和运行 Mihomo 代理服务
 # =============================================================================
 
-# 加载内部模块
+# 加载内部模块（严格模式：缺少内部实现即 fail-fast）
 _kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_mihomo.sh
-if [ -f "${_kam_utils_dir}/_mihomo.sh" ]; then
-    . "${_kam_utils_dir}/_mihomo.sh"
-else
-    echo "错误: 无法找到 _mihomo.sh: ${_kam_utils_dir}/_mihomo.sh" >&2
-    return 1
-fi
+kam_source_impl mihomo || { printf '%s\n' "错误: 无法加载内部实现: ${_kam_utils_dir}/_mihomo.sh" >&2; return 1; }
 
 # 创建 TUN 设备
 create_tun() {
