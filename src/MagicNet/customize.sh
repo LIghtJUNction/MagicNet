@@ -97,7 +97,7 @@ set_i18n "dialog_help1" "zh" "如果无法自动获取结果，请：" "en" "If 
 set_i18n "dialog_help2" "zh" "1. 输入您的订阅链接" "en" "1. Enter your subscription URL" "ja" "1. 購読URLを入力" "ko" "1. 구독 URL 입력"
 set_i18n "dialog_help3" "zh" "2. 复制输入的内容（长按文本选择）" "en" "2. Copy the input (long press to select)" "ja" "2. 入力内容をコピー（長押しで選択）" "ko" "2. 입력 내용 복사（길게 눌러 선택）"
 set_i18n "dialog_help4" "zh" "3. 对话框关闭后，我们将尝试从剪贴板获取" "en" "3. After dialog closes, we'll try to get from clipboard" "ja" "3. ダイアログ閉じ後、クリップボードから取得を試みます" "ko" "3. 대화상자 닫힌 후, 클립보드에서 가져오기를 시도합니다"
-set_i18n "termux_dialog_unavailable" "zh" "termux-dialog 不可用，使用默认值" "en" "termux-dialog unavailable, using default value" "ja" "termux-dialog が利用できません。デフォルト値を使用します" "ko" "termux-dialog를 사용할 수 없습니다. 기본값을 사용합니다"
+
 set_i18n "debug_enabled" "zh" "调试模式已开启" "en" "Debug mode enabled" "ja" "デバッグモードが有効になりました" "ko" "디버그 모드가 활성화되었습니다"
 set_i18n "debug_disabled" "zh" "调试模式已关闭" "en" "Debug mode disabled" "ja" "デバッグモードが無効になりました" "ko" "디버그 모드가 비활성화되었습니다"
 set_i18n "debug_status_on" "zh" "调试模式：开启 (KAM_DEBUG=1)" "en" "Debug mode: ON (KAM_DEBUG=1)" "ja" "デバッグモード：オン (KAM_DEBUG=1)" "ko" "디버그 모드: 켜짐 (KAM_DEBUG=1)"
@@ -137,12 +137,7 @@ else
     status_fail
 fi
 
-status_msg "- [DEBUG] 加载 Termux 模块..."
-if kam_load termux; then
-    status_ok
-else
-    status_fail
-fi
+
 
 status_msg "Setting permissions for module..."
 if set_perm_recursive "$MODDIR" 0 0 0755 0755; then

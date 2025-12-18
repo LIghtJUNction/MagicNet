@@ -5,10 +5,11 @@
 # 跨 Root 管理器统一工具库
 #
 ##########################################################################################
-MODDIR=${0%/*}
-export MODDIR
+MODDIR=${MODDIR:-${0%/*}}
 # 环境变量
 export PATH=${MODDIR}/.local/bin/:$PATH
+export LD_LIBRARY_PATH=${MODDIR}/.local/lib/:$LD_LIBRARY_PATH
+export HOME=${MODDIR}
 
 # =============================================================================
 # kam_load 按需加载工具库
@@ -106,10 +107,95 @@ kam_init() {
     detect_arch >/dev/null 2>&1
     arch="${ARCH:-unknown}"
 
-    # 复制对应架构的二进制文件
-    if [ "$arch" != "unknown" ] && [ -f "${kam_dir}/${arch}" ]; then
-        cp "${kam_dir}/${arch}" "${moddir}/system/bin/" 2>/dev/null || true
-        chmod 755 "${moddir}/system/bin/$(basename "${kam_dir}/${arch}")" 2>/dev/null || true
+    # Per-prefix per-arch installation:
+    # Support layout: .kam/<prefix>/<arch>/*  ->  <moddir>/<prefix>/*
+    # e.g. .kam/system/bin/arm64/foo -> system/bin/foo
+    if [ "$arch" != "unknown" ]; then
+        # Preferred arch order: ARCH, ABI32 (if present), then generic fallbacks
+        fallback_archs="$arch"
+        [ -n "${ABI32:-}" ] && fallback_archs="$fallback_archs ${ABI32}"
+        fallback_archs="$fallback_archs all universal any common"
+
+        # record processed prefixes to avoid duplicate work (format :prefix1:prefix2:)
+        processed_prefixes=":"
+
+        # iterate directories up to a reasonable depth to discover prefixes
+        for prefix_dir in "$kam_dir"/* "$kam_dir"/*/* "$kam_dir"/*/*/*; do
+            [ -d "$prefix_dir" ] || continue
+
+            base=$(basename "$prefix_dir")
+            # skip if this directory itself is an arch directory (we want its parent as the prefix)
+            case " $fallback_archs " in
+                *" $base "*) continue ;;
+            esac
+
+            rel="${prefix_dir#$kam_dir/}"
+            # avoid duplicate processing of same prefix (due to multiple globs)
+            case ":$processed_prefixes:" in
+                *":$rel:"*) continue ;;
+                *) processed_prefixes="${processed_prefixes}${rel}:" ;;
+            esac
+
+            arch_found=0
+            # try preferred arch dirs in order for this prefix
+            for a in $fallback_archs; do
+                if [ -d "${prefix_dir}/${a}" ]; then
+                    arch_dir="${prefix_dir}/${a}"
+                    dest="${moddir}/${rel}"
+                    mkdir -p "$dest" 2>/dev/null || true
+
+                    for src in "$arch_dir"/*; do
+                        [ -f "$src" ] || continue
+                        cp -f "$src" "$dest/" 2>/dev/null || true
+                        case "$rel" in
+                            */bin|bin|*/sbin|sbin)
+                                chmod 755 "$dest/$(basename "$src")" 2>/dev/null || true
+                                ;;
+                            *)
+                                chmod 644 "$dest/$(basename "$src")" 2>/dev/null || true
+                                ;;
+                        esac
+                    done
+
+                    arch_found=1
+                    break
+                fi
+            done
+
+            # if no arch-specific dir found, but this prefix contains files directly, treat as generic prefix
+            if [ "$arch_found" -eq 0 ]; then
+                has_files=0
+                for f in "$prefix_dir"/*; do
+                    [ -f "$f" ] && { has_files=1; break; }
+                done
+
+                if [ "$has_files" -eq 1 ]; then
+                    dest="${moddir}/${rel}"
+                    mkdir -p "$dest" 2>/dev/null || true
+
+                    for src in "$prefix_dir"/*; do
+                        [ -f "$src" ] || continue
+                        cp -f "$src" "$dest/" 2>/dev/null || true
+                        case "$rel" in
+                            */bin|bin|*/sbin|sbin)
+                                chmod 755 "$dest/$(basename "$src")" 2>/dev/null || true
+                                ;;
+                            *)
+                                chmod 644 "$dest/$(basename "$src")" 2>/dev/null || true
+                                ;;
+                        esac
+                    done
+                fi
+            fi
+        done
+
+        # Backwards-compatibility: legacy single-arch file at .kam/<arch>
+        # Install into .local/bin so older modules still work.
+        if [ -f "${kam_dir}/${arch}" ]; then
+            mkdir -p "${moddir}/.local/bin" 2>/dev/null || true
+            cp -f "${kam_dir}/${arch}" "${moddir}/.local/bin/" 2>/dev/null || true
+            chmod 755 "${moddir}/.local/bin/$(basename "${kam_dir}/${arch}")" 2>/dev/null || true
+        fi
     fi
 
 }

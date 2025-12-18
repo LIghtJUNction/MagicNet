@@ -20,7 +20,7 @@
 #   protector.sh require_module mymod '>=1.2.0' --message "Please update moudle"
 # =============================================================================
 
-MODDIR=${0%/*}
+MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_depends.sh
 kam_source_impl depends || { echo "错误: 无法加载内部实现: _depends.sh" >&2; return 1; }
 
