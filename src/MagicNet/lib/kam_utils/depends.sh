@@ -20,10 +20,9 @@
 #   protector.sh require_module mymod '>=1.2.0' --message "Please update moudle"
 # =============================================================================
 
-# 获取当前脚本所在目录
-_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+MODDIR=${0%/*}
 # shellcheck source=_depends.sh
-kam_source_impl depends || { echo "错误: 无法加载内部实现: ${_kam_utils_dir}/_depends.sh" >&2; return 1; }
+kam_source_impl depends || { echo "错误: 无法加载内部实现: _depends.sh" >&2; return 1; }
 
 _depends__warn() {
     msg="$1"

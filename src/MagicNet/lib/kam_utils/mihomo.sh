@@ -5,9 +5,9 @@
 # =============================================================================
 
 # 加载内部模块（严格模式：缺少内部实现即 fail-fast）
-_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+MODDIR=${0%/*}
 # shellcheck source=_mihomo.sh
-kam_source_impl mihomo || { printf '%s\n' "错误: 无法加载内部实现: ${_kam_utils_dir}/_mihomo.sh" >&2; return 1; }
+kam_source_impl mihomo || { printf '%s\n' "错误: 无法加载内部实现: _mihomo.sh" >&2; return 1; }
 
 # 创建 TUN 设备
 create_tun() {

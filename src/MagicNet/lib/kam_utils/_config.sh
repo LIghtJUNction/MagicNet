@@ -138,11 +138,11 @@ EOF
 # 公开的轻量包装（兼容调用习惯）
 # 用法:
 #   config_set_subscription_url <config_file> <url>
-#   config_set_subscription_url <url>  # 使用默认 $MODPATH/mihomo/config.yaml
+#   config_set_subscription_url <url>  # 使用默认 $MODDIR/mihomo/config.yaml
 config_set_subscription_url() {
     case "$#" in
         1)
-            cfg="${MODPATH}/mihomo/config.yaml"
+            cfg="${MODDIR}/mihomo/config.yaml"
             url="$1"
             ;;
         2)

@@ -36,13 +36,7 @@ _mihomo_run_impl() {
     _mihomo_run_impl_mihomo="${_mihomo_run_impl_moddir}/system/bin/mihomo"
     _mihomo_run_impl_logfile=$(_get_mihomo_logfile)
 
-    if [ -f "${_mihomo_run_impl_moddir}/yacd" ]; then
-        log INFO "Using yacd"
-        sed -i 's|http://127.0.0.1:9090/ui/|https://yacd.haishan.me/|' "${_mihomo_run_impl_moddir}/webroot/index.html" || log ERROR "Failed to replace URL"
-    else
-        log INFO "Using default frontend"
-        sed -i 's|https://yacd.haishan.me/|http://127.0.0.1:9090/ui/|' "${_mihomo_run_impl_moddir}/webroot/index.html" || log ERROR "Failed to replace URL"
-    fi
+    _mihomo_toggle_ui_impl
 
     log INFO "Starting mihomo"
     if [ -x "${_mihomo_run_impl_mihomo}" ]; then
