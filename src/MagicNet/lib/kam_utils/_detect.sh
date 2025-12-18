@@ -80,7 +80,7 @@ _detect_root_type_impl() {
 _setup_mod_dir_impl() {
     [ -n "$MOD_DIR" ] && return 0
 
-    # 使用 MODDIR（以 ${0%/*} 为锚点）作为模块根目录来源（不再使用 MODPATH）
+    # 使用 MODDIR（以 ${0%/*} 为锚点）作为模块根目录来源
     MODDIR=${MODDIR:-${0%/*}}
     [ -n "${MODDIR}" ] && export MOD_DIR="${MODDIR}"
     [ -n "$KSU_MODULE" ] && export MOD_DIR="/data/adb/modules/$KSU_MODULE"

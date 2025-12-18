@@ -12,6 +12,68 @@ kam_init
 # 加载导航模块
 kam_load navigation
 
+# status helper - use tput to print inline statuses elegantly
+status_msg() {
+    STATUS_MSG="$1"
+    if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+        # print message without newline and save cursor
+        printf '%s' "$STATUS_MSG"
+        tput sc 2>/dev/null || true
+    else
+        printf '%s' "$STATUS_MSG"
+    fi
+}
+
+status_ok() {
+    if [ -z "${STATUS_MSG:-}" ]; then
+        if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+            tput bold 2>/dev/null || true
+            tput setaf 2 2>/dev/null || true
+            printf '%s\n' "[OK]"
+            tput sgr0 2>/dev/null || true
+        else
+            printf '%s\n' "[OK]"
+        fi
+    else
+        if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+            tput rc 2>/dev/null || true
+            tput el 2>/dev/null || true
+            tput bold 2>/dev/null || true
+            tput setaf 2 2>/dev/null || true
+            printf '%s %s\n' "$STATUS_MSG" "[OK]"
+            tput sgr0 2>/dev/null || true
+        else
+            printf '%s %s\n' "$STATUS_MSG" "[OK]"
+        fi
+        unset STATUS_MSG
+    fi
+}
+
+status_fail() {
+    if [ -z "${STATUS_MSG:-}" ]; then
+        if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+            tput bold 2>/dev/null || true
+            tput setaf 1 2>/dev/null || true
+            printf '%s\n' "[FAILED]"
+            tput sgr0 2>/dev/null || true
+        else
+            printf '%s\n' "[FAILED]"
+        fi
+    else
+        if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+            tput rc 2>/dev/null || true
+            tput el 2>/dev/null || true
+            tput bold 2>/dev/null || true
+            tput setaf 1 2>/dev/null || true
+            printf '%s %s\n' "$STATUS_MSG" "[FAILED]"
+            tput sgr0 2>/dev/null || true
+        else
+            printf '%s %s\n' "$STATUS_MSG" "[FAILED]"
+        fi
+        unset STATUS_MSG
+    fi
+}
+
 # 项目 i18n 文本（保留）
 set_i18n "mihomo_config" "zh" "Mihomo 配置选项" "en" "Mihomo Configuration" "ja" "Mihomo設定" "ko" "Mihomo 구성"
 set_i18n "yacd_ui" "zh" "Yacd UI" "en" "Yacd UI" "ja" "Yacd UI" "ko" "Yacd UI"
@@ -60,26 +122,44 @@ divider
 debug_status
 divider
 
-msg "- Checking version requirements..."
-require_version "magisk:>=28000" "ksu:>=11986" --mode=abort --message="MagicNet Abort: version requirements not met!"
+status_msg "- Checking version requirements..."
+if require_version "magisk:>=28000" "ksu:>=11986" --mode=abort --message="MagicNet Abort: version requirements not met!"; then
+    status_ok
+else
+    status_fail
+fi
 
 msg "- Installing MagicNet..."
-msg "- [DEBUG] 准备加载 UI 模块..."
+status_msg "- [DEBUG] 准备加载 UI 模块..."
+if kam_load ui; then
+    status_ok
+else
+    status_fail
+fi
 
-# 加载 UI 模块
-kam_load ui
-msg "- [DEBUG] UI 模块加载完成"
+status_msg "- [DEBUG] 加载 Termux 模块..."
+if kam_load termux; then
+    status_ok
+else
+    status_fail
+fi
 
-# 加载 Termux 模块（简洁风格：直接加载，无冗余回退）
-kam_load termux
-
-set_perm_recursive "$MODDIR" 0 0 0755 0755
+status_msg "Setting permissions for module..."
+if set_perm_recursive "$MODDIR" 0 0 0755 0755; then
+    status_ok
+else
+    status_fail
+fi
 
 # 设置启动脚本用于订阅配置
 divider
-msg "- 设置订阅配置脚本..."
-chmod 755 "$MODDIR/boot-completed.sh"
-msg "- 订阅链接将在设备重启后配置"
+status_msg "- 设置订阅配置脚本..."
+if chmod 755 "$MODDIR/boot-completed.sh"; then
+    status_ok
+    msg "- 订阅链接将在设备重启后配置"
+else
+    status_fail
+fi
 divider
 
 # 配置 Mihomo 选项
@@ -103,11 +183,19 @@ config_bits=$(binary_prompt "1111" "$(i18n "yacd_ui")" "$(i18n "ipv6_support")" 
 
 # 第1位: Yacd UI
 if [ "${config_bits:0:1}" = "1" ]; then
-    msg "- 启用 Yacd UI"
-    touch "$MODDIR/yacd"
+    status_msg "- 启用 Yacd UI"
+    if touch "$MODDIR/yacd"; then
+        status_ok
+    else
+        status_fail
+    fi
 else
-    msg "- 禁用 Yacd UI"
-    rm -f "$MODDIR/yacd"
+    status_msg "- 禁用 Yacd UI"
+    if rm -f "$MODDIR/yacd"; then
+        status_ok
+    else
+        status_fail
+    fi
 fi
 
 # 第2位: IPv6 支持
