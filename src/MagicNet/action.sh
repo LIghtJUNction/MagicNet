@@ -1,6 +1,24 @@
 # shellcheck shell=ash
-MODDIR=${0%/*}
-. "$MODDIR/lib/kam-utils.sh" || { printf '%s\n' '! File "kam-utils.sh" does not exist!' >&2; exit 1; }
+# Determine module root robustly (prefer MODPATH set by installers).
+# Fallback order:
+#   1) MODPATH (set by install environment)
+#   2) existing MODDIR (if pre-set)
+#   3) dirname of $0 (if $0 is a path)
+#   4) search upward from PWD for a directory containing lib/kam-utils.sh
+#   5) fallback to PWD (last resort)
+MODDIR=${MODPATH:-${MODDIR:-${0%/*}}}
+if [ ! -f "${MODDIR}/lib/kam-utils.sh" ]; then
+    cur="$PWD"
+    while [ -n "$cur" ] && [ "$cur" != "/" ]; do
+        if [ -f "$cur/lib/kam-utils.sh" ]; then
+            MODDIR="$cur"
+            break
+        fi
+        cur=$(dirname -- "$cur")
+    done
+fi
+[ -z "${MODDIR:-}" ] && MODDIR="$PWD"
+[ -f "${MODDIR}/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || { printf '%s\n' '! File "kam-utils.sh" does not exist!' >&2; exit 1; }
 
 kam_load ui mihomo
 

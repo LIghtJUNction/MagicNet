@@ -1,4 +1,3 @@
-#!/bin/sh
 # shellcheck shell=ash
 # =============================================================================
 # 系统检测模块 - 内部函数（非公开API）
@@ -80,11 +79,48 @@ _detect_root_type_impl() {
 _setup_mod_dir_impl() {
     [ -n "$MOD_DIR" ] && return 0
 
-    # 使用 MODDIR（以 ${0%/*} 为锚点）作为模块根目录来源
-    MODDIR=${MODDIR:-${0%/*}}
-    [ -n "${MODDIR}" ] && export MOD_DIR="${MODDIR}"
-    [ -n "$KSU_MODULE" ] && export MOD_DIR="/data/adb/modules/$KSU_MODULE"
-    [ -z "$MOD_DIR" ] && export MOD_DIR="/data/adb/modules/$(basename "$0")"
+    # 1) 优先使用安装环境提供的 MODPATH（Magisk / 部分安装器会设置）
+    if [ -n "${MODPATH:-}" ]; then
+        export MOD_DIR="${MODPATH}"
+        return 0
+    fi
+
+    # 2) 如果外部显式提供了 MODDIR，使用它
+    if [ -n "${MODDIR:-}" ]; then
+        export MOD_DIR="${MODDIR}"
+        return 0
+    fi
+
+    # 3) 如果 $0 看起来像路径（包含 '/'），尝试使用其父目录（并验证是否为模块）
+    case "$0" in
+        */*)
+            if dir=$(cd "$(dirname -- "$0")" 2>/dev/null && pwd); then
+                if [ -n "$dir" ] && [ -f "$dir/lib/kam-utils.sh" ] ; then
+                    export MOD_DIR="$dir"
+                    return 0
+                fi
+            fi
+            ;;
+    esac
+
+    # 4) 从当前工作目录向上查找模块标志（lib/kam-utils.sh / kam.toml / module.prop）
+    cur="$PWD"
+    while [ -n "$cur" ] && [ "$cur" != "/" ]; do
+        if [ -f "$cur/lib/kam-utils.sh" ] || [ -f "$cur/kam.toml" ] || [ -f "$cur/module.prop" ]; then
+            export MOD_DIR="$cur"
+            return 0
+        fi
+        cur=$(dirname -- "$cur")
+    done
+
+    # 5) 如果存在 KSU 模块名，则使用标准模块路径
+    if [ -n "$KSU_MODULE" ]; then
+        export MOD_DIR="/data/adb/modules/$KSU_MODULE"
+        return 0
+    fi
+
+    # 6) 最后退回到基于脚本名的猜测（最后手段）
+    export MOD_DIR="/data/adb/modules/$(basename "$0")"
 }
 
 # 检测启动模式（内部实现）

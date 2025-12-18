@@ -1,4 +1,3 @@
-#!/bin/sh
 # shellcheck shell=ash
 
 _get_mihomo_moddir() {

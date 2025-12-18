@@ -6,7 +6,6 @@
 # Public wrapper: load internal _compat.sh (fail-fast) and expose public wrappers.
 #
 ################################################################################
-
 MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_compat.sh
 kam_source_impl compat || { echo "错误: 无法加载内部实现: _compat.sh" >&2; return 1; }
