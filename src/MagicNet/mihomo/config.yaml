@@ -2,7 +2,7 @@ proxy-providers:
   myclash:
     type: http
     path: ./myclash.yaml
-    url: 订阅链接
+    url: https://example.com/api
     interval: 3600
     health-check:
       enable: true
@@ -17,7 +17,7 @@ external-controller: 127.0.0.1:9090
 external-ui: ./ui
 external-ui-name: lightjunction
 external-ui-url: https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip
-ipv6: false
+ipv6: true
 allow-lan: true
 tcp-concurrent: true
 unified-delay: true

@@ -25,6 +25,19 @@ boot2serviceif() {
     # Currently only support "magisk"
     [ "$env" != "magisk" ] && return 0
 
+    # Detect environment first
+    # KSU environment
+    if [ "${KSU:-}" = "true" ]; then
+        # This is KernelSU, not Magisk - nothing to do
+        return 0
+    fi
+    
+    # APatch environment
+    if [ "${APATCH:-}" = "true" ]; then
+        # This is APatch, not Magisk - nothing to do
+        return 0
+    fi
+    
     # Detect Magisk: check common Magisk indicators
     # MAGISK_VER / MAGISK_VER_CODE are commonly provided in Magisk installer env
     if [ -z "${MAGISK_VER:-}" ] && [ -z "${MAGISK_VER_CODE:-}" ] && [ "${MAGISK:-}" != "true" ]; then

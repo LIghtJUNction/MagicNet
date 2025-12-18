@@ -297,5 +297,155 @@ _depends_msg_unmet() {
 }
 
 # ---------------------------------------------------
+# require_version - 检查 Root 管理器版本
+# ---------------------------------------------------
+# 用法: require_version "magisk:>=28000" "ksu:>=11986" --mode=abort --message="msg"
+# 支持的格式:
+#   magisk:>=28000  - Magisk 版本 >= 28000
+#   ksu:>=11986     - KernelSU 版本 >= 11986
+#   apatch:>=10000  - APatch 版本 >= 10000
+_require_version_impl() {
+    mode="warn"
+    custom_msg=""
+    requirements=""
+    
+    # 解析参数
+    for arg in "$@"; do
+        case "$arg" in
+            --mode=*)
+                mode="${arg#--mode=}"
+                ;;
+            --message=*)
+                custom_msg="${arg#--message=}"
+                ;;
+            *)
+                requirements="$requirements $arg"
+                ;;
+        esac
+    done
+    
+    # 检测当前 Root 类型
+    root_type=""
+    root_ver=0
+    
+    # 加载调试模块（如果可用）
+    if [ -f "${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}/_debug.sh" ]; then
+        . "${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}/_debug.sh"
+        _kam_debug_block_start "require_version"
+        _kam_debug_log "参数: $*"
+        _kam_debug_var "mode"
+        _kam_debug_var "custom_msg"
+        _kam_debug_var "requirements"
+        _kam_debug_log "=== 环境变量检查 ==="
+        _kam_debug_var "KSU"
+        _kam_debug_var "KSU_VER"
+        _kam_debug_var "KSU_VER_CODE"
+        _kam_debug_var "KSU_KERNEL_VER_CODE"
+        _kam_debug_var "MAGISK_VER"
+        _kam_debug_var "MAGISK_VER_CODE"
+        _kam_debug_var "MAGISK"
+        _kam_debug_var "APATCH"
+        _kam_debug_var "APATCH_VER"
+        _kam_debug_var "APATCH_VER_CODE"
+    fi
+    
+    if [ -n "${KSU:-}" ] || [ -n "${KSU_VER_CODE:-}" ]; then
+        root_type="ksu"
+        root_ver="${KSU_VER_CODE:-0}"
+        _kam_debug_enabled && _kam_debug_log "检测到: KernelSU (版本代码: $root_ver)"
+    elif [ -n "${APATCH:-}" ] || [ -n "${APATCH_VER_CODE:-}" ]; then
+        root_type="apatch"
+        root_ver="${APATCH_VER_CODE:-0}"
+        _kam_debug_enabled && _kam_debug_log "检测到: APatch (版本代码: $root_ver)"
+    elif [ -n "${MAGISK_VER_CODE:-}" ]; then
+        root_type="magisk"
+        root_ver="${MAGISK_VER_CODE:-0}"
+        _kam_debug_enabled && _kam_debug_log "检测到: Magisk (版本代码: $root_ver)"
+    else
+        _kam_debug_enabled && _kam_debug_log "未检测到任何 Root 管理器"
+        _kam_debug_enabled && _kam_debug_block_end "require_version"
+        # 没有检测到 Root 管理器，可能是普通环境
+        if [ "$mode" = "abort" ]; then
+            _depends__log "错误: 未检测到 Root 管理器（Magisk/KernelSU/APatch）"
+            _depends__log "请在 Root 环境中运行此安装程序"
+            exit 1
+        else
+            _depends__log "警告: 未检测到 Root 管理器，跳过版本检查"
+            return 1
+        fi
+    fi
+    
+    # 检查每个要求
+    _kam_debug_enabled && _kam_debug_log "=== 版本要求检查 ==="
+    for req in $requirements; do
+        req_type="${req%%:*}"
+        req_spec="${req#*:}"
+        
+        _kam_debug_enabled && _kam_debug_log "检查需求: $req"
+        _kam_debug_enabled && _kam_debug_indent "类型: $req_type" 1
+        _kam_debug_enabled && _kam_debug_indent "规格: $req_spec" 1
+        
+        # 跳过不匹配的类型
+        if [ "$req_type" != "$root_type" ]; then
+            _kam_debug_enabled && _kam_debug_indent "类型不匹配，跳过 (当前: $root_type)" 1
+            continue
+        fi
+        
+        # 解析版本要求
+        op="${req_spec%%[0-9]*}"
+        ver="${req_spec#$op}"
+        
+        # 默认操作符为 >=
+        [ -z "$op" ] && op=">="
+        
+        _kam_debug_enabled && _kam_debug_indent "解析: 操作符='$op', 版本='$ver'" 1
+        
+        # 比较版本
+        case "$op" in
+            ">=")
+                _kam_debug_enabled && _kam_debug_indent "检查: $root_ver >= $ver ?" 1
+                if [ "$root_ver" -lt "$ver" ]; then
+                    [ -n "$custom_msg" ] && _depends__log "$custom_msg" || \
+                        _depends__log "  -> 版本不满足: 需要 $req_type 版本 >= $ver，当前版本: $root_ver"
+                    _kam_debug_enabled && _kam_debug_block_end "require_version"
+                    [ "$mode" = "abort" ] && exit 1
+                    return 1
+                else
+                    _kam_debug_enabled && _kam_debug_indent "版本满足: $root_ver >= $ver" 1
+                fi
+                ;;
+            ">")
+                _kam_debug_enabled && _kam_debug_indent "检查: $root_ver > $ver ?" 1
+                if [ "$root_ver" -le "$ver" ]; then
+                    [ -n "$custom_msg" ] && _depends__log "$custom_msg" || \
+                        _depends__log "  -> 版本不满足: 需要 $req_type 版本 > $ver，当前版本: $root_ver"
+                    _kam_debug_enabled && _kam_debug_block_end "require_version"
+                    [ "$mode" = "abort" ] && exit 1
+                    return 1
+                else
+                    _kam_debug_enabled && _kam_debug_indent "版本满足: $root_ver > $ver" 1
+                fi
+                ;;
+            "="|"==")
+                _kam_debug_enabled && _kam_debug_indent "检查: $root_ver == $ver ?" 1
+                if [ "$root_ver" -ne "$ver" ]; then
+                    [ -n "$custom_msg" ] && _depends__log "$custom_msg" || \
+                        _depends__log "  -> 版本不满足: 需要 $req_type 版本 = $ver，当前版本: $root_ver"
+                    _kam_debug_enabled && _kam_debug_block_end "require_version"
+                    [ "$mode" = "abort" ] && exit 1
+                    return 1
+                else
+                    _kam_debug_enabled && _kam_debug_indent "版本满足: $root_ver == $ver" 1
+                fi
+                ;;
+        esac
+    done
+    
+    _kam_debug_enabled && _kam_debug_log "所有版本要求检查通过"
+    _kam_debug_enabled && _kam_debug_block_end "require_version"
+    return 0
+}
+
+# ---------------------------------------------------
 # End of _depends.sh
 # ---------------------------------------------------

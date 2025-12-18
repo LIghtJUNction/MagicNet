@@ -5,9 +5,14 @@
 # =============================================================================
 
 # 加载内部模块
-_kam_utils_dir="$(dirname "${0}")"
+_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_detect.sh
-[ -f "${_kam_utils_dir}/_detect.sh" ] && . "${_kam_utils_dir}/_detect.sh"
+if [ -f "${_kam_utils_dir}/_detect.sh" ]; then
+    . "${_kam_utils_dir}/_detect.sh"
+else
+    echo "错误: 无法找到 _detect.sh: ${_kam_utils_dir}/_detect.sh" >&2
+    return 1
+fi
 
 # 检测系统架构
 detect_arch() {

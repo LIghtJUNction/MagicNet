@@ -27,7 +27,7 @@
 MODDIR=${0%/*}
 [ -f "$MODDIR/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
 
-# 按需加载模块
+# 按需加载
 kam_load wait mihomo
 
 wait_unlock 10
@@ -35,6 +35,8 @@ wait_unlock 10
 # 清空日志
 LOG_FILE="${MODDIR}/MagicNet.log"
 [ -f "$LOG_FILE" ] && echo > "$LOG_FILE"
+
+$MODDIR/subscribe.sh
 
 # 运行 mihomo 内核
 create_tun

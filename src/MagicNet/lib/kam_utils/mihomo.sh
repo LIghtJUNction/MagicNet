@@ -5,9 +5,14 @@
 # =============================================================================
 
 # 加载内部模块
-_kam_utils_dir="$(dirname "${0}")"
+_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_mihomo.sh
-[ -f "${_kam_utils_dir}/_mihomo.sh" ] && . "${_kam_utils_dir}/_mihomo.sh"
+if [ -f "${_kam_utils_dir}/_mihomo.sh" ]; then
+    . "${_kam_utils_dir}/_mihomo.sh"
+else
+    echo "错误: 无法找到 _mihomo.sh: ${_kam_utils_dir}/_mihomo.sh" >&2
+    return 1
+fi
 
 # 创建 TUN 设备
 create_tun() {
