@@ -29,29 +29,4 @@
 # ---------------------------------------------------------------------------------------
 
 # Add your custom rules below:
-
-# Termux API socket 访问豁免
-allow untrusted_app_27 app_data_file:unix_stream_socket connectto
-allow untrusted_app_27 shell_data_file:unix_stream_socket connectto
-allow untrusted_app_27 termux_api_socket:unix_stream_socket connectto
-allow termux_api app_data_file:unix_stream_socket connectto
-
-# Android 15 额外权限
-allow untrusted_app_27 termux_api_socket:sock_file { read write create unlink setattr }
-allow untrusted_app_27 app_data_file:sock_file { read write create unlink setattr }
-allow untrusted_app_27 shell_data_file:sock_file { read write create unlink setattr }
-allow untrusted_app_27 tmpfs:sock_file { read write create unlink setattr }
-
-# 允许访问本地 socket 目录
-allow untrusted_app_27 tmpfs:dir { search write add_name remove_name }
-allow untrusted_app_27 app_data_file:dir { search write add_name remove_name }
-allow untrusted_app_27 shell_data_file:dir { search write add_name remove_name }
-
-# 允许 termux:API 访问系统资源
-allow termux_api system_file:dir { search read }
-allow termux_api system_file:file { read open }
-allow termux_api zygote_exec:file { read execute }
-
-# 允许进程间通信
-allow untrusted_app_27 termux_api:unix_stream_socket { read write connectto }
-allow termux_api untrusted_app_27:unix_stream_socket { read write accept }
+# (Device-specific rules have been removed)

@@ -17,7 +17,7 @@
 # Design notes:
 #   - This file is an INTERNAL implementation. Public wrappers should call these
 #     functions and expose smaller, stable APIs.
-#   - Prefer minimal dependencies and robust fallbacks suitable for Android/Termux.
+#   - Prefer minimal dependencies and robust fallbacks suitable for Android and other minimal environments.
 # =============================================================================
 
 # Internal logger helper (prefer msg/err helpers if available)

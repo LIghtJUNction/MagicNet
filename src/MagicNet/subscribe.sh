@@ -8,7 +8,7 @@ MODDIR="${0%/*}"
 . "$MODDIR/lib/kam-utils.sh"
 
 # 加载必要模块
-kam_load ui termux debug config
+kam_load ui debug config
 
 # 设置 i18n
 set_i18n "subscription_config" "zh" "订阅链接配置" "en" "Subscription Configuration" "ja" "サブスクリプション設定" "ko" "구독 설정"
@@ -26,7 +26,7 @@ if grep -q "url: https://example.com/api" "$config_file" 2>/dev/null; then
     msg "$(i18n "subscription_config")"
     divider
 
-    # 使用通用的 UI 文本输入接口（termux/text/回退由库统一处理）
+    # 使用通用的 UI 文本输入接口（文本输入/回退由库统一处理）
     subscription_url=$(text_input "$(i18n "subscription_config")" "$(i18n "input_subscription")" "https://example.com/api")
 
     case "$subscription_url" in
