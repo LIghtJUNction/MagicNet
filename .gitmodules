@@ -5,3 +5,4 @@
 [submodule "src/MagicNet/lib/kamfw"]
 	path = src/MagicNet/lib/kamfw
 	url = https://github.com/MemDeco-WG/kamfw.git
+	branch = main
