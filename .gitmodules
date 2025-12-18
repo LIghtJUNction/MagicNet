@@ -1,0 +1,3 @@
+[submodule "src/MagicNet/mihomo"]
+	path = src/MagicNet/mihomo
+	url = https://github.com/LIghtJUNction/MagicMihomo.git
