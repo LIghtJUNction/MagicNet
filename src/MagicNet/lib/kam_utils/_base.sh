@@ -12,6 +12,15 @@
 #
 # 最底层打印（兼容 Magisk ui_print 与 OUTFD）
 _pure_print() {
+    # 只在调试模式开启时输出调试信息
+    if [ "${KAM_DEBUG:-0}" = "1" ] && [ -f "${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}/_debug.sh" ]; then
+        . "${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}/_debug.sh"
+        _kam_debug_log "_pure_print: $1" "PRINT"
+        _kam_debug_var "OUTFD" "PRINT"
+        _kam_debug_var "ui_print_available" "PRINT"
+        command -v ui_print >/dev/null 2>&1 && ui_print_available="yes" || ui_print_available="no"
+    fi
+    
     if command -v ui_print >/dev/null 2>&1; then
         ui_print "$1"
     else
@@ -19,8 +28,10 @@ _pure_print() {
             printf '%s\n' "$1"
         else
             # 向 OUTFD 写入两行：一行实际消息，一行空的 ui_print 终止符
-            printf '%s\n' "ui_print $1" >>"/proc/self/fd/$OUTFD"
-            printf '%s\n' "ui_print" >>"/proc/self/fd/$OUTFD"
+            printf '%s\n' "ui_print $1" >>"/proc/self/fd/$OUTFD" 2>/dev/null || {
+                printf '%s\n' "$1"
+            }
+            printf '%s\n' "ui_print" >>"/proc/self/fd/$OUTFD" 2>/dev/null || true
         fi
     fi
 }
@@ -134,10 +145,10 @@ _load_module() {
 }
 
 # 模块注册表
-KAM_MODULES=""
+_KAM_MODULES=""
 
 # 注册模块。用法: register_module "module" "描述"
-register_module() {
+_register_module() {
     module="$1"
     desc="$2"
 
@@ -145,10 +156,10 @@ register_module() {
     desc_escaped="$(printf '%s' "$desc" | sed 's/\\/\\\\/g; s/\"/\\\"/g')"
 
     eval "KAM_MODULE_DESC_${safe_module}=\"${desc_escaped}\""
-    KAM_MODULES="${KAM_MODULES} ${module}"
+    _KAM_MODULES="${_KAM_MODULES} ${module}"
 }
 
-get_module_desc() {
+_get_module_desc() {
     module="$1"
     safe_module="$(printf '%s' "$module" | sed 's/[^a-zA-Z0-9_]/_/g')"
     eval "printf '%s\n' \"\${KAM_MODULE_DESC_${safe_module}:-}\""
@@ -157,17 +168,16 @@ get_module_desc() {
 _discover_custom_modules() {
     dir="${KAM_UTILS_DIR:-}"
     if [ -z "$dir" ]; then
-        dir="$(dirname "$0")"
-        [ "$dir" = "." ] && dir="$(pwd)"
+        dir="${MODPATH}/lib/kam_utils"
     fi
 
     for module_file in "${dir}"/*.sh; do
         [ -f "$module_file" ] || continue
         name="$(basename "$module_file" .sh)"
 
-        # 跳过内部文件（以 '_' 开头）
+        # 跳过内部文件（以 '_' 开头）和 base 模块
         case "$name" in
-            _*) continue ;;
+            _*|base) continue ;;
         esac
 
         desc=""
@@ -176,9 +186,8 @@ _discover_custom_modules() {
             [ -z "$desc" ] && desc="自定义模块：${name}"
         fi
 
-        register_module "$name" "$desc"
+        _register_module "$name" "$desc"
     done
 }
-
-# 加载时自动发现模块（保持向后兼容）
-_discover_custom_modules
+# 注释掉自动发现，避免在 MODPATH 未设置时出错
+# _discover_custom_modules

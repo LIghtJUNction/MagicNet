@@ -5,9 +5,14 @@
 # =============================================================================
 
 # 加载内部模块
-_kam_utils_dir="$(dirname "${0}")"
+_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_wait.sh
-[ -f "${_kam_utils_dir}/_wait.sh" ] && . "${_kam_utils_dir}/_wait.sh"
+if [ -f "${_kam_utils_dir}/_wait.sh" ]; then
+    . "${_kam_utils_dir}/_wait.sh"
+else
+    echo "错误: 无法找到 _wait.sh: ${_kam_utils_dir}/_wait.sh" >&2
+    return 1
+fi
 
 # 等待启动完成
 wait_boot() {
