@@ -231,8 +231,27 @@ _incremental_update_check_impl() {
     _UI_INC_CHECKED=1
     _UI_INC_SUPPORTED=0
 
-    # 如果在安装环境（有 ui_print）或 stdout 不是一个 TTY，则不支持增量更新
+    # 显式覆盖（环境变量）:
+    #   KAM_UI_FORCE_INCR=1      强制开启增量更新（忽略检测）
+    #   KAM_UI_FORCE_NO_INCR=1   强制关闭增量更新
+    #   KAM_UI_PERMISSIVE_INCR=1 在检测不完全时采取更宽松判断
+    if [ "${KAM_UI_FORCE_NO_INCR:-0}" = "1" ]; then
+        _UI_INC_SUPPORTED=0
+        return 0
+    fi
+
+    if [ "${KAM_UI_FORCE_INCR:-0}" = "1" ]; then
+        _UI_INC_SUPPORTED=1
+        return 0
+    fi
+
+    # 如果在安装环境（有 ui_print）或 stdout 不是一个 TTY，通常认为不支持增量更新
+    # 但在宽松模式下仍允许（用于某些包装器/容器显示 stdout/tty 不一致的情况）
     if command -v ui_print >/dev/null 2>&1 || [ ! -t 1 ]; then
+        if [ "${KAM_UI_PERMISSIVE_INCR:-0}" = "1" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+            _UI_INC_SUPPORTED=1
+            return 0
+        fi
         return 0
     fi
 
@@ -242,33 +261,55 @@ _incremental_update_check_impl() {
         return 0
     fi
 
-    # 优先使用 tput 检查光标上移与清行能力
+    # 优先使用 tput 检查光标上移与清行能力；若 tput 存在但检测失败，则在宽松模式下仍允许
     if command -v tput >/dev/null 2>&1; then
         if tput cuu1 >/dev/null 2>&1 && tput el >/dev/null 2>&1; then
             _UI_INC_SUPPORTED=1
             return 0
         else
-            # tput 存在但不支持所需能力，则认为不支持增量更新
+            if [ "${KAM_UI_PERMISSIVE_INCR:-0}" = "1" ]; then
+                _UI_INC_SUPPORTED=1
+                return 0
+            fi
             return 0
         fi
     fi
 
-    # 没有 tput，但 TERM 看起来正常，保守地认为支持（避免误判导致不必要的降级）
+    # 没有 tput，但 TERM 看起来正常，保守地认为支持（避免在多数现代终端中退化）
     _UI_INC_SUPPORTED=1
     return 0
 }
 
 # 清除若干行（内部实现）
 # 用法: _clear_lines_impl <count>
-# 在支持增量更新的交互终端时会进行光标移动清除。否则一次性发出警告并回退为普通输出。
+# 使用 tput（terminfo）进行增量刷新。若环境明显不支持（非 TTY / 安装器 UI / TERM=dumb）或 tput 不可用，
+# 则仅打印一次警告并回退为普通输出（不再尝试其他回退方案）。
 _clear_lines_impl() {
     count="${1:-1}"
 
-    # 先检测环境是否支持增量更新（并缓存结果）
-    _incremental_update_check_impl
+    # 若 stdout 不是 TTY 或在安装器安装 UI 环境中，发出一次性警告并回退
+    if command -v ui_print >/dev/null 2>&1 || [ ! -t 1 ]; then
+        if [ "${_UI_INC_WARNED:-0}" != "1" ]; then
+            _UI_INC_WARNED=1
+            _select_print_impl "$(i18n "incremental_not_supported")"
+        fi
+        return 0
+    fi
 
-    # 若不支持增量更新，发出一次性警告并回退为普通输出（不清除行）
-    if [ "${_UI_INC_SUPPORTED:-0}" != "1" ]; then
+    # TERM 为空或 dumb 视作不支持
+    term="${TERM:-}"
+    case "$term" in
+        ""|"dumb")
+            if [ "${_UI_INC_WARNED:-0}" != "1" ]; then
+                _UI_INC_WARNED=1
+                _select_print_impl "$(i18n "incremental_not_supported")"
+            fi
+            return 0
+            ;;
+    esac
+
+    # 必须使用 tput（由你保证在目标设备可用），否则显示警告并回退
+    if ! command -v tput >/dev/null 2>&1 || ! tput cuu1 >/dev/null 2>&1 || ! tput el >/dev/null 2>&1; then
         if [ "${_UI_INC_WARNED:-0}" != "1" ]; then
             _UI_INC_WARNED=1
             _select_print_impl "$(i18n "incremental_not_supported")"
@@ -278,8 +319,9 @@ _clear_lines_impl() {
 
     i=0
     while [ "$i" -lt "$count" ]; do
-        # 上移一行并清除整行，然后回到行首
-        printf '\033[1A\033[2K\r'
+        # 使用 tput（terminfo）精确上移并清行
+        tput cuu1
+        tput el
         i=$((i + 1))
     done
 }

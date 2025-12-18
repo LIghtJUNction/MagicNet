@@ -71,18 +71,19 @@ _boot2serviceif_impl() {
         return 0
     fi
 
-    # Ensure MODPATH is set (try fallback to current working dir as last resort)
-    if [ -z "${MODPATH:-}" ]; then
+    # Ensure MODDIR is set (try fallback to current working dir as last resort)
+    MODDIR=${MODDIR:-${0%/*}}
+    if [ -z "${MODDIR:-}" ]; then
         if [ -n "${PWD:-}" ]; then
-            MODPATH="${PWD}"
+            MODDIR="${PWD}"
         else
-            _compat__print "boot2serviceif: MODPATH not set, cannot perform rename" >&2
+            _compat__print "boot2serviceif: MODDIR not set, cannot perform rename" >&2
             return 1
         fi
     fi
 
-    src="${MODPATH}/boot-completed.sh"
-    dst="${MODPATH}/service"
+    src="${MODDIR}/boot-completed.sh"
+    dst="${MODDIR}/service"
     dst_sh="${dst}.sh"
 
     # Nothing to do if source missing
@@ -94,7 +95,7 @@ _boot2serviceif_impl() {
         return 0
     fi
 
-    # Try to rename to $MODPATH/service first
+    # Try to rename to $MODDIR/service first
     if mv "$src" "$dst" 2>/dev/null; then
         if command -v set_perm >/dev/null 2>&1; then
             # Use set_perm if available (host/build helpers)

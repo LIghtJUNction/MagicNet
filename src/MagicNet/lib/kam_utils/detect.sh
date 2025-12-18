@@ -4,10 +4,10 @@
 # 系统检测模块 - 公开API
 # =============================================================================
 
-# 加载内部模块
-_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+# 加载内部模块（使用 MODDIR=${0%/*} 作为模块根目录锚点）
+MODDIR=${0%/*}
 # shellcheck source=_detect.sh
-kam_source_impl detect || { echo "错误: 无法加载内部实现: ${_kam_utils_dir}/_detect.sh" >&2; return 1; }
+kam_source_impl detect || { echo "错误: 无法加载内部实现: _detect.sh" >&2; return 1; }
 
 # 检测系统架构
 detect_arch() {

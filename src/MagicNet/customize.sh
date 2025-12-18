@@ -3,7 +3,8 @@
 #
 # 简洁版安装自定义脚本（返回到精简风格、移除过度防御逻辑）
 # -----------------------------------------------------------------------------------
-[ -f "$MODPATH/lib/kam-utils.sh" ] && . "$MODPATH/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
+MODDIR=${0%/*}
+[ -f "$MODDIR/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
 
 # 初始化 KAM 环境
 kam_init
@@ -72,12 +73,12 @@ msg "- [DEBUG] UI 模块加载完成"
 # 加载 Termux 模块（简洁风格：直接加载，无冗余回退）
 kam_load termux
 
-set_perm_recursive "$MODPATH" 0 0 0755 0755
+set_perm_recursive "$MODDIR" 0 0 0755 0755
 
 # 设置启动脚本用于订阅配置
 divider
 msg "- 设置订阅配置脚本..."
-chmod 755 "$MODPATH/boot-completed.sh"
+chmod 755 "$MODDIR/boot-completed.sh"
 msg "- 订阅链接将在设备重启后配置"
 divider
 
@@ -87,7 +88,7 @@ msg "$(i18n "mihomo_config")"
 divider
 
 # 默认指定配置文件路径（可被外部覆盖）
-config_file="${config_file:-$MODPATH/mihomo/config.yaml}"
+config_file="${config_file:-$MODDIR/mihomo/config.yaml}"
 
 # 固定启用 TUN 模式
 msg "- 固定启用 TUN 模式"
@@ -103,10 +104,10 @@ config_bits=$(binary_prompt "1111" "$(i18n "yacd_ui")" "$(i18n "ipv6_support")" 
 # 第1位: Yacd UI
 if [ "${config_bits:0:1}" = "1" ]; then
     msg "- 启用 Yacd UI"
-    touch "$MODPATH/yacd"
+    touch "$MODDIR/yacd"
 else
     msg "- 禁用 Yacd UI"
-    rm -f "$MODPATH/yacd"
+    rm -f "$MODDIR/yacd"
 fi
 
 # 第2位: IPv6 支持
