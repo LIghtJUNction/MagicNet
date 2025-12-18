@@ -9,7 +9,7 @@ require_command curl "curl not found!"
 
 # 路径定义
 VERSION_FILE="${KAM_MODULE_ROOT}/yq.version"
-TARGET_DIR="${KAM_MODULE_ROOT}/system/bin"
+TARGET_DIR="${KAM_MODULE_ROOT}/.local/bin"
 # yq 的架构命名通常为 linux_arm64
 ARCH="linux_arm64"
 
