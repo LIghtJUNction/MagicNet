@@ -2,8 +2,8 @@
 # MagicNet customize.sh
 #
 # -----------------------------------------------------------------------------------
-MODDIR=${0%/*}
-[ -f "$MODDIR/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
+
+[ -f "$MODPATH/lib/kam-utils.sh" ] && . "$MODPATH/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
 
 # 初始化 KAM 环境
 kam_init
@@ -80,7 +80,7 @@ fi
 
 
 status_msg "Setting permissions for module..."
-if set_perm_recursive "$MODDIR" 0 0 0755 0755; then
+if set_perm_recursive "$MODPATH" 0 0 0755 0755; then
     status_ok
 else
     status_fail
@@ -89,7 +89,7 @@ fi
 # 设置启动脚本用于订阅配置
 divider
 status_msg "- 设置订阅配置脚本..."
-if chmod 755 "$MODDIR/boot-completed.sh"; then
+if chmod 755 "$MODPATH/boot-completed.sh"; then
     status_ok
     msg "- 订阅链接将在设备重启后配置"
 else
@@ -103,7 +103,7 @@ msg "$(i18n "mihomo_config")"
 divider
 
 # 默认指定配置文件路径（可被外部覆盖）
-config_file="${config_file:-$MODDIR/mihomo/config.yaml}"
+config_file="${config_file:-$MODPATH/mihomo/config.yaml}"
 
 # 固定启用 TUN 模式
 msg "- 固定启用 TUN 模式"
@@ -119,14 +119,14 @@ config_bits=$(binary_prompt "1111" "$(i18n "yacd_ui")" "$(i18n "ipv6_support")" 
 # 第1位: Yacd UI
 if [ "${config_bits:0:1}" = "1" ]; then
     status_msg "- 启用 Yacd UI"
-    if touch "$MODDIR/yacd"; then
+    if touch "$MODPATH/yacd"; then
         status_ok
     else
         status_fail
     fi
 else
     status_msg "- 禁用 Yacd UI"
-    if rm -f "$MODDIR/yacd"; then
+    if rm -f "$MODPATH/yacd"; then
         status_ok
     else
         status_fail
