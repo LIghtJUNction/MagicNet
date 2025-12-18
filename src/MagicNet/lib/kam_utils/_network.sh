@@ -1,4 +1,3 @@
-#!/bin/sh
 # shellcheck shell=ash
 # =============================================================================
 # Network utilities - internal implementation (_network.sh)

@@ -1,4 +1,3 @@
-#!/bin/sh
 # shellcheck shell=ash
 # =============================================================================
 # 调试模块 - 公开API
@@ -6,8 +5,6 @@
 
 # 设置默认调试模式为关闭（如果未设置）
 : "${KAM_DEBUG:=0}"
-
-# 加载内部模块（使用 MODDIR=${0%/*} 作为模块根目录锚点）
 MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_debug.sh
 kam_source_impl debug || { echo "错误: 无法加载内部实现: _debug.sh" >&2; return 1; }

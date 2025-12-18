@@ -4,8 +4,20 @@
 # =============================================================================
 
 # 加载 KAM 工具
-MODDIR="${0%/*}"
-. "$MODDIR/lib/kam-utils.sh"
+# Determine module root robustly (prefer MODPATH set by installers).
+MODDIR=${MODPATH:-${MODDIR:-${0%/*}}}
+if [ ! -f "${MODDIR}/lib/kam-utils.sh" ]; then
+    cur="$PWD"
+    while [ -n "$cur" ] && [ "$cur" != "/" ]; do
+        if [ -f "$cur/lib/kam-utils.sh" ]; then
+            MODDIR="$cur"
+            break
+        fi
+        cur=$(dirname -- "$cur")
+    done
+fi
+[ -z "${MODDIR:-}" ] && MODDIR="$PWD"
+[ -f "${MODDIR}/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || { printf '%s\n' '! File "kam-utils.sh" does not exist!' >&2; exit 1; }
 
 # 加载必要模块
 kam_load ui debug config
