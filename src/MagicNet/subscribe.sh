@@ -26,20 +26,23 @@ if grep -q "url: https://example.com/api" "$config_file" 2>/dev/null; then
     msg "$(i18n "subscription_config")"
     divider
 
-    subscription_url=$(termux_text_input "$(i18n "subscription_config")" "$(i18n "input_subscription")" "https://example.com/api" 120)
+    # 使用通用的 UI 文本输入接口（termux/text/回退由库统一处理）
+    subscription_url=$(text_input "$(i18n "subscription_config")" "$(i18n "input_subscription")" "https://example.com/api")
 
-    if [ -n "$subscription_url" ] && [ "$subscription_url" != "https://example.com/api" ]; then
-        # 尝试写入订阅 URL，并检查返回值以便在失败时给出清晰提示
-        if config_set_subscription_url "$config_file" "$subscription_url"; then
-            msg "$(i18n "config_saved")"
-        else
-            # 提示用户手动编辑配置文件（兼容已定义的 i18n 或使用默认英文提示）
-            msg "$(i18n "input_failed") $config_file"
-            msg "$(i18n "manual_edit_hint")"
-        fi
-    else
-        msg "$(i18n "using_default")"
-    fi
+    case "$subscription_url" in
+        ""|"https://example.com/api")
+            msg "$(i18n "using_default")"
+            ;;
+        *)
+            # 尝试写入订阅 URL：成功显示保存提示，否则提示手动编辑
+            if config_set_subscription_url "$config_file" "$subscription_url"; then
+                msg "$(i18n "config_saved")"
+            else
+                msg "$(i18n "input_failed") $config_file"
+                msg "$(i18n "manual_edit_hint")"
+            fi
+            ;;
+    esac
 
     divider
 fi

@@ -221,14 +221,58 @@ _select_print_impl() {
     printf '%s\n' "$1"
 }
 
+# 检查环境是否支持增量更新（一次性检测并缓存结果）
+_incremental_update_check_impl() {
+    # 已经检测过，直接返回
+    if [ "${_UI_INC_CHECKED:-0}" = "1" ]; then
+        return 0
+    fi
+
+    _UI_INC_CHECKED=1
+    _UI_INC_SUPPORTED=0
+
+    # 如果在安装环境（有 ui_print）或 stdout 不是一个 TTY，则不支持增量更新
+    if command -v ui_print >/dev/null 2>&1 || [ ! -t 1 ]; then
+        return 0
+    fi
+
+    # TERM 不应为空或为 dumb
+    term="${TERM:-}"
+    if [ -z "$term" ] || [ "$term" = "dumb" ]; then
+        return 0
+    fi
+
+    # 优先使用 tput 检查光标上移与清行能力
+    if command -v tput >/dev/null 2>&1; then
+        if tput cuu1 >/dev/null 2>&1 && tput el >/dev/null 2>&1; then
+            _UI_INC_SUPPORTED=1
+            return 0
+        else
+            # tput 存在但不支持所需能力，则认为不支持增量更新
+            return 0
+        fi
+    fi
+
+    # 没有 tput，但 TERM 看起来正常，保守地认为支持（避免误判导致不必要的降级）
+    _UI_INC_SUPPORTED=1
+    return 0
+}
+
 # 清除若干行（内部实现）
 # 用法: _clear_lines_impl <count>
-# 仅在交互性终端并且未使用 ui_print 时执行（安装环境通常使用 ui_print）
+# 在支持增量更新的交互终端时会进行光标移动清除。否则一次性发出警告并回退为普通输出。
 _clear_lines_impl() {
     count="${1:-1}"
 
-    # 如果在安装环境（有 ui_print）或 stdout 不是一个 TTY，则不执行光标移动清除
-    if command -v ui_print >/dev/null 2>&1 || [ ! -t 1 ]; then
+    # 先检测环境是否支持增量更新（并缓存结果）
+    _incremental_update_check_impl
+
+    # 若不支持增量更新，发出一次性警告并回退为普通输出（不清除行）
+    if [ "${_UI_INC_SUPPORTED:-0}" != "1" ]; then
+        if [ "${_UI_INC_WARNED:-0}" != "1" ]; then
+            _UI_INC_WARNED=1
+            _select_print_impl "$(i18n "incremental_not_supported")"
+        fi
         return 0
     fi
 
@@ -644,6 +688,12 @@ _set_i18n_impl "final_confirm" \
     "en" "✅ After all confirmed: Ask for final save, can reset to reconfigure" \
     "ja" "✅ 全確認後：最終保存を確認、リセットして再設定可能" \
     "ko" "✅ 전체 확인 후：최종 저장 확인, 재설정을 위해 초기화 가능"
+
+_set_i18n_impl "incremental_not_supported" \
+    "zh" "⚠️ 当前终端不支持增量更新，回退到普通输出" \
+    "en" "⚠️ Terminal does not support incremental updates; falling back to plain printing" \
+    "ja" "⚠️ 現在の端末はインクリメンタル更新をサポートしていません。標準出力にフォールバックします" \
+    "ko" "⚠️ 현재 터미널은 증분 업데이트를 지원하지 않습니다. 일반 출력으로 대체합니다"
 
 # 多选项选择内部实现
 # 用法: _multi_select_impl "标题" "选项1" "选项2" ...
