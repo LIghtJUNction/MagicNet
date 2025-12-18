@@ -23,12 +23,7 @@
 # 获取当前脚本所在目录
 _kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_depends.sh
-if [ -f "${_kam_utils_dir}/_depends.sh" ]; then
-    . "${_kam_utils_dir}/_depends.sh"
-else
-    echo "错误: 无法找到 _depends.sh: ${_kam_utils_dir}/_depends.sh" >&2
-    return 1
-fi
+kam_source_impl depends || { echo "错误: 无法加载内部实现: ${_kam_utils_dir}/_depends.sh" >&2; return 1; }
 
 _depends__warn() {
     msg="$1"

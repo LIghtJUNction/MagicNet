@@ -63,6 +63,23 @@ kam_load() {
     done
 }
 
+# Source internal implementation helper
+# 用法: kam_source_impl <module>
+# 示例: kam_source_impl navigation
+kam_source_impl() {
+    module="$1"
+    _kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+    impl_file="${_kam_utils_dir}/_${module}.sh"
+
+    if [ -f "$impl_file" ]; then
+        . "$impl_file" || { echo "错误: 无法加载内部实现: $impl_file" >&2; return 1; }
+        return 0
+    else
+        echo "错误: 无法找到内部实现: $impl_file" >&2
+        return 1
+    fi
+}
+
 # =============================================================================
 # 初始化函数
 # =============================================================================

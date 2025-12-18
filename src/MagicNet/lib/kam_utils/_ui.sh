@@ -11,7 +11,8 @@ _get_key_impl() {
 
 # 等待任意按键（内部实现）
 _wait_key_any_impl() {
-    null _get_key_impl
+    # 直接调用基础按键获取实现，返回第一个按下的按键（如果没有 getevent，可能为空）
+    _get_key_impl
 }
 
 # 等待上下键（内部实现）
@@ -83,10 +84,10 @@ _show_volume_key_hint() {
 _divider_impl() {
     char="${1:-=}"
     width="${2:-80}"
-    
+
     # 获取终端宽度，如果获取失败则使用默认宽度
     terminal_width=$(stty size 2>/dev/null | cut -d' ' -f2 2>/dev/null)
-    
+
     # 检查 terminal_width 是否为数字
     if [ -n "$terminal_width" ] && [ "$terminal_width" -eq "$terminal_width" ] 2>/dev/null; then
         # 如果指定宽度大于终端宽度，使用终端宽度
@@ -94,7 +95,7 @@ _divider_impl() {
             width="$terminal_width"
         fi
     fi
-    
+
     # 生成分割线
     divider=""
     i=0
@@ -102,7 +103,7 @@ _divider_impl() {
         divider="${divider}${char}"
         i=$((i + 1))
     done
-    
+
     _select_print_impl "$divider"
 }
 
@@ -116,7 +117,7 @@ _color_test_impl() {
 
     _select_print_impl ""
 
-    
+
 
     # 基础背景色测试
 
@@ -128,7 +129,7 @@ _color_test_impl() {
 
     _select_print_impl ""
 
-    
+
 
     # 高亮背景色测试
 
@@ -140,7 +141,7 @@ _color_test_impl() {
 
     _select_print_impl ""
 
-    
+
 
     # 前景色测试
 
@@ -152,7 +153,7 @@ _color_test_impl() {
 
     _select_print_impl ""
 
-    
+
 
     # 高亮前景色测试
 
@@ -164,7 +165,7 @@ _color_test_impl() {
 
     _select_print_impl ""
 
-    
+
 
     # 组合测试（前景色+背景色）
 
@@ -176,7 +177,7 @@ _color_test_impl() {
 
     _select_print_impl ""
 
-    
+
 
     # 如果在安装环境，提示可能不支持颜色
 
@@ -190,12 +191,53 @@ _color_test_impl() {
 
 # 通用打印函数（兼容安装环境和终端环境）
 _select_print_impl() {
-    # 优先使用 ui_print（安装环境），回退到 echo
+    # 首选内部的纯打印实现（如果存在），它会处理 ui_print、OUTFD 等安装环境细节
+    if command -v _pure_print >/dev/null 2>&1; then
+        _pure_print "$1"
+        return 0
+    fi
+
+    # 回退到公开的 pprint（如果可用）
+    if command -v pprint >/dev/null 2>&1; then
+        pprint "$1"
+        return 0
+    fi
+
+    # 如果存在安装环境的 ui_print，使用之
     if command -v ui_print >/dev/null 2>&1; then
         ui_print "$1"
-    else
-        echo "$1"
+        return 0
     fi
+
+    # 如果设置了 OUTFD（某些安装器通过 /proc/self/fd/$OUTFD 接收 ui_print 指令），使用该通道
+    if [ -n "${OUTFD:-}" ]; then
+        # 写入两行：一行 ui_print <msg>，一行 ui_print 作为终止符（兼容部分安装器协议）
+        printf '%s\n' "ui_print $1" >>"/proc/self/fd/$OUTFD" 2>/dev/null || printf '%s\n' "$1"
+        printf '%s\n' "ui_print" >>"/proc/self/fd/$OUTFD" 2>/dev/null || true
+        return 0
+    fi
+
+    # 回退到普通 echo（终端或无法识别的环境）
+    printf '%s\n' "$1"
+}
+
+# 清除若干行（内部实现）
+# 用法: _clear_lines_impl <count>
+# 仅在交互性终端并且未使用 ui_print 时执行（安装环境通常使用 ui_print）
+_clear_lines_impl() {
+    count="${1:-1}"
+
+    # 如果在安装环境（有 ui_print）或 stdout 不是一个 TTY，则不执行光标移动清除
+    if command -v ui_print >/dev/null 2>&1 || [ ! -t 1 ]; then
+        return 0
+    fi
+
+    i=0
+    while [ "$i" -lt "$count" ]; do
+        # 上移一行并清除整行，然后回到行首
+        printf '\033[1A\033[2K\r'
+        i=$((i + 1))
+    done
 }
 
 # 二进制提示内部实现（拓展版）
@@ -205,7 +247,7 @@ _binary_prompt_impl() {
     current_value="$default_value"
     current_pos=0
     length=${#current_value}
-    
+
     # 构建提示数组
     shift
     hints="$@"
@@ -213,14 +255,14 @@ _binary_prompt_impl() {
     for hint in "$@"; do
         hint_count=$((hint_count + 1))
     done
-    
+
     # 显示使用指南
     _select_print_impl "$(_i18n_binary "usage_guide")"
     _select_print_impl "$(_i18n_binary "volume_up")"
     _select_print_impl "$(_i18n_binary "volume_down")"
     _select_print_impl "$(_i18n_binary "final_confirm")"
     _select_print_impl ""
-    
+
     # 显示初始状态
     if ! command -v getevent >/dev/null 2>&1; then
         # 非交互环境，显示一次就返回
@@ -244,7 +286,7 @@ _binary_prompt_impl() {
             i=$((i + 1))
         done
         _select_print_impl "${hint_display}"
-        
+
         # 显示二进制行
         display=""
         i=0
@@ -255,7 +297,7 @@ _binary_prompt_impl() {
             else
                 char_display="❌"  # 禁用
             fi
-            
+
             if [ "$i" -eq 0 ]; then
                 display="${display}>${char_display}"
             else
@@ -264,17 +306,17 @@ _binary_prompt_impl() {
             i=$((i + 1))
         done
         _select_print_impl "$display"
-        
+
         # 显示默认值行
         default_display="默认: $default_value"
         _select_print_impl "$default_display"
-        
+
         _select_print_impl ""
         _select_print_impl "✗ getevent 不可用，使用默认值"
         BINARY_PROMPT_RESULT="$current_value"
         return
     fi
-    
+
     # 主交互循环
     while :; do
         # 显示提示行
@@ -297,7 +339,7 @@ _binary_prompt_impl() {
             i=$((i + 1))
         done
         _select_print_impl "${hint_display}"
-        
+
         # 显示二进制行（确保对齐）
         display=""
         i=0
@@ -308,7 +350,7 @@ _binary_prompt_impl() {
             else
                 char_display="❌"  # 禁用
             fi
-            
+
             if [ "$i" -eq "$current_pos" ]; then
                 display="${display}>${char_display}"
             else
@@ -317,14 +359,14 @@ _binary_prompt_impl() {
             i=$((i + 1))
         done
         _select_print_impl "$display"
-        
+
         # 显示默认值行
         default_display="默认: $default_value"
         _select_print_impl "$default_display"
-        
+
         # 等待按键
         key=$(wait_key_up_down)
-        
+
         case "$key" in
             up)
                 # 修改当前位（不自动前进）
@@ -334,7 +376,7 @@ _binary_prompt_impl() {
                 else
                     new_char="0"
                 fi
-                
+
                 # 构建新值
                 if [ "$current_pos" -eq 0 ]; then
                     current_value="${new_char}${current_value:1}"
@@ -343,32 +385,32 @@ _binary_prompt_impl() {
                 else
                     current_value="${current_value:0:$current_pos}${new_char}${current_value:$((current_pos + 1))}"
                 fi
-                
-                # 清除显示（3行）：上移3行，清除3行
-                printf '\033[3A' && printf '\033[K' && printf '\033[K' && printf '\033[K'
+
+                # 清除显示（3行）
+                _clear_lines_impl 3
                 ;;
             down)
                 # 确认当前修改，进入下一轮或最终确认
                 if [ "$current_pos" -lt $((length - 1)) ]; then
                     # 移动到下一位
                     current_pos=$((current_pos + 1))
-                    # 清除显示（3行）：上移3行，清除3行
-                    printf '\033[3A' && printf '\033[K' && printf '\033[K' && printf '\033[K'
+                    # 清除显示（3行）
+                    _clear_lines_impl 3
                 else
                     # 所有位都已确认，进行最终确认
                     _select_print_impl ""
                     _select_print_impl "当前配置: $current_value"
                     _select_print_impl "确认保存吗？"
-                    
+
                     # 使用 ask 函数进行最终确认
                     _final_choice=0
                     ask "confirm_save" "confirm_yes" "confirm_no" \
                         '_final_choice=1' \
                         '_final_choice=0'
-                    
-                    # 清除 ask 函数的显示（4行）：上移4行，清除4行
-                    printf '\033[4A' && printf '\033[K' && printf '\033[K' && printf '\033[K' && printf '\033[K'
-                    
+
+                    # 清除 ask 函数的显示（4行）
+                    _clear_lines_impl 4
+
                     if [ "$_final_choice" -eq 1 ]; then
                         # 用户确认保存
                         _select_print_impl ""
@@ -379,8 +421,8 @@ _binary_prompt_impl() {
                         # 用户选择重置
                         current_value="$default_value"
                         current_pos=0
-                        # 清除显示（3行）：上移3行，清除3行
-                        printf '\033[3A' && printf '\033[K' && printf '\033[K' && printf '\033[K'
+                        # 清除显示（3行）
+                        _clear_lines_impl 3
                     fi
                 fi
                 ;;
@@ -399,12 +441,12 @@ _binary_prompt_impl() {
 _set_i18n_impl() {
     key="$1"
     shift
-    
+
     while [ $# -ge 2 ]; do
         lang="$1"
         text="$2"
         shift 2
-        
+
         # 使用 eval 动态设置变量
         var_name="_I18N_${key}_${lang}"
         # 转义特殊字符
@@ -417,7 +459,7 @@ _set_i18n_impl() {
 # 用法: _i18n_impl "key"
 _i18n_impl() {
     key="$1"
-    
+
     # 检测语言（优先级：LANG > 默认 en）
     lang="${LANG:-en}"
     case "$lang" in
@@ -426,22 +468,22 @@ _i18n_impl() {
         ko*|KR*) lang="ko" ;;
         *) lang="en" ;;
     esac
-    
+
     # 尝试获取对应语言的文本
     var_name="_I18N_${key}_${lang}"
     eval "text=\${${var_name}:-}"
-    
+
     # 如果没有找到，尝试英文
     if [ -z "$text" ] && [ "$lang" != "en" ]; then
         var_name="_I18N_${key}_en"
         eval "text=\${${var_name}:-}"
     fi
-    
+
     # 如果还是没有，返回 key
     if [ -z "$text" ]; then
         text="$key"
     fi
-    
+
     printf '%s' "$text"
 }
 
@@ -449,7 +491,7 @@ _i18n_impl() {
 # 用法: _i18n_binary "key"
 _i18n_binary() {
     key="$1"
-    
+
     # 检测语言（优先级：LANG > 默认 en）
     lang="${LANG:-en}"
     case "$lang" in
@@ -458,7 +500,7 @@ _i18n_binary() {
         ko*|KR*) lang="ko" ;;
         *) lang="en" ;;
     esac
-    
+
     # 尝试获取对应语言的文本
     case "$key" in
         "usage_guide")
@@ -608,13 +650,13 @@ _set_i18n_impl "final_confirm" \
 _multi_select_impl() {
     title="$1"
     shift
-    
+
     _select_idx=0
-    
+
     _select_print_impl "$title"
     _select_print_impl "音量👆切换选项，音量👇确认"
     _select_print_impl ""
-    
+
     if command -v getevent >/dev/null 2>&1; then
         while :; do
             # 显示选项
@@ -627,21 +669,17 @@ _multi_select_impl() {
                 fi
                 i=$((i + 1))
             done
-            
+
             # 等待按键
             key=$(wait_key_up_down)
-            
+
             if [ "$key" = "up" ]; then
                 _select_idx=$((_select_idx + 1))
                 if [ "$_select_idx" -ge "$#" ]; then
                     _select_idx=0
                 fi
                 # 清除显示
-                i=0
-                while [ "$i" -lt "$#" ]; do
-                    printf '\033[1A\033[K'
-                    i=$((i + 1))
-                done
+                _clear_lines_impl "$#"
             else
                 # 确认选择
                 i=0
@@ -682,22 +720,22 @@ _text_input_impl() {
     default_value="$3"
     current_text="${default_value:-}"
     cursor_pos=0
-    
+
     # 显示标题和提示
     _select_print_impl "$title"
     _select_print_impl "$prompt"
     _select_print_impl ""
-    
+
     # 如果有 getevent，使用交互式输入
     if command -v getevent >/dev/null 2>&1; then
         while :; do
             # 显示输入框
             _select_print_impl "┌────────────────────────────────────────┐"
-            
+
             # 构建显示行（带光标）
             display_text="│ ${current_text}"
             display_len=${#display_text}
-            
+
             # 添加光标
             if [ "$cursor_pos" -eq ${#current_text} ]; then
                 display_text="${display_text}_"
@@ -707,21 +745,21 @@ _text_input_impl() {
                 suffix="${current_text:$cursor_pos}"
                 display_text="│ ${prefix}_${suffix}"
             fi
-            
+
             # 填充到固定宽度
             while [ ${#display_text} -lt 39 ]; do
                 display_text="${display_text} "
             done
             display_text="${display_text}│"
-            
+
             _select_print_impl "$display_text"
             _select_print_impl "└────────────────────────────────────────┘"
             _select_print_impl ""
             _select_print_impl "$(_i18n_text_input "controls")"
-            
+
             # 等待按键
             key=$(_get_key_impl)
-            
+
             case "$key" in
                 KEY_VOLUMEUP)
                     # 删除前一个字符
@@ -796,9 +834,9 @@ _text_input_impl() {
                     cursor_pos=$((cursor_pos + 1))
                     ;;
             esac
-            
+
             # 清除显示（6行）
-            printf '\033[6A' && printf '\033[K' && printf '\033[K' && printf '\033[K' && printf '\033[K' && printf '\033[K' && printf '\033[K'
+            _clear_lines_impl 6
         done
     else
         # 非交互环境，使用 read
@@ -807,7 +845,7 @@ _text_input_impl() {
             _select_print_impl "$(_i18n_text_input "default"): $default_value"
         fi
         _select_print_impl ""
-        
+
         # 使用环境变量或 read 命令
         if [ -n "${SUBSCRIPTION_URL:-}" ]; then
             TEXT_INPUT_RESULT="$SUBSCRIPTION_URL"
@@ -824,7 +862,7 @@ _text_input_impl() {
 # 用法: _i18n_text_input "key"
 _i18n_text_input() {
     key="$1"
-    
+
     # 检测语言
     lang="${LANG:-en}"
     case "$lang" in
@@ -833,7 +871,7 @@ _i18n_text_input() {
         ko*|KR*) lang="ko" ;;
         *) lang="en" ;;
     esac
-    
+
     case "$key" in
         "controls")
             case "$lang" in
