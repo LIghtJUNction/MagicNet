@@ -10,7 +10,7 @@
 # 注意：不要在此公开无下划线的函数名（那是 `base.sh` 的职责）。
 #
 # 最底层打印（兼容 Magisk ui_print 与 OUTFD）
-_pure_print() {
+_pprint() {
     # 只在调试模式开启时输出调试信息
     if [ "${KAM_DEBUG:-0}" = "1" ]; then
         # 仅使用 MODDIR 作为模块根目录锚点，不依赖其他环境变量或新增锚点
@@ -45,7 +45,6 @@ _pure_print() {
 
 # ========== 私有实现（单下划线） ==========
 
-_pprint() { _pure_print "$1"; }
 
 _msg()  { _pprint "> $1"; }
 _err()  { _pprint "⚠️ $1"; }

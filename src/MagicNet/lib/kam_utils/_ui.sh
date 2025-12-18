@@ -188,6 +188,20 @@ _color_test_impl() {
 
 }
 
+_ui_use_ui_print_impl() {
+    # If ui_print command exists (Magisk/installer), prefer it
+    if command -v ui_print >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # OUTFD is used by some installers (written to /proc/self/fd/$OUTFD)
+    if [ -n "${OUTFD:-}" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
 # 通用打印函数（兼容安装环境和终端环境）
 _select_print_impl() {
     # 首选内部的纯打印实现（如果存在），它会处理 ui_print、OUTFD 等安装环境细节

@@ -43,20 +43,6 @@ wait_key_power() {
     _wait_key_power_impl
 }
 
-# Internal helper - prefer installer UI when available (ui_print or OUTFD)
-__ui_use_ui_print() {
-    # If ui_print command exists (Magisk/installer), prefer it
-    if command -v ui_print >/dev/null 2>&1; then
-        return 0
-    fi
-
-    # OUTFD is used by some installers (written to /proc/self/fd/$OUTFD)
-    if [ -n "${OUTFD:-}" ]; then
-        return 0
-    fi
-
-    return 1
-}
 
 # 二选一交互
 # 用法: ask "问题" "选项1文本" "选项2文本" "选项1命令" "选项2命令" [默认选择0或1]
