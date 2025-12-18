@@ -1,4 +1,3 @@
-#!/bin/sh
 # shellcheck shell=ash
 # =============================================================================
 # Status helpers - public wrapper

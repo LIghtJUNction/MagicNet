@@ -1,4 +1,3 @@
-#!/bin/sh
 # shellcheck shell=ash
 # =============================================================================
 # Compat - internal implementation (private)
@@ -72,7 +71,7 @@ _boot2serviceif_impl() {
     fi
 
     # Ensure MODDIR is set (try fallback to current working dir as last resort)
-    MODDIR=${MODDIR:-${0%/*}}
+    MODDIR=${MODPATH:-${MODDIR:-${0%/*}}}
     if [ -z "${MODDIR:-}" ]; then
         if [ -n "${PWD:-}" ]; then
             MODDIR="${PWD}"

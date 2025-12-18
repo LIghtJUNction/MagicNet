@@ -1,4 +1,3 @@
-#!/bin/sh
 # shellcheck shell=ash
 # =============================================================================
 # 基础工具模块 - 内部函数（私有实现，单下划线命名）
@@ -129,7 +128,7 @@ _log() {
 # ========== 模块/注册逻辑（内部） ==========
 
 _get_kam_utils_dir() {
-    MODDIR=${MODDIR:-${0%/*}}
+    MODDIR=${MODPATH:-${MODDIR:-${0%/*}}}
     if [ -d "${MODDIR}/lib/kam_utils" ]; then
         echo "${MODDIR}/lib/kam_utils"
         return 0
@@ -175,7 +174,7 @@ _get_module_desc() {
 }
 
 _discover_custom_modules() {
-    MODDIR=${MODDIR:-${0%/*}}
+    MODDIR=${MODPATH:-${MODDIR:-${0%/*}}}
     dir="${MODDIR}/lib/kam_utils"
 
     for module_file in "${dir}"/*.sh; do

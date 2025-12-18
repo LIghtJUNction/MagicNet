@@ -19,7 +19,6 @@
 #   protector.sh require_app com.example.app --soft --message "Optional dependency"
 #   protector.sh require_module mymod '>=1.2.0' --message "Please update moudle"
 # =============================================================================
-
 MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_depends.sh
 kam_source_impl depends || { echo "错误: 无法加载内部实现: _depends.sh" >&2; return 1; }
