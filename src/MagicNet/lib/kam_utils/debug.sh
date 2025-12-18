@@ -7,11 +7,10 @@
 # 设置默认调试模式为关闭（如果未设置）
 : "${KAM_DEBUG:=0}"
 
-# 加载内部模块
-# 使用全局变量 _KAM_UTILS_DIR（由 kam_load 设置）或 MODPATH
-_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+# 加载内部模块（使用 MODDIR=${0%/*} 作为模块根目录锚点）
+MODDIR=${0%/*}
 # shellcheck source=_debug.sh
-kam_source_impl debug || { echo "错误: 无法加载内部实现: ${_kam_utils_dir}/_debug.sh" >&2; return 1; }
+kam_source_impl debug || { echo "错误: 无法加载内部实现: _debug.sh" >&2; return 1; }
 
 # 开启调试模式
 # 用法: debug_on

@@ -308,7 +308,7 @@ _require_version_impl() {
     mode="warn"
     custom_msg=""
     requirements=""
-    
+
     # 解析参数
     for arg in "$@"; do
         case "$arg" in
@@ -323,14 +323,20 @@ _require_version_impl() {
                 ;;
         esac
     done
-    
+
     # 检测当前 Root 类型
     root_type=""
     root_ver=0
-    
+
     # 加载调试模块（如果可用）
-    if [ -f "${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}/_debug.sh" ]; then
-        . "${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}/_debug.sh"
+    # 直接以 MODDIR 作为锚点，不引入临时变量或额外锚点
+    if [ -f "${MODDIR}/lib/kam_utils/_debug.sh" ]; then
+        . "${MODDIR}/lib/kam_utils/_debug.sh"
+    elif [ -f "${MODDIR}/kam_utils/_debug.sh" ]; then
+        . "${MODDIR}/kam_utils/_debug.sh"
+    fi
+    # 仅在调试实现可用时调用调试函数（保持安全）
+    if command -v _kam_debug_block_start >/dev/null 2>&1; then
         _kam_debug_block_start "require_version"
         _kam_debug_log "参数: $*"
         _kam_debug_var "mode"
@@ -348,7 +354,7 @@ _require_version_impl() {
         _kam_debug_var "APATCH_VER"
         _kam_debug_var "APATCH_VER_CODE"
     fi
-    
+
     if [ -n "${KSU:-}" ] || [ -n "${KSU_VER_CODE:-}" ]; then
         root_type="ksu"
         root_ver="${KSU_VER_CODE:-0}"
@@ -374,32 +380,32 @@ _require_version_impl() {
             return 1
         fi
     fi
-    
+
     # 检查每个要求
     _kam_debug_enabled && _kam_debug_log "=== 版本要求检查 ==="
     for req in $requirements; do
         req_type="${req%%:*}"
         req_spec="${req#*:}"
-        
+
         _kam_debug_enabled && _kam_debug_log "检查需求: $req"
         _kam_debug_enabled && _kam_debug_indent "类型: $req_type" 1
         _kam_debug_enabled && _kam_debug_indent "规格: $req_spec" 1
-        
+
         # 跳过不匹配的类型
         if [ "$req_type" != "$root_type" ]; then
             _kam_debug_enabled && _kam_debug_indent "类型不匹配，跳过 (当前: $root_type)" 1
             continue
         fi
-        
+
         # 解析版本要求
         op="${req_spec%%[0-9]*}"
         ver="${req_spec#$op}"
-        
+
         # 默认操作符为 >=
         [ -z "$op" ] && op=">="
-        
+
         _kam_debug_enabled && _kam_debug_indent "解析: 操作符='$op', 版本='$ver'" 1
-        
+
         # 比较版本
         case "$op" in
             ">=")
@@ -440,7 +446,7 @@ _require_version_impl() {
                 ;;
         esac
     done
-    
+
     _kam_debug_enabled && _kam_debug_log "所有版本要求检查通过"
     _kam_debug_enabled && _kam_debug_block_end "require_version"
     return 0

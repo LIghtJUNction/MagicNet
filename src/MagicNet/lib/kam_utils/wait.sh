@@ -5,9 +5,9 @@
 # =============================================================================
 
 # 加载内部模块（严格模式：缺少内部实现即 fail-fast）
-_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+MODDIR=${0%/*}
 # shellcheck source=_wait.sh
-kam_source_impl wait || { printf '%s\n' "错误: 无法加载内部实现: ${_kam_utils_dir}/_wait.sh" >&2; return 1; }
+kam_source_impl wait || { printf '%s\n' "错误: 无法加载内部实现: _wait.sh" >&2; return 1; }
 
 # 等待启动完成
 wait_boot() {

@@ -4,9 +4,9 @@
 # 导航跳转模块 - 公开API
 # =============================================================================
 
-_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+MODDIR=${0%/*}
 # shellcheck source=_navigation.sh
-kam_source_impl navigation || { printf '%s\n' "错误: 无法加载内部实现: ${_kam_utils_dir}/_navigation.sh" >&2; return 1; }
+kam_source_impl navigation || { printf '%s\n' "错误: 无法加载内部实现: _navigation.sh" >&2; return 1; }
 
 open_url() {
     _open_url_impl "$@"

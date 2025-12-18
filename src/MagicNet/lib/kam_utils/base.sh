@@ -9,10 +9,9 @@
 #
 # 注意：不要在本文件中放入大量实现逻辑，修改实现请放到 `_base.sh`。
 #
-# 载入内部实现（_base.sh）
-_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+MODDIR=${0%/*}
 # shellcheck source=_base.sh
-kam_source_impl base || { echo "错误: 无法找到 _base.sh: ${_kam_utils_dir}/_base.sh" >&2; return 1; }
+kam_source_impl base || { echo "错误: 无法找到 _base.sh" >&2; return 1; }
 
 
 # -------------------------

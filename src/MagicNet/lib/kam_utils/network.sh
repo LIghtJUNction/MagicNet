@@ -9,9 +9,9 @@
 # this wrapper will fail fast (return non-zero).
 #
 
-_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+MODDIR=${0%/*}
 # shellcheck source=_network.sh
-kam_source_impl network || { printf '%s\n' "错误: 无法加载内部实现: ${_kam_utils_dir}/_network.sh" >&2; return 1; }
+kam_source_impl network || { printf '%s\n' "错误: 无法加载内部实现: _network.sh" >&2; return 1; }
 
 # Public wrappers (thin)
 check_network()   { _check_network_impl "$@"; }

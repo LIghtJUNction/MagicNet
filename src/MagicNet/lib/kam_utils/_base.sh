@@ -13,14 +13,22 @@
 # 最底层打印（兼容 Magisk ui_print 与 OUTFD）
 _pure_print() {
     # 只在调试模式开启时输出调试信息
-    if [ "${KAM_DEBUG:-0}" = "1" ] && [ -f "${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}/_debug.sh" ]; then
-        . "${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}/_debug.sh"
-        _kam_debug_log "_pure_print: $1" "PRINT"
-        _kam_debug_var "OUTFD" "PRINT"
-        _kam_debug_var "ui_print_available" "PRINT"
+    if [ "${KAM_DEBUG:-0}" = "1" ]; then
+        # 仅使用 MODDIR 作为模块根目录锚点，不依赖其他环境变量或新增锚点
+        if [ -f "${MODDIR}/lib/kam_utils/_debug.sh" ]; then
+            . "${MODDIR}/lib/kam_utils/_debug.sh"
+        elif [ -f "${MODDIR}/kam_utils/_debug.sh" ]; then
+            . "${MODDIR}/kam_utils/_debug.sh"
+        fi
+        # 仅在调试实现成功加载后调用调试函数（保持安全）
+        if command -v _kam_debug_log >/dev/null 2>&1; then
+            _kam_debug_log "_pure_print: $1" "PRINT"
+            _kam_debug_var "OUTFD" "PRINT"
+            _kam_debug_var "ui_print_available" "PRINT"
+        fi
         command -v ui_print >/dev/null 2>&1 && ui_print_available="yes" || ui_print_available="no"
     fi
-    
+
     if command -v ui_print >/dev/null 2>&1; then
         ui_print "$1"
     else
@@ -121,15 +129,16 @@ _log() {
 # ========== 模块/注册逻辑（内部） ==========
 
 _get_kam_utils_dir() {
-    script_dir="${KAM_UTILS_DIR:-}"
-    [ -n "$script_dir" ] && echo "$script_dir" && return
-
-    if [ -n "$KAM_UTILS_PATH" ]; then
-        echo "${KAM_UTILS_PATH%/*}/kam_utils"
-        return
+    MODDIR=${MODDIR:-${0%/*}}
+    if [ -d "${MODDIR}/lib/kam_utils" ]; then
+        echo "${MODDIR}/lib/kam_utils"
+        return 0
+    elif [ -d "${MODDIR}/kam_utils" ]; then
+        echo "${MODDIR}/kam_utils"
+        return 0
     fi
-
-    echo "$(dirname "$0")/kam_utils"
+    # Default to lib/kam_utils under MODDIR (may not exist)
+    echo "${MODDIR}/lib/kam_utils"
 }
 
 _load_module() {
@@ -166,10 +175,8 @@ _get_module_desc() {
 }
 
 _discover_custom_modules() {
-    dir="${KAM_UTILS_DIR:-}"
-    if [ -z "$dir" ]; then
-        dir="${MODPATH}/lib/kam_utils"
-    fi
+    MODDIR=${MODDIR:-${0%/*}}
+    dir="${MODDIR}/lib/kam_utils"
 
     for module_file in "${dir}"/*.sh; do
         [ -f "$module_file" ] || continue
@@ -189,5 +196,5 @@ _discover_custom_modules() {
         _register_module "$name" "$desc"
     done
 }
-# 注释掉自动发现，避免在 MODPATH 未设置时出错
-# _discover_custom_modules
+
+_discover_custom_modules

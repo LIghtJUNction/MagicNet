@@ -5,9 +5,13 @@
 # 跨 Root 管理器统一工具库
 #
 ##########################################################################################
+MODDIR=${0%/*}
+export MODDIR
+# 环境变量
+export PATH=${MODDIR}/.local/bin/:$PATH
 
 # =============================================================================
-# kam_load 按需加载系统
+# kam_load 按需加载工具库
 # =============================================================================
 
 # 按需加载模块
@@ -18,26 +22,18 @@ kam_load() {
         return 1
     }
 
-    # 获取 kam_utils 目录
-    # 优先使用 MODPATH，如果不存在则使用脚本自身路径
+    # 获取 kam_utils 目录（以 MODDIR 作为模块根目录锚点）
     _kam_load_kam_utils_dir=""
-    if [ -n "${MODPATH:-}" ] && [ -d "${MODPATH}/lib/kam_utils" ]; then
-        _kam_load_kam_utils_dir="${MODPATH}/lib/kam_utils"
+    if [ -d "${MODDIR}/lib/kam_utils" ]; then
+        _kam_load_kam_utils_dir="${MODDIR}/lib/kam_utils"
+    elif [ -d "${MODDIR}/kam_utils" ]; then
+        _kam_load_kam_utils_dir="${MODDIR}/kam_utils"
     else
-        # 获取当前脚本所在目录
-        _kam_load_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || _kam_load_script_dir="$(pwd)"
-        if [ -d "${_kam_load_script_dir}/kam_utils" ]; then
-            _kam_load_kam_utils_dir="${_kam_load_script_dir}/kam_utils"
-        elif [ -d "${_kam_load_script_dir}/lib/kam_utils" ]; then
-            _kam_load_kam_utils_dir="${_kam_load_script_dir}/lib/kam_utils"
-        else
-            echo "错误: 无法找到 kam_utils 目录" >&2
-            return 1
-        fi
+        echo "错误: 无法找到 kam_utils 目录 (基于 MODDIR=${MODDIR})" >&2
+        return 1
     fi
 
-    # 设置全局变量供模块使用
-    export _KAM_UTILS_DIR="${_kam_load_kam_utils_dir}"
+    # 使用 MODDIR（${0%/*}）作为模块根目录锚点；模块加载器使用本地变量在本函数内定位模块文件
 
     # 加载指定模块
     for module in "$@"; do
@@ -68,7 +64,13 @@ kam_load() {
 # 示例: kam_source_impl navigation
 kam_source_impl() {
     module="$1"
-    _kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+
+    # 使用 MODDIR 作为模块根目录锚点
+    _kam_utils_dir="${MODDIR}/lib/kam_utils"
+    # 兼容早期布局：kam_utils 可能直接位于模块根目录
+    [ ! -d "${_kam_utils_dir}" ] && [ -d "${MODDIR}/kam_utils" ] && _kam_utils_dir="${MODDIR}/kam_utils"
+    [ ! -d "${_kam_utils_dir}" ] && { echo "错误: 无法找到 kam_utils 目录 (基于 MODDIR=${MODDIR})" >&2; return 1; }
+
     impl_file="${_kam_utils_dir}/_${module}.sh"
 
     if [ -f "$impl_file" ]; then
@@ -87,7 +89,7 @@ kam_source_impl() {
 # 通用初始化
 # 从 .kam 文件夹提取合适架构的二进制文件到对应目录
 kam_init() {
-    moddir="${MODPATH:-$(pwd)}"
+    moddir="${MODDIR}"
     kam_dir="${moddir}/.kam"
 
     # 加载必需的基础模块
@@ -110,13 +112,12 @@ kam_init() {
         chmod 755 "${moddir}/system/bin/$(basename "${kam_dir}/${arch}")" 2>/dev/null || true
     fi
 
-
 }
 
 # 通用结束函数
 # 删除 .kam 文件夹
 kam_end() {
-    moddir="${MODPATH:-$(pwd)}"
+    moddir="${MODDIR}"
     kam_dir="${moddir}/.kam"
 
     # 删除 .kam 目录
