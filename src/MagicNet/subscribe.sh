@@ -15,6 +15,8 @@ set_i18n "subscription_config" "zh" "订阅链接配置" "en" "Subscription Conf
 set_i18n "input_subscription" "zh" "请输入您的订阅链接" "en" "Please enter your subscription URL" "ja" "サブスクリプションURLを入力してください" "ko" "구독 URL을 입력하세요"
 set_i18n "config_saved" "zh" "配置已保存" "en" "Configuration saved" "ja" "設定を保存しました" "ko" "구성이 저장되었습니다"
 set_i18n "using_default" "zh" "使用默认配置" "en" "Using default configuration" "ja" "デフォルト設定を使用" "ko" "기본 구성 사용"
+set_i18n "input_failed" "zh" "自动输入失败，请手动编辑配置文件：" "en" "Auto input failed, please edit config file manually:" "ja" "自動入力に失敗しました。設定ファイルを手動で編集してください：" "ko" "자동 입력 실패, 구성 파일을 수동으로 편집하세요:"
+set_i18n "manual_edit_hint" "zh" "请在订阅链接位置填入您的实际订阅地址" "en" "Please fill in your actual subscription URL at the subscription link location" "ja" "サブスクリプションリンクの場所に実際のサブスクリプションアドレスを入力してください" "ko" "구독 링크 위치에 실제 구독 주소를 입력하세요"
 
 # 检查是否已经配置过
 config_file="$MODDIR/mihomo/config.yaml"
@@ -27,8 +29,14 @@ if grep -q "url: https://example.com/api" "$config_file" 2>/dev/null; then
     subscription_url=$(termux_text_input "$(i18n "subscription_config")" "$(i18n "input_subscription")" "https://example.com/api" 120)
 
     if [ -n "$subscription_url" ] && [ "$subscription_url" != "https://example.com/api" ]; then
-        config_set_subscription_url "$config_file" "$subscription_url"
-        msg "$(i18n "config_saved")"
+        # 尝试写入订阅 URL，并检查返回值以便在失败时给出清晰提示
+        if config_set_subscription_url "$config_file" "$subscription_url"; then
+            msg "$(i18n "config_saved")"
+        else
+            # 提示用户手动编辑配置文件（兼容已定义的 i18n 或使用默认英文提示）
+            msg "$(i18n "input_failed") $config_file"
+            msg "$(i18n "manual_edit_hint")"
+        fi
     else
         msg "$(i18n "using_default")"
     fi

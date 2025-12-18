@@ -122,3 +122,5 @@ kam_end() {
     # 删除 .kam 目录
     [ -d "$kam_dir" ] && rm -rf "$kam_dir" 2>/dev/null
 }
+
+kam_load base
