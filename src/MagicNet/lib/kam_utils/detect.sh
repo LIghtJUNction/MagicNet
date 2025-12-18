@@ -7,12 +7,7 @@
 # 加载内部模块
 _kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_detect.sh
-if [ -f "${_kam_utils_dir}/_detect.sh" ]; then
-    . "${_kam_utils_dir}/_detect.sh"
-else
-    echo "错误: 无法找到 _detect.sh: ${_kam_utils_dir}/_detect.sh" >&2
-    return 1
-fi
+kam_source_impl detect || { echo "错误: 无法加载内部实现: ${_kam_utils_dir}/_detect.sh" >&2; return 1; }
 
 # 检测系统架构
 detect_arch() {
@@ -49,14 +44,8 @@ is_apatch() {
     _is_apatch
 }
 
-# 检查是否为 KernelPatch
-is_kernelpatch() {
-    _is_kernelpatch
-}
-
 # Root 管理器检测函数
 ksu() { [ "$ROOT_TYPE" = "ksu" ]; }
 magisk() { [ "$ROOT_TYPE" = "magisk" ]; }
 apatch() { [ "$ROOT_TYPE" = "apatch" ]; }
-kpatch() { [ "$ROOT_TYPE" = "kernelpatch" ]; }
 nomagisk() { ! magisk; }

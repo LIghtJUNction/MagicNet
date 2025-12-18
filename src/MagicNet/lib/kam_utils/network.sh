@@ -1,38 +1,19 @@
 #!/bin/sh
 # shellcheck shell=ash
 # =============================================================================
-# 网络工具模块 - 自定义拓展模块示例
+# 网络工具模块 - 公开API（薄包装）
 # =============================================================================
+#
+# NOTE: This file is intentionally a thin wrapper. All implementations live
+# in the internal file `_network.sh`. If the internal implementation is absent,
+# this wrapper will fail fast (return non-zero).
+#
 
-# 检查网络连接
-check_network() {
-    if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
-        msg "网络连接正常"
-        return 0
-    else
-        err "网络连接失败"
-        return 1
-    fi
-}
+_kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
+# shellcheck source=_network.sh
+kam_source_impl network || { printf '%s\n' "错误: 无法加载内部实现: ${_kam_utils_dir}/_network.sh" >&2; return 1; }
 
-# 获取本机IP地址
-get_local_ip() {
-    _get_local_ip_ip=""
-    _get_local_ip_ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $7; exit}')
-    [ -n "$_get_local_ip_ip" ] && echo "$_get_local_ip_ip" || echo "未知"
-}
-
-# 下载文件
-download_file() {
-    url="$1" output="$2"
-    [ -z "$output" ] && output="$(basename "$url")"
-
-    if cmd curl; then
-        curl -L -o "$output" "$url"
-    elif cmd wget; then
-        wget -O "$output" "$url"
-    else
-        err "未找到下载工具（curl 或 wget）"
-        return 1
-    fi
-}
+# Public wrappers (thin)
+check_network()   { _check_network_impl "$@"; }
+get_local_ip()    { _get_local_ip_impl "$@"; }
+download_file()   { _download_file_impl "$@"; }

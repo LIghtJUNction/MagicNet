@@ -55,8 +55,17 @@ _mihomo_run_impl() {
 }
 
 _mihomo_stop_impl() {
-    if pgrep -f mihomo >/dev/null 2>&1; then
-        kill "$(pgrep -f mihomo)" 2>/dev/null
+    # Find all PIDs matching the mihomo process and kill them one by one to avoid
+    # issues when pgrep returns multiple lines and to avoid relying on pkill/xargs.
+    pids=$(pgrep -f mihomo 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+        for pid in $pids; do
+            # Ensure pid is numeric
+            case "$pid" in
+                ''|*[!0-9]*) continue ;;
+            esac
+            kill "$pid" 2>/dev/null || true
+        done
         log INFO "mihomo stopped"
     else
         log INFO "mihomo not running"

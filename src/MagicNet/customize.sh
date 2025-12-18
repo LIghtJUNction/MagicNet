@@ -1,12 +1,7 @@
 # shellcheck shell=ash
 # MagicNet customize.sh
 #
-# 这里的一大段注释由kam生成，太占位置被我删了
-# ---------------------------------------------------------------------------------------
-# CUSTOM INSTALLATION LOGIC
-# ---------------------------------------------------------------------------------------
-# ---------------------------------------------------------------------------------
-# Use KAM utils 👇
+# 简洁版安装自定义脚本（返回到精简风格、移除过度防御逻辑）
 # -----------------------------------------------------------------------------------
 [ -f "$MODPATH/lib/kam-utils.sh" ] && . "$MODPATH/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
 
@@ -16,11 +11,11 @@ kam_init
 # 加载导航模块
 kam_load navigation
 
-# 设置项目特定的 i18n 文本
+# 项目 i18n 文本（保留）
 set_i18n "mihomo_config" "zh" "Mihomo 配置选项" "en" "Mihomo Configuration" "ja" "Mihomo設定" "ko" "Mihomo 구성"
 set_i18n "yacd_ui" "zh" "Yacd UI" "en" "Yacd UI" "ja" "Yacd UI" "ko" "Yacd UI"
 set_i18n "subscription_url" "zh" "订阅链接配置" "en" "Subscription URL" "ja" "サブスクリプションURL" "ko" "구독 URL"
-set_i18n "ipv6_support" "zh" "IPv6支持" "en" "IPv6 Support" "ja" "IPv6サポート" "ko" "IPv5 지원"
+set_i18n "ipv6_support" "zh" "IPv6支持" "en" "IPv6 Support" "ja" "IPv6サポート" "ko" "IPv6 지원"
 set_i18n "allow_lan" "zh" "局域网访问" "en" "Allow LAN" "ja" "LANアクセス" "ko" "LAN 액세스"
 set_i18n "geo_auto_update" "zh" "自动更新地理数据" "en" "Auto Geo Update" "ja" "地理データ自動更新" "ko" "지리 데이터 자동 업데이트"
 set_i18n "give_star" "zh" "给个星星吧！" "en" "Give me a star!" "ja" "スターをくれ！" "ko" "별을 주세요!"
@@ -74,22 +69,15 @@ msg "- [DEBUG] 准备加载 UI 模块..."
 kam_load ui
 msg "- [DEBUG] UI 模块加载完成"
 
-# 加载 Termux 模块
-kam_load termux || {
-    msg "- [DEBUG] kam_load 失败，尝试直接加载..."
-    if [ -f "$MODPATH/lib/kam_utils/termux.sh" ]; then
-        . "$MODPATH/lib/kam_utils/termux.sh"
-    fi
-}
+# 加载 Termux 模块（简洁风格：直接加载，无冗余回退）
+kam_load termux
 
 set_perm_recursive $MODPATH 0 0 0755 0755
 
 # 设置启动脚本用于订阅配置
 divider
 msg "- 设置订阅配置脚本..."
-
 chmod 755 "$MODPATH/boot-completed.sh"
-
 msg "- 订阅链接将在设备重启后配置"
 divider
 
@@ -97,6 +85,9 @@ divider
 divider
 msg "$(i18n "mihomo_config")"
 divider
+
+# 默认指定配置文件路径（可被外部覆盖）
+config_file="${config_file:-$MODPATH/mihomo/config.yaml}"
 
 # 固定启用 TUN 模式
 msg "- 固定启用 TUN 模式"
@@ -156,8 +147,6 @@ newline
 # ---------------------------------------------------------------------------------
 # 安装完成
 
-# 如果在 Magisk 环境中，将 boot 脚本改名
-# 用法: boot2serviceif "magisk"
 # Load compat module (provides compatibility helpers like boot2serviceif)
 kam_load compat || ui_print "- Warning: failed to load compat module"
 

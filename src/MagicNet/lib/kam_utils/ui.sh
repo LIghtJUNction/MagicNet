@@ -8,12 +8,7 @@
 # 使用全局变量 _KAM_UTILS_DIR（由 kam_load 设置）或 MODPATH
 _kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_ui.sh
-if [ -f "${_kam_utils_dir}/_ui.sh" ]; then
-    . "${_kam_utils_dir}/_ui.sh"
-else
-    echo "错误: 无法找到 _ui.sh: ${_kam_utils_dir}/_ui.sh" >&2
-    return 1
-fi
+kam_source_impl ui || { printf '%s\n' "错误: 无法加载内部实现: ${_kam_utils_dir}/_ui.sh" >&2; return 1; }
 
 # 获取按键事件
 get_key() {
@@ -50,6 +45,21 @@ wait_key_power() {
     _wait_key_power_impl
 }
 
+# Internal helper - prefer installer UI when available (ui_print or OUTFD)
+__ui_use_ui_print() {
+    # If ui_print command exists (Magisk/installer), prefer it
+    if command -v ui_print >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # OUTFD is used by some installers (written to /proc/self/fd/$OUTFD)
+    if [ -n "${OUTFD:-}" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
 # 二选一交互
 # 用法: ask "问题" "选项1文本" "选项2文本" "选项1命令" "选项2命令" [默认选择0或1]
 ask() {
@@ -71,12 +81,12 @@ ask() {
 
     # 当前选中的选项（0 = 选项1，1 = 选项2）
     _ask_selected="$default_selected"
-    
+
     # 显示问题
     msg "$question"
     msg "$(i18n 'volume_key_hint')"
     newline
-    
+
     # 循环等待用户选择
     while :; do
         # 显示选项（带选中标记）
@@ -87,10 +97,10 @@ ask() {
             msg "[ ] $opt1_text"
             msg "[*] $opt2_text"
         fi
-        
+
         # 等待按键
         _ask_key=$(wait_key_up_down)
-        
+
         case "$_ask_key" in
             up)
                 # 上键：切换选项
@@ -99,8 +109,8 @@ ask() {
                 else
                     _ask_selected=0
                 fi
-                # 清除上次显示的选项（向上移动2行并清除）
-                printf '\033[2A\033[K\033[1B\033[K\033[1A'
+                # 清除上次显示的选项（使用统一清行 helper，兼容安装环境与终端）
+                _clear_lines_impl 2
                 ;;
             down)
                 # 下键：确认当前选项
@@ -126,12 +136,12 @@ ask() {
 confirm() {
     message="$1"
     _confirm_choice=1  # 默认取消
-    
+
     # 使用 ask 函数实现确认对话框
     ask "$message" "confirm_yes" "confirm_no" \
         '_confirm_choice=0' \
         '_confirm_choice=1'
-    
+
     return $_confirm_choice
 }
 
@@ -139,8 +149,13 @@ confirm() {
 # 用法: multi_select "标题" "选项1" "选项2" "选项3" ...
 # 返回: 选中的索引（从0开始）
 multi_select() {
-    # 重定向所有输出到 stderr，只让结果通过 stdout 返回
-    _multi_select_impl "$@" >&2
+    # 如果安装环境可用（ui_print 或 OUTFD），直接调用内部实现；
+    # 在普通终端（无 ui_print/OUTFD）下把 UI 输出重定向到 stderr，以便 stdout 留给返回值
+    if __ui_use_ui_print; then
+        _multi_select_impl "$@"
+    else
+        _multi_select_impl "$@" >&2
+    fi
     echo "$MULTI_SELECT_RESULT"
 }
 
@@ -151,18 +166,22 @@ select_language() {
     if [ $# -eq 0 ]; then
         set -- "中文:zh_CN.UTF-8" "English:en_US.UTF-8" "日本語:ja_JP.UTF-8" "한국어:ko_KR.UTF-8"
     fi
-    
+
     # 提取语言名称
     lang_names=""
     for lang_pair in "$@"; do
         lang_name="${lang_pair%%:*}"
         lang_names="$lang_names $lang_name"
     done
-    
-    # 调用内部实现
-    _multi_select_impl "选择语言 / Select Language" $lang_names
+
+    # 调用内部实现，和 multi_select 保持相同的输出策略（优先安装 UI）
+    if __ui_use_ui_print; then
+        _multi_select_impl "选择语言 / Select Language" $lang_names
+    else
+        _multi_select_impl "选择语言 / Select Language" $lang_names >&2
+    fi
     choice="$MULTI_SELECT_RESULT"
-    
+
     # 设置语言环境变量
     i=0
     for lang_pair in "$@"; do
@@ -179,7 +198,11 @@ select_language() {
 # 用法: binary_prompt "默认值" "提示1" "提示2" ...
 # 返回: 最终的二进制值
 binary_prompt() {
-    _binary_prompt_impl "$@" >&2
+    if __ui_use_ui_print; then
+        _binary_prompt_impl "$@"
+    else
+        _binary_prompt_impl "$@" >&2
+    fi
     echo "$BINARY_PROMPT_RESULT"
 }
 
@@ -198,7 +221,11 @@ color_test() {
 # 文本输入框函数
 # 用法: text_input "标题" "提示" [默认值]
 text_input() {
-    _text_input_impl "$@"
+    if __ui_use_ui_print; then
+        _text_input_impl "$@"
+    else
+        _text_input_impl "$@" >&2
+    fi
     echo "$TEXT_INPUT_RESULT"
 }
 

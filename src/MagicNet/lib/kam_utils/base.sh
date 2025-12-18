@@ -12,12 +12,8 @@
 # 载入内部实现（_base.sh）
 _kam_utils_dir="${_KAM_UTILS_DIR:-${MODPATH}/lib/kam_utils}"
 # shellcheck source=_base.sh
-if [ -f "${_kam_utils_dir}/_base.sh" ]; then
-    . "${_kam_utils_dir}/_base.sh"
-else
-    echo "错误: 无法找到 _base.sh: ${_kam_utils_dir}/_base.sh" >&2
-    return 1
-fi
+kam_source_impl base || { echo "错误: 无法找到 _base.sh: ${_kam_utils_dir}/_base.sh" >&2; return 1; }
+
 
 # -------------------------
 # 公共 wrapper（直接调用单下划线内部实现）

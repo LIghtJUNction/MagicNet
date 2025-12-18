@@ -1,48 +1,24 @@
+#!/bin/sh
 # shellcheck shell=ash
-# boot-completed.sh
-#
-# 🚨这是ksu新增的，开机后执行，常规做法是service.sh里面等待开机。
-# This script runs when the Android system has finished booting.
-# Specifically, it triggers when the "ACTION_BOOT_COMPLETED" broadcast is sent.
-#
-# ---------------------------------------------------------------------------------------
-# EXECUTION CONTEXT
-# ---------------------------------------------------------------------------------------
-# - TRIGGER:      Runs when `sys.boot_completed` property becomes "1".
-# - TIMING:       The UI is usually up (lock screen or launcher).
-# - ENV:          Runs in KernelSU's BusyBox ash shell (Standalone Mode).
-#                 $MODDIR is set to the module's directory.
-#                 $KSU_MODULE is set to the module ID.
-#
-# ---------------------------------------------------------------------------------------
-# USE CASES
-# ---------------------------------------------------------------------------------------
-# - Tasks that strictly require the Android framework/UI to be fully initialized.
-# - Showing notifications or toasts (via `cmd notification` or similar).
-# - Final cleanup tasks.
-# - Interacting with system services that might not be ready during `service.sh`.
-#
-# ---------------------------------------------------------------------------------------
+# Minimal boot-completed handler — keep logic minimal and trust the library
 
 MODDIR=${0%/*}
-[ -f "$MODDIR/lib/kam-utils.sh" ] && . "$MODDIR/lib/kam-utils.sh" || abort '! File "kam-utils.sh" does not exist!'
+. "$MODDIR/lib/kam-utils.sh"
 
-# 按需加载
+# Load required modules and perform minimal flow
 kam_load wait mihomo
 
+# Wait for device unlock (non-blocking trust on library)
 wait_unlock 10
 
-# 清空日志
-LOG_FILE="${MODDIR}/MagicNet.log"
-[ -f "$LOG_FILE" ] && echo > "$LOG_FILE"
+# Truncate log file
+: > "$MODDIR/MagicNet.log" 2>/dev/null || true
 
-$MODDIR/subscribe.sh
+# Run subscription configuration in background to avoid blocking boot
+"$MODDIR/subscribe.sh" >/dev/null 2>&1 &
 
-# 运行 mihomo 内核
+# Start network and service
 create_tun
 mihomo_run
 
 exit 0
-
-
-
