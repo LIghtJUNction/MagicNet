@@ -1,7 +1,7 @@
 id=MagicNet
 name=MagicNet
-version=v1.0.3
-versionCode=1765911767573
-author=lightjunction
-description=[mihomo]
-updateJson=https://github.com/LIghtJUNction/MagicNet/
+version=v1.0.5
+versionCode=1766050338006
+author=LIghtJUNction
+description=[MagicNet]:Powered by mihomo/kam
+updateJson=https://github.com/LIghtJUNction/MagicNet/blob/main/update.json
