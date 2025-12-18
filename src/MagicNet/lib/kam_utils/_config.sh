@@ -76,4 +76,86 @@ _config_set_value() {
 }
 
 
+# 更新订阅 URL 的内部实现（带文本回退）
+# 用法: _config_set_subscription_url <config_file> <url>
+_config_set_subscription_url() {
+    cfg="${1:-}"
+    url="${2:-}"
+
+    [ -n "$cfg" ] || return 1
+    [ -n "$url" ] || return 1
+
+    msg "[DEBUG] _config_set_subscription_url: file='$cfg' url='$url'"
+
+    # 首先尝试使用通用 setter（yq / jq）
+    if _config_set_value "$cfg" ".proxy-providers.myclash.url" "$url" >/dev/null 2>&1; then
+        msg "[DEBUG] _config_set_subscription_url: written by _config_set_value"
+        return 0
+    fi
+
+    msg "[WARN] _config_set_subscription_url: _config_set_value failed, falling back to text replacement"
+
+    tmp="$(mktemp "${TMPDIR:-/tmp}/mkcfg.XXXXXX" 2>/dev/null || printf '%s' "$cfg.tmp.$$")"
+
+    # 尝试替换默认占位符（首个出现的 url: https://example.com/api）
+    if awk -v url="$url" '
+    BEGIN{replaced=0}
+    {
+        if (!replaced && $0 ~ /^[[:space:]]*url:[[:space:]]*https?:\/\/example\.com\/api/) {
+            sub(/url[[:space:]]*: .*/, "url: " url)
+            replaced=1
+        }
+        print
+    }
+    END{exit(!replaced)}
+    ' "$cfg" > "$tmp" 2>/dev/null; then
+        mv "$tmp" "$cfg" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+        msg "[DEBUG] _config_set_subscription_url: replaced default url"
+        return 0
+    fi
+
+    rm -f "$tmp" 2>/dev/null || true
+
+    # 若未替换到默认占位符，则追加 provider 结构到文件末尾（尽量保守）
+    cat >> "$cfg" <<EOF
+
+proxy-providers:
+  myclash:
+    type: http
+    path: ./myclash.yaml
+    url: $url
+    interval: 3600
+    health-check:
+      enable: true
+      url: http://www.gstatic.com/generate_204
+      interval: 3600
+EOF
+
+    msg "[WARN] _config_set_subscription_url: appended provider block to $cfg"
+    return 0
+}
+
+# 公开的轻量包装（兼容调用习惯）
+# 用法:
+#   config_set_subscription_url <config_file> <url>
+#   config_set_subscription_url <url>  # 使用默认 $MODPATH/mihomo/config.yaml
+config_set_subscription_url() {
+    case "$#" in
+        1)
+            cfg="${MODPATH}/mihomo/config.yaml"
+            url="$1"
+            ;;
+        2)
+            cfg="$1"
+            url="$2"
+            ;;
+        *)
+            printf '%s\n' "Usage: config_set_subscription_url <config_file> <url>  OR  config_set_subscription_url <url>" >&2
+            return 2
+            ;;
+    esac
+
+    _config_set_subscription_url "$cfg" "$url"
+}
+
 # EOF

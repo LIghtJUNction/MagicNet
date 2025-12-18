@@ -72,7 +72,7 @@ msg "- [DEBUG] UI 模块加载完成"
 # 加载 Termux 模块（简洁风格：直接加载，无冗余回退）
 kam_load termux
 
-set_perm_recursive $MODPATH 0 0 0755 0755
+set_perm_recursive "$MODPATH" 0 0 0755 0755
 
 # 设置启动脚本用于订阅配置
 divider
