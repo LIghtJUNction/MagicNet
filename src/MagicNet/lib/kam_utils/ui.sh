@@ -148,13 +148,27 @@ confirm() {
 # 多选项选择函数（API）
 # 用法: multi_select "标题" "选项1" "选项2" "选项3" ...
 # 返回: 选中的索引（从0开始）
+# 输出策略:
+#   - 若安装环境可用 (ui_print/OUTFD) 则使用安装器输出
+#   - 否则将 UI 输出到 stdout（默认）。可通过环境变量 KAM_UI_OUTPUT 控制:
+#       KAM_UI_OUTPUT=stdout  (默认) 将 UI 打印到 stdout
+#       KAM_UI_OUTPUT=stderr  将 UI 打印到 stderr
+#       KAM_UI_OUTPUT=both    将 UI 同时打印到 stdout 与 stderr（使用 tee）
 multi_select() {
-    # 如果安装环境可用（ui_print 或 OUTFD），直接调用内部实现；
-    # 在普通终端（无 ui_print/OUTFD）下把 UI 输出重定向到 stderr，以便 stdout 留给返回值
     if __ui_use_ui_print; then
         _multi_select_impl "$@"
     else
-        _multi_select_impl "$@" >&2
+        case "${KAM_UI_OUTPUT:-stdout}" in
+            stderr)
+                _multi_select_impl "$@" >&2
+                ;;
+            both)
+                _multi_select_impl "$@" | tee /dev/stderr
+                ;;
+            *)
+                _multi_select_impl "$@"
+                ;;
+        esac
     fi
     echo "$MULTI_SELECT_RESULT"
 }
@@ -178,7 +192,17 @@ select_language() {
     if __ui_use_ui_print; then
         _multi_select_impl "选择语言 / Select Language" $lang_names
     else
-        _multi_select_impl "选择语言 / Select Language" $lang_names >&2
+        case "${KAM_UI_OUTPUT:-stdout}" in
+            stderr)
+                _multi_select_impl "选择语言 / Select Language" $lang_names >&2
+                ;;
+            both)
+                _multi_select_impl "选择语言 / Select Language" $lang_names | tee /dev/stderr
+                ;;
+            *)
+                _multi_select_impl "选择语言 / Select Language" $lang_names
+                ;;
+        esac
     fi
     choice="$MULTI_SELECT_RESULT"
 
@@ -201,7 +225,17 @@ binary_prompt() {
     if __ui_use_ui_print; then
         _binary_prompt_impl "$@"
     else
-        _binary_prompt_impl "$@" >&2
+        case "${KAM_UI_OUTPUT:-stdout}" in
+            stderr)
+                _binary_prompt_impl "$@" >&2
+                ;;
+            both)
+                _binary_prompt_impl "$@" | tee /dev/stderr
+                ;;
+            *)
+                _binary_prompt_impl "$@"
+                ;;
+        esac
     fi
     echo "$BINARY_PROMPT_RESULT"
 }
@@ -224,7 +258,17 @@ text_input() {
     if __ui_use_ui_print; then
         _text_input_impl "$@"
     else
-        _text_input_impl "$@" >&2
+        case "${KAM_UI_OUTPUT:-stdout}" in
+            stderr)
+                _text_input_impl "$@" >&2
+                ;;
+            both)
+                _text_input_impl "$@" | tee /dev/stderr
+                ;;
+            *)
+                _text_input_impl "$@"
+                ;;
+        esac
     fi
     echo "$TEXT_INPUT_RESULT"
 }
