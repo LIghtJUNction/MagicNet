@@ -21,7 +21,7 @@
 # =============================================================================
 
 # 加载内部实现（严格模式：缺少内部实现即 fail-fast）
-MODDIR=${0%/*}
+MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_install.sh
 kam_source_impl install || { printf '%s\n' "错误: 无法加载内部实现: _install.sh" >&2; return 1; }
 

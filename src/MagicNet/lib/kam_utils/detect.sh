@@ -5,7 +5,7 @@
 # =============================================================================
 
 # 加载内部模块（使用 MODDIR=${0%/*} 作为模块根目录锚点）
-MODDIR=${0%/*}
+MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_detect.sh
 kam_source_impl detect || { echo "错误: 无法加载内部实现: _detect.sh" >&2; return 1; }
 

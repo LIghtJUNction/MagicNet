@@ -5,7 +5,7 @@
 # =============================================================================
 
 # 加载内部模块（严格模式：缺少内部实现即 fail-fast）
-MODDIR=${0%/*}
+MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_wait.sh
 kam_source_impl wait || { printf '%s\n' "错误: 无法加载内部实现: _wait.sh" >&2; return 1; }
 

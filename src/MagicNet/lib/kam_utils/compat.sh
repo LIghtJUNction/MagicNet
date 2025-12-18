@@ -7,7 +7,7 @@
 #
 ################################################################################
 
-MODDIR=${0%/*}
+MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_compat.sh
 kam_source_impl compat || { echo "错误: 无法加载内部实现: _compat.sh" >&2; return 1; }
 

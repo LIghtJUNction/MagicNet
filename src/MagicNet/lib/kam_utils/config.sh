@@ -13,7 +13,7 @@
 # 设计原则：公开接口尽量简洁，复杂的写入/回退逻辑由内部实现负责（_config.sh）
 # =============================================================================
 
-MODDIR=${0%/*}
+MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_config.sh
 kam_source_impl config || { echo "错误: 无法加载内部实现: _config.sh" >&2; return 1; }
 

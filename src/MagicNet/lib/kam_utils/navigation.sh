@@ -4,7 +4,7 @@
 # 导航跳转模块 - 公开API
 # =============================================================================
 
-MODDIR=${0%/*}
+MODDIR=${MODDIR:-${0%/*}}
 # shellcheck source=_navigation.sh
 kam_source_impl navigation || { printf '%s\n' "错误: 无法加载内部实现: _navigation.sh" >&2; return 1; }
 
