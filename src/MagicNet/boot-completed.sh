@@ -9,8 +9,4 @@ wait_boot_if_magisk
 
 wait_unlock 10
 
-if wait_net 300 ; then
-    mihomo_start
-else
-    error '! Network not available!'
-fi
+mihomo_start
