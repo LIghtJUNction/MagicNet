@@ -1,0 +1,2 @@
+# MagicMihomo
+MagicNet-mihomo
