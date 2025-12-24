@@ -5,7 +5,7 @@
 主要功能是在安卓设备运行mihomo内核
 > 需要root权限
 A module that's as streamlined as possible, and easy for everyone to understand.
-[查看模块](https://github.com/LIghtJUNction/RootManage-Module-Model/blob/MagicNet/MyModule/README.MD#%E5%AF%B9%E6%AF%94%E6%88%91%E7%9A%84bfm_config%E9%A1%B9%E7%9B%AE%E4%B8%BB%E8%A6%81%E6%94%B9%E5%8A%A8)
+
 ## Features ✨
 
 - **安卓设备使用 tun 模式**
