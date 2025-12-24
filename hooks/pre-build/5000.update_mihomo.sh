@@ -9,7 +9,7 @@ require_command curl "curl not found!"
 
 # 路径定义
 VERSION_FILE="${KAM_MODULE_ROOT}/mihomo.version"
-TARGET_DIR="${KAM_MODULE_ROOT}/system/bin"
+TARGET_DIR="${KAM_MODULE_ROOT}/.local/bin"
 ARCH="android-arm64-v8"
 
 # 确保目录存在
