@@ -59,7 +59,7 @@ Built with [Kam](https://github.com/MemDeco-WG/Kam)
 EOF
 )
 printf "%s\n" "$RELEASE_NOTES" > "$TMP_CHANGELOG"
-
+log_info "打包以下文件：$(ls $DIST)"
 # Check if release already exists
 if gh release view "$TAG" >/dev/null 2>&1; then
     log_error "Release $TAG already exists and is immutable, cannot proceed"
@@ -73,7 +73,8 @@ if [ "${KAM_PRE_RELEASE:-0}" = "1" ]; then
 fi
 if [ -d "$DIST" ] && [ "$(ls -A "$DIST")" ]; then
     log_info "Creating GitHub release $TAG and uploading assets from $DIST"
-    gh release create "$TAG" --title "${KAM_MODULE_ID}-${KAM_MODULE_VERSION_CODE}-${KAM_MODULE_VERSION}" --notes-file "$TMP_CHANGELOG" "$PRE_FLAG" "$DIST"/* || { log_error "Failed to create release $TAG and upload assets"; exit 1; }
+    assets=("$DIST"/*)
+    gh release create "$TAG" --title "${KAM_MODULE_ID}-${KAM_MODULE_VERSION_CODE}-${KAM_MODULE_VERSION}" --notes-file "$TMP_CHANGELOG" $PRE_FLAG "${assets[@]}" || { log_error "Failed to create release $TAG and upload assets"; exit 1; }
 else
     log_warn "Dist directory not found or empty: $DIST"
 fi
