@@ -187,7 +187,7 @@ ntp:
 geox-url:
   geoip: https://github.com/DustinWin/ruleset_geodata/releases/download/clash/geoip-all.dat
   geosite: https://github.com/DustinWin/ruleset_geodata/releases/download/clash/geosite-all.dat
-  mmdb: https://github.com/DustinWin/ruleset_geodata/releases/download/clash/Country.mmdb
+  mmdb: https://github.com/DustinWin/ruleset_geodata/releases/download/mihomo-geodata/Country-all.mmdb
 proxies: null
 proxy-groups:
   - name: 🌏 快速选择代理
