@@ -7,7 +7,6 @@ import wait
 
 wait_boot_if_magisk
 
-wait_unlock 10
+wait_unlock 3
 
 mihomo_start
-
