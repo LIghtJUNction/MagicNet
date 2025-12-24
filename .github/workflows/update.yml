@@ -42,7 +42,7 @@ jobs:
 
           echo "geoip=https://github.com/DustinWin/ruleset_geodata/releases/download/mihomo-geodata/geoip-all.dat" >> $GITHUB_ENV
           echo "geosite=https://github.com/DustinWin/ruleset_geodata/releases/download/mihomo-geodata/geosite-all.dat" >> $GITHUB_ENV
-          echo "mmdb=https://github.com/DustinWin/ruleset_geodata/releases/download/mihomo-geodata/Country.mmdb" >> $GITHUB_ENV
+          echo "mmdb=hhttps://github.com/DustinWin/ruleset_geodata/releases/download/mihomo-geodata/Country-all.mmdb" >> $GITHUB_ENV
 
         shell: bash
 

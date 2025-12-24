@@ -1,8 +1,0 @@
-[submodule "src/MagicNet/mihomo"]
-	path = src/MagicNet/mihomo
-	url = https://github.com/LIghtJUNction/MagicMihomo.git
-	branch = main
-[submodule "src/MagicNet/lib/kamfw"]
-	path = src/MagicNet/lib/kamfw
-	url = https://github.com/MemDeco-WG/kamfw.git
-	branch = main
