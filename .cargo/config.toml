@@ -1,9 +1,0 @@
-[alias]
-xtask = "run --package xtask --"
-
-[target.aarch64-linux-android]
-linker = "aarch64-linux-android-clang"
-rustflags = [
-    "-C",
-    "panic=abort",
-]
