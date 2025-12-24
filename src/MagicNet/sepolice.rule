@@ -1,0 +1,1 @@
+allow * tun_device chr_file { read write open ioctl }

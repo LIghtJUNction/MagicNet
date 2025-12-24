@@ -1,0 +1,107 @@
+name: Kam Project Initialization
+permissions:
+  contents: write
+  actions: read
+on:
+  workflow_dispatch:
+    inputs:
+      template-url:
+        description: 'Template download URL (single template: .tar.gz; multiple templates: .zip) - leave empty to skip template import'
+        required: false
+        type: string
+        default: https://github.com/MemDeco-WG/Kam/releases/latest/download/templates.zip
+      init-command:
+        description: Full initialization command (complete command to run after setup/template import)
+        required: false
+        type: string
+        default: kam init . -t kam_template
+      enable-cache:
+        description: Toggle version-aware caching for kam and Cargo
+        required: false
+        type: string
+        default: 'true'
+jobs:
+  run-initialization:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Cache bun
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.bun
+        key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') || github.sha }}-v1
+        restore-keys: |
+          ${{ runner.os }}-bun-
+    - name: Cache npm
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.npm
+          ~/.cache/npm
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') || github.sha }}-v1
+        restore-keys: |
+          ${{ runner.os }}-npm-
+    - name: Cache Yarn
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/yarn
+          ~/.yarn
+        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') || github.sha }}-v1
+        restore-keys: |
+          ${{ runner.os }}-yarn-
+    - name: Cache pnpm
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.pnpm-store
+        key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') || github.sha }}-v1
+        restore-keys: |
+          ${{ runner.os }}-pnpm-
+    - name: Cache Cargo & Rustup
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.rustup
+        key: ${{ runner.os }}-rust-cache-${{ hashFiles('**/Cargo.lock') }}-${{ runner.os }}-v1
+        restore-keys: |
+          ${{ runner.os }}-rust-cache-
+    - name: Cache pip
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') || github.sha }}-v1
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    - name: Setup kam
+      uses: MemDeco-WG/setup-kam@main
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        template-url: ${{ github.event.inputs.template-url }}
+        enable-cache: ${{ github.event.inputs.enable-cache }}
+    - name: Verify kam installation
+      run: kam --version
+    - name: Run initialization command
+      shell: bash
+      run: |
+        kam init --help
+        echo "Running initialization command: ${{ github.event.inputs.init-command }}"
+        ${{ github.event.inputs.init-command }}
+        echo "Initialization completed successfully"
+      env:
+        GH_TOKEN: ${{ github.token }}
+    - name: Auto-commit changes
+      uses: stefanzweifel/git-auto-commit-action@v7
+      with:
+        commit_message: |
+          chore: apply config - Template: ${{ github.event.inputs.template-url || 'No template' }} - Command: ${{ github.event.inputs.init-command || github.event.inputs.kam-command }}
+        file_pattern: |
+          *
+        push_options: --force-with-lease
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
