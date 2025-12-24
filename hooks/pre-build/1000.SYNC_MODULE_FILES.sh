@@ -44,7 +44,7 @@ if [ ! -d "$KAM_MODULE_ROOT" ]; then
 fi
 
 ###########################################
-# Sync module.prop using kam export (fallback to manual generation)
+# Sync module.prop using kam export
 ###########################################
 log_info "Exporting module.prop using 'kam export' to: $MODULE_PROP_PATH"
 if kam export prop "$MODULE_PROP_PATH"; then
@@ -55,7 +55,7 @@ else
 fi
 
 ###########################################
-# Sync update.json using kam export (fallback to manual generation)
+# Sync update.json using kam export
 ###########################################
 log_info "Exporting update.json using 'kam export' to: $UPDATE_JSON_PATH"
 if kam export update "$UPDATE_JSON_PATH"; then
@@ -66,7 +66,7 @@ else
 fi
 
 ###########################################
-# Sync module.json using kam export (fallback to manual generation)
+# Sync module.json using kam export
 ###########################################
 log_info "Exporting module.json using 'kam export' to: $MODULE_JSON_PATH"
 if kam export json "$MODULE_JSON_PATH"; then
