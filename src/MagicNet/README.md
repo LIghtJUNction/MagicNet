@@ -37,3 +37,4 @@ For further information or queries, you can reach out to [LIghtJUNction](https:/
 The changelog for this project is available in the [CHANGELOG.md](CHANGELOG.md) file.
 此项目的更新日志可在 [CHANGELOG.md](CHANGELOG.md) 文件中查看。
 
+Feel free to modify the sections to better fit the specific details and requirements of your project.
