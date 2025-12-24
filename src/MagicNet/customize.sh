@@ -19,7 +19,4 @@ ask_webui
 # 设置system/bin/mihomo - 700权限
 set_perm "${MODPATH}/system/bin/mihomo" 0 0 0755 u:object_r:magisk_file:s0
 
-# 设置.local/bin/yq - 700权限
-set_perm "${MODPATH}/.local/bin/yq" 0 0 0755 u:object_r:magisk_file:s0
-
 # 询问用户是否前往github/求star
