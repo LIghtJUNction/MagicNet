@@ -141,20 +141,14 @@ is_ci() {
 }
 
 run_as_root() {
-    # Run a command as root using sudo if needed (and available), otherwise run as-is (best-effort).
+    # Run a command as root
     if [ "$(id -u)" -eq 0 ]; then
         "$@"
         return $?
     fi
 
-    if command -v sudo >/dev/null 2>&1; then
-        sudo "$@"
-        return $?
-    fi
-
-    log_warn "run_as_root: sudo not found; attempting to run the command without escalation"
-    "$@"
-    return $?
+    log_error "run_as_root: not running as root"
+    return 1
 }
 
 ci_install() {
