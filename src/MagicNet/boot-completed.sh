@@ -10,3 +10,4 @@ wait_boot_if_magisk
 wait_unlock 10
 
 mihomo_start
+
