@@ -8,7 +8,7 @@
 import i18n
 import lang
 import rich
-
+import launcher
 select_lang
 
 # 询问用户是否使用 yacd（提供交互式选择：默认 / Yacd / 自定义 URL）
