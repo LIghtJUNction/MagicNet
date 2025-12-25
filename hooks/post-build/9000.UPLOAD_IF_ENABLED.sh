@@ -81,3 +81,7 @@ fi
 
 log_success "Upload step finished"
 exit 0
+
+git add .
+git commit -m "Update version to ${KAM_MODULE_VERSION}"
+git push
