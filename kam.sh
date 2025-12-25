@@ -10,6 +10,6 @@ command -v cz  >/dev/null || pkg install -y python-commitizen
 
 command -v git >/dev/null || pkg install -y git
 
-git submodule init --recursive
+git submodule update --init --recursive
 
 kam build && kam install
