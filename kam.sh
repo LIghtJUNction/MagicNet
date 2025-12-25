@@ -1,5 +1,5 @@
 #!/bin/bash
-# kam install https://github.com/LIghtJUNction/MagicNet.git
+# kam install LIghtJUNction/MagicNet
 set -euo pipefail
 
 command -v kam >/dev/null || { pkg install -y rust && pkg install -y openssl && cargo install kam; }
