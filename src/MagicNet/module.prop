@@ -1,12 +1,7 @@
 id=MagicNet
 name=MagicNet
-<<<<<<< HEAD
-version=v1.0.8
-versionCode=1766595715735
-=======
-version=v1.0.12
-versionCode=1766640149988
->>>>>>> d2b8e40d0164f480647323063ef8f7eb78567ff5
+version=v1.0.13
+versionCode=1766668001372
 author=LIghtJUNction
 description=[MagicNet]:Powered by mihomo/kam
 updateJson=https://github.com/LIghtJUNction/MagicNet/blob/main/update.json
