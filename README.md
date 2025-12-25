@@ -18,17 +18,16 @@ A module that's as streamlined as possible, and easy for everyone to understand.
 ## Install ↓
 
 - 如果你已经通过cargo 安装了kam（>0.5.17）
-’‘’bash
+```bash
 kam install LIghtJUNction/MagicNet
-’‘’
+```
 - 如果你没有安装kam(Termux)
 
-’‘’bash
+```bash
 git clone https://github.com/LIghtJUNction/MagicNet.git && cd MagicNet && git submodule update --init --recursive
 chmod +x kam.sh
 ./kam.sh
-‘’‘
-
+```
 > 以上方法安装的均为git版本 非 release版本 
 
 - 或者直接下载release发布的版本
