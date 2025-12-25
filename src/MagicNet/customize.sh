@@ -25,10 +25,42 @@ import __mihomo__
 
 # Usage & installation messages
 set_i18n "USAGE_GUIDE" \
-    "zh" "使用教程：\n这是一个基于mihomo内核的代理模块\n1. 只支持tun模式\n2. 内置大量规则\n3. 支持两套webui\n安装后：\n你需要前往/data/adb/modules/MagicNet/.config/mihomo/config.yaml\n填写订阅链接\n如果能成功访问webui,即代表启动成功" \
-    "en" "Usage guide:\nThis is a proxy module based on the mihomo core\n1. Only supports TUN mode\n2. Includes many built-in rules\n3. Supports two web UIs\nAfter installation:\nYou need to edit /data/adb/modules/MagicNet/.config/mihomo/config.yaml\nand fill in the subscription URL\nIf you can successfully access the web UI, it means it started successfully" \
-    "ja" "使用方法：\nこれは mihomo コアをベースにしたプロキシモジュールです\n1. tun モードのみサポートします\n2. 多くの組み込みルールを含みます\n3. 2種類の Web UI をサポートします\nインストール後：\n/data/adb/modules/MagicNet/.config/mihomo/config.yaml を編集して\n購読リンクを記入してください\nWeb UI にアクセスできれば起動成功です" \
-    "ko" "사용 안내:\n이것은 mihomo 코어 기반의 프록시 모듈입니다\n1. tun 모드만 지원합니다\n2. 많은 내장 규칙을 포함합니다\n3. 두 종류의 웹 UI를 지원합니다\n설치 후:\n/data/adb/modules/MagicNet/.config/mihomo/config.yaml 파일을 열어\n구독 링크를 입력하세요\n웹 UI에 정상적으로 접속되면 시작이 성공한 것입니다"
+    "zh" "使用教程：
+这是一个基于mihomo内核的代理模块
+1. 只支持tun模式
+2. 内置大量规则
+3. 支持两套webui
+安装后：
+你需要前往/data/adb/modules/MagicNet/.config/mihomo/config.yaml
+填写订阅链接
+如果能成功访问webui,即代表启动成功" \
+    "en" "Usage guide:
+This is a proxy module based on the mihomo core
+1. Only supports TUN mode
+2. Includes many built-in rules
+3. Supports two web UIs
+After installation:
+You need to edit /data/adb/modules/MagicNet/.config/mihomo/config.yaml
+and fill in the subscription URL
+If you can successfully access the web UI, it means it started successfully" \
+    "ja" "使用方法：
+これは mihomo コアをベースにしたプロキシモジュールです
+1. tun モードのみサポートします
+2. 多くの組み込みルールを含みます
+3. 2種類の Web UI をサポートします
+インストール後：
+/data/adb/modules/MagicNet/.config/mihomo/config.yaml を編集して
+購読リンクを記入してください
+Web UI にアクセスできれば起動成功です" \
+    "ko" "사용 안내:
+이것은 mihomo 코어 기반의 프록시 모듈입니다
+1. tun 모드만 지원합니다
+2. 많은 내장 규칙을 포함합니다
+3. 두 종류의 웹 UI를 지원합니다
+설치 후:
+/data/adb/modules/MagicNet/.config/mihomo/config.yaml 파일을 열어
+구독 링크를 입력하세요
+웹 UI에 정상적으로 접속되면 시작이 성공한 것입니다"
 
 set_i18n "TERM_INSTALL_MSG" \
     "zh" "终端安装体验比通过管理器安装体验更好，能正确显示颜色，并且支持刷新显示" \
@@ -52,7 +84,11 @@ gprint "$(i18n "GUI_INSTALL_MSG")"
 
 ask_webui
 
-# 设置system/bin/mihomo - 700权限
+# 设置权限
 set_perm "${MODPATH}/system/bin/mihomo" 0 0 0755 u:object_r:magisk_file:s0
+
+set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0755 u:object_r:magisk_file:s0
+
+confirm_update_file ".config/mihomo/config.yaml"
 
 launch url "https://github.com/LIghtJUNction/MagicNet"
