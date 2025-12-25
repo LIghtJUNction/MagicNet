@@ -12,4 +12,4 @@ command -v git >/dev/null || pkg install -y git
 
 git submodule update --init --recursive
 
-kam build && kam install
+kam build
