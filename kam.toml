@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [kam]
 conflicts = []
 max_api = 0
@@ -12,6 +13,17 @@ target_dir = "dist"
 
 [kam.workspace]
 members = ["."]
+=======
+[prop]
+id = "MagicNet"
+name = "MagicNet"
+version = "v1.0.12"
+versionCode = 1766640149988
+author = "LIghtJUNction"
+description = "[MagicNet]:Powered by mihomo/kam"
+updateJson = "https://github.com/LIghtJUNction/MagicNet/blob/main/update.json"
+metamodule = false
+>>>>>>> d2b8e40d0164f480647323063ef8f7eb78567ff5
 
 [mmrl.repo]
 antifeatures = []
