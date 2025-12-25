@@ -18,6 +18,9 @@ A module that's as streamlined as possible, and easy for everyone to understand.
 
 ## Usage 🛠️
 
+- 填入订阅链接即可开始使用
+> /data/adb/modules/MagicNet/.config/mihomo/config.yaml
+
 ## Contribution Guidelines 🤝
 
 > **Do one thing && Do it well.** Enjoy! 😎
@@ -36,4 +39,3 @@ For further information or queries, you can reach out to [LIghtJUNction](https:/
 
 The changelog for this project is available in the [CHANGELOG.md](CHANGELOG.md) file.
 此项目的更新日志可在 [CHANGELOG.md](CHANGELOG.md) 文件中查看。
-
