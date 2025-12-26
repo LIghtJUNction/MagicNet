@@ -1,86 +1,86 @@
-[prop]
-id = "MagicNet"
-name = "MagicNet"
-version = "v1.0.19"
-versionCode = 1766739954170
-author = "LIghtJUNction"
-description = "[MagicNet]:Powered by mihomo/kam"
-updateJson = "https://github.com/LIghtJUNction/MagicNet/blob/main/update.json"
-metamodule = false
+[kam]
+conflicts = []
+max_api = 0
+min_api = 0
+module_type = "kam"
+supported_arch = []
+
+[kam.build]
+hooks_dir = "hooks"
+output_file = "{{id}}"
+target_dir = "dist"
+
+[kam.workspace]
+members = ["."]
 
 [mmrl.repo]
-license = "MIT"
-license_file = "LICENSE"
-homepage = "https://github.com/LIghtJUNction/MagicNet"
-readme = "https://github.com/LIghtJUNction/MagicNet/blob/main/README.md"
-readme_file = "README.md"
+antifeatures = []
+arch = ["arm64-v8a"]
+categories = ["tools"]
 changelog = "https://github.com/LIghtJUNction/MagicNet/blob/main/CHANGELOG.md"
 changelog_file = "CHANGELOG.md"
-screenshots = []
-categories = ["tools"]
+cover = ""
+devices = []
+documentation = ""
+donate = ""
+features = [
+    "module-template",
+    "customization",
+]
+funding = "https://github.com/sponsors/LIghtJUNction"
+homepage = "https://github.com/LIghtJUNction/MagicNet"
+icon = "icon.png"
+issues = "https://github.com/LIghtJUNction/MagicNet/issues"
 keywords = [
     "kam",
     "module",
     "android",
     "template",
 ]
+license = "MIT"
+license_file = "LICENSE"
 maintainers = []
-repository = "https://github.com/LIghtJUNction/MagicNet"
-documentation = ""
-issues = "https://github.com/LIghtJUNction/MagicNet/issues"
-funding = "https://github.com/sponsors/LIghtJUNction"
-support = ""
-donate = ""
-cover = ""
-icon = "icon.png"
-devices = []
-arch = ["arm64-v8a"]
-require = []
-antifeatures = []
+max_api = 35
 max_num = 0
 min_api = 21
-max_api = 35
+readme = "https://github.com/LIghtJUNction/MagicNet/blob/main/README.md"
+readme_file = "README.md"
+repository = "https://github.com/LIghtJUNction/MagicNet"
+require = []
+screenshots = []
+support = ""
 verified = false
-features = [
-    "module-template",
-    "customization",
-]
 
-[mmrl.repo.note]
-title = ""
-message = ""
-
-[mmrl.repo.manager.magisk]
-devices = []
+[mmrl.repo.manager.apatch]
 arch = []
+devices = []
 require = []
 
 [mmrl.repo.manager.kernelsu]
-devices = []
 arch = []
+devices = []
 require = []
 
-[mmrl.repo.manager.apatch]
-devices = []
+[mmrl.repo.manager.magisk]
 arch = []
+devices = []
 require = []
+
+[mmrl.repo.note]
+message = ""
+title = ""
 
 [mmrl.repo.options.archive]
 compression = ""
 
-[kam]
-min_api = 0
-max_api = 0
-supported_arch = []
-conflicts = []
-module_type = "kam"
-
-[kam.build]
-target_dir = "dist"
-output_file = "{{id}}"
-hooks_dir = "hooks"
-
-[kam.workspace]
-members = ["."]
+[prop]
+author = "LIghtJUNction"
+description = "[MagicNet]:Powered by mihomo/kam"
+id = "MagicNet"
+metamodule = false
+name = "MagicNet"
+updateJson = "https://github.com/LIghtJUNction/MagicNet/blob/main/update.json"
+version = "v1.0.19"
+versionCode = 1766739954170
 
 [tool]
