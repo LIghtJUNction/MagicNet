@@ -35,6 +35,9 @@ chmod +x kam.sh
 已经上传至ksu-repo
 
 > kam -S magicnet # 仅下载
+
+- 安装
+
 > kam install MagicNet.zip
 
 ## Usage 🛠️
