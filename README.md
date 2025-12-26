@@ -28,7 +28,7 @@ git clone https://github.com/LIghtJUNction/MagicNet.git && cd MagicNet && git su
 chmod +x kam.sh
 ./kam.sh
 ```
-> 以上方法安装的均为git版本 非 release版本 
+> 以上方法安装的均为git版本 非 release版本
 
 - 或者直接下载release发布的版本
 
