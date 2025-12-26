@@ -85,9 +85,9 @@ gprint "$(i18n "GUI_INSTALL_MSG")"
 ask_webui
 
 # 设置权限
-set_perm "${MODPATH}/system/bin/mihomo" 0 0 0755 u:object_r:magisk_file:s0
+set_perm "${MODPATH}/system/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
 
-set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0755 u:object_r:magisk_file:s0
+set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
 
 confirm_update_file ".config/mihomo/config.yaml"
 
