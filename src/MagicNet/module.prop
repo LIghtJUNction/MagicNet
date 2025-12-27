@@ -1,7 +1,7 @@
 id=MagicNet
 name=MagicNet
-version=v1.0.19
-versionCode=1766739954170
+version=v1.0.24
+versionCode=1766833621942
 author=LIghtJUNction
-description=[MagicNet]:Powered by mihomo/kam
+description=[MagicNet]:A Magisk module that lets you use the mihomo kernel's TUN mode on Android. Built with KAM.
 updateJson=https://github.com/LIghtJUNction/MagicNet/blob/main/update.json

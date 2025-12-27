@@ -7,5 +7,5 @@
   ],
   "metamodule": false,
   "sourceUrl": "https://github.com/LIghtJUNction/MagicNet",
-  "summary": "[MagicNet]:Powered by mihomo/kam"
+  "summary": "[MagicNet]:A Magisk module that lets you use the mihomo kernel's TUN mode on Android. Built with KAM."
 }
