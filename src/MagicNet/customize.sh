@@ -16,6 +16,7 @@
 # 依赖控制,文件共享
 # 自动提取模块.local到kam共享目录，采用硬链接方式
 # 为保证模块卸载时候不会有残留文件，uninstall.sh文件不要删
+import __customize__
 
 import i18n
 import lang
