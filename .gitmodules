@@ -5,4 +5,4 @@
 [submodule "src/MagicNet/.config/mihomo"]
 	path = src/MagicNet/.config/mihomo
 	url = https://github.com/LIghtJUNction/MagicMihomo.git
-    branch = main
+        branch = main
