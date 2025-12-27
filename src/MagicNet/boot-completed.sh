@@ -2,6 +2,9 @@
 
 MODDIR=${0%/*}
 [ -f "${MODDIR}/lib/kamfw/.kamfwrc" ] && . "$MODDIR/lib/kamfw/.kamfwrc" || abort '! File ".kamfwrc" does not exist!'
+
+import __runtime__
+
 import __mihomo__
 import wait
 
