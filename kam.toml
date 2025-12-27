@@ -1,8 +1,8 @@
 [prop]
 id = "MagicNet"
 name = "MagicNet"
-version = "v1.0.21"
-versionCode = 1766830910286
+version = "v1.0.22"
+versionCode = 1766830955876
 author = "LIghtJUNction"
 description = "[MagicNet]:Powered by mihomo/kam"
 updateJson = "https://github.com/LIghtJUNction/MagicNet/blob/main/update.json"
