@@ -80,7 +80,7 @@ id = "MagicNet"
 metamodule = false
 name = "MagicNet"
 updateJson = "https://github.com/LIghtJUNction/MagicNet/blob/main/update.json"
-version = "v1.0.19"
+version = "v1.0.20"
 versionCode = 1766739954170
 
 [tool]
