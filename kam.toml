@@ -1,8 +1,8 @@
 [prop]
 id = "MagicNet"
 name = "MagicNet"
-version = "v1.0.31"
-versionCode = 1766954760713
+version = "v1.0.32"
+versionCode = 1766955822119
 author = "LIghtJUNction"
 description = "[MagicNet]:A Magisk module that lets you use the mihomo kernel's TUN mode on Android. Built with KAM."
 updateJson = "https://github.com/LIghtJUNction/MagicNet/blob/main/update.json"
