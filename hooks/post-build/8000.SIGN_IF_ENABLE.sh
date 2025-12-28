@@ -9,7 +9,6 @@ if [ "$KAM_SIGN_ENABLED" != "1" ]; then
 	exit 0
 fi
 
-
 log_info "Signing artifacts in $KAM_DIST_DIR (kam sign -s)..."
 
 # Attempt to sign, but allow failure as requested ("失败也没关系")
