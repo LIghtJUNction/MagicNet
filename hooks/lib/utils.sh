@@ -140,6 +140,37 @@ is_ci() {
     return 1
 }
 
+is_termux() {
+    # Detect Termux environment.
+    # Termux typically sets TERMUX_VERSION and uses paths under /data/data/com.termux.
+    # This function returns 0 (true) when it is likely running under Termux, otherwise 1 (false).
+
+    # Fast env-var check
+    if [ -n "${TERMUX_VERSION:-}" ]; then
+        return 0
+    fi
+
+    # Check common environment variables for Termux paths
+    case "${PREFIX:-}" in
+        */data/data/com.termux*) return 0 ;;
+    esac
+
+    case "${HOME:-}" in
+        */data/data/com.termux*) return 0 ;;
+    esac
+
+    # Check for Termux-specific files/directories
+    if [ -d "/data/data/com.termux" ] || [ -d "/data/data/com.termux/files/usr" ]; then
+        return 0
+    fi
+
+    if [ -f "/data/data/com.termux/files/usr/etc/termux/termux.env" ] || [ -x "/data/data/com.termux/files/usr/bin/termux-change-repo" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
 run_as_root() {
     # Run a command as root
     if [ "$(id -u)" -eq 0 ]; then
