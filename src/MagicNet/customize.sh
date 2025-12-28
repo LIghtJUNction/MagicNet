@@ -20,9 +20,9 @@ import __customize__
 
 import i18n
 import lang
-import rich
-import launcher
 select_lang
+
+import rich
 
 import this
 import __mihomo__
@@ -95,4 +95,5 @@ set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
 
 confirm_update_file ".config/mihomo/config.yaml"
 
+import launcher
 launch url "https://github.com/LIghtJUNction/MagicNet"
