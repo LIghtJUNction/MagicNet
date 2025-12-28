@@ -1,4 +1,4 @@
-# [MagicNet](https://github.com/KernelSU-Modules-Repo/MagicNet) <- - ModuleRepo / Mihomo config - -> [MagicMihomo](https://github.com/LIghtJUNction/MagicMihomo)
+# [MagicNet](https://github.com/KernelSU-Modules-Repo/MagicNet) <- 稳定版本/模块 / 通用/配置 - -> [MagicMihomo](https://github.com/LIghtJUNction/MagicMihomo)
 
 ![image](https://github.com/user-attachments/assets/f46c5c92-27df-4edd-851d-cae77ebd8540)
 
