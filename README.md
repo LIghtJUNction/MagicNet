@@ -59,6 +59,11 @@ chmod +x kam.sh
 
 > **Do one thing && Do it well.** Enjoy! 😎
 
+## 复刻指南 
+
+项目采用kam构建工具，直接运行工作流即可构建
+如果需要签名，请在仓库设置中配置KAM_PRIVATE_KEY,内容是kernelsu开发者私钥
+
 ## 许可证 📄
 
 This project is licensed under the GNU General Public License v3.0. See the [LICENSE](MyModule/LICENSE) file for details.
