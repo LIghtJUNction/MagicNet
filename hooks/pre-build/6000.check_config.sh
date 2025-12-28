@@ -12,6 +12,9 @@ if is_ci; then
     sudo mv mihomo /usr/local/bin/mihomo
 fi
 
+is_termux && exit 0
+
+
 require_command mihomo "arch: paru -S mihomo"
 
 mihomo -t $HOME/.config/mihomo/config.yaml
