@@ -6,7 +6,7 @@ command -v kam >/dev/null || { pkg install -y rust && pkg install -y openssl && 
 
 command -v gh  >/dev/null || pkg install -y gh
 
-command -v cz  >/dev/null || pkg install -y python-commitizen
+command -v cz  >/dev/null || pkg install -y uv && uv tool update-shell && uv tool install commitizen
 
 command -v git >/dev/null || pkg install -y git
 
