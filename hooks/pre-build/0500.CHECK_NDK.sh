@@ -3,7 +3,7 @@
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 # Optional: enable debug tracing if requested
 if [ "${KAM_DEBUG:-0}" = "1" ]; then
-  set -x
+    set -x
 fi
 log_info "Checking NDK version..."
 if [ -z "$ANDROID_NDK_HOME" ]; then
