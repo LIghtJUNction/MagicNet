@@ -6,3 +6,6 @@
 	path = src/MagicNet/.config/mihomo
 	url = https://github.com/LIghtJUNction/MagicMihomo.git
         branch = main
+[submodule "src/MagicNet/.config/sing-box"]
+	path = src/MagicNet/.config/sing-box
+	url = https://github.com/LIghtJUNction/MagicSingBox.git
