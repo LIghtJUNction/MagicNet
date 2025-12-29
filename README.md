@@ -3,7 +3,7 @@
 
 ![image](https://github.com/user-attachments/assets/f46c5c92-27df-4edd-851d-cae77ebd8540)
 
-主要功能是在安卓设备运行mihomo内核
+主要功能是在安卓设备,以tun模式运行mihomo/sing-box内核
 > 需要root权限
 A module that's as streamlined as possible, and easy for everyone to understand.
 
@@ -12,6 +12,7 @@ A module that's as streamlined as possible, and easy for everyone to understand.
 - 你需要开箱即用，内置5个自动更新的[免费代理](https://github.com/Barabama/FreeNodes)+3个自己填的付费订阅链接:觉得免费不安全请自行删除，更新模块时候会询问你是否覆盖配置（需要重新配置，默认跳过，然后你手动更新配置文件）
 - 大量规则集，自动更新
 - 社区联ban规则集，保护隐私
+- 同时支持2个内核（mihomo+singbox），按需构建模块, 使用kam build，修改环境变量控制构建流程
 
 # 推荐项目
 - [yumebox](https://github.com/YumeLira/YumeBox)
@@ -86,9 +87,3 @@ clash-rules](https://github.com/Loyalsoldier/clash-rules)
 - [Barabama/FreeNodes](https://github.com/Barabama/FreeNodes)
 
 - [DustinWin/ruleset_geodata](https://github.com/DustinWin/ruleset_geodata)
-
-
-
-
-
-
