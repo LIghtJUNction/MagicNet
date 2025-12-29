@@ -15,7 +15,7 @@ select_lang
 import rich
 
 import this
-import __mihomo__
+
 
 # Usage & installation messages
 set_i18n "USAGE_GUIDE" \
@@ -76,6 +76,7 @@ tprint "$(i18n "TERM_INSTALL_MSG")"
 # if gui , print
 gprint "$(i18n "GUI_INSTALL_MSG")"
 
+import __mihomo__
 ask_webui
 
 # 设置权限
