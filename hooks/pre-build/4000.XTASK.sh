@@ -5,7 +5,7 @@
 
 # Optional: enable debug tracing if requested
 if [ "${KAM_DEBUG:-0}" = "1" ]; then
-  set -x
+    set -x
 fi
 
 log_warn " comment out to enable xtask!" && exit 0
