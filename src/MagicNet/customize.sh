@@ -3,7 +3,8 @@
 #
 # -----------------------------------------------------------------------------------
 
-[ -f "${MODPATH}/lib/kamfw/.kamfwrc" ] && . "$MODPATH/lib/kamfw/.kamfwrc" || abort '! File ".kamfwrc" does not exist!'
+SKIPUNZIP=1
+unzip -o "$ZIPFILE" "lib/kamfw/*" -d "$MODPATH" >&2 && . "$MODPATH/lib/kamfw/.kamfwrc" || abort "! .kamfwrc missing"
 # 作者注：导入以上工具库，会自动依据ROOT管理器
 # 进行一些特殊处理
 # 比如，如果是magisk.补全META-INF
@@ -13,9 +14,6 @@
 # 详见 lib/kamfw/magisk.sh
 # lib/kamfw/ksu.sh
 # lib/kamfw/ap.sh
-# 依赖控制,文件共享
-# 自动提取模块.local到kam共享目录，采用硬链接方式
-# 为保证模块卸载时候不会有残留文件，uninstall.sh文件不要删
 import __customize__
 
 import i18n
@@ -26,6 +24,8 @@ import rich
 
 import this
 import __mihomo__
+
+
 
 # Usage & installation messages
 set_i18n "USAGE_GUIDE" \

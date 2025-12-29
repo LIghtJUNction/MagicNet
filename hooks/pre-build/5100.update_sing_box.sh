@@ -17,6 +17,62 @@ require_command curl "curl not found!"
 # 可选依赖（仅在需要时检查并提示）
 # tar/gunzip/unzip 仅在解压相应格式时需要，我们在遇到这些格式时再做提示/检查
 
+# 计算文件 sha256（跨平台）
+compute_sha256() {
+    local f="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$f" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$f" | awk '{print $1}'
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$f" | awk '{print $2}'
+    else
+        echo ""
+    fi
+}
+
+# 获取远端资产的 sha256（优先使用 gh metadata，必要时回退到 API 解析）
+get_remote_hash() {
+    local asset="$1"
+    local digest=""
+
+    # 优先使用 gh release view --json assets --jq
+    if command -v gh >/dev/null 2>&1; then
+        digest=$(gh release view "$LATEST_TAG" --repo "$REPO" --json assets --jq ".assets[] | select(.name==\"$asset\") | .digest" 2>/dev/null || true)
+        if [ -n "$digest" ] && [ "$digest" != "null" ]; then
+            echo "${digest#sha256:}"
+            return 0
+        fi
+    fi
+
+    # 回退：使用 gh api 或直接从 GitHub API 获取 JSON，然后解析
+    local api_json
+    if command -v gh >/dev/null 2>&1; then
+        api_json=$(gh api "repos/$REPO/releases/tags/$LATEST_TAG" 2>/dev/null || true)
+    else
+        api_json=$(curl -sS "https://api.github.com/repos/$REPO/releases/tags/$LATEST_TAG" || true)
+    fi
+
+    if [ -z "$api_json" ]; then
+        echo ""
+        return 1
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        echo "$api_json" | jq -r --arg NAME "$asset" '.assets[] | select(.name==$NAME) | .digest' 2>/dev/null | sed 's/^sha256://' || true
+        return 0
+    fi
+
+    # grep + sed fallback
+    local ln
+    ln=$(echo "$api_json" | grep -n "\"name\"[[:space:]]*:[[:space:]]*\"$asset\"" | head -n1 | cut -d: -f1) || true
+    if [ -z "$ln" ]; then
+        echo ""
+        return 2
+    fi
+    echo "$api_json" | tail -n +"$ln" | head -n 20 | grep -m1 '"digest"' | sed -E 's/.*"digest":[[:space:]]*"(sha256:)?([0-9a-fA-F]+)".*/\2/'
+}
+
 # 路径定义
 VERSION_FILE="${KAM_MODULE_ROOT}/singbox.version"
 TARGET_DIR="${KAM_MODULE_ROOT}/.local/bin"
@@ -64,8 +120,18 @@ fi
 
 PREFERRED_ASSET=""
 
-# 优先：包含 android 且 包含 arm64/aarch64 的文件
-if [ -n "$ASSET_NAMES" ]; then
+# 优先：精确匹配 sing-box-<tag>-android-arm64.tar.gz（首选）
+expected_asset="sing-box-${TAG_STRIP}-android-arm64.tar.gz"
+if echo "$ASSET_NAMES" | grep -xF "$expected_asset" >/dev/null 2>&1; then
+    PREFERRED_ASSET="$expected_asset"
+else
+    if [ -n "$ASSET_NAMES" ]; then
+        PREFERRED_ASSET=$(echo "$ASSET_NAMES" | grep -i 'android-arm64' | head -n1 || true)
+    fi
+fi
+
+# 回退：包含 android 且 包含 arm64/aarch64 的文件
+if [ -z "$PREFERRED_ASSET" ] && [ -n "$ASSET_NAMES" ]; then
     while IFS= read -r a; do
         if echo "$a" | grep -qi 'android' && echo "$a" | grep -qiE 'arm64|aarch64|arm64-v8|arm64-v8a'; then
             PREFERRED_ASSET="$a"
@@ -154,7 +220,28 @@ else
     fi
 fi
 
-log_info "下载成功，正在处理文件..."
+log_info "下载成功，正在验证 sha256（如果可用）并处理文件..."
+
+# 获取并校验远端 sha256（如果可用）
+REMOTE_HASH=$(get_remote_hash "$PREFERRED_ASSET" 2>/dev/null || true)
+if [ -n "$REMOTE_HASH" ]; then
+    LOCAL_HASH=$(compute_sha256 "$DOWNLOAD_PATH" 2>/dev/null || true)
+    if [ -z "$LOCAL_HASH" ]; then
+        log_warn "无法计算本地文件 sha256，跳过校验"
+    else
+        LOCAL_HASH_LOWER=$(echo "$LOCAL_HASH" | tr '[:upper:]' '[:lower:]')
+        REMOTE_HASH_LOWER=$(echo "$REMOTE_HASH" | tr '[:upper:]' '[:lower:]')
+        if [ "$LOCAL_HASH_LOWER" != "$REMOTE_HASH_LOWER" ]; then
+            log_error "错误：下载文件 sha256 校验失败 (local=$LOCAL_HASH remote=$REMOTE_HASH)"
+            rm -f "$DOWNLOAD_PATH" 2>/dev/null || true
+            exit 1
+        else
+            log_info "sha256 校验通过"
+        fi
+    fi
+else
+    log_warn "未获取到远端 sha256，跳过校验"
+fi
 
 # 6. 解压到临时目录并查找二进制
 TMP_DIR=$(mktemp -d "${KAM_MODULE_ROOT}/.tmp.singbox.XXXXXX" 2>/dev/null || mktemp -d)
