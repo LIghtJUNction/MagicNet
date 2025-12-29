@@ -2,6 +2,14 @@
 # shellcheck source=hooks/lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 
+MAGIC_MIHOMO=${MAGIC_MIHOMO:-1}
+
+if [ "$MAGIC_MIHOMO" -eq 0 ]; then
+    [ -f "$KAM_MODULE_ROOT/mihomo.version" ] && rm -f "$KAM_MODULE_ROOT/mihomo.version"
+    [ -f "$KAM_MODULE_ROOT/.local/bin/mihomo" ] && rm -f "$KAM_MODULE_ROOT/.local/bin/mihomo"
+    exit 0
+fi
+
 # 环境检查
 require_command gh "github-cli not found!"
 require_command gunzip "gunzip not found!"
