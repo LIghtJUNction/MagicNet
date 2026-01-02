@@ -56,6 +56,33 @@ chmod +x kam.sh
 - 填入订阅链接即可开始使用
 > /data/adb/modules/MagicNet/.config/mihomo/config.yaml
 
+
+## 必读
+
+1. 短暂关闭
+请在webui界面：配置-关闭tun转发
+2. 关闭
+运行action.sh或者
+pkill -f mihomo
+3. 启动
+运行action.sh或者直接在终端执行mihomo即可
+无需指定配置路径
+4. 通过热点共享普通网络
+关闭tun转发即可
+5. 通过热点共享魔法网络
+开启tun转发，开启允许局域网连接
+其他在设置设置代理为：你的手机局域网IP:端口
+
+比如要代理http流量，linux执行以下命令：
+export http_proxy="局域网IP:7890"
+6. 与其他VPN服务共存问题
+这里有一些博客，可供参考：
+
+https://blog.openyq.top/posts/26027/
+
+https://blog.ichr.me/post/tailscale-mihomo-quantumult-x/
+
+
 ## 贡献指南 🤝
 
 > **Do one thing && Do it well.** Enjoy! 😎
