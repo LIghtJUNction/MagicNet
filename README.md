@@ -12,7 +12,7 @@ A module that's as streamlined as possible, and easy for everyone to understand.
 - 你需要开箱即用，内置5个自动更新的[免费代理](https://github.com/Barabama/FreeNodes)+3个自己填的付费订阅链接:觉得免费不安全请自行删除，更新模块时候会询问你是否覆盖配置（需要重新配置，默认跳过，然后你手动更新配置文件）
 - 大量规则集，自动更新
 - 社区联ban规则集，保护隐私
-- 同时支持2个内核（mihomo+singbox），按需构建模块, 使用kam build，修改环境变量控制构建流程
+- 同时支持2个内核（mihomo+singbox），按需构建模块, 使用kam build，修改环境变量控制构建流程，请耐心等待，目前最新release版本并不支持。
 
 # 推荐项目
 - [yumebox](https://github.com/YumeLira/YumeBox)
