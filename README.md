@@ -17,7 +17,7 @@ kamfw框架改造升级中...
 - 你需要开箱即用，内置5个自动更新的[免费代理](https://github.com/Barabama/FreeNodes)+3个自己填的付费订阅链接:觉得免费不安全请自行删除，更新模块时候会询问你是否覆盖配置（需要重新配置，默认跳过，然后你手动更新配置文件）
 - 大量规则集，自动更新
 - 社区联ban规则集，保护隐私
-- 同时支持2个内核（mihomo+singbox），按需构建模块, 使用kam build，修改环境变量控制构建流程
+- 同时支持2个内核（mihomo+singbox），按需构建模块, 使用kam build，修改环境变量控制构建流程，请耐心等待，目前最新release版本并不支持。
 
 # 推荐项目
 - [yumebox](https://github.com/YumeLira/YumeBox)
@@ -62,6 +62,33 @@ chmod +x kam.sh
 
 - 填入订阅链接即可开始使用
 > /data/adb/modules/MagicNet/.config/mihomo/config.yaml
+
+
+## 必读
+
+1. 短暂关闭
+请在webui界面：配置-关闭tun转发
+2. 关闭
+运行action.sh或者
+pkill -f mihomo
+3. 启动
+运行action.sh或者直接在终端执行mihomo即可
+无需指定配置路径
+4. 通过热点共享普通网络
+关闭tun转发即可
+5. 通过热点共享魔法网络
+开启tun转发，开启允许局域网连接
+其他在设置设置代理为：你的手机局域网IP:端口
+
+比如要代理http流量，linux执行以下命令：
+export http_proxy="局域网IP:7890"
+6. 与其他VPN服务共存问题
+这里有一些博客，可供参考：
+
+https://blog.openyq.top/posts/26027/
+
+https://blog.ichr.me/post/tailscale-mihomo-quantumult-x/
+
 
 ## 贡献指南 🤝
 
