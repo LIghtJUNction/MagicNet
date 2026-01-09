@@ -6,6 +6,11 @@
 主要功能是在安卓设备,以tun模式运行mihomo/sing-box内核
 > 需要root权限
 A module that's as streamlined as possible, and easy for everyone to understand.
+# 当前状态
+
+> 不稳定！
+kamfw框架改造升级中...
+可能得等到明年了
 
 ## 为什么使用本模块
 - 你不需要花哨的UI，因为你不会盯着看吧，你需要的是一个透明的，难以检测的代理服务。而且你要花哨的UI,本模块也提供默认WEBUI和yacd两种选择
@@ -50,6 +55,8 @@ chmod +x kam.sh
 - 安装
 
 > kam install MagicNet.zip
+
+[构建细节](docs/build.md)
 
 ## 使用 🛠️
 
