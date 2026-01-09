@@ -5,8 +5,17 @@ MODDIR=${0%/*}
 
 import __runtime__
 
-import __mihomo__
+kamfw_init_home
+kamfw_init_paths
 
-ask_webui
-
-ask_toggle_mihomo
+if has_command "sing-box"; then
+    import __singbox__
+    singbox_ask_webui
+    ask_toggle_singbox
+elif has_command "mihomo"; then
+    import __mihomo__
+    ask_webui
+    ask_toggle_mihomo
+else
+    abort "No supported kernel found!"
+fi
