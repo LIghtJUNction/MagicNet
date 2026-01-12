@@ -21,6 +21,8 @@ kamfw框架改造升级中...
 
 # 推荐项目
 - [yumebox](https://github.com/YumeLira/YumeBox)
+[新一代代理协议reality节点部署工具](https://github.com/LIghtJUNction/Mimic-Node)
+
 
 ## 特点 ✨
 
