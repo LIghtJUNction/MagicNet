@@ -8,9 +8,8 @@
 A module that's as streamlined as possible, and easy for everyone to understand.
 # 当前状态
 
-> 不稳定！
-kamfw框架改造升级中...
-可能得等到明年了
+> 非活跃状态
+需要使用者反馈 && 催更
 
 ## 为什么使用本模块
 - 你不需要花哨的UI，因为你不会盯着看吧，你需要的是一个透明的，难以检测的代理服务。而且你要花哨的UI,本模块也提供默认WEBUI和yacd两种选择
