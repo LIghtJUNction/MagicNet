@@ -1,123 +1,156 @@
-# [MagicNet](https://github.com/KernelSU-Modules-Repo/MagicNet) < - 稳定版本/模块
-# [MagicMihomo](https://github.com/LIghtJUNction/MagicMihomo) < - 通用/配置
+# MagicNet
 
-![image](https://github.com/user-attachments/assets/f46c5c92-27df-4edd-851d-cae77ebd8540)
+MagicNet 是一个 KAM 构建的 Android root 模块，用于在设备上以 TUN 模式运行 `mihomo` 或 `sing-box`。
 
-主要功能是在安卓设备,以tun模式运行mihomo/sing-box内核
-> 需要root权限
-A module that's as streamlined as possible, and easy for everyone to understand.
-# 当前状态
+> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前 Git 版本支持 mihomo / sing-box 双内核按需构建，Release 以发布页为准。
 
-> Git 版本支持 mihomo / sing-box 双内核按需构建。Release 版本以发布页说明为准。
+## 当前状态
 
-## 为什么使用本模块
-- 你不需要花哨的UI，因为你不会盯着看吧，你需要的是一个透明的，难以检测的代理服务。而且你要花哨的UI,本模块也提供默认WEBUI和yacd两种选择
-- 你需要开箱即用，内置5个自动更新的[免费代理](https://github.com/Barabama/FreeNodes)+3个自己填的付费订阅链接:觉得免费不安全请自行删除，更新模块时候会询问你是否覆盖配置（需要重新配置，默认跳过，然后你手动更新配置文件）
-- 大量规则集，自动更新
-- 社区联ban规则集，保护隐私
-- 同时支持2个内核（mihomo+singbox），按需构建模块，使用 `kam build`，通过 `MAGIC_MIHOMO` / `MAGIC_SINGBOX` 环境变量控制构建流程。
+- `kam build` 已可完整构建模块。
+- 默认同时包含 `mihomo` 和 `sing-box`，可用环境变量关闭任一内核。
+- 已内置 GeoIP / GeoSite 构建下载和配置校验流程。
+- 已修复热点共享场景：启动内核后会自动给热点网卡到 TUN 网卡添加精确转发规则，避免直接清空 Android FORWARD 链。
+- Git 历史已清理，不再保存下载的内核、zip 产物、GeoIP / GeoSite / mmdb 等生成二进制。
 
-# 推荐项目
-- [yumebox](https://github.com/YumeLira/YumeBox)
-- [新一代代理协议reality节点部署工具](https://github.com/LIghtJUNction/Mimic-Node)
+## 功能
 
-
-## 特点 ✨
-
-- **安卓设备使用 tun 模式**
-  Use tun mode on Android devices.
-- **无 DNS 泄露**
-  No DNS leaks.
-- **多规则集内置，使用简单**
-  Multiple rule sets built-in, easy to use.
+- Android TUN 透明代理。
+- mihomo / sing-box 双内核。
+- 内置 mihomo 规则集和 Geo 数据更新。
+- 默认 WebUI 跳转，可在安装时选择。
+- 热点客户端可跟随本机 TUN 代理转发。
 
 ## 安装
 
-- 如果你已经通过cargo 安装了kam（>0.5.17）
+### 使用 kam
+
 ```bash
 kam install LIghtJUNction/MagicNet
 ```
-- 如果你没有安装kam(Termux)
+
+### Termux / 本地构建安装
 
 ```bash
-git clone https://github.com/LIghtJUNction/MagicNet.git && cd MagicNet && git submodule update --init --recursive
+git clone https://github.com/LIghtJUNction/MagicNet.git
+cd MagicNet
+git submodule update --init --recursive
 chmod +x kam.sh
 ./kam.sh
 ```
-> 以上方法安装的均为git版本 非 release版本
 
-- 或者直接下载release发布的版本
+以上方式安装的是 Git 构建版本。
 
-已经上传至ksu-repo
+### Release 包
 
-> kam -S MagicNet # 仅下载
+```bash
+kam -S MagicNet
+kam install MagicNet.zip
+```
 
-- 安装
+## 构建
 
-> kam install MagicNet.zip
+```bash
+git submodule update --init --recursive
+kam build
+```
 
-[构建细节](docs/build.md)
+默认构建两个内核：
 
-## 使用 🛠️
+```bash
+MAGIC_MIHOMO=1 MAGIC_SINGBOX=1 kam build
+```
 
-- 填入订阅链接即可开始使用
-> /data/adb/modules/MagicNet/.config/mihomo/config.yaml
+只构建 mihomo：
 
+```bash
+MAGIC_MIHOMO=1 MAGIC_SINGBOX=0 kam build
+```
 
-## 必读
+只构建 sing-box：
 
-1. 短暂关闭
-请在webui界面：配置-关闭tun转发
-2. 关闭
-运行action.sh或者
-pkill -f mihomo
-3. 启动
-运行action.sh或者直接在终端执行mihomo即可
-无需指定配置路径
-4. 通过热点共享普通网络
-关闭tun转发即可
-5. 通过热点共享魔法网络
-开启tun转发，开启允许局域网连接
-其他在设置设置代理为：你的手机局域网IP:端口
+```bash
+MAGIC_MIHOMO=0 MAGIC_SINGBOX=1 kam build
+```
 
-比如要代理http流量，linux执行以下命令：
-export http_proxy="局域网IP:7890"
-6. 与其他VPN服务共存问题
-这里有一些博客，可供参考：
+构建产物位于：
 
-https://blog.openyq.top/posts/26027/
+```text
+dist/MagicNet.zip
+```
 
-https://blog.ichr.me/post/tailscale-mihomo-quantumult-x/
+## 配置
 
+mihomo 配置：
 
-## 贡献指南 🤝
+```text
+/data/adb/modules/MagicNet/.config/mihomo/config.yaml
+```
 
-> **Do one thing && Do it well.** Enjoy! 😎
+sing-box 配置：
 
-## 复刻指南 
+```text
+/data/adb/modules/MagicNet/.config/sing-box/config.json
+```
 
-项目采用kam构建工具，直接运行工作流即可构建
-如果需要签名，请在仓库设置中配置KAM_PRIVATE_KEY,内容是kernelsu开发者私钥
+安装时不会强制覆盖用户已有配置；需要更新时按安装提示确认。
 
-## 许可证 📄
+## 热点共享
 
-This project is licensed under the GNU General Public License v3.0. See the [LICENSE](MyModule/LICENSE) file for details.
-此项目采用 GNU General Public License v3.0 许可证。详情请参见 [LICENSE](MyModule/LICENSE) 文件。
+MagicNet 默认启用热点转发修复：
 
-## 联系 📬
+```text
+MAGIC_HOTSPOT_FORWARD=1
+```
 
-For further information or queries, you can reach out to [LIghtJUNction](https://github.com/LIghtJUNction).
-如需更多信息或有任何疑问，请联系 [LIghtJUNction](https://github.com/LIghtJUNction)。
+模块会在内核启动后：
 
-## 变更 📝
+- 自动识别 TUN 网卡。
+- 自动识别常见热点网卡。
+- 向 `tetherctrl_FORWARD` 或 `FORWARD` 添加热点到 TUN 的转发规则。
+- 向 `nat POSTROUTING` 添加 TUN 出口 masquerade。
 
-The changelog for this project is available in the [CHANGELOG.md](CHANGELOG.md) file.
-此项目的更新日志可在 [CHANGELOG.md](CHANGELOG.md) 文件中查看。
+如需关闭：
 
-## 引用的项目 
-- [Loyalsoldier
-clash-rules](https://github.com/Loyalsoldier/clash-rules)
+```bash
+MAGIC_HOTSPOT_FORWARD=0
+```
 
+特殊机型可手动指定网卡：
+
+```bash
+MAGIC_HOTSPOT_IFACES="wlan2"
+MAGIC_TUN_IFACES="Meta"
+```
+
+## 工作流
+
+仓库提供两个 GitHub Actions：
+
+- `Validate MagicNet`：校验 `kam.toml`、Shell 脚本、mihomo YAML、sing-box JSON。
+- `Build MagicNet`：初始化子模块、下载构建依赖、执行 `kam build`，并上传 `dist/*.zip` artifact。
+
+工作流不会自动提交、不会自动更新子模块指针，也不会把构建产物写回 Git 历史。需要更新子模块时，请在对应子项目提交后，在父项目显式提交新的 submodule 指针。
+
+手动发布时，在 `Build MagicNet` 工作流里勾选 `release`。签名需要仓库 secret：
+
+```text
+KAM_PRIVATE_KEY
+```
+
+## 子项目
+
+- [MagicMihomo](https://github.com/LIghtJUNction/MagicMihomo)：mihomo 通用配置。
+- [MagicSingBox](https://github.com/LIghtJUNction/MagicSingBox)：sing-box 通用配置。
+- [kamfw](https://github.com/MemDeco-WG/kamfw)：运行时辅助库。
+
+## 相关项目
+
+- [yumebox](https://github.com/YumeLira/YumeBox)
+- [Mimic-Node](https://github.com/LIghtJUNction/Mimic-Node)
+- [Loyalsoldier/clash-rules](https://github.com/Loyalsoldier/clash-rules)
 - [Barabama/FreeNodes](https://github.com/Barabama/FreeNodes)
-
 - [DustinWin/ruleset_geodata](https://github.com/DustinWin/ruleset_geodata)
+
+## 许可证
+
+GPL-3.0，见 [LICENSE](LICENSE)。
