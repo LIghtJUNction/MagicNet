@@ -27,16 +27,19 @@ if [ "${MAGIC_SINGBOX}" -ne 0 ] && has_command "sing-box"; then
     import __singbox__
     if singbox_start; then
         [ -f "${MODDIR}/hotspot-forward.sh" ] && . "${MODDIR}/hotspot-forward.sh" && magicnet_enable_hotspot_forward
+        [ -f "${MODDIR}/vpn-coexist.sh" ] && . "${MODDIR}/vpn-coexist.sh" && magicnet_enable_vpn_coexist
     else
         print "MagicNet: sing-box failed to start; attempting mihomo fallback..."
         if [ "${MAGIC_MIHOMO}" -ne 0 ] && has_command "mihomo"; then
             import __mihomo__
             mihomo_start && [ -f "${MODDIR}/hotspot-forward.sh" ] && . "${MODDIR}/hotspot-forward.sh" && magicnet_enable_hotspot_forward
+            [ -f "${MODDIR}/vpn-coexist.sh" ] && . "${MODDIR}/vpn-coexist.sh" && magicnet_enable_vpn_coexist
         fi
     fi
 elif [ "${MAGIC_MIHOMO}" -ne 0 ] && has_command "mihomo"; then
     import __mihomo__
     mihomo_start && [ -f "${MODDIR}/hotspot-forward.sh" ] && . "${MODDIR}/hotspot-forward.sh" && magicnet_enable_hotspot_forward
+    [ -f "${MODDIR}/vpn-coexist.sh" ] && . "${MODDIR}/vpn-coexist.sh" && magicnet_enable_vpn_coexist
 else
     print "MagicNet: No supported kernel found or starting disabled (mihomo or sing-box)."
 fi
