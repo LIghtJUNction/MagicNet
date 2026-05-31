@@ -24,7 +24,7 @@ jobs:
           submodules: recursive
 
       - name: Setup kam
-        uses: MemDeco-WG/setup-kam@main
+        uses: MemDeco-WG/setup-kam@8bb58b26225064a8d14da7ba9394e9a8c43f5383 # v2
         with:
           github-token: ${{ github.token }}
           enable-cache: 'true'
