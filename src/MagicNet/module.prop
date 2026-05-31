@@ -4,4 +4,4 @@ version=v1.0.34
 versionCode=1766967729827
 author=LIghtJUNction
 description=[MagicNet]:A Magisk module that lets you use the mihomo kernel's TUN mode on Android. Built with KAM.
-updateJson=https://github.com/LIghtJUNction/MagicNet/blob/main/update.json
+updateJson=https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json

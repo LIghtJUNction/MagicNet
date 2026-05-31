@@ -8,6 +8,14 @@ if [ "${KAM_DEBUG:-0}" = "1" ]; then
     set -x
 fi
 
-log_warn " comment out to enable xtask!" && exit 0
+if [ ! -f "$KAM_PROJECT_ROOT/Cargo.toml" ]; then
+    log_info "Cargo.toml not found; skipping xtask"
+    exit 0
+fi
+
+if ! grep -q 'name[[:space:]]*=[[:space:]]*"xtask"' "$KAM_PROJECT_ROOT/Cargo.toml" 2>/dev/null; then
+    log_info "xtask package not configured; skipping xtask"
+    exit 0
+fi
 
 cargo run -p xtask -- build --release

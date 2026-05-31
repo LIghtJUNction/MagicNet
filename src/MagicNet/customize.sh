@@ -3,8 +3,12 @@
 #
 # -----------------------------------------------------------------------------------
 
-SKIPUNZIP=1
-unzip -o "$ZIPFILE" "lib/kamfw/*" -d "$MODPATH" >&2 && . "$MODPATH/lib/kamfw/.kamfwrc" || abort "! .kamfwrc missing"
+export SKIPUNZIP=1
+if unzip -o "$ZIPFILE" "lib/kamfw/*" -d "$MODPATH" >&2 && [ -f "$MODPATH/lib/kamfw/.kamfwrc" ]; then
+  . "$MODPATH/lib/kamfw/.kamfwrc"
+else
+  abort "! .kamfwrc missing"
+fi
 
 import __customize__
 
@@ -66,6 +70,12 @@ set_i18n "GUI_INSTALL_MSG" \
   "en" "For a better experience, please install from the terminal" \
   "ja" "より良い体験のために、端末からインストールしてください" \
   "ko" "더 나은 사용 경험을 원하면 터미널에서 설치하세요"
+
+set_i18n "HOTSPOT_FORWARD_MSG" \
+  "zh" "已启用热点转发修复。可设置 MAGIC_HOTSPOT_FORWARD=0 关闭；特殊机型可用 MAGIC_HOTSPOT_IFACES / MAGIC_TUN_IFACES 指定网卡。" \
+  "en" "Hotspot forwarding fix is enabled. Set MAGIC_HOTSPOT_FORWARD=0 to disable it; use MAGIC_HOTSPOT_IFACES / MAGIC_TUN_IFACES for device-specific interfaces." \
+  "ja" "ホットスポット転送修正が有効です。MAGIC_HOTSPOT_FORWARD=0 で無効化できます。特殊な端末では MAGIC_HOTSPOT_IFACES / MAGIC_TUN_IFACES でインターフェースを指定してください。" \
+  "ko" "핫스팟 포워딩 수정이 활성화되었습니다. MAGIC_HOTSPOT_FORWARD=0 으로 비활성화할 수 있으며, 특수 기기는 MAGIC_HOTSPOT_IFACES / MAGIC_TUN_IFACES 로 인터페이스를 지정하세요."
 # print
 print "$(i18n "USAGE_GUIDE")"
 
@@ -74,16 +84,28 @@ tprint "$(i18n "TERM_INSTALL_MSG")"
 
 # if gui , print
 gprint "$(i18n "GUI_INSTALL_MSG")"
+print "$(i18n "HOTSPOT_FORWARD_MSG")"
 
-import __mihomo__
-ask_webui
+MAGIC_MIHOMO=${MAGIC_MIHOMO:-1}
+MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
+
+if [ "$MAGIC_SINGBOX" != "0" ] && [ -x "${MODPATH}/system/bin/sing-box" ]; then
+  import __singbox__
+  singbox_ask_webui
+elif [ "$MAGIC_MIHOMO" != "0" ] && [ -x "${MODPATH}/system/bin/mihomo" ]; then
+  import __mihomo__
+  ask_webui
+fi
 
 # 设置权限
-set_perm "${MODPATH}/system/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
+[ -f "${MODPATH}/system/bin/mihomo" ] && set_perm "${MODPATH}/system/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
+[ -f "${MODPATH}/system/bin/sing-box" ] && set_perm "${MODPATH}/system/bin/sing-box" 0 0 0700 u:object_r:magisk_file:s0
 
-set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
+[ -f "${MODPATH}/.local/bin/mihomo" ] && set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
+[ -f "${MODPATH}/.local/bin/sing-box" ] && set_perm "${MODPATH}/.local/bin/sing-box" 0 0 0700 u:object_r:magisk_file:s0
 
-confirm_update_file ".config/mihomo/config.yaml"
+[ -f "${MODPATH}/.config/mihomo/config.yaml" ] && confirm_update_file ".config/mihomo/config.yaml"
+[ -f "${MODPATH}/.config/sing-box/config.json" ] && confirm_update_file ".config/sing-box/config.json"
 
 import launcher
 launch url "https://github.com/LIghtJUNction/MagicNet"

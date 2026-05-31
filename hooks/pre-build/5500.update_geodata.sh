@@ -2,9 +2,6 @@
 # shellcheck source=hooks/lib/utils.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 
-# Only run on CI
-is_ci || exit 0
-
 # Ensure gh is available
 require_command gh "gh not installed!"
 
@@ -19,7 +16,9 @@ API_PATH="repos/$REPO/releases/tags/$TAG"
 
 # Destination directory for data and hash files
 DATA_DIR="$KAM_MODULE_ROOT/.config/mihomo"
+HASH_DIR="$KAM_MODULE_ROOT/.local/state/geodata"
 mkdir -p "$DATA_DIR"
+mkdir -p "$HASH_DIR"
 
 # Compute sha256 of a file (portable)
 compute_sha256() {
@@ -182,5 +181,5 @@ else
 fi
 
 # Update the two assets (only download when changed)
-download_if_needed "geoip-all.dat" "$geoip" "$DATA_DIR/GeoIP.dat" "$DATA_DIR/geoip.hash" "$api_json"
-download_if_needed "geosite-all.dat" "$geosite" "$DATA_DIR/GeoSite.dat" "$DATA_DIR/geosite.hash" "$api_json"
+download_if_needed "geoip-all.dat" "$geoip" "$DATA_DIR/GeoIP.dat" "$HASH_DIR/geoip.hash" "$api_json"
+download_if_needed "geosite-all.dat" "$geosite" "$DATA_DIR/GeoSite.dat" "$HASH_DIR/geosite.hash" "$api_json"

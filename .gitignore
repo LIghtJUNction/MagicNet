@@ -1,2 +1,5 @@
 dist
 .env
+src/MagicNet/.local/
+src/MagicNet/mihomo.version
+src/MagicNet/singbox.version

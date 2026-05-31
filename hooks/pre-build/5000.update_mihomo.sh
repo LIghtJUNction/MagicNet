@@ -15,6 +15,36 @@ require_command gh "github-cli not found!"
 require_command gunzip "gunzip not found!"
 require_command curl "curl not found!"
 
+# 计算文件 sha256（跨平台）
+compute_sha256() {
+    local f="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$f" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$f" | awk '{print $1}'
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$f" | awk '{print $2}'
+    else
+        echo ""
+    fi
+}
+
+get_remote_hash() {
+    local asset="$1"
+    local digest
+
+    digest=$(gh release view "$LATEST_TAG" --repo MetaCubeX/mihomo --json assets --jq ".assets[] | select(.name==\"$asset\") | .digest" 2>/dev/null || true)
+    if [ -n "$digest" ] && [ "$digest" != "null" ]; then
+        echo "${digest#sha256:}"
+        return 0
+    fi
+
+    gh api "repos/MetaCubeX/mihomo/releases/tags/$LATEST_TAG" 2>/dev/null |
+        grep -A 20 "\"name\":[[:space:]]*\"$asset\"" |
+        grep -m1 '"digest"' |
+        sed -E 's/.*"digest":[[:space:]]*"(sha256:)?([0-9a-fA-F]+)".*/\2/' || true
+}
+
 # 路径定义
 VERSION_FILE="${KAM_MODULE_ROOT}/mihomo.version"
 TARGET_DIR="${KAM_MODULE_ROOT}/.local/bin"
@@ -54,12 +84,28 @@ FILENAME="mihomo-${ARCH}-${LATEST_TAG}.gz"
 TEMP_BIN="mihomo-${ARCH}-${LATEST_TAG}"
 
 DOWNLOAD_URL="https://github.com/MetaCubeX/mihomo/releases/download/${LATEST_TAG}/${FILENAME}"
-log_info $DOWNLOAD_URL
+log_info "$DOWNLOAD_URL"
 log_info "发现新版本，准备下载: $FILENAME"
 
 # 5. 下载并安装
 if curl -L -o "${KAM_MODULE_ROOT}/${FILENAME}" "$DOWNLOAD_URL"; then
     log_info "下载成功，正在处理文件..."
+
+    REMOTE_HASH=$(get_remote_hash "$FILENAME" 2>/dev/null || true)
+    if [ -n "$REMOTE_HASH" ]; then
+        LOCAL_HASH=$(compute_sha256 "${KAM_MODULE_ROOT}/${FILENAME}" 2>/dev/null || true)
+        if [ -z "$LOCAL_HASH" ]; then
+            log_warn "无法计算本地文件 sha256，跳过校验"
+        elif [ "$(echo "$LOCAL_HASH" | tr '[:upper:]' '[:lower:]')" != "$(echo "$REMOTE_HASH" | tr '[:upper:]' '[:lower:]')" ]; then
+            rm -f "${KAM_MODULE_ROOT}/${FILENAME}" 2>/dev/null || true
+            log_error "错误：下载文件 sha256 校验失败 (local=$LOCAL_HASH remote=$REMOTE_HASH)"
+            exit 1
+        else
+            log_info "sha256 校验通过"
+        fi
+    else
+        log_warn "未获取到远端 sha256，跳过校验"
+    fi
 
     # 6. 解压 (gunzip 会生成 ${TEMP_BIN})
     if gunzip -f "${KAM_MODULE_ROOT}/${FILENAME}"; then
