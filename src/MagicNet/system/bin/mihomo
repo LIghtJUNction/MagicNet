@@ -1,0 +1,11 @@
+#!/system/bin/sh
+
+export HOME=/data/adb/modules/MagicNet
+export PATH="$HOME/.local/bin:$PATH"
+
+if [ -x "$HOME/.local/bin/mihomo" ]; then
+  exec "$HOME/.local/bin/mihomo" "$@"
+else
+  echo "mihomo: executable not found at $HOME/.local/bin/mihomo" >&2
+  exit 127
+fi

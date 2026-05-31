@@ -1,0 +1,11 @@
+#!/system/bin/sh
+
+export HOME=/data/adb/modules/MagicNet
+export PATH="$HOME/.local/bin:$PATH"
+
+if [ -x "$HOME/.local/bin/sing-box" ]; then
+  exec "$HOME/.local/bin/sing-box" "$@"
+else
+  echo "sing-box: executable not found at $HOME/.local/bin/sing-box" >&2
+  exit 127
+fi
