@@ -19,6 +19,7 @@ MagicNet 是一个 KAM 构建的 Android root 模块，用于在设备上以 TUN
 - 内置 mihomo 规则集和 Geo 数据更新。
 - 默认 WebUI 跳转，可在安装时选择。
 - 热点客户端可跟随本机 TUN 代理转发。
+- 可选 root VPN 共存模式，便于与 Tailscale、WireGuard、OpenVPN、ZeroTier、WARP 等隧道同时运行。
 
 ## 安装
 
@@ -121,6 +122,32 @@ MAGIC_HOTSPOT_FORWARD=0
 MAGIC_HOTSPOT_IFACES="wlan2"
 MAGIC_TUN_IFACES="Meta"
 ```
+
+## VPN 共存
+
+Android 普通 `VpnService` 同一时间通常只能有一个前台 VPN；MagicNet 是 root 模块，核心问题变成路由、DNS 劫持和包名排除是否互相抢流量。
+
+默认配置已在 mihomo / sing-box TUN 中排除常见 VPN App 包名，避免其它 VPN App 的握手和控制连接被 MagicNet 再次接管。已包含：
+
+```text
+Tailscale / WireGuard / OpenVPN / ZeroTier / Cloudflare WARP / sing-box for Android / NekoBox / v2rayNG / Clash
+```
+
+需要 root 路由共存时启用：
+
+```bash
+MAGIC_VPN_COEXIST=1
+```
+
+开启后模块会在启动内核后自动识别其它 `tun*`、`wg*`、`tailscale*`、`zt*`、`warp*` 类接口，并给这些接口地址补充 `ip rule ... lookup main`，让其它 VPN 的 overlay 地址继续走系统主路由表，不被 MagicNet 的自动路由吞掉。
+
+特殊机型可显式指定外部 VPN 网卡：
+
+```bash
+MAGIC_VPN_COEXIST_IFACES="tailscale0 wg0"
+```
+
+如果想让 sing-box TUN 反过来走 Android 系统 VPN，sing-box 2026 当前文档要求使用 `route.override_android_vpn`；这属于链式代理模式，和默认的“互相旁路共存”不同，建议单独按设备网络拓扑调整。
 
 ## 工作流
 
