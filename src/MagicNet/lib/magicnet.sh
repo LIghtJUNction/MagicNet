@@ -222,6 +222,20 @@ magicnet_after_kernel_start() {
     magicnet_enable_vpn_coexist
 }
 
+magicnet_refresh_status() {
+    if magicnet_cmd_exists sing-box; then
+        import __singbox__
+        is_singbox_running >/dev/null 2>&1 && return 0
+    fi
+
+    if magicnet_cmd_exists mihomo; then
+        import __mihomo__
+        is_mihomo_running >/dev/null 2>&1 && return 0
+    fi
+
+    config set override.description "[MagicNet]: No kernel running" 2>/dev/null || true
+}
+
 magicnet_start_mihomo() {
     [ "${MAGIC_MIHOMO:-1}" -ne 0 ] || return 1
     magicnet_cmd_exists mihomo || return 1
@@ -260,6 +274,7 @@ magicnet_action() {
         import __singbox__
         singbox_ask_webui
         ask_toggle_singbox
+        magicnet_refresh_status
         magicnet_after_kernel_start
         return 0
     fi
@@ -268,6 +283,7 @@ magicnet_action() {
         import __mihomo__
         ask_webui
         ask_toggle_mihomo
+        magicnet_refresh_status
         magicnet_after_kernel_start
         return 0
     fi
