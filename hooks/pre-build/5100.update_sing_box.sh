@@ -100,6 +100,7 @@ if [ -z "$LATEST_TAG" ]; then
 fi
 
 log_info "远程最新版本: $LATEST_TAG"
+TAG_STRIP="${LATEST_TAG#v}"
 
 # 3. 比对版本
 if [ "$CURRENT_VERSION" = "$LATEST_TAG" ]; then

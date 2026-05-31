@@ -59,7 +59,11 @@ Built with [Kam](https://github.com/MemDeco-WG/Kam)
 EOF
 )
 printf "%s\n" "$RELEASE_NOTES" > "$TMP_CHANGELOG"
-log_info "打包以下文件：$(ls $DIST)"
+if [ -d "$DIST" ]; then
+    log_info "打包以下文件：$(ls "$DIST")"
+else
+    log_warn "Dist directory not found: $DIST"
+fi
 # Decide which repository to use for the release.
 # Priority:
 # 1. GITHUB_REPOSITORY (set in GitHub Actions) - preferred when present

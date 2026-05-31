@@ -8,15 +8,14 @@
 A module that's as streamlined as possible, and easy for everyone to understand.
 # 当前状态
 
-> 非活跃状态
-需要使用者反馈 && 催更
+> Git 版本支持 mihomo / sing-box 双内核按需构建。Release 版本以发布页说明为准。
 
 ## 为什么使用本模块
 - 你不需要花哨的UI，因为你不会盯着看吧，你需要的是一个透明的，难以检测的代理服务。而且你要花哨的UI,本模块也提供默认WEBUI和yacd两种选择
 - 你需要开箱即用，内置5个自动更新的[免费代理](https://github.com/Barabama/FreeNodes)+3个自己填的付费订阅链接:觉得免费不安全请自行删除，更新模块时候会询问你是否覆盖配置（需要重新配置，默认跳过，然后你手动更新配置文件）
 - 大量规则集，自动更新
 - 社区联ban规则集，保护隐私
-- 同时支持2个内核（mihomo+singbox），按需构建模块, 使用kam build，修改环境变量控制构建流程，请耐心等待，目前最新release版本并不支持。
+- 同时支持2个内核（mihomo+singbox），按需构建模块，使用 `kam build`，通过 `MAGIC_MIHOMO` / `MAGIC_SINGBOX` 环境变量控制构建流程。
 
 # 推荐项目
 - [yumebox](https://github.com/YumeLira/YumeBox)
