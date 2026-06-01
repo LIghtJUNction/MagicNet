@@ -837,6 +837,7 @@ magicnet_singbox_restart_if_running() {
         done
         sleep 1
     fi
+    ip link delete magicnet0 2>/dev/null || true
     ip link delete tun0 2>/dev/null || true
 
     _config_file=$(magicnet_singbox_subscription_config_file)

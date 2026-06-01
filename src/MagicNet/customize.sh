@@ -80,10 +80,10 @@ set_i18n "HOTSPOT_FORWARD_MSG" \
   "ko" "핫스팟 포워딩 수정이 활성화되었습니다. MAGIC_HOTSPOT_FORWARD=0 으로 비활성화할 수 있으며, 특수 기기는 MAGIC_HOTSPOT_IFACES / MAGIC_TUN_IFACES 로 인터페이스를 지정하세요."
 
 set_i18n "VPN_COEXIST_MSG" \
-  "zh" "VPN 共存模式默认关闭。需要与其它 root/VPN 隧道共存时可设置 MAGIC_VPN_COEXIST=1；特殊机型可用 MAGIC_VPN_COEXIST_IFACES 指定外部 VPN 网卡。" \
-  "en" "VPN coexistence mode is disabled by default. Set MAGIC_VPN_COEXIST=1 when sharing routes with other root/VPN tunnels; use MAGIC_VPN_COEXIST_IFACES for device-specific external VPN interfaces." \
-  "ja" "VPN 共存モードは既定で無効です。他の root/VPN トンネルと経路を共有する場合は MAGIC_VPN_COEXIST=1 を設定してください。特殊な端末では MAGIC_VPN_COEXIST_IFACES で外部 VPN インターフェースを指定できます。" \
-  "ko" "VPN 공존 모드는 기본적으로 비활성화되어 있습니다. 다른 root/VPN 터널과 라우팅을 공유하려면 MAGIC_VPN_COEXIST=1 을 설정하세요. 특수 기기는 MAGIC_VPN_COEXIST_IFACES 로 외부 VPN 인터페이스를 지정할 수 있습니다."
+  "zh" "已启用 VPN 共存模式。可设置 MAGIC_VPN_COEXIST=0 关闭；特殊机型可用 MAGIC_VPN_COEXIST_IFACES 指定外部 VPN 网卡。" \
+  "en" "VPN coexistence mode is enabled. Set MAGIC_VPN_COEXIST=0 to disable it; use MAGIC_VPN_COEXIST_IFACES for device-specific external VPN interfaces." \
+  "ja" "VPN 共存モードが有効です。MAGIC_VPN_COEXIST=0 で無効化できます。特殊な端末では MAGIC_VPN_COEXIST_IFACES で外部 VPN インターフェースを指定できます。" \
+  "ko" "VPN 공존 모드가 활성화되었습니다. MAGIC_VPN_COEXIST=0 으로 비활성화할 수 있으며, 특수 기기는 MAGIC_VPN_COEXIST_IFACES 로 외부 VPN 인터페이스를 지정하세요."
 
 set_i18n "DISABLE_SINGBOX_ON_INSTALL" \
   "zh" "是否禁用 sing-box 内核？" \

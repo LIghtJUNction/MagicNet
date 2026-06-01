@@ -51,7 +51,7 @@ magicnet_collect_tun_ifaces() {
     [ -n "$_mihomo_tun" ] && _magicnet_tun_ifaces="$_magicnet_tun_ifaces $_mihomo_tun"
     [ -n "$_singbox_tun" ] && _magicnet_tun_ifaces="$_magicnet_tun_ifaces $_singbox_tun"
 
-    _magicnet_tun_ifaces="$_magicnet_tun_ifaces Meta mihoyo utun tun0"
+    _magicnet_tun_ifaces="$_magicnet_tun_ifaces Meta mihoyo utun magicnet0"
     for _iface in $_magicnet_tun_ifaces; do
         magicnet_iface_exists "$_iface" && printf '%s\n' "$_iface"
     done | awk '!seen[$0]++'
@@ -181,7 +181,7 @@ magicnet_ip_rule_ensure() {
 }
 
 magicnet_enable_vpn_coexist() {
-    [ "${MAGIC_VPN_COEXIST:-0}" = "1" ] || return 0
+    [ "${MAGIC_VPN_COEXIST:-1}" = "1" ] || return 0
 
     if ! magicnet_cmd_exists ip; then
         magicnet_warn "ip command not found; VPN coexistence rules skipped"
@@ -196,10 +196,13 @@ magicnet_enable_vpn_coexist() {
         return 0
     fi
 
-    _priority4=${MAGIC_VPN_COEXIST_RULE_PRIORITY4:-10200}
-    _priority6=${MAGIC_VPN_COEXIST_RULE_PRIORITY6:-10250}
+    _priority4=${MAGIC_VPN_COEXIST_RULE_PRIORITY4:-8900}
+    _priority6=${MAGIC_VPN_COEXIST_RULE_PRIORITY6:-8950}
 
     for _iface in $_external_ifaces; do
+        magicnet_ip_rule_ensure "$_priority4" iif "$_iface" lookup main
+        magicnet_ip_rule_ensure "$_priority6" iif "$_iface" lookup main
+
         ip -o -4 addr show dev "$_iface" 2>/dev/null | while read -r _line; do
             _cidr=$(printf '%s\n' "$_line" | awk '{print $4}')
             [ -n "$_cidr" ] || continue
