@@ -99,7 +99,14 @@ sing-box 订阅链接：
 /data/adb/modules/MagicNet/.config/sing-box/subscription.url
 ```
 
-在 `subscription.url` 第一行填入 Clash / Mihomo 订阅链接后，执行模块 `action.sh`，选择 `更新 sing-box 订阅节点`。MagicNet 会下载订阅，提取常见 Clash YAML `proxies` 节点，转换为 sing-box `outbounds`，并保留原有 TUN、DNS、路由和 Clash API 配置。当前自动导入支持常见 `ss`、`vmess`、`vless`、`trojan`、`hysteria2` 节点；不支持的节点会跳过并显示数量。
+在 `subscription.url` 第一行填入订阅链接后，执行模块 `action.sh`，选择 `更新 sing-box 订阅节点`。MagicNet 会下载订阅，转换为 sing-box `outbounds`，并保留原有 TUN、DNS、路由和 Clash API 配置。
+
+当前自动导入支持两类订阅：
+
+- Clash / Mihomo YAML：从 `proxies` 读取 `ss`、`vmess`、`vless`、`trojan`、`hysteria2`。
+- 通用分享链接订阅：支持明文或 base64 编码的 `vless://`、`hysteria2://` 链接。
+
+不支持的节点会跳过并显示数量。下载订阅有明确超时；如果下载失败但本地已有 `subscription.yaml` 缓存，会使用缓存继续导入。
 
 默认控制端：
 
@@ -124,6 +131,78 @@ sing-box 使用 `experimental.clash_api` 提供 Clash API 兼容控制端，方�
 ```
 
 该文件存在时，开机启动、`action.sh` 和安装阶段 WebUI 选择都会跳过 sing-box。
+
+## 技术架构
+
+```text
+Android boot / action.sh
+        |
+        v
++------------------+
+| kamfw runtime    |
+| phase dispatcher |
++------------------+
+        |
+        v
++---------------------------+
+| MagicNet lifecycle        |
+| - choose sing-box first   |
+| - fallback to mihomo      |
+| - refresh description     |
+| - apply network helpers   |
++---------------------------+
+        |
+        +---------------------------+
+        |                           |
+        v                           v
++------------------+        +------------------+
+| sing-box core    |        | mihomo core      |
+| TUN + Clash API  |        | TUN + Clash API  |
+| :7892 / :9090    |        | fallback kernel  |
++------------------+        +------------------+
+        |                           |
+        +-------------+-------------+
+                      v
+              Android routing
+                      |
+        +-------------+-------------+
+        |                           |
+        v                           v
+  hotspot helper              VPN coexist helper
+  iptables/NAT                ip rule/main table
+```
+
+启动策略：
+
+- 默认优先启动 sing-box。
+- sing-box 不存在、被 `.disable_sing_box` 禁用或启动失败时，自动尝试 mihomo fallback。
+- 两个内核不会默认同时接管 TUN，避免路由、DNS 和透明代理互相抢流量。
+- `action.sh` 可以手动更新 sing-box 订阅、设置 WebUI、切换内核启动/停止并刷新模块描述。
+
+## 网络拓扑
+
+基础拓扑：
+
+```text
+App traffic
+    |
+    v
+Android kernel routing
+    |
+    v
+MagicNet TUN interface
+    |
+    v
+sing-box / mihomo rule engine
+    |
+    +--> DIRECT --> wlan0 / rmnet_data*
+    |
+    +--> PROXY  --> remote proxy node
+    |
+    +--> BLOCK  --> reject/drop
+```
+
+局域网、热点、VPN 这类特殊流量不会简单粗暴全塞进代理。MagicNet 会尽量保持系统原有链路可用，只在需要时补精确规则。
 
 ## 热点共享
 
@@ -153,6 +232,37 @@ MAGIC_HOTSPOT_IFACES="wlan2"
 MAGIC_TUN_IFACES="Meta"
 ```
 
+### 场景一：开启 MagicNet，同时开启手机热点
+
+真实链路通常是：
+
+```text
+Laptop / tablet
+    |
+    | Wi-Fi hotspot
+    v
+Android hotspot iface
+ap0 / wlan1 / swlan0
+    |
+    | FORWARD accept
+    v
+MagicNet TUN
+tun0 / Meta
+    |
+    +--> DIRECT: LAN/private/system traffic
+    |
+    +--> PROXY: selected remote node
+```
+
+没有热点修复时，Android 的 `tetherctrl_FORWARD` 可能不允许热点客户端进入 TUN，表现为手机自己能代理，但电脑连热点不能代理。MagicNet 启动内核后会识别热点网卡和 TUN 网卡，只补热点到 TUN 的转发和 NAT 规则，不清空系统链。
+
+如果某台设备热点网卡命名特殊，手动指定：
+
+```bash
+MAGIC_HOTSPOT_IFACES="swlan0"
+MAGIC_TUN_IFACES="tun0"
+```
+
 ## VPN 共存
 
 Android 普通 `VpnService` 同一时间通常只能有一个前台 VPN；MagicNet 是 root 模块，核心问题变成路由、DNS 劫持和包名排除是否互相抢流量。
@@ -178,6 +288,35 @@ MAGIC_VPN_COEXIST_IFACES="tailscale0 wg0"
 ```
 
 如果想让 sing-box TUN 反过来走 Android 系统 VPN，sing-box 2026 当前文档要求使用 `route.override_android_vpn`；这属于链式代理模式，和默认的“互相旁路共存”不同，建议单独按设备网络拓扑调整。
+
+### 场景二：MagicNet 开启时，同时开启 VPN 软件
+
+典型例子：手机同时运行 MagicNet 和 Tailscale。
+
+```text
+Normal apps
+    |
+    v
+MagicNet TUN
+    |
+    +--> proxy/direct by MagicNet rules
+
+Tailscale app / control traffic
+    |
+    | excluded package
+    v
+Android main route
+    |
+    v
+tailscale0
+    |
+    v
+Tailnet peers
+```
+
+默认配置会排除常见 VPN App 包名，避免 VPN App 的握手连接被 MagicNet 再代理一次。启用 `MAGIC_VPN_COEXIST=1` 后，MagicNet 会扫描外部 VPN 网卡，例如 `tailscale0`、`wg0`、`tun0`、`warp0`，并为这些网卡地址补 `ip rule ... lookup main`，让 overlay 网络继续按 VPN 软件自己的路由走。
+
+如果你的目标是“MagicNet 的代理出口再走另一个 VPN”，那是链式代理，不是默认共存。此时需要单独设计路由，例如 sing-box 的 `route.override_android_vpn` 或内核级策略路由。
 
 ## 工作流
 
@@ -210,4 +349,4 @@ KAM_PRIVATE_KEY
 
 ## 许可证
 
-GPL-3.0，见 [LICENSE](LICENSE)。
+MIT，见 [LICENSE](LICENSE)。
