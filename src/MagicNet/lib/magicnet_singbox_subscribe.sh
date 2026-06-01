@@ -526,8 +526,8 @@ magicnet_singbox_build_outbounds_file() {
         printf '    {\n'
         printf '      "type": "selector",\n'
         printf '      "tag": "final",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
+        printf '      "outbounds": ["direct", "proxy", "block"],\n'
+        printf '      "default": "direct"\n'
         printf '    }'
         _nodes=$(sed 's/^\[//; s/\]$//' "${_out_file}.nodes")
         if [ -n "$_nodes" ]; then
