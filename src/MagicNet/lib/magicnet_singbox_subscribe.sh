@@ -23,6 +23,49 @@ magicnet_json_array_csv() {
     printf ']'
 }
 
+magicnet_selector_tags_json() {
+    _tags="$1"
+    _fallback="$2"
+    _seen=""
+    _first=1
+    printf '['
+    printf '%s\n' "$_tags" | while IFS= read -r _tag; do
+        [ -n "$_tag" ] || continue
+        [ "$_first" -eq 1 ] || printf ', '
+        printf '"%s"' "$(magicnet_json_escape "$_tag")"
+        _first=0
+    done
+    _seen=$(printf '%s\n%s\n%s\n' "$_tags" direct block)
+    if [ -n "$_fallback" ] && ! printf '%s\n' "$_seen" | grep -F -x "$_fallback" >/dev/null 2>&1; then
+        [ -n "$_tags" ] && printf ', '
+        printf '"%s", ' "$(magicnet_json_escape "$_fallback")"
+    else
+        [ -n "$_tags" ] && printf ', '
+    fi
+    printf '"direct", "block"]'
+}
+
+magicnet_selector_default_tag() {
+    _tags="$1"
+    _fallback="$2"
+    _first=$(printf '%s\n' "$_tags" | awk 'NF{print; exit}')
+    printf '%s\n' "${_first:-$_fallback}"
+}
+
+magicnet_emit_selector_json() {
+    _tag="$1"
+    _tags="$2"
+    _fallback="${3:-direct}"
+    printf '    {\n'
+    printf '      "type": "selector",\n'
+    printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_tag")"
+    printf '      "outbounds": '
+    magicnet_selector_tags_json "$_tags" "$_fallback"
+    printf ',\n'
+    printf '      "default": "%s"\n' "$(magicnet_json_escape "$(magicnet_selector_default_tag "$_tags" "$_fallback")")"
+    printf '    }'
+}
+
 magicnet_uri_query_value() {
     _key="$1"
     _query="$2"
@@ -40,12 +83,94 @@ magicnet_b64_decode() {
     printf '%s' "$_value" | base64 -d 2>/dev/null
 }
 
+magicnet_percent_decode() {
+    _value="$1"
+    _out=""
+    while [ -n "$_value" ]; do
+        case "$_value" in
+        %??*)
+            _hex=${_value#%}
+            _hex=${_hex%"${_hex#??}"}
+            case "$_hex" in
+            *[!0-9A-Fa-f]*)
+                _out="${_out}%"
+                _value=${_value#%}
+                ;;
+            *)
+                _out="${_out}\\x${_hex}"
+                _value=${_value#???}
+                ;;
+            esac
+            ;;
+        +*)
+            _out="${_out} "
+            _value=${_value#?}
+            ;;
+        *)
+            _out="${_out}${_value%"${_value#?}"}"
+            _value=${_value#?}
+            ;;
+        esac
+    done
+    printf '%b\n' "$_out"
+}
+
 magicnet_share_link_tag() {
     _link="$1"
     _fallback="$2"
     _tag=$(printf '%s' "$_link" | sed -n 's/.*#//p')
     [ "$_tag" != "$_link" ] && [ -n "$_tag" ] || _tag="$_fallback"
+    _tag=$(magicnet_percent_decode "$_tag")
     printf '%s\n' "$_tag"
+}
+
+magicnet_tag_matches_any() {
+    _tag="$1"
+    shift
+    for _needle in "$@"; do
+        printf '%s' "$_tag" | grep -F "$_needle" >/dev/null 2>&1 && return 0
+    done
+    return 1
+}
+
+magicnet_append_group_tag() {
+    _var="$1"
+    _tag="$2"
+    eval "_old=\${$_var:-}"
+    if [ -n "$_old" ]; then
+        printf '%s\n' "$_old" | grep -F -x "$_tag" >/dev/null 2>&1 && return 0
+        eval "$_var=\$(printf '%s\n%s' \"\$_old\" \"\$_tag\")"
+    else
+        eval "$_var=\$_tag"
+    fi
+}
+
+magicnet_singbox_build_region_groups() {
+    _tags_file="$1"
+    _all=""
+    _hk=""
+    _jp=""
+    _us=""
+    _sg=""
+    _tw=""
+    _uk=""
+    _free=""
+    _download=""
+    _iepl=""
+
+    while IFS= read -r _tag || [ -n "$_tag" ]; do
+        [ -n "$_tag" ] || continue
+        magicnet_append_group_tag _all "$_tag"
+        magicnet_tag_matches_any "$_tag" "香港" "港" "HK" "Hong" "hong" && magicnet_append_group_tag _hk "$_tag"
+        magicnet_tag_matches_any "$_tag" "日本" "日" "JP" "Japan" "japan" && magicnet_append_group_tag _jp "$_tag"
+        magicnet_tag_matches_any "$_tag" "美国" "美" "US" "USA" "United States" "America" && magicnet_append_group_tag _us "$_tag"
+        magicnet_tag_matches_any "$_tag" "新加坡" "狮城" "SG" "Singapore" "singapore" && magicnet_append_group_tag _sg "$_tag"
+        magicnet_tag_matches_any "$_tag" "台湾" "台灣" "TW" "Taiwan" "taiwan" && magicnet_append_group_tag _tw "$_tag"
+        magicnet_tag_matches_any "$_tag" "英国" "英國" "UK" "GB" "Britain" "London" && magicnet_append_group_tag _uk "$_tag"
+        magicnet_tag_matches_any "$_tag" "免费" "Free" "free" && magicnet_append_group_tag _free "$_tag"
+        magicnet_tag_matches_any "$_tag" "下载" "download" "Download" "x0.01" && magicnet_append_group_tag _download "$_tag"
+        magicnet_tag_matches_any "$_tag" "IEPL" "iepl" && magicnet_append_group_tag _iepl "$_tag"
+    done <"$_tags_file"
 }
 
 if ! command -v error >/dev/null 2>&1; then
@@ -309,6 +434,7 @@ magicnet_singbox_emit_node_json() {
     [ -n "$_server" ] || return 1
     [ -n "$_port" ] || return 1
 
+    _name=$(magicnet_percent_decode "$_name")
     _name=$(magicnet_json_escape "$_name")
     _server=$(magicnet_json_escape "$_server")
 
@@ -535,138 +661,67 @@ magicnet_singbox_build_outbounds_file() {
         fi
     done
     printf ']' >>"${_out_file}.nodes"
+    magicnet_singbox_build_region_groups "$_tags_file"
 
     {
         printf '  "outbounds": [\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "proxy",\n'
-        printf '      "outbounds": ['
-        _first=1
-        while IFS= read -r _tag; do
-            [ -n "$_tag" ] || continue
-            [ "$_first" -eq 1 ] || printf ', '
-            printf '"%s"' "$(magicnet_json_escape "$_tag")"
-            _first=0
-        done <"$_tags_file"
-        [ "$_first" -eq 1 ] || printf ', '
-        printf '"direct", "block"],\n'
-        printf '      "default": "%s"\n' "$(magicnet_json_escape "${_first_tag:-direct}")"
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "select",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "lan",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "ad-block",\n'
-        printf '      "outbounds": ["block", "direct", "proxy"],\n'
-        printf '      "default": "block"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "cn-direct",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "apple-cn",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "microsoft-cn",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "google-cn",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "icloud",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "bing",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "network-test",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "ai-proxy",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "proxy-rule",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "dev-proxy",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "social-proxy",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "download-direct",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "media-proxy",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "game-proxy",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "telegram-proxy",\n'
-        printf '      "outbounds": ["proxy", "direct", "block"],\n'
-        printf '      "default": "proxy"\n'
-        printf '    },\n'
-        printf '    {\n'
-        printf '      "type": "selector",\n'
-        printf '      "tag": "final",\n'
-        printf '      "outbounds": ["direct", "proxy", "block"],\n'
-        printf '      "default": "direct"\n'
-        printf '    }'
+        magicnet_emit_selector_json "proxy" "$_all" "$_first_tag"
+        printf ',\n'
+        magicnet_emit_selector_json "select" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "tw" "iepl" "free" "download" "direct")" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "hk" "$_hk" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "jp" "$_jp" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "us" "$_us" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "sg" "$_sg" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "tw" "$_tw" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "uk" "$_uk" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "iepl" "$_iepl" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "free" "$_free" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "download" "$_download" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "lan" "" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "ad-block" "" "block"
+        printf ',\n'
+        magicnet_emit_selector_json "cn-direct" "" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "apple-cn" "" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "microsoft-cn" "" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "google-cn" "" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "icloud" "" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "bing" "$_all" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "network-test" "" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "ai-proxy" "$_all" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "proxy-rule" "$_all" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "dev-proxy" "$_all" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "social-proxy" "$_all" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "download-direct" "$_download" "direct"
+        printf ',\n'
+        magicnet_emit_selector_json "media-proxy" "$_all" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "game-proxy" "$_all" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "telegram-proxy" "$_all" "proxy"
+        printf ',\n'
+        magicnet_emit_selector_json "final" "" "direct"
         _nodes=$(sed 's/^\[//; s/\]$//' "${_out_file}.nodes")
         if [ -n "$_nodes" ]; then
             printf ',\n    %s' "$_nodes"
