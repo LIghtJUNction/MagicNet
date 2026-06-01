@@ -61,7 +61,7 @@ jobs:
             ${{ runner.os }}-rust-
 
       - name: Setup kam
-        uses: MemDeco-WG/setup-kam@v2
+        uses: MemDeco-WG/setup-kam@v3
         with:
           github-token: ${{ github.token }}
           enable-cache: 'true'
