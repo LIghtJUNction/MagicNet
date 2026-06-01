@@ -357,6 +357,59 @@ magicnet_action_toggle_mihomo() {
     magicnet_after_kernel_start
 }
 
+magicnet_diag_http() {
+    _name="$1"
+    _url="$2"
+    _proxy="${3:-}"
+    if [ -n "$_proxy" ]; then
+        _result=$(curl -fsSI --max-time 10 -x "$_proxy" "$_url" 2>&1 | head -n 1)
+    else
+        _result=$(curl -fsSI --max-time 10 "$_url" 2>&1 | head -n 1)
+    fi
+    [ -n "$_result" ] || _result="no response"
+    panel_row "$_name" "$_result"
+}
+
+magicnet_diag_proxy_now() {
+    _name="$1"
+    _api=$(curl -sS --max-time 3 "http://127.0.0.1:9090/proxies/${_name}" 2>/dev/null || true)
+    _now=$(printf '%s' "$_api" | sed -n 's/.*"now":[[:space:]]*"\([^"]*\)".*/\1/p')
+    [ -n "$_now" ] || _now="unavailable"
+    panel_row "$_name" "$_now"
+}
+
+magicnet_action_diagnose() {
+    panel "MagicNet Diagnose"
+    if magicnet_cmd_exists sing-box; then
+        import __singbox__
+        panel_row "sing-box" "$(magicnet_status_text is_singbox_running)"
+    else
+        panel_row "sing-box" "Not installed"
+    fi
+    if magicnet_cmd_exists mihomo; then
+        import __mihomo__
+        panel_row "mihomo" "$(magicnet_status_text is_mihomo_running)"
+    else
+        panel_row "mihomo" "Not installed"
+    fi
+    panel_row "sing-box API" "$(curl -sS --max-time 3 http://127.0.0.1:9090/proxies >/dev/null 2>&1 && printf OK || printf FAIL)"
+    magicnet_diag_proxy_now proxy
+    magicnet_diag_proxy_now ai-proxy
+    magicnet_diag_proxy_now final
+    magicnet_diag_http "Baidu" "https://www.baidu.com"
+    magicnet_diag_http "Google" "https://www.google.com" "http://127.0.0.1:7892"
+    magicnet_diag_http "ChatGPT" "https://chatgpt.com" "http://127.0.0.1:7892"
+    panel_end
+
+    if [ -f "${MODDIR}/.log/sing-box.log" ]; then
+        panel "sing-box recent errors"
+        tail -n 80 "${MODDIR}/.log/sing-box.log" 2>/dev/null |
+            grep -Ei 'error|fatal|warn|chatgpt|openai|dns|timeout|reset|forbidden' |
+            tail -n 20 || true
+        panel_end
+    fi
+}
+
 set_i18n "MAGICNET_ACTION_MENU" \
     "zh" "MagicNet 操作菜单" \
     "en" "MagicNet action menu" \
@@ -392,6 +445,11 @@ set_i18n "MAGICNET_REFRESH_STATUS" \
     "en" "Refresh module status description" \
     "ja" "モジュール状態説明を更新" \
     "ko" "모듈 상태 설명 새로고침"
+set_i18n "MAGICNET_DIAGNOSE" \
+    "zh" "诊断网络状态" \
+    "en" "Diagnose network status" \
+    "ja" "ネットワーク状態を診断" \
+    "ko" "네트워크 상태 진단"
 set_i18n "MAGICNET_EXIT" \
     "zh" "退出" \
     "en" "Exit" \
@@ -411,6 +469,8 @@ magicnet_action() {
         'magicnet_action_mihomo_webui' \
         "MAGICNET_TOGGLE_MIHOMO" \
         'magicnet_action_toggle_mihomo' \
+        "MAGICNET_DIAGNOSE" \
+        'magicnet_action_diagnose' \
         "MAGICNET_REFRESH_STATUS" \
         'magicnet_refresh_status' \
         "MAGICNET_EXIT" \

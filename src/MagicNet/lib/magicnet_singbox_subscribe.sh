@@ -29,19 +29,21 @@ magicnet_selector_tags_json() {
     _seen=""
     _first=1
     printf '['
-    printf '%s\n' "$_tags" | while IFS= read -r _tag; do
+    while IFS= read -r _tag; do
         [ -n "$_tag" ] || continue
         [ "$_first" -eq 1 ] || printf ', '
         printf '"%s"' "$(magicnet_json_escape "$_tag")"
         _first=0
-    done
+    done <<EOF
+$_tags
+EOF
     _seen=$(printf '%s\n%s\n%s\n' "$_tags" direct block)
     if [ -n "$_fallback" ] && ! printf '%s\n' "$_seen" | grep -F -x "$_fallback" >/dev/null 2>&1; then
-        [ -n "$_tags" ] && printf ', '
-        printf '"%s", ' "$(magicnet_json_escape "$_fallback")"
-    else
-        [ -n "$_tags" ] && printf ', '
+        [ "$_first" -eq 1 ] || printf ', '
+        printf '"%s"' "$(magicnet_json_escape "$_fallback")"
+        _first=0
     fi
+    [ "$_first" -eq 1 ] || printf ', '
     printf '"direct", "block"]'
 }
 
@@ -143,6 +145,16 @@ magicnet_append_group_tag() {
     else
         eval "$_var=\$_tag"
     fi
+}
+
+magicnet_singbox_is_info_tag() {
+    _tag="$1"
+    magicnet_tag_matches_any "$_tag" \
+        "剩余流量" "到期" "过期" "过期时间" "套餐" "官网" "订阅" \
+        "Traffic" "traffic" "Expire" "expire" "Expired" "expired" \
+        "Subscription" "subscription" "官网地址" "官方网站" "更新订阅" &&
+        return 0
+    return 1
 }
 
 magicnet_singbox_build_region_groups() {
@@ -649,9 +661,13 @@ magicnet_singbox_build_outbounds_file() {
         *) _json=$(magicnet_singbox_emit_node_json "$_node_file" 2>/dev/null) ;;
         esac
         if [ -n "$_json" ]; then
+            _tag=$(printf '%s' "$_json" | sed -n 's/.*"tag":"\([^"]*\)".*/\1/p')
+            if magicnet_singbox_is_info_tag "$_tag"; then
+                _skipped=$((_skipped + 1))
+                continue
+            fi
             [ "$_first" -eq 1 ] || printf ',' >>"${_out_file}.nodes"
             printf '%s' "$_json" >>"${_out_file}.nodes"
-            _tag=$(printf '%s' "$_json" | sed -n 's/.*"tag":"\([^"]*\)".*/\1/p')
             printf '%s\n' "$_tag" >>"$_tags_file"
             [ -n "$_first_tag" ] || _first_tag="$_tag"
             _first=0
@@ -705,7 +721,7 @@ magicnet_singbox_build_outbounds_file() {
         printf ',\n'
         magicnet_emit_selector_json "network-test" "" "direct"
         printf ',\n'
-        magicnet_emit_selector_json "ai-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "us" "jp" "sg" "direct")" "proxy"
+        magicnet_emit_selector_json "ai-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "us" "sg" "jp" "proxy" "direct")" "us"
         printf ',\n'
         magicnet_emit_selector_json "proxy-rule" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "direct")" "proxy"
         printf ',\n'
