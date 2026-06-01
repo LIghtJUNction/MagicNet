@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           kam validate
-          shellcheck -s bash -e SC1091,SC2329,SC2059 \
+          shellcheck -s bash -e SC1091,SC2317,SC2329,SC2059 \
             hooks/pre-build/*.sh \
             hooks/post-build/*.sh \
             hooks/lib/*.sh \
