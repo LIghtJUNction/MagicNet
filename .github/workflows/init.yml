@@ -31,6 +31,8 @@ jobs:
         with:
           github-token: ${{ github.token }}
           enable-cache: 'true'
+          cache-targets: cargo,kam
+          install-commitizen: 'false'
 
       - name: Install lint dependencies
         run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml
