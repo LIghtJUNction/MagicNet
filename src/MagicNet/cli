@@ -17,6 +17,7 @@ import __runtime__
 . "${MODDIR}/lib/magicnet.sh"
 
 MAGICNET_API="${MAGICNET_API:-http://127.0.0.1:9090}"
+MAGICNET_WEBUI="${MAGICNET_WEBUI:-${MAGICNET_API}/ui/zashboard/#/setup?hostname=127.0.0.1&port=9090}"
 MAGICNET_GROUP="${MAGICNET_GROUP:-proxy}"
 MAGICNET_LOG_DIR="${MODDIR}/.log"
 
@@ -42,24 +43,37 @@ cli_curl() {
 
 cli_pid_list() {
     _name="$1"
+    if command -v pidof >/dev/null 2>&1; then
+        pidof "$_name" 2>/dev/null | tr ' ' '\n'
+        _pidof_rc=$?
+        [ "$_pidof_rc" -eq 0 ] && {
+            unset _name _pidof_rc
+            return 0
+        }
+    fi
     for _comm in /proc/[0-9]*/comm; do
         [ -r "$_comm" ] || continue
         [ "$(cat "$_comm" 2>/dev/null)" = "$_name" ] || continue
         _pid=${_comm#/proc/}
         printf '%s\n' "${_pid%/comm}"
     done
+    unset _name _pidof_rc _comm _pid
 }
 
 cli_service_status() {
+    _watchdog_pid="$(magicnet_watchdog_status 2>/dev/null)"
     printf 'MagicNet\n'
     printf '  sing-box: %s\n' "$(cli_pid_list sing-box | tr '\n' ' ' | sed 's/[[:space:]]*$//' | sed 's/^$/stopped/')"
     printf '  mihomo:   %s\n' "$(cli_pid_list mihomo | tr '\n' ' ' | sed 's/[[:space:]]*$//' | sed 's/^$/stopped/')"
+    printf '  watchdog: %s\n' "${_watchdog_pid:-stopped}"
     printf '  API:      %s\n' "$MAGICNET_API"
-    printf '  WebUI:    %s/ui/\n' "$MAGICNET_API"
+    printf '  WebUI:    %s\n' "$MAGICNET_WEBUI"
     printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
+    unset _watchdog_pid
 }
 
 cli_service_stop() {
+    magicnet_watchdog_stop
     if magicnet_cmd_exists sing-box; then
         import __singbox__
         singbox_stop || true
@@ -75,6 +89,7 @@ cli_service() {
     case "${1:-status}" in
         status) cli_service_status ;;
         start) magicnet_start_kernel ;;
+        ensure) magicnet_ensure_kernel ;;
         stop) cli_service_stop ;;
         restart)
             cli_service_stop
@@ -96,7 +111,7 @@ cli_service() {
             tail -n "$_lines" "$_file"
             ;;
         *)
-            cli_error "Usage: cli service {status|start|stop|restart|logs [sing-box|mihomo] [lines]}"
+            cli_error "Usage: cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}"
             exit 1
             ;;
     esac
@@ -153,16 +168,395 @@ cli_mode() {
     esac
 }
 
+cli_sub_singbox_file() {
+    printf '%s\n' "${MODDIR}/.config/sing-box/subscription.url"
+}
+
+cli_sub_mihomo_file() {
+    printf '%s\n' "${MODDIR}/.config/mihomo/subscription.url"
+}
+
+cli_sub_mihomo_config() {
+    printf '%s\n' "${MODDIR}/.config/mihomo/config.yaml"
+}
+
+cli_sub_first_line() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d; q' "$_file"
+}
+
+cli_sub_target_file() {
+    case "${1:-sing-box}" in
+        sing-box|singbox) cli_sub_singbox_file ;;
+        mihomo|clash) cli_sub_mihomo_file ;;
+        *)
+            cli_error "Subscription target must be sing-box or mihomo"
+            exit 1
+            ;;
+    esac
+}
+
+cli_sub_read_mihomo_config_url() {
+    _config="$(cli_sub_mihomo_config)"
+    [ -f "$_config" ] || return 0
+    awk '
+        /^[[:space:]]*url:[[:space:]]*/ {
+            line = $0
+            sub(/^[[:space:]]*url:[[:space:]]*/, "", line)
+            gsub(/^["'\'']|["'\'']$/, "", line)
+            print line
+            exit
+        }
+    ' "$_config"
+}
+
+cli_sub_read() {
+    _target="${1:-sing-box}"
+    _file="$(cli_sub_target_file "$_target")"
+    _url="$(cli_sub_first_line "$_file")"
+    if [ -z "$_url" ] && [ "$_target" != "sing-box" ] && [ "$_target" != "singbox" ]; then
+        _url="$(cli_sub_read_mihomo_config_url)"
+    fi
+    printf '%s\n' "$_url"
+}
+
+cli_sub_set_file() {
+    _file="$1"
+    _url="$2"
+    mkdir -p "${_file%/*}"
+    printf '%s\n' "$_url" >"$_file"
+}
+
+cli_sub_set_mihomo_config_url() {
+    _url="$1"
+    _config="$(cli_sub_mihomo_config)"
+    [ -f "$_config" ] || return 0
+    _tmp="${_config}.subscription.new"
+    awk -v url="$_url" '
+        BEGIN { done = 0 }
+        !done && /^[[:space:]]*url:[[:space:]]*/ {
+            match($0, /^[[:space:]]*/)
+            indent = substr($0, RSTART, RLENGTH)
+            print indent "url: \"" url "\""
+            done = 1
+            next
+        }
+        { print }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"
+}
+
 cli_sub() {
     case "${1:-update-all}" in
         update|update-all)
             magicnet_action_update_singbox_subscription
             ;;
-        file)
-            printf '%s\n' "${MODDIR}/.config/sing-box/subscription.url"
+        list)
+            printf 'sing-box=%s\n' "$(cli_sub_read sing-box)"
+            printf 'mihomo=%s\n' "$(cli_sub_read mihomo)"
+            ;;
+        get)
+            cli_sub_read "${2:-sing-box}"
+            ;;
+        set)
+            _target="${2:-}"
+            _url="${3:-}"
+            [ -n "$_target" ] && [ -n "$_url" ] || {
+                cli_error "Usage: cli sub set <sing-box|mihomo|clash> <url>"
+                exit 1
+            }
+            _file="$(cli_sub_target_file "$_target")"
+            cli_sub_set_file "$_file" "$_url"
+            case "$_target" in
+                mihomo|clash) cli_sub_set_mihomo_config_url "$_url" ;;
+            esac
+            cli_info "Saved ${_target} subscription URL to $_file"
+            ;;
+        file|copy-path)
+            cli_sub_target_file "${2:-sing-box}"
             ;;
         *)
-            cli_error "Usage: cli sub {update|update-all|file}"
+            cli_error "Usage: cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_cert_dir() {
+    printf '%s\n' "${MODDIR}/system/etc/security/cacerts"
+}
+
+cli_cert_state_dir() {
+    printf '%s\n' "${MODDIR}/.config/magicnet/certs"
+}
+
+cli_cert_sanitize_name() {
+    printf '%s' "$1" | sed 's/[^A-Za-z0-9._-]/_/g; s/__*/_/g; s/^_//; s/_$//'
+}
+
+cli_cert_decode_base64() {
+    _encoded="$1"
+    _target="$2"
+    if command -v base64 >/dev/null 2>&1; then
+        printf '%s' "$_encoded" | base64 -d >"$_target" 2>/dev/null ||
+            printf '%s' "$_encoded" | base64 --decode >"$_target" 2>/dev/null
+    else
+        cli_error "Missing command: base64"
+        return 1
+    fi
+}
+
+cli_cert_hash_openssl() {
+    _cert="$1"
+    command -v openssl >/dev/null 2>&1 || return 1
+    openssl x509 -inform PEM -subject_hash_old -in "$_cert" -noout 2>/dev/null | sed -n '1p'
+}
+
+cli_cert_normalize_pem() {
+    _input="$1"
+    _output="$2"
+    if grep -q -- "-----BEGIN CERTIFICATE-----" "$_input" 2>/dev/null; then
+        cp -f "$_input" "$_output"
+        return 0
+    fi
+    if command -v openssl >/dev/null 2>&1; then
+        openssl x509 -inform DER -in "$_input" -out "$_output" 2>/dev/null && return 0
+    fi
+    cp -f "$_input" "$_output"
+}
+
+cli_cert_install_from_base64() {
+    _name="$(cli_cert_sanitize_name "${1:-magicnet-ca}")"
+    _encoded="${2:-}"
+    [ -n "$_encoded" ] || {
+        cli_error "Usage: cli cert install <name|hash.0> <base64-cert>"
+        exit 1
+    }
+
+    _cert_dir="$(cli_cert_dir)"
+    _state_dir="$(cli_cert_state_dir)"
+    mkdir -p "$_cert_dir" "$_state_dir"
+
+    _raw="${_state_dir}/upload.raw"
+    _pem="${_state_dir}/upload.pem"
+    cli_cert_decode_base64 "$_encoded" "$_raw" || exit 1
+    cli_cert_normalize_pem "$_raw" "$_pem" || {
+        cli_error "Failed to normalize certificate"
+        exit 1
+    }
+
+    case "$_name" in
+        [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F].[0-9]*)
+            _target_name="$_name"
+            ;;
+        *)
+            _hash="$(cli_cert_hash_openssl "$_pem" || true)"
+            if [ -n "$_hash" ]; then
+                _target_name="${_hash}.0"
+            else
+                _target_name="${_name}.0"
+                cli_error "openssl not found; installed with fallback filename ${_target_name}. Android may require a subject-hash .0 filename."
+            fi
+            ;;
+    esac
+
+    _target="${_cert_dir}/${_target_name}"
+    cp -f "$_pem" "$_target"
+    chmod 0644 "$_target" 2>/dev/null || true
+    chown 0:0 "$_target" 2>/dev/null || true
+    printf '%s\t%s\n' "$_target_name" "$_name" >>"${_state_dir}/labels.tsv"
+    rm -f "$_raw" "$_pem" 2>/dev/null || true
+    cli_info "Installed certificate: $_target"
+    cli_info "Reboot is required for Android system trust store overlay to take effect."
+}
+
+cli_cert_list() {
+    _cert_dir="$(cli_cert_dir)"
+    printf 'dir=%s\n' "$_cert_dir"
+    [ -d "$_cert_dir" ] || return 0
+    for _cert in "$_cert_dir"/*; do
+        [ -f "$_cert" ] || continue
+        printf '%s\n' "${_cert##*/}"
+    done
+}
+
+cli_cert_remove() {
+    _name="$(cli_cert_sanitize_name "${1:-}")"
+    [ -n "$_name" ] || {
+        cli_error "Usage: cli cert remove <filename.0>"
+        exit 1
+    }
+    case "$_name" in
+        *.0|*.1|*.2|*.3|*.4|*.5|*.6|*.7|*.8|*.9) ;;
+        *) cli_error "Certificate filename must look like hash.0"; exit 1 ;;
+    esac
+    _target="$(cli_cert_dir)/${_name}"
+    if [ -f "$_target" ]; then
+        rm -f "$_target"
+        cli_info "Removed certificate: $_target"
+        cli_info "Reboot is required for Android system trust store overlay to take effect."
+    else
+        cli_error "Certificate not found: $_target"
+        exit 1
+    fi
+}
+
+cli_cert() {
+    case "${1:-list}" in
+        list) cli_cert_list ;;
+        install)
+            shift
+            cli_cert_install_from_base64 "$@"
+            ;;
+        remove)
+            shift
+            cli_cert_remove "$@"
+            ;;
+        dir) cli_cert_dir ;;
+        *)
+            cli_error "Usage: cli cert {list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_capture_dir() {
+    printf '%s\n' "${MODDIR}/.config/magicnet"
+}
+
+cli_capture_conf_file() {
+    printf '%s\n' "$(cli_capture_dir)/capture.conf"
+}
+
+cli_capture_app_file() {
+    printf '%s\n' "$(cli_capture_dir)/capture-app.list"
+}
+
+cli_capture_domain_file() {
+    printf '%s\n' "$(cli_capture_dir)/capture-domain-suffix.list"
+}
+
+cli_capture_load_conf() {
+    _conf="$(cli_capture_conf_file)"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    MAGICNET_CAPTURE_ENABLED="${MAGICNET_CAPTURE_ENABLED:-0}"
+    MAGICNET_CAPTURE_HOST="${MAGICNET_CAPTURE_HOST:-192.168.1.100}"
+    MAGICNET_CAPTURE_PORT="${MAGICNET_CAPTURE_PORT:-8888}"
+    MAGICNET_CAPTURE_NAME="${MAGICNET_CAPTURE_NAME:-MagicNet-Capture}"
+}
+
+cli_capture_write_conf() {
+    _enabled="$1"
+    _host="$2"
+    _port="$3"
+    _name="$4"
+    _dir="$(cli_capture_dir)"
+    mkdir -p "$_dir"
+    {
+        printf 'MAGICNET_CAPTURE_ENABLED=%s\n' "$_enabled"
+        printf 'MAGICNET_CAPTURE_HOST=%s\n' "$_host"
+        printf 'MAGICNET_CAPTURE_PORT=%s\n' "$_port"
+        printf 'MAGICNET_CAPTURE_NAME=%s\n' "$_name"
+    } >"$(cli_capture_conf_file)"
+}
+
+cli_capture_list_file() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file"
+}
+
+cli_capture_add_to_file() {
+    _file="$1"
+    _value="$2"
+    mkdir -p "${_file%/*}"
+    touch "$_file"
+    grep -Fx "$_value" "$_file" >/dev/null 2>&1 || printf '%s\n' "$_value" >>"$_file"
+}
+
+cli_capture_remove_from_file() {
+    _file="$1"
+    _value="$2"
+    [ -f "$_file" ] || return 0
+    awk -v value="$_value" '$0 != value { print }' "$_file" >"${_file}.new" &&
+        mv -f "${_file}.new" "$_file"
+}
+
+cli_capture_print() {
+    cli_capture_load_conf
+    printf 'enabled=%s\n' "$MAGICNET_CAPTURE_ENABLED"
+    printf 'host=%s\n' "$MAGICNET_CAPTURE_HOST"
+    printf 'port=%s\n' "$MAGICNET_CAPTURE_PORT"
+    printf 'name=%s\n' "$MAGICNET_CAPTURE_NAME"
+    printf 'apps:\n'
+    cli_capture_list_file "$(cli_capture_app_file)" | sed 's/^/  /'
+    printf 'domain suffixes:\n'
+    cli_capture_list_file "$(cli_capture_domain_file)" | sed 's/^/  /'
+}
+
+cli_capture() {
+    case "${1:-list}" in
+        list) cli_capture_print ;;
+        set)
+            _host="${2:-}"
+            _port="${3:-}"
+            _name="${4:-MagicNet-Capture}"
+            [ -n "$_host" ] && [ -n "$_port" ] || {
+                cli_error "Usage: cli capture set <host> <port> [name]"
+                exit 1
+            }
+            case "$_port" in
+                *[!0-9]*|'') cli_error "port must be numeric"; exit 1 ;;
+            esac
+            cli_capture_load_conf
+            cli_capture_write_conf "$MAGICNET_CAPTURE_ENABLED" "$_host" "$_port" "$_name"
+            magicnet_capture_apply
+            cli_info "Capture proxy set to $_host:$_port ($_name)"
+            ;;
+        enable)
+            cli_capture_load_conf
+            cli_capture_write_conf 1 "$MAGICNET_CAPTURE_HOST" "$MAGICNET_CAPTURE_PORT" "$MAGICNET_CAPTURE_NAME"
+            magicnet_capture_apply
+            cli_info "Capture rules enabled"
+            ;;
+        disable)
+            cli_capture_load_conf
+            cli_capture_write_conf 0 "$MAGICNET_CAPTURE_HOST" "$MAGICNET_CAPTURE_PORT" "$MAGICNET_CAPTURE_NAME"
+            magicnet_capture_apply
+            cli_info "Capture rules disabled"
+            ;;
+        add-app)
+            [ -n "${2:-}" ] || { cli_error "Usage: cli capture add-app <package>"; exit 1; }
+            cli_capture_add_to_file "$(cli_capture_app_file)" "$2"
+            magicnet_capture_apply
+            cli_info "Added app capture rule: $2"
+            ;;
+        remove-app)
+            [ -n "${2:-}" ] || { cli_error "Usage: cli capture remove-app <package>"; exit 1; }
+            cli_capture_remove_from_file "$(cli_capture_app_file)" "$2"
+            magicnet_capture_apply
+            cli_info "Removed app capture rule: $2"
+            ;;
+        add-domain)
+            [ -n "${2:-}" ] || { cli_error "Usage: cli capture add-domain <domain-suffix>"; exit 1; }
+            cli_capture_add_to_file "$(cli_capture_domain_file)" "$2"
+            magicnet_capture_apply
+            cli_info "Added domain capture rule: $2"
+            ;;
+        remove-domain)
+            [ -n "${2:-}" ] || { cli_error "Usage: cli capture remove-domain <domain-suffix>"; exit 1; }
+            cli_capture_remove_from_file "$(cli_capture_domain_file)" "$2"
+            magicnet_capture_apply
+            cli_info "Removed domain capture rule: $2"
+            ;;
+        apply)
+            magicnet_capture_apply
+            cli_info "Capture rules applied to mihomo and sing-box"
+            ;;
+        *)
+            cli_error "Usage: cli capture {list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}"
             exit 1
             ;;
     esac
@@ -172,7 +566,7 @@ cli_api() {
     case "${1:-ui}" in
         ui)
             printf 'Controller: %s\n' "$MAGICNET_API"
-            printf 'WebUI:      %s/ui/\n' "$MAGICNET_API"
+            printf 'WebUI:      %s\n' "$MAGICNET_WEBUI"
             ;;
         groups) cli_curl "${MAGICNET_API}/proxies" ;;
         conns) cli_curl "${MAGICNET_API}/connections" ;;
@@ -275,10 +669,12 @@ cli_help() {
 MagicNet CLI
 
 Usage:
-  cli service {status|start|stop|restart|logs [sing-box|mihomo] [lines]}
+  cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}
   cli node {list|current|use <name>}
   cli mode [rule|global|direct]
-  cli sub {update|update-all|file}
+  cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
+  cli cert {list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}
+  cli capture {list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}
   cli api {ui|groups|conns|close-all}
   cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}
   cli hotspot reload
@@ -292,6 +688,8 @@ case "${1:-help}" in
     node) shift; cli_node "$@" ;;
     mode) shift; cli_mode "$@" ;;
     sub) shift; cli_sub "$@" ;;
+    cert) shift; cli_cert "$@" ;;
+    capture) shift; cli_capture "$@" ;;
     api) shift; cli_api "$@" ;;
     app) shift; cli_app "$@" ;;
     hotspot)

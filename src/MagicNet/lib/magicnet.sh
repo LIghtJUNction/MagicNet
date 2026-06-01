@@ -237,7 +237,9 @@ magicnet_enable_vpn_coexist() {
 }
 
 magicnet_after_kernel_start() {
+    magicnet_singbox_apply_zashboard
     magicnet_singbox_apply_app_policy
+    magicnet_capture_apply
     magicnet_enable_hotspot_forward
     magicnet_enable_vpn_coexist
 }
@@ -339,8 +341,365 @@ magicnet_singbox_apply_app_policy() {
     }
 }
 
+magicnet_singbox_apply_zashboard() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+
+    _tmp="${_config}.zashboard.new"
+    awk '
+        /"external_ui"[[:space:]]*:/ {
+            sub(/"external_ui"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"external_ui\": \"zashboard\"")
+        }
+        /"external_ui_download_url"[[:space:]]*:/ {
+            sub(/"external_ui_download_url"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"external_ui_download_url\": \"https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip\"")
+        }
+        { print }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" || {
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    }
+}
+
+magicnet_capture_dir() {
+    printf '%s\n' "${MODDIR}/.config/magicnet"
+}
+
+magicnet_capture_conf() {
+    _conf="$(magicnet_capture_dir)/capture.conf"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    MAGICNET_CAPTURE_ENABLED="${MAGICNET_CAPTURE_ENABLED:-0}"
+    MAGICNET_CAPTURE_HOST="${MAGICNET_CAPTURE_HOST:-192.168.1.100}"
+    MAGICNET_CAPTURE_PORT="${MAGICNET_CAPTURE_PORT:-8888}"
+    MAGICNET_CAPTURE_NAME="${MAGICNET_CAPTURE_NAME:-MagicNet-Capture}"
+}
+
+magicnet_capture_list_values() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++'
+}
+
+magicnet_capture_yaml_rules() {
+    _apps_file="$(magicnet_capture_dir)/capture-app.list"
+    _domains_file="$(magicnet_capture_dir)/capture-domain-suffix.list"
+    _name="$1"
+    magicnet_capture_list_values "$_apps_file" | while read -r _pkg; do
+        [ -n "$_pkg" ] && printf '  - PROCESS-NAME,%s,%s\n' "$_pkg" "$_name"
+    done
+    magicnet_capture_list_values "$_domains_file" | while read -r _domain; do
+        [ -n "$_domain" ] && printf '  - DOMAIN-SUFFIX,%s,%s\n' "$_domain" "$_name"
+    done
+}
+
+magicnet_capture_singbox_rule_block() {
+    _apps_file="$(magicnet_capture_dir)/capture-app.list"
+    _domains_file="$(magicnet_capture_dir)/capture-domain-suffix.list"
+    _outbound="$1"
+    _has_any=0
+
+    _apps="$(magicnet_capture_list_values "$_apps_file")"
+    if [ -n "$_apps" ]; then
+        _has_any=1
+        printf '      {\n'
+        printf '        "package_name": [\n'
+        _count=$(printf '%s\n' "$_apps" | wc -l | tr -d ' ')
+        _idx=0
+        printf '%s\n' "$_apps" | while read -r _pkg; do
+            [ -n "$_pkg" ] || continue
+            _idx=$((_idx + 1))
+            _comma=","
+            [ "$_idx" -eq "$_count" ] && _comma=""
+            printf '          "%s"%s\n' "$(magicnet_json_escape "$_pkg")" "$_comma"
+        done
+        printf '        ],\n'
+        printf '        "outbound": "%s"\n' "$_outbound"
+        printf '      },\n'
+    fi
+
+    _domains="$(magicnet_capture_list_values "$_domains_file")"
+    if [ -n "$_domains" ]; then
+        _has_any=1
+        printf '      {\n'
+        printf '        "domain_suffix": [\n'
+        _count=$(printf '%s\n' "$_domains" | wc -l | tr -d ' ')
+        _idx=0
+        printf '%s\n' "$_domains" | while read -r _domain; do
+            [ -n "$_domain" ] || continue
+            _idx=$((_idx + 1))
+            _comma=","
+            [ "$_idx" -eq "$_count" ] && _comma=""
+            printf '          "%s"%s\n' "$(magicnet_json_escape "$_domain")" "$_comma"
+        done
+        printf '        ],\n'
+        printf '        "outbound": "%s"\n' "$_outbound"
+        printf '      },\n'
+    fi
+
+    [ "$_has_any" -eq 1 ]
+}
+
+magicnet_capture_apply_mihomo() {
+    _config="${MODDIR}/.config/mihomo/config.yaml"
+    [ -f "$_config" ] || return 0
+    magicnet_capture_conf
+    _tmp="${_config}.capture.new"
+    _rules_file="${MODDIR}/.tmp/magicnet-capture-mihomo.rules"
+    mkdir -p "${_rules_file%/*}"
+    magicnet_capture_yaml_rules "$MAGICNET_CAPTURE_NAME" >"$_rules_file"
+    awk \
+        -v enabled="$MAGICNET_CAPTURE_ENABLED" \
+        -v name="$MAGICNET_CAPTURE_NAME" \
+        -v host="$MAGICNET_CAPTURE_HOST" \
+        -v port="$MAGICNET_CAPTURE_PORT" \
+        -v rules_file="$_rules_file" '
+        BEGIN {
+            skip_capture_proxy = 0
+            skip_capture_rules = 0
+            inserted_proxy = 0
+            inserted_rules = 0
+        }
+        skip_capture_proxy {
+            if ($0 ~ /^  # MAGICNET_CAPTURE_PROXY_END/) {
+                skip_capture_proxy = 0
+            }
+            next
+        }
+        skip_capture_rules {
+            if ($0 ~ /^  # MAGICNET_CAPTURE_END/) {
+                skip_capture_rules = 0
+            }
+            next
+        }
+        $0 ~ /^  # MAGICNET_CAPTURE_PROXY_START/ {
+            skip_capture_proxy = 1
+            next
+        }
+        $0 ~ /^  # MAGICNET_CAPTURE_START/ {
+            skip_capture_rules = 1
+            next
+        }
+        {
+            if (enabled == "1" && !inserted_proxy && $0 ~ /^proxies:[[:space:]]*\[\][[:space:]]*$/) {
+                print "proxies:"
+                print "  # MAGICNET_CAPTURE_PROXY_START"
+                print "  - name: \"" name "\""
+                print "    type: http"
+                print "    server: " host
+                print "    port: " port
+                print "  # MAGICNET_CAPTURE_PROXY_END"
+                inserted_proxy = 1
+                next
+            }
+            print
+            if (enabled == "1" && !inserted_proxy && $0 ~ /^proxies:[[:space:]]*$/) {
+                print "  # MAGICNET_CAPTURE_PROXY_START"
+                print "  - name: \"" name "\""
+                print "    type: http"
+                print "    server: " host
+                print "    port: " port
+                print "  # MAGICNET_CAPTURE_PROXY_END"
+                inserted_proxy = 1
+            }
+            if (enabled == "1" && !inserted_rules && $0 ~ /^rules:[[:space:]]*$/) {
+                print "  # MAGICNET_CAPTURE_START"
+                while ((getline rule_line < rules_file) > 0) {
+                    print rule_line
+                }
+                close(rules_file)
+                print "  # MAGICNET_CAPTURE_END"
+                inserted_rules = 1
+            }
+        }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" || {
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    }
+}
+
+magicnet_capture_apply_singbox() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+    magicnet_capture_conf
+    _tmp="${_config}.capture.new"
+    _route_rules_file="${MODDIR}/.tmp/magicnet-capture-singbox.rules"
+    mkdir -p "${_route_rules_file%/*}"
+    magicnet_capture_singbox_rule_block "magicnet-capture" >"$_route_rules_file" || true
+    awk \
+        -v enabled="$MAGICNET_CAPTURE_ENABLED" \
+        -v host="$MAGICNET_CAPTURE_HOST" \
+        -v port="$MAGICNET_CAPTURE_PORT" \
+        -v route_rules_file="$_route_rules_file" '
+        BEGIN {
+            in_outbounds = 0
+            in_route = 0
+            in_route_rules = 0
+            buffering = 0
+            mode = ""
+            buffer = ""
+            is_direct = 0
+            is_capture = 0
+            inserted_outbound = 0
+            inserted_rules = 0
+        }
+        function reset_buffer() {
+            buffer = ""
+            is_direct = 0
+            is_capture = 0
+            buffering = 0
+            mode = ""
+        }
+        function flush_outbound_object() {
+            if (!is_capture) {
+                if (enabled == "1" && !inserted_outbound && is_direct) {
+                    print "    {"
+                    print "      \"type\": \"http\","
+                    print "      \"tag\": \"magicnet-capture\","
+                    print "      \"server\": \"" host "\","
+                    print "      \"server_port\": " port
+                    print "    },"
+                    inserted_outbound = 1
+                }
+                printf "%s", buffer
+            }
+            reset_buffer()
+        }
+        function flush_route_rule_object() {
+            if (!is_capture) {
+                printf "%s", buffer
+                if (enabled == "1" && !inserted_rules && buffer ~ /"action"[[:space:]]*:[[:space:]]*"sniff"/) {
+                    while ((getline rule_line < route_rules_file) > 0) {
+                        print rule_line
+                    }
+                    close(route_rules_file)
+                    inserted_rules = 1
+                }
+            }
+            reset_buffer()
+        }
+        {
+            if (buffering && mode == "outbound") {
+                buffer = buffer $0 "\n"
+                if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"direct"/) {
+                    is_direct = 1
+                }
+                if ($0 ~ /"tag"[[:space:]]*:[[:space:]]*"magicnet-capture"/) {
+                    is_capture = 1
+                }
+                if ($0 ~ /^    }[,]?[[:space:]]*$/) {
+                    flush_outbound_object()
+                }
+                next
+            }
+            if (buffering && mode == "route_rule") {
+                buffer = buffer $0 "\n"
+                if ($0 ~ /"outbound"[[:space:]]*:[[:space:]]*"magicnet-capture"/) {
+                    is_capture = 1
+                }
+                if ($0 ~ /^      }[,]?[[:space:]]*$/) {
+                    flush_route_rule_object()
+                }
+                next
+            }
+            if ($0 ~ /^  "outbounds"[[:space:]]*:[[:space:]]*\[[[:space:]]*$/) {
+                in_outbounds = 1
+                print
+                next
+            }
+            if (in_outbounds && $0 ~ /^  ][,]?[[:space:]]*$/) {
+                in_outbounds = 0
+                print
+                next
+            }
+            if (in_outbounds && $0 ~ /^    \{[[:space:]]*$/) {
+                buffering = 1
+                mode = "outbound"
+                buffer = $0 "\n"
+                is_direct = 0
+                is_capture = 0
+                next
+            }
+            if ($0 ~ /^  "route"[[:space:]]*:[[:space:]]*\{[[:space:]]*$/) {
+                in_route = 1
+                print
+                next
+            }
+            if (in_route && $0 ~ /^  }[,]?[[:space:]]*$/) {
+                in_route = 0
+                print
+                next
+            }
+            if (in_route && $0 ~ /^    "rules"[[:space:]]*:[[:space:]]*\[[[:space:]]*$/) {
+                in_route_rules = 1
+                print
+                next
+            }
+            if (in_route_rules && $0 ~ /^    ][,]?[[:space:]]*$/) {
+                in_route_rules = 0
+                print
+                next
+            }
+            if (in_route_rules && $0 ~ /^      \{[[:space:]]*$/) {
+                buffering = 1
+                mode = "route_rule"
+                buffer = $0 "\n"
+                is_capture = 0
+                next
+            }
+            print
+        }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" || {
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    }
+}
+
+magicnet_capture_apply() {
+    magicnet_capture_apply_mihomo
+    magicnet_capture_apply_singbox
+}
+
 magicnet_singbox_disabled() {
     [ -f "${MODDIR}/.disable_sing_box" ]
+}
+
+magicnet_watchdog_name() {
+    printf '%s\n' "magicnet-kernel"
+}
+
+magicnet_watchdog_interval() {
+    printf '%s\n' "${MAGICNET_WATCHDOG_INTERVAL:-30}"
+}
+
+magicnet_watchdog_command() {
+    printf '%s\n' "MAGICNET_WATCHDOG=1 MODDIR='$(magicnet_json_escape "$MODDIR")' sh '$(magicnet_json_escape "$MODDIR")/cli' service ensure >/dev/null 2>&1"
+}
+
+magicnet_watchdog_start() {
+    [ "${MAGICNET_WATCHDOG_ENABLED:-1}" != "0" ] || return 0
+    [ "${MAGICNET_WATCHDOG:-0}" != "1" ] || return 0
+    [ -f "${MODDIR}/cli" ] || return 0
+    import watchdog
+    watchdog start "$(magicnet_watchdog_name)" "$(magicnet_watchdog_interval)" "$(magicnet_watchdog_command)" >/dev/null 2>&1 || true
+}
+
+magicnet_watchdog_stop() {
+    import watchdog
+    watchdog stop "$(magicnet_watchdog_name)" >/dev/null 2>&1 || true
+}
+
+magicnet_watchdog_status() {
+    _watchdog_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_watchdog_name).pid"
+    [ -f "$_watchdog_pid_file" ] || return 1
+    _watchdog_pid="$(sed -n '1p' "$_watchdog_pid_file" 2>/dev/null)"
+    if [ -n "$_watchdog_pid" ] && kill -0 "$_watchdog_pid" 2>/dev/null; then
+        printf '%s\n' "$_watchdog_pid"
+        unset _watchdog_pid_file _watchdog_pid
+        return 0
+    fi
+    unset _watchdog_pid_file _watchdog_pid
+    return 1
 }
 
 magicnet_status_text() {
@@ -380,9 +739,29 @@ magicnet_start_singbox() {
     singbox_start
 }
 
+magicnet_kernel_running() {
+    if ! magicnet_singbox_disabled && magicnet_cmd_exists sing-box; then
+        import __singbox__
+        is_singbox_running >/dev/null 2>&1 && return 0
+    fi
+
+    if magicnet_cmd_exists mihomo; then
+        import __mihomo__
+        is_mihomo_running >/dev/null 2>&1 && return 0
+    fi
+
+    return 1
+}
+
 magicnet_start_kernel() {
+    if magicnet_kernel_running; then
+        magicnet_watchdog_start
+        return 0
+    fi
+
     if magicnet_start_singbox; then
         magicnet_after_kernel_start
+        magicnet_watchdog_start
         return 0
     fi
 
@@ -392,11 +771,17 @@ magicnet_start_kernel() {
 
     if magicnet_start_mihomo; then
         magicnet_after_kernel_start
+        magicnet_watchdog_start
         return 0
     fi
 
     magicnet_warn "No supported kernel found or starting disabled (mihomo or sing-box)."
     return 1
+}
+
+magicnet_ensure_kernel() {
+    magicnet_kernel_running && return 0
+    MAGICNET_WATCHDOG=1 magicnet_start_kernel
 }
 
 magicnet_show_dashboard() {
@@ -421,6 +806,8 @@ magicnet_show_dashboard() {
 
     panel_row "sing-box" "$_singbox_state"
     panel_row "mihomo" "$_mihomo_state"
+    _watchdog_pid=$(magicnet_watchdog_status)
+    panel_row "watchdog" "${_watchdog_pid:-Stopped}"
     panel_row "WebUI" "http://127.0.0.1:9090/ui/"
     panel_row "sing-box subscription" "${MODDIR}/.config/sing-box/subscription.url"
     panel_end
@@ -508,6 +895,8 @@ magicnet_action_diagnose() {
     else
         panel_row "mihomo" "Not installed"
     fi
+    _watchdog_pid=$(magicnet_watchdog_status)
+    panel_row "watchdog" "${_watchdog_pid:-Stopped}"
     panel_row "sing-box API" "$(curl -sS --max-time 3 http://127.0.0.1:9090/proxies >/dev/null 2>&1 && printf OK || printf FAIL)"
     magicnet_diag_proxy_now proxy
     magicnet_diag_proxy_now ai-proxy

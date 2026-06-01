@@ -80,6 +80,11 @@ jobs:
           install-commitizen: 'false'
           private-key: ${{ secrets.KAM_PRIVATE_KEY }}
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Install artifact tools
         run: sudo apt-get update && sudo apt-get install -y unzip zip
 
@@ -88,6 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           kam --version
+          bun --version
           gh --version
 
       - name: Build module
@@ -110,6 +116,10 @@ jobs:
           unzip -l dist/MagicNet.zip | grep -F 'lib/magicnet.sh'
           unzip -l dist/MagicNet.zip | grep -F 'boot-completed.sh'
           unzip -l dist/MagicNet.zip | grep -F 'action.sh'
+          unzip -Z1 dist/MagicNet.zip | grep -Fx 'webroot/index.html'
+          unzip -Z1 dist/MagicNet.zip | grep -E '^webroot/assets/.+\.js$'
+          unzip -Z1 dist/MagicNet.zip | grep -E '^webroot/assets/.+\.css$'
+          unzip -Z1 dist/MagicNet.zip | grep -Fx '.config/sing-box/zashboard/index.html'
           ! unzip -Z1 dist/MagicNet.zip | grep -E '(^|/)\.git($|/)|(^|/)\.github($|/)|(^|/)\.gitignore$'
           ! unzip -l dist/MagicNet.zip | grep -F 'lib/kamfw/src/'
 

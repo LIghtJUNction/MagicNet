@@ -101,6 +101,14 @@ sing-box 订阅链接：
 /data/adb/modules/MagicNet/.config/sing-box/subscription.url
 ```
 
+Clash / mihomo 订阅链接：
+
+```text
+/data/adb/modules/MagicNet/.config/mihomo/subscription.url
+```
+
+模块 WebUI 可以直接读取、填写、保存、复制 sing-box 与 Clash / mihomo 订阅链接。保存 mihomo 链接时会同步更新 `config.yaml` 中第一个 `proxy-provider` 的 `url`。
+
 在 `subscription.url` 第一行填入订阅链接后，执行模块 `action.sh`，选择 `更新 sing-box 订阅节点`。MagicNet 会下载订阅，转换为 sing-box `outbounds`，并保留原有 TUN、DNS、路由和 Clash API 配置。
 
 当前自动导入支持两类订阅：
@@ -116,13 +124,13 @@ sing-box 订阅链接：
 http://127.0.0.1:9090
 ```
 
-默认本地面板路径：
+默认本地面板路径（sing-box 默认使用 zashboard）：
 
 ```text
-http://127.0.0.1:9090/ui/
+http://127.0.0.1:9090/ui/zashboard/#/setup?hostname=127.0.0.1&port=9090
 ```
 
-sing-box 使用 `experimental.clash_api` 提供 Clash API 兼容控制端，方便复用 MetaCubeXD / Yacd 等 Clash 面板。若修改 `secret`，面板里也要同步填写。
+sing-box 使用 `experimental.clash_api` 提供 Clash API 兼容控制端，默认内置 zashboard 面板。若修改 `secret`，面板里也要同步填写。
 
 安装时不会强制覆盖用户已有配置；需要更新时按安装提示确认。
 
@@ -139,10 +147,13 @@ su -c /data/adb/modules/MagicNet/cli help
 ```bash
 su -c /data/adb/modules/MagicNet/cli service status
 su -c /data/adb/modules/MagicNet/cli service start
+su -c /data/adb/modules/MagicNet/cli service ensure
 su -c /data/adb/modules/MagicNet/cli service stop
 su -c /data/adb/modules/MagicNet/cli service restart
 su -c /data/adb/modules/MagicNet/cli service logs sing-box 120
 ```
+
+`service start` 会启动 kamfw watchdog。watchdog 默认每 30 秒执行一次 `service ensure`，当 sing-box / mihomo 进程都不在时自动拉起默认 TUN 内核；`service stop` 与 `service restart` 会先停止 watchdog，避免手动停止后被立即拉回。
 
 节点和模式热切换走 Clash API，不需要重刷模块：
 
@@ -159,10 +170,32 @@ su -c /data/adb/modules/MagicNet/cli mode direct
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli sub update-all
-su -c /data/adb/modules/MagicNet/cli sub file
+su -c /data/adb/modules/MagicNet/cli sub list
+su -c /data/adb/modules/MagicNet/cli sub get sing-box
+su -c /data/adb/modules/MagicNet/cli sub get mihomo
+su -c '/data/adb/modules/MagicNet/cli sub set sing-box "https://example.com/sub"'
+su -c '/data/adb/modules/MagicNet/cli sub set mihomo "https://example.com/clash.yaml"'
+su -c /data/adb/modules/MagicNet/cli sub file sing-box
+su -c /data/adb/modules/MagicNet/cli sub file mihomo
 su -c /data/adb/modules/MagicNet/cli api ui
 su -c /data/adb/modules/MagicNet/cli api close-all
 ```
+
+系统 CA 证书管理：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli cert list
+su -c /data/adb/modules/MagicNet/cli cert dir
+su -c '/data/adb/modules/MagicNet/cli cert remove "9a5ba575.0"'
+```
+
+WebUI 支持选择或粘贴 PEM / DER 证书并安装到模块目录：
+
+```text
+/data/adb/modules/MagicNet/system/etc/security/cacerts
+```
+
+证书通过 root 模块的 systemless 覆盖机制进入 Android 系统 CA 目录，安装或移除后需要重启生效。若设备内存在 `openssl`，MagicNet 会自动生成 Android 需要的 subject-hash `.0` 文件名；否则请上传已经按 Android 规则命名的 `hash.0` 文件。
 
 网络修复与诊断：
 
