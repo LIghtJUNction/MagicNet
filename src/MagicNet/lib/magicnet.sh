@@ -63,6 +63,18 @@ magicnet_iface_has_hotspot_addr() {
         grep -Eq 'inet (192\.168\.[0-9]+\.1|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.1|10\.[0-9]+\.[0-9]+\.1)/'
 }
 
+magicnet_iface_has_private_addr() {
+    magicnet_cmd_exists ip || return 1
+    ip -o -4 addr show dev "$1" 2>/dev/null |
+        grep -Eq 'inet (10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)'
+}
+
+magicnet_iface_has_local_network_route() {
+    magicnet_cmd_exists ip || return 1
+    ip route show table local_network 2>/dev/null |
+        grep -Eq "[[:space:]]dev[[:space:]]+$1([[:space:]]|$)"
+}
+
 magicnet_collect_hotspot_ifaces() {
     if [ -n "${MAGIC_HOTSPOT_IFACES:-}" ]; then
         for _iface in $MAGIC_HOTSPOT_IFACES; do
@@ -79,7 +91,10 @@ magicnet_collect_hotspot_ifaces() {
                 printf '%s\n' "$_iface"
                 ;;
             wlan[0-9]*|wifi[0-9]*)
-                magicnet_iface_has_hotspot_addr "$_iface" && printf '%s\n' "$_iface"
+                if magicnet_iface_has_hotspot_addr "$_iface" ||
+                    { magicnet_iface_has_private_addr "$_iface" && magicnet_iface_has_local_network_route "$_iface"; }; then
+                    printf '%s\n' "$_iface"
+                fi
                 ;;
         esac
     done | awk '!seen[$0]++'

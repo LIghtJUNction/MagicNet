@@ -1,5 +1,11 @@
 ## Unreleased
 
+## v1.0.38 (2026-06-02)
+
+- Fix hotspot forwarding detection on devices that expose hotspot as a `wlan*`
+  interface with a private address in Android's `local_network` route table
+  instead of a conventional `.1` gateway address.
+
 ## v1.0.37 (2026-06-02)
 
 - Fix VPN coexistence by moving sing-box TUN from the generic `tun0` name to
