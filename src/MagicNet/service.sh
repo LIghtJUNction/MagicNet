@@ -1,3 +1,4 @@
+#!/system/bin/sh
 # shellcheck shell=ash
 
 case "$0" in
@@ -13,4 +14,4 @@ fi
 import __runtime__
 . "${MODDIR}/lib/magicnet.sh"
 
-kamfw run action -- "$@"
+kamfw run service -- "$@"

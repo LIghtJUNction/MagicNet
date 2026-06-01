@@ -420,8 +420,12 @@ magicnet_action() {
 
 kamfw_phase_boot_completed() {
     wait_boot_if_magisk
-    wait_unlock 3
+    sleep 3
     magicnet_start_kernel
+}
+
+kamfw_phase_service() {
+    kamfw_phase_boot_completed "$@"
 }
 
 kamfw_phase_action() {

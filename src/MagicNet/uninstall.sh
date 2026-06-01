@@ -1,6 +1,9 @@
 # shellcheck shell=ash
 
-MODDIR=${0%/*}
+case "$0" in
+    */*) MODDIR=${0%/*} ;;
+    *) MODDIR=${MODDIR:-$(pwd)} ;;
+esac
 if [ -f "${MODDIR}/lib/kamfw/.kamfwrc" ]; then
     . "$MODDIR/lib/kamfw/.kamfwrc"
 else

@@ -9,7 +9,7 @@ updateJson = "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/upda
 metamodule = false
 
 [mmrl.repo]
-license = "GPL-3.0"
+license = "MIT"
 license_file = "LICENSE"
 homepage = "https://github.com/LIghtJUNction/MagicNet"
 readme = "https://github.com/LIghtJUNction/MagicNet/blob/main/README.md"
