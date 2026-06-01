@@ -68,6 +68,8 @@ jobs:
         with:
           github-token: ${{ github.token }}
           enable-cache: 'true'
+          cache-targets: cargo,kam
+          install-commitizen: 'false'
           private-key: ${{ secrets.KAM_PRIVATE_KEY }}
 
       - name: Install artifact tools
