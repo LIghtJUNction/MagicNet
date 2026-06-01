@@ -30,6 +30,16 @@ magicnet_uri_query_value() {
         sed -n "s/^${_key}=//p" | tail -n 1
 }
 
+magicnet_b64_decode() {
+    _value=$(printf '%s' "$1" | tr '_-' '/+')
+    _pad=$(((${#_value} + 3) % 4))
+    case "$_pad" in
+    2) _value="${_value}==" ;;
+    3) _value="${_value}=" ;;
+    esac
+    printf '%s' "$_value" | base64 -d 2>/dev/null
+}
+
 magicnet_share_link_tag() {
     _link="$1"
     _fallback="$2"
@@ -71,23 +81,33 @@ magicnet_singbox_subscription_source_file() {
     printf '%s\n' "${MODDIR}/.config/sing-box/subscription.yaml"
 }
 
+magicnet_singbox_subscription_source_dir() {
+    printf '%s\n' "${MODDIR}/.config/sing-box"
+}
+
 magicnet_singbox_subscription_config_file() {
     printf '%s\n' "${MODDIR}/.config/sing-box/config.json"
 }
 
-magicnet_singbox_fetch_subscription() {
+magicnet_singbox_download_proxy_args() {
+    _proxy="${MAGICNET_SUB_PROXY:-}"
+    if [ -z "$_proxy" ] && command -v curl >/dev/null 2>&1; then
+        curl -sS --max-time 2 http://127.0.0.1:9090/proxies >/dev/null 2>&1 &&
+            _proxy="http://127.0.0.1:7892"
+    fi
+    [ -n "$_proxy" ] && printf '%s\n%s\n' "--proxy" "$_proxy"
+}
+
+magicnet_singbox_fetch_one_subscription() {
+    _url="$1"
+    _source_file="$2"
+    _fallback_file="$3"
+    _label="$4"
     _url_file=$(magicnet_singbox_subscription_url_file)
-    _source_file=$(magicnet_singbox_subscription_source_file)
     _download_file="${_source_file}.download"
 
-    if [ ! -s "$_url_file" ]; then
-        error "Missing subscription URL file: $_url_file"
-        return 1
-    fi
-
-    _url=$(sed -n '1{s/^[[:space:]]*//;s/[[:space:]]*$//;p;}' "$_url_file")
     if [ -z "$_url" ]; then
-        error "Subscription URL file is empty: $_url_file"
+        error "Subscription URL is empty in $_url_file"
         return 1
     fi
 
@@ -98,28 +118,44 @@ magicnet_singbox_fetch_subscription() {
     _max_time="${MAGICNET_SUB_MAX_TIME:-45}"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file" || {
-            error "Failed to download subscription with curl"
+        # shellcheck disable=SC2046
+        curl -fsSL $(magicnet_singbox_download_proxy_args) --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file" || {
+            error "Failed to download subscription ${_label} with curl"
             [ -s "$_source_file" ] && {
                 warn "Using cached subscription: $_source_file"
+                return 0
+            }
+            [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ] && {
+                warn "Using legacy cached subscription: $_fallback_file"
+                cp "$_fallback_file" "$_source_file"
                 return 0
             }
             return 1
         }
     elif command -v wget >/dev/null 2>&1; then
         wget -T "$_max_time" -qO "$_download_file" "$_url" || {
-            error "Failed to download subscription with wget"
+            error "Failed to download subscription ${_label} with wget"
             [ -s "$_source_file" ] && {
                 warn "Using cached subscription: $_source_file"
+                return 0
+            }
+            [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ] && {
+                warn "Using legacy cached subscription: $_fallback_file"
+                cp "$_fallback_file" "$_source_file"
                 return 0
             }
             return 1
         }
     elif command -v sing-box >/dev/null 2>&1; then
         sing-box tools fetch "$_url" >"$_download_file" || {
-            error "Failed to download subscription with sing-box"
+            error "Failed to download subscription ${_label} with sing-box"
             [ -s "$_source_file" ] && {
                 warn "Using cached subscription: $_source_file"
+                return 0
+            }
+            [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ] && {
+                warn "Using legacy cached subscription: $_fallback_file"
+                cp "$_fallback_file" "$_source_file"
                 return 0
             }
             return 1
@@ -130,9 +166,14 @@ magicnet_singbox_fetch_subscription() {
     fi
 
     [ -s "$_download_file" ] || {
-        error "Downloaded subscription is empty"
+        error "Downloaded subscription ${_label} is empty"
         [ -s "$_source_file" ] && {
             warn "Using cached subscription: $_source_file"
+            return 0
+        }
+        [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ] && {
+            warn "Using legacy cached subscription: $_fallback_file"
+            cp "$_fallback_file" "$_source_file"
             return 0
         }
         return 1
@@ -141,12 +182,56 @@ magicnet_singbox_fetch_subscription() {
     mv -f "$_download_file" "$_source_file"
 }
 
+magicnet_singbox_fetch_subscription() {
+    _url_file=$(magicnet_singbox_subscription_url_file)
+    _source_dir=$(magicnet_singbox_subscription_source_dir)
+    _legacy_source_file=$(magicnet_singbox_subscription_source_file)
+    _sources_file="$1"
+
+    if [ ! -s "$_url_file" ]; then
+        error "Missing subscription URL file: $_url_file"
+        return 1
+    fi
+
+    mkdir -p "$_source_dir"
+    : >"$_sources_file"
+
+    _index=0
+    _ok=0
+    while IFS= read -r _url || [ -n "$_url" ]; do
+        _url=$(printf '%s' "$_url" | sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+        [ -n "$_url" ] || continue
+
+        _index=$((_index + 1))
+        _source_file="${_source_dir}/subscription-${_index}.yaml"
+        _fallback_file=""
+        [ "$_index" -eq 1 ] && _fallback_file="$_legacy_source_file"
+
+        if magicnet_singbox_fetch_one_subscription "$_url" "$_source_file" "$_fallback_file" "#${_index}"; then
+            printf '%s\n' "$_source_file" >>"$_sources_file"
+            _ok=$((_ok + 1))
+        else
+            warn "Skipping subscription #${_index}"
+        fi
+    done <"$_url_file"
+
+    if [ "$_index" -eq 0 ]; then
+        error "Subscription URL file is empty: $_url_file"
+        return 1
+    fi
+    if [ "$_ok" -le 0 ]; then
+        error "No subscription source is available"
+        return 1
+    fi
+}
+
 magicnet_singbox_extract_clash_nodes() {
     _source_file="$1"
     _nodes_dir="$2"
     mkdir -p "$_nodes_dir"
+    _start_index=$(find "$_nodes_dir" -maxdepth 1 -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) 2>/dev/null | wc -l)
 
-    awk -v outdir="$_nodes_dir" '
+    awk -v outdir="$_nodes_dir" -v start="$_start_index" '
         BEGIN { in_proxies = 0; idx = 0; file = "" }
         /^[^[:space:]-][^:]*:/ {
             if ($0 ~ /^proxies:[[:space:]]*$/) {
@@ -159,7 +244,7 @@ magicnet_singbox_extract_clash_nodes() {
         }
         in_proxies && /^[[:space:]]*-[[:space:]]+/ {
             idx++
-            file = outdir "/node-" idx ".yaml"
+            file = outdir "/node-" (start + idx) ".yaml"
             line = $0
             sub(/^[[:space:]]*-[[:space:]]*/, "", line)
             print line > file
@@ -176,6 +261,7 @@ magicnet_singbox_extract_share_links() {
     _source_file="$1"
     _nodes_dir="$2"
     mkdir -p "$_nodes_dir"
+    _start_index=$(find "$_nodes_dir" -maxdepth 1 -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) 2>/dev/null | wc -l)
 
     _links_file="${_nodes_dir}/links.txt"
     _first_line=$(sed -n '1{s/^[[:space:]]*//;p;}' "$_source_file")
@@ -189,6 +275,12 @@ magicnet_singbox_extract_share_links() {
             base64 -d "$_source_file" 2>/dev/null |
                 grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
                 sed 's/^[[:space:]]*//' >"$_links_file"
+            if [ ! -s "$_links_file" ]; then
+                tr '_-' '/+' <"$_source_file" 2>/dev/null |
+                    base64 -d 2>/dev/null |
+                    grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
+                    sed 's/^[[:space:]]*//' >"$_links_file"
+            fi
         else
             : >"$_links_file"
         fi
@@ -199,7 +291,7 @@ magicnet_singbox_extract_share_links() {
     while IFS= read -r _link || [ -n "$_link" ]; do
         [ -n "$_link" ] || continue
         _idx=$((_idx + 1))
-        printf '%s\n' "$_link" >"${_nodes_dir}/node-${_idx}.link"
+        printf '%s\n' "$_link" >"${_nodes_dir}/node-$((_start_index + _idx)).link"
     done <"$_links_file"
 
     printf '%s\n' "$_idx"
@@ -319,6 +411,55 @@ magicnet_singbox_emit_share_link_json() {
     _server=$(magicnet_json_escape "$_server")
 
     case "$_scheme" in
+    ss)
+        if printf '%s' "$_base" | grep -q '@'; then
+            _method_password=$(magicnet_b64_decode "$_userinfo")
+            [ -n "$_method_password" ] || _method_password="$_userinfo"
+            _method=${_method_password%%:*}
+            _password=${_method_password#*:}
+        else
+            _decoded=$(magicnet_b64_decode "$_base")
+            _method_password=${_decoded%@*}
+            _hostport=${_decoded#*@}
+            _server=${_hostport%:*}
+            _port=${_hostport##*:}
+            _method=${_method_password%%:*}
+            _password=${_method_password#*:}
+        fi
+        [ -n "$_method" ] || return 1
+        [ -n "$_password" ] || return 1
+        [ -n "$_server" ] || return 1
+        [ -n "$_port" ] || return 1
+        printf '{"type":"shadowsocks","tag":"%s","server":"%s","server_port":%s,"method":"%s","password":"%s"}' \
+            "$_tag" "$(magicnet_json_escape "$_server")" "$_port" \
+            "$(magicnet_json_escape "$_method")" "$(magicnet_json_escape "$_password")"
+        ;;
+    vmess)
+        _decoded=$(magicnet_b64_decode "$_body")
+        [ -n "$_decoded" ] || return 1
+        _name=$(printf '%s' "$_decoded" | sed -n 's/.*"ps"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        _server=$(printf '%s' "$_decoded" | sed -n 's/.*"add"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        _port=$(printf '%s' "$_decoded" | sed -n 's/.*"port"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
+        _uuid=$(printf '%s' "$_decoded" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        _alter_id=$(printf '%s' "$_decoded" | sed -n 's/.*"aid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
+        _network=$(printf '%s' "$_decoded" | sed -n 's/.*"net"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        _tls=$(printf '%s' "$_decoded" | sed -n 's/.*"tls"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        _sni=$(printf '%s' "$_decoded" | sed -n 's/.*"sni"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        [ -n "$_name" ] && _tag=$(magicnet_json_escape "$_name")
+        [ -n "$_server" ] || return 1
+        [ -n "$_port" ] || return 1
+        [ -n "$_uuid" ] || return 1
+        [ -n "$_alter_id" ] || _alter_id=0
+        [ -n "$_network" ] || _network=tcp
+        printf '{"type":"vmess","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","alter_id":%s' \
+            "$_tag" "$(magicnet_json_escape "$_server")" "$_port" "$(magicnet_json_escape "$_uuid")" "$_alter_id"
+        [ "$_network" != "tcp" ] && printf ',"transport":{"type":"%s"}' "$(magicnet_json_escape "$_network")"
+        if [ "$_tls" = "tls" ]; then
+            [ -n "$_sni" ] || _sni="$_server"
+            printf ',"tls":{"enabled":true,"server_name":"%s"}' "$(magicnet_json_escape "$_sni")"
+        fi
+        printf '}'
+        ;;
     vless)
         _flow=$(magicnet_uri_query_value flow "$_query")
         _security=$(magicnet_uri_query_value security "$_query")
@@ -384,10 +525,7 @@ magicnet_singbox_build_outbounds_file() {
         if [ -n "$_json" ]; then
             [ "$_first" -eq 1 ] || printf ',' >>"${_out_file}.nodes"
             printf '%s' "$_json" >>"${_out_file}.nodes"
-            case "$_node_file" in
-            *.link) _tag=$(magicnet_share_link_tag "$(sed -n '1p' "$_node_file")" "node-${_imported}") ;;
-            *) _tag=$(magicnet_yaml_value name) ;;
-            esac
+            _tag=$(printf '%s' "$_json" | sed -n 's/.*"tag":"\([^"]*\)".*/\1/p')
             printf '%s\n' "$_tag" >>"$_tags_file"
             [ -n "$_first_tag" ] || _first_tag="$_tag"
             _first=0
@@ -603,23 +741,108 @@ magicnet_singbox_update_config_with_nodes() {
     mv -f "$_tmp_file" "$_config_file"
 }
 
+magicnet_singbox_pids() {
+    for _proc_comm in /proc/[0-9]*/comm; do
+        [ -r "$_proc_comm" ] || continue
+        if [ "$(cat "$_proc_comm" 2>/dev/null)" = "sing-box" ]; then
+            _pid=${_proc_comm#/proc/}
+            printf '%s\n' "${_pid%/comm}"
+        fi
+    done
+}
+
+magicnet_singbox_is_running() {
+    [ -n "$(magicnet_singbox_pids)" ]
+}
+
+magicnet_singbox_restart_if_running() {
+    magicnet_singbox_is_running || return 0
+
+    for _pid in $(magicnet_singbox_pids); do
+        kill "$_pid" 2>/dev/null || true
+    done
+    sleep 1
+    if magicnet_singbox_is_running; then
+        for _pid in $(magicnet_singbox_pids); do
+            kill -9 "$_pid" 2>/dev/null || true
+        done
+        sleep 1
+    fi
+    ip link delete tun0 2>/dev/null || true
+
+    _config_file=$(magicnet_singbox_subscription_config_file)
+    _work_dir="${_config_file%/*}"
+    _log_file="${MODDIR}/.log/sing-box.log"
+    mkdir -p "${MODDIR}/.log"
+    nohup sing-box run -c "$_config_file" -D "$_work_dir" >"$_log_file" 2>&1 &
+    sleep 2
+    magicnet_singbox_is_running
+}
+
+magicnet_singbox_api_has_nodes() {
+    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || true)
+    [ -n "$_api" ] || return 1
+    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks)"'
+}
+
+magicnet_singbox_config_has_nodes() {
+    _config_file=$(magicnet_singbox_subscription_config_file)
+    grep -Eq '"type":"(vless|hysteria2|trojan|vmess|shadowsocks)"' "$_config_file"
+}
+
+magicnet_singbox_google_works() {
+    curl -fsSI --max-time "${MAGICNET_GOOGLE_TEST_MAX_TIME:-15}" \
+        -x http://127.0.0.1:7892 \
+        https://www.google.com >/dev/null 2>&1
+}
+
+magicnet_singbox_verify_subscription_ready() {
+    if magicnet_singbox_is_running; then
+        magicnet_singbox_restart_if_running || {
+            error "sing-box restart failed after subscription update"
+            return 1
+        }
+        magicnet_singbox_api_has_nodes || {
+            error "sing-box subscription loaded no proxy nodes"
+            return 1
+        }
+        magicnet_singbox_google_works || {
+            error "sing-box proxy test failed: https://www.google.com is not reachable"
+            return 1
+        }
+        return 0
+    fi
+
+    magicnet_singbox_config_has_nodes || {
+        error "sing-box generated config contains no proxy nodes"
+        return 1
+    }
+}
+
 magicnet_singbox_update_subscription() {
-    _source_file=$(magicnet_singbox_subscription_source_file)
     _work_dir="${MODDIR}/.config/sing-box/.subscription-work"
     _nodes_dir="${_work_dir}/nodes"
     _outbounds_file="${_work_dir}/outbounds.json"
     _tags_file="${_work_dir}/tags.txt"
+    _sources_file="${_work_dir}/sources.txt"
 
     rm -rf "$_work_dir"
     mkdir -p "$_nodes_dir"
 
-    magicnet_singbox_fetch_subscription || return 1
-    if grep -Eq '^proxies:[[:space:]]*$' "$_source_file"; then
-        _node_count=$(magicnet_singbox_extract_clash_nodes "$_source_file" "$_nodes_dir")
-    else
-        _node_count=$(magicnet_singbox_extract_share_links "$_source_file" "$_nodes_dir")
-    fi
-    if [ "${_node_count:-0}" -le 0 ]; then
+    magicnet_singbox_fetch_subscription "$_sources_file" || return 1
+
+    _node_total=0
+    while IFS= read -r _source_file || [ -n "$_source_file" ]; do
+        [ -s "$_source_file" ] || continue
+        if grep -Eq '^proxies:[[:space:]]*$' "$_source_file"; then
+            _node_count=$(magicnet_singbox_extract_clash_nodes "$_source_file" "$_nodes_dir")
+        else
+            _node_count=$(magicnet_singbox_extract_share_links "$_source_file" "$_nodes_dir")
+        fi
+        _node_total=$((_node_total + ${_node_count:-0}))
+    done <"$_sources_file"
+
+    if [ "${_node_total:-0}" -le 0 ]; then
         error "No supported subscription nodes found"
         return 1
     fi
@@ -635,5 +858,6 @@ magicnet_singbox_update_subscription() {
     fi
 
     magicnet_singbox_update_config_with_nodes "$_outbounds_file" || return 1
+    magicnet_singbox_verify_subscription_ready || return 1
     success "sing-box nodes updated: imported ${_imported}, skipped ${_skipped}"
 }
