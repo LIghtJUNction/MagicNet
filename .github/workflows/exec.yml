@@ -40,7 +40,6 @@ jobs:
     env:
       MAGIC_MIHOMO: ${{ inputs.magic-mihomo == false && '0' || '1' }}
       MAGIC_SINGBOX: ${{ inputs.magic-singbox == false && '0' || '1' }}
-      KAM_RELEASE_ENABLED: ${{ inputs.release == true && '1' || '0' }}
       KAM_SIGN_ENABLED: ${{ inputs.release == true && '1' || '0' }}
       KAM_CHANGELOG_ENABLED: '0'
       GH_TOKEN: ${{ github.token }}
@@ -104,6 +103,37 @@ jobs:
           unzip -l dist/MagicNet.zip | grep -F 'action.sh'
           ! unzip -Z1 dist/MagicNet.zip | grep -E '(^|/)\.git($|/)|(^|/)\.github($|/)|(^|/)\.gitignore$'
           ! unzip -l dist/MagicNet.zip | grep -F 'lib/kamfw/src/'
+
+      - name: Create GitHub release
+        if: ${{ inputs.release == true }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' kam.toml)"
+          version_code="$(sed -n 's/^versionCode[[:space:]]*=[[:space:]]*\([0-9]\+\)/\1/p' kam.toml)"
+          module_id="$(sed -n 's/^id[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' kam.toml)"
+          test -n "$version"
+          test -n "$version_code"
+          test -n "$module_id"
+          test -f "dist/${module_id}.zip"
+          if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $version already exists in $GITHUB_REPOSITORY"
+            exit 1
+          fi
+          notes="$(mktemp)"
+          {
+            printf '%s %s\n\n' "$module_id" "$version"
+            printf 'Module: %s\n' "$module_id"
+            printf 'Version: %s\n' "$version"
+            printf 'VersionCode: %s\n\n' "$version_code"
+            printf 'Built with Kam.\n'
+          } > "$notes"
+          gh release create "$version" "dist/${module_id}.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${module_id}-${version_code}-${version}" \
+            --notes-file "$notes"
 
       - name: Upload build artifact
         if: always() && hashFiles('dist/*.zip') != ''
