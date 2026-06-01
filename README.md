@@ -93,6 +93,14 @@ sing-box 配置：
 /data/adb/modules/MagicNet/.config/sing-box/config.json
 ```
 
+sing-box 订阅链接：
+
+```text
+/data/adb/modules/MagicNet/.config/sing-box/subscription.url
+```
+
+在 `subscription.url` 第一行填入 Clash / Mihomo 订阅链接后，执行模块 `action.sh`，选择 `更新 sing-box 订阅节点`。MagicNet 会下载订阅，提取常见 Clash YAML `proxies` 节点，转换为 sing-box `outbounds`，并保留原有 TUN、DNS、路由和 Clash API 配置。当前自动导入支持常见 `ss`、`vmess`、`vless`、`trojan`、`hysteria2` 节点；不支持的节点会跳过并显示数量。
+
 默认控制端：
 
 ```text
