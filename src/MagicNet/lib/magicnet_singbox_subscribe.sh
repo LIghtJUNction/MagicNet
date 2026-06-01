@@ -667,7 +667,7 @@ magicnet_singbox_build_outbounds_file() {
         printf '  "outbounds": [\n'
         magicnet_emit_selector_json "proxy" "$_all" "$_first_tag"
         printf ',\n'
-        magicnet_emit_selector_json "select" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "tw" "iepl" "free" "download" "direct")" "proxy"
+        magicnet_emit_selector_json "select" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "tw" "uk" "iepl" "free" "download" "direct")" "proxy"
         printf ',\n'
         magicnet_emit_selector_json "hk" "$_hk" "proxy"
         printf ',\n'
@@ -701,27 +701,27 @@ magicnet_singbox_build_outbounds_file() {
         printf ',\n'
         magicnet_emit_selector_json "icloud" "" "direct"
         printf ',\n'
-        magicnet_emit_selector_json "bing" "$_all" "proxy"
+        magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n%s\n%s\n' "proxy" "direct" "hk" "us")" "proxy"
         printf ',\n'
         magicnet_emit_selector_json "network-test" "" "direct"
         printf ',\n'
-        magicnet_emit_selector_json "ai-proxy" "$_all" "proxy"
+        magicnet_emit_selector_json "ai-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "us" "jp" "sg" "direct")" "proxy"
         printf ',\n'
-        magicnet_emit_selector_json "proxy-rule" "$_all" "proxy"
+        magicnet_emit_selector_json "proxy-rule" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "direct")" "proxy"
         printf ',\n'
-        magicnet_emit_selector_json "dev-proxy" "$_all" "proxy"
+        magicnet_emit_selector_json "dev-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
         printf ',\n'
-        magicnet_emit_selector_json "social-proxy" "$_all" "proxy"
+        magicnet_emit_selector_json "social-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
         printf ',\n'
         magicnet_emit_selector_json "download-direct" "$_download" "direct"
         printf ',\n'
-        magicnet_emit_selector_json "media-proxy" "$_all" "proxy"
+        magicnet_emit_selector_json "media-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
         printf ',\n'
-        magicnet_emit_selector_json "game-proxy" "$_all" "proxy"
+        magicnet_emit_selector_json "game-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
         printf ',\n'
-        magicnet_emit_selector_json "telegram-proxy" "$_all" "proxy"
+        magicnet_emit_selector_json "telegram-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "sg" "direct")" "proxy"
         printf ',\n'
-        magicnet_emit_selector_json "final" "" "direct"
+        magicnet_emit_selector_json "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
         _nodes=$(sed 's/^\[//; s/\]$//' "${_out_file}.nodes")
         if [ -n "$_nodes" ]; then
             printf ',\n    %s' "$_nodes"
