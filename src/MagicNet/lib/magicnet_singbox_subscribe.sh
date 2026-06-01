@@ -6,6 +6,14 @@ magicnet_json_escape() {
     printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
+if ! command -v error >/dev/null 2>&1; then
+    error() { printf '%s\n' "ERROR: $1"; }
+fi
+
+if ! command -v success >/dev/null 2>&1; then
+    success() { printf '%s\n' "$1"; }
+fi
+
 magicnet_yaml_value() {
     _key="$1"
     sed -n "s/^[[:space:]]*${_key}:[[:space:]]*//p" "$_node_file" | tail -n 1 |
@@ -128,8 +136,9 @@ magicnet_singbox_emit_node_json() {
         [ -n "$_uuid" ] || return 1
         [ -n "$_alter_id" ] || _alter_id=0
         [ -n "$_network" ] || _network=tcp
-        printf '{"type":"vmess","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","alter_id":%s,"transport":{"type":"%s"}' \
-            "$_name" "$_server" "$_port" "$_uuid" "$_alter_id" "$_network"
+        printf '{"type":"vmess","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","alter_id":%s' \
+            "$_name" "$_server" "$_port" "$_uuid" "$_alter_id"
+        [ "$_network" != "tcp" ] && printf ',"transport":{"type":"%s"}' "$_network"
         if magicnet_truthy "$_tls"; then
             _sni=$(magicnet_yaml_value servername)
             [ -n "$_sni" ] || _sni=$(magicnet_yaml_value sni)
@@ -146,8 +155,9 @@ magicnet_singbox_emit_node_json() {
         _tls=$(magicnet_yaml_value tls)
         [ -n "$_uuid" ] || return 1
         [ -n "$_network" ] || _network=tcp
-        printf '{"type":"vless","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","transport":{"type":"%s"}' \
-            "$_name" "$_server" "$_port" "$_uuid" "$_network"
+        printf '{"type":"vless","tag":"%s","server":"%s","server_port":%s,"uuid":"%s"' \
+            "$_name" "$_server" "$_port" "$_uuid"
+        [ "$_network" != "tcp" ] && printf ',"transport":{"type":"%s"}' "$_network"
         [ -n "$_flow" ] && printf ',"flow":"%s"' "$_flow"
         if magicnet_truthy "$_tls"; then
             _sni=$(magicnet_yaml_value servername)
@@ -192,73 +202,115 @@ magicnet_singbox_build_outbounds_file() {
     _imported=0
     _skipped=0
 
+    _first_tag=""
     : >"$_tags_file"
-    printf '[' >"$_out_file"
+    printf '[' >"${_out_file}.nodes"
     for _node_file in "$_nodes_dir"/node-*.yaml; do
         [ -f "$_node_file" ] || continue
         _json=$(magicnet_singbox_emit_node_json "$_node_file" 2>/dev/null)
         if [ -n "$_json" ]; then
-            [ "$_first" -eq 1 ] || printf ',' >>"$_out_file"
-            printf '%s' "$_json" >>"$_out_file"
+            [ "$_first" -eq 1 ] || printf ',' >>"${_out_file}.nodes"
+            printf '%s' "$_json" >>"${_out_file}.nodes"
             _tag=$(magicnet_yaml_value name)
             printf '%s\n' "$_tag" >>"$_tags_file"
+            [ -n "$_first_tag" ] || _first_tag="$_tag"
             _first=0
             _imported=$((_imported + 1))
         else
             _skipped=$((_skipped + 1))
         fi
     done
-    printf ']' >>"$_out_file"
+    printf ']' >>"${_out_file}.nodes"
+
+    {
+        printf '  "outbounds": [\n'
+        printf '    {\n'
+        printf '      "type": "selector",\n'
+        printf '      "tag": "proxy",\n'
+        printf '      "outbounds": ['
+        _first=1
+        while IFS= read -r _tag; do
+            [ -n "$_tag" ] || continue
+            [ "$_first" -eq 1 ] || printf ', '
+            printf '"%s"' "$(magicnet_json_escape "$_tag")"
+            _first=0
+        done <"$_tags_file"
+        [ "$_first" -eq 1 ] || printf ', '
+        printf '"direct", "block"],\n'
+        printf '      "default": "%s"\n' "$(magicnet_json_escape "${_first_tag:-direct}")"
+        printf '    },\n'
+        printf '    {\n'
+        printf '      "type": "selector",\n'
+        printf '      "tag": "select",\n'
+        printf '      "outbounds": ["proxy", "direct", "block"],\n'
+        printf '      "default": "proxy"\n'
+        printf '    }'
+        _nodes=$(sed 's/^\[//; s/\]$//' "${_out_file}.nodes")
+        if [ -n "$_nodes" ]; then
+            printf ',\n    %s' "$_nodes"
+        fi
+        printf ',\n'
+        printf '    {\n      "type": "direct",\n      "tag": "direct"\n    },\n'
+        printf '    {\n      "type": "block",\n      "tag": "block"\n    }\n'
+        printf '  ],'
+    } >"$_out_file"
+
     printf '%s %s\n' "$_imported" "$_skipped"
 }
 
 magicnet_singbox_update_config_with_nodes() {
     _config_file=$(magicnet_singbox_subscription_config_file)
     _outbounds_file="$1"
-    _tags_file="$2"
     _tmp_file="${_config_file}.new"
 
-    if ! command -v python3 >/dev/null 2>&1; then
-        error "python3 is required to safely update sing-box config"
-        return 1
-    fi
-
-    python3 - "$_config_file" "$_outbounds_file" "$_tags_file" "$_tmp_file" <<'PY'
-import json
-import sys
-
-config_path, outbounds_path, tags_path, output_path = sys.argv[1:]
-with open(config_path, "r", encoding="utf-8") as f:
-    config = json.load(f)
-with open(outbounds_path, "r", encoding="utf-8") as f:
-    nodes = json.load(f)
-with open(tags_path, "r", encoding="utf-8") as f:
-    tags = [line.strip() for line in f if line.strip()]
-
-base = [out for out in config.get("outbounds", []) if out.get("tag") in {"proxy", "select", "direct", "block"}]
-by_tag = {out.get("tag"): out for out in base}
-
-proxy = by_tag.get("proxy", {"type": "selector", "tag": "proxy"})
-proxy["outbounds"] = tags + ["direct", "block"]
-proxy["default"] = tags[0] if tags else "direct"
-
-select = by_tag.get("select", {"type": "selector", "tag": "select"})
-select["outbounds"] = ["proxy", "direct", "block"]
-select["default"] = "proxy"
-
-direct = by_tag.get("direct", {"type": "direct", "tag": "direct"})
-block = by_tag.get("block", {"type": "block", "tag": "block"})
-
-config["outbounds"] = [proxy, select, *nodes, direct, block]
-
-with open(output_path, "w", encoding="utf-8") as f:
-    json.dump(config, f, ensure_ascii=False, indent=2)
-    f.write("\n")
-PY
+    awk -v repl="$_outbounds_file" '
+        function count_delta(s, i, c, d) {
+            d = 0
+            for (i = 1; i <= length(s); i++) {
+                c = substr(s, i, 1)
+                if (c == "[") d++
+                if (c == "]") d--
+            }
+            return d
+        }
+        BEGIN {
+            while ((getline line < repl) > 0) {
+                replacement = replacement line "\n"
+            }
+            close(repl)
+            skipping = 0
+            depth = 0
+        }
+        skipping == 0 && $0 ~ /^[[:space:]]*"outbounds"[[:space:]]*:/ {
+            if (prev != "") {
+                sub(/,[[:space:]]*$/, "", prev)
+                sub(/[[:space:]]*$/, ",", prev)
+                print prev
+                prev = ""
+            }
+            printf "%s", replacement
+            depth = count_delta($0)
+            skipping = 1
+            next
+        }
+        skipping == 1 {
+            depth += count_delta($0)
+            if (depth <= 0) {
+                skipping = 0
+            }
+            next
+        }
+        {
+            if (prev != "") print prev
+            prev = $0
+        }
+        END {
+            if (prev != "") print prev
+        }
+    ' "$_config_file" >"$_tmp_file"
 
     if command -v sing-box >/dev/null 2>&1; then
         sing-box check -c "$_tmp_file" -D "${_config_file%/*}" >/dev/null || {
-            rm -f "$_tmp_file"
             error "Generated sing-box config failed validation"
             return 1
         }
@@ -284,6 +336,7 @@ magicnet_singbox_update_subscription() {
         return 1
     fi
 
+    # shellcheck disable=SC2046
     set -- $(magicnet_singbox_build_outbounds_file "$_nodes_dir" "$_outbounds_file" "$_tags_file")
     _imported="$1"
     _skipped="$2"
@@ -293,6 +346,6 @@ magicnet_singbox_update_subscription() {
         return 1
     fi
 
-    magicnet_singbox_update_config_with_nodes "$_outbounds_file" "$_tags_file" || return 1
+    magicnet_singbox_update_config_with_nodes "$_outbounds_file" || return 1
     success "sing-box nodes updated: imported ${_imported}, skipped ${_skipped}"
 }

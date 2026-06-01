@@ -5,6 +5,7 @@
 # thin while using kamfw's phase dispatcher as the runtime boundary.
 
 import wait
+import rich
 
 magicnet_log() {
     info "$1"
@@ -226,6 +227,14 @@ magicnet_singbox_disabled() {
     [ -f "${MODDIR}/.disable_sing_box" ]
 }
 
+magicnet_status_text() {
+    if "$1" >/dev/null 2>&1; then
+        printf '%s\n' "Running"
+    else
+        printf '%s\n' "Stopped"
+    fi
+}
+
 magicnet_refresh_status() {
     if ! magicnet_singbox_disabled && magicnet_cmd_exists sing-box; then
         import __singbox__
@@ -274,26 +283,139 @@ magicnet_start_kernel() {
     return 1
 }
 
-magicnet_action() {
-    if ! magicnet_singbox_disabled && magicnet_cmd_exists sing-box; then
+magicnet_show_dashboard() {
+    panel "MagicNet"
+    if magicnet_cmd_exists sing-box; then
         import __singbox__
-        singbox_ask_webui
-        ask_toggle_singbox
-        magicnet_refresh_status
-        magicnet_after_kernel_start
-        return 0
+        if magicnet_singbox_disabled; then
+            _singbox_state="Disabled by .disable_sing_box"
+        else
+            _singbox_state=$(magicnet_status_text is_singbox_running)
+        fi
+    else
+        _singbox_state="Not installed"
     fi
 
     if magicnet_cmd_exists mihomo; then
         import __mihomo__
-        ask_webui
-        ask_toggle_mihomo
-        magicnet_refresh_status
-        magicnet_after_kernel_start
-        return 0
+        _mihomo_state=$(magicnet_status_text is_mihomo_running)
+    else
+        _mihomo_state="Not installed"
     fi
 
-    abort "No supported kernel found!"
+    panel_row "sing-box" "$_singbox_state"
+    panel_row "mihomo" "$_mihomo_state"
+    panel_row "WebUI" "http://127.0.0.1:9090/ui/"
+    panel_row "sing-box subscription" "${MODDIR}/.config/sing-box/subscription.url"
+    panel_end
+}
+
+magicnet_action_update_singbox_subscription() {
+    if magicnet_singbox_disabled; then
+        panel_warn "sing-box is disabled by ${MODDIR}/.disable_sing_box"
+        return 0
+    fi
+    if ! magicnet_cmd_exists sing-box; then
+        panel_error "sing-box is not installed"
+        return 1
+    fi
+
+    . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
+    magicnet_singbox_update_subscription
+    magicnet_refresh_status
+}
+
+magicnet_action_singbox_webui() {
+    if magicnet_singbox_disabled; then
+        panel_warn "sing-box is disabled by ${MODDIR}/.disable_sing_box"
+        return 0
+    fi
+    import __singbox__
+    singbox_ask_webui
+}
+
+magicnet_action_toggle_singbox() {
+    if magicnet_singbox_disabled; then
+        panel_warn "sing-box is disabled by ${MODDIR}/.disable_sing_box"
+        return 0
+    fi
+    import __singbox__
+    toggle_singbox
+    magicnet_refresh_status
+    magicnet_after_kernel_start
+}
+
+magicnet_action_mihomo_webui() {
+    import __mihomo__
+    ask_webui
+}
+
+magicnet_action_toggle_mihomo() {
+    import __mihomo__
+    toggle_mihomo
+    magicnet_refresh_status
+    magicnet_after_kernel_start
+}
+
+set_i18n "MAGICNET_ACTION_MENU" \
+    "zh" "MagicNet 操作菜单" \
+    "en" "MagicNet action menu" \
+    "ja" "MagicNet 操作メニュー" \
+    "ko" "MagicNet 작업 메뉴"
+set_i18n "MAGICNET_UPDATE_SINGBOX_SUBSCRIPTION" \
+    "zh" "更新 sing-box 订阅节点" \
+    "en" "Update sing-box subscription nodes" \
+    "ja" "sing-box 購読ノードを更新" \
+    "ko" "sing-box 구독 노드 업데이트"
+set_i18n "MAGICNET_SINGBOX_WEBUI" \
+    "zh" "设置 sing-box WebUI" \
+    "en" "Set sing-box WebUI" \
+    "ja" "sing-box WebUI を設定" \
+    "ko" "sing-box WebUI 설정"
+set_i18n "MAGICNET_TOGGLE_SINGBOX" \
+    "zh" "启动/停止 sing-box" \
+    "en" "Start/stop sing-box" \
+    "ja" "sing-box を開始/停止" \
+    "ko" "sing-box 시작/중지"
+set_i18n "MAGICNET_MIHOMO_WEBUI" \
+    "zh" "设置 mihomo WebUI" \
+    "en" "Set mihomo WebUI" \
+    "ja" "mihomo WebUI を設定" \
+    "ko" "mihomo WebUI 설정"
+set_i18n "MAGICNET_TOGGLE_MIHOMO" \
+    "zh" "启动/停止 mihomo" \
+    "en" "Start/stop mihomo" \
+    "ja" "mihomo を開始/停止" \
+    "ko" "mihomo 시작/중지"
+set_i18n "MAGICNET_REFRESH_STATUS" \
+    "zh" "刷新模块状态描述" \
+    "en" "Refresh module status description" \
+    "ja" "モジュール状態説明を更新" \
+    "ko" "모듈 상태 설명 새로고침"
+set_i18n "MAGICNET_EXIT" \
+    "zh" "退出" \
+    "en" "Exit" \
+    "ja" "終了" \
+    "ko" "종료"
+
+magicnet_action() {
+    magicnet_show_dashboard
+    ask "MAGICNET_ACTION_MENU" \
+        "MAGICNET_UPDATE_SINGBOX_SUBSCRIPTION" \
+        'magicnet_action_update_singbox_subscription' \
+        "MAGICNET_SINGBOX_WEBUI" \
+        'magicnet_action_singbox_webui' \
+        "MAGICNET_TOGGLE_SINGBOX" \
+        'magicnet_action_toggle_singbox' \
+        "MAGICNET_MIHOMO_WEBUI" \
+        'magicnet_action_mihomo_webui' \
+        "MAGICNET_TOGGLE_MIHOMO" \
+        'magicnet_action_toggle_mihomo' \
+        "MAGICNET_REFRESH_STATUS" \
+        'magicnet_refresh_status' \
+        "MAGICNET_EXIT" \
+        'exit 0' \
+        0
 }
 
 kamfw_phase_boot_completed() {

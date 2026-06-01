@@ -14,7 +14,9 @@ import __customize__
 
 import i18n
 import lang
-select_lang
+if [ "${MAGICNET_NONINTERACTIVE:-0}" != "1" ]; then
+  select_lang
+fi
 
 import rich
 
@@ -96,7 +98,9 @@ print "$(i18n "VPN_COEXIST_MSG")"
 MAGIC_MIHOMO=${MAGIC_MIHOMO:-1}
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
 
-if [ "$MAGIC_SINGBOX" != "0" ] && [ ! -f "${MODPATH}/.disable_sing_box" ] && [ -x "${MODPATH}/system/bin/sing-box" ]; then
+if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
+  :
+elif [ "$MAGIC_SINGBOX" != "0" ] && [ ! -f "${MODPATH}/.disable_sing_box" ] && [ -x "${MODPATH}/system/bin/sing-box" ]; then
   import __singbox__
   singbox_ask_webui
 elif [ "$MAGIC_MIHOMO" != "0" ] && [ -x "${MODPATH}/system/bin/mihomo" ]; then
@@ -111,8 +115,10 @@ fi
 [ -f "${MODPATH}/.local/bin/mihomo" ] && set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
 [ -f "${MODPATH}/.local/bin/sing-box" ] && set_perm "${MODPATH}/.local/bin/sing-box" 0 0 0700 u:object_r:magisk_file:s0
 
-[ -f "${MODPATH}/.config/mihomo/config.yaml" ] && confirm_update_file ".config/mihomo/config.yaml"
-[ -f "${MODPATH}/.config/sing-box/config.json" ] && confirm_update_file ".config/sing-box/config.json"
+if [ "${MAGICNET_NONINTERACTIVE:-0}" != "1" ]; then
+  [ -f "${MODPATH}/.config/mihomo/config.yaml" ] && confirm_update_file ".config/mihomo/config.yaml"
+  [ -f "${MODPATH}/.config/sing-box/config.json" ] && confirm_update_file ".config/sing-box/config.json"
+fi
 
 import launcher
 launch url "https://github.com/LIghtJUNction/MagicNet"
