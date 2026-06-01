@@ -18,6 +18,8 @@ MagicNet 是一个 KAM 构建的 Android root 模块，用于在设备上以 TUN
 - mihomo / sing-box 双内核。
 - 内置 mihomo 规则集和 Geo 数据更新。
 - 默认 WebUI 跳转，可在安装时选择；mihomo / sing-box 均使用 Clash API 兼容控制端。
+- 内置 CLI：服务启停、日志、节点热切换、模式切换、订阅更新、连接管理。
+- TUN 分应用代理：基于 sing-box TUN `include_package` / `exclude_package`，支持黑名单和白名单模式。
 - 热点客户端可跟随本机 TUN 代理转发。
 - 可选 root VPN 共存模式，便于与 Tailscale、WireGuard、OpenVPN、ZeroTier、WARP 等隧道同时运行。
 
@@ -123,6 +125,82 @@ http://127.0.0.1:9090/ui/
 sing-box 使用 `experimental.clash_api` 提供 Clash API 兼容控制端，方便复用 MetaCubeXD / Yacd 等 Clash 面板。若修改 `secret`，面板里也要同步填写。
 
 安装时不会强制覆盖用户已有配置；需要更新时按安装提示确认。
+
+## CLI
+
+模块内置可脚本化 CLI：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli help
+```
+
+常用命令：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli service status
+su -c /data/adb/modules/MagicNet/cli service start
+su -c /data/adb/modules/MagicNet/cli service stop
+su -c /data/adb/modules/MagicNet/cli service restart
+su -c /data/adb/modules/MagicNet/cli service logs sing-box 120
+```
+
+节点和模式热切换走 Clash API，不需要重刷模块：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli node list
+su -c /data/adb/modules/MagicNet/cli node current
+su -c '/data/adb/modules/MagicNet/cli node use "节点名"'
+su -c /data/adb/modules/MagicNet/cli mode rule
+su -c /data/adb/modules/MagicNet/cli mode global
+su -c /data/adb/modules/MagicNet/cli mode direct
+```
+
+订阅、控制端、连接管理：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli sub update-all
+su -c /data/adb/modules/MagicNet/cli sub file
+su -c /data/adb/modules/MagicNet/cli api ui
+su -c /data/adb/modules/MagicNet/cli api close-all
+```
+
+网络修复与诊断：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli hotspot reload
+su -c /data/adb/modules/MagicNet/cli vpn reload
+su -c /data/adb/modules/MagicNet/cli diagnose
+```
+
+## TUN 分应用代理
+
+MagicNet 不引入 TUN 外的 TPROXY / REDIRECT fallback；主路线就是 sing-box / mihomo TUN。分应用能力直接使用 sing-box TUN 入站的包名过滤。
+
+策略文件：
+
+```text
+/data/adb/modules/MagicNet/.config/magicnet/app-mode.conf
+/data/adb/modules/MagicNet/.config/magicnet/app-proxy.list
+/data/adb/modules/MagicNet/.config/magicnet/app-bypass.list
+```
+
+默认是 `blacklist`：`app-bypass.list` 里的包名绕过 MagicNet TUN，适合保护 Tailscale、WireGuard、OpenVPN、ZeroTier、WARP 等 VPN App，避免流量回环。
+
+```bash
+su -c /data/adb/modules/MagicNet/cli app list
+su -c /data/adb/modules/MagicNet/cli app mode blacklist
+su -c '/data/adb/modules/MagicNet/cli app add com.example.bank bypass'
+su -c '/data/adb/modules/MagicNet/cli app remove com.example.bank'
+```
+
+`whitelist` 模式只接管 `app-proxy.list` 里的包名：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli app mode whitelist
+su -c '/data/adb/modules/MagicNet/cli app add com.openai.chatgpt proxy'
+```
+
+`cli app ...` 会自动把策略应用到 sing-box TUN 配置；如果 sing-box 正在运行，重启内核后生效。
 
 如需在双内核包里强制跳过 sing-box、直接使用 mihomo fallback，创建以下文件：
 

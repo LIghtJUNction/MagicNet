@@ -1,0 +1,313 @@
+#!/system/bin/sh
+# shellcheck shell=ash
+
+case "$0" in
+    */*) MODDIR=${0%/*} ;;
+    *) MODDIR=${MODDIR:-$(pwd)} ;;
+esac
+
+if [ -f "${MODDIR}/lib/kamfw/.kamfwrc" ]; then
+    . "${MODDIR}/lib/kamfw/.kamfwrc" "$MODDIR"
+else
+    echo "Missing kamfw runtime: ${MODDIR}/lib/kamfw/.kamfwrc" >&2
+    exit 1
+fi
+
+import __runtime__
+. "${MODDIR}/lib/magicnet.sh"
+
+MAGICNET_API="${MAGICNET_API:-http://127.0.0.1:9090}"
+MAGICNET_GROUP="${MAGICNET_GROUP:-proxy}"
+MAGICNET_LOG_DIR="${MODDIR}/.log"
+
+cli_info() {
+    printf '[info] %s\n' "$1"
+}
+
+cli_error() {
+    printf '[error] %s\n' "$1" >&2
+}
+
+cli_need() {
+    command -v "$1" >/dev/null 2>&1 || {
+        cli_error "Missing command: $1"
+        exit 1
+    }
+}
+
+cli_curl() {
+    cli_need curl
+    curl -fsS --max-time "${MAGICNET_API_TIMEOUT:-8}" "$@"
+}
+
+cli_pid_list() {
+    _name="$1"
+    for _comm in /proc/[0-9]*/comm; do
+        [ -r "$_comm" ] || continue
+        [ "$(cat "$_comm" 2>/dev/null)" = "$_name" ] || continue
+        _pid=${_comm#/proc/}
+        printf '%s\n' "${_pid%/comm}"
+    done
+}
+
+cli_service_status() {
+    printf 'MagicNet\n'
+    printf '  sing-box: %s\n' "$(cli_pid_list sing-box | tr '\n' ' ' | sed 's/[[:space:]]*$//' | sed 's/^$/stopped/')"
+    printf '  mihomo:   %s\n' "$(cli_pid_list mihomo | tr '\n' ' ' | sed 's/[[:space:]]*$//' | sed 's/^$/stopped/')"
+    printf '  API:      %s\n' "$MAGICNET_API"
+    printf '  WebUI:    %s/ui/\n' "$MAGICNET_API"
+    printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
+}
+
+cli_service_stop() {
+    if magicnet_cmd_exists sing-box; then
+        import __singbox__
+        singbox_stop || true
+    fi
+    if magicnet_cmd_exists mihomo; then
+        import __mihomo__
+        mihomo_stop || true
+    fi
+    magicnet_refresh_status
+}
+
+cli_service() {
+    case "${1:-status}" in
+        status) cli_service_status ;;
+        start) magicnet_start_kernel ;;
+        stop) cli_service_stop ;;
+        restart)
+            cli_service_stop
+            sleep 1
+            magicnet_start_kernel
+            ;;
+        logs)
+            _target="${2:-sing-box}"
+            _lines="${3:-120}"
+            case "$_target" in
+                sing-box|singbox|core) _file="${MAGICNET_LOG_DIR}/sing-box.log" ;;
+                mihomo) _file="${MAGICNET_LOG_DIR}/mihomo.log" ;;
+                *) _file="${MAGICNET_LOG_DIR}/${_target}.log" ;;
+            esac
+            [ -f "$_file" ] || {
+                cli_error "Log not found: $_file"
+                exit 1
+            }
+            tail -n "$_lines" "$_file"
+            ;;
+        *)
+            cli_error "Usage: cli service {status|start|stop|restart|logs [sing-box|mihomo] [lines]}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_json_string_array() {
+    sed -n 's/.*"all"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p' |
+        tr ',' '\n' |
+        sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//; /^[[:space:]]*$/d'
+}
+
+cli_node() {
+    case "${1:-list}" in
+        list)
+            cli_curl "${MAGICNET_API}/proxies/${MAGICNET_GROUP}" | cli_json_string_array
+            ;;
+        current)
+            cli_curl "${MAGICNET_API}/proxies/${MAGICNET_GROUP}" |
+                sed -n 's/.*"now"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+            ;;
+        use)
+            [ -n "${2:-}" ] || {
+                cli_error "Usage: cli node use <name>"
+                exit 1
+            }
+            cli_curl -X PUT "${MAGICNET_API}/proxies/${MAGICNET_GROUP}" \
+                -H 'Content-Type: application/json' \
+                --data "{\"name\":\"$2\"}" >/dev/null
+            cli_info "Switched ${MAGICNET_GROUP} to $2"
+            ;;
+        *)
+            cli_error "Usage: cli node {list|current|use <name>}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_mode() {
+    case "${1:-}" in
+        '')
+            cli_curl "${MAGICNET_API}/configs" |
+                sed -n 's/.*"mode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+            ;;
+        rule|global|direct|Rule|Global|Direct)
+            cli_curl -X PATCH "${MAGICNET_API}/configs" \
+                -H 'Content-Type: application/json' \
+                --data "{\"mode\":\"$1\"}" >/dev/null
+            cli_info "Mode switched to $1"
+            ;;
+        *)
+            cli_error "Usage: cli mode [rule|global|direct]"
+            exit 1
+            ;;
+    esac
+}
+
+cli_sub() {
+    case "${1:-update-all}" in
+        update|update-all)
+            magicnet_action_update_singbox_subscription
+            ;;
+        file)
+            printf '%s\n' "${MODDIR}/.config/sing-box/subscription.url"
+            ;;
+        *)
+            cli_error "Usage: cli sub {update|update-all|file}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_api() {
+    case "${1:-ui}" in
+        ui)
+            printf 'Controller: %s\n' "$MAGICNET_API"
+            printf 'WebUI:      %s/ui/\n' "$MAGICNET_API"
+            ;;
+        groups) cli_curl "${MAGICNET_API}/proxies" ;;
+        conns) cli_curl "${MAGICNET_API}/connections" ;;
+        close-all)
+            cli_curl -X DELETE "${MAGICNET_API}/connections" >/dev/null
+            cli_info "Closed all connections"
+            ;;
+        *)
+            cli_error "Usage: cli api {ui|groups|conns|close-all}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_app_list_file() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file"
+}
+
+cli_app_remove_from_file() {
+    _file="$1"
+    _pkg="$2"
+    [ -f "$_file" ] || return 0
+    awk -v pkg="$_pkg" '$0 != pkg { print }' "$_file" >"${_file}.new" &&
+        mv -f "${_file}.new" "$_file"
+}
+
+cli_app_add_to_file() {
+    _file="$1"
+    _pkg="$2"
+    mkdir -p "${_file%/*}"
+    touch "$_file"
+    grep -Fx "$_pkg" "$_file" >/dev/null 2>&1 || printf '%s\n' "$_pkg" >>"$_file"
+}
+
+cli_app() {
+    _dir="${MODDIR}/.config/magicnet"
+    _mode_file="${_dir}/app-mode.conf"
+    _proxy_file="${_dir}/app-proxy.list"
+    _bypass_file="${_dir}/app-bypass.list"
+    _mode="$(magicnet_app_policy_mode 2>/dev/null || printf blacklist)"
+
+    case "${1:-list}" in
+        list)
+            printf 'mode=%s\n' "$_mode"
+            printf 'proxy apps:\n'
+            cli_app_list_file "$_proxy_file" | sed 's/^/  /'
+            printf 'bypass apps:\n'
+            cli_app_list_file "$_bypass_file" | sed 's/^/  /'
+            ;;
+        mode)
+            case "${2:-}" in
+                blacklist|whitelist)
+                    mkdir -p "$_dir"
+                    printf 'MAGICNET_APP_MODE=%s\n' "$2" >"$_mode_file"
+                    magicnet_singbox_apply_app_policy
+                    cli_info "App policy mode set to $2"
+                    ;;
+                *)
+                    cli_error "Usage: cli app mode <blacklist|whitelist>"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        add)
+            [ -n "${2:-}" ] || { cli_error "Usage: cli app add <package> [proxy|bypass]"; exit 1; }
+            _target="${3:-}"
+            [ -n "$_target" ] || {
+                [ "$_mode" = "whitelist" ] && _target="proxy" || _target="bypass"
+            }
+            case "$_target" in
+                proxy) cli_app_add_to_file "$_proxy_file" "$2" ;;
+                bypass) cli_app_add_to_file "$_bypass_file" "$2" ;;
+                *) cli_error "Target must be proxy or bypass"; exit 1 ;;
+            esac
+            magicnet_singbox_apply_app_policy
+            cli_info "Added $2 to $_target app list"
+            ;;
+        remove)
+            [ -n "${2:-}" ] || { cli_error "Usage: cli app remove <package>"; exit 1; }
+            cli_app_remove_from_file "$_proxy_file" "$2"
+            cli_app_remove_from_file "$_bypass_file" "$2"
+            magicnet_singbox_apply_app_policy
+            cli_info "Removed $2 from app policy"
+            ;;
+        apply)
+            magicnet_singbox_apply_app_policy
+            cli_info "App policy applied to sing-box TUN config"
+            ;;
+        *)
+            cli_error "Usage: cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_help() {
+    cat <<'EOF'
+MagicNet CLI
+
+Usage:
+  cli service {status|start|stop|restart|logs [sing-box|mihomo] [lines]}
+  cli node {list|current|use <name>}
+  cli mode [rule|global|direct]
+  cli sub {update|update-all|file}
+  cli api {ui|groups|conns|close-all}
+  cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}
+  cli hotspot reload
+  cli vpn reload
+  cli diagnose
+EOF
+}
+
+case "${1:-help}" in
+    service) shift; cli_service "$@" ;;
+    node) shift; cli_node "$@" ;;
+    mode) shift; cli_mode "$@" ;;
+    sub) shift; cli_sub "$@" ;;
+    api) shift; cli_api "$@" ;;
+    app) shift; cli_app "$@" ;;
+    hotspot)
+        shift
+        [ "${1:-reload}" = "reload" ] || { cli_error "Usage: cli hotspot reload"; exit 1; }
+        magicnet_enable_hotspot_forward
+        ;;
+    vpn)
+        shift
+        [ "${1:-reload}" = "reload" ] || { cli_error "Usage: cli vpn reload"; exit 1; }
+        magicnet_enable_vpn_coexist
+        ;;
+    diagnose) magicnet_action_diagnose ;;
+    help|-h|--help) cli_help ;;
+    *)
+        cli_help
+        exit 1
+        ;;
+esac

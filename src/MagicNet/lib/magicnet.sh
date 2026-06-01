@@ -237,8 +237,106 @@ magicnet_enable_vpn_coexist() {
 }
 
 magicnet_after_kernel_start() {
+    magicnet_singbox_apply_app_policy
     magicnet_enable_hotspot_forward
     magicnet_enable_vpn_coexist
+}
+
+magicnet_app_policy_dir() {
+    printf '%s\n' "${MODDIR}/.config/magicnet"
+}
+
+magicnet_app_policy_mode() {
+    _mode_file="$(magicnet_app_policy_dir)/app-mode.conf"
+    if [ -f "$_mode_file" ]; then
+        . "$_mode_file"
+    fi
+    case "${MAGICNET_APP_MODE:-blacklist}" in
+        whitelist) printf '%s\n' "whitelist" ;;
+        *) printf '%s\n' "blacklist" ;;
+    esac
+}
+
+magicnet_json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+magicnet_package_array_block() {
+    _key="$1"
+    _file="$2"
+    _comma="${3:-,}"
+    [ -s "$_file" ] || return 0
+
+    _items=$(sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++')
+    [ -n "$_items" ] || return 0
+
+    printf '      "%s": [\n' "$_key"
+    _count=$(printf '%s\n' "$_items" | wc -l | tr -d ' ')
+    _idx=0
+    printf '%s\n' "$_items" | while read -r _pkg; do
+        [ -n "$_pkg" ] || continue
+        _idx=$((_idx + 1))
+        _line_comma=","
+        [ "$_idx" -eq "$_count" ] && _line_comma=""
+        printf '        "%s"%s\n' "$(magicnet_json_escape "$_pkg")" "$_line_comma"
+    done
+    printf '      ]%s\n' "$_comma"
+}
+
+magicnet_singbox_apply_app_policy() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+
+    _dir="$(magicnet_app_policy_dir)"
+    _mode="$(magicnet_app_policy_mode)"
+    _proxy_file="${_dir}/app-proxy.list"
+    _bypass_file="${_dir}/app-bypass.list"
+
+    _include_block=""
+    _exclude_block=""
+    if [ "$_mode" = "whitelist" ]; then
+        _include_block="$(magicnet_package_array_block include_package "$_proxy_file" ",")"
+    else
+        _exclude_block="$(magicnet_package_array_block exclude_package "$_bypass_file" ",")"
+    fi
+
+    _tmp="${_config}.app-policy.new"
+    awk -v include_block="$_include_block" -v exclude_block="$_exclude_block" '
+        BEGIN {
+            in_tun = 0
+            skip_package_array = 0
+        }
+        skip_package_array {
+            if ($0 ~ /^[[:space:]]*][[:space:]]*,?[[:space:]]*$/) {
+                skip_package_array = 0
+            }
+            next
+        }
+        {
+            if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"tun"/) {
+                in_tun = 1
+            }
+            if (in_tun && $0 ~ /^[[:space:]]*"(include_package|exclude_package)"[[:space:]]*:/) {
+                skip_package_array = 1
+                next
+            }
+            if (in_tun && $0 ~ /^[[:space:]]*"stack"[[:space:]]*:/) {
+                if (include_block != "") {
+                    print include_block
+                }
+                if (exclude_block != "") {
+                    print exclude_block
+                }
+            }
+            print
+            if (in_tun && $0 ~ /^    }[,]?[[:space:]]*$/) {
+                in_tun = 0
+            }
+        }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" || {
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    }
 }
 
 magicnet_singbox_disabled() {
