@@ -41,6 +41,7 @@ jobs:
       MAGIC_MIHOMO: ${{ inputs.magic-mihomo == false && '0' || '1' }}
       MAGIC_SINGBOX: ${{ inputs.magic-singbox == false && '0' || '1' }}
       KAM_SIGN_ENABLED: ${{ inputs.release == true && '1' || '0' }}
+      KAM_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
       KAM_CHANGELOG_ENABLED: '0'
       GH_TOKEN: ${{ github.token }}
 
@@ -118,6 +119,16 @@ jobs:
           test -n "$version_code"
           test -n "$module_id"
           test -f "dist/${module_id}.zip"
+          mapfile -t assets < <(find dist -maxdepth 1 -type f | sort)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::No release assets found in dist"
+            exit 1
+          fi
+          if [ ! -f "dist/${module_id}.zip.sig" ]; then
+            echo "::error::Release signing is required, but dist/${module_id}.zip.sig was not produced"
+            find dist -maxdepth 1 -type f -print
+            exit 1
+          fi
           if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::Release $version already exists in $GITHUB_REPOSITORY"
             exit 1
@@ -130,15 +141,17 @@ jobs:
             printf 'VersionCode: %s\n\n' "$version_code"
             printf 'Built with Kam.\n'
           } > "$notes"
-          gh release create "$version" "dist/${module_id}.zip" \
+          printf 'Release assets:\n'
+          printf '  %s\n' "${assets[@]}"
+          gh release create "$version" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "${module_id}-${version_code}-${version}" \
             --notes-file "$notes"
 
       - name: Upload build artifact
-        if: always() && hashFiles('dist/*.zip') != ''
+        if: always() && hashFiles('dist/*') != ''
         uses: actions/upload-artifact@v7
         with:
           name: MagicNet-module-artifact
-          path: dist/*.zip
+          path: dist/*
           if-no-files-found: error
