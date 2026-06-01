@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v1.0.37 (2026-06-02)
+
+- Fix VPN coexistence by moving sing-box TUN from the generic `tun0` name to
+  `magicnet0`, avoiding interface-name collisions with other VPN clients.
+- Enable VPN coexistence handling by default and apply external VPN bypass rules
+  before sing-box auto-route interception.
+- Keep subscription restart cleanup compatible with both `magicnet0` and legacy
+  `tun0` runtime interfaces.
+- Route Google, YouTube, AMP, and related domains explicitly through the proxy
+  before CN rule sets can match them as direct.
+
 ## v1.0.36 (2026-06-02)
 
 - Fix sing-box TUN loopback on Android by using gVisor auto-redirect and binding
