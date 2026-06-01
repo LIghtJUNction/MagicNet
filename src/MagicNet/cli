@@ -60,20 +60,28 @@ cli_pid_list() {
     unset _name _pidof_rc _comm _pid
 }
 
+cli_pid_summary() {
+    _pids="$(cli_pid_list "$1" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+    printf '%s\n' "${_pids:-stopped}"
+    unset _pids
+}
+
 cli_service_status() {
     _watchdog_pid="$(magicnet_watchdog_status 2>/dev/null)"
+    _fswatch_pid="$(magicnet_fswatch_status 2>/dev/null)"
     printf 'MagicNet\n'
-    printf '  sing-box: %s\n' "$(cli_pid_list sing-box | tr '\n' ' ' | sed 's/[[:space:]]*$//' | sed 's/^$/stopped/')"
-    printf '  mihomo:   %s\n' "$(cli_pid_list mihomo | tr '\n' ' ' | sed 's/[[:space:]]*$//' | sed 's/^$/stopped/')"
+    printf '  sing-box: %s\n' "$(cli_pid_summary sing-box)"
+    printf '  mihomo:   %s\n' "$(cli_pid_summary mihomo)"
     printf '  watchdog: %s\n' "${_watchdog_pid:-stopped}"
+    printf '  fswatch:  %s\n' "${_fswatch_pid:-stopped}"
     printf '  API:      %s\n' "$MAGICNET_API"
     printf '  WebUI:    %s\n' "$MAGICNET_WEBUI"
     printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
-    unset _watchdog_pid
+    unset _watchdog_pid _fswatch_pid
 }
 
 cli_service_stop() {
-    magicnet_watchdog_stop
+    magicnet_supervisors_stop
     if magicnet_cmd_exists sing-box; then
         import __singbox__
         singbox_stop || true
@@ -112,6 +120,19 @@ cli_service() {
             ;;
         *)
             cli_error "Usage: cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_config() {
+    case "${1:-apply}" in
+        apply)
+            magicnet_apply_runtime_config
+            cli_info "Runtime config applied"
+            ;;
+        *)
+            cli_error "Usage: cli config {apply}"
             exit 1
             ;;
     esac
@@ -670,6 +691,7 @@ MagicNet CLI
 
 Usage:
   cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}
+  cli config {apply}
   cli node {list|current|use <name>}
   cli mode [rule|global|direct]
   cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
@@ -685,6 +707,7 @@ EOF
 
 case "${1:-help}" in
     service) shift; cli_service "$@" ;;
+    config) shift; cli_config "$@" ;;
     node) shift; cli_node "$@" ;;
     mode) shift; cli_mode "$@" ;;
     sub) shift; cli_sub "$@" ;;

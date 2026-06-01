@@ -660,6 +660,14 @@ magicnet_capture_apply() {
     magicnet_capture_apply_singbox
 }
 
+magicnet_apply_runtime_config() {
+    magicnet_singbox_apply_zashboard
+    magicnet_singbox_apply_app_policy
+    magicnet_capture_apply
+    magicnet_enable_hotspot_forward
+    magicnet_enable_vpn_coexist
+}
+
 magicnet_singbox_disabled() {
     [ -f "${MODDIR}/.disable_sing_box" ]
 }
@@ -674,6 +682,13 @@ magicnet_watchdog_interval() {
 
 magicnet_watchdog_command() {
     printf '%s\n' "MAGICNET_WATCHDOG=1 MODDIR='$(magicnet_json_escape "$MODDIR")' sh '$(magicnet_json_escape "$MODDIR")/cli' service ensure >/dev/null 2>&1"
+}
+
+magicnet_notify() {
+    [ "${MAGICNET_NOTIFY_ENABLED:-1}" != "0" ] || return 0
+    [ "${MAGICNET_WATCHDOG:-0}" = "1" ] || [ "${MAGICNET_NOTIFY_FORCE:-0}" = "1" ] || return 0
+    import notify
+    notify post "${1:-magicnet}" "${2:-MagicNet}" "${3:-event}" >/dev/null 2>&1 || true
 }
 
 magicnet_watchdog_start() {
@@ -700,6 +715,59 @@ magicnet_watchdog_status() {
     fi
     unset _watchdog_pid_file _watchdog_pid
     return 1
+}
+
+magicnet_fswatch_name() {
+    printf '%s\n' "magicnet-config"
+}
+
+magicnet_fswatch_interval() {
+    printf '%s\n' "${MAGICNET_FSWATCH_INTERVAL:-15}"
+}
+
+magicnet_fswatch_path() {
+    printf '%s\n' "${MODDIR}/.config"
+}
+
+magicnet_fswatch_command() {
+    printf '%s\n' "MODDIR='$(magicnet_json_escape "$MODDIR")' sh '$(magicnet_json_escape "$MODDIR")/cli' config apply >/dev/null 2>&1"
+}
+
+magicnet_fswatch_start() {
+    [ "${MAGICNET_FSWATCH_ENABLED:-1}" != "0" ] || return 0
+    [ -d "$(magicnet_fswatch_path)" ] || return 0
+    [ -f "${MODDIR}/cli" ] || return 0
+    import fswatch
+    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard}" \
+        fswatch start "$(magicnet_fswatch_name)" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)" >/dev/null 2>&1 || true
+}
+
+magicnet_fswatch_stop() {
+    import fswatch
+    fswatch stop "$(magicnet_fswatch_name)" >/dev/null 2>&1 || true
+}
+
+magicnet_fswatch_status() {
+    _fswatch_pid_file="${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid"
+    [ -f "$_fswatch_pid_file" ] || return 1
+    _fswatch_pid="$(sed -n '1p' "$_fswatch_pid_file" 2>/dev/null)"
+    if [ -n "$_fswatch_pid" ] && kill -0 "$_fswatch_pid" 2>/dev/null; then
+        printf '%s\n' "$_fswatch_pid"
+        unset _fswatch_pid_file _fswatch_pid
+        return 0
+    fi
+    unset _fswatch_pid_file _fswatch_pid
+    return 1
+}
+
+magicnet_supervisors_start() {
+    magicnet_watchdog_start
+    magicnet_fswatch_start
+}
+
+magicnet_supervisors_stop() {
+    magicnet_watchdog_stop
+    magicnet_fswatch_stop
 }
 
 magicnet_status_text() {
@@ -755,13 +823,14 @@ magicnet_kernel_running() {
 
 magicnet_start_kernel() {
     if magicnet_kernel_running; then
-        magicnet_watchdog_start
+        magicnet_supervisors_start
         return 0
     fi
 
     if magicnet_start_singbox; then
         magicnet_after_kernel_start
-        magicnet_watchdog_start
+        magicnet_notify "magicnet_guard" "MagicNet" "sing-box restarted by watchdog"
+        magicnet_supervisors_start
         return 0
     fi
 
@@ -771,7 +840,8 @@ magicnet_start_kernel() {
 
     if magicnet_start_mihomo; then
         magicnet_after_kernel_start
-        magicnet_watchdog_start
+        magicnet_notify "magicnet_guard" "MagicNet" "mihomo restarted by watchdog"
+        magicnet_supervisors_start
         return 0
     fi
 
@@ -808,6 +878,8 @@ magicnet_show_dashboard() {
     panel_row "mihomo" "$_mihomo_state"
     _watchdog_pid=$(magicnet_watchdog_status)
     panel_row "watchdog" "${_watchdog_pid:-Stopped}"
+    _fswatch_pid=$(magicnet_fswatch_status)
+    panel_row "fswatch" "${_fswatch_pid:-Stopped}"
     panel_row "WebUI" "http://127.0.0.1:9090/ui/"
     panel_row "sing-box subscription" "${MODDIR}/.config/sing-box/subscription.url"
     panel_end
@@ -897,6 +969,8 @@ magicnet_action_diagnose() {
     fi
     _watchdog_pid=$(magicnet_watchdog_status)
     panel_row "watchdog" "${_watchdog_pid:-Stopped}"
+    _fswatch_pid=$(magicnet_fswatch_status)
+    panel_row "fswatch" "${_fswatch_pid:-Stopped}"
     panel_row "sing-box API" "$(curl -sS --max-time 3 http://127.0.0.1:9090/proxies >/dev/null 2>&1 && printf OK || printf FAIL)"
     magicnet_diag_proxy_now proxy
     magicnet_diag_proxy_now ai-proxy
