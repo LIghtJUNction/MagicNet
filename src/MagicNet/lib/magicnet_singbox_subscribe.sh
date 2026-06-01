@@ -629,11 +629,9 @@ magicnet_singbox_emit_share_link_json() {
         _sni=$(magicnet_uri_query_value sni "$_query")
         [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value servername "$_query")
         [ -n "$_sni" ] || _sni="$_server"
-        _fp=$(magicnet_uri_query_value fp "$_query")
         _alpn=$(magicnet_uri_query_value alpn "$_query")
         printf '{"type":"hysteria2","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s"' \
             "$_tag" "$_server" "$_port" "$(magicnet_json_escape "$_userinfo")" "$(magicnet_json_escape "$_sni")"
-        [ -n "$_fp" ] && printf ',"utls":{"enabled":true,"fingerprint":"%s"}' "$(magicnet_json_escape "$_fp")"
         [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
         printf '}}'
         ;;
@@ -719,7 +717,7 @@ magicnet_singbox_build_outbounds_file() {
         printf ',\n'
         magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n%s\n%s\n' "proxy" "direct" "hk" "us")" "proxy"
         printf ',\n'
-        magicnet_emit_selector_json "network-test" "" "direct"
+        magicnet_emit_selector_json "network-test" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
         printf ',\n'
         magicnet_emit_selector_json "ai-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "us" "sg" "jp" "proxy" "direct")" "us"
         printf ',\n'
