@@ -45,8 +45,9 @@ jobs:
     env:
       MAGIC_MIHOMO: ${{ inputs.magic-mihomo == false && '0' || '1' }}
       MAGIC_SINGBOX: ${{ inputs.magic-singbox == false && '0' || '1' }}
-      KAM_SIGN_ENABLED: ${{ inputs.release == true && '1' || '0' }}
-      KAM_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
+      KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+      KAM_SIGN_ENABLED: ${{ inputs.release == true && secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+      KAM_SIGN_REQUIRED: ${{ inputs.release == true && secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
       KAM_CHANGELOG_ENABLED: '0'
       GH_TOKEN: ${{ github.token }}
 
@@ -129,10 +130,14 @@ jobs:
             echo "::error::No release assets found in dist"
             exit 1
           fi
-          if [ ! -f "dist/${module_id}.zip.sig" ]; then
-            echo "::error::Release signing is required, but dist/${module_id}.zip.sig was not produced"
-            find dist -maxdepth 1 -type f -print
-            exit 1
+          if [ "${KAM_SIGN_REQUIRED:-0}" = "1" ]; then
+            if [ ! -f "dist/${module_id}.zip.sig" ]; then
+              echo "::error::Release signing is required, but dist/${module_id}.zip.sig was not produced"
+              find dist -maxdepth 1 -type f -print
+              exit 1
+            fi
+          else
+            echo "::warning::KAM_PRIVATE_KEY is not configured; creating an unsigned release asset"
           fi
           if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::Release $version already exists in $GITHUB_REPOSITORY"
