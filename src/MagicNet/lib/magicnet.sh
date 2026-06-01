@@ -222,8 +222,12 @@ magicnet_after_kernel_start() {
     magicnet_enable_vpn_coexist
 }
 
+magicnet_singbox_disabled() {
+    [ -f "${MODDIR}/.disable_sing_box" ]
+}
+
 magicnet_refresh_status() {
-    if magicnet_cmd_exists sing-box; then
+    if ! magicnet_singbox_disabled && magicnet_cmd_exists sing-box; then
         import __singbox__
         is_singbox_running >/dev/null 2>&1 && return 0
     fi
@@ -245,6 +249,7 @@ magicnet_start_mihomo() {
 
 magicnet_start_singbox() {
     [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
+    ! magicnet_singbox_disabled || return 1
     magicnet_cmd_exists sing-box || return 1
     import __singbox__
     singbox_start
@@ -256,7 +261,7 @@ magicnet_start_kernel() {
         return 0
     fi
 
-    if [ "${MAGIC_SINGBOX:-1}" -ne 0 ]; then
+    if [ "${MAGIC_SINGBOX:-1}" -ne 0 ] && ! magicnet_singbox_disabled; then
         magicnet_warn "sing-box failed to start; attempting mihomo fallback..."
     fi
 
@@ -270,7 +275,7 @@ magicnet_start_kernel() {
 }
 
 magicnet_action() {
-    if magicnet_cmd_exists sing-box; then
+    if ! magicnet_singbox_disabled && magicnet_cmd_exists sing-box; then
         import __singbox__
         singbox_ask_webui
         ask_toggle_singbox

@@ -23,40 +23,40 @@ import this
 # Usage & installation messages
 set_i18n "USAGE_GUIDE" \
   "zh" "使用教程：
-这是一个基于mihomo内核的代理模块
+这是一个支持 mihomo / sing-box 的代理模块
 1. 只支持tun模式
 2. 内置大量规则
-3. 支持两套webui
+3. 支持 Clash API 兼容 WebUI
 安装后：
-你需要前往/data/adb/modules/MagicNet/.config/mihomo/config.yaml
+你需要前往 /data/adb/modules/MagicNet/.config/mihomo/config.yaml 或 /data/adb/modules/MagicNet/.config/sing-box/config.json
 填写订阅链接
 如果能成功访问webui,即代表启动成功" \
   "en" "Usage guide:
-This is a proxy module based on the mihomo core
+This is a proxy module with mihomo / sing-box core support
 1. Only supports TUN mode
 2. Includes many built-in rules
-3. Supports two web UIs
+3. Supports Clash API compatible WebUIs
 After installation:
-You need to edit /data/adb/modules/MagicNet/.config/mihomo/config.yaml
-and fill in the subscription URL
+You need to edit /data/adb/modules/MagicNet/.config/mihomo/config.yaml or /data/adb/modules/MagicNet/.config/sing-box/config.json
+and fill in the subscription URL or outbound configuration
 If you can successfully access the web UI, it means it started successfully" \
   "ja" "使用方法：
-これは mihomo コアをベースにしたプロキシモジュールです
+これは mihomo / sing-box コアに対応したプロキシモジュールです
 1. tun モードのみサポートします
 2. 多くの組み込みルールを含みます
-3. 2種類の Web UI をサポートします
+3. Clash API 互換 Web UI をサポートします
 インストール後：
-/data/adb/modules/MagicNet/.config/mihomo/config.yaml を編集して
-購読リンクを記入してください
+/data/adb/modules/MagicNet/.config/mihomo/config.yaml または /data/adb/modules/MagicNet/.config/sing-box/config.json を編集して
+購読リンクまたはアウトバウンド設定を記入してください
 Web UI にアクセスできれば起動成功です" \
   "ko" "사용 안내:
-이것은 mihomo 코어 기반의 프록시 모듈입니다
+이것은 mihomo / sing-box 코어를 지원하는 프록시 모듈입니다
 1. tun 모드만 지원합니다
 2. 많은 내장 규칙을 포함합니다
-3. 두 종류의 웹 UI를 지원합니다
+3. Clash API 호환 WebUI를 지원합니다
 설치 후:
-/data/adb/modules/MagicNet/.config/mihomo/config.yaml 파일을 열어
-구독 링크를 입력하세요
+/data/adb/modules/MagicNet/.config/mihomo/config.yaml 또는 /data/adb/modules/MagicNet/.config/sing-box/config.json 파일을 열어
+구독 링크 또는 outbound 설정을 입력하세요
 웹 UI에 정상적으로 접속되면 시작이 성공한 것입니다"
 
 set_i18n "TERM_INSTALL_MSG" \
@@ -96,7 +96,7 @@ print "$(i18n "VPN_COEXIST_MSG")"
 MAGIC_MIHOMO=${MAGIC_MIHOMO:-1}
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
 
-if [ "$MAGIC_SINGBOX" != "0" ] && [ -x "${MODPATH}/system/bin/sing-box" ]; then
+if [ "$MAGIC_SINGBOX" != "0" ] && [ ! -f "${MODPATH}/.disable_sing_box" ] && [ -x "${MODPATH}/system/bin/sing-box" ]; then
   import __singbox__
   singbox_ask_webui
 elif [ "$MAGIC_MIHOMO" != "0" ] && [ -x "${MODPATH}/system/bin/mihomo" ]; then

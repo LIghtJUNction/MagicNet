@@ -17,7 +17,7 @@ MagicNet 是一个 KAM 构建的 Android root 模块，用于在设备上以 TUN
 - Android TUN 透明代理。
 - mihomo / sing-box 双内核。
 - 内置 mihomo 规则集和 Geo 数据更新。
-- 默认 WebUI 跳转，可在安装时选择。
+- 默认 WebUI 跳转，可在安装时选择；mihomo / sing-box 均使用 Clash API 兼容控制端。
 - 热点客户端可跟随本机 TUN 代理转发。
 - 可选 root VPN 共存模式，便于与 Tailscale、WireGuard、OpenVPN、ZeroTier、WARP 等隧道同时运行。
 
@@ -93,7 +93,29 @@ sing-box 配置：
 /data/adb/modules/MagicNet/.config/sing-box/config.json
 ```
 
+默认控制端：
+
+```text
+http://127.0.0.1:9090
+```
+
+默认本地面板路径：
+
+```text
+http://127.0.0.1:9090/ui/
+```
+
+sing-box 使用 `experimental.clash_api` 提供 Clash API 兼容控制端，方便复用 MetaCubeXD / Yacd 等 Clash 面板。若修改 `secret`，面板里也要同步填写。
+
 安装时不会强制覆盖用户已有配置；需要更新时按安装提示确认。
+
+如需在双内核包里强制跳过 sing-box、直接使用 mihomo fallback，创建以下文件：
+
+```text
+/data/adb/modules/MagicNet/.disable_sing_box
+```
+
+该文件存在时，开机启动、`action.sh` 和安装阶段 WebUI 选择都会跳过 sing-box。
 
 ## 热点共享
 
