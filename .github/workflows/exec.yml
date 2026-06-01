@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      prerelease:
+        description: Mark GitHub release as a pre-release
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -141,12 +146,17 @@ jobs:
             printf 'VersionCode: %s\n\n' "$version_code"
             printf 'Built with Kam.\n'
           } > "$notes"
+          release_flags=()
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            release_flags+=(--prerelease)
+          fi
           printf 'Release assets:\n'
           printf '  %s\n' "${assets[@]}"
           gh release create "$version" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "${module_id}-${version_code}-${version}" \
-            --notes-file "$notes"
+            --notes-file "$notes" \
+            "${release_flags[@]}"
 
       - name: Upload build artifact
         if: always() && hashFiles('dist/*') != ''

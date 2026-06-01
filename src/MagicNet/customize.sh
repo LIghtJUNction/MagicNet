@@ -84,6 +84,50 @@ set_i18n "VPN_COEXIST_MSG" \
   "en" "VPN coexistence mode is disabled by default. Set MAGIC_VPN_COEXIST=1 when sharing routes with other root/VPN tunnels; use MAGIC_VPN_COEXIST_IFACES for device-specific external VPN interfaces." \
   "ja" "VPN 共存モードは既定で無効です。他の root/VPN トンネルと経路を共有する場合は MAGIC_VPN_COEXIST=1 を設定してください。特殊な端末では MAGIC_VPN_COEXIST_IFACES で外部 VPN インターフェースを指定できます。" \
   "ko" "VPN 공존 모드는 기본적으로 비활성화되어 있습니다. 다른 root/VPN 터널과 라우팅을 공유하려면 MAGIC_VPN_COEXIST=1 을 설정하세요. 특수 기기는 MAGIC_VPN_COEXIST_IFACES 로 외부 VPN 인터페이스를 지정할 수 있습니다."
+
+set_i18n "DISABLE_SINGBOX_ON_INSTALL" \
+  "zh" "是否禁用 sing-box 内核？" \
+  "en" "Disable the sing-box core?"
+
+set_i18n "KEEP_SINGBOX_FILES" \
+  "zh" "禁用后是否保留 sing-box 文件？" \
+  "en" "Keep sing-box files after disabling it?"
+
+set_i18n "SINGBOX_DISABLED_KEEP" \
+  "zh" "已禁用 sing-box，并保留文件。后续删除 .disable_sing_box 即可重新启用。" \
+  "en" "sing-box is disabled and files were kept. Remove .disable_sing_box to enable it again."
+
+set_i18n "SINGBOX_DISABLED_REMOVE" \
+  "zh" "已禁用 sing-box，并移除 sing-box 内核文件。" \
+  "en" "sing-box is disabled and its core files were removed."
+
+magicnet_disable_singbox_keep() {
+  touch "${MODPATH}/.disable_sing_box"
+  print "$(i18n "SINGBOX_DISABLED_KEEP")"
+}
+
+magicnet_disable_singbox_remove() {
+  touch "${MODPATH}/.disable_sing_box"
+  rm -f "${MODPATH}/system/bin/sing-box" "${MODPATH}/.local/bin/sing-box" 2>/dev/null || true
+  print "$(i18n "SINGBOX_DISABLED_REMOVE")"
+}
+
+magicnet_enable_singbox() {
+  rm -f "${MODPATH}/.disable_sing_box" 2>/dev/null || true
+}
+
+magicnet_ask_disable_singbox() {
+  [ "${MAGIC_SINGBOX:-1}" != "0" ] || return 0
+  [ -x "${MODPATH}/system/bin/sing-box" ] || [ -x "${MODPATH}/.local/bin/sing-box" ] || return 0
+
+  ask "DISABLE_SINGBOX_ON_INSTALL" \
+    "NO" \
+    'magicnet_enable_singbox' \
+    "YES" \
+    'ask "KEEP_SINGBOX_FILES" "YES" "magicnet_disable_singbox_keep" "NO" "magicnet_disable_singbox_remove" 0' \
+    0
+}
+
 # print
 print "$(i18n "USAGE_GUIDE")"
 
@@ -97,6 +141,12 @@ print "$(i18n "VPN_COEXIST_MSG")"
 
 MAGIC_MIHOMO=${MAGIC_MIHOMO:-1}
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
+
+if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
+  :
+else
+  magicnet_ask_disable_singbox
+fi
 
 if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
   :
