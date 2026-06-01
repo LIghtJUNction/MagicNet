@@ -327,11 +327,13 @@ Tailnet peers
 
 工作流不会自动提交、不会自动更新子模块指针，也不会把构建产物写回 Git 历史。需要更新子模块时，请在对应子项目提交后，在父项目显式提交新的 submodule 指针。
 
-手动发布时，在 `Build MagicNet` 工作流里勾选 `release`。签名需要仓库 secret：
+手动发布时，在 `Build MagicNet` 工作流里勾选 `release`。如果仓库配置了以下 secret，工作流会生成并强制上传签名文件：
 
 ```text
 KAM_PRIVATE_KEY
 ```
+
+未配置 `KAM_PRIVATE_KEY` 时，工作流会发布未签名的 `MagicNet.zip`，并在日志里显示 warning。
 
 ## 子项目
 
