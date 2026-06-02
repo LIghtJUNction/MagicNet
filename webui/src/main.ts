@@ -2,6 +2,8 @@ import {
   Activity,
   Ban,
   Bell,
+  ChevronDown,
+  ChevronUp,
   Copy,
   DownloadCloud,
   ExternalLink,
@@ -63,6 +65,7 @@ type AppPolicy = {
 type RuntimeState = {
   core: "sing-box" | "mihomo" | "stopped" | "unknown";
   singBox: string;
+  singBoxDisabled: boolean;
   mihomo: string;
   watchdog: string;
   fswatch: string;
@@ -108,6 +111,7 @@ type State = {
   busy: boolean;
   activeTask: string;
   coreMenuOpen: boolean;
+  statusDrawerOpen: boolean;
   status: "checking" | "online" | "offline" | "local";
   statusText: string;
   runtime: RuntimeState;
@@ -150,11 +154,13 @@ const state: State = {
   busy: false,
   activeTask: "",
   coreMenuOpen: false,
+  statusDrawerOpen: false,
   status: "checking",
   statusText: "检测执行通道",
   runtime: {
     core: "unknown",
     singBox: "unknown",
+    singBoxDisabled: false,
     mihomo: "unknown",
     watchdog: "unknown",
     fswatch: "unknown",
@@ -220,7 +226,7 @@ const actions = [
     title: "action.sh 菜单",
     items: [
       { label: "更新 sing-box 订阅", hint: "执行 action.sh 的订阅更新", icon: "DownloadCloud", command: "sub update", tone: "strong" },
-      { label: "切换 sing-box", hint: "启动或停止 sing-box", icon: "Server", command: "service toggle sing-box" },
+      { label: "切换 sing-box 进程", hint: "只启动或停止 sing-box，不改禁用文件", icon: "Server", command: "service toggle sing-box" },
       { label: "切换 mihomo", hint: "启动或停止 mihomo", icon: "Route", command: "service toggle mihomo" },
       { label: "网络诊断", hint: "只在手动点击时运行", icon: "Stethoscope", command: "diagnose" },
       { label: "刷新状态描述", hint: "同步模块描述和运行状态", icon: "RefreshCw", command: "service status" }
@@ -260,6 +266,8 @@ const iconMap: Record<string, IconNode> = {
   Activity,
   Ban,
   Bell,
+  ChevronDown,
+  ChevronUp,
   Copy,
   DownloadCloud,
   ExternalLink,
@@ -434,6 +442,7 @@ function parseRuntimeStatus(text: string): RuntimeState {
   const next: RuntimeState = {
     core: "unknown",
     singBox: "unknown",
+    singBoxDisabled: state.runtime.singBoxDisabled,
     mihomo: "unknown",
     watchdog: "unknown",
     fswatch: "unknown",
@@ -445,6 +454,7 @@ function parseRuntimeStatus(text: string): RuntimeState {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (line.startsWith("sing-box:")) next.singBox = line.slice("sing-box:".length).trim() || "stopped";
+    if (line.startsWith("sing-box-disabled:")) next.singBoxDisabled = line.slice("sing-box-disabled:".length).trim() === "1";
     if (line.startsWith("mihomo:")) next.mihomo = line.slice("mihomo:".length).trim() || "stopped";
     if (line.startsWith("watchdog:")) next.watchdog = line.slice("watchdog:".length).trim() || "stopped";
     if (line.startsWith("fswatch:")) next.fswatch = line.slice("fswatch:".length).trim() || "stopped";
@@ -989,8 +999,36 @@ function nodePanel(): string {
 
 function activeTabPanel(tab: State["activeTab"]): string {
   if (tab === "control") {
+    const restartSingBoxDisabled = state.runtime.singBoxDisabled ? "disabled" : "";
     return `
       <div class="tab-panel show">
+        <div class="control-quick">
+          ${commandDeck()}
+        </div>
+        <section class="runtime-control">
+          <div class="runtime-toggle">
+            <div>
+              <span class="eyebrow">Core Switch</span>
+              <h3>sing-box 内核开关</h3>
+              <p>${state.runtime.singBoxDisabled ? "已通过 .disable_sing_box 禁用，重启到 sing-box 不可用。" : "当前允许 sing-box 作为 TUN 内核启动。"}</p>
+            </div>
+            <button class="toggle ${state.runtime.singBoxDisabled ? "" : "on"}" data-singbox-disable-toggle>
+              ${state.runtime.singBoxDisabled ? "启用 sing-box" : "禁用 sing-box"}
+            </button>
+          </div>
+          <form class="restart-form" data-restart-form>
+            <label>
+              <span>重启目标</span>
+              <select name="target">
+                <option value="current">重启当前内核</option>
+                <option value="sing-box" ${restartSingBoxDisabled}>重启到 sing-box${state.runtime.singBoxDisabled ? "（已禁用）" : ""}</option>
+                <option value="mihomo">重启到 mihomo</option>
+              </select>
+            </label>
+            <button type="submit">${icon("RotateCcw", 17)}执行重启</button>
+          </form>
+        </section>
+        ${setupPanel()}
         <div class="control-groups">
           ${actions
             .map(
@@ -1601,7 +1639,7 @@ function setupPanel(): string {
   `;
 }
 
-function overviewPanel(): string {
+function statusDrawer(): string {
   const bridgeText = state.hasKsu ? "KernelSU 执行通道已接入" : "本地预览模式，不显示假运行数据";
   const headline = state.runtime.core === "stopped" || state.runtime.core === "unknown"
     ? "TUN 控制台"
@@ -1615,43 +1653,62 @@ function overviewPanel(): string {
   const healthText = state.health.length
     ? `${health.ok} 正常 / ${health.warn} 警告 / ${health.fail} 失败`
     : "尚未运行健康诊断";
+  const core = state.runtime.core === "unknown" ? "待刷新" : state.runtime.core;
+  const task = state.activeTask ? `执行中：${state.activeTask}` : "空闲";
 
   return `
-    <section class="overview">
-      <div class="overview-main">
-        <div>
-          <span class="eyebrow">Transparent TUN Control</span>
-          <h2>${headline}</h2>
+    <section class="status-drawer ${state.statusDrawerOpen ? "open" : ""}" data-status-drawer>
+      <button class="status-drawer-handle" data-status-drawer-toggle aria-expanded="${state.statusDrawerOpen}">
+        <span class="${`status-dot ${state.status}`}"></span>
+        <div class="drawer-title">
+          <small>MagicNet Status</small>
+          <strong>${escapeHtml(state.statusText)}</strong>
         </div>
-        <p>${bridgeText}。这里只管模块级操作：内核启停、订阅、分应用、抓包、证书、热点转发、VPN 共存和安全黑名单。</p>
-        ${commandDeck()}
-      </div>
-      <div class="overview-side">
-        <div class="signal-card">
-          <span class="${`status-dot ${state.status}`}"></span>
-          <div>
-            <small>当前状态</small>
-            <strong>${escapeHtml(state.statusText)}</strong>
-            <em>${escapeHtml(statusCaption)}</em>
+        <div class="drawer-chips">
+          <span>${icon("Server", 15)}<b>${escapeHtml(core)}</b></span>
+          <span>${icon(state.busy ? "Activity" : "Terminal", 15)}<b>${escapeHtml(task)}</b></span>
+        </div>
+        <span class="drawer-chevron">${icon(state.statusDrawerOpen ? "ChevronUp" : "ChevronDown", 18)}</span>
+      </button>
+      ${state.statusDrawerOpen ? `
+        <div class="status-drawer-panel">
+          <div class="drawer-grid">
+            <div class="drawer-summary">
+              <span class="eyebrow">Transparent TUN Control</span>
+              <h2>${escapeHtml(headline)}</h2>
+              <p>${bridgeText}。模块状态只在这里查看，功能操作在下方控制页面执行。</p>
+            </div>
+            <div class="signal-card">
+              <span class="${`status-dot ${state.status}`}"></span>
+              <div>
+                <small>当前状态</small>
+                <strong>${escapeHtml(state.statusText)}</strong>
+                <em>${escapeHtml(statusCaption)}</em>
+              </div>
+            </div>
+            <div class="signal-card compact-signal">
+              <span>${icon("Stethoscope", 18)}</span>
+              <div>
+                <small>健康摘要</small>
+                <strong>${escapeHtml(healthText)}</strong>
+                <em>${state.health.length ? "诊断来自模块 CLI" : "点击健康诊断后生成"}</em>
+              </div>
+            </div>
+          </div>
+          <div class="health-grid drawer-health">
+            ${healthPill("sing-box", state.runtime.singBox, "Server")}
+            ${healthPill("mihomo", state.runtime.mihomo, "Route")}
+            ${healthPill("watchdog", state.runtime.watchdog, "Bell")}
+            ${healthPill("fswatch", state.runtime.fswatch, "Activity")}
+          </div>
+          <div class="drawer-meta">
+            <span>Module <code>${MODULE_DIR}</code></span>
+            <span>Control <code>${escapeHtml(state.runtime.api.replace(/^https?:\/\//, ""))}</code></span>
+            <span>WebUI <code>${escapeHtml(coreUiUrl())}</code></span>
           </div>
         </div>
-        <div class="signal-card compact-signal">
-          <span>${icon("Stethoscope", 18)}</span>
-          <div>
-            <small>健康摘要</small>
-            <strong>${escapeHtml(healthText)}</strong>
-            <em>${state.health.length ? "诊断来自模块 CLI" : "点击健康诊断后生成"}</em>
-          </div>
-        </div>
-        <div class="health-grid">
-          ${healthPill("sing-box", state.runtime.singBox, "Server")}
-          ${healthPill("mihomo", state.runtime.mihomo, "Route")}
-          ${healthPill("watchdog", state.runtime.watchdog, "Bell")}
-          ${healthPill("fswatch", state.runtime.fswatch, "Activity")}
-        </div>
-      </div>
+      ` : ""}
     </section>
-    ${setupPanel()}
   `;
 }
 
@@ -1808,7 +1865,6 @@ function render(): void {
               <p>TUN module control</p>
             </div>
           </div>
-          ${topSummary()}
         </div>
         <div class="top-actions">
           <button class="ghost-link" data-action="refresh-all">${icon("RefreshCw", 16)}刷新</button>
@@ -1816,16 +1872,10 @@ function render(): void {
           ${coreUiButton("primary-link")}
         </div>
       </header>
+      ${statusDrawer()}
 
       <main class="layout">
         <aside class="rail">
-          <div class="status-card">
-            <span class="${`status-dot ${state.status}`}"></span>
-            <div>
-              <strong>${state.statusText}</strong>
-              <small>${state.hasKsu ? "真机执行模式" : "本地预览模式"}</small>
-            </div>
-          </div>
           <nav class="tabs">
             ${tabsMarkup()}
           </nav>
@@ -1839,7 +1889,6 @@ function render(): void {
 
         <section class="workspace">
           ${adjacentTabs()}
-          ${overviewPanel()}
           ${activeTabPanel(tab)}
 
           <div class="always-output">
@@ -1886,8 +1935,52 @@ function bindEvents(): void {
     }, { passive: true });
   }
 
+  const statusDrawer = document.querySelector<HTMLElement>("[data-status-drawer]");
+  if (statusDrawer) {
+    let startY = 0;
+    statusDrawer.addEventListener("touchstart", (event) => {
+      startY = event.touches[0].clientY;
+    }, { passive: true });
+    statusDrawer.addEventListener("touchend", (event) => {
+      const dy = event.changedTouches[0].clientY - startY;
+      if (dy > 36 && !state.statusDrawerOpen) {
+        state.statusDrawerOpen = true;
+        render();
+      }
+      if (dy < -36 && state.statusDrawerOpen) {
+        state.statusDrawerOpen = false;
+        render();
+      }
+    }, { passive: true });
+  }
+
+  document.querySelector<HTMLButtonElement>("[data-status-drawer-toggle]")?.addEventListener("click", () => {
+    state.statusDrawerOpen = !state.statusDrawerOpen;
+    render();
+  });
+
   document.querySelectorAll<HTMLButtonElement>("[data-run]").forEach((button) => {
     button.addEventListener("click", () => runAction(button.dataset.run || ""));
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-singbox-disable-toggle]")?.addEventListener("click", async () => {
+    const command = state.runtime.singBoxDisabled ? "core sing-box enable" : "core sing-box disable";
+    await runCli(command, { label: state.runtime.singBoxDisabled ? "启用 sing-box" : "禁用 sing-box" });
+    await refreshStatus(true);
+    render();
+  });
+
+  document.querySelector<HTMLFormElement>("[data-restart-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const select = form.querySelector<HTMLSelectElement>("select[name='target']");
+    const target = select?.value || "current";
+    if (target === "sing-box" && state.runtime.singBoxDisabled) {
+      state.output = "sing-box 已被 .disable_sing_box 禁用，不能重启到 sing-box。";
+      render();
+      return;
+    }
+    await runAction(`service restart ${target}`);
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((button) => {

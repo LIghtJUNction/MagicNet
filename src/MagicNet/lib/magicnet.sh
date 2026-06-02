@@ -1387,6 +1387,31 @@ magicnet_singbox_disabled() {
     [ -f "${MODDIR}/.disable_sing_box" ]
 }
 
+magicnet_singbox_disable() {
+    mkdir -p "$MODDIR"
+    touch "${MODDIR}/.disable_sing_box"
+    if magicnet_cmd_exists sing-box; then
+        import __singbox__
+        singbox_stop || true
+    fi
+    magicnet_refresh_status
+}
+
+magicnet_singbox_enable() {
+    rm -f "${MODDIR}/.disable_sing_box" 2>/dev/null || true
+    magicnet_refresh_status
+}
+
+magicnet_singbox_toggle_disabled() {
+    if magicnet_singbox_disabled; then
+        magicnet_singbox_enable
+        magicnet_log "sing-box enabled"
+    else
+        magicnet_singbox_disable
+        magicnet_log "sing-box disabled by ${MODDIR}/.disable_sing_box"
+    fi
+}
+
 magicnet_watchdog_name() {
     printf '%s\n' "magicnet-kernel"
 }

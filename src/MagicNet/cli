@@ -96,17 +96,20 @@ cli_fast_pid_summary() {
 cli_fast_service_status() {
     _singbox="$(cli_fast_pid_summary sing-box)"
     _mihomo="$(cli_fast_pid_summary mihomo)"
+    _singbox_disabled=0
+    [ -f "${MODDIR}/.disable_sing_box" ] && _singbox_disabled=1
     _watchdog="$(cli_fast_pid_summary watchdog)"
     _fswatch="$(cli_fast_pid_summary fswatch)"
     printf 'MagicNet\n'
     printf '  sing-box: %s\n' "${_singbox:-stopped}"
+    printf '  sing-box-disabled: %s\n' "$_singbox_disabled"
     printf '  mihomo:   %s\n' "${_mihomo:-stopped}"
     printf '  watchdog: %s\n' "${_watchdog:-stopped}"
     printf '  fswatch:  %s\n' "${_fswatch:-stopped}"
     printf '  API:      %s\n' "${MAGICNET_API:-http://127.0.0.1:9090}"
     printf '  WebUI:    %s\n' "${MAGICNET_MIHOMO_WEBUI:-${MAGICNET_API:-http://127.0.0.1:9090}/ui/cubex/}"
     printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
-    unset _singbox _mihomo _watchdog _fswatch
+    unset _singbox _mihomo _singbox_disabled _watchdog _fswatch
 }
 
 cli_fast_list_file() {
@@ -331,15 +334,59 @@ cli_core_webui() {
 cli_service_status() {
     _watchdog_pid="$(magicnet_watchdog_status 2>/dev/null)"
     _fswatch_pid="$(magicnet_fswatch_status 2>/dev/null)"
+    _singbox_disabled=0
+    magicnet_singbox_disabled && _singbox_disabled=1
     printf 'MagicNet\n'
     printf '  sing-box: %s\n' "$(cli_pid_summary sing-box)"
+    printf '  sing-box-disabled: %s\n' "$_singbox_disabled"
     printf '  mihomo:   %s\n' "$(cli_pid_summary mihomo)"
     printf '  watchdog: %s\n' "${_watchdog_pid:-stopped}"
     printf '  fswatch:  %s\n' "${_fswatch_pid:-stopped}"
     printf '  API:      %s\n' "$MAGICNET_API"
     printf '  WebUI:    %s\n' "$(cli_core_webui)"
     printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
-    unset _watchdog_pid _fswatch_pid
+    unset _watchdog_pid _fswatch_pid _singbox_disabled
+}
+
+cli_core() {
+    case "${1:-status}" in
+        status)
+            _singbox_disabled=0
+            magicnet_singbox_disabled && _singbox_disabled=1
+            printf 'sing-box-disabled=%s\n' "$_singbox_disabled"
+            unset _singbox_disabled
+            ;;
+        sing-box|singbox)
+            case "${2:-status}" in
+                status)
+                    _singbox_disabled=0
+                    magicnet_singbox_disabled && _singbox_disabled=1
+                    printf 'disabled=%s\n' "$_singbox_disabled"
+                    printf 'file=%s\n' "${MODDIR}/.disable_sing_box"
+                    unset _singbox_disabled
+                    ;;
+                enable)
+                    magicnet_singbox_enable
+                    cli_info "sing-box enabled"
+                    ;;
+                disable)
+                    magicnet_singbox_disable
+                    cli_info "sing-box disabled"
+                    ;;
+                toggle)
+                    magicnet_singbox_toggle_disabled
+                    ;;
+                *)
+                    cli_error "Usage: cli core sing-box {status|enable|disable|toggle}"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        *)
+            cli_error "Usage: cli core {status|sing-box {status|enable|disable|toggle}}"
+            exit 1
+            ;;
+    esac
 }
 
 cli_service_stop() {
@@ -353,6 +400,71 @@ cli_service_stop() {
         mihomo_stop || true
     fi
     magicnet_refresh_status
+}
+
+cli_service_restart() {
+    _target="${1:-current}"
+    case "$_target" in
+        current)
+            _singbox="$(cli_pid_summary sing-box)"
+            _mihomo="$(cli_pid_summary mihomo)"
+            if [ "$_singbox" != "stopped" ]; then
+                _target="sing-box"
+            elif [ "$_mihomo" != "stopped" ]; then
+                _target="mihomo"
+            else
+                _target="auto"
+            fi
+            ;;
+        sing-box|singbox) _target="sing-box" ;;
+        mihomo|clash) _target="mihomo" ;;
+        auto|'') _target="auto" ;;
+        *)
+            cli_error "Usage: cli service restart [current|sing-box|mihomo|auto]"
+            exit 1
+            ;;
+    esac
+
+    case "$_target" in
+        sing-box)
+            if magicnet_singbox_disabled; then
+                cli_error "sing-box is disabled by ${MODDIR}/.disable_sing_box"
+                exit 1
+            fi
+            magicnet_supervisors_stop
+            if magicnet_cmd_exists mihomo; then
+                import __mihomo__
+                mihomo_stop || true
+            fi
+            if magicnet_cmd_exists sing-box; then
+                import __singbox__
+                singbox_stop || true
+            fi
+            magicnet_start_singbox || exit 1
+            magicnet_after_kernel_start
+            magicnet_supervisors_start
+            ;;
+        mihomo)
+            magicnet_supervisors_stop
+            if magicnet_cmd_exists sing-box; then
+                import __singbox__
+                singbox_stop || true
+            fi
+            if magicnet_cmd_exists mihomo; then
+                import __mihomo__
+                mihomo_stop || true
+            fi
+            magicnet_start_mihomo || exit 1
+            magicnet_after_kernel_start
+            magicnet_supervisors_start
+            ;;
+        auto)
+            cli_service_stop
+            sleep 1
+            magicnet_start_kernel
+            ;;
+    esac
+    unset _target _singbox _mihomo
 }
 
 cli_service() {
@@ -376,9 +488,8 @@ cli_service() {
             esac
             ;;
         restart)
-            cli_service_stop
-            sleep 1
-            magicnet_start_kernel
+            shift
+            cli_service_restart "${1:-current}"
             ;;
         logs)
             _target="${2:-sing-box}"
@@ -395,7 +506,7 @@ cli_service() {
             tail -n "$_lines" "$_file"
             ;;
         *)
-            cli_error "Usage: cli service {status|start|ensure|stop|restart|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}"
+            cli_error "Usage: cli service {status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}"
             exit 1
             ;;
     esac
@@ -1800,12 +1911,13 @@ cli_help() {
 MagicNet CLI
 
 Usage:
-  cli service {status|start|ensure|stop|restart|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}
+  cli service {status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}
   cli health
   cli repair
   cli support bundle
   cli setup <subscription-url>
   cli config {apply}
+  cli core {status|sing-box {status|enable|disable|toggle}}
   cli node {list|current|use <name>}
   cli mode [rule|global|direct]
   cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}
@@ -1835,6 +1947,7 @@ case "${1:-help}" in
         cli_setup "$@"
         ;;
     config) shift; cli_config "$@" ;;
+    core) shift; cli_core "$@" ;;
     node) shift; cli_node "$@" ;;
     mode) shift; cli_mode "$@" ;;
     route) shift; cli_route "$@" ;;
