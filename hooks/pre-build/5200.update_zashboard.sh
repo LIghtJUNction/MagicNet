@@ -23,7 +23,14 @@ CURRENT_VERSION=$(hook_current_version "$VERSION_FILE")
 log_info "zashboard 本地版本: $CURRENT_VERSION"
 
 LATEST_TAG=$(github_latest_tag "$REPO")
-[ -n "$LATEST_TAG" ] || { log_error "错误：无法获取 zashboard 远程版本号。"; exit 1; }
+[ -n "$LATEST_TAG" ] || {
+    if [ -f "$TARGET_DIR/index.html" ] && [ "$CURRENT_VERSION" != "unknown" ]; then
+        log_warn "无法获取 zashboard 远程版本号，继续使用本地版本: $CURRENT_VERSION"
+        exit 0
+    fi
+    log_error "错误：无法获取 zashboard 远程版本号，且本地 zashboard 不可用。"
+    exit 1
+}
 log_info "zashboard 远程最新版本: $LATEST_TAG"
 
 if [ "$CURRENT_VERSION" = "$LATEST_TAG" ] && [ -f "$TARGET_DIR/index.html" ]; then

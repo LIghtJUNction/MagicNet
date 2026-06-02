@@ -37,7 +37,7 @@ type IconNode = readonly [tag: string, attrs: Record<string, string | number>, c
 
 const MODULE_DIR = "/data/adb/modules/MagicNet";
 const CLI = `${MODULE_DIR}/cli`;
-const CORE_UI = "http://127.0.0.1:9090/ui/zashboard/#/setup?hostname=127.0.0.1&port=9090";
+const CORE_UI = "http://127.0.0.1:9090/ui/cubex/";
 const REPO = "https://github.com/LIghtJUNction/MagicNet";
 const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
 const hasKsuBridge = typeof ksuBridge?.exec === "function";
@@ -289,6 +289,14 @@ function normalizeExecResult(result: ExecResult): string {
   return [stdout, stderr].filter(Boolean).join("\n").trim();
 }
 
+function execFailed(text: string): boolean {
+  return /\b(error|failed|fail|curl:|not reachable|Connection refused|Could not connect)\b/i.test(text);
+}
+
+function hasProcess(value: string): boolean {
+  return value !== "stopped" && value !== "unknown" && value.trim() !== "";
+}
+
 async function runCli(args: string, options: { refreshApps?: boolean; quiet?: boolean } = {}): Promise<string> {
   const command = `su -c ${shellQuote(`${CLI} ${args}`)}`;
   state.lastCommand = command;
@@ -402,11 +410,67 @@ async function refreshStatus(): Promise<void> {
 
   const text = await runCli("service status", { quiet: true });
   state.runtime = parseRuntimeStatus(text);
-  const bothStopped = state.runtime.core === "stopped";
-  state.status = bothStopped ? "offline" : "online";
-  state.statusText = bothStopped ? "TUN 未运行" : `${state.runtime.core} 在线`;
+  if (state.runtime.core === "sing-box" || state.runtime.core === "mihomo") {
+    state.status = "online";
+    state.statusText = `${state.runtime.core} 在线`;
+  } else if (state.runtime.core === "stopped") {
+    state.status = "offline";
+    state.statusText = "TUN 未运行";
+  } else {
+    state.status = "offline";
+    state.statusText = "状态未知";
+  }
   state.output = `$ su -c ${CLI} service status\n${text}`;
   render();
+}
+
+async function openCoreUi(): Promise<void> {
+  if (!state.hasKsu) {
+    state.output = "当前浏览器没有 KernelSU 执行通道，无法确认内核 WebUI 是否在线。";
+    render();
+    return;
+  }
+
+  const text = await runCli("api groups", { quiet: true });
+  if (!text || execFailed(text)) {
+    state.status = "offline";
+    state.statusText = "Clash API 未启动";
+    state.activeTab = "health";
+    state.output = [
+      "内核 WebUI 没有打开：127.0.0.1:9090 当前不可用。",
+      "",
+      "先点“重启 TUN 内核”或“一键自修复”，等 Clash API 恢复后再打开内核 WebUI。",
+      "",
+      text
+    ].filter(Boolean).join("\n");
+    await refreshHealth(true);
+    render();
+    return;
+  }
+
+  window.open(state.runtime.webui || CORE_UI, "_blank", "noreferrer");
+}
+
+async function runAction(command: string): Promise<void> {
+  const text = await runCli(command);
+  if (execFailed(text)) {
+    await refreshStatus();
+    await refreshHealth(true);
+    return;
+  }
+
+  if (/^(service|repair|mode|hotspot|vpn)\b/.test(command)) {
+    await refreshStatus();
+    await refreshHealth(true);
+  }
+  if (/^(sub|setup)\b/.test(command)) {
+    await refreshSubscriptions(true);
+    await refreshNodes(true);
+    await refreshHealth(true);
+  }
+  if (/^api close-all\b/.test(command)) {
+    await refreshTraffic(true);
+  }
 }
 
 async function refreshApps(quiet = false): Promise<void> {
@@ -481,7 +545,7 @@ async function refreshNodes(quiet = false): Promise<void> {
       .map((line) => line.trim())
       .filter(Boolean);
     if (!quiet) {
-      state.output = `当前节点：${state.currentNode || "unknown"}\n可用节点：${state.nodes.length}`;
+      state.output = `当前节点：${state.currentNode || "未读取"}\n可用节点：${state.nodes.length}`;
     }
   }
   render();
@@ -1128,14 +1192,25 @@ function packagePicker(): string {
     .join("");
 }
 
+function runtimeDetail(value: string): string {
+  if (hasProcess(value)) return `PID ${value}`;
+  if (value === "stopped") return "未运行";
+  return "未检测";
+}
+
+function runtimeLabel(value: string, onlineLabel = "运行中"): string {
+  return hasProcess(value) ? onlineLabel : value === "stopped" ? "已停止" : "未检测";
+}
+
 function healthPill(label: string, value: string, iconName: string): string {
-  const online = value !== "stopped" && value !== "unknown" && value !== "";
+  const online = hasProcess(value);
   return `
     <div class="health-pill ${online ? "ok" : "warn"}">
       <span>${icon(iconName, 17)}</span>
       <div>
         <small>${label}</small>
-        <strong>${escapeHtml(value || "unknown")}</strong>
+        <strong>${escapeHtml(runtimeLabel(value))}</strong>
+        <em>${escapeHtml(runtimeDetail(value))}</em>
       </div>
     </div>
   `;
@@ -1156,10 +1231,10 @@ function commandDeck(): string {
         ${icon("RefreshCw", 18)}
         <span>刷新状态</span>
       </button>
-      <a class="command-secondary" href="${state.runtime.webui || CORE_UI}" target="_blank" rel="noreferrer">
+      <button class="command-secondary" data-open-core-ui ${state.busy ? "disabled" : ""}>
         ${icon("ExternalLink", 18)}
         <span>内核 WebUI</span>
-      </a>
+      </button>
     </div>
   `;
 }
@@ -1186,9 +1261,14 @@ function setupPanel(): string {
 
 function overviewPanel(): string {
   const bridgeText = state.hasKsu ? "可直接执行模块命令" : "本地预览，只展示界面";
-  const headline = state.runtime.core === "stopped"
+  const headline = state.runtime.core === "stopped" || state.runtime.core === "unknown"
     ? "TUN 已停止，点一下就能拉起。"
-    : `${state.runtime.core === "unknown" ? "MagicNet" : state.runtime.core} 正在接管系统流量。`;
+    : `${state.runtime.core} 正在接管系统流量。`;
+  const statusCaption = state.runtime.core === "unknown"
+    ? "服务状态未检测到有效输出"
+    : state.runtime.core === "stopped"
+      ? "没有代理内核进程"
+      : `${state.runtime.core} ${runtimeDetail(state.runtime.core === "sing-box" ? state.runtime.singBox : state.runtime.mihomo)}`;
 
   return `
     <section class="overview">
@@ -1204,6 +1284,7 @@ function overviewPanel(): string {
           <div>
             <small>当前状态</small>
             <strong>${escapeHtml(state.statusText)}</strong>
+            <em>${escapeHtml(statusCaption)}</em>
           </div>
         </div>
         <div class="health-grid">
@@ -1260,7 +1341,7 @@ function render(): void {
         </div>
         <div class="top-actions">
           <a class="ghost-link" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 16)}GitHub</a>
-          <a class="primary-link" href="${state.runtime.webui || CORE_UI}" target="_blank" rel="noreferrer">${icon("ExternalLink", 16)}内核 WebUI</a>
+          <button class="primary-link" data-open-core-ui ${state.busy ? "disabled" : ""}>${icon("ExternalLink", 16)}内核 WebUI</button>
         </div>
       </header>
 
@@ -1427,11 +1508,11 @@ function bindEvents(): void {
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-run]").forEach((button) => {
-    button.addEventListener("click", () => runCli(button.dataset.run || ""));
+    button.addEventListener("click", () => runAction(button.dataset.run || ""));
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((button) => {
-    button.addEventListener("click", () => runCli(`mode ${button.dataset.mode}`));
+    button.addEventListener("click", () => runAction(`mode ${button.dataset.mode}`));
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-app-mode]").forEach((button) => {
@@ -1445,6 +1526,10 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-action='refresh-all']")?.addEventListener("click", async () => {
     await refreshStatus();
     await refreshApps(true);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-open-core-ui]").forEach((button) => {
+    button.addEventListener("click", () => openCoreUi());
   });
 
   document.querySelector<HTMLButtonElement>("[data-copy-last]")?.addEventListener("click", async () => {

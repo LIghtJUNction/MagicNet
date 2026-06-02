@@ -351,7 +351,31 @@ magicnet_singbox_apply_app_policy() {
     fi
 
     _tmp="${_config}.app-policy.new"
-    if awk -v include_block="$_include_block" -v exclude_block="$_exclude_block" '
+    _include_tmp="${_config}.include-package.tmp"
+    _exclude_tmp="${_config}.exclude-package.tmp"
+    if [ -n "$_include_block" ]; then
+        printf '%s\n' "$_include_block" >"$_include_tmp"
+    else
+        rm -f "$_include_tmp" 2>/dev/null || true
+        _include_tmp=""
+    fi
+    if [ -n "$_exclude_block" ]; then
+        printf '%s\n' "$_exclude_block" >"$_exclude_tmp"
+    else
+        rm -f "$_exclude_tmp" 2>/dev/null || true
+        _exclude_tmp=""
+    fi
+
+    if awk -v include_file="$_include_tmp" -v exclude_file="$_exclude_tmp" '
+        function emit_file(path, line) {
+            if (path == "") {
+                return
+            }
+            while ((getline line < path) > 0) {
+                print line
+            }
+            close(path)
+        }
         BEGIN {
             in_tun = 0
             skip_package_array = 0
@@ -371,12 +395,8 @@ magicnet_singbox_apply_app_policy() {
                 next
             }
             if (in_tun && $0 ~ /^[[:space:]]*"stack"[[:space:]]*:/) {
-                if (include_block != "") {
-                    print include_block
-                }
-                if (exclude_block != "") {
-                    print exclude_block
-                }
+                emit_file(include_file)
+                emit_file(exclude_file)
             }
             print
             if (in_tun && $0 ~ /^    }[,]?[[:space:]]*$/) {
@@ -387,8 +407,10 @@ magicnet_singbox_apply_app_policy() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
+        rm -f "$_include_tmp" "$_exclude_tmp" 2>/dev/null || true
         return 1
     fi
+    rm -f "$_include_tmp" "$_exclude_tmp" 2>/dev/null || true
 }
 
 magicnet_singbox_apply_zashboard() {

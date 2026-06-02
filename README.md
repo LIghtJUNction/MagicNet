@@ -137,7 +137,7 @@ http://127.0.0.1:9090
 默认本地面板路径（sing-box 默认使用 zashboard）：
 
 ```text
-http://127.0.0.1:9090/ui/zashboard/#/setup?hostname=127.0.0.1&port=9090
+http://127.0.0.1:9090/ui/cubex/
 ```
 
 sing-box 使用 `experimental.clash_api` 提供 Clash API 兼容控制端，默认内置 zashboard 面板。若修改 `secret`，面板里也要同步填写。

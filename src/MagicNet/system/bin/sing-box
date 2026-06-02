@@ -1,11 +1,18 @@
 #!/system/bin/sh
 
-export HOME=/data/adb/modules/MagicNet
-export PATH="$HOME/.local/bin:$PATH"
+case "$0" in
+  */system/bin/sing-box) MODDIR=${MODDIR:-${0%/system/bin/sing-box}} ;;
+  */*) MODDIR=${MODDIR:-${0%/*}/../..} ;;
+  *) MODDIR=${MODDIR:-/data/adb/modules/MagicNet} ;;
+esac
 
-if [ -x "$HOME/.local/bin/sing-box" ]; then
-  exec "$HOME/.local/bin/sing-box" "$@"
+export HOME="$MODDIR"
+export PATH="$MODDIR/.local/bin:$PATH"
+export LD_LIBRARY_PATH="$MODDIR/.local/lib:$MODDIR/lib:${LD_LIBRARY_PATH:-}"
+
+if [ -x "$MODDIR/.local/bin/sing-box" ]; then
+  exec "$MODDIR/.local/bin/sing-box" "$@"
 else
-  echo "sing-box: executable not found at $HOME/.local/bin/sing-box" >&2
+  echo "sing-box: executable not found at $MODDIR/.local/bin/sing-box" >&2
   exit 127
 fi

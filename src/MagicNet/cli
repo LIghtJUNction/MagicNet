@@ -17,10 +17,13 @@ else
 fi
 
 import __runtime__
+kamfw_init_home
+kamfw_init_paths
 . "${MODDIR}/lib/magicnet.sh"
 
 MAGICNET_API="${MAGICNET_API:-http://127.0.0.1:9090}"
-MAGICNET_WEBUI="${MAGICNET_WEBUI:-${MAGICNET_API}/ui/zashboard/#/setup?hostname=127.0.0.1&port=9090}"
+MAGICNET_MIHOMO_WEBUI="${MAGICNET_MIHOMO_WEBUI:-${MAGICNET_API}/ui/cubex/}"
+MAGICNET_SINGBOX_WEBUI="${MAGICNET_SINGBOX_WEBUI:-${MAGICNET_API}/ui/#/setup?hostname=127.0.0.1&port=9090}"
 MAGICNET_GROUP="${MAGICNET_GROUP:-proxy}"
 MAGICNET_LOG_DIR="${MODDIR}/.log"
 
@@ -92,6 +95,19 @@ cli_pid_summary() {
     unset _pids
 }
 
+cli_core_webui() {
+    _singbox="$(cli_pid_summary sing-box)"
+    _mihomo="$(cli_pid_summary mihomo)"
+    if [ "$_singbox" != "stopped" ]; then
+        printf '%s\n' "$MAGICNET_SINGBOX_WEBUI"
+    elif [ "$_mihomo" != "stopped" ]; then
+        printf '%s\n' "$MAGICNET_MIHOMO_WEBUI"
+    else
+        printf '%s\n' "${MAGICNET_WEBUI:-$MAGICNET_MIHOMO_WEBUI}"
+    fi
+    unset _singbox _mihomo
+}
+
 cli_service_status() {
     _watchdog_pid="$(magicnet_watchdog_status 2>/dev/null)"
     _fswatch_pid="$(magicnet_fswatch_status 2>/dev/null)"
@@ -101,7 +117,7 @@ cli_service_status() {
     printf '  watchdog: %s\n' "${_watchdog_pid:-stopped}"
     printf '  fswatch:  %s\n' "${_fswatch_pid:-stopped}"
     printf '  API:      %s\n' "$MAGICNET_API"
-    printf '  WebUI:    %s\n' "$MAGICNET_WEBUI"
+    printf '  WebUI:    %s\n' "$(cli_core_webui)"
     printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
     unset _watchdog_pid _fswatch_pid
 }
@@ -796,7 +812,7 @@ cli_api() {
     case "${1:-ui}" in
         ui)
             printf 'Controller: %s\n' "$MAGICNET_API"
-            printf 'WebUI:      %s\n' "$MAGICNET_WEBUI"
+            printf 'WebUI:      %s\n' "$(cli_core_webui)"
             ;;
         groups) cli_curl "${MAGICNET_API}/proxies" ;;
         conns) cli_curl "${MAGICNET_API}/connections" ;;
