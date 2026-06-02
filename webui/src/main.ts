@@ -80,6 +80,15 @@ type HealthItem = {
   detail: string;
 };
 
+type ActionItem = {
+  label: string;
+  hint: string;
+  icon: string;
+  tone?: "strong";
+  command?: string;
+  special?: "open-core" | "copy-core" | "copy-support";
+};
+
 type PackageInfo = {
   packageName: string;
   versionName: string;
@@ -227,25 +236,38 @@ const state: State = {
   activeTab: "control"
 };
 
-const actions = [
+const actions: { title: string; items: ActionItem[] }[] = [
   {
-    title: "action.sh 菜单",
+    title: "action.sh 覆盖",
     items: [
-      { label: "更新 sing-box 订阅", hint: "执行 action.sh 的订阅更新", icon: "DownloadCloud", command: "sub update", tone: "strong" },
+      { label: "更新 sing-box 订阅", hint: "对应 action.sh 的订阅更新菜单", icon: "DownloadCloud", command: "sub update", tone: "strong" },
+      { label: "选择内核 WebUI", hint: "打开 Meta Cube X / Yacd / zashboard 选择框", icon: "ExternalLink", special: "open-core" },
       { label: "切换 sing-box 进程", hint: "只启动或停止 sing-box，不改禁用文件", icon: "Server", command: "service toggle sing-box" },
       { label: "切换 mihomo", hint: "启动或停止 mihomo", icon: "Route", command: "service toggle mihomo" },
-      { label: "网络诊断", hint: "只在手动点击时运行", icon: "Stethoscope", command: "diagnose" },
+      { label: "网络诊断", hint: "运行 action.sh 同源诊断", icon: "Stethoscope", command: "diagnose" },
       { label: "刷新状态描述", hint: "同步模块描述和运行状态", icon: "RefreshCw", command: "service status" }
+    ]
+  },
+  {
+    title: "生命周期",
+    items: [
+      { label: "启动模块服务", hint: "启动首选 TUN 内核和看门狗", icon: "Zap", command: "service start", tone: "strong" },
+      { label: "停止模块服务", hint: "停止内核、watchdog 和配置监听", icon: "Unplug", command: "service stop" },
+      { label: "确保内核运行", hint: "如果 TUN 内核退出就拉起", icon: "ShieldCheck", command: "service ensure" },
+      { label: "重启 TUN 内核", hint: "停止后重新拉起首选内核", icon: "RotateCcw", command: "service restart", tone: "strong" },
+      { label: "应用全部配置", hint: "重写分应用、分流、抓包、黑名单和面板配置", icon: "Save", command: "config apply" },
+      { label: "一键自修复", hint: "重载配置、热点和 VPN 共存", icon: "Zap", command: "repair", tone: "strong" }
     ]
   },
   {
     title: "模块维护",
     items: [
-      { label: "重启 TUN 内核", hint: "停止后重新拉起首选内核", icon: "RotateCcw", command: "service restart", tone: "strong" },
-      { label: "一键自修复", hint: "重载配置、热点和 VPN 共存", icon: "Zap", command: "repair", tone: "strong" },
       { label: "重载热点转发", hint: "应用 tether 转发规则", icon: "Wifi", command: "hotspot reload" },
       { label: "重载 VPN 共存", hint: "应用外部 VPN 保护规则", icon: "ShieldCheck", command: "vpn reload" },
-      { label: "清空旧连接", hint: "关闭 Clash API 连接表", icon: "Unplug", command: "api close-all" }
+      { label: "清空旧连接", hint: "关闭 Clash API 连接表", icon: "Unplug", command: "api close-all" },
+      { label: "健康检查", hint: "输出结构化模块健康状态", icon: "Stethoscope", command: "health" },
+      { label: "复制支持包", hint: "复制脱敏诊断信息和日志尾部", icon: "Copy", special: "copy-support" },
+      { label: "复制全部入口", hint: "复制当前面板和三个内核 WebUI 地址", icon: "Link", special: "copy-core" }
     ]
   }
 ];
@@ -912,6 +934,23 @@ async function generateSupportBundle(): Promise<void> {
   }
 }
 
+async function copyCoreEntries(): Promise<void> {
+  const text = state.hasKsu ? await runCli("api ui all", { quiet: true }) : "";
+  const fallback = [
+    `current=${coreUiUrl()}`,
+    `metacubex=${coreUiTargetUrl("metacubex")}`,
+    `yacd=${coreUiTargetUrl("yacd")}`,
+    `zashboard=${coreUiTargetUrl("zashboard")}`
+  ].join("\n");
+  const value = text && !execFailed(text) && !hasKsuBridgeNotice(text) ? text : fallback;
+  await navigator.clipboard?.writeText(value);
+  state.commandPhase = "done";
+  state.commandNotice = "已复制全部 WebUI 入口";
+  state.output = `已复制全部 WebUI 入口：\n${value}`;
+  if (state.hasKsu) kernelsu.toast?.("WebUI 入口已复制");
+  render();
+}
+
 function utf8ToBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let binary = "";
@@ -1041,6 +1080,19 @@ function nodePanel(): string {
 function activeTabPanel(tab: State["activeTab"]): string {
   if (tab === "control") {
     const restartSingBoxDisabled = state.runtime.singBoxDisabled ? "disabled" : "";
+    const renderAction = (item: ActionItem) => {
+      const active = item.command ? state.activeTask === item.command : false;
+      const actionAttr = item.command
+        ? `data-run="${escapeHtml(item.command)}"`
+        : `data-special-action="${escapeHtml(item.special || "")}"`;
+      return `
+        <button class="action-card ${item.tone || ""} ${active ? "running" : ""}" ${actionAttr}>
+          <span>${icon(item.icon, 20)}</span>
+          <strong>${escapeHtml(item.label)}</strong>
+          <small>${active ? "正在执行，稍等返回结果" : escapeHtml(item.hint)}</small>
+        </button>
+      `;
+    };
     return `
       <div class="tab-panel show">
         ${commandFeedback()}
@@ -1081,13 +1133,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
                     <h3>${escapeHtml(group.title)}</h3>
                   </div>
                   <div class="action-grid">
-                    ${group.items.map((item) => `
-                      <button class="action-card ${item.tone || ""} ${state.activeTask === item.command ? "running" : ""}" data-run="${item.command}">
-                        <span>${icon(item.icon, 20)}</span>
-                        <strong>${item.label}</strong>
-                        <small>${state.activeTask === item.command ? "正在执行，稍等返回结果" : item.hint}</small>
-                      </button>
-                    `).join("")}
+                    ${group.items.map(renderAction).join("")}
                   </div>
                 </section>
               `
@@ -2168,21 +2214,20 @@ function bindEvents(): void {
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-copy-core-entries]").forEach((button) => {
+    button.addEventListener("click", copyCoreEntries);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-special-action]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const text = state.hasKsu ? await runCli("api ui all", { quiet: true }) : "";
-      const fallback = [
-        `current=${coreUiUrl()}`,
-        `metacubex=${coreUiTargetUrl("metacubex")}`,
-        `yacd=${coreUiTargetUrl("yacd")}`,
-        `zashboard=${coreUiTargetUrl("zashboard")}`
-      ].join("\n");
-      const value = text && !execFailed(text) && !hasKsuBridgeNotice(text) ? text : fallback;
-      await navigator.clipboard?.writeText(value);
-      state.commandPhase = "done";
-      state.commandNotice = "已复制全部 WebUI 入口";
-      state.output = `已复制全部 WebUI 入口：\n${value}`;
-      if (state.hasKsu) kernelsu.toast?.("WebUI 入口已复制");
-      render();
+      const action = button.dataset.specialAction;
+      if (action === "open-core") {
+        state.coreMenuOpen = true;
+        render();
+      } else if (action === "copy-core") {
+        await copyCoreEntries();
+      } else if (action === "copy-support") {
+        await generateSupportBundle();
+      }
     });
   });
 
