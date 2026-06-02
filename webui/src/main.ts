@@ -350,6 +350,10 @@ function execFailed(text: string): boolean {
   return /\b(error|failed|fail|curl:|not reachable|Connection refused|Could not connect)\b/i.test(text);
 }
 
+function hasKsuBridgeNotice(text: string): boolean {
+  return text.includes("KernelSU 执行通道");
+}
+
 function hasProcess(value: string): boolean {
   return value !== "stopped" && value !== "unknown" && value.trim() !== "";
 }
@@ -1066,6 +1070,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
             <button type="submit">${icon("RotateCcw", 17)}执行重启</button>
           </form>
         </section>
+        ${supportAccessPanel()}
         ${setupPanel()}
         <div class="control-groups">
           ${actions
@@ -1172,6 +1177,23 @@ function activeTabPanel(tab: State["activeTab"]): string {
       </div>
       <pre class="terminal">${escapeHtml(compactOutput(state.output))}</pre>
     </div>
+  `;
+}
+
+function supportAccessPanel(): string {
+  return `
+    <section class="support-access">
+      <div class="support-copy">
+        <span class="eyebrow">Support & Links</span>
+        <h3>入口和支持包</h3>
+        <p>遇到打不开内核面板、规则未生效、VPN 共存异常时，先复制支持包；需要换面板时复制全部 WebUI 入口。</p>
+      </div>
+      <div class="support-actions">
+        <button class="command-secondary" data-support-bundle>${icon("Copy", 17)}复制支持包</button>
+        <button class="command-secondary" data-copy-core-entries>${icon("Link", 17)}复制全部入口</button>
+        <a class="command-secondary" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 17)}GitHub</a>
+      </div>
+    </section>
   `;
 }
 
@@ -2143,6 +2165,25 @@ function bindEvents(): void {
 
   document.querySelectorAll<HTMLButtonElement>("[data-support-bundle]").forEach((button) => {
     button.addEventListener("click", () => generateSupportBundle());
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-copy-core-entries]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const text = state.hasKsu ? await runCli("api ui all", { quiet: true }) : "";
+      const fallback = [
+        `current=${coreUiUrl()}`,
+        `metacubex=${coreUiTargetUrl("metacubex")}`,
+        `yacd=${coreUiTargetUrl("yacd")}`,
+        `zashboard=${coreUiTargetUrl("zashboard")}`
+      ].join("\n");
+      const value = text && !execFailed(text) && !hasKsuBridgeNotice(text) ? text : fallback;
+      await navigator.clipboard?.writeText(value);
+      state.commandPhase = "done";
+      state.commandNotice = "已复制全部 WebUI 入口";
+      state.output = `已复制全部 WebUI 入口：\n${value}`;
+      if (state.hasKsu) kernelsu.toast?.("WebUI 入口已复制");
+      render();
+    });
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-save-sub]").forEach((button) => {

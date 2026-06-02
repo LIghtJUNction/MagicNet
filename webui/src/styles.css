@@ -726,6 +726,41 @@ code {
   margin-bottom: 12px;
 }
 
+.support-access {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(215, 208, 188, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background:
+    linear-gradient(90deg, rgba(132, 199, 255, 0.09), rgba(98, 243, 169, 0.06), transparent),
+    #0c1110;
+}
+
+.support-copy {
+  min-width: 0;
+}
+
+.support-copy h3 {
+  font-size: 18px;
+}
+
+.support-copy p {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.support-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .runtime-toggle,
 .restart-form {
   min-width: 0;
@@ -2105,6 +2140,7 @@ a.disabled {
   }
 
   .runtime-control,
+  .support-access,
   .drawer-grid,
   .drawer-meta {
     grid-template-columns: 1fr;
@@ -2375,6 +2411,7 @@ a.disabled {
   .command-deck,
   .command-feedback,
   .runtime-control,
+  .support-access,
   .restart-form,
   .setup-form,
   .node-list,
@@ -2415,6 +2452,16 @@ a.disabled {
   .runtime-toggle {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .support-access {
+    align-items: stretch;
+  }
+
+  .support-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
   }
 
   .overview-side {
