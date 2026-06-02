@@ -1030,6 +1030,14 @@ button:disabled {
   line-height: 1.5;
 }
 
+.health-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 210px;
+}
+
 .health-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1244,6 +1252,15 @@ button:disabled {
   .health-hero {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .health-actions {
+    justify-content: stretch;
+    min-width: 0;
+  }
+
+  .health-actions button {
+    flex: 1 1 150px;
   }
 
   .top-actions {

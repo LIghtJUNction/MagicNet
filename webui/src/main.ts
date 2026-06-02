@@ -485,6 +485,14 @@ async function refreshHealth(quiet = false): Promise<void> {
   render();
 }
 
+async function generateSupportBundle(): Promise<void> {
+  const text = await runCli("support bundle");
+  if (text) {
+    await navigator.clipboard?.writeText(text);
+    if (state.hasKsu) kernelsu.toast?.("支持包已复制");
+  }
+}
+
 function utf8ToBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let binary = "";
@@ -549,7 +557,10 @@ function healthPanel(): string {
           <h3>一键看清透明代理链路</h3>
           <p>诊断不是日志堆叠，而是把最容易出问题的链路拆成可判定项目。</p>
         </div>
-        <button class="command-primary" data-health-run ${state.busy ? "disabled" : ""}>${icon("Stethoscope", 18)}运行诊断</button>
+        <div class="health-actions">
+          <button class="command-primary" data-health-run ${state.busy ? "disabled" : ""}>${icon("Stethoscope", 18)}运行诊断</button>
+          <button class="command-secondary" data-support-bundle ${state.busy ? "disabled" : ""}>${icon("Copy", 18)}复制支持包</button>
+        </div>
       </div>
       <div class="health-summary">
         <div><strong>${summary.ok}</strong><span>正常</span></div>
@@ -1046,6 +1057,7 @@ function render(): void {
             <div class="log-toolbar">
               <button data-run="service logs sing-box 160">${icon("FileText", 17)}sing-box 日志</button>
               <button data-health-run>${icon("Stethoscope", 17)}健康诊断</button>
+              <button data-support-bundle>${icon("Copy", 17)}支持包</button>
               <button data-copy-last>${icon("Copy", 17)}复制命令</button>
             </div>
             <pre class="terminal">${escapeHtml(state.output)}</pre>
@@ -1107,6 +1119,10 @@ function bindEvents(): void {
 
   document.querySelectorAll<HTMLButtonElement>("[data-health-run]").forEach((button) => {
     button.addEventListener("click", () => refreshHealth());
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-support-bundle]").forEach((button) => {
+    button.addEventListener("click", () => generateSupportBundle());
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-save-sub]").forEach((button) => {

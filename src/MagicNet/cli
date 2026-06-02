@@ -816,6 +816,88 @@ cli_health() {
     unset _capture_apps _capture_domains _hotspot_ifaces _external_vpns _cert_count
 }
 
+cli_support_redact() {
+    sed -E \
+        -e 's#(https?://)[^[:space:]"'"'"'<>]+#\1<redacted-url>#g' \
+        -e 's#(token|secret|password|passwd|authorization|auth|key)[[:space:]_:-]*["'"'"']?[^[:space:]"'"'"',}]+#\1=<redacted>#Ig' \
+        -e 's#([?&](token|secret|password|passwd|key)=)[^[:space:]&"'"'"']+#\1<redacted>#Ig'
+}
+
+cli_support_section() {
+    printf '\n## %s\n' "$1"
+}
+
+cli_support_run() {
+    _title="$1"
+    shift
+    cli_support_section "$_title"
+    "$@" 2>&1 | cli_support_redact || printf 'command failed: %s\n' "$*"
+    unset _title
+}
+
+cli_support_file_tail() {
+    _title="$1"
+    _file="$2"
+    _lines="${3:-80}"
+    cli_support_section "$_title"
+    if [ -f "$_file" ]; then
+        tail -n "$_lines" "$_file" 2>&1 | cli_support_redact
+    else
+        printf 'missing: %s\n' "$_file"
+    fi
+    unset _title _file _lines
+}
+
+cli_support_bundle() {
+    printf '# MagicNet Support Bundle\n'
+    printf 'generated_at=%s\n' "$(date '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date 2>/dev/null || printf unknown)"
+    printf 'module_dir=%s\n' "$MODDIR"
+    if [ -f "${MODDIR}/module.prop" ]; then
+        awk -F= '$1 == "id" || $1 == "name" || $1 == "version" || $1 == "versionCode" { print $1 "=" $2 }' "${MODDIR}/module.prop" |
+            cli_support_redact
+    fi
+
+    cli_support_run "service status" cli_service_status
+    cli_support_run "health" cli_health
+    cli_support_run "subscriptions" cli_sub list
+    cli_support_run "capture" cli_capture_print
+    cli_support_run "app policy" cli_app list
+    cli_support_run "certificates" cli_cert_list
+
+    cli_support_section "network listeners"
+    if command -v ss >/dev/null 2>&1; then
+        ss -lntp 2>&1 | grep -E '7890|7891|7892|9090|sing-box|mihomo' | cli_support_redact || printf 'no MagicNet listeners found\n'
+    else
+        printf 'ss not found\n'
+    fi
+
+    cli_support_section "interfaces"
+    if command -v ip >/dev/null 2>&1; then
+        ip addr show 2>&1 | sed -n '/^[0-9].*magicnet\|^[0-9].*tun\|^[0-9].*tailscale\|^[0-9].*wg\|^[0-9].*zt/,+3p' | cli_support_redact
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_support_section "routes"
+    if command -v ip >/dev/null 2>&1; then
+        ip route 2>&1 | head -80 | cli_support_redact
+        ip rule 2>&1 | head -80 | cli_support_redact
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_support_section "clash api sample"
+    if command -v curl >/dev/null 2>&1; then
+        curl -sS --max-time 5 "${MAGICNET_API}/proxies" 2>&1 | head -c 1200 | cli_support_redact
+        printf '\n'
+    else
+        printf 'curl not found\n'
+    fi
+
+    cli_support_file_tail "sing-box log tail" "${MAGICNET_LOG_DIR}/sing-box.log" 120
+    cli_support_file_tail "mihomo log tail" "${MAGICNET_LOG_DIR}/mihomo.log" 80
+}
+
 cli_help() {
     cat <<'EOF'
 MagicNet CLI
@@ -823,6 +905,7 @@ MagicNet CLI
 Usage:
   cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}
   cli health
+  cli support bundle
   cli config {apply}
   cli node {list|current|use <name>}
   cli mode [rule|global|direct]
@@ -840,6 +923,11 @@ EOF
 case "${1:-help}" in
     service) shift; cli_service "$@" ;;
     health|doctor) cli_health ;;
+    support)
+        shift
+        [ "${1:-bundle}" = "bundle" ] || { cli_error "Usage: cli support bundle"; exit 1; }
+        cli_support_bundle
+        ;;
     config) shift; cli_config "$@" ;;
     node) shift; cli_node "$@" ;;
     mode) shift; cli_mode "$@" ;;
