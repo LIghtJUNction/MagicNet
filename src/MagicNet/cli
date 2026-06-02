@@ -911,7 +911,7 @@ cli_app() {
                 blacklist|whitelist)
                     mkdir -p "$_dir"
                     printf 'MAGICNET_APP_MODE=%s\n' "$2" >"$_mode_file"
-                    magicnet_singbox_apply_app_policy
+                    magicnet_app_policy_apply
                     cli_info "App policy mode set to $2"
                     ;;
                 *)
@@ -931,19 +931,19 @@ cli_app() {
                 bypass) cli_app_add_to_file "$_bypass_file" "$2" ;;
                 *) cli_error "Target must be proxy or bypass"; exit 1 ;;
             esac
-            magicnet_singbox_apply_app_policy
+            magicnet_app_policy_apply
             cli_info "Added $2 to $_target app list"
             ;;
         remove)
             [ -n "${2:-}" ] || { cli_error "Usage: cli app remove <package>"; exit 1; }
             cli_app_remove_from_file "$_proxy_file" "$2"
             cli_app_remove_from_file "$_bypass_file" "$2"
-            magicnet_singbox_apply_app_policy
+            magicnet_app_policy_apply
             cli_info "Removed $2 from app policy"
             ;;
         apply)
-            magicnet_singbox_apply_app_policy
-            cli_info "App policy applied to sing-box TUN config"
+            magicnet_app_policy_apply
+            cli_info "App policy applied to mihomo and sing-box TUN config"
             ;;
         *)
             cli_error "Usage: cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}"

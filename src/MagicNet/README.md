@@ -21,7 +21,7 @@ MagicNet 是一个 KAM 构建的 Android root 模块，用于在设备上以 TUN
 - 内置 CLI：服务启停、日志、节点热切换、模式切换、订阅更新、连接管理。
 - kamfw watchdog 保活：核心异常退出后自动拉起，并通过 Android 通知提示重启事件和看门狗失败事件。
 - kamfw fswatch 配置监听：`.config` 变化后自动重新应用运行态配置、抓包规则、热点转发和 VPN 共存规则。
-- TUN 分应用代理：基于 sing-box TUN `include_package` / `exclude_package`，支持黑名单和白名单模式。
+- TUN 分应用代理：同时写入 mihomo `include-package` / `exclude-package` 与 sing-box `include_package` / `exclude_package`，支持黑名单和白名单模式。
 - 热点客户端可跟随本机 TUN 代理转发。
 - 可选 root VPN 共存模式，便于与 Tailscale、WireGuard、OpenVPN、ZeroTier、WARP 等隧道同时运行。
 
@@ -246,7 +246,7 @@ su -c /data/adb/modules/MagicNet/cli diagnose
 
 ## TUN 分应用代理
 
-MagicNet 不引入 TUN 外的 TPROXY / REDIRECT fallback；主路线就是 sing-box / mihomo TUN。分应用能力直接使用 sing-box TUN 入站的包名过滤。
+MagicNet 不引入 TUN 外的 TPROXY / REDIRECT fallback；主路线就是 sing-box / mihomo TUN。分应用能力直接使用两个内核 TUN 入站的包名过滤。
 
 策略文件：
 
@@ -272,7 +272,7 @@ su -c /data/adb/modules/MagicNet/cli app mode whitelist
 su -c '/data/adb/modules/MagicNet/cli app add com.openai.chatgpt proxy'
 ```
 
-`cli app ...` 会自动把策略应用到 sing-box TUN 配置；如果 sing-box 正在运行，重启内核后生效。
+`cli app ...` 会自动把策略应用到 mihomo 与 sing-box TUN 配置；如果内核正在运行，重启内核后生效。
 
 如需在双内核包里强制跳过 sing-box、直接使用 mihomo fallback，创建以下文件：
 
