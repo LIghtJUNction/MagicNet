@@ -148,6 +148,10 @@ sing-box 使用 `experimental.clash_api` 提供 Clash API 兼容控制端，默�
 
 模块内置可脚本化 CLI：
 
+`/data/adb/modules/MagicNet/cli` 是兼容入口。构建时会生成相对符号链接到 `.local/bin/magicnet-cli`，真实命令行工具由 Rust 实现；复杂历史命令暂时由 `cli.legacy.sh` 接管，避免破坏现有 WebUI、`action.sh` 和自动化调用。
+
+MCP 服务同样由 Rust 二进制 `.local/bin/magicnet-mcp-server` 提供，和 `mihomo`、`sing-box` 一样安装在模块 `.local/bin` 下。`hooks/pre-build/3000.BUILD_CRATES.sh` 会在构建时交叉编译并安装这两个二进制。
+
 ```bash
 su -c /data/adb/modules/MagicNet/cli help
 ```

@@ -1,4 +1,5 @@
 dist
+target/
 .env
 .playwright-mcp/
 webui/dist/

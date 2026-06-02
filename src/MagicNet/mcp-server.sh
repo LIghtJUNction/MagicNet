@@ -70,6 +70,18 @@ mcp_arg() {
     unset _key
 }
 
+mcp_base64_decode_to() {
+    _payload="$1"
+    _target="$2"
+    if command -v base64 >/dev/null 2>&1; then
+        printf '%s' "$_payload" | base64 -d >"$_target" 2>/dev/null ||
+            printf '%s' "$_payload" | base64 --decode >"$_target" 2>/dev/null
+    else
+        return 1
+    fi
+    unset _payload _target
+}
+
 mcp_path_safe() {
     _path="$1"
     case "$_path" in
@@ -134,12 +146,67 @@ mcp_file_write() {
     unset _path _content _full
 }
 
+mcp_file_write_base64() {
+    _path="$(printf '%s\n' "$1" | sed 's#^/*##')"
+    _payload="$2"
+    _mode="${3:-0644}"
+    _full="$(mcp_module_path "$_path")" || { mcp_file_text "invalid path"; return; }
+    case "$_mode" in
+        0644|0755|0600|0640) ;;
+        *) mcp_file_text "invalid mode: $_mode"; return ;;
+    esac
+    [ -n "$_payload" ] || { mcp_file_text "empty base64 payload"; return; }
+    mkdir -p "${_full%/*}" || { mcp_file_text "mkdir failed: ${_full%/*}"; return; }
+    if ! mcp_base64_decode_to "$_payload" "$_full"; then
+        rm -f "$_full" 2>/dev/null || true
+        mcp_file_text "base64 decode failed: $_path"
+        return
+    fi
+    chmod "$_mode" "$_full" 2>/dev/null || true
+    mcp_file_text "wrote $_path mode=$_mode"
+    unset _path _payload _mode _full
+}
+
+mcp_file_chmod() {
+    _path="$(printf '%s\n' "$1" | sed 's#^/*##')"
+    _mode="${2:-0644}"
+    _full="$(mcp_module_path "$_path")" || { mcp_file_text "invalid path"; return; }
+    case "$_mode" in
+        0644|0755|0600|0640) ;;
+        *) mcp_file_text "invalid mode: $_mode"; return ;;
+    esac
+    [ -e "$_full" ] || { mcp_file_text "not found: $_path"; return; }
+    chmod "$_mode" "$_full" || { mcp_file_text "chmod failed: $_path"; return; }
+    mcp_file_text "chmod $_mode $_path"
+    unset _path _mode _full
+}
+
 mcp_dir_make() {
     _path="$(printf '%s\n' "$1" | sed 's#^/*##')"
     _full="$(mcp_module_path "$_path")" || { mcp_file_text "invalid path"; return; }
     mkdir -p "$_full" || { mcp_file_text "mkdir failed: $_path"; return; }
     mcp_file_text "created $_path"
     unset _path _full
+}
+
+mcp_webui_build() {
+    _project="${MODDIR%/src/MagicNet}"
+    _script="${_project}/hooks/pre-build/2000.BUILD_WEBUI.sh"
+    if [ ! -x "$_script" ]; then
+        mcp_file_text "build hook not found: $_script"
+        unset _project _script
+        return
+    fi
+    _out="$(
+        KAM_PROJECT_ROOT="$_project" \
+        KAM_MODULE_ROOT="$MODDIR" \
+        KAM_HOOKS_ROOT="${_project}/hooks" \
+        "$_script" 2>&1
+    )"
+    _rc=$?
+    mcp_file_text "${_out}
+rc=${_rc}"
+    unset _project _script _out _rc
 }
 
 mcp_tools() {
@@ -154,7 +221,10 @@ mcp_tools() {
 {"name":"magicnet_file_list","description":"List files under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},
 {"name":"magicnet_file_read","description":"Read a text file under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},
 {"name":"magicnet_file_write","description":"Hot-update a text file under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}},
-{"name":"magicnet_dir_make","description":"Create a directory under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}
+{"name":"magicnet_file_write_base64","description":"Hot-update a file from base64 content under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"content_base64":{"type":"string"},"mode":{"type":"string","enum":["0644","0755","0600","0640"]}},"required":["path","content_base64"]}},
+{"name":"magicnet_file_chmod","description":"Change permissions for a file or directory under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"mode":{"type":"string","enum":["0644","0755","0600","0640"]}},"required":["path","mode"]}},
+{"name":"magicnet_dir_make","description":"Create a directory under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}},
+{"name":"magicnet_webui_build","description":"Run MagicNet WebUI build hook to rebuild webroot after hot-updating frontend files","inputSchema":{"type":"object","properties":{}}}
 ]}
 EOF
 }
@@ -182,7 +252,10 @@ mcp_handle_jsonrpc() {
                 magicnet_file_list) mcp_response "$_id" "$(mcp_file_list "$(printf '%s\n' "$_payload" | mcp_arg path)")" ;;
                 magicnet_file_read) mcp_response "$_id" "$(mcp_file_read "$(printf '%s\n' "$_payload" | mcp_arg path)")" ;;
                 magicnet_file_write) mcp_response "$_id" "$(mcp_file_write "$(printf '%s\n' "$_payload" | mcp_arg path)" "$(printf '%s\n' "$_payload" | mcp_arg content)")" ;;
+                magicnet_file_write_base64) mcp_response "$_id" "$(mcp_file_write_base64 "$(printf '%s\n' "$_payload" | mcp_arg path)" "$(printf '%s\n' "$_payload" | mcp_arg content_base64)" "$(printf '%s\n' "$_payload" | mcp_arg mode)")" ;;
+                magicnet_file_chmod) mcp_response "$_id" "$(mcp_file_chmod "$(printf '%s\n' "$_payload" | mcp_arg path)" "$(printf '%s\n' "$_payload" | mcp_arg mode)")" ;;
                 magicnet_dir_make) mcp_response "$_id" "$(mcp_dir_make "$(printf '%s\n' "$_payload" | mcp_arg path)")" ;;
+                magicnet_webui_build) mcp_response "$_id" "$(mcp_webui_build)" ;;
                 *) mcp_error "$_id" -32602 "unknown tool" ;;
             esac
             ;;

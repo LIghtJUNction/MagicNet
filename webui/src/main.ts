@@ -13,6 +13,7 @@ import {
   Link,
   ListFilter,
   Lock,
+  MessageCircle,
   Plus,
   Radar,
   RadioTower,
@@ -42,6 +43,7 @@ const MODULE_DIR = "/data/adb/modules/MagicNet";
 const CLI = `${MODULE_DIR}/cli`;
 const CORE_UI = "http://127.0.0.1:9090/ui/cubex/";
 const REPO = "https://github.com/LIghtJUNction/MagicNet";
+const AUTHOR_WHISPER_URL = "https://lightjunction.github.io/lightjunction/";
 const OUTPUT_RENDER_LIMIT = 6000;
 const CLI_TIMEOUT_MS = 45000;
 const AUTO_CORE_OPEN_ENABLED_KEY = "magicnet.autoCoreOpen.enabled";
@@ -2817,6 +2819,7 @@ function render(): void {
         </div>
         <div class="top-actions">
           <button class="ghost-link" data-action="refresh-all">${icon("RefreshCw", 16)}刷新</button>
+          <button class="ghost-link whisper-link" data-open-external-url="${AUTHOR_WHISPER_URL}" data-open-external-label="悄悄话">${icon("MessageCircle", 16)}和作者说悄悄话</button>
           <button class="ghost-link" data-open-external-url="${escapeHtml(REPO)}" data-open-external-label="GitHub">${icon("Github", 16)}GitHub</button>
           ${coreUiButton("primary-link")}
         </div>

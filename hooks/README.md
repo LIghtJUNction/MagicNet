@@ -11,6 +11,9 @@ kernels when available, and keep downloaded binaries out of Git history.
 - `pre-build/5100.update_sing_box.sh` selects the best sing-box Android arm64
   release asset, verifies the digest when available, and installs only the
   binary into `.local/bin`.
+- `pre-build/3000.BUILD_CRATES.sh` builds Rust module tools, installs
+  `magicnet-cli` and `magicnet-mcp-server` into `.local/bin`, and refreshes the
+  `cli -> .local/bin/magicnet-cli` compatibility symlink.
 - `pre-build/5500.update_geodata.sh` updates mihomo GeoIP / GeoSite data and
   stores hash state under `.local/state/geodata`.
 - `pre-build/6000.check_config.sh` always parses mihomo YAML and sing-box JSON.

@@ -266,9 +266,14 @@ fi
 
 [ -f "${MODPATH}/.local/bin/mihomo" ] && set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
 [ -f "${MODPATH}/.local/bin/sing-box" ] && set_perm "${MODPATH}/.local/bin/sing-box" 0 0 0700 u:object_r:magisk_file:s0
+[ -f "${MODPATH}/.local/bin/magicnet-cli" ] && set_perm "${MODPATH}/.local/bin/magicnet-cli" 0 0 0700 u:object_r:magisk_file:s0
+[ -f "${MODPATH}/.local/bin/magicnet-mcp-server" ] && set_perm "${MODPATH}/.local/bin/magicnet-mcp-server" 0 0 0700 u:object_r:magisk_file:s0
+
+rm -f "${MODPATH}/cli" 2>/dev/null || true
+ln -s ".local/bin/magicnet-cli" "${MODPATH}/cli" 2>/dev/null || true
 
 info "$(i18n "SET_MODULE_ENTRY_PERMS")"
-for _magicnet_entry in cli action.sh service.sh boot-completed.sh uninstall.sh hotspot-forward.sh vpn-coexist.sh; do
+for _magicnet_entry in cli.legacy.sh action.sh service.sh boot-completed.sh uninstall.sh hotspot-forward.sh vpn-coexist.sh; do
   [ -f "${MODPATH}/${_magicnet_entry}" ] || continue
   set_perm "${MODPATH}/${_magicnet_entry}" 0 0 0700 u:object_r:magisk_file:s0
 done
