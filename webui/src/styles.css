@@ -632,6 +632,7 @@ code {
 }
 
 .node-row strong {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -643,6 +644,24 @@ code {
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.node-delay {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.node-delay.good {
+  color: var(--green);
+}
+
+.node-delay.warn {
+  color: var(--amber);
+}
+
+.node-delay.bad {
+  color: var(--red);
 }
 
 .node-row.selected {

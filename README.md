@@ -173,6 +173,8 @@ su -c /data/adb/modules/MagicNet/cli config apply
 ```bash
 su -c /data/adb/modules/MagicNet/cli node list
 su -c /data/adb/modules/MagicNet/cli node current
+su -c /data/adb/modules/MagicNet/cli node delay
+su -c '/data/adb/modules/MagicNet/cli node delay "节点名"'
 su -c '/data/adb/modules/MagicNet/cli node use "节点名"'
 su -c /data/adb/modules/MagicNet/cli mode rule
 su -c /data/adb/modules/MagicNet/cli mode global

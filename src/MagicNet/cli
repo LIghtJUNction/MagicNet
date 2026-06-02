@@ -44,6 +44,29 @@ cli_curl() {
     curl -fsS --max-time "${MAGICNET_API_TIMEOUT:-8}" "$@"
 }
 
+cli_urlencode() {
+    _input="$1"
+    _encoded=""
+    _i=1
+    while [ "$_i" -le "${#_input}" ]; do
+        _char="$(printf '%s' "$_input" | cut -c "$_i")"
+        case "$_char" in
+            [a-zA-Z0-9.~_-]) _encoded="${_encoded}${_char}" ;;
+            ' ') _encoded="${_encoded}%20" ;;
+            *)
+                _hex="$(printf '%s' "$_char" | od -An -tx1 | tr -d ' \n')"
+                while [ -n "$_hex" ]; do
+                    _encoded="${_encoded}%$(printf '%s' "$_hex" | cut -c 1-2)"
+                    _hex="$(printf '%s' "$_hex" | cut -c 3-)"
+                done
+                ;;
+        esac
+        _i=$((_i + 1))
+    done
+    printf '%s\n' "$_encoded"
+    unset _input _encoded _i _char _hex
+}
+
 cli_pid_list() {
     _name="$1"
     if command -v pidof >/dev/null 2>&1; then
@@ -166,8 +189,31 @@ cli_node() {
                 --data "{\"name\":\"$2\"}" >/dev/null
             cli_info "Switched ${MAGICNET_GROUP} to $2"
             ;;
+        delay|test)
+            _test_url="${MAGICNET_DELAY_URL:-https://www.gstatic.com/generate_204}"
+            _timeout="${MAGICNET_DELAY_TIMEOUT:-5000}"
+            shift
+            if [ -n "${1:-}" ]; then
+                _node="$1"
+                _delay="$(
+                    cli_curl "${MAGICNET_API}/proxies/$(cli_urlencode "$_node")/delay?timeout=${_timeout}&url=$(cli_urlencode "$_test_url")" 2>/dev/null |
+                        sed -n 's/.*"delay"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p'
+                )"
+                printf '%s=%s\n' "$_node" "${_delay:-timeout}"
+            else
+                cli_node list | while IFS= read -r _node; do
+                    [ -n "$_node" ] || continue
+                    _delay="$(
+                        cli_curl "${MAGICNET_API}/proxies/$(cli_urlencode "$_node")/delay?timeout=${_timeout}&url=$(cli_urlencode "$_test_url")" 2>/dev/null |
+                            sed -n 's/.*"delay"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p'
+                    )"
+                    printf '%s=%s\n' "$_node" "${_delay:-timeout}"
+                done
+            fi
+            unset _test_url _timeout _node _delay
+            ;;
         *)
-            cli_error "Usage: cli node {list|current|use <name>}"
+            cli_error "Usage: cli node {list|current|use <name>|delay [name]}"
             exit 1
             ;;
     esac
@@ -1012,7 +1058,7 @@ Usage:
   cli support bundle
   cli setup <subscription-url>
   cli config {apply}
-  cli node {list|current|use <name>}
+  cli node {list|current|use <name>|delay [name]}
   cli mode [rule|global|direct]
   cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
   cli cert {list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}

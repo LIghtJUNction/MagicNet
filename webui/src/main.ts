@@ -99,6 +99,7 @@ type State = {
   output: string;
   nodes: string[];
   currentNode: string;
+  nodeDelays: Record<string, string>;
   traffic: TrafficStats;
   appPolicy: AppPolicy;
   subscriptions: {
@@ -147,6 +148,7 @@ const state: State = {
   output: "面板已加载。通过 KernelSU WebUI 打开时，按钮会直接执行模块 CLI。",
   nodes: [],
   currentNode: "",
+  nodeDelays: {},
   traffic: {
     connections: 0,
     upload: 0,
@@ -439,6 +441,32 @@ async function switchNode(name: string): Promise<void> {
   await refreshNodes(true);
 }
 
+function parseNodeDelays(text: string): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || !line.includes("=")) continue;
+    const [name, ...rest] = line.split("=");
+    const value = rest.join("=").trim();
+    if (!name || !value) continue;
+    next[name.trim()] = value;
+  }
+  return next;
+}
+
+async function testNodeDelays(name?: string): Promise<void> {
+  const command = name ? `node delay ${shellQuote(name)}` : "node delay";
+  const text = await runCli(command, { quiet: true });
+  if (state.hasKsu && text) {
+    state.nodeDelays = { ...state.nodeDelays, ...parseNodeDelays(text) };
+    const count = Object.keys(parseNodeDelays(text)).length;
+    state.output = name
+      ? `节点测速完成：${name} ${state.nodeDelays[name] || "timeout"}`
+      : `节点测速完成：${count} 个结果。`;
+  }
+  render();
+}
+
 function parseTrafficStats(text: string): TrafficStats {
   const next = { ...state.traffic };
   for (const raw of text.split(/\r?\n/)) {
@@ -660,10 +688,21 @@ function nodePanel(): string {
     ? state.nodes
       .map((name) => {
         const selected = name === state.currentNode;
+        const delay = state.nodeDelays[name];
+        const delayClass = delay
+          ? delay === "timeout"
+            ? "bad"
+            : Number.parseInt(delay, 10) <= 350
+              ? "good"
+              : "warn"
+          : "";
         return `
           <button class="node-row ${selected ? "selected" : ""}" data-node-use="${escapeHtml(name)}" ${state.busy || selected ? "disabled" : ""}>
             <span>${selected ? icon("ShieldCheck", 17) : icon("Route", 17)}</span>
-            <strong>${escapeHtml(name)}</strong>
+            <div>
+              <strong>${escapeHtml(name)}</strong>
+              <small class="node-delay ${delayClass}">${delay ? escapeHtml(delay === "timeout" ? "timeout" : `${delay} ms`) : "未测速"}</small>
+            </div>
             <small>${selected ? "当前出口" : "切换"}</small>
           </button>
         `;
@@ -680,6 +719,7 @@ function nodePanel(): string {
           <p>直接切换 TUN 出口，不需要打开内核 WebUI。</p>
         </div>
         <div class="node-actions">
+          <button class="command-secondary" data-test-nodes ${state.busy || state.nodes.length === 0 ? "disabled" : ""}>${icon("Gauge", 17)}全部测速</button>
           <button class="command-secondary" data-refresh-nodes ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}刷新节点</button>
           <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>${icon("DownloadCloud", 17)}更新订阅</button>
         </div>
@@ -1307,6 +1347,8 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-refresh-subs]")?.addEventListener("click", () => refreshSubscriptions());
 
   document.querySelector<HTMLButtonElement>("[data-refresh-nodes]")?.addEventListener("click", () => refreshNodes());
+
+  document.querySelector<HTMLButtonElement>("[data-test-nodes]")?.addEventListener("click", () => testNodeDelays());
 
   document.querySelectorAll<HTMLButtonElement>("[data-node-use]").forEach((button) => {
     button.addEventListener("click", () => switchNode(button.dataset.nodeUse || ""));
