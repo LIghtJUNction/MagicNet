@@ -1905,6 +1905,47 @@ a.disabled {
   gap: 8px;
 }
 
+.ai-assist-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 9px;
+  min-height: 58px;
+  border: 1px solid rgba(215, 208, 188, 0.14);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(8, 10, 10, 0.64);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ai-assist-card > span {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(132, 199, 255, 0.12);
+  color: var(--blue);
+}
+
+.ai-assist-card strong,
+.ai-assist-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-assist-card small {
+  color: var(--muted);
+}
+
+.ai-assist-card:active {
+  transform: translateY(1px);
+}
+
 .pingtest-panel {
   display: grid;
   gap: 8px;
@@ -2042,6 +2083,174 @@ a.disabled {
   color: #07100c;
   font-weight: 800;
   cursor: pointer;
+}
+
+.health-detail-button {
+  background: rgba(132, 199, 255, 0.1) !important;
+  color: var(--blue) !important;
+}
+
+.webui-config-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-2);
+}
+
+.webui-config-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.webui-config-form label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.webui-config-form input,
+.webui-config-form select,
+.webui-config-form textarea {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #090d0c;
+  color: var(--ink);
+}
+
+.webui-config-form textarea {
+  min-height: 130px;
+  resize: vertical;
+}
+
+.webui-config-form .wide,
+.webui-config-form button {
+  grid-column: 1 / -1;
+}
+
+.webui-config-form button {
+  justify-self: start;
+}
+
+.webui-panel-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.webui-panel-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #0c1110;
+}
+
+.webui-panel-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.webui-panel-row span {
+  color: var(--muted);
+}
+
+.webui-panel-row code {
+  overflow: hidden;
+  color: var(--green);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topology-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.topology-map,
+.topology-explain {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0c1110;
+}
+
+.topology-map {
+  min-height: 300px;
+  padding: 12px;
+}
+
+.topology-map svg {
+  width: 100%;
+  height: min(52vh, 420px);
+}
+
+.topology-line {
+  fill: none;
+  stroke: rgba(98, 243, 169, 0.42);
+  stroke-width: 1.1;
+}
+
+.topology-line.dashed {
+  stroke: rgba(132, 199, 255, 0.38);
+  stroke-dasharray: 3 3;
+}
+
+.topology-node {
+  cursor: pointer;
+}
+
+.topology-node circle {
+  fill: #070a09;
+  stroke: rgba(215, 208, 188, 0.38);
+  stroke-width: 1.2;
+}
+
+.topology-node text {
+  fill: var(--muted);
+  font-size: 3px;
+  text-anchor: middle;
+}
+
+.topology-node.active circle {
+  fill: rgba(98, 243, 169, 0.18);
+  stroke: var(--green);
+}
+
+.topology-node.active text {
+  fill: var(--ink);
+}
+
+.topology-explain {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+}
+
+.topology-explain h3 {
+  font-size: 20px;
+}
+
+.topology-explain p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.mini-button.danger {
+  border-color: rgba(255, 107, 107, 0.32);
+  color: var(--red);
 }
 
 .terminal,
@@ -2423,6 +2632,9 @@ a.disabled {
   .support-access,
   .restart-form,
   .setup-form,
+  .webui-config-form,
+  .webui-panel-row,
+  .topology-layout,
   .health-grid,
   .health-summary,
   .switch-stack,
@@ -2577,9 +2789,36 @@ a.disabled {
   .sub-card,
   .capture-card,
   .cert-card,
+  .topology-map,
+  .topology-explain,
   .health-summary div,
   .health-row {
     box-shadow: none;
+  }
+
+  .ai-assist-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-assist-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .topology-map {
+    min-height: 220px;
+    padding: 8px;
+  }
+
+  .topology-map svg {
+    height: 300px;
+  }
+
+  .webui-panel-row {
+    align-items: stretch;
+  }
+
+  .webui-panel-row .mini-button {
+    width: 100%;
   }
 
   .section-intro,

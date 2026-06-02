@@ -2326,6 +2326,62 @@ cli_pingtest() {
     cli_ping_one "GitHub Global" "github.com" "https://github.com" "http://127.0.0.1:7892"
 }
 
+cli_topology_section() {
+    printf '\n## %s\n' "$1"
+}
+
+cli_topology() {
+    printf '# MagicNet Network Topology\n'
+    printf 'generated_at=%s\n' "$(date '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date 2>/dev/null || printf unknown)"
+    printf 'module_dir=%s\n' "$MODDIR"
+    printf 'api=%s\n' "$MAGICNET_API"
+    printf 'webui=%s\n' "$(cli_core_webui)"
+
+    cli_topology_section "runtime"
+    cli_service_status 2>&1
+
+    cli_topology_section "interfaces"
+    if command -v ip >/dev/null 2>&1; then
+        ip -o addr show 2>&1 | head -120
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_topology_section "routes"
+    if command -v ip >/dev/null 2>&1; then
+        printf '[ip route]\n'
+        ip route 2>&1 | head -120
+        printf '\n[ip rule]\n'
+        ip rule 2>&1 | head -120
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_topology_section "forwarding"
+    if command -v iptables >/dev/null 2>&1; then
+        printf '[filter/FORWARD]\n'
+        iptables -S FORWARD 2>&1 | head -80
+        printf '\n[nat]\n'
+        iptables -t nat -S 2>&1 | grep -E 'MAGICNET|tether|MASQUERADE|REDIRECT|TPROXY' | head -120 || printf 'no MagicNet NAT snippets found\n'
+    else
+        printf 'iptables not found\n'
+    fi
+
+    cli_topology_section "listeners"
+    if command -v ss >/dev/null 2>&1; then
+        ss -lntp 2>&1 | grep -E '7890|7891|7892|9090|8765|sing-box|mihomo|mcp' | head -120 || printf 'no MagicNet listeners found\n'
+    else
+        printf 'ss not found\n'
+    fi
+
+    cli_topology_section "concepts"
+    cat <<'EOF'
+client_app -> Android routing table -> TUN interface -> sing-box/mihomo core -> proxy/direct/block decision -> upstream network
+hotspot_client -> tether forwarding/NAT -> Android routing table -> TUN/core when rules allow -> upstream network
+external_vpn -> route priority and protection rules can conflict with TUN; MagicNet tries to prevent loops and preserve the selected path.
+EOF
+}
+
 cli_support_redact() {
     sed -E \
         -e 's#(https?://)[^[:space:]"'"'"'<>]+#\1<redacted-url>#g' \
@@ -2418,6 +2474,7 @@ Usage:
   cli service {status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}
   cli health
   cli pingtest
+  cli topology
   cli repair
   cli support bundle
   cli setup <subscription-url>
@@ -2444,6 +2501,7 @@ case "${1:-help}" in
     service) shift; cli_service "$@" ;;
     health|doctor) cli_health ;;
     pingtest) cli_pingtest ;;
+    topology) cli_topology ;;
     repair|fix) cli_repair ;;
     support)
         shift

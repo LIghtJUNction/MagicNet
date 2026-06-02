@@ -45,6 +45,7 @@ const OUTPUT_RENDER_LIMIT = 6000;
 const CLI_TIMEOUT_MS = 45000;
 const AUTO_CORE_OPEN_ENABLED_KEY = "magicnet.autoCoreOpen.enabled";
 const AUTO_CORE_OPEN_TARGET_KEY = "magicnet.autoCoreOpen.target";
+const CUSTOM_WEBUI_PANELS_KEY = "magicnet.customWebui.panels";
 let cliQueue: Promise<unknown> = Promise.resolve();
 const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
 const hasKsuBridge = typeof ksuBridge?.exec === "function";
@@ -135,6 +136,16 @@ type MihomoProvider = {
 };
 
 type CoreUiTarget = "metacubex" | "yacd" | "zashboard";
+type WebuiPanelKind = "online" | "local";
+
+type WebuiPanel = {
+  id: string;
+  kind: WebuiPanelKind;
+  name: string;
+  url: string;
+  downloadUrl: string;
+  metadata: string;
+};
 
 type State = {
   hasKsu: boolean;
@@ -150,6 +161,8 @@ type State = {
     target: CoreUiTarget;
     attempted: boolean;
   };
+  webuiPanels: WebuiPanel[];
+  webuiPanelForm: WebuiPanel;
   commandPhase: "idle" | "accepted" | "queued" | "running" | "done" | "error";
   commandNotice: string;
   commandQueueDepth: number;
@@ -185,16 +198,18 @@ type State = {
     newApp: string;
     newDomain: string;
   };
-  routes: RouteRules;
   blocklist: BlocklistState;
   mcp: McpState;
   pingtest: string;
+  topology: string;
+  topologyFocus: string;
   health: HealthItem[];
   packages: PackageInfo[];
   packageQuery: string;
   newPackage: string;
   newTarget: "proxy" | "bypass";
-  activeTab: "control" | "health" | "apps" | "routes" | "block" | "subs" | "capture" | "certs" | "logs";
+  routes: RouteRules;
+  activeTab: "control" | "health" | "topology" | "apps" | "block" | "subs" | "capture" | "certs" | "webui" | "logs";
 };
 
 const state: State = {
@@ -207,6 +222,8 @@ const state: State = {
     url: ""
   },
   coreAutoOpen: loadCoreAutoOpen(),
+  webuiPanels: loadCustomWebuiPanels(),
+  webuiPanelForm: emptyWebuiPanel(),
   commandPhase: "idle",
   commandNotice: "",
   commandQueueDepth: 0,
@@ -283,6 +300,8 @@ const state: State = {
     url: "http://127.0.0.1:8765/mcp"
   },
   pingtest: "",
+  topology: "",
+  topologyFocus: "tun",
   health: [],
   packages: [],
   packageQuery: "",
@@ -338,12 +357,13 @@ const aiAssistants: { key: AiAssistant; label: string; url: string }[] = [
 const tabs = [
   { key: "control", label: "控制", icon: "Gauge" },
   { key: "health", label: "诊断", icon: "Stethoscope" },
+  { key: "topology", label: "拓扑", icon: "RadioTower" },
   { key: "apps", label: "应用", icon: "ListFilter" },
-  { key: "routes", label: "分流", icon: "Route" },
   { key: "block", label: "黑名单", icon: "Ban" },
   { key: "subs", label: "订阅", icon: "DownloadCloud" },
   { key: "capture", label: "抓包", icon: "ShieldCheck" },
   { key: "certs", label: "证书", icon: "ShieldPlus" },
+  { key: "webui", label: "面板", icon: "ExternalLink" },
   { key: "logs", label: "输出", icon: "Terminal" }
 ] as const;
 
@@ -416,6 +436,50 @@ function loadCoreAutoOpen(): State["coreAutoOpen"] {
 function saveCoreAutoOpen(): void {
   localStorage.setItem(AUTO_CORE_OPEN_ENABLED_KEY, state.coreAutoOpen.enabled ? "1" : "0");
   localStorage.setItem(AUTO_CORE_OPEN_TARGET_KEY, state.coreAutoOpen.target);
+}
+
+function emptyWebuiPanel(): WebuiPanel {
+  return {
+    id: "",
+    kind: "online",
+    name: "",
+    url: "",
+    downloadUrl: "",
+    metadata: "{\n  \"homepage\": \"\",\n  \"description\": \"\",\n  \"features\": []\n}"
+  };
+}
+
+function normalizeWebuiPanel(value: Partial<WebuiPanel>): WebuiPanel | null {
+  const name = String(value.name || "").trim();
+  const kind: WebuiPanelKind = value.kind === "local" ? "local" : "online";
+  const url = String(value.url || "").trim();
+  const downloadUrl = String(value.downloadUrl || "").trim();
+  const metadata = String(value.metadata || "{}").trim() || "{}";
+  if (!name) return null;
+  if (kind === "online" && !/^https?:\/\/\S+$/i.test(url)) return null;
+  if (kind === "local" && !/^https?:\/\/\S+$/i.test(downloadUrl)) return null;
+  return {
+    id: String(value.id || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`),
+    kind,
+    name,
+    url,
+    downloadUrl,
+    metadata
+  };
+}
+
+function loadCustomWebuiPanels(): WebuiPanel[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CUSTOM_WEBUI_PANELS_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.map((item) => normalizeWebuiPanel(item)).filter((item): item is WebuiPanel => Boolean(item));
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomWebuiPanels(): void {
+  localStorage.setItem(CUSTOM_WEBUI_PANELS_KEY, JSON.stringify(state.webuiPanels));
 }
 
 function escapeHtml(value: string): string {
@@ -720,23 +784,34 @@ async function refreshMcp(quiet = false): Promise<void> {
   if (!quiet) render();
 }
 
+type CoreOpenTarget = CoreUiTarget | `custom:${string}`;
+
 async function openCoreUi(): Promise<void> {
   await openCoreUiTarget("metacubex");
 }
 
-function coreUiTargetUrl(target: "metacubex" | "yacd" | "zashboard"): string {
+function findCustomWebuiPanel(target: CoreOpenTarget): WebuiPanel | undefined {
+  if (!target.startsWith("custom:")) return undefined;
+  return state.webuiPanels.find((panel) => panel.id === target.slice("custom:".length));
+}
+
+function coreUiTargetUrl(target: CoreOpenTarget): string {
+  const custom = findCustomWebuiPanel(target);
+  if (custom) return custom.kind === "online" ? custom.url : `${state.runtime.api}/ui/`;
   if (target === "yacd") return "https://yacd.metacubex.one/?hostname=127.0.0.1&port=9090&secret=";
   if (target === "zashboard") return `${state.runtime.api}/ui/`;
   return `${state.runtime.api}/ui/cubex/`;
 }
 
-function coreUiTargetLabel(target: "metacubex" | "yacd" | "zashboard"): string {
+function coreUiTargetLabel(target: CoreOpenTarget): string {
+  const custom = findCustomWebuiPanel(target);
+  if (custom) return custom.name;
   if (target === "yacd") return "Yacd";
   if (target === "zashboard") return "zashboard";
   return "Meta Cube X";
 }
 
-async function openCoreUiTarget(target: "metacubex" | "yacd" | "zashboard"): Promise<void> {
+async function openCoreUiTarget(target: CoreOpenTarget): Promise<void> {
   const url = coreUiTargetUrl(target);
   const label = coreUiTargetLabel(target);
   if (!state.hasKsu) {
@@ -839,8 +914,6 @@ async function refreshDashboard(quiet = false): Promise<void> {
       await refreshSubscriptions(true);
     } else if (state.activeTab === "apps") {
       await refreshApps(true);
-    } else if (state.activeTab === "routes") {
-      await refreshRoutes(true);
     } else if (state.activeTab === "block") {
       await refreshBlocklist(true);
     } else if (state.activeTab === "capture") {
@@ -1113,6 +1186,15 @@ async function refreshPingtest(): Promise<void> {
   render();
 }
 
+async function refreshTopology(quiet = false): Promise<void> {
+  const text = await runCli("topology", { quiet, label: "网络拓扑" });
+  state.topology = text;
+  if (!quiet) {
+    state.activeTab = "topology";
+    render();
+  }
+}
+
 async function generateDiagnosticContext(label = "复制诊断上下文"): Promise<string> {
   const text = await runCli("support bundle", { label });
   if (text) {
@@ -1157,19 +1239,19 @@ function utf8ToBase64(text: string): string {
   return btoa(binary);
 }
 
-const healthLabels: Record<string, { label: string; icon: string; fix?: string; fixLabel?: string }> = {
-  core: { label: "TUN 内核", icon: "Server", fix: "service restart", fixLabel: "重启" },
-  tun: { label: "TUN 网卡", icon: "RadioTower", fix: "service restart", fixLabel: "重启" },
-  watchdog: { label: "看门狗", icon: "Bell", fix: "service restart", fixLabel: "重启服务" },
-  fswatch: { label: "配置监听", icon: "Activity", fix: "service restart", fixLabel: "重启服务" },
-  api: { label: "Clash API", icon: "Gauge", fix: "service restart", fixLabel: "重启" },
-  "sing-box-sub": { label: "sing-box 订阅", icon: "DownloadCloud", fix: "sub update-all", fixLabel: "更新" },
-  "mihomo-sub": { label: "mihomo 订阅", icon: "DownloadCloud" },
-  capture: { label: "抓包规则", icon: "ShieldCheck", fix: "capture apply", fixLabel: "应用" },
-  blocklist: { label: "联 ban 黑名单", icon: "Ban", fix: "block update", fixLabel: "更新" },
-  hotspot: { label: "热点转发", icon: "Wifi", fix: "hotspot reload", fixLabel: "重载" },
-  vpn: { label: "VPN 共存", icon: "ShieldCheck", fix: "vpn reload", fixLabel: "重载" },
-  certs: { label: "系统 CA", icon: "ShieldPlus" }
+const healthLabels: Record<string, { label: string; icon: string; fix?: string; fixLabel?: string; explain: string }> = {
+  core: { label: "TUN 内核", icon: "Server", fix: "service restart", fixLabel: "重启", explain: "透明代理的核心进程负责创建 TUN 入站、加载规则和转发流量。排查时先看进程是否存在，再看内核日志是否有配置解析、权限或端口冲突错误。" },
+  tun: { label: "TUN 网卡", icon: "RadioTower", fix: "service restart", fixLabel: "重启", explain: "TUN 网卡是系统流量进入代理内核的入口。异常通常来自权限、路由表、VPN 共存或内核未完成启动。排查方法是确认接口存在、路由指向正确、内核日志无 bind/tun 错误。" },
+  watchdog: { label: "看门狗", icon: "Bell", fix: "service restart", fixLabel: "重启服务", explain: "看门狗负责在内核退出后拉起服务。它不替代配置修复，只保证异常退出后能恢复。排查时看 watchdog 是否运行、重启次数和最近日志。" },
+  fswatch: { label: "配置监听", icon: "Activity", fix: "service restart", fixLabel: "重启服务", explain: "配置监听用于发现订阅、黑名单、抓包和应用名单变化后触发应用配置。异常时可能导致用户改了配置但内核没有热更新。" },
+  api: { label: "Clash API", icon: "Gauge", fix: "service restart", fixLabel: "重启", explain: "Clash API 是管理面板和内核 WebUI 的控制接口。内核 WebUI 打不开时，先检查 127.0.0.1:9090 是否可用，再判断是 API 未启动还是 WebUI 静态资源问题。" },
+  "sing-box-sub": { label: "sing-box 订阅", icon: "DownloadCloud", fix: "sub update-all", fixLabel: "更新", explain: "sing-box 订阅会被转换成出站节点配置。异常通常是订阅 URL 无效、网络不可达、格式不兼容或生成配置失败。" },
+  "mihomo-sub": { label: "mihomo 订阅", icon: "DownloadCloud", explain: "mihomo 使用 proxy-providers 管理订阅。检查时重点看 provider URL、下载结果、节点数量和配置 reload 是否成功。" },
+  capture: { label: "抓包规则", icon: "ShieldCheck", fix: "capture apply", fixLabel: "应用", explain: "抓包规则把指定 App 或域名导向电脑上的 HTTP 抓包代理。排查时确认电脑 IP/端口可达、目标 App/域名命中规则、内核已经重载配置。" },
+  blocklist: { label: "联 ban 黑名单", icon: "Ban", fix: "block update", fixLabel: "更新", explain: "联 ban 黑名单把社区恶意域名规则注入 mihomo 和 sing-box。排查时确认社区库下载成功、本地排除规则没有误放行、内核配置已应用。" },
+  hotspot: { label: "热点转发", icon: "Wifi", fix: "hotspot reload", fixLabel: "重载", explain: "热点转发处理手机共享网络时的 NAT 和转发链路。异常时热点设备可能无法走透明代理或无法联网，排查 iptables/tether 规则和当前上游接口。" },
+  vpn: { label: "VPN 共存", icon: "ShieldCheck", fix: "vpn reload", fixLabel: "重载", explain: "VPN 共存用于避免外部 VPN、TUN、路由规则互相抢流量。异常时可能出现流量回环或不可达，排查路由优先级、保护规则和外部 VPN 状态。" },
+  certs: { label: "系统 CA", icon: "ShieldPlus", explain: "系统 CA 通过模块 systemless 覆盖到 Android 证书目录。抓 HTTPS 包时需要证书正确安装并重启生效，部分 App 仍可能有证书固定。" }
 };
 
 function healthSummary(): { ok: number; warn: number; fail: number; info: number } {
@@ -1182,15 +1264,42 @@ function healthSummary(): { ok: number; warn: number; fail: number; info: number
   );
 }
 
+function healthExplainText(key: string, status: string, detail: string): string {
+  const meta = healthLabels[key] || {
+    label: key,
+    icon: "Stethoscope",
+    explain: "这是 MagicNet 健康诊断中的一个模块检查项。排查时先看当前状态和详细输出，再结合最近输出中的 CLI 结果判断是否需要重启或重新应用配置。"
+  };
+  return [
+    `诊断项：${meta.label}`,
+    `当前状态：${status}`,
+    `当前详情：${detail || "无额外详情"}`,
+    "",
+    "概念和原理：",
+    meta.explain,
+    "",
+    "技术排查方法：",
+    "1. 先运行健康诊断确认状态是否复现。",
+    "2. 查看最近输出和对应内核日志，定位是配置、进程、API、路由还是网络问题。",
+    "3. 对有修复按钮的项目，先使用面板动作重载或重启；仍失败再复制诊断上下文询问 AI 或提交 issue。"
+  ].join("\n");
+}
+
 function healthPanel(): string {
   const summary = healthSummary();
   const aiButtons = aiAssistants
-    .map((item) => `<button class="command-secondary" data-ask-ai="${item.key}">${icon("ExternalLink", 16)}${item.label}</button>`)
+    .map((item) => `
+      <button class="ai-assist-card" data-ask-ai="${item.key}">
+        <span>${icon("ExternalLink", 16)}</span>
+        <strong>${item.label}</strong>
+        <small>复制上下文后打开</small>
+      </button>
+    `)
     .join("");
   const items = state.health.length
     ? state.health
       .map((item) => {
-        const meta = healthLabels[item.key] || { label: item.key, icon: "Stethoscope" };
+        const meta = healthLabels[item.key] || { label: item.key, icon: "Stethoscope", explain: "" };
         return `
           <div class="health-row ${item.status}">
             <span class="health-mark">${icon(meta.icon, 18)}</span>
@@ -1199,6 +1308,7 @@ function healthPanel(): string {
               <small>${escapeHtml(item.detail || item.status)}</small>
             </div>
             <span class="health-state">${item.status}</span>
+            <button class="health-detail-button" data-health-detail="${escapeHtml(item.key)}">${icon("FileText", 15)}详情</button>
             ${meta.fix ? `<button data-run="${meta.fix}">${escapeHtml(meta.fixLabel || "修复")}</button>` : ""}
           </div>
         `;
@@ -1225,7 +1335,7 @@ function healthPanel(): string {
         <div>
           <span class="eyebrow">Ask With Context</span>
           <h3>带诊断上下文询问 AI</h3>
-          <p>按钮会先复制 MagicNet 脱敏诊断上下文，再打开对应 AI。进入聊天后直接粘贴发送。</p>
+          <p>先复制 MagicNet 脱敏诊断上下文，再用系统浏览器打开外部 AI。登录态留在系统浏览器，不在模块 WebView 里硬跳。</p>
         </div>
         <div class="ai-assist-actions">${aiButtons}</div>
       </div>
@@ -1244,6 +1354,68 @@ function healthPanel(): string {
         <div><strong>${summary.info}</strong><span>信息</span></div>
       </div>
       <div class="health-list">${items}</div>
+    </div>
+  `;
+}
+
+const topologyConcepts: Record<string, { title: string; body: string }> = {
+  app: { title: "客户端 App", body: "App 发出的 TCP/UDP 流量先进入 Android 网络栈。透明代理的关键是让 App 不需要知道代理存在，由系统路由把流量导向 TUN。" },
+  route: { title: "Android 路由表", body: "路由表决定流量下一跳。MagicNet 需要让目标流量进入 TUN，同时避免热点、局域网和外部 VPN 出现回环。" },
+  tun: { title: "TUN 虚拟网卡", body: "TUN 是用户态代理内核接收系统流量的虚拟网卡。它不像普通 HTTP 代理暴露给 App，因此透明度更高。" },
+  core: { title: "sing-box / mihomo 内核", body: "内核读取订阅、规则、分应用和抓包配置，决定每条连接走代理、直连、阻断或抓包代理。" },
+  upstream: { title: "上游网络", body: "上游可以是 Wi-Fi/蜂窝网络、代理节点、电脑抓包代理或热点转发后的出口。最终路径取决于内核规则和系统路由。" },
+  hotspot: { title: "热点与转发", body: "热点客户端的流量会经过 tether 转发和 NAT。MagicNet 需要把这部分流量正确转入或绕过 TUN，避免只能手机本机生效。" },
+  vpn: { title: "外部 VPN 共存", body: "外部 VPN 也会改路由和 TUN。共存规则的目标是避免 MagicNet 和外部 VPN 抢默认路由，造成流量回环或断流。" }
+};
+
+function topologyPanel(): string {
+  const focus = topologyConcepts[state.topologyFocus] || topologyConcepts.tun;
+  const nodes = [
+    ["app", 10, 42],
+    ["route", 24, 42],
+    ["tun", 40, 42],
+    ["core", 58, 42],
+    ["upstream", 78, 42],
+    ["hotspot", 24, 72],
+    ["vpn", 48, 18]
+  ] as const;
+  return `
+    <div class="section-intro">
+      <div>
+        <span class="eyebrow">Network Topology</span>
+        <h3>透明代理网络拓扑</h3>
+        <p>把虚拟网卡、路由、TUN、热点转发和 VPN 共存画成可点选路径。点击节点查看概念和排查方法。</p>
+      </div>
+      <button class="command-primary" data-refresh-topology>${icon("RefreshCw", 17)}读取真实拓扑</button>
+    </div>
+    <div class="topology-layout">
+      <section class="topology-map">
+        <svg viewBox="0 0 100 90" role="img" aria-label="MagicNet network topology">
+          <path class="topology-line" d="M16 42 H76" />
+          <path class="topology-line dashed" d="M24 68 V47" />
+          <path class="topology-line dashed" d="M49 22 V37" />
+          ${nodes.map(([key, x, y]) => `
+            <g class="topology-node ${state.topologyFocus === key ? "active" : ""}" data-topology-node="${key}" transform="translate(${x} ${y})">
+              <circle r="6"></circle>
+              <text y="15">${escapeHtml(topologyConcepts[key].title)}</text>
+            </g>
+          `).join("")}
+        </svg>
+      </section>
+      <section class="topology-explain">
+        <span class="eyebrow">Concept</span>
+        <h3>${escapeHtml(focus.title)}</h3>
+        <p>${escapeHtml(focus.body)}</p>
+        <button class="command-secondary" data-copy-topology-explain>${icon("Copy", 17)}复制解说</button>
+      </section>
+    </div>
+    <div class="pingtest-panel">
+      <div>
+        <span class="eyebrow">Device Evidence</span>
+        <h3>真实设备网络摘要</h3>
+        <p>来自模块 CLI 的接口、路由、转发和监听摘要。</p>
+      </div>
+      <pre>${escapeHtml(state.topology || "还没有读取拓扑。点击“读取真实拓扑”开始。")}</pre>
     </div>
   `;
 }
@@ -1347,6 +1519,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
   }
 
   if (tab === "health") return `<div class="tab-panel show">${healthPanel()}</div>`;
+  if (tab === "topology") return `<div class="tab-panel show">${topologyPanel()}</div>`;
 
   if (tab === "apps") {
     return `
@@ -1395,11 +1568,11 @@ function activeTabPanel(tab: State["activeTab"]): string {
     `;
   }
 
-  if (tab === "routes") return `<div class="tab-panel show">${routePanel()}</div>`;
   if (tab === "block") return `<div class="tab-panel show">${blocklistPanel()}</div>`;
   if (tab === "subs") return `<div class="tab-panel show">${subscriptionsSection()}</div>`;
   if (tab === "capture") return `<div class="tab-panel show">${capturePanel()}</div>`;
   if (tab === "certs") return `<div class="tab-panel show">${certPanel()}</div>`;
+  if (tab === "webui") return `<div class="tab-panel show">${webuiConfigPanel()}</div>`;
 
   return `
     <div class="tab-panel show">
@@ -1597,6 +1770,33 @@ function blockIssueUrl(): string {
   ].join("\n");
   const params = new URLSearchParams({
     title: "联 ban 黑名单变更请求",
+    body
+  });
+  return `${REPO}/issues/new?${params.toString()}`;
+}
+
+function webuiAdaptIssueUrl(panel?: WebuiPanel): string {
+  const body = [
+    "### 内核 WebUI 适配申请",
+    "",
+    `- 面板名称: ${panel?.name || ""}`,
+    `- 面板类型: ${panel?.kind === "local" ? "本地面板" : "在线面板"}`,
+    `- 在线入口 URL: ${panel?.url || ""}`,
+    `- 本地下载 URL: ${panel?.downloadUrl || ""}`,
+    "",
+    "### 面板元数据",
+    "",
+    "```json",
+    panel?.metadata || "{\n  \"homepage\": \"\",\n  \"description\": \"\",\n  \"features\": []\n}",
+    "```",
+    "",
+    "### 审核要求",
+    "",
+    "- 请人工确认面板来源、授权、兼容 Clash API 的程度和移动端可用性。",
+    "- 审核通过后可内置到 MagicNet 的内核 WebUI 选择菜单。"
+  ].join("\n");
+  const params = new URLSearchParams({
+    title: `申请适配内核 WebUI：${panel?.name || "新面板"}`,
     body
   });
   return `${REPO}/issues/new?${params.toString()}`;
@@ -1878,6 +2078,63 @@ function certPanel(): string {
   `;
 }
 
+function webuiConfigPanel(): string {
+  const panels = state.webuiPanels.length
+    ? state.webuiPanels.map((panel) => `
+      <div class="webui-panel-row">
+        <div>
+          <strong>${escapeHtml(panel.name)}</strong>
+          <span>${panel.kind === "local" ? "本地面板" : "在线面板"}</span>
+          <code>${escapeHtml(panel.kind === "local" ? panel.downloadUrl : panel.url)}</code>
+        </div>
+        <button class="mini-button" data-open-custom-webui="${escapeHtml(panel.id)}">${icon("ExternalLink", 15)}打开</button>
+        <button class="mini-button" data-adapt-webui="${escapeHtml(panel.id)}">${icon("Github", 15)}申请</button>
+        <button class="mini-button danger" data-remove-webui="${escapeHtml(panel.id)}">${icon("X", 15)}移除</button>
+      </div>
+    `).join("")
+    : `<div class="picker-empty"><strong>还没有自定义内核 WebUI</strong><span>添加在线面板或本地面板后，会出现在“选择内核 WebUI”菜单里。</span></div>`;
+
+  return `
+    <div class="section-intro">
+      <div>
+        <span class="eyebrow">Core WebUI Catalog</span>
+        <h3>内核 WebUI 配置</h3>
+        <p>这里只管理内核 WebUI 入口和适配申请。在线面板填写入口 URL；本地面板填写下载 URL 和元数据，审核通过后可内置。</p>
+      </div>
+      <button class="command-secondary" data-adapt-webui>${icon("Github", 17)}申请适配新面板</button>
+    </div>
+    <form class="webui-config-form" data-webui-panel-form>
+      <label>
+        <span>面板类型</span>
+        <select name="kind">
+          <option value="online" ${state.webuiPanelForm.kind === "online" ? "selected" : ""}>在线面板</option>
+          <option value="local" ${state.webuiPanelForm.kind === "local" ? "selected" : ""}>本地面板</option>
+        </select>
+      </label>
+      <label>
+        <span>面板名字</span>
+        <input name="name" value="${escapeHtml(state.webuiPanelForm.name)}" placeholder="例如：Meta Cube X" />
+      </label>
+      <label>
+        <span>在线入口 URL</span>
+        <input name="url" value="${escapeHtml(state.webuiPanelForm.url)}" placeholder="https://example.com/?hostname=127.0.0.1&port=9090" />
+      </label>
+      <label>
+        <span>本地下载 URL</span>
+        <input name="downloadUrl" value="${escapeHtml(state.webuiPanelForm.downloadUrl)}" placeholder="https://github.com/owner/panel/releases/latest/download/dist.zip" />
+      </label>
+      <label class="wide">
+        <span>面板元数据 JSON</span>
+        <textarea name="metadata" spellcheck="false">${escapeHtml(state.webuiPanelForm.metadata)}</textarea>
+      </label>
+      <button type="submit">${icon("Save", 17)}保存面板</button>
+    </form>
+    <div class="webui-panel-list">
+      ${panels}
+    </div>
+  `;
+}
+
 function appList(items: string[], target: "proxy" | "bypass"): string {
   if (items.length === 0) {
     return `<div class="empty">暂无应用包名</div>`;
@@ -2056,6 +2313,9 @@ function commandDeck(): string {
 }
 
 function coreUiButton(className: string): string {
+  const customButtons = state.webuiPanels
+    .map((panel) => `<button data-open-core-ui-target="custom:${escapeHtml(panel.id)}">${icon(panel.kind === "local" ? "DownloadCloud" : "ExternalLink", 16)}${escapeHtml(panel.name)}</button>`)
+    .join("");
   return `
     <span class="core-ui-wrap">
       <a class="${className}" data-open-core-ui href="${escapeHtml(coreUiUrl())}" title="短按打开当前内核面板，长按选择面板">
@@ -2068,6 +2328,8 @@ function coreUiButton(className: string): string {
           <button data-open-core-ui-target="metacubex">${icon("ExternalLink", 16)}Meta Cube X</button>
           <button data-open-core-ui-target="yacd">${icon("Route", 16)}Yacd</button>
           <button data-open-core-ui-target="zashboard">${icon("Server", 16)}zashboard</button>
+          ${customButtons}
+          <button data-adapt-webui>${icon("Github", 16)}申请适配面板</button>
         </div>
       ` : ""}
     </span>
@@ -2226,8 +2488,8 @@ async function refreshActiveTabData(): Promise<void> {
   if (!state.hasKsu) return;
   if (state.activeTab === "control") await refreshMcp();
   if (state.activeTab === "health" && state.health.length === 0) await refreshHealth();
+  if (state.activeTab === "topology" && !state.topology) await refreshTopology();
   if (state.activeTab === "apps") await refreshApps();
-  if (state.activeTab === "routes") await refreshRoutes();
   if (state.activeTab === "block") await refreshBlocklist();
   if (state.activeTab === "subs") await refreshSubscriptions();
   if (state.activeTab === "capture") await refreshCapture();
@@ -2525,8 +2787,8 @@ function bindEvents(): void {
       event.preventDefault();
       const target = button.dataset.openCoreUiTarget;
       state.coreMenuOpen = false;
-      if (target === "metacubex" || target === "yacd" || target === "zashboard") {
-        void openCoreUiTarget(target);
+      if (target === "metacubex" || target === "yacd" || target === "zashboard" || target?.startsWith("custom:")) {
+        void openCoreUiTarget(target as CoreOpenTarget);
       }
     });
   });
@@ -2541,9 +2803,62 @@ function bindEvents(): void {
 
   document.querySelector<HTMLButtonElement>("[data-refresh-subs]")?.addEventListener("click", () => refreshSubscriptions());
 
-  document.querySelector<HTMLButtonElement>("[data-refresh-routes]")?.addEventListener("click", () => refreshRoutes());
-
   document.querySelector<HTMLButtonElement>("[data-refresh-block]")?.addEventListener("click", () => refreshBlocklist());
+
+  document.querySelector<HTMLFormElement>("[data-webui-panel-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const metadata = String(form.get("metadata") || "{}");
+    try {
+      JSON.parse(metadata);
+    } catch {
+      state.output = "面板元数据必须是合法 JSON。";
+      render();
+      return;
+    }
+    const panel = normalizeWebuiPanel({
+      kind: String(form.get("kind") || "online") === "local" ? "local" : "online",
+      name: String(form.get("name") || ""),
+      url: String(form.get("url") || ""),
+      downloadUrl: String(form.get("downloadUrl") || ""),
+      metadata
+    });
+    if (!panel) {
+      state.output = "面板配置不完整：在线面板需要入口 URL，本地面板需要下载 URL。";
+      render();
+      return;
+    }
+    state.webuiPanels = [...state.webuiPanels, panel];
+    state.webuiPanelForm = emptyWebuiPanel();
+    saveCustomWebuiPanels();
+    state.output = `已保存内核 WebUI 面板：${panel.name}`;
+    render();
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-open-custom-webui]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.openCustomWebui || "";
+      if (id) void openCoreUiTarget(`custom:${id}`);
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-remove-webui]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.removeWebui || "";
+      state.webuiPanels = state.webuiPanels.filter((panel) => panel.id !== id);
+      saveCustomWebuiPanels();
+      state.output = "已移除自定义内核 WebUI 面板。";
+      render();
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-adapt-webui]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.adaptWebui || "";
+      const panel = state.webuiPanels.find((item) => item.id === id);
+      await openExternalUrl(webuiAdaptIssueUrl(panel), "WebUI 适配 Issue");
+    });
+  });
 
   document.querySelectorAll<HTMLButtonElement>("[data-health-run]").forEach((button) => {
     button.addEventListener("click", () => refreshHealth());
@@ -2551,6 +2866,36 @@ function bindEvents(): void {
 
   document.querySelectorAll<HTMLButtonElement>("[data-pingtest]").forEach((button) => {
     button.addEventListener("click", () => refreshPingtest());
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-health-detail]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const key = button.dataset.healthDetail || "";
+      const item = state.health.find((entry) => entry.key === key);
+      const text = healthExplainText(key, item?.status || "info", item?.detail || "");
+      await navigator.clipboard?.writeText(text);
+      state.output = `${text}\n\n已复制这段解说。`;
+      if (state.hasKsu) kernelsu.toast?.("诊断详情已复制");
+      render();
+    });
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-refresh-topology]")?.addEventListener("click", () => refreshTopology());
+
+  document.querySelectorAll<SVGGElement>("[data-topology-node]").forEach((node) => {
+    node.addEventListener("click", () => {
+      state.topologyFocus = node.dataset.topologyNode || "tun";
+      render();
+    });
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-copy-topology-explain]")?.addEventListener("click", async () => {
+    const focus = topologyConcepts[state.topologyFocus] || topologyConcepts.tun;
+    const text = `${focus.title}\n\n${focus.body}`;
+    await navigator.clipboard?.writeText(text);
+    state.output = `${text}\n\n已复制拓扑解说。`;
+    if (state.hasKsu) kernelsu.toast?.("拓扑解说已复制");
+    render();
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-support-bundle]").forEach((button) => {
