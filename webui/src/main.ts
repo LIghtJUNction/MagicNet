@@ -80,13 +80,15 @@ type HealthItem = {
   detail: string;
 };
 
+type SpecialAction = "open-core" | "copy-core" | "copy-support";
+
 type ActionItem = {
   label: string;
   hint: string;
   icon: string;
   tone?: "strong";
   command?: string;
-  special?: "open-core" | "copy-core" | "copy-support";
+  special?: SpecialAction;
 };
 
 type PackageInfo = {
@@ -407,6 +409,25 @@ function enqueueCli<T>(label: string, task: () => Promise<T>, onStart?: () => vo
   });
   cliQueue = run.catch(() => undefined);
   return run;
+}
+
+function beginInstantAction(label: string): void {
+  state.busy = true;
+  state.activeTask = label;
+  state.commandPhase = "accepted";
+  state.commandNotice = `已接收命令：${label}`;
+  render();
+}
+
+function finishInstantAction(label: string, notice: string, output?: string): void {
+  state.commandPhase = "done";
+  state.commandNotice = notice;
+  if (output !== undefined) state.output = output;
+  if (state.activeTask === label) {
+    state.busy = false;
+    state.activeTask = "";
+  }
+  render();
 }
 
 async function runCli(args: string, options: { refreshApps?: boolean; quiet?: boolean; label?: string } = {}): Promise<string> {
@@ -926,15 +947,17 @@ async function refreshHealth(quiet = false): Promise<void> {
   }
 }
 
-async function generateSupportBundle(): Promise<void> {
-  const text = await runCli("support bundle");
+async function generateSupportBundle(label = "复制支持包"): Promise<void> {
+  const text = await runCli("support bundle", { label });
   if (text) {
     await navigator.clipboard?.writeText(text);
     if (state.hasKsu) kernelsu.toast?.("支持包已复制");
+    state.commandNotice = "支持包已复制";
   }
 }
 
-async function copyCoreEntries(): Promise<void> {
+async function copyCoreEntries(label = "复制全部入口"): Promise<void> {
+  beginInstantAction(label);
   const text = state.hasKsu ? await runCli("api ui all", { quiet: true }) : "";
   const fallback = [
     `current=${coreUiUrl()}`,
@@ -944,11 +967,8 @@ async function copyCoreEntries(): Promise<void> {
   ].join("\n");
   const value = text && !execFailed(text) && !hasKsuBridgeNotice(text) ? text : fallback;
   await navigator.clipboard?.writeText(value);
-  state.commandPhase = "done";
-  state.commandNotice = "已复制全部 WebUI 入口";
-  state.output = `已复制全部 WebUI 入口：\n${value}`;
   if (state.hasKsu) kernelsu.toast?.("WebUI 入口已复制");
-  render();
+  finishInstantAction(label, "已复制全部 WebUI 入口", `已复制全部 WebUI 入口：\n${value}`);
 }
 
 function utf8ToBase64(text: string): string {
@@ -1080,8 +1100,14 @@ function nodePanel(): string {
 function activeTabPanel(tab: State["activeTab"]): string {
   if (tab === "control") {
     const restartSingBoxDisabled = state.runtime.singBoxDisabled ? "disabled" : "";
+    const specialLabels: Record<SpecialAction, string> = {
+      "open-core": "选择内核 WebUI",
+      "copy-core": "复制全部入口",
+      "copy-support": "复制支持包"
+    };
     const renderAction = (item: ActionItem) => {
-      const active = item.command ? state.activeTask === item.command : false;
+      const taskLabel = item.command || (item.special ? specialLabels[item.special] : "");
+      const active = Boolean(taskLabel && state.activeTask === taskLabel);
       const actionAttr = item.command
         ? `data-run="${escapeHtml(item.command)}"`
         : `data-special-action="${escapeHtml(item.special || "")}"`;
@@ -2214,19 +2240,21 @@ function bindEvents(): void {
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-copy-core-entries]").forEach((button) => {
-    button.addEventListener("click", copyCoreEntries);
+    button.addEventListener("click", () => copyCoreEntries());
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-special-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       const action = button.dataset.specialAction;
+      const label = button.querySelector("strong")?.textContent?.trim() || button.textContent?.trim() || "模块操作";
       if (action === "open-core") {
+        beginInstantAction(label);
         state.coreMenuOpen = true;
-        render();
+        finishInstantAction(label, "已打开内核 WebUI 选择菜单", "已打开内核 WebUI 选择菜单。请选择 Meta Cube X、Yacd 或 zashboard。");
       } else if (action === "copy-core") {
-        await copyCoreEntries();
+        await copyCoreEntries(label);
       } else if (action === "copy-support") {
-        await generateSupportBundle();
+        await generateSupportBundle(label);
       }
     });
   });
