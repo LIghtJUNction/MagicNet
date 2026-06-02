@@ -816,6 +816,31 @@ cli_health() {
     unset _capture_apps _capture_domains _hotspot_ifaces _external_vpns _cert_count
 }
 
+cli_repair() {
+    cli_info "Applying runtime configuration"
+    magicnet_apply_runtime_config || true
+
+    cli_info "Reloading hotspot forwarding rules"
+    magicnet_enable_hotspot_forward || true
+
+    cli_info "Reloading VPN coexist rules"
+    magicnet_enable_vpn_coexist || true
+
+    cli_info "Ensuring TUN core and supervisors"
+    magicnet_ensure_kernel
+
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fsS --max-time 5 -X DELETE "${MAGICNET_API}/connections" >/dev/null 2>&1; then
+            cli_info "Closed stale Clash API connections"
+        else
+            cli_info "Clash API connections were not closed"
+        fi
+    fi
+
+    cli_info "Repair pass complete; health follows"
+    cli_health
+}
+
 cli_support_redact() {
     sed -E \
         -e 's#(https?://)[^[:space:]"'"'"'<>]+#\1<redacted-url>#g' \
@@ -905,6 +930,7 @@ MagicNet CLI
 Usage:
   cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}
   cli health
+  cli repair
   cli support bundle
   cli config {apply}
   cli node {list|current|use <name>}
@@ -923,6 +949,7 @@ EOF
 case "${1:-help}" in
     service) shift; cli_service "$@" ;;
     health|doctor) cli_health ;;
+    repair|fix) cli_repair ;;
     support)
         shift
         [ "${1:-bundle}" = "bundle" ] || { cli_error "Usage: cli support bundle"; exit 1; }

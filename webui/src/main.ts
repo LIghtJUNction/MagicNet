@@ -168,6 +168,7 @@ const state: State = {
 const actions = [
   { label: "刷新状态", hint: "读取进程与 API", icon: "RefreshCw", command: "service status" },
   { label: "重启 TUN", hint: "重新拉起内核", icon: "RotateCcw", command: "service restart", tone: "strong" },
+  { label: "一键自修复", hint: "重载规则并自检", icon: "Zap", command: "repair", tone: "strong" },
   { label: "健康诊断", hint: "检查关键链路", icon: "Stethoscope", command: "health" },
   { label: "更新订阅", hint: "更新全部订阅", icon: "DownloadCloud", command: "sub update-all" },
   { label: "清空连接", hint: "关闭旧连接", icon: "Unplug", command: "api close-all" },
@@ -558,7 +559,8 @@ function healthPanel(): string {
           <p>诊断不是日志堆叠，而是把最容易出问题的链路拆成可判定项目。</p>
         </div>
         <div class="health-actions">
-          <button class="command-primary" data-health-run ${state.busy ? "disabled" : ""}>${icon("Stethoscope", 18)}运行诊断</button>
+          <button class="command-primary" data-run="repair" ${state.busy ? "disabled" : ""}>${icon("Zap", 18)}一键自修复</button>
+          <button class="command-secondary" data-health-run ${state.busy ? "disabled" : ""}>${icon("Stethoscope", 18)}运行诊断</button>
           <button class="command-secondary" data-support-bundle ${state.busy ? "disabled" : ""}>${icon("Copy", 18)}复制支持包</button>
         </div>
       </div>
