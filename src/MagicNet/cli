@@ -245,6 +245,24 @@ cli_sub_read() {
     printf '%s\n' "$_url"
 }
 
+cli_validate_subscription_url() {
+    _url="${1:-}"
+    case "$_url" in
+        http://*|https://*) ;;
+        *)
+            cli_error "Subscription URL must start with http:// or https://"
+            exit 1
+            ;;
+    esac
+    case "$_url" in
+        *[[:space:]]*)
+            cli_error "Subscription URL must not contain whitespace"
+            exit 1
+            ;;
+    esac
+    unset _url
+}
+
 cli_sub_set_file() {
     _file="$1"
     _url="$2"
@@ -289,6 +307,7 @@ cli_sub() {
                 cli_error "Usage: cli sub set <sing-box|mihomo|clash> <url>"
                 exit 1
             }
+            cli_validate_subscription_url "$_url"
             _file="$(cli_sub_target_file "$_target")"
             cli_sub_set_file "$_file" "$_url"
             case "$_target" in
@@ -304,6 +323,22 @@ cli_sub() {
             exit 1
             ;;
     esac
+}
+
+cli_setup() {
+    _url="${1:-}"
+    [ -n "$_url" ] || {
+        cli_error "Usage: cli setup <subscription-url>"
+        exit 1
+    }
+    cli_validate_subscription_url "$_url"
+    cli_info "Saving subscription URL for sing-box and mihomo"
+    cli_sub set sing-box "$_url"
+    cli_sub set mihomo "$_url"
+    cli_info "Updating subscriptions and repairing runtime"
+    cli_sub update-all
+    cli_repair
+    unset _url
 }
 
 cli_cert_dir() {
@@ -932,6 +967,7 @@ Usage:
   cli health
   cli repair
   cli support bundle
+  cli setup <subscription-url>
   cli config {apply}
   cli node {list|current|use <name>}
   cli mode [rule|global|direct]
@@ -954,6 +990,10 @@ case "${1:-help}" in
         shift
         [ "${1:-bundle}" = "bundle" ] || { cli_error "Usage: cli support bundle"; exit 1; }
         cli_support_bundle
+        ;;
+    setup)
+        shift
+        cli_setup "$@"
         ;;
     config) shift; cli_config "$@" ;;
     node) shift; cli_node "$@" ;;

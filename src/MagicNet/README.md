@@ -109,7 +109,15 @@ Clash / mihomo 订阅链接：
 /data/adb/modules/MagicNet/.config/mihomo/subscription.url
 ```
 
-模块 WebUI 可以直接读取、填写、保存、复制 sing-box 与 Clash / mihomo 订阅链接。保存 mihomo 链接时会同步更新 `config.yaml` 中第一个 `proxy-provider` 的 `url`。
+首次配置只需要一条命令：
+
+```bash
+su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/sub"'
+```
+
+`cli setup` 会校验订阅 URL，同时写入 sing-box 与 Clash / mihomo，更新订阅，重载运行配置，并在最后输出健康诊断结果。模块 WebUI 首页的“保存并启用”使用同一条 CLI 路径。
+
+模块 WebUI 也可以直接读取、填写、保存、复制 sing-box 与 Clash / mihomo 订阅链接。保存 mihomo 链接时会同步更新 `config.yaml` 中第一个 `proxy-provider` 的 `url`。
 
 在 `subscription.url` 第一行填入订阅链接后，执行模块 `action.sh`，选择 `更新 sing-box 订阅节点`。MagicNet 会下载订阅，转换为 sing-box `outbounds`，并保留原有 TUN、DNS、路由和 Clash API 配置。
 
@@ -178,6 +186,7 @@ su -c /data/adb/modules/MagicNet/cli sub update-all
 su -c /data/adb/modules/MagicNet/cli sub list
 su -c /data/adb/modules/MagicNet/cli sub get sing-box
 su -c /data/adb/modules/MagicNet/cli sub get mihomo
+su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/sub"'
 su -c '/data/adb/modules/MagicNet/cli sub set sing-box "https://example.com/sub"'
 su -c '/data/adb/modules/MagicNet/cli sub set mihomo "https://example.com/clash.yaml"'
 su -c /data/adb/modules/MagicNet/cli sub file sing-box

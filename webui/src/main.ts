@@ -406,10 +406,7 @@ async function saveSetupSubscription(): Promise<void> {
     render();
     return;
   }
-  await runCli(`sub set sing-box ${shellQuote(url)}`);
-  await runCli(`sub set mihomo ${shellQuote(url)}`);
-  await runCli("sub update-all");
-  await runCli("repair");
+  await runCli(`setup ${shellQuote(url)}`);
   state.setupUrl = "";
   await refreshSubscriptions(true);
   await refreshHealth(true);
