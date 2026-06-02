@@ -19,6 +19,58 @@ magicnet_cmd_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+magicnet_first_http_url() {
+    [ -f "$1" ] || return 1
+    awk '
+        {
+            line = $0
+            sub(/[[:space:]]*#.*$/, "", line)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+            if (line ~ /^https?:\/\/[^[:space:]]+$/) {
+                print line
+                exit 0
+            }
+        }
+        END { exit 1 }
+    ' "$1"
+}
+
+magicnet_singbox_has_subscription() {
+    magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
+}
+
+magicnet_mihomo_has_subscription() {
+    magicnet_first_http_url "${MODDIR}/.config/mihomo/subscription.url" >/dev/null 2>&1 && return 0
+    [ -f "${MODDIR}/.config/mihomo/config.yaml" ] || return 1
+    awk '
+        /^[[:space:]]*url:[[:space:]]*/ {
+            line = $0
+            sub(/^[[:space:]]*url:[[:space:]]*/, "", line)
+            gsub(/^["'\'']|["'\'']$/, "", line)
+            if (line ~ /^https?:\/\/[^[:space:]]+$/) {
+                found = 1
+                exit
+            }
+        }
+        END { exit found ? 0 : 1 }
+    ' "${MODDIR}/.config/mihomo/config.yaml" >/dev/null 2>&1
+}
+
+magicnet_preferred_core() {
+    case "${MAGICNET_DEFAULT_CORE:-auto}" in
+        sing-box|singbox) printf '%s\n' "sing-box"; return 0 ;;
+        mihomo|clash) printf '%s\n' "mihomo"; return 0 ;;
+    esac
+
+    if magicnet_singbox_has_subscription && ! magicnet_mihomo_has_subscription; then
+        printf '%s\n' "sing-box"
+    elif magicnet_mihomo_has_subscription && ! magicnet_singbox_has_subscription; then
+        printf '%s\n' "mihomo"
+    else
+        printf '%s\n' "${MAGICNET_AUTO_DEFAULT_CORE:-sing-box}"
+    fi
+}
+
 magicnet_config_lock_dir() {
     printf '%s\n' "${MODDIR}/.state/config.lock"
 }
@@ -1264,23 +1316,46 @@ magicnet_start_kernel() {
         return 0
     fi
 
-    if magicnet_start_singbox; then
-        magicnet_after_kernel_start
-        magicnet_notify "magicnet_guard" "MagicNet" "sing-box restarted by watchdog"
-        magicnet_supervisors_start
-        return 0
-    fi
-
-    if [ "${MAGIC_SINGBOX:-1}" -ne 0 ] && ! magicnet_singbox_disabled; then
-        magicnet_warn "sing-box failed to start; attempting mihomo fallback..."
-    fi
-
-    if magicnet_start_mihomo; then
-        magicnet_after_kernel_start
-        magicnet_notify "magicnet_guard" "MagicNet" "mihomo restarted by watchdog"
-        magicnet_supervisors_start
-        return 0
-    fi
+    _preferred_core="$(magicnet_preferred_core)"
+    case "$_preferred_core" in
+        mihomo)
+            if magicnet_start_mihomo; then
+                magicnet_after_kernel_start
+                magicnet_notify "magicnet_guard" "MagicNet" "mihomo restarted by watchdog"
+                magicnet_supervisors_start
+                unset _preferred_core
+                return 0
+            fi
+            magicnet_warn "mihomo failed to start; attempting sing-box fallback..."
+            if magicnet_start_singbox; then
+                magicnet_after_kernel_start
+                magicnet_notify "magicnet_guard" "MagicNet" "sing-box restarted by watchdog"
+                magicnet_supervisors_start
+                unset _preferred_core
+                return 0
+            fi
+            ;;
+        *)
+            if magicnet_start_singbox; then
+                magicnet_after_kernel_start
+                magicnet_notify "magicnet_guard" "MagicNet" "sing-box restarted by watchdog"
+                magicnet_supervisors_start
+                unset _preferred_core
+                return 0
+            fi
+            if [ "${MAGIC_SINGBOX:-1}" -ne 0 ] && ! magicnet_singbox_disabled; then
+                magicnet_warn "sing-box failed to start; attempting mihomo fallback..."
+            fi
+            if magicnet_start_mihomo; then
+                magicnet_after_kernel_start
+                magicnet_notify "magicnet_guard" "MagicNet" "mihomo restarted by watchdog"
+                magicnet_supervisors_start
+                unset _preferred_core
+                return 0
+            fi
+            ;;
+    esac
+    unset _preferred_core
 
     magicnet_warn "No supported kernel found or starting disabled (mihomo or sing-box)."
     return 1
