@@ -41,6 +41,8 @@ const CORE_UI = "http://127.0.0.1:9090/ui/cubex/";
 const REPO = "https://github.com/LIghtJUNction/MagicNet";
 const NODE_RENDER_LIMIT = 48;
 const OUTPUT_RENDER_LIMIT = 6000;
+const CLI_TIMEOUT_MS = 45000;
+let cliQueue: Promise<unknown> = Promise.resolve();
 const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
 const hasKsuBridge = typeof ksuBridge?.exec === "function";
 
@@ -342,6 +344,22 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer = 0;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(() => {
+      reject(new Error(`${label} 超过 ${Math.round(ms / 1000)} 秒仍未返回，请到“输出”页查看日志或稍后重试。`));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
+
+function enqueueCli<T>(task: () => Promise<T>): Promise<T> {
+  const run = cliQueue.then(task, task);
+  cliQueue = run.catch(() => undefined);
+  return run;
+}
+
 async function runCli(args: string, options: { refreshApps?: boolean; quiet?: boolean; label?: string } = {}): Promise<string> {
   const command = `su -c ${shellQuote(`${CLI} ${args}`)}`;
   state.lastCommand = command;
@@ -364,7 +382,7 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
   }
 
   try {
-    const result = await kernelsu.exec(command);
+    const result = await enqueueCli(() => withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, options.label || args));
     const text = normalizeExecResult(result);
     if (!options.quiet) {
       state.output = `$ ${command}\n${text || "完成"}`;
@@ -483,16 +501,16 @@ async function refreshStatus(quiet = false): Promise<void> {
 }
 
 async function openCoreUi(): Promise<void> {
-  await openCoreUiTarget("current");
+  await openCoreUiTarget("metacubex");
 }
 
-function coreUiTargetUrl(target: "current" | "mihomo" | "sing-box"): string {
-  if (target === "mihomo") return `${state.runtime.api}/ui/cubex/`;
-  if (target === "sing-box") return `${state.runtime.api}/ui/#/setup?hostname=127.0.0.1&port=9090`;
-  return coreUiUrl();
+function coreUiTargetUrl(target: "metacubex" | "yacd" | "zashboard"): string {
+  if (target === "yacd") return "https://yacd.metacubex.one/?hostname=127.0.0.1&port=9090&secret=";
+  if (target === "zashboard") return `${state.runtime.api}/ui/`;
+  return `${state.runtime.api}/ui/cubex/`;
 }
 
-async function openCoreUiTarget(target: "current" | "mihomo" | "sing-box"): Promise<void> {
+async function openCoreUiTarget(target: "metacubex" | "yacd" | "zashboard"): Promise<void> {
   if (!state.hasKsu) {
     state.output = "当前浏览器没有 KernelSU 执行通道，无法确认内核 WebUI 是否在线。";
     render();
@@ -561,12 +579,23 @@ async function refreshDashboard(quiet = false): Promise<void> {
   }
   try {
     await refreshStatus(true);
-    await refreshSubscriptions(true);
-    await refreshApps(true);
-    await refreshRoutes(true);
-    await refreshBlocklist(true);
-    await refreshCapture(true);
-    await refreshCerts(true);
+    if (state.activeTab === "control") {
+      await refreshNodes(true);
+    } else if (state.activeTab === "subs") {
+      await refreshSubscriptions(true);
+    } else if (state.activeTab === "apps") {
+      await refreshApps(true);
+    } else if (state.activeTab === "routes") {
+      await refreshRoutes(true);
+    } else if (state.activeTab === "block") {
+      await refreshBlocklist(true);
+    } else if (state.activeTab === "capture") {
+      await refreshCapture(true);
+    } else if (state.activeTab === "certs") {
+      await refreshCerts(true);
+    } else if (state.activeTab === "health") {
+      await refreshHealth(true);
+    }
     if (!quiet) {
       state.output = "面板刷新完成。";
     }
@@ -1059,6 +1088,8 @@ function activeTabPanel(tab: State["activeTab"]): string {
     <div class="tab-panel show">
       <div class="log-toolbar">
         <button data-run="service logs sing-box 160">${icon("FileText", 17)}sing-box 日志</button>
+        <button data-run="service logs mihomo 160">${icon("FileText", 17)}mihomo 日志</button>
+        <button data-run="service status">${icon("RefreshCw", 17)}状态快照</button>
         <button data-health-run>${icon("Stethoscope", 17)}健康诊断</button>
         <button data-support-bundle>${icon("Copy", 17)}支持包</button>
         <button data-copy-last>${icon("Copy", 17)}复制命令</button>
@@ -1507,7 +1538,18 @@ function commandDeck(): string {
         ${icon("RotateCcw", 20)}
         <span>重启内核</span>
       </button>
-      ${coreUiButton("command-secondary")}
+      <button class="command-secondary" data-open-core-ui-target="metacubex">
+        ${icon("ExternalLink", 18)}
+        <span>Meta Cube X</span>
+      </button>
+      <button class="command-secondary" data-open-core-ui-target="yacd">
+        ${icon("Route", 18)}
+        <span>Yacd</span>
+      </button>
+      <button class="command-secondary" data-open-core-ui-target="zashboard">
+        ${icon("Server", 18)}
+        <span>zashboard</span>
+      </button>
       <button class="command-secondary" data-run="sub update-all">
         ${icon("DownloadCloud", 18)}
         <span>更新订阅</span>
@@ -1525,14 +1567,14 @@ function coreUiButton(className: string): string {
     <span class="core-ui-wrap">
       <a class="${className}" data-open-core-ui href="${escapeHtml(coreUiUrl())}" title="短按打开当前内核面板，长按选择面板">
         ${icon("ExternalLink", 18)}
-        <span>内核面板</span>
+        <span>Meta Cube X</span>
       </a>
       <button class="core-ui-menu-button" data-core-menu-toggle title="选择内核 WebUI">${icon("ListFilter", 16)}</button>
       ${state.coreMenuOpen ? `
         <div class="core-ui-menu">
-          <button data-open-core-ui-target="current">${icon("ExternalLink", 16)}当前默认</button>
-          <button data-open-core-ui-target="mihomo">${icon("Route", 16)}mihomo / zashboard</button>
-          <button data-open-core-ui-target="sing-box">${icon("Server", 16)}sing-box 面板</button>
+          <button data-open-core-ui-target="metacubex">${icon("ExternalLink", 16)}Meta Cube X</button>
+          <button data-open-core-ui-target="yacd">${icon("Route", 16)}Yacd</button>
+          <button data-open-core-ui-target="zashboard">${icon("Server", 16)}zashboard</button>
         </div>
       ` : ""}
     </span>
@@ -1667,7 +1709,19 @@ function setActiveTabByIndex(index: number): void {
   state.activeTab = next.key;
   state.coreMenuOpen = false;
   render();
-  if (state.hasKsu && state.activeTab === "health" && state.health.length === 0) void refreshHealth();
+  void refreshActiveTabData();
+}
+
+async function refreshActiveTabData(): Promise<void> {
+  if (!state.hasKsu) return;
+  if (state.activeTab === "control" && state.nodes.length === 0) await refreshNodes();
+  if (state.activeTab === "health" && state.health.length === 0) await refreshHealth();
+  if (state.activeTab === "apps") await refreshApps();
+  if (state.activeTab === "routes") await refreshRoutes();
+  if (state.activeTab === "block") await refreshBlocklist();
+  if (state.activeTab === "subs") await refreshSubscriptions();
+  if (state.activeTab === "capture") await refreshCapture();
+  if (state.activeTab === "certs") await refreshCerts();
 }
 
 function adjacentTabs(): string {
@@ -1809,8 +1863,7 @@ function bindEvents(): void {
     button.addEventListener("click", () => {
       state.activeTab = button.dataset.tab as State["activeTab"];
       render();
-      if (state.hasKsu && state.activeTab === "health" && state.health.length === 0) void refreshHealth();
-      if (state.hasKsu && state.activeTab === "control" && state.nodes.length === 0) void refreshNodes();
+      void refreshActiveTabData();
     });
   });
 
@@ -1889,7 +1942,7 @@ function bindEvents(): void {
       event.preventDefault();
       const target = button.dataset.openCoreUiTarget;
       state.coreMenuOpen = false;
-      if (target === "mihomo" || target === "sing-box" || target === "current") {
+      if (target === "metacubex" || target === "yacd" || target === "zashboard") {
         void openCoreUiTarget(target);
       }
     });
@@ -2200,12 +2253,7 @@ async function bootstrap(): Promise<void> {
   render();
   await refreshStatus(true);
   if (!state.hasKsu) return;
-  await refreshApps(true);
-  await refreshRoutes(true);
-  await refreshSubscriptions(true);
-  await refreshCerts(true);
-  await refreshCapture(true);
-  await refreshBlocklist(true);
+  render();
 }
 
 void bootstrap();
