@@ -1,5 +1,8 @@
 dist
 .env
+.playwright-mcp/
+webui/dist/
+webui/node_modules/.vite/
 src/MagicNet/.local/
 src/MagicNet/mihomo.version
 src/MagicNet/singbox.version
