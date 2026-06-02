@@ -77,19 +77,27 @@ set_i18n "INSTALL_NEXT_STEPS" \
   "zh" "安装后操作：
 1. 写入订阅链接或 outbound 节点。
 2. 重启设备，或在模块操作页启动内核。
-3. 打开 WebUI: http://127.0.0.1:9090/ui/" \
+3. 打开模块 WebUI 的“内核面板”，或在终端执行 cli api ui 查看当前核心入口。
+mihomo 默认: http://127.0.0.1:9090/ui/cubex/
+sing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "en" "After installation:
 1. Add a subscription URL or outbound nodes.
 2. Reboot, or start the core from the module action page.
-3. Open WebUI: http://127.0.0.1:9090/ui/" \
+3. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.
+mihomo default: http://127.0.0.1:9090/ui/cubex/
+sing-box default: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "ja" "インストール後:
 1. 購読 URL または outbound ノードを追加します。
 2. 再起動するか、モジュール操作画面からコアを起動します。
-3. WebUI を開きます: http://127.0.0.1:9090/ui/" \
+3. モジュール WebUI の Kernel Panel を開くか、cli api ui で現在のコア入口を確認します。
+mihomo 既定: http://127.0.0.1:9090/ui/cubex/
+sing-box 既定: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "ko" "설치 후:
 1. 구독 URL 또는 outbound 노드를 추가하세요.
 2. 재부팅하거나 모듈 작업 화면에서 코어를 시작하세요.
-3. WebUI 열기: http://127.0.0.1:9090/ui/"
+3. 모듈 WebUI의 Kernel Panel을 열거나 cli api ui로 현재 코어 진입점을 확인하세요.
+mihomo 기본값: http://127.0.0.1:9090/ui/cubex/
+sing-box 기본값: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090"
 
 set_i18n "INSTALL_FLAGS" \
   "zh" "可选开关：
@@ -132,6 +140,12 @@ set_i18n "VPN_COEXIST_MSG" \
   "en" "VPN coexistence protection is enabled: MagicNet avoids looping external VPNs such as Tailscale or WireGuard." \
   "ja" "VPN 共存保護が有効です。Tailscale や WireGuard などの外部 VPN のループを回避します。" \
   "ko" "VPN 공존 보호가 활성화되었습니다. Tailscale, WireGuard 같은 외부 VPN 루프를 피합니다."
+
+set_i18n "SET_MODULE_ENTRY_PERMS" \
+  "zh" "设置模块入口脚本权限" \
+  "en" "Setting permissions for module entry scripts" \
+  "ja" "モジュール入口スクリプトの権限を設定しています" \
+  "ko" "모듈 진입 스크립트 권한 설정 중"
 
 set_i18n "DISABLE_SINGBOX_ON_INSTALL" \
   "zh" "选择默认代理内核" \
@@ -252,6 +266,13 @@ fi
 
 [ -f "${MODPATH}/.local/bin/mihomo" ] && set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
 [ -f "${MODPATH}/.local/bin/sing-box" ] && set_perm "${MODPATH}/.local/bin/sing-box" 0 0 0700 u:object_r:magisk_file:s0
+
+info "$(i18n "SET_MODULE_ENTRY_PERMS")"
+for _magicnet_entry in cli action.sh service.sh boot-completed.sh uninstall.sh hotspot-forward.sh vpn-coexist.sh; do
+  [ -f "${MODPATH}/${_magicnet_entry}" ] || continue
+  set_perm "${MODPATH}/${_magicnet_entry}" 0 0 0700 u:object_r:magisk_file:s0
+done
+unset _magicnet_entry
 
 if [ "${MAGICNET_NONINTERACTIVE:-0}" != "1" ]; then
   [ -f "${MODPATH}/.config/mihomo/config.yaml" ] && confirm_update_file ".config/mihomo/config.yaml"
