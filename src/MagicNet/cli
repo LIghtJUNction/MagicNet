@@ -961,6 +961,7 @@ cli_support_bundle() {
 
     cli_support_run "service status" cli_service_status
     cli_support_run "health" cli_health
+    cli_support_run "connection stats" cli_api stats
     cli_support_run "subscriptions" cli_sub list
     cli_support_run "capture" cli_capture_print
     cli_support_run "app policy" cli_app list
