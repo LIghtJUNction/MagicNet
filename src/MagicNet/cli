@@ -642,38 +642,8 @@ cli_node() {
                 *) cli_error "Usage: cli node webui [sing-box|mihomo]"; exit 1 ;;
             esac
             ;;
-        delay|test)
-            _test_url="${MAGICNET_DELAY_URL:-https://www.gstatic.com/generate_204}"
-            _timeout="${MAGICNET_DELAY_TIMEOUT:-2500}"
-            shift
-            if [ -n "${1:-}" ]; then
-                _node="$1"
-                _delay="$(
-                    cli_curl "${MAGICNET_API}/proxies/$(cli_urlencode "$_node")/delay?timeout=${_timeout}&url=$(cli_urlencode "$_test_url")" 2>/dev/null |
-                        sed -n 's/.*"delay"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p'
-                )"
-                printf '%s=%s\n' "$_node" "${_delay:-timeout}"
-            else
-                _delay_limit="${MAGICNET_DELAY_LIMIT:-8}"
-                case "$_delay_limit" in
-                    ''|*[!0-9]*) _delay_limit=8 ;;
-                esac
-                _delay_count=0
-                cli_node list | while IFS= read -r _node; do
-                    [ -n "$_node" ] || continue
-                    _delay_count=$((_delay_count + 1))
-                    [ "$_delay_limit" -le 0 ] || [ "$_delay_count" -le "$_delay_limit" ] || break
-                    _delay="$(
-                        cli_curl "${MAGICNET_API}/proxies/$(cli_urlencode "$_node")/delay?timeout=${_timeout}&url=$(cli_urlencode "$_test_url")" 2>/dev/null |
-                            sed -n 's/.*"delay"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p'
-                    )"
-                    printf '%s=%s\n' "$_node" "${_delay:-timeout}"
-                done
-            fi
-            unset _test_url _timeout _node _delay _delay_limit _delay_count
-            ;;
         *)
-            cli_error "Usage: cli node {list|current|use <name>|delay [name]}"
+            cli_error "Usage: cli node {list|current|use <name>}"
             exit 1
             ;;
     esac
@@ -1836,7 +1806,7 @@ Usage:
   cli support bundle
   cli setup <subscription-url>
   cli config {apply}
-  cli node {list|current|use <name>|delay [name]}
+  cli node {list|current|use <name>}
   cli mode [rule|global|direct]
   cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}
   cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
