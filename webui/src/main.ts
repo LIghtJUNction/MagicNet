@@ -332,11 +332,11 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
     return text;
   }
 
-  state.busy = true;
   if (!options.quiet) {
+    state.busy = true;
     state.output = `$ ${command}\n执行中...`;
+    render();
   }
-  render();
 
   try {
     const result = await kernelsu.exec(command);
@@ -353,8 +353,10 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
     state.output = `$ ${command}\n执行失败：${message}`;
     return state.output;
   } finally {
-    state.busy = false;
-    render();
+    if (!options.quiet) {
+      state.busy = false;
+      render();
+    }
   }
 }
 
@@ -418,17 +420,23 @@ function parseRuntimeStatus(text: string): RuntimeState {
   return next;
 }
 
-async function refreshStatus(): Promise<void> {
+function coreUiUrl(): string {
+  return state.runtime.webui || CORE_UI;
+}
+
+async function refreshStatus(quiet = false): Promise<void> {
   if (!state.hasKsu) {
     state.status = "local";
     state.statusText = "本地预览";
-    render();
+    if (!quiet) render();
     return;
   }
 
-  state.status = "checking";
-  state.statusText = "读取内核状态";
-  render();
+  if (!quiet) {
+    state.status = "checking";
+    state.statusText = "读取内核状态";
+    render();
+  }
 
   const text = await runCli("service status", { quiet: true });
   state.runtime = parseRuntimeStatus(text);
@@ -442,8 +450,10 @@ async function refreshStatus(): Promise<void> {
     state.status = "offline";
     state.statusText = "状态未知";
   }
-  state.output = `$ su -c ${CLI} service status\n${text}`;
-  render();
+  if (!quiet) {
+    state.output = `$ su -c ${CLI} service status\n${text}`;
+    render();
+  }
 }
 
 async function openCoreUi(): Promise<void> {
@@ -470,7 +480,9 @@ async function openCoreUi(): Promise<void> {
     return;
   }
 
-  window.open(state.runtime.webui || CORE_UI, "_blank", "noreferrer");
+  state.output = `正在打开内核 WebUI：\n${coreUiUrl()}\n\n如果当前 WebView 没有跳转，请复制这个地址到浏览器打开。`;
+  render();
+  window.location.assign(coreUiUrl());
 }
 
 async function runAction(command: string): Promise<void> {
@@ -483,42 +495,53 @@ async function runAction(command: string): Promise<void> {
     state.runtime = parseRuntimeStatus(text);
   }
   if (execFailed(text)) {
-    await refreshStatus();
+    await refreshStatus(true);
     await refreshHealth(true);
+    render();
     return;
   }
 
   if (/^(service|repair|mode|hotspot|vpn)\b/.test(command)) {
-    await refreshStatus();
+    await refreshStatus(true);
     await refreshHealth(true);
+    render();
   }
   if (/^(sub|setup)\b/.test(command)) {
     await refreshSubscriptions(true);
     await refreshNodes(true);
     await refreshHealth(true);
+    render();
   }
   if (/^api close-all\b/.test(command)) {
     await refreshTraffic(true);
+    render();
   }
 }
 
 async function refreshDashboard(quiet = false): Promise<void> {
   if (!quiet) {
+    state.busy = true;
     state.output = "正在刷新运行状态、订阅、节点、流量、策略和诊断...";
     render();
   }
-  await refreshStatus();
-  await refreshTraffic(true);
-  await refreshNodes(true);
-  await refreshSubscriptions(true);
-  await refreshApps(true);
-  await refreshRoutes(true);
-  await refreshCapture(true);
-  await refreshCerts(true);
-  await refreshHealth(true);
-  if (!quiet) {
-    state.output = "面板刷新完成。";
-    render();
+  try {
+    await refreshStatus(true);
+    await refreshTraffic(true);
+    await refreshNodes(true);
+    await refreshSubscriptions(true);
+    await refreshApps(true);
+    await refreshRoutes(true);
+    await refreshCapture(true);
+    await refreshCerts(true);
+    await refreshHealth(true);
+    if (!quiet) {
+      state.output = "面板刷新完成。";
+    }
+  } finally {
+    if (!quiet) {
+      state.busy = false;
+      render();
+    }
   }
 }
 
@@ -527,7 +550,7 @@ async function refreshApps(quiet = false): Promise<void> {
   if (state.hasKsu && text) {
     state.appPolicy = parseAppPolicy(text);
   }
-  render();
+  if (!quiet) render();
 }
 
 function parseRouteRules(text: string): RouteRules {
@@ -563,7 +586,7 @@ async function refreshRoutes(quiet = false): Promise<void> {
   if (state.hasKsu && text) {
     state.routes = parseRouteRules(text);
   }
-  render();
+  if (!quiet) render();
 }
 
 function parseSubscriptions(text: string): State["subscriptions"] {
@@ -581,7 +604,7 @@ async function refreshSubscriptions(quiet = false): Promise<void> {
   if (state.hasKsu && text) {
     state.subscriptions = parseSubscriptions(text);
   }
-  render();
+  if (!quiet) render();
 }
 
 async function refreshNodes(quiet = false): Promise<void> {
@@ -597,7 +620,7 @@ async function refreshNodes(quiet = false): Promise<void> {
       state.output = `当前节点：${state.currentNode || "未读取"}\n可用节点：${state.nodes.length}`;
     }
   }
-  render();
+  if (!quiet) render();
 }
 
 async function switchNode(name: string): Promise<void> {
@@ -654,7 +677,7 @@ async function refreshTraffic(quiet = false): Promise<void> {
       state.output = `连接统计已刷新：${state.traffic.connections} 条连接。`;
     }
   }
-  render();
+  if (!quiet) render();
 }
 
 async function saveSetupSubscription(): Promise<void> {
@@ -668,6 +691,7 @@ async function saveSetupSubscription(): Promise<void> {
   state.setupUrl = "";
   await refreshSubscriptions(true);
   await refreshHealth(true);
+  render();
 }
 
 function parseCapture(text: string): State["capture"] {
@@ -713,7 +737,7 @@ async function refreshCapture(quiet = false): Promise<void> {
   if (state.hasKsu && text) {
     state.capture = parseCapture(text);
   }
-  render();
+  if (!quiet) render();
 }
 
 function parseCerts(text: string): string[] {
@@ -728,7 +752,7 @@ async function refreshCerts(quiet = false): Promise<void> {
   if (state.hasKsu && text) {
     state.certs = parseCerts(text);
   }
-  render();
+  if (!quiet) render();
 }
 
 function parseHealth(text: string): HealthItem[] {
@@ -755,8 +779,8 @@ async function refreshHealth(quiet = false): Promise<void> {
   }
   if (!quiet) {
     state.activeTab = "health";
+    render();
   }
-  render();
 }
 
 async function generateSupportBundle(): Promise<void> {
@@ -1410,10 +1434,10 @@ function commandDeck(): string {
         ${icon("RotateCcw", 20)}
         <span>重启内核</span>
       </button>
-      <button class="command-secondary" data-open-core-ui ${state.busy ? "disabled" : ""}>
+      <a class="command-secondary ${state.busy ? "disabled" : ""}" data-open-core-ui href="${escapeHtml(coreUiUrl())}">
         ${icon("ExternalLink", 18)}
         <span>内核面板</span>
-      </button>
+      </a>
       <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>
         ${icon("DownloadCloud", 18)}
         <span>更新订阅</span>
@@ -1556,7 +1580,7 @@ function render(): void {
         <div class="top-actions">
           <button class="ghost-link" data-action="refresh-all" ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 16)}刷新</button>
           <a class="ghost-link" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 16)}GitHub</a>
-          <button class="primary-link" data-open-core-ui ${state.busy ? "disabled" : ""}>${icon("ExternalLink", 16)}内核面板</button>
+          <a class="primary-link ${state.busy ? "disabled" : ""}" data-open-core-ui href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 16)}内核面板</a>
         </div>
       </header>
 
@@ -1596,7 +1620,7 @@ function render(): void {
       <nav class="mobile-dock" aria-label="MagicNet mobile shortcuts">
         <button class="${tab === "control" ? "active" : ""}" data-tab="control">${icon("Gauge", 18)}<span>控制</span></button>
         <button class="${tab === "subs" ? "active" : ""}" data-tab="subs">${icon("DownloadCloud", 18)}<span>订阅</span></button>
-        <button data-open-core-ui ${state.busy ? "disabled" : ""}>${icon("ExternalLink", 18)}<span>内核</span></button>
+        <a data-open-core-ui class="${state.busy ? "disabled" : ""}" href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 18)}<span>内核</span></a>
         <button class="${tab === "health" ? "active" : ""}" data-tab="health">${icon("Stethoscope", 18)}<span>诊断</span></button>
         <button data-action="refresh-all" ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 18)}<span>刷新</span></button>
       </nav>
@@ -1636,8 +1660,12 @@ function bindEvents(): void {
     });
   });
 
-  document.querySelectorAll<HTMLButtonElement>("[data-open-core-ui]").forEach((button) => {
-    button.addEventListener("click", () => openCoreUi());
+  document.querySelectorAll<HTMLElement>("[data-open-core-ui]").forEach((element) => {
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (state.busy) return;
+      void openCoreUi();
+    });
   });
 
   document.querySelector<HTMLButtonElement>("[data-copy-last]")?.addEventListener("click", async () => {
@@ -1898,7 +1926,7 @@ if (state.hasKsu) {
 }
 async function bootstrap(): Promise<void> {
   render();
-  await refreshStatus();
+  await refreshStatus(true);
   if (!state.hasKsu) return;
   await refreshApps(true);
   await refreshRoutes(true);

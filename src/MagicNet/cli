@@ -1076,6 +1076,8 @@ cli_health() {
     _sing_sub="$(cli_sub_read sing-box)"
     if [ -n "$_sing_sub" ]; then
         cli_health_emit "sing-box-sub" "ok" "subscription configured"
+    elif [ "$_mihomo" != "stopped" ]; then
+        cli_health_emit "sing-box-sub" "info" "empty; mihomo is active"
     else
         cli_health_emit "sing-box-sub" "warn" "subscription URL is empty"
     fi
@@ -1094,7 +1096,7 @@ cli_health() {
         if [ -n "$_capture_apps$_capture_domains" ]; then
             cli_health_emit "capture" "ok" "${MAGICNET_CAPTURE_HOST}:${MAGICNET_CAPTURE_PORT}"
         else
-            cli_health_emit "capture" "warn" "enabled but no app/domain rules"
+            cli_health_emit "capture" "info" "enabled; add app/domain rules to capture traffic"
         fi
     else
         cli_health_emit "capture" "info" "disabled"

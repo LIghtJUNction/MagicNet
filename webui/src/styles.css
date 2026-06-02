@@ -842,6 +842,12 @@ button:disabled {
   opacity: 0.62;
 }
 
+a.disabled {
+  cursor: progress;
+  opacity: 0.62;
+  pointer-events: none;
+}
+
 .mode-panel,
 .policy-header,
 .always-output {
@@ -2149,7 +2155,8 @@ button:disabled {
     backdrop-filter: blur(18px);
   }
 
-  .mobile-dock button {
+  .mobile-dock button,
+  .mobile-dock a {
     display: grid;
     place-items: center;
     gap: 3px;
@@ -2169,7 +2176,8 @@ button:disabled {
     color: var(--green);
   }
 
-  .mobile-dock button span {
+  .mobile-dock button span,
+  .mobile-dock a span {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
