@@ -2172,6 +2172,121 @@ a.disabled {
   white-space: nowrap;
 }
 
+.config-editor-shell {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid rgba(132, 199, 255, 0.22);
+  border-radius: 8px;
+  padding: 12px;
+  background:
+    linear-gradient(135deg, rgba(132, 199, 255, 0.08), rgba(98, 243, 169, 0.04)),
+    #0c1110;
+}
+
+.config-editor-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.config-status {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(8, 10, 10, 0.7);
+}
+
+.config-status > span {
+  color: var(--blue);
+}
+
+.config-status.ok {
+  border-color: rgba(98, 243, 169, 0.36);
+}
+
+.config-status.ok > span {
+  color: var(--green);
+}
+
+.config-status.error {
+  border-color: rgba(255, 106, 95, 0.46);
+}
+
+.config-status.error > span {
+  color: var(--red);
+}
+
+.config-status strong,
+.config-status small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-status small {
+  color: var(--muted);
+}
+
+.config-path-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: rgba(8, 10, 10, 0.58);
+}
+
+.config-path-row span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.config-path-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-editor-textarea {
+  width: 100%;
+  min-height: min(62vh, 680px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  resize: vertical;
+  background: #050706;
+  color: #d9e4df;
+  outline: none;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.config-editor-textarea:focus {
+  border-color: var(--green);
+}
+
+.config-editor-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .topology-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
@@ -3059,7 +3174,10 @@ a.disabled {
   .cert-layout,
   .capture-form,
   .inline-form,
-  .health-row {
+  .health-row,
+  .config-editor-toolbar,
+  .config-status,
+  .config-path-row {
     grid-template-columns: 1fr;
   }
 
@@ -3112,6 +3230,19 @@ a.disabled {
     min-height: 96px;
     margin: 10px;
     font-size: 11px;
+  }
+
+  .config-editor-shell {
+    padding: 10px;
+  }
+
+  .config-editor-textarea {
+    min-height: 58vh;
+    font-size: 11px;
+  }
+
+  .config-editor-foot {
+    display: grid;
   }
 
   .cert-form textarea {

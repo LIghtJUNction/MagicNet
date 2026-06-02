@@ -203,6 +203,7 @@ fn service_status(app: &App) {
     println!("  mihomo:   {mihomo}");
     println!("  watchdog: {}", pid_summary("watchdog"));
     println!("  fswatch:  {}", pid_summary("fswatch"));
+    println!("  Transparent: {}", transparent_mode(app));
     println!("  API:      {}", app.api);
     println!("  WebUI:    {webui}");
     println!(
@@ -211,6 +212,18 @@ fn service_status(app: &App) {
             .join(".config/sing-box/subscription.url")
             .display()
     );
+}
+
+fn transparent_mode(app: &App) -> &'static str {
+    let path = app.moddir.join(".config/magicnet/transparent-mode.conf");
+    fs::read_to_string(path)
+        .ok()
+        .filter(|text| {
+            text.lines()
+                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=tproxy")
+        })
+        .map(|_| "tproxy")
+        .unwrap_or("tun")
 }
 
 fn bool_file(path: PathBuf) -> bool {
@@ -732,7 +745,7 @@ fn api_ui(app: &App, target: &str) {
 
 fn help() {
     println!(
-        "MagicNet CLI\n\nUsage:\n  cli service {{status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}}\n  cli health\n  cli pingtest\n  cli topology\n  cli sysroute {{list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}}\n  cli repair\n  cli support bundle\n  cli setup <subscription-url>\n  cli config {{apply}}\n  cli core {{status|sing-box {{status|enable|disable|toggle}}}}\n  cli node {{list|current|use <name>}}\n  cli mode [rule|global|direct]\n  cli route {{list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}}\n  cli sub {{update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}}\n  cli cert {{list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}}\n  cli capture {{list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}}\n  cli block {{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}}\n  cli mcp {{status|enable|disable|start|stop|restart}}\n  cli webui {{status|install-local <download-url> [name]}}\n  cli backup {{export [password]|restore [password|-] <base64>}}\n  cli api {{ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}}\n  cli app {{list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}}\n  cli hotspot reload\n  cli vpn reload\n  cli diagnose"
+        "MagicNet CLI\n\nUsage:\n  cli service {{status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}}\n  cli health\n  cli pingtest\n  cli topology\n  cli sysroute {{list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}}\n  cli repair\n  cli support bundle\n  cli setup <subscription-url>\n  cli config {{apply}}\n  cli config-editor {{get|path|validate|save}} <mihomo|sing-box> [base64-config]\n  cli transparent {{status|set <tun|tproxy>|apply}}\n  cli core {{status|sing-box {{status|enable|disable|toggle}}}}\n  cli node {{list|current|use <name>}}\n  cli mode [rule|global|direct]\n  cli route {{list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}}\n  cli sub {{update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}}\n  cli cert {{list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}}\n  cli capture {{list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}}\n  cli block {{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}}\n  cli mcp {{status|enable|disable|start|stop|restart}}\n  cli webui {{status|install-local <download-url> [name]}}\n  cli backup {{export [password]|restore [password|-] <base64>}}\n  cli api {{ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}}\n  cli app {{list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}}\n  cli hotspot reload\n  cli vpn reload\n  cli diagnose"
     );
 }
 

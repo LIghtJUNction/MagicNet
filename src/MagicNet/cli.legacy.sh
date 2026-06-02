@@ -143,10 +143,23 @@ cli_fast_service_status() {
     printf '  mihomo:   %s\n' "${_mihomo:-stopped}"
     printf '  watchdog: %s\n' "${_watchdog:-stopped}"
     printf '  fswatch:  %s\n' "${_fswatch:-stopped}"
+    printf '  Transparent: %s\n' "$(cli_fast_transparent_status | sed 's/^mode=//')"
     printf '  API:      %s\n' "${MAGICNET_API:-http://127.0.0.1:9090}"
     printf '  WebUI:    %s\n' "${MAGICNET_MIHOMO_WEBUI:-${MAGICNET_API:-http://127.0.0.1:9090}/ui/cubex/}"
     printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
     unset _singbox _mihomo _singbox_disabled _watchdog _fswatch
+}
+
+cli_fast_transparent_status() {
+    _conf="${MODDIR}/.config/magicnet/transparent-mode.conf"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    case "${MAGICNET_TRANSPARENT_MODE:-tun}" in
+        tproxy) printf 'mode=tproxy\n' ;;
+        *) printf 'mode=tun\n' ;;
+    esac
+    unset _conf
 }
 
 cli_fast_list_file() {
@@ -282,6 +295,12 @@ case "${1:-}" in
             exit 0
         fi
         ;;
+    transparent)
+        if [ "${2:-status}" = "status" ]; then
+            cli_fast_transparent_status
+            exit 0
+        fi
+        ;;
 esac
 
 if [ -f "${MODDIR}/lib/kamfw/.kamfwrc" ]; then
@@ -401,6 +420,7 @@ cli_service_status() {
     printf '  mihomo:   %s\n' "$(cli_pid_summary mihomo)"
     printf '  watchdog: %s\n' "${_watchdog_pid:-stopped}"
     printf '  fswatch:  %s\n' "${_fswatch_pid:-stopped}"
+    printf '  Transparent: %s\n' "$(magicnet_transparent_mode)"
     printf '  API:      %s\n' "$MAGICNET_API"
     printf '  WebUI:    %s\n' "$(cli_core_webui)"
     printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
@@ -579,6 +599,237 @@ cli_config() {
             ;;
         *)
             cli_error "Usage: cli config {apply}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_transparent() {
+    case "${1:-status}" in
+        status)
+            printf 'mode=%s\n' "$(magicnet_transparent_mode)"
+            ;;
+        set)
+            _mode="${2:-}"
+            case "$_mode" in
+                tun|tproxy) ;;
+                *) cli_error "Usage: cli transparent set <tun|tproxy>"; exit 1 ;;
+            esac
+            magicnet_transparent_set_mode "$_mode" || {
+                cli_error "failed to save transparent mode"
+                exit 1
+            }
+            magicnet_apply_runtime_config || {
+                cli_error "transparent mode saved, but runtime config apply failed"
+                exit 1
+            }
+            cli_info "Transparent mode set to $_mode"
+            cli_info "Restart current core if the running kernel does not hot-reload inbound mode."
+            ;;
+        apply)
+            magicnet_transparent_apply
+            cli_info "Transparent mode applied"
+            ;;
+        *)
+            cli_error "Usage: cli transparent {status|set <tun|tproxy>|apply}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_config_editor_path() {
+    case "${1:-}" in
+        mihomo|clash) printf '%s\n' "${MODDIR}/.config/mihomo/config.yaml" ;;
+        sing-box|singbox) printf '%s\n' "${MODDIR}/.config/sing-box/config.json" ;;
+        *) return 1 ;;
+    esac
+}
+
+cli_config_editor_target() {
+    case "${1:-}" in
+        mihomo|clash) printf '%s\n' "mihomo" ;;
+        sing-box|singbox) printf '%s\n' "sing-box" ;;
+        *) return 1 ;;
+    esac
+}
+
+cli_config_editor_bin() {
+    _name="$1"
+    if command -v "$_name" >/dev/null 2>&1; then
+        command -v "$_name"
+        unset _name
+        return 0
+    fi
+    if [ -x "${MODDIR}/system/bin/${_name}" ]; then
+        printf '%s\n' "${MODDIR}/system/bin/${_name}"
+        unset _name
+        return 0
+    fi
+    unset _name
+    return 1
+}
+
+cli_config_editor_validate_singbox_policy() {
+    _file="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq empty "$_file" >/dev/null || return 1
+        if jq -e '[.. | strings | select(startswith("geosite:") or startswith("geoip:"))] | length > 0' "$_file" >/dev/null; then
+            cli_error "sing-box config uses legacy geosite:/geoip: strings"
+            unset _file
+            return 1
+        fi
+        if jq -e '[.. | objects | keys[]? | select(. == "geosite" or . == "geoip" or . == "source_geoip")] | length > 0' "$_file" >/dev/null; then
+            cli_error "sing-box config uses deprecated geosite/geoip rule fields"
+            unset _file
+            return 1
+        fi
+        unset _file
+        return 0
+    fi
+
+    grep -Eq '"(geosite|geoip|source_geoip)"[[:space:]]*:' "$_file" 2>/dev/null && {
+        cli_error "sing-box config uses deprecated geosite/geoip rule fields"
+        unset _file
+        return 1
+    }
+    grep -Eq '"(geosite|geoip):' "$_file" 2>/dev/null && {
+        cli_error "sing-box config uses legacy geosite:/geoip: strings"
+        unset _file
+        return 1
+    }
+    unset _file
+}
+
+cli_config_editor_validate() {
+    _target="$1"
+    _file="$2"
+    _dir="${_file%/*}"
+    mkdir -p "${MODDIR}/.tmp"
+    _check_out="${MODDIR}/.tmp/config-check-${_target}.$$"
+    case "$_target" in
+        mihomo)
+            _bin="$(cli_config_editor_bin mihomo || true)"
+            [ -n "$_bin" ] || {
+                cli_error "mihomo binary not found; cannot validate config"
+                unset _target _file _dir _bin
+                return 1
+            }
+            "$_bin" -t -f "$_file" -d "$_dir" >"$_check_out" 2>&1 || {
+                cat "$_check_out" >&2 2>/dev/null || true
+                rm -f "$_check_out" 2>/dev/null || true
+                unset _target _file _dir _bin _check_out
+                return 1
+            }
+            rm -f "$_check_out" 2>/dev/null || true
+            ;;
+        sing-box)
+            cli_config_editor_validate_singbox_policy "$_file" || {
+                unset _target _file _dir _check_out
+                return 1
+            }
+            _bin="$(cli_config_editor_bin sing-box || true)"
+            [ -n "$_bin" ] || {
+                cli_error "sing-box binary not found; cannot validate config"
+                unset _target _file _dir _bin
+                return 1
+            }
+            "$_bin" check -c "$_file" -D "$_dir" >"$_check_out" 2>&1 || {
+                cat "$_check_out" >&2 2>/dev/null || true
+                rm -f "$_check_out" 2>/dev/null || true
+                unset _target _file _dir _bin _check_out
+                return 1
+            }
+            rm -f "$_check_out" 2>/dev/null || true
+            ;;
+        *)
+            cli_error "config target must be mihomo or sing-box"
+            unset _target _file _dir _check_out
+            return 1
+            ;;
+    esac
+    unset _target _file _dir _bin _check_out
+}
+
+cli_config_editor_save() {
+    _target="$(cli_config_editor_target "${1:-}")" || {
+        cli_error "Usage: cli config-editor save <mihomo|sing-box> <base64-config>"
+        exit 1
+    }
+    _payload="${2:-}"
+    [ -n "$_payload" ] || {
+        cli_error "Usage: cli config-editor save <mihomo|sing-box> <base64-config>"
+        exit 1
+    }
+    _path="$(cli_config_editor_path "$_target")"
+    _dir="${_path%/*}"
+    mkdir -p "$_dir" "${MODDIR}/.tmp"
+    _tmp="${MODDIR}/.tmp/config-editor-${_target}.$$"
+    printf '%s' "$_payload" | base64 -d >"$_tmp" 2>/dev/null ||
+        printf '%s' "$_payload" | base64 --decode >"$_tmp" 2>/dev/null || {
+            rm -f "$_tmp" 2>/dev/null || true
+            cli_error "base64 decode failed"
+            exit 1
+        }
+    [ -s "$_tmp" ] || {
+        rm -f "$_tmp" 2>/dev/null || true
+        cli_error "decoded config is empty"
+        exit 1
+    }
+    cli_config_editor_validate "$_target" "$_tmp" || {
+        rm -f "$_tmp" 2>/dev/null || true
+        cli_error "config validation failed; original file was not changed"
+        exit 1
+    }
+    if [ -f "$_path" ]; then
+        cp -f "$_path" "${_path}.bak" 2>/dev/null || true
+    fi
+    mv -f "$_tmp" "$_path"
+    chmod 0644 "$_path" 2>/dev/null || true
+    magicnet_apply_runtime_config || {
+        cli_error "config saved, but runtime overlay apply failed; backup is ${_path}.bak"
+        exit 1
+    }
+    cli_info "Saved and validated $_target config: $_path"
+    cli_info "Backup: ${_path}.bak"
+}
+
+cli_config_editor() {
+    case "${1:-}" in
+        get)
+            _target="$(cli_config_editor_target "${2:-}")" || {
+                cli_error "Usage: cli config-editor get <mihomo|sing-box>"
+                exit 1
+            }
+            _path="$(cli_config_editor_path "$_target")"
+            [ -f "$_path" ] || {
+                cli_error "config not found: $_path"
+                exit 1
+            }
+            cat "$_path"
+            ;;
+        path)
+            _target="$(cli_config_editor_target "${2:-}")" || {
+                cli_error "Usage: cli config-editor path <mihomo|sing-box>"
+                exit 1
+            }
+            cli_config_editor_path "$_target"
+            ;;
+        validate)
+            _target="$(cli_config_editor_target "${2:-}")" || {
+                cli_error "Usage: cli config-editor validate <mihomo|sing-box>"
+                exit 1
+            }
+            _path="$(cli_config_editor_path "$_target")"
+            _label="$_target"
+            cli_config_editor_validate "$_target" "$_path"
+            cli_info "$_label config validation passed"
+            ;;
+        save)
+            shift
+            cli_config_editor_save "$@"
+            ;;
+        *)
+            cli_error "Usage: cli config-editor {get|path|validate|save} <mihomo|sing-box> [base64-config]"
             exit 1
             ;;
     esac
@@ -2741,6 +2992,8 @@ Usage:
   cli support bundle
   cli setup <subscription-url>
   cli config {apply}
+  cli config-editor {get|path|validate|save} <mihomo|sing-box> [base64-config]
+  cli transparent {status|set <tun|tproxy>|apply}
   cli core {status|sing-box {status|enable|disable|toggle}}
   cli node {list|current|use <name>}
   cli mode [rule|global|direct]
@@ -2777,6 +3030,8 @@ case "${1:-help}" in
         cli_setup "$@"
         ;;
     config) shift; cli_config "$@" ;;
+    config-editor) shift; cli_config_editor "$@" ;;
+    transparent) shift; cli_transparent "$@" ;;
     core) shift; cli_core "$@" ;;
     node) shift; cli_node "$@" ;;
     mode) shift; cli_mode "$@" ;;

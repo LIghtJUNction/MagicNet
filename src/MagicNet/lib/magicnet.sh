@@ -19,6 +19,31 @@ magicnet_cmd_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+magicnet_transparent_conf() {
+    printf '%s\n' "${MODDIR}/.config/magicnet/transparent-mode.conf"
+}
+
+magicnet_transparent_mode() {
+    _conf="$(magicnet_transparent_conf)"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    case "${MAGICNET_TRANSPARENT_MODE:-tun}" in
+        tproxy) printf '%s\n' "tproxy" ;;
+        *) printf '%s\n' "tun" ;;
+    esac
+    unset _conf
+}
+
+magicnet_transparent_set_mode() {
+    case "${1:-tun}" in
+        tun|tproxy) ;;
+        *) return 1 ;;
+    esac
+    mkdir -p "${MODDIR}/.config/magicnet" || return 1
+    printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$1" >"$(magicnet_transparent_conf)"
+}
+
 magicnet_first_http_url() {
     [ -f "$1" ] || return 1
     awk '
@@ -221,6 +246,66 @@ magicnet_iptables_ensure() {
     else
         iptables -C "$@" >/dev/null 2>&1 || iptables -I "$@" >/dev/null 2>&1
     fi
+}
+
+magicnet_tproxy_cleanup() {
+    if magicnet_cmd_exists iptables; then
+        iptables -t mangle -D PREROUTING -j MAGICNET_TPROXY 2>/dev/null || true
+        iptables -t mangle -F MAGICNET_TPROXY 2>/dev/null || true
+        iptables -t mangle -X MAGICNET_TPROXY 2>/dev/null || true
+    fi
+    if magicnet_cmd_exists ip6tables; then
+        ip6tables -t mangle -D PREROUTING -j MAGICNET_TPROXY 2>/dev/null || true
+        ip6tables -t mangle -F MAGICNET_TPROXY 2>/dev/null || true
+        ip6tables -t mangle -X MAGICNET_TPROXY 2>/dev/null || true
+    fi
+    if magicnet_cmd_exists ip; then
+        ip rule del fwmark "${MAGICNET_TPROXY_MARK:-0x1}" table "${MAGICNET_TPROXY_TABLE:-100}" 2>/dev/null || true
+        ip route del local default dev lo table "${MAGICNET_TPROXY_TABLE:-100}" 2>/dev/null || true
+        ip -6 rule del fwmark "${MAGICNET_TPROXY_MARK:-0x1}" table "${MAGICNET_TPROXY_TABLE:-100}" 2>/dev/null || true
+        ip -6 route del local default dev lo table "${MAGICNET_TPROXY_TABLE:-100}" 2>/dev/null || true
+    fi
+}
+
+magicnet_enable_tproxy() {
+    [ "$(magicnet_transparent_mode)" = "tproxy" ] || {
+        magicnet_tproxy_cleanup
+        return 0
+    }
+
+    if ! magicnet_cmd_exists ip || ! magicnet_cmd_exists iptables; then
+        magicnet_warn "ip/iptables not found; TProxy routing skipped"
+        return 0
+    fi
+
+    _mark="${MAGICNET_TPROXY_MARK:-0x1}"
+    _table="${MAGICNET_TPROXY_TABLE:-100}"
+    _port="${MAGICNET_TPROXY_PORT:-9898}"
+    _uid="${MAGICNET_TPROXY_EXEMPT_UID:-0}"
+
+    ip rule show 2>/dev/null | grep -F "fwmark $_mark lookup $_table" >/dev/null 2>&1 ||
+        ip rule add fwmark "$_mark" table "$_table" >/dev/null 2>&1 || true
+    ip route show table "$_table" 2>/dev/null | grep -F "local default dev lo" >/dev/null 2>&1 ||
+        ip route add local default dev lo table "$_table" >/dev/null 2>&1 || true
+
+    iptables -t mangle -N MAGICNET_TPROXY 2>/dev/null || true
+    iptables -t mangle -F MAGICNET_TPROXY 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -m owner --uid-owner "$_uid" -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -d 0.0.0.0/8 -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -d 10.0.0.0/8 -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -d 100.64.0.0/10 -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -d 127.0.0.0/8 -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -d 169.254.0.0/16 -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -d 172.16.0.0/12 -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -d 192.168.0.0/16 -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -d 224.0.0.0/4 -j RETURN 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -p tcp -j TPROXY --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || true
+    iptables -t mangle -A MAGICNET_TPROXY -p udp -j TPROXY --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || true
+    iptables -t mangle -C PREROUTING -j MAGICNET_TPROXY >/dev/null 2>&1 ||
+        iptables -t mangle -A PREROUTING -j MAGICNET_TPROXY >/dev/null 2>&1 || true
+
+    magicnet_log "TProxy rules applied on port $_port mark $_mark table $_table"
+    unset _mark _table _port _uid
 }
 
 magicnet_enable_hotspot_forward() {
@@ -579,6 +664,184 @@ magicnet_app_policy_apply_unlocked() {
 
 magicnet_app_policy_apply() {
     magicnet_with_config_lock magicnet_app_policy_apply_unlocked
+}
+
+magicnet_mihomo_apply_transparent_mode() {
+    _config="${MODDIR}/.config/mihomo/config.yaml"
+    [ -f "$_config" ] || return 0
+    _mode="$(magicnet_transparent_mode)"
+    _tmp="${_config}.transparent-mode.new"
+    if awk -v mode="$_mode" '
+        BEGIN {
+            in_tun = 0
+        }
+        {
+            if ($0 ~ /^tun:[[:space:]]*$/) {
+                in_tun = 1
+                print
+                next
+            }
+            if (in_tun && $0 ~ /^[^[:space:]-]/) {
+                in_tun = 0
+            }
+            if (in_tun && $0 ~ /^  enable[[:space:]]*:/) {
+                print "  enable: " (mode == "tun" ? "true" : "false")
+                next
+            }
+            print
+        }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
+        rm -f "$_tmp" 2>/dev/null || true
+        unset _mode
+        return 1
+    fi
+    unset _mode
+}
+
+magicnet_singbox_apply_transparent_mode() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+    _mode="$(magicnet_transparent_mode)"
+    _tmp="${_config}.transparent-mode.new"
+    if awk -v mode="$_mode" '
+        function emit_tun(comma) {
+            print "    {"
+            print "      \"type\": \"tun\","
+            print "      \"tag\": \"tun-in\","
+            print "      \"interface_name\": \"magicnet0\","
+            print "      \"address\": \"172.19.0.1/30\","
+            print "      \"auto_route\": true,"
+            print "      \"auto_redirect\": true,"
+            print "      \"strict_route\": true,"
+            print "      \"route_exclude_address\": ["
+            print "        \"192.168.0.0/16\","
+            print "        \"10.0.0.0/8\","
+            print "        \"172.16.0.0/12\","
+            print "        \"100.64.0.0/10\","
+            print "        \"127.0.0.0/8\","
+            print "        \"169.254.0.0/16\","
+            print "        \"224.0.0.0/4\","
+            print "        \"::1/128\","
+            print "        \"fc00::/7\","
+            print "        \"fe80::/10\","
+            print "        \"ff00::/8\","
+            print "        \"fd7a:115c:a1e0::/48\""
+            print "      ],"
+            print "      \"exclude_package\": ["
+            print "        \"com.tailscale.ipn\","
+            print "        \"com.wireguard.android\","
+            print "        \"net.openvpn.openvpn\","
+            print "        \"de.blinkt.openvpn\","
+            print "        \"com.zerotier.one\","
+            print "        \"com.cloudflare.onedotonedotonedotone\","
+            print "        \"io.nekohasekai.sfa\","
+            print "        \"moe.nb4a\","
+            print "        \"com.v2ray.ang\","
+            print "        \"com.github.kr328.clash\","
+            print "        \"com.github.metacubex.clash.meta\""
+            print "      ],"
+            print "      \"stack\": \"gvisor\""
+            printf "    }%s\n", comma
+        }
+        function emit_tproxy(comma) {
+            print "    {"
+            print "      \"type\": \"tproxy\","
+            print "      \"tag\": \"tproxy-in\","
+            print "      \"listen\": \"::\","
+            print "      \"listen_port\": 9898,"
+            print "      \"sniff\": true"
+            printf "    }%s\n", comma
+        }
+        function emit_selected(comma) {
+            if (mode == "tproxy") {
+                emit_tproxy(comma)
+            } else {
+                emit_tun(comma)
+            }
+        }
+        BEGIN {
+            in_inbounds = 0
+            buffering = 0
+            depth = 0
+            emitted = 0
+            prev = ""
+        }
+        function count_delta(line, i, c, delta) {
+            delta = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (c == "{") delta++
+                if (c == "}") delta--
+            }
+            return delta
+        }
+        {
+            if (!in_inbounds && $0 ~ /^  "inbounds"[[:space:]]*:[[:space:]]*\[/) {
+                in_inbounds = 1
+                print
+                next
+            }
+            if (in_inbounds && !buffering && $0 ~ /^  ][,]?[[:space:]]*$/) {
+                if (!emitted) {
+                    emit_selected("")
+                    emitted = 1
+                }
+                print
+                in_inbounds = 0
+                next
+            }
+            if (in_inbounds && !buffering && $0 ~ /^    \{[[:space:]]*$/) {
+                buffering = 1
+                depth = 1
+                buffer = $0 "\n"
+                is_transparent = 0
+                next
+            }
+            if (buffering) {
+                buffer = buffer $0 "\n"
+                depth += count_delta($0)
+                if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"(tun|tproxy)"/) {
+                    is_transparent = 1
+                }
+                if (depth <= 0) {
+                    buffering = 0
+                    if (is_transparent) {
+                        if (!emitted) {
+                            comma = ($0 ~ /,[[:space:]]*$/) ? "," : ""
+                            emit_selected(comma)
+                            emitted = 1
+                        }
+                    } else {
+                        printf "%s", buffer
+                    }
+                    buffer = ""
+                }
+                next
+            }
+            print
+        }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
+        rm -f "$_tmp" 2>/dev/null || true
+        unset _mode
+        return 1
+    fi
+    unset _mode
+}
+
+magicnet_transparent_apply_unlocked() {
+    _transparent_rc=0
+    magicnet_mihomo_apply_transparent_mode || _transparent_rc=1
+    magicnet_singbox_apply_transparent_mode || _transparent_rc=1
+    magicnet_enable_tproxy || true
+    return "$_transparent_rc"
+}
+
+magicnet_transparent_apply() {
+    magicnet_with_config_lock magicnet_transparent_apply_unlocked
 }
 
 magicnet_singbox_apply_zashboard() {
@@ -1435,6 +1698,7 @@ magicnet_route_apply() {
 magicnet_apply_runtime_config_unlocked() {
     _runtime_rc=0
     magicnet_singbox_apply_zashboard
+    magicnet_transparent_apply_unlocked || _runtime_rc=1
     magicnet_app_policy_apply_unlocked || _runtime_rc=1
     magicnet_route_apply_unlocked || _runtime_rc=1
     magicnet_block_apply_unlocked || _runtime_rc=1

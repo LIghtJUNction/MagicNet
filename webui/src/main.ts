@@ -22,6 +22,7 @@ import {
   Route,
   Save,
   Server,
+  Settings,
   ShieldCheck,
   ShieldPlus,
   Smartphone,
@@ -46,6 +47,7 @@ const REPO = "https://github.com/LIghtJUNction/MagicNet";
 const AUTHOR_WHISPER_URL = "https://lightjunction.github.io/lightjunction/";
 const OUTPUT_RENDER_LIMIT = 6000;
 const CLI_TIMEOUT_MS = 45000;
+const PACKAGE_SCAN_LIMIT = 160;
 const AUTO_CORE_OPEN_ENABLED_KEY = "magicnet.autoCoreOpen.enabled";
 const AUTO_CORE_OPEN_TARGET_KEY = "magicnet.autoCoreOpen.target";
 const CUSTOM_WEBUI_PANELS_KEY = "magicnet.customWebui.panels";
@@ -74,6 +76,7 @@ type RuntimeState = {
   mihomo: string;
   watchdog: string;
   fswatch: string;
+  transparentMode: "tun" | "tproxy";
   api: string;
   webui: string;
   subPath: string;
@@ -104,14 +107,6 @@ type PackageInfo = {
   appLabel: string;
   isSystem: boolean;
   uid: number;
-};
-
-type RouteRules = {
-  proxy: string[];
-  direct: string[];
-  block: string[];
-  newDomain: string;
-  newTarget: "proxy" | "direct" | "block";
 };
 
 type SysrouteSnapshot = {
@@ -162,6 +157,18 @@ type WebuiPanel = {
   url: string;
   downloadUrl: string;
   metadata: string;
+};
+
+type ConfigEditorTarget = "mihomo" | "sing-box";
+
+type ConfigEditorState = {
+  target: ConfigEditorTarget;
+  text: string;
+  originalText: string;
+  loadedTarget: ConfigEditorTarget | "";
+  dirty: boolean;
+  lastCheck: "idle" | "ok" | "error";
+  path: string;
 };
 
 type State = {
@@ -234,8 +241,8 @@ type State = {
   packageQuery: string;
   newPackage: string;
   newTarget: "proxy" | "bypass";
-  routes: RouteRules;
-  activeTab: "control" | "health" | "topology" | "apps" | "block" | "subs" | "capture" | "certs" | "webui" | "logs";
+  configEditor: ConfigEditorState;
+  activeTab: "control" | "config" | "health" | "topology" | "apps" | "block" | "subs" | "capture" | "certs" | "webui" | "logs";
 };
 
 const state: State = {
@@ -264,6 +271,7 @@ const state: State = {
     mihomo: "unknown",
     watchdog: "unknown",
     fswatch: "unknown",
+    transparentMode: "tun",
     api: "http://127.0.0.1:9090",
     webui: CORE_UI,
     subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`
@@ -301,13 +309,6 @@ const state: State = {
     newApp: "",
     newDomain: ""
   },
-  routes: {
-    proxy: [],
-    direct: [],
-    block: [],
-    newDomain: "",
-    newTarget: "proxy"
-  },
   blocklist: {
     enabled: true,
     community: true,
@@ -342,6 +343,15 @@ const state: State = {
   packageQuery: "",
   newPackage: "",
   newTarget: "proxy",
+  configEditor: {
+    target: "mihomo",
+    text: "",
+    originalText: "",
+    loadedTarget: "",
+    dirty: false,
+    lastCheck: "idle",
+    path: `${MODULE_DIR}/.config/mihomo/config.yaml`
+  },
   activeTab: "control"
 };
 
@@ -364,7 +374,7 @@ const actions: { title: string; items: ActionItem[] }[] = [
       { label: "停止模块服务", hint: "停止内核、watchdog 和配置监听", icon: "Unplug", command: "service stop" },
       { label: "确保内核运行", hint: "如果 TUN 内核退出就拉起", icon: "ShieldCheck", command: "service ensure" },
       { label: "重启 TUN 内核", hint: "停止后重新拉起首选内核", icon: "RotateCcw", command: "service restart", tone: "strong" },
-      { label: "应用全部配置", hint: "重写分应用、分流、抓包、黑名单和面板配置", icon: "Save", command: "config apply" },
+      { label: "应用全部配置", hint: "重写分应用、抓包、黑名单和面板配置", icon: "Save", command: "config apply" },
       { label: "一键自修复", hint: "重载配置、热点和 VPN 共存", icon: "Zap", command: "repair", tone: "strong" }
     ]
   },
@@ -391,6 +401,7 @@ const aiAssistants: { key: AiAssistant; label: string; url: string }[] = [
 
 const tabs = [
   { key: "control", label: "控制", icon: "Gauge" },
+  { key: "config", label: "配置", icon: "Settings" },
   { key: "health", label: "诊断", icon: "Stethoscope" },
   { key: "topology", label: "拓扑", icon: "RadioTower" },
   { key: "apps", label: "应用", icon: "ListFilter" },
@@ -425,6 +436,7 @@ const iconMap: Record<string, IconNode> = {
   Route,
   Save,
   Server,
+  Settings,
   ShieldCheck,
   ShieldPlus,
   Smartphone,
@@ -734,6 +746,7 @@ function parseRuntimeStatus(text: string): RuntimeState {
     mihomo: "unknown",
     watchdog: "unknown",
     fswatch: "unknown",
+    transparentMode: state.runtime.transparentMode,
     api: state.runtime.api,
     webui: state.runtime.webui,
     subPath: state.runtime.subPath
@@ -746,6 +759,10 @@ function parseRuntimeStatus(text: string): RuntimeState {
     if (line.startsWith("mihomo:")) next.mihomo = line.slice("mihomo:".length).trim() || "stopped";
     if (line.startsWith("watchdog:")) next.watchdog = line.slice("watchdog:".length).trim() || "stopped";
     if (line.startsWith("fswatch:")) next.fswatch = line.slice("fswatch:".length).trim() || "stopped";
+    if (line.startsWith("Transparent:")) {
+      const mode = line.slice("Transparent:".length).trim();
+      next.transparentMode = mode === "tproxy" ? "tproxy" : "tun";
+    }
     if (line.startsWith("API:")) next.api = line.slice("API:".length).trim();
     if (line.startsWith("WebUI:")) next.webui = line.slice("WebUI:".length).trim();
     if (line.startsWith("Sub URL:")) next.subPath = line.slice("Sub URL:".length).trim();
@@ -949,8 +966,8 @@ async function maybeAutoOpenCoreUi(): Promise<void> {
 
 async function runAction(command: string): Promise<void> {
   const text = await runCli(command, { label: command });
-  const shouldRefreshStatus = /^(service|repair|mode|hotspot|vpn|config|api)\b/.test(command);
-  const shouldRefreshHealth = /^(health|repair|hotspot|vpn|config|capture|block|route|app|cert)\b/.test(command);
+  const shouldRefreshStatus = /^(service|repair|mode|hotspot|vpn|config|transparent|api)\b/.test(command);
+  const shouldRefreshHealth = /^(health|repair|hotspot|vpn|config|transparent|capture|block|app|cert)\b/.test(command);
   if (/^health\b/.test(command)) {
     state.health = parseHealth(text);
     state.activeTab = "health";
@@ -972,7 +989,6 @@ async function runAction(command: string): Promise<void> {
     await refreshSubscriptions(true);
   }
   if (/^app\b/.test(command)) await refreshApps(true);
-  if (/^route\b/.test(command)) await refreshRoutes(true);
   if (/^block\b/.test(command)) {
     await refreshBlocklist(true);
   }
@@ -1005,6 +1021,8 @@ async function refreshDashboard(quiet = false): Promise<void> {
       await refreshCerts(true);
     } else if (state.activeTab === "health") {
       await refreshHealth(true);
+    } else if (state.activeTab === "config") {
+      await refreshConfigEditorPath(true);
     }
     if (!quiet) {
       state.output = "面板刷新完成。";
@@ -1022,42 +1040,6 @@ async function refreshApps(quiet = false): Promise<void> {
   const text = await runCli("app list", { quiet });
   if (state.hasKsu && text) {
     state.appPolicy = parseAppPolicy(text);
-  }
-  if (!quiet) render();
-}
-
-function parseRouteRules(text: string): RouteRules {
-  const next: RouteRules = {
-    ...state.routes,
-    proxy: [],
-    direct: [],
-    block: []
-  };
-  let section: "proxy" | "direct" | "block" | null = null;
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (line === "proxy domain suffixes:") {
-      section = "proxy";
-      continue;
-    }
-    if (line === "direct domain suffixes:") {
-      section = "direct";
-      continue;
-    }
-    if (line === "block domain suffixes:") {
-      section = "block";
-      continue;
-    }
-    if (section) next[section].push(line);
-  }
-  return next;
-}
-
-async function refreshRoutes(quiet = false): Promise<void> {
-  const text = await runCli("route list", { quiet });
-  if (state.hasKsu && text) {
-    state.routes = parseRouteRules(text);
   }
   if (!quiet) render();
 }
@@ -1165,11 +1147,71 @@ async function restoreBackup(): Promise<void> {
   await runCli(`backup restore ${password ? shellQuote(password) : "-"} ${shellQuote(payload)}`, { label: "恢复配置" });
   await refreshSubscriptions(true);
   await refreshApps(true);
-  await refreshRoutes(true);
   await refreshBlocklist(true);
   await refreshCapture(true);
   await refreshMcp(true);
   await refreshHealth(true);
+  render();
+}
+
+function configEditorPath(target: ConfigEditorTarget): string {
+  return target === "mihomo"
+    ? `${MODULE_DIR}/.config/mihomo/config.yaml`
+    : `${MODULE_DIR}/.config/sing-box/config.json`;
+}
+
+function configEditorLabel(target = state.configEditor.target): string {
+  return target === "mihomo" ? "mihomo config.yaml" : "sing-box config.json";
+}
+
+async function refreshConfigEditorPath(quiet = false): Promise<void> {
+  state.configEditor.path = configEditorPath(state.configEditor.target);
+  if (!state.hasKsu) {
+    if (!quiet) render();
+    return;
+  }
+  const text = await runCli(`config-editor path ${state.configEditor.target}`, { quiet: true, label: "配置路径" });
+  if (text && !execFailed(text) && !hasKsuBridgeNotice(text)) {
+    state.configEditor.path = text.trim();
+  }
+  if (!quiet) render();
+}
+
+async function loadConfigEditor(): Promise<void> {
+  const target = state.configEditor.target;
+  const text = await runCli(`config-editor get ${target}`, { label: `加载 ${configEditorLabel(target)}` });
+  if (text && !execFailed(text) && !hasKsuBridgeNotice(text)) {
+    state.configEditor.text = text;
+    state.configEditor.originalText = text;
+    state.configEditor.loadedTarget = target;
+    state.configEditor.dirty = false;
+    state.configEditor.lastCheck = "idle";
+    await refreshConfigEditorPath(true);
+  }
+  render();
+}
+
+async function saveConfigEditor(): Promise<void> {
+  const target = state.configEditor.target;
+  const text = state.configEditor.text;
+  if (!text.trim()) {
+    state.output = "配置内容为空，已阻止保存。";
+    state.configEditor.lastCheck = "error";
+    render();
+    return;
+  }
+  const encoded = bytesToBase64(new TextEncoder().encode(text));
+  const result = await runCli(`config-editor save ${target} ${shellQuote(encoded)}`, { label: `校验并保存 ${configEditorLabel(target)}` });
+  if (result && !execFailed(result)) {
+    state.configEditor.loadedTarget = target;
+    state.configEditor.originalText = text;
+    state.configEditor.dirty = false;
+    state.configEditor.lastCheck = "ok";
+    await refreshStatus(true);
+    await refreshHealth(true);
+  } else {
+    state.configEditor.lastCheck = "error";
+  }
   render();
 }
 
@@ -1707,6 +1749,27 @@ function activeTabPanel(tab: State["activeTab"]): string {
         <div class="control-quick">
           ${commandDeck()}
         </div>
+        <section class="runtime-control transparent-control">
+          <div class="runtime-toggle">
+            <div>
+              <span class="eyebrow">Transparent Mode</span>
+              <h3>透明代理入口模式</h3>
+              <p>${state.runtime.transparentMode === "tproxy" ? "当前为 TProxy。适合需要 Linux transparent proxy 入站的实验场景；默认推荐 TUN。" : "当前为 TUN。默认模式，移动端兼容性和可控性最好。"}</p>
+            </div>
+            <div class="segmented">
+              <button class="${state.runtime.transparentMode === "tun" ? "selected" : ""}" data-transparent-mode="tun">TUN</button>
+              <button class="${state.runtime.transparentMode === "tproxy" ? "selected" : ""}" data-transparent-mode="tproxy">TProxy</button>
+            </div>
+          </div>
+          <div class="runtime-toggle compact-runtime-note">
+            <div>
+              <span class="eyebrow">Apply Behavior</span>
+              <h3>切换后重启内核</h3>
+              <p>保存会先重写双内核入站配置并应用路由规则。若当前内核没有热重载入站，请执行“重启当前内核”。</p>
+            </div>
+            <button class="command-secondary" data-run="transparent apply">${icon("Save", 17)}重新应用</button>
+          </div>
+        </section>
         <section class="runtime-control">
           <div class="runtime-toggle">
             <div>
@@ -1753,6 +1816,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
     `;
   }
 
+  if (tab === "config") return `<div class="tab-panel show">${configEditorPanel()}</div>`;
   if (tab === "health") return `<div class="tab-panel show">${healthPanel()}</div>`;
   if (tab === "topology") return `<div class="tab-panel show">${topologyPanel()}</div>`;
 
@@ -2032,6 +2096,61 @@ function webuiAdaptIssueUrl(panel?: WebuiPanel): string {
   ].join("\n");
   const params = new URLSearchParams({
     title: `申请适配内核 WebUI：${panel?.name || "新面板"}`,
+    body
+  });
+  return `${REPO}/issues/new?${params.toString()}`;
+}
+
+function redactConfigLine(line: string): string {
+  let next = line;
+  next = next.replace(/https?:\/\/[^\s"'<>]+/gi, "<redacted-url>");
+  next = next.replace(/\b(bearer|token|secret|password|passwd|apikey|api_key|key)\b(\s*[:=]\s*)(["']?)[^"',\s}]+/gi, "$1$2$3<redacted>");
+  next = next.replace(/(["']?(?:url|download-url|subscription|proxy-provider)["']?\s*[:=]\s*)(["']?)[^"',\s}]+/gi, "$1$2<redacted>");
+  return next;
+}
+
+function diffLines(before: string, after: string, maxLines = 220): string[] {
+  const oldLines = before.split(/\r?\n/);
+  const newLines = after.split(/\r?\n/);
+  const rows: string[] = [];
+  const max = Math.max(oldLines.length, newLines.length);
+  for (let index = 0; index < max; index += 1) {
+    const oldLine = oldLines[index] ?? "";
+    const newLine = newLines[index] ?? "";
+    if (oldLine === newLine) continue;
+    rows.push(`@@ line ${index + 1} @@`);
+    if (oldLines[index] !== undefined) rows.push(`- ${redactConfigLine(oldLine)}`);
+    if (newLines[index] !== undefined) rows.push(`+ ${redactConfigLine(newLine)}`);
+    if (rows.length >= maxLines) {
+      rows.push(`... diff too large, truncated at ${maxLines} lines ...`);
+      break;
+    }
+  }
+  return rows.length ? rows : ["# no diff"];
+}
+
+function configDiffIssueUrl(): string {
+  const target = configEditorLabel(state.configEditor.target);
+  const diff = diffLines(state.configEditor.originalText, state.configEditor.text).join("\n");
+  const body = [
+    "### MagicNet 配置变更建议",
+    "",
+    "请放心，已经过滤敏感信息，不会将您的订阅上传，但是还是建议你在确认创建之前检查一遍。",
+    "",
+    `- 配置目标: ${target}`,
+    `- 文件路径: ${state.configEditor.path || configEditorPath(state.configEditor.target)}`,
+    "",
+    "```diff",
+    diff,
+    "```",
+    "",
+    "### 说明",
+    "",
+    "- 这是从 MagicNet 管理面板生成的脱敏配置 diff。",
+    "- 请维护者人工判断是否适合合入源码仓库默认配置或脚本逻辑。"
+  ].join("\n");
+  const params = new URLSearchParams({
+    title: `配置变更建议：${target}`,
     body
   });
   return `${REPO}/issues/new?${params.toString()}`;
@@ -2371,6 +2490,57 @@ function webuiConfigPanel(): string {
   `;
 }
 
+function configEditorPanel(): string {
+  const editor = state.configEditor;
+  const targetLabel = configEditorLabel(editor.target);
+  const saveState = editor.lastCheck === "ok"
+    ? "上次校验通过并已保存"
+    : editor.lastCheck === "error"
+      ? "上次校验失败，真实配置未被替换"
+      : editor.dirty
+        ? "有未保存修改"
+        : editor.loadedTarget
+          ? "已加载"
+          : "尚未加载";
+  return `
+    <div class="section-intro config-intro">
+      <div>
+        <span class="eyebrow">Validated Config Editor</span>
+        <h3>配置编辑器</h3>
+        <p>只编辑内核真实配置文件。保存时先调用模块 CLI 和内核自带检查命令，校验失败不会替换原文件。</p>
+      </div>
+      <div class="section-actions">
+        <button class="command-secondary" data-load-config>${icon("RefreshCw", 17)}加载配置</button>
+        <button class="command-primary" data-save-config>${icon("Save", 17)}校验并保存</button>
+        <button class="command-secondary" data-config-diff-issue>${icon("Github", 17)}创建 Diff Issue</button>
+      </div>
+    </div>
+    <section class="config-editor-shell">
+      <div class="config-editor-toolbar">
+        <div class="segmented">
+          <button class="${editor.target === "mihomo" ? "selected" : ""}" data-config-target="mihomo">mihomo</button>
+          <button class="${editor.target === "sing-box" ? "selected" : ""}" data-config-target="sing-box">sing-box</button>
+        </div>
+        <div class="config-status ${editor.lastCheck}">
+          <span>${icon(editor.lastCheck === "error" ? "Ban" : editor.lastCheck === "ok" ? "ShieldCheck" : "FileText", 16)}</span>
+          <strong>${escapeHtml(targetLabel)}</strong>
+          <small>${escapeHtml(saveState)}</small>
+        </div>
+        <button class="command-secondary" data-copy-config-path>${icon("Copy", 16)}复制路径</button>
+      </div>
+      <div class="config-path-row">
+        <span>文件路径</span>
+        <code>${escapeHtml(editor.path || configEditorPath(editor.target))}</code>
+      </div>
+      <textarea class="config-editor-textarea" data-config-editor spellcheck="false" placeholder="点击“加载配置”读取 ${escapeHtml(targetLabel)}">${escapeHtml(editor.text)}</textarea>
+      <div class="config-editor-foot">
+        <span>${editor.text ? `${editor.text.length} 字符` : "未加载内容"}</span>
+        <span>保存流程：base64 传输 -> 临时文件 -> 内核校验 -> 原子替换 -> 应用运行时覆盖。Diff Issue 会先脱敏 URL/token/password。</span>
+      </div>
+    </section>
+  `;
+}
+
 function appList(items: string[], target: "proxy" | "bypass"): string {
   if (items.length === 0) {
     return `<div class="empty">暂无应用包名</div>`;
@@ -2388,61 +2558,6 @@ function appList(items: string[], target: "proxy" | "bypass"): string {
       `
     )
     .join("");
-}
-
-function routeList(items: string[], target: "proxy" | "direct" | "block"): string {
-  if (items.length === 0) {
-    return `<div class="empty">暂无域名后缀</div>`;
-  }
-
-  return items
-    .map(
-      (domain) => `
-        <div class="app-row">
-          <span>${escapeHtml(domain)}</span>
-          <button class="icon-button" data-remove-route="${target}" data-value="${escapeHtml(domain)}" title="移除">
-            ${icon("X", 16)}
-          </button>
-        </div>
-      `
-    )
-    .join("");
-}
-
-function routePanel(): string {
-  return `
-    <div class="section-intro">
-      <div>
-        <span class="eyebrow">Routing Rules</span>
-        <h3>自定义域名分流</h3>
-        <p>高优先级 DOMAIN-SUFFIX 规则，直接写入 sing-box 与 mihomo 的 TUN 路由。</p>
-      </div>
-      <button class="scan-button" data-refresh-routes>${icon("RefreshCw", 17)}读取规则</button>
-    </div>
-    <form class="package-form" data-route-form>
-      <input name="domain" value="${escapeHtml(state.routes.newDomain)}" placeholder="example.com" spellcheck="false" />
-      <select name="target">
-        <option value="proxy" ${state.routes.newTarget === "proxy" ? "selected" : ""}>走代理</option>
-        <option value="direct" ${state.routes.newTarget === "direct" ? "selected" : ""}>直连</option>
-        <option value="block" ${state.routes.newTarget === "block" ? "selected" : ""}>阻断</option>
-      </select>
-      <button type="submit">${icon("Plus", 17)}添加并应用</button>
-    </form>
-    <div class="list-columns route-columns">
-      <div class="list-panel">
-        <div class="list-title"><span>${icon("Route", 17)}</span>Proxy domains</div>
-        ${routeList(state.routes.proxy, "proxy")}
-      </div>
-      <div class="list-panel">
-        <div class="list-title"><span>${icon("Wifi", 17)}</span>Direct domains</div>
-        ${routeList(state.routes.direct, "direct")}
-      </div>
-      <div class="list-panel">
-        <div class="list-title"><span>${icon("Ban", 17)}</span>Block domains</div>
-        ${routeList(state.routes.block, "block")}
-      </div>
-    </div>
-  `;
 }
 
 function packagePicker(): string {
@@ -2723,6 +2838,7 @@ function setActiveTabByIndex(index: number): void {
 async function refreshActiveTabData(): Promise<void> {
   if (!state.hasKsu) return;
   if (state.activeTab === "control") await refreshMcp();
+  if (state.activeTab === "config") await refreshConfigEditorPath();
   if (state.activeTab === "health" && state.health.length === 0) await refreshHealth();
   if (state.activeTab === "topology" && !state.topology) await refreshTopology();
   if (state.activeTab === "apps") await refreshApps();
@@ -2787,8 +2903,19 @@ async function scanUserPackages(): Promise<void> {
   render();
 
   try {
-    const packageNames = kernelsu.listPackages("user");
-    const packageInfo = kernelsu.getPackagesInfo(packageNames);
+    const packageNames = kernelsu.listPackages("user").slice(0, PACKAGE_SCAN_LIMIT);
+    state.output = `已读取 ${packageNames.length} 个用户应用包名，正在分批读取名称。图标使用 ksu://icon 原生协议懒加载。`;
+    render();
+    await nextFrame();
+    const packageInfo: PackageInfo[] = [];
+    const batchSize = 40;
+    for (let index = 0; index < packageNames.length; index += batchSize) {
+      const batch = packageNames.slice(index, index + batchSize);
+      packageInfo.push(...kernelsu.getPackagesInfo(batch));
+      state.output = `正在读取应用详情：${Math.min(index + batch.length, packageNames.length)}/${packageNames.length}`;
+      render();
+      await nextFrame();
+    }
     state.packages = packageInfo.sort((a, b) => (a.appLabel || a.packageName).localeCompare(b.appLabel || b.packageName));
     state.output = `已扫描 ${state.packages.length} 个用户应用。`;
   } catch (error) {
@@ -2925,6 +3052,16 @@ function bindEvents(): void {
     render();
   });
 
+  document.querySelectorAll<HTMLButtonElement>("[data-transparent-mode]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const mode = button.dataset.transparentMode === "tproxy" ? "tproxy" : "tun";
+      if (mode === state.runtime.transparentMode) return;
+      await runCli(`transparent set ${mode}`, { label: `切换透明模式到 ${mode}` });
+      await refreshStatus(true);
+      render();
+    });
+  });
+
   document.querySelector<HTMLFormElement>("[data-restart-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -2988,6 +3125,52 @@ function bindEvents(): void {
     button.addEventListener("click", async () => {
       await refreshDashboard();
     });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-config-target]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const target = button.dataset.configTarget === "sing-box" ? "sing-box" : "mihomo";
+      if (state.configEditor.dirty && state.configEditor.target !== target) {
+        state.output = "当前配置有未保存修改。请先保存，或重新加载后再切换目标。";
+        render();
+        return;
+      }
+      state.configEditor.target = target;
+      state.configEditor.text = state.configEditor.loadedTarget === target ? state.configEditor.text : "";
+      state.configEditor.lastCheck = "idle";
+      state.configEditor.path = configEditorPath(target);
+      await refreshConfigEditorPath(true);
+      render();
+    });
+  });
+
+  document.querySelector<HTMLTextAreaElement>("[data-config-editor]")?.addEventListener("input", (event) => {
+    state.configEditor.text = event.currentTarget.value;
+    state.configEditor.dirty = true;
+    state.configEditor.lastCheck = "idle";
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-load-config]")?.addEventListener("click", () => loadConfigEditor());
+
+  document.querySelector<HTMLButtonElement>("[data-save-config]")?.addEventListener("click", () => saveConfigEditor());
+
+  document.querySelector<HTMLButtonElement>("[data-config-diff-issue]")?.addEventListener("click", async () => {
+    if (!state.configEditor.text.trim()) {
+      state.output = "请先加载或填写配置，再创建 Diff Issue。";
+      render();
+      return;
+    }
+    state.output = "请放心，已经过滤敏感信息，不会将您的订阅上传，但是还是建议你在确认创建之前检查一遍。\n\n正在打开系统浏览器创建 GitHub Issue。";
+    render();
+    await openExternalUrl(configDiffIssueUrl(), "配置 Diff Issue");
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-copy-config-path]")?.addEventListener("click", async () => {
+    const path = state.configEditor.path || configEditorPath(state.configEditor.target);
+    await navigator.clipboard?.writeText(path);
+    state.output = `已复制配置路径：\n${path}`;
+    if (state.hasKsu) kernelsu.toast?.("配置路径已复制");
+    render();
   });
 
   document.querySelectorAll<HTMLElement>("[data-open-core-ui]").forEach((element) => {
@@ -3334,33 +3517,6 @@ function bindEvents(): void {
   });
 
   document.querySelector<HTMLButtonElement>("[data-restore-backup]")?.addEventListener("click", () => restoreBackup());
-
-  document.querySelector<HTMLFormElement>("[data-route-form]")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const target = String(form.get("target") || "proxy") as RouteRules["newTarget"];
-    const domain = String(form.get("domain") || "").trim();
-    state.routes.newDomain = domain;
-    state.routes.newTarget = ["proxy", "direct", "block"].includes(target) ? target : "proxy";
-    if (!/^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/.test(domain)) {
-      state.output = "域名后缀格式不对。";
-      render();
-      return;
-    }
-    await runCli(`route add-domain ${state.routes.newTarget} ${shellQuote(domain)}`);
-    state.routes.newDomain = "";
-    await refreshRoutes(true);
-  });
-
-  document.querySelectorAll<HTMLButtonElement>("[data-remove-route]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const target = button.dataset.removeRoute || "proxy";
-      const value = button.dataset.value || "";
-      if (!["proxy", "direct", "block"].includes(target) || !value) return;
-      await runCli(`route remove-domain ${target} ${shellQuote(value)}`);
-      await refreshRoutes(true);
-    });
-  });
 
   document.querySelector<HTMLButtonElement>("[data-block-toggle]")?.addEventListener("click", async () => {
     await runCli(state.blocklist.enabled ? "block disable" : "block enable");
