@@ -207,8 +207,11 @@ WebUI 支持选择或粘贴 PEM / DER 证书并安装到模块目录：
 ```bash
 su -c /data/adb/modules/MagicNet/cli hotspot reload
 su -c /data/adb/modules/MagicNet/cli vpn reload
+su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli diagnose
 ```
+
+`cli health` 输出稳定的 `key=status<TAB>detail` 诊断项，WebUI 的“诊断”页会把这些项目整理成状态卡片，并给出重启 TUN、更新订阅、重载热点/VPN 共存等快捷修复按钮。覆盖项包括核心进程、TUN 网卡、watchdog、fswatch、Clash API、订阅、抓包规则、热点、外部 VPN、系统 CA、直连探测和代理探测。
 
 ## TUN 分应用代理
 

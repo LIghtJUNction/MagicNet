@@ -1,12 +1,15 @@
 #!/system/bin/sh
 # shellcheck shell=ash
 
-case "$0" in
-    */*) MODDIR=${0%/*} ;;
-    *) MODDIR=${MODDIR:-$(pwd)} ;;
-esac
+if [ -z "${MODDIR:-}" ]; then
+    case "$0" in
+        */*) MODDIR=${0%/*} ;;
+        *) MODDIR=$(pwd) ;;
+    esac
+fi
 
 if [ -f "${MODDIR}/lib/kamfw/.kamfwrc" ]; then
+    # shellcheck disable=SC2240
     . "${MODDIR}/lib/kamfw/.kamfwrc" "$MODDIR"
 else
     echo "Missing kamfw runtime: ${MODDIR}/lib/kamfw/.kamfwrc" >&2
@@ -685,12 +688,141 @@ cli_app() {
     esac
 }
 
+cli_health_emit() {
+    _key="$1"
+    _status="$2"
+    _detail="$3"
+    printf '%s=%s\t%s\n' "$_key" "$_status" "$_detail"
+    unset _key _status _detail
+}
+
+cli_health_one_line() {
+    tr '\n' ' ' | sed 's/[[:space:]]*$//'
+}
+
+cli_health_cert_count() {
+    _dir="$(cli_cert_dir)"
+    _count=0
+    if [ -d "$_dir" ]; then
+        for _cert in "$_dir"/*; do
+            [ -f "$_cert" ] || continue
+            [ "${_cert##*/}" = ".gitkeep" ] && continue
+            _count=$((_count + 1))
+        done
+    fi
+    printf '%s\n' "$_count"
+    unset _dir _cert _count
+}
+
+cli_health() {
+    _singbox="$(cli_pid_summary sing-box)"
+    _mihomo="$(cli_pid_summary mihomo)"
+    if [ "$_singbox" != "stopped" ]; then
+        cli_health_emit "core" "ok" "sing-box running: $_singbox"
+    elif [ "$_mihomo" != "stopped" ]; then
+        cli_health_emit "core" "ok" "mihomo running: $_mihomo"
+    else
+        cli_health_emit "core" "fail" "no proxy core process is running"
+    fi
+
+    _tun_ifaces="$(magicnet_collect_tun_ifaces | cli_health_one_line)"
+    if [ -n "$_tun_ifaces" ]; then
+        cli_health_emit "tun" "ok" "$_tun_ifaces"
+    else
+        cli_health_emit "tun" "fail" "no MagicNet TUN interface detected"
+    fi
+
+    _watchdog_pid="$(magicnet_watchdog_status 2>/dev/null)"
+    if [ -n "$_watchdog_pid" ]; then
+        cli_health_emit "watchdog" "ok" "pid $_watchdog_pid"
+    else
+        cli_health_emit "watchdog" "warn" "not running"
+    fi
+
+    _fswatch_pid="$(magicnet_fswatch_status 2>/dev/null)"
+    if [ -n "$_fswatch_pid" ]; then
+        cli_health_emit "fswatch" "ok" "pid $_fswatch_pid"
+    else
+        cli_health_emit "fswatch" "warn" "not running"
+    fi
+
+    if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 5 "${MAGICNET_API}/proxies" >/dev/null 2>&1; then
+        cli_health_emit "api" "ok" "$MAGICNET_API"
+    else
+        cli_health_emit "api" "fail" "Clash API is not reachable at $MAGICNET_API"
+    fi
+
+    _sing_sub="$(cli_sub_read sing-box)"
+    if [ -n "$_sing_sub" ]; then
+        cli_health_emit "sing-box-sub" "ok" "subscription configured"
+    else
+        cli_health_emit "sing-box-sub" "warn" "subscription URL is empty"
+    fi
+
+    _mihomo_sub="$(cli_sub_read mihomo)"
+    if [ -n "$_mihomo_sub" ]; then
+        cli_health_emit "mihomo-sub" "ok" "subscription configured"
+    else
+        cli_health_emit "mihomo-sub" "info" "subscription URL is empty"
+    fi
+
+    cli_capture_load_conf
+    _capture_apps="$(cli_capture_list_file "$(cli_capture_app_file)" | cli_health_one_line)"
+    _capture_domains="$(cli_capture_list_file "$(cli_capture_domain_file)" | cli_health_one_line)"
+    if [ "$MAGICNET_CAPTURE_ENABLED" = "1" ]; then
+        if [ -n "$_capture_apps$_capture_domains" ]; then
+            cli_health_emit "capture" "ok" "${MAGICNET_CAPTURE_HOST}:${MAGICNET_CAPTURE_PORT}"
+        else
+            cli_health_emit "capture" "warn" "enabled but no app/domain rules"
+        fi
+    else
+        cli_health_emit "capture" "info" "disabled"
+    fi
+
+    _hotspot_ifaces="$(magicnet_collect_hotspot_ifaces | cli_health_one_line)"
+    if [ -n "$_hotspot_ifaces" ]; then
+        cli_health_emit "hotspot" "ok" "$_hotspot_ifaces"
+    else
+        cli_health_emit "hotspot" "info" "no active hotspot interface detected"
+    fi
+
+    _external_vpns="$(magicnet_collect_external_vpn_ifaces | cli_health_one_line)"
+    if [ -n "$_external_vpns" ]; then
+        cli_health_emit "vpn" "ok" "coexist targets: $_external_vpns"
+    else
+        cli_health_emit "vpn" "info" "no external VPN interface detected"
+    fi
+
+    _cert_count="$(cli_health_cert_count)"
+    if [ "$_cert_count" -gt 0 ]; then
+        cli_health_emit "certs" "ok" "$_cert_count installed"
+    else
+        cli_health_emit "certs" "info" "no extra CA certificate installed"
+    fi
+
+    if command -v curl >/dev/null 2>&1 && curl -fsSI --max-time 8 https://www.baidu.com >/dev/null 2>&1; then
+        cli_health_emit "direct-test" "ok" "https://www.baidu.com"
+    else
+        cli_health_emit "direct-test" "warn" "direct HTTPS probe failed"
+    fi
+
+    if command -v curl >/dev/null 2>&1 && curl -fsSI --max-time 10 -x http://127.0.0.1:7892 https://www.google.com >/dev/null 2>&1; then
+        cli_health_emit "proxy-test" "ok" "https://www.google.com via 127.0.0.1:7892"
+    else
+        cli_health_emit "proxy-test" "warn" "proxy HTTPS probe failed"
+    fi
+
+    unset _singbox _mihomo _tun_ifaces _watchdog_pid _fswatch_pid _sing_sub _mihomo_sub
+    unset _capture_apps _capture_domains _hotspot_ifaces _external_vpns _cert_count
+}
+
 cli_help() {
     cat <<'EOF'
 MagicNet CLI
 
 Usage:
   cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}
+  cli health
   cli config {apply}
   cli node {list|current|use <name>}
   cli mode [rule|global|direct]
@@ -707,6 +839,7 @@ EOF
 
 case "${1:-help}" in
     service) shift; cli_service "$@" ;;
+    health|doctor) cli_health ;;
     config) shift; cli_config "$@" ;;
     node) shift; cli_node "$@" ;;
     mode) shift; cli_mode "$@" ;;

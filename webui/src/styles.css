@@ -1000,6 +1000,153 @@ button:disabled {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.health-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.health-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(98, 243, 169, 0.12), transparent 45%),
+    #0c1110;
+}
+
+.health-hero h3 {
+  margin-top: 5px;
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.health-hero p {
+  margin-top: 7px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.health-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.health-summary div {
+  min-height: 76px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0c1110;
+}
+
+.health-summary strong,
+.health-summary span {
+  display: block;
+}
+
+.health-summary strong {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.health-summary span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.health-list {
+  display: grid;
+  gap: 8px;
+}
+
+.health-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0c1110;
+}
+
+.health-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: #070a09;
+}
+
+.health-row strong,
+.health-row small {
+  display: block;
+}
+
+.health-row small {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.health-row.ok {
+  border-color: rgba(98, 243, 169, 0.28);
+}
+
+.health-row.warn {
+  border-color: rgba(242, 189, 92, 0.42);
+}
+
+.health-row.fail {
+  border-color: rgba(255, 106, 95, 0.46);
+}
+
+.health-row.ok .health-mark,
+.health-row.ok .health-state {
+  color: var(--green);
+}
+
+.health-row.warn .health-mark,
+.health-row.warn .health-state {
+  color: var(--amber);
+}
+
+.health-row.fail .health-mark,
+.health-row.fail .health-state {
+  color: var(--red);
+}
+
+.health-state {
+  min-width: 52px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.health-row button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--green);
+  color: #07100c;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .terminal,
 .always-output pre {
   min-height: 280px;
@@ -1093,7 +1240,8 @@ button:disabled {
   .mode-panel,
   .policy-header,
   .picker-head,
-  .sub-head {
+  .sub-head,
+  .health-hero {
     align-items: stretch;
     flex-direction: column;
   }
@@ -1124,7 +1272,8 @@ button:disabled {
   }
 
   .command-deck,
-  .health-grid {
+  .health-grid,
+  .health-summary {
     grid-template-columns: 1fr;
   }
 
@@ -1135,8 +1284,13 @@ button:disabled {
   .sub-actions,
   .cert-layout,
   .capture-form,
-  .inline-form {
+  .inline-form,
+  .health-row {
     grid-template-columns: 1fr;
+  }
+
+  .health-state {
+    min-width: 0;
   }
 
   .sub-actions code {

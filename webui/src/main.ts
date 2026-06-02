@@ -67,6 +67,12 @@ type RuntimeState = {
   subPath: string;
 };
 
+type HealthItem = {
+  key: string;
+  status: "ok" | "warn" | "fail" | "info";
+  detail: string;
+};
+
 type PackageInfo = {
   packageName: string;
   versionName: string;
@@ -103,11 +109,12 @@ type State = {
     newApp: string;
     newDomain: string;
   };
+  health: HealthItem[];
   packages: PackageInfo[];
   packageQuery: string;
   newPackage: string;
   newTarget: "proxy" | "bypass";
-  activeTab: "control" | "apps" | "subs" | "capture" | "certs" | "logs";
+  activeTab: "control" | "health" | "apps" | "subs" | "capture" | "certs" | "logs";
 };
 
 const state: State = {
@@ -150,6 +157,7 @@ const state: State = {
     newApp: "",
     newDomain: ""
   },
+  health: [],
   packages: [],
   packageQuery: "",
   newPackage: "",
@@ -160,6 +168,7 @@ const state: State = {
 const actions = [
   { label: "刷新状态", hint: "读取进程与 API", icon: "RefreshCw", command: "service status" },
   { label: "重启 TUN", hint: "重新拉起内核", icon: "RotateCcw", command: "service restart", tone: "strong" },
+  { label: "健康诊断", hint: "检查关键链路", icon: "Stethoscope", command: "health" },
   { label: "更新订阅", hint: "更新全部订阅", icon: "DownloadCloud", command: "sub update-all" },
   { label: "清空连接", hint: "关闭旧连接", icon: "Unplug", command: "api close-all" },
   { label: "重载热点", hint: "应用转发规则", icon: "Wifi", command: "hotspot reload" },
@@ -448,6 +457,34 @@ async function refreshCerts(quiet = false): Promise<void> {
   render();
 }
 
+function parseHealth(text: string): HealthItem[] {
+  const items: HealthItem[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || !line.includes("=")) continue;
+    const [head, ...tail] = line.split(/\t/);
+    const [key, statusText] = head.split("=");
+    const status = ["ok", "warn", "fail", "info"].includes(statusText) ? statusText as HealthItem["status"] : "info";
+    items.push({
+      key,
+      status,
+      detail: tail.join("\t") || ""
+    });
+  }
+  return items;
+}
+
+async function refreshHealth(quiet = false): Promise<void> {
+  const text = await runCli("health", { quiet });
+  if (state.hasKsu && text) {
+    state.health = parseHealth(text);
+  }
+  if (!quiet) {
+    state.activeTab = "health";
+  }
+  render();
+}
+
 function utf8ToBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let binary = "";
@@ -455,6 +492,74 @@ function utf8ToBase64(text: string): string {
     binary += String.fromCharCode(byte);
   });
   return btoa(binary);
+}
+
+const healthLabels: Record<string, { label: string; icon: string; fix?: string; fixLabel?: string }> = {
+  core: { label: "TUN 内核", icon: "Server", fix: "service restart", fixLabel: "重启" },
+  tun: { label: "TUN 网卡", icon: "RadioTower", fix: "service restart", fixLabel: "重启" },
+  watchdog: { label: "看门狗", icon: "Bell", fix: "service restart", fixLabel: "重启服务" },
+  fswatch: { label: "配置监听", icon: "Activity", fix: "service restart", fixLabel: "重启服务" },
+  api: { label: "Clash API", icon: "Gauge", fix: "service restart", fixLabel: "重启" },
+  "sing-box-sub": { label: "sing-box 订阅", icon: "DownloadCloud", fix: "sub update-all", fixLabel: "更新" },
+  "mihomo-sub": { label: "mihomo 订阅", icon: "DownloadCloud" },
+  capture: { label: "抓包规则", icon: "ShieldCheck", fix: "capture apply", fixLabel: "应用" },
+  hotspot: { label: "热点转发", icon: "Wifi", fix: "hotspot reload", fixLabel: "重载" },
+  vpn: { label: "VPN 共存", icon: "ShieldCheck", fix: "vpn reload", fixLabel: "重载" },
+  certs: { label: "系统 CA", icon: "ShieldPlus" },
+  "direct-test": { label: "直连探测", icon: "Route" },
+  "proxy-test": { label: "代理探测", icon: "ExternalLink", fix: "sub update-all", fixLabel: "更新订阅" }
+};
+
+function healthSummary(): { ok: number; warn: number; fail: number; info: number } {
+  return state.health.reduce(
+    (acc, item) => {
+      acc[item.status] += 1;
+      return acc;
+    },
+    { ok: 0, warn: 0, fail: 0, info: 0 }
+  );
+}
+
+function healthPanel(): string {
+  const summary = healthSummary();
+  const items = state.health.length
+    ? state.health
+      .map((item) => {
+        const meta = healthLabels[item.key] || { label: item.key, icon: "Stethoscope" };
+        return `
+          <div class="health-row ${item.status}">
+            <span class="health-mark">${icon(meta.icon, 18)}</span>
+            <div>
+              <strong>${escapeHtml(meta.label)}</strong>
+              <small>${escapeHtml(item.detail || item.status)}</small>
+            </div>
+            <span class="health-state">${item.status}</span>
+            ${meta.fix ? `<button data-run="${meta.fix}">${escapeHtml(meta.fixLabel || "修复")}</button>` : ""}
+          </div>
+        `;
+      })
+      .join("")
+    : `<div class="picker-empty"><strong>还没有诊断结果</strong><span>点击运行健康诊断，面板会检查内核、TUN、API、订阅、抓包、热点、VPN 共存和证书目录。</span></div>`;
+
+  return `
+    <div class="health-panel">
+      <div class="health-hero">
+        <div>
+          <span class="eyebrow">Health Check</span>
+          <h3>一键看清透明代理链路</h3>
+          <p>诊断不是日志堆叠，而是把最容易出问题的链路拆成可判定项目。</p>
+        </div>
+        <button class="command-primary" data-health-run ${state.busy ? "disabled" : ""}>${icon("Stethoscope", 18)}运行诊断</button>
+      </div>
+      <div class="health-summary">
+        <div><strong>${summary.ok}</strong><span>正常</span></div>
+        <div><strong>${summary.warn}</strong><span>警告</span></div>
+        <div><strong>${summary.fail}</strong><span>失败</span></div>
+        <div><strong>${summary.info}</strong><span>信息</span></div>
+      </div>
+      <div class="health-list">${items}</div>
+    </div>
+  `;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -826,6 +931,7 @@ function render(): void {
           </div>
           <nav class="tabs">
             <button class="${tab === "control" ? "active" : ""}" data-tab="control">${icon("Gauge", 18)}控制</button>
+            <button class="${tab === "health" ? "active" : ""}" data-tab="health">${icon("Stethoscope", 18)}诊断</button>
             <button class="${tab === "apps" ? "active" : ""}" data-tab="apps">${icon("ListFilter", 18)}应用名单</button>
             <button class="${tab === "subs" ? "active" : ""}" data-tab="subs">${icon("DownloadCloud", 18)}订阅</button>
             <button class="${tab === "capture" ? "active" : ""}" data-tab="capture">${icon("ShieldCheck", 18)}抓包</button>
@@ -868,6 +974,10 @@ function render(): void {
                   .join("")}
               </div>
             </div>
+          </div>
+
+          <div class="tab-panel ${tab === "health" ? "show" : ""}">
+            ${healthPanel()}
           </div>
 
           <div class="tab-panel ${tab === "apps" ? "show" : ""}">
@@ -935,7 +1045,7 @@ function render(): void {
           <div class="tab-panel ${tab === "logs" ? "show" : ""}">
             <div class="log-toolbar">
               <button data-run="service logs sing-box 160">${icon("FileText", 17)}sing-box 日志</button>
-              <button data-run="diagnose">${icon("Stethoscope", 17)}诊断</button>
+              <button data-health-run>${icon("Stethoscope", 17)}健康诊断</button>
               <button data-copy-last>${icon("Copy", 17)}复制命令</button>
             </div>
             <pre class="terminal">${escapeHtml(state.output)}</pre>
@@ -994,6 +1104,10 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-scan-packages]")?.addEventListener("click", scanUserPackages);
 
   document.querySelector<HTMLButtonElement>("[data-refresh-subs]")?.addEventListener("click", () => refreshSubscriptions());
+
+  document.querySelectorAll<HTMLButtonElement>("[data-health-run]").forEach((button) => {
+    button.addEventListener("click", () => refreshHealth());
+  });
 
   document.querySelectorAll<HTMLButtonElement>("[data-save-sub]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -1187,8 +1301,14 @@ if (state.hasKsu) {
     state.hasKsu = false;
   }
 }
-render();
-refreshStatus();
-refreshApps(true);
-refreshSubscriptions(true);
-refreshCerts(true);
+async function bootstrap(): Promise<void> {
+  render();
+  await refreshStatus();
+  await refreshApps(true);
+  await refreshSubscriptions(true);
+  await refreshCerts(true);
+  await refreshCapture(true);
+  await refreshHealth(true);
+}
+
+void bootstrap();
