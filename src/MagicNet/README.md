@@ -168,18 +168,7 @@ su -c /data/adb/modules/MagicNet/cli config apply
 
 `service stop` 与 `service restart` 会先停止 watchdog / fswatch，避免手动停止后被立即拉回。通知依赖 Android `cmd notification`，部分 ROM 不保证横幅弹出，但通知会按 kamfw 的 shell 通知路径发送。
 
-节点和模式热切换走 Clash API，不需要重刷模块：
-
-```bash
-su -c /data/adb/modules/MagicNet/cli node list
-su -c /data/adb/modules/MagicNet/cli node current
-su -c /data/adb/modules/MagicNet/cli node delay
-su -c '/data/adb/modules/MagicNet/cli node delay "节点名"'
-su -c '/data/adb/modules/MagicNet/cli node use "节点名"'
-su -c /data/adb/modules/MagicNet/cli mode rule
-su -c /data/adb/modules/MagicNet/cli mode global
-su -c /data/adb/modules/MagicNet/cli mode direct
-```
+节点选择、代理模式、延迟测试等内核控制请直接使用 Meta Cube X、Yacd 或 zashboard。MagicNet WebUI 只负责模块生命周期、订阅、应用名单、抓包、证书、黑名单、拓扑和诊断，避免重复实现内核面板已有功能。
 
 自定义域名分流：
 
@@ -192,7 +181,7 @@ su -c '/data/adb/modules/MagicNet/cli route remove-domain proxy openai.com'
 su -c /data/adb/modules/MagicNet/cli route apply
 ```
 
-`cli route` 管理高优先级 `DOMAIN-SUFFIX` 规则，支持 `proxy`、`direct`、`block` 三类目标，并会同时写入 sing-box 与 mihomo 运行配置。WebUI 的“分流”页使用同一套 CLI。
+`cli route` 管理高优先级 `DOMAIN-SUFFIX` 规则，支持 `proxy`、`direct`、`block` 三类目标，并会同时写入 sing-box 与 mihomo 运行配置。该能力保留给 CLI、备份和自动化使用；MagicNet WebUI 不提供独立“分流”页，常规代理规则请在内核 WebUI 中管理。
 
 订阅、控制端、连接管理：
 
@@ -209,7 +198,11 @@ su -c /data/adb/modules/MagicNet/cli sub file mihomo
 su -c /data/adb/modules/MagicNet/cli api ui
 su -c /data/adb/modules/MagicNet/cli api stats
 su -c /data/adb/modules/MagicNet/cli api close-all
+su -c /data/adb/modules/MagicNet/cli webui status
+su -c '/data/adb/modules/MagicNet/cli webui install-local "https://example.com/panel.zip" "panel-name"'
 ```
+
+`cli webui install-local` 会下载 zip，查找其中的 `index.html`，安装到模块本地面板目录，并重新应用 sing-box/mihomo 的 WebUI 配置。安装失败会回滚旧本地面板。
 
 系统 CA 证书管理：
 

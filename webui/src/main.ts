@@ -2320,6 +2320,7 @@ function webuiConfigPanel(): string {
           <span>${panel.kind === "local" ? "本地面板" : "在线面板"}</span>
           <code>${escapeHtml(panel.kind === "local" ? panel.downloadUrl : panel.url)}</code>
         </div>
+        ${panel.kind === "local" ? `<button class="mini-button" data-install-webui="${escapeHtml(panel.id)}">${icon("DownloadCloud", 15)}安装</button>` : ""}
         <button class="mini-button" data-open-custom-webui="${escapeHtml(panel.id)}">${icon("ExternalLink", 15)}打开</button>
         <button class="mini-button" data-adapt-webui="${escapeHtml(panel.id)}">${icon("Github", 15)}申请</button>
         <button class="mini-button danger" data-remove-webui="${escapeHtml(panel.id)}">${icon("X", 15)}移除</button>
@@ -2332,7 +2333,7 @@ function webuiConfigPanel(): string {
       <div>
         <span class="eyebrow">Core WebUI Catalog</span>
         <h3>内核 WebUI 配置</h3>
-        <p>这里只管理内核 WebUI 入口和适配申请。在线面板填写入口 URL；本地面板填写下载 URL 和元数据，审核通过后可内置。</p>
+        <p>在线面板直接打开外部入口；本地面板会下载 zip、安装到模块目录，并复用当前 Clash API 入口。适配申请会用系统浏览器创建 GitHub Issue。</p>
       </div>
       <button class="command-secondary" data-adapt-webui>${icon("Github", 17)}申请适配新面板</button>
     </div>
@@ -3072,6 +3073,18 @@ function bindEvents(): void {
     button.addEventListener("click", () => {
       const id = button.dataset.openCustomWebui || "";
       if (id) void openCoreUiTarget(`custom:${id}`);
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-install-webui]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.installWebui || "";
+      const panel = state.webuiPanels.find((item) => item.id === id && item.kind === "local");
+      if (!panel) return;
+      await runCli(`webui install-local ${shellQuote(panel.downloadUrl)} ${shellQuote(panel.name)}`, { label: `安装 ${panel.name}` });
+      await refreshStatus(true);
+      state.output += `\n\n安装完成后请点“选择内核 WebUI”里的 zashboard / 本地入口查看。`;
+      render();
     });
   });
 

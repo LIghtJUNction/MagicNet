@@ -1810,6 +1810,138 @@ cli_api() {
     esac
 }
 
+cli_webui_install_name() {
+    _name="${1:-custom-panel}"
+    printf '%s\n' "$_name" |
+        sed 's/[^A-Za-z0-9_.-]/-/g; s/--*/-/g; s/^-//; s/-$//' |
+        sed 's/^$/custom-panel/'
+}
+
+cli_webui_find_index_dir() {
+    _root="$1"
+    if [ -f "${_root}/index.html" ]; then
+        printf '%s\n' "$_root"
+        unset _root
+        return 0
+    fi
+    if [ -f "${_root}/dist/index.html" ]; then
+        printf '%s\n' "${_root}/dist"
+        unset _root
+        return 0
+    fi
+    find "$_root" -maxdepth 3 -type f -name index.html 2>/dev/null |
+        sed 's#/index\.html$##' |
+        head -1
+    unset _root
+}
+
+cli_webui_install_local() {
+    _url="${1:-}"
+    _name="$(cli_webui_install_name "${2:-custom-panel}")"
+    [ -n "$_url" ] || { cli_error "Usage: cli webui install-local <download-url> [name]"; exit 1; }
+    case "$_url" in
+        http://*|https://*) ;;
+        *) cli_error "download URL must start with http:// or https://"; exit 1 ;;
+    esac
+    command -v curl >/dev/null 2>&1 || { cli_error "curl not found"; exit 1; }
+    command -v unzip >/dev/null 2>&1 || { cli_error "unzip not found"; exit 1; }
+
+    _work="${MODDIR}/.tmp/webui-install-${_name}-$$"
+    _archive="${_work}/panel.zip"
+    _extract="${_work}/extract"
+    _target="${MODDIR}/.config/sing-box/zashboard"
+    _backup="${MODDIR}/.tmp/zashboard.backup.$$"
+    rm -rf "$_work" "$_backup" 2>/dev/null || true
+    mkdir -p "$_extract" || { cli_error "failed to create temp dir"; exit 1; }
+
+    if ! curl -L --fail --connect-timeout 15 --max-time 180 -o "$_archive" "$_url"; then
+        rm -rf "$_work" "$_backup" 2>/dev/null || true
+        cli_error "failed to download WebUI archive"
+        exit 1
+    fi
+    if ! unzip -oq "$_archive" -d "$_extract"; then
+        rm -rf "$_work" "$_backup" 2>/dev/null || true
+        cli_error "downloaded archive is not a valid zip"
+        exit 1
+    fi
+    _source="$(cli_webui_find_index_dir "$_extract")"
+    [ -n "$_source" ] && [ -f "${_source}/index.html" ] || {
+        rm -rf "$_work" "$_backup" 2>/dev/null || true
+        cli_error "WebUI archive did not contain index.html"
+        exit 1
+    }
+
+    mkdir -p "${_target%/*}" || {
+        rm -rf "$_work" "$_backup" 2>/dev/null || true
+        cli_error "failed to create WebUI target dir"
+        exit 1
+    }
+    if [ -d "$_target" ]; then
+        mv "$_target" "$_backup" || {
+            rm -rf "$_work" "$_backup" 2>/dev/null || true
+            cli_error "failed to backup existing local WebUI"
+            exit 1
+        }
+    fi
+    mkdir -p "$_target" || {
+        [ -d "$_backup" ] && mv "$_backup" "$_target" 2>/dev/null || true
+        rm -rf "$_work" "$_backup" 2>/dev/null || true
+        cli_error "failed to create local WebUI target"
+        exit 1
+    }
+    if ! cp -a "${_source}/." "$_target/"; then
+        rm -rf "$_target" 2>/dev/null || true
+        [ -d "$_backup" ] && mv "$_backup" "$_target" 2>/dev/null || true
+        rm -rf "$_work" "$_backup" 2>/dev/null || true
+        cli_error "failed to install local WebUI"
+        exit 1
+    fi
+    [ -f "${_target}/index.html" ] || {
+        rm -rf "$_target" 2>/dev/null || true
+        [ -d "$_backup" ] && mv "$_backup" "$_target" 2>/dev/null || true
+        rm -rf "$_work" "$_backup" 2>/dev/null || true
+        cli_error "installed WebUI is missing index.html"
+        exit 1
+    }
+
+    printf '%s\n' "custom:${_name}" >"${MODDIR}/zashboard.version"
+    if magicnet_with_config_lock magicnet_apply_runtime_config_unlocked; then
+        rm -rf "$_work" "$_backup" 2>/dev/null || true
+        cli_info "Installed local WebUI '${_name}' to ${_target}"
+        cli_info "Open: ${MAGICNET_SINGBOX_WEBUI}"
+        unset _url _name _work _archive _extract _target _backup _source
+        return 0
+    fi
+    rm -rf "$_target" 2>/dev/null || true
+    [ -d "$_backup" ] && mv "$_backup" "$_target" 2>/dev/null || true
+    rm -rf "$_work" "$_backup" 2>/dev/null || true
+    cli_error "installed WebUI, but failed to apply runtime config; rolled back"
+    exit 1
+}
+
+cli_webui() {
+    case "${1:-status}" in
+        status)
+            printf 'local_dir=%s\n' "${MODDIR}/.config/sing-box/zashboard"
+            if [ -f "${MODDIR}/.config/sing-box/zashboard/index.html" ]; then
+                printf 'local_ready=1\n'
+            else
+                printf 'local_ready=0\n'
+            fi
+            printf 'sing-box=%s\n' "$MAGICNET_SINGBOX_WEBUI"
+            printf 'mihomo=%s\n' "$MAGICNET_MIHOMO_WEBUI"
+            printf 'version=%s\n' "$(sed -n '1p' "${MODDIR}/zashboard.version" 2>/dev/null || printf unknown)"
+            ;;
+        install-local)
+            cli_webui_install_local "${2:-}" "${3:-custom-panel}"
+            ;;
+        *)
+            cli_error "Usage: cli webui {status|install-local <download-url> [name]}"
+            exit 1
+            ;;
+    esac
+}
+
 cli_mcp_dir() {
     printf '%s\n' "${MODDIR}/.config/magicnet"
 }
@@ -2618,6 +2750,7 @@ Usage:
   cli capture {list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}
   cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}
   cli mcp {status|enable|disable|start|stop|restart}
+  cli webui {status|install-local <download-url> [name]}
   cli backup {export [password]|restore [password|-] <base64>}
   cli api {ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}
   cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}
@@ -2653,6 +2786,7 @@ case "${1:-help}" in
     capture) shift; cli_capture "$@" ;;
     block) shift; cli_block "$@" ;;
     mcp) shift; cli_mcp "$@" ;;
+    webui) shift; cli_webui "$@" ;;
     backup) shift; cli_backup "$@" ;;
     api) shift; cli_api "$@" ;;
     app) shift; cli_app "$@" ;;
