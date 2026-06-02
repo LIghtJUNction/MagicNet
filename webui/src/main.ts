@@ -73,6 +73,13 @@ type HealthItem = {
   detail: string;
 };
 
+type TrafficStats = {
+  connections: number;
+  upload: number;
+  download: number;
+  memory: number;
+};
+
 type PackageInfo = {
   packageName: string;
   versionName: string;
@@ -92,6 +99,7 @@ type State = {
   output: string;
   nodes: string[];
   currentNode: string;
+  traffic: TrafficStats;
   appPolicy: AppPolicy;
   subscriptions: {
     singBox: string;
@@ -139,6 +147,12 @@ const state: State = {
   output: "面板已加载。通过 KernelSU WebUI 打开时，按钮会直接执行模块 CLI。",
   nodes: [],
   currentNode: "",
+  traffic: {
+    connections: 0,
+    upload: 0,
+    download: 0,
+    memory: 0
+  },
   appPolicy: {
     mode: "blacklist",
     proxy: ["com.android.chrome", "org.telegram.messenger"],
@@ -425,6 +439,31 @@ async function switchNode(name: string): Promise<void> {
   await refreshNodes(true);
 }
 
+function parseTrafficStats(text: string): TrafficStats {
+  const next = { ...state.traffic };
+  for (const raw of text.split(/\r?\n/)) {
+    const [key, value] = raw.trim().split("=");
+    const number = Number.parseInt(value || "0", 10);
+    if (!Number.isFinite(number)) continue;
+    if (key === "connections") next.connections = number;
+    if (key === "upload") next.upload = number;
+    if (key === "download") next.download = number;
+    if (key === "memory") next.memory = number;
+  }
+  return next;
+}
+
+async function refreshTraffic(quiet = false): Promise<void> {
+  const text = await runCli("api stats", { quiet: true });
+  if (state.hasKsu && text) {
+    state.traffic = parseTrafficStats(text);
+    if (!quiet) {
+      state.output = `连接统计已刷新：${state.traffic.connections} 条连接。`;
+    }
+  }
+  render();
+}
+
 async function saveSetupSubscription(): Promise<void> {
   const url = state.setupUrl.trim();
   if (!/^https?:\/\/\S+$/i.test(url)) {
@@ -646,6 +685,56 @@ function nodePanel(): string {
         </div>
       </div>
       <div class="node-list">${nodeRows}</div>
+    </div>
+  `;
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let next = value;
+  let index = 0;
+  while (next >= 1024 && index < units.length - 1) {
+    next /= 1024;
+    index += 1;
+  }
+  return `${next >= 10 || index === 0 ? next.toFixed(0) : next.toFixed(1)} ${units[index]}`;
+}
+
+function trafficPanel(): string {
+  const items = [
+    { label: "连接", value: String(state.traffic.connections), iconName: "Activity" },
+    { label: "上行", value: formatBytes(state.traffic.upload), iconName: "Route" },
+    { label: "下行", value: formatBytes(state.traffic.download), iconName: "DownloadCloud" },
+    { label: "内存", value: formatBytes(state.traffic.memory), iconName: "Gauge" }
+  ];
+
+  return `
+    <div class="traffic-panel">
+      <div class="traffic-head">
+        <div>
+          <span class="eyebrow">Live Connections</span>
+          <h3>连接与流量</h3>
+          <p>从 Clash API 读取当前连接、上下行和内存占用。</p>
+        </div>
+        <div class="traffic-actions">
+          <button class="command-secondary" data-refresh-traffic ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}刷新</button>
+          <button class="command-secondary" data-run="api close-all" ${state.busy ? "disabled" : ""}>${icon("Unplug", 17)}清空连接</button>
+        </div>
+      </div>
+      <div class="traffic-grid">
+        ${items
+          .map(
+            (item) => `
+              <div class="traffic-card">
+                <span>${icon(item.iconName, 17)}</span>
+                <small>${item.label}</small>
+                <strong>${escapeHtml(item.value)}</strong>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
     </div>
   `;
 }
@@ -1073,6 +1162,7 @@ function render(): void {
                 .join("")}
             </div>
             ${nodePanel()}
+            ${trafficPanel()}
             <div class="mode-panel">
               <div>
                 <h3>代理模式</h3>
@@ -1221,6 +1311,8 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-node-use]").forEach((button) => {
     button.addEventListener("click", () => switchNode(button.dataset.nodeUse || ""));
   });
+
+  document.querySelector<HTMLButtonElement>("[data-refresh-traffic]")?.addEventListener("click", () => refreshTraffic());
 
   document.querySelector<HTMLFormElement>("[data-setup-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1435,6 +1527,7 @@ async function bootstrap(): Promise<void> {
   await refreshApps(true);
   await refreshSubscriptions(true);
   await refreshNodes(true);
+  await refreshTraffic(true);
   await refreshCerts(true);
   await refreshCapture(true);
   await refreshHealth(true);

@@ -629,12 +629,54 @@ cli_api() {
             ;;
         groups) cli_curl "${MAGICNET_API}/proxies" ;;
         conns) cli_curl "${MAGICNET_API}/connections" ;;
+        stats)
+            _json="$(cli_curl "${MAGICNET_API}/connections")" || exit 1
+            printf '%s\n' "$_json" |
+                awk '
+                    {
+                        text = $0
+                        count = 0
+                        upload = 0
+                        download = 0
+                        while (match(text, /"id"[[:space:]]*:/)) {
+                            count++
+                            text = substr(text, RSTART + RLENGTH)
+                        }
+                        text = $0
+                        while (match(text, /"upload"[[:space:]]*:[[:space:]]*[0-9]+/)) {
+                            item = substr(text, RSTART, RLENGTH)
+                            sub(/.*:/, "", item)
+                            upload += item + 0
+                            text = substr(text, RSTART + RLENGTH)
+                        }
+                        text = $0
+                        while (match(text, /"download"[[:space:]]*:[[:space:]]*[0-9]+/)) {
+                            item = substr(text, RSTART, RLENGTH)
+                            sub(/.*:/, "", item)
+                            download += item + 0
+                            text = substr(text, RSTART + RLENGTH)
+                        }
+                        memory = 0
+                        text = $0
+                        if (match(text, /"memory"[[:space:]]*:[[:space:]]*[0-9]+/)) {
+                            item = substr(text, RSTART, RLENGTH)
+                            sub(/.*:/, "", item)
+                            memory = item + 0
+                        }
+                        printf "connections=%d\n", count
+                        printf "upload=%d\n", upload
+                        printf "download=%d\n", download
+                        printf "memory=%d\n", memory
+                    }
+                '
+            unset _json
+            ;;
         close-all)
             cli_curl -X DELETE "${MAGICNET_API}/connections" >/dev/null
             cli_info "Closed all connections"
             ;;
         *)
-            cli_error "Usage: cli api {ui|groups|conns|close-all}"
+            cli_error "Usage: cli api {ui|groups|conns|stats|close-all}"
             exit 1
             ;;
     esac
@@ -974,7 +1016,7 @@ Usage:
   cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
   cli cert {list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}
   cli capture {list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}
-  cli api {ui|groups|conns|close-all}
+  cli api {ui|groups|conns|stats|close-all}
   cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}
   cli hotspot reload
   cli vpn reload
