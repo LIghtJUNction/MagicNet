@@ -95,6 +95,7 @@ type State = {
     singBox: string;
     mihomo: string;
   };
+  setupUrl: string;
   certs: string[];
   certName: string;
   certText: string;
@@ -143,6 +144,7 @@ const state: State = {
     singBox: "",
     mihomo: ""
   },
+  setupUrl: "",
   certs: [],
   certName: "magicnet-ca",
   certText: "",
@@ -395,6 +397,22 @@ async function refreshSubscriptions(quiet = false): Promise<void> {
     state.subscriptions = parseSubscriptions(text);
   }
   render();
+}
+
+async function saveSetupSubscription(): Promise<void> {
+  const url = state.setupUrl.trim();
+  if (!/^https?:\/\/\S+$/i.test(url)) {
+    state.output = "订阅链接格式不对，必须是 http(s) URL。";
+    render();
+    return;
+  }
+  await runCli(`sub set sing-box ${shellQuote(url)}`);
+  await runCli(`sub set mihomo ${shellQuote(url)}`);
+  await runCli("sub update-all");
+  await runCli("repair");
+  state.setupUrl = "";
+  await refreshSubscriptions(true);
+  await refreshHealth(true);
 }
 
 function parseCapture(text: string): State["capture"] {
@@ -854,6 +872,26 @@ function commandDeck(): string {
   `;
 }
 
+function setupPanel(): string {
+  const hasAnySub = Boolean(state.subscriptions.singBox || state.subscriptions.mihomo);
+  return `
+    <section class="setup-panel ${hasAnySub ? "compact" : ""}">
+      <div class="setup-copy">
+        <span class="eyebrow">${hasAnySub ? "Quick Setup" : "First Run"}</span>
+        <h3>${hasAnySub ? "快速替换订阅" : "粘贴订阅，自动完成初始配置"}</h3>
+        <p>${hasAnySub ? "同时写入 sing-box 和 mihomo，更新订阅后执行自修复。适合节点失效、换机场、重装模块后的快速恢复。" : "第一次用不需要理解配置文件路径。粘贴 Clash / sing-box 订阅链接后，MagicNet 会保存到双内核、更新节点、重载规则并跑健康检查。"}</p>
+      </div>
+      <form class="setup-form" data-setup-form>
+        <label>
+          <span>订阅 URL</span>
+          <input value="${escapeHtml(state.setupUrl)}" placeholder="https://example.com/sub" spellcheck="false" autocomplete="off" />
+        </label>
+        <button type="submit" ${state.busy ? "disabled" : ""}>${icon("Zap", 17)}保存并启用</button>
+      </form>
+    </section>
+  `;
+}
+
 function overviewPanel(): string {
   const bridgeText = state.hasKsu ? "可直接执行模块命令" : "本地预览，只展示界面";
   const headline = state.runtime.core === "stopped"
@@ -884,6 +922,7 @@ function overviewPanel(): string {
         </div>
       </div>
     </section>
+    ${setupPanel()}
   `;
 }
 
@@ -1118,6 +1157,13 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-scan-packages]")?.addEventListener("click", scanUserPackages);
 
   document.querySelector<HTMLButtonElement>("[data-refresh-subs]")?.addEventListener("click", () => refreshSubscriptions());
+
+  document.querySelector<HTMLFormElement>("[data-setup-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = event.currentTarget.querySelector<HTMLInputElement>("input");
+    state.setupUrl = input?.value || "";
+    await saveSetupSubscription();
+  });
 
   document.querySelectorAll<HTMLButtonElement>("[data-health-run]").forEach((button) => {
     button.addEventListener("click", () => refreshHealth());

@@ -354,6 +354,97 @@ code {
   color: var(--ink);
 }
 
+.setup-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.72fr);
+  align-items: end;
+  gap: 18px;
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid rgba(132, 199, 255, 0.26);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(132, 199, 255, 0.12), rgba(98, 243, 169, 0.08) 58%, transparent),
+    #0c1110;
+}
+
+.setup-panel.compact {
+  border-color: rgba(215, 208, 188, 0.16);
+  background:
+    linear-gradient(90deg, rgba(215, 208, 188, 0.08), rgba(98, 243, 169, 0.06), transparent),
+    #0c1110;
+}
+
+.setup-copy {
+  min-width: 0;
+}
+
+.setup-panel h3 {
+  font-size: 21px;
+  line-height: 1.2;
+}
+
+.setup-panel p {
+  max-width: 820px;
+  margin-top: 8px;
+  color: #c2ccc6;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.setup-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.setup-form label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.setup-form label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.setup-form input {
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #070a09;
+  color: var(--ink);
+  outline: none;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.setup-form input:focus {
+  border-color: var(--green);
+}
+
+.setup-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid rgba(93, 240, 166, 0.42);
+  border-radius: 8px;
+  padding: 0 14px;
+  background: var(--green);
+  color: #07100c;
+  cursor: pointer;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .overview-side {
   display: grid;
   gap: 12px;
@@ -1217,7 +1308,8 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .overview {
+  .overview,
+  .setup-panel {
     grid-template-columns: 1fr;
   }
 
@@ -1271,7 +1363,8 @@ button:disabled {
   .refresh,
   .segmented,
   .command-primary,
-  .command-secondary {
+  .command-secondary,
+  .setup-form button {
     width: 100%;
   }
 
@@ -1289,6 +1382,7 @@ button:disabled {
   }
 
   .command-deck,
+  .setup-form,
   .health-grid,
   .health-summary {
     grid-template-columns: 1fr;
