@@ -1,19 +1,26 @@
 import {
+  Activity,
   Ban,
+  Bell,
   Copy,
   DownloadCloud,
   ExternalLink,
   FileText,
   Gauge,
   Github,
+  Link,
   ListFilter,
+  Lock,
   Plus,
+  RadioTower,
   RefreshCw,
   RotateCcw,
   Route,
   Save,
+  Server,
   ShieldCheck,
   ShieldPlus,
+  Smartphone,
   Stethoscope,
   Terminal,
   TerminalSquare,
@@ -49,6 +56,17 @@ type AppPolicy = {
   bypass: string[];
 };
 
+type RuntimeState = {
+  core: "sing-box" | "mihomo" | "stopped" | "unknown";
+  singBox: string;
+  mihomo: string;
+  watchdog: string;
+  fswatch: string;
+  api: string;
+  webui: string;
+  subPath: string;
+};
+
 type PackageInfo = {
   packageName: string;
   versionName: string;
@@ -63,6 +81,7 @@ type State = {
   busy: boolean;
   status: "checking" | "online" | "offline" | "local";
   statusText: string;
+  runtime: RuntimeState;
   lastCommand: string;
   output: string;
   appPolicy: AppPolicy;
@@ -96,6 +115,16 @@ const state: State = {
   busy: false,
   status: "checking",
   statusText: "检测执行通道",
+  runtime: {
+    core: "unknown",
+    singBox: "unknown",
+    mihomo: "unknown",
+    watchdog: "unknown",
+    fswatch: "unknown",
+    api: "http://127.0.0.1:9090",
+    webui: CORE_UI,
+    subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`
+  },
   lastCommand: "",
   output: "面板已加载。通过 KernelSU WebUI 打开时，按钮会直接执行模块 CLI。",
   appPolicy: {
@@ -144,21 +173,28 @@ const quickModes = [
 ];
 
 const iconMap: Record<string, IconNode> = {
+  Activity,
   Ban,
+  Bell,
   Copy,
   DownloadCloud,
   ExternalLink,
   FileText,
   Gauge,
   Github,
+  Link,
   ListFilter,
+  Lock,
   Plus,
+  RadioTower,
   RefreshCw,
   RotateCcw,
   Route,
   Save,
+  Server,
   ShieldCheck,
   ShieldPlus,
+  Smartphone,
   Stethoscope,
   Terminal,
   TerminalSquare,
@@ -270,6 +306,40 @@ function parseAppPolicy(text: string): AppPolicy {
   return policy;
 }
 
+function parseRuntimeStatus(text: string): RuntimeState {
+  const next: RuntimeState = {
+    core: "unknown",
+    singBox: "unknown",
+    mihomo: "unknown",
+    watchdog: "unknown",
+    fswatch: "unknown",
+    api: state.runtime.api,
+    webui: state.runtime.webui,
+    subPath: state.runtime.subPath
+  };
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("sing-box:")) next.singBox = line.slice("sing-box:".length).trim() || "stopped";
+    if (line.startsWith("mihomo:")) next.mihomo = line.slice("mihomo:".length).trim() || "stopped";
+    if (line.startsWith("watchdog:")) next.watchdog = line.slice("watchdog:".length).trim() || "stopped";
+    if (line.startsWith("fswatch:")) next.fswatch = line.slice("fswatch:".length).trim() || "stopped";
+    if (line.startsWith("API:")) next.api = line.slice("API:".length).trim();
+    if (line.startsWith("WebUI:")) next.webui = line.slice("WebUI:".length).trim();
+    if (line.startsWith("Sub URL:")) next.subPath = line.slice("Sub URL:".length).trim();
+  }
+
+  if (next.singBox !== "stopped" && next.singBox !== "unknown") {
+    next.core = "sing-box";
+  } else if (next.mihomo !== "stopped" && next.mihomo !== "unknown") {
+    next.core = "mihomo";
+  } else if (next.singBox === "stopped" && next.mihomo === "stopped") {
+    next.core = "stopped";
+  }
+
+  return next;
+}
+
 async function refreshStatus(): Promise<void> {
   if (!state.hasKsu) {
     state.status = "local";
@@ -283,9 +353,10 @@ async function refreshStatus(): Promise<void> {
   render();
 
   const text = await runCli("service status", { quiet: true });
-  const bothStopped = text.includes("sing-box: stopped") && text.includes("mihomo:   stopped");
+  state.runtime = parseRuntimeStatus(text);
+  const bothStopped = state.runtime.core === "stopped";
   state.status = bothStopped ? "offline" : "online";
-  state.statusText = bothStopped ? "TUN 未运行" : "TUN 在线";
+  state.statusText = bothStopped ? "TUN 未运行" : `${state.runtime.core} 在线`;
   state.output = `$ su -c ${CLI} service status\n${text}`;
   render();
 }
@@ -629,6 +700,75 @@ function packagePicker(): string {
     .join("");
 }
 
+function healthPill(label: string, value: string, iconName: string): string {
+  const online = value !== "stopped" && value !== "unknown" && value !== "";
+  return `
+    <div class="health-pill ${online ? "ok" : "warn"}">
+      <span>${icon(iconName, 17)}</span>
+      <div>
+        <small>${label}</small>
+        <strong>${escapeHtml(value || "unknown")}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function commandDeck(): string {
+  return `
+    <div class="command-deck">
+      <button class="command-primary" data-run="service restart" ${state.busy ? "disabled" : ""}>
+        ${icon("RotateCcw", 20)}
+        <span>重启 TUN 内核</span>
+      </button>
+      <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>
+        ${icon("DownloadCloud", 18)}
+        <span>更新订阅</span>
+      </button>
+      <button class="command-secondary" data-action="refresh-all" ${state.busy ? "disabled" : ""}>
+        ${icon("RefreshCw", 18)}
+        <span>刷新状态</span>
+      </button>
+      <a class="command-secondary" href="${state.runtime.webui || CORE_UI}" target="_blank" rel="noreferrer">
+        ${icon("ExternalLink", 18)}
+        <span>内核 WebUI</span>
+      </a>
+    </div>
+  `;
+}
+
+function overviewPanel(): string {
+  const bridgeText = state.hasKsu ? "可直接执行模块命令" : "本地预览，只展示界面";
+  const headline = state.runtime.core === "stopped"
+    ? "TUN 已停止，点一下就能拉起。"
+    : `${state.runtime.core === "unknown" ? "MagicNet" : state.runtime.core} 正在接管系统流量。`;
+
+  return `
+    <section class="overview">
+      <div class="overview-main">
+        <span class="eyebrow">Transparent TUN Control</span>
+        <h2>${headline}</h2>
+        <p>${bridgeText}。默认只走 TUN，不做 TUN 之外 fallback；核心 WebUI、订阅、抓包、证书和分应用策略集中在这个面板。</p>
+        ${commandDeck()}
+      </div>
+      <div class="overview-side">
+        <div class="signal-card">
+          <span class="${`status-dot ${state.status}`}"></span>
+          <div>
+            <small>当前状态</small>
+            <strong>${escapeHtml(state.statusText)}</strong>
+          </div>
+        </div>
+        <div class="health-grid">
+          ${healthPill("sing-box", state.runtime.singBox, "Server")}
+          ${healthPill("mihomo", state.runtime.mihomo, "Route")}
+          ${healthPill("watchdog", state.runtime.watchdog, "Bell")}
+          ${healthPill("fswatch", state.runtime.fswatch, "Activity")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 async function scanUserPackages(): Promise<void> {
   if (!state.hasKsu) {
     state.output = "应用扫描需要从 KernelSU/APatch 管理器的 WebUI 打开。";
@@ -657,7 +797,6 @@ function render(): void {
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
 
-  const statusClass = `status-dot ${state.status}`;
   const tab = state.activeTab;
 
   app.innerHTML = `
@@ -667,19 +806,19 @@ function render(): void {
           <div class="logo">${icon("Zap", 24)}</div>
           <div>
             <h1>MagicNet</h1>
-            <p>TUN-first root network control</p>
+            <p>Android transparent TUN console</p>
           </div>
         </div>
         <div class="top-actions">
           <a class="ghost-link" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 16)}GitHub</a>
-          <a class="primary-link" href="${CORE_UI}" target="_blank" rel="noreferrer">${icon("ExternalLink", 16)}内核 WebUI</a>
+          <a class="primary-link" href="${state.runtime.webui || CORE_UI}" target="_blank" rel="noreferrer">${icon("ExternalLink", 16)}内核 WebUI</a>
         </div>
       </header>
 
       <main class="layout">
         <aside class="rail">
           <div class="status-card">
-            <span class="${statusClass}"></span>
+            <span class="${`status-dot ${state.status}`}"></span>
             <div>
               <strong>${state.statusText}</strong>
               <small>${state.hasKsu ? "KernelSU exec 已接入" : "等待 KernelSU WebView"}</small>
@@ -697,20 +836,12 @@ function render(): void {
             <span>Module</span>
             <code>${MODULE_DIR}</code>
             <span>Control</span>
-            <code>127.0.0.1:9090</code>
+            <code>${escapeHtml(state.runtime.api.replace(/^https?:\/\//, ""))}</code>
           </div>
         </aside>
 
         <section class="workspace">
-          <div class="hero-strip">
-            <div>
-              <span class="eyebrow">MagicNet TUN</span>
-              <h2>模块面板按需启动，入口集中在这里。</h2>
-            </div>
-            <button class="refresh" data-action="refresh-all" ${state.busy ? "disabled" : ""}>
-              ${icon("RefreshCw", 17)}刷新
-            </button>
-          </div>
+          ${overviewPanel()}
 
           <div class="tab-panel ${tab === "control" ? "show" : ""}">
             <div class="action-grid">

@@ -1,0 +1,126 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e7]
+      - generic [ref=e9]:
+        - heading "MagicNet" [level=1] [ref=e10]
+        - paragraph [ref=e11]: Android transparent TUN console
+    - generic [ref=e12]:
+      - link "GitHub" [ref=e13] [cursor=pointer]:
+        - /url: https://github.com/LIghtJUNction/MagicNet
+        - img [ref=e14]
+        - text: GitHub
+      - link "内核 WebUI" [ref=e17] [cursor=pointer]:
+        - /url: http://127.0.0.1:9090/ui/zashboard/#/setup?hostname=127.0.0.1&port=9090
+        - img [ref=e18]
+        - text: 内核 WebUI
+  - main [ref=e22]:
+    - complementary [ref=e23]:
+      - generic [ref=e26]:
+        - strong [ref=e27]: 本地预览
+        - generic [ref=e28]: 等待 KernelSU WebView
+      - navigation [ref=e29]:
+        - button "控制" [ref=e30] [cursor=pointer]:
+          - img [ref=e31]
+          - text: 控制
+        - button "应用名单" [ref=e34] [cursor=pointer]:
+          - img [ref=e35]
+          - text: 应用名单
+        - button "订阅" [ref=e36] [cursor=pointer]:
+          - img [ref=e37]
+          - text: 订阅
+        - button "抓包" [ref=e41] [cursor=pointer]:
+          - img [ref=e42]
+          - text: 抓包
+        - button "证书" [ref=e45] [cursor=pointer]:
+          - img [ref=e46]
+          - text: 证书
+        - button "输出" [ref=e48] [cursor=pointer]:
+          - img [ref=e49]
+          - text: 输出
+    - generic [ref=e51]:
+      - generic [ref=e52]:
+        - generic [ref=e53]:
+          - generic [ref=e54]: Transparent TUN Control
+          - heading "MagicNet 正在接管系统流量。" [level=2] [ref=e55]
+          - paragraph [ref=e56]: 本地预览，只展示界面。默认只走 TUN，不做 TUN 之外 fallback；核心 WebUI、订阅、抓包、证书和分应用策略集中在这个面板。
+          - generic [ref=e57]:
+            - button "重启 TUN 内核" [ref=e58] [cursor=pointer]:
+              - img [ref=e59]
+              - generic [ref=e62]: 重启 TUN 内核
+            - button "更新订阅" [ref=e63] [cursor=pointer]:
+              - img [ref=e64]
+              - generic [ref=e68]: 更新订阅
+            - button "刷新状态" [ref=e69] [cursor=pointer]:
+              - img [ref=e70]
+              - generic [ref=e75]: 刷新状态
+            - link "内核 WebUI" [ref=e76] [cursor=pointer]:
+              - /url: http://127.0.0.1:9090/ui/zashboard/#/setup?hostname=127.0.0.1&port=9090
+              - img [ref=e77]
+              - generic [ref=e81]: 内核 WebUI
+        - generic [ref=e82]:
+          - generic [ref=e85]:
+            - generic [ref=e86]: 当前状态
+            - strong [ref=e87]: 本地预览
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - img [ref=e91]
+              - generic [ref=e94]:
+                - generic [ref=e95]: sing-box
+                - strong [ref=e96]: unknown
+            - generic [ref=e97]:
+              - img [ref=e99]
+              - generic [ref=e103]:
+                - generic [ref=e104]: mihomo
+                - strong [ref=e105]: unknown
+            - generic [ref=e106]:
+              - img [ref=e108]
+              - generic [ref=e111]:
+                - generic [ref=e112]: watchdog
+                - strong [ref=e113]: unknown
+            - generic [ref=e114]:
+              - img [ref=e116]
+              - generic [ref=e118]:
+                - generic [ref=e119]: fswatch
+                - strong [ref=e120]: unknown
+      - generic [ref=e121]:
+        - generic [ref=e122]:
+          - button "刷新状态 读取进程与 API" [ref=e123] [cursor=pointer]:
+            - img [ref=e125]
+            - strong [ref=e130]: 刷新状态
+            - generic [ref=e131]: 读取进程与 API
+          - button "重启 TUN 重新拉起内核" [ref=e132] [cursor=pointer]:
+            - img [ref=e134]
+            - strong [ref=e137]: 重启 TUN
+            - generic [ref=e138]: 重新拉起内核
+          - button "更新订阅 更新全部订阅" [ref=e139] [cursor=pointer]:
+            - img [ref=e141]
+            - strong [ref=e145]: 更新订阅
+            - generic [ref=e146]: 更新全部订阅
+          - button "清空连接 关闭旧连接" [ref=e147] [cursor=pointer]:
+            - img [ref=e149]
+            - strong [ref=e156]: 清空连接
+            - generic [ref=e157]: 关闭旧连接
+          - button "重载热点 应用转发规则" [ref=e158] [cursor=pointer]:
+            - img [ref=e160]
+            - strong [ref=e164]: 重载热点
+            - generic [ref=e165]: 应用转发规则
+          - button "VPN 共存 重载共存规则" [ref=e166] [cursor=pointer]:
+            - img [ref=e168]
+            - strong [ref=e171]: VPN 共存
+            - generic [ref=e172]: 重载共存规则
+        - generic [ref=e173]:
+          - generic [ref=e174]:
+            - heading "代理模式" [level=3] [ref=e175]
+            - paragraph [ref=e176]: 仅切换内核策略，网络入口保持 TUN。
+          - generic [ref=e177]:
+            - button "规则" [ref=e178] [cursor=pointer]
+            - button "全局" [ref=e179] [cursor=pointer]
+            - button "直连" [ref=e180] [cursor=pointer]
+      - generic [ref=e181]:
+        - generic [ref=e182]:
+          - generic [ref=e183]:
+            - img [ref=e184]
+            - text: 最近输出
+          - code [ref=e187]: su -c '/data/adb/modules/MagicNet/cli cert list'
+        - generic [ref=e188]: 面板已加载。通过 KernelSU WebUI 打开时，按钮会直接执行模块 CLI。
