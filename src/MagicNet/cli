@@ -622,19 +622,41 @@ cli_route_remove_from_file() {
 cli_route_apply_or_rollback_add() {
     _file="$1"
     _value="$2"
-    magicnet_route_apply && return 0
+    magicnet_route_apply_unlocked && return 0
     cli_route_remove_from_file "$_file" "$_value"
-    magicnet_route_apply >/dev/null 2>&1 || true
+    magicnet_route_apply_unlocked >/dev/null 2>&1 || true
     return 1
 }
 
 cli_route_apply_or_rollback_remove() {
     _file="$1"
     _value="$2"
-    magicnet_route_apply && return 0
+    magicnet_route_apply_unlocked && return 0
     cli_route_add_to_file "$_file" "$_value"
-    magicnet_route_apply >/dev/null 2>&1 || true
+    magicnet_route_apply_unlocked >/dev/null 2>&1 || true
     return 1
+}
+
+cli_route_add_locked() {
+    _target="$1"
+    _domain="$2"
+    _route_file="$(cli_route_file "$_target")"
+    cli_route_add_to_file "$_route_file" "$_domain"
+    cli_route_apply_or_rollback_add "$_route_file" "$_domain"
+    _route_rc=$?
+    unset _route_file
+    return "$_route_rc"
+}
+
+cli_route_remove_locked() {
+    _target="$1"
+    _domain="$2"
+    _route_file="$(cli_route_file "$_target")"
+    cli_route_remove_from_file "$_route_file" "$_domain"
+    cli_route_apply_or_rollback_remove "$_route_file" "$_domain"
+    _route_rc=$?
+    unset _route_file
+    return "$_route_rc"
 }
 
 cli_route_print() {
@@ -664,26 +686,22 @@ cli_route() {
             _domain="${3:-}"
             cli_route_valid_target "$_target" || { cli_error "Usage: cli route add-domain <proxy|direct|block> <domain-suffix>"; exit 1; }
             cli_route_valid_domain_suffix "$_domain" || { cli_error "domain suffix format is invalid"; exit 1; }
-            _route_file="$(cli_route_file "$_target")"
-            cli_route_add_to_file "$_route_file" "$_domain"
             _route_msg_target="$_target"
             _route_msg_domain="$_domain"
-            cli_route_apply_or_rollback_add "$_route_file" "$_domain" || { cli_error "failed to apply route rule; change rolled back"; exit 1; }
+            magicnet_with_config_lock cli_route_add_locked "$_target" "$_domain" || { cli_error "failed to apply route rule; change rolled back"; exit 1; }
             cli_info "Added $_route_msg_target domain suffix rule: $_route_msg_domain"
-            unset _route_file _route_msg_target _route_msg_domain
+            unset _route_msg_target _route_msg_domain
             ;;
         remove-domain)
             _target="${2:-}"
             _domain="${3:-}"
             cli_route_valid_target "$_target" || { cli_error "Usage: cli route remove-domain <proxy|direct|block> <domain-suffix>"; exit 1; }
             [ -n "$_domain" ] || { cli_error "Usage: cli route remove-domain <proxy|direct|block> <domain-suffix>"; exit 1; }
-            _route_file="$(cli_route_file "$_target")"
-            cli_route_remove_from_file "$_route_file" "$_domain"
             _route_msg_target="$_target"
             _route_msg_domain="$_domain"
-            cli_route_apply_or_rollback_remove "$_route_file" "$_domain" || { cli_error "failed to apply route rule; change rolled back"; exit 1; }
+            magicnet_with_config_lock cli_route_remove_locked "$_target" "$_domain" || { cli_error "failed to apply route rule; change rolled back"; exit 1; }
             cli_info "Removed $_route_msg_target domain suffix rule: $_route_msg_domain"
-            unset _route_file _route_msg_target _route_msg_domain
+            unset _route_msg_target _route_msg_domain
             ;;
         apply)
             magicnet_route_apply

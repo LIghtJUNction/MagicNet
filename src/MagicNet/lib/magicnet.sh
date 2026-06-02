@@ -788,9 +788,11 @@ magicnet_route_apply_mihomo() {
     [ -f "$_config" ] || return 0
     _tmp="${_config}.magicnet-route.new"
     _rules_file="${MODDIR}/.tmp/magicnet-route-mihomo.rules"
+    _has_route_rules=0
     mkdir -p "${_rules_file%/*}"
     magicnet_route_mihomo_rules >"$_rules_file"
-    if awk -v rules_file="$_rules_file" '
+    [ -s "$_rules_file" ] && _has_route_rules=1
+    if awk -v rules_file="$_rules_file" -v has_rules="$_has_route_rules" '
         BEGIN {
             skip = 0
             inserted = 0
@@ -807,7 +809,7 @@ magicnet_route_apply_mihomo() {
         }
         {
             print
-            if (!inserted && $0 ~ /^rules:[[:space:]]*$/) {
+            if (has_rules == "1" && !inserted && $0 ~ /^rules:[[:space:]]*$/) {
                 print "  # MAGICNET_ROUTE_START"
                 while ((getline rule_line < rules_file) > 0) {
                     print rule_line
@@ -821,19 +823,23 @@ magicnet_route_apply_mihomo() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
+        unset _has_route_rules
         return 1
     fi
     if magicnet_route_has_rules; then
         grep -q '^[[:space:]]*# MAGICNET_ROUTE_START' "$_config" || {
             magicnet_warn "mihomo custom route rules were not inserted"
+            unset _has_route_rules
             return 1
         }
     else
         if grep -q '^[[:space:]]*# MAGICNET_ROUTE_START' "$_config"; then
             magicnet_warn "mihomo custom route marker was not removed"
+            unset _has_route_rules
             return 1
         fi
     fi
+    unset _has_route_rules
 }
 
 magicnet_route_apply_singbox() {
@@ -933,8 +939,10 @@ magicnet_route_apply_singbox() {
 }
 
 magicnet_route_apply_unlocked() {
-    magicnet_route_apply_mihomo
-    magicnet_route_apply_singbox
+    _route_rc=0
+    magicnet_route_apply_mihomo || _route_rc=1
+    magicnet_route_apply_singbox || _route_rc=1
+    return "$_route_rc"
 }
 
 magicnet_route_apply() {
@@ -942,12 +950,14 @@ magicnet_route_apply() {
 }
 
 magicnet_apply_runtime_config_unlocked() {
+    _runtime_rc=0
     magicnet_singbox_apply_zashboard
     magicnet_singbox_apply_app_policy
-    magicnet_route_apply_unlocked
-    magicnet_capture_apply
-    magicnet_enable_hotspot_forward
-    magicnet_enable_vpn_coexist
+    magicnet_route_apply_unlocked || _runtime_rc=1
+    magicnet_capture_apply || _runtime_rc=1
+    magicnet_enable_hotspot_forward || true
+    magicnet_enable_vpn_coexist || true
+    return "$_runtime_rc"
 }
 
 magicnet_apply_runtime_config() {
