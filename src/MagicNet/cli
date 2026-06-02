@@ -8,6 +8,227 @@ if [ -z "${MODDIR:-}" ]; then
     esac
 fi
 
+MAGICNET_API="${MAGICNET_API:-http://127.0.0.1:9090}"
+MAGICNET_MIHOMO_WEBUI="${MAGICNET_MIHOMO_WEBUI:-${MAGICNET_API}/ui/cubex/}"
+MAGICNET_SINGBOX_WEBUI="${MAGICNET_SINGBOX_WEBUI:-${MAGICNET_API}/ui/#/setup?hostname=127.0.0.1&port=9090}"
+MAGICNET_GROUP="${MAGICNET_GROUP:-}"
+MAGICNET_LOG_DIR="${MODDIR}/.log"
+
+cli_fast_node_list() {
+    _limit="${MAGICNET_NODE_LIST_LIMIT:-48}"
+    case "$_limit" in
+        ''|*[!0-9]*) _limit=48 ;;
+    esac
+    _cache="${MODDIR}/.tmp/magicnet-node-list.cache"
+    _dir="${MODDIR}/.config/mihomo/proxies"
+    if [ "${MAGICNET_NODE_CACHE:-1}" != "0" ] && [ -s "$_cache" ]; then
+        cat "$_cache"
+        unset _limit _cache _dir
+        return 0
+    fi
+    [ -d "$_dir" ] || {
+        unset _limit _cache _dir
+        return 1
+    }
+    mkdir -p "${_cache%/*}"
+    awk -v limit="$_limit" '
+        /^[[:space:]]*-[[:space:]]*name:[[:space:]]*/ {
+            name = $0
+            sub(/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/, "", name)
+            gsub(/^[[:space:]]*"/, "", name)
+            gsub(/"[[:space:]]*$/, "", name)
+            gsub(/^[[:space:]]*/, "", name)
+            gsub(/[[:space:]]*$/, "", name)
+            if (name == "" || seen[name]++) next
+            if (name == "DIRECT" || name == "REJECT" || name == "REJECT-DROP" || name == "PASS" || name == "COMPATIBLE") next
+            if (name == "GLOBAL" || name == "Global" || name == "global") next
+            if (name ~ /选择|策略|Selector|selector|URLTest|urltest|Fallback|fallback/) next
+            print name
+            count++
+            if (limit > 0 && count >= limit) exit
+        }
+    ' "$_dir"/*.yaml >"$_cache" 2>/dev/null
+    if [ -s "$_cache" ]; then
+        cat "$_cache"
+        unset _limit _cache _dir
+        return 0
+    fi
+    rm -f "$_cache"
+    unset _limit _cache _dir
+    return 1
+}
+
+cli_fast_first_line() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d; q' "$_file"
+}
+
+cli_fast_sub_list() {
+    printf 'sing-box=%s\n' "$(cli_fast_first_line "${MODDIR}/.config/sing-box/subscription.url")"
+    printf 'mihomo=%s\n' "$(cli_fast_first_line "${MODDIR}/.config/mihomo/subscription.url")"
+}
+
+cli_fast_pid_summary() {
+    _name="$1"
+    if command -v pidof >/dev/null 2>&1; then
+        _pids="$(pidof "$_name" 2>/dev/null | tr ' ' '\n' | sed '/^[[:space:]]*$/d')"
+        if [ -n "$_pids" ]; then
+            printf '%s\n' "$_pids" | paste -sd ',' -
+            unset _name _pids
+            return 0
+        fi
+    fi
+    for _comm in /proc/[0-9]*/comm; do
+        [ -r "$_comm" ] || continue
+        [ "$(cat "$_comm" 2>/dev/null)" = "$_name" ] || continue
+        _pid=${_comm#/proc/}
+        printf '%s\n' "${_pid%/comm}"
+    done | paste -sd ',' -
+    unset _name _pids _comm _pid
+}
+
+cli_fast_service_status() {
+    _singbox="$(cli_fast_pid_summary sing-box)"
+    _mihomo="$(cli_fast_pid_summary mihomo)"
+    _watchdog="$(cli_fast_pid_summary watchdog)"
+    _fswatch="$(cli_fast_pid_summary fswatch)"
+    printf 'MagicNet\n'
+    printf '  sing-box: %s\n' "${_singbox:-stopped}"
+    printf '  mihomo:   %s\n' "${_mihomo:-stopped}"
+    printf '  watchdog: %s\n' "${_watchdog:-stopped}"
+    printf '  fswatch:  %s\n' "${_fswatch:-stopped}"
+    printf '  API:      %s\n' "${MAGICNET_API:-http://127.0.0.1:9090}"
+    printf '  WebUI:    %s\n' "${MAGICNET_MIHOMO_WEBUI:-${MAGICNET_API:-http://127.0.0.1:9090}/ui/cubex/}"
+    printf '  Sub URL:  %s\n' "${MODDIR}/.config/sing-box/subscription.url"
+    unset _singbox _mihomo _watchdog _fswatch
+}
+
+cli_fast_list_file() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file"
+}
+
+cli_fast_route_list() {
+    for _target in proxy direct block; do
+        printf '%s domain suffixes:\n' "$_target"
+        cli_fast_list_file "${MODDIR}/.config/magicnet/route-${_target}-domain-suffix.list" | sed 's/^/  /'
+    done
+    unset _target
+}
+
+cli_fast_capture_list() {
+    _conf="${MODDIR}/.config/magicnet/capture.conf"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    printf 'enabled=%s\n' "${MAGICNET_CAPTURE_ENABLED:-0}"
+    printf 'host=%s\n' "${MAGICNET_CAPTURE_HOST:-192.168.1.100}"
+    printf 'port=%s\n' "${MAGICNET_CAPTURE_PORT:-8888}"
+    printf 'name=%s\n' "${MAGICNET_CAPTURE_NAME:-MagicNet-Capture}"
+    printf 'apps:\n'
+    cli_fast_list_file "${MODDIR}/.config/magicnet/capture-app.list" | sed 's/^/  /'
+    printf 'domain suffixes:\n'
+    cli_fast_list_file "${MODDIR}/.config/magicnet/capture-domain-suffix.list" | sed 's/^/  /'
+    unset _conf
+}
+
+cli_fast_cert_list() {
+    _cert_dir="${MODDIR}/system/etc/security/cacerts"
+    printf 'dir=%s\n' "$_cert_dir"
+    [ -d "$_cert_dir" ] || {
+        unset _cert_dir
+        return 0
+    }
+    for _cert in "$_cert_dir"/*; do
+        [ -f "$_cert" ] || continue
+        printf '%s\n' "${_cert##*/}"
+    done
+    unset _cert_dir _cert
+}
+
+cli_fast_app_list() {
+    _dir="${MODDIR}/.config/magicnet"
+    _mode="blacklist"
+    if [ -f "${_dir}/app-mode.conf" ]; then
+        . "${_dir}/app-mode.conf"
+        _mode="${MAGICNET_APP_MODE:-blacklist}"
+    fi
+    printf 'mode=%s\n' "$_mode"
+    printf 'proxy apps:\n'
+    cli_fast_list_file "${_dir}/app-proxy.list" | sed 's/^/  /'
+    printf 'bypass apps:\n'
+    cli_fast_list_file "${_dir}/app-bypass.list" | sed 's/^/  /'
+    unset _dir _mode
+}
+
+cli_fast_block_list() {
+    _dir="${MODDIR}/.config/magicnet"
+    _conf="${_dir}/block.conf"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    printf 'enabled=%s\n' "${MAGICNET_BLOCK_ENABLED:-1}"
+    printf 'community=%s\n' "${MAGICNET_BLOCK_COMMUNITY_ENABLED:-1}"
+    printf 'url=%s\n' "${MAGICNET_BLOCK_URL:-https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/ruleset/magicnet/ban.yaml}"
+    printf 'manual domain suffixes:\n'
+    cli_fast_list_file "${_dir}/block-domain-suffix.list" | sed 's/^/  /'
+    printf 'community domain suffixes:\n'
+    cli_fast_list_file "${_dir}/community-ban-domain-suffix.list" | sed 's/^/  /'
+    unset _dir _conf
+}
+
+case "${1:-}" in
+    service)
+        if [ "${2:-}" = "status" ]; then
+            cli_fast_service_status
+            exit 0
+        fi
+        ;;
+    node)
+        if [ "${2:-list}" = "list" ] && cli_fast_node_list; then
+            exit 0
+        fi
+        ;;
+    sub)
+        if [ "${2:-}" = "list" ]; then
+            cli_fast_sub_list
+            exit 0
+        fi
+        ;;
+    route)
+        if [ "${2:-list}" = "list" ]; then
+            cli_fast_route_list
+            exit 0
+        fi
+        ;;
+    capture)
+        if [ "${2:-list}" = "list" ]; then
+            cli_fast_capture_list
+            exit 0
+        fi
+        ;;
+    cert)
+        if [ "${2:-list}" = "list" ]; then
+            cli_fast_cert_list
+            exit 0
+        fi
+        ;;
+    app)
+        if [ "${2:-list}" = "list" ]; then
+            cli_fast_app_list
+            exit 0
+        fi
+        ;;
+    block)
+        if [ "${2:-list}" = "list" ]; then
+            cli_fast_block_list
+            exit 0
+        fi
+        ;;
+esac
+
 if [ -f "${MODDIR}/lib/kamfw/.kamfwrc" ]; then
     # shellcheck disable=SC2240
     . "${MODDIR}/lib/kamfw/.kamfwrc" "$MODDIR"
@@ -20,12 +241,6 @@ import __runtime__
 kamfw_init_home
 kamfw_init_paths
 . "${MODDIR}/lib/magicnet.sh"
-
-MAGICNET_API="${MAGICNET_API:-http://127.0.0.1:9090}"
-MAGICNET_MIHOMO_WEBUI="${MAGICNET_MIHOMO_WEBUI:-${MAGICNET_API}/ui/cubex/}"
-MAGICNET_SINGBOX_WEBUI="${MAGICNET_SINGBOX_WEBUI:-${MAGICNET_API}/ui/#/setup?hostname=127.0.0.1&port=9090}"
-MAGICNET_GROUP="${MAGICNET_GROUP:-}"
-MAGICNET_LOG_DIR="${MODDIR}/.log"
 
 cli_info() {
     printf '[info] %s\n' "$1"
@@ -141,6 +356,20 @@ cli_service() {
         start) magicnet_start_kernel ;;
         ensure) magicnet_ensure_kernel ;;
         stop) cli_service_stop ;;
+        toggle)
+            case "${2:-}" in
+                sing-box|singbox)
+                    magicnet_action_toggle_singbox
+                    ;;
+                mihomo|clash)
+                    magicnet_action_toggle_mihomo
+                    ;;
+                *)
+                    cli_error "Usage: cli service toggle <sing-box|mihomo>"
+                    exit 1
+                    ;;
+            esac
+            ;;
         restart)
             cli_service_stop
             sleep 1
@@ -161,7 +390,7 @@ cli_service() {
             tail -n "$_lines" "$_file"
             ;;
         *)
-            cli_error "Usage: cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}"
+            cli_error "Usage: cli service {status|start|ensure|stop|restart|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}"
             exit 1
             ;;
     esac
@@ -320,7 +549,63 @@ cli_node_list_filter() {
     unset _node
 }
 
+cli_node_list_cache_file() {
+    printf '%s\n' "${MODDIR}/.tmp/magicnet-node-list.cache"
+}
+
+cli_node_list_cache_clear() {
+    rm -f "$(cli_node_list_cache_file)" 2>/dev/null || true
+}
+
+cli_node_list_from_mihomo_providers() {
+    _limit="${MAGICNET_NODE_LIST_LIMIT:-48}"
+    case "$_limit" in
+        ''|*[!0-9]*) _limit=48 ;;
+    esac
+    _dir="${MODDIR}/.config/mihomo/proxies"
+    _cache="$(cli_node_list_cache_file)"
+    [ -d "$_dir" ] || {
+        unset _limit _dir _cache
+        return 1
+    }
+    if [ "${MAGICNET_NODE_CACHE:-1}" != "0" ] && [ -s "$_cache" ]; then
+        cat "$_cache"
+        unset _limit _dir _cache
+        return 0
+    fi
+    mkdir -p "${_cache%/*}"
+    awk -v limit="$_limit" '
+        /^[[:space:]]*-[[:space:]]*name:[[:space:]]*/ {
+            name = $0
+            sub(/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/, "", name)
+            gsub(/^[[:space:]]*"/, "", name)
+            gsub(/"[[:space:]]*$/, "", name)
+            gsub(/^[[:space:]]*/, "", name)
+            gsub(/[[:space:]]*$/, "", name)
+            if (name == "" || seen[name]++) next
+            if (name == "DIRECT" || name == "REJECT" || name == "REJECT-DROP" || name == "PASS" || name == "COMPATIBLE") next
+            if (name == "GLOBAL" || name == "Global" || name == "global") next
+            if (name ~ /选择|策略|Selector|selector|URLTest|urltest|Fallback|fallback/) next
+            print name
+            count++
+            if (limit > 0 && count >= limit) exit
+        }
+    ' "$_dir"/*.yaml >"$_cache" 2>/dev/null
+    if [ -s "$_cache" ]; then
+        cat "$_cache"
+        unset _limit _dir _cache
+        return 0
+    fi
+    rm -f "$_cache"
+    unset _limit _dir _cache
+    return 1
+}
+
 cli_node() {
+    if [ "${1:-list}" = "list" ] && cli_node_list_from_mihomo_providers; then
+        return 0
+    fi
+
     _group="$(cli_node_group)"
     [ -n "$_group" ] || {
         cli_error "No usable Clash selector group found. Set MAGICNET_GROUP or update subscription."
@@ -344,6 +629,13 @@ cli_node() {
                 -H 'Content-Type: application/json' \
                 --data "{\"name\":\"$2\"}" >/dev/null
             cli_info "Switched ${_group} to $2"
+            ;;
+        webui)
+            case "${2:-mihomo}" in
+                sing-box|singbox) printf '%s\n' "$MAGICNET_SINGBOX_WEBUI" ;;
+                mihomo|clash) printf '%s\n' "$MAGICNET_MIHOMO_WEBUI" ;;
+                *) cli_error "Usage: cli node webui [sing-box|mihomo]"; exit 1 ;;
+            esac
             ;;
         delay|test)
             _test_url="${MAGICNET_DELAY_URL:-https://www.gstatic.com/generate_204}"
@@ -501,6 +793,7 @@ cli_sub_set_mihomo_config_url() {
 cli_sub() {
     case "${1:-update-all}" in
         update|update-all)
+            cli_node_list_cache_clear
             magicnet_action_update_singbox_subscription
             ;;
         list)
@@ -518,6 +811,7 @@ cli_sub() {
                 exit 1
             }
             cli_validate_subscription_url "$_url"
+            cli_node_list_cache_clear
             _file="$(cli_sub_target_file "$_target")"
             cli_sub_set_file "$_file" "$_url"
             case "$_target" in
@@ -956,11 +1250,200 @@ cli_capture() {
     esac
 }
 
+cli_block_dir() {
+    printf '%s\n' "${MODDIR}/.config/magicnet"
+}
+
+cli_block_conf_file() {
+    printf '%s\n' "$(cli_block_dir)/block.conf"
+}
+
+cli_block_manual_file() {
+    printf '%s\n' "$(cli_block_dir)/block-domain-suffix.list"
+}
+
+cli_block_community_file() {
+    printf '%s\n' "$(cli_block_dir)/community-ban-domain-suffix.list"
+}
+
+cli_block_load_conf() {
+    _conf="$(cli_block_conf_file)"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    MAGICNET_BLOCK_ENABLED="${MAGICNET_BLOCK_ENABLED:-1}"
+    MAGICNET_BLOCK_COMMUNITY_ENABLED="${MAGICNET_BLOCK_COMMUNITY_ENABLED:-1}"
+    MAGICNET_BLOCK_URL="${MAGICNET_BLOCK_URL:-https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/ruleset/magicnet/ban.yaml}"
+}
+
+cli_block_write_conf() {
+    _enabled="$1"
+    _community="$2"
+    _url="$3"
+    _dir="$(cli_block_dir)"
+    mkdir -p "$_dir"
+    {
+        printf 'MAGICNET_BLOCK_ENABLED=%s\n' "$_enabled"
+        printf 'MAGICNET_BLOCK_COMMUNITY_ENABLED=%s\n' "$_community"
+        printf 'MAGICNET_BLOCK_URL=%s\n' "$_url"
+    } >"$(cli_block_conf_file)"
+    unset _enabled _community _url _dir
+}
+
+cli_block_list_file() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file"
+}
+
+cli_block_add_to_file() {
+    _file="$1"
+    _value="$2"
+    mkdir -p "${_file%/*}"
+    touch "$_file"
+    grep -Fx "$_value" "$_file" >/dev/null 2>&1 || printf '%s\n' "$_value" >>"$_file"
+}
+
+cli_block_remove_from_file() {
+    _file="$1"
+    _value="$2"
+    [ -f "$_file" ] || return 0
+    awk -v value="$_value" '$0 != value { print }' "$_file" >"${_file}.new" &&
+        mv -f "${_file}.new" "$_file"
+}
+
+cli_block_valid_domain_suffix() {
+    printf '%s\n' "$1" | grep -Eq '^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$'
+}
+
+cli_block_fetch_community() {
+    cli_block_load_conf
+    _target="$(cli_block_community_file)"
+    _tmp="${_target}.download"
+    mkdir -p "${_target%/*}"
+    case "$MAGICNET_BLOCK_URL" in
+        http://*|https://*) ;;
+        *) cli_error "community block URL must start with http:// or https://"; exit 1 ;;
+    esac
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --max-time "${MAGICNET_BLOCK_DOWNLOAD_TIMEOUT:-20}" "$MAGICNET_BLOCK_URL" -o "$_tmp"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -T "${MAGICNET_BLOCK_DOWNLOAD_TIMEOUT:-20}" -O "$_tmp" "$MAGICNET_BLOCK_URL"
+    else
+        cli_error "No downloader found: curl or wget"
+        exit 1
+    fi
+    awk '
+        /^[[:space:]]*#/ { next }
+        /^[[:space:]]*$/ { next }
+        {
+            line = $0
+            sub(/^[[:space:]]*[-,]?[[:space:]]*/, "", line)
+            sub(/^[[:space:]]*DOMAIN-SUFFIX[[:space:]]*,[[:space:]]*/, "", line)
+            sub(/[[:space:]]*,.*/, "", line)
+            gsub(/^["'\'' ]+|["'\'' ]+$/, "", line)
+            if (line ~ /^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/ && !seen[line]++) print line
+        }
+    ' "$_tmp" >"$_target"
+    rm -f "$_tmp"
+    cli_info "Updated community blocklist: $_target ($(wc -l <"$_target" | tr -d ' ') domains)"
+    unset _target _tmp
+}
+
+cli_block_print() {
+    cli_block_load_conf
+    printf 'enabled=%s\n' "$MAGICNET_BLOCK_ENABLED"
+    printf 'community=%s\n' "$MAGICNET_BLOCK_COMMUNITY_ENABLED"
+    printf 'url=%s\n' "$MAGICNET_BLOCK_URL"
+    printf 'manual domain suffixes:\n'
+    cli_block_list_file "$(cli_block_manual_file)" | sed 's/^/  /'
+    printf 'community domain suffixes:\n'
+    cli_block_list_file "$(cli_block_community_file)" | sed 's/^/  /'
+}
+
+cli_block() {
+    case "${1:-list}" in
+        list) cli_block_print ;;
+        enable|disable)
+            cli_block_load_conf
+            [ "$1" = "enable" ] && _enabled=1 || _enabled=0
+            cli_block_write_conf "$_enabled" "$MAGICNET_BLOCK_COMMUNITY_ENABLED" "$MAGICNET_BLOCK_URL"
+            magicnet_block_apply
+            cli_info "Blocklist $1"
+            ;;
+        community)
+            cli_block_load_conf
+            case "${2:-}" in
+                on|enable|1) _community=1 ;;
+                off|disable|0) _community=0 ;;
+                *) cli_error "Usage: cli block community <on|off>"; exit 1 ;;
+            esac
+            cli_block_write_conf "$MAGICNET_BLOCK_ENABLED" "$_community" "$MAGICNET_BLOCK_URL"
+            magicnet_block_apply
+            cli_info "Community blocklist set to $_community"
+            ;;
+        url)
+            _url="${2:-}"
+            [ -n "$_url" ] || { cli_error "Usage: cli block url <http-url>"; exit 1; }
+            case "$_url" in http://*|https://*) ;; *) cli_error "URL must start with http:// or https://"; exit 1 ;; esac
+            cli_block_load_conf
+            cli_block_write_conf "$MAGICNET_BLOCK_ENABLED" "$MAGICNET_BLOCK_COMMUNITY_ENABLED" "$_url"
+            cli_info "Community blocklist URL saved"
+            ;;
+        update)
+            cli_block_fetch_community
+            magicnet_block_apply
+            cli_info "Blocklist rules applied to mihomo and sing-box"
+            ;;
+        add-domain)
+            _domain="${2:-}"
+            cli_block_valid_domain_suffix "$_domain" || { cli_error "domain suffix format is invalid"; exit 1; }
+            cli_block_add_to_file "$(cli_block_manual_file)" "$_domain"
+            magicnet_block_apply
+            cli_info "Added block domain suffix: $_domain"
+            ;;
+        remove-domain)
+            _domain="${2:-}"
+            [ -n "$_domain" ] || { cli_error "Usage: cli block remove-domain <domain-suffix>"; exit 1; }
+            cli_block_remove_from_file "$(cli_block_manual_file)" "$_domain"
+            magicnet_block_apply
+            cli_info "Removed block domain suffix: $_domain"
+            ;;
+        apply)
+            magicnet_block_apply
+            cli_info "Blocklist rules applied to mihomo and sing-box"
+            ;;
+        *)
+            cli_error "Usage: cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|apply}"
+            exit 1
+            ;;
+    esac
+}
+
 cli_api() {
     case "${1:-ui}" in
         ui)
-            printf 'Controller: %s\n' "$MAGICNET_API"
-            printf 'WebUI:      %s\n' "$(cli_core_webui)"
+            case "${2:-current}" in
+                current|'')
+                    printf 'Controller: %s\n' "$MAGICNET_API"
+                    printf 'WebUI:      %s\n' "$(cli_core_webui)"
+                    ;;
+                mihomo|clash)
+                    printf '%s\n' "$MAGICNET_MIHOMO_WEBUI"
+                    ;;
+                sing-box|singbox)
+                    printf '%s\n' "$MAGICNET_SINGBOX_WEBUI"
+                    ;;
+                all)
+                    printf 'current=%s\n' "$(cli_core_webui)"
+                    printf 'mihomo=%s\n' "$MAGICNET_MIHOMO_WEBUI"
+                    printf 'sing-box=%s\n' "$MAGICNET_SINGBOX_WEBUI"
+                    ;;
+                *)
+                    cli_error "Usage: cli api ui [current|mihomo|sing-box|all]"
+                    exit 1
+                    ;;
+            esac
             ;;
         groups)
             cli_curl "${MAGICNET_API}/configs" >/dev/null
@@ -1014,7 +1497,7 @@ cli_api() {
             cli_info "Closed all connections"
             ;;
         *)
-            cli_error "Usage: cli api {ui|groups|conns|stats|close-all}"
+            cli_error "Usage: cli api {ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}"
             exit 1
             ;;
     esac
@@ -1350,7 +1833,7 @@ cli_help() {
 MagicNet CLI
 
 Usage:
-  cli service {status|start|ensure|stop|restart|logs [sing-box|mihomo] [lines]}
+  cli service {status|start|ensure|stop|restart|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}
   cli health
   cli repair
   cli support bundle
@@ -1362,7 +1845,8 @@ Usage:
   cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
   cli cert {list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}
   cli capture {list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}
-  cli api {ui|groups|conns|stats|close-all}
+  cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|apply}
+  cli api {ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}
   cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}
   cli hotspot reload
   cli vpn reload
@@ -1390,6 +1874,7 @@ case "${1:-help}" in
     sub) shift; cli_sub "$@" ;;
     cert) shift; cli_cert "$@" ;;
     capture) shift; cli_capture "$@" ;;
+    block) shift; cli_block "$@" ;;
     api) shift; cli_api "$@" ;;
     app) shift; cli_app "$@" ;;
     hotspot)

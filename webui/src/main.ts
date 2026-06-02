@@ -109,7 +109,6 @@ type State = {
   output: string;
   nodes: string[];
   currentNode: string;
-  nodeDelays: Record<string, string>;
   traffic: TrafficStats;
   appPolicy: AppPolicy;
   subscriptions: {
@@ -161,7 +160,6 @@ const state: State = {
     : "本地预览模式：这里不会伪造设备数据。通过 KernelSU/APatch 模块 WebUI 打开后，所有按钮会直接调用模块 CLI。",
   nodes: [],
   currentNode: "",
-  nodeDelays: {},
   traffic: {
     connections: 0,
     upload: 0,
@@ -319,6 +317,10 @@ function hasProcess(value: string): boolean {
   return value !== "stopped" && value !== "unknown" && value.trim() !== "";
 }
 
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 async function runCli(args: string, options: { refreshApps?: boolean; quiet?: boolean } = {}): Promise<string> {
   const command = `su -c ${shellQuote(`${CLI} ${args}`)}`;
   state.lastCommand = command;
@@ -336,6 +338,7 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
     state.busy = true;
     state.output = `$ ${command}\n执行中...`;
     render();
+    await nextFrame();
   }
 
   try {
@@ -607,53 +610,39 @@ async function refreshSubscriptions(quiet = false): Promise<void> {
 }
 
 async function refreshNodes(quiet = false): Promise<void> {
-  const current = await runCli("node current", { quiet: true });
-  const list = await runCli("node list", { quiet: true });
-  if (state.hasKsu) {
-    state.currentNode = current.trim();
-    state.nodes = list
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
+  if (!quiet) {
+    state.busy = true;
+    state.output = "正在读取候选出口。大订阅首次读取会生成本地缓存，后续会更快。";
+    render();
+    await nextFrame();
+  }
+  try {
+    const current = await runCli("node current", { quiet: true });
+    const list = await runCli("node list", { quiet: true });
+    if (state.hasKsu) {
+      state.currentNode = current.trim();
+      state.nodes = list
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (!quiet) {
+        state.output = state.nodes.length
+          ? `当前策略值：${state.currentNode || "未读取"}\n候选出口：${state.nodes.length} 个`
+          : `当前策略值：${state.currentNode || "未读取"}\n没有可展示的候选出口。请更新订阅，或到内核面板检查当前策略组。`;
+      }
+    }
+  } finally {
     if (!quiet) {
-      state.output = state.nodes.length
-        ? `当前策略值：${state.currentNode || "未读取"}\n候选出口：${state.nodes.length} 个`
-        : `当前策略值：${state.currentNode || "未读取"}\n没有可展示的候选出口。请更新订阅，或到内核面板检查当前策略组。`;
+      state.busy = false;
+      render();
     }
   }
-  if (!quiet) render();
 }
 
 async function switchNode(name: string): Promise<void> {
   if (!name) return;
   await runCli(`node use ${shellQuote(name)}`);
   await refreshNodes(true);
-}
-
-function parseNodeDelays(text: string): Record<string, string> {
-  const next: Record<string, string> = {};
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || !line.includes("=")) continue;
-    const [name, ...rest] = line.split("=");
-    const value = rest.join("=").trim();
-    if (!name || !value) continue;
-    next[name.trim()] = value;
-  }
-  return next;
-}
-
-async function testNodeDelays(name?: string): Promise<void> {
-  const command = name ? `node delay ${shellQuote(name)}` : "node delay";
-  const text = await runCli(command, { quiet: true });
-  if (state.hasKsu && text) {
-    state.nodeDelays = { ...state.nodeDelays, ...parseNodeDelays(text) };
-    const count = Object.keys(parseNodeDelays(text)).length;
-    state.output = name
-      ? `节点测速完成：${name} ${state.nodeDelays[name] || "timeout"}`
-      : `节点测速完成：${count} 个结果。`;
-  }
-  render();
 }
 
 function parseTrafficStats(text: string): TrafficStats {
@@ -857,9 +846,9 @@ function healthPanel(): string {
           <p>诊断不是日志堆叠，而是把最容易出问题的链路拆成可判定项目。</p>
         </div>
         <div class="health-actions">
-          <button class="command-primary" data-run="repair" ${state.busy ? "disabled" : ""}>${icon("Zap", 18)}一键自修复</button>
-          <button class="command-secondary" data-health-run ${state.busy ? "disabled" : ""}>${icon("Stethoscope", 18)}运行诊断</button>
-          <button class="command-secondary" data-support-bundle ${state.busy ? "disabled" : ""}>${icon("Copy", 18)}复制支持包</button>
+          <button class="command-primary" data-run="repair">${icon("Zap", 18)}一键自修复</button>
+          <button class="command-secondary" data-health-run>${icon("Stethoscope", 18)}运行诊断</button>
+          <button class="command-secondary" data-support-bundle>${icon("Copy", 18)}复制支持包</button>
         </div>
       </div>
       <div class="health-summary">
@@ -886,27 +875,19 @@ function nodePanel(): string {
     ? visibleNodes
       .map((name) => {
         const selected = name === state.currentNode;
-        const delay = state.nodeDelays[name];
-        const delayClass = delay
-          ? delay === "timeout"
-            ? "bad"
-            : Number.parseInt(delay, 10) <= 350
-              ? "good"
-              : "warn"
-          : "";
         return `
-          <button class="node-row ${selected ? "selected" : ""}" data-node-use="${escapeHtml(name)}" ${state.busy || selected ? "disabled" : ""}>
+          <button class="node-row ${selected ? "selected" : ""}" data-node-use="${escapeHtml(name)}" ${selected ? "disabled" : ""}>
             <span>${selected ? icon("ShieldCheck", 17) : icon("Route", 17)}</span>
             <div>
               <strong>${escapeHtml(name)}</strong>
-              <small class="node-delay ${delayClass}">${delay ? escapeHtml(delay === "timeout" ? "timeout" : `${delay} ms`) : "未测速"}</small>
+              <small>候选出口</small>
             </div>
             <small>${selected ? "当前出口" : "切换"}</small>
           </button>
         `;
       })
       .join("")
-    : `<div class="picker-empty"><strong>还没有节点列表</strong><span>先更新订阅，再点刷新节点。列表来自 Clash API 的 proxy 策略组。</span></div>`;
+    : `<div class="picker-empty"><strong>还没有节点列表</strong><span>先更新订阅，再点刷新节点。测速、延迟和复杂策略在内核 WebUI 里看。</span></div>`;
 
   return `
     <div class="node-panel">
@@ -914,12 +895,12 @@ function nodePanel(): string {
         <div>
           <span class="eyebrow">Proxy Selector</span>
           <h3>${escapeHtml(state.currentNode || "未读取当前节点")}</h3>
-          <p>这里显示当前策略组的候选出口，已过滤 DIRECT、REJECT 和明显策略组。当前仅渲染 ${visibleNodes.length}/${state.nodes.length} 条，保证 Android WebView 顺滑${hiddenCount ? `，剩余 ${hiddenCount} 条在内核面板查看` : ""}。</p>
+          <p>这里只做快速切换和状态确认；测速、Provider 健康检查和复杂策略交给内核 WebUI。当前渲染 ${visibleNodes.length}/${state.nodes.length} 条${hiddenCount ? `，剩余 ${hiddenCount} 条在内核面板查看` : ""}。</p>
         </div>
         <div class="node-actions">
-          <button class="command-secondary" data-test-nodes ${state.busy || state.nodes.length === 0 ? "disabled" : ""}>${icon("Gauge", 17)}测速前 8</button>
-          <button class="command-secondary" data-refresh-nodes ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}刷新节点</button>
-          <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>${icon("DownloadCloud", 17)}更新订阅</button>
+          <button class="command-secondary" data-refresh-nodes>${icon("RefreshCw", 17)}刷新节点</button>
+          <a class="command-secondary" data-open-core-ui href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 17)}内核节点页</a>
+          <button class="command-secondary" data-run="sub update-all">${icon("DownloadCloud", 17)}更新订阅</button>
         </div>
       </div>
       <div class="node-list">${nodeRows}</div>
@@ -935,7 +916,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
           ${actions
             .map(
               (item) => `
-                <button class="action-card ${item.tone || ""}" data-run="${item.command}" ${state.busy ? "disabled" : ""}>
+                <button class="action-card ${item.tone || ""}" data-run="${item.command}">
                   <span>${icon(item.icon, 20)}</span>
                   <strong>${item.label}</strong>
                   <small>${item.hint}</small>
@@ -953,7 +934,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
           </div>
           <div class="segmented">
             ${quickModes
-              .map((item) => `<button data-mode="${item.value}" ${state.busy ? "disabled" : ""}>${item.label}</button>`)
+              .map((item) => `<button data-mode="${item.value}">${item.label}</button>`)
               .join("")}
           </div>
         </div>
@@ -991,7 +972,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
               <h3>已安装应用</h3>
               <p>从 KernelSU 读取用户应用，点选后写入 MagicNet app list。</p>
             </div>
-            <button class="scan-button" data-scan-packages ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}扫描用户应用</button>
+            <button class="scan-button" data-scan-packages>${icon("RefreshCw", 17)}扫描用户应用</button>
           </div>
           <input class="package-search" data-package-query value="${escapeHtml(state.packageQuery)}" placeholder="搜索应用名或包名" />
           <div class="package-results">${packagePicker()}</div>
@@ -1057,8 +1038,8 @@ function trafficPanel(): string {
           <p>从 Clash API 读取当前连接、上下行和内存占用。</p>
         </div>
         <div class="traffic-actions">
-          <button class="command-secondary" data-refresh-traffic ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}刷新</button>
-          <button class="command-secondary" data-run="api close-all" ${state.busy ? "disabled" : ""}>${icon("Unplug", 17)}清空连接</button>
+          <button class="command-secondary" data-refresh-traffic>${icon("RefreshCw", 17)}刷新</button>
+          <button class="command-secondary" data-run="api close-all">${icon("Unplug", 17)}清空连接</button>
         </div>
       </div>
       <div class="traffic-grid">
@@ -1114,7 +1095,7 @@ function capturePanel(): string {
           <h3>抓包分流只改目标流量</h3>
           <p>App 仍看到系统 TUN，MagicNet 在内核配置里把指定包名或域名送到电脑 HTTP 代理；mihomo 和 sing-box 配置同步应用。</p>
         </div>
-        <button class="command-secondary" data-run="capture apply" ${state.busy ? "disabled" : ""}>${icon("ShieldCheck", 17)}重新应用</button>
+        <button class="command-secondary" data-run="capture apply">${icon("ShieldCheck", 17)}重新应用</button>
       </div>
       <div class="capture-card">
         <div class="sub-head">
@@ -1223,8 +1204,8 @@ function subscriptionsSection(): string {
         <p>已配置 ${configured}/2。这里可以填写、保存、复制 Clash/mihomo 和 sing-box 订阅链接，保存后再更新订阅即可生效。</p>
       </div>
       <div class="section-actions">
-        <button class="command-secondary" data-refresh-subs ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}读取链接</button>
-        <button class="command-primary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>${icon("DownloadCloud", 17)}更新全部</button>
+        <button class="command-secondary" data-refresh-subs>${icon("RefreshCw", 17)}读取链接</button>
+        <button class="command-primary" data-run="sub update-all">${icon("DownloadCloud", 17)}更新全部</button>
       </div>
     </div>
     <div class="sub-grid">
@@ -1328,7 +1309,7 @@ function routePanel(): string {
         <h3>自定义域名分流</h3>
         <p>高优先级 DOMAIN-SUFFIX 规则，直接写入 sing-box 与 mihomo 的 TUN 路由。</p>
       </div>
-      <button class="scan-button" data-refresh-routes ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}读取规则</button>
+      <button class="scan-button" data-refresh-routes>${icon("RefreshCw", 17)}读取规则</button>
     </div>
     <form class="package-form" data-route-form>
       <input name="domain" value="${escapeHtml(state.routes.newDomain)}" placeholder="example.com" spellcheck="false" />
@@ -1431,19 +1412,19 @@ function healthPill(label: string, value: string, iconName: string): string {
 function commandDeck(): string {
   return `
     <div class="command-deck">
-      <button class="command-primary" data-run="service restart" ${state.busy ? "disabled" : ""}>
+      <button class="command-primary" data-run="service restart">
         ${icon("RotateCcw", 20)}
         <span>重启内核</span>
       </button>
-      <a class="command-secondary ${state.busy ? "disabled" : ""}" data-open-core-ui href="${escapeHtml(coreUiUrl())}">
+      <a class="command-secondary" data-open-core-ui href="${escapeHtml(coreUiUrl())}">
         ${icon("ExternalLink", 18)}
         <span>内核面板</span>
       </a>
-      <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>
+      <button class="command-secondary" data-run="sub update-all">
         ${icon("DownloadCloud", 18)}
         <span>更新订阅</span>
       </button>
-      <button class="command-secondary" data-action="refresh-all" ${state.busy ? "disabled" : ""}>
+      <button class="command-secondary" data-action="refresh-all">
         ${icon("RefreshCw", 18)}
         <span>刷新面板</span>
       </button>
@@ -1465,7 +1446,7 @@ function setupPanel(): string {
           <span>订阅 URL</span>
           <input value="${escapeHtml(state.setupUrl)}" placeholder="https://example.com/sub" spellcheck="false" autocomplete="off" />
         </label>
-        <button type="submit" ${state.busy ? "disabled" : ""}>${icon("Zap", 17)}保存并启用</button>
+        <button type="submit">${icon("Zap", 17)}保存并启用</button>
       </form>
     </section>
   `;
@@ -1579,9 +1560,9 @@ function render(): void {
           </div>
         </div>
         <div class="top-actions">
-          <button class="ghost-link" data-action="refresh-all" ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 16)}刷新</button>
+          <button class="ghost-link" data-action="refresh-all">${icon("RefreshCw", 16)}刷新</button>
           <a class="ghost-link" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 16)}GitHub</a>
-          <a class="primary-link ${state.busy ? "disabled" : ""}" data-open-core-ui href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 16)}内核面板</a>
+          <a class="primary-link" data-open-core-ui href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 16)}内核面板</a>
         </div>
       </header>
 
@@ -1621,9 +1602,9 @@ function render(): void {
       <nav class="mobile-dock" aria-label="MagicNet mobile shortcuts">
         <button class="${tab === "control" ? "active" : ""}" data-tab="control">${icon("Gauge", 18)}<span>控制</span></button>
         <button class="${tab === "subs" ? "active" : ""}" data-tab="subs">${icon("DownloadCloud", 18)}<span>订阅</span></button>
-        <a data-open-core-ui class="${state.busy ? "disabled" : ""}" href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 18)}<span>内核</span></a>
+        <a data-open-core-ui href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 18)}<span>内核</span></a>
         <button class="${tab === "health" ? "active" : ""}" data-tab="health">${icon("Stethoscope", 18)}<span>诊断</span></button>
-        <button data-action="refresh-all" ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 18)}<span>刷新</span></button>
+        <button data-action="refresh-all">${icon("RefreshCw", 18)}<span>刷新</span></button>
       </nav>
     </div>
   `;
@@ -1666,7 +1647,6 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLElement>("[data-open-core-ui]").forEach((element) => {
     element.addEventListener("click", (event) => {
       event.preventDefault();
-      if (state.busy) return;
       void openCoreUi();
     });
   });
@@ -1684,8 +1664,6 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-refresh-routes]")?.addEventListener("click", () => refreshRoutes());
 
   document.querySelector<HTMLButtonElement>("[data-refresh-nodes]")?.addEventListener("click", () => refreshNodes());
-
-  document.querySelector<HTMLButtonElement>("[data-test-nodes]")?.addEventListener("click", () => testNodeDelays());
 
   document.querySelectorAll<HTMLButtonElement>("[data-node-use]").forEach((button) => {
     button.addEventListener("click", () => switchNode(button.dataset.nodeUse || ""));

@@ -612,6 +612,224 @@ magicnet_mihomo_apply_zashboard() {
     cp -a "$_source" "$_target"
 }
 
+magicnet_block_dir() {
+    printf '%s\n' "${MODDIR}/.config/magicnet"
+}
+
+magicnet_block_conf() {
+    printf '%s\n' "$(magicnet_block_dir)/block.conf"
+}
+
+magicnet_block_manual_file() {
+    printf '%s\n' "$(magicnet_block_dir)/block-domain-suffix.list"
+}
+
+magicnet_block_community_file() {
+    printf '%s\n' "$(magicnet_block_dir)/community-ban-domain-suffix.list"
+}
+
+magicnet_block_load_conf() {
+    _conf="$(magicnet_block_conf)"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    MAGICNET_BLOCK_ENABLED="${MAGICNET_BLOCK_ENABLED:-1}"
+    MAGICNET_BLOCK_COMMUNITY_ENABLED="${MAGICNET_BLOCK_COMMUNITY_ENABLED:-1}"
+    MAGICNET_BLOCK_URL="${MAGICNET_BLOCK_URL:-https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/ruleset/magicnet/ban.yaml}"
+    unset _conf
+}
+
+magicnet_block_list_values() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++'
+}
+
+magicnet_block_all_domains() {
+    magicnet_block_load_conf
+    [ "$MAGICNET_BLOCK_ENABLED" = "1" ] || return 0
+    magicnet_block_list_values "$(magicnet_block_manual_file)"
+    if [ "$MAGICNET_BLOCK_COMMUNITY_ENABLED" = "1" ]; then
+        magicnet_block_list_values "$(magicnet_block_community_file)"
+    fi
+}
+
+magicnet_block_has_domains() {
+    magicnet_block_all_domains | grep -q .
+}
+
+magicnet_block_mihomo_rules() {
+    magicnet_block_load_conf
+    [ "$MAGICNET_BLOCK_ENABLED" = "1" ] || return 0
+    if [ "$MAGICNET_BLOCK_COMMUNITY_ENABLED" = "1" ]; then
+        printf '  - RULE-SET,mnban,REJECT\n'
+    fi
+    magicnet_block_list_values "$(magicnet_block_manual_file)" | while read -r _domain; do
+        [ -n "$_domain" ] && printf '  - DOMAIN-SUFFIX,%s,REJECT\n' "$_domain"
+    done
+}
+
+magicnet_block_apply_mihomo() {
+    _config="${MODDIR}/.config/mihomo/config.yaml"
+    [ -f "$_config" ] || return 0
+    _tmp="${_config}.magicnet-block.new"
+    _rules_file="${MODDIR}/.tmp/magicnet-block-mihomo.rules"
+    mkdir -p "${_rules_file%/*}"
+    magicnet_block_mihomo_rules >"$_rules_file"
+    if awk -v rules_file="$_rules_file" '
+        BEGIN {
+            skip = 0
+            inserted = 0
+        }
+        skip {
+            if ($0 ~ /^  # MAGICNET_BLOCK_END/) {
+                skip = 0
+            }
+            next
+        }
+        $0 ~ /^  # MAGICNET_BLOCK_START/ {
+            skip = 1
+            next
+        }
+        $0 ~ /^[[:space:]]*-[[:space:]]*RULE-SET,mnban,REJECT[[:space:]]*$/ {
+            next
+        }
+        {
+            print
+            if (!inserted && $0 ~ /^rules:[[:space:]]*$/) {
+                if ((getline first_rule < rules_file) > 0) {
+                    print "  # MAGICNET_BLOCK_START"
+                    print first_rule
+                    while ((getline rule_line < rules_file) > 0) {
+                        print rule_line
+                    }
+                    close(rules_file)
+                    print "  # MAGICNET_BLOCK_END"
+                }
+                inserted = 1
+            }
+        }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+}
+
+magicnet_block_singbox_rules() {
+    _domains="$(magicnet_block_all_domains)"
+    [ -n "$_domains" ] || return 0
+    printf '      {\n'
+    printf '        "domain_suffix": [\n'
+    printf '          "__magicnet_block__",\n'
+    _count=$(printf '%s\n' "$_domains" | awk 'NF' | wc -l | tr -d ' ')
+    _idx=0
+    printf '%s\n' "$_domains" | awk 'NF && !seen[$0]++' | while read -r _domain; do
+        [ -n "$_domain" ] || continue
+        _idx=$((_idx + 1))
+        _comma=","
+        [ "$_idx" -eq "$_count" ] && _comma=""
+        printf '          "%s"%s\n' "$(magicnet_json_escape "$_domain")" "$_comma"
+    done
+    printf '        ],\n'
+    printf '        "outbound": "block"\n'
+    printf '      },\n'
+    unset _domains _count _idx _comma _domain
+}
+
+magicnet_block_apply_singbox() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+    _tmp="${_config}.magicnet-block.new"
+    _rules_file="${MODDIR}/.tmp/magicnet-block-singbox.rules"
+    mkdir -p "${_rules_file%/*}"
+    magicnet_block_singbox_rules >"$_rules_file"
+    if awk -v rules_file="$_rules_file" '
+        BEGIN {
+            in_route = 0
+            in_rules = 0
+            buffering = 0
+            buffer = ""
+            skip_custom = 0
+            inserted = 0
+        }
+        function reset_buffer() {
+            buffer = ""
+            buffering = 0
+            skip_custom = 0
+        }
+        function flush_rule() {
+            if (!skip_custom) {
+                printf "%s", buffer
+                if (!inserted && buffer ~ /"action"[[:space:]]*:[[:space:]]*"sniff"/) {
+                    while ((getline rule_line < rules_file) > 0) {
+                        print rule_line
+                    }
+                    close(rules_file)
+                    inserted = 1
+                }
+            }
+            reset_buffer()
+        }
+        {
+            if (buffering) {
+                buffer = buffer $0 "\n"
+                if ($0 ~ /"__magicnet_block__"/) {
+                    skip_custom = 1
+                }
+                if ($0 ~ /^      }[,]?[[:space:]]*$/) {
+                    flush_rule()
+                }
+                next
+            }
+            if ($0 ~ /^  "route"[[:space:]]*:[[:space:]]*\{[[:space:]]*$/) {
+                in_route = 1
+                print
+                next
+            }
+            if (in_route && $0 ~ /^  }[,]?[[:space:]]*$/) {
+                in_route = 0
+                print
+                next
+            }
+            if (in_route && $0 ~ /^    "rules"[[:space:]]*:[[:space:]]*\[[[:space:]]*$/) {
+                in_rules = 1
+                print
+                next
+            }
+            if (in_rules && $0 ~ /^    ][,]?[[:space:]]*$/) {
+                in_rules = 0
+                print
+                next
+            }
+            if (in_rules && $0 ~ /^      \{[[:space:]]*$/) {
+                buffering = 1
+                buffer = $0 "\n"
+                skip_custom = 0
+                next
+            }
+            print
+        }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+}
+
+magicnet_block_apply_unlocked() {
+    _block_rc=0
+    magicnet_block_apply_mihomo || _block_rc=1
+    magicnet_block_apply_singbox || _block_rc=1
+    return "$_block_rc"
+}
+
+magicnet_block_apply() {
+    magicnet_with_config_lock magicnet_block_apply_unlocked
+}
+
 magicnet_capture_dir() {
     printf '%s\n' "${MODDIR}/.config/magicnet"
 }
@@ -1154,6 +1372,7 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_singbox_apply_zashboard
     magicnet_app_policy_apply_unlocked || _runtime_rc=1
     magicnet_route_apply_unlocked || _runtime_rc=1
+    magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_capture_apply || _runtime_rc=1
     magicnet_enable_hotspot_forward || true
     magicnet_enable_vpn_coexist || true
