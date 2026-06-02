@@ -589,6 +589,113 @@ cli_capture_remove_from_file() {
         mv -f "${_file}.new" "$_file"
 }
 
+cli_route_dir() {
+    printf '%s\n' "${MODDIR}/.config/magicnet"
+}
+
+cli_route_file() {
+    printf '%s\n' "$(cli_route_dir)/route-$1-domain-suffix.list"
+}
+
+cli_route_list_file() {
+    _file="$1"
+    [ -f "$_file" ] || return 0
+    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file"
+}
+
+cli_route_add_to_file() {
+    _file="$1"
+    _value="$2"
+    mkdir -p "${_file%/*}"
+    touch "$_file"
+    grep -Fx "$_value" "$_file" >/dev/null 2>&1 || printf '%s\n' "$_value" >>"$_file"
+}
+
+cli_route_remove_from_file() {
+    _file="$1"
+    _value="$2"
+    [ -f "$_file" ] || return 0
+    awk -v value="$_value" '$0 != value { print }' "$_file" >"${_file}.new" &&
+        mv -f "${_file}.new" "$_file"
+}
+
+cli_route_apply_or_rollback_add() {
+    _file="$1"
+    _value="$2"
+    magicnet_route_apply && return 0
+    cli_route_remove_from_file "$_file" "$_value"
+    magicnet_route_apply >/dev/null 2>&1 || true
+    return 1
+}
+
+cli_route_apply_or_rollback_remove() {
+    _file="$1"
+    _value="$2"
+    magicnet_route_apply && return 0
+    cli_route_add_to_file "$_file" "$_value"
+    magicnet_route_apply >/dev/null 2>&1 || true
+    return 1
+}
+
+cli_route_print() {
+    for _target in proxy direct block; do
+        printf '%s domain suffixes:\n' "$_target"
+        cli_route_list_file "$(cli_route_file "$_target")" | sed 's/^/  /'
+    done
+    unset _target
+}
+
+cli_route_valid_target() {
+    case "$1" in
+        proxy|direct|block) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+cli_route_valid_domain_suffix() {
+    printf '%s\n' "$1" | grep -Eq '^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$'
+}
+
+cli_route() {
+    case "${1:-list}" in
+        list) cli_route_print ;;
+        add-domain)
+            _target="${2:-}"
+            _domain="${3:-}"
+            cli_route_valid_target "$_target" || { cli_error "Usage: cli route add-domain <proxy|direct|block> <domain-suffix>"; exit 1; }
+            cli_route_valid_domain_suffix "$_domain" || { cli_error "domain suffix format is invalid"; exit 1; }
+            _route_file="$(cli_route_file "$_target")"
+            cli_route_add_to_file "$_route_file" "$_domain"
+            _route_msg_target="$_target"
+            _route_msg_domain="$_domain"
+            cli_route_apply_or_rollback_add "$_route_file" "$_domain" || { cli_error "failed to apply route rule; change rolled back"; exit 1; }
+            cli_info "Added $_route_msg_target domain suffix rule: $_route_msg_domain"
+            unset _route_file _route_msg_target _route_msg_domain
+            ;;
+        remove-domain)
+            _target="${2:-}"
+            _domain="${3:-}"
+            cli_route_valid_target "$_target" || { cli_error "Usage: cli route remove-domain <proxy|direct|block> <domain-suffix>"; exit 1; }
+            [ -n "$_domain" ] || { cli_error "Usage: cli route remove-domain <proxy|direct|block> <domain-suffix>"; exit 1; }
+            _route_file="$(cli_route_file "$_target")"
+            cli_route_remove_from_file "$_route_file" "$_domain"
+            _route_msg_target="$_target"
+            _route_msg_domain="$_domain"
+            cli_route_apply_or_rollback_remove "$_route_file" "$_domain" || { cli_error "failed to apply route rule; change rolled back"; exit 1; }
+            cli_info "Removed $_route_msg_target domain suffix rule: $_route_msg_domain"
+            unset _route_file _route_msg_target _route_msg_domain
+            ;;
+        apply)
+            magicnet_route_apply
+            cli_info "Custom route rules applied to mihomo and sing-box"
+            ;;
+        *)
+            cli_error "Usage: cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}"
+            exit 1
+            ;;
+    esac
+}
+
 cli_capture_print() {
     cli_capture_load_conf
     printf 'enabled=%s\n' "$MAGICNET_CAPTURE_ENABLED"
@@ -941,7 +1048,10 @@ cli_health() {
 
 cli_repair() {
     cli_info "Applying runtime configuration"
-    magicnet_apply_runtime_config || true
+    magicnet_apply_runtime_config || {
+        cli_error "runtime configuration apply failed"
+        return 1
+    }
 
     cli_info "Reloading hotspot forwarding rules"
     magicnet_enable_hotspot_forward || true
@@ -1009,6 +1119,7 @@ cli_support_bundle() {
     cli_support_run "health" cli_health
     cli_support_run "connection stats" cli_api stats
     cli_support_run "subscriptions" cli_sub list
+    cli_support_run "custom routes" cli_route list
     cli_support_run "capture" cli_capture_print
     cli_support_run "app policy" cli_app list
     cli_support_run "certificates" cli_cert_list
@@ -1060,6 +1171,7 @@ Usage:
   cli config {apply}
   cli node {list|current|use <name>|delay [name]}
   cli mode [rule|global|direct]
+  cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}
   cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
   cli cert {list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}
   cli capture {list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}
@@ -1087,6 +1199,7 @@ case "${1:-help}" in
     config) shift; cli_config "$@" ;;
     node) shift; cli_node "$@" ;;
     mode) shift; cli_mode "$@" ;;
+    route) shift; cli_route "$@" ;;
     sub) shift; cli_sub "$@" ;;
     cert) shift; cli_cert "$@" ;;
     capture) shift; cli_capture "$@" ;;

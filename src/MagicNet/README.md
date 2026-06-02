@@ -181,6 +181,19 @@ su -c /data/adb/modules/MagicNet/cli mode global
 su -c /data/adb/modules/MagicNet/cli mode direct
 ```
 
+自定义域名分流：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli route list
+su -c '/data/adb/modules/MagicNet/cli route add-domain proxy openai.com'
+su -c '/data/adb/modules/MagicNet/cli route add-domain direct example.cn'
+su -c '/data/adb/modules/MagicNet/cli route add-domain block ads.example.com'
+su -c '/data/adb/modules/MagicNet/cli route remove-domain proxy openai.com'
+su -c /data/adb/modules/MagicNet/cli route apply
+```
+
+`cli route` 管理高优先级 `DOMAIN-SUFFIX` 规则，支持 `proxy`、`direct`、`block` 三类目标，并会同时写入 sing-box 与 mihomo 运行配置。WebUI 的“分流”页使用同一套 CLI。
+
 订阅、控制端、连接管理：
 
 ```bash
@@ -229,7 +242,7 @@ su -c /data/adb/modules/MagicNet/cli diagnose
 
 `cli repair` 是安全的一键自修复：重新应用运行配置、重载抓包/热点/VPN 共存规则、确保 TUN 内核和 supervisor 在线、清空旧连接，最后直接输出 `cli health` 结果。它不会自动覆盖订阅链接、证书或用户规则。
 
-`cli support bundle` 会生成脱敏支持包，包含模块版本、服务状态、健康诊断、连接与流量统计、订阅配置状态、抓包规则、分应用策略、证书列表、监听端口、接口/路由、Clash API 摘要和近期日志。URL、token、secret、password 等敏感字段会被替换为 `<redacted>`，WebUI“诊断”页可一键复制。
+`cli support bundle` 会生成脱敏支持包，包含模块版本、服务状态、健康诊断、连接与流量统计、订阅配置状态、自定义分流规则、抓包规则、分应用策略、证书列表、监听端口、接口/路由、Clash API 摘要和近期日志。URL、token、secret、password 等敏感字段会被替换为 `<redacted>`，WebUI“诊断”页可一键复制。
 
 ## TUN 分应用代理
 

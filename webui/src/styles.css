@@ -949,6 +949,10 @@ button:disabled {
   margin-top: 14px;
 }
 
+.route-columns {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .list-panel {
   min-width: 0;
   border: 1px solid var(--line);

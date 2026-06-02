@@ -89,6 +89,14 @@ type PackageInfo = {
   uid: number;
 };
 
+type RouteRules = {
+  proxy: string[];
+  direct: string[];
+  block: string[];
+  newDomain: string;
+  newTarget: "proxy" | "direct" | "block";
+};
+
 type State = {
   hasKsu: boolean;
   busy: boolean;
@@ -121,12 +129,13 @@ type State = {
     newApp: string;
     newDomain: string;
   };
+  routes: RouteRules;
   health: HealthItem[];
   packages: PackageInfo[];
   packageQuery: string;
   newPackage: string;
   newTarget: "proxy" | "bypass";
-  activeTab: "control" | "health" | "apps" | "subs" | "capture" | "certs" | "logs";
+  activeTab: "control" | "health" | "apps" | "routes" | "subs" | "capture" | "certs" | "logs";
 };
 
 const state: State = {
@@ -178,6 +187,13 @@ const state: State = {
     domains: [],
     newApp: "",
     newDomain: ""
+  },
+  routes: {
+    proxy: [],
+    direct: [],
+    block: [],
+    newDomain: "",
+    newTarget: "proxy"
   },
   health: [],
   packages: [],
@@ -397,6 +413,42 @@ async function refreshApps(quiet = false): Promise<void> {
   const text = await runCli("app list", { quiet });
   if (state.hasKsu && text) {
     state.appPolicy = parseAppPolicy(text);
+  }
+  render();
+}
+
+function parseRouteRules(text: string): RouteRules {
+  const next: RouteRules = {
+    ...state.routes,
+    proxy: [],
+    direct: [],
+    block: []
+  };
+  let section: "proxy" | "direct" | "block" | null = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line === "proxy domain suffixes:") {
+      section = "proxy";
+      continue;
+    }
+    if (line === "direct domain suffixes:") {
+      section = "direct";
+      continue;
+    }
+    if (line === "block domain suffixes:") {
+      section = "block";
+      continue;
+    }
+    if (section) next[section].push(line);
+  }
+  return next;
+}
+
+async function refreshRoutes(quiet = false): Promise<void> {
+  const text = await runCli("route list", { quiet });
+  if (state.hasKsu && text) {
+    state.routes = parseRouteRules(text);
   }
   render();
 }
@@ -974,6 +1026,60 @@ function appList(items: string[], target: "proxy" | "bypass"): string {
     .join("");
 }
 
+function routeList(items: string[], target: "proxy" | "direct" | "block"): string {
+  if (items.length === 0) {
+    return `<div class="empty">暂无域名后缀</div>`;
+  }
+
+  return items
+    .map(
+      (domain) => `
+        <div class="app-row">
+          <span>${escapeHtml(domain)}</span>
+          <button class="icon-button" data-remove-route="${target}" data-value="${escapeHtml(domain)}" title="移除">
+            ${icon("X", 16)}
+          </button>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function routePanel(): string {
+  return `
+    <div class="policy-header">
+      <div>
+        <h3>自定义域名分流</h3>
+        <p>高优先级 DOMAIN-SUFFIX 规则，直接写入 sing-box 与 mihomo 的 TUN 路由。</p>
+      </div>
+      <button class="scan-button" data-refresh-routes ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}读取规则</button>
+    </div>
+    <form class="package-form" data-route-form>
+      <input name="domain" value="${escapeHtml(state.routes.newDomain)}" placeholder="example.com" spellcheck="false" />
+      <select name="target">
+        <option value="proxy" ${state.routes.newTarget === "proxy" ? "selected" : ""}>走代理</option>
+        <option value="direct" ${state.routes.newTarget === "direct" ? "selected" : ""}>直连</option>
+        <option value="block" ${state.routes.newTarget === "block" ? "selected" : ""}>阻断</option>
+      </select>
+      <button type="submit">${icon("Plus", 17)}添加并应用</button>
+    </form>
+    <div class="list-columns route-columns">
+      <div class="list-panel">
+        <div class="list-title"><span>${icon("Route", 17)}</span>Proxy domains</div>
+        ${routeList(state.routes.proxy, "proxy")}
+      </div>
+      <div class="list-panel">
+        <div class="list-title"><span>${icon("Wifi", 17)}</span>Direct domains</div>
+        ${routeList(state.routes.direct, "direct")}
+      </div>
+      <div class="list-panel">
+        <div class="list-title"><span>${icon("Ban", 17)}</span>Block domains</div>
+        ${routeList(state.routes.block, "block")}
+      </div>
+    </div>
+  `;
+}
+
 function packagePicker(): string {
   if (!state.hasKsu) {
     return `
@@ -1171,6 +1277,7 @@ function render(): void {
             <button class="${tab === "control" ? "active" : ""}" data-tab="control">${icon("Gauge", 18)}控制</button>
             <button class="${tab === "health" ? "active" : ""}" data-tab="health">${icon("Stethoscope", 18)}诊断</button>
             <button class="${tab === "apps" ? "active" : ""}" data-tab="apps">${icon("ListFilter", 18)}应用名单</button>
+            <button class="${tab === "routes" ? "active" : ""}" data-tab="routes">${icon("Route", 18)}分流</button>
             <button class="${tab === "subs" ? "active" : ""}" data-tab="subs">${icon("DownloadCloud", 18)}订阅</button>
             <button class="${tab === "capture" ? "active" : ""}" data-tab="capture">${icon("ShieldCheck", 18)}抓包</button>
             <button class="${tab === "certs" ? "active" : ""}" data-tab="certs">${icon("ShieldPlus", 18)}证书</button>
@@ -1264,6 +1371,10 @@ function render(): void {
             </div>
           </div>
 
+          <div class="tab-panel ${tab === "routes" ? "show" : ""}">
+            ${routePanel()}
+          </div>
+
           <div class="tab-panel ${tab === "subs" ? "show" : ""}">
             <div class="sub-toolbar">
               <button data-refresh-subs>${icon("RefreshCw", 17)}读取链接</button>
@@ -1346,6 +1457,8 @@ function bindEvents(): void {
 
   document.querySelector<HTMLButtonElement>("[data-refresh-subs]")?.addEventListener("click", () => refreshSubscriptions());
 
+  document.querySelector<HTMLButtonElement>("[data-refresh-routes]")?.addEventListener("click", () => refreshRoutes());
+
   document.querySelector<HTMLButtonElement>("[data-refresh-nodes]")?.addEventListener("click", () => refreshNodes());
 
   document.querySelector<HTMLButtonElement>("[data-test-nodes]")?.addEventListener("click", () => testNodeDelays());
@@ -1407,6 +1520,33 @@ function bindEvents(): void {
       state.output = `已复制路径：\n${path}`;
       if (state.hasKsu) kernelsu.toast?.("路径已复制");
       render();
+    });
+  });
+
+  document.querySelector<HTMLFormElement>("[data-route-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const target = String(form.get("target") || "proxy") as RouteRules["newTarget"];
+    const domain = String(form.get("domain") || "").trim();
+    state.routes.newDomain = domain;
+    state.routes.newTarget = ["proxy", "direct", "block"].includes(target) ? target : "proxy";
+    if (!/^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/.test(domain)) {
+      state.output = "域名后缀格式不对。";
+      render();
+      return;
+    }
+    await runCli(`route add-domain ${state.routes.newTarget} ${shellQuote(domain)}`);
+    state.routes.newDomain = "";
+    await refreshRoutes(true);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-remove-route]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const target = button.dataset.removeRoute || "proxy";
+      const value = button.dataset.value || "";
+      if (!["proxy", "direct", "block"].includes(target) || !value) return;
+      await runCli(`route remove-domain ${target} ${shellQuote(value)}`);
+      await refreshRoutes(true);
     });
   });
 
@@ -1567,6 +1707,7 @@ async function bootstrap(): Promise<void> {
   render();
   await refreshStatus();
   await refreshApps(true);
+  await refreshRoutes(true);
   await refreshSubscriptions(true);
   await refreshNodes(true);
   await refreshTraffic(true);
