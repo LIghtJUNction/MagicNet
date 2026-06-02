@@ -11,6 +11,12 @@ const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_health","description":"Run MagicNet health diagnostics","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_block_list","description":"Show MagicNet community and manual blocklist state","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_block_update","description":"Download and apply the community blocklist","inputSchema":{"type":"object","properties":{}}},
+{"name":"magicnet_subscription_list","description":"Show configured sing-box and mihomo subscription URLs","inputSchema":{"type":"object","properties":{}}},
+{"name":"magicnet_subscription_set","description":"Set one subscription URL for sing-box or mihomo. For mihomo, provider is optional and updates the matching proxy-provider in config.yaml when supplied.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box","mihomo","clash"]},"url":{"type":"string"},"provider":{"type":"string"}},"required":["target","url"]}},
+{"name":"magicnet_subscription_set_singbox_lines","description":"Set sing-box subscription URLs from newline-separated text","inputSchema":{"type":"object","properties":{"content":{"type":"string"}},"required":["content"]}},
+{"name":"magicnet_free_filter_status","description":"Show whether MagicNet is filtering free mihomo providers from default groups","inputSchema":{"type":"object","properties":{}}},
+{"name":"magicnet_free_filter_set","description":"Enable or disable filtering free mihomo providers from default groups","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["on","off","enable","disable","1","0"]}},"required":["mode"]}},
+{"name":"magicnet_backup_export","description":"Export MagicNet configuration backup as base64. Password is optional and may be empty.","inputSchema":{"type":"object","properties":{"password":{"type":"string"}}}},
 {"name":"magicnet_pingtest","description":"Run MagicNet domestic and global connectivity checks","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_topology","description":"Show Android network interfaces, routes, forwarding and MagicNet topology","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_file_list","description":"List files under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},
@@ -144,6 +150,14 @@ fn call_tool(tool: &str, payload: &str, server: &Server) -> String {
         "magicnet_health" => run_cli(server, &["health"]),
         "magicnet_block_list" => run_cli(server, &["block", "list"]),
         "magicnet_block_update" => run_cli(server, &["block", "update"]),
+        "magicnet_subscription_list" => run_cli(server, &["sub", "list"]),
+        "magicnet_subscription_set" => subscription_set(server, payload),
+        "magicnet_subscription_set_singbox_lines" => {
+            subscription_set_singbox_lines(server, payload)
+        }
+        "magicnet_free_filter_status" => run_cli(server, &["sub", "filter-free", "status"]),
+        "magicnet_free_filter_set" => free_filter_set(server, payload),
+        "magicnet_backup_export" => backup_export(server, payload),
         "magicnet_pingtest" => run_cli(server, &["pingtest"]),
         "magicnet_topology" => run_cli(server, &["topology"]),
         "magicnet_file_list" => file_list(server, arg(payload, "path").as_deref().unwrap_or(".")),
@@ -189,6 +203,57 @@ fn run_cli(server: &Server, args: &[&str]) -> String {
         }
         Err(err) => format!("failed to run cli: {err}"),
     }
+}
+
+fn subscription_set(server: &Server, payload: &str) -> String {
+    let target = arg(payload, "target").unwrap_or_else(|| "sing-box".to_string());
+    let url = arg(payload, "url").unwrap_or_default();
+    if url.trim().is_empty() {
+        return "missing url".to_string();
+    }
+    match arg(payload, "provider") {
+        Some(provider)
+            if !provider.trim().is_empty() && matches!(target.as_str(), "mihomo" | "clash") =>
+        {
+            run_cli_owned(
+                server,
+                vec!["sub".into(), "set".into(), target, provider, url],
+            )
+        }
+        _ => run_cli_owned(server, vec!["sub".into(), "set".into(), target, url]),
+    }
+}
+
+fn subscription_set_singbox_lines(server: &Server, payload: &str) -> String {
+    let content = arg(payload, "content").unwrap_or_default();
+    let encoded = encode_base64(content.as_bytes());
+    run_cli_owned(
+        server,
+        vec!["sub".into(), "set-file".into(), "sing-box".into(), encoded],
+    )
+}
+
+fn backup_export(server: &Server, payload: &str) -> String {
+    match arg(payload, "password") {
+        Some(password) if !password.is_empty() => {
+            run_cli_owned(server, vec!["backup".into(), "export".into(), password])
+        }
+        _ => run_cli(server, &["backup", "export"]),
+    }
+}
+
+fn free_filter_set(server: &Server, payload: &str) -> String {
+    let mode = arg(payload, "mode").unwrap_or_default();
+    match mode.as_str() {
+        "on" | "enable" | "1" => run_cli(server, &["sub", "filter-free", "on"]),
+        "off" | "disable" | "0" => run_cli(server, &["sub", "filter-free", "off"]),
+        _ => "invalid mode, expected on or off".to_string(),
+    }
+}
+
+fn run_cli_owned(server: &Server, args: Vec<String>) -> String {
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_cli(server, &refs)
 }
 
 fn module_path(server: &Server, rel: &str) -> Result<PathBuf, String> {
@@ -462,4 +527,28 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
         }
     }
     Ok(out)
+}
+
+fn encode_base64(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    let mut chunks = input.chunks(3);
+    while let Some(chunk) = chunks.next() {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        out.push(TABLE[(b0 >> 2) as usize] as char);
+        out.push(TABLE[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(b2 & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
 }

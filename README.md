@@ -197,6 +197,9 @@ su -c /data/adb/modules/MagicNet/cli sub get mihomo
 su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/sub"'
 su -c '/data/adb/modules/MagicNet/cli sub set sing-box "https://example.com/sub"'
 su -c '/data/adb/modules/MagicNet/cli sub set mihomo "https://example.com/clash.yaml"'
+su -c '/data/adb/modules/MagicNet/cli sub set mihomo premium_a "https://example.com/clash.yaml"'
+su -c /data/adb/modules/MagicNet/cli sub filter-free status
+su -c /data/adb/modules/MagicNet/cli sub filter-free on
 su -c /data/adb/modules/MagicNet/cli sub file sing-box
 su -c /data/adb/modules/MagicNet/cli sub file mihomo
 su -c /data/adb/modules/MagicNet/cli api ui
@@ -205,6 +208,19 @@ su -c /data/adb/modules/MagicNet/cli api close-all
 su -c /data/adb/modules/MagicNet/cli webui status
 su -c '/data/adb/modules/MagicNet/cli webui install-local "https://example.com/panel.zip" "panel-name"'
 ```
+
+`sub set mihomo [provider] <url>` 会同时写入 `.config/mihomo/subscription.url`，并在指定 provider 时同步更新 `config.yaml` 对应 `proxy-provider` 的 `url`。`sub set-file sing-box <base64-lines>` 可一次写入多条 sing-box 订阅，每行一个 URL。
+
+`sub filter-free on|off` 是一键过滤免费节点开关：开启后 mihomo 默认策略组只使用 `*PREMIUM_PROVIDERS`，保留免费 provider 和订阅 URL 但不参与默认选择；关闭后恢复 `*ALL_PROVIDERS`。开关状态写入 `.config/magicnet/provider-filter.conf`，会进入配置备份。
+
+ADB 端口转发后可以通过 MCP 管理订阅和备份：
+
+```bash
+adb forward tcp:8765 tcp:8765
+su -c /data/adb/modules/MagicNet/cli mcp enable
+```
+
+MCP 工具包含 `magicnet_subscription_list`、`magicnet_subscription_set`、`magicnet_subscription_set_singbox_lines`、`magicnet_free_filter_status`、`magicnet_free_filter_set` 和 `magicnet_backup_export`。这些工具走模块 CLI 写入运行配置，不需要手动改文件。
 
 `cli webui install-local` 会下载 zip，查找其中的 `index.html`，安装到模块本地面板目录，并重新应用 sing-box/mihomo 的 WebUI 配置。安装失败会回滚旧本地面板。
 

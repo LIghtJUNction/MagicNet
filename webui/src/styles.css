@@ -1528,6 +1528,16 @@ a.disabled {
   overflow: hidden;
 }
 
+.policy-card {
+  background:
+    linear-gradient(135deg, rgba(93, 240, 166, 0.08), transparent 38%),
+    var(--panel-2);
+}
+
+.policy-card.enabled {
+  border-color: rgba(93, 240, 166, 0.34);
+}
+
 .sub-head {
   display: flex;
   align-items: flex-start;
@@ -1561,6 +1571,27 @@ a.disabled {
 
 .sub-card textarea:focus {
   border-color: var(--green);
+}
+
+.policy-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.policy-strip span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .sub-actions {
@@ -3223,6 +3254,14 @@ a.disabled {
   .sub-actions code {
     width: 100%;
     justify-self: stretch;
+  }
+
+  .policy-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .policy-strip span {
+    justify-content: flex-start;
   }
 
   .sub-card textarea {

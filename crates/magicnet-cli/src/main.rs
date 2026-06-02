@@ -84,6 +84,11 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
             sub_get(app, args.get(2).map(String::as_str).unwrap_or("sing-box"));
             Ok(())
         }
+        "sub" if args.get(1).map(String::as_str) == Some("set") => sub_set(app, args),
+        "sub" if args.get(1).map(String::as_str) == Some("set-file") => sub_set_file(app, args),
+        "sub" if args.get(1).map(String::as_str) == Some("filter-free") => {
+            sub_filter_free(app, &args[2..])
+        }
         "sub"
             if matches!(
                 args.get(1).map(String::as_str),
@@ -355,8 +360,117 @@ fn is_obvious_group(name: &str) -> bool {
 fn sub_target_file(app: &App, target: &str) -> PathBuf {
     match target {
         "mihomo" | "clash" => app.moddir.join(".config/mihomo/subscription.url"),
+        "sing-box" | "singbox" => app.moddir.join(".config/sing-box/subscription.url"),
         _ => app.moddir.join(".config/sing-box/subscription.url"),
     }
+}
+
+fn free_filter_conf_path(app: &App) -> PathBuf {
+    app.moddir.join(".config/magicnet/provider-filter.conf")
+}
+
+fn free_filter_enabled(app: &App) -> bool {
+    fs::read_to_string(free_filter_conf_path(app))
+        .ok()
+        .map(|text| {
+            text.lines()
+                .any(|line| line.trim() == "MAGICNET_FILTER_FREE_PROVIDERS=1")
+        })
+        .unwrap_or(false)
+}
+
+fn write_free_filter_conf(app: &App, enabled: bool) -> Result<(), String> {
+    write_text_file(
+        free_filter_conf_path(app),
+        &format!(
+            "MAGICNET_FILTER_FREE_PROVIDERS={}\n",
+            if enabled { 1 } else { 0 }
+        ),
+    )
+}
+
+fn validate_subscription_url(url: &str) -> Result<(), String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("Subscription URL must start with http:// or https://".to_string());
+    }
+    if url.chars().any(char::is_whitespace) {
+        return Err("Subscription URL must not contain whitespace".to_string());
+    }
+    Ok(())
+}
+
+fn write_text_file(path: PathBuf, text: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
+    }
+    fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+}
+
+fn clear_node_cache(app: &App) {
+    let _ = fs::remove_file(app.moddir.join(".tmp/magicnet-node-list.cache"));
+}
+
+fn sub_set(app: &App, args: &[String]) -> Result<(), String> {
+    let target = args.get(2).map(String::as_str).unwrap_or_default();
+    let (provider, url) = match target {
+        "mihomo" | "clash" => match (args.get(3), args.get(4)) {
+            (Some(provider), Some(url)) => (Some(provider.as_str()), url.as_str()),
+            (Some(url), None) => (None, url.as_str()),
+            _ => {
+                return Err(
+                    "Usage: cli sub set <sing-box|mihomo|clash> [provider] <url>".to_string(),
+                )
+            }
+        },
+        "sing-box" | "singbox" => match args.get(3) {
+            Some(url) => (None, url.as_str()),
+            None => {
+                return Err(
+                    "Usage: cli sub set <sing-box|mihomo|clash> [provider] <url>".to_string(),
+                )
+            }
+        },
+        _ => return Err("Subscription target must be sing-box or mihomo".to_string()),
+    };
+    validate_subscription_url(url)?;
+    clear_node_cache(app);
+    write_text_file(sub_target_file(app, target), &format!("{url}\n"))?;
+    if matches!(target, "mihomo" | "clash") {
+        update_mihomo_config_url(app, url, provider)?;
+    }
+    println!(
+        "[info] Saved {target}{} subscription URL to {}",
+        provider
+            .map(|value| format!(" provider {value}"))
+            .unwrap_or_default(),
+        sub_target_file(app, target).display()
+    );
+    Ok(())
+}
+
+fn sub_set_file(app: &App, args: &[String]) -> Result<(), String> {
+    let target = args.get(2).map(String::as_str).unwrap_or_default();
+    let payload = args.get(3).map(String::as_str).unwrap_or_default();
+    if payload.is_empty() {
+        return Err("Usage: cli sub set-file <sing-box> <base64-lines>".to_string());
+    }
+    let file = match target {
+        "sing-box" | "singbox" => sub_target_file(app, "sing-box"),
+        _ => return Err("set-file currently supports sing-box only".to_string()),
+    };
+    let bytes = decode_base64(payload)?;
+    let text =
+        String::from_utf8(bytes).map_err(|err| format!("subscription text is not UTF-8: {err}"))?;
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        validate_subscription_url(line)?;
+    }
+    clear_node_cache(app);
+    write_text_file(file.clone(), &text)?;
+    println!(
+        "[info] Saved sing-box subscription URL list to {}",
+        file.display()
+    );
+    Ok(())
 }
 
 fn sub_list(app: &App) {
@@ -370,6 +484,7 @@ fn sub_list(app: &App) {
         "sing-box={}",
         first_clean_line(app.moddir.join(".config/sing-box/subscription.url"))
     );
+    println!("free-filter={}", free_filter_enabled(app) as u8);
     for (name, url) in mihomo_providers(app) {
         println!("mihomo.{name}={url}");
     }
@@ -377,6 +492,27 @@ fn sub_list(app: &App) {
         "mihomo={}",
         first_clean_line(app.moddir.join(".config/mihomo/subscription.url"))
     );
+}
+
+fn sub_filter_free(app: &App, args: &[String]) -> Result<(), String> {
+    let enabled = match args.first().map(String::as_str).unwrap_or("status") {
+        "status" => {
+            println!("free-filter={}", free_filter_enabled(app) as u8);
+            return Ok(());
+        }
+        "on" | "enable" | "1" => true,
+        "off" | "disable" | "0" => false,
+        "apply" => free_filter_enabled(app),
+        _ => return Err("Usage: cli sub filter-free {status|on|off|apply}".to_string()),
+    };
+    write_free_filter_conf(app, enabled)?;
+    apply_mihomo_provider_filter(app, enabled)?;
+    clear_node_cache(app);
+    println!(
+        "[info] Free provider filter {}",
+        if enabled { "enabled" } else { "disabled" }
+    );
+    Ok(())
 }
 
 fn sub_get(app: &App, target: &str) {
@@ -415,6 +551,90 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
         }
     }
     providers
+}
+
+fn mihomo_config_path(app: &App) -> PathBuf {
+    app.moddir.join(".config/mihomo/config.yaml")
+}
+
+fn update_mihomo_config_url(
+    app: &App,
+    url: &str,
+    target_provider: Option<&str>,
+) -> Result<(), String> {
+    let path = mihomo_config_path(app);
+    let Ok(text) = fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let mut out = Vec::new();
+    let mut in_providers = false;
+    let mut current_provider: Option<String> = None;
+    let mut done = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed == "proxy-providers:" {
+            in_providers = true;
+            out.push(line.to_string());
+            continue;
+        }
+        if in_providers && !line.starts_with(' ') && line.ends_with(':') {
+            in_providers = false;
+            current_provider = None;
+        }
+        if in_providers
+            && line.starts_with("  ")
+            && trimmed.ends_with(':')
+            && !trimmed.contains(' ')
+        {
+            current_provider = Some(trimmed.trim_end_matches(':').to_string());
+        }
+        let provider_matches = target_provider
+            .map(|target| current_provider.as_deref() == Some(target))
+            .unwrap_or(true);
+        if in_providers && provider_matches && !done && trimmed.starts_with("url:") {
+            let indent_len = line.len().saturating_sub(line.trim_start().len());
+            let indent = &line[..indent_len];
+            out.push(format!("{indent}url: \"{url}\""));
+            done = true;
+            continue;
+        }
+        out.push(line.to_string());
+    }
+    if done {
+        write_text_file(path, &format!("{}\n", out.join("\n")))?;
+    }
+    Ok(())
+}
+
+fn apply_mihomo_provider_filter(app: &App, enabled: bool) -> Result<(), String> {
+    let path = mihomo_config_path(app);
+    let Ok(text) = fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let replacement = if enabled {
+        "use: *PREMIUM_PROVIDERS"
+    } else {
+        "use: *ALL_PROVIDERS"
+    };
+    let mut changed = false;
+    let mut out = Vec::new();
+    for line in text.lines() {
+        if line.trim() == "use: *ALL_PROVIDERS" || line.trim() == "use: *PREMIUM_PROVIDERS" {
+            let indent_len = line.len().saturating_sub(line.trim_start().len());
+            let indent = &line[..indent_len];
+            let next = format!("{indent}{replacement}");
+            if next != line {
+                changed = true;
+            }
+            out.push(next);
+        } else {
+            out.push(line.to_string());
+        }
+    }
+    if changed {
+        write_text_file(path, &format!("{}\n", out.join("\n")))?;
+    }
+    Ok(())
 }
 
 fn route_list(app: &App) {
@@ -745,7 +965,7 @@ fn api_ui(app: &App, target: &str) {
 
 fn help() {
     println!(
-        "MagicNet CLI\n\nUsage:\n  cli service {{status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}}\n  cli health\n  cli pingtest\n  cli topology\n  cli sysroute {{list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}}\n  cli repair\n  cli support bundle\n  cli setup <subscription-url>\n  cli config {{apply}}\n  cli config-editor {{get|path|validate|save}} <mihomo|sing-box> [base64-config]\n  cli transparent {{status|set <tun|tproxy>|apply}}\n  cli core {{status|sing-box {{status|enable|disable|toggle}}}}\n  cli node {{list|current|use <name>}}\n  cli mode [rule|global|direct]\n  cli route {{list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}}\n  cli sub {{update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}}\n  cli cert {{list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}}\n  cli capture {{list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}}\n  cli block {{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}}\n  cli mcp {{status|enable|disable|start|stop|restart}}\n  cli webui {{status|install-local <download-url> [name]}}\n  cli backup {{export [password]|restore [password|-] <base64>}}\n  cli api {{ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}}\n  cli app {{list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}}\n  cli hotspot reload\n  cli vpn reload\n  cli diagnose"
+        "MagicNet CLI\n\nUsage:\n  cli service {{status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}}\n  cli health\n  cli pingtest\n  cli topology\n  cli sysroute {{list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}}\n  cli repair\n  cli support bundle\n  cli setup <subscription-url>\n  cli config {{apply}}\n  cli config-editor {{get|path|validate|save}} <mihomo|sing-box> [base64-config]\n  cli transparent {{status|set <tun|tproxy>|apply}}\n  cli core {{status|sing-box {{status|enable|disable|toggle}}}}\n  cli node {{list|current|use <name>}}\n  cli mode [rule|global|direct]\n  cli route {{list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}}\n  cli sub {{update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> [provider] <url>|set-file <sing-box> <base64-lines>|filter-free {{status|on|off|apply}}|file [sing-box|mihomo]}}\n  cli cert {{list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}}\n  cli capture {{list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}}\n  cli block {{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}}\n  cli mcp {{status|enable|disable|start|stop|restart}}\n  cli webui {{status|install-local <download-url> [name]}}\n  cli backup {{export [password]|restore [password|-] <base64>}}\n  cli api {{ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}}\n  cli app {{list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}}\n  cli hotspot reload\n  cli vpn reload\n  cli diagnose"
     );
 }
 
@@ -767,4 +987,30 @@ fn read_stdin() -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     io::stdin().read_to_end(&mut bytes)?;
     Ok(bytes)
+}
+
+fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+    let mut out = Vec::with_capacity(input.len() * 3 / 4);
+    let mut buf = 0_u32;
+    let mut bits = 0_u8;
+    for byte in input.bytes().filter(|b| !b.is_ascii_whitespace()) {
+        if byte == b'=' {
+            break;
+        }
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return Err(format!("invalid base64 byte {byte}")),
+        } as u32;
+        buf = (buf << 6) | value;
+        bits += 6;
+        while bits >= 8 {
+            bits -= 8;
+            out.push(((buf >> bits) & 0xff) as u8);
+        }
+    }
+    Ok(out)
 }

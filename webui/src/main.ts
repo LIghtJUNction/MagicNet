@@ -203,6 +203,7 @@ type State = {
     mihomo: string;
     singBoxUrls: string[];
     mihomoProviders: MihomoProvider[];
+    freeFilter: boolean;
   };
   backupPassword: string;
   backupPayload: string;
@@ -289,7 +290,8 @@ const state: State = {
     singBox: "",
     mihomo: "",
     singBoxUrls: [],
-    mihomoProviders: []
+    mihomoProviders: [],
+    freeFilter: false
   },
   backupPassword: "",
   backupPayload: "",
@@ -1111,6 +1113,7 @@ function parseSubscriptions(text: string): State["subscriptions"] {
     }
     if (line.startsWith("sing-box=")) next.singBox = line.slice("sing-box=".length);
     if (line.startsWith("mihomo=")) next.mihomo = line.slice("mihomo=".length);
+    if (line.startsWith("free-filter=")) next.freeFilter = line.slice("free-filter=".length).trim() === "1";
   }
   if (next.singBoxUrls.length === 0 && next.singBox) next.singBoxUrls = [next.singBox];
   return next;
@@ -2343,7 +2346,7 @@ function subscriptionsSection(): string {
       <div>
         <span class="eyebrow">Subscriptions & Backup</span>
         <h3>订阅链接与配置备份</h3>
-        <p>已保存订阅 ${configured}/2。备份会包含订阅链接、分应用名单、手动分流、黑名单、本地排除、抓包和 MCP 设置。</p>
+        <p>已保存订阅 ${configured}/2。备份会包含订阅链接、分应用名单、黑名单、本地排除、抓包、免费节点过滤和 MCP 设置。</p>
       </div>
       <div class="section-actions">
         <button class="command-secondary" data-refresh-subs>${icon("RefreshCw", 17)}刷新状态</button>
@@ -2351,6 +2354,22 @@ function subscriptionsSection(): string {
       </div>
     </div>
     <div class="sub-grid">
+      <div class="sub-card policy-card ${state.subscriptions.freeFilter ? "enabled" : ""}">
+        <div class="sub-head">
+          <div>
+            <h3>过滤免费节点</h3>
+            <p>开启后 mihomo 策略组只使用 premium provider，保留免费 provider 配置但不参与默认选择。</p>
+          </div>
+          <button class="toggle ${state.subscriptions.freeFilter ? "on" : ""}" data-filter-free-toggle>
+            ${state.subscriptions.freeFilter ? "已开启" : "已关闭"}
+          </button>
+        </div>
+        <div class="policy-strip">
+          <span>${icon("ShieldCheck", 16)}优先稳定节点</span>
+          <span>${icon("Settings", 16)}不删除订阅</span>
+          <span>${icon("FileText", 16)}状态进入备份</span>
+        </div>
+      </div>
       ${subscriptionCards}
       <div class="sub-card">
         <div class="sub-head">
@@ -3447,6 +3466,15 @@ function bindEvents(): void {
     }
     const encoded = bytesToBase64(new TextEncoder().encode(`${lines.join("\n")}\n`));
     await runCli(`sub set-file sing-box ${shellQuote(encoded)}`, { quiet: false });
+    await refreshSubscriptions(true);
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-filter-free-toggle]")?.addEventListener("click", async () => {
+    const nextMode = state.subscriptions.freeFilter ? "off" : "on";
+    await runCli(`sub filter-free ${nextMode}`, {
+      quiet: false,
+      label: nextMode === "on" ? "开启免费节点过滤" : "关闭免费节点过滤"
+    });
     await refreshSubscriptions(true);
   });
 

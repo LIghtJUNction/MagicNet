@@ -714,12 +714,14 @@ cli_config_editor_validate() {
                 unset _target _file _dir _bin
                 return 1
             }
-            "$_bin" -t -f "$_file" -d "$_dir" >"$_check_out" 2>&1 || {
+            "$_bin" -t -f "$_file" -d "$_dir" >"$_check_out" 2>&1
+            _check_rc=$?
+            if [ "$_check_rc" -ne 0 ] || grep -Eiq '(^|[[:space:]])(error|failed|panic|not found|could not open|no such file)([[:space:]]|:|$)' "$_check_out"; then
                 cat "$_check_out" >&2 2>/dev/null || true
                 rm -f "$_check_out" 2>/dev/null || true
-                unset _target _file _dir _bin _check_out
+                unset _target _file _dir _bin _check_out _check_rc
                 return 1
-            }
+            fi
             rm -f "$_check_out" 2>/dev/null || true
             ;;
         sing-box)
@@ -733,12 +735,14 @@ cli_config_editor_validate() {
                 unset _target _file _dir _bin
                 return 1
             }
-            "$_bin" check -c "$_file" -D "$_dir" >"$_check_out" 2>&1 || {
+            "$_bin" check -c "$_file" -D "$_dir" >"$_check_out" 2>&1
+            _check_rc=$?
+            if [ "$_check_rc" -ne 0 ] || grep -Eiq '(^|[[:space:]])(error|failed|panic|not found|could not open|no such file)([[:space:]]|:|$)' "$_check_out"; then
                 cat "$_check_out" >&2 2>/dev/null || true
                 rm -f "$_check_out" 2>/dev/null || true
-                unset _target _file _dir _bin _check_out
+                unset _target _file _dir _bin _check_out _check_rc
                 return 1
-            }
+            fi
             rm -f "$_check_out" 2>/dev/null || true
             ;;
         *)
@@ -747,7 +751,7 @@ cli_config_editor_validate() {
             return 1
             ;;
     esac
-    unset _target _file _dir _bin _check_out
+    unset _target _file _dir _bin _check_out _check_rc
 }
 
 cli_config_editor_save() {
@@ -1102,6 +1106,23 @@ cli_sub_mihomo_config() {
     printf '%s\n' "${MODDIR}/.config/mihomo/config.yaml"
 }
 
+cli_sub_filter_conf() {
+    printf '%s\n' "${MODDIR}/.config/magicnet/provider-filter.conf"
+}
+
+cli_sub_filter_enabled() {
+    _conf="$(cli_sub_filter_conf)"
+    [ -f "$_conf" ] && grep -q '^MAGICNET_FILTER_FREE_PROVIDERS=1$' "$_conf"
+}
+
+cli_sub_filter_write() {
+    _enabled="$1"
+    _conf="$(cli_sub_filter_conf)"
+    mkdir -p "${_conf%/*}"
+    printf 'MAGICNET_FILTER_FREE_PROVIDERS=%s\n' "$_enabled" >"$_conf"
+    unset _enabled _conf
+}
+
 cli_sub_first_line() {
     _file="$1"
     [ -f "$_file" ] || return 0
@@ -1151,6 +1172,27 @@ cli_sub_list_mihomo_providers() {
             print "mihomo." provider "=" line
         }
     ' "$_config"
+}
+
+cli_sub_apply_provider_filter() {
+    _enabled="$1"
+    _config="$(cli_sub_mihomo_config)"
+    [ -f "$_config" ] || { unset _enabled _config; return 0; }
+    _tmp="${_config}.provider-filter.new"
+    if [ "$_enabled" = "1" ]; then
+        _use='use: *PREMIUM_PROVIDERS'
+    else
+        _use='use: *ALL_PROVIDERS'
+    fi
+    awk -v replacement="$_use" '
+        /^[[:space:]]*use:[[:space:]]*\*(ALL|PREMIUM)_PROVIDERS[[:space:]]*$/ {
+            match($0, /^[[:space:]]*/)
+            print substr($0, RSTART, RLENGTH) replacement
+            next
+        }
+        { print }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"
+    unset _enabled _config _tmp _use
 }
 
 cli_sub_read() {
@@ -1231,9 +1273,42 @@ cli_sub() {
                 done
             fi
             printf 'sing-box=%s\n' "$(cli_sub_read sing-box)"
+            if cli_sub_filter_enabled; then
+                printf 'free-filter=1\n'
+            else
+                printf 'free-filter=0\n'
+            fi
             cli_sub_list_mihomo_providers
             printf 'mihomo=%s\n' "$(cli_sub_read mihomo)"
             unset _idx _file
+            ;;
+        filter-free)
+            case "${2:-status}" in
+                status)
+                    if cli_sub_filter_enabled; then printf 'free-filter=1\n'; else printf 'free-filter=0\n'; fi
+                    ;;
+                on|enable|1)
+                    cli_sub_filter_write 1
+                    cli_sub_apply_provider_filter 1
+                    cli_node_list_cache_clear
+                    cli_info "Free provider filter enabled"
+                    ;;
+                off|disable|0)
+                    cli_sub_filter_write 0
+                    cli_sub_apply_provider_filter 0
+                    cli_node_list_cache_clear
+                    cli_info "Free provider filter disabled"
+                    ;;
+                apply)
+                    if cli_sub_filter_enabled; then
+                        cli_sub_apply_provider_filter 1
+                    else
+                        cli_sub_apply_provider_filter 0
+                    fi
+                    cli_node_list_cache_clear
+                    ;;
+                *) cli_error "Usage: cli sub filter-free {status|on|off|apply}"; exit 1 ;;
+            esac
             ;;
         get)
             cli_sub_read "${2:-sing-box}"
@@ -2351,6 +2426,7 @@ cli_backup_export() {
         ".config/magicnet/route-proxy-domain-suffix.list" \
         ".config/magicnet/route-direct-domain-suffix.list" \
         ".config/magicnet/route-block-domain-suffix.list" \
+        ".config/magicnet/provider-filter.conf" \
         ".config/magicnet/block.conf" \
         ".config/magicnet/block-domain-suffix.list" \
         ".config/magicnet/block-allow-rules.list" \
@@ -2408,6 +2484,7 @@ cli_backup_restore() {
         ".config/magicnet/route-proxy-domain-suffix.list" \
         ".config/magicnet/route-direct-domain-suffix.list" \
         ".config/magicnet/route-block-domain-suffix.list" \
+        ".config/magicnet/provider-filter.conf" \
         ".config/magicnet/block.conf" \
         ".config/magicnet/block-domain-suffix.list" \
         ".config/magicnet/block-allow-rules.list" \
@@ -2998,7 +3075,7 @@ Usage:
   cli node {list|current|use <name>}
   cli mode [rule|global|direct]
   cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}
-  cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
+  cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> [provider] <url>|set-file <sing-box> <base64-lines>|filter-free {status|on|off|apply}|file [sing-box|mihomo]}
   cli cert {list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}
   cli capture {list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}
   cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}
