@@ -39,6 +39,8 @@ const MODULE_DIR = "/data/adb/modules/MagicNet";
 const CLI = `${MODULE_DIR}/cli`;
 const CORE_UI = "http://127.0.0.1:9090/ui/cubex/";
 const REPO = "https://github.com/LIghtJUNction/MagicNet";
+const NODE_RENDER_LIMIT = 80;
+const OUTPUT_RENDER_LIMIT = 6000;
 const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
 const hasKsuBridge = typeof ksuBridge?.exec === "function";
 
@@ -222,6 +224,17 @@ const quickModes = [
   { label: "直连", value: "direct" }
 ];
 
+const tabs = [
+  { key: "control", label: "控制", icon: "Gauge" },
+  { key: "health", label: "诊断", icon: "Stethoscope" },
+  { key: "apps", label: "应用", icon: "ListFilter" },
+  { key: "routes", label: "分流", icon: "Route" },
+  { key: "subs", label: "订阅", icon: "DownloadCloud" },
+  { key: "capture", label: "抓包", icon: "ShieldCheck" },
+  { key: "certs", label: "证书", icon: "ShieldPlus" },
+  { key: "logs", label: "输出", icon: "Terminal" }
+] as const;
+
 const iconMap: Record<string, IconNode> = {
   Activity,
   Ban,
@@ -283,6 +296,13 @@ function escapeHtml(value: string): string {
     };
     return entities[char] || char;
   });
+}
+
+function compactOutput(value: string, limit = OUTPUT_RENDER_LIMIT): string {
+  if (value.length <= limit) return value;
+  const head = value.slice(0, Math.floor(limit * 0.58));
+  const tail = value.slice(value.length - Math.floor(limit * 0.32));
+  return `${head}\n\n... 输出过长，已折叠中间 ${value.length - head.length - tail.length} 个字符 ...\n\n${tail}`;
 }
 
 function normalizeExecResult(result: ExecResult): string {
@@ -829,8 +849,16 @@ function healthPanel(): string {
 }
 
 function nodePanel(): string {
-  const nodeRows = state.nodes.length
-    ? state.nodes
+  const selectedOutsideLimit = state.currentNode && !state.nodes.slice(0, NODE_RENDER_LIMIT).includes(state.currentNode);
+  const visibleNodes = state.nodes.length
+    ? [
+      ...(selectedOutsideLimit ? [state.currentNode] : []),
+      ...state.nodes.filter((name) => name !== state.currentNode).slice(0, NODE_RENDER_LIMIT)
+    ]
+    : [];
+  const hiddenCount = Math.max(0, state.nodes.length - visibleNodes.length);
+  const nodeRows = visibleNodes.length
+    ? visibleNodes
       .map((name) => {
         const selected = name === state.currentNode;
         const delay = state.nodeDelays[name];
@@ -861,15 +889,116 @@ function nodePanel(): string {
         <div>
           <span class="eyebrow">Proxy Selector</span>
           <h3>${escapeHtml(state.currentNode || "未读取当前节点")}</h3>
-          <p>直接切换 TUN 出口，不需要打开内核 WebUI。</p>
+          <p>直接切换 TUN 出口。当前仅渲染 ${visibleNodes.length}/${state.nodes.length} 条，避免 Android WebView 卡顿${hiddenCount ? `，还有 ${hiddenCount} 条可在内核面板查看` : ""}。</p>
         </div>
         <div class="node-actions">
-          <button class="command-secondary" data-test-nodes ${state.busy || state.nodes.length === 0 ? "disabled" : ""}>${icon("Gauge", 17)}全部测速</button>
+          <button class="command-secondary" data-test-nodes ${state.busy || state.nodes.length === 0 ? "disabled" : ""}>${icon("Gauge", 17)}测速前 20</button>
           <button class="command-secondary" data-refresh-nodes ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}刷新节点</button>
           <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>${icon("DownloadCloud", 17)}更新订阅</button>
         </div>
       </div>
       <div class="node-list">${nodeRows}</div>
+    </div>
+  `;
+}
+
+function activeTabPanel(tab: State["activeTab"]): string {
+  if (tab === "control") {
+    return `
+      <div class="tab-panel show">
+        <div class="action-grid">
+          ${actions
+            .map(
+              (item) => `
+                <button class="action-card ${item.tone || ""}" data-run="${item.command}" ${state.busy ? "disabled" : ""}>
+                  <span>${icon(item.icon, 20)}</span>
+                  <strong>${item.label}</strong>
+                  <small>${item.hint}</small>
+                </button>
+              `
+            )
+            .join("")}
+        </div>
+        ${nodePanel()}
+        ${trafficPanel()}
+        <div class="mode-panel">
+          <div>
+            <h3>代理模式</h3>
+            <p>仅切换内核策略，网络入口保持 TUN。</p>
+          </div>
+          <div class="segmented">
+            ${quickModes
+              .map((item) => `<button data-mode="${item.value}" ${state.busy ? "disabled" : ""}>${item.label}</button>`)
+              .join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (tab === "health") return `<div class="tab-panel show">${healthPanel()}</div>`;
+
+  if (tab === "apps") {
+    return `
+      <div class="tab-panel show">
+        <div class="section-intro">
+          <div>
+            <span class="eyebrow">Per-App TUN</span>
+            <h3>分应用 TUN 策略</h3>
+            <p>${state.appPolicy.mode === "whitelist" ? "白名单：只有 proxy 列表进入 TUN" : "黑名单：bypass 列表不进入 TUN"}</p>
+          </div>
+          <div class="segmented">
+            <button class="${state.appPolicy.mode === "blacklist" ? "selected" : ""}" data-app-mode="blacklist">黑名单</button>
+            <button class="${state.appPolicy.mode === "whitelist" ? "selected" : ""}" data-app-mode="whitelist">白名单</button>
+          </div>
+        </div>
+        <form class="package-form" data-package-form>
+          <input name="package" value="${escapeHtml(state.newPackage)}" placeholder="com.example.app" spellcheck="false" />
+          <select name="target">
+            <option value="proxy" ${state.newTarget === "proxy" ? "selected" : ""}>加入 proxy</option>
+            <option value="bypass" ${state.newTarget === "bypass" ? "selected" : ""}>加入 bypass</option>
+          </select>
+          <button type="submit">${icon("Plus", 17)}添加</button>
+        </form>
+        <div class="package-picker">
+          <div class="picker-head">
+            <div>
+              <h3>已安装应用</h3>
+              <p>从 KernelSU 读取用户应用，点选后写入 MagicNet app list。</p>
+            </div>
+            <button class="scan-button" data-scan-packages ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}扫描用户应用</button>
+          </div>
+          <input class="package-search" data-package-query value="${escapeHtml(state.packageQuery)}" placeholder="搜索应用名或包名" />
+          <div class="package-results">${packagePicker()}</div>
+        </div>
+        <div class="list-columns">
+          <div class="list-panel">
+            <div class="list-title"><span>${icon("Route", 17)}</span>Proxy apps</div>
+            ${appList(state.appPolicy.proxy, "proxy")}
+          </div>
+          <div class="list-panel">
+            <div class="list-title"><span>${icon("Ban", 17)}</span>Bypass apps</div>
+            ${appList(state.appPolicy.bypass, "bypass")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (tab === "routes") return `<div class="tab-panel show">${routePanel()}</div>`;
+  if (tab === "subs") return `<div class="tab-panel show">${subscriptionsSection()}</div>`;
+  if (tab === "capture") return `<div class="tab-panel show">${capturePanel()}</div>`;
+  if (tab === "certs") return `<div class="tab-panel show">${certPanel()}</div>`;
+
+  return `
+    <div class="tab-panel show">
+      <div class="log-toolbar">
+        <button data-run="service logs sing-box 160">${icon("FileText", 17)}sing-box 日志</button>
+        <button data-health-run>${icon("Stethoscope", 17)}健康诊断</button>
+        <button data-support-bundle>${icon("Copy", 17)}支持包</button>
+        <button data-copy-last>${icon("Copy", 17)}复制命令</button>
+      </div>
+      <pre class="terminal">${escapeHtml(compactOutput(state.output))}</pre>
     </div>
   `;
 }
@@ -1335,8 +1464,10 @@ function overviewPanel(): string {
   return `
     <section class="overview">
       <div class="overview-main">
-        <span class="eyebrow">Transparent TUN Control</span>
-        <h2>${headline}</h2>
+        <div>
+          <span class="eyebrow">Transparent TUN Control</span>
+          <h2>${headline}</h2>
+        </div>
         <p>${bridgeText}。入口固定是 TUN；内核面板、订阅、分应用、抓包、证书、热点转发和 VPN 共存都在这里完成。</p>
         ${commandDeck()}
       </div>
@@ -1367,6 +1498,19 @@ function overviewPanel(): string {
     </section>
     ${setupPanel()}
   `;
+}
+
+function tabsMarkup(): string {
+  return tabs
+    .map(
+      (item) => `
+        <button class="${state.activeTab === item.key ? "active" : ""}" data-tab="${item.key}">
+          ${icon(item.icon, 18)}
+          <span>${item.label}</span>
+        </button>
+      `
+    )
+    .join("");
 }
 
 async function scanUserPackages(): Promise<void> {
@@ -1426,14 +1570,7 @@ function render(): void {
             </div>
           </div>
           <nav class="tabs">
-            <button class="${tab === "control" ? "active" : ""}" data-tab="control">${icon("Gauge", 18)}控制</button>
-            <button class="${tab === "health" ? "active" : ""}" data-tab="health">${icon("Stethoscope", 18)}诊断</button>
-            <button class="${tab === "apps" ? "active" : ""}" data-tab="apps">${icon("ListFilter", 18)}应用名单</button>
-            <button class="${tab === "routes" ? "active" : ""}" data-tab="routes">${icon("Route", 18)}分流</button>
-            <button class="${tab === "subs" ? "active" : ""}" data-tab="subs">${icon("DownloadCloud", 18)}订阅</button>
-            <button class="${tab === "capture" ? "active" : ""}" data-tab="capture">${icon("ShieldCheck", 18)}抓包</button>
-            <button class="${tab === "certs" ? "active" : ""}" data-tab="certs">${icon("ShieldPlus", 18)}证书</button>
-            <button class="${tab === "logs" ? "active" : ""}" data-tab="logs">${icon("Terminal", 18)}输出</button>
+            ${tabsMarkup()}
           </nav>
           <div class="meta">
             <span>Module</span>
@@ -1445,120 +1582,24 @@ function render(): void {
 
         <section class="workspace">
           ${overviewPanel()}
-
-          <div class="tab-panel ${tab === "control" ? "show" : ""}">
-            <div class="action-grid">
-              ${actions
-                .map(
-                  (item) => `
-                    <button class="action-card ${item.tone || ""}" data-run="${item.command}" ${state.busy ? "disabled" : ""}>
-                      <span>${icon(item.icon, 20)}</span>
-                      <strong>${item.label}</strong>
-                      <small>${item.hint}</small>
-                    </button>
-                  `
-                )
-                .join("")}
-            </div>
-            ${nodePanel()}
-            ${trafficPanel()}
-            <div class="mode-panel">
-              <div>
-                <h3>代理模式</h3>
-                <p>仅切换内核策略，网络入口保持 TUN。</p>
-              </div>
-              <div class="segmented">
-                ${quickModes
-                  .map((item) => `<button data-mode="${item.value}" ${state.busy ? "disabled" : ""}>${item.label}</button>`)
-                  .join("")}
-              </div>
-            </div>
-          </div>
-
-          <div class="tab-panel ${tab === "health" ? "show" : ""}">
-            ${healthPanel()}
-          </div>
-
-          <div class="tab-panel ${tab === "apps" ? "show" : ""}">
-            <div class="section-intro">
-              <div>
-                <span class="eyebrow">Per-App TUN</span>
-                <h3>分应用 TUN 策略</h3>
-                <p>${state.appPolicy.mode === "whitelist" ? "白名单：只有 proxy 列表进入 TUN" : "黑名单：bypass 列表不进入 TUN"}</p>
-              </div>
-              <div class="segmented">
-                <button class="${state.appPolicy.mode === "blacklist" ? "selected" : ""}" data-app-mode="blacklist">黑名单</button>
-                <button class="${state.appPolicy.mode === "whitelist" ? "selected" : ""}" data-app-mode="whitelist">白名单</button>
-              </div>
-            </div>
-            <form class="package-form" data-package-form>
-              <input name="package" value="${escapeHtml(state.newPackage)}" placeholder="com.example.app" spellcheck="false" />
-              <select name="target">
-                <option value="proxy" ${state.newTarget === "proxy" ? "selected" : ""}>加入 proxy</option>
-                <option value="bypass" ${state.newTarget === "bypass" ? "selected" : ""}>加入 bypass</option>
-              </select>
-              <button type="submit">${icon("Plus", 17)}添加</button>
-            </form>
-            <div class="package-picker">
-              <div class="picker-head">
-                <div>
-                  <h3>已安装应用</h3>
-                  <p>从 KernelSU 读取用户应用，点选后写入 MagicNet app list。</p>
-                </div>
-                <button class="scan-button" data-scan-packages ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}扫描用户应用</button>
-              </div>
-              <input class="package-search" data-package-query value="${escapeHtml(state.packageQuery)}" placeholder="搜索应用名或包名" />
-              <div class="package-results">
-                ${packagePicker()}
-              </div>
-            </div>
-            <div class="list-columns">
-              <div class="list-panel">
-                <div class="list-title"><span>${icon("Route", 17)}</span>Proxy apps</div>
-                ${appList(state.appPolicy.proxy, "proxy")}
-              </div>
-              <div class="list-panel">
-                <div class="list-title"><span>${icon("Ban", 17)}</span>Bypass apps</div>
-                ${appList(state.appPolicy.bypass, "bypass")}
-              </div>
-            </div>
-          </div>
-
-          <div class="tab-panel ${tab === "routes" ? "show" : ""}">
-            ${routePanel()}
-          </div>
-
-          <div class="tab-panel ${tab === "subs" ? "show" : ""}">
-            ${subscriptionsSection()}
-          </div>
-
-          <div class="tab-panel ${tab === "capture" ? "show" : ""}">
-            ${capturePanel()}
-          </div>
-
-          <div class="tab-panel ${tab === "certs" ? "show" : ""}">
-            ${certPanel()}
-          </div>
-
-          <div class="tab-panel ${tab === "logs" ? "show" : ""}">
-            <div class="log-toolbar">
-              <button data-run="service logs sing-box 160">${icon("FileText", 17)}sing-box 日志</button>
-              <button data-health-run>${icon("Stethoscope", 17)}健康诊断</button>
-              <button data-support-bundle>${icon("Copy", 17)}支持包</button>
-              <button data-copy-last>${icon("Copy", 17)}复制命令</button>
-            </div>
-            <pre class="terminal">${escapeHtml(state.output)}</pre>
-          </div>
+          ${activeTabPanel(tab)}
 
           <div class="always-output">
             <div class="output-head">
               <span>${icon("TerminalSquare", 17)}最近输出</span>
               <code>${escapeHtml(state.lastCommand || "等待执行")}</code>
             </div>
-            <pre>${escapeHtml(state.output)}</pre>
+            <pre>${escapeHtml(compactOutput(state.output, 2400))}</pre>
           </div>
         </section>
       </main>
+      <nav class="mobile-dock" aria-label="MagicNet mobile shortcuts">
+        <button class="${tab === "control" ? "active" : ""}" data-tab="control">${icon("Gauge", 18)}<span>控制</span></button>
+        <button class="${tab === "subs" ? "active" : ""}" data-tab="subs">${icon("DownloadCloud", 18)}<span>订阅</span></button>
+        <button data-open-core-ui ${state.busy ? "disabled" : ""}>${icon("ExternalLink", 18)}<span>内核</span></button>
+        <button class="${tab === "health" ? "active" : ""}" data-tab="health">${icon("Stethoscope", 18)}<span>诊断</span></button>
+        <button data-action="refresh-all" ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 18)}<span>刷新</span></button>
+      </nav>
     </div>
   `;
 

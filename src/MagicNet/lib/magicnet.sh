@@ -28,10 +28,11 @@ magicnet_first_http_url() {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
             if (line ~ /^https?:\/\/[^[:space:]]+$/) {
                 print line
+                found = 1
                 exit 0
             }
         }
-        END { exit 1 }
+        END { exit found ? 0 : 1 }
     ' "$1"
 }
 
@@ -338,6 +339,7 @@ magicnet_enable_vpn_coexist() {
 
 magicnet_after_kernel_start() {
     magicnet_singbox_apply_zashboard
+    magicnet_mihomo_apply_zashboard
     magicnet_app_policy_apply
     magicnet_capture_apply
     magicnet_enable_hotspot_forward
@@ -598,6 +600,16 @@ magicnet_singbox_apply_zashboard() {
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi
+}
+
+magicnet_mihomo_apply_zashboard() {
+    _source="${MODDIR}/.config/sing-box/zashboard"
+    _target="${MODDIR}/.config/mihomo/ui/cubex"
+    [ -d "$_source" ] || return 0
+
+    rm -rf "$_target" 2>/dev/null || true
+    mkdir -p "${_target%/*}" || return 1
+    cp -a "$_source" "$_target"
 }
 
 magicnet_capture_dir() {

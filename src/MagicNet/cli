@@ -24,7 +24,7 @@ kamfw_init_paths
 MAGICNET_API="${MAGICNET_API:-http://127.0.0.1:9090}"
 MAGICNET_MIHOMO_WEBUI="${MAGICNET_MIHOMO_WEBUI:-${MAGICNET_API}/ui/cubex/}"
 MAGICNET_SINGBOX_WEBUI="${MAGICNET_SINGBOX_WEBUI:-${MAGICNET_API}/ui/#/setup?hostname=127.0.0.1&port=9090}"
-MAGICNET_GROUP="${MAGICNET_GROUP:-proxy}"
+MAGICNET_GROUP="${MAGICNET_GROUP:-}"
 MAGICNET_LOG_DIR="${MODDIR}/.log"
 
 cli_info() {
@@ -186,13 +186,59 @@ cli_json_string_array() {
         sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//; /^[[:space:]]*$/d'
 }
 
+cli_node_group_candidates() {
+    [ -n "${MAGICNET_GROUP:-}" ] && printf '%s\n' "$MAGICNET_GROUP"
+    printf '%s\n' \
+        "🌏 快速选择代理" \
+        "GLOBAL" \
+        "🔰 环大陆" \
+        "🤖 人工智能" \
+        "proxy" \
+        "select" \
+        "Proxy" \
+        "节点选择"
+}
+
+cli_node_group_is_useful() {
+    _json="$1"
+    printf '%s\n' "$_json" | grep -q '"all"[[:space:]]*:' || return 1
+    printf '%s\n' "$_json" |
+        cli_json_string_array |
+        grep -Ev '^(DIRECT|REJECT|REJECT-DROP|PASS|COMPATIBLE)$' |
+        sed -n '1p' |
+        grep -q .
+}
+
+cli_node_group() {
+    if [ -n "${MAGICNET_GROUP:-}" ]; then
+        printf '%s\n' "$MAGICNET_GROUP"
+        return 0
+    fi
+
+    cli_node_group_candidates | awk '!seen[$0]++' | while IFS= read -r _group; do
+        [ -n "$_group" ] || continue
+        _json="$(cli_curl "${MAGICNET_API}/proxies/$(cli_urlencode "$_group")" 2>/dev/null || true)"
+        [ -n "$_json" ] || continue
+        if cli_node_group_is_useful "$_json"; then
+            printf '%s\n' "$_group"
+            exit 0
+        fi
+    done
+}
+
 cli_node() {
+    _group="$(cli_node_group)"
+    [ -n "$_group" ] || {
+        cli_error "No usable Clash selector group found. Set MAGICNET_GROUP or update subscription."
+        exit 1
+    }
+    _group_url="$(cli_urlencode "$_group")"
     case "${1:-list}" in
         list)
-            cli_curl "${MAGICNET_API}/proxies/${MAGICNET_GROUP}" | cli_json_string_array
+            cli_curl "${MAGICNET_API}/proxies/${_group_url}" | cli_json_string_array
             ;;
         current)
-            cli_curl "${MAGICNET_API}/proxies/${MAGICNET_GROUP}" |
+            cli_curl "${MAGICNET_API}/proxies/${_group_url}" |
                 sed -n 's/.*"now"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
             ;;
         use)
@@ -200,10 +246,10 @@ cli_node() {
                 cli_error "Usage: cli node use <name>"
                 exit 1
             }
-            cli_curl -X PUT "${MAGICNET_API}/proxies/${MAGICNET_GROUP}" \
+            cli_curl -X PUT "${MAGICNET_API}/proxies/${_group_url}" \
                 -H 'Content-Type: application/json' \
                 --data "{\"name\":\"$2\"}" >/dev/null
-            cli_info "Switched ${MAGICNET_GROUP} to $2"
+            cli_info "Switched ${_group} to $2"
             ;;
         delay|test)
             _test_url="${MAGICNET_DELAY_URL:-https://www.gstatic.com/generate_204}"
@@ -217,8 +263,15 @@ cli_node() {
                 )"
                 printf '%s=%s\n' "$_node" "${_delay:-timeout}"
             else
+                _delay_limit="${MAGICNET_DELAY_LIMIT:-20}"
+                case "$_delay_limit" in
+                    ''|*[!0-9]*) _delay_limit=20 ;;
+                esac
+                _delay_count=0
                 cli_node list | while IFS= read -r _node; do
                     [ -n "$_node" ] || continue
+                    _delay_count=$((_delay_count + 1))
+                    [ "$_delay_limit" -le 0 ] || [ "$_delay_count" -le "$_delay_limit" ] || break
                     _delay="$(
                         cli_curl "${MAGICNET_API}/proxies/$(cli_urlencode "$_node")/delay?timeout=${_timeout}&url=$(cli_urlencode "$_test_url")" 2>/dev/null |
                             sed -n 's/.*"delay"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p'
@@ -226,13 +279,14 @@ cli_node() {
                     printf '%s=%s\n' "$_node" "${_delay:-timeout}"
                 done
             fi
-            unset _test_url _timeout _node _delay
+            unset _test_url _timeout _node _delay _delay_limit _delay_count
             ;;
         *)
             cli_error "Usage: cli node {list|current|use <name>|delay [name]}"
             exit 1
             ;;
     esac
+    unset _group _group_url
 }
 
 cli_mode() {
@@ -814,7 +868,10 @@ cli_api() {
             printf 'Controller: %s\n' "$MAGICNET_API"
             printf 'WebUI:      %s\n' "$(cli_core_webui)"
             ;;
-        groups) cli_curl "${MAGICNET_API}/proxies" ;;
+        groups)
+            cli_curl "${MAGICNET_API}/configs" >/dev/null
+            printf 'ok\n'
+            ;;
         conns) cli_curl "${MAGICNET_API}/connections" ;;
         stats)
             _json="$(cli_curl "${MAGICNET_API}/connections")" || exit 1
