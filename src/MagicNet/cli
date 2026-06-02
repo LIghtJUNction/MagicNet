@@ -78,14 +78,19 @@ cli_fast_pid_summary() {
             unset _name _pids
             return 0
         fi
+        unset _name _pids
+        return 0
     fi
+    _out=""
     for _comm in /proc/[0-9]*/comm; do
         [ -r "$_comm" ] || continue
         [ "$(cat "$_comm" 2>/dev/null)" = "$_name" ] || continue
         _pid=${_comm#/proc/}
-        printf '%s\n' "${_pid%/comm}"
-    done | paste -sd ',' -
-    unset _name _pids _comm _pid
+        [ -n "$_out" ] && _out="${_out},"
+        _out="${_out}${_pid%/comm}"
+    done
+    printf '%s\n' "$_out"
+    unset _name _pids _comm _pid _out
 }
 
 cli_fast_service_status() {
@@ -1398,16 +1403,20 @@ cli_block() {
         add-domain)
             _domain="${2:-}"
             cli_block_valid_domain_suffix "$_domain" || { cli_error "domain suffix format is invalid"; exit 1; }
+            _block_msg_domain="$_domain"
             cli_block_add_to_file "$(cli_block_manual_file)" "$_domain"
             magicnet_block_apply
-            cli_info "Added block domain suffix: $_domain"
+            cli_info "Added block domain suffix: $_block_msg_domain"
+            unset _block_msg_domain
             ;;
         remove-domain)
             _domain="${2:-}"
             [ -n "$_domain" ] || { cli_error "Usage: cli block remove-domain <domain-suffix>"; exit 1; }
+            _block_msg_domain="$_domain"
             cli_block_remove_from_file "$(cli_block_manual_file)" "$_domain"
             magicnet_block_apply
-            cli_info "Removed block domain suffix: $_domain"
+            cli_info "Removed block domain suffix: $_block_msg_domain"
+            unset _block_msg_domain
             ;;
         apply)
             magicnet_block_apply
@@ -1698,18 +1707,6 @@ cli_health() {
         cli_health_emit "certs" "ok" "$_cert_count installed"
     else
         cli_health_emit "certs" "info" "no extra CA certificate installed"
-    fi
-
-    if command -v curl >/dev/null 2>&1 && curl -fsSI --max-time 8 https://www.baidu.com >/dev/null 2>&1; then
-        cli_health_emit "direct-test" "ok" "https://www.baidu.com"
-    else
-        cli_health_emit "direct-test" "warn" "direct HTTPS probe failed"
-    fi
-
-    if command -v curl >/dev/null 2>&1 && curl -fsSI --max-time 10 -x http://127.0.0.1:7892 https://www.google.com >/dev/null 2>&1; then
-        cli_health_emit "proxy-test" "ok" "https://www.google.com via 127.0.0.1:7892"
-    else
-        cli_health_emit "proxy-test" "warn" "proxy HTTPS probe failed"
     fi
 
     unset _singbox _mihomo _tun_ifaces _watchdog_pid _fswatch_pid _sing_sub _mihomo_sub

@@ -75,13 +75,6 @@ type HealthItem = {
   detail: string;
 };
 
-type TrafficStats = {
-  connections: number;
-  upload: number;
-  download: number;
-  memory: number;
-};
-
 type PackageInfo = {
   packageName: string;
   versionName: string;
@@ -99,9 +92,20 @@ type RouteRules = {
   newTarget: "proxy" | "direct" | "block";
 };
 
+type BlocklistState = {
+  enabled: boolean;
+  community: boolean;
+  url: string;
+  manual: string[];
+  communityDomains: string[];
+  newDomain: string;
+};
+
 type State = {
   hasKsu: boolean;
   busy: boolean;
+  activeTask: string;
+  coreMenuOpen: boolean;
   status: "checking" | "online" | "offline" | "local";
   statusText: string;
   runtime: RuntimeState;
@@ -109,7 +113,6 @@ type State = {
   output: string;
   nodes: string[];
   currentNode: string;
-  traffic: TrafficStats;
   appPolicy: AppPolicy;
   subscriptions: {
     singBox: string;
@@ -131,17 +134,20 @@ type State = {
     newDomain: string;
   };
   routes: RouteRules;
+  blocklist: BlocklistState;
   health: HealthItem[];
   packages: PackageInfo[];
   packageQuery: string;
   newPackage: string;
   newTarget: "proxy" | "bypass";
-  activeTab: "control" | "health" | "apps" | "routes" | "subs" | "capture" | "certs" | "logs";
+  activeTab: "control" | "health" | "apps" | "routes" | "block" | "subs" | "capture" | "certs" | "logs";
 };
 
 const state: State = {
   hasKsu: hasKsuBridge,
   busy: false,
+  activeTask: "",
+  coreMenuOpen: false,
   status: "checking",
   statusText: "检测执行通道",
   runtime: {
@@ -160,12 +166,6 @@ const state: State = {
     : "本地预览模式：这里不会伪造设备数据。通过 KernelSU/APatch 模块 WebUI 打开后，所有按钮会直接调用模块 CLI。",
   nodes: [],
   currentNode: "",
-  traffic: {
-    connections: 0,
-    upload: 0,
-    download: 0,
-    memory: 0
-  },
   appPolicy: {
     mode: "blacklist",
     proxy: [],
@@ -197,6 +197,14 @@ const state: State = {
     newDomain: "",
     newTarget: "proxy"
   },
+  blocklist: {
+    enabled: true,
+    community: true,
+    url: "https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/ruleset/magicnet/ban.yaml",
+    manual: [],
+    communityDomains: [],
+    newDomain: ""
+  },
   health: [],
   packages: [],
   packageQuery: "",
@@ -206,14 +214,26 @@ const state: State = {
 };
 
 const actions = [
-  { label: "刷新状态", hint: "读取进程与 API", icon: "RefreshCw", command: "service status" },
-  { label: "重启 TUN", hint: "重新拉起内核", icon: "RotateCcw", command: "service restart", tone: "strong" },
-  { label: "一键自修复", hint: "重载规则并自检", icon: "Zap", command: "repair", tone: "strong" },
-  { label: "健康诊断", hint: "检查关键链路", icon: "Stethoscope", command: "health" },
-  { label: "更新订阅", hint: "更新全部订阅", icon: "DownloadCloud", command: "sub update-all" },
-  { label: "清空连接", hint: "关闭旧连接", icon: "Unplug", command: "api close-all" },
-  { label: "重载热点", hint: "应用转发规则", icon: "Wifi", command: "hotspot reload" },
-  { label: "VPN 共存", hint: "重载共存规则", icon: "ShieldCheck", command: "vpn reload" }
+  {
+    title: "action.sh 菜单",
+    items: [
+      { label: "更新 sing-box 订阅", hint: "执行 action.sh 的订阅更新", icon: "DownloadCloud", command: "sub update", tone: "strong" },
+      { label: "切换 sing-box", hint: "启动或停止 sing-box", icon: "Server", command: "service toggle sing-box" },
+      { label: "切换 mihomo", hint: "启动或停止 mihomo", icon: "Route", command: "service toggle mihomo" },
+      { label: "网络诊断", hint: "只在手动点击时运行", icon: "Stethoscope", command: "diagnose" },
+      { label: "刷新状态描述", hint: "同步模块描述和运行状态", icon: "RefreshCw", command: "service status" }
+    ]
+  },
+  {
+    title: "模块维护",
+    items: [
+      { label: "重启 TUN 内核", hint: "停止后重新拉起首选内核", icon: "RotateCcw", command: "service restart", tone: "strong" },
+      { label: "一键自修复", hint: "重载配置、热点和 VPN 共存", icon: "Zap", command: "repair", tone: "strong" },
+      { label: "重载热点转发", hint: "应用 tether 转发规则", icon: "Wifi", command: "hotspot reload" },
+      { label: "重载 VPN 共存", hint: "应用外部 VPN 保护规则", icon: "ShieldCheck", command: "vpn reload" },
+      { label: "清空旧连接", hint: "关闭 Clash API 连接表", icon: "Unplug", command: "api close-all" }
+    ]
+  }
 ];
 
 const quickModes = [
@@ -227,6 +247,7 @@ const tabs = [
   { key: "health", label: "诊断", icon: "Stethoscope" },
   { key: "apps", label: "应用", icon: "ListFilter" },
   { key: "routes", label: "分流", icon: "Route" },
+  { key: "block", label: "黑名单", icon: "Ban" },
   { key: "subs", label: "订阅", icon: "DownloadCloud" },
   { key: "capture", label: "抓包", icon: "ShieldCheck" },
   { key: "certs", label: "证书", icon: "ShieldPlus" },
@@ -321,7 +342,7 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-async function runCli(args: string, options: { refreshApps?: boolean; quiet?: boolean } = {}): Promise<string> {
+async function runCli(args: string, options: { refreshApps?: boolean; quiet?: boolean; label?: string } = {}): Promise<string> {
   const command = `su -c ${shellQuote(`${CLI} ${args}`)}`;
   state.lastCommand = command;
 
@@ -336,6 +357,7 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
 
   if (!options.quiet) {
     state.busy = true;
+    state.activeTask = options.label || args;
     state.output = `$ ${command}\n执行中...`;
     render();
     await nextFrame();
@@ -358,6 +380,7 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
   } finally {
     if (!options.quiet) {
       state.busy = false;
+      state.activeTask = "";
       render();
     }
   }
@@ -460,6 +483,16 @@ async function refreshStatus(quiet = false): Promise<void> {
 }
 
 async function openCoreUi(): Promise<void> {
+  await openCoreUiTarget("current");
+}
+
+function coreUiTargetUrl(target: "current" | "mihomo" | "sing-box"): string {
+  if (target === "mihomo") return `${state.runtime.api}/ui/cubex/`;
+  if (target === "sing-box") return `${state.runtime.api}/ui/#/setup?hostname=127.0.0.1&port=9090`;
+  return coreUiUrl();
+}
+
+async function openCoreUiTarget(target: "current" | "mihomo" | "sing-box"): Promise<void> {
   if (!state.hasKsu) {
     state.output = "当前浏览器没有 KernelSU 执行通道，无法确认内核 WebUI 是否在线。";
     render();
@@ -483,13 +516,14 @@ async function openCoreUi(): Promise<void> {
     return;
   }
 
-  state.output = `正在打开内核 WebUI：\n${coreUiUrl()}\n\n如果当前 WebView 没有跳转，请复制这个地址到浏览器打开。`;
+  const url = coreUiTargetUrl(target);
+  state.output = `正在打开内核 WebUI：\n${url}\n\n如果当前 WebView 没有跳转，请复制这个地址到浏览器打开。`;
   render();
-  window.location.assign(coreUiUrl());
+  window.location.assign(url);
 }
 
 async function runAction(command: string): Promise<void> {
-  const text = await runCli(command);
+  const text = await runCli(command, { label: command });
   if (/^health\b/.test(command)) {
     state.health = parseHealth(text);
     state.activeTab = "health";
@@ -506,17 +540,14 @@ async function runAction(command: string): Promise<void> {
 
   if (/^(service|repair|mode|hotspot|vpn)\b/.test(command)) {
     await refreshStatus(true);
-    await refreshHealth(true);
     render();
   }
   if (/^(sub|setup)\b/.test(command)) {
     await refreshSubscriptions(true);
-    await refreshNodes(true);
-    await refreshHealth(true);
     render();
   }
-  if (/^api close-all\b/.test(command)) {
-    await refreshTraffic(true);
+  if (/^block\b/.test(command)) {
+    await refreshBlocklist(true);
     render();
   }
 }
@@ -524,24 +555,25 @@ async function runAction(command: string): Promise<void> {
 async function refreshDashboard(quiet = false): Promise<void> {
   if (!quiet) {
     state.busy = true;
-    state.output = "正在刷新运行状态、订阅、流量、策略和诊断...";
+    state.activeTask = "刷新面板";
+    state.output = "正在刷新运行状态、订阅和模块策略...";
     render();
   }
   try {
     await refreshStatus(true);
-    await refreshTraffic(true);
     await refreshSubscriptions(true);
     await refreshApps(true);
     await refreshRoutes(true);
+    await refreshBlocklist(true);
     await refreshCapture(true);
     await refreshCerts(true);
-    await refreshHealth(true);
     if (!quiet) {
       state.output = "面板刷新完成。";
     }
   } finally {
     if (!quiet) {
       state.busy = false;
+      state.activeTask = "";
       render();
     }
   }
@@ -591,6 +623,48 @@ async function refreshRoutes(quiet = false): Promise<void> {
   if (!quiet) render();
 }
 
+function parseBlocklist(text: string): BlocklistState {
+  const next: BlocklistState = { ...state.blocklist, manual: [], communityDomains: [] };
+  let section: "manual" | "community" | null = null;
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("enabled=")) {
+      next.enabled = line.slice("enabled=".length) !== "0";
+      continue;
+    }
+    if (line.startsWith("community=")) {
+      next.community = line.slice("community=".length) !== "0";
+      continue;
+    }
+    if (line.startsWith("url=")) {
+      next.url = line.slice("url=".length);
+      continue;
+    }
+    if (line === "manual domain suffixes:") {
+      section = "manual";
+      continue;
+    }
+    if (line === "community domain suffixes:") {
+      section = "community";
+      continue;
+    }
+    if (section === "manual") next.manual.push(line);
+    if (section === "community") next.communityDomains.push(line);
+  }
+
+  return next;
+}
+
+async function refreshBlocklist(quiet = false): Promise<void> {
+  const text = await runCli("block list", { quiet });
+  if (state.hasKsu && text) {
+    state.blocklist = parseBlocklist(text);
+  }
+  if (!quiet) render();
+}
+
 function parseSubscriptions(text: string): State["subscriptions"] {
   const next = { ...state.subscriptions };
   for (const raw of text.split(/\r?\n/)) {
@@ -612,6 +686,7 @@ async function refreshSubscriptions(quiet = false): Promise<void> {
 async function refreshNodes(quiet = false): Promise<void> {
   if (!quiet) {
     state.busy = true;
+    state.activeTask = "读取节点";
     state.output = "正在读取候选出口。大订阅首次读取会生成本地缓存，后续会更快。";
     render();
     await nextFrame();
@@ -634,6 +709,7 @@ async function refreshNodes(quiet = false): Promise<void> {
   } finally {
     if (!quiet) {
       state.busy = false;
+      state.activeTask = "";
       render();
     }
   }
@@ -643,31 +719,6 @@ async function switchNode(name: string): Promise<void> {
   if (!name) return;
   await runCli(`node use ${shellQuote(name)}`);
   await refreshNodes(true);
-}
-
-function parseTrafficStats(text: string): TrafficStats {
-  const next = { ...state.traffic };
-  for (const raw of text.split(/\r?\n/)) {
-    const [key, value] = raw.trim().split("=");
-    const number = Number.parseInt(value || "0", 10);
-    if (!Number.isFinite(number)) continue;
-    if (key === "connections") next.connections = number;
-    if (key === "upload") next.upload = number;
-    if (key === "download") next.download = number;
-    if (key === "memory") next.memory = number;
-  }
-  return next;
-}
-
-async function refreshTraffic(quiet = false): Promise<void> {
-  const text = await runCli("api stats", { quiet: true });
-  if (state.hasKsu && text) {
-    state.traffic = parseTrafficStats(text);
-    if (!quiet) {
-      state.output = `连接统计已刷新：${state.traffic.connections} 条连接。`;
-    }
-  }
-  if (!quiet) render();
 }
 
 async function saveSetupSubscription(): Promise<void> {
@@ -799,11 +850,10 @@ const healthLabels: Record<string, { label: string; icon: string; fix?: string; 
   "sing-box-sub": { label: "sing-box 订阅", icon: "DownloadCloud", fix: "sub update-all", fixLabel: "更新" },
   "mihomo-sub": { label: "mihomo 订阅", icon: "DownloadCloud" },
   capture: { label: "抓包规则", icon: "ShieldCheck", fix: "capture apply", fixLabel: "应用" },
+  blocklist: { label: "联 ban 黑名单", icon: "Ban", fix: "block update", fixLabel: "更新" },
   hotspot: { label: "热点转发", icon: "Wifi", fix: "hotspot reload", fixLabel: "重载" },
   vpn: { label: "VPN 共存", icon: "ShieldCheck", fix: "vpn reload", fixLabel: "重载" },
-  certs: { label: "系统 CA", icon: "ShieldPlus" },
-  "direct-test": { label: "直连探测", icon: "Route" },
-  "proxy-test": { label: "代理探测", icon: "ExternalLink", fix: "sub update-all", fixLabel: "更新订阅" }
+  certs: { label: "系统 CA", icon: "ShieldPlus" }
 };
 
 function healthSummary(): { ok: number; warn: number; fail: number; info: number } {
@@ -887,7 +937,7 @@ function nodePanel(): string {
         `;
       })
       .join("")
-    : `<div class="picker-empty"><strong>还没有节点列表</strong><span>先更新订阅，再点刷新节点。测速、延迟和复杂策略在内核 WebUI 里看。</span></div>`;
+    : `<div class="picker-empty"><strong>还没有节点列表</strong><span>先更新订阅，再点刷新节点。高级策略和 Provider 状态在内核 WebUI 里看。</span></div>`;
 
   return `
     <div class="node-panel">
@@ -895,7 +945,7 @@ function nodePanel(): string {
         <div>
           <span class="eyebrow">Proxy Selector</span>
           <h3>${escapeHtml(state.currentNode || "未读取当前节点")}</h3>
-          <p>这里只做快速切换和状态确认；测速、Provider 健康检查和复杂策略交给内核 WebUI。当前渲染 ${visibleNodes.length}/${state.nodes.length} 条${hiddenCount ? `，剩余 ${hiddenCount} 条在内核面板查看` : ""}。</p>
+          <p>这里只做快速切换和状态确认；高级策略和 Provider 状态交给内核 WebUI。当前渲染 ${visibleNodes.length}/${state.nodes.length} 条${hiddenCount ? `，剩余 ${hiddenCount} 条在内核面板查看` : ""}。</p>
         </div>
         <div class="node-actions">
           <button class="command-secondary" data-refresh-nodes>${icon("RefreshCw", 17)}刷新节点</button>
@@ -912,21 +962,29 @@ function activeTabPanel(tab: State["activeTab"]): string {
   if (tab === "control") {
     return `
       <div class="tab-panel show">
-        <div class="action-grid">
+        <div class="control-groups">
           ${actions
             .map(
-              (item) => `
-                <button class="action-card ${item.tone || ""}" data-run="${item.command}">
-                  <span>${icon(item.icon, 20)}</span>
-                  <strong>${item.label}</strong>
-                  <small>${item.hint}</small>
-                </button>
+              (group) => `
+                <section class="control-group">
+                  <div class="control-group-head">
+                    <h3>${escapeHtml(group.title)}</h3>
+                  </div>
+                  <div class="action-grid">
+                    ${group.items.map((item) => `
+                      <button class="action-card ${item.tone || ""}" data-run="${item.command}">
+                        <span>${icon(item.icon, 20)}</span>
+                        <strong>${item.label}</strong>
+                        <small>${item.hint}</small>
+                      </button>
+                    `).join("")}
+                  </div>
+                </section>
               `
             )
             .join("")}
         </div>
         ${nodePanel()}
-        ${trafficPanel()}
         <div class="mode-panel">
           <div>
             <h3>代理模式</h3>
@@ -992,6 +1050,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
   }
 
   if (tab === "routes") return `<div class="tab-panel show">${routePanel()}</div>`;
+  if (tab === "block") return `<div class="tab-panel show">${blocklistPanel()}</div>`;
   if (tab === "subs") return `<div class="tab-panel show">${subscriptionsSection()}</div>`;
   if (tab === "capture") return `<div class="tab-panel show">${capturePanel()}</div>`;
   if (tab === "certs") return `<div class="tab-panel show">${certPanel()}</div>`;
@@ -1005,56 +1064,6 @@ function activeTabPanel(tab: State["activeTab"]): string {
         <button data-copy-last>${icon("Copy", 17)}复制命令</button>
       </div>
       <pre class="terminal">${escapeHtml(compactOutput(state.output))}</pre>
-    </div>
-  `;
-}
-
-function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let next = value;
-  let index = 0;
-  while (next >= 1024 && index < units.length - 1) {
-    next /= 1024;
-    index += 1;
-  }
-  return `${next >= 10 || index === 0 ? next.toFixed(0) : next.toFixed(1)} ${units[index]}`;
-}
-
-function trafficPanel(): string {
-  const items = [
-    { label: "连接", value: String(state.traffic.connections), iconName: "Activity" },
-    { label: "上行", value: formatBytes(state.traffic.upload), iconName: "Route" },
-    { label: "下行", value: formatBytes(state.traffic.download), iconName: "DownloadCloud" },
-    { label: "内存", value: formatBytes(state.traffic.memory), iconName: "Gauge" }
-  ];
-
-  return `
-    <div class="traffic-panel">
-      <div class="traffic-head">
-        <div>
-          <span class="eyebrow">Live Connections</span>
-          <h3>连接与流量</h3>
-          <p>从 Clash API 读取当前连接、上下行和内存占用。</p>
-        </div>
-        <div class="traffic-actions">
-          <button class="command-secondary" data-refresh-traffic>${icon("RefreshCw", 17)}刷新</button>
-          <button class="command-secondary" data-run="api close-all">${icon("Unplug", 17)}清空连接</button>
-        </div>
-      </div>
-      <div class="traffic-grid">
-        ${items
-          .map(
-            (item) => `
-              <div class="traffic-card">
-                <span>${icon(item.iconName, 17)}</span>
-                <small>${item.label}</small>
-                <strong>${escapeHtml(item.value)}</strong>
-              </div>
-            `
-          )
-          .join("")}
-      </div>
     </div>
   `;
 }
@@ -1084,6 +1093,88 @@ function simpleList(items: string[], kind: "app" | "domain"): string {
       `
     )
     .join("");
+}
+
+function blockDomainList(items: string[], removable: boolean): string {
+  if (items.length === 0) {
+    return `<div class="empty">暂无域名后缀</div>`;
+  }
+
+  return items
+    .slice(0, 120)
+    .map(
+      (domain) => `
+        <div class="app-row">
+          <span>${escapeHtml(domain)}</span>
+          ${removable ? `<button class="icon-button" data-remove-block="${escapeHtml(domain)}" title="移除">${icon("X", 16)}</button>` : ""}
+        </div>
+      `
+    )
+    .join("");
+}
+
+function blocklistPanel(): string {
+  const communityCount = state.blocklist.communityDomains.length;
+  return `
+    <div class="section-intro block-intro">
+      <div>
+        <span class="eyebrow">Community Blocklist</span>
+        <h3>联 ban 黑名单</h3>
+        <p>mihomo 使用 mnban rule-provider；sing-box 同步为本地域名后缀阻断规则。这里管理 MagicNet 独有的安全黑名单。</p>
+      </div>
+      <div class="section-actions">
+        <button class="command-secondary" data-refresh-block>${icon("RefreshCw", 17)}读取</button>
+        <button class="command-primary" data-run="block update">${icon("DownloadCloud", 17)}更新社区库</button>
+      </div>
+    </div>
+    <div class="block-grid">
+      <section class="capture-card">
+        <div class="sub-head">
+          <div>
+            <h3>策略开关</h3>
+            <p>关闭总开关会从双内核移除 MagicNet 注入的阻断规则。</p>
+          </div>
+        </div>
+        <div class="switch-stack">
+          <button class="toggle ${state.blocklist.enabled ? "on" : ""}" data-block-toggle>
+            ${state.blocklist.enabled ? "黑名单已启用" : "黑名单已关闭"}
+          </button>
+          <button class="toggle ${state.blocklist.community ? "on" : ""}" data-community-toggle>
+            ${state.blocklist.community ? "社区库已启用" : "社区库已关闭"}
+          </button>
+        </div>
+        <form class="block-url-form" data-block-url-form>
+          <label>
+            <span>社区库 URL</span>
+            <input value="${escapeHtml(state.blocklist.url)}" spellcheck="false" />
+          </label>
+          <button type="submit">${icon("Save", 17)}保存 URL</button>
+        </form>
+      </section>
+      <section class="capture-card">
+        <div class="sub-head">
+          <div>
+            <h3>手动阻断域名</h3>
+            <p>立即写入双内核，优先级高于普通分流。</p>
+          </div>
+        </div>
+        <form class="inline-form" data-block-add-form>
+          <input value="${escapeHtml(state.blocklist.newDomain)}" placeholder="malware.example.com" spellcheck="false" />
+          <button type="submit">${icon("Plus", 17)}添加</button>
+        </form>
+        <div class="list-panel flush">${blockDomainList(state.blocklist.manual, true)}</div>
+      </section>
+      <section class="capture-card wide">
+        <div class="sub-head">
+          <div>
+            <h3>社区库缓存</h3>
+            <p>当前缓存 ${communityCount} 条；更新失败时不会清空旧缓存。</p>
+          </div>
+        </div>
+        <div class="list-panel flush community-list">${blockDomainList(state.blocklist.communityDomains, false)}</div>
+      </section>
+    </div>
+  `;
 }
 
 function capturePanel(): string {
@@ -1416,10 +1507,7 @@ function commandDeck(): string {
         ${icon("RotateCcw", 20)}
         <span>重启内核</span>
       </button>
-      <a class="command-secondary" data-open-core-ui href="${escapeHtml(coreUiUrl())}">
-        ${icon("ExternalLink", 18)}
-        <span>内核面板</span>
-      </a>
+      ${coreUiButton("command-secondary")}
       <button class="command-secondary" data-run="sub update-all">
         ${icon("DownloadCloud", 18)}
         <span>更新订阅</span>
@@ -1429,6 +1517,25 @@ function commandDeck(): string {
         <span>刷新面板</span>
       </button>
     </div>
+  `;
+}
+
+function coreUiButton(className: string): string {
+  return `
+    <span class="core-ui-wrap">
+      <a class="${className}" data-open-core-ui href="${escapeHtml(coreUiUrl())}" title="短按打开当前内核面板，长按选择面板">
+        ${icon("ExternalLink", 18)}
+        <span>内核面板</span>
+      </a>
+      <button class="core-ui-menu-button" data-core-menu-toggle title="选择内核 WebUI">${icon("ListFilter", 16)}</button>
+      ${state.coreMenuOpen ? `
+        <div class="core-ui-menu">
+          <button data-open-core-ui-target="current">${icon("ExternalLink", 16)}当前默认</button>
+          <button data-open-core-ui-target="mihomo">${icon("Route", 16)}mihomo / zashboard</button>
+          <button data-open-core-ui-target="sing-box">${icon("Server", 16)}sing-box 面板</button>
+        </div>
+      ` : ""}
+    </span>
   `;
 }
 
@@ -1519,6 +1626,62 @@ function tabsMarkup(): string {
     .join("");
 }
 
+function tabIndex(): number {
+  return tabs.findIndex((item) => item.key === state.activeTab);
+}
+
+function setActiveTabByIndex(index: number): void {
+  const next = tabs[Math.max(0, Math.min(tabs.length - 1, index))];
+  if (!next || next.key === state.activeTab) return;
+  state.activeTab = next.key;
+  state.coreMenuOpen = false;
+  render();
+  if (state.hasKsu && state.activeTab === "health" && state.health.length === 0) void refreshHealth();
+}
+
+function adjacentTabs(): string {
+  const index = tabIndex();
+  const prev = tabs[index - 1];
+  const next = tabs[index + 1];
+  return `
+    <div class="swipe-hints">
+      <span>${prev ? `${icon("Route", 13)} ${escapeHtml(prev.label)}` : ""}</span>
+      <strong>${escapeHtml(tabs[index]?.label || "控制")}</strong>
+      <span>${next ? `${escapeHtml(next.label)} ${icon("Route", 13)}` : ""}</span>
+    </div>
+  `;
+}
+
+function topSummary(): string {
+  const core = state.runtime.core === "unknown" ? "未检测" : state.runtime.core;
+  const task = state.activeTask ? `执行中：${state.activeTask}` : "空闲";
+  return `
+    <div class="top-summary">
+      <div class="summary-pill ${state.status}">
+        <span class="${`status-dot ${state.status}`}"></span>
+        <div>
+          <small>状态</small>
+          <strong>${escapeHtml(state.statusText)}</strong>
+        </div>
+      </div>
+      <div class="summary-pill">
+        <span>${icon("Server", 16)}</span>
+        <div>
+          <small>核心</small>
+          <strong>${escapeHtml(core)}</strong>
+        </div>
+      </div>
+      <div class="summary-pill task-pill ${state.busy ? "running" : ""}">
+        <span>${icon(state.busy ? "Activity" : "Terminal", 16)}</span>
+        <div>
+          <small>任务</small>
+          <strong>${escapeHtml(task)}</strong>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 async function scanUserPackages(): Promise<void> {
   if (!state.hasKsu) {
     state.output = "应用扫描需要从 KernelSU/APatch 管理器的 WebUI 打开。";
@@ -1552,17 +1715,20 @@ function render(): void {
   app.innerHTML = `
     <div class="shell">
       <header class="topbar">
-        <div class="brand">
-          <div class="logo">${icon("Zap", 24)}</div>
-          <div>
-            <h1>MagicNet</h1>
-            <p>Android transparent TUN console</p>
+        <div class="top-main">
+          <div class="brand">
+            <div class="logo">${icon("Zap", 24)}</div>
+            <div>
+              <h1>MagicNet</h1>
+              <p>TUN module control</p>
+            </div>
           </div>
+          ${topSummary()}
         </div>
         <div class="top-actions">
           <button class="ghost-link" data-action="refresh-all">${icon("RefreshCw", 16)}刷新</button>
           <a class="ghost-link" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 16)}GitHub</a>
-          <a class="primary-link" data-open-core-ui href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 16)}内核面板</a>
+          ${coreUiButton("primary-link")}
         </div>
       </header>
 
@@ -1587,6 +1753,7 @@ function render(): void {
         </aside>
 
         <section class="workspace">
+          ${adjacentTabs()}
           ${overviewPanel()}
           ${activeTabPanel(tab)}
 
@@ -1622,6 +1789,25 @@ function bindEvents(): void {
     });
   });
 
+  const workspace = document.querySelector<HTMLElement>(".workspace");
+  if (workspace) {
+    let startX = 0;
+    let startY = 0;
+    workspace.addEventListener("touchstart", (event) => {
+      const touch = event.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+    }, { passive: true });
+    workspace.addEventListener("touchend", (event) => {
+      const touch = event.changedTouches[0];
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+      const nextIndex = tabIndex() + (dx < 0 ? 1 : -1);
+      setActiveTabByIndex(nextIndex);
+    }, { passive: true });
+  }
+
   document.querySelectorAll<HTMLButtonElement>("[data-run]").forEach((button) => {
     button.addEventListener("click", () => runAction(button.dataset.run || ""));
   });
@@ -1645,9 +1831,42 @@ function bindEvents(): void {
   });
 
   document.querySelectorAll<HTMLElement>("[data-open-core-ui]").forEach((element) => {
+    let pressTimer = 0;
+    element.addEventListener("pointerdown", () => {
+      pressTimer = window.setTimeout(() => {
+        state.coreMenuOpen = true;
+        render();
+      }, 420);
+    });
+    element.addEventListener("pointerup", () => {
+      window.clearTimeout(pressTimer);
+    });
+    element.addEventListener("pointerleave", () => {
+      window.clearTimeout(pressTimer);
+    });
     element.addEventListener("click", (event) => {
       event.preventDefault();
+      if (state.coreMenuOpen) return;
       void openCoreUi();
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-core-menu-toggle]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      state.coreMenuOpen = !state.coreMenuOpen;
+      render();
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-open-core-ui-target]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      const target = button.dataset.openCoreUiTarget;
+      state.coreMenuOpen = false;
+      if (target === "mihomo" || target === "sing-box" || target === "current") {
+        void openCoreUiTarget(target);
+      }
     });
   });
 
@@ -1663,13 +1882,13 @@ function bindEvents(): void {
 
   document.querySelector<HTMLButtonElement>("[data-refresh-routes]")?.addEventListener("click", () => refreshRoutes());
 
+  document.querySelector<HTMLButtonElement>("[data-refresh-block]")?.addEventListener("click", () => refreshBlocklist());
+
   document.querySelector<HTMLButtonElement>("[data-refresh-nodes]")?.addEventListener("click", () => refreshNodes());
 
   document.querySelectorAll<HTMLButtonElement>("[data-node-use]").forEach((button) => {
     button.addEventListener("click", () => switchNode(button.dataset.nodeUse || ""));
   });
-
-  document.querySelector<HTMLButtonElement>("[data-refresh-traffic]")?.addEventListener("click", () => refreshTraffic());
 
   document.querySelector<HTMLFormElement>("[data-setup-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1749,6 +1968,53 @@ function bindEvents(): void {
       if (!["proxy", "direct", "block"].includes(target) || !value) return;
       await runCli(`route remove-domain ${target} ${shellQuote(value)}`);
       await refreshRoutes(true);
+    });
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-block-toggle]")?.addEventListener("click", async () => {
+    await runCli(state.blocklist.enabled ? "block disable" : "block enable");
+    await refreshBlocklist(true);
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-community-toggle]")?.addEventListener("click", async () => {
+    await runCli(state.blocklist.community ? "block community off" : "block community on");
+    await refreshBlocklist(true);
+  });
+
+  document.querySelector<HTMLFormElement>("[data-block-url-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = event.currentTarget.querySelector<HTMLInputElement>("input");
+    const url = input?.value.trim() || "";
+    if (!/^https?:\/\/\S+$/i.test(url)) {
+      state.output = "社区库 URL 格式不对，必须是 http(s) URL。";
+      render();
+      return;
+    }
+    await runCli(`block url ${shellQuote(url)}`);
+    await refreshBlocklist(true);
+  });
+
+  document.querySelector<HTMLFormElement>("[data-block-add-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = event.currentTarget.querySelector<HTMLInputElement>("input");
+    const domain = input?.value.trim() || "";
+    state.blocklist.newDomain = domain;
+    if (!/^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/.test(domain)) {
+      state.output = "域名后缀格式不对。示例：malware.example.com";
+      render();
+      return;
+    }
+    await runCli(`block add-domain ${shellQuote(domain)}`);
+    state.blocklist.newDomain = "";
+    await refreshBlocklist(true);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-remove-block]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const domain = button.dataset.removeBlock || "";
+      if (!domain) return;
+      await runCli(`block remove-domain ${shellQuote(domain)}`);
+      await refreshBlocklist(true);
     });
   });
 
@@ -1912,10 +2178,9 @@ async function bootstrap(): Promise<void> {
   await refreshApps(true);
   await refreshRoutes(true);
   await refreshSubscriptions(true);
-  await refreshTraffic(true);
   await refreshCerts(true);
   await refreshCapture(true);
-  await refreshHealth(true);
+  await refreshBlocklist(true);
 }
 
 void bootstrap();
