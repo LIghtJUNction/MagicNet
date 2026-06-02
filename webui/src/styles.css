@@ -2248,6 +2248,57 @@ a.disabled {
   line-height: 1.55;
 }
 
+.route-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid rgba(242, 189, 92, 0.28);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(242, 189, 92, 0.05);
+}
+
+.route-editor h3 {
+  font-size: 18px;
+}
+
+.route-editor p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.route-editor-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.route-editor-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.route-editor-form label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.route-editor-form input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #090d0c;
+  color: var(--ink);
+}
+
+.route-editor-form button {
+  min-height: 38px;
+}
+
 .mini-button.danger {
   border-color: rgba(255, 107, 107, 0.32);
   color: var(--red);
@@ -2635,6 +2686,7 @@ a.disabled {
   .webui-config-form,
   .webui-panel-row,
   .topology-layout,
+  .route-editor-form,
   .health-grid,
   .health-summary,
   .switch-stack,

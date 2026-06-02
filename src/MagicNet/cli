@@ -2382,6 +2382,63 @@ external_vpn -> route priority and protection rules can conflict with TUN; Magic
 EOF
 }
 
+cli_system_route_valid_token() {
+    case "${1:-}" in
+        ""|*";"*|*"|"*|*"&"*|*"\`"*|*'$('*|*">"*|*"<"*) return 1 ;;
+    esac
+    return 0
+}
+
+cli_system_route() {
+    case "${1:-list}" in
+        list)
+            cli_topology
+            ;;
+        add-rule)
+            _priority="${2:-}"
+            _table="${3:-}"
+            [ -n "$_priority" ] && [ -n "$_table" ] || { cli_error "Usage: cli sysroute add-rule <priority> <table>"; exit 1; }
+            case "$_priority" in *[!0-9]*) cli_error "priority must be numeric"; exit 1 ;; esac
+            cli_system_route_valid_token "$_table" || { cli_error "invalid table"; exit 1; }
+            ip rule add from all lookup "$_table" priority "$_priority"
+            cli_info "Added ip rule: from all lookup $_table priority $_priority"
+            ;;
+        del-rule)
+            _priority="${2:-}"
+            [ -n "$_priority" ] || { cli_error "Usage: cli sysroute del-rule <priority>"; exit 1; }
+            case "$_priority" in *[!0-9]*) cli_error "priority must be numeric"; exit 1 ;; esac
+            ip rule del priority "$_priority"
+            cli_info "Deleted ip rule priority $_priority"
+            ;;
+        add-route)
+            _table="${2:-}"
+            _dest="${3:-}"
+            _dev="${4:-}"
+            _via="${5:-}"
+            [ -n "$_table" ] && [ -n "$_dest" ] && [ -n "$_dev" ] || { cli_error "Usage: cli sysroute add-route <table> <dest|default> <dev> [via]"; exit 1; }
+            cli_system_route_valid_token "$_table" && cli_system_route_valid_token "$_dest" && cli_system_route_valid_token "$_dev" && cli_system_route_valid_token "${_via:-none}" || { cli_error "invalid route token"; exit 1; }
+            if [ -n "$_via" ] && [ "$_via" != "-" ]; then
+                ip route add "$_dest" via "$_via" dev "$_dev" table "$_table"
+            else
+                ip route add "$_dest" dev "$_dev" table "$_table"
+            fi
+            cli_info "Added route: table $_table $_dest dev $_dev${_via:+ via $_via}"
+            ;;
+        del-route)
+            _table="${2:-}"
+            _dest="${3:-}"
+            [ -n "$_table" ] && [ -n "$_dest" ] || { cli_error "Usage: cli sysroute del-route <table> <dest|default>"; exit 1; }
+            cli_system_route_valid_token "$_table" && cli_system_route_valid_token "$_dest" || { cli_error "invalid route token"; exit 1; }
+            ip route del "$_dest" table "$_table"
+            cli_info "Deleted route: table $_table $_dest"
+            ;;
+        *)
+            cli_error "Usage: cli sysroute {list|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}"
+            exit 1
+            ;;
+    esac
+}
+
 cli_support_redact() {
     sed -E \
         -e 's#(https?://)[^[:space:]"'"'"'<>]+#\1<redacted-url>#g' \
@@ -2475,6 +2532,7 @@ Usage:
   cli health
   cli pingtest
   cli topology
+  cli sysroute {list|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}
   cli repair
   cli support bundle
   cli setup <subscription-url>
@@ -2502,6 +2560,7 @@ case "${1:-help}" in
     health|doctor) cli_health ;;
     pingtest) cli_pingtest ;;
     topology) cli_topology ;;
+    sysroute) shift; cli_system_route "$@" ;;
     repair|fix) cli_repair ;;
     support)
         shift

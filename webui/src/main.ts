@@ -203,6 +203,14 @@ type State = {
   pingtest: string;
   topology: string;
   topologyFocus: string;
+  sysroute: {
+    rulePriority: string;
+    ruleTable: string;
+    routeTable: string;
+    routeDest: string;
+    routeDev: string;
+    routeVia: string;
+  };
   health: HealthItem[];
   packages: PackageInfo[];
   packageQuery: string;
@@ -302,6 +310,14 @@ const state: State = {
   pingtest: "",
   topology: "",
   topologyFocus: "tun",
+  sysroute: {
+    rulePriority: "100",
+    ruleTable: "main",
+    routeTable: "main",
+    routeDest: "default",
+    routeDev: "",
+    routeVia: ""
+  },
   health: [],
   packages: [],
   packageQuery: "",
@@ -1409,6 +1425,27 @@ function topologyPanel(): string {
         <button class="command-secondary" data-copy-topology-explain>${icon("Copy", 17)}复制解说</button>
       </section>
     </div>
+    <section class="route-editor">
+      <div>
+        <span class="eyebrow">Policy Routing Editor</span>
+        <h3>系统路由表手动编辑</h3>
+        <p>谨慎操作。这里编辑的是 Android Linux 底层 <code>ip rule</code> / <code>ip route</code>，不是内核 WebUI 的代理分流规则。不要随意设置 priority 0 或全局封死物理网卡。</p>
+      </div>
+      <form class="route-editor-form" data-sysroute-rule-form>
+        <label><span>priority</span><input name="priority" value="${escapeHtml(state.sysroute.rulePriority)}" inputmode="numeric" /></label>
+        <label><span>lookup table</span><input name="table" value="${escapeHtml(state.sysroute.ruleTable)}" placeholder="main 或 100" /></label>
+        <button type="submit">${icon("Plus", 17)}添加 ip rule</button>
+        <button type="button" data-sysroute-del-rule>${icon("X", 17)}删除 priority</button>
+      </form>
+      <form class="route-editor-form" data-sysroute-route-form>
+        <label><span>table</span><input name="table" value="${escapeHtml(state.sysroute.routeTable)}" placeholder="main 或 100" /></label>
+        <label><span>dest</span><input name="dest" value="${escapeHtml(state.sysroute.routeDest)}" placeholder="default 或 0.0.0.0/0" /></label>
+        <label><span>dev</span><input name="dev" value="${escapeHtml(state.sysroute.routeDev)}" placeholder="tun0 / wlan0" /></label>
+        <label><span>via 可空</span><input name="via" value="${escapeHtml(state.sysroute.routeVia)}" placeholder="192.168.1.1" /></label>
+        <button type="submit">${icon("Plus", 17)}添加 route</button>
+        <button type="button" data-sysroute-del-route>${icon("X", 17)}删除 route</button>
+      </form>
+    </section>
     <div class="pingtest-panel">
       <div>
         <span class="eyebrow">Device Evidence</span>
@@ -2895,6 +2932,61 @@ function bindEvents(): void {
     await navigator.clipboard?.writeText(text);
     state.output = `${text}\n\n已复制拓扑解说。`;
     if (state.hasKsu) kernelsu.toast?.("拓扑解说已复制");
+    render();
+  });
+
+  document.querySelector<HTMLFormElement>("[data-sysroute-rule-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    state.sysroute.rulePriority = String(form.get("priority") || "").trim();
+    state.sysroute.ruleTable = String(form.get("table") || "").trim();
+    if (!/^[0-9]+$/.test(state.sysroute.rulePriority) || !/^[A-Za-z0-9_.-]+$/.test(state.sysroute.ruleTable)) {
+      state.output = "ip rule 参数格式不对。priority 必须是数字，table 只能是简单表名或数字。";
+      render();
+      return;
+    }
+    await runCli(`sysroute add-rule ${shellQuote(state.sysroute.rulePriority)} ${shellQuote(state.sysroute.ruleTable)}`, { label: "添加 ip rule" });
+    await refreshTopology(true);
+    render();
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-sysroute-del-rule]")?.addEventListener("click", async () => {
+    if (!/^[0-9]+$/.test(state.sysroute.rulePriority)) {
+      state.output = "要删除的 priority 必须是数字。";
+      render();
+      return;
+    }
+    await runCli(`sysroute del-rule ${shellQuote(state.sysroute.rulePriority)}`, { label: "删除 ip rule" });
+    await refreshTopology(true);
+    render();
+  });
+
+  document.querySelector<HTMLFormElement>("[data-sysroute-route-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    state.sysroute.routeTable = String(form.get("table") || "").trim();
+    state.sysroute.routeDest = String(form.get("dest") || "").trim();
+    state.sysroute.routeDev = String(form.get("dev") || "").trim();
+    state.sysroute.routeVia = String(form.get("via") || "").trim();
+    const token = /^[A-Za-z0-9_./:-]+$/;
+    if (!token.test(state.sysroute.routeTable) || !token.test(state.sysroute.routeDest) || !token.test(state.sysroute.routeDev) || (state.sysroute.routeVia && !token.test(state.sysroute.routeVia))) {
+      state.output = "route 参数格式不对。请只填写 table、dest、dev、via 这类简单 token。";
+      render();
+      return;
+    }
+    await runCli(`sysroute add-route ${shellQuote(state.sysroute.routeTable)} ${shellQuote(state.sysroute.routeDest)} ${shellQuote(state.sysroute.routeDev)} ${shellQuote(state.sysroute.routeVia || "-")}`, { label: "添加 ip route" });
+    await refreshTopology(true);
+    render();
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-sysroute-del-route]")?.addEventListener("click", async () => {
+    if (!state.sysroute.routeTable || !state.sysroute.routeDest) {
+      state.output = "删除 route 需要填写 table 和 dest。";
+      render();
+      return;
+    }
+    await runCli(`sysroute del-route ${shellQuote(state.sysroute.routeTable)} ${shellQuote(state.sysroute.routeDest)}`, { label: "删除 ip route" });
+    await refreshTopology(true);
     render();
   });
 
