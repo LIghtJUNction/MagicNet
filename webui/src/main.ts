@@ -1479,11 +1479,11 @@ function packagePicker(): string {
 function runtimeDetail(value: string): string {
   if (hasProcess(value)) return `PID ${value}`;
   if (value === "stopped") return "未运行";
-  return "未检测";
+  return "等待刷新";
 }
 
 function runtimeLabel(value: string, onlineLabel = "运行中"): string {
-  return hasProcess(value) ? onlineLabel : value === "stopped" ? "已停止" : "未检测";
+  return hasProcess(value) ? onlineLabel : value === "stopped" ? "已停止" : "待刷新";
 }
 
 function healthPill(label: string, value: string, iconName: string): string {
@@ -1546,7 +1546,7 @@ function setupPanel(): string {
       <div class="setup-copy">
         <span class="eyebrow">${hasAnySub ? "Quick Setup" : "First Run"}</span>
         <h3>${hasAnySub ? "快速替换订阅" : "粘贴订阅，自动完成初始配置"}</h3>
-        <p>${hasAnySub ? "同时写入 sing-box 和 mihomo，更新订阅后执行自修复。适合节点失效、换机场、重装模块后的快速恢复。" : "第一次用不需要理解配置文件路径。粘贴 Clash / sing-box 订阅链接后，MagicNet 会保存到双内核、更新节点、重载规则并跑健康检查。"}</p>
+        <p>${hasAnySub ? "同时写入 sing-box 和 mihomo，更新订阅后执行自修复。适合节点失效、换机场、重装模块后的快速恢复。" : "第一次用不需要理解配置文件路径。粘贴 Clash / sing-box 订阅链接后，MagicNet 会保存到双内核、更新节点并重载规则。"}</p>
       </div>
       <form class="setup-form" data-setup-form>
         <label>
@@ -1562,10 +1562,10 @@ function setupPanel(): string {
 function overviewPanel(): string {
   const bridgeText = state.hasKsu ? "KernelSU 执行通道已接入" : "本地预览模式，不显示假运行数据";
   const headline = state.runtime.core === "stopped" || state.runtime.core === "unknown"
-    ? "透明代理控制台"
-    : `${state.runtime.core} TUN 正在运行`;
+    ? "TUN 控制台"
+    : `${state.runtime.core} 在线`;
   const statusCaption = state.runtime.core === "unknown"
-    ? "服务状态未检测到有效输出"
+    ? "等待刷新运行状态"
     : state.runtime.core === "stopped"
       ? "没有代理内核进程"
       : `${state.runtime.core} ${runtimeDetail(state.runtime.core === "sing-box" ? state.runtime.singBox : state.runtime.mihomo)}`;
@@ -1581,7 +1581,7 @@ function overviewPanel(): string {
           <span class="eyebrow">Transparent TUN Control</span>
           <h2>${headline}</h2>
         </div>
-        <p>${bridgeText}。入口固定是 TUN；内核面板、订阅、分应用、抓包、证书、热点转发和 VPN 共存都在这里完成。</p>
+        <p>${bridgeText}。这里只管模块级操作：内核启停、订阅、分应用、抓包、证书、热点转发、VPN 共存和安全黑名单。</p>
         ${commandDeck()}
       </div>
       <div class="overview-side">
@@ -1610,6 +1610,37 @@ function overviewPanel(): string {
       </div>
     </section>
     ${setupPanel()}
+  `;
+}
+
+function mobileDock(): string {
+  const first = tabs.slice(0, 5);
+  const second = tabs.slice(5);
+  return `
+    <nav class="mobile-dock" aria-label="MagicNet mobile shortcuts">
+      <div class="mobile-dock-strip">
+        ${first.map((item) => `
+          <button class="${state.activeTab === item.key ? "active" : ""}" data-tab="${item.key}">
+            ${icon(item.icon, 18)}
+            <span>${item.label}</span>
+          </button>
+        `).join("")}
+        <a data-open-core-ui href="${escapeHtml(coreUiUrl())}">
+          ${icon("ExternalLink", 18)}
+          <span>内核</span>
+        </a>
+        ${second.map((item) => `
+          <button class="${state.activeTab === item.key ? "active" : ""}" data-tab="${item.key}">
+            ${icon(item.icon, 18)}
+            <span>${item.label}</span>
+          </button>
+        `).join("")}
+        <button data-action="refresh-all">
+          ${icon("RefreshCw", 18)}
+          <span>刷新</span>
+        </button>
+      </div>
+    </nav>
   `;
 }
 
@@ -1653,7 +1684,7 @@ function adjacentTabs(): string {
 }
 
 function topSummary(): string {
-  const core = state.runtime.core === "unknown" ? "未检测" : state.runtime.core;
+  const core = state.runtime.core === "unknown" ? "待刷新" : state.runtime.core;
   const task = state.activeTask ? `执行中：${state.activeTask}` : "空闲";
   return `
     <div class="top-summary">
@@ -1766,13 +1797,7 @@ function render(): void {
           </div>
         </section>
       </main>
-      <nav class="mobile-dock" aria-label="MagicNet mobile shortcuts">
-        <button class="${tab === "control" ? "active" : ""}" data-tab="control">${icon("Gauge", 18)}<span>控制</span></button>
-        <button class="${tab === "subs" ? "active" : ""}" data-tab="subs">${icon("DownloadCloud", 18)}<span>订阅</span></button>
-        <a data-open-core-ui href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 18)}<span>内核</span></a>
-        <button class="${tab === "health" ? "active" : ""}" data-tab="health">${icon("Stethoscope", 18)}<span>诊断</span></button>
-        <button data-action="refresh-all">${icon("RefreshCw", 18)}<span>刷新</span></button>
-      </nav>
+      ${mobileDock()}
     </div>
   `;
 

@@ -1988,7 +1988,7 @@ a.disabled {
   .overview {
     min-height: 0;
     margin-top: 10px;
-    padding: 14px;
+    padding: 12px;
     border-color: rgba(98, 243, 169, 0.18);
     background:
       linear-gradient(160deg, rgba(98, 243, 169, 0.12), rgba(132, 199, 255, 0.07) 48%, rgba(8, 10, 10, 0.92)),
@@ -2006,14 +2006,14 @@ a.disabled {
   }
 
   .overview h2 {
-    font-size: 26px;
+    font-size: 22px;
     line-height: 1.12;
     overflow-wrap: anywhere;
   }
 
   .overview p {
-    font-size: 13px;
-    line-height: 1.5;
+    font-size: 12px;
+    line-height: 1.42;
   }
 
   .command-deck,
@@ -2041,8 +2041,8 @@ a.disabled {
   }
 
   .signal-card {
-    min-height: 62px;
-    padding: 11px;
+    min-height: 56px;
+    padding: 10px;
   }
 
   .health-grid {
@@ -2069,8 +2069,8 @@ a.disabled {
   }
 
   .setup-panel {
-    margin-top: 10px;
-    padding: 12px;
+    margin-top: 8px;
+    padding: 10px;
   }
 
   .setup-panel h3,
@@ -2308,16 +2308,28 @@ a.disabled {
     right: max(8px, env(safe-area-inset-right));
     bottom: max(8px, env(safe-area-inset-bottom));
     z-index: 50;
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 3px;
-    min-height: 58px;
+    display: block;
+    min-height: 62px;
     border: 1px solid rgba(215, 208, 188, 0.16);
     border-radius: 8px;
     padding: 5px;
     background: rgba(12, 17, 16, 0.94);
     box-shadow: 0 14px 40px rgba(0, 0, 0, 0.48);
     backdrop-filter: blur(18px);
+    overflow: hidden;
+  }
+
+  .mobile-dock-strip {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .mobile-dock-strip::-webkit-scrollbar {
+    display: none;
   }
 
   .mobile-dock button,
@@ -2325,7 +2337,8 @@ a.disabled {
     display: grid;
     place-items: center;
     gap: 3px;
-    min-width: 0;
+    flex: 0 0 60px;
+    scroll-snap-align: start;
     min-height: 48px;
     border: 1px solid transparent;
     border-radius: 8px;
