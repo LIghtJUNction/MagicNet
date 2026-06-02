@@ -2267,6 +2267,144 @@ a.disabled {
   line-height: 1.5;
 }
 
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.sysroute-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sysroute-card,
+.sysroute-detail-card,
+.route-editor-note {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(8, 12, 11, 0.76);
+}
+
+.sysroute-card {
+  display: grid;
+  gap: 6px;
+  min-height: 112px;
+  padding: 12px;
+}
+
+.sysroute-card > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(98, 243, 169, 0.3);
+  border-radius: 8px;
+  color: var(--green);
+  background: rgba(98, 243, 169, 0.08);
+}
+
+.sysroute-card strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.sysroute-card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sysroute-card.accent {
+  border-color: rgba(98, 243, 169, 0.36);
+  background: rgba(98, 243, 169, 0.08);
+}
+
+.sysroute-card.warn,
+.sysroute-detail-card.warn {
+  border-color: rgba(242, 189, 92, 0.36);
+  background: rgba(242, 189, 92, 0.06);
+}
+
+.sysroute-overview .sysroute-detail-card {
+  grid-column: span 2;
+}
+
+.sysroute-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sysroute-detail-card {
+  padding: 12px;
+}
+
+.sysroute-detail-card h4 {
+  margin: 0 0 10px;
+  color: var(--paper);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.sysroute-detail-card p,
+.sysroute-detail-card li,
+.route-editor-note span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sysroute-detail-card ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.sysroute-lines {
+  display: grid;
+  gap: 6px;
+}
+
+.sysroute-lines code {
+  display: block;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: #070a09;
+  color: var(--ink);
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.sysroute-lines small,
+.route-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.route-editor-note {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.route-editor-note strong {
+  color: var(--amber);
+  font-size: 13px;
+}
+
 .route-editor-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto;
@@ -2686,6 +2824,8 @@ a.disabled {
   .webui-config-form,
   .webui-panel-row,
   .topology-layout,
+  .sysroute-overview,
+  .sysroute-grid,
   .route-editor-form,
   .health-grid,
   .health-summary,
@@ -2719,6 +2859,15 @@ a.disabled {
   .command-secondary {
     min-height: 42px;
     padding: 0 12px;
+  }
+
+  .section-actions {
+    justify-content: stretch;
+  }
+
+  .section-actions .command-primary,
+  .section-actions .command-secondary {
+    flex: 1 1 150px;
   }
 
   .runtime-toggle {
@@ -2863,6 +3012,19 @@ a.disabled {
 
   .topology-map svg {
     height: 300px;
+  }
+
+  .sysroute-card {
+    min-height: 84px;
+    padding: 10px;
+  }
+
+  .sysroute-overview .sysroute-detail-card {
+    grid-column: auto;
+  }
+
+  .sysroute-detail-card {
+    padding: 10px;
   }
 
   .webui-panel-row {

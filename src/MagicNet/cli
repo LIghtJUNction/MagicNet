@@ -2382,6 +2382,78 @@ external_vpn -> route priority and protection rules can conflict with TUN; Magic
 EOF
 }
 
+cli_sysroute_section() {
+    printf '\n## %s\n' "$1"
+}
+
+cli_sysroute_snapshot() {
+    printf '# MagicNet System Route Snapshot\n'
+    printf 'generated_at=%s\n' "$(date '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date 2>/dev/null || printf unknown)"
+
+    cli_sysroute_section "interfaces"
+    if command -v ip >/dev/null 2>&1; then
+        ip -o link show 2>&1 | head -120
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_sysroute_section "addresses"
+    if command -v ip >/dev/null 2>&1; then
+        ip -o addr show 2>&1 | head -160
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_sysroute_section "policy-rules"
+    if command -v ip >/dev/null 2>&1; then
+        ip rule show 2>&1 | head -160
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_sysroute_section "main-routes"
+    if command -v ip >/dev/null 2>&1; then
+        ip route show table main 2>&1 | head -160
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_sysroute_section "default-routes"
+    if command -v ip >/dev/null 2>&1; then
+        ip route show table all 2>&1 | grep -E '(^|[[:space:]])default([[:space:]]|$)' | head -120 || printf 'no default route found\n'
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_sysroute_section "tun-routes"
+    if command -v ip >/dev/null 2>&1; then
+        ip route show table all 2>&1 | grep -E 'tun|utun|magicnet|sing-box|mihomo' | head -120 || printf 'no TUN related route found\n'
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_sysroute_section "all-routes"
+    if command -v ip >/dev/null 2>&1; then
+        ip route show table all 2>&1 | head -260
+    else
+        printf 'ip not found\n'
+    fi
+
+    cli_sysroute_section "netfilter-output"
+    if command -v iptables >/dev/null 2>&1; then
+        iptables -S OUTPUT 2>&1 | grep -E 'MAGICNET|tun|utun|wlan|rmnet|REJECT|DROP|owner|uid' | head -160 || printf 'no focused OUTPUT guard found\n'
+    else
+        printf 'iptables not found\n'
+    fi
+
+    cli_sysroute_section "notes"
+    cat <<'EOF'
+This page edits Android Linux policy routing directly. It is not proxy rule management.
+Avoid priority 0 unless you have a rollback path. Android and VPN services also use high-priority rules.
+Avoid global physical-interface DROP/REJECT unless the proxy core UID and recovery command are verified.
+EOF
+}
+
 cli_system_route_valid_token() {
     case "${1:-}" in
         ""|*";"*|*"|"*|*"&"*|*"\`"*|*'$('*|*">"*|*"<"*) return 1 ;;
@@ -2391,8 +2463,8 @@ cli_system_route_valid_token() {
 
 cli_system_route() {
     case "${1:-list}" in
-        list)
-            cli_topology
+        list|snapshot)
+            cli_sysroute_snapshot
             ;;
         add-rule)
             _priority="${2:-}"
@@ -2433,7 +2505,7 @@ cli_system_route() {
             cli_info "Deleted route: table $_table $_dest"
             ;;
         *)
-            cli_error "Usage: cli sysroute {list|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}"
+            cli_error "Usage: cli sysroute {list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}"
             exit 1
             ;;
     esac
@@ -2532,7 +2604,7 @@ Usage:
   cli health
   cli pingtest
   cli topology
-  cli sysroute {list|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}
+  cli sysroute {list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}
   cli repair
   cli support bundle
   cli setup <subscription-url>

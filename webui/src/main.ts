@@ -14,6 +14,7 @@ import {
   ListFilter,
   Lock,
   Plus,
+  Radar,
   RadioTower,
   RefreshCw,
   RotateCcw,
@@ -111,6 +112,20 @@ type RouteRules = {
   newTarget: "proxy" | "direct" | "block";
 };
 
+type SysrouteSnapshot = {
+  generatedAt: string;
+  interfaces: string[];
+  addresses: string[];
+  rules: string[];
+  mainRoutes: string[];
+  defaultRoutes: string[];
+  tunRoutes: string[];
+  allRoutes: string[];
+  outputGuards: string[];
+  notes: string[];
+  raw: string;
+};
+
 type BlocklistState = {
   enabled: boolean;
   community: boolean;
@@ -203,6 +218,7 @@ type State = {
   pingtest: string;
   topology: string;
   topologyFocus: string;
+  sysrouteSnapshot: SysrouteSnapshot;
   sysroute: {
     rulePriority: string;
     ruleTable: string;
@@ -310,6 +326,7 @@ const state: State = {
   pingtest: "",
   topology: "",
   topologyFocus: "tun",
+  sysrouteSnapshot: emptySysrouteSnapshot(),
   sysroute: {
     rulePriority: "100",
     ruleTable: "main",
@@ -399,6 +416,7 @@ const iconMap: Record<string, IconNode> = {
   ListFilter,
   Lock,
   Plus,
+  Radar,
   RadioTower,
   RefreshCw,
   RotateCcw,
@@ -790,6 +808,53 @@ function parseMcpStatus(text: string): McpState {
   }
   if (!next.url) next.url = `http://${next.bind}:${next.port}/mcp`;
   return next;
+}
+
+function emptySysrouteSnapshot(): SysrouteSnapshot {
+  return {
+    generatedAt: "",
+    interfaces: [],
+    addresses: [],
+    rules: [],
+    mainRoutes: [],
+    defaultRoutes: [],
+    tunRoutes: [],
+    allRoutes: [],
+    outputGuards: [],
+    notes: [],
+    raw: ""
+  };
+}
+
+function parseSysrouteSnapshot(text: string): SysrouteSnapshot {
+  const snapshot = emptySysrouteSnapshot();
+  snapshot.raw = text;
+  let section = "";
+
+  const pushLine = (line: string) => {
+    if (!line.trim()) return;
+    if (line.startsWith("generated_at=")) {
+      snapshot.generatedAt = line.slice("generated_at=".length).trim();
+      return;
+    }
+    if (line.startsWith("#")) return;
+    if (line.startsWith("## ")) {
+      section = line.slice(3).trim();
+      return;
+    }
+    if (section === "interfaces") snapshot.interfaces.push(line);
+    if (section === "addresses") snapshot.addresses.push(line);
+    if (section === "policy-rules") snapshot.rules.push(line);
+    if (section === "main-routes") snapshot.mainRoutes.push(line);
+    if (section === "default-routes") snapshot.defaultRoutes.push(line);
+    if (section === "tun-routes") snapshot.tunRoutes.push(line);
+    if (section === "all-routes") snapshot.allRoutes.push(line);
+    if (section === "netfilter-output") snapshot.outputGuards.push(line);
+    if (section === "notes") snapshot.notes.push(line);
+  };
+
+  text.split(/\r?\n/).forEach(pushLine);
+  return snapshot;
 }
 
 async function refreshMcp(quiet = false): Promise<void> {
@@ -1205,6 +1270,22 @@ async function refreshPingtest(): Promise<void> {
 async function refreshTopology(quiet = false): Promise<void> {
   const text = await runCli("topology", { quiet, label: "网络拓扑" });
   state.topology = text;
+  if (state.hasKsu) {
+    const routeText = await runCli("sysroute snapshot", { quiet: true, label: "系统路由表" });
+    if (routeText) state.sysrouteSnapshot = parseSysrouteSnapshot(routeText);
+  }
+  if (!quiet) {
+    state.activeTab = "topology";
+    render();
+  }
+}
+
+async function refreshSysroute(quiet = false): Promise<void> {
+  const text = await runCli("sysroute snapshot", { quiet, label: "系统路由表" });
+  if (text) {
+    state.sysrouteSnapshot = parseSysrouteSnapshot(text);
+    state.topology = text;
+  }
   if (!quiet) {
     state.activeTab = "topology";
     render();
@@ -1374,6 +1455,94 @@ function healthPanel(): string {
   `;
 }
 
+function compactLines(lines: string[], limit = 8): string {
+  const visible = lines.filter(Boolean).slice(0, limit);
+  if (!visible.length) return `<div class="route-empty">没有读取到数据</div>`;
+  const more = lines.length > limit ? `<small>还有 ${lines.length - limit} 行，下面原始输出里可看完整内容。</small>` : "";
+  return `
+    <div class="sysroute-lines">
+      ${visible.map((line) => `<code>${escapeHtml(line)}</code>`).join("")}
+      ${more}
+    </div>
+  `;
+}
+
+function routeDevFromLine(line: string): string {
+  const match = line.match(/(?:^|\s)dev\s+([^\s]+)/);
+  return match?.[1] || "";
+}
+
+function routePriority(line: string): string {
+  const match = line.match(/^([0-9]+):/);
+  return match?.[1] || "";
+}
+
+function routeRiskItems(snapshot: SysrouteSnapshot): string[] {
+  const risks: string[] = [];
+  if (snapshot.rules.some((line) => /^0:/.test(line) || /^1:/.test(line))) {
+    risks.push("检测到 priority 0/1 级别规则。Android、VPN、厂商网络服务也会使用高优先级，编辑前先确认回滚路径。");
+  }
+  const defaultPhys = snapshot.defaultRoutes.some((line) => {
+    const dev = routeDevFromLine(line);
+    return dev && !/tun|utun|magicnet|lo/i.test(dev);
+  });
+  if (defaultPhys) risks.push("默认路由仍指向物理网卡。这不一定是错，TUN 透明代理通常依赖策略路由和内核保护规则共同生效。");
+  if (snapshot.outputGuards.some((line) => /\b(REJECT|DROP)\b/.test(line)) && !snapshot.outputGuards.some((line) => /owner|uid/i.test(line))) {
+    risks.push("OUTPUT 链存在拒绝规则但没看到 UID 放行信息，误配可能导致内核自身也无法出网。");
+  }
+  if (!snapshot.tunRoutes.length || snapshot.tunRoutes.some((line) => /no TUN related/.test(line))) {
+    risks.push("没有看到明显 TUN 路由。若内核已在线但这里为空，需要结合内核配置和 ip rule 判断流量入口。");
+  }
+  return risks;
+}
+
+function sysrouteOverview(): string {
+  const snapshot = state.sysrouteSnapshot;
+  const defaultDev = snapshot.defaultRoutes.map(routeDevFromLine).filter(Boolean)[0] || "未知";
+  const tunDevs = Array.from(new Set([
+    ...snapshot.tunRoutes.map(routeDevFromLine),
+    ...snapshot.addresses.map((line) => line.match(/^[0-9]+:\s+([^ ]+)/)?.[1] || "")
+  ].filter((dev) => /tun|utun|magicnet/i.test(dev)))).slice(0, 4);
+  const highRules = snapshot.rules
+    .map((line) => ({ priority: Number(routePriority(line) || "999999"), line }))
+    .filter((item) => item.priority < 1000)
+    .slice(0, 3);
+  const risks = routeRiskItems(snapshot);
+
+  return `
+    <section class="sysroute-overview">
+      <div class="sysroute-card accent">
+        <span>${icon("Radar", 18)}</span>
+        <strong>${snapshot.rules.length || 0}</strong>
+        <small>策略路由规则</small>
+      </div>
+      <div class="sysroute-card">
+        <span>${icon("Route", 18)}</span>
+        <strong>${escapeHtml(defaultDev)}</strong>
+        <small>默认出口 dev</small>
+      </div>
+      <div class="sysroute-card">
+        <span>${icon("RadioTower", 18)}</span>
+        <strong>${escapeHtml(tunDevs.join(", ") || "未发现")}</strong>
+        <small>TUN 相关接口</small>
+      </div>
+      <div class="sysroute-card ${risks.length ? "warn" : ""}">
+        <span>${icon(risks.length ? "ShieldPlus" : "ShieldCheck", 18)}</span>
+        <strong>${risks.length ? `${risks.length} 项` : "正常"}</strong>
+        <small>风险提示</small>
+      </div>
+      <div class="sysroute-detail-card">
+        <h4>高优先级规则</h4>
+        ${compactLines(highRules.map((item) => item.line), 4)}
+      </div>
+      <div class="sysroute-detail-card ${risks.length ? "warn" : ""}">
+        <h4>编辑前判断</h4>
+        ${risks.length ? `<ul>${risks.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("")}</ul>` : `<p>没有发现明显高危路由特征。仍建议每次只改一条，然后立即刷新验证。</p>`}
+      </div>
+    </section>
+  `;
+}
+
 const topologyConcepts: Record<string, { title: string; body: string }> = {
   app: { title: "客户端 App", body: "App 发出的 TCP/UDP 流量先进入 Android 网络栈。透明代理的关键是让 App 不需要知道代理存在，由系统路由把流量导向 TUN。" },
   route: { title: "Android 路由表", body: "路由表决定流量下一跳。MagicNet 需要让目标流量进入 TUN，同时避免热点、局域网和外部 VPN 出现回环。" },
@@ -1386,6 +1555,7 @@ const topologyConcepts: Record<string, { title: string; body: string }> = {
 
 function topologyPanel(): string {
   const focus = topologyConcepts[state.topologyFocus] || topologyConcepts.tun;
+  const snapshot = state.sysrouteSnapshot;
   const nodes = [
     ["app", 10, 42],
     ["route", 24, 42],
@@ -1400,9 +1570,12 @@ function topologyPanel(): string {
       <div>
         <span class="eyebrow">Network Topology</span>
         <h3>透明代理网络拓扑</h3>
-        <p>把虚拟网卡、路由、TUN、热点转发和 VPN 共存画成可点选路径。点击节点查看概念和排查方法。</p>
+        <p>把虚拟网卡、策略路由、TUN、热点转发和 VPN 共存画成可点选路径。路由表来自真实设备，可手动刷新和谨慎编辑。</p>
       </div>
-      <button class="command-primary" data-refresh-topology>${icon("RefreshCw", 17)}读取真实拓扑</button>
+      <div class="section-actions">
+        <button class="command-secondary" data-refresh-topology>${icon("RefreshCw", 17)}刷新拓扑</button>
+        <button class="command-primary" data-refresh-sysroute>${icon("Radar", 17)}刷新路由表</button>
+      </div>
     </div>
     <div class="topology-layout">
       <section class="topology-map">
@@ -1427,10 +1600,11 @@ function topologyPanel(): string {
     </div>
     <section class="route-editor">
       <div>
-        <span class="eyebrow">Policy Routing Editor</span>
-        <h3>系统路由表手动编辑</h3>
-        <p>谨慎操作。这里编辑的是 Android Linux 底层 <code>ip rule</code> / <code>ip route</code>，不是内核 WebUI 的代理分流规则。不要随意设置 priority 0 或全局封死物理网卡。</p>
+        <span class="eyebrow">System Route Workbench</span>
+        <h3>系统路由表可视化与手动编辑</h3>
+        <p>这里编辑 Android Linux 底层 <code>ip rule</code> / <code>ip route</code>。它不是代理分流配置，也不会自动写入全局防漏墙。每次只改一条，改完立即刷新。</p>
       </div>
+      ${sysrouteOverview()}
       <form class="route-editor-form" data-sysroute-rule-form>
         <label><span>priority</span><input name="priority" value="${escapeHtml(state.sysroute.rulePriority)}" inputmode="numeric" /></label>
         <label><span>lookup table</span><input name="table" value="${escapeHtml(state.sysroute.ruleTable)}" placeholder="main 或 100" /></label>
@@ -1445,14 +1619,36 @@ function topologyPanel(): string {
         <button type="submit">${icon("Plus", 17)}添加 route</button>
         <button type="button" data-sysroute-del-route>${icon("X", 17)}删除 route</button>
       </form>
+      <div class="route-editor-note">
+        <strong>关于网上说的“锁死路由”</strong>
+        <span>把规则抢到 priority 0 或直接 DROP 物理网卡，确实可能防漏，但也可能让 Android 网络服务、外部 VPN、热点和内核自身出网一起断掉。MagicNet 只提供手动编辑和证据展示，不做不可回滚的一键锁死。</span>
+      </div>
+    </section>
+    <section class="sysroute-grid">
+      <div class="sysroute-detail-card">
+        <h4>policy rules</h4>
+        ${compactLines(snapshot.rules, 10)}
+      </div>
+      <div class="sysroute-detail-card">
+        <h4>default routes</h4>
+        ${compactLines(snapshot.defaultRoutes, 8)}
+      </div>
+      <div class="sysroute-detail-card">
+        <h4>TUN routes</h4>
+        ${compactLines(snapshot.tunRoutes, 8)}
+      </div>
+      <div class="sysroute-detail-card">
+        <h4>OUTPUT guard</h4>
+        ${compactLines(snapshot.outputGuards, 8)}
+      </div>
     </section>
     <div class="pingtest-panel">
       <div>
         <span class="eyebrow">Device Evidence</span>
-        <h3>真实设备网络摘要</h3>
-        <p>来自模块 CLI 的接口、路由、转发和监听摘要。</p>
+        <h3>完整原始输出</h3>
+        <p>${snapshot.generatedAt ? `路由快照：${escapeHtml(snapshot.generatedAt)}` : "来自模块 CLI 的接口、路由、转发和监听摘要。"}</p>
       </div>
-      <pre>${escapeHtml(state.topology || "还没有读取拓扑。点击“读取真实拓扑”开始。")}</pre>
+      <pre>${escapeHtml(snapshot.raw || state.topology || "还没有读取拓扑。点击“刷新路由表”开始。")}</pre>
     </div>
   `;
 }
@@ -2918,6 +3114,7 @@ function bindEvents(): void {
   });
 
   document.querySelector<HTMLButtonElement>("[data-refresh-topology]")?.addEventListener("click", () => refreshTopology());
+  document.querySelector<HTMLButtonElement>("[data-refresh-sysroute]")?.addEventListener("click", () => refreshSysroute());
 
   document.querySelectorAll<SVGGElement>("[data-topology-node]").forEach((node) => {
     node.addEventListener("click", () => {
@@ -2946,7 +3143,7 @@ function bindEvents(): void {
       return;
     }
     await runCli(`sysroute add-rule ${shellQuote(state.sysroute.rulePriority)} ${shellQuote(state.sysroute.ruleTable)}`, { label: "添加 ip rule" });
-    await refreshTopology(true);
+    await refreshSysroute(true);
     render();
   });
 
@@ -2957,7 +3154,7 @@ function bindEvents(): void {
       return;
     }
     await runCli(`sysroute del-rule ${shellQuote(state.sysroute.rulePriority)}`, { label: "删除 ip rule" });
-    await refreshTopology(true);
+    await refreshSysroute(true);
     render();
   });
 
@@ -2975,7 +3172,7 @@ function bindEvents(): void {
       return;
     }
     await runCli(`sysroute add-route ${shellQuote(state.sysroute.routeTable)} ${shellQuote(state.sysroute.routeDest)} ${shellQuote(state.sysroute.routeDev)} ${shellQuote(state.sysroute.routeVia || "-")}`, { label: "添加 ip route" });
-    await refreshTopology(true);
+    await refreshSysroute(true);
     render();
   });
 
@@ -2986,7 +3183,7 @@ function bindEvents(): void {
       return;
     }
     await runCli(`sysroute del-route ${shellQuote(state.sysroute.routeTable)} ${shellQuote(state.sysroute.routeDest)}`, { label: "删除 ip route" });
-    await refreshTopology(true);
+    await refreshSysroute(true);
     render();
   });
 
