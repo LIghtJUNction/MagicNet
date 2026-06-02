@@ -90,6 +90,8 @@ type State = {
   runtime: RuntimeState;
   lastCommand: string;
   output: string;
+  nodes: string[];
+  currentNode: string;
   appPolicy: AppPolicy;
   subscriptions: {
     singBox: string;
@@ -135,6 +137,8 @@ const state: State = {
   },
   lastCommand: "",
   output: "面板已加载。通过 KernelSU WebUI 打开时，按钮会直接执行模块 CLI。",
+  nodes: [],
+  currentNode: "",
   appPolicy: {
     mode: "blacklist",
     proxy: ["com.android.chrome", "org.telegram.messenger"],
@@ -399,6 +403,28 @@ async function refreshSubscriptions(quiet = false): Promise<void> {
   render();
 }
 
+async function refreshNodes(quiet = false): Promise<void> {
+  const current = await runCli("node current", { quiet: true });
+  const list = await runCli("node list", { quiet: true });
+  if (state.hasKsu) {
+    state.currentNode = current.trim();
+    state.nodes = list
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!quiet) {
+      state.output = `当前节点：${state.currentNode || "unknown"}\n可用节点：${state.nodes.length}`;
+    }
+  }
+  render();
+}
+
+async function switchNode(name: string): Promise<void> {
+  if (!name) return;
+  await runCli(`node use ${shellQuote(name)}`);
+  await refreshNodes(true);
+}
+
 async function saveSetupSubscription(): Promise<void> {
   const url = state.setupUrl.trim();
   if (!/^https?:\/\/\S+$/i.test(url)) {
@@ -586,6 +612,40 @@ function healthPanel(): string {
         <div><strong>${summary.info}</strong><span>信息</span></div>
       </div>
       <div class="health-list">${items}</div>
+    </div>
+  `;
+}
+
+function nodePanel(): string {
+  const nodeRows = state.nodes.length
+    ? state.nodes
+      .map((name) => {
+        const selected = name === state.currentNode;
+        return `
+          <button class="node-row ${selected ? "selected" : ""}" data-node-use="${escapeHtml(name)}" ${state.busy || selected ? "disabled" : ""}>
+            <span>${selected ? icon("ShieldCheck", 17) : icon("Route", 17)}</span>
+            <strong>${escapeHtml(name)}</strong>
+            <small>${selected ? "当前出口" : "切换"}</small>
+          </button>
+        `;
+      })
+      .join("")
+    : `<div class="picker-empty"><strong>还没有节点列表</strong><span>先更新订阅，再点刷新节点。列表来自 Clash API 的 proxy 策略组。</span></div>`;
+
+  return `
+    <div class="node-panel">
+      <div class="node-head">
+        <div>
+          <span class="eyebrow">Proxy Selector</span>
+          <h3>${escapeHtml(state.currentNode || "未读取当前节点")}</h3>
+          <p>直接切换 TUN 出口，不需要打开内核 WebUI。</p>
+        </div>
+        <div class="node-actions">
+          <button class="command-secondary" data-refresh-nodes ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}刷新节点</button>
+          <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>${icon("DownloadCloud", 17)}更新订阅</button>
+        </div>
+      </div>
+      <div class="node-list">${nodeRows}</div>
     </div>
   `;
 }
@@ -1012,6 +1072,7 @@ function render(): void {
                 )
                 .join("")}
             </div>
+            ${nodePanel()}
             <div class="mode-panel">
               <div>
                 <h3>代理模式</h3>
@@ -1154,6 +1215,12 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-scan-packages]")?.addEventListener("click", scanUserPackages);
 
   document.querySelector<HTMLButtonElement>("[data-refresh-subs]")?.addEventListener("click", () => refreshSubscriptions());
+
+  document.querySelector<HTMLButtonElement>("[data-refresh-nodes]")?.addEventListener("click", () => refreshNodes());
+
+  document.querySelectorAll<HTMLButtonElement>("[data-node-use]").forEach((button) => {
+    button.addEventListener("click", () => switchNode(button.dataset.nodeUse || ""));
+  });
 
   document.querySelector<HTMLFormElement>("[data-setup-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1367,6 +1434,7 @@ async function bootstrap(): Promise<void> {
   await refreshStatus();
   await refreshApps(true);
   await refreshSubscriptions(true);
+  await refreshNodes(true);
   await refreshCerts(true);
   await refreshCapture(true);
   await refreshHealth(true);

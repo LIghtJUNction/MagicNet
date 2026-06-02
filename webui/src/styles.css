@@ -563,6 +563,98 @@ code {
   background: linear-gradient(145deg, rgba(93, 240, 166, 0.18), rgba(21, 26, 29, 0.92));
 }
 
+.node-panel {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0c1110;
+  overflow: hidden;
+}
+
+.node-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.node-head h3 {
+  max-width: 560px;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.node-head p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.node-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.node-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--panel-2);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.node-row span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #070a09;
+  color: var(--blue);
+}
+
+.node-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-row small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.node-row.selected {
+  border-color: rgba(98, 243, 169, 0.38);
+  background: var(--green-weak);
+}
+
+.node-row.selected span,
+.node-row.selected small {
+  color: var(--green);
+}
+
 button:disabled {
   cursor: progress;
   opacity: 0.62;
@@ -1341,6 +1433,7 @@ button:disabled {
   .policy-header,
   .picker-head,
   .sub-head,
+  .node-head,
   .health-hero {
     align-items: stretch;
     flex-direction: column;
@@ -1368,6 +1461,10 @@ button:disabled {
     width: 100%;
   }
 
+  .node-actions {
+    justify-content: stretch;
+  }
+
   .tabs {
     grid-template-columns: 1fr;
   }
@@ -1383,6 +1480,7 @@ button:disabled {
 
   .command-deck,
   .setup-form,
+  .node-list,
   .health-grid,
   .health-summary {
     grid-template-columns: 1fr;
