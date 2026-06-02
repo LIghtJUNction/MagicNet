@@ -43,6 +43,8 @@ const CORE_UI = "http://127.0.0.1:9090/ui/cubex/";
 const REPO = "https://github.com/LIghtJUNction/MagicNet";
 const OUTPUT_RENDER_LIMIT = 6000;
 const CLI_TIMEOUT_MS = 45000;
+const AUTO_CORE_OPEN_ENABLED_KEY = "magicnet.autoCoreOpen.enabled";
+const AUTO_CORE_OPEN_TARGET_KEY = "magicnet.autoCoreOpen.target";
 let cliQueue: Promise<unknown> = Promise.resolve();
 const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
 const hasKsuBridge = typeof ksuBridge?.exec === "function";
@@ -132,10 +134,22 @@ type MihomoProvider = {
   url: string;
 };
 
+type CoreUiTarget = "metacubex" | "yacd" | "zashboard";
+
 type State = {
   hasKsu: boolean;
   busy: boolean;
   activeTask: string;
+  coreLaunch: {
+    active: boolean;
+    label: string;
+    url: string;
+  };
+  coreAutoOpen: {
+    enabled: boolean;
+    target: CoreUiTarget;
+    attempted: boolean;
+  };
   commandPhase: "idle" | "accepted" | "queued" | "running" | "done" | "error";
   commandNotice: string;
   commandQueueDepth: number;
@@ -187,6 +201,12 @@ const state: State = {
   hasKsu: hasKsuBridge,
   busy: false,
   activeTask: "",
+  coreLaunch: {
+    active: false,
+    label: "",
+    url: ""
+  },
+  coreAutoOpen: loadCoreAutoOpen(),
   commandPhase: "idle",
   commandNotice: "",
   commandQueueDepth: 0,
@@ -379,6 +399,25 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+function intentDataQuote(value: string): string {
+  return `"${value.replace(/(["\\$`])/g, "\\$1")}"`;
+}
+
+function loadCoreAutoOpen(): State["coreAutoOpen"] {
+  const savedTarget = localStorage.getItem(AUTO_CORE_OPEN_TARGET_KEY);
+  const target: CoreUiTarget = savedTarget === "yacd" || savedTarget === "zashboard" ? savedTarget : "metacubex";
+  return {
+    enabled: localStorage.getItem(AUTO_CORE_OPEN_ENABLED_KEY) === "1",
+    target,
+    attempted: false
+  };
+}
+
+function saveCoreAutoOpen(): void {
+  localStorage.setItem(AUTO_CORE_OPEN_ENABLED_KEY, state.coreAutoOpen.enabled ? "1" : "0");
+  localStorage.setItem(AUTO_CORE_OPEN_TARGET_KEY, state.coreAutoOpen.target);
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
     const entities: Record<string, string> = {
@@ -531,6 +570,36 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
   }
 }
 
+async function openExternalUrl(url: string, label = "外部链接"): Promise<void> {
+  state.output = `正在调用系统浏览器打开：\n${url}`;
+  render();
+
+  if (state.hasKsu) {
+    const command = `su -c ${shellQuote(`am start -a android.intent.action.VIEW -d ${intentDataQuote(url)}`)}`;
+    state.lastCommand = command;
+    try {
+      const result = await kernelsu.exec(command);
+      const text = normalizeExecResult(result);
+      if (!execFailed(text)) {
+        state.output = `已交给系统浏览器打开：\n${url}`;
+        kernelsu.toast?.(`${label} 已打开`);
+        render();
+        return;
+      }
+      state.output = `系统浏览器启动失败：\n${text}\n\n链接：\n${url}`;
+      render();
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      state.output = `系统浏览器启动失败：${message}\n\n链接：\n${url}`;
+      render();
+      return;
+    }
+  }
+
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function parseAppPolicy(text: string): AppPolicy {
   const policy: AppPolicy = { mode: "blacklist", proxy: [], bypass: [] };
   let section: "proxy" | "bypass" | null = null;
@@ -661,15 +730,30 @@ function coreUiTargetUrl(target: "metacubex" | "yacd" | "zashboard"): string {
   return `${state.runtime.api}/ui/cubex/`;
 }
 
+function coreUiTargetLabel(target: "metacubex" | "yacd" | "zashboard"): string {
+  if (target === "yacd") return "Yacd";
+  if (target === "zashboard") return "zashboard";
+  return "Meta Cube X";
+}
+
 async function openCoreUiTarget(target: "metacubex" | "yacd" | "zashboard"): Promise<void> {
+  const url = coreUiTargetUrl(target);
+  const label = coreUiTargetLabel(target);
   if (!state.hasKsu) {
     state.output = "当前浏览器没有 KernelSU 执行通道，无法确认内核 WebUI 是否在线。";
     render();
     return;
   }
 
+  state.coreLaunch = { active: true, label, url };
+  state.commandNotice = `正在打开 ${label}`;
+  state.output = `正在准备进入 ${label}：\n${url}\n\n正在确认 Clash API 可用，请稍等。`;
+  render();
+  await nextFrame();
+
   const text = await runCli("api groups", { quiet: true });
   if (!text || execFailed(text)) {
+    state.coreLaunch = { active: false, label: "", url: "" };
     state.status = "offline";
     state.statusText = "Clash API 未启动";
     state.activeTab = "health";
@@ -685,10 +769,24 @@ async function openCoreUiTarget(target: "metacubex" | "yacd" | "zashboard"): Pro
     return;
   }
 
-  const url = coreUiTargetUrl(target);
-  state.output = `正在打开内核 WebUI：\n${url}\n\n如果当前 WebView 没有跳转，请复制这个地址到浏览器打开。`;
+  state.output = `正在进入 ${label}：\n${url}\n\n如果几秒后仍停留在这里，请返回后点“复制全部入口”。`;
   render();
-  window.location.assign(url);
+  window.setTimeout(() => {
+    window.location.assign(url);
+  }, 260);
+}
+
+async function maybeAutoOpenCoreUi(): Promise<void> {
+  if (!state.hasKsu || !state.coreAutoOpen.enabled || state.coreAutoOpen.attempted) return;
+  state.coreAutoOpen.attempted = true;
+
+  if (state.runtime.core !== "sing-box" && state.runtime.core !== "mihomo") {
+    state.output = "已启用自动进入内核 WebUI，但当前内核状态不正常，因此不会自动跳转。";
+    render();
+    return;
+  }
+
+  await openCoreUiTarget(state.coreAutoOpen.target);
 }
 
 async function runAction(command: string): Promise<void> {
@@ -1226,6 +1324,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
           </form>
         </section>
         ${mcpPanel()}
+        ${coreAutoOpenPanel()}
         ${supportAccessPanel()}
         <div class="control-groups">
           ${actions
@@ -1328,8 +1427,36 @@ function supportAccessPanel(): string {
       <div class="support-actions">
         <button class="command-secondary" data-support-bundle>${icon("Copy", 17)}复制诊断上下文</button>
         <button class="command-secondary" data-copy-core-entries>${icon("Link", 17)}复制全部入口</button>
-        <a class="command-secondary" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 17)}GitHub</a>
+        <button class="command-secondary" data-open-external-url="${escapeHtml(REPO)}" data-open-external-label="GitHub">${icon("Github", 17)}GitHub</button>
       </div>
+    </section>
+  `;
+}
+
+function coreAutoOpenPanel(): string {
+  return `
+    <section class="runtime-control">
+      <div class="runtime-toggle">
+        <div>
+          <span class="eyebrow">Launch Behavior</span>
+          <h3>运行配置自动进入内核 WebUI</h3>
+          <p>${state.coreAutoOpen.enabled ? "已开启。管理面板启动后会先检查内核/API，正常时显示加载过渡并自动进入内核 WebUI；返回动作可退出内核 WebUI。" : "默认关闭。开启后只在内核和 Clash API 正常时自动跳转，异常时会留在管理页。"}</p>
+        </div>
+        <button class="toggle ${state.coreAutoOpen.enabled ? "on" : ""}" data-auto-core-toggle>
+          ${state.coreAutoOpen.enabled ? "已开启" : "开启自动进入"}
+        </button>
+      </div>
+      <form class="restart-form" data-auto-core-form>
+        <label>
+          <span>默认内核面板</span>
+          <select name="target">
+            <option value="metacubex" ${state.coreAutoOpen.target === "metacubex" ? "selected" : ""}>Meta Cube X</option>
+            <option value="yacd" ${state.coreAutoOpen.target === "yacd" ? "selected" : ""}>Yacd</option>
+            <option value="zashboard" ${state.coreAutoOpen.target === "zashboard" ? "selected" : ""}>zashboard</option>
+          </select>
+        </label>
+        <button type="submit">${icon("Save", 17)}保存</button>
+      </form>
     </section>
   `;
 }
@@ -1487,7 +1614,7 @@ function blocklistPanel(): string {
       <div class="section-actions">
         <button class="command-secondary" data-refresh-block>${icon("RefreshCw", 17)}读取</button>
         <button class="command-primary" data-run="block update">${icon("DownloadCloud", 17)}更新社区库</button>
-        <a class="command-secondary" href="${escapeHtml(blockIssueUrl())}" target="_blank" rel="noreferrer">${icon("Github", 17)}创建变更 Issue</a>
+        <button class="command-secondary" data-open-block-issue>${icon("Github", 17)}创建变更 Issue</button>
       </div>
     </div>
     <div class="block-grid">
@@ -1966,20 +2093,20 @@ function statusDrawer(): string {
 
   return `
     <section class="status-drawer ${state.statusDrawerOpen ? "open" : ""}" data-status-drawer>
-      <button class="status-drawer-handle" data-status-drawer-toggle aria-expanded="${state.statusDrawerOpen}">
+      <button class="status-drawer-handle" data-status-drawer-toggle data-status-drawer-handle aria-expanded="${state.statusDrawerOpen}">
         <span class="${`status-dot ${state.status}`}"></span>
         <div class="drawer-title">
           <small>MagicNet Status</small>
           <strong>${escapeHtml(state.statusText)}</strong>
         </div>
-        <div class="drawer-chips">
+        <div class="drawer-chips" data-drawer-scroll>
           <span>${icon("Server", 15)}<b>${escapeHtml(core)}</b></span>
           <span>${icon(state.busy ? "Activity" : "Terminal", 15)}<b>${escapeHtml(task)}</b></span>
         </div>
         <span class="drawer-chevron">${icon(state.statusDrawerOpen ? "ChevronUp" : "ChevronDown", 18)}</span>
       </button>
       ${state.statusDrawerOpen ? `
-        <div class="status-drawer-panel">
+        <div class="status-drawer-panel" data-drawer-scroll>
           <div class="drawer-grid">
             <div class="drawer-summary">
               <span class="eyebrow">Transparent TUN Control</span>
@@ -2049,6 +2176,23 @@ function mobileDock(): string {
         </button>
       </div>
     </nav>
+  `;
+}
+
+function coreLaunchOverlay(): string {
+  if (!state.coreLaunch.active) return "";
+  return `
+    <div class="core-launch-overlay" role="status" aria-live="polite">
+      <div class="core-launch-panel">
+        <div class="core-launch-spinner" aria-hidden="true"></div>
+        <div>
+          <span class="eyebrow">Opening Core WebUI</span>
+          <h3>正在进入 ${escapeHtml(state.coreLaunch.label)}</h3>
+          <p>正在确认本地 Clash API 并加载内核面板。第一次打开可能需要几秒，请耐心等待。</p>
+          <code>${escapeHtml(state.coreLaunch.url)}</code>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -2177,7 +2321,7 @@ function render(): void {
         </div>
         <div class="top-actions">
           <button class="ghost-link" data-action="refresh-all">${icon("RefreshCw", 16)}刷新</button>
-          <a class="ghost-link" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 16)}GitHub</a>
+          <button class="ghost-link" data-open-external-url="${escapeHtml(REPO)}" data-open-external-label="GitHub">${icon("Github", 16)}GitHub</button>
           ${coreUiButton("primary-link")}
         </div>
       </header>
@@ -2210,6 +2354,7 @@ function render(): void {
         </section>
       </main>
       ${mobileDock()}
+      ${coreLaunchOverlay()}
     </div>
   `;
 
@@ -2244,19 +2389,21 @@ function bindEvents(): void {
     }, { passive: true });
   }
 
-  const statusDrawer = document.querySelector<HTMLElement>("[data-status-drawer]");
-  if (statusDrawer) {
+  const statusDrawerHandle = document.querySelector<HTMLElement>("[data-status-drawer-handle]");
+  if (statusDrawerHandle) {
     let startY = 0;
-    statusDrawer.addEventListener("touchstart", (event) => {
+    statusDrawerHandle.addEventListener("touchstart", (event) => {
+      if ((event.target as HTMLElement | null)?.closest("[data-drawer-scroll]")) return;
       startY = event.touches[0].clientY;
     }, { passive: true });
-    statusDrawer.addEventListener("touchend", (event) => {
+    statusDrawerHandle.addEventListener("touchend", (event) => {
+      if ((event.target as HTMLElement | null)?.closest("[data-drawer-scroll]")) return;
       const dy = event.changedTouches[0].clientY - startY;
-      if (dy > 36 && !state.statusDrawerOpen) {
+      if (dy > 64 && !state.statusDrawerOpen) {
         state.statusDrawerOpen = true;
         render();
       }
-      if (dy < -36 && state.statusDrawerOpen) {
+      if (dy < -120 && state.statusDrawerOpen) {
         state.statusDrawerOpen = false;
         render();
       }
@@ -2300,6 +2447,27 @@ function bindEvents(): void {
   });
 
   document.querySelector<HTMLButtonElement>("[data-refresh-mcp]")?.addEventListener("click", () => refreshMcp());
+
+  document.querySelector<HTMLButtonElement>("[data-auto-core-toggle]")?.addEventListener("click", () => {
+    state.coreAutoOpen.enabled = !state.coreAutoOpen.enabled;
+    state.coreAutoOpen.attempted = false;
+    saveCoreAutoOpen();
+    state.output = state.coreAutoOpen.enabled
+      ? "已开启自动进入内核 WebUI。下次打开管理面板时，会在内核/API 正常后自动跳转；返回动作可退出内核 WebUI。"
+      : "已关闭自动进入内核 WebUI。";
+    render();
+  });
+
+  document.querySelector<HTMLFormElement>("[data-auto-core-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const target = String(form.get("target") || "metacubex");
+    state.coreAutoOpen.target = target === "yacd" || target === "zashboard" ? target : "metacubex";
+    state.coreAutoOpen.attempted = false;
+    saveCoreAutoOpen();
+    state.output = `已保存默认内核面板：${coreUiTargetLabel(state.coreAutoOpen.target)}。`;
+    render();
+  });
 
   document.querySelector<HTMLButtonElement>("[data-copy-mcp]")?.addEventListener("click", async () => {
     const url = state.mcp.url || `http://${state.mcp.bind}:${state.mcp.port}/mcp`;
@@ -2397,7 +2565,19 @@ function bindEvents(): void {
       await generateDiagnosticContext(`询问 ${target.label}`);
       state.output = `诊断上下文已复制。\n\n正在打开 ${target.label}：\n${target.url}\n\n进入聊天后直接粘贴发送。`;
       render();
-      window.location.assign(target.url);
+      await openExternalUrl(target.url, target.label);
+    });
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-open-block-issue]")?.addEventListener("click", async () => {
+    await openExternalUrl(blockIssueUrl(), "GitHub Issue");
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-open-external-url]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const url = button.dataset.openExternalUrl;
+      if (!url) return;
+      await openExternalUrl(url, button.dataset.openExternalLabel || "外部链接");
     });
   });
 
@@ -2755,6 +2935,7 @@ async function bootstrap(): Promise<void> {
   await refreshStatus(true);
   if (!state.hasKsu) return;
   render();
+  await maybeAutoOpenCoreUi();
 }
 
 void bootstrap();
