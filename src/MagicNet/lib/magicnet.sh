@@ -628,6 +628,14 @@ magicnet_block_community_file() {
     printf '%s\n' "$(magicnet_block_dir)/community-ban-domain-suffix.list"
 }
 
+magicnet_block_community_rules_file() {
+    printf '%s\n' "$(magicnet_block_dir)/community-ban-rules.list"
+}
+
+magicnet_block_allow_file() {
+    printf '%s\n' "$(magicnet_block_dir)/block-allow-rules.list"
+}
+
 magicnet_block_load_conf() {
     _conf="$(magicnet_block_conf)"
     if [ -f "$_conf" ]; then
@@ -645,27 +653,49 @@ magicnet_block_list_values() {
     sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++'
 }
 
-magicnet_block_all_domains() {
+magicnet_block_manual_suffixes() {
+    magicnet_block_list_values "$(magicnet_block_manual_file)" | awk '{ print "DOMAIN-SUFFIX," $0 }'
+}
+
+magicnet_block_community_rules() {
+    _allow_file="$(magicnet_block_allow_file)"
+    if [ -s "$(magicnet_block_community_rules_file)" ]; then
+        if [ -s "$_allow_file" ]; then
+            magicnet_block_list_values "$(magicnet_block_community_rules_file)" | grep -Fvx -f "$_allow_file"
+        else
+            magicnet_block_list_values "$(magicnet_block_community_rules_file)"
+        fi
+    else
+        if [ -s "$_allow_file" ]; then
+            magicnet_block_list_values "$(magicnet_block_community_file)" | awk '{ print "DOMAIN-SUFFIX," $0 }' | grep -Fvx -f "$_allow_file"
+        else
+            magicnet_block_list_values "$(magicnet_block_community_file)" | awk '{ print "DOMAIN-SUFFIX," $0 }'
+        fi
+    fi
+    unset _allow_file
+}
+
+magicnet_block_all_rules() {
     magicnet_block_load_conf
     [ "$MAGICNET_BLOCK_ENABLED" = "1" ] || return 0
-    magicnet_block_list_values "$(magicnet_block_manual_file)"
+    magicnet_block_manual_suffixes
     if [ "$MAGICNET_BLOCK_COMMUNITY_ENABLED" = "1" ]; then
-        magicnet_block_list_values "$(magicnet_block_community_file)"
+        magicnet_block_community_rules
     fi
 }
 
 magicnet_block_has_domains() {
-    magicnet_block_all_domains | grep -q .
+    magicnet_block_all_rules | grep -q .
 }
 
 magicnet_block_mihomo_rules() {
     magicnet_block_load_conf
     [ "$MAGICNET_BLOCK_ENABLED" = "1" ] || return 0
-    if [ "$MAGICNET_BLOCK_COMMUNITY_ENABLED" = "1" ]; then
-        printf '  - RULE-SET,mnban,REJECT\n'
-    fi
-    magicnet_block_list_values "$(magicnet_block_manual_file)" | while read -r _domain; do
-        [ -n "$_domain" ] && printf '  - DOMAIN-SUFFIX,%s,REJECT\n' "$_domain"
+    magicnet_block_all_rules | while IFS=, read -r _type _value; do
+        [ -n "$_type" ] && [ -n "$_value" ] || continue
+        case "$_type" in
+            DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD) printf '  - %s,%s,REJECT\n' "$_type" "$_value" ;;
+        esac
     done
 }
 
@@ -718,24 +748,59 @@ magicnet_block_apply_mihomo() {
 }
 
 magicnet_block_singbox_rules() {
-    _domains="$(magicnet_block_all_domains)"
-    [ -n "$_domains" ] || return 0
+    _rules="$(magicnet_block_all_rules)"
+    [ -n "$_rules" ] || return 0
+    _domains="$(printf '%s\n' "$_rules" | awk -F, '$1 == "DOMAIN" { print $2 }' | awk 'NF && !seen[$0]++')"
+    _suffixes="$(printf '%s\n' "$_rules" | awk -F, '$1 == "DOMAIN-SUFFIX" { print $2 }' | awk 'NF && !seen[$0]++')"
+    _keywords="$(printf '%s\n' "$_rules" | awk -F, '$1 == "DOMAIN-KEYWORD" { print $2 }' | awk 'NF && !seen[$0]++')"
     printf '      {\n'
-    printf '        "domain_suffix": [\n'
-    printf '          "__magicnet_block__",\n'
-    _count=$(printf '%s\n' "$_domains" | awk 'NF' | wc -l | tr -d ' ')
-    _idx=0
-    printf '%s\n' "$_domains" | awk 'NF && !seen[$0]++' | while read -r _domain; do
-        [ -n "$_domain" ] || continue
-        _idx=$((_idx + 1))
-        _comma=","
-        [ "$_idx" -eq "$_count" ] && _comma=""
-        printf '          "%s"%s\n' "$(magicnet_json_escape "$_domain")" "$_comma"
-    done
-    printf '        ],\n'
+    printf '        "domain": [\n'
+    printf '          "__magicnet_block__"'
+    if [ -n "$_domains" ]; then
+        printf ',\n'
+        _count=$(printf '%s\n' "$_domains" | awk 'NF' | wc -l | tr -d ' ')
+        _idx=0
+        printf '%s\n' "$_domains" | while read -r _domain; do
+            [ -n "$_domain" ] || continue
+            _idx=$((_idx + 1))
+            _comma=","
+            [ "$_idx" -eq "$_count" ] && _comma=""
+            printf '          "%s"%s\n' "$(magicnet_json_escape "$_domain")" "$_comma"
+        done
+    else
+        printf '\n'
+    fi
+    printf '        ]'
+    if [ -n "$_suffixes" ]; then
+        printf ',\n        "domain_suffix": [\n'
+        _count=$(printf '%s\n' "$_suffixes" | awk 'NF' | wc -l | tr -d ' ')
+        _idx=0
+        printf '%s\n' "$_suffixes" | while read -r _domain; do
+            [ -n "$_domain" ] || continue
+            _idx=$((_idx + 1))
+            _comma=","
+            [ "$_idx" -eq "$_count" ] && _comma=""
+            printf '          "%s"%s\n' "$(magicnet_json_escape "$_domain")" "$_comma"
+        done
+        printf '        ]'
+    fi
+    if [ -n "$_keywords" ]; then
+        printf ',\n        "domain_keyword": [\n'
+        _count=$(printf '%s\n' "$_keywords" | awk 'NF' | wc -l | tr -d ' ')
+        _idx=0
+        printf '%s\n' "$_keywords" | while read -r _domain; do
+            [ -n "$_domain" ] || continue
+            _idx=$((_idx + 1))
+            _comma=","
+            [ "$_idx" -eq "$_count" ] && _comma=""
+            printf '          "%s"%s\n' "$(magicnet_json_escape "$_domain")" "$_comma"
+        done
+        printf '        ]'
+    fi
+    printf ',\n'
     printf '        "outbound": "block"\n'
     printf '      },\n'
-    unset _domains _count _idx _comma _domain
+    unset _rules _domains _suffixes _keywords _count _idx _comma _domain
 }
 
 magicnet_block_apply_singbox() {

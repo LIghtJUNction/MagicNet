@@ -64,9 +64,46 @@ cli_fast_first_line() {
     sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d; q' "$_file"
 }
 
+cli_parse_mihomo_providers_file() {
+    _file="$1"
+    _start="$(grep -n '^proxy-providers:' "$_file" 2>/dev/null | head -1 | cut -d: -f1)"
+    [ -n "$_start" ] || { unset _file _start; return 0; }
+    _line_no=0
+    sed -n "$((_start + 1)),\$p" "$_file" | while IFS= read -r _line || [ -n "$_line" ]; do
+        _line_no=$((_line_no + 1))
+        case "$_line" in
+            [![:space:]]*:*) break ;;
+            '  '*:*)
+                case "$_line" in
+                    *'url:'*|*'path:'*|*'<<:'*|*'interval:'*|*'type:'*|*'health-check:'*) ;;
+                    *)
+                        _provider="$(printf '%s\n' "$_line" | sed 's/^[[:space:]]*//; s/:.*//')"
+                        _url="$(sed -n "$((_start + _line_no + 1)),$((_start + _line_no + 8))p" "$_file" |
+                            sed -n 's/^[[:space:]]*url:[[:space:]]*//p' | head -1 |
+                            sed 's/^"//; s/"$//; s/^'\''//; s/'\''$//')"
+                        [ -n "$_provider" ] && [ -n "$_url" ] && printf 'mihomo.%s=%s\n' "$_provider" "$_url"
+                        ;;
+                esac
+                ;;
+        esac
+    done
+    unset _file _start _line_no _line _provider _url
+}
+
 cli_fast_sub_list() {
+    _idx=0
+    if [ -f "${MODDIR}/.config/sing-box/subscription.url" ]; then
+        sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "${MODDIR}/.config/sing-box/subscription.url" | while IFS= read -r _url; do
+            _idx=$((_idx + 1))
+            printf 'sing-box.%s=%s\n' "$_idx" "$_url"
+        done
+    fi
     printf 'sing-box=%s\n' "$(cli_fast_first_line "${MODDIR}/.config/sing-box/subscription.url")"
+    if [ -f "${MODDIR}/.config/mihomo/config.yaml" ]; then
+        cli_parse_mihomo_providers_file "${MODDIR}/.config/mihomo/config.yaml"
+    fi
     printf 'mihomo=%s\n' "$(cli_fast_first_line "${MODDIR}/.config/mihomo/subscription.url")"
+    unset _idx
 }
 
 cli_fast_pid_summary() {
@@ -182,8 +219,18 @@ cli_fast_block_list() {
     printf 'url=%s\n' "${MAGICNET_BLOCK_URL:-https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/ruleset/magicnet/ban.yaml}"
     printf 'manual domain suffixes:\n'
     cli_fast_list_file "${_dir}/block-domain-suffix.list" | sed 's/^/  /'
+    printf 'community rules:\n'
+    if [ -s "${_dir}/community-ban-rules.list" ]; then
+        if [ -s "${_dir}/block-allow-rules.list" ]; then
+            cli_fast_list_file "${_dir}/community-ban-rules.list" | grep -Fvx -f "${_dir}/block-allow-rules.list" | sed 's/^/  /'
+        else
+            cli_fast_list_file "${_dir}/community-ban-rules.list" | sed 's/^/  /'
+        fi
+    fi
     printf 'community domain suffixes:\n'
     cli_fast_list_file "${_dir}/community-ban-domain-suffix.list" | sed 's/^/  /'
+    printf 'local allow rules:\n'
+    cli_fast_list_file "${_dir}/block-allow-rules.list" | sed 's/^/  /'
     unset _dir _conf
 }
 
@@ -268,6 +315,18 @@ cli_need() {
 cli_curl() {
     cli_need curl
     curl -fsS --max-time "${MAGICNET_API_TIMEOUT:-8}" "$@"
+}
+
+cli_api_reload() {
+    if command -v curl >/dev/null 2>&1 &&
+        curl -fsS --max-time "${MAGICNET_API_TIMEOUT:-8}" -X PATCH "${MAGICNET_API}/configs" \
+            -H 'Content-Type: application/json' \
+            -d '{"path":"","force":true}' >/dev/null 2>&1; then
+        cli_info "Reloaded running core through Clash API"
+        return 0
+    fi
+    cli_info "Clash API reload unavailable; restart current core to activate new rules"
+    return 1
 }
 
 cli_urlencode() {
@@ -823,6 +882,26 @@ cli_sub_read_mihomo_config_url() {
     ' "$_config"
 }
 
+cli_sub_list_mihomo_providers() {
+    _config="$(cli_sub_mihomo_config)"
+    [ -f "$_config" ] || return 0
+    awk '
+        /^proxy-providers:/ { in_providers = 1; next }
+        in_providers && /^[^[:space:]][^:]*:/ { in_providers = 0 }
+        in_providers && /^[[:space:]][^[:space:]][^:]*:[[:space:]]*(#.*)?$/ {
+            provider = $0
+            sub(/^[[:space:]]*/, "", provider)
+            sub(/:.*/, "", provider)
+        }
+        in_providers && provider != "" && /^[[:space:]]*url:[[:space:]]*/ {
+            line = $0
+            sub(/^[[:space:]]*url:[[:space:]]*/, "", line)
+            gsub(/^["'\'']|["'\'']$/, "", line)
+            print "mihomo." provider "=" line
+        }
+    ' "$_config"
+}
+
 cli_sub_read() {
     _target="${1:-sing-box}"
     _file="$(cli_sub_target_file "$_target")"
@@ -860,12 +939,21 @@ cli_sub_set_file() {
 
 cli_sub_set_mihomo_config_url() {
     _url="$1"
+    _provider="${2:-}"
     _config="$(cli_sub_mihomo_config)"
     [ -f "$_config" ] || return 0
     _tmp="${_config}.subscription.new"
-    awk -v url="$_url" '
-        BEGIN { done = 0 }
-        !done && /^[[:space:]]*url:[[:space:]]*/ {
+    awk -v url="$_url" -v target_provider="$_provider" '
+        BEGIN { done = 0; in_target = target_provider == "" ? 1 : 0 }
+        /^proxy-providers:/ { in_providers = 1; next }
+        in_providers && /^[^[:space:]][^:]*:/ { in_providers = 0 }
+        in_providers && /^[[:space:]][^[:space:]][^:]*:[[:space:]]*(#.*)?$/ {
+            provider = $0
+            sub(/^[[:space:]]*/, "", provider)
+            sub(/:.*/, "", provider)
+            in_target = target_provider == "" || provider == target_provider
+        }
+        in_providers && in_target && !done && /^[[:space:]]*url:[[:space:]]*/ {
             match($0, /^[[:space:]]*/)
             indent = substr($0, RSTART, RLENGTH)
             print indent "url: \"" url "\""
@@ -883,27 +971,74 @@ cli_sub() {
             magicnet_action_update_singbox_subscription
             ;;
         list)
+            _idx=0
+            _file="$(cli_sub_singbox_file)"
+            if [ -f "$_file" ]; then
+                sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" | while IFS= read -r _url; do
+                    _idx=$((_idx + 1))
+                    printf 'sing-box.%s=%s\n' "$_idx" "$_url"
+                done
+            fi
             printf 'sing-box=%s\n' "$(cli_sub_read sing-box)"
+            cli_sub_list_mihomo_providers
             printf 'mihomo=%s\n' "$(cli_sub_read mihomo)"
+            unset _idx _file
             ;;
         get)
             cli_sub_read "${2:-sing-box}"
             ;;
         set)
             _target="${2:-}"
-            _url="${3:-}"
+            _arg3="${3:-}"
+            _arg4="${4:-}"
+            if [ "$_target" = "mihomo" ] || [ "$_target" = "clash" ]; then
+                if [ -n "$_arg4" ]; then
+                    _provider="$_arg3"
+                    _url="$_arg4"
+                else
+                    _provider=""
+                    _url="$_arg3"
+                fi
+            else
+                _provider=""
+                _url="$_arg3"
+            fi
             [ -n "$_target" ] && [ -n "$_url" ] || {
-                cli_error "Usage: cli sub set <sing-box|mihomo|clash> <url>"
+                cli_error "Usage: cli sub set <sing-box|mihomo|clash> [provider] <url>"
                 exit 1
             }
             cli_validate_subscription_url "$_url"
             cli_node_list_cache_clear
             _file="$(cli_sub_target_file "$_target")"
-            cli_sub_set_file "$_file" "$_url"
             case "$_target" in
-                mihomo|clash) cli_sub_set_mihomo_config_url "$_url" ;;
+                sing-box|singbox)
+                    cli_sub_set_file "$_file" "$_url"
+                    ;;
+                mihomo|clash)
+                    cli_sub_set_file "$_file" "$_url"
+                    cli_sub_set_mihomo_config_url "$_url" "$_provider"
+                    ;;
             esac
-            cli_info "Saved ${_target} subscription URL to $_file"
+            cli_info "Saved ${_target}${_provider:+ provider $_provider} subscription URL to $_file"
+            ;;
+        set-file)
+            _target="${2:-}"
+            _payload="${3:-}"
+            [ -n "$_target" ] && [ -n "$_payload" ] || {
+                cli_error "Usage: cli sub set-file <sing-box> <base64-lines>"
+                exit 1
+            }
+            case "$_target" in
+                sing-box|singbox) _file="$(cli_sub_singbox_file)" ;;
+                *) cli_error "set-file currently supports sing-box only"; exit 1 ;;
+            esac
+            mkdir -p "${_file%/*}"
+            printf '%s' "$_payload" | base64 -d >"$_file" || {
+                cli_error "base64 decode failed"
+                exit 1
+            }
+            cli_node_list_cache_clear
+            cli_info "Saved sing-box subscription URL list to $_file"
             ;;
         file|copy-path)
             cli_sub_target_file "${2:-sing-box}"
@@ -1352,6 +1487,14 @@ cli_block_community_file() {
     printf '%s\n' "$(cli_block_dir)/community-ban-domain-suffix.list"
 }
 
+cli_block_community_rules_file() {
+    printf '%s\n' "$(cli_block_dir)/community-ban-rules.list"
+}
+
+cli_block_allow_file() {
+    printf '%s\n' "$(cli_block_dir)/block-allow-rules.list"
+}
+
 cli_block_load_conf() {
     _conf="$(cli_block_conf_file)"
     if [ -f "$_conf" ]; then
@@ -1402,9 +1545,25 @@ cli_block_valid_domain_suffix() {
     printf '%s\n' "$1" | grep -Eq '^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$'
 }
 
+cli_block_normalize_rule() {
+    _input="$1"
+    case "$_input" in
+        '') ;;
+        DOMAIN,*|DOMAIN-SUFFIX,*|DOMAIN-KEYWORD,*) printf '%s\n' "$_input" ;;
+        *) printf 'DOMAIN-SUFFIX,%s\n' "$_input" ;;
+    esac
+    unset _input
+}
+
+cli_block_apply_and_reload() {
+    magicnet_block_apply || return 1
+    cli_api_reload || true
+}
+
 cli_block_fetch_community() {
     cli_block_load_conf
     _target="$(cli_block_community_file)"
+    _rules_target="$(cli_block_community_rules_file)"
     _tmp="${_target}.download"
     mkdir -p "${_target%/*}"
     case "$MAGICNET_BLOCK_URL" in
@@ -1419,32 +1578,66 @@ cli_block_fetch_community() {
         cli_error "No downloader found: curl or wget"
         exit 1
     fi
-    awk '
+    awk -F, '
+        function trim(s) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+            gsub(/^["'\''`]+|["'\''`]+$/, "", s)
+            return s
+        }
+        function norm_domain(s) {
+            s = trim(s)
+            gsub(/^[+*]?\./, "", s)
+            gsub(/\.$/, "", s)
+            return s
+        }
         /^[[:space:]]*#/ { next }
         /^[[:space:]]*$/ { next }
         {
             line = $0
-            sub(/^[[:space:]]*[-,]?[[:space:]]*/, "", line)
-            sub(/^[[:space:]]*DOMAIN-SUFFIX[[:space:]]*,[[:space:]]*/, "", line)
-            sub(/[[:space:]]*,.*/, "", line)
-            gsub(/^["'\'' ]+|["'\'' ]+$/, "", line)
-            if (line ~ /^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/ && !seen[line]++) print line
+            sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+            line = trim(line)
+            if (line == "payload:" || line == "rules:") next
+            split(line, parts, ",")
+            type = trim(parts[1])
+            value = norm_domain(parts[2])
+            if (type == "DOMAIN" || type == "DOMAIN-SUFFIX" || type == "DOMAIN-KEYWORD") {
+                if (value != "" && value ~ /^[A-Za-z0-9_.-]+$/ && !seen[type "," value]++) print type "," value
+                next
+            }
+            value = norm_domain(line)
+            if (value ~ /^[A-Za-z0-9_.-]+\.[A-Za-z0-9_.-]+$/ && !seen["DOMAIN-SUFFIX," value]++) print "DOMAIN-SUFFIX," value
         }
-    ' "$_tmp" >"$_target"
+    ' "$_tmp" >"$_rules_target"
+    awk -F, '$1 == "DOMAIN-SUFFIX" { print $2 }' "$_rules_target" >"$_target"
     rm -f "$_tmp"
-    cli_info "Updated community blocklist: $_target ($(wc -l <"$_target" | tr -d ' ') domains)"
-    unset _target _tmp
+    _rule_count="$(wc -l <"$_rules_target" | tr -d ' ')"
+    _suffix_count="$(wc -l <"$_target" | tr -d ' ')"
+    cli_info "Updated community blocklist: $_rules_target (${_rule_count} rules, ${_suffix_count} suffixes)"
+    unset _target _rules_target _tmp _rule_count _suffix_count
 }
 
 cli_block_print() {
     cli_block_load_conf
+    _rules_file="$(cli_block_community_rules_file)"
+    _allow_file="$(cli_block_allow_file)"
     printf 'enabled=%s\n' "$MAGICNET_BLOCK_ENABLED"
     printf 'community=%s\n' "$MAGICNET_BLOCK_COMMUNITY_ENABLED"
     printf 'url=%s\n' "$MAGICNET_BLOCK_URL"
     printf 'manual domain suffixes:\n'
     cli_block_list_file "$(cli_block_manual_file)" | sed 's/^/  /'
+    printf 'community rules:\n'
+    if [ -f "$_rules_file" ]; then
+        if [ -s "$_allow_file" ]; then
+            cli_block_list_file "$_rules_file" | grep -Fvx -f "$_allow_file" | sed 's/^/  /'
+        else
+            cli_block_list_file "$_rules_file" | sed 's/^/  /'
+        fi
+    fi
     printf 'community domain suffixes:\n'
     cli_block_list_file "$(cli_block_community_file)" | sed 's/^/  /'
+    printf 'local allow rules:\n'
+    cli_block_list_file "$_allow_file" | sed 's/^/  /'
+    unset _rules_file _allow_file
 }
 
 cli_block() {
@@ -1454,7 +1647,7 @@ cli_block() {
             cli_block_load_conf
             [ "$1" = "enable" ] && _enabled=1 || _enabled=0
             cli_block_write_conf "$_enabled" "$MAGICNET_BLOCK_COMMUNITY_ENABLED" "$MAGICNET_BLOCK_URL"
-            magicnet_block_apply
+            cli_block_apply_and_reload
             cli_info "Blocklist $1"
             ;;
         community)
@@ -1465,7 +1658,7 @@ cli_block() {
                 *) cli_error "Usage: cli block community <on|off>"; exit 1 ;;
             esac
             cli_block_write_conf "$MAGICNET_BLOCK_ENABLED" "$_community" "$MAGICNET_BLOCK_URL"
-            magicnet_block_apply
+            cli_block_apply_and_reload
             cli_info "Community blocklist set to $_community"
             ;;
         url)
@@ -1478,7 +1671,7 @@ cli_block() {
             ;;
         update)
             cli_block_fetch_community
-            magicnet_block_apply
+            cli_block_apply_and_reload
             cli_info "Blocklist rules applied to mihomo and sing-box"
             ;;
         add-domain)
@@ -1486,7 +1679,7 @@ cli_block() {
             cli_block_valid_domain_suffix "$_domain" || { cli_error "domain suffix format is invalid"; exit 1; }
             _block_msg_domain="$_domain"
             cli_block_add_to_file "$(cli_block_manual_file)" "$_domain"
-            magicnet_block_apply
+            cli_block_apply_and_reload
             cli_info "Added block domain suffix: $_block_msg_domain"
             unset _block_msg_domain
             ;;
@@ -1495,16 +1688,40 @@ cli_block() {
             [ -n "$_domain" ] || { cli_error "Usage: cli block remove-domain <domain-suffix>"; exit 1; }
             _block_msg_domain="$_domain"
             cli_block_remove_from_file "$(cli_block_manual_file)" "$_domain"
-            magicnet_block_apply
+            cli_block_apply_and_reload
             cli_info "Removed block domain suffix: $_block_msg_domain"
             unset _block_msg_domain
             ;;
+        allow-rule)
+            _rule="$(cli_block_normalize_rule "${2:-}")"
+            [ -n "$_rule" ] || { cli_error "Usage: cli block allow-rule <TYPE,value|domain-suffix>"; exit 1; }
+            cli_block_add_to_file "$(cli_block_allow_file)" "$_rule"
+            cli_block_apply_and_reload
+            cli_info "Excluded community block rule locally: $_rule"
+            unset _rule
+            ;;
+        unallow-rule)
+            _rule="$(cli_block_normalize_rule "${2:-}")"
+            [ -n "$_rule" ] || { cli_error "Usage: cli block unallow-rule <TYPE,value|domain-suffix>"; exit 1; }
+            cli_block_remove_from_file "$(cli_block_allow_file)" "$_rule"
+            cli_block_apply_and_reload
+            cli_info "Restored community block rule locally: $_rule"
+            unset _rule
+            ;;
+        diff)
+            printf '--- remote-ban.yaml\n'
+            printf '+++ requested-ban.yaml\n'
+            printf '# Suggested removals from community blocklist:\n'
+            cli_block_list_file "$(cli_block_allow_file)" | sed 's/^/- /'
+            printf '# Suggested additions to community blocklist:\n'
+            cli_block_list_file "$(cli_block_manual_file)" | sed 's/^/+ DOMAIN-SUFFIX,/'
+            ;;
         apply)
-            magicnet_block_apply
+            cli_block_apply_and_reload
             cli_info "Blocklist rules applied to mihomo and sing-box"
             ;;
         *)
-            cli_error "Usage: cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|apply}"
+            cli_error "Usage: cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}"
             exit 1
             ;;
     esac
@@ -1588,6 +1805,256 @@ cli_api() {
             ;;
         *)
             cli_error "Usage: cli api {ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_mcp_dir() {
+    printf '%s\n' "${MODDIR}/.config/magicnet"
+}
+
+cli_mcp_conf() {
+    printf '%s\n' "$(cli_mcp_dir)/mcp.conf"
+}
+
+cli_mcp_pid_file() {
+    printf '%s\n' "${KAM_HOME:-$MODDIR}/.state/magicnet-mcp.pid"
+}
+
+cli_mcp_load_conf() {
+    _conf="$(cli_mcp_conf)"
+    if [ -f "$_conf" ]; then
+        . "$_conf"
+    fi
+    MAGICNET_MCP_ENABLED="${MAGICNET_MCP_ENABLED:-0}"
+    MAGICNET_MCP_BIND="${MAGICNET_MCP_BIND:-127.0.0.1}"
+    MAGICNET_MCP_PORT="${MAGICNET_MCP_PORT:-8765}"
+    unset _conf
+}
+
+cli_mcp_write_conf() {
+    _enabled="$1"
+    mkdir -p "$(cli_mcp_dir)"
+    {
+        printf 'MAGICNET_MCP_ENABLED=%s\n' "$_enabled"
+        printf 'MAGICNET_MCP_BIND=%s\n' "${MAGICNET_MCP_BIND:-127.0.0.1}"
+        printf 'MAGICNET_MCP_PORT=%s\n' "${MAGICNET_MCP_PORT:-8765}"
+    } >"$(cli_mcp_conf)"
+    unset _enabled
+}
+
+cli_mcp_pid() {
+    _pid_file="$(cli_mcp_pid_file)"
+    if [ -f "$_pid_file" ]; then
+        _pid="$(cat "$_pid_file" 2>/dev/null)"
+        if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
+            printf '%s\n' "$_pid"
+        fi
+    fi
+    unset _pid_file _pid
+}
+
+cli_mcp_status() {
+    cli_mcp_load_conf
+    _pid="$(cli_mcp_pid)"
+    printf 'enabled=%s\n' "$MAGICNET_MCP_ENABLED"
+    printf 'bind=%s\n' "$MAGICNET_MCP_BIND"
+    printf 'port=%s\n' "$MAGICNET_MCP_PORT"
+    if [ -n "$_pid" ]; then
+        printf 'pid=%s\n' "$_pid"
+        printf 'url=http://%s:%s/mcp\n' "$MAGICNET_MCP_BIND" "$MAGICNET_MCP_PORT"
+    else
+        printf 'pid=stopped\n'
+    fi
+    unset _pid
+}
+
+cli_mcp_start() {
+    cli_mcp_load_conf
+    _pid="$(cli_mcp_pid)"
+    if [ -n "$_pid" ]; then
+        cli_info "MCP server already running: $_pid"
+        cli_mcp_status
+        return 0
+    fi
+    if [ ! -x "${MODDIR}/mcp-server.sh" ]; then
+        chmod 0755 "${MODDIR}/mcp-server.sh" 2>/dev/null || true
+    fi
+    mkdir -p "$(dirname "$(cli_mcp_pid_file)")" "${MAGICNET_LOG_DIR}"
+    MAGICNET_MCP_BIND="$MAGICNET_MCP_BIND" MAGICNET_MCP_PORT="$MAGICNET_MCP_PORT" \
+        nohup "${MODDIR}/mcp-server.sh" serve >"${MAGICNET_LOG_DIR}/mcp-server.log" 2>&1 &
+    _pid=$!
+    printf '%s\n' "$_pid" >"$(cli_mcp_pid_file)"
+    sleep 1
+    if kill -0 "$_pid" 2>/dev/null; then
+        cli_info "MCP server started: http://${MAGICNET_MCP_BIND}:${MAGICNET_MCP_PORT}/mcp"
+    else
+        cli_error "MCP server failed to start; see ${MAGICNET_LOG_DIR}/mcp-server.log"
+        return 1
+    fi
+    unset _pid
+}
+
+cli_mcp_stop() {
+    _pid="$(cli_mcp_pid)"
+    if [ -n "$_pid" ]; then
+        kill "$_pid" 2>/dev/null || true
+        sleep 1
+        kill -9 "$_pid" 2>/dev/null || true
+    fi
+    rm -f "$(cli_mcp_pid_file)"
+    cli_info "MCP server stopped"
+    unset _pid
+}
+
+cli_mcp() {
+    case "${1:-status}" in
+        status) cli_mcp_status ;;
+        enable)
+            cli_mcp_load_conf
+            cli_mcp_write_conf 1
+            cli_mcp_start
+            ;;
+        disable)
+            cli_mcp_load_conf
+            cli_mcp_write_conf 0
+            cli_mcp_stop
+            ;;
+        start) cli_mcp_start ;;
+        stop) cli_mcp_stop ;;
+        restart)
+            cli_mcp_stop
+            cli_mcp_start
+            ;;
+        *)
+            cli_error "Usage: cli mcp {status|enable|disable|start|stop|restart}"
+            exit 1
+            ;;
+    esac
+}
+
+cli_backup_hash() {
+    _password="$1"
+    if [ -z "$_password" ]; then
+        printf 'none\n'
+    else
+        printf '%s' "MagicNet:${_password}" | sha256sum | awk '{ print $1 }'
+    fi
+    unset _password
+}
+
+cli_backup_manifest() {
+    _password="$1"
+    printf 'MAGICNET_BACKUP_VERSION=1\n'
+    printf 'MAGICNET_BACKUP_CREATED=%s\n' "$(date '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date 2>/dev/null || printf unknown)"
+    printf 'MAGICNET_BACKUP_PASSWORD_SHA256=%s\n' "$(cli_backup_hash "$_password")"
+    unset _password
+}
+
+cli_backup_export() {
+    _password="${1:-}"
+    _work="${MODDIR}/.tmp/backup-export"
+    _archive="${MODDIR}/.tmp/magicnet-backup.tar"
+    rm -rf "$_work" "$_archive" 2>/dev/null || true
+    mkdir -p "$_work/config/sing-box" "$_work/config/mihomo" "$_work/config/magicnet"
+    cli_backup_manifest "$_password" >"$_work/manifest"
+    for _file in \
+        ".config/sing-box/subscription.url" \
+        ".config/mihomo/subscription.url" \
+        ".config/magicnet/app-mode.conf" \
+        ".config/magicnet/app-proxy.list" \
+        ".config/magicnet/app-bypass.list" \
+        ".config/magicnet/route-proxy-domain-suffix.list" \
+        ".config/magicnet/route-direct-domain-suffix.list" \
+        ".config/magicnet/route-block-domain-suffix.list" \
+        ".config/magicnet/block.conf" \
+        ".config/magicnet/block-domain-suffix.list" \
+        ".config/magicnet/block-allow-rules.list" \
+        ".config/magicnet/capture.conf" \
+        ".config/magicnet/capture-app.list" \
+        ".config/magicnet/capture-domain-suffix.list" \
+        ".config/magicnet/mcp.conf"; do
+        [ -f "${MODDIR}/${_file}" ] || continue
+        mkdir -p "${_work}/${_file%/*}"
+        cp "${MODDIR}/${_file}" "${_work}/${_file}"
+    done
+    (cd "$_work" && tar -cf "$_archive" .) || {
+        cli_error "backup archive creation failed"
+        return 1
+    }
+    base64 "$_archive" | tr -d '\n'
+    printf '\n'
+    rm -rf "$_work" "$_archive" 2>/dev/null || true
+    unset _password _work _archive _file
+}
+
+cli_backup_restore() {
+    _password="$1"
+    _payload="$2"
+    [ -n "$_payload" ] || { cli_error "Usage: cli backup restore [password|-] <base64>"; exit 1; }
+    [ "$_password" = "-" ] && _password=""
+    _work="${MODDIR}/.tmp/backup-restore"
+    _archive="${MODDIR}/.tmp/magicnet-restore.tar"
+    rm -rf "$_work" "$_archive" 2>/dev/null || true
+    mkdir -p "$_work"
+    printf '%s' "$_payload" | base64 -d >"$_archive" || {
+        cli_error "backup base64 decode failed"
+        return 1
+    }
+    tar -xf "$_archive" -C "$_work" || {
+        cli_error "backup archive extract failed"
+        return 1
+    }
+    [ -f "$_work/manifest" ] || {
+        cli_error "backup manifest missing"
+        return 1
+    }
+    _expected="$(sed -n 's/^MAGICNET_BACKUP_PASSWORD_SHA256=//p' "$_work/manifest" | head -1)"
+    _actual="$(cli_backup_hash "$_password")"
+    if [ "$_expected" != "$_actual" ]; then
+        cli_error "backup password mismatch"
+        return 1
+    fi
+    for _file in \
+        ".config/sing-box/subscription.url" \
+        ".config/mihomo/subscription.url" \
+        ".config/magicnet/app-mode.conf" \
+        ".config/magicnet/app-proxy.list" \
+        ".config/magicnet/app-bypass.list" \
+        ".config/magicnet/route-proxy-domain-suffix.list" \
+        ".config/magicnet/route-direct-domain-suffix.list" \
+        ".config/magicnet/route-block-domain-suffix.list" \
+        ".config/magicnet/block.conf" \
+        ".config/magicnet/block-domain-suffix.list" \
+        ".config/magicnet/block-allow-rules.list" \
+        ".config/magicnet/capture.conf" \
+        ".config/magicnet/capture-app.list" \
+        ".config/magicnet/capture-domain-suffix.list" \
+        ".config/magicnet/mcp.conf"; do
+        [ -f "${_work}/${_file}" ] || continue
+        mkdir -p "${MODDIR}/${_file%/*}"
+        cp "${_work}/${_file}" "${MODDIR}/${_file}"
+    done
+    magicnet_apply_runtime_config
+    cli_api_reload || true
+    cli_info "Backup restored"
+    rm -rf "$_work" "$_archive" 2>/dev/null || true
+    unset _password _payload _work _archive _expected _actual _file
+}
+
+cli_backup() {
+    case "${1:-export}" in
+        export)
+            shift
+            cli_backup_export "${1:-}"
+            ;;
+        restore)
+            shift
+            cli_backup_restore "${1:-}" "${2:-}"
+            ;;
+        *)
+            cli_error "Usage: cli backup {export [password]|restore [password|-] <base64>}"
             exit 1
             ;;
     esac
@@ -1822,6 +2289,43 @@ cli_repair() {
     cli_health
 }
 
+cli_ping_one() {
+    _name="$1"
+    _host="$2"
+    _url="$3"
+    _proxy="${4:-}"
+    printf '[%s]\n' "$_name"
+    printf 'host=%s\n' "$_host"
+    if command -v ping >/dev/null 2>&1; then
+        _ping_line="$(ping -c 1 -W 3 "$_host" 2>&1 | tail -n 1)"
+        printf 'ping=%s\n' "${_ping_line:-no output}"
+    else
+        printf 'ping=ping not found\n'
+    fi
+    if command -v curl >/dev/null 2>&1; then
+        if [ -n "$_proxy" ]; then
+            _http_line="$(curl -fsSI --max-time 8 -x "$_proxy" "$_url" 2>&1 | head -n 1)"
+        else
+            _http_line="$(curl -fsSI --max-time 8 "$_url" 2>&1 | head -n 1)"
+        fi
+        printf 'http=%s\n' "${_http_line:-no output}"
+    else
+        printf 'http=curl not found\n'
+    fi
+    printf '\n'
+    unset _name _host _url _proxy _ping_line _http_line
+}
+
+cli_pingtest() {
+    printf 'MagicNet connectivity test\n'
+    printf 'generated_at=%s\n\n' "$(date '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date 2>/dev/null || printf unknown)"
+    cli_ping_one "Baidu CN" "www.baidu.com" "https://www.baidu.com"
+    cli_ping_one "Bilibili CN" "www.bilibili.com" "https://www.bilibili.com"
+    cli_ping_one "Google Global" "www.google.com" "https://www.google.com" "http://127.0.0.1:7892"
+    cli_ping_one "ChatGPT Global" "chatgpt.com" "https://chatgpt.com" "http://127.0.0.1:7892"
+    cli_ping_one "GitHub Global" "github.com" "https://github.com" "http://127.0.0.1:7892"
+}
+
 cli_support_redact() {
     sed -E \
         -e 's#(https?://)[^[:space:]"'"'"'<>]+#\1<redacted-url>#g' \
@@ -1913,6 +2417,7 @@ MagicNet CLI
 Usage:
   cli service {status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}
   cli health
+  cli pingtest
   cli repair
   cli support bundle
   cli setup <subscription-url>
@@ -1924,7 +2429,9 @@ Usage:
   cli sub {update|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> <url>|file [sing-box|mihomo]}
   cli cert {list|install <name|hash.0> <base64-cert>|remove <filename.0>|dir}
   cli capture {list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}
-  cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|apply}
+  cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}
+  cli mcp {status|enable|disable|start|stop|restart}
+  cli backup {export [password]|restore [password|-] <base64>}
   cli api {ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}
   cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}
   cli hotspot reload
@@ -1936,6 +2443,7 @@ EOF
 case "${1:-help}" in
     service) shift; cli_service "$@" ;;
     health|doctor) cli_health ;;
+    pingtest) cli_pingtest ;;
     repair|fix) cli_repair ;;
     support)
         shift
@@ -1955,6 +2463,8 @@ case "${1:-help}" in
     cert) shift; cli_cert "$@" ;;
     capture) shift; cli_capture "$@" ;;
     block) shift; cli_block "$@" ;;
+    mcp) shift; cli_mcp "$@" ;;
+    backup) shift; cli_backup "$@" ;;
     api) shift; cli_api "$@" ;;
     app) shift; cli_app "$@" ;;
     hotspot)

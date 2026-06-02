@@ -41,7 +41,6 @@ const MODULE_DIR = "/data/adb/modules/MagicNet";
 const CLI = `${MODULE_DIR}/cli`;
 const CORE_UI = "http://127.0.0.1:9090/ui/cubex/";
 const REPO = "https://github.com/LIghtJUNction/MagicNet";
-const NODE_RENDER_LIMIT = 48;
 const OUTPUT_RENDER_LIMIT = 6000;
 const CLI_TIMEOUT_MS = 45000;
 let cliQueue: Promise<unknown> = Promise.resolve();
@@ -81,6 +80,7 @@ type HealthItem = {
 };
 
 type SpecialAction = "open-core" | "copy-core" | "copy-support";
+type AiAssistant = "chatgpt" | "gemini" | "kimi" | "qwen" | "deepseek";
 
 type ActionItem = {
   label: string;
@@ -113,8 +113,23 @@ type BlocklistState = {
   community: boolean;
   url: string;
   manual: string[];
+  communityRules: string[];
   communityDomains: string[];
+  allowRules: string[];
   newDomain: string;
+};
+
+type McpState = {
+  enabled: boolean;
+  bind: string;
+  port: string;
+  pid: string;
+  url: string;
+};
+
+type MihomoProvider = {
+  name: string;
+  url: string;
 };
 
 type State = {
@@ -131,14 +146,17 @@ type State = {
   runtime: RuntimeState;
   lastCommand: string;
   output: string;
-  nodes: string[];
-  currentNode: string;
   appPolicy: AppPolicy;
   subscriptions: {
     singBox: string;
     mihomo: string;
+    singBoxUrls: string[];
+    mihomoProviders: MihomoProvider[];
   };
-  setupUrl: string;
+  backupPassword: string;
+  backupPayload: string;
+  restorePassword: string;
+  restorePayload: string;
   certs: string[];
   certName: string;
   certText: string;
@@ -155,6 +173,8 @@ type State = {
   };
   routes: RouteRules;
   blocklist: BlocklistState;
+  mcp: McpState;
+  pingtest: string;
   health: HealthItem[];
   packages: PackageInfo[];
   packageQuery: string;
@@ -189,8 +209,6 @@ const state: State = {
   output: hasKsuBridge
     ? "面板已加载。正在读取 MagicNet 运行状态..."
     : "本地预览模式：这里不会伪造设备数据。通过 KernelSU/APatch 模块 WebUI 打开后，所有按钮会直接调用模块 CLI。",
-  nodes: [],
-  currentNode: "",
   appPolicy: {
     mode: "blacklist",
     proxy: [],
@@ -198,9 +216,14 @@ const state: State = {
   },
   subscriptions: {
     singBox: "",
-    mihomo: ""
+    mihomo: "",
+    singBoxUrls: [],
+    mihomoProviders: []
   },
-  setupUrl: "",
+  backupPassword: "",
+  backupPayload: "",
+  restorePassword: "",
+  restorePayload: "",
   certs: [],
   certName: "magicnet-ca",
   certText: "",
@@ -227,9 +250,19 @@ const state: State = {
     community: true,
     url: "https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/ruleset/magicnet/ban.yaml",
     manual: [],
+    communityRules: [],
     communityDomains: [],
+    allowRules: [],
     newDomain: ""
   },
+  mcp: {
+    enabled: false,
+    bind: "127.0.0.1",
+    port: "8765",
+    pid: "stopped",
+    url: "http://127.0.0.1:8765/mcp"
+  },
+  pingtest: "",
   health: [],
   packages: [],
   packageQuery: "",
@@ -268,16 +301,18 @@ const actions: { title: string; items: ActionItem[] }[] = [
       { label: "重载 VPN 共存", hint: "应用外部 VPN 保护规则", icon: "ShieldCheck", command: "vpn reload" },
       { label: "清空旧连接", hint: "关闭 Clash API 连接表", icon: "Unplug", command: "api close-all" },
       { label: "健康检查", hint: "输出结构化模块健康状态", icon: "Stethoscope", command: "health" },
-      { label: "复制支持包", hint: "复制脱敏诊断信息和日志尾部", icon: "Copy", special: "copy-support" },
+      { label: "复制诊断上下文", hint: "复制脱敏诊断信息和日志尾部", icon: "Copy", special: "copy-support" },
       { label: "复制全部入口", hint: "复制当前面板和三个内核 WebUI 地址", icon: "Link", special: "copy-core" }
     ]
   }
 ];
 
-const quickModes = [
-  { label: "规则", value: "rule" },
-  { label: "全局", value: "global" },
-  { label: "直连", value: "direct" }
+const aiAssistants: { key: AiAssistant; label: string; url: string }[] = [
+  { key: "chatgpt", label: "ChatGPT", url: "https://chatgpt.com/" },
+  { key: "gemini", label: "Gemini", url: "https://gemini.google.com/" },
+  { key: "kimi", label: "Kimi", url: "https://www.kimi.com/" },
+  { key: "qwen", label: "Qwen", url: "https://chat.qwen.ai/" },
+  { key: "deepseek", label: "DeepSeek", url: "https://chat.deepseek.com/" }
 ];
 
 const tabs = [
@@ -594,6 +629,28 @@ async function refreshStatus(quiet = false): Promise<void> {
   }
 }
 
+function parseMcpStatus(text: string): McpState {
+  const next: McpState = { ...state.mcp };
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("enabled=")) next.enabled = line.slice("enabled=".length) !== "0";
+    if (line.startsWith("bind=")) next.bind = line.slice("bind=".length);
+    if (line.startsWith("port=")) next.port = line.slice("port=".length);
+    if (line.startsWith("pid=")) next.pid = line.slice("pid=".length);
+    if (line.startsWith("url=")) next.url = line.slice("url=".length);
+  }
+  if (!next.url) next.url = `http://${next.bind}:${next.port}/mcp`;
+  return next;
+}
+
+async function refreshMcp(quiet = false): Promise<void> {
+  const text = await runCli("mcp status", { quiet });
+  if (state.hasKsu && text) {
+    state.mcp = parseMcpStatus(text);
+  }
+  if (!quiet) render();
+}
+
 async function openCoreUi(): Promise<void> {
   await openCoreUiTarget("metacubex");
 }
@@ -636,6 +693,8 @@ async function openCoreUiTarget(target: "metacubex" | "yacd" | "zashboard"): Pro
 
 async function runAction(command: string): Promise<void> {
   const text = await runCli(command, { label: command });
+  const shouldRefreshStatus = /^(service|repair|mode|hotspot|vpn|config|api)\b/.test(command);
+  const shouldRefreshHealth = /^(health|repair|hotspot|vpn|config|capture|block|route|app|cert)\b/.test(command);
   if (/^health\b/.test(command)) {
     state.health = parseHealth(text);
     state.activeTab = "health";
@@ -650,18 +709,22 @@ async function runAction(command: string): Promise<void> {
     return;
   }
 
-  if (/^(service|repair|mode|hotspot|vpn)\b/.test(command)) {
+  if (shouldRefreshStatus) {
     await refreshStatus(true);
-    render();
   }
   if (/^(sub|setup)\b/.test(command)) {
     await refreshSubscriptions(true);
-    render();
   }
+  if (/^app\b/.test(command)) await refreshApps(true);
+  if (/^route\b/.test(command)) await refreshRoutes(true);
   if (/^block\b/.test(command)) {
     await refreshBlocklist(true);
-    render();
   }
+  if (/^capture\b/.test(command)) await refreshCapture(true);
+  if (/^cert\b/.test(command)) await refreshCerts(true);
+  if (/^mcp\b/.test(command)) await refreshMcp(true);
+  if (shouldRefreshHealth) await refreshHealth(true);
+  render();
 }
 
 async function refreshDashboard(quiet = false): Promise<void> {
@@ -673,9 +736,8 @@ async function refreshDashboard(quiet = false): Promise<void> {
   }
   try {
     await refreshStatus(true);
-    if (state.activeTab === "control") {
-      await refreshNodes(true);
-    } else if (state.activeTab === "subs") {
+    await refreshMcp(true);
+    if (state.activeTab === "subs") {
       await refreshSubscriptions(true);
     } else if (state.activeTab === "apps") {
       await refreshApps(true);
@@ -747,8 +809,8 @@ async function refreshRoutes(quiet = false): Promise<void> {
 }
 
 function parseBlocklist(text: string): BlocklistState {
-  const next: BlocklistState = { ...state.blocklist, manual: [], communityDomains: [] };
-  let section: "manual" | "community" | null = null;
+  const next: BlocklistState = { ...state.blocklist, manual: [], communityRules: [], communityDomains: [], allowRules: [] };
+  let section: "manual" | "communityRules" | "communityDomains" | "allowRules" | null = null;
 
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
@@ -769,12 +831,22 @@ function parseBlocklist(text: string): BlocklistState {
       section = "manual";
       continue;
     }
+    if (line === "community rules:") {
+      section = "communityRules";
+      continue;
+    }
     if (line === "community domain suffixes:") {
-      section = "community";
+      section = "communityDomains";
+      continue;
+    }
+    if (line === "local allow rules:") {
+      section = "allowRules";
       continue;
     }
     if (section === "manual") next.manual.push(line);
-    if (section === "community") next.communityDomains.push(line);
+    if (section === "communityRules") next.communityRules.push(line);
+    if (section === "communityDomains") next.communityDomains.push(line);
+    if (section === "allowRules") next.allowRules.push(line);
   }
 
   return next;
@@ -789,12 +861,22 @@ async function refreshBlocklist(quiet = false): Promise<void> {
 }
 
 function parseSubscriptions(text: string): State["subscriptions"] {
-  const next = { ...state.subscriptions };
+  const next: State["subscriptions"] = { ...state.subscriptions, singBoxUrls: [], mihomoProviders: [] };
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
+    if (/^sing-box\.\d+=/.test(line)) {
+      next.singBoxUrls.push(line.replace(/^sing-box\.\d+=/, ""));
+      continue;
+    }
+    if (/^mihomo\.[A-Za-z0-9_-]+=/.test(line)) {
+      const match = line.match(/^mihomo\.([A-Za-z0-9_-]+)=(.*)$/);
+      if (match) next.mihomoProviders.push({ name: match[1], url: match[2] });
+      continue;
+    }
     if (line.startsWith("sing-box=")) next.singBox = line.slice("sing-box=".length);
     if (line.startsWith("mihomo=")) next.mihomo = line.slice("mihomo=".length);
   }
+  if (next.singBoxUrls.length === 0 && next.singBox) next.singBoxUrls = [next.singBox];
   return next;
 }
 
@@ -806,54 +888,33 @@ async function refreshSubscriptions(quiet = false): Promise<void> {
   if (!quiet) render();
 }
 
-async function refreshNodes(quiet = false): Promise<void> {
-  if (!quiet) {
-    state.busy = true;
-    state.activeTask = "读取节点";
-    state.output = "正在读取候选出口。大订阅首次读取会生成本地缓存，后续会更快。";
-    render();
-    await nextFrame();
+async function exportBackup(): Promise<void> {
+  const password = state.backupPassword.trim();
+  const text = await runCli(`backup export ${password ? shellQuote(password) : ""}`.trim(), { label: "导出配置" });
+  if (text && !execFailed(text)) {
+    state.backupPayload = text.trim();
+    await navigator.clipboard?.writeText(state.backupPayload);
+    state.commandNotice = "配置备份已导出并复制";
+    if (state.hasKsu) kernelsu.toast?.("备份已复制");
   }
-  try {
-    const current = await runCli("node current", { quiet: true });
-    const list = await runCli("node list", { quiet: true });
-    if (state.hasKsu) {
-      state.currentNode = current.trim();
-      state.nodes = list
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-      if (!quiet) {
-        state.output = state.nodes.length
-          ? `当前策略值：${state.currentNode || "未读取"}\n候选出口：${state.nodes.length} 个`
-          : `当前策略值：${state.currentNode || "未读取"}\n没有可展示的候选出口。请更新订阅，或到内核面板检查当前策略组。`;
-      }
-    }
-  } finally {
-    if (!quiet) {
-      state.busy = false;
-      state.activeTask = "";
-      render();
-    }
-  }
+  render();
 }
 
-async function switchNode(name: string): Promise<void> {
-  if (!name) return;
-  await runCli(`node use ${shellQuote(name)}`);
-  await refreshNodes(true);
-}
-
-async function saveSetupSubscription(): Promise<void> {
-  const url = state.setupUrl.trim();
-  if (!/^https?:\/\/\S+$/i.test(url)) {
-    state.output = "订阅链接格式不对，必须是 http(s) URL。";
+async function restoreBackup(): Promise<void> {
+  const password = state.restorePassword.trim();
+  const payload = state.restorePayload.trim();
+  if (!payload) {
+    state.output = "请先粘贴 base64 备份内容。";
     render();
     return;
   }
-  await runCli(`setup ${shellQuote(url)}`);
-  state.setupUrl = "";
+  await runCli(`backup restore ${password ? shellQuote(password) : "-"} ${shellQuote(payload)}`, { label: "恢复配置" });
   await refreshSubscriptions(true);
+  await refreshApps(true);
+  await refreshRoutes(true);
+  await refreshBlocklist(true);
+  await refreshCapture(true);
+  await refreshMcp(true);
   await refreshHealth(true);
   render();
 }
@@ -947,13 +1008,31 @@ async function refreshHealth(quiet = false): Promise<void> {
   }
 }
 
-async function generateSupportBundle(label = "复制支持包"): Promise<void> {
+async function refreshPingtest(): Promise<void> {
+  const text = await runCli("pingtest", { label: "连通性测试" });
+  state.pingtest = text;
+  state.activeTab = "health";
+  render();
+}
+
+async function generateDiagnosticContext(label = "复制诊断上下文"): Promise<string> {
   const text = await runCli("support bundle", { label });
   if (text) {
-    await navigator.clipboard?.writeText(text);
-    if (state.hasKsu) kernelsu.toast?.("支持包已复制");
-    state.commandNotice = "支持包已复制";
+    const context = [
+      "请帮我诊断 MagicNet Android root 透明代理模块问题。",
+      "重点看 TUN 内核、Clash API、订阅、VPN 共存、热点转发、分应用、抓包规则和日志错误。",
+      "下面是 MagicNet 脱敏诊断上下文：",
+      "",
+      text,
+      state.pingtest ? "\n连通性测试：\n" : "",
+      state.pingtest
+    ].join("\n");
+    await navigator.clipboard?.writeText(context);
+    state.commandNotice = "诊断上下文已复制";
+    if (state.hasKsu) kernelsu.toast?.("诊断上下文已复制");
+    return context;
   }
+  return "";
 }
 
 async function copyCoreEntries(label = "复制全部入口"): Promise<void> {
@@ -1007,6 +1086,9 @@ function healthSummary(): { ok: number; warn: number; fail: number; info: number
 
 function healthPanel(): string {
   const summary = healthSummary();
+  const aiButtons = aiAssistants
+    .map((item) => `<button class="command-secondary" data-ask-ai="${item.key}">${icon("ExternalLink", 16)}${item.label}</button>`)
+    .join("");
   const items = state.health.length
     ? state.health
       .map((item) => {
@@ -1037,8 +1119,25 @@ function healthPanel(): string {
         <div class="health-actions">
           <button class="command-primary" data-run="repair">${icon("Zap", 18)}一键自修复</button>
           <button class="command-secondary" data-health-run>${icon("Stethoscope", 18)}运行诊断</button>
-          <button class="command-secondary" data-support-bundle>${icon("Copy", 18)}复制支持包</button>
+          <button class="command-secondary" data-pingtest>${icon("RadioTower", 18)}连通性测试</button>
+          <button class="command-secondary" data-support-bundle>${icon("Copy", 18)}复制诊断上下文</button>
         </div>
+      </div>
+      <div class="ai-assist-panel">
+        <div>
+          <span class="eyebrow">Ask With Context</span>
+          <h3>带诊断上下文询问 AI</h3>
+          <p>按钮会先复制 MagicNet 脱敏诊断上下文，再打开对应 AI。进入聊天后直接粘贴发送。</p>
+        </div>
+        <div class="ai-assist-actions">${aiButtons}</div>
+      </div>
+      <div class="pingtest-panel">
+        <div>
+          <span class="eyebrow">Connectivity</span>
+          <h3>国内外站点连通性</h3>
+          <p>测试 Baidu、Bilibili、Google、ChatGPT、GitHub。ICMP ping 被拦截时以 HTTP 结果为准。</p>
+        </div>
+        <pre>${escapeHtml(state.pingtest || "还没有测试结果。点击“连通性测试”开始。")}</pre>
       </div>
       <div class="health-summary">
         <div><strong>${summary.ok}</strong><span>正常</span></div>
@@ -1051,49 +1150,27 @@ function healthPanel(): string {
   `;
 }
 
-function nodePanel(): string {
-  const selectedOutsideLimit = state.currentNode && !state.nodes.slice(0, NODE_RENDER_LIMIT).includes(state.currentNode);
-  const visibleNodes = state.nodes.length
-    ? [
-      ...(selectedOutsideLimit ? [state.currentNode] : []),
-      ...state.nodes.filter((name) => name !== state.currentNode).slice(0, NODE_RENDER_LIMIT)
-    ]
-    : [];
-  const hiddenCount = Math.max(0, state.nodes.length - visibleNodes.length);
-  const nodeRows = visibleNodes.length
-    ? visibleNodes
-      .map((name) => {
-        const selected = name === state.currentNode;
-        return `
-          <button class="node-row ${selected ? "selected" : ""}" data-node-use="${escapeHtml(name)}" ${selected ? "disabled" : ""}>
-            <span>${selected ? icon("ShieldCheck", 17) : icon("Route", 17)}</span>
-            <div>
-              <strong>${escapeHtml(name)}</strong>
-              <small>候选出口</small>
-            </div>
-            <small>${selected ? "当前出口" : "切换"}</small>
-          </button>
-        `;
-      })
-      .join("")
-    : `<div class="picker-empty"><strong>还没有节点列表</strong><span>先更新订阅，再点刷新节点。高级策略和 Provider 状态在内核 WebUI 里看。</span></div>`;
-
+function mcpPanel(): string {
+  const running = state.mcp.pid && state.mcp.pid !== "stopped";
+  const url = state.mcp.url || `http://${state.mcp.bind}:${state.mcp.port}/mcp`;
   return `
-    <div class="node-panel">
-      <div class="node-head">
+    <section class="runtime-control mcp-control">
+      <div class="runtime-toggle">
         <div>
-          <span class="eyebrow">Proxy Selector</span>
-          <h3>${escapeHtml(state.currentNode || "未读取当前节点")}</h3>
-          <p>这里只做快速切换和状态确认；高级策略和 Provider 状态交给内核 WebUI。当前渲染 ${visibleNodes.length}/${state.nodes.length} 条${hiddenCount ? `，剩余 ${hiddenCount} 条在内核面板查看` : ""}。</p>
+          <span class="eyebrow">MCP Streamable HTTP</span>
+          <h3>本地 MCP 控制服务器</h3>
+          <p>${running ? `运行中：pid ${escapeHtml(state.mcp.pid)}` : "未运行。默认只监听 127.0.0.1，适合 ADB 端口转发后由 Codex/Claude 调用。"}</p>
+          <code>${escapeHtml(url)}</code>
         </div>
-        <div class="node-actions">
-          <button class="command-secondary" data-refresh-nodes>${icon("RefreshCw", 17)}刷新节点</button>
-          <a class="command-secondary" data-open-core-ui href="${escapeHtml(coreUiUrl())}">${icon("ExternalLink", 17)}内核节点页</a>
-          <button class="command-secondary" data-run="sub update-all">${icon("DownloadCloud", 17)}更新订阅</button>
-        </div>
+        <button class="toggle ${running ? "on" : ""}" data-mcp-toggle>
+          ${running ? "关闭 MCP" : "开启 MCP"}
+        </button>
       </div>
-      <div class="node-list">${nodeRows}</div>
-    </div>
+      <div class="support-actions compact-actions">
+        <button class="command-secondary" data-refresh-mcp>${icon("RefreshCw", 17)}刷新 MCP</button>
+        <button class="command-secondary" data-copy-mcp>${icon("Copy", 17)}复制 MCP URL</button>
+      </div>
+    </section>
   `;
 }
 
@@ -1103,7 +1180,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
     const specialLabels: Record<SpecialAction, string> = {
       "open-core": "选择内核 WebUI",
       "copy-core": "复制全部入口",
-      "copy-support": "复制支持包"
+      "copy-support": "复制诊断上下文"
     };
     const renderAction = (item: ActionItem) => {
       const taskLabel = item.command || (item.special ? specialLabels[item.special] : "");
@@ -1148,8 +1225,8 @@ function activeTabPanel(tab: State["activeTab"]): string {
             <button type="submit">${icon("RotateCcw", 17)}执行重启</button>
           </form>
         </section>
+        ${mcpPanel()}
         ${supportAccessPanel()}
-        ${setupPanel()}
         <div class="control-groups">
           ${actions
             .map(
@@ -1165,18 +1242,6 @@ function activeTabPanel(tab: State["activeTab"]): string {
               `
             )
             .join("")}
-        </div>
-        ${nodePanel()}
-        <div class="mode-panel">
-          <div>
-            <h3>代理模式</h3>
-            <p>仅切换内核策略，网络入口保持 TUN。</p>
-          </div>
-          <div class="segmented">
-            ${quickModes
-              .map((item) => `<button data-mode="${item.value}">${item.label}</button>`)
-              .join("")}
-          </div>
         </div>
       </div>
     `;
@@ -1244,7 +1309,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
         <button data-run="service logs mihomo 160">${icon("FileText", 17)}mihomo 日志</button>
         <button data-run="service status">${icon("RefreshCw", 17)}状态快照</button>
         <button data-health-run>${icon("Stethoscope", 17)}健康诊断</button>
-        <button data-support-bundle>${icon("Copy", 17)}支持包</button>
+        <button data-support-bundle>${icon("Copy", 17)}诊断上下文</button>
         <button data-copy-last>${icon("Copy", 17)}复制命令</button>
       </div>
       <pre class="terminal">${escapeHtml(compactOutput(state.output))}</pre>
@@ -1257,11 +1322,11 @@ function supportAccessPanel(): string {
     <section class="support-access">
       <div class="support-copy">
         <span class="eyebrow">Support & Links</span>
-        <h3>入口和支持包</h3>
-        <p>遇到打不开内核面板、规则未生效、VPN 共存异常时，先复制支持包；需要换面板时复制全部 WebUI 入口。</p>
+        <h3>入口和诊断上下文</h3>
+        <p>遇到打不开内核面板、规则未生效、VPN 共存异常时，先复制诊断上下文；需要换面板时复制全部 WebUI 入口。</p>
       </div>
       <div class="support-actions">
-        <button class="command-secondary" data-support-bundle>${icon("Copy", 17)}复制支持包</button>
+        <button class="command-secondary" data-support-bundle>${icon("Copy", 17)}复制诊断上下文</button>
         <button class="command-secondary" data-copy-core-entries>${icon("Link", 17)}复制全部入口</button>
         <a class="command-secondary" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 17)}GitHub</a>
       </div>
@@ -1344,8 +1409,74 @@ function blockDomainList(items: string[], removable: boolean): string {
     .join("");
 }
 
+function blockRuleList(items: string[]): string {
+  if (items.length === 0) {
+    return `<div class="empty">暂无社区规则</div>`;
+  }
+
+  return items
+    .slice(0, 160)
+    .map(
+      (rule) => `
+        <div class="app-row">
+          <span>${escapeHtml(rule)}</span>
+          <button class="icon-button" data-allow-block-rule="${escapeHtml(rule)}" title="本地排除">${icon("X", 16)}</button>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function localAllowList(items: string[]): string {
+  if (items.length === 0) {
+    return `<div class="empty">暂无本地排除</div>`;
+  }
+
+  return items
+    .slice(0, 80)
+    .map(
+      (rule) => `
+        <div class="app-row">
+          <span>${escapeHtml(rule)}</span>
+          <button class="icon-button" data-unallow-block-rule="${escapeHtml(rule)}" title="恢复阻断">${icon("Plus", 16)}</button>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function blockIssueUrl(): string {
+  const additions = state.blocklist.manual.map((domain) => `+ DOMAIN-SUFFIX,${domain}`);
+  const removals = state.blocklist.allowRules.map((rule) => `- ${rule}`);
+  const diff = [
+    "--- remote ban.yaml",
+    "+++ requested ban.yaml",
+    ...removals,
+    ...additions
+  ].join("\n");
+  const body = [
+    "### MagicNet 联 ban 黑名单变更请求",
+    "",
+    "请人工审核以下远程社区库变更。设备本地已通过 MagicNet 面板临时应用。",
+    "",
+    "```diff",
+    diff,
+    "```",
+    "",
+    "### 来源",
+    "",
+    `- 当前社区库 URL: ${state.blocklist.url}`,
+    "- 请确认域名归属、误杀风险和安全影响后再合并。"
+  ].join("\n");
+  const params = new URLSearchParams({
+    title: "联 ban 黑名单变更请求",
+    body
+  });
+  return `${REPO}/issues/new?${params.toString()}`;
+}
+
 function blocklistPanel(): string {
-  const communityCount = state.blocklist.communityDomains.length;
+  const communityCount = state.blocklist.communityRules.length || state.blocklist.communityDomains.length;
   return `
     <div class="section-intro block-intro">
       <div>
@@ -1356,6 +1487,7 @@ function blocklistPanel(): string {
       <div class="section-actions">
         <button class="command-secondary" data-refresh-block>${icon("RefreshCw", 17)}读取</button>
         <button class="command-primary" data-run="block update">${icon("DownloadCloud", 17)}更新社区库</button>
+        <a class="command-secondary" href="${escapeHtml(blockIssueUrl())}" target="_blank" rel="noreferrer">${icon("Github", 17)}创建变更 Issue</a>
       </div>
     </div>
     <div class="block-grid">
@@ -1399,10 +1531,19 @@ function blocklistPanel(): string {
         <div class="sub-head">
           <div>
             <h3>社区库缓存</h3>
-            <p>当前缓存 ${communityCount} 条；更新失败时不会清空旧缓存。</p>
+            <p>当前缓存 ${communityCount} 条；点 X 会加入本地排除并立即从内核阻断规则移除。</p>
           </div>
         </div>
-        <div class="list-panel flush community-list">${blockDomainList(state.blocklist.communityDomains, false)}</div>
+        <div class="list-panel flush community-list">${blockRuleList(state.blocklist.communityRules.length ? state.blocklist.communityRules : state.blocklist.communityDomains.map((domain) => `DOMAIN-SUFFIX,${domain}`))}</div>
+      </section>
+      <section class="capture-card wide">
+        <div class="sub-head">
+          <div>
+            <h3>本地排除</h3>
+            <p>这些规则暂时不参与阻断。要改远程社区库，请创建变更 Issue 交给人工审核。</p>
+          </div>
+        </div>
+        <div class="list-panel flush">${localAllowList(state.blocklist.allowRules)}</div>
       </section>
     </div>
   `;
@@ -1475,63 +1616,88 @@ function capturePanel(): string {
   `;
 }
 
-function subscriptionPanel(): string {
-  const items = [
-    {
-      key: "sing-box",
-      title: "sing-box",
-      value: state.subscriptions.singBox,
-      file: `${MODULE_DIR}/.config/sing-box/subscription.url`,
-      note: "保存后可点更新订阅，把 Clash/通用分享链接转换进 sing-box TUN 配置。"
-    },
-    {
-      key: "mihomo",
-      title: "Clash / mihomo",
-      value: state.subscriptions.mihomo,
-      file: `${MODULE_DIR}/.config/mihomo/subscription.url`,
-      note: "保存时同步写入 mihomo config.yaml 的第一个 proxy-provider URL。"
-    }
-  ];
-
-  return items
-    .map(
-      (item) => `
+function subscriptionsSection(): string {
+  const configured = Number(Boolean(state.subscriptions.singBox)) + Number(Boolean(state.subscriptions.mihomo));
+  const singBoxValue = state.subscriptions.singBoxUrls.join("\n");
+  const mihomoCards = state.subscriptions.mihomoProviders.length
+    ? state.subscriptions.mihomoProviders
+      .map((provider) => `
         <div class="sub-card">
           <div class="sub-head">
             <div>
-              <h3>${item.title}</h3>
-              <p>${item.note}</p>
+              <h3>mihomo / ${escapeHtml(provider.name)}</h3>
+              <p>对应 config.yaml 的 proxy-provider：${escapeHtml(provider.name)}</p>
             </div>
-            <button class="icon-button" data-copy-sub="${item.key}" title="复制订阅链接">${icon("Copy", 16)}</button>
+            <button class="icon-button" data-copy-sub="mihomo:${escapeHtml(provider.name)}" title="复制订阅链接">${icon("Copy", 16)}</button>
           </div>
-          <textarea data-sub-input="${item.key}" spellcheck="false" placeholder="https://example.com/sub">${escapeHtml(item.value)}</textarea>
+          <textarea data-mihomo-provider="${escapeHtml(provider.name)}" spellcheck="false" placeholder="https://example.com/sub">${escapeHtml(provider.url)}</textarea>
           <div class="sub-actions">
-            <button data-save-sub="${item.key}">${icon("Save", 17)}保存</button>
-            <button data-copy-path="${item.key}">${icon("Copy", 17)}复制路径</button>
-            <code>${item.file}</code>
+            <button data-save-mihomo-provider="${escapeHtml(provider.name)}">${icon("Save", 17)}保存 provider</button>
+            <code>${MODULE_DIR}/.config/mihomo/config.yaml</code>
           </div>
         </div>
-      `
-    )
-    .join("");
-}
-
-function subscriptionsSection(): string {
-  const configured = Number(Boolean(state.subscriptions.singBox)) + Number(Boolean(state.subscriptions.mihomo));
+      `)
+      .join("")
+    : `<div class="sub-card"><div class="picker-empty"><strong>未读取到 mihomo provider</strong><span>请确认 config.yaml 中存在 proxy-providers。</span></div></div>`;
+  const subscriptionCards = `
+    <div class="sub-card">
+      <div class="sub-head">
+        <div>
+          <h3>sing-box 多订阅</h3>
+          <p>一行一个订阅链接。sing-box 更新时会逐条下载并合并可用节点。</p>
+        </div>
+        <button class="icon-button" data-copy-sub="sing-box" title="复制订阅链接">${icon("Copy", 16)}</button>
+      </div>
+      <textarea data-singbox-subs spellcheck="false" placeholder="https://example.com/sub-a\nhttps://example.com/sub-b">${escapeHtml(singBoxValue)}</textarea>
+      <div class="sub-actions">
+        <button data-save-singbox-subs>${icon("Save", 17)}保存 sing-box 多订阅</button>
+        <button data-copy-path="sing-box">${icon("Copy", 17)}复制路径</button>
+        <code>${MODULE_DIR}/.config/sing-box/subscription.url</code>
+      </div>
+    </div>
+    ${mihomoCards}
+  `;
   return `
     <div class="section-intro">
       <div>
-        <span class="eyebrow">Subscriptions</span>
-        <h3>订阅链接管理</h3>
-        <p>已配置 ${configured}/2。这里可以填写、保存、复制 Clash/mihomo 和 sing-box 订阅链接，保存后再更新订阅即可生效。</p>
+        <span class="eyebrow">Subscriptions & Backup</span>
+        <h3>订阅链接与配置备份</h3>
+        <p>已保存订阅 ${configured}/2。备份会包含订阅链接、分应用名单、手动分流、黑名单、本地排除、抓包和 MCP 设置。</p>
       </div>
       <div class="section-actions">
-        <button class="command-secondary" data-refresh-subs>${icon("RefreshCw", 17)}读取链接</button>
-        <button class="command-primary" data-run="sub update-all">${icon("DownloadCloud", 17)}更新全部</button>
+        <button class="command-secondary" data-refresh-subs>${icon("RefreshCw", 17)}刷新状态</button>
+        <button class="command-primary" data-run="sub update-all">${icon("DownloadCloud", 17)}用已保存订阅更新</button>
       </div>
     </div>
     <div class="sub-grid">
-      ${subscriptionPanel()}
+      ${subscriptionCards}
+      <div class="sub-card">
+        <div class="sub-head">
+          <div>
+            <h3>导出配置</h3>
+            <p>安全密码可留空。导出结果是 base64 文本，会自动复制到剪贴板。</p>
+          </div>
+        </div>
+        <input class="package-search" data-backup-password value="${escapeHtml(state.backupPassword)}" type="password" placeholder="安全密码（可留空）" autocomplete="new-password" />
+        <div class="sub-actions">
+          <button data-export-backup>${icon("Save", 17)}导出配置</button>
+          <button data-copy-backup>${icon("Copy", 17)}复制备份</button>
+        </div>
+        <textarea readonly spellcheck="false" placeholder="导出的 base64 备份会显示在这里">${escapeHtml(state.backupPayload)}</textarea>
+      </div>
+      <div class="sub-card">
+        <div class="sub-head">
+          <div>
+            <h3>恢复配置</h3>
+            <p>粘贴 base64 备份内容。若导出时设置了安全密码，恢复时必须填写相同密码。</p>
+          </div>
+        </div>
+        <input class="package-search" data-restore-password value="${escapeHtml(state.restorePassword)}" type="password" placeholder="安全密码（可留空）" autocomplete="new-password" />
+        <textarea data-restore-payload spellcheck="false" placeholder="粘贴 base64 备份内容">${escapeHtml(state.restorePayload)}</textarea>
+        <div class="sub-actions">
+          <button data-restore-backup>${icon("DownloadCloud", 17)}恢复配置</button>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -1781,26 +1947,6 @@ function coreUiButton(className: string): string {
   `;
 }
 
-function setupPanel(): string {
-  const hasAnySub = Boolean(state.subscriptions.singBox || state.subscriptions.mihomo);
-  return `
-    <section class="setup-panel ${hasAnySub ? "compact" : ""}">
-      <div class="setup-copy">
-        <span class="eyebrow">${hasAnySub ? "Quick Setup" : "First Run"}</span>
-        <h3>${hasAnySub ? "快速替换订阅" : "粘贴订阅，自动完成初始配置"}</h3>
-        <p>${hasAnySub ? "同时写入 sing-box 和 mihomo，更新订阅后执行自修复。适合节点失效、换机场、重装模块后的快速恢复。" : "第一次用不需要理解配置文件路径。粘贴 Clash / sing-box 订阅链接后，MagicNet 会保存到双内核、更新节点并重载规则。"}</p>
-      </div>
-      <form class="setup-form" data-setup-form>
-        <label>
-          <span>订阅 URL</span>
-          <input value="${escapeHtml(state.setupUrl)}" placeholder="https://example.com/sub" spellcheck="false" autocomplete="off" />
-        </label>
-        <button type="submit">${icon("Zap", 17)}保存并启用</button>
-      </form>
-    </section>
-  `;
-}
-
 function statusDrawer(): string {
   const bridgeText = state.hasKsu ? "KernelSU 执行通道已接入" : "本地预览模式，不显示假运行数据";
   const headline = state.runtime.core === "stopped" || state.runtime.core === "unknown"
@@ -1934,7 +2080,7 @@ function setActiveTabByIndex(index: number): void {
 
 async function refreshActiveTabData(): Promise<void> {
   if (!state.hasKsu) return;
-  if (state.activeTab === "control" && state.nodes.length === 0) await refreshNodes();
+  if (state.activeTab === "control") await refreshMcp();
   if (state.activeTab === "health" && state.health.length === 0) await refreshHealth();
   if (state.activeTab === "apps") await refreshApps();
   if (state.activeTab === "routes") await refreshRoutes();
@@ -2146,8 +2292,21 @@ function bindEvents(): void {
     await runAction(`service restart ${target}`);
   });
 
-  document.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((button) => {
-    button.addEventListener("click", () => runAction(`mode ${button.dataset.mode}`));
+  document.querySelector<HTMLButtonElement>("[data-mcp-toggle]")?.addEventListener("click", async () => {
+    const running = state.mcp.pid && state.mcp.pid !== "stopped";
+    await runCli(running ? "mcp disable" : "mcp enable", { label: running ? "关闭 MCP" : "开启 MCP" });
+    await refreshMcp(true);
+    render();
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-refresh-mcp]")?.addEventListener("click", () => refreshMcp());
+
+  document.querySelector<HTMLButtonElement>("[data-copy-mcp]")?.addEventListener("click", async () => {
+    const url = state.mcp.url || `http://${state.mcp.bind}:${state.mcp.port}/mcp`;
+    await navigator.clipboard?.writeText(url);
+    state.output = `已复制 MCP URL：\n${url}\n\n如需从电脑访问，请使用 ADB 端口转发：adb forward tcp:${state.mcp.port} tcp:${state.mcp.port}`;
+    if (state.hasKsu) kernelsu.toast?.("MCP URL 已复制");
+    render();
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-app-mode]").forEach((button) => {
@@ -2218,25 +2377,28 @@ function bindEvents(): void {
 
   document.querySelector<HTMLButtonElement>("[data-refresh-block]")?.addEventListener("click", () => refreshBlocklist());
 
-  document.querySelector<HTMLButtonElement>("[data-refresh-nodes]")?.addEventListener("click", () => refreshNodes());
-
-  document.querySelectorAll<HTMLButtonElement>("[data-node-use]").forEach((button) => {
-    button.addEventListener("click", () => switchNode(button.dataset.nodeUse || ""));
-  });
-
-  document.querySelector<HTMLFormElement>("[data-setup-form]")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const input = event.currentTarget.querySelector<HTMLInputElement>("input");
-    state.setupUrl = input?.value || "";
-    await saveSetupSubscription();
-  });
-
   document.querySelectorAll<HTMLButtonElement>("[data-health-run]").forEach((button) => {
     button.addEventListener("click", () => refreshHealth());
   });
 
+  document.querySelectorAll<HTMLButtonElement>("[data-pingtest]").forEach((button) => {
+    button.addEventListener("click", () => refreshPingtest());
+  });
+
   document.querySelectorAll<HTMLButtonElement>("[data-support-bundle]").forEach((button) => {
-    button.addEventListener("click", () => generateSupportBundle());
+    button.addEventListener("click", () => generateDiagnosticContext());
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-ask-ai]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const key = button.dataset.askAi as AiAssistant | undefined;
+      const target = aiAssistants.find((item) => item.key === key);
+      if (!target) return;
+      await generateDiagnosticContext(`询问 ${target.label}`);
+      state.output = `诊断上下文已复制。\n\n正在打开 ${target.label}：\n${target.url}\n\n进入聊天后直接粘贴发送。`;
+      render();
+      window.location.assign(target.url);
+    });
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-copy-core-entries]").forEach((button) => {
@@ -2254,30 +2416,52 @@ function bindEvents(): void {
       } else if (action === "copy-core") {
         await copyCoreEntries(label);
       } else if (action === "copy-support") {
-        await generateSupportBundle(label);
+        await generateDiagnosticContext(label);
       }
     });
   });
 
-  document.querySelectorAll<HTMLButtonElement>("[data-save-sub]").forEach((button) => {
+  document.querySelector<HTMLButtonElement>("[data-save-singbox-subs]")?.addEventListener("click", async () => {
+    const input = document.querySelector<HTMLTextAreaElement>("[data-singbox-subs]");
+    const lines = (input?.value || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.some((line) => !/^https?:\/\/\S+$/i.test(line))) {
+      state.output = "sing-box 订阅列表里有无效 URL，必须一行一个 http(s) 链接。";
+      render();
+      return;
+    }
+    const encoded = bytesToBase64(new TextEncoder().encode(`${lines.join("\n")}\n`));
+    await runCli(`sub set-file sing-box ${shellQuote(encoded)}`, { quiet: false });
+    await refreshSubscriptions(true);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-save-mihomo-provider]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const target = button.dataset.saveSub === "mihomo" ? "mihomo" : "sing-box";
-      const input = document.querySelector<HTMLTextAreaElement>(`[data-sub-input="${target}"]`);
+      const provider = button.dataset.saveMihomoProvider || "";
+      const input = document.querySelector<HTMLTextAreaElement>(`[data-mihomo-provider="${provider}"]`);
       const value = input?.value.trim() || "";
-      if (!/^https?:\/\/\S+$/i.test(value)) {
-        state.output = "订阅链接格式不对，必须是 http(s) URL。";
+      if (!provider || !/^https?:\/\/\S+$/i.test(value)) {
+        state.output = "mihomo provider 订阅链接格式不对。";
         render();
         return;
       }
-      await runCli(`sub set ${target} ${shellQuote(value)}`, { quiet: false });
+      await runCli(`sub set mihomo ${shellQuote(provider)} ${shellQuote(value)}`, { quiet: false });
       await refreshSubscriptions(true);
     });
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-copy-sub]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const target = button.dataset.copySub === "mihomo" ? "mihomo" : "sing-box";
-      const value = target === "mihomo" ? state.subscriptions.mihomo : state.subscriptions.singBox;
+      const target = button.dataset.copySub || "sing-box";
+      let value = "";
+      if (target === "sing-box") {
+        value = state.subscriptions.singBoxUrls.join("\n") || state.subscriptions.singBox;
+      } else if (target.startsWith("mihomo:")) {
+        const provider = target.slice("mihomo:".length);
+        value = state.subscriptions.mihomoProviders.find((item) => item.name === provider)?.url || "";
+      }
       await navigator.clipboard?.writeText(value);
       state.output = value ? `已复制 ${target} 订阅链接。` : `${target} 订阅链接为空。`;
       if (state.hasKsu) kernelsu.toast?.("订阅链接已复制");
@@ -2297,6 +2481,29 @@ function bindEvents(): void {
       render();
     });
   });
+
+  document.querySelector<HTMLInputElement>("[data-backup-password]")?.addEventListener("input", (event) => {
+    state.backupPassword = (event.currentTarget as HTMLInputElement).value;
+  });
+
+  document.querySelector<HTMLInputElement>("[data-restore-password]")?.addEventListener("input", (event) => {
+    state.restorePassword = (event.currentTarget as HTMLInputElement).value;
+  });
+
+  document.querySelector<HTMLTextAreaElement>("[data-restore-payload]")?.addEventListener("input", (event) => {
+    state.restorePayload = (event.currentTarget as HTMLTextAreaElement).value;
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-export-backup]")?.addEventListener("click", () => exportBackup());
+
+  document.querySelector<HTMLButtonElement>("[data-copy-backup]")?.addEventListener("click", async () => {
+    await navigator.clipboard?.writeText(state.backupPayload);
+    state.output = state.backupPayload ? "已复制配置备份。" : "当前还没有导出的配置备份。";
+    if (state.hasKsu && state.backupPayload) kernelsu.toast?.("备份已复制");
+    render();
+  });
+
+  document.querySelector<HTMLButtonElement>("[data-restore-backup]")?.addEventListener("click", () => restoreBackup());
 
   document.querySelector<HTMLFormElement>("[data-route-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2368,6 +2575,24 @@ function bindEvents(): void {
       const domain = button.dataset.removeBlock || "";
       if (!domain) return;
       await runCli(`block remove-domain ${shellQuote(domain)}`);
+      await refreshBlocklist(true);
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-allow-block-rule]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const rule = button.dataset.allowBlockRule || "";
+      if (!rule) return;
+      await runCli(`block allow-rule ${shellQuote(rule)}`);
+      await refreshBlocklist(true);
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-unallow-block-rule]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const rule = button.dataset.unallowBlockRule || "";
+      if (!rule) return;
+      await runCli(`block unallow-rule ${shellQuote(rule)}`);
       await refreshBlocklist(true);
     });
   });

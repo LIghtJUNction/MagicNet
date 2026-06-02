@@ -1159,99 +1159,6 @@ code {
   background: linear-gradient(145deg, rgba(93, 240, 166, 0.18), rgba(21, 26, 29, 0.92));
 }
 
-.node-panel {
-  margin-top: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #0c1110;
-  overflow: hidden;
-}
-
-.node-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.node-head h3 {
-  max-width: 560px;
-  overflow-wrap: anywhere;
-  font-size: 20px;
-  line-height: 1.2;
-}
-
-.node-head p {
-  margin-top: 6px;
-  color: var(--muted);
-}
-
-.node-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.node-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 12px;
-}
-
-.node-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 10px;
-  background: var(--panel-2);
-  color: var(--ink);
-  cursor: pointer;
-  text-align: left;
-}
-
-.node-row span {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: #070a09;
-  color: var(--blue);
-}
-
-.node-row strong {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.node-row small {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.node-row.selected {
-  border-color: rgba(98, 243, 169, 0.38);
-  background: var(--green-weak);
-}
-
-.node-row.selected span,
-.node-row.selected small {
-  color: var(--green);
-}
-
 .mobile-dock {
   display: none;
 }
@@ -1267,7 +1174,6 @@ a.disabled {
   pointer-events: none;
 }
 
-.mode-panel,
 .policy-header,
 .always-output {
   margin-top: 14px;
@@ -1276,7 +1182,6 @@ a.disabled {
   background: #0c1110;
 }
 
-.mode-panel,
 .policy-header {
   display: flex;
   align-items: center;
@@ -1285,7 +1190,6 @@ a.disabled {
   padding: 14px;
 }
 
-.mode-panel p,
 .policy-header p {
   margin-top: 4px;
   color: var(--muted);
@@ -1912,6 +1816,56 @@ a.disabled {
   min-width: 210px;
 }
 
+.ai-assist-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  gap: 12px;
+  margin-top: 12px;
+  border: 1px solid rgba(132, 199, 255, 0.22);
+  border-radius: 8px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(132, 199, 255, 0.08), rgba(98, 243, 169, 0.06));
+}
+
+.ai-assist-panel h3 {
+  margin-top: 5px;
+  font-size: 17px;
+}
+
+.ai-assist-panel p {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ai-assist-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pingtest-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #0c1110;
+}
+
+.pingtest-panel pre {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid rgba(215, 208, 188, 0.12);
+  border-radius: 8px;
+  padding: 10px;
+  background: #070a09;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .health-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2344,12 +2298,10 @@ a.disabled {
     box-shadow: none;
   }
 
-  .mode-panel,
   .policy-header,
   .section-intro,
   .picker-head,
   .sub-head,
-  .node-head,
   .health-hero {
     align-items: stretch;
     flex-direction: column;
@@ -2371,10 +2323,6 @@ a.disabled {
   .restart-form button,
   .setup-form button {
     width: 100%;
-  }
-
-  .node-actions {
-    justify-content: stretch;
   }
 
   .overview {
@@ -2414,7 +2362,6 @@ a.disabled {
   .support-access,
   .restart-form,
   .setup-form,
-  .node-list,
   .health-grid,
   .health-summary,
   .switch-stack,
@@ -2503,14 +2450,12 @@ a.disabled {
 
   .setup-panel h3,
   .section-intro h3,
-  .node-head h3,
   .health-hero h3 {
     font-size: 18px;
   }
 
   .setup-panel p,
   .section-intro p,
-  .node-head p,
   .sub-head p,
   .picker-head p,
   .health-hero p {
@@ -2564,8 +2509,6 @@ a.disabled {
     font-size: 12px;
   }
 
-  .node-panel,
-  .mode-panel,
   .policy-header,
   .always-output,
   .package-picker,
@@ -2578,7 +2521,6 @@ a.disabled {
     box-shadow: none;
   }
 
-  .node-head,
   .section-intro,
   .picker-head,
   .sub-head,
@@ -2586,13 +2528,11 @@ a.disabled {
     padding: 12px;
   }
 
-  .node-actions,
   .section-actions {
     justify-content: stretch;
     width: 100%;
   }
 
-  .node-actions button,
   .section-actions button {
     flex: 1 1 150px;
   }
@@ -2607,19 +2547,6 @@ a.disabled {
   .inline-form,
   .health-row {
     grid-template-columns: 1fr;
-  }
-
-  .node-list {
-    padding: 8px;
-    gap: 7px;
-  }
-
-  .node-row {
-    min-height: 54px;
-  }
-
-  .mode-panel {
-    padding: 12px;
   }
 
   .segmented {
