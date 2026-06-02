@@ -303,7 +303,7 @@ magicnet_singbox_apply_app_policy() {
     fi
 
     _tmp="${_config}.app-policy.new"
-    awk -v include_block="$_include_block" -v exclude_block="$_exclude_block" '
+    if awk -v include_block="$_include_block" -v exclude_block="$_exclude_block" '
         BEGIN {
             in_tun = 0
             skip_package_array = 0
@@ -335,10 +335,12 @@ magicnet_singbox_apply_app_policy() {
                 in_tun = 0
             }
         }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" || {
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
         rm -f "$_tmp" 2>/dev/null || true
         return 1
-    }
+    fi
 }
 
 magicnet_singbox_apply_zashboard() {
@@ -346,7 +348,7 @@ magicnet_singbox_apply_zashboard() {
     [ -f "$_config" ] || return 0
 
     _tmp="${_config}.zashboard.new"
-    awk '
+    if awk '
         /"external_ui"[[:space:]]*:/ {
             sub(/"external_ui"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"external_ui\": \"zashboard\"")
         }
@@ -354,10 +356,12 @@ magicnet_singbox_apply_zashboard() {
             sub(/"external_ui_download_url"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"external_ui_download_url\": \"https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip\"")
         }
         { print }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" || {
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
         rm -f "$_tmp" 2>/dev/null || true
         return 1
-    }
+    fi
 }
 
 magicnet_capture_dir() {
@@ -448,7 +452,7 @@ magicnet_capture_apply_mihomo() {
     _rules_file="${MODDIR}/.tmp/magicnet-capture-mihomo.rules"
     mkdir -p "${_rules_file%/*}"
     magicnet_capture_yaml_rules "$MAGICNET_CAPTURE_NAME" >"$_rules_file"
-    awk \
+    if awk \
         -v enabled="$MAGICNET_CAPTURE_ENABLED" \
         -v name="$MAGICNET_CAPTURE_NAME" \
         -v host="$MAGICNET_CAPTURE_HOST" \
@@ -512,10 +516,12 @@ magicnet_capture_apply_mihomo() {
                 inserted_rules = 1
             }
         }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" || {
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
         rm -f "$_tmp" 2>/dev/null || true
         return 1
-    }
+    fi
 }
 
 magicnet_capture_apply_singbox() {
@@ -526,7 +532,7 @@ magicnet_capture_apply_singbox() {
     _route_rules_file="${MODDIR}/.tmp/magicnet-capture-singbox.rules"
     mkdir -p "${_route_rules_file%/*}"
     magicnet_capture_singbox_rule_block "magicnet-capture" >"$_route_rules_file" || true
-    awk \
+    if awk \
         -v enabled="$MAGICNET_CAPTURE_ENABLED" \
         -v host="$MAGICNET_CAPTURE_HOST" \
         -v port="$MAGICNET_CAPTURE_PORT" \
@@ -649,10 +655,12 @@ magicnet_capture_apply_singbox() {
             }
             print
         }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" || {
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
         rm -f "$_tmp" 2>/dev/null || true
         return 1
-    }
+    fi
 }
 
 magicnet_capture_apply() {
