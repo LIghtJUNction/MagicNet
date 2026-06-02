@@ -696,7 +696,12 @@ magicnet_watchdog_start() {
     [ "${MAGICNET_WATCHDOG:-0}" != "1" ] || return 0
     [ -f "${MODDIR}/cli" ] || return 0
     import watchdog
-    watchdog start "$(magicnet_watchdog_name)" "$(magicnet_watchdog_interval)" "$(magicnet_watchdog_command)" >/dev/null 2>&1 || true
+    _watchdog_notify_arg="--notify"
+    [ "${MAGICNET_NOTIFY_ENABLED:-1}" != "0" ] || _watchdog_notify_arg="--no-notify"
+    [ "${MAGICNET_WATCHDOG_NOTIFY:-1}" != "0" ] || _watchdog_notify_arg="--no-notify"
+    KAM_WATCHDOG_NOTIFY_TITLE="${MAGICNET_WATCHDOG_NOTIFY_TITLE:-MagicNet}" \
+        watchdog start "$_watchdog_notify_arg" "$(magicnet_watchdog_name)" "$(magicnet_watchdog_interval)" "$(magicnet_watchdog_command)" >/dev/null 2>&1 || true
+    unset _watchdog_notify_arg
 }
 
 magicnet_watchdog_stop() {

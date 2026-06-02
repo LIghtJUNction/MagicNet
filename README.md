@@ -19,7 +19,7 @@ MagicNet 是一个 KAM 构建的 Android root 模块，用于在设备上以 TUN
 - 内置 mihomo 规则集和 Geo 数据更新。
 - 默认 WebUI 跳转，可在安装时选择；mihomo / sing-box 均使用 Clash API 兼容控制端。
 - 内置 CLI：服务启停、日志、节点热切换、模式切换、订阅更新、连接管理。
-- kamfw watchdog 保活：核心异常退出后自动拉起，并通过 Android 通知提示重启事件。
+- kamfw watchdog 保活：核心异常退出后自动拉起，并通过 Android 通知提示重启事件和看门狗失败事件。
 - kamfw fswatch 配置监听：`.config` 变化后自动重新应用运行态配置、抓包规则、热点转发和 VPN 共存规则。
 - TUN 分应用代理：基于 sing-box TUN `include_package` / `exclude_package`，支持黑名单和白名单模式。
 - 热点客户端可跟随本机 TUN 代理转发。
@@ -156,7 +156,7 @@ su -c /data/adb/modules/MagicNet/cli service logs sing-box 120
 su -c /data/adb/modules/MagicNet/cli config apply
 ```
 
-`service start` 会同时启动 kamfw watchdog 和 fswatch。watchdog 默认每 30 秒执行一次 `service ensure`，当 sing-box / mihomo 进程都不在时自动拉起默认 TUN 内核；如果确实由 watchdog 拉起核心，会发送一条 Android 通知。fswatch 默认每 15 秒监听 `.config`，检测到配置变化后执行 `config apply`，重新应用 zashboard、分应用策略、抓包规则、热点转发和 VPN 共存规则。
+`service start` 会同时启动 kamfw watchdog 和 fswatch。watchdog 默认每 30 秒执行一次 `service ensure`，当 sing-box / mihomo 进程都不在时自动拉起默认 TUN 内核；如果确实由 watchdog 拉起核心，会发送一条 Android 通知。MagicNet 同步启用 kamfw 的 `watchdog start --notify`，当 `service ensure` 本身失败时也会发出看门狗失败通知。fswatch 默认每 15 秒监听 `.config`，检测到配置变化后执行 `config apply`，重新应用 zashboard、分应用策略、抓包规则、热点转发和 VPN 共存规则。
 
 `service stop` 与 `service restart` 会先停止 watchdog / fswatch，避免手动停止后被立即拉回。通知依赖 Android `cmd notification`，部分 ROM 不保证横幅弹出，但通知会按 kamfw 的 shell 通知路径发送。
 
