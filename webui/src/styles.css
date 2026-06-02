@@ -26,8 +26,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 14% 0%, rgba(98, 243, 169, 0.16), transparent 30%),
-    linear-gradient(180deg, rgba(215, 208, 188, 0.06), transparent 260px),
+    linear-gradient(180deg, rgba(98, 243, 169, 0.06), transparent 260px),
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.026) 0 1px, transparent 1px 56px),
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 56px),
     var(--bg);
@@ -268,14 +267,14 @@ code {
 
 .overview {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.9fr);
   gap: 14px;
-  min-height: 268px;
-  padding: 16px;
+  min-height: 220px;
+  padding: 15px;
   border: 1px solid rgba(93, 240, 166, 0.22);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(98, 243, 169, 0.16), rgba(132, 199, 255, 0.08) 45%, rgba(215, 208, 188, 0.06)),
+    linear-gradient(135deg, rgba(98, 243, 169, 0.13), rgba(132, 199, 255, 0.07) 44%, rgba(215, 208, 188, 0.04)),
     #0c1110;
   position: relative;
   overflow: hidden;
@@ -319,8 +318,8 @@ code {
 
 .overview h2 {
   max-width: 620px;
-  font-size: clamp(30px, 5vw, 58px);
-  line-height: 1.02;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.05;
   letter-spacing: 0;
 }
 
@@ -328,12 +327,12 @@ code {
   max-width: 680px;
   color: #c2ccc6;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.58;
 }
 
 .command-deck {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -341,6 +340,7 @@ code {
 .command-secondary {
   min-height: 44px;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .command-primary {
@@ -447,7 +447,7 @@ code {
 
 .overview-side {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   align-content: stretch;
 }
 
@@ -461,6 +461,20 @@ code {
   border: 1px solid rgba(215, 208, 188, 0.16);
   border-radius: 8px;
   background: rgba(8, 10, 10, 0.72);
+}
+
+.compact-signal {
+  min-height: 66px;
+}
+
+.compact-signal > span:not(.status-dot) {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: rgba(132, 199, 255, 0.1);
+  color: var(--blue);
 }
 
 .signal-card small,
@@ -492,7 +506,7 @@ code {
 .health-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .health-pill {
@@ -500,11 +514,45 @@ code {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  min-height: 70px;
+  min-height: 64px;
   padding: 12px;
   border: 1px solid rgba(215, 208, 188, 0.14);
   border-radius: 8px;
   background: rgba(8, 10, 10, 0.62);
+}
+
+.section-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(132, 199, 255, 0.08), transparent 55%),
+    #0c1110;
+}
+
+.section-intro h3 {
+  margin-top: 4px;
+  font-size: 22px;
+  line-height: 1.18;
+}
+
+.section-intro p {
+  max-width: 760px;
+  margin-top: 7px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .health-pill > span {
@@ -1029,6 +1077,10 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.sub-grid {
+  margin-top: 12px;
+}
+
 .sub-toolbar button,
 .terminal,
 .always-output pre {
@@ -1524,7 +1576,15 @@ button:disabled {
   }
 
   .tabs {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .tabs button {
+    width: auto;
+    flex: 0 0 auto;
+    min-width: 112px;
   }
 
   .meta {
@@ -1532,6 +1592,10 @@ button:disabled {
   }
 
   .action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .command-deck {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1545,6 +1609,7 @@ button:disabled {
   .top-actions,
   .mode-panel,
   .policy-header,
+  .section-intro,
   .picker-head,
   .sub-head,
   .node-head,
@@ -1568,6 +1633,7 @@ button:disabled {
   }
 
   .top-actions a,
+  .top-actions button,
   .refresh,
   .segmented,
   .command-primary,
@@ -1585,7 +1651,8 @@ button:disabled {
   }
 
   .tabs {
-    grid-template-columns: 1fr;
+    margin-left: -2px;
+    margin-right: -2px;
   }
 
   .overview {
@@ -1604,6 +1671,15 @@ button:disabled {
   .health-grid,
   .health-summary {
     grid-template-columns: 1fr;
+  }
+
+  .section-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .section-actions button {
+    flex: 1 1 150px;
   }
 
   .action-grid,

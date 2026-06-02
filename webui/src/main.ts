@@ -154,7 +154,9 @@ const state: State = {
     subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`
   },
   lastCommand: "",
-  output: "面板已加载。通过 KernelSU WebUI 打开时，按钮会直接执行模块 CLI。",
+  output: hasKsuBridge
+    ? "面板已加载。正在读取 MagicNet 运行状态..."
+    : "本地预览模式：这里不会伪造设备数据。通过 KernelSU/APatch 模块 WebUI 打开后，所有按钮会直接调用模块 CLI。",
   nodes: [],
   currentNode: "",
   nodeDelays: {},
@@ -166,8 +168,8 @@ const state: State = {
   },
   appPolicy: {
     mode: "blacklist",
-    proxy: ["com.android.chrome", "org.telegram.messenger"],
-    bypass: ["com.miui.weather2", "com.android.providers.downloads"]
+    proxy: [],
+    bypass: []
   },
   subscriptions: {
     singBox: "",
@@ -453,6 +455,13 @@ async function openCoreUi(): Promise<void> {
 
 async function runAction(command: string): Promise<void> {
   const text = await runCli(command);
+  if (/^health\b/.test(command)) {
+    state.health = parseHealth(text);
+    state.activeTab = "health";
+  }
+  if (/^service status\b/.test(command)) {
+    state.runtime = parseRuntimeStatus(text);
+  }
   if (execFailed(text)) {
     await refreshStatus();
     await refreshHealth(true);
@@ -470,6 +479,26 @@ async function runAction(command: string): Promise<void> {
   }
   if (/^api close-all\b/.test(command)) {
     await refreshTraffic(true);
+  }
+}
+
+async function refreshDashboard(quiet = false): Promise<void> {
+  if (!quiet) {
+    state.output = "正在刷新运行状态、订阅、节点、流量、策略和诊断...";
+    render();
+  }
+  await refreshStatus();
+  await refreshTraffic(true);
+  await refreshNodes(true);
+  await refreshSubscriptions(true);
+  await refreshApps(true);
+  await refreshRoutes(true);
+  await refreshCapture(true);
+  await refreshCerts(true);
+  await refreshHealth(true);
+  if (!quiet) {
+    state.output = "面板刷新完成。";
+    render();
   }
 }
 
@@ -925,6 +954,14 @@ function simpleList(items: string[], kind: "app" | "domain"): string {
 function capturePanel(): string {
   return `
     <div class="capture-grid">
+      <div class="section-intro">
+        <div>
+          <span class="eyebrow">Packet Capture Routing</span>
+          <h3>抓包分流只改目标流量</h3>
+          <p>App 仍看到系统 TUN，MagicNet 在内核配置里把指定包名或域名送到电脑 HTTP 代理；mihomo 和 sing-box 配置同步应用。</p>
+        </div>
+        <button class="command-secondary" data-run="capture apply" ${state.busy ? "disabled" : ""}>${icon("ShieldCheck", 17)}重新应用</button>
+      </div>
       <div class="capture-card">
         <div class="sub-head">
           <div>
@@ -1022,6 +1059,26 @@ function subscriptionPanel(): string {
     .join("");
 }
 
+function subscriptionsSection(): string {
+  const configured = Number(Boolean(state.subscriptions.singBox)) + Number(Boolean(state.subscriptions.mihomo));
+  return `
+    <div class="section-intro">
+      <div>
+        <span class="eyebrow">Subscriptions</span>
+        <h3>订阅链接管理</h3>
+        <p>已配置 ${configured}/2。这里可以填写、保存、复制 Clash/mihomo 和 sing-box 订阅链接，保存后再更新订阅即可生效。</p>
+      </div>
+      <div class="section-actions">
+        <button class="command-secondary" data-refresh-subs ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}读取链接</button>
+        <button class="command-primary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>${icon("DownloadCloud", 17)}更新全部</button>
+      </div>
+    </div>
+    <div class="sub-grid">
+      ${subscriptionPanel()}
+    </div>
+  `;
+}
+
 function certPanel(): string {
   const certRows = state.certs.length
     ? state.certs
@@ -1111,8 +1168,9 @@ function routeList(items: string[], target: "proxy" | "direct" | "block"): strin
 
 function routePanel(): string {
   return `
-    <div class="policy-header">
+    <div class="section-intro">
       <div>
+        <span class="eyebrow">Routing Rules</span>
         <h3>自定义域名分流</h3>
         <p>高优先级 DOMAIN-SUFFIX 规则，直接写入 sing-box 与 mihomo 的 TUN 路由。</p>
       </div>
@@ -1221,7 +1279,11 @@ function commandDeck(): string {
     <div class="command-deck">
       <button class="command-primary" data-run="service restart" ${state.busy ? "disabled" : ""}>
         ${icon("RotateCcw", 20)}
-        <span>重启 TUN 内核</span>
+        <span>重启内核</span>
+      </button>
+      <button class="command-secondary" data-open-core-ui ${state.busy ? "disabled" : ""}>
+        ${icon("ExternalLink", 18)}
+        <span>内核面板</span>
       </button>
       <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>
         ${icon("DownloadCloud", 18)}
@@ -1229,11 +1291,7 @@ function commandDeck(): string {
       </button>
       <button class="command-secondary" data-action="refresh-all" ${state.busy ? "disabled" : ""}>
         ${icon("RefreshCw", 18)}
-        <span>刷新状态</span>
-      </button>
-      <button class="command-secondary" data-open-core-ui ${state.busy ? "disabled" : ""}>
-        ${icon("ExternalLink", 18)}
-        <span>内核 WebUI</span>
+        <span>刷新面板</span>
       </button>
     </div>
   `;
@@ -1260,22 +1318,26 @@ function setupPanel(): string {
 }
 
 function overviewPanel(): string {
-  const bridgeText = state.hasKsu ? "可直接执行模块命令" : "本地预览，只展示界面";
+  const bridgeText = state.hasKsu ? "KernelSU 执行通道已接入" : "本地预览模式，不显示假运行数据";
   const headline = state.runtime.core === "stopped" || state.runtime.core === "unknown"
-    ? "TUN 已停止，点一下就能拉起。"
-    : `${state.runtime.core} 正在接管系统流量。`;
+    ? "透明代理控制台"
+    : `${state.runtime.core} TUN 正在运行`;
   const statusCaption = state.runtime.core === "unknown"
     ? "服务状态未检测到有效输出"
     : state.runtime.core === "stopped"
       ? "没有代理内核进程"
       : `${state.runtime.core} ${runtimeDetail(state.runtime.core === "sing-box" ? state.runtime.singBox : state.runtime.mihomo)}`;
+  const health = healthSummary();
+  const healthText = state.health.length
+    ? `${health.ok} 正常 / ${health.warn} 警告 / ${health.fail} 失败`
+    : "尚未运行健康诊断";
 
   return `
     <section class="overview">
       <div class="overview-main">
         <span class="eyebrow">Transparent TUN Control</span>
         <h2>${headline}</h2>
-        <p>${bridgeText}。默认只走 TUN，不做 TUN 之外 fallback；核心 WebUI、订阅、抓包、证书和分应用策略集中在这个面板。</p>
+        <p>${bridgeText}。入口固定是 TUN；内核面板、订阅、分应用、抓包、证书、热点转发和 VPN 共存都在这里完成。</p>
         ${commandDeck()}
       </div>
       <div class="overview-side">
@@ -1285,6 +1347,14 @@ function overviewPanel(): string {
             <small>当前状态</small>
             <strong>${escapeHtml(state.statusText)}</strong>
             <em>${escapeHtml(statusCaption)}</em>
+          </div>
+        </div>
+        <div class="signal-card compact-signal">
+          <span>${icon("Stethoscope", 18)}</span>
+          <div>
+            <small>健康摘要</small>
+            <strong>${escapeHtml(healthText)}</strong>
+            <em>${state.health.length ? "诊断来自模块 CLI" : "点击健康诊断后生成"}</em>
           </div>
         </div>
         <div class="health-grid">
@@ -1340,8 +1410,9 @@ function render(): void {
           </div>
         </div>
         <div class="top-actions">
+          <button class="ghost-link" data-action="refresh-all" ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 16)}刷新</button>
           <a class="ghost-link" href="${REPO}" target="_blank" rel="noreferrer">${icon("Github", 16)}GitHub</a>
-          <button class="primary-link" data-open-core-ui ${state.busy ? "disabled" : ""}>${icon("ExternalLink", 16)}内核 WebUI</button>
+          <button class="primary-link" data-open-core-ui ${state.busy ? "disabled" : ""}>${icon("ExternalLink", 16)}内核面板</button>
         </div>
       </header>
 
@@ -1351,7 +1422,7 @@ function render(): void {
             <span class="${`status-dot ${state.status}`}"></span>
             <div>
               <strong>${state.statusText}</strong>
-              <small>${state.hasKsu ? "KernelSU exec 已接入" : "等待 KernelSU WebView"}</small>
+              <small>${state.hasKsu ? "真机执行模式" : "本地预览模式"}</small>
             </div>
           </div>
           <nav class="tabs">
@@ -1409,8 +1480,9 @@ function render(): void {
           </div>
 
           <div class="tab-panel ${tab === "apps" ? "show" : ""}">
-            <div class="policy-header">
+            <div class="section-intro">
               <div>
+                <span class="eyebrow">Per-App TUN</span>
                 <h3>分应用 TUN 策略</h3>
                 <p>${state.appPolicy.mode === "whitelist" ? "白名单：只有 proxy 列表进入 TUN" : "黑名单：bypass 列表不进入 TUN"}</p>
               </div>
@@ -1457,13 +1529,7 @@ function render(): void {
           </div>
 
           <div class="tab-panel ${tab === "subs" ? "show" : ""}">
-            <div class="sub-toolbar">
-              <button data-refresh-subs>${icon("RefreshCw", 17)}读取链接</button>
-              <button data-run="sub update-all">${icon("DownloadCloud", 17)}更新 sing-box 订阅</button>
-            </div>
-            <div class="sub-grid">
-              ${subscriptionPanel()}
-            </div>
+            ${subscriptionsSection()}
           </div>
 
           <div class="tab-panel ${tab === "capture" ? "show" : ""}">
@@ -1523,9 +1589,10 @@ function bindEvents(): void {
     });
   });
 
-  document.querySelector<HTMLButtonElement>("[data-action='refresh-all']")?.addEventListener("click", async () => {
-    await refreshStatus();
-    await refreshApps(true);
+  document.querySelectorAll<HTMLButtonElement>("[data-action='refresh-all']").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await refreshDashboard();
+    });
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-open-core-ui]").forEach((button) => {
@@ -1791,6 +1858,7 @@ if (state.hasKsu) {
 async function bootstrap(): Promise<void> {
   render();
   await refreshStatus();
+  if (!state.hasKsu) return;
   await refreshApps(true);
   await refreshRoutes(true);
   await refreshSubscriptions(true);
