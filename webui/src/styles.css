@@ -2333,49 +2333,59 @@ a.disabled {
 }
 
 .topology-map {
-  min-height: 300px;
+  min-height: 0;
   padding: 12px;
+  overflow-x: auto;
 }
 
-.topology-map svg {
-  width: 100%;
-  height: min(52vh, 420px);
+.topology-flow {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(190px, 1fr);
+  gap: 10px;
+  min-width: 980px;
 }
 
-.topology-line {
-  fill: none;
-  stroke: rgba(98, 243, 169, 0.42);
-  stroke-width: 1.1;
-}
-
-.topology-line.dashed {
-  stroke: rgba(132, 199, 255, 0.38);
-  stroke-dasharray: 3 3;
-}
-
-.topology-node {
+.topology-node-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 168px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #070a09;
+  color: var(--ink);
+  text-align: left;
   cursor: pointer;
 }
 
-.topology-node circle {
-  fill: #070a09;
-  stroke: rgba(215, 208, 188, 0.38);
-  stroke-width: 1.2;
+.topology-node-card span {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 26px;
+  border: 1px solid rgba(98, 243, 169, 0.34);
+  border-radius: 7px;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 900;
 }
 
-.topology-node text {
-  fill: var(--muted);
-  font-size: 3px;
-  text-anchor: middle;
+.topology-node-card strong {
+  font-size: 15px;
+  line-height: 1.25;
 }
 
-.topology-node.active circle {
-  fill: rgba(98, 243, 169, 0.18);
-  stroke: var(--green);
+.topology-node-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.topology-node.active text {
-  fill: var(--ink);
+.topology-node-card.active {
+  border-color: rgba(98, 243, 169, 0.5);
+  background: rgba(98, 243, 169, 0.08);
 }
 
 .topology-explain {
@@ -2394,21 +2404,35 @@ a.disabled {
   line-height: 1.55;
 }
 
-.route-editor {
+.topology-facts {
+  display: grid;
+  gap: 6px;
+}
+
+.topology-facts span {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.route-readonly {
   display: grid;
   gap: 10px;
   margin-top: 12px;
-  border: 1px solid rgba(242, 189, 92, 0.28);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
-  background: rgba(242, 189, 92, 0.05);
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.route-editor h3 {
+.route-readonly h3 {
   font-size: 18px;
 }
 
-.route-editor p {
+.route-readonly p {
   color: var(--muted);
   line-height: 1.5;
 }
@@ -2549,38 +2573,6 @@ a.disabled {
 .route-editor-note strong {
   color: var(--amber);
   font-size: 13px;
-}
-
-.route-editor-form {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto;
-  gap: 8px;
-  align-items: end;
-}
-
-.route-editor-form label {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.route-editor-form label span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 850;
-}
-
-.route-editor-form input {
-  min-height: 38px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 10px;
-  background: #090d0c;
-  color: var(--ink);
-}
-
-.route-editor-form button {
-  min-height: 38px;
 }
 
 .mini-button.danger {
@@ -2972,7 +2964,6 @@ a.disabled {
   .topology-layout,
   .sysroute-overview,
   .sysroute-grid,
-  .route-editor-form,
   .health-grid,
   .health-summary,
   .switch-stack,

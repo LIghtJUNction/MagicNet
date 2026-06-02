@@ -519,6 +519,22 @@ fn sub_get(app: &App, target: &str) {
     println!("{}", first_clean_line(sub_target_file(app, target)));
 }
 
+fn mihomo_provider_key(line: &str) -> Option<String> {
+    if !line.starts_with("  ") || line.starts_with("    ") {
+        return None;
+    }
+    let trimmed = line.trim();
+    let key = trimmed.split_once(':')?.0.trim();
+    if key.is_empty()
+        || key.contains(char::is_whitespace)
+        || key.ends_with("-http")
+        || matches!(key, "health-check" | "type" | "interval" | "path" | "url")
+    {
+        return None;
+    }
+    Some(key.to_string())
+}
+
 fn mihomo_providers(app: &App) -> Vec<(String, String)> {
     let text =
         fs::read_to_string(app.moddir.join(".config/mihomo/config.yaml")).unwrap_or_default();
@@ -526,7 +542,10 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
     let mut in_providers = false;
     let mut current: Option<String> = None;
     for line in text.lines() {
-        if line.trim() == "proxy-providers:" {
+        if matches!(
+            line.trim(),
+            "proxy-providers:" | "proxy-provider-templates:"
+        ) {
             in_providers = true;
             continue;
         }
@@ -537,8 +556,8 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
             continue;
         }
         let trimmed = line.trim();
-        if line.starts_with("  ") && trimmed.ends_with(':') && !trimmed.contains(' ') {
-            current = Some(trimmed.trim_end_matches(':').to_string());
+        if let Some(provider) = mihomo_provider_key(line) {
+            current = Some(provider);
             continue;
         }
         if let Some(rest) = trimmed.strip_prefix("url:") {
@@ -572,7 +591,7 @@ fn update_mihomo_config_url(
     let mut done = false;
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed == "proxy-providers:" {
+        if matches!(trimmed, "proxy-providers:" | "proxy-provider-templates:") {
             in_providers = true;
             out.push(line.to_string());
             continue;
@@ -581,12 +600,10 @@ fn update_mihomo_config_url(
             in_providers = false;
             current_provider = None;
         }
-        if in_providers
-            && line.starts_with("  ")
-            && trimmed.ends_with(':')
-            && !trimmed.contains(' ')
-        {
-            current_provider = Some(trimmed.trim_end_matches(':').to_string());
+        if in_providers {
+            if let Some(provider) = mihomo_provider_key(line) {
+                current_provider = Some(provider);
+            }
         }
         let provider_matches = target_provider
             .map(|target| current_provider.as_deref() == Some(target))

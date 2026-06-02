@@ -51,7 +51,7 @@ const PACKAGE_SCAN_LIMIT = 160;
 const AUTO_CORE_OPEN_ENABLED_KEY = "magicnet.autoCoreOpen.enabled";
 const AUTO_CORE_OPEN_TARGET_KEY = "magicnet.autoCoreOpen.target";
 const CUSTOM_WEBUI_PANELS_KEY = "magicnet.customWebui.panels";
-let cliQueue: Promise<unknown> = Promise.resolve();
+let cliWriteQueue: Promise<unknown> = Promise.resolve();
 const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
 const hasKsuBridge = typeof ksuBridge?.exec === "function";
 
@@ -584,9 +584,19 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
 }
 
-function enqueueCli<T>(label: string, task: () => Promise<T>, onStart?: () => void | Promise<void>): Promise<T> {
+function isReadOnlyCli(args: string): boolean {
+  return /^(service status|mcp status|api (ui|groups|conns|stats)\b|app list|block list|sub list|capture list|cert list|health\b|pingtest\b|topology\b|sysroute snapshot|config-editor (path|get)\b|support bundle\b)/.test(args);
+}
+
+function enqueueCli<T>(args: string, task: () => Promise<T>, onStart?: () => void | Promise<void>): Promise<T> {
+  if (isReadOnlyCli(args)) {
+    return Promise.resolve().then(async () => {
+      await onStart?.();
+      return task();
+    });
+  }
   state.commandQueueDepth += 1;
-  const run = cliQueue.then(async () => {
+  const run = cliWriteQueue.then(async () => {
     state.commandQueueDepth = Math.max(0, state.commandQueueDepth - 1);
     await onStart?.();
     return task();
@@ -595,7 +605,7 @@ function enqueueCli<T>(label: string, task: () => Promise<T>, onStart?: () => vo
     await onStart?.();
     return task();
   });
-  cliQueue = run.catch(() => undefined);
+  cliWriteQueue = run.catch(() => undefined);
   return run;
 }
 
@@ -631,7 +641,7 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
       state.activeTask = "";
       state.busy = false;
       state.output = text;
-      render();
+      paintCommandState();
     }
     return text;
   }
@@ -643,17 +653,17 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
     state.commandPhase = wasBusy ? "queued" : "accepted";
     state.commandNotice = wasBusy ? `已加入队列：${label}` : `已接收命令：${label}`;
     state.output = `$ ${command}\n执行中...`;
-    render();
+    paintCommandState();
     await nextFrame();
   }
 
   try {
-    const result = await enqueueCli(label, async () => withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, label), async () => {
+    const result = await enqueueCli(args, async () => withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, label), async () => {
       if (!options.quiet) {
         state.commandPhase = "running";
         state.commandNotice = `正在执行：${label}`;
         state.activeTask = label;
-        render();
+        paintCommandState();
         await nextFrame();
       }
     });
@@ -662,6 +672,7 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
       state.commandPhase = "done";
       state.commandNotice = `已完成：${label}`;
       state.output = `$ ${command}\n${text || "完成"}`;
+      paintCommandState();
     }
     if (options.refreshApps) {
       await refreshApps(true);
@@ -674,19 +685,21 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
       state.commandNotice = `执行失败：${label}`;
     }
     state.output = `$ ${command}\n执行失败：${message}`;
+    if (!options.quiet) paintCommandState();
     return state.output;
   } finally {
     if (!options.quiet && state.activeTask === label) {
       state.busy = false;
       state.activeTask = "";
-      render();
+      paintCommandState();
     }
   }
 }
 
 async function openExternalUrl(url: string, label = "外部链接"): Promise<void> {
-  state.output = `正在调用系统浏览器打开：\n${url}`;
-  render();
+  await navigator.clipboard?.writeText(url);
+  state.output = `已复制 ${label} 链接，正在调用系统浏览器打开：\n${url}`;
+  paintCommandState();
 
   if (state.hasKsu) {
     const command = `su -c ${shellQuote(`am start -a android.intent.action.VIEW -d ${intentDataQuote(url)}`)}`;
@@ -695,23 +708,25 @@ async function openExternalUrl(url: string, label = "外部链接"): Promise<voi
       const result = await kernelsu.exec(command);
       const text = normalizeExecResult(result);
       if (!execFailed(text)) {
-        state.output = `已交给系统浏览器打开：\n${url}`;
-        kernelsu.toast?.(`${label} 已打开`);
-        render();
+        state.output = `已复制链接，并交给系统浏览器打开：\n${url}`;
+        kernelsu.toast?.(`${label} 链接已复制并打开`);
+        paintCommandState();
         return;
       }
-      state.output = `系统浏览器启动失败：\n${text}\n\n链接：\n${url}`;
-      render();
+      state.output = `系统浏览器启动失败，但链接已经复制：\n${url}\n\n${text}`;
+      paintCommandState();
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      state.output = `系统浏览器启动失败：${message}\n\n链接：\n${url}`;
-      render();
+      state.output = `系统浏览器启动失败，但链接已经复制：${message}\n\n${url}`;
+      paintCommandState();
       return;
     }
   }
 
   window.open(url, "_blank", "noopener,noreferrer");
+  state.output = `已复制链接，并尝试打开新窗口：\n${url}`;
+  paintCommandState();
 }
 
 function parseAppPolicy(text: string): AppPolicy {
@@ -1317,10 +1332,6 @@ async function refreshPingtest(): Promise<void> {
 async function refreshTopology(quiet = false): Promise<void> {
   const text = await runCli("topology", { quiet, label: "网络拓扑" });
   state.topology = text;
-  if (state.hasKsu) {
-    const routeText = await runCli("sysroute snapshot", { quiet: true, label: "系统路由表" });
-    if (routeText) state.sysrouteSnapshot = parseSysrouteSnapshot(routeText);
-  }
   if (!quiet) {
     state.activeTab = "topology";
     render();
@@ -1604,20 +1615,25 @@ function topologyPanel(): string {
   const focus = topologyConcepts[state.topologyFocus] || topologyConcepts.tun;
   const snapshot = state.sysrouteSnapshot;
   const nodes = [
-    ["app", 10, 42],
-    ["route", 24, 42],
-    ["tun", 40, 42],
-    ["core", 58, 42],
-    ["upstream", 78, 42],
-    ["hotspot", 24, 72],
-    ["vpn", 48, 18]
+    ["app", "01"],
+    ["route", "02"],
+    ["tun", "03"],
+    ["core", "04"],
+    ["upstream", "05"],
+    ["hotspot", "旁路"],
+    ["vpn", "共存"]
   ] as const;
+  const routeSummary = [
+    `默认出口：${snapshot.defaultRoutes.map(routeDevFromLine).filter(Boolean)[0] || "未知"}`,
+    `策略规则：${snapshot.rules.length || 0} 条`,
+    `TUN 路由：${snapshot.tunRoutes.length || 0} 条`
+  ];
   return `
     <div class="section-intro">
       <div>
         <span class="eyebrow">Network Topology</span>
         <h3>透明代理网络拓扑</h3>
-        <p>把虚拟网卡、策略路由、TUN、热点转发和 VPN 共存画成可点选路径。路由表来自真实设备，可手动刷新和谨慎编辑。</p>
+        <p>把虚拟网卡、策略路由、TUN、热点转发和 VPN 共存画成可点选路径。这里只展示真实设备状态，不在管理面板里编辑代理规则。</p>
       </div>
       <div class="section-actions">
         <button class="command-secondary" data-refresh-topology>${icon("RefreshCw", 17)}刷新拓扑</button>
@@ -1626,49 +1642,39 @@ function topologyPanel(): string {
     </div>
     <div class="topology-layout">
       <section class="topology-map">
-        <svg viewBox="0 0 100 90" role="img" aria-label="MagicNet network topology">
-          <path class="topology-line" d="M16 42 H76" />
-          <path class="topology-line dashed" d="M24 68 V47" />
-          <path class="topology-line dashed" d="M49 22 V37" />
-          ${nodes.map(([key, x, y]) => `
-            <g class="topology-node ${state.topologyFocus === key ? "active" : ""}" data-topology-node="${key}" transform="translate(${x} ${y})">
-              <circle r="6"></circle>
-              <text y="15">${escapeHtml(topologyConcepts[key].title)}</text>
-            </g>
-          `).join("")}
-        </svg>
+        <div class="topology-flow" role="list" aria-label="MagicNet network topology">
+          ${nodes.map(([key, marker]) => {
+            const concept = topologyConcepts[key];
+            return `
+              <button class="topology-node-card ${state.topologyFocus === key ? "active" : ""}" data-topology-node="${key}" role="listitem">
+                <span>${escapeHtml(marker)}</span>
+                <strong>${escapeHtml(concept.title)}</strong>
+                <small>${escapeHtml(concept.body)}</small>
+              </button>
+            `;
+          }).join("")}
+        </div>
       </section>
       <section class="topology-explain">
         <span class="eyebrow">Concept</span>
         <h3>${escapeHtml(focus.title)}</h3>
         <p>${escapeHtml(focus.body)}</p>
+        <div class="topology-facts">
+          ${routeSummary.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+        </div>
         <button class="command-secondary" data-copy-topology-explain>${icon("Copy", 17)}复制解说</button>
       </section>
     </div>
-    <section class="route-editor">
+    <section class="route-readonly">
       <div>
-        <span class="eyebrow">System Route Workbench</span>
-        <h3>系统路由表可视化与手动编辑</h3>
-        <p>这里编辑 Android Linux 底层 <code>ip rule</code> / <code>ip route</code>。它不是代理分流配置，也不会自动写入全局防漏墙。每次只改一条，改完立即刷新。</p>
+        <span class="eyebrow">System Route Viewer</span>
+        <h3>系统路由表只读视图</h3>
+        <p>这里解释 Android Linux 底层 <code>ip rule</code> / <code>ip route</code> 的现状。代理规则、节点选择和策略模式请在内核 WebUI 管理。</p>
       </div>
       ${sysrouteOverview()}
-      <form class="route-editor-form" data-sysroute-rule-form>
-        <label><span>priority</span><input name="priority" value="${escapeHtml(state.sysroute.rulePriority)}" inputmode="numeric" /></label>
-        <label><span>lookup table</span><input name="table" value="${escapeHtml(state.sysroute.ruleTable)}" placeholder="main 或 100" /></label>
-        <button type="submit">${icon("Plus", 17)}添加 ip rule</button>
-        <button type="button" data-sysroute-del-rule>${icon("X", 17)}删除 priority</button>
-      </form>
-      <form class="route-editor-form" data-sysroute-route-form>
-        <label><span>table</span><input name="table" value="${escapeHtml(state.sysroute.routeTable)}" placeholder="main 或 100" /></label>
-        <label><span>dest</span><input name="dest" value="${escapeHtml(state.sysroute.routeDest)}" placeholder="default 或 0.0.0.0/0" /></label>
-        <label><span>dev</span><input name="dev" value="${escapeHtml(state.sysroute.routeDev)}" placeholder="tun0 / wlan0" /></label>
-        <label><span>via 可空</span><input name="via" value="${escapeHtml(state.sysroute.routeVia)}" placeholder="192.168.1.1" /></label>
-        <button type="submit">${icon("Plus", 17)}添加 route</button>
-        <button type="button" data-sysroute-del-route>${icon("X", 17)}删除 route</button>
-      </form>
       <div class="route-editor-note">
         <strong>关于网上说的“锁死路由”</strong>
-        <span>把规则抢到 priority 0 或直接 DROP 物理网卡，确实可能防漏，但也可能让 Android 网络服务、外部 VPN、热点和内核自身出网一起断掉。MagicNet 只提供手动编辑和证据展示，不做不可回滚的一键锁死。</span>
+        <span>把规则抢到 priority 0 或直接 DROP 物理网卡，确实可能防漏，但也可能让 Android 网络服务、外部 VPN、热点和内核自身出网一起断掉。MagicNet 管理页只展示证据和解释，不提供容易误伤网络的路由编辑按钮。</span>
       </div>
     </section>
     <section class="sysroute-grid">
@@ -1953,7 +1959,7 @@ function commandFeedback(): string {
       : "无等待任务";
 
   return `
-    <section class="command-feedback ${state.commandPhase}">
+    <section class="command-feedback ${state.commandPhase}" data-command-feedback>
       <div>
         <span>${icon(state.commandPhase === "error" ? "Ban" : state.commandPhase === "running" ? "Activity" : "Terminal", 17)}</span>
         <div>
@@ -1964,6 +1970,32 @@ function commandFeedback(): string {
       <code>${escapeHtml(detail)}</code>
     </section>
   `;
+}
+
+function alwaysOutputPanel(): string {
+  return `
+    <div class="always-output" data-always-output>
+      <div class="output-head">
+        <span>${icon("TerminalSquare", 17)}最近输出</span>
+        <code>${escapeHtml(state.lastCommand || "等待执行")}</code>
+      </div>
+      <pre>${escapeHtml(compactOutput(state.output, 2400))}</pre>
+    </div>
+  `;
+}
+
+function paintCommandState(): void {
+  const feedback = document.querySelector<HTMLElement>("[data-command-feedback]");
+  if (feedback) feedback.outerHTML = commandFeedback();
+
+  const output = document.querySelector<HTMLElement>("[data-always-output]");
+  if (output) output.outerHTML = alwaysOutputPanel();
+
+  const taskText = document.querySelector<HTMLElement>("[data-task-summary]");
+  if (taskText) taskText.textContent = state.activeTask ? `执行中：${state.activeTask}` : "空闲";
+
+  const taskPill = document.querySelector<HTMLElement>("[data-task-pill]");
+  if (taskPill) taskPill.classList.toggle("running", state.busy);
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -2202,7 +2234,7 @@ function blocklistPanel(): string {
         <div class="sub-head">
           <div>
             <h3>手动阻断域名</h3>
-            <p>立即写入双内核，优先级高于普通分流。</p>
+            <p>立即写入双内核，优先级高于普通代理规则。</p>
           </div>
         </div>
         <form class="inline-form" data-block-add-form>
@@ -2238,8 +2270,8 @@ function capturePanel(): string {
     <div class="capture-grid">
       <div class="section-intro">
         <div>
-          <span class="eyebrow">Packet Capture Routing</span>
-          <h3>抓包分流只改目标流量</h3>
+          <span class="eyebrow">Packet Capture</span>
+          <h3>抓包规则只改目标流量</h3>
           <p>App 仍看到系统 TUN，MagicNet 在内核配置里把指定包名或域名送到电脑 HTTP 代理；mihomo 和 sing-box 配置同步应用。</p>
         </div>
         <button class="command-secondary" data-run="capture apply">${icon("ShieldCheck", 17)}重新应用</button>
@@ -2248,7 +2280,7 @@ function capturePanel(): string {
         <div class="sub-head">
           <div>
             <h3>抓包代理出口</h3>
-            <p>目标 App 或域名会在 TUN 内被分流到你的电脑 HTTP 抓包代理。</p>
+            <p>目标 App 或域名会在 TUN 内被送到你的电脑 HTTP 抓包代理。</p>
           </div>
           <button class="toggle ${state.capture.enabled ? "on" : ""}" data-capture-toggle>
             ${state.capture.enabled ? "已启用" : "未启用"}
@@ -2322,7 +2354,7 @@ function subscriptionsSection(): string {
         </div>
       `)
       .join("")
-    : `<div class="sub-card"><div class="picker-empty"><strong>未读取到 mihomo provider</strong><span>请确认 config.yaml 中存在 proxy-providers。</span></div></div>`;
+    : `<div class="sub-card"><div class="picker-empty"><strong>未读取到 mihomo provider</strong><span>请确认 config.yaml 中存在 proxy-providers 或 proxy-provider-templates。</span></div></div>`;
   const subscriptionCards = `
     <div class="sub-card">
       <div class="sub-head">
@@ -2899,11 +2931,11 @@ function topSummary(): string {
           <strong>${escapeHtml(core)}</strong>
         </div>
       </div>
-      <div class="summary-pill task-pill ${state.busy ? "running" : ""}">
+      <div class="summary-pill task-pill ${state.busy ? "running" : ""}" data-task-pill>
         <span>${icon(state.busy ? "Activity" : "Terminal", 16)}</span>
         <div>
           <small>任务</small>
-          <strong>${escapeHtml(task)}</strong>
+          <strong data-task-summary>${escapeHtml(task)}</strong>
         </div>
       </div>
     </div>
@@ -2989,13 +3021,7 @@ function render(): void {
           ${adjacentTabs()}
           ${activeTabPanel(tab)}
 
-          <div class="always-output">
-            <div class="output-head">
-              <span>${icon("TerminalSquare", 17)}最近输出</span>
-              <code>${escapeHtml(state.lastCommand || "等待执行")}</code>
-            </div>
-            <pre>${escapeHtml(compactOutput(state.output, 2400))}</pre>
-          </div>
+          ${alwaysOutputPanel()}
         </section>
       </main>
       ${mobileDock()}
@@ -3306,7 +3332,7 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-adapt-webui]").forEach((button) => {
     button.addEventListener("click", async () => {
       const id = button.dataset.adaptWebui || "";
-      const panel = state.webuiPanels.find((item) => item.id === id);
+      const panel = state.webuiPanels.find((item) => item.id === id) || state.webuiPanelForm;
       await openExternalUrl(webuiAdaptIssueUrl(panel), "WebUI 适配 Issue");
     });
   });
@@ -3347,61 +3373,6 @@ function bindEvents(): void {
     await navigator.clipboard?.writeText(text);
     state.output = `${text}\n\n已复制拓扑解说。`;
     if (state.hasKsu) kernelsu.toast?.("拓扑解说已复制");
-    render();
-  });
-
-  document.querySelector<HTMLFormElement>("[data-sysroute-rule-form]")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    state.sysroute.rulePriority = String(form.get("priority") || "").trim();
-    state.sysroute.ruleTable = String(form.get("table") || "").trim();
-    if (!/^[0-9]+$/.test(state.sysroute.rulePriority) || !/^[A-Za-z0-9_.-]+$/.test(state.sysroute.ruleTable)) {
-      state.output = "ip rule 参数格式不对。priority 必须是数字，table 只能是简单表名或数字。";
-      render();
-      return;
-    }
-    await runCli(`sysroute add-rule ${shellQuote(state.sysroute.rulePriority)} ${shellQuote(state.sysroute.ruleTable)}`, { label: "添加 ip rule" });
-    await refreshSysroute(true);
-    render();
-  });
-
-  document.querySelector<HTMLButtonElement>("[data-sysroute-del-rule]")?.addEventListener("click", async () => {
-    if (!/^[0-9]+$/.test(state.sysroute.rulePriority)) {
-      state.output = "要删除的 priority 必须是数字。";
-      render();
-      return;
-    }
-    await runCli(`sysroute del-rule ${shellQuote(state.sysroute.rulePriority)}`, { label: "删除 ip rule" });
-    await refreshSysroute(true);
-    render();
-  });
-
-  document.querySelector<HTMLFormElement>("[data-sysroute-route-form]")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    state.sysroute.routeTable = String(form.get("table") || "").trim();
-    state.sysroute.routeDest = String(form.get("dest") || "").trim();
-    state.sysroute.routeDev = String(form.get("dev") || "").trim();
-    state.sysroute.routeVia = String(form.get("via") || "").trim();
-    const token = /^[A-Za-z0-9_./:-]+$/;
-    if (!token.test(state.sysroute.routeTable) || !token.test(state.sysroute.routeDest) || !token.test(state.sysroute.routeDev) || (state.sysroute.routeVia && !token.test(state.sysroute.routeVia))) {
-      state.output = "route 参数格式不对。请只填写 table、dest、dev、via 这类简单 token。";
-      render();
-      return;
-    }
-    await runCli(`sysroute add-route ${shellQuote(state.sysroute.routeTable)} ${shellQuote(state.sysroute.routeDest)} ${shellQuote(state.sysroute.routeDev)} ${shellQuote(state.sysroute.routeVia || "-")}`, { label: "添加 ip route" });
-    await refreshSysroute(true);
-    render();
-  });
-
-  document.querySelector<HTMLButtonElement>("[data-sysroute-del-route]")?.addEventListener("click", async () => {
-    if (!state.sysroute.routeTable || !state.sysroute.routeDest) {
-      state.output = "删除 route 需要填写 table 和 dest。";
-      render();
-      return;
-    }
-    await runCli(`sysroute del-route ${shellQuote(state.sysroute.routeTable)} ${shellQuote(state.sysroute.routeDest)}`, { label: "删除 ip route" });
-    await refreshSysroute(true);
     render();
   });
 

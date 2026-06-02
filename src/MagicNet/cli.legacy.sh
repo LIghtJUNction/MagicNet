@@ -66,14 +66,14 @@ cli_fast_first_line() {
 
 cli_parse_mihomo_providers_file() {
     _file="$1"
-    _start="$(grep -n '^proxy-providers:' "$_file" 2>/dev/null | head -1 | cut -d: -f1)"
+    _start="$(grep -n -E '^proxy-providers:|^proxy-provider-templates:' "$_file" 2>/dev/null | head -1 | cut -d: -f1)"
     [ -n "$_start" ] || { unset _file _start; return 0; }
     _line_no=0
     sed -n "$((_start + 1)),\$p" "$_file" | while IFS= read -r _line || [ -n "$_line" ]; do
         _line_no=$((_line_no + 1))
         case "$_line" in
             [![:space:]]*:*) break ;;
-            '  '*:*)
+            '  '[![:space:]]*:*)
                 case "$_line" in
                     *'url:'*|*'path:'*|*'<<:'*|*'interval:'*|*'type:'*|*'health-check:'*) ;;
                     *)
@@ -1158,9 +1158,9 @@ cli_sub_list_mihomo_providers() {
     _config="$(cli_sub_mihomo_config)"
     [ -f "$_config" ] || return 0
     awk '
-        /^proxy-providers:/ { in_providers = 1; next }
+        /^proxy-providers:/ || /^proxy-provider-templates:/ { in_providers = 1; next }
         in_providers && /^[^[:space:]][^:]*:/ { in_providers = 0 }
-        in_providers && /^[[:space:]][^[:space:]][^:]*:[[:space:]]*(#.*)?$/ {
+        in_providers && /^  [^[:space:]][^:]*:[[:space:]]*(#.*)?$/ && !/^  (health-check|type|interval|path|url):/ && !/^  [^[:space:]][^:]*-http:/ {
             provider = $0
             sub(/^[[:space:]]*/, "", provider)
             sub(/:.*/, "", provider)
@@ -1238,9 +1238,9 @@ cli_sub_set_mihomo_config_url() {
     _tmp="${_config}.subscription.new"
     awk -v url="$_url" -v target_provider="$_provider" '
         BEGIN { done = 0; in_target = target_provider == "" ? 1 : 0 }
-        /^proxy-providers:/ { in_providers = 1; next }
+        /^proxy-providers:/ || /^proxy-provider-templates:/ { in_providers = 1; next }
         in_providers && /^[^[:space:]][^:]*:/ { in_providers = 0 }
-        in_providers && /^[[:space:]][^[:space:]][^:]*:[[:space:]]*(#.*)?$/ {
+        in_providers && /^  [^[:space:]][^:]*:[[:space:]]*(#.*)?$/ && !/^  (health-check|type|interval|path|url):/ && !/^  [^[:space:]][^:]*-http:/ {
             provider = $0
             sub(/^[[:space:]]*/, "", provider)
             sub(/:.*/, "", provider)
