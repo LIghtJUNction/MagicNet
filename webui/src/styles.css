@@ -633,6 +633,88 @@ code {
   gap: 10px;
 }
 
+.command-feedback {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #0c1110;
+}
+
+.command-feedback > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.command-feedback > div > span {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(132, 199, 255, 0.1);
+  color: var(--blue);
+}
+
+.command-feedback small,
+.command-feedback strong {
+  display: block;
+  min-width: 0;
+}
+
+.command-feedback small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.command-feedback strong {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-feedback code {
+  justify-self: end;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-feedback.accepted,
+.command-feedback.queued,
+.command-feedback.running {
+  border-color: rgba(98, 243, 169, 0.34);
+  background: rgba(98, 243, 169, 0.08);
+}
+
+.command-feedback.accepted > div > span,
+.command-feedback.queued > div > span,
+.command-feedback.running > div > span {
+  color: var(--green);
+  background: var(--green-weak);
+}
+
+.command-feedback.error {
+  border-color: rgba(255, 106, 95, 0.44);
+  background: rgba(255, 106, 95, 0.08);
+}
+
+.command-feedback.error > div > span {
+  color: var(--red);
+  background: rgba(255, 106, 95, 0.12);
+}
+
 .control-quick {
   margin-bottom: 12px;
 }
@@ -722,6 +804,14 @@ code {
   min-height: 44px;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.command-primary.running,
+.command-secondary.running,
+.action-card.running {
+  border-color: rgba(98, 243, 169, 0.55);
+  background: rgba(98, 243, 169, 0.14);
+  color: var(--green);
 }
 
 .command-primary span,
@@ -2283,6 +2373,7 @@ a.disabled {
   }
 
   .command-deck,
+  .command-feedback,
   .runtime-control,
   .restart-form,
   .setup-form,
@@ -2296,6 +2387,23 @@ a.disabled {
 
   .command-deck {
     gap: 8px;
+  }
+
+  .command-feedback {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .command-feedback code {
+    justify-self: stretch;
+    max-width: none;
+  }
+
+  .command-feedback strong {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .command-primary,

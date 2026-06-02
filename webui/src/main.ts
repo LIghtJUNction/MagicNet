@@ -110,6 +110,9 @@ type State = {
   hasKsu: boolean;
   busy: boolean;
   activeTask: string;
+  commandPhase: "idle" | "accepted" | "queued" | "running" | "done" | "error";
+  commandNotice: string;
+  commandQueueDepth: number;
   coreMenuOpen: boolean;
   statusDrawerOpen: boolean;
   status: "checking" | "online" | "offline" | "local";
@@ -153,6 +156,9 @@ const state: State = {
   hasKsu: hasKsuBridge,
   busy: false,
   activeTask: "",
+  commandPhase: "idle",
+  commandNotice: "",
+  commandQueueDepth: 0,
   coreMenuOpen: false,
   statusDrawerOpen: false,
   status: "checking",
@@ -362,19 +368,33 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
 }
 
-function enqueueCli<T>(task: () => Promise<T>): Promise<T> {
-  const run = cliQueue.then(task, task);
+function enqueueCli<T>(label: string, task: () => Promise<T>, onStart?: () => void | Promise<void>): Promise<T> {
+  state.commandQueueDepth += 1;
+  const run = cliQueue.then(async () => {
+    state.commandQueueDepth = Math.max(0, state.commandQueueDepth - 1);
+    await onStart?.();
+    return task();
+  }, async () => {
+    state.commandQueueDepth = Math.max(0, state.commandQueueDepth - 1);
+    await onStart?.();
+    return task();
+  });
   cliQueue = run.catch(() => undefined);
   return run;
 }
 
 async function runCli(args: string, options: { refreshApps?: boolean; quiet?: boolean; label?: string } = {}): Promise<string> {
   const command = `su -c ${shellQuote(`${CLI} ${args}`)}`;
+  const label = options.label || args;
   state.lastCommand = command;
 
   if (!state.hasKsu) {
     const text = `当前浏览器没有 KernelSU 执行通道。\n\n在真机终端可执行：\n${command}`;
     if (!options.quiet) {
+      state.commandPhase = "done";
+      state.commandNotice = `已生成真机命令：${label}`;
+      state.activeTask = "";
+      state.busy = false;
       state.output = text;
       render();
     }
@@ -382,17 +402,30 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
   }
 
   if (!options.quiet) {
+    const wasBusy = state.busy;
     state.busy = true;
-    state.activeTask = options.label || args;
+    state.activeTask = label;
+    state.commandPhase = wasBusy ? "queued" : "accepted";
+    state.commandNotice = wasBusy ? `已加入队列：${label}` : `已接收命令：${label}`;
     state.output = `$ ${command}\n执行中...`;
     render();
     await nextFrame();
   }
 
   try {
-    const result = await enqueueCli(() => withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, options.label || args));
+    const result = await enqueueCli(label, async () => withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, label), async () => {
+      if (!options.quiet) {
+        state.commandPhase = "running";
+        state.commandNotice = `正在执行：${label}`;
+        state.activeTask = label;
+        render();
+        await nextFrame();
+      }
+    });
     const text = normalizeExecResult(result);
     if (!options.quiet) {
+      state.commandPhase = "done";
+      state.commandNotice = `已完成：${label}`;
       state.output = `$ ${command}\n${text || "完成"}`;
     }
     if (options.refreshApps) {
@@ -401,10 +434,14 @@ async function runCli(args: string, options: { refreshApps?: boolean; quiet?: bo
     return text;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (!options.quiet) {
+      state.commandPhase = "error";
+      state.commandNotice = `执行失败：${label}`;
+    }
     state.output = `$ ${command}\n执行失败：${message}`;
     return state.output;
   } finally {
-    if (!options.quiet) {
+    if (!options.quiet && state.activeTask === label) {
       state.busy = false;
       state.activeTask = "";
       render();
@@ -1002,6 +1039,7 @@ function activeTabPanel(tab: State["activeTab"]): string {
     const restartSingBoxDisabled = state.runtime.singBoxDisabled ? "disabled" : "";
     return `
       <div class="tab-panel show">
+        ${commandFeedback()}
         <div class="control-quick">
           ${commandDeck()}
         </div>
@@ -1039,10 +1077,10 @@ function activeTabPanel(tab: State["activeTab"]): string {
                   </div>
                   <div class="action-grid">
                     ${group.items.map((item) => `
-                      <button class="action-card ${item.tone || ""}" data-run="${item.command}">
+                      <button class="action-card ${item.tone || ""} ${state.activeTask === item.command ? "running" : ""}" data-run="${item.command}">
                         <span>${icon(item.icon, 20)}</span>
                         <strong>${item.label}</strong>
-                        <small>${item.hint}</small>
+                        <small>${state.activeTask === item.command ? "正在执行，稍等返回结果" : item.hint}</small>
                       </button>
                     `).join("")}
                   </div>
@@ -1134,6 +1172,36 @@ function activeTabPanel(tab: State["activeTab"]): string {
       </div>
       <pre class="terminal">${escapeHtml(compactOutput(state.output))}</pre>
     </div>
+  `;
+}
+
+function commandFeedback(): string {
+  const message = state.commandNotice || (state.hasKsu ? "命令会在点击后立即进入队列，执行结果显示在输出页。" : "本地预览模式会显示可复制命令，不执行 root 操作。");
+  const phaseLabel = {
+    idle: "空闲",
+    accepted: "已接收",
+    queued: "排队",
+    running: "执行中",
+    done: "完成",
+    error: "失败"
+  }[state.commandPhase];
+  const detail = state.commandQueueDepth > 0
+    ? `队列中 ${state.commandQueueDepth} 个任务`
+    : state.activeTask
+      ? state.activeTask
+      : "无等待任务";
+
+  return `
+    <section class="command-feedback ${state.commandPhase}">
+      <div>
+        <span>${icon(state.commandPhase === "error" ? "Ban" : state.commandPhase === "running" ? "Activity" : "Terminal", 17)}</span>
+        <div>
+          <small>${phaseLabel}</small>
+          <strong>${escapeHtml(message)}</strong>
+        </div>
+      </div>
+      <code>${escapeHtml(detail)}</code>
+    </section>
   `;
 }
 
@@ -1572,9 +1640,9 @@ function healthPill(label: string, value: string, iconName: string): string {
 function commandDeck(): string {
   return `
     <div class="command-deck">
-      <button class="command-primary" data-run="service restart">
+      <button class="command-primary ${state.activeTask === "service restart" ? "running" : ""}" data-run="service restart">
         ${icon("RotateCcw", 20)}
-        <span>重启内核</span>
+        <span>${state.activeTask === "service restart" ? "重启中" : "重启内核"}</span>
       </button>
       <button class="command-secondary" data-open-core-ui-target="metacubex">
         ${icon("ExternalLink", 18)}
@@ -1588,13 +1656,13 @@ function commandDeck(): string {
         ${icon("Server", 18)}
         <span>zashboard</span>
       </button>
-      <button class="command-secondary" data-run="sub update-all">
+      <button class="command-secondary ${state.activeTask === "sub update-all" ? "running" : ""}" data-run="sub update-all">
         ${icon("DownloadCloud", 18)}
-        <span>更新订阅</span>
+        <span>${state.activeTask === "sub update-all" ? "更新中" : "更新订阅"}</span>
       </button>
-      <button class="command-secondary" data-action="refresh-all">
+      <button class="command-secondary ${state.activeTask === "刷新面板" ? "running" : ""}" data-action="refresh-all">
         ${icon("RefreshCw", 18)}
-        <span>刷新面板</span>
+        <span>${state.activeTask === "刷新面板" ? "刷新中" : "刷新面板"}</span>
       </button>
     </div>
   `;
@@ -1654,7 +1722,7 @@ function statusDrawer(): string {
     ? `${health.ok} 正常 / ${health.warn} 警告 / ${health.fail} 失败`
     : "尚未运行健康诊断";
   const core = state.runtime.core === "unknown" ? "待刷新" : state.runtime.core;
-  const task = state.activeTask ? `执行中：${state.activeTask}` : "空闲";
+  const task = state.commandNotice || (state.activeTask ? `执行中：${state.activeTask}` : "空闲");
 
   return `
     <section class="status-drawer ${state.statusDrawerOpen ? "open" : ""}" data-status-drawer>
@@ -1705,6 +1773,7 @@ function statusDrawer(): string {
             <span>Module <code>${MODULE_DIR}</code></span>
             <span>Control <code>${escapeHtml(state.runtime.api.replace(/^https?:\/\//, ""))}</code></span>
             <span>WebUI <code>${escapeHtml(coreUiUrl())}</code></span>
+            <span>Queue <code>${escapeHtml(state.commandQueueDepth ? `${state.commandQueueDepth} waiting` : state.commandPhase)}</code></span>
           </div>
         </div>
       ` : ""}
