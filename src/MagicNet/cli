@@ -181,9 +181,63 @@ cli_config() {
 }
 
 cli_json_string_array() {
-    sed -n 's/.*"all"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p' |
-        tr ',' '\n' |
-        sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//; /^[[:space:]]*$/d'
+    _limit="${MAGICNET_NODE_LIST_LIMIT:-48}"
+    case "$_limit" in
+        ''|*[!0-9]*) _limit=48 ;;
+    esac
+    awk -v limit="$_limit" '
+        BEGIN {
+            found = 0
+            in_string = 0
+            escaped = 0
+            value = ""
+            count = 0
+        }
+        {
+            line = $0
+            if (!found) {
+                pos = index(line, "\"all\":[")
+                if (!pos) next
+                line = substr(line, pos + 7)
+                found = 1
+            }
+
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (in_string) {
+                    if (escaped) {
+                        value = value c
+                        escaped = 0
+                        continue
+                    }
+                    if (c == "\\") {
+                        escaped = 1
+                        continue
+                    }
+                    if (c == "\"") {
+                        if (value != "") {
+                            print value
+                            count++
+                            if (limit > 0 && count >= limit) exit
+                        }
+                        value = ""
+                        in_string = 0
+                        continue
+                    }
+                    value = value c
+                    continue
+                }
+
+                if (c == "\"") {
+                    in_string = 1
+                    value = ""
+                    continue
+                }
+                if (c == "]") exit
+            }
+        }
+    '
+    unset _limit
 }
 
 cli_node_group_candidates() {
@@ -215,15 +269,55 @@ cli_node_group() {
         return 0
     fi
 
+    _cache="${MODDIR}/.tmp/magicnet-node-group"
+    if [ -s "$_cache" ]; then
+        _group="$(sed -n '1p' "$_cache")"
+        if [ -n "$_group" ]; then
+            _json="$(cli_curl "${MAGICNET_API}/proxies/$(cli_urlencode "$_group")" 2>/dev/null || true)"
+            if cli_node_group_is_useful "$_json"; then
+                printf '%s\n' "$_group"
+                unset _cache _group _json
+                return 0
+            fi
+        fi
+    fi
+
     cli_node_group_candidates | awk '!seen[$0]++' | while IFS= read -r _group; do
         [ -n "$_group" ] || continue
         _json="$(cli_curl "${MAGICNET_API}/proxies/$(cli_urlencode "$_group")" 2>/dev/null || true)"
         [ -n "$_json" ] || continue
         if cli_node_group_is_useful "$_json"; then
+            mkdir -p "${_cache%/*}"
+            printf '%s\n' "$_group" >"$_cache"
             printf '%s\n' "$_group"
             exit 0
         fi
     done
+    unset _cache _group _json
+}
+
+cli_node_is_builtin() {
+    case "$1" in
+        DIRECT|REJECT|REJECT-DROP|PASS|COMPATIBLE|'') return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+cli_node_is_obvious_group() {
+    case "$1" in
+        *选择*|*策略*|*Selector*|*selector*|*URLTest*|*urltest*|*Fallback*|*fallback*|GLOBAL|Global|global) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+cli_node_list_filter() {
+    while IFS= read -r _node; do
+        [ -n "$_node" ] || continue
+        cli_node_is_builtin "$_node" && continue
+        cli_node_is_obvious_group "$_node" && continue
+        printf '%s\n' "$_node"
+    done
+    unset _node
 }
 
 cli_node() {
@@ -235,7 +329,7 @@ cli_node() {
     _group_url="$(cli_urlencode "$_group")"
     case "${1:-list}" in
         list)
-            cli_curl "${MAGICNET_API}/proxies/${_group_url}" | cli_json_string_array
+            cli_curl "${MAGICNET_API}/proxies/${_group_url}" | cli_json_string_array | cli_node_list_filter
             ;;
         current)
             cli_curl "${MAGICNET_API}/proxies/${_group_url}" |
@@ -253,7 +347,7 @@ cli_node() {
             ;;
         delay|test)
             _test_url="${MAGICNET_DELAY_URL:-https://www.gstatic.com/generate_204}"
-            _timeout="${MAGICNET_DELAY_TIMEOUT:-5000}"
+            _timeout="${MAGICNET_DELAY_TIMEOUT:-2500}"
             shift
             if [ -n "${1:-}" ]; then
                 _node="$1"
@@ -263,9 +357,9 @@ cli_node() {
                 )"
                 printf '%s=%s\n' "$_node" "${_delay:-timeout}"
             else
-                _delay_limit="${MAGICNET_DELAY_LIMIT:-20}"
+                _delay_limit="${MAGICNET_DELAY_LIMIT:-8}"
                 case "$_delay_limit" in
-                    ''|*[!0-9]*) _delay_limit=20 ;;
+                    ''|*[!0-9]*) _delay_limit=8 ;;
                 esac
                 _delay_count=0
                 cli_node list | while IFS= read -r _node; do

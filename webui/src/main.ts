@@ -39,7 +39,7 @@ const MODULE_DIR = "/data/adb/modules/MagicNet";
 const CLI = `${MODULE_DIR}/cli`;
 const CORE_UI = "http://127.0.0.1:9090/ui/cubex/";
 const REPO = "https://github.com/LIghtJUNction/MagicNet";
-const NODE_RENDER_LIMIT = 80;
+const NODE_RENDER_LIMIT = 48;
 const OUTPUT_RENDER_LIMIT = 6000;
 const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
 const hasKsuBridge = typeof ksuBridge?.exec === "function";
@@ -521,13 +521,12 @@ async function runAction(command: string): Promise<void> {
 async function refreshDashboard(quiet = false): Promise<void> {
   if (!quiet) {
     state.busy = true;
-    state.output = "正在刷新运行状态、订阅、节点、流量、策略和诊断...";
+    state.output = "正在刷新运行状态、订阅、流量、策略和诊断...";
     render();
   }
   try {
     await refreshStatus(true);
     await refreshTraffic(true);
-    await refreshNodes(true);
     await refreshSubscriptions(true);
     await refreshApps(true);
     await refreshRoutes(true);
@@ -617,7 +616,9 @@ async function refreshNodes(quiet = false): Promise<void> {
       .map((line) => line.trim())
       .filter(Boolean);
     if (!quiet) {
-      state.output = `当前节点：${state.currentNode || "未读取"}\n可用节点：${state.nodes.length}`;
+      state.output = state.nodes.length
+        ? `当前策略值：${state.currentNode || "未读取"}\n候选出口：${state.nodes.length} 个`
+        : `当前策略值：${state.currentNode || "未读取"}\n没有可展示的候选出口。请更新订阅，或到内核面板检查当前策略组。`;
     }
   }
   if (!quiet) render();
@@ -913,10 +914,10 @@ function nodePanel(): string {
         <div>
           <span class="eyebrow">Proxy Selector</span>
           <h3>${escapeHtml(state.currentNode || "未读取当前节点")}</h3>
-          <p>直接切换 TUN 出口。当前仅渲染 ${visibleNodes.length}/${state.nodes.length} 条，避免 Android WebView 卡顿${hiddenCount ? `，还有 ${hiddenCount} 条可在内核面板查看` : ""}。</p>
+          <p>这里显示当前策略组的候选出口，已过滤 DIRECT、REJECT 和明显策略组。当前仅渲染 ${visibleNodes.length}/${state.nodes.length} 条，保证 Android WebView 顺滑${hiddenCount ? `，剩余 ${hiddenCount} 条在内核面板查看` : ""}。</p>
         </div>
         <div class="node-actions">
-          <button class="command-secondary" data-test-nodes ${state.busy || state.nodes.length === 0 ? "disabled" : ""}>${icon("Gauge", 17)}测速前 20</button>
+          <button class="command-secondary" data-test-nodes ${state.busy || state.nodes.length === 0 ? "disabled" : ""}>${icon("Gauge", 17)}测速前 8</button>
           <button class="command-secondary" data-refresh-nodes ${state.busy ? "disabled" : ""}>${icon("RefreshCw", 17)}刷新节点</button>
           <button class="command-secondary" data-run="sub update-all" ${state.busy ? "disabled" : ""}>${icon("DownloadCloud", 17)}更新订阅</button>
         </div>
@@ -1635,6 +1636,8 @@ function bindEvents(): void {
     button.addEventListener("click", () => {
       state.activeTab = button.dataset.tab as State["activeTab"];
       render();
+      if (state.hasKsu && state.activeTab === "health" && state.health.length === 0) void refreshHealth();
+      if (state.hasKsu && state.activeTab === "control" && state.nodes.length === 0) void refreshNodes();
     });
   });
 
@@ -1931,7 +1934,6 @@ async function bootstrap(): Promise<void> {
   await refreshApps(true);
   await refreshRoutes(true);
   await refreshSubscriptions(true);
-  await refreshNodes(true);
   await refreshTraffic(true);
   await refreshCerts(true);
   await refreshCapture(true);
