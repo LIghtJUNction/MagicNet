@@ -4,6 +4,10 @@ MagicNet 是一个 KAM 构建的 Android root 网络模块，用于在设备上�
 
 > 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.0`。Release 以发布页为准。
 
+## 界面预览
+
+![MagicNet mobile management panel](docs/assets/screenshots/magicnet-mobile-audit.png)
+
 ## 当前状态
 
 - `kam build` 已可完整构建模块。
