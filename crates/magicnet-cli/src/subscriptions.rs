@@ -155,7 +155,10 @@ fn update_singbox_subscription(app: &App) -> Result<(), String> {
 }
 
 fn update_mihomo_providers(app: &App) -> Result<(), String> {
-    let providers = mihomo_providers(app);
+    let providers: Vec<_> = mihomo_providers(app)
+        .into_iter()
+        .filter(|(_, url)| !url.trim().is_empty())
+        .collect();
     if providers.is_empty() {
         return Err("mihomo proxy-providers has no usable url. Run `cli sub set mihomo premium_a <subscription-url>` or `cli setup <subscription-url>` first".to_string());
     }
@@ -233,10 +236,13 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
         .iter()
         .filter_map(|(key, value)| {
             let name = key.as_str()?.to_string();
-            let url = value.get("url")?.as_str()?.trim().to_string();
-            if url.is_empty() {
-                return None;
-            }
+            let _ = value.as_mapping()?;
+            let url = value
+                .get("url")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_string();
             Some((name, url))
         })
         .collect()
@@ -256,7 +262,7 @@ fn update_mihomo_config_url(
     };
     let target_key = target_provider.map(ToOwned::to_owned).or_else(|| {
         providers.iter().find_map(|(key, value)| {
-            value.get("url")?;
+            value.as_mapping()?;
             key.as_str().map(ToOwned::to_owned)
         })
     });
@@ -270,12 +276,66 @@ fn update_mihomo_config_url(
         return Err(format!("mihomo provider {target_key} is not a map"));
     };
     provider_map.insert(
+        Value::String("type".to_string()),
+        Value::String("http".to_string()),
+    );
+    provider_map.insert(
+        Value::String("interval".to_string()),
+        Value::Number(serde_yaml::Number::from(3600)),
+    );
+    provider_map.insert(
         Value::String("url".to_string()),
         Value::String(url.to_string()),
     );
+    let health_check = serde_yaml::from_str(
+        "{enable: true, url: http://www.gstatic.com/generate_204, interval: 300}",
+    )
+    .map_err(|err| format!("build mihomo health-check: {err}"))?;
+    provider_map.insert(Value::String("health-check".to_string()), health_check);
+    attach_mihomo_provider_to_groups(&mut config, &target_key);
     write_mihomo_yaml(app, &config)?;
     println!("[info] Updated mihomo provider {target_key}");
     Ok(())
+}
+
+fn attach_mihomo_provider_to_groups(config: &mut Value, provider: &str) {
+    let Some(groups) = config
+        .get_mut("proxy-groups")
+        .and_then(Value::as_sequence_mut)
+    else {
+        return;
+    };
+    for group in groups {
+        let Some(group_map) = group.as_mapping_mut() else {
+            continue;
+        };
+        let type_key = Value::String("type".to_string());
+        let group_type = group_map
+            .get(&type_key)
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !matches!(
+            group_type,
+            "select" | "url-test" | "fallback" | "load-balance"
+        ) {
+            continue;
+        }
+        let use_key = Value::String("use".to_string());
+        let use_value = group_map
+            .entry(use_key)
+            .or_insert_with(|| Value::Sequence(Vec::new()));
+        let Some(use_list) = use_value.as_sequence_mut() else {
+            continue;
+        };
+        let already_present = use_list.iter().any(|item| {
+            item.as_str()
+                .map(|value| value == provider)
+                .unwrap_or(false)
+        });
+        if !already_present {
+            use_list.push(Value::String(provider.to_string()));
+        }
+    }
 }
 
 fn ensure_mihomo_provider_cache_dir(app: &App) -> Result<(), String> {
@@ -395,6 +455,11 @@ proxy-providers:
   premium:
     type: http
     url: https://old.example/sub
+proxy-groups:
+  - name: proxy
+    type: select
+    use: []
+    proxies: [DIRECT, REJECT]
 "#,
         );
 
@@ -412,6 +477,17 @@ proxy-providers:
 
         let text = fs::read_to_string(app.moddir.join(".config/mihomo/config.yaml")).unwrap();
         assert!(text.contains("https://new.example/sub"), "{text}");
+        let saved_yaml: Value = serde_yaml::from_str(&text).unwrap();
+        let saved_use = saved_yaml
+            .get("proxy-groups")
+            .and_then(Value::as_sequence)
+            .and_then(|groups| groups.first())
+            .and_then(|group| group.get("use"))
+            .and_then(Value::as_sequence)
+            .unwrap();
+        assert!(saved_use
+            .iter()
+            .any(|item| item.as_str() == Some("premium")));
         let saved = fs::read_to_string(app.moddir.join(".config/mihomo/subscription.url")).unwrap();
         assert_eq!(saved, "https://new.example/sub\n");
     }
@@ -441,6 +517,34 @@ proxy-providers:
         let text = fs::read_to_string(app.moddir.join(".config/mihomo/config.yaml")).unwrap();
         assert!(text.contains("https://example.com/sub"), "{text}");
         assert!(app.moddir.join(".config/mihomo/proxies").is_dir());
+    }
+
+    #[test]
+    fn mihomo_provider_list_includes_empty_url_slots() {
+        let app = temp_app();
+        write_mihomo(
+            &app,
+            r#"
+proxy-providers:
+  premium_a:
+    type: http
+    path: ./proxies/A.yaml
+    url: ""
+  premium_b:
+    type: http
+    path: ./proxies/B.yaml
+"#,
+        );
+
+        let providers = mihomo_providers(&app);
+
+        assert_eq!(
+            providers,
+            vec![
+                ("premium_a".to_string(), String::new()),
+                ("premium_b".to_string(), String::new())
+            ]
+        );
     }
 
     #[test]

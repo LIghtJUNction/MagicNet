@@ -23,16 +23,46 @@ magicnet_refresh_status() {
 magicnet_start_mihomo() {
     [ "${MAGIC_MIHOMO:-1}" -ne 0 ] || return 1
     magicnet_cmd_exists mihomo || return 1
+    magicnet_prepare_mihomo_nodes || return 1
+    if magicnet_cmd_exists sing-box; then
+        import __singbox__
+        if is_singbox_running >/dev/null 2>&1; then
+            magicnet_warn "Stopping sing-box before starting mihomo..."
+            singbox_stop || return 1
+        fi
+    fi
     import __mihomo__
-    mihomo_start
+    mihomo_start || return 1
+    if ! magicnet_mihomo_running_has_nodes; then
+        magicnet_warn "mihomo started but no proxy nodes were detected; stopping mihomo."
+        mihomo_stop >/dev/null 2>&1 || true
+        magicnet_need_nodes_message mihomo
+        return 1
+    fi
+    return 0
 }
 
 magicnet_start_singbox() {
     [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
     ! magicnet_singbox_disabled || return 1
     magicnet_cmd_exists sing-box || return 1
+    magicnet_prepare_singbox_nodes || return 1
+    if magicnet_cmd_exists mihomo; then
+        import __mihomo__
+        if is_mihomo_running >/dev/null 2>&1; then
+            magicnet_warn "Stopping mihomo before starting sing-box..."
+            mihomo_stop || return 1
+        fi
+    fi
     import __singbox__
-    singbox_start
+    singbox_start || return 1
+    if ! magicnet_singbox_running_has_nodes; then
+        magicnet_warn "sing-box started but no proxy nodes were detected; stopping sing-box."
+        singbox_stop >/dev/null 2>&1 || true
+        magicnet_need_nodes_message sing-box
+        return 1
+    fi
+    return 0
 }
 
 magicnet_kernel_running() {
@@ -135,4 +165,3 @@ magicnet_show_dashboard() {
     panel_row "sing-box subscription" "${MODDIR}/.config/sing-box/subscription.url"
     panel_end
 }
-

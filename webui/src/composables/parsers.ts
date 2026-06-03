@@ -1,5 +1,5 @@
 import { CORE_UI, MODULE_DIR } from "@/constants";
-import type { AppPolicy, BlocklistState, HealthItem, RuntimeState } from "@/types";
+import type { AppPolicy, BlocklistState, HealthItem, PackageInfo, RuntimeState } from "@/types";
 import type { MihomoProvider } from "@/types";
 
 export type SubscriptionState = {
@@ -152,6 +152,20 @@ export function parseApps(text: string): AppPolicy {
     else if (section) policy[section].push(line);
   });
   return policy;
+}
+
+export function parsePackages(text: string): PackageInfo[] {
+  return text.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)+$/.test(line))
+    .map((packageName) => ({
+      packageName,
+      versionName: "",
+      versionCode: 0,
+      appLabel: packageName,
+      isSystem: false,
+      uid: 0
+    }));
 }
 
 export function parseBlock(text: string, previous: BlocklistState): BlocklistState {

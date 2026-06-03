@@ -69,8 +69,8 @@ function issueUrl(): string {
         <span v-if="state.config.dirty" class="shrink-0 rounded bg-amber-500/15 px-2 py-1 text-xs text-amber-200">未保存</span>
       </div>
       <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm leading-6 text-zinc-400">
-        <p v-if="state.config.target === 'sing-box'">sing-box 配置文件是 JSON。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 sing-box check，通过后才覆盖并应用。</p>
-        <p v-else>mihomo 配置文件是 YAML。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 mihomo -t，通过后才覆盖并应用。</p>
+        <p v-if="state.config.target === 'sing-box'">sing-box 配置文件是 JSON。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 sing-box check，通过后才覆盖。</p>
+        <p v-else>mihomo 配置文件是 YAML。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 mihomo -t，通过后才覆盖。</p>
       </div>
       <Textarea
         v-model="state.config.text"

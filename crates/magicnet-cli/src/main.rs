@@ -231,14 +231,20 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
         .arg(script)
         .arg(app.moddir.join("cli").to_string_lossy().to_string())
         .env("MODDIR", &app.moddir)
-        .status()
+        .output()
         .map_err(|err| format!("failed to run {function_name}: {err}"))?;
-    if status.success() {
+    if !status.stdout.is_empty() {
+        print!("{}", String::from_utf8_lossy(&status.stdout));
+    }
+    if !status.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&status.stderr));
+    }
+    if status.status.success() {
         Ok(())
     } else {
         Err(format!(
             "{function_name} failed with status {}",
-            status.code().unwrap_or(1)
+            status.status.code().unwrap_or(1)
         ))
     }
 }

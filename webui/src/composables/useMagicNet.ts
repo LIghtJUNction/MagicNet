@@ -1,8 +1,8 @@
 import * as kernelsu from "kernelsu";
 import { computed, nextTick, reactive } from "vue";
 import { AUTHOR_WHISPER_URL, CLI, CLI_TIMEOUT_MS, MODULE_DIR, REPO } from "@/constants";
-import type { AppPolicy, ConfigEditorTarget, HealthItem } from "@/types";
-import { blockDefaults, captureDefaults, certDefaults, mcpDefaults, parseApps, parseBlock, parseCapture, parseCerts, parseHealth, parseMcp, parseRuntime, parseSubs, parseTailscale, runtimeDefaults, tailscaleDefaults, type SubscriptionState } from "@/composables/parsers";
+import type { AppPolicy, ConfigEditorTarget, HealthItem, PackageInfo } from "@/types";
+import { blockDefaults, captureDefaults, certDefaults, mcpDefaults, parseApps, parseBlock, parseCapture, parseCerts, parseHealth, parseMcp, parsePackages, parseRuntime, parseSubs, parseTailscale, runtimeDefaults, tailscaleDefaults, type SubscriptionState } from "@/composables/parsers";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import { bytesToBase64, compactCommand, compactOutput, execFailed, normalizeExecResult, nextFrame, shellQuote, uniqueNonEmpty, withTimeout } from "@/utils";
 
@@ -26,6 +26,8 @@ const state = reactive({
   health: [] as HealthItem[],
   pingtest: "",
   appPolicy: { mode: "blacklist", proxy: [], bypass: [] } as AppPolicy,
+  packages: [] as PackageInfo[],
+  packageQuery: "",
   packageInput: "",
   blocklist: { ...blockDefaults },
   capture: { ...captureDefaults },
@@ -190,6 +192,12 @@ async function refreshApps(quiet = false): Promise<void> {
   state.appPolicy = parseApps(text);
 }
 
+async function refreshPackages(quiet = false): Promise<void> {
+  const query = state.packageQuery.trim();
+  const text = await runCli(`app packages ${shellQuote(query)}`, query ? `搜索应用 ${query}` : "读取已安装应用", quiet);
+  if (!execFailed(text)) state.packages = parsePackages(text);
+}
+
 async function refreshBlock(quiet = false): Promise<void> {
   const text = await runCli("block list", "读取黑名单", quiet);
   state.blocklist = parseBlock(text, state.blocklist);
@@ -253,8 +261,15 @@ async function loadConfig(): Promise<void> {
 }
 
 async function saveConfig(): Promise<void> {
-  const encoded = bytesToBase64(new TextEncoder().encode(state.config.text));
-  const text = await runCli(`config-editor save ${state.config.target} ${shellQuote(encoded)}`, `校验并保存 ${state.config.target}`);
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tmp = `${MODULE_DIR}/.tmp/config-editor-${state.config.target}-${stamp}.tmp`;
+  const chunkSize = 1600;
+  await runShell(`mkdir -p ${shellQuote(`${MODULE_DIR}/.tmp`)}; : > ${shellQuote(tmp)}`, "准备配置临时文件", true);
+  for (let offset = 0; offset < state.config.text.length; offset += chunkSize) {
+    const chunk = state.config.text.slice(offset, offset + chunkSize);
+    await runShell(`printf %s ${shellQuote(chunk)} >> ${shellQuote(tmp)}`, "写入配置临时文件", true);
+  }
+  const text = await runCli(`config-editor save-file ${state.config.target} ${shellQuote(tmp)}`, `校验并保存 ${state.config.target}`);
   state.config.status = execFailed(text) ? "校验失败，未保存" : "校验通过，已保存";
   if (!execFailed(text)) state.config.dirty = false;
 }
@@ -289,6 +304,7 @@ export function useMagicNet() {
     refreshHealth,
     refreshPing,
     refreshApps,
+    refreshPackages,
     refreshBlock,
     refreshSubs,
     refreshCapture,

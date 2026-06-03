@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Plus, RefreshCw, RotateCcw, Trash2, X } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { CheckCircle2, ListFilter, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
+import { computed, onMounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -8,13 +8,58 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 
-const { state, runCli, refreshApps, shellQuote } = useMagicNet();
+const { state, runCli, refreshApps, refreshPackages, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const removedBypass = ref<string[]>([]);
+
+const recommendedBypass = [
+  "com.eg.android.AlipayGphone",
+  "com.tencent.mm",
+  "com.unionpay",
+  "com.icbc",
+  "com.chinamworld.main",
+  "com.ccb.longjiLife",
+  "com.bankcomm.Bankcomm",
+  "com.cmbchina.ccd.pluto.cmbActivity",
+  "com.chinamobile.mcloud",
+  "com.greenpoint.android.mc10086.activity",
+  "com.ct.client",
+  "com.sinovatech.unicom.ui",
+  "com.taobao.taobao",
+  "com.tmall.wireless",
+  "com.jingdong.app.mall",
+  "com.sankuai.meituan",
+  "com.sdu.didi.psnger",
+  "com.tencent.mobileqq",
+  "com.tencent.tim",
+  "com.android.vending",
+  "com.google.android.gms",
+  "com.google.android.gsf"
+];
 
 const recycledBypass = computed(() => {
   const active = new Set(state.appPolicy.bypass);
   return removedBypass.value.filter((pkg) => !active.has(pkg));
+});
+
+const installedNames = computed(() => new Set(state.packages.map((item) => item.packageName)));
+
+const filteredPackages = computed(() => {
+  const query = state.packageQuery.trim().toLowerCase();
+  const listed = state.packages.filter((item) => {
+    if (!query) return true;
+    return item.packageName.toLowerCase().includes(query);
+  });
+  return listed.slice(0, 120);
+});
+
+const availableRecommendedBypass = computed(() => {
+  const active = new Set([...state.appPolicy.proxy, ...state.appPolicy.bypass]);
+  const installed = installedNames.value;
+  return recommendedBypass.filter((pkg) => {
+    if (active.has(pkg)) return false;
+    return installed.size === 0 || installed.has(pkg);
+  });
 });
 
 function commandFailed(text: string): boolean {
@@ -32,6 +77,11 @@ function forgetRemovedBypass(pkg: string): void {
 async function addApp(target: "proxy" | "bypass"): Promise<void> {
   await withAction(`add-${target}`, async () => {
     const pkg = state.packageInput.trim();
+    await addPackage(pkg, target);
+  });
+}
+
+async function addPackage(pkg: string, target: "proxy" | "bypass"): Promise<void> {
     if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(pkg)) {
       state.output = "包名格式不对。示例：com.android.chrome";
       return;
@@ -57,7 +107,6 @@ async function addApp(target: "proxy" | "bypass"): Promise<void> {
       return;
     }
     await refreshApps(true);
-  });
 }
 
 async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void> {
@@ -97,18 +146,56 @@ async function setMode(mode: "blacklist" | "whitelist"): Promise<void> {
     await refreshApps(true);
   });
 }
+
+async function searchPackages(): Promise<void> {
+  await withAction("search-packages", () => refreshPackages());
+}
+
+async function applyRecommendedBypass(): Promise<void> {
+  await withAction("apply-recommended-bypass", async () => {
+    const packages = availableRecommendedBypass.value;
+    if (!packages.length) {
+      state.output = "没有可加入的推荐 Bypass 应用。";
+      return;
+    }
+    packages.forEach((pkg) => {
+      if (!state.appPolicy.bypass.includes(pkg)) state.appPolicy.bypass.push(pkg);
+      state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
+      forgetRemovedBypass(pkg);
+    });
+    const quoted = packages.map((pkg) => shellQuote(pkg)).join(" ");
+    const text = await runCli(`app add-many bypass ${quoted}`, `应用推荐 Bypass 名单`);
+    if (commandFailed(text)) {
+      state.output = text;
+      await refreshApps(true);
+      return;
+    }
+    await refreshApps(true);
+  });
+}
+
+onMounted(() => {
+  if (!state.packages.length) void refreshPackages(true);
+});
 </script>
 
 <template>
   <div class="grid gap-4">
     <PageHeader overline="Per App Policy" title="应用名单" description="只管理应用进入或绕过 MagicNet TUN 的名单，不做节点和代理模式控制。">
-      <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取</Button>
+      <div class="flex flex-wrap gap-2">
+        <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取名单</Button>
+        <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />列出应用</Button>
+        <Button :loading="isRunning('apply-recommended-bypass')" @click="applyRecommendedBypass"><ShieldCheck :size="17" />应用推荐名单</Button>
+      </div>
     </PageHeader>
 
     <Card class="grid gap-3">
-      <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
-        <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist')" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'blacklist' }" @click="setMode('blacklist')">黑名单</button>
-        <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist')" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'whitelist' }" @click="setMode('whitelist')">白名单</button>
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
+          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist')" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'blacklist' }" @click="setMode('blacklist')">黑名单</button>
+          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist')" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'whitelist' }" @click="setMode('whitelist')">白名单</button>
+        </div>
+        <span class="text-sm text-zinc-500">黑名单模式下 Bypass 应用绕过 TUN；白名单模式下 Proxy 应用进入 TUN。</span>
       </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
         <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
@@ -116,6 +203,40 @@ async function setMode(mode: "blacklist" | "whitelist"): Promise<void> {
         <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : 'Bypass' }}</Button>
       </div>
     </Card>
+
+    <div class="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+      <Card class="grid gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative min-w-0 flex-1">
+            <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
+            <Input v-model="state.packageQuery" class="pl-9" placeholder="搜索已安装应用包名" spellcheck="false" @keyup.enter="searchPackages" />
+          </div>
+          <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">过滤</Button>
+        </div>
+        <div class="grid max-h-72 gap-2 overflow-auto">
+          <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+            <span class="min-w-0 break-all text-sm text-zinc-200">{{ app.packageName }}</span>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="withAction(`pick-proxy-${app.packageName}`, () => addPackage(app.packageName, 'proxy'))">Proxy</Button>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="withAction(`pick-bypass-${app.packageName}`, () => addPackage(app.packageName, 'bypass'))">Bypass</Button>
+          </div>
+          <em v-if="!filteredPackages.length" class="text-sm not-italic text-zinc-500">暂无结果，点“列出应用”或输入关键字过滤。</em>
+        </div>
+      </Card>
+
+      <Card class="grid gap-3">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-base font-semibold">推荐 Bypass</h3>
+            <p class="mt-1 text-sm leading-6 text-zinc-500">支付、银行、运营商、系统服务优先绕过，减少验证码、风控和国内服务误伤。</p>
+          </div>
+          <CheckCircle2 class="shrink-0 text-zinc-500" :size="18" />
+        </div>
+        <div class="flex max-h-64 flex-wrap gap-2 overflow-auto">
+          <span v-for="pkg in availableRecommendedBypass" :key="pkg" class="inline-flex max-w-full items-center rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-300 break-all">{{ pkg }}</span>
+          <em v-if="!availableRecommendedBypass.length" class="text-sm not-italic text-zinc-500">推荐项已在名单中，或当前设备未读取到匹配应用。</em>
+        </div>
+      </Card>
+    </div>
 
     <div class="grid gap-3 md:grid-cols-2">
       <Card>

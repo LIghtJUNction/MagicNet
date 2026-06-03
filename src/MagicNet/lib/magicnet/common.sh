@@ -125,7 +125,11 @@ magicnet_mihomo_has_subscription() {
     magicnet_first_http_url "${MODDIR}/.config/mihomo/subscription.url" >/dev/null 2>&1 && return 0
     [ -f "${MODDIR}/.config/mihomo/config.yaml" ] || return 1
     awk '
-        /^[[:space:]]*url:[[:space:]]*/ {
+        /^[^[:space:]][^:]*:/ {
+            in_providers = ($0 ~ /^proxy-providers:[[:space:]]*/)
+            next
+        }
+        in_providers && /^[[:space:]]+url:[[:space:]]*/ {
             line = $0
             sub(/^[[:space:]]*url:[[:space:]]*/, "", line)
             gsub(/^["'\'']|["'\'']$/, "", line)
@@ -138,10 +142,208 @@ magicnet_mihomo_has_subscription() {
     ' "${MODDIR}/.config/mihomo/config.yaml" >/dev/null 2>&1
 }
 
+magicnet_mihomo_provider_table() {
+    _config="${MODDIR}/.config/mihomo/config.yaml"
+    [ -f "$_config" ] || return 1
+    awk '
+        function flush_provider() {
+            if (name != "" && url ~ /^https?:\/\/[^[:space:]]+$/) {
+                print name "\t" url "\t" path
+            }
+            name = ""
+            url = ""
+            path = ""
+        }
+        /^[^[:space:]][^:]*:/ {
+            flush_provider()
+            in_providers = ($0 ~ /^proxy-providers:[[:space:]]*/)
+            next
+        }
+        in_providers && /^  [^[:space:]][^:]*:[[:space:]]*$/ {
+            flush_provider()
+            name = $0
+            sub(/^[[:space:]]*/, "", name)
+            sub(/:[[:space:]]*$/, "", name)
+            next
+        }
+        in_providers && name != "" && /^[[:space:]]+url:[[:space:]]*/ {
+            url = $0
+            sub(/^[[:space:]]*url:[[:space:]]*/, "", url)
+            gsub(/^["'\'']|["'\'']$/, "", url)
+            next
+        }
+        in_providers && name != "" && /^[[:space:]]+path:[[:space:]]*/ {
+            path = $0
+            sub(/^[[:space:]]*path:[[:space:]]*/, "", path)
+            gsub(/^["'\'']|["'\'']$/, "", path)
+            next
+        }
+        END {
+            flush_provider()
+        }
+    ' "$_config"
+    unset _config
+}
+
+magicnet_need_nodes_message() {
+    case "${1:-}" in
+        mihomo)
+            magicnet_warn "未读取到 mihomo 节点，已停止 mihomo。请先运行: cli setup <订阅链接> 或 cli sub set mihomo premium_a <订阅链接>"
+            config set override.description "[MagicNet]: mihomo has no nodes; configure subscription" 2>/dev/null || true
+            ;;
+        *)
+            magicnet_warn "未读取到 sing-box 节点，已停止 sing-box。请先运行: cli setup <订阅链接> 或 cli sub set sing-box <订阅链接>"
+            config set override.description "[MagicNet]: sing-box has no nodes; configure subscription" 2>/dev/null || true
+            ;;
+    esac
+}
+
+magicnet_prepare_singbox_nodes() {
+    if ! magicnet_singbox_has_subscription; then
+        magicnet_need_nodes_message sing-box
+        return 1
+    fi
+
+    . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
+    magicnet_log "Updating sing-box subscription before startup..."
+    if magicnet_singbox_update_subscription; then
+        return 0
+    fi
+
+    magicnet_need_nodes_message sing-box
+    return 1
+}
+
+magicnet_singbox_running_has_nodes() {
+    if command -v curl >/dev/null 2>&1; then
+        _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || true)
+        if [ -n "$_api" ]; then
+            printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|Selector|WireGuard|TUIC|AnyTLS)"' && {
+                unset _api
+                return 0
+            }
+        fi
+    fi
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] && grep -Eq '"type":"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls)"' "$_config"
+    _rc=$?
+    unset _api _config
+    return "$_rc"
+}
+
+magicnet_prepare_mihomo_nodes() {
+    if ! magicnet_mihomo_has_subscription; then
+        magicnet_need_nodes_message mihomo
+        return 1
+    fi
+
+    _config="${MODDIR}/.config/mihomo/config.yaml"
+    _workdir="${MODDIR}/.config/mihomo"
+    if [ "$(magicnet_mihomo_provider_table | wc -l | tr -d ' ')" -le 0 ]; then
+        _first_mihomo_url=$(magicnet_first_http_url "${MODDIR}/.config/mihomo/subscription.url" 2>/dev/null || true)
+        if [ -n "$_first_mihomo_url" ] && [ -x "${MODDIR}/cli" ]; then
+            "${MODDIR}/cli" sub set mihomo premium_a "$_first_mihomo_url" >/dev/null 2>&1 || true
+        fi
+    fi
+    _provider_count=0
+    _provider_ok=0
+    magicnet_log "Updating mihomo providers before startup..."
+    magicnet_mihomo_provider_table | while IFS="$(printf '\t')" read -r _name _url _path; do
+        [ -n "$_name" ] || continue
+        _provider_count=$((_provider_count + 1))
+        case "$_path" in
+            /*) _target="$_path" ;;
+            "") _target="${_workdir}/proxies/${_name}.yaml" ;;
+            *) _target="${_workdir}/${_path#./}" ;;
+        esac
+        mkdir -p "${_target%/*}"
+        _tmp="${_target}.download"
+        rm -f "$_tmp"
+        if command -v curl >/dev/null 2>&1 &&
+            curl -fsSL --connect-timeout "${MAGICNET_SUB_CONNECT_TIMEOUT:-10}" --max-time "${MAGICNET_SUB_MAX_TIME:-45}" "$_url" -o "$_tmp"; then
+            :
+        elif command -v wget >/dev/null 2>&1 &&
+            wget -T "${MAGICNET_SUB_MAX_TIME:-45}" -qO "$_tmp" "$_url"; then
+            :
+        else
+            rm -f "$_tmp"
+            magicnet_warn "Failed to update mihomo provider ${_name}"
+            continue
+        fi
+        if [ -s "$_tmp" ] && grep -Eq '^proxies:[[:space:]]*$' "$_tmp"; then
+            mv -f "$_tmp" "$_target"
+            _provider_ok=$((_provider_ok + 1))
+        else
+            rm -f "$_tmp"
+            magicnet_warn "mihomo provider ${_name} downloaded no supported Clash nodes"
+        fi
+    done
+
+    _provider_count=$(magicnet_mihomo_provider_table | wc -l | tr -d ' ')
+    _provider_ok=0
+    for _provider_file in "${_workdir}"/proxies/*.yaml; do
+        [ -f "$_provider_file" ] || continue
+        grep -Eq '^proxies:[[:space:]]*$' "$_provider_file" && _provider_ok=$((_provider_ok + 1))
+    done
+    if [ "${_provider_count:-0}" -le 0 ] || [ "${_provider_ok:-0}" -le 0 ]; then
+        magicnet_need_nodes_message mihomo
+        unset _config _workdir _first_mihomo_url _provider_count _provider_ok _provider_file
+        return 1
+    fi
+
+    if command -v mihomo >/dev/null 2>&1 && [ -f "$_config" ]; then
+        mihomo -t -f "$_config" -d "$_workdir" >/dev/null 2>&1 || {
+            magicnet_warn "mihomo config validation failed before startup"
+            unset _config _workdir _first_mihomo_url _provider_count _provider_ok _provider_file
+            return 1
+        }
+    fi
+    unset _config _workdir _first_mihomo_url _provider_count _provider_ok _provider_file
+    return 0
+}
+
+magicnet_mihomo_running_has_nodes() {
+    if ! command -v curl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    _provider_api=$(curl -sS --max-time 8 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
+    if [ -n "$_provider_api" ]; then
+        printf '%s' "$_provider_api" | grep -Eq '"proxies":[[:space:]]*\[[[:space:]]*\{' && {
+            unset _provider_api _proxy_api
+            return 0
+        }
+    fi
+
+    _proxy_api=$(curl -sS --max-time 8 http://127.0.0.1:9090/proxies 2>/dev/null || true)
+    if [ -n "$_proxy_api" ]; then
+        printf '%s' "$_proxy_api" | grep -Eq '"(all|proxies)"[[:space:]]*:[[:space:]]*\[[^]]*"[^"]+"' && {
+            unset _provider_api _proxy_api
+            return 0
+        }
+    fi
+
+    unset _provider_api _proxy_api
+    return 1
+}
+
 magicnet_preferred_core() {
+    _current_core_conf="${MODDIR}/.config/magicnet/current-core.conf"
+    if [ -f "$_current_core_conf" ]; then
+        . "$_current_core_conf"
+    fi
+
     case "${MAGICNET_DEFAULT_CORE:-auto}" in
-        sing-box|singbox) printf '%s\n' "sing-box"; return 0 ;;
-        mihomo|clash) printf '%s\n' "mihomo"; return 0 ;;
+        sing-box|singbox)
+            printf '%s\n' "sing-box"
+            unset _current_core_conf
+            return 0
+            ;;
+        mihomo|clash)
+            printf '%s\n' "mihomo"
+            unset _current_core_conf
+            return 0
+            ;;
     esac
 
     if magicnet_singbox_has_subscription && ! magicnet_mihomo_has_subscription; then
@@ -151,6 +353,7 @@ magicnet_preferred_core() {
     else
         printf '%s\n' "${MAGICNET_AUTO_DEFAULT_CORE:-sing-box}"
     fi
+    unset _current_core_conf
 }
 
 magicnet_config_lock_dir() {

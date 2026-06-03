@@ -4,6 +4,7 @@ mod certs;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 use crate::{clean_lines, read_kv, run_magicnet_function, write_kv, write_text_file, App};
 
@@ -47,9 +48,11 @@ pub(crate) fn app_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "mode" => app_mode(app, args),
         "add" => app_add(app, args),
+        "add-many" => app_add_many(app, args),
         "remove" => app_remove(app, args),
+        "packages" => app_packages(args),
         "apply" => run_magicnet_function(app, "magicnet_app_policy_apply"),
-        _ => Err("Usage: cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}".to_string()),
+        _ => Err("Usage: cli app {list|packages [query]|mode <blacklist|whitelist>|add <package> [proxy|bypass]|add-many <proxy|bypass> <package...>|remove <package>|apply}".to_string()),
     }
 }
 
@@ -213,6 +216,29 @@ fn app_add(app: &App, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn app_add_many(app: &App, args: &[String]) -> Result<(), String> {
+    let target = args.get(1).map(String::as_str).unwrap_or_default();
+    if !matches!(target, "proxy" | "bypass") || args.len() < 3 {
+        return Err("Usage: cli app add-many <proxy|bypass> <package...>".to_string());
+    }
+    let path = app_file(app, target)?;
+    let mut lines = clean_lines(path.clone());
+    let mut added = 0usize;
+    for package in args.iter().skip(2).map(String::as_str) {
+        if !valid_package_name(package) {
+            return Err(format!("invalid package name: {package}"));
+        }
+        if !lines.iter().any(|line| line == package) {
+            lines.push(package.to_string());
+            added += 1;
+        }
+    }
+    write_unique_lines(path, &lines)?;
+    run_magicnet_function(app, "magicnet_app_policy_apply")?;
+    println!("[info] Added {added} packages to {target} app list");
+    Ok(())
+}
+
 fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
     let package = args.get(1).map(String::as_str).unwrap_or_default();
     if package.is_empty() {
@@ -223,6 +249,52 @@ fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
     run_magicnet_function(app, "magicnet_app_policy_apply")?;
     println!("[info] Removed {package} from app policy");
     Ok(())
+}
+
+fn app_packages(args: &[String]) -> Result<(), String> {
+    let query = args
+        .get(1)
+        .map(|value| value.to_lowercase())
+        .unwrap_or_default();
+    let output = Command::new("pm")
+        .args(["list", "packages"])
+        .output()
+        .map_err(|err| format!("run pm list packages: {err}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    let mut packages: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("package:"))
+        .map(str::trim)
+        .filter(|package| valid_package_name(package))
+        .filter(|package| query.is_empty() || package.to_lowercase().contains(&query))
+        .map(ToOwned::to_owned)
+        .collect();
+    packages.sort();
+    packages.dedup();
+    for package in packages.into_iter().take(300) {
+        println!("{package}");
+    }
+    Ok(())
+}
+
+fn valid_package_name(package: &str) -> bool {
+    let mut count = 0usize;
+    for segment in package.split('.') {
+        count += 1;
+        let mut chars = segment.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+        if !(first.is_ascii_alphabetic() || first == '_') {
+            return false;
+        }
+        if !chars.all(|value| value.is_ascii_alphanumeric() || value == '_') {
+            return false;
+        }
+    }
+    count >= 2
 }
 
 pub(super) fn update_line(path: PathBuf, item: &str, add: bool) -> Result<(), String> {

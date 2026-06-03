@@ -22,6 +22,26 @@ import rich
 
 import this
 
+MAGICNET_PREV_DIR="/data/adb/modules/MagicNet"
+MAGICNET_BACKUP_DIR="${TMPDIR:-/dev/tmp}/magicnet-install-backup"
+if [ -d "$MAGICNET_PREV_DIR" ] && [ "$MAGICNET_PREV_DIR" != "$MODPATH" ]; then
+  rm -rf "$MAGICNET_BACKUP_DIR" 2>/dev/null || true
+  mkdir -p "$MAGICNET_BACKUP_DIR"
+  for _item in \
+    ".config/sing-box/subscription.url" \
+    ".config/sing-box/subscription-1.yaml" \
+    ".config/sing-box/.subscription-work" \
+    ".config/mihomo/subscription.url" \
+    ".config/mihomo/proxies" \
+    ".config/magicnet"; do
+    if [ -e "${MAGICNET_PREV_DIR}/${_item}" ]; then
+      mkdir -p "${MAGICNET_BACKUP_DIR}/${_item%/*}"
+      cp -a "${MAGICNET_PREV_DIR}/${_item}" "${MAGICNET_BACKUP_DIR}/${_item}" 2>/dev/null || true
+    fi
+  done
+  unset _item
+fi
+
 # Usage & installation messages
 set_i18n "INSTALL_TITLE" \
   "zh" "MagicNet 安装向导" \
@@ -256,6 +276,24 @@ if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
   :
 else
   magicnet_ask_disable_singbox
+fi
+
+if [ -d "$MAGICNET_BACKUP_DIR" ]; then
+  for _item in \
+    ".config/sing-box/subscription.url" \
+    ".config/sing-box/subscription-1.yaml" \
+    ".config/sing-box/.subscription-work" \
+    ".config/mihomo/subscription.url" \
+    ".config/mihomo/proxies" \
+    ".config/magicnet"; do
+    if [ -e "${MAGICNET_BACKUP_DIR}/${_item}" ]; then
+      mkdir -p "${MODPATH}/${_item%/*}"
+      rm -rf "${MODPATH:?}/${_item}" 2>/dev/null || true
+      cp -a "${MAGICNET_BACKUP_DIR}/${_item}" "${MODPATH}/${_item}" 2>/dev/null || true
+    fi
+  done
+  rm -rf "$MAGICNET_BACKUP_DIR" 2>/dev/null || true
+  unset _item
 fi
 
 if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then

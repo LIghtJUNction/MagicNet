@@ -7,6 +7,47 @@ magicnet_singbox_download_proxy_args() {
     [ -n "$_proxy" ] && printf '%s\n%s\n' "--proxy" "$_proxy"
 }
 
+magicnet_singbox_use_cached_subscription() {
+    _source_file="$1"
+    _fallback_file="$2"
+    if [ -s "$_source_file" ]; then
+        warn "Using cached subscription: $_source_file"
+        return 0
+    fi
+    if [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ]; then
+        warn "Using legacy cached subscription: $_fallback_file"
+        cp "$_fallback_file" "$_source_file"
+        return 0
+    fi
+    return 1
+}
+
+magicnet_singbox_try_fetch_subscription() {
+    _method="$1"
+    _url="$2"
+    _download_file="$3"
+    _connect_timeout="$4"
+    _max_time="$5"
+    case "$_method" in
+        curl)
+            command -v curl >/dev/null 2>&1 || return 127
+            # shellcheck disable=SC2046
+            curl -fsSL $(magicnet_singbox_download_proxy_args) --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file"
+            ;;
+        wget)
+            command -v wget >/dev/null 2>&1 || return 127
+            wget -T "$_max_time" -qO "$_download_file" "$_url"
+            ;;
+        sing-box)
+            command -v sing-box >/dev/null 2>&1 || return 127
+            sing-box tools fetch "$_url" >"$_download_file"
+            ;;
+        *)
+            return 127
+            ;;
+    esac
+}
+
 magicnet_singbox_fetch_one_subscription() {
     _url="$1"
     _source_file="$2"
@@ -26,69 +67,38 @@ magicnet_singbox_fetch_one_subscription() {
     _connect_timeout="${MAGICNET_SUB_CONNECT_TIMEOUT:-10}"
     _max_time="${MAGICNET_SUB_MAX_TIME:-45}"
 
-    if command -v curl >/dev/null 2>&1; then
-        # shellcheck disable=SC2046
-        curl -fsSL $(magicnet_singbox_download_proxy_args) --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file" || {
-            error "Failed to download subscription ${_label} with curl"
-            [ -s "$_source_file" ] && {
-                warn "Using cached subscription: $_source_file"
-                return 0
-            }
-            [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ] && {
-                warn "Using legacy cached subscription: $_fallback_file"
-                cp "$_fallback_file" "$_source_file"
-                return 0
-            }
-            return 1
-        }
-    elif command -v wget >/dev/null 2>&1; then
-        wget -T "$_max_time" -qO "$_download_file" "$_url" || {
-            error "Failed to download subscription ${_label} with wget"
-            [ -s "$_source_file" ] && {
-                warn "Using cached subscription: $_source_file"
-                return 0
-            }
-            [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ] && {
-                warn "Using legacy cached subscription: $_fallback_file"
-                cp "$_fallback_file" "$_source_file"
-                return 0
-            }
-            return 1
-        }
-    elif command -v sing-box >/dev/null 2>&1; then
-        sing-box tools fetch "$_url" >"$_download_file" || {
-            error "Failed to download subscription ${_label} with sing-box"
-            [ -s "$_source_file" ] && {
-                warn "Using cached subscription: $_source_file"
-                return 0
-            }
-            [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ] && {
-                warn "Using legacy cached subscription: $_fallback_file"
-                cp "$_fallback_file" "$_source_file"
-                return 0
-            }
-            return 1
-        }
-    else
+    _fetched=0
+    _tried=0
+    for _method in curl wget sing-box; do
+        rm -f "$_download_file"
+        magicnet_singbox_try_fetch_subscription "$_method" "$_url" "$_download_file" "$_connect_timeout" "$_max_time"
+        _fetch_rc=$?
+        [ "$_fetch_rc" -eq 127 ] && continue
+        _tried=1
+        if [ "$_fetch_rc" -eq 0 ] && [ -s "$_download_file" ]; then
+            _fetched=1
+            break
+        fi
+        warn "Failed to download subscription ${_label} with ${_method}"
+    done
+
+    if [ "$_tried" -eq 0 ]; then
         error "No downloader found: curl, wget or sing-box tools fetch"
         return 1
+    fi
+    if [ "$_fetched" -ne 1 ]; then
+        magicnet_singbox_use_cached_subscription "$_source_file" "$_fallback_file" || return 1
+        return 0
     fi
 
     [ -s "$_download_file" ] || {
         error "Downloaded subscription ${_label} is empty"
-        [ -s "$_source_file" ] && {
-            warn "Using cached subscription: $_source_file"
-            return 0
-        }
-        [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ] && {
-            warn "Using legacy cached subscription: $_fallback_file"
-            cp "$_fallback_file" "$_source_file"
-            return 0
-        }
-        return 1
+        magicnet_singbox_use_cached_subscription "$_source_file" "$_fallback_file" || return 1
+        return 0
     }
 
     mv -f "$_download_file" "$_source_file"
+    unset _fetched _tried _method _fetch_rc
 }
 
 magicnet_singbox_fetch_subscription() {
@@ -133,4 +143,3 @@ magicnet_singbox_fetch_subscription() {
         return 1
     fi
 }
-

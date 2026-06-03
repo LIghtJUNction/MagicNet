@@ -85,6 +85,22 @@ magicnet_block_mihomo_rules() {
     done
 }
 
+magicnet_block_mihomo_normalize_rules_indent() {
+    awk '
+        BEGIN { in_rules = 0 }
+        /^rules:[[:space:]]*$/ {
+            in_rules = 1
+            print
+            next
+        }
+        in_rules && /^-[[:space:]]/ {
+            print "  " $0
+            next
+        }
+        { print }
+    '
+}
+
 magicnet_block_apply_mihomo() {
     _config="${MODDIR}/.config/mihomo/config.yaml"
     [ -f "$_config" ] || return 0
@@ -139,7 +155,15 @@ magicnet_block_apply_mihomo() {
                 inserted = 1
             }
         }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+    ' "$_config" | magicnet_block_mihomo_normalize_rules_indent >"$_tmp"; then
+        if command -v mihomo >/dev/null 2>&1; then
+            mihomo -t -f "$_tmp" -d "${_config%/*}" >/dev/null 2>&1 || {
+                magicnet_warn "mihomo config failed validation after blocklist apply"
+                rm -f "$_tmp" 2>/dev/null || true
+                return 1
+            }
+        fi
+        mv -f "$_tmp" "$_config"
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
