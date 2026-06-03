@@ -1,0 +1,11 @@
+[submodule "src/MagicNet/lib/kamfw"]
+	path = src/MagicNet/lib/kamfw
+	url = https://github.com/MemDeco-WG/kamfw.git
+	branch = main
+[submodule "src/MagicNet/.config/mihomo"]
+	path = src/MagicNet/.config/mihomo
+	url = https://github.com/LIghtJUNction/MagicMihomo.git
+        branch = main
+[submodule "src/MagicNet/.config/sing-box"]
+	path = src/MagicNet/.config/sing-box
+	url = https://github.com/LIghtJUNction/MagicSingBox.git

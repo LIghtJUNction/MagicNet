@@ -1,0 +1,7 @@
+id=MagicNet
+name=MagicNet
+version=v1.1.0
+versionCode=1780471160843
+author=LIghtJUNction
+description=[MagicNet]:Android root network module with magicnet0 TUN, mihomo/sing-box, WebUI, MCP, hotspot and VPN coexist tools. Built with KAM.
+updateJson=https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json

@@ -1,0 +1,63 @@
+name: Validate MagicNet
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: magicnet-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup kam
+        uses: MemDeco-WG/setup-kam@v3
+        with:
+          github-token: ${{ github.token }}
+          enable-cache: 'true'
+          cache-targets: cargo,kam
+          install-commitizen: 'false'
+          warn-private-key: 'false'
+
+      - name: Install lint dependencies
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml
+
+      - name: Validate repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          kam validate
+          shellcheck -s bash -e SC1091,SC2317,SC2329,SC2059 \
+            hooks/pre-build/*.sh \
+            hooks/post-build/*.sh \
+            hooks/lib/*.sh \
+            kam.sh
+          shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 \
+            src/MagicNet/*.sh \
+            src/MagicNet/system/bin/* \
+            src/MagicNet/lib/magicnet.sh
+          python3 -c 'import yaml, pathlib; yaml.safe_load(pathlib.Path("src/MagicNet/.config/mihomo/config.yaml").read_text())'
+          jq empty src/MagicNet/.config/sing-box/config.json
+          KAM_HOOKS_ROOT=hooks KAM_MODULE_ROOT=src/MagicNet bash hooks/pre-build/6000.check_config.sh
+
+      - name: Verify kamfw runtime wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODPATH="$PWD/src/MagicNet" sh -c '. "$MODPATH/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODPATH/lib/magicnet.sh"; kamfw run post-mount -- smoke'

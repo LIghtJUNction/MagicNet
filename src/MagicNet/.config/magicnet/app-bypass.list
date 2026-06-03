@@ -1,0 +1,13 @@
+# Packages that bypass MagicNet TUN when MAGICNET_APP_MODE=blacklist.
+# One package name per line.
+com.tailscale.ipn
+com.wireguard.android
+net.openvpn.openvpn
+de.blinkt.openvpn
+com.zerotier.one
+com.cloudflare.onedotonedotonedotone
+io.nekohasekai.sfa
+moe.nb4a
+com.v2ray.ang
+com.github.kr328.clash
+com.github.metacubex.clash.meta

@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, "HarmonyOS Sans SC", "MiSans", "Noto Sans CJK SC", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #09090b;
+  color: #fafafa;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+code,
+pre,
+textarea {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}

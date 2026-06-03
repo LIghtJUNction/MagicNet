@@ -1,0 +1,13 @@
+dist
+target/
+.env
+.playwright-mcp/
+.kam/
+webui/dist/
+webui/node_modules/
+webui/node_modules/.vite/
+src/MagicNet/webroot/assets/
+src/MagicNet/webroot/index.html
+src/MagicNet/.local/
+src/MagicNet/mihomo.version
+src/MagicNet/singbox.version

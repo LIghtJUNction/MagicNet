@@ -1,0 +1,18 @@
+#!/system/bin/sh
+
+case "$0" in
+  */system/bin/mihomo) MODDIR=${MODDIR:-${0%/system/bin/mihomo}} ;;
+  */*) MODDIR=${MODDIR:-${0%/*}/../..} ;;
+  *) MODDIR=${MODDIR:-/data/adb/modules/MagicNet} ;;
+esac
+
+export HOME="$MODDIR"
+export PATH="$MODDIR/.local/bin:$PATH"
+export LD_LIBRARY_PATH="$MODDIR/.local/lib:$MODDIR/lib:${LD_LIBRARY_PATH:-}"
+
+if [ -x "$MODDIR/.local/bin/mihomo" ]; then
+  exec "$MODDIR/.local/bin/mihomo" "$@"
+else
+  echo "mihomo: executable not found at $MODDIR/.local/bin/mihomo" >&2
+  exit 127
+fi

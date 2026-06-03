@@ -1,0 +1,3 @@
+# Domain suffixes to route to the capture proxy.
+# Example:
+# target-api.com
