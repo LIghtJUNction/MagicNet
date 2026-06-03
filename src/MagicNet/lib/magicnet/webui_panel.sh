@@ -18,15 +18,3 @@ magicnet_singbox_apply_zashboard() {
         return 1
     fi
 }
-
-magicnet_mihomo_apply_zashboard() {
-    _target="${MODDIR}/.config/mihomo/ui/cubex"
-    _index="${_target}/index.html"
-    mkdir -p "${_target%/*}" || return 1
-
-    if [ -f "$_index" ] && grep -qi '<title>zashboard</title>' "$_index" 2>/dev/null; then
-        rm -rf "$_target" 2>/dev/null || true
-        magicnet_log "Removed zashboard from mihomo cubex path; mihomo will fetch MetaCubeX"
-    fi
-    unset _target _index
-}

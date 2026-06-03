@@ -10,6 +10,23 @@ use crate::{
     run_magicnet_function, write_text_file, App,
 };
 
+const DEFAULT_MIHOMO_PROVIDER: &str = "premium_a";
+
+pub fn setup_subscription(app: &App, url: &str) -> Result<(), String> {
+    if url.is_empty() {
+        return Err("Usage: cli setup <subscription-url>".to_string());
+    }
+    validate_subscription_url(url)?;
+    clear_node_cache(app);
+    write_text_file(sub_target_file(app, "sing-box"), &format!("{url}\n"))?;
+    write_text_file(sub_target_file(app, "mihomo"), &format!("{url}\n"))?;
+    ensure_mihomo_provider_cache_dir(app)?;
+    update_mihomo_config_url(app, url, Some(DEFAULT_MIHOMO_PROVIDER))?;
+    println!("[info] Saved subscription URL for sing-box");
+    println!("[info] Saved subscription URL for mihomo provider {DEFAULT_MIHOMO_PROVIDER}");
+    Ok(())
+}
+
 pub fn sub_set(app: &App, args: &[String]) -> Result<(), String> {
     let target = args.get(2).map(String::as_str).unwrap_or_default();
     let (provider, url) = match target {
@@ -36,6 +53,7 @@ pub fn sub_set(app: &App, args: &[String]) -> Result<(), String> {
     clear_node_cache(app);
     write_text_file(sub_target_file(app, target), &format!("{url}\n"))?;
     if matches!(target, "mihomo" | "clash") {
+        ensure_mihomo_provider_cache_dir(app)?;
         update_mihomo_config_url(app, url, provider)?;
     }
     println!(
@@ -89,7 +107,6 @@ pub fn sub_list(app: &App) {
         "sing-box={}",
         first_clean_line(app.moddir.join(".config/sing-box/subscription.url"))
     );
-    println!("free-filter={}", free_filter_enabled(app) as u8);
     for (name, url) in mihomo_providers(app) {
         println!("mihomo.{name}={url}");
     }
@@ -97,27 +114,6 @@ pub fn sub_list(app: &App) {
         "mihomo={}",
         first_clean_line(app.moddir.join(".config/mihomo/subscription.url"))
     );
-}
-
-pub fn sub_filter_free(app: &App, args: &[String]) -> Result<(), String> {
-    let enabled = match args.first().map(String::as_str).unwrap_or("status") {
-        "status" => {
-            println!("free-filter={}", free_filter_enabled(app) as u8);
-            return Ok(());
-        }
-        "on" | "enable" | "1" => true,
-        "off" | "disable" | "0" => false,
-        "apply" => free_filter_enabled(app),
-        _ => return Err("Usage: cli sub filter-free {status|on|off|apply}".to_string()),
-    };
-    write_free_filter_conf(app, enabled)?;
-    apply_mihomo_provider_filter(app, enabled)?;
-    clear_node_cache(app);
-    println!(
-        "[info] Free provider filter {}",
-        if enabled { "enabled" } else { "disabled" }
-    );
-    Ok(())
 }
 
 pub fn sub_get(app: &App, target: &str) {
@@ -161,7 +157,7 @@ fn update_singbox_subscription(app: &App) -> Result<(), String> {
 fn update_mihomo_providers(app: &App) -> Result<(), String> {
     let providers = mihomo_providers(app);
     if providers.is_empty() {
-        return Err("mihomo proxy-providers is empty or config.yaml is unreadable".to_string());
+        return Err("mihomo proxy-providers has no usable url. Run `cli sub set mihomo premium_a <subscription-url>` or `cli setup <subscription-url>` first".to_string());
     }
     let mut ok = 0usize;
     let mut failed = Vec::new();
@@ -214,30 +210,6 @@ pub(crate) fn sub_target_file(app: &App, target: &str) -> PathBuf {
         "sing-box" | "singbox" => app.moddir.join(".config/sing-box/subscription.url"),
         _ => app.moddir.join(".config/sing-box/subscription.url"),
     }
-}
-
-fn free_filter_conf_path(app: &App) -> PathBuf {
-    app.moddir.join(".config/magicnet/provider-filter.conf")
-}
-
-fn free_filter_enabled(app: &App) -> bool {
-    fs::read_to_string(free_filter_conf_path(app))
-        .ok()
-        .map(|text| {
-            text.lines()
-                .any(|line| line.trim() == "MAGICNET_FILTER_FREE_PROVIDERS=1")
-        })
-        .unwrap_or(false)
-}
-
-fn write_free_filter_conf(app: &App, enabled: bool) -> Result<(), String> {
-    write_text_file(
-        free_filter_conf_path(app),
-        &format!(
-            "MAGICNET_FILTER_FREE_PROVIDERS={}\n",
-            if enabled { 1 } else { 0 }
-        ),
-    )
 }
 
 pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
@@ -306,36 +278,9 @@ fn update_mihomo_config_url(
     Ok(())
 }
 
-fn apply_mihomo_provider_filter(app: &App, enabled: bool) -> Result<(), String> {
-    let mut config = match read_mihomo_yaml(app) {
-        Ok(config) => config,
-        Err(_) => return Ok(()),
-    };
-    let premium = yaml_string_vec(&config, &["providers-default", "premium"]);
-    let all = yaml_string_vec(&config, &["providers-default", "all_providers"]);
-    let selected = if enabled { premium } else { all };
-    if selected.is_empty() {
-        return Err("mihomo providers-default list is empty".to_string());
-    }
-    let Some(groups) = config
-        .get_mut("proxy-groups")
-        .and_then(Value::as_sequence_mut)
-    else {
-        return Ok(());
-    };
-    for group in groups {
-        let Some(map) = group.as_mapping_mut() else {
-            continue;
-        };
-        if map.contains_key(Value::String("use".to_string())) {
-            map.insert(
-                Value::String("use".to_string()),
-                Value::Sequence(selected.iter().cloned().map(Value::String).collect()),
-            );
-        }
-    }
-    write_mihomo_yaml(app, &config)?;
-    Ok(())
+fn ensure_mihomo_provider_cache_dir(app: &App) -> Result<(), String> {
+    fs::create_dir_all(app.moddir.join(".config/mihomo/proxies"))
+        .map_err(|err| format!("create mihomo provider cache dir: {err}"))
 }
 
 fn read_mihomo_yaml(app: &App) -> Result<Value, String> {
@@ -354,26 +299,6 @@ fn write_mihomo_yaml(app: &App, config: &Value) -> Result<(), String> {
 
 fn yaml_mapping_mut<'a>(value: &'a mut Value, key: &str) -> Option<&'a mut Mapping> {
     value.get_mut(key)?.as_mapping_mut()
-}
-
-fn yaml_string_vec(value: &Value, path: &[&str]) -> Vec<String> {
-    let mut current = value;
-    for key in path {
-        let Some(next) = current.get(*key) else {
-            return Vec::new();
-        };
-        current = next;
-    }
-    current
-        .as_sequence()
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToOwned::to_owned)
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 fn shell_url_component(value: &str) -> String {
@@ -492,48 +417,30 @@ proxy-providers:
     }
 
     #[test]
-    fn free_filter_switches_provider_group_use_list() {
+    fn setup_subscription_updates_singbox_and_default_mihomo_provider() {
         let app = temp_app();
         write_mihomo(
             &app,
             r#"
-providers-default:
-  premium:
-    - premium
-  all_providers:
-    - premium
-    - free
-proxy-groups:
-  - name: PROXY
-    use:
-      - premium
-      - free
+proxy-providers:
+  premium_a:
+    type: http
+    path: ./proxies/A.yaml
+    url: ""
 "#,
         );
 
-        sub_filter_free(&app, &["on".to_string()]).unwrap();
-        let enabled = read_mihomo_yaml(&app).unwrap();
-        assert_eq!(
-            enabled["proxy-groups"][0]["use"]
-                .as_sequence()
-                .unwrap()
-                .iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>(),
-            vec!["premium"]
-        );
+        setup_subscription(&app, "https://example.com/sub").unwrap();
 
-        sub_filter_free(&app, &["off".to_string()]).unwrap();
-        let disabled = read_mihomo_yaml(&app).unwrap();
-        assert_eq!(
-            disabled["proxy-groups"][0]["use"]
-                .as_sequence()
-                .unwrap()
-                .iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>(),
-            vec!["premium", "free"]
-        );
+        let singbox =
+            fs::read_to_string(app.moddir.join(".config/sing-box/subscription.url")).unwrap();
+        assert_eq!(singbox, "https://example.com/sub\n");
+        let mihomo_sub =
+            fs::read_to_string(app.moddir.join(".config/mihomo/subscription.url")).unwrap();
+        assert_eq!(mihomo_sub, "https://example.com/sub\n");
+        let text = fs::read_to_string(app.moddir.join(".config/mihomo/config.yaml")).unwrap();
+        assert!(text.contains("https://example.com/sub"), "{text}");
+        assert!(app.moddir.join(".config/mihomo/proxies").is_dir());
     }
 
     #[test]

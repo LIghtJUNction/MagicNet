@@ -25,10 +25,10 @@ async function selectCore(core: "sing-box" | "mihomo"): Promise<void> {
   });
 }
 
-async function setRunningCoreDefault(): Promise<void> {
-  const core = state.runtime.core;
+async function setSelectedCoreDefault(): Promise<void> {
+  const core = state.selectedCore;
   if (core !== "sing-box" && core !== "mihomo") {
-    state.output = "当前没有正在运行的内核，无法设为默认。";
+    state.output = "请选择 sing-box 或 mihomo 后再设为默认。";
     return;
   }
   await withAction("default-core", async () => {
@@ -131,7 +131,7 @@ async function disableTailscale(): Promise<void> {
             <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Current Kernel</span>
             <h3 class="mt-1 break-words text-xl font-semibold">{{ state.selectedCore }}</h3>
           </div>
-          <Button size="sm" variant="secondary" :loading="isRunning('default-core')" :disabled="state.runtime.core !== 'sing-box' && state.runtime.core !== 'mihomo'" @click="setRunningCoreDefault">设为默认</Button>
+          <Button size="sm" variant="secondary" :loading="isRunning('default-core')" :disabled="state.selectedCore !== 'sing-box' && state.selectedCore !== 'mihomo'" @click="setSelectedCoreDefault">设为默认</Button>
         </div>
         <p class="text-sm leading-6 text-zinc-400">选择一个当前内核，然后用一个开关启动或停止它。</p>
         <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">

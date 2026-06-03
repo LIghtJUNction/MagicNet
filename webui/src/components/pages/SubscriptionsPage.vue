@@ -85,27 +85,19 @@ async function copy(text: string, label: string): Promise<void> {
       </Card>
 
       <Card>
-        <h3 class="mb-2 text-base font-semibold">过滤免费节点</h3>
-        <p class="text-sm leading-6 text-zinc-400">仅切换 MagicNet 订阅预处理开关，不进入节点管理。</p>
-        <Button :variant="state.subscriptions.freeFilter ? 'default' : 'outline'" :loading="isRunning('free-filter')" @click="withAction('free-filter', async () => { await runCli(state.subscriptions.freeFilter ? 'sub filter-free off' : 'sub filter-free on', '切换免费节点过滤'); await refreshSubs(true); })">
-          {{ state.subscriptions.freeFilter ? "已开启过滤" : "已关闭过滤" }}
-        </Button>
+        <h3 class="mb-2 text-base font-semibold">mihomo providers</h3>
+        <div class="grid gap-3">
+          <label v-for="provider in state.subscriptions.mihomoProviders" :key="provider.name" class="grid gap-2">
+            <span class="text-sm text-zinc-300">{{ provider.name }}</span>
+            <Textarea v-model="provider.url" class="min-h-20" spellcheck="false" />
+            <div class="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" :loading="isRunning(`save-provider-${provider.name}`)" @click="saveProvider(provider.name, provider.url)">保存</Button>
+              <Button variant="outline" @click="copy(provider.url, provider.name)">复制</Button>
+            </div>
+          </label>
+          <p v-if="!providerNames.length" class="text-sm leading-6 text-zinc-400">未读取到 mihomo provider。请先确认 config.yaml 的 proxy-providers。</p>
+        </div>
       </Card>
     </div>
-
-    <Card>
-      <h3 class="mb-2 text-base font-semibold">mihomo providers</h3>
-      <div class="grid gap-3">
-        <label v-for="provider in state.subscriptions.mihomoProviders" :key="provider.name" class="grid gap-2">
-          <span class="text-sm text-zinc-300">{{ provider.name }}</span>
-          <Textarea v-model="provider.url" class="min-h-20" spellcheck="false" />
-          <div class="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" :loading="isRunning(`save-provider-${provider.name}`)" @click="saveProvider(provider.name, provider.url)">保存</Button>
-            <Button variant="outline" @click="copy(provider.url, provider.name)">复制</Button>
-          </div>
-        </label>
-        <p v-if="!providerNames.length" class="text-sm leading-6 text-zinc-400">未读取到 mihomo provider。请先确认 config.yaml 的 proxy-providers。</p>
-      </div>
-    </Card>
   </div>
 </template>

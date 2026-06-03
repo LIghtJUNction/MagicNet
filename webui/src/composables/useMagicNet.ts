@@ -37,8 +37,7 @@ const state = reactive({
   subscriptions: {
     singBox: "",
     singBoxUrls: [],
-    mihomoProviders: [],
-    freeFilter: false
+    mihomoProviders: []
   } as SubscriptionState,
   config: {
     target: "mihomo" as ConfigEditorTarget,

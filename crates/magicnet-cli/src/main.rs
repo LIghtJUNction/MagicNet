@@ -32,7 +32,7 @@ use service::{
     supervisor_cmd, transparent_cmd, vpn_cmd, watchdog_cmd,
 };
 use subscriptions::{
-    sub_filter_free, sub_get, sub_list, sub_set, sub_set_file, sub_target_file, sub_update,
+    setup_subscription, sub_get, sub_list, sub_set, sub_set_file, sub_target_file, sub_update,
     sub_update_all,
 };
 use tailscale::tailscale_cmd;
@@ -73,8 +73,10 @@ impl App {
             .or_else(|_| current_exe_moddir())
             .unwrap_or_else(|_| PathBuf::from("/data/adb/modules/MagicNet"));
         let api = env::var("MAGICNET_API").unwrap_or_else(|_| "http://127.0.0.1:9090".to_string());
-        let mihomo_webui =
-            env::var("MAGICNET_MIHOMO_WEBUI").unwrap_or_else(|_| format!("{api}/ui/cubex/"));
+        let mihomo_webui = env::var("MAGICNET_MIHOMO_WEBUI").unwrap_or_else(|_| {
+            "https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret="
+                .to_string()
+        });
         let singbox_webui = env::var("MAGICNET_SINGBOX_WEBUI")
             .unwrap_or_else(|_| format!("{api}/ui/#/setup?hostname=127.0.0.1&port=9090"));
         Self {
@@ -92,7 +94,9 @@ impl App {
         Self {
             log_dir: moddir.join(".log"),
             moddir,
-            mihomo_webui: format!("{api}/ui/cubex/"),
+            mihomo_webui:
+                "https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret="
+                    .to_string(),
             singbox_webui: format!("{api}/ui/#/setup?hostname=127.0.0.1&port=9090"),
             api,
         }
@@ -129,6 +133,7 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "topology" => topology(app),
         "sysroute" => sysroute(args),
         "support" => support(app, &args[1..]),
+        "setup" => setup_subscription(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "config" => config_cmd(app, &args[1..]),
         "transparent" => transparent_cmd(app, &args[1..]),
         "core" => core_cmd(app, &args[1..]),
@@ -152,9 +157,6 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "sub" if args.get(1).map(String::as_str) == Some("set-file") => sub_set_file(app, args),
         "sub" if args.get(1).map(String::as_str) == Some("update") => sub_update(app, args),
         "sub" if args.get(1).map(String::as_str) == Some("update-all") => sub_update_all(app),
-        "sub" if args.get(1).map(String::as_str) == Some("filter-free") => {
-            sub_filter_free(app, &args[2..])
-        }
         "config-editor" => config_editor(app, &args[1..]),
         "sub"
             if matches!(
@@ -243,7 +245,7 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
 
 fn help() {
     println!(
-        "MagicNet CLI\n\nUsage:\n  cli service {{status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}}\n  cli supervisor {{status|start|stop|restart}} [watchdog|fswatch|all]\n  cli watchdog {{status|start|stop|restart}}\n  cli health\n  cli pingtest\n  cli topology\n  cli sysroute {{list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}}\n  cli repair\n  cli support bundle\n  cli setup <subscription-url>\n  cli config {{apply}}\n  cli config-editor {{get|path|validate|save}} <mihomo|sing-box> [base64-config]\n  cli transparent {{status|set <tun|tproxy>|apply}}\n  cli core {{status|sing-box {{status|enable|disable|toggle}}}}\n  cli tailscale {{status|set <auth-key|-keep> [hostname] [subnets_csv]|disable|apply}}\n  cli node {{list|current|use <name>}}\n  cli mode [rule|global|direct]\n  cli route {{list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}}\n  cli sub {{update <sing-box|mihomo|all>|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> [provider] <url>|set-file <sing-box> <base64-lines>|filter-free {{status|on|off|apply}}|file [sing-box|mihomo]}}\n  cli cert {{list|dir|ensure-default|install <name|hash.0|auto> <base64-cert>|remove <filename.0>}}\n  cli capture {{list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}}\n  cli block {{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}}\n  cli mcp {{status|enable|disable|start|stop|restart}}\n  cli webui {{status|install-local <download-url> [name]}}\n  cli backup {{export [password]|restore [password|-] <base64>}}\n  cli api {{ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}}\n  cli app {{list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}}\n  cli hotspot {{status|set <proxy|direct>|reload}}\n  cli vpn {{status|set <on|off>|reload}}\n  cli diagnose"
+        "MagicNet CLI\n\nUsage:\n  cli service {{status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}}\n  cli supervisor {{status|start|stop|restart}} [watchdog|fswatch|all]\n  cli watchdog {{status|start|stop|restart}}\n  cli health\n  cli pingtest\n  cli topology\n  cli sysroute {{list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}}\n  cli repair\n  cli support bundle\n  cli setup <subscription-url>\n  cli config {{apply}}\n  cli config-editor {{get|path|validate|save}} <mihomo|sing-box> [base64-config]\n  cli transparent {{status|set <tun|tproxy>|apply}}\n  cli core {{status|sing-box {{status|enable|disable|toggle}}}}\n  cli tailscale {{status|set <auth-key|-keep> [hostname] [subnets_csv]|disable|apply}}\n  cli node {{list|current|use <name>}}\n  cli mode [rule|global|direct]\n  cli route {{list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}}\n  cli sub {{update <sing-box|mihomo|all>|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> [provider] <url>|set-file <sing-box> <base64-lines>|file [sing-box|mihomo]}}\n  cli cert {{list|dir|ensure-default|install <name|hash.0|auto> <base64-cert>|remove <filename.0>}}\n  cli capture {{list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}}\n  cli block {{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}}\n  cli mcp {{status|enable|disable|start|stop|restart}}\n  cli webui {{status|install-local <download-url> [name]}}\n  cli backup {{export [password]|restore [password|-] <base64>}}\n  cli api {{ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}}\n  cli app {{list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}}\n  cli hotspot {{status|set <proxy|direct>|reload}}\n  cli vpn {{status|set <on|off>|reload}}\n  cli diagnose"
     );
 }
 

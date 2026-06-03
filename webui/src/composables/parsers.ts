@@ -6,7 +6,6 @@ export type SubscriptionState = {
   singBox: string;
   singBoxUrls: string[];
   mihomoProviders: MihomoProvider[];
-  freeFilter: boolean;
 };
 
 export type CaptureState = {
@@ -181,7 +180,6 @@ export function parseSubs(text: string, previous: SubscriptionState): Subscripti
     if (/^sing-box\.\d+=/.test(line)) next.singBoxUrls.push(line.replace(/^sing-box\.\d+=/, ""));
     else if (provider) next.mihomoProviders.push({ name: provider[1], url: provider[2] });
     else if (line.startsWith("sing-box=")) next.singBox = line.slice(9);
-    else if (line.startsWith("free-filter=")) next.freeFilter = line.slice(12).trim() === "1";
   });
   if (!next.singBoxUrls.length && next.singBox) next.singBoxUrls = [next.singBox];
   return next;

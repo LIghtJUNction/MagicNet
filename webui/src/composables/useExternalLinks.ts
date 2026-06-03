@@ -58,7 +58,7 @@ export function useExternalLinks(
       state.phase = "error";
       return;
     }
-    window.location.assign(coreUiUrl(target));
+    await openExternal(coreUiUrl(target), target, { preferBrowser: target !== "zashboard" });
   }
 
   function setAutoCoreOpen(target: CoreUiTarget | ""): void {

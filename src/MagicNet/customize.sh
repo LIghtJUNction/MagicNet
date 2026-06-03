@@ -30,10 +30,10 @@ set_i18n "INSTALL_TITLE" \
   "ko" "MagicNet 설치"
 
 set_i18n "INSTALL_PROFILE" \
-  "zh" "系统级 TUN 代理模块，内置 mihomo / sing-box 双内核与 Clash API 兼容 WebUI。" \
-  "en" "System-level TUN proxy module with mihomo / sing-box cores and Clash API compatible WebUI." \
-  "ja" "mihomo / sing-box コアと Clash API 互換 WebUI を備えたシステム TUN プロキシモジュールです。" \
-  "ko" "mihomo / sing-box 코어와 Clash API 호환 WebUI를 포함한 시스템 TUN 프록시 모듈입니다."
+  "zh" "系统级戒网瘾模块，内置 mihomo / sing-box 双内核、域名封锁、TUN/TProxy 与 Clash API 兼容 WebUI。" \
+  "en" "System-level digital detox module with mihomo / sing-box cores, domain blocking, TUN/TProxy, and Clash API compatible WebUI." \
+  "ja" "mihomo / sing-box コア、ドメインブロック、TUN/TProxy、Clash API 互換 WebUI を備えたシステム級デジタルデトックスモジュールです。" \
+  "ko" "mihomo / sing-box 코어, 도메인 차단, TUN/TProxy, Clash API 호환 WebUI를 포함한 시스템 수준 디지털 디톡스 모듈입니다."
 
 set_i18n "INSTALL_ROW_PROFILE" \
   "zh" "模块定位" \
@@ -42,10 +42,10 @@ set_i18n "INSTALL_ROW_PROFILE" \
   "ko" "개요"
 
 set_i18n "INSTALL_DEFAULTS" \
-  "zh" "默认启用：sing-box、TUN 自动路由、热点转发修复、VPN 共存保护。" \
-  "en" "Enabled by default: sing-box, TUN auto-route, hotspot forwarding fix, VPN coexistence protection." \
-  "ja" "既定で有効: sing-box、TUN 自動ルート、ホットスポット転送修正、VPN 共存保護。" \
-  "ko" "기본 활성화: sing-box, TUN 자동 라우팅, 핫스팟 포워딩 수정, VPN 공존 보호."
+  "zh" "默认启用：sing-box、TUN 自动路由、戒网瘾封锁列表、热点转发修复、VPN 共存保护。" \
+  "en" "Enabled by default: sing-box, TUN auto-route, detox blocklist, hotspot forwarding fix, VPN coexistence protection." \
+  "ja" "既定で有効: sing-box、TUN 自動ルート、デトックスブロックリスト、ホットスポット転送修正、VPN 共存保護。" \
+  "ko" "기본 활성화: sing-box, TUN 자동 라우팅, 디지털 디톡스 차단 목록, 핫스팟 포워딩 수정, VPN 공존 보호."
 
 set_i18n "INSTALL_ROW_DEFAULTS" \
   "zh" "默认行为" \
@@ -75,28 +75,36 @@ mihomo:   /data/adb/modules/MagicNet/.config/mihomo/config.yaml"
 
 set_i18n "INSTALL_NEXT_STEPS" \
   "zh" "安装后操作：
-1. 写入订阅链接或 outbound 节点。
+1. 执行 cli setup <合法订阅链接>，会同时初始化 sing-box 和 mihomo premium_a。
 2. 重启设备，或在模块操作页启动内核。
-3. 打开模块 WebUI 的内核面板，或在终端执行 cli api ui 查看当前核心入口。
-mihomo 默认: http://127.0.0.1:9090/ui/cubex/
+3. 若只配置 mihomo，请执行 cli sub set mihomo premium_a <合法订阅链接> 后再启动 mihomo。
+4. 打开模块 WebUI 的内核面板，或在终端执行 cli api ui 查看当前核心入口。
+5. 把想戒掉的网站、规则组或域名指向 REJECT / block。
+mihomo 默认: https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret=
 sing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "en" "After installation:
-1. Add a subscription URL or outbound nodes.
+1. Run cli setup <legal-subscription-url>; it initializes sing-box and mihomo premium_a together.
 2. Reboot, or start the core from the module action page.
-3. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.
-mihomo default: http://127.0.0.1:9090/ui/cubex/
+3. For mihomo-only setup, run cli sub set mihomo premium_a <legal-subscription-url> before starting mihomo.
+4. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.
+5. Point distracting sites, groups, or domains to REJECT / block.
+mihomo default: https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret=
 sing-box default: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "ja" "インストール後:
-1. 購読 URL または outbound ノードを追加します。
+1. cli setup <合法な購読 URL> を実行します。sing-box と mihomo premium_a を同時に初期化します。
 2. 再起動するか、モジュール操作画面からコアを起動します。
-3. モジュール WebUI の Kernel Panel を開くか、cli api ui で現在のコア入口を確認します。
-mihomo 既定: http://127.0.0.1:9090/ui/cubex/
+3. mihomo のみ設定する場合は、起動前に cli sub set mihomo premium_a <合法な購読 URL> を実行します。
+4. モジュール WebUI の Kernel Panel を開くか、cli api ui で現在のコア入口を確認します。
+5. 見たくないサイト、グループ、ドメインを REJECT / block に向けます。
+mihomo 既定: https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret=
 sing-box 既定: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "ko" "설치 후:
-1. 구독 URL 또는 outbound 노드를 추가하세요.
+1. cli setup <합법 구독 URL>을 실행하세요. sing-box와 mihomo premium_a를 함께 초기화합니다.
 2. 재부팅하거나 모듈 작업 화면에서 코어를 시작하세요.
-3. 모듈 WebUI의 Kernel Panel을 열거나 cli api ui로 현재 코어 진입점을 확인하세요.
-mihomo 기본값: http://127.0.0.1:9090/ui/cubex/
+3. mihomo만 설정하려면 시작 전에 cli sub set mihomo premium_a <합법 구독 URL>을 실행하세요.
+4. 모듈 WebUI의 Kernel Panel을 열거나 cli api ui로 현재 코어 진입점을 확인하세요.
+5. 끊고 싶은 사이트, 그룹, 도메인을 REJECT / block으로 지정하세요.
+mihomo 기본값: https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret=
 sing-box 기본값: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090"
 
 set_i18n "INSTALL_FLAGS" \
@@ -148,10 +156,10 @@ set_i18n "SET_MODULE_ENTRY_PERMS" \
   "ko" "모듈 진입 스크립트 권한 설정 중"
 
 set_i18n "DISABLE_SINGBOX_ON_INSTALL" \
-  "zh" "选择默认代理内核" \
-  "en" "Choose the default proxy core" \
-  "ja" "既定のプロキシコアを選択" \
-  "ko" "기본 프록시 코어 선택"
+  "zh" "选择默认戒网瘾内核" \
+  "en" "Choose the default detox core" \
+  "ja" "既定のデトックスコアを選択" \
+  "ko" "기본 디지털 디톡스 코어 선택"
 
 set_i18n "USE_SINGBOX_CORE" \
   "zh" "使用 sing-box（推荐）" \

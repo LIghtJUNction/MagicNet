@@ -260,7 +260,6 @@ magicnet_disable_vpn_coexist() {
 
 magicnet_after_kernel_start() {
     magicnet_singbox_apply_zashboard
-    magicnet_mihomo_apply_zashboard
     magicnet_app_policy_apply
     magicnet_capture_apply
     magicnet_enable_hotspot_forward

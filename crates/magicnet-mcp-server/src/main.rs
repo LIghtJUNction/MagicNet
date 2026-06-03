@@ -153,8 +153,6 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_subscription_list" => run_cli(server, &["sub", "list"]),
         "magicnet_subscription_set" => subscription_set(server, args),
         "magicnet_subscription_set_singbox_lines" => subscription_set_singbox_lines(server, args),
-        "magicnet_free_filter_status" => run_cli(server, &["sub", "filter-free", "status"]),
-        "magicnet_free_filter_set" => free_filter_set(server, args),
         "magicnet_backup_export" => backup_export(server, args),
         "magicnet_pingtest" => run_cli(server, &["pingtest"]),
         "magicnet_topology" => run_cli(server, &["topology"]),
@@ -237,15 +235,6 @@ fn backup_export(server: &Server, args: &Value) -> String {
             run_cli_owned(server, vec!["backup".into(), "export".into(), password])
         }
         _ => run_cli(server, &["backup", "export"]),
-    }
-}
-
-fn free_filter_set(server: &Server, args: &Value) -> String {
-    let mode = arg(args, "mode").unwrap_or_default();
-    match mode.as_str() {
-        "on" | "enable" | "1" => run_cli(server, &["sub", "filter-free", "on"]),
-        "off" | "disable" | "0" => run_cli(server, &["sub", "filter-free", "off"]),
-        _ => "invalid mode, expected on or off".to_string(),
     }
 }
 

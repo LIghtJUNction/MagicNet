@@ -150,7 +150,6 @@ export type State = {
     mihomo: string;
     singBoxUrls: string[];
     mihomoProviders: MihomoProvider[];
-    freeFilter: boolean;
   };
   backupPassword: string;
   backupPayload: string;

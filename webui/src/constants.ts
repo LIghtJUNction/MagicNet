@@ -1,6 +1,6 @@
 export const MODULE_DIR = "/data/adb/modules/MagicNet";
 export const CLI = `${MODULE_DIR}/cli`;
-export const CORE_UI = "http://127.0.0.1:9090/ui/cubex/";
+export const CORE_UI = "https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret=";
 export const REPO = "https://github.com/LIghtJUNction/MagicNet";
 export const AUTHOR_WHISPER_URL = "https://lightjunction.github.io/lightjunction/";
 
