@@ -16,11 +16,19 @@ pub fn sub_set(app: &App, args: &[String]) -> Result<(), String> {
         "mihomo" | "clash" => match (args.get(3), args.get(4)) {
             (Some(provider), Some(url)) => (Some(provider.as_str()), url.as_str()),
             (Some(url), None) => (None, url.as_str()),
-            _ => return Err("Usage: cli sub set <sing-box|mihomo|clash> [provider] <url>".to_string()),
+            _ => {
+                return Err(
+                    "Usage: cli sub set <sing-box|mihomo|clash> [provider] <url>".to_string(),
+                )
+            }
         },
         "sing-box" | "singbox" => match args.get(3) {
             Some(url) => (None, url.as_str()),
-            None => return Err("Usage: cli sub set <sing-box|mihomo|clash> [provider] <url>".to_string()),
+            None => {
+                return Err(
+                    "Usage: cli sub set <sing-box|mihomo|clash> [provider] <url>".to_string(),
+                )
+            }
         },
         _ => return Err("Subscription target must be sing-box or mihomo".to_string()),
     };
@@ -32,7 +40,9 @@ pub fn sub_set(app: &App, args: &[String]) -> Result<(), String> {
     }
     println!(
         "[info] Saved {target}{} subscription URL to {}",
-        provider.map(|value| format!(" provider {value}")).unwrap_or_default(),
+        provider
+            .map(|value| format!(" provider {value}"))
+            .unwrap_or_default(),
         sub_target_file(app, target).display()
     );
     Ok(())
@@ -49,7 +59,8 @@ pub fn sub_set_file(app: &App, args: &[String]) -> Result<(), String> {
         _ => return Err("set-file currently supports sing-box only".to_string()),
     };
     let bytes = decode_base64(payload)?;
-    let text = String::from_utf8(bytes).map_err(|err| format!("subscription text is not UTF-8: {err}"))?;
+    let text =
+        String::from_utf8(bytes).map_err(|err| format!("subscription text is not UTF-8: {err}"))?;
     let mut seen = HashSet::new();
     let mut lines = Vec::new();
     for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
@@ -60,20 +71,32 @@ pub fn sub_set_file(app: &App, args: &[String]) -> Result<(), String> {
     }
     clear_node_cache(app);
     write_text_file(file.clone(), &format!("{}\n", lines.join("\n")))?;
-    println!("[info] Saved sing-box subscription URL list to {}", file.display());
+    println!(
+        "[info] Saved sing-box subscription URL list to {}",
+        file.display()
+    );
     Ok(())
 }
 
 pub fn sub_list(app: &App) {
-    for (idx, url) in clean_lines(app.moddir.join(".config/sing-box/subscription.url")).iter().enumerate() {
+    for (idx, url) in clean_lines(app.moddir.join(".config/sing-box/subscription.url"))
+        .iter()
+        .enumerate()
+    {
         println!("sing-box.{}={}", idx + 1, url);
     }
-    println!("sing-box={}", first_clean_line(app.moddir.join(".config/sing-box/subscription.url")));
+    println!(
+        "sing-box={}",
+        first_clean_line(app.moddir.join(".config/sing-box/subscription.url"))
+    );
     println!("free-filter={}", free_filter_enabled(app) as u8);
     for (name, url) in mihomo_providers(app) {
         println!("mihomo.{name}={url}");
     }
-    println!("mihomo={}", first_clean_line(app.moddir.join(".config/mihomo/subscription.url")));
+    println!(
+        "mihomo={}",
+        first_clean_line(app.moddir.join(".config/mihomo/subscription.url"))
+    );
 }
 
 pub fn sub_filter_free(app: &App, args: &[String]) -> Result<(), String> {
@@ -90,7 +113,10 @@ pub fn sub_filter_free(app: &App, args: &[String]) -> Result<(), String> {
     write_free_filter_conf(app, enabled)?;
     apply_mihomo_provider_filter(app, enabled)?;
     clear_node_cache(app);
-    println!("[info] Free provider filter {}", if enabled { "enabled" } else { "disabled" });
+    println!(
+        "[info] Free provider filter {}",
+        if enabled { "enabled" } else { "disabled" }
+    );
     Ok(())
 }
 
@@ -153,12 +179,19 @@ fn update_mihomo_providers(app: &App) -> Result<(), String> {
         println!("[info] Updated {ok} mihomo providers");
         Ok(())
     } else {
-        Err(format!("updated {ok} providers, failed {}", failed.join(", ")))
+        Err(format!(
+            "updated {ok} providers, failed {}",
+            failed.join(", ")
+        ))
     }
 }
 
 fn update_mihomo_provider(app: &App, name: &str) -> Result<(), String> {
-    let url = format!("{}/providers/proxies/{}", app.api, shell_url_component(name));
+    let url = format!(
+        "{}/providers/proxies/{}",
+        app.api,
+        shell_url_component(name)
+    );
     let output = Command::new("curl")
         .args(["-fsS", "-X", "PUT", "--max-time", "45", &url])
         .output()
@@ -167,7 +200,11 @@ fn update_mihomo_provider(app: &App, name: &str) -> Result<(), String> {
         Ok(())
     } else {
         let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(if err.is_empty() { "provider API failed".to_string() } else { err })
+        Err(if err.is_empty() {
+            "provider API failed".to_string()
+        } else {
+            err
+        })
     }
 }
 
@@ -186,14 +223,20 @@ fn free_filter_conf_path(app: &App) -> PathBuf {
 fn free_filter_enabled(app: &App) -> bool {
     fs::read_to_string(free_filter_conf_path(app))
         .ok()
-        .map(|text| text.lines().any(|line| line.trim() == "MAGICNET_FILTER_FREE_PROVIDERS=1"))
+        .map(|text| {
+            text.lines()
+                .any(|line| line.trim() == "MAGICNET_FILTER_FREE_PROVIDERS=1")
+        })
         .unwrap_or(false)
 }
 
 fn write_free_filter_conf(app: &App, enabled: bool) -> Result<(), String> {
     write_text_file(
         free_filter_conf_path(app),
-        &format!("MAGICNET_FILTER_FREE_PROVIDERS={}\n", if enabled { 1 } else { 0 }),
+        &format!(
+            "MAGICNET_FILTER_FREE_PROVIDERS={}\n",
+            if enabled { 1 } else { 0 }
+        ),
     )
 }
 
@@ -224,7 +267,11 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
         .collect()
 }
 
-fn update_mihomo_config_url(app: &App, url: &str, target_provider: Option<&str>) -> Result<(), String> {
+fn update_mihomo_config_url(
+    app: &App,
+    url: &str,
+    target_provider: Option<&str>,
+) -> Result<(), String> {
     let mut config = match read_mihomo_yaml(app) {
         Ok(config) => config,
         Err(_) => return Ok(()),
@@ -232,12 +279,12 @@ fn update_mihomo_config_url(app: &App, url: &str, target_provider: Option<&str>)
     let Some(providers) = yaml_mapping_mut(&mut config, "proxy-providers") else {
         return Ok(());
     };
-    let target_key = target_provider
-        .map(ToOwned::to_owned)
-        .or_else(|| providers.iter().find_map(|(key, value)| {
+    let target_key = target_provider.map(ToOwned::to_owned).or_else(|| {
+        providers.iter().find_map(|(key, value)| {
             value.get("url")?;
             key.as_str().map(ToOwned::to_owned)
-        }));
+        })
+    });
     let Some(target_key) = target_key else {
         return Ok(());
     };
@@ -247,7 +294,10 @@ fn update_mihomo_config_url(app: &App, url: &str, target_provider: Option<&str>)
     let Some(provider_map) = provider.as_mapping_mut() else {
         return Err(format!("mihomo provider {target_key} is not a map"));
     };
-    provider_map.insert(Value::String("url".to_string()), Value::String(url.to_string()));
+    provider_map.insert(
+        Value::String("url".to_string()),
+        Value::String(url.to_string()),
+    );
     write_mihomo_yaml(app, &config)?;
     println!("[info] Updated mihomo provider {target_key}");
     Ok(())
@@ -264,7 +314,10 @@ fn apply_mihomo_provider_filter(app: &App, enabled: bool) -> Result<(), String> 
     if selected.is_empty() {
         return Err("mihomo providers-default list is empty".to_string());
     }
-    let Some(groups) = config.get_mut("proxy-groups").and_then(Value::as_sequence_mut) else {
+    let Some(groups) = config
+        .get_mut("proxy-groups")
+        .and_then(Value::as_sequence_mut)
+    else {
         return Ok(());
     };
     for group in groups {
@@ -284,13 +337,15 @@ fn apply_mihomo_provider_filter(app: &App, enabled: bool) -> Result<(), String> 
 
 fn read_mihomo_yaml(app: &App) -> Result<Value, String> {
     let path = app.moddir.join(".config/mihomo/config.yaml");
-    let text = fs::read_to_string(&path).map_err(|err| format!("read {}: {err}", path.display()))?;
+    let text =
+        fs::read_to_string(&path).map_err(|err| format!("read {}: {err}", path.display()))?;
     serde_yaml::from_str(&text).map_err(|err| format!("parse {}: {err}", path.display()))
 }
 
 fn write_mihomo_yaml(app: &App, config: &Value) -> Result<(), String> {
     let path = app.moddir.join(".config/mihomo/config.yaml");
-    let text = serde_yaml::to_string(config).map_err(|err| format!("serialize mihomo yaml: {err}"))?;
+    let text =
+        serde_yaml::to_string(config).map_err(|err| format!("serialize mihomo yaml: {err}"))?;
     write_text_file(path, &text)
 }
 
@@ -308,7 +363,13 @@ fn yaml_string_vec(value: &Value, path: &[&str]) -> Vec<String> {
     }
     current
         .as_sequence()
-        .map(|items| items.iter().filter_map(Value::as_str).map(ToOwned::to_owned).collect())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -322,4 +383,160 @@ fn shell_url_component(value: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+
+    fn temp_app() -> App {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("magicnet-cli-test-{stamp}"));
+        App::for_test(dir)
+    }
+
+    fn write_mihomo(app: &App, text: &str) {
+        let path = app.moddir.join(".config/mihomo/config.yaml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn subscription_url_validation_accepts_only_http_urls_without_whitespace() {
+        validate_subscription_url("https://example.com/sub?token=abc").unwrap();
+        validate_subscription_url("http://127.0.0.1:8080/sub").unwrap();
+        assert!(validate_subscription_url("ftp://example.com/sub").is_err());
+        assert!(validate_subscription_url("https://example.com/a b").is_err());
+    }
+
+    #[test]
+    fn set_file_dedupes_and_trims_singbox_subscription_lines() {
+        let app = temp_app();
+        let payload = crate::encode_base64(
+            b"\nhttps://example.com/a\nhttps://example.com/a\n  http://example.com/b  \n",
+        );
+
+        sub_set_file(
+            &app,
+            &[
+                "sub".to_string(),
+                "set-file".to_string(),
+                "sing-box".to_string(),
+                payload,
+            ],
+        )
+        .unwrap();
+
+        let text =
+            fs::read_to_string(app.moddir.join(".config/sing-box/subscription.url")).unwrap();
+        assert_eq!(text, "https://example.com/a\nhttp://example.com/b\n");
+    }
+
+    #[test]
+    fn set_file_rejects_non_http_subscription_lines() {
+        let app = temp_app();
+        let payload = crate::encode_base64(b"vmess://not-a-subscription-file-entry\n");
+
+        let err = sub_set_file(
+            &app,
+            &[
+                "sub".to_string(),
+                "set-file".to_string(),
+                "sing-box".to_string(),
+                payload,
+            ],
+        )
+        .unwrap_err();
+
+        assert!(err.contains("must start with http:// or https://"), "{err}");
+    }
+
+    #[test]
+    fn set_mihomo_subscription_updates_named_provider_url() {
+        let app = temp_app();
+        write_mihomo(
+            &app,
+            r#"
+proxy-providers:
+  premium:
+    type: http
+    url: https://old.example/sub
+"#,
+        );
+
+        sub_set(
+            &app,
+            &[
+                "sub".to_string(),
+                "set".to_string(),
+                "mihomo".to_string(),
+                "premium".to_string(),
+                "https://new.example/sub".to_string(),
+            ],
+        )
+        .unwrap();
+
+        let text = fs::read_to_string(app.moddir.join(".config/mihomo/config.yaml")).unwrap();
+        assert!(text.contains("https://new.example/sub"), "{text}");
+        let saved = fs::read_to_string(app.moddir.join(".config/mihomo/subscription.url")).unwrap();
+        assert_eq!(saved, "https://new.example/sub\n");
+    }
+
+    #[test]
+    fn free_filter_switches_provider_group_use_list() {
+        let app = temp_app();
+        write_mihomo(
+            &app,
+            r#"
+providers-default:
+  premium:
+    - premium
+  all_providers:
+    - premium
+    - free
+proxy-groups:
+  - name: PROXY
+    use:
+      - premium
+      - free
+"#,
+        );
+
+        sub_filter_free(&app, &["on".to_string()]).unwrap();
+        let enabled = read_mihomo_yaml(&app).unwrap();
+        assert_eq!(
+            enabled["proxy-groups"][0]["use"]
+                .as_sequence()
+                .unwrap()
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>(),
+            vec!["premium"]
+        );
+
+        sub_filter_free(&app, &["off".to_string()]).unwrap();
+        let disabled = read_mihomo_yaml(&app).unwrap();
+        assert_eq!(
+            disabled["proxy-groups"][0]["use"]
+                .as_sequence()
+                .unwrap()
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>(),
+            vec!["premium", "free"]
+        );
+    }
+
+    #[test]
+    fn shell_url_component_percent_encodes_provider_names_for_api_paths() {
+        assert_eq!(shell_url_component("Premium HK"), "Premium%20HK");
+        assert_eq!(shell_url_component("a/b?c=d"), "a%2Fb%3Fc%3Dd");
+        assert_eq!(shell_url_component("az-AZ_09.~"), "az-AZ_09.~");
+    }
 }

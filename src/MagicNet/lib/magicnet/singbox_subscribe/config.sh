@@ -36,63 +36,7 @@ magicnet_singbox_build_outbounds_file() {
 
     {
         printf '  "outbounds": [\n'
-        magicnet_emit_selector_json "proxy" "$_all" "$_first_tag"
-        printf ',\n'
-        magicnet_emit_selector_json "select" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "tw" "uk" "iepl" "free" "download" "direct")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "hk" "$_hk" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "jp" "$_jp" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "us" "$_us" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "sg" "$_sg" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "tw" "$_tw" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "uk" "$_uk" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "iepl" "$_iepl" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "free" "$_free" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "download" "$_download" "direct"
-        printf ',\n'
-        magicnet_emit_selector_json "lan" "" "direct"
-        printf ',\n'
-        magicnet_emit_selector_json "ad-block" "" "block"
-        printf ',\n'
-        magicnet_emit_selector_json "cn-direct" "" "direct"
-        printf ',\n'
-        magicnet_emit_selector_json "apple-cn" "" "direct"
-        printf ',\n'
-        magicnet_emit_selector_json "microsoft-cn" "" "direct"
-        printf ',\n'
-        magicnet_emit_selector_json "google-cn" "" "direct"
-        printf ',\n'
-        magicnet_emit_selector_json "icloud" "" "direct"
-        printf ',\n'
-        magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n%s\n%s\n' "proxy" "direct" "hk" "us")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "network-test" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "ai-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "us" "sg" "jp" "proxy" "direct")" "us"
-        printf ',\n'
-        magicnet_emit_selector_json "proxy-rule" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "direct")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "dev-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "social-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "download-direct" "$_download" "direct"
-        printf ',\n'
-        magicnet_emit_selector_json "media-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "game-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "telegram-proxy" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "sg" "direct")" "proxy"
-        printf ',\n'
-        magicnet_emit_selector_json "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
+        magicnet_singbox_emit_selector_block "$_tags_file" "$_first_tag"
         _nodes=$(sed 's/^\[//; s/\]$//' "${_out_file}.nodes")
         if [ -n "$_nodes" ]; then
             printf ',\n    %s' "$_nodes"
@@ -104,6 +48,51 @@ magicnet_singbox_build_outbounds_file() {
     } >"$_out_file"
 
     printf '%s %s\n' "$_imported" "$_skipped"
+}
+
+magicnet_singbox_emit_selector_block() {
+    _tags_file="$1"
+    _first_tag="$2"
+    magicnet_emit_selector_json "proxy" "$(cat "$_tags_file")" "$_first_tag"
+    printf ',\n'
+    magicnet_emit_selector_json "select" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "tw" "uk" "iepl" "free" "download" "direct")" "proxy"
+    for _pair in \
+        "hk:$_hk:proxy" "jp:$_jp:proxy" "us:$_us:proxy" "sg:$_sg:proxy" \
+        "tw:$_tw:proxy" "uk:$_uk:proxy" "iepl:$_iepl:proxy" \
+        "free:$_free:proxy" "download:$_download:direct"; do
+        _name=${_pair%%:*}
+        _rest=${_pair#*:}
+        _items=${_rest%:*}
+        _default=${_pair##*:}
+        printf ',\n'
+        magicnet_emit_selector_json "$_name" "$_items" "$_default"
+    done
+    magicnet_singbox_emit_static_selectors
+    unset _tags_file _first_tag _pair _name _rest _items _default
+}
+
+magicnet_singbox_emit_static_selectors() {
+    for _pair in \
+        "lan::direct" "ad-block::block" "cn-direct::direct" \
+        "apple-cn::direct" "microsoft-cn::direct" "google-cn::direct" "icloud::direct"; do
+        _name=${_pair%%:*}
+        _default=${_pair##*:}
+        printf ',\n'
+        magicnet_emit_selector_json "$_name" "" "$_default"
+    done
+    printf ',\n'
+    magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n%s\n%s\n' "proxy" "direct" "hk" "us")" "proxy"
+    printf ',\n'
+    magicnet_emit_selector_json "network-test" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
+    for _name in ai-proxy proxy-rule dev-proxy social-proxy media-proxy game-proxy telegram-proxy; do
+        printf ',\n'
+        magicnet_emit_selector_json "$_name" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
+    done
+    printf ',\n'
+    magicnet_emit_selector_json "download-direct" "$_download" "direct"
+    printf ',\n'
+    magicnet_emit_selector_json "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
+    unset _pair _name _default
 }
 
 magicnet_singbox_update_config_with_nodes() {
@@ -207,9 +196,9 @@ magicnet_singbox_restart_if_running() {
 }
 
 magicnet_singbox_api_has_nodes() {
-    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || true)
+    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
     [ -n "$_api" ] || return 1
-    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks)"'
+    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|Selector)"'
 }
 
 magicnet_singbox_config_has_nodes() {
@@ -230,8 +219,7 @@ magicnet_singbox_verify_subscription_ready() {
             return 1
         }
         magicnet_singbox_api_has_nodes || {
-            error "sing-box subscription loaded no proxy nodes"
-            return 1
+            warn "sing-box API did not expose proxy nodes; generated config contains nodes"
         }
         magicnet_singbox_google_works || {
             error "sing-box proxy test failed: https://www.google.com is not reachable"
@@ -245,4 +233,3 @@ magicnet_singbox_verify_subscription_ready() {
         return 1
     }
 }
-

@@ -58,6 +58,10 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
+export async function readClipboardText(): Promise<string> {
+  return await navigator.clipboard?.readText?.() || "";
+}
+
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer = 0;
   const timeout = new Promise<never>((_, reject) => {

@@ -8,5 +8,5 @@ const classes = computed(() => cn("w-full rounded-md border border-zinc-800 bg-z
 </script>
 
 <template>
-  <input v-model="model" :class="classes" />
+  <input v-model="model" :class="classes" v-bind="$attrs" />
 </template>

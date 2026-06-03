@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::{pid_summary, read_kv, run_magicnet_function, write_text_file, App};
+use crate::{
+    diagnostics::supervisor_pid, pid_summary, read_kv, run_magicnet_function, write_text_file, App,
+};
 
 pub(crate) fn service_status(app: &App) {
     let singbox = pid_summary("sing-box");
@@ -15,16 +17,30 @@ pub(crate) fn service_status(app: &App) {
     };
     println!("MagicNet");
     println!("  sing-box: {singbox}");
-    println!("  sing-box-disabled: {}", bool_file(app.moddir.join(".disable_sing_box")) as u8);
+    println!(
+        "  sing-box-disabled: {}",
+        bool_file(app.moddir.join(".disable_sing_box")) as u8
+    );
     println!("  mihomo:   {mihomo}");
-    println!("  watchdog: {}", pid_summary("watchdog"));
-    println!("  fswatch:  {}", pid_summary("fswatch"));
+    println!(
+        "  watchdog: {}",
+        supervisor_pid(app, "watchdog", "magicnet-kernel")
+    );
+    println!(
+        "  fswatch:  {}",
+        supervisor_pid(app, "fswatch", "magicnet-config")
+    );
     println!("  Selected: {}", selected_core(app));
     println!("  Transparent: {}", transparent_mode(app));
     println!("  Hotspot: {}", hotspot_mode(app));
     println!("  API:      {}", app.api);
     println!("  WebUI:    {webui}");
-    println!("  Sub URL:  {}", app.moddir.join(".config/sing-box/subscription.url").display());
+    println!(
+        "  Sub URL:  {}",
+        app.moddir
+            .join(".config/sing-box/subscription.url")
+            .display()
+    );
 }
 
 pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -43,6 +59,28 @@ pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
             _ => Err("Usage: cli service toggle <sing-box|mihomo>".to_string()),
         },
         _ => Err("Usage: cli service {status|start|ensure|stop|restart [current|sing-box|mihomo]|toggle <sing-box|mihomo>|logs [core] [lines]}".to_string()),
+    }
+}
+
+pub(crate) fn supervisor_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str).unwrap_or("status") {
+        "status" => {
+            println!(
+                "watchdog={}",
+                supervisor_pid(app, "watchdog", "magicnet-kernel")
+            );
+            println!(
+                "fswatch={}",
+                supervisor_pid(app, "fswatch", "magicnet-config")
+            );
+            Ok(())
+        }
+        "start" => run_magicnet_function(app, "magicnet_supervisors_start"),
+        "stop" => run_magicnet_function(app, "magicnet_supervisors_stop"),
+        "restart" => {
+            run_magicnet_function(app, "magicnet_supervisors_stop; magicnet_supervisors_start")
+        }
+        _ => Err("Usage: cli supervisor {status|start|stop|restart}".to_string()),
     }
 }
 
@@ -109,13 +147,17 @@ pub(crate) fn repair(app: &App) -> Result<(), String> {
 
 pub(crate) fn service_logs(app: &App, args: &[String]) -> Result<(), String> {
     let target = args.get(2).map(String::as_str).unwrap_or("sing-box");
-    let lines = args.get(3).and_then(|value| value.parse::<usize>().ok()).unwrap_or(120);
+    let lines = args
+        .get(3)
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(120);
     let file = match target {
         "sing-box" | "singbox" | "core" => app.log_dir.join("sing-box.log"),
         "mihomo" => app.log_dir.join("mihomo.log"),
         other => app.log_dir.join(format!("{other}.log")),
     };
-    let text = fs::read_to_string(&file).map_err(|err| format!("log not found {}: {err}", file.display()))?;
+    let text = fs::read_to_string(&file)
+        .map_err(|err| format!("log not found {}: {err}", file.display()))?;
     for line in tail_lines(&text, lines) {
         println!("{line}");
     }
@@ -123,7 +165,11 @@ pub(crate) fn service_logs(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn restart(app: &App, target: &str) -> Result<(), String> {
-    let target = if target == "current" { selected_core(app) } else { target.to_string() };
+    let target = if target == "current" {
+        selected_core(app)
+    } else {
+        target.to_string()
+    };
     match target.as_str() {
         "sing-box" | "singbox" => run_magicnet_function(app, "magicnet_supervisors_stop; import __mihomo__; mihomo_stop 2>/dev/null || true; import __singbox__; singbox_stop 2>/dev/null || true; magicnet_start_singbox; magicnet_after_kernel_start; magicnet_supervisors_start"),
         "mihomo" => run_magicnet_function(app, "magicnet_supervisors_stop; import __singbox__; singbox_stop 2>/dev/null || true; import __mihomo__; mihomo_stop 2>/dev/null || true; magicnet_start_mihomo; magicnet_after_kernel_start; magicnet_supervisors_start"),
@@ -199,7 +245,10 @@ fn singbox_cmd(app: &App, action: &str) -> Result<(), String> {
 fn transparent_mode(app: &App) -> &'static str {
     fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
         .ok()
-        .filter(|text| text.lines().any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=tproxy"))
+        .filter(|text| {
+            text.lines()
+                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=tproxy")
+        })
         .map(|_| "tproxy")
         .unwrap_or("tun")
 }
@@ -214,7 +263,10 @@ fn hotspot_mode(app: &App) -> String {
 }
 
 fn core_status(app: &App) {
-    println!("sing-box-disabled={}", bool_file(app.moddir.join(".disable_sing_box")) as u8);
+    println!(
+        "sing-box-disabled={}",
+        bool_file(app.moddir.join(".disable_sing_box")) as u8
+    );
     println!("selected={}", selected_core(app));
 }
 

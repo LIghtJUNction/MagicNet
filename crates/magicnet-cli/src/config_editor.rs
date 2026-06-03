@@ -25,16 +25,17 @@ pub(crate) fn config_editor(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "save" => save_config(app, target, &path, args),
-        _ => Err("Usage: cli config-editor {get|path|validate|save} <mihomo|sing-box> [base64-config]".to_string()),
+        _ => Err(
+            "Usage: cli config-editor {get|path|validate|save} <mihomo|sing-box> [base64-config]"
+                .to_string(),
+        ),
     }
 }
 
 fn save_config(app: &App, target: &str, path: &Path, args: &[String]) -> Result<(), String> {
     let payload = args.get(2).map(String::as_str).unwrap_or_default();
     if payload.is_empty() {
-        return Err(
-            "Usage: cli config-editor save <mihomo|sing-box> <base64-config>".to_string(),
-        );
+        return Err("Usage: cli config-editor save <mihomo|sing-box> <base64-config>".to_string());
     }
     let bytes = decode_base64(payload)?;
     let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
@@ -50,7 +51,10 @@ fn save_config(app: &App, target: &str, path: &Path, args: &[String]) -> Result<
     }
     fs::rename(&tmp, path).map_err(|err| format!("save config {}: {err}", path.display()))?;
     run_magicnet_function(app, "magicnet_apply_runtime_config")?;
-    println!("[info] Saved and validated {target} config: {}", path.display());
+    println!(
+        "[info] Saved and validated {target} config: {}",
+        path.display()
+    );
     Ok(())
 }
 
@@ -86,7 +90,9 @@ fn validate_config(app: &App, target: &str, path: &Path) -> Result<(), String> {
             }
         }
     }
-    let output = command.output().map_err(|err| format!("run validator: {err}"))?;
+    let output = command
+        .output()
+        .map_err(|err| format!("run validator: {err}"))?;
     if output.status.success() {
         Ok(())
     } else {

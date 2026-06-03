@@ -39,7 +39,11 @@ pub(crate) fn file_read(server: &Server, rel: &str) -> String {
         Ok(bytes) => bytes,
         Err(err) => return format!("not a file: {rel}: {err}"),
     };
-    String::from_utf8_lossy(&bytes).lines().take(240).collect::<Vec<_>>().join("\n")
+    String::from_utf8_lossy(&bytes)
+        .lines()
+        .take(240)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub(crate) fn file_write(server: &Server, rel: &str, content: &[u8], mode: &str) -> String {

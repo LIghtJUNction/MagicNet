@@ -2,13 +2,13 @@ mod base64;
 mod files;
 mod tools;
 
+use serde_json::{json, Value};
 use std::env;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
-use serde_json::{json, Value};
 
 use base64::{decode_base64, encode_base64};
 use files::{dir_make, file_chmod, file_list, file_read, file_write, webui_build};
@@ -126,7 +126,10 @@ fn handle_jsonrpc(payload: &str, server: &Server) -> String {
             &id,
             json!({"protocolVersion":"2025-03-26","serverInfo":{"name":"magicnet","version":"1.0.0"},"capabilities":{"tools":{}}}),
         ),
-        "tools/list" => rpc_result(&id, serde_json::from_str(TOOLS_JSON).unwrap_or_else(|_| json!({"tools": []}))),
+        "tools/list" => rpc_result(
+            &id,
+            serde_json::from_str(TOOLS_JSON).unwrap_or_else(|_| json!({"tools": []})),
+        ),
         "tools/call" => {
             let tool = request
                 .pointer("/params/name")
@@ -149,9 +152,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_block_update" => run_cli(server, &["block", "update"]),
         "magicnet_subscription_list" => run_cli(server, &["sub", "list"]),
         "magicnet_subscription_set" => subscription_set(server, args),
-        "magicnet_subscription_set_singbox_lines" => {
-            subscription_set_singbox_lines(server, args)
-        }
+        "magicnet_subscription_set_singbox_lines" => subscription_set_singbox_lines(server, args),
         "magicnet_free_filter_status" => run_cli(server, &["sub", "filter-free", "status"]),
         "magicnet_free_filter_set" => free_filter_set(server, args),
         "magicnet_backup_export" => backup_export(server, args),
@@ -254,9 +255,7 @@ fn run_cli_owned(server: &Server, args: Vec<String>) -> String {
 }
 
 fn arg(args: &Value, key: &str) -> Option<String> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
+    args.get(key).and_then(Value::as_str).map(ToOwned::to_owned)
 }
 
 fn rpc_result(id: &Value, result: Value) -> String {

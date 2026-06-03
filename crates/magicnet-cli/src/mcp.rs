@@ -42,6 +42,14 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(crate) fn status(app: &App) -> (String, String, String, String) {
+    let (enabled, bind, port) = load(app);
+    let pid = live_pid(pid_path(app))
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "stopped".to_string());
+    (enabled, bind, port, pid)
+}
+
 fn conf_path(app: &App) -> PathBuf {
     app.moddir.join(".config/magicnet/mcp.conf")
 }
@@ -56,9 +64,15 @@ fn pid_path(app: &App) -> PathBuf {
 fn load(app: &App) -> (String, String, String) {
     let conf = read_kv(conf_path(app));
     (
-        conf.get("MAGICNET_MCP_ENABLED").cloned().unwrap_or_else(|| "0".to_string()),
-        conf.get("MAGICNET_MCP_BIND").cloned().unwrap_or_else(|| "127.0.0.1".to_string()),
-        conf.get("MAGICNET_MCP_PORT").cloned().unwrap_or_else(|| "8765".to_string()),
+        conf.get("MAGICNET_MCP_ENABLED")
+            .cloned()
+            .unwrap_or_else(|| "0".to_string()),
+        conf.get("MAGICNET_MCP_BIND")
+            .cloned()
+            .unwrap_or_else(|| "127.0.0.1".to_string()),
+        conf.get("MAGICNET_MCP_PORT")
+            .cloned()
+            .unwrap_or_else(|| "8765".to_string()),
     )
 }
 
@@ -69,7 +83,9 @@ fn write_conf(app: &App, enabled: &str, bind: &str, port: &str) -> Result<(), St
     }
     fs::write(
         path,
-        format!("MAGICNET_MCP_ENABLED={enabled}\nMAGICNET_MCP_BIND={bind}\nMAGICNET_MCP_PORT={port}\n"),
+        format!(
+            "MAGICNET_MCP_ENABLED={enabled}\nMAGICNET_MCP_BIND={bind}\nMAGICNET_MCP_PORT={port}\n"
+        ),
     )
     .map_err(|err| format!("write mcp.conf: {err}"))
 }
@@ -93,7 +109,9 @@ fn start(app: &App) -> Result<(), String> {
         .append(true)
         .open(app.log_dir.join("mcp-server.log"))
         .map_err(|err| format!("open mcp log: {err}"))?;
-    let log_err = log.try_clone().map_err(|err| format!("clone mcp log: {err}"))?;
+    let log_err = log
+        .try_clone()
+        .map_err(|err| format!("clone mcp log: {err}"))?;
     let child = Command::new(&target)
         .env("MODDIR", &app.moddir)
         .env("MAGICNET_MCP_BIND", &bind)
@@ -133,5 +151,8 @@ fn stop(app: &App) -> Result<(), String> {
 fn live_pid(pid_file: PathBuf) -> Option<i32> {
     let text = fs::read_to_string(pid_file).ok()?;
     let pid = text.trim().parse::<i32>().ok()?;
-    Path::new("/proc").join(pid.to_string()).exists().then_some(pid)
+    Path::new("/proc")
+        .join(pid.to_string())
+        .exists()
+        .then_some(pid)
 }

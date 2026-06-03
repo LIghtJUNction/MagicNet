@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, FileLock, Network, RadioTower, RefreshCw, Server, ShieldPlus, Trash2, Wand2 } from "lucide-vue-next";
+import { ClipboardPaste, Copy, Download, FileLock, Network, RadioTower, RefreshCw, Server, ShieldPlus, Trash2, Upload, Wand2 } from "lucide-vue-next";
 import { ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -8,7 +8,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { bytesToBase64, copyText } from "@/utils";
+import { bytesToBase64, copyText, readClipboardText } from "@/utils";
 
 const { state, runCli, refreshCapture, refreshCerts, refreshMcp, refreshTopology, refreshSysroute, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -87,6 +87,49 @@ async function removeCert(file: string): Promise<void> {
     await refreshCerts(true);
   });
 }
+
+async function exportBackup(): Promise<void> {
+  await withAction("backup-export", async () => {
+    const password = state.backup.exportPassword.trim();
+    const text = await runCli(password ? `backup export ${shellQuote(password)}` : "backup export", "导出配置备份");
+    const payload = text.trim().split(/\s+/).pop() || "";
+    if (!payload || payload.includes("[error]")) {
+      state.backup.status = "导出失败";
+      return;
+    }
+    state.backup.payload = payload;
+    state.backup.status = await copyText(payload) ? "已导出并复制到剪切板" : "已导出，剪切板不可用";
+    state.output = state.backup.status;
+  });
+}
+
+async function pasteBackup(): Promise<void> {
+  await withAction("backup-paste", async () => {
+    const text = (await readClipboardText()).trim();
+    if (!text) {
+      state.backup.status = "剪切板为空或不可读取，请手动粘贴";
+      state.output = state.backup.status;
+      return;
+    }
+    state.backup.payload = text;
+    state.backup.status = `已从剪切板读取 ${text.length} 字符`;
+  });
+}
+
+async function restoreBackup(): Promise<void> {
+  await withAction("backup-restore", async () => {
+    const payload = state.backup.payload.trim();
+    if (!payload) {
+      state.backup.status = "请先粘贴备份字符串";
+      state.output = state.backup.status;
+      return;
+    }
+    const password = state.backup.restorePassword.trim() || "-";
+    const text = await runCli(`backup restore ${shellQuote(password)} ${shellQuote(payload)}`, "导入配置备份");
+    state.backup.status = text.includes("Backup restored") ? "导入成功，运行配置已应用" : "导入失败，请检查安全码和备份内容";
+    state.output = `${state.backup.status}\n\n${text}`;
+  });
+}
 </script>
 
 <template>
@@ -98,6 +141,22 @@ async function removeCert(file: string): Promise<void> {
     </PageHeader>
 
     <div class="grid gap-3 md:grid-cols-2">
+      <Card class="grid gap-3">
+        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileLock :size="17" /> 配置迁移</h3>
+        <p class="text-sm leading-6 text-zinc-400">导出会打包订阅、应用名单、黑名单、抓包规则等用户配置。安全码可留空；设置后导入时必须填写一致。</p>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <Input v-model="state.backup.exportPassword" type="password" autocomplete="new-password" placeholder="导出安全码，可留空" />
+          <Button :loading="isRunning('backup-export')" @click="exportBackup"><Download :size="16" />导出并复制</Button>
+        </div>
+        <Textarea v-model="state.backup.payload" class="min-h-28" spellcheck="false" placeholder="备份字符串会出现在这里，也可以手动粘贴剪切板内容" />
+        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <Input v-model="state.backup.restorePassword" type="password" autocomplete="current-password" placeholder="导入安全码，可留空" />
+          <Button variant="secondary" :loading="isRunning('backup-paste')" @click="pasteBackup"><ClipboardPaste :size="16" />读剪切板</Button>
+          <Button :loading="isRunning('backup-restore')" @click="restoreBackup"><Upload :size="16" />导入配置</Button>
+        </div>
+        <p class="text-xs leading-5 text-zinc-500">{{ state.backup.status }}</p>
+      </Card>
+
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><RadioTower :size="17" /> 抓包代理</h3>
         <div class="grid gap-2">

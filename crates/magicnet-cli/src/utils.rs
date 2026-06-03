@@ -66,14 +66,21 @@ pub(crate) fn read_kv(path: PathBuf) -> std::collections::HashMap<String, String
         let Some((key, value)) = line.split_once('=') else {
             continue;
         };
-        let value = value.trim().trim_matches('"').trim_matches('\'').to_string();
+        let value = value
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
         map.insert(key.trim().to_string(), value);
     }
     map
 }
 
 pub(crate) fn write_kv(path: PathBuf, values: &[(&str, String)]) -> Result<(), String> {
-    let text = values.iter().map(|(key, value)| format!("{key}={value}\n")).collect::<String>();
+    let text = values
+        .iter()
+        .map(|(key, value)| format!("{key}={value}\n"))
+        .collect::<String>();
     write_text_file(path, &text)
 }
 
@@ -86,5 +93,9 @@ fn compact_output(output: std::process::Output) -> String {
         text.push_str("; ");
         text.push_str(&err);
     }
-    text.lines().last().unwrap_or("no output").trim().to_string()
+    text.lines()
+        .last()
+        .unwrap_or("no output")
+        .trim()
+        .to_string()
 }

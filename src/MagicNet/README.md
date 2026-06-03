@@ -124,10 +124,11 @@ su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/sub"'
 
 在 `subscription.url` 第一行填入订阅链接后，执行模块 `action.sh`，选择 `更新 sing-box 订阅节点`。MagicNet 会下载订阅，转换为 sing-box `outbounds`，并保留原有 TUN、DNS、路由和 Clash API 配置。
 
-当前自动导入支持两类订阅：
+当前自动导入支持两类订阅；如果构建时成功安装了 `.local/bin/proxylink`，会优先使用 Proxylink 解析本地已下载的订阅内容，覆盖更多常见协议：
 
 - Clash / Mihomo YAML：从 `proxies` 读取 `ss`、`vmess`、`vless`、`trojan`、`hysteria2`。
 - 通用分享链接订阅：支持明文或 base64 编码的 `vless://`、`hysteria2://` 链接。
+- Proxylink 可用时：补充支持 WireGuard、AnyTLS、TUIC、HTTP、Socks 等协议的 sing-box outbound 生成。
 
 不支持的节点会跳过并显示数量。下载订阅有明确超时；如果下载失败但本地已有 `subscription.yaml` 缓存，会使用缓存继续导入。
 
@@ -187,6 +188,8 @@ su -c /data/adb/modules/MagicNet/cli config apply
 `transparent set tun|tproxy` 是显式模式切换。默认是 TUN，并使用 `magicnet0` 作为模块自己的虚拟网卡名；TProxy 只在用户明确切换时启用，不作为静默 fallback。
 
 `hotspot set proxy|direct` 控制热点客户端流量：`proxy` 会补热点网卡到 `magicnet0` 的转发/NAT 规则，`direct` 会移除这些模块规则，让热点客户端按系统默认链路直连。
+
+`tailscale set <auth-key|-keep> [hostname] [subnets_csv]` 会同时写入 sing-box 与 mihomo 的 Tailscale 快捷配置。sing-box 使用 `endpoints`、`dns type=tailscale` 和 `direct endpoint`；mihomo 使用 `type: tailscale` 代理节点，并把指定网段与 `ts.net` 域名路由到该节点。`-keep` 表示保留已保存的 auth key，CLI 状态只显示 `auth_key_set=1`，不会回显密钥。
 
 节点选择、代理模式、延迟测试等内核控制请直接使用 Meta Cube X、Yacd 或 zashboard。MagicNet WebUI 只负责模块生命周期、订阅、应用名单、抓包、证书、黑名单、拓扑和诊断，避免重复实现内核面板已有功能。
 
@@ -273,9 +276,9 @@ su -c /data/adb/modules/MagicNet/cli diagnose
 
 `cli health` 输出稳定的 `key=status<TAB>detail` 诊断项，WebUI 的“诊断”页会把这些项目整理成状态卡片，并给出重启 TUN、更新订阅、重载热点/VPN 共存等快捷修复按钮。覆盖项包括核心进程、`magicnet0` 网卡、watchdog、fswatch、Clash API、订阅、抓包规则、热点、外部 VPN、系统 CA、直连探测和代理探测。
 
-`cli repair` 是安全的一键自修复：重新应用运行配置、重载抓包/热点/VPN 共存规则、确保 TUN 内核和 supervisor 在线、清空旧连接，最后直接输出 `cli health` 结果。它不会自动覆盖订阅链接、证书或用户规则。
+`cli repair` 是有限范围的一键自修复：重新应用运行配置、重载抓包/热点/VPN 共存规则、确保 TUN 内核和 supervisor 在线、清空旧连接，最后直接输出 `cli health` 结果。它不会自动覆盖订阅链接、证书或用户规则。
 
-`cli support bundle` 会生成脱敏支持包，包含模块版本、服务状态、健康诊断、连接与流量统计、订阅配置状态、自定义分流规则、抓包规则、分应用策略、证书列表、监听端口、接口/路由、Clash API 摘要和近期日志。URL、token、secret、password 等敏感字段会被替换为 `<redacted>`，WebUI“诊断”页可一键复制。
+`cli support bundle` 会生成脱敏支持包，包含模块版本、服务状态、健康诊断、连接与流量统计、订阅配置状态、自定义分流规则、抓包规则、分应用策略、证书列表、监听端口、接口/路由、Clash API 摘要和近期日志。URL、token、secret、password 等常见敏感字段会被替换为 `<redacted>`，WebUI“诊断”页可一键复制。
 
 ## 透明代理与分应用
 
@@ -510,6 +513,10 @@ Tailnet peers
 
 如果你的目标是“MagicNet 的代理出口再走另一个 VPN”，那是链式代理，不是默认共存。此时需要单独设计路由，例如 sing-box 的 `route.override_android_vpn` 或内核级策略路由。
 
+## 设计取舍
+
+MagicNet 借鉴 box4magisk 的“代理核心启动器 + 透明代理规则分层 + 配置合法性检查 + 手动控制和日志可追踪”思路，但默认路径保持为 sing-box / mihomo 原生 TUN。TProxy、IPSET_LKM、Tailscale 都是显式启用或可选增强，不会在 TUN 失败时静默接管。
+
 ## 工作流
 
 仓库提供两个 GitHub Actions：
@@ -533,13 +540,21 @@ KAM_PRIVATE_KEY
 - [MagicSingBox](https://github.com/LIghtJUNction/MagicSingBox)：sing-box 通用配置。
 - [kamfw](https://github.com/MemDeco-WG/kamfw)：运行时辅助库。
 
-## 相关项目
+## 参考与致谢
 
 - [yumebox](https://github.com/YumeLira/YumeBox)
 - [Mimic-Node](https://github.com/LIghtJUNction/Mimic-Node)
 - [Loyalsoldier/clash-rules](https://github.com/Loyalsoldier/clash-rules)
 - [Barabama/FreeNodes](https://github.com/Barabama/FreeNodes)
 - [DustinWin/ruleset_geodata](https://github.com/DustinWin/ruleset_geodata)
+- [senzyo/sing-box-templates](https://github.com/senzyo/sing-box-templates)：sing-box 模板、TUN、DNS 分流和规则集配置参考。
+- [chika0801/sing-box-examples](https://github.com/chika0801/sing-box-examples)：sing-box Android/TUN 示例、国内直连与非 CN 规则实践参考。
+- [CHIZI-0618/AndroidTProxyShell](https://github.com/CHIZI-0618/AndroidTProxyShell)：Android TProxy 的 `fwmark`、策略路由、mangle 链和能力检测思路参考。
+- [CHIZI-0618/box4magisk](https://github.com/CHIZI-0618/box4magisk)：代理核心启动器、透明代理配置分层、手动模式和日志设计参考。
+- [taamarin/box_for_magisk](https://github.com/taamarin/box_for_magisk)：root 模块形态、box/sing-box 运行组织和透明代理实践参考。
+- [Fanju6/NetProxy-Magisk](https://github.com/Fanju6/NetProxy-Magisk)：Magisk 网络代理模块、运行期控制和路由处理参考。
+- [Fanju6/Proxylink](https://github.com/Fanju6/Proxylink)：代理 URI / 订阅到 sing-box outbounds 的解析转换参考与可选构建集成。
+- [TanakaLun/IPSET_LKM](https://github.com/TanakaLun/IPSET_LKM)：可选 ipset 内核能力增强参考；MagicNet 仅检测并消费设备上已存在的 IPSET_LKM/ipset 能力。
 
 ## 许可证
 

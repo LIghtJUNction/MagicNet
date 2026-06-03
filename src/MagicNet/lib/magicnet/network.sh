@@ -101,66 +101,6 @@ magicnet_iptables_ensure() {
     fi
 }
 
-magicnet_tproxy_cleanup() {
-    if magicnet_cmd_exists iptables; then
-        iptables -t mangle -D PREROUTING -j MAGICNET_TPROXY 2>/dev/null || true
-        iptables -t mangle -F MAGICNET_TPROXY 2>/dev/null || true
-        iptables -t mangle -X MAGICNET_TPROXY 2>/dev/null || true
-    fi
-    if magicnet_cmd_exists ip6tables; then
-        ip6tables -t mangle -D PREROUTING -j MAGICNET_TPROXY 2>/dev/null || true
-        ip6tables -t mangle -F MAGICNET_TPROXY 2>/dev/null || true
-        ip6tables -t mangle -X MAGICNET_TPROXY 2>/dev/null || true
-    fi
-    if magicnet_cmd_exists ip; then
-        ip rule del fwmark "${MAGICNET_TPROXY_MARK:-0x1}" table "${MAGICNET_TPROXY_TABLE:-100}" 2>/dev/null || true
-        ip route del local default dev lo table "${MAGICNET_TPROXY_TABLE:-100}" 2>/dev/null || true
-        ip -6 rule del fwmark "${MAGICNET_TPROXY_MARK:-0x1}" table "${MAGICNET_TPROXY_TABLE:-100}" 2>/dev/null || true
-        ip -6 route del local default dev lo table "${MAGICNET_TPROXY_TABLE:-100}" 2>/dev/null || true
-    fi
-}
-
-magicnet_enable_tproxy() {
-    [ "$(magicnet_transparent_mode)" = "tproxy" ] || {
-        magicnet_tproxy_cleanup
-        return 0
-    }
-
-    if ! magicnet_cmd_exists ip || ! magicnet_cmd_exists iptables; then
-        magicnet_warn "ip/iptables not found; TProxy routing skipped"
-        return 0
-    fi
-
-    _mark="${MAGICNET_TPROXY_MARK:-0x1}"
-    _table="${MAGICNET_TPROXY_TABLE:-100}"
-    _port="${MAGICNET_TPROXY_PORT:-9898}"
-    _uid="${MAGICNET_TPROXY_EXEMPT_UID:-0}"
-
-    ip rule show 2>/dev/null | grep -F "fwmark $_mark lookup $_table" >/dev/null 2>&1 ||
-        ip rule add fwmark "$_mark" table "$_table" >/dev/null 2>&1 || true
-    ip route show table "$_table" 2>/dev/null | grep -F "local default dev lo" >/dev/null 2>&1 ||
-        ip route add local default dev lo table "$_table" >/dev/null 2>&1 || true
-
-    iptables -t mangle -N MAGICNET_TPROXY 2>/dev/null || true
-    iptables -t mangle -F MAGICNET_TPROXY 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -m owner --uid-owner "$_uid" -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -d 0.0.0.0/8 -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -d 10.0.0.0/8 -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -d 100.64.0.0/10 -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -d 127.0.0.0/8 -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -d 169.254.0.0/16 -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -d 172.16.0.0/12 -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -d 192.168.0.0/16 -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -d 224.0.0.0/4 -j RETURN 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -p tcp -j TPROXY --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || true
-    iptables -t mangle -A MAGICNET_TPROXY -p udp -j TPROXY --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || true
-    iptables -t mangle -C PREROUTING -j MAGICNET_TPROXY >/dev/null 2>&1 ||
-        iptables -t mangle -A PREROUTING -j MAGICNET_TPROXY >/dev/null 2>&1 || true
-
-    magicnet_log "TProxy rules applied on port $_port mark $_mark table $_table"
-    unset _mark _table _port _uid
-}
-
 magicnet_enable_hotspot_forward() {
     magicnet_hotspot_forward_enabled || return 0
 

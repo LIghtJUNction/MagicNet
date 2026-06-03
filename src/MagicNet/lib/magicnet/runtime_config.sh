@@ -1,5 +1,6 @@
 magicnet_apply_runtime_config_unlocked() {
     _runtime_rc=0
+    magicnet_ipset_lkm_prepare || true
     magicnet_singbox_apply_zashboard
     magicnet_transparent_apply_unlocked || _runtime_rc=1
     magicnet_app_policy_apply_unlocked || _runtime_rc=1
@@ -43,4 +44,3 @@ magicnet_singbox_toggle_disabled() {
         magicnet_log "sing-box disabled by ${MODDIR}/.disable_sing_box"
     fi
 }
-

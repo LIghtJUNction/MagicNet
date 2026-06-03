@@ -26,13 +26,21 @@ magicnet_singbox_update_subscription() {
         return 1
     fi
 
-    # shellcheck disable=SC2046
-    set -- $(magicnet_singbox_build_outbounds_file "$_nodes_dir" "$_outbounds_file" "$_tags_file")
-    _imported="$1"
-    _skipped="$2"
+    if magicnet_singbox_proxylink_bin >/dev/null 2>&1 &&
+        magicnet_singbox_build_outbounds_with_proxylink "$_sources_file" "$_outbounds_file" >"${_work_dir}/proxylink-counts.txt" 2>/dev/null; then
+        # shellcheck disable=SC2046
+        set -- $(cat "${_work_dir}/proxylink-counts.txt")
+        _imported="$1"
+        _skipped="$2"
+    else
+        # shellcheck disable=SC2046
+        set -- $(magicnet_singbox_build_outbounds_file "$_nodes_dir" "$_outbounds_file" "$_tags_file")
+        _imported="$1"
+        _skipped="$2"
+    fi
 
     if [ "${_imported:-0}" -le 0 ]; then
-        error "No supported nodes imported. Supported: Clash ss/vmess/vless/trojan/hysteria2, share-link vless/hysteria2"
+        error "No supported nodes imported. Supported: Clash ss/vmess/vless/trojan/hysteria2, share-link vless/hysteria2; Proxylink adds WireGuard/AnyTLS/TUIC when available"
         return 1
     fi
 

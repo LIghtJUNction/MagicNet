@@ -35,6 +35,13 @@ export type McpState = {
   url: string;
 };
 
+export type TailscaleState = {
+  enabled: boolean;
+  authKeySet: boolean;
+  hostname: string;
+  subnets: string;
+};
+
 export const runtimeDefaults: RuntimeState = {
   core: "unknown",
   selectedCore: "sing-box",
@@ -85,6 +92,13 @@ export const mcpDefaults: McpState = {
   port: "8765",
   pid: "stopped",
   url: "http://127.0.0.1:8765/mcp"
+};
+
+export const tailscaleDefaults: TailscaleState = {
+  enabled: false,
+  authKeySet: false,
+  hostname: "android-magicnet",
+  subnets: "100.64.0.0/10"
 };
 
 export function parseRuntime(text: string, previous: RuntimeState): RuntimeState {
@@ -210,5 +224,17 @@ export function parseMcp(text: string, previous: McpState): McpState {
     else if (line.startsWith("url=")) next.url = line.slice(4);
   });
   if (!next.url) next.url = `http://${next.bind}:${next.port}/mcp`;
+  return next;
+}
+
+export function parseTailscale(text: string, previous: TailscaleState): TailscaleState {
+  const next = { ...previous };
+  text.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (line.startsWith("enabled=")) next.enabled = line.slice(8) === "1";
+    else if (line.startsWith("auth_key_set=")) next.authKeySet = line.slice(13) === "1";
+    else if (line.startsWith("hostname=")) next.hostname = line.slice(9) || next.hostname;
+    else if (line.startsWith("subnets=")) next.subnets = line.slice(8) || next.subnets;
+  });
   return next;
 }

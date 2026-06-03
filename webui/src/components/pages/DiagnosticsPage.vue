@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, ExternalLink, RadioTower, RefreshCw } from "lucide-vue-next";
+import { Copy, ExternalLink, RadioTower, RefreshCw, Server } from "lucide-vue-next";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -8,7 +8,7 @@ import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 
-const { state, refreshHealth, refreshPing, runCli, openExternal } = useMagicNet();
+const { state, refreshHealth, refreshMcp, refreshPing, runCli, openExternal } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 
 const assistants = [
@@ -28,6 +28,11 @@ async function copyContext(): Promise<void> {
   await withAction("copy-context", copyContextUnlocked);
 }
 
+async function refreshDiagnostics(): Promise<void> {
+  await refreshMcp(true);
+  await refreshHealth();
+}
+
 async function askAi(url: string, name: string): Promise<void> {
   await withAction(`ask-${name}`, async () => {
     await copyContextUnlocked();
@@ -40,13 +45,20 @@ async function askAi(url: string, name: string): Promise<void> {
   <div class="grid gap-4">
     <PageHeader overline="Diagnostics" title="诊断" description="运行健康检查、连通性测试，并复制脱敏上下文给 AI。">
       <template #actions>
-        <Button variant="outline" :loading="isRunning('health')" @click="withAction('health', () => refreshHealth())"><RefreshCw :size="17" />健康检查</Button>
+        <Button variant="outline" :loading="isRunning('health')" @click="withAction('health', refreshDiagnostics)"><RefreshCw :size="17" />健康检查</Button>
         <Button :loading="isRunning('ping')" @click="withAction('ping', () => refreshPing())"><RadioTower :size="17" />连通性测试</Button>
         <Button variant="outline" :loading="isRunning('copy-context')" @click="copyContext"><Copy :size="17" />复制上下文</Button>
       </template>
     </PageHeader>
 
     <Card>
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+        <div class="min-w-0">
+          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Server :size="17" /> MCP 服务器</h3>
+          <p class="mt-1 break-all text-sm text-zinc-400">pid={{ state.mcp.pid }} · {{ state.mcp.url }}</p>
+        </div>
+        <Badge :tone="state.mcp.pid !== 'stopped' ? 'success' : 'warning'">{{ state.mcp.pid !== "stopped" ? "已开启" : "未开启" }}</Badge>
+      </div>
       <div class="flex flex-col gap-3">
         <div>
           <h3 class="text-base font-semibold">询问 AI</h3>

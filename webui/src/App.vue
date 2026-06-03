@@ -81,7 +81,10 @@ function warmActiveTab(tab: TabKey): void {
   if (tab === "apps") void refreshApps(true);
   if (tab === "block") void refreshBlock(true);
   if (tab === "subs") void refreshSubs(true);
-  if (tab === "health") void refreshHealth(true);
+  if (tab === "health") {
+    void refreshMcp(true);
+    void refreshHealth(true);
+  }
 }
 
 onMounted(() => {

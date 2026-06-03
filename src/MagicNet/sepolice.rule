@@ -1,1 +1,5 @@
-allow * tun_device chr_file { read write open ioctl }
+# Keep TUN access scoped to root/module execution domains.
+# Avoid `allow *`, which grants every SELinux domain access to tun_device.
+allow magisk tun_device chr_file { read write open ioctl }
+allow su tun_device chr_file { read write open ioctl }
+allow shell tun_device chr_file { read write open ioctl }

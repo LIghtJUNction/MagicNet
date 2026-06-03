@@ -2,7 +2,7 @@ import * as kernelsu from "kernelsu";
 import { computed, nextTick, reactive } from "vue";
 import { AUTHOR_WHISPER_URL, CLI, CLI_TIMEOUT_MS, MODULE_DIR, REPO } from "@/constants";
 import type { AppPolicy, ConfigEditorTarget, HealthItem } from "@/types";
-import { blockDefaults, captureDefaults, certDefaults, mcpDefaults, parseApps, parseBlock, parseCapture, parseCerts, parseHealth, parseMcp, parseRuntime, parseSubs, runtimeDefaults, type SubscriptionState } from "@/composables/parsers";
+import { blockDefaults, captureDefaults, certDefaults, mcpDefaults, parseApps, parseBlock, parseCapture, parseCerts, parseHealth, parseMcp, parseRuntime, parseSubs, parseTailscale, runtimeDefaults, tailscaleDefaults, type SubscriptionState } from "@/composables/parsers";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import { bytesToBase64, compactCommand, compactOutput, execFailed, normalizeExecResult, nextFrame, shellQuote, uniqueNonEmpty, withTimeout } from "@/utils";
 
@@ -31,6 +31,7 @@ const state = reactive({
   capture: { ...captureDefaults },
   certs: { ...certDefaults },
   mcp: { ...mcpDefaults },
+  tailscale: { ...tailscaleDefaults },
   topology: "",
   sysroute: "",
   subscriptions: {
@@ -45,6 +46,12 @@ const state = reactive({
     path: `${MODULE_DIR}/.config/mihomo/config.yaml`,
     dirty: false,
     status: "尚未加载"
+  },
+  backup: {
+    exportPassword: "",
+    restorePassword: "",
+    payload: "",
+    status: "尚未导出"
   }
 });
 
@@ -121,6 +128,21 @@ async function runCli(args: string, label = args, quiet = false): Promise<string
   return runShell(`${CLI} ${args}`, label, quiet);
 }
 
+async function startBackgroundCli(args: string, label = args): Promise<string> {
+  const logName = label
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase() || "task";
+  const log = `${MODULE_DIR}/.log/webui-${logName}.log`;
+  state.phase = "accepted";
+  state.notice = `已投递后台任务：${label}`;
+  state.output = `${label} 已在后台执行。\n日志：${log}\n完成后点刷新查看状态。`;
+  await nextTick();
+  await nextFrame();
+  const command = `mkdir -p ${shellQuote(`${MODULE_DIR}/.log`)}; nohup sh -c ${shellQuote(`${CLI} ${args}`)} >${shellQuote(log)} 2>&1 & echo "[info] background task started: ${label}"`;
+  return runShell(command, `投递 ${label}`, true);
+}
+
 async function refreshStatus(): Promise<void> {
   const text = await runCli("service status", "刷新状态", true);
   state.runtime = parseRuntime(text, state.runtime);
@@ -137,6 +159,7 @@ async function refreshAll(): Promise<void> {
       ["读取黑名单", () => refreshBlock(true)],
       ["读取订阅", () => refreshSubs(true)],
       ["读取 MCP 信息", () => refreshMcp(true)],
+      ["读取 Tailscale", () => refreshTailscale(true)],
       ["运行诊断", () => refreshHealth(true)]
     ];
     for (const [label, step] of steps) {
@@ -191,6 +214,11 @@ async function refreshCerts(quiet = false): Promise<void> {
 async function refreshMcp(quiet = false): Promise<void> {
   const text = await runCli("mcp status", "读取 MCP", quiet);
   state.mcp = parseMcp(text, state.mcp);
+}
+
+async function refreshTailscale(quiet = false): Promise<void> {
+  const text = await runCli("tailscale status", "读取 Tailscale", quiet);
+  state.tailscale = parseTailscale(text, state.tailscale);
 }
 
 async function refreshTopology(): Promise<void> {
@@ -254,7 +282,9 @@ export function useMagicNet() {
     compactOutput,
     REPO,
     AUTHOR_WHISPER_URL,
+    runShell,
     runCli,
+    startBackgroundCli,
     refreshAll,
     refreshStatus,
     refreshHealth,
@@ -265,6 +295,7 @@ export function useMagicNet() {
     refreshCapture,
     refreshCerts,
     refreshMcp,
+    refreshTailscale,
     refreshTopology,
     refreshSysroute,
     loadConfig,

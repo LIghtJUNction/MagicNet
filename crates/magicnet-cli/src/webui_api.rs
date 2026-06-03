@@ -1,7 +1,7 @@
 use std::fs;
 use std::process::Command;
 
-use crate::{decode_base64, diagnostics::redact, run_magicnet_function, write_text_file, App};
+use crate::{decode_base64, run_magicnet_function, write_text_file, App};
 
 pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or_default() {
@@ -13,7 +13,10 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "conns" => curl(app, "/connections"),
         "stats" => curl(app, "/traffic"),
         "close-all" => curl_delete(app, "/connections"),
-        _ => Err("Usage: cli api {ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}".to_string()),
+        _ => Err(
+            "Usage: cli api {ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}"
+                .to_string(),
+        ),
     }
 }
 
@@ -33,17 +36,21 @@ pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "export" => {
             let password = args.get(1).map(String::as_str).unwrap_or("");
             let text = backup_text(app, password);
-            println!("{}", crate::encode_base64(text.as_bytes()));
+            let bytes = encode_backup_bytes(&text, password);
+            println!("{}", crate::encode_base64(&bytes));
             Ok(())
         }
         "restore" => {
-            let _password = args.get(1).map(String::as_str).unwrap_or("");
+            let password = args.get(1).map(String::as_str).unwrap_or("");
             let payload = args.get(2).map(String::as_str).unwrap_or_default();
             if payload.is_empty() {
                 return Err("Usage: cli backup restore [password|-] <base64>".to_string());
             }
             let bytes = decode_base64(payload)?;
-            let text = String::from_utf8(bytes).map_err(|err| format!("backup is not UTF-8: {err}"))?;
+            let bytes = decode_backup_bytes(bytes, password)?;
+            let text =
+                String::from_utf8(bytes).map_err(|err| format!("backup is not UTF-8: {err}"))?;
+            verify_backup_password(&text, password)?;
             restore_backup(app, &text)?;
             run_magicnet_function(app, "magicnet_apply_runtime_config")?;
             println!("[info] Backup restored");
@@ -58,7 +65,14 @@ fn curl(app: &App, path: &str) -> Result<(), String> {
 }
 
 fn curl_delete(app: &App, path: &str) -> Result<(), String> {
-    run_curl(&["-fsS", "-X", "DELETE", "--max-time", "4", &format!("{}{}", app.api, path)])
+    run_curl(&[
+        "-fsS",
+        "-X",
+        "DELETE",
+        "--max-time",
+        "4",
+        &format!("{}{}", app.api, path),
+    ])
 }
 
 fn run_curl(args: &[&str]) -> Result<(), String> {
@@ -77,7 +91,10 @@ fn run_curl(args: &[&str]) -> Result<(), String> {
 fn webui_status(app: &App) {
     let local_dir = app.moddir.join(".config/sing-box/zashboard");
     println!("local_dir={}", local_dir.display());
-    println!("local_ready={}", local_dir.join("index.html").exists() as u8);
+    println!(
+        "local_ready={}",
+        local_dir.join("index.html").exists() as u8
+    );
     println!("sing-box={}", app.singbox_webui);
     println!("mihomo={}", app.mihomo_webui);
     println!(
@@ -142,7 +159,10 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
         return Err("panel zip does not contain index.html".to_string());
     }
     write_text_file(app.moddir.join("zashboard.version"), &format!("{name}\n"))?;
-    run_magicnet_function(app, "magicnet_singbox_apply_zashboard; magicnet_mihomo_apply_zashboard")?;
+    run_magicnet_function(
+        app,
+        "magicnet_singbox_apply_zashboard; magicnet_mihomo_apply_zashboard",
+    )?;
     println!("[info] Installed local panel {name}");
     Ok(())
 }
@@ -163,14 +183,76 @@ fn backup_text(app: &App, password: &str) -> String {
     let mut out = String::new();
     out.push_str("MagicNet backup v1\n");
     out.push_str(&format!("password_set={}\n", (!password.is_empty()) as u8));
+    if !password.is_empty() {
+        out.push_str(&format!(
+            "password_md5={:x}\n",
+            md5::compute(password.as_bytes())
+        ));
+    }
     for rel in backup_files() {
         let path = app.moddir.join(rel);
         out.push_str(&format!("\n--- {rel}\n"));
         let text = fs::read_to_string(path).unwrap_or_default();
-        out.push_str(&redact(&text));
+        out.push_str(&text);
         out.push('\n');
     }
     out
+}
+
+fn encode_backup_bytes(text: &str, password: &str) -> Vec<u8> {
+    if password.is_empty() {
+        return text.as_bytes().to_vec();
+    }
+    let mut out = b"MagicNet encrypted backup v1\n".to_vec();
+    out.extend(xor_with_password(text.as_bytes(), password));
+    out
+}
+
+fn decode_backup_bytes(bytes: Vec<u8>, password: &str) -> Result<Vec<u8>, String> {
+    const PREFIX: &[u8] = b"MagicNet encrypted backup v1\n";
+    if !bytes.starts_with(PREFIX) {
+        return Ok(bytes);
+    }
+    if password == "-" || password.is_empty() {
+        return Err("backup requires a safety code".to_string());
+    }
+    Ok(xor_with_password(&bytes[PREFIX.len()..], password))
+}
+
+fn xor_with_password(input: &[u8], password: &str) -> Vec<u8> {
+    let key = format!("{:x}", md5::compute(password.as_bytes()));
+    let key = key.as_bytes();
+    input
+        .iter()
+        .enumerate()
+        .map(|(idx, byte)| byte ^ key[idx % key.len()])
+        .collect()
+}
+
+fn verify_backup_password(text: &str, password: &str) -> Result<(), String> {
+    let mut password_set = false;
+    let mut expected = "";
+    for line in text.lines().take_while(|line| !line.starts_with("--- ")) {
+        if line == "password_set=1" {
+            password_set = true;
+        } else if let Some(value) = line.strip_prefix("password_md5=") {
+            expected = value.trim();
+        }
+    }
+    if !password_set {
+        return Ok(());
+    }
+    if password == "-" || password.is_empty() {
+        return Err("backup requires a safety code".to_string());
+    }
+    if expected.is_empty() {
+        return Err("backup password metadata is missing".to_string());
+    }
+    let actual = format!("{:x}", md5::compute(password.as_bytes()));
+    if actual != expected {
+        return Err("backup safety code does not match".to_string());
+    }
+    Ok(())
 }
 
 fn restore_backup(app: &App, text: &str) -> Result<(), String> {
@@ -201,6 +283,8 @@ fn flush_restore(app: &App, rel: Option<String>, text: &str) -> Result<(), Strin
 
 fn backup_files() -> &'static [&'static str] {
     &[
+        ".config/sing-box/subscription.url",
+        ".config/mihomo/subscription.url",
         ".config/magicnet/app-mode.conf",
         ".config/magicnet/app-proxy.list",
         ".config/magicnet/app-bypass.list",
@@ -210,5 +294,84 @@ fn backup_files() -> &'static [&'static str] {
         ".config/magicnet/capture.conf",
         ".config/magicnet/capture-app.list",
         ".config/magicnet/capture-domain-suffix.list",
+        ".config/magicnet/route-proxy-domain-suffix.list",
+        ".config/magicnet/route-direct-domain-suffix.list",
+        ".config/magicnet/route-block-domain-suffix.list",
+        ".config/magicnet/transparent-mode.conf",
+        ".config/magicnet/hotspot.conf",
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+
+    fn temp_app() -> App {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("magicnet-cli-test-{stamp}"));
+        App::for_test(dir)
+    }
+
+    #[test]
+    fn backup_without_password_is_plaintext_and_restores_known_files_only() {
+        let app = temp_app();
+        write_text_file(
+            app.moddir.join(".config/magicnet/app-mode.conf"),
+            "MAGICNET_APP_MODE=whitelist\n",
+        )
+        .unwrap();
+        let text = backup_text(&app, "");
+
+        assert!(text.starts_with("MagicNet backup v1\npassword_set=0"));
+        assert_eq!(encode_backup_bytes(&text, ""), text.as_bytes());
+        verify_backup_password(&text, "").unwrap();
+
+        let restore_app = temp_app();
+        let restore_text = format!("{text}\n--- ../ignored\nnope\n");
+        restore_backup(&restore_app, &restore_text).unwrap();
+        let restored =
+            fs::read_to_string(restore_app.moddir.join(".config/magicnet/app-mode.conf")).unwrap();
+        assert!(restored.starts_with("MAGICNET_APP_MODE=whitelist\n"));
+        assert!(!restore_app.moddir.join("../ignored").exists());
+    }
+
+    #[test]
+    fn encrypted_backup_requires_matching_safety_code() {
+        let text =
+            "MagicNet backup v1\npassword_set=1\npassword_md5=900150983cd24fb0d6963f7d28e17f72\n";
+        let encoded = encode_backup_bytes(text, "abc");
+
+        assert!(decode_backup_bytes(encoded.clone(), "").is_err());
+        assert!(decode_backup_bytes(encoded.clone(), "-").is_err());
+
+        let decoded = decode_backup_bytes(encoded, "abc").unwrap();
+        let decoded = String::from_utf8(decoded).unwrap();
+        verify_backup_password(&decoded, "abc").unwrap();
+        assert!(verify_backup_password(&decoded, "wrong")
+            .unwrap_err()
+            .contains("does not match"));
+    }
+
+    #[test]
+    fn backup_password_metadata_must_be_present_when_password_is_set() {
+        let err =
+            verify_backup_password("MagicNet backup v1\npassword_set=1\n", "abc").unwrap_err();
+        assert!(err.contains("metadata is missing"), "{err}");
+    }
+
+    #[test]
+    fn contains_index_searches_nested_panel_directories() {
+        let app = temp_app();
+        let root = app.moddir.join("panel");
+        fs::create_dir_all(root.join("nested")).unwrap();
+        assert!(!contains_index(&root));
+        fs::write(root.join("nested/index.html"), "").unwrap();
+        assert!(contains_index(&root));
+    }
 }

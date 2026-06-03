@@ -181,6 +181,7 @@ version = "0.1.0"
 dependencies = [
  "md5",
  "rcgen",
+ "serde_json",
  "serde_yaml",
  "x509-parser",
 ]

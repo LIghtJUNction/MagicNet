@@ -1,19 +1,42 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::{clean_lines, command_text_timeout, pid_summary, App};
+use crate::{clean_lines, command_text_timeout, mcp, pid_summary, App};
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
     let singbox = pid_summary("sing-box");
     let mihomo = pid_summary("mihomo");
-    print_check("Core", &running(&singbox, &mihomo), format!("sing-box={singbox}, mihomo={mihomo}"));
+    print_check(
+        "Core",
+        &running(&singbox, &mihomo),
+        format!("sing-box={singbox}, mihomo={mihomo}"),
+    );
     let (tun_ok, tun_detail) = tun_check(app);
     print_check("TUN", &tun_ok, tun_detail);
-    print_check("Clash API", &http_probe("http://127.0.0.1:9090"), app.api.clone());
-    print_check("Subscription", &has_subscription(app), "subscription config present".to_string());
-    print_check("MCP", &pid_summary("magicnet-mcp-server").ne("stopped"), pid_summary("magicnet-mcp-server"));
-    print_check("Watchdog", &pid_summary("watchdog").ne("stopped"), watchdog_detail(app));
-    print_check("WebUI", &app.moddir.join("webroot/index.html").exists(), app.moddir.join("webroot").display().to_string());
+    let (api_ok, api_detail) = api_probe(&app.api);
+    print_check("Clash API", &api_ok, api_detail);
+    print_check(
+        "Subscription",
+        &has_subscription(app),
+        "subscription config present".to_string(),
+    );
+    let (_, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
+    print_check(
+        "MCP",
+        &mcp_pid.ne("stopped"),
+        format!("pid={mcp_pid}, url=http://{mcp_bind}:{mcp_port}/mcp"),
+    );
+    let watchdog_pid = supervisor_pid(app, "watchdog", "magicnet-kernel");
+    print_check(
+        "Watchdog",
+        &watchdog_pid.ne("stopped"),
+        watchdog_detail(app),
+    );
+    print_check(
+        "WebUI",
+        &app.moddir.join("webroot/index.html").exists(),
+        app.moddir.join("webroot").display().to_string(),
+    );
     Ok(())
 }
 
@@ -22,13 +45,23 @@ pub(crate) fn topology(app: &App) -> Result<(), String> {
     println!("module={}", app.moddir.display());
     println!();
     println!("[interfaces]");
-    println!("{}", command_text_timeout("ip", &["-o", "addr", "show"], crate::SHORT_TIMEOUT));
+    println!(
+        "{}",
+        command_text_timeout("ip", &["-o", "addr", "show"], crate::SHORT_TIMEOUT)
+    );
     println!();
     println!("[routes]");
     sysroute_snapshot();
     println!();
     println!("[forwarding]");
-    println!("{}", command_text_timeout("sh", &["-c", "iptables -t nat -S 2>/dev/null | head -80"], crate::SHORT_TIMEOUT));
+    println!(
+        "{}",
+        command_text_timeout(
+            "sh",
+            &["-c", "iptables -t nat -S 2>/dev/null | head -80"],
+            crate::SHORT_TIMEOUT
+        )
+    );
     Ok(())
 }
 
@@ -74,7 +107,15 @@ pub(crate) fn support(app: &App, args: &[String]) -> Result<(), String> {
     println!();
     println!("[subscriptions]");
     for path in sensitive_paths(app) {
-        println!("{}={}", path.display(), if path.exists() { "<configured>" } else { "<missing>" });
+        println!(
+            "{}={}",
+            path.display(),
+            if path.exists() {
+                "<configured>"
+            } else {
+                "<missing>"
+            }
+        );
     }
     println!();
     println!("[routes]");
@@ -110,7 +151,10 @@ fn tun_check(app: &App) -> (bool, String) {
             return (true, format!("{name}: {}", iface_detail(name)));
         }
     }
-    (false, format!("No MagicNet TUN interface found. checked={checked}"))
+    (
+        false,
+        format!("No MagicNet TUN interface found. checked={checked}"),
+    )
 }
 
 fn configured_tun_names(app: &App) -> Vec<String> {
@@ -137,7 +181,10 @@ fn json_string_value(line: &str, key: &str) -> Option<String> {
     let (_, rest) = line.split_once(&needle)?;
     let (_, value) = rest.split_once(':')?;
     let value = value.trim().trim_end_matches(',').trim();
-    value.strip_prefix('"')?.strip_suffix('"').map(ToOwned::to_owned)
+    value
+        .strip_prefix('"')?
+        .strip_suffix('"')
+        .map(ToOwned::to_owned)
 }
 
 fn yaml_string_value(line: &str, key: &str) -> Option<String> {
@@ -154,22 +201,50 @@ fn push_unique(values: &mut Vec<String>, value: String) {
 }
 
 fn watchdog_detail(app: &App) -> String {
-    let pid = pid_summary("watchdog");
-    let fswatch = pid_summary("fswatch");
+    let pid = supervisor_pid(app, "watchdog", "magicnet-kernel");
+    let fswatch = supervisor_pid(app, "fswatch", "magicnet-config");
     let log = fs::read_to_string(app.log_dir.join("watchdog.log"))
         .ok()
-        .and_then(|text| text.lines().rev().find(|line| !line.trim().is_empty()).map(ToOwned::to_owned))
+        .and_then(|text| {
+            text.lines()
+                .rev()
+                .find(|line| !line.trim().is_empty())
+                .map(ToOwned::to_owned)
+        })
         .unwrap_or_else(|| "no watchdog.log".to_string());
     format!("watchdog={pid}, fswatch={fswatch}, latest={}", redact(&log))
 }
 
-fn http_probe(url: &str) -> bool {
-    command_text_timeout("curl", &["-fsS", "--max-time", "2", url], crate::SHORT_TIMEOUT)
-        .contains('{')
+fn api_probe(api: &str) -> (bool, String) {
+    let base = api.trim_end_matches('/');
+    let endpoint = format!("{base}/version");
+    let text = command_text_timeout(
+        "curl",
+        &["-fsS", "--max-time", "2", &endpoint],
+        crate::SHORT_TIMEOUT,
+    );
+    let ok = text.contains('{') || text.contains("version");
+    (ok, endpoint)
+}
+
+pub(crate) fn supervisor_pid(app: &App, kind: &str, name: &str) -> String {
+    let path = app
+        .moddir
+        .join(".state")
+        .join(kind)
+        .join(format!("{name}.pid"));
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| text.trim().parse::<u32>().ok())
+        .filter(|pid| PathBuf::from(format!("/proc/{pid}")).exists())
+        .map(|pid| pid.to_string())
+        .unwrap_or_else(|| "stopped".to_string())
 }
 
 fn has_subscription(app: &App) -> bool {
-    sensitive_paths(app).into_iter().any(|path| !clean_lines(path).is_empty())
+    sensitive_paths(app)
+        .into_iter()
+        .any(|path| !clean_lines(path).is_empty())
 }
 
 fn sensitive_paths(app: &App) -> Vec<PathBuf> {
@@ -181,9 +256,19 @@ fn sensitive_paths(app: &App) -> Vec<PathBuf> {
 
 fn sysroute_snapshot() {
     println!("ip rule:");
-    println!("{}", command_text_timeout("ip", &["rule", "show"], crate::SHORT_TIMEOUT));
+    println!(
+        "{}",
+        command_text_timeout("ip", &["rule", "show"], crate::SHORT_TIMEOUT)
+    );
     println!("ip route:");
-    println!("{}", command_text_timeout("ip", &["route", "show", "table", "all"], crate::SHORT_TIMEOUT));
+    println!(
+        "{}",
+        command_text_timeout(
+            "ip",
+            &["route", "show", "table", "all"],
+            crate::SHORT_TIMEOUT
+        )
+    );
 }
 
 fn ip(args: &[&str]) -> Result<(), String> {
@@ -217,7 +302,14 @@ fn normalize_default(value: &str) -> &str {
 fn print_redacted_tail(path: PathBuf) {
     println!("{}:", path.display());
     let text = fs::read_to_string(path).unwrap_or_default();
-    for line in text.lines().rev().take(40).collect::<Vec<_>>().into_iter().rev() {
+    for line in text
+        .lines()
+        .rev()
+        .take(40)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+    {
         println!("{}", redact(line));
     }
 }
