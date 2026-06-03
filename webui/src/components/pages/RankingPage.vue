@@ -38,8 +38,8 @@ const fallbackData: RankingData = {
   payment: {
     wechatUrl: "weixin://",
     alipayUrl: "alipays://platformapi/startapp?appId=20000067",
-    wechatQr: "https://github.com/LIghtJUNction/MagicNet/releases/latest/download/wechat-pay.png",
-    alipayQr: "https://github.com/LIghtJUNction/MagicNet/releases/latest/download/alipay-pay.png"
+    wechatQr: "https://github.com/LIghtJUNction/lightjunction/releases/download/donate/wechat-pay.png",
+    alipayQr: "https://github.com/LIghtJUNction/lightjunction/releases/download/donate/alipay-pay.png"
   },
   entries: []
 };

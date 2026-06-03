@@ -6,8 +6,8 @@
   "payment": {
     "wechatUrl": "weixin://",
     "alipayUrl": "alipays://platformapi/startapp?appId=20000067",
-    "wechatQr": "https://github.com/LIghtJUNction/MagicNet/releases/latest/download/wechat-pay.png",
-    "alipayQr": "https://github.com/LIghtJUNction/MagicNet/releases/latest/download/alipay-pay.png",
+    "wechatQr": "https://github.com/LIghtJUNction/lightjunction/releases/download/donate/wechat-pay.png",
+    "alipayQr": "https://github.com/LIghtJUNction/lightjunction/releases/download/donate/alipay-pay.png",
     "note": "如需署名、修改展示名或补充留言，请通过邮箱联系作者。"
   },
   "entries": [
