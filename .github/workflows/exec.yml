@@ -89,7 +89,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y unzip zip
 
       - name: Install Rust Android build tool
-        run: cargo install cargo-ndk --locked
+        run: |
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --locked
 
       - name: Verify tools
         shell: bash
@@ -98,6 +100,7 @@ jobs:
           kam --version
           bun --version
           gh --version
+          rustup target list --installed | grep -Fx aarch64-linux-android
           cargo ndk --version
 
       - name: Build module

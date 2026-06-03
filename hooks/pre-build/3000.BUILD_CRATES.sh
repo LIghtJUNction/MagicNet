@@ -11,6 +11,27 @@ fi
 
 require_command cargo "cargo not found ."
 
+ensure_rust_target() {
+    local target="$1"
+
+    if ! command -v rustup >/dev/null 2>&1; then
+        log_warn "rustup not found; cannot verify Rust target $target"
+        return 0
+    fi
+
+    if rustup target list --installed | grep -Fx "$target" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log_info "Installing Rust target: $target"
+    rustup target add "$target" || {
+        log_error "Missing Rust target: $target. Run: rustup target add $target"
+        return 1
+    }
+}
+
+ensure_rust_target aarch64-linux-android || exit 1
+
 if command -v cargo-ndk >/dev/null 2>&1; then
     cargo ndk build -t arm64-v8a --release
 elif command -v cross >/dev/null 2>&1; then
