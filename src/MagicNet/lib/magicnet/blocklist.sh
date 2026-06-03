@@ -99,18 +99,20 @@ magicnet_block_apply_mihomo() {
             inserted = 0
         }
         skip {
-            if ($0 ~ /^  # MAGICNET_BLOCK_END/) {
+            if ($0 ~ /^[[:space:]]*#[[:space:]]*MAGICNET_BLOCK_END/) {
                 skip = 0
                 cleanup_after_block = 1
-                print
             }
             next
         }
-        $0 ~ /^  # MAGICNET_BLOCK_START/ {
+        $0 ~ /^[[:space:]]*#[[:space:]]*MAGICNET_BLOCK_START/ {
             skip = 1
             next
         }
         cleanup_after_block && $0 ~ /^-[[:space:]]*(DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD),.*REJECT[[:space:]]*$/ {
+            next
+        }
+        cleanup_after_block && $0 ~ /^  -[[:space:]]*(DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD),.*REJECT[[:space:]]*$/ {
             next
         }
         cleanup_after_block && $0 ~ /^[[:space:]]*#[[:space:]]*MAGICNET_BLOCK_END[[:space:]]*$/ {

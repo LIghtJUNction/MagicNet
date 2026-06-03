@@ -41,7 +41,32 @@ magicnet_tproxy_cleanup_family() {
     unset _cmd _ip_args _mark _table
 }
 
+magicnet_tproxy_cleanup_legacy_dns_nat_family() {
+    _cmd="$1"
+
+    magicnet_cmd_exists "$_cmd" || {
+        unset _cmd
+        return 0
+    }
+
+    "$_cmd" -t nat -D PREROUTING -j MAGICNET_DNS_REDIRECT 2>/dev/null || true
+    "$_cmd" -t nat -D OUTPUT -j MAGICNET_DNS_REDIRECT 2>/dev/null || true
+    "$_cmd" -t nat -D OUTPUT -j MAGICNET_DNS_OUTPUT 2>/dev/null || true
+    "$_cmd" -t nat -F MAGICNET_DNS_REDIRECT 2>/dev/null || true
+    "$_cmd" -t nat -X MAGICNET_DNS_REDIRECT 2>/dev/null || true
+    "$_cmd" -t nat -F MAGICNET_DNS_OUTPUT 2>/dev/null || true
+    "$_cmd" -t nat -X MAGICNET_DNS_OUTPUT 2>/dev/null || true
+
+    unset _cmd
+}
+
+magicnet_tproxy_cleanup_legacy_dns_nat() {
+    magicnet_tproxy_cleanup_legacy_dns_nat_family iptables
+    magicnet_tproxy_cleanup_legacy_dns_nat_family ip6tables
+}
+
 magicnet_tproxy_cleanup() {
+    magicnet_tproxy_cleanup_legacy_dns_nat
     magicnet_tproxy_cleanup_family iptables ""
     magicnet_tproxy_cleanup_family ip6tables "-6"
 }
@@ -60,6 +85,12 @@ magicnet_tproxy_apply_family() {
     "$_cmd" -t mangle -N MAGICNET_TPROXY_OUTPUT 2>/dev/null || true
     "$_cmd" -t mangle -F MAGICNET_TPROXY_OUTPUT 2>/dev/null || true
 
+    "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -p tcp --dport 53 -j MARK --set-mark "$_mark" 2>/dev/null || return 1
+    "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -p udp --dport 53 -j MARK --set-mark "$_mark" 2>/dev/null || return 1
+    "$_cmd" -t mangle -A MAGICNET_TPROXY -p tcp --dport 53 -j TPROXY \
+        --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || return 1
+    "$_cmd" -t mangle -A MAGICNET_TPROXY -p udp --dport 53 -j TPROXY \
+        --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || return 1
     "$_cmd" -t mangle -A MAGICNET_TPROXY -m socket -j RETURN 2>/dev/null || true
     "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -m owner --uid-owner "$_uid" -j RETURN 2>/dev/null || true
     if [ "$_cmd" = "ip6tables" ]; then
@@ -67,13 +98,6 @@ magicnet_tproxy_apply_family() {
     else
         "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -d 127.0.0.0/8 -j RETURN 2>/dev/null || true
     fi
-    "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -p tcp --dport 53 -j MARK --set-mark "$_mark" 2>/dev/null || return 1
-    "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -p udp --dport 53 -j MARK --set-mark "$_mark" 2>/dev/null || return 1
-
-    "$_cmd" -t mangle -A MAGICNET_TPROXY -p tcp --dport 53 -j TPROXY \
-        --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || return 1
-    "$_cmd" -t mangle -A MAGICNET_TPROXY -p udp --dport 53 -j TPROXY \
-        --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || return 1
 
     if [ "$_cmd" = "ip6tables" ]; then
         "$_cmd" -t mangle -A MAGICNET_TPROXY -d ::1/128 -j RETURN 2>/dev/null || true
@@ -125,6 +149,7 @@ magicnet_enable_tproxy() {
         return 1
     fi
 
+    magicnet_tproxy_cleanup_legacy_dns_nat
     magicnet_tproxy_apply_family iptables "" || return 1
     magicnet_tproxy_apply_family ip6tables "-6" || true
     magicnet_log "TProxy rules applied on port $(magicnet_tproxy_port) mark $(magicnet_tproxy_mark) table $(magicnet_tproxy_table)"

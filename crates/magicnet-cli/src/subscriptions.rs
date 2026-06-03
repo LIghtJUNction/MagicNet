@@ -261,7 +261,10 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
         .iter()
         .filter_map(|(key, value)| {
             let name = key.as_str()?.to_string();
-            let url = value.get("url")?.as_str()?.to_string();
+            let url = value.get("url")?.as_str()?.trim().to_string();
+            if url.is_empty() {
+                return None;
+            }
             Some((name, url))
         })
         .collect()

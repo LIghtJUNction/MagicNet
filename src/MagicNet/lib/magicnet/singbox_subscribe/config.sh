@@ -222,8 +222,7 @@ magicnet_singbox_verify_subscription_ready() {
             warn "sing-box API did not expose proxy nodes; generated config contains nodes"
         }
         magicnet_singbox_google_works || {
-            error "sing-box proxy test failed: https://www.google.com is not reachable"
-            return 1
+            warn "sing-box proxy test failed: https://www.google.com is not reachable"
         }
         return 0
     fi
