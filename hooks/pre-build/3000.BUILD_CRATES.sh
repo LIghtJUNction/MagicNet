@@ -24,6 +24,13 @@ ensure_rust_target() {
     fi
 
     log_info "Installing Rust target: $target"
+    local rust_sysroot
+    local rustlib_dir
+    rust_sysroot="$(rustc --print sysroot 2>/dev/null || true)"
+    if [ -n "$rust_sysroot" ]; then
+        rustlib_dir="$rust_sysroot/lib/rustlib/$target"
+        rm -rf "$rustlib_dir"
+    fi
     rustup target add "$target" || {
         log_error "Missing Rust target: $target. Run: rustup target add $target"
         return 1

@@ -60,13 +60,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Cache Cargo and Rustup
+      - name: Cache Cargo
         uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.rustup
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-rust-
@@ -89,7 +88,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y unzip zip
 
       - name: Install Rust Android build tool
+        shell: bash
         run: |
+          set -euo pipefail
+          android_rustlib="$(rustc --print sysroot)/lib/rustlib/aarch64-linux-android"
+          if ! rustup target list --installed | grep -Fx aarch64-linux-android >/dev/null 2>&1; then
+            rm -rf "$android_rustlib"
+          fi
           rustup target add aarch64-linux-android
           cargo install cargo-ndk --locked
 
