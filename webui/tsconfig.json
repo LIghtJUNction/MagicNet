@@ -9,8 +9,12 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "noEmit": true,
     "strict": true
   },
-  "include": ["src"]
+  "include": ["src", "src/**/*.vue", "src/**/*.d.ts"]
 }

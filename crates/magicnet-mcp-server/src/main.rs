@@ -1,34 +1,20 @@
+mod base64;
+mod files;
+mod tools;
+
 use std::env;
-use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
+use serde_json::{json, Value};
 
-const TOOLS_JSON: &str = r#"{"tools":[
-{"name":"magicnet_status","description":"Show MagicNet service status","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_health","description":"Run MagicNet health diagnostics","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_block_list","description":"Show MagicNet community and manual blocklist state","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_block_update","description":"Download and apply the community blocklist","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_subscription_list","description":"Show configured sing-box and mihomo subscription URLs","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_subscription_set","description":"Set one subscription URL for sing-box or mihomo. For mihomo, provider is optional and updates the matching proxy-provider in config.yaml when supplied.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box","mihomo","clash"]},"url":{"type":"string"},"provider":{"type":"string"}},"required":["target","url"]}},
-{"name":"magicnet_subscription_set_singbox_lines","description":"Set sing-box subscription URLs from newline-separated text","inputSchema":{"type":"object","properties":{"content":{"type":"string"}},"required":["content"]}},
-{"name":"magicnet_free_filter_status","description":"Show whether MagicNet is filtering free mihomo providers from default groups","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_free_filter_set","description":"Enable or disable filtering free mihomo providers from default groups","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["on","off","enable","disable","1","0"]}},"required":["mode"]}},
-{"name":"magicnet_backup_export","description":"Export MagicNet configuration backup as base64. Password is optional and may be empty.","inputSchema":{"type":"object","properties":{"password":{"type":"string"}}}},
-{"name":"magicnet_pingtest","description":"Run MagicNet domestic and global connectivity checks","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_topology","description":"Show Android network interfaces, routes, forwarding and MagicNet topology","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_file_list","description":"List files under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},
-{"name":"magicnet_file_read","description":"Read a text file under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},
-{"name":"magicnet_file_write","description":"Hot-update a text file under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}},
-{"name":"magicnet_file_write_base64","description":"Hot-update a file from base64 content under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"content_base64":{"type":"string"},"mode":{"type":"string","enum":["0644","0755","0600","0640"]}},"required":["path","content_base64"]}},
-{"name":"magicnet_file_chmod","description":"Change permissions for a file or directory under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"mode":{"type":"string","enum":["0644","0755","0600","0640"]}},"required":["path","mode"]}},
-{"name":"magicnet_dir_make","description":"Create a directory under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}},
-{"name":"magicnet_webui_build","description":"Run MagicNet WebUI build hook to rebuild webroot after hot-updating frontend files","inputSchema":{"type":"object","properties":{}}}
-]}"#;
+use base64::{decode_base64, encode_base64};
+use files::{dir_make, file_chmod, file_list, file_read, file_write, webui_build};
+use tools::TOOLS_JSON;
 
-struct Server {
+pub(crate) struct Server {
     moddir: PathBuf,
     cli: PathBuf,
 }
@@ -126,66 +112,77 @@ fn content_length(headers: &str) -> usize {
 }
 
 fn handle_jsonrpc(payload: &str, server: &Server) -> String {
-    let id = json_id(payload).unwrap_or_else(|| "null".to_string());
-    let method = json_string_field(payload, "method").unwrap_or_default();
-    match method.as_str() {
+    let request: Value = match serde_json::from_str(payload) {
+        Ok(value) => value,
+        Err(err) => return rpc_error(&Value::Null, -32700, &format!("parse error: {err}")),
+    };
+    let id = request.get("id").cloned().unwrap_or(Value::Null);
+    let method = request
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match method {
         "initialize" => rpc_result(
             &id,
-            r#"{"protocolVersion":"2025-03-26","serverInfo":{"name":"magicnet","version":"1.0.0"},"capabilities":{"tools":{}}}"#,
+            json!({"protocolVersion":"2025-03-26","serverInfo":{"name":"magicnet","version":"1.0.0"},"capabilities":{"tools":{}}}),
         ),
-        "tools/list" => rpc_result(&id, TOOLS_JSON),
+        "tools/list" => rpc_result(&id, serde_json::from_str(TOOLS_JSON).unwrap_or_else(|_| json!({"tools": []}))),
         "tools/call" => {
-            let tool = json_string_field(payload, "name").unwrap_or_default();
-            let result = call_tool(&tool, payload, server);
-            rpc_result(&id, &text_content(&result))
+            let tool = request
+                .pointer("/params/name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let args = request.pointer("/params/arguments").unwrap_or(&Value::Null);
+            let result = call_tool(tool, args, server);
+            rpc_result(&id, text_content(&result))
         }
-        "notifications/initialized" => rpc_result(&id, "{}"),
+        "notifications/initialized" => rpc_result(&id, json!({})),
         _ => rpc_error(&id, -32601, "method not found"),
     }
 }
 
-fn call_tool(tool: &str, payload: &str, server: &Server) -> String {
+fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
     match tool {
         "magicnet_status" => run_cli(server, &["service", "status"]),
         "magicnet_health" => run_cli(server, &["health"]),
         "magicnet_block_list" => run_cli(server, &["block", "list"]),
         "magicnet_block_update" => run_cli(server, &["block", "update"]),
         "magicnet_subscription_list" => run_cli(server, &["sub", "list"]),
-        "magicnet_subscription_set" => subscription_set(server, payload),
+        "magicnet_subscription_set" => subscription_set(server, args),
         "magicnet_subscription_set_singbox_lines" => {
-            subscription_set_singbox_lines(server, payload)
+            subscription_set_singbox_lines(server, args)
         }
         "magicnet_free_filter_status" => run_cli(server, &["sub", "filter-free", "status"]),
-        "magicnet_free_filter_set" => free_filter_set(server, payload),
-        "magicnet_backup_export" => backup_export(server, payload),
+        "magicnet_free_filter_set" => free_filter_set(server, args),
+        "magicnet_backup_export" => backup_export(server, args),
         "magicnet_pingtest" => run_cli(server, &["pingtest"]),
         "magicnet_topology" => run_cli(server, &["topology"]),
-        "magicnet_file_list" => file_list(server, arg(payload, "path").as_deref().unwrap_or(".")),
-        "magicnet_file_read" => file_read(server, arg(payload, "path").as_deref().unwrap_or("")),
+        "magicnet_file_list" => file_list(server, arg(args, "path").as_deref().unwrap_or(".")),
+        "magicnet_file_read" => file_read(server, arg(args, "path").as_deref().unwrap_or("")),
         "magicnet_file_write" => file_write(
             server,
-            arg(payload, "path").as_deref().unwrap_or(""),
-            arg(payload, "content").unwrap_or_default().as_bytes(),
+            arg(args, "path").as_deref().unwrap_or(""),
+            arg(args, "content").unwrap_or_default().as_bytes(),
             "0644",
         ),
         "magicnet_file_write_base64" => {
-            let decoded = match decode_base64(&arg(payload, "content_base64").unwrap_or_default()) {
+            let decoded = match decode_base64(&arg(args, "content_base64").unwrap_or_default()) {
                 Ok(bytes) => bytes,
                 Err(err) => return format!("base64 decode failed: {err}"),
             };
             file_write(
                 server,
-                arg(payload, "path").as_deref().unwrap_or(""),
+                arg(args, "path").as_deref().unwrap_or(""),
                 &decoded,
-                arg(payload, "mode").as_deref().unwrap_or("0644"),
+                arg(args, "mode").as_deref().unwrap_or("0644"),
             )
         }
         "magicnet_file_chmod" => file_chmod(
             server,
-            arg(payload, "path").as_deref().unwrap_or(""),
-            arg(payload, "mode").as_deref().unwrap_or("0644"),
+            arg(args, "path").as_deref().unwrap_or(""),
+            arg(args, "mode").as_deref().unwrap_or("0644"),
         ),
-        "magicnet_dir_make" => dir_make(server, arg(payload, "path").as_deref().unwrap_or("")),
+        "magicnet_dir_make" => dir_make(server, arg(args, "path").as_deref().unwrap_or("")),
         "magicnet_webui_build" => webui_build(server),
         _ => "unknown tool".to_string(),
     }
@@ -205,13 +202,13 @@ fn run_cli(server: &Server, args: &[&str]) -> String {
     }
 }
 
-fn subscription_set(server: &Server, payload: &str) -> String {
-    let target = arg(payload, "target").unwrap_or_else(|| "sing-box".to_string());
-    let url = arg(payload, "url").unwrap_or_default();
+fn subscription_set(server: &Server, args: &Value) -> String {
+    let target = arg(args, "target").unwrap_or_else(|| "sing-box".to_string());
+    let url = arg(args, "url").unwrap_or_default();
     if url.trim().is_empty() {
         return "missing url".to_string();
     }
-    match arg(payload, "provider") {
+    match arg(args, "provider") {
         Some(provider)
             if !provider.trim().is_empty() && matches!(target.as_str(), "mihomo" | "clash") =>
         {
@@ -224,8 +221,8 @@ fn subscription_set(server: &Server, payload: &str) -> String {
     }
 }
 
-fn subscription_set_singbox_lines(server: &Server, payload: &str) -> String {
-    let content = arg(payload, "content").unwrap_or_default();
+fn subscription_set_singbox_lines(server: &Server, args: &Value) -> String {
+    let content = arg(args, "content").unwrap_or_default();
     let encoded = encode_base64(content.as_bytes());
     run_cli_owned(
         server,
@@ -233,8 +230,8 @@ fn subscription_set_singbox_lines(server: &Server, payload: &str) -> String {
     )
 }
 
-fn backup_export(server: &Server, payload: &str) -> String {
-    match arg(payload, "password") {
+fn backup_export(server: &Server, args: &Value) -> String {
+    match arg(args, "password") {
         Some(password) if !password.is_empty() => {
             run_cli_owned(server, vec!["backup".into(), "export".into(), password])
         }
@@ -242,8 +239,8 @@ fn backup_export(server: &Server, payload: &str) -> String {
     }
 }
 
-fn free_filter_set(server: &Server, payload: &str) -> String {
-    let mode = arg(payload, "mode").unwrap_or_default();
+fn free_filter_set(server: &Server, args: &Value) -> String {
+    let mode = arg(args, "mode").unwrap_or_default();
     match mode.as_str() {
         "on" | "enable" | "1" => run_cli(server, &["sub", "filter-free", "on"]),
         "off" | "disable" | "0" => run_cli(server, &["sub", "filter-free", "off"]),
@@ -256,233 +253,22 @@ fn run_cli_owned(server: &Server, args: Vec<String>) -> String {
     run_cli(server, &refs)
 }
 
-fn module_path(server: &Server, rel: &str) -> Result<PathBuf, String> {
-    let rel = rel.trim_start_matches('/');
-    if rel.is_empty() {
-        return Ok(server.moddir.clone());
-    }
-    let path = Path::new(rel);
-    for component in path.components() {
-        match component {
-            Component::Normal(_) => {}
-            _ => return Err("invalid path".to_string()),
-        }
-    }
-    Ok(server.moddir.join(path))
+fn arg(args: &Value, key: &str) -> Option<String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
 }
 
-fn file_list(server: &Server, rel: &str) -> String {
-    let path = match module_path(server, rel) {
-        Ok(path) => path,
-        Err(err) => return err,
-    };
-    let mut rows = Vec::new();
-    let entries = match fs::read_dir(&path) {
-        Ok(entries) => entries,
-        Err(err) => return format!("not a directory: {rel}: {err}"),
-    };
-    for entry in entries.flatten().take(200) {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        let suffix = if file_type.is_dir() { "/" } else { "" };
-        let entry_path = entry.path();
-        let display = entry_path
-            .strip_prefix(&server.moddir)
-            .unwrap_or(entry_path.as_path())
-            .display()
-            .to_string();
-        rows.push(format!("{display}{suffix}"));
-    }
-    rows.join("\n")
+fn rpc_result(id: &Value, result: Value) -> String {
+    json!({"jsonrpc":"2.0","id":id,"result":result}).to_string()
 }
 
-fn file_read(server: &Server, rel: &str) -> String {
-    let path = match module_path(server, rel) {
-        Ok(path) => path,
-        Err(err) => return err,
-    };
-    let bytes = match fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(err) => return format!("not a file: {rel}: {err}"),
-    };
-    let text = String::from_utf8_lossy(&bytes);
-    text.lines().take(240).collect::<Vec<_>>().join("\n")
+fn rpc_error(id: &Value, code: i32, message: &str) -> String {
+    json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}}).to_string()
 }
 
-fn file_write(server: &Server, rel: &str, content: &[u8], mode: &str) -> String {
-    let path = match module_path(server, rel) {
-        Ok(path) => path,
-        Err(err) => return err,
-    };
-    if let Some(parent) = path.parent() {
-        if let Err(err) = fs::create_dir_all(parent) {
-            return format!("mkdir failed: {err}");
-        }
-    }
-    if let Err(err) = fs::write(&path, content) {
-        return format!("write failed: {rel}: {err}");
-    }
-    file_chmod(server, rel, mode);
-    format!("wrote {rel} mode={mode}")
-}
-
-fn dir_make(server: &Server, rel: &str) -> String {
-    let path = match module_path(server, rel) {
-        Ok(path) => path,
-        Err(err) => return err,
-    };
-    match fs::create_dir_all(&path) {
-        Ok(()) => format!("created {rel}"),
-        Err(err) => format!("mkdir failed: {rel}: {err}"),
-    }
-}
-
-fn file_chmod(server: &Server, rel: &str, mode: &str) -> String {
-    if !matches!(mode, "0644" | "0755" | "0600" | "0640") {
-        return format!("invalid mode: {mode}");
-    }
-    let path = match module_path(server, rel) {
-        Ok(path) => path,
-        Err(err) => return err,
-    };
-    let status = Command::new("chmod").arg(mode).arg(&path).status();
-    match status {
-        Ok(status) if status.success() => format!("chmod {mode} {rel}"),
-        Ok(status) => format!("chmod failed: {rel}: rc={}", status.code().unwrap_or(-1)),
-        Err(err) => format!("chmod failed: {rel}: {err}"),
-    }
-}
-
-fn webui_build(server: &Server) -> String {
-    let Some(project) = server.moddir.parent().and_then(Path::parent) else {
-        return "cannot derive project root".to_string();
-    };
-    let script = project.join("hooks/pre-build/2000.BUILD_WEBUI.sh");
-    if !script.exists() {
-        return format!("build hook not found: {}", script.display());
-    }
-    let output = Command::new(&script)
-        .env("KAM_PROJECT_ROOT", project)
-        .env("KAM_MODULE_ROOT", &server.moddir)
-        .env("KAM_HOOKS_ROOT", project.join("hooks"))
-        .output();
-    match output {
-        Ok(output) => {
-            let mut text = String::new();
-            text.push_str(&String::from_utf8_lossy(&output.stdout));
-            text.push_str(&String::from_utf8_lossy(&output.stderr));
-            text.push_str(&format!("\nrc={}", output.status.code().unwrap_or(-1)));
-            text
-        }
-        Err(err) => format!("webui build failed: {err}"),
-    }
-}
-
-fn json_string_field(payload: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let start = payload.find(&needle)?;
-    let after_key = &payload[start + needle.len()..];
-    let colon = after_key.find(':')?;
-    parse_json_string(&after_key[colon + 1..]).map(|(value, _)| value)
-}
-
-fn arg(payload: &str, key: &str) -> Option<String> {
-    let args_pos = payload.find("\"arguments\"")?;
-    json_string_field(&payload[args_pos..], key)
-}
-
-fn parse_json_string(input: &str) -> Option<(String, usize)> {
-    let bytes = input.as_bytes();
-    let mut pos = 0;
-    while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
-        pos += 1;
-    }
-    if bytes.get(pos) != Some(&b'"') {
-        return None;
-    }
-    pos += 1;
-    let mut out = String::new();
-    while pos < bytes.len() {
-        match bytes[pos] {
-            b'"' => return Some((out, pos + 1)),
-            b'\\' => {
-                pos += 1;
-                match bytes.get(pos).copied()? {
-                    b'"' => out.push('"'),
-                    b'\\' => out.push('\\'),
-                    b'/' => out.push('/'),
-                    b'b' => out.push('\u{0008}'),
-                    b'f' => out.push('\u{000c}'),
-                    b'n' => out.push('\n'),
-                    b'r' => out.push('\r'),
-                    b't' => out.push('\t'),
-                    b'u' => {
-                        if pos + 4 >= bytes.len() {
-                            return None;
-                        }
-                        let hex = &input[pos + 1..pos + 5];
-                        let code = u16::from_str_radix(hex, 16).ok()?;
-                        out.push(char::from_u32(code as u32)?);
-                        pos += 4;
-                    }
-                    _ => return None,
-                }
-            }
-            byte => out.push(byte as char),
-        }
-        pos += 1;
-    }
-    None
-}
-
-fn json_id(payload: &str) -> Option<String> {
-    let start = payload.find("\"id\"")?;
-    let after_key = &payload[start + 4..];
-    let colon = after_key.find(':')?;
-    let value = after_key[colon + 1..].trim_start();
-    if value.starts_with('"') {
-        parse_json_string(value).map(|(text, _)| format!("\"{}\"", json_escape(&text)))
-    } else {
-        let end = value
-            .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
-            .unwrap_or(value.len());
-        Some(value[..end].to_string())
-    }
-}
-
-fn rpc_result(id: &str, result: &str) -> String {
-    format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#)
-}
-
-fn rpc_error(id: &str, code: i32, message: &str) -> String {
-    format!(
-        r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":{code},"message":"{}"}}}}"#,
-        json_escape(message)
-    )
-}
-
-fn text_content(text: &str) -> String {
-    format!(
-        r#"{{"content":[{{"type":"text","text":"{}"}}]}}"#,
-        json_escape(text)
-    )
-}
-
-fn json_escape(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => {}
-            '\t' => out.push_str("\\t"),
-            ch if ch.is_control() => out.push_str(&format!("\\u{:04x}", ch as u32)),
-            ch => out.push(ch),
-        }
-    }
-    out
+fn text_content(text: &str) -> Value {
+    json!({"content":[{"type":"text","text":text}]})
 }
 
 fn write_json(stream: &mut TcpStream, body: &str) -> std::io::Result<()> {
@@ -501,54 +287,4 @@ fn write_http_error(stream: &mut TcpStream, status: &str, body: &str) -> std::io
         body.len(),
         body
     )
-}
-
-fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
-    let mut out = Vec::with_capacity(input.len() * 3 / 4);
-    let mut buf = 0_u32;
-    let mut bits = 0_u8;
-    for byte in input.bytes().filter(|b| !b.is_ascii_whitespace()) {
-        if byte == b'=' {
-            break;
-        }
-        let value = match byte {
-            b'A'..=b'Z' => byte - b'A',
-            b'a'..=b'z' => byte - b'a' + 26,
-            b'0'..=b'9' => byte - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            _ => return Err(format!("invalid byte {byte}")),
-        } as u32;
-        buf = (buf << 6) | value;
-        bits += 6;
-        while bits >= 8 {
-            bits -= 8;
-            out.push(((buf >> bits) & 0xff) as u8);
-        }
-    }
-    Ok(out)
-}
-
-fn encode_base64(input: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
-    let mut chunks = input.chunks(3);
-    while let Some(chunk) = chunks.next() {
-        let b0 = chunk[0];
-        let b1 = *chunk.get(1).unwrap_or(&0);
-        let b2 = *chunk.get(2).unwrap_or(&0);
-        out.push(TABLE[(b0 >> 2) as usize] as char);
-        out.push(TABLE[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
-        if chunk.len() > 1 {
-            out.push(TABLE[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
-        } else {
-            out.push('=');
-        }
-        if chunk.len() > 2 {
-            out.push(TABLE[(b2 & 0x3f) as usize] as char);
-        } else {
-            out.push('=');
-        }
-    }
-    out
 }

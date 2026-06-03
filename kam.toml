@@ -1,10 +1,10 @@
 [prop]
 id = "MagicNet"
 name = "MagicNet"
-version = "v1.0.39"
-versionCode = 1780342781480
+version = "v1.1.0"
+versionCode = 1780471160843
 author = "LIghtJUNction"
-description = "[MagicNet]:A Magisk module that lets you use the mihomo kernel's TUN mode on Android. Built with KAM."
+description = "[MagicNet]:Android root network module with magicnet0 TUN, mihomo/sing-box, WebUI, MCP, hotspot and VPN coexist tools. Built with KAM."
 updateJson = "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json"
 metamodule = false
 
@@ -82,5 +82,24 @@ hooks_dir = "hooks"
 
 [kam.workspace]
 members = ["."]
+
+[dev.sync]
+mirror = ["webroot/**"]
+preserve = [
+    ".config/**",
+    "config.yaml",
+    "config.yml",
+    "subscriptions/**",
+    "*.user.yaml",
+    "*.user.yml",
+]
+ignore = [
+    "logs/**",
+    ".log/**",
+    "cache/**",
+    "*.bak",
+    "*.kam-tmp",
+]
+staging = "/data/local/tmp/kam-dev/{{id}}"
 
 [tool]

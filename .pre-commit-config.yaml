@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: magicnet-validate
+        name: MagicNet validate
+        entry: scripts/pre-commit.sh
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -6,6 +6,8 @@ kernels when available, and keep downloaded binaries out of Git history.
 
 ## Important hooks
 
+- `pre-build/4900.update_tools.sh` downloads `yq` and `jq` arm64 release
+  binaries into `.local/bin` for on-device YAML / JSON maintenance helpers.
 - `pre-build/5000.update_mihomo.sh` downloads the selected Android arm64 mihomo
   release and verifies the GitHub release digest when it is available.
 - `pre-build/5100.update_sing_box.sh` selects the best sing-box Android arm64

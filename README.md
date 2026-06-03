@@ -1,28 +1,31 @@
 # MagicNet
 
-MagicNet 是一个 KAM 构建的 Android root 模块，用于在设备上以 TUN 模式运行 `mihomo` 或 `sing-box`。
+MagicNet 是一个 KAM 构建的 Android root 网络模块，用于在设备上运行 `mihomo` 或 `sing-box`，默认通过名为 `magicnet0` 的虚拟网卡接管透明代理流量。
 
-> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前 Git 版本支持 mihomo / sing-box 双内核按需构建，Release 以发布页为准。
+> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.0`。Release 以发布页为准。
 
 ## 当前状态
 
 - `kam build` 已可完整构建模块。
-- 默认同时包含 `mihomo` 和 `sing-box`，可用环境变量关闭任一内核。
+- 默认同时包含 `mihomo` 和 `sing-box`，可通过配置选择当前内核。
 - 已内置 GeoIP / GeoSite 构建下载和配置校验流程。
-- 已修复热点共享场景：启动内核后会自动给热点网卡到 TUN 网卡添加精确转发规则，避免直接清空 Android FORWARD 链。
+- 已统一 MagicNet 虚拟网卡名为 `magicnet0`，避免和其它 VPN 客户端常用的 `tun0` 冲突。
+- 已修复热点共享场景：启动内核后会按配置给热点网卡到 `magicnet0` 添加精确转发规则，避免直接清空 Android FORWARD 链。
 - Git 历史已清理，不再保存下载的内核、zip 产物、GeoIP / GeoSite / mmdb 等生成二进制。
 
 ## 功能
 
-- Android TUN 透明代理。
+- Android TUN 透明代理，默认虚拟网卡名为 `magicnet0`。
+- 可显式切换 TUN / TProxy 透明代理模式，默认仍是 TUN。
 - mihomo / sing-box 双内核。
 - 内置 mihomo 规则集和 Geo 数据更新。
 - 默认 WebUI 跳转，可在安装时选择；mihomo / sing-box 均使用 Clash API 兼容控制端。
-- 内置 CLI：服务启停、日志、节点热切换、模式切换、订阅更新、连接管理。
+- 内置 Rust CLI：服务启停、日志、当前内核选择、TUN/TProxy 切换、订阅更新、热点模式、连接管理。
+- 内置 Rust MCP server：默认关闭，可通过 ADB 端口转发暴露 Streamable HTTP 管理接口，方便本机开发和调试。
 - kamfw watchdog 保活：核心异常退出后自动拉起，并通过 Android 通知提示重启事件和看门狗失败事件。
 - kamfw fswatch 配置监听：`.config` 变化后自动重新应用运行态配置、抓包规则、热点转发和 VPN 共存规则。
 - TUN 分应用代理：同时写入 mihomo `include-package` / `exclude-package` 与 sing-box `include_package` / `exclude_package`，支持黑名单和白名单模式。
-- 热点客户端可跟随本机 TUN 代理转发。
+- 热点客户端支持 `proxy` / `direct` 两种模式。
 - 可选 root VPN 共存模式，便于与 Tailscale、WireGuard、OpenVPN、ZeroTier、WARP 等隧道同时运行。
 
 ## 安装
@@ -148,7 +151,7 @@ sing-box 使用 `experimental.clash_api` 提供 Clash API 兼容控制端，默�
 
 模块内置可脚本化 CLI：
 
-`/data/adb/modules/MagicNet/cli` 是兼容入口。构建时会生成相对符号链接到 `.local/bin/magicnet-cli`，真实命令行工具由 Rust 实现；复杂历史命令暂时由 `cli.legacy.sh` 接管，避免破坏现有 WebUI、`action.sh` 和自动化调用。
+`/data/adb/modules/MagicNet/cli` 是兼容入口。构建时会生成相对符号链接到 `.local/bin/magicnet-cli`，真实命令行工具由 Rust 实现；历史 shell 兜底入口已移除，WebUI 高频命令直接走 Rust CLI，减少 KernelSU WebView 卡顿。
 
 MCP 服务同样由 Rust 二进制 `.local/bin/magicnet-mcp-server` 提供，和 `mihomo`、`sing-box` 一样安装在模块 `.local/bin` 下。`hooks/pre-build/3000.BUILD_CRATES.sh` 会在构建时交叉编译并安装这两个二进制。
 
@@ -164,6 +167,13 @@ su -c /data/adb/modules/MagicNet/cli service start
 su -c /data/adb/modules/MagicNet/cli service ensure
 su -c /data/adb/modules/MagicNet/cli service stop
 su -c /data/adb/modules/MagicNet/cli service restart
+su -c /data/adb/modules/MagicNet/cli service restart mihomo
+su -c /data/adb/modules/MagicNet/cli core select sing-box
+su -c /data/adb/modules/MagicNet/cli core select mihomo
+su -c /data/adb/modules/MagicNet/cli transparent set tun
+su -c /data/adb/modules/MagicNet/cli transparent set tproxy
+su -c /data/adb/modules/MagicNet/cli hotspot set proxy
+su -c /data/adb/modules/MagicNet/cli hotspot set direct
 su -c /data/adb/modules/MagicNet/cli service logs sing-box 120
 su -c /data/adb/modules/MagicNet/cli config apply
 ```
@@ -171,6 +181,12 @@ su -c /data/adb/modules/MagicNet/cli config apply
 `service start` 会同时启动 kamfw watchdog 和 fswatch。watchdog 默认每 30 秒执行一次 `service ensure`，当 sing-box / mihomo 进程都不在时自动拉起默认 TUN 内核；如果确实由 watchdog 拉起核心，会发送一条 Android 通知。MagicNet 同步启用 kamfw 的 `watchdog start --notify`，当 `service ensure` 本身失败时也会发出看门狗失败通知。fswatch 默认每 15 秒监听 `.config`，检测到配置变化后执行 `config apply`，重新应用 zashboard、分应用策略、抓包规则、热点转发和 VPN 共存规则。
 
 `service stop` 与 `service restart` 会先停止 watchdog / fswatch，避免手动停止后被立即拉回。通知依赖 Android `cmd notification`，部分 ROM 不保证横幅弹出，但通知会按 kamfw 的 shell 通知路径发送。
+
+`core select` 只选择“当前使用内核”，`service start` 会启动当前内核，`service stop` 会停止当前运行内核。sing-box 仍可通过 `.disable_sing_box` 禁用；禁用后选择或重启到 sing-box 会失败并提示。
+
+`transparent set tun|tproxy` 是显式模式切换。默认是 TUN，并使用 `magicnet0` 作为模块自己的虚拟网卡名；TProxy 只在用户明确切换时启用，不作为静默 fallback。
+
+`hotspot set proxy|direct` 控制热点客户端流量：`proxy` 会补热点网卡到 `magicnet0` 的转发/NAT 规则，`direct` 会移除这些模块规则，让热点客户端按系统默认链路直连。
 
 节点选择、代理模式、延迟测试等内核控制请直接使用 Meta Cube X、Yacd 或 zashboard。MagicNet WebUI 只负责模块生命周期、订阅、应用名单、抓包、证书、黑名单、拓扑和诊断，避免重复实现内核面板已有功能。
 
@@ -190,6 +206,8 @@ su -c /data/adb/modules/MagicNet/cli route apply
 订阅、控制端、连接管理：
 
 ```bash
+su -c /data/adb/modules/MagicNet/cli sub update sing-box
+su -c /data/adb/modules/MagicNet/cli sub update mihomo
 su -c /data/adb/modules/MagicNet/cli sub update-all
 su -c /data/adb/modules/MagicNet/cli sub list
 su -c /data/adb/modules/MagicNet/cli sub get sing-box
@@ -210,6 +228,8 @@ su -c '/data/adb/modules/MagicNet/cli webui install-local "https://example.com/p
 ```
 
 `sub set mihomo [provider] <url>` 会同时写入 `.config/mihomo/subscription.url`，并在指定 provider 时同步更新 `config.yaml` 对应 `proxy-provider` 的 `url`。`sub set-file sing-box <base64-lines>` 可一次写入多条 sing-box 订阅，每行一个 URL。
+
+`sub update sing-box` 会下载 sing-box 订阅并转换为运行配置；`sub update mihomo` 会通过 Clash API 刷新 `config.yaml` 内配置的 mihomo provider；`sub update-all` 顺序执行两者。订阅 URL 会进入脱敏备份，但不会写进支持包明文。
 
 `sub filter-free on|off` 是一键过滤免费节点开关：开启后 mihomo 默认策略组只使用 `*PREMIUM_PROVIDERS`，保留免费 provider 和订阅 URL 但不参与默认选择；关闭后恢复 `*ALL_PROVIDERS`。开关状态写入 `.config/magicnet/provider-filter.conf`，会进入配置备份。
 
@@ -251,15 +271,23 @@ su -c /data/adb/modules/MagicNet/cli support bundle
 su -c /data/adb/modules/MagicNet/cli diagnose
 ```
 
-`cli health` 输出稳定的 `key=status<TAB>detail` 诊断项，WebUI 的“诊断”页会把这些项目整理成状态卡片，并给出重启 TUN、更新订阅、重载热点/VPN 共存等快捷修复按钮。覆盖项包括核心进程、TUN 网卡、watchdog、fswatch、Clash API、订阅、抓包规则、热点、外部 VPN、系统 CA、直连探测和代理探测。
+`cli health` 输出稳定的 `key=status<TAB>detail` 诊断项，WebUI 的“诊断”页会把这些项目整理成状态卡片，并给出重启 TUN、更新订阅、重载热点/VPN 共存等快捷修复按钮。覆盖项包括核心进程、`magicnet0` 网卡、watchdog、fswatch、Clash API、订阅、抓包规则、热点、外部 VPN、系统 CA、直连探测和代理探测。
 
 `cli repair` 是安全的一键自修复：重新应用运行配置、重载抓包/热点/VPN 共存规则、确保 TUN 内核和 supervisor 在线、清空旧连接，最后直接输出 `cli health` 结果。它不会自动覆盖订阅链接、证书或用户规则。
 
 `cli support bundle` 会生成脱敏支持包，包含模块版本、服务状态、健康诊断、连接与流量统计、订阅配置状态、自定义分流规则、抓包规则、分应用策略、证书列表、监听端口、接口/路由、Clash API 摘要和近期日志。URL、token、secret、password 等敏感字段会被替换为 `<redacted>`，WebUI“诊断”页可一键复制。
 
-## TUN 分应用代理
+## 透明代理与分应用
 
-MagicNet 不引入 TUN 外的 TPROXY / REDIRECT fallback；主路线就是 sing-box / mihomo TUN。分应用能力直接使用两个内核 TUN 入站的包名过滤。
+MagicNet 默认使用 sing-box / mihomo 的 TUN 入站，模块虚拟网卡名统一为 `magicnet0`。TProxy 是显式切换模式，适合需要内核级透明转发实验的设备；它不会在 TUN 失败时自动接管。
+
+```bash
+su -c /data/adb/modules/MagicNet/cli transparent status
+su -c /data/adb/modules/MagicNet/cli transparent set tun
+su -c /data/adb/modules/MagicNet/cli transparent set tproxy
+```
+
+分应用能力直接使用两个内核入站的包名过滤。
 
 策略文件：
 
@@ -269,7 +297,7 @@ MagicNet 不引入 TUN 外的 TPROXY / REDIRECT fallback；主路线就是 sing-
 /data/adb/modules/MagicNet/.config/magicnet/app-bypass.list
 ```
 
-默认是 `blacklist`：`app-bypass.list` 里的包名绕过 MagicNet TUN，适合保护 Tailscale、WireGuard、OpenVPN、ZeroTier、WARP 等 VPN App，避免流量回环。
+默认是 `blacklist`：`app-bypass.list` 里的包名绕过 MagicNet，适合保护 Tailscale、WireGuard、OpenVPN、ZeroTier、WARP 等 VPN App，避免流量回环。
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli app list
@@ -353,7 +381,8 @@ App traffic
 Android kernel routing
     |
     v
-MagicNet TUN interface
+MagicNet virtual interface
+magicnet0
     |
     v
 sing-box / mihomo rule engine
@@ -377,7 +406,7 @@ MAGIC_HOTSPOT_FORWARD=1
 
 模块会在内核启动后：
 
-- 自动识别 TUN 网卡。
+- 自动识别 MagicNet 虚拟网卡，默认是 `magicnet0`。
 - 自动识别常见热点网卡。
 - 向 `tetherctrl_FORWARD` 或 `FORWARD` 添加热点到 TUN 的转发规则。
 - 向 `nat POSTROUTING` 添加 TUN 出口 masquerade。
@@ -392,7 +421,7 @@ MAGIC_HOTSPOT_FORWARD=0
 
 ```bash
 MAGIC_HOTSPOT_IFACES="wlan2"
-MAGIC_TUN_IFACES="Meta"
+MAGIC_TUN_IFACES="magicnet0"
 ```
 
 ### 场景一：开启 MagicNet，同时开启手机热点
@@ -410,7 +439,7 @@ ap0 / wlan1 / swlan0
     | FORWARD accept
     v
 MagicNet TUN
-tun0 / Meta
+magicnet0
     |
     +--> DIRECT: LAN/private/system traffic
     |
@@ -423,7 +452,7 @@ tun0 / Meta
 
 ```bash
 MAGIC_HOTSPOT_IFACES="swlan0"
-MAGIC_TUN_IFACES="tun0"
+MAGIC_TUN_IFACES="magicnet0"
 ```
 
 ## VPN 共存
@@ -477,7 +506,7 @@ tailscale0
 Tailnet peers
 ```
 
-默认配置会排除常见 VPN App 包名，避免 VPN App 的握手连接被 MagicNet 再代理一次。启用 `MAGIC_VPN_COEXIST=1` 后，MagicNet 会扫描外部 VPN 网卡，例如 `tailscale0`、`wg0`、`tun0`、`warp0`，并为这些网卡地址补 `ip rule ... lookup main`，让 overlay 网络继续按 VPN 软件自己的路由走。
+默认配置会排除常见 VPN App 包名，避免 VPN App 的握手连接被 MagicNet 再代理一次。启用 `MAGIC_VPN_COEXIST=1` 后，MagicNet 会扫描外部 VPN 网卡，例如 `tailscale0`、`wg0`、`warp0` 等，并为这些网卡地址补 `ip rule ... lookup main`，让 overlay 网络继续按 VPN 软件自己的路由走。
 
 如果你的目标是“MagicNet 的代理出口再走另一个 VPN”，那是链式代理，不是默认共存。此时需要单独设计路由，例如 sing-box 的 `route.override_android_vpn` 或内核级策略路由。
 

@@ -1,5 +1,18 @@
 ## Unreleased
 
+## v1.1.0 (2026-06-03)
+
+- Use `magicnet0` as the default MagicNet virtual interface name for both
+  sing-box and mihomo templates, avoiding collisions with generic `tun0` used
+  by other VPN clients.
+- Document the Rust CLI and MCP server layout under `.local/bin`, while keeping
+  `/data/adb/modules/MagicNet/cli` as the stable compatibility entry.
+- Add CLI-managed subscription updates for sing-box and mihomo providers,
+  hotspot proxy/direct switching, transparent mode switching, watchdog
+  diagnostics, and safer support bundle guidance.
+- Refresh README feature docs for the management WebUI, TUN/TProxy modes,
+  `magicnet0` diagnostics, hotspot forwarding, VPN coexistence, and dev checks.
+
 ## v1.0.38 (2026-06-02)
 
 - Fix hotspot forwarding detection on devices that expose hotspot as a `wlan*`

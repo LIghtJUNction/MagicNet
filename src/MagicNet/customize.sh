@@ -77,7 +77,7 @@ set_i18n "INSTALL_NEXT_STEPS" \
   "zh" "安装后操作：
 1. 写入订阅链接或 outbound 节点。
 2. 重启设备，或在模块操作页启动内核。
-3. 打开模块 WebUI 的“内核面板”，或在终端执行 cli api ui 查看当前核心入口。
+3. 打开模块 WebUI 的内核面板，或在终端执行 cli api ui 查看当前核心入口。
 mihomo 默认: http://127.0.0.1:9090/ui/cubex/
 sing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "en" "After installation:
@@ -261,21 +261,21 @@ elif [ "$MAGIC_MIHOMO" != "0" ] && [ -x "${MODPATH}/system/bin/mihomo" ]; then
 fi
 
 # 设置权限
-[ -f "${MODPATH}/system/bin/mihomo" ] && set_perm "${MODPATH}/system/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
-[ -f "${MODPATH}/system/bin/sing-box" ] && set_perm "${MODPATH}/system/bin/sing-box" 0 0 0700 u:object_r:magisk_file:s0
+rm -f "${MODPATH}/kam.log" "${MODPATH}/cli.legacy.sh" "${MODPATH}/mcp-server.sh" 2>/dev/null || true
 
-[ -f "${MODPATH}/.local/bin/mihomo" ] && set_perm "${MODPATH}/.local/bin/mihomo" 0 0 0700 u:object_r:magisk_file:s0
-[ -f "${MODPATH}/.local/bin/sing-box" ] && set_perm "${MODPATH}/.local/bin/sing-box" 0 0 0700 u:object_r:magisk_file:s0
-[ -f "${MODPATH}/.local/bin/magicnet-cli" ] && set_perm "${MODPATH}/.local/bin/magicnet-cli" 0 0 0700 u:object_r:magisk_file:s0
-[ -f "${MODPATH}/.local/bin/magicnet-mcp-server" ] && set_perm "${MODPATH}/.local/bin/magicnet-mcp-server" 0 0 0700 u:object_r:magisk_file:s0
+[ -f "${MODPATH}/system/bin/mihomo" ] && set_perm "${MODPATH}/system/bin/mihomo" 0 0 0755 u:object_r:system_file:s0
+[ -f "${MODPATH}/system/bin/sing-box" ] && set_perm "${MODPATH}/system/bin/sing-box" 0 0 0755 u:object_r:system_file:s0
+
+[ -d "${MODPATH}/.local/bin" ] && set_perm_recursive "${MODPATH}/.local/bin" 0 0 0755 0755 u:object_r:system_file:s0
+[ -d "${MODPATH}/webroot" ] && set_perm_recursive "${MODPATH}/webroot" 0 0 0755 0644 u:object_r:system_file:s0
 
 rm -f "${MODPATH}/cli" 2>/dev/null || true
 ln -s ".local/bin/magicnet-cli" "${MODPATH}/cli" 2>/dev/null || true
 
 info "$(i18n "SET_MODULE_ENTRY_PERMS")"
-for _magicnet_entry in cli.legacy.sh action.sh service.sh boot-completed.sh uninstall.sh hotspot-forward.sh vpn-coexist.sh; do
+for _magicnet_entry in action.sh service.sh boot-completed.sh uninstall.sh hotspot-forward.sh vpn-coexist.sh; do
   [ -f "${MODPATH}/${_magicnet_entry}" ] || continue
-  set_perm "${MODPATH}/${_magicnet_entry}" 0 0 0700 u:object_r:magisk_file:s0
+  set_perm "${MODPATH}/${_magicnet_entry}" 0 0 0755 u:object_r:system_file:s0
 done
 unset _magicnet_entry
 
