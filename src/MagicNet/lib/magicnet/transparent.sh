@@ -167,7 +167,7 @@ magicnet_transparent_apply_unlocked() {
     _transparent_rc=0
     magicnet_mihomo_apply_transparent_mode || _transparent_rc=1
     magicnet_singbox_apply_transparent_mode || _transparent_rc=1
-    magicnet_enable_tproxy || true
+    magicnet_enable_tproxy || _transparent_rc=1
     return "$_transparent_rc"
 }
 

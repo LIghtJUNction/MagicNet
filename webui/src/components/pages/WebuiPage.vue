@@ -55,7 +55,7 @@ function issueUrl(): string {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Kernel WebUI" title="面板配置" description="管理内核 WebUI 面板入口。本地面板会下载到模块目录，在线面板通过申请 issue 进入内置审核。">
+    <PageHeader overline="Core WebUI" title="面板配置" description="管理核心 WebUI 面板入口。本地面板会下载到模块目录，在线面板通过申请 issue 进入内置审核。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('webui-status')" @click="refreshWebui"><RefreshCw :size="17" />读取</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), 'WebUI 适配 Issue')"><Github :size="17" />申请适配</Button>

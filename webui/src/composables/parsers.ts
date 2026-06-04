@@ -45,7 +45,6 @@ export const runtimeDefaults: RuntimeState = {
   core: "unknown",
   selectedCore: "sing-box",
   singBox: "unknown",
-  singBoxDisabled: false,
   mihomo: "unknown",
   watchdog: "unknown",
   fswatch: "unknown",
@@ -105,13 +104,11 @@ export function parseRuntime(text: string, previous: RuntimeState): RuntimeState
   const next = {
     ...runtimeDefaults,
     selectedCore: previous.selectedCore,
-    singBoxDisabled: previous.singBoxDisabled,
     transparentMode: previous.transparentMode
   };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (line.startsWith("sing-box:")) next.singBox = line.slice(9).trim() || "stopped";
-    if (line.startsWith("sing-box-disabled:")) next.singBoxDisabled = line.slice(18).trim() === "1";
     if (line.startsWith("mihomo:")) next.mihomo = line.slice(7).trim() || "stopped";
     if (line.startsWith("watchdog:")) next.watchdog = line.slice(9).trim() || "stopped";
     if (line.startsWith("fswatch:")) next.fswatch = line.slice(8).trim() || "stopped";

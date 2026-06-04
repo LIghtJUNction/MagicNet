@@ -52,9 +52,9 @@ export function useExternalLinks(
 
   async function openCoreUi(target: CoreUiTarget): Promise<void> {
     state.notice = `正在打开 ${target}`;
-    const ok = await runCli("api groups", "检查内核 WebUI", true);
+    const ok = await runCli("api groups", "检查核心 WebUI", true);
     if (!ok || probeFailed(ok)) {
-      state.output = `内核 API 未就绪，暂不跳转。\n\n${ok}`;
+      state.output = `核心 API 未就绪，暂不跳转。\n\n${ok}`;
       state.phase = "error";
       return;
     }
@@ -65,7 +65,7 @@ export function useExternalLinks(
     if (!target) {
       autoCoreOpen.enabled = false;
       localStorage.setItem(AUTO_CORE_OPEN_ENABLED_KEY, "0");
-      state.output = "已关闭默认进入内核 WebUI。";
+      state.output = "已关闭默认进入核心 WebUI。";
       return;
     }
     autoCoreOpen.enabled = true;

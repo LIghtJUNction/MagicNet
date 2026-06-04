@@ -117,8 +117,10 @@ magicnet_singbox_update_config_with_nodes() {
             close(repl)
             skipping = 0
             depth = 0
+            found = 0
         }
         skipping == 0 && $0 ~ /^[[:space:]]*"outbounds"[[:space:]]*:/ {
+            found = 1
             if (prev != "") {
                 sub(/,[[:space:]]*$/, "", prev)
                 sub(/[[:space:]]*$/, ",", prev)
@@ -136,6 +138,16 @@ magicnet_singbox_update_config_with_nodes() {
                 skipping = 0
             }
             next
+        }
+        skipping == 0 && found == 0 && $0 ~ /^  "(route|experimental)"[[:space:]]*:/ {
+            if (prev != "") {
+                sub(/,[[:space:]]*$/, "", prev)
+                sub(/[[:space:]]*$/, ",", prev)
+                print prev
+                prev = ""
+            }
+            printf "%s", replacement
+            found = 1
         }
         {
             if (prev != "") print prev

@@ -131,6 +131,10 @@ su -c /data/adb/modules/MagicNet/cli service status
 su -c /data/adb/modules/MagicNet/cli service start
 su -c /data/adb/modules/MagicNet/cli service stop
 su -c /data/adb/modules/MagicNet/cli service restart
+su -c /data/adb/modules/MagicNet/cli core select sing-box
+su -c /data/adb/modules/MagicNet/cli core select mihomo
+su -c /data/adb/modules/MagicNet/cli service restart sing-box
+su -c /data/adb/modules/MagicNet/cli service restart mihomo
 su -c /data/adb/modules/MagicNet/cli transparent set tun
 su -c /data/adb/modules/MagicNet/cli transparent set tproxy
 su -c /data/adb/modules/MagicNet/cli hotspot set proxy
@@ -139,6 +143,8 @@ su -c /data/adb/modules/MagicNet/cli config apply
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli diagnose
 ```
+
+核心切换只使用 `.config/magicnet/core.conf` 里的 `MAGICNET_DEFAULT_CORE`，由 `cli core select <sing-box|mihomo>` 写入。旧的 `.disable_sing_box` 隐藏开关已经移除；不要再用隐藏文件禁用 sing-box。需要指定某次启动的核心时，直接执行 `cli service restart sing-box` 或 `cli service restart mihomo`。
 
 配置、状态和诊断：
 

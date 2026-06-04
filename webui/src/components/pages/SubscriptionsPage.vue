@@ -32,7 +32,7 @@ async function saveSingBox(): Promise<void> {
     await runCli(`sub set-file sing-box ${shellQuote(encoded)}`, "保存 sing-box 订阅");
     if (raw.length !== lines.length) state.output += `\n\n已自动去重/裁剪：${raw.length} -> ${lines.length}`;
     await startBackgroundCli("sub update sing-box", "更新 sing-box 节点");
-    state.output += "\n\n已开始后台拉取并导入 sing-box 节点。完成后进入内核 WebUI 查看节点。";
+    state.output += "\n\n已开始后台拉取并导入 sing-box 节点。完成后进入核心 WebUI 查看节点。";
     await refreshSubs(true);
   });
 }
@@ -66,7 +66,7 @@ async function copy(text: string, label: string): Promise<void> {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Subscriptions" title="订阅管理" description="这里只保存订阅链接和备份配置；节点选择交给内核 WebUI。">
+    <PageHeader overline="Subscriptions" title="订阅管理" description="这里只保存订阅链接和备份配置；节点选择交给核心 WebUI。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('refresh-subs')" @click="withAction('refresh-subs', () => refreshSubs())"><RefreshCw :size="17" />刷新</Button>
         <Button :loading="isRunning('update-all')" @click="updateAll"><DownloadCloud :size="17" />更新全部</Button>
@@ -76,7 +76,7 @@ async function copy(text: string, label: string): Promise<void> {
     <div class="grid gap-3 md:grid-cols-2">
       <Card>
         <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Box :size="17" />sing-box 订阅</h3>
-        <p class="text-sm leading-6 text-zinc-400">最多 5 个，一行一个。保存后会在后台拉取、解析并写入 sing-box config.json；节点选择仍在内核 WebUI。</p>
+        <p class="text-sm leading-6 text-zinc-400">最多 5 个，一行一个。保存后会在后台拉取、解析并写入 sing-box config.json；节点选择仍在核心 WebUI。</p>
         <Textarea v-model="singBoxText" class="my-2 min-h-36" spellcheck="false" />
         <div class="flex flex-wrap items-center gap-2">
           <Button :loading="isRunning('save-singbox')" @click="saveSingBox"><Save :size="16" />保存</Button>

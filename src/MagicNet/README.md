@@ -60,12 +60,18 @@ su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/config"'
 ```bash
 su -c /data/adb/modules/MagicNet/cli service status
 su -c /data/adb/modules/MagicNet/cli service restart
+su -c /data/adb/modules/MagicNet/cli core select sing-box
+su -c /data/adb/modules/MagicNet/cli core select mihomo
+su -c /data/adb/modules/MagicNet/cli service restart sing-box
+su -c /data/adb/modules/MagicNet/cli service restart mihomo
 su -c /data/adb/modules/MagicNet/cli transparent set tun
 su -c /data/adb/modules/MagicNet/cli transparent set tproxy
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli diagnose
 su -c /data/adb/modules/MagicNet/cli support bundle
 ```
+
+核心选择由 `.config/magicnet/core.conf` 管理，使用 `cli core select <sing-box|mihomo>` 修改。旧的 `.disable_sing_box` 隐藏开关已经移除，不再作为禁用 sing-box 的设计。
 
 ## MCP 自动化
 

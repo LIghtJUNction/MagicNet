@@ -7,7 +7,7 @@ magicnet_status_text() {
 }
 
 magicnet_refresh_status() {
-    if ! magicnet_singbox_disabled && magicnet_cmd_exists sing-box; then
+    if magicnet_cmd_exists sing-box; then
         import __singbox__
         is_singbox_running >/dev/null 2>&1 && return 0
     fi
@@ -44,7 +44,6 @@ magicnet_start_mihomo() {
 
 magicnet_start_singbox() {
     [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
-    ! magicnet_singbox_disabled || return 1
     magicnet_cmd_exists sing-box || return 1
     magicnet_prepare_singbox_nodes || return 1
     if magicnet_cmd_exists mihomo; then
@@ -66,7 +65,7 @@ magicnet_start_singbox() {
 }
 
 magicnet_kernel_running() {
-    if ! magicnet_singbox_disabled && magicnet_cmd_exists sing-box; then
+    if magicnet_cmd_exists sing-box; then
         import __singbox__
         is_singbox_running >/dev/null 2>&1 && return 0
     fi
@@ -81,7 +80,6 @@ magicnet_kernel_running() {
 
 magicnet_start_kernel() {
     if magicnet_kernel_running; then
-        magicnet_supervisors_start
         return 0
     fi
 
@@ -93,9 +91,13 @@ magicnet_start_kernel() {
             if magicnet_start_mihomo; then
                 magicnet_after_kernel_start
                 magicnet_notify "magicnet_guard" "MagicNet" "mihomo started"
-                magicnet_supervisors_start
                 unset _preferred_core
                 return 0
+            fi
+            if [ "${MAGICNET_STRICT_CORE:-0}" = "1" ]; then
+                magicnet_warn "mihomo failed to start; strict core mode prevents fallback."
+                unset _preferred_core
+                return 1
             fi
             if magicnet_singbox_has_subscription; then
                 magicnet_warn "mihomo failed to start; attempting sing-box fallback..."
@@ -111,7 +113,6 @@ magicnet_start_kernel() {
             if magicnet_singbox_has_subscription && magicnet_start_singbox; then
                 magicnet_after_kernel_start
                 magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
-                magicnet_supervisors_start
                 unset _preferred_core
                 return 0
             fi
@@ -120,11 +121,15 @@ magicnet_start_kernel() {
             if magicnet_start_singbox; then
                 magicnet_after_kernel_start
                 magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
-                magicnet_supervisors_start
                 unset _preferred_core
                 return 0
             fi
-            if magicnet_mihomo_has_subscription && [ "${MAGIC_SINGBOX:-1}" -ne 0 ] && ! magicnet_singbox_disabled; then
+            if [ "${MAGICNET_STRICT_CORE:-0}" = "1" ]; then
+                magicnet_warn "sing-box failed to start; strict core mode prevents fallback."
+                unset _preferred_core
+                return 1
+            fi
+            if magicnet_mihomo_has_subscription && [ "${MAGIC_SINGBOX:-1}" -ne 0 ]; then
                 magicnet_warn "sing-box failed to start; attempting mihomo fallback..."
             elif ! magicnet_any_subscription_ready; then
                 magicnet_require_subscription_or_stop
@@ -138,7 +143,6 @@ magicnet_start_kernel() {
             if magicnet_mihomo_has_subscription && magicnet_start_mihomo; then
                 magicnet_after_kernel_start
                 magicnet_notify "magicnet_guard" "MagicNet" "mihomo started"
-                magicnet_supervisors_start
                 unset _preferred_core
                 return 0
             fi
@@ -146,7 +150,7 @@ magicnet_start_kernel() {
     esac
     unset _preferred_core
 
-    magicnet_warn "No supported kernel found or starting disabled (mihomo or sing-box)."
+    magicnet_warn "No supported core found or starting disabled (mihomo or sing-box)."
     return 1
 }
 
@@ -160,11 +164,7 @@ magicnet_show_dashboard() {
     panel "MagicNet"
     if magicnet_cmd_exists sing-box; then
         import __singbox__
-        if magicnet_singbox_disabled; then
-            _singbox_state="Disabled by .disable_sing_box"
-        else
-            _singbox_state=$(magicnet_status_text is_singbox_running)
-        fi
+        _singbox_state=$(magicnet_status_text is_singbox_running)
     else
         _singbox_state="Not installed"
     fi

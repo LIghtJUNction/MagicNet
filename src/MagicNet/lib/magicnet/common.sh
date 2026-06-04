@@ -201,13 +201,13 @@ magicnet_mihomo_provider_table() {
             sub(/:[[:space:]]*$/, "", name)
             next
         }
-        in_providers && name != "" && /^[[:space:]]+url:[[:space:]]*/ {
+        in_providers && name != "" && /^    url:[[:space:]]*/ {
             url = $0
             sub(/^[[:space:]]*url:[[:space:]]*/, "", url)
             gsub(/^["'\'']|["'\'']$/, "", url)
             next
         }
-        in_providers && name != "" && /^[[:space:]]+path:[[:space:]]*/ {
+        in_providers && name != "" && /^    path:[[:space:]]*/ {
             path = $0
             sub(/^[[:space:]]*path:[[:space:]]*/, "", path)
             gsub(/^["'\'']|["'\'']$/, "", path)
@@ -218,6 +218,35 @@ magicnet_mihomo_provider_table() {
         }
     ' "$_config"
     unset _config
+}
+
+magicnet_mihomo_extract_proxies_section() {
+    _mmep_source="$1"
+    _mmep_target="$2"
+    awk '
+        BEGIN {
+            in_proxies = 0
+            wrote = 0
+        }
+        /^proxies:[[:space:]]*$/ {
+            in_proxies = 1
+            wrote = 1
+            print
+            next
+        }
+        in_proxies && /^[^[:space:]-][^:]*:/ {
+            in_proxies = 0
+        }
+        in_proxies {
+            print
+        }
+        END {
+            exit wrote ? 0 : 1
+        }
+    ' "$_mmep_source" >"$_mmep_target"
+    _mmep_rc=$?
+    unset _mmep_source _mmep_target
+    return "$_mmep_rc"
 }
 
 magicnet_need_nodes_message() {
@@ -240,8 +269,17 @@ magicnet_prepare_singbox_nodes() {
     fi
 
     . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
+    if magicnet_singbox_config_has_nodes; then
+        return 0
+    fi
+
     magicnet_log "Updating sing-box subscription before startup..."
     if magicnet_singbox_update_subscription; then
+        return 0
+    fi
+
+    if magicnet_singbox_config_has_nodes; then
+        magicnet_warn "sing-box subscription update failed; starting with existing cached nodes"
         return 0
     fi
 
@@ -305,11 +343,15 @@ magicnet_prepare_mihomo_nodes() {
             magicnet_warn "Failed to update mihomo provider ${_name}"
             continue
         fi
-        if [ -s "$_tmp" ] && grep -Eq '^proxies:[[:space:]]*$' "$_tmp"; then
+        if [ -s "$_tmp" ] && magicnet_mihomo_extract_proxies_section "$_tmp" "${_tmp}.proxies"; then
+            mv -f "${_tmp}.proxies" "$_target"
+            rm -f "$_tmp"
+            _provider_ok=$((_provider_ok + 1))
+        elif [ -s "$_tmp" ] && grep -Eq '^proxies:[[:space:]]*$' "$_tmp"; then
             mv -f "$_tmp" "$_target"
             _provider_ok=$((_provider_ok + 1))
         else
-            rm -f "$_tmp"
+            rm -f "$_tmp" "${_tmp}.proxies"
             magicnet_warn "mihomo provider ${_name} downloaded no supported Clash nodes"
         fi
     done
@@ -338,27 +380,43 @@ magicnet_prepare_mihomo_nodes() {
 }
 
 magicnet_mihomo_running_has_nodes() {
+    _workdir="${MODDIR}/.config/mihomo"
+    for _provider_file in "${_workdir}"/proxies/*.yaml; do
+        [ -f "$_provider_file" ] || continue
+        grep -Eq '^proxies:[[:space:]]*$' "$_provider_file" && {
+            unset _workdir _provider_file
+            return 0
+        }
+    done
+
     if ! command -v curl >/dev/null 2>&1; then
+        unset _workdir _provider_file
         return 0
     fi
 
-    _provider_api=$(curl -sS --max-time 8 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
-    if [ -n "$_provider_api" ]; then
-        printf '%s' "$_provider_api" | grep -Eq '"proxies":[[:space:]]*\[[[:space:]]*\{' && {
-            unset _provider_api _proxy_api
-            return 0
-        }
-    fi
+    _tries=0
+    while [ "$_tries" -lt "${MAGICNET_MIHOMO_NODE_WAIT_TRIES:-10}" ]; do
+        _provider_api=$(curl -sS --max-time 3 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
+        if [ -n "$_provider_api" ]; then
+            printf '%s' "$_provider_api" | grep -Eq '"proxies":[[:space:]]*\[[[:space:]]*\{' && {
+                unset _workdir _provider_file _tries _provider_api _proxy_api
+                return 0
+            }
+        fi
 
-    _proxy_api=$(curl -sS --max-time 8 http://127.0.0.1:9090/proxies 2>/dev/null || true)
-    if [ -n "$_proxy_api" ]; then
-        printf '%s' "$_proxy_api" | grep -Eq '"(all|proxies)"[[:space:]]*:[[:space:]]*\[[^]]*"[^"]+"' && {
-            unset _provider_api _proxy_api
-            return 0
-        }
-    fi
+        _proxy_api=$(curl -sS --max-time 3 http://127.0.0.1:9090/proxies 2>/dev/null || true)
+        if [ -n "$_proxy_api" ]; then
+            printf '%s' "$_proxy_api" | grep -Eq '"(all|proxies)"[[:space:]]*:[[:space:]]*\[[^]]*"[^"]+"' && {
+                unset _workdir _provider_file _tries _provider_api _proxy_api
+                return 0
+            }
+        fi
 
-    unset _provider_api _proxy_api
+        _tries=$((_tries + 1))
+        sleep 2
+    done
+
+    unset _workdir _provider_file _tries _provider_api _proxy_api
     return 1
 }
 

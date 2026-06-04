@@ -131,7 +131,7 @@ set_i18n "INSTALL_FLAGS" \
   "zh" "可选开关：
 MAGIC_HOTSPOT_FORWARD=0 关闭热点转发修复
 MAGIC_VPN_COEXIST=0 关闭 VPN 共存保护
-MAGIC_SINGBOX=0 / MAGIC_MIHOMO=0 禁用指定内核" \
+MAGIC_SINGBOX=0 / MAGIC_MIHOMO=0 禁用指定核心" \
   "en" "Optional switches:
 MAGIC_HOTSPOT_FORWARD=0 disables hotspot forwarding fix
 MAGIC_VPN_COEXIST=0 disables VPN coexistence protection
@@ -175,11 +175,11 @@ set_i18n "SET_MODULE_ENTRY_PERMS" \
   "ja" "モジュール入口スクリプトの権限を設定しています" \
   "ko" "모듈 진입 스크립트 권한 설정 중"
 
-set_i18n "DISABLE_SINGBOX_ON_INSTALL" \
-  "zh" "选择默认戒网瘾内核" \
-  "en" "Choose the default detox core" \
-  "ja" "既定のデトックスコアを選択" \
-  "ko" "기본 디지털 디톡스 코어 선택"
+set_i18n "DEFAULT_CORE_ON_INSTALL" \
+  "zh" "选择默认代理核心" \
+  "en" "Choose the default proxy core" \
+  "ja" "既定のプロキシコアを選択" \
+  "ko" "기본 프록시 코어 선택"
 
 set_i18n "USE_SINGBOX_CORE" \
   "zh" "使用 sing-box（推荐）" \
@@ -187,66 +187,29 @@ set_i18n "USE_SINGBOX_CORE" \
   "ja" "sing-box を使用（推奨）" \
   "ko" "sing-box 사용(권장)"
 
-set_i18n "DISABLE_SINGBOX_CORE" \
-  "zh" "禁用 sing-box，改用 mihomo" \
-  "en" "Disable sing-box and use mihomo" \
-  "ja" "sing-box を無効化し mihomo を使用" \
-  "ko" "sing-box 비활성화 후 mihomo 사용"
+set_i18n "USE_MIHOMO_CORE" \
+  "zh" "使用 mihomo" \
+  "en" "Use mihomo" \
+  "ja" "mihomo を使用" \
+  "ko" "mihomo 사용"
 
-set_i18n "KEEP_SINGBOX_FILES" \
-  "zh" "禁用 sing-box 后如何处理文件？" \
-  "en" "What should happen to sing-box files after disabling it?" \
-  "ja" "sing-box 無効化後のファイル処理" \
-  "ko" "sing-box 비활성화 후 파일 처리"
-
-set_i18n "KEEP_SINGBOX_FILES_OPTION" \
-  "zh" "保留文件，之后可快速恢复" \
-  "en" "Keep files for quick re-enable later" \
-  "ja" "後で再有効化できるようファイルを保持" \
-  "ko" "나중에 빠르게 다시 활성화할 수 있도록 파일 유지"
-
-set_i18n "REMOVE_SINGBOX_FILES_OPTION" \
-  "zh" "移除文件，节省空间" \
-  "en" "Remove files to save space" \
-  "ja" "容量節約のためファイルを削除" \
-  "ko" "공간 절약을 위해 파일 제거"
-
-set_i18n "SINGBOX_DISABLED_KEEP" \
-  "zh" "sing-box 已禁用，文件已保留。删除 .disable_sing_box 可重新启用。" \
-  "en" "sing-box is disabled and files were kept. Remove .disable_sing_box to enable it again." \
-  "ja" "sing-box は無効化され、ファイルは保持されました。.disable_sing_box を削除すると再有効化できます。" \
-  "ko" "sing-box가 비활성화되었고 파일은 유지되었습니다. .disable_sing_box를 삭제하면 다시 활성화됩니다."
-
-set_i18n "SINGBOX_DISABLED_REMOVE" \
-  "zh" "已禁用 sing-box，并移除 sing-box 内核文件。" \
-  "en" "sing-box is disabled and its core files were removed." \
-  "ja" "sing-box は無効化され、コアファイルは削除されました。" \
-  "ko" "sing-box가 비활성화되었고 코어 파일이 제거되었습니다."
-
-magicnet_disable_singbox_keep() {
-  touch "${MODPATH}/.disable_sing_box"
-  print "$(i18n "SINGBOX_DISABLED_KEEP")"
+magicnet_set_default_core() {
+  case "$1" in
+    sing-box|mihomo) ;;
+    *) return 1 ;;
+  esac
+  mkdir -p "${MODPATH}/.config/magicnet" || return 1
+  printf 'MAGICNET_DEFAULT_CORE=%s\n' "$1" >"${MODPATH}/.config/magicnet/core.conf"
 }
 
-magicnet_disable_singbox_remove() {
-  touch "${MODPATH}/.disable_sing_box"
-  rm -f "${MODPATH}/system/bin/sing-box" "${MODPATH}/.local/bin/sing-box" 2>/dev/null || true
-  print "$(i18n "SINGBOX_DISABLED_REMOVE")"
-}
+magicnet_ask_default_core() {
+  [ "${MAGIC_SINGBOX:-1}" != "0" ] || [ "${MAGIC_MIHOMO:-1}" != "0" ] || return 0
 
-magicnet_enable_singbox() {
-  rm -f "${MODPATH}/.disable_sing_box" 2>/dev/null || true
-}
-
-magicnet_ask_disable_singbox() {
-  [ "${MAGIC_SINGBOX:-1}" != "0" ] || return 0
-  [ -x "${MODPATH}/system/bin/sing-box" ] || [ -x "${MODPATH}/.local/bin/sing-box" ] || return 0
-
-  ask "DISABLE_SINGBOX_ON_INSTALL" \
+  ask "DEFAULT_CORE_ON_INSTALL" \
     "USE_SINGBOX_CORE" \
-    'magicnet_enable_singbox' \
-    "DISABLE_SINGBOX_CORE" \
-    'ask "KEEP_SINGBOX_FILES" "KEEP_SINGBOX_FILES_OPTION" "magicnet_disable_singbox_keep" "REMOVE_SINGBOX_FILES_OPTION" "magicnet_disable_singbox_remove" 0' \
+    'magicnet_set_default_core sing-box' \
+    "USE_MIHOMO_CORE" \
+    'magicnet_set_default_core mihomo' \
     0
 }
 
@@ -275,7 +238,7 @@ MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
 if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
   :
 else
-  magicnet_ask_disable_singbox
+  magicnet_ask_default_core
 fi
 
 if [ -d "$MAGICNET_BACKUP_DIR" ]; then
@@ -298,10 +261,10 @@ fi
 
 if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
   :
-elif [ "$MAGIC_SINGBOX" != "0" ] && [ ! -f "${MODPATH}/.disable_sing_box" ] && [ -x "${MODPATH}/system/bin/sing-box" ]; then
+elif [ "$MAGIC_SINGBOX" != "0" ] && { [ -x "${MODPATH}/.local/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
   import __singbox__
   singbox_ask_webui
-elif [ "$MAGIC_MIHOMO" != "0" ] && [ -x "${MODPATH}/system/bin/mihomo" ]; then
+elif [ "$MAGIC_MIHOMO" != "0" ] && { [ -x "${MODPATH}/.local/bin/mihomo" ] || [ -x "${MODPATH}/system/bin/mihomo" ]; }; then
   import __mihomo__
   ask_webui
 fi

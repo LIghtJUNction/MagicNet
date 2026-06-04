@@ -16,7 +16,6 @@ export type RuntimeState = {
   core: "sing-box" | "mihomo" | "stopped" | "unknown";
   selectedCore: "sing-box" | "mihomo";
   singBox: string;
-  singBoxDisabled: boolean;
   mihomo: string;
   watchdog: string;
   fswatch: string;

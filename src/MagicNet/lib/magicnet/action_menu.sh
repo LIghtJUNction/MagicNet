@@ -1,8 +1,4 @@
 magicnet_action_update_singbox_subscription() {
-    if magicnet_singbox_disabled; then
-        panel_warn "sing-box is disabled by ${MODDIR}/.disable_sing_box"
-        return 0
-    fi
     if ! magicnet_cmd_exists sing-box; then
         panel_error "sing-box is not installed"
         return 1
@@ -14,19 +10,11 @@ magicnet_action_update_singbox_subscription() {
 }
 
 magicnet_action_singbox_webui() {
-    if magicnet_singbox_disabled; then
-        panel_warn "sing-box is disabled by ${MODDIR}/.disable_sing_box"
-        return 0
-    fi
     import __singbox__
     singbox_ask_webui
 }
 
 magicnet_action_toggle_singbox() {
-    if magicnet_singbox_disabled; then
-        panel_warn "sing-box is disabled by ${MODDIR}/.disable_sing_box"
-        return 0
-    fi
     import __singbox__
     toggle_singbox
     magicnet_refresh_status
@@ -169,4 +157,3 @@ magicnet_action() {
         'exit 0' \
         0
 }
-

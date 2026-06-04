@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
+use std::time::Duration;
 
 use crate::{
     diagnostics::supervisor_pid, pid_summary, read_kv, run_magicnet_function, write_text_file, App,
@@ -17,10 +19,6 @@ pub(crate) fn service_status(app: &App) {
     };
     println!("MagicNet");
     println!("  sing-box: {singbox}");
-    println!(
-        "  sing-box-disabled: {}",
-        bool_file(app.moddir.join(".disable_sing_box")) as u8
-    );
     println!("  mihomo:   {mihomo}");
     println!(
         "  watchdog: {}",
@@ -52,7 +50,7 @@ pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "start" => run_magicnet_function(app, "magicnet_start_kernel"),
         "ensure" => run_magicnet_function(app, "magicnet_ensure_kernel"),
-        "stop" => run_magicnet_function(app, "magicnet_supervisors_stop; import __singbox__; singbox_stop 2>/dev/null || true; import __mihomo__; mihomo_stop 2>/dev/null || true; magicnet_refresh_status"),
+        "stop" => stop_all_direct(app),
         "restart" => restart(app, args.get(1).map(String::as_str).unwrap_or("current")),
         "toggle" => match args.get(1).map(String::as_str).unwrap_or_default() {
             "sing-box" | "singbox" => run_magicnet_function(app, "magicnet_action_toggle_singbox"),
@@ -131,8 +129,7 @@ pub(crate) fn core_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "select" => select_core(app, args.get(1).map(String::as_str).unwrap_or_default()),
-        "sing-box" | "singbox" => singbox_cmd(app, args.get(1).map(String::as_str).unwrap_or("status")),
-        _ => Err("Usage: cli core {status|selected|select <sing-box|mihomo>|sing-box {status|enable|disable|toggle}}".to_string()),
+        _ => Err("Usage: cli core {status|selected|select <sing-box|mihomo>}".to_string()),
     }
 }
 
@@ -190,16 +187,58 @@ pub(crate) fn service_logs(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn restart(app: &App, target: &str) -> Result<(), String> {
+    stop_all_direct(app)?;
     let target = if target == "current" {
         selected_core(app)
     } else {
         target.to_string()
     };
     match target.as_str() {
-        "sing-box" | "singbox" => run_magicnet_function(app, "magicnet_supervisors_stop; import __mihomo__; mihomo_stop 2>/dev/null || true; import __singbox__; singbox_stop 2>/dev/null || true; MAGICNET_DEFAULT_CORE=sing-box magicnet_start_kernel"),
-        "mihomo" => run_magicnet_function(app, "magicnet_supervisors_stop; import __singbox__; singbox_stop 2>/dev/null || true; import __mihomo__; mihomo_stop 2>/dev/null || true; MAGICNET_DEFAULT_CORE=mihomo magicnet_start_kernel"),
-        _ => run_magicnet_function(app, "magicnet_supervisors_stop; import __singbox__; singbox_stop 2>/dev/null || true; import __mihomo__; mihomo_stop 2>/dev/null || true; magicnet_start_kernel"),
+        "sing-box" | "singbox" => run_magicnet_function(
+            app,
+            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel",
+        ),
+        "mihomo" => run_magicnet_function(
+            app,
+            "MAGICNET_DEFAULT_CORE=mihomo MAGICNET_STRICT_CORE=1 magicnet_start_kernel",
+        ),
+        _ => run_magicnet_function(app, "magicnet_start_kernel"),
     }
+}
+
+fn stop_all_direct(app: &App) -> Result<(), String> {
+    stop_supervisor_pidfile(app.moddir.join(".state/watchdog/magicnet-kernel.pid"));
+    stop_supervisor_pidfile(app.moddir.join(".state/fswatch/magicnet-config.pid"));
+    ignore_command(
+        "pkill",
+        &[
+            "-f",
+            &format!("{}/cli.*service ensure", app.moddir.display()),
+        ],
+    );
+    ignore_command(
+        "pkill",
+        &["-f", &format!("{}/cli.*config apply", app.moddir.display())],
+    );
+    ignore_command("killall", &["sing-box"]);
+    ignore_command("killall", &["mihomo"]);
+    std::thread::sleep(Duration::from_secs(1));
+    ignore_command("killall", &["-9", "sing-box"]);
+    ignore_command("killall", &["-9", "mihomo"]);
+    Ok(())
+}
+
+fn stop_supervisor_pidfile(path: PathBuf) {
+    if let Ok(text) = fs::read_to_string(&path) {
+        if let Ok(pid) = text.trim().parse::<i32>() {
+            ignore_command("kill", &[&pid.to_string()]);
+        }
+    }
+    let _ = fs::remove_file(path);
+}
+
+fn ignore_command(program: &str, args: &[&str]) {
+    let _ = Command::new(program).args(args).status();
 }
 
 fn supervisor_target(app: &App, target: &str, action: &str) -> Result<(), String> {
@@ -235,7 +274,7 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
         selected_core_path(app),
         &format!("MAGICNET_DEFAULT_CORE={normalized}\n"),
     )?;
-    println!("[info] 默认内核已设为: {normalized}");
+    println!("[info] 默认核心已设为: {normalized}");
     Ok(())
 }
 
@@ -285,29 +324,6 @@ fn vpn_set(app: &App, mode: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn singbox_cmd(app: &App, action: &str) -> Result<(), String> {
-    let path = app.moddir.join(".disable_sing_box");
-    match action {
-        "status" => {
-            core_status(app);
-            Ok(())
-        }
-        "enable" => {
-            let _ = fs::remove_file(path);
-            println!("[info] sing-box enabled");
-            Ok(())
-        }
-        "disable" => {
-            write_text_file(path, "")?;
-            println!("[info] sing-box disabled");
-            Ok(())
-        }
-        "toggle" if path.exists() => singbox_cmd(app, "enable"),
-        "toggle" => singbox_cmd(app, "disable"),
-        _ => Err("Usage: cli core sing-box {status|enable|disable|toggle}".to_string()),
-    }
-}
-
 fn transparent_mode(app: &App) -> &'static str {
     fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
         .ok()
@@ -338,15 +354,7 @@ fn vpn_mode(app: &App) -> String {
 }
 
 fn core_status(app: &App) {
-    println!(
-        "sing-box-disabled={}",
-        bool_file(app.moddir.join(".disable_sing_box")) as u8
-    );
     println!("selected={}", selected_core(app));
-}
-
-fn bool_file(path: PathBuf) -> bool {
-    path.exists()
 }
 
 fn selected_core(app: &App) -> String {

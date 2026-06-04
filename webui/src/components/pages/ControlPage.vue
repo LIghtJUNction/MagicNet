@@ -20,7 +20,7 @@ watch(() => state.tailscale.subnets, (value) => { tailscaleSubnets.value = value
 async function selectCore(core: "sing-box" | "mihomo"): Promise<void> {
   state.selectedCore = core;
   await withAction(`select-${core}`, async () => {
-    await runCli(`core select ${core}`, `选择内核 ${core}`);
+    await runCli(`core select ${core}`, `选择核心 ${core}`);
     await refreshAll();
   });
 }
@@ -32,7 +32,7 @@ async function setSelectedCoreDefault(): Promise<void> {
     return;
   }
   await withAction("default-core", async () => {
-    await runCli(`core select ${core}`, `设为默认内核 ${core}`);
+    await runCli(`core select ${core}`, `设为默认核心 ${core}`);
     state.selectedCore = core;
     await refreshStatus();
   });
@@ -119,7 +119,7 @@ async function disableTailscale(): Promise<void> {
       <div>
         <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Control Center</span>
         <h2 class="mt-1 text-2xl font-semibold">模块控制</h2>
-        <p class="mt-1 text-sm leading-6 text-zinc-400">只放模块生命周期和入口。节点、测速、代理模式交给内核 WebUI。</p>
+        <p class="mt-1 text-sm leading-6 text-zinc-400">只放模块生命周期和入口。节点、测速、代理模式交给核心 WebUI。</p>
       </div>
       <Badge :tone="state.runtime.core === 'stopped' ? 'warning' : 'success'">{{ state.runtime.core }}</Badge>
     </div>
@@ -128,7 +128,7 @@ async function disableTailscale(): Promise<void> {
       <Card class="grid gap-3">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Current Kernel</span>
+            <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Current Core</span>
             <h3 class="mt-1 break-words text-xl font-semibold">{{ state.selectedCore }}</h3>
           </div>
           <Button size="sm" variant="secondary" :loading="isRunning('default-core')" :disabled="state.selectedCore !== 'sing-box' && state.selectedCore !== 'mihomo'" @click="setSelectedCoreDefault">设为默认</Button>
@@ -140,15 +140,15 @@ async function disableTailscale(): Promise<void> {
         </div>
         <Button :loading="isRunning('toggle-core')" class="w-full" @click="toggleCurrentCore">
           <Power :size="18" />
-          {{ state.runtime.core === state.selectedCore ? "停止当前内核" : "启动当前内核" }}
+          {{ state.runtime.core === state.selectedCore ? "停止当前核心" : "启动当前核心" }}
         </Button>
       </Card>
 
       <Card>
         <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Quick Actions</span>
         <div class="mt-3 grid gap-2">
-          <Button variant="secondary" :loading="isRunning('restart-current')" @click="runAction('restart-current', 'service restart current', '重启当前内核', true)">
-            <RotateCcw :size="17" />重启当前内核
+          <Button variant="secondary" :loading="isRunning('restart-current')" @click="runAction('restart-current', 'service restart current', '重启当前核心', true)">
+            <RotateCcw :size="17" />重启当前核心
           </Button>
           <Button variant="secondary" :loading="isRunning('apply-config')" @click="runAction('apply-config', 'config apply', '应用全部配置')">
             <Save :size="17" />应用配置
@@ -163,12 +163,12 @@ async function disableTailscale(): Promise<void> {
       </Card>
 
       <Card>
-        <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Kernel WebUI</span>
+        <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Core WebUI</span>
         <div class="mt-3 grid gap-2">
           <Button variant="outline" :loading="isRunning('open-metacubex')" @click="withAction('open-metacubex', () => openCoreUi('metacubex'))"><ExternalLink :size="17" />Meta Cube X</Button>
           <Button variant="outline" :loading="isRunning('open-yacd')" @click="withAction('open-yacd', () => openCoreUi('yacd'))"><ExternalLink :size="17" />Yacd</Button>
           <Button variant="outline" :loading="isRunning('open-zashboard')" @click="withAction('open-zashboard', () => openCoreUi('zashboard'))"><ExternalLink :size="17" />zashboard</Button>
-          <Button variant="outline" :loading="isRunning('api-groups')" @click="withAction('api-groups', () => runCli('api groups', '检查内核 API'))"><ShieldCheck :size="17" />检查 API</Button>
+          <Button variant="outline" :loading="isRunning('api-groups')" @click="withAction('api-groups', () => runCli('api groups', '检查核心 API'))"><ShieldCheck :size="17" />检查 API</Button>
         </div>
       </Card>
     </div>

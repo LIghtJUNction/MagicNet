@@ -27,29 +27,29 @@ magicnet_tproxy_has_kernel_support() {
 }
 
 magicnet_tproxy_iptables() {
-    _cmd="$1"
+    _mtpi_cmd="$1"
     shift
-    if "$_cmd" -w 1 -L >/dev/null 2>&1; then
-        "$_cmd" -w 100 "$@"
+    if "$_mtpi_cmd" -w 1 -L >/dev/null 2>&1; then
+        "$_mtpi_cmd" -w 100 "$@"
     else
-        "$_cmd" "$@"
+        "$_mtpi_cmd" "$@"
     fi
-    _rc=$?
-    unset _cmd
-    return "$_rc"
+    _mtpi_rc=$?
+    unset _mtpi_cmd
+    return "$_mtpi_rc"
 }
 
 magicnet_tproxy_ensure_jump() {
-    _cmd="$1"
-    _table="$2"
-    _chain="$3"
-    _jump="$4"
+    _mtpj_cmd="$1"
+    _mtpj_table="$2"
+    _mtpj_chain="$3"
+    _mtpj_jump="$4"
 
-    magicnet_tproxy_iptables "$_cmd" -t "$_table" -C "$_chain" -j "$_jump" >/dev/null 2>&1 ||
-        magicnet_tproxy_iptables "$_cmd" -t "$_table" -I "$_chain" -j "$_jump" >/dev/null 2>&1
-    _rc=$?
-    unset _cmd _table _chain _jump
-    return "$_rc"
+    magicnet_tproxy_iptables "$_mtpj_cmd" -t "$_mtpj_table" -C "$_mtpj_chain" -j "$_mtpj_jump" >/dev/null 2>&1 ||
+        magicnet_tproxy_iptables "$_mtpj_cmd" -t "$_mtpj_table" -I "$_mtpj_chain" -j "$_mtpj_jump" >/dev/null 2>&1
+    _mtpj_rc=$?
+    unset _mtpj_cmd _mtpj_table _mtpj_chain _mtpj_jump
+    return "$_mtpj_rc"
 }
 
 magicnet_tproxy_private_cidrs4() {
@@ -130,50 +130,50 @@ magicnet_tproxy_app_uid_list() {
 }
 
 magicnet_tproxy_owner_return() {
-    _cmd="$1"
-    _chain="$2"
-    _uid="${MAGICNET_TPROXY_EXEMPT_UID:-0}"
+    _mtpo_cmd="$1"
+    _mtpo_chain="$2"
+    _mtpo_uid="${MAGICNET_TPROXY_EXEMPT_UID:-0}"
 
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -m owner --uid-owner "$_uid" -j RETURN 2>/dev/null || true
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -m owner --uid-owner 1052 -j RETURN 2>/dev/null || true
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -m owner --gid-owner 3005 -j RETURN 2>/dev/null || true
-    unset _cmd _chain _uid
+    magicnet_tproxy_iptables "$_mtpo_cmd" -t mangle -A "$_mtpo_chain" -m owner --uid-owner "$_mtpo_uid" -j RETURN 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpo_cmd" -t mangle -A "$_mtpo_chain" -m owner --uid-owner 1052 -j RETURN 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpo_cmd" -t mangle -A "$_mtpo_chain" -m owner --gid-owner 3005 -j RETURN 2>/dev/null || true
+    unset _mtpo_cmd _mtpo_chain _mtpo_uid
 }
 
 magicnet_tproxy_apply_app_policy() {
-    _cmd="$1"
-    _chain="$2"
-    _mark="$3"
-    _dir="$(magicnet_app_policy_dir)"
-    _mode="$(magicnet_app_policy_mode)"
+    _mtpap_cmd="$1"
+    _mtpap_chain="$2"
+    _mtpap_mark="$3"
+    _mtpap_dir="$(magicnet_app_policy_dir)"
+    _mtpap_mode="$(magicnet_app_policy_mode)"
 
-    case "$_mode" in
+    case "$_mtpap_mode" in
         whitelist)
-            _uids=$(magicnet_tproxy_app_uid_list "${_dir}/app-proxy.list")
-            if [ -n "$_uids" ]; then
-                printf '%s\n' "$_uids" | while read -r _uid; do
-                    [ -n "$_uid" ] || continue
-                    magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -p tcp -m owner --uid-owner "$_uid" -j MARK --set-xmark "$_mark" 2>/dev/null || true
-                    magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -p udp -m owner --uid-owner "$_uid" -j MARK --set-xmark "$_mark" 2>/dev/null || true
+            _mtpap_uids=$(magicnet_tproxy_app_uid_list "${_mtpap_dir}/app-proxy.list")
+            if [ -n "$_mtpap_uids" ]; then
+                printf '%s\n' "$_mtpap_uids" | while read -r _mtpap_uid; do
+                    [ -n "$_mtpap_uid" ] || continue
+                    magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p tcp -m owner --uid-owner "$_mtpap_uid" -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || true
+                    magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p udp -m owner --uid-owner "$_mtpap_uid" -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || true
                 done
             else
-                magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -p tcp -j MARK --set-xmark "$_mark" 2>/dev/null || return 1
-                magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -p udp -j MARK --set-xmark "$_mark" 2>/dev/null || return 1
+                magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p tcp -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || return 1
+                magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p udp -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || return 1
             fi
             ;;
         *)
-            _uids=$(magicnet_tproxy_app_uid_list "${_dir}/app-bypass.list")
-            if [ -n "$_uids" ]; then
-                printf '%s\n' "$_uids" | while read -r _uid; do
-                    [ -n "$_uid" ] || continue
-                    magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -m owner --uid-owner "$_uid" -j RETURN 2>/dev/null || true
+            _mtpap_uids=$(magicnet_tproxy_app_uid_list "${_mtpap_dir}/app-bypass.list")
+            if [ -n "$_mtpap_uids" ]; then
+                printf '%s\n' "$_mtpap_uids" | while read -r _mtpap_uid; do
+                    [ -n "$_mtpap_uid" ] || continue
+                    magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -m owner --uid-owner "$_mtpap_uid" -j RETURN 2>/dev/null || true
                 done
             fi
-            magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -p tcp -j MARK --set-xmark "$_mark" 2>/dev/null || return 1
-            magicnet_tproxy_iptables "$_cmd" -t mangle -A "$_chain" -p udp -j MARK --set-xmark "$_mark" 2>/dev/null || return 1
+            magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p tcp -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || return 1
+            magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p udp -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || return 1
             ;;
     esac
-    unset _cmd _chain _mark _dir _mode _uids _uid
+    unset _mtpap_cmd _mtpap_chain _mtpap_mark _mtpap_dir _mtpap_mode _mtpap_uids _mtpap_uid
 }
 
 magicnet_tproxy_cleanup_family() {
@@ -242,82 +242,82 @@ magicnet_tproxy_cleanup() {
 }
 
 magicnet_tproxy_apply_family() {
-    _cmd="$1"
-    _ip_args="$2"
-    _port="$(magicnet_tproxy_port)"
-    _mark="$(magicnet_tproxy_mark)"
-    _table="$(magicnet_tproxy_table)"
-    _pref="$(magicnet_tproxy_pref)"
+    _mtpaf_cmd="$1"
+    _mtpaf_ip_args="$2"
+    _mtpaf_port="$(magicnet_tproxy_port)"
+    _mtpaf_mark="$(magicnet_tproxy_mark)"
+    _mtpaf_table="$(magicnet_tproxy_table)"
+    _mtpaf_pref="$(magicnet_tproxy_pref)"
 
-    magicnet_cmd_exists "$_cmd" || return 0
-    magicnet_tproxy_iptables "$_cmd" -t mangle -N MAGICNET_TPROXY 2>/dev/null || true
-    magicnet_tproxy_iptables "$_cmd" -t mangle -F MAGICNET_TPROXY 2>/dev/null || true
-    magicnet_tproxy_iptables "$_cmd" -t mangle -N MAGICNET_TPROXY_OUTPUT 2>/dev/null || true
-    magicnet_tproxy_iptables "$_cmd" -t mangle -F MAGICNET_TPROXY_OUTPUT 2>/dev/null || true
-    magicnet_tproxy_iptables "$_cmd" -t mangle -N MAGICNET_TPROXY_DIVERT 2>/dev/null || true
-    magicnet_tproxy_iptables "$_cmd" -t mangle -F MAGICNET_TPROXY_DIVERT 2>/dev/null || true
+    magicnet_cmd_exists "$_mtpaf_cmd" || return 0
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -N MAGICNET_TPROXY 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -F MAGICNET_TPROXY 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -N MAGICNET_TPROXY_OUTPUT 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -F MAGICNET_TPROXY_OUTPUT 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -N MAGICNET_TPROXY_DIVERT 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -F MAGICNET_TPROXY_DIVERT 2>/dev/null || true
 
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY_DIVERT -j MARK --set-xmark "$_mark" 2>/dev/null || true
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY_DIVERT -j ACCEPT 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY_DIVERT -j MARK --set-xmark "$_mtpaf_mark" 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY_DIVERT -j ACCEPT 2>/dev/null || true
 
-    magicnet_tproxy_owner_return "$_cmd" MAGICNET_TPROXY_OUTPUT
-    if [ "$_cmd" = "ip6tables" ]; then
-        magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -d ::1/128 -j RETURN 2>/dev/null || true
+    magicnet_tproxy_owner_return "$_mtpaf_cmd" MAGICNET_TPROXY_OUTPUT
+    if [ "$_mtpaf_cmd" = "ip6tables" ]; then
+        magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -d ::1/128 -j RETURN 2>/dev/null || true
     else
-        magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -d 127.0.0.0/8 -j RETURN 2>/dev/null || true
+        magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -d 127.0.0.0/8 -j RETURN 2>/dev/null || true
     fi
 
-    if [ "$_cmd" = "ip6tables" ]; then
+    if [ "$_mtpaf_cmd" = "ip6tables" ]; then
         magicnet_tproxy_private_cidrs6
     else
         magicnet_tproxy_private_cidrs4
-    fi | while read -r _cidr; do
-        [ -n "$_cidr" ] || continue
-        magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY -d "$_cidr" -j RETURN 2>/dev/null || true
-        magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -d "$_cidr" -j RETURN 2>/dev/null || true
+    fi | while read -r _mtpaf_cidr; do
+        [ -n "$_mtpaf_cidr" ] || continue
+        magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY -d "$_mtpaf_cidr" -j RETURN 2>/dev/null || true
+        magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -d "$_mtpaf_cidr" -j RETURN 2>/dev/null || true
     done
 
-    magicnet_tproxy_collect_outbound_bypass_ifaces | while read -r _iface; do
-        [ -n "$_iface" ] || continue
-        magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -o "$_iface" -j RETURN 2>/dev/null || true
+    magicnet_tproxy_collect_outbound_bypass_ifaces | while read -r _mtpaf_iface; do
+        [ -n "$_mtpaf_iface" ] || continue
+        magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -o "$_mtpaf_iface" -j RETURN 2>/dev/null || true
     done
 
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY -p tcp --dport 53 -j TPROXY \
-        --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || return 1
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY -p udp --dport 53 -j TPROXY \
-        --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || return 1
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -p tcp --dport 53 -j MARK --set-xmark "$_mark" 2>/dev/null || return 1
-    magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -p udp --dport 53 -j MARK --set-xmark "$_mark" 2>/dev/null || return 1
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY -p tcp --dport 53 -j TPROXY \
+        --on-port "$_mtpaf_port" --tproxy-mark "$_mtpaf_mark/$_mtpaf_mark" 2>/dev/null || return 1
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY -p udp --dport 53 -j TPROXY \
+        --on-port "$_mtpaf_port" --tproxy-mark "$_mtpaf_mark/$_mtpaf_mark" 2>/dev/null || return 1
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -p tcp --dport 53 -j MARK --set-xmark "$_mtpaf_mark" 2>/dev/null || return 1
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY_OUTPUT -p udp --dport 53 -j MARK --set-xmark "$_mtpaf_mark" 2>/dev/null || return 1
 
-    if [ "$_cmd" = "iptables" ]; then
-        _hotspot_ifaces=$(magicnet_collect_hotspot_ifaces)
-        for _hotspot in $_hotspot_ifaces; do
-            magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY -p tcp -i "$_hotspot" -j TPROXY \
-                --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || true
-            magicnet_tproxy_iptables "$_cmd" -t mangle -A MAGICNET_TPROXY -p udp -i "$_hotspot" -j TPROXY \
-                --on-port "$_port" --tproxy-mark "$_mark/$_mark" 2>/dev/null || true
+    if [ "$_mtpaf_cmd" = "iptables" ]; then
+        _mtpaf_hotspot_ifaces=$(magicnet_collect_hotspot_ifaces)
+        for _mtpaf_hotspot in $_mtpaf_hotspot_ifaces; do
+            magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY -p tcp -i "$_mtpaf_hotspot" -j TPROXY \
+                --on-port "$_mtpaf_port" --tproxy-mark "$_mtpaf_mark/$_mtpaf_mark" 2>/dev/null || true
+            magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -A MAGICNET_TPROXY -p udp -i "$_mtpaf_hotspot" -j TPROXY \
+                --on-port "$_mtpaf_port" --tproxy-mark "$_mtpaf_mark/$_mtpaf_mark" 2>/dev/null || true
         done
     fi
 
-    magicnet_tproxy_apply_app_policy "$_cmd" MAGICNET_TPROXY_OUTPUT "$_mark" || return 1
-    magicnet_tproxy_ensure_jump "$_cmd" mangle PREROUTING MAGICNET_TPROXY || return 1
-    magicnet_tproxy_ensure_jump "$_cmd" mangle OUTPUT MAGICNET_TPROXY_OUTPUT || return 1
-    magicnet_tproxy_iptables "$_cmd" -t mangle -C PREROUTING -p tcp -m socket -j MAGICNET_TPROXY_DIVERT >/dev/null 2>&1 ||
-        magicnet_tproxy_iptables "$_cmd" -t mangle -I PREROUTING -p tcp -m socket -j MAGICNET_TPROXY_DIVERT >/dev/null 2>&1 || true
+    magicnet_tproxy_apply_app_policy "$_mtpaf_cmd" MAGICNET_TPROXY_OUTPUT "$_mtpaf_mark" || return 1
+    magicnet_tproxy_ensure_jump "$_mtpaf_cmd" mangle PREROUTING MAGICNET_TPROXY || return 1
+    magicnet_tproxy_ensure_jump "$_mtpaf_cmd" mangle OUTPUT MAGICNET_TPROXY_OUTPUT || return 1
+    magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -C PREROUTING -p tcp -m socket -j MAGICNET_TPROXY_DIVERT >/dev/null 2>&1 ||
+        magicnet_tproxy_iptables "$_mtpaf_cmd" -t mangle -I PREROUTING -p tcp -m socket -j MAGICNET_TPROXY_DIVERT >/dev/null 2>&1 || true
 
     if magicnet_tproxy_disable_quic; then
-        magicnet_tproxy_iptables "$_cmd" -A OUTPUT -p udp --dport 443 -j REJECT 2>/dev/null || true
-        magicnet_tproxy_iptables "$_cmd" -A OUTPUT -p udp --dport 80 -j REJECT 2>/dev/null || true
+        magicnet_tproxy_iptables "$_mtpaf_cmd" -A OUTPUT -p udp --dport 443 -j REJECT 2>/dev/null || true
+        magicnet_tproxy_iptables "$_mtpaf_cmd" -A OUTPUT -p udp --dport 80 -j REJECT 2>/dev/null || true
     fi
 
     # shellcheck disable=SC2086
-    ip $_ip_args rule show 2>/dev/null | grep -F "$_pref:" | grep -F "fwmark" | grep -F "$_table" >/dev/null 2>&1 ||
-        ip $_ip_args rule add fwmark "$_mark" table "$_table" pref "$_pref" >/dev/null 2>&1 || return 1
+    ip $_mtpaf_ip_args rule show 2>/dev/null | grep -F "$_mtpaf_pref:" | grep -F "fwmark" | grep -F "$_mtpaf_table" >/dev/null 2>&1 ||
+        ip $_mtpaf_ip_args rule add fwmark "$_mtpaf_mark" table "$_mtpaf_table" pref "$_mtpaf_pref" >/dev/null 2>&1 || return 1
     # shellcheck disable=SC2086
-    ip $_ip_args route show table "$_table" 2>/dev/null | grep -F "local default dev lo" >/dev/null 2>&1 ||
-        ip $_ip_args route add local default dev lo table "$_table" >/dev/null 2>&1 || return 1
+    ip $_mtpaf_ip_args route show table "$_mtpaf_table" 2>/dev/null | grep -F "local default dev lo" >/dev/null 2>&1 ||
+        ip $_mtpaf_ip_args route add local default dev lo table "$_mtpaf_table" >/dev/null 2>&1 || return 1
 
-    unset _cmd _ip_args _port _mark _table _pref _cidr _iface _hotspot _hotspot_ifaces
+    unset _mtpaf_cmd _mtpaf_ip_args _mtpaf_port _mtpaf_mark _mtpaf_table _mtpaf_pref _mtpaf_cidr _mtpaf_iface _mtpaf_hotspot _mtpaf_hotspot_ifaces
 }
 
 magicnet_enable_tproxy() {
@@ -336,7 +336,11 @@ magicnet_enable_tproxy() {
     fi
 
     magicnet_tproxy_cleanup_legacy_dns_nat
-    magicnet_tproxy_apply_family iptables "" || return 1
-    magicnet_tproxy_apply_family ip6tables "-6" || true
+    if ! magicnet_tproxy_apply_family iptables ""; then
+        magicnet_warn "failed to apply IPv4 TProxy iptables/ip rules; keep TUN mode on this device"
+        magicnet_tproxy_cleanup
+        return 1
+    fi
+    magicnet_tproxy_apply_family ip6tables "-6" || magicnet_warn "failed to apply IPv6 TProxy rules; IPv4 TProxy remains active"
     magicnet_log "TProxy rules applied on port $(magicnet_tproxy_port) mark $(magicnet_tproxy_mark) table $(magicnet_tproxy_table)"
 }
