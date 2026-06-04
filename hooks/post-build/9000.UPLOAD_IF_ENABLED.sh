@@ -108,21 +108,21 @@ fi
 
 log_info "Using repository '$REPO' for release (source: $REPO_SOURCE)"
 
-# Check if release already exists in target repo
-if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-    log_error "Release $TAG already exists in $REPO and is immutable, cannot proceed"
-    exit 1
-fi
-
-# Create release and upload all assets in one step
+# Create release and upload all assets in one step, or refresh assets for an
+# existing release so repeated release builds are idempotent.
 PRE_FLAG=""
 if [ "${KAM_PRE_RELEASE:-0}" = "1" ]; then
     PRE_FLAG="--prerelease"
 fi
 if [ -d "$DIST" ] && [ "$(ls -A "$DIST")" ]; then
-    log_info "Creating GitHub release $TAG and uploading assets from $DIST to $REPO"
     assets=("$DIST"/*)
-    gh release create "$TAG" --repo "$REPO" --title "${KAM_MODULE_ID}-${KAM_MODULE_VERSION_CODE}-${KAM_MODULE_VERSION}" --notes-file "$TMP_CHANGELOG" $PRE_FLAG "${assets[@]}" || { log_error "Failed to create release $TAG and upload assets to $REPO"; exit 1; }
+    if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+        log_warn "Release $TAG already exists in $REPO; updating assets from $DIST"
+        gh release upload "$TAG" --repo "$REPO" --clobber "${assets[@]}" || { log_error "Failed to update release $TAG assets in $REPO"; exit 1; }
+    else
+        log_info "Creating GitHub release $TAG and uploading assets from $DIST to $REPO"
+        gh release create "$TAG" --repo "$REPO" --title "${KAM_MODULE_ID}-${KAM_MODULE_VERSION_CODE}-${KAM_MODULE_VERSION}" --notes-file "$TMP_CHANGELOG" $PRE_FLAG "${assets[@]}" || { log_error "Failed to create release $TAG and upload assets to $REPO"; exit 1; }
+    fi
 else
     log_warn "Dist directory not found or empty: $DIST"
 fi

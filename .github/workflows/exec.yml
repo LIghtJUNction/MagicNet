@@ -163,10 +163,6 @@ jobs:
           else
             echo "::warning::KAM_PRIVATE_KEY is not configured; creating an unsigned release asset"
           fi
-          if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::Release $version already exists in $GITHUB_REPOSITORY"
-            exit 1
-          fi
           notes="$(mktemp)"
           {
             printf '%s %s\n\n' "$module_id" "$version"
@@ -181,11 +177,18 @@ jobs:
           fi
           printf 'Release assets:\n'
           printf '  %s\n' "${assets[@]}"
-          gh release create "$version" "${assets[@]}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "${module_id}-${version_code}-${version}" \
-            --notes-file "$notes" \
-            "${release_flags[@]}"
+          if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::Release $version already exists in $GITHUB_REPOSITORY; updating assets"
+            gh release upload "$version" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$version" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "${module_id}-${version_code}-${version}" \
+              --notes-file "$notes" \
+              "${release_flags[@]}"
+          fi
 
       - name: Upload build artifact
         if: always() && hashFiles('dist/*') != ''
