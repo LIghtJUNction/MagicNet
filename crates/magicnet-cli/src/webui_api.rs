@@ -144,15 +144,7 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     if let Some(parent) = tmp.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
     }
-    let status = Command::new("curl")
-        .args(["-fL", "--max-time", "60", "-o"])
-        .arg(&tmp)
-        .arg(url)
-        .status()
-        .map_err(|err| format!("download panel: {err}"))?;
-    if !status.success() {
-        return Err("download panel failed".to_string());
-    }
+    download_panel_zip(url, &tmp)?;
     let backup = target.with_extension("bak");
     let _ = fs::remove_dir_all(&backup);
     if target.exists() {
@@ -178,6 +170,55 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     )?;
     println!("[info] Installed local panel {name}");
     Ok(())
+}
+
+fn download_panel_zip(url: &str, tmp: &std::path::Path) -> Result<(), String> {
+    match curl_download(url, tmp) {
+        Ok(()) => Ok(()),
+        Err(first_err) => {
+            let Some(fallback) = zashboard_fallback_url(url) else {
+                return Err(first_err);
+            };
+            eprintln!("[warn] zashboard download failed, retrying smaller asset: {fallback}");
+            curl_download(&fallback, tmp).map_err(|fallback_err| {
+                format!("download panel failed\nprimary: {first_err}\nfallback: {fallback_err}")
+            })
+        }
+    }
+}
+
+fn curl_download(url: &str, tmp: &std::path::Path) -> Result<(), String> {
+    let output = Command::new("curl")
+        .args(["-fL", "--connect-timeout", "15", "--max-time", "90", "-o"])
+        .arg(tmp)
+        .arg(url)
+        .output()
+        .map_err(|err| format!("run curl: {err}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr.trim();
+    if detail.is_empty() {
+        Err(format!(
+            "curl exited with status {}",
+            output.status.code().unwrap_or(1)
+        ))
+    } else {
+        Err(format!(
+            "curl exited with status {}: {detail}",
+            output.status.code().unwrap_or(1)
+        ))
+    }
+}
+
+fn zashboard_fallback_url(url: &str) -> Option<String> {
+    if !url.starts_with("https://github.com/Zephyruso/zashboard/releases/")
+        || !url.ends_with("/dist.zip")
+    {
+        return None;
+    }
+    Some(url.trim_end_matches("/dist.zip").to_string() + "/dist-no-fonts.zip")
 }
 
 fn contains_index(dir: &std::path::Path) -> bool {
@@ -386,5 +427,20 @@ mod tests {
         assert!(!contains_index(&root));
         fs::write(root.join("nested/index.html"), "").unwrap();
         assert!(contains_index(&root));
+    }
+
+    #[test]
+    fn zashboard_dist_url_falls_back_to_no_fonts_asset() {
+        let url = "https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip";
+        assert_eq!(
+            zashboard_fallback_url(url).as_deref(),
+            Some(
+                "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip"
+            )
+        );
+        assert_eq!(
+            zashboard_fallback_url("https://example.com/panel/dist.zip"),
+            None
+        );
     }
 }

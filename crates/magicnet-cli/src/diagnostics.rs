@@ -477,7 +477,9 @@ fn tproxy_prerouting_jump() -> bool {
 
 fn tproxy_socket_guard() -> bool {
     shell_ok(
-        "iptables -t mangle -S MAGICNET_TPROXY 2>/dev/null | head -5 | grep -F -- '-m socket -j RETURN' >/dev/null",
+        "iptables -t mangle -S PREROUTING 2>/dev/null | grep -F -- '-p tcp -m socket -j MAGICNET_TPROXY_DIVERT' >/dev/null",
+    ) && shell_ok(
+        "iptables -t mangle -S MAGICNET_TPROXY_DIVERT 2>/dev/null | grep -F -- '-j MARK' | grep -F -- '--set-xmark' >/dev/null",
     )
 }
 
