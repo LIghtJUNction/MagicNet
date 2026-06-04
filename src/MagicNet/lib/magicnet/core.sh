@@ -85,20 +85,32 @@ magicnet_start_kernel() {
         return 0
     fi
 
+    magicnet_require_subscription_or_stop || return 1
+
     _preferred_core="$(magicnet_preferred_core)"
     case "$_preferred_core" in
         mihomo)
             if magicnet_start_mihomo; then
                 magicnet_after_kernel_start
-                magicnet_notify "magicnet_guard" "MagicNet" "mihomo restarted by watchdog"
+                magicnet_notify "magicnet_guard" "MagicNet" "mihomo started"
                 magicnet_supervisors_start
                 unset _preferred_core
                 return 0
             fi
-            magicnet_warn "mihomo failed to start; attempting sing-box fallback..."
-            if magicnet_start_singbox; then
+            if magicnet_singbox_has_subscription; then
+                magicnet_warn "mihomo failed to start; attempting sing-box fallback..."
+            elif ! magicnet_any_subscription_ready; then
+                magicnet_require_subscription_or_stop
+                unset _preferred_core
+                return 1
+            else
+                magicnet_warn "mihomo failed to start; no sing-box subscription configured, skipping fallback."
+                unset _preferred_core
+                return 1
+            fi
+            if magicnet_singbox_has_subscription && magicnet_start_singbox; then
                 magicnet_after_kernel_start
-                magicnet_notify "magicnet_guard" "MagicNet" "sing-box restarted by watchdog"
+                magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
                 magicnet_supervisors_start
                 unset _preferred_core
                 return 0
@@ -107,17 +119,25 @@ magicnet_start_kernel() {
         *)
             if magicnet_start_singbox; then
                 magicnet_after_kernel_start
-                magicnet_notify "magicnet_guard" "MagicNet" "sing-box restarted by watchdog"
+                magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
                 magicnet_supervisors_start
                 unset _preferred_core
                 return 0
             fi
-            if [ "${MAGIC_SINGBOX:-1}" -ne 0 ] && ! magicnet_singbox_disabled; then
+            if magicnet_mihomo_has_subscription && [ "${MAGIC_SINGBOX:-1}" -ne 0 ] && ! magicnet_singbox_disabled; then
                 magicnet_warn "sing-box failed to start; attempting mihomo fallback..."
+            elif ! magicnet_any_subscription_ready; then
+                magicnet_require_subscription_or_stop
+                unset _preferred_core
+                return 1
+            else
+                magicnet_warn "sing-box failed to start; no mihomo subscription configured, skipping fallback."
+                unset _preferred_core
+                return 1
             fi
-            if magicnet_start_mihomo; then
+            if magicnet_mihomo_has_subscription && magicnet_start_mihomo; then
                 magicnet_after_kernel_start
-                magicnet_notify "magicnet_guard" "MagicNet" "mihomo restarted by watchdog"
+                magicnet_notify "magicnet_guard" "MagicNet" "mihomo started"
                 magicnet_supervisors_start
                 unset _preferred_core
                 return 0
@@ -132,6 +152,7 @@ magicnet_start_kernel() {
 
 magicnet_ensure_kernel() {
     magicnet_kernel_running && return 0
+    magicnet_require_subscription_or_stop || return 1
     MAGICNET_WATCHDOG=1 magicnet_start_kernel
 }
 

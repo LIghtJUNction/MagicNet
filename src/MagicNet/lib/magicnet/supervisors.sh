@@ -21,6 +21,11 @@ magicnet_watchdog_start() {
     [ "${MAGICNET_WATCHDOG_ENABLED:-1}" != "0" ] || return 0
     [ "${MAGICNET_WATCHDOG:-0}" != "1" ] || return 0
     [ -f "${MODDIR}/cli" ] || return 0
+    magicnet_any_subscription_ready || {
+        magicnet_mark_subscription_missing
+        magicnet_watchdog_stop >/dev/null 2>&1 || true
+        return 1
+    }
     import watchdog
     _watchdog_notify_arg="--notify"
     [ "${MAGICNET_NOTIFY_ENABLED:-1}" != "0" ] || _watchdog_notify_arg="--no-notify"
@@ -100,4 +105,3 @@ magicnet_supervisors_stop() {
     magicnet_watchdog_stop
     magicnet_fswatch_stop
 }
-

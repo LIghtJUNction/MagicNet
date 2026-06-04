@@ -242,11 +242,20 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
     if status.status.success() {
         Ok(())
     } else {
+        if let Some(err) = startup_error(app) {
+            return Err(err);
+        }
         Err(format!(
             "{function_name} failed with status {}",
             status.status.code().unwrap_or(1)
         ))
     }
+}
+
+fn startup_error(app: &App) -> Option<String> {
+    let text = fs::read_to_string(app.moddir.join(".state/startup-error")).ok()?;
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
 }
 
 fn help() {

@@ -636,12 +636,35 @@ pub(crate) fn supervisor_pid(app: &App, kind: &str, name: &str) -> String {
         .join(".state")
         .join(kind)
         .join(format!("{name}.pid"));
+    let pid_path = path.clone();
     fs::read_to_string(path)
         .ok()
         .and_then(|text| text.trim().parse::<u32>().ok())
-        .filter(|pid| PathBuf::from(format!("/proc/{pid}")).exists())
+        .filter(|pid| supervisor_pid_matches(app, *pid, name))
         .map(|pid| pid.to_string())
-        .unwrap_or_else(|| "stopped".to_string())
+        .unwrap_or_else(|| {
+            let _ = fs::remove_file(pid_path);
+            "stopped".to_string()
+        })
+}
+
+fn supervisor_pid_matches(app: &App, pid: u32, name: &str) -> bool {
+    let proc_dir = PathBuf::from(format!("/proc/{pid}"));
+    if !proc_dir.exists() {
+        return false;
+    }
+    let cmdline = fs::read(proc_dir.join("cmdline"))
+        .ok()
+        .map(|bytes| {
+            String::from_utf8_lossy(&bytes)
+                .replace('\0', " ")
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_default();
+    cmdline.contains(name)
+        || (cmdline.contains("service ensure")
+            && cmdline.contains(&app.moddir.display().to_string()))
 }
 
 fn has_subscription(app: &App) -> bool {

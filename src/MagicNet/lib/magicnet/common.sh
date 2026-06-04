@@ -142,6 +142,41 @@ magicnet_mihomo_has_subscription() {
     ' "${MODDIR}/.config/mihomo/config.yaml" >/dev/null 2>&1
 }
 
+magicnet_subscription_required_message() {
+    printf '%s\n' "请填写合法订阅链接！"
+}
+
+magicnet_any_subscription_ready() {
+    magicnet_singbox_has_subscription || magicnet_mihomo_has_subscription
+}
+
+magicnet_mark_subscription_missing() {
+    _message="$(magicnet_subscription_required_message)"
+    magicnet_warn "$_message"
+    mkdir -p "${MODDIR}/.state" 2>/dev/null || true
+    printf '%s\n' "$_message" >"${MODDIR}/.state/startup-error" 2>/dev/null || true
+    config set override.description "[MagicNet]: $_message" 2>/dev/null || true
+    unset _message
+}
+
+magicnet_clear_startup_error() {
+    rm -f "${MODDIR}/.state/startup-error" 2>/dev/null || true
+}
+
+magicnet_stop_watchdog_for_subscription_error() {
+    magicnet_watchdog_stop >/dev/null 2>&1 || true
+}
+
+magicnet_require_subscription_or_stop() {
+    if magicnet_any_subscription_ready; then
+        magicnet_clear_startup_error
+        return 0
+    fi
+    magicnet_mark_subscription_missing
+    magicnet_stop_watchdog_for_subscription_error
+    return 1
+}
+
 magicnet_mihomo_provider_table() {
     _config="${MODDIR}/.config/mihomo/config.yaml"
     [ -f "$_config" ] || return 1

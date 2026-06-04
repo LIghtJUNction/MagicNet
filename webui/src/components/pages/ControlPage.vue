@@ -20,7 +20,7 @@ watch(() => state.tailscale.subnets, (value) => { tailscaleSubnets.value = value
 async function selectCore(core: "sing-box" | "mihomo"): Promise<void> {
   state.selectedCore = core;
   await withAction(`select-${core}`, async () => {
-    await runCli(`core select ${core}`, `选择当前内核 ${core}`);
+    await runCli(`core select ${core}`, `选择内核 ${core}`);
     await refreshAll();
   });
 }
@@ -133,7 +133,7 @@ async function disableTailscale(): Promise<void> {
           </div>
           <Button size="sm" variant="secondary" :loading="isRunning('default-core')" :disabled="state.selectedCore !== 'sing-box' && state.selectedCore !== 'mihomo'" @click="setSelectedCoreDefault">设为默认</Button>
         </div>
-        <p class="text-sm leading-6 text-zinc-400">选择一个当前内核，然后用一个开关启动或停止它。</p>
+        <p class="text-sm leading-6 text-zinc-400">先选 sing-box 或 mihomo，再启动、停止或设为默认。</p>
         <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
           <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('select-sing-box')" :class="{ 'bg-zinc-800 text-zinc-50': state.selectedCore === 'sing-box' }" @click="selectCore('sing-box')">sing-box</button>
           <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('select-mihomo')" :class="{ 'bg-zinc-800 text-zinc-50': state.selectedCore === 'mihomo' }" @click="selectCore('mihomo')">mihomo</button>

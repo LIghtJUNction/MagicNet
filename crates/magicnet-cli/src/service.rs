@@ -196,8 +196,8 @@ fn restart(app: &App, target: &str) -> Result<(), String> {
         target.to_string()
     };
     match target.as_str() {
-        "sing-box" | "singbox" => run_magicnet_function(app, "magicnet_supervisors_stop; import __mihomo__; mihomo_stop 2>/dev/null || true; import __singbox__; singbox_stop 2>/dev/null || true; magicnet_start_singbox; magicnet_after_kernel_start; magicnet_supervisors_start"),
-        "mihomo" => run_magicnet_function(app, "magicnet_supervisors_stop; import __singbox__; singbox_stop 2>/dev/null || true; import __mihomo__; mihomo_stop 2>/dev/null || true; magicnet_start_mihomo; magicnet_after_kernel_start; magicnet_supervisors_start"),
+        "sing-box" | "singbox" => run_magicnet_function(app, "magicnet_supervisors_stop; import __mihomo__; mihomo_stop 2>/dev/null || true; import __singbox__; singbox_stop 2>/dev/null || true; MAGICNET_DEFAULT_CORE=sing-box magicnet_start_kernel"),
+        "mihomo" => run_magicnet_function(app, "magicnet_supervisors_stop; import __singbox__; singbox_stop 2>/dev/null || true; import __mihomo__; mihomo_stop 2>/dev/null || true; MAGICNET_DEFAULT_CORE=mihomo magicnet_start_kernel"),
         _ => run_magicnet_function(app, "magicnet_supervisors_stop; import __singbox__; singbox_stop 2>/dev/null || true; import __mihomo__; mihomo_stop 2>/dev/null || true; magicnet_start_kernel"),
     }
 }
@@ -235,7 +235,7 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
         selected_core_path(app),
         &format!("MAGICNET_DEFAULT_CORE={normalized}\n"),
     )?;
-    println!("[info] Selected current core: {normalized}");
+    println!("[info] 默认内核已设为: {normalized}");
     Ok(())
 }
 

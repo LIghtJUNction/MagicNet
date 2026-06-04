@@ -1,7 +1,7 @@
 kamfw_phase_boot_completed() {
     wait_boot_if_magisk
     sleep 3
-    magicnet_start_kernel
+    magicnet_start_kernel || true
 }
 
 kamfw_phase_service() {
