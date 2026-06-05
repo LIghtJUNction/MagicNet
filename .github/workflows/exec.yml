@@ -46,13 +46,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Cache Cargo and Rustup
+      - name: Cache Cargo
         uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.rustup
           key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-rust-
