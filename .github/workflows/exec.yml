@@ -70,7 +70,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y unzip zip
 
       - name: Install Android Rust targets
-        run: rustup target add aarch64-linux-android x86_64-linux-android
+        shell: bash
+        run: |
+          set -euo pipefail
+          sysroot="$(rustc --print sysroot)"
+          rm -rf \
+            "${sysroot}/lib/rustlib/aarch64-linux-android" \
+            "${sysroot}/lib/rustlib/x86_64-linux-android"
+          rustup target add aarch64-linux-android x86_64-linux-android
 
       - name: Verify tools
         shell: bash
