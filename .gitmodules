@@ -9,3 +9,11 @@
 [submodule "src/MagicNet/.config/sing-box"]
 	path = src/MagicNet/.config/sing-box
 	url = https://github.com/LIghtJUNction/MagicSingBox.git
+[submodule ".kam/bases/hooks"]
+	path = .kam/bases/hooks
+	url = https://github.com/MemDeco-WG/KamHooks.git
+	branch = main
+[submodule ".kam/bases/workflows"]
+	path = .kam/bases/workflows
+	url = https://github.com/MemDeco-WG/KamModuleX.git
+	branch = main

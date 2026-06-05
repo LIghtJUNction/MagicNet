@@ -65,7 +65,7 @@ Common `with` inputs (used in both workflows):
 
 Recommendations & notes
 ---
-- Use `uses: MemDeco-WG/setup-kam@v3` (major version tag) to avoid the drifting `main` branch and keep the improved cache behavior.
+- Use `uses: MemDeco-WG/setup-kam@v1` (major version tag) to avoid locking to a specific patch version.
 - If `template-url` points to a compressed archive, retain the filename and extension (like `.zip`/`.tgz`), otherwise `kam tmpl import` might reject it.
 - When pipeline hooks call `gh` commands, the `GH_TOKEN` environment variable may be required.
 - Default inputs in the example workflows help you get started quickly and are customizable.

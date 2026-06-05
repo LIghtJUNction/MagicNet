@@ -1,0 +1,36 @@
+[[base]]
+name = "kamfw"
+path = "src/MagicNet/lib/kamfw"
+url = "https://github.com/MemDeco-WG/kamfw.git"
+branch = "main"
+kind = "submodule"
+
+[[base]]
+name = "hooks"
+path = ".kam/bases/hooks"
+url = "https://github.com/MemDeco-WG/KamHooks.git"
+branch = "main"
+kind = "submodule"
+include = [
+  "pre-build/0500.CHECK_NDK.sh",
+  "pre-build/1000.SYNC_MODULE_FILES.sh",
+  "pre-build/2000.BUILD_WEBUI.sh",
+  "pre-build/3000.BUILD_CRATES.sh",
+  "pre-build/4000.XTASK.sh",
+  "post-build/7000.SANITIZE_MODULE_ZIP.sh",
+  "post-build/8000.SIGN_IF_ENABLE.sh",
+  "post-build/8900.UPDATE_CHANGE_LOG.sh",
+  "post-build/9000.UPLOAD_IF_ENABLED.sh",
+  "post-build/9800.INTERACTIVE_INSTALL.sh",
+  "post-build/9900.CLEAN_UP.sh",
+]
+
+[[base]]
+name = "workflows"
+path = ".kam/bases/workflows"
+url = "https://github.com/MemDeco-WG/KamModuleX.git"
+branch = "main"
+kind = "submodule"
+subdir = ".github/workflows"
+overlay = ".github/workflows"
+include = ["README-CN.md", "README.md", "exec.yml", "init.yml"]

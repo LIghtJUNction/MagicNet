@@ -11,3 +11,10 @@ src/MagicNet/webroot/index.html
 src/MagicNet/.local/
 src/MagicNet/mihomo.version
 src/MagicNet/singbox.version
+
+# Kam managed bases are versioned; runtime state under .kam stays ignored.
+!.kam/
+.kam/*
+!.kam/bases.toml
+!.kam/bases/
+!.kam/bases/**

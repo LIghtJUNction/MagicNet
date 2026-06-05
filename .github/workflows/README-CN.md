@@ -68,7 +68,7 @@ setup-kam Action inputs（说明）
 
 建议与注意事项
 ---
-- 建议使用 `uses: MemDeco-WG/setup-kam@v3`（使用大版本别名），避免 `main` 分支漂移，并使用改进后的缓存机制。
+- 建议使用 `uses: MemDeco-WG/setup-kam@v1`（使用大版本别名），避免锁到某个补丁版本。
 - 如果 `template-url` 指向压缩包，请一定保留文件名与扩展名（如 `.zip`/`.tgz`），否则 `kam tmpl import` 可能会拒绝导入。
 - `GH_TOKEN` 当HOOKS 中调用gh命令时，需要此环境变量.
 
