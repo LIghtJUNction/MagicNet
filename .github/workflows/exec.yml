@@ -1,114 +1,117 @@
-name: Kam Exec
-permissions:
-  contents: write
-  actions: read
+name: Build Kam Module
+
 on:
   workflow_dispatch:
     inputs:
-      build-command:
-        description: Optional build command to run in the build job (leave empty to skip)
+      release:
+        description: Create GitHub release and upload artifacts
         required: false
-        type: string
-        default: kam build -a -s -r
-      kam-command:
-        description: Command to run in the exec job (after build)
+        type: boolean
+        default: false
+      prerelease:
+        description: Mark GitHub release as a pre-release
         required: false
-        type: string
-        default: kam version patch
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: kam-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      installed-version: ${{ steps.set-build-outputs.outputs.installed_version }}
-      kam-present: ${{ steps.set-build-outputs.outputs.kam_present }}
+    env:
+      KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+      KAM_SIGN_ENABLED: ${{ inputs.release == true && secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+      KAM_SIGN_REQUIRED: ${{ inputs.release == true && secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+      KAM_CHANGELOG_ENABLED: '0'
+      GH_TOKEN: ${{ github.token }}
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-      # Caching is now handled by `setup-kam` (set with `enable-cache: "true"`).
-      # Removed redundant manual cache steps.
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Cache Cargo and Rustup
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+
       - name: Setup kam
-        uses: MemDeco-WG/setup-kam@main
+        uses: MemDeco-WG/setup-kam@v3
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-cache: "true"
+          github-token: ${{ github.token }}
+          enable-cache: 'true'
+          cache-targets: cargo,kam
+          install-commitizen: 'false'
           private-key: ${{ secrets.KAM_PRIVATE_KEY }}
-      - name: Verify kam installation
-        run: kam --version
-      - name: Run build command
-        if: ${{ github.event.inputs.build-command != '' }}
+
+      - name: Install artifact tools
+        run: sudo apt-get update && sudo apt-get install -y unzip zip
+
+      - name: Install Android Rust targets
+        run: rustup target add aarch64-linux-android x86_64-linux-android
+
+      - name: Verify tools
         shell: bash
-        run: |
-          echo "Running build command: ${{ github.event.inputs.build-command }}"
-          ${{ github.event.inputs.build-command }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - name: Auto-commit build artifacts
-        if: ${{ github.event.inputs.build-command != '' }}
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: |
-            chore: build artifacts - Build: ${{ github.event.inputs.build-command || 'No build' }}
-          file_pattern: |
-            *
-          push_options: --force-with-lease
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Export build outputs
-        id: set-build-outputs
         run: |
           set -euo pipefail
-          if command -v kam >/dev/null 2>&1; then
-            INSTALLED=$(kam --version 2>/dev/null | awk '{print $2}' | sed -E 's/^[vV]//' | tr -d '\r\n') || true
-            echo "installed_version=$INSTALLED" >> $GITHUB_OUTPUT
-            echo "kam_present=true" >> $GITHUB_OUTPUT
-          else
-            echo "installed_version=" >> $GITHUB_OUTPUT
-            echo "kam_present=false" >> $GITHUB_OUTPUT
-          fi
+          kam --version
+          gh --version
 
-  exec:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup kam
-        uses: MemDeco-WG/setup-kam@main
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-cache: "true"
-          private-key: ${{ secrets.KAM_PRIVATE_KEY }}
-      - name: Update working tree to include build job commits
-        run: |
-          set -eu
-          git fetch origin || true
-          BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          git reset --hard origin/$BRANCH || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify kam installation
-        run: kam --version
-      - name: Run kam command
+      - name: Build module
         shell: bash
         run: |
-          kam build --help
+          set -euo pipefail
+          find hooks src -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
           rm -rf dist
-          chmod +x hooks/**/* || echo "hooks not found! "
-          chmod +x src/**/* || echo "src not found!"
-          echo "Executing: ${{ github.event.inputs.kam-command }}"
-          ${{ github.event.inputs.kam-command }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - name: Auto-commit changes
-        uses: stefanzweifel/git-auto-commit-action@v7
+          kam build
+
+      - name: Verify artifact contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          module_id="$(sed -n 's/^id[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' kam.toml | head -n1)"
+          test -n "$module_id"
+          test -f "dist/${module_id}.zip"
+          unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
+          ! unzip -Z1 "dist/${module_id}.zip" | grep -E '(^|/)\.git($|/)'
+
+      - name: Create GitHub release
+        if: ${{ inputs.release == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--all-assets)
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          kam publish "${args[@]}"
+
+      - name: Upload build artifact
+        if: always() && hashFiles('dist/*') != ''
+        uses: actions/upload-artifact@v7
         with:
-          commit_message: |
-            chore: apply config - Template: ${{ github.event.inputs.template-url || 'No template' }} - Command: ${{ github.event.inputs.init-command || github.event.inputs.kam-command }}
-          file_pattern: |
-            *
-          push_options: --force-with-lease
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: kam-module-artifact
+          path: dist/*
+          if-no-files-found: error

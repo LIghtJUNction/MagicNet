@@ -1,84 +1,58 @@
-name: Kam Project Initialization
-permissions:
-  contents: write
-  actions: read
+name: Validate Kam Module
+
 on:
   workflow_dispatch:
-    inputs:
-      template-url:
-        description: "Template download URL (single template: .tar.gz; multiple templates: .zip) - leave empty to skip template import"
-        required: false
-        type: string
-        default: https://github.com/MemDeco-WG/Kam/releases/latest/download/templates.zip
-      init-command:
-        description: Full initialization command (complete command to run after setup/template import)
-        required: false
-        type: string
-        default: kam init . -t kam_template
-      enable-cache:
-        description: Toggle version-aware caching for kam and Cargo (legacy top-level toggle; set to 'false' to disable all caching)
-        required: false
-        type: string
-        default: "true"
-      cache-targets:
-        description: "Which caches to enable: 'all' (default), 'none', or a comma-separated list containing any of: 'cargo','pip','npm','yarn','pnpm','bun','kam'. Example: 'cargo,pip,npm,yarn'"
-        required: false
-        type: string
-        default: "all"
-jobs:
-  build:
-    name: Prepare kam (build & cache)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      # Caching is now handled by `setup-kam` (set with `enable-cache: ${{ github.event.inputs.enable-cache }}`).
-      # Removed redundant manual cache steps.
-      - name: Setup kam (prepare and populate cache)
-        uses: MemDeco-WG/setup-kam@main
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-cache: ${{ github.event.inputs.enable-cache }}
-          # Per-cache controls: use 'all'|'none' or a comma-separated list (e.g. 'cargo,pip,npm,yarn,pnpm,bun')
-          cache-targets: ${{ github.event.inputs.cache-targets }}
-      - name: Verify kam installation
-        run: kam --version
+  pull_request:
+  push:
+    branches:
+      - main
 
-  init:
-    name: Run initialization (imports template in workspace)
-    needs: build
+permissions:
+  contents: read
+
+concurrency:
+  group: kam-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-      # Caching is now handled by `setup-kam` (set with `enable-cache: ${{ github.event.inputs.enable-cache }}`).
-      # Removed redundant manual restore steps.
-      - name: Setup kam (import template in this workspace)
-        uses: MemDeco-WG/setup-kam@main
+        uses: actions/checkout@v6
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          template-url: ${{ github.event.inputs.template-url }}
-          enable-cache: ${{ github.event.inputs.enable-cache }}
-          # Per-cache controls: use 'all'|'none' or a comma-separated list (e.g. 'cargo,pip,npm,yarn,pnpm,bun')
-          cache-targets: ${{ github.event.inputs.cache-targets }}
-      - name: Verify kam installation
-        run: kam --version
-      - name: Run initialization command
+          submodules: recursive
+
+      - name: Setup kam
+        uses: MemDeco-WG/setup-kam@v3
+        with:
+          github-token: ${{ github.token }}
+          enable-cache: 'true'
+          cache-targets: cargo,kam
+          install-commitizen: 'false'
+          warn-private-key: 'false'
+
+      - name: Install lint dependencies
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml
+
+      - name: Validate repository
         shell: bash
         run: |
-          kam init --help
-          echo "Running initialization command: ${{ github.event.inputs.init-command }}"
-          ${{ github.event.inputs.init-command }}
-          echo "Initialization completed successfully"
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - name: Auto-commit changes
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: |
-            chore: apply config - Template: ${{ github.event.inputs.template-url || 'No template' }} - Command: ${{ github.event.inputs.init-command || github.event.inputs.kam-command }}
-          file_pattern: |
-            *
-          push_options: --force-with-lease
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          set -euo pipefail
+          kam validate
+          kam check
+
+          mapfile -t shell_files < <(
+            {
+              find hooks -type f -name '*.sh' 2>/dev/null || true
+              find src -type f -name '*.sh' 2>/dev/null || true
+              test ! -f kam.sh || printf '%s\n' kam.sh
+            } | sort -u
+          )
+
+          if [ "${#shell_files[@]}" -gt 0 ]; then
+            shellcheck -s bash -e SC1091,SC1090,SC2317,SC2329,SC2059 "${shell_files[@]}"
+          fi
