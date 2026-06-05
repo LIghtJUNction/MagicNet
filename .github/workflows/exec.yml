@@ -78,12 +78,16 @@ jobs:
             "${sysroot}/lib/rustlib/x86_64-linux-android"
           rustup target add aarch64-linux-android x86_64-linux-android
 
+      - name: Install Android cargo build tool
+        run: cargo install cargo-ndk --locked
+
       - name: Verify tools
         shell: bash
         run: |
           set -euo pipefail
           kam --version
           gh --version
+          cargo ndk --version
 
       - name: Build module
         shell: bash
