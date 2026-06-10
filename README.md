@@ -1,8 +1,59 @@
 # MagicNet
 
+<div align="center">
+  <p>
+    <a href="kam.toml"><img alt="MagicNet v1.1.1" src="https://img.shields.io/badge/MagicNet-v1.1.1-31c2f2" /></a>
+    <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green.svg" /></a>
+    <a href="Cargo.toml"><img alt="Rust workspace" src="https://img.shields.io/badge/Rust-workspace-f46623?logo=rust&logoColor=white" /></a>
+    <a href="webui/package.json"><img alt="Vue WebUI" src="https://img.shields.io/badge/WebUI-Vue%203-42b883?logo=vue.js&logoColor=white" /></a>
+    <a href="kam.toml"><img alt="Built with KAM" src="https://img.shields.io/badge/Built%20with-KAM-8b5cf6" /></a>
+    <a href="https://github.com/KernelSU-Modules-Repo/MagicNet/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/KernelSU-Modules-Repo/MagicNet/total?label=downloads&logo=github" /></a>
+  </p>
+</div>
+
+<p align="center">
+  <a href="#overview">Overview</a>
+  · <a href="#quick-start">Quick Start</a>
+  · <a href="#核心功能">核心功能</a>
+  · <a href="#cli">CLI</a>
+  · <a href="#mcp-自动化">MCP</a>
+  · <a href="#english-summary">English</a>
+</p>
+
 MagicNet 是一个 Android root 戒网瘾模块，用于在真实设备上把“我再刷五分钟”改造成“页面怎么打不开了”。它面向自控力工程、深夜冲浪治理、注意力回收、热点共享劝退、分应用戒断和自动化反复横跳诊断。
 
-> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.0`。Release 以发布页为准。
+> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.1`。Release 以发布页为准。
+
+## Overview
+
+MagicNet is an Android root network module for device-side traffic governance. It combines `magicnet0` TUN routing, mihomo/sing-box integration, a Vue WebUI, scriptable CLI commands, MCP diagnostics, hotspot handling, and VPN coexistence helpers.
+
+Use it when you want a rooted Android device to enforce network rules below the app layer instead of relying on every app to respect a proxy setting.
+
+## Quick Start
+
+```bash
+kam install LIghtJUNction/MagicNet
+```
+
+Or install the release package from the distribution repository:
+
+```bash
+kam -S MagicNet
+kam install MagicNet.zip
+```
+
+## English Summary
+
+MagicNet is a rooted Android module for transparent network control, focus recovery, and on-device diagnostics.
+
+| Area | What it provides |
+| --- | --- |
+| Transparent routing | TUN and TProxy modes with a default `magicnet0` interface. |
+| Policy control | Route groups for direct, proxy, block, domestic, media, AI, ads, LAN, and custom domains. |
+| Runtime surfaces | WebUI for humans, CLI for scripts, MCP server for agent-assisted diagnosis. |
+| Device scenarios | Rooted phone, tablet, testing device, always-on hotspot, or automation lab device. |
+| Safety boundary | No bundled third-party connectivity resource; bring your own legal configuration. |
 
 ## 界面预览
 
