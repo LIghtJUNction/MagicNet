@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v1.1.3 (2026-06-11)
+
+- Refine kamfw console output by replacing emoji and decorative status marks
+  with concise bracket labels for logs, panels, and volume-key prompts.
+
 ## v1.1.2 (2026-06-11)
 
 - Build and package the Vue WebUI during `kam build` so the module archive
