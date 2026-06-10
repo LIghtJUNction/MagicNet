@@ -6,6 +6,8 @@ kernels when available, and keep downloaded binaries out of Git history.
 
 ## Important hooks
 
+- `pre-build/2000.BUILD_WEBUI.sh` builds `webui/` and copies the generated
+  static files into `src/MagicNet/webroot` so `kam build` packages the WebUI.
 - `pre-build/4900.update_tools.sh` downloads `yq` and `jq` arm64 release
   binaries into `.local/bin` for on-device YAML / JSON maintenance helpers.
 - `pre-build/5000.update_mihomo.sh` downloads the selected Android arm64 mihomo

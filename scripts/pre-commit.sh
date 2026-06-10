@@ -16,7 +16,6 @@ need shellcheck
 need jq
 need python3
 need cargo
-need bun
 
 kam validate
 
@@ -37,7 +36,12 @@ jq empty src/MagicNet/.config/sing-box/config.json
 KAM_HOOKS_ROOT=hooks KAM_MODULE_ROOT=src/MagicNet bash hooks/pre-build/6000.check_config.sh
 MODPATH="$ROOT/src/MagicNet" sh -c '. "$MODPATH/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODPATH/lib/magicnet.sh"; kamfw run post-mount -- smoke'
 
-(cd webui && bun run typecheck && bun run build)
+if command -v bun >/dev/null 2>&1; then
+    (cd webui && bun install --frozen-lockfile && bun run typecheck && bun run build)
+else
+    need npm
+    (cd webui && npm install && npm run typecheck && npm run build)
+fi
 cargo check -p magicnet-cli
 cargo check -p magicnet-mcp-server
 git diff --check

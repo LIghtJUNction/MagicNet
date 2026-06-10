@@ -282,7 +282,7 @@ rm -f "${MODPATH}/cli" 2>/dev/null || true
 ln -s ".local/bin/magicnet-cli" "${MODPATH}/cli" 2>/dev/null || true
 
 info "$(i18n "SET_MODULE_ENTRY_PERMS")"
-for _magicnet_entry in action.sh service.sh boot-completed.sh uninstall.sh hotspot-forward.sh vpn-coexist.sh; do
+for _magicnet_entry in action.sh service.sh boot-completed.sh uninstall.sh; do
   [ -f "${MODPATH}/${_magicnet_entry}" ] || continue
   set_perm "${MODPATH}/${_magicnet_entry}" 0 0 0755 u:object_r:system_file:s0
 done

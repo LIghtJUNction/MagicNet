@@ -1,5 +1,12 @@
 ## Unreleased
 
+## v1.1.2 (2026-06-11)
+
+- Build and package the Vue WebUI during `kam build` so the module archive
+  always contains `webroot/index.html` and frontend assets.
+- Remove unused standalone hotspot and VPN coexistence wrapper scripts; the
+  runtime functions remain wired through MagicNet startup/config flows.
+
 ## v1.1.0 (2026-06-03)
 
 - Use `magicnet0` as the default MagicNet virtual interface name for both

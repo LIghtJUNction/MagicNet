@@ -1,8 +1,8 @@
 [prop]
 id = "MagicNet"
 name = "MagicNet"
-version = "v1.1.1"
-versionCode = 1780513365191
+version = "v1.1.2"
+versionCode = 1781119426753
 author = "LIghtJUNction"
 description = "[MagicNet]:Android root network module with magicnet0 TUN, mihomo/sing-box, WebUI, MCP, hotspot and VPN coexist tools. Built with KAM."
 updateJson = "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json"
