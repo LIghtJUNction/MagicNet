@@ -74,7 +74,7 @@ async function setHotspotMode(mode: "proxy" | "direct"): Promise<void> {
 
 async function ensureHotspotNetwork(): Promise<void> {
   await withAction("hotspot-ensure", async () => {
-    await runCli("hotspot reload", "确保热点网络规则");
+    await runCli("hotspot reload", "重新加载热点规则");
     await refreshStatus();
   });
 }
@@ -225,7 +225,7 @@ async function disableTailscale(): Promise<void> {
           <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('hotspot-direct')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.hotspotMode === 'direct' }" @click="setHotspotMode('direct')">直连</button>
         </div>
         <Button variant="secondary" :loading="isRunning('hotspot-ensure')" @click="ensureHotspotNetwork">
-          <RadioTower :size="17" />确保热点有网
+          <RadioTower :size="17" />重新加载
         </Button>
       </Card>
 

@@ -241,13 +241,25 @@ fn app_add_many(app: &App, args: &[String]) -> Result<(), String> {
 
 fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
     let package = args.get(1).map(String::as_str).unwrap_or_default();
+    let target = args.get(2).map(String::as_str);
     if package.is_empty() {
-        return Err("Usage: cli app remove <package>".to_string());
+        return Err("Usage: cli app remove <package> [proxy|bypass]".to_string());
     }
-    update_line(app_file(app, "proxy")?, package, false)?;
-    update_line(app_file(app, "bypass")?, package, false)?;
+    match target {
+        Some("proxy" | "bypass") => {
+            update_line(app_file(app, target.unwrap())?, package, false)?;
+        }
+        Some(_) => return Err("Target must be proxy or bypass".to_string()),
+        None => {
+            update_line(app_file(app, "proxy")?, package, false)?;
+            update_line(app_file(app, "bypass")?, package, false)?;
+        }
+    }
     run_magicnet_function(app, "magicnet_app_policy_apply")?;
-    println!("[info] Removed {package} from app policy");
+    println!(
+        "[info] Removed {package} from {} app list",
+        target.unwrap_or("both")
+    );
     Ok(())
 }
 

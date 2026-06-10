@@ -1,5 +1,14 @@
 ## Unreleased
 
+## v1.1.4 (2026-06-11)
+
+- Show a default `premium_a` mihomo provider slot when config templates do not
+  define proxy-providers yet, so WebUI subscription entry is always available.
+- Create the missing mihomo `proxy-providers` section when saving a subscription
+  and make missing-subscription startup errors point to the exact setup command.
+- Let the config editor load a minimal editable template when the real config is
+  missing, and rename the hotspot rule button to “重新加载”.
+
 ## v1.1.3 (2026-06-11)
 
 - Refine kamfw console output by replacing emoji and decorative status marks

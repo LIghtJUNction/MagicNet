@@ -143,7 +143,7 @@ magicnet_mihomo_has_subscription() {
 }
 
 magicnet_subscription_required_message() {
-    printf '%s\n' "请填写合法订阅链接！"
+    printf '%s\n' "未配置订阅链接，无法启动内核。请先运行: cli setup <订阅链接>，或分别运行 cli sub set sing-box <订阅链接> / cli sub set mihomo premium_a <订阅链接>。"
 }
 
 magicnet_any_subscription_ready() {

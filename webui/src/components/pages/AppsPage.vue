@@ -166,7 +166,7 @@ async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void>
       rememberRemovedBypass(pkg);
     }
     state.output = `已从界面移除 ${pkg}，正在后台保存...`;
-    const text = await runCli(`app remove ${shellQuote(pkg)}`, `移除应用 ${pkg}`, true);
+    const text = await runCli(`app remove ${shellQuote(pkg)} ${target}`, `移除应用 ${pkg}`, true);
     if (commandFailed(text)) {
       state.output = text;
       if (target === "proxy" && !state.appPolicy.proxy.includes(pkg)) state.appPolicy.proxy.unshift(pkg);
@@ -232,7 +232,7 @@ onMounted(() => {
     <PageHeader overline="Per App Policy" title="应用名单" description="只管理应用进入或绕过 MagicNet TUN 的名单，不做节点和代理模式控制。">
       <div class="flex flex-wrap gap-2">
         <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取名单</Button>
-        <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />列出应用</Button>
+        <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />重新读取应用</Button>
         <Button :loading="isRunning('apply-recommended-bypass')" @click="applyRecommendedBypass"><ShieldCheck :size="17" />应用推荐名单</Button>
       </div>
     </PageHeader>
@@ -259,7 +259,7 @@ onMounted(() => {
             <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
             <Input v-model="state.packageQuery" class="pl-9" placeholder="搜索已安装应用包名" spellcheck="false" @keyup.enter="searchPackages" />
           </div>
-          <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">过滤</Button>
+          <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">重新读取</Button>
         </div>
         <div class="grid max-h-72 gap-2 overflow-auto">
           <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">

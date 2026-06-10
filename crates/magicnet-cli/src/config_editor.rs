@@ -18,8 +18,7 @@ pub(crate) fn config_editor(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "get" => {
-            let text = fs::read_to_string(&path)
-                .map_err(|err| format!("config not found {}: {err}", path.display()))?;
+            let text = fs::read_to_string(&path).unwrap_or_else(|_| default_config(target));
             print!("{text}");
             Ok(())
         }
@@ -82,6 +81,51 @@ fn config_path(app: &App, target: &str) -> Result<PathBuf, String> {
         "mihomo" | "clash" => Ok(app.moddir.join(".config/mihomo/config.yaml")),
         "sing-box" | "singbox" => Ok(app.moddir.join(".config/sing-box/config.json")),
         _ => Err("config target must be mihomo or sing-box".to_string()),
+    }
+}
+
+fn default_config(target: &str) -> String {
+    match target {
+        "mihomo" | "clash" => r#"proxy-providers:
+  premium_a:
+    type: http
+    path: ./proxies/premium_a.yaml
+    url: ""
+    interval: 3600
+    health-check:
+      enable: true
+      url: http://www.gstatic.com/generate_204
+      interval: 300
+proxy-groups:
+  - name: proxy
+    type: select
+    use:
+      - premium_a
+    proxies:
+      - DIRECT
+      - REJECT
+rules:
+  - MATCH,proxy
+"#
+        .to_string(),
+        _ => r#"{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ]
+}
+"#
+        .to_string(),
     }
 }
 

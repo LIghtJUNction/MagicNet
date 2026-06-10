@@ -227,12 +227,18 @@ pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
 
 fn mihomo_providers(app: &App) -> Vec<(String, String)> {
     let Ok(mut config) = read_mihomo_yaml(app) else {
-        return Vec::new();
+        return vec![(
+            DEFAULT_MIHOMO_PROVIDER.to_string(),
+            first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
+        )];
     };
     let Some(providers) = yaml_mapping_mut(&mut config, "proxy-providers") else {
-        return Vec::new();
+        return vec![(
+            DEFAULT_MIHOMO_PROVIDER.to_string(),
+            first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
+        )];
     };
-    providers
+    let providers: Vec<_> = providers
         .iter()
         .filter_map(|(key, value)| {
             let name = key.as_str()?.to_string();
@@ -245,7 +251,15 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
                 .to_string();
             Some((name, url))
         })
-        .collect()
+        .collect();
+    if providers.is_empty() {
+        vec![(
+            DEFAULT_MIHOMO_PROVIDER.to_string(),
+            first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
+        )]
+    } else {
+        providers
+    }
 }
 
 fn update_mihomo_config_url(
@@ -253,13 +267,10 @@ fn update_mihomo_config_url(
     url: &str,
     target_provider: Option<&str>,
 ) -> Result<(), String> {
-    let mut config = match read_mihomo_yaml(app) {
-        Ok(config) => config,
-        Err(_) => return Ok(()),
-    };
-    let Some(providers) = yaml_mapping_mut(&mut config, "proxy-providers") else {
-        return Ok(());
-    };
+    let mut config = read_mihomo_yaml(app).unwrap_or_else(|_| Value::Mapping(Mapping::new()));
+    ensure_yaml_mapping(&mut config, "proxy-providers")?;
+    let providers = yaml_mapping_mut(&mut config, "proxy-providers")
+        .ok_or_else(|| "mihomo proxy-providers is not a map".to_string())?;
     let target_key = target_provider.map(ToOwned::to_owned).or_else(|| {
         providers.iter().find_map(|(key, value)| {
             value.as_mapping()?;
@@ -359,6 +370,21 @@ fn write_mihomo_yaml(app: &App, config: &Value) -> Result<(), String> {
 
 fn yaml_mapping_mut<'a>(value: &'a mut Value, key: &str) -> Option<&'a mut Mapping> {
     value.get_mut(key)?.as_mapping_mut()
+}
+
+fn ensure_yaml_mapping(value: &mut Value, key: &str) -> Result<(), String> {
+    let Some(root) = value.as_mapping_mut() else {
+        return Err("mihomo config root is not a map".to_string());
+    };
+    let key = Value::String(key.to_string());
+    match root.get(&key) {
+        Some(Value::Mapping(_)) => Ok(()),
+        Some(_) => Err("mihomo proxy-providers is not a map".to_string()),
+        None => {
+            root.insert(key, Value::Mapping(Mapping::new()));
+            Ok(())
+        }
+    }
 }
 
 fn shell_url_component(value: &str) -> String {
@@ -545,6 +571,50 @@ proxy-providers:
                 ("premium_b".to_string(), String::new())
             ]
         );
+    }
+
+    #[test]
+    fn mihomo_provider_list_falls_back_to_default_slot() {
+        let app = temp_app();
+        write_mihomo(&app, "proxy-groups: []\n");
+
+        let providers = mihomo_providers(&app);
+
+        assert_eq!(
+            providers,
+            vec![(DEFAULT_MIHOMO_PROVIDER.to_string(), String::new())]
+        );
+    }
+
+    #[test]
+    fn set_mihomo_subscription_creates_missing_provider_section() {
+        let app = temp_app();
+        write_mihomo(
+            &app,
+            r#"
+proxy-groups:
+  - name: proxy
+    type: select
+    use: []
+    proxies: [DIRECT, REJECT]
+"#,
+        );
+
+        sub_set(
+            &app,
+            &[
+                "sub".to_string(),
+                "set".to_string(),
+                "mihomo".to_string(),
+                "https://new.example/sub".to_string(),
+            ],
+        )
+        .unwrap();
+
+        let text = fs::read_to_string(app.moddir.join(".config/mihomo/config.yaml")).unwrap();
+        assert!(text.contains("proxy-providers"), "{text}");
+        assert!(text.contains(DEFAULT_MIHOMO_PROVIDER), "{text}");
+        assert!(text.contains("https://new.example/sub"), "{text}");
     }
 
     #[test]
