@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { DownloadCloud, Github, Plus, RefreshCw, X } from "lucide-vue-next";
+import { computed } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -9,6 +10,15 @@ import { useMagicNet } from "@/composables/useMagicNet";
 
 const { state, runCli, startBackgroundCli, refreshBlock, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+
+const communityEntries = computed(() => {
+  const rules = [...state.blocklist.communityRules];
+  for (const domain of state.blocklist.communityDomains) {
+    const rule = `DOMAIN-SUFFIX,${domain}`;
+    if (!rules.includes(rule) && !state.blocklist.allowRules.includes(rule)) rules.push(rule);
+  }
+  return rules;
+});
 
 async function addDomain(): Promise<void> {
   await withAction("add-domain", async () => {
@@ -46,13 +56,17 @@ async function removeDomain(domain: string): Promise<void> {
 async function allowRule(rule: string): Promise<void> {
   await withAction(`allow-${rule}`, async () => {
     state.blocklist.communityRules = state.blocklist.communityRules.filter((item) => item !== rule);
+    const suffix = rule.replace(/^DOMAIN-SUFFIX,/, "");
+    if (suffix !== rule) state.blocklist.communityDomains = state.blocklist.communityDomains.filter((item) => item !== suffix);
     if (!state.blocklist.allowRules.includes(rule)) state.blocklist.allowRules.push(rule);
     state.output = `正在加入本地排除：${rule}`;
     const text = await runCli(`block allow-rule ${shellQuote(rule)}`, `本地排除 ${rule}`, true);
     if (text.includes("[error]")) {
       state.output = text;
       state.blocklist.allowRules = state.blocklist.allowRules.filter((item) => item !== rule);
-      if (!state.blocklist.communityRules.includes(rule)) state.blocklist.communityRules.unshift(rule);
+      if (suffix !== rule) {
+        if (!state.blocklist.communityDomains.includes(suffix)) state.blocklist.communityDomains.unshift(suffix);
+      } else if (!state.blocklist.communityRules.includes(rule)) state.blocklist.communityRules.unshift(rule);
       return;
     }
     state.output = `已加入本地排除：${rule}`;
@@ -134,11 +148,11 @@ async function updateCommunityBlocklist(): Promise<void> {
       <Card>
         <h3 class="mb-2 text-base font-semibold">社区库缓存</h3>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
-          <span v-for="rule in state.blocklist.communityRules.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="rule in communityEntries.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ rule }}
             <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="allowRule(rule)"><X :size="14" /></button>
           </span>
-          <em v-if="!state.blocklist.communityRules.length" class="text-sm not-italic text-zinc-500">未读取到社区规则</em>
+          <em v-if="!communityEntries.length" class="text-sm not-italic text-zinc-500">未读取到社区规则</em>
         </div>
       </Card>
 
