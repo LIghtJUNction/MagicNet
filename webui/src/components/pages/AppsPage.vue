@@ -130,6 +130,8 @@ async function addApp(target: "proxy" | "bypass"): Promise<void> {
 }
 
 async function addPackage(pkg: string, target: "proxy" | "bypass"): Promise<void> {
+    const previousProxy = [...state.appPolicy.proxy];
+    const previousBypass = [...state.appPolicy.bypass];
     if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(pkg)) {
       state.output = "包名格式不对。示例：com.android.chrome";
       return;
@@ -140,6 +142,8 @@ async function addPackage(pkg: string, target: "proxy" | "bypass"): Promise<void
       state.packageInput = "";
       return;
     }
+    if (target === "proxy") state.appPolicy.bypass = state.appPolicy.bypass.filter((item) => item !== pkg);
+    else state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
     list.push(pkg);
     state.packageInput = "";
     if (target === "bypass") forgetRemovedBypass(pkg);
@@ -147,11 +151,8 @@ async function addPackage(pkg: string, target: "proxy" | "bypass"): Promise<void
     const text = await runCli(`app add ${shellQuote(pkg)} ${target}`, `添加应用 ${pkg}`, true);
     if (commandFailed(text)) {
       state.output = text;
-      if (target === "proxy") {
-        state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
-      } else {
-        state.appPolicy.bypass = state.appPolicy.bypass.filter((item) => item !== pkg);
-      }
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.bypass = previousBypass;
       return;
     }
     await refreshApps(true);
@@ -159,6 +160,8 @@ async function addPackage(pkg: string, target: "proxy" | "bypass"): Promise<void
 
 async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void> {
   await withAction(`remove-${target}-${pkg}`, async () => {
+    const previousProxy = [...state.appPolicy.proxy];
+    const previousBypass = [...state.appPolicy.bypass];
     if (target === "proxy") {
       state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
     } else {
@@ -169,8 +172,8 @@ async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void>
     const text = await runCli(`app remove ${shellQuote(pkg)} ${target}`, `移除应用 ${pkg}`, true);
     if (commandFailed(text)) {
       state.output = text;
-      if (target === "proxy" && !state.appPolicy.proxy.includes(pkg)) state.appPolicy.proxy.unshift(pkg);
-      if (target === "bypass" && !state.appPolicy.bypass.includes(pkg)) state.appPolicy.bypass.unshift(pkg);
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.bypass = previousBypass;
       return;
     }
     await refreshApps(true);
@@ -179,12 +182,20 @@ async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void>
 
 async function restoreBypass(pkg: string): Promise<void> {
   await withAction(`restore-bypass-${pkg}`, async () => {
+    const previousProxy = [...state.appPolicy.proxy];
+    const previousBypass = [...state.appPolicy.bypass];
     if (!state.appPolicy.bypass.includes(pkg)) state.appPolicy.bypass.push(pkg);
     state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
     state.output = `正在把 ${pkg} 加回 Bypass...`;
     const text = await runCli(`app add ${shellQuote(pkg)} bypass`, `恢复 Bypass 应用 ${pkg}`, true);
+    if (commandFailed(text)) {
+      state.output = text;
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.bypass = previousBypass;
+      return;
+    }
     await refreshApps(true);
-    if (!commandFailed(text)) forgetRemovedBypass(pkg);
+    forgetRemovedBypass(pkg);
   });
 }
 

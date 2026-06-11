@@ -9,6 +9,7 @@ webui/node_modules/.vite/
 src/MagicNet/webroot/assets/
 src/MagicNet/webroot/index.html
 src/MagicNet/.local/
+src/MagicNet/bin/
 src/MagicNet/mihomo.version
 src/MagicNet/singbox.version
 

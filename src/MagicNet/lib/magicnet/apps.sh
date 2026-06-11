@@ -18,10 +18,21 @@ magicnet_package_array_block() {
     _key="$1"
     _file="$2"
     _comma="${3:-,}"
-    [ -s "$_file" ] || return 0
+    _force_empty="${4:-0}"
+    if [ ! -s "$_file" ]; then
+        [ "$_force_empty" = "1" ] || return 0
+        printf '      "%s": []%s\n' "$_key" "$_comma"
+        unset _key _file _comma _force_empty
+        return 0
+    fi
 
     _items=$(sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++')
-    [ -n "$_items" ] || return 0
+    if [ -z "$_items" ]; then
+        [ "$_force_empty" = "1" ] || return 0
+        printf '      "%s": []%s\n' "$_key" "$_comma"
+        unset _key _file _comma _force_empty _items
+        return 0
+    fi
 
     printf '      "%s": [\n' "$_key"
     _count=$(printf '%s\n' "$_items" | wc -l | tr -d ' ')
@@ -34,22 +45,34 @@ magicnet_package_array_block() {
         printf '        "%s"%s\n' "$(magicnet_json_escape "$_pkg")" "$_line_comma"
     done
     printf '      ]%s\n' "$_comma"
+    unset _key _file _comma _force_empty _items _count _idx _line_comma _pkg
 }
 
 magicnet_yaml_package_block() {
     _key="$1"
     _file="$2"
-    [ -s "$_file" ] || return 0
+    _force_empty="${3:-0}"
+    if [ ! -s "$_file" ]; then
+        [ "$_force_empty" = "1" ] || return 0
+        printf '  %s: []\n' "$_key"
+        unset _key _file _force_empty
+        return 0
+    fi
 
     _items=$(sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++')
-    [ -n "$_items" ] || return 0
+    if [ -z "$_items" ]; then
+        [ "$_force_empty" = "1" ] || return 0
+        printf '  %s: []\n' "$_key"
+        unset _key _file _force_empty _items
+        return 0
+    fi
 
     printf '  %s:\n' "$_key"
     printf '%s\n' "$_items" | while read -r _pkg; do
         [ -n "$_pkg" ] || continue
         printf '    - %s\n' "$_pkg"
     done
-    unset _key _file _items _pkg
+    unset _key _file _items _pkg _force_empty
 }
 
 magicnet_mihomo_apply_app_policy() {
@@ -64,7 +87,7 @@ magicnet_mihomo_apply_app_policy() {
     _include_block=""
     _exclude_block=""
     if [ "$_mode" = "whitelist" ]; then
-        _include_block="$(magicnet_yaml_package_block include-package "$_proxy_file")"
+        _include_block="$(magicnet_yaml_package_block include-package "$_proxy_file" 1)"
     else
         _exclude_block="$(magicnet_yaml_package_block exclude-package "$_bypass_file")"
     fi
@@ -151,7 +174,7 @@ magicnet_singbox_apply_app_policy() {
     _include_block=""
     _exclude_block=""
     if [ "$_mode" = "whitelist" ]; then
-        _include_block="$(magicnet_package_array_block include_package "$_proxy_file" ",")"
+        _include_block="$(magicnet_package_array_block include_package "$_proxy_file" "," 1)"
     else
         _exclude_block="$(magicnet_package_array_block exclude_package "$_bypass_file" ",")"
     fi
@@ -223,10 +246,12 @@ magicnet_app_policy_apply_unlocked() {
     _app_rc=0
     magicnet_mihomo_apply_app_policy || _app_rc=1
     magicnet_singbox_apply_app_policy || _app_rc=1
+    if [ "$(magicnet_transparent_mode)" = "tproxy" ]; then
+        magicnet_enable_tproxy || _app_rc=1
+    fi
     return "$_app_rc"
 }
 
 magicnet_app_policy_apply() {
     magicnet_with_config_lock magicnet_app_policy_apply_unlocked
 }
-

@@ -1,5 +1,5 @@
 magicnet_singbox_proxylink_bin() {
-    for _bin in "${MODDIR}/.local/bin/proxylink" proxylink; do
+    for _bin in "${MODDIR}/bin/proxylink" proxylink; do
         if command -v "$_bin" >/dev/null 2>&1; then
             command -v "$_bin"
             unset _bin

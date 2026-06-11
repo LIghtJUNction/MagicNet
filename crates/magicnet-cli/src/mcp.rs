@@ -96,7 +96,7 @@ fn start(app: &App) -> Result<(), String> {
         println!("[info] MCP server already running: {pid}");
         return mcp(app, &[String::from("status")]);
     }
-    let target = app.moddir.join(".local/bin/magicnet-mcp-server");
+    let target = app.moddir.join("bin/magicnet-mcp-server");
     if !target.exists() {
         return Err(format!("MCP server missing: {}", target.display()));
     }

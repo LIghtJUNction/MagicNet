@@ -424,6 +424,8 @@ magicnet_preferred_core() {
     _current_core_conf="${MODDIR}/.config/magicnet/current-core.conf"
     if [ -f "$_current_core_conf" ]; then
         . "$_current_core_conf"
+    elif [ -f "${MODDIR}/.config/magicnet/core.conf" ]; then
+        . "${MODDIR}/.config/magicnet/core.conf"
     fi
 
     case "${MAGICNET_DEFAULT_CORE:-auto}" in

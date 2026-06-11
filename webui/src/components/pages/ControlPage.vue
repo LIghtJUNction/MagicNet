@@ -95,7 +95,12 @@ async function reloadVpnCoexist(): Promise<void> {
 
 async function saveTailscale(): Promise<void> {
   await withAction("tailscale-save", async () => {
-    const auth = tailscaleAuth.value.trim() || "-keep";
+    const rawAuth = tailscaleAuth.value.trim();
+    if (!rawAuth && !state.tailscale.authKeySet) {
+      state.output = "首次启用 Tailscale 必须填写 auth key。";
+      return;
+    }
+    const auth = rawAuth || "-keep";
     const hostname = tailscaleHostname.value.trim() || "android-magicnet";
     const subnets = tailscaleSubnets.value.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean).join(",");
     await runCli(`tailscale set ${shellQuote(auth)} ${shellQuote(hostname)} ${shellQuote(subnets || "100.64.0.0/10")}`, "保存 Tailscale 快捷配置");

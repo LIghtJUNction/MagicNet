@@ -1,7 +1,7 @@
 # Kam Build Hooks
 
 MagicNet hooks are intentionally small and idempotent. They download generated
-runtime assets into `.local/` or `.config/`, validate configs with the current
+runtime assets into `bin/`, `.local/` or `.config/`, validate configs with the current
 kernels when available, and keep downloaded binaries out of Git history.
 
 ## Important hooks
@@ -9,15 +9,15 @@ kernels when available, and keep downloaded binaries out of Git history.
 - `pre-build/2000.BUILD_WEBUI.sh` builds `webui/` and copies the generated
   static files into `src/MagicNet/webroot` so `kam build` packages the WebUI.
 - `pre-build/4900.update_tools.sh` downloads `yq` and `jq` arm64 release
-  binaries into `.local/bin` for on-device YAML / JSON maintenance helpers.
+  binaries into `bin/` for on-device YAML / JSON maintenance helpers.
 - `pre-build/5000.update_mihomo.sh` downloads the selected Android arm64 mihomo
   release and verifies the GitHub release digest when it is available.
 - `pre-build/5100.update_sing_box.sh` selects the best sing-box Android arm64
   release asset, verifies the digest when available, and installs only the
-  binary into `.local/bin`.
+  binary into `bin/`.
 - `pre-build/3000.BUILD_CRATES.sh` builds Rust module tools, installs
-  `magicnet-cli` and `magicnet-mcp-server` into `.local/bin`, and refreshes the
-  `cli -> .local/bin/magicnet-cli` compatibility symlink.
+  `magicnet-cli` and `magicnet-mcp-server` into `bin/`, and refreshes the
+  `cli -> bin/magicnet-cli` compatibility symlink.
 - `pre-build/5500.update_geodata.sh` updates mihomo GeoIP / GeoSite data and
   stores hash state under `.local/state/geodata`.
 - `pre-build/6000.check_config.sh` always parses mihomo YAML and sing-box JSON.

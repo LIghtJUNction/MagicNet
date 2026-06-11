@@ -227,16 +227,10 @@ pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
 
 fn mihomo_providers(app: &App) -> Vec<(String, String)> {
     let Ok(mut config) = read_mihomo_yaml(app) else {
-        return vec![(
-            DEFAULT_MIHOMO_PROVIDER.to_string(),
-            first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
-        )];
+        return default_mihomo_provider_slot(app);
     };
     let Some(providers) = yaml_mapping_mut(&mut config, "proxy-providers") else {
-        return vec![(
-            DEFAULT_MIHOMO_PROVIDER.to_string(),
-            first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
-        )];
+        return default_mihomo_provider_slot(app);
     };
     let providers: Vec<_> = providers
         .iter()
@@ -253,13 +247,19 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
         })
         .collect();
     if providers.is_empty() {
-        vec![(
-            DEFAULT_MIHOMO_PROVIDER.to_string(),
-            first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
-        )]
+        default_mihomo_provider_slot(app)
     } else {
         providers
     }
+}
+
+fn default_mihomo_provider_slot(app: &App) -> Vec<(String, String)> {
+    vec![
+        (
+            DEFAULT_MIHOMO_PROVIDER.to_string(),
+            first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
+        ),
+    ]
 }
 
 fn update_mihomo_config_url(
@@ -267,7 +267,7 @@ fn update_mihomo_config_url(
     url: &str,
     target_provider: Option<&str>,
 ) -> Result<(), String> {
-    let mut config = read_mihomo_yaml(app).unwrap_or_else(|_| Value::Mapping(Mapping::new()));
+    let mut config = read_mihomo_yaml(app).unwrap_or_else(|_| default_mihomo_config());
     ensure_yaml_mapping(&mut config, "proxy-providers")?;
     let providers = yaml_mapping_mut(&mut config, "proxy-providers")
         .ok_or_else(|| "mihomo proxy-providers is not a map".to_string())?;
@@ -277,9 +277,10 @@ fn update_mihomo_config_url(
             key.as_str().map(ToOwned::to_owned)
         })
     });
-    let Some(target_key) = target_key else {
-        return Ok(());
-    };
+    let target_key = target_key.unwrap_or_else(|| DEFAULT_MIHOMO_PROVIDER.to_string());
+    if !valid_provider_name(&target_key) {
+        return Err("mihomo provider name must match [A-Za-z0-9_-]+".to_string());
+    }
     let provider = providers
         .entry(Value::String(target_key.clone()))
         .or_insert_with(|| Value::Mapping(Mapping::new()));
@@ -349,6 +350,31 @@ fn attach_mihomo_provider_to_groups(config: &mut Value, provider: &str) {
     }
 }
 
+fn default_mihomo_config() -> Value {
+    serde_yaml::from_str(
+        r#"tun:
+  enable: true
+  stack: gvisor
+  device: magicnet0
+  auto-route: true
+  strict-route: true
+  dns-hijack:
+    - any:53
+proxy-providers: {}
+proxy-groups:
+  - name: proxy
+    type: select
+    use: []
+    proxies:
+      - DIRECT
+      - REJECT
+rules:
+  - MATCH,proxy
+"#,
+    )
+    .unwrap_or_else(|_| Value::Mapping(Mapping::new()))
+}
+
 fn ensure_mihomo_provider_cache_dir(app: &App) -> Result<(), String> {
     fs::create_dir_all(app.moddir.join(".config/mihomo/proxies"))
         .map_err(|err| format!("create mihomo provider cache dir: {err}"))
@@ -385,6 +411,13 @@ fn ensure_yaml_mapping(value: &mut Value, key: &str) -> Result<(), String> {
             Ok(())
         }
     }
+}
+
+fn valid_provider_name(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
 }
 
 fn shell_url_component(value: &str) -> String {

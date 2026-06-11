@@ -158,6 +158,7 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
         .arg(&target)
         .status()
         .map_err(|err| format!("unzip panel: {err}"))?;
+    promote_dist_dir(&target)?;
     if !status.success() || !contains_index(&target) {
         let _ = fs::remove_dir_all(&target);
         let _ = fs::rename(&backup, &target);
@@ -231,6 +232,29 @@ fn contains_index(dir: &std::path::Path) -> bool {
         .flatten()
         .flatten()
         .any(|entry| entry.path().is_dir() && contains_index(&entry.path()))
+}
+
+fn promote_dist_dir(target: &std::path::Path) -> Result<(), String> {
+    let dist = target.join("dist");
+    if !dist.join("index.html").exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(&dist).map_err(|err| format!("read {}: {err}", dist.display()))? {
+        let entry = entry.map_err(|err| format!("read {}: {err}", dist.display()))?;
+        let dest = target.join(entry.file_name());
+        if dest.exists() {
+            if dest.is_dir() {
+                fs::remove_dir_all(&dest)
+            } else {
+                fs::remove_file(&dest)
+            }
+            .map_err(|err| format!("remove {}: {err}", dest.display()))?;
+        }
+        fs::rename(entry.path(), &dest)
+            .map_err(|err| format!("move panel asset to {}: {err}", dest.display()))?;
+    }
+    fs::remove_dir_all(&dist).map_err(|err| format!("remove {}: {err}", dist.display()))?;
+    Ok(())
 }
 
 fn backup_text(app: &App, password: &str) -> String {
@@ -427,6 +451,21 @@ mod tests {
         assert!(!contains_index(&root));
         fs::write(root.join("nested/index.html"), "").unwrap();
         assert!(contains_index(&root));
+    }
+
+    #[test]
+    fn promote_dist_dir_moves_zashboard_assets_to_panel_root() {
+        let app = temp_app();
+        let root = app.moddir.join("panel");
+        fs::create_dir_all(root.join("dist/assets")).unwrap();
+        fs::write(root.join("dist/index.html"), "").unwrap();
+        fs::write(root.join("dist/assets/app.js"), "").unwrap();
+
+        promote_dist_dir(&root).unwrap();
+
+        assert!(root.join("index.html").exists());
+        assert!(root.join("assets/app.js").exists());
+        assert!(!root.join("dist").exists());
     }
 
     #[test]

@@ -199,7 +199,7 @@ magicnet_set_default_core() {
     *) return 1 ;;
   esac
   mkdir -p "${MODPATH}/.config/magicnet" || return 1
-  printf 'MAGICNET_DEFAULT_CORE=%s\n' "$1" >"${MODPATH}/.config/magicnet/core.conf"
+  printf 'MAGICNET_DEFAULT_CORE=%s\n' "$1" >"${MODPATH}/.config/magicnet/current-core.conf"
 }
 
 magicnet_ask_default_core() {
@@ -261,25 +261,26 @@ fi
 
 if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
   :
-elif [ "$MAGIC_SINGBOX" != "0" ] && { [ -x "${MODPATH}/.local/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
+elif [ "$MAGIC_SINGBOX" != "0" ] && { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
   import __singbox__
   singbox_ask_webui
-elif [ "$MAGIC_MIHOMO" != "0" ] && { [ -x "${MODPATH}/.local/bin/mihomo" ] || [ -x "${MODPATH}/system/bin/mihomo" ]; }; then
+elif [ "$MAGIC_MIHOMO" != "0" ] && { [ -x "${MODPATH}/bin/mihomo" ] || [ -x "${MODPATH}/system/bin/mihomo" ]; }; then
   import __mihomo__
   ask_webui
 fi
 
 # 设置权限
 rm -f "${MODPATH}/kam.log" "${MODPATH}/cli.legacy.sh" "${MODPATH}/mcp-server.sh" 2>/dev/null || true
+rm -rf "${MODPATH}/.local/bin" 2>/dev/null || true
 
 [ -f "${MODPATH}/system/bin/mihomo" ] && set_perm "${MODPATH}/system/bin/mihomo" 0 0 0755 u:object_r:system_file:s0
 [ -f "${MODPATH}/system/bin/sing-box" ] && set_perm "${MODPATH}/system/bin/sing-box" 0 0 0755 u:object_r:system_file:s0
 
-[ -d "${MODPATH}/.local/bin" ] && set_perm_recursive "${MODPATH}/.local/bin" 0 0 0755 0755 u:object_r:system_file:s0
+[ -d "${MODPATH}/bin" ] && set_perm_recursive "${MODPATH}/bin" 0 0 0755 0755 u:object_r:system_file:s0
 [ -d "${MODPATH}/webroot" ] && set_perm_recursive "${MODPATH}/webroot" 0 0 0755 0644 u:object_r:system_file:s0
 
 rm -f "${MODPATH}/cli" 2>/dev/null || true
-ln -s ".local/bin/magicnet-cli" "${MODPATH}/cli" 2>/dev/null || true
+ln -s "bin/magicnet-cli" "${MODPATH}/cli" 2>/dev/null || true
 
 info "$(i18n "SET_MODULE_ENTRY_PERMS")"
 for _magicnet_entry in action.sh service.sh boot-completed.sh uninstall.sh; do

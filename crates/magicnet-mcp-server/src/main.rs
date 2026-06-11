@@ -27,7 +27,7 @@ fn main() {
     let listener = TcpListener::bind(&addr).unwrap_or_else(|err| panic!("listen {addr}: {err}"));
     let cli = env::var("MAGICNET_CLI")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(&moddir).join(".local/bin/magicnet-cli"));
+        .unwrap_or_else(|_| PathBuf::from(&moddir).join("bin/magicnet-cli"));
     let server = Server {
         cli,
         moddir: PathBuf::from(moddir),

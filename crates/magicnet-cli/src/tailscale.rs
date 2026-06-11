@@ -55,6 +55,8 @@ fn set_config(app: &App, args: &[String]) -> Result<(), String> {
     cfg.enabled = true;
     if auth != "-keep" {
         cfg.auth_key = auth.to_string();
+    } else if cfg.auth_key.is_empty() {
+        return Err("tailscale auth key is required on first setup".to_string());
     }
     if let Some(hostname) = args.get(2).filter(|value| !value.trim().is_empty()) {
         cfg.hostname = hostname.trim().to_string();

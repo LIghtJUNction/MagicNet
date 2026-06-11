@@ -9,12 +9,12 @@ import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 
-const { state, runCli, openExternal, shellQuote, REPO } = useMagicNet();
+const { state, runCli, startBackgroundCli, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const status = ref("");
 const panel = ref({
   name: "zashboard",
-  url: "",
+  url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip",
   metadata: ""
 });
 
@@ -32,8 +32,7 @@ async function installLocal(): Promise<void> {
       state.output = "本地面板下载 URL 必须是 http(s) 链接。";
       return;
     }
-    await runCli(`webui install-local ${shellQuote(url)} ${shellQuote(panel.value.name.trim() || "custom")}`, "安装本地 WebUI 面板");
-    await refreshWebui();
+    await startBackgroundCli(`webui install-local ${shellQuote(url)} ${shellQuote(panel.value.name.trim() || "custom")}`, "安装本地 WebUI 面板");
   });
 }
 
@@ -68,12 +67,12 @@ function issueUrl(): string {
         <Input v-model="panel.name" placeholder="面板名字，例如 zashboard" spellcheck="false" />
         <Input v-model="panel.url" placeholder="https://example.com/panel.zip" spellcheck="false" />
         <Textarea v-model="panel.metadata" class="min-h-28" placeholder="面板元数据、说明、仓库链接、适配注意事项" spellcheck="false" />
-        <Button :loading="isRunning('webui-install')" @click="installLocal"><DownloadCloud :size="17" />下载并安装</Button>
+        <Button :loading="isRunning('webui-install')" @click="installLocal"><DownloadCloud :size="17" />后台下载并安装</Button>
       </Card>
 
       <Card class="grid gap-3">
         <h3 class="text-base font-semibold">当前状态</h3>
-        <p class="text-sm leading-6 text-zinc-400">sing-box 默认使用本地 zashboard；mihomo 可从控制页打开 Meta Cube X、Yacd 或 zashboard。</p>
+        <p class="text-sm leading-6 text-zinc-400">sing-box 默认使用本地 zashboard；mihomo 可从控制页打开 Meta Cube X、Yacd 或 zashboard。面板下载会在后台执行，避免大文件下载被前台超时中断。</p>
         <Button variant="outline" @click="openExternal(REPO, 'MagicNet GitHub')"><ExternalLink :size="17" />打开项目仓库</Button>
         <pre class="max-h-80 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ status || "点击读取查看 webui status。" }}</pre>
       </Card>

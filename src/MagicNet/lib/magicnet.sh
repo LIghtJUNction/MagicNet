@@ -5,6 +5,8 @@
 import wait
 import rich
 
+export PATH="${MODDIR}/bin:${PATH}"
+
 _magicnet_lib_dir="${MODDIR}/lib/magicnet"
 for _magicnet_lib in \
     common \

@@ -20,7 +20,7 @@ export function useExternalLinks(
   state: MagicNetState,
   runShell: (command: string, label: string, quiet?: boolean) => Promise<string>,
   runCli: (args: string, label?: string, quiet?: boolean) => Promise<string>,
-  refreshStatus: () => Promise<void>
+  refreshStatus: () => Promise<unknown>
 ) {
   const autoCoreOpen = reactive({
     enabled: localStorage.getItem(AUTO_CORE_OPEN_ENABLED_KEY) === "1",

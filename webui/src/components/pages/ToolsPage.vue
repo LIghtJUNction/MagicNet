@@ -8,7 +8,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { bytesToBase64, copyText, readClipboardText, shellQuote as quoteShell } from "@/utils";
+import { bytesToBase64, copyText, execFailed, readClipboardText, shellQuote as quoteShell } from "@/utils";
 
 const { state, runShell, runCli, refreshCapture, refreshCerts, refreshMcp, refreshTopology, refreshSysroute, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -82,8 +82,14 @@ async function copyMcp(): Promise<void> {
 
 async function removeCert(file: string): Promise<void> {
   await withAction(`remove-cert-${file}`, async () => {
+    const previous = [...state.certs.files];
     state.certs.files = state.certs.files.filter((item) => item !== file);
-    await runCli(`cert remove ${shellQuote(file)}`, `删除证书 ${file}`, true);
+    const text = await runCli(`cert remove ${shellQuote(file)}`, `删除证书 ${file}`, true);
+    if (execFailed(text)) {
+      state.certs.files = previous;
+      state.output = text;
+      return;
+    }
     await refreshCerts(true);
   });
 }

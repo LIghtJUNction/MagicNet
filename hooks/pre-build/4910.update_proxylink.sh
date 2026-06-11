@@ -6,7 +6,7 @@ MAGIC_PROXYLINK=${MAGIC_PROXYLINK:-1}
 REPO_URL="https://github.com/Fanju6/Proxylink.git"
 STATE_DIR="${KAM_MODULE_ROOT}/.local/state/tools"
 VERSION_FILE="${STATE_DIR}/proxylink.version"
-TARGET_DIR="${KAM_MODULE_ROOT}/.local/bin"
+TARGET_DIR="${KAM_MODULE_ROOT}/bin"
 TARGET_BIN="${TARGET_DIR}/proxylink"
 
 if [ "$MAGIC_PROXYLINK" -eq 0 ]; then

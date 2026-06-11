@@ -6,7 +6,7 @@
 
 MAGIC_MIHOMO=${MAGIC_MIHOMO:-1}
 VERSION_FILE="${KAM_MODULE_ROOT}/mihomo.version"
-TARGET_DIR="${KAM_MODULE_ROOT}/.local/bin"
+TARGET_DIR="${KAM_MODULE_ROOT}/bin"
 TARGET_BIN="${TARGET_DIR}/mihomo"
 REPO="MetaCubeX/mihomo"
 ARCH="android-arm64-v8"
@@ -30,7 +30,7 @@ LATEST_TAG=$(github_latest_tag "$REPO")
 [ -n "$LATEST_TAG" ] || { log_error "错误：无法获取远程版本号，请检查 gh 登录状态或网络。"; exit 1; }
 log_info "远程最新版本: $LATEST_TAG"
 
-if [ "$CURRENT_VERSION" = "$LATEST_TAG" ]; then
+if [ "$CURRENT_VERSION" = "$LATEST_TAG" ] && [ -x "$TARGET_BIN" ]; then
     log_info "当前已是最新版本，无需下载。"
     exit 0
 fi

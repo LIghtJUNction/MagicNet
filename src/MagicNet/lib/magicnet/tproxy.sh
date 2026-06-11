@@ -156,9 +156,6 @@ magicnet_tproxy_apply_app_policy() {
                     magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p tcp -m owner --uid-owner "$_mtpap_uid" -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || true
                     magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p udp -m owner --uid-owner "$_mtpap_uid" -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || true
                 done
-            else
-                magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p tcp -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || return 1
-                magicnet_tproxy_iptables "$_mtpap_cmd" -t mangle -A "$_mtpap_chain" -p udp -j MARK --set-xmark "$_mtpap_mark" 2>/dev/null || return 1
             fi
             ;;
         *)

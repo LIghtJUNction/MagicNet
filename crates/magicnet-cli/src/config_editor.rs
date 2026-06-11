@@ -112,7 +112,30 @@ rules:
   "log": {
     "level": "info"
   },
-  "inbounds": [],
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "local"
+      }
+    ],
+    "final": "local"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "magicnet0",
+      "address": [
+        "172.19.0.1/30",
+        "fdfe:dcba:9876::1/126"
+      ],
+      "auto_route": true,
+      "strict_route": true,
+      "stack": "gvisor",
+      "sniff": true
+    }
+  ],
   "outbounds": [
     {
       "type": "direct",
@@ -122,7 +145,25 @@ rules:
       "type": "block",
       "tag": "block"
     }
-  ]
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "rules": [
+      {
+        "action": "sniff"
+      }
+    ],
+    "final": "direct"
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true
+    },
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "external_ui": "zashboard"
+    }
+  }
 }
 "#
         .to_string(),
@@ -131,8 +172,8 @@ rules:
 
 fn validate_config(app: &App, target: &str, path: &Path) -> Result<(), String> {
     let bin = match target {
-        "mihomo" | "clash" => app.moddir.join(".local/bin/mihomo"),
-        "sing-box" | "singbox" => app.moddir.join(".local/bin/sing-box"),
+        "mihomo" | "clash" => app.moddir.join("bin/mihomo"),
+        "sing-box" | "singbox" => app.moddir.join("bin/sing-box"),
         _ => return Err("config target must be mihomo or sing-box".to_string()),
     };
     if !bin.exists() {

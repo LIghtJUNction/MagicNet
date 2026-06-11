@@ -144,18 +144,28 @@ async function startBackgroundCli(args: string, label = args): Promise<string> {
   return runShell(command, `投递 ${label}`, true);
 }
 
-async function refreshStatus(): Promise<void> {
+function markQuietFailure(label: string, text: string): boolean {
+  if (!execFailed(text)) return false;
+  state.phase = "error";
+  state.output = `${label} 失败：\n${text}`;
+  return true;
+}
+
+async function refreshStatus(): Promise<boolean> {
   const text = await runCli("service status", "刷新状态", true);
+  if (markQuietFailure("刷新状态", text)) return false;
   state.runtime = parseRuntime(text, state.runtime);
   state.selectedCore = state.runtime.selectedCore;
+  return true;
 }
 
 async function refreshAll(): Promise<void> {
   state.task = "刷新面板";
   state.notice = "正在刷新面板数据";
   try {
-    await refreshStatus();
-    const steps: Array<[string, () => Promise<void>]> = [
+    const failed: string[] = [];
+    if (!await refreshStatus()) failed.push("刷新状态");
+    const steps: Array<[string, () => Promise<boolean>]> = [
       ["读取应用规则", () => refreshApps(true)],
       ["读取黑名单", () => refreshBlock(true)],
       ["读取订阅", () => refreshSubs(true)],
@@ -168,7 +178,13 @@ async function refreshAll(): Promise<void> {
       state.notice = label;
       await nextTick();
       await nextFrame();
-      await step();
+      if (!await step()) failed.push(label);
+    }
+    if (failed.length) {
+      state.phase = "error";
+      state.notice = "面板刷新不完整";
+      state.output = `以下步骤失败：${failed.join("、")}。请查看输出并重试。\n\n${state.output}`;
+      return;
     }
     state.output = "面板数据已刷新。";
     state.phase = "done";
@@ -178,34 +194,44 @@ async function refreshAll(): Promise<void> {
   }
 }
 
-async function refreshHealth(quiet = false): Promise<void> {
+async function refreshHealth(quiet = false): Promise<boolean> {
   const text = await runCli("health", "运行诊断", quiet);
+  if (quiet && markQuietFailure("运行诊断", text)) return false;
   state.health = parseHealth(text);
+  return true;
 }
 
 async function refreshPing(): Promise<void> {
   state.pingtest = await runCli("pingtest", "连通性测试");
 }
 
-async function refreshApps(quiet = false): Promise<void> {
+async function refreshApps(quiet = false): Promise<boolean> {
   const text = await runCli("app list", "读取应用规则", quiet);
+  if (quiet && markQuietFailure("读取应用规则", text)) return false;
   state.appPolicy = parseApps(text);
+  return true;
 }
 
-async function refreshPackages(quiet = false): Promise<void> {
+async function refreshPackages(quiet = false): Promise<boolean> {
   const query = state.packageQuery.trim();
   const text = await runCli(`app packages ${shellQuote(query)}`, query ? `搜索应用 ${query}` : "读取已安装应用", quiet);
-  if (!execFailed(text)) state.packages = parsePackages(text);
+  if (markQuietFailure("读取已安装应用", text)) return false;
+  state.packages = parsePackages(text);
+  return true;
 }
 
-async function refreshBlock(quiet = false): Promise<void> {
+async function refreshBlock(quiet = false): Promise<boolean> {
   const text = await runCli("block list", "读取黑名单", quiet);
+  if (quiet && markQuietFailure("读取黑名单", text)) return false;
   state.blocklist = parseBlock(text, state.blocklist);
+  return true;
 }
 
-async function refreshSubs(quiet = false): Promise<void> {
+async function refreshSubs(quiet = false): Promise<boolean> {
   const text = await runCli("sub list", "读取订阅", quiet);
+  if (quiet && markQuietFailure("读取订阅", text)) return false;
   state.subscriptions = parseSubs(text, state.subscriptions);
+  return true;
 }
 
 async function refreshCapture(quiet = false): Promise<void> {
@@ -213,19 +239,25 @@ async function refreshCapture(quiet = false): Promise<void> {
   state.capture = parseCapture(text, state.capture);
 }
 
-async function refreshCerts(quiet = false): Promise<void> {
+async function refreshCerts(quiet = false): Promise<boolean> {
   const text = await runCli("cert list", "读取证书", quiet);
+  if (quiet && markQuietFailure("读取证书", text)) return false;
   state.certs = parseCerts(text, state.certs);
+  return true;
 }
 
-async function refreshMcp(quiet = false): Promise<void> {
+async function refreshMcp(quiet = false): Promise<boolean> {
   const text = await runCli("mcp status", "读取 MCP", quiet);
+  if (quiet && markQuietFailure("读取 MCP", text)) return false;
   state.mcp = parseMcp(text, state.mcp);
+  return true;
 }
 
-async function refreshTailscale(quiet = false): Promise<void> {
+async function refreshTailscale(quiet = false): Promise<boolean> {
   const text = await runCli("tailscale status", "读取 Tailscale", quiet);
+  if (quiet && markQuietFailure("读取 Tailscale", text)) return false;
   state.tailscale = parseTailscale(text, state.tailscale);
+  return true;
 }
 
 async function refreshTopology(): Promise<void> {
@@ -264,12 +296,21 @@ async function saveConfig(): Promise<void> {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const tmp = `${MODULE_DIR}/.tmp/config-editor-${state.config.target}-${stamp}.tmp`;
   const chunkSize = 1600;
-  await runShell(`mkdir -p ${shellQuote(`${MODULE_DIR}/.tmp`)}; : > ${shellQuote(tmp)}`, "准备配置临时文件", true);
+  let text = await runShell(`mkdir -p ${shellQuote(`${MODULE_DIR}/.tmp`)}; : > ${shellQuote(tmp)}`, "准备配置临时文件", true);
+  if (execFailed(text)) {
+    state.config.status = "写入失败，未保存";
+    return;
+  }
   for (let offset = 0; offset < state.config.text.length; offset += chunkSize) {
     const chunk = state.config.text.slice(offset, offset + chunkSize);
-    await runShell(`printf %s ${shellQuote(chunk)} >> ${shellQuote(tmp)}`, "写入配置临时文件", true);
+    text = await runShell(`printf %s ${shellQuote(chunk)} >> ${shellQuote(tmp)}`, "写入配置临时文件", true);
+    if (execFailed(text)) {
+      state.config.status = "写入失败，未保存";
+      await runShell(`rm -f ${shellQuote(tmp)}`, "清理配置临时文件", true);
+      return;
+    }
   }
-  const text = await runCli(`config-editor save-file ${state.config.target} ${shellQuote(tmp)}`, `校验并保存 ${state.config.target}`);
+  text = await runCli(`config-editor save-file ${state.config.target} ${shellQuote(tmp)}`, `校验并保存 ${state.config.target}`);
   state.config.status = execFailed(text) ? "校验失败，未保存" : "校验通过，已保存";
   if (!execFailed(text)) state.config.dirty = false;
 }

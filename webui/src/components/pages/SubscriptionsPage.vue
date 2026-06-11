@@ -7,7 +7,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { bytesToBase64, copyText } from "@/utils";
+import { bytesToBase64, copyText, execFailed } from "@/utils";
 
 const { state, runCli, startBackgroundCli, refreshSubs, shellQuote, uniqueNonEmpty } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -29,7 +29,8 @@ async function saveSingBox(): Promise<void> {
     }
     singBoxText.value = lines.join("\n");
     const encoded = bytesToBase64(new TextEncoder().encode(`${lines.join("\n")}\n`));
-    await runCli(`sub set-file sing-box ${shellQuote(encoded)}`, "保存 sing-box 订阅");
+    const text = await runCli(`sub set-file sing-box ${shellQuote(encoded)}`, "保存 sing-box 订阅");
+    if (execFailed(text)) return;
     if (raw.length !== lines.length) state.output += `\n\n已自动去重/裁剪：${raw.length} -> ${lines.length}`;
     await startBackgroundCli("sub update sing-box", "更新 sing-box 节点");
     state.output += "\n\n已开始后台拉取并导入 sing-box 节点。完成后进入核心 WebUI 查看节点。";
@@ -50,7 +51,8 @@ async function saveProvider(name: string, value: string): Promise<void> {
       state.output = `${name} 订阅链接格式不对。`;
       return;
     }
-    await runCli(`sub set mihomo ${shellQuote(name)} ${shellQuote(value)}`, `保存 ${name}`);
+    const text = await runCli(`sub set mihomo ${shellQuote(name)} ${shellQuote(value)}`, `保存 ${name}`);
+    if (execFailed(text)) return;
     await refreshSubs(true);
   });
 }

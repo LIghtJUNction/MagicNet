@@ -210,6 +210,15 @@ fn app_add(app: &App, args: &[String]) -> Result<(), String> {
     if package.is_empty() {
         return Err("Usage: cli app add <package> [proxy|bypass]".to_string());
     }
+    if !valid_package_name(package) {
+        return Err(format!("invalid package name: {package}"));
+    }
+    let opposite = match target {
+        "proxy" => "bypass",
+        "bypass" => "proxy",
+        _ => return Err("Target must be proxy or bypass".to_string()),
+    };
+    update_line(app_file(app, opposite)?, package, false)?;
     update_line(app_file(app, target)?, package, true)?;
     run_magicnet_function(app, "magicnet_app_policy_apply")?;
     println!("[info] Added {package} to {target} app list");
@@ -244,6 +253,9 @@ fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
     let target = args.get(2).map(String::as_str);
     if package.is_empty() {
         return Err("Usage: cli app remove <package> [proxy|bypass]".to_string());
+    }
+    if !valid_package_name(package) {
+        return Err(format!("invalid package name: {package}"));
     }
     match target {
         Some("proxy" | "bypass") => {

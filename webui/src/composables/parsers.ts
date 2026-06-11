@@ -100,6 +100,16 @@ export const tailscaleDefaults: TailscaleState = {
   subnets: "100.64.0.0/10"
 };
 
+function normalizeRuntimeStatus(value: string): string {
+  const status = value.trim();
+  const compact = status.toLowerCase();
+  if (!status) return "stopped";
+  if (["stopped", "stop", "not installed", "not running", "not found", "missing"].includes(compact)) return "stopped";
+  if (status.includes("已停止") || status.includes("未运行") || status.includes("未安装")) return "stopped";
+  if (["running", "run"].includes(compact) || status.includes("正在运行")) return "running";
+  return status;
+}
+
 export function parseRuntime(text: string, previous: RuntimeState): RuntimeState {
   const next = {
     ...runtimeDefaults,
@@ -108,10 +118,10 @@ export function parseRuntime(text: string, previous: RuntimeState): RuntimeState
   };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
-    if (line.startsWith("sing-box:")) next.singBox = line.slice(9).trim() || "stopped";
-    if (line.startsWith("mihomo:")) next.mihomo = line.slice(7).trim() || "stopped";
-    if (line.startsWith("watchdog:")) next.watchdog = line.slice(9).trim() || "stopped";
-    if (line.startsWith("fswatch:")) next.fswatch = line.slice(8).trim() || "stopped";
+    if (line.startsWith("sing-box:")) next.singBox = normalizeRuntimeStatus(line.slice(9));
+    if (line.startsWith("mihomo:")) next.mihomo = normalizeRuntimeStatus(line.slice(7));
+    if (line.startsWith("watchdog:")) next.watchdog = normalizeRuntimeStatus(line.slice(9));
+    if (line.startsWith("fswatch:")) next.fswatch = normalizeRuntimeStatus(line.slice(8));
     if (line.startsWith("Selected:")) {
       const selected = line.slice(9).trim();
       if (selected === "sing-box" || selected === "mihomo") next.selectedCore = selected;

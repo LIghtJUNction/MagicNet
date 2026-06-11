@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Package runtime executables under `bin/` instead of the legacy `.local/bin`
+  path, including the `cli -> bin/magicnet-cli` compatibility entry.
+
 ## v1.1.4 (2026-06-11)
 
 - Show a default `premium_a` mihomo provider slot when config templates do not
@@ -26,7 +29,7 @@
 - Use `magicnet0` as the default MagicNet virtual interface name for both
   sing-box and mihomo templates, avoiding collisions with generic `tun0` used
   by other VPN clients.
-- Document the Rust CLI and MCP server layout under `.local/bin`, while keeping
+- Document the Rust CLI and MCP server layout under `bin/`, while keeping
   `/data/adb/modules/MagicNet/cli` as the stable compatibility entry.
 - Add CLI-managed subscription updates for sing-box and mihomo providers,
   hotspot proxy/direct switching, transparent mode switching, watchdog

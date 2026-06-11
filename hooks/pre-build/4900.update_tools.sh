@@ -4,7 +4,7 @@
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
 . "$KAM_HOOKS_ROOT/lib/release_utils.sh"
 
-TARGET_DIR="${KAM_MODULE_ROOT}/.local/bin"
+TARGET_DIR="${KAM_MODULE_ROOT}/bin"
 STATE_DIR="${KAM_MODULE_ROOT}/.local/state/tools"
 
 install_release_binary() {
