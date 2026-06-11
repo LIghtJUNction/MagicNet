@@ -213,6 +213,29 @@ magicnet_ask_default_core() {
     0
 }
 
+magicnet_install_selected_core() {
+  _magicnet_install_core="auto"
+  if [ -f "${MODPATH}/.config/magicnet/current-core.conf" ]; then
+    . "${MODPATH}/.config/magicnet/current-core.conf"
+  elif [ -f "${MODPATH}/.config/magicnet/core.conf" ]; then
+    . "${MODPATH}/.config/magicnet/core.conf"
+  fi
+  case "${MAGICNET_DEFAULT_CORE:-auto}" in
+    sing-box|mihomo) _magicnet_install_core="$MAGICNET_DEFAULT_CORE" ;;
+  esac
+
+  if [ "$_magicnet_install_core" = "sing-box" ] && [ "$MAGIC_SINGBOX" != "0" ] && { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
+    printf '%s\n' sing-box
+  elif [ "$_magicnet_install_core" = "mihomo" ] && [ "$MAGIC_MIHOMO" != "0" ] && { [ -x "${MODPATH}/bin/mihomo" ] || [ -x "${MODPATH}/system/bin/mihomo" ]; }; then
+    printf '%s\n' mihomo
+  elif [ "$MAGIC_SINGBOX" != "0" ] && { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
+    printf '%s\n' sing-box
+  elif [ "$MAGIC_MIHOMO" != "0" ] && { [ -x "${MODPATH}/bin/mihomo" ] || [ -x "${MODPATH}/system/bin/mihomo" ]; }; then
+    printf '%s\n' mihomo
+  fi
+  unset _magicnet_install_core
+}
+
 magicnet_print_install_summary() {
   panel "$(i18n "INSTALL_TITLE")"
   panel_row "$(i18n "INSTALL_ROW_PROFILE")" "$(i18n "INSTALL_PROFILE")"
@@ -261,12 +284,17 @@ fi
 
 if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
   :
-elif [ "$MAGIC_SINGBOX" != "0" ] && { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
-  import __singbox__
-  singbox_ask_webui
-elif [ "$MAGIC_MIHOMO" != "0" ] && { [ -x "${MODPATH}/bin/mihomo" ] || [ -x "${MODPATH}/system/bin/mihomo" ]; }; then
-  import __mihomo__
-  ask_webui
+else
+  case "$(magicnet_install_selected_core)" in
+    sing-box)
+      import __singbox__
+      singbox_ask_webui
+      ;;
+    mihomo)
+      import __mihomo__
+      ask_webui
+      ;;
+  esac
 fi
 
 # 设置权限
