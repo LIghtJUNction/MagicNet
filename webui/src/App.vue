@@ -9,6 +9,7 @@ import {
   ListFilter,
   MessageCircle,
   Medal,
+  MoreHorizontal,
   ScrollText,
   Settings,
   Stethoscope,
@@ -34,19 +35,24 @@ type TabKey = "control" | "config" | "apps" | "block" | "subs" | "rank" | "tools
 
 const { state, statusTone, refreshAll, refreshStatus, refreshApps, refreshBlock, refreshSubs, refreshHealth, refreshCapture, refreshCerts, refreshMcp, openExternal, REPO, AUTHOR_WHISPER_URL } = useMagicNet();
 const activeTab = ref<TabKey>("control");
+const showAdvancedNav = ref(false);
 
 const tabs = [
-  { key: "control", label: "控制", icon: Gauge },
-  { key: "config", label: "配置", icon: Settings },
-  { key: "apps", label: "应用", icon: ListFilter },
-  { key: "block", label: "黑名单", icon: Ban },
-  { key: "subs", label: "订阅", icon: DownloadCloud },
-  { key: "rank", label: "排行", icon: Medal },
-  { key: "tools", label: "工具", icon: Stethoscope },
-  { key: "webui", label: "面板", icon: MonitorCog },
-  { key: "health", label: "诊断", icon: Stethoscope },
-  { key: "output", label: "输出", icon: Terminal }
+  { key: "control", label: "控制", icon: Gauge, group: "primary" },
+  { key: "config", label: "配置", icon: Settings, group: "primary" },
+  { key: "apps", label: "应用", icon: ListFilter, group: "primary" },
+  { key: "block", label: "黑名单", icon: Ban, group: "primary" },
+  { key: "health", label: "诊断", icon: Stethoscope, group: "primary" },
+  { key: "subs", label: "订阅", icon: DownloadCloud, group: "advanced" },
+  { key: "rank", label: "排行", icon: Medal, group: "advanced" },
+  { key: "tools", label: "工具", icon: Stethoscope, group: "advanced" },
+  { key: "webui", label: "面板", icon: MonitorCog, group: "advanced" },
+  { key: "output", label: "输出", icon: Terminal, group: "advanced" }
 ] as const;
+
+const primaryTabs = computed(() => tabs.filter((item) => item.group === "primary"));
+const advancedTabs = computed(() => tabs.filter((item) => item.group === "advanced"));
+const activeAdvancedTab = computed(() => advancedTabs.value.find((item) => item.key === activeTab.value));
 
 const activeComponent = computed(() => ({
   control: ControlPage,
@@ -69,6 +75,7 @@ const shortStatusMessage = computed(() => {
 
 function setTab(tab: TabKey): void {
   activeTab.value = tab;
+  showAdvancedNav.value = false;
   warmActiveTab(tab);
   void nextTick(() => {
     document
@@ -131,14 +138,59 @@ onMounted(() => {
     </section>
 
     <main class="block md:flex md:items-start md:gap-4">
-      <nav class="fixed inset-x-3 bottom-3 z-30 flex gap-1 overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950/95 p-1 shadow-2xl shadow-black/40 backdrop-blur md:sticky md:top-20 md:inset-auto md:w-40 md:flex-none md:grid md:grid-cols-1 md:p-1.5" aria-label="MagicNet 页面">
+      <nav class="fixed inset-x-3 bottom-3 z-30 grid gap-1 rounded-md border border-zinc-800 bg-zinc-950/95 p-1 shadow-2xl shadow-black/40 backdrop-blur md:sticky md:top-20 md:inset-auto md:w-44 md:flex-none md:p-1.5" aria-label="MagicNet 页面">
+        <div class="hidden px-2 pb-1 pt-0.5 text-[11px] font-bold uppercase tracking-wide text-zinc-500 md:block">常用</div>
+        <div class="grid grid-cols-6 gap-1 md:grid-cols-1">
+          <button
+            v-for="item in primaryTabs"
+            :key="item.key"
+            :data-tab="item.key"
+            :class="[
+              'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1.5 text-[10px] text-zinc-400 transition-colors md:min-h-10 md:flex-row md:justify-start md:gap-1 md:px-2 md:text-sm',
+              activeTab === item.key ? 'bg-zinc-800 text-zinc-50' : 'hover:bg-zinc-900'
+            ]"
+            @click="setTab(item.key)"
+          >
+            <component :is="item.icon" :size="18" />
+            <span>{{ item.label }}</span>
+          </button>
+
+          <button
+            :class="[
+              'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1.5 text-[10px] text-zinc-400 transition-colors hover:bg-zinc-900 md:hidden',
+              activeAdvancedTab ? 'bg-zinc-800 text-zinc-50' : ''
+            ]"
+            @click="showAdvancedNav = !showAdvancedNav"
+          >
+            <component :is="activeAdvancedTab?.icon || MoreHorizontal" :size="18" />
+            <span>{{ activeAdvancedTab?.label || "更多" }}</span>
+          </button>
+        </div>
+
+        <div v-if="showAdvancedNav" class="absolute inset-x-0 bottom-full mb-2 grid grid-cols-5 gap-1 rounded-md border border-zinc-800 bg-zinc-950/95 p-1 shadow-2xl shadow-black/40 md:hidden">
+          <button
+            v-for="item in advancedTabs"
+            :key="item.key"
+            :data-tab="item.key"
+            :class="[
+              'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1.5 text-[10px] text-zinc-400 transition-colors',
+              activeTab === item.key ? 'bg-zinc-800 text-zinc-50' : 'hover:bg-zinc-900'
+            ]"
+            @click="setTab(item.key)"
+          >
+            <component :is="item.icon" :size="18" />
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+
+        <div class="mt-2 hidden px-2 pb-1 text-[11px] font-bold uppercase tracking-wide text-zinc-500 md:block">进阶</div>
+        <div class="hidden gap-1 md:grid">
         <button
-          v-for="item in tabs"
+          v-for="item in advancedTabs"
           :key="item.key"
           :data-tab="item.key"
-          :disabled="false"
           :class="[
-            'flex min-h-11 min-w-[4.25rem] shrink-0 flex-col items-center justify-center gap-0.5 rounded-md px-2 text-[10px] text-zinc-400 transition-colors md:min-h-10 md:w-auto md:min-w-0 md:flex-row md:justify-start md:gap-1 md:px-2 md:text-sm',
+            'flex min-h-10 min-w-0 flex-row items-center justify-start gap-1 rounded-md px-2 text-sm text-zinc-400 transition-colors',
             activeTab === item.key ? 'bg-zinc-800 text-zinc-50' : 'hover:bg-zinc-900'
           ]"
           @click="setTab(item.key)"
@@ -146,6 +198,7 @@ onMounted(() => {
           <component :is="item.icon" :size="18" />
           <span>{{ item.label }}</span>
         </button>
+        </div>
       </nav>
 
       <section class="min-w-0 flex-1 overflow-hidden">
