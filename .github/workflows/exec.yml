@@ -34,8 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
-      KAM_SIGN_ENABLED: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
-      KAM_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
+      MAGICNET_SIGN_ENABLED: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+      MAGICNET_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
       KAM_CHANGELOG_ENABLED: '0'
       GH_TOKEN: ${{ github.token }}
 
@@ -104,7 +104,7 @@ jobs:
           module_id="$(sed -n 's/^id[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' kam.toml | head -n1)"
           test -n "$module_id"
           test -f "dist/${module_id}.zip"
-          if [ "${KAM_SIGN_ENABLED}" = "1" ]; then
+          if [ "${MAGICNET_SIGN_ENABLED}" = "1" ]; then
             test -f "dist/${module_id}.zip.sig"
           fi
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
