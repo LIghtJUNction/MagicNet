@@ -106,6 +106,8 @@ need python3
 need rg
 need unzip
 
+HOST_JQ="$(command -v jq)"
+
 if [[ -n "$ZIP_PATH" && "$ZIP_PATH" != /* ]]; then
     ZIP_PATH="$ROOT/$ZIP_PATH"
 fi
@@ -388,7 +390,7 @@ exit 1
 SH
 chmod +x "$MOCK_BIN/pidof"
 
-jq '.outbounds += [{"type":"vmess","tag":"old-cached-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
+"$HOST_JQ" '.outbounds += [{"type":"vmess","tag":"old-cached-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
     "$MODDIR/.config/sing-box/config.json" >"$TMP/sing-box-config.json"
 mv "$TMP/sing-box-config.json" "$MODDIR/.config/sing-box/config.json"
 
@@ -555,8 +557,8 @@ run env \
 sleep 1
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" service status >"$TMP/singbox-service-status.log"
 rg -q '^  sing-box: [0-9]+$' "$TMP/singbox-service-status.log"
-jq -e '.outbounds[] | select(.tag == "fresh-sub-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null
-if jq -e '.outbounds[] | select(.tag == "old-cached-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null; then
+"$HOST_JQ" -e '.outbounds[] | select(.tag == "fresh-sub-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null
+if "$HOST_JQ" -e '.outbounds[] | select(.tag == "old-cached-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null; then
     echo "sing-box startup used cached nodes instead of fresh subscription" >&2
     exit 1
 fi
@@ -816,7 +818,7 @@ run sh -c '
     magicnet_enable_vpn_coexist
 '
 
-jq empty "$MODDIR/.config/sing-box/config.json"
+"$HOST_JQ" empty "$MODDIR/.config/sing-box/config.json"
 python3 - "$MODDIR/.config/mihomo/config.yaml" <<'PY'
 import pathlib
 import sys
