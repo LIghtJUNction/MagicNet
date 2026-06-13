@@ -9,11 +9,6 @@ magicnet_action_update_singbox_subscription() {
     magicnet_refresh_status
 }
 
-magicnet_action_singbox_webui() {
-    import __singbox__
-    singbox_ask_webui
-}
-
 magicnet_action_toggle_singbox() {
     import __singbox__
     if is_singbox_running >/dev/null 2>&1; then
@@ -23,11 +18,6 @@ magicnet_action_toggle_singbox() {
     fi
     magicnet_refresh_status
     magicnet_after_kernel_start
-}
-
-magicnet_action_mihomo_webui() {
-    import __mihomo__
-    ask_webui
 }
 
 magicnet_action_toggle_mihomo() {
@@ -104,21 +94,11 @@ set_i18n "MAGICNET_UPDATE_SINGBOX_SUBSCRIPTION" \
     "en" "Update sing-box subscription nodes" \
     "ja" "sing-box 購読ノードを更新" \
     "ko" "sing-box 구독 노드 업데이트"
-set_i18n "MAGICNET_SINGBOX_WEBUI" \
-    "zh" "设置 sing-box WebUI" \
-    "en" "Set sing-box WebUI" \
-    "ja" "sing-box WebUI を設定" \
-    "ko" "sing-box WebUI 설정"
 set_i18n "MAGICNET_TOGGLE_SINGBOX" \
     "zh" "启动/停止 sing-box" \
     "en" "Start/stop sing-box" \
     "ja" "sing-box を開始/停止" \
     "ko" "sing-box 시작/중지"
-set_i18n "MAGICNET_MIHOMO_WEBUI" \
-    "zh" "设置 mihomo WebUI" \
-    "en" "Set mihomo WebUI" \
-    "ja" "mihomo WebUI を設定" \
-    "ko" "mihomo WebUI 설정"
 set_i18n "MAGICNET_TOGGLE_MIHOMO" \
     "zh" "启动/停止 mihomo" \
     "en" "Start/stop mihomo" \
@@ -145,12 +125,8 @@ magicnet_action() {
     ask "MAGICNET_ACTION_MENU" \
         "MAGICNET_UPDATE_SINGBOX_SUBSCRIPTION" \
         'magicnet_action_update_singbox_subscription' \
-        "MAGICNET_SINGBOX_WEBUI" \
-        'magicnet_action_singbox_webui' \
         "MAGICNET_TOGGLE_SINGBOX" \
         'magicnet_action_toggle_singbox' \
-        "MAGICNET_MIHOMO_WEBUI" \
-        'magicnet_action_mihomo_webui' \
         "MAGICNET_TOGGLE_MIHOMO" \
         'magicnet_action_toggle_mihomo' \
         "MAGICNET_DIAGNOSE" \

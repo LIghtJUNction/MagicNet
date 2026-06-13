@@ -282,21 +282,6 @@ if [ -d "$MAGICNET_BACKUP_DIR" ]; then
   unset _item
 fi
 
-if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
-  :
-else
-  case "$(magicnet_install_selected_core)" in
-    sing-box)
-      import __singbox__
-      singbox_ask_webui
-      ;;
-    mihomo)
-      import __mihomo__
-      ask_webui
-      ;;
-  esac
-fi
-
 # 设置权限
 rm -f "${MODPATH}/kam.log" "${MODPATH}/cli.legacy.sh" "${MODPATH}/mcp-server.sh" 2>/dev/null || true
 

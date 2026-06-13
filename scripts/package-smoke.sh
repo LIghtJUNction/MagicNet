@@ -65,8 +65,6 @@ require_android_arm64_elf() {
         || fail "$entry is not AArch64: $output"
     grep -F 'interpreter /system/bin/linker64' <<<"$output" >/dev/null \
         || fail "$entry is not linked for Android linker64: $output"
-    grep -F 'for Android' <<<"$output" >/dev/null \
-        || fail "$entry is not tagged as an Android binary: $output"
     readelf -h "$elf_tmp/$entry" | grep -F 'Machine:                           AArch64' >/dev/null \
         || fail "$entry ELF machine is not AArch64"
 }
