@@ -88,6 +88,20 @@ if grep -E "$legacy_bin_pattern" "$entries_file" >/dev/null; then
     fail "zip contains legacy runtime bin entries"
 fi
 
+if grep -Fx '.local/subscriptions.env' "$entries_file" >/dev/null; then
+    fail "zip contains local subscription memory"
+fi
+
+check_no_subscription_secret() {
+    local entry="$1"
+    grep -Fx "$entry" "$entries_file" >/dev/null || return 0
+    if unzip -p "$ZIP_PATH" "$entry" | grep -Eiq '^[[:space:]]*[^#[:space:]].*(https?://|ss://|trojan://|vmess://|vless://|hysteria2://|tuic://|socks5://|sub=|token=|uuid=|password=|passwd=)'; then
+        fail "$entry contains subscription-like secrets"
+    fi
+}
+
+check_no_subscription_secret '.config/sing-box/subscription.url'
+
 watchdog_text="$(unzip -p "$ZIP_PATH" lib/kamfw/watchdog.sh)"
 fswatch_text="$(unzip -p "$ZIP_PATH" lib/kamfw/fswatch.sh)"
 # shellcheck disable=SC2016

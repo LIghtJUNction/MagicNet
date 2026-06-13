@@ -20,4 +20,15 @@ $git_entries
 EOF
 fi
 
+local_subscription_entries="$(unzip -Z1 "$zip_path" | grep -E '^\.local/subscriptions\.env$' || true)"
+if [ -n "$local_subscription_entries" ]; then
+    log_info "Removing local subscription memory from module artifact"
+    while IFS= read -r entry; do
+        [ -n "$entry" ] || continue
+        zip -q -d "$zip_path" "$entry" >/dev/null 2>&1 || true
+    done <<EOF
+$local_subscription_entries
+EOF
+fi
+
 "${KAM_PROJECT_ROOT}/scripts/package-smoke.sh" "$zip_path"

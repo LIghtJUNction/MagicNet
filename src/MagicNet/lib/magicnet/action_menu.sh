@@ -16,7 +16,11 @@ magicnet_action_singbox_webui() {
 
 magicnet_action_toggle_singbox() {
     import __singbox__
-    toggle_singbox
+    if is_singbox_running >/dev/null 2>&1; then
+        singbox_stop
+    else
+        magicnet_start_singbox
+    fi
     magicnet_refresh_status
     magicnet_after_kernel_start
 }

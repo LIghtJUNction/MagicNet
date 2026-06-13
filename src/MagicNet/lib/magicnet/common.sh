@@ -265,29 +265,58 @@ magicnet_need_nodes_message() {
     esac
 }
 
-magicnet_prepare_singbox_nodes() {
+magicnet_prepare_singbox_nodes_unlocked() {
     if ! magicnet_singbox_has_subscription; then
         magicnet_need_nodes_message sing-box
         return 1
     fi
+    if [ "${MAGICNET_FORCE_SUB_REFRESH:-0}" != "1" ] && magicnet_cmd_exists sing-box; then
+        import __singbox__
+        if is_singbox_running >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
 
     . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
-    if magicnet_singbox_config_has_nodes; then
-        return 0
-    fi
+    _attempt=1
+    _attempts="${MAGICNET_SUB_STARTUP_ATTEMPTS:-4}"
+    _delay="${MAGICNET_SUB_STARTUP_RETRY_DELAY:-15}"
+    while [ "$_attempt" -le "$_attempts" ]; do
+        if [ "$_attempt" -gt 1 ]; then
+            magicnet_warn "Retrying sing-box subscription update before startup (${_attempt}/${_attempts})..."
+        else
+            magicnet_log "Updating sing-box subscription before startup..."
+        fi
+        if MAGICNET_SUB_REQUIRE_FRESH=1 magicnet_singbox_update_subscription; then
+            unset _attempt _attempts _delay
+            return 0
+        fi
+        [ "$_attempt" -ge "$_attempts" ] && break
+        sleep "$_delay"
+        _attempt=$((_attempt + 1))
+    done
 
-    magicnet_log "Updating sing-box subscription before startup..."
-    if magicnet_singbox_update_subscription; then
-        return 0
-    fi
-
-    if magicnet_singbox_config_has_nodes; then
-        magicnet_warn "sing-box subscription update failed; starting with existing cached nodes"
-        return 0
-    fi
-
-    magicnet_need_nodes_message sing-box
+    magicnet_warn "sing-box subscription update failed; refusing to start with existing cached nodes"
+    _message="sing-box 订阅更新失败，已拒绝使用旧节点启动。请检查订阅链接或网络后重试。"
+    mkdir -p "${MODDIR}/.state" 2>/dev/null || true
+    printf '%s\n' "$_message" >"${MODDIR}/.state/startup-error" 2>/dev/null || true
+    config set override.description "[MagicNet]: sing-box subscription update failed" 2>/dev/null || true
+    unset _attempt _attempts _delay _message
     return 1
+}
+
+magicnet_prepare_singbox_nodes() {
+    _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
+    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-180}"
+    magicnet_with_config_lock magicnet_prepare_singbox_nodes_unlocked
+    _prepare_rc=$?
+    if [ -n "$_old_lock_timeout" ]; then
+        MAGICNET_CONFIG_LOCK_TIMEOUT="$_old_lock_timeout"
+    else
+        unset MAGICNET_CONFIG_LOCK_TIMEOUT
+    fi
+    unset _old_lock_timeout
+    return "$_prepare_rc"
 }
 
 magicnet_singbox_running_has_nodes() {
@@ -307,24 +336,33 @@ magicnet_singbox_running_has_nodes() {
     return "$_rc"
 }
 
-magicnet_prepare_mihomo_nodes() {
+magicnet_prepare_mihomo_nodes_unlocked() {
     if ! magicnet_mihomo_has_subscription; then
         magicnet_need_nodes_message mihomo
         return 1
     fi
+    if [ "${MAGICNET_FORCE_SUB_REFRESH:-0}" != "1" ] && magicnet_cmd_exists mihomo; then
+        import __mihomo__
+        if is_mihomo_running >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
 
     _config="${MODDIR}/.config/mihomo/config.yaml"
     _workdir="${MODDIR}/.config/mihomo"
+    _providers_table="${MODDIR}/.tmp/magicnet-mihomo-providers.tsv"
     if [ "$(magicnet_mihomo_provider_table | wc -l | tr -d ' ')" -le 0 ]; then
         _first_mihomo_url=$(magicnet_first_http_url "${MODDIR}/.config/mihomo/subscription.url" 2>/dev/null || true)
         if [ -n "$_first_mihomo_url" ] && [ -x "${MODDIR}/cli" ]; then
             "${MODDIR}/cli" sub set mihomo premium_a "$_first_mihomo_url" >/dev/null 2>&1 || true
         fi
     fi
+    mkdir -p "${MODDIR}/.tmp" 2>/dev/null || true
+    magicnet_mihomo_provider_table >"$_providers_table"
     _provider_count=0
     _provider_ok=0
     magicnet_log "Updating mihomo providers before startup..."
-    magicnet_mihomo_provider_table | while IFS="$(printf '\t')" read -r _name _url _path; do
+    while IFS="$(printf '\t')" read -r _name _url _path; do
         [ -n "$_name" ] || continue
         _provider_count=$((_provider_count + 1))
         case "$_path" in
@@ -357,29 +395,41 @@ magicnet_prepare_mihomo_nodes() {
             rm -f "$_tmp" "${_tmp}.proxies"
             magicnet_warn "mihomo provider ${_name} downloaded no supported Clash nodes"
         fi
-    done
+    done <"$_providers_table"
 
-    _provider_count=$(magicnet_mihomo_provider_table | wc -l | tr -d ' ')
-    _provider_ok=0
-    for _provider_file in "${_workdir}"/proxies/*.yaml; do
-        [ -f "$_provider_file" ] || continue
-        grep -Eq '^proxies:[[:space:]]*$' "$_provider_file" && _provider_ok=$((_provider_ok + 1))
-    done
     if [ "${_provider_count:-0}" -le 0 ] || [ "${_provider_ok:-0}" -le 0 ]; then
-        magicnet_need_nodes_message mihomo
-        unset _config _workdir _first_mihomo_url _provider_count _provider_ok _provider_file
+        magicnet_warn "mihomo subscription update failed; refusing to start with existing cached nodes"
+        _message="mihomo 订阅更新失败，已拒绝使用旧节点启动。请检查订阅链接或网络后重试。"
+        mkdir -p "${MODDIR}/.state" 2>/dev/null || true
+        printf '%s\n' "$_message" >"${MODDIR}/.state/startup-error" 2>/dev/null || true
+        config set override.description "[MagicNet]: mihomo subscription update failed" 2>/dev/null || true
+        unset _config _workdir _providers_table _first_mihomo_url _provider_count _provider_ok _provider_file _message
         return 1
     fi
 
     if command -v mihomo >/dev/null 2>&1 && [ -f "$_config" ]; then
         mihomo -t -f "$_config" -d "$_workdir" >/dev/null 2>&1 || {
             magicnet_warn "mihomo config validation failed before startup"
-            unset _config _workdir _first_mihomo_url _provider_count _provider_ok _provider_file
+            unset _config _workdir _providers_table _first_mihomo_url _provider_count _provider_ok _provider_file
             return 1
         }
     fi
-    unset _config _workdir _first_mihomo_url _provider_count _provider_ok _provider_file
+    unset _config _workdir _providers_table _first_mihomo_url _provider_count _provider_ok _provider_file
     return 0
+}
+
+magicnet_prepare_mihomo_nodes() {
+    _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
+    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-180}"
+    magicnet_with_config_lock magicnet_prepare_mihomo_nodes_unlocked
+    _prepare_rc=$?
+    if [ -n "$_old_lock_timeout" ]; then
+        MAGICNET_CONFIG_LOCK_TIMEOUT="$_old_lock_timeout"
+    else
+        unset MAGICNET_CONFIG_LOCK_TIMEOUT
+    fi
+    unset _old_lock_timeout
+    return "$_prepare_rc"
 }
 
 magicnet_mihomo_running_has_nodes() {

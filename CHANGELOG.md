@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v1.1.5 (2026-06-14)
+
 - Package runtime executables under `bin/`, including the
   `cli -> bin/magicnet-cli` compatibility entry.
 - Add a config editor action to sync the latest upstream mihomo and sing-box
@@ -8,6 +10,11 @@
 - Add sing-box REDIRECT inbound generation for local TCP capture in TProxy mode
   and verify the paired NAT OUTPUT REDIRECT data path in the fake Magisk smoke.
 - Keep sing-box sniff inbound lists aligned with the active transparent mode.
+- Add closed-loop local, AVD, and physical-device validation for hotspot shared
+  proxy rules, sing-box, mihomo, and VPN coexistence.
+- Force subscription refresh before starting sing-box or mihomo and refuse to
+  boot with stale cached nodes when the refresh fails.
+- Refresh WebUI dependency locks after the esbuild advisory bump.
 
 ## v1.1.4 (2026-06-11)
 

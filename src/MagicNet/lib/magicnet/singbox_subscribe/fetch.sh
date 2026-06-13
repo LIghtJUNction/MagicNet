@@ -10,6 +10,10 @@ magicnet_singbox_download_proxy_args() {
 magicnet_singbox_use_cached_subscription() {
     _source_file="$1"
     _fallback_file="$2"
+    if [ "${MAGICNET_SUB_REQUIRE_FRESH:-0}" = "1" ]; then
+        error "Subscription download failed and fresh subscription is required"
+        return 1
+    fi
     if [ -s "$_source_file" ]; then
         warn "Using cached subscription: $_source_file"
         return 0

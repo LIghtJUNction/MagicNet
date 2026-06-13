@@ -20,10 +20,12 @@ magicnet_refresh_status() {
     config set override.description "[MagicNet]: No kernel running" 2>/dev/null || true
 }
 
-magicnet_start_mihomo() {
+magicnet_start_mihomo_unlocked() {
     [ "${MAGIC_MIHOMO:-1}" -ne 0 ] || return 1
     magicnet_cmd_exists mihomo || return 1
-    magicnet_prepare_mihomo_nodes || return 1
+    import __mihomo__
+    is_mihomo_running >/dev/null 2>&1 && return 0
+    magicnet_prepare_mihomo_nodes_unlocked || return 1
     if magicnet_cmd_exists sing-box; then
         import __singbox__
         if is_singbox_running >/dev/null 2>&1; then
@@ -42,10 +44,26 @@ magicnet_start_mihomo() {
     return 0
 }
 
-magicnet_start_singbox() {
+magicnet_start_mihomo() {
+    _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
+    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-180}"
+    magicnet_with_config_lock magicnet_start_mihomo_unlocked
+    _start_rc=$?
+    if [ -n "$_old_lock_timeout" ]; then
+        MAGICNET_CONFIG_LOCK_TIMEOUT="$_old_lock_timeout"
+    else
+        unset MAGICNET_CONFIG_LOCK_TIMEOUT
+    fi
+    unset _old_lock_timeout
+    return "$_start_rc"
+}
+
+magicnet_start_singbox_unlocked() {
     [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
     magicnet_cmd_exists sing-box || return 1
-    magicnet_prepare_singbox_nodes || return 1
+    import __singbox__
+    is_singbox_running >/dev/null 2>&1 && return 0
+    magicnet_prepare_singbox_nodes_unlocked || return 1
     if magicnet_cmd_exists mihomo; then
         import __mihomo__
         if is_mihomo_running >/dev/null 2>&1; then
@@ -62,6 +80,20 @@ magicnet_start_singbox() {
         return 1
     fi
     return 0
+}
+
+magicnet_start_singbox() {
+    _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
+    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-180}"
+    magicnet_with_config_lock magicnet_start_singbox_unlocked
+    _start_rc=$?
+    if [ -n "$_old_lock_timeout" ]; then
+        MAGICNET_CONFIG_LOCK_TIMEOUT="$_old_lock_timeout"
+    else
+        unset MAGICNET_CONFIG_LOCK_TIMEOUT
+    fi
+    unset _old_lock_timeout
+    return "$_start_rc"
 }
 
 magicnet_kernel_running() {

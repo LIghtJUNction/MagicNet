@@ -342,7 +342,7 @@ esac
 if [[ -n "$out" ]]; then
     cat >"$out" <<YAML
 proxies:
-  - name: fake-node
+  - name: fresh-sub-node
     type: vmess
     server: 127.0.0.1
     port: 443
@@ -388,7 +388,7 @@ exit 1
 SH
 chmod +x "$MOCK_BIN/pidof"
 
-jq '.outbounds += [{"type":"vmess","tag":"fake-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
+jq '.outbounds += [{"type":"vmess","tag":"old-cached-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
     "$MODDIR/.config/sing-box/config.json" >"$TMP/sing-box-config.json"
 mv "$TMP/sing-box-config.json" "$MODDIR/.config/sing-box/config.json"
 
@@ -543,6 +543,7 @@ grep -qx 'mihomo' "$TMP/strict-core.log"
 
 printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing-box/subscription.url"
 printf '%s\n' 'https://example.invalid/mihomo.yaml' >"$MODDIR/.config/mihomo/subscription.url"
+: >"$MOCK_LOG"
 run env \
     MAGICNET_WATCHDOG_ENABLED=0 \
     MAGICNET_FSWATCH_ENABLED=0 \
@@ -554,6 +555,19 @@ run env \
 sleep 1
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" service status >"$TMP/singbox-service-status.log"
 rg -q '^  sing-box: [0-9]+$' "$TMP/singbox-service-status.log"
+jq -e '.outbounds[] | select(.tag == "fresh-sub-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null
+if jq -e '.outbounds[] | select(.tag == "old-cached-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null; then
+    echo "sing-box startup used cached nodes instead of fresh subscription" >&2
+    exit 1
+fi
+python3 - "$MOCK_LOG" <<'PY'
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+fetch = next((i for i, line in enumerate(lines) if line.startswith("curl ") and "subscription.yaml" in line), None)
+run = next((i for i, line in enumerate(lines) if line.startswith("sing-box run")), None)
+if fetch is None or run is None or fetch > run:
+    raise SystemExit("sing-box was started before fetching the subscription")
+PY
 if [[ -s "$MODDIR/.state/fake-sing-box.pid" ]]; then
     kill "$(cat "$MODDIR/.state/fake-sing-box.pid")" 2>/dev/null || true
     rm -f "$MODDIR/.state/fake-sing-box.pid"
