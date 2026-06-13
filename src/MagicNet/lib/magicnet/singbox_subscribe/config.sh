@@ -215,7 +215,7 @@ magicnet_singbox_api_has_nodes() {
 
 magicnet_singbox_config_has_nodes() {
     _config_file=$(magicnet_singbox_subscription_config_file)
-    grep -Eq '"type":"(vless|hysteria2|trojan|vmess|shadowsocks)"' "$_config_file"
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks)"' "$_config_file"
 }
 
 magicnet_singbox_google_works() {

@@ -1,7 +1,13 @@
 ## Unreleased
 
-- Package runtime executables under `bin/` instead of the legacy `.local/bin`
-  path, including the `cli -> bin/magicnet-cli` compatibility entry.
+- Package runtime executables under `bin/`, including the
+  `cli -> bin/magicnet-cli` compatibility entry.
+- Add a config editor action to sync the latest upstream mihomo and sing-box
+  templates from their template repositories while preserving subscription
+  provider/node configuration.
+- Add sing-box REDIRECT inbound generation for local TCP capture in TProxy mode
+  and verify the paired NAT OUTPUT REDIRECT data path in the fake Magisk smoke.
+- Keep sing-box sniff inbound lists aligned with the active transparent mode.
 
 ## v1.1.4 (2026-06-11)
 

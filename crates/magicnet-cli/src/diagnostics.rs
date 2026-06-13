@@ -328,10 +328,10 @@ fn singbox_dns_config(app: &App, mode: &str, tproxy_dns: bool) -> SingboxDnsConf
     let text =
         fs::read_to_string(app.moddir.join(".config/sing-box/config.json")).unwrap_or_default();
     let compact = compact_jsonish(&text);
-    let sniff_tag = if mode == "tproxy" {
-        "\"tproxy-in\""
+    let sniff_rule = if mode == "tproxy" {
+        "\"inbound\":[\"mixed-in\",\"tproxy-in\",\"redirect-in\"]"
     } else {
-        "\"tun-in\""
+        "\"inbound\":[\"mixed-in\",\"tun-in\"]"
     };
     SingboxDnsConfig {
         fake_ip: compact.contains("\"type\":\"fakeip\"") && compact.contains("\"tag\":\"fakeip\""),
@@ -342,7 +342,7 @@ fn singbox_dns_config(app: &App, mode: &str, tproxy_dns: bool) -> SingboxDnsConf
                 || compact.contains("\"server\":\"cloudflare-dns.com\"")
                 || compact.contains("\"server\":\"dns.adguard-dns.com\"")),
         store_fake_ip: compact.contains("\"store_fakeip\":true"),
-        sniff_inbound: compact.contains(sniff_tag),
+        sniff_inbound: compact.contains(sniff_rule),
         tproxy_dns,
     }
 }
@@ -662,9 +662,11 @@ fn supervisor_pid_matches(app: &App, pid: u32, name: &str) -> bool {
                 .to_string()
         })
         .unwrap_or_default();
+    let moddir = app.moddir.display().to_string();
     cmdline.contains(name)
-        || (cmdline.contains("service ensure")
-            && cmdline.contains(&app.moddir.display().to_string()))
+        || (cmdline.contains("service ensure") && cmdline.contains(&moddir))
+        || (cmdline.contains("config apply") && cmdline.contains(&moddir))
+        || cmdline.contains(&moddir)
 }
 
 fn has_subscription(app: &App) -> bool {

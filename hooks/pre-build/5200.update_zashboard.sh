@@ -9,9 +9,10 @@ REPO="Zephyruso/zashboard"
 ASSET="dist-no-fonts.zip"
 VERSION_FILE="${KAM_MODULE_ROOT}/zashboard.version"
 TARGET_DIR="${KAM_MODULE_ROOT}/.config/sing-box/zashboard"
+MIHOMO_TARGET_DIR="${KAM_MODULE_ROOT}/.config/mihomo/zashboard"
 
 if [ "$MAGIC_SINGBOX" -eq 0 ]; then
-    rm -rf "$VERSION_FILE" "$TARGET_DIR"
+    rm -rf "$VERSION_FILE" "$TARGET_DIR" "$MIHOMO_TARGET_DIR"
     exit 0
 fi
 
@@ -24,7 +25,7 @@ log_info "zashboard 本地版本: $CURRENT_VERSION"
 
 LATEST_TAG=$(github_latest_tag "$REPO")
 [ -n "$LATEST_TAG" ] || {
-    if [ -f "$TARGET_DIR/index.html" ] && [ "$CURRENT_VERSION" != "unknown" ]; then
+    if [ -f "$TARGET_DIR/index.html" ] && [ -f "$MIHOMO_TARGET_DIR/index.html" ] && [ "$CURRENT_VERSION" != "unknown" ]; then
         log_warn "无法获取 zashboard 远程版本号，继续使用本地版本: $CURRENT_VERSION"
         exit 0
     fi
@@ -33,7 +34,7 @@ LATEST_TAG=$(github_latest_tag "$REPO")
 }
 log_info "zashboard 远程最新版本: $LATEST_TAG"
 
-if [ "$CURRENT_VERSION" = "$LATEST_TAG" ] && [ -f "$TARGET_DIR/index.html" ]; then
+if [ "$CURRENT_VERSION" = "$LATEST_TAG" ] && [ -f "$TARGET_DIR/index.html" ] && [ -f "$MIHOMO_TARGET_DIR/index.html" ]; then
     log_info "zashboard 当前已是最新版本，无需下载。"
     exit 0
 fi
@@ -70,6 +71,10 @@ if [ ! -f "$TARGET_DIR/index.html" ]; then
     log_error "zashboard archive did not contain index.html"
     exit 1
 fi
+
+rm -rf "$MIHOMO_TARGET_DIR"
+mkdir -p "$MIHOMO_TARGET_DIR"
+cp -a "$TARGET_DIR"/. "$MIHOMO_TARGET_DIR"/
 
 printf '%s\n' "$LATEST_TAG" >"$VERSION_FILE"
 log_success "zashboard installed to $TARGET_DIR"

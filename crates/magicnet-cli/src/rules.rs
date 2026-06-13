@@ -11,14 +11,46 @@ use crate::{clean_lines, read_kv, run_magicnet_function, write_kv, write_text_fi
 pub(crate) use block::block_cmd;
 pub(crate) use certs::cert_cmd;
 
-pub(crate) fn route_list(app: &App) {
+pub(crate) fn route_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str).unwrap_or("list") {
+        "list" => {
+            route_list(app);
+            Ok(())
+        }
+        "add-domain" | "remove-domain" => route_domain(app, args),
+        "apply" => run_magicnet_function(app, "magicnet_route_apply"),
+        _ => Err("Usage: cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}".to_string()),
+    }
+}
+
+fn route_list(app: &App) {
     for target in ["proxy", "direct", "block"] {
         println!("{target} domain suffixes:");
-        for line in clean_lines(app.moddir.join(format!(
-            ".config/magicnet/route-{target}-domain-suffix.list"
-        ))) {
-            println!("  {line}");
+        print_lines(route_file(app, target).unwrap());
+    }
+}
+
+fn route_domain(app: &App, args: &[String]) -> Result<(), String> {
+    let target = args.get(1).map(String::as_str).unwrap_or_default();
+    let domain = args.get(2).map(String::as_str).unwrap_or_default();
+    if domain.is_empty() {
+        return Err("Usage: cli route {add-domain|remove-domain} <proxy|direct|block> <domain-suffix>".to_string());
+    }
+    if domain.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        return Err(format!("invalid domain suffix: {domain}"));
+    }
+    update_line(route_file(app, target)?, domain, args[0] == "add-domain")?;
+    run_magicnet_function(app, "magicnet_route_apply")?;
+    println!("[info] Route rule updated");
+    Ok(())
+}
+
+fn route_file(app: &App, target: &str) -> Result<PathBuf, String> {
+    match target {
+        "proxy" | "direct" | "block" => {
+            Ok(conf_dir(app).join(format!("route-{target}-domain-suffix.list")))
         }
+        _ => Err("Target must be proxy, direct, or block".to_string()),
     }
 }
 

@@ -22,8 +22,8 @@ import rich
 
 import this
 
-MAGICNET_PREV_DIR="/data/adb/modules/MagicNet"
-MAGICNET_BACKUP_DIR="${TMPDIR:-/dev/tmp}/magicnet-install-backup"
+MAGICNET_PREV_DIR="${MAGICNET_PREV_DIR:-/data/adb/modules/MagicNet}"
+MAGICNET_BACKUP_DIR="${MAGICNET_BACKUP_DIR:-${TMPDIR:-/dev/tmp}/magicnet-install-backup}"
 if [ -d "$MAGICNET_PREV_DIR" ] && [ "$MAGICNET_PREV_DIR" != "$MODPATH" ]; then
   rm -rf "$MAGICNET_BACKUP_DIR" 2>/dev/null || true
   mkdir -p "$MAGICNET_BACKUP_DIR"
@@ -299,7 +299,6 @@ fi
 
 # 设置权限
 rm -f "${MODPATH}/kam.log" "${MODPATH}/cli.legacy.sh" "${MODPATH}/mcp-server.sh" 2>/dev/null || true
-rm -rf "${MODPATH}/.local/bin" 2>/dev/null || true
 
 [ -f "${MODPATH}/system/bin/mihomo" ] && set_perm "${MODPATH}/system/bin/mihomo" 0 0 0755 u:object_r:system_file:s0
 [ -f "${MODPATH}/system/bin/sing-box" ] && set_perm "${MODPATH}/system/bin/sing-box" 0 0 0755 u:object_r:system_file:s0
@@ -311,7 +310,7 @@ rm -f "${MODPATH}/cli" 2>/dev/null || true
 ln -s "bin/magicnet-cli" "${MODPATH}/cli" 2>/dev/null || true
 
 info "$(i18n "SET_MODULE_ENTRY_PERMS")"
-for _magicnet_entry in action.sh service.sh boot-completed.sh uninstall.sh; do
+for _magicnet_entry in action.sh post-fs-data.sh service.sh boot-completed.sh uninstall.sh; do
   [ -f "${MODPATH}/${_magicnet_entry}" ] || continue
   set_perm "${MODPATH}/${_magicnet_entry}" 0 0 0755 u:object_r:system_file:s0
 done

@@ -83,6 +83,12 @@ magicnet_singbox_apply_transparent_mode() {
             print "      \"tag\": \"tproxy-in\","
             print "      \"listen\": \"::\","
             print "      \"listen_port\": 9898"
+            print "    },"
+            print "    {"
+            print "      \"type\": \"redirect\","
+            print "      \"tag\": \"redirect-in\","
+            print "      \"listen\": \"::\","
+            print "      \"listen_port\": 9899"
             printf "    }%s\n", comma
         }
         function emit_selected(comma) {
@@ -148,6 +154,88 @@ magicnet_singbox_apply_transparent_mode() {
                         printf "%s", buffer
                     }
                     buffer = ""
+                }
+                next
+            }
+            print
+        }
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
+        rm -f "$_tmp" 2>/dev/null || true
+        unset _mode
+        return 1
+    fi
+    if awk -v mode="$_mode" '
+        function count_delta(line, i, c, delta) {
+            delta = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (c == "{") delta++
+                if (c == "}") delta--
+            }
+            return delta
+        }
+        function emit_sniff_inbounds() {
+            print "          \"mixed-in\","
+            if (mode == "tproxy") {
+                print "          \"tproxy-in\","
+                print "          \"redirect-in\""
+            } else {
+                print "          \"tun-in\""
+            }
+        }
+        function print_sniff_rule(buf, n, i, line, lines, in_sniff_inbounds) {
+            n = split(buf, lines, "\n")
+            in_sniff_inbounds = 0
+            for (i = 1; i <= n; i++) {
+                line = lines[i]
+                if (i == n && line == "") {
+                    continue
+                }
+                if (!in_sniff_inbounds && line ~ /^        "inbound"[[:space:]]*:[[:space:]]*\[/) {
+                    in_sniff_inbounds = 1
+                    print line
+                    continue
+                }
+                if (in_sniff_inbounds && line ~ /^        ][,]?[[:space:]]*$/) {
+                    emit_sniff_inbounds()
+                    print line
+                    in_sniff_inbounds = 0
+                    continue
+                }
+                if (in_sniff_inbounds) {
+                    continue
+                }
+                print line
+            }
+        }
+        function flush_rule() {
+            if (buffer ~ /"action"[[:space:]]*:[[:space:]]*"sniff"/ && buffer ~ /"inbound"[[:space:]]*:[[:space:]]*\[/) {
+                print_sniff_rule(buffer)
+            } else {
+                printf "%s", buffer
+            }
+            buffer = ""
+        }
+        BEGIN {
+            buffering = 0
+            depth = 0
+            buffer = ""
+        }
+        {
+            if (!buffering && $0 ~ /^      \{[[:space:]]*$/) {
+                buffering = 1
+                depth = 1
+                buffer = $0 "\n"
+                next
+            }
+            if (buffering) {
+                buffer = buffer $0 "\n"
+                depth += count_delta($0)
+                if (depth <= 0) {
+                    buffering = 0
+                    flush_rule()
                 }
                 next
             }

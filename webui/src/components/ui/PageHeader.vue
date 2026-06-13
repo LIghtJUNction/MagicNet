@@ -13,6 +13,10 @@ defineProps<{
       <h2 class="mt-1 text-2xl font-semibold">{{ title }}</h2>
       <p class="mt-1 text-sm leading-6 text-zinc-400">{{ description }}</p>
     </div>
-    <slot />
+    <div class="flex flex-wrap items-center gap-2">
+      <slot name="actions">
+        <slot />
+      </slot>
+    </div>
   </div>
 </template>

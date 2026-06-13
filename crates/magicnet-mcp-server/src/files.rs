@@ -89,6 +89,46 @@ pub(crate) fn file_chmod(server: &Server, rel: &str, mode: &str) -> String {
     }
 }
 
+pub(crate) fn download_to_downloads(url: &str, filename: &str) -> String {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return "invalid download url".to_string();
+    }
+    if filename.is_empty()
+        || filename.contains('/')
+        || filename.contains("..")
+        || filename.contains('\0')
+    {
+        return "invalid filename".to_string();
+    }
+    let dir = Path::new("/sdcard/Download");
+    if let Err(err) = fs::create_dir_all(dir) {
+        return format!("mkdir failed: {err}");
+    }
+    let target = dir.join(filename);
+    let curl = Command::new("curl")
+        .args(["-L", "--fail", "--max-time", "25", "-o"])
+        .arg(&target)
+        .arg(url)
+        .status();
+    let status = match curl {
+        Ok(status) if status.success() => status,
+        _ => match Command::new("wget")
+            .args(["-T", "25", "-O"])
+            .arg(&target)
+            .arg(url)
+            .status()
+        {
+            Ok(status) => status,
+            Err(err) => return format!("download failed: {err}"),
+        },
+    };
+    if !status.success() {
+        return format!("download failed: rc={}", status.code().unwrap_or(-1));
+    }
+    let _ = Command::new("chmod").arg("0644").arg(&target).status();
+    format!("saved {}", target.display())
+}
+
 pub(crate) fn webui_build(server: &Server) -> String {
     let Some(project) = server.moddir.parent().and_then(Path::parent) else {
         return "cannot derive project root".to_string();

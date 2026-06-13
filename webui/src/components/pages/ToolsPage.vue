@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ClipboardPaste, Copy, Download, FileLock, Network, RadioTower, RefreshCw, Server, ShieldPlus, Trash2, Upload, Wand2 } from "lucide-vue-next";
-import { ref } from "vue";
+import { ClipboardPaste, Copy, Download, FileLock, Network, Power, PowerOff, RadioTower, RefreshCw, Save, Server, ShieldPlus, Trash2, Upload, Wand2 } from "lucide-vue-next";
+import { ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -15,6 +15,11 @@ const { isRunning, withAction } = useActionLock();
 const captureApp = ref("");
 const captureDomain = ref("");
 const toolsRefreshing = ref(false);
+const mcpBind = ref(state.mcp.bind);
+const mcpPort = ref(state.mcp.port);
+
+watch(() => state.mcp.bind, (value) => { mcpBind.value = value; });
+watch(() => state.mcp.port, (value) => { mcpPort.value = value; });
 
 async function refreshTools(): Promise<void> {
   toolsRefreshing.value = true;
@@ -78,6 +83,56 @@ async function copyMcp(): Promise<void> {
   state.output = await copyText(`${state.mcp.url}\nadb forward tcp:${state.mcp.port} tcp:${state.mcp.port}`)
     ? "已复制 MCP URL 和 adb forward 命令。"
     : "剪贴板不可用，MCP 连接未复制。";
+}
+
+function validateMcpEndpoint(): { bind: string; port: string } | null {
+  const bind = mcpBind.value.trim();
+  const port = mcpPort.value.trim();
+  if (!bind || !/^[A-Za-z0-9_.:-]+$/.test(bind)) {
+    state.output = "MCP host 格式不对。常用值：127.0.0.1 或 0.0.0.0。";
+    return null;
+  }
+  const portNumber = Number(port);
+  if (!/^\d+$/.test(port) || !Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
+    state.output = "MCP port 必须是 1-65535 的数字。";
+    return null;
+  }
+  return { bind, port };
+}
+
+async function saveMcpEndpoint(): Promise<void> {
+  const endpoint = validateMcpEndpoint();
+  if (!endpoint) return;
+  await withAction("save-mcp", async () => {
+    await runCli(`mcp set ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, "保存 MCP 地址");
+    if (state.mcp.pid !== "stopped") {
+      await runCli("mcp restart", "重启 MCP");
+    }
+    await refreshMcp(true);
+  });
+}
+
+async function startMcp(): Promise<void> {
+  const endpoint = validateMcpEndpoint();
+  if (!endpoint) return;
+  await withAction("start-mcp", async () => {
+    await runCli(`mcp enable ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, "启动 MCP");
+    await refreshMcp(true);
+  });
+}
+
+async function stopMcp(): Promise<void> {
+  await withAction("stop-mcp", async () => {
+    await runCli("mcp stop", "停止 MCP");
+    await refreshMcp(true);
+  });
+}
+
+async function disableMcp(): Promise<void> {
+  await withAction("disable-mcp", async () => {
+    await runCli("mcp disable", "禁用 MCP");
+    await refreshMcp(true);
+  });
 }
 
 async function removeCert(file: string): Promise<void> {
@@ -162,7 +217,7 @@ async function writeBackupPayloadFile(payload: string): Promise<string> {
       </Button>
     </PageHeader>
 
-    <div class="grid gap-3 md:grid-cols-2">
+    <div class="grid min-w-0 gap-3 md:grid-cols-2">
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileLock :size="17" /> 配置迁移</h3>
         <p class="text-sm leading-6 text-zinc-400">导出会打包订阅、应用名单、黑名单、抓包规则等用户配置。安全码可留空；设置后导入时必须填写一致。</p>
@@ -211,7 +266,9 @@ async function writeBackupPayloadFile(payload: string): Promise<string> {
           <Button :loading="isRunning('install-cert')" @click="installCert">安装证书</Button>
           <Button variant="outline" :loading="isRunning('refresh-certs')" @click="withAction('refresh-certs', () => refreshCerts())"><RefreshCw :size="16" />读取</Button>
         </div>
-        <p class="text-sm leading-6 text-zinc-400">{{ state.certs.dir }}</p>
+        <p class="break-all text-sm leading-6 text-zinc-400">
+          {{ state.certs.dir }} · 默认 CA: {{ state.certs.defaultFile }}
+        </p>
         <div class="flex max-h-40 flex-wrap gap-2 overflow-auto">
           <span v-for="file in state.certs.files" :key="file" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ file }}
@@ -222,17 +279,33 @@ async function writeBackupPayloadFile(payload: string): Promise<string> {
       </Card>
     </div>
 
-    <div class="grid gap-3 md:grid-cols-2">
+    <div class="grid min-w-0 gap-3 md:grid-cols-2">
       <Card>
         <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Server :size="17" /> MCP 服务器</h3>
-        <p class="text-sm leading-6 text-zinc-400">用于电脑侧通过 adb forward 控制模块。</p>
-        <div class="grid gap-2">
-          <Button :variant="state.mcp.pid !== 'stopped' ? 'default' : 'outline'" :loading="isRunning('toggle-mcp')" @click="withAction('toggle-mcp', async () => { await runCli(state.mcp.pid !== 'stopped' ? 'mcp disable' : 'mcp enable', '切换 MCP'); await refreshMcp(true); })">
-            {{ state.mcp.pid !== "stopped" ? "关闭 MCP" : "开启 MCP" }}
+        <p class="text-sm leading-6 text-zinc-400">用于电脑侧通过 adb forward 控制模块。保存地址会写入模块配置；服务运行中保存会自动重启 MCP。</p>
+        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem]">
+          <Input v-model="mcpBind" placeholder="127.0.0.1" spellcheck="false" />
+          <Input v-model="mcpPort" inputmode="numeric" placeholder="8766" spellcheck="false" />
+        </div>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <Button :loading="isRunning('save-mcp')" @click="saveMcpEndpoint">
+            <Save :size="16" />保存并重启
+          </Button>
+          <Button variant="secondary" :loading="isRunning('start-mcp')" @click="startMcp">
+            <Power :size="16" />启动
+          </Button>
+          <Button variant="outline" :disabled="state.mcp.pid === 'stopped'" :loading="isRunning('stop-mcp')" @click="stopMcp">
+            <PowerOff :size="16" />停止进程
+          </Button>
+          <Button variant="outline" :loading="isRunning('disable-mcp')" @click="disableMcp">
+            <PowerOff :size="16" />禁用并停止
           </Button>
           <Button variant="outline" @click="copyMcp"><Copy :size="16" />复制连接</Button>
         </div>
         <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">pid={{ state.mcp.pid }}
+enabled={{ state.mcp.enabled ? "1" : "0" }}
+bind={{ state.mcp.bind }}
+port={{ state.mcp.port }}
 url={{ state.mcp.url }}</pre>
       </Card>
 

@@ -19,16 +19,19 @@ need cargo
 
 kam validate
 
-shellcheck -s bash -e SC1091,SC2317,SC2329,SC2059 \
-    hooks/pre-build/*.sh \
-    hooks/post-build/*.sh \
-    hooks/lib/*.sh \
-    kam.sh
+mapfile -t bash_shell_files < <(
+    find hooks/pre-build hooks/post-build hooks/lib -type f -name '*.sh' -print
+    find scripts -maxdepth 1 -type f -name '*.sh' -print
+    printf '%s\n' kam.sh
+)
+shellcheck -s bash -e SC1091,SC2317,SC2329,SC2059 "${bash_shell_files[@]}"
 
-shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 \
-    src/MagicNet/*.sh \
-    src/MagicNet/system/bin/* \
-    src/MagicNet/lib/magicnet.sh
+mapfile -t posix_shell_files < <(
+    find src/MagicNet -maxdepth 1 -type f -name '*.sh' -print
+    find src/MagicNet/system/bin -type f -print 2>/dev/null || true
+    printf '%s\n' src/MagicNet/lib/magicnet.sh
+)
+shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 "${posix_shell_files[@]}"
 
 python3 -c 'import yaml, pathlib; yaml.safe_load(pathlib.Path("src/MagicNet/.config/mihomo/config.yaml").read_text())'
 jq empty src/MagicNet/.config/sing-box/config.json
@@ -44,4 +47,12 @@ else
 fi
 cargo check -p magicnet-cli
 cargo check -p magicnet-mcp-server
+if compgen -G "dist/*.zip" >/dev/null; then
+    package_zip="$(compgen -G "dist/*.zip" | head -n1)"
+    scripts/package-smoke.sh "$package_zip"
+    scripts/package-install-smoke.sh "$package_zip"
+    scripts/fake-magisk-smoke.sh "$package_zip"
+else
+    scripts/fake-magisk-smoke.sh
+fi
 git diff --check

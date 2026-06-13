@@ -23,13 +23,14 @@ magicnet_mihomo_apply_zashboard() {
     _config="${MODDIR}/.config/mihomo/config.yaml"
     [ -f "$_config" ] || return 0
 
-    _ui_dir="${MODDIR}/.config/sing-box/zashboard"
+    magicnet_mihomo_sync_zashboard || return 1
+
+    _ui_dir="${MODDIR}/.config/mihomo/zashboard"
     _tmp="${_config}.zashboard.new"
     if awk -v ui_dir="$_ui_dir" '
         BEGIN {
             has_ui = 0
             has_ui_name = 0
-            has_ui_url = 0
         }
         /^external-ui[[:space:]]*:/ {
             print "external-ui: " ui_dir
@@ -42,8 +43,6 @@ magicnet_mihomo_apply_zashboard() {
             next
         }
         /^external-ui-url[[:space:]]*:/ {
-            print "external-ui-url: \"\""
-            has_ui_url = 1
             next
         }
         { print }
@@ -54,9 +53,6 @@ magicnet_mihomo_apply_zashboard() {
             if (!has_ui_name) {
                 print "external-ui-name: zashboard"
             }
-            if (!has_ui_url) {
-                print "external-ui-url: \"\""
-            }
         }
     ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
         :
@@ -65,4 +61,15 @@ magicnet_mihomo_apply_zashboard() {
         return 1
     fi
     unset _config _ui_dir _tmp
+}
+
+magicnet_mihomo_sync_zashboard() {
+    _source_dir="${MODDIR}/.config/sing-box/zashboard"
+    _target_dir="${MODDIR}/.config/mihomo/zashboard"
+    [ -f "${_source_dir}/index.html" ] || return 0
+
+    rm -rf "$_target_dir" 2>/dev/null || true
+    mkdir -p "$_target_dir" || return 1
+    cp -a "${_source_dir}/." "$_target_dir"/ || return 1
+    unset _source_dir _target_dir
 }

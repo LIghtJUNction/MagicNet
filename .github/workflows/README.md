@@ -30,7 +30,9 @@ release inputs:
 - `release`: create/update a GitHub Release through `kam publish`.
 - `prerelease`: mark that release as a prerelease.
 
-Normal push and pull request runs only build and upload workflow artifacts.
+Normal push and pull request runs build and upload workflow artifacts. When
+`KAM_PRIVATE_KEY` is available, the uploaded artifact also includes the module
+signature sidecar.
 
 ## Local Customization
 

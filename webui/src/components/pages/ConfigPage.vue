@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Github, RefreshCw, Save } from "lucide-vue-next";
+import { DownloadCloud, Github, RefreshCw, Save } from "lucide-vue-next";
 import { onMounted } from "vue";
 import type { ConfigEditorTarget } from "@/types";
 import Button from "@/components/ui/Button.vue";
@@ -9,7 +9,7 @@ import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 
-const { state, loadConfig, saveConfig, openExternal, REPO } = useMagicNet();
+const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 
 function selectTarget(target: ConfigEditorTarget): void {
@@ -53,6 +53,7 @@ function issueUrl(): string {
     <PageHeader overline="Validated Editor" title="配置编辑器" description="高级配置入口：sing-box 编辑 config.json，mihomo 编辑 config.yaml；订阅链接请到订阅页填写。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', () => loadConfig())"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
+        <Button variant="outline" :loading="isRunning('sync-template')" @click="withAction('sync-template', () => syncConfigTemplate())"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
         <Button :loading="isRunning('save-config')" @click="withAction('save-config', () => saveConfig())"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), '配置 Diff Issue')"><Github :size="17" />创建 Diff Issue</Button>
       </div>

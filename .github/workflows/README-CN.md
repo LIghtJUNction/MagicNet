@@ -27,7 +27,8 @@ kam check
 - `release`：通过 `kam publish` 创建或更新 GitHub Release。
 - `prerelease`：将该 Release 标记为 prerelease。
 
-普通 push 和 pull request 只会构建并上传 workflow artifact。
+普通 push 和 pull request 会构建并上传 workflow artifact；如果存在
+`KAM_PRIVATE_KEY`，上传内容也会包含模块签名旁路文件。
 
 ## 本地自定义
 

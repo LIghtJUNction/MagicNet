@@ -26,8 +26,11 @@ pub(crate) fn webui_cmd(app: &App, args: &[String]) -> Result<(), String> {
             webui_status(app);
             Ok(())
         }
+        "verify" => webui_verify(app),
         "install-local" => install_local(app, args),
-        _ => Err("Usage: cli webui {status|install-local <download-url> [name]}".to_string()),
+        _ => {
+            Err("Usage: cli webui {status|verify|install-local <download-url> [name]}".to_string())
+        }
     }
 }
 
@@ -118,6 +121,35 @@ fn webui_status(app: &App) {
             .next()
             .unwrap_or("unknown")
     );
+}
+
+fn webui_verify(app: &App) -> Result<(), String> {
+    let module_webui = app.moddir.join("webroot");
+    let singbox_panel = app.moddir.join(".config/sing-box/zashboard");
+    let mihomo_panel = app.moddir.join(".config/mihomo/zashboard");
+    let checks = [
+        ("module_webui", module_webui.as_path()),
+        ("singbox_zashboard", singbox_panel.as_path()),
+        ("mihomo_zashboard", mihomo_panel.as_path()),
+    ];
+
+    let mut failed = Vec::new();
+    for (name, dir) in checks {
+        let ok = contains_index(dir);
+        println!(
+            "{name}={} path={}",
+            if ok { "ok" } else { "missing" },
+            dir.display()
+        );
+        if !ok {
+            failed.push(name);
+        }
+    }
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("webui verify failed: {}", failed.join(",")))
+    }
 }
 
 fn api_ui(app: &App, target: &str) {

@@ -45,4 +45,9 @@ if [ ! -x "${KAM_MODULE_ROOT}/cli" ]; then
     exit 1
 fi
 
+if [ ! -x "${KAM_MODULE_ROOT}/bin/magicnet-mcp-server" ]; then
+    log_error "bin/magicnet-mcp-server is not executable"
+    exit 1
+fi
+
 log_success "MagicNet Rust tools installed"

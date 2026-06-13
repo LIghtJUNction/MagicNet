@@ -76,11 +76,15 @@ su -c /data/adb/modules/MagicNet/cli support bundle
 ## MCP 自动化
 
 ```bash
-adb forward tcp:8765 tcp:8765
+adb forward tcp:8766 tcp:8766
 su -c /data/adb/modules/MagicNet/cli mcp enable
 ```
 
 MCP 工具可管理配置源、黑名单、备份、状态检查和脱敏上下文。默认关闭，需要用户显式启用。
+
+## 社区
+
+- 官方 Discord 群聊：[https://discord.gg/vXffnGge6](https://discord.gg/vXffnGge6)
 
 ## DNS 泄露验证
 

@@ -1,5 +1,9 @@
 # shellcheck shell=ash
 
+set_i18n "MAGICNET_TPROXY_REDIRECT_FAILED" \
+    "zh" "本机 TCP redirect 规则应用失败；此设备保持 TUN 模式" \
+    "en" "failed to apply local TCP redirect rules; keep TUN mode on this device"
+
 magicnet_tproxy_mark() {
     printf '%s\n' "${MAGICNET_TPROXY_MARK:-0x1}"
 }
@@ -10,6 +14,10 @@ magicnet_tproxy_table() {
 
 magicnet_tproxy_port() {
     printf '%s\n' "${MAGICNET_TPROXY_PORT:-9898}"
+}
+
+magicnet_tproxy_redirect_port() {
+    printf '%s\n' "${MAGICNET_TPROXY_REDIRECT_PORT:-9899}"
 }
 
 magicnet_tproxy_pref() {
@@ -232,10 +240,30 @@ magicnet_tproxy_cleanup_legacy_dns_nat() {
     magicnet_tproxy_cleanup_legacy_dns_nat_family ip6tables
 }
 
+magicnet_tproxy_cleanup_redirect_nat() {
+    magicnet_cmd_exists iptables || return 0
+    magicnet_tproxy_iptables iptables -t nat -D OUTPUT -j MAGICNET_TPROXY_REDIRECT 2>/dev/null || true
+    magicnet_tproxy_iptables iptables -t nat -F MAGICNET_TPROXY_REDIRECT 2>/dev/null || true
+    magicnet_tproxy_iptables iptables -t nat -X MAGICNET_TPROXY_REDIRECT 2>/dev/null || true
+}
+
 magicnet_tproxy_cleanup() {
     magicnet_tproxy_cleanup_legacy_dns_nat
+    magicnet_tproxy_cleanup_redirect_nat
     magicnet_tproxy_cleanup_family iptables ""
     magicnet_tproxy_cleanup_family ip6tables "-6"
+}
+
+magicnet_tproxy_apply_redirect_nat() {
+    magicnet_cmd_exists iptables || return 0
+    _mtpar_port="$(magicnet_tproxy_redirect_port)"
+
+    magicnet_tproxy_iptables iptables -t nat -N MAGICNET_TPROXY_REDIRECT 2>/dev/null || true
+    magicnet_tproxy_iptables iptables -t nat -F MAGICNET_TPROXY_REDIRECT 2>/dev/null || true
+    magicnet_tproxy_iptables iptables -t nat -A MAGICNET_TPROXY_REDIRECT -p tcp -j REDIRECT --to-ports "$_mtpar_port" 2>/dev/null || return 1
+    magicnet_tproxy_ensure_jump iptables nat OUTPUT MAGICNET_TPROXY_REDIRECT || return 1
+
+    unset _mtpar_port
 }
 
 magicnet_tproxy_apply_family() {
@@ -335,6 +363,11 @@ magicnet_enable_tproxy() {
     magicnet_tproxy_cleanup_legacy_dns_nat
     if ! magicnet_tproxy_apply_family iptables ""; then
         magicnet_warn "failed to apply IPv4 TProxy iptables/ip rules; keep TUN mode on this device"
+        magicnet_tproxy_cleanup
+        return 1
+    fi
+    if ! magicnet_tproxy_apply_redirect_nat; then
+        magicnet_warn "$(i18n "MAGICNET_TPROXY_REDIRECT_FAILED")"
         magicnet_tproxy_cleanup
         return 1
     fi

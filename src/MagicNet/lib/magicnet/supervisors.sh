@@ -36,6 +36,13 @@ magicnet_supervisor_kill_orphans() {
     unset _msko_target
 }
 
+set_i18n "MAGICNET_WATCHDOG_START_FAILED" \
+    "zh" "watchdog 启动失败 (rc=\$_1)；请查看 \$_2" \
+    "en" "watchdog failed to start (rc=\$_1); see \$_2"
+set_i18n "MAGICNET_FSWATCH_START_FAILED" \
+    "zh" "fswatch 启动失败 (rc=\$_1)；请查看 \$_2" \
+    "en" "fswatch failed to start (rc=\$_1); see \$_2"
+
 magicnet_supervisor_status_with_orphans() {
     _msswo_pid="$1"
     _msswo_target="$2"
@@ -87,8 +94,14 @@ magicnet_watchdog_start() {
     [ "${MAGICNET_NOTIFY_ENABLED:-1}" != "0" ] || _watchdog_notify_arg="--no-notify"
     [ "${MAGICNET_WATCHDOG_NOTIFY:-1}" != "0" ] || _watchdog_notify_arg="--no-notify"
     KAM_WATCHDOG_NOTIFY_TITLE="${MAGICNET_WATCHDOG_NOTIFY_TITLE:-MagicNet}" \
-        watchdog start "$_watchdog_notify_arg" "$(magicnet_watchdog_name)" "$(magicnet_watchdog_interval)" "$(magicnet_watchdog_command)" >/dev/null 2>&1 || true
+        KAM_WATCHDOG_LOG_FILE="${MODDIR}/.log/watchdog.log" \
+        watchdog start "$_watchdog_notify_arg" "$(magicnet_watchdog_name)" "$(magicnet_watchdog_interval)" "$(magicnet_watchdog_command)"
+    _watchdog_rc=$?
+    if [ "$_watchdog_rc" -ne 0 ]; then
+        magicnet_warn "$(i18n "MAGICNET_WATCHDOG_START_FAILED" | t "$_watchdog_rc" "${MODDIR}/.log/watchdog.log")"
+    fi
     unset _watchdog_notify_arg
+    return "$_watchdog_rc"
 }
 
 magicnet_watchdog_stop() {
@@ -135,7 +148,13 @@ magicnet_fswatch_start() {
     [ -f "${MODDIR}/cli" ] || return 0
     import fswatch
     KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard}" \
-        fswatch start "$(magicnet_fswatch_name)" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)" >/dev/null 2>&1 || true
+        KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
+        fswatch start "$(magicnet_fswatch_name)" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
+    _fswatch_rc=$?
+    if [ "$_fswatch_rc" -ne 0 ]; then
+        magicnet_warn "$(i18n "MAGICNET_FSWATCH_START_FAILED" | t "$_fswatch_rc" "${MODDIR}/.log/fswatch.log")"
+    fi
+    return "$_fswatch_rc"
 }
 
 magicnet_fswatch_stop() {
@@ -161,8 +180,10 @@ magicnet_fswatch_status() {
 }
 
 magicnet_supervisors_start() {
-    magicnet_watchdog_start
-    magicnet_fswatch_start
+    _mss_rc=0
+    magicnet_watchdog_start || _mss_rc=1
+    magicnet_fswatch_start || _mss_rc=1
+    return "$_mss_rc"
 }
 
 magicnet_supervisors_stop() {

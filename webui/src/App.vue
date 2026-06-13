@@ -100,13 +100,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-6xl p-3 pb-28 md:p-5">
-    <header class="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+  <div class="mx-auto w-full max-w-7xl p-3 pb-8 md:p-5">
+    <header class="mb-4 flex flex-col gap-3 border-b border-zinc-800/70 pb-4 md:flex-row md:items-center md:justify-between">
       <div class="flex min-w-0 items-center gap-3">
-        <div class="grid size-11 place-items-center rounded-md border border-zinc-800 bg-zinc-950"><Zap :size="24" /></div>
+        <div class="grid size-11 place-items-center rounded-md border border-lime-300/25 bg-lime-300 text-zinc-950"><Zap :size="24" /></div>
         <div>
-          <h1 class="text-2xl font-semibold leading-tight">MagicNet</h1>
-          <p class="text-sm text-zinc-400">Android root transparent proxy control</p>
+          <h1 class="text-2xl font-semibold leading-tight text-zinc-50">MagicNet</h1>
+          <p class="text-sm text-zinc-400">Android root network operations console</p>
         </div>
       </div>
       <div class="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
@@ -122,15 +122,15 @@ onMounted(() => {
       </div>
     </header>
 
-    <section class="sticky top-0 z-20 mb-4 grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/90 px-3 py-2 shadow-lg shadow-black/20 backdrop-blur md:flex md:overflow-x-auto">
+    <section class="sticky top-0 z-20 mb-4 grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-zinc-800/80 bg-[#181713]/95 px-3 py-2 shadow-lg shadow-black/20 backdrop-blur md:flex md:overflow-x-auto">
       <div class="grid min-w-0 gap-0.5 md:min-w-28">
         <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Runtime</span>
         <strong class="text-sm">{{ state.runtime.core === "unknown" ? "状态未知" : state.runtime.core }}</strong>
       </div>
       <Badge :tone="statusTone">{{ state.runtime.core }}</Badge>
-      <span class="hidden items-center gap-1 whitespace-nowrap text-sm text-zinc-400 md:inline-flex">sing-box <code class="text-zinc-100">{{ state.runtime.singBox }}</code></span>
-      <span class="hidden items-center gap-1 whitespace-nowrap text-sm text-zinc-400 md:inline-flex">mihomo <code class="text-zinc-100">{{ state.runtime.mihomo }}</code></span>
-      <span class="hidden items-center gap-1 whitespace-nowrap text-sm text-zinc-400 md:inline-flex">模式 <code class="text-zinc-100">{{ state.runtime.transparentMode }}</code></span>
+      <span class="hidden items-center gap-1 whitespace-nowrap rounded border border-zinc-800 bg-zinc-950/50 px-2 py-1 text-sm text-zinc-400 md:inline-flex">sing-box <code class="text-zinc-100">{{ state.runtime.singBox }}</code></span>
+      <span class="hidden items-center gap-1 whitespace-nowrap rounded border border-zinc-800 bg-zinc-950/50 px-2 py-1 text-sm text-zinc-400 md:inline-flex">mihomo <code class="text-zinc-100">{{ state.runtime.mihomo }}</code></span>
+      <span class="hidden items-center gap-1 whitespace-nowrap rounded border border-zinc-800 bg-zinc-950/50 px-2 py-1 text-sm text-zinc-400 md:inline-flex">模式 <code class="text-zinc-100">{{ state.runtime.transparentMode }}</code></span>
       <span class="col-span-2 flex min-w-0 items-center gap-1 overflow-hidden text-sm leading-5 text-zinc-400 md:col-span-1">
         <ScrollText class="shrink-0" :size="15" />
         <span class="min-w-0 truncate" :title="statusMessage">{{ shortStatusMessage }}</span>
@@ -138,7 +138,7 @@ onMounted(() => {
     </section>
 
     <main class="block md:flex md:items-start md:gap-4">
-      <nav class="fixed inset-x-3 bottom-3 z-30 grid gap-1 rounded-md border border-zinc-800 bg-zinc-950/95 p-1 shadow-2xl shadow-black/40 backdrop-blur md:sticky md:top-20 md:inset-auto md:w-44 md:flex-none md:p-1.5" aria-label="MagicNet 页面">
+      <nav class="sticky top-20 z-30 mb-4 grid gap-1 rounded-md border border-zinc-800/90 bg-[#181713]/95 p-1 shadow-2xl shadow-black/40 backdrop-blur md:mb-0 md:w-48 md:flex-none md:p-1.5" aria-label="MagicNet 页面">
         <div class="hidden px-2 pb-1 pt-0.5 text-[11px] font-bold uppercase tracking-wide text-zinc-500 md:block">常用</div>
         <div class="grid grid-cols-6 gap-1 md:grid-cols-1">
           <button
@@ -147,7 +147,7 @@ onMounted(() => {
             :data-tab="item.key"
             :class="[
               'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1.5 text-[10px] text-zinc-400 transition-colors md:min-h-10 md:flex-row md:justify-start md:gap-1 md:px-2 md:text-sm',
-              activeTab === item.key ? 'bg-zinc-800 text-zinc-50' : 'hover:bg-zinc-900'
+	              activeTab === item.key ? 'bg-lime-300 text-zinc-950' : 'hover:bg-zinc-800/70'
             ]"
             @click="setTab(item.key)"
           >
@@ -158,7 +158,7 @@ onMounted(() => {
           <button
             :class="[
               'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1.5 text-[10px] text-zinc-400 transition-colors hover:bg-zinc-900 md:hidden',
-              activeAdvancedTab ? 'bg-zinc-800 text-zinc-50' : ''
+	              activeAdvancedTab ? 'bg-lime-300 text-zinc-950' : ''
             ]"
             @click="showAdvancedNav = !showAdvancedNav"
           >
@@ -167,14 +167,14 @@ onMounted(() => {
           </button>
         </div>
 
-        <div v-if="showAdvancedNav" class="absolute inset-x-0 bottom-full mb-2 grid grid-cols-5 gap-1 rounded-md border border-zinc-800 bg-zinc-950/95 p-1 shadow-2xl shadow-black/40 md:hidden">
+        <div v-if="showAdvancedNav" class="absolute inset-x-0 top-full mt-2 grid grid-cols-5 gap-1 rounded-md border border-zinc-800 bg-[#181713]/95 p-1 shadow-2xl shadow-black/40 md:hidden">
           <button
             v-for="item in advancedTabs"
             :key="item.key"
             :data-tab="item.key"
             :class="[
               'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1.5 text-[10px] text-zinc-400 transition-colors',
-              activeTab === item.key ? 'bg-zinc-800 text-zinc-50' : 'hover:bg-zinc-900'
+	              activeTab === item.key ? 'bg-lime-300 text-zinc-950' : 'hover:bg-zinc-800/70'
             ]"
             @click="setTab(item.key)"
           >
@@ -191,7 +191,7 @@ onMounted(() => {
           :data-tab="item.key"
           :class="[
             'flex min-h-10 min-w-0 flex-row items-center justify-start gap-1 rounded-md px-2 text-sm text-zinc-400 transition-colors',
-            activeTab === item.key ? 'bg-zinc-800 text-zinc-50' : 'hover:bg-zinc-900'
+	            activeTab === item.key ? 'bg-lime-300 text-zinc-950' : 'hover:bg-zinc-800/70'
           ]"
           @click="setTab(item.key)"
         >

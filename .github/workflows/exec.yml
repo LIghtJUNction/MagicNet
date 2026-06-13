@@ -34,8 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
-      KAM_SIGN_ENABLED: ${{ inputs.release == true && secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
-      KAM_SIGN_REQUIRED: ${{ inputs.release == true && secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+      KAM_SIGN_ENABLED: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+      KAM_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
       KAM_CHANGELOG_ENABLED: '0'
       GH_TOKEN: ${{ github.token }}
 
@@ -66,7 +66,7 @@ jobs:
           private-key: ${{ secrets.KAM_PRIVATE_KEY }}
 
       - name: Install artifact tools
-        run: sudo apt-get update && sudo apt-get install -y unzip zip
+        run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip
 
       - name: Install Android Rust targets
         shell: bash
@@ -104,6 +104,9 @@ jobs:
           module_id="$(sed -n 's/^id[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' kam.toml | head -n1)"
           test -n "$module_id"
           test -f "dist/${module_id}.zip"
+          if [ "${KAM_SIGN_ENABLED}" = "1" ]; then
+            test -f "dist/${module_id}.zip.sig"
+          fi
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'cli'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-cli'
@@ -111,6 +114,9 @@ jobs:
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/mihomo'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/sing-box'
           ! unzip -Z1 "dist/${module_id}.zip" | grep -E '(^|/)\.git($|/)'
+          scripts/package-smoke.sh "dist/${module_id}.zip"
+          scripts/package-install-smoke.sh "dist/${module_id}.zip"
+          scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
 
       - name: Create GitHub release
         if: ${{ inputs.release == true }}

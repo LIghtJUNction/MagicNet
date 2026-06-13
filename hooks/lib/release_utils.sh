@@ -114,7 +114,12 @@ github_download_asset() {
     mkdir -p "$output_dir"
     rm -f "$output_path" 2>/dev/null || true
 
-    if gh release download "$tag" --repo "$repo" --pattern "$asset" --dir "$output_dir" --clobber >/dev/null 2>&1; then
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${GITHUB_DOWNLOAD_TIMEOUT:-120}" gh release download "$tag" --repo "$repo" --pattern "$asset" --dir "$output_dir" --clobber >/dev/null 2>&1 && {
+            printf '%s\n' "$output_path"
+            return 0
+        }
+    elif gh release download "$tag" --repo "$repo" --pattern "$asset" --dir "$output_dir" --clobber >/dev/null 2>&1; then
         printf '%s\n' "$output_path"
         return 0
     fi
@@ -123,7 +128,7 @@ github_download_asset() {
         fallback_url="https://github.com/$repo/releases/download/$tag/$asset"
     fi
 
-    if curl -L -o "$output_path" "$fallback_url"; then
+    if curl -fL --connect-timeout 20 --max-time "${GITHUB_DOWNLOAD_TIMEOUT:-120}" -o "$output_path" "$fallback_url"; then
         printf '%s\n' "$output_path"
         return 0
     fi

@@ -7,6 +7,7 @@
     <a href="Cargo.toml"><img alt="Rust workspace" src="https://img.shields.io/badge/Rust-workspace-f46623?logo=rust&logoColor=white" /></a>
     <a href="webui/package.json"><img alt="Vue WebUI" src="https://img.shields.io/badge/WebUI-Vue%203-42b883?logo=vue.js&logoColor=white" /></a>
     <a href="kam.toml"><img alt="Built with KAM" src="https://img.shields.io/badge/Built%20with-KAM-8b5cf6" /></a>
+    <a href="https://discord.gg/vXffnGge6"><img alt="Official Discord" src="https://img.shields.io/badge/Discord-official%20chat-5865F2?logo=discord&logoColor=white" /></a>
     <a href="https://github.com/KernelSU-Modules-Repo/MagicNet/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/KernelSU-Modules-Repo/MagicNet/total?label=downloads&logo=github" /></a>
   </p>
 </div>
@@ -17,6 +18,7 @@
   · <a href="#核心功能">核心功能</a>
   · <a href="#cli">CLI</a>
   · <a href="#mcp-自动化">MCP</a>
+  · <a href="#社区">社区</a>
   · <a href="#english-summary">English</a>
 </p>
 
@@ -155,6 +157,8 @@ kam build
 dist/MagicNet.zip
 ```
 
+本机仿真、AVD/rootAVD 和真机验收流程见 [docs/local-simulation.md](docs/local-simulation.md)。
+
 ## 首次配置
 
 安装后写入你的合法配置：
@@ -223,7 +227,7 @@ su -c /data/adb/modules/MagicNet/cli route apply
 MagicNet 可在设备上启动 MCP server，供本机 agent 通过 ADB 转发调用：
 
 ```bash
-adb forward tcp:8765 tcp:8765
+adb forward tcp:8766 tcp:8766
 su -c /data/adb/modules/MagicNet/cli mcp enable
 ```
 
@@ -278,6 +282,10 @@ MagicNet 借鉴成熟 Android root 网络模块的“核心启动器、透明规
 - 底层运行配置子项目 A。
 - 底层运行配置子项目 B。
 - [kamfw](https://github.com/MemDeco-WG/kamfw)：运行时辅助库。
+
+## 社区
+
+- 官方 Discord 群聊：[https://discord.gg/vXffnGge6](https://discord.gg/vXffnGge6)
 
 ## 参考与致谢
 

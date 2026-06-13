@@ -129,7 +129,7 @@ async function disableTailscale(): Promise<void> {
       <Badge :tone="state.runtime.core === 'stopped' ? 'warning' : 'success'">{{ state.runtime.core }}</Badge>
     </div>
 
-    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <Card class="grid gap-3">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
@@ -178,7 +178,7 @@ async function disableTailscale(): Promise<void> {
       </Card>
     </div>
 
-    <div class="grid gap-3 md:grid-cols-3">
+    <div class="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
       <Card class="grid gap-3">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>
@@ -252,7 +252,7 @@ async function disableTailscale(): Promise<void> {
         </Button>
       </Card>
 
-      <Card class="grid gap-3 md:col-span-2 xl:col-span-4">
+      <Card class="grid gap-3 lg:col-span-2 2xl:col-span-4">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div class="min-w-0">
             <span class="block text-[11px] font-bold uppercase tracking-wide text-zinc-500">Mesh Network</span>

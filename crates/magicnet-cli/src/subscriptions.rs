@@ -254,12 +254,10 @@ fn mihomo_providers(app: &App) -> Vec<(String, String)> {
 }
 
 fn default_mihomo_provider_slot(app: &App) -> Vec<(String, String)> {
-    vec![
-        (
-            DEFAULT_MIHOMO_PROVIDER.to_string(),
-            first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
-        ),
-    ]
+    vec![(
+        DEFAULT_MIHOMO_PROVIDER.to_string(),
+        first_clean_line(app.moddir.join(".config/mihomo/subscription.url")),
+    )]
 }
 
 fn update_mihomo_config_url(

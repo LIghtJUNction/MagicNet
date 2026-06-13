@@ -21,6 +21,7 @@ export type CaptureState = {
 
 export type CertState = {
   dir: string;
+  defaultFile: string;
   files: string[];
   name: string;
   text: string;
@@ -80,6 +81,7 @@ export const captureDefaults: CaptureState = {
 
 export const certDefaults: CertState = {
   dir: `${MODULE_DIR}/system/etc/security/cacerts`,
+  defaultFile: "missing",
   files: [],
   name: "magicnet-ca",
   text: ""
@@ -88,9 +90,9 @@ export const certDefaults: CertState = {
 export const mcpDefaults: McpState = {
   enabled: false,
   bind: "127.0.0.1",
-  port: "8765",
+  port: "8766",
   pid: "stopped",
-  url: "http://127.0.0.1:8765/mcp"
+  url: "http://127.0.0.1:8766/mcp"
 };
 
 export const tailscaleDefaults: TailscaleState = {
@@ -229,6 +231,7 @@ export function parseCerts(text: string, previous: CertState): CertState {
     const line = raw.trim();
     if (!line) return;
     if (line.startsWith("dir=")) next.dir = line.slice(4);
+    else if (line.startsWith("default=")) next.defaultFile = line.slice(8);
     else next.files.push(line);
   });
   return next;
@@ -236,15 +239,16 @@ export function parseCerts(text: string, previous: CertState): CertState {
 
 export function parseMcp(text: string, previous: McpState): McpState {
   const next = { ...previous };
+  let explicitUrl = "";
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (line.startsWith("enabled=")) next.enabled = line.slice(8) !== "0";
     else if (line.startsWith("bind=")) next.bind = line.slice(5);
     else if (line.startsWith("port=")) next.port = line.slice(5);
     else if (line.startsWith("pid=")) next.pid = line.slice(4);
-    else if (line.startsWith("url=")) next.url = line.slice(4);
+    else if (line.startsWith("url=")) explicitUrl = line.slice(4);
   });
-  if (!next.url) next.url = `http://${next.bind}:${next.port}/mcp`;
+  next.url = explicitUrl || `http://${next.bind}:${next.port}/mcp`;
   return next;
 }
 

@@ -11,6 +11,7 @@ type Phase = "idle" | "accepted" | "queued" | "running" | "done" | "error";
 const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
 const hasKsu = typeof ksuBridge?.exec === "function";
 let writeQueue: Promise<unknown> = Promise.resolve();
+let backgroundLogTimer = 0;
 
 const state = reactive({
   hasKsu,
@@ -135,13 +136,77 @@ async function startBackgroundCli(args: string, label = args): Promise<string> {
     .replace(/^-+|-+$/g, "")
     .toLowerCase() || "task";
   const log = `${MODULE_DIR}/.log/webui-${logName}.log`;
+  stopBackgroundLogFollow();
   state.phase = "accepted";
   state.notice = `已投递后台任务：${label}`;
-  state.output = `${label} 已在后台执行。\n日志：${log}\n完成后点刷新查看状态。`;
+  state.output = `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
   await nextTick();
   await nextFrame();
-  const command = `mkdir -p ${shellQuote(`${MODULE_DIR}/.log`)}; nohup sh -c ${shellQuote(`${CLI} ${args}`)} >${shellQuote(log)} 2>&1 & echo "[info] background task started: ${label}"`;
-  return runShell(command, `投递 ${label}`, true);
+  const command = `mkdir -p ${shellQuote(`${MODULE_DIR}/.log`)}; : >${shellQuote(log)}; nohup sh -c ${shellQuote(`${CLI} ${args}`)} >${shellQuote(log)} 2>&1 </dev/null & echo "[info] background task started: ${label}"`;
+  const result = await runShell(command, `投递 ${label}`, true);
+  if (!execFailed(result)) {
+    followBackgroundLogs(log, label, args);
+  }
+  return result;
+}
+
+function stopBackgroundLogFollow(): void {
+  if (!backgroundLogTimer) return;
+  window.clearTimeout(backgroundLogTimer);
+  backgroundLogTimer = 0;
+}
+
+function backgroundLogCommand(log: string, args: string): string {
+  const parts = [
+    `echo "[task log] ${log}"`,
+    `[ -f ${shellQuote(log)} ] && tail -n 80 ${shellQuote(log)} || echo "[info] waiting for task log..."`,
+  ];
+  if (/\bservice\s+(start|restart|ensure)\b/.test(args)) {
+    parts.push(
+      `echo ""`,
+      `echo "[sing-box log] ${MODULE_DIR}/.log/sing-box.log"`,
+      `[ -f ${shellQuote(`${MODULE_DIR}/.log/sing-box.log`)} ] && tail -n 80 ${shellQuote(`${MODULE_DIR}/.log/sing-box.log`)} || echo "[info] waiting for sing-box log..."`
+    );
+  }
+  return parts.join("; ");
+}
+
+function backgroundFailed(logs: string): boolean {
+  return logs.includes("[error]")
+    || logs.includes("╳[error]")
+    || /\b(not executable|failed with status|No subscription source is available)\b/i.test(logs);
+}
+
+function followBackgroundLogs(log: string, label: string, args: string, attempt = 0): void {
+  const maxAttempts = 90;
+  backgroundLogTimer = window.setTimeout(async () => {
+    const [logs, status] = await Promise.all([
+      runShell(backgroundLogCommand(log, args), `跟踪 ${label}`, true),
+      runCli("service status", "刷新状态", true)
+    ]);
+    if (!execFailed(status)) {
+      state.runtime = parseRuntime(status, state.runtime);
+      state.selectedCore = state.runtime.selectedCore;
+    }
+    const done = !execFailed(status) && (
+      state.runtime.core === state.selectedCore
+      || (/\bservice\s+stop\b/.test(args) && state.runtime.core === "stopped")
+    );
+    const failed = !done && backgroundFailed(logs);
+    state.phase = done ? "done" : failed ? "error" : "running";
+    state.notice = done ? `完成：${label}` : failed ? `失败：${label}` : `正在执行：${label}`;
+    state.output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${logs || "等待日志输出..."}`;
+    if (!done && !failed && attempt + 1 < maxAttempts) {
+      followBackgroundLogs(log, label, args, attempt + 1);
+    } else {
+      backgroundLogTimer = 0;
+      if (!done && !failed) {
+        state.phase = "error";
+        state.notice = `${label} 仍在后台运行或未完成`;
+        state.output += "\n\n[warn] 日志跟踪已超时，请稍后刷新状态或查看完整日志。";
+      }
+    }
+  }, attempt === 0 ? 700 : 1000);
 }
 
 function markQuietFailure(label: string, text: string): boolean {
@@ -315,6 +380,16 @@ async function saveConfig(): Promise<void> {
   if (!execFailed(text)) state.config.dirty = false;
 }
 
+async function syncConfigTemplate(): Promise<void> {
+  const target = state.config.target;
+  const text = await runCli(`config-editor sync-template ${target}`, `同步 ${target} 上游模板`);
+  state.config.status = execFailed(text) ? "同步失败" : "已同步上游模板";
+  if (!execFailed(text)) {
+    state.config.dirty = false;
+    await loadConfig();
+  }
+}
+
 const {
   autoCoreOpen,
   openExternal,
@@ -356,6 +431,7 @@ export function useMagicNet() {
     refreshSysroute,
     loadConfig,
     saveConfig,
+    syncConfigTemplate,
     openExternal,
     openCoreUi,
     setAutoCoreOpen,

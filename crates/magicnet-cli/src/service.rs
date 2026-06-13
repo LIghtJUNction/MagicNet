@@ -48,7 +48,7 @@ pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
             service_status(app);
             Ok(())
         }
-        "start" => run_magicnet_function(app, "magicnet_start_kernel"),
+        "start" => run_magicnet_function(app, "magicnet_start_kernel && magicnet_supervisors_start"),
         "ensure" => run_magicnet_function(app, "magicnet_ensure_kernel"),
         "stop" => stop_all_direct(app),
         "restart" => restart(app, args.get(1).map(String::as_str).unwrap_or("current")),
@@ -193,16 +193,18 @@ fn restart(app: &App, target: &str) -> Result<(), String> {
     } else {
         target.to_string()
     };
-    match target.as_str() {
-        "sing-box" | "singbox" => run_magicnet_function(
-            app,
-            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel",
-        ),
-        "mihomo" => run_magicnet_function(
-            app,
-            "MAGICNET_DEFAULT_CORE=mihomo MAGICNET_STRICT_CORE=1 magicnet_start_kernel",
-        ),
-        _ => run_magicnet_function(app, "magicnet_start_kernel"),
+    run_magicnet_function(app, restart_command(target.as_str()))
+}
+
+fn restart_command(target: &str) -> &'static str {
+    match target {
+        "sing-box" | "singbox" => {
+            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel && magicnet_supervisors_start"
+        }
+        "mihomo" => {
+            "MAGICNET_DEFAULT_CORE=mihomo MAGICNET_STRICT_CORE=1 magicnet_start_kernel && magicnet_supervisors_start"
+        }
+        _ => "magicnet_start_kernel && magicnet_supervisors_start",
     }
 }
 
@@ -261,6 +263,20 @@ fn supervisor_target(app: &App, target: &str, action: &str) -> Result<(), String
         _ => Err(
             "Usage: cli supervisor {status|start|stop|restart} [watchdog|fswatch|all]".to_string(),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::restart_command;
+
+    #[test]
+    fn restart_commands_restore_supervisors_after_core_start() {
+        for target in ["sing-box", "singbox", "mihomo", "auto"] {
+            let command = restart_command(target);
+            assert!(command.contains("magicnet_start_kernel"));
+            assert!(command.ends_with("&& magicnet_supervisors_start"));
+        }
     }
 }
 

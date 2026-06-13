@@ -3,6 +3,7 @@
 :root {
   color-scheme: dark;
   font-family: ui-sans-serif, system-ui, "HarmonyOS Sans SC", "MiSans", "Noto Sans CJK SC", sans-serif;
+  background: #11110f;
 }
 
 * {
@@ -13,8 +14,10 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #09090b;
-  color: #fafafa;
+  background:
+    linear-gradient(180deg, rgba(50, 48, 39, 0.24), rgba(17, 17, 15, 0) 240px),
+    #11110f;
+  color: #f5f2ea;
 }
 
 button {
@@ -25,4 +28,12 @@ code,
 pre,
 textarea {
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+::selection {
+  background: rgba(132, 204, 22, 0.28);
+}
+
+html {
+  scrollbar-color: #3f3f37 #151511;
 }

@@ -7,6 +7,9 @@
 import wait
 import rich
 
+PATH="${MODDIR}/bin:${MODDIR}/system/bin:${PATH:-}"
+export PATH
+
 magicnet_log() {
     info "$1"
 }
@@ -298,7 +301,7 @@ magicnet_singbox_running_has_nodes() {
         fi
     fi
     _config="${MODDIR}/.config/sing-box/config.json"
-    [ -f "$_config" ] && grep -Eq '"type":"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls)"' "$_config"
+    [ -f "$_config" ] && grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls)"' "$_config"
     _rc=$?
     unset _api _config
     return "$_rc"
@@ -422,7 +425,10 @@ magicnet_mihomo_running_has_nodes() {
 
 magicnet_preferred_core() {
     _current_core_conf="${MODDIR}/.config/magicnet/current-core.conf"
-    if [ -f "$_current_core_conf" ]; then
+    _requested_core="${MAGICNET_DEFAULT_CORE:-}"
+    if [ "${MAGICNET_STRICT_CORE:-0}" = "1" ] && [ -n "$_requested_core" ]; then
+        MAGICNET_DEFAULT_CORE="$_requested_core"
+    elif [ -f "$_current_core_conf" ]; then
         . "$_current_core_conf"
     elif [ -f "${MODDIR}/.config/magicnet/core.conf" ]; then
         . "${MODDIR}/.config/magicnet/core.conf"
@@ -431,12 +437,12 @@ magicnet_preferred_core() {
     case "${MAGICNET_DEFAULT_CORE:-auto}" in
         sing-box|singbox)
             printf '%s\n' "sing-box"
-            unset _current_core_conf
+            unset _current_core_conf _requested_core
             return 0
             ;;
         mihomo|clash)
             printf '%s\n' "mihomo"
-            unset _current_core_conf
+            unset _current_core_conf _requested_core
             return 0
             ;;
     esac
@@ -448,7 +454,7 @@ magicnet_preferred_core() {
     else
         printf '%s\n' "${MAGICNET_AUTO_DEFAULT_CORE:-sing-box}"
     fi
-    unset _current_core_conf
+    unset _current_core_conf _requested_core
 }
 
 magicnet_config_lock_dir() {

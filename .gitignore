@@ -3,6 +3,8 @@ target/
 .env
 .playwright-mcp/
 .kam/
+Kam
+logs/
 webui/dist/
 webui/node_modules/
 webui/node_modules/.vite/
