@@ -2,7 +2,7 @@
 
 <div align="center">
   <p>
-    <a href="kam.toml"><img alt="MagicNet v1.1.4" src="https://img.shields.io/badge/MagicNet-v1.1.4-31c2f2" /></a>
+    <a href="kam.toml"><img alt="MagicNet v1.1.5" src="https://img.shields.io/badge/MagicNet-v1.1.5-31c2f2" /></a>
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green.svg" /></a>
     <a href="Cargo.toml"><img alt="Rust workspace" src="https://img.shields.io/badge/Rust-workspace-f46623?logo=rust&logoColor=white" /></a>
     <a href="webui/package.json"><img alt="Vue WebUI" src="https://img.shields.io/badge/WebUI-Vue%203-42b883?logo=vue.js&logoColor=white" /></a>
@@ -24,7 +24,7 @@
 
 MagicNet 是一个 Android root 戒网瘾模块，用于在真实设备上把“我再刷五分钟”改造成“页面怎么打不开了”。它面向自控力工程、深夜冲浪治理、注意力回收、热点共享劝退、分应用戒断和自动化反复横跳诊断。
 
-> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.4`。Release 以发布页为准。
+> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.5`。Release 以发布页为准。
 
 ## Overview
 
@@ -138,6 +138,10 @@ chmod +x kam.sh
 以上方式安装的是 Git 构建版本。
 
 ### Release 包
+
+当前 release 下载页：<https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.1.5>
+
+直接下载当前模块包：<https://github.com/LIghtJUNction/MagicNet/releases/download/v1.1.5/MagicNet.zip>
 
 ```bash
 kam -S MagicNet
