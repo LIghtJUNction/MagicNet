@@ -223,35 +223,6 @@ magicnet_mihomo_provider_table() {
     unset _config
 }
 
-magicnet_mihomo_extract_proxies_section() {
-    _mmep_source="$1"
-    _mmep_target="$2"
-    awk '
-        BEGIN {
-            in_proxies = 0
-            wrote = 0
-        }
-        /^proxies:[[:space:]]*$/ {
-            in_proxies = 1
-            wrote = 1
-            print
-            next
-        }
-        in_proxies && /^[^[:space:]-][^:]*:/ {
-            in_proxies = 0
-        }
-        in_proxies {
-            print
-        }
-        END {
-            exit wrote ? 0 : 1
-        }
-    ' "$_mmep_source" >"$_mmep_target"
-    _mmep_rc=$?
-    unset _mmep_source _mmep_target
-    return "$_mmep_rc"
-}
-
 magicnet_need_nodes_message() {
     case "${1:-}" in
         mihomo)
@@ -350,71 +321,26 @@ magicnet_prepare_mihomo_nodes_unlocked() {
 
     _config="${MODDIR}/.config/mihomo/config.yaml"
     _workdir="${MODDIR}/.config/mihomo"
-    _providers_table="${MODDIR}/.tmp/magicnet-mihomo-providers.tsv"
+    mkdir -p "${_workdir}/proxies" 2>/dev/null || true
     if [ "$(magicnet_mihomo_provider_table | wc -l | tr -d ' ')" -le 0 ]; then
         _first_mihomo_url=$(magicnet_first_http_url "${MODDIR}/.config/mihomo/subscription.url" 2>/dev/null || true)
         if [ -n "$_first_mihomo_url" ] && [ -x "${MODDIR}/cli" ]; then
             "${MODDIR}/cli" sub set mihomo premium_a "$_first_mihomo_url" >/dev/null 2>&1 || true
         fi
     fi
-    mkdir -p "${MODDIR}/.tmp" 2>/dev/null || true
-    magicnet_mihomo_provider_table >"$_providers_table"
-    _provider_count=0
-    _provider_ok=0
-    magicnet_log "Updating mihomo providers before startup..."
-    while IFS="$(printf '\t')" read -r _name _url _path; do
-        [ -n "$_name" ] || continue
-        _provider_count=$((_provider_count + 1))
-        case "$_path" in
-            /*) _target="$_path" ;;
-            "") _target="${_workdir}/proxies/${_name}.yaml" ;;
-            *) _target="${_workdir}/${_path#./}" ;;
-        esac
-        mkdir -p "${_target%/*}"
-        _tmp="${_target}.download"
-        rm -f "$_tmp"
-        if command -v curl >/dev/null 2>&1 &&
-            curl -fsSL --connect-timeout "${MAGICNET_SUB_CONNECT_TIMEOUT:-10}" --max-time "${MAGICNET_SUB_MAX_TIME:-45}" "$_url" -o "$_tmp"; then
-            :
-        elif command -v wget >/dev/null 2>&1 &&
-            wget -T "${MAGICNET_SUB_MAX_TIME:-45}" -qO "$_tmp" "$_url"; then
-            :
-        else
-            rm -f "$_tmp"
-            magicnet_warn "Failed to update mihomo provider ${_name}"
-            continue
-        fi
-        if [ -s "$_tmp" ] && magicnet_mihomo_extract_proxies_section "$_tmp" "${_tmp}.proxies"; then
-            mv -f "${_tmp}.proxies" "$_target"
-            rm -f "$_tmp"
-            _provider_ok=$((_provider_ok + 1))
-        elif [ -s "$_tmp" ] && grep -Eq '^proxies:[[:space:]]*$' "$_tmp"; then
-            mv -f "$_tmp" "$_target"
-            _provider_ok=$((_provider_ok + 1))
-        else
-            rm -f "$_tmp" "${_tmp}.proxies"
-            magicnet_warn "mihomo provider ${_name} downloaded no supported Clash nodes"
-        fi
-    done <"$_providers_table"
 
-    if [ "${_provider_count:-0}" -le 0 ] || [ "${_provider_ok:-0}" -le 0 ]; then
-        magicnet_warn "mihomo subscription update failed; refusing to start with existing cached nodes"
-        _message="mihomo 订阅更新失败，已拒绝使用旧节点启动。请检查订阅链接或网络后重试。"
-        mkdir -p "${MODDIR}/.state" 2>/dev/null || true
-        printf '%s\n' "$_message" >"${MODDIR}/.state/startup-error" 2>/dev/null || true
-        config set override.description "[MagicNet]: mihomo subscription update failed" 2>/dev/null || true
-        unset _config _workdir _providers_table _first_mihomo_url _provider_count _provider_ok _provider_file _message
+    _provider_count=$(magicnet_mihomo_provider_table | wc -l | tr -d ' ')
+    if [ "${_provider_count:-0}" -le 0 ]; then
+        magicnet_need_nodes_message mihomo
+        unset _config _workdir _first_mihomo_url _provider_count
         return 1
     fi
 
-    if command -v mihomo >/dev/null 2>&1 && [ -f "$_config" ]; then
-        mihomo -t -f "$_config" -d "$_workdir" >/dev/null 2>&1 || {
-            magicnet_warn "mihomo config validation failed before startup"
-            unset _config _workdir _providers_table _first_mihomo_url _provider_count _provider_ok _provider_file
-            return 1
-        }
-    fi
-    unset _config _workdir _providers_table _first_mihomo_url _provider_count _provider_ok _provider_file
+    # Let mihomo fetch and validate http proxy-providers itself. Some providers
+    # return different payloads based on User-Agent, so prefetching with curl/wget
+    # can reject a subscription that mihomo can load correctly.
+    magicnet_log "mihomo provider config is present; provider download is delegated to mihomo."
+    unset _config _workdir _first_mihomo_url _provider_count
     return 0
 }
 
