@@ -703,6 +703,10 @@ fi
 assert_transparent_mode() {
     local mode="$1"
     local before_marker after_marker
+    local expected_tproxy_port expected_redirect_port
+
+    expected_tproxy_port="$(sed -n 's/^MAGICNET_TPROXY_PORT=//p' "$MODDIR/.config/magicnet/tproxy.conf")"
+    expected_redirect_port="$(sed -n 's/^MAGICNET_TPROXY_REDIRECT_PORT=//p' "$MODDIR/.config/magicnet/tproxy.conf")"
 
     before_marker="$(wc -l <"$MOCK_LOG")"
     run sh -c '
@@ -720,14 +724,14 @@ assert_transparent_mode() {
 
     run "$MODDIR/cli" transparent status
 
-    python3 - "$MODDIR/.config/mihomo/config.yaml" "$MODDIR/.config/sing-box/config.json" "$mode" <<'PY'
+    python3 - "$MODDIR/.config/mihomo/config.yaml" "$MODDIR/.config/sing-box/config.json" "$mode" "$expected_tproxy_port" "$expected_redirect_port" <<'PY'
 import json
 import pathlib
 import sys
 
 import yaml
 
-mihomo_path, singbox_path, mode = sys.argv[1:]
+mihomo_path, singbox_path, mode, expected_tproxy_port, expected_redirect_port = sys.argv[1:]
 mihomo = yaml.safe_load(pathlib.Path(mihomo_path).read_text())
 singbox = json.loads(pathlib.Path(singbox_path).read_text())
 
@@ -749,10 +753,16 @@ if mode == "tun":
 elif mode == "tproxy":
     if tun_enabled:
         raise SystemExit("mihomo tun.enable is true in tproxy mode")
-    if "tproxy" not in inbound_types:
+    tproxy_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tproxy"), None)
+    redirect_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "redirect"), None)
+    if not tproxy_inbound:
         raise SystemExit("sing-box tproxy inbound missing in tproxy mode")
-    if "redirect" not in inbound_types:
+    if not redirect_inbound:
         raise SystemExit("sing-box redirect inbound missing in tproxy mode")
+    if tproxy_inbound.get("listen_port") != int(expected_tproxy_port):
+        raise SystemExit(f"sing-box tproxy port mismatch: {tproxy_inbound.get('listen_port')!r}")
+    if redirect_inbound.get("listen_port") != int(expected_redirect_port):
+        raise SystemExit(f"sing-box redirect port mismatch: {redirect_inbound.get('listen_port')!r}")
     if "tun" in inbound_types:
         raise SystemExit("sing-box tun inbound still present in tproxy mode")
     if not sniff_rule:
@@ -769,19 +779,25 @@ PY
             rg -q '^ip route flush table 100$' "$TMP/${mode}-commands.log"
             ;;
         tproxy)
-            rg -q '^iptables .* -t mangle -A MAGICNET_TPROXY -p tcp --dport 53 -j TPROXY --on-port 9898 --tproxy-mark 0x1/0x1$' "$TMP/${mode}-commands.log"
-            rg -q '^iptables .* -t mangle -A MAGICNET_TPROXY -p udp -i ap0 -j TPROXY --on-port 9898 --tproxy-mark 0x1/0x1$' "$TMP/${mode}-commands.log"
+            rg -q "^iptables .* -t mangle -A MAGICNET_TPROXY -p tcp --dport 53 -j TPROXY --on-port ${expected_tproxy_port} --tproxy-mark 0x1/0x1$" "$TMP/${mode}-commands.log"
+            rg -q "^iptables .* -t mangle -A MAGICNET_TPROXY -p udp -i ap0 -j TPROXY --on-port ${expected_tproxy_port} --tproxy-mark 0x1/0x1$" "$TMP/${mode}-commands.log"
             rg -q '^iptables .* -t mangle -I PREROUTING -j MAGICNET_TPROXY$' "$TMP/${mode}-commands.log"
             rg -q '^iptables .* -t mangle -I OUTPUT -j MAGICNET_TPROXY_OUTPUT$' "$TMP/${mode}-commands.log"
             rg -q '^iptables .* -t mangle -I PREROUTING -p tcp -m socket -j MAGICNET_TPROXY_DIVERT$' "$TMP/${mode}-commands.log"
             rg -q '^iptables .* -t nat -I OUTPUT -j MAGICNET_TPROXY_REDIRECT$' "$TMP/${mode}-commands.log"
-            rg -q '^iptables .* -t nat -A MAGICNET_TPROXY_REDIRECT -p tcp -j REDIRECT --to-ports 9899$' "$TMP/${mode}-commands.log"
+            rg -q '^iptables .* -t nat -A MAGICNET_TPROXY_REDIRECT -m owner --uid-owner 0 -j RETURN$' "$TMP/${mode}-commands.log"
+            rg -q '^iptables .* -t nat -A MAGICNET_TPROXY_REDIRECT -d 127.0.0.0/8 -j RETURN$' "$TMP/${mode}-commands.log"
+            rg -q "^iptables .* -t nat -A MAGICNET_TPROXY_REDIRECT -p tcp -j REDIRECT --to-ports ${expected_redirect_port}$" "$TMP/${mode}-commands.log"
             rg -q '^ip rule add fwmark 0x1 table 100 pref 100$' "$TMP/${mode}-commands.log"
             rg -q '^ip route add local default dev lo table 100$' "$TMP/${mode}-commands.log"
             ;;
     esac
 }
 
+cat >"$MODDIR/.config/magicnet/tproxy.conf" <<'EOF'
+MAGICNET_TPROXY_PORT=19098
+MAGICNET_TPROXY_REDIRECT_PORT=19099
+EOF
 assert_transparent_mode tun
 assert_transparent_mode tproxy
 assert_transparent_mode tun

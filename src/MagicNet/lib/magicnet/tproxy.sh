@@ -12,12 +12,134 @@ magicnet_tproxy_table() {
     printf '%s\n' "${MAGICNET_TPROXY_TABLE:-100}"
 }
 
+magicnet_tproxy_conf_value() {
+    _mtcv_key="$1"
+    _mtcv_file="${MODDIR}/.config/magicnet/tproxy.conf"
+    [ -f "$_mtcv_file" ] || {
+        unset _mtcv_key _mtcv_file
+        return 1
+    }
+    awk -F= -v key="$_mtcv_key" '
+        $1 == key {
+            value = $0
+            sub("^[^=]*=", "", value)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            print value
+            exit 0
+        }
+    ' "$_mtcv_file" 2>/dev/null
+    unset _mtcv_key _mtcv_file
+}
+
+magicnet_tproxy_yaml_scalar() {
+    _mtys_file="$1"
+    _mtys_key="$2"
+    [ -f "$_mtys_file" ] || {
+        unset _mtys_file _mtys_key
+        return 1
+    }
+    awk -v key="$_mtys_key" '
+        $0 ~ "^[[:space:]]*" key "[[:space:]]*:" {
+            value = $0
+            sub("^[[:space:]]*" key "[[:space:]]*:[[:space:]]*", "", value)
+            sub("[[:space:]]+#.*$", "", value)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            gsub(/^["'\'']|["'\'']$/, "", value)
+            print value
+            exit 0
+        }
+    ' "$_mtys_file" 2>/dev/null
+    unset _mtys_file _mtys_key
+}
+
+magicnet_tproxy_json_inbound_port() {
+    _mtjip_file="$1"
+    _mtjip_type="$2"
+    [ -f "$_mtjip_file" ] || {
+        unset _mtjip_file _mtjip_type
+        return 1
+    }
+    awk -v target_type="$_mtjip_type" '
+        /"type"[[:space:]]*:[[:space:]]*"/ {
+            in_target = ($0 ~ "\"type\"[[:space:]]*:[[:space:]]*\"" target_type "\"")
+        }
+        in_target && /"listen_port"[[:space:]]*:/ {
+            value = $0
+            sub("^.*\"listen_port\"[[:space:]]*:[[:space:]]*", "", value)
+            sub("[^0-9].*$", "", value)
+            if (value != "") print value
+            exit 0
+        }
+        in_target && /^[[:space:]]*}[,]?[[:space:]]*$/ {
+            in_target = 0
+        }
+    ' "$_mtjip_file" 2>/dev/null
+    unset _mtjip_file _mtjip_type
+}
+
+magicnet_tproxy_valid_port() {
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+magicnet_tproxy_active_core() {
+    if magicnet_cmd_exists sing-box; then
+        import __singbox__
+        if is_singbox_running >/dev/null 2>&1; then
+            printf '%s\n' "sing-box"
+            return 0
+        fi
+    fi
+    if magicnet_cmd_exists mihomo; then
+        import __mihomo__
+        if is_mihomo_running >/dev/null 2>&1; then
+            printf '%s\n' "mihomo"
+            return 0
+        fi
+    fi
+    magicnet_preferred_core 2>/dev/null || printf '%s\n' "sing-box"
+}
+
 magicnet_tproxy_port() {
-    printf '%s\n' "${MAGICNET_TPROXY_PORT:-9898}"
+    _mtpp_port="${MAGICNET_TPROXY_PORT:-}"
+    if ! magicnet_tproxy_valid_port "$_mtpp_port"; then
+        _mtpp_port="$(magicnet_tproxy_conf_value MAGICNET_TPROXY_PORT)"
+    fi
+    if ! magicnet_tproxy_valid_port "$_mtpp_port"; then
+        case "$(magicnet_tproxy_active_core)" in
+            mihomo)
+                _mtpp_port="$(magicnet_tproxy_yaml_scalar "${MODDIR}/.config/mihomo/config.yaml" "tproxy-port")"
+                ;;
+            *)
+                _mtpp_port="$(magicnet_tproxy_json_inbound_port "${MODDIR}/.config/sing-box/config.json" "tproxy")"
+                ;;
+        esac
+    fi
+    magicnet_tproxy_valid_port "$_mtpp_port" || _mtpp_port=9898
+    printf '%s\n' "$_mtpp_port"
+    unset _mtpp_port
 }
 
 magicnet_tproxy_redirect_port() {
-    printf '%s\n' "${MAGICNET_TPROXY_REDIRECT_PORT:-9899}"
+    _mtprp_port="${MAGICNET_TPROXY_REDIRECT_PORT:-}"
+    if ! magicnet_tproxy_valid_port "$_mtprp_port"; then
+        _mtprp_port="$(magicnet_tproxy_conf_value MAGICNET_TPROXY_REDIRECT_PORT)"
+    fi
+    if ! magicnet_tproxy_valid_port "$_mtprp_port"; then
+        case "$(magicnet_tproxy_active_core)" in
+            mihomo)
+                _mtprp_port="$(magicnet_tproxy_yaml_scalar "${MODDIR}/.config/mihomo/config.yaml" "redir-port")"
+                ;;
+            *)
+                _mtprp_port="$(magicnet_tproxy_json_inbound_port "${MODDIR}/.config/sing-box/config.json" "redirect")"
+                ;;
+        esac
+    fi
+    magicnet_tproxy_valid_port "$_mtprp_port" || _mtprp_port=9899
+    printf '%s\n' "$_mtprp_port"
+    unset _mtprp_port
 }
 
 magicnet_tproxy_pref() {
@@ -140,12 +262,22 @@ magicnet_tproxy_app_uid_list() {
 magicnet_tproxy_owner_return() {
     _mtpo_cmd="$1"
     _mtpo_chain="$2"
+    magicnet_tproxy_owner_return_table "$_mtpo_cmd" mangle "$_mtpo_chain"
+    _mtpo_rc=$?
+    unset _mtpo_cmd _mtpo_chain
+    return "$_mtpo_rc"
+}
+
+magicnet_tproxy_owner_return_table() {
+    _mtpo_cmd="$1"
+    _mtpo_table="$2"
+    _mtpo_chain="$3"
     _mtpo_uid="${MAGICNET_TPROXY_EXEMPT_UID:-0}"
 
-    magicnet_tproxy_iptables "$_mtpo_cmd" -t mangle -A "$_mtpo_chain" -m owner --uid-owner "$_mtpo_uid" -j RETURN 2>/dev/null || true
-    magicnet_tproxy_iptables "$_mtpo_cmd" -t mangle -A "$_mtpo_chain" -m owner --uid-owner 1052 -j RETURN 2>/dev/null || true
-    magicnet_tproxy_iptables "$_mtpo_cmd" -t mangle -A "$_mtpo_chain" -m owner --gid-owner 3005 -j RETURN 2>/dev/null || true
-    unset _mtpo_cmd _mtpo_chain _mtpo_uid
+    magicnet_tproxy_iptables "$_mtpo_cmd" -t "$_mtpo_table" -A "$_mtpo_chain" -m owner --uid-owner "$_mtpo_uid" -j RETURN 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpo_cmd" -t "$_mtpo_table" -A "$_mtpo_chain" -m owner --uid-owner 1052 -j RETURN 2>/dev/null || true
+    magicnet_tproxy_iptables "$_mtpo_cmd" -t "$_mtpo_table" -A "$_mtpo_chain" -m owner --gid-owner 3005 -j RETURN 2>/dev/null || true
+    unset _mtpo_cmd _mtpo_table _mtpo_chain _mtpo_uid
 }
 
 magicnet_tproxy_apply_app_policy() {
@@ -260,10 +392,20 @@ magicnet_tproxy_apply_redirect_nat() {
 
     magicnet_tproxy_iptables iptables -t nat -N MAGICNET_TPROXY_REDIRECT 2>/dev/null || true
     magicnet_tproxy_iptables iptables -t nat -F MAGICNET_TPROXY_REDIRECT 2>/dev/null || true
+    magicnet_tproxy_owner_return_table iptables nat MAGICNET_TPROXY_REDIRECT
+    magicnet_tproxy_iptables iptables -t nat -A MAGICNET_TPROXY_REDIRECT -d 127.0.0.0/8 -j RETURN 2>/dev/null || true
+    magicnet_tproxy_private_cidrs4 | while read -r _mtpar_cidr; do
+        [ -n "$_mtpar_cidr" ] || continue
+        magicnet_tproxy_iptables iptables -t nat -A MAGICNET_TPROXY_REDIRECT -d "$_mtpar_cidr" -j RETURN 2>/dev/null || true
+    done
+    magicnet_tproxy_collect_outbound_bypass_ifaces | while read -r _mtpar_iface; do
+        [ -n "$_mtpar_iface" ] || continue
+        magicnet_tproxy_iptables iptables -t nat -A MAGICNET_TPROXY_REDIRECT -o "$_mtpar_iface" -j RETURN 2>/dev/null || true
+    done
     magicnet_tproxy_iptables iptables -t nat -A MAGICNET_TPROXY_REDIRECT -p tcp -j REDIRECT --to-ports "$_mtpar_port" 2>/dev/null || return 1
     magicnet_tproxy_ensure_jump iptables nat OUTPUT MAGICNET_TPROXY_REDIRECT || return 1
 
-    unset _mtpar_port
+    unset _mtpar_port _mtpar_cidr _mtpar_iface
 }
 
 magicnet_tproxy_apply_family() {

@@ -36,8 +36,10 @@ magicnet_singbox_apply_transparent_mode() {
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
     _mode="$(magicnet_transparent_mode)"
+    _tproxy_port="$(magicnet_tproxy_port)"
+    _redirect_port="$(magicnet_tproxy_redirect_port)"
     _tmp="${_config}.transparent-mode.new"
-    if awk -v mode="$_mode" '
+    if awk -v mode="$_mode" -v tproxy_port="$_tproxy_port" -v redirect_port="$_redirect_port" '
         function emit_tun(comma) {
             print "    {"
             print "      \"type\": \"tun\","
@@ -82,13 +84,13 @@ magicnet_singbox_apply_transparent_mode() {
             print "      \"type\": \"tproxy\","
             print "      \"tag\": \"tproxy-in\","
             print "      \"listen\": \"::\","
-            print "      \"listen_port\": 9898"
+            print "      \"listen_port\": " tproxy_port
             print "    },"
             print "    {"
             print "      \"type\": \"redirect\","
             print "      \"tag\": \"redirect-in\","
             print "      \"listen\": \"::\","
-            print "      \"listen_port\": 9899"
+            print "      \"listen_port\": " redirect_port
             printf "    }%s\n", comma
         }
         function emit_selected(comma) {
@@ -163,7 +165,7 @@ magicnet_singbox_apply_transparent_mode() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
-        unset _mode
+        unset _mode _tproxy_port _redirect_port
         return 1
     fi
     if awk -v mode="$_mode" '
@@ -248,7 +250,7 @@ magicnet_singbox_apply_transparent_mode() {
         unset _mode
         return 1
     fi
-    unset _mode
+    unset _mode _tproxy_port _redirect_port
 }
 
 magicnet_transparent_apply_unlocked() {

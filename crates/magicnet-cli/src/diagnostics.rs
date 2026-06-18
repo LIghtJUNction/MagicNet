@@ -494,6 +494,10 @@ fn tproxy_output_loop_guard() -> bool {
         "iptables -t mangle -S MAGICNET_TPROXY_OUTPUT 2>/dev/null | head -5 | grep -F -- '--uid-owner 0 -j RETURN' >/dev/null",
     ) && shell_ok(
         "iptables -t mangle -S MAGICNET_TPROXY_OUTPUT 2>/dev/null | head -8 | grep -F -- '-d 127.0.0.0/8 -j RETURN' >/dev/null",
+    ) && shell_ok(
+        "iptables -t nat -S MAGICNET_TPROXY_REDIRECT 2>/dev/null | head -6 | grep -F -- '--uid-owner 0 -j RETURN' >/dev/null",
+    ) && shell_ok(
+        "iptables -t nat -S MAGICNET_TPROXY_REDIRECT 2>/dev/null | head -10 | grep -F -- '-d 127.0.0.0/8 -j RETURN' >/dev/null",
     )
 }
 
