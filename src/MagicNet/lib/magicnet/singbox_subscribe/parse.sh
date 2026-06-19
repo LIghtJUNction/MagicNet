@@ -5,6 +5,7 @@ magicnet_singbox_extract_clash_nodes() {
     _start_index=$(find "$_nodes_dir" -maxdepth 1 -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) 2>/dev/null | wc -l)
 
     awk -v outdir="$_nodes_dir" -v start="$_start_index" '
+        { gsub(/\r/, "") }
         BEGIN { in_proxies = 0; idx = 0; file = "" }
         /^[^[:space:]-][^:]*:/ {
             if ($0 ~ /^proxies:[[:space:]]*$/) {
@@ -37,20 +38,23 @@ magicnet_singbox_extract_share_links() {
     _start_index=$(find "$_nodes_dir" -maxdepth 1 -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) 2>/dev/null | wc -l)
 
     _links_file="${_nodes_dir}/links.txt"
-    _first_line=$(sed -n '1{s/^[[:space:]]*//;p;}' "$_source_file")
+    _first_line=$(sed -n '1{s/^[[:space:]]*//;p;}' "$_source_file" | tr -d '\r')
     case "$_first_line" in
     vless://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://*)
-        grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' "$_source_file" |
+        tr -d '\r' <"$_source_file" |
+            grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
             sed 's/^[[:space:]]*//' >"$_links_file"
         ;;
     *)
         if command -v base64 >/dev/null 2>&1; then
             base64 -d "$_source_file" 2>/dev/null |
+                tr -d '\r' |
                 grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
                 sed 's/^[[:space:]]*//' >"$_links_file"
             if [ ! -s "$_links_file" ]; then
                 tr '_-' '/+' <"$_source_file" 2>/dev/null |
                     base64 -d 2>/dev/null |
+                    tr -d '\r' |
                     grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
                     sed 's/^[[:space:]]*//' >"$_links_file"
             fi
@@ -163,7 +167,7 @@ magicnet_singbox_emit_node_json() {
 
 magicnet_singbox_emit_share_link_json() {
     _node_file="$1"
-    _link=$(sed -n '1p' "$_node_file")
+    _link=$(sed -n '1p' "$_node_file" | tr -d '\r')
     _scheme=${_link%%://*}
     _rest=${_link#*://}
     _body=${_rest%%\#*}
@@ -276,4 +280,3 @@ magicnet_singbox_emit_share_link_json() {
         ;;
     esac
 }
-

@@ -52,6 +52,13 @@ magicnet_singbox_try_fetch_subscription() {
     esac
 }
 
+magicnet_singbox_normalize_subscription_file() {
+    _source_file="$1"
+    _tmp_file="${_source_file}.normalized"
+
+    tr -d '\r' <"$_source_file" >"$_tmp_file" && mv -f "$_tmp_file" "$_source_file"
+}
+
 magicnet_singbox_fetch_one_subscription() {
     _url="$1"
     _source_file="$2"
@@ -102,6 +109,7 @@ magicnet_singbox_fetch_one_subscription() {
     }
 
     mv -f "$_download_file" "$_source_file"
+    magicnet_singbox_normalize_subscription_file "$_source_file" || return 1
     unset _fetched _tried _method _fetch_rc
 }
 

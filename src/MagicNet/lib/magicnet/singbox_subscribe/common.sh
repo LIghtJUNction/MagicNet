@@ -209,6 +209,7 @@ magicnet_yaml_value() {
         )
     fi
     printf '%s\n' "$_value" |
+        tr -d '\r' |
         sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//; s/^'\''//; s/'\''$//'
     unset _value
 }
