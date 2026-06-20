@@ -13,7 +13,9 @@ Use the connected Android device as the source of truth. MagicNet is a root modu
 - Read `.env` only when a task needs local private defaults; do not copy its values into docs, patches, issues, commits, or replies.
 - Use `/sdcard/Download/MagicNet/` for device-side temporary transfer files. Do not use `/data/local/tmp`.
 - Use `su -M -c` on KernelSU devices unless the current device proves another root invocation is required.
-- Keep packet capture diagnostic-only. Do not restore the removed proxy MITM/TProxy capture path.
+- Keep packet capture diagnostic-only. Do not restore the removed proxy MITM/TProxy capture path, `cli capture`, capture config files, or `lib/magicnet/capture_*`.
+- Do not reintroduce Android CA injection. `system/etc/security/cacerts`, `cli cert`, and generated MagicNet local CA support were removed; use tcpdump or eCapture for no-certificate diagnostics.
+- Do not add module-level `post-fs-data.sh` or placeholder `uninstall.sh` just for compatibility. MagicNet uses `service.sh` and `boot-completed.sh`; uninstall hooks belong in kamfw only when real cleanup exists.
 - When eBPF redirect is incomplete, `auto` must fall back to TUN. Do not silently promote netd `ALLOW_MULTI`.
 
 ## Baseline Snapshot
@@ -60,7 +62,7 @@ curl -fsS -X POST http://127.0.0.1:8766/mcp \
 unset MCP_SECRET
 ```
 
-If the local MCP client reads `.mcp.json`, verify it points at `http://127.0.0.1:8765/mcp`. If calls fail, inspect `/data/adb/modules/MagicNet/.log/mcp-server.log` with redaction.
+If the local MCP client reads `.mcp.json`, verify it points at `http://127.0.0.1:8766/mcp` unless `cli mcp status` reports a different port. If calls fail, inspect `/data/adb/modules/MagicNet/.log/mcp-server.log` with redaction.
 
 ## eBPF And netd Status
 
@@ -129,6 +131,31 @@ Boundaries:
 - `cli ecapture pcap` can write packet captures, not decrypted application payloads. If the file is 0 bytes, report pcap output as not validated even if probes started.
 - `cli ecapture tls` can expose TLS plaintext events without installing a CA, but only when the kernel, eBPF probes, architecture, and target TLS library are compatible.
 - Browser/app HTTPS plaintext is not guaranteed. If TLS mode is silent, fall back to packet metadata and routing/DNS evidence.
+
+## Legacy Cleanup Checks
+
+When auditing stale MagicNet files, treat these paths as removed mainline features:
+
+```sh
+find /data/adb/modules/MagicNet -maxdepth 4 \( \
+  -path '*/system/etc/security/cacerts*' \
+  -o -name 'post-fs-data.sh' \
+  -o -name 'sepolice.rule' \
+  -o -name 'capture_common.sh' \
+  -o -name 'capture_singbox.sh' \
+  -o -name 'capture.conf' \
+\) -print
+```
+
+Expected result for a current install is no output. If old files appear on a device, they are migration residue; do not build new behavior around them.
+
+For kamfw uninstall behavior, check the framework, not MagicNet module root:
+
+```sh
+adb shell 'su -M -c "test -f /data/adb/modules/MagicNet/uninstall.sh && sed -n '\''1,120p'\'' /data/adb/modules/MagicNet/uninstall.sh || true"'
+```
+
+An uninstall script is only meaningful if it contains real rollback commands or calls `kamfw run uninstall -- "$@"`.
 
 To pull a capture for local inspection, copy through the approved transfer directory and clean it after use:
 
