@@ -110,6 +110,7 @@ jobs:
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'cli'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-cli'
+          unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-ebpf'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-mcp-server'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/mihomo'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/sing-box'

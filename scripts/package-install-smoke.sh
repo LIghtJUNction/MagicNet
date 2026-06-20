@@ -86,6 +86,7 @@ if ! sh "$MODPATH/customize.sh" >"$LOG" 2>&1; then
 fi
 
 [[ -x "$MODPATH/bin/magicnet-mcp-server" ]] || fail "bin/magicnet-mcp-server is not executable"
+[[ -x "$MODPATH/bin/magicnet-ebpf" ]] || fail "bin/magicnet-ebpf is not executable"
 [[ -L "$MODPATH/cli" ]] || fail "cli is not a symlink"
 [[ "$(readlink "$MODPATH/cli")" == "bin/magicnet-cli" ]] || fail "cli does not point to bin/magicnet-cli"
 [[ -x "$MODPATH/cli" ]] || fail "cli symlink target is not executable"
@@ -96,6 +97,8 @@ done
 
 PATH="$MODPATH/bin:$PATH" command -v magicnet-mcp-server >/dev/null \
     || fail "PATH cannot find magicnet-mcp-server through bin"
+PATH="$MODPATH/bin:$PATH" command -v magicnet-ebpf >/dev/null \
+    || fail "PATH cannot find magicnet-ebpf through bin"
 
 grep -qx 'https://old.example/sing-box' "$MODPATH/.config/sing-box/subscription.url" \
     || fail "sing-box subscription was not preserved from previous install"
@@ -110,10 +113,11 @@ grep -qx 'MAGICNET_DEFAULT_CORE=mihomo' "$MODPATH/.config/magicnet/current-core.
 grep -qx 'MAGICNET_MCP_PORT=18766' "$MODPATH/.config/magicnet/mcp.conf" \
     || fail "MCP config was not preserved from previous install"
 
-cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
+cargo build -p magicnet-cli -p magicnet-mcp-server -p magicnet-ebpf >/dev/null
 cp "$ROOT/target/debug/magicnet-cli" "$MODPATH/bin/magicnet-cli"
 cp "$ROOT/target/debug/magicnet-mcp-server" "$MODPATH/bin/magicnet-mcp-server"
-chmod 0755 "$MODPATH/bin/magicnet-cli" "$MODPATH/bin/magicnet-mcp-server"
+cp "$ROOT/target/debug/magicnet-ebpf" "$MODPATH/bin/magicnet-ebpf"
+chmod 0755 "$MODPATH/bin/magicnet-cli" "$MODPATH/bin/magicnet-mcp-server" "$MODPATH/bin/magicnet-ebpf"
 
 MODDIR="$MODPATH" "$MODPATH/cli" mcp status >"$TMP/mcp-status.log"
 grep -qx 'enabled=1' "$TMP/mcp-status.log" || fail "unexpected MCP preserved enabled state"

@@ -58,7 +58,7 @@ async function runAction(key: string, args: string, label: string, background = 
   });
 }
 
-async function setTransparentMode(mode: "tun" | "tproxy"): Promise<void> {
+async function setTransparentMode(mode: "auto" | "tun" | "ebpf"): Promise<void> {
   await withAction(`transparent-${mode}`, async () => {
     await runCli(`transparent set ${mode}`, `切换 ${mode.toUpperCase()} 模式`);
     await refreshStatus();
@@ -188,8 +188,9 @@ async function disableTailscale(): Promise<void> {
           <Badge tone="neutral">{{ state.runtime.transparentMode }}</Badge>
         </div>
         <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
+          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-auto')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'auto' }" @click="setTransparentMode('auto')">Auto</button>
           <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-tun')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'tun' }" @click="setTransparentMode('tun')">TUN</button>
-          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-tproxy')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'tproxy' }" @click="setTransparentMode('tproxy')">TPROXY</button>
+          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-ebpf')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'ebpf' }" @click="setTransparentMode('ebpf')">eBPF</button>
         </div>
         <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="runAction('transparent-apply', 'transparent apply', '应用透明代理模式')">
           <Radar :size="17" />重新应用模式

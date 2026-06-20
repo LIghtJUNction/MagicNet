@@ -43,6 +43,7 @@ require_entry cli
 require_entry post-fs-data.sh
 require_entry bin/magicnet-cli
 require_entry bin/magicnet-mcp-server
+require_entry bin/magicnet-ebpf
 require_entry bin/mihomo
 require_entry bin/sing-box
 require_entry lib/kamfw/watchdog.sh
@@ -69,11 +70,11 @@ require_android_arm64_elf() {
         || fail "$entry ELF machine is not AArch64"
 }
 
-for entry in cli post-fs-data.sh bin/magicnet-cli bin/magicnet-mcp-server bin/mihomo bin/sing-box; do
+for entry in cli post-fs-data.sh bin/magicnet-cli bin/magicnet-mcp-server bin/magicnet-ebpf bin/mihomo bin/sing-box; do
     require_executable_entry "$entry"
 done
 
-for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/mihomo bin/sing-box; do
+for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/magicnet-ebpf bin/mihomo bin/sing-box; do
     require_android_arm64_elf "$entry"
 done
 

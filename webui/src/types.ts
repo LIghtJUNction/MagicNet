@@ -19,7 +19,7 @@ export type RuntimeState = {
   mihomo: string;
   watchdog: string;
   fswatch: string;
-  transparentMode: "tun" | "tproxy";
+  transparentMode: "auto" | "tun" | "ebpf";
   hotspotMode: "proxy" | "direct";
   vpnCoexist: "on" | "off";
   api: string;

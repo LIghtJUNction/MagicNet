@@ -246,8 +246,8 @@ magicnet_app_policy_apply_unlocked() {
     _app_rc=0
     magicnet_mihomo_apply_app_policy || _app_rc=1
     magicnet_singbox_apply_app_policy || _app_rc=1
-    if [ "$(magicnet_transparent_mode)" = "tproxy" ]; then
-        magicnet_enable_tproxy || _app_rc=1
+    if [ "$(magicnet_transparent_mode)" = "ebpf" ]; then
+        magicnet_enable_ebpf || _app_rc=1
     fi
     return "$_app_rc"
 }

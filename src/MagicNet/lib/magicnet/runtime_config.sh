@@ -8,6 +8,7 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_route_apply_unlocked || _runtime_rc=1
     magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_capture_apply || _runtime_rc=1
+    magicnet_enable_dns_leak_guard || true
     magicnet_enable_hotspot_forward || true
     magicnet_enable_vpn_coexist || true
     return "$_runtime_rc"

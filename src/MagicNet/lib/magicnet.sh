@@ -13,7 +13,7 @@ for _magicnet_lib in \
     ipset_lkm \
     network \
     apps \
-    tproxy \
+    ebpf \
     transparent \
     webui_panel \
     blocklist \

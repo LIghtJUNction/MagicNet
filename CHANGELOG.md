@@ -1,5 +1,17 @@
 ## Unreleased
 
+## v1.1.6 (2026-06-20)
+
+- Add a WebUI issue creation action that copies the full diagnostic context to
+  the clipboard and opens a short prefilled GitHub issue URL.
+- Sanitize sing-box subscription fields before JSON emission so CR/LF control
+  characters from provider data cannot break generated configs.
+- Fix the CLI health check for sing-box DoH servers that use IP addresses with
+  `tls.server_name`, avoiding a false `remote_dns_detour=missing` warning.
+- Skip local sing-box subscription refresh during normal startup when cached
+  nodes are already present, so the core starts immediately and provider-specific
+  downloads are left to the core or explicit subscription update commands.
+
 ## v1.1.5 (2026-06-14)
 
 - Package runtime executables under `bin/`, including the

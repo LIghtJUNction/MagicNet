@@ -48,7 +48,10 @@ pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
             service_status(app);
             Ok(())
         }
-        "start" => run_magicnet_function(app, "magicnet_start_kernel && magicnet_supervisors_start"),
+        "start" => run_magicnet_function(
+            app,
+            "magicnet_start_kernel && { \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 & }",
+        ),
         "ensure" => run_magicnet_function(app, "magicnet_ensure_kernel"),
         "stop" => stop_all_direct(app),
         "restart" => restart(app, args.get(1).map(String::as_str).unwrap_or("current")),
@@ -114,7 +117,7 @@ pub(crate) fn transparent_cmd(app: &App, args: &[String]) -> Result<(), String> 
         }
         "set" => transparent_set(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "apply" => run_magicnet_function(app, "magicnet_transparent_apply"),
-        _ => Err("Usage: cli transparent {status|set <tun|tproxy>|apply}".to_string()),
+        _ => Err("Usage: cli transparent {status|set <auto|tun|ebpf>|apply}".to_string()),
     }
 }
 
@@ -199,12 +202,12 @@ fn restart(app: &App, target: &str) -> Result<(), String> {
 fn restart_command(target: &str) -> &'static str {
     match target {
         "sing-box" | "singbox" => {
-            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel && magicnet_supervisors_start"
+            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel && { \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 & }"
         }
         "mihomo" => {
-            "MAGICNET_DEFAULT_CORE=mihomo MAGICNET_STRICT_CORE=1 magicnet_start_kernel && magicnet_supervisors_start"
+            "MAGICNET_DEFAULT_CORE=mihomo MAGICNET_STRICT_CORE=1 magicnet_start_kernel && { \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 & }"
         }
-        _ => "magicnet_start_kernel && magicnet_supervisors_start",
+        _ => "magicnet_start_kernel && { \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 & }",
     }
 }
 
@@ -275,7 +278,8 @@ mod tests {
         for target in ["sing-box", "singbox", "mihomo", "auto"] {
             let command = restart_command(target);
             assert!(command.contains("magicnet_start_kernel"));
-            assert!(command.ends_with("&& magicnet_supervisors_start"));
+            assert!(command.contains("supervisor start all"));
+            assert!(command.contains("& }"));
         }
     }
 }
@@ -286,6 +290,10 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
         "mihomo" | "clash" => "mihomo",
         _ => return Err("Usage: cli core select <sing-box|mihomo>".to_string()),
     };
+    if normalized == "mihomo" && transparent_mode(app) == "ebpf" {
+        write_transparent_mode(app, "tun")?;
+        println!("[warn] mihomo does not support eBPF mode; transparent mode reset to tun");
+    }
     write_text_file(
         selected_core_path(app),
         &format!("MAGICNET_DEFAULT_CORE={normalized}\n"),
@@ -295,16 +303,60 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
 }
 
 fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
-    if !matches!(mode, "tun" | "tproxy") {
-        return Err("Usage: cli transparent set <tun|tproxy>".to_string());
+    if !matches!(mode, "auto" | "tun" | "ebpf") {
+        return Err("Usage: cli transparent set <auto|tun|ebpf>".to_string());
     }
+    if matches!(mode, "auto" | "ebpf") && selected_core(app) != "sing-box" {
+        write_text_file(selected_core_path(app), "MAGICNET_DEFAULT_CORE=sing-box\n")?;
+        println!("[info] eBPF-first transparent mode is only supported with sing-box; default core set to sing-box");
+    }
+    write_transparent_mode(app, mode)?;
+    stop_all_direct(app)?;
+    if let Err(err) = run_magicnet_function(app, "magicnet_transparent_apply") {
+        if mode == "ebpf" {
+            eprintln!("[warn] eBPF transparent mode is not available on this device: {err}");
+            eprintln!("[warn] Falling back to TUN to keep network usable");
+            write_transparent_mode(app, "tun")?;
+            run_magicnet_function(app, "magicnet_transparent_apply")?;
+            run_magicnet_function(app, "magicnet_start_kernel")?;
+            run_magicnet_function(
+                app,
+                "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 &",
+            )?;
+            println!("[info] Transparent mode set to tun");
+            return Err("eBPF unavailable; restored TUN mode".to_string());
+        }
+        return Err(err);
+    }
+    if let Err(err) = run_magicnet_function(app, "magicnet_start_kernel") {
+        if mode == "ebpf" {
+            eprintln!("[warn] eBPF core startup failed: {err}");
+            eprintln!("[warn] Falling back to TUN to keep network usable");
+            write_transparent_mode(app, "tun")?;
+            run_magicnet_function(app, "magicnet_transparent_apply")?;
+            run_magicnet_function(app, "magicnet_start_kernel")?;
+            run_magicnet_function(
+                app,
+                "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 &",
+            )?;
+            println!("[info] Transparent mode set to tun");
+            return Err("eBPF startup failed; restored TUN mode".to_string());
+        }
+        return Err(err);
+    }
+    run_magicnet_function(
+        app,
+        "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 &",
+    )?;
+    println!("[info] Transparent mode set to {mode}");
+    Ok(())
+}
+
+fn write_transparent_mode(app: &App, mode: &str) -> Result<(), String> {
     write_text_file(
         app.moddir.join(".config/magicnet/transparent-mode.conf"),
         &format!("MAGICNET_TRANSPARENT_MODE={mode}\n"),
-    )?;
-    run_magicnet_function(app, "magicnet_transparent_apply")?;
-    println!("[info] Transparent mode set to {mode}");
-    Ok(())
+    )
 }
 
 fn hotspot_set(app: &App, mode: &str) -> Result<(), String> {
@@ -343,12 +395,27 @@ fn vpn_set(app: &App, mode: &str) -> Result<(), String> {
 fn transparent_mode(app: &App) -> &'static str {
     fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
         .ok()
-        .filter(|text| {
-            text.lines()
-                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=tproxy")
+        .and_then(|text| {
+            if text
+                .lines()
+                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=ebpf")
+            {
+                Some("ebpf")
+            } else if text
+                .lines()
+                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=auto")
+            {
+                Some("auto")
+            } else if text
+                .lines()
+                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=tun")
+            {
+                Some("tun")
+            } else {
+                None
+            }
         })
-        .map(|_| "tproxy")
-        .unwrap_or("tun")
+        .unwrap_or("auto")
 }
 
 fn hotspot_mode(app: &App) -> String {

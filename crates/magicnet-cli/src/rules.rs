@@ -34,7 +34,10 @@ fn route_domain(app: &App, args: &[String]) -> Result<(), String> {
     let target = args.get(1).map(String::as_str).unwrap_or_default();
     let domain = args.get(2).map(String::as_str).unwrap_or_default();
     if domain.is_empty() {
-        return Err("Usage: cli route {add-domain|remove-domain} <proxy|direct|block> <domain-suffix>".to_string());
+        return Err(
+            "Usage: cli route {add-domain|remove-domain} <proxy|direct|block> <domain-suffix>"
+                .to_string(),
+        );
     }
     if domain.bytes().any(|byte| byte.is_ascii_whitespace()) {
         return Err(format!("invalid domain suffix: {domain}"));

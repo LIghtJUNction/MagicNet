@@ -8,7 +8,7 @@ pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_config_validate","description":"Validate mihomo, sing-box, or all configs.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["mihomo","sing-box","all"]}}}},
 {"name":"magicnet_config_sync_template","description":"Sync a config from the bundled upstream template.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["mihomo","sing-box"]}},"required":["target"]}},
 {"name":"magicnet_config_save_base64","description":"Validate and save a config from base64 text.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["mihomo","sing-box"]},"content_base64":{"type":"string"}},"required":["target","content_base64"]}},
-{"name":"magicnet_transparent_set","description":"Set transparent proxy mode.","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["tun","tproxy"]}},"required":["mode"]}},
+{"name":"magicnet_transparent_set","description":"Set transparent proxy mode.","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["tun","ebpf"]}},"required":["mode"]}},
 {"name":"magicnet_transparent_apply","description":"Re-apply transparent proxy rules.","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_hotspot_set","description":"Set hotspot forwarding mode.","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["proxy","direct"]}},"required":["mode"]}},
 {"name":"magicnet_hotspot_reload","description":"Reload hotspot forwarding rules.","inputSchema":{"type":"object","properties":{}}},

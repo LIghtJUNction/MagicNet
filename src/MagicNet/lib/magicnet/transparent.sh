@@ -17,7 +17,7 @@ magicnet_mihomo_apply_transparent_mode() {
                 in_tun = 0
             }
             if (in_tun && $0 ~ /^  enable[[:space:]]*:/) {
-                print "  enable: " (mode == "tun" ? "true" : "false")
+                print "  enable: " (mode == "ebpf" ? "false" : "true")
                 next
             }
             print
@@ -32,14 +32,143 @@ magicnet_mihomo_apply_transparent_mode() {
     unset _mode
 }
 
+magicnet_singbox_dns_strategy_state() {
+    printf '%s\n' "${MODDIR}/.config/magicnet/singbox-dns-strategy.before-ebpf"
+}
+
+magicnet_singbox_current_dns_strategy() {
+    _mscds_config="$1"
+    [ -f "$_mscds_config" ] || {
+        unset _mscds_config
+        return 1
+    }
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.dns.strategy // empty' "$_mscds_config" 2>/dev/null
+    else
+        awk '
+            /"dns"[[:space:]]*:[[:space:]]*\{/ { in_dns = 1 }
+            in_dns && /"strategy"[[:space:]]*:/ {
+                value = $0
+                sub("^.*\"strategy\"[[:space:]]*:[[:space:]]*\"", "", value)
+                sub("\".*$", "", value)
+                print value
+                exit
+            }
+            in_dns && /^[[:space:]]*}[,]?[[:space:]]*$/ { in_dns = 0 }
+        ' "$_mscds_config" 2>/dev/null
+    fi
+    unset _mscds_config
+}
+
+magicnet_singbox_valid_dns_strategy() {
+    case "$1" in
+        ''|*[!A-Za-z0-9_-]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+magicnet_singbox_dns_strategy_for_mode() {
+    _msdsfm_config="$1"
+    _msdsfm_mode="$2"
+    _msdsfm_state="$(magicnet_singbox_dns_strategy_state)"
+
+    if [ -f "$_msdsfm_state" ]; then
+        _msdsfm_saved="$(sed -n '1p' "$_msdsfm_state" 2>/dev/null)"
+        rm -f "$_msdsfm_state" 2>/dev/null || true
+        if magicnet_singbox_valid_dns_strategy "$_msdsfm_saved"; then
+            printf '%s\n' "$_msdsfm_saved"
+        fi
+    fi
+
+    unset _msdsfm_config _msdsfm_mode _msdsfm_state _msdsfm_current _msdsfm_saved
+}
+
 magicnet_singbox_apply_transparent_mode() {
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
     _mode="$(magicnet_transparent_mode)"
-    _tproxy_port="$(magicnet_tproxy_port)"
-    _redirect_port="$(magicnet_tproxy_redirect_port)"
+    _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "$_mode")"
+    _dns_port="${MAGICNET_EBPF_DNS_PORT:-1053}"
+    case "$_dns_port" in
+        *[!0-9]*|"")
+            unset _mode _dns_strategy _dns_port
+            return 1
+            ;;
+    esac
+    _jq="${MODDIR}/bin/jq"
+    if [ ! -x "$_jq" ]; then
+        _jq="$(command -v jq 2>/dev/null || true)"
+    fi
     _tmp="${_config}.transparent-mode.new"
-    if awk -v mode="$_mode" -v tproxy_port="$_tproxy_port" -v redirect_port="$_redirect_port" '
+    if [ -n "$_jq" ]; then
+        if "$_jq" --arg mode "$_mode" --arg dns_strategy "$_dns_strategy" --argjson dns_port "$_dns_port" '
+            def tun_in:
+              {
+                "type": "tun",
+                "tag": "tun-in",
+                "interface_name": "magicnet0",
+                "address": "172.19.0.1/30",
+                "auto_route": true,
+                "auto_redirect": true,
+                "strict_route": true,
+                "route_exclude_address": [
+                  "192.168.0.0/16",
+                  "10.0.0.0/8",
+                  "172.16.0.0/12",
+                  "100.64.0.0/10",
+                  "127.0.0.0/8",
+                  "169.254.0.0/16",
+                  "224.0.0.0/4",
+                  "::1/128",
+                  "fc00::/7",
+                  "fe80::/10",
+                  "ff00::/8",
+                  "fd7a:115c:a1e0::/48"
+                ],
+                "exclude_package": [
+                  "com.tailscale.ipn",
+                  "com.wireguard.android",
+                  "net.openvpn.openvpn",
+                  "de.blinkt.openvpn",
+                  "com.zerotier.one",
+                  "com.cloudflare.onedotonedotonedotone",
+                  "io.nekohasekai.sfa",
+                  "moe.nb4a",
+                  "com.v2ray.ang",
+                  "com.github.kr328.clash",
+                  "com.github.metacubex.clash.meta"
+                ],
+                "stack": "gvisor"
+              };
+            def ebpf_dns4_in:
+              {
+                "type": "direct",
+                "tag": "magicnet-ebpf-dns4-in",
+                "listen": "127.0.0.1",
+                "listen_port": $dns_port
+              };
+            def ebpf_dns6_in:
+              {
+                "type": "direct",
+                "tag": "magicnet-ebpf-dns6-in",
+                "listen": "::1",
+                "listen_port": $dns_port
+              };
+            .inbounds = (
+              ((.inbounds // [])
+                | map(select((.type // "") as $type | ($type != "tun" and $type != "tproxy" and $type != "redirect")))
+                | map(select((.tag // "") as $tag | ($tag != "magicnet-ebpf-dns4-in" and $tag != "magicnet-ebpf-dns6-in"))))
+              + (if $mode == "ebpf" then [ebpf_dns4_in, ebpf_dns6_in] elif $mode == "auto" then [tun_in, ebpf_dns4_in, ebpf_dns6_in] else [tun_in] end)
+            )
+            | if $dns_strategy != "" then .dns.strategy = $dns_strategy else . end
+        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+            :
+        else
+            rm -f "$_tmp" 2>/dev/null || true
+            unset _mode _dns_strategy _dns_port _jq
+            return 1
+        fi
+    elif awk -v mode="$_mode" '
         function emit_tun(comma) {
             print "    {"
             print "      \"type\": \"tun\","
@@ -79,24 +208,8 @@ magicnet_singbox_apply_transparent_mode() {
             print "      \"stack\": \"gvisor\""
             printf "    }%s\n", comma
         }
-        function emit_tproxy(comma) {
-            print "    {"
-            print "      \"type\": \"tproxy\","
-            print "      \"tag\": \"tproxy-in\","
-            print "      \"listen\": \"::\","
-            print "      \"listen_port\": " tproxy_port
-            print "    },"
-            print "    {"
-            print "      \"type\": \"redirect\","
-            print "      \"tag\": \"redirect-in\","
-            print "      \"listen\": \"::\","
-            print "      \"listen_port\": " redirect_port
-            printf "    }%s\n", comma
-        }
         function emit_selected(comma) {
-            if (mode == "tproxy") {
-                emit_tproxy(comma)
-            } else {
+            if (mode != "ebpf") {
                 emit_tun(comma)
             }
         }
@@ -141,7 +254,10 @@ magicnet_singbox_apply_transparent_mode() {
             if (buffering) {
                 buffer = buffer $0 "\n"
                 depth += count_delta($0)
-                if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"(tun|tproxy)"/) {
+                if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"(tun|tproxy|redirect)"/) {
+                    is_transparent = 1
+                }
+                if ($0 ~ /"tag"[[:space:]]*:[[:space:]]*"magicnet-ebpf-dns[46]-in"/) {
                     is_transparent = 1
                 }
                 if (depth <= 0) {
@@ -165,8 +281,28 @@ magicnet_singbox_apply_transparent_mode() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
-        unset _mode _tproxy_port _redirect_port
+        unset _mode _dns_strategy _dns_port _jq
         return 1
+    fi
+    if [ -n "$_dns_strategy" ] && [ -z "$_jq" ]; then
+        if awk -v strategy="$_dns_strategy" '
+            {
+                if ($0 ~ /"dns"[[:space:]]*:[[:space:]]*\{/) {
+                    in_dns = 1
+                }
+                if (in_dns && $0 ~ /"strategy"[[:space:]]*:/) {
+                    sub("\"strategy\"[[:space:]]*:[[:space:]]*\"[^\"]*\"", "\"strategy\": \"" strategy "\"")
+                    in_dns = 0
+                }
+                print
+            }
+        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+            :
+        else
+            rm -f "$_tmp" 2>/dev/null || true
+            unset _mode _dns_strategy _dns_port _jq
+            return 1
+        fi
     fi
     if awk -v mode="$_mode" '
         function count_delta(line, i, c, delta) {
@@ -179,11 +315,12 @@ magicnet_singbox_apply_transparent_mode() {
             return delta
         }
         function emit_sniff_inbounds() {
-            print "          \"mixed-in\","
-            if (mode == "tproxy") {
-                print "          \"tproxy-in\","
-                print "          \"redirect-in\""
+            if (mode == "ebpf") {
+                print "          \"mixed-in\","
+                print "          \"magicnet-ebpf-dns4-in\","
+                print "          \"magicnet-ebpf-dns6-in\""
             } else {
+                print "          \"mixed-in\","
                 print "          \"tun-in\""
             }
         }
@@ -247,17 +384,17 @@ magicnet_singbox_apply_transparent_mode() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
-        unset _mode
+        unset _mode _dns_port _jq
         return 1
     fi
-    unset _mode _tproxy_port _redirect_port
+    unset _mode _dns_strategy _dns_port _jq
 }
 
 magicnet_transparent_apply_unlocked() {
     _transparent_rc=0
     magicnet_mihomo_apply_transparent_mode || _transparent_rc=1
     magicnet_singbox_apply_transparent_mode || _transparent_rc=1
-    magicnet_enable_tproxy || _transparent_rc=1
+    magicnet_enable_ebpf || _transparent_rc=1
     return "$_transparent_rc"
 }
 

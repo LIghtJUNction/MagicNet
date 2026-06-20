@@ -187,6 +187,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "magicnet-ebpf"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "magicnet-mcp-server"
 version = "0.1.0"
 dependencies = [

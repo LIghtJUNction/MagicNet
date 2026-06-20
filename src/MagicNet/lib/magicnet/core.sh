@@ -23,6 +23,10 @@ magicnet_refresh_status() {
 magicnet_start_mihomo_unlocked() {
     [ "${MAGIC_MIHOMO:-1}" -ne 0 ] || return 1
     magicnet_cmd_exists mihomo || return 1
+    if [ "$(magicnet_transparent_mode)" = "ebpf" ]; then
+        magicnet_warn "mihomo does not support eBPF transparent mode; use TUN or switch to sing-box"
+        return 1
+    fi
     import __mihomo__
     is_mihomo_running >/dev/null 2>&1 && return 0
     magicnet_prepare_mihomo_nodes_unlocked || return 1
@@ -33,6 +37,8 @@ magicnet_start_mihomo_unlocked() {
             singbox_stop || return 1
         fi
     fi
+    magicnet_mihomo_apply_transparent_mode || return 1
+    magicnet_ebpf_cleanup || true
     import __mihomo__
     mihomo_start || return 1
     if ! magicnet_mihomo_running_has_nodes; then
@@ -71,12 +77,19 @@ magicnet_start_singbox_unlocked() {
             mihomo_stop || return 1
         fi
     fi
+    magicnet_ebpf_cleanup || true
+    magicnet_singbox_apply_transparent_mode || return 1
     import __singbox__
     singbox_start || return 1
     if ! magicnet_singbox_running_has_nodes; then
         magicnet_warn "sing-box started but no proxy nodes were detected; stopping sing-box."
         singbox_stop >/dev/null 2>&1 || true
         magicnet_need_nodes_message sing-box
+        return 1
+    fi
+    if ! magicnet_enable_ebpf; then
+        magicnet_warn "eBPF transparent mode failed after sing-box startup; stopping sing-box."
+        singbox_stop >/dev/null 2>&1 || true
         return 1
     fi
     return 0

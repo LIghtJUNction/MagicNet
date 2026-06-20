@@ -3,7 +3,9 @@
 # Import common Clash-style subscription nodes into the bundled sing-box config.
 
 magicnet_json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+    printf '%s' "$1" |
+        tr '\r\n\t' '   ' |
+        sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
 }
 
 magicnet_json_array_csv() {

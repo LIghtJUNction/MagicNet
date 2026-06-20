@@ -50,10 +50,10 @@ set_i18n "INSTALL_TITLE" \
   "ko" "MagicNet 설치"
 
 set_i18n "INSTALL_PROFILE" \
-  "zh" "系统级戒网瘾模块，内置 mihomo / sing-box 双内核、域名封锁、TUN/TProxy 与 Clash API 兼容 WebUI。" \
-  "en" "System-level digital detox module with mihomo / sing-box cores, domain blocking, TUN/TProxy, and Clash API compatible WebUI." \
-  "ja" "mihomo / sing-box コア、ドメインブロック、TUN/TProxy、Clash API 互換 WebUI を備えたシステム級デジタルデトックスモジュールです。" \
-  "ko" "mihomo / sing-box 코어, 도메인 차단, TUN/TProxy, Clash API 호환 WebUI를 포함한 시스템 수준 디지털 디톡스 모듈입니다."
+  "zh" "系统级戒网瘾模块，内置 mihomo / sing-box 双内核、域名封锁、auto/TUN/eBPF 透明治理与 Clash API 兼容 WebUI。" \
+  "en" "System-level digital detox module with mihomo / sing-box cores, domain blocking, auto/TUN/eBPF transparent routing, and Clash API compatible WebUI." \
+  "ja" "mihomo / sing-box コア、ドメインブロック、auto/TUN/eBPF 透過制御、Clash API 互換 WebUI を備えたシステム級デジタルデトックスモジュールです。" \
+  "ko" "mihomo / sing-box 코어, 도메인 차단, auto/TUN/eBPF 투명 제어, Clash API 호환 WebUI를 포함한 시스템 수준 디지털 디톡스 모듈입니다."
 
 set_i18n "INSTALL_ROW_PROFILE" \
   "zh" "模块定位" \

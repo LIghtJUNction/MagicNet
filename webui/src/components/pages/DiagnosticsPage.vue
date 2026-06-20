@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, ExternalLink, RadioTower, RefreshCw, Server } from "lucide-vue-next";
+import { Bug, Copy, ExternalLink, RadioTower, RefreshCw, Server } from "lucide-vue-next";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -8,7 +8,7 @@ import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 
-const { state, refreshHealth, refreshMcp, refreshPing, runCli, openExternal } = useMagicNet();
+const { state, refreshHealth, refreshMcp, refreshPing, runCli, createIssue, openExternal } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 
 const assistants = [
@@ -47,6 +47,7 @@ async function askAi(url: string, name: string): Promise<void> {
       <template #actions>
         <Button variant="outline" :loading="isRunning('health')" @click="withAction('health', refreshDiagnostics)"><RefreshCw :size="17" />健康检查</Button>
         <Button :loading="isRunning('ping')" @click="withAction('ping', () => refreshPing())"><RadioTower :size="17" />连通性测试</Button>
+        <Button :loading="isRunning('create-issue')" @click="withAction('create-issue', createIssue)"><Bug :size="17" />创建 Issue</Button>
         <Button variant="outline" :loading="isRunning('copy-context')" @click="copyContext"><Copy :size="17" />复制上下文</Button>
       </template>
     </PageHeader>

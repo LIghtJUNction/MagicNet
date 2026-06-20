@@ -35,6 +35,7 @@ build_crate() {
 }
 
 build_crate magicnet-cli magicnet-cli
+build_crate magicnet-ebpf magicnet-ebpf
 build_crate magicnet-mcp-server magicnet-mcp-server
 
 rm -f "${KAM_MODULE_ROOT}/cli"
@@ -47,6 +48,11 @@ fi
 
 if [ ! -x "${KAM_MODULE_ROOT}/bin/magicnet-mcp-server" ]; then
     log_error "bin/magicnet-mcp-server is not executable"
+    exit 1
+fi
+
+if [ ! -x "${KAM_MODULE_ROOT}/bin/magicnet-ebpf" ]; then
+    log_error "bin/magicnet-ebpf is not executable"
     exit 1
 fi
 

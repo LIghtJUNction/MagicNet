@@ -49,7 +49,7 @@ export const runtimeDefaults: RuntimeState = {
   mihomo: "unknown",
   watchdog: "unknown",
   fswatch: "unknown",
-  transparentMode: "tun",
+  transparentMode: "auto",
   hotspotMode: "proxy",
   vpnCoexist: "on",
   api: "http://127.0.0.1:9090",
@@ -128,7 +128,9 @@ export function parseRuntime(text: string, previous: RuntimeState): RuntimeState
       const selected = line.slice(9).trim();
       if (selected === "sing-box" || selected === "mihomo") next.selectedCore = selected;
     }
-    if (line.startsWith("Transparent:")) next.transparentMode = line.includes("tproxy") ? "tproxy" : "tun";
+    if (line.startsWith("Transparent:")) {
+      next.transparentMode = line.includes("ebpf") ? "ebpf" : line.includes("auto") ? "auto" : "tun";
+    }
     if (line.startsWith("Hotspot:")) next.hotspotMode = line.includes("direct") ? "direct" : "proxy";
     if (line.startsWith("VPN Coexist:")) next.vpnCoexist = line.includes("off") ? "off" : "on";
     if (line.startsWith("API:")) next.api = line.slice(4).trim() || next.api;

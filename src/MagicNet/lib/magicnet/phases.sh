@@ -10,7 +10,8 @@ kamfw_phase_boot_completed() {
     sleep 3
     magicnet_mcp_start_if_enabled || true
     magicnet_start_kernel || true
-    magicnet_supervisors_start || true
+    "${MODDIR}/cli" supervisor start all >/dev/null 2>&1 &
+    return 0
 }
 
 kamfw_phase_service() {

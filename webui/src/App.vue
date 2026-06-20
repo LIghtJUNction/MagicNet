@@ -2,6 +2,7 @@
 import {
   Activity,
   Ban,
+  Bug,
   DownloadCloud,
   MonitorCog,
   Gauge,
@@ -33,7 +34,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 
 type TabKey = "control" | "config" | "apps" | "block" | "subs" | "rank" | "tools" | "health" | "webui" | "output";
 
-const { state, statusTone, refreshAll, refreshStatus, refreshApps, refreshBlock, refreshSubs, refreshHealth, refreshCapture, refreshCerts, refreshMcp, openExternal, REPO, AUTHOR_WHISPER_URL } = useMagicNet();
+const { state, statusTone, refreshAll, refreshStatus, refreshApps, refreshBlock, refreshSubs, refreshHealth, refreshCapture, refreshCerts, refreshMcp, createIssue, openExternal, REPO, AUTHOR_WHISPER_URL } = useMagicNet();
 const activeTab = ref<TabKey>("control");
 const showAdvancedNav = ref(false);
 
@@ -109,7 +110,10 @@ onMounted(() => {
           <p class="text-sm text-zinc-400">Android root network operations console</p>
         </div>
       </div>
-      <div class="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+      <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <Button size="sm" class="px-2" :loading="state.task === '创建 GitHub issue'" @click="createIssue">
+          <Bug :size="16" />创建 Issue
+        </Button>
         <Button variant="ghost" size="sm" class="px-2" :loading="state.task === '刷新面板'" @click="refreshAll">
           <Activity :size="16" />刷新
         </Button>

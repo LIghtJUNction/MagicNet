@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">MagicNet eBPF 与 TUN 真机性能对比</title>
+  <desc id="desc">PHK110 真机在 Android 16 上测试 Baidu HTTPS IPv4 五次平均结果。TUN 平均总耗时 207.2ms，eBPF TCP bridge 平均总耗时 220.8ms；公网延迟占主导，单次 HTTP 总耗时不能代表内核路径开销。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#101820"/>
+      <stop offset="0.52" stop-color="#111827"/>
+      <stop offset="1" stop-color="#172033"/>
+    </linearGradient>
+    <linearGradient id="ebpf" x1="0" x2="1">
+      <stop offset="0" stop-color="#21d4a1"/>
+      <stop offset="1" stop-color="#33b8ff"/>
+    </linearGradient>
+    <linearGradient id="tun" x1="0" x2="1">
+      <stop offset="0" stop-color="#f6c85f"/>
+      <stop offset="1" stop-color="#f26d6d"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+    <style>
+      .title { font: 700 42px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f8fafc; }
+      .subtitle { font: 400 18px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b6c2d1; }
+      .section { font: 700 22px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f8fafc; }
+      .label { font: 600 18px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #e7edf5; }
+      .small { font: 500 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #9fb0c3; }
+      .tiny { font: 500 12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #8796aa; }
+      .metric { font: 800 34px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #ffffff; }
+      .mono { font: 600 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #b8c7d9; }
+      .axis { stroke: #334155; stroke-width: 1; }
+      .grid { stroke: #263244; stroke-width: 1; opacity: 0.8; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="760" rx="0" fill="url(#bg)"/>
+  <circle cx="1080" cy="80" r="180" fill="#21d4a1" opacity="0.07"/>
+  <circle cx="118" cy="690" r="220" fill="#f26d6d" opacity="0.07"/>
+
+  <g transform="translate(64 54)">
+    <text class="title" x="0" y="0">MagicNet 透明路径性能对比</text>
+    <text class="subtitle" x="0" y="36">PHK110 真机 · Android 16 · sing-box · Baidu HTTPS IPv4 · 每组 5 次平均</text>
+  </g>
+
+  <g transform="translate(64 128)" filter="url(#softShadow)">
+    <rect x="0" y="0" width="560" height="170" rx="18" fill="#0f172a" stroke="#233146"/>
+    <text class="section" x="28" y="42">结论</text>
+    <text class="label" x="28" y="82">公网 HTTP 总耗时主要由 DNS、远端网络、TLS 和节点状态决定。</text>
+    <text class="small" x="28" y="116">当前样本里 TUN 总耗时略低；eBPF 的核心价值是更早接管 TCP、减少对</text>
+    <text class="small" x="28" y="140">iptables / NAT / 路由表的依赖，不承诺每次公网请求都更低延迟。</text>
+  </g>
+
+  <g transform="translate(656 128)" filter="url(#softShadow)">
+    <rect x="0" y="0" width="560" height="170" rx="18" fill="#0f172a" stroke="#233146"/>
+    <text class="section" x="28" y="42">路径差异</text>
+    <text class="small" x="28" y="78">TUN：App → 系统路由 → magicnet0 → sing-box</text>
+    <text class="small" x="28" y="108">eBPF：App connect() → cgroup/connect → TCP bridge → sing-box</text>
+    <text class="mono" x="28" y="142">eBPF 数据面：connect4/connect6 + sock_ops + SOCKS5 CONNECT</text>
+  </g>
+
+  <g transform="translate(64 338)">
+    <text class="section" x="0" y="0">平均耗时</text>
+    <text class="tiny" x="0" y="26">数值越低越好，单位 ms</text>
+
+    <g transform="translate(0 64)">
+      <line class="grid" x1="194" y1="-26" x2="194" y2="260"/>
+      <line class="grid" x1="376" y1="-26" x2="376" y2="260"/>
+      <line class="grid" x1="558" y1="-26" x2="558" y2="260"/>
+      <text class="tiny" x="188" y="288">75</text>
+      <text class="tiny" x="366" y="288">150</text>
+      <text class="tiny" x="548" y="288">225</text>
+
+      <text class="label" x="0" y="24">TCP connect</text>
+      <rect x="190" y="2" width="12" height="22" rx="11" fill="url(#tun)"/>
+      <rect x="190" y="32" width="14" height="22" rx="11" fill="url(#ebpf)"/>
+      <text class="small" x="218" y="20">TUN 5.2</text>
+      <text class="small" x="222" y="50">eBPF 5.6</text>
+
+      <text class="label" x="0" y="110">首包返回</text>
+      <rect x="190" y="88" width="502" height="22" rx="11" fill="url(#tun)"/>
+      <rect x="190" y="118" width="535" height="22" rx="11" fill="url(#ebpf)"/>
+      <text class="small" x="708" y="106">TUN 206.9</text>
+      <text class="small" x="742" y="136">eBPF 220.3</text>
+
+      <text class="label" x="0" y="196">总耗时</text>
+      <rect x="190" y="174" width="503" height="22" rx="11" fill="url(#tun)"/>
+      <rect x="190" y="204" width="536" height="22" rx="11" fill="url(#ebpf)"/>
+      <text class="small" x="710" y="192">TUN 207.2</text>
+      <text class="small" x="743" y="222">eBPF 220.8</text>
+    </g>
+  </g>
+
+  <g transform="translate(830 352)" filter="url(#softShadow)">
+    <rect x="0" y="0" width="386" height="244" rx="18" fill="#0f172a" stroke="#233146"/>
+    <text class="section" x="28" y="44">当前样本</text>
+    <text class="small" x="28" y="78">TUN 总耗时</text>
+    <text class="metric" x="28" y="118">207.2 ms</text>
+    <text class="small" x="28" y="152">eBPF 总耗时</text>
+    <text class="metric" x="28" y="192">220.8 ms</text>
+    <text class="small" x="28" y="222">差异：eBPF +6.6%，属于公网波动量级。</text>
+  </g>
+
+  <g transform="translate(64 686)">
+    <rect x="0" y="-34" width="18" height="18" rx="5" fill="url(#tun)"/>
+    <text class="small" x="28" y="-19">TUN / magicnet0</text>
+    <rect x="180" y="-34" width="18" height="18" rx="5" fill="url(#ebpf)"/>
+    <text class="small" x="208" y="-19">eBPF TCP bridge</text>
+    <text class="tiny" x="0" y="18">测试命令：curl -4 -o /dev/null -sS -w connect/start/total https://www.baidu.com。结果仅代表该设备、该网络、该时间段。</text>
+  </g>
+</svg>

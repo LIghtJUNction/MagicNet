@@ -35,20 +35,22 @@ magicnet_transparent_mode() {
     if [ -f "$_conf" ]; then
         . "$_conf"
     fi
-    case "${MAGICNET_TRANSPARENT_MODE:-tun}" in
-        tproxy) printf '%s\n' "tproxy" ;;
+    case "${MAGICNET_TRANSPARENT_MODE:-auto}" in
+        auto) printf '%s\n' "auto" ;;
+        ebpf) printf '%s\n' "ebpf" ;;
         *) printf '%s\n' "tun" ;;
     esac
     unset _conf
 }
 
 magicnet_transparent_set_mode() {
-    case "${1:-tun}" in
-        tun|tproxy) ;;
+    case "${1:-auto}" in
+        auto|tun|ebpf) ;;
         *) return 1 ;;
     esac
     mkdir -p "${MODDIR}/.config/magicnet" || return 1
     printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$1" >"$(magicnet_transparent_conf)"
+    MAGICNET_TRANSPARENT_MODE="$1"
 }
 
 magicnet_hotspot_conf() {
@@ -124,6 +126,18 @@ magicnet_singbox_has_subscription() {
     magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
 }
 
+magicnet_singbox_config_has_nodes() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || {
+        unset _config
+        return 1
+    }
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls)"' "$_config"
+    _rc=$?
+    unset _config
+    return "$_rc"
+}
+
 magicnet_mihomo_has_subscription() {
     magicnet_first_http_url "${MODDIR}/.config/mihomo/subscription.url" >/dev/null 2>&1 && return 0
     [ -f "${MODDIR}/.config/mihomo/config.yaml" ] || return 1
@@ -150,7 +164,7 @@ magicnet_subscription_required_message() {
 }
 
 magicnet_any_subscription_ready() {
-    magicnet_singbox_has_subscription || magicnet_mihomo_has_subscription
+    magicnet_singbox_has_subscription || magicnet_mihomo_has_subscription || magicnet_singbox_config_has_nodes
 }
 
 magicnet_mark_subscription_missing() {
@@ -237,15 +251,20 @@ magicnet_need_nodes_message() {
 }
 
 magicnet_prepare_singbox_nodes_unlocked() {
-    if ! magicnet_singbox_has_subscription; then
-        magicnet_need_nodes_message sing-box
-        return 1
-    fi
     if [ "${MAGICNET_FORCE_SUB_REFRESH:-0}" != "1" ] && magicnet_cmd_exists sing-box; then
         import __singbox__
         if is_singbox_running >/dev/null 2>&1; then
             return 0
         fi
+    fi
+    if [ "${MAGICNET_FORCE_SUB_REFRESH:-0}" != "1" ] && magicnet_singbox_config_has_nodes; then
+        magicnet_log "Using cached sing-box config; subscription refresh skipped before startup."
+        return 0
+    fi
+
+    if ! magicnet_singbox_has_subscription; then
+        magicnet_need_nodes_message sing-box
+        return 1
     fi
 
     . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
@@ -300,10 +319,9 @@ magicnet_singbox_running_has_nodes() {
             }
         fi
     fi
-    _config="${MODDIR}/.config/sing-box/config.json"
-    [ -f "$_config" ] && grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls)"' "$_config"
+    magicnet_singbox_config_has_nodes
     _rc=$?
-    unset _api _config
+    unset _api
     return "$_rc"
 }
 
@@ -443,6 +461,8 @@ magicnet_config_lock_acquire() {
     _lock_parent="${_lock_dir%/*}"
     _lock_waited=0
     _lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-20}"
+    _lock_no_pid_wait=0
+    _lock_no_pid_timeout="${MAGICNET_CONFIG_LOCK_NO_PID_TIMEOUT:-3}"
     mkdir -p "$_lock_parent"
     while ! mkdir "$_lock_dir" 2>/dev/null; do
         _lock_pid="$(sed -n '1p' "${_lock_dir}/pid" 2>/dev/null)"
@@ -450,16 +470,26 @@ magicnet_config_lock_acquire() {
             rm -rf "$_lock_dir" 2>/dev/null || true
             continue
         fi
+        if [ -z "$_lock_pid" ]; then
+            _lock_no_pid_wait=$((_lock_no_pid_wait + 1))
+            if [ "$_lock_no_pid_wait" -ge "$_lock_no_pid_timeout" ]; then
+                rm -rf "$_lock_dir" 2>/dev/null || true
+                _lock_no_pid_wait=0
+                continue
+            fi
+        else
+            _lock_no_pid_wait=0
+        fi
         if [ "$_lock_waited" -ge "$_lock_timeout" ]; then
             magicnet_warn "Timed out waiting for config lock: $_lock_dir"
-            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_pid
+            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid
             return 1
         fi
         sleep 1
         _lock_waited=$((_lock_waited + 1))
     done
     printf '%s\n' "$$" >"${_lock_dir}/pid"
-    unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_pid
+    unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid
 }
 
 magicnet_config_lock_release() {
