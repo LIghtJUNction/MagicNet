@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { DownloadCloud, Github, RefreshCw, Save } from "lucide-vue-next";
-import { onMounted } from "vue";
-import type { ConfigEditorTarget } from "@/types";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
@@ -11,23 +9,6 @@ import { useMagicNet } from "@/composables/useMagicNet";
 
 const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
-
-function selectTarget(target: ConfigEditorTarget): void {
-  if (state.config.target === target) return;
-  state.config.target = target;
-  state.config.text = "";
-  state.config.dirty = false;
-  state.config.path = target === "mihomo"
-    ? "/data/adb/modules/MagicNet/.config/mihomo/config.yaml"
-    : "/data/adb/modules/MagicNet/.config/sing-box/config.json";
-  state.config.status = "已切换目标，点击加载配置";
-}
-
-onMounted(() => {
-  if (state.runtime.selectedCore === "sing-box" && state.config.target !== "sing-box") {
-    selectTarget("sing-box");
-  }
-});
 
 function issueUrl(): string {
   const sanitized = state.config.text
@@ -50,7 +31,7 @@ function issueUrl(): string {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Validated Editor" title="配置编辑器" description="高级配置入口：sing-box 编辑 config.json，mihomo 编辑 config.yaml；订阅链接请到订阅页填写。">
+    <PageHeader overline="Validated Editor" title="配置编辑器" description="高级配置入口：编辑 sing-box config.json；订阅链接请到订阅页填写。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', () => loadConfig())"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
         <Button variant="outline" :loading="isRunning('sync-template')" @click="withAction('sync-template', () => syncConfigTemplate())"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
@@ -61,17 +42,13 @@ function issueUrl(): string {
 
     <Card class="grid gap-3">
       <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm text-zinc-400">
-        <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
-          <button class="h-9 rounded px-3 text-sm text-zinc-400" :class="{ 'bg-zinc-800 text-zinc-50': state.config.target === 'mihomo' }" @click="selectTarget('mihomo')">mihomo</button>
-          <button class="h-9 rounded px-3 text-sm text-zinc-400" :class="{ 'bg-zinc-800 text-zinc-50': state.config.target === 'sing-box' }" @click="selectTarget('sing-box')">sing-box</button>
-        </div>
+        <span class="h-9 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100">sing-box</span>
         <input class="h-9 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-300" readonly :value="state.config.path">
         <span class="shrink-0">{{ state.config.status }}</span>
         <span v-if="state.config.dirty" class="shrink-0 rounded bg-amber-500/15 px-2 py-1 text-xs text-amber-200">未保存</span>
       </div>
       <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm leading-6 text-zinc-400">
-        <p v-if="state.config.target === 'sing-box'">sing-box 配置文件是 JSON。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 sing-box check，通过后才覆盖。</p>
-        <p v-else>mihomo 配置文件是 YAML。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 mihomo -t，通过后才覆盖。</p>
+        <p>sing-box 配置文件是 JSON。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 sing-box check，通过后才覆盖。</p>
       </div>
       <Textarea
         v-model="state.config.text"

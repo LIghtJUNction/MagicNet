@@ -1,30 +1,9 @@
-import { CORE_UI, MODULE_DIR } from "@/constants";
+import { MODULE_DIR, SING_BOX_UI } from "@/constants";
 import type { AppPolicy, BlocklistState, HealthItem, PackageInfo, RuntimeState } from "@/types";
-import type { MihomoProvider } from "@/types";
 
 export type SubscriptionState = {
   singBox: string;
   singBoxUrls: string[];
-  mihomoProviders: MihomoProvider[];
-};
-
-export type CaptureState = {
-  enabled: boolean;
-  host: string;
-  port: string;
-  name: string;
-  apps: string[];
-  domains: string[];
-  newApp: string;
-  newDomain: string;
-};
-
-export type CertState = {
-  dir: string;
-  defaultFile: string;
-  files: string[];
-  name: string;
-  text: string;
 };
 
 export type McpState = {
@@ -33,34 +12,23 @@ export type McpState = {
   port: string;
   pid: string;
   url: string;
-};
-
-export type TailscaleState = {
-  enabled: boolean;
-  authKeySet: boolean;
-  hostname: string;
-  subnets: string;
+  secretSet: boolean;
 };
 
 export const runtimeDefaults: RuntimeState = {
-  core: "unknown",
-  selectedCore: "sing-box",
+  singBoxState: "unknown",
   singBox: "unknown",
-  mihomo: "unknown",
-  watchdog: "unknown",
   fswatch: "unknown",
   transparentMode: "auto",
-  hotspotMode: "proxy",
-  vpnCoexist: "on",
   api: "http://127.0.0.1:9090",
-  webui: CORE_UI,
+  webui: SING_BOX_UI,
   subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`
 };
 
 export const blockDefaults: BlocklistState = {
   enabled: true,
   community: true,
-  url: "https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/ruleset/magicnet/ban.yaml",
+  url: "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/src/MagicNet/.config/magicnet/community-ban.yaml",
   manual: [],
   communityRules: [],
   communityDomains: [],
@@ -68,38 +36,13 @@ export const blockDefaults: BlocklistState = {
   newDomain: ""
 };
 
-export const captureDefaults: CaptureState = {
-  enabled: false,
-  host: "192.168.1.100",
-  port: "8888",
-  name: "MagicNet-Capture",
-  apps: [],
-  domains: [],
-  newApp: "",
-  newDomain: ""
-};
-
-export const certDefaults: CertState = {
-  dir: `${MODULE_DIR}/system/etc/security/cacerts`,
-  defaultFile: "missing",
-  files: [],
-  name: "magicnet-ca",
-  text: ""
-};
-
 export const mcpDefaults: McpState = {
   enabled: false,
   bind: "127.0.0.1",
   port: "8766",
   pid: "stopped",
-  url: "http://127.0.0.1:8766/mcp"
-};
-
-export const tailscaleDefaults: TailscaleState = {
-  enabled: false,
-  authKeySet: false,
-  hostname: "android-magicnet",
-  subnets: "100.64.0.0/10"
+  url: "http://127.0.0.1:8766/mcp",
+  secretSet: false
 };
 
 function normalizeRuntimeStatus(value: string): string {
@@ -115,31 +58,21 @@ function normalizeRuntimeStatus(value: string): string {
 export function parseRuntime(text: string, previous: RuntimeState): RuntimeState {
   const next = {
     ...runtimeDefaults,
-    selectedCore: previous.selectedCore,
     transparentMode: previous.transparentMode
   };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (line.startsWith("sing-box:")) next.singBox = normalizeRuntimeStatus(line.slice(9));
-    if (line.startsWith("mihomo:")) next.mihomo = normalizeRuntimeStatus(line.slice(7));
-    if (line.startsWith("watchdog:")) next.watchdog = normalizeRuntimeStatus(line.slice(9));
     if (line.startsWith("fswatch:")) next.fswatch = normalizeRuntimeStatus(line.slice(8));
-    if (line.startsWith("Selected:")) {
-      const selected = line.slice(9).trim();
-      if (selected === "sing-box" || selected === "mihomo") next.selectedCore = selected;
-    }
     if (line.startsWith("Transparent:")) {
       next.transparentMode = line.includes("ebpf") ? "ebpf" : line.includes("auto") ? "auto" : "tun";
     }
-    if (line.startsWith("Hotspot:")) next.hotspotMode = line.includes("direct") ? "direct" : "proxy";
-    if (line.startsWith("VPN Coexist:")) next.vpnCoexist = line.includes("off") ? "off" : "on";
     if (line.startsWith("API:")) next.api = line.slice(4).trim() || next.api;
     if (line.startsWith("WebUI:")) next.webui = line.slice(6).trim() || next.webui;
     if (line.startsWith("Sub URL:")) next.subPath = line.slice(8).trim() || next.subPath;
   });
-  if (next.singBox !== "stopped" && next.singBox !== "unknown") next.core = "sing-box";
-  else if (next.mihomo !== "stopped" && next.mihomo !== "unknown") next.core = "mihomo";
-  else if (next.singBox === "stopped" && next.mihomo === "stopped") next.core = "stopped";
+  if (next.singBox !== "stopped" && next.singBox !== "unknown") next.singBoxState = "sing-box";
+  else if (next.singBox === "stopped") next.singBoxState = "stopped";
   return next;
 }
 
@@ -198,44 +131,13 @@ export function parseBlock(text: string, previous: BlocklistState): BlocklistSta
 }
 
 export function parseSubs(text: string, previous: SubscriptionState): SubscriptionState {
-  const next: SubscriptionState = { ...previous, singBoxUrls: [], mihomoProviders: [] };
+  const next: SubscriptionState = { ...previous, singBoxUrls: [] };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
-    const provider = line.match(/^mihomo\.([A-Za-z0-9_-]+)=(.*)$/);
     if (/^sing-box\.\d+=/.test(line)) next.singBoxUrls.push(line.replace(/^sing-box\.\d+=/, ""));
-    else if (provider) next.mihomoProviders.push({ name: provider[1], url: provider[2] });
     else if (line.startsWith("sing-box=")) next.singBox = line.slice(9);
   });
   if (!next.singBoxUrls.length && next.singBox) next.singBoxUrls = [next.singBox];
-  return next;
-}
-
-export function parseCapture(text: string, previous: CaptureState): CaptureState {
-  const next: CaptureState = { ...previous, apps: [], domains: [] };
-  let section: "apps" | "domains" | null = null;
-  text.split(/\r?\n/).forEach((raw) => {
-    const line = raw.trim();
-    if (!line) return;
-    if (line.startsWith("enabled=")) next.enabled = line.slice(8) === "1";
-    else if (line.startsWith("host=")) next.host = line.slice(5);
-    else if (line.startsWith("port=")) next.port = line.slice(5);
-    else if (line.startsWith("name=")) next.name = line.slice(5);
-    else if (line === "apps:") section = "apps";
-    else if (line === "domain suffixes:") section = "domains";
-    else if (section) next[section].push(line);
-  });
-  return next;
-}
-
-export function parseCerts(text: string, previous: CertState): CertState {
-  const next: CertState = { ...previous, files: [] };
-  text.split(/\r?\n/).forEach((raw) => {
-    const line = raw.trim();
-    if (!line) return;
-    if (line.startsWith("dir=")) next.dir = line.slice(4);
-    else if (line.startsWith("default=")) next.defaultFile = line.slice(8);
-    else next.files.push(line);
-  });
   return next;
 }
 
@@ -248,20 +150,9 @@ export function parseMcp(text: string, previous: McpState): McpState {
     else if (line.startsWith("bind=")) next.bind = line.slice(5);
     else if (line.startsWith("port=")) next.port = line.slice(5);
     else if (line.startsWith("pid=")) next.pid = line.slice(4);
+    else if (line.startsWith("secret_set=")) next.secretSet = line.slice(11) === "1";
     else if (line.startsWith("url=")) explicitUrl = line.slice(4);
   });
   next.url = explicitUrl || `http://${next.bind}:${next.port}/mcp`;
-  return next;
-}
-
-export function parseTailscale(text: string, previous: TailscaleState): TailscaleState {
-  const next = { ...previous };
-  text.split(/\r?\n/).forEach((raw) => {
-    const line = raw.trim();
-    if (line.startsWith("enabled=")) next.enabled = line.slice(8) === "1";
-    else if (line.startsWith("auth_key_set=")) next.authKeySet = line.slice(13) === "1";
-    else if (line.startsWith("hostname=")) next.hostname = line.slice(9) || next.hostname;
-    else if (line.startsWith("subnets=")) next.subnets = line.slice(8) || next.subnets;
-  });
   return next;
 }

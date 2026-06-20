@@ -14,8 +14,7 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "stats" => curl(app, "/traffic"),
         "close-all" => curl_delete(app, "/connections"),
         _ => Err(
-            "Usage: cli api {ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}"
-                .to_string(),
+            "Usage: cli api {ui [current|sing-box|all]|groups|conns|stats|close-all}".to_string(),
         ),
     }
 }
@@ -112,7 +111,6 @@ fn webui_status(app: &App) {
         local_dir.join("index.html").exists() as u8
     );
     println!("sing-box={}", app.singbox_webui);
-    println!("mihomo={}", app.mihomo_webui);
     println!(
         "version={}",
         fs::read_to_string(app.moddir.join("zashboard.version"))
@@ -126,11 +124,9 @@ fn webui_status(app: &App) {
 fn webui_verify(app: &App) -> Result<(), String> {
     let module_webui = app.moddir.join("webroot");
     let singbox_panel = app.moddir.join(".config/sing-box/zashboard");
-    let mihomo_panel = app.moddir.join(".config/mihomo/zashboard");
     let checks = [
         ("module_webui", module_webui.as_path()),
         ("singbox_zashboard", singbox_panel.as_path()),
-        ("mihomo_zashboard", mihomo_panel.as_path()),
     ];
 
     let mut failed = Vec::new();
@@ -155,13 +151,10 @@ fn webui_verify(app: &App) -> Result<(), String> {
 fn api_ui(app: &App, target: &str) {
     match target {
         "sing-box" | "singbox" => println!("{}", app.singbox_webui),
-        "mihomo" | "clash" => println!("{}", app.mihomo_webui),
         "all" => {
-            println!("mihomo={}", app.mihomo_webui);
             println!("sing-box={}", app.singbox_webui);
         }
-        _ if crate::pid_summary("sing-box") != "stopped" => println!("{}", app.singbox_webui),
-        _ => println!("{}", app.mihomo_webui),
+        _ => println!("{}", app.singbox_webui),
     }
 }
 
@@ -197,10 +190,7 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
         return Err("panel zip does not contain index.html".to_string());
     }
     write_text_file(app.moddir.join("zashboard.version"), &format!("{name}\n"))?;
-    run_magicnet_function(
-        app,
-        "magicnet_singbox_apply_zashboard; magicnet_mihomo_apply_zashboard",
-    )?;
+    run_magicnet_function(app, "magicnet_singbox_apply_zashboard")?;
     println!("[info] Installed local panel {name}");
     Ok(())
 }
@@ -394,21 +384,16 @@ fn flush_restore(app: &App, rel: Option<String>, text: &str) -> Result<(), Strin
 fn backup_files() -> &'static [&'static str] {
     &[
         ".config/sing-box/subscription.url",
-        ".config/mihomo/subscription.url",
         ".config/magicnet/app-mode.conf",
         ".config/magicnet/app-proxy.list",
         ".config/magicnet/app-bypass.list",
         ".config/magicnet/block.conf",
         ".config/magicnet/block-domain-suffix.list",
         ".config/magicnet/block-allow-rules.list",
-        ".config/magicnet/capture.conf",
-        ".config/magicnet/capture-app.list",
-        ".config/magicnet/capture-domain-suffix.list",
         ".config/magicnet/route-proxy-domain-suffix.list",
         ".config/magicnet/route-direct-domain-suffix.list",
         ".config/magicnet/route-block-domain-suffix.list",
         ".config/magicnet/transparent-mode.conf",
-        ".config/magicnet/hotspot.conf",
     ]
 }
 

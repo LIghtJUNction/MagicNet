@@ -42,7 +42,7 @@ pub(crate) fn config_editor(app: &App, args: &[String]) -> Result<(), String> {
         }
         "sync-template" | "sync" => sync_template(app, target),
         _ => Err(
-            "Usage: cli config-editor {get|path|validate|save|save-file|sync-template} <mihomo|sing-box|all> [base64-config|tmp-path]"
+            "Usage: cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|tmp-path]"
                 .to_string(),
         ),
     }
@@ -51,7 +51,7 @@ pub(crate) fn config_editor(app: &App, args: &[String]) -> Result<(), String> {
 fn save_config(app: &App, target: &str, path: &Path, args: &[String]) -> Result<(), String> {
     let payload = args.get(2).map(String::as_str).unwrap_or_default();
     if payload.is_empty() {
-        return Err("Usage: cli config-editor save <mihomo|sing-box> <base64-config>".to_string());
+        return Err("Usage: cli config-editor save sing-box <base64-config>".to_string());
     }
     let bytes = decode_base64(payload)?;
     let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
@@ -63,7 +63,7 @@ fn save_config(app: &App, target: &str, path: &Path, args: &[String]) -> Result<
 fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Result<(), String> {
     let tmp = args.get(2).map(PathBuf::from).unwrap_or_default();
     if tmp.as_os_str().is_empty() {
-        return Err("Usage: cli config-editor save-file <mihomo|sing-box> <tmp-path>".to_string());
+        return Err("Usage: cli config-editor save-file sing-box <tmp-path>".to_string());
     }
     if !tmp.starts_with(app.moddir.join(".tmp")) {
         return Err("config-editor save-file only accepts files under $MODDIR/.tmp".to_string());
@@ -97,13 +97,11 @@ fn backup_config(path: &Path) -> Result<(), String> {
 fn sync_template(app: &App, target: &str) -> Result<(), String> {
     match target {
         "all" => {
-            sync_template_one(app, "mihomo")?;
             sync_template_one(app, "sing-box")?;
             Ok(())
         }
-        "mihomo" | "clash" => sync_template_one(app, "mihomo"),
         "sing-box" | "singbox" => sync_template_one(app, "sing-box"),
-        _ => Err("Usage: cli config-editor sync-template <mihomo|sing-box|all>".to_string()),
+        _ => Err("Usage: cli config-editor sync-template <sing-box|all>".to_string()),
     }
 }
 
@@ -129,15 +127,11 @@ fn sync_template_one(app: &App, target: &str) -> Result<(), String> {
 
 fn upstream_template_url(target: &str) -> Result<String, String> {
     match target {
-        "mihomo" => Ok(
-            "https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/config.yaml"
-                .to_string(),
-        ),
         "sing-box" => Ok(
             "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/main/config.json"
                 .to_string(),
         ),
-        _ => Err("config target must be mihomo or sing-box".to_string()),
+        _ => Err("config target must be sing-box".to_string()),
     }
 }
 
@@ -201,18 +195,9 @@ fn fetch_with(command: Command, label: &str, errors: &mut Vec<String>) -> Option
 
 fn prepare_template(target: &str, template: &str, current: &str) -> Result<String, String> {
     match target {
-        "mihomo" => Ok(preserve_mihomo_subscription_config(template, current)),
         "sing-box" => preserve_singbox_subscription_config(template, current),
-        _ => Err("config target must be mihomo or sing-box".to_string()),
+        _ => Err("config target must be sing-box".to_string()),
     }
-}
-
-fn preserve_mihomo_subscription_config(template: &str, current: &str) -> String {
-    let Some(providers) = yaml_top_level_block(current, "proxy-providers") else {
-        return template.to_string();
-    };
-    replace_yaml_top_level_block(template, "proxy-providers", &providers)
-        .unwrap_or_else(|| template.to_string())
 }
 
 fn preserve_singbox_subscription_config(template: &str, current: &str) -> Result<String, String> {
@@ -233,126 +218,15 @@ fn preserve_singbox_subscription_config(template: &str, current: &str) -> Result
         .map_err(|err| format!("serialize sing-box template: {err}"))
 }
 
-fn yaml_top_level_block(text: &str, key: &str) -> Option<String> {
-    let lines: Vec<&str> = text.lines().collect();
-    let start = lines.iter().position(|line| yaml_key_line(line, key))?;
-    let end = yaml_block_end(&lines, start + 1);
-    Some(format!("{}\n", lines[start..end].join("\n")))
-}
-
-fn replace_yaml_top_level_block(template: &str, key: &str, block: &str) -> Option<String> {
-    let lines: Vec<&str> = template.lines().collect();
-    let start = lines.iter().position(|line| yaml_key_line(line, key))?;
-    let end = yaml_block_end(&lines, start + 1);
-    let mut output = String::new();
-    if start > 0 {
-        output.push_str(&lines[..start].join("\n"));
-        output.push('\n');
-    }
-    output.push_str(block.trim_end());
-    output.push('\n');
-    if end < lines.len() {
-        output.push_str(&lines[end..].join("\n"));
-        output.push('\n');
-    }
-    Some(output)
-}
-
-fn yaml_key_line(line: &str, key: &str) -> bool {
-    line.strip_prefix(key)
-        .map(|rest| rest.trim_start().starts_with(':'))
-        .unwrap_or(false)
-}
-
-fn yaml_block_end(lines: &[&str], start: usize) -> usize {
-    lines[start..]
-        .iter()
-        .position(|line| {
-            !line.trim().is_empty()
-                && !line
-                    .chars()
-                    .next()
-                    .map(|ch| ch.is_whitespace())
-                    .unwrap_or(false)
-                && !line.trim_start().starts_with('#')
-                && line.contains(':')
-        })
-        .map(|offset| start + offset)
-        .unwrap_or(lines.len())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn replaces_mihomo_proxy_providers_block() {
-        let template = "foo: 1\nproxy-providers:\n  premium_a:\n    type: file\nbar: 2\n";
-        let current =
-            "proxy-providers:\n  premium_a:\n    type: http\n    url: https://example.com/sub\n";
-        let merged = preserve_mihomo_subscription_config(template, current);
-        assert!(merged.contains("type: http"));
-        assert!(merged.contains("url: https://example.com/sub"));
-        assert!(merged.contains("foo: 1"));
-        assert!(merged.contains("bar: 2"));
-    }
-
-    #[test]
-    fn preserves_singbox_outbounds_block() {
-        let template = r#"{
-  "inbounds": [],
-  "outbounds": [
-    { "type": "direct", "tag": "direct" }
-  ],
-  "route": {}
-}
-"#;
-        let current = r#"{
-  "outbounds": [
-    { "type": "selector", "tag": "proxy" }
-  ]
-}
-"#;
-        let merged = preserve_singbox_subscription_config(template, current).unwrap();
-        assert!(merged.contains("\"tag\": \"proxy\""));
-        assert!(merged.contains("\"inbounds\": []"));
-        assert!(merged.contains("\"route\": {}"));
-    }
-}
-
 fn config_path(app: &App, target: &str) -> Result<PathBuf, String> {
     match target {
-        "mihomo" | "clash" => Ok(app.moddir.join(".config/mihomo/config.yaml")),
-        "sing-box" | "singbox" => Ok(app.moddir.join(".config/sing-box/config.json")),
-        _ => Err("config target must be mihomo or sing-box".to_string()),
+        "sing-box" | "singbox" | "all" => Ok(app.moddir.join(".config/sing-box/config.json")),
+        _ => Err("config target must be sing-box".to_string()),
     }
 }
 
-fn default_config(target: &str) -> String {
-    match target {
-        "mihomo" | "clash" => r#"proxy-providers:
-  premium_a:
-    type: http
-    path: ./proxies/premium_a.yaml
-    url: ""
-    interval: 3600
-    health-check:
-      enable: true
-      url: http://www.gstatic.com/generate_204
-      interval: 300
-proxy-groups:
-  - name: proxy
-    type: select
-    use:
-      - premium_a
-    proxies:
-      - DIRECT
-      - REJECT
-rules:
-  - MATCH,proxy
-"#
-        .to_string(),
-        _ => r#"{
+fn default_config(_target: &str) -> String {
+    r#"{
   "log": {
     "level": "info"
   },
@@ -410,33 +284,21 @@ rules:
   }
 }
 "#
-        .to_string(),
-    }
+    .to_string()
 }
 
 fn validate_config(app: &App, target: &str, path: &Path) -> Result<(), String> {
     let bin = match target {
-        "mihomo" | "clash" => app.moddir.join("bin/mihomo"),
-        "sing-box" | "singbox" => app.moddir.join("bin/sing-box"),
-        _ => return Err("config target must be mihomo or sing-box".to_string()),
+        "sing-box" | "singbox" | "all" => app.moddir.join("bin/sing-box"),
+        _ => return Err("config target must be sing-box".to_string()),
     };
     if !bin.exists() {
         return Err(format!("validator missing: {}", bin.display()));
     }
     let mut command = Command::new(bin);
-    match target {
-        "mihomo" | "clash" => {
-            command.arg("-t").arg("-f").arg(path);
-            if let Some(parent) = path.parent() {
-                command.arg("-d").arg(parent);
-            }
-        }
-        _ => {
-            command.arg("check").arg("-c").arg(path);
-            if let Some(parent) = path.parent() {
-                command.arg("-D").arg(parent);
-            }
-        }
+    command.arg("check").arg("-c").arg(path);
+    if let Some(parent) = path.parent() {
+        command.arg("-D").arg(parent);
     }
     let output = run_with_timeout(command, VALIDATOR_TIMEOUT)?;
     if output.status.success() {
@@ -476,5 +338,32 @@ fn run_with_timeout(
             }
             Err(err) => return Err(format!("wait validator: {err}")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preserves_singbox_outbounds_block() {
+        let template = r#"{
+  "inbounds": [],
+  "outbounds": [
+    { "type": "direct", "tag": "direct" }
+  ],
+  "route": {}
+}
+"#;
+        let current = r#"{
+  "outbounds": [
+    { "type": "selector", "tag": "proxy" }
+  ]
+}
+"#;
+        let merged = preserve_singbox_subscription_config(template, current).unwrap();
+        assert!(merged.contains("\"tag\": \"proxy\""));
+        assert!(merged.contains("\"inbounds\": []"));
+        assert!(merged.contains("\"route\": {}"));
     }
 }

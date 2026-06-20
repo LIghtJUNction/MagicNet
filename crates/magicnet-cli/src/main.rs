@@ -3,39 +3,39 @@ mod base64;
 mod base64_tests;
 mod config_editor;
 mod diagnostics;
+mod ecapture;
 mod mcp;
 mod nodes;
 mod ping;
 mod rules;
 mod service;
 mod subscriptions;
-mod tailscale;
 mod utils;
 mod webui_api;
 
 use std::env;
 use std::fs;
-use std::io::{self, Read};
-use std::path::{Component, Path, PathBuf};
+use std::io;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 pub(crate) use base64::{decode_base64, encode_base64};
 use config_editor::config_editor;
-use diagnostics::{health, support, sysroute, topology};
+use diagnostics::{ebpf_status, health, support, sysroute, topology};
+use ecapture::ecapture_cmd;
 use mcp::mcp;
 use nodes::node_list;
 use ping::pingtest;
-use rules::{app_cmd, block_cmd, capture_cmd, cert_cmd, route_cmd};
+use rules::{app_cmd, block_cmd, route_cmd};
 use service::{
-    config_cmd, core_cmd, hotspot_cmd, repair, service_cmd, service_logs, service_status,
-    supervisor_cmd, transparent_cmd, vpn_cmd, watchdog_cmd,
+    config_cmd, core_cmd, repair, service_cmd, service_logs, service_status, supervisor_cmd,
+    transparent_cmd,
 };
 use subscriptions::{
     setup_subscription, sub_get, sub_list, sub_set, sub_set_file, sub_target_file, sub_update,
     sub_update_all,
 };
-use tailscale::tailscale_cmd;
 pub(crate) use utils::{
     clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv, write_kv,
     write_text_file,
@@ -44,11 +44,122 @@ use webui_api::{api_cmd, backup_cmd, webui_cmd};
 
 const SHORT_TIMEOUT: Duration = Duration::from_secs(3);
 
+struct CommandHelp {
+    command: &'static str,
+    usage: &'static str,
+}
+
+const COMMAND_HELP: &[CommandHelp] = &[
+    CommandHelp {
+        command: "service",
+        usage: "cli service {status|start|ensure|stop|restart [current|sing-box|auto]|toggle sing-box|logs [sing-box] [lines]}",
+    },
+    CommandHelp {
+        command: "supervisor",
+        usage: "cli supervisor {status|start|stop|restart} [fswatch|all]",
+    },
+    CommandHelp {
+        command: "health",
+        usage: "cli health",
+    },
+    CommandHelp {
+        command: "pingtest",
+        usage: "cli pingtest",
+    },
+    CommandHelp {
+        command: "topology",
+        usage: "cli topology",
+    },
+    CommandHelp {
+        command: "ecapture",
+        usage: "cli ecapture {status|version|help [tls|gotls|nspr|pcap]|tls [seconds] [pid|all] [uid|all]|gotls [seconds] [pid|all] [uid|all]|nspr [seconds] [pid|all] [uid|all]|pcap [seconds] <ifname> [pcap-filter ...]}",
+    },
+    CommandHelp {
+        command: "ebpf",
+        usage: "cli ebpf status",
+    },
+    CommandHelp {
+        command: "sysroute",
+        usage: "cli sysroute {list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}",
+    },
+    CommandHelp {
+        command: "repair",
+        usage: "cli repair",
+    },
+    CommandHelp {
+        command: "support",
+        usage: "cli support bundle",
+    },
+    CommandHelp {
+        command: "setup",
+        usage: "cli setup <subscription-url>",
+    },
+    CommandHelp {
+        command: "config",
+        usage: "cli config apply",
+    },
+    CommandHelp {
+        command: "config-editor",
+        usage: "cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|tmp-path]",
+    },
+    CommandHelp {
+        command: "transparent",
+        usage: "cli transparent {status|set <auto|tun|ebpf>|apply}",
+    },
+    CommandHelp {
+        command: "core",
+        usage: "cli core {status|selected|select sing-box}",
+    },
+    CommandHelp {
+        command: "node",
+        usage: "cli node {list|current|use <name>}",
+    },
+    CommandHelp {
+        command: "mode",
+        usage: "cli mode [rule|global|direct]",
+    },
+    CommandHelp {
+        command: "route",
+        usage: "cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}",
+    },
+    CommandHelp {
+        command: "sub",
+        usage: "cli sub {update <sing-box|all>|update-all|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|file [sing-box]}",
+    },
+    CommandHelp {
+        command: "block",
+        usage: "cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}",
+    },
+    CommandHelp {
+        command: "mcp",
+        usage: "cli mcp {status|enable [bind] [port]|disable|set [bind] [port]|secret|rotate-secret|start|stop|restart|logs [lines]}",
+    },
+    CommandHelp {
+        command: "webui",
+        usage: "cli webui {status|verify|install-local <download-url> [name]}",
+    },
+    CommandHelp {
+        command: "backup",
+        usage: "cli backup {export [password]|restore [password|-] <base64>}",
+    },
+    CommandHelp {
+        command: "api",
+        usage: "cli api {ui [current|sing-box|all]|groups|conns|stats|close-all}",
+    },
+    CommandHelp {
+        command: "app",
+        usage: "cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}",
+    },
+    CommandHelp {
+        command: "diagnose",
+        usage: "cli diagnose",
+    },
+];
+
 #[derive(Clone)]
 pub(crate) struct App {
     pub(crate) moddir: PathBuf,
     api: String,
-    mihomo_webui: String,
     singbox_webui: String,
     log_dir: PathBuf,
 }
@@ -73,17 +184,12 @@ impl App {
             .or_else(|_| current_exe_moddir())
             .unwrap_or_else(|_| PathBuf::from("/data/adb/modules/MagicNet"));
         let api = env::var("MAGICNET_API").unwrap_or_else(|_| "http://127.0.0.1:9090".to_string());
-        let mihomo_webui = env::var("MAGICNET_MIHOMO_WEBUI").unwrap_or_else(|_| {
-            "https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret="
-                .to_string()
-        });
         let singbox_webui = env::var("MAGICNET_SINGBOX_WEBUI")
             .unwrap_or_else(|_| format!("{api}/ui/#/setup?hostname=127.0.0.1&port=9090"));
         Self {
             log_dir: moddir.join(".log"),
             moddir,
             api,
-            mihomo_webui,
             singbox_webui,
         }
     }
@@ -94,9 +200,6 @@ impl App {
         Self {
             log_dir: moddir.join(".log"),
             moddir,
-            mihomo_webui:
-                "https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret="
-                    .to_string(),
             singbox_webui: format!("{api}/ui/#/setup?hostname=127.0.0.1&port=9090"),
             api,
         }
@@ -118,44 +221,6 @@ fn infer_moddir_from_exe(exe: &Path) -> Option<PathBuf> {
     None
 }
 
-#[cfg(test)]
-mod path_tests {
-    use super::infer_moddir_from_exe;
-    use std::env;
-    use std::fs;
-    use std::path::Path;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn fixture_root() -> std::path::PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock before epoch")
-            .as_nanos();
-        let root = env::temp_dir().join(format!(
-            "magicnet-cli-path-test-{}-{nonce}",
-            std::process::id()
-        ));
-        fs::create_dir_all(root.join("module/lib/kamfw")).expect("create kamfw dir");
-        fs::create_dir_all(root.join("module/bin")).expect("create bin dir");
-        fs::write(root.join("module/module.prop"), "id=MagicNet\n").expect("write module.prop");
-        fs::write(root.join("module/lib/kamfw/.kamfwrc"), "").expect("write .kamfwrc");
-        root
-    }
-
-    fn assert_infers(root: &Path, exe_rel: &str) {
-        let module = root.join("module");
-        assert_eq!(infer_moddir_from_exe(&module.join(exe_rel)), Some(module));
-    }
-
-    #[test]
-    fn infers_module_root_from_cli_entry_locations() {
-        let root = fixture_root();
-        assert_infers(&root, "cli");
-        assert_infers(&root, "bin/magicnet-cli");
-        fs::remove_dir_all(root).expect("remove fixture");
-    }
-}
-
 fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("help") {
         "service" if args.get(1).map(String::as_str).unwrap_or("status") == "status" => {
@@ -165,7 +230,6 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "service" if args.get(1).map(String::as_str) == Some("logs") => service_logs(app, args),
         "service" => service_cmd(app, &args[1..]),
         "supervisor" => supervisor_cmd(app, &args[1..]),
-        "watchdog" => watchdog_cmd(app, &args[1..]),
         "pingtest" => {
             pingtest();
             Ok(())
@@ -174,15 +238,16 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "diagnose" => run_magicnet_function(app, "magicnet_action_diagnose"),
         "repair" => repair(app),
         "topology" => topology(app),
+        "ecapture" => ecapture_cmd(app, &args[1..]),
+        "ebpf" if args.get(1).map(String::as_str).unwrap_or("status") == "status" => {
+            ebpf_status(app)
+        }
         "sysroute" => sysroute(args),
         "support" => support(app, &args[1..]),
         "setup" => setup_subscription(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "config" => config_cmd(app, &args[1..]),
         "transparent" => transparent_cmd(app, &args[1..]),
         "core" => core_cmd(app, &args[1..]),
-        "hotspot" => hotspot_cmd(app, &args[1..]),
-        "vpn" => vpn_cmd(app, &args[1..]),
-        "tailscale" => tailscale_cmd(app, &args[1..]),
         "api" => api_cmd(app, &args[1..]),
         "node" if args.get(1).map(String::as_str).unwrap_or("list") == "list" => {
             node_list(app);
@@ -215,8 +280,6 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "route" => route_cmd(app, &args[1..]),
-        "capture" => capture_cmd(app, &args[1..]),
-        "cert" => cert_cmd(app, &args[1..]),
         "app" => app_cmd(app, &args[1..]),
         "block" => block_cmd(app, &args[1..]),
         "mcp" => mcp(app, &args[1..]),
@@ -227,8 +290,13 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         _ => Err(format!(
-            "unknown command: {}\nRun `cli help` for usage.",
-            args.join(" ")
+            "unknown command: {}\nKnown commands: {}\nRun `cli help` for usage.",
+            args.join(" "),
+            COMMAND_HELP
+                .iter()
+                .map(|item| item.command)
+                .collect::<Vec<_>>()
+                .join(", ")
         )),
     }
 }
@@ -298,7 +366,6 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
 fn should_report_startup_error(function_name: &str) -> bool {
     function_name.contains("magicnet_start_kernel")
         || function_name.contains("magicnet_ensure_kernel")
-        || function_name.contains("magicnet_watchdog_start")
 }
 
 fn startup_error(app: &App) -> Option<String> {
@@ -308,27 +375,46 @@ fn startup_error(app: &App) -> Option<String> {
 }
 
 fn help() {
-    println!(
-        "MagicNet CLI\n\nUsage:\n  cli service {{status|start|ensure|stop|restart [current|sing-box|mihomo|auto]|toggle <sing-box|mihomo>|logs [sing-box|mihomo] [lines]}}\n  cli supervisor {{status|start|stop|restart}} [watchdog|fswatch|all]\n  cli watchdog {{status|start|stop|restart}}\n  cli health\n  cli pingtest\n  cli topology\n  cli sysroute {{list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}}\n  cli repair\n  cli support bundle\n  cli setup <subscription-url>\n  cli config {{apply}}\n  cli config-editor {{get|path|validate|save|save-file|sync-template}} <mihomo|sing-box|all> [base64-config|tmp-path]\n  cli transparent {{status|set <auto|tun|ebpf>|apply}}\n  cli core {{status|selected|select <sing-box|mihomo>}}\n  cli tailscale {{status|set <auth-key|-keep> [hostname] [subnets_csv]|disable|apply}}\n  cli node {{list|current|use <name>}}\n  cli mode [rule|global|direct]\n  cli route {{list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}}\n  cli sub {{update <sing-box|mihomo|all>|update-all|list|get <sing-box|mihomo>|set <sing-box|mihomo|clash> [provider] <url>|set-file <sing-box> <base64-lines>|file [sing-box|mihomo]}}\n  cli cert {{list|dir|ensure-default|install <name|hash.0|auto> <base64-cert>|remove <filename.0>}}\n  cli capture {{list|set <host> <port> [name]|enable|disable|add-app <package>|remove-app <package>|add-domain <suffix>|remove-domain <suffix>|apply}}\n  cli block {{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}}\n  cli mcp {{status|enable [bind] [port]|disable|set [bind] [port]|start|stop|restart|logs [lines]}}\n  cli webui {{status|verify|install-local <download-url> [name]}}\n  cli backup {{export [password]|restore [password|-] <base64>}}\n  cli api {{ui [current|mihomo|sing-box|all]|groups|conns|stats|close-all}}\n  cli app {{list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}}\n  cli hotspot {{status|set <proxy|direct>|reload}}\n  cli vpn {{status|set <on|off>|reload}}\n  cli diagnose"
-    );
-}
-
-#[allow(dead_code)]
-fn safe_module_path(app: &App, rel: &str) -> Result<PathBuf, String> {
-    let rel = rel.trim_start_matches('/');
-    let path = Path::new(rel);
-    for component in path.components() {
-        match component {
-            Component::Normal(_) => {}
-            _ => return Err("invalid path".to_string()),
-        }
+    println!("MagicNet CLI\n\nUsage:");
+    for item in COMMAND_HELP {
+        println!("  {}", item.usage);
     }
-    Ok(app.moddir.join(path))
 }
 
-#[allow(dead_code)]
-fn read_stdin() -> io::Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    io::stdin().read_to_end(&mut bytes)?;
-    Ok(bytes)
+#[cfg(test)]
+mod path_tests {
+    use super::infer_moddir_from_exe;
+    use std::env;
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn fixture_root() -> std::path::PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before epoch")
+            .as_nanos();
+        let root = env::temp_dir().join(format!(
+            "magicnet-cli-path-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("module/lib/kamfw")).expect("create kamfw dir");
+        fs::create_dir_all(root.join("module/bin")).expect("create bin dir");
+        fs::write(root.join("module/module.prop"), "id=MagicNet\n").expect("write module.prop");
+        fs::write(root.join("module/lib/kamfw/.kamfwrc"), "").expect("write .kamfwrc");
+        root
+    }
+
+    fn assert_infers(root: &Path, exe_rel: &str) {
+        let module = root.join("module");
+        assert_eq!(infer_moddir_from_exe(&module.join(exe_rel)), Some(module));
+    }
+
+    #[test]
+    fn infers_module_root_from_cli_entry_locations() {
+        let root = fixture_root();
+        assert_infers(&root, "cli");
+        assert_infers(&root, "bin/magicnet-cli");
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
 }

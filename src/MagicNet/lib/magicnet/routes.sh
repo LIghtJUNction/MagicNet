@@ -23,20 +23,6 @@ magicnet_route_has_rules() {
     return 1
 }
 
-magicnet_route_mihomo_rules() {
-    for _target in proxy direct block; do
-        case "$_target" in
-            proxy) _policy="${MAGICNET_MIHOMO_ROUTE_PROXY_POLICY:-🔰 环大陆}" ;;
-            direct) _policy="DIRECT" ;;
-            block) _policy="REJECT" ;;
-        esac
-        magicnet_route_list_values "$(magicnet_route_list_file "$_target")" | while read -r _domain; do
-            [ -n "$_domain" ] && printf '  - DOMAIN-SUFFIX,%s,%s\n' "$_domain" "$_policy"
-        done
-    done
-    unset _target _policy
-}
-
 magicnet_route_singbox_rules() {
     for _target in proxy direct block; do
         case "$_target" in
@@ -63,65 +49,6 @@ magicnet_route_singbox_rules() {
         printf '      },\n'
     done
     unset _target _outbound _domains _count _idx _comma _domain
-}
-
-magicnet_route_apply_mihomo() {
-    _config="${MODDIR}/.config/mihomo/config.yaml"
-    [ -f "$_config" ] || return 0
-    _tmp="${_config}.magicnet-route.new"
-    _rules_file="${MODDIR}/.tmp/magicnet-route-mihomo.rules"
-    _has_route_rules=0
-    mkdir -p "${_rules_file%/*}"
-    magicnet_route_mihomo_rules >"$_rules_file"
-    [ -s "$_rules_file" ] && _has_route_rules=1
-    if awk -v rules_file="$_rules_file" -v has_rules="$_has_route_rules" '
-        BEGIN {
-            skip = 0
-            inserted = 0
-        }
-        skip {
-            if ($0 ~ /^  # MAGICNET_ROUTE_END/) {
-                skip = 0
-            }
-            next
-        }
-        $0 ~ /^  # MAGICNET_ROUTE_START/ {
-            skip = 1
-            next
-        }
-        {
-            print
-            if (has_rules == "1" && !inserted && $0 ~ /^rules:[[:space:]]*$/) {
-                print "  # MAGICNET_ROUTE_START"
-                while ((getline rule_line < rules_file) > 0) {
-                    print rule_line
-                }
-                close(rules_file)
-                print "  # MAGICNET_ROUTE_END"
-                inserted = 1
-            }
-        }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
-        :
-    else
-        rm -f "$_tmp" 2>/dev/null || true
-        unset _has_route_rules
-        return 1
-    fi
-    if magicnet_route_has_rules; then
-        grep -q '^[[:space:]]*# MAGICNET_ROUTE_START' "$_config" || {
-            magicnet_warn "mihomo custom route rules were not inserted"
-            unset _has_route_rules
-            return 1
-        }
-    else
-        if grep -q '^[[:space:]]*# MAGICNET_ROUTE_START' "$_config"; then
-            magicnet_warn "mihomo custom route marker was not removed"
-            unset _has_route_rules
-            return 1
-        fi
-    fi
-    unset _has_route_rules
 }
 
 magicnet_route_apply_singbox() {
@@ -222,7 +149,6 @@ magicnet_route_apply_singbox() {
 
 magicnet_route_apply_unlocked() {
     _route_rc=0
-    magicnet_route_apply_mihomo || _route_rc=1
     magicnet_route_apply_singbox || _route_rc=1
     return "$_route_rc"
 }
@@ -230,4 +156,3 @@ magicnet_route_apply_unlocked() {
 magicnet_route_apply() {
     magicnet_with_config_lock magicnet_route_apply_unlocked
 }
-

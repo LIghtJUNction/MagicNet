@@ -1,0 +1,17 @@
+payload:
+- DOMAIN,data.mistat.xiaomi.com
+- DOMAIN,tracking.miui.com
+- DOMAIN,api.sec.miui.com
+- DOMAIN,metrics.hicloud.com
+- DOMAIN,metrics1.data.hicloud.com
+- DOMAIN,api.upc.huawei.com
+- DOMAIN,open.oneplus.net
+- DOMAIN,data.ads.oppomobile.com
+- DOMAIN,statistical.oppo.com
+- DOMAIN,log.origin.bigdata.vivo.com.cn
+- DOMAIN,ad.vivo.com.cn
+- DOMAIN-KEYWORD,umeng.com
+- DOMAIN-KEYWORD,miui-tracking
+- DOMAIN,szmg.qq.com
+- DOMAIN,oth.data.intl.aliyun.com
+- DOMAIN,safebrowsing.urlsec.qq.com

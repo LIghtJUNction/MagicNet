@@ -54,7 +54,7 @@ function issueUrl(): string {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Core WebUI" title="面板配置" description="管理核心 WebUI 面板入口。本地面板会下载到模块目录，在线面板通过申请 issue 进入内置审核。">
+    <PageHeader overline="sing-box WebUI" title="面板配置" description="管理 sing-box WebUI 面板入口。本地面板会下载到模块目录，在线面板通过申请 issue 进入内置审核。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('webui-status')" @click="refreshWebui"><RefreshCw :size="17" />读取</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), 'WebUI 适配 Issue')"><Github :size="17" />申请适配</Button>
@@ -72,7 +72,7 @@ function issueUrl(): string {
 
       <Card class="grid gap-3">
         <h3 class="text-base font-semibold">当前状态</h3>
-        <p class="text-sm leading-6 text-zinc-400">sing-box 默认使用本地 zashboard；mihomo 可从控制页打开 Meta Cube X、Yacd 或 zashboard。面板下载会在后台执行，避免大文件下载被前台超时中断。</p>
+        <p class="text-sm leading-6 text-zinc-400">sing-box 默认使用本地 zashboard。面板下载会在后台执行，避免大文件下载被前台超时中断。</p>
         <Button variant="outline" @click="openExternal(REPO, 'MagicNet GitHub')"><ExternalLink :size="17" />打开项目仓库</Button>
         <pre class="max-h-80 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ status || "点击读取查看 webui status。" }}</pre>
       </Card>

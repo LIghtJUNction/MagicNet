@@ -1,4 +1,7 @@
+use std::collections::BTreeMap;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -6,21 +9,23 @@ use crate::{clean_lines, command_text_timeout, mcp, pid_summary, App};
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
     let singbox = pid_summary("sing-box");
-    let mihomo = pid_summary("mihomo");
-    print_check(
-        "Core",
-        &running(&singbox, &mihomo),
-        format!("sing-box={singbox}, mihomo={mihomo}"),
-    );
+    print_check("Core", &running(&singbox), format!("sing-box={singbox}"));
     let mode = transparent_mode(app);
-    let (tun_ok, tun_detail) = tun_check(app, &mode);
+    let (tun_ok, tun_detail) = tun_check(app, mode);
     print_check("TUN", &tun_ok, tun_detail);
-    let (ebpf_ok, ebpf_detail) = ebpf_check(app);
-    print_check("eBPF", &ebpf_ok, ebpf_detail);
-    let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mihomo);
+    let ebpf = collect_ebpf_status(app);
+    print_check("eBPF", &ebpf.ok(), ebpf.health_detail());
+    print_check("netd", &ebpf.netd_ok(), ebpf.netd_detail());
+    let ecapture = app.moddir.join("bin/ecapture");
+    print_check(
+        "eCapture",
+        &ecapture.is_file(),
+        format!("binary={}", ecapture.display()),
+    );
+    let (dns_ok, dns_detail) = dns_leak_check(app, &singbox);
     print_check("DNS Leak", &dns_ok, dns_detail);
     let (api_ok, api_detail) = api_probe(&app.api);
-    print_check("Clash API", &api_ok, api_detail);
+    print_check("Core API", &api_ok, api_detail);
     print_check(
         "Subscription",
         &has_subscription(app),
@@ -31,12 +36,6 @@ pub(crate) fn health(app: &App) -> Result<(), String> {
         "MCP",
         &mcp_pid.ne("stopped"),
         format!("pid={mcp_pid}, url=http://{mcp_bind}:{mcp_port}/mcp"),
-    );
-    let watchdog_pid = supervisor_pid(app, "watchdog", "magicnet-kernel");
-    print_check(
-        "Watchdog",
-        &watchdog_pid.ne("stopped"),
-        watchdog_detail(app),
     );
     print_check(
         "WebUI",
@@ -111,6 +110,9 @@ pub(crate) fn support(app: &App, args: &[String]) -> Result<(), String> {
     println!("[health]");
     health(app)?;
     println!();
+    println!("[ebpf]");
+    ebpf_status(app)?;
+    println!();
     println!("[subscriptions]");
     for path in sensitive_paths(app) {
         println!(
@@ -129,7 +131,68 @@ pub(crate) fn support(app: &App, args: &[String]) -> Result<(), String> {
     println!();
     println!("[recent logs]");
     print_redacted_tail(app.log_dir.join("sing-box.log"));
-    print_redacted_tail(app.log_dir.join("mihomo.log"));
+    Ok(())
+}
+
+pub(crate) fn ebpf_status(app: &App) -> Result<(), String> {
+    let status = collect_ebpf_status(app);
+    println!("MagicNet eBPF");
+    println!("mode={}", status.mode);
+    println!("bpffs={}", ok_word(status.bpffs));
+    println!("btf={}", ok_word(status.btf));
+    println!("cgroup={}", ok_word(status.cgroup));
+    println!("dns_cgroup={}", ok_word(status.dns_cgroup));
+    println!("config_cgroup_bpf={}", ok_word(status.config_cgroup_bpf));
+    println!("config_bpf_syscall={}", ok_word(status.config_bpf_syscall));
+    println!("loader={}", ok_word(status.loader));
+    println!("loader_executable={}", ok_word(status.loader_executable));
+    println!("redirect={}", ok_word(status.redirect));
+    println!("probe={}", status.probe_label());
+    println!("cgroup_path={}", status.cgroup_path);
+    println!("dns_cgroup_path={}", status.dns_cgroup_path);
+    println!("loader_path={}", status.loader_path.display());
+    println!("mixed_port={}", status.mixed_port);
+    println!("dns_port={}", status.dns_port);
+    println!("state_dir={}", status.state_dir.display());
+    println!("state_file={}", present_word(status.state_present));
+    println!("daemon_pid={}", status.daemon_pid);
+    println!("daemon={}", status.daemon_label());
+    for key in [
+        "mode",
+        "mixed_port",
+        "dns_port",
+        "connect4",
+        "connect6",
+        "sockops",
+        "dns_udp4",
+        "dns_udp6",
+        "root_dns_tcp4",
+        "root_dns_tcp6",
+        "root_dns_udp4",
+        "root_dns_udp6",
+    ] {
+        if let Some(value) = status.state.get(key) {
+            println!("state.{key}={value}");
+        }
+    }
+    println!("netd={}", status.netd_summary());
+    for name in ["connect4", "connect6", "udp4_dns", "udp6_dns"] {
+        let pin_key = format!("{name}.netd_pin");
+        if let Some(value) = status.netd.get(&pin_key) {
+            println!("netd.{pin_key}={value}");
+        }
+        for scope in ["direct", "effective"] {
+            for key in ["count", "attach_flags", "prog_ids"] {
+                let map_key = format!("{name}.{scope}.{key}");
+                if let Some(value) = status.netd.get(&map_key) {
+                    println!("netd.{map_key}={value}");
+                }
+            }
+        }
+    }
+    if !status.query_error.is_empty() {
+        println!("netd.query_error={}", status.query_error);
+    }
     Ok(())
 }
 
@@ -138,8 +201,8 @@ fn print_check(key: &str, ok: &bool, detail: String) {
     println!("[{status}] {key}: {}", redact(&detail));
 }
 
-fn running(a: &str, b: &str) -> bool {
-    a != "stopped" || b != "stopped"
+fn running(core: &str) -> bool {
+    core != "stopped"
 }
 
 fn iface_detail(name: &str) -> String {
@@ -166,94 +229,249 @@ fn tun_check(app: &App, mode: &str) -> (bool, String) {
     )
 }
 
-fn ebpf_check(app: &App) -> (bool, String) {
+#[derive(Debug)]
+struct EbpfStatus {
+    mode: &'static str,
+    bpffs: bool,
+    btf: bool,
+    cgroup: bool,
+    dns_cgroup: bool,
+    config_cgroup_bpf: bool,
+    config_bpf_syscall: bool,
+    loader: bool,
+    loader_executable: bool,
+    redirect: bool,
+    probe: bool,
+    cgroup_path: String,
+    dns_cgroup_path: String,
+    loader_path: PathBuf,
+    mixed_port: String,
+    dns_port: String,
+    state_dir: PathBuf,
+    state_present: bool,
+    daemon_pid: String,
+    daemon_live: bool,
+    state: BTreeMap<String, String>,
+    netd: BTreeMap<String, String>,
+    query_error: String,
+}
+
+impl EbpfStatus {
+    fn ok(&self) -> bool {
+        if self.mode == "tun" {
+            return true;
+        }
+        let runtime_ok = self.mode != "ebpf" || (self.daemon_live && self.state_is_attached());
+        self.bpffs
+            && self.cgroup
+            && self.dns_cgroup
+            && self.config_cgroup_bpf
+            && self.config_bpf_syscall
+            && self.loader_executable
+            && self.redirect
+            && self.probe
+            && runtime_ok
+    }
+
+    fn netd_ok(&self) -> bool {
+        if !self.query_error.is_empty() {
+            return false;
+        }
+        ["connect4", "connect6"].iter().all(|name| {
+            self.netd
+                .get(&format!("{name}.netd_pin"))
+                .map(|value| value == "present")
+                .unwrap_or(false)
+                && self
+                    .netd
+                    .get(&format!("{name}.direct.count"))
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(0)
+                    >= 1
+        })
+    }
+
+    fn state_is_attached(&self) -> bool {
+        ["connect4", "connect6", "sockops"].iter().all(|key| {
+            self.state
+                .get(*key)
+                .map(|value| value == "attached")
+                .unwrap_or(false)
+        })
+    }
+
+    fn probe_label(&self) -> &'static str {
+        probe_state(self.loader_executable, self.probe)
+    }
+
+    fn daemon_label(&self) -> &'static str {
+        if self.daemon_live && self.state_is_attached() {
+            "running"
+        } else if self.daemon_live {
+            "pid-live-state-incomplete"
+        } else if self.daemon_pid != "stopped" {
+            "stale"
+        } else {
+            "stopped"
+        }
+    }
+
+    fn health_detail(&self) -> String {
+        format!(
+            "mode={}, daemon={}, bpffs={}, btf={}, cgroup={}, dns_cgroup={}, config={}, syscall={}, loader={}, redirect={}, probe={}, mixed_port={}, dns_port={}, state={}",
+            self.mode,
+            self.daemon_label(),
+            yes_no(self.bpffs),
+            yes_no(self.btf),
+            yes_no(self.cgroup),
+            yes_no(self.dns_cgroup),
+            yes_no(self.config_cgroup_bpf),
+            yes_no(self.config_bpf_syscall),
+            yes_no(self.loader_executable),
+            yes_no(self.redirect),
+            self.probe_label(),
+            self.mixed_port,
+            self.dns_port,
+            present_word(self.state_present),
+        )
+    }
+
+    fn netd_detail(&self) -> String {
+        if !self.query_error.is_empty() {
+            return format!("query=failed, {}", self.query_error);
+        }
+        self.netd_summary()
+    }
+
+    fn netd_summary(&self) -> String {
+        let mut parts = Vec::new();
+        for name in ["connect4", "connect6", "udp4_dns", "udp6_dns"] {
+            let pin = self
+                .netd
+                .get(&format!("{name}.netd_pin"))
+                .map(String::as_str)
+                .unwrap_or("missing");
+            let flags = self
+                .netd
+                .get(&format!("{name}.direct.attach_flags"))
+                .map(String::as_str)
+                .unwrap_or("unknown");
+            let count = self
+                .netd
+                .get(&format!("{name}.direct.count"))
+                .map(String::as_str)
+                .unwrap_or("unknown");
+            parts.push(format!("{name}:pin={pin},flags={flags},count={count}"));
+        }
+        parts.join("; ")
+    }
+}
+
+fn collect_ebpf_status(app: &App) -> EbpfStatus {
     let mode = transparent_mode(app);
+    let cgroup_path = if PathBuf::from("/sys/fs/cgroup/apps").is_dir() {
+        "/sys/fs/cgroup/apps".to_string()
+    } else {
+        "/sys/fs/cgroup".to_string()
+    };
+    let dns_cgroup_path = "/sys/fs/cgroup".to_string();
     let bpffs =
         shell_ok("[ -d /sys/fs/bpf ] && mount 2>/dev/null | grep -q ' on /sys/fs/bpf type bpf '");
-    let cgroup = shell_ok("[ -d /sys/fs/cgroup ]");
-    let config = shell_ok("zcat /proc/config.gz 2>/dev/null | grep -qx 'CONFIG_CGROUP_BPF=y'")
+    let btf = PathBuf::from("/sys/kernel/btf/vmlinux").is_file()
+        || shell_ok("zcat /proc/config.gz 2>/dev/null | grep -qx 'CONFIG_DEBUG_INFO_BTF=y'")
         || shell_ok("[ ! -r /proc/config.gz ]");
-    let syscall = shell_ok("zcat /proc/config.gz 2>/dev/null | grep -qx 'CONFIG_BPF_SYSCALL=y'")
-        || shell_ok("[ ! -r /proc/config.gz ]");
+    let config_cgroup_bpf =
+        shell_ok("zcat /proc/config.gz 2>/dev/null | grep -qx 'CONFIG_CGROUP_BPF=y'")
+            || shell_ok("[ ! -r /proc/config.gz ]");
+    let config_bpf_syscall =
+        shell_ok("zcat /proc/config.gz 2>/dev/null | grep -qx 'CONFIG_BPF_SYSCALL=y'")
+            || shell_ok("[ ! -r /proc/config.gz ]");
     let loader_path = app.moddir.join("bin/magicnet-ebpf");
     let loader = loader_path.exists();
-    let probe = if bpffs && cgroup && config && syscall && loader {
-        Command::new(&loader_path)
-            .args(["probe", "--cgroup", "/sys/fs/cgroup/apps"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false)
+    let loader_executable = is_executable(&loader_path);
+    let redirect = loader_executable && command_success(&loader_path, &["supports-redirect"]);
+    let probe = if bpffs
+        && PathBuf::from(&cgroup_path).is_dir()
+        && PathBuf::from(&dns_cgroup_path).is_dir()
+        && config_cgroup_bpf
+        && config_bpf_syscall
+        && loader_executable
+    {
+        command_success(
+            &loader_path,
+            &[
+                "probe",
+                "--cgroup",
+                &cgroup_path,
+                "--dns-cgroup",
+                &dns_cgroup_path,
+            ],
+        )
     } else {
         false
     };
+    let state_dir = app.moddir.join(".state/ebpf");
+    let state_file = state_dir.join("magicnet-ebpf.state");
+    let state = read_state_file(&state_file);
+    let state_present = state_file.is_file();
+    let daemon_pid = read_pid(state_dir.join("guard.pid"));
+    let daemon_live = daemon_pid
+        .parse::<u32>()
+        .map(proc_pid_exists)
+        .unwrap_or(false);
+    let (netd, query_error) = collect_netd_status(&loader_path, loader_executable);
+    let (mixed_port, dns_port) = singbox_ports(app);
 
-    if mode != "ebpf" {
-        return (true, format!("mode={mode}, inactive, bpffs={}, cgroup={}, config={}, syscall={}, loader={}, probe={}", yes_no(bpffs), yes_no(cgroup), yes_no(config), yes_no(syscall), yes_no(loader), probe_state(loader, probe)));
+    EbpfStatus {
+        mode,
+        bpffs,
+        btf,
+        cgroup: PathBuf::from(&cgroup_path).is_dir(),
+        dns_cgroup: PathBuf::from(&dns_cgroup_path).is_dir(),
+        config_cgroup_bpf,
+        config_bpf_syscall,
+        loader,
+        loader_executable,
+        redirect,
+        probe,
+        cgroup_path,
+        dns_cgroup_path,
+        loader_path,
+        mixed_port,
+        dns_port,
+        state_dir,
+        state_present,
+        daemon_pid,
+        daemon_live,
+        state,
+        netd,
+        query_error,
     }
-    let ok = bpffs && cgroup && config && syscall && loader && probe;
-    (
-        ok,
-        format!(
-            "mode=ebpf, bpffs={}, cgroup={}, config={}, syscall={}, loader={}, probe={}",
-            yes_no(bpffs),
-            yes_no(cgroup),
-            yes_no(config),
-            yes_no(syscall),
-            yes_no(loader),
-            probe_state(loader, probe)
-        ),
-    )
 }
 
-fn dns_leak_check(app: &App, singbox: &str, mihomo: &str) -> (bool, String) {
+fn dns_leak_check(app: &App, singbox: &str) -> (bool, String) {
     let mode = transparent_mode(app);
-    let core = active_core(singbox, mihomo);
     let transparent_dns = true;
 
-    match core {
-        "mihomo" => {
-            let cfg = mihomo_dns_config(app, mode, transparent_dns);
-            (
-                cfg.ok(),
-                format!(
-                    "core=mihomo, mode={mode}, fake_ip={}, listen_53={}, dns_hijack={}, remote_dns={}",
-                    yes_no(cfg.fake_ip),
-                    yes_no(cfg.listen_53),
-                    yes_no(cfg.hijack),
-                    yes_no(cfg.remote_dns),
-                ),
-            )
-        }
-        "sing-box" => {
-            let cfg = singbox_dns_config(app, mode, transparent_dns);
-            (
-                cfg.ok(),
-                format!(
-                    "core=sing-box, mode={mode}, fakeip={}, hijack_dns={}, remote_dns_detour={}, store_fakeip={}, sniff_inbound={}, strategy={}",
-                    yes_no(cfg.fake_ip),
-                    yes_no(cfg.hijack),
-                    yes_no(cfg.remote_dns),
-                    yes_no(cfg.store_fake_ip),
-                    yes_no(cfg.sniff_inbound),
-                    cfg.strategy,
-                ),
-            )
-        }
-        _ => {
-            let singbox = singbox_dns_config(app, mode, transparent_dns);
-            let mihomo = mihomo_dns_config(app, mode, transparent_dns);
-            (
-                singbox.ok() || mihomo.ok(),
-                format!(
-                    "core=stopped, mode={mode}, sing-box={}, mihomo={}",
-                    yes_no(singbox.ok()),
-                    yes_no(mihomo.ok()),
-                ),
-            )
-        }
-    }
+    let cfg = singbox_dns_config(app, mode, transparent_dns);
+    let core = if singbox != "stopped" {
+        "sing-box"
+    } else {
+        "stopped"
+    };
+    (
+        cfg.ok(),
+        format!(
+            "core={core}, mode={mode}, fakeip={}, hijack_dns={}, remote_dns_detour={}, store_fakeip={}, sniff_inbound={}, ebpf_dns_inbound={}, strategy={}",
+            yes_no(cfg.fake_ip),
+            yes_no(cfg.hijack),
+            yes_no(cfg.remote_dns),
+            yes_no(cfg.store_fake_ip),
+            yes_no(cfg.sniff_inbound),
+            yes_no(cfg.ebpf_dns_inbound),
+            cfg.strategy,
+        ),
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -263,46 +481,25 @@ struct SingboxDnsConfig {
     remote_dns: bool,
     store_fake_ip: bool,
     sniff_inbound: bool,
+    ebpf_dns_inbound: bool,
     strategy: &'static str,
     ipv6_fallback_ready: bool,
     transparent_dns: bool,
+    require_ebpf_dns_inbound: bool,
 }
 
 impl SingboxDnsConfig {
     fn ok(self) -> bool {
         let fallback_ok = !self.ipv6_fallback_ready || self.strategy == "ipv4_only";
+        let ebpf_dns_ok = !self.require_ebpf_dns_inbound || self.ebpf_dns_inbound;
         self.fake_ip
             && self.hijack
             && self.remote_dns
             && self.store_fake_ip
             && self.sniff_inbound
+            && ebpf_dns_ok
             && fallback_ok
             && self.transparent_dns
-    }
-}
-
-#[derive(Clone, Copy)]
-struct MihomoDnsConfig {
-    fake_ip: bool,
-    listen_53: bool,
-    hijack: bool,
-    remote_dns: bool,
-    transparent_dns: bool,
-}
-
-impl MihomoDnsConfig {
-    fn ok(self) -> bool {
-        self.fake_ip && self.listen_53 && self.hijack && self.remote_dns && self.transparent_dns
-    }
-}
-
-fn active_core<'a>(singbox: &str, mihomo: &str) -> &'a str {
-    if singbox != "stopped" {
-        "sing-box"
-    } else if mihomo != "stopped" {
-        "mihomo"
-    } else {
-        "stopped"
     }
 }
 
@@ -312,22 +509,37 @@ fn singbox_dns_config(app: &App, mode: &str, transparent_dns: bool) -> SingboxDn
     let compact = compact_jsonish(&text);
     let strategy = singbox_dns_strategy(&compact);
     let ipv6_fallback_ready = false;
-    let sniff_rule = if mode == "ebpf" {
-        "\"inbound\":[\"mixed-in\",\"magicnet-ebpf-dns4-in\",\"magicnet-ebpf-dns6-in\"]"
-    } else {
-        "\"inbound\":[\"mixed-in\",\"tun-in\"]"
-    };
+    let require_ebpf_dns_inbound = mode != "tun";
+    let sniff_inbound = sniff_rule_has(&compact, "mixed-in")
+        && (mode == "ebpf" || sniff_rule_has(&compact, "tun-in"))
+        && (!require_ebpf_dns_inbound
+            || (sniff_rule_has(&compact, "magicnet-ebpf-dns4-in")
+                && sniff_rule_has(&compact, "magicnet-ebpf-dns6-in")));
     SingboxDnsConfig {
         fake_ip: compact.contains("\"type\":\"fakeip\"") && compact.contains("\"tag\":\"fakeip\""),
         hijack: compact.contains("\"protocol\":\"dns\"")
             && compact.contains("\"action\":\"hijack-dns\""),
         remote_dns: has_remote_dns_detour(&compact),
         store_fake_ip: compact.contains("\"store_fakeip\":true"),
-        sniff_inbound: compact.contains(sniff_rule),
+        sniff_inbound,
+        ebpf_dns_inbound: has_ebpf_dns_inbounds(&compact),
         strategy,
         ipv6_fallback_ready,
         transparent_dns,
+        require_ebpf_dns_inbound,
     }
+}
+
+fn sniff_rule_has(compact: &str, tag: &str) -> bool {
+    compact.contains("\"action\":\"sniff\"") && compact.contains(&format!("\"{tag}\""))
+}
+
+fn has_ebpf_dns_inbounds(compact: &str) -> bool {
+    compact.contains("\"tag\":\"magicnet-ebpf-dns4-in\"")
+        && compact.contains("\"listen\":\"127.0.0.1\"")
+        && compact.contains("\"tag\":\"magicnet-ebpf-dns6-in\"")
+        && compact.contains("\"listen\":\"::1\"")
+        && compact.contains("\"listen_port\":")
 }
 
 fn singbox_dns_strategy(compact: &str) -> &'static str {
@@ -352,34 +564,6 @@ fn has_remote_dns_detour(compact: &str) -> bool {
             || compact.contains("\"server_name\":\"dns.google\"")
             || compact.contains("\"server_name\":\"cloudflare-dns.com\"")
             || compact.contains("\"server_name\":\"dns.adguard-dns.com\""))
-}
-
-fn mihomo_dns_config(app: &App, mode: &str, transparent_dns: bool) -> MihomoDnsConfig {
-    let text =
-        fs::read_to_string(app.moddir.join(".config/mihomo/config.yaml")).unwrap_or_default();
-    let compact = text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.starts_with('#'))
-        .collect::<Vec<_>>()
-        .join(" ");
-    MihomoDnsConfig {
-        fake_ip: compact.contains("enhanced-mode: fake-ip")
-            && compact.contains("store-fake-ip: true"),
-        listen_53: compact.contains("listen: 0.0.0.0:53")
-            || compact.contains("listen: :53")
-            || compact.contains("listen: '[::]:53'")
-            || compact.contains("listen: \"[::]:53\""),
-        hijack: mode == "tun" && compact.contains("dns-hijack:") && compact.contains("any:53")
-            || mode == "ebpf" && transparent_dns,
-        remote_dns: compact.contains("dns.google")
-            || compact.contains("cloudflare-dns.com")
-            || compact.contains("dns.adguard-dns.com")
-            || compact.contains("https://")
-            || compact.contains("tls://")
-            || compact.contains("quic://"),
-        transparent_dns,
-    }
 }
 
 fn transparent_mode(app: &App) -> &'static str {
@@ -416,6 +600,222 @@ fn shell_ok(script: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn command_success(program: &PathBuf, args: &[&str]) -> bool {
+    Command::new(program)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn is_executable(path: &PathBuf) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        fs::metadata(path)
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn ok_word(value: bool) -> &'static str {
+    if value {
+        "ok"
+    } else {
+        "missing"
+    }
+}
+
+fn present_word(value: bool) -> &'static str {
+    if value {
+        "present"
+    } else {
+        "missing"
+    }
+}
+
+fn read_state_file(path: &PathBuf) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    let text = fs::read_to_string(path).unwrap_or_default();
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        map.insert(key.trim().to_string(), value.trim().to_string());
+    }
+    map
+}
+
+fn read_pid(path: PathBuf) -> String {
+    fs::read_to_string(path)
+        .ok()
+        .map(|text| text.trim().to_string())
+        .filter(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
+        .unwrap_or_else(|| "stopped".to_string())
+}
+
+fn proc_pid_exists(pid: u32) -> bool {
+    PathBuf::from(format!("/proc/{pid}")).exists()
+}
+
+fn collect_netd_status(
+    loader_path: &PathBuf,
+    loader_executable: bool,
+) -> (BTreeMap<String, String>, String) {
+    let mut map = BTreeMap::new();
+    for (name, path) in [
+        (
+            "connect4",
+            "/sys/fs/bpf/netd_shared/prog_netd_connect4_inet4_connect",
+        ),
+        (
+            "connect6",
+            "/sys/fs/bpf/netd_shared/prog_netd_connect6_inet6_connect",
+        ),
+        (
+            "udp4_dns",
+            "/sys/fs/bpf/netd_shared/prog_netd_sendmsg4_udp4_sendmsg",
+        ),
+        (
+            "udp6_dns",
+            "/sys/fs/bpf/netd_shared/prog_netd_sendmsg6_udp6_sendmsg",
+        ),
+    ] {
+        map.insert(
+            format!("{name}.netd_pin"),
+            if PathBuf::from(path).exists() {
+                "present"
+            } else {
+                "missing"
+            }
+            .to_string(),
+        );
+    }
+
+    if !loader_executable {
+        return (map, "loader missing".to_string());
+    }
+
+    let output = Command::new(loader_path)
+        .args(["query", "--cgroup", "/sys/fs/cgroup"])
+        .output();
+    let output = match output {
+        Ok(output) => output,
+        Err(err) => return (map, format!("run query: {err}")),
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for line in stdout.lines() {
+        parse_netd_query_line(&mut map, line);
+    }
+    if output.status.success() {
+        (map, String::new())
+    } else {
+        let detail = stderr.trim();
+        (
+            map,
+            if detail.is_empty() {
+                format!(
+                    "query exited with status {}",
+                    output.status.code().unwrap_or(1)
+                )
+            } else {
+                detail.to_string()
+            },
+        )
+    }
+}
+
+fn parse_netd_query_line(map: &mut BTreeMap<String, String>, line: &str) {
+    let line = line.trim();
+    let Some((left, right)) = line.split_once(':') else {
+        return;
+    };
+    let Some((name, scope)) = left.split_once('.') else {
+        return;
+    };
+    if right.contains("count=") {
+        for part in right.split(',') {
+            let part = part.trim();
+            if let Some(value) = part.strip_prefix("count=") {
+                map.insert(format!("{name}.{scope}.count"), value.trim().to_string());
+            } else if let Some(value) = part.strip_prefix("attach_flags=") {
+                map.insert(
+                    format!("{name}.{scope}.attach_flags"),
+                    value.trim().to_string(),
+                );
+            }
+        }
+        return;
+    }
+    if let Some((index, value)) = left.split_once('[') {
+        let Some((name, scope)) = index.split_once('.') else {
+            return;
+        };
+        let Some(prog_id) = right.trim().strip_prefix("prog_id=") else {
+            return;
+        };
+        let key = format!("{name}.{scope}.prog_ids");
+        let existing = map.get(&key).cloned().unwrap_or_default();
+        let suffix = value.trim_end_matches(']');
+        let item = format!("{suffix}:{}", prog_id.trim());
+        map.insert(
+            key,
+            if existing.is_empty() {
+                item
+            } else {
+                format!("{existing},{item}")
+            },
+        );
+    }
+}
+
+fn singbox_ports(app: &App) -> (String, String) {
+    let text =
+        fs::read_to_string(app.moddir.join(".config/sing-box/config.json")).unwrap_or_default();
+    let json: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(json) => json,
+        Err(_) => return ("unknown".to_string(), "1053".to_string()),
+    };
+    let mixed = json
+        .get("inbounds")
+        .and_then(|value| value.as_array())
+        .and_then(|inbounds| {
+            inbounds.iter().find_map(|inbound| {
+                let kind = inbound.get("type").and_then(|value| value.as_str())?;
+                if kind != "mixed" {
+                    return None;
+                }
+                inbound.get("listen_port").and_then(|value| value.as_u64())
+            })
+        })
+        .map(|port| port.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let dns = json
+        .get("inbounds")
+        .and_then(|value| value.as_array())
+        .and_then(|inbounds| {
+            inbounds.iter().find_map(|inbound| {
+                let tag = inbound.get("tag").and_then(|value| value.as_str())?;
+                if tag != "magicnet-ebpf-dns4-in" && tag != "magicnet-ebpf-dns6-in" {
+                    return None;
+                }
+                inbound.get("listen_port").and_then(|value| value.as_u64())
+            })
+        })
+        .map(|port| port.to_string())
+        .unwrap_or_else(|| "1053".to_string());
+    (mixed, dns)
+}
+
 fn compact_jsonish(text: &str) -> String {
     text.chars()
         .filter(|ch| !ch.is_ascii_whitespace())
@@ -449,13 +849,6 @@ fn configured_tun_names(app: &App) -> Vec<String> {
             }
         }
     }
-    if let Ok(text) = fs::read_to_string(app.moddir.join(".config/mihomo/config.yaml")) {
-        for line in text.lines() {
-            if let Some(value) = yaml_string_value(line, "device") {
-                push_unique(&mut names, value);
-            }
-        }
-    }
     names
 }
 
@@ -470,32 +863,10 @@ fn json_string_value(line: &str, key: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn yaml_string_value(line: &str, key: &str) -> Option<String> {
-    let line = line.trim();
-    let value = line.strip_prefix(&format!("{key}:"))?;
-    let value = value.trim().trim_matches('"').trim_matches('\'');
-    (!value.is_empty()).then(|| value.to_string())
-}
-
 fn push_unique(values: &mut Vec<String>, value: String) {
     if !value.is_empty() && !values.iter().any(|item| item == &value) {
         values.push(value);
     }
-}
-
-fn watchdog_detail(app: &App) -> String {
-    let pid = supervisor_pid(app, "watchdog", "magicnet-kernel");
-    let fswatch = supervisor_pid(app, "fswatch", "magicnet-config");
-    let log = fs::read_to_string(app.log_dir.join("watchdog.log"))
-        .ok()
-        .and_then(|text| {
-            text.lines()
-                .rev()
-                .find(|line| !line.trim().is_empty())
-                .map(ToOwned::to_owned)
-        })
-        .unwrap_or_else(|| "no watchdog.log".to_string());
-    format!("watchdog={pid}, fswatch={fswatch}, latest={}", redact(&log))
 }
 
 fn api_probe(api: &str) -> (bool, String) {
@@ -556,10 +927,7 @@ fn has_subscription(app: &App) -> bool {
 }
 
 fn sensitive_paths(app: &App) -> Vec<PathBuf> {
-    vec![
-        app.moddir.join(".config/sing-box/subscription.url"),
-        app.moddir.join(".config/mihomo/subscription.url"),
-    ]
+    vec![app.moddir.join(".config/sing-box/subscription.url")]
 }
 
 fn sysroute_snapshot() {

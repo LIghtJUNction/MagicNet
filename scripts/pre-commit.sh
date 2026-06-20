@@ -33,7 +33,6 @@ mapfile -t posix_shell_files < <(
 )
 shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 "${posix_shell_files[@]}"
 
-python3 -c 'import yaml, pathlib; yaml.safe_load(pathlib.Path("src/MagicNet/.config/mihomo/config.yaml").read_text())'
 jq empty src/MagicNet/.config/sing-box/config.json
 
 KAM_HOOKS_ROOT=hooks KAM_MODULE_ROOT=src/MagicNet bash hooks/pre-build/6000.check_config.sh

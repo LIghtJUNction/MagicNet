@@ -14,6 +14,7 @@ src/MagicNet/.local/
 src/MagicNet/bin/
 src/MagicNet/mihomo.version
 src/MagicNet/singbox.version
+src/MagicNet/ecapture.version
 
 # Kam managed bases are versioned; runtime state under .kam stays ignored.
 !.kam/

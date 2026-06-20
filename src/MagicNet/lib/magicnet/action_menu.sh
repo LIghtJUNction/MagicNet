@@ -20,13 +20,6 @@ magicnet_action_toggle_singbox() {
     magicnet_after_kernel_start
 }
 
-magicnet_action_toggle_mihomo() {
-    import __mihomo__
-    toggle_mihomo
-    magicnet_refresh_status
-    magicnet_after_kernel_start
-}
-
 magicnet_diag_http() {
     _name="$1"
     _url="$2"
@@ -56,14 +49,6 @@ magicnet_action_diagnose() {
     else
         panel_row "sing-box" "Not installed"
     fi
-    if magicnet_cmd_exists mihomo; then
-        import __mihomo__
-        panel_row "mihomo" "$(magicnet_status_text is_mihomo_running)"
-    else
-        panel_row "mihomo" "Not installed"
-    fi
-    _watchdog_pid=$(magicnet_watchdog_status)
-    panel_row "watchdog" "${_watchdog_pid:-Stopped}"
     _fswatch_pid=$(magicnet_fswatch_status)
     panel_row "fswatch" "${_fswatch_pid:-Stopped}"
     panel_row "sing-box API" "$(curl -sS --max-time 3 http://127.0.0.1:9090/proxies >/dev/null 2>&1 && printf OK || printf FAIL)"
@@ -99,11 +84,6 @@ set_i18n "MAGICNET_TOGGLE_SINGBOX" \
     "en" "Start/stop sing-box" \
     "ja" "sing-box を開始/停止" \
     "ko" "sing-box 시작/중지"
-set_i18n "MAGICNET_TOGGLE_MIHOMO" \
-    "zh" "启动/停止 mihomo" \
-    "en" "Start/stop mihomo" \
-    "ja" "mihomo を開始/停止" \
-    "ko" "mihomo 시작/중지"
 set_i18n "MAGICNET_REFRESH_STATUS" \
     "zh" "刷新模块状态描述" \
     "en" "Refresh module status description" \
@@ -127,8 +107,6 @@ magicnet_action() {
         'magicnet_action_update_singbox_subscription' \
         "MAGICNET_TOGGLE_SINGBOX" \
         'magicnet_action_toggle_singbox' \
-        "MAGICNET_TOGGLE_MIHOMO" \
-        'magicnet_action_toggle_mihomo' \
         "MAGICNET_DIAGNOSE" \
         'magicnet_action_diagnose' \
         "MAGICNET_REFRESH_STATUS" \

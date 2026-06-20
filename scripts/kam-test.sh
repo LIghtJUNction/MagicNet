@@ -73,7 +73,6 @@ run_quick() {
     (cd "$ROOT" && cargo check -p magicnet-cli)
     (cd "$ROOT" && cargo check -p magicnet-mcp-server)
     log "checking default configs"
-    python3 -c 'import yaml, pathlib; yaml.safe_load(pathlib.Path("src/MagicNet/.config/mihomo/config.yaml").read_text())'
     jq empty "$ROOT/src/MagicNet/.config/sing-box/config.json"
 }
 
@@ -277,25 +276,22 @@ push_x86_core_binaries() {
     local serial="$1"
     local cache="${MAGICNET_AVD_CORE_CACHE:-$HOME/.cache/magicnet-tools/avd-cores}"
     local singbox_archive="$cache/sing-box-android-amd64.tar.gz"
-    local mihomo_archive="$cache/mihomo-android-amd64.gz"
     local work
+    local singbox_bin
 
     need tar
-    need gzip
     download_release_asset "SagerNet/sing-box" "android-amd64[.]tar[.]gz$" "$singbox_archive"
-    download_release_asset "MetaCubeX/mihomo" "mihomo-android-amd64-.*[.]gz$" "$mihomo_archive"
 
     work="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-avd-cores.XXXXXX")"
     tar -xzf "$singbox_archive" -C "$work"
-    find "$work" -type f -name sing-box -perm -u+x -print -quit | xargs -r -I{} cp "{}" "$work/sing-box"
-    gzip -cd "$mihomo_archive" >"$work/mihomo"
-    chmod 0755 "$work/sing-box" "$work/mihomo"
+    singbox_bin="$(find "$work" -type f -name sing-box -perm -u+x -print -quit)"
+    [ -n "$singbox_bin" ] || fail "sing-box binary not found in archive"
+    cp "$singbox_bin" "$work/sing-box"
+    chmod 0755 "$work/sing-box"
 
     "$ADB" -s "$serial" push "$work/sing-box" /data/local/tmp/sing-box >/dev/null
-    "$ADB" -s "$serial" push "$work/mihomo" /data/local/tmp/mihomo >/dev/null
     adb_su "$serial" 'cp /data/local/tmp/sing-box /data/adb/modules/MagicNet/bin/sing-box'
-    adb_su "$serial" 'cp /data/local/tmp/mihomo /data/adb/modules/MagicNet/bin/mihomo'
-    adb_su "$serial" 'chmod 0755 /data/adb/modules/MagicNet/bin/sing-box /data/adb/modules/MagicNet/bin/mihomo'
+    adb_su "$serial" 'chmod 0755 /data/adb/modules/MagicNet/bin/sing-box'
     rm -rf "$work"
 }
 
@@ -307,94 +303,19 @@ prepare_avd_node_fixtures() {
     "$ADB" -s "$serial" exec-out su -c 'cat /data/adb/modules/MagicNet/.config/sing-box/config.json' >"$work/sing-box.json"
     jq '.outbounds += [{"type":"vmess","tag":"fake-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
         "$work/sing-box.json" >"$work/sing-box.new.json"
-    cat >"$work/A.yaml" <<'YAML'
-proxies:
-  - name: fake-node
-    type: vmess
-    server: 127.0.0.1
-    port: 443
-    uuid: 00000000-0000-0000-0000-000000000000
-    alterId: 0
-    cipher: auto
-YAML
-
     "$ADB" -s "$serial" push "$work/sing-box.new.json" /data/local/tmp/magicnet-sing-box.json >/dev/null
-    "$ADB" -s "$serial" push "$work/A.yaml" /data/local/tmp/magicnet-mihomo-A.yaml >/dev/null
     adb_su "$serial" 'cp /data/local/tmp/magicnet-sing-box.json /data/adb/modules/MagicNet/.config/sing-box/config.json'
-    adb_su "$serial" 'mkdir -p /data/adb/modules/MagicNet/.config/mihomo/proxies'
-    adb_su "$serial" 'cp /data/local/tmp/magicnet-mihomo-A.yaml /data/adb/modules/MagicNet/.config/mihomo/proxies/A.yaml'
     adb_su "$serial" 'printf "%s\n" "https://example.invalid/subscription.yaml" > /data/adb/modules/MagicNet/.config/sing-box/subscription.url'
-    adb_su "$serial" '/data/adb/modules/MagicNet/cli sub set mihomo premium_a https://example.invalid/mihomo.yaml >/dev/null'
-    rm -rf "$work"
-}
-
-verify_avd_network_rules() {
-    local serial="$1"
-    local work
-    work="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-avd-network.XXXXXX")"
-    cat >"$work/verify-network.sh" <<'SH'
-#!/system/bin/sh
-set -e
-MODDIR=/data/adb/modules/MagicNet
-MODPATH=$MODDIR
-export MODDIR MODPATH MAGIC_HOTSPOT_IFACES=ap0 MAGIC_TUN_IFACES=magicnet0 MAGIC_VPN_COEXIST_IFACES=tun0
-. "$MODDIR/lib/kamfw/.kamfwrc"
-import __runtime__
-. "$MODDIR/lib/magicnet.sh"
-magicnet_iface_exists() {
-    case "$1" in
-        ap0|magicnet0|tun0) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-magicnet_collect_tun_ifaces() {
-    printf '%s\n' magicnet0
-}
-magicnet_collect_hotspot_ifaces() {
-    printf '%s\n' ap0
-}
-magicnet_collect_external_vpn_ifaces() {
-    printf '%s\n' tun0
-}
-magicnet_enable_hotspot_forward
-chain="$(magicnet_pick_forward_chain)"
-if ! iptables -S "$chain" | grep -F -- "-i ap0 -o magicnet0 -j ACCEPT" >/dev/null; then
-    iptables -S "$chain"
-    exit 1
-fi
-if ! iptables -t nat -S POSTROUTING | grep -F -- "-o magicnet0 -j MASQUERADE" >/dev/null; then
-    iptables -t nat -S POSTROUTING
-    exit 1
-fi
-magicnet_enable_vpn_coexist
-if ! ip rule show | grep -F "iif tun0" | grep -F "lookup main" >/dev/null; then
-    ip rule show
-    exit 1
-fi
-magicnet_disable_hotspot_forward
-magicnet_disable_vpn_coexist
-SH
-    "$ADB" -s "$serial" push "$work/verify-network.sh" /data/local/tmp/magicnet-verify-network.sh >/dev/null
-    adb_su "$serial" 'chmod 0755 /data/local/tmp/magicnet-verify-network.sh'
-    adb_su "$serial" 'sh /data/local/tmp/magicnet-verify-network.sh'
     rm -rf "$work"
 }
 
 verify_avd_runtime_features() {
     local serial="$1"
-    log "verifying hotspot, VPN coexistence, and core startup on AVD"
+    log "verifying core startup on AVD"
     prepare_avd_node_fixtures "$serial"
     adb_su_retry "$serial" 3 '/data/adb/modules/MagicNet/cli config-editor validate sing-box'
-    adb_su_retry "$serial" 3 '/data/adb/modules/MagicNet/cli config-editor validate mihomo'
-    adb_su "$serial" '/data/adb/modules/MagicNet/cli hotspot set proxy'
-    adb_su "$serial" '/data/adb/modules/MagicNet/cli hotspot status' | grep -qx 'mode=proxy'
-    adb_su "$serial" '/data/adb/modules/MagicNet/cli vpn set on'
-    adb_su "$serial" '/data/adb/modules/MagicNet/cli vpn status' | grep -qx 'mode=on'
-    verify_avd_network_rules "$serial"
     adb_su "$serial" 'MAGICNET_WATCHDOG_ENABLED=0 MAGICNET_FSWATCH_ENABLED=0 MAGICNET_NOTIFY_ENABLED=0 /data/adb/modules/MagicNet/cli service restart sing-box'
     adb_su "$serial" '/data/adb/modules/MagicNet/cli service status' | grep -Eq '^  sing-box: [0-9]+'
-    adb_su "$serial" 'MAGICNET_WATCHDOG_ENABLED=0 MAGICNET_FSWATCH_ENABLED=0 MAGICNET_NOTIFY_ENABLED=0 /data/adb/modules/MagicNet/cli service restart mihomo'
-    adb_su "$serial" '/data/adb/modules/MagicNet/cli service status' | grep -Eq '^  mihomo:[[:space:]]+[0-9]+'
     adb_su "$serial" '/data/adb/modules/MagicNet/cli service stop'
 }
 

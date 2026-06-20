@@ -74,6 +74,10 @@ const PROG4_PIN: &str = "connect4_allow";
 const PROG6_PIN: &str = "connect6_allow";
 const UDP4_DNS_PIN: &str = "udp4_dns";
 const UDP6_DNS_PIN: &str = "udp6_dns";
+const ROOT_TCP4_DNS_PIN: &str = "root_tcp4_dns";
+const ROOT_TCP6_DNS_PIN: &str = "root_tcp6_dns";
+const ROOT_UDP4_DNS_PIN: &str = "root_udp4_dns";
+const ROOT_UDP6_DNS_PIN: &str = "root_udp6_dns";
 const SOCKOPS_PIN: &str = "sockops_index";
 const COOKIE_MAP_PIN: &str = "cookie_original_dst";
 const PEER_MAP_PIN: &str = "peer_original_dst";
@@ -81,6 +85,10 @@ const LINK4_PIN: &str = "connect4_link";
 const LINK6_PIN: &str = "connect6_link";
 const UDP4_DNS_LINK_PIN: &str = "udp4_dns_link";
 const UDP6_DNS_LINK_PIN: &str = "udp6_dns_link";
+const ROOT_TCP4_DNS_LINK_PIN: &str = "root_tcp4_dns_link";
+const ROOT_TCP6_DNS_LINK_PIN: &str = "root_tcp6_dns_link";
+const ROOT_UDP4_DNS_LINK_PIN: &str = "root_udp4_dns_link";
+const ROOT_UDP6_DNS_LINK_PIN: &str = "root_udp6_dns_link";
 const SOCKOPS_LINK_PIN: &str = "sockops_link";
 const STATE_FILE: &str = "magicnet-ebpf.state";
 
@@ -332,8 +340,10 @@ impl ProgramBuilder {
 struct Options {
     state_dir: PathBuf,
     cgroup: PathBuf,
+    dns_cgroup: PathBuf,
     mixed_port: u16,
     dns_port: u16,
+    dns_redirect: bool,
     probe_only: bool,
 }
 
@@ -342,8 +352,10 @@ impl Default for Options {
         Self {
             state_dir: PathBuf::from("/data/adb/modules/MagicNet/.state/ebpf"),
             cgroup: PathBuf::from("/sys/fs/cgroup"),
+            dns_cgroup: PathBuf::from("/sys/fs/cgroup"),
             mixed_port: 7890,
             dns_port: 1053,
+            dns_redirect: false,
             probe_only: false,
         }
     }
@@ -395,6 +407,12 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
                         .ok_or_else(|| "--cgroup requires a path".to_string())?,
                 );
             }
+            "--dns-cgroup" => {
+                opts.dns_cgroup = PathBuf::from(
+                    iter.next()
+                        .ok_or_else(|| "--dns-cgroup requires a path".to_string())?,
+                );
+            }
             "--mixed-port" => {
                 let value = iter
                     .next()
@@ -412,6 +430,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
                     .map_err(|_| format!("invalid DNS port: {value}"))?;
             }
             "--probe-only" => opts.probe_only = true,
+            "--dns-redirect" => opts.dns_redirect = true,
             other => return Err(format!("unknown option: {other}")),
         }
     }
@@ -420,7 +439,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
 
 fn print_help() {
     println!(
-        "magicnet-ebpf {{status|query|probe|promote-netd|demote-netd|supports-redirect|attach|detach}} [--state DIR] [--cgroup PATH] [--mixed-port PORT] [--dns-port PORT] [--probe-only]"
+        "magicnet-ebpf {{status|query|probe|promote-netd|demote-netd|supports-redirect|attach|detach}} [--state DIR] [--cgroup PATH] [--dns-cgroup PATH] [--mixed-port PORT] [--dns-port PORT] [--dns-redirect] [--probe-only]"
     );
 }
 
@@ -433,16 +452,22 @@ fn status(opts: &Options) -> Result<(), String> {
     println!("bpffs={}", yes(bpffs_ready()));
     println!("btf={}", yes(btf_ready()));
     println!("cgroup={}", yes(opts.cgroup.is_dir()));
+    println!("dns_cgroup={}", yes(opts.dns_cgroup.is_dir()));
     println!(
         "pinned={}",
         yes(pin_path(PROG4_PIN).exists()
             || pin_path(PROG6_PIN).exists()
             || pin_path(UDP4_DNS_PIN).exists()
             || pin_path(UDP6_DNS_PIN).exists()
+            || pin_path(ROOT_TCP4_DNS_PIN).exists()
+            || pin_path(ROOT_TCP6_DNS_PIN).exists()
+            || pin_path(ROOT_UDP4_DNS_PIN).exists()
+            || pin_path(ROOT_UDP6_DNS_PIN).exists()
             || pin_path(SOCKOPS_PIN).exists())
     );
     println!("state={}", opts.state_dir.display());
     println!("cgroup_path={}", opts.cgroup.display());
+    println!("dns_cgroup_path={}", opts.dns_cgroup.display());
     Ok(())
 }
 
@@ -512,36 +537,44 @@ fn set_netd_flags(opts: &Options, attach_flags: u32, label: &str) -> Result<(), 
 }
 
 fn open_netd_programs() -> Result<Vec<NetdProgram>, String> {
-    let required = [
-        (
-            BPF_CGROUP_INET4_CONNECT,
-            Path::new("/sys/fs/bpf/netd_shared/prog_netd_connect4_inet4_connect"),
-        ),
-        (
-            BPF_CGROUP_INET6_CONNECT,
-            Path::new("/sys/fs/bpf/netd_shared/prog_netd_connect6_inet6_connect"),
-        ),
-    ];
-    let optional = [
-        (
-            BPF_CGROUP_UDP4_SENDMSG,
-            Path::new("/sys/fs/bpf/netd_shared/prog_netd_sendmsg4_udp4_sendmsg"),
-        ),
-        (
-            BPF_CGROUP_UDP6_SENDMSG,
-            Path::new("/sys/fs/bpf/netd_shared/prog_netd_sendmsg6_udp6_sendmsg"),
-        ),
-    ];
+    let required = [BPF_CGROUP_INET4_CONNECT, BPF_CGROUP_INET6_CONNECT];
+    let optional = [BPF_CGROUP_UDP4_SENDMSG, BPF_CGROUP_UDP6_SENDMSG];
     let mut programs = Vec::with_capacity(required.len() + optional.len());
-    for (attach_type, path) in required {
-        programs.push(NetdProgram::open(attach_type, path)?);
+    for attach_type in required {
+        programs.push(open_netd_program(attach_type)?);
     }
-    for (attach_type, path) in optional {
-        if path.exists() {
-            programs.push(NetdProgram::open(attach_type, path)?);
+    for attach_type in optional {
+        if let Some(path) = netd_program_path(attach_type) {
+            if path.exists() {
+                programs.push(NetdProgram::open(attach_type, path)?);
+            }
         }
     }
     Ok(programs)
+}
+
+fn open_netd_program(attach_type: u32) -> Result<NetdProgram, String> {
+    let path = netd_program_path(attach_type)
+        .ok_or_else(|| format!("unknown netd attach type: {attach_type}"))?;
+    NetdProgram::open(attach_type, path)
+}
+
+fn netd_program_path(attach_type: u32) -> Option<&'static Path> {
+    match attach_type {
+        BPF_CGROUP_INET4_CONNECT => Some(Path::new(
+            "/sys/fs/bpf/netd_shared/prog_netd_connect4_inet4_connect",
+        )),
+        BPF_CGROUP_INET6_CONNECT => Some(Path::new(
+            "/sys/fs/bpf/netd_shared/prog_netd_connect6_inet6_connect",
+        )),
+        BPF_CGROUP_UDP4_SENDMSG => Some(Path::new(
+            "/sys/fs/bpf/netd_shared/prog_netd_sendmsg4_udp4_sendmsg",
+        )),
+        BPF_CGROUP_UDP6_SENDMSG => Some(Path::new(
+            "/sys/fs/bpf/netd_shared/prog_netd_sendmsg6_udp6_sendmsg",
+        )),
+        _ => None,
+    }
 }
 
 struct NetdProgram {
@@ -716,6 +749,7 @@ fn attach(opts: &Options) -> Result<(), String> {
     fs::create_dir_all(pin_root()).map_err(|err| format!("create bpffs pin dir: {err}"))?;
 
     let cgroup_fd = open_dir(&opts.cgroup)?;
+    let dns_cgroup_fd = open_dir(&opts.dns_cgroup)?;
     let cookie_map_fd = create_cookie_map()?;
     let peer_map_fd = create_peer_map()?;
     pin_fd(cookie_map_fd, &pin_path(COOKIE_MAP_PIN))?;
@@ -748,6 +782,7 @@ fn attach(opts: &Options) -> Result<(), String> {
         close_fd(prog6);
         close_fd(peer_map_fd);
         close_fd(cookie_map_fd);
+        close_fd(dns_cgroup_fd);
         close_fd(cgroup_fd);
         println!("attach=probe-only");
         return Ok(());
@@ -772,6 +807,7 @@ fn attach(opts: &Options) -> Result<(), String> {
         cookie_map_fd,
         bridge4_port,
         opts.dns_port,
+        opts.dns_redirect,
         false,
     )?;
     let prog6 = load_connect_prog(
@@ -780,6 +816,7 @@ fn attach(opts: &Options) -> Result<(), String> {
         cookie_map_fd,
         bridge6_port,
         opts.dns_port,
+        opts.dns_redirect,
         true,
     )?;
     let sockops = load_sockops_prog("mn_sockops_tcp", cookie_map_fd, peer_map_fd)?;
@@ -789,24 +826,62 @@ fn attach(opts: &Options) -> Result<(), String> {
     let link4 = attach_any(cgroup_fd, prog4, BPF_CGROUP_INET4_CONNECT)?;
     let link6 = attach_any(cgroup_fd, prog6, BPF_CGROUP_INET6_CONNECT)?;
     let sockops_link = attach_any(cgroup_fd, sockops, BPF_CGROUP_SOCK_OPS)?;
-    let dns4_attached = try_attach_dns_prog(
-        cgroup_fd,
-        "mn_udp4_dns",
-        BPF_CGROUP_UDP4_SENDMSG,
-        UDP4_DNS_PIN,
-        UDP4_DNS_LINK_PIN,
-        opts.dns_port,
-        false,
-    );
-    let dns6_attached = try_attach_dns_prog(
-        cgroup_fd,
-        "mn_udp6_dns",
-        BPF_CGROUP_UDP6_SENDMSG,
-        UDP6_DNS_PIN,
-        UDP6_DNS_LINK_PIN,
-        opts.dns_port,
-        true,
-    );
+    let dns4_attached = opts.dns_redirect
+        && try_attach_dns_prog(
+            cgroup_fd,
+            "mn_udp4_dns",
+            BPF_CGROUP_UDP4_SENDMSG,
+            UDP4_DNS_PIN,
+            UDP4_DNS_LINK_PIN,
+            opts.dns_port,
+            false,
+        );
+    let dns6_attached = opts.dns_redirect
+        && try_attach_dns_prog(
+            cgroup_fd,
+            "mn_udp6_dns",
+            BPF_CGROUP_UDP6_SENDMSG,
+            UDP6_DNS_PIN,
+            UDP6_DNS_LINK_PIN,
+            opts.dns_port,
+            true,
+        );
+    let root_tcp4_dns_attached = opts.dns_redirect
+        && try_attach_tcp_dns_prog_before_netd(
+            dns_cgroup_fd,
+            "mn_rtcp4_dns",
+            BPF_CGROUP_INET4_CONNECT,
+            ROOT_TCP4_DNS_PIN,
+            opts.dns_port,
+            false,
+        );
+    let root_tcp6_dns_attached = opts.dns_redirect
+        && try_attach_tcp_dns_prog_before_netd(
+            dns_cgroup_fd,
+            "mn_rtcp6_dns",
+            BPF_CGROUP_INET6_CONNECT,
+            ROOT_TCP6_DNS_PIN,
+            opts.dns_port,
+            true,
+        );
+    let root_udp4_dns_attached = opts.dns_redirect
+        && try_attach_dns_prog_before_netd(
+            dns_cgroup_fd,
+            "mn_rudp4_dns",
+            BPF_CGROUP_UDP4_SENDMSG,
+            ROOT_UDP4_DNS_PIN,
+            opts.dns_port,
+            false,
+        );
+    let root_udp6_dns_attached = opts.dns_redirect
+        && try_attach_dns_prog_before_netd(
+            dns_cgroup_fd,
+            "mn_rudp6_dns",
+            BPF_CGROUP_UDP6_SENDMSG,
+            ROOT_UDP6_DNS_PIN,
+            opts.dns_port,
+            true,
+        );
     if let Some(link_fd) = link4 {
         pin_fd(link_fd, &pin_path(LINK4_PIN))?;
     }
@@ -818,8 +893,9 @@ fn attach(opts: &Options) -> Result<(), String> {
     }
 
     let state = format!(
-        "mode=tcp-bridge\ncgroup={}\nmixed_port={}\ndns_port={}\nbridge4_port={}\nbridge6_port={}\ndns_udp4={}\ndns_udp6={}\n",
+        "mode=tcp-bridge\ncgroup={}\ndns_cgroup={}\nmixed_port={}\ndns_port={}\nbridge4_port={}\nbridge6_port={}\ndns_udp4={}\ndns_udp6={}\nroot_dns_tcp4={}\nroot_dns_tcp6={}\nroot_dns_udp4={}\nroot_dns_udp6={}\n",
         opts.cgroup.display(),
+        opts.dns_cgroup.display(),
         opts.mixed_port,
         opts.dns_port,
         bridge4_port,
@@ -830,6 +906,26 @@ fn attach(opts: &Options) -> Result<(), String> {
             "unavailable"
         },
         if dns6_attached {
+            "attached"
+        } else {
+            "unavailable"
+        },
+        if root_tcp4_dns_attached {
+            "attached"
+        } else {
+            "unavailable"
+        },
+        if root_tcp6_dns_attached {
+            "attached"
+        } else {
+            "unavailable"
+        },
+        if root_udp4_dns_attached {
+            "attached"
+        } else {
+            "unavailable"
+        },
+        if root_udp6_dns_attached {
             "attached"
         } else {
             "unavailable"
@@ -850,6 +946,7 @@ fn attach(opts: &Options) -> Result<(), String> {
     close_fd(prog4);
     close_fd(prog6);
     close_fd(sockops);
+    close_fd(dns_cgroup_fd);
     close_fd(cgroup_fd);
 
     println!("attach=tcp-bridge");
@@ -906,13 +1003,152 @@ fn try_attach_dns_prog(
     attached
 }
 
+fn try_attach_dns_prog_before_netd(
+    cgroup_fd: RawFd,
+    name: &str,
+    attach_type: u32,
+    prog_pin: &str,
+    dns_port: u16,
+    ipv6: bool,
+) -> bool {
+    let prog = match load_udp_dns_prog(name, attach_type, dns_port, ipv6) {
+        Ok(fd) => fd,
+        Err(err) => {
+            eprintln!("[magicnet-ebpf] root DNS UDP program load skipped: {err}");
+            return false;
+        }
+    };
+    let attached = attach_before_netd(cgroup_fd, prog, attach_type, prog_pin, "UDP", true);
+    close_fd(prog);
+    attached
+}
+
+fn try_attach_tcp_dns_prog_before_netd(
+    cgroup_fd: RawFd,
+    name: &str,
+    attach_type: u32,
+    prog_pin: &str,
+    dns_port: u16,
+    ipv6: bool,
+) -> bool {
+    let prog = match load_tcp_dns_prog(name, attach_type, dns_port, ipv6) {
+        Ok(fd) => fd,
+        Err(err) => {
+            eprintln!("[magicnet-ebpf] root DNS TCP program load skipped: {err}");
+            return false;
+        }
+    };
+    let attached = attach_before_netd(cgroup_fd, prog, attach_type, prog_pin, "TCP", true);
+    close_fd(prog);
+    attached
+}
+
+fn attach_before_netd(
+    cgroup_fd: RawFd,
+    prog: RawFd,
+    attach_type: u32,
+    prog_pin: &str,
+    label: &str,
+    restore_netd: bool,
+) -> bool {
+    let netd = match open_netd_program(attach_type) {
+        Ok(netd) => netd,
+        Err(err) => {
+            eprintln!("[magicnet-ebpf] root DNS {label} netd open skipped: {err}");
+            return false;
+        }
+    };
+    let current = match query_attached(cgroup_fd, attach_type, 0) {
+        Ok(current) => current,
+        Err(err) => {
+            eprintln!("[magicnet-ebpf] root DNS {label} query skipped: {err}");
+            return false;
+        }
+    };
+    if current.prog_ids != [netd.id] || current.attach_flags != BPF_F_ALLOW_MULTI {
+        eprintln!(
+            "[magicnet-ebpf] root DNS {label} pre-netd attach skipped: flags={}, progs={:?}, expected flags={}, progs=[{}]",
+            current.attach_flags, current.prog_ids, BPF_F_ALLOW_MULTI, netd.id
+        );
+        return false;
+    }
+
+    let result: Result<(), String> = (|| {
+        detach_prog(cgroup_fd, netd.fd, attach_type)?;
+        if let Err(err) = attach_prog_flags(cgroup_fd, prog, attach_type, BPF_F_ALLOW_MULTI) {
+            attach_prog_flags(cgroup_fd, netd.fd, attach_type, BPF_F_ALLOW_MULTI).ok();
+            return Err(format!("attach MagicNet before netd failed: {err}"));
+        }
+        if restore_netd {
+            if let Err(err) = attach_prog_flags(cgroup_fd, netd.fd, attach_type, BPF_F_ALLOW_MULTI)
+            {
+                detach_prog(cgroup_fd, prog, attach_type).ok();
+                attach_prog_flags(cgroup_fd, netd.fd, attach_type, BPF_F_ALLOW_MULTI).ok();
+                return Err(format!("restore netd after MagicNet failed: {err}"));
+            }
+        }
+        Ok(())
+    })();
+    if let Err(err) = result {
+        eprintln!("[magicnet-ebpf] root DNS {label} pre-netd attach skipped: {err}");
+        return false;
+    }
+
+    let current = match query_attached(cgroup_fd, attach_type, 0) {
+        Ok(current) => current,
+        Err(err) => {
+            eprintln!("[magicnet-ebpf] root DNS {label} verify skipped: {err}");
+            detach_prog(cgroup_fd, prog, attach_type).ok();
+            return false;
+        }
+    };
+    let magic_id = match prog_id(prog) {
+        Ok(id) => id,
+        Err(err) => {
+            eprintln!("[magicnet-ebpf] root DNS {label} id lookup skipped: {err}");
+            detach_prog(cgroup_fd, prog, attach_type).ok();
+            return false;
+        }
+    };
+    let expected = if restore_netd {
+        vec![magic_id, netd.id]
+    } else {
+        vec![magic_id]
+    };
+    if current.attach_flags != BPF_F_ALLOW_MULTI || current.prog_ids != expected {
+        eprintln!(
+            "[magicnet-ebpf] root DNS {label} verify failed: flags={}, progs={:?}, expected flags={}, progs={:?}",
+            current.attach_flags, current.prog_ids, BPF_F_ALLOW_MULTI, expected
+        );
+        detach_prog(cgroup_fd, prog, attach_type).ok();
+        if !restore_netd {
+            attach_prog_flags(cgroup_fd, netd.fd, attach_type, BPF_F_ALLOW_MULTI).ok();
+        }
+        return false;
+    }
+    if let Err(err) = pin_fd(prog, &pin_path(prog_pin)) {
+        eprintln!("[magicnet-ebpf] root DNS {label} program pin skipped: {err}");
+        detach_prog(cgroup_fd, prog, attach_type).ok();
+        if !restore_netd {
+            attach_prog_flags(cgroup_fd, netd.fd, attach_type, BPF_F_ALLOW_MULTI).ok();
+        }
+        return false;
+    }
+    true
+}
+
 fn detach(opts: &Options) -> Result<(), String> {
     let cgroup_fd = open_dir(&opts.cgroup)?;
+    let dns_cgroup_fd = open_dir(&opts.dns_cgroup)?;
     for name in [
         LINK4_PIN,
         LINK6_PIN,
         UDP4_DNS_LINK_PIN,
         UDP6_DNS_LINK_PIN,
+        ROOT_TCP4_DNS_LINK_PIN,
+        ROOT_TCP6_DNS_LINK_PIN,
+        ROOT_UDP4_DNS_LINK_PIN,
+        ROOT_UDP6_DNS_LINK_PIN,
         SOCKOPS_LINK_PIN,
     ] {
         let path = pin_path(name);
@@ -935,13 +1171,38 @@ fn detach(opts: &Options) -> Result<(), String> {
             fs::remove_file(&path).ok();
         }
     }
+    for (name, attach_type) in [
+        (ROOT_TCP4_DNS_PIN, BPF_CGROUP_INET4_CONNECT),
+        (ROOT_TCP6_DNS_PIN, BPF_CGROUP_INET6_CONNECT),
+        (ROOT_UDP4_DNS_PIN, BPF_CGROUP_UDP4_SENDMSG),
+        (ROOT_UDP6_DNS_PIN, BPF_CGROUP_UDP6_SENDMSG),
+    ] {
+        let path = pin_path(name);
+        if path.exists() {
+            let prog_fd = obj_get(&path)?;
+            detach_prog(dns_cgroup_fd, prog_fd, attach_type).ok();
+            close_fd(prog_fd);
+            fs::remove_file(&path).ok();
+        }
+        restore_netd_if_missing(dns_cgroup_fd, attach_type).ok();
+    }
     fs::remove_file(pin_path(COOKIE_MAP_PIN)).ok();
     fs::remove_file(pin_path(PEER_MAP_PIN)).ok();
     fs::remove_dir(pin_root()).ok();
     fs::remove_dir_all(&opts.state_dir).ok();
+    close_fd(dns_cgroup_fd);
     close_fd(cgroup_fd);
     println!("detach=ok");
     Ok(())
+}
+
+fn restore_netd_if_missing(cgroup_fd: RawFd, attach_type: u32) -> Result<(), String> {
+    let netd = open_netd_program(attach_type)?;
+    let current = query_attached(cgroup_fd, attach_type, 0)?;
+    if current.prog_ids.contains(&netd.id) {
+        return Ok(());
+    }
+    attach_prog_flags(cgroup_fd, netd.fd, attach_type, BPF_F_ALLOW_MULTI)
 }
 
 #[repr(C)]
@@ -1209,6 +1470,12 @@ fn ensure_runtime_ready(opts: &Options) -> Result<(), String> {
     if !opts.cgroup.is_dir() {
         return Err(format!("cgroup path not found: {}", opts.cgroup.display()));
     }
+    if !opts.dns_cgroup.is_dir() {
+        return Err(format!(
+            "DNS cgroup path not found: {}",
+            opts.dns_cgroup.display()
+        ));
+    }
     Ok(())
 }
 
@@ -1262,9 +1529,10 @@ fn load_connect_prog(
     cookie_map_fd: RawFd,
     bridge_port: u16,
     dns_port: u16,
+    dns_redirect: bool,
     ipv6: bool,
 ) -> Result<RawFd, String> {
-    let insns = build_connect_prog(cookie_map_fd, bridge_port, dns_port, ipv6)?;
+    let insns = build_connect_prog(cookie_map_fd, bridge_port, dns_port, dns_redirect, ipv6)?;
     load_prog(name, BPF_PROG_TYPE_CGROUP_SOCK_ADDR, attach_type, &insns)
 }
 
@@ -1275,6 +1543,16 @@ fn load_udp_dns_prog(
     ipv6: bool,
 ) -> Result<RawFd, String> {
     let insns = build_udp_dns_prog(dns_port, ipv6)?;
+    load_prog(name, BPF_PROG_TYPE_CGROUP_SOCK_ADDR, attach_type, &insns)
+}
+
+fn load_tcp_dns_prog(
+    name: &str,
+    attach_type: u32,
+    dns_port: u16,
+    ipv6: bool,
+) -> Result<RawFd, String> {
+    let insns = build_tcp_dns_prog(dns_port, ipv6)?;
     load_prog(name, BPF_PROG_TYPE_CGROUP_SOCK_ADDR, attach_type, &insns)
 }
 
@@ -1351,6 +1629,7 @@ fn build_connect_prog(
     cookie_map_fd: RawFd,
     bridge_port: u16,
     dns_port: u16,
+    dns_redirect: bool,
     ipv6: bool,
 ) -> Result<Vec<BpfInsn>, String> {
     let mut p = ProgramBuilder::default();
@@ -1364,14 +1643,18 @@ fn build_connect_prog(
     p.push(BpfInsn::load_mem(BPF_REG_1, BPF_REG_6, SOCK_ADDR_PROTOCOL));
     p.jne_imm(BPF_REG_1, IPPROTO_TCP as i32, "pass");
     p.push(BpfInsn::load_mem(BPF_REG_1, BPF_REG_6, SOCK_ADDR_USER_PORT));
-    p.jeq_imm(BPF_REG_1, dns53_be, "dns_redirect");
+    if dns_redirect {
+        p.jeq_imm(BPF_REG_1, dns53_be, "dns_redirect");
+    }
     p.ja("normal_tcp");
 
-    p.label("dns_redirect");
-    emit_loopback_guard(&mut p, ipv6, "dns_do_redirect", "pass");
-    p.label("dns_do_redirect");
-    emit_local_redirect(&mut p, ipv6, dns_port_be);
-    p.ja("pass");
+    if dns_redirect {
+        p.label("dns_redirect");
+        emit_loopback_guard(&mut p, ipv6, "dns_do_redirect", "pass");
+        p.label("dns_do_redirect");
+        emit_local_redirect(&mut p, ipv6, dns_port_be);
+        p.ja("pass");
+    }
 
     p.label("normal_tcp");
     if ipv6 {
@@ -1483,8 +1766,40 @@ fn build_udp_dns_prog(dns_port: u16, ipv6: bool) -> Result<Vec<BpfInsn>, String>
     let mut p = ProgramBuilder::default();
     let dns_port_be = dns_port.to_be() as i32;
     let dns53_be = 53u16.to_be() as i32;
+    let dns_port_be_high = ((dns_port.to_be() as u32) << 16) as i32;
+    let dns53_be_high = ((53u16.to_be() as u32) << 16) as i32;
 
     p.push(BpfInsn::mov64_reg(BPF_REG_6, BPF_REG_1));
+    p.push(BpfInsn::load_mem(BPF_REG_1, BPF_REG_6, SOCK_ADDR_USER_PORT));
+    p.jeq_imm(BPF_REG_1, 53, "dns_port_matched_low");
+    p.jeq_imm(BPF_REG_1, dns53_be, "dns_port_matched_low");
+    p.jeq_imm(BPF_REG_1, 53 << 16, "dns_port_matched_high");
+    p.jne_imm(BPF_REG_1, dns53_be_high, "pass");
+    p.label("dns_port_matched_high");
+    emit_loopback_guard(&mut p, ipv6, "dns_do_redirect_high", "pass");
+    p.label("dns_do_redirect_high");
+    emit_local_redirect(&mut p, ipv6, dns_port_be_high);
+    p.ja("pass");
+    p.label("dns_port_matched_low");
+    emit_loopback_guard(&mut p, ipv6, "dns_do_redirect_low", "pass");
+    p.label("dns_do_redirect_low");
+    emit_local_redirect(&mut p, ipv6, dns_port_be);
+    p.label("pass");
+    p.push(BpfInsn::mov64_imm(BPF_REG_0, 1));
+    p.push(BpfInsn::exit());
+    p.finish()
+}
+
+fn build_tcp_dns_prog(dns_port: u16, ipv6: bool) -> Result<Vec<BpfInsn>, String> {
+    let mut p = ProgramBuilder::default();
+    let dns_port_be = dns_port.to_be() as i32;
+    let dns53_be = 53u16.to_be() as i32;
+
+    p.push(BpfInsn::mov64_reg(BPF_REG_6, BPF_REG_1));
+    p.push(BpfInsn::load_mem(BPF_REG_1, BPF_REG_6, SOCK_ADDR_TYPE));
+    p.jne_imm(BPF_REG_1, SOCK_STREAM as i32, "pass");
+    p.push(BpfInsn::load_mem(BPF_REG_1, BPF_REG_6, SOCK_ADDR_PROTOCOL));
+    p.jne_imm(BPF_REG_1, IPPROTO_TCP as i32, "pass");
     p.push(BpfInsn::load_mem(BPF_REG_1, BPF_REG_6, SOCK_ADDR_USER_PORT));
     p.push(BpfInsn::and64_imm(BPF_REG_1, 0x0000ffff));
     p.jeq_imm(BPF_REG_1, 53, "dns_port_matched");

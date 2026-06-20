@@ -21,12 +21,14 @@ use tools::TOOLS_JSON;
 pub(crate) struct Server {
     moddir: PathBuf,
     cli: PathBuf,
+    secret: String,
 }
 
 fn main() {
     let moddir = env::var("MODDIR").unwrap_or_else(|_| "/data/adb/modules/MagicNet".to_string());
     let bind = env::var("MAGICNET_MCP_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = env::var("MAGICNET_MCP_PORT").unwrap_or_else(|_| "8766".to_string());
+    let secret = env::var("MAGICNET_MCP_SECRET").unwrap_or_default();
     let addr = format!("{bind}:{port}");
     let listener = TcpListener::bind(&addr).unwrap_or_else(|err| panic!("listen {addr}: {err}"));
     let cli = env::var("MAGICNET_CLI")
@@ -35,6 +37,7 @@ fn main() {
     let server = Server {
         cli,
         moddir: PathBuf::from(moddir),
+        secret,
     };
     for stream in listener.incoming() {
         match stream {
@@ -54,6 +57,7 @@ impl Server {
         Self {
             moddir: self.moddir.clone(),
             cli: self.cli.clone(),
+            secret: self.secret.clone(),
         }
     }
 }
@@ -86,6 +90,9 @@ fn handle_connection(mut stream: TcpStream, server: &Server) -> std::io::Result<
             "MagicNet MCP uses Streamable HTTP JSON-RPC POST at /mcp.",
         );
     }
+    if !authorized(&headers, &server.secret) {
+        return write_http_error(&mut stream, "401 Unauthorized", "MCP secret required");
+    }
     let mut body = buffer[(header_end + 4).min(buffer.len())..].to_vec();
     while body.len() < content_length {
         let read = stream.read(&mut temp)?;
@@ -97,6 +104,38 @@ fn handle_connection(mut stream: TcpStream, server: &Server) -> std::io::Result<
     let payload = String::from_utf8_lossy(&body).to_string();
     let response = handle_jsonrpc(&payload, server);
     write_json(&mut stream, &response)
+}
+
+fn authorized(headers: &str, secret: &str) -> bool {
+    if secret.is_empty() {
+        return true;
+    }
+    headers.lines().any(|line| {
+        let Some((key, value)) = line.split_once(':') else {
+            return false;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        (key.eq_ignore_ascii_case("authorization")
+            && value
+                .strip_prefix("Bearer ")
+                .is_some_and(|token| constant_time_eq(token.trim(), secret)))
+            || (key.eq_ignore_ascii_case("x-magicnet-mcp-secret")
+                && constant_time_eq(value, secret))
+    })
+}
+
+fn constant_time_eq(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    let mut diff = left.len() ^ right.len();
+    let max = left.len().max(right.len());
+    for index in 0..max {
+        let a = left.get(index).copied().unwrap_or_default();
+        let b = right.get(index).copied().unwrap_or_default();
+        diff |= (a ^ b) as usize;
+    }
+    diff == 0
 }
 
 fn find_header_end(buffer: &[u8]) -> Option<usize> {
@@ -197,35 +236,6 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
             ],
         ),
         "magicnet_transparent_apply" => run_cli(server, &["transparent", "apply"]),
-        "magicnet_hotspot_set" => run_cli_owned(
-            server,
-            vec![
-                "hotspot".into(),
-                "set".into(),
-                arg(args, "mode").unwrap_or_else(|| "proxy".to_string()),
-            ],
-        ),
-        "magicnet_hotspot_reload" => run_cli(server, &["hotspot", "reload"]),
-        "magicnet_vpn_set" => run_cli_owned(
-            server,
-            vec![
-                "vpn".into(),
-                "set".into(),
-                arg(args, "mode").unwrap_or_else(|| "on".to_string()),
-            ],
-        ),
-        "magicnet_vpn_reload" => run_cli(server, &["vpn", "reload"]),
-        "magicnet_tailscale_set" => run_cli_owned(
-            server,
-            vec![
-                "tailscale".into(),
-                "set".into(),
-                arg(args, "auth_key").unwrap_or_else(|| "-keep".to_string()),
-                arg(args, "hostname").unwrap_or_else(|| "android-magicnet".to_string()),
-                arg(args, "subnets").unwrap_or_else(|| "100.64.0.0/10".to_string()),
-            ],
-        ),
-        "magicnet_tailscale_disable" => run_cli(server, &["tailscale", "disable"]),
         "magicnet_health" => run_cli(server, &["health"]),
         "magicnet_block_list" => run_cli(server, &["block", "list"]),
         "magicnet_block_set_enabled" => run_cli(
@@ -283,6 +293,18 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_pingtest" => run_cli(server, &["pingtest"]),
         "magicnet_topology" => run_cli(server, &["topology"]),
         "magicnet_sysroute_snapshot" => run_cli(server, &["sysroute", "snapshot"]),
+        "magicnet_ecapture_status" => run_cli(server, &["ecapture", "status"]),
+        "magicnet_ecapture_help" => run_cli_owned(
+            server,
+            vec![
+                "ecapture".into(),
+                "help".into(),
+                arg(args, "command").unwrap_or_else(|| "tls".to_string()),
+            ],
+        ),
+        "magicnet_ecapture_tls" => ecapture_text(server, args, "tls"),
+        "magicnet_ecapture_gotls" => ecapture_text(server, args, "gotls"),
+        "magicnet_ecapture_pcap" => ecapture_pcap(server, args),
         "magicnet_support_bundle" => run_cli(server, &["support", "bundle"]),
         "magicnet_app_list" => run_cli(server, &["app", "list"]),
         "magicnet_app_packages" => run_cli_owned(
@@ -305,52 +327,6 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_app_add_many" => app_add_many(server, args),
         "magicnet_app_remove" => app_package(server, args, "remove"),
         "magicnet_app_apply" => run_cli(server, &["app", "apply"]),
-        "magicnet_capture_list" => run_cli(server, &["capture", "list"]),
-        "magicnet_capture_set_proxy" => run_cli_owned(
-            server,
-            vec![
-                "capture".into(),
-                "set".into(),
-                arg(args, "host").unwrap_or_default(),
-                arg(args, "port").unwrap_or_else(|| "8888".to_string()),
-                arg(args, "name").unwrap_or_else(|| "MagicNet-Capture".to_string()),
-            ],
-        ),
-        "magicnet_capture_set_enabled" => run_cli(
-            server,
-            &[
-                "capture",
-                if arg_bool(args, "enabled").unwrap_or(true) {
-                    "enable"
-                } else {
-                    "disable"
-                },
-            ],
-        ),
-        "magicnet_capture_add_app" => capture_value(server, args, "add-app", "package"),
-        "magicnet_capture_remove_app" => capture_value(server, args, "remove-app", "package"),
-        "magicnet_capture_add_domain" => capture_value(server, args, "add-domain", "suffix"),
-        "magicnet_capture_remove_domain" => capture_value(server, args, "remove-domain", "suffix"),
-        "magicnet_capture_apply" => run_cli(server, &["capture", "apply"]),
-        "magicnet_cert_list" => run_cli(server, &["cert", "list"]),
-        "magicnet_cert_ensure_default" => run_cli(server, &["cert", "ensure-default"]),
-        "magicnet_cert_install_base64" => run_cli_owned(
-            server,
-            vec![
-                "cert".into(),
-                "install".into(),
-                arg(args, "name").unwrap_or_else(|| "magicnet-ca".to_string()),
-                arg(args, "content_base64").unwrap_or_default(),
-            ],
-        ),
-        "magicnet_cert_remove" => run_cli_owned(
-            server,
-            vec![
-                "cert".into(),
-                "remove".into(),
-                arg(args, "file").unwrap_or_default(),
-            ],
-        ),
         "magicnet_mcp_control" => run_cli_owned(
             server,
             vec![
@@ -441,17 +417,10 @@ fn subscription_set(server: &Server, args: &Value) -> String {
     if url.trim().is_empty() {
         return "missing url".to_string();
     }
-    match arg(args, "provider") {
-        Some(provider)
-            if !provider.trim().is_empty() && matches!(target.as_str(), "mihomo" | "clash") =>
-        {
-            run_cli_owned(
-                server,
-                vec!["sub".into(), "set".into(), target, provider, url],
-            )
-        }
-        _ => run_cli_owned(server, vec!["sub".into(), "set".into(), target, url]),
+    if !matches!(target.as_str(), "sing-box" | "singbox") {
+        return "unsupported subscription target; use sing-box".to_string();
     }
+    run_cli_owned(server, vec!["sub".into(), "set".into(), target, url])
 }
 
 fn subscription_set_singbox_lines(server: &Server, args: &Value) -> String {
@@ -470,6 +439,38 @@ fn backup_export(server: &Server, args: &Value) -> String {
         }
         _ => run_cli(server, &["backup", "export"]),
     }
+}
+
+fn ecapture_text(server: &Server, args: &Value, command: &str) -> String {
+    run_cli_owned(
+        server,
+        vec![
+            "ecapture".into(),
+            command.into(),
+            bounded_duration(args).to_string(),
+            arg(args, "pid").unwrap_or_else(|| "all".to_string()),
+            arg(args, "uid").unwrap_or_else(|| "all".to_string()),
+        ],
+    )
+}
+
+fn ecapture_pcap(server: &Server, args: &Value) -> String {
+    let mut values = vec![
+        "ecapture".to_string(),
+        "pcap".to_string(),
+        bounded_duration(args).to_string(),
+        arg(args, "ifname").unwrap_or_else(|| "wlan0".to_string()),
+    ];
+    if let Some(filter) = arg(args, "filter") {
+        values.extend(filter.split_whitespace().take(32).map(ToOwned::to_owned));
+    }
+    run_cli_owned(server, values)
+}
+
+fn bounded_duration(args: &Value) -> usize {
+    arg_usize(args, "duration_seconds")
+        .unwrap_or(15)
+        .clamp(1, 60)
 }
 
 fn run_cli_owned(server: &Server, args: Vec<String>) -> String {
@@ -512,8 +513,7 @@ fn config_validate(server: &Server, args: &Value) -> String {
     match arg(args, "target").as_deref().unwrap_or("all") {
         "all" => {
             let singbox = run_cli(server, &["config-editor", "validate", "sing-box"]);
-            let mihomo = run_cli(server, &["config-editor", "validate", "mihomo"]);
-            format!("## sing-box\n{singbox}\n\n## mihomo\n{mihomo}")
+            format!("## sing-box\n{singbox}")
         }
         target => run_cli_owned(
             server,
@@ -573,17 +573,6 @@ fn app_add_many(server: &Server, args: &Value) -> String {
         values.push(package.to_string());
     }
     run_cli_owned(server, values)
-}
-
-fn capture_value(server: &Server, args: &Value, action: &str, key: &str) -> String {
-    run_cli_owned(
-        server,
-        vec![
-            "capture".into(),
-            action.into(),
-            arg(args, key).unwrap_or_default(),
-        ],
-    )
 }
 
 fn arg(args: &Value, key: &str) -> Option<String> {

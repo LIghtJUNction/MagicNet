@@ -47,13 +47,10 @@ unzip -oq "$ZIP_PATH" -d "$MODPATH"
 
 mkdir -p \
     "$PREV_MOD/.config/sing-box/.subscription-work" \
-    "$PREV_MOD/.config/mihomo/proxies" \
     "$PREV_MOD/.config/magicnet"
 printf '%s\n' 'https://old.example/sing-box' >"$PREV_MOD/.config/sing-box/subscription.url"
 printf '%s\n' 'old-sing-box-work' >"$PREV_MOD/.config/sing-box/.subscription-work/marker.txt"
-printf '%s\n' 'https://old.example/mihomo' >"$PREV_MOD/.config/mihomo/subscription.url"
-printf '%s\n' 'old-mihomo-proxy' >"$PREV_MOD/.config/mihomo/proxies/A.yaml"
-printf '%s\n' 'MAGICNET_DEFAULT_CORE=mihomo' >"$PREV_MOD/.config/magicnet/current-core.conf"
+printf '%s\n' 'MAGICNET_DEFAULT_CORE=sing-box' >"$PREV_MOD/.config/magicnet/current-core.conf"
 printf '%s\n' 'MAGICNET_MCP_ENABLED=1' 'MAGICNET_MCP_BIND=127.0.0.1' 'MAGICNET_MCP_PORT=18766' \
     >"$PREV_MOD/.config/magicnet/mcp.conf"
 
@@ -87,11 +84,12 @@ fi
 
 [[ -x "$MODPATH/bin/magicnet-mcp-server" ]] || fail "bin/magicnet-mcp-server is not executable"
 [[ -x "$MODPATH/bin/magicnet-ebpf" ]] || fail "bin/magicnet-ebpf is not executable"
+[[ -x "$MODPATH/bin/ecapture" ]] || fail "bin/ecapture is not executable"
 [[ -L "$MODPATH/cli" ]] || fail "cli is not a symlink"
 [[ "$(readlink "$MODPATH/cli")" == "bin/magicnet-cli" ]] || fail "cli does not point to bin/magicnet-cli"
 [[ -x "$MODPATH/cli" ]] || fail "cli symlink target is not executable"
 
-for entry in action.sh post-fs-data.sh service.sh boot-completed.sh uninstall.sh; do
+for entry in action.sh service.sh boot-completed.sh; do
     [[ -x "$MODPATH/$entry" ]] || fail "$entry is not executable"
 done
 
@@ -99,16 +97,18 @@ PATH="$MODPATH/bin:$PATH" command -v magicnet-mcp-server >/dev/null \
     || fail "PATH cannot find magicnet-mcp-server through bin"
 PATH="$MODPATH/bin:$PATH" command -v magicnet-ebpf >/dev/null \
     || fail "PATH cannot find magicnet-ebpf through bin"
+PATH="$MODPATH/bin:$PATH" command -v ecapture >/dev/null \
+    || fail "PATH cannot find ecapture through bin"
 
 grep -qx 'https://old.example/sing-box' "$MODPATH/.config/sing-box/subscription.url" \
     || fail "sing-box subscription was not preserved from previous install"
 grep -qx 'old-sing-box-work' "$MODPATH/.config/sing-box/.subscription-work/marker.txt" \
     || fail "sing-box subscription workdir was not preserved from previous install"
-grep -qx 'https://old.example/mihomo' "$MODPATH/.config/mihomo/subscription.url" \
-    || fail "mihomo subscription was not preserved from previous install"
-grep -qx 'old-mihomo-proxy' "$MODPATH/.config/mihomo/proxies/A.yaml" \
-    || fail "mihomo proxies were not preserved from previous install"
-grep -qx 'MAGICNET_DEFAULT_CORE=mihomo' "$MODPATH/.config/magicnet/current-core.conf" \
+legacy_core_dir="$MODPATH/.config/mi""homo"
+if [[ -e "$legacy_core_dir" ]]; then
+    fail "legacy core config directory should not be restored"
+fi
+grep -qx 'MAGICNET_DEFAULT_CORE=sing-box' "$MODPATH/.config/magicnet/current-core.conf" \
     || fail "magicnet core config was not preserved from previous install"
 grep -qx 'MAGICNET_MCP_PORT=18766' "$MODPATH/.config/magicnet/mcp.conf" \
     || fail "MCP config was not preserved from previous install"

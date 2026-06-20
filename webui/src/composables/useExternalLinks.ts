@@ -1,11 +1,11 @@
 import { reactive } from "vue";
-import { AUTO_CORE_OPEN_ENABLED_KEY, AUTO_CORE_OPEN_TARGET_KEY } from "@/constants";
-import type { CoreUiTarget } from "@/types";
+import { AUTO_SING_BOX_UI_OPEN_ENABLED_KEY, AUTO_SING_BOX_UI_OPEN_TARGET_KEY } from "@/constants";
+import type { SingBoxUiTarget } from "@/types";
 import { copyText, intentDataQuote, probeFailed } from "@/utils";
 
 type RuntimeState = {
   api: string;
-  core: string;
+  singBoxState: string;
 };
 
 type MagicNetState = {
@@ -22,9 +22,9 @@ export function useExternalLinks(
   runCli: (args: string, label?: string, quiet?: boolean) => Promise<string>,
   refreshStatus: () => Promise<unknown>
 ) {
-  const autoCoreOpen = reactive({
-    enabled: localStorage.getItem(AUTO_CORE_OPEN_ENABLED_KEY) === "1",
-    target: (localStorage.getItem(AUTO_CORE_OPEN_TARGET_KEY) || "zashboard") as CoreUiTarget,
+  const autoSingBoxUiOpen = reactive({
+    enabled: localStorage.getItem(AUTO_SING_BOX_UI_OPEN_ENABLED_KEY) === "1",
+    target: (localStorage.getItem(AUTO_SING_BOX_UI_OPEN_TARGET_KEY) || "zashboard") as SingBoxUiTarget,
     attempted: false
   });
 
@@ -44,50 +44,48 @@ export function useExternalLinks(
     await runShell(`am start -a android.intent.action.VIEW -c android.intent.category.BROWSABLE ${browserFlag}-d ${escaped} >/dev/null 2>&1 || am start -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d ${escaped}`, `打开 ${label}`);
   }
 
-  function coreUiUrl(target: CoreUiTarget): string {
-    if (target === "yacd") return "https://yacd.metacubex.one/?hostname=127.0.0.1&port=9090&secret=";
-    if (target === "zashboard") return `${state.runtime.api}/ui/`;
-    return "https://metacubex.github.io/metacubexd/#/setup?hostname=127.0.0.1&port=9090&secret=";
+  function singBoxUiUrl(target: SingBoxUiTarget): string {
+    return `${state.runtime.api}/ui/`;
   }
 
-  async function openCoreUi(target: CoreUiTarget): Promise<void> {
+  async function openSingBoxUi(target: SingBoxUiTarget): Promise<void> {
     state.notice = `正在打开 ${target}`;
-    const ok = await runCli("api groups", "检查核心 WebUI", true);
+    const ok = await runCli("api groups", "检查 sing-box WebUI", true);
     if (!ok || probeFailed(ok)) {
-      state.output = `核心 API 未就绪，暂不跳转。\n\n${ok}`;
+      state.output = `sing-box API 未就绪，暂不跳转。\n\n${ok}`;
       state.phase = "error";
       return;
     }
-    await openExternal(coreUiUrl(target), target, { preferBrowser: target !== "zashboard" });
+    await openExternal(singBoxUiUrl(target), target);
   }
 
-  function setAutoCoreOpen(target: CoreUiTarget | ""): void {
+  function setAutoSingBoxUiOpen(target: SingBoxUiTarget | ""): void {
     if (!target) {
-      autoCoreOpen.enabled = false;
-      localStorage.setItem(AUTO_CORE_OPEN_ENABLED_KEY, "0");
-      state.output = "已关闭默认进入核心 WebUI。";
+      autoSingBoxUiOpen.enabled = false;
+      localStorage.setItem(AUTO_SING_BOX_UI_OPEN_ENABLED_KEY, "0");
+      state.output = "已关闭默认进入 sing-box WebUI。";
       return;
     }
-    autoCoreOpen.enabled = true;
-    autoCoreOpen.target = target;
-    localStorage.setItem(AUTO_CORE_OPEN_ENABLED_KEY, "1");
-    localStorage.setItem(AUTO_CORE_OPEN_TARGET_KEY, target);
+    autoSingBoxUiOpen.enabled = true;
+    autoSingBoxUiOpen.target = target;
+    localStorage.setItem(AUTO_SING_BOX_UI_OPEN_ENABLED_KEY, "1");
+    localStorage.setItem(AUTO_SING_BOX_UI_OPEN_TARGET_KEY, target);
     state.output = `下次进入管理面板将自动打开 ${target}。`;
   }
 
-  async function tryAutoOpenCoreUi(): Promise<void> {
-    if (!autoCoreOpen.enabled || autoCoreOpen.attempted || !state.hasKsu) return;
-    autoCoreOpen.attempted = true;
+  async function tryAutoOpenSingBoxUi(): Promise<void> {
+    if (!autoSingBoxUiOpen.enabled || autoSingBoxUiOpen.attempted || !state.hasKsu) return;
+    autoSingBoxUiOpen.attempted = true;
     await refreshStatus();
-    if (state.runtime.core === "stopped" || state.runtime.core === "unknown") return;
-    await openCoreUi(autoCoreOpen.target);
+    if (state.runtime.singBoxState === "stopped" || state.runtime.singBoxState === "unknown") return;
+    await openSingBoxUi(autoSingBoxUiOpen.target);
   }
 
   return {
-    autoCoreOpen,
+    autoSingBoxUiOpen,
     openExternal,
-    openCoreUi,
-    setAutoCoreOpen,
-    tryAutoOpenCoreUi
+    openSingBoxUi,
+    setAutoSingBoxUiOpen,
+    tryAutoOpenSingBoxUi
   };
 }

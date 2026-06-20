@@ -24,6 +24,14 @@ magicnet_ebpf_cgroup_path() {
     fi
 }
 
+magicnet_ebpf_dns_cgroup_path() {
+    if [ -n "${MAGICNET_EBPF_DNS_CGROUP:-}" ] && [ -d "$MAGICNET_EBPF_DNS_CGROUP" ]; then
+        printf '%s\n' "$MAGICNET_EBPF_DNS_CGROUP"
+        return 0
+    fi
+    printf '%s\n' "/sys/fs/cgroup"
+}
+
 magicnet_ebpf_bpffs_ready() {
     [ -d /sys/fs/bpf ] || return 1
     mount 2>/dev/null | grep -q ' on /sys/fs/bpf type bpf '
@@ -31,6 +39,7 @@ magicnet_ebpf_bpffs_ready() {
 
 magicnet_ebpf_cgroup_ready() {
     [ -d "$(magicnet_ebpf_cgroup_path)" ] || return 1
+    [ -d "$(magicnet_ebpf_dns_cgroup_path)" ] || return 1
     if [ -r /proc/config.gz ]; then
         zcat /proc/config.gz 2>/dev/null | grep -qx 'CONFIG_CGROUP_BPF=y' || return 1
         zcat /proc/config.gz 2>/dev/null | grep -qx 'CONFIG_BPF_SYSCALL=y' || return 1
@@ -49,7 +58,9 @@ magicnet_ebpf_redirect_ready() {
 
 magicnet_ebpf_probe_ready() {
     magicnet_ebpf_loader_ready || return 1
-    "$(magicnet_ebpf_loader)" probe --cgroup "$(magicnet_ebpf_cgroup_path)" >/dev/null 2>&1
+    "$(magicnet_ebpf_loader)" probe \
+        --cgroup "$(magicnet_ebpf_cgroup_path)" \
+        --dns-cgroup "$(magicnet_ebpf_dns_cgroup_path)" >/dev/null 2>&1
 }
 
 magicnet_ebpf_promote_netd() {
@@ -91,7 +102,10 @@ magicnet_ebpf_mixed_port() {
         ' "$_ebpf_config" 2>/dev/null
     )
     case "$_ebpf_port" in
-        *[!0-9]*|"") return 1 ;;
+        *[!0-9]*|"")
+            unset _ebpf_config _ebpf_jq _ebpf_port
+            return 1
+            ;;
         *) printf '%s\n' "$_ebpf_port" ;;
     esac
     unset _ebpf_config _ebpf_jq _ebpf_port
@@ -125,10 +139,94 @@ magicnet_ebpf_dns_port() {
         ' "$_ebpf_config" 2>/dev/null
     )
     case "$_ebpf_port" in
-        *[!0-9]*|"") return 1 ;;
+        *[!0-9]*|"")
+            printf '%s\n' "1053"
+            ;;
         *) printf '%s\n' "$_ebpf_port" ;;
     esac
     unset _ebpf_config _ebpf_jq _ebpf_port
+}
+
+magicnet_ebpf_mixed_inbound_ready() {
+    _ebpf_ready_port="$1"
+    case "$_ebpf_ready_port" in
+        *[!0-9]*|"")
+            unset _ebpf_ready_port
+            return 1
+            ;;
+    esac
+    if magicnet_cmd_exists ss; then
+        ss -lnt 2>/dev/null |
+            awk -v port=":${_ebpf_ready_port}" '$0 ~ port { found = 1 } END { exit found ? 0 : 1 }'
+        _ebpf_ready_rc=$?
+        unset _ebpf_ready_port
+        return "$_ebpf_ready_rc"
+    fi
+    if [ -r /proc/net/tcp ] || [ -r /proc/net/tcp6 ]; then
+        _ebpf_ready_hex="$(printf '%04X' "$_ebpf_ready_port" 2>/dev/null)"
+        { [ -r /proc/net/tcp ] && cat /proc/net/tcp; [ -r /proc/net/tcp6 ] && cat /proc/net/tcp6; } 2>/dev/null |
+            awk -v port=":${_ebpf_ready_hex}" '$2 ~ port && $4 == "0A" { found = 1 } END { exit found ? 0 : 1 }'
+        _ebpf_ready_rc=$?
+        unset _ebpf_ready_port _ebpf_ready_hex
+        return "$_ebpf_ready_rc"
+    fi
+    unset _ebpf_ready_port
+    return 1
+}
+
+magicnet_ebpf_socket_listening() {
+    _ebpf_ready_proto="$1"
+    _ebpf_ready_port="$2"
+    case "$_ebpf_ready_port" in
+        *[!0-9]*|"")
+            unset _ebpf_ready_proto _ebpf_ready_port
+            return 1
+            ;;
+    esac
+    case "$_ebpf_ready_proto" in
+        tcp|udp) ;;
+        *)
+            unset _ebpf_ready_proto _ebpf_ready_port
+            return 1
+            ;;
+    esac
+
+    if magicnet_cmd_exists ss; then
+        case "$_ebpf_ready_proto" in
+            tcp) _ebpf_ss_args="-lnt" ;;
+            udp) _ebpf_ss_args="-lnu" ;;
+        esac
+        # shellcheck disable=SC2086
+        ss $_ebpf_ss_args 2>/dev/null |
+            awk -v port=":${_ebpf_ready_port}" '$0 ~ port { found = 1 } END { exit found ? 0 : 1 }'
+        _ebpf_ready_rc=$?
+        unset _ebpf_ready_proto _ebpf_ready_port _ebpf_ss_args
+        return "$_ebpf_ready_rc"
+    fi
+
+    _ebpf_ready_hex="$(printf '%04X' "$_ebpf_ready_port" 2>/dev/null)"
+    case "$_ebpf_ready_proto" in
+        tcp)
+            { [ -r /proc/net/tcp ] && cat /proc/net/tcp; [ -r /proc/net/tcp6 ] && cat /proc/net/tcp6; } 2>/dev/null |
+                awk -v port=":${_ebpf_ready_hex}" '$2 ~ port && $4 == "0A" { found = 1 } END { exit found ? 0 : 1 }'
+            ;;
+        udp)
+            { [ -r /proc/net/udp ] && cat /proc/net/udp; [ -r /proc/net/udp6 ] && cat /proc/net/udp6; } 2>/dev/null |
+                awk -v port=":${_ebpf_ready_hex}" '$2 ~ port { found = 1 } END { exit found ? 0 : 1 }'
+            ;;
+    esac
+    _ebpf_ready_rc=$?
+    unset _ebpf_ready_proto _ebpf_ready_port _ebpf_ready_hex
+    return "$_ebpf_ready_rc"
+}
+
+magicnet_ebpf_dns_inbound_ready() {
+    _ebpf_ready_port="$1"
+    magicnet_ebpf_socket_listening tcp "$_ebpf_ready_port" &&
+        magicnet_ebpf_socket_listening udp "$_ebpf_ready_port"
+    _ebpf_ready_rc=$?
+    unset _ebpf_ready_port
+    return "$_ebpf_ready_rc"
 }
 
 magicnet_ebpf_supported() {
@@ -178,25 +276,69 @@ magicnet_ebpf_daemon_running() {
     return 0
 }
 
+magicnet_ebpf_dns_redirect_running() {
+    _ebpf_state_file="$(magicnet_ebpf_state_dir)/magicnet-ebpf.state"
+    [ -f "$_ebpf_state_file" ] || {
+        unset _ebpf_state_file
+        return 1
+    }
+    grep -Eq '^(dns_udp4|dns_udp6|root_dns_tcp4|root_dns_tcp6|root_dns_udp4|root_dns_udp6)=attached$' "$_ebpf_state_file" 2>/dev/null
+    _ebpf_dns_rc=$?
+    unset _ebpf_state_file
+    return "$_ebpf_dns_rc"
+}
+
 magicnet_ebpf_guard_stop() {
     _ebpf_guard_pid_file="$(magicnet_ebpf_guard_pid_file)"
     if [ -f "$_ebpf_guard_pid_file" ]; then
         _ebpf_guard_pid="$(sed -n '1p' "$_ebpf_guard_pid_file" 2>/dev/null)"
         case "$_ebpf_guard_pid" in
             *[!0-9]*|"") ;;
-            *) kill "$_ebpf_guard_pid" >/dev/null 2>&1 || true ;;
+            *)
+                kill "$_ebpf_guard_pid" >/dev/null 2>&1 || true
+                _ebpf_guard_wait=0
+                while [ "$_ebpf_guard_wait" -lt 3 ]; do
+                    kill -0 "$_ebpf_guard_pid" >/dev/null 2>&1 || break
+                    _ebpf_guard_wait=$((_ebpf_guard_wait + 1))
+                    sleep 1
+                done
+                kill -0 "$_ebpf_guard_pid" >/dev/null 2>&1 &&
+                    kill -9 "$_ebpf_guard_pid" >/dev/null 2>&1 || true
+                ;;
         esac
         rm -f "$_ebpf_guard_pid_file" 2>/dev/null || true
     fi
-    unset _ebpf_guard_pid_file _ebpf_guard_pid
+    unset _ebpf_guard_pid_file _ebpf_guard_pid _ebpf_guard_wait
+}
+
+magicnet_ebpf_kill_orphans() {
+    for _ebpf_proc in /proc/[0-9]*; do
+        [ -r "${_ebpf_proc}/comm" ] || continue
+        _ebpf_comm="$(cat "${_ebpf_proc}/comm" 2>/dev/null)"
+        [ "$_ebpf_comm" = "magicnet-ebpf" ] || continue
+        _ebpf_pid="${_ebpf_proc#/proc/}"
+        kill "$_ebpf_pid" >/dev/null 2>&1 || true
+    done
+    sleep 1
+    for _ebpf_proc in /proc/[0-9]*; do
+        [ -r "${_ebpf_proc}/comm" ] || continue
+        _ebpf_comm="$(cat "${_ebpf_proc}/comm" 2>/dev/null)"
+        [ "$_ebpf_comm" = "magicnet-ebpf" ] || continue
+        _ebpf_pid="${_ebpf_proc#/proc/}"
+        kill -9 "$_ebpf_pid" >/dev/null 2>&1 || true
+    done
+    unset _ebpf_proc _ebpf_comm _ebpf_pid
 }
 
 magicnet_ebpf_cleanup() {
-    magicnet_ebpf_guard_stop
     if magicnet_ebpf_loader_ready; then
-        "$(magicnet_ebpf_loader)" detach --cgroup "$(magicnet_ebpf_cgroup_path)" >/dev/null 2>&1 || true
+        "$(magicnet_ebpf_loader)" detach \
+            --cgroup "$(magicnet_ebpf_cgroup_path)" \
+            --dns-cgroup "$(magicnet_ebpf_dns_cgroup_path)" >/dev/null 2>&1 || true
         magicnet_ebpf_demote_netd >/dev/null 2>&1 || true
     fi
+    magicnet_ebpf_guard_stop
+    magicnet_ebpf_kill_orphans
     rm -rf "$(magicnet_ebpf_state_dir)" 2>/dev/null || true
 }
 
@@ -209,7 +351,9 @@ magicnet_ebpf_start_daemon() {
     "$(magicnet_ebpf_loader)" attach \
         --mixed-port "$_ebpf_mixed_port" \
         --dns-port "$_ebpf_dns_port" \
+        --dns-redirect \
         --cgroup "$(magicnet_ebpf_cgroup_path)" \
+        --dns-cgroup "$(magicnet_ebpf_dns_cgroup_path)" \
         --state "$(magicnet_ebpf_state_dir)" \
         >"$(magicnet_ebpf_state_dir)/daemon.log" 2>&1 &
     printf '%s\n' "$!" >"$(magicnet_ebpf_guard_pid_file)"
@@ -283,23 +427,37 @@ magicnet_enable_ebpf() {
         magicnet_ebpf_fail "cannot resolve sing-box MagicNet DNS inbound port"
         return $?
     }
+    magicnet_ebpf_dns_inbound_ready "$_ebpf_dns_port" || {
+        magicnet_ebpf_fail "sing-box eBPF DNS inbound is not listening on tcp/udp 127.0.0.1:${_ebpf_dns_port}"
+        return $?
+    }
+    magicnet_ebpf_mixed_inbound_ready "$_ebpf_mixed_port" || {
+        magicnet_ebpf_fail "sing-box mixed inbound is not listening on 127.0.0.1:${_ebpf_mixed_port}"
+        return $?
+    }
     if magicnet_ebpf_daemon_running "$_ebpf_mixed_port" "$_ebpf_dns_port"; then
-        magicnet_log "eBPF transparent TCP bridge and DNS redirect already attached"
+        magicnet_log "eBPF transparent TCP bridge already attached"
         unset _ebpf_mixed_port _ebpf_dns_port _ebpf_mode _ebpf_strict
         return 0
     fi
     magicnet_ebpf_probe_ready || {
-        magicnet_warn "eBPF cgroup/connect attach probe failed; trying to promote netd cgroup BPF to ALLOW_MULTI"
-        magicnet_ebpf_promote_netd && magicnet_ebpf_probe_ready || {
-            magicnet_ebpf_fail "eBPF cgroup/connect attach probe failed after netd promotion"
+        if [ "$_ebpf_strict" = "1" ]; then
+            magicnet_ebpf_fail "eBPF cgroup/connect attach probe failed"
             return $?
-        }
+        else
+            magicnet_ebpf_fail "eBPF cgroup/connect attach probe failed"
+            return $?
+        fi
     }
 
     magicnet_ebpf_start_daemon "$_ebpf_mixed_port" "$_ebpf_dns_port" || {
         magicnet_ebpf_fail "eBPF cgroup/connect TCP bridge attach failed"
         return $?
     }
-    magicnet_log "eBPF transparent TCP bridge and DNS redirect attached through cgroup hooks"
+    if ! magicnet_ebpf_dns_redirect_running; then
+        magicnet_ebpf_fail "eBPF DNS redirect is unavailable; refusing TCP-only transparent mode"
+        return $?
+    fi
+    magicnet_log "eBPF transparent TCP bridge attached through cgroup hooks"
     unset _ebpf_mixed_port _ebpf_dns_port _ebpf_mode _ebpf_strict
 }

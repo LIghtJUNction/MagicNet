@@ -47,12 +47,8 @@ cleanup() {
         pkill -f "$MODDIR/cli.*service ensure" 2>/dev/null || true
         pkill -f "$MODDIR/cli.*config apply" 2>/dev/null || true
         stop_fake_core_processes "sing-box" 2>/dev/null || true
-        stop_fake_core_processes "mihomo" 2>/dev/null || true
         if [[ -s "$MODDIR/.state/fake-sing-box.pid" ]]; then
             kill "$(cat "$MODDIR/.state/fake-sing-box.pid")" 2>/dev/null || true
-        fi
-        if [[ -s "$MODDIR/.state/fake-mihomo.pid" ]]; then
-            kill "$(cat "$MODDIR/.state/fake-mihomo.pid")" 2>/dev/null || true
         fi
     fi
     rm -rf "$TMP"
@@ -280,20 +276,6 @@ write_mock ipset 'exit 0'
 write_mock pkill 'exit 0'
 write_mock pidof 'exit 1'
 # shellcheck disable=SC2016
-write_mock mihomo '
-case "${1:-}" in
-    -v) echo "Mihomo Fake 0.0.0"; exit 0 ;;
-    -t) exit 0 ;;
-    -f)
-        mkdir -p "${MODDIR:?}/.state"
-        echo "$$" >"$MODDIR/.state/fake-mihomo.pid"
-        printf "%s" "mihomo" >/proc/$$/comm 2>/dev/null || true
-        while :; do sleep 3600; done
-        ;;
-esac
-exit 0
-'
-# shellcheck disable=SC2016
 write_mock sing-box '
 case "${1:-}" in
     version) echo "sing-box fake 0.0.0"; exit 0 ;;
@@ -307,6 +289,7 @@ case "${1:-}" in
 esac
 exit 0
 '
+# shellcheck disable=SC2016
 write_mock curl '
 out=""
 url=""
@@ -365,6 +348,7 @@ YAML
 fi
 printf "%s\n" "{}"
 '
+# shellcheck disable=SC2016
 write_mock ss '
 if [[ "${1:-}" == "-lnt" || "${1:-}" == "-lntp" ]]; then
     if [[ -s "${MODDIR:?}/.state/fake-sing-box.pid" ]]; then
@@ -374,6 +358,7 @@ if [[ "${1:-}" == "-lnt" || "${1:-}" == "-lntp" ]]; then
 fi
 exit 0
 '
+# shellcheck disable=SC2016
 write_mock killall '
 signal=""
 if [[ "${1:-}" == -* ]]; then
@@ -383,7 +368,6 @@ fi
 name="${1:-}"
 case "$name" in
     sing-box) pid_file="${MODDIR:?}/.state/fake-sing-box.pid" ;;
-    mihomo) pid_file="${MODDIR:?}/.state/fake-mihomo.pid" ;;
     *) exit 0 ;;
 esac
 if [[ -s "$pid_file" ]]; then
@@ -397,7 +381,6 @@ if [[ -s "$pid_file" ]]; then
 fi
 exit 0
 '
-cp "$MOCK_BIN/mihomo" "$MODDIR/bin/mihomo"
 cp "$MOCK_BIN/sing-box" "$MODDIR/bin/sing-box"
 cp "$MOCK_BIN/curl" "$MODDIR/bin/curl"
 cp "$MOCK_BIN/ss" "$MODDIR/bin/ss"
@@ -410,16 +393,6 @@ printf '%s\n' "pidof $*" >>"${MAGICNET_FAKE_LOG:?}"
 case "${1:-}" in
     sing-box)
         pid_file="${MODDIR:?}/.state/fake-sing-box.pid"
-        if [[ -s "$pid_file" ]]; then
-            pid="$(cat "$pid_file")"
-            if kill -0 "$pid" 2>/dev/null; then
-                echo "$pid"
-                exit 0
-            fi
-        fi
-        ;;
-    mihomo)
-        pid_file="${MODDIR:?}/.state/fake-mihomo.pid"
         if [[ -s "$pid_file" ]]; then
             pid="$(cat "$pid_file")"
             if kill -0 "$pid" 2>/dev/null; then
@@ -513,13 +486,12 @@ env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$ORIGI
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
-    command -v mihomo
     command -v sing-box
 ' >"$TMP/runtime-path.log"
-rg -q "^$MODDIR/bin/mihomo$" "$TMP/runtime-path.log"
 rg -q "^$MODDIR/bin/sing-box$" "$TMP/runtime-path.log"
 test -x "$MODDIR/bin/magicnet-mcp-server"
 test -x "$MODDIR/bin/magicnet-ebpf"
+test -x "$MODDIR/bin/ecapture"
 
 MCP_TEST_PORT="$(python3 - <<'PY'
 import socket
@@ -535,7 +507,8 @@ run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" mcp status >"$TMP/mcp-s
 rg -q '^enabled=1$' "$TMP/mcp-status.log"
 rg -q "^port=$MCP_TEST_PORT$" "$TMP/mcp-status.log"
 rg -q '^pid=[0-9]+$' "$TMP/mcp-status.log"
-MODDIR="$MODDIR" MCP_TEST_PORT="$MCP_TEST_PORT" python3 - <<'PY'
+MCP_TEST_SECRET="$(env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" mcp secret)"
+MODDIR="$MODDIR" MCP_TEST_PORT="$MCP_TEST_PORT" MCP_TEST_SECRET="$MCP_TEST_SECRET" python3 - <<'PY'
 import json
 import os
 import socket
@@ -549,6 +522,7 @@ def rpc(method, params=None, request_id=1):
         b"POST /mcp HTTP/1.1\r\n"
         b"Host: 127.0.0.1\r\n"
         b"Content-Type: application/json\r\n"
+        + f"Authorization: Bearer {os.environ['MCP_TEST_SECRET']}\r\n".encode()
         + f"Content-Length: {len(body)}\r\n\r\n".encode()
         + body
     )
@@ -591,7 +565,7 @@ run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" mcp stop
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" mcp status >"$TMP/mcp-stopped-enabled.log"
 rg -q '^enabled=1$' "$TMP/mcp-stopped-enabled.log"
 rg -q '^pid=stopped$' "$TMP/mcp-stopped-enabled.log"
-run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" sh "$MODDIR/post-fs-data.sh"
+run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" sh "$MODDIR/service.sh"
 sleep 6
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" mcp status >"$TMP/mcp-service-start.log"
 rg -q '^enabled=1$' "$TMP/mcp-service-start.log"
@@ -600,25 +574,20 @@ rg -q '^pid=[0-9]+$' "$TMP/mcp-service-start.log"
 
 run "$MODDIR/cli" service status
 run "$MODDIR/cli" core status
-run "$MODDIR/cli" core select mihomo
-run "$MODDIR/cli" core status
-grep -qx 'MAGICNET_DEFAULT_CORE=mihomo' "$MODDIR/.config/magicnet/current-core.conf"
 run "$MODDIR/cli" core select sing-box
 run "$MODDIR/cli" core status
 grep -qx 'MAGICNET_DEFAULT_CORE=sing-box' "$MODDIR/.config/magicnet/current-core.conf"
 # shellcheck disable=SC2016
-env MAGICNET_DEFAULT_CORE=mihomo MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" sh -c '
+env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
     magicnet_preferred_core
 ' >"$TMP/strict-core.log"
-grep -qx 'mihomo' "$TMP/strict-core.log"
+grep -qx 'sing-box' "$TMP/strict-core.log"
 
 printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing-box/subscription.url"
-printf '%s\n' 'https://example.invalid/mihomo.yaml' >"$MODDIR/.config/mihomo/subscription.url"
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
-stop_fake_core "$MODDIR/.state/fake-mihomo.pid" "mihomo"
 : >"$MOCK_LOG"
 run env \
     MAGICNET_WATCHDOG_ENABLED=0 \
@@ -696,18 +665,6 @@ if fetch is None or run is None or fetch > run:
     raise SystemExit("forced refresh started sing-box before fetching the subscription")
 PY
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
-run env \
-    MAGICNET_WATCHDOG_ENABLED=0 \
-    MAGICNET_FSWATCH_ENABLED=0 \
-    MAGICNET_NOTIFY_ENABLED=0 \
-    MODDIR="$MODDIR" \
-    MODPATH="$MODDIR" \
-    PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    "$MODDIR/cli" service restart mihomo
-sleep 1
-run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" service status >"$TMP/mihomo-service-status.log"
-rg -q '^  mihomo:[[:space:]]+[0-9]+$' "$TMP/mihomo-service-status.log"
-stop_fake_core "$MODDIR/.state/fake-mihomo.pid" "mihomo"
 sleep 3600 &
 echo "$!" >"$MODDIR/.state/fake-sing-box.pid"
 sleep 1
@@ -724,13 +681,10 @@ run env \
     "$MODDIR/cli" supervisor start all
 sleep 1
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >"$TMP/supervisor-status.log"
-rg -q '^watchdog=[0-9]+$' "$TMP/supervisor-status.log"
 rg -q '^fswatch=[0-9]+$' "$TMP/supervisor-status.log"
-test -s "$MODDIR/.state/watchdog/magicnet-kernel.pid"
 test -s "$MODDIR/.state/fswatch/magicnet-config.pid"
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor stop all
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >"$TMP/supervisor-stopped.log"
-rg -q '^watchdog=stopped$' "$TMP/supervisor-stopped.log"
 rg -q '^fswatch=stopped$' "$TMP/supervisor-stopped.log"
 run env \
     MAGICNET_WATCHDOG_ENABLED=1 \
@@ -744,88 +698,25 @@ run env \
     sh "$MODDIR/service.sh"
 for _wait_supervisor in {1..20}; do
     env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >"$TMP/supervisor-phase-status.log"
-    if rg -q '^watchdog=[0-9]+$' "$TMP/supervisor-phase-status.log" &&
-        rg -q '^fswatch=[0-9]+$' "$TMP/supervisor-phase-status.log"; then
+    if rg -q '^fswatch=[0-9]+$' "$TMP/supervisor-phase-status.log"; then
         break
     fi
     sleep 1
 done
 unset _wait_supervisor
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >"$TMP/supervisor-phase-status.log"
-rg -q '^watchdog=[0-9]+$' "$TMP/supervisor-phase-status.log"
 rg -q '^fswatch=[0-9]+$' "$TMP/supervisor-phase-status.log"
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor stop all
 
 run "$MODDIR/cli" transparent status
-run "$MODDIR/cli" hotspot status
-run "$MODDIR/cli" vpn status
-run "$MODDIR/cli" config-editor validate mihomo
 run "$MODDIR/cli" config-editor validate sing-box
 run "$MODDIR/cli" config apply
-run "$MODDIR/cli" hotspot reload
-run "$MODDIR/cli" vpn reload
 run "$MODDIR/cli" sub list
 run "$MODDIR/cli" route list
 run "$MODDIR/cli" block list
 run "$MODDIR/cli" app list
 run "$MODDIR/cli" backup export
 run "$MODDIR/cli" diagnose
-
-sh -c '
-    . "$MODDIR/lib/kamfw/.kamfwrc"
-    import __runtime__
-    . "$MODDIR/lib/magicnet.sh"
-    import __singbox__
-    import __mihomo__
-    import() {
-        :
-    }
-    config() {
-        case "$1" in
-            get)
-                [ -f "$MODDIR/.state/test-config/$2" ] || return 1
-                cat "$MODDIR/.state/test-config/$2"
-                ;;
-            set)
-                mkdir -p "$MODDIR/.state/test-config"
-                printf "%s" "$3" >"$MODDIR/.state/test-config/$2"
-                ;;
-            *) return 1 ;;
-        esac
-    }
-    mihomo_pids() {
-        printf "%s\n" 4242
-    }
-    singbox_pids() {
-        return 0
-    }
-    is_singbox_running() {
-        config set override.description "sing-box status: Not running"
-        return 1
-    }
-    is_mihomo_running() {
-        config set override.description "MiHoMo status: Running"
-        return 0
-    }
-    magicnet_running_pids() {
-        case "$1" in
-            mihomo) printf "%s\n" 4242 ;;
-            sing-box) return 0 ;;
-            *) return 1 ;;
-        esac
-    }
-    magicnet_refresh_status
-    desc1="$(config get override.description)"
-    magicnet_refresh_status
-    desc2="$(config get override.description)"
-    printf "%s\n%s\n" "$desc1" "$desc2"
-' >"$TMP/status-refresh.log"
-printf 'MiHoMo status: Running\nMiHoMo status: Running\n' | cmp - "$TMP/status-refresh.log"
-if rg -q 'sing-box|No kernel|Not running' "$TMP/status-refresh.log"; then
-    echo "status refresh overwrote a running mihomo description" >&2
-    cat "$TMP/status-refresh.log" >&2
-    exit 1
-fi
 
 assert_transparent_mode() {
     local mode="$1"
@@ -848,28 +739,25 @@ assert_transparent_mode() {
     "$MODDIR/cli" transparent status | tee "$TMP/${mode}-transparent-status.log"
     rg -qx "mode=${mode}" "$TMP/${mode}-transparent-status.log"
 
-    python3 - "$MODDIR/.config/mihomo/config.yaml" "$MODDIR/.config/sing-box/config.json" "$mode" <<'PY'
+    python3 - "$MODDIR/.config/sing-box/config.json" "$mode" <<'PY'
 import json
 import pathlib
 import sys
 
-import yaml
-
-mihomo_path, singbox_path, mode = sys.argv[1:]
-mihomo = yaml.safe_load(pathlib.Path(mihomo_path).read_text())
+singbox_path, mode = sys.argv[1:]
 singbox = json.loads(pathlib.Path(singbox_path).read_text())
 
-tun_enabled = bool(mihomo.get("tun", {}).get("enable"))
 inbound_types = [inbound.get("type") for inbound in singbox.get("inbounds", [])]
 sniff_rule = next((rule for rule in singbox.get("route", {}).get("rules", []) if rule.get("action") == "sniff"), None)
 
 if mode == "tun":
-    if not tun_enabled:
-        raise SystemExit("mihomo tun.enable is false in tun mode")
     if singbox.get("dns", {}).get("strategy") != "prefer_ipv4":
         raise SystemExit(f"sing-box dns.strategy was not restored in tun mode: {singbox.get('dns', {}).get('strategy')!r}")
     if "tun" not in inbound_types:
         raise SystemExit("sing-box tun inbound missing in tun mode")
+    tun_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tun"), {})
+    if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
+        raise SystemExit(f"sing-box tun address is not dual-stack in tun mode: {tun_inbound.get('address')!r}")
     if "tproxy" in inbound_types:
         raise SystemExit("legacy sing-box tproxy inbound still present in tun mode")
     if not sniff_rule:
@@ -877,19 +765,24 @@ if mode == "tun":
     if sniff_rule.get("inbound") != ["mixed-in", "tun-in"]:
         raise SystemExit(f"sing-box sniff inbound list mismatch in tun mode: {sniff_rule.get('inbound')!r}")
 elif mode == "ebpf":
-    if tun_enabled:
-        raise SystemExit("mihomo tun.enable is true in ebpf mode")
     if any(kind in inbound_types for kind in ("tun", "tproxy", "redirect")):
         raise SystemExit(f"transparent inbounds still present in ebpf mode: {inbound_types!r}")
     dns_inbounds = [
         inbound for inbound in singbox.get("inbounds", [])
         if inbound.get("tag") in ("magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in")
     ]
-    if len(dns_inbounds) != 2:
-        raise SystemExit(f"sing-box eBPF DNS inbounds missing in ebpf mode: {singbox.get('inbounds')!r}")
+    if dns_inbounds:
+        raise SystemExit(f"legacy sing-box eBPF DNS inbounds still present in ebpf mode: {singbox.get('inbounds')!r}")
+    legacy_dns_rules = [
+        rule for rule in singbox.get("route", {}).get("rules", [])
+        if any(tag in rule.get("inbound", []) for tag in ("magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"))
+        and (rule.get("action") == "hijack-dns" or rule.get("protocol") == "dns")
+    ]
+    if legacy_dns_rules:
+        raise SystemExit(f"legacy sing-box eBPF DNS hijack rules still present in ebpf mode: {legacy_dns_rules!r}")
     if not sniff_rule:
         raise SystemExit("sing-box sniff rule missing in ebpf mode")
-    if sniff_rule.get("inbound") != ["mixed-in", "magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"]:
+    if sniff_rule.get("inbound") != ["mixed-in"]:
         raise SystemExit(f"sing-box sniff inbound list mismatch in ebpf mode: {sniff_rule.get('inbound')!r}")
 else:
     raise SystemExit(f"unsupported mode: {mode}")
@@ -906,53 +799,62 @@ PY
 }
 
 assert_transparent_mode tun
+
+"$HOST_JQ" '
+  .inbounds += [
+    {
+      "type": "direct",
+      "tag": "magicnet-ebpf-dns4-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1053
+    },
+    {
+      "type": "direct",
+      "tag": "magicnet-ebpf-dns6-in",
+      "listen": "::1",
+      "listen_port": 1053
+    }
+  ]
+  | .route.rules = (
+      (.route.rules // [])
+      | map(
+          if (.action // "") == "sniff" then
+            . + {"inbound": ["mixed-in", "magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"]}
+          else
+            .
+          end
+        )
+      + [
+          {
+            "inbound": ["magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"],
+            "protocol": "dns",
+            "action": "hijack-dns"
+          }
+        ]
+    )
+' "$MODDIR/.config/sing-box/config.json" >"$TMP/sing-box-old-ebpf-config.json"
+mv "$TMP/sing-box-old-ebpf-config.json" "$MODDIR/.config/sing-box/config.json"
+
 assert_transparent_mode ebpf
+
+run sh -c '
+    . "$MODDIR/lib/kamfw/.kamfwrc"
+    import __runtime__
+    . "$MODDIR/lib/magicnet.sh"
+    unset MAGICNET_EBPF_DNS_PORT
+    if [ "$(magicnet_ebpf_dns_port)" != "1053" ]; then
+        echo "eBPF DNS port did not fall back to the default port" >&2
+        exit 1
+    fi
+    MAGICNET_EBPF_DNS_PORT=1053
+    if [ "$(magicnet_ebpf_dns_port)" != "1053" ]; then
+        echo "eBPF DNS port override was not honored" >&2
+        exit 1
+    fi
+'
+
 assert_transparent_mode tun
 
-run sh -c '
-    . "$MODDIR/lib/kamfw/.kamfwrc"
-    import __runtime__
-    . "$MODDIR/lib/magicnet.sh"
-    magicnet_iface_exists() {
-        case "$1" in
-            magicnet0|ap0|tun0) return 0 ;;
-            *) return 1 ;;
-        esac
-    }
-    magicnet_collect_external_vpn_ifaces() {
-        printf "%s\n" tun0
-    }
-    magicnet_enable_hotspot_forward
-'
-
-run sh -c '
-    . "$MODDIR/lib/kamfw/.kamfwrc"
-    import __runtime__
-    . "$MODDIR/lib/magicnet.sh"
-    magicnet_collect_tun_ifaces() {
-        printf "%s\n" magicnet0
-    }
-    magicnet_collect_external_vpn_ifaces() {
-        printf "%s\n" tun0
-    }
-    magicnet_vpn_coexist_enabled() {
-        return 0
-    }
-    magicnet_enable_vpn_coexist
-'
-
 "$HOST_JQ" empty "$MODDIR/.config/sing-box/config.json"
-python3 - "$MODDIR/.config/mihomo/config.yaml" <<'PY'
-import pathlib
-import sys
-import yaml
-
-yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
-PY
-
-rg -q '^iptables .*tetherctrl_FORWARD.*-i ap0 -o magicnet0 -j ACCEPT$' "$MOCK_LOG"
-rg -q '^iptables -t nat .*POSTROUTING -o magicnet0 -j MASQUERADE$' "$MOCK_LOG"
-rg -q '^ip rule add priority 8900 iif tun0 lookup main$' "$MOCK_LOG"
-rg -q '^ip rule add priority 8950 iif tun0 lookup main$' "$MOCK_LOG"
 
 echo "fake Magisk smoke passed: $MODDIR"

@@ -40,12 +40,11 @@ unzip -Z1 "$ZIP_PATH" >"$entries_file"
 require_entry module.prop
 require_entry customize.sh
 require_entry cli
-require_entry post-fs-data.sh
 require_entry bin/magicnet-cli
 require_entry bin/magicnet-mcp-server
 require_entry bin/magicnet-ebpf
-require_entry bin/mihomo
 require_entry bin/sing-box
+require_entry bin/ecapture
 require_entry lib/kamfw/watchdog.sh
 require_entry lib/kamfw/fswatch.sh
 
@@ -64,17 +63,19 @@ require_android_arm64_elf() {
         || fail "$entry is not an ELF64 binary: $output"
     grep -F 'ARM aarch64' <<<"$output" >/dev/null \
         || fail "$entry is not AArch64: $output"
-    grep -F 'interpreter /system/bin/linker64' <<<"$output" >/dev/null \
-        || fail "$entry is not linked for Android linker64: $output"
+    if ! grep -F 'interpreter /system/bin/linker64' <<<"$output" >/dev/null \
+        && ! grep -F 'statically linked' <<<"$output" >/dev/null; then
+        fail "$entry is neither linked for Android linker64 nor static: $output"
+    fi
     readelf -h "$elf_tmp/$entry" | grep -F 'Machine:                           AArch64' >/dev/null \
         || fail "$entry ELF machine is not AArch64"
 }
 
-for entry in cli post-fs-data.sh bin/magicnet-cli bin/magicnet-mcp-server bin/magicnet-ebpf bin/mihomo bin/sing-box; do
+for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/magicnet-ebpf bin/sing-box bin/ecapture; do
     require_executable_entry "$entry"
 done
 
-for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/magicnet-ebpf bin/mihomo bin/sing-box; do
+for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/magicnet-ebpf bin/sing-box bin/ecapture; do
     require_android_arm64_elf "$entry"
 done
 
@@ -89,6 +90,10 @@ fi
 
 if grep -Fx '.local/subscriptions.env' "$entries_file" >/dev/null; then
     fail "zip contains local subscription memory"
+fi
+
+if grep -E '(^|/)(mihomo|__mihomo__)(\.sh)?($|/)' "$entries_file" >/dev/null; then
+    fail "zip contains legacy mihomo entries"
 fi
 
 check_no_subscription_secret() {

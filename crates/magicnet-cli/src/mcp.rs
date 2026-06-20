@@ -1,54 +1,86 @@
 use std::env;
 use std::fs;
+use std::io::Read;
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{read_kv, App};
 
 const DEFAULT_BIND: &str = "127.0.0.1";
 const DEFAULT_PORT: &str = "8766";
 
+#[derive(Clone, Debug)]
+struct McpConfig {
+    enabled: String,
+    bind: String,
+    port: String,
+    secret: String,
+}
+
 pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
         "status" => {
-            let (enabled, bind, port) = load(app);
-            println!("enabled={enabled}");
-            println!("bind={bind}");
-            println!("port={port}");
+            let config = load(app);
+            println!("enabled={}", config.enabled);
+            println!("bind={}", config.bind);
+            println!("port={}", config.port);
+            println!("secret_set={}", (!config.secret.is_empty()) as u8);
             if let Some(pid) = live_pid(pid_path(app)) {
                 println!("pid={pid}");
-                println!("url=http://{bind}:{port}/mcp");
+                println!("url=http://{}:{}/mcp", config.bind, config.port);
             } else {
                 println!("pid=stopped");
-                if let Some(owner) = port_owner(&bind, &port) {
+                if let Some(owner) = port_owner(&config.bind, &config.port) {
                     println!("port_owner={owner}");
                 }
             }
             Ok(())
         }
         "enable" => {
-            let (_, current_bind, current_port) = load(app);
-            let bind = args.get(1).map(String::as_str).unwrap_or(&current_bind);
-            let port = args.get(2).map(String::as_str).unwrap_or(&current_port);
+            let current = load(app);
+            let bind = args.get(1).map(String::as_str).unwrap_or(&current.bind);
+            let port = args.get(2).map(String::as_str).unwrap_or(&current.port);
             validate_port(port)?;
-            write_conf(app, "1", &bind, &port)?;
+            let secret = ensure_secret(app, &current)?;
+            write_conf(app, "1", bind, port, &secret)?;
             start(app)
         }
         "disable" => {
-            let (_, bind, port) = load(app);
-            write_conf(app, "0", &bind, &port)?;
+            let config = load(app);
+            write_conf(app, "0", &config.bind, &config.port, &config.secret)?;
             stop(app)
         }
         "set" => {
-            let (enabled, current_bind, current_port) = load(app);
-            let bind = args.get(1).map(String::as_str).unwrap_or(&current_bind);
-            let port = args.get(2).map(String::as_str).unwrap_or(&current_port);
+            let current = load(app);
+            let bind = args.get(1).map(String::as_str).unwrap_or(&current.bind);
+            let port = args.get(2).map(String::as_str).unwrap_or(&current.port);
             validate_port(port)?;
-            write_conf(app, &enabled, bind, port)?;
+            let secret = ensure_secret(app, &current)?;
+            write_conf(app, &current.enabled, bind, port, &secret)?;
             println!("[info] MCP endpoint set: http://{bind}:{port}/mcp");
+            Ok(())
+        }
+        "secret" => {
+            let config = load(app);
+            let secret = ensure_secret(app, &config)?;
+            write_conf(app, &config.enabled, &config.bind, &config.port, &secret)?;
+            println!("{secret}");
+            Ok(())
+        }
+        "rotate-secret" => {
+            let config = load(app);
+            let secret = generate_secret();
+            write_conf(app, &config.enabled, &config.bind, &config.port, &secret)?;
+            if live_pid(pid_path(app)).is_some() {
+                let _ = stop(app);
+                start(app)?;
+            }
+            println!("[info] MCP secret rotated");
             Ok(())
         }
         "start" => start(app),
@@ -64,16 +96,16 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
                 .unwrap_or(120);
             print_log_tail(app, "mcp-server.log", lines)
         }
-        _ => Err("Usage: cli mcp {status|enable [bind] [port]|disable|set [bind] [port]|start|stop|restart|logs [lines]}".to_string()),
+        _ => Err("Usage: cli mcp {status|enable [bind] [port]|disable|set [bind] [port]|secret|rotate-secret|start|stop|restart|logs [lines]}".to_string()),
     }
 }
 
 pub(crate) fn status(app: &App) -> (String, String, String, String) {
-    let (enabled, bind, port) = load(app);
+    let config = load(app);
     let pid = live_pid(pid_path(app))
         .map(|value| value.to_string())
         .unwrap_or_else(|| "stopped".to_string());
-    (enabled, bind, port, pid)
+    (config.enabled, config.bind, config.port, pid)
 }
 
 fn conf_path(app: &App) -> PathBuf {
@@ -87,45 +119,69 @@ fn pid_path(app: &App) -> PathBuf {
         .join(".state/magicnet-mcp.pid")
 }
 
-fn load(app: &App) -> (String, String, String) {
+fn load(app: &App) -> McpConfig {
     let conf = read_kv(conf_path(app));
-    (
-        conf.get("MAGICNET_MCP_ENABLED")
+    McpConfig {
+        enabled: conf
+            .get("MAGICNET_MCP_ENABLED")
             .cloned()
             .unwrap_or_else(|| "0".to_string()),
-        conf.get("MAGICNET_MCP_BIND")
+        bind: conf
+            .get("MAGICNET_MCP_BIND")
             .cloned()
             .unwrap_or_else(|| DEFAULT_BIND.to_string()),
-        conf.get("MAGICNET_MCP_PORT")
+        port: conf
+            .get("MAGICNET_MCP_PORT")
             .cloned()
             .unwrap_or_else(|| DEFAULT_PORT.to_string()),
-    )
+        secret: conf.get("MAGICNET_MCP_SECRET").cloned().unwrap_or_default(),
+    }
 }
 
-fn write_conf(app: &App, enabled: &str, bind: &str, port: &str) -> Result<(), String> {
+fn write_conf(
+    app: &App,
+    enabled: &str,
+    bind: &str,
+    port: &str,
+    secret: &str,
+) -> Result<(), String> {
     let path = conf_path(app);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
     }
     fs::write(
-        path,
+        &path,
         format!(
-            "MAGICNET_MCP_ENABLED={enabled}\nMAGICNET_MCP_BIND={bind}\nMAGICNET_MCP_PORT={port}\n"
+            "MAGICNET_MCP_ENABLED={enabled}\nMAGICNET_MCP_BIND={bind}\nMAGICNET_MCP_PORT={port}\nMAGICNET_MCP_SECRET={secret}\n"
         ),
     )
-    .map_err(|err| format!("write mcp.conf: {err}"))
+    .map_err(|err| format!("write mcp.conf: {err}"))?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+        .map_err(|err| format!("chmod mcp.conf: {err}"))
 }
 
 fn start(app: &App) -> Result<(), String> {
-    let (_, bind, port) = load(app);
+    let mut config = load(app);
+    if config.secret.is_empty() {
+        config.secret = generate_secret();
+        write_conf(
+            app,
+            &config.enabled,
+            &config.bind,
+            &config.port,
+            &config.secret,
+        )?;
+    }
     if let Some(pid) = live_pid(pid_path(app)) {
         println!("[info] MCP server already running: {pid}");
         return mcp(app, &[String::from("status")]);
     }
-    if let Err(err) = TcpListener::bind(format!("{bind}:{port}")) {
-        let owner = port_owner(&bind, &port).unwrap_or_else(|| "unknown owner".to_string());
+    if let Err(err) = TcpListener::bind(format!("{}:{}", config.bind, config.port)) {
+        let owner =
+            port_owner(&config.bind, &config.port).unwrap_or_else(|| "unknown owner".to_string());
         return Err(format!(
-            "MCP port unavailable: {bind}:{port}: {err}; {owner}"
+            "MCP port unavailable: {}:{}: {err}; {owner}",
+            config.bind, config.port
         ));
     }
     let target = app.moddir.join("bin/magicnet-mcp-server");
@@ -146,8 +202,9 @@ fn start(app: &App) -> Result<(), String> {
         .map_err(|err| format!("clone mcp log: {err}"))?;
     let child = Command::new(&target)
         .env("MODDIR", &app.moddir)
-        .env("MAGICNET_MCP_BIND", &bind)
-        .env("MAGICNET_MCP_PORT", &port)
+        .env("MAGICNET_MCP_BIND", &config.bind)
+        .env("MAGICNET_MCP_PORT", &config.port)
+        .env("MAGICNET_MCP_SECRET", &config.secret)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(log_err))
@@ -157,7 +214,10 @@ fn start(app: &App) -> Result<(), String> {
     fs::write(pid_path(app), format!("{pid}\n")).map_err(|err| format!("write pid: {err}"))?;
     thread::sleep(Duration::from_millis(350));
     if Path::new("/proc").join(pid.to_string()).exists() {
-        println!("[info] MCP server started: http://{bind}:{port}/mcp");
+        println!(
+            "[info] MCP server started: http://{}:{}/mcp",
+            config.bind, config.port
+        );
         Ok(())
     } else {
         Err(format!(
@@ -165,6 +225,43 @@ fn start(app: &App) -> Result<(), String> {
             app.log_dir.join("mcp-server.log").display()
         ))
     }
+}
+
+fn ensure_secret(app: &App, config: &McpConfig) -> Result<String, String> {
+    if !config.secret.is_empty() {
+        return Ok(config.secret.clone());
+    }
+    let secret = generate_secret();
+    write_conf(app, &config.enabled, &config.bind, &config.port, &secret)?;
+    Ok(secret)
+}
+
+fn generate_secret() -> String {
+    let mut bytes = [0_u8; 32];
+    if fs::File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(&mut bytes))
+        .is_err()
+    {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        bytes[..16].copy_from_slice(&nanos.to_le_bytes());
+        bytes[16..24].copy_from_slice(&(std::process::id() as u64).to_le_bytes());
+        bytes[24..32].copy_from_slice(&(conf_path_fallback_hash() as u64).to_le_bytes());
+    }
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn conf_path_fallback_hash() -> usize {
+    let text = format!(
+        "{:?}{:?}",
+        env::current_exe().ok(),
+        env::args().collect::<Vec<_>>()
+    );
+    text.bytes().fold(0usize, |acc, byte| {
+        acc.wrapping_mul(131).wrapping_add(byte as usize)
+    })
 }
 
 fn stop(app: &App) -> Result<(), String> {

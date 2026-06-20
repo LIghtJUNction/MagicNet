@@ -2,7 +2,7 @@ import * as kernelsu from "kernelsu";
 import { computed, nextTick, reactive } from "vue";
 import { AUTHOR_WHISPER_URL, CLI, CLI_TIMEOUT_MS, MODULE_DIR, REPO } from "@/constants";
 import type { AppPolicy, ConfigEditorTarget, HealthItem, PackageInfo } from "@/types";
-import { blockDefaults, captureDefaults, certDefaults, mcpDefaults, parseApps, parseBlock, parseCapture, parseCerts, parseHealth, parseMcp, parsePackages, parseRuntime, parseSubs, parseTailscale, runtimeDefaults, tailscaleDefaults, type SubscriptionState } from "@/composables/parsers";
+import { blockDefaults, mcpDefaults, parseApps, parseBlock, parseHealth, parseMcp, parsePackages, parseRuntime, parseSubs, runtimeDefaults, type SubscriptionState } from "@/composables/parsers";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import { bytesToBase64, compactCommand, compactOutput, copyText, execFailed, intentDataQuote, normalizeExecResult, nextFrame, shellQuote, uniqueNonEmpty, withTimeout } from "@/utils";
 
@@ -23,7 +23,6 @@ const state = reactive({
   lastCommand: "",
   output: hasKsu ? "正在读取 MagicNet 状态..." : "本地预览模式：真机 WebUI 才会执行 root 命令。",
   runtime: { ...runtimeDefaults },
-  selectedCore: "sing-box" as "sing-box" | "mihomo",
   health: [] as HealthItem[],
   pingtest: "",
   appPolicy: { mode: "blacklist", proxy: [], bypass: [] } as AppPolicy,
@@ -31,21 +30,17 @@ const state = reactive({
   packageQuery: "",
   packageInput: "",
   blocklist: { ...blockDefaults },
-  capture: { ...captureDefaults },
-  certs: { ...certDefaults },
   mcp: { ...mcpDefaults },
-  tailscale: { ...tailscaleDefaults },
   topology: "",
   sysroute: "",
   subscriptions: {
     singBox: "",
     singBoxUrls: [],
-    mihomoProviders: []
   } as SubscriptionState,
   config: {
-    target: "mihomo" as ConfigEditorTarget,
+    target: "sing-box" as ConfigEditorTarget,
     text: "",
-    path: `${MODULE_DIR}/.config/mihomo/config.yaml`,
+    path: `${MODULE_DIR}/.config/sing-box/config.json`,
     dirty: false,
     status: "尚未加载"
   },
@@ -186,11 +181,10 @@ function followBackgroundLogs(log: string, label: string, args: string, attempt 
     ]);
     if (!execFailed(status)) {
       state.runtime = parseRuntime(status, state.runtime);
-      state.selectedCore = state.runtime.selectedCore;
     }
     const done = !execFailed(status) && (
-      state.runtime.core === state.selectedCore
-      || (/\bservice\s+stop\b/.test(args) && state.runtime.core === "stopped")
+      state.runtime.singBoxState === "sing-box"
+      || (/\bservice\s+stop\b/.test(args) && state.runtime.singBoxState === "stopped")
     );
     const failed = !done && backgroundFailed(logs);
     state.phase = done ? "done" : failed ? "error" : "running";
@@ -220,7 +214,6 @@ async function refreshStatus(): Promise<boolean> {
   const text = await runCli("service status", "刷新状态", true);
   if (markQuietFailure("刷新状态", text)) return false;
   state.runtime = parseRuntime(text, state.runtime);
-  state.selectedCore = state.runtime.selectedCore;
   return true;
 }
 
@@ -235,7 +228,6 @@ async function refreshAll(): Promise<void> {
       ["读取黑名单", () => refreshBlock(true)],
       ["读取订阅", () => refreshSubs(true)],
       ["读取 MCP 信息", () => refreshMcp(true)],
-      ["读取 Tailscale", () => refreshTailscale(true)],
       ["运行诊断", () => refreshHealth(true)]
     ];
     for (const [label, step] of steps) {
@@ -299,29 +291,10 @@ async function refreshSubs(quiet = false): Promise<boolean> {
   return true;
 }
 
-async function refreshCapture(quiet = false): Promise<void> {
-  const text = await runCli("capture list", "读取抓包规则", quiet);
-  state.capture = parseCapture(text, state.capture);
-}
-
-async function refreshCerts(quiet = false): Promise<boolean> {
-  const text = await runCli("cert list", "读取证书", quiet);
-  if (quiet && markQuietFailure("读取证书", text)) return false;
-  state.certs = parseCerts(text, state.certs);
-  return true;
-}
-
 async function refreshMcp(quiet = false): Promise<boolean> {
   const text = await runCli("mcp status", "读取 MCP", quiet);
   if (quiet && markQuietFailure("读取 MCP", text)) return false;
   state.mcp = parseMcp(text, state.mcp);
-  return true;
-}
-
-async function refreshTailscale(quiet = false): Promise<boolean> {
-  const text = await runCli("tailscale status", "读取 Tailscale", quiet);
-  if (quiet && markQuietFailure("读取 Tailscale", text)) return false;
-  state.tailscale = parseTailscale(text, state.tailscale);
   return true;
 }
 
@@ -423,8 +396,8 @@ async function createIssue(): Promise<void> {
   try {
     const moduleProp = await runShell(`cat ${shellQuote(`${MODULE_DIR}/module.prop`)}`, "读取模块版本", true);
     const version = propValue(moduleProp, "version") || "unknown";
-    const titleCore = state.runtime.core === "unknown" ? "runtime" : state.runtime.core;
-    const title = `[MagicNet] ${version} ${titleCore} diagnostic report`;
+    const runtimeLabel = state.runtime.singBoxState === "unknown" ? "runtime" : state.runtime.singBoxState;
+    const title = `[MagicNet] ${version} ${runtimeLabel} diagnostic report`;
     const [device, status, health, mcp, network, support] = await Promise.all([
       runShell("getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; uname -a", "读取设备信息", true),
       runCli("service status", "读取服务状态", true),
@@ -493,7 +466,7 @@ async function loadConfig(): Promise<void> {
   state.config.text = text;
   state.config.dirty = false;
   state.config.status = `已加载 ${text.length} 字符`;
-  state.config.path = target === "mihomo" ? `${MODULE_DIR}/.config/mihomo/config.yaml` : `${MODULE_DIR}/.config/sing-box/config.json`;
+  state.config.path = `${MODULE_DIR}/.config/sing-box/config.json`;
   state.notice = `${target} 配置已加载`;
   state.phase = "done";
   state.output = `${target} 配置已加载到编辑器，未在输出页展开显示。`;
@@ -533,23 +506,23 @@ async function syncConfigTemplate(): Promise<void> {
 }
 
 const {
-  autoCoreOpen,
+  autoSingBoxUiOpen,
   openExternal,
-  openCoreUi,
-  setAutoCoreOpen,
-  tryAutoOpenCoreUi
+  openSingBoxUi,
+  setAutoSingBoxUiOpen,
+  tryAutoOpenSingBoxUi
 } = useExternalLinks(state, runShell, runCli, refreshStatus);
 
 const statusTone = computed(() => {
-  if (state.runtime.core === "sing-box" || state.runtime.core === "mihomo") return "success";
-  if (state.runtime.core === "stopped") return "warning";
+  if (state.runtime.singBoxState === "sing-box") return "success";
+  if (state.runtime.singBoxState === "stopped") return "warning";
   return "neutral";
 });
 
 export function useMagicNet() {
   return {
     state,
-    autoCoreOpen,
+    autoSingBoxUiOpen,
     statusTone,
     compactOutput,
     REPO,
@@ -565,10 +538,7 @@ export function useMagicNet() {
     refreshPackages,
     refreshBlock,
     refreshSubs,
-    refreshCapture,
-    refreshCerts,
     refreshMcp,
-    refreshTailscale,
     createIssue,
     refreshTopology,
     refreshSysroute,
@@ -576,9 +546,9 @@ export function useMagicNet() {
     saveConfig,
     syncConfigTemplate,
     openExternal,
-    openCoreUi,
-    setAutoCoreOpen,
-    tryAutoOpenCoreUi,
+    openSingBoxUi,
+    setAutoSingBoxUiOpen,
+    tryAutoOpenSingBoxUi,
     shellQuote,
     uniqueNonEmpty
   };

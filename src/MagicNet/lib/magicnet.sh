@@ -17,9 +17,6 @@ for _magicnet_lib in \
     transparent \
     webui_panel \
     blocklist \
-    capture_common \
-    capture_mihomo \
-    capture_singbox \
     routes \
     runtime_config \
     supervisors \

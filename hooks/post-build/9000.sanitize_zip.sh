@@ -9,26 +9,24 @@ zip_path="${KAM_PROJECT_ROOT}/dist/${module_id}.zip"
 require_command zip "zip not found!"
 require_command unzip "unzip not found!"
 
-git_entries="$(unzip -Z1 "$zip_path" | grep -E '(^|/)\.git($|/)' || true)"
-if [ -n "$git_entries" ]; then
-    log_info "Removing git metadata from module artifact"
-    while IFS= read -r entry; do
-        [ -n "$entry" ] || continue
-        zip -q -d "$zip_path" "$entry" >/dev/null 2>&1 || true
-    done <<EOF
-$git_entries
-EOF
-fi
+remove_zip_entries() {
+    local pattern="$1"
+    local message="$2"
+    local entries
+    entries="$(unzip -Z1 "$zip_path" | grep -E "$pattern" || true)"
+    [ -n "$entries" ] || return 0
 
-local_subscription_entries="$(unzip -Z1 "$zip_path" | grep -E '^\.local/subscriptions\.env$' || true)"
-if [ -n "$local_subscription_entries" ]; then
-    log_info "Removing local subscription memory from module artifact"
+    log_info "$message"
     while IFS= read -r entry; do
         [ -n "$entry" ] || continue
         zip -q -d "$zip_path" "$entry" >/dev/null 2>&1 || true
     done <<EOF
-$local_subscription_entries
+$entries
 EOF
-fi
+}
+
+remove_zip_entries '(^|/)\.git($|/)' "Removing git metadata from module artifact"
+remove_zip_entries '^\.local/subscriptions\.env$' "Removing local subscription memory from module artifact"
+remove_zip_entries '(^|/)(mihomo|__mihomo__)(\.sh)?($|/)' "Removing legacy mihomo helpers from module artifact"
 
 "${KAM_PROJECT_ROOT}/scripts/package-smoke.sh" "$zip_path"

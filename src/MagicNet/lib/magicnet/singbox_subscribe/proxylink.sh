@@ -47,6 +47,8 @@ magicnet_singbox_write_outbounds_from_json() {
     _out_file="$2"
     _tags_file="${_out_file}.proxylink-tags"
     jq -r '.[].tag // empty' "$_nodes_json" >"$_tags_file" || return 1
+    magicnet_singbox_order_tags_file "$_tags_file" "${_tags_file}.ordered"
+    mv -f "${_tags_file}.ordered" "$_tags_file"
     magicnet_singbox_build_region_groups "$_tags_file"
     _first_tag=$(sed -n '1p' "$_tags_file")
 

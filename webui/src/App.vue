@@ -34,7 +34,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 
 type TabKey = "control" | "config" | "apps" | "block" | "subs" | "rank" | "tools" | "health" | "webui" | "output";
 
-const { state, statusTone, refreshAll, refreshStatus, refreshApps, refreshBlock, refreshSubs, refreshHealth, refreshCapture, refreshCerts, refreshMcp, createIssue, openExternal, REPO, AUTHOR_WHISPER_URL } = useMagicNet();
+const { state, statusTone, refreshAll, refreshStatus, refreshApps, refreshBlock, refreshSubs, refreshHealth, refreshMcp, createIssue, openExternal, REPO, AUTHOR_WHISPER_URL } = useMagicNet();
 const activeTab = ref<TabKey>("control");
 const showAdvancedNav = ref(false);
 
@@ -128,12 +128,11 @@ onMounted(() => {
 
     <section class="sticky top-0 z-20 mb-4 grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-zinc-800/80 bg-[#181713]/95 px-3 py-2 shadow-lg shadow-black/20 backdrop-blur md:flex md:overflow-x-auto">
       <div class="grid min-w-0 gap-0.5 md:min-w-28">
-        <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Runtime</span>
-        <strong class="text-sm">{{ state.runtime.core === "unknown" ? "状态未知" : state.runtime.core }}</strong>
+        <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">sing-box</span>
+        <strong class="text-sm">{{ state.runtime.singBoxState === "sing-box" ? "running" : state.runtime.singBoxState === "unknown" ? "状态未知" : state.runtime.singBoxState }}</strong>
       </div>
-      <Badge :tone="statusTone">{{ state.runtime.core }}</Badge>
+      <Badge :tone="statusTone">{{ state.runtime.singBoxState }}</Badge>
       <span class="hidden items-center gap-1 whitespace-nowrap rounded border border-zinc-800 bg-zinc-950/50 px-2 py-1 text-sm text-zinc-400 md:inline-flex">sing-box <code class="text-zinc-100">{{ state.runtime.singBox }}</code></span>
-      <span class="hidden items-center gap-1 whitespace-nowrap rounded border border-zinc-800 bg-zinc-950/50 px-2 py-1 text-sm text-zinc-400 md:inline-flex">mihomo <code class="text-zinc-100">{{ state.runtime.mihomo }}</code></span>
       <span class="hidden items-center gap-1 whitespace-nowrap rounded border border-zinc-800 bg-zinc-950/50 px-2 py-1 text-sm text-zinc-400 md:inline-flex">模式 <code class="text-zinc-100">{{ state.runtime.transparentMode }}</code></span>
       <span class="col-span-2 flex min-w-0 items-center gap-1 overflow-hidden text-sm leading-5 text-zinc-400 md:col-span-1">
         <ScrollText class="shrink-0" :size="15" />

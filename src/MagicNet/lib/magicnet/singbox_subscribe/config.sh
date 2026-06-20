@@ -32,6 +32,9 @@ magicnet_singbox_build_outbounds_file() {
         fi
     done
     printf ']' >>"${_out_file}.nodes"
+    magicnet_singbox_order_tags_file "$_tags_file" "${_tags_file}.ordered"
+    mv -f "${_tags_file}.ordered" "$_tags_file"
+    _first_tag=$(awk 'NF { print; exit }' "$_tags_file")
     magicnet_singbox_build_region_groups "$_tags_file"
 
     {

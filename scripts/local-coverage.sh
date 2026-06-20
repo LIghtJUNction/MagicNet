@@ -32,8 +32,6 @@ fi
 IGNORE_RE='/.cargo/registry|/rustc/|target/coverage-local/debug/build'
 SOURCES=(
   "crates/magicnet-cli/src/base64.rs"
-  "crates/magicnet-cli/src/tailscale/singbox.rs"
-  "crates/magicnet-cli/src/tailscale/mihomo.rs"
 )
 SOURCE_ARGS=()
 for source in "${SOURCES[@]}"; do

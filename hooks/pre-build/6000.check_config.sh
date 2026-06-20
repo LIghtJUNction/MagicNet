@@ -6,27 +6,8 @@
 KAM_MODULE_ROOT=$(cd "$KAM_MODULE_ROOT" && pwd)
 export HOME=$KAM_MODULE_ROOT
 
-MAGIC_MIHOMO=${MAGIC_MIHOMO:-1}
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
 MAGIC_CONFIG_CHECK_STRICT=${MAGIC_CONFIG_CHECK_STRICT:-0}
-
-check_yaml_syntax() {
-    local file="$1"
-
-    if command -v python3 >/dev/null 2>&1; then
-        python3 - "$file" <<'PY'
-import pathlib
-import sys
-import yaml
-
-yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
-PY
-        return $?
-    fi
-
-    log_warn "python3 not found; YAML syntax check skipped for $file"
-    return 0
-}
 
 check_singbox_json_policy() {
     local file="$1"
@@ -67,17 +48,6 @@ can_run_kernel_check() {
     log_warn "$command_name not found; runtime config check skipped"
     return 1
 }
-
-if [ "$MAGIC_MIHOMO" -ne 0 ] && [ -f "$HOME/.config/mihomo/config.yaml" ]; then
-    log_info "Checking mihomo YAML syntax..."
-    check_yaml_syntax "$HOME/.config/mihomo/config.yaml" || exit 1
-
-    if can_run_kernel_check mihomo; then
-        log_info "Checking mihomo config..."
-        mihomo -v || true
-        mihomo -t -f "$HOME/.config/mihomo/config.yaml" -d "$HOME/.config/mihomo" || exit 1
-    fi
-fi
 
 if [ "$MAGIC_SINGBOX" -ne 0 ] && [ -f "$HOME/.config/sing-box/config.json" ]; then
     log_info "Checking sing-box JSON and 2026 policy..."

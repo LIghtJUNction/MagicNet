@@ -31,24 +31,6 @@ pub(crate) fn node_list(app: &App) {
 fn scan_node_names(app: &App, limit: usize) -> Vec<String> {
     let mut names = Vec::new();
     scan_singbox_tags(app, limit, &mut names);
-    if names.len() >= limit {
-        return names;
-    }
-    let dir = app.moddir.join(".config/mihomo/proxies");
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            if entry.path().extension().and_then(|value| value.to_str()) != Some("yaml") {
-                continue;
-            }
-            let Ok(text) = fs::read_to_string(entry.path()) else {
-                continue;
-            };
-            scan_proxy_yaml(&text, limit, &mut names);
-            if names.len() >= limit {
-                break;
-            }
-        }
-    }
     names
 }
 
@@ -74,20 +56,6 @@ fn scan_singbox_tags(app: &App, limit: usize, names: &mut Vec<String>) {
             if names.len() >= limit {
                 return;
             }
-        }
-    }
-}
-
-fn scan_proxy_yaml(text: &str, limit: usize, names: &mut Vec<String>) {
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        let Some(rest) = trimmed.strip_prefix("- name:") else {
-            continue;
-        };
-        let name = rest.trim().trim_matches('"').trim_matches('\'').to_string();
-        push_node(&name, limit, names);
-        if names.len() >= limit {
-            break;
         }
     }
 }

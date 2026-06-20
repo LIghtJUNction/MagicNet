@@ -158,7 +158,7 @@ fn block_update(app: &App) -> Result<(), String> {
     let (text, source) = match download_blocklist(url) {
         Ok(text) => (text, "remote".to_string()),
         Err(err) => {
-            let fallback = app.moddir.join(".config/mihomo/ruleset/magicnet/ban.yaml");
+            let fallback = app.moddir.join(".config/magicnet/community-ban.yaml");
             let text = fs::read_to_string(&fallback).map_err(|read_err| {
                 format!(
                     "download blocklist failed: {err}; read fallback {}: {read_err}",
@@ -291,5 +291,5 @@ fn write_block_conf(app: &App, conf: &HashMap<String, String>) -> Result<(), Str
 }
 
 fn default_block_url() -> &'static str {
-    "https://raw.githubusercontent.com/LIghtJUNction/MagicMihomo/main/ruleset/magicnet/ban.yaml"
+    "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/src/MagicNet/.config/magicnet/community-ban.yaml"
 }

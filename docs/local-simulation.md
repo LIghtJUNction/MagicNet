@@ -7,7 +7,7 @@ MagicNet 是 Android root 模块，最终验收必须在 Magisk、KernelSU 或 A
 推荐按三层跑：
 
 1. 仓库内仿真：在 Linux 主机上解包模块，模拟 Magisk 安装和启动脚本，验证 `bin/` 路径、`cli`、MCP、配置改写和常见 shell 行为。
-2. AVD/rootAVD：在 Android Studio Emulator 中注入 Magisk，安装真实模块 zip，验证 `/data/adb/modules/MagicNet`、`post-fs-data.sh`、`service.sh`、overlay 和 logcat。
+2. AVD/rootAVD：在 Android Studio Emulator 中注入 Magisk，安装真实模块 zip，验证 `/data/adb/modules/MagicNet`、`service.sh`、`boot-completed.sh`、overlay 和 logcat。
 3. 真机验收：用目标 root 管理器安装 zip，重启后验证服务、端口、TUN/核心、网络、MCP 和日志。
 
 先跑本机仿真，再跑 AVD/rootAVD，最后跑真机。不要把普通 `adb root`、Superuser 或可写 `/system` 当成 Magisk 模块运行时。
@@ -26,7 +26,7 @@ kam test avd
 
 模式说明：
 
-- `quick`：验证 `kam.toml`、Rust CLI/MCP crate、默认 mihomo YAML 和 sing-box JSON。
+- `quick`：验证 `kam.toml`、Rust CLI/MCP crate 和默认 sing-box JSON。
 - `package`：构建缺失的 zip 后运行 `scripts/package-smoke.sh` 和 `scripts/package-install-smoke.sh`。
 - `fake-magisk`：在 Linux 主机上解包模块，替换成本机 debug CLI/MCP，mock Android/root 命令并验证脚本、MCP、supervisor、配置改写和诊断路径。
 - `local`：顺序运行 `quick + package + fake-magisk`。
@@ -45,7 +45,7 @@ MAGICNET_ROOTAVD_DIR="$HOME/.cache/magicnet-tools/rootAVD"
 
 `kam test avd` 是非交互安装：脚本会通过 `MAGICNET_NONINTERACTIVE=1 magisk --install-module` 安装模块，避免卡在音量键语言选择界面。安装前会清理模拟器里的旧 `MagicNet` 模块目录，确保每次测试都是干净安装。
 
-注意 ABI 边界：当前发布包里的 `bin/magicnet-cli`、`bin/magicnet-mcp-server`、`bin/sing-box`、`bin/mihomo` 是 Android arm64。API 33 x86_64 AVD 可以验证真实 Magisk 安装、脚本阶段、目录结构和控制面；脚本会临时构建并推送 x86_64 CLI/MCP，并下载带 sha256 digest 的 x86_64 sing-box/mihomo release 资产做运行时启动检查。x86_64 AVD 能证明控制面和同架构核心在 Magisk 模块目录下可运行，但不能证明发布包内 arm64 核心在真机上一定可运行。完整 arm64 核心验收仍需要 arm64 AVD、Waydroid arm64 镜像或真机。
+注意 ABI 边界：当前发布包里的 `bin/magicnet-cli`、`bin/magicnet-mcp-server`、`bin/sing-box` 是 Android arm64。API 33 x86_64 AVD 可以验证真实 Magisk 安装、脚本阶段、目录结构和控制面；脚本会临时构建并推送 x86_64 CLI/MCP，并下载带 sha256 digest 的 x86_64 sing-box release 资产做运行时启动检查。x86_64 AVD 能证明控制面和同架构核心在 Magisk 模块目录下可运行，但不能证明发布包内 arm64 核心在真机上一定可运行。完整 arm64 核心验收仍需要 arm64 AVD、Waydroid arm64 镜像或真机。
 
 ## 仓库内仿真
 
@@ -83,8 +83,8 @@ scripts/pre-commit.sh
 
 - 解包 zip 到临时模块目录。
 - 用本机 debug 版 `magicnet-cli` 和 `magicnet-mcp-server` 替换 Android arm64 二进制。
-- mock `ip`、`iptables`、`getprop`、`resetprop`、`mihomo`、`sing-box` 等 Android/root 命令。
-- 验证 `cli -> bin/magicnet-cli`、MCP HTTP JSON-RPC、`post-fs-data.sh` 回退启动、supervisor、TUN/TProxy 配置改写、热点和 VPN 共存规则。
+- mock `ip`、`iptables`、`getprop`、`resetprop`、`sing-box` 等 Android/root 命令。
+- 验证 `cli -> bin/magicnet-cli`、MCP HTTP JSON-RPC、`service.sh`/`boot-completed.sh` 启动、supervisor、sing-box 配置检查、TUN 兜底和 eBPF 状态诊断。
 
 保留失败现场：
 

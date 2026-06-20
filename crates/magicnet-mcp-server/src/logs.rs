@@ -7,7 +7,7 @@ use crate::{run_cli, Server};
 pub(crate) fn log_list(server: &Server) -> String {
     let mut rows = Vec::new();
     rows.push(format!("log_dir={}", log_dir(server).display()));
-    rows.push("known=sing-box,mihomo,mcp,watchdog,fswatch,kernel,service".to_string());
+    rows.push("known=sing-box,mcp,fswatch,kernel,service".to_string());
 
     match fs::read_dir(log_dir(server)) {
         Ok(entries) => {
@@ -56,28 +56,16 @@ pub(crate) fn log_read(server: &Server, source: &str, lines: usize, redact: bool
 
 pub(crate) fn debug_snapshot(server: &Server, lines: usize) -> String {
     let lines = lines.clamp(20, 300);
-    let mut sections = Vec::new();
-    sections.push(section("mcp status", &run_cli(server, &["mcp", "status"])));
-    sections.push(section(
-        "service status",
-        &run_cli(server, &["service", "status"]),
-    ));
-    sections.push(section("health", &run_cli(server, &["health"])));
-    sections.push(section("listeners", &command_text("ss", &["-lntp"])));
-    sections.push(section(
-        "routes",
-        &run_cli(server, &["sysroute", "snapshot"]),
-    ));
-    sections.push(section("log list", &log_list(server)));
-    sections.push(section("mcp log", &log_read(server, "mcp", lines, true)));
-    sections.push(section(
-        "sing-box log",
-        &log_read(server, "sing-box", lines, true),
-    ));
-    sections.push(section(
-        "mihomo log",
-        &log_read(server, "mihomo", lines, true),
-    ));
+    let sections = [
+        section("mcp status", &run_cli(server, &["mcp", "status"])),
+        section("service status", &run_cli(server, &["service", "status"])),
+        section("health", &run_cli(server, &["health"])),
+        section("listeners", &command_text("ss", &["-lntp"])),
+        section("routes", &run_cli(server, &["sysroute", "snapshot"])),
+        section("log list", &log_list(server)),
+        section("mcp log", &log_read(server, "mcp", lines, true)),
+        section("sing-box log", &log_read(server, "sing-box", lines, true)),
+    ];
     sections.join("\n\n")
 }
 
@@ -93,9 +81,7 @@ fn log_path(server: &Server, source: &str) -> Result<PathBuf, String> {
     };
     let name = match source {
         "sing-box" | "singbox" | "core" => "sing-box.log".to_string(),
-        "mihomo" | "clash" => "mihomo.log".to_string(),
         "mcp" | "mcp-server" => "mcp-server.log".to_string(),
-        "watchdog" => "watchdog.log".to_string(),
         "fswatch" => "fswatch.log".to_string(),
         "kernel" => "magicnet-kernel.log".to_string(),
         "service" => "service.log".to_string(),

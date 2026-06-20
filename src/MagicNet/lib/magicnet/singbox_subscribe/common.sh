@@ -187,6 +187,77 @@ magicnet_singbox_build_region_groups() {
     done <"$_tags_file"
 }
 
+magicnet_singbox_order_tags_file() {
+    _order_tags_file="$1"
+    _order_out_file="$2"
+    _hk_iepl=""
+    _sg_iepl=""
+    _tw_iepl=""
+    _jp_iepl=""
+    _us_iepl=""
+    _uk_iepl=""
+    _hk_paid=""
+    _sg_paid=""
+    _tw_paid=""
+    _jp_paid=""
+    _us_paid=""
+    _uk_paid=""
+    _iepl_other=""
+    _other_paid=""
+    _free_nodes=""
+    _download_nodes=""
+
+    while IFS= read -r _tag || [ -n "$_tag" ]; do
+        [ -n "$_tag" ] || continue
+        if magicnet_tag_matches_any "$_tag" "下载" "download" "Download" "x0.01"; then
+            magicnet_append_group_tag _download_nodes "$_tag"
+        elif magicnet_tag_matches_any "$_tag" "免费" "Free" "free"; then
+            magicnet_append_group_tag _free_nodes "$_tag"
+        elif magicnet_tag_matches_any "$_tag" "IEPL" "iepl"; then
+            if magicnet_tag_matches_any "$_tag" "香港" "港" "HK" "Hong" "hong"; then
+                magicnet_append_group_tag _hk_iepl "$_tag"
+            elif magicnet_tag_matches_any "$_tag" "新加坡" "狮城" "SG" "Singapore" "singapore"; then
+                magicnet_append_group_tag _sg_iepl "$_tag"
+            elif magicnet_tag_matches_any "$_tag" "台湾" "台灣" "TW" "Taiwan" "taiwan"; then
+                magicnet_append_group_tag _tw_iepl "$_tag"
+            elif magicnet_tag_matches_any "$_tag" "日本" "日" "JP" "Japan" "japan"; then
+                magicnet_append_group_tag _jp_iepl "$_tag"
+            elif magicnet_tag_matches_any "$_tag" "美国" "美" "US" "USA" "United States" "America"; then
+                magicnet_append_group_tag _us_iepl "$_tag"
+            elif magicnet_tag_matches_any "$_tag" "英国" "英國" "UK" "GB" "Britain" "London"; then
+                magicnet_append_group_tag _uk_iepl "$_tag"
+            else
+                magicnet_append_group_tag _iepl_other "$_tag"
+            fi
+        elif magicnet_tag_matches_any "$_tag" "香港" "港" "HK" "Hong" "hong"; then
+            magicnet_append_group_tag _hk_paid "$_tag"
+        elif magicnet_tag_matches_any "$_tag" "新加坡" "狮城" "SG" "Singapore" "singapore"; then
+            magicnet_append_group_tag _sg_paid "$_tag"
+        elif magicnet_tag_matches_any "$_tag" "台湾" "台灣" "TW" "Taiwan" "taiwan"; then
+            magicnet_append_group_tag _tw_paid "$_tag"
+        elif magicnet_tag_matches_any "$_tag" "日本" "日" "JP" "Japan" "japan"; then
+            magicnet_append_group_tag _jp_paid "$_tag"
+        elif magicnet_tag_matches_any "$_tag" "美国" "美" "US" "USA" "United States" "America"; then
+            magicnet_append_group_tag _us_paid "$_tag"
+        elif magicnet_tag_matches_any "$_tag" "英国" "英國" "UK" "GB" "Britain" "London"; then
+            magicnet_append_group_tag _uk_paid "$_tag"
+        else
+            magicnet_append_group_tag _other_paid "$_tag"
+        fi
+    done <"$_order_tags_file"
+
+    {
+        printf '%s\n' "$_hk_iepl" "$_sg_iepl" "$_tw_iepl" "$_jp_iepl" "$_us_iepl" "$_uk_iepl"
+        printf '%s\n' "$_hk_paid" "$_sg_paid" "$_tw_paid" "$_jp_paid" "$_us_paid" "$_uk_paid"
+        printf '%s\n' "$_iepl_other" "$_other_paid" "$_free_nodes" "$_download_nodes"
+    } | awk 'NF && !seen[$0]++' >"$_order_out_file"
+
+    unset _order_tags_file _order_out_file _tag \
+        _hk_iepl _sg_iepl _tw_iepl _jp_iepl _us_iepl _uk_iepl \
+        _hk_paid _sg_paid _tw_paid _jp_paid _us_paid _uk_paid \
+        _iepl_other _other_paid _free_nodes _download_nodes
+}
+
 if ! command -v error >/dev/null 2>&1; then
     error() { printf '%s\n' "ERROR: $1"; }
 fi
