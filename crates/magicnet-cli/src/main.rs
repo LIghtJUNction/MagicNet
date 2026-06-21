@@ -4,8 +4,6 @@ mod base64_tests;
 mod config_editor;
 mod diagnostics;
 mod diagnostics_dns;
-mod diagnostics_ebpf;
-mod diagnostics_netd;
 mod ecapture;
 mod mcp;
 mod nodes;
@@ -26,15 +24,15 @@ use std::time::Duration;
 
 pub(crate) use base64::{decode_base64, encode_base64};
 use config_editor::config_editor;
-use diagnostics::{ebpf_status, health, support, sysroute, topology};
+use diagnostics::{health, support, sysroute, topology};
 use ecapture::ecapture_cmd;
 use mcp::mcp;
 use nodes::node_list;
 use ping::pingtest;
 use rules::{app_cmd, block_cmd, route_cmd};
 use service::{
-    config_cmd, core_cmd, ebpf_cmd, repair, service_cmd, service_logs, service_status,
-    supervisor_cmd, transparent_cmd,
+    config_cmd, core_cmd, repair, service_cmd, service_logs, service_status, supervisor_cmd,
+    transparent_cmd,
 };
 use subscriptions::{
     setup_subscription, sub_get, sub_list, sub_set, sub_set_file, sub_target_file, sub_update,
@@ -57,7 +55,7 @@ struct CommandHelp {
 const COMMAND_HELP: &[CommandHelp] = &[
     CommandHelp {
         command: "service",
-        usage: "cli service {status|start|ensure|stop|restart [current|sing-box|auto]|toggle sing-box|logs [sing-box] [lines]}",
+        usage: "cli service {status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [sing-box] [lines]}",
     },
     CommandHelp {
         command: "supervisor",
@@ -78,10 +76,6 @@ const COMMAND_HELP: &[CommandHelp] = &[
     CommandHelp {
         command: "ecapture",
         usage: "cli ecapture {status|version|help [tls|gotls|nspr|pcap]|tls [seconds] [pid|all] [uid|all]|gotls [seconds] [pid|all] [uid|all]|nspr [seconds] [pid|all] [uid|all]|pcap [seconds] <ifname> [pcap-filter ...]}",
-    },
-    CommandHelp {
-        command: "ebpf",
-        usage: "cli ebpf {status|allow-multi <status|enable|disable>|profile <status|set tcp>}",
     },
     CommandHelp {
         command: "sysroute",
@@ -109,7 +103,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "transparent",
-        usage: "cli transparent {status|set <auto|tun|ebpf>|apply}",
+        usage: "cli transparent {status|set tun|apply}",
     },
     CommandHelp {
         command: "core",
@@ -239,10 +233,6 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "repair" => repair(app),
         "topology" => topology(app),
         "ecapture" => ecapture_cmd(app, &args[1..]),
-        "ebpf" if args.get(1).map(String::as_str).unwrap_or("status") == "status" => {
-            ebpf_status(app)
-        }
-        "ebpf" => ebpf_cmd(app, &args[1..]),
         "sysroute" => sysroute(args),
         "support" => support(app, &args[1..]),
         "setup" => setup_subscription(app, args.get(1).map(String::as_str).unwrap_or_default()),

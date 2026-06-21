@@ -10,7 +10,6 @@ TOYBOX_APPLET_BIN="$TMP/toybox-bin"
 MOCK_LOG="$TMP/mock-commands.log"
 CLI_BIN="$ROOT/target/debug/magicnet-cli"
 MCP_BIN="$ROOT/target/debug/magicnet-mcp-server"
-EBPF_BIN="$ROOT/target/debug/magicnet-ebpf"
 
 sanitize_host_path() {
     local raw="${1:-}"
@@ -111,7 +110,7 @@ if [[ -n "$ZIP_PATH" && "$ZIP_PATH" != /* ]]; then
     ZIP_PATH="$ROOT/$ZIP_PATH"
 fi
 
-cargo build -p magicnet-cli -p magicnet-mcp-server -p magicnet-ebpf >/dev/null
+cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
 
 mkdir -p "$MOCK_BIN"
 if [[ -n "$ZIP_PATH" ]]; then
@@ -149,10 +148,9 @@ fi
 mkdir -p "$MODDIR/bin"
 cp "$CLI_BIN" "$MODDIR/bin/magicnet-cli"
 cp "$MCP_BIN" "$MODDIR/bin/magicnet-mcp-server"
-cp "$EBPF_BIN" "$MODDIR/bin/magicnet-ebpf"
 rm -f "$MODDIR/cli"
 ln -s "bin/magicnet-cli" "$MODDIR/cli"
-chmod +x "$MODDIR/bin/magicnet-cli" "$MODDIR/bin/magicnet-mcp-server" "$MODDIR/bin/magicnet-ebpf"
+chmod +x "$MODDIR/bin/magicnet-cli" "$MODDIR/bin/magicnet-mcp-server"
 : >"$MOCK_LOG"
 
 setup_toybox_layer() {
@@ -490,7 +488,6 @@ env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$ORIGI
 ' >"$TMP/runtime-path.log"
 rg -q "^$MODDIR/bin/sing-box$" "$TMP/runtime-path.log"
 test -x "$MODDIR/bin/magicnet-mcp-server"
-test -x "$MODDIR/bin/magicnet-ebpf"
 test -x "$MODDIR/bin/ecapture"
 
 MCP_TEST_PORT="$(python3 - <<'PY'
@@ -719,8 +716,7 @@ run "$MODDIR/cli" backup export
 run "$MODDIR/cli" diagnose
 
 assert_transparent_mode() {
-    local mode="$1"
-    local profile="${2:-tcp}"
+    local mode="tun"
     local before_marker after_marker
 
     before_marker="$(wc -l <"$MOCK_LOG")"
@@ -728,143 +724,48 @@ assert_transparent_mode() {
         . "$MODDIR/lib/kamfw/.kamfwrc"
         import __runtime__
         . "$MODDIR/lib/magicnet.sh"
-        magicnet_enable_ebpf() {
-            return 0
-        }
-        magicnet_tproxy_udp_kernel_supported() {
-            return 0
-        }
         mkdir -p "$MODDIR/.config/magicnet"
-        printf "MAGICNET_EBPF_PROFILE=%s\n" "$2" >"$MODDIR/.config/magicnet/ebpf-profile.conf"
-        magicnet_transparent_set_mode "$1"
+        magicnet_transparent_set_mode tun
         magicnet_transparent_apply
-    ' _ "$mode" "$profile"
+    '
     after_marker="$(wc -l <"$MOCK_LOG")"
-    sed -n "$((before_marker + 1)),${after_marker}p" "$MOCK_LOG" >"$TMP/${mode}-${profile}-commands.log"
+    sed -n "$((before_marker + 1)),${after_marker}p" "$MOCK_LOG" >"$TMP/${mode}-commands.log"
 
     "$MODDIR/cli" transparent status | tee "$TMP/${mode}-transparent-status.log"
     rg -qx "mode=${mode}" "$TMP/${mode}-transparent-status.log"
 
-    python3 - "$MODDIR/.config/sing-box/config.json" "$mode" "$profile" <<'PY'
+    python3 - "$MODDIR/.config/sing-box/config.json" <<'PY'
 import json
 import pathlib
 import sys
 
-singbox_path, mode, profile = sys.argv[1:]
+singbox_path = sys.argv[1]
 singbox = json.loads(pathlib.Path(singbox_path).read_text())
 
 inbound_types = [inbound.get("type") for inbound in singbox.get("inbounds", [])]
 sniff_rule = next((rule for rule in singbox.get("route", {}).get("rules", []) if rule.get("action") == "sniff"), None)
 
-if mode == "tun":
-    if singbox.get("dns", {}).get("strategy") != "ipv4_only":
-        raise SystemExit(f"sing-box dns.strategy was not restored in tun mode: {singbox.get('dns', {}).get('strategy')!r}")
-    if "tun" not in inbound_types:
-        raise SystemExit("sing-box tun inbound missing in tun mode")
-    tun_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tun"), {})
-    if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
-        raise SystemExit(f"sing-box tun address is not dual-stack in tun mode: {tun_inbound.get('address')!r}")
-    if "tproxy" in inbound_types:
-        raise SystemExit("legacy sing-box tproxy inbound still present in tun mode")
-    if not sniff_rule:
-        raise SystemExit("sing-box sniff rule missing in tun mode")
-    if sniff_rule.get("inbound") != ["mixed-in", "tun-in"]:
-        raise SystemExit(f"sing-box sniff inbound list mismatch in tun mode: {sniff_rule.get('inbound')!r}")
-elif mode == "ebpf":
-    if profile != "tcp":
-        raise SystemExit(f"unsupported ebpf profile: {profile}")
-    if any(kind in inbound_types for kind in ("tproxy", "redirect")):
-        raise SystemExit(f"transparent inbounds still present in ebpf tcp profile: {inbound_types!r}")
-    if "tun" not in inbound_types:
-        raise SystemExit("sing-box tun inbound missing in ebpf tcp profile")
-    dns_inbounds = [
-        inbound for inbound in singbox.get("inbounds", [])
-        if inbound.get("tag") in ("magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in")
-    ]
-    if len(dns_inbounds) != 2:
-        raise SystemExit(f"sing-box eBPF DNS inbounds missing in ebpf tcp profile: {singbox.get('inbounds')!r}")
-    legacy_dns_rules = [
-        rule for rule in singbox.get("route", {}).get("rules", [])
-        if any(tag in rule.get("inbound", []) for tag in ("magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"))
-        and (rule.get("action") == "hijack-dns" or rule.get("protocol") == "dns")
-    ]
-    if legacy_dns_rules:
-        raise SystemExit(f"legacy sing-box eBPF DNS hijack rules still present in ebpf mode: {legacy_dns_rules!r}")
-    if not sniff_rule:
-        raise SystemExit("sing-box sniff rule missing in ebpf mode")
-    expected = ["mixed-in", "tun-in", "magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"]
-    if sniff_rule.get("inbound") != expected:
-        raise SystemExit(f"sing-box sniff inbound list mismatch in ebpf mode: {sniff_rule.get('inbound')!r}")
-else:
-    raise SystemExit(f"unsupported mode: {mode}")
+if singbox.get("dns", {}).get("strategy") != "ipv4_only":
+    raise SystemExit(f"sing-box dns.strategy was not restored in tun mode: {singbox.get('dns', {}).get('strategy')!r}")
+if "tun" not in inbound_types:
+    raise SystemExit("sing-box tun inbound missing in tun mode")
+tun_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tun"), {})
+if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
+    raise SystemExit(f"sing-box tun address is not dual-stack in tun mode: {tun_inbound.get('address')!r}")
+if any(kind in inbound_types for kind in ("tproxy", "redirect")):
+    raise SystemExit(f"legacy transparent inbound still present in tun mode: {inbound_types!r}")
+if any((inbound.get("tag") or "").startswith("magicnet-") for inbound in singbox.get("inbounds", [])):
+    raise SystemExit("managed transparent inbound still present in tun mode")
+if not sniff_rule:
+    raise SystemExit("sing-box sniff rule missing in tun mode")
+if sniff_rule.get("inbound") != ["mixed-in", "tun-in"]:
+    raise SystemExit(f"sing-box sniff inbound list mismatch in tun mode: {sniff_rule.get('inbound')!r}")
 PY
 
-    case "$mode" in
-        tun)
-            ! rg -q -- '-j TPROXY|REDIRECT --to-ports' "$TMP/${mode}-${profile}-commands.log"
-            ;;
-        ebpf)
-            ! rg -q -- '-j TPROXY|REDIRECT --to-ports' "$TMP/${mode}-${profile}-commands.log"
-            ;;
-    esac
+    ! rg -q -- '-j TPROXY|REDIRECT --to-ports' "$TMP/${mode}-commands.log"
 }
 
-assert_transparent_mode tun
-
-"$HOST_JQ" '
-  .inbounds += [
-    {
-      "type": "direct",
-      "tag": "magicnet-ebpf-dns4-in",
-      "listen": "127.0.0.1",
-      "listen_port": 1053
-    },
-    {
-      "type": "direct",
-      "tag": "magicnet-ebpf-dns6-in",
-      "listen": "::1",
-      "listen_port": 1053
-    }
-  ]
-  | .route.rules = (
-      (.route.rules // [])
-      | map(
-          if (.action // "") == "sniff" then
-            . + {"inbound": ["mixed-in", "magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"]}
-          else
-            .
-          end
-        )
-      + [
-          {
-            "inbound": ["magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"],
-            "protocol": "dns",
-            "action": "hijack-dns"
-          }
-        ]
-    )
-' "$MODDIR/.config/sing-box/config.json" >"$TMP/sing-box-old-ebpf-config.json"
-mv "$TMP/sing-box-old-ebpf-config.json" "$MODDIR/.config/sing-box/config.json"
-
-assert_transparent_mode ebpf
-
-run sh -c '
-    . "$MODDIR/lib/kamfw/.kamfwrc"
-    import __runtime__
-    . "$MODDIR/lib/magicnet.sh"
-    unset MAGICNET_EBPF_DNS_PORT
-    if [ "$(magicnet_ebpf_dns_port)" != "1053" ]; then
-        echo "eBPF DNS port did not fall back to the default port" >&2
-        exit 1
-    fi
-    MAGICNET_EBPF_DNS_PORT=1053
-    if [ "$(magicnet_ebpf_dns_port)" != "1053" ]; then
-        echo "eBPF DNS port override was not honored" >&2
-        exit 1
-    fi
-'
-
-assert_transparent_mode tun
+assert_transparent_mode
 
 "$HOST_JQ" empty "$MODDIR/.config/sing-box/config.json"
 

@@ -84,7 +84,7 @@ scripts/pre-commit.sh
 - 解包 zip 到临时模块目录。
 - 用本机 debug 版 `magicnet-cli` 和 `magicnet-mcp-server` 替换 Android arm64 二进制。
 - mock `ip`、`iptables`、`getprop`、`resetprop`、`sing-box` 等 Android/root 命令。
-- 验证 `cli -> bin/magicnet-cli`、MCP HTTP JSON-RPC、`service.sh`/`boot-completed.sh` 启动、supervisor、sing-box 配置检查、TUN 兜底和 eBPF 状态诊断。
+- 验证 `cli -> bin/magicnet-cli`、MCP HTTP JSON-RPC、`service.sh`/`boot-completed.sh` 启动、supervisor、sing-box 配置检查和 TUN 透明路径。
 
 保留失败现场：
 

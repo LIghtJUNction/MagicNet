@@ -13,13 +13,12 @@ pub(super) fn dns_leak_check(app: &App, singbox: &str, mode: &str) -> (bool, Str
     (
         cfg.ok(),
         format!(
-            "core={core}, mode={mode}, fakeip={}, hijack_dns={}, remote_dns_detour={}, store_fakeip={}, sniff_inbound={}, ebpf_dns_inbound={}, strategy={}",
+            "core={core}, mode={mode}, fakeip={}, hijack_dns={}, remote_dns_detour={}, store_fakeip={}, sniff_inbound={}, strategy={}",
             yes_no(cfg.fake_ip),
             yes_no(cfg.hijack),
             yes_no(cfg.remote_dns),
             yes_no(cfg.store_fake_ip),
             yes_no(cfg.sniff_inbound),
-            yes_no(cfg.ebpf_dns_inbound),
             cfg.strategy,
         ),
     )
@@ -32,23 +31,19 @@ struct SingboxDnsConfig {
     remote_dns: bool,
     store_fake_ip: bool,
     sniff_inbound: bool,
-    ebpf_dns_inbound: bool,
     strategy: &'static str,
     ipv6_fallback_ready: bool,
     transparent_dns: bool,
-    require_ebpf_dns_inbound: bool,
 }
 
 impl SingboxDnsConfig {
     fn ok(self) -> bool {
         let fallback_ok = !self.ipv6_fallback_ready || self.strategy == "ipv4_only";
-        let ebpf_dns_ok = !self.require_ebpf_dns_inbound || self.ebpf_dns_inbound;
         self.fake_ip
             && self.hijack
             && self.remote_dns
             && self.store_fake_ip
             && self.sniff_inbound
-            && ebpf_dns_ok
             && fallback_ok
             && self.transparent_dns
     }
@@ -60,12 +55,8 @@ fn singbox_dns_config(app: &App, mode: &str, transparent_dns: bool) -> SingboxDn
     let compact = compact_jsonish(&text);
     let strategy = singbox_dns_strategy(&compact);
     let ipv6_fallback_ready = false;
-    let require_ebpf_dns_inbound = mode != "tun";
-    let sniff_inbound = sniff_rule_has(&compact, "mixed-in")
-        && (mode == "ebpf" || sniff_rule_has(&compact, "tun-in"))
-        && (!require_ebpf_dns_inbound
-            || (sniff_rule_has(&compact, "magicnet-ebpf-dns4-in")
-                && sniff_rule_has(&compact, "magicnet-ebpf-dns6-in")));
+    let sniff_inbound =
+        sniff_rule_has(&compact, "mixed-in") && mode == "tun" && sniff_rule_has(&compact, "tun-in");
     SingboxDnsConfig {
         fake_ip: compact.contains("\"type\":\"fakeip\"") && compact.contains("\"tag\":\"fakeip\""),
         hijack: compact.contains("\"protocol\":\"dns\"")
@@ -73,24 +64,14 @@ fn singbox_dns_config(app: &App, mode: &str, transparent_dns: bool) -> SingboxDn
         remote_dns: has_remote_dns_detour(&compact),
         store_fake_ip: compact.contains("\"store_fakeip\":true"),
         sniff_inbound,
-        ebpf_dns_inbound: has_ebpf_dns_inbounds(&compact),
         strategy,
         ipv6_fallback_ready,
         transparent_dns,
-        require_ebpf_dns_inbound,
     }
 }
 
 fn sniff_rule_has(compact: &str, tag: &str) -> bool {
     compact.contains("\"action\":\"sniff\"") && compact.contains(&format!("\"{tag}\""))
-}
-
-fn has_ebpf_dns_inbounds(compact: &str) -> bool {
-    compact.contains("\"tag\":\"magicnet-ebpf-dns4-in\"")
-        && compact.contains("\"listen\":\"127.0.0.1\"")
-        && compact.contains("\"tag\":\"magicnet-ebpf-dns6-in\"")
-        && compact.contains("\"listen\":\"::1\"")
-        && compact.contains("\"listen_port\":")
 }
 
 fn singbox_dns_strategy(compact: &str) -> &'static str {

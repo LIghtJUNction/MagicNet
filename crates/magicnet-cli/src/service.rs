@@ -19,7 +19,6 @@ pub(crate) fn service_status(app: &App) {
     );
     println!("  Selected: {}", selected_core(app));
     println!("  Transparent: {}", transparent_mode(app));
-    println!("  eBPF Profile: {}", ebpf_profile(app));
     println!("  API:      {}", app.api);
     println!("  WebUI:    {}", singbox_webui(app));
     println!(
@@ -110,18 +109,7 @@ pub(crate) fn transparent_cmd(app: &App, args: &[String]) -> Result<(), String> 
         }
         "set" => transparent_set(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "apply" => run_magicnet_function(app, "magicnet_transparent_apply"),
-        _ => Err("Usage: cli transparent {status|set <auto|tun|ebpf>|apply}".to_string()),
-    }
-}
-
-pub(crate) fn ebpf_cmd(app: &App, args: &[String]) -> Result<(), String> {
-    match args.first().map(String::as_str).unwrap_or("status") {
-        "allow-multi" => ebpf_allow_multi(app, args.get(1).map(String::as_str).unwrap_or("status")),
-        "profile" => ebpf_profile_cmd(app, &args[1..]),
-        _ => Err(
-            "Usage: cli ebpf {status|allow-multi <status|enable|disable>|profile <status|set tcp>}"
-                .to_string(),
-        ),
+        _ => Err("Usage: cli transparent {status|set tun|apply}".to_string()),
     }
 }
 
@@ -138,90 +126,6 @@ pub(crate) fn core_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "select" => select_core(app, args.get(1).map(String::as_str).unwrap_or_default()),
         _ => Err("Usage: cli core {status|selected|select sing-box}".to_string()),
     }
-}
-
-fn ebpf_allow_multi(app: &App, action: &str) -> Result<(), String> {
-    match action {
-        "status" => {
-            println!(
-                "allow_multi={}",
-                if ebpf_allow_multi_enabled(app) {
-                    "enabled"
-                } else {
-                    "disabled"
-                }
-            );
-            Ok(())
-        }
-        "enable" => {
-            write_text_file(ebpf_allow_multi_path(app), "MAGICNET_EBPF_ALLOW_MULTI=1\n")?;
-            println!("allow_multi=enabled");
-            Ok(())
-        }
-        "disable" => {
-            write_text_file(ebpf_allow_multi_path(app), "MAGICNET_EBPF_ALLOW_MULTI=0\n")?;
-            println!("allow_multi=disabled");
-            Ok(())
-        }
-        _ => Err("Usage: cli ebpf allow-multi <status|enable|disable>".to_string()),
-    }
-}
-
-fn ebpf_allow_multi_path(app: &App) -> PathBuf {
-    app.moddir.join(".config/magicnet/ebpf-allow-multi.conf")
-}
-
-fn ebpf_allow_multi_enabled(app: &App) -> bool {
-    fs::read_to_string(ebpf_allow_multi_path(app))
-        .map(|text| {
-            text.lines()
-                .any(|line| line.trim() == "MAGICNET_EBPF_ALLOW_MULTI=1")
-        })
-        .unwrap_or(false)
-}
-
-fn ebpf_profile_cmd(app: &App, args: &[String]) -> Result<(), String> {
-    match args.first().map(String::as_str).unwrap_or("status") {
-        "status" => {
-            println!("profile={}", ebpf_profile(app));
-            Ok(())
-        }
-        "set" => {
-            let profile = match args.get(1).map(String::as_str).unwrap_or_default() {
-                "tcp" | "tcp-bridge" => "tcp",
-                _ => return Err("Usage: cli ebpf profile set tcp".to_string()),
-            };
-            write_text_file(
-                ebpf_profile_path(app),
-                &format!("MAGICNET_EBPF_PROFILE={profile}\n"),
-            )?;
-            println!("profile={profile}");
-            Ok(())
-        }
-        _ => Err("Usage: cli ebpf profile <status|set tcp>".to_string()),
-    }
-}
-
-fn ebpf_profile_path(app: &App) -> PathBuf {
-    app.moddir.join(".config/magicnet/ebpf-profile.conf")
-}
-
-fn ebpf_profile(app: &App) -> &'static str {
-    fs::read_to_string(ebpf_profile_path(app))
-        .ok()
-        .and_then(|text| {
-            if text.lines().any(|line| {
-                matches!(
-                    line.trim(),
-                    "MAGICNET_EBPF_PROFILE=tcp" | "MAGICNET_EBPF_PROFILE=tcp-bridge"
-                )
-            }) {
-                Some("tcp")
-            } else {
-                None
-            }
-        })
-        .unwrap_or("tcp")
 }
 
 pub(crate) fn repair(app: &App) -> Result<(), String> {
@@ -253,6 +157,9 @@ fn restart(app: &App, target: &str) -> Result<(), String> {
     } else {
         target.to_string()
     };
+    if !matches!(target.as_str(), "sing-box" | "singbox") {
+        return Err("Usage: cli service restart [current|sing-box]".to_string());
+    }
     run_magicnet_function(app, restart_command(target.as_str()))
 }
 
@@ -261,7 +168,7 @@ fn restart_command(target: &str) -> &'static str {
         "sing-box" | "singbox" => {
             "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel && { \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 & }"
         }
-        _ => "magicnet_start_kernel && { \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 & }",
+        _ => unreachable!("restart validates the target before building the command"),
     }
 }
 
@@ -283,10 +190,7 @@ fn stop_all_direct(app: &App) -> Result<(), String> {
     ignore_command("killall", &["sing-box"]);
     std::thread::sleep(Duration::from_secs(1));
     ignore_command("killall", &["-9", "sing-box"]);
-    run_magicnet_function(
-        app,
-        "magicnet_ebpf_cleanup || true; magicnet_disable_dns_leak_guard || true",
-    )?;
+    run_magicnet_function(app, "magicnet_disable_dns_leak_guard || true")?;
     Ok(())
 }
 
@@ -333,28 +237,11 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
 }
 
 fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
-    if !matches!(mode, "auto" | "tun" | "ebpf") {
-        return Err("Usage: cli transparent set <auto|tun|ebpf>".to_string());
-    }
-    if matches!(mode, "auto" | "ebpf") && selected_core(app) != "sing-box" {
-        write_text_file(selected_core_path(app), "MAGICNET_DEFAULT_CORE=sing-box\n")?;
-        println!("[info] eBPF-first transparent mode is only supported with sing-box; default core set to sing-box");
+    if mode != "tun" {
+        return Err("Usage: cli transparent set tun".to_string());
     }
     write_transparent_mode(app, mode)?;
     stop_all_direct(app)?;
-    if mode == "ebpf" {
-        if let Err(err) = run_magicnet_function(app, "magicnet_start_kernel") {
-            return restore_tun_after_ebpf_failure(
-                app,
-                "eBPF startup failed",
-                &err,
-                "eBPF startup failed; restored TUN mode",
-            );
-        }
-        start_supervisors(app)?;
-        println!("[info] Transparent mode set to {mode}");
-        return Ok(());
-    }
     if let Err(err) = run_magicnet_function(app, "magicnet_transparent_apply") {
         return Err(err);
     }
@@ -364,22 +251,6 @@ fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
     start_supervisors(app)?;
     println!("[info] Transparent mode set to {mode}");
     Ok(())
-}
-
-fn restore_tun_after_ebpf_failure(
-    app: &App,
-    warning: &str,
-    details: &str,
-    error: &str,
-) -> Result<(), String> {
-    eprintln!("[warn] {warning}: {details}");
-    eprintln!("[warn] Falling back to TUN to keep network usable");
-    write_transparent_mode(app, "tun")?;
-    run_magicnet_function(app, "magicnet_transparent_apply")?;
-    run_magicnet_function(app, "magicnet_start_kernel")?;
-    start_supervisors(app)?;
-    println!("[info] Transparent mode set to tun");
-    Err(error.to_string())
 }
 
 fn start_supervisors(app: &App) -> Result<(), String> {
@@ -393,30 +264,8 @@ fn write_transparent_mode(app: &App, mode: &str) -> Result<(), String> {
     )
 }
 
-fn transparent_mode(app: &App) -> &'static str {
-    fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
-        .ok()
-        .and_then(|text| {
-            if text
-                .lines()
-                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=ebpf")
-            {
-                Some("ebpf")
-            } else if text
-                .lines()
-                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=auto")
-            {
-                Some("auto")
-            } else if text
-                .lines()
-                .any(|line| line.trim() == "MAGICNET_TRANSPARENT_MODE=tun")
-            {
-                Some("tun")
-            } else {
-                None
-            }
-        })
-        .unwrap_or("auto")
+fn transparent_mode(_app: &App) -> &'static str {
+    "tun"
 }
 
 fn core_status(app: &App) {
@@ -454,7 +303,7 @@ mod tests {
 
     #[test]
     fn restart_commands_restore_supervisors_after_core_start() {
-        for target in ["sing-box", "singbox", "auto"] {
+        for target in ["sing-box", "singbox"] {
             let command = restart_command(target);
             assert!(command.contains("magicnet_start_kernel"));
             assert!(command.contains("supervisor start all"));

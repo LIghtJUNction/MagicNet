@@ -48,10 +48,10 @@ set_i18n "INSTALL_TITLE" \
   "ko" "MagicNet 설치"
 
 set_i18n "INSTALL_PROFILE" \
-  "zh" "系统级戒网瘾模块，内置 sing-box、域名封锁、auto/TUN/eBPF 透明治理与 WebUI 控制面。" \
-  "en" "System-level digital detox module with sing-box, domain blocking, auto/TUN/eBPF transparent routing, and WebUI control surfaces." \
-  "ja" "sing-box、ドメインブロック、auto/TUN/eBPF 透過制御、WebUI 制御面を備えたシステム級デジタルデトックスモジュールです。" \
-  "ko" "sing-box, 도메인 차단, auto/TUN/eBPF 투명 제어, WebUI 제어면을 포함한 시스템 수준 디지털 디톡스 모듈입니다."
+  "zh" "系统级戒网瘾模块，内置 sing-box、域名封锁、TUN 透明治理与 WebUI 控制面。" \
+  "en" "System-level digital detox module with sing-box, domain blocking, TUN transparent routing, and WebUI control surfaces." \
+  "ja" "sing-box、ドメインブロック、TUN 透過制御、WebUI 制御面を備えたシステム級デジタルデトックスモジュールです。" \
+  "ko" "sing-box, 도메인 차단, TUN 투명 제어, WebUI 제어면을 포함한 시스템 수준 디지털 디톡스 모듈입니다."
 
 set_i18n "INSTALL_ROW_PROFILE" \
   "zh" "模块定位" \

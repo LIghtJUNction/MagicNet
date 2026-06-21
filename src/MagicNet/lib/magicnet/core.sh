@@ -22,7 +22,6 @@ magicnet_start_singbox_unlocked() {
     import __singbox__
     is_singbox_running >/dev/null 2>&1 && return 0
     magicnet_prepare_singbox_nodes_unlocked || return 1
-    magicnet_ebpf_consume_cleaned_marker || magicnet_ebpf_cleanup || true
     magicnet_singbox_apply_transparent_mode || return 1
     import __singbox__
     singbox_start || return 1
@@ -32,12 +31,6 @@ magicnet_start_singbox_unlocked() {
         magicnet_need_nodes_message sing-box
         return 1
     fi
-    if ! magicnet_enable_ebpf; then
-        magicnet_warn "eBPF transparent mode failed after sing-box startup; stopping sing-box."
-        singbox_stop >/dev/null 2>&1 || true
-        return 1
-    fi
-    magicnet_tproxy_udp_cleanup >/dev/null 2>&1 || true
     return 0
 }
 
@@ -67,7 +60,6 @@ magicnet_kernel_running() {
 magicnet_start_kernel() {
     magicnet_module_disabled && {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
-        magicnet_ebpf_cleanup >/dev/null 2>&1 || true
         return 1
     }
     if magicnet_kernel_running; then
@@ -89,7 +81,6 @@ magicnet_start_kernel() {
 magicnet_ensure_kernel() {
     magicnet_module_disabled && {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
-        magicnet_ebpf_cleanup >/dev/null 2>&1 || true
         return 1
     }
     magicnet_kernel_running && return 0

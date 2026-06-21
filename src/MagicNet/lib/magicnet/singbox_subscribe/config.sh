@@ -108,6 +108,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           selector("google-cn"; ["direct", "proxy"]; "direct"),
           selector("icloud"; ["direct", "proxy"]; "direct"),
           selector("bing"; ["proxy", "direct", "hk", "us"]; "proxy"),
+          selector("dns-guard"; ["proxy", "block", "direct"]; "proxy"),
           selector("network-test"; ["proxy", "direct"]; "proxy"),
           selector("ai-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
           selector("proxy-rule"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
@@ -159,6 +160,8 @@ magicnet_singbox_emit_static_selectors() {
     printf ',\n'
     magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n%s\n%s\n' "proxy" "direct" "hk" "us")" "proxy"
     printf ',\n'
+    magicnet_emit_selector_json "dns-guard" "$(printf '%s\n%s\n%s\n' "proxy" "block" "direct")" "proxy"
+    printf ',\n'
     magicnet_emit_selector_json "network-test" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     for _name in ai-proxy proxy-rule dev-proxy social-proxy media-proxy game-proxy telegram-proxy; do
         printf ',\n'
@@ -169,6 +172,50 @@ magicnet_singbox_emit_static_selectors() {
     printf ',\n'
     magicnet_emit_selector_json "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
     unset _pair _name _default
+}
+
+magicnet_singbox_sanitize_generated_config() {
+    _sanitize_config_file="$1"
+    _sanitize_jq="$(command -v jq 2>/dev/null || true)"
+    [ -n "$_sanitize_jq" ] || {
+        unset _sanitize_config_file _sanitize_jq
+        return 0
+    }
+
+    _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
+    "$_sanitize_jq" '
+      def has_match($rule):
+        [
+          "inbound",
+          "clash_mode",
+          "package_name",
+          "domain",
+          "domain_suffix",
+          "domain_keyword",
+          "rule_set",
+          "network",
+          "port",
+          "protocol",
+          "ip_cidr",
+          "ip_is_private",
+          "source_ip_cidr",
+          "source_port",
+          "process_name",
+          "user",
+          "user_id"
+        ] | any(. as $key | $rule | has($key));
+      .outbounds = ((.outbounds // [])
+        | if any(.tag == "dns-guard") then .
+          else . + [{"type": "selector", "tag": "dns-guard", "outbounds": ["proxy", "block", "direct"], "default": "proxy"}]
+          end)
+      | .route.rules = ((.route.rules // [])
+        | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
+    ' "$_sanitize_config_file" >"$_sanitize_tmp_file" && mv -f "$_sanitize_tmp_file" "$_sanitize_config_file"
+    _sanitize_rc=$?
+    [ "$_sanitize_rc" -eq 0 ] || rm -f "$_sanitize_tmp_file" 2>/dev/null || true
+    _sanitize_return="$_sanitize_rc"
+    unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc
+    return "$_sanitize_return"
 }
 
 magicnet_singbox_update_config_with_nodes() {
@@ -233,6 +280,11 @@ magicnet_singbox_update_config_with_nodes() {
             if (prev != "") print prev
         }
     ' "$_config_file" >"$_tmp_file"
+
+    magicnet_singbox_sanitize_generated_config "$_tmp_file" || {
+        error "Generated sing-box config failed sanitization"
+        return 1
+    }
 
     if command -v sing-box >/dev/null 2>&1; then
         sing-box check -c "$_tmp_file" -D "${_config_file%/*}" >/dev/null || {

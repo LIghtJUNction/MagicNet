@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::diagnostics_dns::dns_leak_check;
-use crate::diagnostics_ebpf::{collect_ebpf_status, ebpf_profile, transparent_mode};
 use crate::{clean_lines, command_text_timeout, mcp, pid_summary, App};
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
@@ -12,9 +11,6 @@ pub(crate) fn health(app: &App) -> Result<(), String> {
     let mode = transparent_mode(app);
     let (tun_ok, tun_detail) = tun_check(app, mode);
     print_check("TUN", &tun_ok, tun_detail);
-    let ebpf = collect_ebpf_status(app);
-    print_check("eBPF", &ebpf.ok(), ebpf.health_detail());
-    print_check("netd", &ebpf.netd_ok(), ebpf.netd_detail());
     let ecapture = app.moddir.join("bin/ecapture");
     print_check(
         "eCapture",
@@ -109,9 +105,6 @@ pub(crate) fn support(app: &App, args: &[String]) -> Result<(), String> {
     println!("[health]");
     health(app)?;
     println!();
-    println!("[ebpf]");
-    ebpf_status(app)?;
-    println!();
     println!("[subscriptions]");
     for path in sensitive_paths(app) {
         println!(
@@ -133,77 +126,6 @@ pub(crate) fn support(app: &App, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn ebpf_status(app: &App) -> Result<(), String> {
-    let status = collect_ebpf_status(app);
-    println!("MagicNet eBPF");
-    println!("mode={}", status.mode);
-    println!("profile={}", status.profile);
-    println!("bpffs={}", ok_word(status.bpffs));
-    println!("btf={}", ok_word(status.btf));
-    println!("cgroup={}", ok_word(status.cgroup));
-    println!("dns_cgroup={}", ok_word(status.dns_cgroup));
-    println!("config_cgroup_bpf={}", ok_word(status.config_cgroup_bpf));
-    println!("config_bpf_syscall={}", ok_word(status.config_bpf_syscall));
-    println!("loader={}", ok_word(status.loader));
-    println!("loader_executable={}", ok_word(status.loader_executable));
-    println!("redirect={}", ok_word(status.redirect));
-    println!(
-        "allow_multi_permission={}",
-        yes_no(status.allow_multi_permission)
-    );
-    println!("probe={}", status.probe_label());
-    println!("cgroup_path={}", status.cgroup_path);
-    println!("dns_cgroup_path={}", status.dns_cgroup_path);
-    println!("loader_path={}", status.loader_path.display());
-    println!("mixed_port={}", status.mixed_port);
-    println!("dns_port={}", status.dns_port);
-    println!("state_dir={}", status.state_dir.display());
-    println!("state_file={}", present_word(status.state_present));
-    println!("daemon_pid={}", status.daemon_pid);
-    println!("daemon={}", status.daemon_label());
-    for key in [
-        "mode",
-        "profile",
-        "mixed_port",
-        "dns_port",
-        "bridge4_port",
-        "bridge6_port",
-        "dns_udp4",
-        "dns_udp6",
-        "netd_dns_connect4",
-        "netd_dns_connect6",
-        "netd_dns_udp4",
-        "netd_dns_udp6",
-        "root_dns_tcp4",
-        "root_dns_tcp6",
-        "root_dns_udp4",
-        "root_dns_udp6",
-    ] {
-        if let Some(value) = status.state.get(key) {
-            println!("state.{key}={value}");
-        }
-    }
-    println!("netd={}", status.netd_summary());
-    for name in ["connect4", "connect6", "udp4_dns", "udp6_dns"] {
-        let pin_key = format!("{name}.netd_pin");
-        if let Some(value) = status.netd.get(&pin_key) {
-            println!("netd.{pin_key}={value}");
-        }
-        for scope in ["direct", "effective"] {
-            for key in ["count", "attach_flags", "prog_ids"] {
-                let map_key = format!("{name}.{scope}.{key}");
-                if let Some(value) = status.netd.get(&map_key) {
-                    println!("netd.{map_key}={value}");
-                }
-            }
-        }
-    }
-    if !status.query_error.is_empty() {
-        println!("netd.query_error={}", status.query_error);
-    }
-    Ok(())
-}
-
 fn print_check(key: &str, ok: &bool, detail: String) {
     let status = if *ok { "ok" } else { "warn" };
     println!("[{status}] {key}: {}", redact(&detail));
@@ -213,14 +135,15 @@ fn running(core: &str) -> bool {
     core != "stopped"
 }
 
+fn transparent_mode(_app: &App) -> &'static str {
+    "tun"
+}
+
 fn iface_detail(name: &str) -> String {
     command_text_timeout("ip", &["addr", "show", name], crate::SHORT_TIMEOUT)
 }
 
-fn tun_check(app: &App, mode: &str) -> (bool, String) {
-    if mode == "ebpf" && ebpf_profile(app) != "tcp" {
-        return (true, "mode=ebpf, inactive".to_string());
-    }
+fn tun_check(app: &App, _mode: &str) -> (bool, String) {
     let mut names = configured_tun_names(app);
     for fallback in ["magicnet0", "utun", "Meta", "mihoyo"] {
         push_unique(&mut names, fallback.to_string());
@@ -419,28 +342,4 @@ fn is_local_url(value: &str) -> bool {
         return false;
     };
     matches!(host, "127.0.0.1" | "localhost" | "::1" | "[::1]")
-}
-
-fn ok_word(value: bool) -> &'static str {
-    if value {
-        "ok"
-    } else {
-        "missing"
-    }
-}
-
-fn present_word(value: bool) -> &'static str {
-    if value {
-        "present"
-    } else {
-        "missing"
-    }
-}
-
-fn yes_no(value: bool) -> &'static str {
-    if value {
-        "ok"
-    } else {
-        "missing"
-    }
 }

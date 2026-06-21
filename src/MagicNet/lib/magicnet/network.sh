@@ -45,25 +45,12 @@ magicnet_dns_leak_guard_enabled() {
 }
 
 magicnet_dns_leak_guard_supported_for_mode() {
-    case "$(magicnet_transparent_mode)" in
-        ebpf)
-            return 1
-            ;;
-        *)
-            return 0
-            ;;
-    esac
+    return 0
 }
 
 magicnet_enable_dns_leak_guard() {
     if ! magicnet_dns_leak_guard_enabled; then
         magicnet_disable_dns_leak_guard
-        return 0
-    fi
-
-    if ! magicnet_dns_leak_guard_supported_for_mode; then
-        magicnet_disable_dns_leak_guard
-        magicnet_warn "DNS leak guard skipped in eBPF mode until DNS redirect is available"
         return 0
     fi
 

@@ -35,26 +35,17 @@ magicnet_transparent_conf() {
 }
 
 magicnet_transparent_mode() {
-    _conf="$(magicnet_transparent_conf)"
-    if [ -f "$_conf" ]; then
-        . "$_conf"
-    fi
-    case "${MAGICNET_TRANSPARENT_MODE:-auto}" in
-        auto) printf '%s\n' "auto" ;;
-        ebpf) printf '%s\n' "ebpf" ;;
-        *) printf '%s\n' "tun" ;;
-    esac
-    unset _conf
+    printf '%s\n' "tun"
 }
 
 magicnet_transparent_set_mode() {
-    case "${1:-auto}" in
-        auto|tun|ebpf) ;;
+    case "${1:-tun}" in
+        tun) ;;
         *) return 1 ;;
     esac
     mkdir -p "${MODDIR}/.config/magicnet" || return 1
-    printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$1" >"$(magicnet_transparent_conf)"
-    MAGICNET_TRANSPARENT_MODE="$1"
+    printf 'MAGICNET_TRANSPARENT_MODE=tun\n' >"$(magicnet_transparent_conf)"
+    MAGICNET_TRANSPARENT_MODE="tun"
 }
 
 magicnet_first_http_url() {

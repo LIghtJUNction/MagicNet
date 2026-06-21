@@ -14,11 +14,6 @@ for _magicnet_lib in \
     network \
     apps \
     transparent_dns \
-    ebpf_policy \
-    ebpf_profile \
-    ebpf_inbounds \
-    tproxy_udp \
-    ebpf \
     transparent \
     webui_panel \
     blocklist \

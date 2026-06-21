@@ -8,7 +8,10 @@ magicnet_singbox_apply_zashboard() {
             sub(/"external_ui"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"external_ui\": \"zashboard\"")
         }
         /"external_ui_download_url"[[:space:]]*:/ {
-            sub(/"external_ui_download_url"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"external_ui_download_url\": \"https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip\"")
+            next
+        }
+        /"external_ui_download_detour"[[:space:]]*:/ {
+            next
         }
         { print }
     ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then

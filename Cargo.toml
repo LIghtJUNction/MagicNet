@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/magicnet-cli",
-    "crates/magicnet-ebpf",
     "crates/magicnet-mcp-server",
 ]
 resolver = "2"

@@ -1,23 +1,14 @@
 magicnet_singbox_apply_transparent_mode() {
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
-    _mode="$(magicnet_transparent_mode)"
-    _ebpf_profile="$(magicnet_ebpf_profile)"
-    _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "$_mode")"
-    _dns_port="${MAGICNET_EBPF_DNS_PORT:-1053}"
-    case "$_dns_port" in
-        *[!0-9]*|"")
-            unset _mode _ebpf_profile _dns_strategy _dns_port
-            return 1
-            ;;
-    esac
+    _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "tun")"
     _jq="${MODDIR}/bin/jq"
     if [ ! -x "$_jq" ]; then
         _jq="$(command -v jq 2>/dev/null || true)"
     fi
     _tmp="${_config}.transparent-mode.new"
     if [ -n "$_jq" ]; then
-        if "$_jq" --arg mode "$_mode" --arg ebpf_profile "$_ebpf_profile" --arg dns_strategy "$_dns_strategy" --argjson dns_port "$_dns_port" '
+        if "$_jq" --arg dns_strategy "$_dns_strategy" '
             def tun_in:
               {
                 "type": "tun",
@@ -47,49 +38,18 @@ magicnet_singbox_apply_transparent_mode() {
                 ],
                 "stack": "gvisor"
               };
-            def ebpf_dns4_in:
-              {
-                "type": "direct",
-                "tag": "magicnet-ebpf-dns4-in",
-                "listen": "127.0.0.1",
-                "listen_port": $dns_port
-              };
-            def ebpf_dns6_in:
-              {
-                "type": "direct",
-                "tag": "magicnet-ebpf-dns6-in",
-                "listen": "::1",
-                "listen_port": $dns_port
-              };
-            def without_ebpf_dns_hijack:
-              map(
-                select(
-                  ((
-                    (
-                      (((.inbound // []) | index("magicnet-ebpf-dns4-in")) != null)
-                      or (((.inbound // []) | index("magicnet-ebpf-dns6-in")) != null)
-                    )
-                    and (((.action // "") == "hijack-dns") or ((.protocol // "") == "dns"))
-                  ) | not)
-                )
-              );
-            def ebpf_quic_block:
-              {
-                "network": "udp",
-                "port": 443,
-                "outbound": "block"
-              };
-            def without_ebpf_quic_block:
-              map(select((((.network // "") == "udp") and ((.port // "") == 443) and ((.outbound // "") == "block")) | not));
+            def managed_inbound:
+              ((.type // "") as $type | ($type == "tun" or $type == "tproxy" or $type == "redirect"))
+              or ((.tag // "") | startswith("magicnet-"));
+            def references_managed_inbound:
+              ((.inbound // []) | map(select(startswith("magicnet-"))) | length) > 0;
             .inbounds = (
               ((.inbounds // [])
-                | map(select((.type // "") as $type | ($type != "tun" and $type != "tproxy" and $type != "redirect")))
-                | map(select((.tag // "") as $tag | ($tag != "magicnet-ebpf-dns4-in" and $tag != "magicnet-ebpf-dns6-in"))))
-              + (if $mode == "auto" or $mode == "tun" or $mode == "ebpf" then [tun_in] else [] end)
-              + (if $mode == "auto" or $mode == "ebpf" then [ebpf_dns4_in, ebpf_dns6_in] else [] end)
+                | map(select(managed_inbound | not)))
+              + [tun_in]
             )
             | .route.rules = (
-              ((.route.rules // []) | without_ebpf_dns_hijack | without_ebpf_quic_block) as $rules
+              ((.route.rules // []) | map(select(references_managed_inbound | not))) as $rules
               | $rules
             )
             | if $dns_strategy != "" then .dns.strategy = $dns_strategy else . end
@@ -97,10 +57,10 @@ magicnet_singbox_apply_transparent_mode() {
             :
         else
             rm -f "$_tmp" 2>/dev/null || true
-            unset _mode _ebpf_profile _dns_strategy _dns_port _jq
+            unset _dns_strategy _jq
             return 1
         fi
-    elif awk -v mode="$_mode" -v ebpf_profile="$_ebpf_profile" -v dns_port="$_dns_port" '
+    elif awk '
         function emit_tun(comma) {
             print "    {"
             print "      \"type\": \"tun\","
@@ -131,34 +91,8 @@ magicnet_singbox_apply_transparent_mode() {
             print "      \"stack\": \"gvisor\""
             printf "    }%s\n", comma
         }
-        function emit_dns4(comma) {
-            print "    {"
-            print "      \"type\": \"direct\","
-            print "      \"tag\": \"magicnet-ebpf-dns4-in\","
-            print "      \"listen\": \"127.0.0.1\","
-            print "      \"listen_port\": " dns_port
-            printf "    }%s\n", comma
-        }
-        function emit_dns6(comma) {
-            print "    {"
-            print "      \"type\": \"direct\","
-            print "      \"tag\": \"magicnet-ebpf-dns6-in\","
-            print "      \"listen\": \"::1\","
-            print "      \"listen_port\": " dns_port
-            printf "    }%s\n", comma
-        }
         function emit_selected(comma) {
-            if (mode == "ebpf") {
-                emit_tun(",")
-                emit_dns4(",")
-                emit_dns6(comma)
-            } else if (mode == "auto") {
-                emit_tun(",")
-                emit_dns4(",")
-                emit_dns6(comma)
-            } else {
-                emit_tun(comma)
-            }
+            emit_tun(comma)
         }
         BEGIN {
             in_inbounds = 0
@@ -204,7 +138,7 @@ magicnet_singbox_apply_transparent_mode() {
                 if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"(tun|tproxy|redirect)"/) {
                     is_transparent = 1
                 }
-                if ($0 ~ /"tag"[[:space:]]*:[[:space:]]*"magicnet-ebpf-dns[46]-in"/) {
+                if ($0 ~ /"tag"[[:space:]]*:[[:space:]]*"magicnet-[^"]+"/) {
                     is_transparent = 1
                 }
                 if (depth <= 0) {
@@ -228,7 +162,7 @@ magicnet_singbox_apply_transparent_mode() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
-        unset _mode _ebpf_profile _dns_strategy _dns_port _jq
+        unset _dns_strategy _jq
         return 1
     fi
     if [ -n "$_dns_strategy" ] && [ -z "$_jq" ]; then
@@ -247,11 +181,11 @@ magicnet_singbox_apply_transparent_mode() {
             :
         else
             rm -f "$_tmp" 2>/dev/null || true
-            unset _mode _ebpf_profile _dns_strategy _dns_port _jq
+            unset _dns_strategy _jq
             return 1
         fi
     fi
-    if awk -v mode="$_mode" -v ebpf_profile="$_ebpf_profile" '
+    if awk '
         function count_delta(line, i, c, delta) {
             delta = 0
             for (i = 1; i <= length(line); i++) {
@@ -262,20 +196,8 @@ magicnet_singbox_apply_transparent_mode() {
             return delta
         }
         function emit_sniff_inbounds() {
-            if (mode == "ebpf") {
-                print "          \"mixed-in\","
-                print "          \"tun-in\","
-                print "          \"magicnet-ebpf-dns4-in\","
-                print "          \"magicnet-ebpf-dns6-in\""
-            } else if (mode == "auto") {
-                print "          \"mixed-in\","
-                print "          \"tun-in\","
-                print "          \"magicnet-ebpf-dns4-in\","
-                print "          \"magicnet-ebpf-dns6-in\""
-            } else {
-                print "          \"mixed-in\","
-                print "          \"tun-in\""
-            }
+            print "          \"mixed-in\","
+            print "          \"tun-in\""
         }
         function print_sniff_rule(buf, n, i, line, lines, in_sniff_inbounds) {
             n = split(buf, lines, "\n")
@@ -337,23 +259,17 @@ magicnet_singbox_apply_transparent_mode() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
-        unset _mode _ebpf_profile _dns_strategy _dns_port _jq
+        unset _dns_strategy _jq
         return 1
     fi
     import __singbox__
     singbox_prepare_route_config "$_config" || true
-    unset _mode _ebpf_profile _dns_strategy _dns_port _jq
+    unset _dns_strategy _jq
 }
 
 magicnet_transparent_apply_unlocked() {
     _transparent_rc=0
     magicnet_singbox_apply_transparent_mode || _transparent_rc=1
-    if magicnet_enable_ebpf; then
-        magicnet_tproxy_udp_cleanup || true
-    else
-        magicnet_tproxy_udp_cleanup || true
-        _transparent_rc=1
-    fi
     return "$_transparent_rc"
 }
 

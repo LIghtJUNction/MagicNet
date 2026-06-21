@@ -23,19 +23,13 @@
 > [!IMPORTANT]
 > DNS 防泄露必读：请打开系统设置，搜索 `DNS`，找到“私人 DNS”“私密 DNS”“Private DNS”或类似表述，把私人 DNS 关闭，不要设置为自动加密。必须让 DNS 正常走 53 端口，让 MagicNet 接管并代理 DNS；否则 Android 系统或浏览器可能直接使用 DoT/DoH，导致 DNS 泄露检测仍然显示外部解析器。
 
-MagicNet 是一个 Android root 透明代理模块，把设备应用流量无感接入 `sing-box`。应用不需要单独设置代理，系统 VPN 开关不需要常驻；MagicNet 在更底层接管、分流、代理或拒绝流量。
+MagicNet 是一个 Android root TUN 透明代理模块，把设备应用流量无感接入 `sing-box`。应用不需要单独设置代理，系统 VPN 开关不需要常驻；MagicNet 通过 `magicnet0` TUN 接管、分流、代理或拒绝流量。
 
-当前主线已经收敛为 **sing-box + eBPF 优先 + TUN 兜底**。`sing-box` 是唯一代理核心；eBPF 负责本机 TCP 和 DNS 53 透明接管，DNS 53 会进入 sing-box 本地 `direct` DNS 入站后由 `hijack-dns` 处理；TUN 负责兼容兜底。旧的 mihomo/Clash 核心、TProxy 主路径、热点代理模式和抓包代理功能都不再作为主线能力维护。
+当前主线已经收敛为 **sing-box + TUN**。`sing-box` 是唯一代理核心；`magicnet0` TUN 是唯一透明代理路径。旧的多核心、多透明路径和抓包代理功能都不再作为主线能力维护。
 
 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.7`。Release 以发布页为准。
 
 ## 成果
-
-![MagicNet performance comparison](docs/assets/diagrams/magicnet-ebpf-performance.svg)
-
-![MagicNet visibility surface](docs/assets/diagrams/magicnet-visibility-surface.svg)
-
-![MagicNet transparent coverage](docs/assets/diagrams/magicnet-transparent-coverage.svg)
 
 MagicNet 不分发任何第三方连通性资源，也不内置可直接使用的外部出口。你需要接入合法、合规、自有的节点或订阅。
 
@@ -63,18 +57,15 @@ su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/subscription"'
 ## 透明代理路径
 
 ```bash
-su -c /data/adb/modules/MagicNet/cli transparent set auto
-su -c /data/adb/modules/MagicNet/cli transparent set ebpf
 su -c /data/adb/modules/MagicNet/cli transparent set tun
 ```
 
 ## 核心功能
 
-- eBPF 优先：本机 TCP、DNS TCP 53、DNS UDP 53 优先在内核 attach 点接管。
-- TUN 兜底：eBPF 条件不满足时保留完整透明路径。
+- TUN 透明代理：通过 `magicnet0` 接管设备侧应用流量。
 - DNS 防泄露：直连 53/853 出口拦截，泄露检测域名强制远端 DoH。
-- 单核心：只维护 `sing-box`，不再维护 mihomo/TProxy 多路径。
-- 诊断面：CLI、WebUI、MCP、support bundle、eBPF/netd 状态检查。
+- 单核心：只维护 `sing-box`，不再维护多核心、多透明路径。
+- 诊断面：CLI、WebUI、MCP、support bundle、路由和 DNS 状态检查。
 
 ## 安装
 
@@ -140,11 +131,8 @@ su -c /data/adb/modules/MagicNet/cli service restart
 su -c /data/adb/modules/MagicNet/cli core select sing-box
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
 su -c /data/adb/modules/MagicNet/cli transparent status
-su -c /data/adb/modules/MagicNet/cli transparent set auto
-su -c /data/adb/modules/MagicNet/cli transparent set ebpf
 su -c /data/adb/modules/MagicNet/cli transparent set tun
 su -c /data/adb/modules/MagicNet/cli config apply
-su -c /data/adb/modules/MagicNet/cli ebpf status
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli diagnose
 ```
@@ -203,7 +191,7 @@ adb shell 'su -M -c "timeout 10 tcpdump -ni rmnet_data0 \"port 53 or port 853\""
 adb shell 'su -M -c "ip route get 1.1.1.1; ip -br link"'
 ```
 
-目标状态是访问测试期间没有明文 DNS/DoT 流量从物理出口偷偷跑出去。MagicNet 会在物理出口接口上拦截直连 53/853，避免绕过 TUN/eBPF 的系统 DNS、root shell DNS 或浏览器回退 DNS 直接出网。若需要临时关闭这道闸门，可设置 `MAGIC_DNS_LEAK_GUARD=0` 后重新应用配置。
+目标状态是访问测试期间没有明文 DNS/DoT 流量从物理出口偷偷跑出去。MagicNet 会在物理出口接口上拦截直连 53/853，避免绕过 TUN 的系统 DNS、root shell DNS 或浏览器回退 DNS 直接出网。若需要临时关闭这道闸门，可设置 `MAGIC_DNS_LEAK_GUARD=0` 后重新应用配置。
 
 DNS 配置保留 `bootstrap-local-dns` 用于代理节点域名、局域网、国内直连域名和连通性检测，避免“代理还没连上，代理节点域名却要求先走代理”的自引用死循环。代理域名、AI、GFW、海外媒体和其它需要代理的业务域名仍走远端 DoH，并按规则使用代理 detour。
 
@@ -221,16 +209,14 @@ su -c /data/adb/modules/MagicNet/cli mcp secret
 
 MCP 工具可管理配置源、封锁名单、备份、状态检查、eCapture 网络分析和脱敏上下文。默认关闭，需要用户显式启用。MCP server 启动时会生成 `MAGICNET_MCP_SECRET` 并以 `0600` 权限保存在模块私有配置中；客户端请求需要带 `Authorization: Bearer <secret>` 或 `X-MagicNet-MCP-Secret: <secret>`。只有 root 命令行应读取这个 secret，可用 `cli mcp rotate-secret` 轮换。
 
-`cli ecapture tls` 会调用随模块打包的 [gojue/eCapture](https://github.com/gojue/ecapture) Android arm64 二进制，在限定时间内把 TLS 明文事件写入 `.log/ecapture-tls-events.log`；`cli ecapture pcap` 会在指定接口生成 `.log/ecapture.pcapng`。这属于 root/eBPF 诊断能力，需要目标内核支持对应探针；它不会改变 MagicNet 的透明代理路径。
+`cli ecapture tls` 会调用随模块打包的 [gojue/eCapture](https://github.com/gojue/ecapture) Android arm64 二进制，在限定时间内把 TLS 明文事件写入 `.log/ecapture-tls-events.log`；`cli ecapture pcap` 会在指定接口生成 `.log/ecapture.pcapng`。这属于 root 诊断能力，需要目标内核支持对应探针；它不会改变 MagicNet 的透明代理路径。
 
 ## 技术边界
 
 - 透明代理路径只维护 MagicNet 自身数据面，不接管热点转发、外部 VPN overlay 或厂商 tethering 规则。
-- eBPF 不等于全量 UDP 透明代理；当前只把 DNS 53 作为专用 UDP 重定向路径，并要求 sing-box 的本地 DNS TCP/UDP 入站已经监听。
-- 全量 UDP/QUIC 需要单独的 UDP bridge、原始目的地映射和 SOCKS5 UDP ASSOCIATE 回包路径；不能把 DNS `sendmsg` 改写直接扩展到所有 UDP，否则会打断 QUIC、WebRTC、游戏和 VoIP。
-- `dns_udp4=attached` / `dns_udp6=attached` 只说明程序挂载成功，不等于每个厂商内核都会对所有 UDP syscall 路径执行目的地改写。发布前请用 `tcpdump` 验证物理出口没有 `port 53 or port 853` 泄露。
-- netd cgroup BPF promote 只会在 loader 声明 TCP bridge 数据面可用后执行；attach、启动或探针失败都会 detach/demote 并回落到 TUN。
-- TProxy、mihomo、多核心切换、热点代理模式和 VPN 共存模式都不是当前主线能力。
+- 透明代理只支持 TUN。
+- 发布前请用 `tcpdump` 验证物理出口没有 `port 53 or port 853` 泄露。
+- 多核心切换、多透明路径、热点代理模式和 VPN 共存模式都不是当前主线能力。
 
 ## 工作流
 
@@ -244,6 +230,7 @@ MCP 工具可管理配置源、封锁名单、备份、状态检查、eCapture �
 ## 子项目
 
 - [MagicSingBox](https://github.com/LIghtJUNction/MagicSingBox)：sing-box 运行配置模板。
+- [MagicBox](MagicBox)：Android 控制壳，面向 TUN-only MagicNet 模块。
 - [kamfw](https://github.com/MemDeco-WG/kamfw)：运行时辅助库。
 
 ## 社区
