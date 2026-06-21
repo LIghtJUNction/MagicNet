@@ -720,6 +720,7 @@ run "$MODDIR/cli" diagnose
 
 assert_transparent_mode() {
     local mode="$1"
+    local profile="${2:-tcp}"
     local before_marker after_marker
 
     before_marker="$(wc -l <"$MOCK_LOG")"
@@ -730,28 +731,33 @@ assert_transparent_mode() {
         magicnet_enable_ebpf() {
             return 0
         }
+        magicnet_tproxy_udp_kernel_supported() {
+            return 0
+        }
+        mkdir -p "$MODDIR/.config/magicnet"
+        printf "MAGICNET_EBPF_PROFILE=%s\n" "$2" >"$MODDIR/.config/magicnet/ebpf-profile.conf"
         magicnet_transparent_set_mode "$1"
         magicnet_transparent_apply
-    ' _ "$mode"
+    ' _ "$mode" "$profile"
     after_marker="$(wc -l <"$MOCK_LOG")"
-    sed -n "$((before_marker + 1)),${after_marker}p" "$MOCK_LOG" >"$TMP/${mode}-commands.log"
+    sed -n "$((before_marker + 1)),${after_marker}p" "$MOCK_LOG" >"$TMP/${mode}-${profile}-commands.log"
 
     "$MODDIR/cli" transparent status | tee "$TMP/${mode}-transparent-status.log"
     rg -qx "mode=${mode}" "$TMP/${mode}-transparent-status.log"
 
-    python3 - "$MODDIR/.config/sing-box/config.json" "$mode" <<'PY'
+    python3 - "$MODDIR/.config/sing-box/config.json" "$mode" "$profile" <<'PY'
 import json
 import pathlib
 import sys
 
-singbox_path, mode = sys.argv[1:]
+singbox_path, mode, profile = sys.argv[1:]
 singbox = json.loads(pathlib.Path(singbox_path).read_text())
 
 inbound_types = [inbound.get("type") for inbound in singbox.get("inbounds", [])]
 sniff_rule = next((rule for rule in singbox.get("route", {}).get("rules", []) if rule.get("action") == "sniff"), None)
 
 if mode == "tun":
-    if singbox.get("dns", {}).get("strategy") != "prefer_ipv4":
+    if singbox.get("dns", {}).get("strategy") != "ipv4_only":
         raise SystemExit(f"sing-box dns.strategy was not restored in tun mode: {singbox.get('dns', {}).get('strategy')!r}")
     if "tun" not in inbound_types:
         raise SystemExit("sing-box tun inbound missing in tun mode")
@@ -765,14 +771,18 @@ if mode == "tun":
     if sniff_rule.get("inbound") != ["mixed-in", "tun-in"]:
         raise SystemExit(f"sing-box sniff inbound list mismatch in tun mode: {sniff_rule.get('inbound')!r}")
 elif mode == "ebpf":
-    if any(kind in inbound_types for kind in ("tun", "tproxy", "redirect")):
-        raise SystemExit(f"transparent inbounds still present in ebpf mode: {inbound_types!r}")
+    if profile != "tcp":
+        raise SystemExit(f"unsupported ebpf profile: {profile}")
+    if any(kind in inbound_types for kind in ("tproxy", "redirect")):
+        raise SystemExit(f"transparent inbounds still present in ebpf tcp profile: {inbound_types!r}")
+    if "tun" not in inbound_types:
+        raise SystemExit("sing-box tun inbound missing in ebpf tcp profile")
     dns_inbounds = [
         inbound for inbound in singbox.get("inbounds", [])
         if inbound.get("tag") in ("magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in")
     ]
-    if dns_inbounds:
-        raise SystemExit(f"legacy sing-box eBPF DNS inbounds still present in ebpf mode: {singbox.get('inbounds')!r}")
+    if len(dns_inbounds) != 2:
+        raise SystemExit(f"sing-box eBPF DNS inbounds missing in ebpf tcp profile: {singbox.get('inbounds')!r}")
     legacy_dns_rules = [
         rule for rule in singbox.get("route", {}).get("rules", [])
         if any(tag in rule.get("inbound", []) for tag in ("magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"))
@@ -782,7 +792,8 @@ elif mode == "ebpf":
         raise SystemExit(f"legacy sing-box eBPF DNS hijack rules still present in ebpf mode: {legacy_dns_rules!r}")
     if not sniff_rule:
         raise SystemExit("sing-box sniff rule missing in ebpf mode")
-    if sniff_rule.get("inbound") != ["mixed-in"]:
+    expected = ["mixed-in", "tun-in", "magicnet-ebpf-dns4-in", "magicnet-ebpf-dns6-in"]
+    if sniff_rule.get("inbound") != expected:
         raise SystemExit(f"sing-box sniff inbound list mismatch in ebpf mode: {sniff_rule.get('inbound')!r}")
 else:
     raise SystemExit(f"unsupported mode: {mode}")
@@ -790,10 +801,10 @@ PY
 
     case "$mode" in
         tun)
-            ! rg -q 'MAGICNET_TPROXY' "$TMP/${mode}-commands.log"
+            ! rg -q -- '-j TPROXY|REDIRECT --to-ports' "$TMP/${mode}-${profile}-commands.log"
             ;;
         ebpf)
-            ! rg -q 'MAGICNET_TPROXY|TPROXY|REDIRECT --to-ports' "$TMP/${mode}-commands.log"
+            ! rg -q -- '-j TPROXY|REDIRECT --to-ports' "$TMP/${mode}-${profile}-commands.log"
             ;;
     esac
 }

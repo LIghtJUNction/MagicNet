@@ -53,6 +53,7 @@ printf '%s\n' 'old-sing-box-work' >"$PREV_MOD/.config/sing-box/.subscription-wor
 printf '%s\n' 'MAGICNET_DEFAULT_CORE=sing-box' >"$PREV_MOD/.config/magicnet/current-core.conf"
 printf '%s\n' 'MAGICNET_MCP_ENABLED=1' 'MAGICNET_MCP_BIND=127.0.0.1' 'MAGICNET_MCP_PORT=18766' \
     >"$PREV_MOD/.config/magicnet/mcp.conf"
+printf '%s\n' 'legacy proxy capture config' >"$PREV_MOD/.config/magicnet/capture.conf"
 
 for name in chcon restorecon getevent am cmd settings; do
     cat >"$MOCK_BIN/$name" <<'SH'
@@ -112,6 +113,8 @@ grep -qx 'MAGICNET_DEFAULT_CORE=sing-box' "$MODPATH/.config/magicnet/current-cor
     || fail "magicnet core config was not preserved from previous install"
 grep -qx 'MAGICNET_MCP_PORT=18766' "$MODPATH/.config/magicnet/mcp.conf" \
     || fail "MCP config was not preserved from previous install"
+[[ ! -e "$MODPATH/.config/magicnet/capture.conf" ]] \
+    || fail "legacy capture config should not be restored"
 
 cargo build -p magicnet-cli -p magicnet-mcp-server -p magicnet-ebpf >/dev/null
 cp "$ROOT/target/debug/magicnet-cli" "$MODPATH/bin/magicnet-cli"

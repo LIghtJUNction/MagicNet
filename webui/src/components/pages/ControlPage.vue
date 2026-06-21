@@ -29,9 +29,12 @@ async function runAction(key: string, args: string, label: string, background = 
   });
 }
 
-async function setTransparentMode(mode: "auto" | "tun" | "ebpf"): Promise<void> {
+async function setTransparentMode(mode: "tun" | "ebpf"): Promise<void> {
   await withAction(`transparent-${mode}`, async () => {
-    await runCli(`transparent set ${mode}`, `切换 ${mode.toUpperCase()} 模式`);
+    if (mode === "ebpf") {
+      await runCli("ebpf profile set tcp", "启用 eBPF TCP");
+    }
+    await runCli(`transparent set ${mode}`, mode === "ebpf" ? "切换 eBPF TCP 模式" : "切换 TUN 稳定模式");
     await refreshStatus();
   });
 }
@@ -95,14 +98,19 @@ async function setTransparentMode(mode: "auto" | "tun" | "ebpf"): Promise<void> 
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>
             <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Transparent Mode</span>
-            <h3 class="mt-1 text-lg font-semibold">{{ state.runtime.transparentMode.toUpperCase() }}</h3>
+            <h3 class="mt-1 text-lg font-semibold">{{ state.runtime.transparentMode === "ebpf" ? "eBPF TCP" : "TUN Stable" }}</h3>
           </div>
           <Badge tone="neutral">{{ state.runtime.transparentMode }}</Badge>
         </div>
-        <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
-          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-auto')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'auto' }" @click="setTransparentMode('auto')">Auto</button>
-          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-tun')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'tun' }" @click="setTransparentMode('tun')">TUN</button>
-          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-ebpf')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'ebpf' }" @click="setTransparentMode('ebpf')">eBPF</button>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <button class="min-h-16 rounded-md border border-zinc-800 px-3 py-2 text-left text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-tun')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'tun' }" @click="setTransparentMode('tun')">
+            <span class="block font-semibold">TUN Stable</span>
+            <span class="mt-1 block text-xs leading-5 text-zinc-500">完整透明代理</span>
+          </button>
+          <button class="min-h-16 rounded-md border border-zinc-800 px-3 py-2 text-left text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-ebpf')" :class="{ 'bg-zinc-800 text-zinc-50': state.runtime.transparentMode === 'ebpf' }" @click="setTransparentMode('ebpf')">
+            <span class="block font-semibold">eBPF TCP</span>
+            <span class="mt-1 block text-xs leading-5 text-zinc-500">TCP 加速，UDP 由 TUN 兜底</span>
+          </button>
         </div>
         <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="runAction('transparent-apply', 'transparent apply', '应用透明代理模式')">
           <Radar :size="17" />重新应用模式

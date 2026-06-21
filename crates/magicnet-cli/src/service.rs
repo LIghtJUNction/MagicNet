@@ -19,14 +19,39 @@ pub(crate) fn service_status(app: &App) {
     );
     println!("  Selected: {}", selected_core(app));
     println!("  Transparent: {}", transparent_mode(app));
+    println!("  eBPF Profile: {}", ebpf_profile(app));
     println!("  API:      {}", app.api);
-    println!("  WebUI:    {}", app.singbox_webui);
+    println!("  WebUI:    {}", singbox_webui(app));
     println!(
         "  Sub URL:  {}",
         app.moddir
             .join(".config/sing-box/subscription.url")
             .display()
     );
+}
+
+pub(crate) fn singbox_webui(app: &App) -> String {
+    let ui = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
+        .ok()
+        .and_then(|text| json_string_value(&text, "external_ui"))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "ui".to_string());
+    format!(
+        "{}/{}/#/setup?hostname=127.0.0.1&port=9090",
+        app.api,
+        ui.trim_matches('/')
+    )
+}
+
+fn json_string_value(text: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let start = text.find(&needle)?;
+    let after_key = &text[start + needle.len()..];
+    let colon = after_key.find(':')?;
+    let after_colon = after_key[colon + 1..].trim_start();
+    let value = after_colon.strip_prefix('"')?;
+    let end = value.find('"')?;
+    Some(value[..end].to_string())
 }
 
 pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -89,6 +114,17 @@ pub(crate) fn transparent_cmd(app: &App, args: &[String]) -> Result<(), String> 
     }
 }
 
+pub(crate) fn ebpf_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str).unwrap_or("status") {
+        "allow-multi" => ebpf_allow_multi(app, args.get(1).map(String::as_str).unwrap_or("status")),
+        "profile" => ebpf_profile_cmd(app, &args[1..]),
+        _ => Err(
+            "Usage: cli ebpf {status|allow-multi <status|enable|disable>|profile <status|set tcp>}"
+                .to_string(),
+        ),
+    }
+}
+
 pub(crate) fn core_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
         "status" => {
@@ -102,6 +138,90 @@ pub(crate) fn core_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "select" => select_core(app, args.get(1).map(String::as_str).unwrap_or_default()),
         _ => Err("Usage: cli core {status|selected|select sing-box}".to_string()),
     }
+}
+
+fn ebpf_allow_multi(app: &App, action: &str) -> Result<(), String> {
+    match action {
+        "status" => {
+            println!(
+                "allow_multi={}",
+                if ebpf_allow_multi_enabled(app) {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
+            Ok(())
+        }
+        "enable" => {
+            write_text_file(ebpf_allow_multi_path(app), "MAGICNET_EBPF_ALLOW_MULTI=1\n")?;
+            println!("allow_multi=enabled");
+            Ok(())
+        }
+        "disable" => {
+            write_text_file(ebpf_allow_multi_path(app), "MAGICNET_EBPF_ALLOW_MULTI=0\n")?;
+            println!("allow_multi=disabled");
+            Ok(())
+        }
+        _ => Err("Usage: cli ebpf allow-multi <status|enable|disable>".to_string()),
+    }
+}
+
+fn ebpf_allow_multi_path(app: &App) -> PathBuf {
+    app.moddir.join(".config/magicnet/ebpf-allow-multi.conf")
+}
+
+fn ebpf_allow_multi_enabled(app: &App) -> bool {
+    fs::read_to_string(ebpf_allow_multi_path(app))
+        .map(|text| {
+            text.lines()
+                .any(|line| line.trim() == "MAGICNET_EBPF_ALLOW_MULTI=1")
+        })
+        .unwrap_or(false)
+}
+
+fn ebpf_profile_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str).unwrap_or("status") {
+        "status" => {
+            println!("profile={}", ebpf_profile(app));
+            Ok(())
+        }
+        "set" => {
+            let profile = match args.get(1).map(String::as_str).unwrap_or_default() {
+                "tcp" | "tcp-bridge" => "tcp",
+                _ => return Err("Usage: cli ebpf profile set tcp".to_string()),
+            };
+            write_text_file(
+                ebpf_profile_path(app),
+                &format!("MAGICNET_EBPF_PROFILE={profile}\n"),
+            )?;
+            println!("profile={profile}");
+            Ok(())
+        }
+        _ => Err("Usage: cli ebpf profile <status|set tcp>".to_string()),
+    }
+}
+
+fn ebpf_profile_path(app: &App) -> PathBuf {
+    app.moddir.join(".config/magicnet/ebpf-profile.conf")
+}
+
+fn ebpf_profile(app: &App) -> &'static str {
+    fs::read_to_string(ebpf_profile_path(app))
+        .ok()
+        .and_then(|text| {
+            if text.lines().any(|line| {
+                matches!(
+                    line.trim(),
+                    "MAGICNET_EBPF_PROFILE=tcp" | "MAGICNET_EBPF_PROFILE=tcp-bridge"
+                )
+            }) {
+                Some("tcp")
+            } else {
+                None
+            }
+        })
+        .unwrap_or("tcp")
 }
 
 pub(crate) fn repair(app: &App) -> Result<(), String> {
@@ -148,6 +268,7 @@ fn restart_command(target: &str) -> &'static str {
 fn stop_all_direct(app: &App) -> Result<(), String> {
     stop_supervisor_pidfile(app.moddir.join(".state/watchdog/magicnet-kernel.pid"));
     stop_supervisor_pidfile(app.moddir.join(".state/fswatch/magicnet-config.pid"));
+    stop_supervisor_pidfile(app.moddir.join(".state/after-kernel-start.pid"));
     ignore_command(
         "pkill",
         &[
@@ -221,26 +342,23 @@ fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
     }
     write_transparent_mode(app, mode)?;
     stop_all_direct(app)?;
-    if let Err(err) = run_magicnet_function(app, "magicnet_transparent_apply") {
-        if mode == "ebpf" {
+    if mode == "ebpf" {
+        if let Err(err) = run_magicnet_function(app, "magicnet_start_kernel") {
             return restore_tun_after_ebpf_failure(
                 app,
-                "eBPF transparent mode is not available on this device",
-                &err,
-                "eBPF unavailable; restored TUN mode",
-            );
-        }
-        return Err(err);
-    }
-    if let Err(err) = run_magicnet_function(app, "magicnet_start_kernel") {
-        if mode == "ebpf" {
-            return restore_tun_after_ebpf_failure(
-                app,
-                "eBPF core startup failed",
+                "eBPF startup failed",
                 &err,
                 "eBPF startup failed; restored TUN mode",
             );
         }
+        start_supervisors(app)?;
+        println!("[info] Transparent mode set to {mode}");
+        return Ok(());
+    }
+    if let Err(err) = run_magicnet_function(app, "magicnet_transparent_apply") {
+        return Err(err);
+    }
+    if let Err(err) = run_magicnet_function(app, "magicnet_start_kernel") {
         return Err(err);
     }
     start_supervisors(app)?;

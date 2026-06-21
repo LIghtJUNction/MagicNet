@@ -1,5 +1,14 @@
 ## Unreleased
 
+## v1.1.7 (2026-06-21)
+
+- Refine eBPF transparent mode into a TCP bridge profile with TUN kept as the
+  compatibility fallback for UDP-sensitive traffic.
+- Remove the unfinished UDP bridge/TProxy main path and keep only migration
+  cleanup for stale UDP TProxy chains.
+- Split large eBPF and diagnostics modules so individual source files stay
+  below 500 lines and the TCP/eBPF health checks are easier to audit.
+
 ## v1.1.6 (2026-06-20)
 
 - Add a WebUI issue creation action that copies the full diagnostic context to

@@ -21,7 +21,7 @@ require_entry() {
     grep -Fx "$entry" "$entries_file" >/dev/null || fail "missing zip entry: $entry"
 }
 
-for tool in file grep readelf sed unzip zipinfo; do
+for tool in file grep python3 readelf sed unzip zipinfo; do
     command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
 
@@ -96,6 +96,10 @@ if grep -E '(^|/)(mihomo|__mihomo__)(\.sh)?($|/)' "$entries_file" >/dev/null; th
     fail "zip contains legacy mihomo entries"
 fi
 
+if grep -E '(^|/)(capture_(common|mihomo|singbox)\.sh|capture\.conf|post-fs-data\.sh|sepolice\.rule|system/etc/security/cacerts)(/|$)' "$entries_file" >/dev/null; then
+    fail "zip contains legacy proxy-capture entries"
+fi
+
 check_no_subscription_secret() {
     local entry="$1"
     grep -Fx "$entry" "$entries_file" >/dev/null || return 0
@@ -105,6 +109,98 @@ check_no_subscription_secret() {
 }
 
 check_no_subscription_secret '.config/sing-box/subscription.url'
+
+python3 - "$ZIP_PATH" <<'PY'
+import json
+import subprocess
+import sys
+
+zip_path = sys.argv[1]
+config = json.loads(
+    subprocess.check_output(
+        ["unzip", "-p", zip_path, ".config/sing-box/config.json"],
+        text=True,
+    )
+)
+
+dns_rules = config.get("dns", {}).get("rules", [])
+route_rules = config.get("route", {}).get("rules", [])
+outbound_tags = {outbound.get("tag") for outbound in config.get("outbounds", [])}
+
+required_leak_domains = {
+    "dnsleaktest.com",
+    "browserleaks.com",
+    "ipleak.net",
+    "whoer.net",
+    "dnscheck.tools",
+    "dnschecker.org",
+    "dnslytics.com",
+}
+required_doh_domains = {
+    "cloudflare-dns.com",
+    "mozilla.cloudflare-dns.com",
+    "dns.google",
+    "dns.quad9.net",
+    "dns.nextdns.io",
+    "doh.opendns.com",
+    "dns.adguard-dns.com",
+}
+
+def suffixes(rule):
+    value = rule.get("domain_suffix", [])
+    if isinstance(value, str):
+        return {value}
+    return set(value)
+
+def find_rule(rules, required, **expected):
+    for index, rule in enumerate(rules):
+        if required <= suffixes(rule) and all(rule.get(key) == value for key, value in expected.items()):
+            return index
+    return -1
+
+def first_route_index(predicate):
+    for index, rule in enumerate(route_rules):
+        if predicate(rule):
+            return index
+    return -1
+
+if "dns-guard" not in outbound_tags:
+    raise SystemExit("missing dns-guard outbound selector")
+
+if find_rule(dns_rules, required_leak_domains, server="doh-cloudflare") < 0:
+    raise SystemExit("DNS leak-test suffixes are not forced to proxy-detoured DoH")
+if find_rule(dns_rules, required_doh_domains, server="doh-cloudflare") < 0:
+    raise SystemExit("DoH endpoint suffixes are not forced to proxy-detoured DoH")
+
+leak_route = find_rule(route_rules, required_leak_domains, outbound="dns-guard")
+doh_route = find_rule(route_rules, required_doh_domains, outbound="dns-guard")
+if leak_route < 0:
+    raise SystemExit("missing dns-guard route for DNS leak-test domains")
+if doh_route < 0:
+    raise SystemExit("missing dns-guard route for DoH endpoints")
+
+network_test_route = first_route_index(
+    lambda rule: rule.get("outbound") == "network-test"
+    and bool({"browserscan.net", "speedtest.net"} & suffixes(rule))
+)
+if network_test_route >= 0 and not (leak_route < network_test_route and doh_route < network_test_route):
+    raise SystemExit("dns-guard routes must precede broad network-test routes")
+
+dot_route = first_route_index(lambda rule: rule.get("port") == 853 and rule.get("outbound") == "dns-guard")
+if dot_route < 0:
+    raise SystemExit("missing dns-guard route for DoT port 853")
+
+udp443_route = first_route_index(
+    lambda rule: rule.get("network") == "udp"
+    and rule.get("port") == 443
+    and rule.get("outbound") == "proxy-rule"
+    and "lyc-geosite-proxy" in (
+        rule.get("rule_set") if isinstance(rule.get("rule_set"), list) else [rule.get("rule_set")]
+    )
+)
+if udp443_route < 0:
+    raise SystemExit("missing UDP/443 proxy rule for foreign rule sets")
+PY
 
 watchdog_text="$(unzip -p "$ZIP_PATH" lib/kamfw/watchdog.sh)"
 fswatch_text="$(unzip -p "$ZIP_PATH" lib/kamfw/fswatch.sh)"

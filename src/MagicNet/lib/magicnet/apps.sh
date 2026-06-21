@@ -68,6 +68,46 @@ magicnet_singbox_apply_app_policy() {
     _tmp="${_config}.app-policy.new"
     _include_tmp="${_config}.include-package.tmp"
     _exclude_tmp="${_config}.exclude-package.tmp"
+    _jq="${MODDIR}/bin/jq"
+    if [ ! -x "$_jq" ]; then
+        _jq="$(command -v jq 2>/dev/null || true)"
+    fi
+    if [ -n "$_jq" ]; then
+        [ -f "$_proxy_file" ] || : >"$_proxy_file"
+        [ -f "$_bypass_file" ] || : >"$_bypass_file"
+        if "$_jq" --arg mode "$_mode" --rawfile proxy "$_proxy_file" --rawfile bypass "$_bypass_file" '
+            def packages($text):
+              $text
+              | split("\n")
+              | map(gsub("^[[:space:]]+|[[:space:]]+$"; ""))
+              | map(select(. != "" and (startswith("#") | not)))
+              | unique;
+            (packages($proxy)) as $proxy_packages
+            | (packages($bypass)) as $bypass_packages
+            | .inbounds = (
+                (.inbounds // []) | map(
+                  if (.type // "") == "tun" then
+                    del(.include_package, .exclude_package)
+                    | if $mode == "whitelist" then
+                        .include_package = $proxy_packages
+                      elif ($bypass_packages | length) > 0 then
+                        .exclude_package = $bypass_packages
+                      else
+                        .
+                      end
+                  else
+                    .
+                  end
+                )
+              )
+        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+            unset _config _dir _mode _proxy_file _bypass_file _include_block _exclude_block _tmp _include_tmp _exclude_tmp _jq
+            return 0
+        fi
+        rm -f "$_tmp" 2>/dev/null || true
+        unset _jq
+    fi
+
     if [ -n "$_include_block" ]; then
         printf '%s\n' "$_include_block" >"$_include_tmp"
     else

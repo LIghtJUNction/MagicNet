@@ -110,7 +110,22 @@ magicnet_disable_dns_leak_guard() {
 
 magicnet_after_kernel_start() {
     magicnet_singbox_apply_zashboard || true
-    magicnet_after_kernel_start_deferred >/dev/null 2>&1 &
+    mkdir -p "${MODDIR}/.state" 2>/dev/null || true
+    _after_kernel_runner="nohup"
+    command -v setsid >/dev/null 2>&1 && _after_kernel_runner="setsid"
+    $_after_kernel_runner sh -c '
+        MODDIR="$1"
+        MODPATH="$1"
+        PATH="$1/bin:$1/system/bin:$PATH"
+        export MODDIR MODPATH PATH
+        . "$MODDIR/lib/kamfw/.kamfwrc"
+        import __runtime__
+        . "$MODDIR/lib/magicnet.sh"
+        magicnet_after_kernel_start_deferred
+        rm -f "$MODDIR/.state/after-kernel-start.pid" 2>/dev/null || true
+    ' sh "$MODDIR" </dev/null >/dev/null 2>&1 &
+    printf '%s\n' "$!" >"${MODDIR}/.state/after-kernel-start.pid" 2>/dev/null || true
+    unset _after_kernel_runner
 }
 
 magicnet_after_kernel_start_deferred_unlocked() {

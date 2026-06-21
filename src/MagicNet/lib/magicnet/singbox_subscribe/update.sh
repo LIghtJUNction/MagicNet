@@ -4,6 +4,7 @@ magicnet_singbox_update_subscription() {
     _outbounds_file="${_work_dir}/outbounds.json"
     _tags_file="${_work_dir}/tags.txt"
     _sources_file="${_work_dir}/sources.txt"
+    _counts_file="${_work_dir}/counts.txt"
 
     rm -rf "$_work_dir"
     mkdir -p "$_nodes_dir"
@@ -26,15 +27,18 @@ magicnet_singbox_update_subscription() {
         return 1
     fi
 
-    if magicnet_singbox_proxylink_bin >/dev/null 2>&1 &&
+    if [ "${MAGICNET_PROXYLINK_ENABLED:-1}" = "1" ] &&
+        magicnet_singbox_proxylink_bin >/dev/null 2>&1 &&
         magicnet_singbox_build_outbounds_with_proxylink "$_sources_file" "$_outbounds_file" >"${_work_dir}/proxylink-counts.txt" 2>/dev/null; then
         # shellcheck disable=SC2046
         set -- $(cat "${_work_dir}/proxylink-counts.txt")
         _imported="$1"
         _skipped="$2"
     else
+        magicnet_singbox_build_outbounds_file "$_nodes_dir" "$_outbounds_file" "$_tags_file" >"$_counts_file" ||
+            return 1
         # shellcheck disable=SC2046
-        set -- $(magicnet_singbox_build_outbounds_file "$_nodes_dir" "$_outbounds_file" "$_tags_file")
+        set -- $(cat "$_counts_file")
         _imported="$1"
         _skipped="$2"
     fi

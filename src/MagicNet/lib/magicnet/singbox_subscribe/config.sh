@@ -32,6 +32,12 @@ magicnet_singbox_build_outbounds_file() {
         fi
     done
     printf ']' >>"${_out_file}.nodes"
+
+    if magicnet_singbox_build_outbounds_file_with_jq "${_out_file}.nodes" "$_tags_file" "$_out_file"; then
+        printf '%s %s\n' "$_imported" "$_skipped"
+        return 0
+    fi
+
     magicnet_singbox_order_tags_file "$_tags_file" "${_tags_file}.ordered"
     mv -f "${_tags_file}.ordered" "$_tags_file"
     _first_tag=$(awk 'NF { print; exit }' "$_tags_file")
@@ -51,6 +57,73 @@ magicnet_singbox_build_outbounds_file() {
     } >"$_out_file"
 
     printf '%s %s\n' "$_imported" "$_skipped"
+}
+
+magicnet_singbox_build_outbounds_file_with_jq() {
+    _nodes_json="$1"
+    _tags_file="$2"
+    _out_file="$3"
+    command -v jq >/dev/null 2>&1 || return 1
+    _tags_json="${_out_file}.tags.json"
+    jq -R -s 'split("\n") | map(select(length > 0))' "$_tags_file" >"$_tags_json" || return 1
+    jq -n -r --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" '
+      def with_base($outs; $fallback):
+        reduce ($outs + [$fallback, "direct", "block"])[] as $item
+          ([]; if ($item == "" or index($item)) then . else . + [$item] end);
+      def selector($tag; $outs; $fallback):
+        (with_base($outs; $fallback)) as $items
+        | {"type": "selector", "tag": $tag, "outbounds": $items, "default": $items[0]};
+      ($nodes[0] // []
+        | map(select(
+            ((.server // "") != "")
+            and ((.server_port // 0) != 0)
+            and (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not)
+            and (
+              (.type == "shadowsocks" and ((.method // "") != "") and ((.password // "") != ""))
+              or (.type == "vmess" and ((.uuid // "") != ""))
+              or (.type == "vless" and ((.uuid // "") != ""))
+              or (.type == "trojan" and ((.password // "") != ""))
+              or (.type == "hysteria2" and ((.password // "") != ""))
+            )
+          ))
+      ) as $nodes
+      | ([ $nodes[]? | .tag // empty ] | map(select(length > 0))) as $tags
+      | [
+          selector("proxy"; $tags; "direct"),
+          selector("select"; ["proxy", "direct"]; "proxy"),
+          selector("hk"; ["proxy", "direct"]; "proxy"),
+          selector("jp"; ["proxy", "direct"]; "proxy"),
+          selector("us"; ["proxy", "direct"]; "proxy"),
+          selector("sg"; ["proxy", "direct"]; "proxy"),
+          selector("tw"; ["proxy", "direct"]; "proxy"),
+          selector("uk"; ["proxy", "direct"]; "proxy"),
+          selector("iepl"; ["proxy", "direct"]; "proxy"),
+          selector("free"; ["proxy", "direct"]; "proxy"),
+          selector("download"; ["direct", "proxy"]; "direct"),
+          selector("lan"; ["direct"]; "direct"),
+          selector("ad-block"; ["block", "direct"]; "block"),
+          selector("cn-direct"; ["direct"]; "direct"),
+          selector("apple-cn"; ["direct", "proxy"]; "direct"),
+          selector("microsoft-cn"; ["direct", "proxy"]; "direct"),
+          selector("google-cn"; ["direct", "proxy"]; "direct"),
+          selector("icloud"; ["direct", "proxy"]; "direct"),
+          selector("bing"; ["proxy", "direct", "hk", "us"]; "proxy"),
+          selector("network-test"; ["proxy", "direct"]; "proxy"),
+          selector("ai-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
+          selector("proxy-rule"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
+          selector("dev-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
+          selector("social-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
+          selector("media-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
+          selector("game-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
+          selector("telegram-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
+          selector("download-direct"; ["direct", "proxy"]; "direct"),
+          selector("final"; ["proxy", "direct", "block"]; "proxy")
+        ] + $nodes + [
+          {"type": "direct", "tag": "direct"},
+          {"type": "block", "tag": "block"}
+        ]
+      | "  \"outbounds\": " + tojson + ","
+    ' >"$_out_file" || return 1
 }
 
 magicnet_singbox_emit_selector_block() {

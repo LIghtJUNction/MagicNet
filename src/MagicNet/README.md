@@ -5,7 +5,7 @@ MagicNet 是一个 Android root 透明代理模块，用 `sing-box`、MagicNet e
 > [!IMPORTANT]
 > DNS 防泄露必读：请打开系统设置，搜索 `DNS`，找到“私人 DNS”“私密 DNS”“Private DNS”或类似表述，把私人 DNS 关闭，不要设置为自动加密。必须让 DNS 正常走 53 端口，让 MagicNet 模块接管并代理 DNS；否则 Android 系统或浏览器可能直接使用 DoT/DoH，导致 DNS 泄露检测仍然显示外部解析器。
 
-> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.6`。Release 以发布页为准。
+> 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.7`。Release 以发布页为准。
 
 ## 定位
 

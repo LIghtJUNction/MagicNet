@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
   <title id="title">MagicNet transparent interception coverage</title>
-  <desc id="desc">Coverage matrix for app setup, TCP, DNS TCP 53, DNS UDP 53, full UDP, IPv6, DNS leak guard, and fallback across app proxy, Android VPN, MagicNet TUN, and MagicNet eBPF.</desc>
+  <desc id="desc">Coverage matrix for app setup, TCP, DNS TCP 53, DNS UDP 53, UDP fallback, IPv6, DNS leak guard, and fallback across app proxy, Android VPN, MagicNet TUN, and MagicNet eBPF.</desc>
   <defs>
     <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
       <stop offset="0" stop-color="#08111f"/>
@@ -26,7 +26,7 @@
     <text x="140" y="0" class="axis">TCP</text>
     <text x="270" y="0" class="axis">DNS TCP</text>
     <text x="420" y="0" class="axis">DNS UDP</text>
-    <text x="570" y="0" class="axis">Full UDP</text>
+    <text x="570" y="0" class="axis">UDP fallback</text>
     <text x="720" y="0" class="axis">IPv6</text>
     <text x="840" y="0" class="axis">Leak guard</text>
     <text x="1010" y="0" class="axis">Fallback</text>
@@ -58,5 +58,5 @@
     </g>
   </g>
 
-  <text x="88" y="642" class="note">eBPF full UDP is intentionally partial: DNS 53 is covered; QUIC, games, WebRTC and VoIP use TUN fallback when complete UDP transparency is required.</text>
+  <text x="88" y="642" class="note">eBPF mode is TCP-first: UDP-sensitive traffic stays covered by the TUN fallback path for compatibility.</text>
 </svg>

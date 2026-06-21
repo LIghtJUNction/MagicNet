@@ -142,6 +142,12 @@ magicnet_prepare_singbox_nodes_unlocked() {
         return 1
     fi
 
+    if [ "${MAGICNET_FORCE_SUB_REFRESH:-0}" != "1" ]; then
+        magicnet_warn "No cached sing-box nodes found; run cli sub update sing-box before starting."
+        config set override.description "[MagicNet]: sing-box has no cached nodes; update subscription first" 2>/dev/null || true
+        return 1
+    fi
+
     . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
     _attempt=1
     _attempts="${MAGICNET_SUB_STARTUP_ATTEMPTS:-4}"
@@ -172,7 +178,7 @@ magicnet_prepare_singbox_nodes_unlocked() {
 
 magicnet_prepare_singbox_nodes() {
     _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
-    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-180}"
+    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
     magicnet_with_config_lock magicnet_prepare_singbox_nodes_unlocked
     _prepare_rc=$?
     if [ -n "$_old_lock_timeout" ]; then
@@ -185,6 +191,7 @@ magicnet_prepare_singbox_nodes() {
 }
 
 magicnet_singbox_running_has_nodes() {
+    magicnet_singbox_config_has_nodes && return 0
     if command -v curl >/dev/null 2>&1; then
         _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || true)
         if [ -n "$_api" ]; then
@@ -275,8 +282,10 @@ magicnet_with_config_lock() {
     fi
     magicnet_config_lock_acquire || return 1
     MAGICNET_CONFIG_LOCK_HELD=1
+    trap 'magicnet_config_lock_release' INT TERM HUP
     "$@"
     _lock_rc=$?
+    trap - INT TERM HUP
     magicnet_config_lock_release
     MAGICNET_CONFIG_LOCK_HELD=0
     unset MAGICNET_CONFIG_LOCK_HELD

@@ -3,6 +3,9 @@ mod base64;
 mod base64_tests;
 mod config_editor;
 mod diagnostics;
+mod diagnostics_dns;
+mod diagnostics_ebpf;
+mod diagnostics_netd;
 mod ecapture;
 mod mcp;
 mod nodes;
@@ -12,6 +15,7 @@ mod service;
 mod subscriptions;
 mod utils;
 mod webui_api;
+mod webui_backup;
 
 use std::env;
 use std::fs;
@@ -29,8 +33,8 @@ use nodes::node_list;
 use ping::pingtest;
 use rules::{app_cmd, block_cmd, route_cmd};
 use service::{
-    config_cmd, core_cmd, repair, service_cmd, service_logs, service_status, supervisor_cmd,
-    transparent_cmd,
+    config_cmd, core_cmd, ebpf_cmd, repair, service_cmd, service_logs, service_status,
+    supervisor_cmd, transparent_cmd,
 };
 use subscriptions::{
     setup_subscription, sub_get, sub_list, sub_set, sub_set_file, sub_target_file, sub_update,
@@ -40,7 +44,8 @@ pub(crate) use utils::{
     clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv, write_kv,
     write_text_file,
 };
-use webui_api::{api_cmd, backup_cmd, webui_cmd};
+use webui_api::{api_cmd, webui_cmd};
+use webui_backup::backup_cmd;
 
 const SHORT_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -76,7 +81,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "ebpf",
-        usage: "cli ebpf status",
+        usage: "cli ebpf {status|allow-multi <status|enable|disable>|profile <status|set tcp>}",
     },
     CommandHelp {
         command: "sysroute",
@@ -160,7 +165,6 @@ const COMMAND_HELP: &[CommandHelp] = &[
 pub(crate) struct App {
     pub(crate) moddir: PathBuf,
     api: String,
-    singbox_webui: String,
     log_dir: PathBuf,
 }
 
@@ -184,13 +188,10 @@ impl App {
             .or_else(|_| current_exe_moddir())
             .unwrap_or_else(|_| PathBuf::from("/data/adb/modules/MagicNet"));
         let api = env::var("MAGICNET_API").unwrap_or_else(|_| "http://127.0.0.1:9090".to_string());
-        let singbox_webui = env::var("MAGICNET_SINGBOX_WEBUI")
-            .unwrap_or_else(|_| format!("{api}/ui/#/setup?hostname=127.0.0.1&port=9090"));
         Self {
             log_dir: moddir.join(".log"),
             moddir,
             api,
-            singbox_webui,
         }
     }
 
@@ -200,7 +201,6 @@ impl App {
         Self {
             log_dir: moddir.join(".log"),
             moddir,
-            singbox_webui: format!("{api}/ui/#/setup?hostname=127.0.0.1&port=9090"),
             api,
         }
     }
@@ -242,6 +242,7 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "ebpf" if args.get(1).map(String::as_str).unwrap_or("status") == "status" => {
             ebpf_status(app)
         }
+        "ebpf" => ebpf_cmd(app, &args[1..]),
         "sysroute" => sysroute(args),
         "support" => support(app, &args[1..]),
         "setup" => setup_subscription(app, args.get(1).map(String::as_str).unwrap_or_default()),
@@ -340,15 +341,9 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
         .stdin(Stdio::null())
-        .output()
+        .status()
         .map_err(|err| format!("failed to run {function_name}: {err}"))?;
-    if !status.stdout.is_empty() {
-        print!("{}", String::from_utf8_lossy(&status.stdout));
-    }
-    if !status.stderr.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&status.stderr));
-    }
-    if status.status.success() {
+    if status.success() {
         Ok(())
     } else {
         if should_report_startup_error(function_name) {
@@ -358,7 +353,7 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
         }
         Err(format!(
             "{function_name} failed with status {}",
-            status.status.code().unwrap_or(1)
+            status.code().unwrap_or(1)
         ))
     }
 }

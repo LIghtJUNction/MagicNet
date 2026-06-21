@@ -19,7 +19,7 @@ export const runtimeDefaults: RuntimeState = {
   singBoxState: "unknown",
   singBox: "unknown",
   fswatch: "unknown",
-  transparentMode: "auto",
+  transparentMode: "tun",
   api: "http://127.0.0.1:9090",
   webui: SING_BOX_UI,
   subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`
@@ -65,7 +65,7 @@ export function parseRuntime(text: string, previous: RuntimeState): RuntimeState
     if (line.startsWith("sing-box:")) next.singBox = normalizeRuntimeStatus(line.slice(9));
     if (line.startsWith("fswatch:")) next.fswatch = normalizeRuntimeStatus(line.slice(8));
     if (line.startsWith("Transparent:")) {
-      next.transparentMode = line.includes("ebpf") ? "ebpf" : line.includes("auto") ? "auto" : "tun";
+      next.transparentMode = line.includes("ebpf") ? "ebpf" : "tun";
     }
     if (line.startsWith("API:")) next.api = line.slice(4).trim() || next.api;
     if (line.startsWith("WebUI:")) next.webui = line.slice(6).trim() || next.webui;

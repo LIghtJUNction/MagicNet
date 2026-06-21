@@ -213,6 +213,22 @@ if [ -d "$MAGICNET_BACKUP_DIR" ]; then
   rm -rf "$MAGICNET_BACKUP_DIR" 2>/dev/null || true
   unset _item
 fi
+
+magicnet_prune_legacy_capture_residue() {
+  rm -rf \
+    "${MODPATH}/.config/magicnet/capture.conf" \
+    "${MODPATH}/.config/magicnet/capture" \
+    "${MODPATH}/.config/magicnet/capture.d" \
+    "${MODPATH}/system/etc/security/cacerts" \
+    "${MODPATH}/post-fs-data.sh" \
+    "${MODPATH}/sepolice.rule" \
+    "${MODPATH}/lib/magicnet/capture_common.sh" \
+    "${MODPATH}/lib/magicnet/capture_mihomo.sh" \
+    "${MODPATH}/lib/magicnet/capture_singbox.sh" \
+    2>/dev/null || true
+}
+
+magicnet_prune_legacy_capture_residue
 magicnet_set_default_core sing-box
 
 # Set permissions.

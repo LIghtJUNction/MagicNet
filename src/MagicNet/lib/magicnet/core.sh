@@ -22,7 +22,7 @@ magicnet_start_singbox_unlocked() {
     import __singbox__
     is_singbox_running >/dev/null 2>&1 && return 0
     magicnet_prepare_singbox_nodes_unlocked || return 1
-    magicnet_ebpf_cleanup || true
+    magicnet_ebpf_consume_cleaned_marker || magicnet_ebpf_cleanup || true
     magicnet_singbox_apply_transparent_mode || return 1
     import __singbox__
     singbox_start || return 1
@@ -37,12 +37,13 @@ magicnet_start_singbox_unlocked() {
         singbox_stop >/dev/null 2>&1 || true
         return 1
     fi
+    magicnet_tproxy_udp_cleanup >/dev/null 2>&1 || true
     return 0
 }
 
 magicnet_start_singbox() {
     _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
-    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-180}"
+    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
     magicnet_with_config_lock magicnet_start_singbox_unlocked
     _start_rc=$?
     if [ -n "$_old_lock_timeout" ]; then
