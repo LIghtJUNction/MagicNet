@@ -1,5 +1,12 @@
 ## Unreleased
 
+## v1.1.8 (2026-06-21)
+
+- Remove eBPF, TProxy, and non-TUN transparent mode support from the runtime,
+  CLI, WebUI, MCP schema, build pipeline, and smoke tests.
+- Keep MagicNet on the single stable `sing-box` + `magicnet0` TUN path.
+- Add MagicBox as a submodule and limit its transparent controls to TUN mode.
+
 ## v1.1.7 (2026-06-21)
 
 - Refine eBPF transparent mode into a TCP bridge profile with TUN kept as the
