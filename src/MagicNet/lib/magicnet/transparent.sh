@@ -43,13 +43,21 @@ magicnet_singbox_apply_transparent_mode() {
               or ((.tag // "") | startswith("magicnet-"));
             def references_managed_inbound:
               ((.inbound // []) | map(select(startswith("magicnet-"))) | length) > 0;
+            def normalize_sniff_rule:
+              if (.action // "") == "sniff" then
+                .inbound = ["mixed-in", "tun-in"]
+              else
+                .
+              end;
             .inbounds = (
               ((.inbounds // [])
                 | map(select(managed_inbound | not)))
               + [tun_in]
             )
             | .route.rules = (
-              ((.route.rules // []) | map(select(references_managed_inbound | not))) as $rules
+              ((.route.rules // [])
+                | map(normalize_sniff_rule)
+                | map(select(references_managed_inbound | not))) as $rules
               | $rules
             )
             | if $dns_strategy != "" then .dns.strategy = $dns_strategy else . end

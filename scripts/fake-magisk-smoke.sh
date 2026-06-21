@@ -148,9 +148,10 @@ fi
 mkdir -p "$MODDIR/bin"
 cp "$CLI_BIN" "$MODDIR/bin/magicnet-cli"
 cp "$MCP_BIN" "$MODDIR/bin/magicnet-mcp-server"
+cp "$HOST_JQ" "$MODDIR/bin/jq"
 rm -f "$MODDIR/cli"
 ln -s "bin/magicnet-cli" "$MODDIR/cli"
-chmod +x "$MODDIR/bin/magicnet-cli" "$MODDIR/bin/magicnet-mcp-server"
+chmod +x "$MODDIR/bin/magicnet-cli" "$MODDIR/bin/magicnet-mcp-server" "$MODDIR/bin/jq"
 : >"$MOCK_LOG"
 
 setup_toybox_layer() {
