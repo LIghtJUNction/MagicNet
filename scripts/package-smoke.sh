@@ -95,6 +95,14 @@ if grep -E '(^|/)(mihomo|__mihomo__)(\.sh)?($|/)' "$entries_file" >/dev/null; th
     fail "zip contains legacy mihomo entries"
 fi
 
+if grep -E '(^|/)\.local/bin($|/)' "$entries_file" >/dev/null; then
+    fail "zip contains legacy .local/bin runtime entries"
+fi
+
+if unzip -p "$ZIP_PATH" .config/kamfw/.envrc 2>/dev/null | grep -Eq 'MAGIC_(MIHOMO|HOTSPOT_FORWARD|VPN_COEXIST)'; then
+    fail "kamfw env exports legacy runtime flags"
+fi
+
 if grep -E '(^|/)(capture_(common|mihomo|singbox)\.sh|capture\.conf|post-fs-data\.sh|sepolice\.rule|system/etc/security/cacerts)(/|$)' "$entries_file" >/dev/null; then
     fail "zip contains legacy proxy-capture entries"
 fi
