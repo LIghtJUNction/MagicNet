@@ -152,6 +152,15 @@ cp "$HOST_JQ" "$MODDIR/bin/jq"
 rm -f "$MODDIR/cli"
 ln -s "bin/magicnet-cli" "$MODDIR/cli"
 chmod +x "$MODDIR/bin/magicnet-cli" "$MODDIR/bin/magicnet-mcp-server" "$MODDIR/bin/jq"
+
+cat >>"$MODDIR/lib/kamfw/__singbox__.sh" <<'SH'
+
+if [ -n "${MAGICNET_FAKE_LOG:-}" ]; then
+    singbox_tun() {
+        info "fake smoke skips host /dev/net/tun check"
+    }
+fi
+SH
 : >"$MOCK_LOG"
 
 setup_toybox_layer() {
@@ -275,6 +284,15 @@ write_mock ipset 'exit 0'
 write_mock pkill 'exit 0'
 write_mock pidof 'exit 1'
 # shellcheck disable=SC2016
+write_mock ecapture '
+case "${1:-}" in
+    --version|version) echo "eCapture fake 0.0.0"; exit 0 ;;
+    tls|gotls|nspr) sleep 1; exit 0 ;;
+esac
+echo "eCapture fake 0.0.0"
+exit 0
+'
+# shellcheck disable=SC2016
 write_mock sing-box '
 case "${1:-}" in
     version) echo "sing-box fake 0.0.0"; exit 0 ;;
@@ -381,6 +399,7 @@ fi
 exit 0
 '
 cp "$MOCK_BIN/sing-box" "$MODDIR/bin/sing-box"
+cp "$MOCK_BIN/ecapture" "$MODDIR/bin/ecapture"
 cp "$MOCK_BIN/curl" "$MODDIR/bin/curl"
 cp "$MOCK_BIN/ss" "$MODDIR/bin/ss"
 cp "$MOCK_BIN/killall" "$MODDIR/bin/killall"
@@ -423,6 +442,7 @@ export MAGIC_HOTSPOT_IFACES="ap0"
 export MAGIC_VPN_COEXIST_IFACES="tun0"
 export MAGIC_TUN_IFACES="magicnet0"
 export PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH"
+
 
 run() {
     echo "+ $*"

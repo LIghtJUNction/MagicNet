@@ -178,10 +178,12 @@ require_magisk_root() {
 install_zip_on_avd() {
     local serial="$1"
     local zip="$2"
-    local device_zip="/data/local/tmp/MagicNet.zip"
+    local device_tmp_dir="/sdcard/Download/MagicNet"
+    local device_zip="$device_tmp_dir/MagicNet.zip"
     log "removing stale MagicNet module state from emulator"
     adb_su "$serial" 'rm -rf /data/adb/modules_update/MagicNet /data/adb/modules/MagicNet'
     log "pushing module zip to $serial"
+    adb_su "$serial" "mkdir -p '$device_tmp_dir'"
     "$ADB" -s "$serial" push "$zip" "$device_zip" >/dev/null
     adb_su "$serial" "chmod 0644 '$device_zip'"
     log "installing module through Magisk CLI"
@@ -192,6 +194,7 @@ install_zip_on_avd() {
         adb_su "$serial" "toybox unzip -l '$device_zip' >/dev/null && echo toybox_unzip_ok || echo toybox_unzip_failed" || true
         return 1
     fi
+    adb_su "$serial" "rm -f '$device_zip'" || true
     log "rebooting emulator after module install"
     "$ADB" -s "$serial" reboot
     wait_for_boot "$serial"
@@ -289,9 +292,11 @@ push_x86_core_binaries() {
     cp "$singbox_bin" "$work/sing-box"
     chmod 0755 "$work/sing-box"
 
-    "$ADB" -s "$serial" push "$work/sing-box" /data/local/tmp/sing-box >/dev/null
-    adb_su "$serial" 'cp /data/local/tmp/sing-box /data/adb/modules/MagicNet/bin/sing-box'
+    adb_su "$serial" 'mkdir -p /sdcard/Download/MagicNet'
+    "$ADB" -s "$serial" push "$work/sing-box" /sdcard/Download/MagicNet/sing-box >/dev/null
+    adb_su "$serial" 'cp /sdcard/Download/MagicNet/sing-box /data/adb/modules/MagicNet/bin/sing-box'
     adb_su "$serial" 'chmod 0755 /data/adb/modules/MagicNet/bin/sing-box'
+    adb_su "$serial" 'rm -f /sdcard/Download/MagicNet/sing-box' || true
     rm -rf "$work"
 }
 
@@ -303,8 +308,10 @@ prepare_avd_node_fixtures() {
     "$ADB" -s "$serial" exec-out su -c 'cat /data/adb/modules/MagicNet/.config/sing-box/config.json' >"$work/sing-box.json"
     jq '.outbounds += [{"type":"vmess","tag":"fake-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
         "$work/sing-box.json" >"$work/sing-box.new.json"
-    "$ADB" -s "$serial" push "$work/sing-box.new.json" /data/local/tmp/magicnet-sing-box.json >/dev/null
-    adb_su "$serial" 'cp /data/local/tmp/magicnet-sing-box.json /data/adb/modules/MagicNet/.config/sing-box/config.json'
+    adb_su "$serial" 'mkdir -p /sdcard/Download/MagicNet'
+    "$ADB" -s "$serial" push "$work/sing-box.new.json" /sdcard/Download/MagicNet/magicnet-sing-box.json >/dev/null
+    adb_su "$serial" 'cp /sdcard/Download/MagicNet/magicnet-sing-box.json /data/adb/modules/MagicNet/.config/sing-box/config.json'
+    adb_su "$serial" 'rm -f /sdcard/Download/MagicNet/magicnet-sing-box.json' || true
     adb_su "$serial" 'printf "%s\n" "https://example.invalid/subscription.yaml" > /data/adb/modules/MagicNet/.config/sing-box/subscription.url'
     rm -rf "$work"
 }
