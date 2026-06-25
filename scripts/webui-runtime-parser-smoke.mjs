@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import ts from "../webui/node_modules/typescript/lib/typescript.js";
+
+const sourcePath = new URL("../webui/src/composables/parsers.ts", import.meta.url);
+let source = await readFile(sourcePath, "utf8");
+source = source
+  .replace(
+    'import { MODULE_DIR, SING_BOX_UI } from "@/constants";',
+    'const MODULE_DIR = "/data/adb/modules/MagicNet"; const SING_BOX_UI = "zashboard";'
+  )
+  .replace(/^import type .* from "@\/types";\n/m, "");
+
+const output = ts.transpileModule(source, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2022,
+    target: ts.ScriptTarget.ES2022,
+    verbatimModuleSyntax: true,
+  },
+}).outputText;
+
+const dir = await mkdtemp(join(tmpdir(), "magicnet-webui-parser-"));
+try {
+  const modulePath = join(dir, "parsers.mjs");
+  await writeFile(modulePath, output, "utf8");
+  const { normalizeTransparentMode, parseRuntime, runtimeDefaults } = await import(`file://${modulePath}`);
+
+  assert.equal(normalizeTransparentMode("proxy"), "proxy");
+  assert.equal(normalizeTransparentMode("external"), "external-tun");
+  assert.equal(normalizeTransparentMode("external-tun"), "external-tun");
+  assert.equal(normalizeTransparentMode("HYBRID"), "hybrid");
+  assert.equal(normalizeTransparentMode("tun"), "tun");
+  assert.equal(normalizeTransparentMode("tproxy"), null);
+
+  assert.equal(parseRuntime("Transparent: proxy\n", runtimeDefaults).transparentMode, "proxy");
+  assert.equal(parseRuntime("mode=external\n", runtimeDefaults).transparentMode, "external-tun");
+  assert.equal(parseRuntime("mode=hybrid\n", runtimeDefaults).transparentMode, "hybrid");
+  assert.equal(parseRuntime("Transparent: invalid\n", { ...runtimeDefaults, transparentMode: "proxy" }).transparentMode, "proxy");
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("webui runtime parser smoke passed");

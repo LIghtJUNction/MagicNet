@@ -1,5 +1,5 @@
 import { MODULE_DIR, SING_BOX_UI } from "@/constants";
-import type { AppPolicy, BlocklistState, HealthItem, PackageInfo, RuntimeState } from "@/types";
+import type { AppPolicy, BlocklistState, HealthItem, PackageInfo, RuntimeState, TransparentMode } from "@/types";
 
 export type SubscriptionState = {
   singBox: string;
@@ -45,6 +45,13 @@ export const mcpDefaults: McpState = {
   secretSet: false
 };
 
+export function normalizeTransparentMode(value: string): TransparentMode | null {
+  const mode = value.trim().toLowerCase();
+  if (mode === "external") return "external-tun";
+  if (["proxy", "external-tun", "hybrid", "tun"].includes(mode)) return mode as TransparentMode;
+  return null;
+}
+
 function normalizeRuntimeStatus(value: string): string {
   const status = value.trim();
   const compact = status.toLowerCase();
@@ -64,7 +71,12 @@ export function parseRuntime(text: string, previous: RuntimeState): RuntimeState
     const line = raw.trim();
     if (line.startsWith("sing-box:")) next.singBox = normalizeRuntimeStatus(line.slice(9));
     if (line.startsWith("fswatch:")) next.fswatch = normalizeRuntimeStatus(line.slice(8));
-    if (line.startsWith("Transparent:")) next.transparentMode = "tun";
+    if (line.startsWith("Transparent:")) {
+      next.transparentMode = normalizeTransparentMode(line.slice(12)) || next.transparentMode;
+    }
+    if (line.startsWith("mode=")) {
+      next.transparentMode = normalizeTransparentMode(line.slice(5)) || next.transparentMode;
+    }
     if (line.startsWith("API:")) next.api = line.slice(4).trim() || next.api;
     if (line.startsWith("WebUI:")) next.webui = line.slice(6).trim() || next.webui;
     if (line.startsWith("Sub URL:")) next.subPath = line.slice(8).trim() || next.subPath;

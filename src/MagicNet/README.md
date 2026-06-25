@@ -61,6 +61,7 @@ su -c /data/adb/modules/MagicNet/cli service status
 su -c /data/adb/modules/MagicNet/cli service restart
 su -c /data/adb/modules/MagicNet/cli core select sing-box
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
+su -c /data/adb/modules/MagicNet/cli transparent set proxy
 su -c /data/adb/modules/MagicNet/cli transparent set tun
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli diagnose

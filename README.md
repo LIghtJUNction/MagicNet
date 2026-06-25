@@ -23,9 +23,9 @@
 > [!IMPORTANT]
 > DNS 防泄露必读：请打开系统设置，搜索 `DNS`，找到“私人 DNS”“私密 DNS”“Private DNS”或类似表述，把私人 DNS 关闭，不要设置为自动加密。必须让 DNS 正常走 53 端口，让 MagicNet 接管并代理 DNS；否则 Android 系统或浏览器可能直接使用 DoT/DoH，导致 DNS 泄露检测仍然显示外部解析器。
 
-MagicNet 是一个 Android root TUN 透明代理模块，把设备应用流量无感接入 `sing-box`。应用不需要单独设置代理，系统 VPN 开关不需要常驻；MagicNet 通过 `magicnet0` TUN 接管、分流、代理或拒绝流量。
+MagicNet 是一个 Android root 网络编排模块，把设备流量或显式代理流量接入 `sing-box` 策略平面。MagicNet 不包含 Android 应用侧 `VpnService.establish()`，不会由 MagicNet App 独占系统 VPN slot；默认兼容路径仍可通过 root/sing-box `magicnet0` TUN 接管、分流、代理或拒绝流量。
 
-当前主线已经收敛为 **sing-box + TUN**。`sing-box` 是唯一代理核心；`magicnet0` TUN 是唯一透明代理路径。旧的多核心、多透明路径和抓包代理功能都不再作为主线能力维护。
+当前主线已经收敛为 **sing-box + 用户态编排**。`sing-box` 是唯一代理核心；MagicNet 提供 `proxy`、`external-tun`、`hybrid` 和兼容 `tun` 四种运行模式。下一代设计详见 [docs/next-gen-architecture.md](docs/next-gen-architecture.md)。旧的 TProxy 主路径、多核心切换和抓包代理功能都不再作为主线能力维护。
 
 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.8`。Release 以发布页为准。
 
@@ -54,9 +54,19 @@ su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/subscription"'
 
 `cli setup` 会校验 URL、写入订阅源、更新 `sing-box` 配置、应用透明模式，并输出健康诊断结果。模块 WebUI 首页的“保存并启用”使用同一条 CLI 路径。
 
-## 透明代理路径
+## 运行模式
+
+推荐零冲突代理模式（不占用系统 VPN，可与 Clash / WireGuard / sing-box VPN 共存）：
 
 ```bash
+su -c /data/adb/modules/MagicNet/cli transparent set proxy
+```
+
+其它编排模式：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli transparent set external-tun
+su -c /data/adb/modules/MagicNet/cli transparent set hybrid
 su -c /data/adb/modules/MagicNet/cli transparent set tun
 ```
 
@@ -215,8 +225,8 @@ MCP 工具可管理配置源、封锁名单、备份、状态检查、eCapture �
 
 ## 技术边界
 
-- 透明代理路径只维护 MagicNet 自身数据面，不接管热点转发、外部 VPN overlay 或厂商 tethering 规则。
-- 透明代理只支持 TUN。
+- 运行模式只维护 MagicNet 自身数据面，不接管热点转发、外部 VPN overlay 或厂商 tethering 规则。
+- `proxy`/`external-tun` 模式不创建 MagicNet 管理的 TUN；`hybrid`/`tun` 模式使用 sing-box `magicnet0` TUN。
 - 发布前请用 `tcpdump` 验证物理出口没有 `port 53 or port 853` 泄露。
 - 多核心切换、多透明路径、热点代理模式和 VPN 共存模式都不是当前主线能力。
 
