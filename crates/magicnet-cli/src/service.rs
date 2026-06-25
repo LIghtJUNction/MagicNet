@@ -109,7 +109,9 @@ pub(crate) fn transparent_cmd(app: &App, args: &[String]) -> Result<(), String> 
         }
         "set" => transparent_set(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "apply" => run_magicnet_function(app, "magicnet_transparent_apply"),
-        _ => Err("Usage: cli transparent {status|set tun|apply}".to_string()),
+        _ => Err(
+            "Usage: cli transparent {status|set <proxy|external-tun|hybrid|tun>|apply}".to_string(),
+        ),
     }
 }
 
@@ -237,9 +239,7 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
 }
 
 fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
-    if mode != "tun" {
-        return Err("Usage: cli transparent set tun".to_string());
-    }
+    let mode = normalize_transparent_mode(mode)?;
     write_transparent_mode(app, mode)?;
     stop_all_direct(app)?;
     if let Err(err) = run_magicnet_function(app, "magicnet_transparent_apply") {
@@ -253,6 +253,16 @@ fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn normalize_transparent_mode(mode: &str) -> Result<&'static str, String> {
+    match mode {
+        "proxy" => Ok("proxy"),
+        "external-tun" | "external" => Ok("external-tun"),
+        "hybrid" => Ok("hybrid"),
+        "tun" => Ok("tun"),
+        _ => Err("Usage: cli transparent set <proxy|external-tun|hybrid|tun>".to_string()),
+    }
+}
+
 fn start_supervisors(app: &App) -> Result<(), String> {
     run_magicnet_function(app, START_SUPERVISORS_COMMAND)
 }
@@ -264,8 +274,22 @@ fn write_transparent_mode(app: &App, mode: &str) -> Result<(), String> {
     )
 }
 
-fn transparent_mode(_app: &App) -> &'static str {
-    "tun"
+fn transparent_mode(app: &App) -> String {
+    fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
+        .ok()
+        .and_then(|text| {
+            text.lines().find_map(|line| {
+                let (_, value) = line.split_once('=')?;
+                match value.trim().trim_matches('"').trim_matches('\'') {
+                    "proxy" => Some("proxy".to_string()),
+                    "external-tun" | "external" => Some("external-tun".to_string()),
+                    "hybrid" => Some("hybrid".to_string()),
+                    "tun" => Some("tun".to_string()),
+                    _ => None,
+                }
+            })
+        })
+        .unwrap_or_else(|| "tun".to_string())
 }
 
 fn core_status(app: &App) {
@@ -299,7 +323,23 @@ fn tail_lines(text: &str, lines: usize) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::restart_command;
+    use super::{normalize_transparent_mode, restart_command};
+
+    #[test]
+    fn transparent_modes_accept_orchestrator_modes() {
+        assert_eq!(normalize_transparent_mode("proxy").unwrap(), "proxy");
+        assert_eq!(
+            normalize_transparent_mode("external").unwrap(),
+            "external-tun"
+        );
+        assert_eq!(
+            normalize_transparent_mode("external-tun").unwrap(),
+            "external-tun"
+        );
+        assert_eq!(normalize_transparent_mode("hybrid").unwrap(), "hybrid");
+        assert_eq!(normalize_transparent_mode("tun").unwrap(), "tun");
+        assert!(normalize_transparent_mode("tproxy").is_err());
+    }
 
     #[test]
     fn restart_commands_restore_supervisors_after_core_start() {

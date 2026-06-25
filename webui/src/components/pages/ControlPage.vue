@@ -29,9 +29,9 @@ async function runAction(key: string, args: string, label: string, background = 
   });
 }
 
-async function setTransparentMode(): Promise<void> {
-  await withAction("transparent-tun", async () => {
-    await runCli("transparent set tun", "切换 TUN 模式");
+async function setTransparentMode(mode: "proxy" | "external-tun" | "hybrid" | "tun"): Promise<void> {
+  await withAction(`transparent-${mode}`, async () => {
+    await runCli(`transparent set ${mode}`, `切换 ${mode} 模式`);
     await refreshStatus();
   });
 }
@@ -94,16 +94,30 @@ async function setTransparentMode(): Promise<void> {
       <Card class="grid gap-3">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Transparent Mode</span>
-            <h3 class="mt-1 text-lg font-semibold">TUN</h3>
+            <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Orchestrator Mode</span>
+            <h3 class="mt-1 text-lg font-semibold">多 VPN 共存</h3>
           </div>
           <Badge tone="neutral">{{ state.runtime.transparentMode }}</Badge>
         </div>
-        <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-tun')" @click="setTransparentMode">
-          <span class="block font-semibold">TUN</span>
-          <span class="mt-1 block text-xs leading-5 text-zinc-400">完整透明代理路径</span>
-        </button>
-        <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="runAction('transparent-apply', 'transparent apply', '应用透明代理模式')">
+        <div class="grid gap-2 md:grid-cols-2">
+          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-proxy')" @click="setTransparentMode('proxy')">
+            <span class="block font-semibold">Proxy</span>
+            <span class="mt-1 block text-xs leading-5 text-zinc-400">不创建 TUN，可与系统 VPN 共存</span>
+          </button>
+          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-external-tun')" @click="setTransparentMode('external-tun')">
+            <span class="block font-semibold">External TUN</span>
+            <span class="mt-1 block text-xs leading-5 text-zinc-400">外部 VPN 捕获，MagicNet 只路由</span>
+          </button>
+          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-hybrid')" @click="setTransparentMode('hybrid')">
+            <span class="block font-semibold">Hybrid</span>
+            <span class="mt-1 block text-xs leading-5 text-zinc-400">TUN 输入后链路到多后端</span>
+          </button>
+          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-tun')" @click="setTransparentMode('tun')">
+            <span class="block font-semibold">TUN</span>
+            <span class="mt-1 block text-xs leading-5 text-zinc-400">兼容完整透明代理路径</span>
+          </button>
+        </div>
+        <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="runAction('transparent-apply', 'transparent apply', '应用编排模式')">
           <Radar :size="17" />重新应用模式
         </Button>
       </Card>

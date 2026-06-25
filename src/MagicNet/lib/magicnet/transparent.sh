@@ -1,6 +1,7 @@
 magicnet_singbox_apply_transparent_mode() {
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
+    _mode="$(magicnet_transparent_mode)"
     _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "tun")"
     _jq="${MODDIR}/bin/jq"
     if [ ! -x "$_jq" ]; then
@@ -8,7 +9,15 @@ magicnet_singbox_apply_transparent_mode() {
     fi
     _tmp="${_config}.transparent-mode.new"
     if [ -n "$_jq" ]; then
-        if "$_jq" --arg dns_strategy "$_dns_strategy" '
+        if "$_jq" --arg dns_strategy "$_dns_strategy" --arg mode "$_mode" '
+            def mixed_in:
+              {
+                "type": "mixed",
+                "tag": "mixed-in",
+                "listen": "127.0.0.1",
+                "listen_port": 7892,
+                "sniff": true
+              };
             def tun_in:
               {
                 "type": "tun",
@@ -45,14 +54,15 @@ magicnet_singbox_apply_transparent_mode() {
               ((.inbound // []) | map(select(startswith("magicnet-"))) | length) > 0;
             def normalize_sniff_rule:
               if (.action // "") == "sniff" then
-                .inbound = ["mixed-in", "tun-in"]
+                .inbound = (if $mode == "proxy" or $mode == "external-tun" then ["mixed-in"] else ["mixed-in", "tun-in"] end)
               else
                 .
               end;
             .inbounds = (
               ((.inbounds // [])
                 | map(select(managed_inbound | not)))
-              + [tun_in]
+              + [mixed_in]
+              + (if $mode == "proxy" or $mode == "external-tun" then [] else [tun_in] end)
             )
             | .route.rules = (
               ((.route.rules // [])
@@ -68,6 +78,11 @@ magicnet_singbox_apply_transparent_mode() {
             unset _dns_strategy _jq
             return 1
         fi
+    elif [ "$_mode" != "tun" ] && [ "$_mode" != "hybrid" ]; then
+        magicnet_warn "jq not found; transparent mode $_mode requires jq to remove managed TUN inbounds"
+        rm -f "$_tmp" 2>/dev/null || true
+        unset _dns_strategy _jq _mode
+        return 1
     elif awk '
         function emit_tun(comma) {
             print "    {"
@@ -193,7 +208,7 @@ magicnet_singbox_apply_transparent_mode() {
             return 1
         fi
     fi
-    if awk '
+    if [ -z "$_jq" ] && awk '
         function count_delta(line, i, c, delta) {
             delta = 0
             for (i = 1; i <= length(line); i++) {
@@ -265,14 +280,14 @@ magicnet_singbox_apply_transparent_mode() {
         }
     ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
         :
-    else
+    elif [ -z "$_jq" ]; then
         rm -f "$_tmp" 2>/dev/null || true
-        unset _dns_strategy _jq
+        unset _dns_strategy _jq _mode
         return 1
     fi
     import __singbox__
     singbox_prepare_route_config "$_config" || true
-    unset _dns_strategy _jq
+    unset _dns_strategy _jq _mode
 }
 
 magicnet_transparent_apply_unlocked() {
