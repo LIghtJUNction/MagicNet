@@ -244,8 +244,7 @@ fn default_config(_target: &str) -> String {
       "type": "mixed",
       "tag": "mixed-in",
       "listen": "127.0.0.1",
-      "listen_port": 7892,
-      "sniff": true
+      "listen_port": 7892
     },
     {
       "type": "tun",
@@ -257,8 +256,7 @@ fn default_config(_target: &str) -> String {
       ],
       "auto_route": true,
       "strict_route": true,
-      "stack": "gvisor",
-      "sniff": true
+      "stack": "gvisor"
     }
   ],
   "outbounds": [
