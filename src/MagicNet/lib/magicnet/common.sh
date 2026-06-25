@@ -35,17 +35,28 @@ magicnet_transparent_conf() {
 }
 
 magicnet_transparent_mode() {
-    printf '%s\n' "tun"
+    _mode="${MAGICNET_TRANSPARENT_MODE:-}"
+    if [ -z "$_mode" ] && [ -f "$(magicnet_transparent_conf)" ]; then
+        # shellcheck disable=SC1090
+        . "$(magicnet_transparent_conf)" 2>/dev/null || true
+        _mode="${MAGICNET_TRANSPARENT_MODE:-}"
+    fi
+    case "${_mode:-tun}" in
+        proxy|external-tun|hybrid|tun) printf '%s\n' "${_mode:-tun}" ;;
+        *) printf '%s\n' "tun" ;;
+    esac
+    unset _mode
 }
 
 magicnet_transparent_set_mode() {
     case "${1:-tun}" in
-        tun) ;;
+        proxy|external-tun|hybrid|tun) _mode="$1" ;;
         *) return 1 ;;
     esac
     mkdir -p "${MODDIR}/.config/magicnet" || return 1
-    printf 'MAGICNET_TRANSPARENT_MODE=tun\n' >"$(magicnet_transparent_conf)"
-    MAGICNET_TRANSPARENT_MODE="tun"
+    printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$_mode" >"$(magicnet_transparent_conf)"
+    MAGICNET_TRANSPARENT_MODE="$_mode"
+    unset _mode
 }
 
 magicnet_first_http_url() {
