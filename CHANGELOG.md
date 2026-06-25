@@ -1,5 +1,13 @@
 ## Unreleased
 
+- Remove stale runtime packaging flags from the module artifact and document
+  that runtime executables belong in `bin/`, not legacy `.local/bin`.
+- Simplify generated sing-box subscription selectors by removing fixed region
+  buckets such as `hk` and `jp`; imported nodes now stay under `proxy` and
+  rule selectors point to `proxy` or `direct`.
+- Speed up sing-box startup by treating a stable sing-box process as ready
+  instead of waiting for the Clash/WebUI API port.
+
 ## v1.1.8 (2026-06-21)
 
 - Remove eBPF, TProxy, and non-TUN transparent mode support from the runtime,

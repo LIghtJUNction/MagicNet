@@ -167,6 +167,8 @@ su -c /data/adb/modules/MagicNet/cli sub update sing-box
 
 导入器会更新 `.config/sing-box/config.json` 中的 `outbounds`。历史 `.config/mihomo` 文件不会被读取、迁移或保留。
 
+MagicNet 不按地区过滤订阅节点。导入后的节点统一放进 `proxy` 选择器；规则选择器只在 `proxy`、`direct`、`block` 之间切换，不再生成固定的 `hk`、`jp` 等地区桶。如果节点数量明显少于订阅内容，通常是订阅里包含当前 shell 导入器不支持的协议或字段；安装了 proxylink 时会优先用它生成 sing-box outbounds，以覆盖更多协议。
+
 自定义规则：
 
 ```bash

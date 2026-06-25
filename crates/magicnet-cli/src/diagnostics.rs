@@ -9,7 +9,7 @@ pub(crate) fn health(app: &App) -> Result<(), String> {
     let singbox = pid_summary("sing-box");
     print_check("Core", &running(&singbox), format!("sing-box={singbox}"));
     let mode = transparent_mode(app);
-    let (tun_ok, tun_detail) = tun_check(app, mode);
+    let (tun_ok, tun_detail) = tun_check(app, &mode);
     print_check("TUN", &tun_ok, tun_detail);
     let ecapture = app.moddir.join("bin/ecapture");
     print_check(
@@ -17,7 +17,7 @@ pub(crate) fn health(app: &App) -> Result<(), String> {
         &ecapture.is_file(),
         format!("binary={}", ecapture.display()),
     );
-    let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, mode);
+    let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
     print_check("DNS Leak", &dns_ok, dns_detail);
     let (api_ok, api_detail) = api_probe(&app.api);
     print_check("Core API", &api_ok, api_detail);
@@ -135,15 +135,32 @@ fn running(core: &str) -> bool {
     core != "stopped"
 }
 
-fn transparent_mode(_app: &App) -> &'static str {
-    "tun"
+fn transparent_mode(app: &App) -> String {
+    fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
+        .ok()
+        .and_then(|text| {
+            text.lines().find_map(|line| {
+                let (_, value) = line.split_once('=')?;
+                match value.trim() {
+                    "proxy" => Some("proxy".to_string()),
+                    "external" | "external-tun" => Some("external-tun".to_string()),
+                    "hybrid" => Some("hybrid".to_string()),
+                    "tun" => Some("tun".to_string()),
+                    _ => None,
+                }
+            })
+        })
+        .unwrap_or_else(|| "tun".to_string())
 }
 
 fn iface_detail(name: &str) -> String {
     command_text_timeout("ip", &["addr", "show", name], crate::SHORT_TIMEOUT)
 }
 
-fn tun_check(app: &App, _mode: &str) -> (bool, String) {
+fn tun_check(app: &App, mode: &str) -> (bool, String) {
+    if matches!(mode, "proxy" | "external-tun") {
+        return (true, format!("not required in {mode} mode"));
+    }
     let mut names = configured_tun_names(app);
     for fallback in ["magicnet0", "utun", "Meta", "mihoyo"] {
         push_unique(&mut names, fallback.to_string());

@@ -55,8 +55,11 @@ fn singbox_dns_config(app: &App, mode: &str, transparent_dns: bool) -> SingboxDn
     let compact = compact_jsonish(&text);
     let strategy = singbox_dns_strategy(&compact);
     let ipv6_fallback_ready = false;
-    let sniff_inbound =
-        sniff_rule_has(&compact, "mixed-in") && mode == "tun" && sniff_rule_has(&compact, "tun-in");
+    let sniff_inbound = if matches!(mode, "tun" | "hybrid") {
+        sniff_rule_has(&compact, "mixed-in") && sniff_rule_has(&compact, "tun-in")
+    } else {
+        sniff_rule_has(&compact, "mixed-in")
+    };
     SingboxDnsConfig {
         fake_ip: compact.contains("\"type\":\"fakeip\"") && compact.contains("\"tag\":\"fakeip\""),
         hijack: compact.contains("\"protocol\":\"dns\"")

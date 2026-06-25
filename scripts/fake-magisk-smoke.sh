@@ -737,16 +737,16 @@ run "$MODDIR/cli" backup export
 run "$MODDIR/cli" diagnose
 
 assert_transparent_mode() {
-    local mode="tun"
+    local mode="$1"
     local before_marker after_marker
 
     before_marker="$(wc -l <"$MOCK_LOG")"
-    run sh -c '
+    run env MAGICNET_TEST_MODE="$mode" sh -c '
         . "$MODDIR/lib/kamfw/.kamfwrc"
         import __runtime__
         . "$MODDIR/lib/magicnet.sh"
         mkdir -p "$MODDIR/.config/magicnet"
-        magicnet_transparent_set_mode tun
+        magicnet_transparent_set_mode "$MAGICNET_TEST_MODE"
         magicnet_transparent_apply
     '
     after_marker="$(wc -l <"$MOCK_LOG")"
@@ -755,38 +755,55 @@ assert_transparent_mode() {
     "$MODDIR/cli" transparent status | tee "$TMP/${mode}-transparent-status.log"
     rg -qx "mode=${mode}" "$TMP/${mode}-transparent-status.log"
 
-    python3 - "$MODDIR/.config/sing-box/config.json" <<'PY'
+    python3 - "$MODDIR/.config/sing-box/config.json" "$mode" <<'PY'
 import json
 import pathlib
 import sys
 
 singbox_path = sys.argv[1]
+mode = sys.argv[2]
 singbox = json.loads(pathlib.Path(singbox_path).read_text())
 
 inbound_types = [inbound.get("type") for inbound in singbox.get("inbounds", [])]
+inbound_tags = [inbound.get("tag") for inbound in singbox.get("inbounds", [])]
 sniff_rule = next((rule for rule in singbox.get("route", {}).get("rules", []) if rule.get("action") == "sniff"), None)
+legacy_inbound_fields = {"sniff", "sniff_timeout", "domain_strategy"}
 
-if singbox.get("dns", {}).get("strategy") != "ipv4_only":
-    raise SystemExit(f"sing-box dns.strategy was not restored in tun mode: {singbox.get('dns', {}).get('strategy')!r}")
-if "tun" not in inbound_types:
-    raise SystemExit("sing-box tun inbound missing in tun mode")
-tun_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tun"), {})
-if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
-    raise SystemExit(f"sing-box tun address is not dual-stack in tun mode: {tun_inbound.get('address')!r}")
+if inbound_tags.count("mixed-in") != 1:
+    raise SystemExit(f"mixed-in inbound should appear exactly once in {mode} mode: {inbound_tags!r}")
+for inbound in singbox.get("inbounds", []):
+    present = sorted(legacy_inbound_fields.intersection(inbound))
+    if present:
+        raise SystemExit(f"legacy inbound fields present in {mode} mode: tag={inbound.get('tag')!r} fields={present!r}")
+if mode in ("tun", "hybrid"):
+    if "tun" not in inbound_types:
+        raise SystemExit(f"sing-box tun inbound missing in {mode} mode")
+    tun_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tun"), {})
+    if tun_inbound.get("tag") != "tun-in":
+        raise SystemExit(f"sing-box tun tag mismatch in {mode} mode: {tun_inbound.get('tag')!r}")
+    if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
+        raise SystemExit(f"sing-box tun address is not dual-stack in {mode} mode: {tun_inbound.get('address')!r}")
+    expected_sniff_inbounds = ["mixed-in", "tun-in"]
+else:
+    if "tun" in inbound_types:
+        raise SystemExit(f"sing-box tun inbound should be absent in {mode} mode: {inbound_types!r}")
+    expected_sniff_inbounds = ["mixed-in"]
 if any(kind in inbound_types for kind in ("tproxy", "redirect")):
-    raise SystemExit(f"legacy transparent inbound still present in tun mode: {inbound_types!r}")
+    raise SystemExit(f"legacy transparent inbound still present in {mode} mode: {inbound_types!r}")
 if any((inbound.get("tag") or "").startswith("magicnet-") for inbound in singbox.get("inbounds", [])):
-    raise SystemExit("managed transparent inbound still present in tun mode")
+    raise SystemExit(f"managed transparent inbound still present in {mode} mode")
 if not sniff_rule:
-    raise SystemExit("sing-box sniff rule missing in tun mode")
-if sniff_rule.get("inbound") != ["mixed-in", "tun-in"]:
-    raise SystemExit(f"sing-box sniff inbound list mismatch in tun mode: {sniff_rule.get('inbound')!r}")
+    raise SystemExit(f"sing-box sniff rule missing in {mode} mode")
+if sniff_rule.get("inbound") != expected_sniff_inbounds:
+    raise SystemExit(f"sing-box sniff inbound list mismatch in {mode} mode: {sniff_rule.get('inbound')!r}")
 PY
 
     ! rg -q -- '-j TPROXY|REDIRECT --to-ports' "$TMP/${mode}-commands.log"
 }
 
-assert_transparent_mode
+for mode in proxy external-tun hybrid tun; do
+    assert_transparent_mode "$mode"
+done
 
 "$HOST_JQ" empty "$MODDIR/.config/sing-box/config.json"
 

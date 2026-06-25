@@ -103,7 +103,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "transparent",
-        usage: "cli transparent {status|set tun|apply}",
+        usage: "cli transparent {status|set <proxy|external-tun|hybrid|tun>|apply}",
     },
     CommandHelp {
         command: "core",

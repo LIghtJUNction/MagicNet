@@ -38,10 +38,7 @@ magicnet_singbox_build_outbounds_file() {
         return 0
     fi
 
-    magicnet_singbox_order_tags_file "$_tags_file" "${_tags_file}.ordered"
-    mv -f "${_tags_file}.ordered" "$_tags_file"
     _first_tag=$(awk 'NF { print; exit }' "$_tags_file")
-    magicnet_singbox_build_region_groups "$_tags_file"
 
     {
         printf '  "outbounds": [\n'
@@ -91,15 +88,6 @@ magicnet_singbox_build_outbounds_file_with_jq() {
       | [
           selector("proxy"; $tags; "direct"),
           selector("select"; ["proxy", "direct"]; "proxy"),
-          selector("hk"; ["proxy", "direct"]; "proxy"),
-          selector("jp"; ["proxy", "direct"]; "proxy"),
-          selector("us"; ["proxy", "direct"]; "proxy"),
-          selector("sg"; ["proxy", "direct"]; "proxy"),
-          selector("tw"; ["proxy", "direct"]; "proxy"),
-          selector("uk"; ["proxy", "direct"]; "proxy"),
-          selector("iepl"; ["proxy", "direct"]; "proxy"),
-          selector("free"; ["proxy", "direct"]; "proxy"),
-          selector("download"; ["direct", "proxy"]; "direct"),
           selector("lan"; ["direct"]; "direct"),
           selector("ad-block"; ["block", "direct"]; "block"),
           selector("cn-direct"; ["direct"]; "direct"),
@@ -107,16 +95,16 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           selector("microsoft-cn"; ["direct", "proxy"]; "direct"),
           selector("google-cn"; ["direct", "proxy"]; "direct"),
           selector("icloud"; ["direct", "proxy"]; "direct"),
-          selector("bing"; ["proxy", "direct", "hk", "us"]; "proxy"),
+          selector("bing"; ["proxy", "direct"]; "proxy"),
           selector("dns-guard"; ["proxy", "block", "direct"]; "proxy"),
           selector("network-test"; ["proxy", "direct"]; "proxy"),
-          selector("ai-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
-          selector("proxy-rule"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
-          selector("dev-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
-          selector("social-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
-          selector("media-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
-          selector("game-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
-          selector("telegram-proxy"; ["proxy", "hk", "jp", "us", "direct"]; "proxy"),
+          selector("ai-proxy"; ["proxy", "direct"]; "proxy"),
+          selector("proxy-rule"; ["proxy", "direct"]; "proxy"),
+          selector("dev-proxy"; ["proxy", "direct"]; "proxy"),
+          selector("social-proxy"; ["proxy", "direct"]; "proxy"),
+          selector("media-proxy"; ["proxy", "direct"]; "proxy"),
+          selector("game-proxy"; ["proxy", "direct"]; "proxy"),
+          selector("telegram-proxy"; ["proxy", "direct"]; "proxy"),
           selector("download-direct"; ["direct", "proxy"]; "direct"),
           selector("final"; ["proxy", "direct", "block"]; "proxy")
         ] + $nodes + [
@@ -132,20 +120,9 @@ magicnet_singbox_emit_selector_block() {
     _first_tag="$2"
     magicnet_emit_selector_json "proxy" "$(cat "$_tags_file")" "$_first_tag"
     printf ',\n'
-    magicnet_emit_selector_json "select" "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "sg" "tw" "uk" "iepl" "free" "download" "direct")" "proxy"
-    for _pair in \
-        "hk:$_hk:proxy" "jp:$_jp:proxy" "us:$_us:proxy" "sg:$_sg:proxy" \
-        "tw:$_tw:proxy" "uk:$_uk:proxy" "iepl:$_iepl:proxy" \
-        "free:$_free:proxy" "download:$_download:direct"; do
-        _name=${_pair%%:*}
-        _rest=${_pair#*:}
-        _items=${_rest%:*}
-        _default=${_pair##*:}
-        printf ',\n'
-        magicnet_emit_selector_json "$_name" "$_items" "$_default"
-    done
+    magicnet_emit_selector_json "select" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     magicnet_singbox_emit_static_selectors
-    unset _tags_file _first_tag _pair _name _rest _items _default
+    unset _tags_file _first_tag
 }
 
 magicnet_singbox_emit_static_selectors() {
@@ -158,17 +135,17 @@ magicnet_singbox_emit_static_selectors() {
         magicnet_emit_selector_json "$_name" "" "$_default"
     done
     printf ',\n'
-    magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n%s\n%s\n' "proxy" "direct" "hk" "us")" "proxy"
+    magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     printf ',\n'
     magicnet_emit_selector_json "dns-guard" "$(printf '%s\n%s\n%s\n' "proxy" "block" "direct")" "proxy"
     printf ',\n'
     magicnet_emit_selector_json "network-test" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     for _name in ai-proxy proxy-rule dev-proxy social-proxy media-proxy game-proxy telegram-proxy; do
         printf ',\n'
-        magicnet_emit_selector_json "$_name" "$(printf '%s\n%s\n%s\n%s\n%s\n' "proxy" "hk" "jp" "us" "direct")" "proxy"
+        magicnet_emit_selector_json "$_name" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     done
     printf ',\n'
-    magicnet_emit_selector_json "download-direct" "$_download" "direct"
+    magicnet_emit_selector_json "download-direct" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
     printf ',\n'
     magicnet_emit_selector_json "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
     unset _pair _name _default

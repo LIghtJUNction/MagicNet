@@ -229,7 +229,11 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         ),
         "magicnet_transparent_set" => run_cli_owned(
             server,
-            vec!["transparent".into(), "set".into(), "tun".into()],
+            vec![
+                "transparent".into(),
+                "set".into(),
+                arg(args, "mode").unwrap_or_else(|| "tun".to_string()),
+            ],
         ),
         "magicnet_transparent_apply" => run_cli(server, &["transparent", "apply"]),
         "magicnet_health" => run_cli(server, &["health"]),

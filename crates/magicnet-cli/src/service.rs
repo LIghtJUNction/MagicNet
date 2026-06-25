@@ -109,7 +109,7 @@ pub(crate) fn transparent_cmd(app: &App, args: &[String]) -> Result<(), String> 
         }
         "set" => transparent_set(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "apply" => run_magicnet_function(app, "magicnet_transparent_apply"),
-        _ => Err("Usage: cli transparent {status|set tun|apply}".to_string()),
+        _ => Err(transparent_usage()),
     }
 }
 
@@ -237,9 +237,7 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
 }
 
 fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
-    if mode != "tun" {
-        return Err("Usage: cli transparent set tun".to_string());
-    }
+    let mode = normalize_transparent_mode(mode).ok_or_else(transparent_usage)?;
     write_transparent_mode(app, mode)?;
     stop_all_direct(app)?;
     if let Err(err) = run_magicnet_function(app, "magicnet_transparent_apply") {
@@ -264,8 +262,30 @@ fn write_transparent_mode(app: &App, mode: &str) -> Result<(), String> {
     )
 }
 
-fn transparent_mode(_app: &App) -> &'static str {
-    "tun"
+fn transparent_mode(app: &App) -> String {
+    fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
+        .ok()
+        .and_then(|text| {
+            text.lines().find_map(|line| {
+                let (_, value) = line.split_once('=')?;
+                normalize_transparent_mode(value.trim()).map(str::to_string)
+            })
+        })
+        .unwrap_or_else(|| "tun".to_string())
+}
+
+fn normalize_transparent_mode(mode: &str) -> Option<&'static str> {
+    match mode {
+        "proxy" => Some("proxy"),
+        "external" | "external-tun" => Some("external-tun"),
+        "hybrid" => Some("hybrid"),
+        "tun" => Some("tun"),
+        _ => None,
+    }
+}
+
+fn transparent_usage() -> String {
+    "Usage: cli transparent {status|set <proxy|external-tun|hybrid|tun>|apply}".to_string()
 }
 
 fn core_status(app: &App) {

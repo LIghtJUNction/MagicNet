@@ -1,8 +1,9 @@
 # Kam Build Hooks
 
 MagicNet hooks are intentionally small and idempotent. They download generated
-runtime assets into `bin/`, `.local/` or `.config/`, validate configs with the current
-kernels when available, and keep downloaded binaries out of Git history.
+runtime executables into `bin/`, generated configuration into `.config/`, and
+hook state into `.local/state/`. Packaged runtime binaries must not live under
+`.local/bin`; the package smoke test rejects that legacy layout.
 
 ## Important hooks
 
@@ -32,3 +33,10 @@ that only fail later on-device.
 
 Generated files such as downloaded cores, version markers, archives, and
 `dist/*.zip` must stay ignored and must not be committed.
+
+## Package policy
+
+`scripts/package-smoke.sh` validates the release zip before install smoke tests
+run. It rejects legacy mihomo/TProxy/proxy-capture entries, `.local/bin`
+runtime entries, `.local/subscriptions.env`, and stale kamfw runtime exports
+such as `MAGIC_MIHOMO`, `MAGIC_HOTSPOT_FORWARD`, and `MAGIC_VPN_COEXIST`.
