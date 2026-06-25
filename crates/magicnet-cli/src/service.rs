@@ -163,6 +163,10 @@ fn restart(app: &App, target: &str) -> Result<(), String> {
     run_magicnet_function(app, restart_command(target.as_str()))
 }
 
+pub(crate) fn restart_current_core(app: &App) -> Result<(), String> {
+    restart(app, "current")
+}
+
 fn restart_command(target: &str) -> &'static str {
     match target {
         "sing-box" | "singbox" => {

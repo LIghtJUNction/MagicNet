@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::service::restart_current_core;
 use crate::subscriptions::validate_subscription_url;
 use crate::{clean_lines, read_kv, run_magicnet_function, write_kv, App};
 
@@ -20,7 +21,7 @@ pub(crate) fn block_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "url" => block_url(app, args),
         "add-domain" | "remove-domain" => block_domain(app, args),
         "allow-rule" | "unallow-rule" => block_allow(app, args),
-        "apply" => run_magicnet_function(app, "magicnet_block_apply"),
+        "apply" => apply_and_restart(app),
         "update" => block_update(app),
         "diff" => block_diff(dir),
         _ => Err("Usage: cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}".to_string()),
@@ -73,7 +74,7 @@ fn block_toggle(app: &App, action: &str) -> Result<(), String> {
         if action == "enable" { "1" } else { "0" }.to_string(),
     );
     write_block_conf(app, &conf)?;
-    run_magicnet_function(app, "magicnet_block_apply")?;
+    apply_and_restart(app)?;
     println!(
         "[info] Blocklist {}",
         if action == "enable" {
@@ -97,7 +98,7 @@ fn block_community(app: &App, args: &[String]) -> Result<(), String> {
         value.to_string(),
     );
     write_block_conf(app, &conf)?;
-    run_magicnet_function(app, "magicnet_block_apply")?;
+    apply_and_restart(app)?;
     println!(
         "[info] Community blocklist {}",
         if value == "1" { "enabled" } else { "disabled" }
@@ -125,7 +126,7 @@ fn block_domain(app: &App, args: &[String]) -> Result<(), String> {
         domain,
         args[0] == "add-domain",
     )?;
-    run_magicnet_function(app, "magicnet_block_apply")?;
+    apply_and_restart(app)?;
     println!("[info] Manual blocklist updated");
     Ok(())
 }
@@ -140,7 +141,7 @@ fn block_allow(app: &App, args: &[String]) -> Result<(), String> {
         &normalize_block_rule(rule),
         args[0] == "allow-rule",
     )?;
-    run_magicnet_function(app, "magicnet_block_apply")?;
+    apply_and_restart(app)?;
     println!("[info] Local allow rule updated");
     Ok(())
 }
@@ -180,7 +181,7 @@ fn block_update(app: &App) -> Result<(), String> {
         .collect::<Vec<_>>();
     write_lines(dir.join("community-ban-rules.list"), &rules)?;
     write_lines(dir.join("community-ban-domain-suffix.list"), &domains)?;
-    run_magicnet_function(app, "magicnet_block_apply")?;
+    apply_and_restart(app)?;
     println!(
         "[info] Community blocklist updated from {source}: rules={}, domain_suffixes={}",
         rules.len(),
@@ -203,6 +204,11 @@ fn download_blocklist(url: &str) -> Result<String, String> {
     } else {
         stderr
     })
+}
+
+fn apply_and_restart(app: &App) -> Result<(), String> {
+    run_magicnet_function(app, "magicnet_block_apply")?;
+    restart_current_core(app)
 }
 
 fn parse_community_rules(text: &str) -> Vec<String> {
