@@ -9,6 +9,23 @@ import { useMagicNet } from "@/composables/useMagicNet";
 const { state, runCli, startBackgroundCli, refreshAll, refreshStatus, openSingBoxUi } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 
+type OrchestratorMode = "proxy" | "external-tun" | "hybrid" | "tun";
+
+const orchestratorModes: Array<{ mode: OrchestratorMode; title: string; description: string }> = [
+  { mode: "proxy", title: "Proxy", description: "不创建 TUN，可与系统 VPN 共存" },
+  { mode: "external-tun", title: "External TUN", description: "外部 VPN 捕获，MagicNet 只路由" },
+  { mode: "hybrid", title: "Hybrid", description: "TUN 输入后链路到多后端" },
+  { mode: "tun", title: "TUN", description: "兼容完整透明代理路径" }
+];
+
+function modeActionKey(mode: OrchestratorMode): string {
+  return `transparent-${mode}`;
+}
+
+function isModeSwitching(): boolean {
+  return orchestratorModes.some((item) => isRunning(modeActionKey(item.mode)));
+}
+
 async function toggleSingBox(): Promise<void> {
   const running = state.runtime.singBoxState === "sing-box";
   await withAction("toggle-sing-box", async () => {
@@ -29,10 +46,11 @@ async function runAction(key: string, args: string, label: string, background = 
   });
 }
 
-async function setTransparentMode(mode: "proxy" | "external-tun" | "hybrid" | "tun"): Promise<void> {
-  await withAction(`transparent-${mode}`, async () => {
-    await runCli(`transparent set ${mode}`, `切换 ${mode} 模式`);
-    await refreshStatus();
+async function setTransparentMode(mode: OrchestratorMode): Promise<void> {
+  const key = modeActionKey(mode);
+  await withAction(key, async () => {
+    await startBackgroundCli(`transparent set ${mode}`, `切换 ${mode} 模式`);
+    window.setTimeout(() => void refreshStatus(), 1200);
   });
 }
 </script>
@@ -100,21 +118,20 @@ async function setTransparentMode(mode: "proxy" | "external-tun" | "hybrid" | "t
           <Badge tone="neutral">{{ state.runtime.transparentMode }}</Badge>
         </div>
         <div class="grid gap-2 md:grid-cols-2">
-          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-proxy')" @click="setTransparentMode('proxy')">
-            <span class="block font-semibold">Proxy</span>
-            <span class="mt-1 block text-xs leading-5 text-zinc-400">不创建 TUN，可与系统 VPN 共存</span>
-          </button>
-          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-external-tun')" @click="setTransparentMode('external-tun')">
-            <span class="block font-semibold">External TUN</span>
-            <span class="mt-1 block text-xs leading-5 text-zinc-400">外部 VPN 捕获，MagicNet 只路由</span>
-          </button>
-          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-hybrid')" @click="setTransparentMode('hybrid')">
-            <span class="block font-semibold">Hybrid</span>
-            <span class="mt-1 block text-xs leading-5 text-zinc-400">TUN 输入后链路到多后端</span>
-          </button>
-          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-tun')" @click="setTransparentMode('tun')">
-            <span class="block font-semibold">TUN</span>
-            <span class="mt-1 block text-xs leading-5 text-zinc-400">兼容完整透明代理路径</span>
+          <button
+            v-for="item in orchestratorModes"
+            :key="item.mode"
+            :class="[
+              'min-h-16 rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:cursor-progress disabled:opacity-60',
+              state.runtime.transparentMode === item.mode
+                ? 'border-lime-300 bg-lime-300 text-zinc-950'
+                : 'border-zinc-800 bg-zinc-800 text-zinc-50 hover:border-zinc-700 hover:bg-zinc-700/80'
+            ]"
+            :disabled="isModeSwitching()"
+            @click="setTransparentMode(item.mode)"
+          >
+            <span class="block font-semibold">{{ isRunning(modeActionKey(item.mode)) ? '切换中...' : item.title }}</span>
+            <span :class="['mt-1 block text-xs leading-5', state.runtime.transparentMode === item.mode ? 'text-zinc-800' : 'text-zinc-400']">{{ item.description }}</span>
           </button>
         </div>
         <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="runAction('transparent-apply', 'transparent apply', '应用编排模式')">
