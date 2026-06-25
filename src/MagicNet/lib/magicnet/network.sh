@@ -116,8 +116,10 @@ magicnet_after_kernel_start() {
 }
 
 magicnet_after_kernel_start_deferred_unlocked() {
+    magicnet_dns_apply_unlocked || true
     magicnet_transparent_apply_unlocked || true
     magicnet_app_policy_apply_unlocked || true
+    magicnet_warp_apply_unlocked || true
     magicnet_enable_dns_leak_guard || true
 }
 

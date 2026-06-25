@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ClipboardPaste, Copy, Download, FileLock, Network, Power, PowerOff, RadioTower, RefreshCw, Save, Server, Upload } from "lucide-vue-next";
+import { ClipboardPaste, Cloud, Copy, Download, FileLock, Network, Power, PowerOff, RadioTower, RefreshCw, Save, Server, Upload } from "lucide-vue-next";
 import { ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -10,7 +10,7 @@ import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, readClipboardText, shellQuote as quoteShell } from "@/utils";
 
-const { state, runShell, runCli, refreshMcp, refreshTopology, refreshSysroute, shellQuote } = useMagicNet();
+const { state, runShell, runCli, refreshDns, refreshMcp, refreshTopology, refreshSysroute, refreshWarp, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const toolsRefreshing = ref(false);
 const mcpBind = ref(state.mcp.bind);
@@ -23,6 +23,8 @@ async function refreshTools(): Promise<void> {
   toolsRefreshing.value = true;
     state.task = "刷新工具状态";
   try {
+    await refreshDns(true);
+    await refreshWarp(true);
     await refreshMcp(true);
     state.output = "工具状态已刷新。";
   } finally {
@@ -136,6 +138,75 @@ async function restoreBackup(): Promise<void> {
   });
 }
 
+async function setDnsProfile(profile: string): Promise<void> {
+  await withAction(`dns-${profile}`, async () => {
+    const text = await runCli(`dns set ${shellQuote(profile)}`, `切换 DNS ${profile}`);
+    if (!text.includes("[error]")) await refreshDns(true);
+  });
+}
+
+async function writeWarpImportFile(payload: string): Promise<string> {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const path = `/data/adb/modules/MagicNet/.tmp/webui-warp-${stamp}.conf`;
+  await runShell(`mkdir -p /data/adb/modules/MagicNet/.tmp; : > ${quoteShell(path)}`, "准备 WARP 导入文件", true);
+  const chunkSize = 2800;
+  for (let offset = 0; offset < payload.length; offset += chunkSize) {
+    const chunk = payload.slice(offset, offset + chunkSize);
+    await runShell(`printf %s ${quoteShell(chunk)} >> ${quoteShell(path)}`, "写入 WARP 导入文件", true);
+  }
+  await runShell(`printf '\\n' >> ${quoteShell(path)}`, "完成 WARP 导入文件", true);
+  return path;
+}
+
+async function importWarp(): Promise<void> {
+  await withAction("warp-import", async () => {
+    const payload = state.warp.importText.trim();
+    if (!payload) {
+      state.output = "请先粘贴 WARP/WireGuard 配置。";
+      return;
+    }
+    const path = await writeWarpImportFile(payload);
+    const text = await runCli(`warp import-file ${shellQuote(path)}`, "导入并启用 WARP");
+    await runShell(`rm -f ${quoteShell(path)}`, "清理 WARP 导入文件", true);
+    state.warp.importText = "";
+    state.output = text.includes("[error]") ? text : "WARP 配置已导入并应用。";
+    await refreshWarp(true);
+  });
+}
+
+async function setWarpEnabled(enabled: boolean): Promise<void> {
+  await withAction(enabled ? "warp-enable" : "warp-disable", async () => {
+    const text = await runCli(enabled ? "warp enable" : "warp disable", enabled ? "启用 WARP" : "禁用 WARP");
+    state.output = text;
+    await refreshWarp(true);
+  });
+}
+
+async function testWarp(): Promise<void> {
+  await withAction("warp-test", async () => {
+    state.output = await runCli("warp test", "测试 WARP");
+  });
+}
+
+async function selectWarpGlobal(enabled: boolean): Promise<void> {
+  await withAction(enabled ? "warp-global" : "warp-rule", async () => {
+    state.output = await runCli(enabled ? "warp global" : "warp rule", enabled ? "全局走 WARP" : "恢复规则出站");
+  });
+}
+
+async function addWarpRoute(): Promise<void> {
+  await withAction("warp-route", async () => {
+    const domain = state.warp.routeDomain.trim();
+    if (!domain) {
+      state.output = "请填写要走 WARP 的域名后缀。";
+      return;
+    }
+    const text = await runCli(`route add-domain warp ${shellQuote(domain)}`, `添加 WARP 路由 ${domain}`);
+    if (!text.includes("[error]")) state.warp.routeDomain = "";
+    state.output = text;
+  });
+}
+
 async function writeBackupPayloadFile(payload: string): Promise<string> {
   const path = `/data/adb/modules/MagicNet/.tmp/webui-backup-restore.b64`;
   state.backup.status = `正在写入备份 ${payload.length} 字符`;
@@ -161,6 +232,54 @@ async function writeBackupPayloadFile(payload: string): Promise<string> {
     </PageHeader>
 
     <div class="grid min-w-0 gap-3 md:grid-cols-2">
+      <Card class="grid gap-3">
+        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Cloud :size="17" /> 1.1.1.1 DNS</h3>
+        <p class="text-sm leading-6 text-zinc-400">切换 MagicNet 内置 DNS profile；保存后会应用配置并重启当前 sing-box。</p>
+        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <select
+            class="h-10 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100"
+            :value="state.dns.profile"
+            @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="default">默认 DNS</option>
+            <option value="cloudflare-doh">Cloudflare DoH</option>
+            <option value="cloudflare-dot">Cloudflare DoT</option>
+            <option value="cloudflare-udp">Cloudflare UDP</option>
+          </select>
+          <Button variant="secondary" :loading="isRunning('dns-refresh')" @click="withAction('dns-refresh', () => refreshDns())">
+            <RefreshCw :size="16" />刷新
+          </Button>
+        </div>
+        <pre class="max-h-36 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">profile={{ state.dns.profile }}
+primary={{ state.dns.primary }}
+secondary={{ state.dns.secondary || "-" }}
+transport={{ state.dns.transport }}</pre>
+      </Card>
+
+      <Card class="grid gap-3">
+        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> WARP 出站</h3>
+        <p class="text-sm leading-6 text-zinc-400">导入自己的 WARP/WireGuard 配置后，MagicNet 会生成 sing-box wireguard endpoint；可全局在 sing-box 选择器里选择 warp，也可给指定域名添加 warp 路由。</p>
+        <Textarea v-model="state.warp.importText" class="min-h-32 font-mono text-xs" spellcheck="false" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = ...:2408" />
+        <div class="grid gap-2 sm:grid-cols-2">
+          <Button :loading="isRunning('warp-import')" @click="importWarp"><Upload :size="16" />导入并启用</Button>
+          <Button variant="secondary" :disabled="!state.warp.configured" :loading="isRunning('warp-test')" @click="testWarp"><RadioTower :size="16" />测试 WARP</Button>
+          <Button variant="outline" :disabled="!state.warp.configured || state.warp.enabled" :loading="isRunning('warp-enable')" @click="setWarpEnabled(true)"><Power :size="16" />启用</Button>
+          <Button variant="outline" :disabled="!state.warp.enabled" :loading="isRunning('warp-disable')" @click="setWarpEnabled(false)"><PowerOff :size="16" />禁用</Button>
+          <Button variant="secondary" :disabled="!state.warp.enabled" :loading="isRunning('warp-global')" @click="selectWarpGlobal(true)">全局走 WARP</Button>
+          <Button variant="outline" :loading="isRunning('warp-rule')" @click="selectWarpGlobal(false)">恢复规则</Button>
+        </div>
+        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <Input v-model="state.warp.routeDomain" placeholder="example.com" spellcheck="false" />
+          <Button variant="secondary" :disabled="!state.warp.enabled" :loading="isRunning('warp-route')" @click="addWarpRoute">域名走 WARP</Button>
+        </div>
+        <pre class="max-h-44 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">enabled={{ state.warp.enabled ? "1" : "0" }}
+configured={{ state.warp.configured ? "1" : "0" }}
+tag={{ state.warp.tag }}
+endpoint={{ state.warp.endpoint || "-" }}
+addresses={{ state.warp.addresses }}
+allowed_ips={{ state.warp.allowedIps }}</pre>
+      </Card>
+
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileLock :size="17" /> 配置迁移</h3>
         <p class="text-sm leading-6 text-zinc-400">导出会打包订阅、应用名单、黑名单、路由规则等用户配置。安全码可留空；设置后导入时必须填写一致。</p>

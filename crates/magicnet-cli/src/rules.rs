@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::service::restart_current_core;
 use crate::{clean_lines, read_kv, run_magicnet_function, write_text_file, App};
 
 pub(crate) use block::block_cmd;
@@ -15,13 +16,13 @@ pub(crate) fn route_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "add-domain" | "remove-domain" => route_domain(app, args),
-        "apply" => run_magicnet_function(app, "magicnet_route_apply"),
-        _ => Err("Usage: cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}".to_string()),
+        "apply" => route_apply_and_restart(app),
+        _ => Err(route_usage()),
     }
 }
 
 fn route_list(app: &App) {
-    for target in ["proxy", "direct", "block"] {
+    for target in ["proxy", "direct", "block", "warp"] {
         println!("{target} domain suffixes:");
         print_lines(route_file(app, target).unwrap());
     }
@@ -31,27 +32,33 @@ fn route_domain(app: &App, args: &[String]) -> Result<(), String> {
     let target = args.get(1).map(String::as_str).unwrap_or_default();
     let domain = args.get(2).map(String::as_str).unwrap_or_default();
     if domain.is_empty() {
-        return Err(
-            "Usage: cli route {add-domain|remove-domain} <proxy|direct|block> <domain-suffix>"
-                .to_string(),
-        );
+        return Err(route_usage());
     }
     if domain.bytes().any(|byte| byte.is_ascii_whitespace()) {
         return Err(format!("invalid domain suffix: {domain}"));
     }
     update_line(route_file(app, target)?, domain, args[0] == "add-domain")?;
-    run_magicnet_function(app, "magicnet_route_apply")?;
+    route_apply_and_restart(app)?;
     println!("[info] Route rule updated");
     Ok(())
 }
 
+fn route_apply_and_restart(app: &App) -> Result<(), String> {
+    run_magicnet_function(app, "magicnet_route_apply")?;
+    restart_current_core(app)
+}
+
 fn route_file(app: &App, target: &str) -> Result<PathBuf, String> {
     match target {
-        "proxy" | "direct" | "block" => {
+        "proxy" | "direct" | "block" | "warp" => {
             Ok(conf_dir(app).join(format!("route-{target}-domain-suffix.list")))
         }
-        _ => Err("Target must be proxy, direct, or block".to_string()),
+        _ => Err("Target must be proxy, direct, block, or warp".to_string()),
     }
+}
+
+fn route_usage() -> String {
+    "Usage: cli route {list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|apply}".to_string()
 }
 
 pub(crate) fn app_cmd(app: &App, args: &[String]) -> Result<(), String> {

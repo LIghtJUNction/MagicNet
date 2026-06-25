@@ -2,7 +2,7 @@ import * as kernelsu from "kernelsu";
 import { computed, nextTick, reactive } from "vue";
 import { AUTHOR_WHISPER_URL, CLI, CLI_TIMEOUT_MS, MODULE_DIR, REPO } from "@/constants";
 import type { AppPolicy, ConfigEditorTarget, HealthItem, PackageInfo } from "@/types";
-import { blockDefaults, mcpDefaults, parseApps, parseBlock, parseHealth, parseMcp, parsePackages, parseRuntime, parseSubs, runtimeDefaults, type SubscriptionState } from "@/composables/parsers";
+import { blockDefaults, dnsDefaults, mcpDefaults, parseApps, parseBlock, parseDns, parseHealth, parseMcp, parsePackages, parseRuntime, parseSubs, parseWarp, runtimeDefaults, type SubscriptionState, warpDefaults } from "@/composables/parsers";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import { bytesToBase64, compactCommand, compactOutput, copyText, execFailed, intentDataQuote, normalizeExecResult, nextFrame, shellQuote, uniqueNonEmpty, withTimeout } from "@/utils";
 
@@ -31,6 +31,8 @@ const state = reactive({
   packageInput: "",
   blocklist: { ...blockDefaults },
   mcp: { ...mcpDefaults },
+  dns: { ...dnsDefaults },
+  warp: { ...warpDefaults },
   topology: "",
   sysroute: "",
   subscriptions: {
@@ -227,6 +229,8 @@ async function refreshAll(): Promise<void> {
       ["读取应用规则", () => refreshApps(true)],
       ["读取黑名单", () => refreshBlock(true)],
       ["读取订阅", () => refreshSubs(true)],
+      ["读取 DNS", () => refreshDns(true)],
+      ["读取 WARP", () => refreshWarp(true)],
       ["读取 MCP 信息", () => refreshMcp(true)],
       ["运行诊断", () => refreshHealth(true)]
     ];
@@ -295,6 +299,20 @@ async function refreshMcp(quiet = false): Promise<boolean> {
   const text = await runCli("mcp status", "读取 MCP", quiet);
   if (quiet && markQuietFailure("读取 MCP", text)) return false;
   state.mcp = parseMcp(text, state.mcp);
+  return true;
+}
+
+async function refreshDns(quiet = false): Promise<boolean> {
+  const text = await runCli("dns status", "读取 DNS", quiet);
+  if (quiet && markQuietFailure("读取 DNS", text)) return false;
+  state.dns = parseDns(text, state.dns);
+  return true;
+}
+
+async function refreshWarp(quiet = false): Promise<boolean> {
+  const text = await runCli("warp status", "读取 WARP", quiet);
+  if (quiet && markQuietFailure("读取 WARP", text)) return false;
+  state.warp = parseWarp(text, state.warp);
   return true;
 }
 
@@ -539,6 +557,8 @@ export function useMagicNet() {
     refreshBlock,
     refreshSubs,
     refreshMcp,
+    refreshDns,
+    refreshWarp,
     createIssue,
     refreshTopology,
     refreshSysroute,

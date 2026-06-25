@@ -1,5 +1,5 @@
 import { MODULE_DIR, SING_BOX_UI } from "@/constants";
-import type { AppPolicy, BlocklistState, HealthItem, PackageInfo, RuntimeState, TransparentMode } from "@/types";
+import type { AppPolicy, BlocklistState, DnsState, HealthItem, PackageInfo, RuntimeState, TransparentMode, WarpState } from "@/types";
 
 export type SubscriptionState = {
   singBox: string;
@@ -43,6 +43,24 @@ export const mcpDefaults: McpState = {
   pid: "stopped",
   url: "http://127.0.0.1:8766/mcp",
   secretSet: false
+};
+
+export const dnsDefaults: DnsState = {
+  profile: "default",
+  primary: "bootstrap-local-dns",
+  secondary: "",
+  transport: "default"
+};
+
+export const warpDefaults: WarpState = {
+  enabled: false,
+  configured: false,
+  tag: "warp",
+  endpoint: "",
+  addresses: 0,
+  allowedIps: 0,
+  importText: "",
+  routeDomain: ""
 };
 
 export function normalizeTransparentMode(value: string): TransparentMode | null {
@@ -164,5 +182,35 @@ export function parseMcp(text: string, previous: McpState): McpState {
     else if (line.startsWith("url=")) explicitUrl = line.slice(4);
   });
   next.url = explicitUrl || `http://${next.bind}:${next.port}/mcp`;
+  return next;
+}
+
+export function parseDns(text: string, previous: DnsState): DnsState {
+  const next = { ...previous };
+  text.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (line.startsWith("profile=")) {
+      const profile = line.slice(8);
+      if (["default", "cloudflare-doh", "cloudflare-dot", "cloudflare-udp"].includes(profile)) {
+        next.profile = profile as DnsState["profile"];
+      }
+    } else if (line.startsWith("primary=")) next.primary = line.slice(8);
+    else if (line.startsWith("secondary=")) next.secondary = line.slice(10);
+    else if (line.startsWith("transport=")) next.transport = line.slice(10);
+  });
+  return next;
+}
+
+export function parseWarp(text: string, previous: WarpState): WarpState {
+  const next = { ...previous };
+  text.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (line.startsWith("enabled=")) next.enabled = line.slice(8) === "1";
+    else if (line.startsWith("configured=")) next.configured = line.slice(11) === "1";
+    else if (line.startsWith("tag=")) next.tag = line.slice(4) || "warp";
+    else if (line.startsWith("endpoint=")) next.endpoint = line.slice(9);
+    else if (line.startsWith("addresses=")) next.addresses = Number(line.slice(10)) || 0;
+    else if (line.startsWith("allowed_ips=")) next.allowedIps = Number(line.slice(12)) || 0;
+  });
   return next;
 }

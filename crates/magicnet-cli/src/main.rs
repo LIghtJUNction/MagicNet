@@ -4,6 +4,7 @@ mod base64_tests;
 mod config_editor;
 mod diagnostics;
 mod diagnostics_dns;
+mod dns;
 mod ecapture;
 mod mcp;
 mod nodes;
@@ -12,6 +13,7 @@ mod rules;
 mod service;
 mod subscriptions;
 mod utils;
+mod warp;
 mod webui_api;
 mod webui_backup;
 
@@ -25,6 +27,7 @@ use std::time::Duration;
 pub(crate) use base64::{decode_base64, encode_base64};
 use config_editor::config_editor;
 use diagnostics::{health, support, sysroute, topology};
+use dns::dns_cmd;
 use ecapture::ecapture_cmd;
 use mcp::mcp;
 use nodes::node_list;
@@ -42,6 +45,7 @@ pub(crate) use utils::{
     clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv, write_kv,
     write_text_file,
 };
+use warp::warp_cmd;
 use webui_api::{api_cmd, webui_cmd};
 use webui_backup::backup_cmd;
 
@@ -119,7 +123,15 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "route",
-        usage: "cli route {list|add-domain <proxy|direct|block> <domain-suffix>|remove-domain <proxy|direct|block> <domain-suffix>|apply}",
+        usage: "cli route {list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|apply}",
+    },
+    CommandHelp {
+        command: "dns",
+        usage: "cli dns {status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|apply}",
+    },
+    CommandHelp {
+        command: "warp",
+        usage: "cli warp {status|import-file <wireguard-conf-path>|enable|disable|global|rule|apply|test}",
     },
     CommandHelp {
         command: "sub",
@@ -271,6 +283,8 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "route" => route_cmd(app, &args[1..]),
+        "dns" => dns_cmd(app, &args[1..]),
+        "warp" => warp_cmd(app, &args[1..]),
         "app" => app_cmd(app, &args[1..]),
         "block" => block_cmd(app, &args[1..]),
         "mcp" => mcp(app, &args[1..]),

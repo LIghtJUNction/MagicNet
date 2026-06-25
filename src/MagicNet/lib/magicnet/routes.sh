@@ -13,7 +13,7 @@ magicnet_route_list_values() {
 }
 
 magicnet_route_has_rules() {
-    for _target in proxy direct block; do
+    for _target in proxy direct block warp; do
         if magicnet_route_list_values "$(magicnet_route_list_file "$_target")" | grep -q .; then
             unset _target
             return 0
@@ -24,11 +24,12 @@ magicnet_route_has_rules() {
 }
 
 magicnet_route_singbox_rules() {
-    for _target in proxy direct block; do
+    for _target in proxy direct block warp; do
         case "$_target" in
             proxy) _outbound="proxy-rule" ;;
             direct) _outbound="direct" ;;
             block) _outbound="block" ;;
+            warp) _outbound="warp" ;;
         esac
         _domains="$(magicnet_route_list_values "$(magicnet_route_list_file "$_target")")"
         [ -n "$_domains" ] || continue

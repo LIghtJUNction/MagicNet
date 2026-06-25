@@ -158,6 +158,10 @@ fn backup_files() -> &'static [&'static str] {
         ".config/magicnet/route-proxy-domain-suffix.list",
         ".config/magicnet/route-direct-domain-suffix.list",
         ".config/magicnet/route-block-domain-suffix.list",
+        ".config/magicnet/route-warp-domain-suffix.list",
+        ".config/magicnet/dns.conf",
+        ".config/magicnet/warp.conf",
+        ".config/magicnet/warp-endpoint.json",
         ".config/magicnet/transparent-mode.conf",
     ]
 }

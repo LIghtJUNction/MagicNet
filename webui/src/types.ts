@@ -75,6 +75,24 @@ export type McpState = {
   secretSet: boolean;
 };
 
+export type DnsState = {
+  profile: "default" | "cloudflare-doh" | "cloudflare-dot" | "cloudflare-udp";
+  primary: string;
+  secondary: string;
+  transport: string;
+};
+
+export type WarpState = {
+  enabled: boolean;
+  configured: boolean;
+  tag: string;
+  endpoint: string;
+  addresses: number;
+  allowedIps: number;
+  importText: string;
+  routeDomain: string;
+};
+
 export type SingBoxUiTarget = "zashboard";
 export type WebuiPanelKind = "online" | "local";
 

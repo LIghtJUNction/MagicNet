@@ -34,7 +34,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 
 type TabKey = "control" | "config" | "apps" | "block" | "subs" | "rank" | "tools" | "health" | "webui" | "output";
 
-const { state, statusTone, refreshAll, refreshStatus, refreshApps, refreshBlock, refreshSubs, refreshHealth, refreshMcp, createIssue, openExternal, REPO, AUTHOR_WHISPER_URL } = useMagicNet();
+const { state, statusTone, refreshAll, refreshStatus, refreshApps, refreshBlock, refreshSubs, refreshHealth, refreshMcp, refreshDns, refreshWarp, createIssue, openExternal, REPO, AUTHOR_WHISPER_URL } = useMagicNet();
 const activeTab = ref<TabKey>("control");
 const showAdvancedNav = ref(false);
 
@@ -92,6 +92,11 @@ function warmActiveTab(tab: TabKey): void {
   if (tab === "health") {
     void refreshMcp(true);
     void refreshHealth(true);
+  }
+  if (tab === "tools") {
+    void refreshDns(true);
+    void refreshWarp(true);
+    void refreshMcp(true);
   }
 }
 

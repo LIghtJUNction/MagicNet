@@ -13,11 +13,13 @@ for _magicnet_lib in \
     ipset_lkm \
     network \
     apps \
+    dns \
     transparent_dns \
     transparent \
     webui_panel \
     blocklist \
     routes \
+    warp \
     runtime_config \
     supervisors \
     core \
