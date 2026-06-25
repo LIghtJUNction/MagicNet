@@ -12,11 +12,13 @@ export type AppPolicy = {
   bypass: string[];
 };
 
+export type TransparentMode = "proxy" | "external-tun" | "hybrid" | "tun";
+
 export type RuntimeState = {
   singBoxState: "sing-box" | "stopped" | "unknown";
   singBox: string;
   fswatch: string;
-  transparentMode: "proxy" | "external-tun" | "hybrid" | "tun";
+  transparentMode: TransparentMode;
   api: string;
   webui: string;
   subPath: string;

@@ -5,9 +5,29 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import type { TransparentMode } from "@/types";
 
 const { state, runCli, startBackgroundCli, refreshAll, refreshStatus, openSingBoxUi } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+
+const orchestratorModes: Array<{ mode: TransparentMode; title: string; description: string }> = [
+  { mode: "proxy", title: "Proxy", description: "不创建 TUN，可与系统 VPN 共存" },
+  { mode: "external-tun", title: "External TUN", description: "外部 VPN 捕获，MagicNet 只路由" },
+  { mode: "hybrid", title: "Hybrid", description: "TUN 输入后链路到多后端" },
+  { mode: "tun", title: "TUN", description: "兼容完整透明代理路径" }
+];
+
+function modeActionKey(mode: TransparentMode): string {
+  return `transparent-${mode}`;
+}
+
+function isModeSwitching(): boolean {
+  return orchestratorModes.some((item) => isRunning(modeActionKey(item.mode)));
+}
+
+function canSwitchModes(): boolean {
+  return state.hasKsu && !isModeSwitching();
+}
 
 async function toggleSingBox(): Promise<void> {
   const running = state.runtime.singBoxState === "sing-box";
@@ -29,10 +49,12 @@ async function runAction(key: string, args: string, label: string, background = 
   });
 }
 
-async function setTransparentMode(mode: "proxy" | "external-tun" | "hybrid" | "tun"): Promise<void> {
-  await withAction(`transparent-${mode}`, async () => {
-    await runCli(`transparent set ${mode}`, `切换 ${mode} 模式`);
-    await refreshStatus();
+async function setTransparentMode(mode: TransparentMode): Promise<void> {
+  if (!canSwitchModes() || state.runtime.transparentMode === mode) return;
+  const key = modeActionKey(mode);
+  await withAction(key, async () => {
+    await startBackgroundCli(`transparent set ${mode}`, `切换 ${mode} 模式`);
+    window.setTimeout(() => void refreshStatus(), 1200);
   });
 }
 </script>
@@ -97,24 +119,28 @@ async function setTransparentMode(mode: "proxy" | "external-tun" | "hybrid" | "t
             <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Orchestrator Mode</span>
             <h3 class="mt-1 text-lg font-semibold">多 VPN 共存</h3>
           </div>
-          <Badge tone="neutral">{{ state.runtime.transparentMode }}</Badge>
+          <div class="flex flex-wrap gap-2">
+            <Badge tone="neutral">{{ state.runtime.transparentMode }}</Badge>
+            <Badge v-if="!state.hasKsu" tone="warning">真机 WebUI 才能切换</Badge>
+          </div>
         </div>
         <div class="grid gap-2 md:grid-cols-2">
-          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-proxy')" @click="setTransparentMode('proxy')">
-            <span class="block font-semibold">Proxy</span>
-            <span class="mt-1 block text-xs leading-5 text-zinc-400">不创建 TUN，可与系统 VPN 共存</span>
-          </button>
-          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-external-tun')" @click="setTransparentMode('external-tun')">
-            <span class="block font-semibold">External TUN</span>
-            <span class="mt-1 block text-xs leading-5 text-zinc-400">外部 VPN 捕获，MagicNet 只路由</span>
-          </button>
-          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-hybrid')" @click="setTransparentMode('hybrid')">
-            <span class="block font-semibold">Hybrid</span>
-            <span class="mt-1 block text-xs leading-5 text-zinc-400">TUN 输入后链路到多后端</span>
-          </button>
-          <button class="min-h-16 rounded-md border border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('transparent-tun')" @click="setTransparentMode('tun')">
-            <span class="block font-semibold">TUN</span>
-            <span class="mt-1 block text-xs leading-5 text-zinc-400">兼容完整透明代理路径</span>
+          <button
+            v-for="item in orchestratorModes"
+            :key="item.mode"
+            :class="[
+              'min-h-16 rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:cursor-progress disabled:opacity-60',
+              state.runtime.transparentMode === item.mode
+                ? 'border-lime-300 bg-lime-300 text-zinc-950'
+                : 'border-zinc-800 bg-zinc-800 text-zinc-50 hover:border-zinc-700 hover:bg-zinc-700/80'
+            ]"
+            :aria-pressed="state.runtime.transparentMode === item.mode"
+            :disabled="!canSwitchModes() || state.runtime.transparentMode === item.mode"
+            :title="!state.hasKsu ? '当前没有 KernelSU/root 执行通道，无法在本地预览中切换模式' : state.runtime.transparentMode === item.mode ? '当前已处于该模式，可使用重新应用模式' : `切换到 ${item.mode}`"
+            @click="setTransparentMode(item.mode)"
+          >
+            <span class="block font-semibold">{{ isRunning(modeActionKey(item.mode)) ? '切换中...' : state.runtime.transparentMode === item.mode ? `${item.title}（当前）` : item.title }}</span>
+            <span :class="['mt-1 block text-xs leading-5', state.runtime.transparentMode === item.mode ? 'text-zinc-800' : 'text-zinc-400']">{{ item.description }}</span>
           </button>
         </div>
         <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="runAction('transparent-apply', 'transparent apply', '应用编排模式')">

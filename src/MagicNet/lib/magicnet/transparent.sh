@@ -208,7 +208,7 @@ magicnet_singbox_apply_transparent_mode() {
             return 1
         fi
     fi
-    if awk '
+    if [ -z "$_jq" ] && awk '
         function count_delta(line, i, c, delta) {
             delta = 0
             for (i = 1; i <= length(line); i++) {
@@ -280,9 +280,9 @@ magicnet_singbox_apply_transparent_mode() {
         }
     ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
         :
-    else
+    elif [ -z "$_jq" ]; then
         rm -f "$_tmp" 2>/dev/null || true
-        unset _dns_strategy _jq
+        unset _dns_strategy _jq _mode
         return 1
     fi
     import __singbox__
