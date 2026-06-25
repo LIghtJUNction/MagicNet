@@ -241,6 +241,13 @@ fn default_config(_target: &str) -> String {
   },
   "inbounds": [
     {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 7892,
+      "sniff": true
+    },
+    {
       "type": "tun",
       "tag": "tun-in",
       "interface_name": "magicnet0",

@@ -16,7 +16,7 @@ export type RuntimeState = {
   singBoxState: "sing-box" | "stopped" | "unknown";
   singBox: string;
   fswatch: string;
-  transparentMode: "tun";
+  transparentMode: "proxy" | "external-tun" | "hybrid" | "tun";
   api: string;
   webui: string;
   subPath: string;
