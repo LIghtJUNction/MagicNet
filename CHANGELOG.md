@@ -8,6 +8,13 @@
 - Speed up sing-box startup by treating a stable sing-box process as ready
   instead of waiting for the Clash/WebUI API port.
 
+## v1.1.9 (2026-06-26)
+
+- Capture Android system DNS queries on port 53 into a local sing-box DNS
+  inbound so app traffic is not seeded with carrier-poisoned domain answers.
+- Keep the DNS capture chain removable when MagicNet is disabled and skip it
+  for the UDP Cloudflare DNS profile to avoid self-redirect loops.
+
 ## v1.1.8 (2026-06-21)
 
 - Remove eBPF, TProxy, and non-TUN transparent mode support from the runtime,
