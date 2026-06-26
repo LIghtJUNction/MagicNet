@@ -1,5 +1,13 @@
 ## Unreleased
 
+## v1.1.10 (2026-06-26)
+
+- Fix multi-subscription share-link aggregation so proxylink sees every source
+  before import.
+- Fall back when proxylink emits fewer valid nodes than the extractor
+  collected, instead of reporting a misleadingly short list.
+- Refresh node list cache and current-config parsing to avoid stale node counts
+  and other misleading summaries.
 - Remove stale runtime packaging flags from the module artifact and document
   that runtime executables belong in `bin/`, not legacy `.local/bin`.
 - Simplify generated sing-box subscription selectors by removing fixed region

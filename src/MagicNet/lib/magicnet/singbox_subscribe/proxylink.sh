@@ -41,6 +41,7 @@ magicnet_singbox_run_proxylink() {
 magicnet_singbox_build_outbounds_with_proxylink() {
     _sources_file="$1"
     _out_file="$2"
+    _expected_count="${3:-0}"
     _proxylink=$(magicnet_singbox_proxylink_bin) || return 1
     _tmp_config="${_out_file}.proxylink-config.json"
     _tmp_outbounds="${_out_file}.proxylink-outbounds.json"
@@ -64,11 +65,18 @@ magicnet_singbox_build_outbounds_with_proxylink() {
     [ -s "$_tmp_config" ] || return 1
     command -v jq >/dev/null 2>&1 || return 1
     jq -c '.outbounds // []' "$_tmp_config" >"$_tmp_outbounds" || return 1
-    _count=$(jq 'length' "$_tmp_outbounds" 2>/dev/null || printf '0')
-    [ "${_count:-0}" -gt 0 ] || return 1
+    _raw_count=$(jq 'length' "$_tmp_outbounds" 2>/dev/null || printf '0')
+    [ "${_raw_count:-0}" -gt 0 ] || return 1
+
+    _valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds") || return 1
+    [ "${_valid_count:-0}" -gt 0 ] || return 1
+    if [ "${_expected_count:-0}" -gt 0 ] && [ "${_valid_count:-0}" -lt "${_expected_count:-0}" ]; then
+        return 1
+    fi
 
     magicnet_singbox_write_outbounds_from_json "$_tmp_outbounds" "$_out_file" || return 1
-    printf '%s %s\n' "$_count" "0"
+    _skipped=$((_raw_count - _valid_count))
+    printf '%s %s\n' "$_valid_count" "$_skipped"
 }
 
 magicnet_singbox_write_outbounds_from_json() {

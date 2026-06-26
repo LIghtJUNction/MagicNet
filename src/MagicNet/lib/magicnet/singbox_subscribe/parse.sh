@@ -38,38 +38,46 @@ magicnet_singbox_extract_share_links() {
     _start_index=$(find "$_nodes_dir" -maxdepth 1 -type f \( -name 'node-*.yaml' -o -name 'node-*.link' \) 2>/dev/null | wc -l)
 
     _links_file="${_nodes_dir}/links.txt"
+    _current_links_file=$(mktemp "${_nodes_dir}/links.current.XXXXXX") || return 1
     _first_line=$(sed -n '1{s/^[[:space:]]*//;p;}' "$_source_file" | tr -d '\r')
     case "$_first_line" in
     vless://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://*)
         tr -d '\r' <"$_source_file" |
             grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
-            sed 's/^[[:space:]]*//' >"$_links_file"
+            sed 's/^[[:space:]]*//' >"$_current_links_file"
         ;;
     *)
         if command -v base64 >/dev/null 2>&1; then
             base64 -d "$_source_file" 2>/dev/null |
                 tr -d '\r' |
                 grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
-                sed 's/^[[:space:]]*//' >"$_links_file"
-            if [ ! -s "$_links_file" ]; then
+                sed 's/^[[:space:]]*//' >"$_current_links_file"
+            if [ ! -s "$_current_links_file" ]; then
                 tr '_-' '/+' <"$_source_file" 2>/dev/null |
                     base64 -d 2>/dev/null |
                     tr -d '\r' |
                     grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
-                    sed 's/^[[:space:]]*//' >"$_links_file"
+                    sed 's/^[[:space:]]*//' >"$_current_links_file"
             fi
         else
-            : >"$_links_file"
+            : >"$_current_links_file"
         fi
         ;;
     esac
+
+    cat "$_current_links_file" >>"$_links_file" || {
+        rm -f "$_current_links_file"
+        return 1
+    }
 
     _idx=0
     while IFS= read -r _link || [ -n "$_link" ]; do
         [ -n "$_link" ] || continue
         _idx=$((_idx + 1))
         printf '%s\n' "$_link" >"${_nodes_dir}/node-$((_start_index + _idx)).link"
-    done <"$_links_file"
+    done <"$_current_links_file"
+
+    rm -f "$_current_links_file"
 
     printf '%s\n' "$_idx"
 }

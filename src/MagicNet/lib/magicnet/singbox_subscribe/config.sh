@@ -115,6 +115,28 @@ magicnet_singbox_build_outbounds_file_with_jq() {
     ' >"$_out_file" || return 1
 }
 
+magicnet_singbox_count_valid_outbounds_nodes() {
+    _nodes_json="$1"
+    command -v jq >/dev/null 2>&1 || return 1
+    jq -n -r --slurpfile nodes "$_nodes_json" '
+      ($nodes[0] // []
+        | map(select(
+            ((.server // "") != "")
+            and ((.server_port // 0) != 0)
+            and (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not)
+            and (
+              (.type == "shadowsocks" and ((.method // "") != "") and ((.password // "") != ""))
+              or (.type == "vmess" and ((.uuid // "") != ""))
+              or (.type == "vless" and ((.uuid // "") != ""))
+              or (.type == "trojan" and ((.password // "") != ""))
+              or (.type == "hysteria2" and ((.password // "") != ""))
+            )
+          ))
+        | length
+      ) // 0
+    '
+}
+
 magicnet_singbox_emit_selector_block() {
     _tags_file="$1"
     _first_tag="$2"

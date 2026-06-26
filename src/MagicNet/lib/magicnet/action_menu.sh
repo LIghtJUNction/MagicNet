@@ -6,7 +6,12 @@ magicnet_action_update_singbox_subscription() {
 
     . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
     magicnet_singbox_update_subscription
+    _status=$?
+    if [ "${_status}" -eq 0 ]; then
+        rm -f "${MODDIR}/.tmp/magicnet-node-list.cache"
+    fi
     magicnet_refresh_status
+    return "${_status}"
 }
 
 magicnet_action_toggle_singbox() {

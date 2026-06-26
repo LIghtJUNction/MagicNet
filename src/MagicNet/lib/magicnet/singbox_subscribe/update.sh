@@ -29,7 +29,7 @@ magicnet_singbox_update_subscription() {
 
     if [ "${MAGICNET_PROXYLINK_ENABLED:-1}" = "1" ] &&
         magicnet_singbox_proxylink_bin >/dev/null 2>&1 &&
-        magicnet_singbox_build_outbounds_with_proxylink "$_sources_file" "$_outbounds_file" >"${_work_dir}/proxylink-counts.txt" 2>/dev/null; then
+        magicnet_singbox_build_outbounds_with_proxylink "$_sources_file" "$_outbounds_file" "$_node_total" >"${_work_dir}/proxylink-counts.txt" 2>/dev/null; then
         # shellcheck disable=SC2046
         set -- $(cat "${_work_dir}/proxylink-counts.txt")
         _imported="$1"

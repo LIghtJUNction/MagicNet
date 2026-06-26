@@ -1,7 +1,10 @@
+use std::collections::HashSet;
 use std::env;
 use std::fs;
+use std::path::Path;
 
 use crate::App;
+use serde_json::Value;
 
 pub(crate) fn node_list(app: &App) {
     let limit = env::var("MAGICNET_NODE_LIST_LIMIT")
@@ -9,23 +12,24 @@ pub(crate) fn node_list(app: &App) {
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(48);
     let cache = app.moddir.join(".tmp/magicnet-node-list.cache");
-    if env::var("MAGICNET_NODE_CACHE").unwrap_or_else(|_| "1".to_string()) != "0" {
-        if let Ok(text) = fs::read_to_string(&cache) {
-            if !text.trim().is_empty() {
-                print!("{text}");
-                return;
-            }
-        }
-    }
-    let names = scan_node_names(app, limit);
+    let cache_enabled = env::var("MAGICNET_NODE_CACHE").unwrap_or_else(|_| "1".to_string()) != "0";
+    let names = resolve_node_names(app, limit, cache_enabled, &cache);
     if !names.is_empty() {
-        if let Some(parent) = cache.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
         let text = format!("{}\n", names.join("\n"));
-        let _ = fs::write(cache, &text);
         print!("{text}");
     }
+}
+
+fn resolve_node_names(app: &App, limit: usize, cache_enabled: bool, cache: &Path) -> Vec<String> {
+    let names = scan_node_names(app, limit);
+    if !names.is_empty() {
+        refresh_node_cache(cache, &names);
+        return names;
+    }
+    if cache_enabled {
+        return read_node_cache(cache, limit).unwrap_or_default();
+    }
+    Vec::new()
 }
 
 fn scan_node_names(app: &App, limit: usize) -> Vec<String> {
@@ -48,13 +52,34 @@ fn scan_singbox_tags(app: &App, limit: usize, names: &mut Vec<String>) {
     }
     let config = app.moddir.join(".config/sing-box/config.json");
     if let Ok(text) = fs::read_to_string(config) {
-        for line in text.lines() {
-            let Some(name) = json_tag(line) else {
-                continue;
-            };
-            push_node(&name, limit, names);
-            if names.len() >= limit {
-                return;
+        if let Ok(json) = serde_json::from_str::<Value>(&text) {
+            if let Some(outbounds) = json.get("outbounds").and_then(Value::as_array) {
+                let proxy_members = proxy_member_tags(outbounds);
+                if !proxy_members.is_empty() {
+                    for outbound in outbounds {
+                        let Some(name) = outbound.get("tag").and_then(Value::as_str) else {
+                            continue;
+                        };
+                        if proxy_members.contains(name) && is_real_outbound(outbound) {
+                            push_node(name, limit, names);
+                            if names.len() >= limit {
+                                return;
+                            }
+                        }
+                    }
+                } else {
+                    for outbound in outbounds {
+                        let Some(name) = outbound.get("tag").and_then(Value::as_str) else {
+                            continue;
+                        };
+                        if is_real_outbound(outbound) {
+                            push_node(name, limit, names);
+                            if names.len() >= limit {
+                                return;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -72,14 +97,56 @@ fn push_node(name: &str, limit: usize, names: &mut Vec<String>) {
     }
 }
 
-fn json_tag(line: &str) -> Option<String> {
-    let (_, rest) = line.split_once("\"tag\"")?;
-    let (_, value) = rest.split_once(':')?;
-    let value = value.trim().trim_end_matches(',').trim();
-    value
-        .strip_prefix('"')?
-        .strip_suffix('"')
-        .map(ToOwned::to_owned)
+fn read_node_cache(cache: &Path, limit: usize) -> Option<Vec<String>> {
+    let text = fs::read_to_string(cache).ok()?;
+    let mut names = Vec::new();
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        push_node(line, limit, &mut names);
+        if names.len() >= limit {
+            break;
+        }
+    }
+    if names.is_empty() {
+        None
+    } else {
+        Some(names)
+    }
+}
+
+fn refresh_node_cache(cache: &Path, names: &[String]) {
+    if let Some(parent) = cache.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let text = format!("{}\n", names.join("\n"));
+    let _ = fs::write(cache, text);
+}
+
+fn proxy_member_tags(outbounds: &[Value]) -> HashSet<String> {
+    let mut members = HashSet::new();
+    for outbound in outbounds {
+        if outbound.get("tag").and_then(Value::as_str) != Some("proxy") {
+            continue;
+        }
+        let Some(proxy_outbounds) = outbound.get("outbounds").and_then(Value::as_array) else {
+            continue;
+        };
+        for member in proxy_outbounds {
+            if let Some(tag) = member.as_str() {
+                members.insert(tag.to_string());
+            }
+        }
+    }
+    members
+}
+
+fn is_real_outbound(outbound: &Value) -> bool {
+    let Some(outbound_type) = outbound.get("type").and_then(Value::as_str) else {
+        return false;
+    };
+    !matches!(
+        outbound_type,
+        "" | "selector" | "urltest" | "direct" | "block" | "dns"
+    )
 }
 
 fn is_builtin_node(name: &str) -> bool {
@@ -123,4 +190,92 @@ fn is_obvious_group(name: &str) -> bool {
         || name.contains("urltest")
         || name.contains("Fallback")
         || name.contains("fallback")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+
+    fn temp_app() -> App {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("magicnet-cli-nodes-test-{stamp}"));
+        App::for_test(dir)
+    }
+
+    fn write_file(path: impl AsRef<Path>, text: &str) {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn compact_config_json_skips_selector_groups_and_keeps_real_nodes() {
+        let app = temp_app();
+        write_file(
+            app.moddir.join(".config/sing-box/config.json"),
+            r#"{"outbounds":[{"tag":"dns-guard","type":"selector","outbounds":["alpha"]},{"tag":"alpha","type":"shadowsocks"},{"tag":"beta","type":"vless"}]}"#,
+        );
+
+        let names = resolve_node_names(
+            &app,
+            48,
+            false,
+            &app.moddir.join(".tmp/magicnet-node-list.cache"),
+        );
+
+        assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);
+    }
+
+    #[test]
+    fn proxy_selector_members_control_included_nodes() {
+        let app = temp_app();
+        write_file(
+            app.moddir.join(".config/sing-box/config.json"),
+            r#"{"outbounds":[{"tag":"dns-guard","type":"selector","outbounds":["alpha"]},{"tag":"proxy","type":"selector","outbounds":["alpha","beta"]},{"tag":"alpha","type":"shadowsocks"},{"tag":"beta","type":"vless"},{"tag":"gamma","type":"trojan"}]}"#,
+        );
+
+        let names = resolve_node_names(
+            &app,
+            48,
+            false,
+            &app.moddir.join(".tmp/magicnet-node-list.cache"),
+        );
+
+        assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);
+    }
+
+    #[test]
+    fn stale_cache_does_not_override_current_scan() {
+        let app = temp_app();
+        write_file(app.moddir.join(".tmp/magicnet-node-list.cache"), "stale\n");
+        write_file(
+            app.moddir.join(".config/sing-box/config.json"),
+            r#"{"outbounds":[{"tag":"current","type":"shadowsocks"}]}"#,
+        );
+
+        let cache = app.moddir.join(".tmp/magicnet-node-list.cache");
+        let names = resolve_node_names(&app, 48, true, &cache);
+
+        assert_eq!(names, vec!["current".to_string()]);
+        assert_eq!(fs::read_to_string(cache).unwrap(), "current\n");
+    }
+
+    #[test]
+    fn cache_fallback_is_used_when_current_scan_is_empty() {
+        let app = temp_app();
+        let cache = app.moddir.join(".tmp/magicnet-node-list.cache");
+        write_file(&cache, "cached\n");
+
+        let names = resolve_node_names(&app, 48, true, &cache);
+
+        assert_eq!(names, vec!["cached".to_string()]);
+    }
 }
