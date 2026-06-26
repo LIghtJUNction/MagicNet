@@ -771,6 +771,22 @@ legacy_inbound_fields = {"sniff", "sniff_timeout", "domain_strategy"}
 
 if inbound_tags.count("mixed-in") != 1:
     raise SystemExit(f"mixed-in inbound should appear exactly once in {mode} mode: {inbound_tags!r}")
+dns_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("tag") == "magicnet-dns-in"), None)
+if not dns_inbound:
+    raise SystemExit(f"magicnet DNS inbound missing in {mode} mode")
+if dns_inbound.get("type") != "direct" or dns_inbound.get("listen") != "127.0.0.1" or dns_inbound.get("listen_port") != 1053:
+    raise SystemExit(f"magicnet DNS inbound mismatch in {mode} mode: {dns_inbound!r}")
+dns_hijack = next(
+    (
+        rule for rule in singbox.get("route", {}).get("rules", [])
+        if rule.get("action") == "hijack-dns"
+        and rule.get("protocol") == "dns"
+        and rule.get("inbound") == ["magicnet-dns-in"]
+    ),
+    None,
+)
+if not dns_hijack:
+    raise SystemExit(f"magicnet DNS hijack rule missing in {mode} mode")
 for inbound in singbox.get("inbounds", []):
     present = sorted(legacy_inbound_fields.intersection(inbound))
     if present:
@@ -790,7 +806,7 @@ else:
     expected_sniff_inbounds = ["mixed-in"]
 if any(kind in inbound_types for kind in ("tproxy", "redirect")):
     raise SystemExit(f"legacy transparent inbound still present in {mode} mode: {inbound_types!r}")
-if any((inbound.get("tag") or "").startswith("magicnet-") for inbound in singbox.get("inbounds", [])):
+if any((inbound.get("tag") or "").startswith("magicnet-") and inbound.get("tag") != "magicnet-dns-in" for inbound in singbox.get("inbounds", [])):
     raise SystemExit(f"managed transparent inbound still present in {mode} mode")
 if not sniff_rule:
     raise SystemExit(f"sing-box sniff rule missing in {mode} mode")

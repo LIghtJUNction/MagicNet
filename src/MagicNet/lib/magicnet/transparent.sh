@@ -17,6 +17,13 @@ magicnet_singbox_apply_transparent_mode() {
                 "listen": "127.0.0.1",
                 "listen_port": 7892
               };
+            def dns_in:
+              {
+                "type": "direct",
+                "tag": "magicnet-dns-in",
+                "listen": "127.0.0.1",
+                "listen_port": 1053
+              };
             def tun_in:
               {
                 "type": "tun",
@@ -52,6 +59,8 @@ magicnet_singbox_apply_transparent_mode() {
               or ((.tag // "") | startswith("magicnet-"));
             def references_managed_inbound:
               ((.inbound // []) | map(select(startswith("magicnet-"))) | length) > 0;
+            def dns_hijack_rule:
+              {"inbound": ["magicnet-dns-in"], "protocol": "dns", "action": "hijack-dns"};
             def normalize_sniff_rule:
               if (.action // "") == "sniff" then
                 .inbound = (if $mode == "proxy" or $mode == "external-tun" then ["mixed-in"] else ["mixed-in", "tun-in"] end)
@@ -64,13 +73,14 @@ magicnet_singbox_apply_transparent_mode() {
               ((.inbounds // [])
                 | map(select(managed_inbound | not)))
               + [mixed_in]
+              + [dns_in]
               + (if $mode == "proxy" or $mode == "external-tun" then [] else [tun_in] end)
             )
             | .route.rules = (
               ((.route.rules // [])
                 | map(normalize_sniff_rule)
                 | map(select(references_managed_inbound | not))) as $rules
-              | if any($rules[]?; (.action // "") == "sniff") then $rules else [sniff_rule] + $rules end
+              | [dns_hijack_rule] + (if any($rules[]?; (.action // "") == "sniff") then $rules else [sniff_rule] + $rules end)
             )
             | if $dns_strategy != "" then .dns.strategy = $dns_strategy else . end
         ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
@@ -116,7 +126,16 @@ magicnet_singbox_apply_transparent_mode() {
             print "      \"stack\": \"gvisor\""
             printf "    }%s\n", comma
         }
+        function emit_dns(comma) {
+            print "    {"
+            print "      \"type\": \"direct\","
+            print "      \"tag\": \"magicnet-dns-in\","
+            print "      \"listen\": \"127.0.0.1\","
+            print "      \"listen_port\": 1053"
+            printf "    }%s\n", comma
+        }
         function emit_selected(comma) {
+            emit_dns(",")
             emit_tun(comma)
         }
         BEGIN {

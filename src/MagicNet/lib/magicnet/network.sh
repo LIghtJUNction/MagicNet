@@ -21,6 +21,68 @@ magicnet_ip6tables_ensure() {
     ip6tables -C "$@" >/dev/null 2>&1 || ip6tables -I "$@" >/dev/null 2>&1
 }
 
+magicnet_ip6tables_nat_ensure() {
+    magicnet_cmd_exists ip6tables || return 1
+    ip6tables -t nat -C "$@" >/dev/null 2>&1 || ip6tables -t nat -A "$@" >/dev/null 2>&1
+}
+
+magicnet_dns_capture_enabled() {
+    [ "${MAGIC_DNS_CAPTURE:-1}" = "1" ]
+}
+
+magicnet_dns_capture_port() {
+    printf '%s\n' "${MAGIC_DNS_CAPTURE_PORT:-1053}"
+}
+
+magicnet_enable_dns_capture() {
+    if ! magicnet_dns_capture_enabled; then
+        magicnet_disable_dns_capture
+        return 0
+    fi
+
+    if [ "$(magicnet_dns_profile)" = "cloudflare-udp" ]; then
+        magicnet_warn "DNS capture skipped for cloudflare-udp profile to avoid redirect loops"
+        magicnet_disable_dns_capture
+        return 0
+    fi
+
+    if ! magicnet_cmd_exists iptables; then
+        magicnet_warn "iptables not found; DNS capture skipped"
+        return 0
+    fi
+
+    _dns_capture_port="$(magicnet_dns_capture_port)"
+    iptables -t nat -N magicnet-dns-output >/dev/null 2>&1 || true
+    iptables -t nat -F magicnet-dns-output >/dev/null 2>&1 || true
+    iptables -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || iptables -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || true
+    magicnet_iptables_ensure -t nat magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || true
+    magicnet_iptables_ensure -t nat magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || true
+
+    if magicnet_cmd_exists ip6tables && ip6tables -t nat -L >/dev/null 2>&1; then
+        ip6tables -t nat -N magicnet-dns-output >/dev/null 2>&1 || true
+        ip6tables -t nat -F magicnet-dns-output >/dev/null 2>&1 || true
+        ip6tables -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || ip6tables -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || true
+        magicnet_ip6tables_nat_ensure magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || true
+        magicnet_ip6tables_nat_ensure magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || true
+    fi
+
+    magicnet_log "DNS capture redirected port 53 to 127.0.0.1:${_dns_capture_port}"
+    unset _dns_capture_port
+}
+
+magicnet_disable_dns_capture() {
+    if magicnet_cmd_exists iptables; then
+        iptables -t nat -D OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || true
+        iptables -t nat -F magicnet-dns-output >/dev/null 2>&1 || true
+        iptables -t nat -X magicnet-dns-output >/dev/null 2>&1 || true
+    fi
+    if magicnet_cmd_exists ip6tables && ip6tables -t nat -L >/dev/null 2>&1; then
+        ip6tables -t nat -D OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || true
+        ip6tables -t nat -F magicnet-dns-output >/dev/null 2>&1 || true
+        ip6tables -t nat -X magicnet-dns-output >/dev/null 2>&1 || true
+    fi
+}
+
 magicnet_collect_physical_egress_ifaces() {
     if [ -n "${MAGIC_DNS_GUARD_IFACES:-}" ]; then
         for _iface in $MAGIC_DNS_GUARD_IFACES; do
@@ -120,6 +182,7 @@ magicnet_after_kernel_start_deferred_unlocked() {
     magicnet_transparent_apply_unlocked || true
     magicnet_app_policy_apply_unlocked || true
     magicnet_warp_apply_unlocked || true
+    magicnet_enable_dns_capture || true
     magicnet_enable_dns_leak_guard || true
 }
 

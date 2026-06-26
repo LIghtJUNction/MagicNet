@@ -1,6 +1,7 @@
 magicnet_apply_runtime_config_unlocked() {
     if magicnet_module_disabled; then
         magicnet_supervisors_stop >/dev/null 2>&1 || true
+        magicnet_disable_dns_capture >/dev/null 2>&1 || true
         magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
         return 0
     fi
@@ -13,6 +14,7 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_warp_apply_unlocked || _runtime_rc=1
     magicnet_route_apply_unlocked || _runtime_rc=1
     magicnet_block_apply_unlocked || _runtime_rc=1
+    magicnet_enable_dns_capture || true
     magicnet_enable_dns_leak_guard || true
     return "$_runtime_rc"
 }
