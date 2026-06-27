@@ -93,7 +93,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           selector("cn-direct"; ["direct"]; "direct"),
           selector("apple-cn"; ["direct", "proxy"]; "direct"),
           selector("microsoft-cn"; ["direct", "proxy"]; "direct"),
-          selector("google-cn"; ["direct", "proxy"]; "direct"),
+          selector("google-cn"; ["proxy", "direct"]; "proxy"),
           selector("icloud"; ["direct", "proxy"]; "direct"),
           selector("bing"; ["proxy", "direct"]; "proxy"),
           selector("dns-guard"; ["proxy", "block", "direct"]; "proxy"),
@@ -150,7 +150,7 @@ magicnet_singbox_emit_selector_block() {
 magicnet_singbox_emit_static_selectors() {
     for _pair in \
         "lan::direct" "ad-block::block" "cn-direct::direct" \
-        "apple-cn::direct" "microsoft-cn::direct" "google-cn::direct" "icloud::direct"; do
+        "apple-cn::direct" "microsoft-cn::direct" "google-cn::proxy" "icloud::direct"; do
         _name=${_pair%%:*}
         _default=${_pair##*:}
         printf ',\n'

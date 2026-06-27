@@ -133,6 +133,7 @@ config = json.loads(
 dns_rules = config.get("dns", {}).get("rules", [])
 route_rules = config.get("route", {}).get("rules", [])
 outbound_tags = {outbound.get("tag") for outbound in config.get("outbounds", [])}
+outbounds = {outbound.get("tag"): outbound for outbound in config.get("outbounds", [])}
 
 required_leak_domains = {
     "dnsleaktest.com",
@@ -174,6 +175,12 @@ def first_route_index(predicate):
 if "dns-guard" not in outbound_tags:
     raise SystemExit("missing dns-guard outbound selector")
 
+google_cn = outbounds.get("google-cn")
+if not google_cn:
+    raise SystemExit("missing google-cn outbound selector")
+if google_cn.get("default") != "proxy" or (google_cn.get("outbounds") or [None])[0] != "proxy":
+    raise SystemExit("google-cn must default to proxy")
+
 if find_rule(dns_rules, required_leak_domains, server="doh-cloudflare") < 0:
     raise SystemExit("DNS leak-test suffixes are not forced to proxy-detoured DoH")
 if find_rule(dns_rules, required_doh_domains, server="doh-cloudflare") < 0:
@@ -207,6 +214,17 @@ udp443_route = first_route_index(
 )
 if udp443_route < 0:
     raise SystemExit("missing UDP/443 proxy rule for foreign rule sets")
+
+gms_quic_block_route = first_route_index(
+    lambda rule: rule.get("package_name") == ["com.google.android.gms", "com.google.android.gsf"]
+    and rule.get("network") == "udp"
+    and rule.get("port") == 443
+    and rule.get("outbound") == "block"
+)
+if gms_quic_block_route < 0:
+    raise SystemExit("missing GMS UDP/443 block rule")
+if not gms_quic_block_route < udp443_route:
+    raise SystemExit("GMS UDP/443 block rule must precede broad UDP/443 proxy rule")
 PY
 
 watchdog_text="$(unzip -p "$ZIP_PATH" lib/kamfw/watchdog.sh)"
