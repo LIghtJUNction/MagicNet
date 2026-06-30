@@ -54,6 +54,15 @@ su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/config"'
 
 `cli setup` 会校验 URL、写入运行配置、更新设备侧配置、重载模块，并输出健康诊断结果。
 
+## 添加节点
+
+MagicNet 通过 `sing-box` 订阅导入节点，不在模块里手动逐个填写节点。安装后有两种入口：
+
+- WebUI：打开模块 WebUI，进入“更多”里的“订阅”，一行一个填写合法订阅 URL，点击保存后会后台拉取并导入节点。
+- CLI：执行 `su -c '/data/adb/modules/MagicNet/cli setup "https://example.com/subscription"'`。多订阅可用 `cli sub set-file sing-box <base64-lines>` 写入。
+
+导入完成后，节点会写入 `sing-box` 配置的 `proxy` 选择器；节点选择、测速和切换在 `sing-box` WebUI 里完成。当前版本只维护 `sing-box`，Clash / mihomo 格式订阅也按 sing-box 来源导入。
+
 ## 常用 CLI
 
 ```bash
