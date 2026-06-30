@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { DownloadCloud, ExternalLink, Github, RefreshCw } from "lucide-vue-next";
-import { ref } from "vue";
+import { CheckCircle2, DownloadCloud, ExternalLink, Github, RefreshCw } from "lucide-vue-next";
+import { computed, ref } from "vue";
+import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -14,6 +15,7 @@ import type { PendingToolAction } from "./toolActions";
 const { state, runCli, startBackgroundCli, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const status = ref("");
+const verifyOutput = ref("");
 const pendingWebuiAction = ref<PendingToolAction | null>(null);
 const panel = ref({
   name: "zashboard",
@@ -21,10 +23,20 @@ const panel = ref({
   metadata: ""
 });
 
+const verifyChecks = computed(() => parseVerifyChecks(verifyOutput.value));
+const verifyFailed = computed(() => verifyOutput.value.toLowerCase().includes("failed") || verifyChecks.value.some((item) => item.status !== "ok"));
+
 async function refreshWebui(): Promise<void> {
   await withAction("webui-status", async () => {
     status.value = await runCli("webui status", "读取 WebUI 配置", true);
     state.output = status.value;
+  });
+}
+
+async function verifyWebui(): Promise<void> {
+  await withAction("webui-verify", async () => {
+    verifyOutput.value = await runCli("webui verify", "校验 WebUI 面板");
+    state.output = verifyOutput.value;
   });
 }
 
@@ -78,6 +90,18 @@ function issueUrl(): string {
   ].join("\n");
   return `${REPO}/issues/new?${new URLSearchParams({ title: `申请适配 WebUI 面板：${panel.value.name || "custom"}`, body }).toString()}`;
 }
+
+function parseVerifyChecks(text: string): Array<{ name: string; status: "ok" | "missing" | "unknown"; path: string }> {
+  return text.split(/\r?\n/).map((line) => {
+    const match = line.match(/^([^=\s]+)=(ok|missing)(?:\s+path=(.*))?$/);
+    if (!match) return null;
+    return {
+      name: match[1].replace(/_/g, " "),
+      status: match[2] === "ok" ? "ok" : "missing",
+      path: match[3] || ""
+    };
+  }).filter((item): item is { name: string; status: "ok" | "missing"; path: string } => Boolean(item));
+}
 </script>
 
 <template>
@@ -85,6 +109,7 @@ function issueUrl(): string {
     <PageHeader overline="sing-box WebUI" title="面板配置" description="管理 sing-box WebUI 面板入口。本地面板会下载到模块目录，在线面板通过申请 issue 进入内置审核。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('webui-status')" @click="refreshWebui"><RefreshCw :size="17" />读取</Button>
+        <Button variant="outline" :loading="isRunning('webui-verify')" @click="verifyWebui"><CheckCircle2 :size="17" />校验面板</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), 'WebUI 适配 Issue')"><Github :size="17" />申请适配</Button>
       </div>
     </PageHeader>
@@ -107,10 +132,23 @@ function issueUrl(): string {
       </Card>
 
       <Card class="grid gap-3">
-        <h3 class="text-base font-semibold">当前状态</h3>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-base font-semibold">当前状态</h3>
+          <Badge v-if="verifyOutput" :tone="verifyFailed ? 'danger' : 'success'">{{ verifyFailed ? "校验失败" : "校验通过" }}</Badge>
+        </div>
         <p class="text-sm leading-6 text-zinc-400">sing-box 默认使用本地 zashboard。面板下载会在后台执行，避免大文件下载被前台超时中断。</p>
         <Button variant="outline" @click="openExternal(REPO, 'MagicNet GitHub')"><ExternalLink :size="17" />打开项目仓库</Button>
+        <div v-if="verifyChecks.length" class="grid gap-2">
+          <div v-for="check in verifyChecks" :key="check.name" class="grid gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-sm font-medium text-zinc-100">{{ check.name }}</span>
+              <Badge :tone="check.status === 'ok' ? 'success' : 'danger'">{{ check.status }}</Badge>
+            </div>
+            <p v-if="check.path" class="break-all text-xs text-zinc-500">{{ check.path }}</p>
+          </div>
+        </div>
         <pre class="max-h-80 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ status || "点击读取查看 webui status。" }}</pre>
+        <pre v-if="verifyOutput" class="max-h-48 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ verifyOutput }}</pre>
       </Card>
     </div>
   </div>
