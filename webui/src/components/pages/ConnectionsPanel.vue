@@ -82,6 +82,18 @@ function requestCloseMatched(): void {
   };
 }
 
+function requestCloseAll(): void {
+  const count = snapshot.value?.connections.length || 0;
+  if (!count) return;
+  pendingAction.value = {
+    key: "connections-action",
+    title: `关闭全部 ${count} 条活动连接`,
+    detail: "会断开当前所有活动代理连接，正在使用网络的应用可能立即重连。",
+    command: "api close-all",
+    run: () => runConnectionAction("api close-all", "关闭全部连接")
+  };
+}
+
 function requestCloseOne(target: ConnectionTarget): void {
   pendingAction.value = {
     key: "connections-action",
@@ -162,12 +174,15 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="grid gap-2 sm:grid-cols-2">
+    <div class="grid gap-2 sm:grid-cols-3">
       <Button variant="outline" :disabled="!snapshot?.connections.length" @click="requestCloseTop">
         关闭 Top 3
       </Button>
       <Button variant="outline" :disabled="!query.trim() || !filtered.length" @click="requestCloseMatched">
         关闭命中连接
+      </Button>
+      <Button variant="outline" :disabled="!snapshot?.connections.length" @click="requestCloseAll">
+        关闭全部
       </Button>
     </div>
 

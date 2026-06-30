@@ -16,6 +16,14 @@ export type TrafficStatsSummary = {
   windowMillis: number;
 };
 
+export type TrafficAlertState = {
+  level: "idle" | "ok" | "warning" | "danger";
+  message: string;
+  latestTotal: number;
+  thresholdBytesPerSecond: number;
+  sustainedSamples: number;
+};
+
 export function parseTrafficSample(text: string, timestampMillis = Date.now()): TrafficSample | null {
   const wholeJson = parseTrafficJson(text, timestampMillis);
   if (wholeJson) return wholeJson;
@@ -44,7 +52,58 @@ export function buildTrafficStatsSummary(samples: TrafficSample[]): TrafficStats
   };
 }
 
-export function formatTrafficStatsReport(samples: TrafficSample[]): string {
+export function evaluateTrafficAlert(samples: TrafficSample[], thresholdMiBPerSecond: number): TrafficAlertState {
+  const thresholdBytesPerSecond = Math.max(0, thresholdMiBPerSecond) * 1024 * 1024;
+  const latest = samples.at(-1) || null;
+  const latestTotal = latest ? latest.up + latest.down : 0;
+  if (!thresholdBytesPerSecond) {
+    return {
+      level: "idle",
+      message: "未设置告警阈值。",
+      latestTotal,
+      thresholdBytesPerSecond,
+      sustainedSamples: 0
+    };
+  }
+  if (!latest) {
+    return {
+      level: "idle",
+      message: "等待真实流量样本。",
+      latestTotal,
+      thresholdBytesPerSecond,
+      sustainedSamples: 0
+    };
+  }
+  const sustainedSamples = [...samples].reverse().findIndex((sample) => sample.up + sample.down < thresholdBytesPerSecond);
+  const consecutive = sustainedSamples === -1 ? samples.length : sustainedSamples;
+  if (consecutive >= 3) {
+    return {
+      level: "danger",
+      message: `连续 ${consecutive} 个样本超过阈值。`,
+      latestTotal,
+      thresholdBytesPerSecond,
+      sustainedSamples: consecutive
+    };
+  }
+  if (latestTotal >= thresholdBytesPerSecond) {
+    return {
+      level: "warning",
+      message: "最近一个样本超过阈值。",
+      latestTotal,
+      thresholdBytesPerSecond,
+      sustainedSamples: consecutive
+    };
+  }
+  return {
+    level: "ok",
+    message: "当前流量低于阈值。",
+    latestTotal,
+    thresholdBytesPerSecond,
+    sustainedSamples: 0
+  };
+}
+
+export function formatTrafficStatsReport(samples: TrafficSample[], alert?: TrafficAlertState): string {
   const summary = buildTrafficStatsSummary(samples);
   return [
     "MagicNet traffic stats",
@@ -59,6 +118,9 @@ export function formatTrafficStatsReport(samples: TrafficSample[]): string {
     `average_down=${Math.round(summary.averageDown)}`,
     `peak_up=${Math.round(summary.peakUp)}`,
     `peak_down=${Math.round(summary.peakDown)}`,
+    `alert_level=${alert?.level || "none"}`,
+    `alert_threshold_bytes_per_second=${Math.round(alert?.thresholdBytesPerSecond || 0)}`,
+    `alert_sustained_samples=${alert?.sustainedSamples || 0}`,
     "",
     "index,timestamp,source,up_bytes_per_second,down_bytes_per_second",
     ...samples.map((sample, index) => `${index + 1},${new Date(sample.timestampMillis).toISOString()},${sample.source},${Math.round(sample.up)},${Math.round(sample.down)}`)

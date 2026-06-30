@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from "vue";
-import { Activity, Copy, Pause, Play, RefreshCw, Trash2 } from "lucide-vue-next";
+import { Activity, Bell, Copy, Pause, Play, RefreshCw, Trash2 } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
-import { buildTrafficStatsSummary, formatTrafficStatsReport, parseTrafficSample, type TrafficSample } from "@/composables/trafficStatsParsers";
+import Input from "@/components/ui/Input.vue";
+import { buildTrafficStatsSummary, evaluateTrafficAlert, formatTrafficStatsReport, parseTrafficSample, type TrafficSample } from "@/composables/trafficStatsParsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
@@ -16,9 +17,11 @@ const lastFailure = ref("");
 const failedSamples = ref(0);
 const copied = ref(false);
 const autoSampling = ref(false);
+const thresholdMiB = ref("10");
 let timer = 0;
 
 const summary = computed(() => buildTrafficStatsSummary(samples.value));
+const alert = computed(() => evaluateTrafficAlert(samples.value, Number(thresholdMiB.value) || 0));
 const trendSamples = computed(() => samples.value.slice(-12));
 const trendPeak = computed(() => Math.max(1, ...trendSamples.value.map((sample) => sample.up + sample.down)));
 const lastUpdated = computed(() => summary.value.latest ? new Date(summary.value.latest.timestampMillis).toLocaleTimeString() : "未采样");
@@ -31,6 +34,10 @@ async function sampleNow(quiet = false): Promise<void> {
     if (!sample) {
       failedSamples.value += 1;
       lastFailure.value = text || "api stats 没有返回可解析的流量样本。";
+      if (failedSamples.value >= 3) {
+        autoSampling.value = false;
+        stopTimer();
+      }
       if (!quiet) state.output = text || "api stats 没有返回可解析的流量样本。";
       return;
     }
@@ -61,7 +68,7 @@ function clearSamples(): void {
 }
 
 async function copyReport(): Promise<void> {
-  copied.value = await copyText(formatTrafficStatsReport(samples.value));
+  copied.value = await copyText(formatTrafficStatsReport(samples.value, alert.value));
   state.output = copied.value ? "实时流量报告已复制。" : "剪贴板不可用，实时流量报告未复制。";
 }
 
@@ -95,6 +102,13 @@ function upShare(sample: TrafficSample | null): string {
   return total > 0 ? `${Math.round(((sample?.up || 0) / total) * 100)}%` : "0%";
 }
 
+function alertClasses(): string {
+  if (alert.value.level === "danger") return "border-red-400/30 bg-red-500/10 text-red-100";
+  if (alert.value.level === "warning") return "border-amber-400/30 bg-amber-500/10 text-amber-100";
+  if (alert.value.level === "ok") return "border-lime-400/25 bg-lime-400/10 text-lime-100";
+  return "border-zinc-800 bg-zinc-950 text-zinc-300";
+}
+
 onUnmounted(stopTimer);
 </script>
 
@@ -119,6 +133,23 @@ onUnmounted(stopTimer);
           <Play v-else :size="15" />{{ autoSampling ? "暂停" : "自动" }}
         </Button>
       </div>
+    </div>
+
+    <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-end">
+      <div class="min-w-0">
+        <p class="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100"><Bell :size="15" /> 流量告警</p>
+        <p class="mt-1 text-xs leading-5 text-zinc-500">
+          基于真实样本的上行+下行总速率判断，连续 3 个样本超阈值会标为严重。
+        </p>
+      </div>
+      <label class="grid gap-1 text-xs text-zinc-500">
+        阈值 MiB/s
+        <Input v-model="thresholdMiB" inputmode="decimal" placeholder="10" />
+      </label>
+    </div>
+
+    <div class="rounded-md border p-3 text-sm leading-6" :class="alertClasses()">
+      {{ alert.message }} 当前 {{ formatRate(alert.latestTotal) }} · 阈值 {{ formatRate(alert.thresholdBytesPerSecond) }}
     </div>
 
     <div class="grid gap-2 sm:grid-cols-4">
