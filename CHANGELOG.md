@@ -1,5 +1,15 @@
 ## Unreleased
 
+## v1.1.11 (2026-06-30)
+
+- Avoid manager/non-TTY install hangs by skipping MagicNet interactive prompts
+  unless the installer has a real TTY.
+- Add install smoke coverage for manager-style installs with
+  `MAGICNET_NONINTERACTIVE` unset.
+- Route Google China traffic through `proxy` and update the KAM framework
+  submodule to the fetchable language install revision.
+- Document how to add nodes through WebUI subscriptions or `cli setup`.
+
 ## v1.1.10 (2026-06-26)
 
 - Fix multi-subscription share-link aggregation so proxylink sees every source
