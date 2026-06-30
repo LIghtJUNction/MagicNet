@@ -51,7 +51,16 @@ const data = ref<RankingData>(fallbackData);
 const loading = ref(false);
 const error = ref("");
 const saveStatus = ref("");
+const pendingQrAction = ref<PendingQrAction | null>(null);
 let pressTimer = 0;
+
+type PendingQrAction = {
+  key: string;
+  label: string;
+  url: string;
+  target: string;
+  run: () => Promise<void>;
+};
 
 const topEntries = computed(() => data.value.entries.slice(0, 3));
 const otherEntries = computed(() => data.value.entries.slice(3));
@@ -71,7 +80,7 @@ async function loadRanking(): Promise<void> {
 }
 
 async function copyEmail(): Promise<void> {
-  await copyText(data.value.contactEmail);
+  saveStatus.value = await copyText(data.value.contactEmail) ? "邮箱已复制。" : "剪贴板不可用，邮箱未复制。";
 }
 
 async function openPayment(url: string, label: string): Promise<void> {
@@ -86,22 +95,20 @@ function payImageUrl(kind: "wechat" | "alipay"): string {
   return kind === "wechat" ? data.value.payment.wechatQr || "" : data.value.payment.alipayQr || "";
 }
 
-async function saveQr(kind: "wechat" | "alipay"): Promise<void> {
+function payImageTarget(kind: "wechat" | "alipay"): string {
+  return `/sdcard/Download/MagicNet/MagicNet-${kind}-pay.png`;
+}
+
+async function runSaveQr(kind: "wechat" | "alipay", url: string, target: string): Promise<void> {
   const label = payImageName(kind);
-  const url = payImageUrl(kind);
-  if (!url) {
-    saveStatus.value = `${label}链接为空`;
-    return;
-  }
   await withAction(`save-${kind}`, async () => {
-    const target = `/sdcard/Download/MagicNet-${kind}-pay.png`;
     saveStatus.value = `正在保存${label}...`;
     if (!state.hasKsu) {
       const copied = await copyText(url);
       saveStatus.value = copied ? `已复制${label}图片链接` : `${label}保存需要真机 WebUI 权限`;
       return;
     }
-    const command = `mkdir -p /sdcard/Download && ((command -v curl >/dev/null 2>&1 && curl -L --fail --max-time 25 -o ${shellQuote(target)} ${shellQuote(url)}) || (command -v wget >/dev/null 2>&1 && wget -T 25 -O ${shellQuote(target)} ${shellQuote(url)})) && chmod 0644 ${shellQuote(target)} && echo ${shellQuote(`已保存到 ${target}`)}`;
+    const command = `mkdir -p /sdcard/Download/MagicNet && ((command -v curl >/dev/null 2>&1 && curl -L --fail --max-time 25 -o ${shellQuote(target)} ${shellQuote(url)}) || (command -v wget >/dev/null 2>&1 && wget -T 25 -O ${shellQuote(target)} ${shellQuote(url)})) && test -s ${shellQuote(target)} && chmod 0644 ${shellQuote(target)} && echo ${shellQuote(`已保存到 ${target}`)}`;
     const text = await runShell(command, `保存${label}`, true);
     if (/已保存到/.test(text)) {
       saveStatus.value = text.trim();
@@ -112,11 +119,42 @@ async function saveQr(kind: "wechat" | "alipay"): Promise<void> {
   });
 }
 
+function requestSaveQr(kind: "wechat" | "alipay"): void {
+  const label = payImageName(kind);
+  const url = payImageUrl(kind);
+  const target = payImageTarget(kind);
+  if (!url) {
+    saveStatus.value = `${label}链接为空`;
+    return;
+  }
+  pendingQrAction.value = {
+    key: `save-${kind}`,
+    label,
+    url,
+    target,
+    run: () => runSaveQr(kind, url, target)
+  };
+}
+
+function cancelSaveQr(): void {
+  pendingQrAction.value = null;
+}
+
+async function confirmSaveQr(): Promise<void> {
+  const action = pendingQrAction.value;
+  if (!action) return;
+  try {
+    await action.run();
+  } finally {
+    pendingQrAction.value = null;
+  }
+}
+
 function startLongPress(kind: "wechat" | "alipay"): void {
   stopLongPress();
   pressTimer = window.setTimeout(() => {
     pressTimer = 0;
-    void saveQr(kind);
+    requestSaveQr(kind);
   }, 650);
 }
 
@@ -195,11 +233,25 @@ onMounted(() => {
         <p class="mt-1 text-sm leading-6 text-zinc-400">{{ data.payment.note || "支付后可通过邮箱联系作者更新排行榜信息。" }}</p>
         <p class="mt-1 text-xs leading-5 text-zinc-500">收款码从 GitHub Release 资产读取；若图片未显示，可用下方按钮打开 App 或复制邮箱联系。</p>
       </div>
+      <div v-if="pendingQrAction" class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+        <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-amber-100">确认保存{{ pendingQrAction.label }}</p>
+            <p class="mt-1 break-all text-xs leading-5 text-amber-100/75">
+              {{ state.hasKsu ? `将联网下载并覆盖 ${pendingQrAction.target}` : "当前没有真机 WebUI 权限，将复制图片链接。" }}
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <Button size="sm" variant="secondary" :loading="isRunning(pendingQrAction.key)" @click="confirmSaveQr">确认</Button>
+            <Button size="sm" variant="outline" @click="cancelSaveQr">取消</Button>
+          </div>
+        </div>
+      </div>
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="rounded-md border border-zinc-800 bg-zinc-900 p-3">
           <div class="mb-2 flex items-center justify-between gap-2">
             <p class="text-sm font-semibold">微信收款码</p>
-            <Button size="sm" variant="ghost" :loading="isRunning('save-wechat')" @click="saveQr('wechat')">
+            <Button size="sm" variant="ghost" :loading="isRunning('save-wechat')" @click="requestSaveQr('wechat')">
               <Download :size="15" />保存
             </Button>
           </div>
@@ -211,7 +263,7 @@ onMounted(() => {
             @pointerup="stopLongPress"
             @pointercancel="stopLongPress"
             @pointerleave="stopLongPress"
-            @contextmenu.prevent="saveQr('wechat')"
+            @contextmenu.prevent="requestSaveQr('wechat')"
           >
             <img class="aspect-square w-full object-contain" :src="data.payment.wechatQr" alt="微信收款码" loading="lazy">
           </button>
@@ -224,7 +276,7 @@ onMounted(() => {
         <div class="rounded-md border border-zinc-800 bg-zinc-900 p-3">
           <div class="mb-2 flex items-center justify-between gap-2">
             <p class="text-sm font-semibold">支付宝收款码</p>
-            <Button size="sm" variant="ghost" :loading="isRunning('save-alipay')" @click="saveQr('alipay')">
+            <Button size="sm" variant="ghost" :loading="isRunning('save-alipay')" @click="requestSaveQr('alipay')">
               <Download :size="15" />保存
             </Button>
           </div>
@@ -236,7 +288,7 @@ onMounted(() => {
             @pointerup="stopLongPress"
             @pointercancel="stopLongPress"
             @pointerleave="stopLongPress"
-            @contextmenu.prevent="saveQr('alipay')"
+            @contextmenu.prevent="requestSaveQr('alipay')"
           >
             <img class="aspect-square w-full object-contain" :src="data.payment.alipayQr" alt="支付宝收款码" loading="lazy">
           </button>
@@ -247,7 +299,7 @@ onMounted(() => {
           >
         </div>
       </div>
-      <p class="text-xs leading-5 text-zinc-500">{{ saveStatus || "长按二维码或点保存，可保存到手机 Download 目录。" }}</p>
+      <p class="text-xs leading-5 text-zinc-500">{{ saveStatus || "长按二维码或点保存，可保存到手机 Download/MagicNet 目录。" }}</p>
       <div class="grid gap-2 sm:grid-cols-3">
         <Button @click="openPayment(data.payment.wechatUrl, '微信支付')">
           <Wallet :size="16" />微信

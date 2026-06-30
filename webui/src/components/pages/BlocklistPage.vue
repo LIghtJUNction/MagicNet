@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { DownloadCloud, Github, Plus, RefreshCw, X } from "lucide-vue-next";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -10,6 +10,14 @@ import { useMagicNet } from "@/composables/useMagicNet";
 
 const { state, runCli, startBackgroundCli, refreshBlock, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+const pendingBlockAction = ref<PendingBlockAction | null>(null);
+
+type PendingBlockAction = {
+  key: string;
+  command: string;
+  message: string;
+  run: () => Promise<void>;
+};
 
 const communityEntries = computed(() => {
   const rules = [...state.blocklist.communityRules];
@@ -20,23 +28,37 @@ const communityEntries = computed(() => {
   return rules;
 });
 
-async function addDomain(): Promise<void> {
-  await withAction("add-domain", async () => {
-    const domain = state.blocklist.newDomain.trim();
-    if (!/^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/.test(domain)) {
-      state.output = "域名后缀格式不对。示例：malware.example.com";
-      return;
-    }
-    if (state.blocklist.manual.includes(domain)) {
-      state.output = `${domain} 已存在，已自动去重。`;
-      state.blocklist.newDomain = "";
-      return;
-    }
+function validateBlockDomain(domain: string): boolean {
+  if (!/^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/.test(domain)) {
+    state.output = "域名后缀格式不对。示例：malware.example.com";
+    return false;
+  }
+  if (state.blocklist.manual.includes(domain)) {
+    state.output = `${domain} 已存在，已自动去重。`;
+    state.blocklist.newDomain = "";
+    return false;
+  }
+  return true;
+}
+
+async function addDomain(domain: string): Promise<void> {
+  await withAction(`add-domain-${domain}`, async () => {
     state.blocklist.manual.push(domain);
     state.blocklist.newDomain = "";
     await runCli(`block add-domain ${shellQuote(domain)}`, `添加黑名单 ${domain}`, true);
     await refreshBlock(true);
   });
+}
+
+function requestAddDomain(): void {
+  const domain = state.blocklist.newDomain.trim();
+  if (!validateBlockDomain(domain)) return;
+  pendingBlockAction.value = {
+    key: `add-domain-${domain}`,
+    command: `block add-domain ${domain}`,
+    message: `确认添加本地阻断域名 ${domain}？匹配流量会被黑名单规则阻断。`,
+    run: () => addDomain(domain)
+  };
 }
 
 async function removeDomain(domain: string): Promise<void> {
@@ -51,6 +73,15 @@ async function removeDomain(domain: string): Promise<void> {
     }
     state.output = `已移除阻断：${domain}`;
   });
+}
+
+function requestRemoveDomain(domain: string): void {
+  pendingBlockAction.value = {
+    key: `remove-domain-${domain}`,
+    command: `block remove-domain ${domain}`,
+    message: `确认移除本地阻断域名 ${domain}？`,
+    run: () => removeDomain(domain)
+  };
 }
 
 async function allowRule(rule: string): Promise<void> {
@@ -73,6 +104,15 @@ async function allowRule(rule: string): Promise<void> {
   });
 }
 
+function requestAllowRule(rule: string): void {
+  pendingBlockAction.value = {
+    key: `allow-${rule}`,
+    command: `block allow-rule ${rule}`,
+    message: `确认把社区规则 ${rule} 加入本地排除？`,
+    run: () => allowRule(rule)
+  };
+}
+
 async function unallowRule(rule: string): Promise<void> {
   await withAction(`unallow-${rule}`, async () => {
     state.blocklist.allowRules = state.blocklist.allowRules.filter((item) => item !== rule);
@@ -87,6 +127,15 @@ async function unallowRule(rule: string): Promise<void> {
     }
     state.output = `已恢复阻断：${rule}`;
   });
+}
+
+function requestUnallowRule(rule: string): void {
+  pendingBlockAction.value = {
+    key: `unallow-${rule}`,
+    command: `block unallow-rule ${rule}`,
+    message: `确认恢复阻断 ${rule}？`,
+    run: () => unallowRule(rule)
+  };
 }
 
 function issueUrl(): string {
@@ -105,6 +154,56 @@ function issueUrl(): string {
 async function updateCommunityBlocklist(): Promise<void> {
   await startBackgroundCli("block update", "更新社区库");
 }
+
+function requestUpdateCommunityBlocklist(): void {
+  pendingBlockAction.value = {
+    key: "update-block",
+    command: "block update",
+    message: "确认更新社区黑名单？更新会改写社区规则缓存。",
+    run: updateCommunityBlocklist
+  };
+}
+
+function requestToggleBlocklist(): void {
+  const command = state.blocklist.enabled ? "block disable" : "block enable";
+  pendingBlockAction.value = {
+    key: "toggle-block",
+    command,
+    message: state.blocklist.enabled ? "确认关闭黑名单？阻断规则将不再生效。" : "确认启用黑名单？阻断规则会立即生效。",
+    run: async () => {
+      await withAction("toggle-block", async () => {
+        await runCli(command, "切换黑名单");
+        await refreshBlock(true);
+      });
+    }
+  };
+}
+
+function requestToggleCommunity(): void {
+  const command = state.blocklist.community ? "block community off" : "block community on";
+  pendingBlockAction.value = {
+    key: "toggle-community",
+    command,
+    message: state.blocklist.community ? "确认关闭社区库？社区阻断规则将不再生效。" : "确认启用社区库？社区阻断规则会立即生效。",
+    run: async () => {
+      await withAction("toggle-community", async () => {
+        await runCli(command, "切换社区库");
+        await refreshBlock(true);
+      });
+    }
+  };
+}
+
+function cancelBlockAction(): void {
+  pendingBlockAction.value = null;
+}
+
+async function confirmBlockAction(): Promise<void> {
+  const action = pendingBlockAction.value;
+  if (!action) return;
+  pendingBlockAction.value = null;
+  await action.run();
+}
 </script>
 
 <template>
@@ -112,24 +211,38 @@ async function updateCommunityBlocklist(): Promise<void> {
     <PageHeader overline="Community Banlist" title="联 ban 黑名单" description="本地规则和社区库排除都在这里。X 是排除社区规则，+ 是恢复阻断。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('refresh-block')" @click="withAction('refresh-block', () => refreshBlock())"><RefreshCw :size="17" />读取</Button>
-        <Button :loading="isRunning('update-block')" @click="withAction('update-block', updateCommunityBlocklist)"><DownloadCloud :size="17" />更新社区库</Button>
+        <Button :loading="isRunning('update-block')" @click="requestUpdateCommunityBlocklist"><DownloadCloud :size="17" />更新社区库</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), '黑名单变更 Issue')"><Github :size="17" />创建 Issue</Button>
       </div>
     </PageHeader>
 
+    <Card v-if="pendingBlockAction" class="grid gap-3 border border-amber-500/40 bg-amber-500/10">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div class="min-w-0">
+          <span class="text-[11px] font-bold uppercase tracking-wide text-amber-300">Confirm blocklist</span>
+          <p class="mt-1 text-sm leading-6 text-amber-100">{{ pendingBlockAction.message }}</p>
+          <code class="mt-2 block break-all rounded-md bg-zinc-950/60 px-3 py-2 text-xs text-zinc-100">{{ pendingBlockAction.command }}</code>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <Button variant="secondary" :loading="isRunning(pendingBlockAction.key)" @click="confirmBlockAction">确认</Button>
+          <Button variant="outline" @click="cancelBlockAction">取消</Button>
+        </div>
+      </div>
+    </Card>
+
     <Card class="grid gap-3">
       <h3 class="text-base font-semibold">策略</h3>
       <div class="grid gap-2 sm:grid-cols-2">
-        <Button :variant="state.blocklist.enabled ? 'default' : 'outline'" :loading="isRunning('toggle-block')" @click="withAction('toggle-block', async () => { await runCli(state.blocklist.enabled ? 'block disable' : 'block enable', '切换黑名单'); await refreshBlock(true); })">
+        <Button :variant="state.blocklist.enabled ? 'default' : 'outline'" :loading="isRunning('toggle-block')" @click="requestToggleBlocklist">
           {{ isRunning('toggle-block') ? '切换中' : state.blocklist.enabled ? "黑名单已启用" : "黑名单已关闭" }}
         </Button>
-        <Button :variant="state.blocklist.community ? 'default' : 'outline'" :loading="isRunning('toggle-community')" @click="withAction('toggle-community', async () => { await runCli(state.blocklist.community ? 'block community off' : 'block community on', '切换社区库'); await refreshBlock(true); })">
+        <Button :variant="state.blocklist.community ? 'default' : 'outline'" :loading="isRunning('toggle-community')" @click="requestToggleCommunity">
           {{ isRunning('toggle-community') ? '切换中' : state.blocklist.community ? "社区库已启用" : "社区库已关闭" }}
         </Button>
       </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
         <Input v-model="state.blocklist.newDomain" placeholder="malware.example.com" spellcheck="false" />
-        <Button variant="secondary" :loading="isRunning('add-domain')" @click="addDomain"><Plus :size="16" />添加</Button>
+        <Button variant="secondary" :loading="isRunning(`add-domain-${state.blocklist.newDomain.trim()}`)" @click="requestAddDomain"><Plus :size="16" />添加</Button>
       </div>
     </Card>
 
@@ -139,7 +252,7 @@ async function updateCommunityBlocklist(): Promise<void> {
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <span v-for="domain in state.blocklist.manual" :key="domain" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ domain }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-domain-${domain}`)" type="button" @click="removeDomain(domain)"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-domain-${domain}`)" type="button" @click="requestRemoveDomain(domain)"><X :size="14" /></button>
           </span>
           <em v-if="!state.blocklist.manual.length" class="text-sm not-italic text-zinc-500">暂无域名</em>
         </div>
@@ -150,7 +263,7 @@ async function updateCommunityBlocklist(): Promise<void> {
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
           <span v-for="rule in communityEntries.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="allowRule(rule)"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="requestAllowRule(rule)"><X :size="14" /></button>
           </span>
           <em v-if="!communityEntries.length" class="text-sm not-italic text-zinc-500">未读取到社区规则</em>
         </div>
@@ -161,7 +274,7 @@ async function updateCommunityBlocklist(): Promise<void> {
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
           <span v-for="rule in state.blocklist.allowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" title="恢复阻断" @click="unallowRule(rule)"><Plus :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" title="恢复阻断" @click="requestUnallowRule(rule)"><Plus :size="14" /></button>
           </span>
           <em v-if="!state.blocklist.allowRules.length" class="text-sm not-italic text-zinc-500">暂无排除规则</em>
         </div>

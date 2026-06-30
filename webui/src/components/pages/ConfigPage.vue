@@ -1,14 +1,56 @@
 <script setup lang="ts">
 import { DownloadCloud, Github, RefreshCw, Save } from "lucide-vue-next";
+import { ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
+import type { PendingToolAction } from "./toolActions";
 
 const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+const pendingConfigAction = ref<PendingToolAction | null>(null);
+
+function requestConfigAction(action: PendingToolAction): void {
+  pendingConfigAction.value = action;
+}
+
+function cancelConfigAction(): void {
+  pendingConfigAction.value = null;
+}
+
+async function confirmConfigAction(): Promise<void> {
+  const action = pendingConfigAction.value;
+  if (!action) return;
+  try {
+    await action.run();
+  } finally {
+    pendingConfigAction.value = null;
+  }
+}
+
+function requestSaveConfig(): void {
+  requestConfigAction({
+    key: "save-config",
+    title: "校验并保存配置",
+    detail: `会把当前编辑器内容写入 ${state.config.path || "sing-box config.json"}，通过 sing-box check 后覆盖运行配置。`,
+    command: `config-editor save-file ${state.config.target} <editor-temp-file>`,
+    run: () => withAction("save-config", () => saveConfig()),
+  });
+}
+
+function requestSyncTemplate(): void {
+  requestConfigAction({
+    key: "sync-template",
+    title: "同步上游配置模板",
+    detail: "会用上游模板更新当前目标配置，并重新加载编辑器内容。",
+    command: `config-editor sync-template ${state.config.target}`,
+    run: () => withAction("sync-template", () => syncConfigTemplate()),
+  });
+}
 
 function issueUrl(): string {
   const sanitized = state.config.text
@@ -34,11 +76,19 @@ function issueUrl(): string {
     <PageHeader overline="Validated Editor" title="配置编辑器" description="高级配置入口：编辑 sing-box config.json；订阅链接请到订阅页填写。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', () => loadConfig())"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
-        <Button variant="outline" :loading="isRunning('sync-template')" @click="withAction('sync-template', () => syncConfigTemplate())"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
-        <Button :loading="isRunning('save-config')" @click="withAction('save-config', () => saveConfig())"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
+        <Button variant="outline" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
+        <Button :loading="isRunning('save-config')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), '配置 Diff Issue')"><Github :size="17" />创建 Diff Issue</Button>
       </div>
     </PageHeader>
+
+    <ToolActionConfirmCard
+      v-if="pendingConfigAction"
+      :action="pendingConfigAction"
+      :loading="isRunning(pendingConfigAction.key)"
+      @cancel="cancelConfigAction"
+      @confirm="confirmConfigAction"
+    />
 
     <Card class="grid gap-3">
       <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm text-zinc-400">
@@ -49,6 +99,25 @@ function issueUrl(): string {
       </div>
       <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm leading-6 text-zinc-400">
         <p>sing-box 配置文件是 JSON。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 sing-box check，通过后才覆盖。</p>
+      </div>
+      <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
+        <div>
+          <p class="text-xs text-zinc-500">校验状态</p>
+          <p
+            class="mt-1 inline-flex rounded px-2 py-1 text-xs"
+            :class="{
+              'bg-emerald-500/15 text-emerald-200': state.config.validation.status === 'ok',
+              'bg-red-500/15 text-red-200': state.config.validation.status === 'error',
+              'bg-zinc-800 text-zinc-300': state.config.validation.status === 'idle',
+            }"
+          >
+            {{ state.config.validation.status === 'ok' ? '通过' : state.config.validation.status === 'error' ? '失败' : '未校验' }}
+          </p>
+        </div>
+        <div class="min-w-0">
+          <p class="text-xs text-zinc-500">最近结果 {{ state.config.validation.checkedAt }}</p>
+          <p class="mt-1 break-words text-sm text-zinc-300">{{ state.config.validation.summary }}</p>
+        </div>
       </div>
       <Textarea
         v-model="state.config.text"

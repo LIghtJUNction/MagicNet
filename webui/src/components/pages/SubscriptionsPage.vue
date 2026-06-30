@@ -8,38 +8,90 @@ import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { bytesToBase64, copyText, execFailed } from "@/utils";
+import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
+import type { PendingToolAction } from "./toolActions";
 
 const { state, runCli, startBackgroundCli, refreshSubs, shellQuote, uniqueNonEmpty } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
+const pendingSubscriptionAction = ref<PendingToolAction | null>(null);
 
 watch(() => state.subscriptions.singBoxUrls, (urls) => {
   singBoxText.value = urls.join("\n");
 }, { immediate: true });
 
-async function saveSingBox(): Promise<void> {
+function requestSubscriptionAction(action: PendingToolAction): void {
+  pendingSubscriptionAction.value = action;
+}
+
+function cancelSubscriptionAction(): void {
+  pendingSubscriptionAction.value = null;
+}
+
+async function confirmSubscriptionAction(): Promise<void> {
+  const action = pendingSubscriptionAction.value;
+  if (!action) return;
+  try {
+    await action.run();
+  } finally {
+    pendingSubscriptionAction.value = null;
+  }
+}
+
+function normalizedSingBoxUrls(): string[] | null {
+  const raw = singBoxText.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const lines = uniqueNonEmpty(raw).slice(0, 5);
+  if (lines.some((line) => !/^https?:\/\/\S+$/i.test(line))) {
+    state.output = "sing-box 订阅格式不对，必须一行一个 http(s) URL。";
+    return null;
+  }
+  if (!lines.length) {
+    state.output = "请至少填写一个 sing-box 订阅 URL。";
+    return null;
+  }
+  if (raw.length !== lines.length) state.output = `将自动去重/裁剪：${raw.length} -> ${lines.length}`;
+  return lines;
+}
+
+async function runSaveSingBox(lines: string[]): Promise<void> {
   await withAction("save-singbox", async () => {
-    const raw = singBoxText.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const lines = uniqueNonEmpty(raw).slice(0, 5);
-    if (lines.some((line) => !/^https?:\/\/\S+$/i.test(line))) {
-      state.output = "sing-box 订阅格式不对，必须一行一个 http(s) URL。";
-      return;
-    }
     singBoxText.value = lines.join("\n");
     const encoded = bytesToBase64(new TextEncoder().encode(`${lines.join("\n")}\n`));
     const text = await runCli(`sub set-file sing-box ${shellQuote(encoded)}`, "保存 sing-box 订阅");
     if (execFailed(text)) return;
-    if (raw.length !== lines.length) state.output += `\n\n已自动去重/裁剪：${raw.length} -> ${lines.length}`;
     await startBackgroundCli("sub update sing-box", "更新 sing-box 节点");
     state.output += "\n\n已开始后台拉取并导入 sing-box 节点。完成后进入 sing-box WebUI 查看节点。";
     await refreshSubs(true);
   });
 }
 
-async function updateAll(): Promise<void> {
+function saveSingBox(): void {
+  const lines = normalizedSingBoxUrls();
+  if (!lines) return;
+  requestSubscriptionAction({
+    key: "save-singbox",
+    title: "保存并更新 sing-box 订阅",
+    detail: `会保存 ${lines.length} 个订阅 URL，并立即后台联网拉取、解析和写入节点配置。`,
+    command: "sub set-file sing-box <encoded-urls> && sub update sing-box",
+    run: () => runSaveSingBox(lines),
+  });
+}
+
+async function runUpdateAll(): Promise<void> {
   await withAction("update-all", async () => {
     await startBackgroundCli("sub update-all", "更新全部订阅");
     window.setTimeout(() => void refreshSubs(true), 1200);
+  });
+}
+
+function updateAll(): void {
+  const count = state.subscriptions.singBoxUrls.length;
+  requestSubscriptionAction({
+    key: "update-all",
+    title: "更新全部订阅",
+    detail: `会后台联网更新全部订阅来源。当前 sing-box 订阅数量：${count}。`,
+    command: "sub update-all",
+    run: runUpdateAll,
   });
 }
 
@@ -60,6 +112,14 @@ async function copy(text: string, label: string): Promise<void> {
         <Button :loading="isRunning('update-all')" @click="updateAll"><DownloadCloud :size="17" />更新全部</Button>
       </div>
     </PageHeader>
+
+    <ToolActionConfirmCard
+      v-if="pendingSubscriptionAction"
+      :action="pendingSubscriptionAction"
+      :loading="isRunning(pendingSubscriptionAction.key)"
+      @cancel="cancelSubscriptionAction"
+      @confirm="confirmSubscriptionAction"
+    />
 
     <div class="grid gap-3">
       <Card>

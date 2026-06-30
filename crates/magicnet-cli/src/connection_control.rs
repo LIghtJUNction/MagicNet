@@ -1,0 +1,299 @@
+use std::process::Command;
+
+use serde_json::Value;
+
+use crate::App;
+
+pub(crate) fn close_matching_connections(app: &App, query: &str) -> Result<(), String> {
+    let clean = query.trim();
+    if clean.is_empty() {
+        return Err("Usage: cli api close-matching <query>".to_string());
+    }
+    let text = curl_text(app, "/connections")?;
+    let root: Value =
+        serde_json::from_str(&text).map_err(|err| format!("parse connections: {err}"))?;
+    let mut targets = matching_connections(&root, clean);
+    targets.sort_by_key(|target| std::cmp::Reverse(target.bytes));
+    targets.truncate(8);
+    close_targets(app, targets)
+}
+
+pub(crate) fn close_top_connections(app: &App, count: &str) -> Result<(), String> {
+    let limit = close_top_limit(count);
+    let text = curl_text(app, "/connections")?;
+    let root: Value =
+        serde_json::from_str(&text).map_err(|err| format!("parse connections: {err}"))?;
+    let mut targets = matching_connections(&root, "");
+    targets.sort_by_key(|target| std::cmp::Reverse(target.bytes));
+    targets.truncate(limit);
+    close_targets(app, targets)
+}
+
+fn close_top_limit(count: &str) -> usize {
+    count
+        .trim()
+        .parse::<usize>()
+        .ok()
+        .filter(|value| (1..=8).contains(value))
+        .unwrap_or(3)
+}
+
+fn close_targets(app: &App, targets: Vec<ConnectionMatch>) -> Result<(), String> {
+    if targets.is_empty() {
+        println!("[info] no matching connections");
+        print_close_summary(0, 0, 0);
+        return Ok(());
+    }
+    let mut failed = 0usize;
+    for target in &targets {
+        match curl_delete(
+            app,
+            &format!("/connections/{}", encode_path_segment(&target.id)),
+        ) {
+            Ok(()) => println!("closed {} {}", target.id, target.label),
+            Err(err) => {
+                failed += 1;
+                println!("failed {} {}: {err}", target.id, target.label);
+            }
+        }
+    }
+    let closed = targets.len().saturating_sub(failed);
+    print_close_summary(targets.len(), closed, failed);
+    if failed > 0 {
+        Err(format!("{failed} matching connections failed to close"))
+    } else {
+        println!("[info] closed {} matching connections", targets.len());
+        Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ConnectionMatch {
+    id: String,
+    label: String,
+    haystack: String,
+    bytes: u64,
+}
+
+fn matching_connections(root: &Value, query: &str) -> Vec<ConnectionMatch> {
+    let terms = query
+        .split_whitespace()
+        .map(|term| term.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    root.get("connections")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(connection_match)
+        .filter(|target| terms.iter().all(|term| target.haystack.contains(term)))
+        .collect()
+}
+
+fn connection_match(item: &Value) -> Option<ConnectionMatch> {
+    let id = item.get("id").and_then(Value::as_str)?.trim();
+    if id.is_empty() {
+        return None;
+    }
+    let metadata = item.get("metadata").unwrap_or(&Value::Null);
+    let host = metadata
+        .get("host")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let ip = metadata
+        .get("destinationIP")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let port = metadata
+        .get("destinationPort")
+        .map(value_text)
+        .unwrap_or_default();
+    let target = if host.is_empty() { ip } else { host };
+    if target.is_empty() {
+        return None;
+    }
+    let label = if port.is_empty() || port == "0" {
+        target.to_string()
+    } else {
+        format!("{target}:{port}")
+    };
+    let chains = item
+        .get("chains")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default();
+    let haystack = format!(
+        "{} {} {} {} {}",
+        label,
+        metadata
+            .get("network")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        item.get("rule").and_then(Value::as_str).unwrap_or_default(),
+        item.get("rulePayload")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        chains
+    )
+    .to_ascii_lowercase();
+    let upload = item
+        .get("upload")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let download = item
+        .get("download")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    Some(ConnectionMatch {
+        id: id.to_string(),
+        label,
+        haystack,
+        bytes: upload + download,
+    })
+}
+
+pub(crate) fn print_close_all_summary(app: &App) -> Result<(), String> {
+    let targets = connection_count(app).unwrap_or(0);
+    curl_delete(app, "/connections")?;
+    print_close_summary(targets, targets, 0);
+    Ok(())
+}
+
+fn connection_count(app: &App) -> Result<usize, String> {
+    let text = curl_text(app, "/connections")?;
+    let root: Value =
+        serde_json::from_str(&text).map_err(|err| format!("parse connections: {err}"))?;
+    Ok(root
+        .get("connections")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0))
+}
+
+fn print_close_summary(targets: usize, closed: usize, failed: usize) {
+    print!("{}", format_close_summary(targets, closed, failed));
+}
+
+fn format_close_summary(targets: usize, closed: usize, failed: usize) -> String {
+    format!("targets={targets}\nclosed={closed}\nfailed={failed}\n")
+}
+
+fn curl_text(app: &App, path: &str) -> Result<String, String> {
+    let output = Command::new("curl")
+        .args(["-fsS", "--max-time", "4", &format!("{}{}", app.api, path)])
+        .output()
+        .map_err(|err| format!("run curl: {err}"))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+fn curl_delete(app: &App, path: &str) -> Result<(), String> {
+    let output = Command::new("curl")
+        .args([
+            "-fsS",
+            "-X",
+            "DELETE",
+            "--max-time",
+            "4",
+            &format!("{}{}", app.api, path),
+        ])
+        .output()
+        .map_err(|err| format!("run curl: {err}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+fn encode_path_segment(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
+}
+
+fn value_text(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Number(number) => number.to_string(),
+        _ => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matching_connections_filters_by_host_rule_and_chain() {
+        let root: Value = serde_json::from_str(
+            r#"{
+              "connections": [
+                {
+                  "id": "a",
+                  "upload": 10,
+                  "download": 20,
+                  "metadata": {"host": "video.example.com", "destinationPort": 443, "network": "tcp"},
+                  "rule": "RuleSet",
+                  "rulePayload": "media",
+                  "chains": ["proxy", "jp"]
+                },
+                {
+                  "id": "b",
+                  "upload": 99,
+                  "download": 1,
+                  "metadata": {"destinationIP": "203.0.113.9", "destinationPort": 80},
+                  "rule": "GeoIP",
+                  "rulePayload": "cn",
+                  "chains": ["direct"]
+                },
+                {
+                  "metadata": {"host": "missing-id.example"}
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+
+        let video = matching_connections(&root, "video jp");
+        assert_eq!(video.len(), 1);
+        assert_eq!(video[0].id, "a");
+        assert_eq!(video[0].label, "video.example.com:443");
+        assert_eq!(video[0].bytes, 30);
+
+        let ip = matching_connections(&root, "203.0.113 geoip");
+        assert_eq!(ip.len(), 1);
+        assert_eq!(ip[0].id, "b");
+    }
+
+    #[test]
+    fn close_top_limit_defaults_and_clamps_to_safe_range() {
+        assert_eq!(close_top_limit(""), 3);
+        assert_eq!(close_top_limit("bad"), 3);
+        assert_eq!(close_top_limit("0"), 3);
+        assert_eq!(close_top_limit("9"), 3);
+        assert_eq!(close_top_limit("8"), 8);
+    }
+
+    #[test]
+    fn format_close_summary_includes_machine_readable_counts() {
+        assert_eq!(
+            "targets=5\nclosed=3\nfailed=2\n",
+            format_close_summary(5, 3, 2)
+        );
+    }
+}

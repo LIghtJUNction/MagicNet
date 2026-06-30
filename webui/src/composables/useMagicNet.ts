@@ -2,7 +2,9 @@ import * as kernelsu from "kernelsu";
 import { computed, nextTick, reactive } from "vue";
 import { AUTHOR_WHISPER_URL, CLI, CLI_TIMEOUT_MS, MODULE_DIR, REPO } from "@/constants";
 import type { AppPolicy, ConfigEditorTarget, HealthItem, PackageInfo } from "@/types";
-import { blockDefaults, dnsDefaults, mcpDefaults, parseApps, parseBlock, parseDns, parseHealth, parseMcp, parsePackages, parseRuntime, parseSubs, parseWarp, runtimeDefaults, type SubscriptionState, warpDefaults } from "@/composables/parsers";
+import { backgroundDone, backgroundFailed, backgroundLaunchCommand, backgroundLogCommand, backgroundLogPath, backgroundTaskDefaults } from "@/composables/backgroundTasks";
+import { blockDefaults, dnsDefaults, mcpDefaults, parseApps, parseBlock, parseConfigValidation, parseDns, parseHealth, parseMcp, parsePackages, parseRuntime, parseSubs, parseWarp, runtimeDefaults, type ConfigValidationState, type SubscriptionState, warpDefaults } from "@/composables/parsers";
+import { buildIssueBody, buildShortIssueBody, propValue } from "@/composables/issueDrafts";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import { bytesToBase64, compactCommand, compactOutput, copyText, execFailed, intentDataQuote, normalizeExecResult, nextFrame, shellQuote, uniqueNonEmpty, withTimeout } from "@/utils";
 
@@ -22,6 +24,7 @@ const state = reactive({
   queueDepth: 0,
   lastCommand: "",
   output: hasKsu ? "正在读取 MagicNet 状态..." : "本地预览模式：真机 WebUI 才会执行 root 命令。",
+  backgroundTask: { ...backgroundTaskDefaults },
   runtime: { ...runtimeDefaults },
   health: [] as HealthItem[],
   pingtest: "",
@@ -44,7 +47,12 @@ const state = reactive({
     text: "",
     path: `${MODULE_DIR}/.config/sing-box/config.json`,
     dirty: false,
-    status: "尚未加载"
+    status: "尚未加载",
+    validation: {
+      status: "idle",
+      summary: "尚未执行校验。",
+      checkedAt: ""
+    } as ConfigValidationState
   },
   backup: {
     exportPassword: "",
@@ -128,21 +136,23 @@ async function runCli(args: string, label = args, quiet = false): Promise<string
 }
 
 async function startBackgroundCli(args: string, label = args): Promise<string> {
-  const logName = label
-    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase() || "task";
-  const log = `${MODULE_DIR}/.log/webui-${logName}.log`;
+  const log = backgroundLogPath(label);
   stopBackgroundLogFollow();
+  const startedAt = Date.now();
+  state.backgroundTask = { label, args, log, startedAt, updatedAt: startedAt, finishedAt: 0, status: "running" };
   state.phase = "accepted";
   state.notice = `已投递后台任务：${label}`;
   state.output = `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
   await nextTick();
   await nextFrame();
-  const command = `mkdir -p ${shellQuote(`${MODULE_DIR}/.log`)}; : >${shellQuote(log)}; nohup sh -c ${shellQuote(`${CLI} ${args}`)} >${shellQuote(log)} 2>&1 </dev/null & echo "[info] background task started: ${label}"`;
+  const command = backgroundLaunchCommand(args, label, log);
   const result = await runShell(command, `投递 ${label}`, true);
   if (!execFailed(result)) {
     followBackgroundLogs(log, label, args);
+  } else {
+    state.backgroundTask.status = "error";
+    state.backgroundTask.updatedAt = Date.now();
+    state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
   }
   return result;
 }
@@ -151,27 +161,6 @@ function stopBackgroundLogFollow(): void {
   if (!backgroundLogTimer) return;
   window.clearTimeout(backgroundLogTimer);
   backgroundLogTimer = 0;
-}
-
-function backgroundLogCommand(log: string, args: string): string {
-  const parts = [
-    `echo "[task log] ${log}"`,
-    `[ -f ${shellQuote(log)} ] && tail -n 80 ${shellQuote(log)} || echo "[info] waiting for task log..."`,
-  ];
-  if (/\bservice\s+(start|restart|ensure)\b/.test(args)) {
-    parts.push(
-      `echo ""`,
-      `echo "[sing-box log] ${MODULE_DIR}/.log/sing-box.log"`,
-      `[ -f ${shellQuote(`${MODULE_DIR}/.log/sing-box.log`)} ] && tail -n 80 ${shellQuote(`${MODULE_DIR}/.log/sing-box.log`)} || echo "[info] waiting for sing-box log..."`
-    );
-  }
-  return parts.join("; ");
-}
-
-function backgroundFailed(logs: string): boolean {
-  return logs.includes("[error]")
-    || logs.includes("╳[error]")
-    || /\b(not executable|failed with status|No subscription source is available)\b/i.test(logs);
 }
 
 function followBackgroundLogs(log: string, label: string, args: string, attempt = 0): void {
@@ -184,11 +173,12 @@ function followBackgroundLogs(log: string, label: string, args: string, attempt 
     if (!execFailed(status)) {
       state.runtime = parseRuntime(status, state.runtime);
     }
-    const done = !execFailed(status) && (
-      state.runtime.singBoxState === "sing-box"
-      || (/\bservice\s+stop\b/.test(args) && state.runtime.singBoxState === "stopped")
-    );
+    const done = backgroundDone(logs);
     const failed = !done && backgroundFailed(logs);
+    const now = Date.now();
+    state.backgroundTask.status = done ? "done" : failed ? "error" : "running";
+    state.backgroundTask.updatedAt = now;
+    state.backgroundTask.finishedAt = done || failed ? now : 0;
     state.phase = done ? "done" : failed ? "error" : "running";
     state.notice = done ? `完成：${label}` : failed ? `失败：${label}` : `正在执行：${label}`;
     state.output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${logs || "等待日志输出..."}`;
@@ -197,6 +187,9 @@ function followBackgroundLogs(log: string, label: string, args: string, attempt 
     } else {
       backgroundLogTimer = 0;
       if (!done && !failed) {
+        state.backgroundTask.status = "timeout";
+        state.backgroundTask.updatedAt = Date.now();
+        state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
         state.phase = "error";
         state.notice = `${label} 仍在后台运行或未完成`;
         state.output += "\n\n[warn] 日志跟踪已超时，请稍后刷新状态或查看完整日志。";
@@ -316,96 +309,6 @@ async function refreshWarp(quiet = false): Promise<boolean> {
   return true;
 }
 
-function fenced(text: string): string {
-  const body = text.trim() || "(empty)";
-  return `\`\`\`text\n${body.replace(/```/g, "`\u200b``")}\n\`\`\``;
-}
-
-function issueSection(title: string, body: string): string {
-  return `## ${title}\n\n${fenced(body)}\n`;
-}
-
-function propValue(text: string, key: string): string {
-  const prefix = `${key}=`;
-  return text
-    .split("\n")
-    .find((line) => line.startsWith(prefix))
-    ?.slice(prefix.length)
-    .trim() || "";
-}
-
-function buildIssueBody(parts: {
-  moduleProp: string;
-  device: string;
-  status: string;
-  health: string;
-  mcp: string;
-  network: string;
-  support: string;
-}): string {
-  const generatedAt = new Date().toISOString();
-  return [
-    "## Problem",
-    "",
-    "请在这里描述你遇到的问题、复现步骤和期望结果。",
-    "",
-    "## Generated Context",
-    "",
-    `Generated at: ${generatedAt}`,
-    "",
-    issueSection("Module", parts.moduleProp),
-    issueSection("Device", parts.device),
-    issueSection("Service Status", parts.status),
-    issueSection("Health", parts.health),
-    issueSection("MCP", parts.mcp),
-    issueSection("Network Probe", parts.network),
-    issueSection("Support Bundle", parts.support)
-  ].join("\n");
-}
-
-function firstLines(text: string, limit: number): string {
-  return text
-    .trim()
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, limit)
-    .join("\n");
-}
-
-function buildShortIssueBody(parts: {
-  version: string;
-  device: string;
-  status: string;
-  health: string;
-  copied: boolean;
-}): string {
-  return [
-    "## Problem",
-    "",
-    "请在这里描述问题、复现步骤和期望结果。",
-    "",
-    "## Diagnostic Context",
-    "",
-    parts.copied
-      ? "完整诊断上下文已复制到剪贴板，请直接粘贴到这里。"
-      : "剪贴板不可用，请回到 MagicNet 输出页复制诊断上下文。",
-    "",
-    "## Summary",
-    "",
-    `version: ${parts.version}`,
-    "",
-    "### Device",
-    fenced(firstLines(parts.device, 4)),
-    "",
-    "### Service Status",
-    fenced(firstLines(parts.status, 12)),
-    "",
-    "### Health",
-    fenced(firstLines(parts.health, 12))
-  ].join("\n");
-}
-
 async function createIssue(): Promise<void> {
   state.task = "创建 GitHub issue";
   state.notice = "正在收集 issue 诊断信息";
@@ -484,6 +387,7 @@ async function loadConfig(): Promise<void> {
   state.config.text = text;
   state.config.dirty = false;
   state.config.status = `已加载 ${text.length} 字符`;
+  state.config.validation = { status: "idle", summary: "配置已加载，尚未执行本次校验。", checkedAt: "" };
   state.config.path = `${MODULE_DIR}/.config/sing-box/config.json`;
   state.notice = `${target} 配置已加载`;
   state.phase = "done";
@@ -508,15 +412,26 @@ async function saveConfig(): Promise<void> {
       return;
     }
   }
-  text = await runCli(`config-editor save-file ${state.config.target} ${shellQuote(tmp)}`, `校验并保存 ${state.config.target}`);
-  state.config.status = execFailed(text) ? "校验失败，未保存" : "校验通过，已保存";
-  if (!execFailed(text)) state.config.dirty = false;
+  try {
+    text = await runCli(`config-editor save-file ${state.config.target} ${shellQuote(tmp)}`, `校验并保存 ${state.config.target}`);
+    const validation = parseConfigValidation(text);
+    state.config.validation = { ...validation, checkedAt: new Date().toLocaleTimeString() };
+    state.config.status = execFailed(text) ? "校验失败，未保存" : "校验通过，已保存";
+    if (!execFailed(text)) state.config.dirty = false;
+  } finally {
+    await runShell(`rm -f ${shellQuote(tmp)}`, "清理配置临时文件", true);
+  }
 }
 
 async function syncConfigTemplate(): Promise<void> {
   const target = state.config.target;
   const text = await runCli(`config-editor sync-template ${target}`, `同步 ${target} 上游模板`);
   state.config.status = execFailed(text) ? "同步失败" : "已同步上游模板";
+  state.config.validation = {
+    status: execFailed(text) ? "error" : "ok",
+    summary: execFailed(text) ? "上游模板同步失败。" : "上游模板已同步并通过校验。",
+    checkedAt: new Date().toLocaleTimeString()
+  };
   if (!execFailed(text)) {
     state.config.dirty = false;
     await loadConfig();

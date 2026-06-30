@@ -143,6 +143,9 @@ onMounted(() => {
         <ScrollText class="shrink-0" :size="15" />
         <span class="min-w-0 truncate" :title="statusMessage">{{ shortStatusMessage }}</span>
       </span>
+      <Button v-if="state.backgroundTask.log" variant="outline" size="sm" class="col-span-2 px-2 md:col-span-1" @click="setTab('output')">
+        <Terminal :size="15" />后台日志
+      </Button>
     </section>
 
     <main class="block md:flex md:items-start md:gap-4">

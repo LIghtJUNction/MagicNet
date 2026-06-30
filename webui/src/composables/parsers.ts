@@ -15,6 +15,53 @@ export type McpState = {
   secretSet: boolean;
 };
 
+export type NetworkSnapshotSummary = {
+  interfaces: number;
+  ipRules: number;
+  routes: number;
+  natRules: number;
+};
+
+export type ConfigValidationState = {
+  status: "idle" | "ok" | "error";
+  summary: string;
+  checkedAt: string;
+};
+
+export type RouteRuleSummary = {
+  proxy: string[];
+  direct: string[];
+  block: string[];
+  warp: string[];
+};
+
+export type ConnectionTarget = {
+  id: string;
+  label: string;
+  network: string;
+  rule: string;
+  rulePayload: string;
+  chain: string;
+  detail: string;
+  upload: number;
+  download: number;
+  totalBytes: number;
+};
+
+export type ConnectionBucket = {
+  name: string;
+  query: string;
+  count: number;
+  bytes: number;
+};
+
+export type ConnectionSnapshot = {
+  count: number;
+  uploadTotal: number;
+  downloadTotal: number;
+  connections: ConnectionTarget[];
+};
+
 export const runtimeDefaults: RuntimeState = {
   singBoxState: "unknown",
   singBox: "unknown",
@@ -138,6 +185,155 @@ export function parsePackages(text: string): PackageInfo[] {
       isSystem: false,
       uid: 0
     }));
+}
+
+export function parseNetworkSnapshotSummary(text: string): NetworkSnapshotSummary {
+  const lines = text.split(/\r?\n/).map((line) => line.trim());
+  return {
+    interfaces: countSectionLines(lines, "[interfaces]", "[routes]"),
+    ipRules: countSectionLines(lines, "ip rule:", "ip route:"),
+    routes: countSectionLines(lines, "ip route:", "[forwarding]"),
+    natRules: countSectionLines(lines, "[forwarding]", undefined)
+  };
+}
+
+export function parseConfigValidation(text: string): Pick<ConfigValidationState, "status" | "summary"> {
+  const trimmed = text.trim();
+  if (!trimmed) return { status: "error", summary: "命令没有返回校验结果。" };
+  if (/\[info\]\s+Saved and validated/i.test(trimmed)) {
+    return { status: "ok", summary: firstUsefulLine(trimmed) || "配置已通过校验并保存。" };
+  }
+  if (/config validation failed|validator missing|config target must/i.test(trimmed)) {
+    return { status: "error", summary: firstUsefulLine(trimmed) || "配置校验失败。" };
+  }
+  return { status: trimmed.includes("[error]") ? "error" : "ok", summary: firstUsefulLine(trimmed) || trimmed.slice(0, 160) };
+}
+
+export function parseRouteRuleSummary(text: string): RouteRuleSummary {
+  const summary: RouteRuleSummary = { proxy: [], direct: [], block: [], warp: [] };
+  let current: keyof RouteRuleSummary | null = null;
+  text.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return;
+    const heading = line.toLowerCase();
+    if (heading === "proxy domain suffixes:") current = "proxy";
+    else if (heading === "direct domain suffixes:") current = "direct";
+    else if (heading === "block domain suffixes:") current = "block";
+    else if (heading === "warp domain suffixes:") current = "warp";
+    else if (current && !line.endsWith(":")) summary[current].push(line);
+  });
+  return summary;
+}
+
+export function parseConnectionSnapshot(text: string): ConnectionSnapshot | null {
+  try {
+    const root = JSON.parse(text) as Record<string, unknown>;
+    const rawConnections = Array.isArray(root.connections) ? root.connections : null;
+    if (!rawConnections) return null;
+    const connections = rawConnections
+      .map(parseConnectionTarget)
+      .filter((item): item is ConnectionTarget => Boolean(item))
+      .filter((item, index, items) => items.findIndex((other) => other.id === item.id) === index)
+      .sort((left, right) => right.totalBytes - left.totalBytes);
+    return {
+      count: rawConnections.length,
+      uploadTotal: safeNumber(root.uploadTotal),
+      downloadTotal: safeNumber(root.downloadTotal),
+      connections
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function connectionMatchesQuery(target: ConnectionTarget, query: string): boolean {
+  const terms = query.split(/\s+/).map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = [
+    target.label,
+    target.network,
+    target.rule,
+    target.rulePayload,
+    target.chain,
+    target.detail
+  ].join(" ").toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+export function connectionBuckets(connections: ConnectionTarget[], kind: "rule" | "chain"): ConnectionBucket[] {
+  const seeds = connections
+    .map((target) => {
+      const name = kind === "rule"
+        ? [target.rule, target.rulePayload].filter(Boolean).join(" ")
+        : target.chain || target.network;
+      if (!name) return null;
+      return { name, query: kind === "chain" ? name.replace(/ > /g, " ") : name, bytes: target.totalBytes };
+    })
+    .filter((item): item is { name: string; query: string; bytes: number } => Boolean(item));
+  return Object.values(
+    seeds.reduce<Record<string, ConnectionBucket>>((acc, seed) => {
+      acc[seed.name] ||= { name: seed.name, query: seed.query, count: 0, bytes: 0 };
+      acc[seed.name].count += 1;
+      acc[seed.name].bytes += seed.bytes;
+      return acc;
+    }, {})
+  ).sort((left, right) => right.bytes - left.bytes || right.count - left.count).slice(0, 4);
+}
+
+function parseConnectionTarget(value: unknown): ConnectionTarget | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const metadata = (item.metadata && typeof item.metadata === "object" ? item.metadata : {}) as Record<string, unknown>;
+  const id = stringValue(item.id);
+  const host = stringValue(metadata.host);
+  const destination = stringValue(metadata.destinationIP);
+  const port = String(metadata.destinationPort ?? "");
+  const target = host || destination;
+  if (!id || !target) return null;
+  const label = !port || port === "0" ? target : `${target}:${port}`;
+  const chain = Array.isArray(item.chains) ? item.chains.map(stringValue).filter(Boolean).join(" > ") : "";
+  const network = stringValue(metadata.network);
+  const rule = stringValue(item.rule);
+  const rulePayload = stringValue(item.rulePayload);
+  const upload = safeNumber(item.upload);
+  const download = safeNumber(item.download);
+  return {
+    id,
+    label,
+    network,
+    rule,
+    rulePayload,
+    chain,
+    detail: [network, rule, rulePayload, chain].filter(Boolean).join(" · ") || "direct",
+    upload,
+    download,
+    totalBytes: upload + download
+  };
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function safeNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function firstUsefulLine(text: string): string {
+  return text.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("command:")) || "";
+}
+
+function countSectionLines(lines: string[], start: string, end: string | undefined): number {
+  const startIndex = lines.findIndex((line) => line.toLowerCase() === start.toLowerCase());
+  if (startIndex < 0) return 0;
+  const relativeEnd = end
+    ? lines.slice(startIndex + 1).findIndex((line) => line.toLowerCase() === end.toLowerCase())
+    : -1;
+  const endIndex = relativeEnd >= 0 ? startIndex + 1 + relativeEnd : lines.length;
+  return lines
+    .slice(startIndex + 1, endIndex)
+    .filter((line) => line && !line.startsWith("[") && line !== "ip rule:" && line !== "ip route:")
+    .length;
 }
 
 export function parseBlock(text: string, previous: BlocklistState): BlocklistState {

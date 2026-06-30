@@ -8,10 +8,13 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
+import type { PendingToolAction } from "./toolActions";
 
 const { state, runCli, startBackgroundCli, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const status = ref("");
+const pendingWebuiAction = ref<PendingToolAction | null>(null);
 const panel = ref({
   name: "zashboard",
   url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip",
@@ -25,15 +28,40 @@ async function refreshWebui(): Promise<void> {
   });
 }
 
-async function installLocal(): Promise<void> {
+function cancelWebuiAction(): void {
+  pendingWebuiAction.value = null;
+}
+
+async function confirmWebuiAction(): Promise<void> {
+  const action = pendingWebuiAction.value;
+  if (!action) return;
+  try {
+    await action.run();
+  } finally {
+    pendingWebuiAction.value = null;
+  }
+}
+
+async function runInstallLocal(url: string, name: string): Promise<void> {
   await withAction("webui-install", async () => {
-    const url = panel.value.url.trim();
-    if (!/^https?:\/\/\S+$/i.test(url)) {
-      state.output = "本地面板下载 URL 必须是 http(s) 链接。";
-      return;
-    }
-    await startBackgroundCli(`webui install-local ${shellQuote(url)} ${shellQuote(panel.value.name.trim() || "custom")}`, "安装本地 WebUI 面板");
+    await startBackgroundCli(`webui install-local ${shellQuote(url)} ${shellQuote(name)}`, "安装本地 WebUI 面板");
   });
+}
+
+function installLocal(): void {
+  const url = panel.value.url.trim();
+  const name = panel.value.name.trim() || "custom";
+  if (!/^https?:\/\/\S+$/i.test(url)) {
+    state.output = "本地面板下载 URL 必须是 http(s) 链接。";
+    return;
+  }
+  pendingWebuiAction.value = {
+    key: "webui-install",
+    title: "后台下载并安装 WebUI 面板",
+    detail: `会下载 ${name} 面板压缩包并写入模块本地 WebUI 资源。`,
+    command: `webui install-local ${url} ${name}`,
+    run: () => runInstallLocal(url, name),
+  };
 }
 
 function issueUrl(): string {
@@ -60,6 +88,14 @@ function issueUrl(): string {
         <Button variant="outline" @click="openExternal(issueUrl(), 'WebUI 适配 Issue')"><Github :size="17" />申请适配</Button>
       </div>
     </PageHeader>
+
+    <ToolActionConfirmCard
+      v-if="pendingWebuiAction"
+      :action="pendingWebuiAction"
+      :loading="isRunning(pendingWebuiAction.key)"
+      @cancel="cancelWebuiAction"
+      @confirm="confirmWebuiAction"
+    />
 
     <div class="grid gap-3 md:grid-cols-2">
       <Card class="grid gap-3">

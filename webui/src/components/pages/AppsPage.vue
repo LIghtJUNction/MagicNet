@@ -11,6 +11,14 @@ import { useMagicNet } from "@/composables/useMagicNet";
 const { state, runCli, refreshApps, refreshPackages, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const removedBypass = ref<string[]>([]);
+const pendingAppAction = ref<PendingAppAction | null>(null);
+
+type PendingAppAction = {
+  key: string;
+  command: string;
+  message: string;
+  run: () => Promise<void>;
+};
 
 const recommendedBypass = [
   "com.eg.android.AlipayGphone",
@@ -122,26 +130,29 @@ function forgetRemovedBypass(pkg: string): void {
   removedBypass.value = removedBypass.value.filter((item) => item !== pkg);
 }
 
-async function addApp(target: "proxy" | "bypass"): Promise<void> {
-  await withAction(`add-${target}`, async () => {
-    const pkg = state.packageInput.trim();
-    await addPackage(pkg, target);
-  });
+function validateAppPackage(pkg: string, target: "proxy" | "bypass"): boolean {
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(pkg)) {
+    state.output = "包名格式不对。示例：com.android.chrome";
+    return false;
+  }
+  const list = target === "proxy" ? state.appPolicy.proxy : state.appPolicy.bypass;
+  if (list.includes(pkg)) {
+    state.output = `${pkg} 已存在，已自动去重。`;
+    state.packageInput = "";
+    return false;
+  }
+  return true;
 }
 
-async function addPackage(pkg: string, target: "proxy" | "bypass"): Promise<void> {
+function addApp(target: "proxy" | "bypass"): void {
+  requestAddPackage(state.packageInput.trim(), target, `add-${target}`);
+}
+
+async function addPackage(pkg: string, target: "proxy" | "bypass", key = `add-${target}`): Promise<void> {
+  await withAction(key, async () => {
     const previousProxy = [...state.appPolicy.proxy];
     const previousBypass = [...state.appPolicy.bypass];
-    if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(pkg)) {
-      state.output = "包名格式不对。示例：com.android.chrome";
-      return;
-    }
     const list = target === "proxy" ? state.appPolicy.proxy : state.appPolicy.bypass;
-    if (list.includes(pkg)) {
-      state.output = `${pkg} 已存在，已自动去重。`;
-      state.packageInput = "";
-      return;
-    }
     if (target === "proxy") state.appPolicy.bypass = state.appPolicy.bypass.filter((item) => item !== pkg);
     else state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
     list.push(pkg);
@@ -156,6 +167,19 @@ async function addPackage(pkg: string, target: "proxy" | "bypass"): Promise<void
       return;
     }
     await refreshApps(true);
+  });
+}
+
+function requestAddPackage(pkg: string, target: "proxy" | "bypass", key = `add-${target}`): void {
+  if (!validateAppPackage(pkg, target)) return;
+  pendingAppAction.value = {
+    key,
+    command: `app add ${pkg} ${target}`,
+    message: target === "proxy"
+      ? `确认把 ${pkg} 加入 Proxy？该应用流量会进入 MagicNet TUN。`
+      : `确认把 ${pkg} 加入 Bypass？该应用会绕过 MagicNet TUN。`,
+    run: () => addPackage(pkg, target, key)
+  };
 }
 
 async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void> {
@@ -206,6 +230,15 @@ async function setMode(mode: "blacklist" | "whitelist"): Promise<void> {
   });
 }
 
+function requestSetMode(mode: "blacklist" | "whitelist"): void {
+  pendingAppAction.value = {
+    key: `mode-${mode}`,
+    command: `app mode ${mode}`,
+    message: mode === "blacklist" ? "确认切换到黑名单模式？应用分流语义会立即改变。" : "确认切换到白名单模式？只有 Proxy 名单应用会进入 TUN。",
+    run: () => setMode(mode)
+  };
+}
+
 async function searchPackages(): Promise<void> {
   await withAction("search-packages", () => refreshPackages());
 }
@@ -233,6 +266,49 @@ async function applyRecommendedBypass(): Promise<void> {
   });
 }
 
+function requestRecommendedBypass(): void {
+  const count = availableRecommendedBypass.value.length;
+  pendingAppAction.value = {
+    key: "apply-recommended-bypass",
+    command: `app add-many bypass (${count} packages)`,
+    message: `确认把 ${count} 个推荐应用加入 Bypass？这会批量改写应用策略。`,
+    run: applyRecommendedBypass
+  };
+}
+
+function requestRemoveApp(pkg: string, target: "proxy" | "bypass"): void {
+  pendingAppAction.value = {
+    key: `remove-${target}-${pkg}`,
+    command: `app remove ${pkg} ${target}`,
+    message: `确认从 ${target} 名单移除 ${pkg}？`,
+    run: () => removeApp(pkg, target)
+  };
+}
+
+function requestRestoreBypass(pkg: string): void {
+  pendingAppAction.value = {
+    key: `restore-bypass-${pkg}`,
+    command: `app add ${pkg} bypass`,
+    message: `确认把 ${pkg} 加回 Bypass 名单？`,
+    run: () => restoreBypass(pkg)
+  };
+}
+
+function cancelAppAction(): void {
+  pendingAppAction.value = null;
+}
+
+async function confirmAppAction(): Promise<void> {
+  const action = pendingAppAction.value;
+  if (!action) return;
+  pendingAppAction.value = null;
+  try {
+    await action.run();
+  } finally {
+    if (pendingAppAction.value?.key === action.key) pendingAppAction.value = null;
+  }
+}
+
 onMounted(() => {
   if (!state.packages.length) void refreshPackages(true);
 });
@@ -244,15 +320,29 @@ onMounted(() => {
       <div class="flex flex-wrap gap-2">
         <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取名单</Button>
         <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />重新读取应用</Button>
-        <Button :loading="isRunning('apply-recommended-bypass')" @click="applyRecommendedBypass"><ShieldCheck :size="17" />应用推荐名单</Button>
+        <Button :loading="isRunning('apply-recommended-bypass')" :disabled="availableRecommendedBypass.length === 0" @click="requestRecommendedBypass"><ShieldCheck :size="17" />应用推荐名单</Button>
       </div>
     </PageHeader>
+
+    <Card v-if="pendingAppAction" class="grid gap-3 border border-amber-500/40 bg-amber-500/10">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div class="min-w-0">
+          <span class="text-[11px] font-bold uppercase tracking-wide text-amber-300">Confirm app policy</span>
+          <p class="mt-1 text-sm leading-6 text-amber-100">{{ pendingAppAction.message }}</p>
+          <code class="mt-2 block break-all rounded-md bg-zinc-950/60 px-3 py-2 text-xs text-zinc-100">{{ pendingAppAction.command }}</code>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <Button variant="secondary" :loading="isRunning(pendingAppAction.key)" @click="confirmAppAction">确认</Button>
+          <Button variant="outline" @click="cancelAppAction">取消</Button>
+        </div>
+      </div>
+    </Card>
 
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-center gap-3">
         <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
-          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist')" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'blacklist' }" @click="setMode('blacklist')">黑名单</button>
-          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist')" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'whitelist' }" @click="setMode('whitelist')">白名单</button>
+          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
+          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
         </div>
         <span class="text-sm text-zinc-500">黑名单模式下 Bypass 应用绕过 TUN；白名单模式下 Proxy 应用进入 TUN。</span>
       </div>
@@ -275,8 +365,8 @@ onMounted(() => {
         <div class="grid max-h-72 gap-2 overflow-auto">
           <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
             <span class="min-w-0 break-all text-sm text-zinc-200">{{ app.packageName }}</span>
-            <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="withAction(`pick-proxy-${app.packageName}`, () => addPackage(app.packageName, 'proxy'))">Proxy</Button>
-            <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="withAction(`pick-bypass-${app.packageName}`, () => addPackage(app.packageName, 'bypass'))">Bypass</Button>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'proxy', `pick-proxy-${app.packageName}`)">Proxy</Button>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'bypass', `pick-bypass-${app.packageName}`)">Bypass</Button>
           </div>
           <em v-if="!filteredPackages.length" class="text-sm not-italic text-zinc-500">暂无结果，点“列出应用”或输入关键字过滤。</em>
         </div>
@@ -303,7 +393,7 @@ onMounted(() => {
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <span v-for="pkg in state.appPolicy.proxy" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-proxy-${pkg}`)" type="button" title="移除" @click="removeApp(pkg, 'proxy')"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-proxy-${pkg}`)" type="button" title="移除" @click="requestRemoveApp(pkg, 'proxy')"><X :size="14" /></button>
           </span>
           <em v-if="!state.appPolicy.proxy.length" class="text-sm not-italic text-zinc-500">暂无应用</em>
         </div>
@@ -313,7 +403,7 @@ onMounted(() => {
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <span v-for="pkg in state.appPolicy.bypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-bypass-${pkg}`)" type="button" title="移入回收站" @click="removeApp(pkg, 'bypass')"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-bypass-${pkg}`)" type="button" title="移入回收站" @click="requestRemoveApp(pkg, 'bypass')"><X :size="14" /></button>
           </span>
           <em v-if="!state.appPolicy.bypass.length" class="text-sm not-italic text-zinc-500">暂无应用</em>
         </div>
@@ -331,7 +421,7 @@ onMounted(() => {
       <div class="flex max-h-56 flex-wrap gap-2 overflow-auto">
         <span v-for="pkg in recycledBypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-300 break-all">
           {{ pkg }}
-          <button class="grid size-6 place-items-center rounded-full bg-emerald-500/15 text-emerald-300 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`restore-bypass-${pkg}`)" type="button" title="加回 Bypass" @click="restoreBypass(pkg)">
+          <button class="grid size-6 place-items-center rounded-full bg-emerald-500/15 text-emerald-300 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`restore-bypass-${pkg}`)" type="button" title="加回 Bypass" @click="requestRestoreBypass(pkg)">
             <RotateCcw :size="14" />
           </button>
         </span>

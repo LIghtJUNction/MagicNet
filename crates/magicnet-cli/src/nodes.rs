@@ -2,11 +2,33 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
+use crate::node_delay::node_delay;
 use crate::App;
-use serde_json::Value;
+use serde_json::{json, Value};
 
-pub(crate) fn node_list(app: &App) {
+pub(crate) fn node_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str).unwrap_or("list") {
+        "list" => {
+            node_list(app);
+            Ok(())
+        }
+        "current" => node_current(),
+        "use" => {
+            let name = args[1..].join(" ");
+            node_use(&name)
+        }
+        "test" => {
+            let name = args[1..].join(" ");
+            node_test(&name)
+        }
+        "test-all" => node_test_all(app, &args[1..]),
+        _ => Err("Usage: cli node {list|current|use|test <name>|test-all [name ...]}".to_string()),
+    }
+}
+
+fn node_list(app: &App) {
     let limit = env::var("MAGICNET_NODE_LIST_LIMIT")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
@@ -18,6 +40,112 @@ pub(crate) fn node_list(app: &App) {
         let text = format!("{}\n", names.join("\n"));
         print!("{text}");
     }
+}
+
+fn node_current() -> Result<(), String> {
+    let proxy = read_proxy_selector()?;
+    let current = proxy
+        .get("now")
+        .and_then(Value::as_str)
+        .or_else(|| proxy.get("selected").and_then(Value::as_str))
+        .unwrap_or("");
+    if current.is_empty() {
+        return Err("current node is not reported by sing-box API".to_string());
+    }
+    println!("{current}");
+    Ok(())
+}
+
+fn node_use(name: &str) -> Result<(), String> {
+    let clean = name.trim();
+    if clean.is_empty() {
+        return Err("Usage: cli node use <name>".to_string());
+    }
+    let payload = json!({ "name": clean }).to_string();
+    let output = Command::new("curl")
+        .args([
+            "-fsS",
+            "--max-time",
+            "5",
+            "-X",
+            "PUT",
+            "-H",
+            "Content-Type: application/json",
+            "--data",
+            &payload,
+            "http://127.0.0.1:9090/proxies/proxy",
+        ])
+        .output()
+        .map_err(|err| format!("run curl: {err}"))?;
+    if output.status.success() {
+        println!("[info] proxy selector set to {clean}");
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("select node failed: {}", stderr.trim()))
+    }
+}
+
+fn node_test(name: &str) -> Result<(), String> {
+    let clean = name.trim();
+    if clean.is_empty() {
+        return Err("Usage: cli node test <name>".to_string());
+    }
+    let delay = node_delay(clean).map_err(|err| format!("test node failed: {err}"))?;
+    println!("{clean}={delay}ms");
+    Ok(())
+}
+
+fn node_test_all(app: &App, args: &[String]) -> Result<(), String> {
+    let nodes = test_all_targets(app, args);
+    if nodes.is_empty() {
+        return Err("Usage: cli node test-all [name ...]".to_string());
+    }
+    let mut failed = 0usize;
+    for node in nodes {
+        match node_delay(&node) {
+            Ok(delay) => println!("{node}={delay}ms"),
+            Err(err) => {
+                failed += 1;
+                println!("{node}=error: {err}");
+            }
+        }
+    }
+    if failed > 0 {
+        Err(format!("{failed} node tests failed"))
+    } else {
+        Ok(())
+    }
+}
+
+fn test_all_targets(app: &App, args: &[String]) -> Vec<String> {
+    if !args.is_empty() {
+        return args
+            .iter()
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+            .map(ToString::to_string)
+            .collect();
+    }
+    let cache = app.moddir.join(".tmp/magicnet-node-list.cache");
+    resolve_node_names(app, 16, true, &cache)
+}
+
+fn read_proxy_selector() -> Result<Value, String> {
+    let output = Command::new("curl")
+        .args([
+            "-fsS",
+            "--max-time",
+            "5",
+            "http://127.0.0.1:9090/proxies/proxy",
+        ])
+        .output()
+        .map_err(|err| format!("run curl: {err}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("read proxy selector failed: {}", stderr.trim()));
+    }
+    serde_json::from_slice(&output.stdout).map_err(|err| format!("parse proxy selector: {err}"))
 }
 
 fn resolve_node_names(app: &App, limit: usize, cache_enabled: bool, cache: &Path) -> Vec<String> {
@@ -277,5 +405,12 @@ mod tests {
         let names = resolve_node_names(&app, 48, true, &cache);
 
         assert_eq!(names, vec!["cached".to_string()]);
+    }
+
+    #[test]
+    fn test_all_uses_explicit_targets_when_present() {
+        let app = temp_app();
+        let names = test_all_targets(&app, &["alpha".to_string(), " beta ".to_string()]);
+        assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);
     }
 }

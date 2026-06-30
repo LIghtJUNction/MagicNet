@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { ExternalLink, Power, Radar, RotateCcw, Save, ShieldCheck, Unplug, Zap } from "lucide-vue-next";
+import { computed, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import { applyConfigAction, applyTransparentModeAction, type ControlDangerAction, repairAction, restartSingBoxAction, singBoxToggleAction, stopAllServicesAction, transparentModeAction } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import type { TransparentMode } from "@/types";
 
 const { state, runCli, startBackgroundCli, refreshAll, refreshStatus, openSingBoxUi } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+const pendingDangerAction = ref<ControlDangerAction | null>(null);
+
+const pendingDangerMessage = computed(() => pendingDangerAction.value?.message ?? "");
 
 const orchestratorModes: Array<{ mode: TransparentMode; title: string; description: string }> = [
   { mode: "proxy", title: "Proxy", description: "不创建 TUN，可与系统 VPN 共存" },
@@ -31,10 +36,7 @@ function canSwitchModes(): boolean {
 
 async function toggleSingBox(): Promise<void> {
   const running = state.runtime.singBoxState === "sing-box";
-  await withAction("toggle-sing-box", async () => {
-    await startBackgroundCli(running ? "service stop" : "service restart sing-box", running ? "停止 sing-box" : "启动 sing-box");
-    window.setTimeout(() => void refreshStatus(), 1200);
-  });
+  requestDangerAction(singBoxToggleAction(running));
 }
 
 async function runAction(key: string, args: string, label: string, background = false): Promise<void> {
@@ -49,13 +51,24 @@ async function runAction(key: string, args: string, label: string, background = 
   });
 }
 
+function requestDangerAction(action: ControlDangerAction): void {
+  pendingDangerAction.value = action;
+}
+
+function cancelDangerAction(): void {
+  pendingDangerAction.value = null;
+}
+
+async function confirmDangerAction(): Promise<void> {
+  const action = pendingDangerAction.value;
+  if (!action) return;
+  pendingDangerAction.value = null;
+  await runAction(action.key, action.args, action.label, action.background);
+}
+
 async function setTransparentMode(mode: TransparentMode): Promise<void> {
   if (!canSwitchModes() || state.runtime.transparentMode === mode) return;
-  const key = modeActionKey(mode);
-  await withAction(key, async () => {
-    await startBackgroundCli(`transparent set ${mode}`, `切换 ${mode} 模式`);
-    window.setTimeout(() => void refreshStatus(), 1200);
-  });
+  requestDangerAction(transparentModeAction(mode));
 }
 </script>
 
@@ -88,16 +101,16 @@ async function setTransparentMode(mode: TransparentMode): Promise<void> {
       <Card>
         <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Quick Actions</span>
         <div class="mt-3 grid gap-2">
-          <Button variant="secondary" :loading="isRunning('restart-sing-box')" @click="runAction('restart-sing-box', 'service restart sing-box', '重启 sing-box', true)">
+          <Button variant="secondary" :loading="isRunning('restart-sing-box')" @click="requestDangerAction(restartSingBoxAction())">
             <RotateCcw :size="17" />重启 sing-box
           </Button>
-          <Button variant="secondary" :loading="isRunning('apply-config')" @click="runAction('apply-config', 'config apply', '应用全部配置')">
+          <Button variant="secondary" :loading="isRunning('apply-config')" @click="requestDangerAction(applyConfigAction())">
             <Save :size="17" />应用配置
           </Button>
-          <Button variant="secondary" :loading="isRunning('repair')" @click="runAction('repair', 'repair', '一键自修复')">
+          <Button variant="secondary" :loading="isRunning('repair')" @click="requestDangerAction(repairAction())">
             <Zap :size="17" />一键自修复
           </Button>
-          <Button variant="secondary" :loading="isRunning('stop-all')" @click="runAction('stop-all', 'service stop', '停止全部服务', true)">
+          <Button variant="secondary" :loading="isRunning('stop-all')" @click="requestDangerAction(stopAllServicesAction())">
             <Unplug :size="17" />停止全部
           </Button>
         </div>
@@ -143,10 +156,24 @@ async function setTransparentMode(mode: TransparentMode): Promise<void> {
             <span :class="['mt-1 block text-xs leading-5', state.runtime.transparentMode === item.mode ? 'text-zinc-800' : 'text-zinc-400']">{{ item.description }}</span>
           </button>
         </div>
-        <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="runAction('transparent-apply', 'transparent apply', '应用编排模式')">
+        <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="requestDangerAction(applyTransparentModeAction())">
           <Radar :size="17" />重新应用模式
         </Button>
       </Card>
     </div>
+
+    <Card v-if="pendingDangerAction" class="grid gap-3 border border-amber-500/40 bg-amber-500/10">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div class="min-w-0">
+          <span class="text-[11px] font-bold uppercase tracking-wide text-amber-300">Confirm action</span>
+          <p class="mt-1 text-sm leading-6 text-amber-100">{{ pendingDangerMessage }}</p>
+          <code class="mt-2 block break-all rounded-md bg-zinc-950/60 px-3 py-2 text-xs text-zinc-100">{{ pendingDangerAction.args }}</code>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <Button variant="secondary" :loading="isRunning(pendingDangerAction.key)" @click="confirmDangerAction">确认</Button>
+          <Button variant="outline" @click="cancelDangerAction">取消</Button>
+        </div>
+      </div>
+    </Card>
   </div>
 </template>

@@ -1,0 +1,79 @@
+import type { TransparentMode } from "@/types";
+
+export type ControlDangerAction = {
+  key: string;
+  args: string;
+  label: string;
+  message: string;
+  background: boolean;
+};
+
+export function singBoxToggleAction(running: boolean): ControlDangerAction {
+  return {
+    key: "toggle-sing-box",
+    args: running ? "service stop" : "service restart sing-box",
+    label: running ? "停止 sing-box" : "启动 sing-box",
+    message: running ? "确认停止 sing-box？停止后流量可能无法继续通过 MagicNet。" : "确认启动 sing-box？当前连接可能会短暂中断。",
+    background: true
+  };
+}
+
+export function restartSingBoxAction(): ControlDangerAction {
+  return {
+    key: "restart-sing-box",
+    args: "service restart sing-box",
+    label: "重启 sing-box",
+    message: "确认重启 sing-box？当前连接可能会短暂中断。",
+    background: true
+  };
+}
+
+export function applyConfigAction(): ControlDangerAction {
+  return {
+    key: "apply-config",
+    args: "config apply",
+    label: "应用全部配置",
+    message: "确认应用配置？配置生效时可能会重启相关运行状态。",
+    background: false
+  };
+}
+
+export function repairAction(): ControlDangerAction {
+  return {
+    key: "repair",
+    args: "repair",
+    label: "一键自修复",
+    message: "确认执行一键自修复？它可能会改写配置并调整运行状态。",
+    background: false
+  };
+}
+
+export function stopAllServicesAction(): ControlDangerAction {
+  return {
+    key: "stop-all",
+    args: "service stop",
+    label: "停止全部服务",
+    message: "确认停止全部服务？流量可能无法继续通过 MagicNet。",
+    background: true
+  };
+}
+
+export function transparentModeAction(mode: TransparentMode): ControlDangerAction {
+  return {
+    key: `transparent-${mode}`,
+    args: `transparent set ${mode}`,
+    label: `切换 ${mode} 模式`,
+    message: `确认切换到 ${mode} 模式？当前连接可能会短暂中断。`,
+    background: true
+  };
+}
+
+export function applyTransparentModeAction(): ControlDangerAction {
+  return {
+    key: "transparent-apply",
+    args: "transparent apply",
+    label: "应用编排模式",
+    message: "确认重新应用编排模式？当前连接可能会短暂中断。",
+    background: false
+  };
+}

@@ -1,6 +1,11 @@
 use std::fs;
 use std::process::Command;
 
+use serde_json::json;
+
+use crate::connection_control::{
+    close_matching_connections, close_top_connections, print_close_all_summary,
+};
 use crate::service::singbox_webui;
 use crate::{run_magicnet_function, write_text_file, App};
 
@@ -11,11 +16,21 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "groups" => curl(app, "/providers/proxies"),
+        "proxies" => curl(app, "/proxies"),
+        "select" => select_proxy(
+            app,
+            args.get(1).map(String::as_str).unwrap_or_default(),
+            &args[2..].join(" "),
+        ),
         "conns" => curl(app, "/connections"),
         "stats" => curl(app, "/traffic"),
-        "close-all" => curl_delete(app, "/connections"),
+        "close" => close_connection(app, args.get(1).map(String::as_str).unwrap_or_default()),
+        "close-top" => close_top_connections(app, args.get(1).map(String::as_str).unwrap_or("3")),
+        "close-matching" => close_matching_connections(app, &args[1..].join(" ")),
+        "close-all" => print_close_all_summary(app),
         _ => Err(
-            "Usage: cli api {ui [current|sing-box|all]|groups|conns|stats|close-all}".to_string(),
+            "Usage: cli api {ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}"
+                .to_string(),
         ),
     }
 }
@@ -47,6 +62,56 @@ fn curl_delete(app: &App, path: &str) -> Result<(), String> {
         "4",
         &format!("{}{}", app.api, path),
     ])
+}
+
+fn curl_put_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
+    run_curl(&[
+        "-fsS",
+        "-X",
+        "PUT",
+        "-H",
+        "Content-Type: application/json",
+        "--data",
+        payload,
+        "--max-time",
+        "5",
+        &format!("{}{}", app.api, path),
+    ])
+}
+
+fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), String> {
+    let clean_group = group.trim();
+    let clean_node = node.trim();
+    if clean_group.is_empty() || clean_node.is_empty() {
+        return Err("Usage: cli api select <group> <node>".to_string());
+    }
+    let payload = json!({ "name": clean_node }).to_string();
+    curl_put_json(
+        app,
+        &format!("/proxies/{}", encode_path_segment(clean_group)),
+        &payload,
+    )?;
+    println!("[info] {clean_group} selector set to {clean_node}");
+    Ok(())
+}
+
+fn close_connection(app: &App, id: &str) -> Result<(), String> {
+    if id.is_empty() {
+        return Err("Usage: cli api close <id>".to_string());
+    }
+    curl_delete(app, &format!("/connections/{}", encode_path_segment(id)))
+}
+
+fn encode_path_segment(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
 }
 
 fn run_curl(args: &[&str]) -> Result<(), String> {
@@ -292,5 +357,23 @@ mod tests {
             zashboard_fallback_url("https://example.com/panel/dist.zip"),
             None
         );
+    }
+
+    #[test]
+    fn api_connection_id_is_encoded_as_path_segment() {
+        assert_eq!(encode_path_segment("abc-123_~"), "abc-123_~");
+        assert_eq!(encode_path_segment("id/with space"), "id%2Fwith%20space");
+        assert_eq!(encode_path_segment("proxy/final"), "proxy%2Ffinal");
+    }
+
+    #[test]
+    fn select_proxy_requires_group_and_node() {
+        let app = temp_app();
+        assert!(select_proxy(&app, "", "node")
+            .unwrap_err()
+            .contains("Usage"));
+        assert!(select_proxy(&app, "proxy", "")
+            .unwrap_err()
+            .contains("Usage"));
     }
 }

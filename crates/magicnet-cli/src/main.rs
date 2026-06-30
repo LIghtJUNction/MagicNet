@@ -2,11 +2,13 @@ mod base64;
 #[cfg(test)]
 mod base64_tests;
 mod config_editor;
+mod connection_control;
 mod diagnostics;
 mod diagnostics_dns;
 mod dns;
 mod ecapture;
 mod mcp;
+mod node_delay;
 mod nodes;
 mod ping;
 mod rules;
@@ -30,7 +32,7 @@ use diagnostics::{health, support, sysroute, topology};
 use dns::dns_cmd;
 use ecapture::ecapture_cmd;
 use mcp::mcp;
-use nodes::node_list;
+use nodes::node_cmd;
 use ping::pingtest;
 use rules::{app_cmd, block_cmd, route_cmd};
 use service::{
@@ -115,7 +117,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "node",
-        usage: "cli node {list|current|use <name>}",
+        usage: "cli node {list|current|use|test <name>|test-all [name ...]}",
     },
     CommandHelp {
         command: "mode",
@@ -127,7 +129,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "dns",
-        usage: "cli dns {status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|apply}",
+        usage: "cli dns {status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|test [domain]|apply}",
     },
     CommandHelp {
         command: "warp",
@@ -155,7 +157,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "api",
-        usage: "cli api {ui [current|sing-box|all]|groups|conns|stats|close-all}",
+        usage: "cli api {ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}",
     },
     CommandHelp {
         command: "app",
@@ -252,10 +254,7 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "transparent" => transparent_cmd(app, &args[1..]),
         "core" => core_cmd(app, &args[1..]),
         "api" => api_cmd(app, &args[1..]),
-        "node" if args.get(1).map(String::as_str).unwrap_or("list") == "list" => {
-            node_list(app);
-            Ok(())
-        }
+        "node" => node_cmd(app, &args[1..]),
         "sub" if args.get(1).map(String::as_str) == Some("list") => {
             sub_list(app);
             Ok(())

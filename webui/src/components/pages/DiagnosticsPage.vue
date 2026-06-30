@@ -4,9 +4,14 @@ import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
+import ConnectionsPanel from "./ConnectionsPanel.vue";
+import NodeDelayPanel from "./NodeDelayPanel.vue";
+import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
+import TrafficStatsPanel from "./TrafficStatsPanel.vue";
 
 const { state, refreshHealth, refreshMcp, refreshPing, runCli, createIssue, openExternal } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -21,7 +26,8 @@ const assistants = [
 
 async function copyContextUnlocked(): Promise<void> {
   const text = await runCli("support bundle", "生成诊断上下文", true);
-  state.output = await copyText(text) ? "诊断上下文已复制。" : "剪贴板不可用，诊断上下文已生成但未复制。";
+  const sanitized = sanitizeDiagnosticText(text);
+  state.output = await copyText(sanitized) ? "脱敏诊断上下文已复制。" : "剪贴板不可用，脱敏诊断上下文已生成但未复制。";
 }
 
 async function copyContext(): Promise<void> {
@@ -72,6 +78,11 @@ async function askAi(url: string, name: string): Promise<void> {
         </div>
       </div>
     </Card>
+
+    <TrafficStatsPanel />
+    <ConnectionsPanel />
+    <ProxyGroupsPanel />
+    <NodeDelayPanel />
 
     <div class="grid gap-3 sm:grid-cols-2">
       <Card v-for="item in state.health" :key="item.key">
