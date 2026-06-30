@@ -14,7 +14,12 @@ import __customize__
 
 import i18n
 import lang
-if [ "${MAGICNET_NONINTERACTIVE:-0}" != "1" ]; then
+
+magicnet_install_is_interactive() {
+  [ "${MAGICNET_NONINTERACTIVE:-0}" != "1" ] && [ "${IS_TTY:-false}" = "true" ]
+}
+
+if magicnet_install_is_interactive; then
   select_lang
 fi
 
@@ -192,7 +197,7 @@ magicnet_print_install_summary
 
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
 
-if [ "${MAGICNET_NONINTERACTIVE:-0}" = "1" ]; then
+if ! magicnet_install_is_interactive; then
   :
 else
   magicnet_ask_default_core
@@ -249,7 +254,7 @@ for _magicnet_entry in action.sh service.sh boot-completed.sh; do
 done
 unset _magicnet_entry
 
-if [ "${MAGICNET_NONINTERACTIVE:-0}" != "1" ]; then
+if magicnet_install_is_interactive; then
   [ -f "${MODPATH}/.config/sing-box/config.json" ] && confirm_update_file ".config/sing-box/config.json"
 fi
 

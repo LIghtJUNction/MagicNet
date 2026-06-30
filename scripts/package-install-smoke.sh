@@ -13,9 +13,11 @@ fi
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-install-smoke.XXXXXX")"
 MODPATH="$TMP/module"
+MANAGER_MODPATH="$TMP/manager-module"
 PREV_MOD="$TMP/prev-module"
 MOCK_BIN="$TMP/bin"
 LOG="$TMP/install.log"
+MANAGER_LOG="$TMP/manager-install.log"
 
 cleanup() {
     if [[ "${MAGICNET_INSTALL_SMOKE_KEEP:-0}" == "1" ]]; then
@@ -33,17 +35,23 @@ fail() {
         tail -n 120 "$LOG" >&2 || true
         printf '%s\n' '--- end customize log ---' >&2
     fi
+    if [[ -f "$MANAGER_LOG" ]]; then
+        printf '%s\n' '--- manager customize log ---' >&2
+        tail -n 120 "$MANAGER_LOG" >&2 || true
+        printf '%s\n' '--- end manager customize log ---' >&2
+    fi
     exit 1
 }
 
-for tool in bash cargo chmod cp find grep ln mkdir python3 readlink rm sed sh unzip; do
+for tool in bash cargo chmod cp find grep ln mkdir python3 readlink rm sed sh timeout unzip; do
     command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
 
 "$ROOT/scripts/package-smoke.sh" "$ZIP_PATH"
 
-mkdir -p "$MODPATH" "$MOCK_BIN"
+mkdir -p "$MODPATH" "$MANAGER_MODPATH" "$MOCK_BIN"
 unzip -oq "$ZIP_PATH" -d "$MODPATH"
+unzip -oq "$ZIP_PATH" -d "$MANAGER_MODPATH"
 
 mkdir -p \
     "$PREV_MOD/.config/sing-box/.subscription-work" \
@@ -78,6 +86,18 @@ export MAGICNET_PREV_DIR="$PREV_MOD"
 export PATH="$MOCK_BIN:$PATH"
 export TMPDIR="$TMP/tmp"
 mkdir -p "$TMPDIR"
+
+if ! env -u MAGICNET_NONINTERACTIVE \
+    ZIPFILE="$ZIP_PATH" \
+    MODPATH="$MANAGER_MODPATH" \
+    MODDIR="$MANAGER_MODPATH" \
+    BOOTMODE=true \
+    MAGICNET_PREV_DIR="$PREV_MOD" \
+    PATH="$MOCK_BIN:$PATH" \
+    TMPDIR="$TMPDIR" \
+    timeout 5 sh "$MANAGER_MODPATH/customize.sh" >"$MANAGER_LOG" 2>&1; then
+    fail "manager-style customize.sh should not require volume-key interaction"
+fi
 
 if ! sh "$MODPATH/customize.sh" >"$LOG" 2>&1; then
     fail "customize.sh failed"
