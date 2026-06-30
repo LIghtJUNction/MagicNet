@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ClipboardPaste, Cloud, Copy, Download, Network, Power, PowerOff, RadioTower, RefreshCw, Save, Server, Upload } from "lucide-vue-next";
+import { ClipboardPaste, Copy, Download, Network, Power, PowerOff, RadioTower, RefreshCw, Save, Server, Upload } from "lucide-vue-next";
 import { ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -10,6 +10,7 @@ import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, readClipboardText, shellQuote as quoteShell } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
+import DnsToolsCard from "./DnsToolsCard.vue";
 import NetworkSnapshotPanel from "./NetworkSnapshotPanel.vue";
 import WarpRouteRulesPanel from "./WarpRouteRulesPanel.vue";
 import type { PendingToolAction } from "./toolActions";
@@ -213,23 +214,6 @@ function restoreBackup(): void {
   });
 }
 
-async function runSetDnsProfile(profile: string): Promise<void> {
-  await withAction(`dns-${profile}`, async () => {
-    const text = await runCli(`dns set ${shellQuote(profile)}`, `切换 DNS ${profile}`);
-    if (!text.includes("[error]")) await refreshDns(true);
-  });
-}
-
-function setDnsProfile(profile: string): void {
-  requestToolAction({
-    key: `dns-${profile}`,
-    title: `切换 DNS 到 ${profile}`,
-    detail: "会应用 MagicNet DNS profile，并重启当前 sing-box 配置。",
-    command: `dns set ${profile}`,
-    run: () => runSetDnsProfile(profile),
-  });
-}
-
 async function writeWarpImportFile(payload: string): Promise<string> {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const path = `/data/adb/modules/MagicNet/.tmp/webui-warp-${stamp}.conf`;
@@ -342,29 +326,7 @@ async function writeBackupPayloadFile(payload: string): Promise<string> {
     />
 
     <div class="grid min-w-0 gap-3 md:grid-cols-2">
-      <Card class="grid gap-3">
-        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Cloud :size="17" /> 1.1.1.1 DNS</h3>
-        <p class="text-sm leading-6 text-zinc-400">切换 MagicNet 内置 DNS profile；保存后会应用配置并重启当前 sing-box。</p>
-        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <select
-            class="h-10 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100"
-            :value="state.dns.profile"
-            @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="default">默认 DNS</option>
-            <option value="cloudflare-doh">Cloudflare DoH</option>
-            <option value="cloudflare-dot">Cloudflare DoT</option>
-            <option value="cloudflare-udp">Cloudflare UDP</option>
-          </select>
-          <Button variant="secondary" :loading="isRunning('dns-refresh')" @click="withAction('dns-refresh', () => refreshDns())">
-            <RefreshCw :size="16" />刷新
-          </Button>
-        </div>
-        <pre class="max-h-36 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">profile={{ state.dns.profile }}
-primary={{ state.dns.primary }}
-secondary={{ state.dns.secondary || "-" }}
-transport={{ state.dns.transport }}</pre>
-      </Card>
+      <DnsToolsCard />
 
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> WARP 出站</h3>
