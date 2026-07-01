@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { Activity, Bell, Copy, Pause, Play, RefreshCw, Trash2 } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -8,6 +8,7 @@ import { buildTrafficStatsSummary, evaluateTrafficAlert, formatTrafficStatsRepor
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
+import { evaluateTrafficSamplingHealth } from "./trafficSamplingHealth";
 
 const { runCli, state } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -18,10 +19,13 @@ const failedSamples = ref(0);
 const copied = ref(false);
 const autoSampling = ref(false);
 const thresholdMiB = ref("10");
+const nowMillis = ref(Date.now());
 let timer = 0;
+let clockTimer = 0;
 
 const summary = computed(() => buildTrafficStatsSummary(samples.value));
 const alert = computed(() => evaluateTrafficAlert(samples.value, Number(thresholdMiB.value) || 0));
+const samplingHealth = computed(() => evaluateTrafficSamplingHealth(samples.value, failedSamples.value, autoSampling.value, nowMillis.value));
 const trendSamples = computed(() => samples.value.slice(-12));
 const trendPeak = computed(() => Math.max(1, ...trendSamples.value.map((sample) => sample.up + sample.down)));
 const lastUpdated = computed(() => summary.value.latest ? new Date(summary.value.latest.timestampMillis).toLocaleTimeString() : "未采样");
@@ -63,6 +67,7 @@ const peakTime = computed(() => summary.value.peakTotalTimestampMillis
 
 async function sampleNow(quiet = false): Promise<void> {
   await withAction("traffic-stats-sample", async () => {
+    nowMillis.value = Date.now();
     const text = await runCli("api stats", "读取实时流量", quiet);
     lastOutput.value = text;
     const sample = parseTrafficSample(text);
@@ -103,7 +108,7 @@ function clearSamples(): void {
 }
 
 async function copyReport(): Promise<void> {
-  copied.value = await copyText(formatTrafficStatsReport(samples.value, alert.value));
+  copied.value = await copyText(formatTrafficStatsReport(samples.value, alert.value, samplingHealth.value));
   state.output = copied.value ? "实时流量报告已复制。" : "剪贴板不可用，实时流量报告未复制。";
 }
 
@@ -162,7 +167,30 @@ function alertClasses(): string {
   return "border-zinc-800 bg-zinc-950 text-zinc-300";
 }
 
-onUnmounted(stopTimer);
+function healthClasses(): string {
+  if (samplingHealth.value.level === "danger") return "border-red-400/30 bg-red-500/10 text-red-100";
+  if (samplingHealth.value.level === "warning") return "border-amber-400/30 bg-amber-500/10 text-amber-100";
+  if (samplingHealth.value.level === "ok") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-100";
+  return "border-zinc-800 bg-zinc-950 text-zinc-300";
+}
+
+function startClock(): void {
+  clockTimer = window.setInterval(() => {
+    nowMillis.value = Date.now();
+  }, 15000);
+}
+
+function stopClock(): void {
+  if (!clockTimer) return;
+  window.clearInterval(clockTimer);
+  clockTimer = 0;
+}
+
+onMounted(startClock);
+onUnmounted(() => {
+  stopTimer();
+  stopClock();
+});
 </script>
 
 <template>
@@ -203,6 +231,14 @@ onUnmounted(stopTimer);
 
     <div class="rounded-md border p-3 text-sm leading-6" :class="alertClasses()">
       {{ alert.message }} 当前 {{ formatRate(alert.latestTotal) }} · 阈值 {{ formatRate(alert.thresholdBytesPerSecond) }}
+    </div>
+
+    <div class="rounded-md border p-3 text-sm leading-6" :class="healthClasses()">
+      <p class="font-semibold">{{ samplingHealth.label }}</p>
+      <p class="mt-1 text-xs opacity-80">
+        {{ samplingHealth.detail }} · 样本 {{ samplingHealth.sampleCount }} · 连续失败 {{ samplingHealth.consecutiveFailures }}
+        <span v-if="samplingHealth.latestAgeSeconds !== null"> · 最近样本 {{ samplingHealth.latestAgeSeconds }}s 前</span>
+      </p>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-4">

@@ -26,6 +26,15 @@ export type TrafficAlertState = {
   sustainedSamples: number;
 };
 
+export type TrafficSamplingHealthReport = {
+  level: "idle" | "ok" | "warning" | "danger";
+  label: string;
+  detail: string;
+  latestAgeSeconds: number | null;
+  sampleCount: number;
+  consecutiveFailures: number;
+};
+
 export function parseTrafficSample(text: string, timestampMillis = Date.now()): TrafficSample | null {
   const wholeJson = parseTrafficJson(text, timestampMillis);
   if (wholeJson) return wholeJson;
@@ -116,7 +125,11 @@ export function evaluateTrafficAlert(samples: TrafficSample[], thresholdMiBPerSe
   };
 }
 
-export function formatTrafficStatsReport(samples: TrafficSample[], alert?: TrafficAlertState): string {
+export function formatTrafficStatsReport(
+  samples: TrafficSample[],
+  alert?: TrafficAlertState,
+  samplingHealth?: TrafficSamplingHealthReport
+): string {
   const summary = buildTrafficStatsSummary(samples);
   const latest = summary.latest;
   const previous = samples.at(-2);
@@ -152,6 +165,11 @@ export function formatTrafficStatsReport(samples: TrafficSample[], alert?: Traff
     `alert_level=${alert?.level || "none"}`,
     `alert_threshold_bytes_per_second=${Math.round(alert?.thresholdBytesPerSecond || 0)}`,
     `alert_sustained_samples=${alert?.sustainedSamples || 0}`,
+    `sampling_health_level=${samplingHealth?.level || "none"}`,
+    `sampling_health_label=${samplingHealth?.label || "none"}`,
+    `sampling_health_detail=${samplingHealth?.detail || "none"}`,
+    `sampling_latest_age_seconds=${samplingHealth?.latestAgeSeconds ?? "none"}`,
+    `sampling_consecutive_failures=${samplingHealth?.consecutiveFailures || 0}`,
     "",
     "index,timestamp,source,up_bytes_per_second,down_bytes_per_second",
     ...samples.map((sample, index) => `${index + 1},${new Date(sample.timestampMillis).toISOString()},${sample.source},${Math.round(sample.up)},${Math.round(sample.down)}`)
