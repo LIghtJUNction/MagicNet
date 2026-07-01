@@ -22,6 +22,7 @@ const { isRunning, withAction } = useActionLock();
 const query = ref("");
 const rawOutput = ref("");
 const copied = ref(false);
+const closeTopCount = ref("3");
 const pendingAction = ref<PendingConnectionAction | null>(null);
 
 const snapshot = computed(() => parseConnectionSnapshot(rawOutput.value));
@@ -32,6 +33,10 @@ const chainBuckets = computed(() => connectionBuckets(snapshot.value?.connection
 const processBuckets = computed(() => connectionBuckets(snapshot.value?.connections || [], "process"));
 const flowSummary = computed(() => connectionFlowSummary(snapshot.value?.connections || []));
 const totalBytes = computed(() => (snapshot.value?.uploadTotal || 0) + (snapshot.value?.downloadTotal || 0));
+const closeTopN = computed(() => {
+  const count = Number.parseInt(closeTopCount.value, 10);
+  return Number.isFinite(count) ? Math.min(50, Math.max(1, count)) : 3;
+});
 
 async function refreshConnections(): Promise<void> {
   await withAction("connections-refresh", async () => {
@@ -86,12 +91,13 @@ async function runConnectionAction(command: string, label: string): Promise<void
 }
 
 function requestCloseTop(): void {
+  const count = closeTopN.value;
   pendingAction.value = {
     key: "connections-action",
-    title: "关闭流量最高的 3 条连接",
-    detail: "会断开当前传输量最高的活动代理连接，应用可能自动重连。",
-    command: "api close-top 3",
-    run: () => runConnectionAction("api close-top 3", "关闭 Top 连接")
+    title: `关闭流量最高的 ${count} 条连接`,
+    detail: "会断开当前传输量最高的活动代理连接，应用可能自动重连。数量限制为 1-50。",
+    command: `api close-top ${count}`,
+    run: () => runConnectionAction(`api close-top ${count}`, "关闭 Top 连接")
   };
 }
 
@@ -218,9 +224,13 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="grid gap-2 sm:grid-cols-3">
+    <div class="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      <label class="grid gap-1 text-xs text-zinc-500">
+        Top N
+        <Input v-model="closeTopCount" inputmode="numeric" placeholder="3" />
+      </label>
       <Button variant="outline" :disabled="!snapshot?.connections.length" @click="requestCloseTop">
-        关闭 Top 3
+        关闭 Top {{ closeTopN }}
       </Button>
       <Button variant="outline" :disabled="!query.trim() || !filtered.length" @click="requestCloseMatched">
         关闭命中连接
