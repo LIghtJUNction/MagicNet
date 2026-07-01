@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Box, ClipboardPaste, Copy, DownloadCloud, RefreshCw, Save } from "lucide-vue-next";
+import { Box, ClipboardPaste, Copy, DownloadCloud, RefreshCw, Save, ShieldCheck } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -15,6 +15,13 @@ const { state, runCli, startBackgroundCli, refreshSubs, shellQuote, uniqueNonEmp
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
 const pendingSubscriptionAction = ref<PendingToolAction | null>(null);
+type SubscriptionPreview = {
+  key: string;
+  index: number;
+  label: string;
+  status: "ok" | "duplicate" | "invalid" | "over-limit";
+  notes: string[];
+};
 const inputSummary = computed(() => {
   const raw = singBoxText.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const valid = raw.filter((line) => /^https?:\/\/\S+$/i.test(line));
@@ -24,6 +31,15 @@ const inputSummary = computed(() => {
     duplicate: Math.max(0, raw.length - uniqueNonEmpty(raw).length),
     overLimit: Math.max(0, uniqueNonEmpty(raw).length - 5)
   };
+});
+const subscriptionPreview = computed<SubscriptionPreview[]>(() => {
+  const seen = new Set<string>();
+  return singBoxText.value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => previewSubscriptionLine(line, index, seen))
+    .slice(0, 8);
 });
 
 watch(() => state.subscriptions.singBoxUrls, (urls) => {
@@ -61,6 +77,42 @@ function normalizedSingBoxUrls(): string[] | null {
   }
   if (raw.length !== lines.length) state.output = `将自动去重/裁剪：${raw.length} -> ${lines.length}`;
   return lines;
+}
+
+function previewSubscriptionLine(line: string, index: number, seen: Set<string>): SubscriptionPreview {
+  try {
+    const url = new URL(line);
+    const normalized = url.toString();
+    const duplicate = seen.has(normalized);
+    seen.add(normalized);
+    const protocolOk = url.protocol === "http:" || url.protocol === "https:";
+    const notes = [
+      url.search || url.hash ? "含参数，界面已隐藏" : "无 query/hash",
+      url.pathname.length > 1 ? "含路径，界面已隐藏" : "无路径",
+      url.protocol === "http:" ? "非 HTTPS" : ""
+    ].filter(Boolean);
+    return {
+      key: `${index}-${url.hostname}`,
+      index: index + 1,
+      label: protocolOk ? `${url.protocol}//${url.hostname}` : "协议不支持",
+      status: !protocolOk ? "invalid" : index >= 5 ? "over-limit" : duplicate ? "duplicate" : "ok",
+      notes
+    };
+  } catch {
+    return {
+      key: `${index}-invalid`,
+      index: index + 1,
+      label: "无法解析 URL",
+      status: "invalid",
+      notes: ["必须是一行一个 http(s) URL"]
+    };
+  }
+}
+
+function previewTone(status: SubscriptionPreview["status"]): string {
+  if (status === "ok") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-100";
+  if (status === "duplicate") return "border-amber-500/20 bg-amber-500/10 text-amber-100";
+  return "border-red-500/20 bg-red-500/10 text-red-100";
 }
 
 async function runSaveSingBox(lines: string[]): Promise<void> {
@@ -161,6 +213,33 @@ async function copy(text: string, label: string): Promise<void> {
           <span>有效 {{ inputSummary.valid }} 个</span>
           <span>重复 {{ inputSummary.duplicate }} 个</span>
           <span>超限 {{ inputSummary.overLimit }} 个</span>
+        </div>
+        <div class="mb-3 grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+          <div class="flex items-center gap-2 text-sm font-medium text-zinc-200">
+            <ShieldCheck :size="16" class="text-zinc-500" />
+            安全预览
+          </div>
+          <p class="text-xs leading-5 text-zinc-500">
+            仅显示协议和主机；路径、query、hash 不在界面回显。
+          </p>
+          <div v-if="subscriptionPreview.length" class="grid gap-2">
+            <div
+              v-for="item in subscriptionPreview"
+              :key="item.key"
+              class="grid gap-1 rounded-md border px-2 py-2 text-xs"
+              :class="previewTone(item.status)"
+            >
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <span class="text-zinc-500">#{{ item.index }}</span>
+                <span class="min-w-0 break-words font-medium">{{ item.label }}</span>
+                <span v-if="item.status === 'duplicate'" class="rounded bg-amber-950/70 px-1.5 py-0.5">重复</span>
+                <span v-if="item.status === 'over-limit'" class="rounded bg-red-950/70 px-1.5 py-0.5">超出前 5 个</span>
+                <span v-if="item.status === 'invalid'" class="rounded bg-red-950/70 px-1.5 py-0.5">无效</span>
+              </div>
+              <p class="break-words text-zinc-500">{{ item.notes.join(" · ") }}</p>
+            </div>
+          </div>
+          <p v-else class="text-xs text-zinc-500">暂无订阅输入。</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <Button :loading="isRunning('save-singbox')" @click="saveSingBox"><Save :size="16" />保存</Button>
