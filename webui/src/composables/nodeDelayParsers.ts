@@ -15,6 +15,8 @@ export type NodeDelayStats = {
   normal: number;
   slow: number;
   averageMillis: number | null;
+  medianMillis: number | null;
+  usablePercent: number;
   fastest: NodeDelayEntry | null;
   slowest: NodeDelayEntry | null;
 };
@@ -45,6 +47,7 @@ export function buildNodeDelayStats(entries: NodeDelayEntry[]): NodeDelayStats {
   const averageMillis = usable.length
     ? Math.round(usable.reduce((total, entry) => total + (entry.delayMillis || 0), 0) / usable.length)
     : null;
+  const medianMillis = usable.length ? medianDelay(usable.map((entry) => entry.delayMillis || 0)) : null;
   return {
     tested: entries.length,
     usable: usable.length,
@@ -53,9 +56,20 @@ export function buildNodeDelayStats(entries: NodeDelayEntry[]): NodeDelayStats {
     normal: entries.filter((entry) => entry.quality === "normal").length,
     slow: entries.filter((entry) => entry.quality === "slow").length,
     averageMillis,
+    medianMillis,
+    usablePercent: entries.length ? Math.round((usable.length / entries.length) * 100) : 0,
     fastest: usable[0] || null,
     slowest: usable[usable.length - 1] || null
   };
+}
+
+export function nodeDelayHealthText(stats: NodeDelayStats): string {
+  if (!stats.tested) return "还没有测速结果。";
+  if (!stats.usable) return "全部节点测速失败，先检查订阅、网络或 sing-box 运行状态。";
+  if (stats.usablePercent < 50) return `解析可用率 ${stats.usablePercent}%，节点池不稳定，不建议只按最快节点切换。`;
+  if (stats.medianMillis !== null && stats.medianMillis <= FAST_MAX_MS) return `中位延迟 ${stats.medianMillis}ms，解析可用率 ${stats.usablePercent}%，节点池状态良好。`;
+  if (stats.medianMillis !== null && stats.medianMillis <= NORMAL_MAX_MS) return `中位延迟 ${stats.medianMillis}ms，解析可用率 ${stats.usablePercent}%，可优先使用最快节点。`;
+  return `中位延迟 ${stats.medianMillis ?? "未知"}ms，解析可用率 ${stats.usablePercent}%，建议继续筛选更低延迟节点。`;
 }
 
 export function nodeDelayQualityLabel(quality: NodeDelayQuality): string {
@@ -73,6 +87,9 @@ export function formatNodeDelayReport(entries: NodeDelayEntry[]): string {
     `usable=${stats.usable}`,
     `failed=${stats.failed}`,
     `average_ms=${stats.averageMillis ?? "none"}`,
+    `median_ms=${stats.medianMillis ?? "none"}`,
+    `parsed_usable_percent=${stats.usablePercent}`,
+    `health=${nodeDelayHealthText(stats)}`,
     `fast=${stats.fast}`,
     `normal=${stats.normal}`,
     `slow=${stats.slow}`,
@@ -107,6 +124,13 @@ function parseNodeDelayLine(line: string): NodeDelayEntry | null {
 function parseNodeDelayMillis(value: string): number | null {
   const match = value.match(/\b(\d+)\s*ms\b/i);
   return match?.[1] ? Number(match[1]) : null;
+}
+
+function medianDelay(values: number[]): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2) return sorted[middle];
+  return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
 function nodeDelayQuality(delayMillis: number | null): NodeDelayQuality {

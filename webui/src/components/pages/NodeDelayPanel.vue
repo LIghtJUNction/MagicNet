@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { Copy, Gauge, RefreshCw, Zap } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
-import { buildNodeDelayStats, formatNodeDelayReport, nodeDelayQualityLabel, parseCurrentNode, parseNodeTestAll, sanitizeNodeText, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
+import { buildNodeDelayStats, formatNodeDelayReport, nodeDelayHealthText, nodeDelayQualityLabel, parseCurrentNode, parseNodeTestAll, sanitizeNodeText, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, shellQuote } from "@/utils";
@@ -22,6 +22,7 @@ const pendingAction = ref<PendingNodeAction | null>(null);
 
 const entries = computed(() => parseNodeTestAll(rawOutput.value));
 const stats = computed(() => buildNodeDelayStats(entries.value));
+const healthText = computed(() => nodeDelayHealthText(stats.value));
 
 async function refreshCurrentNode(): Promise<void> {
   await withAction("node-current", async () => {
@@ -136,7 +137,12 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="grid gap-2 sm:grid-cols-4">
+    <div v-if="entries.length" class="rounded-md border border-sky-400/20 bg-sky-400/10 p-3">
+      <p class="text-sm font-semibold text-sky-100">测速健康摘要</p>
+      <p class="mt-1 text-sm leading-6 text-sky-100/80">{{ healthText }}</p>
+    </div>
+
+    <div class="grid gap-2 sm:grid-cols-5">
       <div class="rounded-md border border-white/10 bg-white/5 p-3">
         <p class="text-xs text-zinc-500">已测</p>
         <p class="text-lg font-semibold text-zinc-100">{{ stats.tested }}</p>
@@ -152,6 +158,10 @@ onMounted(() => {
       <div class="rounded-md border border-white/10 bg-white/5 p-3">
         <p class="text-xs text-zinc-500">平均</p>
         <p class="text-lg font-semibold text-zinc-100">{{ delayLabel(stats.averageMillis) }}</p>
+      </div>
+      <div class="rounded-md border border-white/10 bg-white/5 p-3">
+        <p class="text-xs text-zinc-500">中位/解析可用率</p>
+        <p class="text-lg font-semibold text-zinc-100">{{ delayLabel(stats.medianMillis) }} · {{ stats.usablePercent }}%</p>
       </div>
     </div>
 
