@@ -9,6 +9,7 @@ import { parseProxyGroupsSnapshot, sanitizeProxyName, type ProxyGroupSummary } f
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, shellQuote } from "@/utils";
+import { buildProxySelectionPlan, formatProxySelectionPlanReport, type ProxySelectionPlan } from "./proxySelectionPlan";
 
 type PendingProxyAction = {
   group: ProxyGroupSummary;
@@ -23,8 +24,14 @@ const copied = ref(false);
 const groupQuery = ref("");
 const groupDelays = ref<Record<string, NodeDelayEntry[]>>({});
 const pendingAction = ref<PendingProxyAction | null>(null);
+const selectionPlanCopied = ref(false);
 
 const snapshot = computed(() => parseProxyGroupsSnapshot(rawOutput.value));
+const pendingPlan = computed<ProxySelectionPlan | null>(() => {
+  const action = pendingAction.value;
+  if (!action) return null;
+  return buildProxySelectionPlan(action.group, action.node, groupDelays.value[action.group.name] || []);
+});
 const filteredGroups = computed(() => {
   const query = groupQuery.value.trim().toLowerCase();
   const groups = snapshot.value?.groups || [];
@@ -42,6 +49,7 @@ async function refreshGroups(): Promise<void> {
   await withAction("proxy-groups-refresh", async () => {
     copied.value = false;
     pendingAction.value = null;
+    selectionPlanCopied.value = false;
     groupDelays.value = {};
     rawOutput.value = await runCli("api proxies", "读取代理组");
   });
@@ -57,6 +65,7 @@ function requestSelect(group: ProxyGroupSummary, node: string): void {
     node,
     run: () => selectNode(group.name, node)
   };
+  selectionPlanCopied.value = false;
 }
 
 function validProxyChoice(group: string, node: string): boolean {
@@ -108,6 +117,7 @@ async function selectNode(group: string, node: string): Promise<void> {
 
 function cancelAction(): void {
   pendingAction.value = null;
+  selectionPlanCopied.value = false;
 }
 
 async function confirmAction(): Promise<void> {
@@ -117,7 +127,16 @@ async function confirmAction(): Promise<void> {
     await action.run();
   } finally {
     pendingAction.value = null;
+    selectionPlanCopied.value = false;
   }
+}
+
+async function copySelectionPlan(): Promise<void> {
+  const action = pendingAction.value;
+  const plan = pendingPlan.value;
+  if (!action || !plan) return;
+  selectionPlanCopied.value = await copyText(formatProxySelectionPlanReport(plan));
+  state.output = selectionPlanCopied.value ? "代理切换计划摘要已复制。" : "剪贴板不可用，代理切换计划未复制。";
 }
 
 async function copyReport(): Promise<void> {
@@ -174,11 +193,30 @@ onMounted(() => {
     <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-amber-500/10 p-3">
       <p class="text-sm font-semibold text-amber-100">切换代理节点</p>
       <p class="mt-1 text-sm leading-6 text-amber-100/80">
-        将把 {{ sanitizeProxyName(pendingAction.group.name) }} 切换到 {{ sanitizeProxyName(pendingAction.node) }}，新连接会使用该选择。
+        {{ sanitizeProxyName(pendingAction.group.name) }}：{{ sanitizeProxyName(pendingPlan?.summary || "") }}
       </p>
       <code class="mt-2 block rounded bg-black/50 p-2 text-xs text-amber-50">api select &lt;group&gt; &lt;node&gt;</code>
-      <div class="mt-3 grid gap-2 sm:grid-cols-2">
+      <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+        <span
+          v-for="item in pendingPlan?.items || []"
+          :key="item.label"
+          class="rounded border px-2 py-1"
+          :class="{
+            'border-emerald-500/30 text-emerald-100': item.tone === 'success',
+            'border-amber-500/40 text-amber-100': item.tone === 'warning',
+            'border-red-500/40 text-red-100': item.tone === 'danger',
+            'border-zinc-700 text-zinc-300': item.tone === 'neutral',
+          }"
+        >
+          {{ item.label }}: <b class="font-medium">{{ sanitizeProxyName(item.value) }}</b>
+        </span>
+      </div>
+      <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-amber-100/80">
+        {{ pendingPlan.warnings.join("；") }}
+      </p>
+      <div class="mt-3 grid gap-2 sm:grid-cols-3">
         <Button size="sm" variant="secondary" :loading="isRunning('proxy-groups-select')" @click="confirmAction">确认切换</Button>
+        <Button size="sm" variant="outline" @click="copySelectionPlan">{{ selectionPlanCopied ? "已复制计划" : "复制计划" }}</Button>
         <Button size="sm" variant="outline" @click="cancelAction">取消</Button>
       </div>
     </div>
