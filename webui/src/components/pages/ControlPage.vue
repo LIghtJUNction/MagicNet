@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ExternalLink, Power, Radar, RotateCcw, Save, ShieldCheck, Unplug, Zap } from "lucide-vue-next";
+import { Copy, ExternalLink, Power, Radar, RotateCcw, Save, ShieldCheck, Unplug, Zap } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
@@ -7,11 +7,13 @@ import Card from "@/components/ui/Card.vue";
 import { applyConfigAction, applyTransparentModeAction, type ControlDangerAction, repairAction, restartSingBoxAction, singBoxToggleAction, stopAllServicesAction, transparentModeAction } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { copyText } from "@/utils";
 import type { TransparentMode } from "@/types";
 
 const { state, runCli, startBackgroundCli, refreshAll, refreshStatus, openSingBoxUi } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pendingDangerAction = ref<ControlDangerAction | null>(null);
+const snapshotCopied = ref(false);
 
 const pendingDangerMessage = computed(() => pendingDangerAction.value?.message ?? "");
 
@@ -70,6 +72,29 @@ async function setTransparentMode(mode: TransparentMode): Promise<void> {
   if (!canSwitchModes() || state.runtime.transparentMode === mode) return;
   requestDangerAction(transparentModeAction(mode));
 }
+
+async function copyControlSnapshot(): Promise<void> {
+  const report = [
+    "MagicNet control snapshot",
+    `has_ksu=${state.hasKsu ? 1 : 0}`,
+    `phase=${state.phase}`,
+    `task=${state.task || "none"}`,
+    `queue_depth=${state.queueDepth}`,
+    `sing_box_state=${state.runtime.singBoxState}`,
+    `sing_box=${state.runtime.singBox}`,
+    `fswatch=${state.runtime.fswatch}`,
+    `transparent_mode=${state.runtime.transparentMode}`,
+    `last_command=${state.lastCommand || "none"}`
+  ].join("\n");
+  snapshotCopied.value = await copyText(sanitizeControlSnapshot(report));
+  state.output = snapshotCopied.value ? "控制状态快照已复制。" : "剪贴板不可用，控制状态快照未复制。";
+}
+
+function sanitizeControlSnapshot(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, "[filtered-url]")
+    .replace(/\b(token|secret|password|passwd|authorization|bearer|api[_-]?key|key)\b\s*[:=]\s*\S+/gi, "$1=[filtered]");
+}
 </script>
 
 <template>
@@ -80,7 +105,10 @@ async function setTransparentMode(mode: TransparentMode): Promise<void> {
         <h2 class="mt-1 text-2xl font-semibold">模块控制</h2>
         <p class="mt-1 text-sm leading-6 text-zinc-400">只放模块生命周期和入口。节点、测速、代理模式交给 sing-box WebUI。</p>
       </div>
-      <Badge :tone="state.runtime.singBoxState === 'stopped' ? 'warning' : 'success'">{{ state.runtime.singBoxState }}</Badge>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button variant="outline" @click="copyControlSnapshot"><Copy :size="17" />{{ snapshotCopied ? '已复制快照' : '复制快照' }}</Button>
+        <Badge :tone="state.runtime.singBoxState === 'stopped' ? 'warning' : 'success'">{{ state.runtime.singBoxState }}</Badge>
+      </div>
     </div>
 
     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
