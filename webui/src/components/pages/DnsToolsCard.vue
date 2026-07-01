@@ -7,6 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
+import { buildDnsProfilePlan, formatDnsProfilePlanReport, type DnsProfilePlan } from "./dnsProfilePlan";
 import { dnsStatusTone, formatDnsTestReport, parseDnsTestSummary } from "./dnsTestSummary";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
@@ -19,6 +20,9 @@ const dnsCopied = ref(false);
 const testedDomain = ref("");
 const runningDomain = ref("");
 const pendingDnsAction = ref<PendingToolAction | null>(null);
+const pendingDnsPlan = ref<DnsProfilePlan | null>(null);
+const pendingDnsProfile = ref("");
+const dnsPlanCopied = ref(false);
 const quickDomains = ["www.gstatic.com", "cloudflare.com", "dns.google", "www.baidu.com"] as const;
 const dnsSummary = computed(() => parseDnsTestSummary(dnsTestOutput.value, testedDomain.value));
 
@@ -29,7 +33,18 @@ async function runSetDnsProfile(profile: string): Promise<void> {
   });
 }
 
+async function refreshDnsState(): Promise<void> {
+  pendingDnsAction.value = null;
+  pendingDnsPlan.value = null;
+  pendingDnsProfile.value = "";
+  dnsPlanCopied.value = false;
+  await refreshDns();
+}
+
 function setDnsProfile(profile: string): void {
+  pendingDnsProfile.value = profile;
+  pendingDnsPlan.value = buildDnsProfilePlan(state.dns.profile, profile);
+  dnsPlanCopied.value = false;
   pendingDnsAction.value = {
     key: `dns-${profile}`,
     title: `切换 DNS 到 ${profile}`,
@@ -71,6 +86,9 @@ async function copyDnsReport(): Promise<void> {
 
 function cancelDnsAction(): void {
   pendingDnsAction.value = null;
+  pendingDnsPlan.value = null;
+  pendingDnsProfile.value = "";
+  dnsPlanCopied.value = false;
 }
 
 async function confirmDnsAction(): Promise<void> {
@@ -80,7 +98,16 @@ async function confirmDnsAction(): Promise<void> {
     await action.run();
   } finally {
     pendingDnsAction.value = null;
+    pendingDnsPlan.value = null;
+    pendingDnsProfile.value = "";
+    dnsPlanCopied.value = false;
   }
+}
+
+async function copyDnsProfilePlan(): Promise<void> {
+  if (!pendingDnsPlan.value) return;
+  dnsPlanCopied.value = await copyText(formatDnsProfilePlanReport(pendingDnsPlan.value));
+  state.output = dnsPlanCopied.value ? "DNS 切换计划已复制。" : "剪贴板不可用，DNS 切换计划未复制。";
 }
 
 function normalizeDomain(value: string): string {
@@ -109,11 +136,34 @@ function normalizeDomain(value: string): string {
       @cancel="cancelDnsAction"
       @confirm="confirmDnsAction"
     />
+    <div v-if="pendingDnsPlan" class="grid gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+        <span
+          v-for="item in pendingDnsPlan.items"
+          :key="item.label"
+          class="rounded border px-2 py-1"
+          :class="{
+            'border-emerald-500/30 text-emerald-100': item.tone === 'success',
+            'border-amber-500/40 text-amber-100': item.tone === 'warning',
+            'border-red-500/40 text-red-100': item.tone === 'danger',
+            'border-zinc-700 text-zinc-300': item.tone === 'neutral',
+          }"
+        >
+          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+        </span>
+      </div>
+      <p v-if="pendingDnsPlan.warnings.length" class="text-xs leading-5 text-amber-100/80">
+        {{ pendingDnsPlan.warnings.join("；") }}
+      </p>
+      <Button size="sm" variant="outline" class="w-fit" @click="copyDnsProfilePlan">
+        <Copy :size="15" />{{ dnsPlanCopied ? "已复制计划" : "复制切换计划" }}
+      </Button>
+    </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
       <select
         class="h-10 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100"
-        :value="state.dns.profile"
+        :value="pendingDnsProfile || state.dns.profile"
         @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
       >
         <option value="default">默认 DNS</option>
@@ -121,7 +171,7 @@ function normalizeDomain(value: string): string {
         <option value="cloudflare-dot">Cloudflare DoT</option>
         <option value="cloudflare-udp">Cloudflare UDP</option>
       </select>
-      <Button variant="secondary" :loading="isRunning('dns-refresh')" @click="withAction('dns-refresh', () => refreshDns())">
+      <Button variant="secondary" :loading="isRunning('dns-refresh')" @click="withAction('dns-refresh', refreshDnsState)">
         <RefreshCw :size="16" />刷新
       </Button>
     </div>
