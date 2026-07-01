@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Bug, Copy, ExternalLink, FileText, RadioTower, RefreshCw, Server } from "lucide-vue-next";
+import { Bug, Copy, ExternalLink, FileText, RadioTower, RefreshCw, Server, TimerReset } from "lucide-vue-next";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -8,7 +8,8 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText } from "@/utils";
+import { copyText, probeFailed } from "@/utils";
+import { formatApiEndpointProbeReport, summarizeApiEndpointProbes, summarizeApiProbeOutput, validateApiProbeOutput, type ApiEndpointProbe, type ApiProbeKey } from "./apiEndpointProbe";
 import ConnectionsPanel from "./ConnectionsPanel.vue";
 import NodeDelayPanel from "./NodeDelayPanel.vue";
 import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
@@ -19,6 +20,9 @@ const { isRunning, withAction } = useActionLock();
 const supportBundle = ref("");
 const supportCopied = ref(false);
 const supportIssuesCopied = ref(false);
+const apiProbes = ref<ApiEndpointProbe[]>([]);
+const apiProbeCopied = ref(false);
+const apiProbeSummary = computed(() => summarizeApiEndpointProbes(apiProbes.value));
 const supportSummary = computed(() => {
   const text = supportBundle.value;
   return {
@@ -81,6 +85,38 @@ async function refreshDiagnostics(): Promise<void> {
   await refreshHealth();
 }
 
+async function runApiProbe(): Promise<void> {
+  await withAction("api-probe", async () => {
+    apiProbeCopied.value = false;
+    const targets: { key: ApiProbeKey; label: string; command: string }[] = [
+      { key: "groups", label: "代理组", command: "api groups" },
+      { key: "stats", label: "流量", command: "api stats" },
+      { key: "connections", label: "连接", command: "api conns" }
+    ];
+    const next: ApiEndpointProbe[] = [];
+    for (const target of targets) {
+      const startedAt = performance.now();
+      const text = await runCli(target.command, `预检 ${target.label}`, true);
+      next.push({
+        ...target,
+        ok: !probeFailed(text) && validateApiProbeOutput(target.key, text),
+        durationMillis: Math.round(performance.now() - startedAt),
+        outputBytes: new TextEncoder().encode(text).length,
+        summary: summarizeApiProbeOutput(text)
+      });
+    }
+    apiProbes.value = next;
+    const summary = summarizeApiEndpointProbes(next);
+    state.output = `API 端点预检：${summary.label}\n${summary.detail}`;
+  });
+}
+
+async function copyApiProbeReport(): Promise<void> {
+  if (!apiProbes.value.length) return;
+  apiProbeCopied.value = await copyText(formatApiEndpointProbeReport(apiProbes.value, apiProbeSummary.value));
+  state.output = apiProbeCopied.value ? "API 端点预检报告已复制。" : "剪贴板不可用，API 端点预检报告未复制。";
+}
+
 async function askAi(url: string, name: string): Promise<void> {
   await withAction(`ask-${name}`, async () => {
     await copyContextUnlocked();
@@ -117,6 +153,48 @@ async function askAi(url: string, name: string): Promise<void> {
         <Button v-for="[name, url] in assistants" :key="name" variant="secondary" size="sm" :loading="isRunning(`ask-${name}`)" @click="askAi(url, name)">
           <ExternalLink :size="15" />{{ name }}
         </Button>
+        </div>
+      </div>
+    </Card>
+
+    <Card class="grid gap-3">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><TimerReset :size="17" /> API 端点预检</h3>
+          <p class="mt-1 text-sm leading-6 text-zinc-400">
+            真实调用 <code>api groups</code> / <code>api stats</code> / <code>api conns</code>，记录成功率、耗时和输出大小。
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" :loading="isRunning('api-probe')" @click="runApiProbe">
+            <RefreshCw :size="15" />预检
+          </Button>
+          <Button size="sm" variant="secondary" :disabled="!apiProbes.length" @click="copyApiProbeReport">
+            <Copy :size="15" />{{ apiProbeCopied ? "已复制" : "复制" }}
+          </Button>
+        </div>
+      </div>
+      <div class="rounded-md border p-3 text-sm leading-6" :class="{
+        'border-zinc-800 bg-zinc-950 text-zinc-300': apiProbeSummary.level === 'idle',
+        'border-emerald-400/25 bg-emerald-400/10 text-emerald-100': apiProbeSummary.level === 'ok',
+        'border-amber-400/30 bg-amber-500/10 text-amber-100': apiProbeSummary.level === 'warning',
+        'border-red-400/30 bg-red-500/10 text-red-100': apiProbeSummary.level === 'danger',
+      }">
+        <p class="font-semibold">{{ apiProbeSummary.label }}</p>
+        <p class="mt-1 text-xs opacity-80">
+          {{ apiProbeSummary.detail }} · 总耗时 {{ apiProbeSummary.totalMillis }}ms
+          <span v-if="apiProbeSummary.slowest"> · 最慢 {{ apiProbeSummary.slowest.label }} {{ apiProbeSummary.slowest.durationMillis }}ms</span>
+        </p>
+      </div>
+      <div v-if="apiProbes.length" class="grid gap-2 sm:grid-cols-3">
+        <div v-for="probe in apiProbes" :key="probe.key" class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-sm font-semibold text-zinc-100">{{ probe.label }}</p>
+            <Badge :tone="probe.ok ? 'success' : 'danger'">{{ probe.ok ? "ok" : "fail" }}</Badge>
+          </div>
+          <p class="mt-2 text-lg font-semibold text-zinc-100">{{ probe.durationMillis }}ms</p>
+          <p class="mt-1 text-xs text-zinc-500">{{ probe.outputBytes }} bytes · {{ probe.command }}</p>
+          <p class="mt-2 truncate text-xs text-zinc-500">{{ probe.summary }}</p>
         </div>
       </div>
     </Card>
