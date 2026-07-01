@@ -8,6 +8,7 @@ import { connectionBuckets, connectionFlowSummary, connectionMatchesQuery, parse
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, shellQuote } from "@/utils";
+import { buildConnectionClosePlan, connectionClosePlanTone, formatConnectionCloseDetail } from "./connectionClosePlan";
 import { buildConnectionInsights, formatConnectionBytes } from "./connectionInsights";
 
 type PendingConnectionAction = {
@@ -37,8 +38,14 @@ const totalBytes = computed(() => (snapshot.value?.uploadTotal || 0) + (snapshot
 const insights = computed(() => buildConnectionInsights(snapshot.value?.connections || [], filtered.value, query.value));
 const closeTopN = computed(() => {
   const count = Number.parseInt(closeTopCount.value, 10);
-  return Number.isFinite(count) ? Math.min(50, Math.max(1, count)) : 3;
+  return Number.isFinite(count) && count >= 1 && count <= 8 ? count : 3;
 });
+const allConnections = computed(() => snapshot.value?.connections || []);
+const topCloseTargets = computed(() => allConnections.value.slice(0, closeTopN.value));
+const topClosePlan = computed(() => buildConnectionClosePlan("top", topCloseTargets.value, allConnections.value));
+const matchedCloseTargets = computed(() => filtered.value.slice(0, 8));
+const matchedClosePlan = computed(() => buildConnectionClosePlan("matched", matchedCloseTargets.value, allConnections.value, query.value));
+const allClosePlan = computed(() => buildConnectionClosePlan("all", allConnections.value, allConnections.value));
 
 async function refreshConnections(): Promise<void> {
   await withAction("connections-refresh", async () => {
@@ -98,10 +105,11 @@ async function runConnectionAction(command: string, label: string): Promise<void
 
 function requestCloseTop(): void {
   const count = closeTopN.value;
+  const plan = topClosePlan.value;
   pendingAction.value = {
     key: "connections-action",
     title: `关闭流量最高的 ${count} 条连接`,
-    detail: "会断开当前传输量最高的活动代理连接，应用可能自动重连。数量限制为 1-50。",
+    detail: formatConnectionCloseDetail(plan),
     command: `api close-top ${count}`,
     run: () => runConnectionAction(`api close-top ${count}`, "关闭 Top 连接")
   };
@@ -110,11 +118,12 @@ function requestCloseTop(): void {
 function requestCloseMatched(): void {
   const cleanQuery = query.value.trim();
   if (!cleanQuery || !filtered.value.length) return;
+  const plan = matchedClosePlan.value;
   pendingAction.value = {
     key: "connections-action",
-    title: `关闭 ${filtered.value.length} 条匹配连接`,
-    detail: "会按当前过滤条件断开命中的活动代理连接。",
-    command: `api close-matching ${cleanQuery}`,
+    title: `关闭 ${matchedCloseTargets.value.length} 条匹配连接`,
+    detail: formatConnectionCloseDetail(plan),
+    command: `api close-matching ${shellQuote(cleanQuery)}`,
     run: () => runConnectionAction(`api close-matching ${shellQuote(cleanQuery)}`, "关闭匹配连接")
   };
 }
@@ -122,10 +131,11 @@ function requestCloseMatched(): void {
 function requestCloseAll(): void {
   const count = snapshot.value?.connections.length || 0;
   if (!count) return;
+  const plan = allClosePlan.value;
   pendingAction.value = {
     key: "connections-action",
     title: `关闭全部 ${count} 条活动连接`,
-    detail: "会断开当前所有活动代理连接，正在使用网络的应用可能立即重连。",
+    detail: formatConnectionCloseDetail(plan),
     command: "api close-all",
     run: () => runConnectionAction("api close-all", "关闭全部连接")
   };
@@ -239,7 +249,7 @@ onMounted(() => {
 
     <div class="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
       <label class="grid gap-1 text-xs text-zinc-500">
-        Top N
+        Top N (1-8)
         <Input v-model="closeTopCount" inputmode="numeric" placeholder="3" />
       </label>
       <Button variant="outline" :disabled="!snapshot?.connections.length" @click="requestCloseTop">
@@ -251,6 +261,13 @@ onMounted(() => {
       <Button variant="outline" :disabled="!snapshot?.connections.length" @click="requestCloseAll">
         关闭全部
       </Button>
+    </div>
+
+    <div v-if="snapshot" class="rounded-md border p-3 text-sm leading-6" :class="connectionClosePlanTone(topClosePlan.status)">
+      <p class="font-semibold">{{ topClosePlan.title }}</p>
+      <p class="mt-1 text-xs opacity-80">
+        Top {{ closeTopN }} 会影响 {{ topClosePlan.targetCount }} / {{ topClosePlan.totalCount }} 条连接，约 {{ topClosePlan.sharePercent }}% 当前流量。
+      </p>
     </div>
 
     <div v-if="processBuckets.length || ruleBuckets.length || chainBuckets.length" class="grid gap-2 md:grid-cols-3">
