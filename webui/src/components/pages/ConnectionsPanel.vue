@@ -40,6 +40,11 @@ async function refreshConnections(): Promise<void> {
 }
 
 async function copyReport(): Promise<void> {
+  const buckets = [
+    ["process", processBuckets.value],
+    ["rule", ruleBuckets.value],
+    ["chain", chainBuckets.value]
+  ] as const;
   const report = [
     "MagicNet active connections",
     `count=${snapshot.value?.count || 0}`,
@@ -47,7 +52,21 @@ async function copyReport(): Promise<void> {
     `download=${formatBytes(snapshot.value?.downloadTotal || 0)}`,
     query.value ? `query=${query.value}` : "",
     "",
-    ...filtered.value.map((item) => `${item.label} ${formatBytes(item.totalBytes)} ${item.detail}`)
+    ...buckets.flatMap(([kind, items]) => [
+      `[${kind}_hotspots]`,
+      ...items.map((item) => `${item.name} count=${item.count} bytes=${Math.round(item.bytes)}`)
+    ]),
+    "",
+    ...filtered.value.map((item) => [
+      item.label,
+      `bytes=${Math.round(item.totalBytes)}`,
+      item.process ? `process=${item.process}` : "",
+      item.source ? `source=${item.source}` : "",
+      item.inbound ? `inbound=${item.inbound}` : "",
+      item.rule ? `rule=${item.rule}` : "",
+      item.rulePayload ? `payload=${item.rulePayload}` : "",
+      item.chain ? `chain=${item.chain}` : ""
+    ].filter(Boolean).join(" "))
   ].filter(Boolean).join("\n");
   copied.value = await copyText(report);
   state.output = copied.value ? "活动连接报告已复制。" : "剪贴板不可用，活动连接报告未复制。";
