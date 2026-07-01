@@ -16,11 +16,23 @@ const { isRunning, withAction } = useActionLock();
 const pendingConfigAction = ref<PendingToolAction | null>(null);
 const localJsonStatus = ref("");
 const sanitizedCopied = ref(false);
+const auditCopied = ref(false);
 type ConfigOutline = {
   status: "idle" | "ok" | "error";
   summary: string;
   keys: string[];
   counts: Array<{ label: string; value: string }>;
+};
+type ConfigAuditItem = {
+  label: string;
+  value: string;
+  tone: "success" | "warning" | "danger" | "neutral";
+};
+type ConfigAudit = {
+  status: "idle" | "ok" | "warning" | "error";
+  summary: string;
+  items: ConfigAuditItem[];
+  outboundTags: string[];
 };
 const configStats = computed(() => {
   const text = state.config.text;
@@ -68,6 +80,44 @@ const configOutline = computed<ConfigOutline>(() => {
       counts: outlineCounts({})
     };
   }
+});
+const configAudit = computed<ConfigAudit>(() => {
+  const text = state.config.text.trim();
+  if (!text) return { status: "idle", summary: "加载配置后显示运行关键项。", items: [], outboundTags: [] };
+  const parsed = parseConfigRoot(text);
+  if (parsed.error || !parsed.root) {
+    return { status: "error", summary: parsed.error || "JSON 解析失败。", items: [], outboundTags: [] };
+  }
+  const root = parsed.root;
+  const inbounds = arrayRecords(root.inbounds);
+  const outbounds = arrayRecords(root.outbounds);
+  const route = isRecord(root.route) ? root.route : {};
+  const dns = isRecord(root.dns) ? root.dns : {};
+  const experimental = isRecord(root.experimental) ? root.experimental : {};
+  const clashApi = isRecord(experimental.clash_api) ? experimental.clash_api : {};
+  const inboundTypes = uniqueStrings(inbounds.map((item) => stringValue(item.type)));
+  const outboundTags = uniqueStrings(outbounds.map((item) => stringValue(item.tag)));
+  const selectorCount = outbounds.filter((item) => ["selector", "urltest"].includes(stringValue(item.type))).length;
+  const externalController = stringValue(clashApi.external_controller);
+  const routeFinal = stringValue(route.final);
+  const dnsFinal = stringValue(dns.final);
+  const preferredProxyTag = findPreferredProxyTag(outbounds);
+  const items: ConfigAuditItem[] = [
+    auditItem("TUN 入站", inboundTypes.includes("tun") ? "存在" : "缺失", inboundTypes.includes("tun") ? "success" : "warning"),
+    auditItem("Mixed 入站", inboundTypes.includes("mixed") ? "存在" : "可选", inboundTypes.includes("mixed") ? "success" : "neutral"),
+    auditItem("WebUI API", externalController || "未配置", externalController ? "success" : "warning"),
+    auditItem("route.final", finalAuditValue(routeFinal, outboundTags), finalAuditTone(routeFinal, outboundTags, true)),
+    auditItem("dns.final", finalAuditValue(dnsFinal, outboundTags), finalAuditTone(dnsFinal, outboundTags, false)),
+    auditItem("主代理候选", preferredProxyTag || "未识别", preferredProxyTag ? "success" : "warning"),
+    auditItem("选择器", `${selectorCount} 个`, selectorCount ? "success" : "neutral")
+  ];
+  const warningCount = items.filter((item) => item.tone === "warning").length;
+  return {
+    status: warningCount ? "warning" : "ok",
+    summary: warningCount ? `${warningCount} 个关键项需要确认` : "关键运行项齐全",
+    items,
+    outboundTags: outboundTags.slice(0, 16)
+  };
 });
 
 function requestConfigAction(action: PendingToolAction): void {
@@ -125,6 +175,23 @@ async function copySanitizedConfig(): Promise<void> {
   state.output = sanitizedCopied.value ? "脱敏配置片段已复制。" : "剪贴板不可用，脱敏配置未复制。";
 }
 
+async function copyConfigAudit(): Promise<void> {
+  const report = [
+    "MagicNet config audit",
+    `target=${state.config.target}`,
+    `path=${state.config.path}`,
+    `status=${configAudit.value.status}`,
+    `summary=${configAudit.value.summary}`,
+    "",
+    "[items]",
+    ...configAudit.value.items.map((item) => `${item.label}=${item.value} (${item.tone})`),
+    "",
+    `[outbound_tags] ${configAudit.value.outboundTags.join(", ") || "none"}`
+  ].join("\n");
+  auditCopied.value = await copyText(report);
+  state.output = auditCopied.value ? "配置审计摘要已复制。" : "剪贴板不可用，配置审计摘要未复制。";
+}
+
 function sanitizeConfigText(text: string): string {
   return text
     .replace(/https?:\/\/\S+/g, "[filtered-url]")
@@ -144,6 +211,52 @@ function outlineCounts(root: Record<string, unknown>): Array<{ label: string; va
 
 function arrayCount(value: unknown): string {
   return Array.isArray(value) ? String(value.length) : "-";
+}
+
+function parseConfigRoot(text: string): { root: Record<string, unknown> | null; error: string } {
+  try {
+    const parsed = JSON.parse(text);
+    return isRecord(parsed)
+      ? { root: parsed, error: "" }
+      : { root: null, error: "配置根节点不是 JSON object。" };
+  } catch (error) {
+    return { root: null, error: error instanceof Error ? error.message : "JSON 解析失败。" };
+  }
+}
+
+function arrayRecords(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function finalAuditValue(tag: string, outboundTags: string[]): string {
+  if (!tag) return "未配置";
+  return outboundTags.includes(tag) ? `${tag} 已存在` : `${tag} 未匹配出站`;
+}
+
+function finalAuditTone(tag: string, outboundTags: string[], required: boolean): ConfigAuditItem["tone"] {
+  if (!tag) return required ? "warning" : "neutral";
+  return outboundTags.includes(tag) ? "success" : "warning";
+}
+
+function findPreferredProxyTag(outbounds: Array<Record<string, unknown>>): string {
+  const candidates = ["proxy", "auto", "urltest", "select"];
+  for (const candidate of candidates) {
+    if (outbounds.some((item) => stringValue(item.tag) === candidate)) return candidate;
+  }
+  const selector = outbounds.find((item) => ["selector", "urltest"].includes(stringValue(item.type)));
+  return selector ? stringValue(selector.tag) : "";
+}
+
+function auditItem(label: string, value: string, tone: ConfigAuditItem["tone"]): ConfigAuditItem {
+  return { label, value, tone };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -245,6 +358,44 @@ function issueUrl(): string {
         </div>
         <p class="break-words text-xs text-zinc-500">
           顶层键：{{ configOutline.keys.length ? configOutline.keys.join(", ") : "无" }}
+        </p>
+      </div>
+      <div class="grid gap-3 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+        <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <span class="font-medium text-zinc-200">运行审计</span>
+            <span
+              class="rounded px-2 py-1 text-xs"
+              :class="{
+                'bg-emerald-500/15 text-emerald-200': configAudit.status === 'ok',
+                'bg-amber-500/15 text-amber-200': configAudit.status === 'warning',
+                'bg-red-500/15 text-red-200': configAudit.status === 'error',
+                'bg-zinc-800 text-zinc-300': configAudit.status === 'idle',
+              }"
+            >
+              {{ configAudit.status === 'ok' ? '齐全' : configAudit.status === 'warning' ? '需确认' : configAudit.status === 'error' ? '不可解析' : '待加载' }}
+            </span>
+            <span class="min-w-0 break-words text-xs text-zinc-500">{{ configAudit.summary }}</span>
+          </div>
+          <Button variant="outline" :disabled="!configAudit.items.length" @click="copyConfigAudit"><Copy :size="16" />{{ auditCopied ? '已复制审计' : '复制审计' }}</Button>
+        </div>
+        <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+          <span
+            v-for="item in configAudit.items"
+            :key="item.label"
+            class="rounded border px-2 py-1"
+            :class="{
+              'border-emerald-500/30 text-emerald-200': item.tone === 'success',
+              'border-amber-500/30 text-amber-200': item.tone === 'warning',
+              'border-red-500/30 text-red-200': item.tone === 'danger',
+              'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+            }"
+          >
+            {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+          </span>
+        </div>
+        <p class="break-words text-xs text-zinc-500">
+          出站 tag：{{ configAudit.outboundTags.length ? configAudit.outboundTags.join(", ") : "无" }}
         </p>
       </div>
       <Textarea
