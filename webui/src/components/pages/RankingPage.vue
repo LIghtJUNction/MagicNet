@@ -1,35 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Download, Mail, Medal, RefreshCw, Trophy, Wallet } from "lucide-vue-next";
+import { Copy, Download, Mail, Medal, RefreshCw, Search, Trophy, Wallet } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, shellQuote } from "@/utils";
 import { useActionLock } from "@/composables/useActionLock";
-
-type RankingEntry = {
-  rank?: number;
-  name: string;
-  amount?: string;
-  message?: string;
-  date?: string;
-};
-
-type RankingData = {
-  updatedAt: string;
-  title: string;
-  description: string;
-  contactEmail: string;
-  payment: {
-    wechatUrl: string;
-    alipayUrl: string;
-    wechatQr?: string;
-    alipayQr?: string;
-    note?: string;
-  };
-  entries: RankingEntry[];
-};
+import { buildRankingInsights, filterRankingEntries, formatRankingSnapshot, normalizeRankingData, type RankingData } from "./rankingInsights";
 
 const fallbackData: RankingData = {
   updatedAt: "unknown",
@@ -51,6 +30,8 @@ const data = ref<RankingData>(fallbackData);
 const loading = ref(false);
 const error = ref("");
 const saveStatus = ref("");
+const rankingQuery = ref("");
+const rankingCopied = ref(false);
 const pendingQrAction = ref<PendingQrAction | null>(null);
 let pressTimer = 0;
 
@@ -62,8 +43,10 @@ type PendingQrAction = {
   run: () => Promise<void>;
 };
 
-const topEntries = computed(() => data.value.entries.slice(0, 3));
-const otherEntries = computed(() => data.value.entries.slice(3));
+const rankingInsights = computed(() => buildRankingInsights(data.value));
+const visibleEntries = computed(() => filterRankingEntries(data.value.entries, rankingQuery.value));
+const topEntries = computed(() => visibleEntries.value.slice(0, 3));
+const otherEntries = computed(() => visibleEntries.value.slice(3));
 
 async function loadRanking(): Promise<void> {
   loading.value = true;
@@ -71,9 +54,11 @@ async function loadRanking(): Promise<void> {
   try {
     const response = await fetch(`ranking.json?ts=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    data.value = await response.json() as RankingData;
+    data.value = normalizeRankingData(await response.json());
+    rankingCopied.value = false;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
+    rankingCopied.value = false;
   } finally {
     loading.value = false;
   }
@@ -81,6 +66,11 @@ async function loadRanking(): Promise<void> {
 
 async function copyEmail(): Promise<void> {
   saveStatus.value = await copyText(data.value.contactEmail) ? "邮箱已复制。" : "剪贴板不可用，邮箱未复制。";
+}
+
+async function copyRankingSnapshot(): Promise<void> {
+  rankingCopied.value = await copyText(formatRankingSnapshot(data.value, visibleEntries.value));
+  saveStatus.value = rankingCopied.value ? "排行榜快照已复制。" : "剪贴板不可用，排行榜快照未复制。";
 }
 
 async function openPayment(url: string, label: string): Promise<void> {
@@ -176,9 +166,14 @@ onMounted(() => {
       :title="data.title"
       :description="data.description"
     >
-      <Button variant="outline" size="sm" :loading="loading" @click="loadRanking">
-        <RefreshCw :size="16" />刷新
-      </Button>
+      <div class="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" :loading="loading" @click="loadRanking">
+          <RefreshCw :size="16" />刷新
+        </Button>
+        <Button variant="outline" size="sm" :disabled="!data.entries.length" @click="copyRankingSnapshot">
+          <Copy :size="16" />{{ rankingCopied ? '已复制快照' : '复制快照' }}
+        </Button>
+      </div>
     </PageHeader>
 
     <Card class="grid gap-3">
@@ -196,9 +191,31 @@ onMounted(() => {
           <p v-if="error" class="mt-2 text-sm text-red-300">加载失败：{{ error }}</p>
         </div>
       </div>
+      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+        <span
+          v-for="item in rankingInsights"
+          :key="item.label"
+          class="rounded border px-2 py-1"
+          :class="{
+            'border-emerald-500/30 text-emerald-200': item.tone === 'success',
+            'border-amber-500/30 text-amber-200': item.tone === 'warning',
+            'border-red-500/30 text-red-200': item.tone === 'danger',
+            'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+          }"
+        >
+          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+        </span>
+      </div>
+      <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div class="relative">
+          <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
+          <Input v-model="rankingQuery" class="pl-9" placeholder="过滤名称、留言、金额或日期" spellcheck="false" />
+        </div>
+        <span class="text-sm text-zinc-500">{{ visibleEntries.length }} / {{ data.entries.length }} 命中</span>
+      </div>
     </Card>
 
-    <div class="grid gap-3 md:grid-cols-3">
+    <div v-if="topEntries.length" class="grid gap-3 md:grid-cols-3">
       <Card v-for="entry in topEntries" :key="`${entry.rank}-${entry.name}`" class="grid gap-3">
         <div class="flex items-center justify-between gap-3">
           <div class="grid size-10 place-items-center rounded-md bg-zinc-800">
@@ -225,6 +242,9 @@ onMounted(() => {
         <span class="truncate text-sm">{{ entry.name }}</span>
         <span class="text-xs text-zinc-500">{{ entry.date }}</span>
       </div>
+    </Card>
+    <Card v-else-if="data.entries.length && rankingQuery.trim()" class="text-sm text-zinc-500">
+      没有匹配的排行榜条目。
     </Card>
 
     <Card class="grid gap-3">
