@@ -71,9 +71,9 @@ async function queued<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-async function runShell(commandBody: string, label: string, quiet = false): Promise<string> {
+async function runShell(commandBody: string, label: string, quiet = false, previewOverride = ""): Promise<string> {
   const command = `su -M -c ${shellQuote(commandBody)}`;
-  const commandPreview = compactCommand(command);
+  const commandPreview = previewOverride || compactCommand(command);
   const previousTask = state.task;
   const previousNotice = state.notice;
   state.lastCommand = commandPreview;
@@ -131,8 +131,8 @@ async function runShell(commandBody: string, label: string, quiet = false): Prom
   }
 }
 
-async function runCli(args: string, label = args, quiet = false): Promise<string> {
-  return runShell(`${CLI} ${args}`, label, quiet);
+async function runCli(args: string, label = args, quiet = false, previewOverride = ""): Promise<string> {
+  return runShell(`${CLI} ${args}`, label, quiet, previewOverride);
 }
 
 async function startBackgroundCli(args: string, label = args): Promise<string> {

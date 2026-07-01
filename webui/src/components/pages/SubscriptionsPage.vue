@@ -8,17 +8,18 @@ import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { bytesToBase64, copyText, execFailed, readClipboardText } from "@/utils";
-import { buildSubscriptionPreview, formatSubscriptionSummary, summarizeSubscriptionInput, type SubscriptionPreview } from "./subscriptionPreview";
+import { buildSubscriptionPreview, buildSubscriptionSavePlan, formatSubscriptionSummary, summarizeSubscriptionInput, type SubscriptionPreview } from "./subscriptionPreview";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
-const { state, runCli, startBackgroundCli, refreshSubs, shellQuote, uniqueNonEmpty } = useMagicNet();
+const { state, runCli, startBackgroundCli, refreshSubs, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
 const pendingSubscriptionAction = ref<PendingToolAction | null>(null);
 const summaryCopied = ref(false);
 const inputSummary = computed(() => summarizeSubscriptionInput(singBoxText.value));
 const subscriptionPreview = computed<SubscriptionPreview[]>(() => buildSubscriptionPreview(singBoxText.value).slice(0, 8));
+const savePlan = computed(() => buildSubscriptionSavePlan(singBoxText.value));
 
 watch(() => state.subscriptions.singBoxUrls, (urls) => {
   singBoxText.value = urls.join("\n");
@@ -46,18 +47,12 @@ async function confirmSubscriptionAction(): Promise<void> {
 }
 
 function normalizedSingBoxUrls(): string[] | null {
-  const raw = singBoxText.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const lines = uniqueNonEmpty(raw).slice(0, 5);
-  if (lines.some((line) => !/^https?:\/\/\S+$/i.test(line))) {
-    state.output = "sing-box 订阅格式不对，必须一行一个 http(s) URL。";
+  if (savePlan.value.status === "error" || savePlan.value.status === "idle") {
+    state.output = savePlan.value.message;
     return null;
   }
-  if (!lines.length) {
-    state.output = "请至少填写一个 sing-box 订阅 URL。";
-    return null;
-  }
-  if (raw.length !== lines.length) state.output = `将自动去重/裁剪：${raw.length} -> ${lines.length}`;
-  return lines;
+  if (savePlan.value.raw !== savePlan.value.lines.length || savePlan.value.status === "warning") state.output = savePlan.value.message;
+  return savePlan.value.lines;
 }
 
 function previewTone(status: SubscriptionPreview["status"]): string {
@@ -70,7 +65,12 @@ async function runSaveSingBox(lines: string[]): Promise<void> {
   await withAction("save-singbox", async () => {
     singBoxText.value = lines.join("\n");
     const encoded = bytesToBase64(new TextEncoder().encode(`${lines.join("\n")}\n`));
-    const text = await runCli(`sub set-file sing-box ${shellQuote(encoded)}`, "保存 sing-box 订阅");
+    const text = await runCli(
+      `sub set-file sing-box ${shellQuote(encoded)}`,
+      "保存 sing-box 订阅",
+      false,
+      "su -M -c 'magicnet sub set-file sing-box [filtered-base64]'"
+    );
     if (execFailed(text)) return;
     await startBackgroundCli("sub update sing-box", "更新 sing-box 节点");
     state.output += "\n\n已开始后台拉取并导入 sing-box 节点。完成后进入 sing-box WebUI 查看节点。";
@@ -84,7 +84,7 @@ function saveSingBox(): void {
   requestSubscriptionAction({
     key: "save-singbox",
     title: "保存并更新 sing-box 订阅",
-    detail: `会保存 ${lines.length} 个订阅 URL，并立即后台联网拉取、解析和写入节点配置。`,
+    detail: `会保存 ${lines.length} 个订阅 URL，并立即后台联网拉取、解析和写入节点配置。${savePlan.value.status === "warning" ? ` ${savePlan.value.message}。` : ""}`,
     command: "sub set-file sing-box <encoded-urls> && sub update sing-box",
     run: () => runSaveSingBox(lines),
   });
@@ -169,6 +169,20 @@ async function copy(text: string, label: string): Promise<void> {
           <span>有效 {{ inputSummary.valid }} 个</span>
           <span>重复 {{ inputSummary.duplicate }} 个</span>
           <span>超限 {{ inputSummary.overLimit }} 个</span>
+        </div>
+        <div
+          class="mb-2 rounded-md border p-3 text-sm leading-6"
+          :class="{
+            'border-emerald-500/25 bg-emerald-500/10 text-emerald-100': savePlan.status === 'ok',
+            'border-amber-500/25 bg-amber-500/10 text-amber-100': savePlan.status === 'warning',
+            'border-red-500/25 bg-red-500/10 text-red-100': savePlan.status === 'error',
+            'border-zinc-800 bg-zinc-950 text-zinc-400': savePlan.status === 'idle',
+          }"
+        >
+          <p class="font-medium">{{ savePlan.status === 'ok' ? '可保存' : savePlan.status === 'warning' ? '保存前请确认' : savePlan.status === 'error' ? '不能保存' : '等待输入' }}</p>
+          <p class="mt-1 text-xs opacity-80">
+            {{ savePlan.message }} · 将保存 {{ savePlan.lines.length }} 个 · 无效 {{ savePlan.invalid }} · 非 HTTPS {{ savePlan.http }}
+          </p>
         </div>
         <div class="mb-3 grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
           <div class="flex items-center gap-2 text-sm font-medium text-zinc-200">
