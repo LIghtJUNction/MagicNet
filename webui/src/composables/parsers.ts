@@ -13,6 +13,7 @@ export type McpState = {
   pid: string;
   url: string;
   secretSet: boolean;
+  portOwner: string;
 };
 
 export type NetworkSnapshotSummary = {
@@ -99,7 +100,8 @@ export const mcpDefaults: McpState = {
   port: "8766",
   pid: "stopped",
   url: "http://127.0.0.1:8766/mcp",
-  secretSet: false
+  secretSet: false,
+  portOwner: ""
 };
 
 export const dnsDefaults: DnsState = {
@@ -421,7 +423,7 @@ export function parseSubs(text: string, previous: SubscriptionState): Subscripti
 }
 
 export function parseMcp(text: string, previous: McpState): McpState {
-  const next = { ...previous };
+  const next = { ...previous, portOwner: "" };
   let explicitUrl = "";
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
@@ -430,6 +432,7 @@ export function parseMcp(text: string, previous: McpState): McpState {
     else if (line.startsWith("port=")) next.port = line.slice(5);
     else if (line.startsWith("pid=")) next.pid = line.slice(4);
     else if (line.startsWith("secret_set=")) next.secretSet = line.slice(11) === "1";
+    else if (line.startsWith("port_owner=")) next.portOwner = line.slice(11);
     else if (line.startsWith("url=")) explicitUrl = line.slice(4);
   });
   next.url = explicitUrl || `http://${next.bind}:${next.port}/mcp`;

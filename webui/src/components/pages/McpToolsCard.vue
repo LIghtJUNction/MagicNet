@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Copy, Power, PowerOff, Save, Server } from "lucide-vue-next";
+import { Copy, Link2, Power, PowerOff, Save, Server } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -8,6 +8,7 @@ import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
+import { buildMcpConnectionPlan } from "./mcpConnectionPlan";
 import type { PendingToolAction } from "./toolActions";
 
 const { state, runCli, refreshMcp, shellQuote } = useMagicNet();
@@ -16,6 +17,17 @@ const mcpBind = ref(state.mcp.bind);
 const mcpPort = ref(state.mcp.port);
 const pendingMcpAction = ref<PendingToolAction | null>(null);
 const copied = ref(false);
+
+const mcpPlan = computed(() => buildMcpConnectionPlan({
+  enabled: state.mcp.enabled,
+  bind: mcpBind.value,
+  port: mcpPort.value,
+  savedBind: state.mcp.bind,
+  savedPort: state.mcp.port,
+  pid: state.mcp.pid,
+  secretSet: state.mcp.secretSet,
+  portOwner: state.mcp.portOwner
+}));
 
 const mcpInsight = computed(() => {
   if (!state.mcp.enabled) return { tone: "warning", title: "MCP 未启用", detail: "启用后可通过 adb forward 连接电脑侧工具。" };
@@ -26,7 +38,7 @@ const mcpInsight = computed(() => {
 
 watch(() => state.mcp.bind, (value) => { mcpBind.value = value; });
 watch(() => state.mcp.port, (value) => { mcpPort.value = value; });
-watch(() => [state.mcp.bind, state.mcp.port, state.mcp.pid, state.mcp.enabled], () => { copied.value = false; });
+watch(() => [state.mcp.bind, state.mcp.port, state.mcp.pid, state.mcp.enabled, state.mcp.portOwner], () => { copied.value = false; });
 watch([mcpBind, mcpPort], () => { copied.value = false; });
 
 function validateMcpEndpoint(): { bind: string; port: string } | null {
@@ -132,9 +144,8 @@ async function confirmMcpAction(): Promise<void> {
 }
 
 async function copyMcp(): Promise<void> {
-  const command = `adb shell 'su -M -c "/data/adb/modules/MagicNet/cli mcp secret"'\nadb forward tcp:${state.mcp.port} tcp:${state.mcp.port}`;
-  copied.value = await copyText(`${state.mcp.url}\n${command}`);
-  state.output = copied.value ? "已复制 MCP URL 和 adb forward 命令。" : "剪贴板不可用，MCP 连接未复制。";
+  copied.value = await copyText(mcpPlan.value.copyText);
+  state.output = copied.value ? "已复制 MCP 连接预检和 adb forward 命令。" : "剪贴板不可用，MCP 连接未复制。";
 }
 </script>
 
@@ -156,6 +167,20 @@ async function copyMcp(): Promise<void> {
       <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ mcpInsight.detail }}</p>
     </div>
 
+    <div class="my-3 rounded-md border p-3" :class="mcpPlan.tone === 'success' ? 'border-sky-400/20 bg-sky-400/10 text-sky-100' : 'border-amber-400/30 bg-amber-400/10 text-amber-100'">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="inline-flex items-center gap-2 text-sm font-semibold"><Link2 :size="15" />{{ mcpPlan.title }}</p>
+        <code class="rounded bg-black/40 px-2 py-1 text-xs">{{ mcpPlan.localUrl }}</code>
+      </div>
+      <p class="mt-2 text-sm leading-6 opacity-80">{{ mcpPlan.summary }}</p>
+      <ul class="mt-2 grid gap-1 text-xs leading-5 opacity-80">
+        <li v-for="check in mcpPlan.checks" :key="check">{{ check }}</li>
+      </ul>
+      <code class="mt-2 block break-all rounded bg-black/40 px-2 py-1 text-xs">{{ mcpPlan.adbForward }}</code>
+      <code class="mt-2 block break-all rounded bg-black/40 px-2 py-1 text-xs">{{ mcpPlan.authHeader }}</code>
+      <code class="mt-2 block break-all rounded bg-black/40 px-2 py-1 text-xs">{{ mcpPlan.verifyCommand }}</code>
+    </div>
+
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem]">
       <Input v-model="mcpBind" placeholder="127.0.0.1" spellcheck="false" />
       <Input v-model="mcpPort" inputmode="numeric" placeholder="8766" spellcheck="false" />
@@ -173,7 +198,7 @@ async function copyMcp(): Promise<void> {
       <Button variant="outline" :loading="isRunning('disable-mcp')" @click="disableMcp">
         <PowerOff :size="16" />禁用并停止
       </Button>
-      <Button variant="outline" @click="copyMcp"><Copy :size="16" />{{ copied ? "已复制连接" : "复制连接" }}</Button>
+      <Button variant="outline" @click="copyMcp"><Copy :size="16" />{{ copied ? "已复制预检" : "复制预检" }}</Button>
     </div>
     <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">pid={{ state.mcp.pid }}
 enabled={{ state.mcp.enabled ? "1" : "0" }}
@@ -181,6 +206,7 @@ bind={{ state.mcp.bind }}
 port={{ state.mcp.port }}
 secret_set={{ state.mcp.secretSet ? "1" : "0" }}
 url={{ state.mcp.url }}
+port_owner={{ state.mcp.portOwner || "-" }}
 secret_command=su -M -c "/data/adb/modules/MagicNet/cli mcp secret"</pre>
   </Card>
 </template>

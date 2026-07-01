@@ -73,6 +73,7 @@ export type McpState = {
   pid: string;
   url: string;
   secretSet: boolean;
+  portOwner: string;
 };
 
 export type DnsState = {
