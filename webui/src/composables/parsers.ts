@@ -38,10 +38,13 @@ export type RouteRuleSummary = {
 export type ConnectionTarget = {
   id: string;
   label: string;
+  source: string;
   network: string;
+  inbound: string;
   rule: string;
   rulePayload: string;
   chain: string;
+  process: string;
   detail: string;
   upload: number;
   download: number;
@@ -260,12 +263,10 @@ export function connectionMatchesQuery(target: ConnectionTarget, query: string):
   return terms.every((term) => haystack.includes(term));
 }
 
-export function connectionBuckets(connections: ConnectionTarget[], kind: "rule" | "chain"): ConnectionBucket[] {
+export function connectionBuckets(connections: ConnectionTarget[], kind: "rule" | "chain" | "process"): ConnectionBucket[] {
   const seeds = connections
     .map((target) => {
-      const name = kind === "rule"
-        ? [target.rule, target.rulePayload].filter(Boolean).join(" ")
-        : target.chain || target.network;
+      const name = bucketName(target, kind);
       if (!name) return null;
       return { name, query: kind === "chain" ? name.replace(/ > /g, " ") : name, bytes: target.totalBytes };
     })
@@ -278,6 +279,12 @@ export function connectionBuckets(connections: ConnectionTarget[], kind: "rule" 
       return acc;
     }, {})
   ).sort((left, right) => right.bytes - left.bytes || right.count - left.count).slice(0, 4);
+}
+
+function bucketName(target: ConnectionTarget, kind: "rule" | "chain" | "process"): string {
+  if (kind === "rule") return [target.rule, target.rulePayload].filter(Boolean).join(" ");
+  if (kind === "process") return target.process || target.inbound;
+  return target.chain || target.network;
 }
 
 function parseConnectionTarget(value: unknown): ConnectionTarget | null {
@@ -293,22 +300,44 @@ function parseConnectionTarget(value: unknown): ConnectionTarget | null {
   const label = !port || port === "0" ? target : `${target}:${port}`;
   const chain = Array.isArray(item.chains) ? item.chains.map(stringValue).filter(Boolean).join(" > ") : "";
   const network = stringValue(metadata.network);
+  const source = sourceLabel(metadata);
+  const inbound = stringValue(item.inbound) || stringValue(metadata.inbound) || stringValue(metadata.type);
   const rule = stringValue(item.rule);
   const rulePayload = stringValue(item.rulePayload);
+  const process = processLabel(metadata);
   const upload = safeNumber(item.upload);
   const download = safeNumber(item.download);
   return {
     id,
     label,
+    source,
     network,
+    inbound,
     rule,
     rulePayload,
     chain,
-    detail: [network, rule, rulePayload, chain].filter(Boolean).join(" · ") || "direct",
+    process,
+    detail: [process, source, inbound, network, rule, rulePayload, chain].filter(Boolean).join(" · ") || "direct",
     upload,
     download,
     totalBytes: upload + download
   };
+}
+
+function sourceLabel(metadata: Record<string, unknown>): string {
+  const ip = stringValue(metadata.sourceIP) || stringValue(metadata.source);
+  const port = String(metadata.sourcePort ?? "");
+  if (!ip) return "";
+  return port && port !== "0" ? `${ip}:${port}` : ip;
+}
+
+function processLabel(metadata: Record<string, unknown>): string {
+  const packageName = stringValue(metadata.processPackageName);
+  if (packageName) return packageName;
+  const processName = stringValue(metadata.processName);
+  if (processName) return processName;
+  const path = stringValue(metadata.processPath);
+  return path.split("/").filter(Boolean).at(-1) || "";
 }
 
 function stringValue(value: unknown): string {

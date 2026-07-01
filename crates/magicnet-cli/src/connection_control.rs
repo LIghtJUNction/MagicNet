@@ -127,13 +127,22 @@ fn connection_match(item: &Value) -> Option<ConnectionMatch> {
                 .join(" ")
         })
         .unwrap_or_default();
+    let source = source_label(metadata);
+    let process = process_label(metadata);
     let haystack = format!(
-        "{} {} {} {} {}",
+        "{} {} {} {} {} {} {} {}",
         label,
         metadata
             .get("network")
             .and_then(Value::as_str)
             .unwrap_or_default(),
+        item.get("inbound")
+            .or_else(|| metadata.get("inbound"))
+            .or_else(|| metadata.get("type"))
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        source,
+        process,
         item.get("rule").and_then(Value::as_str).unwrap_or_default(),
         item.get("rulePayload")
             .and_then(Value::as_str)
@@ -155,6 +164,51 @@ fn connection_match(item: &Value) -> Option<ConnectionMatch> {
         haystack,
         bytes: upload + download,
     })
+}
+
+fn source_label(metadata: &Value) -> String {
+    let ip = metadata
+        .get("sourceIP")
+        .or_else(|| metadata.get("source"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if ip.is_empty() {
+        return String::new();
+    }
+    let port = metadata
+        .get("sourcePort")
+        .map(value_text)
+        .unwrap_or_default();
+    if port.is_empty() || port == "0" {
+        ip.to_string()
+    } else {
+        format!("{ip}:{port}")
+    }
+}
+
+fn process_label(metadata: &Value) -> String {
+    let package = metadata
+        .get("processPackageName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !package.is_empty() {
+        return package.to_string();
+    }
+    let name = metadata
+        .get("processName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !name.is_empty() {
+        return name.to_string();
+    }
+    metadata
+        .get("processPath")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or_default()
+        .to_string()
 }
 
 pub(crate) fn print_close_all_summary(app: &App) -> Result<(), String> {
@@ -278,6 +332,46 @@ mod tests {
         let ip = matching_connections(&root, "203.0.113 geoip");
         assert_eq!(ip.len(), 1);
         assert_eq!(ip[0].id, "b");
+    }
+
+    #[test]
+    fn matching_connections_filters_by_process_source_and_inbound() {
+        let root: Value = serde_json::from_str(
+            r#"{
+              "connections": [
+                {
+                  "id": "app",
+                  "upload": 7,
+                  "download": 5,
+                  "inbound": "tun-in",
+                  "metadata": {
+                    "host": "api.example.com",
+                    "destinationPort": 443,
+                    "sourceIP": "10.0.0.2",
+                    "sourcePort": 51234,
+                    "processPackageName": "com.example.app"
+                  }
+                },
+                {
+                  "id": "other",
+                  "metadata": {"host": "other.example.com", "destinationPort": 443}
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+
+        let by_process = matching_connections(&root, "com.example.app");
+        assert_eq!(by_process.len(), 1);
+        assert_eq!(by_process[0].id, "app");
+
+        let by_source = matching_connections(&root, "10.0.0.2:51234");
+        assert_eq!(by_source.len(), 1);
+        assert_eq!(by_source[0].id, "app");
+
+        let by_inbound = matching_connections(&root, "tun-in");
+        assert_eq!(by_inbound.len(), 1);
+        assert_eq!(by_inbound[0].id, "app");
     }
 
     #[test]

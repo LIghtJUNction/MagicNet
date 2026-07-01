@@ -29,6 +29,7 @@ const filtered = computed(() => snapshot.value?.connections.filter((item) => con
 const visibleConnections = computed(() => (query.value ? filtered.value : snapshot.value?.connections || []).slice(0, 10));
 const ruleBuckets = computed(() => connectionBuckets(snapshot.value?.connections || [], "rule"));
 const chainBuckets = computed(() => connectionBuckets(snapshot.value?.connections || [], "chain"));
+const processBuckets = computed(() => connectionBuckets(snapshot.value?.connections || [], "process"));
 const totalBytes = computed(() => (snapshot.value?.uploadTotal || 0) + (snapshot.value?.downloadTotal || 0));
 
 async function refreshConnections(): Promise<void> {
@@ -186,7 +187,20 @@ onMounted(() => {
       </Button>
     </div>
 
-    <div v-if="ruleBuckets.length || chainBuckets.length" class="grid gap-2 md:grid-cols-2">
+    <div v-if="processBuckets.length || ruleBuckets.length || chainBuckets.length" class="grid gap-2 md:grid-cols-3">
+      <div v-if="processBuckets.length" class="grid gap-2">
+        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">应用热点</p>
+        <button
+          v-for="bucket in processBuckets"
+          :key="`process-${bucket.name}`"
+          class="grid grid-cols-[minmax(0,1fr)_auto] rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-left text-sm"
+          type="button"
+          @click="selectQuery(bucket.query)"
+        >
+          <span class="truncate text-zinc-200">{{ bucket.name }}</span>
+          <span class="text-zinc-500">{{ bucket.count }} · {{ formatBytes(bucket.bytes) }}</span>
+        </button>
+      </div>
       <div v-if="ruleBuckets.length" class="grid gap-2">
         <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">规则热点</p>
         <button
@@ -227,6 +241,9 @@ onMounted(() => {
           <Button size="sm" variant="ghost" :disabled="isRunning('connections-action')" @click="requestCloseOne(item)">关闭</Button>
         </div>
         <p class="truncate text-xs text-zinc-500">{{ item.detail }}</p>
+        <p v-if="item.process || item.source" class="truncate text-xs text-zinc-500">
+          {{ [item.process, item.source].filter(Boolean).join(" · ") }}
+        </p>
         <p class="text-xs text-zinc-400">↑ {{ formatBytes(item.upload) }} / ↓ {{ formatBytes(item.download) }}</p>
       </div>
     </div>
