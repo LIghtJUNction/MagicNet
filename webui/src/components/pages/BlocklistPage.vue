@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, DownloadCloud, Github, Plus, RefreshCw, X } from "lucide-vue-next";
+import { Copy, DownloadCloud, Github, ListFilter, Plus, RefreshCw, Search, X } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -8,11 +8,13 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
+import { buildBlocklistSummary, filterBlocklistEntries } from "./blocklistInsights";
 
 const { state, runCli, startBackgroundCli, refreshBlock, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pendingBlockAction = ref<PendingBlockAction | null>(null);
 const snapshotCopied = ref(false);
+const blockQuery = ref("");
 const COMMUNITY_SNAPSHOT_LIMIT = 40;
 
 type PendingBlockAction = {
@@ -22,14 +24,11 @@ type PendingBlockAction = {
   run: () => Promise<void>;
 };
 
-const communityEntries = computed(() => {
-  const rules = [...state.blocklist.communityRules];
-  for (const domain of state.blocklist.communityDomains) {
-    const rule = `DOMAIN-SUFFIX,${domain}`;
-    if (!rules.includes(rule) && !state.blocklist.allowRules.includes(rule)) rules.push(rule);
-  }
-  return rules;
-});
+const blockSummary = computed(() => buildBlocklistSummary(state.blocklist));
+const communityEntries = computed(() => blockSummary.value.communityEntries);
+const visibleManualDomains = computed(() => filterBlocklistEntries(state.blocklist.manual, blockQuery.value));
+const visibleCommunityEntries = computed(() => filterBlocklistEntries(communityEntries.value, blockQuery.value));
+const visibleAllowRules = computed(() => filterBlocklistEntries(state.blocklist.allowRules, blockQuery.value));
 
 function validateBlockDomain(domain: string): boolean {
   if (!/^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/.test(domain)) {
@@ -259,7 +258,38 @@ async function confirmBlockAction(): Promise<void> {
     </Card>
 
     <Card class="grid gap-3">
-      <h3 class="text-base font-semibold">策略</h3>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 class="text-base font-semibold">策略</h3>
+          <p class="mt-1 text-sm leading-6 text-zinc-500">{{ blockSummary.summary }}</p>
+        </div>
+        <span
+          class="rounded px-2 py-1 text-xs font-medium"
+          :class="{
+            'bg-emerald-500/15 text-emerald-200': blockSummary.status === 'active',
+            'bg-amber-500/15 text-amber-200': blockSummary.status === 'partial',
+            'bg-red-500/15 text-red-200': blockSummary.status === 'empty',
+            'bg-zinc-800 text-zinc-300': blockSummary.status === 'disabled',
+          }"
+        >
+          {{ blockSummary.status === 'active' ? '完整启用' : blockSummary.status === 'partial' ? '部分启用' : blockSummary.status === 'empty' ? '无有效规则' : '已关闭' }}
+        </span>
+      </div>
+      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+        <span
+          v-for="item in blockSummary.insights"
+          :key="item.label"
+          class="rounded border px-2 py-1"
+          :class="{
+            'border-emerald-500/30 text-emerald-200': item.tone === 'success',
+            'border-amber-500/30 text-amber-200': item.tone === 'warning',
+            'border-red-500/30 text-red-200': item.tone === 'danger',
+            'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+          }"
+        >
+          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+        </span>
+      </div>
       <div class="grid gap-2 sm:grid-cols-2">
         <Button :variant="state.blocklist.enabled ? 'default' : 'outline'" :loading="isRunning('toggle-block')" @click="requestToggleBlocklist">
           {{ isRunning('toggle-block') ? '切换中' : state.blocklist.enabled ? "黑名单已启用" : "黑名单已关闭" }}
@@ -272,39 +302,43 @@ async function confirmBlockAction(): Promise<void> {
         <Input v-model="state.blocklist.newDomain" placeholder="malware.example.com" spellcheck="false" />
         <Button variant="secondary" :loading="isRunning(`add-domain-${state.blocklist.newDomain.trim()}`)" @click="requestAddDomain"><Plus :size="16" />添加</Button>
       </div>
+      <div class="relative">
+        <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
+        <Input v-model="blockQuery" class="pl-9" placeholder="过滤本地阻断、社区规则和排除规则" spellcheck="false" />
+      </div>
     </Card>
 
     <div class="grid gap-3 md:grid-cols-2">
       <Card>
-        <h3 class="mb-2 text-base font-semibold">阻断</h3>
+        <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><ListFilter :size="16" />阻断</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
-          <span v-for="domain in state.blocklist.manual" :key="domain" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="domain in visibleManualDomains" :key="domain" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ domain }}
             <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-domain-${domain}`)" type="button" @click="requestRemoveDomain(domain)"><X :size="14" /></button>
           </span>
-          <em v-if="!state.blocklist.manual.length" class="text-sm not-italic text-zinc-500">暂无域名</em>
+          <em v-if="!visibleManualDomains.length" class="text-sm not-italic text-zinc-500">{{ state.blocklist.manual.length ? '没有匹配项' : '暂无域名' }}</em>
         </div>
       </Card>
 
       <Card>
         <h3 class="mb-2 text-base font-semibold">社区库缓存</h3>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
-          <span v-for="rule in communityEntries.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="rule in visibleCommunityEntries.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ rule }}
             <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="requestAllowRule(rule)"><X :size="14" /></button>
           </span>
-          <em v-if="!communityEntries.length" class="text-sm not-italic text-zinc-500">未读取到社区规则</em>
+          <em v-if="!visibleCommunityEntries.length" class="text-sm not-italic text-zinc-500">{{ communityEntries.length ? '没有匹配项' : '未读取到社区规则' }}</em>
         </div>
       </Card>
 
       <Card>
         <h3 class="mb-2 text-base font-semibold">本地排除</h3>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
-          <span v-for="rule in state.blocklist.allowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="rule in visibleAllowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ rule }}
             <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" title="恢复阻断" @click="requestUnallowRule(rule)"><Plus :size="14" /></button>
           </span>
-          <em v-if="!state.blocklist.allowRules.length" class="text-sm not-italic text-zinc-500">暂无排除规则</em>
+          <em v-if="!visibleAllowRules.length" class="text-sm not-italic text-zinc-500">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无排除规则' }}</em>
         </div>
       </Card>
     </div>
