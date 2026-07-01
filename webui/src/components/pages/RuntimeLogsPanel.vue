@@ -41,6 +41,14 @@ const visibleOutput = computed(() => filteredLines.value.join("\n"));
 const issueLines = computed(() => logLines.value
   .filter((line) => /\b(warn|warning|error|failed|fatal|panic)\b/i.test(line))
   .slice(-80));
+const lastIssueLine = computed(() => issueLines.value.at(-1) || "");
+const quickFilters = [
+  { label: "错误", query: "", level: "error" },
+  { label: "警告", query: "", level: "warn" },
+  { label: "DNS", query: "dns", level: "all" },
+  { label: "Selector", query: "selector", level: "all" },
+  { label: "Outbound", query: "outbound", level: "all" }
+] as const;
 
 async function refreshLogs(): Promise<void> {
   const command = commandPreview.value;
@@ -87,6 +95,16 @@ function normalizedLines(): number {
   const parsed = Number(lines.value);
   if (!Number.isFinite(parsed)) return 120;
   return Math.max(20, Math.min(1000, Math.round(parsed)));
+}
+
+function applyQuickFilter(filter: typeof quickFilters[number]): void {
+  query.value = filter.query;
+  level.value = filter.level;
+  copied.value = false;
+}
+
+function quickFilterActive(filter: typeof quickFilters[number]): boolean {
+  return query.value === filter.query && level.value === filter.level;
 }
 
 function stopTimer(): void {
@@ -144,6 +162,21 @@ onUnmounted(stopTimer);
       <span class="text-amber-300">警告 {{ warningCount }}</span>
       <span class="text-red-300">错误 {{ errorCount }}</span>
     </div>
+    <div v-if="output" class="flex flex-wrap gap-2">
+      <Button
+        v-for="filter in quickFilters"
+        :key="filter.label"
+        size="sm"
+        :variant="quickFilterActive(filter) ? 'secondary' : 'ghost'"
+        @click="applyQuickFilter(filter)"
+      >
+        {{ filter.label }}
+      </Button>
+      <Button size="sm" variant="ghost" :disabled="!query && level === 'all'" @click="query = ''; level = 'all'">全部</Button>
+    </div>
+    <p v-if="lastIssueLine" class="truncate rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+      最近问题：{{ lastIssueLine }}
+    </p>
     <Button v-if="issueLines.length" size="sm" variant="outline" @click="copyIssueSummary">
       <Copy :size="15" />{{ issueCopied ? "已复制摘要" : "复制问题摘要" }}
     </Button>
