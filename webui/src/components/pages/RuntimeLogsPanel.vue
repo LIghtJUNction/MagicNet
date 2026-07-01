@@ -16,6 +16,7 @@ const query = ref("");
 const level = ref<"all" | "warn" | "error">("all");
 const output = ref("");
 const copied = ref(false);
+const issueCopied = ref(false);
 const lastLabel = ref("");
 const autoRefresh = ref(false);
 let timer = 0;
@@ -37,6 +38,9 @@ const filteredLines = computed(() => logLines.value.filter((line) => {
 const warningCount = computed(() => logLines.value.filter((line) => /\b(warn|warning)\b/i.test(line)).length);
 const errorCount = computed(() => logLines.value.filter((line) => /\b(error|failed|fatal|panic)\b/i.test(line)).length);
 const visibleOutput = computed(() => filteredLines.value.join("\n"));
+const issueLines = computed(() => logLines.value
+  .filter((line) => /\b(warn|warning|error|failed|fatal|panic)\b/i.test(line))
+  .slice(-80));
 
 async function refreshLogs(): Promise<void> {
   const command = commandPreview.value;
@@ -45,6 +49,7 @@ async function refreshLogs(): Promise<void> {
     output.value = await runCli(command, label);
     lastLabel.value = label;
     copied.value = false;
+    issueCopied.value = false;
   });
 }
 
@@ -63,6 +68,19 @@ function toggleAutoRefresh(): void {
 async function copyLogs(): Promise<void> {
   copied.value = await copyText(visibleOutput.value || output.value);
   state.output = copied.value ? "运行日志已复制。" : "剪贴板不可用，运行日志未复制。";
+}
+
+async function copyIssueSummary(): Promise<void> {
+  const text = [
+    `MagicNet ${target.value} log issues`,
+    `lines=${logLines.value.length}`,
+    `warnings=${warningCount.value}`,
+    `errors=${errorCount.value}`,
+    "",
+    ...issueLines.value
+  ].join("\n").trim();
+  issueCopied.value = await copyText(text);
+  state.output = issueCopied.value ? "日志问题摘要已复制。" : "剪贴板不可用，日志问题摘要未复制。";
 }
 
 function normalizedLines(): number {
@@ -126,6 +144,9 @@ onUnmounted(stopTimer);
       <span class="text-amber-300">警告 {{ warningCount }}</span>
       <span class="text-red-300">错误 {{ errorCount }}</span>
     </div>
+    <Button v-if="issueLines.length" size="sm" variant="outline" @click="copyIssueSummary">
+      <Copy :size="15" />{{ issueCopied ? "已复制摘要" : "复制问题摘要" }}
+    </Button>
 
     <code class="break-all rounded-md bg-black px-3 py-2 text-xs text-zinc-400">{{ commandPreview }}{{ autoRefresh ? " · auto 5s" : "" }}</code>
     <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ output ? compactOutput(visibleOutput || "没有匹配的日志行。", 9000) : `${lastLabel || "选择目标后点击刷新。"} ` }}</pre>
