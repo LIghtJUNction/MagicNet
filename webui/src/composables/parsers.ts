@@ -58,6 +58,13 @@ export type ConnectionBucket = {
   bytes: number;
 };
 
+export type ConnectionFlowSummary = {
+  proxied: number;
+  direct: number;
+  blocked: number;
+  unknown: number;
+};
+
 export type ConnectionSnapshot = {
   count: number;
   uploadTotal: number;
@@ -254,6 +261,9 @@ export function connectionMatchesQuery(target: ConnectionTarget, query: string):
   if (!terms.length) return true;
   const haystack = [
     target.label,
+    target.process,
+    target.source,
+    target.inbound,
     target.network,
     target.rule,
     target.rulePayload,
@@ -279,6 +289,22 @@ export function connectionBuckets(connections: ConnectionTarget[], kind: "rule" 
       return acc;
     }, {})
   ).sort((left, right) => right.bytes - left.bytes || right.count - left.count).slice(0, 4);
+}
+
+export function connectionFlowSummary(connections: ConnectionTarget[]): ConnectionFlowSummary {
+  return connections.reduce<ConnectionFlowSummary>((acc, target) => {
+    const flow = connectionFlow(target);
+    acc[flow] += 1;
+    return acc;
+  }, { proxied: 0, direct: 0, blocked: 0, unknown: 0 });
+}
+
+function connectionFlow(target: ConnectionTarget): keyof ConnectionFlowSummary {
+  const text = [target.chain, target.rule, target.rulePayload, target.inbound, target.detail].join(" ").toLowerCase();
+  if (/\b(block|reject)\b/.test(text)) return "blocked";
+  if (/\b(direct|bypass)\b/.test(text)) return "direct";
+  if (target.chain || /\b(proxy|select|warp|wireguard|trojan|vmess|vless|shadowsocks|hysteria)\b/.test(text)) return "proxied";
+  return "unknown";
 }
 
 function bucketName(target: ConnectionTarget, kind: "rule" | "chain" | "process"): string {

@@ -4,7 +4,7 @@ import { Copy, RefreshCw, Search, Unplug } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
-import { connectionBuckets, connectionMatchesQuery, parseConnectionSnapshot, type ConnectionTarget } from "@/composables/parsers";
+import { connectionBuckets, connectionFlowSummary, connectionMatchesQuery, parseConnectionSnapshot, type ConnectionTarget } from "@/composables/parsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, shellQuote } from "@/utils";
@@ -30,6 +30,7 @@ const visibleConnections = computed(() => (query.value ? filtered.value : snapsh
 const ruleBuckets = computed(() => connectionBuckets(snapshot.value?.connections || [], "rule"));
 const chainBuckets = computed(() => connectionBuckets(snapshot.value?.connections || [], "chain"));
 const processBuckets = computed(() => connectionBuckets(snapshot.value?.connections || [], "process"));
+const flowSummary = computed(() => connectionFlowSummary(snapshot.value?.connections || []));
 const totalBytes = computed(() => (snapshot.value?.uploadTotal || 0) + (snapshot.value?.downloadTotal || 0));
 
 async function refreshConnections(): Promise<void> {
@@ -50,6 +51,10 @@ async function copyReport(): Promise<void> {
     `count=${snapshot.value?.count || 0}`,
     `upload=${formatBytes(snapshot.value?.uploadTotal || 0)}`,
     `download=${formatBytes(snapshot.value?.downloadTotal || 0)}`,
+    `proxied=${flowSummary.value.proxied}`,
+    `direct=${flowSummary.value.direct}`,
+    `blocked=${flowSummary.value.blocked}`,
+    `unknown=${flowSummary.value.unknown}`,
     query.value ? `query=${query.value}` : "",
     "",
     ...buckets.flatMap(([kind, items]) => [
@@ -180,8 +185,27 @@ onMounted(() => {
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <Input v-model="query" placeholder="按域名、规则、链路过滤" spellcheck="false" />
+      <Input v-model="query" placeholder="按域名、应用、来源、规则、链路过滤" spellcheck="false" />
       <span class="inline-flex items-center gap-1 text-sm text-zinc-500"><Search :size="15" />{{ filtered.length }} 命中</span>
+    </div>
+
+    <div v-if="snapshot" class="grid gap-2 sm:grid-cols-4">
+      <div class="rounded-md border border-white/10 bg-white/5 p-3">
+        <p class="text-xs text-zinc-500">代理连接</p>
+        <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.proxied }}</p>
+      </div>
+      <div class="rounded-md border border-white/10 bg-white/5 p-3">
+        <p class="text-xs text-zinc-500">直连/绕过</p>
+        <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.direct }}</p>
+      </div>
+      <div class="rounded-md border border-white/10 bg-white/5 p-3">
+        <p class="text-xs text-zinc-500">阻断/拒绝</p>
+        <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.blocked }}</p>
+      </div>
+      <div class="rounded-md border border-white/10 bg-white/5 p-3">
+        <p class="text-xs text-zinc-500">未知流向</p>
+        <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.unknown }}</p>
+      </div>
     </div>
 
     <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-amber-500/10 p-3">

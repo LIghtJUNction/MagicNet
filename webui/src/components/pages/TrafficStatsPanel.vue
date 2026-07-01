@@ -25,6 +25,41 @@ const alert = computed(() => evaluateTrafficAlert(samples.value, Number(threshol
 const trendSamples = computed(() => samples.value.slice(-12));
 const trendPeak = computed(() => Math.max(1, ...trendSamples.value.map((sample) => sample.up + sample.down)));
 const lastUpdated = computed(() => summary.value.latest ? new Date(summary.value.latest.timestampMillis).toLocaleTimeString() : "未采样");
+const latestTrendSeries = computed(() => {
+  return trendSamples.value.map((sample, index) => {
+    const previous = trendSamples.value[index - 1];
+    const previousTotal = previous ? previous.up + previous.down : 0;
+    const currentTotal = sample.up + sample.down;
+    return {
+      sample,
+      indexLabel: samples.value.length - trendSamples.value.length + index + 1,
+      deltaTotal: previous ? currentTotal - previousTotal : null,
+      deltaIntervalMillis: previous ? Math.max(0, sample.timestampMillis - previous.timestampMillis) : 0
+    };
+  });
+});
+const latestTrendDelta = computed(() => {
+  const last = latestTrendSeries.value.at(-1);
+  return last?.deltaTotal || 0;
+});
+const latestTrendDirection = computed(() => {
+  if (latestTrendSeries.value.length < 2) return "暂无对比";
+  if (latestTrendDelta.value > 0) return "总速率上升";
+  if (latestTrendDelta.value < 0) return "总速率下降";
+  return "持平";
+});
+const latestTrendColor = computed(() => {
+  if (latestTrendSeries.value.length < 2) return "text-zinc-300";
+  if (latestTrendDelta.value > 0) return "text-lime-300";
+  if (latestTrendDelta.value < 0) return "text-red-300";
+  return "text-zinc-400";
+});
+const trendWindowPeakTotal = computed(() => {
+  return Math.max(0, ...trendSamples.value.map((sample) => sample.up + sample.down));
+});
+const peakTime = computed(() => summary.value.peakTotalTimestampMillis
+  ? new Date(summary.value.peakTotalTimestampMillis).toLocaleTimeString()
+  : "无");
 
 async function sampleNow(quiet = false): Promise<void> {
   await withAction("traffic-stats-sample", async () => {
@@ -95,6 +130,24 @@ function formatBytes(value: number): string {
 
 function sampleWidth(value: number): string {
   return `${Math.max(2, Math.round((value / trendPeak.value) * 100))}%`;
+}
+
+function formatSampleTime(timestampMillis: number): string {
+  return new Date(timestampMillis).toLocaleTimeString();
+}
+
+function formatTrendBadge(delta: number | null): string {
+  if (delta === null) return "起点";
+  if (delta > 0) return `+${formatRate(delta)}`;
+  if (delta < 0) return `-${formatRate(Math.abs(delta))}`;
+  return "±0";
+}
+
+function trendBadgeClass(delta: number | null): string {
+  if (delta === null) return "text-zinc-500";
+  if (delta > 0) return "text-lime-300";
+  if (delta < 0) return "text-amber-300";
+  return "text-zinc-400";
 }
 
 function upShare(sample: TrafficSample | null): string {
@@ -169,6 +222,16 @@ onUnmounted(stopTimer);
         <p class="text-xs text-zinc-500">样本</p>
         <p class="text-lg font-semibold text-zinc-100">{{ summary.sampleCount }}</p>
       </div>
+      <div class="rounded-md border border-white/10 bg-white/5 p-3">
+        <p class="text-xs text-zinc-500">最近 12 峰值总速率</p>
+        <p class="text-lg font-semibold text-zinc-100">{{ formatRate(trendWindowPeakTotal) }}</p>
+        <p class="mt-1 text-xs text-zinc-500">峰值时间 {{ peakTime }}</p>
+      </div>
+      <div class="rounded-md border border-white/10 bg-white/5 p-3">
+        <p class="text-xs text-zinc-500">最近变化</p>
+        <p class="text-lg font-semibold" :class="latestTrendColor">{{ latestTrendDirection }}</p>
+        <p class="mt-1 text-xs text-zinc-500">{{ formatRate(Math.abs(latestTrendDelta)) }}</p>
+      </div>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-2">
@@ -200,17 +263,21 @@ onUnmounted(stopTimer);
         <p class="text-xs text-zinc-500">最多 12 个真实样本</p>
       </div>
       <div class="grid gap-2">
-        <div v-for="(sample, index) in trendSamples" :key="`${sample.timestampMillis}-${index}`" class="grid grid-cols-[2.25rem_minmax(0,1fr)_4.5rem] items-center gap-2">
-          <span class="text-xs text-zinc-600">#{{ samples.length - trendSamples.length + index + 1 }}</span>
+        <div v-for="sample in latestTrendSeries" :key="`${sample.sample.timestampMillis}-${sample.indexLabel}`" class="grid grid-cols-[2.25rem_4.75rem_minmax(0,1fr)_5rem] items-center gap-2">
+          <span class="text-xs text-zinc-600">#{{ sample.indexLabel }}</span>
+          <span class="text-xs text-zinc-500">{{ formatSampleTime(sample.sample.timestampMillis) }}</span>
           <div class="grid min-w-0 gap-1">
             <div class="h-2 rounded bg-zinc-900">
-              <div class="h-2 rounded bg-lime-400" :style="{ width: sampleWidth(sample.up) }" />
+              <div class="h-2 rounded bg-lime-400" :style="{ width: sampleWidth(sample.sample.up) }" />
             </div>
             <div class="h-2 rounded bg-zinc-900">
-              <div class="h-2 rounded bg-cyan-400" :style="{ width: sampleWidth(sample.down) }" />
+              <div class="h-2 rounded bg-cyan-400" :style="{ width: sampleWidth(sample.sample.down) }" />
             </div>
           </div>
-          <span class="text-right text-xs text-zinc-500">{{ formatRate(sample.up + sample.down) }}</span>
+          <div class="text-right text-xs">
+            <p class="text-zinc-100">{{ formatRate(sample.sample.up + sample.sample.down) }}</p>
+            <p :class="trendBadgeClass(sample.deltaTotal)" class="mt-0.5">{{ formatTrendBadge(sample.deltaTotal) }}</p>
+          </div>
         </div>
       </div>
     </div>

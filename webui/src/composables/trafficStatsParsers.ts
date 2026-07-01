@@ -12,6 +12,8 @@ export type TrafficStatsSummary = {
   averageDown: number;
   peakUp: number;
   peakDown: number;
+  peakTotal: number;
+  peakTotalTimestampMillis: number | null;
   sampleCount: number;
   windowMillis: number;
 };
@@ -34,19 +36,30 @@ export function parseTrafficSample(text: string, timestampMillis = Date.now()): 
   const kvLine = text.split(/\r?\n/).reverse().find((item) => /\bup\s*=/.test(item) && /\bdown\s*=/.test(item));
   if (kvLine) {
     const fields = Object.fromEntries(kvLine.split(/\s+/).map((part) => part.split("=", 2)).filter((pair) => pair.length === 2));
-    const pair = trafficPair(fields);
-    return pair ? { ...pair, timestampMillis, source: "kv" } : null;
+    const pair = trafficPair(fields, "", null);
+    return pair ? {
+      up: pair.up,
+      down: pair.down,
+      timestampMillis: pair.timestampMillis ?? timestampMillis,
+      source: "kv",
+      sourceKey: pair.sourceKey
+    } : null;
   }
   return null;
 }
 
 export function buildTrafficStatsSummary(samples: TrafficSample[]): TrafficStatsSummary {
+  const totals = samples.map((sample) => sample.up + sample.down);
+  const peakTotal = totals.length ? Math.max(0, ...totals) : 0;
+  const peakTotalIndex = totals.findIndex((value) => value === peakTotal);
   return {
     latest: samples.at(-1) || null,
     averageUp: average(samples.map((sample) => sample.up)),
     averageDown: average(samples.map((sample) => sample.down)),
     peakUp: Math.max(0, ...samples.map((sample) => sample.up)),
     peakDown: Math.max(0, ...samples.map((sample) => sample.down)),
+    peakTotal,
+    peakTotalTimestampMillis: peakTotalIndex >= 0 ? samples[peakTotalIndex].timestampMillis : null,
     sampleCount: samples.length,
     windowMillis: samples.length >= 2 ? Math.max(0, samples[samples.length - 1].timestampMillis - samples[0].timestampMillis) : 0
   };
@@ -105,6 +118,16 @@ export function evaluateTrafficAlert(samples: TrafficSample[], thresholdMiBPerSe
 
 export function formatTrafficStatsReport(samples: TrafficSample[], alert?: TrafficAlertState): string {
   const summary = buildTrafficStatsSummary(samples);
+  const latest = summary.latest;
+  const previous = samples.at(-2);
+  const latestTotal = latest ? latest.up + latest.down : 0;
+  const previousTotal = previous ? previous.up + previous.down : 0;
+  const latestDelta = latest && previous ? latestTotal - previousTotal : 0;
+  const latestTrend = latest && previous ? latestDelta > 0 ? "up" : latestDelta < 0 ? "down" : "flat" : "none";
+  const latestIntervalMillis = latest && previous ? latest.timestampMillis - previous.timestampMillis : 0;
+  const reportWindow = Math.min(samples.length, 12);
+  const windowSamples = samples.slice(-reportWindow);
+  const windowPeak = windowSamples.length ? Math.max(...windowSamples.map((sample) => sample.up + sample.down)) : 0;
   return [
     "MagicNet traffic stats",
     `samples=${summary.sampleCount}`,
@@ -112,6 +135,14 @@ export function formatTrafficStatsReport(samples: TrafficSample[], alert?: Traff
     `parse_source=${summary.latest?.source || "none"}`,
     `parse_source_key=${summary.latest?.sourceKey || "none"}`,
     `window_seconds=${Math.round(summary.windowMillis / 1000)}`,
+    `window_samples=${reportWindow}`,
+    `window_peak_total_bytes_per_second=${Math.round(windowPeak)}`,
+    `latest_total_bytes_per_second=${Math.round(latestTotal)}`,
+    `latest_total_delta_bytes_per_second=${Math.round(latestDelta)}`,
+    `latest_interval_millis=${Math.max(0, Math.round(latestIntervalMillis))}`,
+    `latest_trend=${latestTrend}`,
+    `peak_total_bytes_per_second=${Math.round(summary.peakTotal)}`,
+    `peak_total_time=${summary.peakTotalTimestampMillis ? new Date(summary.peakTotalTimestampMillis).toISOString() : "none"}`,
     `latest_up=${Math.round(summary.latest?.up || 0)}`,
     `latest_down=${Math.round(summary.latest?.down || 0)}`,
     `average_up=${Math.round(summary.averageUp)}`,
@@ -131,39 +162,62 @@ function parseTrafficJson(text: string, timestampMillis: number): TrafficSample 
   try {
     const json = JSON.parse(text);
     const pair = findTrafficPair(json);
-    return pair ? { ...pair, timestampMillis, source: "json" } : null;
+    return pair ? { ...pair, timestampMillis: pair.timestampMillis ?? timestampMillis, source: "json" } : null;
   } catch {
     return null;
   }
 }
 
-function findTrafficPair(value: unknown): { up: number; down: number; sourceKey: string } | null {
-  return findTrafficPairAt(value, "", 0, new Set());
+type TrafficPair = {
+  up: number;
+  down: number;
+  sourceKey: string;
+  timestampMillis: number | null;
+};
+
+function findTrafficPair(value: unknown): TrafficPair | null {
+  return findTrafficPairAt(value, "", 0, new Set(), null);
 }
 
-function findTrafficPairAt(value: unknown, path: string, depth: number, seen: Set<unknown>): { up: number; down: number; sourceKey: string } | null {
-  if (!isRecord(value) || depth > 6 || seen.has(value)) return null;
+function findTrafficPairAt(
+  value: unknown,
+  path: string,
+  depth: number,
+  seen: Set<unknown>,
+  inheritedTimestampMillis: number | null
+): TrafficPair | null {
+  if (depth > 6 || seen.has(value) || value === null) return null;
   seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const pair = findTrafficPairAt(item, path, depth + 1, seen, inheritedTimestampMillis);
+      if (pair) return pair;
+    }
+    return null;
+  }
+  if (!isRecord(value)) return null;
 
-  const direct = trafficPair(value, path);
+  const fallbackTimestamp = parseTrafficTimestamp(value) ?? inheritedTimestampMillis;
+
+  const direct = trafficPair(value, path, fallbackTimestamp);
   if (direct) return direct;
 
   const preferredKeys = ["traffic", "stats", "connections", "data", "result", "payload"];
   for (const key of preferredKeys) {
     if (!(key in value)) continue;
-    const pair = findTrafficPairAt(value[key], joinPath(path, key), depth + 1, seen);
+    const pair = findTrafficPairAt(value[key], joinPath(path, key), depth + 1, seen, fallbackTimestamp);
     if (pair) return pair;
   }
 
   for (const [key, child] of Object.entries(value)) {
-    if (preferredKeys.includes(key) || Array.isArray(child)) continue;
-    const pair = findTrafficPairAt(child, joinPath(path, key), depth + 1, seen);
+    if (preferredKeys.includes(key)) continue;
+    const pair = findTrafficPairAt(child, joinPath(path, key), depth + 1, seen, fallbackTimestamp);
     if (pair) return pair;
   }
   return null;
 }
 
-function trafficPair(fields: Record<string, unknown>, path = ""): { up: number; down: number; sourceKey: string } | null {
+function trafficPair(fields: Record<string, unknown>, path = "", fallbackTimestampMillis: number | null = null): TrafficPair | null {
   const pairs = [
     ["up", "down"],
     ["upload", "download"],
@@ -173,9 +227,57 @@ function trafficPair(fields: Record<string, unknown>, path = ""): { up: number; 
   for (const [upKey, downKey] of pairs) {
     const up = numberValue(fields[upKey]);
     const down = numberValue(fields[downKey]);
-    if (up !== null && down !== null) return { up, down, sourceKey: `${path ? `${path}.` : ""}${upKey}/${downKey}` };
+    if (up !== null && down !== null) {
+      return {
+        up,
+        down,
+        timestampMillis: parseTrafficTimestamp(fields) ?? fallbackTimestampMillis,
+        sourceKey: `${path ? `${path}.` : ""}${upKey}/${downKey}`
+      };
+    }
   }
   return null;
+}
+
+function parseTrafficTimestamp(value: unknown): number | null {
+  if (!isRecord(value)) return null;
+  const candidates = [
+    "timestamp",
+    "timestampMillis",
+    "timestamp_ms",
+    "time",
+    "timeMillis",
+    "time_ms",
+    "time_unix",
+    "timeUnix",
+    "createdAt",
+    "created_at",
+    "updatedAt",
+    "updated_at",
+    "created"
+  ];
+  for (const key of candidates) {
+    if (!(key in value)) continue;
+    const parsed = parseTrafficTimestampValue(value[key]);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function parseTrafficTimestampValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return normalizeTimestamp(value);
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) return normalizeTimestamp(numeric);
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeTimestamp(timestamp: number): number | null {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+  return timestamp < 1e12 ? Math.round(timestamp * 1000) : Math.round(timestamp);
 }
 
 function joinPath(parent: string, key: string): string {
