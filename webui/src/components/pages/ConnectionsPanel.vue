@@ -8,6 +8,7 @@ import { connectionBuckets, connectionFlowSummary, connectionMatchesQuery, parse
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, shellQuote } from "@/utils";
+import { buildConnectionInsights, formatConnectionBytes } from "./connectionInsights";
 
 type PendingConnectionAction = {
   key: string;
@@ -33,6 +34,7 @@ const chainBuckets = computed(() => connectionBuckets(snapshot.value?.connection
 const processBuckets = computed(() => connectionBuckets(snapshot.value?.connections || [], "process"));
 const flowSummary = computed(() => connectionFlowSummary(snapshot.value?.connections || []));
 const totalBytes = computed(() => (snapshot.value?.uploadTotal || 0) + (snapshot.value?.downloadTotal || 0));
+const insights = computed(() => buildConnectionInsights(snapshot.value?.connections || [], filtered.value, query.value));
 const closeTopN = computed(() => {
   const count = Number.parseInt(closeTopCount.value, 10);
   return Number.isFinite(count) ? Math.min(50, Math.max(1, count)) : 3;
@@ -53,14 +55,18 @@ async function copyReport(): Promise<void> {
   ] as const;
   const report = [
     "MagicNet active connections",
-    `count=${snapshot.value?.count || 0}`,
-    `upload=${formatBytes(snapshot.value?.uploadTotal || 0)}`,
-    `download=${formatBytes(snapshot.value?.downloadTotal || 0)}`,
+    `raw_count=${snapshot.value?.count || 0}`,
+    `parsed_count=${snapshot.value?.connections.length || 0}`,
+    `upload=${formatConnectionBytes(snapshot.value?.uploadTotal || 0)}`,
+    `download=${formatConnectionBytes(snapshot.value?.downloadTotal || 0)}`,
     `proxied=${flowSummary.value.proxied}`,
     `direct=${flowSummary.value.direct}`,
     `blocked=${flowSummary.value.blocked}`,
     `unknown=${flowSummary.value.unknown}`,
     query.value ? `query=${query.value}` : "",
+    "",
+    "[insights]",
+    ...insights.value.map((item) => `${item.label}=${item.value} detail=${item.detail} tone=${item.tone}`),
     "",
     ...buckets.flatMap(([kind, items]) => [
       `[${kind}_hotspots]`,
@@ -129,7 +135,7 @@ function requestCloseOne(target: ConnectionTarget): void {
   pendingAction.value = {
     key: "connections-action",
     title: `关闭连接 ${target.label}`,
-    detail: `只会断开这一条活动代理连接，其他连接不受影响；该连接流量 ${formatBytes(target.totalBytes)}。`,
+    detail: `只会断开这一条活动代理连接，其他连接不受影响；该连接流量 ${formatConnectionBytes(target.totalBytes)}。`,
     command: `api close <${target.id.slice(0, 8)}...>`,
     run: () => runConnectionAction(`api close ${shellQuote(target.id)}`, "关闭单条连接")
   };
@@ -155,17 +161,6 @@ function selectQuery(value: string): void {
   pendingAction.value = null;
 }
 
-function formatBytes(value: number): string {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let amount = Math.max(0, value);
-  let unit = 0;
-  while (amount >= 1024 && unit < units.length - 1) {
-    amount /= 1024;
-    unit += 1;
-  }
-  return unit === 0 ? `${Math.round(amount)} ${units[unit]}` : `${amount.toFixed(1)} ${units[unit]}`;
-}
-
 onMounted(() => {
   void refreshConnections();
 });
@@ -177,7 +172,7 @@ onMounted(() => {
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Unplug :size="17" /> 活动连接</h3>
         <p class="mt-1 text-sm leading-6 text-zinc-400">
-          {{ snapshot ? `${snapshot.count} 条连接 · ${formatBytes(totalBytes)}` : rawOutput || "读取 sing-box API 连接列表。" }}
+          {{ snapshot ? `${snapshot.count} 条连接 · ${formatConnectionBytes(totalBytes)}` : rawOutput || "读取 sing-box API 连接列表。" }}
         </p>
       </div>
       <div class="flex gap-2">
@@ -211,6 +206,24 @@ onMounted(() => {
       <div class="rounded-md border border-white/10 bg-white/5 p-3">
         <p class="text-xs text-zinc-500">未知流向</p>
         <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.unknown }}</p>
+      </div>
+    </div>
+
+    <div v-if="snapshot" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div
+        v-for="item in insights"
+        :key="item.label"
+        class="rounded-md border p-3"
+        :class="{
+          'border-emerald-500/30 bg-emerald-500/10': item.tone === 'success',
+          'border-amber-500/30 bg-amber-500/10': item.tone === 'warning',
+          'border-red-500/30 bg-red-500/10': item.tone === 'danger',
+          'border-zinc-800 bg-zinc-950': item.tone === 'neutral',
+        }"
+      >
+        <p class="text-xs text-zinc-500">{{ item.label }}</p>
+        <p class="mt-1 text-base font-semibold text-zinc-100">{{ item.value }}</p>
+        <p class="mt-1 truncate text-xs text-zinc-500">{{ item.detail }}</p>
       </div>
     </div>
 
@@ -251,7 +264,7 @@ onMounted(() => {
           @click="selectQuery(bucket.query)"
         >
           <span class="truncate text-zinc-200">{{ bucket.name }}</span>
-          <span class="text-zinc-500">{{ bucket.count }} · {{ formatBytes(bucket.bytes) }}</span>
+          <span class="text-zinc-500">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
         </button>
       </div>
       <div v-if="ruleBuckets.length" class="grid gap-2">
@@ -264,7 +277,7 @@ onMounted(() => {
           @click="selectQuery(bucket.query)"
         >
           <span class="truncate text-zinc-200">{{ bucket.name }}</span>
-          <span class="text-zinc-500">{{ bucket.count }} · {{ formatBytes(bucket.bytes) }}</span>
+          <span class="text-zinc-500">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
         </button>
       </div>
       <div v-if="chainBuckets.length" class="grid gap-2">
@@ -277,7 +290,7 @@ onMounted(() => {
           @click="selectQuery(bucket.query)"
         >
           <span class="truncate text-zinc-200">{{ bucket.name }}</span>
-          <span class="text-zinc-500">{{ bucket.count }} · {{ formatBytes(bucket.bytes) }}</span>
+          <span class="text-zinc-500">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
         </button>
       </div>
     </div>
@@ -290,14 +303,14 @@ onMounted(() => {
       >
         <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
           <span class="truncate text-sm font-semibold text-zinc-100">{{ item.label }}</span>
-          <span class="text-xs text-zinc-500">{{ formatBytes(item.totalBytes) }}</span>
+          <span class="text-xs text-zinc-500">{{ formatConnectionBytes(item.totalBytes) }}</span>
           <Button size="sm" variant="ghost" :disabled="isRunning('connections-action')" @click="requestCloseOne(item)">关闭</Button>
         </div>
         <p class="truncate text-xs text-zinc-500">{{ item.detail }}</p>
         <p v-if="item.process || item.source" class="truncate text-xs text-zinc-500">
           {{ [item.process, item.source].filter(Boolean).join(" · ") }}
         </p>
-        <p class="text-xs text-zinc-400">↑ {{ formatBytes(item.upload) }} / ↓ {{ formatBytes(item.download) }}</p>
+        <p class="text-xs text-zinc-400">↑ {{ formatConnectionBytes(item.upload) }} / ↓ {{ formatConnectionBytes(item.download) }}</p>
       </div>
     </div>
     <p v-else class="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
