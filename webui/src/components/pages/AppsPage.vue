@@ -9,6 +9,7 @@ import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName, recommendedBypass } from "./appPolicyInsights";
+import { buildAppPolicyChangePlan, type AppPolicyChangeOperation, type AppPolicyChangePlan } from "./appPolicyChangePlan";
 
 const { state, runCli, refreshApps, refreshPackages, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -21,6 +22,7 @@ type PendingAppAction = {
   key: string;
   command: string;
   message: string;
+  plan: AppPolicyChangePlan;
   run: () => Promise<void>;
 };
 
@@ -56,6 +58,15 @@ const policySummary = computed(() => buildAppPolicySummary(
   installedNames.value,
   availableRecommendedBypass.value.length
 ));
+
+function actionPlan(operation: AppPolicyChangeOperation): AppPolicyChangePlan {
+  return buildAppPolicyChangePlan({
+    mode: state.appPolicy.mode,
+    proxy: state.appPolicy.proxy,
+    bypass: state.appPolicy.bypass,
+    installedPackages: installedNames.value
+  }, operation);
+}
 
 function commandFailed(text: string): boolean {
   return /\b(error|failed|fail|Usage:|not found)\b/i.test(text);
@@ -115,8 +126,9 @@ function requestAddPackage(pkg: string, target: "proxy" | "bypass", key = `add-$
     key,
     command: `app add ${pkg} ${target}`,
     message: target === "proxy"
-      ? `确认把 ${pkg} 加入 Proxy？该应用流量会进入 MagicNet TUN。`
-      : `确认把 ${pkg} 加入 Bypass？该应用会绕过 MagicNet TUN。`,
+      ? `确认把 ${pkg} 加入 Proxy 名单？实际接管效果取决于当前黑/白名单模式。`
+      : `确认把 ${pkg} 加入 Bypass 名单？实际绕过效果取决于当前黑/白名单模式。`,
+    plan: actionPlan({ type: "add", target, packages: [pkg] }),
     run: () => addPackage(pkg, target, key)
   };
 }
@@ -174,6 +186,7 @@ function requestSetMode(mode: "blacklist" | "whitelist"): void {
     key: `mode-${mode}`,
     command: `app mode ${mode}`,
     message: mode === "blacklist" ? "确认切换到黑名单模式？应用分流语义会立即改变。" : "确认切换到白名单模式？只有 Proxy 名单应用会进入 TUN。",
+    plan: actionPlan({ type: "mode", mode }),
     run: () => setMode(mode)
   };
 }
@@ -231,6 +244,7 @@ function requestRecommendedBypass(): void {
     key: "apply-recommended-bypass",
     command: `app add-many bypass (${count} packages)`,
     message: `确认把 ${count} 个推荐应用加入 Bypass？这会批量改写应用策略。`,
+    plan: actionPlan({ type: "add", target: "bypass", packages: availableRecommendedBypass.value }),
     run: applyRecommendedBypass
   };
 }
@@ -240,6 +254,7 @@ function requestRemoveApp(pkg: string, target: "proxy" | "bypass"): void {
     key: `remove-${target}-${pkg}`,
     command: `app remove ${pkg} ${target}`,
     message: `确认从 ${target} 名单移除 ${pkg}？`,
+    plan: actionPlan({ type: "remove", target, packages: [pkg] }),
     run: () => removeApp(pkg, target)
   };
 }
@@ -249,6 +264,7 @@ function requestRestoreBypass(pkg: string): void {
     key: `restore-bypass-${pkg}`,
     command: `app add ${pkg} bypass`,
     message: `确认把 ${pkg} 加回 Bypass 名单？`,
+    plan: actionPlan({ type: "add", target: "bypass", packages: [pkg] }),
     run: () => restoreBypass(pkg)
   };
 }
@@ -291,6 +307,24 @@ onMounted(() => {
           <span class="text-[11px] font-bold uppercase tracking-wide text-amber-300">Confirm app policy</span>
           <p class="mt-1 text-sm leading-6 text-amber-100">{{ pendingAppAction.message }}</p>
           <code class="mt-2 block break-all rounded-md bg-zinc-950/60 px-3 py-2 text-xs text-zinc-100">{{ pendingAppAction.command }}</code>
+          <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+            <span
+              v-for="item in pendingAppAction.plan.items"
+              :key="item.label"
+              class="rounded border px-2 py-1"
+              :class="{
+                'border-emerald-500/30 text-emerald-100': item.tone === 'success',
+                'border-amber-500/40 text-amber-100': item.tone === 'warning',
+                'border-red-500/40 text-red-100': item.tone === 'danger',
+                'border-zinc-700 text-zinc-300': item.tone === 'neutral',
+              }"
+            >
+              {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+            </span>
+          </div>
+          <p v-if="pendingAppAction.plan.warnings.length" class="mt-2 text-xs leading-5 text-amber-100/80">
+            {{ pendingAppAction.plan.warnings.join("；") }}
+          </p>
         </div>
         <div class="flex shrink-0 gap-2">
           <Button variant="secondary" :loading="isRunning(pendingAppAction.key)" @click="confirmAppAction">确认</Button>
