@@ -7,6 +7,8 @@ import Input from "@/components/ui/Input.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
+import { sanitizeOutputText } from "./outputDiagnostics";
+import { buildRuntimeLogInsight, formatRuntimeLogIssueReport, runtimeLogInsightTone } from "./runtimeLogInsights";
 
 const { runCli, state, compactOutput } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -18,8 +20,10 @@ const output = ref("");
 const copied = ref(false);
 const issueCopied = ref(false);
 const lastLabel = ref("");
+const loadedTarget = ref<"sing-box" | "mcp">("sing-box");
 const autoRefresh = ref(false);
 let timer = 0;
+const issuePattern = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|not found)\b/i;
 
 const commandPreview = computed(() => {
   const count = normalizedLines();
@@ -32,16 +36,16 @@ const filteredLines = computed(() => logLines.value.filter((line) => {
   const matchesKeyword = !keyword || lower.includes(keyword);
   const matchesLevel = level.value === "all"
     || (level.value === "warn" && /\b(warn|warning)\b/i.test(line))
-    || (level.value === "error" && /\b(error|failed|fatal|panic)\b/i.test(line));
+    || (level.value === "error" && /\b(error|fail|failed|fatal|panic|denied|timeout|not found)\b/i.test(line));
   return matchesKeyword && matchesLevel;
 }));
 const warningCount = computed(() => logLines.value.filter((line) => /\b(warn|warning)\b/i.test(line)).length);
-const errorCount = computed(() => logLines.value.filter((line) => /\b(error|failed|fatal|panic)\b/i.test(line)).length);
+const errorCount = computed(() => logLines.value.filter((line) => /\b(error|fail|failed|fatal|panic)\b/i.test(line)).length);
 const visibleOutput = computed(() => filteredLines.value.join("\n"));
 const issueLines = computed(() => logLines.value
-  .filter((line) => /\b(warn|warning|error|failed|fatal|panic)\b/i.test(line))
+  .filter((line) => issuePattern.test(line))
   .slice(-80));
-const lastIssueLine = computed(() => issueLines.value.at(-1) || "");
+const logInsight = computed(() => buildRuntimeLogInsight(logLines.value, warningCount.value, errorCount.value, issueLines.value));
 const quickFilters = [
   { label: "错误", query: "", level: "error" },
   { label: "警告", query: "", level: "warn" },
@@ -56,6 +60,7 @@ async function refreshLogs(): Promise<void> {
   await withAction("runtime-logs", async () => {
     output.value = await runCli(command, label);
     lastLabel.value = label;
+    loadedTarget.value = target.value;
     copied.value = false;
     issueCopied.value = false;
   });
@@ -74,20 +79,19 @@ function toggleAutoRefresh(): void {
 }
 
 async function copyLogs(): Promise<void> {
-  copied.value = await copyText(visibleOutput.value || output.value);
-  state.output = copied.value ? "运行日志已复制。" : "剪贴板不可用，运行日志未复制。";
+  copied.value = await copyText(sanitizeOutputText(visibleOutput.value || output.value));
+  state.output = copied.value ? "脱敏运行日志已复制。" : "剪贴板不可用，运行日志未复制。";
 }
 
 async function copyIssueSummary(): Promise<void> {
-  const text = [
-    `MagicNet ${target.value} log issues`,
-    `lines=${logLines.value.length}`,
-    `warnings=${warningCount.value}`,
-    `errors=${errorCount.value}`,
-    "",
-    ...issueLines.value
-  ].join("\n").trim();
-  issueCopied.value = await copyText(text);
+  issueCopied.value = await copyText(formatRuntimeLogIssueReport({
+    target: loadedTarget.value,
+    lines: logLines.value,
+    issueLines: issueLines.value,
+    warningCount: warningCount.value,
+    errorCount: errorCount.value,
+    otherIssueCount: Math.max(0, issueLines.value.length - warningCount.value - errorCount.value)
+  }));
   state.output = issueCopied.value ? "日志问题摘要已复制。" : "剪贴板不可用，日志问题摘要未复制。";
 }
 
@@ -160,7 +164,12 @@ onUnmounted(stopTimer);
       <span>日志 {{ logLines.length }} 行</span>
       <span>命中 {{ filteredLines.length }} 行</span>
       <span class="text-amber-300">警告 {{ warningCount }}</span>
-      <span class="text-red-300">错误 {{ errorCount }}</span>
+      <span class="text-red-300">问题 {{ issueLines.length }}</span>
+    </div>
+    <div v-if="output" class="rounded-md border p-3 text-sm leading-6" :class="runtimeLogInsightTone(logInsight.status)">
+      <p class="font-medium">{{ logInsight.label }}</p>
+      <p class="mt-1 text-xs opacity-80">{{ logInsight.detail }}</p>
+      <p v-if="logInsight.lastIssue" class="mt-2 truncate text-xs opacity-90">最近问题：{{ logInsight.lastIssue }}</p>
     </div>
     <div v-if="output" class="flex flex-wrap gap-2">
       <Button
@@ -174,9 +183,6 @@ onUnmounted(stopTimer);
       </Button>
       <Button size="sm" variant="ghost" :disabled="!query && level === 'all'" @click="query = ''; level = 'all'">全部</Button>
     </div>
-    <p v-if="lastIssueLine" class="truncate rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-      最近问题：{{ lastIssueLine }}
-    </p>
     <Button v-if="issueLines.length" size="sm" variant="outline" @click="copyIssueSummary">
       <Copy :size="15" />{{ issueCopied ? "已复制摘要" : "复制问题摘要" }}
     </Button>
