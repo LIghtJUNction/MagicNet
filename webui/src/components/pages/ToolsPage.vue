@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ClipboardPaste, Copy, Download, Network, Power, PowerOff, RadioTower, RefreshCw, Save, Server, Upload } from "lucide-vue-next";
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -22,6 +22,22 @@ const toolsRefreshing = ref(false);
 const mcpBind = ref(state.mcp.bind);
 const mcpPort = ref(state.mcp.port);
 const pendingToolAction = ref<PendingToolAction | null>(null);
+const backupPayloadSummary = computed(() => {
+  const payload = state.backup.payload.trim();
+  const compact = payload.replace(/\s+/g, "");
+  const invalidChars = Boolean(compact) && !/^[A-Za-z0-9+/=_-]+$/.test(compact);
+  const tooLarge = compact.length > 5 * 1024 * 1024;
+  return {
+    chars: payload.length,
+    compactChars: compact.length,
+    lines: payload ? payload.split(/\r?\n/).length : 0,
+    hasWhitespace: /\s/.test(payload),
+    fingerprint: compact ? fnv32(compact) : "-",
+    invalidChars,
+    tooLarge,
+    looksValid: compact.length >= 32 && !invalidChars && !tooLarge
+  };
+});
 watch(() => state.mcp.bind, (value) => { mcpBind.value = value; });
 watch(() => state.mcp.port, (value) => { mcpPort.value = value; });
 
@@ -193,6 +209,11 @@ function restoreBackup(): void {
     state.output = state.backup.status;
     return;
   }
+  if (!backupPayloadSummary.value.looksValid) {
+    state.backup.status = "备份字符串看起来不完整或包含非法字符";
+    state.output = state.backup.status;
+    return;
+  }
   requestToolAction({
     key: "backup-restore",
     title: "导入配置备份",
@@ -200,6 +221,15 @@ function restoreBackup(): void {
     command: "backup restore-file <security-code> <payload-file>",
     run: () => runRestoreBackup(payload),
   });
+}
+
+function fnv32(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 async function writeWarpImportFile(payload: string): Promise<string> {
@@ -345,6 +375,14 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
           <Button :loading="isRunning('backup-export')" @click="exportBackup"><Download :size="16" />导出并复制</Button>
         </div>
         <Textarea v-model="state.backup.payload" class="min-h-28" spellcheck="false" placeholder="备份字符串会出现在这里，也可以手动粘贴剪切板内容" />
+        <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-500 sm:grid-cols-4">
+          <span>{{ backupPayloadSummary.lines }} 行</span>
+          <span>{{ backupPayloadSummary.chars }} 字符</span>
+          <span>{{ backupPayloadSummary.compactChars }} 非空白字符</span>
+          <span :class="backupPayloadSummary.looksValid ? 'text-emerald-300' : 'text-amber-300'">
+            {{ backupPayloadSummary.looksValid ? `fnv32:${backupPayloadSummary.fingerprint}` : backupPayloadSummary.tooLarge ? '超过 5MiB' : backupPayloadSummary.invalidChars ? '含非法字符' : backupPayloadSummary.hasWhitespace ? '含空白，将压缩检查' : '等待有效备份' }}
+          </span>
+        </div>
         <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
           <Input v-model="state.backup.restorePassword" type="password" autocomplete="current-password" placeholder="导入安全码，可留空" />
           <Button variant="secondary" :loading="isRunning('backup-paste')" @click="pasteBackup"><ClipboardPaste :size="16" />读剪切板</Button>
