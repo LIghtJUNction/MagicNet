@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Copy, RefreshCw, Route } from "lucide-vue-next";
+import { Copy, RefreshCw, Route, Search } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import Input from "@/components/ui/Input.vue";
 import { buildNodeDelayStats, nodeDelayQualityLabel, parseNodeTestAll, sanitizeNodeText, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
 import { parseProxyGroupsSnapshot, sanitizeProxyName, type ProxyGroupSummary } from "@/composables/proxyGroupParsers";
 import { useActionLock } from "@/composables/useActionLock";
@@ -19,11 +20,23 @@ const { runCli, state } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const rawOutput = ref("");
 const copied = ref(false);
+const groupQuery = ref("");
 const groupDelays = ref<Record<string, NodeDelayEntry[]>>({});
 const pendingAction = ref<PendingProxyAction | null>(null);
 
 const snapshot = computed(() => parseProxyGroupsSnapshot(rawOutput.value));
-const visibleGroups = computed(() => snapshot.value?.groups.slice(0, 6) || []);
+const filteredGroups = computed(() => {
+  const query = groupQuery.value.trim().toLowerCase();
+  const groups = snapshot.value?.groups || [];
+  if (!query) return groups;
+  return groups.filter((group) => [
+    group.name,
+    group.type,
+    group.now,
+    ...group.proxies
+  ].some((value) => sanitizeProxyName(value).toLowerCase().includes(query)));
+});
+const visibleGroups = computed(() => filteredGroups.value.slice(0, 8));
 
 async function refreshGroups(): Promise<void> {
   await withAction("proxy-groups-refresh", async () => {
@@ -74,6 +87,17 @@ function groupDelayStats(group: ProxyGroupSummary) {
   return buildNodeDelayStats(groupDelays.value[group.name] || []);
 }
 
+function visibleGroupNodes(group: ProxyGroupSummary): string[] {
+  const query = groupQuery.value.trim().toLowerCase();
+  if (!query) return group.proxies.slice(0, 9);
+  const groupMatched = [group.name, group.type, group.now]
+    .some((value) => sanitizeProxyName(value).toLowerCase().includes(query));
+  const nodes = groupMatched
+    ? group.proxies
+    : group.proxies.filter((node) => sanitizeProxyName(node).toLowerCase().includes(query));
+  return nodes.slice(0, 9);
+}
+
 async function selectNode(group: string, node: string): Promise<void> {
   await withAction("proxy-groups-select", async () => {
     const text = await runCli(`api select ${shellQuote(group)} ${shellQuote(node)}`, "切换代理节点");
@@ -103,7 +127,7 @@ async function copyReport(): Promise<void> {
     return [
       `${sanitizeProxyName(group.name)} type=${group.type} now=${sanitizeProxyName(group.now || "none")} count=${group.proxies.length}`,
       `delay_tested=${stats.tested} usable=${stats.usable} failed=${stats.failed} fastest=${stats.fastest ? `${sanitizeNodeText(stats.fastest.node)} ${sanitizeNodeText(stats.fastest.summary)}` : "none"}`,
-      ...group.proxies.slice(0, 10).map((node) => {
+      ...visibleGroupNodes(group).map((node) => {
         const delay = delays.find((entry) => entry.node === node);
         return `  - ${sanitizeProxyName(node)}${delay ? ` delay=${sanitizeNodeText(delay.summary)} quality=${delay.quality}` : ""}`;
       })
@@ -135,6 +159,16 @@ onMounted(() => {
           <Copy :size="15" />{{ copied ? "已复制" : "复制" }}
         </Button>
       </div>
+    </div>
+
+    <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <label class="relative block">
+        <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" :size="15" />
+        <Input v-model="groupQuery" class="pl-9" placeholder="搜索代理组或节点" spellcheck="false" />
+      </label>
+      <span class="text-sm text-zinc-500">
+        {{ filteredGroups.length }} / {{ snapshot?.groups.length || 0 }} 组
+      </span>
     </div>
 
     <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-amber-500/10 p-3">
@@ -170,7 +204,7 @@ onMounted(() => {
         </div>
         <div class="grid gap-2 md:grid-cols-3">
           <button
-            v-for="node in group.proxies.slice(0, 6)"
+            v-for="node in visibleGroupNodes(group)"
             :key="`${group.name}-${node}`"
             class="grid rounded-md border px-3 py-2 text-left text-sm"
             :class="node === group.now ? 'border-lime-400/50 bg-lime-400/10 text-lime-100' : 'border-zinc-800 bg-black/30 text-zinc-300'"
