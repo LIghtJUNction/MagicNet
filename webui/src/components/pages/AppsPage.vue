@@ -8,6 +8,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
+import { buildAppPolicySummary, isValidPackageName, recommendedBypass } from "./appPolicyInsights";
 
 const { state, runCli, refreshApps, refreshPackages, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -21,79 +22,6 @@ type PendingAppAction = {
   message: string;
   run: () => Promise<void>;
 };
-
-const recommendedBypass = [
-  "com.eg.android.AlipayGphone",
-  "com.tencent.mm",
-  "com.unionpay",
-  "com.unionpay.tsmservice",
-  "com.icbc",
-  "com.chinamworld.main",
-  "com.ccb.longjiLife",
-  "com.ccb.fintech.app.productions",
-  "com.bankcomm.Bankcomm",
-  "com.cmbchina.ccd.pluto.cmbActivity",
-  "com.cmbchina.cmbim",
-  "com.pingan.paces.ccms",
-  "cn.com.spdb.mobilebank.per",
-  "com.cib.cibmb",
-  "com.csii.citicbank",
-  "com.ecitic.bank.mobile",
-  "com.bankofbeijing.mobilebanking",
-  "com.chinamobile.mcloud",
-  "com.greenpoint.android.mc10086.activity",
-  "com.ct.client",
-  "com.sinovatech.unicom.ui",
-  "com.taobao.taobao",
-  "com.tmall.wireless",
-  "com.jingdong.app.mall",
-  "com.xunmeng.pinduoduo",
-  "com.suning.mobile.ebuy",
-  "com.xingin.xhs",
-  "com.sankuai.meituan",
-  "com.sankuai.meituan.takeoutnew",
-  "com.dianping.v1",
-  "com.autonavi.minimap",
-  "com.baidu.BaiduMap",
-  "com.sdu.didi.psnger",
-  "ctrip.android.view",
-  "com.MobileTicket",
-  "com.tencent.mobileqq",
-  "com.tencent.tim",
-  "tv.danmaku.bili",
-  "com.tencent.qqlive",
-  "com.qiyi.video",
-  "com.youku.phone",
-  "com.ss.android.ugc.aweme",
-  "com.ss.android.article.video",
-  "com.smile.gifmaker",
-  "com.kuaishou.nebula",
-  "com.netease.cloudmusic",
-  "com.tencent.qqmusic",
-  "fm.xiami.main",
-  "com.ximalaya.ting.android",
-  "com.sina.weibo",
-  "com.zhihu.android",
-  "com.baidu.searchbox",
-  "com.UCMobile",
-  "com.quark.browser",
-  "com.huawei.appmarket",
-  "com.xiaomi.market",
-  "com.heytap.market",
-  "com.bbk.appstore",
-  "com.sec.android.app.samsungapps",
-  "com.supwisdom.zzu",
-  "com.supwisdom.supwisdom",
-  "com.wisedu.cpdaily",
-  "com.lysoft.android.lyyd.report.mobile",
-  "com.xuexitong",
-  "com.chaoxing.mobile",
-  "com.alibaba.android.rimet",
-  "com.tencent.wework",
-  "com.android.vending",
-  "com.google.android.gms",
-  "com.google.android.gsf"
-];
 
 const recycledBypass = computed(() => {
   const active = new Set(state.appPolicy.bypass);
@@ -120,6 +48,14 @@ const availableRecommendedBypass = computed(() => {
   });
 });
 
+const policySummary = computed(() => buildAppPolicySummary(
+  state.appPolicy.mode,
+  state.appPolicy.proxy,
+  state.appPolicy.bypass,
+  installedNames.value,
+  availableRecommendedBypass.value.length
+));
+
 function commandFailed(text: string): boolean {
   return /\b(error|failed|fail|Usage:|not found)\b/i.test(text);
 }
@@ -133,7 +69,7 @@ function forgetRemovedBypass(pkg: string): void {
 }
 
 function validateAppPackage(pkg: string, target: "proxy" | "bypass"): boolean {
-  if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(pkg)) {
+  if (!isValidPackageName(pkg)) {
     state.output = "包名格式不对。示例：com.android.chrome";
     return false;
   }
@@ -248,9 +184,17 @@ async function searchPackages(): Promise<void> {
 async function copyAppPolicyReport(): Promise<void> {
   const report = [
     "MagicNet app policy",
+    "privacy_note=contains package names from app policy lists",
     `mode=${state.appPolicy.mode}`,
     `proxy_count=${state.appPolicy.proxy.length}`,
     `bypass_count=${state.appPolicy.bypass.length}`,
+    `summary=${policySummary.value.summary}`,
+    `conflict_count=${policySummary.value.conflicts.length}`,
+    `current_list_proxy=${policySummary.value.installedProxy.length}`,
+    `current_list_bypass=${policySummary.value.installedBypass.length}`,
+    "",
+    "[insights]",
+    ...policySummary.value.items.map((item) => `${item.label}=${item.value} (${item.tone})`),
     "",
     "[proxy]",
     ...state.appPolicy.proxy,
@@ -371,6 +315,39 @@ onMounted(() => {
         <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />{{ isRunning('add-proxy') ? '保存中' : 'Proxy' }}</Button>
         <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : 'Bypass' }}</Button>
       </div>
+    </Card>
+
+    <Card class="grid gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 class="text-base font-semibold">策略影响摘要</h3>
+          <p class="mt-1 text-sm leading-6 text-zinc-500">{{ policySummary.summary }}</p>
+        </div>
+        <span
+          class="rounded px-2 py-1 text-xs font-medium"
+          :class="policySummary.conflicts.length ? 'bg-red-500/15 text-red-200' : 'bg-emerald-500/15 text-emerald-200'"
+        >
+          {{ policySummary.conflicts.length ? `${policySummary.conflicts.length} 个冲突` : '无冲突' }}
+        </span>
+      </div>
+      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+        <span
+          v-for="item in policySummary.items"
+          :key="item.label"
+          class="rounded border px-2 py-1"
+          :class="{
+            'border-emerald-500/30 text-emerald-200': item.tone === 'success',
+            'border-amber-500/30 text-amber-200': item.tone === 'warning',
+            'border-red-500/30 text-red-200': item.tone === 'danger',
+            'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+          }"
+        >
+          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+        </span>
+      </div>
+      <p v-if="policySummary.conflicts.length" class="break-all text-xs text-red-300">
+        冲突包名：{{ policySummary.conflicts.join(", ") }}
+      </p>
     </Card>
 
     <div class="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
