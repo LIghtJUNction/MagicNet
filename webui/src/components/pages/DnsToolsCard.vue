@@ -7,6 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
+import { dnsStatusTone, formatDnsTestReport, parseDnsTestSummary } from "./dnsTestSummary";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
@@ -19,8 +20,7 @@ const testedDomain = ref("");
 const runningDomain = ref("");
 const pendingDnsAction = ref<PendingToolAction | null>(null);
 const quickDomains = ["www.gstatic.com", "cloudflare.com", "dns.google", "www.baidu.com"] as const;
-const dnsTestLines = computed(() => dnsTestOutput.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
-const dnsIssueLines = computed(() => dnsTestLines.value.filter((line) => /\b(error|fail|timeout|refused|no such|denied)\b/i.test(line)));
+const dnsSummary = computed(() => parseDnsTestSummary(dnsTestOutput.value, testedDomain.value));
 
 async function runSetDnsProfile(profile: string): Promise<void> {
   await withAction(`dns-${profile}`, async () => {
@@ -64,18 +64,7 @@ async function testQuickDomain(domain: string): Promise<void> {
 }
 
 async function copyDnsReport(): Promise<void> {
-  const report = [
-    "MagicNet DNS test",
-    `profile=${state.dns.profile}`,
-    `primary=${state.dns.primary}`,
-    `secondary=${state.dns.secondary || "-"}`,
-    `transport=${state.dns.transport}`,
-    `domain=${testedDomain.value || "unknown"}`,
-    `lines=${dnsTestLines.value.length}`,
-    `issues=${dnsIssueLines.value.length}`,
-    "",
-    dnsTestOutput.value
-  ].join("\n").trim();
+  const report = formatDnsTestReport(dnsSummary.value, state.dns.profile, state.dns.primary, state.dns.secondary, state.dns.transport, dnsTestOutput.value);
   dnsCopied.value = await copyText(report);
   state.output = dnsCopied.value ? "DNS 测试报告已复制。" : "剪贴板不可用，DNS 测试报告未复制。";
 }
@@ -165,12 +154,19 @@ primary={{ state.dns.primary }}
 secondary={{ state.dns.secondary || "-" }}
 transport={{ state.dns.transport }}</pre>
 
-    <div v-if="dnsTestOutput" class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-3">
-      <span>{{ dnsTestLines.length }} 行输出</span>
-      <span>{{ dnsIssueLines.length }} 条问题线索</span>
-      <span>{{ testedDomain || "未测试" }}</span>
+    <div v-if="dnsTestOutput" class="grid gap-2">
+      <div class="rounded-md border p-3" :class="dnsStatusTone(dnsSummary.status)">
+        <p class="text-sm font-semibold">DNS 测试摘要</p>
+        <p class="mt-1 text-sm leading-6 opacity-80">{{ dnsSummary.summary }}</p>
+      </div>
+      <div class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-4">
+        <span>{{ dnsSummary.lineCount }} 行输出</span>
+        <span>{{ dnsSummary.issueCount }} 条问题线索</span>
+        <span>remote_ip={{ dnsSummary.remoteIp || "none" }}</span>
+        <span>time={{ dnsSummary.timeTotalMillis ?? "none" }}ms</span>
+      </div>
     </div>
-    <pre v-if="dnsIssueLines.length" class="max-h-28 overflow-auto rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-50 whitespace-pre-wrap">{{ dnsIssueLines.join("\n") }}</pre>
+    <pre v-if="dnsSummary.issueLines.length" class="max-h-28 overflow-auto rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-50 whitespace-pre-wrap">{{ dnsSummary.issueLines.join("\n") }}</pre>
     <pre v-if="dnsTestOutput" class="max-h-36 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ dnsTestOutput }}</pre>
   </Card>
 </template>
