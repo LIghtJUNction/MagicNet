@@ -87,6 +87,14 @@ function saveSingBox(): void {
   });
 }
 
+function normalizeSingBoxInput(): void {
+  const rawCount = singBoxText.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+  const lines = normalizedSingBoxUrls();
+  if (!lines) return;
+  singBoxText.value = lines.join("\n");
+  state.output = `已规范化 sing-box 订阅输入：${rawCount} -> ${lines.length}。`;
+}
+
 async function pasteSingBox(): Promise<void> {
   await withAction("paste-singbox", async () => {
     const text = (await readClipboardText()).trim();
@@ -157,6 +165,7 @@ async function copy(text: string, label: string): Promise<void> {
         <div class="flex flex-wrap items-center gap-2">
           <Button :loading="isRunning('save-singbox')" @click="saveSingBox"><Save :size="16" />保存</Button>
           <Button variant="secondary" :loading="isRunning('paste-singbox')" @click="pasteSingBox"><ClipboardPaste :size="16" />读剪切板</Button>
+          <Button variant="outline" @click="normalizeSingBoxInput">规范化</Button>
           <Button variant="outline" @click="copy(singBoxText, 'sing-box 订阅')"><Copy :size="16" />复制</Button>
         </div>
       </Card>
