@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { Activity, Bell, Copy, Pause, Play, RefreshCw, Trash2 } from "lucide-vue-next";
+import { Activity, Bell, Copy, Gauge, Pause, Play, RefreshCw, Trash2 } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -8,6 +8,7 @@ import { buildTrafficStatsSummary, evaluateTrafficAlert, formatTrafficStatsRepor
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
+import { buildTrafficBudgetPlan } from "./trafficBudgetPlan";
 import { evaluateTrafficSamplingHealth } from "./trafficSamplingHealth";
 
 const { runCli, state } = useMagicNet();
@@ -19,12 +20,15 @@ const failedSamples = ref(0);
 const copied = ref(false);
 const autoSampling = ref(false);
 const thresholdMiB = ref("10");
+const budgetGiB = ref("");
+const budgetHorizonMinutes = ref("60");
 const nowMillis = ref(Date.now());
 let timer = 0;
 let clockTimer = 0;
 
 const summary = computed(() => buildTrafficStatsSummary(samples.value));
 const alert = computed(() => evaluateTrafficAlert(samples.value, Number(thresholdMiB.value) || 0));
+const budgetPlan = computed(() => buildTrafficBudgetPlan(samples.value, budgetGiB.value, budgetHorizonMinutes.value));
 const samplingHealth = computed(() => evaluateTrafficSamplingHealth(samples.value, failedSamples.value, autoSampling.value, nowMillis.value));
 const trendSamples = computed(() => samples.value.slice(-12));
 const trendPeak = computed(() => Math.max(1, ...trendSamples.value.map((sample) => sample.up + sample.down)));
@@ -108,7 +112,13 @@ function clearSamples(): void {
 }
 
 async function copyReport(): Promise<void> {
-  copied.value = await copyText(formatTrafficStatsReport(samples.value, alert.value, samplingHealth.value));
+  const text = [
+    formatTrafficStatsReport(samples.value, alert.value, samplingHealth.value),
+    "",
+    "[budget_projection]",
+    ...budgetPlan.value.reportLines
+  ].join("\n");
+  copied.value = await copyText(text);
   state.output = copied.value ? "实时流量报告已复制。" : "剪贴板不可用，实时流量报告未复制。";
 }
 
@@ -172,6 +182,23 @@ function healthClasses(): string {
   if (samplingHealth.value.level === "warning") return "border-amber-400/30 bg-amber-500/10 text-amber-100";
   if (samplingHealth.value.level === "ok") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-100";
   return "border-zinc-800 bg-zinc-950 text-zinc-300";
+}
+
+function budgetClasses(): string {
+  if (budgetPlan.value.level === "danger") return "border-red-400/30 bg-red-500/10 text-red-100";
+  if (budgetPlan.value.level === "warning") return "border-amber-400/30 bg-amber-500/10 text-amber-100";
+  if (budgetPlan.value.level === "ok") return "border-sky-400/25 bg-sky-400/10 text-sky-100";
+  return "border-zinc-800 bg-zinc-950 text-zinc-300";
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds)) return "无预测";
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${Math.round(minutes)}min`;
+  const hours = minutes / 60;
+  if (hours < 48) return `${hours.toFixed(1)}h`;
+  return `${(hours / 24).toFixed(1)}d`;
 }
 
 function startClock(): void {
@@ -239,6 +266,39 @@ onUnmounted(() => {
         {{ samplingHealth.detail }} · 样本 {{ samplingHealth.sampleCount }} · 连续失败 {{ samplingHealth.consecutiveFailures }}
         <span v-if="samplingHealth.latestAgeSeconds !== null"> · 最近样本 {{ samplingHealth.latestAgeSeconds }}s 前</span>
       </p>
+    </div>
+
+    <div class="rounded-md border p-3" :class="budgetClasses()">
+      <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_8rem_8rem] md:items-end">
+        <div class="min-w-0">
+          <p class="inline-flex items-center gap-2 text-sm font-semibold"><Gauge :size="15" /> 流量预算预测</p>
+          <p class="mt-1 text-xs leading-5 opacity-80">
+            {{ budgetPlan.detail }} · 置信度 {{ budgetPlan.confidence }} · 基于 {{ summary.sampleCount }} 个真实样本
+          </p>
+        </div>
+        <label class="grid gap-1 text-xs opacity-80">
+          剩余 GiB
+          <Input v-model="budgetGiB" inputmode="decimal" placeholder="例如 20" />
+        </label>
+        <label class="grid gap-1 text-xs opacity-80">
+          预测分钟
+          <Input v-model="budgetHorizonMinutes" inputmode="numeric" placeholder="60" />
+        </label>
+      </div>
+      <div class="mt-3 grid gap-2 sm:grid-cols-3">
+        <div class="rounded bg-black/25 p-2">
+          <p class="text-xs opacity-70">预计消耗</p>
+          <p class="mt-1 text-sm font-semibold">{{ formatBytes(budgetPlan.projectedBytes) }}</p>
+        </div>
+        <div class="rounded bg-black/25 p-2">
+          <p class="text-xs opacity-70">预算后剩余</p>
+          <p class="mt-1 text-sm font-semibold">{{ formatBytes(budgetPlan.remainingBytes) }}</p>
+        </div>
+        <div class="rounded bg-black/25 p-2">
+          <p class="text-xs opacity-70">按均速可用</p>
+          <p class="mt-1 text-sm font-semibold">{{ formatDuration(budgetPlan.timeToBudgetSeconds) }}</p>
+        </div>
+      </div>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-4">
