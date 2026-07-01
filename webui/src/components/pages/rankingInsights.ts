@@ -72,7 +72,7 @@ export function formatRankingSnapshot(data: RankingData, entries: RankingEntry[]
   const insights = buildRankingInsights(data);
   return [
     "MagicNet ranking snapshot",
-    "privacy_note=includes public ranking names and messages only; payment QR URLs are omitted",
+    "privacy_note=includes public ranking names/messages, payment QR hostnames, and local resource checks; full payment QR URLs are omitted",
     `updated_at=${data.updatedAt}`,
     `entry_count=${data.entries.length}`,
     `filtered_count=${entries.length}`,

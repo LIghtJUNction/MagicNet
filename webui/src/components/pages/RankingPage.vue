@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Copy, Download, Mail, Medal, RefreshCw, Search, Trophy, Wallet } from "lucide-vue-next";
+import { Copy, Download, Mail, Medal, RefreshCw, Search, ShieldCheck, Trophy, Wallet } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -9,6 +9,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, shellQuote } from "@/utils";
 import { useActionLock } from "@/composables/useActionLock";
 import { buildRankingInsights, filterRankingEntries, formatRankingSnapshot, normalizeRankingData, type RankingData } from "./rankingInsights";
+import { buildPaymentAudit, formatPaymentAuditReport, validatePaymentOpen, validatePaymentQr, type PaymentQrKind } from "./rankingPaymentAudit";
 
 const fallbackData: RankingData = {
   updatedAt: "unknown",
@@ -44,6 +45,7 @@ type PendingQrAction = {
 };
 
 const rankingInsights = computed(() => buildRankingInsights(data.value));
+const paymentAudit = computed(() => buildPaymentAudit(data.value));
 const visibleEntries = computed(() => filterRankingEntries(data.value.entries, rankingQuery.value));
 const topEntries = computed(() => visibleEntries.value.slice(0, 3));
 const otherEntries = computed(() => visibleEntries.value.slice(3));
@@ -69,27 +71,33 @@ async function copyEmail(): Promise<void> {
 }
 
 async function copyRankingSnapshot(): Promise<void> {
-  rankingCopied.value = await copyText(formatRankingSnapshot(data.value, visibleEntries.value));
+  rankingCopied.value = await copyText(`${formatRankingSnapshot(data.value, visibleEntries.value)}\n\n${formatPaymentAuditReport(data.value)}`);
   saveStatus.value = rankingCopied.value ? "排行榜快照已复制。" : "剪贴板不可用，排行榜快照未复制。";
 }
 
 async function openPayment(url: string, label: string): Promise<void> {
+  const kind = label === "微信支付" ? "wechatUrl" : "alipayUrl";
+  const validation = validatePaymentOpen(kind, url);
+  if (!validation.ok) {
+    saveStatus.value = validation.reason;
+    return;
+  }
   await openExternal(url, label, { preferBrowser: false });
 }
 
-function payImageName(kind: "wechat" | "alipay"): string {
+function payImageName(kind: PaymentQrKind): string {
   return kind === "wechat" ? "微信收款码" : "支付宝收款码";
 }
 
-function payImageUrl(kind: "wechat" | "alipay"): string {
+function payImageUrl(kind: PaymentQrKind): string {
   return kind === "wechat" ? data.value.payment.wechatQr || "" : data.value.payment.alipayQr || "";
 }
 
-function payImageTarget(kind: "wechat" | "alipay"): string {
+function payImageTarget(kind: PaymentQrKind): string {
   return `/sdcard/Download/MagicNet/MagicNet-${kind}-pay.png`;
 }
 
-async function runSaveQr(kind: "wechat" | "alipay", url: string, target: string): Promise<void> {
+async function runSaveQr(kind: PaymentQrKind, url: string, target: string): Promise<void> {
   const label = payImageName(kind);
   await withAction(`save-${kind}`, async () => {
     saveStatus.value = `正在保存${label}...`;
@@ -109,12 +117,13 @@ async function runSaveQr(kind: "wechat" | "alipay", url: string, target: string)
   });
 }
 
-function requestSaveQr(kind: "wechat" | "alipay"): void {
+function requestSaveQr(kind: PaymentQrKind): void {
   const label = payImageName(kind);
   const url = payImageUrl(kind);
   const target = payImageTarget(kind);
-  if (!url) {
-    saveStatus.value = `${label}链接为空`;
+  const validation = validatePaymentQr(kind, url);
+  if (!validation.ok) {
+    saveStatus.value = validation.reason;
     return;
   }
   pendingQrAction.value = {
@@ -140,7 +149,7 @@ async function confirmSaveQr(): Promise<void> {
   }
 }
 
-function startLongPress(kind: "wechat" | "alipay"): void {
+function startLongPress(kind: PaymentQrKind): void {
   stopLongPress();
   pressTimer = window.setTimeout(() => {
     pressTimer = 0;
@@ -206,6 +215,22 @@ onMounted(() => {
           {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
         </span>
       </div>
+      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+        <span
+          v-for="item in paymentAudit"
+          :key="item.key"
+          class="rounded border px-2 py-1"
+          :class="{
+            'border-emerald-500/30 text-emerald-200': item.tone === 'success',
+            'border-amber-500/30 text-amber-200': item.tone === 'warning',
+            'border-red-500/30 text-red-200': item.tone === 'danger',
+            'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+          }"
+          :title="item.detail"
+        >
+          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+        </span>
+      </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div class="relative">
           <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
@@ -249,7 +274,7 @@ onMounted(() => {
 
     <Card class="grid gap-3">
       <div>
-        <p class="text-sm font-semibold">支持项目</p>
+        <p class="flex items-center gap-2 text-sm font-semibold"><ShieldCheck :size="16" />支持项目</p>
         <p class="mt-1 text-sm leading-6 text-zinc-400">{{ data.payment.note || "支付后可通过邮箱联系作者更新排行榜信息。" }}</p>
         <p class="mt-1 text-xs leading-5 text-zinc-500">收款码从 GitHub Release 资产读取；若图片未显示，可用下方按钮打开 App 或复制邮箱联系。</p>
       </div>
