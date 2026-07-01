@@ -9,6 +9,7 @@ import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import type { TransparentMode } from "@/types";
+import { buildControlRuntimeInsight, controlInsightTone, controlRuntimeBusy } from "./controlRuntimeInsight";
 
 const { state, runCli, startBackgroundCli, refreshAll, refreshStatus, openSingBoxUi } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -16,6 +17,13 @@ const pendingDangerAction = ref<ControlDangerAction | null>(null);
 const snapshotCopied = ref(false);
 
 const pendingDangerMessage = computed(() => pendingDangerAction.value?.message ?? "");
+const runtimeInsight = computed(() => buildControlRuntimeInsight({
+  hasKsu: state.hasKsu,
+  phase: state.phase,
+  queueDepth: state.queueDepth,
+  runtime: state.runtime
+}));
+const runtimeBusy = computed(() => controlRuntimeBusy(state.phase, state.queueDepth));
 
 const orchestratorModes: Array<{ mode: TransparentMode; title: string; description: string }> = [
   { mode: "proxy", title: "Proxy", description: "不创建 TUN，可与系统 VPN 共存" },
@@ -33,7 +41,7 @@ function isModeSwitching(): boolean {
 }
 
 function canSwitchModes(): boolean {
-  return state.hasKsu && !isModeSwitching();
+  return state.hasKsu && !runtimeBusy.value && !isModeSwitching();
 }
 
 async function toggleSingBox(): Promise<void> {
@@ -64,6 +72,10 @@ function cancelDangerAction(): void {
 async function confirmDangerAction(): Promise<void> {
   const action = pendingDangerAction.value;
   if (!action) return;
+  if (runtimeBusy.value) {
+    state.output = "后台任务未结束，已拒绝执行新的控制操作。";
+    return;
+  }
   pendingDangerAction.value = null;
   await runAction(action.key, action.args, action.label, action.background);
 }
@@ -84,7 +96,10 @@ async function copyControlSnapshot(): Promise<void> {
     `sing_box=${state.runtime.singBox}`,
     `fswatch=${state.runtime.fswatch}`,
     `transparent_mode=${state.runtime.transparentMode}`,
-    `last_command=${state.lastCommand || "none"}`
+    `insight_status=${runtimeInsight.value.status}`,
+    `insight_title=${runtimeInsight.value.title}`,
+    `recommended_actions=${runtimeInsight.value.actions.join(",") || "none"}`,
+    `last_command_kind=${classifyLastCommand(state.lastCommand)}`
   ].join("\n");
   snapshotCopied.value = await copyText(sanitizeControlSnapshot(report));
   state.output = snapshotCopied.value ? "控制状态快照已复制。" : "剪贴板不可用，控制状态快照未复制。";
@@ -94,6 +109,18 @@ function sanitizeControlSnapshot(text: string): string {
   return text
     .replace(/https?:\/\/\S+/gi, "[filtered-url]")
     .replace(/\b(token|secret|password|passwd|authorization|bearer|api[_-]?key|key)\b\s*[:=]\s*\S+/gi, "$1=[filtered]");
+}
+
+function classifyLastCommand(command: string): string {
+  if (!command) return "none";
+  if (/\bbackup\b/.test(command)) return "backup";
+  if (/\bsub(?:scription)?\b|sub set-file|subscription/i.test(command)) return "subscription";
+  if (/\btransparent\b/.test(command)) return "transparent";
+  if (/\bservice\b/.test(command)) return "service";
+  if (/\bconfig\b/.test(command)) return "config";
+  if (/\bmcp\b/.test(command)) return "mcp";
+  if (/\bwebui\b/.test(command)) return "webui";
+  return "other";
 }
 </script>
 
@@ -112,6 +139,17 @@ function sanitizeControlSnapshot(text: string): string {
     </div>
 
     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <Card class="grid gap-3 border" :class="controlInsightTone(runtimeInsight.status)">
+        <span class="text-[11px] font-bold uppercase tracking-wide opacity-70">Runtime Insight</span>
+        <div>
+          <h3 class="break-words text-lg font-semibold">{{ runtimeInsight.title }}</h3>
+          <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ runtimeInsight.detail }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Badge v-for="item in runtimeInsight.actions" :key="item" tone="neutral">{{ item }}</Badge>
+        </div>
+      </Card>
+
       <Card class="grid gap-3">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
@@ -120,7 +158,7 @@ function sanitizeControlSnapshot(text: string): string {
           </div>
         </div>
         <p class="text-sm leading-6 text-zinc-400">MagicNet now runs only sing-box.</p>
-        <Button :loading="isRunning('toggle-sing-box')" class="w-full" @click="toggleSingBox">
+        <Button :disabled="runtimeBusy" :loading="isRunning('toggle-sing-box')" class="w-full" @click="toggleSingBox">
           <Power :size="18" />
           {{ state.runtime.singBoxState === "sing-box" ? "停止 sing-box" : "启动 sing-box" }}
         </Button>
@@ -129,16 +167,16 @@ function sanitizeControlSnapshot(text: string): string {
       <Card>
         <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Quick Actions</span>
         <div class="mt-3 grid gap-2">
-          <Button variant="secondary" :loading="isRunning('restart-sing-box')" @click="requestDangerAction(restartSingBoxAction())">
+          <Button variant="secondary" :disabled="runtimeBusy" :loading="isRunning('restart-sing-box')" @click="requestDangerAction(restartSingBoxAction())">
             <RotateCcw :size="17" />重启 sing-box
           </Button>
-          <Button variant="secondary" :loading="isRunning('apply-config')" @click="requestDangerAction(applyConfigAction())">
+          <Button variant="secondary" :disabled="runtimeBusy" :loading="isRunning('apply-config')" @click="requestDangerAction(applyConfigAction())">
             <Save :size="17" />应用配置
           </Button>
-          <Button variant="secondary" :loading="isRunning('repair')" @click="requestDangerAction(repairAction())">
+          <Button variant="secondary" :disabled="runtimeBusy" :loading="isRunning('repair')" @click="requestDangerAction(repairAction())">
             <Zap :size="17" />一键自修复
           </Button>
-          <Button variant="secondary" :loading="isRunning('stop-all')" @click="requestDangerAction(stopAllServicesAction())">
+          <Button variant="secondary" :disabled="runtimeBusy" :loading="isRunning('stop-all')" @click="requestDangerAction(stopAllServicesAction())">
             <Unplug :size="17" />停止全部
           </Button>
         </div>
@@ -184,7 +222,7 @@ function sanitizeControlSnapshot(text: string): string {
             <span :class="['mt-1 block text-xs leading-5', state.runtime.transparentMode === item.mode ? 'text-zinc-800' : 'text-zinc-400']">{{ item.description }}</span>
           </button>
         </div>
-        <Button variant="secondary" :loading="isRunning('transparent-apply')" @click="requestDangerAction(applyTransparentModeAction())">
+        <Button variant="secondary" :disabled="runtimeBusy" :loading="isRunning('transparent-apply')" @click="requestDangerAction(applyTransparentModeAction())">
           <Radar :size="17" />重新应用模式
         </Button>
       </Card>
@@ -198,7 +236,7 @@ function sanitizeControlSnapshot(text: string): string {
           <code class="mt-2 block break-all rounded-md bg-zinc-950/60 px-3 py-2 text-xs text-zinc-100">{{ pendingDangerAction.args }}</code>
         </div>
         <div class="flex shrink-0 gap-2">
-          <Button variant="secondary" :loading="isRunning(pendingDangerAction.key)" @click="confirmDangerAction">确认</Button>
+          <Button variant="secondary" :disabled="runtimeBusy" :loading="isRunning(pendingDangerAction.key)" @click="confirmDangerAction">确认</Button>
           <Button variant="outline" @click="cancelDangerAction">取消</Button>
         </div>
       </div>
