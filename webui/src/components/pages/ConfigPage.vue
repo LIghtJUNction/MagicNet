@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Braces, DownloadCloud, Github, RefreshCw, Save } from "lucide-vue-next";
+import { Braces, Copy, DownloadCloud, Github, RefreshCw, Save } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -7,6 +7,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
@@ -14,6 +15,7 @@ const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } 
 const { isRunning, withAction } = useActionLock();
 const pendingConfigAction = ref<PendingToolAction | null>(null);
 const localJsonStatus = ref("");
+const sanitizedCopied = ref(false);
 const configStats = computed(() => {
   const text = state.config.text;
   const lines = text ? text.split(/\r?\n/).length : 0;
@@ -23,6 +25,7 @@ const configStats = computed(() => {
     sizeKiB: (new TextEncoder().encode(text).length / 1024).toFixed(1)
   };
 });
+const sanitizedConfig = computed(() => sanitizeConfigText(state.config.text));
 
 function requestConfigAction(action: PendingToolAction): void {
   pendingConfigAction.value = action;
@@ -73,10 +76,19 @@ function formatConfigJson(): void {
   }
 }
 
-function issueUrl(): string {
-  const sanitized = state.config.text
+async function copySanitizedConfig(): Promise<void> {
+  if (!sanitizedConfig.value) return;
+  sanitizedCopied.value = await copyText(sanitizedConfig.value);
+  state.output = sanitizedCopied.value ? "脱敏配置片段已复制。" : "剪贴板不可用，脱敏配置未复制。";
+}
+
+function sanitizeConfigText(text: string): string {
+  return text
     .replace(/https?:\/\/\S+/g, "[filtered-url]")
     .replace(/(password|token|secret|uuid)["':= ]+[^,\n]+/gi, "$1=[filtered]");
+}
+
+function issueUrl(): string {
   const body = [
     "已尝试过滤 URL、token、secret、password 等敏感字段；创建前仍需人工检查，避免提交私有订阅或密钥。",
     "",
@@ -85,7 +97,7 @@ function issueUrl(): string {
     "",
     "## Sanitized Config",
     "```",
-    sanitized.slice(0, 12000),
+    sanitizedConfig.value.slice(0, 12000),
     "```"
   ].join("\n");
   return `${REPO}/issues/new?${new URLSearchParams({ title: `配置变更建议：${state.config.target}`, body }).toString()}`;
@@ -99,6 +111,7 @@ function issueUrl(): string {
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', () => loadConfig())"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
         <Button variant="outline" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化 JSON</Button>
+        <Button variant="outline" :disabled="!state.config.text" @click="copySanitizedConfig"><Copy :size="17" />{{ sanitizedCopied ? '已复制脱敏' : '复制脱敏' }}</Button>
         <Button :loading="isRunning('save-config')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), '配置 Diff Issue')"><Github :size="17" />创建 Diff Issue</Button>
       </div>
