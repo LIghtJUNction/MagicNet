@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Network, RadioTower } from "lucide-vue-next";
+import { Copy, Network, RadioTower } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
@@ -13,14 +14,18 @@ const { runShell, runCli, state, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pcapIfname = ref("any");
 const pcapFilter = ref("tcp port 443 or udp port 53");
+const copiedCommand = ref("");
 const pendingAction = ref<PendingToolAction | null>(null);
 const pcapPresets = [
   { label: "HTTPS", filter: "tcp port 443" },
   { label: "DNS", filter: "udp port 53 or tcp port 53" },
   { label: "QUIC", filter: "udp port 443" },
-  { label: "TLS DNS", filter: "tcp port 853 or udp port 853" }
+  { label: "TLS DNS", filter: "tcp port 853 or udp port 853" },
+  { label: "代理 API", filter: "tcp port 9090" }
 ] as const;
 const pcapCommandPreview = computed(() => buildPcapCommand(false));
+const pcapPlan = computed(() => buildPcapPlan());
+const commandCopied = computed(() => Boolean(pcapCommandPreview.value && copiedCommand.value === pcapCommandPreview.value));
 
 async function runTcpdumpProbe(): Promise<void> {
   await runShell("timeout 10 tcpdump -i any -nn -c 30 'tcp port 443 or udp port 53 or tcp port 53 or tcp port 853 or udp port 853'", "tcpdump 快速抓包");
@@ -88,6 +93,13 @@ function applyPcapPreset(filter: string): void {
   pcapFilter.value = filter;
 }
 
+async function copyPcapCommand(): Promise<void> {
+  if (!pcapCommandPreview.value) return;
+  const copied = await copyText(pcapCommandPreview.value);
+  copiedCommand.value = copied ? pcapCommandPreview.value : "";
+  state.output = copied ? "PCAP 抓包命令已复制。" : "剪贴板不可用，PCAP 抓包命令未复制。";
+}
+
 function requestAction(action: PendingToolAction): void {
   pendingAction.value = action;
 }
@@ -104,6 +116,34 @@ async function confirmAction(): Promise<void> {
   } finally {
     pendingAction.value = null;
   }
+}
+
+function buildPcapPlan(): { status: "ok" | "error"; summary: string; detail: string } {
+  const rawIfname = pcapIfname.value.trim();
+  const ifname = rawIfname || "-";
+  const tokens = pcapFilter.value.trim().split(/\s+/).filter(Boolean);
+  if (!pcapCommandPreview.value) {
+    return {
+      status: "error",
+      summary: "PCAP 参数未通过校验",
+      detail: `if=${ifname || "-"} tokens=${tokens.length}`
+    };
+  }
+  const ports = tokens
+    .map((part, index) => part === "port" ? tokens[index + 1] : "")
+    .filter(Boolean);
+  const hosts = tokens
+    .map((part, index) => part === "host" ? tokens[index + 1] : "")
+    .filter(Boolean);
+  return {
+    status: "ok",
+    summary: `将抓取 ${ifname} 上的 ${tokens.join(" ") || "全部"}，持续 8 秒。`,
+    detail: [
+      ports.length ? `ports=${Array.from(new Set(ports)).join(",")}` : "",
+      hosts.length ? `hosts=${Array.from(new Set(hosts)).join(",")}` : "",
+      `tokens=${tokens.length}`
+    ].filter(Boolean).join(" · ")
+  };
 }
 </script>
 
@@ -157,6 +197,14 @@ async function confirmAction(): Promise<void> {
       >
         {{ preset.label }}
       </Button>
+      <Button size="sm" variant="outline" :disabled="!pcapCommandPreview" @click="copyPcapCommand">
+        <Copy :size="15" />{{ commandCopied ? "已复制命令" : "复制命令" }}
+      </Button>
+    </div>
+    <div class="rounded-md border p-3" :class="pcapPlan.status === 'ok' ? 'border-lime-400/20 bg-lime-400/10 text-lime-100' : 'border-red-400/30 bg-red-400/10 text-red-100'">
+      <p class="text-sm font-semibold">PCAP 抓包计划</p>
+      <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ pcapPlan.summary }}</p>
+      <p class="mt-1 break-words text-xs opacity-60">{{ pcapPlan.detail }}</p>
     </div>
     <code class="break-all rounded-md bg-black px-3 py-2 text-xs text-zinc-400">
       {{ pcapCommandPreview || "PCAP 参数无效，修正后再执行。" }}
