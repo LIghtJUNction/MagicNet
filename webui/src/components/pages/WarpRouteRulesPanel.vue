@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { RefreshCw, X } from "lucide-vue-next";
+import { Copy, RefreshCw, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Input from "@/components/ui/Input.vue";
 import { parseRouteRuleSummary } from "@/composables/parsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { execFailed } from "@/utils";
+import { copyText, execFailed } from "@/utils";
 import type { PendingToolAction } from "./toolActions";
 
 const { state, runCli, shellQuote } = useMagicNet();
@@ -14,6 +14,7 @@ const { isRunning, withAction } = useActionLock();
 const domain = ref("");
 const routeOutput = ref("");
 const pendingAction = ref<PendingToolAction | null>(null);
+const copied = ref(false);
 const summary = computed(() => parseRouteRuleSummary(routeOutput.value));
 
 async function refreshRoutes(): Promise<void> {
@@ -37,8 +38,8 @@ async function removeWarpRoute(cleanDomain: string): Promise<void> {
 
 function requestAddWarpRoute(): void {
   const clean = domain.value.trim().toLowerCase();
-  if (!clean) {
-    state.output = "请填写要走 WARP 的域名后缀。";
+  if (!validRouteDomain(clean)) {
+    state.output = "域名后缀格式不对。示例：example.com";
     return;
   }
   pendingAction.value = {
@@ -48,6 +49,30 @@ function requestAddWarpRoute(): void {
     command: `route add-domain warp ${clean}`,
     run: () => addWarpRoute(clean),
   };
+}
+
+function validRouteDomain(value: string): boolean {
+  if (!/^[a-z0-9.-]+$/i.test(value) || value.length > 253 || value.includes("..")) return false;
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value) || value === "localhost") return false;
+  const labels = value.split(".");
+  if (labels.length < 2 || /^\d+$/.test(labels.at(-1) || "")) return false;
+  return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+}
+
+async function copyRouteSnapshot(): Promise<void> {
+  const report = [
+    "MagicNet route snapshot",
+    "source=last route list",
+    `proxy_count=${summary.value.proxy.length}`,
+    `direct_count=${summary.value.direct.length}`,
+    `block_count=${summary.value.block.length}`,
+    `warp_count=${summary.value.warp.length}`,
+    "",
+    "[warp]",
+    ...summary.value.warp
+  ].join("\n").trim();
+  copied.value = await copyText(report);
+  state.output = copied.value ? "路由快照已复制。" : "剪贴板不可用，路由快照未复制。";
 }
 
 function requestRemoveWarpRoute(cleanDomain: string): void {
@@ -124,8 +149,13 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <Button variant="outline" :loading="isRunning('warp-route-refresh')" @click="withAction('warp-route-refresh', () => refreshRoutes())">
-      <RefreshCw :size="16" />刷新路由规则
-    </Button>
+    <div class="grid gap-2 sm:grid-cols-2">
+      <Button variant="outline" :loading="isRunning('warp-route-refresh')" @click="withAction('warp-route-refresh', () => refreshRoutes())">
+        <RefreshCw :size="16" />刷新路由规则
+      </Button>
+      <Button variant="outline" @click="copyRouteSnapshot">
+        <Copy :size="16" />{{ copied ? '已复制快照' : '复制快照' }}
+      </Button>
+    </div>
   </div>
 </template>
