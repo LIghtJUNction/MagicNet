@@ -10,6 +10,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
+import { buildConfigAudit, buildConfigOutline, sanitizeConfigText } from "./configEditorInsights";
 
 const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -17,23 +18,6 @@ const pendingConfigAction = ref<PendingToolAction | null>(null);
 const localJsonStatus = ref("");
 const sanitizedCopied = ref(false);
 const auditCopied = ref(false);
-type ConfigOutline = {
-  status: "idle" | "ok" | "error";
-  summary: string;
-  keys: string[];
-  counts: Array<{ label: string; value: string }>;
-};
-type ConfigAuditItem = {
-  label: string;
-  value: string;
-  tone: "success" | "warning" | "danger" | "neutral";
-};
-type ConfigAudit = {
-  status: "idle" | "ok" | "warning" | "error";
-  summary: string;
-  items: ConfigAuditItem[];
-  outboundTags: string[];
-};
 const configStats = computed(() => {
   const text = state.config.text;
   const lines = text ? text.split(/\r?\n/).length : 0;
@@ -44,81 +28,8 @@ const configStats = computed(() => {
   };
 });
 const sanitizedConfig = computed(() => sanitizeConfigText(state.config.text));
-const configOutline = computed<ConfigOutline>(() => {
-  const text = state.config.text.trim();
-  if (!text) {
-    return {
-      status: "idle",
-      summary: "尚未加载配置",
-      keys: [],
-      counts: outlineCounts({})
-    };
-  }
-
-  try {
-    const parsed = JSON.parse(text);
-    if (!isRecord(parsed)) {
-      return {
-        status: "error",
-        summary: "配置根节点不是 JSON object",
-        keys: [],
-        counts: outlineCounts({})
-      };
-    }
-    const keys = Object.keys(parsed);
-    return {
-      status: "ok",
-      summary: `${keys.length} 个顶层键`,
-      keys: keys.slice(0, 12),
-      counts: outlineCounts(parsed)
-    };
-  } catch (error) {
-    return {
-      status: "error",
-      summary: error instanceof Error ? error.message : "JSON 解析失败",
-      keys: [],
-      counts: outlineCounts({})
-    };
-  }
-});
-const configAudit = computed<ConfigAudit>(() => {
-  const text = state.config.text.trim();
-  if (!text) return { status: "idle", summary: "加载配置后显示运行关键项。", items: [], outboundTags: [] };
-  const parsed = parseConfigRoot(text);
-  if (parsed.error || !parsed.root) {
-    return { status: "error", summary: parsed.error || "JSON 解析失败。", items: [], outboundTags: [] };
-  }
-  const root = parsed.root;
-  const inbounds = arrayRecords(root.inbounds);
-  const outbounds = arrayRecords(root.outbounds);
-  const route = isRecord(root.route) ? root.route : {};
-  const dns = isRecord(root.dns) ? root.dns : {};
-  const experimental = isRecord(root.experimental) ? root.experimental : {};
-  const clashApi = isRecord(experimental.clash_api) ? experimental.clash_api : {};
-  const inboundTypes = uniqueStrings(inbounds.map((item) => stringValue(item.type)));
-  const outboundTags = uniqueStrings(outbounds.map((item) => stringValue(item.tag)));
-  const selectorCount = outbounds.filter((item) => ["selector", "urltest"].includes(stringValue(item.type))).length;
-  const externalController = stringValue(clashApi.external_controller);
-  const routeFinal = stringValue(route.final);
-  const dnsFinal = stringValue(dns.final);
-  const preferredProxyTag = findPreferredProxyTag(outbounds);
-  const items: ConfigAuditItem[] = [
-    auditItem("TUN 入站", inboundTypes.includes("tun") ? "存在" : "缺失", inboundTypes.includes("tun") ? "success" : "warning"),
-    auditItem("Mixed 入站", inboundTypes.includes("mixed") ? "存在" : "可选", inboundTypes.includes("mixed") ? "success" : "neutral"),
-    auditItem("WebUI API", externalController || "未配置", externalController ? "success" : "warning"),
-    auditItem("route.final", finalAuditValue(routeFinal, outboundTags), finalAuditTone(routeFinal, outboundTags, true)),
-    auditItem("dns.final", finalAuditValue(dnsFinal, outboundTags), finalAuditTone(dnsFinal, outboundTags, false)),
-    auditItem("主代理候选", preferredProxyTag || "未识别", preferredProxyTag ? "success" : "warning"),
-    auditItem("选择器", `${selectorCount} 个`, selectorCount ? "success" : "neutral")
-  ];
-  const warningCount = items.filter((item) => item.tone === "warning").length;
-  return {
-    status: warningCount ? "warning" : "ok",
-    summary: warningCount ? `${warningCount} 个关键项需要确认` : "关键运行项齐全",
-    items,
-    outboundTags: outboundTags.slice(0, 16)
-  };
-});
+const configOutline = computed(() => buildConfigOutline(state.config.text));
+const configAudit = computed(() => buildConfigAudit(state.config.text));
 
 function requestConfigAction(action: PendingToolAction): void {
   pendingConfigAction.value = action;
@@ -178,89 +89,18 @@ async function copySanitizedConfig(): Promise<void> {
 async function copyConfigAudit(): Promise<void> {
   const report = [
     "MagicNet config audit",
-    `target=${state.config.target}`,
-    `path=${state.config.path}`,
-    `status=${configAudit.value.status}`,
-    `summary=${configAudit.value.summary}`,
+    `target=${sanitizeConfigText(state.config.target)}`,
+    `path=${sanitizeConfigText(state.config.path)}`,
+    `status=${sanitizeConfigText(configAudit.value.status)}`,
+    `summary=${sanitizeConfigText(configAudit.value.summary)}`,
     "",
     "[items]",
-    ...configAudit.value.items.map((item) => `${item.label}=${item.value} (${item.tone})`),
+    ...configAudit.value.items.map((item) => `${sanitizeConfigText(item.label)}=${sanitizeConfigText(item.value)} (${item.tone})`),
     "",
-    `[outbound_tags] ${configAudit.value.outboundTags.join(", ") || "none"}`
+    `[outbound_tags] ${sanitizeConfigText(configAudit.value.outboundTags.join(", ")) || "none"}`
   ].join("\n");
   auditCopied.value = await copyText(report);
   state.output = auditCopied.value ? "配置审计摘要已复制。" : "剪贴板不可用，配置审计摘要未复制。";
-}
-
-function sanitizeConfigText(text: string): string {
-  return text
-    .replace(/https?:\/\/\S+/g, "[filtered-url]")
-    .replace(/(password|token|secret|uuid)["':= ]+[^,\n]+/gi, "$1=[filtered]");
-}
-
-function outlineCounts(root: Record<string, unknown>): Array<{ label: string; value: string }> {
-  const route = isRecord(root.route) ? root.route : {};
-  const dns = isRecord(root.dns) ? root.dns : {};
-  return [
-    { label: "inbounds", value: arrayCount(root.inbounds) },
-    { label: "outbounds", value: arrayCount(root.outbounds) },
-    { label: "route.rules", value: arrayCount(route.rules) },
-    { label: "dns.servers", value: arrayCount(dns.servers) }
-  ];
-}
-
-function arrayCount(value: unknown): string {
-  return Array.isArray(value) ? String(value.length) : "-";
-}
-
-function parseConfigRoot(text: string): { root: Record<string, unknown> | null; error: string } {
-  try {
-    const parsed = JSON.parse(text);
-    return isRecord(parsed)
-      ? { root: parsed, error: "" }
-      : { root: null, error: "配置根节点不是 JSON object。" };
-  } catch (error) {
-    return { root: null, error: error instanceof Error ? error.message : "JSON 解析失败。" };
-  }
-}
-
-function arrayRecords(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function stringValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean)));
-}
-
-function finalAuditValue(tag: string, outboundTags: string[]): string {
-  if (!tag) return "未配置";
-  return outboundTags.includes(tag) ? `${tag} 已存在` : `${tag} 未匹配出站`;
-}
-
-function finalAuditTone(tag: string, outboundTags: string[], required: boolean): ConfigAuditItem["tone"] {
-  if (!tag) return required ? "warning" : "neutral";
-  return outboundTags.includes(tag) ? "success" : "warning";
-}
-
-function findPreferredProxyTag(outbounds: Array<Record<string, unknown>>): string {
-  const candidates = ["proxy", "auto", "urltest", "select"];
-  for (const candidate of candidates) {
-    if (outbounds.some((item) => stringValue(item.tag) === candidate)) return candidate;
-  }
-  const selector = outbounds.find((item) => ["selector", "urltest"].includes(stringValue(item.type)));
-  return selector ? stringValue(selector.tag) : "";
-}
-
-function auditItem(label: string, value: string, tone: ConfigAuditItem["tone"]): ConfigAuditItem {
-  return { label, value, tone };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function issueUrl(): string {
