@@ -97,10 +97,18 @@ async function confirmAction(): Promise<void> {
 }
 
 async function copyReport(): Promise<void> {
-  const report = visibleGroups.value.flatMap((group) => [
-    `${sanitizeProxyName(group.name)} type=${group.type} now=${sanitizeProxyName(group.now || "none")} count=${group.proxies.length}`,
-    ...group.proxies.slice(0, 10).map((node) => `  - ${sanitizeProxyName(node)}`)
-  ]).join("\n");
+  const report = visibleGroups.value.flatMap((group) => {
+    const stats = groupDelayStats(group);
+    const delays = groupDelays.value[group.name] || [];
+    return [
+      `${sanitizeProxyName(group.name)} type=${group.type} now=${sanitizeProxyName(group.now || "none")} count=${group.proxies.length}`,
+      `delay_tested=${stats.tested} usable=${stats.usable} failed=${stats.failed} fastest=${stats.fastest ? `${sanitizeNodeText(stats.fastest.node)} ${sanitizeNodeText(stats.fastest.summary)}` : "none"}`,
+      ...group.proxies.slice(0, 10).map((node) => {
+        const delay = delays.find((entry) => entry.node === node);
+        return `  - ${sanitizeProxyName(node)}${delay ? ` delay=${sanitizeNodeText(delay.summary)} quality=${delay.quality}` : ""}`;
+      })
+    ];
+  }).join("\n");
   copied.value = await copyText(report);
   state.output = copied.value ? "代理组报告已复制。" : "剪贴板不可用，代理组报告未复制。";
 }
