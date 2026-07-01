@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2, DownloadCloud, ExternalLink, Github, RefreshCw } from "lucide-vue-next";
+import { CheckCircle2, Copy, DownloadCloud, ExternalLink, Github, RefreshCw } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
@@ -9,6 +9,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
@@ -16,6 +17,7 @@ const { state, runCli, startBackgroundCli, openExternal, shellQuote, REPO } = us
 const { isRunning, withAction } = useActionLock();
 const status = ref("");
 const verifyOutput = ref("");
+const reportCopied = ref(false);
 const pendingWebuiAction = ref<PendingToolAction | null>(null);
 const panel = ref({
   name: "zashboard",
@@ -38,6 +40,31 @@ async function verifyWebui(): Promise<void> {
     verifyOutput.value = await runCli("webui verify", "校验 WebUI 面板");
     state.output = verifyOutput.value;
   });
+}
+
+async function copyWebuiReport(): Promise<void> {
+  const report = [
+    "MagicNet WebUI panel report",
+    `created_at=${new Date().toISOString()}`,
+    `verify_failed=${verifyFailed.value ? 1 : 0}`,
+    "",
+    "[checks]",
+    ...verifyChecks.value.map((check) => `${check.name}=${check.status}${check.path ? ` path=${check.path}` : ""}`),
+    "",
+    "[status]",
+    status.value || "(not loaded)",
+    "",
+    "[verify]",
+    verifyOutput.value || "(not verified)"
+  ].join("\n").trim();
+  reportCopied.value = await copyText(sanitizeWebuiReport(report));
+  state.output = reportCopied.value ? "WebUI 面板报告已复制。" : "剪贴板不可用，WebUI 面板报告未复制。";
+}
+
+function sanitizeWebuiReport(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, "[filtered-url]")
+    .replace(/\b(authorization|bearer|password|passwd|token|secret|api[_-]?key|key)\b\s*[:=]\s*\S+/gi, "$1=[filtered]");
 }
 
 function cancelWebuiAction(): void {
@@ -110,6 +137,7 @@ function parseVerifyChecks(text: string): Array<{ name: string; status: "ok" | "
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('webui-status')" @click="refreshWebui"><RefreshCw :size="17" />读取</Button>
         <Button variant="outline" :loading="isRunning('webui-verify')" @click="verifyWebui"><CheckCircle2 :size="17" />校验面板</Button>
+        <Button variant="outline" :disabled="!status && !verifyOutput" :loading="isRunning('webui-copy-report')" @click="withAction('webui-copy-report', copyWebuiReport)"><Copy :size="17" />{{ reportCopied ? '已复制报告' : '复制报告' }}</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), 'WebUI 适配 Issue')"><Github :size="17" />申请适配</Button>
       </div>
     </PageHeader>
