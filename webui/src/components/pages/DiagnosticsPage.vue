@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Bug, Copy, ExternalLink, FileText, RadioTower, RefreshCw, Server, TimerReset } from "lucide-vue-next";
+import { Bug, Copy, ExternalLink, FileText, RadioTower, RefreshCw, Server, ShieldCheck, TimerReset } from "lucide-vue-next";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -11,6 +11,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, probeFailed } from "@/utils";
 import { formatApiEndpointProbeReport, summarizeApiEndpointProbes, summarizeApiProbeOutput, validateApiProbeOutput, type ApiEndpointProbe, type ApiProbeKey } from "./apiEndpointProbe";
 import ConnectionsPanel from "./ConnectionsPanel.vue";
+import { formatHealthCheckReport, summarizeHealthChecks } from "./healthCheckSummary";
 import NodeDelayPanel from "./NodeDelayPanel.vue";
 import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
 import { hideSupportIssueLines, triageSupportBundle } from "./supportBundleTriage";
@@ -22,9 +23,11 @@ const supportBundle = ref("");
 const supportCopied = ref(false);
 const supportIssuesCopied = ref(false);
 const supportTriageCopied = ref(false);
+const healthSummaryCopied = ref(false);
 const apiProbes = ref<ApiEndpointProbe[]>([]);
 const apiProbeCopied = ref(false);
 const apiProbeSummary = computed(() => summarizeApiEndpointProbes(apiProbes.value));
+const healthSummary = computed(() => summarizeHealthChecks(state.health));
 const supportSummary = computed(() => {
   const text = supportBundle.value;
   return {
@@ -94,6 +97,7 @@ async function copySupportTriage(): Promise<void> {
 async function refreshDiagnostics(): Promise<void> {
   await refreshMcp(true);
   await refreshHealth();
+  healthSummaryCopied.value = false;
 }
 
 async function runApiProbe(): Promise<void> {
@@ -126,6 +130,12 @@ async function copyApiProbeReport(): Promise<void> {
   if (!apiProbes.value.length) return;
   apiProbeCopied.value = await copyText(formatApiEndpointProbeReport(apiProbes.value, apiProbeSummary.value));
   state.output = apiProbeCopied.value ? "API 端点预检报告已复制。" : "剪贴板不可用，API 端点预检报告未复制。";
+}
+
+async function copyHealthSummary(): Promise<void> {
+  if (!state.health.length) return;
+  healthSummaryCopied.value = await copyText(formatHealthCheckReport(state.health, healthSummary.value));
+  state.output = healthSummaryCopied.value ? "健康检查聚合报告已复制。" : "剪贴板不可用，健康检查报告未复制。";
 }
 
 async function askAi(url: string, name: string): Promise<void> {
@@ -257,6 +267,38 @@ async function askAi(url: string, name: string): Promise<void> {
     <ConnectionsPanel />
     <ProxyGroupsPanel />
     <NodeDelayPanel />
+
+    <Card class="grid gap-3">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><ShieldCheck :size="17" /> 健康检查总览</h3>
+          <p class="mt-1 text-sm leading-6 text-zinc-400">
+            基于真实 <code>health</code> 输出聚合状态，不复制 detail 原文。
+          </p>
+        </div>
+        <Button size="sm" variant="outline" :disabled="!state.health.length" @click="copyHealthSummary">
+          <Copy :size="15" />{{ healthSummaryCopied ? "已复制" : "复制总览" }}
+        </Button>
+      </div>
+      <div class="rounded-md border p-3 text-sm leading-6" :class="{
+        'border-zinc-800 bg-zinc-950 text-zinc-300': healthSummary.level === 'idle',
+        'border-emerald-400/25 bg-emerald-400/10 text-emerald-100': healthSummary.level === 'ok',
+        'border-amber-400/30 bg-amber-500/10 text-amber-100': healthSummary.level === 'warning',
+        'border-red-400/30 bg-red-500/10 text-red-100': healthSummary.level === 'danger',
+      }">
+        <p class="font-semibold">{{ healthSummary.label }}</p>
+        <p class="mt-1 text-xs opacity-80">{{ healthSummary.detail }}</p>
+      </div>
+      <div class="grid gap-2 sm:grid-cols-4">
+        <div v-for="status in ['fail', 'warn', 'info', 'ok']" :key="status" class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+          <p class="text-xs uppercase text-zinc-500">{{ status }}</p>
+          <p class="mt-1 text-lg font-semibold text-zinc-100">{{ healthSummary.counts[status] }}</p>
+        </div>
+      </div>
+      <div v-if="healthSummary.attention.length" class="flex flex-wrap gap-2">
+        <Badge v-for="item in healthSummary.attention" :key="item.key" :tone="item.status === 'fail' ? 'danger' : 'warning'">{{ item.status }} · {{ item.key }}</Badge>
+      </div>
+    </Card>
 
     <div class="grid gap-3 sm:grid-cols-2">
       <Card v-for="item in state.health" :key="item.key">
