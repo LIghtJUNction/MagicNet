@@ -12,6 +12,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
+import { buildWebuiPanelInsight, webuiInsightTone, type WebuiVerifyCheck } from "./webuiPanelInsights";
 
 const { state, runCli, startBackgroundCli, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -42,6 +43,7 @@ const panelPresets = [
 
 const verifyChecks = computed(() => parseVerifyChecks(verifyOutput.value));
 const verifyFailed = computed(() => verifyOutput.value.toLowerCase().includes("failed") || verifyChecks.value.some((item) => item.status !== "ok"));
+const panelInsight = computed(() => buildWebuiPanelInsight(verifyChecks.value, verifyOutput.value));
 const installCommand = computed(() => {
   const url = panel.value.url.trim();
   const name = panel.value.name.trim() || "custom";
@@ -68,6 +70,9 @@ async function copyWebuiReport(): Promise<void> {
     "MagicNet WebUI panel report",
     `created_at=${new Date().toISOString()}`,
     `verify_failed=${verifyFailed.value ? 1 : 0}`,
+    `insight_status=${panelInsight.value.status}`,
+    `insight_title=${panelInsight.value.title}`,
+    `missing=${panelInsight.value.missing.join(",") || "none"}`,
     "",
     "[checks]",
     ...verifyChecks.value.map((check) => `${check.name}=${check.status}${check.path ? ` path=${check.path}` : ""}`),
@@ -94,7 +99,10 @@ async function copyInstallCommand(): Promise<void> {
 function sanitizeWebuiReport(text: string): string {
   return text
     .replace(/https?:\/\/\S+/gi, "[filtered-url]")
-    .replace(/\b(authorization|bearer|password|passwd|token|secret|api[_-]?key|key)\b\s*[:=]\s*\S+/gi, "$1=[filtered]");
+    .replace(/(["']?(?:authorization|proxy-authorization|password|passwd|token|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|key)["']?\s*[:=]\s*)["']?[^"',\s;}\]]+["']?/gi, "$1[filtered]")
+    .replace(/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, "bearer [filtered]")
+    .replace(/\b(?:gho|ghp|github_pat)_[A-Za-z0-9_]+/g, "[filtered-token]")
+    .replace(/\bsk-[A-Za-z0-9_-]+/g, "[filtered-token]");
 }
 
 function cancelWebuiAction(): void {
@@ -162,7 +170,7 @@ function issueUrl(): string {
   return `${REPO}/issues/new?${new URLSearchParams({ title: `申请适配 WebUI 面板：${panel.value.name || "custom"}`, body }).toString()}`;
 }
 
-function parseVerifyChecks(text: string): Array<{ name: string; status: "ok" | "missing" | "unknown"; path: string }> {
+function parseVerifyChecks(text: string): WebuiVerifyCheck[] {
   return text.split(/\r?\n/).map((line) => {
     const match = line.match(/^([^=\s]+)=(ok|missing)(?:\s+path=(.*))?$/);
     if (!match) return null;
@@ -171,7 +179,7 @@ function parseVerifyChecks(text: string): Array<{ name: string; status: "ok" | "
       status: match[2] === "ok" ? "ok" : "missing",
       path: match[3] || ""
     };
-  }).filter((item): item is { name: string; status: "ok" | "missing"; path: string } => Boolean(item));
+  }).filter((item): item is WebuiVerifyCheck => Boolean(item));
 }
 
 function buildPanelWarnings(url: string, name: string): Array<{ text: string; tone: "success" | "warning" | "danger" }> {
@@ -242,6 +250,10 @@ function hasZashboardDistFallback(url: string): boolean {
           <Badge v-if="verifyOutput" :tone="verifyFailed ? 'danger' : 'success'">{{ verifyFailed ? "校验失败" : "校验通过" }}</Badge>
         </div>
         <p class="text-sm leading-6 text-zinc-400">sing-box 默认使用本地 zashboard。面板下载会在后台执行，避免大文件下载被前台超时中断。</p>
+        <div class="rounded-md border p-3" :class="webuiInsightTone(panelInsight.status)">
+          <p class="text-sm font-semibold">{{ panelInsight.title }}</p>
+          <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ panelInsight.detail }}</p>
+        </div>
         <Button variant="outline" @click="openExternal(REPO, 'MagicNet GitHub')"><ExternalLink :size="17" />打开项目仓库</Button>
         <div v-if="verifyChecks.length" class="grid gap-2">
           <div v-for="check in verifyChecks" :key="check.name" class="grid gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-3">
