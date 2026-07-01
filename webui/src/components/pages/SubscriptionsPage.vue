@@ -8,6 +8,7 @@ import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { bytesToBase64, copyText, execFailed, readClipboardText } from "@/utils";
+import { buildSubscriptionPreview, formatSubscriptionSummary, summarizeSubscriptionInput, type SubscriptionPreview } from "./subscriptionPreview";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
@@ -15,36 +16,16 @@ const { state, runCli, startBackgroundCli, refreshSubs, shellQuote, uniqueNonEmp
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
 const pendingSubscriptionAction = ref<PendingToolAction | null>(null);
-type SubscriptionPreview = {
-  key: string;
-  index: number;
-  label: string;
-  status: "ok" | "duplicate" | "invalid" | "over-limit";
-  notes: string[];
-};
-const inputSummary = computed(() => {
-  const raw = singBoxText.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const valid = raw.filter((line) => /^https?:\/\/\S+$/i.test(line));
-  return {
-    raw: raw.length,
-    valid: valid.length,
-    duplicate: Math.max(0, raw.length - uniqueNonEmpty(raw).length),
-    overLimit: Math.max(0, uniqueNonEmpty(raw).length - 5)
-  };
-});
-const subscriptionPreview = computed<SubscriptionPreview[]>(() => {
-  const seen = new Set<string>();
-  return singBoxText.value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => previewSubscriptionLine(line, index, seen))
-    .slice(0, 8);
-});
+const summaryCopied = ref(false);
+const inputSummary = computed(() => summarizeSubscriptionInput(singBoxText.value));
+const subscriptionPreview = computed<SubscriptionPreview[]>(() => buildSubscriptionPreview(singBoxText.value).slice(0, 8));
 
 watch(() => state.subscriptions.singBoxUrls, (urls) => {
   singBoxText.value = urls.join("\n");
 }, { immediate: true });
+watch(singBoxText, () => {
+  summaryCopied.value = false;
+});
 
 function requestSubscriptionAction(action: PendingToolAction): void {
   pendingSubscriptionAction.value = action;
@@ -77,36 +58,6 @@ function normalizedSingBoxUrls(): string[] | null {
   }
   if (raw.length !== lines.length) state.output = `将自动去重/裁剪：${raw.length} -> ${lines.length}`;
   return lines;
-}
-
-function previewSubscriptionLine(line: string, index: number, seen: Set<string>): SubscriptionPreview {
-  try {
-    const url = new URL(line);
-    const normalized = url.toString();
-    const duplicate = seen.has(normalized);
-    seen.add(normalized);
-    const protocolOk = url.protocol === "http:" || url.protocol === "https:";
-    const notes = [
-      url.search || url.hash ? "含参数，界面已隐藏" : "无 query/hash",
-      url.pathname.length > 1 ? "含路径，界面已隐藏" : "无路径",
-      url.protocol === "http:" ? "非 HTTPS" : ""
-    ].filter(Boolean);
-    return {
-      key: `${index}-${url.hostname}`,
-      index: index + 1,
-      label: protocolOk ? `${url.protocol}//${url.hostname}` : "协议不支持",
-      status: !protocolOk ? "invalid" : index >= 5 ? "over-limit" : duplicate ? "duplicate" : "ok",
-      notes
-    };
-  } catch {
-    return {
-      key: `${index}-invalid`,
-      index: index + 1,
-      label: "无法解析 URL",
-      status: "invalid",
-      notes: ["必须是一行一个 http(s) URL"]
-    };
-  }
 }
 
 function previewTone(status: SubscriptionPreview["status"]): string {
@@ -157,6 +108,11 @@ async function pasteSingBox(): Promise<void> {
     singBoxText.value = text;
     state.output = `已从剪贴板读取 ${text.split(/\r?\n/).filter((line) => line.trim()).length} 行订阅文本。`;
   });
+}
+
+async function copySanitizedSummary(): Promise<void> {
+  summaryCopied.value = await copyText(formatSubscriptionSummary(singBoxText.value, subscriptionPreview.value));
+  state.output = summaryCopied.value ? "订阅脱敏摘要已复制。" : "剪贴板不可用，订阅脱敏摘要未复制。";
 }
 
 async function runUpdateAll(): Promise<void> {
@@ -245,6 +201,7 @@ async function copy(text: string, label: string): Promise<void> {
           <Button :loading="isRunning('save-singbox')" @click="saveSingBox"><Save :size="16" />保存</Button>
           <Button variant="secondary" :loading="isRunning('paste-singbox')" @click="pasteSingBox"><ClipboardPaste :size="16" />读剪切板</Button>
           <Button variant="outline" @click="normalizeSingBoxInput">规范化</Button>
+          <Button variant="outline" :disabled="!subscriptionPreview.length" @click="copySanitizedSummary"><ShieldCheck :size="16" />{{ summaryCopied ? '已复制摘要' : '复制摘要' }}</Button>
           <Button variant="outline" @click="copy(singBoxText, 'sing-box 订阅')"><Copy :size="16" />复制</Button>
         </div>
       </Card>

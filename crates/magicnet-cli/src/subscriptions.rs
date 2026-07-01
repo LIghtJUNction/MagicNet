@@ -6,6 +6,8 @@ use crate::{
     write_text_file, App,
 };
 
+const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
+
 pub fn setup_subscription(app: &App, url: &str) -> Result<(), String> {
     if url.is_empty() {
         return Err("Usage: cli setup <subscription-url>".to_string());
@@ -56,6 +58,11 @@ pub fn sub_set_file(app: &App, args: &[String]) -> Result<(), String> {
         validate_subscription_url(line)?;
         if seen.insert(line.to_string()) {
             lines.push(line.to_string());
+            if lines.len() > MAX_SINGBOX_SUBSCRIPTION_URLS {
+                return Err(format!(
+                    "sing-box subscription URL list supports at most {MAX_SINGBOX_SUBSCRIPTION_URLS} entries"
+                ));
+            }
         }
     }
     clear_node_cache(app);
@@ -135,7 +142,7 @@ mod tests {
 
     #[test]
     fn subscription_url_validation_accepts_only_http_urls_without_whitespace() {
-        validate_subscription_url("https://example.com/sub?token=abc").unwrap();
+        validate_subscription_url("https://example.com/sub?profile=abc").unwrap();
         validate_subscription_url("http://127.0.0.1:8080/sub").unwrap();
         assert!(validate_subscription_url("ftp://example.com/sub").is_err());
         assert!(validate_subscription_url("https://example.com/a b").is_err());
@@ -181,6 +188,27 @@ mod tests {
         .unwrap_err();
 
         assert!(err.contains("must start with http:// or https://"), "{err}");
+    }
+
+    #[test]
+    fn set_file_rejects_more_than_five_singbox_subscription_lines() {
+        let app = temp_app();
+        let payload = crate::encode_base64(
+            b"https://example.com/1\nhttps://example.com/2\nhttps://example.com/3\nhttps://example.com/4\nhttps://example.com/5\nhttps://example.com/6\n",
+        );
+
+        let err = sub_set_file(
+            &app,
+            &[
+                "sub".to_string(),
+                "set-file".to_string(),
+                "sing-box".to_string(),
+                payload,
+            ],
+        )
+        .unwrap_err();
+
+        assert!(err.contains("at most 5 entries"), "{err}");
     }
 
     #[test]
