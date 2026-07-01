@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2, Copy, DownloadCloud, ExternalLink, Github, RefreshCw } from "lucide-vue-next";
+import { CheckCircle2, Copy, DownloadCloud, ExternalLink, Github, RefreshCw, Terminal } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
@@ -18,15 +18,36 @@ const { isRunning, withAction } = useActionLock();
 const status = ref("");
 const verifyOutput = ref("");
 const reportCopied = ref(false);
+const commandCopied = ref(false);
 const pendingWebuiAction = ref<PendingToolAction | null>(null);
 const panel = ref({
   name: "zashboard",
   url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip",
   metadata: ""
 });
+const panelPresets = [
+  {
+    label: "zashboard no-fonts",
+    name: "zashboard",
+    url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip",
+    note: "MagicNet 默认本地面板，包体更小，适合设备侧后台下载。"
+  },
+  {
+    label: "zashboard full",
+    name: "zashboard",
+    url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip",
+    note: "完整字体包体积更大；CLI 下载失败时会重试 no-fonts 资源。"
+  }
+];
 
 const verifyChecks = computed(() => parseVerifyChecks(verifyOutput.value));
 const verifyFailed = computed(() => verifyOutput.value.toLowerCase().includes("failed") || verifyChecks.value.some((item) => item.status !== "ok"));
+const installCommand = computed(() => {
+  const url = panel.value.url.trim();
+  const name = panel.value.name.trim() || "custom";
+  return url ? `webui install-local ${shellQuote(url)} ${shellQuote(name)}` : "";
+});
+const panelWarnings = computed(() => buildPanelWarnings(panel.value.url, panel.value.name));
 
 async function refreshWebui(): Promise<void> {
   await withAction("webui-status", async () => {
@@ -61,6 +82,15 @@ async function copyWebuiReport(): Promise<void> {
   state.output = reportCopied.value ? "WebUI 面板报告已复制。" : "剪贴板不可用，WebUI 面板报告未复制。";
 }
 
+async function copyInstallCommand(): Promise<void> {
+  if (!installCommand.value) {
+    state.output = "请先填写本地面板下载 URL。";
+    return;
+  }
+  commandCopied.value = await copyText(installCommand.value);
+  state.output = commandCopied.value ? "WebUI 安装命令已复制。" : "剪贴板不可用，WebUI 安装命令未复制。";
+}
+
 function sanitizeWebuiReport(text: string): string {
   return text
     .replace(/https?:\/\/\S+/gi, "[filtered-url]")
@@ -81,9 +111,9 @@ async function confirmWebuiAction(): Promise<void> {
   }
 }
 
-async function runInstallLocal(url: string, name: string): Promise<void> {
+async function runInstallLocal(command: string): Promise<void> {
   await withAction("webui-install", async () => {
-    await startBackgroundCli(`webui install-local ${shellQuote(url)} ${shellQuote(name)}`, "安装本地 WebUI 面板");
+    await startBackgroundCli(command, "安装本地 WebUI 面板");
   });
 }
 
@@ -94,13 +124,27 @@ function installLocal(): void {
     state.output = "本地面板下载 URL 必须是 http(s) 链接。";
     return;
   }
+  if (panelWarnings.value.some((item) => item.tone === "danger")) {
+    state.output = "请先修正本地面板配置中的错误项。";
+    return;
+  }
+  const command = installCommand.value;
   pendingWebuiAction.value = {
     key: "webui-install",
     title: "后台下载并安装 WebUI 面板",
     detail: `会下载 ${name} 面板压缩包并写入模块本地 WebUI 资源。`,
-    command: `webui install-local ${url} ${name}`,
-    run: () => runInstallLocal(url, name),
+    command,
+    run: () => runInstallLocal(command),
   };
+}
+
+function applyPanelPreset(item: { name: string; url: string; note: string }): void {
+  panel.value = {
+    name: item.name,
+    url: item.url,
+    metadata: item.note
+  };
+  commandCopied.value = false;
 }
 
 function issueUrl(): string {
@@ -129,6 +173,24 @@ function parseVerifyChecks(text: string): Array<{ name: string; status: "ok" | "
     };
   }).filter((item): item is { name: string; status: "ok" | "missing"; path: string } => Boolean(item));
 }
+
+function buildPanelWarnings(url: string, name: string): Array<{ text: string; tone: "success" | "warning" | "danger" }> {
+  const trimmedUrl = url.trim();
+  const trimmedName = name.trim();
+  const warnings: Array<{ text: string; tone: "success" | "warning" | "danger" }> = [];
+  if (!trimmedName) warnings.push({ text: "未填写面板名，CLI 会使用 custom。", tone: "warning" });
+  if (!trimmedUrl) return [{ text: "未填写下载 URL，无法安装。", tone: "danger" }, ...warnings];
+  if (!/^https?:\/\/\S+$/i.test(trimmedUrl)) warnings.push({ text: "URL 必须是 http(s) 链接且不能包含空白字符。", tone: "danger" });
+  if (!/\.(zip|tar\.gz|tgz)(\?|#|$)/i.test(trimmedUrl)) warnings.push({ text: "CLI 期望下载 WebUI 压缩包，请确认链接指向 zip/tar.gz/tgz。", tone: "warning" });
+  if (/(token|secret|signature|expires|x-amz-|x-oss-)/i.test(trimmedUrl)) warnings.push({ text: "链接可能包含签名或凭据，复制命令会包含完整 URL。", tone: "warning" });
+  if (hasZashboardDistFallback(trimmedUrl)) warnings.push({ text: "zashboard dist.zip 失败时 CLI 会自动重试 dist-no-fonts.zip。", tone: "success" });
+  if (!warnings.length) warnings.push({ text: "安装命令可执行，下载和解压结果以后台任务日志为准。", tone: "success" });
+  return warnings;
+}
+
+function hasZashboardDistFallback(url: string): boolean {
+  return url.startsWith("https://github.com/Zephyruso/zashboard/releases/") && url.endsWith("/dist.zip");
+}
 </script>
 
 <template>
@@ -153,10 +215,25 @@ function parseVerifyChecks(text: string): Array<{ name: string; status: "ok" | "
     <div class="grid gap-3 md:grid-cols-2">
       <Card class="grid gap-3">
         <h3 class="text-base font-semibold">本地面板</h3>
+        <div class="flex flex-wrap gap-2">
+          <Button v-for="item in panelPresets" :key="item.url" variant="outline" @click="applyPanelPreset(item)">
+            {{ item.label }}
+          </Button>
+        </div>
         <Input v-model="panel.name" placeholder="面板名字，例如 zashboard" spellcheck="false" />
         <Input v-model="panel.url" placeholder="https://example.com/panel.zip" spellcheck="false" />
         <Textarea v-model="panel.metadata" class="min-h-28" placeholder="面板元数据、说明、仓库链接、适配注意事项" spellcheck="false" />
-        <Button :loading="isRunning('webui-install')" @click="installLocal"><DownloadCloud :size="17" />后台下载并安装</Button>
+        <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-sm font-medium text-zinc-100">安装前检查</span>
+            <Button variant="outline" :disabled="!installCommand" @click="copyInstallCommand"><Terminal :size="16" />{{ commandCopied ? '已复制命令' : '复制命令' }}</Button>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <Badge v-for="item in panelWarnings" :key="item.text" :tone="item.tone">{{ item.text }}</Badge>
+          </div>
+          <code class="break-all rounded-md bg-black px-3 py-2 text-xs leading-6 text-zinc-200">{{ installCommand || "webui install-local <download-url> [name]" }}</code>
+        </div>
+        <Button :disabled="panelWarnings.some((item) => item.tone === 'danger')" :loading="isRunning('webui-install')" @click="installLocal"><DownloadCloud :size="17" />后台下载并安装</Button>
       </Card>
 
       <Card class="grid gap-3">
