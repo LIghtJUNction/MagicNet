@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { DownloadCloud, Github, Plus, RefreshCw, X } from "lucide-vue-next";
+import { Copy, DownloadCloud, Github, Plus, RefreshCw, X } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -7,10 +7,13 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { copyText } from "@/utils";
 
 const { state, runCli, startBackgroundCli, refreshBlock, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pendingBlockAction = ref<PendingBlockAction | null>(null);
+const snapshotCopied = ref(false);
+const COMMUNITY_SNAPSHOT_LIMIT = 40;
 
 type PendingBlockAction = {
   key: string;
@@ -151,6 +154,30 @@ function issueUrl(): string {
   return `${REPO}/issues/new?${new URLSearchParams({ title: "MagicNet 黑名单变更建议", body }).toString()}`;
 }
 
+async function copyBlocklistSnapshot(): Promise<void> {
+  const report = [
+    "MagicNet blocklist snapshot",
+    `enabled=${state.blocklist.enabled ? 1 : 0}`,
+    `community=${state.blocklist.community ? 1 : 0}`,
+    `manual_count=${state.blocklist.manual.length}`,
+    `allow_count=${state.blocklist.allowRules.length}`,
+    `community_cache_raw_count=${state.blocklist.communityRules.length}`,
+    `community_cache_effective_count=${communityEntries.value.length}`,
+    `community_sample_count=${Math.min(COMMUNITY_SNAPSHOT_LIMIT, communityEntries.value.length)}`,
+    "",
+    "[manual]",
+    ...state.blocklist.manual,
+    "",
+    "[allow]",
+    ...state.blocklist.allowRules,
+    "",
+    "[community_sample]",
+    ...communityEntries.value.slice(0, COMMUNITY_SNAPSHOT_LIMIT)
+  ].join("\n").trim();
+  snapshotCopied.value = await copyText(report);
+  state.output = snapshotCopied.value ? "黑名单快照已复制。" : "剪贴板不可用，黑名单快照未复制。";
+}
+
 async function updateCommunityBlocklist(): Promise<void> {
   await startBackgroundCli("block update", "更新社区库");
 }
@@ -212,6 +239,7 @@ async function confirmBlockAction(): Promise<void> {
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('refresh-block')" @click="withAction('refresh-block', () => refreshBlock())"><RefreshCw :size="17" />读取</Button>
         <Button :loading="isRunning('update-block')" @click="requestUpdateCommunityBlocklist"><DownloadCloud :size="17" />更新社区库</Button>
+        <Button variant="outline" :loading="isRunning('copy-blocklist-snapshot')" @click="withAction('copy-blocklist-snapshot', copyBlocklistSnapshot)"><Copy :size="17" />{{ snapshotCopied ? '已复制快照' : '复制快照' }}</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), '黑名单变更 Issue')"><Github :size="17" />创建 Issue</Button>
       </div>
     </PageHeader>
