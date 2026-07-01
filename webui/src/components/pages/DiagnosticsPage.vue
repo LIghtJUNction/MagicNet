@@ -13,6 +13,7 @@ import { formatApiEndpointProbeReport, summarizeApiEndpointProbes, summarizeApiP
 import ConnectionsPanel from "./ConnectionsPanel.vue";
 import NodeDelayPanel from "./NodeDelayPanel.vue";
 import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
+import { triageSupportBundle } from "./supportBundleTriage";
 import TrafficStatsPanel from "./TrafficStatsPanel.vue";
 
 const { state, refreshHealth, refreshMcp, refreshPing, runCli, createIssue, openExternal } = useMagicNet();
@@ -20,6 +21,7 @@ const { isRunning, withAction } = useActionLock();
 const supportBundle = ref("");
 const supportCopied = ref(false);
 const supportIssuesCopied = ref(false);
+const supportTriageCopied = ref(false);
 const apiProbes = ref<ApiEndpointProbe[]>([]);
 const apiProbeCopied = ref(false);
 const apiProbeSummary = computed(() => summarizeApiEndpointProbes(apiProbes.value));
@@ -35,6 +37,7 @@ const supportIssueLines = computed(() => supportBundle.value
   .map((line) => line.trim())
   .filter((line) => /\b(warn|warning|fail|failed|error|fatal|panic)\b/i.test(line))
   .slice(0, 40));
+const supportTriage = computed(() => triageSupportBundle(supportBundle.value));
 
 const assistants = [
   ["ChatGPT", "https://chatgpt.com/"],
@@ -50,6 +53,7 @@ async function copyContextUnlocked(): Promise<void> {
   supportBundle.value = sanitized;
   supportCopied.value = false;
   supportIssuesCopied.value = false;
+  supportTriageCopied.value = false;
   state.output = await copyText(sanitized) ? "脱敏诊断上下文已复制。" : "剪贴板不可用，脱敏诊断上下文已生成但未复制。";
 }
 
@@ -63,6 +67,7 @@ async function refreshSupportBundle(): Promise<void> {
     supportBundle.value = sanitizeDiagnosticText(text);
     supportCopied.value = false;
     supportIssuesCopied.value = false;
+    supportTriageCopied.value = false;
     state.output = "脱敏支持包已生成，可在诊断页预览。";
   });
 }
@@ -78,6 +83,12 @@ async function copySupportIssues(): Promise<void> {
   if (!text) return;
   supportIssuesCopied.value = await copyText(text);
   state.output = supportIssuesCopied.value ? "支持包问题摘要已复制。" : "剪贴板不可用，问题摘要未复制。";
+}
+
+async function copySupportTriage(): Promise<void> {
+  if (!supportTriage.value.totalIssues) return;
+  supportTriageCopied.value = await copyText(supportTriage.value.report);
+  state.output = supportTriageCopied.value ? "支持包问题分布已复制。" : "剪贴板不可用，问题分布未复制。";
 }
 
 async function refreshDiagnostics(): Promise<void> {
@@ -217,12 +228,21 @@ async function askAi(url: string, name: string): Promise<void> {
           <Button size="sm" variant="outline" :disabled="!supportIssueLines.length" @click="copySupportIssues">
             <Copy :size="15" />{{ supportIssuesCopied ? "已复制摘要" : "复制问题" }}
           </Button>
+          <Button size="sm" variant="outline" :disabled="!supportTriage.totalIssues" @click="copySupportTriage">
+            <Copy :size="15" />{{ supportTriageCopied ? "已复制分布" : "复制分布" }}
+          </Button>
         </div>
       </div>
       <div v-if="supportBundle" class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-3">
         <span>{{ supportSummary.lines }} 行</span>
         <span>{{ supportSummary.chars }} 字符</span>
         <span>{{ supportIssueLines.length }} 条问题线索</span>
+      </div>
+      <div v-if="supportTriage.totalIssues" class="grid gap-2 sm:grid-cols-3">
+        <div v-for="bucket in supportTriage.buckets.slice(0, 6)" :key="`${bucket.section}-${bucket.severity}`" class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+          <p class="truncate text-xs text-zinc-500">{{ bucket.section }}</p>
+          <p class="mt-1 text-base font-semibold text-zinc-100">{{ bucket.count }} · {{ bucket.severity }}</p>
+        </div>
       </div>
       <div v-if="supportIssueLines.length" class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
         <p class="text-xs font-semibold uppercase tracking-wide text-amber-200">问题摘要</p>
