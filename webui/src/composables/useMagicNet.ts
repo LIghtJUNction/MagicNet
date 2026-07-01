@@ -135,18 +135,18 @@ async function runCli(args: string, label = args, quiet = false, previewOverride
   return runShell(`${CLI} ${args}`, label, quiet, previewOverride);
 }
 
-async function startBackgroundCli(args: string, label = args): Promise<string> {
+async function startBackgroundCli(args: string, label = args, previewOverride = "", displayArgs = args): Promise<string> {
   const log = backgroundLogPath(label);
   stopBackgroundLogFollow();
   const startedAt = Date.now();
-  state.backgroundTask = { label, args, log, startedAt, updatedAt: startedAt, finishedAt: 0, status: "running" };
+  state.backgroundTask = { label, args: displayArgs, log, startedAt, updatedAt: startedAt, finishedAt: 0, status: "running" };
   state.phase = "accepted";
   state.notice = `已投递后台任务：${label}`;
   state.output = `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
   await nextTick();
   await nextFrame();
   const command = backgroundLaunchCommand(args, label, log);
-  const result = await runShell(command, `投递 ${label}`, true);
+  const result = await runShell(command, `投递 ${label}`, true, previewOverride);
   if (!execFailed(result)) {
     followBackgroundLogs(log, label, args);
   } else {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CheckCircle2, Copy, DownloadCloud, ExternalLink, Github, RefreshCw, Terminal } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -12,6 +12,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
+import { buildWebuiInstallPlan, formatWebuiInstallPlanReport, webuiInstallPlanTone } from "./webuiInstallPlan";
 import { buildWebuiPanelInsight, webuiInsightTone, type WebuiVerifyCheck } from "./webuiPanelInsights";
 
 const { state, runCli, startBackgroundCli, openExternal, shellQuote, REPO } = useMagicNet();
@@ -20,6 +21,7 @@ const status = ref("");
 const verifyOutput = ref("");
 const reportCopied = ref(false);
 const commandCopied = ref(false);
+const planCopied = ref(false);
 const pendingWebuiAction = ref<PendingToolAction | null>(null);
 const panel = ref({
   name: "zashboard",
@@ -50,6 +52,7 @@ const installCommand = computed(() => {
   return url ? `webui install-local ${shellQuote(url)} ${shellQuote(name)}` : "";
 });
 const panelWarnings = computed(() => buildPanelWarnings(panel.value.url, panel.value.name));
+const installPlan = computed(() => buildWebuiInstallPlan(panel.value.url, panel.value.name));
 
 async function refreshWebui(): Promise<void> {
   await withAction("webui-status", async () => {
@@ -96,6 +99,11 @@ async function copyInstallCommand(): Promise<void> {
   state.output = commandCopied.value ? "WebUI 安装命令已复制。" : "剪贴板不可用，WebUI 安装命令未复制。";
 }
 
+async function copyInstallPlan(): Promise<void> {
+  planCopied.value = await copyText(formatWebuiInstallPlanReport(installPlan.value));
+  state.output = planCopied.value ? "WebUI 安装计划已复制。" : "剪贴板不可用，安装计划未复制。";
+}
+
 function sanitizeWebuiReport(text: string): string {
   return text
     .replace(/https?:\/\/\S+/gi, "[filtered-url]")
@@ -119,9 +127,9 @@ async function confirmWebuiAction(): Promise<void> {
   }
 }
 
-async function runInstallLocal(command: string): Promise<void> {
+async function runInstallLocal(command: string, preview: string): Promise<void> {
   await withAction("webui-install", async () => {
-    await startBackgroundCli(command, "安装本地 WebUI 面板");
+    await startBackgroundCli(command, "安装本地 WebUI 面板", `su -M -c ${shellQuote(preview)}`, preview);
   });
 }
 
@@ -137,12 +145,13 @@ function installLocal(): void {
     return;
   }
   const command = installCommand.value;
+  const safeCommand = installPlan.value.safeCommand || "webui install-local [filtered-url] custom";
   pendingWebuiAction.value = {
     key: "webui-install",
     title: "后台下载并安装 WebUI 面板",
-    detail: `会下载 ${name} 面板压缩包并写入模块本地 WebUI 资源。`,
-    command,
-    run: () => runInstallLocal(command),
+    detail: `会下载 ${name} 面板压缩包并写入模块本地 WebUI 资源。${installPlan.value.status === "warning" ? ` ${installPlan.value.detail}` : ""}`,
+    command: safeCommand,
+    run: () => runInstallLocal(command, safeCommand),
   };
 }
 
@@ -153,6 +162,7 @@ function applyPanelPreset(item: { name: string; url: string; note: string }): vo
     metadata: item.note
   };
   commandCopied.value = false;
+  planCopied.value = false;
 }
 
 function issueUrl(): string {
@@ -189,12 +199,17 @@ function buildPanelWarnings(url: string, name: string): Array<{ text: string; to
   if (!trimmedName) warnings.push({ text: "未填写面板名，CLI 会使用 custom。", tone: "warning" });
   if (!trimmedUrl) return [{ text: "未填写下载 URL，无法安装。", tone: "danger" }, ...warnings];
   if (!/^https?:\/\/\S+$/i.test(trimmedUrl)) warnings.push({ text: "URL 必须是 http(s) 链接且不能包含空白字符。", tone: "danger" });
-  if (!/\.(zip|tar\.gz|tgz)(\?|#|$)/i.test(trimmedUrl)) warnings.push({ text: "CLI 期望下载 WebUI 压缩包，请确认链接指向 zip/tar.gz/tgz。", tone: "warning" });
+  if (!/\.zip(\?|#|$)/i.test(trimmedUrl)) warnings.push({ text: "CLI 当前只支持 zip 面板包。", tone: "danger" });
   if (/(token|secret|signature|expires|x-amz-|x-oss-)/i.test(trimmedUrl)) warnings.push({ text: "链接可能包含签名或凭据，复制命令会包含完整 URL。", tone: "warning" });
   if (hasZashboardDistFallback(trimmedUrl)) warnings.push({ text: "zashboard dist.zip 失败时 CLI 会自动重试 dist-no-fonts.zip。", tone: "success" });
   if (!warnings.length) warnings.push({ text: "安装命令可执行，下载和解压结果以后台任务日志为准。", tone: "success" });
   return warnings;
 }
+
+watch(() => [panel.value.name, panel.value.url], () => {
+  commandCopied.value = false;
+  planCopied.value = false;
+});
 
 function hasZashboardDistFallback(url: string): boolean {
   return url.startsWith("https://github.com/Zephyruso/zashboard/releases/") && url.endsWith("/dist.zip");
@@ -239,8 +254,16 @@ function hasZashboardDistFallback(url: string): boolean {
           <div class="flex flex-wrap gap-2">
             <Badge v-for="item in panelWarnings" :key="item.text" :tone="item.tone">{{ item.text }}</Badge>
           </div>
+          <div class="rounded-md border p-3 text-sm leading-6" :class="webuiInstallPlanTone(installPlan.status)">
+            <p class="font-medium">{{ installPlan.title }}</p>
+            <p class="mt-1 text-xs opacity-80">{{ installPlan.detail }}</p>
+            <p class="mt-2 text-xs opacity-80">
+              {{ installPlan.host || '无主机' }} · {{ installPlan.archive || '未知包类型' }} · query {{ installPlan.hasQuery ? '有' : '无' }}
+            </p>
+          </div>
           <code class="break-all rounded-md bg-black px-3 py-2 text-xs leading-6 text-zinc-200">{{ installCommand || "webui install-local <download-url> [name]" }}</code>
         </div>
+        <Button variant="outline" :disabled="!panel.url.trim()" @click="copyInstallPlan"><Copy :size="17" />{{ planCopied ? '已复制计划' : '复制安装计划' }}</Button>
         <Button :disabled="panelWarnings.some((item) => item.tone === 'danger')" :loading="isRunning('webui-install')" @click="installLocal"><DownloadCloud :size="17" />后台下载并安装</Button>
       </Card>
 
