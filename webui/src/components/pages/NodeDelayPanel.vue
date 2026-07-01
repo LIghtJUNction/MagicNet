@@ -7,6 +7,7 @@ import { buildNodeDelayStats, formatNodeDelayReport, nodeDelayHealthText, nodeDe
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, shellQuote } from "@/utils";
+import { buildNodeSwitchPlan, formatNodeSwitchPlanReport, nodeSwitchPlanTone } from "./nodeSwitchPlan";
 
 type PendingNodeAction = {
   node: NodeDelayEntry;
@@ -23,6 +24,7 @@ const pendingAction = ref<PendingNodeAction | null>(null);
 const entries = computed(() => parseNodeTestAll(rawOutput.value));
 const stats = computed(() => buildNodeDelayStats(entries.value));
 const healthText = computed(() => nodeDelayHealthText(stats.value));
+const switchPlan = computed(() => buildNodeSwitchPlan(currentNode.value, entries.value));
 
 async function refreshCurrentNode(): Promise<void> {
   await withAction("node-current", async () => {
@@ -44,9 +46,13 @@ async function testAndPrepareFastest(): Promise<void> {
     pendingAction.value = null;
     const text = await runCli("node test-all", "测速并选择最快节点");
     rawOutput.value = text;
-    const fastest = buildNodeDelayStats(parseNodeTestAll(text)).fastest;
-    if (!fastest) {
-      state.output = "测速完成，但没有可用节点可切换。";
+    const latestCurrent = parseCurrentNode(await runCli("node current", "读取当前节点", true));
+    currentNode.value = latestCurrent;
+    const parsedEntries = parseNodeTestAll(text);
+    const plan = buildNodeSwitchPlan(latestCurrent, parsedEntries);
+    const fastest = buildNodeDelayStats(parsedEntries).fastest;
+    if (!fastest || !plan.recommended) {
+      state.output = `测速完成：${plan.detail}`;
       return;
     }
     pendingAction.value = {
@@ -57,14 +63,14 @@ async function testAndPrepareFastest(): Promise<void> {
 }
 
 async function copyReport(): Promise<void> {
-  const report = formatNodeDelayReport(entries.value);
+  const report = `${formatNodeDelayReport(entries.value)}\n\n${formatNodeSwitchPlanReport(switchPlan.value)}`;
   copied.value = await copyText(report);
   state.output = copied.value ? "节点测速摘要已复制。" : "剪贴板不可用，节点测速摘要未复制。";
 }
 
 function requestUseFastest(): void {
   const node = stats.value.fastest;
-  if (!node) return;
+  if (!node || !switchPlan.value.recommended) return;
   pendingAction.value = {
     node,
     run: () => useNode(node.node)
@@ -142,6 +148,14 @@ onMounted(() => {
       <p class="mt-1 text-sm leading-6 text-sky-100/80">{{ healthText }}</p>
     </div>
 
+    <div v-if="entries.length" class="rounded-md border p-3 text-sm leading-6" :class="nodeSwitchPlanTone(switchPlan.status)">
+      <p class="font-semibold">{{ switchPlan.title }}</p>
+      <p class="mt-1 text-xs opacity-80">{{ switchPlan.detail }}</p>
+      <p class="mt-2 truncate text-xs opacity-80">
+        当前 {{ switchPlan.currentNode ? sanitizeNodeText(switchPlan.currentNode) : '未读取' }} · 目标 {{ switchPlan.targetNode ? sanitizeNodeText(switchPlan.targetNode) : '无' }}
+      </p>
+    </div>
+
     <div class="grid gap-2 sm:grid-cols-5">
       <div class="rounded-md border border-white/10 bg-white/5 p-3">
         <p class="text-xs text-zinc-500">已测</p>
@@ -175,10 +189,10 @@ onMounted(() => {
           class="mt-3"
           size="sm"
           variant="secondary"
-          :disabled="stats.fastest.node === currentNode"
+          :disabled="!switchPlan.recommended"
           @click="requestUseFastest"
         >
-          <Zap :size="15" />{{ stats.fastest.node === currentNode ? "当前已使用" : "使用最快" }}
+          <Zap :size="15" />{{ switchPlan.recommended ? "使用最快" : "不必切换" }}
         </Button>
       </div>
       <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3">

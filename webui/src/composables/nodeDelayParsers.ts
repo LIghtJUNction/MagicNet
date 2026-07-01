@@ -83,6 +83,7 @@ export function formatNodeDelayReport(entries: NodeDelayEntry[]): string {
   const stats = buildNodeDelayStats(entries);
   return [
     "MagicNet node delay report",
+    "privacy_note=node names are omitted from this summary",
     `tested=${stats.tested}`,
     `usable=${stats.usable}`,
     `failed=${stats.failed}`,
@@ -93,10 +94,12 @@ export function formatNodeDelayReport(entries: NodeDelayEntry[]): string {
     `fast=${stats.fast}`,
     `normal=${stats.normal}`,
     `slow=${stats.slow}`,
-    `fastest=${stats.fastest ? `${sanitizeNodeText(stats.fastest.node)} ${sanitizeNodeText(stats.fastest.summary)}` : "none"}`,
-    `slowest=${stats.slowest ? `${sanitizeNodeText(stats.slowest.node)} ${sanitizeNodeText(stats.slowest.summary)}` : "none"}`,
+    `fastest_present=${stats.fastest ? 1 : 0}`,
+    `slowest_present=${stats.slowest ? 1 : 0}`,
+    `fastest_ms=${stats.fastest?.delayMillis ?? "none"}`,
+    `slowest_ms=${stats.slowest?.delayMillis ?? "none"}`,
     "",
-    ...entries.slice(0, 50).map((entry, index) => `${index + 1}. ${sanitizeNodeText(entry.node)} ${sanitizeNodeText(entry.summary)}`)
+    ...entries.slice(0, 50).map((entry, index) => `${index + 1}. quality=${entry.quality} delay_ms=${entry.delayMillis ?? "none"}`)
   ].join("\n").trim();
 }
 
