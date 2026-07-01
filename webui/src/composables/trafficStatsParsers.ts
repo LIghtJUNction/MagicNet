@@ -129,15 +129,41 @@ export function formatTrafficStatsReport(samples: TrafficSample[], alert?: Traff
 
 function parseTrafficJson(text: string, timestampMillis: number): TrafficSample | null {
   try {
-    const json = JSON.parse(text) as Record<string, unknown>;
-    const pair = trafficPair(json);
+    const json = JSON.parse(text);
+    const pair = findTrafficPair(json);
     return pair ? { ...pair, timestampMillis, source: "json" } : null;
   } catch {
     return null;
   }
 }
 
-function trafficPair(fields: Record<string, unknown>): { up: number; down: number; sourceKey: string } | null {
+function findTrafficPair(value: unknown): { up: number; down: number; sourceKey: string } | null {
+  return findTrafficPairAt(value, "", 0, new Set());
+}
+
+function findTrafficPairAt(value: unknown, path: string, depth: number, seen: Set<unknown>): { up: number; down: number; sourceKey: string } | null {
+  if (!isRecord(value) || depth > 6 || seen.has(value)) return null;
+  seen.add(value);
+
+  const direct = trafficPair(value, path);
+  if (direct) return direct;
+
+  const preferredKeys = ["traffic", "stats", "connections", "data", "result", "payload"];
+  for (const key of preferredKeys) {
+    if (!(key in value)) continue;
+    const pair = findTrafficPairAt(value[key], joinPath(path, key), depth + 1, seen);
+    if (pair) return pair;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (preferredKeys.includes(key) || Array.isArray(child)) continue;
+    const pair = findTrafficPairAt(child, joinPath(path, key), depth + 1, seen);
+    if (pair) return pair;
+  }
+  return null;
+}
+
+function trafficPair(fields: Record<string, unknown>, path = ""): { up: number; down: number; sourceKey: string } | null {
   const pairs = [
     ["up", "down"],
     ["upload", "download"],
@@ -147,9 +173,17 @@ function trafficPair(fields: Record<string, unknown>): { up: number; down: numbe
   for (const [upKey, downKey] of pairs) {
     const up = numberValue(fields[upKey]);
     const down = numberValue(fields[downKey]);
-    if (up !== null && down !== null) return { up, down, sourceKey: `${upKey}/${downKey}` };
+    if (up !== null && down !== null) return { up, down, sourceKey: `${path ? `${path}.` : ""}${upKey}/${downKey}` };
   }
   return null;
+}
+
+function joinPath(parent: string, key: string): string {
+  return parent ? `${parent}.${key}` : key;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function numberValue(value: unknown): number | null {
