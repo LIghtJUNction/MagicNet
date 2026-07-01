@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { DownloadCloud, Github, RefreshCw, Save } from "lucide-vue-next";
-import { ref } from "vue";
+import { Braces, DownloadCloud, Github, RefreshCw, Save } from "lucide-vue-next";
+import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
@@ -13,6 +13,16 @@ import type { PendingToolAction } from "./toolActions";
 const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pendingConfigAction = ref<PendingToolAction | null>(null);
+const localJsonStatus = ref("");
+const configStats = computed(() => {
+  const text = state.config.text;
+  const lines = text ? text.split(/\r?\n/).length : 0;
+  return {
+    lines,
+    chars: text.length,
+    sizeKiB: (new TextEncoder().encode(text).length / 1024).toFixed(1)
+  };
+});
 
 function requestConfigAction(action: PendingToolAction): void {
   pendingConfigAction.value = action;
@@ -52,6 +62,17 @@ function requestSyncTemplate(): void {
   });
 }
 
+function formatConfigJson(): void {
+  try {
+    const parsed = JSON.parse(state.config.text);
+    state.config.text = `${JSON.stringify(parsed, null, 2)}\n`;
+    state.config.dirty = true;
+    localJsonStatus.value = "本地 JSON 格式化完成；保存前仍会执行 sing-box check。";
+  } catch (error) {
+    localJsonStatus.value = `JSON 语法错误：${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 function issueUrl(): string {
   const sanitized = state.config.text
     .replace(/https?:\/\/\S+/g, "[filtered-url]")
@@ -77,6 +98,7 @@ function issueUrl(): string {
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', () => loadConfig())"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
         <Button variant="outline" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
+        <Button variant="outline" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化 JSON</Button>
         <Button :loading="isRunning('save-config')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
         <Button variant="outline" @click="openExternal(issueUrl(), '配置 Diff Issue')"><Github :size="17" />创建 Diff Issue</Button>
       </div>
@@ -118,6 +140,12 @@ function issueUrl(): string {
           <p class="text-xs text-zinc-500">最近结果 {{ state.config.validation.checkedAt }}</p>
           <p class="mt-1 break-words text-sm text-zinc-300">{{ state.config.validation.summary }}</p>
         </div>
+      </div>
+      <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-500 sm:grid-cols-4">
+        <span>{{ configStats.lines }} 行</span>
+        <span>{{ configStats.chars }} 字符</span>
+        <span>{{ configStats.sizeKiB }} KiB</span>
+        <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-red-300' : 'text-zinc-400'">{{ localJsonStatus || "尚未执行本地格式化" }}</span>
       </div>
       <Textarea
         v-model="state.config.text"
