@@ -37,6 +37,24 @@ async function testNodes(): Promise<void> {
   });
 }
 
+async function testAndPrepareFastest(): Promise<void> {
+  await withAction("node-test-use-fastest", async () => {
+    copied.value = false;
+    pendingAction.value = null;
+    const text = await runCli("node test-all", "测速并选择最快节点");
+    rawOutput.value = text;
+    const fastest = buildNodeDelayStats(parseNodeTestAll(text)).fastest;
+    if (!fastest) {
+      state.output = "测速完成，但没有可用节点可切换。";
+      return;
+    }
+    pendingAction.value = {
+      node: fastest,
+      run: () => useNode(fastest.node)
+    };
+  });
+}
+
 async function copyReport(): Promise<void> {
   const report = formatNodeDelayReport(entries.value);
   copied.value = await copyText(report);
@@ -96,6 +114,9 @@ onMounted(() => {
       <div class="flex gap-2">
         <Button size="sm" :loading="isRunning('node-delay-test-all')" @click="testNodes">
           <RefreshCw :size="15" />开始测速
+        </Button>
+        <Button size="sm" variant="secondary" :loading="isRunning('node-test-use-fastest')" @click="testAndPrepareFastest">
+          <Zap :size="15" />测速选最快
         </Button>
         <Button size="sm" variant="secondary" :disabled="!entries.length" @click="copyReport">
           <Copy :size="15" />{{ copied ? "已复制" : "复制" }}
