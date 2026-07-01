@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { Box, Copy, DownloadCloud, RefreshCw, Save } from "lucide-vue-next";
-import { ref, watch } from "vue";
+import { Box, ClipboardPaste, Copy, DownloadCloud, RefreshCw, Save } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { bytesToBase64, copyText, execFailed } from "@/utils";
+import { bytesToBase64, copyText, execFailed, readClipboardText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
@@ -15,6 +15,16 @@ const { state, runCli, startBackgroundCli, refreshSubs, shellQuote, uniqueNonEmp
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
 const pendingSubscriptionAction = ref<PendingToolAction | null>(null);
+const inputSummary = computed(() => {
+  const raw = singBoxText.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const valid = raw.filter((line) => /^https?:\/\/\S+$/i.test(line));
+  return {
+    raw: raw.length,
+    valid: valid.length,
+    duplicate: Math.max(0, raw.length - uniqueNonEmpty(raw).length),
+    overLimit: Math.max(0, uniqueNonEmpty(raw).length - 5)
+  };
+});
 
 watch(() => state.subscriptions.singBoxUrls, (urls) => {
   singBoxText.value = urls.join("\n");
@@ -77,6 +87,18 @@ function saveSingBox(): void {
   });
 }
 
+async function pasteSingBox(): Promise<void> {
+  await withAction("paste-singbox", async () => {
+    const text = (await readClipboardText()).trim();
+    if (!text) {
+      state.output = "剪贴板为空或不可读取。";
+      return;
+    }
+    singBoxText.value = text;
+    state.output = `已从剪贴板读取 ${text.split(/\r?\n/).filter((line) => line.trim()).length} 行订阅文本。`;
+  });
+}
+
 async function runUpdateAll(): Promise<void> {
   await withAction("update-all", async () => {
     await startBackgroundCli("sub update-all", "更新全部订阅");
@@ -126,8 +148,15 @@ async function copy(text: string, label: string): Promise<void> {
         <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Box :size="17" />sing-box 订阅</h3>
         <p class="text-sm leading-6 text-zinc-400">最多 5 个，一行一个。保存后会在后台拉取、解析并写入 sing-box config.json；节点选择仍在 sing-box WebUI。</p>
         <Textarea v-model="singBoxText" class="my-2 min-h-36" spellcheck="false" />
+        <div class="mb-2 grid gap-2 text-xs text-zinc-500 sm:grid-cols-4">
+          <span>输入 {{ inputSummary.raw }} 行</span>
+          <span>有效 {{ inputSummary.valid }} 个</span>
+          <span>重复 {{ inputSummary.duplicate }} 个</span>
+          <span>超限 {{ inputSummary.overLimit }} 个</span>
+        </div>
         <div class="flex flex-wrap items-center gap-2">
           <Button :loading="isRunning('save-singbox')" @click="saveSingBox"><Save :size="16" />保存</Button>
+          <Button variant="secondary" :loading="isRunning('paste-singbox')" @click="pasteSingBox"><ClipboardPaste :size="16" />读剪切板</Button>
           <Button variant="outline" @click="copy(singBoxText, 'sing-box 订阅')"><Copy :size="16" />复制</Button>
         </div>
       </Card>
