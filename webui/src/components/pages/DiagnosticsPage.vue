@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Bug, Copy, ExternalLink, RadioTower, RefreshCw, Server } from "lucide-vue-next";
+import { computed, ref } from "vue";
+import { Bug, Copy, ExternalLink, FileText, RadioTower, RefreshCw, Server } from "lucide-vue-next";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -15,6 +16,15 @@ import TrafficStatsPanel from "./TrafficStatsPanel.vue";
 
 const { state, refreshHealth, refreshMcp, refreshPing, runCli, createIssue, openExternal } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+const supportBundle = ref("");
+const supportCopied = ref(false);
+const supportSummary = computed(() => {
+  const text = supportBundle.value;
+  return {
+    lines: text ? text.split(/\r?\n/).length : 0,
+    chars: text.length
+  };
+});
 
 const assistants = [
   ["ChatGPT", "https://chatgpt.com/"],
@@ -27,11 +37,28 @@ const assistants = [
 async function copyContextUnlocked(): Promise<void> {
   const text = await runCli("support bundle", "生成诊断上下文", true);
   const sanitized = sanitizeDiagnosticText(text);
+  supportBundle.value = sanitized;
+  supportCopied.value = false;
   state.output = await copyText(sanitized) ? "脱敏诊断上下文已复制。" : "剪贴板不可用，脱敏诊断上下文已生成但未复制。";
 }
 
 async function copyContext(): Promise<void> {
   await withAction("copy-context", copyContextUnlocked);
+}
+
+async function refreshSupportBundle(): Promise<void> {
+  await withAction("support-bundle", async () => {
+    const text = await runCli("support bundle", "生成支持包", true);
+    supportBundle.value = sanitizeDiagnosticText(text);
+    supportCopied.value = false;
+    state.output = "脱敏支持包已生成，可在诊断页预览。";
+  });
+}
+
+async function copySupportBundle(): Promise<void> {
+  if (!supportBundle.value) return;
+  supportCopied.value = await copyText(supportBundle.value);
+  state.output = supportCopied.value ? "脱敏支持包已复制。" : "剪贴板不可用，脱敏支持包未复制。";
 }
 
 async function refreshDiagnostics(): Promise<void> {
@@ -77,6 +104,30 @@ async function askAi(url: string, name: string): Promise<void> {
         </Button>
         </div>
       </div>
+    </Card>
+
+    <Card class="grid gap-3">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileText :size="17" /> 支持包预览</h3>
+          <p class="mt-1 text-sm leading-6 text-zinc-400">
+            真实调用 <code>support bundle</code>，在本页只展示脱敏后的诊断上下文。
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" :loading="isRunning('support-bundle')" @click="refreshSupportBundle">
+            <RefreshCw :size="15" />生成
+          </Button>
+          <Button size="sm" variant="secondary" :disabled="!supportBundle" @click="copySupportBundle">
+            <Copy :size="15" />{{ supportCopied ? "已复制" : "复制" }}
+          </Button>
+        </div>
+      </div>
+      <div v-if="supportBundle" class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
+        <span>{{ supportSummary.lines }} 行</span>
+        <span>{{ supportSummary.chars }} 字符</span>
+      </div>
+      <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ supportBundle || "点击生成查看脱敏支持包。" }}</pre>
     </Card>
 
     <TrafficStatsPanel />
