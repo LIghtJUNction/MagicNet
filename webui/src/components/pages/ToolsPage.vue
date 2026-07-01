@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ClipboardPaste, Copy, Download, Network, Power, PowerOff, RadioTower, RefreshCw, Save, Server, Upload } from "lucide-vue-next";
+import { ClipboardPaste, Copy, Download, FileLock, Network, Power, PowerOff, RadioTower, RefreshCw, Save, Server, Upload } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -14,6 +14,7 @@ import DnsToolsCard from "./DnsToolsCard.vue";
 import EcaptureToolsCard from "./EcaptureToolsCard.vue";
 import NetworkSnapshotPanel from "./NetworkSnapshotPanel.vue";
 import WarpRouteRulesPanel from "./WarpRouteRulesPanel.vue";
+import { summarizeBackupPayload } from "./backupPayloadSummary";
 import type { PendingToolAction } from "./toolActions";
 
 const { state, runShell, runCli, refreshDns, refreshMcp, refreshTopology, refreshSysroute, refreshWarp, shellQuote } = useMagicNet();
@@ -22,24 +23,11 @@ const toolsRefreshing = ref(false);
 const mcpBind = ref(state.mcp.bind);
 const mcpPort = ref(state.mcp.port);
 const pendingToolAction = ref<PendingToolAction | null>(null);
-const backupPayloadSummary = computed(() => {
-  const payload = state.backup.payload.trim();
-  const compact = payload.replace(/\s+/g, "");
-  const invalidChars = Boolean(compact) && !/^[A-Za-z0-9+/=_-]+$/.test(compact);
-  const tooLarge = compact.length > 5 * 1024 * 1024;
-  return {
-    chars: payload.length,
-    compactChars: compact.length,
-    lines: payload ? payload.split(/\r?\n/).length : 0,
-    hasWhitespace: /\s/.test(payload),
-    fingerprint: compact ? fnv32(compact) : "-",
-    invalidChars,
-    tooLarge,
-    looksValid: compact.length >= 32 && !invalidChars && !tooLarge
-  };
-});
+const backupSummaryCopied = ref(false);
+const backupPayloadSummary = computed(() => summarizeBackupPayload(state.backup.payload.trim()));
 watch(() => state.mcp.bind, (value) => { mcpBind.value = value; });
 watch(() => state.mcp.port, (value) => { mcpPort.value = value; });
+watch(() => state.backup.payload, () => { backupSummaryCopied.value = false; });
 
 async function refreshTools(): Promise<void> {
   toolsRefreshing.value = true;
@@ -162,8 +150,8 @@ function disableMcp(): void {
 
 async function exportBackup(): Promise<void> {
   await withAction("backup-export", async () => {
-    const password = state.backup.exportPassword.trim();
-    const text = await runCli(password ? `backup export ${shellQuote(password)}` : "backup export", "导出配置备份");
+    const securityCode = state.backup.exportPassword.trim();
+    const text = await runCli(securityCode ? `backup export ${shellQuote(securityCode)}` : "backup export", "导出配置备份");
     const payload = text.trim().split(/\s+/).pop() || "";
     if (!payload || payload.includes("[error]")) {
       state.backup.status = "导出失败";
@@ -188,12 +176,31 @@ async function pasteBackup(): Promise<void> {
   });
 }
 
+async function copyBackupSummary(): Promise<void> {
+  const summary = backupPayloadSummary.value;
+  const report = [
+    "MagicNet backup payload summary",
+    "privacy_note=payload body is not included",
+    `payload_present=${state.backup.payload.trim() ? 1 : 0}`,
+    `looks_valid=${summary.looksValid ? 1 : 0}`,
+    `lines=${summary.lines}`,
+    `chars=${summary.chars}`,
+    `compact_chars=${summary.compactChars}`,
+    `has_whitespace=${summary.hasWhitespace ? 1 : 0}`,
+    `invalid_chars=${summary.invalidChars ? 1 : 0}`,
+    `too_large=${summary.tooLarge ? 1 : 0}`,
+    `fnv32=${summary.fingerprint}`
+  ].join("\n");
+  backupSummaryCopied.value = await copyText(report);
+  state.output = backupSummaryCopied.value ? "备份摘要已复制。" : "剪贴板不可用，备份摘要未复制。";
+}
+
 async function runRestoreBackup(payload: string): Promise<void> {
   await withAction("backup-restore", async () => {
-    const password = state.backup.restorePassword.trim() || "-";
+    const securityCode = state.backup.restorePassword.trim() || "-";
     const path = await writeBackupPayloadFile(payload);
     try {
-      const text = await runCli(`backup restore-file ${shellQuote(password)} ${shellQuote(path)}`, "导入配置备份");
+      const text = await runCli(`backup restore-file ${shellQuote(securityCode)} ${shellQuote(path)}`, "导入配置备份");
       state.backup.status = text.includes("Backup restored") ? "导入成功，运行配置已应用" : "导入失败，请检查安全码和备份内容";
       state.output = `${state.backup.status}\n\n${text}`;
     } finally {
@@ -221,15 +228,6 @@ function restoreBackup(): void {
     command: "backup restore-file <security-code> <payload-file>",
     run: () => runRestoreBackup(payload),
   });
-}
-
-function fnv32(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 async function writeWarpImportFile(payload: string): Promise<string> {
@@ -383,9 +381,10 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
             {{ backupPayloadSummary.looksValid ? `fnv32:${backupPayloadSummary.fingerprint}` : backupPayloadSummary.tooLarge ? '超过 5MiB' : backupPayloadSummary.invalidChars ? '含非法字符' : backupPayloadSummary.hasWhitespace ? '含空白，将压缩检查' : '等待有效备份' }}
           </span>
         </div>
-        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
           <Input v-model="state.backup.restorePassword" type="password" autocomplete="current-password" placeholder="导入安全码，可留空" />
           <Button variant="secondary" :loading="isRunning('backup-paste')" @click="pasteBackup"><ClipboardPaste :size="16" />读剪切板</Button>
+          <Button variant="outline" :disabled="!state.backup.payload.trim()" @click="copyBackupSummary"><Copy :size="16" />{{ backupSummaryCopied ? '已复制摘要' : '复制摘要' }}</Button>
           <Button :loading="isRunning('backup-restore')" @click="restoreBackup"><Upload :size="16" />导入配置</Button>
         </div>
         <p class="text-xs leading-5 text-zinc-500">{{ state.backup.status }}</p>
