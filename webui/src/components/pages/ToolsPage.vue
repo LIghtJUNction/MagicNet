@@ -47,6 +47,12 @@ async function runTcpdumpProbe(): Promise<void> {
   await runShell("timeout 10 tcpdump -i any -nn -c 30 'tcp port 443 or udp port 53 or tcp port 53 or tcp port 853 or udp port 853'", "tcpdump 快速抓包");
 }
 
+async function runEcaptureTlsCapture(): Promise<void> {
+  await withAction("ecapture-tls-quick", async () => {
+    state.output = await runCli("ecapture tls 8 all all", "eCapture TLS 短抓");
+  });
+}
+
 function tcpdumpProbe(): void {
   requestToolAction({
     key: "tcpdump-probe",
@@ -54,6 +60,16 @@ function tcpdumpProbe(): void {
     detail: "会短时间读取设备网络流量元数据，可能影响性能并暴露连接信息。",
     command: "timeout 10 tcpdump -i any -nn -c 30 ...",
     run: runTcpdumpProbe,
+  });
+}
+
+function ecaptureTlsCapture(): void {
+  requestToolAction({
+    key: "ecapture-tls-quick",
+    title: "执行 eCapture TLS 短抓",
+    detail: "会运行 8 秒无证书 TLS 文本抓取，可能输出连接域名、进程或明文片段，仅在排障时使用。",
+    command: "ecapture tls 8 all all",
+    run: runEcaptureTlsCapture,
   });
 }
 function validateMcpEndpoint(): { bind: string; port: string } | null {
@@ -371,8 +387,14 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
           <Button :loading="isRunning('ecapture-status')" @click="withAction('ecapture-status', () => runCli('ecapture status', '检查 eCapture'))">
             <RadioTower :size="16" />eCapture 状态
           </Button>
+          <Button variant="secondary" :loading="isRunning('ecapture-version')" @click="withAction('ecapture-version', () => runCli('ecapture version', '查看 eCapture 版本'))">
+            版本
+          </Button>
           <Button variant="secondary" :loading="isRunning('tcpdump-probe')" @click="tcpdumpProbe">
             <Network :size="16" />tcpdump 探测
+          </Button>
+          <Button variant="outline" :loading="isRunning('ecapture-tls-quick')" @click="ecaptureTlsCapture">
+            TLS 8s
           </Button>
           <Button variant="outline" :loading="isRunning('ecapture-help-tls')" @click="withAction('ecapture-help-tls', () => runCli('ecapture help tls', '查看 TLS 抓包帮助'))">
             TLS help
