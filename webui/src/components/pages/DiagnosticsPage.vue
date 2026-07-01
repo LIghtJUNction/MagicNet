@@ -13,7 +13,7 @@ import { formatApiEndpointProbeReport, summarizeApiEndpointProbes, summarizeApiP
 import ConnectionsPanel from "./ConnectionsPanel.vue";
 import NodeDelayPanel from "./NodeDelayPanel.vue";
 import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
-import { triageSupportBundle } from "./supportBundleTriage";
+import { hideSupportIssueLines, triageSupportBundle } from "./supportBundleTriage";
 import TrafficStatsPanel from "./TrafficStatsPanel.vue";
 
 const { state, refreshHealth, refreshMcp, refreshPing, runCli, createIssue, openExternal } = useMagicNet();
@@ -38,6 +38,7 @@ const supportIssueLines = computed(() => supportBundle.value
   .filter((line) => /\b(warn|warning|fail|failed|error|fatal|panic)\b/i.test(line))
   .slice(0, 40));
 const supportTriage = computed(() => triageSupportBundle(supportBundle.value));
+const supportPreview = computed(() => supportBundle.value ? hideSupportIssueLines(supportBundle.value) : "点击生成查看脱敏支持包。");
 
 const assistants = [
   ["ChatGPT", "https://chatgpt.com/"],
@@ -79,9 +80,8 @@ async function copySupportBundle(): Promise<void> {
 }
 
 async function copySupportIssues(): Promise<void> {
-  const text = supportIssueLines.value.join("\n");
-  if (!text) return;
-  supportIssuesCopied.value = await copyText(text);
+  if (!supportTriage.value.totalIssues) return;
+  supportIssuesCopied.value = await copyText(supportTriage.value.report);
   state.output = supportIssuesCopied.value ? "支持包问题摘要已复制。" : "剪贴板不可用，问题摘要未复制。";
 }
 
@@ -225,7 +225,7 @@ async function askAi(url: string, name: string): Promise<void> {
           <Button size="sm" variant="secondary" :disabled="!supportBundle" @click="copySupportBundle">
             <Copy :size="15" />{{ supportCopied ? "已复制" : "复制" }}
           </Button>
-          <Button size="sm" variant="outline" :disabled="!supportIssueLines.length" @click="copySupportIssues">
+          <Button size="sm" variant="outline" :disabled="!supportTriage.totalIssues" @click="copySupportIssues">
             <Copy :size="15" />{{ supportIssuesCopied ? "已复制摘要" : "复制问题" }}
           </Button>
           <Button size="sm" variant="outline" :disabled="!supportTriage.totalIssues" @click="copySupportTriage">
@@ -244,11 +244,13 @@ async function askAi(url: string, name: string): Promise<void> {
           <p class="mt-1 text-base font-semibold text-zinc-100">{{ bucket.count }} · {{ bucket.severity }}</p>
         </div>
       </div>
-      <div v-if="supportIssueLines.length" class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+      <div v-if="supportTriage.totalIssues" class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm leading-6 text-amber-100/85">
         <p class="text-xs font-semibold uppercase tracking-wide text-amber-200">问题摘要</p>
-        <pre class="mt-2 max-h-32 overflow-auto text-xs leading-5 text-amber-50 whitespace-pre-wrap">{{ supportIssueLines.join("\n") }}</pre>
+        <p class="mt-2 text-xs leading-5 text-amber-50">
+          已发现 {{ supportTriage.totalIssues }} 条问题线索，分布在 {{ supportTriage.sections }} 个支持包段落；复制操作只导出聚合计数。
+        </p>
       </div>
-      <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ supportBundle || "点击生成查看脱敏支持包。" }}</pre>
+      <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ supportPreview }}</pre>
     </Card>
 
     <TrafficStatsPanel />

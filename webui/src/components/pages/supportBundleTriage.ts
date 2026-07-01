@@ -14,15 +14,16 @@ export type SupportBundleTriage = {
 };
 
 const ISSUE_PATTERN = /\b(fatal|panic|error|failed|fail|warning|warn)\b/i;
+const SUPPORT_SECTIONS = new Set(["service", "health", "subscriptions", "routes", "recent logs"]);
 
 export function triageSupportBundle(text: string): SupportBundleTriage {
   const counts = new Map<string, SupportIssueBucket>();
-  let section = "root";
+  let section = "service";
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     const header = line.match(/^\[([^\]]+)]$/);
-    if (header) {
-      section = header[1].slice(0, 48);
+    if (header && SUPPORT_SECTIONS.has(header[1])) {
+      section = header[1];
       return;
     }
     const severity = issueSeverity(line);
@@ -40,6 +41,12 @@ export function triageSupportBundle(text: string): SupportBundleTriage {
     buckets,
     report: formatSupportTriageReport(buckets, totalIssues)
   };
+}
+
+export function hideSupportIssueLines(text: string): string {
+  return text.split(/\r?\n/).map((raw) => {
+    return issueSeverity(raw) ? "[issue-line hidden: see issue distribution]" : raw;
+  }).join("\n");
 }
 
 function issueSeverity(line: string): SupportIssueSeverity | null {
