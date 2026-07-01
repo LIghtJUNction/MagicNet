@@ -18,6 +18,7 @@ const { state, refreshHealth, refreshMcp, refreshPing, runCli, createIssue, open
 const { isRunning, withAction } = useActionLock();
 const supportBundle = ref("");
 const supportCopied = ref(false);
+const supportIssuesCopied = ref(false);
 const supportSummary = computed(() => {
   const text = supportBundle.value;
   return {
@@ -25,6 +26,11 @@ const supportSummary = computed(() => {
     chars: text.length
   };
 });
+const supportIssueLines = computed(() => supportBundle.value
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter((line) => /\b(warn|warning|fail|failed|error|fatal|panic)\b/i.test(line))
+  .slice(0, 40));
 
 const assistants = [
   ["ChatGPT", "https://chatgpt.com/"],
@@ -39,6 +45,7 @@ async function copyContextUnlocked(): Promise<void> {
   const sanitized = sanitizeDiagnosticText(text);
   supportBundle.value = sanitized;
   supportCopied.value = false;
+  supportIssuesCopied.value = false;
   state.output = await copyText(sanitized) ? "脱敏诊断上下文已复制。" : "剪贴板不可用，脱敏诊断上下文已生成但未复制。";
 }
 
@@ -51,6 +58,7 @@ async function refreshSupportBundle(): Promise<void> {
     const text = await runCli("support bundle", "生成支持包", true);
     supportBundle.value = sanitizeDiagnosticText(text);
     supportCopied.value = false;
+    supportIssuesCopied.value = false;
     state.output = "脱敏支持包已生成，可在诊断页预览。";
   });
 }
@@ -59,6 +67,13 @@ async function copySupportBundle(): Promise<void> {
   if (!supportBundle.value) return;
   supportCopied.value = await copyText(supportBundle.value);
   state.output = supportCopied.value ? "脱敏支持包已复制。" : "剪贴板不可用，脱敏支持包未复制。";
+}
+
+async function copySupportIssues(): Promise<void> {
+  const text = supportIssueLines.value.join("\n");
+  if (!text) return;
+  supportIssuesCopied.value = await copyText(text);
+  state.output = supportIssuesCopied.value ? "支持包问题摘要已复制。" : "剪贴板不可用，问题摘要未复制。";
 }
 
 async function refreshDiagnostics(): Promise<void> {
@@ -121,11 +136,19 @@ async function askAi(url: string, name: string): Promise<void> {
           <Button size="sm" variant="secondary" :disabled="!supportBundle" @click="copySupportBundle">
             <Copy :size="15" />{{ supportCopied ? "已复制" : "复制" }}
           </Button>
+          <Button size="sm" variant="outline" :disabled="!supportIssueLines.length" @click="copySupportIssues">
+            <Copy :size="15" />{{ supportIssuesCopied ? "已复制摘要" : "复制问题" }}
+          </Button>
         </div>
       </div>
-      <div v-if="supportBundle" class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
+      <div v-if="supportBundle" class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-3">
         <span>{{ supportSummary.lines }} 行</span>
         <span>{{ supportSummary.chars }} 字符</span>
+        <span>{{ supportIssueLines.length }} 条问题线索</span>
+      </div>
+      <div v-if="supportIssueLines.length" class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+        <p class="text-xs font-semibold uppercase tracking-wide text-amber-200">问题摘要</p>
+        <pre class="mt-2 max-h-32 overflow-auto text-xs leading-5 text-amber-50 whitespace-pre-wrap">{{ supportIssueLines.join("\n") }}</pre>
       </div>
       <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ supportBundle || "点击生成查看脱敏支持包。" }}</pre>
     </Card>
