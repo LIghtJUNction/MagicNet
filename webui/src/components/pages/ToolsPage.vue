@@ -11,6 +11,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, readClipboardText, shellQuote as quoteShell } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import DnsToolsCard from "./DnsToolsCard.vue";
+import EcaptureToolsCard from "./EcaptureToolsCard.vue";
 import NetworkSnapshotPanel from "./NetworkSnapshotPanel.vue";
 import WarpRouteRulesPanel from "./WarpRouteRulesPanel.vue";
 import type { PendingToolAction } from "./toolActions";
@@ -42,35 +43,6 @@ async function copyMcp(): Promise<void> {
   state.output = await copyText(`${state.mcp.url}\n${command}`)
     ? "已复制 MCP URL 和 adb forward 命令。"
     : "剪贴板不可用，MCP 连接未复制。";
-}
-async function runTcpdumpProbe(): Promise<void> {
-  await runShell("timeout 10 tcpdump -i any -nn -c 30 'tcp port 443 or udp port 53 or tcp port 53 or tcp port 853 or udp port 853'", "tcpdump 快速抓包");
-}
-
-async function runEcaptureTlsCapture(): Promise<void> {
-  await withAction("ecapture-tls-quick", async () => {
-    state.output = await runCli("ecapture tls 8 all all", "eCapture TLS 短抓");
-  });
-}
-
-function tcpdumpProbe(): void {
-  requestToolAction({
-    key: "tcpdump-probe",
-    title: "执行 tcpdump 探测",
-    detail: "会短时间读取设备网络流量元数据，可能影响性能并暴露连接信息。",
-    command: "timeout 10 tcpdump -i any -nn -c 30 ...",
-    run: runTcpdumpProbe,
-  });
-}
-
-function ecaptureTlsCapture(): void {
-  requestToolAction({
-    key: "ecapture-tls-quick",
-    title: "执行 eCapture TLS 短抓",
-    detail: "会运行 8 秒无证书 TLS 文本抓取，可能输出连接域名、进程或明文片段，仅在排障时使用。",
-    command: "ecapture tls 8 all all",
-    run: runEcaptureTlsCapture,
-  });
 }
 function validateMcpEndpoint(): { bind: string; port: string } | null {
   const bind = mcpBind.value.trim();
@@ -381,29 +353,7 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
         <p class="text-xs leading-5 text-zinc-500">{{ state.backup.status }}</p>
       </Card>
 
-      <Card class="grid gap-3">
-        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><RadioTower :size="17" /> 无证书抓包</h3>
-        <div class="grid gap-2 sm:grid-cols-2">
-          <Button :loading="isRunning('ecapture-status')" @click="withAction('ecapture-status', () => runCli('ecapture status', '检查 eCapture'))">
-            <RadioTower :size="16" />eCapture 状态
-          </Button>
-          <Button variant="secondary" :loading="isRunning('ecapture-version')" @click="withAction('ecapture-version', () => runCli('ecapture version', '查看 eCapture 版本'))">
-            版本
-          </Button>
-          <Button variant="secondary" :loading="isRunning('tcpdump-probe')" @click="tcpdumpProbe">
-            <Network :size="16" />tcpdump 探测
-          </Button>
-          <Button variant="outline" :loading="isRunning('ecapture-tls-quick')" @click="ecaptureTlsCapture">
-            TLS 8s
-          </Button>
-          <Button variant="outline" :loading="isRunning('ecapture-help-tls')" @click="withAction('ecapture-help-tls', () => runCli('ecapture help tls', '查看 TLS 抓包帮助'))">
-            TLS help
-          </Button>
-          <Button variant="outline" :loading="isRunning('ecapture-help-pcap')" @click="withAction('ecapture-help-pcap', () => runCli('ecapture help pcap', '查看 PCAP 抓包帮助'))">
-            PCAP help
-          </Button>
-        </div>
-      </Card>
+      <EcaptureToolsCard />
 
     </div>
 
