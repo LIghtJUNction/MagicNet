@@ -12,10 +12,16 @@ import type { PendingToolAction } from "./toolActions";
 const { state, runCli, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const domain = ref("");
+const routeQuery = ref("");
 const routeOutput = ref("");
 const pendingAction = ref<PendingToolAction | null>(null);
 const copied = ref(false);
 const summary = computed(() => parseRouteRuleSummary(routeOutput.value));
+const visibleWarpDomains = computed(() => {
+  const query = routeQuery.value.trim().toLowerCase();
+  if (!query) return summary.value.warp;
+  return summary.value.warp.filter((item) => item.toLowerCase().includes(query));
+});
 
 async function refreshRoutes(): Promise<void> {
   routeOutput.value = await runCli("route list", "读取路由规则", true);
@@ -67,10 +73,21 @@ async function copyRouteSnapshot(): Promise<void> {
     `direct_count=${summary.value.direct.length}`,
     `block_count=${summary.value.block.length}`,
     `warp_count=${summary.value.warp.length}`,
+    `visible_warp_count=${visibleWarpDomains.value.length}`,
+    routeQuery.value.trim() ? `visible_warp_query=${routeQuery.value.trim()}` : "",
     "",
-    "[warp]",
-    ...summary.value.warp
-  ].join("\n").trim();
+    "[proxy]",
+    ...summary.value.proxy,
+    "",
+    "[direct]",
+    ...summary.value.direct,
+    "",
+    "[block]",
+    ...summary.value.block,
+    "",
+    "[warp_visible]",
+    ...visibleWarpDomains.value
+  ].filter((line) => line !== "").join("\n").trim();
   copied.value = await copyText(report);
   state.output = copied.value ? "路由快照已复制。" : "剪贴板不可用，路由快照未复制。";
 }
@@ -115,6 +132,7 @@ onMounted(() => {
       <Input v-model="domain" placeholder="example.com" spellcheck="false" />
       <Button variant="secondary" :disabled="!state.warp.enabled" :loading="isRunning('warp-route')" @click="requestAddWarpRoute">域名走 WARP</Button>
     </div>
+    <Input v-model="routeQuery" placeholder="过滤 WARP 域名，例如 google / openai" spellcheck="false" />
     <div class="grid gap-2 sm:grid-cols-4">
       <div class="rounded-md border border-white/10 bg-white/5 p-3">
         <p class="text-xs text-zinc-500">Proxy</p>
@@ -134,9 +152,9 @@ onMounted(() => {
       </div>
     </div>
     <div v-if="summary.warp.length" class="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-xs leading-6 text-zinc-300">
-      <p class="mb-1 text-zinc-500">WARP 域名</p>
+      <p class="mb-1 text-zinc-500">WARP 域名 · {{ visibleWarpDomains.length }} / {{ summary.warp.length }}</p>
       <div class="grid max-h-64 gap-2 overflow-auto pr-1">
-        <div v-for="item in summary.warp" :key="item" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded bg-black/30 px-2 py-1">
+        <div v-for="item in visibleWarpDomains" :key="item" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded bg-black/30 px-2 py-1">
           <span class="truncate">{{ item }}</span>
           <button
             class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60"
@@ -148,6 +166,7 @@ onMounted(() => {
           </button>
         </div>
       </div>
+      <p v-if="!visibleWarpDomains.length" class="rounded bg-black/30 px-2 py-2 text-zinc-500">没有匹配的 WARP 域名。</p>
     </div>
     <div class="grid gap-2 sm:grid-cols-2">
       <Button variant="outline" :loading="isRunning('warp-route-refresh')" @click="withAction('warp-route-refresh', () => refreshRoutes())">
