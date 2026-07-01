@@ -12,6 +12,8 @@ const { runCli, state, compactOutput } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const target = ref<"sing-box" | "mcp">("sing-box");
 const lines = ref("120");
+const query = ref("");
+const level = ref<"all" | "warn" | "error">("all");
 const output = ref("");
 const copied = ref(false);
 const lastLabel = ref("");
@@ -20,6 +22,19 @@ const commandPreview = computed(() => {
   const count = normalizedLines();
   return target.value === "mcp" ? `mcp logs ${count}` : `service logs sing-box ${count}`;
 });
+const logLines = computed(() => output.value.split(/\r?\n/).filter(Boolean));
+const filteredLines = computed(() => logLines.value.filter((line) => {
+  const lower = line.toLowerCase();
+  const keyword = query.value.trim().toLowerCase();
+  const matchesKeyword = !keyword || lower.includes(keyword);
+  const matchesLevel = level.value === "all"
+    || (level.value === "warn" && /\b(warn|warning)\b/i.test(line))
+    || (level.value === "error" && /\b(error|failed|fatal|panic)\b/i.test(line));
+  return matchesKeyword && matchesLevel;
+}));
+const warningCount = computed(() => logLines.value.filter((line) => /\b(warn|warning)\b/i.test(line)).length);
+const errorCount = computed(() => logLines.value.filter((line) => /\b(error|failed|fatal|panic)\b/i.test(line)).length);
+const visibleOutput = computed(() => filteredLines.value.join("\n"));
 
 async function refreshLogs(): Promise<void> {
   const command = commandPreview.value;
@@ -32,7 +47,7 @@ async function refreshLogs(): Promise<void> {
 }
 
 async function copyLogs(): Promise<void> {
-  copied.value = await copyText(output.value);
+  copied.value = await copyText(visibleOutput.value || output.value);
   state.output = copied.value ? "运行日志已复制。" : "剪贴板不可用，运行日志未复制。";
 }
 
@@ -68,7 +83,23 @@ function normalizedLines(): number {
       </Button>
     </div>
 
+    <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
+      <Input v-model="query" placeholder="过滤关键字，例如 error / dns / selector" spellcheck="false" />
+      <select v-model="level" class="h-10 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100">
+        <option value="all">全部</option>
+        <option value="warn">警告</option>
+        <option value="error">错误</option>
+      </select>
+    </div>
+
+    <div v-if="output" class="grid gap-2 text-xs text-zinc-400 sm:grid-cols-4">
+      <span>日志 {{ logLines.length }} 行</span>
+      <span>命中 {{ filteredLines.length }} 行</span>
+      <span class="text-amber-300">警告 {{ warningCount }}</span>
+      <span class="text-red-300">错误 {{ errorCount }}</span>
+    </div>
+
     <code class="break-all rounded-md bg-black px-3 py-2 text-xs text-zinc-400">{{ commandPreview }}</code>
-    <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ output ? compactOutput(output, 9000) : `${lastLabel || "选择目标后点击刷新。"} ` }}</pre>
+    <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ output ? compactOutput(visibleOutput || "没有匹配的日志行。", 9000) : `${lastLabel || "选择目标后点击刷新。"} ` }}</pre>
   </Card>
 </template>
