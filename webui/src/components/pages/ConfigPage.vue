@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Braces, Copy, DownloadCloud, Github, RefreshCw, Save } from "lucide-vue-next";
+import { Braces, Copy, DownloadCloud, Github, ListTree, RefreshCw, Save } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -16,6 +16,12 @@ const { isRunning, withAction } = useActionLock();
 const pendingConfigAction = ref<PendingToolAction | null>(null);
 const localJsonStatus = ref("");
 const sanitizedCopied = ref(false);
+type ConfigOutline = {
+  status: "idle" | "ok" | "error";
+  summary: string;
+  keys: string[];
+  counts: Array<{ label: string; value: string }>;
+};
 const configStats = computed(() => {
   const text = state.config.text;
   const lines = text ? text.split(/\r?\n/).length : 0;
@@ -26,6 +32,43 @@ const configStats = computed(() => {
   };
 });
 const sanitizedConfig = computed(() => sanitizeConfigText(state.config.text));
+const configOutline = computed<ConfigOutline>(() => {
+  const text = state.config.text.trim();
+  if (!text) {
+    return {
+      status: "idle",
+      summary: "尚未加载配置",
+      keys: [],
+      counts: outlineCounts({})
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    if (!isRecord(parsed)) {
+      return {
+        status: "error",
+        summary: "配置根节点不是 JSON object",
+        keys: [],
+        counts: outlineCounts({})
+      };
+    }
+    const keys = Object.keys(parsed);
+    return {
+      status: "ok",
+      summary: `${keys.length} 个顶层键`,
+      keys: keys.slice(0, 12),
+      counts: outlineCounts(parsed)
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      summary: error instanceof Error ? error.message : "JSON 解析失败",
+      keys: [],
+      counts: outlineCounts({})
+    };
+  }
+});
 
 function requestConfigAction(action: PendingToolAction): void {
   pendingConfigAction.value = action;
@@ -86,6 +129,25 @@ function sanitizeConfigText(text: string): string {
   return text
     .replace(/https?:\/\/\S+/g, "[filtered-url]")
     .replace(/(password|token|secret|uuid)["':= ]+[^,\n]+/gi, "$1=[filtered]");
+}
+
+function outlineCounts(root: Record<string, unknown>): Array<{ label: string; value: string }> {
+  const route = isRecord(root.route) ? root.route : {};
+  const dns = isRecord(root.dns) ? root.dns : {};
+  return [
+    { label: "inbounds", value: arrayCount(root.inbounds) },
+    { label: "outbounds", value: arrayCount(root.outbounds) },
+    { label: "route.rules", value: arrayCount(route.rules) },
+    { label: "dns.servers", value: arrayCount(dns.servers) }
+  ];
+}
+
+function arrayCount(value: unknown): string {
+  return Array.isArray(value) ? String(value.length) : "-";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function issueUrl(): string {
@@ -159,6 +221,31 @@ function issueUrl(): string {
         <span>{{ configStats.chars }} 字符</span>
         <span>{{ configStats.sizeKiB }} KiB</span>
         <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-red-300' : 'text-zinc-400'">{{ localJsonStatus || "尚未执行本地格式化" }}</span>
+      </div>
+      <div class="grid gap-3 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+        <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <ListTree :size="16" class="text-zinc-500" />
+          <span class="font-medium text-zinc-200">结构摘要</span>
+          <span
+            class="rounded px-2 py-1 text-xs"
+            :class="{
+              'bg-emerald-500/15 text-emerald-200': configOutline.status === 'ok',
+              'bg-red-500/15 text-red-200': configOutline.status === 'error',
+              'bg-zinc-800 text-zinc-300': configOutline.status === 'idle',
+            }"
+          >
+            {{ configOutline.status === 'ok' ? '可解析' : configOutline.status === 'error' ? '需修正' : '待加载' }}
+          </span>
+          <span class="min-w-0 break-words text-xs text-zinc-500">{{ configOutline.summary }}</span>
+        </div>
+        <div class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-4">
+          <span v-for="item in configOutline.counts" :key="item.label" class="rounded border border-zinc-800 px-2 py-1">
+            {{ item.label }}: <b class="font-medium text-zinc-300">{{ item.value }}</b>
+          </span>
+        </div>
+        <p class="break-words text-xs text-zinc-500">
+          顶层键：{{ configOutline.keys.length ? configOutline.keys.join(", ") : "无" }}
+        </p>
       </div>
       <Textarea
         v-model="state.config.text"
