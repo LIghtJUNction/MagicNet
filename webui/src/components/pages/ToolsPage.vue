@@ -17,14 +17,18 @@ import NetworkSnapshotPanel from "./NetworkSnapshotPanel.vue";
 import WarpRouteRulesPanel from "./WarpRouteRulesPanel.vue";
 import { summarizeBackupPayload } from "./backupPayloadSummary";
 import type { PendingToolAction } from "./toolActions";
+import { formatWarpImportSummaryReport, summarizeWarpImport, warpImportTone } from "./warpImportSummary";
 
 const { state, runShell, runCli, refreshDns, refreshMcp, refreshTopology, refreshSysroute, refreshWarp, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const toolsRefreshing = ref(false);
 const pendingToolAction = ref<PendingToolAction | null>(null);
 const backupSummaryCopied = ref(false);
+const warpSummaryCopied = ref(false);
 const backupPayloadSummary = computed(() => summarizeBackupPayload(state.backup.payload.trim()));
+const warpImportSummary = computed(() => summarizeWarpImport(state.warp.importText));
 watch(() => state.backup.payload, () => { backupSummaryCopied.value = false; });
+watch(() => state.warp.importText, () => { warpSummaryCopied.value = false; });
 
 async function refreshTools(): Promise<void> {
   toolsRefreshing.value = true;
@@ -166,13 +170,22 @@ function importWarp(): void {
     state.output = "请先粘贴 WARP/WireGuard 配置。";
     return;
   }
+  if (!warpImportSummary.value.looksImportable) {
+    state.output = warpImportSummary.value.message;
+    return;
+  }
   requestToolAction({
     key: "warp-import",
     title: "导入并启用 WARP",
-    detail: "会写入 WireGuard/WARP 配置，并让 MagicNet 应用新的 WARP 出站。",
+    detail: `会写入 WireGuard/WARP 配置，并让 MagicNet 应用新的 WARP 出站。${warpImportSummary.value.status === "warning" ? ` ${warpImportSummary.value.message}` : ""}`,
     command: "warp import-file <config-file>",
     run: () => runImportWarp(payload),
   });
+}
+
+async function copyWarpSummary(): Promise<void> {
+  warpSummaryCopied.value = await copyText(formatWarpImportSummaryReport(warpImportSummary.value));
+  state.output = warpSummaryCopied.value ? "WARP 导入摘要已复制。" : "剪贴板不可用，WARP 导入摘要未复制。";
 }
 
 async function runSetWarpEnabled(enabled: boolean): Promise<void> {
@@ -254,8 +267,16 @@ async function writeBackupPayloadFile(payload: string): Promise<string> {
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> WARP 出站</h3>
         <p class="text-sm leading-6 text-zinc-400">导入自己的 WARP/WireGuard 配置后，MagicNet 会生成 sing-box wireguard endpoint；可全局在 sing-box 选择器里选择 warp，也可给指定域名添加 warp 路由。</p>
         <Textarea v-model="state.warp.importText" class="min-h-32 font-mono text-xs" spellcheck="false" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = ...:2408" />
+        <div class="rounded-md border p-3 text-sm leading-6" :class="warpImportTone(warpImportSummary.status)">
+          <p class="font-medium">{{ warpImportSummary.status === 'ok' ? '可导入' : warpImportSummary.status === 'warning' ? '可导入但需确认' : warpImportSummary.status === 'error' ? '不能导入' : '等待配置' }}</p>
+          <p class="mt-1 text-xs opacity-80">{{ warpImportSummary.message }}</p>
+          <p class="mt-2 text-xs opacity-80">
+            Interface {{ warpImportSummary.hasInterface ? '存在' : '缺失' }} · Peer {{ warpImportSummary.hasPeer ? '存在' : '缺失' }} · Address {{ warpImportSummary.hasAddress ? '存在' : '缺失' }} · Endpoint {{ warpImportSummary.hasEndpoint ? '存在' : '缺失' }}
+          </p>
+        </div>
         <div class="grid gap-2 sm:grid-cols-2">
-          <Button :loading="isRunning('warp-import')" @click="importWarp"><Upload :size="16" />导入并启用</Button>
+          <Button :disabled="!warpImportSummary.looksImportable" :loading="isRunning('warp-import')" @click="importWarp"><Upload :size="16" />导入并启用</Button>
+          <Button variant="outline" :disabled="!state.warp.importText.trim()" @click="copyWarpSummary"><Copy :size="16" />{{ warpSummaryCopied ? '已复制摘要' : '复制导入摘要' }}</Button>
           <Button variant="secondary" :disabled="!state.warp.configured" :loading="isRunning('warp-test')" @click="testWarp"><RadioTower :size="16" />测试 WARP</Button>
           <Button variant="outline" :disabled="!state.warp.configured || state.warp.enabled" :loading="isRunning('warp-enable')" @click="setWarpEnabled(true)"><Power :size="16" />启用</Button>
           <Button variant="outline" :disabled="!state.warp.enabled" :loading="isRunning('warp-disable')" @click="setWarpEnabled(false)"><PowerOff :size="16" />禁用</Button>
