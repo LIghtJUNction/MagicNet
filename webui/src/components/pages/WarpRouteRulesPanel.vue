@@ -7,6 +7,7 @@ import { parseRouteRuleSummary } from "@/composables/parsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed } from "@/utils";
+import { buildRouteRuleChangePlan, formatRouteRuleChangePlanReport, type RouteRuleChangePlan } from "./routeRuleChangePlan";
 import type { PendingToolAction } from "./toolActions";
 
 const { state, runCli, shellQuote } = useMagicNet();
@@ -15,7 +16,9 @@ const domain = ref("");
 const routeQuery = ref("");
 const routeOutput = ref("");
 const pendingAction = ref<PendingToolAction | null>(null);
+const pendingPlan = ref<RouteRuleChangePlan | null>(null);
 const copied = ref(false);
+const planCopied = ref(false);
 const summary = computed(() => parseRouteRuleSummary(routeOutput.value));
 const visibleWarpDomains = computed(() => {
   const query = routeQuery.value.trim().toLowerCase();
@@ -25,6 +28,9 @@ const visibleWarpDomains = computed(() => {
 
 async function refreshRoutes(): Promise<void> {
   routeOutput.value = await runCli("route list", "读取路由规则", true);
+  pendingAction.value = null;
+  pendingPlan.value = null;
+  planCopied.value = false;
 }
 
 async function addWarpRoute(cleanDomain: string): Promise<void> {
@@ -51,10 +57,12 @@ function requestAddWarpRoute(): void {
   pendingAction.value = {
     key: "warp-route",
     title: "添加 WARP 域名路由",
-    detail: "会把这个域名后缀写入 WARP 路由规则，并立即回读 route list。",
+    detail: "会把这个域名后缀写入 WARP 路由规则，应用 route 配置并重启当前 core。",
     command: `route add-domain warp ${clean}`,
     run: () => addWarpRoute(clean),
   };
+  pendingPlan.value = buildRouteRuleChangePlan(summary.value, "warp", clean, "add");
+  planCopied.value = false;
 }
 
 function validRouteDomain(value: string): boolean {
@@ -92,14 +100,22 @@ async function copyRouteSnapshot(): Promise<void> {
   state.output = copied.value ? "路由快照已复制。" : "剪贴板不可用，路由快照未复制。";
 }
 
+async function copyRouteChangePlan(): Promise<void> {
+  if (!pendingPlan.value) return;
+  planCopied.value = await copyText(formatRouteRuleChangePlanReport(pendingPlan.value));
+  state.output = planCopied.value ? "路由变更计划已复制。" : "剪贴板不可用，路由变更计划未复制。";
+}
+
 function requestRemoveWarpRoute(cleanDomain: string): void {
   pendingAction.value = {
     key: `warp-route-remove-${cleanDomain}`,
     title: "移除 WARP 域名路由",
-    detail: "会从 WARP 路由规则里移除这个域名后缀，并立即回读 route list。",
+    detail: "会从 WARP 路由规则里移除这个域名后缀，应用 route 配置并重启当前 core。",
     command: `route remove-domain warp ${cleanDomain}`,
     run: () => removeWarpRoute(cleanDomain),
   };
+  pendingPlan.value = buildRouteRuleChangePlan(summary.value, "warp", cleanDomain, "remove");
+  planCopied.value = false;
 }
 
 async function confirmAction(): Promise<void> {
@@ -109,7 +125,15 @@ async function confirmAction(): Promise<void> {
     await action.run();
   } finally {
     pendingAction.value = null;
+    pendingPlan.value = null;
+    planCopied.value = false;
   }
+}
+
+function cancelAction(): void {
+  pendingAction.value = null;
+  pendingPlan.value = null;
+  planCopied.value = false;
 }
 
 onMounted(() => {
@@ -123,8 +147,27 @@ onMounted(() => {
       <p class="text-sm font-semibold text-amber-100">{{ pendingAction.title }}</p>
       <p class="mt-1 text-sm leading-6 text-amber-100/80">{{ pendingAction.detail }}</p>
       <code class="mt-2 block break-words rounded bg-black/50 p-2 text-xs text-amber-50">{{ pendingAction.command }}</code>
-      <div class="mt-3 grid gap-2 sm:grid-cols-2">
-        <Button variant="outline" :disabled="isRunning(pendingAction.key)" @click="pendingAction = null">取消</Button>
+      <div v-if="pendingPlan" class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+        <span
+          v-for="item in pendingPlan.items"
+          :key="item.label"
+          class="rounded border px-2 py-1"
+          :class="{
+            'border-emerald-500/30 text-emerald-100': item.tone === 'success',
+            'border-amber-500/40 text-amber-100': item.tone === 'warning',
+            'border-red-500/40 text-red-100': item.tone === 'danger',
+            'border-zinc-700 text-zinc-300': item.tone === 'neutral',
+          }"
+        >
+          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+        </span>
+      </div>
+      <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-amber-100/80">
+        {{ pendingPlan.warnings.join("；") }}
+      </p>
+      <div class="mt-3 grid gap-2 sm:grid-cols-3">
+        <Button variant="outline" :disabled="isRunning(pendingAction.key)" @click="cancelAction">取消</Button>
+        <Button variant="outline" @click="copyRouteChangePlan"><Copy :size="15" />{{ planCopied ? '已复制计划' : '复制计划' }}</Button>
         <Button :loading="isRunning(pendingAction.key)" @click="confirmAction">确认执行</Button>
       </div>
     </div>
