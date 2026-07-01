@@ -9,6 +9,7 @@ import { backgroundLogCommand, formatBackgroundDuration, formatBackgroundTime } 
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import RuntimeLogsPanel from "./RuntimeLogsPanel.vue";
+import { buildOutputDiagnostic, outputDiagnosticTone, sanitizeOutputText } from "./outputDiagnostics";
 
 const { state, compactOutput, runShell } = useMagicNet();
 const outputQuery = ref("");
@@ -31,6 +32,13 @@ const filteredOutput = computed(() => {
   if (!query) return state.output;
   return outputLines.value.filter((line) => line.toLowerCase().includes(query)).join("\n");
 });
+const outputDiagnostic = computed(() => buildOutputDiagnostic({
+  phase: state.phase,
+  lines: outputStats.value.lines,
+  chars: outputStats.value.chars,
+  issueLines: outputStats.value.issueLines,
+  filtered: Boolean(outputQuery.value.trim())
+}));
 const issueSummary = computed(() => outputLines.value
   .map((line) => line.trim())
   .filter((line) => issuePattern.test(line))
@@ -48,13 +56,13 @@ watch(() => state.output, () => {
 });
 
 async function copyOutput(): Promise<void> {
-  copied.value = await copyText(filteredOutput.value || state.output);
-  state.notice = copied.value ? "输出已复制。" : "剪贴板不可用，输出未复制。";
+  copied.value = await copyText(sanitizeOutputText(filteredOutput.value || state.output));
+  state.notice = copied.value ? "脱敏输出已复制。" : "剪贴板不可用，输出未复制。";
 }
 
 async function copyIssueSummary(): Promise<void> {
   if (!issueSummary.value) return;
-  issueCopied.value = await copyText(issueSummary.value);
+  issueCopied.value = await copyText(sanitizeOutputText(issueSummary.value));
   state.notice = issueCopied.value ? "输出问题摘要已复制。" : "剪贴板不可用，问题摘要未复制。";
 }
 
@@ -82,7 +90,7 @@ function clearOutputFilter(): void {
   <div class="grid gap-4">
     <PageHeader overline="Command Output" title="最近输出" description="所有后台命令的状态和结果集中显示在这里。">
       <template #actions>
-        <Button variant="outline" @click="copyOutput"><Copy :size="17" />{{ copied ? "已复制输出" : "复制输出" }}</Button>
+        <Button variant="outline" @click="copyOutput"><Copy :size="17" />{{ copied ? "已复制脱敏" : "复制脱敏输出" }}</Button>
         <Button variant="outline" :disabled="!issueSummary" @click="copyIssueSummary"><Copy :size="17" />{{ issueCopied ? "已复制问题" : "复制问题" }}</Button>
       </template>
     </PageHeader>
@@ -114,6 +122,10 @@ function clearOutputFilter(): void {
         <span>{{ outputStats.lines }} 行</span>
         <span>{{ outputStats.chars }} 字符</span>
         <span>{{ outputStats.issueLines }} 条问题线索</span>
+      </div>
+      <div class="rounded-md border p-3" :class="outputDiagnosticTone(outputDiagnostic.status)">
+        <p class="text-sm font-semibold">{{ outputDiagnostic.title }}</p>
+        <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ outputDiagnostic.detail }}</p>
       </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <label class="relative block">
