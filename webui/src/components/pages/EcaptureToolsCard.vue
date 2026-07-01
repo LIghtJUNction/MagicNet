@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { Network, RadioTower } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -14,6 +14,13 @@ const { isRunning, withAction } = useActionLock();
 const pcapIfname = ref("any");
 const pcapFilter = ref("tcp port 443 or udp port 53");
 const pendingAction = ref<PendingToolAction | null>(null);
+const pcapPresets = [
+  { label: "HTTPS", filter: "tcp port 443" },
+  { label: "DNS", filter: "udp port 53 or tcp port 53" },
+  { label: "QUIC", filter: "udp port 443" },
+  { label: "TLS DNS", filter: "tcp port 853 or udp port 853" }
+] as const;
+const pcapCommandPreview = computed(() => buildPcapCommand(false));
 
 async function runTcpdumpProbe(): Promise<void> {
   await runShell("timeout 10 tcpdump -i any -nn -c 30 'tcp port 443 or udp port 53 or tcp port 53 or tcp port 853 or udp port 853'", "tcpdump 快速抓包");
@@ -63,18 +70,22 @@ function ecapturePcapCapture(): void {
   });
 }
 
-function buildPcapCommand(): string {
+function buildPcapCommand(reportError = true): string {
   const ifname = pcapIfname.value.trim();
   if (!/^[A-Za-z0-9_.:-]{1,32}$/.test(ifname)) {
-    state.output = "PCAP 网卡名只能包含字母、数字、点、下划线、冒号和短横线。";
+    if (reportError) state.output = "PCAP 网卡名只能包含字母、数字、点、下划线、冒号和短横线。";
     return "";
   }
   const tokens = pcapFilter.value.trim().split(/\s+/).filter(Boolean);
   if (tokens.length > 12 || tokens.some((token) => !/^[A-Za-z0-9_.:-]+$/.test(token))) {
-    state.output = "PCAP 过滤器只能使用简单 tcp/udp/port/host 这类词元，最多 12 个。";
+    if (reportError) state.output = "PCAP 过滤器只能使用简单 tcp/udp/port/host 这类词元，最多 12 个。";
     return "";
   }
   return ["ecapture", "pcap", "8", shellQuote(ifname), ...tokens.map(shellQuote)].join(" ");
+}
+
+function applyPcapPreset(filter: string): void {
+  pcapFilter.value = filter;
 }
 
 function requestAction(action: PendingToolAction): void {
@@ -136,5 +147,19 @@ async function confirmAction(): Promise<void> {
         PCAP 8s
       </Button>
     </div>
+    <div class="flex flex-wrap gap-2">
+      <Button
+        v-for="preset in pcapPresets"
+        :key="preset.label"
+        size="sm"
+        variant="ghost"
+        @click="applyPcapPreset(preset.filter)"
+      >
+        {{ preset.label }}
+      </Button>
+    </div>
+    <code class="break-all rounded-md bg-black px-3 py-2 text-xs text-zinc-400">
+      {{ pcapCommandPreview || "PCAP 参数无效，修正后再执行。" }}
+    </code>
   </Card>
 </template>
