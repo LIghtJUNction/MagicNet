@@ -14,6 +14,13 @@ export type AppPolicySummary = {
   installedBypass: string[];
 };
 
+export type AppPolicySafeReportInput = {
+  mode: AppPolicyMode;
+  proxy: string[];
+  bypass: string[];
+  summary: AppPolicySummary;
+};
+
 export const recommendedBypass = [
   "com.eg.android.AlipayGphone",
   "com.tencent.mm",
@@ -121,6 +128,63 @@ export function buildAppPolicySummary(
   };
 }
 
+export function formatAppPolicySafeReport(input: AppPolicySafeReportInput): string {
+  return [
+    "MagicNet app policy",
+    "privacy_note=package names omitted; fingerprints are weak change markers, not privacy proof",
+    `mode=${input.mode}`,
+    `proxy_count=${input.proxy.length}`,
+    `bypass_count=${input.bypass.length}`,
+    `summary=${input.summary.summary}`,
+    `conflict_count=${input.summary.conflicts.length}`,
+    `current_list_proxy=${input.summary.installedProxy.length}`,
+    `current_list_bypass=${input.summary.installedBypass.length}`,
+    `proxy_fingerprint=${fingerprintList(input.proxy)}`,
+    `bypass_fingerprint=${fingerprintList(input.bypass)}`,
+    `conflict_fingerprint=${fingerprintList(input.summary.conflicts)}`,
+    "",
+    "[insights]",
+    ...input.summary.items.map((item) => `${item.label}=${item.value} (${item.tone})`)
+  ].join("\n").trim();
+}
+
+export function formatAppPolicyFullReport(input: AppPolicySafeReportInput): string {
+  return [
+    "MagicNet app policy",
+    "privacy_note=contains package names from app policy lists",
+    `mode=${input.mode}`,
+    `proxy_count=${input.proxy.length}`,
+    `bypass_count=${input.bypass.length}`,
+    `summary=${input.summary.summary}`,
+    `conflict_count=${input.summary.conflicts.length}`,
+    `current_list_proxy=${input.summary.installedProxy.length}`,
+    `current_list_bypass=${input.summary.installedBypass.length}`,
+    "",
+    "[insights]",
+    ...input.summary.items.map((item) => `${item.label}=${item.value} (${item.tone})`),
+    "",
+    "[proxy]",
+    ...input.proxy,
+    "",
+    "[bypass]",
+    ...input.bypass
+  ].join("\n").trim();
+}
+
 function insight(label: string, value: string, tone: AppPolicyInsight["tone"]): AppPolicyInsight {
   return { label, value, tone };
+}
+
+function fingerprintList(values: string[]): string {
+  if (!values.length) return "none";
+  return fnv32(values.slice().sort().join("\n")).toString(16).padStart(8, "0");
+}
+
+function fnv32(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
 }

@@ -8,13 +8,14 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
-import { buildAppPolicySummary, isValidPackageName, recommendedBypass } from "./appPolicyInsights";
+import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName, recommendedBypass } from "./appPolicyInsights";
 
 const { state, runCli, refreshApps, refreshPackages, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const removedBypass = ref<string[]>([]);
 const pendingAppAction = ref<PendingAppAction | null>(null);
 const appReportCopied = ref(false);
+const safeReportCopied = ref(false);
 
 type PendingAppAction = {
   key: string;
@@ -182,28 +183,23 @@ async function searchPackages(): Promise<void> {
 }
 
 async function copyAppPolicyReport(): Promise<void> {
-  const report = [
-    "MagicNet app policy",
-    "privacy_note=contains package names from app policy lists",
-    `mode=${state.appPolicy.mode}`,
-    `proxy_count=${state.appPolicy.proxy.length}`,
-    `bypass_count=${state.appPolicy.bypass.length}`,
-    `summary=${policySummary.value.summary}`,
-    `conflict_count=${policySummary.value.conflicts.length}`,
-    `current_list_proxy=${policySummary.value.installedProxy.length}`,
-    `current_list_bypass=${policySummary.value.installedBypass.length}`,
-    "",
-    "[insights]",
-    ...policySummary.value.items.map((item) => `${item.label}=${item.value} (${item.tone})`),
-    "",
-    "[proxy]",
-    ...state.appPolicy.proxy,
-    "",
-    "[bypass]",
-    ...state.appPolicy.bypass
-  ].join("\n").trim();
-  appReportCopied.value = await copyText(report);
-  state.output = appReportCopied.value ? "应用策略快照已复制。" : "剪贴板不可用，应用策略快照未复制。";
+  appReportCopied.value = await copyText(formatAppPolicyFullReport({
+    mode: state.appPolicy.mode,
+    proxy: state.appPolicy.proxy,
+    bypass: state.appPolicy.bypass,
+    summary: policySummary.value
+  }));
+  state.output = appReportCopied.value ? "应用策略完整快照已复制。" : "剪贴板不可用，应用策略快照未复制。";
+}
+
+async function copyAppPolicySafeReport(): Promise<void> {
+  safeReportCopied.value = await copyText(formatAppPolicySafeReport({
+    mode: state.appPolicy.mode,
+    proxy: state.appPolicy.proxy,
+    bypass: state.appPolicy.bypass,
+    summary: policySummary.value
+  }));
+  state.output = safeReportCopied.value ? "应用策略隐私摘要已复制。" : "剪贴板不可用，应用策略摘要未复制。";
 }
 
 async function applyRecommendedBypass(): Promise<void> {
@@ -283,7 +279,8 @@ onMounted(() => {
       <div class="flex flex-wrap gap-2">
         <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取名单</Button>
         <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />重新读取应用</Button>
-        <Button variant="outline" :loading="isRunning('copy-app-policy-report')" @click="withAction('copy-app-policy-report', copyAppPolicyReport)"><Copy :size="17" />{{ appReportCopied ? '已复制快照' : '复制快照' }}</Button>
+        <Button variant="outline" :loading="isRunning('copy-app-policy-report')" @click="withAction('copy-app-policy-report', copyAppPolicyReport)"><Copy :size="17" />{{ appReportCopied ? '已复制快照' : '复制完整快照' }}</Button>
+        <Button variant="outline" :loading="isRunning('copy-app-policy-safe-report')" @click="withAction('copy-app-policy-safe-report', copyAppPolicySafeReport)"><Copy :size="17" />{{ safeReportCopied ? '已复制摘要' : '复制隐私摘要' }}</Button>
         <Button :loading="isRunning('apply-recommended-bypass')" :disabled="availableRecommendedBypass.length === 0" @click="requestRecommendedBypass"><ShieldCheck :size="17" />应用推荐名单</Button>
       </div>
     </PageHeader>
