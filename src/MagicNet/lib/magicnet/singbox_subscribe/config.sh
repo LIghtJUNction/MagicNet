@@ -38,7 +38,7 @@ magicnet_singbox_build_outbounds_file() {
         return 0
     fi
 
-    _first_tag=$(awk 'NF { print; exit }' "$_tags_file")
+    _first_tag=$(magicnet_singbox_pick_default_proxy_tag "$_tags_file")
 
     {
         printf '  "outbounds": [\n'
@@ -65,11 +65,20 @@ magicnet_singbox_build_outbounds_file_with_jq() {
     jq -R -s 'split("\n") | map(select(length > 0))' "$_tags_file" >"$_tags_json" || return 1
     jq -n -r --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" '
       def with_base($outs; $fallback):
-        reduce ($outs + [$fallback, "direct", "block"])[] as $item
+        reduce ([$fallback] + $outs + ["direct", "block"])[] as $item
           ([]; if ($item == "" or index($item)) then . else . + [$item] end);
-      def selector($tag; $outs; $fallback):
-        (with_base($outs; $fallback)) as $items
-        | {"type": "selector", "tag": $tag, "outbounds": $items, "default": $items[0]};
+    def selector($tag; $outs; $fallback):
+      (with_base($outs; $fallback)) as $items
+      | {"type": "selector", "tag": $tag, "outbounds": $items, "default": $items[0]};
+    def proxy_tag_score($tag):
+      if ($tag | test("免费|Free|free|公益|试用|下载专用|剩余|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) then 0
+      elif ($tag | test("IEPL|IPLC|专线|S[0-9]+|倍率|x1|x2|香港|日本|新加坡|美国|台湾|韩国")) then 2
+      else 1
+      end;
+    def preferred_proxy_tag($tags):
+      (([ $tags[]? | select(proxy_tag_score(.) == 2) ][0])
+       // ([ $tags[]? | select(proxy_tag_score(.) == 1) ][0])
+       // ($tags[0] // "direct"));
       ($nodes[0] // []
         | map(select(
             ((.server // "") != "")
@@ -86,7 +95,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
       ) as $nodes
       | ([ $nodes[]? | .tag // empty ] | map(select(length > 0))) as $tags
       | [
-          selector("proxy"; $tags; "direct"),
+          selector("proxy"; $tags; preferred_proxy_tag($tags)),
           selector("select"; ["proxy", "direct"]; "proxy"),
           selector("lan"; ["direct"]; "direct"),
           selector("ad-block"; ["block", "direct"]; "block"),
@@ -145,6 +154,39 @@ magicnet_singbox_emit_selector_block() {
     magicnet_emit_selector_json "select" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     magicnet_singbox_emit_static_selectors
     unset _tags_file _first_tag
+}
+
+magicnet_singbox_pick_default_proxy_tag() {
+    _tags_file="$1"
+    awk '
+        NF {
+            tag = $0
+            if (first == "") {
+                first = tag
+            }
+            if (tag ~ /免费|Free|free|公益|试用|下载专用|剩余|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅/) {
+                next
+            }
+            if (tag ~ /IEPL|IPLC|专线|S[0-9]+|倍率|x1|x2|香港|日本|新加坡|美国|台湾|韩国/) {
+                print tag
+                found = 1
+                exit
+            }
+            if (fallback == "") {
+                fallback = tag
+            }
+        }
+        END {
+            if (!found) {
+                if (fallback != "") {
+                    print fallback
+                } else {
+                    print first
+                }
+            }
+        }
+    ' "$_tags_file"
+    unset _tags_file
 }
 
 magicnet_singbox_emit_static_selectors() {

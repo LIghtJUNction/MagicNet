@@ -1,17 +1,68 @@
 import * as kernelsu from "kernelsu";
 import { computed, nextTick, reactive } from "vue";
-import { AUTHOR_WHISPER_URL, CLI, CLI_TIMEOUT_MS, MODULE_DIR, REPO } from "@/constants";
-import type { AppPolicy, ConfigEditorTarget, HealthItem, PackageInfo } from "@/types";
-import { backgroundDone, backgroundFailed, backgroundLaunchCommand, backgroundLogCommand, backgroundLogPath, backgroundTaskDefaults } from "@/composables/backgroundTasks";
-import { blockDefaults, dnsDefaults, mcpDefaults, parseApps, parseBlock, parseConfigValidation, parseDns, parseHealth, parseMcp, parsePackages, parseRuntime, parseSubs, parseWarp, runtimeDefaults, type ConfigValidationState, type SubscriptionState, warpDefaults } from "@/composables/parsers";
+import {
+  AUTHOR_WHISPER_URL,
+  CLI,
+  CLI_TIMEOUT_MS,
+  MODULE_DIR,
+  REPO,
+} from "@/constants";
+import type {
+  AppPolicy,
+  ConfigEditorTarget,
+  HealthItem,
+  PackageInfo,
+} from "@/types";
+import {
+  backgroundDone,
+  backgroundFailed,
+  backgroundLaunchCommand,
+  backgroundLogCommand,
+  backgroundLogPath,
+  backgroundTaskDefaults,
+} from "@/composables/backgroundTasks";
+import {
+  blockDefaults,
+  dnsDefaults,
+  mcpDefaults,
+  parseApps,
+  parseBlock,
+  parseConfigValidation,
+  parseDns,
+  parseHealth,
+  parseMcp,
+  parsePackages,
+  parseRuntime,
+  parseSubs,
+  parseWarp,
+  runtimeDefaults,
+  type ConfigValidationState,
+  type SubscriptionState,
+  warpDefaults,
+} from "@/composables/parsers";
 import { createMagicNetIssue } from "@/composables/issueReporter";
 import { useExternalLinks } from "@/composables/useExternalLinks";
-import { bytesToBase64, compactCommand, compactOutput, execFailed, normalizeExecResult, nextFrame, shellQuote, uniqueNonEmpty, withTimeout } from "@/utils";
+import {
+  bytesToBase64,
+  compactCommand,
+  compactOutput,
+  execFailed,
+  normalizeExecResult,
+  nextFrame,
+  shellQuote,
+  uniqueNonEmpty,
+  withTimeout,
+} from "@/utils";
 
 type Phase = "idle" | "accepted" | "queued" | "running" | "done" | "error";
 
-const ksuBridge = (globalThis as { ksu?: { exec?: unknown } }).ksu;
-const hasKsu = typeof ksuBridge?.exec === "function";
+function hasKsuExec(): boolean {
+  return (
+    typeof (globalThis as { ksu?: { exec?: unknown } }).ksu?.exec === "function"
+  );
+}
+
+const hasKsu = hasKsuExec();
 let writeQueue: Promise<unknown> = Promise.resolve();
 let backgroundLogTimer = 0;
 
@@ -23,7 +74,9 @@ const state = reactive({
   notice: "面板已加载，所有耗时命令都会异步执行。",
   queueDepth: 0,
   lastCommand: "",
-  output: hasKsu ? "正在读取 MagicNet 状态..." : "本地预览模式：真机 WebUI 才会执行 root 命令。",
+  output: hasKsu
+    ? "正在读取 MagicNet 状态..."
+    : "本地预览模式：真机 WebUI 才会执行 root 命令。",
   backgroundTask: { ...backgroundTaskDefaults },
   runtime: { ...runtimeDefaults },
   health: [] as HealthItem[],
@@ -51,15 +104,15 @@ const state = reactive({
     validation: {
       status: "idle",
       summary: "尚未执行校验。",
-      checkedAt: ""
-    } as ConfigValidationState
+      checkedAt: "",
+    } as ConfigValidationState,
   },
   backup: {
     exportPassword: "",
     restorePassword: "",
     payload: "",
-    status: "尚未导出"
-  }
+    status: "尚未导出",
+  },
 });
 
 async function queued<T>(task: () => Promise<T>): Promise<T> {
@@ -71,11 +124,18 @@ async function queued<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-async function runShell(commandBody: string, label: string, quiet = false, previewOverride = ""): Promise<string> {
+async function runShell(
+  commandBody: string,
+  label: string,
+  quiet = false,
+  previewOverride = "",
+): Promise<string> {
   const command = `su -M -c ${shellQuote(commandBody)}`;
   const commandPreview = previewOverride || compactCommand(command);
   const previousTask = state.task;
   const previousNotice = state.notice;
+  const previousPhase = state.phase;
+  const previousBusy = state.busy;
   state.lastCommand = commandPreview;
   state.task = label;
   state.notice = quiet ? `后台执行：${label}` : `已接收：${label}`;
@@ -88,6 +148,7 @@ async function runShell(commandBody: string, label: string, quiet = false, previ
   await nextTick();
   await nextFrame();
 
+  state.hasKsu = hasKsuExec();
   if (!state.hasKsu) {
     state.output = `当前没有 KernelSU 执行通道。\n\n真机命令：\n${commandPreview}`;
     state.phase = "done";
@@ -99,6 +160,11 @@ async function runShell(commandBody: string, label: string, quiet = false, previ
 
   try {
     const result = await queued(async () => {
+      if (quiet) {
+        await nextTick();
+        await nextFrame();
+        return withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, label);
+      }
       state.phase = "running";
       state.notice = `正在执行：${label}`;
       await nextTick();
@@ -113,6 +179,8 @@ async function runShell(commandBody: string, label: string, quiet = false, previ
       state.output = `$ ${commandPreview}\n${text || "完成"}`;
     } else {
       state.notice = previousNotice;
+      state.phase = previousPhase;
+      state.busy = previousBusy;
     }
     return text;
   } catch (error) {
@@ -127,26 +195,52 @@ async function runShell(commandBody: string, label: string, quiet = false, previ
       state.task = "";
     } else if (state.task === label) {
       state.task = previousTask;
+      state.notice = previousNotice;
+      state.phase = previousPhase;
+      state.busy = previousBusy;
     }
   }
 }
 
-async function runCli(args: string, label = args, quiet = false, previewOverride = ""): Promise<string> {
+async function runCli(
+  args: string,
+  label = args,
+  quiet = false,
+  previewOverride = "",
+): Promise<string> {
   return runShell(`${CLI} ${args}`, label, quiet, previewOverride);
 }
 
-async function startBackgroundCli(args: string, label = args, previewOverride = "", displayArgs = args): Promise<string> {
+async function startBackgroundCli(
+  args: string,
+  label = args,
+  previewOverride = "",
+  displayArgs = args,
+): Promise<string> {
   const log = backgroundLogPath(label);
   stopBackgroundLogFollow();
   const startedAt = Date.now();
-  state.backgroundTask = { label, args: displayArgs, log, startedAt, updatedAt: startedAt, finishedAt: 0, status: "running" };
+  state.backgroundTask = {
+    label,
+    args: displayArgs,
+    log,
+    startedAt,
+    updatedAt: startedAt,
+    finishedAt: 0,
+    status: "running",
+  };
   state.phase = "accepted";
   state.notice = `已投递后台任务：${label}`;
   state.output = `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
   await nextTick();
   await nextFrame();
   const command = backgroundLaunchCommand(args, label, log);
-  const result = await runShell(command, `投递 ${label}`, true, previewOverride);
+  const result = await runShell(
+    command,
+    `投递 ${label}`,
+    true,
+    previewOverride,
+  );
   if (!execFailed(result)) {
     followBackgroundLogs(log, label, args);
   } else {
@@ -163,39 +257,56 @@ function stopBackgroundLogFollow(): void {
   backgroundLogTimer = 0;
 }
 
-function followBackgroundLogs(log: string, label: string, args: string, attempt = 0): void {
+function followBackgroundLogs(
+  log: string,
+  label: string,
+  args: string,
+  attempt = 0,
+): void {
   const maxAttempts = 90;
-  backgroundLogTimer = window.setTimeout(async () => {
-    const [logs, status] = await Promise.all([
-      runShell(backgroundLogCommand(log, args), `跟踪 ${label}`, true),
-      runCli("service status", "刷新状态", true)
-    ]);
-    if (!execFailed(status)) {
-      state.runtime = parseRuntime(status, state.runtime);
-    }
-    const done = backgroundDone(logs);
-    const failed = !done && backgroundFailed(logs);
-    const now = Date.now();
-    state.backgroundTask.status = done ? "done" : failed ? "error" : "running";
-    state.backgroundTask.updatedAt = now;
-    state.backgroundTask.finishedAt = done || failed ? now : 0;
-    state.phase = done ? "done" : failed ? "error" : "running";
-    state.notice = done ? `完成：${label}` : failed ? `失败：${label}` : `正在执行：${label}`;
-    state.output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${logs || "等待日志输出..."}`;
-    if (!done && !failed && attempt + 1 < maxAttempts) {
-      followBackgroundLogs(log, label, args, attempt + 1);
-    } else {
-      backgroundLogTimer = 0;
-      if (!done && !failed) {
-        state.backgroundTask.status = "timeout";
-        state.backgroundTask.updatedAt = Date.now();
-        state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
-        state.phase = "error";
-        state.notice = `${label} 仍在后台运行或未完成`;
-        state.output += "\n\n[warn] 日志跟踪已超时，请稍后刷新状态或查看完整日志。";
+  backgroundLogTimer = window.setTimeout(
+    async () => {
+      const [logs, status] = await Promise.all([
+        runShell(backgroundLogCommand(log, args), `跟踪 ${label}`, true),
+        runCli("service status", "刷新状态", true),
+      ]);
+      if (!execFailed(status)) {
+        state.runtime = parseRuntime(status, state.runtime);
       }
-    }
-  }, attempt === 0 ? 700 : 1000);
+      const done = backgroundDone(logs);
+      const failed = !done && backgroundFailed(logs);
+      const now = Date.now();
+      state.backgroundTask.status = done
+        ? "done"
+        : failed
+          ? "error"
+          : "running";
+      state.backgroundTask.updatedAt = now;
+      state.backgroundTask.finishedAt = done || failed ? now : 0;
+      state.phase = done ? "done" : failed ? "error" : "running";
+      state.notice = done
+        ? `完成：${label}`
+        : failed
+          ? `失败：${label}`
+          : `正在执行：${label}`;
+      state.output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${logs || "等待日志输出..."}`;
+      if (!done && !failed && attempt + 1 < maxAttempts) {
+        followBackgroundLogs(log, label, args, attempt + 1);
+      } else {
+        backgroundLogTimer = 0;
+        if (!done && !failed) {
+          state.backgroundTask.status = "timeout";
+          state.backgroundTask.updatedAt = Date.now();
+          state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
+          state.phase = "error";
+          state.notice = `${label} 仍在后台运行或未完成`;
+          state.output +=
+            "\n\n[warn] 日志跟踪已超时，请稍后刷新状态或查看完整日志。";
+        }
+      }
+    },
+    attempt === 0 ? 700 : 1000,
+  );
 }
 
 function markQuietFailure(label: string, text: string): boolean {
@@ -217,7 +328,7 @@ async function refreshAll(): Promise<void> {
   state.notice = "正在刷新面板数据";
   try {
     const failed: string[] = [];
-    if (!await refreshStatus()) failed.push("刷新状态");
+    if (!(await refreshStatus())) failed.push("刷新状态");
     const steps: Array<[string, () => Promise<boolean>]> = [
       ["读取应用规则", () => refreshApps(true)],
       ["读取黑名单", () => refreshBlock(true)],
@@ -225,14 +336,14 @@ async function refreshAll(): Promise<void> {
       ["读取 DNS", () => refreshDns(true)],
       ["读取 WARP", () => refreshWarp(true)],
       ["读取 MCP 信息", () => refreshMcp(true)],
-      ["运行诊断", () => refreshHealth(true)]
+      ["运行诊断", () => refreshHealth(true)],
     ];
     for (const [label, step] of steps) {
       state.task = label;
       state.notice = label;
       await nextTick();
       await nextFrame();
-      if (!await step()) failed.push(label);
+      if (!(await step())) failed.push(label);
     }
     if (failed.length) {
       state.phase = "error";
@@ -268,7 +379,11 @@ async function refreshApps(quiet = false): Promise<boolean> {
 
 async function refreshPackages(quiet = false): Promise<boolean> {
   const query = state.packageQuery.trim();
-  const text = await runCli(`app packages ${shellQuote(query)}`, query ? `搜索应用 ${query}` : "读取已安装应用", quiet);
+  const text = await runCli(
+    `app packages ${shellQuote(query)}`,
+    query ? `搜索应用 ${query}` : "读取已安装应用",
+    quiet,
+  );
   if (markQuietFailure("读取已安装应用", text)) return false;
   state.packages = parsePackages(text);
   return true;
@@ -328,7 +443,11 @@ async function loadConfig(): Promise<void> {
   const target = state.config.target;
   state.config.status = "加载中";
   state.notice = `正在加载 ${target} 配置`;
-  const text = await runCli(`config-editor get ${target}`, `加载 ${target} 配置`, true);
+  const text = await runCli(
+    `config-editor get ${target}`,
+    `加载 ${target} 配置`,
+    true,
+  );
   if (execFailed(text)) {
     state.config.status = "加载失败";
     state.notice = `${target} 配置加载失败`;
@@ -339,7 +458,11 @@ async function loadConfig(): Promise<void> {
   state.config.text = text;
   state.config.dirty = false;
   state.config.status = `已加载 ${text.length} 字符`;
-  state.config.validation = { status: "idle", summary: "配置已加载，尚未执行本次校验。", checkedAt: "" };
+  state.config.validation = {
+    status: "idle",
+    summary: "配置已加载，尚未执行本次校验。",
+    checkedAt: "",
+  };
   state.config.path = `${MODULE_DIR}/.config/sing-box/config.json`;
   state.notice = `${target} 配置已加载`;
   state.phase = "done";
@@ -350,14 +473,22 @@ async function saveConfig(): Promise<void> {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const tmp = `${MODULE_DIR}/.tmp/config-editor-${state.config.target}-${stamp}.tmp`;
   const chunkSize = 1600;
-  let text = await runShell(`mkdir -p ${shellQuote(`${MODULE_DIR}/.tmp`)}; : > ${shellQuote(tmp)}`, "准备配置临时文件", true);
+  let text = await runShell(
+    `mkdir -p ${shellQuote(`${MODULE_DIR}/.tmp`)}; : > ${shellQuote(tmp)}`,
+    "准备配置临时文件",
+    true,
+  );
   if (execFailed(text)) {
     state.config.status = "写入失败，未保存";
     return;
   }
   for (let offset = 0; offset < state.config.text.length; offset += chunkSize) {
     const chunk = state.config.text.slice(offset, offset + chunkSize);
-    text = await runShell(`printf %s ${shellQuote(chunk)} >> ${shellQuote(tmp)}`, "写入配置临时文件", true);
+    text = await runShell(
+      `printf %s ${shellQuote(chunk)} >> ${shellQuote(tmp)}`,
+      "写入配置临时文件",
+      true,
+    );
     if (execFailed(text)) {
       state.config.status = "写入失败，未保存";
       await runShell(`rm -f ${shellQuote(tmp)}`, "清理配置临时文件", true);
@@ -365,10 +496,18 @@ async function saveConfig(): Promise<void> {
     }
   }
   try {
-    text = await runCli(`config-editor save-file ${state.config.target} ${shellQuote(tmp)}`, `校验并保存 ${state.config.target}`);
+    text = await runCli(
+      `config-editor save-file ${state.config.target} ${shellQuote(tmp)}`,
+      `校验并保存 ${state.config.target}`,
+    );
     const validation = parseConfigValidation(text);
-    state.config.validation = { ...validation, checkedAt: new Date().toLocaleTimeString() };
-    state.config.status = execFailed(text) ? "校验失败，未保存" : "校验通过，已保存";
+    state.config.validation = {
+      ...validation,
+      checkedAt: new Date().toLocaleTimeString(),
+    };
+    state.config.status = execFailed(text)
+      ? "校验失败，未保存"
+      : "校验通过，已保存";
     if (!execFailed(text)) state.config.dirty = false;
   } finally {
     await runShell(`rm -f ${shellQuote(tmp)}`, "清理配置临时文件", true);
@@ -377,12 +516,17 @@ async function saveConfig(): Promise<void> {
 
 async function syncConfigTemplate(): Promise<void> {
   const target = state.config.target;
-  const text = await runCli(`config-editor sync-template ${target}`, `同步 ${target} 上游模板`);
+  const text = await runCli(
+    `config-editor sync-template ${target}`,
+    `同步 ${target} 上游模板`,
+  );
   state.config.status = execFailed(text) ? "同步失败" : "已同步上游模板";
   state.config.validation = {
     status: execFailed(text) ? "error" : "ok",
-    summary: execFailed(text) ? "上游模板同步失败。" : "上游模板已同步并通过校验。",
-    checkedAt: new Date().toLocaleTimeString()
+    summary: execFailed(text)
+      ? "上游模板同步失败。"
+      : "上游模板已同步并通过校验。",
+    checkedAt: new Date().toLocaleTimeString(),
   };
   if (!execFailed(text)) {
     state.config.dirty = false;
@@ -395,7 +539,7 @@ const {
   openExternal,
   openSingBoxUi,
   setAutoSingBoxUiOpen,
-  tryAutoOpenSingBoxUi
+  tryAutoOpenSingBoxUi,
 } = useExternalLinks(state, runShell, runCli, refreshStatus);
 
 const statusTone = computed(() => {
@@ -437,6 +581,6 @@ export function useMagicNet() {
     setAutoSingBoxUiOpen,
     tryAutoOpenSingBoxUi,
     shellQuote,
-    uniqueNonEmpty
+    uniqueNonEmpty,
   };
 }
