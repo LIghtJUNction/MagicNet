@@ -20,11 +20,15 @@ pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
             restore_payload(app, password, payload)
         }
         "restore-file" => {
-            let password = args.get(1).map(String::as_str).unwrap_or("");
-            let path = args.get(2).map(String::as_str).unwrap_or_default();
-            if path.is_empty() {
-                return Err("Usage: cli backup restore-file [password|-] <path>".to_string());
-            }
+            let (password, path) = match (args.get(1), args.get(2)) {
+                (Some(path), None) => ("", path.as_str()),
+                (Some(password), Some(path)) => (password.as_str(), path.as_str()),
+                _ => {
+                    return Err(
+                        "Usage: cli backup restore-file [password|-] <path>".to_string()
+                    )
+                }
+            };
             let payload =
                 fs::read_to_string(path).map_err(|err| format!("read backup file: {err}"))?;
             restore_payload(app, password, payload.trim())
@@ -227,5 +231,46 @@ mod tests {
         let err =
             verify_backup_password("MagicNet backup v1\npassword_set=1\n", "abc").unwrap_err();
         assert!(err.contains("metadata is missing"), "{err}");
+    }
+
+    #[test]
+    fn restore_file_without_password_treats_only_argument_as_path() {
+        let app = temp_app();
+        let path = app.moddir.join("backup.txt");
+        let text =
+            "MagicNet backup v1\npassword_set=1\npassword_md5=5ebe2294ecd0e0f08eab7690d2a6ee69\n";
+        let encrypted = encode_backup_bytes(text, "secret");
+        write_text_file(path.clone(), &crate::encode_base64(&encrypted)).unwrap();
+
+        let args = vec![
+            "restore-file".to_string(),
+            path.to_string_lossy().into_owned(),
+        ];
+        let err = backup_cmd(&app, &args).unwrap_err();
+
+        assert_eq!(err, "backup requires a safety code");
+    }
+
+    #[test]
+    fn restore_file_accepts_password_and_dash_placeholder_before_path() {
+        let app = temp_app();
+        let path = app.moddir.join("backup.txt");
+        let text =
+            "MagicNet backup v1\npassword_set=1\npassword_md5=900150983cd24fb0d6963f7d28e17f72\n";
+        let encrypted = encode_backup_bytes(text, "secret");
+        write_text_file(path.clone(), &crate::encode_base64(&encrypted)).unwrap();
+        let path = path.to_string_lossy().into_owned();
+
+        let password_args = vec![
+            "restore-file".to_string(),
+            "secret".to_string(),
+            path.clone(),
+        ];
+        let password_err = backup_cmd(&app, &password_args).unwrap_err();
+        assert!(password_err.contains("does not match"), "{password_err}");
+
+        let dash_args = vec!["restore-file".to_string(), "-".to_string(), path];
+        let dash_err = backup_cmd(&app, &dash_args).unwrap_err();
+        assert_eq!(dash_err, "backup requires a safety code");
     }
 }

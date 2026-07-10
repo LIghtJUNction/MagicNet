@@ -605,6 +605,27 @@ env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPA
 grep -qx 'sing-box' "$TMP/strict-core.log"
 
 printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing-box/subscription.url"
+mkdir -p "$MODDIR/.config/sing-box/.subscription-work"
+"$HOST_JQ" -r '"  \"outbounds\": " + (.outbounds | tojson) + ","' \
+    "$MODDIR/.config/sing-box/config.json" \
+    >"$MODDIR/.config/sing-box/.subscription-work/outbounds.json"
+"$HOST_JQ" '
+    .outbounds |= map(select(
+        (.type == "vmess"
+         or .type == "vless"
+         or .type == "trojan"
+         or .type == "shadowsocks"
+         or .type == "hysteria2") | not
+    ))
+' "$MODDIR/.config/sing-box/config.json" >"$TMP/base-sing-box-config.json"
+mv "$TMP/base-sing-box-config.json" "$MODDIR/.config/sing-box/config.json"
+"$HOST_JQ" -e '[.outbounds[] | select(.type == "selector")] | length > 0' \
+    "$MODDIR/.config/sing-box/config.json" >/dev/null
+if "$HOST_JQ" -e '.outbounds[] | select(.tag == "old-cached-node")' \
+    "$MODDIR/.config/sing-box/config.json" >/dev/null; then
+    echo "sing-box cache replay fixture still has a runtime node" >&2
+    exit 1
+fi
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
 : >"$MOCK_LOG"
 run env \

@@ -144,13 +144,15 @@ magicnet_prepare_singbox_nodes_unlocked() {
         return 1
     fi
 
+    . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
     if [ "${MAGICNET_FORCE_SUB_REFRESH:-0}" != "1" ]; then
-        magicnet_warn "No cached sing-box nodes found; run cli sub update sing-box before starting."
-        config set override.description "[MagicNet]: sing-box has no cached nodes; update subscription first" 2>/dev/null || true
-        return 1
+        if magicnet_singbox_replay_cached_outbounds; then
+            magicnet_log "Restored sing-box nodes from the local subscription cache."
+            return 0
+        fi
+        magicnet_warn "No usable sing-box node cache was found; refreshing the subscription before startup."
     fi
 
-    . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
     _attempt=1
     _attempts="${MAGICNET_SUB_STARTUP_ATTEMPTS:-4}"
     _delay="${MAGICNET_SUB_STARTUP_RETRY_DELAY:-15}"
@@ -169,8 +171,8 @@ magicnet_prepare_singbox_nodes_unlocked() {
         _attempt=$((_attempt + 1))
     done
 
-    magicnet_warn "sing-box subscription update failed; refusing to start with existing cached nodes"
-    _message="sing-box 订阅更新失败，已拒绝使用旧节点启动。请检查订阅链接或网络后重试。"
+    magicnet_warn "sing-box subscription update failed and no usable cached nodes are available"
+    _message="sing-box 没有可用的节点缓存，订阅更新也失败。请检查订阅链接或网络后重试。"
     mkdir -p "${MODDIR}/.state" 2>/dev/null || true
     printf '%s\n' "$_message" >"${MODDIR}/.state/startup-error" 2>/dev/null || true
     config set override.description "[MagicNet]: sing-box subscription update failed" 2>/dev/null || true

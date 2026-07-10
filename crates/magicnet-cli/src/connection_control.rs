@@ -4,6 +4,66 @@ use serde_json::Value;
 
 use crate::App;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ConnectionCloseSummary {
+    pub(crate) targets: usize,
+    pub(crate) closed: usize,
+    pub(crate) failed: usize,
+}
+
+pub(crate) fn close_connections_through_chain(
+    app: &App,
+    selector_tag: &str,
+) -> Result<ConnectionCloseSummary, String> {
+    let text = curl_text(app, "/connections")?;
+    let root: Value =
+        serde_json::from_str(&text).map_err(|err| format!("parse connections: {err}"))?;
+    let ids = connection_ids_through_chain(&root, selector_tag);
+    let targets = ids.len();
+    let mut failed = 0usize;
+    for id in ids {
+        if curl_delete(app, &format!("/connections/{}", encode_path_segment(&id))).is_err() {
+            failed += 1;
+        }
+    }
+    let summary = ConnectionCloseSummary {
+        targets,
+        closed: targets.saturating_sub(failed),
+        failed,
+    };
+    print_close_summary(summary.targets, summary.closed, summary.failed);
+    if summary.failed > 0 {
+        Err(format!(
+            "{} selector connections failed to close",
+            summary.failed
+        ))
+    } else {
+        Ok(summary)
+    }
+}
+
+fn connection_ids_through_chain(root: &Value, selector_tag: &str) -> Vec<String> {
+    root.get("connections")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|connection| {
+            connection
+                .get("chains")
+                .and_then(Value::as_array)
+                .is_some_and(|chains| chains.iter().any(|tag| tag.as_str() == Some(selector_tag)))
+        })
+        .filter_map(|connection| {
+            connection
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
 pub(crate) fn close_matching_connections(app: &App, query: &str) -> Result<(), String> {
     let clean = query.trim();
     if clean.is_empty() {
@@ -389,5 +449,32 @@ mod tests {
             "targets=5\nclosed=3\nfailed=2\n",
             format_close_summary(5, 3, 2)
         );
+    }
+
+    #[test]
+    fn connection_ids_through_chain_matches_exact_selector_without_limit() {
+        let connections = (0..10)
+            .map(|index| {
+                serde_json::json!({
+                    "id": format!("exact-{index}"),
+                    "chains": ["node", "proxy", "proxy-rule"]
+                })
+            })
+            .chain([
+                serde_json::json!({
+                    "id": "substring",
+                    "chains": ["node", "proxy-rule-extra"]
+                }),
+                serde_json::json!({"chains": ["proxy-rule"]}),
+            ])
+            .collect::<Vec<_>>();
+        let root = serde_json::json!({"connections": connections});
+
+        let ids = connection_ids_through_chain(&root, "proxy-rule");
+
+        assert_eq!(ids.len(), 10);
+        assert_eq!(ids.first().map(String::as_str), Some("exact-0"));
+        assert_eq!(ids.last().map(String::as_str), Some("exact-9"));
+        assert!(!ids.iter().any(|id| id == "substring"));
     }
 }

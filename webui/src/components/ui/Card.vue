@@ -3,7 +3,12 @@ import { computed } from "vue";
 import { cn } from "@/lib/utils";
 
 const props = defineProps<{ class?: string }>();
-const classes = computed(() => cn("min-w-0 rounded-md border border-zinc-800/80 bg-[#181713]/95 p-4 text-zinc-50 shadow-sm shadow-black/20", props.class));
+const classes = computed(() =>
+  cn(
+    "magic-card min-w-0 rounded-[2rem] bg-[#0c0d0f]/96 p-5 text-zinc-50 md:p-6",
+    props.class,
+  ),
+);
 </script>
 
 <template>

@@ -12,7 +12,7 @@ kamfw_phase_boot_completed() {
         magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
         return 0
     fi
-    wait_boot_if_magisk
+    wait_boot
     sleep 3
     magicnet_mcp_start_if_enabled || true
     magicnet_start_kernel || true

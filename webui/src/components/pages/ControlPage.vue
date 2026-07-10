@@ -208,17 +208,17 @@ function classifyLastCommand(command: string): string {
 </script>
 
 <template>
-  <div class="grid gap-4">
+  <div class="grid gap-6">
     <div
-      class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"
+      class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between"
     >
-      <div>
+      <div class="max-w-3xl">
         <span
-          class="text-[11px] font-bold uppercase tracking-wide text-zinc-500"
+          class="inline-flex rounded-full bg-white/[0.05] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
           >Control Center</span
         >
-        <h2 class="mt-1 text-2xl font-semibold">模块控制</h2>
-        <p class="mt-1 text-sm leading-6 text-zinc-400">
+        <h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white md:text-4xl">模块控制</h2>
+        <p class="mt-2 text-sm leading-6 text-zinc-400 md:text-[15px]">
           只放模块生命周期和入口。节点、测速、代理模式交给 sing-box WebUI。
         </p>
       </div>
@@ -237,23 +237,24 @@ function classifyLastCommand(command: string): string {
       </div>
     </div>
 
-    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-12">
       <Card
-        class="grid gap-3 border"
+        class="grid gap-5 !bg-[radial-gradient(circle_at_8%_8%,rgba(52,211,153,0.12),transparent_50%),linear-gradient(145deg,rgba(14,18,18,0.98),rgba(9,11,12,0.98))] md:col-span-7 md:row-span-2 md:min-h-[25rem]"
         :class="controlInsightTone(runtimeInsight.status)"
       >
-        <span class="text-[11px] font-bold uppercase tracking-wide opacity-70"
-          >Runtime Insight</span
-        >
-        <div>
-          <h3 class="break-words text-lg font-semibold">
+        <div class="flex items-start justify-between gap-3">
+          <span class="text-[10px] font-semibold uppercase tracking-[0.22em] opacity-60">Runtime Insight</span>
+          <span class="size-2.5 rounded-full bg-current opacity-70 shadow-[0_0_20px_currentColor]" />
+        </div>
+        <div class="my-auto max-w-xl">
+          <h3 class="break-words text-2xl font-semibold tracking-[-0.035em] md:text-3xl">
             {{ runtimeInsight.title }}
           </h3>
-          <p class="mt-1 break-words text-sm leading-6 opacity-80">
+          <p class="mt-3 break-words text-sm leading-7 opacity-75 md:text-[15px]">
             {{ runtimeInsight.detail }}
           </p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-start gap-2">
           <Badge
             v-for="item in runtimeInsight.actions"
             :key="item"
@@ -274,14 +275,14 @@ function classifyLastCommand(command: string): string {
         </div>
       </Card>
 
-      <Card class="grid gap-3">
+      <Card class="grid gap-4 md:col-span-5">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <span
-              class="text-[11px] font-bold uppercase tracking-wide text-zinc-500"
+              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
               >sing-box</span
             >
-            <h3 class="mt-1 break-words text-xl font-semibold">
+            <h3 class="mt-2 break-words text-2xl font-semibold tracking-[-0.035em]">
               {{
                 state.runtime.singBoxState === "sing-box"
                   ? "running"
@@ -289,9 +290,10 @@ function classifyLastCommand(command: string): string {
               }}
             </h3>
           </div>
+          <span :class="['mt-1 size-3 rounded-full shadow-[0_0_20px_currentColor]', state.runtime.singBoxState === 'sing-box' ? 'bg-emerald-300 text-emerald-300' : 'bg-rose-300 text-rose-300']" />
         </div>
         <p class="text-sm leading-6 text-zinc-400">
-          MagicNet now runs only sing-box.
+          MagicNet 当前只运行 sing-box 核心。
         </p>
         <Button
           :disabled="runtimeBusy"
@@ -308,12 +310,12 @@ function classifyLastCommand(command: string): string {
         </Button>
       </Card>
 
-      <Card>
+      <Card class="md:col-span-5">
         <span
-          class="text-[11px] font-bold uppercase tracking-wide text-zinc-500"
+          class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
           >Quick Actions</span
         >
-        <div class="mt-3 grid gap-2">
+        <div class="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
           <Button
             variant="secondary"
             :disabled="runtimeBusy"
@@ -349,12 +351,14 @@ function classifyLastCommand(command: string): string {
         </div>
       </Card>
 
-      <Card>
+      <Card class="md:col-span-4">
         <span
-          class="text-[11px] font-bold uppercase tracking-wide text-zinc-500"
+          class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
           >sing-box WebUI</span
         >
-        <div class="mt-3 grid gap-2">
+        <h3 class="mt-3 text-xl font-semibold tracking-[-0.03em]">核心控制入口</h3>
+        <p class="mt-2 text-sm leading-6 text-zinc-400">进入 zashboard 管理节点与代理组，或直接检查 API 连通性。</p>
+        <div class="mt-5 grid gap-2">
           <Button
             variant="outline"
             :loading="isRunning('open-zashboard')"
@@ -375,17 +379,15 @@ function classifyLastCommand(command: string): string {
           >
         </div>
       </Card>
-    </div>
 
-    <div class="grid gap-3 lg:grid-cols-2">
-      <Card class="grid gap-3">
+      <Card class="grid gap-5 md:col-span-8">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>
             <span
-              class="text-[11px] font-bold uppercase tracking-wide text-zinc-500"
+              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
               >Orchestrator Mode</span
             >
-            <h3 class="mt-1 text-lg font-semibold">多 VPN 共存</h3>
+            <h3 class="mt-2 text-2xl font-semibold tracking-[-0.035em]">多 VPN 共存</h3>
           </div>
           <div class="flex flex-wrap gap-2">
             <Badge tone="neutral">{{ state.runtime.transparentMode }}</Badge>
@@ -399,10 +401,10 @@ function classifyLastCommand(command: string): string {
             v-for="item in orchestratorModes"
             :key="item.mode"
             :class="[
-              'min-h-16 rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:cursor-progress disabled:opacity-60',
+              'min-h-[5.25rem] rounded-[1.4rem] px-4 py-3 text-left text-sm shadow-[inset_0_0_0_1px_rgba(255,255,255,0.075),inset_0_0_0_5px_rgba(255,255,255,0.018)] transition-[transform,color,background-color,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60 active:scale-[0.98] disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100',
               state.runtime.transparentMode === item.mode
-                ? 'border-lime-300 bg-lime-300 text-zinc-950'
-                : 'border-zinc-800 bg-zinc-800 text-zinc-50 hover:border-zinc-700 hover:bg-zinc-700/80',
+                ? 'bg-gradient-to-br from-emerald-300 to-cyan-300 text-[#06110e] shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]'
+                : 'bg-white/[0.05] text-zinc-100 hover:bg-white/[0.085]',
             ]"
             :aria-pressed="state.runtime.transparentMode === item.mode"
             :disabled="
@@ -428,7 +430,7 @@ function classifyLastCommand(command: string): string {
               :class="[
                 'mt-1 block text-xs leading-5',
                 state.runtime.transparentMode === item.mode
-                  ? 'text-zinc-800'
+                  ? 'text-emerald-950/75'
                   : 'text-zinc-400',
               ]"
               >{{ item.description }}</span
@@ -447,7 +449,7 @@ function classifyLastCommand(command: string): string {
     </div>
 
     <div v-if="pendingDangerAction" ref="dangerConfirmCard" tabindex="-1">
-      <Card class="grid gap-3 border border-amber-500/40 bg-amber-500/10">
+      <Card class="grid gap-3 !bg-amber-500/10 text-amber-100 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.25),inset_0_0_0_7px_rgba(251,191,36,0.025)]">
         <div
           class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
         >
@@ -460,7 +462,7 @@ function classifyLastCommand(command: string): string {
               {{ pendingDangerMessage }}
             </p>
             <code
-              class="mt-2 block break-all rounded-md bg-zinc-950/60 px-3 py-2 text-xs text-zinc-100"
+              class="mt-3 block break-all rounded-[1.15rem] bg-black/30 px-4 py-3 text-xs text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]"
               >{{ pendingDangerAction.args }}</code
             >
           </div>
