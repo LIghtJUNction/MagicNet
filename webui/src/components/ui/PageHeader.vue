@@ -7,13 +7,13 @@ defineProps<{
 </script>
 
 <template>
-  <div class="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
-    <div>
-      <span class="text-[11px] font-bold uppercase tracking-wide text-zinc-500">{{ overline }}</span>
-      <h2 class="mt-1 text-2xl font-semibold">{{ title }}</h2>
-      <p class="mt-1 text-sm leading-6 text-zinc-400">{{ description }}</p>
+  <div class="flex min-w-0 flex-col gap-5 md:flex-row md:items-start md:justify-between">
+    <div class="max-w-3xl">
+      <span class="inline-flex rounded-full bg-white/[0.05] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">{{ overline }}</span>
+      <h2 class="mt-3 text-2xl font-semibold tracking-[-0.035em] text-white md:text-3xl">{{ title }}</h2>
+      <p class="mt-2 text-sm leading-6 text-zinc-400 md:text-[15px]">{{ description }}</p>
     </div>
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2 md:justify-end">
       <slot name="actions">
         <slot />
       </slot>

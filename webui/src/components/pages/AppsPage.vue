@@ -336,8 +336,8 @@ onMounted(() => {
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-center gap-3">
         <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
-          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
-          <button class="h-9 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
+          <button class="min-h-12 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
+          <button class="min-h-12 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
         </div>
         <span class="text-sm text-zinc-500">黑名单模式下 Bypass 应用绕过 TUN；白名单模式下 Proxy 应用进入 TUN。</span>
       </div>

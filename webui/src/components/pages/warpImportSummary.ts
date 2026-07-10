@@ -156,6 +156,6 @@ function validPort(port: string): boolean {
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 65535;
 }
 
-function splitCsv(value: string): string[] {
+function splitCsv(value = ""): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
