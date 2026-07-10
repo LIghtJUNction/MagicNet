@@ -1,6 +1,7 @@
 dist
 target/
 .env
+.tokensave/
 .playwright-mcp/
 .kam/
 Kam
