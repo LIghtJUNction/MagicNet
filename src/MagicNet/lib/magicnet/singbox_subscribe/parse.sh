@@ -41,22 +41,22 @@ magicnet_singbox_extract_share_links() {
     _current_links_file=$(mktemp "${_nodes_dir}/links.current.XXXXXX") || return 1
     _first_line=$(sed -n '1{s/^[[:space:]]*//;p;}' "$_source_file" | tr -d '\r')
     case "$_first_line" in
-    vless://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://*)
+    vless://* | anytls://* | tuic://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://*)
         tr -d '\r' <"$_source_file" |
-            grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
+            grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss)://' |
             sed 's/^[[:space:]]*//' >"$_current_links_file"
         ;;
     *)
         if command -v base64 >/dev/null 2>&1; then
             base64 -d "$_source_file" 2>/dev/null |
                 tr -d '\r' |
-                grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
+                grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss)://' |
                 sed 's/^[[:space:]]*//' >"$_current_links_file"
             if [ ! -s "$_current_links_file" ]; then
                 tr '_-' '/+' <"$_source_file" 2>/dev/null |
                     base64 -d 2>/dev/null |
                     tr -d '\r' |
-                    grep -E '^[[:space:]]*(vless|hysteria2|hy2|trojan|vmess|ss)://' |
+                    grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss)://' |
                     sed 's/^[[:space:]]*//' >"$_current_links_file"
             fi
         else
