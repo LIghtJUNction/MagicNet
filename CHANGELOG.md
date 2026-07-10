@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v1.1.12 (2026-07-10)
+
+- Add a WebUI control workspace with functional diagnostic and configuration
+  preview tools.
+- Recover routing after interface changes, and improve CLI backup and help
+  flows plus default node handling.
+- Update the bundled MagicBox and Zashboard revisions.
+- Preserve AnyTLS and TUIC nodes during subscription imports, with packaged
+  regression coverage.
+- Remove tracked local runtime state from the repository.
+
 ## v1.1.11 (2026-06-30)
 
 - Avoid manager/non-TTY install hangs by skipping MagicNet interactive prompts
