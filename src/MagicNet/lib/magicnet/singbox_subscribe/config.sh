@@ -90,6 +90,8 @@ magicnet_singbox_build_outbounds_file_with_jq() {
               or (.type == "vless" and ((.uuid // "") != ""))
               or (.type == "trojan" and ((.password // "") != ""))
               or (.type == "hysteria2" and ((.password // "") != ""))
+              or (.type == "anytls" and ((.password // "") != ""))
+              or (.type == "tuic" and ((.uuid // "") != "") and ((.password // "") != ""))
             )
           ))
       ) as $nodes
@@ -139,6 +141,8 @@ magicnet_singbox_count_valid_outbounds_nodes() {
               or (.type == "vless" and ((.uuid // "") != ""))
               or (.type == "trojan" and ((.password // "") != ""))
               or (.type == "hysteria2" and ((.password // "") != ""))
+              or (.type == "anytls" and ((.password // "") != ""))
+              or (.type == "tuic" and ((.uuid // "") != "") and ((.password // "") != ""))
             )
           ))
         | length

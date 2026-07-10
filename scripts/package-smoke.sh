@@ -47,6 +47,10 @@ require_entry bin/ecapture
 require_entry lib/kamfw/watchdog.sh
 require_entry lib/kamfw/fswatch.sh
 require_entry lib/kamfw/__singbox__.sh
+require_entry lib/magicnet_singbox_subscribe.sh
+for entry in common fetch parse config proxylink update; do
+    require_entry "lib/magicnet/singbox_subscribe/$entry.sh"
+done
 
 require_executable_entry() {
     local entry="$1"
@@ -117,6 +121,14 @@ check_no_subscription_secret() {
 }
 
 check_no_subscription_secret '.config/sing-box/subscription.url'
+
+subscription_module_root="$elf_tmp/subscription-module"
+mkdir -p "$subscription_module_root"
+unzip -oq "$ZIP_PATH" \
+    'lib/magicnet_singbox_subscribe.sh' \
+    'lib/magicnet/singbox_subscribe/*.sh' \
+    -d "$subscription_module_root"
+bash "$ROOT/scripts/singbox-subscription-protocol-smoke.sh" "$subscription_module_root"
 
 route_fixture_dir="$elf_tmp/route-config"
 mkdir -p "$route_fixture_dir"
