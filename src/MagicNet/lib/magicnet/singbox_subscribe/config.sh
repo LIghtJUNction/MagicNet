@@ -337,6 +337,36 @@ magicnet_singbox_update_config_with_nodes() {
     mv -f "$_tmp_file" "$_config_file"
 }
 
+magicnet_singbox_replay_cached_outbounds() {
+    _cached_outbounds="${MODDIR}/.config/sing-box/.subscription-work/outbounds.json"
+    [ -s "$_cached_outbounds" ] || {
+        unset _cached_outbounds
+        return 1
+    }
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks)"' \
+        "$_cached_outbounds" || {
+        unset _cached_outbounds
+        return 1
+    }
+
+    _config_file=$(magicnet_singbox_subscription_config_file)
+    _previous_config="${_config_file}.cache-replay.previous"
+    cp -f "$_config_file" "$_previous_config" || {
+        unset _cached_outbounds _config_file _previous_config
+        return 1
+    }
+    if magicnet_singbox_update_config_with_nodes "$_cached_outbounds" &&
+        magicnet_singbox_verify_subscription_ready; then
+        rm -f "$_previous_config"
+        unset _cached_outbounds _config_file _previous_config
+        return 0
+    fi
+
+    mv -f "$_previous_config" "$_config_file" 2>/dev/null || true
+    unset _cached_outbounds _config_file _previous_config
+    return 1
+}
+
 magicnet_singbox_pids() {
     for _proc_comm in /proc/[0-9]*/comm; do
         [ -r "$_proc_comm" ] || continue

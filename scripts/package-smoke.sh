@@ -21,7 +21,7 @@ require_entry() {
     grep -Fx "$entry" "$entries_file" >/dev/null || fail "missing zip entry: $entry"
 }
 
-for tool in file grep python3 readelf sed unzip zipinfo; do
+for tool in file grep jq python3 readelf sed unzip zipinfo; do
     command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
 
@@ -46,6 +46,7 @@ require_entry bin/sing-box
 require_entry bin/ecapture
 require_entry lib/kamfw/watchdog.sh
 require_entry lib/kamfw/fswatch.sh
+require_entry lib/kamfw/__singbox__.sh
 
 require_executable_entry() {
     local entry="$1"
@@ -116,6 +117,54 @@ check_no_subscription_secret() {
 }
 
 check_no_subscription_secret '.config/sing-box/subscription.url'
+
+route_fixture_dir="$elf_tmp/route-config"
+mkdir -p "$route_fixture_dir"
+unzip -p "$ZIP_PATH" lib/kamfw/__singbox__.sh >"$route_fixture_dir/__singbox__.sh"
+cat >"$route_fixture_dir/config.json" <<'JSON'
+{
+  "route": {
+    "auto_detect_interface": false,
+    "default_interface": "rmnet_data3",
+    "rules": []
+  },
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct",
+      "bind_interface": "rmnet_data3"
+    },
+    {
+      "type": "selector",
+      "tag": "proxy-rule",
+      "outbounds": ["proxy", "direct"]
+    },
+    {
+      "type": "selector",
+      "tag": "network-test",
+      "interrupt_exist_connections": false,
+      "outbounds": ["proxy", "direct"]
+    }
+  ]
+}
+JSON
+
+(
+    import() { :; }
+    set_i18n() { :; }
+    MODDIR="$route_fixture_dir"
+    # shellcheck disable=SC1091
+    . "$route_fixture_dir/__singbox__.sh"
+    singbox_prepare_route_config "$route_fixture_dir/config.json"
+)
+
+jq -e '
+    .route.auto_detect_interface == true
+    and (.route | has("default_interface") | not)
+    and ([.outbounds[] | select(.type == "direct") | has("bind_interface")] | all(. == false))
+    and ([.outbounds[] | select(.type == "selector") | .interrupt_exist_connections] | all(. == true))
+' "$route_fixture_dir/config.json" >/dev/null \
+    || fail "sing-box route preparation keeps stale interfaces or selector connections"
 
 python3 - "$ZIP_PATH" <<'PY'
 import json

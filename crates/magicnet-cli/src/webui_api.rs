@@ -4,7 +4,8 @@ use std::process::Command;
 use serde_json::json;
 
 use crate::connection_control::{
-    close_matching_connections, close_top_connections, print_close_all_summary,
+    close_connections_through_chain, close_matching_connections, close_top_connections,
+    print_close_all_summary,
 };
 use crate::service::singbox_webui;
 use crate::{run_magicnet_function, write_text_file, App};
@@ -91,8 +92,18 @@ fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), String> {
         &format!("/proxies/{}", encode_path_segment(clean_group)),
         &payload,
     )?;
-    println!("[info] {clean_group} selector set to {clean_node}");
-    Ok(())
+    match close_connections_through_chain(app, clean_group) {
+        Ok(summary) => {
+            println!(
+                "[info] {clean_group} selector set to {clean_node}; closed {}/{} stale connections",
+                summary.closed, summary.targets
+            );
+            Ok(())
+        }
+        Err(err) => Err(format!(
+            "selector changed to {clean_node}, but stale connections were not fully closed: {err}"
+        )),
+    }
 }
 
 fn close_connection(app: &App, id: &str) -> Result<(), String> {
