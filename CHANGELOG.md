@@ -1,5 +1,13 @@
 ## Unreleased
 
+## v1.1.13 (2026-07-10)
+
+- Fix #24 by allowing long mobile WebUI text to scroll horizontally while
+  preserving page zoom and pinch gestures.
+- Keep the top WebUI controls on a single line with a compact narrow-screen
+  layout.
+- Move the KAM dev staging path to `/sdcard/Download/MagicNet`.
+
 ## v1.1.12 (2026-07-10)
 
 - Add a WebUI control workspace with functional diagnostic and configuration

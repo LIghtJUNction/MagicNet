@@ -74,10 +74,6 @@ const activeComponent = computed(() => ({
 }[activeTab.value]));
 
 const statusMessage = computed(() => state.task ? `正在执行：${state.task}` : state.notice || "等待操作");
-const shortStatusMessage = computed(() => {
-  const message = statusMessage.value;
-  return message.length > 38 ? `${message.slice(0, 34)}...` : message;
-});
 
 function setTab(tab: TabKey): void {
   activeTab.value = tab;
@@ -144,7 +140,7 @@ onUnmounted(() => {
 
 <template>
   <div class="relative mx-auto min-h-dvh w-full max-w-[1500px] px-3 pb-28 pt-3 sm:px-5 md:px-7 md:pb-12 md:pt-6">
-    <header class="mb-5 flex flex-wrap items-center justify-between gap-1 md:mb-7">
+    <header class="mb-5 flex flex-nowrap items-center justify-between gap-1 md:mb-7">
       <div class="flex min-w-0 items-center gap-1 rounded-full bg-white/[0.045] p-0.5 pr-1.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07),inset_0_1px_0_rgba(255,255,255,0.06)]">
         <button
           class="brand-mark grid size-[49px] shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-300 via-cyan-300 to-rose-300 text-[#05110e] shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_8px_24px_rgba(34,211,238,0.14)] transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200/80 active:scale-[0.94]"
@@ -155,7 +151,7 @@ onUnmounted(() => {
         >
           <Zap :size="21" />
         </button>
-        <div class="min-w-0">
+        <div class="hidden min-w-0 min-[360px]:block">
           <h1 class="truncate text-[17px] font-semibold leading-tight tracking-[-0.03em] text-white sm:text-xl">MagicNet</h1>
           <p class="hidden truncate text-[11px] text-zinc-500 sm:block">Root network workspace</p>
         </div>
@@ -209,11 +205,11 @@ onUnmounted(() => {
     <section class="runtime-cockpit relative z-20 mb-5 grid gap-4 rounded-[2rem] bg-[#0b0d0f]/94 p-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08),inset_0_0_0_7px_rgba(255,255,255,0.018),0_18px_60px_rgba(0,0,0,0.16)] md:sticky md:top-4 md:grid-cols-[minmax(220px,1.05fr)_minmax(0,1fr)_auto] md:items-center md:gap-2 md:backdrop-blur-xl">
       <div class="rounded-[1.55rem] bg-gradient-to-br from-emerald-400/[0.09] via-white/[0.025] to-cyan-400/[0.07] px-4 py-3 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.09)]">
         <div class="flex items-center justify-between gap-3">
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Runtime status</span>
-            <div class="mt-1.5 flex items-center gap-2.5">
+            <div class="mt-1.5 flex min-w-0 items-center gap-2.5">
               <span :class="['size-2.5 shrink-0 rounded-full shadow-[0_0_18px_currentColor]', state.runtime.singBoxState === 'sing-box' ? 'bg-emerald-300 text-emerald-300' : state.runtime.singBoxState === 'stopped' ? 'bg-rose-300 text-rose-300' : 'bg-amber-300 text-amber-300']" />
-              <strong class="truncate text-lg font-semibold tracking-[-0.03em] text-white">
+              <strong class="w-0 min-w-0 flex-1 truncate text-lg font-semibold tracking-[-0.03em] text-white">
                 {{ state.runtime.singBoxState === "sing-box" ? "sing-box online" : state.runtime.singBoxState === "unknown" ? "状态未知" : state.runtime.singBoxState }}
               </strong>
             </div>
@@ -233,7 +229,7 @@ onUnmounted(() => {
         </div>
         <div class="col-span-2 flex min-w-0 items-center gap-2 text-xs leading-5 text-zinc-400 md:text-sm">
           <ScrollText class="shrink-0 text-rose-300" :size="14" />
-          <span class="min-w-0 truncate" :title="statusMessage">{{ shortStatusMessage }}</span>
+          <span class="min-w-0 truncate" :title="statusMessage">{{ statusMessage }}</span>
         </div>
       </div>
 

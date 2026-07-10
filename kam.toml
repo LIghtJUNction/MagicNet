@@ -1,8 +1,8 @@
 [prop]
 id = "MagicNet"
 name = "MagicNet"
-version = "v1.1.12"
-versionCode = 1783666293362
+version = "v1.1.13"
+versionCode = 1783698673521
 author = "LIghtJUNction"
 description = "[MagicNet]:Android root network module with magicnet0 TUN, sing-box, WebUI, MCP, and DNS leak guard tools. Built with KAM."
 updateJson = "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json"
@@ -100,6 +100,6 @@ ignore = [
     "*.bak",
     "*.kam-tmp",
 ]
-staging = "/data/local/tmp/kam-dev/{{id}}"
+staging = "/sdcard/Download/MagicNet/kam-dev/{{id}}"
 
 [tool]

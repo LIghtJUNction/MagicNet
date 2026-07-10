@@ -762,6 +762,7 @@ assert_transparent_mode() {
     local before_marker after_marker
 
     before_marker="$(wc -l <"$MOCK_LOG")"
+    # shellcheck disable=SC2016
     run env MAGICNET_TEST_MODE="$mode" sh -c '
         . "$MODDIR/lib/kamfw/.kamfwrc"
         import __runtime__

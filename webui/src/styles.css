@@ -30,7 +30,8 @@ body {
     radial-gradient(circle at 72% 78%, rgba(251, 113, 133, 0.055), transparent 34rem),
     linear-gradient(145deg, #060708 0%, #090a0c 48%, #060708 100%);
   color: #f4f4f5;
-  overflow-x: hidden;
+  overflow-x: auto;
+  touch-action: pan-x pan-y pinch-zoom;
 }
 
 body::before {
@@ -53,6 +54,16 @@ body::before {
 
 button {
   -webkit-tap-highlight-color: transparent;
+}
+
+.truncate {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
 }
 
 .lucide {

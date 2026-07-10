@@ -164,6 +164,7 @@ JSON
 (
     import() { :; }
     set_i18n() { :; }
+    # shellcheck disable=SC2034
     MODDIR="$route_fixture_dir"
     # shellcheck disable=SC1091
     . "$route_fixture_dir/__singbox__.sh"
