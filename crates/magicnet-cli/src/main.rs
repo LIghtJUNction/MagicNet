@@ -153,7 +153,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "backup",
-        usage: "cli backup {export [password]|restore [password|-] <base64>}",
+        usage: "cli backup {export [password]|restore [password|-] <base64>|restore-file [password|-] <path>}",
     },
     CommandHelp {
         command: "api",
@@ -161,7 +161,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "app",
-        usage: "cli app {list|mode <blacklist|whitelist>|add <package> [proxy|bypass]|remove <package>|apply}",
+        usage: "cli app {list|packages [query]|mode <blacklist|whitelist>|add <package> [proxy|bypass]|add-many <proxy|bypass> <package...>|remove <package>|apply}",
     },
     CommandHelp {
         command: "diagnose",
@@ -414,5 +414,30 @@ mod path_tests {
         assert_infers(&root, "cli");
         assert_infers(&root, "bin/magicnet-cli");
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+}
+
+#[cfg(test)]
+mod command_help_tests {
+    use super::COMMAND_HELP;
+
+    fn usage_for(command: &str) -> &'static str {
+        COMMAND_HELP
+            .iter()
+            .find(|item| item.command == command)
+            .map(|item| item.usage)
+            .unwrap_or_else(|| panic!("missing help for {command}"))
+    }
+
+    #[test]
+    fn app_help_lists_implemented_package_commands() {
+        let usage = usage_for("app");
+        assert!(usage.contains("packages [query]"));
+        assert!(usage.contains("add-many <proxy|bypass> <package...>"));
+    }
+
+    #[test]
+    fn backup_help_lists_file_restore() {
+        assert!(usage_for("backup").contains("restore-file [password|-] <path>"));
     }
 }
