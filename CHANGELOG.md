@@ -1,6 +1,6 @@
 ## Unreleased
 
-## v1.1.13 (2026-07-10)
+## v1.1.13 (2026-07-11)
 
 - Fix #24 by allowing long mobile WebUI text to scroll horizontally while
   preserving page zoom and pinch gestures.
