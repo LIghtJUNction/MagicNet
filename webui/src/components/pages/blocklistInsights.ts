@@ -46,7 +46,7 @@ export function buildBlocklistSummary(blocklist: BlocklistState): BlocklistSumma
       insight("社区库", blocklist.community ? "启用" : "关闭", blocklist.community ? "success" : "neutral"),
       insight("本地阻断", `${blocklist.manual.length} 条`, blocklist.manual.length ? "success" : "neutral"),
       insight("社区有效", `${communityEntries.length} 条`, communityEntries.length ? "success" : "warning"),
-      insight("本地排除", `${blocklist.allowRules.length} 条`, blocklist.allowRules.length ? "warning" : "neutral")
+      insight("广告放行", `${blocklist.allowRules.length} 条`, blocklist.allowRules.length ? "warning" : "neutral")
     ]
   };
 }
