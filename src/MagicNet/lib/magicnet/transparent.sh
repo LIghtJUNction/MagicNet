@@ -51,7 +51,8 @@ magicnet_singbox_apply_transparent_mode() {
                   "fe80::/10",
                   "ff00::/8"
                 ],
-                "stack": "gvisor"
+                "stack": "gvisor",
+                "mtu": 1400
               };
             def managed_inbound:
               ((.type // "") as $type | ($type == "tun" or $type == "tproxy" or $type == "redirect"))
@@ -123,7 +124,8 @@ magicnet_singbox_apply_transparent_mode() {
             print "        \"fe80::/10\","
             print "        \"ff00::/8\""
             print "      ],"
-            print "      \"stack\": \"gvisor\""
+            print "      \"stack\": \"gvisor\","
+            print "      \"mtu\": 1400"
             printf "    }%s\n", comma
         }
         function emit_dns(comma) {

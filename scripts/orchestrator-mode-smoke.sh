@@ -90,7 +90,7 @@ assert_mode() {
     fi
 
     if [ "$expect_tun" = "yes" ]; then
-        jq -e '.inbounds[] | select(.type == "tun" and .tag == "tun-in" and .interface_name == "magicnet0")' "$config" >/dev/null
+        jq -e '.inbounds[] | select(.type == "tun" and .tag == "tun-in" and .interface_name == "magicnet0" and .stack == "gvisor" and .mtu == 1400)' "$config" >/dev/null
         jq -e '.route.rules[] | select(.action == "sniff" and (.inbound == ["mixed-in", "tun-in"]))' "$config" >/dev/null
     else
         if jq -e '.inbounds[] | select(.type == "tun" or .tag == "tun-in")' "$config" >/dev/null; then
@@ -114,5 +114,29 @@ assert_mode proxy no
 assert_mode external-tun no
 assert_mode hybrid yes
 assert_mode tun yes
+
+# Exercise the explicit jq-less awk fallback with a PATH that cannot discover host jq.
+rm -f "$MODDIR/bin/jq"
+FALLBACK_BIN="$TMPDIR/fallback-bin"
+mkdir -p "$FALLBACK_BIN"
+for command_name in awk mv rm; do
+    ln -s "$(command -v "$command_name")" "$FALLBACK_BIN/$command_name"
+done
+cat >"$MODDIR/.config/sing-box/config.json" <<'JSON'
+{
+  "dns": { "strategy": "prefer_ipv6", "servers": [] },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "old-tun"
+    }
+  ],
+  "route": { "rules": [], "final": "direct" },
+  "outbounds": [{ "type": "direct", "tag": "direct" }]
+}
+JSON
+printf 'MAGICNET_TRANSPARENT_MODE=tun\n' >"$MODDIR/.config/magicnet/transparent-mode.conf"
+PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh"
+jq -e '.inbounds[] | select(.type == "tun" and .tag == "tun-in" and .stack == "gvisor" and .mtu == 1400)' "$MODDIR/.config/sing-box/config.json" >/dev/null
 
 echo "orchestrator mode smoke passed"
