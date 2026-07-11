@@ -23,6 +23,16 @@ cat >"$tmp_dir/nodes.json" <<'JSON'
  {"type":"vless","tag":"Sichuan edge","server":"sichuan.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000011"},
  {"type":"vless","tag":"Inner-Mongolia edge","server":"mongolia.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000012"},
  {"type":"vless","tag":"Xinjiang edge","server":"xinjiang.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000013"}
+ ,{"type":"vless","tag":"香港 edge","server":"hk-cn.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000014"}
+ ,{"type":"vless","tag":"Hong Kong edge","server":"hongkong.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000015"}
+ ,{"type":"vless","tag":"Hong-Kong edge","server":"hong-kong.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000016"}
+ ,{"type":"vless","tag":"Hong_Kong edge","server":"hong_kong.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000017"}
+ ,{"type":"vless","tag":"HK edge","server":"hk.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000018"}
+ ,{"type":"vless","tag":"HKG edge","server":"hkg.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000019"}
+ ,{"type":"vless","tag":"HKT edge","server":"hkt.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000020"}
+ ,{"type":"vless","tag":"CHK edge","server":"chk.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000021"}
+ ,{"type":"vless","tag":"hk01 edge","server":"hk01.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000022"}
+ ,{"type":"vless","tag":"myhk edge","server":"myhk.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000023"}
 ]
 JSON
 magicnet_singbox_write_outbounds_from_json "$tmp_dir/nodes.json" "$tmp_dir/outbounds.fragment"
@@ -31,16 +41,16 @@ jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | [.outbounds[] | select(.tag as $tag | $names | index($tag))] as $groups
   | ($groups | length) == 4
-    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42"] and (.outbounds | index("proxy") == null and index("direct") == null)))
+    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "hk01 edge", "myhk edge"] and (.outbounds | index("proxy") == null and index("direct") == null)))
 ' "$tmp_dir/generated.json" >/dev/null || fail "jq generator selector mismatch"
-printf '%s\n' 'US stable' '上海 node' 'CN node' 'CN2 premium' 'opaque-42' 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge' >"$tmp_dir/tags"
+printf '%s\n' 'US stable' '上海 node' 'CN node' 'CN2 premium' 'opaque-42' 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge' '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge' 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge' >"$tmp_dir/tags"
 magicnet_singbox_emit_selector_block "$tmp_dir/tags" 'US stable' >"$tmp_dir/no-jq.fragment"
 { printf '{"outbounds":['; cat "$tmp_dir/no-jq.fragment"; printf ']}\n'; } >"$tmp_dir/no-jq.json"
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | [.outbounds[] | select(.tag as $tag | $names | index($tag))] as $groups
   | ($groups | length) == 4
-    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42"] and (.outbounds | index("proxy") == null and index("direct") == null)))
+    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "hk01 edge", "myhk edge"] and (.outbounds | index("proxy") == null and index("direct") == null)))
 ' "$tmp_dir/no-jq.json" >/dev/null || fail "no-jq generator selector mismatch"
 magicnet_singbox_pinned_ai_tags "$tmp_dir/tags" >"$tmp_dir/pinned-ai-tags"
 grep -Fxq 'CN2 premium' "$tmp_dir/pinned-ai-tags" || fail "CN2 false positive"
@@ -48,6 +58,12 @@ grep -Fxq 'opaque-42' "$tmp_dir/pinned-ai-tags" || fail "opaque node filtered"
 ! grep -Fxq '上海 node' "$tmp_dir/pinned-ai-tags" || fail "mainland node retained"
 for tag in 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge'; do
   ! grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "English mainland label retained: $tag"
+done
+for tag in '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge'; do
+  ! grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Hong Kong label retained: $tag"
+done
+for tag in 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge'; do
+  grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Hong Kong boundary false positive: $tag"
 done
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
