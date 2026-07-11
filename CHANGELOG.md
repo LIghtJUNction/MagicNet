@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v1.1.15 (2026-07-11)
+
+- Add a prioritized ad allowlist routed through selectable `direct` or `proxy`
+  outbounds, make `ad-block` selectable between `block`, `direct`, and `proxy`,
+  and expose allowlist rule management in the WebUI.
+- Add independent fail-closed `ai-chatgpt`, `ai-gemini`, `ai-grok`, and
+  `ai-claude` selectors pinned only to explicit eligible nodes.
+- Exclude mainland China and Hong Kong labels, including Hong Kong variants and
+  standalone `HK` or `HKG`, from pinned AI selectors without boundary false
+  positives.
+
 ## v1.1.14 (2026-07-11)
 
 - Set the managed sing-box TUN MTU to 1400 to mitigate slow uploads.
