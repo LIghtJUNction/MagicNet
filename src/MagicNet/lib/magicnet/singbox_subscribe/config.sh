@@ -70,6 +70,11 @@ magicnet_singbox_build_outbounds_file_with_jq() {
     def selector($tag; $outs; $fallback):
       (with_base($outs; $fallback)) as $items
       | {"type": "selector", "tag": $tag, "outbounds": $items, "default": $items[0]};
+    def mainland_node_tag:
+      test("中国|大陆|内地|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:China|Mainland|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+    def pinned_ai_selector($tag; $tags):
+      (["block"] + [$tags[]? | select(mainland_node_tag | not)]) as $items
+      | {"type": "selector", "tag": $tag, "outbounds": $items, "default": "block"};
     def proxy_tag_score($tag):
       if ($tag | test("免费|Free|free|公益|试用|下载专用|剩余|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) then 0
       elif ($tag | test("IEPL|IPLC|专线|S[0-9]+|倍率|x1|x2|香港|日本|新加坡|美国|台湾|韩国")) then 2
@@ -110,6 +115,10 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           selector("bing"; ["proxy", "direct"]; "proxy"),
           selector("dns-guard"; ["proxy", "block", "direct"]; "proxy"),
           selector("network-test"; ["proxy", "direct"]; "proxy"),
+          pinned_ai_selector("ai-chatgpt"; $tags),
+          pinned_ai_selector("ai-gemini"; $tags),
+          pinned_ai_selector("ai-grok"; $tags),
+          pinned_ai_selector("ai-claude"; $tags),
           selector("ai-proxy"; ["proxy", "direct"]; "proxy"),
           selector("proxy-rule"; ["proxy", "direct"]; "proxy"),
           selector("dev-proxy"; ["proxy", "direct"]; "proxy"),
@@ -213,6 +222,14 @@ magicnet_singbox_emit_static_selectors() {
     magicnet_emit_selector_json "dns-guard" "$(printf '%s\n%s\n%s\n' "proxy" "block" "direct")" "proxy"
     printf ',\n'
     magicnet_emit_selector_json "network-test" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
+    printf ',\n'
+    _pinned_ai_tags=$(magicnet_singbox_pinned_ai_tags "$_tags_file")
+    _pinned_ai_first=1
+    for _name in ai-chatgpt ai-gemini ai-grok ai-claude; do
+        [ "$_pinned_ai_first" -eq 1 ] || printf ',\n'
+        magicnet_singbox_emit_pinned_ai_selector "$_name" "$_pinned_ai_tags"
+        _pinned_ai_first=0
+    done
     for _name in ai-proxy proxy-rule dev-proxy social-proxy media-proxy game-proxy telegram-proxy; do
         printf ',\n'
         magicnet_emit_selector_json "$_name" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
@@ -221,7 +238,39 @@ magicnet_singbox_emit_static_selectors() {
     magicnet_emit_selector_json "download-direct" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
     printf ',\n'
     magicnet_emit_selector_json "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
-    unset _pair _name _default
+    unset _pair _name _default _pinned_ai_tags _pinned_ai_first
+}
+
+magicnet_singbox_emit_pinned_ai_selector() {
+    _pinned_ai_name="$1"
+    _pinned_ai_members="$2"
+    printf '    {\n'
+    printf '      "type": "selector",\n'
+    printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_pinned_ai_name")"
+    printf '      "outbounds": ['
+    _pinned_ai_member_first=1
+    while IFS= read -r _pinned_ai_member; do
+        [ -n "$_pinned_ai_member" ] || continue
+        [ "$_pinned_ai_member_first" -eq 1 ] || printf ', '
+        printf '"%s"' "$(magicnet_json_escape "$_pinned_ai_member")"
+        _pinned_ai_member_first=0
+    done <<EOF
+$_pinned_ai_members
+EOF
+    printf '],\n'
+    printf '      "default": "block"\n'
+    printf '    }'
+    unset _pinned_ai_name _pinned_ai_members _pinned_ai_member _pinned_ai_member_first
+}
+
+magicnet_singbox_pinned_ai_tags() {
+    _pinned_ai_tags_file="$1"
+    printf '%s\n' "block"
+    awk 'BEGIN { IGNORECASE = 1 }
+      !/中国|大陆|内地|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ &&
+      !/(^|[^[:alnum:]])(China|Mainland|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^[:alnum:]]|$)/ { print }
+    ' "$_pinned_ai_tags_file"
+    unset _pinned_ai_tags_file
 }
 
 magicnet_singbox_sanitize_generated_config() {
