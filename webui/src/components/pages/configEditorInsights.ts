@@ -58,6 +58,81 @@ export function sanitizeConfigText(text: string): string {
     .replace(SENSITIVE_BARE_FIELD_PATTERN, (_match, prefix: string) => `${prefix}[filtered]`);
 }
 
+const SAFE_INBOUND_TYPES = new Set(["tun", "mixed", "direct"]);
+const SAFE_TUN_STACKS = new Set(["system", "gvisor", "mixed"]);
+const SAFE_BOOLEAN_KEYS = ["auto_route", "auto_redirect", "strict_route"] as const;
+const ISSUE_DIFF_CONTEXT = 3;
+export const MAX_CONFIG_ISSUE_DIFF_BYTES = 24 * 1024;
+
+export function sanitizeConfigForIssue(text: string): string {
+  const parsed = JSON.parse(text) as unknown;
+  if (!isRecord(parsed)) throw new Error("配置根节点不是 JSON object。");
+  const inbounds = arrayRecords(parsed.inbounds).map((inbound, index) => {
+    const type = stringValue(inbound.type);
+    const safe: Record<string, unknown> = {
+      id: `inbound-${index + 1}`,
+      type: SAFE_INBOUND_TYPES.has(type) ? type : "other"
+    };
+    if (type === "tun") {
+      const stack = stringValue(inbound.stack);
+      if (SAFE_TUN_STACKS.has(stack)) safe.stack = stack;
+      if (typeof inbound.mtu === "number" && Number.isSafeInteger(inbound.mtu)) safe.mtu = inbound.mtu;
+      for (const key of SAFE_BOOLEAN_KEYS) if (typeof inbound[key] === "boolean") safe[key] = inbound[key];
+    }
+    return safe;
+  });
+  const safe = {
+    format: "magicnet-config-diff-v1",
+    structure: {
+      inbound_count: inbounds.length,
+      outbound_count: Array.isArray(parsed.outbounds) ? parsed.outbounds.length : 0,
+      route_rule_count: isRecord(parsed.route) && Array.isArray(parsed.route.rules) ? parsed.route.rules.length : 0,
+      dns_server_count: isRecord(parsed.dns) && Array.isArray(parsed.dns.servers) ? parsed.dns.servers.length : 0
+    },
+    inbounds
+  };
+  return `${JSON.stringify(safe, null, 2)}\n`;
+}
+
+export function buildUnifiedConfigDiff(before: string, after: string): string {
+  const beforeRaw = parseIssueConfig(before);
+  const afterRaw = parseIssueConfig(after);
+  const beforeSafe = JSON.parse(sanitizeConfigForIssue(before)) as Record<string, unknown>;
+  const afterSafe = JSON.parse(sanitizeConfigForIssue(after)) as Record<string, unknown>;
+  const changedSections = (["inbounds", "outbounds", "route", "dns"] as const)
+    .filter((key) => JSON.stringify(beforeRaw[key]) !== JSON.stringify(afterRaw[key]));
+  if (changedSections.length) {
+    beforeSafe.change_markers = Object.fromEntries(changedSections.map((key) => [key, "before"]));
+    afterSafe.change_markers = Object.fromEntries(changedSections.map((key) => [key, "after"]));
+  }
+  const oldLines = JSON.stringify(beforeSafe, null, 2).split("\n");
+  const newLines = JSON.stringify(afterSafe, null, 2).split("\n");
+  let prefix = 0;
+  while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++;
+  if (prefix === oldLines.length && prefix === newLines.length) return "";
+  let suffix = 0;
+  while (suffix < oldLines.length - prefix && suffix < newLines.length - prefix && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]) suffix++;
+  const oldStart = Math.max(0, prefix - ISSUE_DIFF_CONTEXT);
+  const newStart = Math.max(0, prefix - ISSUE_DIFF_CONTEXT);
+  const oldEnd = Math.min(oldLines.length, oldLines.length - suffix + ISSUE_DIFF_CONTEXT);
+  const newEnd = Math.min(newLines.length, newLines.length - suffix + ISSUE_DIFF_CONTEXT);
+  const contextBefore = oldLines.slice(oldStart, prefix).map((line) => ` ${line}`);
+  const removed = oldLines.slice(prefix, oldLines.length - suffix).map((line) => `-${line}`);
+  const added = newLines.slice(prefix, newLines.length - suffix).map((line) => `+${line}`);
+  const contextAfter = oldLines.slice(oldLines.length - suffix, oldEnd).map((line) => ` ${line}`);
+  return [
+    "--- config.before.json", "+++ config.after.json",
+    `@@ -${oldStart + 1},${oldEnd - oldStart} +${newStart + 1},${newEnd - newStart} @@`,
+    ...contextBefore, ...removed, ...added, ...contextAfter
+  ].join("\n");
+}
+
+function parseIssueConfig(text: string): Record<string, unknown> {
+  const parsed = JSON.parse(text) as unknown;
+  if (!isRecord(parsed)) throw new Error("配置根节点不是 JSON object。");
+  return parsed;
+}
+
 export function buildConfigOutline(text: string): ConfigOutline {
   const trimmed = text.trim();
   if (!trimmed) {

@@ -10,7 +10,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
-import { buildConfigAudit, buildConfigOutline, sanitizeConfigText } from "./configEditorInsights";
+import { buildConfigAudit, buildConfigOutline, buildUnifiedConfigDiff, MAX_CONFIG_ISSUE_DIFF_BYTES, sanitizeConfigText } from "./configEditorInsights";
 
 const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -18,6 +18,7 @@ const pendingConfigAction = ref<PendingToolAction | null>(null);
 const localJsonStatus = ref("");
 const sanitizedCopied = ref(false);
 const auditCopied = ref(false);
+const issueBaseline = ref("");
 const configStats = computed(() => {
   const text = state.config.text;
   const lines = text ? text.split(/\r?\n/).length : 0;
@@ -57,6 +58,11 @@ function requestSaveConfig(): void {
     command: `config-editor save-file ${state.config.target} <editor-temp-file>`,
     run: () => withAction("save-config", () => saveConfig()),
   });
+}
+
+async function loadConfigForEditing(): Promise<void> {
+  await loadConfig();
+  if (!state.config.dirty && state.config.text) issueBaseline.value = state.config.text;
 }
 
 function requestSyncTemplate(): void {
@@ -103,19 +109,37 @@ async function copyConfigAudit(): Promise<void> {
   state.output = auditCopied.value ? "配置审计摘要已复制。" : "剪贴板不可用，配置审计摘要未复制。";
 }
 
-function issueUrl(): string {
+async function openConfigIssue(): Promise<void> {
+  if (!issueBaseline.value) {
+    state.output = "请先加载配置，再生成 Diff Issue。";
+    return;
+  }
+  let diff: string;
+  try {
+    diff = buildUnifiedConfigDiff(issueBaseline.value, state.config.text);
+  } catch (error) {
+    state.output = `无法生成安全 Diff：${error instanceof Error ? error.message : String(error)}`;
+    return;
+  }
+  if (!diff) {
+    state.output = "配置没有可提交的变更。";
+    return;
+  }
+  if (new TextEncoder().encode(diff).length > MAX_CONFIG_ISSUE_DIFF_BYTES) {
+    state.output = "安全 Diff 超过 24 KiB，未复制或打开 Issue；请缩小单次配置变更。";
+    return;
+  }
+  const copied = await copyText(`\`\`\`diff\n${diff}\n\`\`\``);
   const body = [
-    "已尝试过滤 URL、token、secret、password 等敏感字段；创建前仍需人工检查，避免提交私有订阅或密钥。",
+    "## Proposed Change",
     "",
-    "## Target",
-    state.config.target,
+    copied ? "脱敏 unified diff 已复制到剪贴板，请粘贴到此处。" : "剪贴板不可用，请返回 MagicNet 重新复制脱敏 diff。",
     "",
-    "## Sanitized Config",
-    "```",
-    sanitizedConfig.value.slice(0, 12000),
-    "```"
+    `Target: ${state.config.target}`,
+    "",
+    "创建前仍需人工检查，避免提交私有订阅、密钥或节点信息。"
   ].join("\n");
-  return `${REPO}/issues/new?${new URLSearchParams({ title: `配置变更建议：${state.config.target}`, body }).toString()}`;
+  openExternal(`${REPO}/issues/new?${new URLSearchParams({ title: `配置变更建议：${state.config.target}`, body }).toString()}`, "配置 Diff Issue");
 }
 </script>
 
@@ -123,12 +147,12 @@ function issueUrl(): string {
   <div class="grid gap-4">
     <PageHeader overline="Validated Editor" title="配置编辑器" description="高级配置入口：编辑 sing-box config.json；订阅链接请到订阅页填写。">
       <div class="flex flex-wrap items-center gap-2">
-        <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', () => loadConfig())"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
+        <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', loadConfigForEditing)"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
         <Button variant="outline" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化 JSON</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="copySanitizedConfig"><Copy :size="17" />{{ sanitizedCopied ? '已复制脱敏' : '复制脱敏' }}</Button>
         <Button :loading="isRunning('save-config')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
-        <Button variant="outline" @click="openExternal(issueUrl(), '配置 Diff Issue')"><Github :size="17" />创建 Diff Issue</Button>
+        <Button variant="outline" @click="openConfigIssue"><Github :size="17" />创建 Diff Issue</Button>
       </div>
     </PageHeader>
 

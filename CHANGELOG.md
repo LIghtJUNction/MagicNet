@@ -1,5 +1,13 @@
 ## Unreleased
 
+## v1.1.14 (2026-07-11)
+
+- Set the managed sing-box TUN MTU to 1400 to mitigate slow uploads.
+- Generate compact, size-bounded unified diffs for configuration issues instead
+  of embedding truncated full configurations in issue URLs.
+- Use fail-closed structural redaction so node endpoints, credentials, and
+  arbitrary private configuration values cannot leak into issue drafts.
+
 ## v1.1.13 (2026-07-11)
 
 - Fix #24 by allowing long mobile WebUI text to scroll horizontally while
