@@ -15,6 +15,7 @@ const { isRunning, withAction } = useActionLock();
 const pendingBlockAction = ref<PendingBlockAction | null>(null);
 const snapshotCopied = ref(false);
 const blockQuery = ref("");
+const allowRuleInput = ref("");
 const COMMUNITY_SNAPSHOT_LIMIT = 40;
 
 type PendingBlockAction = {
@@ -92,8 +93,8 @@ async function allowRule(rule: string): Promise<void> {
     const suffix = rule.replace(/^DOMAIN-SUFFIX,/, "");
     if (suffix !== rule) state.blocklist.communityDomains = state.blocklist.communityDomains.filter((item) => item !== suffix);
     if (!state.blocklist.allowRules.includes(rule)) state.blocklist.allowRules.push(rule);
-    state.output = `正在加入本地排除：${rule}`;
-    const text = await runCli(`block allow-rule ${shellQuote(rule)}`, `本地排除 ${rule}`, true);
+    state.output = `正在加入广告放行白名单：${rule}`;
+    const text = await runCli(`block allow-rule ${shellQuote(rule)}`, `广告放行 ${rule}`, true);
     if (text.includes("[error]")) {
       state.output = text;
       state.blocklist.allowRules = state.blocklist.allowRules.filter((item) => item !== rule);
@@ -102,15 +103,43 @@ async function allowRule(rule: string): Promise<void> {
       } else if (!state.blocklist.communityRules.includes(rule)) state.blocklist.communityRules.unshift(rule);
       return;
     }
-    state.output = `已加入本地排除：${rule}`;
+    allowRuleInput.value = "";
+    state.output = `已加入广告放行白名单：${rule}`;
   });
+}
+
+function normalizeAllowRule(input: string): string | null {
+  const raw = input.trim();
+  const candidate = raw.includes(",") ? raw : `DOMAIN-SUFFIX,${raw}`;
+  const match = candidate.match(/^(DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD),(.+)$/i);
+  if (!match || !match[2].trim() || /\s/.test(match[2])) {
+    state.output = "白名单格式不对。支持 example.com、DOMAIN,example.com、DOMAIN-SUFFIX,example.com 或 DOMAIN-KEYWORD,example。";
+    return null;
+  }
+  const rule = `${match[1].toUpperCase()},${match[2].trim().toLowerCase()}`;
+  if (state.blocklist.allowRules.includes(rule)) {
+    state.output = `${rule} 已在广告放行白名单中。`;
+    return null;
+  }
+  return rule;
+}
+
+function requestAddAllowRule(): void {
+  const rule = normalizeAllowRule(allowRuleInput.value);
+  if (!rule) return;
+  pendingBlockAction.value = {
+    key: `allow-${rule}`,
+    command: `block allow-rule ${rule}`,
+    message: `确认把 ${rule} 加入广告放行白名单？它会优先于所有广告阻断规则，并通过 ad-allow 组选择 Direct 或 Proxy。`,
+    run: () => allowRule(rule)
+  };
 }
 
 function requestAllowRule(rule: string): void {
   pendingBlockAction.value = {
     key: `allow-${rule}`,
     command: `block allow-rule ${rule}`,
-    message: `确认把社区规则 ${rule} 加入本地排除？`,
+    message: `确认把社区规则 ${rule} 加入广告放行白名单？流量将由 ad-allow 组选择 Direct 或 Proxy。`,
     run: () => allowRule(rule)
   };
 }
@@ -234,7 +263,7 @@ async function confirmBlockAction(): Promise<void> {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Community Banlist" title="联 ban 黑名单" description="本地规则和社区库排除都在这里。X 是排除社区规则，+ 是恢复阻断。">
+    <PageHeader overline="Community Banlist" title="联 ban 黑名单" description="广告放行白名单优先于所有广告阻断规则；ad-allow 组可选择 Direct 或 Proxy。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('refresh-block')" @click="withAction('refresh-block', () => refreshBlock())"><RefreshCw :size="17" />读取</Button>
         <Button :loading="isRunning('update-block')" @click="requestUpdateCommunityBlocklist"><DownloadCloud :size="17" />更新社区库</Button>
@@ -304,7 +333,7 @@ async function confirmBlockAction(): Promise<void> {
       </div>
       <div class="relative">
         <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
-        <Input v-model="blockQuery" class="pl-9" placeholder="过滤本地阻断、社区规则和排除规则" spellcheck="false" />
+        <Input v-model="blockQuery" class="pl-9" placeholder="过滤本地阻断、社区规则和广告放行白名单" spellcheck="false" />
       </div>
     </Card>
 
@@ -332,13 +361,18 @@ async function confirmBlockAction(): Promise<void> {
       </Card>
 
       <Card>
-        <h3 class="mb-2 text-base font-semibold">本地排除</h3>
+        <h3 class="mb-1 text-base font-semibold">广告放行白名单</h3>
+        <p class="mb-3 text-sm leading-6 text-zinc-500">优先于内置、规则集和社区广告规则；放行方式由 ad-allow 组选择 Direct 或 Proxy。</p>
+        <div class="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <Input v-model="allowRuleInput" placeholder="example.com 或 DOMAIN-SUFFIX,example.com" spellcheck="false" @keyup.enter="requestAddAllowRule" />
+          <Button variant="secondary" :loading="isRunning(`allow-${allowRuleInput.trim()}`)" @click="requestAddAllowRule"><Plus :size="16" />加入白名单</Button>
+        </div>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
           <span v-for="rule in visibleAllowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ rule }}
             <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" title="恢复阻断" @click="requestUnallowRule(rule)"><Plus :size="14" /></button>
           </span>
-          <em v-if="!visibleAllowRules.length" class="text-sm not-italic text-zinc-500">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无排除规则' }}</em>
+          <em v-if="!visibleAllowRules.length" class="text-sm not-italic text-zinc-500">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无白名单规则' }}</em>
         </div>
       </Card>
     </div>

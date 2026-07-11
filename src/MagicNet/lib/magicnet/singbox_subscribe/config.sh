@@ -100,7 +100,8 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           selector("proxy"; $tags; preferred_proxy_tag($tags)),
           selector("select"; ["proxy", "direct"]; "proxy"),
           selector("lan"; ["direct"]; "direct"),
-          selector("ad-block"; ["block", "direct"]; "block"),
+          selector("ad-block"; ["block", "direct", "proxy"]; "block"),
+          selector("ad-allow"; ["direct", "proxy"]; "direct"),
           selector("cn-direct"; ["direct"]; "direct"),
           selector("apple-cn"; ["direct", "proxy"]; "direct"),
           selector("microsoft-cn"; ["direct", "proxy"]; "direct"),
@@ -195,13 +196,17 @@ magicnet_singbox_pick_default_proxy_tag() {
 
 magicnet_singbox_emit_static_selectors() {
     for _pair in \
-        "lan::direct" "ad-block::block" "cn-direct::direct" \
+        "lan::direct" "cn-direct::direct" \
         "apple-cn::direct" "microsoft-cn::direct" "google-cn::proxy" "icloud::direct"; do
         _name=${_pair%%:*}
         _default=${_pair##*:}
         printf ',\n'
         magicnet_emit_selector_json "$_name" "" "$_default"
     done
+    printf ',\n'
+    magicnet_emit_selector_json "ad-block" "$(printf '%s\n%s\n%s\n' "block" "direct" "proxy")" "block"
+    printf ',\n'
+    magicnet_emit_selector_json "ad-allow" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
     printf ',\n'
     magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     printf ',\n'
