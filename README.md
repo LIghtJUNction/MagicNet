@@ -2,7 +2,7 @@
 
 <div align="center">
   <p>
-    <a href="kam.toml"><img alt="MagicNet v1.1.15" src="https://img.shields.io/badge/MagicNet-v1.1.15-31c2f2" /></a>
+    <a href="kam.toml"><img alt="MagicNet v1.1.16" src="https://img.shields.io/badge/MagicNet-v1.1.16-31c2f2" /></a>
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green.svg" /></a>
     <a href="Cargo.toml"><img alt="Rust workspace" src="https://img.shields.io/badge/Rust-workspace-f46623?logo=rust&logoColor=white" /></a>
     <a href="webui/package.json"><img alt="Vue WebUI" src="https://img.shields.io/badge/WebUI-Vue%203-42b883?logo=vue.js&logoColor=white" /></a>
@@ -27,7 +27,7 @@ MagicNet 是一个 Android root 网络编排模块，把设备流量或显式代
 
 当前主线已经收敛为 **sing-box + 用户态编排**。`sing-box` 是唯一代理核心；MagicNet 提供 `proxy`、`external-tun`、`hybrid` 和兼容 `tun` 四种运行模式。下一代设计详见 [docs/next-gen-architecture.md](docs/next-gen-architecture.md)。旧的 TProxy 主路径、多核心切换和抓包代理功能都不再作为主线能力维护。
 
-需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.15`。Release 以发布页为准。
+需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.16`。Release 以发布页为准。
 
 ## 成果
 
@@ -108,9 +108,9 @@ chmod +x kam.sh
 
 ### Release 包
 
-当前 release 下载页：<https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.1.15>
+当前 release 下载页：<https://github.com/LIghtJUNction/MagicNet/releases/tag/v1.1.16>
 
-直接下载当前模块包：<https://github.com/LIghtJUNction/MagicNet/releases/download/v1.1.15/MagicNet.zip>
+直接下载当前模块包：<https://github.com/LIghtJUNction/MagicNet/releases/download/v1.1.16/MagicNet.zip>
 
 ```bash
 kam -S MagicNet
