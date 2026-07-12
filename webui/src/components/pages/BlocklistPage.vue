@@ -144,28 +144,26 @@ function requestAllowRule(rule: string): void {
   };
 }
 
-async function unallowRule(rule: string): Promise<void> {
+async function removeAllowRule(rule: string): Promise<void> {
   await withAction(`unallow-${rule}`, async () => {
     state.blocklist.allowRules = state.blocklist.allowRules.filter((item) => item !== rule);
-    if (!state.blocklist.communityRules.includes(rule)) state.blocklist.communityRules.unshift(rule);
-    state.output = `正在恢复阻断：${rule}`;
-    const text = await runCli(`block unallow-rule ${shellQuote(rule)}`, `恢复阻断 ${rule}`, true);
+    state.output = `正在从广告放行白名单删除：${rule}`;
+    const text = await runCli(`block unallow-rule ${shellQuote(rule)}`, `从广告放行白名单删除 ${rule}`, true);
     if (text.includes("[error]")) {
       state.output = text;
-      state.blocklist.communityRules = state.blocklist.communityRules.filter((item) => item !== rule);
       if (!state.blocklist.allowRules.includes(rule)) state.blocklist.allowRules.push(rule);
       return;
     }
-    state.output = `已恢复阻断：${rule}`;
+    if (await refreshBlock(true)) state.output = `已从广告放行白名单删除：${rule}`;
   });
 }
 
-function requestUnallowRule(rule: string): void {
+function requestRemoveAllowRule(rule: string): void {
   pendingBlockAction.value = {
     key: `unallow-${rule}`,
     command: `block unallow-rule ${rule}`,
-    message: `确认恢复阻断 ${rule}？`,
-    run: () => unallowRule(rule)
+    message: `确认从广告放行白名单删除 ${rule}？若规则来自社区库，删除后会回到社区库并恢复阻断；手工添加项则会从白名单消失。`,
+    run: () => removeAllowRule(rule)
   };
 }
 
@@ -370,7 +368,7 @@ async function confirmBlockAction(): Promise<void> {
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
           <span v-for="rule in visibleAllowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
             {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" title="恢复阻断" @click="requestUnallowRule(rule)"><Plus :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-red-500/15 text-red-200 hover:bg-red-500/25 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" :title="`从广告放行白名单删除 ${rule}`" :aria-label="`从广告放行白名单删除 ${rule}`" @click="requestRemoveAllowRule(rule)"><X :size="14" /></button>
           </span>
           <em v-if="!visibleAllowRules.length" class="text-sm not-italic text-zinc-500">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无白名单规则' }}</em>
         </div>

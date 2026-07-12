@@ -1,5 +1,11 @@
 ## Unreleased
 
+## v1.1.16 (2026-07-12)
+
+- Fix #34 with an explicit delete action for ad allowlist chips, and refresh
+  blocklist state after removal so community rules return to the community list
+  while manually added entries do not.
+
 ## v1.1.15 (2026-07-11)
 
 - Add a prioritized ad allowlist routed through selectable `direct` or `proxy`
