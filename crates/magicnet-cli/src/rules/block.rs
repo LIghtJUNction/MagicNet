@@ -7,7 +7,7 @@ use crate::service::restart_current_core;
 use crate::subscriptions::validate_subscription_url;
 use crate::{clean_lines, read_kv, run_magicnet_function, write_kv, App};
 
-use super::{conf_dir, normalize_block_rule, print_lines, update_line};
+use super::{conf_dir, normalize_allow_rule, normalize_block_rule, print_lines, update_line};
 
 pub(crate) fn block_cmd(app: &App, args: &[String]) -> Result<(), String> {
     let dir = conf_dir(app);
@@ -136,11 +136,16 @@ fn block_allow(app: &App, args: &[String]) -> Result<(), String> {
     if rule.is_empty() {
         return Err("Usage: cli block {allow-rule|unallow-rule} <rule>".to_string());
     }
-    update_line(
-        conf_dir(app).join("block-allow-rules.list"),
-        &normalize_block_rule(rule),
-        args[0] == "allow-rule",
-    )?;
+    let normalized = normalize_allow_rule(rule)?;
+    let path = conf_dir(app).join("block-allow-rules.list");
+    let add = args[0] == "allow-rule";
+    if !add {
+        let legacy = normalize_block_rule(rule);
+        if legacy != normalized {
+            update_line(path.clone(), &legacy, false)?;
+        }
+    }
+    update_line(path, &normalized, add)?;
     apply_and_restart(app)?;
     println!("[info] Local allow rule updated");
     Ok(())

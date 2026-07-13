@@ -39,6 +39,65 @@ magicnet_block_list_values() {
     sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++'
 }
 
+magicnet_block_normalize_allow_rules() {
+    _allow_file="$(magicnet_block_allow_file)"
+    [ -f "$_allow_file" ] || {
+        unset _allow_file
+        return 0
+    }
+    _allow_tmp="${_allow_file}.magicnet-normalize.$$"
+    if ! awk '
+        function trim(value) {
+            sub(/^[[:space:]]+/, "", value)
+            sub(/[[:space:]]+$/, "", value)
+            return value
+        }
+        function normalize(line,    value, comma, kind, payload, lower, scheme_end, authority, slash, host) {
+            value = trim(line)
+            comma = index(value, ",")
+            if (!comma) return line
+            kind = toupper(trim(substr(value, 1, comma - 1)))
+            if (kind != "DOMAIN" && kind != "DOMAIN-SUFFIX") return line
+            payload = trim(substr(value, comma + 1))
+            lower = tolower(payload)
+            if (index(lower, "http://") == 1) {
+                scheme_end = 8
+            } else if (index(lower, "https://") == 1) {
+                scheme_end = 9
+            } else {
+                return line
+            }
+            authority = substr(payload, scheme_end)
+            slash = match(authority, /[\/?#]/)
+            if (slash) authority = substr(authority, 1, slash - 1)
+            sub(/^.*@/, "", authority)
+            if (authority ~ /:[0-9]+$/) sub(/:[0-9]+$/, "", authority)
+            host = tolower(authority)
+            sub(/[.]+$/, "", host)
+            if (host == "" || host ~ /[[:space:]\/:,@]/) return line
+            return kind "," host
+        }
+        {
+            output = normalize($0)
+            key = trim(output)
+            if (key != "" && key !~ /^#/ && seen[key]++) next
+            print output
+        }
+    ' "$_allow_file" >"$_allow_tmp"; then
+        rm -f "$_allow_tmp"
+        unset _allow_file _allow_tmp
+        return 1
+    fi
+    if cmp -s "$_allow_file" "$_allow_tmp"; then
+        rm -f "$_allow_tmp"
+    elif ! mv -f "$_allow_tmp" "$_allow_file"; then
+        rm -f "$_allow_tmp"
+        unset _allow_file _allow_tmp
+        return 1
+    fi
+    unset _allow_file _allow_tmp
+}
+
 magicnet_block_manual_suffixes() {
     magicnet_block_list_values "$(magicnet_block_manual_file)" | awk '{ print "DOMAIN-SUFFIX," $0 }'
 }
@@ -248,6 +307,7 @@ magicnet_block_ensure_ad_selectors() {
 }
 
 magicnet_block_apply_singbox() {
+    magicnet_block_normalize_allow_rules || return 1
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
     magicnet_block_ensure_ad_selectors "$_config" || return 1

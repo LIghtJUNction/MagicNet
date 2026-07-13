@@ -1,5 +1,12 @@
 ## Unreleased
 
+## v1.1.18 (2026-07-13)
+
+- Fix #40 by normalizing pasted HTTP(S) URLs in the WebUI to canonical hostnames
+  and canonicalizing valid CLI allow-rule inputs while rejecting invalid or unsupported values.
+- Migrate legacy scheme-bearing `ad-allow` rules atomically and idempotently,
+  validated with real-device A/B tests of the allow and block paths.
+
 ## v1.1.17 (2026-07-13)
 
 - Fix #36 by making `ad-allow` inherit the normal `final` policy by default,
