@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v1.1.17 (2026-07-13)
+
+- Fix #36 by making `ad-allow` inherit the normal `final` policy by default,
+  while preserving explicit Direct and Proxy overrides across bundled, jq,
+  no-jq, and upgrade-generated configurations.
+- Fix #37 by adding a high-priority package rule for Proxy-listed apps and
+  restarting sing-box after app policy changes so the selected policy takes
+  effect immediately.
+- Update Proxy/Bypass lists transactionally during multi-app changes to avoid
+  partially applied policy state.
+
 ## v1.1.16 (2026-07-12)
 
 - Fix #34 with an explicit delete action for ad allowlist chips, and refresh
