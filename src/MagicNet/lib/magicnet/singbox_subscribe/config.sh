@@ -70,6 +70,10 @@ magicnet_singbox_build_outbounds_file_with_jq() {
     def selector($tag; $outs; $fallback):
       (with_base($outs; $fallback)) as $items
       | {"type": "selector", "tag": $tag, "outbounds": $items, "default": $items[0]};
+    def selector_exact($tag; $outs; $fallback):
+      (reduce ([$fallback] + $outs)[] as $item
+        ([]; if ($item == "" or index($item)) then . else . + [$item] end)) as $items
+      | {"type": "selector", "tag": $tag, "outbounds": $items, "default": $fallback};
     def mainland_node_tag:
       test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:China|Mainland|Hong[ _-]?Kong|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
     def pinned_ai_selector($tag; $tags):
@@ -106,7 +110,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           selector("select"; ["proxy", "direct"]; "proxy"),
           selector("lan"; ["direct"]; "direct"),
           selector("ad-block"; ["block", "direct", "proxy"]; "block"),
-          selector("ad-allow"; ["direct", "proxy"]; "direct"),
+          selector_exact("ad-allow"; ["final", "direct", "proxy"]; "final"),
           selector("cn-direct"; ["direct"]; "direct"),
           selector("apple-cn"; ["direct", "proxy"]; "direct"),
           selector("microsoft-cn"; ["direct", "proxy"]; "direct"),
@@ -215,7 +219,7 @@ magicnet_singbox_emit_static_selectors() {
     printf ',\n'
     magicnet_emit_selector_json "ad-block" "$(printf '%s\n%s\n%s\n' "block" "direct" "proxy")" "block"
     printf ',\n'
-    magicnet_emit_selector_json "ad-allow" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
+    magicnet_emit_selector_json_exact "ad-allow" "$(printf '%s\n%s\n%s\n' "final" "direct" "proxy")" "final"
     printf ',\n'
     magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     printf ',\n'

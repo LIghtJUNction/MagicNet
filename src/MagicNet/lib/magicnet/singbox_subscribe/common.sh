@@ -70,6 +70,30 @@ magicnet_emit_selector_json() {
     printf '    }'
 }
 
+magicnet_emit_selector_json_exact() {
+    _exact_tag="$1"
+    _exact_tags="$2"
+    _exact_fallback="$3"
+    _exact_items=$(printf '%s\n%s\n' "$_exact_fallback" "$_exact_tags" | awk 'NF && !seen[$0]++')
+    _exact_first=1
+    printf '    {\n'
+    printf '      "type": "selector",\n'
+    printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_exact_tag")"
+    printf '      "outbounds": ['
+    while IFS= read -r _exact_item; do
+        [ -n "$_exact_item" ] || continue
+        [ "$_exact_first" -eq 1 ] || printf ', '
+        printf '"%s"' "$(magicnet_json_escape "$_exact_item")"
+        _exact_first=0
+    done <<EOF
+$_exact_items
+EOF
+    printf '],\n'
+    printf '      "default": "%s"\n' "$(magicnet_json_escape "$_exact_fallback")"
+    printf '    }'
+    unset _exact_tag _exact_tags _exact_fallback _exact_items _exact_first _exact_item
+}
+
 magicnet_uri_query_value() {
     _key="$1"
     _query="$2"

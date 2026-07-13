@@ -126,8 +126,8 @@ function requestAddPackage(pkg: string, target: "proxy" | "bypass", key = `add-$
     key,
     command: `app add ${pkg} ${target}`,
     message: target === "proxy"
-      ? `确认把 ${pkg} 加入 Proxy 名单？实际接管效果取决于当前黑/白名单模式。`
-      : `确认把 ${pkg} 加入 Bypass 名单？实际绕过效果取决于当前黑/白名单模式。`,
+      ? `确认把 ${pkg} 加入 Proxy 名单？该应用将强制走 MagicNet proxy。`
+      : `确认把 ${pkg} 加入 Bypass 名单？该应用将绕过 MagicNet TUN。`,
     plan: actionPlan({ type: "add", target, packages: [pkg] }),
     run: () => addPackage(pkg, target, key)
   };
@@ -185,7 +185,7 @@ function requestSetMode(mode: "blacklist" | "whitelist"): void {
   pendingAppAction.value = {
     key: `mode-${mode}`,
     command: `app mode ${mode}`,
-    message: mode === "blacklist" ? "确认切换到黑名单模式？应用分流语义会立即改变。" : "确认切换到白名单模式？只有 Proxy 名单应用会进入 TUN。",
+    message: mode === "blacklist" ? "确认切换到黑名单模式？未列出应用将正常进入 TUN。" : "确认切换到白名单模式？未列出应用将绕过 TUN。",
     plan: actionPlan({ type: "mode", mode }),
     run: () => setMode(mode)
   };
@@ -291,7 +291,7 @@ onMounted(() => {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Per App Policy" title="应用名单" description="只管理应用进入或绕过 MagicNet TUN 的名单，不做节点和代理模式控制。">
+    <PageHeader overline="Per App Policy" title="应用名单" description="Proxy 强制应用走 MagicNet proxy；Bypass 让应用绕过 TUN；模式控制未列出应用是否进入 TUN。">
       <div class="flex flex-wrap gap-2">
         <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取名单</Button>
         <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />重新读取应用</Button>
@@ -339,7 +339,7 @@ onMounted(() => {
           <button class="min-h-12 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
           <button class="min-h-12 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
         </div>
-        <span class="text-sm text-zinc-500">黑名单模式下 Bypass 应用绕过 TUN；白名单模式下 Proxy 应用进入 TUN。</span>
+        <span class="text-sm text-zinc-500">Proxy 始终强制走 MagicNet proxy；Bypass 始终绕过 TUN；黑/白名单模式只控制未列出应用。</span>
       </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
         <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
@@ -361,7 +361,7 @@ onMounted(() => {
           {{ policySummary.conflicts.length ? `${policySummary.conflicts.length} 个冲突` : '无冲突' }}
         </span>
       </div>
-      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-6">
         <span
           v-for="item in policySummary.items"
           :key="item.label"
