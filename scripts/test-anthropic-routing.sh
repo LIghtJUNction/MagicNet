@@ -65,6 +65,40 @@ done
 for tag in 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge'; do
   grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Hong Kong boundary false positive: $tag"
 done
+jq 'del(.outbounds[] | select(.tag == "ai-chatgpt" or .tag == "ai-gemini" or .tag == "ai-grok" or .tag == "ai-claude"))' \
+  "$tmp_dir/generated.json" >"$tmp_dir/legacy-cached.json"
+cp "$tmp_dir/legacy-cached.json" "$tmp_dir/legacy-cached.before.json"
+magicnet_singbox_sanitize_generated_config "$tmp_dir/legacy-cached.json"
+jq -e '
+  ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
+  | [.outbounds[] | select(.tag as $tag | $names | index($tag))] as $groups
+  | ($groups | length) == 4
+    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "hk01 edge", "myhk edge"]))
+' "$tmp_dir/legacy-cached.json" >/dev/null || fail "legacy cached config AI selector repair mismatch"
+jq '.outbounds += [
+      {"type":"direct","tag":"ai-chatgpt"},
+      {"type":"selector","tag":"ai-gemini","outbounds":["direct"],"default":"direct"}
+    ]
+    | (.outbounds[] | select(.tag == "ai-grok") | .default) = "direct"' \
+  "$tmp_dir/generated.json" >"$tmp_dir/malformed-cached.json"
+cp "$tmp_dir/malformed-cached.json" "$tmp_dir/malformed-cached.before.json"
+magicnet_singbox_sanitize_generated_config "$tmp_dir/malformed-cached.json"
+jq -e '
+  ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
+  | [.outbounds[] | select(.tag as $tag | $names | index($tag))] as $groups
+  | ($groups | length) == 4
+    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "hk01 edge", "myhk edge"]))
+' "$tmp_dir/malformed-cached.json" >/dev/null || fail "malformed or duplicate AI selectors not canonicalized"
+mkdir "$tmp_dir/no-jq-bin"
+ln -s "$(command -v awk)" "$tmp_dir/no-jq-bin/awk"
+base_config="$MODULE_ROOT/.config/sing-box/config.json"
+jq 'del(.outbounds[] | select(.tag == "ai-chatgpt"))' "$base_config" >"$tmp_dir/no-jq-legacy.json"
+jq '(.outbounds[] | select(.tag == "ai-grok") | .default) = "direct"' "$base_config" >"$tmp_dir/no-jq-malformed.json"
+jq '(.outbounds[] | select(.tag == "ai-chatgpt") | .outbounds) += ["stale-missing-node"]' "$base_config" >"$tmp_dir/no-jq-stale-member.json"
+PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$base_config" || fail "pure-shell canonical validator rejected fresh config"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-legacy.json" 2>/dev/null || fail "pure-shell canonical validator accepted missing selectors"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-malformed.json" 2>/dev/null || fail "pure-shell canonical validator accepted malformed selectors"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-stale-member.json" 2>/dev/null || fail "pure-shell canonical validator accepted undefined selector member"
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | [.outbounds[] | select(.tag as $tag | $names | index($tag))]

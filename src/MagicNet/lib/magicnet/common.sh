@@ -86,7 +86,10 @@ magicnet_singbox_config_has_nodes() {
         unset _config
         return 1
     }
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls)"' "$_config"
+    [ "$(command -v magicnet_singbox_ai_selectors_canonical 2>/dev/null)" ] ||
+        . "${MODDIR}/lib/magicnet/singbox_subscribe/common.sh"
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls)"' "$_config" &&
+        magicnet_singbox_ai_selectors_canonical "$_config"
     _rc=$?
     unset _config
     return "$_rc"

@@ -281,12 +281,18 @@ magicnet_singbox_sanitize_generated_config() {
     _sanitize_config_file="$1"
     _sanitize_jq="$(command -v jq 2>/dev/null || true)"
     [ -n "$_sanitize_jq" ] || {
+        magicnet_singbox_ai_selectors_canonical "$_sanitize_config_file"
+        _sanitize_rc=$?
         unset _sanitize_config_file _sanitize_jq
-        return 0
+        return "$_sanitize_rc"
     }
 
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
     "$_sanitize_jq" '
+      def mainland_node_tag:
+        test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:China|Mainland|Hong[ _-]?Kong|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+      def pinned_ai_selector($tag; $tags):
+        {"type": "selector", "tag": $tag, "outbounds": (["block"] + $tags), "default": "block"};
       def has_match($rule):
         [
           "inbound",
@@ -307,10 +313,17 @@ magicnet_singbox_sanitize_generated_config() {
           "user",
           "user_id"
         ] | any(. as $key | $rule | has($key));
-      .outbounds = ((.outbounds // [])
-        | if any(.tag == "dns-guard") then .
-          else . + [{"type": "selector", "tag": "dns-guard", "outbounds": ["proxy", "block", "direct"], "default": "proxy"}]
-          end)
+      (.outbounds // []) as $outbounds
+      | ([$outbounds[]
+          | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan" or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+          | .tag // empty
+          | select(mainland_node_tag | not)]) as $ai_tags
+      | .outbounds = ($outbounds
+          | map(select(.tag as $tag | ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] | index($tag) == null))
+          | if any(.tag == "dns-guard") then .
+            else . + [{"type": "selector", "tag": "dns-guard", "outbounds": ["proxy", "block", "direct"], "default": "proxy"}]
+            end
+          | . + (["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] | map(pinned_ai_selector(.; $ai_tags))))
       | .route.rules = ((.route.rules // [])
         | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
     ' "$_sanitize_config_file" >"$_sanitize_tmp_file" && mv -f "$_sanitize_tmp_file" "$_sanitize_config_file"

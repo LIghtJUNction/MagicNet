@@ -617,6 +617,8 @@ mkdir -p "$MODDIR/.config/sing-box/.subscription-work"
          or .type == "shadowsocks"
          or .type == "hysteria2") | not
     ))
+    | .outbounds |= map(select(.tag != "ai-chatgpt" and .tag != "ai-gemini" and .tag != "ai-grok" and .tag != "ai-claude"))
+    | .outbounds += [{"type":"vmess","tag":"stale-device-node","server":"127.0.0.2","server_port":443,"uuid":"00000000-0000-0000-0000-000000000002","security":"auto"}]
 ' "$MODDIR/.config/sing-box/config.json" >"$TMP/base-sing-box-config.json"
 mv "$TMP/base-sing-box-config.json" "$MODDIR/.config/sing-box/config.json"
 "$HOST_JQ" -e '[.outbounds[] | select(.type == "selector")] | length > 0' \
@@ -640,6 +642,16 @@ sleep 1
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" service status >"$TMP/singbox-service-status.log"
 rg -q '^  sing-box: [0-9][0-9,]*$' "$TMP/singbox-service-status.log"
 "$HOST_JQ" -e '.outbounds[] | select(.tag == "old-cached-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null
+if "$HOST_JQ" -e '.outbounds[] | select(.tag == "stale-device-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null; then
+    echo "sing-box startup accepted a legacy config with missing AI selectors" >&2
+    exit 1
+fi
+# shellcheck disable=SC2016
+"$HOST_JQ" -e '
+    ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
+    | [.outbounds[] | select(.tag as $tag | $names | index($tag))]
+    | length == 4 and all(.type == "selector" and .default == "block" and .outbounds[0] == "block")
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
 if "$HOST_JQ" -e '.outbounds[] | select(.tag == "fresh-sub-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null; then
     echo "sing-box startup refreshed subscription instead of using cached config" >&2
     exit 1
