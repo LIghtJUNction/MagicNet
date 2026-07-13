@@ -130,7 +130,7 @@ function requestAddAllowRule(): void {
   pendingBlockAction.value = {
     key: `allow-${rule}`,
     command: `block allow-rule ${rule}`,
-    message: `确认把 ${rule} 加入广告放行白名单？它会优先于所有广告阻断规则，并通过 ad-allow 组选择 Direct 或 Proxy。`,
+    message: `确认把 ${rule} 加入广告放行白名单？它会优先于所有广告阻断规则，并默认继承主策略；也可在 ad-allow 组手动选择 Direct 或 Proxy。`,
     run: () => allowRule(rule)
   };
 }
@@ -139,7 +139,7 @@ function requestAllowRule(rule: string): void {
   pendingBlockAction.value = {
     key: `allow-${rule}`,
     command: `block allow-rule ${rule}`,
-    message: `确认把社区规则 ${rule} 加入广告放行白名单？流量将由 ad-allow 组选择 Direct 或 Proxy。`,
+    message: `确认把社区规则 ${rule} 加入广告放行白名单？流量默认继承主策略，也可在 ad-allow 组手动选择 Direct 或 Proxy。`,
     run: () => allowRule(rule)
   };
 }
@@ -261,7 +261,7 @@ async function confirmBlockAction(): Promise<void> {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Community Banlist" title="联 ban 黑名单" description="广告放行白名单优先于所有广告阻断规则；ad-allow 组可选择 Direct 或 Proxy。">
+    <PageHeader overline="Community Banlist" title="联 ban 黑名单" description="广告放行白名单优先于所有广告阻断规则；ad-allow 默认继承主策略，也可手动选择 Direct 或 Proxy。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('refresh-block')" @click="withAction('refresh-block', () => refreshBlock())"><RefreshCw :size="17" />读取</Button>
         <Button :loading="isRunning('update-block')" @click="requestUpdateCommunityBlocklist"><DownloadCloud :size="17" />更新社区库</Button>
@@ -360,7 +360,7 @@ async function confirmBlockAction(): Promise<void> {
 
       <Card>
         <h3 class="mb-1 text-base font-semibold">广告放行白名单</h3>
-        <p class="mb-3 text-sm leading-6 text-zinc-500">优先于内置、规则集和社区广告规则；放行方式由 ad-allow 组选择 Direct 或 Proxy。</p>
+        <p class="mb-3 text-sm leading-6 text-zinc-500">优先于内置、规则集和社区广告规则；ad-allow 默认继承主策略，也可手动选择 Direct 或 Proxy。</p>
         <div class="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
           <Input v-model="allowRuleInput" placeholder="example.com 或 DOMAIN-SUFFIX,example.com" spellcheck="false" @keyup.enter="requestAddAllowRule" />
           <Button variant="secondary" :loading="isRunning(`allow-${allowRuleInput.trim()}`)" @click="requestAddAllowRule"><Plus :size="16" />加入白名单</Button>

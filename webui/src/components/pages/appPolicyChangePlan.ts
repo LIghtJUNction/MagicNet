@@ -80,7 +80,7 @@ function changedPackages(
 
 function modeWarnings(beforeMode: AppPolicyMode, after: { mode: AppPolicyMode; proxy: string[]; bypass: string[] }): string[] {
   if (beforeMode === after.mode) return [];
-  if (after.mode === "whitelist" && !after.proxy.length) return ["白名单模式下 Proxy 为空，普通应用将不会进入 TUN。"];
+  if (after.mode === "whitelist" && !after.proxy.length) return ["白名单模式下 Proxy 为空，未列出应用将绕过 TUN。"];
   if (after.mode === "blacklist" && !after.bypass.length) return ["黑名单模式下 Bypass 为空，除系统排除外应用会默认进入 TUN。"];
   return [];
 }
@@ -91,12 +91,13 @@ function effectiveRoutingChanges(
   installedPackages: Set<string>
 ): number | null {
   if (!installedPackages.size) return null;
-  return Array.from(installedPackages).filter((pkg) => entersTun(before, pkg) !== entersTun(after, pkg)).length;
+  return Array.from(installedPackages).filter((pkg) => effectiveRoute(before, pkg) !== effectiveRoute(after, pkg)).length;
 }
 
-function entersTun(state: { mode: AppPolicyMode; proxy: string[]; bypass: string[] }, pkg: string): boolean {
-  if (state.mode === "whitelist") return state.proxy.includes(pkg);
-  return !state.bypass.includes(pkg);
+function effectiveRoute(state: { mode: AppPolicyMode; proxy: string[]; bypass: string[] }, pkg: string): "proxy" | "tun" | "bypass" {
+  if (state.proxy.includes(pkg)) return "proxy";
+  if (state.bypass.includes(pkg) || state.mode === "whitelist") return "bypass";
+  return "tun";
 }
 
 function movedPackageWarnings(before: { proxy: string[]; bypass: string[] }, after: { proxy: string[]; bypass: string[] }): string[] {

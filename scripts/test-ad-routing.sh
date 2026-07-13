@@ -6,16 +6,64 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
+if ! command -v jq >/dev/null 2>&1; then
+  printf '%s\n' 'jq is required for ad routing regression tests' >&2
+  exit 1
+fi
+
 MODDIR="$WORK/module"
 export MODDIR
 mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
 
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/blocklist.sh"
+
+assert_subscription_ad_allow() {
+  _fragment="$1"
+  _config="$2"
+  {
+    printf '{\n'
+    cat "$_fragment"
+    printf '\n  "route": {}\n}\n'
+  } >"$_config"
+  jq -e '
+    [.outbounds[] | select(.tag == "ad-allow")] == [{
+      "type": "selector",
+      "tag": "ad-allow",
+      "outbounds": ["final", "direct", "proxy"],
+      "default": "final"
+    }]
+  ' "$_config" >/dev/null
+  unset _fragment _config
+}
+
+mkdir -p "$WORK/subscription-jq" "$WORK/subscription-no-jq/nodes"
+printf '[]' >"$WORK/subscription-jq/nodes.json"
+: >"$WORK/subscription-jq/tags"
+magicnet_singbox_build_outbounds_file_with_jq \
+  "$WORK/subscription-jq/nodes.json" \
+  "$WORK/subscription-jq/tags" \
+  "$WORK/subscription-jq/outbounds"
+assert_subscription_ad_allow \
+  "$WORK/subscription-jq/outbounds" \
+  "$WORK/subscription-jq/config.json"
+
+magicnet_singbox_build_outbounds_file_with_jq() {
+  return 1
+}
+magicnet_singbox_build_outbounds_file \
+  "$WORK/subscription-no-jq/nodes" \
+  "$WORK/subscription-no-jq/outbounds" \
+  "$WORK/subscription-no-jq/tags" >/dev/null
+assert_subscription_ad_allow \
+  "$WORK/subscription-no-jq/outbounds" \
+  "$WORK/subscription-no-jq/config.json"
 
 cat >"$MODDIR/.config/magicnet/block-allow-rules.list" <<'EOF'
 DOMAIN,ads.example.com
 DOMAIN-SUFFIX,example.org
+DOMAIN-SUFFIX,mobilism.org
 DOMAIN-KEYWORD,sponsor
 EOF
 cat >"$MODDIR/.config/magicnet/community-ban-rules.list" <<'EOF'
@@ -47,7 +95,7 @@ cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
         "action": "sniff"
       },
       {
-        "rule_set": "ads",
+        "rule_set": "hagezi-anti-piracy",
         "outbound": "ad-block"
       }
     ]
@@ -67,6 +115,7 @@ grep -q '"outbound": "ad-allow"' "$CONFIG"
 grep -q '"outbound": "ad-block"' "$CONFIG"
 grep -q '"ads.example.com"' "$CONFIG"
 grep -q '"example.org"' "$CONFIG"
+grep -q '"mobilism.org"' "$CONFIG"
 grep -q '"sponsor"' "$CONFIG"
 if grep -A8 '__magicnet_block__' "$CONFIG" | grep -q 'ads.example.com'; then
   exit 1
@@ -74,9 +123,13 @@ fi
 
 ALLOW_LINE=$(grep -n '__magicnet_ad_allow__' "$CONFIG" | cut -d: -f1)
 BLOCK_LINE=$(grep -n '__magicnet_block__' "$CONFIG" | cut -d: -f1)
-STATIC_LINE=$(grep -n '"rule_set": "ads"' "$CONFIG" | cut -d: -f1)
+STATIC_LINE=$(grep -n '"rule_set": "hagezi-anti-piracy"' "$CONFIG" | cut -d: -f1)
 [ "$ALLOW_LINE" -lt "$BLOCK_LINE" ]
 [ "$BLOCK_LINE" -lt "$STATIC_LINE" ]
+jq -e '
+  any(.route.rules[];
+    .outbound == "ad-allow" and ((.domain_suffix // []) | index("mobilism.org")))
+' "$CONFIG" >/dev/null
 
 : >"$MODDIR/.config/magicnet/block-allow-rules.list"
 magicnet_block_apply_singbox
@@ -84,20 +137,19 @@ if grep -q '__magicnet_ad_allow__' "$CONFIG"; then
   exit 1
 fi
 
-grep -Fq 'selector("ad-block"; ["block", "direct", "proxy"]; "block")' \
-  "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
-grep -Fq 'selector("ad-allow"; ["direct", "proxy"]; "direct")' \
-  "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
-
-if command -v jq >/dev/null 2>&1; then
-  jq -e '
-    (.outbounds[] | select(.tag == "ad-block") | .outbounds == ["block", "direct", "proxy"] and .default == "block") and
-    (.outbounds[] | select(.tag == "ad-allow") | .outbounds == ["direct", "proxy"] and .default == "direct") and
-    (.outbounds[] | select(.tag == "ad-block") | .outbounds == ["block", "direct", "proxy"]) and
-    (.outbounds[] | select(.tag == "ad-allow") | .outbounds == ["direct", "proxy"])
-  ' "$ROOT/src/MagicNet/.config/sing-box/config.json" >/dev/null
-  jq empty "$CONFIG"
-  [ "$(jq '[.route.rules[] | select(has("domain") and (.domain | index("__magicnet_ad_allow__")))] | length' "$CONFIG")" -eq 0 ]
+SRS="$ROOT/src/MagicNet/.config/sing-box/rules/hagezi-anti-piracy.srs"
+if command -v sing-box >/dev/null 2>&1 && [ -f "$SRS" ]; then
+  MATCH_OUTPUT=$(sing-box rule-set match -f binary "$SRS" forum.mobilism.org 2>&1)
+  [ -n "$MATCH_OUTPUT" ]
 fi
+
+jq -e '
+  (.outbounds[] | select(.tag == "ad-block") | .outbounds == ["block", "direct", "proxy"] and .default == "block") and
+  (.outbounds[] | select(.tag == "ad-allow") | .outbounds == ["final", "direct", "proxy"] and .default == "final") and
+  (.outbounds[] | select(.tag == "ad-block") | .outbounds == ["block", "direct", "proxy"]) and
+  (.outbounds[] | select(.tag == "ad-allow") | .outbounds == ["final", "direct", "proxy"])
+' "$ROOT/src/MagicNet/.config/sing-box/config.json" >/dev/null
+jq empty "$CONFIG"
+[ "$(jq '[.route.rules[] | select(has("domain") and (.domain | index("__magicnet_ad_allow__")))] | length' "$CONFIG")" -eq 0 ]
 
 printf '%s\n' 'ad routing regression tests passed'

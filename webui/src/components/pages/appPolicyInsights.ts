@@ -111,16 +111,18 @@ export function buildAppPolicySummary(
   const installedProxy = installedPackages.size ? proxy.filter((pkg) => installedPackages.has(pkg)) : [];
   const installedBypass = installedPackages.size ? bypass.filter((pkg) => installedPackages.has(pkg)) : [];
   const installedKnown = installedPackages.size > 0;
-  const captured = mode === "whitelist" ? `${proxy.length} 个 Proxy 名单应用` : "除 Bypass 外的应用";
-  const bypassed = mode === "whitelist" ? "非 Proxy 名单应用" : `${bypass.length} 个 Bypass 名单应用`;
+  const unlisted = mode === "whitelist" ? "绕过 TUN" : "进入 TUN";
   return {
-    summary: mode === "whitelist" ? "白名单模式只让 Proxy 名单进入 TUN。" : "黑名单模式默认接管应用，Bypass 名单绕过 TUN。",
+    summary: mode === "whitelist"
+      ? "Proxy 名单强制走 MagicNet proxy；未列出应用绕过 TUN。"
+      : "Proxy 名单强制走 MagicNet proxy；Bypass 名单绕过 TUN，未列出应用正常进入 TUN。",
     conflicts,
     installedProxy,
     installedBypass,
     items: [
-      insight("接管范围", captured, proxy.length || mode === "blacklist" ? "success" : "warning"),
-      insight("绕过范围", bypassed, bypass.length || mode === "whitelist" ? "success" : "neutral"),
+      insight("Proxy 强制", `${proxy.length} 个`, proxy.length ? "success" : "neutral"),
+      insight("Bypass 绕过", `${bypass.length} 个`, bypass.length ? "success" : "neutral"),
+      insight("未列出应用", unlisted, mode === "blacklist" ? "success" : "neutral"),
       insight("名单冲突", conflicts.length ? `${conflicts.length} 个` : "无", conflicts.length ? "danger" : "success"),
       insight("当前列表命中", installedKnown ? `Proxy ${installedProxy.length} / Bypass ${installedBypass.length}` : "未读取应用", installedKnown ? "success" : "warning"),
       insight("可应用推荐", `${availableRecommendedCount} 个`, availableRecommendedCount ? "neutral" : "success")

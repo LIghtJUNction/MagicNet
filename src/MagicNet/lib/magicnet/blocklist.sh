@@ -187,8 +187,8 @@ magicnet_block_ensure_ad_selectors() {
             print "    {"
             print "      \"type\": \"selector\","
             print "      \"tag\": \"ad-allow\","
-            print "      \"outbounds\": [\"direct\", \"proxy\"],"
-            print "      \"default\": \"direct\""
+            print "      \"outbounds\": [\"final\", \"direct\", \"proxy\"],"
+            print "      \"default\": \"final\""
             print "    }" comma
         }
         function brace_delta(s, i, c, d) {
@@ -272,16 +272,22 @@ magicnet_block_apply_singbox() {
             buffering = 0
             skip_custom = 0
         }
+        function route_rule_precedes_ads(rule) {
+            return rule ~ /"action"[[:space:]]*:/ ||
+                (rule ~ /"protocol"[[:space:]]*:[[:space:]]*"icmp"/ &&
+                 rule ~ /"outbound"[[:space:]]*:[[:space:]]*"block"/) ||
+                rule ~ /"__magicnet_app_proxy__"/
+        }
         function flush_rule() {
             if (!skip_custom) {
-                printf "%s", buffer
-                if (!inserted && buffer ~ /"action"[[:space:]]*:[[:space:]]*"sniff"/) {
+                if (!inserted && !route_rule_precedes_ads(buffer)) {
                     while ((getline rule_line < rules_file) > 0) {
                         print rule_line
                     }
                     close(rules_file)
                     inserted = 1
                 }
+                printf "%s", buffer
             }
             reset_buffer()
         }
@@ -312,6 +318,13 @@ magicnet_block_apply_singbox() {
                 next
             }
             if (in_rules && $0 ~ /^    ][,]?[[:space:]]*$/) {
+                if (!inserted) {
+                    while ((getline rule_line < rules_file) > 0) {
+                        print rule_line
+                    }
+                    close(rules_file)
+                    inserted = 1
+                }
                 in_rules = 0
                 print
                 next
