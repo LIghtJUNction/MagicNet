@@ -1,5 +1,12 @@
 ## Unreleased
 
+## v1.1.19 (2026-07-14)
+
+- Repair legacy sing-box subscription configurations that are missing the
+  fail-closed ChatGPT, Gemini, Grok, and Claude outbound selectors.
+- Validate cached AI selectors across jq and no-jq paths, rejecting malformed,
+  duplicate, or stale outbound references before rebuilding the subscription.
+
 ## v1.1.18 (2026-07-13)
 
 - Fix #40 by normalizing pasted HTTP(S) URLs in the WebUI to canonical hostnames

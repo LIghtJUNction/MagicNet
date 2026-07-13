@@ -80,6 +80,20 @@ Interpret status conservatively:
 - `missing` or `permission denied` can be kernel, bpffs, SELinux, or vendor netd behavior.
 - netd `ALLOW_MULTI` is only evidence of netd capability. Do not treat it as permission to force eBPF redirect.
 
+## AI Website Routing Acceptance
+
+Do not accept an AI routing fix from config inspection alone. On the installed device, verify all four public websites through MagicNet's local HTTP proxy at `127.0.0.1:7892`:
+
+```sh
+adb shell 'su -M -c '\''for url in https://chatgpt.com/ https://gemini.google.com/ https://grok.com/ https://claude.ai/; do curl -sS -o /dev/null -w "%{http_code} $url\n" --max-time 30 -x http://127.0.0.1:7892 "$url"; done'\'''
+```
+
+- Require an HTTP response from every site. A redirect, authentication response, or application response proves reachability; timeout, DNS failure, TLS failure, or proxy failure does not.
+- For each request, collect sing-box logs proving traffic selected its dedicated outbound: `ai-chatgpt`, `ai-gemini`, `ai-grok`, or `ai-claude`. Reject any `missing outbound`, `outbound not found`, or equivalent error.
+- Follow command-line probes with a real browser visit when the user's acceptance criterion is website usability. Confirm the page loads through MagicNet rather than only proving TCP/TLS reachability.
+- If testing temporarily changes a selector through the Clash API or WebUI, record its original selection and restore it before finishing.
+- Redact subscription URLs, node credentials, tokens, cookies, authorization headers, and private browsing data from commands, logs, screenshots, and reports.
+
 ## Certificate-Less Packet Capture
 
 Use these methods when the user wants packet evidence without installing a CA certificate.

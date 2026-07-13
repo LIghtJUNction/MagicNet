@@ -8,6 +8,72 @@ magicnet_json_escape() {
         sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
 }
 
+magicnet_singbox_ai_selectors_canonical() {
+    _ai_config="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -e '
+          ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
+          | [.outbounds[]? | select(.tag as $tag | $names | index($tag))] as $groups
+          | ([.outbounds[]?.tag] | unique) as $tags
+          | ($groups | length) == 4
+            and ($groups | all(
+              .type == "selector" and .default == "block"
+              and (.outbounds | type == "array" and length > 0 and .[0] == "block")
+              and (.outbounds | index("direct") == null and index("proxy") == null)
+              and (.outbounds | all(. as $member | $tags | index($member) != null))))
+        ' "$_ai_config" >/dev/null 2>&1
+        _ai_rc=$?
+    else
+        awk '
+          BEGIN {
+            split("ai-chatgpt ai-gemini ai-grok ai-claude", names)
+            for (i in names) wanted[names[i]] = 1
+          }
+          /^[[:space:]]*\{/ { object = $0 "\n"; next }
+          object != "" { object = object $0 "\n" }
+          object != "" && /^[[:space:]]*\}[,]?[[:space:]]*$/ {
+            objects[++object_count] = object
+            object = ""
+          }
+          END {
+            for (i = 1; i <= object_count; i++) {
+              tag = objects[i]
+              if (tag !~ /"tag"[[:space:]]*:/) continue
+              sub(/^.*"tag"[[:space:]]*:[[:space:]]*"/, "", tag)
+              sub(/".*/, "", tag)
+              tags[tag] = 1
+            }
+            for (i = 1; i <= object_count; i++) {
+              object = objects[i]
+              tag = object
+              if (tag !~ /"tag"[[:space:]]*:/) continue
+              sub(/^.*"tag"[[:space:]]*:[[:space:]]*"/, "", tag)
+              sub(/".*/, "", tag)
+              if (!(tag in wanted)) continue
+              count[tag]++
+              if (object !~ /"type"[[:space:]]*:[[:space:]]*"selector"/ ||
+                  object !~ /"default"[[:space:]]*:[[:space:]]*"block"/ ||
+                  object !~ /"outbounds"[[:space:]]*:[[:space:]]*\[[[:space:]]*"block"/ ||
+                  object ~ /"outbounds"[[:space:]]*:[^]]*"(direct|proxy)"/) bad = 1
+              members = object
+              sub(/^.*"outbounds"[[:space:]]*:[[:space:]]*\[/, "", members)
+              sub(/\].*/, "", members)
+              member_count = split(members, member, ",")
+              for (j = 1; j <= member_count; j++) {
+                gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", member[j])
+                if (!(member[j] in tags)) bad = 1
+              }
+            }
+            for (name in wanted) if (count[name] != 1) bad = 1
+            exit bad ? 1 : 0
+          }
+        ' "$_ai_config"
+        _ai_rc=$?
+    fi
+    unset _ai_config
+    return "$_ai_rc"
+}
+
 magicnet_json_array_csv() {
     _values="$1"
     _first=1
