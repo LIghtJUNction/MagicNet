@@ -441,6 +441,86 @@ pub(super) fn normalize_block_rule(rule: &str) -> String {
     }
 }
 
+pub(super) fn normalize_allow_rule(rule: &str) -> Result<String, String> {
+    let value = rule.trim();
+    let (kind, payload) = match value.split_once(',') {
+        Some((kind, payload)) => (kind.trim().to_ascii_uppercase(), payload.trim()),
+        None => ("DOMAIN-SUFFIX".to_string(), value),
+    };
+    if payload.is_empty() {
+        return Err("invalid allow rule: missing domain or keyword".to_string());
+    }
+
+    match kind.as_str() {
+        "DOMAIN" | "DOMAIN-SUFFIX" => {
+            let host = normalize_allow_host(payload)?;
+            Ok(format!("{kind},{host}"))
+        }
+        "DOMAIN-KEYWORD" => {
+            if payload.chars().any(char::is_whitespace) {
+                return Err("invalid allow rule: keyword must not contain whitespace".to_string());
+            }
+            Ok(format!("{kind},{}", payload.to_ascii_lowercase()))
+        }
+        _ => Err(format!(
+            "invalid allow rule type: {kind}; expected DOMAIN, DOMAIN-SUFFIX, or DOMAIN-KEYWORD"
+        )),
+    }
+}
+
+fn normalize_allow_host(value: &str) -> Result<String, String> {
+    let mut authority = value;
+    if let Some(scheme_end) = value.find("://") {
+        let scheme = &value[..scheme_end];
+        if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+            return Err(format!(
+                "unsupported allow rule URL scheme: {scheme}; expected http or https"
+            ));
+        }
+        authority = &value[scheme_end + 3..];
+    }
+    authority = authority.split(['/', '?', '#']).next().unwrap_or_default();
+    authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if authority.is_empty() {
+        return Err("invalid allow rule URL: missing host".to_string());
+    }
+
+    let host = if let Some(bracketed) = authority.strip_prefix('[') {
+        let Some(end) = bracketed.find(']') else {
+            return Err("invalid allow rule host".to_string());
+        };
+        let suffix = &bracketed[end + 1..];
+        if !suffix.is_empty() && (!suffix.starts_with(':') || !valid_allow_port(&suffix[1..])) {
+            return Err("invalid allow rule URL port".to_string());
+        }
+        &bracketed[..end]
+    } else if let Some((host, port)) = authority.rsplit_once(':') {
+        if host.contains(':') || !valid_allow_port(port) {
+            return Err("invalid allow rule URL port".to_string());
+        }
+        host
+    } else {
+        authority
+    };
+
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    if host.is_empty()
+        || host.chars().any(|character| {
+            character.is_whitespace() || matches!(character, '/' | '?' | '#' | ',' | '@' | ':')
+        })
+    {
+        return Err("invalid allow rule host".to_string());
+    }
+    Ok(host)
+}
+
+fn valid_allow_port(port: &str) -> bool {
+    port.is_empty()
+        || (port.bytes().all(|byte| byte.is_ascii_digit()) && port.parse::<u16>().is_ok())
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -512,5 +592,36 @@ mod tests {
             .to_string_lossy()
             .contains(".tmp")));
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn allow_rule_normalization_extracts_url_hosts() {
+        assert_eq!(
+            normalize_allow_rule("https://Forum.Mobilism.org.:443/path?q=1#topic").unwrap(),
+            "DOMAIN-SUFFIX,forum.mobilism.org"
+        );
+        assert_eq!(
+            normalize_allow_rule("domain,HTTP://Ads.Example.COM:8080/banner").unwrap(),
+            "DOMAIN,ads.example.com"
+        );
+    }
+
+    #[test]
+    fn allow_rule_normalization_canonicalizes_domains_and_keywords() {
+        assert_eq!(
+            normalize_allow_rule("Example.COM.").unwrap(),
+            "DOMAIN-SUFFIX,example.com"
+        );
+        assert_eq!(
+            normalize_allow_rule("domain-keyword,Sponsor").unwrap(),
+            "DOMAIN-KEYWORD,sponsor"
+        );
+    }
+
+    #[test]
+    fn allow_rule_normalization_rejects_invalid_urls() {
+        assert!(normalize_allow_rule("DOMAIN-SUFFIX,ftp://example.com").is_err());
+        assert!(normalize_allow_rule("DOMAIN,https://").is_err());
+        assert!(normalize_allow_rule("DOMAIN-SUFFIX,https:///missing-host").is_err());
     }
 }

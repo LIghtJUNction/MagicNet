@@ -110,13 +110,44 @@ async function allowRule(rule: string): Promise<void> {
 
 function normalizeAllowRule(input: string): string | null {
   const raw = input.trim();
-  const candidate = raw.includes(",") ? raw : `DOMAIN-SUFFIX,${raw}`;
-  const match = candidate.match(/^(DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD),(.+)$/i);
-  if (!match || !match[2].trim() || /\s/.test(match[2])) {
-    state.output = "白名单格式不对。支持 example.com、DOMAIN,example.com、DOMAIN-SUFFIX,example.com 或 DOMAIN-KEYWORD,example。";
+  const match = raw.match(/^([^,]+),(.*)$/);
+  const kind = (match?.[1] ?? "DOMAIN-SUFFIX").trim().toUpperCase();
+  const value = (match?.[2] ?? raw).trim();
+  if (!(["DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD"] as string[]).includes(kind) || !value) {
+    state.output = "白名单格式不对。支持 example.com、http(s) URL、DOMAIN,example.com、DOMAIN-SUFFIX,example.com 或 DOMAIN-KEYWORD,example。";
     return null;
   }
-  const rule = `${match[1].toUpperCase()},${match[2].trim().toLowerCase()}`;
+
+  let normalizedValue = value.toLowerCase();
+  if (kind === "DOMAIN-KEYWORD") {
+    if (/\s/.test(value)) {
+      state.output = "白名单格式不对：DOMAIN-KEYWORD 需要非空且不含空格的关键词。";
+      return null;
+    }
+  } else {
+    const scheme = value.match(/^([a-z][a-z0-9+.-]*):\/\//i);
+    if (scheme && !/^https?$/i.test(scheme[1])) {
+      state.output = `白名单格式不对：DOMAIN 和 DOMAIN-SUFFIX 仅支持 http/https URL，不能使用 ${scheme[1]}。`;
+      return null;
+    }
+    if (scheme && !value.slice(scheme[0].length).split(/[/?#]/, 1)[0]) {
+      state.output = "白名单格式不对：URL 缺少有效主机名。示例：https://forum.mobilism.org";
+      return null;
+    }
+    try {
+      const url = new URL(scheme ? value : `http://${value}`);
+      normalizedValue = url.hostname.toLowerCase().replace(/\.+$/, "");
+    } catch {
+      state.output = "白名单格式不对：DOMAIN 和 DOMAIN-SUFFIX 需要有效域名或 http/https URL。示例：https://forum.mobilism.org";
+      return null;
+    }
+    if (!normalizedValue) {
+      state.output = "白名单格式不对：URL 缺少有效主机名。示例：https://forum.mobilism.org";
+      return null;
+    }
+  }
+
+  const rule = `${kind},${normalizedValue}`;
   if (state.blocklist.allowRules.includes(rule)) {
     state.output = `${rule} 已在广告放行白名单中。`;
     return null;

@@ -63,8 +63,11 @@ assert_subscription_ad_allow \
 cat >"$MODDIR/.config/magicnet/block-allow-rules.list" <<'EOF'
 DOMAIN,ads.example.com
 DOMAIN-SUFFIX,example.org
-DOMAIN-SUFFIX,mobilism.org
+DOMAIN-SUFFIX,https://Forum.Mobilism.org.:443/path?from=legacy#post
+DOMAIN-SUFFIX,forum.mobilism.org
+DOMAIN-SUFFIX,https://forum.mobilism.org/duplicate
 DOMAIN-KEYWORD,sponsor
+PROCESS-NAME,KeepThis
 EOF
 cat >"$MODDIR/.config/magicnet/community-ban-rules.list" <<'EOF'
 DOMAIN,ads.example.com
@@ -104,7 +107,9 @@ cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 EOF
 
 magicnet_block_apply_singbox
+ALLOW_RULES_AFTER_FIRST_APPLY=$(cat "$MODDIR/.config/magicnet/block-allow-rules.list")
 magicnet_block_apply_singbox
+[ "$ALLOW_RULES_AFTER_FIRST_APPLY" = "$(cat "$MODDIR/.config/magicnet/block-allow-rules.list")" ]
 
 CONFIG="$MODDIR/.config/sing-box/config.json"
 [ "$(grep -c '__magicnet_ad_allow__' "$CONFIG")" -eq 1 ]
@@ -115,8 +120,14 @@ grep -q '"outbound": "ad-allow"' "$CONFIG"
 grep -q '"outbound": "ad-block"' "$CONFIG"
 grep -q '"ads.example.com"' "$CONFIG"
 grep -q '"example.org"' "$CONFIG"
-grep -q '"mobilism.org"' "$CONFIG"
+grep -q '"forum.mobilism.org"' "$CONFIG"
 grep -q '"sponsor"' "$CONFIG"
+grep -qx 'DOMAIN-SUFFIX,forum.mobilism.org' "$MODDIR/.config/magicnet/block-allow-rules.list"
+grep -qx 'PROCESS-NAME,KeepThis' "$MODDIR/.config/magicnet/block-allow-rules.list"
+[ "$(grep -c '^DOMAIN-SUFFIX,forum\.mobilism\.org$' "$MODDIR/.config/magicnet/block-allow-rules.list")" -eq 1 ]
+if grep -Eiq 'DOMAIN(-SUFFIX)?,https?://' "$MODDIR/.config/magicnet/block-allow-rules.list"; then
+  exit 1
+fi
 if grep -A8 '__magicnet_block__' "$CONFIG" | grep -q 'ads.example.com'; then
   exit 1
 fi
@@ -128,7 +139,7 @@ STATIC_LINE=$(grep -n '"rule_set": "hagezi-anti-piracy"' "$CONFIG" | cut -d: -f1
 [ "$BLOCK_LINE" -lt "$STATIC_LINE" ]
 jq -e '
   any(.route.rules[];
-    .outbound == "ad-allow" and ((.domain_suffix // []) | index("mobilism.org")))
+    .outbound == "ad-allow" and ((.domain_suffix // []) | index("forum.mobilism.org")))
 ' "$CONFIG" >/dev/null
 
 : >"$MODDIR/.config/magicnet/block-allow-rules.list"
