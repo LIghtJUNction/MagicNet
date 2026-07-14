@@ -12,20 +12,32 @@ magicnet_singbox_ai_selectors_canonical() {
     _ai_config="$1"
     if command -v jq >/dev/null 2>&1; then
         jq -e '
+          def mainland_node_tag:
+            test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
           ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
           | [.outbounds[]? | select(.tag as $tag | $names | index($tag))] as $groups
+          | ([.outbounds[]? | select(.tag == "ai-proxy")]) as $ai_proxies
+          | [.outbounds[]?
+              | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan" or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+              | .tag] as $node_tags
           | ([.outbounds[]?.tag] | unique) as $tags
           | ($groups | length) == 4
+            and ($ai_proxies | length) == 1
+            and ($ai_proxies[0].type == "selector")
+            and (($ai_proxies[0].outbounds == ["block"] and $ai_proxies[0].default == "block" and ($node_tags | length) == 0)
+              or (($ai_proxies[0].outbounds | length) > 0
+                and $ai_proxies[0].default == $ai_proxies[0].outbounds[0]
+                and ($ai_proxies[0].outbounds | all(. as $member | ($node_tags | index($member) != null) and ($member | mainland_node_tag | not)))))
             and ($groups | all(
               .type == "selector" and .default == "block"
-              and (.outbounds | type == "array" and length > 0 and .[0] == "block")
-              and (.outbounds | index("direct") == null and index("proxy") == null)
+              and .outbounds == ["block", "ai-proxy"]
               and (.outbounds | all(. as $member | $tags | index($member) != null))))
         ' "$_ai_config" >/dev/null 2>&1
         _ai_rc=$?
     else
         awk '
           BEGIN {
+            IGNORECASE = 1
             split("ai-chatgpt ai-gemini ai-grok ai-claude", names)
             for (i in names) wanted[names[i]] = 1
           }
@@ -42,6 +54,14 @@ magicnet_singbox_ai_selectors_canonical() {
               sub(/^.*"tag"[[:space:]]*:[[:space:]]*"/, "", tag)
               sub(/".*/, "", tag)
               tags[tag] = 1
+              type = objects[i]
+              if (type !~ /"type"[[:space:]]*:/) continue
+              sub(/^.*"type"[[:space:]]*:[[:space:]]*"/, "", type)
+              sub(/".*/, "", type)
+              if (type ~ /^(shadowsocks|vmess|vless|trojan|hysteria2|anytls|tuic)$/) {
+                node_tags[tag] = 1
+                node_count++
+              }
             }
             for (i = 1; i <= object_count; i++) {
               object = objects[i]
@@ -49,22 +69,37 @@ magicnet_singbox_ai_selectors_canonical() {
               if (tag !~ /"tag"[[:space:]]*:/) continue
               sub(/^.*"tag"[[:space:]]*:[[:space:]]*"/, "", tag)
               sub(/".*/, "", tag)
+              if (tag == "ai-proxy") {
+                ai_proxy_count++
+                if (object !~ /"type"[[:space:]]*:[[:space:]]*"selector"/) bad = 1
+                if (object ~ /中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ ||
+                    object ~ /(^|[^[:alnum:]])(Hong[ _-]?Kong([ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^[:alnum:]]|$)/) bad = 1
+                members = object
+                sub(/^.*"outbounds"[[:space:]]*:[[:space:]]*\[/, "", members)
+                sub(/\].*/, "", members)
+                member_count = split(members, member, ",")
+                default_member = object
+                sub(/^.*"default"[[:space:]]*:[[:space:]]*"/, "", default_member)
+                sub(/".*/, "", default_member)
+                for (j = 1; j <= member_count; j++) {
+                  gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", member[j])
+                }
+                if (member_count == 1 && member[1] == "block") {
+                  if (default_member != "block" || node_count != 0) bad = 1
+                } else {
+                  if (member_count < 1 || default_member != member[1]) bad = 1
+                  for (j = 1; j <= member_count; j++) if (!(member[j] in node_tags)) bad = 1
+                }
+                continue
+              }
               if (!(tag in wanted)) continue
               count[tag]++
               if (object !~ /"type"[[:space:]]*:[[:space:]]*"selector"/ ||
                   object !~ /"default"[[:space:]]*:[[:space:]]*"block"/ ||
-                  object !~ /"outbounds"[[:space:]]*:[[:space:]]*\[[[:space:]]*"block"/ ||
-                  object ~ /"outbounds"[[:space:]]*:[^]]*"(direct|proxy)"/) bad = 1
-              members = object
-              sub(/^.*"outbounds"[[:space:]]*:[[:space:]]*\[/, "", members)
-              sub(/\].*/, "", members)
-              member_count = split(members, member, ",")
-              for (j = 1; j <= member_count; j++) {
-                gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", member[j])
-                if (!(member[j] in tags)) bad = 1
-              }
+                  object !~ /"outbounds"[[:space:]]*:[[:space:]]*\[[[:space:]]*"block"[[:space:]]*,[[:space:]]*"ai-proxy"[[:space:]]*\]/) bad = 1
             }
             for (name in wanted) if (count[name] != 1) bad = 1
+            if (ai_proxy_count != 1) bad = 1
             exit bad ? 1 : 0
           }
         ' "$_ai_config"

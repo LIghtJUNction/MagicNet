@@ -54,10 +54,11 @@ unzip -oq "$ZIP_PATH" -d "$MODPATH"
 unzip -oq "$ZIP_PATH" -d "$MANAGER_MODPATH"
 
 mkdir -p \
-    "$PREV_MOD/.config/sing-box/.subscription-work" \
+    "$PREV_MOD/.state/sing-box/subscription-work" \
+    "$PREV_MOD/.config/sing-box" \
     "$PREV_MOD/.config/magicnet"
 printf '%s\n' 'https://old.example/sing-box' >"$PREV_MOD/.config/sing-box/subscription.url"
-printf '%s\n' 'old-sing-box-work' >"$PREV_MOD/.config/sing-box/.subscription-work/marker.txt"
+printf '%s\n' 'old-sing-box-work' >"$PREV_MOD/.state/sing-box/subscription-work/marker.txt"
 printf '%s\n' 'MAGICNET_DEFAULT_CORE=sing-box' >"$PREV_MOD/.config/magicnet/current-core.conf"
 printf '%s\n' 'MAGICNET_MCP_ENABLED=1' 'MAGICNET_MCP_BIND=127.0.0.1' 'MAGICNET_MCP_PORT=18766' \
     >"$PREV_MOD/.config/magicnet/mcp.conf"
@@ -120,7 +121,7 @@ PATH="$MODPATH/bin:$PATH" command -v ecapture >/dev/null \
 
 grep -qx 'https://old.example/sing-box' "$MODPATH/.config/sing-box/subscription.url" \
     || fail "sing-box subscription was not preserved from previous install"
-grep -qx 'old-sing-box-work' "$MODPATH/.config/sing-box/.subscription-work/marker.txt" \
+grep -qx 'old-sing-box-work' "$MODPATH/.state/sing-box/subscription-work/marker.txt" \
     || fail "sing-box subscription workdir was not preserved from previous install"
 legacy_core_dir="$MODPATH/.config/mi""homo"
 if [[ -e "$legacy_core_dir" ]]; then

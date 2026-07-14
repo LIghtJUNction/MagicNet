@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v1.1.20 (2026-07-14)
+
+- Add an independent non-China/Hong Kong `ai-proxy` selector and route the
+  ChatGPT, Gemini, Grok, and Claude selectors through it while remaining
+  fail-closed by default.
+- Persist selector choices across subscription activation and service restarts.
+- Fetch subscriptions directly by default, with bounded downloader and process
+  timeouts plus owner-aware update and configuration locks.
+- Make subscription activation transactional and restart only the verified
+  owned sing-box process, restoring the previous configuration on failure.
+
 ## v1.1.19 (2026-07-14)
 
 - Repair legacy sing-box subscription configurations that are missing the

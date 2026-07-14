@@ -70,6 +70,7 @@ magicnet_start_kernel() {
 
     if magicnet_start_singbox; then
         magicnet_after_kernel_start
+        "${MODDIR}/cli" api replay >/dev/null 2>&1 || true
         magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
         return 0
     fi

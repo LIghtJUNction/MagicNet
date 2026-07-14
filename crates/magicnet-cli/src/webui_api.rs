@@ -7,6 +7,7 @@ use crate::connection_control::{
     close_connections_through_chain, close_matching_connections, close_top_connections,
     print_close_all_summary,
 };
+use crate::selector_store;
 use crate::service::singbox_webui;
 use crate::{run_magicnet_function, write_text_file, App};
 
@@ -23,6 +24,11 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
             args.get(1).map(String::as_str).unwrap_or_default(),
             &args[2..].join(" "),
         ),
+        "replay" => {
+            let applied = selector_store::replay(app)?;
+            println!("[info] replayed {applied} persisted selectors");
+            Ok(())
+        }
         "conns" => curl(app, "/connections"),
         "stats" => curl(app, "/traffic"),
         "close" => close_connection(app, args.get(1).map(String::as_str).unwrap_or_default()),
@@ -80,20 +86,20 @@ fn curl_put_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
     ])
 }
 
-fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), String> {
+pub(crate) fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), String> {
     let clean_group = group.trim();
     let clean_node = node.trim();
     if clean_group.is_empty() || clean_node.is_empty() {
         return Err("Usage: cli api select <group> <node>".to_string());
     }
     let payload = json!({ "name": clean_node }).to_string();
-    curl_put_json(
-        app,
-        &format!("/proxies/{}", encode_path_segment(clean_group)),
-        &payload,
-    )?;
+    curl_put_selection(app, clean_group, &payload)?;
+    let persist_error = selector_store::save(app, clean_group, clean_node).err();
     match close_connections_through_chain(app, clean_group) {
         Ok(summary) => {
+            if let Some(err) = persist_error {
+                eprintln!("[warn] runtime applied, persistence failed: {err}");
+            }
             println!(
                 "[info] {clean_group} selector set to {clean_node}; closed {}/{} stale connections",
                 summary.closed, summary.targets
@@ -104,6 +110,25 @@ fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), String> {
             "selector changed to {clean_node}, but stale connections were not fully closed: {err}"
         )),
     }
+}
+
+pub(crate) fn curl_put_selection(app: &App, group: &str, payload: &str) -> Result<(), String> {
+    curl_put_json(
+        app,
+        &format!("/proxies/{}", encode_path_segment(group)),
+        payload,
+    )
+}
+
+pub(crate) fn curl_get_json(app: &App, path: &str) -> Result<serde_json::Value, String> {
+    let output = Command::new("curl")
+        .args(["-fsS", "--max-time", "3", &format!("{}{}", app.api, path)])
+        .output()
+        .map_err(|err| format!("run curl: {err}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    serde_json::from_slice(&output.stdout).map_err(|err| format!("parse API response: {err}"))
 }
 
 fn close_connection(app: &App, id: &str) -> Result<(), String> {
