@@ -1,12 +1,3 @@
-magicnet_singbox_download_proxy_args() {
-    _proxy="${MAGICNET_SUB_PROXY:-}"
-    if [ -z "$_proxy" ] && command -v curl >/dev/null 2>&1; then
-        curl -sS --max-time 2 http://127.0.0.1:9090/proxies >/dev/null 2>&1 &&
-            _proxy="http://127.0.0.1:7892"
-    fi
-    [ -n "$_proxy" ] && printf '%s\n%s\n' "--proxy" "$_proxy"
-}
-
 magicnet_singbox_use_cached_subscription() {
     _source_file="$1"
     _fallback_file="$2"
@@ -35,16 +26,23 @@ magicnet_singbox_try_fetch_subscription() {
     case "$_method" in
         curl)
             command -v curl >/dev/null 2>&1 || return 127
-            # shellcheck disable=SC2046
-            curl -fsSL $(magicnet_singbox_download_proxy_args) --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file"
+            if [ -n "${MAGICNET_SUB_PROXY:-}" ]; then
+                env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+                    timeout "$_max_time" curl -fsSL --proxy "$MAGICNET_SUB_PROXY" --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file"
+            else
+                env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+                    timeout "$_max_time" curl -fsSL --noproxy '*' --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file"
+            fi
             ;;
         wget)
             command -v wget >/dev/null 2>&1 || return 127
-            wget -T "$_max_time" -qO "$_download_file" "$_url"
+            env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+                timeout "$_max_time" wget -T "$_max_time" -qO "$_download_file" "$_url"
             ;;
         sing-box)
             command -v sing-box >/dev/null 2>&1 || return 127
-            sing-box tools fetch "$_url" >"$_download_file"
+            env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+                timeout "$_max_time" sing-box tools fetch "$_url" >"$_download_file"
             ;;
         *)
             return 127
@@ -80,7 +78,12 @@ magicnet_singbox_fetch_one_subscription() {
 
     _fetched=0
     _tried=0
-    for _method in curl wget sing-box; do
+    if [ -n "${MAGICNET_SUB_PROXY:-}" ]; then
+        _methods="curl"
+    else
+        _methods="curl wget sing-box"
+    fi
+    for _method in $_methods; do
         rm -f "$_download_file"
         magicnet_singbox_try_fetch_subscription "$_method" "$_url" "$_download_file" "$_connect_timeout" "$_max_time"
         _fetch_rc=$?
@@ -98,6 +101,7 @@ magicnet_singbox_fetch_one_subscription() {
         return 1
     fi
     if [ "$_fetched" -ne 1 ]; then
+        [ -z "${MAGICNET_SUB_PROXY:-}" ] || error "Explicit subscription proxy failed; refusing alternate egress"
         magicnet_singbox_use_cached_subscription "$_source_file" "$_fallback_file" || return 1
         return 0
     fi

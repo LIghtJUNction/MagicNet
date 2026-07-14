@@ -33,6 +33,10 @@ cat >"$tmp_dir/nodes.json" <<'JSON'
  ,{"type":"vless","tag":"CHK edge","server":"chk.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000021"}
  ,{"type":"vless","tag":"hk01 edge","server":"hk01.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000022"}
  ,{"type":"vless","tag":"myhk edge","server":"myhk.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000023"}
+ ,{"type":"vless","tag":"hk-01 edge","server":"hk-dash.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000024"}
+ ,{"type":"vless","tag":"hk_01 edge","server":"hk-underscore.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000025"}
+ ,{"type":"vless","tag":"HKG01 edge","server":"hkg01.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000026"}
+ ,{"type":"vless","tag":"HongKong01 edge","server":"hongkong01.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000027"}
 ]
 JSON
 magicnet_singbox_write_outbounds_from_json "$tmp_dir/nodes.json" "$tmp_dir/outbounds.fragment"
@@ -40,17 +44,21 @@ magicnet_singbox_write_outbounds_from_json "$tmp_dir/nodes.json" "$tmp_dir/outbo
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | [.outbounds[] | select(.tag as $tag | $names | index($tag))] as $groups
+  | (.outbounds[] | select(.tag == "ai-proxy")) as $ai_proxy
   | ($groups | length) == 4
-    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "hk01 edge", "myhk edge"] and (.outbounds | index("proxy") == null and index("direct") == null)))
+    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
+    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "ai-proxy"]))
 ' "$tmp_dir/generated.json" >/dev/null || fail "jq generator selector mismatch"
-printf '%s\n' 'US stable' '上海 node' 'CN node' 'CN2 premium' 'opaque-42' 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge' '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge' 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge' >"$tmp_dir/tags"
+printf '%s\n' 'US stable' '上海 node' 'CN node' 'CN2 premium' 'opaque-42' 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge' '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge' 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge' 'hk-01 edge' 'hk_01 edge' 'HKG01 edge' 'HongKong01 edge' >"$tmp_dir/tags"
 magicnet_singbox_emit_selector_block "$tmp_dir/tags" 'US stable' >"$tmp_dir/no-jq.fragment"
 { printf '{"outbounds":['; cat "$tmp_dir/no-jq.fragment"; printf ']}\n'; } >"$tmp_dir/no-jq.json"
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | [.outbounds[] | select(.tag as $tag | $names | index($tag))] as $groups
+  | (.outbounds[] | select(.tag == "ai-proxy")) as $ai_proxy
   | ($groups | length) == 4
-    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "hk01 edge", "myhk edge"] and (.outbounds | index("proxy") == null and index("direct") == null)))
+    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
+    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "ai-proxy"]))
 ' "$tmp_dir/no-jq.json" >/dev/null || fail "no-jq generator selector mismatch"
 magicnet_singbox_pinned_ai_tags "$tmp_dir/tags" >"$tmp_dir/pinned-ai-tags"
 grep -Fxq 'CN2 premium' "$tmp_dir/pinned-ai-tags" || fail "CN2 false positive"
@@ -59,10 +67,10 @@ grep -Fxq 'opaque-42' "$tmp_dir/pinned-ai-tags" || fail "opaque node filtered"
 for tag in 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge'; do
   ! grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "English mainland label retained: $tag"
 done
-for tag in '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge'; do
+for tag in '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge' 'hk01 edge' 'hk-01 edge' 'hk_01 edge' 'HKG01 edge' 'HongKong01 edge'; do
   ! grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Hong Kong label retained: $tag"
 done
-for tag in 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge'; do
+for tag in 'HKT edge' 'CHK edge' 'myhk edge'; do
   grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Hong Kong boundary false positive: $tag"
 done
 jq 'del(.outbounds[] | select(.tag == "ai-chatgpt" or .tag == "ai-gemini" or .tag == "ai-grok" or .tag == "ai-claude"))' \
@@ -72,8 +80,10 @@ magicnet_singbox_sanitize_generated_config "$tmp_dir/legacy-cached.json"
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | [.outbounds[] | select(.tag as $tag | $names | index($tag))] as $groups
+  | (.outbounds[] | select(.tag == "ai-proxy")) as $ai_proxy
   | ($groups | length) == 4
-    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "hk01 edge", "myhk edge"]))
+    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
+    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "ai-proxy"]))
 ' "$tmp_dir/legacy-cached.json" >/dev/null || fail "legacy cached config AI selector repair mismatch"
 jq '.outbounds += [
       {"type":"direct","tag":"ai-chatgpt"},
@@ -86,8 +96,10 @@ magicnet_singbox_sanitize_generated_config "$tmp_dir/malformed-cached.json"
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | [.outbounds[] | select(.tag as $tag | $names | index($tag))] as $groups
+  | (.outbounds[] | select(.tag == "ai-proxy")) as $ai_proxy
   | ($groups | length) == 4
-    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "hk01 edge", "myhk edge"]))
+    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
+    and ($groups | all(.type == "selector" and .default == "block" and .outbounds == ["block", "ai-proxy"]))
 ' "$tmp_dir/malformed-cached.json" >/dev/null || fail "malformed or duplicate AI selectors not canonicalized"
 mkdir "$tmp_dir/no-jq-bin"
 ln -s "$(command -v awk)" "$tmp_dir/no-jq-bin/awk"
@@ -95,15 +107,38 @@ base_config="$MODULE_ROOT/.config/sing-box/config.json"
 jq 'del(.outbounds[] | select(.tag == "ai-chatgpt"))' "$base_config" >"$tmp_dir/no-jq-legacy.json"
 jq '(.outbounds[] | select(.tag == "ai-grok") | .default) = "direct"' "$base_config" >"$tmp_dir/no-jq-malformed.json"
 jq '(.outbounds[] | select(.tag == "ai-chatgpt") | .outbounds) += ["stale-missing-node"]' "$base_config" >"$tmp_dir/no-jq-stale-member.json"
+jq 'del(.outbounds[] | select(.tag == "ai-proxy"))' "$base_config" >"$tmp_dir/no-jq-missing-ai-proxy.json"
+jq '(.outbounds[] | select(.tag == "ai-proxy")) = {"type":"selector","tag":"ai-proxy","outbounds":["proxy"],"default":"proxy"}' \
+  "$base_config" >"$tmp_dir/no-jq-generic-ai-proxy.json"
+jq '(.outbounds[] | select(.tag == "ai-proxy")) = {"type":"selector","tag":"ai-proxy","outbounds":["上海 node"],"default":"上海 node"}' \
+  "$tmp_dir/generated.json" >"$tmp_dir/mainland-ai-proxy.json"
+jq '(.outbounds[] | select(.tag == "ai-proxy")) = {"type":"selector","tag":"ai-proxy","outbounds":["proxy-rule"],"default":"proxy-rule"}' \
+  "$tmp_dir/generated.json" >"$tmp_dir/nested-selector-ai-proxy.json"
+jq '(.outbounds[] | select(.tag == "ai-proxy") | .default) = "opaque-42"' \
+  "$tmp_dir/generated.json" >"$tmp_dir/nonfirst-default-ai-proxy.json"
+jq '(.outbounds[] | select(.tag == "ai-proxy")) = {"type":"selector","tag":"ai-proxy","outbounds":["block"],"default":"block"}' \
+  "$tmp_dir/generated.json" >"$tmp_dir/block-with-nodes-ai-proxy.json"
+! magicnet_singbox_ai_selectors_canonical "$tmp_dir/mainland-ai-proxy.json" 2>/dev/null || fail "jq canonical validator accepted mainland AI proxy"
+! magicnet_singbox_ai_selectors_canonical "$tmp_dir/nested-selector-ai-proxy.json" 2>/dev/null || fail "jq canonical validator accepted nested selector AI proxy"
+! magicnet_singbox_ai_selectors_canonical "$tmp_dir/nonfirst-default-ai-proxy.json" 2>/dev/null || fail "jq canonical validator accepted non-first AI proxy default"
+! magicnet_singbox_ai_selectors_canonical "$tmp_dir/block-with-nodes-ai-proxy.json" 2>/dev/null || fail "jq canonical validator accepted block fallback with nodes"
 PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$base_config" || fail "pure-shell canonical validator rejected fresh config"
 ! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-legacy.json" 2>/dev/null || fail "pure-shell canonical validator accepted missing selectors"
 ! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-malformed.json" 2>/dev/null || fail "pure-shell canonical validator accepted malformed selectors"
 ! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-stale-member.json" 2>/dev/null || fail "pure-shell canonical validator accepted undefined selector member"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-missing-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted missing AI proxy"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-generic-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted generic AI proxy"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/mainland-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted mainland AI proxy"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/nested-selector-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted nested selector AI proxy"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/nonfirst-default-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted non-first AI proxy default"
+! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/block-with-nodes-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted block fallback with nodes"
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | [.outbounds[] | select(.tag as $tag | $names | index($tag))]
-  | length == 4 and all(.default == "block" and .outbounds == ["block"])
+  | length == 4 and all(.default == "block" and .outbounds == ["block", "ai-proxy"])
 ' "$MODULE_ROOT/.config/sing-box/config.json" >/dev/null || fail "base config not fail closed"
+jq -e '.outbounds[] | select(.tag == "ai-proxy") | .default == "block" and .outbounds == ["block"]' \
+  "$MODULE_ROOT/.config/sing-box/config.json" >/dev/null || fail "base config AI proxy not fail closed"
 python3 - "$MODULE_ROOT/.config/sing-box/config.json" <<'PY'
 import json, sys
 c = json.load(open(sys.argv[1], encoding="utf-8")); rules = c["route"]["rules"]

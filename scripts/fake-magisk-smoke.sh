@@ -605,10 +605,10 @@ env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPA
 grep -qx 'sing-box' "$TMP/strict-core.log"
 
 printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing-box/subscription.url"
-mkdir -p "$MODDIR/.config/sing-box/.subscription-work"
+mkdir -p "$MODDIR/.state/sing-box/subscription-work"
 "$HOST_JQ" -r '"  \"outbounds\": " + (.outbounds | tojson) + ","' \
     "$MODDIR/.config/sing-box/config.json" \
-    >"$MODDIR/.config/sing-box/.subscription-work/outbounds.json"
+    >"$MODDIR/.state/sing-box/subscription-work/outbounds.json"
 "$HOST_JQ" '
     .outbounds |= map(select(
         (.type == "vmess"
@@ -734,6 +734,22 @@ sleep 1
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >"$TMP/supervisor-status.log"
 rg -q '^fswatch=[0-9]+$' "$TMP/supervisor-status.log"
 test -s "$MODDIR/.state/fswatch/magicnet-config.pid"
+rg -q 'config apply' "$MODDIR/.state/fswatch/magicnet-config.loop.sh"
+mkdir -p "$MODDIR/.state/sing-box/subscription-update.lock"
+printf '999999:0:dead\n' >"$MODDIR/.state/sing-box/subscription-update.lock/owner"
+run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    "$MODDIR/cli" config apply
+test ! -d "$MODDIR/.state/sing-box/subscription-update.lock"
+mkdir -p "$MODDIR/.state/sing-box/subscription-update.lock"
+_live_start=$(awk '{print $22}' "/proc/$$/stat")
+printf '%s:%s:live\n' "$$" "$_live_start" >"$MODDIR/.state/sing-box/subscription-update.lock/owner"
+if env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    "$MODDIR/cli" config apply >/dev/null 2>&1; then
+    echo "config apply ignored a live subscription update owner" >&2
+    exit 1
+fi
+test -d "$MODDIR/.state/sing-box/subscription-update.lock"
+rm -rf "$MODDIR/.state/sing-box/subscription-update.lock"
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor stop all
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >"$TMP/supervisor-stopped.log"
 rg -q '^fswatch=stopped$' "$TMP/supervisor-stopped.log"

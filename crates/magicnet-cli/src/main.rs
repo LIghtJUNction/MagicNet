@@ -12,6 +12,7 @@ mod node_delay;
 mod nodes;
 mod ping;
 mod rules;
+mod selector_store;
 mod service;
 mod subscriptions;
 mod utils;
@@ -22,9 +23,12 @@ mod webui_backup;
 use std::env;
 use std::fs;
 use std::io;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 
 pub(crate) use base64::{decode_base64, encode_base64};
 use config_editor::config_editor;
@@ -337,15 +341,27 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
         ". '{0}/lib/kamfw/.kamfwrc'; export PATH='{0}/bin':'{0}/system/bin':\"$PATH\"; import __runtime__; . '{0}/lib/magicnet.sh'; {function_name}",
         app.moddir.display(),
     );
-    let status = Command::new("sh")
+    let timeout = env::var("MAGICNET_COMMAND_TIMEOUT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(180);
+    let mut command = Command::new("sh");
+    command
         .arg("-c")
         .arg(script)
         .arg(app.moddir.join("cli").to_string_lossy().to_string())
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
-        .stdin(Stdio::null())
-        .status()
-        .map_err(|err| format!("failed to run {function_name}: {err}"))?;
+        .stdin(Stdio::null());
+    let status = match run_process_group(&mut command, Duration::from_secs(timeout)) {
+        Ok(status) => status,
+        Err(err) => {
+            if function_name.contains("magicnet_singbox_update_subscription") {
+                subscriptions::cleanup_stale_update_lock(app);
+            }
+            return Err(format!("{function_name}: {err}"));
+        }
+    };
     if status.success() {
         Ok(())
     } else {
@@ -358,6 +374,47 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
             "{function_name} failed with status {}",
             status.code().unwrap_or(1)
         ))
+    }
+}
+
+fn run_process_group(
+    command: &mut Command,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus, String> {
+    // SAFETY: pre_exec only invokes async-signal-safe setsid before exec.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        });
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|err| format!("spawn failed: {err}"))?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|err| format!("wait failed: {err}"))?
+        {
+            return Ok(status);
+        }
+        if Instant::now() >= deadline {
+            let group = -(child.id() as i32);
+            unsafe {
+                libc::kill(group, libc::SIGTERM);
+            }
+            thread::sleep(Duration::from_millis(100));
+            unsafe {
+                libc::kill(group, libc::SIGKILL);
+            }
+            let _ = child.wait();
+            return Err(format!("timed out after {}ms", timeout.as_millis()));
+        }
+        thread::sleep(Duration::from_millis(40));
     }
 }
 
@@ -439,5 +496,54 @@ mod command_help_tests {
     #[test]
     fn backup_help_lists_file_restore() {
         assert!(usage_for("backup").contains("restore-file [password|-] <path>"));
+    }
+}
+
+#[cfg(test)]
+mod process_group_tests {
+    use super::{run_process_group, App};
+    use std::fs;
+    use std::process::Command;
+    use std::time::Duration;
+
+    #[test]
+    fn timeout_reaps_command_and_kills_grandchild() {
+        let pid_file =
+            std::env::temp_dir().join(format!("magicnet-grandchild-{}", std::process::id()));
+        let script = format!("sleep 30 & echo $! > '{}'; wait", pid_file.display());
+        let mut command = Command::new("sh");
+        command.args(["-c", &script]);
+        assert!(run_process_group(&mut command, Duration::from_millis(100)).is_err());
+        let pid = fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse::<i32>()
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+        let _ = fs::remove_file(pid_file);
+    }
+
+    #[test]
+    fn timeout_immediately_cleans_dead_update_owner() {
+        let root =
+            std::env::temp_dir().join(format!("magicnet-timeout-lock-{}", std::process::id()));
+        let lock = root.join(".state/sing-box/subscription-update.lock");
+        fs::create_dir_all(&lock).unwrap();
+        let script = format!(
+            "start=$(awk '{{print $22}}' /proc/$$/stat); echo \"$$:$start:test\" > '{}/owner'; sleep 30 & wait",
+            lock.display()
+        );
+        let mut command = Command::new("sh");
+        command.args(["-c", &script]);
+        assert!(run_process_group(&mut command, Duration::from_millis(100)).is_err());
+        let app = App {
+            moddir: root.clone(),
+            api: String::new(),
+            log_dir: root.join(".log"),
+        };
+        crate::subscriptions::cleanup_stale_update_lock(&app);
+        assert!(!lock.exists());
+        let _ = fs::remove_dir_all(root);
     }
 }

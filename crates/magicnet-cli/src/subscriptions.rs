@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fs;
 use std::path::PathBuf;
 
 use crate::{
@@ -107,7 +108,34 @@ fn update_singbox_subscription(app: &App) -> Result<(), String> {
     run_magicnet_function(
         app,
         ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_singbox_update_subscription",
-    )
+    )?;
+    crate::selector_store::replay(app)?;
+    Ok(())
+}
+
+pub(crate) fn cleanup_stale_update_lock(app: &App) {
+    let lock = app.moddir.join(".state/sing-box/subscription-update.lock");
+    let owner_path = lock.join("owner");
+    let Ok(owner) = fs::read_to_string(&owner_path) else {
+        return;
+    };
+    let mut fields = owner.trim().split(':');
+    let pid = fields.next().and_then(|value| value.parse::<u32>().ok());
+    let expected_start = fields.next();
+    let live_start = pid
+        .and_then(|pid| fs::read_to_string(format!("/proc/{pid}/stat")).ok())
+        .and_then(|stat| stat.split_whitespace().nth(21).map(str::to_string));
+    if expected_start.is_some() && live_start.as_deref() == expected_start {
+        return;
+    }
+    if fs::read_to_string(&owner_path)
+        .ok()
+        .as_deref()
+        .map(str::trim)
+        == Some(owner.trim())
+    {
+        let _ = fs::remove_dir_all(lock);
+    }
 }
 
 pub(crate) fn sub_target_file(app: &App, _target: &str) -> PathBuf {

@@ -96,7 +96,7 @@ pub(crate) fn supervisor_cmd(app: &App, args: &[String]) -> Result<(), String> {
 
 pub(crate) fn config_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or_default() {
-        "apply" => run_magicnet_function(app, "magicnet_apply_runtime_config"),
+        "apply" => run_magicnet_function(app, ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; if magicnet_singbox_update_lock_active; then echo '[error] subscription update in progress' >&2; false; else magicnet_apply_runtime_config; fi"),
         _ => Err("Usage: cli config apply".to_string()),
     }
 }

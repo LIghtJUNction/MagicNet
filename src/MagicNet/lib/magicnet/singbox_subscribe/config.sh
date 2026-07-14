@@ -75,10 +75,15 @@ magicnet_singbox_build_outbounds_file_with_jq() {
         ([]; if ($item == "" or index($item)) then . else . + [$item] end)) as $items
       | {"type": "selector", "tag": $tag, "outbounds": $items, "default": $fallback};
     def mainland_node_tag:
-      test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:China|Mainland|Hong[ _-]?Kong|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
-    def pinned_ai_selector($tag; $tags):
-      (["block"] + [$tags[]? | select(mainland_node_tag | not)]) as $items
-      | {"type": "selector", "tag": $tag, "outbounds": $items, "default": "block"};
+      test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+    def ai_proxy_selector($tags):
+      ([$tags[]? | select(mainland_node_tag | not)]) as $items
+      | if ($items | length) > 0
+        then {"type": "selector", "tag": "ai-proxy", "outbounds": $items, "default": $items[0]}
+        else {"type": "selector", "tag": "ai-proxy", "outbounds": ["block"], "default": "block"}
+        end;
+    def pinned_ai_selector($tag):
+      {"type": "selector", "tag": $tag, "outbounds": ["block", "ai-proxy"], "default": "block"};
     def proxy_tag_score($tag):
       if ($tag | test("免费|Free|free|公益|试用|下载专用|剩余|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) then 0
       elif ($tag | test("IEPL|IPLC|专线|S[0-9]+|倍率|x1|x2|香港|日本|新加坡|美国|台湾|韩国")) then 2
@@ -119,11 +124,11 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           selector("bing"; ["proxy", "direct"]; "proxy"),
           selector("dns-guard"; ["proxy", "block", "direct"]; "proxy"),
           selector("network-test"; ["proxy", "direct"]; "proxy"),
-          pinned_ai_selector("ai-chatgpt"; $tags),
-          pinned_ai_selector("ai-gemini"; $tags),
-          pinned_ai_selector("ai-grok"; $tags),
-          pinned_ai_selector("ai-claude"; $tags),
-          selector("ai-proxy"; ["proxy", "direct"]; "proxy"),
+          ai_proxy_selector($tags),
+          pinned_ai_selector("ai-chatgpt"),
+          pinned_ai_selector("ai-gemini"),
+          pinned_ai_selector("ai-grok"),
+          pinned_ai_selector("ai-claude"),
           selector("proxy-rule"; ["proxy", "direct"]; "proxy"),
           selector("dev-proxy"; ["proxy", "direct"]; "proxy"),
           selector("social-proxy"; ["proxy", "direct"]; "proxy"),
@@ -228,13 +233,20 @@ magicnet_singbox_emit_static_selectors() {
     magicnet_emit_selector_json "network-test" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     printf ',\n'
     _pinned_ai_tags=$(magicnet_singbox_pinned_ai_tags "$_tags_file")
+    _pinned_ai_default=$(printf '%s\n' "$_pinned_ai_tags" | sed -n '1p')
+    if [ -n "$_pinned_ai_default" ]; then
+        magicnet_emit_selector_json_exact "ai-proxy" "$_pinned_ai_tags" "$_pinned_ai_default"
+    else
+        magicnet_emit_selector_json_exact "ai-proxy" "block" "block"
+    fi
+    printf ',\n'
     _pinned_ai_first=1
     for _name in ai-chatgpt ai-gemini ai-grok ai-claude; do
         [ "$_pinned_ai_first" -eq 1 ] || printf ',\n'
         magicnet_singbox_emit_pinned_ai_selector "$_name" "$_pinned_ai_tags"
         _pinned_ai_first=0
     done
-    for _name in ai-proxy proxy-rule dev-proxy social-proxy media-proxy game-proxy telegram-proxy; do
+    for _name in proxy-rule dev-proxy social-proxy media-proxy game-proxy telegram-proxy; do
         printf ',\n'
         magicnet_emit_selector_json "$_name" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     done
@@ -242,37 +254,27 @@ magicnet_singbox_emit_static_selectors() {
     magicnet_emit_selector_json "download-direct" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
     printf ',\n'
     magicnet_emit_selector_json "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
-    unset _pair _name _default _pinned_ai_tags _pinned_ai_first
+    unset _pair _name _default _pinned_ai_tags _pinned_ai_default _pinned_ai_first
 }
 
 magicnet_singbox_emit_pinned_ai_selector() {
     _pinned_ai_name="$1"
-    _pinned_ai_members="$2"
     printf '    {\n'
     printf '      "type": "selector",\n'
     printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_pinned_ai_name")"
     printf '      "outbounds": ['
-    _pinned_ai_member_first=1
-    while IFS= read -r _pinned_ai_member; do
-        [ -n "$_pinned_ai_member" ] || continue
-        [ "$_pinned_ai_member_first" -eq 1 ] || printf ', '
-        printf '"%s"' "$(magicnet_json_escape "$_pinned_ai_member")"
-        _pinned_ai_member_first=0
-    done <<EOF
-$_pinned_ai_members
-EOF
+    printf '"block", "ai-proxy"'
     printf '],\n'
     printf '      "default": "block"\n'
     printf '    }'
-    unset _pinned_ai_name _pinned_ai_members _pinned_ai_member _pinned_ai_member_first
+    unset _pinned_ai_name
 }
 
 magicnet_singbox_pinned_ai_tags() {
     _pinned_ai_tags_file="$1"
-    printf '%s\n' "block"
     awk 'BEGIN { IGNORECASE = 1 }
       !/中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ &&
-      !/(^|[^[:alnum:]])(China|Mainland|Hong[ _-]?Kong|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^[:alnum:]]|$)/ { print }
+      !/(^|[^[:alnum:]])(Hong[ _-]?Kong([ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^[:alnum:]]|$)/ { print }
     ' "$_pinned_ai_tags_file"
     unset _pinned_ai_tags_file
 }
@@ -290,9 +292,14 @@ magicnet_singbox_sanitize_generated_config() {
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
     "$_sanitize_jq" '
       def mainland_node_tag:
-        test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:China|Mainland|Hong[ _-]?Kong|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
-      def pinned_ai_selector($tag; $tags):
-        {"type": "selector", "tag": $tag, "outbounds": (["block"] + $tags), "default": "block"};
+        test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+      def ai_proxy_selector($tags):
+        if ($tags | length) > 0
+        then {"type": "selector", "tag": "ai-proxy", "outbounds": $tags, "default": $tags[0]}
+        else {"type": "selector", "tag": "ai-proxy", "outbounds": ["block"], "default": "block"}
+        end;
+      def pinned_ai_selector($tag):
+        {"type": "selector", "tag": $tag, "outbounds": ["block", "ai-proxy"], "default": "block"};
       def has_match($rule):
         [
           "inbound",
@@ -319,11 +326,12 @@ magicnet_singbox_sanitize_generated_config() {
           | .tag // empty
           | select(mainland_node_tag | not)]) as $ai_tags
       | .outbounds = ($outbounds
-          | map(select(.tag as $tag | ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] | index($tag) == null))
+          | map(select(.tag as $tag | ["ai-proxy", "ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] | index($tag) == null))
           | if any(.tag == "dns-guard") then .
             else . + [{"type": "selector", "tag": "dns-guard", "outbounds": ["proxy", "block", "direct"], "default": "proxy"}]
             end
-          | . + (["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] | map(pinned_ai_selector(.; $ai_tags))))
+          | . + [ai_proxy_selector($ai_tags)]
+          | . + (["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] | map(pinned_ai_selector(.))))
       | .route.rules = ((.route.rules // [])
         | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
     ' "$_sanitize_config_file" >"$_sanitize_tmp_file" && mv -f "$_sanitize_tmp_file" "$_sanitize_config_file"
@@ -413,7 +421,7 @@ magicnet_singbox_update_config_with_nodes() {
 }
 
 magicnet_singbox_replay_cached_outbounds() {
-    _cached_outbounds="${MODDIR}/.config/sing-box/.subscription-work/outbounds.json"
+    _cached_outbounds="${MODDIR}/.state/sing-box/subscription-work/outbounds.json"
     [ -s "$_cached_outbounds" ] || {
         unset _cached_outbounds
         return 1
@@ -456,29 +464,136 @@ magicnet_singbox_is_running() {
     [ -n "$(magicnet_singbox_pids)" ]
 }
 
-magicnet_singbox_restart_if_running() {
-    magicnet_singbox_is_running || return 0
+magicnet_singbox_pid_owned() {
+    _owned_pid="$1"
+    _owned_config="$2"
+    _owned_expected=$(readlink -f "${MODDIR}/bin/sing-box" 2>/dev/null) || return 1
+    _owned_exe_link=$(readlink "/proc/${_owned_pid}/exe" 2>/dev/null) || return 1
+    _owned_exe_path=${_owned_exe_link% (deleted)}
+    [ "$_owned_exe_path" = "$_owned_expected" ] || return 1
+    (
+        _argv_index=0
+        _argv_run=0
+        _argv_config_count=0
+        _argv_config_ok=0
+        _argv_work_count=0
+        _argv_work_ok=0
+        _argv_pending=
+        # Android sh and the host-side Bash fixture use an empty read delimiter for NUL.
+        # shellcheck disable=SC3045
+        while IFS= read -r -d '' _argv_arg; do
+            _argv_index=$((_argv_index + 1))
+            [ "$_argv_index" -ne 2 ] || [ "$_argv_arg" != "run" ] || _argv_run=1
+            case "$_argv_pending" in
+                config)
+                    [ "$_argv_arg" != "$_owned_config" ] || _argv_config_ok=1
+                    _argv_pending=
+                    continue
+                    ;;
+                work)
+                    [ "$_argv_arg" != "${_owned_config%/*}" ] || _argv_work_ok=1
+                    _argv_pending=
+                    continue
+                    ;;
+            esac
+            case "$_argv_arg" in
+                -c)
+                    _argv_config_count=$((_argv_config_count + 1))
+                    _argv_pending=config
+                    ;;
+                -D)
+                    _argv_work_count=$((_argv_work_count + 1))
+                    _argv_pending=work
+                    ;;
+            esac
+        done <"/proc/${_owned_pid}/cmdline"
+        [ "$_argv_run" -eq 1 ] &&
+            [ "$_argv_config_count" -eq 1 ] && [ "$_argv_config_ok" -eq 1 ] &&
+            [ "$_argv_work_count" -eq 1 ] && [ "$_argv_work_ok" -eq 1 ] &&
+            [ -z "$_argv_pending" ]
+    ) 2>/dev/null
+}
 
+magicnet_singbox_owned_pids() {
+    _owned_config="$1"
     for _pid in $(magicnet_singbox_pids); do
+        magicnet_singbox_pid_owned "$_pid" "$_owned_config" && printf '%s\n' "$_pid"
+    done
+}
+
+magicnet_singbox_listener_owned() {
+    _listener_pid="$1"
+    ss -lntp 2>/dev/null | grep -E '127\.0\.0\.1:9090[[:space:]]' | grep -q "pid=${_listener_pid},"
+}
+
+magicnet_singbox_supervisor_restore() {
+    [ "${_owned_fswatch_active:-0}" -eq 1 ] || return 0
+    magicnet_fswatch_start >/dev/null 2>&1 || return 1
+    magicnet_fswatch_status >/dev/null 2>&1
+}
+
+magicnet_singbox_ensure_start_owned() {
+    _owned_config="$1"
+    _owned_work="${_owned_config%/*}"
+    _owned_binary="${MODDIR}/bin/sing-box"
+    _owned_log="${MODDIR}/.log/sing-box.log"
+    [ -x "$_owned_binary" ] || return 1
+    ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]' && return 1
+    mkdir -p "${MODDIR}/.log"
+    nohup "$_owned_binary" run -c "$_owned_config" -D "$_owned_work" >"$_owned_log" 2>&1 </dev/null &
+    _new_pid=$!
+    _ready_deadline=$(($(date +%s) + ${MAGICNET_SUB_READY_TIMEOUT:-15}))
+    while [ "$(date +%s)" -lt "$_ready_deadline" ]; do
+        if kill -0 "$_new_pid" 2>/dev/null &&
+            magicnet_singbox_pid_owned "$_new_pid" "$_owned_config" &&
+            magicnet_singbox_listener_owned "$_new_pid" &&
+            curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null | grep -q '"version"'; then
+            return 0
+        fi
+        sleep 1
+    done
+    kill "$_new_pid" 2>/dev/null || true
+    return 1
+}
+
+magicnet_singbox_restart_owned() {
+    _owned_config="$1"
+    _owned_fswatch_active="${MAGICNET_SUB_FSWATCH_WAS_ACTIVE:-0}"
+    if [ -z "${MAGICNET_SUB_FSWATCH_WAS_ACTIVE+x}" ]; then
+        magicnet_fswatch_status >/dev/null 2>&1 && _owned_fswatch_active=1
+    fi
+    magicnet_supervisors_stop >/dev/null 2>&1 || return 1
+    for _pid in $(magicnet_singbox_owned_pids "$_owned_config"); do
         kill "$_pid" 2>/dev/null || true
     done
-    sleep 1
-    if magicnet_singbox_is_running; then
-        for _pid in $(magicnet_singbox_pids); do
+    _stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-8}))
+    while [ -n "$(magicnet_singbox_owned_pids "$_owned_config")" ] && [ "$(date +%s)" -lt "$_stop_deadline" ]; do
+        sleep 1
+    done
+    if [ -n "$(magicnet_singbox_owned_pids "$_owned_config")" ]; then
+        for _pid in $(magicnet_singbox_owned_pids "$_owned_config"); do
             kill -9 "$_pid" 2>/dev/null || true
         done
-        sleep 1
+        _kill_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
+        while [ -n "$(magicnet_singbox_owned_pids "$_owned_config")" ] && [ "$(date +%s)" -lt "$_kill_deadline" ]; do sleep 1; done
     fi
-    ip link delete magicnet0 2>/dev/null || true
-    ip link delete tun0 2>/dev/null || true
+    _restart_rc=0
+    [ -z "$(magicnet_singbox_owned_pids "$_owned_config")" ] || _restart_rc=1
+    if [ "$_restart_rc" -eq 0 ] && ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]'; then
+        _restart_rc=1
+    fi
+    if [ "$_restart_rc" -eq 0 ]; then
+        ip link delete magicnet0 2>/dev/null || true
+        ip link delete tun0 2>/dev/null || true
+        magicnet_singbox_ensure_start_owned "$_owned_config" || _restart_rc=1
+    fi
+    magicnet_singbox_supervisor_restore || _restart_rc=1
+    return "$_restart_rc"
+}
 
+magicnet_singbox_restart_if_running() {
     _config_file=$(magicnet_singbox_subscription_config_file)
-    _work_dir="${_config_file%/*}"
-    _log_file="${MODDIR}/.log/sing-box.log"
-    mkdir -p "${MODDIR}/.log"
-    nohup sing-box run -c "$_config_file" -D "$_work_dir" >"$_log_file" 2>&1 &
-    sleep 2
-    magicnet_singbox_is_running
+    magicnet_singbox_restart_owned "$_config_file"
 }
 
 magicnet_singbox_api_has_nodes() {

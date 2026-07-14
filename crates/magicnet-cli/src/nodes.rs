@@ -5,8 +5,9 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::node_delay::node_delay;
+use crate::webui_api::select_proxy;
 use crate::App;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 pub(crate) fn node_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("list") {
@@ -17,7 +18,7 @@ pub(crate) fn node_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "current" => node_current(),
         "use" => {
             let name = args[1..].join(" ");
-            node_use(&name)
+            node_use(app, &name)
         }
         "test" => {
             let name = args[1..].join(" ");
@@ -56,34 +57,12 @@ fn node_current() -> Result<(), String> {
     Ok(())
 }
 
-fn node_use(name: &str) -> Result<(), String> {
+fn node_use(app: &App, name: &str) -> Result<(), String> {
     let clean = name.trim();
     if clean.is_empty() {
         return Err("Usage: cli node use <name>".to_string());
     }
-    let payload = json!({ "name": clean }).to_string();
-    let output = Command::new("curl")
-        .args([
-            "-fsS",
-            "--max-time",
-            "5",
-            "-X",
-            "PUT",
-            "-H",
-            "Content-Type: application/json",
-            "--data",
-            &payload,
-            "http://127.0.0.1:9090/proxies/proxy",
-        ])
-        .output()
-        .map_err(|err| format!("run curl: {err}"))?;
-    if output.status.success() {
-        println!("[info] proxy selector set to {clean}");
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("select node failed: {}", stderr.trim()))
-    }
+    select_proxy(app, "proxy", clean)
 }
 
 fn node_test(name: &str) -> Result<(), String> {
@@ -169,7 +148,7 @@ fn scan_node_names(app: &App, limit: usize) -> Vec<String> {
 fn scan_singbox_tags(app: &App, limit: usize, names: &mut Vec<String>) {
     let tags = app
         .moddir
-        .join(".config/sing-box/.subscription-work/tags.txt");
+        .join(".state/sing-box/subscription-work/tags.txt");
     if let Ok(text) = fs::read_to_string(tags) {
         for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
             push_node(line, limit, names);
