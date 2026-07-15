@@ -78,7 +78,7 @@ Interpret status conservatively:
 
 - `attached` means a hook/program appears loaded; still verify traffic at the physical interface.
 - `missing` or `permission denied` can be kernel, bpffs, SELinux, or vendor netd behavior.
-- netd `ALLOW_MULTI` is only evidence of netd capability. Do not treat it as permission to force eBPF redirect.
+- netd `ALLOW_MULTI` is only evidence of netd capability. It is not a permission to force eBPF redirect; keep `auto` on incomplete eBPF as TUN fallback.
 
 ## AI Website Routing Acceptance
 

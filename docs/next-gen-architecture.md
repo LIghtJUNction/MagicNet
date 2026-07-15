@@ -56,5 +56,5 @@ The existing control surfaces remain the source of truth:
 ## Non-goals
 
 - Reintroducing the deleted TProxy data path.
-- Auto-promoting unfinished eBPF redirect data plane to netd `ALLOW_MULTI`.
+- Auto-promoting unfinished eBPF redirect data plane to netd `ALLOW_MULTI` before `TUN` fallback.
 - Taking ownership of Android's app-level `VpnService` slot.

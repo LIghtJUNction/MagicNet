@@ -8,7 +8,7 @@
     <a href="webui/package.json"><img alt="Vue WebUI" src="https://img.shields.io/badge/WebUI-Vue%203-42b883?logo=vue.js&logoColor=white" /></a>
     <a href="kam.toml"><img alt="Built with KAM" src="https://img.shields.io/badge/Built%20with-KAM-8b5cf6" /></a>
     <a href="https://discord.gg/vXffnGge6"><img alt="Official Discord" src="https://img.shields.io/badge/Discord-official%20chat-5865F2?logo=discord&logoColor=white" /></a>
-    <a href="https://github.com/KernelSU-Modules-Repo/MagicNet/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/KernelSU-Modules-Repo/MagicNet/total?label=downloads&logo=github" /></a>
+    <a href="https://github.com/LIghtJUNction/MagicNet/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/LIghtJUNction/MagicNet/total?label=downloads&logo=github" /></a>
   </p>
 </div>
 
