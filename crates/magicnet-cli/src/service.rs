@@ -8,6 +8,8 @@ use crate::{
 };
 
 const START_SUPERVISORS_COMMAND: &str = "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 &";
+const STOP_RUNTIME_CLEANUP_COMMAND: &str =
+    "magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
 
 pub(crate) fn service_status(app: &App) {
     let singbox = pid_summary("sing-box");
@@ -194,8 +196,12 @@ fn stop_all_direct(app: &App) -> Result<(), String> {
     ignore_command("killall", &["sing-box"]);
     std::thread::sleep(Duration::from_secs(1));
     ignore_command("killall", &["-9", "sing-box"]);
-    run_magicnet_function(app, "magicnet_disable_dns_leak_guard || true")?;
+    run_magicnet_function(app, stop_runtime_cleanup_command())?;
     Ok(())
+}
+
+fn stop_runtime_cleanup_command() -> &'static str {
+    STOP_RUNTIME_CLEANUP_COMMAND
 }
 
 fn stop_supervisor_pidfile(path: PathBuf) {
@@ -329,7 +335,7 @@ fn tail_lines(text: &str, lines: usize) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_transparent_mode, restart_command};
+    use super::{normalize_transparent_mode, restart_command, stop_runtime_cleanup_command};
 
     #[test]
     fn transparent_modes_accept_orchestrator_modes() {
@@ -355,5 +361,13 @@ mod tests {
             assert!(command.contains("supervisor start all"));
             assert!(command.contains("& }"));
         }
+    }
+
+    #[test]
+    fn stop_runtime_cleanup_disables_dns_capture_before_leak_guard() {
+        assert_eq!(
+            stop_runtime_cleanup_command(),
+            "magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"
+        );
     }
 }

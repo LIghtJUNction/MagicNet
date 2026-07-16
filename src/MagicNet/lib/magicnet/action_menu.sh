@@ -18,11 +18,15 @@ magicnet_action_toggle_singbox() {
     import __singbox__
     if is_singbox_running >/dev/null 2>&1; then
         singbox_stop
+        _status=$?
+        magicnet_disable_dns_capture || true
+        magicnet_disable_dns_leak_guard || true
     else
-        magicnet_start_singbox
+        magicnet_start_kernel
+        _status=$?
     fi
     magicnet_refresh_status
-    magicnet_after_kernel_start
+    return "$_status"
 }
 
 magicnet_diag_http() {

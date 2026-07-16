@@ -61,7 +61,7 @@ magicnet_singbox_apply_transparent_mode() {
             def references_managed_inbound:
               ((.inbound // []) | map(select(startswith("magicnet-"))) | length) > 0;
             def dns_hijack_rule:
-              {"inbound": ["magicnet-dns-in"], "protocol": "dns", "action": "hijack-dns"};
+              {"inbound": ["magicnet-dns-in"], "action": "hijack-dns"};
             def normalize_sniff_rule:
               if (.action // "") == "sniff" then
                 .inbound = (if $mode == "proxy" or $mode == "external-tun" then ["mixed-in"] else ["mixed-in", "tun-in"] end)

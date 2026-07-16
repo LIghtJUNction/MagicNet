@@ -14,8 +14,13 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_warp_apply_unlocked || _runtime_rc=1
     magicnet_route_apply_unlocked || _runtime_rc=1
     magicnet_block_apply_unlocked || _runtime_rc=1
-    magicnet_enable_dns_capture || true
-    magicnet_enable_dns_leak_guard || true
+    if magicnet_kernel_running; then
+        magicnet_enable_dns_capture || true
+        magicnet_enable_dns_leak_guard || true
+    else
+        magicnet_disable_dns_capture || true
+        magicnet_disable_dns_leak_guard || true
+    fi
     return "$_runtime_rc"
 }
 

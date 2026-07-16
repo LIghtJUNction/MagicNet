@@ -81,7 +81,7 @@ assert_mode() {
     local config="$MODDIR/.config/sing-box/config.json"
     jq -e '.inbounds[] | select(.type == "mixed" and .tag == "mixed-in" and .listen == "127.0.0.1" and .listen_port == 7892)' "$config" >/dev/null
     jq -e '.inbounds[] | select(.type == "direct" and .tag == "magicnet-dns-in" and .listen == "127.0.0.1" and .listen_port == 1053)' "$config" >/dev/null
-    jq -e '.route.rules[] | select(.action == "hijack-dns" and .protocol == "dns" and (.inbound == ["magicnet-dns-in"]))' "$config" >/dev/null
+    jq -e '.route.rules[] | select(.action == "hijack-dns" and (.inbound == ["magicnet-dns-in"]) and (has("protocol") | not))' "$config" >/dev/null
     jq -e '.inbounds[] | select(.tag == "user-mixed")' "$config" >/dev/null
     if jq -e '.inbounds[] | select(.type == "tproxy" or .tag == "magicnet-old" or .tag == "old-tun")' "$config" >/dev/null; then
         echo "orchestrator smoke failed: stale managed inbound survived for mode $mode" >&2

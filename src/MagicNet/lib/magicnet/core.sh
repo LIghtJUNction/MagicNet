@@ -66,6 +66,8 @@ magicnet_start_kernel() {
         return 0
     fi
 
+    magicnet_disable_dns_capture || true
+    magicnet_disable_dns_leak_guard || true
     magicnet_require_subscription_or_stop || return 1
 
     if magicnet_start_singbox; then
