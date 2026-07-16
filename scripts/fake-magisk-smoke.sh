@@ -479,7 +479,7 @@ stop_fake_core() {
 assert_dns_cleanup_log() {
     local log_file="$1"
     rg -q '^iptables -t nat -D OUTPUT -j magicnet-dns-output$' "$log_file"
-    rg -q '^iptables -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT$' "$log_file"
+    rg -q '^iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$log_file"
 }
 
 assert_dns_interception_not_enabled() {
@@ -489,7 +489,7 @@ assert_dns_interception_not_enabled() {
         echo "$context enabled DNS capture without a listener" >&2
         exit 1
     fi
-    if rg -q '^iptables -I OUTPUT -o wlan0 .*--dport (53|853) -j REJECT$' "$log_file"; then
+    if rg -q '^iptables -I OUTPUT -o lo .*--dport (53|853) -j REJECT$' "$log_file"; then
         echo "$context enabled DNS leak guard without a core" >&2
         exit 1
     fi
@@ -650,7 +650,7 @@ fi
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
 : >"$MOCK_LOG"
 # shellcheck disable=SC2016
-run env MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=wlan0 sh -c '
+run env MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=lo sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
@@ -660,7 +660,7 @@ assert_dns_cleanup_log "$MOCK_LOG"
 assert_dns_interception_not_enabled "$MOCK_LOG" "stopped runtime config"
 : >"$MOCK_LOG"
 # shellcheck disable=SC2016
-run env MAGIC_DNS_GUARD_IFACES=wlan0 sh -c '
+run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
@@ -671,7 +671,7 @@ import sys
 
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
 capture = next((i for i, line in enumerate(lines) if line == "iptables -t nat -D OUTPUT -j magicnet-dns-output"), None)
-guard = next((i for i, line in enumerate(lines) if line == "iptables -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT"), None)
+guard = next((i for i, line in enumerate(lines) if line == "iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT"), None)
 run = next((i for i, line in enumerate(lines) if line.startswith("sing-box run")), None)
 if capture is None or guard is None or run is None or capture > run or guard > run:
     raise SystemExit("kernel bootstrap did not clear DNS interception before starting sing-box")
@@ -681,7 +681,7 @@ sleep 3600 &
 echo "$!" >"$MODDIR/.state/fake-sing-box.pid"
 : >"$MOCK_LOG"
 # shellcheck disable=SC2016
-run env MAGIC_DNS_GUARD_IFACES=wlan0 sh -c '
+run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
@@ -692,11 +692,11 @@ assert_dns_interception_not_enabled "$MOCK_LOG" "toggle stop"
 sleep 3600 &
 echo "$!" >"$MODDIR/.state/fake-sing-box.pid"
 : >"$MOCK_LOG"
-run env MAGIC_DNS_GUARD_IFACES=wlan0 "$MODDIR/cli" service stop
+run env MAGIC_DNS_GUARD_IFACES=lo "$MODDIR/cli" service stop
 assert_dns_cleanup_log "$MOCK_LOG"
 : >"$MOCK_LOG"
 # shellcheck disable=SC2016
-if env MAGIC_SINGBOX=0 MAGIC_DNS_GUARD_IFACES=wlan0 sh -c '
+if env MAGIC_SINGBOX=0 MAGIC_DNS_GUARD_IFACES=lo sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
