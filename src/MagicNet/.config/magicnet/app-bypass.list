@@ -1,5 +1,13 @@
 # Packages that bypass MagicNet TUN when MAGICNET_APP_MODE=blacklist.
 # One package name per line.
+# Domestic shopping, local services, travel, and rail apps.
+com.taobao.idlefish
+com.taobao.taobao
+com.xunmeng.pinduoduo
+com.sankuai.meituan
+ctrip.android.view
+com.MobileTicket
+
 com.tailscale.ipn
 com.wireguard.android
 net.openvpn.openvpn

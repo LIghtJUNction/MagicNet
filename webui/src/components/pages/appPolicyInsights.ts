@@ -43,6 +43,7 @@ export const recommendedBypass = [
   "com.greenpoint.android.mc10086.activity",
   "com.ct.client",
   "com.sinovatech.unicom.ui",
+  "com.taobao.idlefish",
   "com.taobao.taobao",
   "com.tmall.wireless",
   "com.jingdong.app.mall",
