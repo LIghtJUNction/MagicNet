@@ -1,5 +1,15 @@
 ## Unreleased
 
+## v1.1.21 (2026-07-16)
+
+- Fix #44 by removing DNS capture and leak-guard rules whenever the core stops,
+  keeping runtime configuration inert while stopped, and clearing stale rules
+  before subscription refresh or kernel startup.
+- Route the dedicated `magicnet-dns-in` listener directly to `hijack-dns`
+  without requiring protocol sniffing before the DNS rule can match.
+- Add default direct bypasses for Xianyu, Taobao, Pinduoduo, Meituan, Ctrip,
+  and Railway 12306 in blacklist app-routing mode.
+
 ## v1.1.20 (2026-07-14)
 
 - Add an independent non-China/Hong Kong `ai-proxy` selector and route the
