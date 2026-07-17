@@ -35,7 +35,7 @@ jobs:
     env:
       KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
       MAGICNET_SIGN_ENABLED: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
-      MAGICNET_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
+      MAGICNET_SIGN_REQUIRED: "${{ (inputs.release == true || github.event.head_commit.message == 'chore(release): publish v1.1.22') && '1' || '0' }}"
       KAM_CHANGELOG_ENABLED: '0'
       GH_TOKEN: ${{ github.token }}
 
@@ -118,7 +118,7 @@ jobs:
           scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
 
       - name: Create GitHub release
-        if: ${{ inputs.release == true }}
+        if: "${{ inputs.release == true || github.event.head_commit.message == 'chore(release): publish v1.1.22' }}"
         shell: bash
         run: |
           set -euo pipefail
