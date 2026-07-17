@@ -11,8 +11,8 @@ cat >"$tmp/bin/curl" <<'SH'
 #!/bin/sh
 printf 'env=%s/%s/%s/%s\n' "${http_proxy-}" "${HTTP_PROXY-}" "${all_proxy-}" "${ALL_PROXY-}" >>"$MAGICNET_FETCH_TEST_LOG"
 printf 'curl %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
-[ "${MAGICNET_FETCH_FAIL:-0}" = 1 ] && exit 1
 case "$*" in *127.0.0.1:9090/version*) printf '{"version":"test"}\n'; exit 0;; esac
+[ "${MAGICNET_FETCH_FAIL:-0}" = 1 ] && exit 1
 for last do :; done
 case " $* " in *' -o '*) while [ "$#" -gt 1 ]; do [ "$1" = -o ] && { printf ok >"$2"; break; }; shift; done;; esac
 SH
@@ -53,6 +53,14 @@ MAGICNET_FETCH_FAIL=1 MAGICNET_SUB_PROXY=http://127.0.0.1:7892 PATH="$tmp/bin:$P
   magicnet_singbox_fetch_one_subscription https://example.invalid/sub "$tmp/missing" "" '#1' 2>/dev/null && exit 1 || true
 grep -q '^curl ' "$tmp/log"
 if grep -Eq '^(wget|sing-box) ' "$tmp/log"; then
+  exit 1
+fi
+: >"$tmp/log"
+MAGICNET_FETCH_FAIL=1 PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_fetch_one_subscription https://example.invalid/sub "$tmp/local-proxy" "" '#1' 2>/dev/null && exit 1 || true
+grep -q 'curl .*127.0.0.1:9090/version' "$tmp/log"
+grep -q 'curl .*--proxy http://127.0.0.1:7892.*https://example.invalid/sub' "$tmp/log"
+if grep -q 'wget .*--proxy' "$tmp/log" || grep -q 'sing-box .*--proxy' "$tmp/log"; then
   exit 1
 fi
 MODDIR="$tmp/module"

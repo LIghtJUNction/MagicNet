@@ -1,5 +1,11 @@
 ## Unreleased
 
+## v1.1.22 (2026-07-17)
+
+- Fix #46 by retrying a failed direct subscription download through the local
+  sing-box mixed proxy only when its API confirms that the owned service is
+  available; explicit proxy configuration remains fail-closed.
+
 ## v1.1.21 (2026-07-16)
 
 - Fix #44 by removing DNS capture and leak-guard rules whenever the core stops,

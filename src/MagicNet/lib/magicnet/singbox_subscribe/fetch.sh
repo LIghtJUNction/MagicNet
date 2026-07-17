@@ -50,6 +50,15 @@ magicnet_singbox_try_fetch_subscription() {
     esac
 }
 
+magicnet_singbox_local_subscription_proxy() {
+    command -v curl >/dev/null 2>&1 || return 1
+    env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+        timeout "${MAGICNET_SUB_PROXY_PROBE_TIMEOUT:-3}" \
+        curl -fsS --noproxy '*' --max-time "${MAGICNET_SUB_PROXY_PROBE_TIMEOUT:-3}" \
+        http://127.0.0.1:9090/version >/dev/null 2>&1 || return 1
+    printf '%s\n' "http://127.0.0.1:7892"
+}
+
 magicnet_singbox_normalize_subscription_file() {
     _source_file="$1"
     _tmp_file="${_source_file}.normalized"
@@ -96,6 +105,24 @@ magicnet_singbox_fetch_one_subscription() {
         warn "Failed to download subscription ${_label} with ${_method}"
     done
 
+    if [ "$_fetched" -ne 1 ] && [ -z "${MAGICNET_SUB_PROXY:-}" ]; then
+        _local_proxy=$(magicnet_singbox_local_subscription_proxy 2>/dev/null || true)
+        if [ -n "$_local_proxy" ]; then
+            rm -f "$_download_file"
+            (
+                MAGICNET_SUB_PROXY="$_local_proxy"
+                magicnet_singbox_try_fetch_subscription curl "$_url" "$_download_file" "$_connect_timeout" "$_max_time"
+            )
+            _fetch_rc=$?
+            _tried=1
+            if [ "$_fetch_rc" -eq 0 ] && [ -s "$_download_file" ]; then
+                _fetched=1
+            else
+                warn "Failed to download subscription ${_label} with local sing-box proxy"
+            fi
+        fi
+    fi
+
     if [ "$_tried" -eq 0 ]; then
         error "No downloader found: curl, wget or sing-box tools fetch"
         return 1
@@ -114,7 +141,7 @@ magicnet_singbox_fetch_one_subscription() {
 
     mv -f "$_download_file" "$_source_file"
     magicnet_singbox_normalize_subscription_file "$_source_file" || return 1
-    unset _fetched _tried _method _fetch_rc
+    unset _fetched _tried _method _fetch_rc _local_proxy
 }
 
 magicnet_singbox_fetch_subscription() {
