@@ -184,6 +184,7 @@ magicnet_singbox_emit_share_link_json() {
     [ "$_body" != "$_base" ] && _query=${_body#*\?}
     _userinfo=${_base%@*}
     _hostport=${_base#*@}
+    _hostport=${_hostport%/}
     _server=${_hostport%:*}
     _port=${_hostport##*:}
     _tag=$(magicnet_share_link_tag "$_link" "${_scheme}-${_server}-${_port}")
