@@ -18,6 +18,7 @@
   · <a href="#cli">CLI</a>
   · <a href="#dns-防泄露">DNS</a>
   · <a href="#mcp-自动化">MCP</a>
+  · <a href="#推广">推广</a>
 </p>
 
 > [!IMPORTANT]
@@ -253,6 +254,10 @@ MCP 工具可管理配置源、封锁名单、备份、状态检查、eCapture �
 - [MagicSingBox](https://github.com/LIghtJUNction/MagicSingBox)：sing-box 运行配置模板。
 - [MagicBox](MagicBox)：Android 控制壳，面向 TUN-only MagicNet 模块。
 - [kamfw](https://github.com/MemDeco-WG/kamfw)：运行时辅助库。
+
+## 推广
+
+- [AI 自动推广系统](https://bizbot.zvo.cn/)：探索 AI 驱动的自动推广工具与工作流。
 
 ## 社区
 
