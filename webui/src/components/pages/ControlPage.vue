@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import {
+  ArrowUpRight,
   Copy,
   DownloadCloud,
   ExternalLink,
+  Megaphone,
   Power,
   Radar,
   RotateCcw,
@@ -27,6 +29,7 @@ import {
 } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { PROMOTION_URL } from "@/constants";
 import { copyText } from "@/utils";
 import type { TransparentMode } from "@/types";
 import {
@@ -42,6 +45,7 @@ const {
   refreshAll,
   refreshStatus,
   openSingBoxUi,
+  openExternal,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pendingDangerAction = ref<ControlDangerAction | null>(null);
@@ -445,6 +449,59 @@ function classifyLastCommand(command: string): string {
         >
           <Radar :size="17" />重新应用模式
         </Button>
+      </Card>
+
+      <Card
+        class="group relative overflow-hidden !bg-[linear-gradient(120deg,rgba(13,18,18,0.98),rgba(10,13,15,0.98))] !p-0 md:col-span-12"
+      >
+        <button
+          class="relative grid w-full gap-5 overflow-hidden p-5 text-left transition-[transform,background-color] duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/70 active:scale-[0.995] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center md:p-6"
+          type="button"
+          aria-label="访问推广：AI 自动推广系统"
+          @click="openExternal(PROMOTION_URL, 'AI 自动推广系统')"
+        >
+          <span
+            class="pointer-events-none absolute -right-20 -top-28 size-72 rounded-full bg-cyan-300/[0.08] blur-3xl transition-transform duration-700 group-hover:translate-x-[-1rem] group-hover:translate-y-4"
+          />
+          <span
+            class="pointer-events-none absolute -bottom-28 left-1/3 size-64 rounded-full bg-emerald-300/[0.07] blur-3xl transition-transform duration-700 group-hover:translate-x-4 group-hover:-translate-y-3"
+          />
+
+          <span
+            class="relative grid size-14 shrink-0 place-items-center rounded-[1.25rem] bg-gradient-to-br from-emerald-300 to-cyan-300 text-[#06110e] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_12px_34px_rgba(34,211,238,0.12)]"
+          >
+            <Megaphone :size="22" />
+          </span>
+
+          <span class="relative min-w-0">
+            <span class="flex flex-wrap items-center gap-2">
+              <span
+                class="rounded-full bg-white/[0.07] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]"
+                >推广</span
+              >
+              <span class="text-[10px] font-medium text-emerald-200/70"
+                >MagicNet 推荐</span
+              >
+            </span>
+            <strong
+              class="mt-3 block text-xl font-semibold tracking-[-0.035em] text-white md:text-2xl"
+              >AI 自动推广系统</strong
+            >
+            <span class="mt-2 block text-sm leading-6 text-zinc-400"
+              >探索 AI 驱动的自动推广工具与工作流。</span
+            >
+          </span>
+
+          <span
+            class="relative inline-flex min-h-[49px] items-center justify-center gap-2 justify-self-start rounded-full bg-white/[0.075] px-5 text-sm font-semibold text-cyan-100 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.14)] transition-[transform,color,background-color] duration-300 group-hover:bg-cyan-300 group-hover:text-[#06110e] sm:justify-self-end"
+          >
+            了解详情
+            <ArrowUpRight
+              class="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+              :size="17"
+            />
+          </span>
+        </button>
       </Card>
     </div>
 
