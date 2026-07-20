@@ -94,14 +94,22 @@ magicnet_fswatch_start() {
     [ -d "$(magicnet_fswatch_path)" ] || return 0
     [ -f "${MODDIR}/cli" ] || return 0
     import fswatch
-    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard}" \
+    _fswatch_name="$(magicnet_fswatch_name)"
+    if fswatch status "$_fswatch_name" >/dev/null 2>&1; then
+        unset _fswatch_name _fw_rc
+        return 0
+    fi
+    unset _fw_rc
+    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
         KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
-        fswatch start "$(magicnet_fswatch_name)" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
+        fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
     _fswatch_rc=$?
     if [ "$_fswatch_rc" -ne 0 ]; then
         magicnet_warn "$(i18n "MAGICNET_FSWATCH_START_FAILED" | t "$_fswatch_rc" "${MODDIR}/.log/fswatch.log")"
     fi
-    return "$_fswatch_rc"
+    set -- "$_fswatch_rc"
+    unset _fswatch_name _fswatch_rc _fw_rc
+    return "$1"
 }
 
 magicnet_fswatch_stop() {
@@ -126,13 +134,436 @@ magicnet_fswatch_status() {
     magicnet_supervisor_status_with_orphans "" fswatch
 }
 
+magicnet_subscription_refresh_name() {
+    printf '%s\n' "magicnet-subscription-refresh"
+}
+
+magicnet_subscription_refresh_state_dir() {
+    printf '%s\n' "${KAM_HOME:-$MODDIR}/.state/watchdog"
+}
+
+magicnet_subscription_refresh_pid_file() {
+    printf '%s/%s.pid\n' "$(magicnet_subscription_refresh_state_dir)" "$(magicnet_subscription_refresh_name)"
+}
+
+magicnet_subscription_refresh_owner_file() {
+    printf '%s/%s.owner\n' "$(magicnet_subscription_refresh_state_dir)" "$(magicnet_subscription_refresh_name)"
+}
+
+magicnet_subscription_refresh_loop_file() {
+    printf '%s/%s.loop.sh\n' "$(magicnet_subscription_refresh_state_dir)" "$(magicnet_subscription_refresh_name)"
+}
+
+magicnet_subscription_refresh_proc_start() {
+    awk '{print $22}' "/proc/$1/stat" 2>/dev/null
+}
+
+magicnet_subscription_refresh_proc_command_matches() {
+    _refresh_proc_pid="$1"
+    _refresh_proc_root="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
+    _refresh_proc_expected=$(magicnet_subscription_refresh_loop_file)
+    _refresh_proc_pid_dir="${_refresh_proc_root}/${_refresh_proc_pid}"
+    _refresh_proc_cmdline="${_refresh_proc_root}/${_refresh_proc_pid}/cmdline"
+    [ -r "$_refresh_proc_cmdline" ] || {
+        if [ -d "$_refresh_proc_pid_dir" ] || [ -e "$_refresh_proc_cmdline" ]; then
+            _refresh_proc_rc=2
+        else
+            _refresh_proc_rc=1
+        fi
+        unset _refresh_proc_pid _refresh_proc_root _refresh_proc_expected _refresh_proc_pid_dir
+        unset _refresh_proc_cmdline
+        return "$_refresh_proc_rc"
+    }
+    if _refresh_proc_argv=$(tr '\000' '\n' <"$_refresh_proc_cmdline" 2>/dev/null); then
+        _refresh_proc_read_rc=0
+    else
+        _refresh_proc_read_rc=$?
+    fi
+    if [ "$_refresh_proc_read_rc" -ne 0 ]; then
+        if [ -d "$_refresh_proc_pid_dir" ] || [ -e "$_refresh_proc_cmdline" ]; then
+            _refresh_proc_rc=2
+        else
+            _refresh_proc_rc=1
+        fi
+    elif ! _refresh_proc_script=$(printf '%s\n' "$_refresh_proc_argv" | sed -n '2p'); then
+        _refresh_proc_rc=2
+    elif [ "$_refresh_proc_script" = "$_refresh_proc_expected" ]; then
+        _refresh_proc_rc=0
+    else
+        _refresh_proc_rc=1
+    fi
+    unset _refresh_proc_pid _refresh_proc_root _refresh_proc_expected _refresh_proc_pid_dir
+    unset _refresh_proc_cmdline _refresh_proc_argv _refresh_proc_read_rc _refresh_proc_script
+    return "$_refresh_proc_rc"
+}
+
+magicnet_subscription_refresh_owner_parse() {
+    _refresh_owner_record="$1"
+    _refresh_owner_pid=${_refresh_owner_record%%:*}
+    _refresh_owner_rest=${_refresh_owner_record#*:}
+    _refresh_owner_start=${_refresh_owner_rest%%:*}
+    _refresh_owner_identity=${_refresh_owner_rest#*:}
+    case "$_refresh_owner_pid" in '' | *[!0-9]*) return 1 ;; esac
+    case "$_refresh_owner_start" in '' | *[!0-9]*) return 1 ;; esac
+    [ "$_refresh_owner_identity" = "subscription-refresh-v1" ]
+}
+
+magicnet_subscription_refresh_owner_matches() {
+    _refresh_match_pid="$1"
+    _refresh_match_start="$2"
+    kill -0 "$_refresh_match_pid" 2>/dev/null &&
+        [ "$(magicnet_subscription_refresh_proc_start "$_refresh_match_pid")" = "$_refresh_match_start" ] &&
+        magicnet_subscription_refresh_proc_command_matches "$_refresh_match_pid"
+    _refresh_match_rc=$?
+    unset _refresh_match_pid _refresh_match_start
+    return "$_refresh_match_rc"
+}
+
+magicnet_subscription_refresh_stop_known() {
+    _refresh_known_pid="$1"
+    _refresh_known_start="$2"
+    magicnet_subscription_refresh_owner_matches "$_refresh_known_pid" "$_refresh_known_start" || return 1
+    kill "$_refresh_known_pid" 2>/dev/null || true
+    _refresh_known_deadline=$(($(date +%s) + ${MAGICNET_SUB_REFRESH_STOP_TIMEOUT:-3}))
+    while magicnet_subscription_refresh_owner_matches "$_refresh_known_pid" "$_refresh_known_start" &&
+        [ "$(date +%s)" -lt "$_refresh_known_deadline" ]; do
+        sleep 1
+    done
+    if magicnet_subscription_refresh_owner_matches "$_refresh_known_pid" "$_refresh_known_start"; then
+        kill -9 "$_refresh_known_pid" 2>/dev/null || true
+    fi
+    unset _refresh_known_pid _refresh_known_start _refresh_known_deadline
+}
+
+magicnet_subscription_refresh_loop_pids() {
+    _refresh_loop_proc_root="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
+    _refresh_loop_expected=$(magicnet_subscription_refresh_loop_file)
+    case "$_refresh_loop_proc_root:$_refresh_loop_expected" in
+    /*:/*) ;;
+    *)
+        unset _refresh_loop_proc_root _refresh_loop_expected
+        return 2
+        ;;
+    esac
+    if [ ! -d "$_refresh_loop_proc_root" ] || [ ! -r "$_refresh_loop_proc_root" ] ||
+        [ ! -x "$_refresh_loop_proc_root" ]; then
+        unset _refresh_loop_proc_root _refresh_loop_expected
+        return 2
+    fi
+    _refresh_loop_scan_attempt=0
+    while [ "$_refresh_loop_scan_attempt" -lt 2 ]; do
+        set --
+        _refresh_loop_snapshot_error=0
+        for _refresh_loop_pid_dir in "$_refresh_loop_proc_root"/[0-9]*; do
+            _refresh_loop_pid_name=${_refresh_loop_pid_dir#"$_refresh_loop_proc_root"/}
+            case "$_refresh_loop_pid_name" in '' | *[!0-9]*) continue ;; esac
+            if [ ! -d "$_refresh_loop_pid_dir" ]; then
+                [ ! -e "$_refresh_loop_pid_dir" ] || _refresh_loop_snapshot_error=1
+                continue
+            fi
+            _refresh_loop_proc="${_refresh_loop_pid_dir}/cmdline"
+            if [ -r "$_refresh_loop_proc" ]; then
+                set -- "$@" "$_refresh_loop_proc"
+            elif [ -d "$_refresh_loop_pid_dir" ]; then
+                _refresh_loop_snapshot_error=1
+            fi
+        done
+        if [ ! -d "$_refresh_loop_proc_root" ] || [ ! -r "$_refresh_loop_proc_root" ] ||
+            [ ! -x "$_refresh_loop_proc_root" ]; then
+            _refresh_loop_snapshot_error=1
+        fi
+        if [ "$_refresh_loop_snapshot_error" -eq 0 ] && [ "$#" -eq 0 ]; then
+            unset _refresh_loop_proc_root _refresh_loop_expected _refresh_loop_scan_attempt
+            unset _refresh_loop_snapshot_error _refresh_loop_proc _refresh_loop_pid_dir _refresh_loop_pid_name
+            return 0
+        fi
+        if [ "$_refresh_loop_snapshot_error" -eq 0 ]; then
+            if _refresh_loop_candidates=$(grep -l -F "$_refresh_loop_expected" "$@" 2>/dev/null); then
+                _refresh_loop_scan_rc=0
+            else
+                _refresh_loop_scan_rc=$?
+            fi
+            case "$_refresh_loop_scan_rc" in
+            0)
+                set --
+                _refresh_loop_exact_error=0
+                for _refresh_loop_proc in $_refresh_loop_candidates; do
+                    case "$_refresh_loop_proc" in
+                    "$_refresh_loop_proc_root"/[0-9]*/cmdline) ;;
+                    *) continue ;;
+                    esac
+                    _refresh_loop_pid=${_refresh_loop_proc#"$_refresh_loop_proc_root"/}
+                    _refresh_loop_pid=${_refresh_loop_pid%/cmdline}
+                    case "$_refresh_loop_pid" in '' | *[!0-9]*) continue ;; esac
+                    if magicnet_subscription_refresh_proc_command_matches "$_refresh_loop_pid"; then
+                        set -- "$@" "$_refresh_loop_pid"
+                    else
+                        _refresh_loop_match_rc=$?
+                        if [ "$_refresh_loop_match_rc" -eq 2 ]; then
+                            _refresh_loop_exact_error=1
+                            break
+                        fi
+                    fi
+                done
+                if [ "$_refresh_loop_exact_error" -eq 0 ]; then
+                    [ "$#" -eq 0 ] || printf '%s\n' "$@"
+                    unset _refresh_loop_proc_root _refresh_loop_expected _refresh_loop_candidates
+                    unset _refresh_loop_scan_rc _refresh_loop_scan_attempt _refresh_loop_snapshot_error
+                    unset _refresh_loop_proc _refresh_loop_pid _refresh_loop_pid_dir _refresh_loop_pid_name
+                    unset _refresh_loop_match_rc _refresh_loop_exact_error
+                    return 0
+                fi
+                ;;
+            1)
+                unset _refresh_loop_proc_root _refresh_loop_expected _refresh_loop_candidates
+                unset _refresh_loop_scan_rc _refresh_loop_scan_attempt _refresh_loop_snapshot_error
+                unset _refresh_loop_proc _refresh_loop_pid_dir _refresh_loop_pid_name
+                unset _refresh_loop_pid _refresh_loop_match_rc _refresh_loop_exact_error
+                return 0
+                ;;
+            esac
+        fi
+        _refresh_loop_scan_attempt=$((_refresh_loop_scan_attempt + 1))
+    done
+    unset _refresh_loop_proc_root _refresh_loop_expected _refresh_loop_candidates
+    unset _refresh_loop_scan_rc _refresh_loop_scan_attempt _refresh_loop_snapshot_error
+    unset _refresh_loop_proc _refresh_loop_pid _refresh_loop_pid_dir _refresh_loop_pid_name
+    unset _refresh_loop_match_rc _refresh_loop_exact_error
+    return 2
+}
+
+magicnet_subscription_refresh_owner_state() {
+    _refresh_state_owner=$(magicnet_subscription_refresh_owner_file)
+    [ -f "$_refresh_state_owner" ] || {
+        if _refresh_state_orphans=$(magicnet_subscription_refresh_loop_pids); then
+            _refresh_state_scan_rc=0
+        else
+            _refresh_state_scan_rc=$?
+        fi
+        if [ "$_refresh_state_scan_rc" -ne 0 ]; then
+            printf '%s\n' stale
+            unset _refresh_state_owner _refresh_state_orphans _refresh_state_scan_rc
+            return 1
+        fi
+        if [ -n "$_refresh_state_orphans" ]; then
+            printf '%s\n' orphan
+        else
+            printf '%s\n' none
+        fi
+        unset _refresh_state_owner _refresh_state_orphans _refresh_state_scan_rc
+        return 1
+    }
+    _refresh_state_record=$(sed -n '1p' "$_refresh_state_owner" 2>/dev/null)
+    if magicnet_subscription_refresh_owner_parse "$_refresh_state_record" &&
+        magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
+        printf '%s\n' active
+        _refresh_state_rc=0
+    else
+        printf '%s\n' stale
+        _refresh_state_rc=1
+    fi
+    unset _refresh_state_owner _refresh_state_record
+    unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
+    return "$_refresh_state_rc"
+}
+
+magicnet_subscription_schedule_file() {
+    printf '%s\n' "${MODDIR}/.config/magicnet/subscription-refresh-hours"
+}
+
+magicnet_subscription_schedule_interval() {
+    _schedule_file=$(magicnet_subscription_schedule_file)
+    _schedule_value=$(sed -n '1p' "$_schedule_file" 2>/dev/null)
+    case "$_schedule_value" in
+    12 | 24 | 48 | 72) printf '%s\n' "$_schedule_value" ;;
+    *) printf '%s\n' "off" ;;
+    esac
+    unset _schedule_file _schedule_value
+}
+
+magicnet_subscription_refresh_status() {
+    _refresh_status_owner=$(magicnet_subscription_refresh_owner_file)
+    _refresh_status_record=$(sed -n '1p' "$_refresh_status_owner" 2>/dev/null)
+    if magicnet_subscription_refresh_owner_parse "$_refresh_status_record" &&
+        magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
+        _refresh_status_pid="$_refresh_owner_pid"
+        unset _refresh_status_owner _refresh_status_record
+        unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
+        printf '%s\n' "$_refresh_status_pid"
+        unset _refresh_status_pid
+        return 0
+    fi
+    unset _refresh_status_owner _refresh_status_record
+    unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
+    return 1
+}
+
+magicnet_subscription_refresh_stop() {
+    _refresh_stop_owner=$(magicnet_subscription_refresh_owner_file)
+    _refresh_stop_record=$(sed -n '1p' "$_refresh_stop_owner" 2>/dev/null || true)
+    if ! magicnet_subscription_refresh_owner_parse "$_refresh_stop_record" ||
+        ! magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
+        unset _refresh_stop_owner _refresh_stop_record
+        unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
+        return 0
+    fi
+
+    kill "$_refresh_owner_pid" 2>/dev/null || true
+    _refresh_stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_REFRESH_STOP_TIMEOUT:-3}))
+    while magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start" &&
+        [ "$(date +%s)" -lt "$_refresh_stop_deadline" ]; do
+        sleep 1
+    done
+    if magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
+        kill -9 "$_refresh_owner_pid" 2>/dev/null || true
+    fi
+    _refresh_stop_current=$(sed -n '1p' "$_refresh_stop_owner" 2>/dev/null)
+    [ "$_refresh_stop_current" = "$_refresh_stop_record" ] && rm -f "$_refresh_stop_owner" 2>/dev/null || true
+    _refresh_stop_pid_file=$(magicnet_subscription_refresh_pid_file)
+    [ "$(sed -n '1p' "$_refresh_stop_pid_file" 2>/dev/null)" = "$_refresh_owner_pid" ] &&
+        rm -f "$_refresh_stop_pid_file" 2>/dev/null || true
+    rm -f "$(magicnet_subscription_refresh_loop_file)" 2>/dev/null || true
+    unset _refresh_stop_owner _refresh_stop_record _refresh_stop_deadline _refresh_stop_current _refresh_stop_pid_file
+    unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
+}
+
+magicnet_subscription_refresh_start() {
+    _refresh_hours=$(magicnet_subscription_schedule_interval)
+    if [ "$_refresh_hours" = "off" ]; then
+        magicnet_subscription_refresh_stop >/dev/null 2>&1 || true
+        unset _refresh_hours
+        return 0
+    fi
+    if command -v magicnet_module_disabled >/dev/null 2>&1 && magicnet_module_disabled; then
+        magicnet_subscription_refresh_stop >/dev/null 2>&1 || true
+        unset _refresh_hours
+        return 0
+    fi
+    [ -x "${MODDIR}/cli" ] || {
+        unset _refresh_hours
+        return 0
+    }
+    _refresh_owner_state=$(magicnet_subscription_refresh_owner_state 2>/dev/null || true)
+    if [ "$_refresh_owner_state" = active ]; then
+        magicnet_subscription_refresh_stop || return 1
+    elif [ "$_refresh_owner_state" = stale ] || [ "$_refresh_owner_state" = orphan ]; then
+        warn "Subscription refresh owner is ${_refresh_owner_state}; refusing to start a duplicate or terminate an unowned loop"
+        unset _refresh_hours _refresh_owner_state
+        return 1
+    fi
+
+    _refresh_seconds=$((_refresh_hours * 3600))
+    _refresh_state_dir=$(magicnet_subscription_refresh_state_dir)
+    _refresh_loop_file=$(magicnet_subscription_refresh_loop_file)
+    _refresh_pid_file=$(magicnet_subscription_refresh_pid_file)
+    _refresh_owner_file=$(magicnet_subscription_refresh_owner_file)
+    _refresh_log_file="${MODDIR}/.log/subscription-refresh.log"
+    mkdir -p "$_refresh_state_dir" "${_refresh_log_file%/*}" || return 1
+    {
+        printf '%s\n' '#!/system/bin/sh'
+        printf 'MODDIR=%s\n' "'$(printf '%s' "$MODDIR" | sed "s/'/'\\\\''/g")'"
+        printf '%s\n' 'export MODDIR'
+        printf '%s\n' 'trap "" HUP'
+        printf '%s\n' "trap 'test -z \"\${_refresh_child:-}\" || kill \"\$_refresh_child\" 2>/dev/null || true; exit 0' TERM INT"
+        printf 'sleep %s &\n' "$_refresh_seconds"
+        printf '%s\n' "_refresh_child=\$!; wait \"\$_refresh_child\"; _refresh_child="
+        printf '%s\n' "while [ ! -f \"\$MODDIR/disable\" ] && [ ! -f \"\$MODDIR/remove\" ]; do"
+        printf '%s\n' "  \"\$MODDIR/cli\" sub update-all"
+        printf '  sleep %s &\n' "$_refresh_seconds"
+        printf '%s\n' "  _refresh_child=\$!; wait \"\$_refresh_child\"; _refresh_child="
+        printf '%s\n' 'done'
+    } >"$_refresh_loop_file" || return 1
+    chmod 700 "$_refresh_loop_file" 2>/dev/null || true
+    nohup sh "$_refresh_loop_file" </dev/null >>"$_refresh_log_file" 2>&1 &
+    _refresh_pid=$!
+    _refresh_start=$(magicnet_subscription_refresh_proc_start "$_refresh_pid")
+    if [ -z "$_refresh_start" ] || ! magicnet_subscription_refresh_proc_command_matches "$_refresh_pid"; then
+        [ -z "$_refresh_start" ] || kill "$_refresh_pid" 2>/dev/null || true
+        unset _refresh_hours _refresh_owner_state _refresh_seconds _refresh_state_dir _refresh_loop_file
+        unset _refresh_pid_file _refresh_owner_file _refresh_log_file _refresh_pid _refresh_start
+        return 1
+    fi
+    _refresh_owner_tmp="${_refresh_owner_file}.tmp.$$"
+    _refresh_pid_tmp="${_refresh_pid_file}.tmp.$$"
+    _refresh_owner_record="${_refresh_pid}:${_refresh_start}:subscription-refresh-v1"
+    _refresh_rc=0
+    if [ "${MAGICNET_SUB_REFRESH_OWNER_WRITE_FAIL:-0}" = "1" ] ||
+        ! printf '%s\n' "$_refresh_owner_record" >"$_refresh_owner_tmp" ||
+        ! printf '%s\n' "$_refresh_pid" >"$_refresh_pid_tmp" ||
+        ! mv -f "$_refresh_owner_tmp" "$_refresh_owner_file" ||
+        ! mv -f "$_refresh_pid_tmp" "$_refresh_pid_file"; then
+        _refresh_rc=1
+        magicnet_subscription_refresh_stop_known "$_refresh_pid" "$_refresh_start" >/dev/null 2>&1 || true
+        [ "$(sed -n '1p' "$_refresh_owner_file" 2>/dev/null)" != "$_refresh_owner_record" ] ||
+            rm -f "$_refresh_owner_file" 2>/dev/null || true
+        [ "$(sed -n '1p' "$_refresh_pid_file" 2>/dev/null)" != "$_refresh_pid" ] ||
+            rm -f "$_refresh_pid_file" 2>/dev/null || true
+        rm -f "$_refresh_owner_tmp" "$_refresh_pid_tmp" 2>/dev/null || true
+    fi
+    unset _refresh_hours _refresh_owner_state _refresh_seconds _refresh_state_dir _refresh_loop_file
+    unset _refresh_pid_file _refresh_pid_tmp _refresh_owner_file _refresh_owner_tmp _refresh_owner_record
+    unset _refresh_log_file _refresh_pid _refresh_start
+    return "$_refresh_rc"
+}
+
+magicnet_subscription_schedule_set() {
+    _schedule_value="$1"
+    case "$_schedule_value" in
+    off | 12 | 24 | 48 | 72) ;;
+    *)
+        error "Schedule must be one of: off, 12, 24, 48, 72"
+        unset _schedule_value
+        return 1
+        ;;
+    esac
+    _schedule_file=$(magicnet_subscription_schedule_file)
+    _schedule_tmp="${_schedule_file}.tmp.$$"
+    mkdir -p "${_schedule_file%/*}" || return 1
+    if ! printf '%s\n' "$_schedule_value" >"$_schedule_tmp" ||
+        ! mv -f "$_schedule_tmp" "$_schedule_file"; then
+        rm -f "$_schedule_tmp" 2>/dev/null || true
+        unset _schedule_value _schedule_file _schedule_tmp
+        return 1
+    fi
+    if [ "$_schedule_value" = "off" ]; then
+        magicnet_subscription_refresh_stop >/dev/null 2>&1 || true
+    else
+        magicnet_subscription_refresh_start
+    fi
+    _schedule_rc=$?
+    unset _schedule_value _schedule_file _schedule_tmp
+    return "$_schedule_rc"
+}
+
+magicnet_subscription_schedule_report() {
+    _schedule_hours=$(magicnet_subscription_schedule_interval)
+    if [ "$_schedule_hours" = "off" ]; then
+        _schedule_enabled=0
+    else
+        _schedule_enabled=1
+    fi
+    _schedule_owner=$(magicnet_subscription_refresh_owner_state 2>/dev/null || true)
+    if [ "$_schedule_owner" = active ]; then
+        _schedule_running=1
+    else
+        _schedule_running=0
+    fi
+    printf 'schedule_interval_hours=%s\n' "$_schedule_hours"
+    printf 'schedule_enabled=%s\n' "$_schedule_enabled"
+    printf 'schedule_running=%s\n' "$_schedule_running"
+    printf 'schedule_owner=%s\n' "${_schedule_owner:-none}"
+    unset _schedule_hours _schedule_enabled _schedule_running _schedule_owner
+}
+
 magicnet_supervisors_start() {
     _mss_rc=0
     magicnet_fswatch_start || _mss_rc=1
+    magicnet_subscription_refresh_start || _mss_rc=1
     return "$_mss_rc"
 }
 
 magicnet_supervisors_stop() {
     magicnet_watchdog_stop
     magicnet_fswatch_stop
+    [ "${MAGICNET_SUB_PRESERVE_REFRESH:-0}" = "1" ] || magicnet_subscription_refresh_stop
 }

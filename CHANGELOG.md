@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v1.1.23 (2026-07-19)
+
+- Give ChatGPT, Gemini, Grok, and Claude independent `urltest` automatic
+  failover while keeping their selectors fail-closed.
+- Make first subscription activation atomic, recover interrupted transactions
+  from a journal, reuse the SHA-256 identity cache, and serialize owner-safe
+  scheduled and manual refreshes.
+- Rework the WebUI for first-time and subsequent subscription setup plus refresh
+  scheduling, surface structured errno details, produce a single redacted issue
+  report per failure, and polish desktop and mobile layouts.
+
 ## v1.1.22 (2026-07-17)
 
 - Fix #46 by retrying a failed direct subscription download through the local

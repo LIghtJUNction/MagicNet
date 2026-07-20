@@ -1,9 +1,60 @@
-import { MODULE_DIR, SING_BOX_UI } from "@/constants";
-import type { AppPolicy, BlocklistState, DnsState, HealthItem, PackageInfo, RuntimeState, TransparentMode, WarpState } from "@/types";
+import { MODULE_DIR, SING_BOX_UI } from "../constants.ts";
+import type { AppPolicy, BlocklistState, DnsState, HealthItem, PackageInfo, RuntimeState, TransparentMode, WarpState } from "../types.ts";
 
 export type SubscriptionState = {
   singBox: string;
   singBoxUrls: string[];
+  configuredCount: number;
+  updateRunning: boolean;
+  updateLockOwner: string;
+  lastPhase: string;
+  lastResult: string;
+  lastAttemptEpoch: number;
+  lastSuccessEpoch: number;
+  lastConfiguredCount: number;
+  lastSourceCount: number;
+  lastImportedCount: number;
+  lastSkippedCount: number;
+  lastGenerationId: string;
+  lastReason: string;
+  cacheCount: number;
+  cacheProvenanceCount: number;
+  cacheSource: string;
+  scheduleIntervalHours: "off" | "12" | "24" | "48" | "72";
+  scheduleEnabled: boolean;
+  scheduleRunning: boolean;
+  scheduleOwner: string;
+  scheduleOwnerValid: boolean;
+  refreshEventCount: number;
+  refreshErrorCount: number;
+};
+
+export const subscriptionDefaults: SubscriptionState = {
+  singBox: "",
+  singBoxUrls: [],
+  configuredCount: 0,
+  updateRunning: false,
+  updateLockOwner: "none",
+  lastPhase: "never",
+  lastResult: "never",
+  lastAttemptEpoch: 0,
+  lastSuccessEpoch: 0,
+  lastConfiguredCount: 0,
+  lastSourceCount: 0,
+  lastImportedCount: 0,
+  lastSkippedCount: 0,
+  lastGenerationId: "none",
+  lastReason: "none",
+  cacheCount: 0,
+  cacheProvenanceCount: 0,
+  cacheSource: "unknown",
+  scheduleIntervalHours: "off",
+  scheduleEnabled: false,
+  scheduleRunning: false,
+  scheduleOwner: "none",
+  scheduleOwnerValid: true,
+  refreshEventCount: 0,
+  refreshErrorCount: 0,
 };
 
 export type McpState = {
@@ -411,7 +462,21 @@ export function parseBlock(text: string, previous: BlocklistState): BlocklistSta
   return next;
 }
 
-export function parseSubs(text: string, previous: SubscriptionState): SubscriptionState {
+function statusNumber(values: Map<string, string>, key: string, fallback: number): number {
+  const parsed = Number.parseInt(values.get(key) || "", 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
+}
+
+function statusBoolean(values: Map<string, string>, key: string, fallback: boolean): boolean {
+  const value = values.get(key);
+  return value === undefined ? fallback : value !== "0";
+}
+
+export function parseSubs(
+  text: string,
+  statusText: string,
+  previous: SubscriptionState,
+): SubscriptionState {
   const next: SubscriptionState = { ...previous, singBoxUrls: [] };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
@@ -419,6 +484,42 @@ export function parseSubs(text: string, previous: SubscriptionState): Subscripti
     else if (line.startsWith("sing-box=")) next.singBox = line.slice(9);
   });
   if (!next.singBoxUrls.length && next.singBox) next.singBoxUrls = [next.singBox];
+  const values = new Map<string, string>();
+  statusText.split(/\r?\n/).forEach((raw) => {
+    const match = raw.trim().match(/^([a-z0-9_]+)=(.*)$/i);
+    if (match) values.set(match[1], match[2].trim());
+  });
+  next.configuredCount = statusNumber(values, "configured_count", next.singBoxUrls.length);
+  next.updateRunning = statusBoolean(values, "update_running", false);
+  next.updateLockOwner = values.get("update_lock_owner") || "none";
+  next.lastPhase = values.get("last_phase") || "never";
+  next.lastResult = values.get("last_result") || "never";
+  next.lastAttemptEpoch = statusNumber(values, "last_attempt_epoch", 0);
+  next.lastSuccessEpoch = statusNumber(values, "last_success_epoch", 0);
+  next.lastConfiguredCount = statusNumber(values, "last_configured_count", 0);
+  next.lastSourceCount = statusNumber(values, "last_source_count", 0);
+  next.lastImportedCount = statusNumber(values, "last_imported_count", 0);
+  next.lastSkippedCount = statusNumber(values, "last_skipped_count", 0);
+  next.lastGenerationId = values.get("last_generation_id") || "none";
+  next.lastReason = values.get("last_reason") || "none";
+  next.cacheCount = statusNumber(values, "cache_count", 0);
+  next.cacheProvenanceCount = statusNumber(values, "cache_provenance_count", 0);
+  next.cacheSource = values.get("cache_source") || "unknown";
+  const interval = values.get("schedule_interval_hours");
+  next.scheduleIntervalHours = ["12", "24", "48", "72"].includes(interval || "")
+    ? interval as SubscriptionState["scheduleIntervalHours"]
+    : "off";
+  next.scheduleEnabled = statusBoolean(values, "schedule_enabled", false);
+  next.scheduleRunning = statusBoolean(values, "schedule_running", false);
+  next.scheduleOwner = values.get("schedule_owner") || "none";
+  const reportedOwnerValid = values.get("schedule_owner_valid");
+  next.scheduleOwnerValid = reportedOwnerValid === undefined
+    ? next.scheduleEnabled
+      ? next.scheduleRunning && next.scheduleOwner === "active"
+      : !next.scheduleRunning && next.scheduleOwner === "none"
+    : reportedOwnerValid !== "0";
+  next.refreshEventCount = statusNumber(values, "subscription_refresh_event_count", 0);
+  next.refreshErrorCount = statusNumber(values, "subscription_refresh_error_count", 0);
   return next;
 }
 

@@ -261,4 +261,4 @@ if magicnet_install_is_interactive; then
 fi
 
 import launcher
-launch url "https://github.com/LIghtJUNction/MagicNet"
+launch url "https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md"

@@ -34,8 +34,11 @@ mapfile -t posix_shell_files < <(
 shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 "${posix_shell_files[@]}"
 
 jq empty src/MagicNet/.config/sing-box/config.json
+sh scripts/test-kamfw-i18n.sh
+bash scripts/test-default-routing-policy.sh
 bash scripts/test-anthropic-routing.sh
 bash scripts/singbox-subscription-protocol-smoke.sh
+bash scripts/test-subscription-lifecycle.sh
 
 KAM_HOOKS_ROOT=hooks KAM_MODULE_ROOT=src/MagicNet bash hooks/pre-build/6000.check_config.sh
 MODPATH="$ROOT/src/MagicNet" sh -c '. "$MODPATH/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODPATH/lib/magicnet.sh"; kamfw run post-mount -- smoke'

@@ -32,6 +32,20 @@ check_singbox_json_policy() {
         log_error "sing-box config uses deprecated geosite/geoip rule fields; migrate to rule-set or explicit rules"
         return 1
     fi
+
+    if jq -e '
+        any(
+          .route.rules[]?
+          | select(.outbound == "cn-direct")
+          | .ip_cidr[]?
+          | strings
+          | capture("^(?<address>[0-9]+(?:\\.[0-9]+){3})/(?<prefix>[0-9]+)$")?;
+          (.prefix | tonumber) < 16
+        )
+    ' "$file" >/dev/null; then
+        log_error "sing-box cn-direct uses a broad domestic IPv4 CIDR below /16, which can misroute foreign traffic; use maintained geoip rule sets instead"
+        return 1
+    fi
 }
 
 can_run_kernel_check() {

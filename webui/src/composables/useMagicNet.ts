@@ -14,12 +14,15 @@ import type {
   PackageInfo,
 } from "@/types";
 import {
-  backgroundDone,
-  backgroundFailed,
   backgroundLaunchCommand,
+  backgroundAccepted,
   backgroundLogCommand,
   backgroundLogPath,
   backgroundTaskDefaults,
+  createBackgroundOperationId,
+  isSubscriptionBackgroundArgs,
+  parseBackgroundCompletion,
+  reconcileSubscriptionCompletion,
 } from "@/composables/backgroundTasks";
 import {
   blockDefaults,
@@ -36,6 +39,7 @@ import {
   parseSubs,
   parseWarp,
   runtimeDefaults,
+  subscriptionDefaults,
   type ConfigValidationState,
   type SubscriptionState,
   warpDefaults,
@@ -46,12 +50,15 @@ import {
   bytesToBase64,
   compactCommand,
   compactOutput,
+  ExecTimeoutError,
   execFailed,
-  normalizeExecResult,
+  normalizeExecOutcome,
   nextFrame,
   shellQuote,
+  unavailableExecOutcome,
   uniqueNonEmpty,
   withTimeout,
+  type ExecOutcome,
 } from "@/utils";
 
 type Phase = "idle" | "accepted" | "queued" | "running" | "done" | "error";
@@ -92,8 +99,7 @@ const state = reactive({
   topology: "",
   sysroute: "",
   subscriptions: {
-    singBox: "",
-    singBoxUrls: [],
+    ...subscriptionDefaults,
   } as SubscriptionState,
   config: {
     target: "sing-box" as ConfigEditorTarget,
@@ -124,22 +130,18 @@ async function queued<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-async function runShell(
+async function runShellOutcome(
   commandBody: string,
   label: string,
   quiet = false,
   previewOverride = "",
-): Promise<string> {
+): Promise<ExecOutcome> {
   const command = `su -M -c ${shellQuote(commandBody)}`;
   const commandPreview = previewOverride || compactCommand(command);
-  const previousTask = state.task;
-  const previousNotice = state.notice;
-  const previousPhase = state.phase;
-  const previousBusy = state.busy;
-  state.lastCommand = commandPreview;
-  state.task = label;
-  state.notice = quiet ? `后台执行：${label}` : `已接收：${label}`;
+  if (!quiet || previewOverride) state.lastCommand = commandPreview;
   if (!quiet) {
+    state.task = label;
+    state.notice = `已接收：${label}`;
     const wasBusy = state.busy;
     state.busy = true;
     state.phase = wasBusy ? "queued" : "accepted";
@@ -150,12 +152,15 @@ async function runShell(
 
   state.hasKsu = hasKsuExec();
   if (!state.hasKsu) {
-    state.output = `当前没有 KernelSU 执行通道。\n\n真机命令：\n${commandPreview}`;
-    state.phase = "done";
-    state.busy = false;
-    state.task = quiet ? previousTask : "";
-    if (quiet) state.notice = previousNotice;
-    return state.output;
+    const outcome = unavailableExecOutcome(commandPreview);
+    if (!quiet) {
+      state.output = `当前没有 KernelSU 执行通道，命令未执行。\n\n${outcome.text}`;
+      state.phase = "error";
+      state.notice = `未执行：${label}`;
+      state.busy = false;
+      state.task = "";
+    }
+    return outcome;
   }
 
   try {
@@ -172,34 +177,39 @@ async function runShell(
       await nextFrame();
       return withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, label);
     });
-    const text = normalizeExecResult(result);
+    const outcome = normalizeExecOutcome(result);
+    const text = outcome.text;
     if (!quiet) {
-      state.phase = execFailed(text) ? "error" : "done";
-      state.notice = execFailed(text) ? `失败：${label}` : `完成：${label}`;
+      state.phase = outcome.ok ? "done" : "error";
+      state.notice = outcome.ok ? `完成：${label}` : `失败：${label}`;
       state.output = `$ ${commandPreview}\n${text || "完成"}`;
-    } else {
-      state.notice = previousNotice;
-      state.phase = previousPhase;
-      state.busy = previousBusy;
     }
-    return text;
+    return outcome;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    state.phase = "error";
-    state.notice = `失败：${label}`;
-    state.output = `$ ${commandPreview}\n${message}`;
-    return state.output;
+    const timedOut = error instanceof ExecTimeoutError;
+    const text = `${timedOut ? "[exec-timeout]" : "[error] errno=-1"} ${message}`;
+    if (!quiet) {
+      state.phase = "error";
+      state.notice = timedOut ? `等待超时：${label}` : `失败：${label}`;
+      state.output = `$ ${commandPreview}\n${text}`;
+    }
+    return { ok: false, timedOut, errno: -1, stdout: "", stderr: message, text };
   } finally {
     if (!quiet) {
       state.busy = false;
       state.task = "";
-    } else if (state.task === label) {
-      state.task = previousTask;
-      state.notice = previousNotice;
-      state.phase = previousPhase;
-      state.busy = previousBusy;
     }
   }
+}
+
+async function runShell(
+  commandBody: string,
+  label: string,
+  quiet = false,
+  previewOverride = "",
+): Promise<string> {
+  return (await runShellOutcome(commandBody, label, quiet, previewOverride)).text;
 }
 
 async function runCli(
@@ -216,11 +226,16 @@ async function startBackgroundCli(
   label = args,
   previewOverride = "",
   displayArgs = args,
+  cleanupCommand = "",
 ): Promise<string> {
-  const log = backgroundLogPath(label);
+  const subscriptionTask = isSubscriptionBackgroundArgs(displayArgs);
+  const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true) : false;
+  const operationId = createBackgroundOperationId();
+  const log = backgroundLogPath(label, operationId);
   stopBackgroundLogFollow();
   const startedAt = Date.now();
   state.backgroundTask = {
+    id: operationId,
     label,
     args: displayArgs,
     log,
@@ -228,27 +243,42 @@ async function startBackgroundCli(
     updatedAt: startedAt,
     finishedAt: 0,
     status: "running",
+    subscriptionBaselineKnown,
+    subscriptionBaselineAttemptEpoch: state.subscriptions.lastAttemptEpoch,
+    subscriptionBaselineGenerationId: state.subscriptions.lastGenerationId,
+    subscriptionBaselineResult: state.subscriptions.lastResult,
   };
   state.phase = "accepted";
   state.notice = `已投递后台任务：${label}`;
   state.output = `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
   await nextTick();
   await nextFrame();
-  const command = backgroundLaunchCommand(args, label, log);
-  const result = await runShell(
+  const command = backgroundLaunchCommand(args, label, log, operationId, cleanupCommand);
+  const outcome = await runShellOutcome(
     command,
     `投递 ${label}`,
     true,
     previewOverride,
   );
-  if (!execFailed(result)) {
-    followBackgroundLogs(log, label, args);
+  const accepted = outcome.ok && backgroundAccepted(outcome.stdout, operationId);
+  if (accepted || outcome.timedOut) {
+    if (outcome.timedOut) {
+      state.notice = `投递确认超时，继续对账：${label}`;
+      state.output = `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。`;
+    }
+    followBackgroundLogs(log, label, args, operationId);
   } else {
     state.backgroundTask.status = "error";
     state.backgroundTask.updatedAt = Date.now();
     state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
+    state.phase = "error";
+    state.notice = `投递失败：${label}`;
+    state.output = `${label} 未投递到后台。\n\n${outcome.text || "[error] accepted marker missing"}`;
   }
-  return result;
+  if (outcome.timedOut) {
+    return `[warning] background launch confirmation timed out; reconciliation continues in ${log}`;
+  }
+  return accepted ? outcome.text : `[error] errno=-1 background accepted marker missing`;
 }
 
 function stopBackgroundLogFollow(): void {
@@ -261,20 +291,35 @@ function followBackgroundLogs(
   log: string,
   label: string,
   args: string,
+  operationId: string,
   attempt = 0,
 ): void {
   const maxAttempts = 90;
   backgroundLogTimer = window.setTimeout(
     async () => {
+      const subscriptionTask = isSubscriptionBackgroundArgs(args)
+        ? refreshSubs(true)
+        : Promise.resolve(true);
       const [logs, status] = await Promise.all([
-        runShell(backgroundLogCommand(log, args), `跟踪 ${label}`, true),
+        runShell(backgroundLogCommand(log, args, operationId), `跟踪 ${label}`, true),
         runCli("service status", "刷新状态", true),
+        subscriptionTask,
       ]);
+      if (state.backgroundTask.id !== operationId) return;
       if (!execFailed(status)) {
         state.runtime = parseRuntime(status, state.runtime);
       }
-      const done = backgroundDone(logs);
-      const failed = !done && backgroundFailed(logs);
+      const logCompletion = parseBackgroundCompletion(logs, operationId);
+      const subscriptionCompletion = isSubscriptionBackgroundArgs(args)
+        ? reconcileSubscriptionCompletion(state.backgroundTask, state.subscriptions)
+        : logCompletion;
+      const completion = logCompletion === "error" || subscriptionCompletion === "error"
+        ? "error"
+        : logCompletion === "done" && subscriptionCompletion === "done"
+          ? "done"
+          : "running";
+      const done = completion === "done";
+      const failed = completion === "error";
       const now = Date.now();
       state.backgroundTask.status = done
         ? "done"
@@ -291,17 +336,17 @@ function followBackgroundLogs(
           : `正在执行：${label}`;
       state.output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${logs || "等待日志输出..."}`;
       if (!done && !failed && attempt + 1 < maxAttempts) {
-        followBackgroundLogs(log, label, args, attempt + 1);
+        followBackgroundLogs(log, label, args, operationId, attempt + 1);
       } else {
         backgroundLogTimer = 0;
         if (!done && !failed) {
           state.backgroundTask.status = "timeout";
           state.backgroundTask.updatedAt = Date.now();
-          state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
-          state.phase = "error";
-          state.notice = `${label} 仍在后台运行或未完成`;
+          state.backgroundTask.finishedAt = 0;
+          state.phase = "running";
+          state.notice = `${label} 仍在后台运行或等待对账`;
           state.output +=
-            "\n\n[warn] 日志跟踪已超时，请稍后刷新状态或查看完整日志。";
+            "\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。";
         }
       }
     },
@@ -397,9 +442,21 @@ async function refreshBlock(quiet = false): Promise<boolean> {
 }
 
 async function refreshSubs(quiet = false): Promise<boolean> {
-  const text = await runCli("sub list", "读取订阅", quiet);
-  if (quiet && markQuietFailure("读取订阅", text)) return false;
-  state.subscriptions = parseSubs(text, state.subscriptions);
+  const [listText, statusText] = await Promise.all([
+    runCli("sub list", "读取订阅列表", quiet),
+    runCli("sub status", "读取订阅状态", quiet),
+  ]);
+  const failed = [
+    execFailed(listText) ? "订阅列表" : "",
+    execFailed(statusText) ? "订阅状态" : "",
+  ].filter(Boolean);
+  if (failed.length) {
+    state.phase = "error";
+    state.notice = "订阅刷新不完整";
+    state.output = `读取${failed.join("和")}失败，旧数据已保留。\n\n${[listText, statusText].filter(execFailed).join("\n")}`;
+    return false;
+  }
+  state.subscriptions = parseSubs(listText, statusText, state.subscriptions);
   return true;
 }
 

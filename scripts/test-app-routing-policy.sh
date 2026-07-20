@@ -55,6 +55,14 @@ write_base_config() {
       {
         "domain_suffix": ["example.org"],
         "outbound": "direct"
+      },
+      {
+        "domain_suffix": ["local", "home.arpa", "lan"],
+        "outbound": "lan"
+      },
+      {
+        "domain_keyword": ["adservice", "analytics", "tracking", "tracker"],
+        "outbound": "ad-block"
       }
     ]
   }
@@ -81,6 +89,13 @@ assert_proxy_rule_and_order() {
               | select(.value.outbound == "direct" and ((.value.package_name // .value.domain_suffix // []) | length) > 0)
               | .key] | min) as $business
          | $guard < $proxy and $proxy < $business)
+    and (([.route.rules | to_entries[]
+            | select(.value == {"domain_suffix": ["local", "home.arpa", "lan"], "outbound": "lan"})
+            | .key]) as $lan
+         | ([.route.rules | to_entries[]
+              | select(.value == {"domain_keyword": ["adservice", "analytics", "tracking", "tracker"], "outbound": "ad-block"})
+              | .key]) as $ad
+         | ($lan | length) == 1 and ($ad | length) == 1 and $lan[0] < $ad[0])
   ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 }
 

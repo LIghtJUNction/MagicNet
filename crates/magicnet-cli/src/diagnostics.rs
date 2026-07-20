@@ -1,43 +1,59 @@
 use std::fs;
+use std::io::Read;
+use std::net::IpAddr;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::diagnostics_dns::dns_leak_check;
+use crate::diagnostics_routing::routing_policy_check;
 use crate::{clean_lines, command_text_timeout, mcp, pid_summary, App};
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
+    for (key, ok, detail) in health_items(app) {
+        print_check(key, &ok, detail);
+    }
+    Ok(())
+}
+
+fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     let singbox = pid_summary("sing-box");
-    print_check("Core", &running(&singbox), format!("sing-box={singbox}"));
     let mode = transparent_mode(app);
     let (tun_ok, tun_detail) = tun_check(app, &mode);
-    print_check("TUN", &tun_ok, tun_detail);
     let ecapture = app.moddir.join("bin/ecapture");
-    print_check(
-        "eCapture",
-        &ecapture.is_file(),
-        format!("binary={}", ecapture.display()),
-    );
     let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
-    print_check("DNS Leak", &dns_ok, dns_detail);
+    let (routing_ok, routing_detail) = routing_policy_check(app);
     let (api_ok, api_detail) = api_probe(&app.api);
-    print_check("Core API", &api_ok, api_detail);
-    print_check(
-        "Subscription",
-        &has_subscription(app),
-        "subscription config present".to_string(),
-    );
     let (_, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
-    print_check(
-        "MCP",
-        &mcp_pid.ne("stopped"),
-        format!("pid={mcp_pid}, url=http://{mcp_bind}:{mcp_port}/mcp"),
-    );
-    print_check(
-        "WebUI",
-        &app.moddir.join("webroot/index.html").exists(),
-        app.moddir.join("webroot").display().to_string(),
-    );
-    Ok(())
+    vec![
+        ("Core", running(&singbox), format!("sing-box={singbox}")),
+        ("TUN", tun_ok, tun_detail),
+        (
+            "eCapture",
+            ecapture.is_file(),
+            format!("binary={}", ecapture.display()),
+        ),
+        ("DNS Leak", dns_ok, dns_detail),
+        ("Routing Policy", routing_ok, routing_detail),
+        ("Core API", api_ok, api_detail),
+        (
+            "Subscription",
+            has_subscription(app),
+            "subscription config present".to_string(),
+        ),
+        (
+            "MCP",
+            mcp_pid.ne("stopped"),
+            format!("pid={mcp_pid}, url=http://{mcp_bind}:{mcp_port}/mcp"),
+        ),
+        (
+            "WebUI",
+            app.moddir.join("webroot/index.html").exists(),
+            app.moddir.join("webroot").display().to_string(),
+        ),
+    ]
 }
 
 pub(crate) fn topology(app: &App) -> Result<(), String> {
@@ -96,34 +112,284 @@ pub(crate) fn support(app: &App, args: &[String]) -> Result<(), String> {
     if args.first().map(String::as_str).unwrap_or_default() != "bundle" {
         return Err("Usage: cli support bundle".to_string());
     }
-    println!("MagicNet support bundle");
-    println!("module={}", app.moddir.display());
-    println!();
-    println!("[service]");
-    crate::service_status(app);
-    println!();
-    println!("[health]");
-    health(app)?;
-    println!();
-    println!("[subscriptions]");
-    for path in sensitive_paths(app) {
-        println!(
-            "{}={}",
-            path.display(),
-            if path.exists() {
-                "<configured>"
-            } else {
-                "<missing>"
-            }
-        );
-    }
-    println!();
-    println!("[routes]");
-    sysroute_snapshot();
-    println!();
-    println!("[recent logs]");
-    print_redacted_tail(app.log_dir.join("sing-box.log"));
+    print!("{}", support_bundle(app));
     Ok(())
+}
+
+fn support_bundle(app: &App) -> String {
+    let singbox = pid_summary("sing-box");
+    let mode = transparent_mode(app);
+    let mut output = String::from("MagicNet canonical support bundle\n");
+    append_support_section(
+        &mut output,
+        "subscription lifecycle",
+        &subscription_evidence(app),
+    );
+    append_support_section(
+        &mut output,
+        "service status",
+        &format!(
+            "module_enabled={}\ncore={}\nfswatch={}\ntransparent_mode={mode}",
+            !app.moddir.join("disable").exists(),
+            singbox,
+            pid_summary("fswatch")
+        ),
+    );
+    let health = health_items(app)
+        .into_iter()
+        .map(|(key, ok, detail)| format!("{} {key}: {detail}", if ok { "ok" } else { "warn" }))
+        .collect::<Vec<_>>()
+        .join("\n");
+    append_support_section(&mut output, "health", &health);
+    append_support_section(
+        &mut output,
+        "core process and listeners",
+        &format!(
+            "core_process={singbox}\n{}",
+            read_only_command("ss", &["-lntup"])
+        ),
+    );
+    append_support_section(
+        &mut output,
+        "tun routes and ip rules",
+        &[
+            read_only_command("ip", &["-o", "link", "show"]),
+            read_only_command("ip", &["-o", "addr", "show"]),
+            read_only_command("ip", &["rule", "show"]),
+            read_only_command("ip", &["route", "show", "table", "all"]),
+        ]
+        .join("\n"),
+    );
+    let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
+    let (api_ok, api_detail) = api_probe(&app.api);
+    let (mcp_enabled, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
+    append_support_section(
+        &mut output,
+        "dns api and mcp",
+        &format!(
+            "dns_ok={dns_ok} detail={dns_detail}\napi_ok={api_ok} detail={api_detail}\nmcp_enabled={mcp_enabled} bind={mcp_bind} port={mcp_port} pid={mcp_pid}"
+        ),
+    );
+    append_support_section(
+        &mut output,
+        "subscription refresh log counts",
+        &subscription_refresh_log_counts(app.log_dir.join("subscription-refresh.log")),
+    );
+    output
+}
+
+fn append_support_section(output: &mut String, title: &str, evidence: &str) {
+    output.push_str(&format!("[{title}]\n"));
+    if evidence.trim().is_empty() {
+        output.push_str("unavailable\n");
+        return;
+    }
+    for line in evidence.lines().take(100) {
+        output.push_str(&redact(line));
+        output.push('\n');
+    }
+}
+
+fn read_only_command(program: &str, args: &[&str]) -> String {
+    read_only_command_with_timeout(program, args, Duration::from_secs(3))
+}
+
+fn read_only_command_with_timeout(program: &str, args: &[&str], timeout: Duration) -> String {
+    let mut child = match Command::new(program)
+        .args(args)
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(err) => return format!("{program}=unavailable reason={err}"),
+    };
+
+    let stdout_reader = child.stdout.take().map(|stdout| {
+        thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = stdout.take(4096).read_to_end(&mut bytes);
+            bytes
+        })
+    });
+    let stderr_reader = child.stderr.take().map(|stderr| {
+        thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = stderr.take(4096).read_to_end(&mut bytes);
+            bytes
+        })
+    });
+
+    let started = Instant::now();
+    let command_error = loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                if stdout_reader
+                    .as_ref()
+                    .is_some_and(|reader| !reader.is_finished())
+                    || stderr_reader
+                        .as_ref()
+                        .is_some_and(|reader| !reader.is_finished())
+                {
+                    terminate_read_only_process_group(&mut child);
+                }
+                break None;
+            }
+            Ok(None) if started.elapsed() >= timeout => {
+                terminate_read_only_process_group(&mut child);
+                break Some(format!("{program}=timeout after {}ms", timeout.as_millis()));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(10)),
+            Err(err) => {
+                terminate_read_only_process_group(&mut child);
+                break Some(format!("{program}=unavailable reason={err}"));
+            }
+        }
+    };
+
+    let stdout = stdout_reader
+        .and_then(|reader| reader.join().ok())
+        .unwrap_or_default();
+    let stderr = stderr_reader
+        .and_then(|reader| reader.join().ok())
+        .unwrap_or_default();
+    if let Some(error) = command_error {
+        return error;
+    }
+
+    let mut text = String::from_utf8_lossy(&stdout).to_string();
+    if !stderr.is_empty() {
+        text.push_str(&String::from_utf8_lossy(&stderr));
+    }
+    text = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .take(4)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if text.chars().count() > 600 {
+        text = text.chars().take(600).collect();
+        text.push_str("\n[truncated]");
+    }
+    text
+}
+
+fn terminate_read_only_process_group(child: &mut Child) {
+    let process_group = -(child.id() as i32);
+    unsafe {
+        libc::kill(process_group, libc::SIGKILL);
+    }
+    let _ = child.wait();
+}
+
+fn subscription_evidence(app: &App) -> String {
+    const STATUS_KEYS: &[(&str, &str)] = &[
+        ("phase", "last_phase"),
+        ("result", "last_result"),
+        ("attempt_epoch", "last_attempt_epoch"),
+        ("success_epoch", "last_success_epoch"),
+        ("configured_count", "last_configured_count"),
+        ("source_count", "last_source_count"),
+        ("imported_count", "last_imported_count"),
+        ("skipped_count", "last_skipped_count"),
+        ("generation_id", "last_generation_id"),
+        ("reason", "last_reason"),
+    ];
+    let status = fs::read_to_string(app.moddir.join(".state/sing-box/subscription-status"))
+        .unwrap_or_default();
+    let mut lines = vec![
+        format!(
+            "configured_count={}",
+            clean_lines(app.moddir.join(".config/sing-box/subscription.url")).len()
+        ),
+        format!(
+            "update_owner={}",
+            process_owner_state(
+                &app.moddir
+                    .join(".state/sing-box/subscription-update.lock/owner"),
+                None,
+            )
+        ),
+    ];
+    for (source_key, output_key) in STATUS_KEYS {
+        let value = status
+            .lines()
+            .find_map(|line| line.split_once('=').filter(|(key, _)| key == source_key))
+            .map(|(_, value)| value.trim())
+            .unwrap_or("unknown");
+        lines.push(format!("{output_key}={value}"));
+    }
+    let cache_dir = app.moddir.join(".state/sing-box/subscription-cache");
+    let (cache_count, provenance_count) = fs::read_dir(cache_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .fold((0usize, 0usize), |(cache, provenance), entry| {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    (
+                        cache + usize::from(name.ends_with(".yaml")),
+                        provenance + usize::from(name.ends_with(".yaml.identity")),
+                    )
+                })
+        })
+        .unwrap_or_default();
+    lines.push(format!("cache_count={cache_count}"));
+    lines.push(format!("cache_provenance_count={provenance_count}"));
+    lines.push("cache_source=url_sha256_identity".to_string());
+    let interval = fs::read_to_string(
+        app.moddir
+            .join(".config/magicnet/subscription-refresh-hours"),
+    )
+    .ok()
+    .map(|value| value.trim().to_string())
+    .filter(|value| matches!(value.as_str(), "12" | "24" | "48" | "72"))
+    .unwrap_or_else(|| "off".to_string());
+    lines.push(format!("schedule_interval_hours={interval}"));
+    lines.push(format!(
+        "schedule_owner={}",
+        subscription_schedule_owner_state(app)
+    ));
+    lines.join("\n")
+}
+
+fn subscription_schedule_owner_state(app: &App) -> &'static str {
+    let state_dir = app.moddir.join(".state/watchdog");
+    let owner = state_dir.join("magicnet-subscription-refresh.owner");
+    let loop_file = state_dir.join("magicnet-subscription-refresh.loop.sh");
+    process_owner_state(&owner, Some(&loop_file))
+}
+
+fn process_owner_state(
+    owner: &std::path::Path,
+    exact_script: Option<&std::path::Path>,
+) -> &'static str {
+    let Ok(record) = fs::read_to_string(owner) else {
+        return "none";
+    };
+    let mut fields = record.trim().split(':');
+    let Some(pid) = fields.next().and_then(|value| value.parse::<u32>().ok()) else {
+        return "stale";
+    };
+    let Some(expected_start) = fields.next() else {
+        return "stale";
+    };
+    let live_start = fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        .and_then(|stat| stat.split_whitespace().nth(21).map(str::to_string));
+    if live_start.as_deref() != Some(expected_start) {
+        return "stale";
+    }
+    if let Some(script) = exact_script {
+        let cmdline = fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+        let argv = cmdline.split(|byte| *byte == 0).collect::<Vec<_>>();
+        if argv.get(1).copied() != Some(script.as_os_str().as_encoded_bytes()) {
+            return "stale";
+        }
+    }
+    "active"
 }
 
 fn print_check(key: &str, ok: &bool, detail: String) {
@@ -312,35 +578,56 @@ fn normalize_default(value: &str) -> &str {
     }
 }
 
-fn print_redacted_tail(path: PathBuf) {
-    println!("{}:", path.display());
+fn subscription_refresh_log_counts(path: PathBuf) -> String {
     let text = fs::read_to_string(path).unwrap_or_default();
-    for line in text
-        .lines()
-        .rev()
-        .take(40)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-    {
-        println!("{}", redact(line));
+    let mut events = 0usize;
+    let mut errors = 0usize;
+    for line in text.lines().rev().take(200) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        events += 1;
+        let lower = line.to_ascii_lowercase();
+        errors += usize::from(
+            lower.contains("error")
+                || lower.contains("failed")
+                || lower.contains("fatal")
+                || lower.contains("panic"),
+        );
     }
+    format!("subscription_refresh_event_count={events}\nsubscription_refresh_error_count={errors}")
 }
 
 pub(crate) fn redact(text: &str) -> String {
+    let mut redact_next = false;
     text.split_whitespace()
         .map(|part| {
-            if part.starts_with("http://") || part.starts_with("https://") {
-                if is_local_url(part) {
-                    part.to_string()
-                } else {
-                    "<redacted-url>".to_string()
-                }
-            } else if part.to_ascii_lowercase().contains("password")
-                || part.to_ascii_lowercase().contains("token")
-                || part.to_ascii_lowercase().contains("secret")
-            {
-                "<redacted-secret>".to_string()
+            let lower = part.to_ascii_lowercase();
+            if redact_next {
+                redact_next = false;
+                return "<redacted-value>".to_string();
+            }
+            if lower.contains("http://") || lower.contains("https://") {
+                "<redacted-url>".to_string()
+            } else if contains_sensitive_assignment(&lower) {
+                "<redacted-sensitive>".to_string()
+            } else if let Some(has_inline_value) = sensitive_key(part) {
+                redact_next = !has_inline_value;
+                "<redacted-sensitive>".to_string()
+            } else if looks_like_email(part) {
+                "<redacted-email>".to_string()
+            } else if looks_like_mac(part) {
+                "<redacted-mac>".to_string()
+            } else if looks_like_stable_interface_id(part) {
+                "<redacted-interface-id>".to_string()
+            } else if contains_non_loopback_ip(part) {
+                "<redacted-ip>".to_string()
+            } else if looks_like_hostname(part) {
+                "<redacted-host>".to_string()
+            } else if part.starts_with('/') || part.contains("=/") {
+                "<redacted-path>".to_string()
+            } else if looks_like_opaque_token(part) {
+                "<redacted-token>".to_string()
             } else {
                 part.to_string()
             }
@@ -349,14 +636,328 @@ pub(crate) fn redact(text: &str) -> String {
         .join(" ")
 }
 
-fn is_local_url(value: &str) -> bool {
-    let Some(host) = value
-        .trim_start_matches("http://")
-        .trim_start_matches("https://")
-        .split(['/', ':', '?', '#'])
+fn contains_sensitive_assignment(value: &str) -> bool {
+    [
+        "password=",
+        "password:",
+        "passwd=",
+        "passwd:",
+        "token=",
+        "token:",
+        "secret=",
+        "secret:",
+        "authorization=",
+        "authorization:",
+        "api_key=",
+        "api-key=",
+        "private_key=",
+        "private-key=",
+    ]
+    .iter()
+    .any(|needle| value.contains(needle))
+}
+
+fn sensitive_key(value: &str) -> Option<bool> {
+    const KEYS: &[&str] = &[
+        "url",
+        "query",
+        "path",
+        "candidate",
+        "selected",
+        "node",
+        "outbound",
+        "host",
+        "profile",
+        "secret",
+        "token",
+        "email",
+        "ip",
+        "password",
+        "passwd",
+        "authorization",
+        "android_id",
+        "device_id",
+        "device-id",
+        "serial",
+        "imei",
+        "api_key",
+        "api-key",
+    ];
+    let clean = value.trim_matches(|ch: char| matches!(ch, '(' | ')' | ',' | ';' | '"' | '\''));
+    let separator = clean.find(['=', ':']);
+    let key = separator
+        .map_or(clean, |index| &clean[..index])
+        .to_ascii_lowercase();
+    if KEYS
+        .iter()
+        .any(|sensitive| sensitive_key_matches(&key, sensitive))
+        || key.contains("节点")
+    {
+        Some(separator.is_some())
+    } else {
+        None
+    }
+}
+
+fn sensitive_key_matches(key: &str, sensitive: &str) -> bool {
+    key == sensitive
+        || key
+            .strip_suffix(sensitive)
+            .is_some_and(|prefix| prefix.ends_with('_') || prefix.ends_with('-'))
+}
+
+fn looks_like_opaque_token(value: &str) -> bool {
+    let clean = clean_network_token(value);
+    let candidate = clean.split_once('=').map_or(clean, |(_, value)| value);
+    candidate.len() >= 20
+        && candidate.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'-' | b'_'
+                        | b'.'
+                        | b'!'
+                        | b'@'
+                        | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'^'
+                        | b'&'
+                        | b'*'
+                        | b'+'
+                        | b'='
+                        | b'?'
+                )
+        })
+        && candidate.bytes().any(|byte| byte.is_ascii_alphabetic())
+        && candidate.bytes().any(|byte| byte.is_ascii_digit())
+}
+
+fn contains_non_loopback_ip(value: &str) -> bool {
+    if is_non_loopback_ip(value) {
+        return true;
+    }
+    value
+        .split(|ch: char| !(ch.is_ascii_hexdigit() || matches!(ch, '.' | ':' | '/' | '[' | ']')))
+        .filter(|part| !part.is_empty())
+        .any(is_non_loopback_ip)
+}
+
+fn clean_network_token(value: &str) -> &str {
+    value.trim_matches(|ch: char| matches!(ch, '(' | ')' | ',' | ';' | '"' | '\''))
+}
+
+fn is_non_loopback_ip(value: &str) -> bool {
+    let clean = clean_network_token(value);
+    let without_prefix = clean.split('/').next().unwrap_or(clean);
+    let host = if without_prefix.starts_with('[') {
+        without_prefix
+            .strip_prefix('[')
+            .and_then(|item| item.split(']').next())
+            .unwrap_or(without_prefix)
+    } else if without_prefix.matches(':').count() == 1 && without_prefix.contains('.') {
+        without_prefix.split(':').next().unwrap_or(without_prefix)
+    } else {
+        without_prefix
+    };
+    host.parse::<IpAddr>()
+        .map(|ip| !ip.is_loopback())
+        .unwrap_or(false)
+}
+
+fn looks_like_mac(value: &str) -> bool {
+    let clean = clean_network_token(value);
+    let parts = clean.split(':').collect::<Vec<_>>();
+    parts.len() == 6
+        && parts
+            .iter()
+            .all(|part| part.len() == 2 && part.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+fn looks_like_stable_interface_id(value: &str) -> bool {
+    let clean = clean_network_token(value)
+        .trim_matches(|ch: char| matches!(ch, '[' | ']' | ':'))
+        .split('@')
         .next()
-    else {
+        .unwrap_or_default();
+    let suffix_len = clean
+        .bytes()
+        .rev()
+        .take_while(u8::is_ascii_hexdigit)
+        .count();
+    if suffix_len < 12 || suffix_len == clean.len() {
+        return false;
+    }
+    let prefix = &clean[..clean.len() - suffix_len];
+    prefix.bytes().any(|byte| byte.is_ascii_alphabetic())
+        && prefix
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn looks_like_email(value: &str) -> bool {
+    let clean = clean_network_token(value);
+    let Some((local, host)) = clean.split_once('@') else {
         return false;
     };
-    matches!(host, "127.0.0.1" | "localhost" | "::1" | "[::1]")
+    !local.is_empty() && host.contains('.')
+}
+
+fn looks_like_hostname(value: &str) -> bool {
+    let clean = clean_network_token(value)
+        .trim_end_matches('.')
+        .trim_end_matches(':');
+    if clean.eq_ignore_ascii_case("localhost") || clean.parse::<IpAddr>().is_ok() {
+        return false;
+    }
+    clean.contains('.')
+        && !clean.contains('/')
+        && clean
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{read_only_command_with_timeout, redact, support_bundle};
+    use crate::App;
+    use std::fs;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn redact_removes_subscription_and_node_identifiers() {
+        let input = "url=https://sub.example.com/path?token=abc query=customer-id candidate=private-profile selected=Tokyo-Premium path=config/subscription.url outbound=private-out host=edge.example.com profile=paid secret=secret-value token=customer-token-1234567890 email=user@example.com ip=203.0.113.9 device_id=DEVICE-CANARY serial=SERIAL-CANARY https://bare.example.net/a?x=y BareToken0123456789Secret ReviewerBarePassword!2026 bare@example.net 198.51.100.7 节点-东京";
+        let output = redact(input);
+
+        for sensitive in [
+            "sub.example.com",
+            "/path",
+            "abc",
+            "secret-value",
+            "user@example.com",
+            "203.0.113.9",
+            "Tokyo-Premium",
+            "customer-id",
+            "private-profile",
+            "config/subscription.url",
+            "private-out",
+            "edge.example.com",
+            "paid",
+            "节点-东京",
+            "bare.example.net",
+            "BareToken0123456789Secret",
+            "bare@example.net",
+            "198.51.100.7",
+            "DEVICE-CANARY",
+            "SERIAL-CANARY",
+            "ReviewerBarePassword!2026",
+        ] {
+            assert!(!output.contains(sensitive), "leaked {sensitive}: {output}");
+        }
+    }
+
+    #[test]
+    fn redact_removes_stable_interface_ids_but_keeps_interface_state() {
+        let input = "2: enx001122aabbcc: <BROADCAST,UP> state UP type ether 3: br-deadbeefcafe1234: state DOWN type bridge 4: veth0123456789abcdef@if5: state UP type ether";
+        let output = redact(input);
+
+        for sensitive in [
+            "enx001122aabbcc",
+            "br-deadbeefcafe1234",
+            "veth0123456789abcdef",
+        ] {
+            assert!(!output.contains(sensitive), "leaked {sensitive}: {output}");
+        }
+        assert!(output.contains("state UP type ether"));
+        assert!(output.contains("state DOWN type bridge"));
+    }
+
+    #[test]
+    fn redact_keeps_safe_status_assignments_and_filters_unknown_entropy() {
+        let safe = "last_skipped_count=3 cache_provenance_count=2 cache_source=url_sha256_identity";
+        assert_eq!(redact(safe), safe);
+
+        let unknown = "mystery=UnknownHighEntropyToken1234567890";
+        assert!(!redact(unknown).contains("UnknownHighEntropyToken1234567890"));
+    }
+
+    #[test]
+    fn read_only_command_reports_explicit_timeout() {
+        let started = Instant::now();
+        let output = read_only_command_with_timeout(
+            "sh",
+            &["-c", "sleep 5 & wait"],
+            Duration::from_millis(50),
+        );
+
+        assert_eq!(output, "sh=timeout after 50ms");
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn read_only_command_closes_inherited_pipes_after_direct_child_exit() {
+        let started = Instant::now();
+        let output = read_only_command_with_timeout(
+            "sh",
+            &["-c", "sleep 5 & printf ready"],
+            Duration::from_millis(50),
+        );
+
+        assert_eq!(output, "ready");
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn support_bundle_has_unique_redacted_read_only_evidence_sections() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("magicnet-support-{nonce}"));
+        let app = App::for_test(root.clone());
+        fs::create_dir_all(root.join(".config/sing-box")).unwrap();
+        fs::create_dir_all(root.join(".state/sing-box")).unwrap();
+        fs::create_dir_all(root.join(".log")).unwrap();
+        fs::write(
+            root.join(".config/sing-box/subscription.url"),
+            "https://private.example.invalid/sub?token=BUNDLE-URL-CANARY\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".state/sing-box/subscription-status"),
+            "phase=activate\nresult=failed\nattempt_epoch=123\nsuccess_epoch=100\nconfigured_count=1\nsource_count=1\nimported_count=2\nskipped_count=0\ngeneration_id=123-456\nreason=token=BUNDLE-TOKEN-CANARY\n",
+        )
+        .unwrap();
+
+        let bundle = support_bundle(&app);
+        for heading in [
+            "[subscription lifecycle]",
+            "[service status]",
+            "[health]",
+            "[core process and listeners]",
+            "[tun routes and ip rules]",
+            "[dns api and mcp]",
+            "[subscription refresh log counts]",
+        ] {
+            assert_eq!(
+                bundle.matches(heading).count(),
+                1,
+                "duplicate or missing {heading}"
+            );
+        }
+        assert!(bundle.contains("last_phase=activate"));
+        assert!(bundle.contains("last_result=failed"));
+        for sensitive in [
+            "private.example.invalid",
+            "BUNDLE-URL-CANARY",
+            "BUNDLE-TOKEN-CANARY",
+            root.to_string_lossy().as_ref(),
+        ] {
+            assert!(
+                !bundle.contains(sensitive),
+                "support bundle leaked {sensitive}"
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
 }

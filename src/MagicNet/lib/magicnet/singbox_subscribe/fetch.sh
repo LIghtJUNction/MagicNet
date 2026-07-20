@@ -1,17 +1,22 @@
 magicnet_singbox_use_cached_subscription() {
     _source_file="$1"
-    _fallback_file="$2"
+    _cache_file="$2"
+    _identity_file="$3"
+    _expected_identity="$4"
     if [ "${MAGICNET_SUB_REQUIRE_FRESH:-0}" = "1" ]; then
         error "Subscription download failed and fresh subscription is required"
         return 1
     fi
     if [ -s "$_source_file" ]; then
-        warn "Using cached subscription: $_source_file"
+        warn "Using staged subscription source"
         return 0
     fi
-    if [ -n "$_fallback_file" ] && [ -s "$_fallback_file" ]; then
-        warn "Using legacy cached subscription: $_fallback_file"
-        cp "$_fallback_file" "$_source_file"
+    if [ -n "$_cache_file" ] && [ -s "$_cache_file" ] &&
+        [ -n "$_identity_file" ] && [ -s "$_identity_file" ] &&
+        [ -n "$_expected_identity" ] &&
+        [ "$(sed -n '1p' "$_identity_file" 2>/dev/null)" = "$_expected_identity" ]; then
+        warn "Using identity-verified subscription cache"
+        cp "$_cache_file" "$_source_file"
         return 0
     fi
     return 1
@@ -69,8 +74,10 @@ magicnet_singbox_normalize_subscription_file() {
 magicnet_singbox_fetch_one_subscription() {
     _url="$1"
     _source_file="$2"
-    _fallback_file="$3"
-    _label="$4"
+    _cache_file="$3"
+    _identity_file="$4"
+    _expected_identity="$5"
+    _label="$6"
     _url_file=$(magicnet_singbox_subscription_url_file)
     _download_file="${_source_file}.download"
 
@@ -129,13 +136,13 @@ magicnet_singbox_fetch_one_subscription() {
     fi
     if [ "$_fetched" -ne 1 ]; then
         [ -z "${MAGICNET_SUB_PROXY:-}" ] || error "Explicit subscription proxy failed; refusing alternate egress"
-        magicnet_singbox_use_cached_subscription "$_source_file" "$_fallback_file" || return 1
+        magicnet_singbox_use_cached_subscription "$_source_file" "$_cache_file" "$_identity_file" "$_expected_identity" || return 1
         return 0
     fi
 
     [ -s "$_download_file" ] || {
         error "Downloaded subscription ${_label} is empty"
-        magicnet_singbox_use_cached_subscription "$_source_file" "$_fallback_file" || return 1
+        magicnet_singbox_use_cached_subscription "$_source_file" "$_cache_file" "$_identity_file" "$_expected_identity" || return 1
         return 0
     }
 
@@ -146,8 +153,10 @@ magicnet_singbox_fetch_one_subscription() {
 
 magicnet_singbox_fetch_subscription() {
     _url_file=$(magicnet_singbox_subscription_url_file)
-    _source_dir=$(magicnet_singbox_subscription_source_dir)
-    _legacy_source_file=$(magicnet_singbox_subscription_source_file)
+    _generation_dir=${1%/*}
+    _source_dir="${_generation_dir}/sources"
+    _cache_dir=$(magicnet_singbox_subscription_cache_dir)
+    _cache_map="${_generation_dir}/cache-map.txt"
     _sources_file="$1"
 
     if [ ! -s "$_url_file" ]; then
@@ -155,8 +164,9 @@ magicnet_singbox_fetch_subscription() {
         return 1
     fi
 
-    mkdir -p "$_source_dir"
+    mkdir -p "$_source_dir" "$_cache_dir"
     : >"$_sources_file"
+    : >"$_cache_map"
 
     _index=0
     _ok=0
@@ -165,12 +175,25 @@ magicnet_singbox_fetch_subscription() {
         [ -n "$_url" ] || continue
 
         _index=$((_index + 1))
-        _source_file="${_source_dir}/subscription-${_index}.yaml"
-        _fallback_file=""
-        [ "$_index" -eq 1 ] && _fallback_file="$_legacy_source_file"
+        _fingerprint=
+        if _fingerprint=$(magicnet_singbox_subscription_fingerprint "$_url" 2>/dev/null) &&
+            printf '%s' "$_fingerprint" | grep -Eq '^[0-9a-fA-F]{64}$'; then
+            _fingerprint=$(printf '%s' "$_fingerprint" | tr 'A-F' 'a-f')
+            _source_file="${_source_dir}/${_fingerprint}.yaml"
+            _cache_file="${_cache_dir}/${_fingerprint}.yaml"
+            _identity_file="${_cache_file}.identity"
+        else
+            warn "Subscription #${_index}: persistent cache disabled because SHA-256 is unavailable"
+            _source_file="${_source_dir}/fresh-${_index}.yaml"
+            _cache_file=""
+            _identity_file=""
+        fi
 
-        if magicnet_singbox_fetch_one_subscription "$_url" "$_source_file" "$_fallback_file" "#${_index}"; then
+        if magicnet_singbox_fetch_one_subscription "$_url" "$_source_file" "$_cache_file" "$_identity_file" "$_fingerprint" "#${_index}"; then
             printf '%s\n' "$_source_file" >>"$_sources_file"
+            if [ -n "$_fingerprint" ]; then
+                printf '%s|%s|%s|%s\n' "${_source_file##*/}" "$_cache_file" "$_identity_file" "$_fingerprint" >>"$_cache_map"
+            fi
             _ok=$((_ok + 1))
         else
             warn "Skipping subscription #${_index}"
@@ -185,4 +208,8 @@ magicnet_singbox_fetch_subscription() {
         error "No subscription source is available"
         return 1
     fi
+    MAGICNET_SUB_CONFIGURED_COUNT="$_index"
+    MAGICNET_SUB_SOURCE_COUNT="$_ok"
+    MAGICNET_SUB_CACHE_MAP_FILE="$_cache_map"
+    export MAGICNET_SUB_CONFIGURED_COUNT MAGICNET_SUB_SOURCE_COUNT MAGICNET_SUB_CACHE_MAP_FILE
 }

@@ -1,9 +1,10 @@
-import { CLI, MODULE_DIR } from "@/constants";
-import { shellQuote } from "@/utils";
+import { CLI, MODULE_DIR } from "../constants.ts";
+import { shellQuote } from "../utils.ts";
 
 export type BackgroundTaskStatus = "idle" | "running" | "done" | "error" | "timeout";
 
 export type BackgroundTaskState = {
+  id: string;
   label: string;
   args: string;
   log: string;
@@ -11,9 +12,14 @@ export type BackgroundTaskState = {
   updatedAt: number;
   finishedAt: number;
   status: BackgroundTaskStatus;
+  subscriptionBaselineKnown: boolean;
+  subscriptionBaselineAttemptEpoch: number;
+  subscriptionBaselineGenerationId: string;
+  subscriptionBaselineResult: string;
 };
 
 export const backgroundTaskDefaults: BackgroundTaskState = {
+  id: "",
   label: "",
   args: "",
   log: "",
@@ -21,7 +27,24 @@ export const backgroundTaskDefaults: BackgroundTaskState = {
   updatedAt: 0,
   finishedAt: 0,
   status: "idle",
+  subscriptionBaselineKnown: false,
+  subscriptionBaselineAttemptEpoch: 0,
+  subscriptionBaselineGenerationId: "none",
+  subscriptionBaselineResult: "never",
 };
+
+let operationCounter = 0;
+
+export function createBackgroundOperationId(now = Date.now()): string {
+  operationCounter = (operationCounter + 1) % 0x100000;
+  const random = new Uint32Array(2);
+  globalThis.crypto?.getRandomValues?.(random);
+  if (random[0] === 0 && random[1] === 0) {
+    random[0] = Math.floor(Math.random() * 0xffffffff);
+    random[1] = Math.floor(Math.random() * 0xffffffff);
+  }
+  return `${now.toString(36)}-${operationCounter.toString(36)}-${random[0].toString(36)}${random[1].toString(36)}`;
+}
 
 export function formatBackgroundTime(value: number): string {
   if (!value) return "-";
@@ -37,28 +60,45 @@ export function formatBackgroundDuration(task: BackgroundTaskState): string {
   return minutes ? `${minutes}m ${rest}s` : `${rest}s`;
 }
 
-export function backgroundLogPath(label: string): string {
+export function backgroundLogPath(label: string, operationId: string): string {
   const logName = label
     .replace(/[^\p{L}\p{N}._-]+/gu, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase() || "task";
-  return `${MODULE_DIR}/.log/webui-${logName}.log`;
+  const safeId = operationId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 96);
+  return `${MODULE_DIR}/.log/webui-${logName}-${safeId || "invalid-operation"}.log`;
 }
 
-export function backgroundLaunchCommand(args: string, label: string, log: string): string {
+export function backgroundLaunchCommand(
+  args: string,
+  label: string,
+  log: string,
+  operationId: string,
+  cleanupCommand = "",
+): string {
+  const cleanup = cleanupCommand
+    ? `cleanup() { if ! { ${cleanupCommand}; }; then echo "[warning] background cleanup failed"; fi; }`
+    : "cleanup() { :; }";
   const body = [
-    `echo ${shellQuote(`[info] background task started: ${label}`)}`,
+    cleanup,
+    `trap 'cleanup' EXIT`,
+    `trap 'exit 129' HUP`,
+    `trap 'exit 130' INT`,
+    `trap 'exit 143' TERM`,
+    `echo ${shellQuote(`[launch] id=${operationId} label=${label}`)}`,
     `${CLI} ${args}`,
     `status=$?`,
-    `echo "[exit] status=$status"`,
+    `trap - EXIT HUP INT TERM`,
+    `cleanup`,
+    `echo "[exit] id=${operationId} status=$status"`,
     `exit $status`,
   ].join("; ");
-  return `mkdir -p ${shellQuote(`${MODULE_DIR}/.log`)}; : >${shellQuote(log)}; nohup sh -c ${shellQuote(body)} >${shellQuote(log)} 2>&1 </dev/null & echo ${shellQuote(`[info] background task accepted: ${label}`)}`;
+  return `mkdir -p ${shellQuote(`${MODULE_DIR}/.log`)}; : >${shellQuote(log)}; nohup sh -c ${shellQuote(body)} >${shellQuote(log)} 2>&1 </dev/null & echo ${shellQuote(`[accepted] id=${operationId}`)}`;
 }
 
-export function backgroundLogCommand(log: string, args: string): string {
+export function backgroundLogCommand(log: string, args: string, operationId = ""): string {
   const parts = [
-    `echo "[task log] ${log}"`,
+    `echo ${shellQuote(`[task log] id=${operationId || "unknown"} ${log}`)}`,
     `[ -f ${shellQuote(log)} ] && tail -n 80 ${shellQuote(log)} || echo "[info] waiting for task log..."`,
   ];
   if (/\bservice\s+(start|restart|ensure)\b/.test(args)) {
@@ -71,13 +111,59 @@ export function backgroundLogCommand(log: string, args: string): string {
   return parts.join("; ");
 }
 
-export function backgroundFailed(logs: string): boolean {
-  return logs.includes("[error]")
-    || logs.includes("╳[error]")
-    || /\[exit\] status=([1-9]\d*)/.test(logs)
-    || /\b(not executable|failed with status|No subscription source is available)\b/i.test(logs);
+export function backgroundFailed(logs: string, operationId: string): boolean {
+  return parseBackgroundCompletion(logs, operationId) === "error";
 }
 
-export function backgroundDone(logs: string): boolean {
-  return /\[exit\] status=0\b/.test(logs);
+export function backgroundDone(logs: string, operationId: string): boolean {
+  return parseBackgroundCompletion(logs, operationId) === "done";
+}
+
+export type BackgroundCompletion = "running" | "done" | "error";
+
+export function backgroundAccepted(output: string, operationId: string): boolean {
+  return output.split(/\r?\n/).some((line) => line.trim() === `[accepted] id=${operationId}`);
+}
+
+export function parseBackgroundCompletion(logs: string, operationId: string): BackgroundCompletion {
+  const launched = logs.split(/\r?\n/).some((line) =>
+    line.startsWith(`[launch] id=${operationId} `)
+  );
+  if (!launched) return "running";
+  const matches = Array.from(logs.matchAll(/^\[exit\] id=([^\s]+) status=(-?\d+)\s*$/gm))
+    .filter((match) => match[1] === operationId);
+  const last = matches.at(-1);
+  if (!last) return "running";
+  return Number(last[2]) === 0 ? "done" : "error";
+}
+
+export function reconcileSubscriptionCompletion(
+  task: Pick<BackgroundTaskState, "subscriptionBaselineKnown" | "subscriptionBaselineAttemptEpoch" | "subscriptionBaselineGenerationId" | "subscriptionBaselineResult">,
+  current: { lastAttemptEpoch: number; lastGenerationId: string; lastResult: string },
+): BackgroundCompletion {
+  if (!task.subscriptionBaselineKnown) return "running";
+  const attemptAdvanced = current.lastAttemptEpoch > task.subscriptionBaselineAttemptEpoch;
+  const generationChanged = current.lastGenerationId !== "none"
+    && current.lastGenerationId !== task.subscriptionBaselineGenerationId;
+  if (!attemptAdvanced && !generationChanged) return "running";
+  if (current.lastResult === "success") return "done";
+  if (["failed", "interrupted"].includes(current.lastResult)) return "error";
+  return "running";
+}
+
+export function isSubscriptionBackgroundArgs(args: string): boolean {
+  return /(?:^|\s)sub\s+(?:apply-file|update|update-all)\b/.test(args);
+}
+
+export function isActiveSubscriptionBackgroundTask(
+  task: Pick<BackgroundTaskState, "status" | "args">,
+): boolean {
+  return task.status === "running" && isSubscriptionBackgroundArgs(task.args);
+}
+
+export function subscriptionLifecycleRunning(
+  task: Pick<BackgroundTaskState, "status" | "args">,
+  deviceUpdateRunning: boolean,
+): boolean {
+  return isActiveSubscriptionBackgroundTask(task) || deviceUpdateRunning;
 }

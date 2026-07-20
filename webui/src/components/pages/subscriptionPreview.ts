@@ -25,6 +25,108 @@ export type SubscriptionSavePlan = {
   http: number;
 };
 
+export type PendingSubscriptionApply = {
+  snapshot: string;
+  revision: number;
+};
+
+export type SubscriptionEditorReconcileInput = {
+  draft: string;
+  lastLoadedSnapshot: string;
+  deviceSnapshot: string;
+  dirty: boolean;
+  loadedOnce: boolean;
+  editRevision: number;
+  pendingApply: PendingSubscriptionApply | null;
+};
+
+export type SubscriptionEditorReconcileResult = {
+  draft: string;
+  lastLoadedSnapshot: string;
+  dirty: boolean;
+  loadedOnce: boolean;
+  pendingApply: PendingSubscriptionApply | null;
+  syncedDraft: boolean;
+};
+
+export function reconcileSubscriptionEditor(
+  input: SubscriptionEditorReconcileInput,
+): SubscriptionEditorReconcileResult {
+  const acceptedPending = Boolean(
+    input.pendingApply && input.deviceSnapshot === input.pendingApply.snapshot,
+  );
+  const maySyncAccepted = Boolean(
+    acceptedPending
+      && input.pendingApply
+      && input.editRevision === input.pendingApply.revision
+      && input.draft === input.pendingApply.snapshot,
+  );
+  const syncOrdinary = !input.loadedOnce || (!input.dirty && !input.pendingApply);
+  const syncedDraft = maySyncAccepted || syncOrdinary;
+  const draft = syncedDraft ? input.deviceSnapshot : input.draft;
+  return {
+    draft,
+    lastLoadedSnapshot: input.deviceSnapshot,
+    dirty: draft !== input.deviceSnapshot,
+    loadedOnce: true,
+    pendingApply: acceptedPending ? null : input.pendingApply,
+    syncedDraft,
+  };
+}
+
+export type SubscriptionPayloadPlan = {
+  prepareCommand: string;
+  appendCommands: string[];
+  cleanupCommand: string;
+};
+
+export type SubscriptionApplyLaunch = {
+  args: string;
+  displayArgs: string;
+  preview: string;
+  cleanupCommand: string;
+};
+
+export function buildSubscriptionPayloadPlan(
+  encoded: string,
+  directory: string,
+  payload: string,
+  chunkSize = 1400,
+): SubscriptionPayloadPlan {
+  const chunks: string[] = [];
+  for (let offset = 0; offset < encoded.length; offset += chunkSize) {
+    chunks.push(encoded.slice(offset, offset + chunkSize));
+  }
+  const [first = "", ...rest] = chunks;
+  const quotedDirectory = quoteShell(directory);
+  const quotedPayload = quoteShell(payload);
+  const stalePattern = `${quotedDirectory}/magicnet-webui-*.b64`;
+  const prepareCommand = [
+    "umask 077",
+    `mkdir -p ${quotedDirectory}`,
+    `chmod 700 ${quotedDirectory}`,
+    `for stale in ${stalePattern}; do [ ! -f "$stale" ] || rm -f "$stale" || exit 1; done`,
+    `: > ${quotedPayload}`,
+    `chmod 600 ${quotedPayload}`,
+    `printf %s ${quoteShell(first)} >> ${quotedPayload}`,
+  ].join(" && ");
+  return {
+    prepareCommand,
+    appendCommands: rest.map((chunk) => `umask 077 && printf %s ${quoteShell(chunk)} >> ${quotedPayload}`),
+    cleanupCommand: `rm -f ${quotedPayload}`,
+  };
+}
+
+export function buildSubscriptionApplyLaunch(payload: string): SubscriptionApplyLaunch {
+  const quotedPayload = quoteShell(payload);
+  return {
+    args: `sub apply-file sing-box "$(cat ${quotedPayload})"`,
+    displayArgs: "sub apply-file sing-box [redacted-payload]",
+    preview: "su -M -c 'magicnet sub apply-file sing-box [redacted-payload]'",
+    cleanupCommand: `rm -f ${quotedPayload}`,
+  };
+}
+
 export function summarizeSubscriptionInput(text: string, limit = 5): SubscriptionInputSummary {
   const raw = subscriptionLines(text);
   const valid = raw.filter(isHttpUrl);
@@ -158,4 +260,8 @@ function isHttpUrl(line: string): boolean {
 
 function uniqueNonEmpty(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function quoteShell(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }

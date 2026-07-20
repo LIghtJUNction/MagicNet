@@ -13,12 +13,28 @@ STATE_DIR="$KAM_MODULE_ROOT/.local/state/sing-box-rules"
 
 mkdir -p "$RULE_DIR" "$STATE_DIR"
 declare -A SOURCE_REFS=()
+SOURCE_REF_RESULT=""
 
 branch_hash() {
     local repo="$1"
     local branch="$2"
+    local attempt
+    local output
+    local ref
 
-    git ls-remote "$repo" "refs/heads/$branch" | awk '{print $1}'
+    for attempt in 1 2 3; do
+        output=""
+        if output=$(git ls-remote "$repo" "refs/heads/$branch"); then
+            ref=$(printf '%s\n' "$output" | awk 'NR == 1 { print $1; exit }')
+            if [ -n "$ref" ]; then
+                printf '%s\n' "$ref"
+                return 0
+            fi
+        fi
+        [ "$attempt" -eq 3 ] || sleep 1
+    done
+
+    return 1
 }
 
 state_key() {
@@ -73,16 +89,17 @@ source_ref() {
     local key
     local ref
 
+    SOURCE_REF_RESULT=""
     key=$(state_key "${repo}|${branch}")
     if [ -n "${SOURCE_REFS[$key]:-}" ]; then
-        printf '%s\n' "${SOURCE_REFS[$key]}"
+        SOURCE_REF_RESULT="${SOURCE_REFS[$key]}"
         return 0
     fi
 
     ref=$(branch_hash "$repo" "$branch")
     [ -n "$ref" ] || return 1
     SOURCE_REFS[$key]="$ref"
-    printf '%s\n' "$ref"
+    SOURCE_REF_RESULT="$ref"
 }
 
 rule_files() {
@@ -161,10 +178,11 @@ main() {
         source=${source#*|}
         branch=${source%%|*}
         source_path=${source#*|}
-        ref=$(source_ref "$repo" "$branch") || {
+        source_ref "$repo" "$branch" || {
             log_error "Failed to resolve $repo $branch hash"
             return 1
         }
+        ref="$SOURCE_REF_RESULT"
         update_rule "$repo" "$branch" "$ref" "$source_path" "$file" || return 1
     done < <(rule_files)
 

@@ -29,6 +29,7 @@ pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_backup_export","description":"Export MagicNet configuration backup as base64. Password is optional and may be empty.","inputSchema":{"type":"object","properties":{"password":{"type":"string"}}}},
 {"name":"magicnet_backup_restore_base64","description":"Restore MagicNet configuration backup from base64. Password may be '-' for empty.","inputSchema":{"type":"object","properties":{"password":{"type":"string"},"content_base64":{"type":"string"}},"required":["content_base64"]}},
 {"name":"magicnet_pingtest","description":"Run MagicNet domestic and global connectivity checks","inputSchema":{"type":"object","properties":{}}},
+{"name":"magicnet_speedtest","description":"Run direct and proxy throughput tests. Downloads at most 10 MiB total; use intentionally to avoid unexpected data consumption.","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_topology","description":"Show Android network interfaces, routes, forwarding and MagicNet topology","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_sysroute_snapshot","description":"Show Android route and rule snapshot.","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_ecapture_status","description":"Show bundled eCapture binary status and kernel prerequisites.","inputSchema":{"type":"object","properties":{}}},
@@ -61,3 +62,62 @@ pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_dir_make","description":"Create a directory under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}},
 {"name":"magicnet_webui_build","description":"Run MagicNet WebUI build hook to rebuild webroot after hot-updating frontend files","inputSchema":{"type":"object","properties":{}}}
 ]}"#;
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{json, Value};
+
+    use super::TOOLS_JSON;
+
+    fn speedtest_tool(document: &Value) -> &Value {
+        document
+            .get("tools")
+            .and_then(Value::as_array)
+            .and_then(|tools| {
+                tools.iter().find(|tool| {
+                    tool.get("name").and_then(Value::as_str) == Some("magicnet_speedtest")
+                })
+            })
+            .expect("speedtest tool must exist")
+    }
+
+    #[test]
+    fn tools_json_is_valid_json() {
+        assert!(serde_json::from_str::<Value>(TOOLS_JSON).is_ok());
+    }
+
+    #[test]
+    fn speedtest_tool_is_registered_once() {
+        let document: Value = serde_json::from_str(TOOLS_JSON).expect("TOOLS_JSON must be valid");
+        let count = document
+            .get("tools")
+            .and_then(Value::as_array)
+            .expect("tools must be an array")
+            .iter()
+            .filter(|tool| tool.get("name").and_then(Value::as_str) == Some("magicnet_speedtest"))
+            .count();
+
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn speedtest_tool_has_empty_object_schema() {
+        let document: Value = serde_json::from_str(TOOLS_JSON).expect("TOOLS_JSON must be valid");
+
+        assert_eq!(
+            speedtest_tool(&document).get("inputSchema"),
+            Some(&json!({"type":"object","properties":{}}))
+        );
+    }
+
+    #[test]
+    fn speedtest_tool_description_discloses_ten_mib_download_budget() {
+        let document: Value = serde_json::from_str(TOOLS_JSON).expect("TOOLS_JSON must be valid");
+        let description = speedtest_tool(&document)
+            .get("description")
+            .and_then(Value::as_str)
+            .expect("speedtest description must be a string");
+
+        assert!(description.contains("10 MiB"));
+    }
+}

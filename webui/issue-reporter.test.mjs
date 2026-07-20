@@ -1,0 +1,106 @@
+import assert from "node:assert/strict";
+import { buildIssueBody, buildIssueUrl, classifyOperationCommand, sanitizeDiagnosticText } from "./src/composables/issueDrafts.ts";
+
+const canaries = [
+  "https://node.example.invalid/private/path?token=URL-CANARY",
+  "TOKEN-CANARY",
+  "person@example.invalid",
+  "192.0.2.44",
+  "/data/adb/modules/MagicNet/private.conf",
+  "NODE-CANARY",
+];
+const parts = {
+  moduleProp: `version=v-test\nupdateJson=${canaries[0]}`,
+  device: `model=test\nemail=${canaries[2]}\nip=${canaries[3]}\npath=${canaries[4]}`,
+  support: `token=${canaries[1]}\nnode=${canaries[5]}\n${"safe event\n".repeat(800)}`,
+  operation: {
+    phase: "error",
+    lastCommand: `magicnet sub apply-file sing-box ${canaries[0]}`,
+    backgroundLabel: "refresh",
+    backgroundArgs: `node=${canaries[5]}`,
+    backgroundStatus: "timeout",
+  },
+};
+
+const body = buildIssueBody(parts);
+assert.equal(body, buildIssueBody(parts), "canonical body must be deterministic");
+assert.ok(body.length <= 5200, "canonical body must fit the URL budget");
+assert.match(body, /## Module/);
+assert.match(body, /## Device/);
+assert.match(body, /## Support Bundle/);
+assert.match(body, /## UI Operation/);
+assert.doesNotMatch(body, /Service Status|## Health|## MCP|Network Probe/);
+for (const canary of canaries) assert.equal(body.includes(canary), false, `leaked ${canary}`);
+
+const url = buildIssueUrl("https://github.com/example/repo", "canary report", body);
+const parsed = new URL(url);
+assert.equal(parsed.searchParams.get("body"), body, "GitHub URL must carry the canonical clipboard body");
+for (const canary of canaries) assert.equal(url.includes(encodeURIComponent(canary)), false, `URL leaked ${canary}`);
+
+const sanitized = sanitizeDiagnosticText(canaries.join("\n"));
+for (const canary of canaries) assert.equal(sanitized.includes(canary), false, `sanitizer leaked ${canary}`);
+
+const reviewerBarePassword = "ReviewerBarePassword!2026";
+const sensitiveCommands = [
+  `su -M -c '/data/adb/modules/MagicNet/cli backup create ${reviewerBarePassword}'`,
+  `cli backup restore-file ${reviewerBarePassword} /sdcard/Download/device-serial-123.backup`,
+  `cli setup https://private.example.invalid/sub?token=token-canary`,
+  `cli sub set sing-box https://private.example.invalid/sub?secret=secret-canary`,
+  `cli mcp start --token device-id-canary`,
+];
+for (const command of sensitiveCommands) {
+  const classified = classifyOperationCommand(command);
+  assert.match(classified, /^command=(?:backup\.(?:create|restore-file)|setup|sub\.set|mcp\.start) arguments=filtered$/);
+  for (const secret of [reviewerBarePassword, "device-serial-123", "private.example.invalid", "token-canary", "secret-canary", "device-id-canary"]) {
+    assert.equal(classified.includes(secret), false, `classified command leaked ${secret}`);
+  }
+}
+const passwordBody = buildIssueBody({
+  ...parts,
+  operation: { ...parts.operation, lastCommand: sensitiveCommands[0], backgroundArgs: sensitiveCommands[1] },
+});
+const passwordUrl = buildIssueUrl("https://github.com/example/repo", "password regression", passwordBody);
+assert.match(passwordBody, /command=backup\.create arguments=filtered/);
+assert.match(passwordBody, /command=backup\.restore-file arguments=filtered/);
+for (const secret of [reviewerBarePassword, "device-serial-123"]) {
+  assert.equal(passwordBody.includes(secret), false, `canonical body leaked ${secret}`);
+  assert.equal(decodeURIComponent(passwordUrl).includes(secret), false, `GitHub URL leaked ${secret}`);
+}
+
+const stableNetworkCanaries = [
+  "enx001122aabbcc",
+  "br-deadbeefcafe1234",
+  "veth0123456789abcdef",
+];
+const deviceCanaries = {
+  device_id: "DEVICE-ID-CANARY",
+  serial: "SERIAL-CANARY",
+  imei: "IMEI-CANARY",
+  android_id: "ANDROID-ID-CANARY",
+};
+const networkBody = buildIssueBody({
+  ...parts,
+  device: Object.entries(deviceCanaries).map(([key, value]) => `${key}=${value}`).join("\n"),
+  support: [
+    `2: ${stableNetworkCanaries[0]}: <BROADCAST,UP> state UP type ether`,
+    `3: ${stableNetworkCanaries[1]}: state DOWN type bridge`,
+    `4: ${stableNetworkCanaries[2]}@if5: state UP type ether`,
+    "last_skipped_count=3 cache_provenance_count=2 cache_source=url_sha256_identity",
+  ].join("\n"),
+});
+const networkUrl = buildIssueUrl("https://github.com/example/repo", "network identifier regression", networkBody);
+for (const sensitive of [...stableNetworkCanaries, ...Object.values(deviceCanaries)]) {
+  assert.equal(networkBody.includes(sensitive), false, `canonical body leaked ${sensitive}`);
+  assert.equal(decodeURIComponent(networkUrl).includes(sensitive), false, `GitHub URL leaked ${sensitive}`);
+}
+assert.match(networkBody, /state UP type ether/);
+assert.match(networkBody, /state DOWN type bridge/);
+assert.match(networkBody, /last_skipped_count=3 cache_provenance_count=2 cache_source=url_sha256_identity/);
+
+const deviceKeyInput = Object.entries(deviceCanaries).map(([key, value]) => `${key}: ${value}`).join("\n");
+const sanitizedDeviceKeys = sanitizeDiagnosticText(deviceKeyInput);
+for (const sensitive of Object.values(deviceCanaries)) {
+  assert.equal(sanitizedDeviceKeys.includes(sensitive), false, `device-key sanitizer leaked ${sensitive}`);
+}
+
+console.log("issue reporter tests passed");

@@ -98,6 +98,14 @@ cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
         "action": "sniff"
       },
       {
+        "domain_suffix": ["local", "home.arpa", "lan"],
+        "outbound": "lan"
+      },
+      {
+        "domain_keyword": ["adservice", "analytics", "tracking", "tracker"],
+        "outbound": "ad-block"
+      },
+      {
         "rule_set": "hagezi-anti-piracy",
         "outbound": "ad-block"
       }
@@ -140,6 +148,13 @@ STATIC_LINE=$(grep -n '"rule_set": "hagezi-anti-piracy"' "$CONFIG" | cut -d: -f1
 jq -e '
   any(.route.rules[];
     .outbound == "ad-allow" and ((.domain_suffix // []) | index("forum.mobilism.org")))
+  and (([.route.rules | to_entries[]
+          | select(.value == {"domain_suffix": ["local", "home.arpa", "lan"], "outbound": "lan"})
+          | .key]) as $lan
+       | ([.route.rules | to_entries[]
+            | select(.value == {"domain_keyword": ["adservice", "analytics", "tracking", "tracker"], "outbound": "ad-block"})
+            | .key]) as $ad
+       | ($lan | length) == 1 and ($ad | length) == 1 and $lan[0] < $ad[0])
 ' "$CONFIG" >/dev/null
 
 : >"$MODDIR/.config/magicnet/block-allow-rules.list"

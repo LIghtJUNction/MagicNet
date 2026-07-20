@@ -146,6 +146,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
             ],
         ),
         "magicnet_pingtest" => run_cli(server, &["pingtest"]),
+        "magicnet_speedtest" => run_cli(server, &["speedtest"]),
         "magicnet_topology" => run_cli(server, &["topology"]),
         "magicnet_sysroute_snapshot" => run_cli(server, &["sysroute", "snapshot"]),
         "magicnet_ecapture_status" => run_cli(server, &["ecapture", "status"]),
@@ -454,4 +455,38 @@ fn rpc_error(id: &Value, code: i32, message: &str) -> String {
 
 fn text_content(text: &str) -> Value {
     json!({"content":[{"type":"text","text":text}]})
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use serde_json::{json, Value};
+
+    use super::{handle_jsonrpc, Server};
+
+    #[test]
+    fn speedtest_tool_call_runs_only_speedtest_cli_argv() {
+        let server = Server {
+            moddir: PathBuf::from("/tmp"),
+            cli: PathBuf::from("/bin/echo"),
+            secret: String::new(),
+        };
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "magicnet_speedtest", "arguments": {}}
+        })
+        .to_string();
+        let response: Value = serde_json::from_str(&handle_jsonrpc(&payload, &server))
+            .expect("RPC response must be valid JSON");
+
+        assert_eq!(
+            response
+                .pointer("/result/content/0/text")
+                .and_then(Value::as_str),
+            Some("speedtest\n\nrc=0")
+        );
+    }
 }

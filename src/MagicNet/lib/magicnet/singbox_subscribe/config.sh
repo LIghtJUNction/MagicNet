@@ -1,3 +1,12 @@
+magicnet_singbox_emitted_node_port_valid() {
+    _emitted_port=$(printf '%s' "$1" |
+        sed -n 's/.*"server_port":\([0-9][0-9]*\)[,}].*/\1/p')
+    case "$_emitted_port" in
+    '' | 0 | 0* | *[!0-9]*) return 1 ;;
+    esac
+    [ "$_emitted_port" -le 65535 ] 2>/dev/null
+}
+
 magicnet_singbox_build_outbounds_file() {
     _nodes_dir="$1"
     _out_file="$2"
@@ -6,7 +15,6 @@ magicnet_singbox_build_outbounds_file() {
     _imported=0
     _skipped=0
 
-    _first_tag=""
     : >"$_tags_file"
     printf '[' >"${_out_file}.nodes"
     for _node_file in "$_nodes_dir"/node-*.yaml "$_nodes_dir"/node-*.link; do
@@ -15,16 +23,17 @@ magicnet_singbox_build_outbounds_file() {
         *.link) _json=$(magicnet_singbox_emit_share_link_json "$_node_file" 2>/dev/null) ;;
         *) _json=$(magicnet_singbox_emit_node_json "$_node_file" 2>/dev/null) ;;
         esac
-        if [ -n "$_json" ]; then
+        if [ -n "$_json" ] && magicnet_singbox_emitted_node_port_valid "$_json"; then
             _tag=$(printf '%s' "$_json" | sed -n 's/.*"tag":"\([^"]*\)".*/\1/p')
-            if magicnet_singbox_is_info_tag "$_tag"; then
+            if [ -z "$_tag" ] || magicnet_singbox_tag_is_reserved "$_tag" ||
+                grep -F -x "$_tag" "$_tags_file" >/dev/null 2>&1 ||
+                magicnet_singbox_is_info_tag "$_tag"; then
                 _skipped=$((_skipped + 1))
                 continue
             fi
             [ "$_first" -eq 1 ] || printf ',' >>"${_out_file}.nodes"
             printf '%s' "$_json" >>"${_out_file}.nodes"
             printf '%s\n' "$_tag" >>"$_tags_file"
-            [ -n "$_first_tag" ] || _first_tag="$_tag"
             _first=0
             _imported=$((_imported + 1))
         else
@@ -38,11 +47,9 @@ magicnet_singbox_build_outbounds_file() {
         return 0
     fi
 
-    _first_tag=$(magicnet_singbox_pick_default_proxy_tag "$_tags_file")
-
     {
         printf '  "outbounds": [\n'
-        magicnet_singbox_emit_selector_block "$_tags_file" "$_first_tag"
+        magicnet_singbox_emit_selector_block "$_tags_file"
         _nodes=$(sed 's/^\[//; s/\]$//' "${_out_file}.nodes")
         if [ -n "$_nodes" ]; then
             printf ',\n    %s' "$_nodes"
@@ -64,6 +71,39 @@ magicnet_singbox_build_outbounds_file_with_jq() {
     _tags_json="${_out_file}.tags.json"
     jq -R -s 'split("\n") | map(select(length > 0))' "$_tags_file" >"$_tags_json" || return 1
     jq -n -r --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" '
+      def normalize_tag:
+        if type == "string"
+        then gsub("[\\r\\n\\t]"; " ") | gsub("[[:cntrl:]]"; "")
+        else ""
+        end;
+      def reserved_tag:
+        . as $tag
+        | [
+            "proxy-auto", "proxy", "select", "lan", "ad-block", "ad-allow", "cn-direct",
+            "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
+            "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
+            "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
+            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
+            "final", "direct", "block", "warp"
+          ]
+        | index($tag) != null;
+      def valid_proxy_node:
+        (.tag | type == "string" and length > 0 and (reserved_tag | not))
+          and (.server | type == "string" and length > 0)
+          and (.server_port
+            | type == "number" and . == floor and . >= 1 and . <= 65535)
+          and (if .type == "shadowsocks" then
+              (.method | type == "string" and length > 0)
+                and (.password | type == "string" and length > 0)
+            elif .type == "vmess" or .type == "vless" then
+              (.uuid | type == "string" and length > 0)
+            elif .type == "trojan" or .type == "hysteria2" or .type == "anytls" then
+              (.password | type == "string" and length > 0)
+            elif .type == "tuic" then
+              (.uuid | type == "string" and length > 0)
+                and (.password | type == "string" and length > 0)
+            else false
+            end);
       def with_base($outs; $fallback):
         reduce ([$fallback] + $outs + ["direct", "block"])[] as $item
           ([]; if ($item == "" or index($item)) then . else . + [$item] end);
@@ -74,61 +114,72 @@ magicnet_singbox_build_outbounds_file_with_jq() {
       (reduce ([$fallback] + $outs)[] as $item
         ([]; if ($item == "" or index($item)) then . else . + [$item] end)) as $items
       | {"type": "selector", "tag": $tag, "outbounds": $items, "default": $fallback};
+    def urltest($tag; $url; $interval; $tags):
+      {"type": "urltest", "tag": $tag, "outbounds": $tags,
+       "url": $url, "interval": $interval, "tolerance": 30, "idle_timeout": "10m",
+       "interrupt_exist_connections": false};
+    def proxy_selector($tags):
+      if ($tags | length) > 0
+        then {"type": "selector", "tag": "proxy",
+              "outbounds": (["proxy-auto"] + $tags + ["direct", "block"]),
+              "default": "proxy-auto"}
+        else {"type": "selector", "tag": "proxy", "outbounds": ["block"], "default": "block"}
+        end;
     def mainland_node_tag:
       test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
     def ai_proxy_selector($tags):
-      ([$tags[]? | select(mainland_node_tag | not)]) as $items
-      | if ($items | length) > 0
-        then {"type": "selector", "tag": "ai-proxy", "outbounds": $items, "default": $items[0]}
+      if ($tags | length) > 0
+        then {"type": "selector", "tag": "ai-proxy", "outbounds": $tags, "default": $tags[0]}
         else {"type": "selector", "tag": "ai-proxy", "outbounds": ["block"], "default": "block"}
         end;
-    def pinned_ai_selector($tag):
-      {"type": "selector", "tag": $tag, "outbounds": ["block", "ai-proxy"], "default": "block"};
-    def proxy_tag_score($tag):
-      if ($tag | test("免费|Free|free|公益|试用|下载专用|剩余|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) then 0
-      elif ($tag | test("IEPL|IPLC|专线|S[0-9]+|倍率|x1|x2|香港|日本|新加坡|美国|台湾|韩国")) then 2
-      else 1
-      end;
-    def preferred_proxy_tag($tags):
-      (([ $tags[]? | select(proxy_tag_score(.) == 2) ][0])
-       // ([ $tags[]? | select(proxy_tag_score(.) == 1) ][0])
-       // ($tags[0] // "direct"));
+    def ai_urltest($tag; $url; $tags):
+      urltest(($tag + "-auto"); $url; "10m"; $tags);
+    def pinned_ai_selector($tag; $tags):
+      {"type": "selector", "tag": $tag,
+       "outbounds": (if ($tags | length) > 0 then ["block", ($tag + "-auto")] else ["block"] end),
+       "default": "block"};
+    def ai_service_outbounds($tags):
+      [
+        {tag: "ai-chatgpt", url: "https://chatgpt.com/"},
+        {tag: "ai-gemini", url: "https://gemini.google.com/"},
+        {tag: "ai-grok", url: "https://grok.com/"},
+        {tag: "ai-claude", url: "https://claude.ai/"}
+      ]
+      | map(. as $service
+          | if ($tags | length) > 0
+            then [ai_urltest($service.tag; $service.url; $tags), pinned_ai_selector($service.tag; $tags)]
+            else [pinned_ai_selector($service.tag; $tags)]
+            end)
+      | add;
       ($nodes[0] // []
+        | map(.tag = ((.tag // "") | normalize_tag))
         | map(select(
-            ((.server // "") != "")
-            and ((.server_port // 0) != 0)
+            valid_proxy_node
             and (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not)
-            and (
-              (.type == "shadowsocks" and ((.method // "") != "") and ((.password // "") != ""))
-              or (.type == "vmess" and ((.uuid // "") != ""))
-              or (.type == "vless" and ((.uuid // "") != ""))
-              or (.type == "trojan" and ((.password // "") != ""))
-              or (.type == "hysteria2" and ((.password // "") != ""))
-              or (.type == "anytls" and ((.password // "") != ""))
-              or (.type == "tuic" and ((.uuid // "") != "") and ((.password // "") != ""))
-            )
           ))
+        | reduce .[] as $node
+            ([]; if (map(.tag) | index($node.tag)) != null then . else . + [$node] end)
       ) as $nodes
-      | ([ $nodes[]? | .tag // empty ] | map(select(length > 0))) as $tags
-      | [
-          selector("proxy"; $tags; preferred_proxy_tag($tags)),
+      | ([ $nodes[] | .tag ]) as $tags
+      | ([ $tags[]? | select(mainland_node_tag | not) ]) as $ai_tags
+      | (if ($tags | length) > 0
+          then [urltest("proxy-auto"; "https://www.gstatic.com/generate_204"; "3m"; $tags)]
+          else []
+        end) + [
+          proxy_selector($tags),
           selector("select"; ["proxy", "direct"]; "proxy"),
           selector("lan"; ["direct"]; "direct"),
           selector("ad-block"; ["block", "direct", "proxy"]; "block"),
           selector_exact("ad-allow"; ["final", "direct", "proxy"]; "final"),
-          selector("cn-direct"; ["direct"]; "direct"),
+          selector("cn-direct"; ["direct", "proxy"]; "direct"),
           selector("apple-cn"; ["direct", "proxy"]; "direct"),
           selector("microsoft-cn"; ["direct", "proxy"]; "direct"),
-          selector("google-cn"; ["proxy", "direct"]; "proxy"),
           selector("icloud"; ["direct", "proxy"]; "direct"),
           selector("bing"; ["proxy", "direct"]; "proxy"),
           selector("dns-guard"; ["proxy", "block", "direct"]; "proxy"),
           selector("network-test"; ["proxy", "direct"]; "proxy"),
-          ai_proxy_selector($tags),
-          pinned_ai_selector("ai-chatgpt"),
-          pinned_ai_selector("ai-gemini"),
-          pinned_ai_selector("ai-grok"),
-          pinned_ai_selector("ai-claude"),
+          ai_proxy_selector($ai_tags)
+        ] + ai_service_outbounds($ai_tags) + [
           selector("proxy-rule"; ["proxy", "direct"]; "proxy"),
           selector("dev-proxy"; ["proxy", "direct"]; "proxy"),
           selector("social-proxy"; ["proxy", "direct"]; "proxy"),
@@ -149,21 +200,47 @@ magicnet_singbox_count_valid_outbounds_nodes() {
     _nodes_json="$1"
     command -v jq >/dev/null 2>&1 || return 1
     jq -n -r --slurpfile nodes "$_nodes_json" '
+      def normalize_tag:
+        if type == "string"
+        then gsub("[\\r\\n\\t]"; " ") | gsub("[[:cntrl:]]"; "")
+        else ""
+        end;
+      def reserved_tag:
+        . as $tag
+        | [
+            "proxy-auto", "proxy", "select", "lan", "ad-block", "ad-allow", "cn-direct",
+            "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
+            "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
+            "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
+            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
+            "final", "direct", "block", "warp"
+          ]
+        | index($tag) != null;
+      def valid_proxy_node:
+        (.tag | type == "string" and length > 0 and (reserved_tag | not))
+          and (.server | type == "string" and length > 0)
+          and (.server_port
+            | type == "number" and . == floor and . >= 1 and . <= 65535)
+          and (if .type == "shadowsocks" then
+              (.method | type == "string" and length > 0)
+                and (.password | type == "string" and length > 0)
+            elif .type == "vmess" or .type == "vless" then
+              (.uuid | type == "string" and length > 0)
+            elif .type == "trojan" or .type == "hysteria2" or .type == "anytls" then
+              (.password | type == "string" and length > 0)
+            elif .type == "tuic" then
+              (.uuid | type == "string" and length > 0)
+                and (.password | type == "string" and length > 0)
+            else false
+            end);
       ($nodes[0] // []
+        | map(.tag = ((.tag // "") | normalize_tag))
         | map(select(
-            ((.server // "") != "")
-            and ((.server_port // 0) != 0)
+            valid_proxy_node
             and (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not)
-            and (
-              (.type == "shadowsocks" and ((.method // "") != "") and ((.password // "") != ""))
-              or (.type == "vmess" and ((.uuid // "") != ""))
-              or (.type == "vless" and ((.uuid // "") != ""))
-              or (.type == "trojan" and ((.password // "") != ""))
-              or (.type == "hysteria2" and ((.password // "") != ""))
-              or (.type == "anytls" and ((.password // "") != ""))
-              or (.type == "tuic" and ((.uuid // "") != "") and ((.password // "") != ""))
-            )
           ))
+        | reduce .[] as $node
+            ([]; if (map(.tag) | index($node.tag)) != null then . else . + [$node] end)
         | length
       ) // 0
     '
@@ -171,56 +248,34 @@ magicnet_singbox_count_valid_outbounds_nodes() {
 
 magicnet_singbox_emit_selector_block() {
     _tags_file="$1"
-    _first_tag="$2"
-    magicnet_emit_selector_json "proxy" "$(cat "$_tags_file")" "$_first_tag"
+    _proxy_tags=$(awk 'NF && !seen[$0]++' "$_tags_file")
+    if [ -n "$_proxy_tags" ]; then
+        magicnet_singbox_emit_urltest \
+            "proxy-auto" "https://www.gstatic.com/generate_204" "3m" "$_proxy_tags"
+        printf ',\n'
+        magicnet_emit_selector_json_exact "proxy" \
+            "$(printf '%s\n%s\n%s\n%s\n' "proxy-auto" "$_proxy_tags" "direct" "block")" \
+            "proxy-auto"
+    else
+        magicnet_emit_selector_json_exact "proxy" "block" "block"
+    fi
     printf ',\n'
     magicnet_emit_selector_json "select" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     magicnet_singbox_emit_static_selectors
-    unset _tags_file _first_tag
-}
-
-magicnet_singbox_pick_default_proxy_tag() {
-    _tags_file="$1"
-    awk '
-        NF {
-            tag = $0
-            if (first == "") {
-                first = tag
-            }
-            if (tag ~ /免费|Free|free|公益|试用|下载专用|剩余|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅/) {
-                next
-            }
-            if (tag ~ /IEPL|IPLC|专线|S[0-9]+|倍率|x1|x2|香港|日本|新加坡|美国|台湾|韩国/) {
-                print tag
-                found = 1
-                exit
-            }
-            if (fallback == "") {
-                fallback = tag
-            }
-        }
-        END {
-            if (!found) {
-                if (fallback != "") {
-                    print fallback
-                } else {
-                    print first
-                }
-            }
-        }
-    ' "$_tags_file"
-    unset _tags_file
+    unset _tags_file _proxy_tags
 }
 
 magicnet_singbox_emit_static_selectors() {
     for _pair in \
-        "lan::direct" "cn-direct::direct" \
-        "apple-cn::direct" "microsoft-cn::direct" "google-cn::proxy" "icloud::direct"; do
+        "lan::direct" \
+        "apple-cn::direct" "microsoft-cn::direct" "icloud::direct"; do
         _name=${_pair%%:*}
         _default=${_pair##*:}
         printf ',\n'
         magicnet_emit_selector_json "$_name" "" "$_default"
     done
+    printf ',\n'
+    magicnet_emit_selector_json_exact "cn-direct" "$(printf '%s\n%s\n%s\n' "direct" "proxy" "block")" "direct"
     printf ',\n'
     magicnet_emit_selector_json "ad-block" "$(printf '%s\n%s\n%s\n' "block" "direct" "proxy")" "block"
     printf ',\n'
@@ -239,12 +294,13 @@ magicnet_singbox_emit_static_selectors() {
     else
         magicnet_emit_selector_json_exact "ai-proxy" "block" "block"
     fi
-    printf ',\n'
-    _pinned_ai_first=1
     for _name in ai-chatgpt ai-gemini ai-grok ai-claude; do
-        [ "$_pinned_ai_first" -eq 1 ] || printf ',\n'
+        printf ',\n'
+        if [ -n "$_pinned_ai_tags" ]; then
+            magicnet_singbox_emit_ai_urltest "$_name" "$_pinned_ai_tags"
+            printf ',\n'
+        fi
         magicnet_singbox_emit_pinned_ai_selector "$_name" "$_pinned_ai_tags"
-        _pinned_ai_first=0
     done
     for _name in proxy-rule dev-proxy social-proxy media-proxy game-proxy telegram-proxy; do
         printf ',\n'
@@ -253,21 +309,70 @@ magicnet_singbox_emit_static_selectors() {
     printf ',\n'
     magicnet_emit_selector_json "download-direct" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
     printf ',\n'
-    magicnet_emit_selector_json "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
-    unset _pair _name _default _pinned_ai_tags _pinned_ai_default _pinned_ai_first
+    magicnet_emit_selector_json_exact "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
+    unset _pair _name _default _pinned_ai_tags _pinned_ai_default
+}
+
+magicnet_singbox_ai_url() {
+    case "$1" in
+    ai-chatgpt) printf '%s\n' "https://chatgpt.com/" ;;
+    ai-gemini) printf '%s\n' "https://gemini.google.com/" ;;
+    ai-grok) printf '%s\n' "https://grok.com/" ;;
+    ai-claude) printf '%s\n' "https://claude.ai/" ;;
+    *) return 1 ;;
+    esac
+}
+
+magicnet_singbox_emit_ai_urltest() {
+    _ai_urltest_name="$1"
+    _ai_urltest_tags="$2"
+    magicnet_singbox_emit_urltest \
+        "${_ai_urltest_name}-auto" "$(magicnet_singbox_ai_url "$_ai_urltest_name")" \
+        "10m" "$_ai_urltest_tags"
+    unset _ai_urltest_name _ai_urltest_tags
+}
+
+magicnet_singbox_emit_urltest() {
+    _urltest_name="$1"
+    _urltest_url="$2"
+    _urltest_interval="$3"
+    _urltest_tags="$4"
+    _urltest_first=1
+    printf '    {\n'
+    printf '      "type": "urltest",\n'
+    printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_urltest_name")"
+    printf '      "outbounds": ['
+    while IFS= read -r _urltest_tag; do
+        [ -n "$_urltest_tag" ] || continue
+        [ "$_urltest_first" -eq 1 ] || printf ', '
+        printf '"%s"' "$(magicnet_json_escape "$_urltest_tag")"
+        _urltest_first=0
+    done <<EOF
+$_urltest_tags
+EOF
+    printf '],\n'
+    printf '      "url": "%s",\n' "$(magicnet_json_escape "$_urltest_url")"
+    printf '      "interval": "%s",\n' "$(magicnet_json_escape "$_urltest_interval")"
+    printf '      "tolerance": 30,\n'
+    printf '      "idle_timeout": "10m",\n'
+    printf '      "interrupt_exist_connections": false\n'
+    printf '    }'
+    unset _urltest_name _urltest_url _urltest_interval _urltest_tags _urltest_first _urltest_tag
 }
 
 magicnet_singbox_emit_pinned_ai_selector() {
     _pinned_ai_name="$1"
+    _pinned_ai_selector_tags="$2"
     printf '    {\n'
     printf '      "type": "selector",\n'
     printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_pinned_ai_name")"
     printf '      "outbounds": ['
-    printf '"block", "ai-proxy"'
+    printf '"block"'
+    [ -z "$_pinned_ai_selector_tags" ] || printf ', "%s-auto"' "$(magicnet_json_escape "$_pinned_ai_name")"
     printf '],\n'
     printf '      "default": "block"\n'
     printf '    }'
-    unset _pinned_ai_name
+    unset _pinned_ai_name _pinned_ai_selector_tags
 }
 
 magicnet_singbox_pinned_ai_tags() {
@@ -283,23 +388,152 @@ magicnet_singbox_sanitize_generated_config() {
     _sanitize_config_file="$1"
     _sanitize_jq="$(command -v jq 2>/dev/null || true)"
     [ -n "$_sanitize_jq" ] || {
-        magicnet_singbox_ai_selectors_canonical "$_sanitize_config_file"
-        _sanitize_rc=$?
-        unset _sanitize_config_file _sanitize_jq
-        return "$_sanitize_rc"
+        if magicnet_singbox_ai_selectors_canonical "$_sanitize_config_file"; then
+            unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+            return 0
+        fi
+        magicnet_singbox_ai_selectors_canonical \
+            "$_sanitize_config_file" "https://www.google.com/generate_204" "10m" || {
+            unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+            return 1
+        }
+
+        _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
+        if awk '
+          BEGIN {
+            legacy_url_re = "https://www\\.google\\.com/generate_204"
+            current_url = "https://www.gstatic.com/generate_204"
+            pair_re = "\"url\"[[:space:]]*:[[:space:]]*\"" legacy_url_re \
+              "\"[[:space:]]*,[[:space:]]*\"interval\"[[:space:]]*:[[:space:]]*\"10m\""
+          }
+          {
+            text = text (NR == 1 ? "" : "\n") $0
+          }
+          END {
+            scan = text
+            scan_offset = 0
+            pair_count = 0
+            while (match(scan, pair_re)) {
+              pair_count++
+              pair_start = scan_offset + RSTART
+              pair_length = RLENGTH
+              scan_offset += RSTART + RLENGTH - 1
+              scan = substr(scan, RSTART + RLENGTH)
+            }
+            if (pair_count != 1) exit 1
+            pair = substr(text, pair_start, pair_length)
+            if (sub(legacy_url_re, current_url, pair) != 1) exit 1
+            if (sub(/"10m"$/, "\"3m\"", pair) != 1) exit 1
+            printf "%s%s%s\n", substr(text, 1, pair_start - 1), pair, \
+              substr(text, pair_start + pair_length)
+          }
+        ' "$_sanitize_config_file" >"$_sanitize_tmp_file" &&
+            magicnet_singbox_ai_selectors_canonical "$_sanitize_tmp_file" &&
+            mv -f "$_sanitize_tmp_file" "$_sanitize_config_file"; then
+            _sanitize_rc=0
+        else
+            _sanitize_rc=1
+            rm -f "$_sanitize_tmp_file" 2>/dev/null || true
+        fi
+        if [ "$_sanitize_rc" -eq 0 ]; then
+            unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+            return 0
+        fi
+        unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+        return 1
     }
 
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
+    # shellcheck disable=SC2016
     "$_sanitize_jq" '
       def mainland_node_tag:
         test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+      def proxy_node_type:
+        .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
+          or .type == "hysteria2" or .type == "anytls" or .type == "tuic";
+      def reserved_tag:
+        . as $tag
+        | [
+            "proxy-auto", "proxy", "select", "lan", "ad-block", "ad-allow", "cn-direct",
+            "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
+            "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
+            "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
+            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
+            "final", "direct", "block", "warp"
+          ]
+        | index($tag) != null;
+      def proxy_node:
+        proxy_node_type
+          and (.tag | type == "string" and length > 0 and (reserved_tag | not))
+          and (.server | type == "string" and length > 0)
+          and (.server_port
+            | type == "number" and . == floor and . >= 1 and . <= 65535)
+          and (if .type == "shadowsocks" then
+              (.method | type == "string" and length > 0)
+                and (.password | type == "string" and length > 0)
+            elif .type == "vmess" or .type == "vless" then
+              (.uuid | type == "string" and length > 0)
+            elif .type == "trojan" or .type == "hysteria2" or .type == "anytls" then
+              (.password | type == "string" and length > 0)
+            elif .type == "tuic" then
+              (.uuid | type == "string" and length > 0)
+                and (.password | type == "string" and length > 0)
+            else false
+            end);
+      def dedupe_proxy_nodes:
+        reduce .[] as $outbound (
+          {items: [], node_tags: []};
+          if ($outbound | proxy_node) then
+            ($outbound.tag // "") as $tag
+            | if (.node_tags | index($tag)) == null
+              then .items += [$outbound] | .node_tags += [$tag]
+              else .
+              end
+          elif ($outbound | proxy_node_type) then .
+          else .items += [$outbound]
+          end
+        )
+        | .items;
+      def proxy_urltest($tags):
+        {"type": "urltest", "tag": "proxy-auto", "outbounds": $tags,
+         "url": "https://www.gstatic.com/generate_204", "interval": "3m", "tolerance": 30,
+         "idle_timeout": "10m", "interrupt_exist_connections": false};
+      def proxy_selector($tags):
+        if ($tags | length) > 0
+        then {"type": "selector", "tag": "proxy",
+              "outbounds": (["proxy-auto"] + $tags + ["direct", "block"]), "default": "proxy-auto"}
+        else {"type": "selector", "tag": "proxy", "outbounds": ["block"], "default": "block"}
+        end;
+      def proxy_outbounds($tags):
+        if ($tags | length) > 0 then [proxy_urltest($tags), proxy_selector($tags)]
+        else [proxy_selector($tags)]
+        end;
       def ai_proxy_selector($tags):
         if ($tags | length) > 0
         then {"type": "selector", "tag": "ai-proxy", "outbounds": $tags, "default": $tags[0]}
         else {"type": "selector", "tag": "ai-proxy", "outbounds": ["block"], "default": "block"}
         end;
-      def pinned_ai_selector($tag):
-        {"type": "selector", "tag": $tag, "outbounds": ["block", "ai-proxy"], "default": "block"};
+      def ai_urltest($tag; $url; $tags):
+        {"type": "urltest", "tag": ($tag + "-auto"), "outbounds": $tags,
+         "url": $url, "interval": "10m", "tolerance": 30, "idle_timeout": "10m",
+         "interrupt_exist_connections": false};
+      def pinned_ai_selector($tag; $tags):
+        {"type": "selector", "tag": $tag,
+         "outbounds": (if ($tags | length) > 0 then ["block", ($tag + "-auto")] else ["block"] end),
+         "default": "block"};
+      def ai_service_outbounds($tags):
+        [
+          {tag: "ai-chatgpt", url: "https://chatgpt.com/"},
+          {tag: "ai-gemini", url: "https://gemini.google.com/"},
+          {tag: "ai-grok", url: "https://grok.com/"},
+          {tag: "ai-claude", url: "https://claude.ai/"}
+        ]
+        | map(. as $service
+            | if ($tags | length) > 0
+              then [ai_urltest($service.tag; $service.url; $tags), pinned_ai_selector($service.tag; $tags)]
+              else [pinned_ai_selector($service.tag; $tags)]
+              end)
+        | add;
       def has_match($rule):
         [
           "inbound",
@@ -321,25 +555,35 @@ magicnet_singbox_sanitize_generated_config() {
           "user_id"
         ] | any(. as $key | $rule | has($key));
       (.outbounds // []) as $outbounds
-      | ([$outbounds[]
-          | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan" or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
-          | .tag // empty
-          | select(mainland_node_tag | not)]) as $ai_tags
-      | .outbounds = ($outbounds
-          | map(select(.tag as $tag | ["ai-proxy", "ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] | index($tag) == null))
+      | ($outbounds | dedupe_proxy_nodes) as $deduped_outbounds
+      | ([$deduped_outbounds[]
+          | select(proxy_node)
+          | .tag // empty]) as $node_tags
+      | ([$node_tags[] | select(mainland_node_tag | not)]) as $ai_tags
+      | .outbounds = ($deduped_outbounds
+          | map(select(.tag as $tag | [
+              "proxy", "proxy-auto",
+              "ai-proxy",
+              "ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude",
+              "ai-chatgpt-auto", "ai-gemini-auto", "ai-grok-auto", "ai-claude-auto"
+            ] | index($tag) == null))
+          | (proxy_outbounds($node_tags) + .)
           | if any(.tag == "dns-guard") then .
             else . + [{"type": "selector", "tag": "dns-guard", "outbounds": ["proxy", "block", "direct"], "default": "proxy"}]
             end
           | . + [ai_proxy_selector($ai_tags)]
-          | . + (["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] | map(pinned_ai_selector(.))))
+          | . + ai_service_outbounds($ai_tags))
       | .route.rules = ((.route.rules // [])
         | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
     ' "$_sanitize_config_file" >"$_sanitize_tmp_file" && mv -f "$_sanitize_tmp_file" "$_sanitize_config_file"
     _sanitize_rc=$?
     [ "$_sanitize_rc" -eq 0 ] || rm -f "$_sanitize_tmp_file" 2>/dev/null || true
-    _sanitize_return="$_sanitize_rc"
-    unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc
-    return "$_sanitize_return"
+    if [ "$_sanitize_rc" -eq 0 ]; then
+        unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+        return 0
+    fi
+    unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+    return 1
 }
 
 magicnet_singbox_update_config_with_nodes() {

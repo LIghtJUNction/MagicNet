@@ -31,8 +31,20 @@ hook_current_version() {
 
 github_latest_tag() {
     local repo="$1"
+    local attempt
+    local tag
 
-    gh release view --repo "$repo" --json tagName --template '{{.tagName}}' 2>/dev/null || true
+    for attempt in 1 2 3; do
+        tag=""
+        if tag=$(gh release view --repo "$repo" --json tagName --template '{{.tagName}}' 2>/dev/null) \
+            && [ -n "$tag" ]; then
+            printf '%s' "$tag"
+            return 0
+        fi
+        [ "$attempt" -eq 3 ] || sleep 1
+    done
+
+    return 1
 }
 
 github_asset_names() {

@@ -256,7 +256,7 @@ fn default_config(_target: &str) -> String {
       ],
       "auto_route": true,
       "strict_route": true,
-      "stack": "gvisor"
+      "stack": "mixed"
     }
   ],
   "outbounds": [
@@ -349,6 +349,18 @@ fn run_with_timeout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_sing_box_config_uses_mixed_tun_stack() {
+        let config: serde_json::Value =
+            serde_json::from_str(&default_config("sing-box")).expect("parse default config");
+        let tun_stack = config["inbounds"]
+            .as_array()
+            .and_then(|inbounds| inbounds.iter().find(|inbound| inbound["tag"] == "tun-in"))
+            .and_then(|inbound| inbound["stack"].as_str());
+
+        assert_eq!(tun_stack, Some("mixed"));
+    }
 
     #[test]
     fn preserves_singbox_outbounds_block() {

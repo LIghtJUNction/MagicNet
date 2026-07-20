@@ -1,7 +1,8 @@
 import { MODULE_DIR, REPO } from "@/constants";
-import { buildIssueBody, buildShortIssueBody, propValue } from "@/composables/issueDrafts";
+import { buildIssueBody, buildIssueUrl, propValue } from "@/composables/issueDrafts";
 import { copyText, intentDataQuote, shellQuote } from "@/utils";
 import type { RuntimeState } from "@/types";
+import type { BackgroundTaskState } from "@/composables/backgroundTasks";
 
 type IssueReporterState = {
   task: string;
@@ -11,6 +12,8 @@ type IssueReporterState = {
   output: string;
   hasKsu: boolean;
   runtime: RuntimeState;
+  lastCommand: string;
+  backgroundTask: BackgroundTaskState;
 };
 
 type IssueReporterDeps = {
@@ -20,6 +23,13 @@ type IssueReporterDeps = {
 };
 
 export async function createMagicNetIssue({ state, runShell, runCli }: IssueReporterDeps): Promise<void> {
+  const operation = {
+    phase: state.phase,
+    lastCommand: state.lastCommand,
+    backgroundLabel: state.backgroundTask.label,
+    backgroundArgs: state.backgroundTask.args,
+    backgroundStatus: state.backgroundTask.status,
+  };
   state.task = "创建 GitHub issue";
   state.notice = "正在收集 issue 诊断信息";
   state.busy = true;
@@ -29,22 +39,16 @@ export async function createMagicNetIssue({ state, runShell, runCli }: IssueRepo
     const version = propValue(moduleProp, "version") || "unknown";
     const runtimeLabel = state.runtime.singBoxState === "unknown" ? "runtime" : state.runtime.singBoxState;
     const title = `[MagicNet] ${version} ${runtimeLabel} diagnostic report`;
-    const [device, status, health, mcp, network, support] = await Promise.all([
+    const [device, support] = await Promise.all([
       runShell("getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; uname -a", "读取设备信息", true),
-      runCli("service status", "读取服务状态", true),
-      runCli("health", "运行健康检查", true),
-      runCli("mcp status", "读取 MCP 状态", true),
-      runShell("ip -br addr; echo; ip route; echo; ss -lntp 2>/dev/null | grep -E '7890|7891|7892|9090|8766|18766' || true; echo; ping -c 1 -W 3 www.baidu.com >/dev/null && echo network_ok || echo network_fail", "读取网络诊断", true),
       runCli("support bundle", "生成支持包", true)
     ]);
-    const body = buildIssueBody({ moduleProp, device, status, health, mcp, network, support });
+    const body = buildIssueBody({ moduleProp, device, support, operation });
     const copied = await copyText(body);
-    const urlBody = buildShortIssueBody({ version, device, status, health, copied });
-    const issueUrl = `${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(urlBody)}`;
+    const issueUrl = buildIssueUrl(REPO, title, body);
     state.output = [
-      copied ? "完整 issue 正文已复制到剪贴板。" : "剪贴板不可用，issue URL 只包含摘要。",
-      `issue URL 只包含 ${urlBody.length} 字符的摘要，完整正文长度 ${body.length} 字符。`,
-      "如果 GitHub 页面没有自动带入完整诊断，请长按正文框粘贴。",
+      copied ? "隐私处理后的 issue 正文已复制。" : "剪贴板不可用。",
+      `剪贴板与 GitHub URL 使用同一份正文，共 ${body.length} 字符。`,
       "",
       issueUrl
     ].join("\n");

@@ -25,24 +25,24 @@ const props = withDefaults(
 );
 
 const buttonVariants = cva(
-  "group inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-[transform,color,background-color,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070809] active:scale-[0.975] disabled:pointer-events-none disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100",
+  "group inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold transition-[transform,color,background-color,opacity,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070809] active:scale-[0.975] disabled:pointer-events-none disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100",
   {
     variants: {
       variant: {
         default:
-          "bg-gradient-to-r from-emerald-300 to-cyan-300 text-[#06110e] shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_10px_30px_rgba(52,211,153,0.12)] hover:from-emerald-200 hover:to-cyan-200",
+          "bg-emerald-300 text-[#06110e] shadow-[inset_0_1px_0_rgba(255,255,255,0.5),inset_0_0_0_1px_rgba(255,255,255,0.2)] hover:bg-emerald-200",
         secondary:
           "bg-white/[0.08] text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_0_0_1px_rgba(255,255,255,0.06)] hover:bg-white/[0.12]",
         outline:
           "bg-[#0b0c0e] text-zinc-200 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),inset_0_1px_0_rgba(255,255,255,0.05)] hover:bg-white/[0.07] hover:text-white",
         ghost: "bg-transparent text-zinc-300 hover:bg-white/[0.07] hover:text-white",
         destructive:
-          "bg-gradient-to-r from-rose-500 to-red-400 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] hover:from-rose-400 hover:to-red-300",
+          "bg-rose-500 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-rose-400",
       },
       size: {
-        sm: "min-h-[49px] px-4",
-        md: "min-h-[49px] px-5",
-        icon: "size-[49px] shrink-0 p-0",
+        sm: "min-h-11 px-4",
+        md: "min-h-11 px-5",
+        icon: "size-11 shrink-0 p-0",
       },
     },
     defaultVariants: {

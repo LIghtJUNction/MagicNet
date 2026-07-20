@@ -5,6 +5,7 @@ mod config_editor;
 mod connection_control;
 mod diagnostics;
 mod diagnostics_dns;
+mod diagnostics_routing;
 mod dns;
 mod ecapture;
 mod mcp;
@@ -37,15 +38,15 @@ use dns::dns_cmd;
 use ecapture::ecapture_cmd;
 use mcp::mcp;
 use nodes::node_cmd;
-use ping::pingtest;
+use ping::{pingtest, speedtest};
 use rules::{app_cmd, block_cmd, route_cmd};
 use service::{
     config_cmd, core_cmd, repair, service_cmd, service_logs, service_status, supervisor_cmd,
     transparent_cmd,
 };
 use subscriptions::{
-    setup_subscription, sub_get, sub_list, sub_set, sub_set_file, sub_target_file, sub_update,
-    sub_update_all,
+    setup_subscription, sub_apply_file, sub_get, sub_list, sub_schedule, sub_set, sub_set_file,
+    sub_status, sub_target_file, sub_update, sub_update_all,
 };
 pub(crate) use utils::{
     clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv, write_kv,
@@ -78,6 +79,10 @@ const COMMAND_HELP: &[CommandHelp] = &[
     CommandHelp {
         command: "pingtest",
         usage: "cli pingtest",
+    },
+    CommandHelp {
+        command: "speedtest",
+        usage: "cli speedtest",
     },
     CommandHelp {
         command: "topology",
@@ -141,7 +146,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "sub",
-        usage: "cli sub {update <sing-box|all>|update-all|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|file [sing-box]}",
+        usage: "cli sub {update <sing-box|all>|update-all|status|schedule {status|set <off|12|24|48|72>}|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|apply-file sing-box <base64-lines>|file [sing-box]}",
     },
     CommandHelp {
         command: "block",
@@ -242,10 +247,8 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "service" if args.get(1).map(String::as_str) == Some("logs") => service_logs(app, args),
         "service" => service_cmd(app, &args[1..]),
         "supervisor" => supervisor_cmd(app, &args[1..]),
-        "pingtest" => {
-            pingtest();
-            Ok(())
-        }
+        "pingtest" => pingtest(),
+        "speedtest" => speedtest(),
         "health" => health(app),
         "diagnose" => run_magicnet_function(app, "magicnet_action_diagnose"),
         "repair" => repair(app),
@@ -269,8 +272,11 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         }
         "sub" if args.get(1).map(String::as_str) == Some("set") => sub_set(app, args),
         "sub" if args.get(1).map(String::as_str) == Some("set-file") => sub_set_file(app, args),
+        "sub" if args.get(1).map(String::as_str) == Some("apply-file") => sub_apply_file(app, args),
         "sub" if args.get(1).map(String::as_str) == Some("update") => sub_update(app, args),
         "sub" if args.get(1).map(String::as_str) == Some("update-all") => sub_update_all(app),
+        "sub" if args.get(1).map(String::as_str) == Some("status") => sub_status(app),
+        "sub" if args.get(1).map(String::as_str) == Some("schedule") => sub_schedule(app, args),
         "config-editor" => config_editor(app, &args[1..]),
         "sub"
             if matches!(
@@ -496,6 +502,11 @@ mod command_help_tests {
     #[test]
     fn backup_help_lists_file_restore() {
         assert!(usage_for("backup").contains("restore-file [password|-] <path>"));
+    }
+
+    #[test]
+    fn speedtest_help_has_explicit_usage() {
+        assert_eq!(usage_for("speedtest"), "cli speedtest");
     }
 }
 

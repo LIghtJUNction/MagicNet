@@ -4,8 +4,7 @@ magicnet_action_update_singbox_subscription() {
         return 1
     fi
 
-    . "${MODDIR}/lib/magicnet_singbox_subscribe.sh"
-    magicnet_singbox_update_subscription
+    "${MODDIR}/cli" sub update sing-box
     _status=$?
     if [ "${_status}" -eq 0 ]; then
         rm -f "${MODDIR}/.tmp/magicnet-node-list.cache"
@@ -33,13 +32,25 @@ magicnet_diag_http() {
     _name="$1"
     _url="$2"
     _proxy="${3:-}"
+    _format='HTTP %{http_code} connect=%{time_connect} start=%{time_starttransfer} total=%{time_total}'
     if [ -n "$_proxy" ]; then
-        _result=$(curl -fsSI --max-time 10 -x "$_proxy" "$_url" 2>&1 | head -n 1)
+        if _result=$(curl -sS -o /dev/null --connect-timeout 5 --max-time 10 -w "$_format" -x "$_proxy" "$_url" 2>/dev/null); then
+            _curl_rc=0
+        else
+            _curl_rc=$?
+        fi
     else
-        _result=$(curl -fsSI --max-time 10 "$_url" 2>&1 | head -n 1)
+        if _result=$(curl -sS -o /dev/null --connect-timeout 5 --max-time 10 -w "$_format" "$_url" 2>/dev/null); then
+            _curl_rc=0
+        else
+            _curl_rc=$?
+        fi
     fi
-    [ -n "$_result" ] || _result="no response"
+    [ -n "$_result" ] || _result="HTTP 000 connect=n/a start=n/a total=n/a"
+    [ "$_curl_rc" -eq 0 ] || _result="${_result} rc=${_curl_rc}"
     panel_row "$_name" "$_result"
+    unset _name _url _proxy _format _result _curl_rc
+    return 0
 }
 
 magicnet_diag_proxy_now() {

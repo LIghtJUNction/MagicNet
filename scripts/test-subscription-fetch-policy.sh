@@ -6,6 +6,19 @@ trap 'rm -rf "$tmp"' EXIT
 export MODDIR="$ROOT/src/MagicNet"
 export MAGICNET_FETCH_TEST_LOG="$tmp/log"
 . "$MODDIR/lib/magicnet/singbox_subscribe/fetch.sh"
+
+magicnet_singbox_subscription_url_file() {
+  printf '%s\n' "$tmp/subscription.url"
+}
+
+error() {
+  printf 'error %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
+}
+
+warn() {
+  printf 'warn %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
+}
+
 mkdir "$tmp/bin"
 cat >"$tmp/bin/curl" <<'SH'
 #!/bin/sh
@@ -24,6 +37,7 @@ SH
 cat >"$tmp/bin/sing-box" <<'SH'
 #!/bin/sh
 printf 'sing-box %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
+[ "${MAGICNET_FETCH_FAIL:-0}" = 1 ] && exit 1
 printf ok
 SH
 cat >"$tmp/bin/timeout" <<'SH'
@@ -50,14 +64,16 @@ grep -q '^timeout 11$' "$tmp/log"
 grep -q '^sing-box tools fetch ' "$tmp/log"
 : >"$tmp/log"
 MAGICNET_FETCH_FAIL=1 MAGICNET_SUB_PROXY=http://127.0.0.1:7892 PATH="$tmp/bin:$PATH" \
-  magicnet_singbox_fetch_one_subscription https://example.invalid/sub "$tmp/missing" "" '#1' 2>/dev/null && exit 1 || true
+  magicnet_singbox_fetch_one_subscription \
+    https://example.invalid/sub "$tmp/missing" "" "" "" '#1' 2>/dev/null && exit 1 || true
 grep -q '^curl ' "$tmp/log"
 if grep -Eq '^(wget|sing-box) ' "$tmp/log"; then
   exit 1
 fi
 : >"$tmp/log"
 MAGICNET_FETCH_FAIL=1 PATH="$tmp/bin:$PATH" \
-  magicnet_singbox_fetch_one_subscription https://example.invalid/sub "$tmp/local-proxy" "" '#1' 2>/dev/null && exit 1 || true
+  magicnet_singbox_fetch_one_subscription \
+    https://example.invalid/sub "$tmp/local-proxy" "" "" "" '#1' 2>/dev/null && exit 1 || true
 grep -q 'curl .*127.0.0.1:9090/version' "$tmp/log"
 grep -q 'curl .*--proxy http://127.0.0.1:7892.*https://example.invalid/sub' "$tmp/log"
 if grep -q 'wget .*--proxy' "$tmp/log" || grep -q 'sing-box .*--proxy' "$tmp/log"; then
@@ -98,7 +114,7 @@ magicnet_with_config_lock() {
   "$@"
 }
 magicnet_singbox_update_subscription
-test "$(tr '\n' ' ' <"$order_log")" = 'global-lock update-body '
+test "$(tr '\n' ' ' <"$order_log")" = 'global-lock global-lock update-body '
 test ! -d "$MODDIR/.state/sing-box/subscription-update.lock"
 : >"$order_log"
 global_lock="$tmp/global.lock"
@@ -119,7 +135,7 @@ magicnet_with_config_lock() {
 waiter=$!
 magicnet_singbox_update_subscription
 wait "$waiter"
-test "$(tr '\n' ' ' <"$order_log")" = 'update-waited global-after-apply update-body '
+test "$(tr '\n' ' ' <"$order_log")" = 'update-waited global-after-apply global-after-apply update-body '
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 mkdir -p "$MODDIR/bin" "$tmp/foreign"
 cat >"$tmp/sing-box.c" <<'C'

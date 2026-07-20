@@ -218,6 +218,7 @@ pub(crate) fn replay(app: &App) -> Result<usize, String> {
     let mut applied = 0;
     let mut failed = 0;
     for (group, member) in values {
+        let member = replay_member(&group, &member);
         if valid_member(groups, &group, &member) {
             if let Err(err) = curl_put_selection(app, &group, &json!({"name": member}).to_string())
             {
@@ -232,6 +233,15 @@ pub(crate) fn replay(app: &App) -> Result<usize, String> {
         eprintln!("[warn] selector replay completed with {failed} failed item(s)");
     }
     Ok(applied)
+}
+
+fn replay_member(group: &str, member: &str) -> String {
+    if member == "ai-proxy" && matches!(group, "ai-chatgpt" | "ai-gemini" | "ai-grok" | "ai-claude")
+    {
+        format!("{group}-auto")
+    } else {
+        member.to_string()
+    }
 }
 
 fn valid_member(groups: &serde_json::Map<String, Value>, group: &str, member: &str) -> bool {
@@ -283,11 +293,21 @@ mod tests {
 
     #[test]
     fn replay_requires_existing_group_member() {
-        let value = json!({"ai-chatgpt": {"all": ["block", "ai-proxy"]}});
+        let value = json!({"ai-chatgpt": {"all": ["block", "ai-chatgpt-auto"]}});
         let groups = value.as_object().unwrap();
-        assert!(valid_member(groups, "ai-chatgpt", "ai-proxy"));
+        let migrated = replay_member("ai-chatgpt", "ai-proxy");
+        assert!(valid_member(groups, "ai-chatgpt", &migrated));
         assert!(!valid_member(groups, "ai-chatgpt", "missing"));
-        assert!(!valid_member(groups, "missing", "ai-proxy"));
+        assert!(!valid_member(groups, "missing", &migrated));
+    }
+
+    #[test]
+    fn replay_migrates_legacy_ai_proxy_members() {
+        for group in ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] {
+            assert_eq!(replay_member(group, "ai-proxy"), format!("{group}-auto"));
+        }
+        assert_eq!(replay_member("ai-chatgpt", "block"), "block");
+        assert_eq!(replay_member("ai-proxy", "legacy-node"), "legacy-node");
     }
 
     #[test]

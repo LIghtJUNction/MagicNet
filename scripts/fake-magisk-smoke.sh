@@ -310,10 +310,15 @@ exit 0
 write_mock curl '
 out=""
 url=""
+write_out=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -o)
             out="${2:-}"
+            shift 2
+            ;;
+        -w|--write-out)
+            write_out="${2:-}"
             shift 2
             ;;
         -x|--max-time|--connect-timeout|-H|--data|--data-binary)
@@ -331,6 +336,26 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+render_http_metrics() {
+    local code="$1"
+    local connect="$2"
+    local start="$3"
+    local total="$4"
+    local rendered="$write_out"
+    rendered="${rendered//\%\{http_code\}/$code}"
+    rendered="${rendered//\%\{time_connect\}/$connect}"
+    rendered="${rendered//\%\{time_starttransfer\}/$start}"
+    rendered="${rendered//\%\{time_total\}/$total}"
+    printf "%b" "$rendered"
+}
+if [[ -n "${MAGICNET_FAKE_CURL_FAIL_URL:-}" && "$url" == "$MAGICNET_FAKE_CURL_FAIL_URL" ]]; then
+    [[ -z "$write_out" ]] || render_http_metrics 000 0.000 0.000 0.000
+    exit 7
+fi
+if [[ -n "${MAGICNET_FAKE_CURL_HTTP_CODE_URL:-}" && "$url" == "$MAGICNET_FAKE_CURL_HTTP_CODE_URL" ]]; then
+    [[ -z "$write_out" ]] || render_http_metrics "${MAGICNET_FAKE_CURL_HTTP_CODE:-429}" 0.010 0.020 0.030
+    exit 0
+fi
 case "$url" in
     http://127.0.0.1:9090/version)
         printf "%s\n" "{\"version\":\"fake\"}"
@@ -345,7 +370,11 @@ case "$url" in
         exit 0
         ;;
     http://127.0.0.1:7892*|https://www.baidu.com|https://www.google.com|https://chatgpt.com)
-        printf "%s\n" "HTTP/1.1 200 OK"
+        if [[ -n "$write_out" ]]; then
+            render_http_metrics 200 0.010 0.020 0.030
+        else
+            printf "%s\n" "HTTP/1.1 200 OK"
+        fi
         exit 0
         ;;
 esac
@@ -464,6 +493,44 @@ stop_fake_core_processes() {
                 ;;
         esac
     done
+}
+
+count_exact_script_processes() {
+    local expected="$1"
+    local cmdline arg count=0
+    local -a argv
+    for cmdline in /proc/[0-9]*/cmdline; do
+        [[ -r "$cmdline" ]] || continue
+        argv=()
+        while IFS= read -r -d '' arg; do
+            argv+=("$arg")
+        done <"$cmdline"
+        if [[ "${#argv[@]}" -eq 2 && "${argv[0]##*/}" == "sh" && "${argv[1]}" == "$expected" ]]; then
+            count=$((count + 1))
+        fi
+    done
+    printf '%s\n' "$count"
+}
+
+generated_fswatch_prune_names() {
+    local loop_file="$1"
+    local assignment value
+    assignment="$(sed -n 's/^KAM_FSWATCH_PRUNE_NAMES=//p' "$loop_file")"
+    [[ "$assignment" == \'*\' ]] || return 1
+    value="${assignment#\'}"
+    value="${value%\'}"
+    printf '%s\n' "$value"
+}
+
+fswatch_changed_with_prune_names() {
+    local prune_names="$1"
+    local watch_path="$2"
+    local snapshot_file="$3"
+    KAM_FSWATCH_PRUNE_NAMES="$prune_names" sh -c '
+        . "$MODDIR/lib/kamfw/.kamfwrc"
+        import fswatch
+        fswatch changed "$1" "$2"
+    ' fswatch-test "$watch_path" "$snapshot_file"
 }
 
 stop_fake_core() {
@@ -726,9 +793,47 @@ if "$HOST_JQ" -e '.outbounds[] | select(.tag == "stale-device-node")' "$MODDIR/.
 fi
 # shellcheck disable=SC2016
 "$HOST_JQ" -e '
-    ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
-    | [.outbounds[] | select(.tag as $tag | $names | index($tag))]
-    | length == 4 and all(.type == "selector" and .default == "block" and .outbounds[0] == "block")
+    [
+      {name: "ai-chatgpt", url: "https://chatgpt.com/"},
+      {name: "ai-gemini", url: "https://gemini.google.com/"},
+      {name: "ai-grok", url: "https://grok.com/"},
+      {name: "ai-claude", url: "https://claude.ai/"}
+    ] as $services
+    | [.outbounds[]
+        | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
+            or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+        | .tag] as $node_tags
+    | (.outbounds | INDEX(.tag)) as $by_tag
+    | [.outbounds[] | select(.tag == "proxy-auto")] as $proxy_auto
+    | $by_tag["ai-proxy"] as $ai_proxy
+    | (if ($node_tags | length) > 0 then
+        $proxy_auto == [{
+          type: "urltest", tag: "proxy-auto", outbounds: $node_tags,
+          url: "https://www.gstatic.com/generate_204", interval: "3m", tolerance: 30,
+          idle_timeout: "10m", interrupt_exist_connections: false
+        }]
+          and $by_tag.proxy.type == "selector"
+          and $by_tag.proxy.outbounds == (["proxy-auto"] + $node_tags + ["direct", "block"])
+          and $by_tag.proxy.default == "proxy-auto"
+      else
+        ($proxy_auto | length) == 0
+          and $by_tag.proxy.type == "selector"
+          and $by_tag.proxy.outbounds == ["block"]
+          and $by_tag.proxy.default == "block"
+      end)
+      and ($services | all(. as $service
+      | ($service.name + "-auto") as $auto
+      | $by_tag[$service.name].type == "selector"
+        and $by_tag[$service.name].default == "block"
+        and $by_tag[$service.name].outbounds == ["block", $auto]
+        and $by_tag[$auto].type == "urltest"
+        and $by_tag[$auto].outbounds == $ai_proxy.outbounds
+        and $by_tag[$auto].url == $service.url
+        and $by_tag[$auto].interval == "10m"
+        and $by_tag[$auto].tolerance == 30
+        and $by_tag[$auto].idle_timeout == "10m"
+        and $by_tag[$auto].interrupt_exist_connections == false
+    ))
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 if "$HOST_JQ" -e '.outbounds[] | select(.tag == "fresh-sub-node")' "$MODDIR/.config/sing-box/config.json" >/dev/null; then
     echo "sing-box startup refreshed subscription instead of using cached config" >&2
@@ -813,6 +918,71 @@ run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >
 rg -q '^fswatch=[0-9]+$' "$TMP/supervisor-status.log"
 test -s "$MODDIR/.state/fswatch/magicnet-config.pid"
 rg -q 'config apply' "$MODDIR/.state/fswatch/magicnet-config.loop.sh"
+_fswatch_pid_file="$MODDIR/.state/fswatch/magicnet-config.pid"
+_fswatch_loop_file="$MODDIR/.state/fswatch/magicnet-config.loop.sh"
+_fswatch_first_pid="$(sed -n '1p' "$_fswatch_pid_file")"
+kill -0 "$_fswatch_first_pid"
+test "$(count_exact_script_processes "$_fswatch_loop_file")" -eq 1
+_fswatch_snapshot_file="$MODDIR/.state/fswatch/magicnet-config.snapshot"
+_fswatch_expected_prune_names="ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal"
+_fswatch_prune_names="$(generated_fswatch_prune_names "$_fswatch_loop_file")"
+for _fswatch_cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal; do
+    printf 'runtime-cache\n' >"$MODDIR/.config/sing-box/$_fswatch_cache_name"
+    if fswatch_changed_with_prune_names "$_fswatch_prune_names" "$MODDIR/.config" "$_fswatch_snapshot_file"; then
+        echo "fswatch detected ignored sing-box runtime cache: $_fswatch_cache_name" >&2
+        exit 1
+    fi
+done
+if [[ "$_fswatch_prune_names" != "$_fswatch_expected_prune_names" ]]; then
+    echo "unexpected generated fswatch prune names: $_fswatch_prune_names" >&2
+    exit 1
+fi
+printf 'watched-near-match\n' >"$MODDIR/.config/sing-box/not-cache.db"
+if ! fswatch_changed_with_prune_names "$_fswatch_prune_names" "$MODDIR/.config" "$_fswatch_snapshot_file"; then
+    echo "fswatch ignored non-exact cache basename: not-cache.db" >&2
+    exit 1
+fi
+printf 'watched-config\n' >"$MODDIR/.config/magicnet/fswatch-real-change.conf"
+if ! fswatch_changed_with_prune_names "$_fswatch_prune_names" "$MODDIR/.config" "$_fswatch_snapshot_file"; then
+    echo "fswatch ignored a real config file change" >&2
+    exit 1
+fi
+run env \
+    MAGICNET_WATCHDOG_ENABLED=1 \
+    MAGICNET_FSWATCH_ENABLED=1 \
+    MAGICNET_WATCHDOG_INTERVAL=3600 \
+    MAGICNET_FSWATCH_INTERVAL=3600 \
+    MAGICNET_NOTIFY_ENABLED=0 \
+    MODDIR="$MODDIR" \
+    MODPATH="$MODDIR" \
+    PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    "$MODDIR/cli" supervisor start all
+sleep 1
+_fswatch_second_pid="$(sed -n '1p' "$_fswatch_pid_file")"
+if [[ "$_fswatch_second_pid" != "$_fswatch_first_pid" ]]; then
+    echo "repeated supervisor start all replaced healthy fswatch PID: $_fswatch_first_pid -> $_fswatch_second_pid" >&2
+    exit 1
+fi
+kill -0 "$_fswatch_second_pid"
+test "$(count_exact_script_processes "$_fswatch_loop_file")" -eq 1
+run env \
+    MAGICNET_FSWATCH_ENABLED=1 \
+    MAGICNET_FSWATCH_INTERVAL=3600 \
+    MAGICNET_NOTIFY_ENABLED=0 \
+    MODDIR="$MODDIR" \
+    MODPATH="$MODDIR" \
+    PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    "$MODDIR/cli" supervisor restart fswatch
+sleep 1
+_fswatch_restarted_pid="$(sed -n '1p' "$_fswatch_pid_file")"
+if [[ "$_fswatch_restarted_pid" == "$_fswatch_second_pid" ]]; then
+    echo "explicit supervisor restart fswatch preserved old PID: $_fswatch_restarted_pid" >&2
+    exit 1
+fi
+kill -0 "$_fswatch_restarted_pid"
+test "$(count_exact_script_processes "$_fswatch_loop_file")" -eq 1
+unset _fswatch_pid_file _fswatch_loop_file _fswatch_first_pid _fswatch_second_pid _fswatch_restarted_pid
+unset _fswatch_snapshot_file _fswatch_expected_prune_names _fswatch_prune_names _fswatch_cache_name
 mkdir -p "$MODDIR/.state/sing-box/subscription-update.lock"
 printf '999999:0:dead\n' >"$MODDIR/.state/sing-box/subscription-update.lock/owner"
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
@@ -861,7 +1031,37 @@ run "$MODDIR/cli" route list
 run "$MODDIR/cli" block list
 run "$MODDIR/cli" app list
 run "$MODDIR/cli" backup export
-run "$MODDIR/cli" diagnose
+: >"$MOCK_LOG"
+run "$MODDIR/cli" diagnose >"$TMP/diagnose.log"
+for _diag_name in Baidu Google ChatGPT; do
+    rg -q "${_diag_name}.*HTTP 200 connect=0.010 start=0.020 total=0.030" "$TMP/diagnose.log"
+done
+python3 - "$MOCK_LOG" <<'PY'
+import sys
+
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+baidu = [line for line in lines if line.startswith("curl ") and line.endswith(" https://www.baidu.com")]
+google = [line for line in lines if line.startswith("curl ") and line.endswith(" https://www.google.com")]
+chatgpt = [line for line in lines if line.startswith("curl ") and line.endswith(" https://chatgpt.com")]
+if len(baidu) != 1 or " -x " in baidu[0]:
+    raise SystemExit("Baidu diagnostic did not use direct curl")
+for name, calls in (("Google", google), ("ChatGPT", chatgpt)):
+    if len(calls) != 1 or " -x http://127.0.0.1:7892 " not in calls[0]:
+        raise SystemExit(f"{name} diagnostic did not use the explicit proxy")
+for name, calls in (("Baidu", baidu), ("Google", google), ("ChatGPT", chatgpt)):
+    if " -o /dev/null --connect-timeout 5 --max-time 10 -w " not in calls[0]:
+        raise SystemExit(f"{name} diagnostic did not use bounded write-out curl")
+PY
+run env MAGICNET_FAKE_CURL_HTTP_CODE_URL="https://www.google.com" MAGICNET_FAKE_CURL_HTTP_CODE=429 \
+    "$MODDIR/cli" diagnose >"$TMP/diagnose-http-error.log"
+test "$(rg -c 'Google.*HTTP 429 connect=0.010 start=0.020 total=0.030' "$TMP/diagnose-http-error.log")" -eq 1
+if rg -q 'Google.*HTTP 429.*rc=' "$TMP/diagnose-http-error.log"; then
+    echo "HTTP 4xx diagnostic was reported as a transport failure" >&2
+    exit 1
+fi
+run env MAGICNET_FAKE_CURL_FAIL_URL="https://www.google.com" "$MODDIR/cli" diagnose >"$TMP/diagnose-transport-failure.log"
+test "$(rg -c 'Google.*HTTP 000 connect=0.000 start=0.000 total=0.000 rc=7' "$TMP/diagnose-transport-failure.log")" -eq 1
+unset _diag_name
 
 assert_transparent_mode() {
     local mode="$1"
