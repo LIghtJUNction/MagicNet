@@ -135,6 +135,11 @@ fn support_bundle(app: &App) -> String {
             pid_summary("fswatch")
         ),
     );
+    append_support_section(
+        &mut output,
+        "startup state",
+        &startup_state_evidence(app),
+    );
     let health = health_items(app)
         .into_iter()
         .map(|(key, ok, detail)| format!("{} {key}: {detail}", if ok { "ok" } else { "warn" }))
@@ -176,6 +181,24 @@ fn support_bundle(app: &App) -> String {
         &subscription_refresh_log_counts(app.log_dir.join("subscription-refresh.log")),
     );
     output
+}
+
+fn startup_state_evidence(app: &App) -> String {
+    let path = app.moddir.join(".state/startup-error");
+    match fs::read_to_string(path) {
+        Ok(text) if !text.trim().is_empty() => {
+            format!("blocked=true\nreason={}", clean_lines_from_text(&text).join(" "))
+        }
+        _ => "blocked=false\nreason=none".to_string(),
+    }
+}
+
+fn clean_lines_from_text(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 fn append_support_section(output: &mut String, title: &str, evidence: &str) {
@@ -928,11 +951,17 @@ mod tests {
             "phase=activate\nresult=failed\nattempt_epoch=123\nsuccess_epoch=100\nconfigured_count=1\nsource_count=1\nimported_count=2\nskipped_count=0\ngeneration_id=123-456\nreason=token=BUNDLE-TOKEN-CANARY\n",
         )
         .unwrap();
+        fs::write(
+            root.join(".state/startup-error"),
+            "No subscription URL is configured; token=BUNDLE-STARTUP-CANARY\n",
+        )
+        .unwrap();
 
         let bundle = support_bundle(&app);
         for heading in [
             "[subscription lifecycle]",
             "[service status]",
+            "[startup state]",
             "[health]",
             "[core process and listeners]",
             "[tun routes and ip rules]",
@@ -947,10 +976,13 @@ mod tests {
         }
         assert!(bundle.contains("last_phase=activate"));
         assert!(bundle.contains("last_result=failed"));
+        assert!(bundle.contains("blocked=true"));
+        assert!(bundle.contains("reason=No subscription URL is configured"));
         for sensitive in [
             "private.example.invalid",
             "BUNDLE-URL-CANARY",
             "BUNDLE-TOKEN-CANARY",
+            "BUNDLE-STARTUP-CANARY",
             root.to_string_lossy().as_ref(),
         ] {
             assert!(
