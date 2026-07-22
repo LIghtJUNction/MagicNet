@@ -824,7 +824,7 @@ fi
       and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
-        and $by_tag[$service.name].default == "block"
+        and $by_tag[$service.name].default == $auto
         and $by_tag[$service.name].outbounds == ["block", $auto]
         and $by_tag[$auto].type == "urltest"
         and $by_tag[$auto].outbounds == $ai_proxy.outbounds

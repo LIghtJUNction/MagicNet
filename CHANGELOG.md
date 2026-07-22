@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Start each AI service selector on its filtered service-specific automatic
+  failover group after a subscription provides eligible nodes, while keeping
+  zero-node configurations blocked and preserving explicit user selections.
+- Resolve WeChat media uploads through the local DNS path and route Tencent
+  media domains before the FakeIP loop guard, while preserving Clash mode and
+  destination-specific policy precedence.
 - Include the redacted startup blocker in support bundles so stopped-core issue
   reports distinguish missing subscriptions or nodes from runtime crashes.
 
