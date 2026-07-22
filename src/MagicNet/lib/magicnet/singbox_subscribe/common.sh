@@ -118,7 +118,8 @@ magicnet_singbox_ai_selectors_canonical() {
               | ([ $auto_groups[] | select(.tag == $auto_name) ]) as $service_auto_groups
               | ($service_groups | length) == 1
                 and $service_groups[0].type == "selector"
-                and $service_groups[0].default == "block"
+                and $service_groups[0].default
+                  == (if ($ai_tags | length) > 0 then $auto_name else "block" end)
                 and ($service_groups[0].outbounds
                   == (if ($ai_tags | length) > 0 then ["block", $auto_name] else ["block"] end))
                 and ($service_groups[0].outbounds | all(. as $member | $tags | index($member) != null))
@@ -575,13 +576,15 @@ magicnet_singbox_ai_selectors_canonical() {
                 continue
               }
               object = group_object[name]
-              if (field_string(object, "type") != "selector" || !field_valid ||
-                  field_string(object, "default") != "block" || !field_valid) bad = 1
+              if (field_string(object, "type") != "selector" || !field_valid) bad = 1
               member_count = field_array(object, "outbounds", member)
               if (member_count < 0) bad = 1
               auto_tag = name "-auto"
+              group_default = field_string(object, "default")
+              if (!field_valid) bad = 1
               if (eligible_count > 0) {
-                if (member_count != 2 || member[1] != "block" || member[2] != auto_tag) bad = 1
+                if (member_count != 2 || member[1] != "block" || member[2] != auto_tag ||
+                    group_default != auto_tag) bad = 1
                 if (auto_count[auto_tag] != 1) {
                   bad = 1
                   continue
@@ -601,7 +604,8 @@ magicnet_singbox_ai_selectors_canonical() {
                   if (auto_member[j] != ai_member[j] || !(auto_member[j] in eligible_nodes)) bad = 1
                 }
               } else {
-                if (member_count != 1 || member[1] != "block" || auto_count[auto_tag] != 0) bad = 1
+                if (member_count != 1 || member[1] != "block" || group_default != "block" ||
+                    auto_count[auto_tag] != 0) bad = 1
               }
             }
             exit bad ? 1 : 0

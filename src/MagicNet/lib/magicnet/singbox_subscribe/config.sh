@@ -137,7 +137,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
     def pinned_ai_selector($tag; $tags):
       {"type": "selector", "tag": $tag,
        "outbounds": (if ($tags | length) > 0 then ["block", ($tag + "-auto")] else ["block"] end),
-       "default": "block"};
+       "default": (if ($tags | length) > 0 then ($tag + "-auto") else "block" end)};
     def ai_service_outbounds($tags):
       [
         {tag: "ai-chatgpt", url: "https://chatgpt.com/"},
@@ -370,16 +370,23 @@ magicnet_singbox_emit_pinned_ai_selector() {
     printf '"block"'
     [ -z "$_pinned_ai_selector_tags" ] || printf ', "%s-auto"' "$(magicnet_json_escape "$_pinned_ai_name")"
     printf '],\n'
-    printf '      "default": "block"\n'
+    if [ -n "$_pinned_ai_selector_tags" ]; then
+        printf '      "default": "%s-auto"\n' "$(magicnet_json_escape "$_pinned_ai_name")"
+    else
+        printf '      "default": "block"\n'
+    fi
     printf '    }'
     unset _pinned_ai_name _pinned_ai_selector_tags
 }
 
 magicnet_singbox_pinned_ai_tags() {
     _pinned_ai_tags_file="$1"
-    awk 'BEGIN { IGNORECASE = 1 }
-      !/中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ &&
-      !/(^|[^[:alnum:]])(Hong[ _-]?Kong([ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^[:alnum:]]|$)/ { print }
+    awk '
+      {
+        folded = tolower($0)
+        if ($0 !~ /中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ &&
+            folded !~ /(^|[^[:alnum:]])(hong[ _-]?kong([ _-]?[0-9]+)?|hkg?[ _-]?[0-9]+|china|mainland|hk|hkg|cn|beijing|shanghai|guangzhou|shenzhen|chongqing|tianjin|hebei|shanxi|liaoning|jilin|heilongjiang|jiangsu|zhejiang|anhui|fujian|jiangxi|shandong|henan|hubei|hunan|guangdong|hainan|sichuan|guizhou|yunnan|shaanxi|gansu|qinghai|inner[ _-]?mongolia|guangxi|tibet|ningxia|xinjiang)([^[:alnum:]]|$)/) print
+      }
     ' "$_pinned_ai_tags_file"
     unset _pinned_ai_tags_file
 }
@@ -520,7 +527,7 @@ magicnet_singbox_sanitize_generated_config() {
       def pinned_ai_selector($tag; $tags):
         {"type": "selector", "tag": $tag,
          "outbounds": (if ($tags | length) > 0 then ["block", ($tag + "-auto")] else ["block"] end),
-         "default": "block"};
+         "default": (if ($tags | length) > 0 then ($tag + "-auto") else "block" end)};
       def ai_service_outbounds($tags):
         [
           {tag: "ai-chatgpt", url: "https://chatgpt.com/"},
