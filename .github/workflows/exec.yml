@@ -68,6 +68,32 @@ jobs:
       - name: Install artifact tools
         run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip
 
+      - name: Install host sing-box
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(gh api repos/SagerNet/sing-box/releases/latest --jq '.tag_name')"
+          version="${tag#v}"
+          asset="sing-box-${version}-linux-amd64.tar.gz"
+          install_dir="${RUNNER_TEMP}/sing-box-host"
+          mkdir -p "$install_dir"
+          gh release download "$tag" \
+            --repo SagerNet/sing-box \
+            --pattern "$asset" \
+            --dir "$install_dir"
+          expected_digest="$(
+            gh api "repos/SagerNet/sing-box/releases/tags/${tag}" \
+              --jq ".assets[] | select(.name == \"${asset}\") | .digest"
+          )"
+          test -n "$expected_digest"
+          actual_digest="sha256:$(sha256sum "${install_dir}/${asset}" | awk '{print $1}')"
+          test "$actual_digest" = "$expected_digest"
+          tar -xzf "${install_dir}/${asset}" -C "$install_dir"
+          host_binary="$(find "$install_dir" -type f -name sing-box -print -quit)"
+          test -n "$host_binary"
+          sudo install -m 0755 "$host_binary" /usr/local/bin/sing-box
+          sing-box version
+
       - name: Install Android Rust targets
         shell: bash
         run: |
