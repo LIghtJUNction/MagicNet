@@ -14,6 +14,21 @@ export type AppPolicy = {
 
 export type TransparentMode = "proxy" | "external-tun" | "hybrid" | "tun";
 
+export type WifiPolicyState = {
+  enabled: boolean;
+  policyMode: "blacklist" | "whitelist";
+  intervalSeconds: number;
+  supervisor: string;
+  connected: boolean;
+  ssid: string;
+  bssid: string;
+  matched: boolean;
+  desiredMode: "rule" | "direct";
+  currentMode: "rule" | "global" | "direct" | "unavailable";
+  ssids: string[];
+  bssids: string[];
+};
+
 export type RuntimeState = {
   singBoxState: "sing-box" | "stopped" | "unknown";
   singBox: string;

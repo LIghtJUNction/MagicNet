@@ -1,5 +1,5 @@
 import { MODULE_DIR, SING_BOX_UI } from "../constants.ts";
-import type { AppPolicy, BlocklistState, DnsState, HealthItem, PackageInfo, RuntimeState, TransparentMode, WarpState } from "../types.ts";
+import type { AppPolicy, BlocklistState, DnsState, HealthItem, PackageInfo, RuntimeState, TransparentMode, WarpState, WifiPolicyState } from "../types.ts";
 
 export type SubscriptionState = {
   singBox: string;
@@ -172,6 +172,71 @@ export const warpDefaults: WarpState = {
   importText: "",
   routeDomain: ""
 };
+
+export const wifiPolicyDefaults: WifiPolicyState = {
+  enabled: false,
+  policyMode: "blacklist",
+  intervalSeconds: 5,
+  supervisor: "stopped",
+  connected: false,
+  ssid: "",
+  bssid: "",
+  matched: false,
+  desiredMode: "rule",
+  currentMode: "unavailable",
+  ssids: [],
+  bssids: [],
+};
+
+export function parseWifiPolicy(text: string): WifiPolicyState {
+  const policy: WifiPolicyState = {
+    ...wifiPolicyDefaults,
+    ssids: [],
+    bssids: [],
+  };
+  let section: "ssids" | "bssids" | null = null;
+  text.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return;
+    if (line === "ssid entries:") {
+      section = "ssids";
+      return;
+    }
+    if (line === "bssid entries:") {
+      section = "bssids";
+      return;
+    }
+    const [key, ...valueParts] = line.split("=");
+    const value = valueParts.join("=").trim();
+    if (valueParts.length) {
+      section = null;
+      if (key === "enabled") policy.enabled = value === "1";
+      else if (key === "policy_mode") {
+        policy.policyMode = value === "whitelist" ? "whitelist" : "blacklist";
+      } else if (key === "interval_seconds") {
+        const interval = Number(value);
+        if (Number.isFinite(interval) && interval >= 3 && interval <= 300) {
+          policy.intervalSeconds = interval;
+        }
+      } else if (key === "supervisor") policy.supervisor = value || "stopped";
+      else if (key === "connected") policy.connected = value === "1";
+      else if (key === "ssid") policy.ssid = value;
+      else if (key === "bssid") policy.bssid = value;
+      else if (key === "matched") policy.matched = value === "1";
+      else if (key === "desired_mode") {
+        policy.desiredMode = value === "direct" ? "direct" : "rule";
+      } else if (key === "current_mode") {
+        policy.currentMode = ["rule", "global", "direct"].includes(value)
+          ? (value as WifiPolicyState["currentMode"])
+          : "unavailable";
+      }
+      return;
+    }
+    if (section === "ssids") policy.ssids.push(line);
+    else if (section === "bssids") policy.bssids.push(line);
+  });
+  return policy;
+}
 
 export function normalizeTransparentMode(value: string): TransparentMode | null {
   const mode = value.trim().toLowerCase();

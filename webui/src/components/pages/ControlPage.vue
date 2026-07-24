@@ -5,18 +5,22 @@ import {
   DownloadCloud,
   ExternalLink,
   Megaphone,
+  Plus,
   Power,
   Radar,
   RotateCcw,
   Save,
   ShieldCheck,
+  Trash2,
   Unplug,
+  Wifi,
   Zap,
 } from "lucide-vue-next";
 import { computed, nextTick, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import Input from "@/components/ui/Input.vue";
 import {
   applyConfigAction,
   applyTransparentModeAction,
@@ -44,13 +48,17 @@ const {
   startBackgroundCli,
   refreshAll,
   refreshStatus,
+  refreshWifiPolicy,
   openSingBoxUi,
   openExternal,
+  shellQuote,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pendingDangerAction = ref<ControlDangerAction | null>(null);
 const dangerConfirmCard = ref<HTMLElement | null>(null);
 const snapshotCopied = ref(false);
+const wifiSsidInput = ref("");
+const wifiBssidInput = ref("");
 
 const pendingDangerMessage = computed(
   () => pendingDangerAction.value?.message ?? "",
@@ -91,6 +99,7 @@ const orchestratorModes: Array<{
   { mode: "hybrid", title: "Hybrid", description: "TUN 输入后链路到多后端" },
   { mode: "tun", title: "TUN", description: "兼容完整透明代理路径" },
 ];
+const wifiPolicyModes = ["blacklist", "whitelist"] as const;
 
 function modeActionKey(mode: TransparentMode): string {
   return `transparent-${mode}`;
@@ -164,6 +173,61 @@ async function confirmDangerAction(): Promise<void> {
 async function setTransparentMode(mode: TransparentMode): Promise<void> {
   if (!canSwitchModes() || state.runtime.transparentMode === mode) return;
   requestDangerAction(transparentModeAction(mode));
+}
+
+async function runWifiAction(
+  key: string,
+  args: string,
+  label: string,
+): Promise<void> {
+  await withAction(key, async () => {
+    await runCli(args, label);
+    await refreshWifiPolicy(true);
+  });
+}
+
+async function toggleWifiPolicy(): Promise<void> {
+  const enable = !state.wifiPolicy.enabled;
+  await runWifiAction(
+    "wifi-toggle",
+    `wifi ${enable ? "enable" : "disable"}`,
+    `${enable ? "启用" : "停用"} Wi-Fi 自动模式`,
+  );
+}
+
+async function setWifiPolicyMode(mode: "blacklist" | "whitelist"): Promise<void> {
+  if (state.wifiPolicy.policyMode === mode) return;
+  await runWifiAction(
+    `wifi-mode-${mode}`,
+    `wifi mode ${mode}`,
+    `切换 Wi-Fi ${mode}`,
+  );
+}
+
+async function addWifiEntry(kind: "ssid" | "bssid"): Promise<void> {
+  const input = kind === "ssid" ? wifiSsidInput : wifiBssidInput;
+  const value = input.value.trim();
+  if (!value) {
+    state.output = kind === "ssid" ? "请输入 SSID。" : "请输入 BSSID。";
+    return;
+  }
+  await runWifiAction(
+    `wifi-add-${kind}`,
+    `wifi add-${kind} ${shellQuote(value)}`,
+    `添加 Wi-Fi ${kind.toUpperCase()}`,
+  );
+  input.value = "";
+}
+
+async function removeWifiEntry(
+  kind: "ssid" | "bssid",
+  value: string,
+): Promise<void> {
+  await runWifiAction(
+    `wifi-remove-${kind}-${value}`,
+    `wifi remove-${kind} ${shellQuote(value)}`,
+    `移除 Wi-Fi ${kind.toUpperCase()}`,
+  );
 }
 
 async function copyControlSnapshot(): Promise<void> {
@@ -449,6 +513,147 @@ function classifyLastCommand(command: string): string {
         >
           <Radar :size="17" />重新应用模式
         </Button>
+      </Card>
+
+      <Card class="grid gap-5 md:col-span-12">
+        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <span
+              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
+              >Wi-Fi Mode Policy</span
+            >
+            <h3 class="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-[-0.035em]">
+              <Wifi :size="22" />按 Wi-Fi 自动切换
+            </h3>
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+              黑名单命中 SSID 或 BSSID 时切换为 Direct，离开 Wi-Fi 后自动恢复 Rule。白名单模式会让名单内 Wi-Fi 使用 Rule，其他 Wi-Fi 使用 Direct。
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <Badge :tone="state.wifiPolicy.connected ? 'success' : 'neutral'">
+              {{ state.wifiPolicy.connected ? state.wifiPolicy.ssid || "Wi-Fi 已连接" : "未连接 Wi-Fi" }}
+            </Badge>
+            <Badge :tone="state.wifiPolicy.enabled ? 'success' : 'warning'">
+              {{ state.wifiPolicy.enabled ? "已启用" : "已停用" }}
+            </Badge>
+            <Button
+              :loading="isRunning('wifi-toggle')"
+              :disabled="runtimeBusy"
+              @click="toggleWifiPolicy"
+            >
+              <Power :size="17" />{{ state.wifiPolicy.enabled ? "停用" : "启用" }}
+            </Button>
+          </div>
+        </div>
+
+        <div class="grid gap-3 md:grid-cols-2">
+          <button
+            v-for="mode in wifiPolicyModes"
+            :key="mode"
+            type="button"
+            :aria-pressed="state.wifiPolicy.policyMode === mode"
+            :disabled="runtimeBusy || state.wifiPolicy.policyMode === mode"
+            :class="[
+              'rounded-[1.25rem] px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60 disabled:cursor-default',
+              state.wifiPolicy.policyMode === mode
+                ? 'bg-emerald-300 text-emerald-950'
+                : 'bg-white/[0.05] text-zinc-200 hover:bg-white/[0.08]',
+            ]"
+            @click="setWifiPolicyMode(mode)"
+          >
+            <span class="font-semibold">{{ mode === "blacklist" ? "黑名单" : "白名单" }}</span>
+            <span class="mt-1 block text-xs opacity-70">
+              {{ mode === "blacklist" ? "名单命中 → Direct" : "名单命中 → Rule" }}
+            </span>
+          </button>
+        </div>
+
+        <div class="grid gap-3 rounded-[1.4rem] bg-black/20 p-4 md:grid-cols-3">
+          <div>
+            <span class="text-xs text-zinc-500">当前 BSSID</span>
+            <p class="mt-1 break-all text-sm text-zinc-200">{{ state.wifiPolicy.bssid || "—" }}</p>
+          </div>
+          <div>
+            <span class="text-xs text-zinc-500">匹配结果</span>
+            <p class="mt-1 text-sm text-zinc-200">{{ state.wifiPolicy.matched ? "已命中名单" : "未命中" }}</p>
+          </div>
+          <div>
+            <span class="text-xs text-zinc-500">代理模式</span>
+            <p class="mt-1 text-sm text-zinc-200">
+              {{ state.wifiPolicy.currentMode }} → {{ state.wifiPolicy.desiredMode }}
+            </p>
+          </div>
+        </div>
+
+        <div class="grid gap-5 lg:grid-cols-2">
+          <div class="grid gap-3">
+            <div class="flex gap-2">
+              <Input
+                v-model="wifiSsidInput"
+                placeholder="输入完整 SSID，例如 Home WiFi"
+                @keyup.enter="addWifiEntry('ssid')"
+              />
+              <Button
+                variant="secondary"
+                :loading="isRunning('wifi-add-ssid')"
+                @click="addWifiEntry('ssid')"
+              ><Plus :size="17" />SSID</Button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-if="!state.wifiPolicy.ssids.length"
+                class="text-xs text-zinc-500"
+              >还没有 SSID 条目</span>
+              <span
+                v-for="ssid in state.wifiPolicy.ssids"
+                :key="ssid"
+                class="inline-flex items-center gap-2 rounded-full bg-white/[0.06] px-3 py-1.5 text-xs text-zinc-200"
+              >
+                {{ ssid }}
+                <button
+                  type="button"
+                  class="text-zinc-500 hover:text-rose-300"
+                  :aria-label="`移除 SSID ${ssid}`"
+                  @click="removeWifiEntry('ssid', ssid)"
+                ><Trash2 :size="14" /></button>
+              </span>
+            </div>
+          </div>
+
+          <div class="grid gap-3">
+            <div class="flex gap-2">
+              <Input
+                v-model="wifiBssidInput"
+                placeholder="输入 BSSID，例如 aa:bb:cc:dd:ee:ff"
+                @keyup.enter="addWifiEntry('bssid')"
+              />
+              <Button
+                variant="secondary"
+                :loading="isRunning('wifi-add-bssid')"
+                @click="addWifiEntry('bssid')"
+              ><Plus :size="17" />BSSID</Button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-if="!state.wifiPolicy.bssids.length"
+                class="text-xs text-zinc-500"
+              >还没有 BSSID 条目</span>
+              <span
+                v-for="bssid in state.wifiPolicy.bssids"
+                :key="bssid"
+                class="inline-flex items-center gap-2 rounded-full bg-white/[0.06] px-3 py-1.5 font-mono text-xs text-zinc-200"
+              >
+                {{ bssid }}
+                <button
+                  type="button"
+                  class="text-zinc-500 hover:text-rose-300"
+                  :aria-label="`移除 BSSID ${bssid}`"
+                  @click="removeWifiEntry('bssid', bssid)"
+                ><Trash2 :size="14" /></button>
+              </span>
+            </div>
+          </div>
+        </div>
       </Card>
 
       <Card
