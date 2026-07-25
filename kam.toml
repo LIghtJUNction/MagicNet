@@ -1,8 +1,8 @@
 [prop]
 id = "MagicNet"
 name = "MagicNet"
-version = "v1.1.23"
-versionCode = 1784411866152
+version = "v1.1.24"
+versionCode = 1784968841371
 author = "LIghtJUNction"
 description = "[MagicNet]:Android root network module with magicnet0 TUN, sing-box, WebUI, MCP, and DNS leak guard tools. Built with KAM."
 updateJson = "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json"
@@ -84,6 +84,7 @@ hooks_dir = "hooks"
 members = ["."]
 
 [dev.sync]
+stage_dir = "/sdcard/Download/MagicNet/kam-dev/{{id}}"
 mirror = ["webroot/**"]
 preserve = [
     ".config/**",
@@ -100,6 +101,5 @@ ignore = [
     "*.bak",
     "*.kam-tmp",
 ]
-staging = "/sdcard/Download/MagicNet/kam-dev/{{id}}"
 
 [tool]
