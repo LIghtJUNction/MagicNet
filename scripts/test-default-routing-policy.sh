@@ -218,7 +218,7 @@ proxy_dns_tags = {
     for server in config["dns"]["servers"]
     if server.get("detour") == "proxy"
 }
-if len(rules) != 66 or len(dns_rules) != 25:
+if len(rules) != 67 or len(dns_rules) != 25:
     raise AssertionError(
         f"canonical rule counts changed: route={len(rules)} dns={len(dns_rules)}"
     )
@@ -274,14 +274,14 @@ legacy_early_local_msft_dns_rule = {
 }
 if legacy_early_local_msft_dns_rule in dns_rules:
     raise AssertionError("legacy early local Microsoft connectivity DNS rule must be absent")
-if rules[26] != {"domain_suffix": msft_network_test_suffixes, "outbound": "network-test"}:
-    raise AssertionError("route rule 26 Microsoft network-test suffixes changed")
-if rules[28] != {"domain_suffix": foreign_network_test_suffixes, "outbound": "network-test"}:
-    raise AssertionError("route rule 28 foreign network-test suffixes changed")
+if rules[27] != {"domain_suffix": msft_network_test_suffixes, "outbound": "network-test"}:
+    raise AssertionError("route rule 27 Microsoft network-test suffixes changed")
+if rules[29] != {"domain_suffix": foreign_network_test_suffixes, "outbound": "network-test"}:
+    raise AssertionError("route rule 29 foreign network-test suffixes changed")
 if foreign_network_test_dns_rule["domain_suffix"] != (
-    rules[26]["domain_suffix"] + rules[28]["domain_suffix"]
+    rules[27]["domain_suffix"] + rules[29]["domain_suffix"]
 ):
-    raise AssertionError("foreign network-test DNS suffixes must equal route rules 26 + 28")
+    raise AssertionError("foreign network-test DNS suffixes must equal route rules 27 + 29")
 cn_bing_dns_rule = {
     "domain_suffix": ["cn.bing.com"],
     "server": "bootstrap-local-dns",
@@ -730,9 +730,9 @@ if (
     != karing_false_positive_domains
 ):
     raise AssertionError("foreign-priority domain sequence must preserve 51 entries and append 5")
-if rules[48] != foreign_priority_route_rule or dns_rules[20] != foreign_priority_dns_rule:
+if rules[49] != foreign_priority_route_rule or dns_rules[20] != foreign_priority_dns_rule:
     raise AssertionError("exact 56-domain foreign-priority route/DNS indexes changed")
-if rules[48]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
+if rules[49]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
     raise AssertionError("foreign-priority route/DNS domain lists must remain identical")
 flows = (
     {
@@ -1014,7 +1014,7 @@ for domain in karing_false_positive_domains:
         dns_index, dns_rule, _ = dns_match
         dns_server = dns_rule.get("server")
     if (
-        route_index != 48
+        route_index != 49
         or route_rule.get("outbound") != "proxy-rule"
         or dns_index != 20
         or dns_server != "doh-google"
@@ -1533,9 +1533,9 @@ mmstat_dns_index = mmstat_dns_indexes[0]
 route_index, route_rule, matching_rule_sets = first_matching_outbound("mmstat.com", flows[0])
 route_outbound = route_rule.get("outbound")
 route_effective = recursively_effective_outbound(route_outbound)
-if route_index != 30 or route_outbound != "cn-direct" or route_effective != "direct":
+if route_index != 31 or route_outbound != "cn-direct" or route_effective != "direct":
     raise AssertionError(
-        "mmstat.com route must remain index 30 cn-direct/direct: "
+        "mmstat.com route must remain index 31 cn-direct/direct: "
         f"index={route_index} outbound={route_outbound} effective={route_effective}"
     )
 mmstat_dns = first_matching_dns("mmstat.com", flows[0])
@@ -1567,9 +1567,9 @@ explicit_route_domains = sorted({
     for key in ("domain", "domain_suffix")
     for domain in values(route_rule.get(key))
 })
-if len(explicit_route_domains) != 346:
+if len(explicit_route_domains) != 347:
     raise AssertionError(
-        f"explicit route-domain audit coverage changed: count={len(explicit_route_domains)} expected=346"
+        f"explicit route-domain audit coverage changed: count={len(explicit_route_domains)} expected=347"
     )
 
 def audit_explicit_route_dns_parity(domain):
@@ -1715,7 +1715,7 @@ network_test_route_indexes = [
 if (
     rule.get("outbound") != "dns-guard"
     or recursively_effective_outbound(rule["outbound"]) != "block"
-    or network_test_route_indexes != [28]
+    or network_test_route_indexes != [29]
     or not index < network_test_route_indexes[0]
 ):
     raise AssertionError(

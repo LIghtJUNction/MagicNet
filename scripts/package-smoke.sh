@@ -304,7 +304,7 @@ if len(packaged_tuns) != 1 or packaged_tuns[0].get("route_exclude_address") != c
 dns_rules = config.get("dns", {}).get("rules", [])
 dns_servers = config.get("dns", {}).get("servers", [])
 route_rules = config.get("route", {}).get("rules", [])
-if len(route_rules) != 66 or len(dns_rules) != 25:
+if len(route_rules) != 67 or len(dns_rules) != 25:
     raise SystemExit(
         f"canonical rule counts changed: route={len(route_rules)} dns={len(dns_rules)}"
     )
@@ -419,20 +419,20 @@ legacy_early_local_msft_dns_rule = {
 }
 if legacy_early_local_msft_dns_rule in dns_rules:
     raise SystemExit("legacy early local Microsoft connectivity DNS rule must be absent")
-if route_rules[26] != {
+if route_rules[27] != {
     "domain_suffix": msft_network_test_suffixes,
     "outbound": "network-test",
 }:
-    raise SystemExit("route rule 26 Microsoft network-test suffixes changed")
-if route_rules[28] != {
+    raise SystemExit("route rule 27 Microsoft network-test suffixes changed")
+if route_rules[29] != {
     "domain_suffix": foreign_network_test_suffixes,
     "outbound": "network-test",
 }:
-    raise SystemExit("route rule 28 foreign network-test suffixes changed")
+    raise SystemExit("route rule 29 foreign network-test suffixes changed")
 if foreign_connectivity_rule["domain_suffix"] != (
-    route_rules[26]["domain_suffix"] + route_rules[28]["domain_suffix"]
+    route_rules[27]["domain_suffix"] + route_rules[29]["domain_suffix"]
 ):
-    raise SystemExit("foreign network-test DNS suffixes must equal route rules 26 + 28")
+    raise SystemExit("foreign network-test DNS suffixes must equal route rules 27 + 29")
 apple_icloud_rule = {
     "domain_suffix": [
         "apple.com",
@@ -1363,7 +1363,7 @@ def rule_sets(rule):
     return set(value if isinstance(value, list) else [value])
 
 ai_domain_routes = {
-    "ai-chatgpt": {"openai.com", "chatgpt.com", "chat.openai.com", "auth.openai.com", "oaistatic.com", "oaiusercontent.com", "openaiapi-site.azureedge.net"},
+    "ai-chatgpt": {"openai.com", "chatgpt.com", "chat.openai.com", "auth.openai.com", "oaistatic.com", "oaiusercontent.com", "oaistatsig.com", "openaiapi-site.azureedge.net"},
     "ai-gemini": {"gemini.google.com", "bard.google.com", "generativelanguage.googleapis.com", "ai.google.dev"},
     "ai-grok": {"grok.com", "x.ai", "api.x.ai"},
     "ai-claude": {"anthropic.com", "claude.ai"},
@@ -1371,6 +1371,30 @@ ai_domain_routes = {
 for outbound, required_domains in ai_domain_routes.items():
     if find_rule(route_rules, required_domains, outbound=outbound) < 0:
         raise SystemExit(f"missing dedicated domain route for {outbound}")
+
+x_package_routes = [
+    index
+    for index, rule in enumerate(route_rules)
+    if rule == {"package_name": ["com.twitter.android"], "outbound": "social-proxy"}
+]
+fakeip_guard_routes = [
+    index
+    for index, rule in enumerate(route_rules)
+    if rule == {
+        "ip_cidr": ["127.0.0.1/32", "::1/128", "198.18.0.0/16", "28.0.0.0/8"],
+        "outbound": "block",
+    }
+]
+if len(x_package_routes) != 1 or len(fakeip_guard_routes) != 1:
+    raise SystemExit(
+        "packaged X action route or FakeIP guard is non-canonical: "
+        f"x={x_package_routes} guard={fakeip_guard_routes}"
+    )
+if x_package_routes[0] >= fakeip_guard_routes[0]:
+    raise SystemExit(
+        "packaged X action route must precede the FakeIP guard: "
+        f"x={x_package_routes[0]} guard={fakeip_guard_routes[0]}"
+    )
 
 for tag in ("ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude", "ai-proxy"):
     expected_selector = {"type": "selector", "tag": tag, "outbounds": ["block"], "default": "block"}
@@ -1551,9 +1575,9 @@ foreign_priority_route_rule = {
     "domain_suffix": foreign_priority_domains,
     "outbound": "proxy-rule",
 }
-if route_rules[48] != foreign_priority_route_rule:
-    raise SystemExit("packaged exact 56-domain foreign-priority route must remain at index 48")
-if route_rules[48]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
+if route_rules[49] != foreign_priority_route_rule:
+    raise SystemExit("packaged exact 56-domain foreign-priority route must remain at index 49")
+if route_rules[49]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
     raise SystemExit("packaged foreign-priority route/DNS lists must remain identical")
 canonical_keyword_rule = {"domain_keyword": network_test_keywords, "outbound": "network-test"}
 keyword_routes = [
@@ -1828,12 +1852,12 @@ if recursively_effective_outbound(global_bing_route_rule["outbound"]) != "block"
     )
 
 if (
-    route_rules[30].get("outbound") != "cn-direct"
-    or not explicit_domain_matches(route_rules[30], "mmstat.com")
-    or any(explicit_domain_matches(rule, "mmstat.com") for rule in route_rules[:30])
-    or recursively_effective_outbound(route_rules[30]["outbound"]) != "direct"
+    route_rules[31].get("outbound") != "cn-direct"
+    or not explicit_domain_matches(route_rules[31], "mmstat.com")
+    or any(explicit_domain_matches(rule, "mmstat.com") for rule in route_rules[:31])
+    or recursively_effective_outbound(route_rules[31]["outbound"]) != "direct"
 ):
-    raise SystemExit("packaged mmstat.com route must first-match index 30 cn-direct/direct")
+    raise SystemExit("packaged mmstat.com route must first-match index 31 cn-direct/direct")
 
 download_probes = set(download_suffixes)
 for index, rule in enumerate(route_rules[:download_route_index]):

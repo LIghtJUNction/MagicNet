@@ -884,7 +884,7 @@ import json, sys
 c = json.load(open(sys.argv[1], encoding="utf-8")); rules = c["route"]["rules"]
 groups = {"ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"}
 ai_domains = {
-    "ai-chatgpt": {"openai.com", "chatgpt.com", "chat.openai.com", "auth.openai.com", "oaistatic.com", "oaiusercontent.com", "openaiapi-site.azureedge.net"},
+    "ai-chatgpt": {"openai.com", "chatgpt.com", "chat.openai.com", "auth.openai.com", "oaistatic.com", "oaiusercontent.com", "oaistatsig.com", "openaiapi-site.azureedge.net"},
     "ai-gemini": {"gemini.google.com", "bard.google.com", "generativelanguage.googleapis.com", "ai.google.dev"},
     "ai-grok": {"grok.com", "x.ai", "api.x.ai"},
     "ai-claude": {"anthropic.com", "claude.ai"},

@@ -37,6 +37,7 @@ jq empty src/MagicNet/.config/sing-box/config.json
 sh scripts/test-kamfw-i18n.sh
 bash scripts/test-default-routing-policy.sh
 bash scripts/test-wechat-routing.sh
+bash scripts/test-action-routing.sh
 bash scripts/test-anthropic-routing.sh
 bash scripts/singbox-subscription-protocol-smoke.sh
 bash scripts/test-subscription-lifecycle.sh

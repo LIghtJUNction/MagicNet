@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Keep ChatGPT remote pairing feature traffic on the pinned ChatGPT path and
+  route all X Android action requests before the FakeIP guard.
 - Start each AI service selector on its filtered service-specific automatic
   failover group after a subscription provides eligible nodes, while keeping
   zero-node configurations blocked and preserving explicit user selections.
