@@ -55,9 +55,9 @@ export function formatWebuiInstallPlanReport(plan: WebuiInstallPlan): string {
 }
 
 export function webuiInstallPlanTone(status: WebuiInstallPlan["status"]): string {
-  if (status === "danger") return "border-red-400/30 bg-red-400/10 text-red-100";
-  if (status === "warning") return "border-amber-400/30 bg-amber-400/10 text-amber-100";
-  return "border-emerald-400/25 bg-emerald-400/10 text-emerald-100";
+  if (status === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
+  if (status === "warning") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
+  return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]";
 }
 
 const signedUrlPattern = /(token|secret|signature|expires|x-amz-|x-oss-)/i;

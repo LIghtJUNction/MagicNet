@@ -181,7 +181,7 @@ onMounted(() => {
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Unplug :size="17" /> 活动连接</h3>
-        <p class="mt-1 text-sm leading-6 text-zinc-400">
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
           {{ snapshot ? `${snapshot.count} 条连接 · ${formatConnectionBytes(totalBytes)}` : rawOutput || "读取 sing-box API 连接列表。" }}
         </p>
       </div>
@@ -197,25 +197,25 @@ onMounted(() => {
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <Input v-model="query" placeholder="按域名、应用、来源、规则、链路过滤" spellcheck="false" />
-      <span class="inline-flex items-center gap-1 text-sm text-zinc-500"><Search :size="15" />{{ filtered.length }} 命中</span>
+      <span class="inline-flex items-center gap-1 text-sm text-[var(--mn-ink-muted)]"><Search :size="15" />{{ filtered.length }} 命中</span>
     </div>
 
     <div v-if="snapshot" class="grid gap-2 sm:grid-cols-4">
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">代理连接</p>
-        <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.proxied }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">代理连接</p>
+        <p class="mt-1 text-lg font-semibold text-[var(--mn-ink)]">{{ flowSummary.proxied }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">直连/绕过</p>
-        <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.direct }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">直连/绕过</p>
+        <p class="mt-1 text-lg font-semibold text-[var(--mn-ink)]">{{ flowSummary.direct }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">阻断/拒绝</p>
-        <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.blocked }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">阻断/拒绝</p>
+        <p class="mt-1 text-lg font-semibold text-[var(--mn-ink)]">{{ flowSummary.blocked }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">未知流向</p>
-        <p class="mt-1 text-lg font-semibold text-zinc-100">{{ flowSummary.unknown }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">未知流向</p>
+        <p class="mt-1 text-lg font-semibold text-[var(--mn-ink)]">{{ flowSummary.unknown }}</p>
       </div>
     </div>
 
@@ -226,21 +226,21 @@ onMounted(() => {
         class="rounded-md border p-3"
         :class="{
           'border-emerald-500/30 bg-emerald-500/10': item.tone === 'success',
-          'border-amber-500/30 bg-amber-500/10': item.tone === 'warning',
-          'border-red-500/30 bg-red-500/10': item.tone === 'danger',
-          'border-zinc-800 bg-zinc-950': item.tone === 'neutral',
+          'border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)]': item.tone === 'warning',
+          'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)]': item.tone === 'danger',
+          'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)]': item.tone === 'neutral',
         }"
       >
-        <p class="text-xs text-zinc-500">{{ item.label }}</p>
-        <p class="mt-1 text-base font-semibold text-zinc-100">{{ item.value }}</p>
-        <p class="mt-1 truncate text-xs text-zinc-500">{{ item.detail }}</p>
+        <p class="text-xs text-[var(--mn-ink-muted)]">{{ item.label }}</p>
+        <p class="mt-1 text-base font-semibold text-[var(--mn-ink)]">{{ item.value }}</p>
+        <p class="mt-1 truncate text-xs text-[var(--mn-ink-muted)]">{{ item.detail }}</p>
       </div>
     </div>
 
-    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-amber-500/10 p-3">
-      <p class="text-sm font-semibold text-amber-100">{{ pendingAction.title }}</p>
-      <p class="mt-1 text-sm leading-6 text-amber-100/80">{{ pendingAction.detail }}</p>
-      <code class="mt-2 block break-words rounded bg-black/50 p-2 text-xs text-amber-50">{{ pendingAction.command }}</code>
+    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+      <p class="text-sm font-semibold text-[var(--mn-warning)]">{{ pendingAction.title }}</p>
+      <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">{{ pendingAction.detail }}</p>
+      <code class="mt-2 block break-words rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">{{ pendingAction.command }}</code>
       <div class="mt-3 grid gap-2 sm:grid-cols-2">
         <Button size="sm" variant="secondary" :loading="isRunning(pendingAction.key)" @click="confirmAction">确认执行</Button>
         <Button size="sm" variant="outline" @click="cancelAction">取消</Button>
@@ -248,7 +248,7 @@ onMounted(() => {
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-      <label class="grid gap-1 text-xs text-zinc-500">
+      <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
         Top N (1-8)
         <Input v-model="closeTopCount" inputmode="numeric" placeholder="3" />
       </label>
@@ -272,42 +272,42 @@ onMounted(() => {
 
     <div v-if="processBuckets.length || ruleBuckets.length || chainBuckets.length" class="grid gap-2 md:grid-cols-3">
       <div v-if="processBuckets.length" class="grid gap-2">
-        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">应用热点</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-ink-muted)]">应用热点</p>
         <button
           v-for="bucket in processBuckets"
           :key="`process-${bucket.name}`"
-          class="grid grid-cols-[minmax(0,1fr)_auto] rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-left text-sm"
+          class="grid grid-cols-[minmax(0,1fr)_auto] rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 text-left text-sm"
           type="button"
           @click="selectQuery(bucket.query)"
         >
-          <span class="truncate text-zinc-200">{{ bucket.name }}</span>
-          <span class="text-zinc-500">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
+          <span class="truncate text-[var(--mn-ink-soft)]">{{ bucket.name }}</span>
+          <span class="text-[var(--mn-ink-muted)]">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
         </button>
       </div>
       <div v-if="ruleBuckets.length" class="grid gap-2">
-        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">规则热点</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-ink-muted)]">规则热点</p>
         <button
           v-for="bucket in ruleBuckets"
           :key="`rule-${bucket.name}`"
-          class="grid grid-cols-[minmax(0,1fr)_auto] rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-left text-sm"
+          class="grid grid-cols-[minmax(0,1fr)_auto] rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 text-left text-sm"
           type="button"
           @click="selectQuery(bucket.query)"
         >
-          <span class="truncate text-zinc-200">{{ bucket.name }}</span>
-          <span class="text-zinc-500">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
+          <span class="truncate text-[var(--mn-ink-soft)]">{{ bucket.name }}</span>
+          <span class="text-[var(--mn-ink-muted)]">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
         </button>
       </div>
       <div v-if="chainBuckets.length" class="grid gap-2">
-        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">链路热点</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-ink-muted)]">链路热点</p>
         <button
           v-for="bucket in chainBuckets"
           :key="`chain-${bucket.name}`"
-          class="grid grid-cols-[minmax(0,1fr)_auto] rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-left text-sm"
+          class="grid grid-cols-[minmax(0,1fr)_auto] rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 text-left text-sm"
           type="button"
           @click="selectQuery(bucket.query)"
         >
-          <span class="truncate text-zinc-200">{{ bucket.name }}</span>
-          <span class="text-zinc-500">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
+          <span class="truncate text-[var(--mn-ink-soft)]">{{ bucket.name }}</span>
+          <span class="text-[var(--mn-ink-muted)]">{{ bucket.count }} · {{ formatConnectionBytes(bucket.bytes) }}</span>
         </button>
       </div>
     </div>
@@ -316,21 +316,21 @@ onMounted(() => {
       <div
         v-for="item in visibleConnections"
         :key="item.id"
-        class="grid gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2"
+        class="grid gap-1 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2"
       >
         <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
-          <span class="truncate text-sm font-semibold text-zinc-100">{{ item.label }}</span>
-          <span class="text-xs text-zinc-500">{{ formatConnectionBytes(item.totalBytes) }}</span>
+          <span class="truncate text-sm font-semibold text-[var(--mn-ink)]">{{ item.label }}</span>
+          <span class="text-xs text-[var(--mn-ink-muted)]">{{ formatConnectionBytes(item.totalBytes) }}</span>
           <Button size="sm" variant="ghost" :disabled="isRunning('connections-action')" @click="requestCloseOne(item)">关闭</Button>
         </div>
-        <p class="truncate text-xs text-zinc-500">{{ item.detail }}</p>
-        <p v-if="item.process || item.source" class="truncate text-xs text-zinc-500">
+        <p class="truncate text-xs text-[var(--mn-ink-muted)]">{{ item.detail }}</p>
+        <p v-if="item.process || item.source" class="truncate text-xs text-[var(--mn-ink-muted)]">
           {{ [item.process, item.source].filter(Boolean).join(" · ") }}
         </p>
-        <p class="text-xs text-zinc-400">↑ {{ formatConnectionBytes(item.upload) }} / ↓ {{ formatConnectionBytes(item.download) }}</p>
+        <p class="text-xs text-[var(--mn-ink-muted)]">↑ {{ formatConnectionBytes(item.upload) }} / ↓ {{ formatConnectionBytes(item.download) }}</p>
       </div>
     </div>
-    <p v-else class="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
+    <p v-else class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm text-[var(--mn-ink-muted)]">
       {{ snapshot ? "没有匹配的活动连接。" : "还没有连接数据。" }}
     </p>
   </Card>

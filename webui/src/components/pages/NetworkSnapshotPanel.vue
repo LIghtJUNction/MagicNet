@@ -38,21 +38,21 @@ async function copyNetworkReport(): Promise<void> {
       </Button>
     </div>
     <div class="grid gap-2 sm:grid-cols-4">
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">接口</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.interfaces }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">接口</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.interfaces }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">规则</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.ipRules }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">规则</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.ipRules }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">路由</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.routes }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">路由</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.routes }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">NAT</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.natRules }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">NAT</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.natRules }}</p>
       </div>
     </div>
     <div class="mt-2 grid gap-2 md:grid-cols-3">
@@ -67,6 +67,6 @@ async function copyNetworkReport(): Promise<void> {
         <p class="mt-1 break-words text-xs leading-5 opacity-70">{{ item.detail }}</p>
       </div>
     </div>
-    <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ snapshotText }}</pre>
+    <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ snapshotText }}</pre>
   </Card>
 </template>

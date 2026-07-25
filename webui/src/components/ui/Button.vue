@@ -25,19 +25,20 @@ const props = withDefaults(
 );
 
 const buttonVariants = cva(
-  "group inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold transition-[transform,color,background-color,opacity,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070809] active:scale-[0.975] disabled:pointer-events-none disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100",
+  "group inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold transition-[transform,color,background-color,opacity,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:scale-[0.975] disabled:pointer-events-none disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100",
   {
     variants: {
       variant: {
         default:
-          "bg-emerald-300 text-[#06110e] shadow-[inset_0_1px_0_rgba(255,255,255,0.5),inset_0_0_0_1px_rgba(255,255,255,0.2)] hover:bg-emerald-200",
+          "bg-[var(--mn-cactus)] text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)] hover:bg-[var(--mn-cactus-deep)]",
         secondary:
-          "bg-white/[0.08] text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_0_0_1px_rgba(255,255,255,0.06)] hover:bg-white/[0.12]",
+          "bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_var(--mn-border)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)]",
         outline:
-          "bg-[#0b0c0e] text-zinc-200 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),inset_0_1px_0_rgba(255,255,255,0.05)] hover:bg-white/[0.07] hover:text-white",
-        ghost: "bg-transparent text-zinc-300 hover:bg-white/[0.07] hover:text-white",
+          "bg-[var(--mn-carrier)] text-[var(--mn-ink-soft)] shadow-[inset_0_0_0_1px_var(--mn-border-strong)] hover:bg-[var(--mn-carrier-deep)] hover:text-[var(--mn-ink)]",
+        ghost:
+          "bg-transparent text-[var(--mn-ink-muted)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] hover:text-[var(--mn-ink)]",
         destructive:
-          "bg-rose-500 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-rose-400",
+          "bg-[var(--mn-clay)] text-[var(--mn-ivory)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_12%,transparent)] hover:brightness-105",
       },
       size: {
         sm: "min-h-11 px-4",

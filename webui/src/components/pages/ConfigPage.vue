@@ -165,81 +165,81 @@ async function openConfigIssue(): Promise<void> {
     />
 
     <Card class="grid gap-3">
-      <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm text-zinc-400">
-        <span class="h-9 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100">sing-box</span>
-        <input class="h-9 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-300" readonly :value="state.config.path">
+      <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm text-[var(--mn-ink-muted)]">
+        <span class="h-9 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 text-sm text-[var(--mn-ink)]">sing-box</span>
+        <input class="h-9 min-w-0 flex-1 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-xs text-[var(--mn-ink-soft)]" readonly :value="state.config.path">
         <span class="shrink-0">{{ state.config.status }}</span>
-        <span v-if="state.config.dirty" class="shrink-0 rounded bg-amber-500/15 px-2 py-1 text-xs text-amber-200">未保存</span>
+        <span v-if="state.config.dirty" class="shrink-0 rounded bg-amber-500/15 px-2 py-1 text-xs text-[var(--mn-warning)]">未保存</span>
       </div>
-      <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm leading-6 text-zinc-400">
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm leading-6 text-[var(--mn-ink-muted)]">
         <p>sing-box 配置文件是 JSON。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 sing-box check，通过后才覆盖。</p>
       </div>
-      <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
+      <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
         <div>
-          <p class="text-xs text-zinc-500">校验状态</p>
+          <p class="text-xs text-[var(--mn-ink-muted)]">校验状态</p>
           <p
             class="mt-1 inline-flex rounded px-2 py-1 text-xs"
             :class="{
-              'bg-emerald-500/15 text-emerald-200': state.config.validation.status === 'ok',
-              'bg-red-500/15 text-red-200': state.config.validation.status === 'error',
-              'bg-zinc-800 text-zinc-300': state.config.validation.status === 'idle',
+              'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': state.config.validation.status === 'ok',
+              'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': state.config.validation.status === 'error',
+              'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': state.config.validation.status === 'idle',
             }"
           >
             {{ state.config.validation.status === 'ok' ? '通过' : state.config.validation.status === 'error' ? '失败' : '未校验' }}
           </p>
         </div>
         <div class="min-w-0">
-          <p class="text-xs text-zinc-500">最近结果 {{ state.config.validation.checkedAt }}</p>
-          <p class="mt-1 break-words text-sm text-zinc-300">{{ state.config.validation.summary }}</p>
+          <p class="text-xs text-[var(--mn-ink-muted)]">最近结果 {{ state.config.validation.checkedAt }}</p>
+          <p class="mt-1 break-words text-sm text-[var(--mn-ink-soft)]">{{ state.config.validation.summary }}</p>
         </div>
       </div>
-      <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-500 sm:grid-cols-4">
+      <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
         <span>{{ configStats.lines }} 行</span>
         <span>{{ configStats.chars }} 字符</span>
         <span>{{ configStats.sizeKiB }} KiB</span>
-        <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-red-300' : 'text-zinc-400'">{{ localJsonStatus || "尚未执行本地格式化" }}</span>
+        <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">{{ localJsonStatus || "尚未执行本地格式化" }}</span>
       </div>
-      <div class="grid gap-3 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+      <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm text-[var(--mn-ink-muted)]">
         <div class="flex min-w-0 flex-wrap items-center gap-2">
-          <ListTree :size="16" class="text-zinc-500" />
-          <span class="font-medium text-zinc-200">结构摘要</span>
+          <ListTree :size="16" class="text-[var(--mn-ink-muted)]" />
+          <span class="font-medium text-[var(--mn-ink-soft)]">结构摘要</span>
           <span
             class="rounded px-2 py-1 text-xs"
             :class="{
-              'bg-emerald-500/15 text-emerald-200': configOutline.status === 'ok',
-              'bg-red-500/15 text-red-200': configOutline.status === 'error',
-              'bg-zinc-800 text-zinc-300': configOutline.status === 'idle',
+              'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': configOutline.status === 'ok',
+              'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': configOutline.status === 'error',
+              'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': configOutline.status === 'idle',
             }"
           >
             {{ configOutline.status === 'ok' ? '可解析' : configOutline.status === 'error' ? '需修正' : '待加载' }}
           </span>
-          <span class="min-w-0 break-words text-xs text-zinc-500">{{ configOutline.summary }}</span>
+          <span class="min-w-0 break-words text-xs text-[var(--mn-ink-muted)]">{{ configOutline.summary }}</span>
         </div>
-        <div class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-4">
-          <span v-for="item in configOutline.counts" :key="item.label" class="rounded border border-zinc-800 px-2 py-1">
-            {{ item.label }}: <b class="font-medium text-zinc-300">{{ item.value }}</b>
+        <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
+          <span v-for="item in configOutline.counts" :key="item.label" class="rounded border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] px-2 py-1">
+            {{ item.label }}: <b class="font-medium text-[var(--mn-ink-soft)]">{{ item.value }}</b>
           </span>
         </div>
-        <p class="break-words text-xs text-zinc-500">
+        <p class="break-words text-xs text-[var(--mn-ink-muted)]">
           顶层键：{{ configOutline.keys.length ? configOutline.keys.join(", ") : "无" }}
         </p>
       </div>
-      <div class="grid gap-3 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+      <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm text-[var(--mn-ink-muted)]">
         <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <div class="flex min-w-0 flex-wrap items-center gap-2">
-            <span class="font-medium text-zinc-200">运行审计</span>
+            <span class="font-medium text-[var(--mn-ink-soft)]">运行审计</span>
             <span
               class="rounded px-2 py-1 text-xs"
               :class="{
-                'bg-emerald-500/15 text-emerald-200': configAudit.status === 'ok',
-                'bg-amber-500/15 text-amber-200': configAudit.status === 'warning',
-                'bg-red-500/15 text-red-200': configAudit.status === 'error',
-                'bg-zinc-800 text-zinc-300': configAudit.status === 'idle',
+                'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': configAudit.status === 'ok',
+                'bg-amber-500/15 text-[var(--mn-warning)]': configAudit.status === 'warning',
+                'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': configAudit.status === 'error',
+                'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': configAudit.status === 'idle',
               }"
             >
               {{ configAudit.status === 'ok' ? '齐全' : configAudit.status === 'warning' ? '需确认' : configAudit.status === 'error' ? '不可解析' : '待加载' }}
             </span>
-            <span class="min-w-0 break-words text-xs text-zinc-500">{{ configAudit.summary }}</span>
+            <span class="min-w-0 break-words text-xs text-[var(--mn-ink-muted)]">{{ configAudit.summary }}</span>
           </div>
           <Button variant="outline" :disabled="!configAudit.items.length" @click="copyConfigAudit"><Copy :size="16" />{{ auditCopied ? '已复制审计' : '复制审计' }}</Button>
         </div>
@@ -249,16 +249,16 @@ async function openConfigIssue(): Promise<void> {
             :key="item.label"
             class="rounded border px-2 py-1"
             :class="{
-              'border-emerald-500/30 text-emerald-200': item.tone === 'success',
-              'border-amber-500/30 text-amber-200': item.tone === 'warning',
-              'border-red-500/30 text-red-200': item.tone === 'danger',
-              'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+              'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+              'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+              'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+              'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
             }"
           >
             {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
           </span>
         </div>
-        <p class="break-words text-xs text-zinc-500">
+        <p class="break-words text-xs text-[var(--mn-ink-muted)]">
           出站 tag：{{ configAudit.outboundTags.length ? configAudit.outboundTags.join(", ") : "无" }}
         </p>
       </div>

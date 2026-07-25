@@ -167,6 +167,30 @@ magicnet_singbox_emit_node_json() {
         printf '{"type":"hysteria2","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s"}}' \
             "$_name" "$_server" "$_port" "$_password" "$_sni"
         ;;
+    anytls)
+        _password=$(magicnet_json_escape "$(magicnet_yaml_value password)")
+        [ -n "$_password" ] || return 1
+        _sni=$(magicnet_yaml_value sni)
+        [ -n "$_sni" ] || _sni=$(magicnet_yaml_value servername)
+        [ -n "$_sni" ] || _sni="$_server"
+        _sni=$(magicnet_json_escape "$_sni")
+        _fp=$(magicnet_yaml_value client-fingerprint)
+        [ -n "$_fp" ] || _fp=$(magicnet_yaml_value fingerprint)
+        _fp=$(magicnet_json_escape "$_fp")
+        _skip=$(magicnet_yaml_value skip-cert-verify)
+        [ -n "$_skip" ] || _skip=$(magicnet_yaml_value insecure)
+        _alpn=$(magicnet_yaml_value alpn)
+        # Clash may store alpn as a YAML list; flatten common one-line forms.
+        _alpn=$(printf '%s' "$_alpn" | tr -d '[]"' | tr ' ' ',')
+        printf '{"type":"anytls","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s"' \
+            "$_name" "$_server" "$_port" "$_password" "$_sni"
+        if magicnet_truthy "$_skip"; then
+            printf ',"insecure":true'
+        fi
+        [ -n "$_fp" ] && printf ',"utls":{"enabled":true,"fingerprint":"%s"}' "$_fp"
+        [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
+        printf '}}'
+        ;;
     *)
         return 1
         ;;
@@ -281,6 +305,28 @@ magicnet_singbox_emit_share_link_json() {
         _alpn=$(magicnet_uri_query_value alpn "$_query")
         printf '{"type":"hysteria2","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s"' \
             "$_tag" "$_server" "$_port" "$(magicnet_json_escape "$_userinfo")" "$(magicnet_json_escape "$_sni")"
+        [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
+        printf '}}'
+        ;;
+    anytls)
+        # anytls://password@host:port?sni=&insecure=&fp=&alpn=#tag
+        _password=$(magicnet_percent_decode "$_userinfo")
+        [ -n "$_password" ] || return 1
+        _sni=$(magicnet_uri_query_value sni "$_query")
+        [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value servername "$_query")
+        [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value peer "$_query")
+        [ -n "$_sni" ] || _sni="$_server"
+        _fp=$(magicnet_uri_query_value fp "$_query")
+        [ -n "$_fp" ] || _fp=$(magicnet_uri_query_value fingerprint "$_query")
+        _insecure=$(magicnet_uri_query_value insecure "$_query")
+        [ -n "$_insecure" ] || _insecure=$(magicnet_uri_query_value allowInsecure "$_query")
+        _alpn=$(magicnet_uri_query_value alpn "$_query")
+        printf '{"type":"anytls","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s"' \
+            "$_tag" "$_server" "$_port" "$(magicnet_json_escape "$_password")" "$(magicnet_json_escape "$_sni")"
+        if magicnet_truthy "$_insecure"; then
+            printf ',"insecure":true'
+        fi
+        [ -n "$_fp" ] && printf ',"utls":{"enabled":true,"fingerprint":"%s"}' "$(magicnet_json_escape "$_fp")"
         [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
         printf '}}'
         ;;

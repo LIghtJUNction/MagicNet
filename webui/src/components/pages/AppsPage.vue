@@ -301,28 +301,28 @@ onMounted(() => {
       </div>
     </PageHeader>
 
-    <Card v-if="pendingAppAction" class="grid gap-3 border border-amber-500/40 bg-amber-500/10">
+    <Card v-if="pendingAppAction" class="grid gap-3 border border-amber-500/40 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)]">
       <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div class="min-w-0">
-          <span class="text-[11px] font-bold uppercase tracking-wide text-amber-300">Confirm app policy</span>
-          <p class="mt-1 text-sm leading-6 text-amber-100">{{ pendingAppAction.message }}</p>
-          <code class="mt-2 block break-all rounded-md bg-zinc-950/60 px-3 py-2 text-xs text-zinc-100">{{ pendingAppAction.command }}</code>
+          <span class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]">Confirm app policy</span>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">{{ pendingAppAction.message }}</p>
+          <code class="mt-2 block break-all rounded-md bg-[var(--mn-ivory)]/60 px-3 py-2 text-xs text-[var(--mn-ink)]">{{ pendingAppAction.command }}</code>
           <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
             <span
               v-for="item in pendingAppAction.plan.items"
               :key="item.label"
               class="rounded border px-2 py-1"
               :class="{
-                'border-emerald-500/30 text-emerald-100': item.tone === 'success',
-                'border-amber-500/40 text-amber-100': item.tone === 'warning',
-                'border-red-500/40 text-red-100': item.tone === 'danger',
-                'border-zinc-700 text-zinc-300': item.tone === 'neutral',
+                'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+                'border-amber-500/40 text-[var(--mn-warning)]': item.tone === 'warning',
+                'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+                'border-zinc-700 text-[var(--mn-ink-soft)]': item.tone === 'neutral',
               }"
             >
               {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
             </span>
           </div>
-          <p v-if="pendingAppAction.plan.warnings.length" class="mt-2 text-xs leading-5 text-amber-100/80">
+          <p v-if="pendingAppAction.plan.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
             {{ pendingAppAction.plan.warnings.join("；") }}
           </p>
         </div>
@@ -335,11 +335,11 @@ onMounted(() => {
 
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-center gap-3">
-        <div class="inline-flex w-fit rounded-md border border-zinc-800 bg-zinc-950 p-1">
-          <button class="min-h-12 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
-          <button class="min-h-12 rounded px-3 text-sm text-zinc-400 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-zinc-800 text-zinc-50': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
+        <div class="inline-flex w-fit rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-1">
+          <button class="min-h-12 rounded px-3 text-sm text-[var(--mn-ink-muted)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-ink)]': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
+          <button class="min-h-12 rounded px-3 text-sm text-[var(--mn-ink-muted)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-ink)]': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
         </div>
-        <span class="text-sm text-zinc-500">Proxy 始终强制走 MagicNet proxy；Bypass 始终绕过 TUN；黑/白名单模式只控制未列出应用。</span>
+        <span class="text-sm text-[var(--mn-ink-muted)]">Proxy 始终强制走 MagicNet proxy；Bypass 始终绕过 TUN；黑/白名单模式只控制未列出应用。</span>
       </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
         <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
@@ -352,11 +352,11 @@ onMounted(() => {
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 class="text-base font-semibold">策略影响摘要</h3>
-          <p class="mt-1 text-sm leading-6 text-zinc-500">{{ policySummary.summary }}</p>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ policySummary.summary }}</p>
         </div>
         <span
           class="rounded px-2 py-1 text-xs font-medium"
-          :class="policySummary.conflicts.length ? 'bg-red-500/15 text-red-200' : 'bg-emerald-500/15 text-emerald-200'"
+          :class="policySummary.conflicts.length ? 'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]' : 'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]'"
         >
           {{ policySummary.conflicts.length ? `${policySummary.conflicts.length} 个冲突` : '无冲突' }}
         </span>
@@ -367,16 +367,16 @@ onMounted(() => {
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-emerald-200': item.tone === 'success',
-            'border-amber-500/30 text-amber-200': item.tone === 'warning',
-            'border-red-500/30 text-red-200': item.tone === 'danger',
-            'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+            'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+            'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
           }"
         >
           {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
         </span>
       </div>
-      <p v-if="policySummary.conflicts.length" class="break-all text-xs text-red-300">
+      <p v-if="policySummary.conflicts.length" class="break-all text-xs text-[var(--mn-danger)]">
         冲突包名：{{ policySummary.conflicts.join(", ") }}
       </p>
     </Card>
@@ -385,18 +385,18 @@ onMounted(() => {
       <Card class="grid gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <div class="relative min-w-0 flex-1">
-            <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
+            <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-faint)]" :size="16" />
             <Input v-model="state.packageQuery" class="pl-9" placeholder="搜索已安装应用包名" spellcheck="false" @keyup.enter="searchPackages" />
           </div>
           <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">重新读取</Button>
         </div>
         <div class="grid max-h-72 gap-2 overflow-auto">
-          <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
-            <span class="min-w-0 break-all text-sm text-zinc-200">{{ app.packageName }}</span>
+          <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+            <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ app.packageName }}</span>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'proxy', `pick-proxy-${app.packageName}`)">Proxy</Button>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'bypass', `pick-bypass-${app.packageName}`)">Bypass</Button>
           </div>
-          <em v-if="!filteredPackages.length" class="text-sm not-italic text-zinc-500">暂无结果，点“列出应用”或输入关键字过滤。</em>
+          <em v-if="!filteredPackages.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无结果，点“列出应用”或输入关键字过滤。</em>
         </div>
       </Card>
 
@@ -404,13 +404,13 @@ onMounted(() => {
         <div class="flex items-start justify-between gap-3">
           <div>
             <h3 class="text-base font-semibold">推荐 Bypass</h3>
-            <p class="mt-1 text-sm leading-6 text-zinc-500">支付、银行、运营商、常用国内服务优先绕过，减少验证码、风控和国内服务误伤。</p>
+            <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">支付、银行、运营商、常用国内服务优先绕过，减少验证码、风控和国内服务误伤。</p>
           </div>
-          <CheckCircle2 class="shrink-0 text-zinc-500" :size="18" />
+          <CheckCircle2 class="shrink-0 text-[var(--mn-ink-muted)]" :size="18" />
         </div>
         <div class="flex max-h-64 flex-wrap gap-2 overflow-auto">
-          <span v-for="pkg in availableRecommendedBypass" :key="pkg" class="inline-flex max-w-full items-center rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-300 break-all">{{ pkg }}</span>
-          <em v-if="!availableRecommendedBypass.length" class="text-sm not-italic text-zinc-500">推荐项已在名单中，或当前设备未读取到匹配应用。</em>
+          <span v-for="pkg in availableRecommendedBypass" :key="pkg" class="inline-flex max-w-full items-center rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs text-[var(--mn-ink-soft)] break-all">{{ pkg }}</span>
+          <em v-if="!availableRecommendedBypass.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">推荐项已在名单中，或当前设备未读取到匹配应用。</em>
         </div>
       </Card>
     </div>
@@ -419,41 +419,41 @@ onMounted(() => {
       <Card>
         <h3 class="mb-2 text-base font-semibold">Proxy</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
-          <span v-for="pkg in state.appPolicy.proxy" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="pkg in state.appPolicy.proxy" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-proxy-${pkg}`)" type="button" title="移除" @click="requestRemoveApp(pkg, 'proxy')"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-proxy-${pkg}`)" type="button" title="移除" @click="requestRemoveApp(pkg, 'proxy')"><X :size="14" /></button>
           </span>
-          <em v-if="!state.appPolicy.proxy.length" class="text-sm not-italic text-zinc-500">暂无应用</em>
+          <em v-if="!state.appPolicy.proxy.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无应用</em>
         </div>
       </Card>
       <Card>
         <h3 class="mb-2 text-base font-semibold">Bypass</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
-          <span v-for="pkg in state.appPolicy.bypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="pkg in state.appPolicy.bypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-bypass-${pkg}`)" type="button" title="移入回收站" @click="requestRemoveApp(pkg, 'bypass')"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-bypass-${pkg}`)" type="button" title="移入回收站" @click="requestRemoveApp(pkg, 'bypass')"><X :size="14" /></button>
           </span>
-          <em v-if="!state.appPolicy.bypass.length" class="text-sm not-italic text-zinc-500">暂无应用</em>
+          <em v-if="!state.appPolicy.bypass.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无应用</em>
         </div>
       </Card>
     </div>
 
-    <Card class="grid gap-3 border-zinc-800/80 bg-zinc-950/65">
+    <Card class="grid gap-3 border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)]/80 bg-[var(--mn-ivory)]/65">
       <div class="flex items-center justify-between gap-3">
         <div>
           <h3 class="text-base font-semibold">Bypass 回收站</h3>
-          <p class="mt-1 text-sm text-zinc-500">从 Bypass 点 X 移除的应用会暂存在这里，可以直接加回名单。</p>
+          <p class="mt-1 text-sm text-[var(--mn-ink-muted)]">从 Bypass 点 X 移除的应用会暂存在这里，可以直接加回名单。</p>
         </div>
-        <Trash2 class="shrink-0 text-zinc-500" :size="18" />
+        <Trash2 class="shrink-0 text-[var(--mn-ink-muted)]" :size="18" />
       </div>
       <div class="flex max-h-56 flex-wrap gap-2 overflow-auto">
-        <span v-for="pkg in recycledBypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-300 break-all">
+        <span v-for="pkg in recycledBypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-zinc-700 bg-[var(--mn-ivory)] px-2 py-1 text-xs text-[var(--mn-ink-soft)] break-all">
           {{ pkg }}
-          <button class="grid size-6 place-items-center rounded-full bg-emerald-500/15 text-emerald-300 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`restore-bypass-${pkg}`)" type="button" title="加回 Bypass" @click="requestRestoreBypass(pkg)">
+          <button class="grid size-6 place-items-center rounded-full bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`restore-bypass-${pkg}`)" type="button" title="加回 Bypass" @click="requestRestoreBypass(pkg)">
             <RotateCcw :size="14" />
           </button>
         </span>
-        <em v-if="!recycledBypass.length" class="text-sm not-italic text-zinc-500">回收站为空</em>
+        <em v-if="!recycledBypass.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">回收站为空</em>
       </div>
     </Card>
   </div>

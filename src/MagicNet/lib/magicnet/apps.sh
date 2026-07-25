@@ -13,6 +13,73 @@ magicnet_app_policy_mode() {
     esac
 }
 
+# Domestic apps whose in-app WebView/payment H5 break when forced into TUN/proxy
+# (WeChat built-in browser is the common report: pages show offline / no network).
+# Keep this list small; avoid tools that may be missing under restricted PATH (no cat).
+magicnet_app_bypass_critical_packages() {
+    printf '%s\n' \
+        "com.tencent.mm" \
+        "com.tencent.mobileqq" \
+        "com.tencent.tim" \
+        "com.tencent.wework" \
+        "com.eg.android.AlipayGphone" \
+        "com.unionpay" \
+        "com.unionpay.tsmservice"
+}
+
+# True if package name is listed in a policy file (ignores comments/blank lines).
+magicnet_app_policy_file_has_package() {
+    _policy_file="$1"
+    _policy_pkg="$2"
+    [ -f "$_policy_file" ] || return 1
+    [ -n "$_policy_pkg" ] || return 1
+    awk -v pkg="$_policy_pkg" '
+        /^[[:space:]]*#/ { next }
+        {
+            line = $0
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+            if (line == pkg) found = 1
+        }
+        END { exit found ? 0 : 1 }
+    ' "$_policy_file"
+}
+
+# Ensure critical packages stay on bypass in blacklist mode without wiping user edits.
+# Skips packages the user intentionally put on the proxy force list.
+magicnet_app_bypass_ensure_critical() {
+    _dir="$(magicnet_app_policy_dir)"
+    [ -d "$_dir" ] || return 0
+    _bypass_file="${_dir}/app-bypass.list"
+    _proxy_file="${_dir}/app-proxy.list"
+    [ -f "$_bypass_file" ] || return 0
+    [ -f "$_proxy_file" ] || : >"$_proxy_file" 2>/dev/null || true
+
+    _missing=""
+    for _pkg in \
+        com.tencent.mm \
+        com.tencent.mobileqq \
+        com.tencent.tim \
+        com.tencent.wework \
+        com.eg.android.AlipayGphone \
+        com.unionpay \
+        com.unionpay.tsmservice; do
+        if magicnet_app_policy_file_has_package "$_proxy_file" "$_pkg"; then
+            continue
+        fi
+        if magicnet_app_policy_file_has_package "$_bypass_file" "$_pkg"; then
+            continue
+        fi
+        _missing="${_missing}${_pkg}
+"
+    done
+
+    if [ -n "$_missing" ]; then
+        printf '\n# magicnet-critical-bypass: in-app WebView/payment (e.g. WeChat browser)\n' >>"$_bypass_file"
+        printf '%s' "$_missing" >>"$_bypass_file"
+    fi
+    unset _dir _bypass_file _proxy_file _missing _pkg
+}
+
 
 magicnet_package_array_block() {
     _key="$1"
@@ -87,6 +154,9 @@ magicnet_app_proxy_rule() {
 magicnet_singbox_apply_app_policy() {
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
+
+    # Upgrade-safe: keep WeChat/etc. on TUN exclude so in-app browsers keep working.
+    magicnet_app_bypass_ensure_critical || true
 
     _dir="$(magicnet_app_policy_dir)"
     _mode="$(magicnet_app_policy_mode)"

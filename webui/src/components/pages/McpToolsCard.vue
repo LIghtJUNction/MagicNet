@@ -152,7 +152,7 @@ async function copyMcp(): Promise<void> {
 <template>
   <Card>
     <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Server :size="17" /> MCP 服务器</h3>
-    <p class="text-sm leading-6 text-zinc-400">用于电脑侧通过 adb forward 控制模块。保存地址会写入模块配置；服务运行中保存会自动重启 MCP。</p>
+    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">用于电脑侧通过 adb forward 控制模块。保存地址会写入模块配置；服务运行中保存会自动重启 MCP。</p>
 
     <ToolActionConfirmCard
       v-if="pendingMcpAction"
@@ -162,23 +162,23 @@ async function copyMcp(): Promise<void> {
       @confirm="confirmMcpAction"
     />
 
-    <div class="my-3 rounded-md border p-3" :class="mcpInsight.tone === 'success' ? 'border-lime-400/20 bg-lime-400/10 text-lime-100' : 'border-amber-400/30 bg-amber-400/10 text-amber-100'">
+    <div class="my-3 rounded-md border p-3" :class="mcpInsight.tone === 'success' ? 'border-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]' : 'border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]'">
       <p class="text-sm font-semibold">{{ mcpInsight.title }}</p>
       <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ mcpInsight.detail }}</p>
     </div>
 
-    <div class="my-3 rounded-md border p-3" :class="mcpPlan.tone === 'success' ? 'border-sky-400/20 bg-sky-400/10 text-sky-100' : 'border-amber-400/30 bg-amber-400/10 text-amber-100'">
+    <div class="my-3 rounded-md border p-3" :class="mcpPlan.tone === 'success' ? 'border-[color-mix(in_srgb,var(--mn-heather)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,white)] text-[var(--mn-info)]' : 'border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]'">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <p class="inline-flex items-center gap-2 text-sm font-semibold"><Link2 :size="15" />{{ mcpPlan.title }}</p>
-        <code class="rounded bg-black/40 px-2 py-1 text-xs">{{ mcpPlan.localUrl }}</code>
+        <code class="rounded bg-[var(--mn-carrier-deep)]/40 px-2 py-1 text-xs">{{ mcpPlan.localUrl }}</code>
       </div>
       <p class="mt-2 text-sm leading-6 opacity-80">{{ mcpPlan.summary }}</p>
       <ul class="mt-2 grid gap-1 text-xs leading-5 opacity-80">
         <li v-for="check in mcpPlan.checks" :key="check">{{ check }}</li>
       </ul>
-      <code class="mt-2 block break-all rounded bg-black/40 px-2 py-1 text-xs">{{ mcpPlan.adbForward }}</code>
-      <code class="mt-2 block break-all rounded bg-black/40 px-2 py-1 text-xs">{{ mcpPlan.authHeader }}</code>
-      <code class="mt-2 block break-all rounded bg-black/40 px-2 py-1 text-xs">{{ mcpPlan.verifyCommand }}</code>
+      <code class="mt-2 block break-all rounded bg-[var(--mn-carrier-deep)]/40 px-2 py-1 text-xs">{{ mcpPlan.adbForward }}</code>
+      <code class="mt-2 block break-all rounded bg-[var(--mn-carrier-deep)]/40 px-2 py-1 text-xs">{{ mcpPlan.authHeader }}</code>
+      <code class="mt-2 block break-all rounded bg-[var(--mn-carrier-deep)]/40 px-2 py-1 text-xs">{{ mcpPlan.verifyCommand }}</code>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem]">
@@ -200,7 +200,7 @@ async function copyMcp(): Promise<void> {
       </Button>
       <Button variant="outline" @click="copyMcp"><Copy :size="16" />{{ copied ? "已复制预检" : "复制预检" }}</Button>
     </div>
-    <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">pid={{ state.mcp.pid }}
+    <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">pid={{ state.mcp.pid }}
 enabled={{ state.mcp.enabled ? "1" : "0" }}
 bind={{ state.mcp.bind }}
 port={{ state.mcp.port }}

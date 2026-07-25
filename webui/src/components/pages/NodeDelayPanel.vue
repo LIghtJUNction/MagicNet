@@ -113,10 +113,10 @@ onMounted(() => {
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Gauge :size="17" /> 节点延迟批测</h3>
-        <p class="mt-1 text-sm leading-6 text-zinc-400">
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
           真实调用 <code>node test-all</code>，默认测试当前解析到的前 16 个节点。
         </p>
-        <p class="mt-1 truncate text-xs text-zinc-500">当前：{{ currentNode ? sanitizeNodeText(currentNode) : "未读取" }}</p>
+        <p class="mt-1 truncate text-xs text-[var(--mn-ink-muted)]">当前：{{ currentNode ? sanitizeNodeText(currentNode) : "未读取" }}</p>
       </div>
       <div class="flex gap-2">
         <Button size="sm" :loading="isRunning('node-delay-test-all')" @click="testNodes">
@@ -131,21 +131,21 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-amber-500/10 p-3">
-      <p class="text-sm font-semibold text-amber-100">切换到最快节点</p>
-      <p class="mt-1 text-sm leading-6 text-amber-100/80">
+    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+      <p class="text-sm font-semibold text-[var(--mn-warning)]">切换到最快节点</p>
+      <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">
         将把 proxy selector 切换到 {{ sanitizeNodeText(pendingAction.node.node) }}，当前连接可能重新选择出站。
       </p>
-      <code class="mt-2 block rounded bg-black/50 p-2 text-xs text-amber-50">node use &lt;fastest-node&gt;</code>
+      <code class="mt-2 block rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">node use &lt;fastest-node&gt;</code>
       <div class="mt-3 grid gap-2 sm:grid-cols-2">
         <Button size="sm" variant="secondary" :loading="isRunning('node-use-fastest')" @click="confirmAction">确认切换</Button>
         <Button size="sm" variant="outline" @click="cancelAction">取消</Button>
       </div>
     </div>
 
-    <div v-if="entries.length" class="rounded-md border border-sky-400/20 bg-sky-400/10 p-3">
-      <p class="text-sm font-semibold text-sky-100">测速健康摘要</p>
-      <p class="mt-1 text-sm leading-6 text-sky-100/80">{{ healthText }}</p>
+    <div v-if="entries.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-heather)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,white)] p-3">
+      <p class="text-sm font-semibold text-[var(--mn-info)]">测速健康摘要</p>
+      <p class="mt-1 text-sm leading-6 text-[var(--mn-info)]">{{ healthText }}</p>
     </div>
 
     <div v-if="entries.length" class="rounded-md border p-3 text-sm leading-6" :class="nodeSwitchPlanTone(switchPlan.status)">
@@ -157,33 +157,33 @@ onMounted(() => {
     </div>
 
     <div class="grid gap-2 sm:grid-cols-5">
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">已测</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ stats.tested }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">已测</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ stats.tested }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">可用</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ stats.usable }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">可用</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ stats.usable }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">失败</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ stats.failed }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">失败</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ stats.failed }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">平均</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ delayLabel(stats.averageMillis) }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">平均</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ delayLabel(stats.averageMillis) }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">中位/解析可用率</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ delayLabel(stats.medianMillis) }} · {{ stats.usablePercent }}%</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">中位/解析可用率</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ delayLabel(stats.medianMillis) }} · {{ stats.usablePercent }}%</p>
       </div>
     </div>
 
     <div v-if="stats.fastest || stats.slowest" class="grid gap-2 sm:grid-cols-2">
-      <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-        <p class="text-xs text-zinc-500">最快</p>
-        <p class="mt-1 truncate text-sm text-zinc-100">{{ stats.fastest ? sanitizeNodeText(stats.fastest.node) : "无" }}</p>
-        <p class="text-xs text-lime-300">{{ stats.fastest?.summary || "" }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">最快</p>
+        <p class="mt-1 truncate text-sm text-[var(--mn-ink)]">{{ stats.fastest ? sanitizeNodeText(stats.fastest.node) : "无" }}</p>
+        <p class="text-xs text-[var(--mn-success)]">{{ stats.fastest?.summary || "" }}</p>
         <Button
           v-if="stats.fastest"
           class="mt-3"
@@ -195,10 +195,10 @@ onMounted(() => {
           <Zap :size="15" />{{ switchPlan.recommended ? "使用最快" : "不必切换" }}
         </Button>
       </div>
-      <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-        <p class="text-xs text-zinc-500">最慢</p>
-        <p class="mt-1 truncate text-sm text-zinc-100">{{ stats.slowest ? sanitizeNodeText(stats.slowest.node) : "无" }}</p>
-        <p class="text-xs text-amber-300">{{ stats.slowest?.summary || "" }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">最慢</p>
+        <p class="mt-1 truncate text-sm text-[var(--mn-ink)]">{{ stats.slowest ? sanitizeNodeText(stats.slowest.node) : "无" }}</p>
+        <p class="text-xs text-[var(--mn-warning)]">{{ stats.slowest?.summary || "" }}</p>
       </div>
     </div>
 
@@ -206,17 +206,17 @@ onMounted(() => {
       <div
         v-for="entry in entries"
         :key="entry.node"
-        class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2"
+        class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2"
       >
         <div class="min-w-0">
-          <p class="truncate text-sm font-semibold text-zinc-100">{{ sanitizeNodeText(entry.node) }}</p>
-          <p class="text-xs text-zinc-500">{{ sanitizeNodeText(entry.summary) }}</p>
+          <p class="truncate text-sm font-semibold text-[var(--mn-ink)]">{{ sanitizeNodeText(entry.node) }}</p>
+          <p class="text-xs text-[var(--mn-ink-muted)]">{{ sanitizeNodeText(entry.summary) }}</p>
         </div>
-        <span class="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
+        <span class="rounded border border-zinc-700 px-2 py-1 text-xs text-[var(--mn-ink-soft)]">
           {{ nodeDelayQualityLabel(entry.quality) }}
         </span>
       </div>
     </div>
-    <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-300 whitespace-pre-wrap">{{ rawOutput }}</pre>
+    <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ rawOutput }}</pre>
   </Card>
 </template>

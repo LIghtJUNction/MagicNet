@@ -143,26 +143,26 @@ onMounted(() => {
 
 <template>
   <div class="grid gap-3">
-    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-amber-500/10 p-3">
-      <p class="text-sm font-semibold text-amber-100">{{ pendingAction.title }}</p>
-      <p class="mt-1 text-sm leading-6 text-amber-100/80">{{ pendingAction.detail }}</p>
-      <code class="mt-2 block break-words rounded bg-black/50 p-2 text-xs text-amber-50">{{ pendingAction.command }}</code>
+    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+      <p class="text-sm font-semibold text-[var(--mn-warning)]">{{ pendingAction.title }}</p>
+      <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">{{ pendingAction.detail }}</p>
+      <code class="mt-2 block break-words rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">{{ pendingAction.command }}</code>
       <div v-if="pendingPlan" class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
         <span
           v-for="item in pendingPlan.items"
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-emerald-100': item.tone === 'success',
-            'border-amber-500/40 text-amber-100': item.tone === 'warning',
-            'border-red-500/40 text-red-100': item.tone === 'danger',
-            'border-zinc-700 text-zinc-300': item.tone === 'neutral',
+            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+            'border-amber-500/40 text-[var(--mn-warning)]': item.tone === 'warning',
+            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+            'border-zinc-700 text-[var(--mn-ink-soft)]': item.tone === 'neutral',
           }"
         >
           {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
         </span>
       </div>
-      <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-amber-100/80">
+      <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
         {{ pendingPlan.warnings.join("；") }}
       </p>
       <div class="mt-3 grid gap-2 sm:grid-cols-3">
@@ -177,30 +177,30 @@ onMounted(() => {
     </div>
     <Input v-model="routeQuery" placeholder="过滤 WARP 域名，例如 google / openai" spellcheck="false" />
     <div class="grid gap-2 sm:grid-cols-4">
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">Proxy</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.proxy.length }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">Proxy</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.proxy.length }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">Direct</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.direct.length }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">Direct</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.direct.length }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">Block</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.block.length }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">Block</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.block.length }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">WARP</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.warp.length }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">WARP</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.warp.length }}</p>
       </div>
     </div>
-    <div v-if="summary.warp.length" class="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-xs leading-6 text-zinc-300">
-      <p class="mb-1 text-zinc-500">WARP 域名 · {{ visibleWarpDomains.length }} / {{ summary.warp.length }}</p>
+    <div v-if="summary.warp.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)]">
+      <p class="mb-1 text-[var(--mn-ink-muted)]">WARP 域名 · {{ visibleWarpDomains.length }} / {{ summary.warp.length }}</p>
       <div class="grid max-h-64 gap-2 overflow-auto pr-1">
-        <div v-for="item in visibleWarpDomains" :key="item" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded bg-black/30 px-2 py-1">
+        <div v-for="item in visibleWarpDomains" :key="item" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded bg-[var(--mn-carrier-deep)]/30 px-2 py-1">
           <span class="truncate">{{ item }}</span>
           <button
-            class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60"
+            class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60"
             :disabled="!state.warp.enabled || isRunning(`warp-route-remove-${item}`)"
             type="button"
             @click="requestRemoveWarpRoute(item)"
@@ -209,7 +209,7 @@ onMounted(() => {
           </button>
         </div>
       </div>
-      <p v-if="!visibleWarpDomains.length" class="rounded bg-black/30 px-2 py-2 text-zinc-500">没有匹配的 WARP 域名。</p>
+      <p v-if="!visibleWarpDomains.length" class="rounded bg-[var(--mn-carrier-deep)]/30 px-2 py-2 text-[var(--mn-ink-muted)]">没有匹配的 WARP 域名。</p>
     </div>
     <div class="grid gap-2 sm:grid-cols-2">
       <Button variant="outline" :loading="isRunning('warp-route-refresh')" @click="withAction('warp-route-refresh', () => refreshRoutes())">

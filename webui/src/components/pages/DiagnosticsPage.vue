@@ -158,17 +158,17 @@ async function askAi(url: string, name: string): Promise<void> {
     </PageHeader>
 
     <Card>
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
         <div class="min-w-0">
           <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Server :size="17" /> MCP 服务器</h3>
-          <p class="mt-1 break-all text-sm text-zinc-400">pid={{ state.mcp.pid }} · {{ state.mcp.url }}</p>
+          <p class="mt-1 break-all text-sm text-[var(--mn-ink-muted)]">pid={{ state.mcp.pid }} · {{ state.mcp.url }}</p>
         </div>
         <Badge :tone="state.mcp.pid !== 'stopped' ? 'success' : 'warning'">{{ state.mcp.pid !== "stopped" ? "已开启" : "未开启" }}</Badge>
       </div>
       <div class="flex flex-col gap-3">
         <div>
           <h3 class="text-base font-semibold">询问 AI</h3>
-          <p class="mt-1 text-sm leading-6 text-zinc-400">先复制脱敏上下文，再用系统浏览器打开。</p>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">先复制脱敏上下文，再用系统浏览器打开。</p>
         </div>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Button v-for="[name, url] in assistants" :key="name" variant="secondary" size="sm" :loading="isRunning(`ask-${name}`)" @click="askAi(url, name)">
@@ -182,7 +182,7 @@ async function askAi(url: string, name: string): Promise<void> {
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <h3 class="inline-flex items-center gap-2 text-base font-semibold"><TimerReset :size="17" /> API 端点预检</h3>
-          <p class="mt-1 text-sm leading-6 text-zinc-400">
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
             真实调用 <code>api groups</code> / <code>api stats</code> / <code>api conns</code>，记录成功率、耗时和输出大小。
           </p>
         </div>
@@ -196,10 +196,10 @@ async function askAi(url: string, name: string): Promise<void> {
         </div>
       </div>
       <div class="rounded-md border p-3 text-sm leading-6" :class="{
-        'border-zinc-800 bg-zinc-950 text-zinc-300': apiProbeSummary.level === 'idle',
-        'border-emerald-400/25 bg-emerald-400/10 text-emerald-100': apiProbeSummary.level === 'ok',
-        'border-amber-400/30 bg-amber-500/10 text-amber-100': apiProbeSummary.level === 'warning',
-        'border-red-400/30 bg-red-500/10 text-red-100': apiProbeSummary.level === 'danger',
+        'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]': apiProbeSummary.level === 'idle',
+        'border-emerald-400/25 bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': apiProbeSummary.level === 'ok',
+        'border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]': apiProbeSummary.level === 'warning',
+        'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': apiProbeSummary.level === 'danger',
       }">
         <p class="font-semibold">{{ apiProbeSummary.label }}</p>
         <p class="mt-1 text-xs opacity-80">
@@ -208,14 +208,14 @@ async function askAi(url: string, name: string): Promise<void> {
         </p>
       </div>
       <div v-if="apiProbes.length" class="grid gap-2 sm:grid-cols-3">
-        <div v-for="probe in apiProbes" :key="probe.key" class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+        <div v-for="probe in apiProbes" :key="probe.key" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
           <div class="flex items-center justify-between gap-2">
-            <p class="text-sm font-semibold text-zinc-100">{{ probe.label }}</p>
+            <p class="text-sm font-semibold text-[var(--mn-ink)]">{{ probe.label }}</p>
             <Badge :tone="probe.ok ? 'success' : 'danger'">{{ probe.ok ? "ok" : "fail" }}</Badge>
           </div>
-          <p class="mt-2 text-lg font-semibold text-zinc-100">{{ probe.durationMillis }}ms</p>
-          <p class="mt-1 text-xs text-zinc-500">{{ probe.outputBytes }} bytes · {{ probe.command }}</p>
-          <p class="mt-2 truncate text-xs text-zinc-500">{{ probe.summary }}</p>
+          <p class="mt-2 text-lg font-semibold text-[var(--mn-ink)]">{{ probe.durationMillis }}ms</p>
+          <p class="mt-1 text-xs text-[var(--mn-ink-muted)]">{{ probe.outputBytes }} bytes · {{ probe.command }}</p>
+          <p class="mt-2 truncate text-xs text-[var(--mn-ink-muted)]">{{ probe.summary }}</p>
         </div>
       </div>
     </Card>
@@ -224,7 +224,7 @@ async function askAi(url: string, name: string): Promise<void> {
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileText :size="17" /> 支持包预览</h3>
-          <p class="mt-1 text-sm leading-6 text-zinc-400">
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
             真实调用 <code>support bundle</code>，在本页只展示脱敏后的诊断上下文。
           </p>
         </div>
@@ -243,24 +243,24 @@ async function askAi(url: string, name: string): Promise<void> {
           </Button>
         </div>
       </div>
-      <div v-if="supportBundle" class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-3">
+      <div v-if="supportBundle" class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-3">
         <span>{{ supportSummary.lines }} 行</span>
         <span>{{ supportSummary.chars }} 字符</span>
         <span>{{ supportIssueLines.length }} 条问题线索</span>
       </div>
       <div v-if="supportTriage.totalIssues" class="grid gap-2 sm:grid-cols-3">
-        <div v-for="bucket in supportTriage.buckets.slice(0, 6)" :key="`${bucket.section}-${bucket.severity}`" class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-          <p class="truncate text-xs text-zinc-500">{{ bucket.section }}</p>
-          <p class="mt-1 text-base font-semibold text-zinc-100">{{ bucket.count }} · {{ bucket.severity }}</p>
+        <div v-for="bucket in supportTriage.buckets.slice(0, 6)" :key="`${bucket.section}-${bucket.severity}`" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
+          <p class="truncate text-xs text-[var(--mn-ink-muted)]">{{ bucket.section }}</p>
+          <p class="mt-1 text-base font-semibold text-[var(--mn-ink)]">{{ bucket.count }} · {{ bucket.severity }}</p>
         </div>
       </div>
-      <div v-if="supportTriage.totalIssues" class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm leading-6 text-amber-100/85">
-        <p class="text-xs font-semibold uppercase tracking-wide text-amber-200">问题摘要</p>
-        <p class="mt-2 text-xs leading-5 text-amber-50">
+      <div v-if="supportTriage.totalIssues" class="rounded-md border border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3 text-sm leading-6 text-[var(--mn-warning)]/85">
+        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-warning)]">问题摘要</p>
+        <p class="mt-2 text-xs leading-5 text-[var(--mn-warning)]">
           已发现 {{ supportTriage.totalIssues }} 条问题线索，分布在 {{ supportTriage.sections }} 个支持包段落；复制操作只导出聚合计数。
         </p>
       </div>
-      <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ supportPreview }}</pre>
+      <pre class="max-h-72 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ supportPreview }}</pre>
     </Card>
 
     <TrafficStatsPanel />
@@ -272,7 +272,7 @@ async function askAi(url: string, name: string): Promise<void> {
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <h3 class="inline-flex items-center gap-2 text-base font-semibold"><ShieldCheck :size="17" /> 健康检查总览</h3>
-          <p class="mt-1 text-sm leading-6 text-zinc-400">
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
             基于真实 <code>health</code> 输出聚合状态，不复制 detail 原文。
           </p>
         </div>
@@ -281,18 +281,18 @@ async function askAi(url: string, name: string): Promise<void> {
         </Button>
       </div>
       <div class="rounded-md border p-3 text-sm leading-6" :class="{
-        'border-zinc-800 bg-zinc-950 text-zinc-300': healthSummary.level === 'idle',
-        'border-emerald-400/25 bg-emerald-400/10 text-emerald-100': healthSummary.level === 'ok',
-        'border-amber-400/30 bg-amber-500/10 text-amber-100': healthSummary.level === 'warning',
-        'border-red-400/30 bg-red-500/10 text-red-100': healthSummary.level === 'danger',
+        'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]': healthSummary.level === 'idle',
+        'border-emerald-400/25 bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': healthSummary.level === 'ok',
+        'border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]': healthSummary.level === 'warning',
+        'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': healthSummary.level === 'danger',
       }">
         <p class="font-semibold">{{ healthSummary.label }}</p>
         <p class="mt-1 text-xs opacity-80">{{ healthSummary.detail }}</p>
       </div>
       <div class="grid gap-2 sm:grid-cols-4">
-        <div v-for="status in ['fail', 'warn', 'info', 'ok']" :key="status" class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-          <p class="text-xs uppercase text-zinc-500">{{ status }}</p>
-          <p class="mt-1 text-lg font-semibold text-zinc-100">{{ healthSummary.counts[status] }}</p>
+        <div v-for="status in ['fail', 'warn', 'info', 'ok']" :key="status" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
+          <p class="text-xs uppercase text-[var(--mn-ink-muted)]">{{ status }}</p>
+          <p class="mt-1 text-lg font-semibold text-[var(--mn-ink)]">{{ healthSummary.counts[status] }}</p>
         </div>
       </div>
       <div v-if="healthSummary.attention.length" class="flex flex-wrap gap-2">
@@ -306,16 +306,16 @@ async function askAi(url: string, name: string): Promise<void> {
           <h3 class="min-w-0 break-words text-base font-semibold">{{ item.key }}</h3>
           <Badge :tone="item.status === 'ok' ? 'success' : item.status === 'fail' ? 'danger' : 'warning'">{{ item.status }}</Badge>
         </div>
-        <p class="mt-2 break-words text-sm leading-6 text-zinc-300">{{ item.detail }}</p>
+        <p class="mt-2 break-words text-sm leading-6 text-[var(--mn-ink-soft)]">{{ item.detail }}</p>
       </Card>
       <Card v-if="!state.health.length">
-        <p class="text-sm text-zinc-400">还没有诊断结果。</p>
+        <p class="text-sm text-[var(--mn-ink-muted)]">还没有诊断结果。</p>
       </Card>
     </div>
 
     <Card v-if="state.pingtest">
       <h3 class="text-base font-semibold">连通性输出</h3>
-      <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ state.pingtest }}</pre>
+      <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ state.pingtest }}</pre>
     </Card>
   </div>
 </template>

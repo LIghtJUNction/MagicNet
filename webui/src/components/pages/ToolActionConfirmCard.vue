@@ -27,14 +27,14 @@ onMounted(() => {
     <Card class="border-amber-500/40 bg-amber-500/5">
       <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div class="min-w-0">
-          <h3 class="text-sm font-semibold text-amber-100">
+          <h3 class="text-sm font-semibold text-[var(--mn-warning)]">
             {{ action.title }}
           </h3>
-          <p class="mt-1 text-sm leading-6 text-amber-100/75">
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/75">
             {{ action.detail }}
           </p>
           <code
-            class="mt-2 block break-all rounded-md bg-black/50 px-3 py-2 text-xs text-amber-50"
+            class="mt-2 block break-all rounded-md bg-[var(--mn-carrier-deep)]/50 px-3 py-2 text-xs text-[var(--mn-ink-soft)]"
             >{{ action.command }}</code
           >
         </div>

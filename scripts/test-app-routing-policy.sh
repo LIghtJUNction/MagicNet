@@ -100,9 +100,13 @@ assert_proxy_rule_and_order() {
 }
 
 assert_blacklist() {
+  # User bypass entries are preserved; critical domestic packages (WeChat etc.) are also seeded.
+  # shellcheck disable=SC2016
   "$JQ_BIN" -e '
-    (.inbounds[] | select(.type == "tun")
-      | .exclude_package == ["com.example.bypass"] and (has("include_package") | not))
+    (.inbounds[] | select(.type == "tun") | .exclude_package) as $ex
+    | (.inbounds[] | select(.type == "tun") | (has("include_package") | not))
+      and ($ex | index("com.example.bypass")) != null
+      and ($ex | index("com.tencent.mm")) != null
   ' "$MODDIR/.config/sing-box/config.json" >/dev/null
   assert_proxy_rule_and_order
 }
@@ -165,5 +169,44 @@ EOF
 
 run_case jq
 run_case no-jq
+
+# Critical bypass seed: WeChat must land on TUN exclude so in-app WebView is not routed/blocked.
+MODDIR="$WORK/critical-bypass/module"
+export MODDIR
+mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
+write_base_config
+printf '%s\n' 'MAGICNET_APP_MODE=blacklist' >"$MODDIR/.config/magicnet/app-mode.conf"
+: >"$MODDIR/.config/magicnet/app-proxy.list"
+# Old installs often had no WeChat on bypass — start empty-ish.
+cat >"$MODDIR/.config/magicnet/app-bypass.list" <<'EOF'
+com.example.only
+EOF
+magicnet_singbox_apply_app_policy
+grep -qx 'com.tencent.mm' "$MODDIR/.config/magicnet/app-bypass.list" ||
+  {
+    printf '%s\n' 'expected com.tencent.mm to be seeded into app-bypass.list' >&2
+    cat "$MODDIR/.config/magicnet/app-bypass.list" >&2
+    exit 1
+  }
+# shellcheck disable=SC2016
+"$JQ_BIN" -e '
+  (.inbounds[] | select(.type == "tun") | .exclude_package) as $ex
+  | ($ex | index("com.tencent.mm")) != null
+    and ($ex | index("com.example.only")) != null
+' "$MODDIR/.config/sing-box/config.json" >/dev/null ||
+  {
+    printf '%s\n' 'WeChat missing from TUN exclude_package after apply' >&2
+    "$JQ_BIN" '.inbounds[] | select(.type=="tun") | .exclude_package' "$MODDIR/.config/sing-box/config.json" >&2
+    exit 1
+  }
+# User force-proxy wins over critical seed.
+printf '%s\n' 'com.tencent.mm' >"$MODDIR/.config/magicnet/app-proxy.list"
+# Remove from bypass to prove we do not re-add when on proxy list
+sed -i '/com.tencent.mm/d' "$MODDIR/.config/magicnet/app-bypass.list"
+magicnet_singbox_apply_app_policy
+if grep -qx 'com.tencent.mm' "$MODDIR/.config/magicnet/app-bypass.list"; then
+  printf '%s\n' 'com.tencent.mm must not be re-seeded when present on proxy list' >&2
+  exit 1
+fi
 
 printf '%s\n' 'app routing policy regression tests passed'

@@ -127,7 +127,7 @@ function normalizeDomain(value: string): string {
 <template>
   <Card class="grid gap-3">
     <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Cloud :size="17" /> 1.1.1.1 DNS</h3>
-    <p class="text-sm leading-6 text-zinc-400">切换 MagicNet 内置 DNS profile；保存后会应用配置并重启当前 sing-box。</p>
+    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">切换 MagicNet 内置 DNS profile；保存后会应用配置并重启当前 sing-box。</p>
 
     <ToolActionConfirmCard
       v-if="pendingDnsAction"
@@ -136,23 +136,23 @@ function normalizeDomain(value: string): string {
       @cancel="cancelDnsAction"
       @confirm="confirmDnsAction"
     />
-    <div v-if="pendingDnsPlan" class="grid gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+    <div v-if="pendingDnsPlan" class="grid gap-2 rounded-md border border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
       <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
         <span
           v-for="item in pendingDnsPlan.items"
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-emerald-100': item.tone === 'success',
-            'border-amber-500/40 text-amber-100': item.tone === 'warning',
-            'border-red-500/40 text-red-100': item.tone === 'danger',
-            'border-zinc-700 text-zinc-300': item.tone === 'neutral',
+            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+            'border-amber-500/40 text-[var(--mn-warning)]': item.tone === 'warning',
+            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+            'border-zinc-700 text-[var(--mn-ink-soft)]': item.tone === 'neutral',
           }"
         >
           {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
         </span>
       </div>
-      <p v-if="pendingDnsPlan.warnings.length" class="text-xs leading-5 text-amber-100/80">
+      <p v-if="pendingDnsPlan.warnings.length" class="text-xs leading-5 text-[var(--mn-warning)]/80">
         {{ pendingDnsPlan.warnings.join("；") }}
       </p>
       <Button size="sm" variant="outline" class="w-fit" @click="copyDnsProfilePlan">
@@ -162,7 +162,7 @@ function normalizeDomain(value: string): string {
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
       <select
-        class="h-10 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100"
+        class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]"
         :value="pendingDnsProfile || state.dns.profile"
         @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
       >
@@ -199,7 +199,7 @@ function normalizeDomain(value: string): string {
       </Button>
     </div>
 
-    <pre class="max-h-36 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">profile={{ state.dns.profile }}
+    <pre class="max-h-36 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">profile={{ state.dns.profile }}
 primary={{ state.dns.primary }}
 secondary={{ state.dns.secondary || "-" }}
 transport={{ state.dns.transport }}</pre>
@@ -209,14 +209,14 @@ transport={{ state.dns.transport }}</pre>
         <p class="text-sm font-semibold">DNS 测试摘要</p>
         <p class="mt-1 text-sm leading-6 opacity-80">{{ dnsSummary.summary }}</p>
       </div>
-      <div class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-4">
+      <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
         <span>{{ dnsSummary.lineCount }} 行输出</span>
         <span>{{ dnsSummary.issueCount }} 条问题线索</span>
         <span>remote_ip={{ dnsSummary.remoteIp || "none" }}</span>
         <span>time={{ dnsSummary.timeTotalMillis ?? "none" }}ms</span>
       </div>
     </div>
-    <pre v-if="dnsSummary.issueLines.length" class="max-h-28 overflow-auto rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-50 whitespace-pre-wrap">{{ dnsSummary.issueLines.join("\n") }}</pre>
-    <pre v-if="dnsTestOutput" class="max-h-36 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ dnsTestOutput }}</pre>
+    <pre v-if="dnsSummary.issueLines.length" class="max-h-28 overflow-auto rounded-md border border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3 text-xs leading-5 text-[var(--mn-warning)] whitespace-pre-wrap">{{ dnsSummary.issueLines.join("\n") }}</pre>
+    <pre v-if="dnsTestOutput" class="max-h-36 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ dnsTestOutput }}</pre>
   </Card>
 </template>

@@ -90,10 +90,10 @@ export function buildControlRuntimeInsight(
 export function controlInsightTone(
   status: ControlRuntimeInsight["status"],
 ): string {
-  if (status === "ok") return "border-lime-400/20 bg-lime-400/10 text-lime-100";
+  if (status === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
   if (status === "danger")
-    return "border-red-400/30 bg-red-400/10 text-red-100";
+    return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
   if (status === "warning")
-    return "border-amber-400/30 bg-amber-400/10 text-amber-100";
-  return "border-sky-400/20 bg-sky-400/10 text-sky-100";
+    return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
+  return "border-[color-mix(in_srgb,var(--mn-heather)_60%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,white)] text-[var(--mn-info)]";
 }

@@ -64,9 +64,9 @@ export function formatNetworkSnapshotReport(text: string, insights: NetworkSnaps
 }
 
 export function networkInsightTone(tone: NetworkSnapshotInsight["tone"]): string {
-  if (tone === "ok") return "border-lime-400/20 bg-lime-400/10 text-lime-100";
-  if (tone === "warn") return "border-amber-400/30 bg-amber-400/10 text-amber-100";
-  return "border-zinc-800 bg-zinc-950 text-zinc-300";
+  if (tone === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
+  if (tone === "warn") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
+  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
 }
 
 function collectInterfaceNames(text: string): string[] {

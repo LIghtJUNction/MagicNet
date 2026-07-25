@@ -57,10 +57,10 @@ const latestTrendDirection = computed(() => {
   return "持平";
 });
 const latestTrendColor = computed(() => {
-  if (latestTrendSeries.value.length < 2) return "text-zinc-300";
-  if (latestTrendDelta.value > 0) return "text-lime-300";
-  if (latestTrendDelta.value < 0) return "text-red-300";
-  return "text-zinc-400";
+  if (latestTrendSeries.value.length < 2) return "text-[var(--mn-ink-soft)]";
+  if (latestTrendDelta.value > 0) return "text-[var(--mn-success)]";
+  if (latestTrendDelta.value < 0) return "text-[var(--mn-danger)]";
+  return "text-[var(--mn-ink-muted)]";
 });
 const trendWindowPeakTotal = computed(() => {
   return Math.max(0, ...trendSamples.value.map((sample) => sample.up + sample.down));
@@ -159,10 +159,10 @@ function formatTrendBadge(delta: number | null): string {
 }
 
 function trendBadgeClass(delta: number | null): string {
-  if (delta === null) return "text-zinc-500";
-  if (delta > 0) return "text-lime-300";
-  if (delta < 0) return "text-amber-300";
-  return "text-zinc-400";
+  if (delta === null) return "text-[var(--mn-ink-muted)]";
+  if (delta > 0) return "text-[var(--mn-success)]";
+  if (delta < 0) return "text-[var(--mn-warning)]";
+  return "text-[var(--mn-ink-muted)]";
 }
 
 function upShare(sample: TrafficSample | null): string {
@@ -171,24 +171,24 @@ function upShare(sample: TrafficSample | null): string {
 }
 
 function alertClasses(): string {
-  if (alert.value.level === "danger") return "border-red-400/30 bg-red-500/10 text-red-100";
-  if (alert.value.level === "warning") return "border-amber-400/30 bg-amber-500/10 text-amber-100";
-  if (alert.value.level === "ok") return "border-lime-400/25 bg-lime-400/10 text-lime-100";
-  return "border-zinc-800 bg-zinc-950 text-zinc-300";
+  if (alert.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
+  if (alert.value.level === "warning") return "border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
+  if (alert.value.level === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
+  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
 }
 
 function healthClasses(): string {
-  if (samplingHealth.value.level === "danger") return "border-red-400/30 bg-red-500/10 text-red-100";
-  if (samplingHealth.value.level === "warning") return "border-amber-400/30 bg-amber-500/10 text-amber-100";
-  if (samplingHealth.value.level === "ok") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-100";
-  return "border-zinc-800 bg-zinc-950 text-zinc-300";
+  if (samplingHealth.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
+  if (samplingHealth.value.level === "warning") return "border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
+  if (samplingHealth.value.level === "ok") return "border-emerald-400/25 bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]";
+  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
 }
 
 function budgetClasses(): string {
-  if (budgetPlan.value.level === "danger") return "border-red-400/30 bg-red-500/10 text-red-100";
-  if (budgetPlan.value.level === "warning") return "border-amber-400/30 bg-amber-500/10 text-amber-100";
-  if (budgetPlan.value.level === "ok") return "border-sky-400/25 bg-sky-400/10 text-sky-100";
-  return "border-zinc-800 bg-zinc-950 text-zinc-300";
+  if (budgetPlan.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
+  if (budgetPlan.value.level === "warning") return "border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
+  if (budgetPlan.value.level === "ok") return "border-[color-mix(in_srgb,var(--mn-heather)_60%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,white)] text-[var(--mn-info)]";
+  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
 }
 
 function formatDuration(seconds: number | null): string {
@@ -225,10 +225,10 @@ onUnmounted(() => {
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Activity :size="17" /> 实时流量</h3>
-        <p class="mt-1 text-sm leading-6 text-zinc-400">
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
           真实调用 <code>api stats</code> 读取 sing-box 当前上下行速率。
         </p>
-        <p class="mt-1 text-xs text-zinc-500">
+        <p class="mt-1 text-xs text-[var(--mn-ink-muted)]">
           更新：{{ lastUpdated }} · 来源：{{ summary.latest?.source || "无" }} {{ summary.latest?.sourceKey || "" }} · 窗口 {{ Math.round(summary.windowMillis / 1000) }}s
         </p>
       </div>
@@ -243,14 +243,14 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-end">
+    <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-end">
       <div class="min-w-0">
-        <p class="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100"><Bell :size="15" /> 流量告警</p>
-        <p class="mt-1 text-xs leading-5 text-zinc-500">
+        <p class="inline-flex items-center gap-2 text-sm font-semibold text-[var(--mn-ink)]"><Bell :size="15" /> 流量告警</p>
+        <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">
           基于真实样本的上行+下行总速率判断，连续 3 个样本超阈值会标为严重。
         </p>
       </div>
-      <label class="grid gap-1 text-xs text-zinc-500">
+      <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
         阈值 MiB/s
         <Input v-model="thresholdMiB" inputmode="decimal" placeholder="10" />
       </label>
@@ -286,15 +286,15 @@ onUnmounted(() => {
         </label>
       </div>
       <div class="mt-3 grid gap-2 sm:grid-cols-3">
-        <div class="rounded bg-black/25 p-2">
+        <div class="rounded bg-[var(--mn-carrier-deep)]/25 p-2">
           <p class="text-xs opacity-70">预计消耗</p>
           <p class="mt-1 text-sm font-semibold">{{ formatBytes(budgetPlan.projectedBytes) }}</p>
         </div>
-        <div class="rounded bg-black/25 p-2">
+        <div class="rounded bg-[var(--mn-carrier-deep)]/25 p-2">
           <p class="text-xs opacity-70">预算后剩余</p>
           <p class="mt-1 text-sm font-semibold">{{ formatBytes(budgetPlan.remainingBytes) }}</p>
         </div>
-        <div class="rounded bg-black/25 p-2">
+        <div class="rounded bg-[var(--mn-carrier-deep)]/25 p-2">
           <p class="text-xs opacity-70">按均速可用</p>
           <p class="mt-1 text-sm font-semibold">{{ formatDuration(budgetPlan.timeToBudgetSeconds) }}</p>
         </div>
@@ -302,76 +302,76 @@ onUnmounted(() => {
     </div>
 
     <div class="grid gap-2 sm:grid-cols-4">
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">当前上传</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ formatRate(summary.latest?.up || 0) }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">当前上传</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ formatRate(summary.latest?.up || 0) }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">当前下载</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ formatRate(summary.latest?.down || 0) }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">当前下载</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ formatRate(summary.latest?.down || 0) }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">平均总速率</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ formatRate(summary.averageUp + summary.averageDown) }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">平均总速率</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ formatRate(summary.averageUp + summary.averageDown) }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">样本</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ summary.sampleCount }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">样本</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.sampleCount }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">最近 12 峰值总速率</p>
-        <p class="text-lg font-semibold text-zinc-100">{{ formatRate(trendWindowPeakTotal) }}</p>
-        <p class="mt-1 text-xs text-zinc-500">峰值时间 {{ peakTime }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">最近 12 峰值总速率</p>
+        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ formatRate(trendWindowPeakTotal) }}</p>
+        <p class="mt-1 text-xs text-[var(--mn-ink-muted)]">峰值时间 {{ peakTime }}</p>
       </div>
-      <div class="rounded-md border border-white/10 bg-white/5 p-3">
-        <p class="text-xs text-zinc-500">最近变化</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">最近变化</p>
         <p class="text-lg font-semibold" :class="latestTrendColor">{{ latestTrendDirection }}</p>
-        <p class="mt-1 text-xs text-zinc-500">{{ formatRate(Math.abs(latestTrendDelta)) }}</p>
+        <p class="mt-1 text-xs text-[var(--mn-ink-muted)]">{{ formatRate(Math.abs(latestTrendDelta)) }}</p>
       </div>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-2">
-      <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-        <p class="text-xs text-zinc-500">峰值上传</p>
-        <p class="mt-1 text-sm text-zinc-100">{{ formatRate(summary.peakUp) }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">峰值上传</p>
+        <p class="mt-1 text-sm text-[var(--mn-ink)]">{{ formatRate(summary.peakUp) }}</p>
       </div>
-      <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-        <p class="text-xs text-zinc-500">峰值下载</p>
-        <p class="mt-1 text-sm text-zinc-100">{{ formatRate(summary.peakDown) }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">峰值下载</p>
+        <p class="mt-1 text-sm text-[var(--mn-ink)]">{{ formatRate(summary.peakDown) }}</p>
       </div>
-      <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-        <p class="text-xs text-zinc-500">上传占比</p>
-        <p class="mt-1 text-sm text-zinc-100">{{ upShare(summary.latest) }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">上传占比</p>
+        <p class="mt-1 text-sm text-[var(--mn-ink)]">{{ upShare(summary.latest) }}</p>
       </div>
-      <div class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-        <p class="text-xs text-zinc-500">连续失败</p>
-        <p class="mt-1 text-sm text-zinc-100">{{ failedSamples }}</p>
+      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
+        <p class="text-xs text-[var(--mn-ink-muted)]">连续失败</p>
+        <p class="mt-1 text-sm text-[var(--mn-ink)]">{{ failedSamples }}</p>
       </div>
     </div>
 
-    <div v-if="lastFailure" class="rounded-md border border-amber-400/30 bg-amber-500/10 p-3 text-sm leading-6 text-amber-100/85">
+    <div v-if="lastFailure" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3 text-sm leading-6 text-[var(--mn-warning)]/85">
       最近一次采样未解析：{{ lastFailure.slice(0, 220) }}
     </div>
 
-    <div v-if="trendSamples.length" class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+    <div v-if="trendSamples.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
       <div class="mb-2 flex items-center justify-between gap-2">
-        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">最近趋势</p>
-        <p class="text-xs text-zinc-500">最多 12 个真实样本</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-ink-muted)]">最近趋势</p>
+        <p class="text-xs text-[var(--mn-ink-muted)]">最多 12 个真实样本</p>
       </div>
       <div class="grid gap-2">
         <div v-for="sample in latestTrendSeries" :key="`${sample.sample.timestampMillis}-${sample.indexLabel}`" class="grid grid-cols-[2.25rem_4.75rem_minmax(0,1fr)_5rem] items-center gap-2">
-          <span class="text-xs text-zinc-600">#{{ sample.indexLabel }}</span>
-          <span class="text-xs text-zinc-500">{{ formatSampleTime(sample.sample.timestampMillis) }}</span>
+          <span class="text-xs text-[var(--mn-ink-faint)]">#{{ sample.indexLabel }}</span>
+          <span class="text-xs text-[var(--mn-ink-muted)]">{{ formatSampleTime(sample.sample.timestampMillis) }}</span>
           <div class="grid min-w-0 gap-1">
-            <div class="h-2 rounded bg-zinc-900">
-              <div class="h-2 rounded bg-lime-400" :style="{ width: sampleWidth(sample.sample.up) }" />
+            <div class="h-2 rounded bg-[var(--mn-carrier)]">
+              <div class="h-2 rounded bg-[var(--mn-cactus)]" :style="{ width: sampleWidth(sample.sample.up) }" />
             </div>
-            <div class="h-2 rounded bg-zinc-900">
+            <div class="h-2 rounded bg-[var(--mn-carrier)]">
               <div class="h-2 rounded bg-cyan-400" :style="{ width: sampleWidth(sample.sample.down) }" />
             </div>
           </div>
           <div class="text-right text-xs">
-            <p class="text-zinc-100">{{ formatRate(sample.sample.up + sample.sample.down) }}</p>
+            <p class="text-[var(--mn-ink)]">{{ formatRate(sample.sample.up + sample.sample.down) }}</p>
             <p :class="trendBadgeClass(sample.deltaTotal)" class="mt-0.5">{{ formatTrendBadge(sample.deltaTotal) }}</p>
           </div>
         </div>
@@ -387,6 +387,6 @@ onUnmounted(() => {
       </Button>
     </div>
 
-    <pre v-if="!samples.length && lastOutput" class="max-h-40 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-300 whitespace-pre-wrap">{{ lastOutput }}</pre>
+    <pre v-if="!samples.length && lastOutput" class="max-h-40 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ lastOutput }}</pre>
   </Card>
 </template>

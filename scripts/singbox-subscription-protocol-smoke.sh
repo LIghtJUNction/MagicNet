@@ -54,8 +54,56 @@ assert_extracted_links "$links_fixture" plain
 base64 <"$links_fixture" >"$tmp_dir/mixed-links.base64"
 assert_extracted_links "$tmp_dir/mixed-links.base64" base64
 
+# Drive the real share-link emitter (not a hand-built JSON fixture) for anytls.
+anytls_link_file="$tmp_dir/node-anytls.link"
+printf '%s\n' 'anytls://fixture-password@anytls.invalid:443?sni=edge.example&fp=chrome&insecure=1&alpn=h2,http/1.1#fixture-anytls' \
+    >"$anytls_link_file"
+anytls_json="$(magicnet_singbox_emit_share_link_json "$anytls_link_file")" \
+    || fail "emit_share_link_json failed for anytls://"
+printf '%s\n' "$anytls_json" | jq -e '
+  .type == "anytls"
+  and .tag == "fixture-anytls"
+  and .server == "anytls.invalid"
+  and .server_port == 443
+  and .password == "fixture-password"
+  and .tls.enabled == true
+  and .tls.server_name == "edge.example"
+  and .tls.insecure == true
+  and .tls.utls.enabled == true
+  and .tls.utls.fingerprint == "chrome"
+  and (.tls.alpn | index("h2")) != null
+' >/dev/null || fail "anytls share-link JSON did not match expected sing-box outbound shape: $anytls_json"
+
+# Clash YAML anytls node path.
+anytls_yaml_file="$tmp_dir/node-anytls.yaml"
+cat >"$anytls_yaml_file" <<'YAML'
+name: clash-anytls
+type: anytls
+server: clash-anytls.invalid
+port: 8443
+password: clash-secret
+sni: sni.example
+client-fingerprint: firefox
+skip-cert-verify: true
+alpn: [h2, http/1.1]
+YAML
+anytls_yaml_json="$(magicnet_singbox_emit_node_json "$anytls_yaml_file")" \
+    || fail "emit_node_json failed for Clash anytls"
+printf '%s\n' "$anytls_yaml_json" | jq -e '
+  .type == "anytls"
+  and .tag == "clash-anytls"
+  and .server == "clash-anytls.invalid"
+  and .server_port == 8443
+  and .password == "clash-secret"
+  and .tls.enabled == true
+  and .tls.server_name == "sni.example"
+  and .tls.insecure == true
+  and .tls.utls.fingerprint == "firefox"
+' >/dev/null || fail "Clash anytls JSON did not match expected shape: $anytls_yaml_json"
+
+# Mixed outbounds (pre-built + emitted anytls) still land in proxy selector.
 nodes_json="$tmp_dir/outbounds.json"
-cat >"$nodes_json" <<'JSON'
+jq -n --argjson anytls "$anytls_json" '
 [
   {
     "type": "vless",
@@ -64,13 +112,7 @@ cat >"$nodes_json" <<'JSON'
     "server_port": 443,
     "uuid": "00000000-0000-4000-8000-000000000001"
   },
-  {
-    "type": "anytls",
-    "tag": "fixture-anytls",
-    "server": "anytls.invalid",
-    "server_port": 443,
-    "password": "fixture-password"
-  },
+  $anytls,
   {
     "type": "tuic",
     "tag": "fixture-tuic",
@@ -80,7 +122,7 @@ cat >"$nodes_json" <<'JSON'
     "password": "fixture-password"
   }
 ]
-JSON
+' >"$nodes_json"
 
 valid_count="$(magicnet_singbox_count_valid_outbounds_nodes "$nodes_json")"
 [[ "$valid_count" == "3" ]] || fail "valid outbound count was $valid_count, expected 3"

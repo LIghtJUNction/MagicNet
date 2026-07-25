@@ -246,9 +246,9 @@ function hasZashboardDistFallback(url: string): boolean {
         <Input v-model="panel.name" placeholder="面板名字，例如 zashboard" spellcheck="false" />
         <Input v-model="panel.url" placeholder="https://example.com/panel.zip" spellcheck="false" />
         <Textarea v-model="panel.metadata" class="min-h-28" placeholder="面板元数据、说明、仓库链接、适配注意事项" spellcheck="false" />
-        <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+        <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <span class="text-sm font-medium text-zinc-100">安装前检查</span>
+            <span class="text-sm font-medium text-[var(--mn-ink)]">安装前检查</span>
             <Button variant="outline" :disabled="!installCommand" @click="copyInstallCommand"><Terminal :size="16" />{{ commandCopied ? '已复制命令' : '复制命令' }}</Button>
           </div>
           <div class="flex flex-wrap gap-2">
@@ -261,7 +261,7 @@ function hasZashboardDistFallback(url: string): boolean {
               {{ installPlan.host || '无主机' }} · {{ installPlan.archive || '未知包类型' }} · query {{ installPlan.hasQuery ? '有' : '无' }}
             </p>
           </div>
-          <code class="break-all rounded-md bg-black px-3 py-2 text-xs leading-6 text-zinc-200">{{ installCommand || "webui install-local <download-url> [name]" }}</code>
+          <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs leading-6 text-[var(--mn-ink-soft)]">{{ installCommand || "webui install-local <download-url> [name]" }}</code>
         </div>
         <Button variant="outline" :disabled="!panel.url.trim()" @click="copyInstallPlan"><Copy :size="17" />{{ planCopied ? '已复制计划' : '复制安装计划' }}</Button>
         <Button :disabled="panelWarnings.some((item) => item.tone === 'danger')" :loading="isRunning('webui-install')" @click="installLocal"><DownloadCloud :size="17" />后台下载并安装</Button>
@@ -272,23 +272,23 @@ function hasZashboardDistFallback(url: string): boolean {
           <h3 class="text-base font-semibold">当前状态</h3>
           <Badge v-if="verifyOutput" :tone="verifyFailed ? 'danger' : 'success'">{{ verifyFailed ? "校验失败" : "校验通过" }}</Badge>
         </div>
-        <p class="text-sm leading-6 text-zinc-400">sing-box 默认使用本地 zashboard。面板下载会在后台执行，避免大文件下载被前台超时中断。</p>
+        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">sing-box 默认使用本地 zashboard。面板下载会在后台执行，避免大文件下载被前台超时中断。</p>
         <div class="rounded-md border p-3" :class="webuiInsightTone(panelInsight.status)">
           <p class="text-sm font-semibold">{{ panelInsight.title }}</p>
           <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ panelInsight.detail }}</p>
         </div>
         <Button variant="outline" @click="openExternal(REPO, 'MagicNet GitHub')"><ExternalLink :size="17" />打开项目仓库</Button>
         <div v-if="verifyChecks.length" class="grid gap-2">
-          <div v-for="check in verifyChecks" :key="check.name" class="grid gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+          <div v-for="check in verifyChecks" :key="check.name" class="grid gap-1 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
             <div class="flex items-center justify-between gap-2">
-              <span class="text-sm font-medium text-zinc-100">{{ check.name }}</span>
+              <span class="text-sm font-medium text-[var(--mn-ink)]">{{ check.name }}</span>
               <Badge :tone="check.status === 'ok' ? 'success' : 'danger'">{{ check.status }}</Badge>
             </div>
-            <p v-if="check.path" class="break-all text-xs text-zinc-500">{{ check.path }}</p>
+            <p v-if="check.path" class="break-all text-xs text-[var(--mn-ink-muted)]">{{ check.path }}</p>
           </div>
         </div>
-        <pre class="max-h-80 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ status || "点击读取查看 webui status。" }}</pre>
-        <pre v-if="verifyOutput" class="max-h-48 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ verifyOutput }}</pre>
+        <pre class="max-h-80 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ status || "点击读取查看 webui status。" }}</pre>
+        <pre v-if="verifyOutput" class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ verifyOutput }}</pre>
       </Card>
     </div>
   </div>

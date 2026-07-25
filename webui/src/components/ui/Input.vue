@@ -4,7 +4,12 @@ import { cn } from "@/lib/utils";
 
 const props = defineProps<{ class?: string }>();
 const model = defineModel<string>();
-const classes = computed(() => cn("min-h-11 w-full rounded-md bg-[#08090b] px-3.5 py-2.5 text-zinc-50 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.09),inset_0_0_0_5px_rgba(255,255,255,0.018)] outline-none transition-[color,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] placeholder:text-zinc-600 focus:bg-[#0b0d0f] focus:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.65),inset_0_0_0_5px_rgba(52,211,153,0.055),0_0_0_3px_rgba(52,211,153,0.1)]", props.class));
+const classes = computed(() =>
+  cn(
+    "min-h-11 w-full rounded-md bg-[var(--mn-ivory)] px-3.5 py-2.5 text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_var(--mn-border-strong)] outline-none transition-[color,background-color,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] placeholder:text-[var(--mn-ink-faint)] focus:bg-white focus:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-cactus)_80%,var(--mn-ink)),0_0_0_3px_color-mix(in_srgb,var(--mn-cactus)_35%,transparent)]",
+    props.class,
+  ),
+);
 </script>
 
 <template>

@@ -166,7 +166,7 @@ onMounted(() => {
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Route :size="17" /> 代理组</h3>
-        <p class="mt-1 text-sm leading-6 text-zinc-400">
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
           真实调用 <code>api proxies</code> 读取 selector/provider，并可确认后执行 <code>api select</code>。
         </p>
       </div>
@@ -182,36 +182,36 @@ onMounted(() => {
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <label class="relative block">
-        <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" :size="15" />
+        <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-muted)]" :size="15" />
         <Input v-model="groupQuery" class="pl-9" placeholder="搜索代理组或节点" spellcheck="false" />
       </label>
-      <span class="text-sm text-zinc-500">
+      <span class="text-sm text-[var(--mn-ink-muted)]">
         {{ filteredGroups.length }} / {{ snapshot?.groups.length || 0 }} 组
       </span>
     </div>
 
-    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-amber-500/10 p-3">
-      <p class="text-sm font-semibold text-amber-100">切换代理节点</p>
-      <p class="mt-1 text-sm leading-6 text-amber-100/80">
+    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+      <p class="text-sm font-semibold text-[var(--mn-warning)]">切换代理节点</p>
+      <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">
         {{ sanitizeProxyName(pendingAction.group.name) }}：{{ sanitizeProxyName(pendingPlan?.summary || "") }}
       </p>
-      <code class="mt-2 block rounded bg-black/50 p-2 text-xs text-amber-50">api select &lt;group&gt; &lt;node&gt;</code>
+      <code class="mt-2 block rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">api select &lt;group&gt; &lt;node&gt;</code>
       <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
         <span
           v-for="item in pendingPlan?.items || []"
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-emerald-100': item.tone === 'success',
-            'border-amber-500/40 text-amber-100': item.tone === 'warning',
-            'border-red-500/40 text-red-100': item.tone === 'danger',
-            'border-zinc-700 text-zinc-300': item.tone === 'neutral',
+            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+            'border-amber-500/40 text-[var(--mn-warning)]': item.tone === 'warning',
+            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+            'border-zinc-700 text-[var(--mn-ink-soft)]': item.tone === 'neutral',
           }"
         >
           {{ item.label }}: <b class="font-medium">{{ sanitizeProxyName(item.value) }}</b>
         </span>
       </div>
-      <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-amber-100/80">
+      <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
         {{ pendingPlan.warnings.join("；") }}
       </p>
       <div class="mt-3 grid gap-2 sm:grid-cols-3">
@@ -222,16 +222,16 @@ onMounted(() => {
     </div>
 
     <div v-if="visibleGroups.length" class="grid gap-3">
-      <div v-for="group in visibleGroups" :key="group.name" class="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+      <div v-for="group in visibleGroups" :key="group.name" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
         <div class="mb-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <div class="min-w-0">
-            <p class="truncate text-sm font-semibold text-zinc-100">{{ sanitizeProxyName(group.name) }}</p>
-            <p class="text-xs text-zinc-500">{{ group.type }} · {{ group.proxies.length }} nodes</p>
+            <p class="truncate text-sm font-semibold text-[var(--mn-ink)]">{{ sanitizeProxyName(group.name) }}</p>
+            <p class="text-xs text-[var(--mn-ink-muted)]">{{ group.type }} · {{ group.proxies.length }} nodes</p>
           </div>
-          <span class="truncate rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300">{{ sanitizeProxyName(group.now || "未选择") }}</span>
+          <span class="truncate rounded border border-zinc-700 px-2 py-1 text-xs text-[var(--mn-ink-soft)]">{{ sanitizeProxyName(group.now || "未选择") }}</span>
         </div>
         <div class="mb-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
-          <p class="text-xs text-zinc-500">
+          <p class="text-xs text-[var(--mn-ink-muted)]">
             <template v-if="groupDelayStats(group).tested">
               已测 {{ groupDelayStats(group).tested }} · 可用 {{ groupDelayStats(group).usable }} · 最快 {{ groupDelayStats(group).fastest?.summary || "无" }}
             </template>
@@ -245,13 +245,13 @@ onMounted(() => {
             v-for="node in visibleGroupNodes(group)"
             :key="`${group.name}-${node}`"
             class="grid rounded-md border px-3 py-2 text-left text-sm"
-            :class="node === group.now ? 'border-lime-400/50 bg-lime-400/10 text-lime-100' : 'border-zinc-800 bg-black/30 text-zinc-300'"
+            :class="node === group.now ? 'border-[color-mix(in_srgb,var(--mn-cactus)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]' : 'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier-deep)]/30 text-[var(--mn-ink-soft)]'"
             type="button"
             :disabled="node === group.now || isRunning('proxy-groups-select')"
             @click="requestSelect(group, node)"
           >
             <span class="truncate">{{ sanitizeProxyName(node) }}</span>
-            <span v-if="groupDelays[group.name]?.find((entry) => entry.node === node)" class="mt-1 text-xs text-zinc-500">
+            <span v-if="groupDelays[group.name]?.find((entry) => entry.node === node)" class="mt-1 text-xs text-[var(--mn-ink-muted)]">
               {{ sanitizeNodeText(groupDelays[group.name].find((entry) => entry.node === node)?.summary || "") }}
               · {{ nodeDelayQualityLabel(groupDelays[group.name].find((entry) => entry.node === node)?.quality || "failed") }}
             </span>
@@ -259,6 +259,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-300 whitespace-pre-wrap">{{ rawOutput }}</pre>
+    <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ rawOutput }}</pre>
   </Card>
 </template>

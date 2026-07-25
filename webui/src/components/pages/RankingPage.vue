@@ -187,17 +187,17 @@ onMounted(() => {
 
     <Card class="grid gap-3">
       <div class="flex items-start gap-3">
-        <div class="grid size-11 shrink-0 place-items-center rounded-md bg-zinc-50 text-zinc-950">
+        <div class="grid size-11 shrink-0 place-items-center rounded-md bg-[var(--mn-cactus)] text-[var(--mn-ink)]">
           <Trophy :size="22" />
         </div>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-semibold">排行榜数据</p>
           <input
-            class="mt-2 h-10 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+            class="mt-2 h-10 w-full rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-sm text-[var(--mn-ink-soft)]"
             readonly
             :value="`ranking.json · updated ${data.updatedAt}`"
           >
-          <p v-if="error" class="mt-2 text-sm text-red-300">加载失败：{{ error }}</p>
+          <p v-if="error" class="mt-2 text-sm text-[var(--mn-danger)]">加载失败：{{ error }}</p>
         </div>
       </div>
       <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
@@ -206,10 +206,10 @@ onMounted(() => {
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-emerald-200': item.tone === 'success',
-            'border-amber-500/30 text-amber-200': item.tone === 'warning',
-            'border-red-500/30 text-red-200': item.tone === 'danger',
-            'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+            'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+            'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
           }"
         >
           {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
@@ -221,10 +221,10 @@ onMounted(() => {
           :key="item.key"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-emerald-200': item.tone === 'success',
-            'border-amber-500/30 text-amber-200': item.tone === 'warning',
-            'border-red-500/30 text-red-200': item.tone === 'danger',
-            'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+            'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+            'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
           }"
           :title="item.detail"
         >
@@ -233,27 +233,27 @@ onMounted(() => {
       </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div class="relative">
-          <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
+          <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-faint)]" :size="16" />
           <Input v-model="rankingQuery" class="pl-9" placeholder="过滤名称、留言、金额或日期" spellcheck="false" />
         </div>
-        <span class="text-sm text-zinc-500">{{ visibleEntries.length }} / {{ data.entries.length }} 命中</span>
+        <span class="text-sm text-[var(--mn-ink-muted)]">{{ visibleEntries.length }} / {{ data.entries.length }} 命中</span>
       </div>
     </Card>
 
     <div v-if="topEntries.length" class="grid gap-3 md:grid-cols-3">
       <Card v-for="entry in topEntries" :key="`${entry.rank}-${entry.name}`" class="grid gap-3">
         <div class="flex items-center justify-between gap-3">
-          <div class="grid size-10 place-items-center rounded-md bg-zinc-800">
+          <div class="grid size-10 place-items-center rounded-md bg-[var(--mn-carrier-deep)]">
             <Medal :size="20" />
           </div>
           <span class="text-2xl font-semibold">#{{ entry.rank }}</span>
         </div>
         <div>
           <h3 class="truncate text-lg font-semibold">{{ entry.name }}</h3>
-          <p class="mt-1 text-sm text-zinc-400">{{ entry.amount || "感谢支持" }}</p>
+          <p class="mt-1 text-sm text-[var(--mn-ink-muted)]">{{ entry.amount || "感谢支持" }}</p>
         </div>
-        <p class="text-sm leading-6 text-zinc-300">{{ entry.message || "感谢支持 MagicNet。" }}</p>
-        <span class="text-xs text-zinc-500">{{ entry.date }}</span>
+        <p class="text-sm leading-6 text-[var(--mn-ink-soft)]">{{ entry.message || "感谢支持 MagicNet。" }}</p>
+        <span class="text-xs text-[var(--mn-ink-muted)]">{{ entry.date }}</span>
       </Card>
     </div>
 
@@ -261,28 +261,28 @@ onMounted(() => {
       <div
         v-for="entry in otherEntries"
         :key="`${entry.rank}-${entry.name}`"
-        class="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2"
+        class="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)]/60 px-3 py-2"
       >
-        <span class="text-sm font-semibold text-zinc-400">#{{ entry.rank }}</span>
+        <span class="text-sm font-semibold text-[var(--mn-ink-muted)]">#{{ entry.rank }}</span>
         <span class="truncate text-sm">{{ entry.name }}</span>
-        <span class="text-xs text-zinc-500">{{ entry.date }}</span>
+        <span class="text-xs text-[var(--mn-ink-muted)]">{{ entry.date }}</span>
       </div>
     </Card>
-    <Card v-else-if="data.entries.length && rankingQuery.trim()" class="text-sm text-zinc-500">
+    <Card v-else-if="data.entries.length && rankingQuery.trim()" class="text-sm text-[var(--mn-ink-muted)]">
       没有匹配的排行榜条目。
     </Card>
 
     <Card class="grid gap-3">
       <div>
         <p class="flex items-center gap-2 text-sm font-semibold"><ShieldCheck :size="16" />支持项目</p>
-        <p class="mt-1 text-sm leading-6 text-zinc-400">{{ data.payment.note || "支付后可通过邮箱联系作者更新排行榜信息。" }}</p>
-        <p class="mt-1 text-xs leading-5 text-zinc-500">收款码从 GitHub Release 资产读取；若图片未显示，可用下方按钮打开 App 或复制邮箱联系。</p>
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ data.payment.note || "支付后可通过邮箱联系作者更新排行榜信息。" }}</p>
+        <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">收款码从 GitHub Release 资产读取；若图片未显示，可用下方按钮打开 App 或复制邮箱联系。</p>
       </div>
-      <div v-if="pendingQrAction" class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+      <div v-if="pendingQrAction" class="rounded-md border border-amber-500/40 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
         <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div class="min-w-0">
-            <p class="text-sm font-semibold text-amber-100">确认保存{{ pendingQrAction.label }}</p>
-            <p class="mt-1 break-all text-xs leading-5 text-amber-100/75">
+            <p class="text-sm font-semibold text-[var(--mn-warning)]">确认保存{{ pendingQrAction.label }}</p>
+            <p class="mt-1 break-all text-xs leading-5 text-[var(--mn-warning)]/75">
               {{ state.hasKsu ? `将联网下载并覆盖 ${pendingQrAction.target}` : "当前没有真机 WebUI 权限，将复制图片链接。" }}
             </p>
           </div>
@@ -293,7 +293,7 @@ onMounted(() => {
         </div>
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
-        <div class="rounded-md border border-zinc-800 bg-zinc-900 p-3">
+        <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] p-3">
           <div class="mb-2 flex items-center justify-between gap-2">
             <p class="text-sm font-semibold">微信收款码</p>
             <Button size="sm" variant="ghost" :loading="isRunning('save-wechat')" @click="requestSaveQr('wechat')">
@@ -313,12 +313,12 @@ onMounted(() => {
             <img class="aspect-square w-full object-contain" :src="data.payment.wechatQr" alt="微信收款码" loading="lazy">
           </button>
           <input
-            class="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 text-xs text-zinc-300"
+            class="mt-2 h-9 w-full rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-xs text-[var(--mn-ink-soft)]"
             readonly
             :value="data.payment.wechatQr || ''"
           >
         </div>
-        <div class="rounded-md border border-zinc-800 bg-zinc-900 p-3">
+        <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] p-3">
           <div class="mb-2 flex items-center justify-between gap-2">
             <p class="text-sm font-semibold">支付宝收款码</p>
             <Button size="sm" variant="ghost" :loading="isRunning('save-alipay')" @click="requestSaveQr('alipay')">
@@ -338,13 +338,13 @@ onMounted(() => {
             <img class="aspect-square w-full object-contain" :src="data.payment.alipayQr" alt="支付宝收款码" loading="lazy">
           </button>
           <input
-            class="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 text-xs text-zinc-300"
+            class="mt-2 h-9 w-full rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-xs text-[var(--mn-ink-soft)]"
             readonly
             :value="data.payment.alipayQr || ''"
           >
         </div>
       </div>
-      <p class="text-xs leading-5 text-zinc-500">{{ saveStatus || "长按二维码或点保存，可保存到手机 Download/MagicNet 目录。" }}</p>
+      <p class="text-xs leading-5 text-[var(--mn-ink-muted)]">{{ saveStatus || "长按二维码或点保存，可保存到手机 Download/MagicNet 目录。" }}</p>
       <div class="grid gap-2 sm:grid-cols-3">
         <Button @click="openPayment(data.payment.wechatUrl, '微信支付')">
           <Wallet :size="16" />微信
@@ -357,7 +357,7 @@ onMounted(() => {
         </Button>
       </div>
       <input
-        class="h-10 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200"
+        class="h-10 w-full rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-sm text-[var(--mn-ink-soft)]"
         readonly
         :value="data.contactEmail"
       >

@@ -282,11 +282,11 @@ function classifyLastCommand(command: string): string {
     >
       <div class="max-w-3xl">
         <span
-          class="inline-flex rounded-full bg-white/[0.05] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+          class="inline-flex rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-muted)] shadow-[inset_0_0_0_1px_var(--mn-border)]"
           >Control Center</span
         >
-        <h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white md:text-4xl">模块控制</h2>
-        <p class="mt-2 text-sm leading-6 text-zinc-400 md:text-[15px]">
+        <h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--mn-ink)] md:text-4xl">模块控制</h2>
+        <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)] md:text-[15px]">
           只放模块生命周期和入口。节点、测速、代理模式交给 sing-box WebUI。
         </p>
       </div>
@@ -307,12 +307,12 @@ function classifyLastCommand(command: string): string {
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-12">
       <Card
-        class="grid gap-5 !bg-[radial-gradient(circle_at_8%_8%,rgba(52,211,153,0.12),transparent_50%),linear-gradient(145deg,rgba(14,18,18,0.98),rgba(9,11,12,0.98))] md:col-span-7 md:row-span-2 md:min-h-[25rem]"
+        class="grid gap-5 md:col-span-7 md:row-span-2 md:min-h-[25rem]"
         :class="controlInsightTone(runtimeInsight.status)"
       >
         <div class="flex items-start justify-between gap-3">
           <span class="text-[10px] font-semibold uppercase tracking-[0.22em] opacity-60">Runtime Insight</span>
-          <span class="size-2.5 rounded-full bg-current opacity-70 shadow-[0_0_20px_currentColor]" />
+          <span class="size-2.5 rounded-full bg-current opacity-70 " />
         </div>
         <div class="my-auto max-w-xl">
           <h3 class="break-words text-2xl font-semibold tracking-[-0.035em] md:text-3xl">
@@ -347,7 +347,7 @@ function classifyLastCommand(command: string): string {
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <span
-              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
+              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
               >sing-box</span
             >
             <h3 class="mt-2 break-words text-2xl font-semibold tracking-[-0.035em]">
@@ -358,9 +358,9 @@ function classifyLastCommand(command: string): string {
               }}
             </h3>
           </div>
-          <span :class="['mt-1 size-3 rounded-full shadow-[0_0_20px_currentColor]', state.runtime.singBoxState === 'sing-box' ? 'bg-emerald-300 text-emerald-300' : 'bg-rose-300 text-rose-300']" />
+          <span :class="['mt-1 size-3 rounded-full ', state.runtime.singBoxState === 'sing-box' ? 'bg-[var(--mn-cactus)] text-[var(--mn-success)]' : 'bg-[var(--mn-clay)] text-[var(--mn-danger)]']" />
         </div>
-        <p class="text-sm leading-6 text-zinc-400">
+        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">
           MagicNet 当前只运行 sing-box 核心。
         </p>
         <Button
@@ -380,7 +380,7 @@ function classifyLastCommand(command: string): string {
 
       <Card class="md:col-span-5">
         <span
-          class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
+          class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
           >Quick Actions</span
         >
         <div class="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
@@ -421,11 +421,11 @@ function classifyLastCommand(command: string): string {
 
       <Card class="md:col-span-4">
         <span
-          class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
+          class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
           >sing-box WebUI</span
         >
         <h3 class="mt-3 text-xl font-semibold tracking-[-0.03em]">核心控制入口</h3>
-        <p class="mt-2 text-sm leading-6 text-zinc-400">进入 zashboard 管理节点与代理组，或直接检查 API 连通性。</p>
+        <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)]">进入 zashboard 管理节点与代理组，或直接检查 API 连通性。</p>
         <div class="mt-5 grid gap-2">
           <Button
             variant="outline"
@@ -452,7 +452,7 @@ function classifyLastCommand(command: string): string {
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>
             <span
-              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
+              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
               >Orchestrator Mode</span
             >
             <h3 class="mt-2 text-2xl font-semibold tracking-[-0.035em]">多 VPN 共存</h3>
@@ -469,10 +469,10 @@ function classifyLastCommand(command: string): string {
             v-for="item in orchestratorModes"
             :key="item.mode"
             :class="[
-              'min-h-[5.25rem] rounded-[1.4rem] px-4 py-3 text-left text-sm shadow-[inset_0_0_0_1px_rgba(255,255,255,0.075),inset_0_0_0_5px_rgba(255,255,255,0.018)] transition-[transform,color,background-color,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60 active:scale-[0.98] disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100',
+              'min-h-[5.25rem] rounded-[1.4rem] px-4 py-3 text-left text-sm shadow-[inset_0_0_0_1px_var(--mn-border)] transition-[transform,color,background-color,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,transparent)] active:scale-[0.98] disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100',
               state.runtime.transparentMode === item.mode
-                ? 'bg-gradient-to-br from-emerald-300 to-cyan-300 text-[#06110e] shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]'
-                : 'bg-white/[0.05] text-zinc-100 hover:bg-white/[0.085]',
+                ? 'bg-[var(--mn-cactus)] text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_8%,transparent)]'
+                : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
             ]"
             :aria-pressed="state.runtime.transparentMode === item.mode"
             :disabled="
@@ -498,8 +498,8 @@ function classifyLastCommand(command: string): string {
               :class="[
                 'mt-1 block text-xs leading-5',
                 state.runtime.transparentMode === item.mode
-                  ? 'text-emerald-950/75'
-                  : 'text-zinc-400',
+                  ? 'text-[var(--mn-ink-muted)]'
+                  : 'text-[var(--mn-ink-muted)]',
               ]"
               >{{ item.description }}</span
             >
@@ -657,23 +657,16 @@ function classifyLastCommand(command: string): string {
       </Card>
 
       <Card
-        class="group relative overflow-hidden !bg-[linear-gradient(120deg,rgba(13,18,18,0.98),rgba(10,13,15,0.98))] !p-0 md:col-span-12"
+        class="group relative overflow-hidden !bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] !p-0 md:col-span-12"
       >
         <button
-          class="relative grid w-full gap-5 overflow-hidden p-5 text-left transition-[transform,background-color] duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/70 active:scale-[0.995] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center md:p-6"
+          class="relative grid w-full gap-5 overflow-hidden p-5 text-left transition-[transform,background-color] duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color-mix(in_srgb,var(--mn-heather)_70%,transparent)] active:scale-[0.995] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center md:p-6"
           type="button"
           aria-label="访问推广：AI 自动推广系统"
           @click="openExternal(PROMOTION_URL, 'AI 自动推广系统')"
         >
           <span
-            class="pointer-events-none absolute -right-20 -top-28 size-72 rounded-full bg-cyan-300/[0.08] blur-3xl transition-transform duration-700 group-hover:translate-x-[-1rem] group-hover:translate-y-4"
-          />
-          <span
-            class="pointer-events-none absolute -bottom-28 left-1/3 size-64 rounded-full bg-emerald-300/[0.07] blur-3xl transition-transform duration-700 group-hover:translate-x-4 group-hover:-translate-y-3"
-          />
-
-          <span
-            class="relative grid size-14 shrink-0 place-items-center rounded-[1.25rem] bg-gradient-to-br from-emerald-300 to-cyan-300 text-[#06110e] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_12px_34px_rgba(34,211,238,0.12)]"
+            class="relative grid size-14 shrink-0 place-items-center rounded-[1.25rem] bg-[var(--mn-cactus)] text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)]"
           >
             <Megaphone :size="22" />
           </span>
@@ -681,24 +674,24 @@ function classifyLastCommand(command: string): string {
           <span class="relative min-w-0">
             <span class="flex flex-wrap items-center gap-2">
               <span
-                class="rounded-full bg-white/[0.07] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]"
+                class="rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_7%,transparent)] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-muted)] shadow-[inset_0_0_0_1px_var(--mn-border)]"
                 >推广</span
               >
-              <span class="text-[10px] font-medium text-emerald-200/70"
+              <span class="text-[10px] font-medium text-[var(--mn-success)]"
                 >MagicNet 推荐</span
               >
             </span>
             <strong
-              class="mt-3 block text-xl font-semibold tracking-[-0.035em] text-white md:text-2xl"
+              class="mt-3 block text-xl font-semibold tracking-[-0.035em] text-[var(--mn-ink)] md:text-2xl"
               >AI 自动推广系统</strong
             >
-            <span class="mt-2 block text-sm leading-6 text-zinc-400"
+            <span class="mt-2 block text-sm leading-6 text-[var(--mn-ink-muted)]"
               >探索 AI 驱动的自动推广工具与工作流。</span
             >
           </span>
 
           <span
-            class="relative inline-flex min-h-[49px] items-center justify-center gap-2 justify-self-start rounded-full bg-white/[0.075] px-5 text-sm font-semibold text-cyan-100 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.14)] transition-[transform,color,background-color] duration-300 group-hover:bg-cyan-300 group-hover:text-[#06110e] sm:justify-self-end"
+            class="relative inline-flex min-h-[49px] items-center justify-center gap-2 justify-self-start rounded-full bg-[var(--mn-cactus)] px-5 text-sm font-semibold text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)] transition-[transform,color,background-color] duration-200 group-hover:bg-[var(--mn-cactus-deep)] group-hover:text-[var(--mn-ink)] sm:justify-self-end"
           >
             了解详情
             <ArrowUpRight
@@ -711,20 +704,20 @@ function classifyLastCommand(command: string): string {
     </div>
 
     <div v-if="pendingDangerAction" ref="dangerConfirmCard" tabindex="-1">
-      <Card class="grid gap-3 !bg-amber-500/10 text-amber-100 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.25),inset_0_0_0_7px_rgba(251,191,36,0.025)]">
+      <Card class="grid gap-3 !bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)] shadow-[inset_0_0_0_1px_rgba(251,191,36,0.25),inset_0_0_0_7px_rgba(251,191,36,0.025)]">
         <div
           class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
         >
           <div class="min-w-0">
             <span
-              class="text-[11px] font-bold uppercase tracking-wide text-amber-300"
+              class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]"
               >Confirm action</span
             >
-            <p class="mt-1 text-sm leading-6 text-amber-100">
+            <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">
               {{ pendingDangerMessage }}
             </p>
             <code
-              class="mt-3 block break-all rounded-[1.15rem] bg-black/30 px-4 py-3 text-xs text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]"
+              class="mt-3 block break-all rounded-[1.15rem] bg-[var(--mn-carrier-deep)]/30 px-4 py-3 text-xs text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_var(--mn-border)]"
               >{{ pendingDangerAction.args }}</code
             >
           </div>

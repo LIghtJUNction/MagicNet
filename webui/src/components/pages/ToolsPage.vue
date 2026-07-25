@@ -265,7 +265,7 @@ async function writeBackupPayloadFile(payload: string): Promise<string> {
 
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> WARP 出站</h3>
-        <p class="text-sm leading-6 text-zinc-400">导入自己的 WARP/WireGuard 配置后，MagicNet 会生成 sing-box wireguard endpoint；可全局在 sing-box 选择器里选择 warp，也可给指定域名添加 warp 路由。</p>
+        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">导入自己的 WARP/WireGuard 配置后，MagicNet 会生成 sing-box wireguard endpoint；可全局在 sing-box 选择器里选择 warp，也可给指定域名添加 warp 路由。</p>
         <Textarea v-model="state.warp.importText" class="min-h-32 font-mono text-xs" spellcheck="false" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = ...:2408" />
         <div class="rounded-md border p-3 text-sm leading-6" :class="warpImportTone(warpImportSummary.status)">
           <p class="font-medium">{{ warpImportSummary.status === 'ok' ? '可导入' : warpImportSummary.status === 'warning' ? '可导入但需确认' : warpImportSummary.status === 'error' ? '不能导入' : '等待配置' }}</p>
@@ -284,7 +284,7 @@ async function writeBackupPayloadFile(payload: string): Promise<string> {
           <Button variant="outline" :loading="isRunning('warp-rule')" @click="selectWarpGlobal(false)">恢复规则</Button>
         </div>
         <WarpRouteRulesPanel />
-        <pre class="max-h-44 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">enabled={{ state.warp.enabled ? "1" : "0" }}
+        <pre class="max-h-44 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">enabled={{ state.warp.enabled ? "1" : "0" }}
 configured={{ state.warp.configured ? "1" : "0" }}
 tag={{ state.warp.tag }}
 endpoint={{ state.warp.endpoint || "-" }}
@@ -294,17 +294,17 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
 
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileLock :size="17" /> 配置迁移</h3>
-        <p class="text-sm leading-6 text-zinc-400">导出会打包订阅、应用名单、黑名单、路由规则等用户配置。安全码可留空；设置后导入时必须填写一致。</p>
+        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">导出会打包订阅、应用名单、黑名单、路由规则等用户配置。安全码可留空；设置后导入时必须填写一致。</p>
         <div class="grid gap-2 sm:grid-cols-2">
           <Input v-model="state.backup.exportPassword" type="password" autocomplete="new-password" placeholder="导出安全码，可留空" />
           <Button :loading="isRunning('backup-export')" @click="exportBackup"><Download :size="16" />导出并复制</Button>
         </div>
         <Textarea v-model="state.backup.payload" class="min-h-28" spellcheck="false" placeholder="备份字符串会出现在这里，也可以手动粘贴剪切板内容" />
-        <div class="grid gap-2 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-500 sm:grid-cols-4">
+        <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
           <span>{{ backupPayloadSummary.lines }} 行</span>
           <span>{{ backupPayloadSummary.chars }} 字符</span>
           <span>{{ backupPayloadSummary.compactChars }} 非空白字符</span>
-          <span :class="backupPayloadSummary.looksValid ? 'text-emerald-300' : 'text-amber-300'">
+          <span :class="backupPayloadSummary.looksValid ? 'text-[var(--mn-success)]' : 'text-[var(--mn-warning)]'">
             {{ backupPayloadSummary.looksValid ? `fnv32:${backupPayloadSummary.fingerprint}` : backupPayloadSummary.tooLarge ? '超过 5MiB' : backupPayloadSummary.invalidChars ? '含非法字符' : backupPayloadSummary.hasWhitespace ? '含空白，将压缩检查' : '等待有效备份' }}
           </span>
         </div>
@@ -314,7 +314,7 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
           <Button variant="outline" :disabled="!state.backup.payload.trim()" @click="copyBackupSummary"><Copy :size="16" />{{ backupSummaryCopied ? '已复制摘要' : '复制摘要' }}</Button>
           <Button :loading="isRunning('backup-restore')" @click="restoreBackup"><Upload :size="16" />导入配置</Button>
         </div>
-        <p class="text-xs leading-5 text-zinc-500">{{ state.backup.status }}</p>
+        <p class="text-xs leading-5 text-[var(--mn-ink-muted)]">{{ state.backup.status }}</p>
       </Card>
 
       <EcaptureToolsCard />
@@ -326,7 +326,7 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
 
       <Card>
         <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> 拓扑 / 路由</h3>
-        <p class="text-sm leading-6 text-zinc-400">只读展示网络链路和路由快照，设备 CLI 没有拓扑命令时自动回退到路由快照。</p>
+        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">只读展示网络链路和路由快照，设备 CLI 没有拓扑命令时自动回退到路由快照。</p>
         <div class="grid gap-2">
           <Button variant="secondary" :loading="isRunning('refresh-topology')" @click="withAction('refresh-topology', () => refreshTopology())">刷新拓扑/路由</Button>
           <Button variant="secondary" :loading="isRunning('refresh-sysroute')" @click="withAction('refresh-sysroute', () => refreshSysroute())">刷新路由</Button>

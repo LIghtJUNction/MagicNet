@@ -105,7 +105,7 @@ export function formatNodeDelayReport(entries: NodeDelayEntry[]): string {
 
 export function sanitizeNodeText(value: string): string {
   return value
-    .replace(/\b(?:https?|socks?|ss|ssr|vmess|vless|trojan|hysteria2?|tuic):\/\/[^\s"'<>]+/gi, "[filtered-url]")
+    .replace(/\b(?:https?|socks?|ss|ssr|vmess|vless|trojan|hysteria2?|tuic|anytls):\/\/[^\s"'<>]+/gi, "[filtered-url]")
     .replace(/\b(private_?key|password|passwd|token|secret|uuid|api[_-]?key)(\s*[:=]\s*)[^\s,;}\]]+/gi, "$1$2[filtered]");
 }
 

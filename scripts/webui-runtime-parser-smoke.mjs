@@ -9,10 +9,10 @@ const sourcePath = new URL("../webui/src/composables/parsers.ts", import.meta.ur
 let source = await readFile(sourcePath, "utf8");
 source = source
   .replace(
-    'import { MODULE_DIR, SING_BOX_UI } from "@/constants";',
-    'const MODULE_DIR = "/data/adb/modules/MagicNet"; const SING_BOX_UI = "zashboard";'
+    /import\s*\{\s*MODULE_DIR\s*,\s*SING_BOX_UI\s*\}\s*from\s*["'](?:@\/constants|\.\.\/constants\.ts)["']\s*;/,
+    'const MODULE_DIR = "/data/adb/modules/MagicNet"; const SING_BOX_UI = "zashboard";',
   )
-  .replace(/^import type .* from "@\/types";\n/m, "");
+  .replace(/^import type .* from ["'](?:@\/types|\.\.\/types\.ts)["'];\n/m, "");
 
 const output = ts.transpileModule(source, {
   compilerOptions: {

@@ -1,49 +1,88 @@
 @import "tailwindcss";
 
+/*
+  Anthropic-art editorial tokens for MagicNet WebUI.
+  Palette: ivory canvas, cactus/heather/oat accents, near-black ink.
+  Flat color only — no multi-layer viewport gradients or default glass stacks.
+*/
+
+@theme {
+  --color-mn-ink: #141413;
+  --color-mn-ink-soft: #3d3d3a;
+  --color-mn-ink-muted: #5c5c59;
+  --color-mn-ink-faint: #8a8a84;
+  --color-mn-ivory: #faf9f5;
+  --color-mn-carrier: #f0eee6;
+  --color-mn-carrier-deep: #e8e6dc;
+  --color-mn-cactus: #bcd1ca;
+  --color-mn-cactus-deep: #9fb8af;
+  --color-mn-heather: #cbcadb;
+  --color-mn-oat: #e3dacc;
+  --color-mn-clay: #d97757;
+  --color-mn-olive: #788c5d;
+  --color-mn-sky: #6a9bcc;
+  --color-mn-coral: #ebcece;
+  --color-mn-success: #3f6b52;
+  --color-mn-warning: #a67c2a;
+  --color-mn-danger: #b54a3c;
+  --color-mn-info: #3d5f7a;
+}
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  --mn-ink: #141413;
+  --mn-ink-soft: #3d3d3a;
+  --mn-ink-muted: #5c5c59;
+  --mn-ink-faint: #8a8a84;
+  --mn-ivory: #faf9f5;
+  --mn-carrier: #f0eee6;
+  --mn-carrier-deep: #e8e6dc;
+  --mn-cactus: #bcd1ca;
+  --mn-cactus-deep: #9fb8af;
+  --mn-heather: #cbcadb;
+  --mn-oat: #e3dacc;
+  --mn-clay: #d97757;
+  --mn-olive: #788c5d;
+  --mn-sky: #6a9bcc;
+  --mn-coral: #ebcece;
+  --mn-surface: var(--mn-ivory);
+  --mn-surface-raised: var(--mn-carrier);
+  --mn-surface-sunken: #e8e6dc;
+  --mn-border: color-mix(in srgb, var(--mn-ink) 10%, transparent);
+  --mn-border-strong: color-mix(in srgb, var(--mn-ink) 16%, transparent);
+  --mn-focus: color-mix(in srgb, var(--mn-cactus) 70%, var(--mn-ink));
+  --mn-danger: #b54a3c;
+  --mn-warning: #a67c2a;
+  --mn-success: #3f6b52;
+  --mn-info: #3d5f7a;
+
   font-family: "Plus Jakarta Sans", "MiSans", "HarmonyOS Sans SC", system-ui, sans-serif;
-  background: #060708;
+  background: var(--mn-ivory);
+  color: var(--mn-ink);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
 
 * {
   box-sizing: border-box;
-  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html {
   min-width: 320px;
   min-height: 100%;
-  background: #060708;
-  scrollbar-color: #34373b #090a0c;
+  background: var(--mn-ivory);
+  scrollbar-color: var(--mn-cactus-deep) var(--mn-carrier);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100dvh;
-  background:
-    radial-gradient(circle at 9% 6%, rgba(52, 211, 153, 0.09), transparent 24rem),
-    radial-gradient(circle at 88% 2%, rgba(103, 232, 249, 0.07), transparent 28rem),
-    radial-gradient(circle at 72% 78%, rgba(251, 113, 133, 0.055), transparent 34rem),
-    linear-gradient(145deg, #060708 0%, #090a0c 48%, #060708 100%);
-  color: #f4f4f5;
+  /* Flat editorial field — no multi-radial / repeating-line paint stack */
+  background: var(--mn-ivory);
+  color: var(--mn-ink);
   overflow-x: hidden;
   touch-action: pan-x pan-y pinch-zoom;
-}
-
-body::before {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  content: "";
-  opacity: 0.16;
-  background-image:
-    repeating-linear-gradient(117deg, transparent 0 7px, rgba(255, 255, 255, 0.012) 7px 8px),
-    repeating-linear-gradient(31deg, transparent 0 11px, rgba(255, 255, 255, 0.009) 11px 12px);
 }
 
 #app {
@@ -64,37 +103,79 @@ button {
 }
 
 .lucide {
-  stroke-width: 1.5;
+  stroke-width: 1.65;
 }
 
 .magic-card {
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.075),
-    inset 0 0 0 5px rgba(255, 255, 255, 0.018),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    0 8px 24px rgba(0, 0, 0, 0.08);
+  background: var(--mn-carrier);
+  color: var(--mn-ink);
+  box-shadow: inset 0 0 0 1px var(--mn-border);
 }
 
-.page-enter {
-  animation: page-arrive 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+.mn-shell {
+  background: var(--mn-ivory);
 }
 
-@keyframes page-arrive {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.mn-chrome {
+  background: var(--mn-carrier);
+  box-shadow: inset 0 0 0 1px var(--mn-border);
+}
+
+.mn-chrome-raised {
+  background: #fffef9;
+  box-shadow: inset 0 0 0 1px var(--mn-border);
+}
+
+.mn-brand-mark {
+  background: var(--mn-cactus);
+  color: var(--mn-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-ink) 8%, transparent);
+}
+
+.mn-nav-active {
+  background: var(--mn-cactus);
+  color: var(--mn-ink);
+}
+
+.mn-nav-idle {
+  color: var(--mn-ink-muted);
+}
+
+.mn-nav-idle:hover {
+  background: color-mix(in srgb, var(--mn-ink) 5%, transparent);
+  color: var(--mn-ink);
+}
+
+.mn-nav-advanced-active {
+  background: color-mix(in srgb, var(--mn-heather) 55%, white);
+  color: var(--mn-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-heather) 70%, transparent);
+}
+
+.mn-status-dot-ok {
+  background: var(--mn-olive);
+  color: var(--mn-olive);
+}
+
+.mn-status-dot-stop {
+  background: var(--mn-clay);
+  color: var(--mn-clay);
+}
+
+.mn-status-dot-unknown {
+  background: #c4a35a;
+  color: #c4a35a;
+}
+
+.page-surface {
+  min-width: 0;
 }
 
 .sheet-enter-active,
 .sheet-leave-active,
 .toast-enter-active,
 .toast-leave-active {
-  transition: opacity 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sheet-enter-active > div:last-child,
@@ -102,8 +183,8 @@ button {
 .toast-enter-active,
 .toast-leave-active {
   transition:
-    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 440ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sheet-enter-from,
@@ -115,12 +196,12 @@ button {
 
 .sheet-enter-from > div:last-child,
 .sheet-leave-to > div:last-child {
-  transform: translateY(28px);
+  transform: translateY(16px);
 }
 
 .toast-enter-from,
 .toast-leave-to {
-  transform: translateY(12px) scale(0.98);
+  transform: translateY(8px);
 }
 
 code,
@@ -130,7 +211,26 @@ textarea {
 }
 
 ::selection {
-  background: rgba(52, 211, 153, 0.25);
+  background: color-mix(in srgb, var(--mn-cactus) 55%, transparent);
+}
+
+.mn-inset {
+  background: var(--mn-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--mn-border);
+}
+
+.mn-inset-soft {
+  background: color-mix(in srgb, var(--mn-ink) 4%, var(--mn-carrier));
+}
+
+.mn-pill {
+  background: color-mix(in srgb, var(--mn-ink) 5%, transparent);
+  color: var(--mn-ink-muted);
+  box-shadow: inset 0 0 0 1px var(--mn-border);
+}
+
+.mn-code {
+  color: var(--mn-ink-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {

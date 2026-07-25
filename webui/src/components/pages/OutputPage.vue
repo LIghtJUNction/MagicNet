@@ -99,25 +99,25 @@ function clearOutputFilter(): void {
       <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div class="min-w-0">
           <p class="text-sm font-semibold">最近后台任务</p>
-          <p class="mt-1 text-sm text-zinc-400">{{ state.backgroundTask.label }} · {{ state.backgroundTask.status }}</p>
+          <p class="mt-1 text-sm text-[var(--mn-ink-muted)]">{{ state.backgroundTask.label }} · {{ state.backgroundTask.status }}</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" @click="refreshBackgroundLog">刷新日志</Button>
           <Button variant="outline" size="sm" @click="copyBackgroundLogPath"><Copy :size="15" />复制路径</Button>
         </div>
       </div>
-      <div class="grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
+      <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-3">
         <span>开始 {{ formatBackgroundTime(state.backgroundTask.startedAt) }}</span>
         <span>更新 {{ formatBackgroundTime(state.backgroundTask.updatedAt) }}</span>
         <span>耗时 {{ formatBackgroundDuration(state.backgroundTask) }}</span>
       </div>
-      <div class="grid gap-2 text-xs text-zinc-400">
-        <code class="break-all rounded-md bg-black px-3 py-2 text-zinc-200">{{ state.backgroundTask.log }}</code>
-        <code class="break-all rounded-md bg-black px-3 py-2 text-zinc-200">{{ state.backgroundTask.args }}</code>
+      <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)]">
+        <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-[var(--mn-ink-soft)]">{{ state.backgroundTask.log }}</code>
+        <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-[var(--mn-ink-soft)]">{{ state.backgroundTask.args }}</code>
       </div>
     </Card>
     <Card class="grid gap-3">
-      <div class="grid gap-2 text-xs text-zinc-500 sm:grid-cols-4">
+      <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
         <span>阶段 {{ state.phase }}</span>
         <span>{{ outputStats.lines }} 行</span>
         <span>{{ outputStats.chars }} 字符</span>
@@ -129,19 +129,19 @@ function clearOutputFilter(): void {
       </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <label class="relative block">
-          <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" :size="15" />
+          <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-muted)]" :size="15" />
           <Input v-model="outputQuery" class="pl-9" placeholder="过滤当前输出，例如 error、timeout、api stats" spellcheck="false" />
         </label>
         <Button variant="ghost" :disabled="!outputQuery" @click="clearOutputFilter"><X :size="16" />清除过滤</Button>
       </div>
-      <div v-if="issueSummary" class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-        <p class="text-xs font-semibold uppercase tracking-wide text-amber-200">问题线索</p>
-        <pre class="mt-2 max-h-32 overflow-auto text-xs leading-5 text-amber-50 whitespace-pre-wrap">{{ issueSummary }}</pre>
+      <div v-if="issueSummary" class="rounded-md border border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-warning)]">问题线索</p>
+        <pre class="mt-2 max-h-32 overflow-auto text-xs leading-5 text-[var(--mn-warning)] whitespace-pre-wrap">{{ issueSummary }}</pre>
       </div>
-      <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm text-zinc-400">
-        <code class="min-w-0 truncate text-zinc-300">{{ state.lastCommand || "等待执行" }}</code>
+      <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm text-[var(--mn-ink-muted)]">
+        <code class="min-w-0 truncate text-[var(--mn-ink-soft)]">{{ state.lastCommand || "等待执行" }}</code>
       </div>
-      <pre class="max-h-[58vh] overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ visibleOutput }}</pre>
+      <pre class="max-h-[58vh] overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ visibleOutput }}</pre>
     </Card>
   </div>
 </template>

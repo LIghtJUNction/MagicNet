@@ -301,12 +301,12 @@ async function confirmBlockAction(): Promise<void> {
       </div>
     </PageHeader>
 
-    <Card v-if="pendingBlockAction" class="grid gap-3 border border-amber-500/40 bg-amber-500/10">
+    <Card v-if="pendingBlockAction" class="grid gap-3 border border-amber-500/40 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)]">
       <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div class="min-w-0">
-          <span class="text-[11px] font-bold uppercase tracking-wide text-amber-300">Confirm blocklist</span>
-          <p class="mt-1 text-sm leading-6 text-amber-100">{{ pendingBlockAction.message }}</p>
-          <code class="mt-2 block break-all rounded-md bg-zinc-950/60 px-3 py-2 text-xs text-zinc-100">{{ pendingBlockAction.command }}</code>
+          <span class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]">Confirm blocklist</span>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">{{ pendingBlockAction.message }}</p>
+          <code class="mt-2 block break-all rounded-md bg-[var(--mn-ivory)]/60 px-3 py-2 text-xs text-[var(--mn-ink)]">{{ pendingBlockAction.command }}</code>
         </div>
         <div class="flex shrink-0 gap-2">
           <Button variant="secondary" :loading="isRunning(pendingBlockAction.key)" @click="confirmBlockAction">确认</Button>
@@ -319,15 +319,15 @@ async function confirmBlockAction(): Promise<void> {
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 class="text-base font-semibold">策略</h3>
-          <p class="mt-1 text-sm leading-6 text-zinc-500">{{ blockSummary.summary }}</p>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ blockSummary.summary }}</p>
         </div>
         <span
           class="rounded px-2 py-1 text-xs font-medium"
           :class="{
-            'bg-emerald-500/15 text-emerald-200': blockSummary.status === 'active',
-            'bg-amber-500/15 text-amber-200': blockSummary.status === 'partial',
-            'bg-red-500/15 text-red-200': blockSummary.status === 'empty',
-            'bg-zinc-800 text-zinc-300': blockSummary.status === 'disabled',
+            'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': blockSummary.status === 'active',
+            'bg-amber-500/15 text-[var(--mn-warning)]': blockSummary.status === 'partial',
+            'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': blockSummary.status === 'empty',
+            'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': blockSummary.status === 'disabled',
           }"
         >
           {{ blockSummary.status === 'active' ? '完整启用' : blockSummary.status === 'partial' ? '部分启用' : blockSummary.status === 'empty' ? '无有效规则' : '已关闭' }}
@@ -339,10 +339,10 @@ async function confirmBlockAction(): Promise<void> {
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-emerald-200': item.tone === 'success',
-            'border-amber-500/30 text-amber-200': item.tone === 'warning',
-            'border-red-500/30 text-red-200': item.tone === 'danger',
-            'border-zinc-800 text-zinc-400': item.tone === 'neutral',
+            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
+            'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+            'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
           }"
         >
           {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
@@ -361,7 +361,7 @@ async function confirmBlockAction(): Promise<void> {
         <Button variant="secondary" :loading="isRunning(`add-domain-${state.blocklist.newDomain.trim()}`)" @click="requestAddDomain"><Plus :size="16" />添加</Button>
       </div>
       <div class="relative">
-        <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" :size="16" />
+        <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-faint)]" :size="16" />
         <Input v-model="blockQuery" class="pl-9" placeholder="过滤本地阻断、社区规则和广告放行白名单" spellcheck="false" />
       </div>
     </Card>
@@ -370,38 +370,38 @@ async function confirmBlockAction(): Promise<void> {
       <Card>
         <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><ListFilter :size="16" />阻断</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
-          <span v-for="domain in visibleManualDomains" :key="domain" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="domain in visibleManualDomains" :key="domain" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ domain }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-domain-${domain}`)" type="button" @click="requestRemoveDomain(domain)"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-domain-${domain}`)" type="button" @click="requestRemoveDomain(domain)"><X :size="14" /></button>
           </span>
-          <em v-if="!visibleManualDomains.length" class="text-sm not-italic text-zinc-500">{{ state.blocklist.manual.length ? '没有匹配项' : '暂无域名' }}</em>
+          <em v-if="!visibleManualDomains.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ state.blocklist.manual.length ? '没有匹配项' : '暂无域名' }}</em>
         </div>
       </Card>
 
       <Card>
         <h3 class="mb-2 text-base font-semibold">社区库缓存</h3>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
-          <span v-for="rule in visibleCommunityEntries.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="rule in visibleCommunityEntries.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-zinc-800 text-zinc-50 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="requestAllowRule(rule)"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="requestAllowRule(rule)"><X :size="14" /></button>
           </span>
-          <em v-if="!visibleCommunityEntries.length" class="text-sm not-italic text-zinc-500">{{ communityEntries.length ? '没有匹配项' : '未读取到社区规则' }}</em>
+          <em v-if="!visibleCommunityEntries.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ communityEntries.length ? '没有匹配项' : '未读取到社区规则' }}</em>
         </div>
       </Card>
 
       <Card>
         <h3 class="mb-1 text-base font-semibold">广告放行白名单</h3>
-        <p class="mb-3 text-sm leading-6 text-zinc-500">优先于内置、规则集和社区广告规则；ad-allow 默认继承主策略，也可手动选择 Direct 或 Proxy。</p>
+        <p class="mb-3 text-sm leading-6 text-[var(--mn-ink-muted)]">优先于内置、规则集和社区广告规则；ad-allow 默认继承主策略，也可手动选择 Direct 或 Proxy。</p>
         <div class="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
           <Input v-model="allowRuleInput" placeholder="example.com 或 DOMAIN-SUFFIX,example.com" spellcheck="false" @keyup.enter="requestAddAllowRule" />
           <Button variant="secondary" :loading="isRunning(`allow-${allowRuleInput.trim()}`)" @click="requestAddAllowRule"><Plus :size="16" />加入白名单</Button>
         </div>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
-          <span v-for="rule in visibleAllowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs break-all">
+          <span v-for="rule in visibleAllowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-red-500/15 text-red-200 hover:bg-red-500/25 disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" :title="`从广告放行白名单删除 ${rule}`" :aria-label="`从广告放行白名单删除 ${rule}`" @click="requestRemoveAllowRule(rule)"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)] hover:bg-[color-mix(in_srgb,var(--mn-coral)_70%,white)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" :title="`从广告放行白名单删除 ${rule}`" :aria-label="`从广告放行白名单删除 ${rule}`" @click="requestRemoveAllowRule(rule)"><X :size="14" /></button>
           </span>
-          <em v-if="!visibleAllowRules.length" class="text-sm not-italic text-zinc-500">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无白名单规则' }}</em>
+          <em v-if="!visibleAllowRules.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无白名单规则' }}</em>
         </div>
       </Card>
     </div>

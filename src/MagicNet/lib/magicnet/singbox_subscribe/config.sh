@@ -677,7 +677,7 @@ magicnet_singbox_replay_cached_outbounds() {
         unset _cached_outbounds
         return 1
     }
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks)"' \
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic)"' \
         "$_cached_outbounds" || {
         unset _cached_outbounds
         return 1
@@ -850,12 +850,12 @@ magicnet_singbox_restart_if_running() {
 magicnet_singbox_api_has_nodes() {
     _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
     [ -n "$_api" ] || return 1
-    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|Selector)"'
+    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Selector)"'
 }
 
 magicnet_singbox_config_has_nodes() {
     _config_file=$(magicnet_singbox_subscription_config_file)
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks)"' "$_config_file"
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic)"' "$_config_file"
 }
 
 magicnet_singbox_google_works() {

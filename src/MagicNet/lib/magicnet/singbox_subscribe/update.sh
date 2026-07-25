@@ -423,7 +423,7 @@ magicnet_singbox_update_subscription_unlocked() {
     fi
 
     if [ "${_imported:-0}" -le 0 ]; then
-        error "No supported nodes imported. Supported: Clash ss/vmess/vless/trojan/hysteria2, share-link vless/hysteria2; Proxylink adds AnyTLS/TUIC when available"
+        error "No supported nodes imported. Supported: Clash ss/vmess/vless/trojan/hysteria2/anytls, share-link ss/vmess/vless/trojan/hysteria2/anytls; Proxylink adds TUIC when available"
         magicnet_singbox_update_status convert failed no_nodes_imported || true
         magicnet_singbox_update_cleanup_stage
         return 1

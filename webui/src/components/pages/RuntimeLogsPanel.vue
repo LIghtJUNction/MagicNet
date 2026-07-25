@@ -125,7 +125,7 @@ onUnmounted(stopTimer);
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileText :size="17" /> 运行日志</h3>
-        <p class="mt-1 text-sm leading-6 text-zinc-400">
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
           真实读取设备侧日志尾部，用于排查 sing-box 和 MCP。
         </p>
       </div>
@@ -141,7 +141,7 @@ onUnmounted(stopTimer);
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
-      <select v-model="target" class="h-10 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100">
+      <select v-model="target" class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]">
         <option value="sing-box">sing-box</option>
         <option value="mcp">MCP</option>
       </select>
@@ -153,18 +153,18 @@ onUnmounted(stopTimer);
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
       <Input v-model="query" placeholder="过滤关键字，例如 error / dns / selector" spellcheck="false" />
-      <select v-model="level" class="h-10 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100">
+      <select v-model="level" class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]">
         <option value="all">全部</option>
         <option value="warn">警告</option>
         <option value="error">错误</option>
       </select>
     </div>
 
-    <div v-if="output" class="grid gap-2 text-xs text-zinc-400 sm:grid-cols-4">
+    <div v-if="output" class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
       <span>日志 {{ logLines.length }} 行</span>
       <span>命中 {{ filteredLines.length }} 行</span>
-      <span class="text-amber-300">警告 {{ warningCount }}</span>
-      <span class="text-red-300">问题 {{ issueLines.length }}</span>
+      <span class="text-[var(--mn-warning)]">警告 {{ warningCount }}</span>
+      <span class="text-[var(--mn-danger)]">问题 {{ issueLines.length }}</span>
     </div>
     <div v-if="output" class="rounded-md border p-3 text-sm leading-6" :class="runtimeLogInsightTone(logInsight.status)">
       <p class="font-medium">{{ logInsight.label }}</p>
@@ -187,7 +187,7 @@ onUnmounted(stopTimer);
       <Copy :size="15" />{{ issueCopied ? "已复制摘要" : "复制问题摘要" }}
     </Button>
 
-    <code class="break-all rounded-md bg-black px-3 py-2 text-xs text-zinc-400">{{ commandPreview }}{{ autoRefresh ? " · auto 5s" : "" }}</code>
-    <pre class="max-h-72 overflow-auto rounded-md bg-black p-3 text-xs leading-6 text-zinc-200 whitespace-pre-wrap">{{ output ? compactOutput(visibleOutput || "没有匹配的日志行。", 9000) : `${lastLabel || "选择目标后点击刷新。"} ` }}</pre>
+    <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs text-[var(--mn-ink-muted)]">{{ commandPreview }}{{ autoRefresh ? " · auto 5s" : "" }}</code>
+    <pre class="max-h-72 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ output ? compactOutput(visibleOutput || "没有匹配的日志行。", 9000) : `${lastLabel || "选择目标后点击刷新。"} ` }}</pre>
   </Card>
 </template>
