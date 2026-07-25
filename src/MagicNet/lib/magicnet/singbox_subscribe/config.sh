@@ -134,10 +134,15 @@ magicnet_singbox_build_outbounds_file_with_jq() {
         end;
     def ai_urltest($tag; $url; $tags):
       urltest(($tag + "-auto"); $url; "10m"; $tags);
+    # Manual-first: list all eligible nodes, default to first node.
+    # Keep *-auto urltest as an optional choice for users who still want auto.
     def pinned_ai_selector($tag; $tags):
-      {"type": "selector", "tag": $tag,
-       "outbounds": (if ($tags | length) > 0 then ["block", ($tag + "-auto")] else ["block"] end),
-       "default": (if ($tags | length) > 0 then ($tag + "-auto") else "block" end)};
+      if ($tags | length) > 0
+      then {"type": "selector", "tag": $tag,
+            "outbounds": ($tags + ["block", ($tag + "-auto")]),
+            "default": $tags[0]}
+      else {"type": "selector", "tag": $tag, "outbounds": ["block"], "default": "block"}
+      end;
     def ai_service_outbounds($tags):
       [
         {tag: "ai-chatgpt", url: "https://chatgpt.com/"},
@@ -360,23 +365,36 @@ EOF
     unset _urltest_name _urltest_url _urltest_interval _urltest_tags _urltest_first _urltest_tag
 }
 
+# Manual node selection by default.
+# outbounds = [first-node, ...other-nodes, block, name-auto]
+# default   = first-node
 magicnet_singbox_emit_pinned_ai_selector() {
     _pinned_ai_name="$1"
     _pinned_ai_selector_tags="$2"
+    _pinned_ai_first=$(printf '%s\n' "$_pinned_ai_selector_tags" | sed -n '1p')
     printf '    {\n'
     printf '      "type": "selector",\n'
     printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_pinned_ai_name")"
     printf '      "outbounds": ['
-    printf '"block"'
-    [ -z "$_pinned_ai_selector_tags" ] || printf ', "%s-auto"' "$(magicnet_json_escape "$_pinned_ai_name")"
-    printf '],\n'
-    if [ -n "$_pinned_ai_selector_tags" ]; then
-        printf '      "default": "%s-auto"\n' "$(magicnet_json_escape "$_pinned_ai_name")"
+    if [ -n "$_pinned_ai_first" ]; then
+        _first_out=1
+        while IFS= read -r _tag; do
+            [ -n "$_tag" ] || continue
+            [ "$_first_out" -eq 1 ] || printf ', '
+            printf '"%s"' "$(magicnet_json_escape "$_tag")"
+            _first_out=0
+        done <<EOF
+$_pinned_ai_selector_tags
+EOF
+        printf ', "block", "%s-auto"' "$(magicnet_json_escape "$_pinned_ai_name")"
+        printf '],\n'
+        printf '      "default": "%s"\n' "$(magicnet_json_escape "$_pinned_ai_first")"
     else
+        printf '"block"],\n'
         printf '      "default": "block"\n'
     fi
     printf '    }'
-    unset _pinned_ai_name _pinned_ai_selector_tags
+    unset _pinned_ai_name _pinned_ai_selector_tags _pinned_ai_first _first_out _tag
 }
 
 magicnet_singbox_pinned_ai_tags() {
@@ -524,10 +542,14 @@ magicnet_singbox_sanitize_generated_config() {
         {"type": "urltest", "tag": ($tag + "-auto"), "outbounds": $tags,
          "url": $url, "interval": "10m", "tolerance": 30, "idle_timeout": "10m",
          "interrupt_exist_connections": false};
+      # Manual-first AI service selectors
       def pinned_ai_selector($tag; $tags):
-        {"type": "selector", "tag": $tag,
-         "outbounds": (if ($tags | length) > 0 then ["block", ($tag + "-auto")] else ["block"] end),
-         "default": (if ($tags | length) > 0 then ($tag + "-auto") else "block" end)};
+        if ($tags | length) > 0
+        then {"type": "selector", "tag": $tag,
+              "outbounds": ($tags + ["block", ($tag + "-auto")]),
+              "default": $tags[0]}
+        else {"type": "selector", "tag": $tag, "outbounds": ["block"], "default": "block"}
+        end;
       def ai_service_outbounds($tags):
         [
           {tag: "ai-chatgpt", url: "https://chatgpt.com/"},
