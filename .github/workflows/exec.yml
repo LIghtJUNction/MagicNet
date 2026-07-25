@@ -3,6 +3,16 @@ name: Build Kam Module
 on:
   workflow_dispatch:
     inputs:
+      bump:
+        description: Bump module version before building
+        required: false
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+        default: none
       release:
         description: Create GitHub release and upload artifacts
         required: false
@@ -64,6 +74,15 @@ jobs:
           cache-targets: cargo,kam
           install-commitizen: 'false'
           private-key: ${{ secrets.KAM_PRIVATE_KEY }}
+
+      - name: Bump module version
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          kam version "${{ inputs.bump }}"
+          kam export prop
+          kam export update
 
       - name: Install artifact tools
         run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip
@@ -142,6 +161,25 @@ jobs:
           scripts/package-smoke.sh "dist/${module_id}.zip"
           scripts/package-install-smoke.sh "dist/${module_id}.zip"
           scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
+
+      - name: Commit bumped version
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "branch" ]; then
+            echo "::error::Version bumps must be dispatched from a branch."
+            exit 1
+          fi
+          if git diff --quiet -- kam.toml src/MagicNet/module.prop update.json; then
+            echo "::error::Version bump did not change version metadata."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- kam.toml src/MagicNet/module.prop update.json
+          git commit -m "chore: bump module version"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Create GitHub release
         if: ${{ inputs.release == true }}
