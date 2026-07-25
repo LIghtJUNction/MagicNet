@@ -119,9 +119,9 @@ magicnet_singbox_ai_selectors_canonical() {
               | ($service_groups | length) == 1
                 and $service_groups[0].type == "selector"
                 and $service_groups[0].default
-                  == (if ($ai_tags | length) > 0 then $auto_name else "block" end)
+                  == (if ($ai_tags | length) > 0 then $ai_tags[0] else "block" end)
                 and ($service_groups[0].outbounds
-                  == (if ($ai_tags | length) > 0 then ["block", $auto_name] else ["block"] end))
+                  == (if ($ai_tags | length) > 0 then ($ai_tags + ["block", $auto_name]) else ["block"] end))
                 and ($service_groups[0].outbounds | all(. as $member | $tags | index($member) != null))
                 and (if ($ai_tags | length) > 0 then
                   ($service_auto_groups | length) == 1
@@ -583,8 +583,11 @@ magicnet_singbox_ai_selectors_canonical() {
               group_default = field_string(object, "default")
               if (!field_valid) bad = 1
               if (eligible_count > 0) {
-                if (member_count != 2 || member[1] != "block" || member[2] != auto_tag ||
-                    group_default != auto_tag) bad = 1
+                if (member_count != eligible_count + 2 || member[eligible_count + 1] != "block" || member[eligible_count + 2] != auto_tag ||
+                    group_default != member[1] || !(member[1] in eligible_nodes)) bad = 1
+                for (j = 1; j <= eligible_count; j++) {
+                  if (member[j] != ai_member[j] || !(member[j] in eligible_nodes)) bad = 1
+                }
                 if (auto_count[auto_tag] != 1) {
                   bad = 1
                   continue
