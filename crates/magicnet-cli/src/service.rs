@@ -19,6 +19,10 @@ pub(crate) fn service_status(app: &App) {
         "  fswatch:  {}",
         supervisor_pid(app, "fswatch", "magicnet-config")
     );
+    println!(
+        "  Wi-Fi policy: {}",
+        supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy")
+    );
     println!("  Selected: {}", selected_core(app));
     println!("  Transparent: {}", transparent_mode(app));
     println!("  API:      {}", app.api);
@@ -87,12 +91,21 @@ pub(crate) fn supervisor_cmd(app: &App, args: &[String]) -> Result<(), String> {
                     supervisor_pid(app, "fswatch", "magicnet-config")
                 );
             }
+            if matches!(target, "all" | "wifi-policy") {
+                println!(
+                    "wifi-policy={}",
+                    supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy")
+                );
+            }
             Ok(())
         }
         "start" => supervisor_target(app, target, "start"),
         "stop" => supervisor_target(app, target, "stop"),
         "restart" => supervisor_target(app, target, "restart"),
-        _ => Err("Usage: cli supervisor {status|start|stop|restart} [fswatch|all]".to_string()),
+        _ => Err(
+            "Usage: cli supervisor {status|start|stop|restart} [fswatch|wifi-policy|all]"
+                .to_string(),
+        ),
     }
 }
 
@@ -193,6 +206,21 @@ fn stop_all_direct(app: &App) -> Result<(), String> {
         "pkill",
         &["-f", &format!("{}/cli.*config apply", app.moddir.display())],
     );
+    ignore_command(
+        "pkill",
+        &["-f", &format!("{}/cli wifi watch", app.moddir.display())],
+    );
+    ignore_command(
+        "pkill",
+        &[
+            "-f",
+            &format!("{}/bin/magicnet-cli wifi watch", app.moddir.display()),
+        ],
+    );
+    let _ = fs::remove_file(
+        app.moddir
+            .join(".state/wifi-policy/magicnet-wifi-policy.pid"),
+    );
     ignore_command("killall", &["sing-box"]);
     std::thread::sleep(Duration::from_secs(1));
     ignore_command("killall", &["-9", "sing-box"]);
@@ -229,7 +257,16 @@ fn supervisor_target(app: &App, target: &str, action: &str) -> Result<(), String
         ("fswatch", "restart") => {
             run_magicnet_function(app, "magicnet_fswatch_stop; magicnet_fswatch_start")
         }
-        _ => Err("Usage: cli supervisor {status|start|stop|restart} [fswatch|all]".to_string()),
+        ("wifi-policy", "start") => run_magicnet_function(app, "magicnet_wifi_policy_start"),
+        ("wifi-policy", "stop") => run_magicnet_function(app, "magicnet_wifi_policy_stop"),
+        ("wifi-policy", "restart") => run_magicnet_function(
+            app,
+            "magicnet_wifi_policy_stop; magicnet_wifi_policy_start",
+        ),
+        _ => Err(
+            "Usage: cli supervisor {status|start|stop|restart} [fswatch|wifi-policy|all]"
+                .to_string(),
+        ),
     }
 }
 

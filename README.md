@@ -157,6 +157,20 @@ su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli diagnose
 ```
 
+### 按 Wi-Fi 自动切换 Rule / Direct
+
+WebUI“模块控制”页可以按当前 Wi-Fi 的 SSID 或 BSSID（接入点 MAC）维护名单。默认黑名单语义为：命中名单切到 `direct`，连接其他 Wi-Fi 或断开 Wi-Fi 后恢复 `rule`。白名单语义为：名单内使用 `rule`，其他 Wi-Fi 使用 `direct`；断开 Wi-Fi 后仍恢复 `rule`。
+
+```bash
+su -c '/data/adb/modules/MagicNet/cli wifi add-ssid "Home WiFi"'
+su -c '/data/adb/modules/MagicNet/cli wifi add-bssid aa:bb:cc:dd:ee:ff'
+su -c /data/adb/modules/MagicNet/cli wifi mode blacklist
+su -c /data/adb/modules/MagicNet/cli wifi enable
+su -c /data/adb/modules/MagicNet/cli wifi status
+```
+
+守护进程默认每 5 秒检查一次网络，只在目标模式变化时调用 sing-box Clash API。可用 `cli wifi interval <3-300>` 调整检查间隔；执行 `cli wifi disable` 会停止守护并恢复 `rule`。
+
 `cli core select sing-box` 只保留为兼容入口，会写入 `.config/magicnet/current-core.conf`。MagicNet 不再接受其它核心名；需要指定某次启动的核心时，直接执行 `cli service restart sing-box`。
 
 订阅、状态和诊断：

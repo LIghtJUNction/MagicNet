@@ -9,12 +9,20 @@ magicnet_supervisor_kill_orphans() {
             pkill -f "${MODDIR}/.state/fswatch/$(magicnet_fswatch_name).loop.sh" 2>/dev/null || true
             pkill -f "${MODDIR}/cli.*config apply" 2>/dev/null || true
             ;;
+        wifi-policy)
+            pkill -f "${MODDIR}/cli wifi watch" 2>/dev/null || true
+            pkill -f "${MODDIR}/bin/magicnet-cli wifi watch" 2>/dev/null || true
+            ;;
     esac
     sleep 1
     case "$_msko_target" in
         fswatch)
             pkill -9 -f "${MODDIR}/.state/fswatch/$(magicnet_fswatch_name).loop.sh" 2>/dev/null || true
             pkill -9 -f "${MODDIR}/cli.*config apply" 2>/dev/null || true
+            ;;
+        wifi-policy)
+            pkill -9 -f "${MODDIR}/cli wifi watch" 2>/dev/null || true
+            pkill -9 -f "${MODDIR}/bin/magicnet-cli wifi watch" 2>/dev/null || true
             ;;
     esac
     unset _msko_target
@@ -132,6 +140,98 @@ magicnet_fswatch_status() {
     fi
     unset _fswatch_pid_file _fswatch_pid
     magicnet_supervisor_status_with_orphans "" fswatch
+}
+
+magicnet_wifi_policy_enabled() {
+    _wifi_policy_conf="${MODDIR}/.config/magicnet/wifi-policy.conf"
+    [ -f "$_wifi_policy_conf" ] || {
+        unset _wifi_policy_conf
+        return 1
+    }
+    MAGICNET_WIFI_POLICY_ENABLED=0
+    # shellcheck disable=SC1090
+    . "$_wifi_policy_conf" 2>/dev/null || true
+    _wifi_policy_enabled="${MAGICNET_WIFI_POLICY_ENABLED:-0}"
+    unset MAGICNET_WIFI_POLICY_ENABLED
+    unset _wifi_policy_conf
+    [ "$_wifi_policy_enabled" = "1" ]
+    _wifi_policy_enabled_rc=$?
+    unset _wifi_policy_enabled
+    return "$_wifi_policy_enabled_rc"
+}
+
+magicnet_wifi_policy_pid_file() {
+    printf '%s\n' "${MODDIR}/.state/wifi-policy/magicnet-wifi-policy.pid"
+}
+
+magicnet_wifi_policy_pid_matches() {
+    _wifi_policy_match_pid="$1"
+    case "$_wifi_policy_match_pid" in '' | *[!0-9]*) return 1 ;; esac
+    [ -r "/proc/${_wifi_policy_match_pid}/cmdline" ] || {
+        unset _wifi_policy_match_pid
+        return 1
+    }
+    _wifi_policy_match_cmd="$(
+        tr '\000' ' ' <"/proc/${_wifi_policy_match_pid}/cmdline" 2>/dev/null
+    )"
+    case "$_wifi_policy_match_cmd" in
+        *"${MODDIR}/cli wifi watch"* | *"${MODDIR}/bin/magicnet-cli wifi watch"*)
+            _wifi_policy_match_rc=0
+            ;;
+        *) _wifi_policy_match_rc=1 ;;
+    esac
+    set -- "$_wifi_policy_match_rc"
+    unset _wifi_policy_match_pid _wifi_policy_match_cmd
+    unset _wifi_policy_match_rc
+    return "$1"
+}
+
+magicnet_wifi_policy_start() {
+    if magicnet_module_disabled || ! magicnet_wifi_policy_enabled; then
+        magicnet_wifi_policy_stop >/dev/null 2>&1 || true
+        return 0
+    fi
+    [ -x "${MODDIR}/cli" ] || return 1
+    _wifi_policy_pid_file="$(magicnet_wifi_policy_pid_file)"
+    _wifi_policy_pid="$(sed -n '1p' "$_wifi_policy_pid_file" 2>/dev/null || true)"
+    if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
+        unset _wifi_policy_pid_file _wifi_policy_pid
+        return 0
+    fi
+    rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
+    mkdir -p "${MODDIR}/.state/wifi-policy" "${MODDIR}/.log" || return 1
+    nohup "${MODDIR}/cli" wifi watch </dev/null >>"${MODDIR}/.log/wifi-policy.log" 2>&1 &
+    _wifi_policy_pid=$!
+    printf '%s\n' "$_wifi_policy_pid" >"$_wifi_policy_pid_file" || {
+        kill "$_wifi_policy_pid" 2>/dev/null || true
+        unset _wifi_policy_pid_file _wifi_policy_pid
+        return 1
+    }
+    unset _wifi_policy_pid_file _wifi_policy_pid
+}
+
+magicnet_wifi_policy_stop() {
+    _wifi_policy_pid_file="$(magicnet_wifi_policy_pid_file)"
+    _wifi_policy_pid="$(sed -n '1p' "$_wifi_policy_pid_file" 2>/dev/null || true)"
+    if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
+        kill "$_wifi_policy_pid" 2>/dev/null || true
+    fi
+    rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
+    magicnet_supervisor_kill_orphans wifi-policy
+    unset _wifi_policy_pid_file _wifi_policy_pid
+}
+
+magicnet_wifi_policy_status() {
+    _wifi_policy_pid_file="$(magicnet_wifi_policy_pid_file)"
+    _wifi_policy_pid="$(sed -n '1p' "$_wifi_policy_pid_file" 2>/dev/null || true)"
+    if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
+        printf '%s\n' "$_wifi_policy_pid"
+        unset _wifi_policy_pid_file _wifi_policy_pid
+        return 0
+    fi
+    rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
+    unset _wifi_policy_pid_file _wifi_policy_pid
+    return 1
 }
 
 magicnet_subscription_refresh_name() {
@@ -559,11 +659,13 @@ magicnet_supervisors_start() {
     _mss_rc=0
     magicnet_fswatch_start || _mss_rc=1
     magicnet_subscription_refresh_start || _mss_rc=1
+    magicnet_wifi_policy_start || _mss_rc=1
     return "$_mss_rc"
 }
 
 magicnet_supervisors_stop() {
     magicnet_watchdog_stop
     magicnet_fswatch_stop
+    magicnet_wifi_policy_stop
     [ "${MAGICNET_SUB_PRESERVE_REFRESH:-0}" = "1" ] || magicnet_subscription_refresh_stop
 }

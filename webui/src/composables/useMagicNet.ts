@@ -37,12 +37,14 @@ import {
   parsePackages,
   parseRuntime,
   parseSubs,
+  parseWifiPolicy,
   parseWarp,
   runtimeDefaults,
   subscriptionDefaults,
   type ConfigValidationState,
   type SubscriptionState,
   warpDefaults,
+  wifiPolicyDefaults,
 } from "@/composables/parsers";
 import { createMagicNetIssue } from "@/composables/issueReporter";
 import { useExternalLinks } from "@/composables/useExternalLinks";
@@ -96,6 +98,7 @@ const state = reactive({
   mcp: { ...mcpDefaults },
   dns: { ...dnsDefaults },
   warp: { ...warpDefaults },
+  wifiPolicy: { ...wifiPolicyDefaults },
   topology: "",
   sysroute: "",
   subscriptions: {
@@ -380,6 +383,7 @@ async function refreshAll(): Promise<void> {
       ["读取订阅", () => refreshSubs(true)],
       ["读取 DNS", () => refreshDns(true)],
       ["读取 WARP", () => refreshWarp(true)],
+      ["读取 Wi-Fi 策略", () => refreshWifiPolicy(true)],
       ["读取 MCP 信息", () => refreshMcp(true)],
       ["运行诊断", () => refreshHealth(true)],
     ];
@@ -478,6 +482,13 @@ async function refreshWarp(quiet = false): Promise<boolean> {
   const text = await runCli("warp status", "读取 WARP", quiet);
   if (quiet && markQuietFailure("读取 WARP", text)) return false;
   state.warp = parseWarp(text, state.warp);
+  return true;
+}
+
+async function refreshWifiPolicy(quiet = false): Promise<boolean> {
+  const text = await runCli("wifi status", "读取 Wi-Fi 策略", quiet);
+  if (quiet && markQuietFailure("读取 Wi-Fi 策略", text)) return false;
+  state.wifiPolicy = parseWifiPolicy(text);
   return true;
 }
 
@@ -627,6 +638,7 @@ export function useMagicNet() {
     refreshMcp,
     refreshDns,
     refreshWarp,
+    refreshWifiPolicy,
     createIssue,
     refreshTopology,
     refreshSysroute,

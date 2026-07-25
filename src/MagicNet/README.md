@@ -79,6 +79,18 @@ su -c /data/adb/modules/MagicNet/cli diagnose
 su -c /data/adb/modules/MagicNet/cli support bundle
 ```
 
+### Wi-Fi 黑白名单
+
+可以按当前 Wi-Fi 的 SSID 或 BSSID 自动切换 sing-box `rule` / `direct` 模式。黑名单命中时使用 `direct`，离开后恢复 `rule`：
+
+```bash
+su -c '/data/adb/modules/MagicNet/cli wifi add-ssid "Home WiFi"'
+su -c /data/adb/modules/MagicNet/cli wifi enable
+su -c /data/adb/modules/MagicNet/cli wifi status
+```
+
+也可在 WebUI“模块控制”页启用和维护名单。`cli wifi disable` 会停止自动切换并恢复 `rule`。
+
 MagicNet 现在只内置 sing-box。核心选择命令保留为兼容入口，使用 `cli core select sing-box` 写入 `.config/magicnet/current-core.conf`。旧的 `.disable_sing_box` 隐藏开关已经移除，不再作为禁用 sing-box 的设计。
 
 ## Clash-style subscription to sing-box

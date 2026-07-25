@@ -86,6 +86,63 @@ fn curl_put_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
     ])
 }
 
+fn curl_patch_json(app: &App, path: &str, payload: &str) -> Result<(), String> {
+    run_curl(&[
+        "-fsS",
+        "-X",
+        "PATCH",
+        "-H",
+        "Content-Type: application/json",
+        "--data",
+        payload,
+        "--max-time",
+        "5",
+        &format!("{}{}", app.api, path),
+    ])
+}
+
+pub(crate) fn clash_mode_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    let requested = args.first().map(String::as_str).unwrap_or_default();
+    if requested.is_empty() {
+        println!("{}", current_clash_mode(app)?);
+        return Ok(());
+    }
+    set_clash_mode(app, requested)?;
+    println!(
+        "[info] sing-box mode set to {}",
+        normalize_clash_mode(requested)?
+    );
+    Ok(())
+}
+
+pub(crate) fn current_clash_mode(app: &App) -> Result<String, String> {
+    let value = curl_get_json(app, "/configs")?;
+    let mode = value
+        .get("mode")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("rule");
+    Ok(normalize_clash_mode(mode)?.to_string())
+}
+
+pub(crate) fn set_clash_mode(app: &App, mode: &str) -> Result<(), String> {
+    let mode = normalize_clash_mode(mode)?;
+    let payload = json!({ "mode": mode }).to_string();
+    curl_patch_json(app, "/configs", &payload)?;
+    if let Err(err) = curl_delete(app, "/connections") {
+        eprintln!("[warn] mode changed, but stale connections could not be closed: {err}");
+    }
+    Ok(())
+}
+
+fn normalize_clash_mode(mode: &str) -> Result<&'static str, String> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "rule" => Ok("rule"),
+        "global" => Ok("global"),
+        "direct" => Ok("direct"),
+        _ => Err("Mode must be rule, global, or direct".to_string()),
+    }
+}
+
 pub(crate) fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), String> {
     let clean_group = group.trim();
     let clean_node = node.trim();
@@ -160,6 +217,19 @@ fn run_curl(args: &[&str]) -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+#[cfg(test)]
+mod mode_tests {
+    use super::normalize_clash_mode;
+
+    #[test]
+    fn accepts_supported_clash_modes_case_insensitively() {
+        assert_eq!(normalize_clash_mode("Rule").unwrap(), "rule");
+        assert_eq!(normalize_clash_mode("GLOBAL").unwrap(), "global");
+        assert_eq!(normalize_clash_mode("direct").unwrap(), "direct");
+        assert!(normalize_clash_mode("tun").is_err());
     }
 }
 

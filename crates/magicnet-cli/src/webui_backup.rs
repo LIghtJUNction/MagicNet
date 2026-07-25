@@ -43,7 +43,10 @@ fn restore_payload(app: &App, password: &str, payload: &str) -> Result<(), Strin
     let text = String::from_utf8(bytes).map_err(|err| format!("backup is not UTF-8: {err}"))?;
     verify_backup_password(&text, password)?;
     restore_backup(app, &text)?;
-    run_magicnet_function(app, "magicnet_apply_runtime_config")?;
+    run_magicnet_function(
+        app,
+        "magicnet_apply_runtime_config; magicnet_wifi_policy_stop; magicnet_wifi_policy_start",
+    )?;
     println!("[info] Backup restored");
     Ok(())
 }
@@ -167,6 +170,9 @@ fn backup_files() -> &'static [&'static str] {
         ".config/magicnet/warp.conf",
         ".config/magicnet/warp-endpoint.json",
         ".config/magicnet/transparent-mode.conf",
+        ".config/magicnet/wifi-policy.conf",
+        ".config/magicnet/wifi-ssid.list",
+        ".config/magicnet/wifi-bssid.list",
     ]
 }
 
