@@ -22,10 +22,16 @@ kam check
 `exec.yml` 用于构建模块。触发方式包括 `push`、`pull_request` 和手动
 `workflow_dispatch`。
 
-这个工作流不会自动向仓库提交。手动运行时只有两个安全发布输入：
+手动运行支持以下输入：
 
+- `bump`：构建前按需提升模块版本，可选 `none`、`patch`、`minor` 和
+  `major`。成功提升版本后会同时刷新 `versionCode`、`module.prop` 和
+  `update.json`，并将这些元数据提交回启动工作流时选择的分支。
 - `release`：通过 `kam publish` 创建或更新 GitHub Release。
 - `prerelease`：将该 Release 标记为 prerelease。
+
+只有手动运行并选择版本提升时，工作流才会向仓库提交。普通 push、PR 和未选择
+版本提升的手动构建都不会提交。
 
 普通 push 和 pull request 会构建并上传 workflow artifact；如果存在
 `KAM_PRIVATE_KEY`，上传内容也会包含模块签名旁路文件。
