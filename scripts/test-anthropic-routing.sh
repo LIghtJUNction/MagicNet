@@ -88,8 +88,8 @@ jq -e '
     and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
-        and $by_tag[$service.name].default == $auto
-        and $by_tag[$service.name].outbounds == ["block", $auto]
+        and $by_tag[$service.name].default == $ai_proxy.outbounds[0]
+        and $by_tag[$service.name].outbounds == ($ai_proxy.outbounds + ["block", $auto])
         and $by_tag[$auto] == {
           type: "urltest",
           tag: $auto,
@@ -546,8 +546,8 @@ jq -e '
     and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
-        and $by_tag[$service.name].default == $auto
-        and $by_tag[$service.name].outbounds == ["block", $auto]
+        and $by_tag[$service.name].default == $ai_proxy.outbounds[0]
+        and $by_tag[$service.name].outbounds == ($ai_proxy.outbounds + ["block", $auto])
         and $by_tag[$auto] == {
           type: "urltest",
           tag: $auto,
@@ -791,8 +791,8 @@ jq -e '
     and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
-        and $by_tag[$service.name].default == $auto
-        and $by_tag[$service.name].outbounds == ["block", $auto]
+        and $by_tag[$service.name].default == $ai_proxy.outbounds[0]
+        and $by_tag[$service.name].outbounds == ($ai_proxy.outbounds + ["block", $auto])
         and $by_tag[$auto].type == "urltest"
         and $by_tag[$auto].outbounds == $ai_proxy.outbounds
         and $by_tag[$auto].url == $service.url
@@ -827,8 +827,8 @@ jq -e '
     and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
-        and $by_tag[$service.name].default == $auto
-        and $by_tag[$service.name].outbounds == ["block", $auto]
+        and $by_tag[$service.name].default == $ai_proxy.outbounds[0]
+        and $by_tag[$service.name].outbounds == ($ai_proxy.outbounds + ["block", $auto])
         and $by_tag[$auto].type == "urltest"
         and $by_tag[$auto].outbounds == $ai_proxy.outbounds
         and $by_tag[$auto].url == $service.url
