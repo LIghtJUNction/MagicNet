@@ -1,3 +1,4 @@
+import { statusToneClasses } from "@/lib/statusTone";
 export type NetworkSnapshotInsight = {
   label: string;
   value: string;
@@ -64,9 +65,10 @@ export function formatNetworkSnapshotReport(text: string, insights: NetworkSnaps
 }
 
 export function networkInsightTone(tone: NetworkSnapshotInsight["tone"]): string {
-  if (tone === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
-  if (tone === "warn") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
+  if (tone === "ok") return statusToneClasses("ok");
+  if (tone === "warn") return statusToneClasses("warn");
+  return statusToneClasses("neutral");
+
 }
 
 function collectInterfaceNames(text: string): string[] {

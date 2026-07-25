@@ -1,5 +1,6 @@
 import type { ConnectionTarget } from "@/composables/parsers";
 import { formatConnectionBytes } from "./connectionInsights";
+import { statusToneClasses } from "@/lib/statusTone";
 
 export type ConnectionClosePlan = {
   status: "idle" | "ok" | "warning" | "danger";
@@ -40,10 +41,11 @@ export function buildConnectionClosePlan(
 }
 
 export function connectionClosePlanTone(status: ConnectionClosePlan["status"]): string {
-  if (status === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (status === "warning") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  if (status === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]";
-  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-muted)]";
+  if (status === "danger") return statusToneClasses("danger");
+  if (status === "warning") return statusToneClasses("warning");
+  if (status === "ok") return statusToneClasses("ok");
+  return statusToneClasses("neutral");
+
 }
 
 export function formatConnectionCloseDetail(plan: ConnectionClosePlan): string {

@@ -201,7 +201,7 @@ function buildPcapPlan(): { status: "ok" | "error"; summary: string; detail: str
         <Copy :size="15" />{{ commandCopied ? "已复制命令" : "复制命令" }}
       </Button>
     </div>
-    <div class="rounded-md border p-3" :class="pcapPlan.status === 'ok' ? 'border-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]' : 'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]'">
+    <div class="rounded-md border p-3" :class="pcapPlan.status === 'ok' ? 'mn-tone-ok' : 'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]'">
       <p class="text-sm font-semibold">PCAP 抓包计划</p>
       <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ pcapPlan.summary }}</p>
       <p class="mt-1 break-words text-xs opacity-60">{{ pcapPlan.detail }}</p>

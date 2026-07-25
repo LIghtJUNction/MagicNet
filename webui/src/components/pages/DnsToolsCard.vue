@@ -136,17 +136,17 @@ function normalizeDomain(value: string): string {
       @cancel="cancelDnsAction"
       @confirm="confirmDnsAction"
     />
-    <div v-if="pendingDnsPlan" class="grid gap-2 rounded-md border border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+    <div v-if="pendingDnsPlan" class="grid gap-2 rounded-md mn-panel-warn p-3">
       <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
         <span
           v-for="item in pendingDnsPlan.items"
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
-            'border-amber-500/40 text-[var(--mn-warning)]': item.tone === 'warning',
+            'mn-chip-ok': item.tone === 'success',
+            'mn-chip-warn': item.tone === 'warning',
             'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-            'border-zinc-700 text-[var(--mn-ink-soft)]': item.tone === 'neutral',
+            'mn-chip-neutral': item.tone === 'neutral',
           }"
         >
           {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
@@ -216,7 +216,7 @@ transport={{ state.dns.transport }}</pre>
         <span>time={{ dnsSummary.timeTotalMillis ?? "none" }}ms</span>
       </div>
     </div>
-    <pre v-if="dnsSummary.issueLines.length" class="max-h-28 overflow-auto rounded-md border border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3 text-xs leading-5 text-[var(--mn-warning)] whitespace-pre-wrap">{{ dnsSummary.issueLines.join("\n") }}</pre>
+    <pre v-if="dnsSummary.issueLines.length" class="max-h-28 overflow-auto rounded-md mn-panel-warn p-3 text-xs leading-5 text-[var(--mn-warning)] whitespace-pre-wrap">{{ dnsSummary.issueLines.join("\n") }}</pre>
     <pre v-if="dnsTestOutput" class="max-h-36 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ dnsTestOutput }}</pre>
   </Card>
 </template>

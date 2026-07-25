@@ -3,9 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <title>MagicNet</title>
     <link rel="icon" href="./magicnet-network-card.svg" type="image/svg+xml" />
+    <script>
+      /* Avoid flash before Vue mounts */
+      try {
+        var t = localStorage.getItem("magicnet.webui.theme") || "system";
+        var dark =
+          t === "dark" ||
+          (t === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

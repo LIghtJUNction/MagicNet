@@ -1,3 +1,4 @@
+import { statusToneClasses } from "@/lib/statusTone";
 export type OutputDiagnostic = {
   status: "ok" | "warning" | "error" | "idle";
   title: string;
@@ -56,10 +57,11 @@ export function buildOutputDiagnostic(input: OutputDiagnosticInput): OutputDiagn
 }
 
 export function outputDiagnosticTone(status: OutputDiagnostic["status"]): string {
-  if (status === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
-  if (status === "error") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (status === "warning") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
+  if (status === "ok") return statusToneClasses("ok");
+  if (status === "error") return statusToneClasses("error");
+  if (status === "warning") return statusToneClasses("warning");
+  return statusToneClasses("neutral");
+
 }
 
 export function sanitizeOutputText(text: string): string {

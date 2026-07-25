@@ -169,7 +169,7 @@ async function openConfigIssue(): Promise<void> {
         <span class="h-9 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 text-sm text-[var(--mn-ink)]">sing-box</span>
         <input class="h-9 min-w-0 flex-1 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-xs text-[var(--mn-ink-soft)]" readonly :value="state.config.path">
         <span class="shrink-0">{{ state.config.status }}</span>
-        <span v-if="state.config.dirty" class="shrink-0 rounded bg-amber-500/15 px-2 py-1 text-xs text-[var(--mn-warning)]">未保存</span>
+        <span v-if="state.config.dirty" class="shrink-0 rounded bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] px-2 py-1 text-xs text-[var(--mn-warning)]">未保存</span>
       </div>
       <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm leading-6 text-[var(--mn-ink-muted)]">
         <p>sing-box 配置文件是 JSON。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 sing-box check，通过后才覆盖。</p>
@@ -180,8 +180,8 @@ async function openConfigIssue(): Promise<void> {
           <p
             class="mt-1 inline-flex rounded px-2 py-1 text-xs"
             :class="{
-              'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': state.config.validation.status === 'ok',
-              'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': state.config.validation.status === 'error',
+              'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]': state.config.validation.status === 'ok',
+              'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': state.config.validation.status === 'error',
               'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': state.config.validation.status === 'idle',
             }"
           >
@@ -206,8 +206,8 @@ async function openConfigIssue(): Promise<void> {
           <span
             class="rounded px-2 py-1 text-xs"
             :class="{
-              'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': configOutline.status === 'ok',
-              'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': configOutline.status === 'error',
+              'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]': configOutline.status === 'ok',
+              'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': configOutline.status === 'error',
               'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': configOutline.status === 'idle',
             }"
           >
@@ -231,9 +231,9 @@ async function openConfigIssue(): Promise<void> {
             <span
               class="rounded px-2 py-1 text-xs"
               :class="{
-                'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': configAudit.status === 'ok',
-                'bg-amber-500/15 text-[var(--mn-warning)]': configAudit.status === 'warning',
-                'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': configAudit.status === 'error',
+                'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]': configAudit.status === 'ok',
+                'bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] text-[var(--mn-warning)]': configAudit.status === 'warning',
+                'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': configAudit.status === 'error',
                 'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': configAudit.status === 'idle',
               }"
             >
@@ -249,8 +249,8 @@ async function openConfigIssue(): Promise<void> {
             :key="item.label"
             class="rounded border px-2 py-1"
             :class="{
-              'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
-              'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+              'mn-chip-ok': item.tone === 'success',
+              'mn-chip-warn': item.tone === 'warning',
               'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
               'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
             }"

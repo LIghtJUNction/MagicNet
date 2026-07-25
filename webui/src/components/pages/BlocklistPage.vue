@@ -301,7 +301,7 @@ async function confirmBlockAction(): Promise<void> {
       </div>
     </PageHeader>
 
-    <Card v-if="pendingBlockAction" class="grid gap-3 border border-amber-500/40 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)]">
+    <Card v-if="pendingBlockAction" class="grid gap-3 mn-panel-warn">
       <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div class="min-w-0">
           <span class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]">Confirm blocklist</span>
@@ -324,9 +324,9 @@ async function confirmBlockAction(): Promise<void> {
         <span
           class="rounded px-2 py-1 text-xs font-medium"
           :class="{
-            'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': blockSummary.status === 'active',
-            'bg-amber-500/15 text-[var(--mn-warning)]': blockSummary.status === 'partial',
-            'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': blockSummary.status === 'empty',
+            'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]': blockSummary.status === 'active',
+            'bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] text-[var(--mn-warning)]': blockSummary.status === 'partial',
+            'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': blockSummary.status === 'empty',
             'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': blockSummary.status === 'disabled',
           }"
         >
@@ -339,8 +339,8 @@ async function confirmBlockAction(): Promise<void> {
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
-            'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+            'mn-chip-ok': item.tone === 'success',
+            'mn-chip-warn': item.tone === 'warning',
             'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
             'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
           }"
@@ -372,7 +372,7 @@ async function confirmBlockAction(): Promise<void> {
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <span v-for="domain in visibleManualDomains" :key="domain" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ domain }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-domain-${domain}`)" type="button" @click="requestRemoveDomain(domain)"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-domain-${domain}`)" type="button" @click="requestRemoveDomain(domain)"><X :size="14" /></button>
           </span>
           <em v-if="!visibleManualDomains.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ state.blocklist.manual.length ? '没有匹配项' : '暂无域名' }}</em>
         </div>
@@ -383,7 +383,7 @@ async function confirmBlockAction(): Promise<void> {
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
           <span v-for="rule in visibleCommunityEntries.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="requestAllowRule(rule)"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="requestAllowRule(rule)"><X :size="14" /></button>
           </span>
           <em v-if="!visibleCommunityEntries.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ communityEntries.length ? '没有匹配项' : '未读取到社区规则' }}</em>
         </div>
@@ -399,7 +399,7 @@ async function confirmBlockAction(): Promise<void> {
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
           <span v-for="rule in visibleAllowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)] hover:bg-[color-mix(in_srgb,var(--mn-coral)_70%,white)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" :title="`从广告放行白名单删除 ${rule}`" :aria-label="`从广告放行白名单删除 ${rule}`" @click="requestRemoveAllowRule(rule)"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)] hover:bg-[color-mix(in_srgb,var(--mn-coral)_70%,var(--mn-carrier))] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" :title="`从广告放行白名单删除 ${rule}`" :aria-label="`从广告放行白名单删除 ${rule}`" @click="requestRemoveAllowRule(rule)"><X :size="14" /></button>
           </span>
           <em v-if="!visibleAllowRules.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无白名单规则' }}</em>
         </div>

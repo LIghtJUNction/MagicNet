@@ -134,7 +134,7 @@ function clearOutputFilter(): void {
         </label>
         <Button variant="ghost" :disabled="!outputQuery" @click="clearOutputFilter"><X :size="16" />清除过滤</Button>
       </div>
-      <div v-if="issueSummary" class="rounded-md border border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+      <div v-if="issueSummary" class="rounded-md mn-panel-warn p-3">
         <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-warning)]">问题线索</p>
         <pre class="mt-2 max-h-32 overflow-auto text-xs leading-5 text-[var(--mn-warning)] whitespace-pre-wrap">{{ issueSummary }}</pre>
       </div>

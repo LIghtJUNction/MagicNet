@@ -225,9 +225,9 @@ onMounted(() => {
         :key="item.label"
         class="rounded-md border p-3"
         :class="{
-          'border-emerald-500/30 bg-emerald-500/10': item.tone === 'success',
-          'border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)]': item.tone === 'warning',
-          'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)]': item.tone === 'danger',
+          'mn-tone-ok': item.tone === 'success',
+          'mn-tone-warn': item.tone === 'warning',
+          'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))]': item.tone === 'danger',
           'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)]': item.tone === 'neutral',
         }"
       >
@@ -237,7 +237,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+    <div v-if="pendingAction" class="mn-panel-warn rounded-md p-3">
       <p class="text-sm font-semibold text-[var(--mn-warning)]">{{ pendingAction.title }}</p>
       <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">{{ pendingAction.detail }}</p>
       <code class="mt-2 block break-words rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">{{ pendingAction.command }}</code>

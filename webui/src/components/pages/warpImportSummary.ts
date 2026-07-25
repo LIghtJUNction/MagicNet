@@ -1,3 +1,4 @@
+import { statusToneClasses } from "@/lib/statusTone";
 export type WarpImportSummary = {
   status: "idle" | "ok" | "warning" | "error";
   message: string;
@@ -70,10 +71,11 @@ export function formatWarpImportSummaryReport(summary: WarpImportSummary): strin
 }
 
 export function warpImportTone(status: WarpImportSummary["status"]): string {
-  if (status === "error") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (status === "warning") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  if (status === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]";
-  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-muted)]";
+  if (status === "error") return statusToneClasses("error");
+  if (status === "warning") return statusToneClasses("warning");
+  if (status === "ok") return statusToneClasses("ok");
+  return statusToneClasses("neutral");
+
 }
 
 function parseWireGuard(text: string): {

@@ -197,9 +197,9 @@ async function askAi(url: string, name: string): Promise<void> {
       </div>
       <div class="rounded-md border p-3 text-sm leading-6" :class="{
         'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]': apiProbeSummary.level === 'idle',
-        'border-emerald-400/25 bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': apiProbeSummary.level === 'ok',
-        'border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]': apiProbeSummary.level === 'warning',
-        'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': apiProbeSummary.level === 'danger',
+        'mn-tone-ok': apiProbeSummary.level === 'ok',
+        'mn-tone-warn': apiProbeSummary.level === 'warning',
+        'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': apiProbeSummary.level === 'danger',
       }">
         <p class="font-semibold">{{ apiProbeSummary.label }}</p>
         <p class="mt-1 text-xs opacity-80">
@@ -254,7 +254,7 @@ async function askAi(url: string, name: string): Promise<void> {
           <p class="mt-1 text-base font-semibold text-[var(--mn-ink)]">{{ bucket.count }} · {{ bucket.severity }}</p>
         </div>
       </div>
-      <div v-if="supportTriage.totalIssues" class="rounded-md border border-amber-500/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3 text-sm leading-6 text-[var(--mn-warning)]/85">
+      <div v-if="supportTriage.totalIssues" class="rounded-md mn-panel-warn p-3 text-sm leading-6 text-[var(--mn-warning)]/85">
         <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-warning)]">问题摘要</p>
         <p class="mt-2 text-xs leading-5 text-[var(--mn-warning)]">
           已发现 {{ supportTriage.totalIssues }} 条问题线索，分布在 {{ supportTriage.sections }} 个支持包段落；复制操作只导出聚合计数。
@@ -282,9 +282,9 @@ async function askAi(url: string, name: string): Promise<void> {
       </div>
       <div class="rounded-md border p-3 text-sm leading-6" :class="{
         'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]': healthSummary.level === 'idle',
-        'border-emerald-400/25 bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]': healthSummary.level === 'ok',
-        'border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]': healthSummary.level === 'warning',
-        'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]': healthSummary.level === 'danger',
+        'mn-tone-ok': healthSummary.level === 'ok',
+        'mn-tone-warn': healthSummary.level === 'warning',
+        'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': healthSummary.level === 'danger',
       }">
         <p class="font-semibold">{{ healthSummary.label }}</p>
         <p class="mt-1 text-xs opacity-80">{{ healthSummary.detail }}</p>

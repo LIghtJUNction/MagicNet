@@ -101,9 +101,51 @@ printf '%s\n' "$anytls_yaml_json" | jq -e '
   and .tls.utls.fingerprint == "firefox"
 ' >/dev/null || fail "Clash anytls JSON did not match expected shape: $anytls_yaml_json"
 
-# Mixed outbounds (pre-built + emitted anytls) still land in proxy selector.
+# Drive real share-link emitter for tuic (not Proxylink-only).
+tuic_link_file="$tmp_dir/node-tuic.link"
+printf '%s\n' 'tuic://00000000-0000-4000-8000-000000000002:fixture-password@tuic.invalid:443?sni=tuic.example&congestion_control=bbr&alpn=h3#fixture-tuic' \
+    >"$tuic_link_file"
+tuic_json="$(magicnet_singbox_emit_share_link_json "$tuic_link_file")" \
+    || fail "emit_share_link_json failed for tuic://"
+printf '%s\n' "$tuic_json" | jq -e '
+  .type == "tuic"
+  and .tag == "fixture-tuic"
+  and .server == "tuic.invalid"
+  and .server_port == 443
+  and .uuid == "00000000-0000-4000-8000-000000000002"
+  and .password == "fixture-password"
+  and .congestion_control == "bbr"
+  and .tls.enabled == true
+  and .tls.server_name == "tuic.example"
+  and (.tls.alpn | index("h3")) != null
+' >/dev/null || fail "tuic share-link JSON did not match expected shape: $tuic_json"
+
+tuic_yaml_file="$tmp_dir/node-tuic.yaml"
+cat >"$tuic_yaml_file" <<'YAML'
+name: clash-tuic
+type: tuic
+server: clash-tuic.invalid
+port: 443
+uuid: 00000000-0000-4000-8000-000000000003
+password: clash-tuic-secret
+sni: tuic-sni.example
+congestion-controller: cubic
+skip-cert-verify: true
+YAML
+tuic_yaml_json="$(magicnet_singbox_emit_node_json "$tuic_yaml_file")" \
+    || fail "emit_node_json failed for Clash tuic"
+printf '%s\n' "$tuic_yaml_json" | jq -e '
+  .type == "tuic"
+  and .tag == "clash-tuic"
+  and .uuid == "00000000-0000-4000-8000-000000000003"
+  and .password == "clash-tuic-secret"
+  and .congestion_control == "cubic"
+  and .tls.insecure == true
+' >/dev/null || fail "Clash tuic JSON did not match expected shape: $tuic_yaml_json"
+
+# Mixed outbounds from native emitters land in proxy selector.
 nodes_json="$tmp_dir/outbounds.json"
-jq -n --argjson anytls "$anytls_json" '
+jq -n --argjson anytls "$anytls_json" --argjson tuic "$tuic_json" '
 [
   {
     "type": "vless",
@@ -113,14 +155,7 @@ jq -n --argjson anytls "$anytls_json" '
     "uuid": "00000000-0000-4000-8000-000000000001"
   },
   $anytls,
-  {
-    "type": "tuic",
-    "tag": "fixture-tuic",
-    "server": "tuic.invalid",
-    "server_port": 443,
-    "uuid": "00000000-0000-4000-8000-000000000002",
-    "password": "fixture-password"
-  }
+  $tuic
 ]
 ' >"$nodes_json"
 

@@ -4,16 +4,19 @@ import {
   Ban,
   Bug,
   DownloadCloud,
+  Monitor,
   MonitorCog,
   Gauge,
   Github,
   ListFilter,
   MessageCircle,
   Medal,
+  Moon,
   MoreHorizontal,
   ScrollText,
   Settings,
   Stethoscope,
+  Sun,
   Terminal,
   X,
 } from "lucide-vue-next";
@@ -21,6 +24,7 @@ import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, 
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { useTheme } from "@/composables/useTheme";
 
 type TabKey = "control" | "config" | "apps" | "block" | "subs" | "rank" | "tools" | "health" | "webui" | "output";
 
@@ -66,7 +70,10 @@ const {
   REPO,
   AUTHOR_WHISPER_URL,
 } = useMagicNet();
+const { preference: themePreference, label: themeLabel, cycleTheme } = useTheme();
 const activeTab = ref<TabKey>("control");
+/** Keep visited panels mounted so forms/lists survive tab switches. */
+const visitedTabs = ref<TabKey[]>(["control"]);
 const showAdvancedNav = ref(false);
 const advancedDialog = ref<HTMLElement | null>(null);
 const advancedNavTrigger = ref<HTMLElement | null>(null);
@@ -127,6 +134,9 @@ const statusDotClass = computed(() => {
 
 function setTab(tab: TabKey): void {
   activeTab.value = tab;
+  if (!visitedTabs.value.includes(tab)) {
+    visitedTabs.value = [...visitedTabs.value, tab].slice(-6);
+  }
   if (showAdvancedNav.value) closeAdvancedNav();
   warmActiveTab(tab);
   void nextTick(() => {
@@ -242,6 +252,14 @@ onMounted(() => {
   void refreshStatus();
   document.addEventListener("keydown", handleEscape);
   void pageLoaders.control();
+  // Warm common tabs after first paint so switches feel instant.
+  const warm = () => {
+    void pageLoaders.config();
+    void pageLoaders.apps();
+    void pageLoaders.health();
+  };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 2500 });
+  else window.setTimeout(warm, 800);
 });
 
 onUnmounted(() => {
@@ -278,6 +296,19 @@ onUnmounted(() => {
       </div>
 
       <div class="mn-chrome flex items-center gap-0.5 rounded-md p-0.5">
+        <Button
+          variant="outline"
+          size="sm"
+          class="size-11 px-0 sm:w-auto sm:px-3"
+          :aria-label="`外观主题：${themeLabel}，点击切换`"
+          :title="`外观：${themeLabel}（亮色 → 暗色 → 跟随系统）`"
+          @click="cycleTheme"
+        >
+          <Sun v-if="themePreference === 'light'" :size="16" aria-hidden="true" />
+          <Moon v-else-if="themePreference === 'dark'" :size="16" aria-hidden="true" />
+          <Monitor v-else :size="16" aria-hidden="true" />
+          <span class="hidden sm:inline">{{ themeLabel }}</span>
+        </Button>
         <Button
           size="sm"
           class="size-11 px-0 sm:w-auto sm:px-4"
@@ -397,12 +428,17 @@ onUnmounted(() => {
         </button>
       </nav>
 
-      <!-- No :key remount + no page-enter animation on every tab switch -->
+      <!-- KeepAlive: preserve form state across tabs; no full remount animation -->
       <section class="page-surface min-w-0 overflow-hidden">
         <Suspense>
-          <component :is="activeComponent" @goto-output="setTab('output')" />
+          <KeepAlive :max="6">
+            <component
+              :is="activeComponent"
+              @goto-output="setTab('output')"
+            />
+          </KeepAlive>
           <template #fallback>
-            <div class="mn-chrome rounded-md p-8 text-sm text-[var(--mn-ink-muted)]">加载面板…</div>
+            <div class="mn-chrome rounded-md p-8 text-sm text-[var(--mn-ink-muted)]" role="status">加载面板…</div>
           </template>
         </Suspense>
       </section>

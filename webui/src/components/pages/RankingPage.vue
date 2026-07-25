@@ -187,7 +187,7 @@ onMounted(() => {
 
     <Card class="grid gap-3">
       <div class="flex items-start gap-3">
-        <div class="grid size-11 shrink-0 place-items-center rounded-md bg-[var(--mn-cactus)] text-[var(--mn-ink)]">
+        <div class="grid size-11 shrink-0 place-items-center rounded-md bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]">
           <Trophy :size="22" />
         </div>
         <div class="min-w-0 flex-1">
@@ -206,8 +206,8 @@ onMounted(() => {
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
-            'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+            'mn-chip-ok': item.tone === 'success',
+            'mn-chip-warn': item.tone === 'warning',
             'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
             'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
           }"
@@ -221,8 +221,8 @@ onMounted(() => {
           :key="item.key"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
-            'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+            'mn-chip-ok': item.tone === 'success',
+            'mn-chip-warn': item.tone === 'warning',
             'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
             'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
           }"
@@ -278,7 +278,7 @@ onMounted(() => {
         <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ data.payment.note || "支付后可通过邮箱联系作者更新排行榜信息。" }}</p>
         <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">收款码从 GitHub Release 资产读取；若图片未显示，可用下方按钮打开 App 或复制邮箱联系。</p>
       </div>
-      <div v-if="pendingQrAction" class="rounded-md border border-amber-500/40 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+      <div v-if="pendingQrAction" class="rounded-md mn-panel-warn p-3">
         <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div class="min-w-0">
             <p class="text-sm font-semibold text-[var(--mn-warning)]">确认保存{{ pendingQrAction.label }}</p>
@@ -301,7 +301,7 @@ onMounted(() => {
             </Button>
           </div>
           <button
-            class="block w-full touch-manipulation rounded bg-white p-2 active:scale-[0.99]"
+            class="block w-full touch-manipulation rounded bg-[var(--mn-surface-input)] p-2 active:scale-[0.99]"
             type="button"
             aria-label="长按保存微信收款码"
             @pointerdown="startLongPress('wechat')"
@@ -326,7 +326,7 @@ onMounted(() => {
             </Button>
           </div>
           <button
-            class="block w-full touch-manipulation rounded bg-white p-2 active:scale-[0.99]"
+            class="block w-full touch-manipulation rounded bg-[var(--mn-surface-input)] p-2 active:scale-[0.99]"
             type="button"
             aria-label="长按保存支付宝收款码"
             @pointerdown="startLongPress('alipay')"

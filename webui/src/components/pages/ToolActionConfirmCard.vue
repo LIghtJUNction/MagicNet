@@ -24,7 +24,7 @@ onMounted(() => {
 
 <template>
   <div ref="card" tabindex="-1">
-    <Card class="border-amber-500/40 bg-amber-500/5">
+    <Card class="mn-panel-warn">
       <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div class="min-w-0">
           <h3 class="text-sm font-semibold text-[var(--mn-warning)]">

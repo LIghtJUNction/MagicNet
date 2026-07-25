@@ -171,23 +171,23 @@ function upShare(sample: TrafficSample | null): string {
 }
 
 function alertClasses(): string {
-  if (alert.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (alert.value.level === "warning") return "border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  if (alert.value.level === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
+  if (alert.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]";
+  if (alert.value.level === "warning") return "mn-tone-warn";
+  if (alert.value.level === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,var(--mn-carrier))] text-[var(--mn-success)]";
   return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
 }
 
 function healthClasses(): string {
-  if (samplingHealth.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (samplingHealth.value.level === "warning") return "border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  if (samplingHealth.value.level === "ok") return "border-emerald-400/25 bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]";
+  if (samplingHealth.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]";
+  if (samplingHealth.value.level === "warning") return "mn-tone-warn";
+  if (samplingHealth.value.level === "ok") return "mn-tone-ok";
   return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
 }
 
 function budgetClasses(): string {
-  if (budgetPlan.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (budgetPlan.value.level === "warning") return "border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  if (budgetPlan.value.level === "ok") return "border-[color-mix(in_srgb,var(--mn-heather)_60%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,white)] text-[var(--mn-info)]";
+  if (budgetPlan.value.level === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]";
+  if (budgetPlan.value.level === "warning") return "mn-tone-warn";
+  if (budgetPlan.value.level === "ok") return "border-[color-mix(in_srgb,var(--mn-heather)_60%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,var(--mn-carrier))] text-[var(--mn-info)]";
   return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
 }
 
@@ -349,7 +349,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="lastFailure" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3 text-sm leading-6 text-[var(--mn-warning)]/85">
+    <div v-if="lastFailure" class="mn-panel-warn rounded-md p-3 text-sm leading-6 text-[var(--mn-warning)]/85">
       最近一次采样未解析：{{ lastFailure.slice(0, 220) }}
     </div>
 

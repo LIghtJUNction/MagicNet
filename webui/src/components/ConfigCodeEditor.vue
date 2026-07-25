@@ -243,15 +243,18 @@ function escapeHtml(value: string): string {
 </template>
 
 <style scoped>
+/* Dedicated code surface: always high-contrast dark canvas so JSON stays readable in both app themes */
 .json-editor {
   overflow: hidden;
-  border: 1px solid rgb(39 39 42);
+  border: 1px solid color-mix(in srgb, var(--mn-ink) 22%, transparent);
   border-radius: 8px;
-  background: #09090b;
+  background: #141413;
+  color: #f2f0e9;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #faf9f5 6%, transparent);
 }
 
 .json-editor--invalid {
-  border-color: rgba(248, 113, 113, 0.72);
+  border-color: color-mix(in srgb, var(--mn-danger) 70%, transparent);
 }
 
 .json-editor__body {
@@ -264,9 +267,9 @@ function escapeHtml(value: string): string {
 .json-editor__gutter {
   position: relative;
   overflow: hidden;
-  border-right: 1px solid rgba(63, 63, 70, 0.7);
-  background: #111113;
-  color: #71717a;
+  border-right: 1px solid color-mix(in srgb, #faf9f5 12%, transparent);
+  background: #1a1a18;
+  color: #9a978d;
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 0.875rem;
   line-height: 1.5rem;
@@ -285,7 +288,7 @@ function escapeHtml(value: string): string {
 }
 
 .json-editor__line--error {
-  color: #fca5a5;
+  color: #f0a090;
   font-weight: 700;
 }
 
@@ -315,7 +318,7 @@ function escapeHtml(value: string): string {
 
 .json-editor__highlight {
   pointer-events: none;
-  color: #e4e4e7;
+  color: #e8e6dc;
   will-change: transform;
 }
 
@@ -325,57 +328,57 @@ function escapeHtml(value: string): string {
   outline: none;
   background: transparent;
   color: transparent;
-  caret-color: #fafafa;
+  caret-color: #faf9f5;
 }
 
 .json-editor__textarea::selection {
-  background: rgba(132, 204, 22, 0.32);
+  background: color-mix(in srgb, #bcd1ca 45%, transparent);
 }
 
 .json-editor__textarea::placeholder {
-  color: #71717a;
+  color: #8f8c82;
   opacity: 1;
 }
 
 .json-editor__status {
-  border-top: 1px solid rgba(63, 63, 70, 0.7);
-  background: #111113;
+  border-top: 1px solid color-mix(in srgb, #faf9f5 12%, transparent);
+  background: #1a1a18;
   padding: 0.55rem 0.75rem;
-  color: #a1a1aa;
+  color: #c4c1b7;
   font-size: 0.75rem;
 }
 
 .json-editor__status--error {
-  color: #fecaca;
-  background: rgba(127, 29, 29, 0.28);
+  color: #f0c0b8;
+  background: color-mix(in srgb, #9a342a 35%, #1a1a18);
 }
 
 :deep(.json-token-key) {
-  color: #93c5fd;
+  color: #9bc0dc;
 }
 
 :deep(.json-token-string) {
-  color: #bef264;
+  color: #9dccaa;
 }
 
 :deep(.json-token-number) {
-  color: #fbbf24;
+  color: #e8c06a;
 }
 
 :deep(.json-token-boolean) {
-  color: #c4b5fd;
+  color: #b8b0e0;
 }
 
 :deep(.json-token-null) {
-  color: #f0abfc;
+  color: #d4a0c8;
 }
 
 :deep(.json-token-punctuation) {
-  color: #d4d4d8;
+  color: #c4c1b7;
 }
 
 :deep(.json-token-error) {
-  color: #fca5a5;
-  text-decoration: underline wavy rgba(248, 113, 113, 0.9);
+  color: #f0a090;
+  text-decoration: underline wavy color-mix(in srgb, #f0a090 80%, transparent);
 }
 </style>

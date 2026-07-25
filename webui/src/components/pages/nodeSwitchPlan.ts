@@ -1,4 +1,5 @@
 import type { NodeDelayEntry } from "@/composables/nodeDelayParsers";
+import { statusToneClasses } from "@/lib/statusTone";
 
 export type NodeSwitchPlan = {
   status: "idle" | "keep" | "switch" | "warning";
@@ -57,10 +58,11 @@ export function formatNodeSwitchPlanReport(plan: NodeSwitchPlan): string {
 }
 
 export function nodeSwitchPlanTone(status: NodeSwitchPlan["status"]): string {
-  if (status === "switch") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
-  if (status === "warning") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (status === "keep") return "border-[color-mix(in_srgb,var(--mn-heather)_60%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,white)] text-[var(--mn-info)]";
-  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-muted)]";
+  if (status === "switch") return statusToneClasses("switch");
+  if (status === "warning") return statusToneClasses("danger");
+  if (status === "keep") return statusToneClasses("keep");
+  return statusToneClasses("neutral");
+
 }
 
 function plan(

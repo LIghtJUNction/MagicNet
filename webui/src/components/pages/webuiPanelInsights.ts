@@ -1,3 +1,4 @@
+import { statusToneClasses } from "@/lib/statusTone";
 export type WebuiVerifyCheck = {
   name: string;
   status: "ok" | "missing" | "unknown";
@@ -50,8 +51,9 @@ export function buildWebuiPanelInsight(checks: WebuiVerifyCheck[], verifyOutput:
 }
 
 export function webuiInsightTone(status: WebuiPanelInsight["status"]): string {
-  if (status === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
-  if (status === "missing") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (status === "warning") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
+  if (status === "ok") return statusToneClasses("ok");
+  if (status === "missing") return statusToneClasses("missing");
+  if (status === "warning") return statusToneClasses("warning");
+  return statusToneClasses("neutral");
+
 }

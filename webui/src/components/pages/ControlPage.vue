@@ -471,7 +471,7 @@ function classifyLastCommand(command: string): string {
             :class="[
               'min-h-[5.25rem] rounded-[1.4rem] px-4 py-3 text-left text-sm shadow-[inset_0_0_0_1px_var(--mn-border)] transition-[transform,color,background-color,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,transparent)] active:scale-[0.98] disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100',
               state.runtime.transparentMode === item.mode
-                ? 'bg-[var(--mn-cactus)] text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_8%,transparent)]'
+                ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_8%,transparent)]'
                 : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
             ]"
             :aria-pressed="state.runtime.transparentMode === item.mode"
@@ -519,13 +519,13 @@ function classifyLastCommand(command: string): string {
         <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <span
-              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500"
+              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]"
               >Wi-Fi Mode Policy</span
             >
             <h3 class="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-[-0.035em]">
               <Wifi :size="22" />按 Wi-Fi 自动切换
             </h3>
-            <p class="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-[var(--mn-ink-muted)]">
               黑名单命中 SSID 或 BSSID 时切换为 Direct，离开 Wi-Fi 后自动恢复 Rule。白名单模式会让名单内 Wi-Fi 使用 Rule，其他 Wi-Fi 使用 Direct。
             </p>
           </div>
@@ -556,8 +556,8 @@ function classifyLastCommand(command: string): string {
             :class="[
               'rounded-[1.25rem] px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60 disabled:cursor-default',
               state.wifiPolicy.policyMode === mode
-                ? 'bg-emerald-300 text-emerald-950'
-                : 'bg-white/[0.05] text-zinc-200 hover:bg-white/[0.08]',
+                ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]'
+                : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
             ]"
             @click="setWifiPolicyMode(mode)"
           >
@@ -570,16 +570,16 @@ function classifyLastCommand(command: string): string {
 
         <div class="grid gap-3 rounded-[1.4rem] bg-black/20 p-4 md:grid-cols-3">
           <div>
-            <span class="text-xs text-zinc-500">当前 BSSID</span>
-            <p class="mt-1 break-all text-sm text-zinc-200">{{ state.wifiPolicy.bssid || "—" }}</p>
+            <span class="text-xs text-[var(--mn-ink-faint)]">当前 BSSID</span>
+            <p class="mt-1 break-all text-sm text-[var(--mn-ink-soft)]">{{ state.wifiPolicy.bssid || "—" }}</p>
           </div>
           <div>
-            <span class="text-xs text-zinc-500">匹配结果</span>
-            <p class="mt-1 text-sm text-zinc-200">{{ state.wifiPolicy.matched ? "已命中名单" : "未命中" }}</p>
+            <span class="text-xs text-[var(--mn-ink-faint)]">匹配结果</span>
+            <p class="mt-1 text-sm text-[var(--mn-ink-soft)]">{{ state.wifiPolicy.matched ? "已命中名单" : "未命中" }}</p>
           </div>
           <div>
-            <span class="text-xs text-zinc-500">代理模式</span>
-            <p class="mt-1 text-sm text-zinc-200">
+            <span class="text-xs text-[var(--mn-ink-faint)]">代理模式</span>
+            <p class="mt-1 text-sm text-[var(--mn-ink-soft)]">
               {{ state.wifiPolicy.currentMode }} → {{ state.wifiPolicy.desiredMode }}
             </p>
           </div>
@@ -602,17 +602,17 @@ function classifyLastCommand(command: string): string {
             <div class="flex flex-wrap gap-2">
               <span
                 v-if="!state.wifiPolicy.ssids.length"
-                class="text-xs text-zinc-500"
+                class="text-xs text-[var(--mn-ink-faint)]"
               >还没有 SSID 条目</span>
               <span
                 v-for="ssid in state.wifiPolicy.ssids"
                 :key="ssid"
-                class="inline-flex items-center gap-2 rounded-full bg-white/[0.06] px-3 py-1.5 text-xs text-zinc-200"
+                class="inline-flex items-center gap-2 rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] px-3 py-1.5 text-xs text-[var(--mn-ink-soft)]"
               >
                 {{ ssid }}
                 <button
                   type="button"
-                  class="text-zinc-500 hover:text-rose-300"
+                  class="text-[var(--mn-ink-faint)] hover:text-[var(--mn-danger)]"
                   :aria-label="`移除 SSID ${ssid}`"
                   @click="removeWifiEntry('ssid', ssid)"
                 ><Trash2 :size="14" /></button>
@@ -636,17 +636,17 @@ function classifyLastCommand(command: string): string {
             <div class="flex flex-wrap gap-2">
               <span
                 v-if="!state.wifiPolicy.bssids.length"
-                class="text-xs text-zinc-500"
+                class="text-xs text-[var(--mn-ink-faint)]"
               >还没有 BSSID 条目</span>
               <span
                 v-for="bssid in state.wifiPolicy.bssids"
                 :key="bssid"
-                class="inline-flex items-center gap-2 rounded-full bg-white/[0.06] px-3 py-1.5 font-mono text-xs text-zinc-200"
+                class="inline-flex items-center gap-2 rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] px-3 py-1.5 font-mono text-xs text-[var(--mn-ink-soft)]"
               >
                 {{ bssid }}
                 <button
                   type="button"
-                  class="text-zinc-500 hover:text-rose-300"
+                  class="text-[var(--mn-ink-faint)] hover:text-[var(--mn-danger)]"
                   :aria-label="`移除 BSSID ${bssid}`"
                   @click="removeWifiEntry('bssid', bssid)"
                 ><Trash2 :size="14" /></button>
@@ -666,7 +666,7 @@ function classifyLastCommand(command: string): string {
           @click="openExternal(PROMOTION_URL, 'AI 自动推广系统')"
         >
           <span
-            class="relative grid size-14 shrink-0 place-items-center rounded-[1.25rem] bg-[var(--mn-cactus)] text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)]"
+            class="relative grid size-14 shrink-0 place-items-center rounded-[1.25rem] bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)]"
           >
             <Megaphone :size="22" />
           </span>
@@ -691,7 +691,7 @@ function classifyLastCommand(command: string): string {
           </span>
 
           <span
-            class="relative inline-flex min-h-[49px] items-center justify-center gap-2 justify-self-start rounded-full bg-[var(--mn-cactus)] px-5 text-sm font-semibold text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)] transition-[transform,color,background-color] duration-200 group-hover:bg-[var(--mn-cactus-deep)] group-hover:text-[var(--mn-ink)] sm:justify-self-end"
+            class="relative inline-flex min-h-[49px] items-center justify-center gap-2 justify-self-start rounded-full bg-[var(--mn-cactus)] px-5 text-sm font-semibold text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)] transition-[transform,color,background-color] duration-200 group-hover:bg-[var(--mn-cactus-deep)] group-hover:text-[var(--mn-on-accent)] sm:justify-self-end"
           >
             了解详情
             <ArrowUpRight
@@ -704,7 +704,7 @@ function classifyLastCommand(command: string): string {
     </div>
 
     <div v-if="pendingDangerAction" ref="dangerConfirmCard" tabindex="-1">
-      <Card class="grid gap-3 !bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)] shadow-[inset_0_0_0_1px_rgba(251,191,36,0.25),inset_0_0_0_7px_rgba(251,191,36,0.025)]">
+      <Card class="grid gap-3 !bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] text-[var(--mn-warning)] shadow-[inset_0_0_0_1px_rgba(251,191,36,0.25),inset_0_0_0_7px_rgba(251,191,36,0.025)]">
         <div
           class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
         >

@@ -301,7 +301,7 @@ onMounted(() => {
       </div>
     </PageHeader>
 
-    <Card v-if="pendingAppAction" class="grid gap-3 border border-amber-500/40 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)]">
+    <Card v-if="pendingAppAction" class="grid gap-3 mn-panel-warn">
       <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div class="min-w-0">
           <span class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]">Confirm app policy</span>
@@ -313,10 +313,10 @@ onMounted(() => {
               :key="item.label"
               class="rounded border px-2 py-1"
               :class="{
-                'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
-                'border-amber-500/40 text-[var(--mn-warning)]': item.tone === 'warning',
+                'mn-chip-ok': item.tone === 'success',
+                'mn-chip-warn': item.tone === 'warning',
                 'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-                'border-zinc-700 text-[var(--mn-ink-soft)]': item.tone === 'neutral',
+                'mn-chip-neutral': item.tone === 'neutral',
               }"
             >
               {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
@@ -336,8 +336,8 @@ onMounted(() => {
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-center gap-3">
         <div class="inline-flex w-fit rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-1">
-          <button class="min-h-12 rounded px-3 text-sm text-[var(--mn-ink-muted)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-ink)]': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
-          <button class="min-h-12 rounded px-3 text-sm text-[var(--mn-ink-muted)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-ink)]': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
+          <button class="min-h-12 rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
+          <button class="min-h-12 rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
         </div>
         <span class="text-sm text-[var(--mn-ink-muted)]">Proxy 始终强制走 MagicNet proxy；Bypass 始终绕过 TUN；黑/白名单模式只控制未列出应用。</span>
       </div>
@@ -356,7 +356,7 @@ onMounted(() => {
         </div>
         <span
           class="rounded px-2 py-1 text-xs font-medium"
-          :class="policySummary.conflicts.length ? 'bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]' : 'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]'"
+          :class="policySummary.conflicts.length ? 'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]' : 'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]'"
         >
           {{ policySummary.conflicts.length ? `${policySummary.conflicts.length} 个冲突` : '无冲突' }}
         </span>
@@ -367,8 +367,8 @@ onMounted(() => {
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
-            'border-amber-500/30 text-[var(--mn-warning)]': item.tone === 'warning',
+            'mn-chip-ok': item.tone === 'success',
+            'mn-chip-warn': item.tone === 'warning',
             'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
             'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
           }"
@@ -421,7 +421,7 @@ onMounted(() => {
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <span v-for="pkg in state.appPolicy.proxy" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-proxy-${pkg}`)" type="button" title="移除" @click="requestRemoveApp(pkg, 'proxy')"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-proxy-${pkg}`)" type="button" title="移除" @click="requestRemoveApp(pkg, 'proxy')"><X :size="14" /></button>
           </span>
           <em v-if="!state.appPolicy.proxy.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无应用</em>
         </div>
@@ -431,7 +431,7 @@ onMounted(() => {
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <span v-for="pkg in state.appPolicy.bypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-bypass-${pkg}`)" type="button" title="移入回收站" @click="requestRemoveApp(pkg, 'bypass')"><X :size="14" /></button>
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-bypass-${pkg}`)" type="button" title="移入回收站" @click="requestRemoveApp(pkg, 'bypass')"><X :size="14" /></button>
           </span>
           <em v-if="!state.appPolicy.bypass.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无应用</em>
         </div>
@@ -447,9 +447,9 @@ onMounted(() => {
         <Trash2 class="shrink-0 text-[var(--mn-ink-muted)]" :size="18" />
       </div>
       <div class="flex max-h-56 flex-wrap gap-2 overflow-auto">
-        <span v-for="pkg in recycledBypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-zinc-700 bg-[var(--mn-ivory)] px-2 py-1 text-xs text-[var(--mn-ink-soft)] break-all">
+        <span v-for="pkg in recycledBypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-[color-mix(in_srgb,var(--mn-ink)_14%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs text-[var(--mn-ink-soft)] break-all">
           {{ pkg }}
-          <button class="grid size-6 place-items-center rounded-full bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`restore-bypass-${pkg}`)" type="button" title="加回 Bypass" @click="requestRestoreBypass(pkg)">
+          <button class="grid size-6 place-items-center rounded-full bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`restore-bypass-${pkg}`)" type="button" title="加回 Bypass" @click="requestRestoreBypass(pkg)">
             <RotateCcw :size="14" />
           </button>
         </span>

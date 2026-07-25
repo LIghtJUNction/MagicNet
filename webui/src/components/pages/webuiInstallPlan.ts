@@ -1,3 +1,4 @@
+import { statusToneClasses } from "@/lib/statusTone";
 export type WebuiInstallPlan = {
   status: "ok" | "warning" | "danger";
   title: string;
@@ -55,9 +56,10 @@ export function formatWebuiInstallPlanReport(plan: WebuiInstallPlan): string {
 }
 
 export function webuiInstallPlanTone(status: WebuiInstallPlan["status"]): string {
-  if (status === "danger") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  if (status === "warning") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_40%,white)] text-[var(--mn-success)]";
+  if (status === "danger") return statusToneClasses("danger");
+  if (status === "warning") return statusToneClasses("warning");
+  return statusToneClasses("ok");
+
 }
 
 const signedUrlPattern = /(token|secret|signature|expires|x-amz-|x-oss-)/i;

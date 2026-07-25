@@ -1,66 +1,127 @@
 @import "tailwindcss";
 
 /*
-  Anthropic-art editorial tokens for MagicNet WebUI.
-  Palette: ivory canvas, cactus/heather/oat accents, near-black ink.
-  Flat color only — no multi-layer viewport gradients or default glass stacks.
+  MagicNet WebUI design tokens.
+  Light: anthropic-art ivory editorial field (#BCD1CA / #CBCADB / #E3DACC / #FAF9F5 / #141413).
+  Dark: near-black ink canvas with muted cactus/heather accents.
+  Toggle via document.documentElement[data-theme="light"|"dark"].
+  Contrast rule: body text uses ink scale; never pale accent-on-accent for readable copy.
 */
 
 @theme {
   --color-mn-ink: #141413;
-  --color-mn-ink-soft: #3d3d3a;
-  --color-mn-ink-muted: #5c5c59;
-  --color-mn-ink-faint: #8a8a84;
+  --color-mn-ink-soft: #2a2a27;
+  --color-mn-ink-muted: #3d3d38;
+  --color-mn-ink-faint: #5a5a54;
   --color-mn-ivory: #faf9f5;
   --color-mn-carrier: #f0eee6;
-  --color-mn-carrier-deep: #e8e6dc;
+  --color-mn-carrier-deep: #e4e1d6;
   --color-mn-cactus: #bcd1ca;
-  --color-mn-cactus-deep: #9fb8af;
+  --color-mn-cactus-deep: #8fafa4;
   --color-mn-heather: #cbcadb;
   --color-mn-oat: #e3dacc;
-  --color-mn-clay: #d97757;
-  --color-mn-olive: #788c5d;
-  --color-mn-sky: #6a9bcc;
-  --color-mn-coral: #ebcece;
-  --color-mn-success: #3f6b52;
-  --color-mn-warning: #a67c2a;
-  --color-mn-danger: #b54a3c;
-  --color-mn-info: #3d5f7a;
+  --color-mn-clay: #c45f3f;
+  --color-mn-olive: #5f7549;
+  --color-mn-sky: #4f84b5;
+  --color-mn-coral: #d9a8a8;
+  --color-mn-success: #1f4a32;
+  --color-mn-warning: #7a5410;
+  --color-mn-danger: #9a342a;
+  --color-mn-info: #264a62;
 }
 
-:root {
+/* —— Light (default) —— high-contrast ink on ivory; accents stay pastel for surfaces only */
+:root,
+html[data-theme="light"] {
   color-scheme: light;
   --mn-ink: #141413;
-  --mn-ink-soft: #3d3d3a;
-  --mn-ink-muted: #5c5c59;
-  --mn-ink-faint: #8a8a84;
+  --mn-ink-soft: #2a2a27;
+  --mn-ink-muted: #3d3d38;
+  --mn-ink-faint: #5a5a54;
   --mn-ivory: #faf9f5;
   --mn-carrier: #f0eee6;
-  --mn-carrier-deep: #e8e6dc;
+  --mn-carrier-deep: #e4e1d6;
   --mn-cactus: #bcd1ca;
-  --mn-cactus-deep: #9fb8af;
+  --mn-cactus-deep: #8fafa4;
   --mn-heather: #cbcadb;
   --mn-oat: #e3dacc;
-  --mn-clay: #d97757;
-  --mn-olive: #788c5d;
-  --mn-sky: #6a9bcc;
-  --mn-coral: #ebcece;
+  --mn-clay: #c45f3f;
+  --mn-olive: #5f7549;
+  --mn-sky: #4f84b5;
+  --mn-coral: #d4a0a0;
   --mn-surface: var(--mn-ivory);
   --mn-surface-raised: var(--mn-carrier);
-  --mn-surface-sunken: #e8e6dc;
-  --mn-border: color-mix(in srgb, var(--mn-ink) 10%, transparent);
-  --mn-border-strong: color-mix(in srgb, var(--mn-ink) 16%, transparent);
-  --mn-focus: color-mix(in srgb, var(--mn-cactus) 70%, var(--mn-ink));
-  --mn-danger: #b54a3c;
-  --mn-warning: #a67c2a;
-  --mn-success: #3f6b52;
-  --mn-info: #3d5f7a;
+  --mn-surface-sunken: #e8e5db;
+  --mn-surface-input: #ffffff;
+  --mn-border: color-mix(in srgb, var(--mn-ink) 16%, transparent);
+  --mn-border-strong: color-mix(in srgb, var(--mn-ink) 26%, transparent);
+  --mn-focus: color-mix(in srgb, var(--mn-cactus-deep) 55%, var(--mn-ink));
+  --mn-danger: #9a342a;
+  --mn-warning: #7a5410;
+  --mn-success: #1f4a32;
+  --mn-info: #264a62;
+  --mn-on-accent: #141413;
+  --mn-tone-ok-bg: color-mix(in srgb, var(--mn-success) 14%, var(--mn-carrier));
+  --mn-tone-ok-border: color-mix(in srgb, var(--mn-success) 42%, transparent);
+  --mn-tone-warn-bg: color-mix(in srgb, var(--mn-warning) 14%, var(--mn-carrier));
+  --mn-tone-warn-border: color-mix(in srgb, var(--mn-warning) 45%, transparent);
+  --mn-tone-danger-bg: color-mix(in srgb, var(--mn-danger) 14%, var(--mn-carrier));
+  --mn-tone-danger-border: color-mix(in srgb, var(--mn-danger) 45%, transparent);
+  --mn-tone-info-bg: color-mix(in srgb, var(--mn-info) 14%, var(--mn-carrier));
+  --mn-tone-info-border: color-mix(in srgb, var(--mn-info) 40%, transparent);
+  --mn-code-bg: #ebe8de;
+  --mn-overlay: color-mix(in srgb, var(--mn-ink) 42%, transparent);
 
   font-family: "Plus Jakarta Sans", "MiSans", "HarmonyOS Sans SC", system-ui, sans-serif;
   background: var(--mn-ivory);
   color: var(--mn-ink);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+/* —— Dark —— flat near-black field, light ink; accents desaturated for screens */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --mn-ink: #f2f0e9;
+  --mn-ink-soft: #dcd9cf;
+  --mn-ink-muted: #b5b2a8;
+  --mn-ink-faint: #8f8c82;
+  --mn-ivory: #121211;
+  --mn-carrier: #1c1c1a;
+  --mn-carrier-deep: #262623;
+  --mn-cactus: #7fa396;
+  --mn-cactus-deep: #9bb8ab;
+  --mn-heather: #9a98b0;
+  --mn-oat: #b8a888;
+  --mn-clay: #d97757;
+  --mn-olive: #8fad72;
+  --mn-sky: #6a9bcc;
+  --mn-coral: #c48a8a;
+  --mn-surface: var(--mn-ivory);
+  --mn-surface-raised: var(--mn-carrier);
+  --mn-surface-sunken: #0e0e0d;
+  --mn-surface-input: #161614;
+  --mn-border: color-mix(in srgb, var(--mn-ink) 16%, transparent);
+  --mn-border-strong: color-mix(in srgb, var(--mn-ink) 26%, transparent);
+  --mn-focus: color-mix(in srgb, var(--mn-cactus) 65%, var(--mn-ink));
+  --mn-danger: #f0a090;
+  --mn-warning: #e8c06a;
+  --mn-success: #9dccaa;
+  --mn-info: #9bc0dc;
+  --mn-on-accent: #121211;
+  --mn-tone-ok-bg: color-mix(in srgb, var(--mn-success) 18%, var(--mn-carrier));
+  --mn-tone-ok-border: color-mix(in srgb, var(--mn-success) 48%, transparent);
+  --mn-tone-warn-bg: color-mix(in srgb, var(--mn-warning) 16%, var(--mn-carrier));
+  --mn-tone-warn-border: color-mix(in srgb, var(--mn-warning) 45%, transparent);
+  --mn-tone-danger-bg: color-mix(in srgb, var(--mn-danger) 16%, var(--mn-carrier));
+  --mn-tone-danger-border: color-mix(in srgb, var(--mn-danger) 45%, transparent);
+  --mn-tone-info-bg: color-mix(in srgb, var(--mn-info) 16%, var(--mn-carrier));
+  --mn-tone-info-border: color-mix(in srgb, var(--mn-info) 45%, transparent);
+  --mn-code-bg: #0e0e0d;
+  --mn-overlay: color-mix(in srgb, #000 58%, transparent);
+
+  background: var(--mn-ivory);
+  color: var(--mn-ink);
 }
 
 * {
@@ -78,7 +139,6 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100dvh;
-  /* Flat editorial field — no multi-radial / repeating-line paint stack */
   background: var(--mn-ivory);
   color: var(--mn-ink);
   overflow-x: hidden;
@@ -122,19 +182,20 @@ button {
 }
 
 .mn-chrome-raised {
-  background: #fffef9;
-  box-shadow: inset 0 0 0 1px var(--mn-border);
+  background: var(--mn-carrier);
+  box-shadow: inset 0 0 0 1px var(--mn-border-strong);
 }
 
 .mn-brand-mark {
   background: var(--mn-cactus);
-  color: var(--mn-ink);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-ink) 8%, transparent);
+  color: var(--mn-on-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-ink) 12%, transparent);
 }
 
 .mn-nav-active {
   background: var(--mn-cactus);
-  color: var(--mn-ink);
+  color: var(--mn-on-accent);
+  font-weight: 600;
 }
 
 .mn-nav-idle {
@@ -142,33 +203,45 @@ button {
 }
 
 .mn-nav-idle:hover {
-  background: color-mix(in srgb, var(--mn-ink) 5%, transparent);
+  background: color-mix(in srgb, var(--mn-ink) 8%, transparent);
   color: var(--mn-ink);
 }
 
 .mn-nav-advanced-active {
-  background: color-mix(in srgb, var(--mn-heather) 55%, white);
+  background: color-mix(in srgb, var(--mn-heather) 42%, var(--mn-carrier));
   color: var(--mn-ink);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-heather) 70%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-heather) 55%, transparent);
+  font-weight: 600;
 }
 
 .mn-status-dot-ok {
-  background: var(--mn-olive);
-  color: var(--mn-olive);
+  background: var(--mn-success);
+  color: var(--mn-success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mn-success) 28%, transparent);
 }
 
 .mn-status-dot-stop {
-  background: var(--mn-clay);
-  color: var(--mn-clay);
+  background: var(--mn-danger);
+  color: var(--mn-danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mn-danger) 28%, transparent);
 }
 
 .mn-status-dot-unknown {
-  background: #c4a35a;
-  color: #c4a35a;
+  background: var(--mn-warning);
+  color: var(--mn-warning);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mn-warning) 28%, transparent);
 }
 
 .page-surface {
   min-width: 0;
+}
+
+/* Monospace blocks — always contrast against carrier */
+.mn-code-block,
+code.mn-code-block,
+pre {
+  background: var(--mn-code-bg);
+  color: var(--mn-ink-soft);
 }
 
 .sheet-enter-active,
@@ -211,7 +284,8 @@ textarea {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--mn-cactus) 55%, transparent);
+  background: color-mix(in srgb, var(--mn-cactus) 48%, transparent);
+  color: var(--mn-ink);
 }
 
 .mn-inset {
@@ -220,17 +294,149 @@ textarea {
 }
 
 .mn-inset-soft {
-  background: color-mix(in srgb, var(--mn-ink) 4%, var(--mn-carrier));
+  background: color-mix(in srgb, var(--mn-ink) 6%, var(--mn-carrier));
 }
 
 .mn-pill {
-  background: color-mix(in srgb, var(--mn-ink) 5%, transparent);
+  background: color-mix(in srgb, var(--mn-ink) 8%, transparent);
   color: var(--mn-ink-muted);
   box-shadow: inset 0 0 0 1px var(--mn-border);
 }
 
 .mn-code {
   color: var(--mn-ink-soft);
+}
+
+/* Semantic status surfaces — theme-aware via CSS variables */
+.mn-tone-ok {
+  border: 1px solid var(--mn-tone-ok-border);
+  background: var(--mn-tone-ok-bg);
+  color: var(--mn-success);
+}
+
+.mn-tone-warn {
+  border: 1px solid var(--mn-tone-warn-border);
+  background: var(--mn-tone-warn-bg);
+  color: var(--mn-warning);
+}
+
+.mn-tone-danger {
+  border: 1px solid var(--mn-tone-danger-border);
+  background: var(--mn-tone-danger-bg);
+  color: var(--mn-danger);
+}
+
+.mn-tone-info {
+  border: 1px solid var(--mn-tone-info-border);
+  background: var(--mn-tone-info-bg);
+  color: var(--mn-info);
+}
+
+.mn-tone-neutral {
+  border: 1px solid var(--mn-border);
+  background: var(--mn-surface-sunken);
+  color: var(--mn-ink-soft);
+}
+
+.mn-chip-ok {
+  border: 1px solid var(--mn-tone-ok-border);
+  color: var(--mn-success);
+}
+
+.mn-chip-warn {
+  border: 1px solid var(--mn-tone-warn-border);
+  color: var(--mn-warning);
+}
+
+.mn-chip-danger {
+  border: 1px solid var(--mn-tone-danger-border);
+  color: var(--mn-danger);
+}
+
+.mn-chip-info {
+  border: 1px solid var(--mn-tone-info-border);
+  color: var(--mn-info);
+}
+
+.mn-chip-neutral {
+  border: 1px solid var(--mn-border-strong);
+  color: var(--mn-ink-soft);
+}
+
+.mn-panel-warn {
+  border: 1px solid var(--mn-tone-warn-border);
+  background: var(--mn-tone-warn-bg);
+  color: var(--mn-warning);
+}
+
+/* Compact status fill chips used inline in pages (replaces pale white-mix) */
+.mn-fill-ok {
+  background: var(--mn-tone-ok-bg);
+  color: var(--mn-success);
+  box-shadow: inset 0 0 0 1px var(--mn-tone-ok-border);
+}
+
+.mn-fill-warn {
+  background: var(--mn-tone-warn-bg);
+  color: var(--mn-warning);
+  box-shadow: inset 0 0 0 1px var(--mn-tone-warn-border);
+}
+
+.mn-fill-danger {
+  background: var(--mn-tone-danger-bg);
+  color: var(--mn-danger);
+  box-shadow: inset 0 0 0 1px var(--mn-tone-danger-border);
+}
+
+.mn-fill-info {
+  background: var(--mn-tone-info-bg);
+  color: var(--mn-info);
+  box-shadow: inset 0 0 0 1px var(--mn-tone-info-border);
+}
+
+/* Sticky action bar for long pages */
+.mn-page-actions {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem;
+  margin: 0 0 0.75rem;
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--mn-carrier) 94%, transparent);
+  box-shadow: inset 0 0 0 1px var(--mn-border);
+  backdrop-filter: blur(8px);
+}
+
+/* Form fields share theme surfaces (used by Input/Textarea and native controls) */
+.mn-field {
+  background: var(--mn-surface-input);
+  color: var(--mn-ink);
+  box-shadow: inset 0 0 0 1px var(--mn-border-strong);
+}
+
+.mn-field:focus,
+.mn-field:focus-visible {
+  background: var(--mn-surface-input);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--mn-cactus-deep) 70%, var(--mn-ink)),
+    0 0 0 3px color-mix(in srgb, var(--mn-cactus) 40%, transparent);
+  outline: none;
+}
+
+.mn-field::placeholder {
+  color: var(--mn-ink-faint);
+  opacity: 1;
+}
+
+/* Prefer legible form controls even without component wrappers */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+select,
+textarea {
+  color: var(--mn-ink);
 }
 
 @media (prefers-reduced-motion: reduce) {

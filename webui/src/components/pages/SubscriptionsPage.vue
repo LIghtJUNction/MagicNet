@@ -149,9 +149,9 @@ watch(() => state.backgroundTask.status, async (status) => {
 });
 
 function previewTone(status: SubscriptionPreview["status"]): string {
-  if (status === "ok") return "bg-[color-mix(in_srgb,var(--mn-cactus)_30%,white)] text-[var(--mn-success)] ring-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]";
-  if (status === "duplicate") return "bg-amber-400/[0.07] text-[var(--mn-warning)] ring-amber-300/15";
-  return "bg-[color-mix(in_srgb,var(--mn-coral)_45%,white)] text-[var(--mn-danger)] ring-[color-mix(in_srgb,var(--mn-coral)_50%,transparent)]";
+  if (status === "ok") return "bg-[color-mix(in_srgb,var(--mn-cactus)_30%,var(--mn-carrier))] text-[var(--mn-success)] ring-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]";
+  if (status === "duplicate") return "bg-[color-mix(in_srgb,var(--mn-oat)_40%,var(--mn-carrier))] text-[var(--mn-warning)] ring-[color-mix(in_srgb,var(--mn-oat)_50%,transparent)]";
+  return "bg-[color-mix(in_srgb,var(--mn-coral)_45%,var(--mn-carrier))] text-[var(--mn-danger)] ring-[color-mix(in_srgb,var(--mn-coral)_50%,transparent)]";
 }
 
 function formatEpoch(epoch: number): string {
@@ -330,7 +330,7 @@ async function saveSchedule(): Promise<void> {
           </div>
         </div>
 
-        <div v-if="!configured" class="mt-3 grid grid-cols-3 gap-1 rounded-md bg-amber-400/[0.055] p-1 ring-1 ring-amber-300/15" aria-label="首次启用步骤">
+        <div v-if="!configured" class="mt-3 grid grid-cols-3 gap-1 rounded-md bg-[color-mix(in_srgb,var(--mn-oat)_35%,var(--mn-carrier))] p-1 ring-1 ring-[color-mix(in_srgb,var(--mn-oat)_45%,transparent)]" aria-label="首次启用步骤">
           <div v-for="(step, index) in ['粘贴 URL', '看脱敏预览', '保存并启用']" :key="step" class="min-w-0 rounded-[5px] bg-[var(--mn-ivory)] px-2 py-2 text-center">
             <span class="block text-[10px] font-semibold text-[var(--mn-warning)]">0{{ index + 1 }}</span>
             <span class="mt-0.5 block text-[10px] leading-4 text-[var(--mn-ink-muted)] sm:text-xs">{{ step }}</span>
@@ -431,7 +431,7 @@ async function saveSchedule(): Promise<void> {
             <div class="rounded-[5px] bg-[var(--mn-ivory)] p-3"><dt class="text-[var(--mn-ink-faint)]">来源 / 导入</dt><dd class="mt-1 text-[var(--mn-ink-soft)]">{{ state.subscriptions.lastSourceCount }} / {{ state.subscriptions.lastImportedCount }}</dd></div>
             <div class="rounded-[5px] bg-[var(--mn-ivory)] p-3"><dt class="text-[var(--mn-ink-faint)]">跳过 / 强身份缓存</dt><dd class="mt-1 text-[var(--mn-ink-soft)]">{{ state.subscriptions.lastSkippedCount }} / {{ state.subscriptions.cacheProvenanceCount }}</dd></div>
           </dl>
-          <div v-if="lifecycleStatus === 'timeout'" class="mt-3 rounded-md bg-[var(--mn-oat)]/[0.055] p-3 text-xs leading-5 text-[var(--mn-warning)] ring-1 ring-amber-300/15">
+          <div v-if="lifecycleStatus === 'timeout'" class="mt-3 rounded-md bg-[var(--mn-oat)]/[0.055] p-3 text-xs leading-5 text-[var(--mn-warning)] ring-1 ring-[color-mix(in_srgb,var(--mn-oat)_45%,transparent)]">
             WebUI 只停止了日志跟踪，未判定设备侧任务失败。点击上方刷新按钮重新读取订阅阶段；完整过程仍可在“输出”的后台日志中核对。
           </div>
           <div class="mt-3 space-y-1 text-xs leading-5 text-[var(--mn-ink-muted)]">
@@ -485,7 +485,7 @@ async function saveSchedule(): Promise<void> {
           </Button>
         </Card>
 
-        <div class="flex items-start gap-3 rounded-md bg-[color-mix(in_srgb,var(--mn-heather)_35%,white)] p-3 text-xs leading-5 text-[var(--mn-ink-muted)] ring-1 ring-[color-mix(in_srgb,var(--mn-heather)_40%,transparent)]">
+        <div class="flex items-start gap-3 rounded-md bg-[color-mix(in_srgb,var(--mn-heather)_35%,var(--mn-carrier))] p-3 text-xs leading-5 text-[var(--mn-ink-muted)] ring-1 ring-[color-mix(in_srgb,var(--mn-heather)_40%,transparent)]">
           <Database :size="16" class="mt-0.5 shrink-0 text-[var(--mn-info)]" />
           <p>计划只表示刷新节奏，不承诺精确“下次时间”；系统休眠、重启或正在运行的任务都会影响实际触发时刻。</p>
         </div>

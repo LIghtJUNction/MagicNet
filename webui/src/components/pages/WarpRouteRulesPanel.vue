@@ -143,7 +143,7 @@ onMounted(() => {
 
 <template>
   <div class="grid gap-3">
-    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+    <div v-if="pendingAction" class="mn-panel-warn rounded-md p-3">
       <p class="text-sm font-semibold text-[var(--mn-warning)]">{{ pendingAction.title }}</p>
       <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">{{ pendingAction.detail }}</p>
       <code class="mt-2 block break-words rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">{{ pendingAction.command }}</code>
@@ -153,10 +153,10 @@ onMounted(() => {
           :key="item.label"
           class="rounded border px-2 py-1"
           :class="{
-            'border-emerald-500/30 text-[var(--mn-success)]': item.tone === 'success',
-            'border-amber-500/40 text-[var(--mn-warning)]': item.tone === 'warning',
+            'mn-chip-ok': item.tone === 'success',
+            'mn-chip-warn': item.tone === 'warning',
             'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-            'border-zinc-700 text-[var(--mn-ink-soft)]': item.tone === 'neutral',
+            'mn-chip-neutral': item.tone === 'neutral',
           }"
         >
           {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
@@ -200,7 +200,7 @@ onMounted(() => {
         <div v-for="item in visibleWarpDomains" :key="item" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded bg-[var(--mn-carrier-deep)]/30 px-2 py-1">
           <span class="truncate">{{ item }}</span>
           <button
-            class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-ink)] disabled:cursor-progress disabled:opacity-60"
+            class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60"
             :disabled="!state.warp.enabled || isRunning(`warp-route-remove-${item}`)"
             type="button"
             @click="requestRemoveWarpRoute(item)"

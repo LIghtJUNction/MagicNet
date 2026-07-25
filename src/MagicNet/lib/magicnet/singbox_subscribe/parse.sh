@@ -191,6 +191,36 @@ magicnet_singbox_emit_node_json() {
         [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
         printf '}}'
         ;;
+    tuic)
+        # Clash: uuid + password (+ optional sni / congestion-controller / alpn / skip-cert-verify)
+        _uuid=$(magicnet_json_escape "$(magicnet_yaml_value uuid)")
+        _password=$(magicnet_json_escape "$(magicnet_yaml_value password)")
+        [ -n "$_uuid" ] || return 1
+        [ -n "$_password" ] || return 1
+        _sni=$(magicnet_yaml_value sni)
+        [ -n "$_sni" ] || _sni=$(magicnet_yaml_value servername)
+        [ -n "$_sni" ] || _sni="$_server"
+        _sni=$(magicnet_json_escape "$_sni")
+        _cc=$(magicnet_yaml_value congestion-controller)
+        [ -n "$_cc" ] || _cc=$(magicnet_yaml_value congestion_control)
+        [ -n "$_cc" ] || _cc="cubic"
+        _cc=$(magicnet_json_escape "$_cc")
+        _udp_relay=$(magicnet_yaml_value udp-relay-mode)
+        [ -n "$_udp_relay" ] || _udp_relay=$(magicnet_yaml_value udp_relay_mode)
+        _skip=$(magicnet_yaml_value skip-cert-verify)
+        [ -n "$_skip" ] || _skip=$(magicnet_yaml_value insecure)
+        _alpn=$(magicnet_yaml_value alpn)
+        _alpn=$(printf '%s' "$_alpn" | tr -d '[]"' | tr ' ' ',')
+        printf '{"type":"tuic","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","password":"%s","congestion_control":"%s"' \
+            "$_name" "$_server" "$_port" "$_uuid" "$_password" "$_cc"
+        [ -n "$_udp_relay" ] && printf ',"udp_relay_mode":"%s"' "$(magicnet_json_escape "$_udp_relay")"
+        printf ',"tls":{"enabled":true,"server_name":"%s"' "$_sni"
+        if magicnet_truthy "$_skip"; then
+            printf ',"insecure":true'
+        fi
+        [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
+        printf '}}'
+        ;;
     *)
         return 1
         ;;
@@ -327,6 +357,36 @@ magicnet_singbox_emit_share_link_json() {
             printf ',"insecure":true'
         fi
         [ -n "$_fp" ] && printf ',"utls":{"enabled":true,"fingerprint":"%s"}' "$(magicnet_json_escape "$_fp")"
+        [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
+        printf '}}'
+        ;;
+    tuic)
+        # tuic://uuid:password@host:port?sni=&congestion_control=&alpn=&udp_relay_mode=#tag
+        _uuid=${_userinfo%%:*}
+        _password=${_userinfo#*:}
+        [ -n "$_uuid" ] || return 1
+        [ "$_password" != "$_userinfo" ] || return 1
+        [ -n "$_password" ] || return 1
+        _uuid=$(magicnet_percent_decode "$_uuid")
+        _password=$(magicnet_percent_decode "$_password")
+        _sni=$(magicnet_uri_query_value sni "$_query")
+        [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value servername "$_query")
+        [ -n "$_sni" ] || _sni="$_server"
+        _cc=$(magicnet_uri_query_value congestion_control "$_query")
+        [ -n "$_cc" ] || _cc=$(magicnet_uri_query_value congestion-controller "$_query")
+        [ -n "$_cc" ] || _cc="cubic"
+        _udp_relay=$(magicnet_uri_query_value udp_relay_mode "$_query")
+        [ -n "$_udp_relay" ] || _udp_relay=$(magicnet_uri_query_value udp-relay-mode "$_query")
+        _insecure=$(magicnet_uri_query_value insecure "$_query")
+        [ -n "$_insecure" ] || _insecure=$(magicnet_uri_query_value allowInsecure "$_query")
+        _alpn=$(magicnet_uri_query_value alpn "$_query")
+        printf '{"type":"tuic","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","password":"%s","congestion_control":"%s"' \
+            "$_tag" "$_server" "$_port" "$(magicnet_json_escape "$_uuid")" "$(magicnet_json_escape "$_password")" "$(magicnet_json_escape "$_cc")"
+        [ -n "$_udp_relay" ] && printf ',"udp_relay_mode":"%s"' "$(magicnet_json_escape "$_udp_relay")"
+        printf ',"tls":{"enabled":true,"server_name":"%s"' "$(magicnet_json_escape "$_sni")"
+        if magicnet_truthy "$_insecure"; then
+            printf ',"insecure":true'
+        fi
         [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
         printf '}}'
         ;;

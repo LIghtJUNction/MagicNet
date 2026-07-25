@@ -67,6 +67,11 @@ magicnet_app_proxy_packages() {
     unset _proxy_packages_file
 }
 
+# Ownership marker for MagicNet-managed force-proxy rules (not a user package).
+# Idempotent rewrites strip rules containing this marker, then re-inject one
+# authoritative rule from app-proxy.list — single source of truth for that list.
+MAGICNET_APP_PROXY_MARKER="__magicnet_app_proxy__"
+
 magicnet_app_proxy_rule() {
     _proxy_rule_packages="$(magicnet_app_proxy_packages "$1")"
     if [ -z "$_proxy_rule_packages" ]; then
@@ -75,7 +80,7 @@ magicnet_app_proxy_rule() {
     fi
     printf '      {\n'
     printf '        "package_name": [\n'
-    printf '          "__magicnet_app_proxy__",\n'
+    printf '          "%s",\n' "$MAGICNET_APP_PROXY_MARKER"
     _proxy_rule_count=$(printf '%s\n' "$_proxy_rule_packages" | wc -l | tr -d ' ')
     _proxy_rule_idx=0
     printf '%s\n' "$_proxy_rule_packages" | while IFS= read -r _proxy_rule_package; do

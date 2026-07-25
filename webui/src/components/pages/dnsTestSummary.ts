@@ -1,3 +1,4 @@
+import { statusToneClasses } from "@/lib/statusTone";
 export type DnsTestSummary = {
   lineCount: number;
   issueCount: number;
@@ -50,10 +51,11 @@ export function formatDnsTestReport(summary: DnsTestSummary, profile: string, pr
 }
 
 export function dnsStatusTone(status: DnsTestSummary["status"]): string {
-  if (status === "ok") return "border-[color-mix(in_srgb,var(--mn-cactus)_50%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]";
-  if (status === "warn") return "border-[color-mix(in_srgb,var(--mn-oat)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]";
-  if (status === "fail") return "border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,white)] text-[var(--mn-danger)]";
-  return "border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]";
+  if (status === "ok") return statusToneClasses("ok");
+  if (status === "warn") return statusToneClasses("warn");
+  if (status === "fail") return statusToneClasses("danger");
+  return statusToneClasses("neutral");
+
 }
 
 function parseFields(lines: string[]): Record<string, string> {

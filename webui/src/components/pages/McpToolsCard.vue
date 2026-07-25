@@ -162,12 +162,12 @@ async function copyMcp(): Promise<void> {
       @confirm="confirmMcpAction"
     />
 
-    <div class="my-3 rounded-md border p-3" :class="mcpInsight.tone === 'success' ? 'border-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_35%,white)] text-[var(--mn-success)]' : 'border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]'">
+    <div class="my-3 rounded-md border p-3" :class="mcpInsight.tone === 'success' ? 'mn-tone-ok' : 'mn-tone-warn'">
       <p class="text-sm font-semibold">{{ mcpInsight.title }}</p>
       <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ mcpInsight.detail }}</p>
     </div>
 
-    <div class="my-3 rounded-md border p-3" :class="mcpPlan.tone === 'success' ? 'border-[color-mix(in_srgb,var(--mn-heather)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,white)] text-[var(--mn-info)]' : 'border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] text-[var(--mn-warning)]'">
+    <div class="my-3 rounded-md border p-3" :class="mcpPlan.tone === 'success' ? 'mn-tone-info' : 'mn-tone-warn'">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <p class="inline-flex items-center gap-2 text-sm font-semibold"><Link2 :size="15" />{{ mcpPlan.title }}</p>
         <code class="rounded bg-[var(--mn-carrier-deep)]/40 px-2 py-1 text-xs">{{ mcpPlan.localUrl }}</code>

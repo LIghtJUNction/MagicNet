@@ -131,7 +131,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="pendingAction" class="rounded-md border border-amber-400/30 bg-[color-mix(in_srgb,var(--mn-oat)_55%,white)] p-3">
+    <div v-if="pendingAction" class="mn-panel-warn rounded-md p-3">
       <p class="text-sm font-semibold text-[var(--mn-warning)]">切换到最快节点</p>
       <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">
         将把 proxy selector 切换到 {{ sanitizeNodeText(pendingAction.node.node) }}，当前连接可能重新选择出站。
@@ -143,7 +143,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="entries.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-heather)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,white)] p-3">
+    <div v-if="entries.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-heather)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,var(--mn-carrier))] p-3">
       <p class="text-sm font-semibold text-[var(--mn-info)]">测速健康摘要</p>
       <p class="mt-1 text-sm leading-6 text-[var(--mn-info)]">{{ healthText }}</p>
     </div>
@@ -212,7 +212,7 @@ onMounted(() => {
           <p class="truncate text-sm font-semibold text-[var(--mn-ink)]">{{ sanitizeNodeText(entry.node) }}</p>
           <p class="text-xs text-[var(--mn-ink-muted)]">{{ sanitizeNodeText(entry.summary) }}</p>
         </div>
-        <span class="rounded border border-zinc-700 px-2 py-1 text-xs text-[var(--mn-ink-soft)]">
+        <span class="rounded border border-[color-mix(in_srgb,var(--mn-ink)_14%,transparent)] px-2 py-1 text-xs text-[var(--mn-ink-soft)]">
           {{ nodeDelayQualityLabel(entry.quality) }}
         </span>
       </div>

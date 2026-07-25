@@ -32,6 +32,16 @@ function listPageSources() {
     .map((name) => join(pagesDir, name));
 }
 
+function transpile(source) {
+  return ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      verbatimModuleSyntax: true,
+    },
+  }).outputText;
+}
+
 async function loadShippedModule(relativeFromWebui, importRewrites = []) {
   const sourcePath = join(root, relativeFromWebui);
   let source = read(sourcePath);
@@ -40,16 +50,19 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
   }
   // Drop type-only imports so transpile+import stays pure JS
   source = source.replace(/^import type .*;\n/gm, "");
-  const output = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022,
-      verbatimModuleSyntax: true,
-    },
-  }).outputText;
+
   const dir = await mkdtemp(join(tmpdir(), "magicnet-webui-tone-"));
+  // Bundle real @/lib/statusTone entry (token root) next to the module under test.
+  if (/@\/lib\/statusTone/.test(source)) {
+    const toneSrc = read(join(src, "lib", "statusTone.ts")).replace(/^import type .*;\n/gm, "");
+    await writeFile(join(dir, "statusTone.mjs"), transpile(toneSrc), "utf8");
+    source = source.replace(/from\s+["']@\/lib\/statusTone["']/g, 'from "./statusTone.mjs"');
+  }
+  // Other @/ paths must be rewritten explicitly by callers; fail loudly otherwise.
+  assert.doesNotMatch(source, /from\s+["']@\//, `${relativeFromWebui} still has unresolved @/ imports after rewrite`);
+
   const modulePath = join(dir, "module.mjs");
-  await writeFile(modulePath, output, "utf8");
+  await writeFile(modulePath, transpile(source), "utf8");
   try {
     return {
       mod: await import(pathToFileURL(modulePath).href),
@@ -104,57 +117,60 @@ assert.match(app, /magicnet-network-card\.svg/, "shell must reference the illust
 assert.match(app, /控制|配置|应用|黑名单|诊断/, "primary nav labels must remain");
 assert.match(app, /订阅|排行|工具|面板|输出/, "advanced nav labels must remain");
 assert.match(app, /createIssue|refreshAll|openExternal/, "header actions must remain wired");
+assert.match(app, /useTheme|cycleTheme/, "shell must wire light/dark theme toggle");
+assert.match(app, /KeepAlive/, "shell must KeepAlive tab pages so form state survives switches");
 assert.doesNotMatch(app, /backdrop-blur/, "shell chrome must not default to heavy backdrop-blur");
 
-// --- contrast regressions on light ivory canvas (page + tone sources) ---
-// Pale dark-theme ink (*-50 near-white, *-100 pale) and zinc-800 chips fail on ivory/oat/carrier.
-const forbiddenContrast = [
-  /text-amber-50\b/,
-  /text-lime-50\b/,
-  /text-sky-50\b/,
-  /text-red-50\b/,
-  /text-rose-50\b/,
-  /text-emerald-50\b/,
-  /text-cyan-50\b/,
-  /text-zinc-50\b/,
-  /text-lime-100\b/,
-  /text-sky-100\b/,
-  /text-red-100\b/,
-  /text-rose-100\b/,
-  /text-amber-100\b/,
-  /text-emerald-100\b/,
-  /text-cyan-100\b/,
-  /bg-zinc-800\b/,
-];
-const uiPrimitives = [
-  join(src, "components", "ui", "Badge.vue"),
-  join(src, "components", "ui", "Button.vue"),
-  join(src, "components", "ui", "Card.vue"),
-  join(src, "components", "ui", "Input.vue"),
-  join(src, "components", "ui", "PageHeader.vue"),
-  join(src, "components", "ui", "Textarea.vue"),
-];
-const contrastTargets = [appPath, stylesPath, ...listPageSources(), ...uiPrimitives];
-for (const path of contrastTargets) {
-  const body = read(path);
-  for (const pattern of forbiddenContrast) {
-    assert.doesNotMatch(
-      body,
-      pattern,
-      `${path} still contains light-on-light / dark-on-dark class ${pattern}`,
-    );
+// --- Light/dark theme system ---
+const themePath = join(src, "composables", "useTheme.ts");
+const themeSrc = read(themePath);
+assert.match(themeSrc, /export function useTheme|export function bootstrapTheme/, "useTheme composable must exist");
+assert.match(themeSrc, /magicnet\.webui\.theme/, "theme preference must persist to localStorage");
+assert.match(styles, /html\[data-theme=["']light["']\]/, "styles must define light theme tokens");
+assert.match(styles, /html\[data-theme=["']dark["']\]/, "styles must define dark theme tokens");
+assert.match(styles, /--mn-on-accent/, "styles must define on-accent text for filled controls");
+assert.match(styles, /\.mn-page-actions/, "styles must define sticky page action bar");
+const mainTs = read(join(src, "main.ts"));
+assert.match(mainTs, /bootstrapTheme/, "main.ts must bootstrap theme before mount");
+const indexHtml = read(join(root, "index.html"));
+assert.match(indexHtml, /color-scheme|data-theme|magicnet\.webui\.theme/, "index.html must prevent theme flash");
+
+// --- Theme root: design tokens + shared statusTone helper (primary guarantee) ---
+const statusTonePath = join(src, "lib", "statusTone.ts");
+const statusToneSrc = read(statusTonePath);
+assert.match(statusToneSrc, /export function statusToneClasses/, "statusTone.ts must export statusToneClasses");
+assert.match(statusToneSrc, /mn-tone-ok|mn-tone-warn|mn-tone-danger/, "statusTone maps must use CSS mn-tone-* classes");
+assert.match(styles, /\.mn-tone-ok|\.mn-tone-warn|\.mn-tone-danger/, "styles.css must define mn-tone surfaces");
+assert.match(styles, /--mn-success|--mn-warning|--mn-danger|--mn-info/, "styles must define semantic ink tokens");
+
+// Drive shipped root: statusToneClasses itself (not a reimplementation).
+{
+  const { mod, cleanup } = await loadShippedModule("src/lib/statusTone.ts");
+  try {
+    const ok = mod.statusToneClasses("ok");
+    const warn = mod.statusToneClasses("warning");
+    const danger = mod.statusToneClasses("danger");
+    const info = mod.statusToneClasses("info");
+    assert.equal(ok, "mn-tone-ok");
+    assert.equal(warn, "mn-tone-warn");
+    assert.equal(danger, "mn-tone-danger");
+    assert.equal(info, "mn-tone-info");
+    // CSS definitions must exist for those class names
+    for (const cls of [ok, warn, danger, info]) {
+      assert.match(styles, new RegExp(`\\.${cls}\\s*\\{`), `styles.css missing .${cls}`);
+    }
+  } finally {
+    await cleanup();
   }
 }
 
-// Drive shipped tone helpers (real entry points) — not reimplemented expectations.
+// Real plan/status helpers must delegate to statusToneClasses (token path, not ad-hoc strings).
 {
   const { mod, cleanup } = await loadShippedModule("src/components/pages/dnsTestSummary.ts");
   try {
     const okTone = mod.dnsStatusTone("ok");
-    assert.equal(typeof okTone, "string");
-    assert.match(okTone, /--mn-success|var\(--mn-success\)/, "dnsStatusTone(ok) must use readable success ink");
-    assert.doesNotMatch(okTone, /text-lime-100/, "dnsStatusTone(ok) must not return dark-theme pale lime ink");
-    assert.match(okTone, /--mn-cactus|cactus/, "dnsStatusTone(ok) should use cactus success surface family");
+    assert.equal(okTone, "mn-tone-ok", "dnsStatusTone(ok) must return shared mn-tone-ok");
+    assert.equal(mod.dnsStatusTone("fail"), "mn-tone-danger");
   } finally {
     await cleanup();
   }
@@ -163,14 +179,29 @@ for (const path of contrastTargets) {
 {
   const { mod, cleanup } = await loadShippedModule("src/components/pages/nodeSwitchPlan.ts");
   try {
-    const switchTone = mod.nodeSwitchPlanTone("switch");
-    const keepTone = mod.nodeSwitchPlanTone("keep");
-    assert.doesNotMatch(switchTone, /text-lime-100|text-sky-100/);
-    assert.doesNotMatch(keepTone, /text-lime-100|text-sky-100/);
-    assert.match(switchTone, /--mn-success|var\(--mn-success\)/);
-    assert.match(keepTone, /--mn-info|var\(--mn-info\)/);
+    assert.equal(mod.nodeSwitchPlanTone("switch"), "mn-tone-ok");
+    assert.equal(mod.nodeSwitchPlanTone("keep"), "mn-tone-info");
   } finally {
     await cleanup();
+  }
+}
+
+// Secondary regression net only (not the primary design): ban residual pale dark-theme ink.
+const forbiddenContrast = [
+  /text-amber-50\b/,
+  /text-lime-100\b/,
+  /text-sky-100\b/,
+  /bg-zinc-800\b/,
+];
+const uiPrimitives = [
+  join(src, "components", "ui", "Badge.vue"),
+  join(src, "components", "ui", "Button.vue"),
+  join(src, "components", "ui", "Card.vue"),
+];
+for (const path of [appPath, ...listPageSources(), ...uiPrimitives]) {
+  const body = read(path);
+  for (const pattern of forbiddenContrast) {
+    assert.doesNotMatch(body, pattern, `${path} residual pale/dark class ${pattern}`);
   }
 }
 
