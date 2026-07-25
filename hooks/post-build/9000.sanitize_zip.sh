@@ -55,7 +55,7 @@ if grep -Fq 'if (current ~ /^[[:space:]]*"interrupt_exist_connections"[[:space:]
     ' "$kamfw_singbox_tmp/$kamfw_singbox_path" >"$kamfw_singbox_tmp/$kamfw_singbox_path.new"
     mv "$kamfw_singbox_tmp/$kamfw_singbox_path.new" "$kamfw_singbox_tmp/$kamfw_singbox_path"
     (
-        cd "$kamfw_singbox_tmp"
+        cd "$kamfw_singbox_tmp" || exit 1
         zip -q -u "$zip_path" "$kamfw_singbox_path"
     )
 fi

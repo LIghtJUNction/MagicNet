@@ -21,6 +21,11 @@ export type AppPolicySafeReportInput = {
   summary: AppPolicySummary;
 };
 
+/**
+ * Optional opt-outs shown in WebUI — NOT the primary domestic routing mechanism.
+ * Domestic sites should hit geosite/geoip → cn-direct inside TUN for unlisted apps.
+ * Prefer fixing rule-sets over growing this list into a full app catalog.
+ */
 export const recommendedBypass = [
   "com.eg.android.AlipayGphone",
   "com.tencent.mm",

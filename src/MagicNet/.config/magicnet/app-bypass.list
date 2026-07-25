@@ -1,29 +1,13 @@
 # Packages that bypass MagicNet TUN when MAGICNET_APP_MODE=blacklist.
 # One package name per line.
 #
-# Critical domestic apps (WeChat/QQ/Alipay/banks/etc.) should exit TUN so their
-# in-app WebView / payment H5 does not follow proxy/block routes and appear offline.
-# Managed critical seed is also re-ensured at apply time if missing.
-
-# Chat / office
-com.tencent.mm
-com.tencent.mobileqq
-com.tencent.tim
-com.tencent.wework
-com.alibaba.android.rimet
-
-# Payments / banks
-com.eg.android.AlipayGphone
-com.unionpay
-com.unionpay.tsmservice
-com.icbc
-com.chinamworld.main
-com.cmbchina.ccd.pluto.cmbActivity
-com.cmbchina.cmbim
-com.bankcomm.Bankcomm
-cn.com.spdb.mobilebank.per
-
-# Domestic shopping, local services, travel, and rail apps.
+# Architecture note:
+# - Domestic vs foreign traffic is decided mainly by geodata (geosite/geoip → cn-direct / proxy).
+# - Do NOT try to list “all domestic apps” here; that does not scale and fights the rule-set model.
+# - This file is only for: multi-VPN coexistence, and optional user opt-outs (e.g. a payment app
+#   that still misbehaves even with correct CN routing).
+#
+# Optional shopping / local-service opt-outs (not a full domestic catalog):
 com.taobao.idlefish
 com.taobao.taobao
 com.xunmeng.pinduoduo
