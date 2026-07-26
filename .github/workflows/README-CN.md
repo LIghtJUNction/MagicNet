@@ -38,5 +38,5 @@ kam check
 
 ## 本地自定义
 
-共享基线只放通用逻辑。项目自己的 workflow 放到额外文件里，例如
-`.github/workflows/ranking.yml`；`kam sync workflow` 会保留这些额外文件。
+共享基线只放通用逻辑。项目自己的 workflow 放到额外文件里；
+`kam sync workflow` 会保留这些额外文件。

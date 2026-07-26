@@ -4,7 +4,7 @@ import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
-import Textarea from "@/components/ui/Textarea.vue";
+import ConfigCodeEditor from "@/components/ConfigCodeEditor.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
@@ -16,6 +16,7 @@ const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } 
 const { isRunning, withAction } = useActionLock();
 const pendingConfigAction = ref<PendingToolAction | null>(null);
 const localJsonStatus = ref("");
+const configSyntaxValid = ref(true);
 const sanitizedCopied = ref(false);
 const auditCopied = ref(false);
 const issueBaseline = ref("");
@@ -43,6 +44,11 @@ function cancelConfigAction(): void {
 async function confirmConfigAction(): Promise<void> {
   const action = pendingConfigAction.value;
   if (!action) return;
+  if (action.key === "save-config" && !configSyntaxValid.value) {
+    pendingConfigAction.value = null;
+    state.output = "请先修正编辑器中标出的 JSON 语法错误。";
+    return;
+  }
   try {
     await action.run();
   } finally {
@@ -51,6 +57,10 @@ async function confirmConfigAction(): Promise<void> {
 }
 
 function requestSaveConfig(): void {
+  if (!configSyntaxValid.value) {
+    state.output = "请先修正编辑器中标出的 JSON 语法错误。";
+    return;
+  }
   requestConfigAction({
     key: "save-config",
     title: "校验并保存配置",
@@ -58,6 +68,10 @@ function requestSaveConfig(): void {
     command: `config-editor save-file ${state.config.target} <editor-temp-file>`,
     run: () => withAction("save-config", () => saveConfig()),
   });
+}
+
+function updateConfigSyntaxState(state: { valid: boolean }): void {
+  configSyntaxValid.value = state.valid;
 }
 
 async function loadConfigForEditing(): Promise<void> {
@@ -151,7 +165,7 @@ async function openConfigIssue(): Promise<void> {
         <Button variant="outline" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化 JSON</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="copySanitizedConfig"><Copy :size="17" />{{ sanitizedCopied ? '已复制脱敏' : '复制脱敏' }}</Button>
-        <Button :loading="isRunning('save-config')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
+        <Button :disabled="!configSyntaxValid" :loading="isRunning('save-config')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
         <Button variant="outline" @click="openConfigIssue"><Github :size="17" />创建 Diff Issue</Button>
       </div>
     </PageHeader>
@@ -262,12 +276,10 @@ async function openConfigIssue(): Promise<void> {
           出站 tag：{{ configAudit.outboundTags.length ? configAudit.outboundTags.join(", ") : "无" }}
         </p>
       </div>
-      <Textarea
+      <ConfigCodeEditor
         v-model="state.config.text"
-        class="min-h-[58vh] overflow-auto whitespace-pre text-sm leading-6"
-        spellcheck="false"
-        placeholder="点击加载配置读取真实文件"
-        @input="state.config.dirty = true"
+        @syntax-state="updateConfigSyntaxState"
+        @update:model-value="state.config.dirty = true"
       />
     </Card>
   </div>

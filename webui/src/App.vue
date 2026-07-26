@@ -10,7 +10,6 @@ import {
   Github,
   ListFilter,
   MessageCircle,
-  Medal,
   Moon,
   MoreHorizontal,
   ScrollText,
@@ -26,7 +25,7 @@ import Button from "@/components/ui/Button.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { useTheme } from "@/composables/useTheme";
 
-type TabKey = "control" | "config" | "apps" | "block" | "subs" | "rank" | "tools" | "health" | "webui" | "output";
+type TabKey = "control" | "config" | "apps" | "block" | "subs" | "tools" | "health" | "webui" | "output";
 
 const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   control: () => import("@/components/pages/ControlPage.vue"),
@@ -34,7 +33,6 @@ const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   apps: () => import("@/components/pages/AppsPage.vue"),
   block: () => import("@/components/pages/BlocklistPage.vue"),
   subs: () => import("@/components/pages/SubscriptionsPage.vue"),
-  rank: () => import("@/components/pages/RankingPage.vue"),
   tools: () => import("@/components/pages/ToolsPage.vue"),
   webui: () => import("@/components/pages/WebuiPage.vue"),
   health: () => import("@/components/pages/DiagnosticsPage.vue"),
@@ -112,7 +110,6 @@ const tabs = [
   { key: "block", label: "黑名单", icon: Ban, group: "primary" },
   { key: "health", label: "诊断", icon: Stethoscope, group: "primary" },
   { key: "subs", label: "订阅", icon: DownloadCloud, group: "advanced" },
-  { key: "rank", label: "排行", icon: Medal, group: "advanced" },
   { key: "tools", label: "工具", icon: Stethoscope, group: "advanced" },
   { key: "webui", label: "面板", icon: MonitorCog, group: "advanced" },
   { key: "output", label: "输出", icon: Terminal, group: "advanced" },

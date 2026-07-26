@@ -115,7 +115,7 @@ assert.doesNotMatch(app, /:key=["']activeTab["']/, "tab switches must not remoun
 assert.doesNotMatch(app, /class=["'][^"']*page-enter/, "active page surface must not use page-enter remount animation class");
 assert.match(app, /magicnet-network-card\.svg/, "shell must reference the illustration asset");
 assert.match(app, /控制|配置|应用|黑名单|诊断/, "primary nav labels must remain");
-assert.match(app, /订阅|排行|工具|面板|输出/, "advanced nav labels must remain");
+assert.match(app, /订阅|工具|面板|输出/, "advanced nav labels must remain");
 assert.match(app, /createIssue|refreshAll|openExternal/, "header actions must remain wired");
 const header = app.slice(app.indexOf("<header"), app.indexOf("</header>") + "</header>".length);
 function headerButton(action) {

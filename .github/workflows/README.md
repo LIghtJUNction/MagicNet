@@ -43,5 +43,4 @@ signature sidecar.
 ## Local Customization
 
 Keep this shared baseline generic. Put project-specific workflows in additional
-files such as `.github/workflows/ranking.yml`; `kam sync workflow` preserves
-extra workflow files.
+files; `kam sync workflow` preserves extra workflow files.

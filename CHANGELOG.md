@@ -11,6 +11,12 @@
 - Include the redacted startup blocker in support bundles so stopped-core issue
   reports distinguish missing subscriptions or nodes from runtime crashes.
 
+## v1.1.27 (2026-07-26)
+
+- Add line numbers, JSON syntax highlighting, and live JSON syntax checks to the
+  configuration editor.
+- Remove the built-in supporter leaderboard.
+
 ## v1.1.23 (2026-07-19)
 
 - Give ChatGPT, Gemini, Grok, and Claude independent `urltest` automatic
