@@ -121,8 +121,8 @@ magicnet_singbox_build_outbounds_file_with_jq() {
     def proxy_selector($tags):
       if ($tags | length) > 0
         then {"type": "selector", "tag": "proxy",
-              "outbounds": (["proxy-auto"] + $tags + ["direct", "block"]),
-              "default": "proxy-auto"}
+              "outbounds": ($tags + ["proxy-auto", "direct", "block"]),
+              "default": $tags[0]}
         else {"type": "selector", "tag": "proxy", "outbounds": ["block"], "default": "block"}
         end;
     def mainland_node_tag:
@@ -255,19 +255,20 @@ magicnet_singbox_emit_selector_block() {
     _tags_file="$1"
     _proxy_tags=$(awk 'NF && !seen[$0]++' "$_tags_file")
     if [ -n "$_proxy_tags" ]; then
+        _proxy_default=$(printf '%s\n' "$_proxy_tags" | sed -n '1p')
         magicnet_singbox_emit_urltest \
             "proxy-auto" "https://www.gstatic.com/generate_204" "3m" "$_proxy_tags"
         printf ',\n'
         magicnet_emit_selector_json_exact "proxy" \
-            "$(printf '%s\n%s\n%s\n%s\n' "proxy-auto" "$_proxy_tags" "direct" "block")" \
-            "proxy-auto"
+            "$(printf '%s\n%s\n%s\n%s\n' "$_proxy_tags" "proxy-auto" "direct" "block")" \
+            "$_proxy_default"
     else
         magicnet_emit_selector_json_exact "proxy" "block" "block"
     fi
     printf ',\n'
     magicnet_emit_selector_json "select" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
     magicnet_singbox_emit_static_selectors
-    unset _tags_file _proxy_tags
+    unset _tags_file _proxy_tags _proxy_default
 }
 
 magicnet_singbox_emit_static_selectors() {
@@ -526,7 +527,7 @@ magicnet_singbox_sanitize_generated_config() {
       def proxy_selector($tags):
         if ($tags | length) > 0
         then {"type": "selector", "tag": "proxy",
-              "outbounds": (["proxy-auto"] + $tags + ["direct", "block"]), "default": "proxy-auto"}
+              "outbounds": ($tags + ["proxy-auto", "direct", "block"]), "default": $tags[0]}
         else {"type": "selector", "tag": "proxy", "outbounds": ["block"], "default": "block"}
         end;
       def proxy_outbounds($tags):

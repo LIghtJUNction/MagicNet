@@ -76,12 +76,17 @@ jq -e '
     and ($by_tag.proxy == {
       type: "selector",
       tag: "proxy",
-      outbounds: (["proxy-auto"] + $node_tags + ["direct", "block"]),
-      default: "proxy-auto"
+      outbounds: ($node_tags + ["proxy-auto", "direct", "block"]),
+      default: $node_tags[0]
     })
     and ([.outbounds[] | select(.type == "selector")] | all(. as $selector
       | ($selector.outbounds | length) == ($selector.outbounds | unique | length)
-        and (($selector.outbounds | index($selector.default)) != null)))
+        and (($selector.outbounds | index($selector.default)) != null)
+        and (($by_tag[$selector.default].type // "") != "urltest")
+        and (if ($selector.outbounds | any(. as $member | ($by_tag[$member].type // "") == "urltest"))
+          then ($node_tags | index($selector.default)) != null
+          else true
+          end)))
     and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
     and ($by_tag["cn-direct"] == {type: "selector", tag: "cn-direct", outbounds: ["direct", "proxy", "block"], default: "direct"})
     and ($by_tag.final == {type: "selector", tag: "final", outbounds: ["proxy", "direct", "block"], default: "proxy"})
@@ -128,7 +133,7 @@ jq -e '
   | $node_tags == ["node-x", "node space"]
     and $by_tag["proxy-auto"].outbounds == $node_tags
     and ($by_tag["proxy-auto"].outbounds | index("proxy-auto")) == null
-    and $by_tag.proxy.outbounds == (["proxy-auto"] + $node_tags + ["direct", "block"])
+    and $by_tag.proxy.outbounds == ($node_tags + ["proxy-auto", "direct", "block"])
     and ([.outbounds[].tag] | length) == ([.outbounds[].tag] | unique | length)
 ' "$tmp_dir/adversarial-jq.json" >/dev/null || fail "jq adversarial tag filtering mismatch"
 magicnet_singbox_ai_selectors_canonical "$tmp_dir/generated.json" || fail "jq canonical validator rejected generated auto groups"
@@ -180,7 +185,7 @@ jq -e --slurpfile expected "$tmp_dir/expected-unique-node-tags.json" '
     and ([.outbounds[] | select(.type == "vless" and .tag == "US stable")] | length) == 1
     and ([.outbounds[] | select(.type == "vless" and .tag == "US stable")][0].server == "us.invalid")
     and $by_tag["proxy-auto"].outbounds == $node_tags
-    and $by_tag.proxy.outbounds == (["proxy-auto"] + $node_tags + ["direct", "block"])
+    and $by_tag.proxy.outbounds == ($node_tags + ["proxy-auto", "direct", "block"])
 ' "$tmp_dir/repaired-duplicate-proxy-node.json" >/dev/null ||
   fail "sanitizer did not preserve first proxy node and unique source order"
 magicnet_singbox_ai_selectors_canonical "$tmp_dir/repaired-duplicate-proxy-node.json" ||
@@ -482,7 +487,7 @@ jq -e '
     }])
     and ($by_tag.proxy == {
       type: "selector", tag: "proxy",
-      outbounds: (["proxy-auto"] + $node_tags + ["direct", "block"]), default: "proxy-auto"
+      outbounds: ($node_tags + ["proxy-auto", "direct", "block"]), default: $node_tags[0]
     })
 ' "$tmp_dir/stale-proxy-auto-tolerance.json" >/dev/null || fail "sanitizer did not repair stale proxy-auto tolerance"
 magicnet_singbox_ai_selectors_canonical "$tmp_dir/stale-proxy-auto-tolerance.json" || fail "sanitizer repair is not canonical"
@@ -534,15 +539,20 @@ jq -e '
     and ($by_tag.proxy == {
       type: "selector",
       tag: "proxy",
-      outbounds: (["proxy-auto"] + $node_tags + ["direct", "block"]),
-      default: "proxy-auto"
+      outbounds: ($node_tags + ["proxy-auto", "direct", "block"]),
+      default: $node_tags[0]
     })
     and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
     and ($by_tag["cn-direct"] == {type: "selector", tag: "cn-direct", outbounds: ["direct", "proxy", "block"], default: "direct"})
     and ($by_tag.final == {type: "selector", tag: "final", outbounds: ["proxy", "direct", "block"], default: "proxy"})
     and ([.outbounds[] | select(.type == "selector")] | all(. as $selector
       | ($selector.outbounds | length) == ($selector.outbounds | unique | length)
-        and (($selector.outbounds | index($selector.default)) != null)))
+        and (($selector.outbounds | index($selector.default)) != null)
+        and (($by_tag[$selector.default].type // "") != "urltest")
+        and (if ($selector.outbounds | any(. as $member | ($by_tag[$member].type // "") == "urltest"))
+          then ($node_tags | index($selector.default)) != null
+          else true
+          end)))
     and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"

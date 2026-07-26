@@ -240,8 +240,7 @@ export function parseWifiPolicy(text: string): WifiPolicyState {
 
 export function normalizeTransparentMode(value: string): TransparentMode | null {
   const mode = value.trim().toLowerCase();
-  if (mode === "external") return "external-tun";
-  if (["proxy", "external-tun", "hybrid", "tun"].includes(mode)) return mode as TransparentMode;
+  if (["proxy", "external", "external-tun", "hybrid", "tun"].includes(mode)) return "tun";
   return null;
 }
 

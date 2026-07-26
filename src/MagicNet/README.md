@@ -70,9 +70,6 @@ su -c /data/adb/modules/MagicNet/cli service status
 su -c /data/adb/modules/MagicNet/cli service restart
 su -c /data/adb/modules/MagicNet/cli core select sing-box
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
-su -c /data/adb/modules/MagicNet/cli transparent set proxy
-su -c /data/adb/modules/MagicNet/cli transparent set external-tun
-su -c /data/adb/modules/MagicNet/cli transparent set hybrid
 su -c /data/adb/modules/MagicNet/cli transparent set tun
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli diagnose
@@ -108,14 +105,7 @@ MagicNet 不按地区过滤订阅节点。导入后的节点统一放进 `proxy`
 
 ## 透明代理边界
 
-MagicNet 目前支持四种透明模式：
-
-- `proxy`：本机应用通过 `127.0.0.1:7892` 的本地入口走代理+路由，仅在本机代理场景生效。
-- `external-tun`：外部 VPN、WireGuard、Clash 等先接管后交给 MagicNet 进行路由与策略分发。
-- `hybrid`：`magicnet0` 与外部入口并存的混合模式，用于兼容需要。
-- `tun`：兼容模式，使用 `sing-box` `magicnet0` TUN 接管透明流量。
-
-`proxy` 与 `external-tun` 适合共存场景，`tun` 适合作为默认兼容路径。
+MagicNet 目前只支持 `tun` 透明模式，使用 `sing-box` `magicnet0` TUN 接管透明流量。旧配置中的 `proxy`、`external-tun`、`hybrid` 会安全归一为 `tun`，CLI 不再接受这些模式。
 
 - 可用性以 `cli health` 和物理出口抓包为准。
 - 发布前请用 `tcpdump` 验证没有 `port 53 or port 853` 泄露。

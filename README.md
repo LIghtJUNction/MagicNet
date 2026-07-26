@@ -26,7 +26,7 @@
 
 MagicNet 是一个 Android root 网络编排模块，把设备流量或显式代理流量接入 `sing-box` 策略平面。MagicNet 不包含 Android 应用侧 `VpnService.establish()`，不会由 MagicNet App 独占系统 VPN slot；默认兼容路径仍可通过 root/sing-box `magicnet0` TUN 接管、分流、代理或拒绝流量。
 
-当前主线已经收敛为 **sing-box + 用户态编排**。`sing-box` 是唯一代理核心；MagicNet 提供 `proxy`、`external-tun`、`hybrid` 和兼容 `tun` 四种运行模式。下一代设计详见 [docs/next-gen-architecture.md](docs/next-gen-architecture.md)。旧的 TProxy 主路径、多核心切换和抓包代理功能都不再作为主线能力维护。
+当前主线已经收敛为 **sing-box + TUN 用户态编排**。`sing-box` 是唯一代理核心，`tun` 是唯一透明代理模式。下一代设计详见 [docs/next-gen-architecture.md](docs/next-gen-architecture.md)。旧的 TProxy 主路径、多核心切换和抓包代理功能都不再作为主线能力维护。
 
 需要 Magisk / KernelSU / APatch 等 root 管理器。当前版本：`v1.1.23`。Release 以发布页为准。
 
@@ -66,17 +66,9 @@ MagicNet 通过 `sing-box` 订阅导入节点，不在模块里手动逐个填�
 
 ## 运行模式
 
-推荐零冲突代理模式（不占用系统 VPN，可与 Clash / WireGuard / sing-box VPN 共存）：
+MagicNet 统一使用 sing-box `magicnet0` TUN：
 
 ```bash
-su -c /data/adb/modules/MagicNet/cli transparent set proxy
-```
-
-其它编排模式：
-
-```bash
-su -c /data/adb/modules/MagicNet/cli transparent set external-tun
-su -c /data/adb/modules/MagicNet/cli transparent set hybrid
 su -c /data/adb/modules/MagicNet/cli transparent set tun
 ```
 
@@ -250,7 +242,7 @@ MCP 工具可管理配置源、封锁名单、备份、状态检查、eCapture �
 ## 技术边界
 
 - 运行模式只维护 MagicNet 自身数据面，不接管热点转发、外部 VPN overlay 或厂商 tethering 规则。
-- `proxy`/`external-tun` 模式不创建 MagicNet 管理的 TUN；`hybrid`/`tun` 模式使用 sing-box `magicnet0` TUN。
+- 透明代理只使用 sing-box `magicnet0` TUN；旧的 `proxy`、`external-tun`、`hybrid` 配置会安全归一为 `tun`。
 - 发布前请用 `tcpdump` 验证物理出口没有 `port 53 or port 853` 泄露。
 - 多核心切换、多透明路径、热点代理模式和 VPN 共存模式都不是当前主线能力。
 

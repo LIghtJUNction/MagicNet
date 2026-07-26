@@ -813,19 +813,25 @@ fi
           idle_timeout: "10m", interrupt_exist_connections: false
         }]
           and $by_tag.proxy.type == "selector"
-          and $by_tag.proxy.outbounds == (["proxy-auto"] + $node_tags + ["direct", "block"])
-          and $by_tag.proxy.default == "proxy-auto"
+          and $by_tag.proxy.outbounds == ($node_tags + ["proxy-auto", "direct", "block"])
+          and $by_tag.proxy.default == $node_tags[0]
       else
         ($proxy_auto | length) == 0
           and $by_tag.proxy.type == "selector"
           and $by_tag.proxy.outbounds == ["block"]
           and $by_tag.proxy.default == "block"
       end)
+      and ([.outbounds[] | select(.type == "selector")] | all(. as $selector
+        | (($by_tag[$selector.default].type // "") != "urltest")
+          and (if ($selector.outbounds | any(. as $member | ($by_tag[$member].type // "") == "urltest"))
+            then ($node_tags | index($selector.default)) != null
+            else true
+            end)))
       and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
-        and $by_tag[$service.name].default == $auto
-        and $by_tag[$service.name].outbounds == ["block", $auto]
+        and $by_tag[$service.name].default == $ai_proxy.outbounds[0]
+        and $by_tag[$service.name].outbounds == ($ai_proxy.outbounds + ["block", $auto])
         and $by_tag[$auto].type == "urltest"
         and $by_tag[$auto].outbounds == $ai_proxy.outbounds
         and $by_tag[$auto].url == $service.url
@@ -1119,19 +1125,14 @@ for inbound in singbox.get("inbounds", []):
     present = sorted(legacy_inbound_fields.intersection(inbound))
     if present:
         raise SystemExit(f"legacy inbound fields present in {mode} mode: tag={inbound.get('tag')!r} fields={present!r}")
-if mode in ("tun", "hybrid"):
-    if "tun" not in inbound_types:
-        raise SystemExit(f"sing-box tun inbound missing in {mode} mode")
-    tun_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tun"), {})
-    if tun_inbound.get("tag") != "tun-in":
-        raise SystemExit(f"sing-box tun tag mismatch in {mode} mode: {tun_inbound.get('tag')!r}")
-    if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
-        raise SystemExit(f"sing-box tun address is not dual-stack in {mode} mode: {tun_inbound.get('address')!r}")
-    expected_sniff_inbounds = ["mixed-in", "tun-in"]
-else:
-    if "tun" in inbound_types:
-        raise SystemExit(f"sing-box tun inbound should be absent in {mode} mode: {inbound_types!r}")
-    expected_sniff_inbounds = ["mixed-in"]
+if "tun" not in inbound_types:
+    raise SystemExit(f"sing-box tun inbound missing in {mode} mode")
+tun_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tun"), {})
+if tun_inbound.get("tag") != "tun-in":
+    raise SystemExit(f"sing-box tun tag mismatch in {mode} mode: {tun_inbound.get('tag')!r}")
+if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
+    raise SystemExit(f"sing-box tun address is not dual-stack in {mode} mode: {tun_inbound.get('address')!r}")
+expected_sniff_inbounds = ["mixed-in", "tun-in"]
 if any(kind in inbound_types for kind in ("tproxy", "redirect")):
     raise SystemExit(f"legacy transparent inbound still present in {mode} mode: {inbound_types!r}")
 if any((inbound.get("tag") or "").startswith("magicnet-") and inbound.get("tag") != "magicnet-dns-in" for inbound in singbox.get("inbounds", [])):
@@ -1145,8 +1146,19 @@ PY
     ! rg -q -- '-j TPROXY|REDIRECT --to-ports' "$TMP/${mode}-commands.log"
 }
 
-for mode in proxy external-tun hybrid tun; do
-    assert_transparent_mode "$mode"
+assert_transparent_mode tun
+
+for legacy_mode in proxy external external-tun hybrid; do
+    # shellcheck disable=SC2016
+    if run env MAGICNET_TEST_MODE="$legacy_mode" sh -c '
+        . "$MODDIR/lib/kamfw/.kamfwrc"
+        import __runtime__
+        . "$MODDIR/lib/magicnet.sh"
+        magicnet_transparent_set_mode "$MAGICNET_TEST_MODE"
+    '; then
+        echo "legacy transparent mode was still accepted: $legacy_mode" >&2
+        exit 1
+    fi
 done
 
 "$HOST_JQ" empty "$MODDIR/.config/sing-box/config.json"

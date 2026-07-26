@@ -72,20 +72,9 @@ pub(crate) fn wifi_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "enable" => set_enabled(app, true),
         "disable" => set_enabled(app, false),
-        "mode" => set_policy_mode(
-            app,
-            args.get(1).map(String::as_str).unwrap_or_default(),
-        ),
-        "interval" => set_interval(
-            app,
-            args.get(1).map(String::as_str).unwrap_or_default(),
-        ),
-        "add-ssid" => update_list(
-            app,
-            ListKind::Ssid,
-            &args[1..].join(" "),
-            ListAction::Add,
-        ),
+        "mode" => set_policy_mode(app, args.get(1).map(String::as_str).unwrap_or_default()),
+        "interval" => set_interval(app, args.get(1).map(String::as_str).unwrap_or_default()),
+        "add-ssid" => update_list(app, ListKind::Ssid, &args[1..].join(" "), ListAction::Add),
         "remove-ssid" => update_list(
             app,
             ListKind::Ssid,
@@ -208,10 +197,7 @@ fn set_interval(app: &App, interval: &str) -> Result<(), String> {
     config.interval_seconds = value;
     write_policy_config(app, &config)?;
     if config.enabled {
-        run_magicnet_function(
-            app,
-            "magicnet_wifi_policy_stop; magicnet_wifi_policy_start",
-        )?;
+        run_magicnet_function(app, "magicnet_wifi_policy_stop; magicnet_wifi_policy_start")?;
     }
     println!("[info] Wi-Fi policy interval set to {value}s");
     Ok(())
@@ -229,12 +215,7 @@ enum ListAction {
     Remove,
 }
 
-fn update_list(
-    app: &App,
-    kind: ListKind,
-    value: &str,
-    action: ListAction,
-) -> Result<(), String> {
+fn update_list(app: &App, kind: ListKind, value: &str, action: ListAction) -> Result<(), String> {
     let value = normalize_list_value(kind, value)?;
     let path = match kind {
         ListKind::Ssid => ssid_list_path(app),
@@ -400,11 +381,7 @@ fn detect_wifi() -> WifiNetwork {
             return network;
         }
     }
-    let output = command_text_full_timeout(
-        "iw",
-        &["dev", "wlan0", "link"],
-        Duration::from_secs(3),
-    );
+    let output = command_text_full_timeout("iw", &["dev", "wlan0", "link"], Duration::from_secs(3));
     if command_output_available(&output, "iw") {
         return parse_wifi_status(&output);
     }
@@ -531,8 +508,7 @@ fn write_last_state(
     decision: &PolicyDecision,
 ) -> Result<(), String> {
     write_kv(
-        app.moddir
-            .join(".state/wifi-policy/last-state.conf"),
+        app.moddir.join(".state/wifi-policy/last-state.conf"),
         &[
             (
                 "connected",

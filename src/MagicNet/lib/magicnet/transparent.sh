@@ -10,7 +10,7 @@ magicnet_singbox_apply_transparent_mode() {
     _tmp="${_config}.transparent-mode.new"
     if [ -n "$_jq" ]; then
         # shellcheck disable=SC2016
-        if "$_jq" --arg dns_strategy "$_dns_strategy" --arg mode "$_mode" '
+        if "$_jq" --arg dns_strategy "$_dns_strategy" '
             def mixed_in:
               {
                 "type": "mixed",
@@ -84,18 +84,18 @@ magicnet_singbox_apply_transparent_mode() {
               (.action // "") == "sniff";
             def normalize_sniff_rule:
               if (.action // "") == "sniff" then
-                .inbound = (if $mode == "proxy" or $mode == "external-tun" then ["mixed-in"] else ["mixed-in", "tun-in"] end)
+                .inbound = ["mixed-in", "tun-in"]
               else
                 .
               end;
             def sniff_rule:
-              {"inbound": (if $mode == "proxy" or $mode == "external-tun" then ["mixed-in"] else ["mixed-in", "tun-in"] end), "action": "sniff"};
+              {"inbound": ["mixed-in", "tun-in"], "action": "sniff"};
             .inbounds = (
               ((.inbounds // [])
                 | map(select(managed_inbound | not)))
               + [mixed_in]
               + [dns_in]
-              + (if $mode == "proxy" or $mode == "external-tun" then [] else [tun_in] end)
+              + [tun_in]
             )
             | .route.rules = (
               ((.route.rules // [])
@@ -120,11 +120,6 @@ magicnet_singbox_apply_transparent_mode() {
             unset _dns_strategy _jq _mode
             return 1
         fi
-    elif [ "$_mode" != "tun" ] && [ "$_mode" != "hybrid" ]; then
-        magicnet_warn "jq not found; transparent mode $_mode requires jq to remove managed TUN inbounds"
-        rm -f "$_tmp" 2>/dev/null || true
-        unset _dns_strategy _jq _mode
-        return 1
     else
         _singbox="$(command -v sing-box 2>/dev/null || true)"
         _stage="${_config}.transparent-mode.stage.$$"

@@ -135,11 +135,7 @@ fn support_bundle(app: &App) -> String {
             pid_summary("fswatch")
         ),
     );
-    append_support_section(
-        &mut output,
-        "startup state",
-        &startup_state_evidence(app),
-    );
+    append_support_section(&mut output, "startup state", &startup_state_evidence(app));
     let health = health_items(app)
         .into_iter()
         .map(|(key, ok, detail)| format!("{} {key}: {detail}", if ok { "ok" } else { "warn" }))
@@ -187,7 +183,10 @@ fn startup_state_evidence(app: &App) -> String {
     let path = app.moddir.join(".state/startup-error");
     match fs::read_to_string(path) {
         Ok(text) if !text.trim().is_empty() => {
-            format!("blocked=true\nreason={}", clean_lines_from_text(&text).join(" "))
+            format!(
+                "blocked=true\nreason={}",
+                clean_lines_from_text(&text).join(" ")
+            )
         }
         _ => "blocked=false\nreason=none".to_string(),
     }
@@ -431,9 +430,7 @@ fn transparent_mode(app: &App) -> String {
             text.lines().find_map(|line| {
                 let (_, value) = line.split_once('=')?;
                 match value.trim() {
-                    "proxy" => Some("proxy".to_string()),
-                    "external" | "external-tun" => Some("external-tun".to_string()),
-                    "hybrid" => Some("hybrid".to_string()),
+                    "proxy" | "external" | "external-tun" | "hybrid" => Some("tun".to_string()),
                     "tun" => Some("tun".to_string()),
                     _ => None,
                 }
@@ -446,10 +443,7 @@ fn iface_detail(name: &str) -> String {
     command_text_timeout("ip", &["addr", "show", name], crate::SHORT_TIMEOUT)
 }
 
-fn tun_check(app: &App, mode: &str) -> (bool, String) {
-    if matches!(mode, "proxy" | "external-tun") {
-        return (true, format!("not required in {mode} mode"));
-    }
+fn tun_check(app: &App, _mode: &str) -> (bool, String) {
     let mut names = configured_tun_names(app);
     for fallback in ["magicnet0", "utun", "Meta", "mihoyo"] {
         push_unique(&mut names, fallback.to_string());
@@ -622,12 +616,16 @@ fn subscription_refresh_log_counts(path: PathBuf) -> String {
 }
 
 pub(crate) fn redact(text: &str) -> String {
-    let mut redact_next = false;
-    text.split_whitespace()
-        .map(|part| {
+    let mut redact_next = 0;
+    let parts = text.split_whitespace().collect::<Vec<_>>();
+    parts
+        .iter()
+        .enumerate()
+        .map(|(index, part)| {
+            let part = *part;
             let lower = part.to_ascii_lowercase();
-            if redact_next {
-                redact_next = false;
+            if redact_next > 0 {
+                redact_next -= 1;
                 return "<redacted-value>".to_string();
             }
             if lower.contains("http://") || lower.contains("https://") {
@@ -635,8 +633,40 @@ pub(crate) fn redact(text: &str) -> String {
             } else if contains_sensitive_assignment(&lower) {
                 "<redacted-sensitive>".to_string()
             } else if let Some(has_inline_value) = sensitive_key(part) {
-                redact_next = !has_inline_value;
-                "<redacted-sensitive>".to_string()
+                let is_safe_url_status = !has_inline_value
+                    && part
+                        .trim_matches(|ch: char| matches!(ch, '(' | ')' | ',' | ';' | '"' | '\''))
+                        .eq_ignore_ascii_case("url")
+                    && parts
+                        .get(index + 1)
+                        .is_some_and(|next| next.eq_ignore_ascii_case("is"))
+                    && parts.get(index + 2).is_some_and(|next| {
+                        next.trim_matches(|ch: char| {
+                            matches!(ch, '(' | ')' | ',' | ';' | '"' | '\'')
+                        })
+                        .eq_ignore_ascii_case("configured")
+                    });
+                if is_safe_url_status {
+                    part.to_string()
+                } else {
+                    let url_precedes_copula = !has_inline_value
+                        && part
+                            .trim_matches(|ch: char| {
+                                matches!(ch, '(' | ')' | ',' | ';' | '"' | '\'')
+                            })
+                            .eq_ignore_ascii_case("url")
+                        && parts.get(index + 1).is_some_and(|next| {
+                            matches!(next.to_ascii_lowercase().as_str(), "is" | "was")
+                        });
+                    redact_next = if has_inline_value {
+                        0
+                    } else if url_precedes_copula {
+                        2
+                    } else {
+                        1
+                    };
+                    "<redacted-sensitive>".to_string()
+                }
             } else if looks_like_email(part) {
                 "<redacted-email>".to_string()
             } else if looks_like_mac(part) {
@@ -902,6 +932,26 @@ mod tests {
 
         let unknown = "mystery=UnknownHighEntropyToken1234567890";
         assert!(!redact(unknown).contains("UnknownHighEntropyToken1234567890"));
+    }
+
+    #[test]
+    fn redact_keeps_prose_url_label_but_filters_following_secret_assignment() {
+        let input = "reason=No subscription URL is configured; token=BUNDLE-STARTUP-CANARY";
+        let output = redact(input);
+
+        assert!(output.contains("reason=No subscription URL is configured"));
+        assert!(!output.contains("BUNDLE-STARTUP-CANARY"));
+    }
+
+    #[test]
+    fn redact_filters_values_after_url_copulas() {
+        for input in [
+            "reason=Configured URL is short-secret",
+            "reason=Configured URL was short-secret",
+        ] {
+            let output = redact(input);
+            assert!(!output.contains("short-secret"), "leaked value: {output}");
+        }
     }
 
     #[test]

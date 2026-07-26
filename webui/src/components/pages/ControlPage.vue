@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import {
-  ArrowUpRight,
   Copy,
   DownloadCloud,
   ExternalLink,
-  Megaphone,
   Plus,
   Power,
   Radar,
@@ -29,13 +27,10 @@ import {
   restartSingBoxAction,
   singBoxToggleAction,
   stopAllServicesAction,
-  transparentModeAction,
 } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { PROMOTION_URL } from "@/constants";
 import { copyText } from "@/utils";
-import type { TransparentMode } from "@/types";
 import {
   buildControlRuntimeInsight,
   controlInsightTone,
@@ -50,7 +45,6 @@ const {
   refreshStatus,
   refreshWifiPolicy,
   openSingBoxUi,
-  openExternal,
   shellQuote,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -81,37 +75,7 @@ const missingNodeCache = computed(() =>
   ),
 );
 
-const orchestratorModes: Array<{
-  mode: TransparentMode;
-  title: string;
-  description: string;
-}> = [
-  {
-    mode: "proxy",
-    title: "Proxy",
-    description: "不创建 TUN，可与系统 VPN 共存",
-  },
-  {
-    mode: "external-tun",
-    title: "External TUN",
-    description: "外部 VPN 捕获，MagicNet 只路由",
-  },
-  { mode: "hybrid", title: "Hybrid", description: "TUN 输入后链路到多后端" },
-  { mode: "tun", title: "TUN", description: "兼容完整透明代理路径" },
-];
 const wifiPolicyModes = ["blacklist", "whitelist"] as const;
-
-function modeActionKey(mode: TransparentMode): string {
-  return `transparent-${mode}`;
-}
-
-function isModeSwitching(): boolean {
-  return orchestratorModes.some((item) => isRunning(modeActionKey(item.mode)));
-}
-
-function canSwitchModes(): boolean {
-  return state.hasKsu && !runtimeBusy.value && !isModeSwitching();
-}
 
 async function toggleSingBox(): Promise<void> {
   const running = state.runtime.singBoxState === "sing-box";
@@ -168,11 +132,6 @@ async function confirmDangerAction(): Promise<void> {
   }
   pendingDangerAction.value = null;
   await runAction(action.key, action.args, action.label, action.background);
-}
-
-async function setTransparentMode(mode: TransparentMode): Promise<void> {
-  if (!canSwitchModes() || state.runtime.transparentMode === mode) return;
-  requestDangerAction(transparentModeAction(mode));
 }
 
 async function runWifiAction(
@@ -276,16 +235,16 @@ function classifyLastCommand(command: string): string {
 </script>
 
 <template>
-  <div class="grid gap-6">
+  <div class="grid gap-4 md:gap-5">
     <div
-      class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between"
+      class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4"
     >
       <div class="max-w-3xl">
         <span
           class="inline-flex rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-muted)] shadow-[inset_0_0_0_1px_var(--mn-border)]"
-          >Control Center</span
+          >控制中心</span
         >
-        <h2 class="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--mn-ink)] md:text-4xl">模块控制</h2>
+        <h2 class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--mn-ink)] md:mt-3 md:text-3xl">模块控制</h2>
         <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)] md:text-[15px]">
           只放模块生命周期和入口。节点、测速、代理模式交给 sing-box WebUI。
         </p>
@@ -305,13 +264,13 @@ function classifyLastCommand(command: string): string {
       </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-12">
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-12 md:gap-4">
       <Card
-        class="grid gap-5 md:col-span-7 md:row-span-2 md:min-h-[25rem]"
+        class="grid gap-4 !p-4 md:col-span-7 md:row-span-2 md:min-h-[22rem] md:!p-6"
         :class="controlInsightTone(runtimeInsight.status)"
       >
         <div class="flex items-start justify-between gap-3">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.22em] opacity-60">Runtime Insight</span>
+          <span class="text-[10px] font-semibold uppercase tracking-[0.22em] opacity-60">运行状态</span>
           <span class="size-2.5 rounded-full bg-current opacity-70 " />
         </div>
         <div class="my-auto max-w-xl">
@@ -343,7 +302,7 @@ function classifyLastCommand(command: string): string {
         </div>
       </Card>
 
-      <Card class="grid gap-4 md:col-span-5">
+      <Card class="grid gap-3 !p-4 md:col-span-5 md:!p-6">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <span
@@ -353,7 +312,7 @@ function classifyLastCommand(command: string): string {
             <h3 class="mt-2 break-words text-2xl font-semibold tracking-[-0.035em]">
               {{
                 state.runtime.singBoxState === "sing-box"
-                  ? "running"
+                  ? "运行中"
                   : state.runtime.singBoxState
               }}
             </h3>
@@ -378,12 +337,12 @@ function classifyLastCommand(command: string): string {
         </Button>
       </Card>
 
-      <Card class="md:col-span-5">
+      <Card class="!p-4 md:col-span-5 md:!p-6">
         <span
           class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
-          >Quick Actions</span
+          >快捷操作</span
         >
-        <div class="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
+        <div class="mt-3 grid grid-cols-2 gap-2 md:mt-4 md:grid-cols-1 xl:grid-cols-2">
           <Button
             variant="secondary"
             :disabled="runtimeBusy"
@@ -419,7 +378,7 @@ function classifyLastCommand(command: string): string {
         </div>
       </Card>
 
-      <Card class="md:col-span-4">
+      <Card class="!p-4 md:col-span-4 md:!p-6">
         <span
           class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
           >sing-box WebUI</span
@@ -448,62 +407,21 @@ function classifyLastCommand(command: string): string {
         </div>
       </Card>
 
-      <Card class="grid gap-5 md:col-span-8">
+      <Card class="grid gap-4 !p-4 md:col-span-8 md:gap-5 md:!p-6">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>
             <span
               class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
-              >Orchestrator Mode</span
+              >透明代理模式</span
             >
-            <h3 class="mt-2 text-2xl font-semibold tracking-[-0.035em]">多 VPN 共存</h3>
+            <h3 class="mt-2 text-2xl font-semibold tracking-[-0.035em]">TUN</h3>
+            <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)]">
+              MagicNet 统一使用 sing-box TUN 透明代理路径。
+            </p>
           </div>
           <div class="flex flex-wrap gap-2">
-            <Badge tone="neutral">{{ state.runtime.transparentMode }}</Badge>
-            <Badge v-if="!state.hasKsu" tone="warning"
-              >真机 WebUI 才能切换</Badge
-            >
+            <Badge tone="neutral">TUN</Badge>
           </div>
-        </div>
-        <div class="grid gap-2 md:grid-cols-2">
-          <button
-            v-for="item in orchestratorModes"
-            :key="item.mode"
-            :class="[
-              'min-h-[5.25rem] rounded-[1.4rem] px-4 py-3 text-left text-sm shadow-[inset_0_0_0_1px_var(--mn-border)] transition-[transform,color,background-color,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,transparent)] active:scale-[0.98] disabled:cursor-progress disabled:opacity-45 disabled:active:scale-100',
-              state.runtime.transparentMode === item.mode
-                ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_8%,transparent)]'
-                : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
-            ]"
-            :aria-pressed="state.runtime.transparentMode === item.mode"
-            :disabled="
-              !canSwitchModes() || state.runtime.transparentMode === item.mode
-            "
-            :title="
-              !state.hasKsu
-                ? '当前没有 KernelSU/root 执行通道，无法在本地预览中切换模式'
-                : state.runtime.transparentMode === item.mode
-                  ? '当前已处于该模式，可使用重新应用模式'
-                  : `切换到 ${item.mode}`
-            "
-            @click="setTransparentMode(item.mode)"
-          >
-            <span class="block font-semibold">{{
-              isRunning(modeActionKey(item.mode))
-                ? "切换中..."
-                : state.runtime.transparentMode === item.mode
-                  ? `${item.title}（当前）`
-                  : item.title
-            }}</span>
-            <span
-              :class="[
-                'mt-1 block text-xs leading-5',
-                state.runtime.transparentMode === item.mode
-                  ? 'text-[var(--mn-ink-muted)]'
-                  : 'text-[var(--mn-ink-muted)]',
-              ]"
-              >{{ item.description }}</span
-            >
-          </button>
         </div>
         <Button
           variant="secondary"
@@ -515,12 +433,12 @@ function classifyLastCommand(command: string): string {
         </Button>
       </Card>
 
-      <Card class="grid gap-5 md:col-span-12">
+      <Card class="grid gap-4 !p-4 md:col-span-12 md:gap-5 md:!p-6">
         <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <span
               class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]"
-              >Wi-Fi Mode Policy</span
+              >Wi-Fi 模式策略</span
             >
             <h3 class="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-[-0.035em]">
               <Wifi :size="22" />按 Wi-Fi 自动切换
@@ -655,52 +573,6 @@ function classifyLastCommand(command: string): string {
           </div>
         </div>
       </Card>
-
-      <Card
-        class="group relative overflow-hidden !bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] !p-0 md:col-span-12"
-      >
-        <button
-          class="relative grid w-full gap-5 overflow-hidden p-5 text-left transition-[transform,background-color] duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color-mix(in_srgb,var(--mn-heather)_70%,transparent)] active:scale-[0.995] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center md:p-6"
-          type="button"
-          aria-label="访问推广：AI 自动推广系统"
-          @click="openExternal(PROMOTION_URL, 'AI 自动推广系统')"
-        >
-          <span
-            class="relative grid size-14 shrink-0 place-items-center rounded-[1.25rem] bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)]"
-          >
-            <Megaphone :size="22" />
-          </span>
-
-          <span class="relative min-w-0">
-            <span class="flex flex-wrap items-center gap-2">
-              <span
-                class="rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_7%,transparent)] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-muted)] shadow-[inset_0_0_0_1px_var(--mn-border)]"
-                >推广</span
-              >
-              <span class="text-[10px] font-medium text-[var(--mn-success)]"
-                >MagicNet 推荐</span
-              >
-            </span>
-            <strong
-              class="mt-3 block text-xl font-semibold tracking-[-0.035em] text-[var(--mn-ink)] md:text-2xl"
-              >AI 自动推广系统</strong
-            >
-            <span class="mt-2 block text-sm leading-6 text-[var(--mn-ink-muted)]"
-              >探索 AI 驱动的自动推广工具与工作流。</span
-            >
-          </span>
-
-          <span
-            class="relative inline-flex min-h-[49px] items-center justify-center gap-2 justify-self-start rounded-full bg-[var(--mn-cactus)] px-5 text-sm font-semibold text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_10%,transparent)] transition-[transform,color,background-color] duration-200 group-hover:bg-[var(--mn-cactus-deep)] group-hover:text-[var(--mn-on-accent)] sm:justify-self-end"
-          >
-            了解详情
-            <ArrowUpRight
-              class="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
-              :size="17"
-            />
-          </span>
-        </button>
-      </Card>
     </div>
 
     <div v-if="pendingDangerAction" ref="dangerConfirmCard" tabindex="-1">
@@ -711,7 +583,7 @@ function classifyLastCommand(command: string): string {
           <div class="min-w-0">
             <span
               class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]"
-              >Confirm action</span
+              >确认操作</span
             >
             <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">
               {{ pendingDangerMessage }}

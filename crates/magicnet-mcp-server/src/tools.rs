@@ -8,7 +8,7 @@ pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_config_validate","description":"Validate sing-box config.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box","all"]}}}},
 {"name":"magicnet_config_sync_template","description":"Sync sing-box config from the bundled upstream template.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box"]}},"required":["target"]}},
 {"name":"magicnet_config_save_base64","description":"Validate and save sing-box config from base64 text.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box"]},"content_base64":{"type":"string"}},"required":["target","content_base64"]}},
-{"name":"magicnet_transparent_set","description":"Set MagicNet capture/orchestrator mode.","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["proxy","external-tun","hybrid","tun"]}},"required":["mode"]}},
+{"name":"magicnet_transparent_set","description":"Set MagicNet TUN capture mode.","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["tun"]}},"required":["mode"]}},
 {"name":"magicnet_transparent_apply","description":"Re-apply transparent proxy rules.","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_health","description":"Run MagicNet health diagnostics","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_block_list","description":"Show MagicNet community and manual blocklist state","inputSchema":{"type":"object","properties":{}}},

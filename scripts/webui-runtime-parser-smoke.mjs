@@ -28,17 +28,17 @@ try {
   await writeFile(modulePath, output, "utf8");
   const { normalizeTransparentMode, parseRuntime, runtimeDefaults } = await import(`file://${modulePath}`);
 
-  assert.equal(normalizeTransparentMode("proxy"), "proxy");
-  assert.equal(normalizeTransparentMode("external"), "external-tun");
-  assert.equal(normalizeTransparentMode("external-tun"), "external-tun");
-  assert.equal(normalizeTransparentMode("HYBRID"), "hybrid");
+  assert.equal(normalizeTransparentMode("proxy"), "tun");
+  assert.equal(normalizeTransparentMode("external"), "tun");
+  assert.equal(normalizeTransparentMode("external-tun"), "tun");
+  assert.equal(normalizeTransparentMode("HYBRID"), "tun");
   assert.equal(normalizeTransparentMode("tun"), "tun");
   assert.equal(normalizeTransparentMode("tproxy"), null);
 
-  assert.equal(parseRuntime("Transparent: proxy\n", runtimeDefaults).transparentMode, "proxy");
-  assert.equal(parseRuntime("mode=external\n", runtimeDefaults).transparentMode, "external-tun");
-  assert.equal(parseRuntime("mode=hybrid\n", runtimeDefaults).transparentMode, "hybrid");
-  assert.equal(parseRuntime("Transparent: invalid\n", { ...runtimeDefaults, transparentMode: "proxy" }).transparentMode, "proxy");
+  assert.equal(parseRuntime("Transparent: proxy\n", runtimeDefaults).transparentMode, "tun");
+  assert.equal(parseRuntime("mode=external\n", runtimeDefaults).transparentMode, "tun");
+  assert.equal(parseRuntime("mode=hybrid\n", runtimeDefaults).transparentMode, "tun");
+  assert.equal(parseRuntime("Transparent: invalid\n", runtimeDefaults).transparentMode, "tun");
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

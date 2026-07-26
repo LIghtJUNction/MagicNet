@@ -259,10 +259,9 @@ fn supervisor_target(app: &App, target: &str, action: &str) -> Result<(), String
         }
         ("wifi-policy", "start") => run_magicnet_function(app, "magicnet_wifi_policy_start"),
         ("wifi-policy", "stop") => run_magicnet_function(app, "magicnet_wifi_policy_stop"),
-        ("wifi-policy", "restart") => run_magicnet_function(
-            app,
-            "magicnet_wifi_policy_stop; magicnet_wifi_policy_start",
-        ),
+        ("wifi-policy", "restart") => {
+            run_magicnet_function(app, "magicnet_wifi_policy_stop; magicnet_wifi_policy_start")
+        }
         _ => Err(
             "Usage: cli supervisor {status|start|stop|restart} [fswatch|wifi-policy|all]"
                 .to_string(),
@@ -300,11 +299,8 @@ fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
 
 fn normalize_transparent_mode(mode: &str) -> Result<&'static str, String> {
     match mode {
-        "proxy" => Ok("proxy"),
-        "external-tun" | "external" => Ok("external-tun"),
-        "hybrid" => Ok("hybrid"),
         "tun" => Ok("tun"),
-        _ => Err("Usage: cli transparent set <proxy|external-tun|hybrid|tun>".to_string()),
+        _ => Err("Usage: cli transparent set tun".to_string()),
     }
 }
 
@@ -326,9 +322,7 @@ fn transparent_mode(app: &App) -> String {
             text.lines().find_map(|line| {
                 let (_, value) = line.split_once('=')?;
                 match value.trim().trim_matches('"').trim_matches('\'') {
-                    "proxy" => Some("proxy".to_string()),
-                    "external-tun" | "external" => Some("external-tun".to_string()),
-                    "hybrid" => Some("hybrid".to_string()),
+                    "proxy" | "external" | "external-tun" | "hybrid" => Some("tun".to_string()),
                     "tun" => Some("tun".to_string()),
                     _ => None,
                 }
@@ -338,7 +332,7 @@ fn transparent_mode(app: &App) -> String {
 }
 
 fn transparent_usage() -> String {
-    "Usage: cli transparent {status|set <proxy|external-tun|hybrid|tun>|apply}".to_string()
+    "Usage: cli transparent {status|set tun|apply}".to_string()
 }
 
 fn core_status(app: &App) {
@@ -375,18 +369,12 @@ mod tests {
     use super::{normalize_transparent_mode, restart_command, stop_runtime_cleanup_command};
 
     #[test]
-    fn transparent_modes_accept_orchestrator_modes() {
-        assert_eq!(normalize_transparent_mode("proxy").unwrap(), "proxy");
-        assert_eq!(
-            normalize_transparent_mode("external").unwrap(),
-            "external-tun"
-        );
-        assert_eq!(
-            normalize_transparent_mode("external-tun").unwrap(),
-            "external-tun"
-        );
-        assert_eq!(normalize_transparent_mode("hybrid").unwrap(), "hybrid");
+    fn transparent_mode_only_accepts_tun() {
         assert_eq!(normalize_transparent_mode("tun").unwrap(), "tun");
+        assert!(normalize_transparent_mode("proxy").is_err());
+        assert!(normalize_transparent_mode("external").is_err());
+        assert!(normalize_transparent_mode("external-tun").is_err());
+        assert!(normalize_transparent_mode("hybrid").is_err());
         assert!(normalize_transparent_mode("tproxy").is_err());
     }
 

@@ -117,9 +117,30 @@ assert.match(app, /magicnet-network-card\.svg/, "shell must reference the illust
 assert.match(app, /控制|配置|应用|黑名单|诊断/, "primary nav labels must remain");
 assert.match(app, /订阅|排行|工具|面板|输出/, "advanced nav labels must remain");
 assert.match(app, /createIssue|refreshAll|openExternal/, "header actions must remain wired");
+const header = app.slice(app.indexOf("<header"), app.indexOf("</header>") + "</header>".length);
+function headerButton(action) {
+  const match = header.match(
+    new RegExp(`<Button(?:(?!<\\/Button>)[\\s\\S])*?@click="${action}"(?:(?!<\\/Button>)[\\s\\S])*?<\\/Button>`),
+  );
+  assert.ok(match, `missing header action: ${action}`);
+  return match[0].slice(0, match[0].indexOf(">") + 1);
+}
+assert.doesNotMatch(headerButton("cycleTheme"), /class="hidden /, "theme must remain visible on mobile");
+assert.doesNotMatch(headerButton("refreshAll"), /class="hidden /, "refresh must remain visible on mobile");
+assert.doesNotMatch(headerButton("openExternal\\(REPO, 'GitHub'\\)"), /class="hidden /, "GitHub must remain visible on mobile");
+assert.match(headerButton("createIssue"), /class="hidden /, "feedback must move to More on mobile");
+assert.match(
+  headerButton("openExternal\\(AUTHOR_WHISPER_URL, '悄悄话'\\)"),
+  /class="hidden /,
+  "whisper must move to More on mobile",
+);
+assert.match(app, /反馈问题[\s\S]*悄悄话/, "mobile more sheet must expose feedback and whisper actions");
 assert.match(app, /useTheme|cycleTheme/, "shell must wire light/dark theme toggle");
 assert.match(app, /KeepAlive/, "shell must KeepAlive tab pages so form state survives switches");
 assert.doesNotMatch(app, /backdrop-blur/, "shell chrome must not default to heavy backdrop-blur");
+const controlPage = read(join(pagesDir, "ControlPage.vue"));
+assert.doesNotMatch(controlPage, /AI 自动推广系统|PROMOTION_URL|Megaphone/, "control page must not ship the promotion card");
+assert.doesNotMatch(controlPage, /external-tun|Hybrid|modeActionKey/, "control page must expose only TUN mode");
 
 // --- Light/dark theme system ---
 const themePath = join(src, "composables", "useTheme.ts");

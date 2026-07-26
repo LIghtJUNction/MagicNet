@@ -125,6 +125,11 @@ const activeAdvancedTab = computed(() => advancedTabs.value.find((item) => item.
 const activeComponent = computed(() => asyncPages[activeTab.value]);
 
 const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice || "等待操作"));
+const runtimeStateLabel = computed(() => {
+  if (state.runtime.singBoxState === "sing-box") return "sing-box 运行中";
+  if (state.runtime.singBoxState === "stopped") return "已停止";
+  return "状态未知";
+});
 
 const statusDotClass = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "mn-status-dot-ok";
@@ -291,7 +296,7 @@ onUnmounted(() => {
         </button>
         <div class="hidden min-w-0 min-[360px]:block pl-1">
           <h1 class="truncate text-[17px] font-semibold leading-tight tracking-[-0.03em] text-[var(--mn-ink)] sm:text-xl">MagicNet</h1>
-          <p class="hidden truncate text-[11px] text-[var(--mn-ink-faint)] sm:block">Root network workspace</p>
+          <p class="hidden truncate text-[11px] text-[var(--mn-ink-faint)] sm:block">Root 网络工作台</p>
         </div>
       </div>
 
@@ -311,13 +316,13 @@ onUnmounted(() => {
         </Button>
         <Button
           size="sm"
-          class="size-11 px-0 sm:w-auto sm:px-4"
+          class="hidden size-11 px-0 md:inline-flex md:w-auto md:px-4"
           :loading="state.task === '创建 GitHub issue'"
           aria-label="创建 GitHub Issue"
-          title="Create GitHub Issue"
+          title="创建 GitHub Issue"
           @click="createIssue"
         >
-          <Bug :size="16" /><span class="hidden sm:inline">Create Issue</span>
+          <Bug :size="16" /><span>反馈问题</span>
         </Button>
         <Button
           variant="ghost"
@@ -333,12 +338,12 @@ onUnmounted(() => {
         <Button
           variant="outline"
           size="sm"
-          class="size-11 px-0 sm:w-auto sm:px-4"
+          class="hidden size-11 px-0 md:inline-flex md:w-auto md:px-4"
           aria-label="打开悄悄话"
           title="打开悄悄话"
           @click="openExternal(AUTHOR_WHISPER_URL, '悄悄话')"
         >
-          <MessageCircle :size="16" /><span class="hidden sm:inline">悄悄话</span>
+          <MessageCircle :size="16" /><span>悄悄话</span>
         </Button>
         <Button
           variant="outline"
@@ -357,25 +362,25 @@ onUnmounted(() => {
       <div class="rounded-[5px] bg-[color-mix(in_srgb,var(--mn-cactus)_28%,var(--mn-carrier))] px-4 py-3 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]">
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0 flex-1">
-            <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">Runtime status</span>
+            <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">运行状态</span>
             <div class="mt-1.5 flex min-w-0 items-center gap-2.5">
               <span :class="['size-2.5 shrink-0 rounded-full', statusDotClass]" />
               <strong class="w-0 min-w-0 flex-1 truncate text-lg font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
-                {{ state.runtime.singBoxState === "sing-box" ? "sing-box online" : state.runtime.singBoxState === "unknown" ? "状态未知" : state.runtime.singBoxState }}
+                {{ runtimeStateLabel }}
               </strong>
             </div>
           </div>
-          <Badge :tone="statusTone">{{ state.runtime.singBoxState }}</Badge>
+          <Badge :tone="statusTone">{{ runtimeStateLabel }}</Badge>
         </div>
       </div>
 
       <div class="grid min-w-0 grid-cols-2 gap-2 px-2 pb-2 md:px-3 md:pb-0">
         <div class="min-w-0">
-          <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">Mode</span>
-          <code class="mn-code mt-1 block truncate text-xs md:text-sm">{{ state.runtime.transparentMode }}</code>
+          <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">模式</span>
+          <code class="mn-code mt-1 block truncate text-xs md:text-sm">TUN</code>
         </div>
         <div class="min-w-0">
-          <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">Core</span>
+          <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">核心</span>
           <code class="mn-code mt-1 block truncate text-xs md:text-sm">{{ state.runtime.singBox }}</code>
         </div>
         <div class="col-span-2 flex min-w-0 items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)] md:text-sm">
@@ -479,7 +484,7 @@ onUnmounted(() => {
         <div ref="advancedDialog" class="mn-chrome absolute inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] rounded-md p-1.5 pb-2" role="dialog" aria-modal="true" aria-label="进阶导航" tabindex="-1">
           <div class="flex items-center justify-between px-3 pb-2 pt-2">
             <div>
-              <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">Advanced workspace</span>
+              <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">更多工作区</span>
               <h2 class="mt-1 text-lg font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">进阶工具</h2>
             </div>
             <Button data-dialog-initial-focus variant="ghost" size="icon" aria-label="关闭进阶导航" @click="closeAdvancedNav()"><X :size="18" /></Button>
@@ -498,6 +503,20 @@ onUnmounted(() => {
               <component :is="item.icon" :size="19" />
               <span>{{ item.label }}</span>
             </button>
+            <Button
+              class="min-h-11"
+              :loading="state.task === '创建 GitHub issue'"
+              @click="createIssue"
+            >
+              <Bug :size="18" />反馈问题
+            </Button>
+            <Button
+              variant="outline"
+              class="min-h-11"
+              @click="openExternal(AUTHOR_WHISPER_URL, '悄悄话')"
+            >
+              <MessageCircle :size="18" />悄悄话
+            </Button>
           </div>
         </div>
       </div>
@@ -513,7 +532,7 @@ onUnmounted(() => {
             <strong class="text-sm font-semibold text-[var(--mn-ink)]">{{ easterEggPayload.title }}</strong>
             <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ easterEggPayload.body }}</p>
             <p class="mt-2 text-[10px] uppercase tracking-[0.16em] text-[var(--mn-ink-faint)]">
-              visitors · SOL · Grok 4.5 · Kimi K3
+              访客 · SOL · Grok 4.5 · Kimi K3
             </p>
           </div>
           <button class="grid size-11 shrink-0 place-items-center rounded-[5px] text-[var(--mn-ink-faint)] transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] hover:text-[var(--mn-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.94]" type="button" aria-label="关闭彩蛋" @click="closeEasterEgg">

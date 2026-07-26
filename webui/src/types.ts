@@ -12,7 +12,7 @@ export type AppPolicy = {
   bypass: string[];
 };
 
-export type TransparentMode = "proxy" | "external-tun" | "hybrid" | "tun";
+export type TransparentMode = "tun";
 
 export type WifiPolicyState = {
   enabled: boolean;

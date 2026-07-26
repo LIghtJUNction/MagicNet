@@ -128,6 +128,18 @@ for package_name, expected_index, expected_outbound in (
             f"{package_name} FakeIP action flow matched index={index} outbound={outbound}"
         )
 
+for domain in ("api.x.com", "upload.twitter.com", "abs.twimg.com"):
+    index, outbound = first_modeled_outbound(
+        domain,
+        "198.18.1.1",
+        "com.twitter.android",
+    )
+    if (index, outbound) != (x_indexes[0], "social-proxy"):
+        raise AssertionError(
+            f"X posting domain {domain} did not keep the package-first social-proxy route: "
+            f"index={index} outbound={outbound}"
+        )
+
 chatgpt_domain_rules = [
     rule
     for rule in route_rules

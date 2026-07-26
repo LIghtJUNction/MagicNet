@@ -301,10 +301,24 @@ assert_mode() {
     jq -e '.dns.strategy == "ipv4_only"' "$config" >/dev/null
 }
 
-assert_mode proxy no missing
-assert_mode external-tun no duplicate
-assert_mode hybrid yes missing
 assert_mode tun yes duplicate
+
+for legacy_mode in proxy external external-tun hybrid; do
+    printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$legacy_mode" >"$MODDIR/.config/magicnet/transparent-mode.conf"
+    normalized_mode=$(
+        import() { :; }
+        info() { :; }
+        warn() { :; }
+        # shellcheck disable=SC1090
+        . "$ROOT_DIR/src/MagicNet/lib/magicnet/common.sh"
+        magicnet_transparent_mode
+    )
+    [ "$normalized_mode" = "tun" ] || {
+        echo "orchestrator smoke failed: legacy mode $legacy_mode did not normalize to tun" >&2
+        exit 1
+    }
+done
+printf 'MAGICNET_TRANSPARENT_MODE=tun\n' >"$MODDIR/.config/magicnet/transparent-mode.conf"
 
 TUN_CANONICAL_CONFIG="$TMPDIR/tun-duplicate-first.json"
 jq 'del(.inbounds[] | select(.type == "tun" and .tag == "tun-in") | .route_exclude_address[3])' \

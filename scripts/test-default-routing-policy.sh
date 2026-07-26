@@ -2155,8 +2155,8 @@ for selector_config in "$selector_jq_populated" "$selector_no_jq_populated"; do
       }]
       and [.outbounds[] | select(.tag == "proxy")] == [{
         type: "selector", tag: "proxy",
-        outbounds: ["proxy-auto", "fixture-node", "direct", "block"],
-        default: "proxy-auto"
+        outbounds: ["fixture-node", "proxy-auto", "direct", "block"],
+        default: "fixture-node"
       }]
     ' "$selector_config" >/dev/null || fail "populated generator changed canonical proxy behavior"
 done

@@ -96,8 +96,8 @@ magicnet_singbox_ai_selectors_canonical() {
                 and $proxy_autos[0].interrupt_exist_connections == false
                 and $proxies[0].type == "selector"
                 and $proxies[0].tag == "proxy"
-                and $proxies[0].outbounds == (["proxy-auto"] + $node_tags + ["direct", "block"])
-                and $proxies[0].default == "proxy-auto"
+                and $proxies[0].outbounds == ($node_tags + ["proxy-auto", "direct", "block"])
+                and $proxies[0].default == $node_tags[0]
               else
                 ($proxy_autos | length) == 0
                   and $proxies[0].type == "selector"
@@ -547,11 +547,11 @@ magicnet_singbox_ai_selectors_canonical() {
             proxy_default = field_string(proxy, "default")
             if (!field_valid || proxy_member_count < 0) bad = 1
             if (node_count > 0) {
-              if (proxy_auto_count != 1 || proxy_default != "proxy-auto" ||
-                  proxy_member_count != node_count + 3 || proxy_member[1] != "proxy-auto" ||
+              if (proxy_auto_count != 1 || proxy_default != node_order[1] ||
+                  proxy_member_count != node_count + 3 || proxy_member[node_count + 1] != "proxy-auto" ||
                   proxy_member[node_count + 2] != "direct" || proxy_member[node_count + 3] != "block") bad = 1
               for (j = 1; j <= node_count; j++) {
-                if (proxy_member[j + 1] != node_order[j]) bad = 1
+                if (proxy_member[j] != node_order[j]) bad = 1
               }
               proxy_auto = proxy_auto_object
               if (field_string(proxy_auto, "type") != "urltest" || !field_valid ||

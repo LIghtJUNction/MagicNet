@@ -81,15 +81,16 @@ fn singbox_dns_config(app: &App, mode: &str, transparent_dns: bool) -> SingboxDn
     singbox_dns_config_from_text(&text, mode, transparent_dns)
 }
 
-fn singbox_dns_config_from_text(text: &str, mode: &str, transparent_dns: bool) -> SingboxDnsConfig {
+fn singbox_dns_config_from_text(
+    text: &str,
+    _mode: &str,
+    transparent_dns: bool,
+) -> SingboxDnsConfig {
     let compact = compact_jsonish(text);
     let parsed = serde_json::from_str::<Value>(text).ok();
     let strategy = singbox_dns_strategy(parsed.as_ref());
     let ipv6_guard = ipv6_guard_status(strategy, parsed.as_ref());
-    let sniff_inbound = match mode {
-        "proxy" | "external-tun" => sniff_rule_has(&compact, "mixed-in"),
-        _ => sniff_rule_has(&compact, "mixed-in") && sniff_rule_has(&compact, "tun-in"),
-    };
+    let sniff_inbound = sniff_rule_has(&compact, "mixed-in") && sniff_rule_has(&compact, "tun-in");
     SingboxDnsConfig {
         valid_json: parsed.is_some(),
         fake_ip: compact.contains("\"type\":\"fakeip\"") && compact.contains("\"tag\":\"fakeip\""),

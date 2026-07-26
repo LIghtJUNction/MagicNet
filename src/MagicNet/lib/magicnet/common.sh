@@ -42,7 +42,8 @@ magicnet_transparent_mode() {
         _mode="${MAGICNET_TRANSPARENT_MODE:-}"
     fi
     case "${_mode:-tun}" in
-        proxy|external-tun|hybrid|tun) printf '%s\n' "${_mode:-tun}" ;;
+        tun) printf '%s\n' "tun" ;;
+        proxy|external|external-tun|hybrid) printf '%s\n' "tun" ;;
         *) printf '%s\n' "tun" ;;
     esac
     unset _mode
@@ -50,7 +51,7 @@ magicnet_transparent_mode() {
 
 magicnet_transparent_set_mode() {
     case "${1:-tun}" in
-        proxy|external-tun|hybrid|tun) _mode="$1" ;;
+        tun) _mode="tun" ;;
         *) return 1 ;;
     esac
     mkdir -p "${MODDIR}/.config/magicnet" || return 1
