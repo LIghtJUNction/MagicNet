@@ -1,13 +1,12 @@
 mod block;
 
 use std::collections::HashSet;
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::service::restart_current_core;
-use crate::{clean_lines, read_kv, run_magicnet_function, write_text_file, App};
+use crate::utils::clean_module_lines;
+use crate::{clean_lines, run_magicnet_function, write_text_file, App};
 
 pub(crate) use block::block_cmd;
 
@@ -39,7 +38,12 @@ fn route_domain(app: &App, args: &[String]) -> Result<(), String> {
     if domain.bytes().any(|byte| byte.is_ascii_whitespace()) {
         return Err(format!("invalid domain suffix: {domain}"));
     }
-    update_line(route_file(app, target)?, domain, args[0] == "add-domain")?;
+    update_line(
+        app,
+        route_file(app, target)?,
+        domain,
+        args[0] == "add-domain",
+    )?;
     route_apply_and_restart(app)?;
     println!("[info] Route rule updated");
     Ok(())
@@ -65,10 +69,7 @@ fn route_usage() -> String {
 
 pub(crate) fn app_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("list") {
-        "list" => {
-            app_list(app);
-            Ok(())
-        }
+        "list" => app_list(app),
         "mode" => app_mode(app, args),
         "add" => app_add(app, args),
         "add-many" => app_add_many(app, args),
@@ -79,18 +80,14 @@ pub(crate) fn app_cmd(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
-fn app_list(app: &App) {
-    let conf = read_kv(app.moddir.join(".config/magicnet/app-mode.conf"));
-    println!(
-        "mode={}",
-        conf.get("MAGICNET_APP_MODE")
-            .map(String::as_str)
-            .unwrap_or("blacklist")
-    );
+fn app_list(app: &App) -> Result<(), String> {
+    let mode = app_mode_value(app)?.unwrap_or_else(|| "blacklist".to_string());
+    println!("mode={mode}");
     println!("proxy apps:");
-    print_lines(app_file(app, "proxy").unwrap());
+    print_app_list_lines(&app_list_lines(app, "proxy")?);
     println!("bypass apps:");
-    print_lines(app_file(app, "bypass").unwrap());
+    print_app_list_lines(&app_list_lines(app, "bypass")?);
+    Ok(())
 }
 
 fn app_mode(app: &App, args: &[String]) -> Result<(), String> {
@@ -99,7 +96,8 @@ fn app_mode(app: &App, args: &[String]) -> Result<(), String> {
         return Err("Usage: cli app mode <blacklist|whitelist>".to_string());
     }
     write_text_file(
-        conf_dir(app).join("app-mode.conf"),
+        app,
+        Path::new(".config/magicnet/app-mode.conf"),
         &format!("MAGICNET_APP_MODE={mode}\n"),
     )?;
     app_apply_and_restart(app)?;
@@ -121,8 +119,8 @@ fn app_add(app: &App, args: &[String]) -> Result<(), String> {
         "bypass" => "proxy",
         _ => return Err("Target must be proxy or bypass".to_string()),
     };
-    update_line(app_file(app, opposite)?, package, false)?;
-    update_line(app_file(app, target)?, package, true)?;
+    update_app_list_line(app, opposite, package, false)?;
+    update_app_list_line(app, target, package, true)?;
     app_apply_and_restart(app)?;
     println!("[info] Added {package} to {target} app list");
     Ok(())
@@ -134,10 +132,10 @@ fn app_add_many(app: &App, args: &[String]) -> Result<(), String> {
         return Err("Usage: cli app add-many <proxy|bypass> <package...>".to_string());
     }
     let opposite = if target == "proxy" { "bypass" } else { "proxy" };
-    let path = app_file(app, target)?;
-    let opposite_path = app_file(app, opposite)?;
-    let mut lines = clean_lines(path.clone());
-    let mut opposite_lines = clean_lines(opposite_path.clone());
+    let target_relative = app_file_relative(target)?;
+    let opposite_relative = app_file_relative(opposite)?;
+    let mut lines = app_list_lines(app, target)?;
+    let mut opposite_lines = app_list_lines(app, opposite)?;
     let mut added = 0usize;
     for package in args.iter().skip(2).map(String::as_str) {
         if !valid_package_name(package) {
@@ -149,10 +147,11 @@ fn app_add_many(app: &App, args: &[String]) -> Result<(), String> {
         }
         opposite_lines.retain(|line| line != package);
     }
-    write_two_files_transactional(
-        &opposite_path,
+    crate::utils::replace_module_text_files_transactionally(
+        app,
+        Path::new(opposite_relative),
         &unique_lines_text(&opposite_lines),
-        &path,
+        Path::new(target_relative),
         &unique_lines_text(&lines),
     )?;
     app_apply_and_restart(app)?;
@@ -171,12 +170,12 @@ fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
     }
     match target {
         Some("proxy" | "bypass") => {
-            update_line(app_file(app, target.unwrap())?, package, false)?;
+            update_app_list_line(app, target.unwrap(), package, false)?;
         }
         Some(_) => return Err("Target must be proxy or bypass".to_string()),
         None => {
-            update_line(app_file(app, "proxy")?, package, false)?;
-            update_line(app_file(app, "bypass")?, package, false)?;
+            update_app_list_line(app, "proxy", package, false)?;
+            update_app_list_line(app, "bypass", package, false)?;
         }
     }
     app_apply_and_restart(app)?;
@@ -238,7 +237,7 @@ fn valid_package_name(package: &str) -> bool {
     count >= 2
 }
 
-pub(super) fn update_line(path: PathBuf, item: &str, add: bool) -> Result<(), String> {
+pub(super) fn update_line(app: &App, path: PathBuf, item: &str, add: bool) -> Result<(), String> {
     let mut lines: Vec<String> = clean_lines(path.clone())
         .into_iter()
         .filter(|line| line != item)
@@ -246,11 +245,14 @@ pub(super) fn update_line(path: PathBuf, item: &str, add: bool) -> Result<(), St
     if add {
         lines.push(item.trim().to_string());
     }
-    write_unique_lines(path, &lines)
+    write_unique_lines(app, path, &lines)
 }
 
-fn write_unique_lines(path: PathBuf, lines: &[String]) -> Result<(), String> {
-    write_text_file(path, &unique_lines_text(lines))
+fn write_unique_lines(app: &App, path: PathBuf, lines: &[String]) -> Result<(), String> {
+    let relative = path
+        .strip_prefix(&app.moddir)
+        .map_err(|_| "refusing to write an app list outside the module root".to_string())?;
+    write_text_file(app, relative, &unique_lines_text(lines))
 }
 
 fn unique_lines_text(lines: &[String]) -> String {
@@ -268,161 +270,59 @@ fn unique_lines_text(lines: &[String]) -> String {
     format!("{}\n", out.join("\n"))
 }
 
-enum FileSnapshot {
-    Missing,
-    Present(Vec<u8>),
-}
-
-fn write_two_files_transactional(
-    first_path: &Path,
-    first_text: &str,
-    second_path: &Path,
-    second_text: &str,
-) -> Result<(), String> {
-    write_two_files_transactional_with_replace(
-        first_path,
-        first_text,
-        second_path,
-        second_text,
-        |source, destination| fs::rename(source, destination),
-    )
-}
-
-fn write_two_files_transactional_with_replace<F>(
-    first_path: &Path,
-    first_text: &str,
-    second_path: &Path,
-    second_text: &str,
-    mut replace: F,
-) -> Result<(), String>
-where
-    F: FnMut(&Path, &Path) -> io::Result<()>,
-{
-    let targets = [first_path, second_path];
-    let contents = [first_text.as_bytes(), second_text.as_bytes()];
-    let snapshots = [file_snapshot(first_path)?, file_snapshot(second_path)?];
-    let stages = [
-        transaction_temp_path(first_path, 1)?,
-        transaction_temp_path(second_path, 2)?,
-    ];
-
-    for (index, stage) in stages.iter().enumerate() {
-        if let Some(parent) = stage.parent() {
-            if let Err(err) = fs::create_dir_all(parent) {
-                let cleanup_errors = cleanup_transaction_temps(&stages);
-                return Err(transaction_error(
-                    format!("mkdir {}: {err}", parent.display()),
-                    cleanup_errors,
-                ));
-            }
-        }
-        if let Err(err) = fs::write(stage, contents[index]) {
-            let cleanup_errors = cleanup_transaction_temps(&stages);
-            return Err(transaction_error(
-                format!("stage {}: {err}", targets[index].display()),
-                cleanup_errors,
-            ));
-        }
-    }
-
-    for index in 0..targets.len() {
-        if let Err(err) = replace(&stages[index], targets[index]) {
-            let mut recovery_errors = Vec::new();
-            for rollback_index in (0..index).rev() {
-                if let Err(restore_err) = restore_file_snapshot(
-                    targets[rollback_index],
-                    &snapshots[rollback_index],
-                    &stages[rollback_index],
-                    &mut replace,
-                ) {
-                    recovery_errors.push(restore_err);
-                }
-            }
-            recovery_errors.extend(cleanup_transaction_temps(&stages));
-            return Err(transaction_error(
-                format!("replace {}: {err}", targets[index].display()),
-                recovery_errors,
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn file_snapshot(path: &Path) -> Result<FileSnapshot, String> {
-    match fs::read(path) {
-        Ok(contents) => Ok(FileSnapshot::Present(contents)),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(FileSnapshot::Missing),
-        Err(err) => Err(format!("snapshot {}: {err}", path.display())),
-    }
-}
-
-fn transaction_temp_path(path: &Path, index: usize) -> Result<PathBuf, String> {
-    let name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| format!("invalid app list path: {}", path.display()))?;
-    Ok(path.with_file_name(format!(
-        ".{name}.magicnet-{}-{index}.tmp",
-        std::process::id()
-    )))
-}
-
-fn restore_file_snapshot<F>(
-    path: &Path,
-    snapshot: &FileSnapshot,
-    stage: &Path,
-    replace: &mut F,
-) -> Result<(), String>
-where
-    F: FnMut(&Path, &Path) -> io::Result<()>,
-{
-    match snapshot {
-        FileSnapshot::Missing => match fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(format!("remove {} during rollback: {err}", path.display())),
-        },
-        FileSnapshot::Present(contents) => {
-            fs::write(stage, contents)
-                .map_err(|err| format!("stage rollback for {}: {err}", path.display()))?;
-            replace(stage, path)
-                .map_err(|err| format!("restore {} during rollback: {err}", path.display()))
-        }
-    }
-}
-
-fn cleanup_transaction_temps(stages: &[PathBuf]) -> Vec<String> {
-    let mut errors = Vec::new();
-    for stage in stages {
-        match fs::remove_file(stage) {
-            Ok(()) => {}
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-            Err(err) => errors.push(format!("remove temporary {}: {err}", stage.display())),
-        }
-    }
-    errors
-}
-
-fn transaction_error(original: String, recovery_errors: Vec<String>) -> String {
-    if recovery_errors.is_empty() {
-        original
-    } else {
-        format!(
-            "{original}; rollback failed: {}",
-            recovery_errors.join("; ")
-        )
-    }
-}
-
 pub(super) fn conf_dir(app: &App) -> PathBuf {
     app.moddir.join(".config/magicnet")
 }
 
-fn app_file(app: &App, target: &str) -> Result<PathBuf, String> {
+fn app_file_relative(target: &str) -> Result<&'static str, String> {
     match target {
-        "proxy" => Ok(conf_dir(app).join("app-proxy.list")),
-        "bypass" => Ok(conf_dir(app).join("app-bypass.list")),
+        "proxy" => Ok(".config/magicnet/app-proxy.list"),
+        "bypass" => Ok(".config/magicnet/app-bypass.list"),
         _ => Err("Target must be proxy or bypass".to_string()),
+    }
+}
+
+fn app_mode_value(app: &App) -> Result<Option<String>, String> {
+    Ok(
+        clean_module_lines(app, Path::new(".config/magicnet/app-mode.conf"))?
+            .into_iter()
+            .filter_map(|line| {
+                let (key, value) = line.split_once('=')?;
+                if key.trim() == "MAGICNET_APP_MODE" {
+                    Some(
+                        value
+                            .trim()
+                            .trim_matches('"')
+                            .trim_matches('\'')
+                            .to_string(),
+                    )
+                } else {
+                    None
+                }
+            })
+            .next_back(),
+    )
+}
+
+fn app_list_lines(app: &App, target: &str) -> Result<Vec<String>, String> {
+    clean_module_lines(app, Path::new(app_file_relative(target)?))
+}
+
+fn update_app_list_line(app: &App, target: &str, item: &str, add: bool) -> Result<(), String> {
+    let relative = app_file_relative(target)?;
+    let mut lines: Vec<String> = app_list_lines(app, target)?
+        .into_iter()
+        .filter(|line| line != item)
+        .collect();
+    if add {
+        lines.push(item.trim().to_string());
+    }
+    write_text_file(app, Path::new(relative), &unique_lines_text(&lines))
+}
+
+fn print_app_list_lines(lines: &[String]) {
+    for line in lines {
+        println!("  {line}");
     }
 }
 
@@ -523,7 +423,11 @@ fn valid_allow_port(port: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::os::unix::fs::symlink;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use crate::App;
 
     use super::*;
 
@@ -539,15 +443,25 @@ mod tests {
     }
 
     #[test]
-    fn two_file_transaction_replaces_both_destinations() {
+    fn app_list_transaction_replaces_both_destinations() {
         let dir = test_dir("success");
-        fs::create_dir_all(&dir).unwrap();
-        let first = dir.join("app-bypass.list");
-        let second = dir.join("app-proxy.list");
+        let module_root = dir.join("module");
+        let config = module_root.join(".config/magicnet");
+        fs::create_dir_all(&config).unwrap();
+        let app = App::for_test(module_root);
+        let first = config.join("app-bypass.list");
+        let second = config.join("app-proxy.list");
         fs::write(&first, "old-bypass\n").unwrap();
         fs::write(&second, "old-proxy\n").unwrap();
 
-        write_two_files_transactional(&first, "new-bypass\n", &second, "new-proxy\n").unwrap();
+        crate::utils::replace_module_text_files_transactionally(
+            &app,
+            Path::new(".config/magicnet/app-bypass.list"),
+            "new-bypass\n",
+            Path::new(".config/magicnet/app-proxy.list"),
+            "new-proxy\n",
+        )
+        .unwrap();
 
         assert_eq!(fs::read_to_string(&first).unwrap(), "new-bypass\n");
         assert_eq!(fs::read_to_string(&second).unwrap(), "new-proxy\n");
@@ -555,43 +469,39 @@ mod tests {
     }
 
     #[test]
-    fn two_file_transaction_rolls_back_when_second_replace_fails() {
-        let dir = test_dir("rollback");
-        fs::create_dir_all(&dir).unwrap();
-        let first = dir.join("app-bypass.list");
-        let second = dir.join("app-proxy.list");
-        fs::write(&first, "old-bypass\n").unwrap();
-        fs::write(&second, "old-proxy\n").unwrap();
-        let mut replace_count = 0usize;
+    fn app_list_rejects_symlinked_app_mode_config() {
+        for link_kind in ["final", "intermediate"] {
+            let dir = test_dir(&format!("app-mode-{link_kind}"));
+            let module_root = dir.join("module");
+            let outside = dir.join("outside");
+            let outside_mode = outside.join("magicnet/app-mode.conf");
+            fs::create_dir_all(outside_mode.parent().unwrap()).unwrap();
+            fs::write(&outside_mode, "MAGICNET_APP_MODE=whitelist\n").unwrap();
 
-        let error = write_two_files_transactional_with_replace(
-            &first,
-            "new-bypass\n",
-            &second,
-            "new-proxy\n",
-            |source, destination| {
-                replace_count += 1;
-                if replace_count == 2 {
-                    Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "injected second replace failure",
-                    ))
-                } else {
-                    fs::rename(source, destination)
+            match link_kind {
+                "final" => {
+                    let mode_path = module_root.join(".config/magicnet/app-mode.conf");
+                    fs::create_dir_all(mode_path.parent().unwrap()).unwrap();
+                    symlink(&outside_mode, &mode_path).unwrap();
                 }
-            },
-        )
-        .unwrap_err();
+                "intermediate" => {
+                    fs::create_dir_all(&module_root).unwrap();
+                    symlink(&outside, module_root.join(".config")).unwrap();
+                }
+                _ => unreachable!(),
+            }
 
-        assert!(error.contains("injected second replace failure"));
-        assert_eq!(fs::read_to_string(&first).unwrap(), "old-bypass\n");
-        assert_eq!(fs::read_to_string(&second).unwrap(), "old-proxy\n");
-        assert!(!fs::read_dir(&dir).unwrap().any(|entry| entry
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .contains(".tmp")));
-        fs::remove_dir_all(dir).unwrap();
+            let app = App::for_test(module_root);
+            assert!(
+                app_list(&app).is_err(),
+                "{link_kind} app-mode symlink was followed"
+            );
+            assert_eq!(
+                fs::read_to_string(&outside_mode).unwrap(),
+                "MAGICNET_APP_MODE=whitelist\n"
+            );
+            fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     #[test]

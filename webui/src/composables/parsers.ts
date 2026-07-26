@@ -118,6 +118,7 @@ export type ConnectionFlowSummary = {
 };
 
 export type ConnectionSnapshot = {
+  /** Raw connection count as reported by sing-box, before dedup/filtering. */
   count: number;
   uploadTotal: number;
   downloadTotal: number;
@@ -154,6 +155,45 @@ export const mcpDefaults: McpState = {
   secretSet: false,
   portOwner: ""
 };
+
+function isMcpIpv4Literal(value: string): boolean {
+  const octets = value.split(".");
+  return octets.length === 4 && octets.every((octet) => (
+    /^(0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255
+  ));
+}
+
+function isMcpIpv6Literal(value: string): boolean {
+  if (!value.includes(":") || !/^[0-9a-f:.]+$/i.test(value)) return false;
+  try {
+    return new URL(`http://[${value}]/`).hostname.startsWith("[");
+  } catch {
+    return false;
+  }
+}
+
+/** Match the backend's bare-IP-literal MCP bind contract. */
+export function isMcpIpLiteral(value: string): boolean {
+  const bind = value.trim();
+  return isMcpIpv4Literal(bind) || isMcpIpv6Literal(bind);
+}
+
+export function isValidMcpPort(value: string): boolean {
+  const port = value.trim();
+  const portNumber = Number(port);
+  return /^\d+$/.test(port) && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
+}
+
+/** Render a device endpoint without producing an ambiguous IPv6 host:port. */
+export function formatMcpHostPort(bind: string, port: string): string {
+  const host = bind.trim();
+  const normalizedPort = port.trim();
+  return isMcpIpv6Literal(host) ? `[${host}]:${normalizedPort}` : `${host}:${normalizedPort}`;
+}
+
+export function formatMcpUrl(bind: string, port: string): string {
+  return `http://${formatMcpHostPort(bind, port)}/mcp`;
+}
 
 export const dnsDefaults: DnsState = {
   profile: "default",
@@ -206,10 +246,21 @@ export function parseWifiPolicy(text: string): WifiPolicyState {
       section = "bssids";
       return;
     }
+    // The ssid/bssid lists are terminal, so once inside one, every remaining
+    // line is a list entry — an SSID name may legitimately contain '=', which
+    // must not be misread as a key/value field (that dropped it and every SSID
+    // after it).
+    if (section === "ssids") {
+      policy.ssids.push(line);
+      return;
+    }
+    if (section === "bssids") {
+      policy.bssids.push(line);
+      return;
+    }
     const [key, ...valueParts] = line.split("=");
     const value = valueParts.join("=").trim();
     if (valueParts.length) {
-      section = null;
       if (key === "enabled") policy.enabled = value === "1";
       else if (key === "policy_mode") {
         policy.policyMode = value === "whitelist" ? "whitelist" : "blacklist";
@@ -232,8 +283,6 @@ export function parseWifiPolicy(text: string): WifiPolicyState {
       }
       return;
     }
-    if (section === "ssids") policy.ssids.push(line);
-    else if (section === "bssids") policy.bssids.push(line);
   });
   return policy;
 }
@@ -589,7 +638,6 @@ export function parseSubs(
 
 export function parseMcp(text: string, previous: McpState): McpState {
   const next = { ...previous, portOwner: "" };
-  let explicitUrl = "";
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (line.startsWith("enabled=")) next.enabled = line.slice(8) !== "0";
@@ -598,9 +646,8 @@ export function parseMcp(text: string, previous: McpState): McpState {
     else if (line.startsWith("pid=")) next.pid = line.slice(4);
     else if (line.startsWith("secret_set=")) next.secretSet = line.slice(11) === "1";
     else if (line.startsWith("port_owner=")) next.portOwner = line.slice(11);
-    else if (line.startsWith("url=")) explicitUrl = line.slice(4);
   });
-  next.url = explicitUrl || `http://${next.bind}:${next.port}/mcp`;
+  next.url = formatMcpUrl(next.bind, next.port);
   return next;
 }
 

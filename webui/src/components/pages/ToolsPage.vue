@@ -8,7 +8,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, readClipboardText, shellQuote as quoteShell } from "@/utils";
+import { copyText, readClipboardText, redactedCliPreview } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import DnsToolsCard from "./DnsToolsCard.vue";
 import EcaptureToolsCard from "./EcaptureToolsCard.vue";
@@ -19,7 +19,19 @@ import { summarizeBackupPayload } from "./backupPayloadSummary";
 import type { PendingToolAction } from "./toolActions";
 import { formatWarpImportSummaryReport, summarizeWarpImport, warpImportTone } from "./warpImportSummary";
 
-const { state, runShell, runCli, refreshDns, refreshMcp, refreshTopology, refreshSysroute, refreshWarp, shellQuote } = useMagicNet();
+const {
+  state,
+  runCli,
+  runPrivateCli,
+  stagePrivatePayload,
+  removePrivatePayload,
+  refreshDns,
+  refreshMcp,
+  refreshTopology,
+  refreshSysroute,
+  refreshWarp,
+  shellQuote,
+} = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const toolsRefreshing = ref(false);
 const pendingToolAction = ref<PendingToolAction | null>(null);
@@ -61,14 +73,21 @@ async function confirmToolAction(): Promise<void> {
 async function exportBackup(): Promise<void> {
   await withAction("backup-export", async () => {
     const securityCode = state.backup.exportPassword.trim();
-    const text = await runCli(securityCode ? `backup export ${shellQuote(securityCode)}` : "backup export", "导出配置备份");
-    const payload = text.trim().split(/\s+/).pop() || "";
-    if (!payload || payload.includes("[error]")) {
-      state.backup.status = "导出失败";
+    const preview = redactedCliPreview("backup export [备份内容和安全码已隐藏]");
+    state.output = "正在安全导出备份...";
+    const outcome = await runPrivateCli(
+      securityCode ? `backup export ${shellQuote(securityCode)}` : "backup export",
+      "导出配置备份",
+      preview,
+    );
+    const payload = outcome.ok ? outcome.stdout.trim().split(/\s+/).pop() || "" : "";
+    if (!payload) {
+      state.backup.status = "导出失败，请检查设备状态后重试。";
+      state.output = state.backup.status;
       return;
     }
     state.backup.payload = payload;
-    state.backup.status = await copyText(payload) ? "已导出并复制到剪切板" : "已导出，剪切板不可用";
+    state.backup.status = "已导出到备份输入框；为保护敏感内容，未自动复制到剪切板。";
     state.output = state.backup.status;
   });
 }
@@ -107,14 +126,30 @@ async function copyBackupSummary(): Promise<void> {
 
 async function runRestoreBackup(payload: string): Promise<void> {
   await withAction("backup-restore", async () => {
-    const securityCode = state.backup.restorePassword.trim() || "-";
-    const path = await writeBackupPayloadFile(payload);
+    const rawCode = state.backup.restorePassword.trim();
+    const securityCode = rawCode || "-";
+    const staged = await stageBackupPayload(payload);
+    if (!staged) {
+      state.backup.status = "安全临时数据写入失败，导入未开始。";
+      state.output = state.backup.status;
+      return;
+    }
     try {
-      const text = await runCli(`backup restore-file ${shellQuote(securityCode)} ${shellQuote(path)}`, "导入配置备份");
-      state.backup.status = text.includes("Backup restored") ? "导入成功，运行配置已应用" : "导入失败，请检查安全码和备份内容";
-      state.output = `${state.backup.status}\n\n${text}`;
+      const outcome = await runPrivateCli(
+        `backup restore-file ${shellQuote(securityCode)} ${shellQuote(staged.path)}`,
+        "导入配置备份",
+        redactedCliPreview("backup restore-file [安全码和备份内容已隐藏]"),
+      );
+      state.backup.status = outcome.ok && outcome.stdout.includes("[info] Backup restored")
+        ? "导入成功，运行配置已应用"
+        : "导入失败，请检查安全码和备份内容后重试。";
+      state.output = state.backup.status;
     } finally {
-      await runShell(`rm -f ${quoteShell(path)}`, "清理备份导入文件", true);
+      const cleaned = await removePrivatePayload("tmp", staged.basename, "备份导入载荷");
+      if (!cleaned) {
+        state.backup.status = `${state.backup.status} 私有临时数据清理未确认。`;
+        state.output = state.backup.status;
+      }
     }
   });
 }
@@ -140,27 +175,58 @@ function restoreBackup(): void {
   });
 }
 
-async function writeWarpImportFile(payload: string): Promise<string> {
-  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const path = `/data/adb/modules/MagicNet/.tmp/webui-warp-${stamp}.conf`;
-  await runShell(`mkdir -p /data/adb/modules/MagicNet/.tmp; : > ${quoteShell(path)}`, "准备 WARP 导入文件", true);
-  const chunkSize = 2800;
-  for (let offset = 0; offset < payload.length; offset += chunkSize) {
-    const chunk = payload.slice(offset, offset + chunkSize);
-    await runShell(`printf %s ${quoteShell(chunk)} >> ${quoteShell(path)}`, "写入 WARP 导入文件", true);
-  }
-  await runShell(`printf '\\n' >> ${quoteShell(path)}`, "完成 WARP 导入文件", true);
-  return path;
+function privatePayloadBasename(prefix: string, extension: string): string {
+  return prefix
+    + "-"
+    + Date.now().toString(36)
+    + "-"
+    + Math.random().toString(36).slice(2, 8)
+    + "."
+    + extension;
+}
+
+async function stageBackupPayload(payload: string) {
+  state.backup.status = "正在安全暂存备份数据...";
+  state.output = "正在安全暂存备份数据...";
+  return stagePrivatePayload(
+    "tmp",
+    privatePayloadBasename("webui-backup-restore", "b64"),
+    payload,
+    "备份导入载荷",
+  );
 }
 
 async function runImportWarp(payload: string): Promise<void> {
   await withAction("warp-import", async () => {
-    const path = await writeWarpImportFile(payload);
-    const text = await runCli(`warp import-file ${shellQuote(path)}`, "导入并启用 WARP");
-    await runShell(`rm -f ${quoteShell(path)}`, "清理 WARP 导入文件", true);
-    state.warp.importText = "";
-    state.output = text.includes("[error]") ? text : "WARP 配置已导入并应用。";
-    await refreshWarp(true);
+    const staged = await stagePrivatePayload(
+      "tmp",
+      privatePayloadBasename("webui-warp", "conf"),
+      payload,
+      "WARP 导入载荷",
+    );
+    if (!staged) {
+      state.output = "安全临时数据写入失败，WARP 导入未开始。";
+      return;
+    }
+    try {
+      const outcome = await runPrivateCli(
+        "warp import-file " + shellQuote(staged.path),
+        "导入并启用 WARP",
+        redactedCliPreview("warp import-file [private-payload]"),
+      );
+      if (!outcome.ok) {
+        state.output = "WARP 导入失败，请检查配置后重试。";
+        return;
+      }
+      state.warp.importText = "";
+      state.output = "WARP 配置已导入并应用。";
+      await refreshWarp(true);
+    } finally {
+      const cleaned = await removePrivatePayload("tmp", staged.basename, "WARP 导入载荷");
+      if (!cleaned) {
+        state.output = state.output + "\n\nWARP 私有临时数据清理未确认。";
+      }
+    }
   });
 }
 
@@ -228,20 +294,6 @@ function selectWarpGlobal(enabled: boolean): void {
   });
 }
 
-async function writeBackupPayloadFile(payload: string): Promise<string> {
-  const path = `/data/adb/modules/MagicNet/.tmp/webui-backup-restore.b64`;
-  state.backup.status = `正在写入备份 ${payload.length} 字符`;
-  state.output = "正在分块写入备份文件...";
-  await runShell(`mkdir -p /data/adb/modules/MagicNet/.tmp; : > ${quoteShell(path)}`, "准备导入文件", true);
-  const chunkSize = 3800;
-  for (let offset = 0; offset < payload.length; offset += chunkSize) {
-    const chunk = payload.slice(offset, offset + chunkSize);
-    await runShell(`printf %s ${quoteShell(chunk)} >> ${quoteShell(path)}`, "写入导入文件", true);
-    state.backup.status = `正在写入备份 ${Math.min(offset + chunk.length, payload.length)} / ${payload.length}`;
-  }
-  await runShell(`printf '\\n' >> ${quoteShell(path)}`, "完成导入文件", true);
-  return path;
-}
 </script>
 
 <template>
@@ -297,7 +349,7 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
         <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">导出会打包订阅、应用名单、黑名单、路由规则等用户配置。安全码可留空；设置后导入时必须填写一致。</p>
         <div class="grid gap-2 sm:grid-cols-2">
           <Input v-model="state.backup.exportPassword" type="password" autocomplete="new-password" placeholder="导出安全码，可留空" />
-          <Button :loading="isRunning('backup-export')" @click="exportBackup"><Download :size="16" />导出并复制</Button>
+          <Button :loading="isRunning('backup-export')" @click="exportBackup"><Download :size="16" />导出到备份框</Button>
         </div>
         <Textarea v-model="state.backup.payload" class="min-h-28" spellcheck="false" placeholder="备份字符串会出现在这里，也可以手动粘贴剪切板内容" />
         <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">

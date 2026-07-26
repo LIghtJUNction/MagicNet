@@ -1,3 +1,8 @@
+import {
+  buildPrivateSubscriptionApplyCommand,
+  redactedCliPreview,
+} from "../../utils.ts";
+
 export type SubscriptionPreview = {
   key: string;
   index: number;
@@ -74,56 +79,22 @@ export function reconcileSubscriptionEditor(
   };
 }
 
-export type SubscriptionPayloadPlan = {
-  prepareCommand: string;
-  appendCommands: string[];
-  cleanupCommand: string;
-};
-
 export type SubscriptionApplyLaunch = {
   args: string;
   displayArgs: string;
   preview: string;
-  cleanupCommand: string;
+  lifecycleArgs: string;
 };
 
-export function buildSubscriptionPayloadPlan(
-  encoded: string,
-  directory: string,
-  payload: string,
-  chunkSize = 1400,
-): SubscriptionPayloadPlan {
-  const chunks: string[] = [];
-  for (let offset = 0; offset < encoded.length; offset += chunkSize) {
-    chunks.push(encoded.slice(offset, offset + chunkSize));
-  }
-  const [first = "", ...rest] = chunks;
-  const quotedDirectory = quoteShell(directory);
-  const quotedPayload = quoteShell(payload);
-  const stalePattern = `${quotedDirectory}/magicnet-webui-*.b64`;
-  const prepareCommand = [
-    "umask 077",
-    `mkdir -p ${quotedDirectory}`,
-    `chmod 700 ${quotedDirectory}`,
-    `for stale in ${stalePattern}; do [ ! -f "$stale" ] || rm -f "$stale" || exit 1; done`,
-    `: > ${quotedPayload}`,
-    `chmod 600 ${quotedPayload}`,
-    `printf %s ${quoteShell(first)} >> ${quotedPayload}`,
-  ].join(" && ");
+export function buildSubscriptionApplyLaunch(basename: string): SubscriptionApplyLaunch {
   return {
-    prepareCommand,
-    appendCommands: rest.map((chunk) => `umask 077 && printf %s ${quoteShell(chunk)} >> ${quotedPayload}`),
-    cleanupCommand: `rm -f ${quotedPayload}`,
-  };
-}
-
-export function buildSubscriptionApplyLaunch(payload: string): SubscriptionApplyLaunch {
-  const quotedPayload = quoteShell(payload);
-  return {
-    args: `sub apply-file sing-box "$(cat ${quotedPayload})"`,
-    displayArgs: "sub apply-file sing-box [redacted-payload]",
-    preview: "su -M -c 'magicnet sub apply-file sing-box [redacted-payload]'",
-    cleanupCommand: `rm -f ${quotedPayload}`,
+    args: buildPrivateSubscriptionApplyCommand(basename),
+    displayArgs: "webui payload apply-subscription [private-payload]",
+    preview: redactedCliPreview("webui payload apply-subscription [private-payload]"),
+    // Existing lifecycle reconciliation recognises the public subscription
+    // operation, while the actual command stays private and no payload path is
+    // rendered into task state.
+    lifecycleArgs: "sub apply-file sing-box [redacted-payload]",
   };
 }
 
@@ -260,8 +231,4 @@ function isHttpUrl(line: string): boolean {
 
 function uniqueNonEmpty(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
-}
-
-function quoteShell(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
 }

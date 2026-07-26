@@ -77,16 +77,24 @@ const advancedDialog = ref<HTMLElement | null>(null);
 const advancedNavTrigger = ref<HTMLElement | null>(null);
 const easterEggVisitors = [
   {
+    name: "SOL",
     title: "准备好你的太阳镜 😎",
     body: "SOL 到此一游 · 光太亮，别直视内核。",
   },
   {
+    name: "Grok 4.5",
     title: "Grok 4.5 到此一游 ✨",
     body: "xAI 路过 MagicNet · 路由已嗅探，彩蛋已落盘。",
   },
   {
+    name: "Kimi K3",
     title: "Kimi K3 到此一游 🌙",
     body: "月之暗面打卡成功 · 上下文很长，短签也行。",
+  },
+  {
+    name: "Fable 5",
+    title: "Fable 5 到此一游 📖",
+    body: "Claude Fable 5 翻过这页 · 故事继续，彩蛋已签收。",
   },
 ] as const;
 
@@ -528,8 +536,16 @@ onUnmounted(() => {
           <div class="min-w-0 flex-1">
             <strong class="text-sm font-semibold text-[var(--mn-ink)]">{{ easterEggPayload.title }}</strong>
             <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ easterEggPayload.body }}</p>
-            <p class="mt-2 text-[10px] uppercase tracking-[0.16em] text-[var(--mn-ink-faint)]">
-              访客 · SOL · Grok 4.5 · Kimi K3
+            <p class="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] uppercase tracking-[0.16em] text-[var(--mn-ink-faint)]">
+              <span>访客</span>
+              <template v-for="(visitor, index) in easterEggVisitors" :key="visitor.name">
+                <span aria-hidden="true" class="opacity-50">·</span>
+                <span
+                  :class="index === easterEggShownIndex
+                    ? 'rounded-full bg-[var(--mn-cactus)] px-1.5 py-0.5 font-semibold text-[var(--mn-on-accent)]'
+                    : ''"
+                >{{ visitor.name }}</span>
+              </template>
             </p>
           </div>
           <button class="grid size-11 shrink-0 place-items-center rounded-[5px] text-[var(--mn-ink-faint)] transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] hover:text-[var(--mn-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.94]" type="button" aria-label="关闭彩蛋" @click="closeEasterEgg">

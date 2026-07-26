@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
+import { computed, onActivated, onDeactivated, onUnmounted, ref } from "vue";
 import { Copy, FileText, Pause, Play, RefreshCw } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -66,6 +66,13 @@ async function refreshLogs(): Promise<void> {
   });
 }
 
+function startTimer(): void {
+  stopTimer();
+  timer = window.setInterval(() => {
+    if (!isRunning("runtime-logs")) void refreshLogs();
+  }, 5000);
+}
+
 function toggleAutoRefresh(): void {
   autoRefresh.value = !autoRefresh.value;
   if (!autoRefresh.value) {
@@ -73,9 +80,7 @@ function toggleAutoRefresh(): void {
     return;
   }
   void refreshLogs();
-  timer = window.setInterval(() => {
-    if (!isRunning("runtime-logs")) void refreshLogs();
-  }, 5000);
+  startTimer();
 }
 
 async function copyLogs(): Promise<void> {
@@ -117,6 +122,14 @@ function stopTimer(): void {
   timer = 0;
 }
 
+// Under <KeepAlive> the panel is deactivated (not unmounted) on tab switch, so
+// stop polling when hidden — otherwise it keeps firing root commands and
+// overwriting the global status/output from an off-screen tab — and resume it
+// on return if auto-refresh is still toggled on.
+onDeactivated(stopTimer);
+onActivated(() => {
+  if (autoRefresh.value) startTimer();
+});
 onUnmounted(stopTimer);
 </script>
 

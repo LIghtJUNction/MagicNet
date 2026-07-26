@@ -6,6 +6,7 @@ import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { formatMcpHostPort, isMcpIpLiteral, isValidMcpPort } from "@/composables/parsers";
 import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import { buildMcpConnectionPlan } from "./mcpConnectionPlan";
@@ -33,7 +34,7 @@ const mcpInsight = computed(() => {
   if (!state.mcp.enabled) return { tone: "warning", title: "MCP 未启用", detail: "启用后可通过 adb forward 连接电脑侧工具。" };
   if (state.mcp.pid === "stopped") return { tone: "warning", title: "MCP 已启用但未运行", detail: "可直接启动 MCP，或保存配置后重启。" };
   if (!state.mcp.secretSet) return { tone: "warning", title: "MCP secret 未设置", detail: "连接前需要在设备侧读取 secret。" };
-  return { tone: "success", title: "MCP 可连接", detail: `${state.mcp.bind}:${state.mcp.port} 正在运行，电脑侧需要 adb forward。` };
+  return { tone: "success", title: "MCP 可连接", detail: `${formatMcpHostPort(state.mcp.bind, state.mcp.port)} 正在运行，电脑侧需要 adb forward。` };
 });
 
 watch(() => state.mcp.bind, (value) => { mcpBind.value = value; });
@@ -44,12 +45,11 @@ watch([mcpBind, mcpPort], () => { copied.value = false; });
 function validateMcpEndpoint(): { bind: string; port: string } | null {
   const bind = mcpBind.value.trim();
   const port = mcpPort.value.trim();
-  if (!bind || !/^[A-Za-z0-9_.:-]+$/.test(bind)) {
-    state.output = "MCP host 格式不对。常用值：127.0.0.1 或 0.0.0.0。";
+  if (!isMcpIpLiteral(bind)) {
+    state.output = "MCP host 必须是 IPv4 或 IPv6 字面量，例如 127.0.0.1、0.0.0.0 或 ::1；不支持 hostname/localhost。";
     return null;
   }
-  const portNumber = Number(port);
-  if (!/^\d+$/.test(port) || !Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
+  if (!isValidMcpPort(port)) {
     state.output = "MCP port 必须是 1-65535 的数字。";
     return null;
   }

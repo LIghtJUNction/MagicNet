@@ -42,6 +42,31 @@ export function parseCurrentNode(text: string): string {
     || "";
 }
 
+/**
+ * The genuinely lowest-latency usable entry, regardless of how the caller
+ * ordered `entries`. Single definition shared by the stats panel and the
+ * switch plan so the two can never disagree about "fastest".
+ */
+export function fastestEntry(entries: NodeDelayEntry[]): NodeDelayEntry | null {
+  return extremeEntry(entries, (candidate, best) => candidate < best);
+}
+
+export function slowestEntry(entries: NodeDelayEntry[]): NodeDelayEntry | null {
+  return extremeEntry(entries, (candidate, best) => candidate > best);
+}
+
+function extremeEntry(
+  entries: NodeDelayEntry[],
+  beats: (candidateMillis: number, bestMillis: number) => boolean
+): NodeDelayEntry | null {
+  let best: NodeDelayEntry | null = null;
+  for (const entry of entries) {
+    if (entry.delayMillis === null) continue;
+    if (best === null || beats(entry.delayMillis, best.delayMillis as number)) best = entry;
+  }
+  return best;
+}
+
 export function buildNodeDelayStats(entries: NodeDelayEntry[]): NodeDelayStats {
   const usable = entries.filter((entry) => entry.delayMillis !== null);
   const averageMillis = usable.length
@@ -58,8 +83,8 @@ export function buildNodeDelayStats(entries: NodeDelayEntry[]): NodeDelayStats {
     averageMillis,
     medianMillis,
     usablePercent: entries.length ? Math.round((usable.length / entries.length) * 100) : 0,
-    fastest: usable[0] || null,
-    slowest: usable[usable.length - 1] || null
+    fastest: fastestEntry(usable),
+    slowest: slowestEntry(usable)
   };
 }
 

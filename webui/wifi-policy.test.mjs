@@ -32,4 +32,17 @@ const fallback = parseWifiPolicy("current_mode=unexpected\ninterval_seconds=1\n"
 assert.equal(fallback.currentMode, "unavailable");
 assert.equal(fallback.intervalSeconds, 5);
 
+// SSID names may contain "=" — they must not be misparsed as key/value fields,
+// which previously dropped that SSID and every SSID listed after it.
+const withEquals = parseWifiPolicy(`
+enabled=1
+ssid entries:
+Guest=WiFi
+Normal
+bssid entries:
+aa:bb:cc:dd:ee:ff
+`);
+assert.deepEqual(withEquals.ssids, ["Guest=WiFi", "Normal"]);
+assert.deepEqual(withEquals.bssids, ["aa:bb:cc:dd:ee:ff"]);
+
 console.log("Wi-Fi policy parser tests passed");

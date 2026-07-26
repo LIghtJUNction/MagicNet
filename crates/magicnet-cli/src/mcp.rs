@@ -1,8 +1,8 @@
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Read;
-use std::net::TcpListener;
-use std::os::unix::fs::PermissionsExt;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -13,69 +13,117 @@ use crate::{read_kv, App};
 
 const DEFAULT_BIND: &str = "127.0.0.1";
 const DEFAULT_PORT: &str = "8766";
+const MAX_SECRET_BYTES: usize = 256;
+const MCP_CONF: &str = ".config/magicnet/mcp.conf";
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct McpConfig {
-    enabled: String,
-    bind: String,
-    port: String,
+    enabled: bool,
+    bind: IpAddr,
+    port: u16,
     secret: String,
+}
+
+impl Default for McpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            port: DEFAULT_PORT.parse().expect("default MCP port is valid"),
+            secret: String::new(),
+        }
+    }
+}
+
+impl McpConfig {
+    fn from_fields(enabled: &str, bind: &str, port: &str, secret: &str) -> Result<Self, String> {
+        Ok(Self {
+            enabled: parse_enabled(enabled)?,
+            bind: parse_bind(bind)?,
+            port: parse_port(port)?,
+            secret: validate_secret(secret)?.to_string(),
+        })
+    }
+
+    fn address(&self) -> SocketAddr {
+        SocketAddr::new(self.bind, self.port)
+    }
+
+    fn url(&self) -> String {
+        format!("http://{}/mcp", self.address())
+    }
+
+    fn enabled_value(&self) -> &'static str {
+        if self.enabled {
+            "1"
+        } else {
+            "0"
+        }
+    }
+
+    fn validate_for_write(&self) -> Result<(), String> {
+        // Every field is checked at the write sink. The first three are typed
+        // in memory, while the secret remains shell-sensitive text.
+        parse_enabled(self.enabled_value())?;
+        parse_bind(&self.bind.to_string())?;
+        parse_port(&self.port.to_string())?;
+        validate_secret(&self.secret)?;
+        Ok(())
+    }
 }
 
 pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
         "status" => {
             let config = load(app);
-            println!("enabled={}", config.enabled);
+            println!("enabled={}", config.enabled_value());
             println!("bind={}", config.bind);
             println!("port={}", config.port);
             println!("secret_set={}", (!config.secret.is_empty()) as u8);
             if let Some(pid) = live_pid(pid_path(app)) {
                 println!("pid={pid}");
-                println!("url=http://{}:{}/mcp", config.bind, config.port);
+                println!("url={}", config.url());
             } else {
                 println!("pid=stopped");
-                if let Some(owner) = port_owner(&config.bind, &config.port) {
+                if let Some(owner) = port_owner(config.address()) {
                     println!("port_owner={owner}");
                 }
             }
             Ok(())
         }
         "enable" => {
-            let current = load(app);
-            let bind = args.get(1).map(String::as_str).unwrap_or(&current.bind);
-            let port = args.get(2).map(String::as_str).unwrap_or(&current.port);
-            validate_port(port)?;
-            let secret = ensure_secret(app, &current)?;
-            write_conf(app, "1", bind, port, &secret)?;
+            let mut config = load(app);
+            config.enabled = true;
+            apply_endpoint_args(&mut config, args)?;
+            ensure_secret(&mut config);
+            write_conf(app, &config)?;
             start(app)
         }
         "disable" => {
-            let config = load(app);
-            write_conf(app, "0", &config.bind, &config.port, &config.secret)?;
+            let mut config = load(app);
+            config.enabled = false;
+            write_conf(app, &config)?;
             stop(app)
         }
         "set" => {
-            let current = load(app);
-            let bind = args.get(1).map(String::as_str).unwrap_or(&current.bind);
-            let port = args.get(2).map(String::as_str).unwrap_or(&current.port);
-            validate_port(port)?;
-            let secret = ensure_secret(app, &current)?;
-            write_conf(app, &current.enabled, bind, port, &secret)?;
-            println!("[info] MCP endpoint set: http://{bind}:{port}/mcp");
+            let mut config = load(app);
+            apply_endpoint_args(&mut config, args)?;
+            ensure_secret(&mut config);
+            write_conf(app, &config)?;
+            println!("[info] MCP endpoint set: {}", config.url());
             Ok(())
         }
         "secret" => {
-            let config = load(app);
-            let secret = ensure_secret(app, &config)?;
-            write_conf(app, &config.enabled, &config.bind, &config.port, &secret)?;
-            println!("{secret}");
+            let mut config = load(app);
+            ensure_secret(&mut config);
+            write_conf(app, &config)?;
+            println!("{}", config.secret);
             Ok(())
         }
         "rotate-secret" => {
-            let config = load(app);
-            let secret = generate_secret();
-            write_conf(app, &config.enabled, &config.bind, &config.port, &secret)?;
+            let mut config = load(app);
+            config.secret = generate_secret();
+            write_conf(app, &config)?;
             if live_pid(pid_path(app)).is_some() {
                 let _ = stop(app);
                 start(app)?;
@@ -105,11 +153,16 @@ pub(crate) fn status(app: &App) -> (String, String, String, String) {
     let pid = live_pid(pid_path(app))
         .map(|value| value.to_string())
         .unwrap_or_else(|| "stopped".to_string());
-    (config.enabled, config.bind, config.port, pid)
+    (
+        config.enabled_value().to_string(),
+        config.bind.to_string(),
+        config.port.to_string(),
+        pid,
+    )
 }
 
 fn conf_path(app: &App) -> PathBuf {
-    app.moddir.join(".config/magicnet/mcp.conf")
+    app.moddir.join(MCP_CONF)
 }
 
 fn pid_path(app: &App) -> PathBuf {
@@ -120,69 +173,59 @@ fn pid_path(app: &App) -> PathBuf {
 }
 
 fn load(app: &App) -> McpConfig {
-    let conf = read_kv(conf_path(app));
-    McpConfig {
-        enabled: conf
-            .get("MAGICNET_MCP_ENABLED")
-            .cloned()
-            .unwrap_or_else(|| "0".to_string()),
-        bind: conf
-            .get("MAGICNET_MCP_BIND")
-            .cloned()
-            .unwrap_or_else(|| DEFAULT_BIND.to_string()),
-        port: conf
-            .get("MAGICNET_MCP_PORT")
-            .cloned()
-            .unwrap_or_else(|| DEFAULT_PORT.to_string()),
-        secret: conf.get("MAGICNET_MCP_SECRET").cloned().unwrap_or_default(),
-    }
+    load_config(&read_kv(conf_path(app)))
 }
 
-fn write_conf(
-    app: &App,
-    enabled: &str,
-    bind: &str,
-    port: &str,
-    secret: &str,
-) -> Result<(), String> {
-    let path = conf_path(app);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
-    }
-    fs::write(
-        &path,
-        format!(
-            "MAGICNET_MCP_ENABLED={enabled}\nMAGICNET_MCP_BIND={bind}\nMAGICNET_MCP_PORT={port}\nMAGICNET_MCP_SECRET={secret}\n"
+fn load_config(conf: &HashMap<String, String>) -> McpConfig {
+    // Legacy values are untrusted because mcp.conf is shell-sourced. A single
+    // malformed field yields a fully safe, deterministic configuration rather
+    // than being copied into the next write.
+    McpConfig::from_fields(
+        conf.get("MAGICNET_MCP_ENABLED")
+            .map(String::as_str)
+            .unwrap_or("0"),
+        conf.get("MAGICNET_MCP_BIND")
+            .map(String::as_str)
+            .unwrap_or(DEFAULT_BIND),
+        conf.get("MAGICNET_MCP_PORT")
+            .map(String::as_str)
+            .unwrap_or(DEFAULT_PORT),
+        conf.get("MAGICNET_MCP_SECRET")
+            .map(String::as_str)
+            .unwrap_or_default(),
+    )
+    .unwrap_or_default()
+}
+
+fn write_conf(app: &App, config: &McpConfig) -> Result<(), String> {
+    config.validate_for_write()?;
+    crate::write_secret_file(
+        app,
+        Path::new(MCP_CONF),
+        &format!(
+            "MAGICNET_MCP_ENABLED={}\nMAGICNET_MCP_BIND={}\nMAGICNET_MCP_PORT={}\nMAGICNET_MCP_SECRET={}\n",
+            config.enabled_value(),
+            config.bind,
+            config.port,
+            config.secret
         ),
     )
-    .map_err(|err| format!("write mcp.conf: {err}"))?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
-        .map_err(|err| format!("chmod mcp.conf: {err}"))
 }
 
 fn start(app: &App) -> Result<(), String> {
     let mut config = load(app);
-    if config.secret.is_empty() {
-        config.secret = generate_secret();
-        write_conf(
-            app,
-            &config.enabled,
-            &config.bind,
-            &config.port,
-            &config.secret,
-        )?;
-    }
+    ensure_secret(&mut config);
+    // Persist only the sanitized typed configuration. This also repairs a
+    // legacy unsafe mcp.conf before the server is launched.
+    write_conf(app, &config)?;
     if let Some(pid) = live_pid(pid_path(app)) {
         println!("[info] MCP server already running: {pid}");
         return mcp(app, &[String::from("status")]);
     }
-    if let Err(err) = TcpListener::bind(format!("{}:{}", config.bind, config.port)) {
-        let owner =
-            port_owner(&config.bind, &config.port).unwrap_or_else(|| "unknown owner".to_string());
-        return Err(format!(
-            "MCP port unavailable: {}:{}: {err}; {owner}",
-            config.bind, config.port
-        ));
+    let address = config.address();
+    if let Err(err) = TcpListener::bind(address) {
+        let owner = port_owner(address).unwrap_or_else(|| "unknown owner".to_string());
+        return Err(format!("MCP port unavailable: {address}: {err}; {owner}",));
     }
     let target = app.moddir.join("bin/magicnet-mcp-server");
     if !target.exists() {
@@ -202,8 +245,8 @@ fn start(app: &App) -> Result<(), String> {
         .map_err(|err| format!("clone mcp log: {err}"))?;
     let child = Command::new(&target)
         .env("MODDIR", &app.moddir)
-        .env("MAGICNET_MCP_BIND", &config.bind)
-        .env("MAGICNET_MCP_PORT", &config.port)
+        .env("MAGICNET_MCP_BIND", config.bind.to_string())
+        .env("MAGICNET_MCP_PORT", config.port.to_string())
         .env("MAGICNET_MCP_SECRET", &config.secret)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
@@ -214,10 +257,7 @@ fn start(app: &App) -> Result<(), String> {
     fs::write(pid_path(app), format!("{pid}\n")).map_err(|err| format!("write pid: {err}"))?;
     thread::sleep(Duration::from_millis(350));
     if Path::new("/proc").join(pid.to_string()).exists() {
-        println!(
-            "[info] MCP server started: http://{}:{}/mcp",
-            config.bind, config.port
-        );
+        println!("[info] MCP server started: {}", config.url());
         Ok(())
     } else {
         Err(format!(
@@ -227,13 +267,20 @@ fn start(app: &App) -> Result<(), String> {
     }
 }
 
-fn ensure_secret(app: &App, config: &McpConfig) -> Result<String, String> {
-    if !config.secret.is_empty() {
-        return Ok(config.secret.clone());
+fn apply_endpoint_args(config: &mut McpConfig, args: &[String]) -> Result<(), String> {
+    if let Some(bind) = args.get(1) {
+        config.bind = parse_bind(bind)?;
     }
-    let secret = generate_secret();
-    write_conf(app, &config.enabled, &config.bind, &config.port, &secret)?;
-    Ok(secret)
+    if let Some(port) = args.get(2) {
+        config.port = parse_port(port)?;
+    }
+    Ok(())
+}
+
+fn ensure_secret(config: &mut McpConfig) {
+    if config.secret.is_empty() {
+        config.secret = generate_secret();
+    }
 }
 
 fn generate_secret() -> String {
@@ -296,21 +343,49 @@ fn live_pid(pid_file: PathBuf) -> Option<i32> {
     exe.contains("magicnet-mcp-server").then_some(pid)
 }
 
-fn validate_port(port: &str) -> Result<(), String> {
-    match port.parse::<u16>() {
-        Ok(0) | Err(_) => Err(format!("invalid MCP port: {port}")),
-        Ok(_) => Ok(()),
+fn parse_enabled(enabled: &str) -> Result<bool, String> {
+    match enabled {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        _ => Err("invalid MCP enabled value".to_string()),
     }
 }
 
-fn port_owner(bind: &str, port: &str) -> Option<String> {
+fn parse_port(port: &str) -> Result<u16, String> {
+    match port.parse::<u16>() {
+        Ok(0) | Err(_) => Err("invalid MCP port".to_string()),
+        Ok(port) => Ok(port),
+    }
+}
+
+/// `bind` is written unquoted into the `.`-sourced `mcp.conf`, so it must be a
+/// bare IP literal — that leaves no room for shell metacharacters to smuggle a
+/// command that would run as root when the conf is sourced at boot.
+fn parse_bind(bind: &str) -> Result<IpAddr, String> {
+    bind.parse::<std::net::IpAddr>()
+        .map_err(|_| "invalid MCP bind address (expected an IP literal)".to_string())
+}
+
+fn validate_secret(secret: &str) -> Result<&str, String> {
+    if secret.len() <= MAX_SECRET_BYTES && crate::shell_inert_conf_value(secret) {
+        Ok(secret)
+    } else {
+        Err("invalid MCP secret".to_string())
+    }
+}
+
+fn port_owner(address: SocketAddr) -> Option<String> {
     let output = Command::new("ss").arg("-lntp").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
-    let needle = format!(":{port}");
+    let bind = address.ip().to_string();
+    let needle = format!(":{}", address.port());
     text.lines()
         .find(|line| {
             line.contains(&needle)
-                && (line.contains(bind) || bind == "0.0.0.0" || line.contains("0.0.0.0"))
+                && (line.contains(&bind)
+                    || address.ip().is_unspecified()
+                    || line.contains("0.0.0.0")
+                    || line.contains("[::]"))
         })
         .map(|line| line.trim().to_string())
 }
@@ -326,4 +401,43 @@ fn print_log_tail(app: &App, file_name: &str, lines: usize) -> Result<(), String
         println!("{line}");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ipv6_endpoint_uses_a_socket_address_and_bracketed_url() {
+        let config = McpConfig::from_fields("1", "::1", "8766", "safe-secret").unwrap();
+
+        assert_eq!(config.address().to_string(), "[::1]:8766");
+        assert_eq!(config.url(), "http://[::1]:8766/mcp");
+    }
+
+    #[test]
+    fn sourced_mcp_conf_rejects_unsafe_fields() {
+        assert!(McpConfig::from_fields("enabled", "127.0.0.1", "8766", "safe").is_err());
+        assert!(McpConfig::from_fields("1", "localhost", "8766", "safe").is_err());
+        assert!(McpConfig::from_fields("1", "127.0.0.1", "0", "safe").is_err());
+        assert!(McpConfig::from_fields("1", "127.0.0.1", "8766", "unsafe;command").is_err());
+    }
+
+    #[test]
+    fn unsafe_legacy_config_recovers_to_safe_defaults() {
+        let conf = HashMap::from([
+            ("MAGICNET_MCP_ENABLED".to_string(), "yes".to_string()),
+            (
+                "MAGICNET_MCP_BIND".to_string(),
+                "127.0.0.1$(command)".to_string(),
+            ),
+            ("MAGICNET_MCP_PORT".to_string(), "0".to_string()),
+            (
+                "MAGICNET_MCP_SECRET".to_string(),
+                "unsafe;command".to_string(),
+            ),
+        ]);
+
+        assert_eq!(load_config(&conf), McpConfig::default());
+    }
 }

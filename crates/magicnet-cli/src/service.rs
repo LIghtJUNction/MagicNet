@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
@@ -10,6 +10,8 @@ use crate::{
 const START_SUPERVISORS_COMMAND: &str = "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 &";
 const STOP_RUNTIME_CLEANUP_COMMAND: &str =
     "magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
+const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
+const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
 
 pub(crate) fn service_status(app: &App) {
     let singbox = pid_summary("sing-box");
@@ -275,7 +277,8 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
         _ => return Err("Usage: cli core select sing-box".to_string()),
     };
     write_text_file(
-        selected_core_path(app),
+        app,
+        Path::new(SELECTED_CORE_CONF),
         &format!("MAGICNET_DEFAULT_CORE={normalized}\n"),
     )?;
     println!("[info] 默认核心已设为: {normalized}");
@@ -286,12 +289,8 @@ fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
     let mode = normalize_transparent_mode(mode)?;
     write_transparent_mode(app, mode)?;
     stop_all_direct(app)?;
-    if let Err(err) = run_magicnet_function(app, "magicnet_transparent_apply") {
-        return Err(err);
-    }
-    if let Err(err) = run_magicnet_function(app, "magicnet_start_kernel") {
-        return Err(err);
-    }
+    run_magicnet_function(app, "magicnet_transparent_apply")?;
+    run_magicnet_function(app, "magicnet_start_kernel")?;
     start_supervisors(app)?;
     println!("[info] Transparent mode set to {mode}");
     Ok(())
@@ -310,13 +309,14 @@ fn start_supervisors(app: &App) -> Result<(), String> {
 
 fn write_transparent_mode(app: &App, mode: &str) -> Result<(), String> {
     write_text_file(
-        app.moddir.join(".config/magicnet/transparent-mode.conf"),
+        app,
+        Path::new(TRANSPARENT_MODE_CONF),
         &format!("MAGICNET_TRANSPARENT_MODE={mode}\n"),
     )
 }
 
 fn transparent_mode(app: &App) -> String {
-    fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
+    fs::read_to_string(app.moddir.join(TRANSPARENT_MODE_CONF))
         .ok()
         .and_then(|text| {
             text.lines().find_map(|line| {
@@ -355,7 +355,7 @@ fn selected_core(app: &App) -> String {
 }
 
 fn selected_core_path(app: &App) -> PathBuf {
-    app.moddir.join(".config/magicnet/current-core.conf")
+    app.moddir.join(SELECTED_CORE_CONF)
 }
 
 fn tail_lines(text: &str, lines: usize) -> Vec<&str> {

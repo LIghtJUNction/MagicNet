@@ -58,6 +58,23 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
     await writeFile(join(dir, "statusTone.mjs"), transpile(toneSrc), "utf8");
     source = source.replace(/from\s+["']@\/lib\/statusTone["']/g, 'from "./statusTone.mjs"');
   }
+  // Bundle @/composables/nodeDelayParsers the same way for modules that share
+  // the fastest/slowest-entry helpers.
+  if (/@\/composables\/nodeDelayParsers/.test(source)) {
+    const parsersSrc = read(join(src, "composables", "nodeDelayParsers.ts")).replace(/^import type .*;\n/gm, "");
+    await writeFile(join(dir, "nodeDelayParsers.mjs"), transpile(parsersSrc), "utf8");
+    source = source
+      .replace(/import\s*\{([^}]*)\}\s*from\s*["']@\/composables\/nodeDelayParsers["']/g, (whole, names) => {
+        const valueNames = names
+          .split(",")
+          .map((name) => name.trim())
+          .filter((name) => name && !name.startsWith("type "))
+          .join(", ");
+        return valueNames
+          ? `import { ${valueNames} } from "./nodeDelayParsers.mjs"`
+          : `import "./nodeDelayParsers.mjs"`;
+      });
+  }
   // Other @/ paths must be rewritten explicitly by callers; fail loudly otherwise.
   assert.doesNotMatch(source, /from\s+["']@\//, `${relativeFromWebui} still has unresolved @/ imports after rewrite`);
 

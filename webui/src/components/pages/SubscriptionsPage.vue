@@ -21,9 +21,7 @@ import {
   isSubscriptionBackgroundArgs,
   subscriptionLifecycleRunning,
 } from "@/composables/backgroundTasks";
-import { MODULE_DIR } from "@/constants";
 import {
-  bytesToBase64,
   copyText,
   execFailed,
   readClipboardText,
@@ -31,7 +29,6 @@ import {
 import {
   buildSubscriptionPreview,
   buildSubscriptionApplyLaunch,
-  buildSubscriptionPayloadPlan,
   buildSubscriptionSavePlan,
   formatSubscriptionSummary,
   reconcileSubscriptionEditor,
@@ -42,7 +39,15 @@ import {
 
 type ScheduleValue = "off" | "12" | "24" | "48" | "72";
 
-const { state, runShell, runCli, startBackgroundCli, refreshSubs } = useMagicNet();
+const {
+  state,
+  runCli,
+  startBackgroundCli,
+  startPrivateBackgroundCli,
+  stagePrivatePayload,
+  removePrivatePayload,
+  refreshSubs,
+} = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
 const lastLoadedSnapshot = ref("");
@@ -164,42 +169,19 @@ function formatEpoch(epoch: number): string {
   });
 }
 
-type StagedPayload = { payload: string; cleanupCommand: string };
-
-async function cleanupPayload(command: string): Promise<void> {
-  await runShell(command, "清理订阅私有载荷", true, "su -M -c '[cleanup private subscription payload]'");
-}
-
-async function stagePrivatePayload(encoded: string): Promise<StagedPayload | null> {
+async function stageSubscriptionPayload(snapshot: string) {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const directory = `${MODULE_DIR}/.state/webui-subscription-payload`;
-  const payload = `${directory}/magicnet-webui-${stamp}.b64`;
-  const plan = buildSubscriptionPayloadPlan(encoded, directory, payload);
-  let result = await runShell(
-    plan.prepareCommand,
-    "准备订阅私有载荷",
-    true,
-    "su -M -c '[prepare private subscription payload]'",
+  const staged = await stagePrivatePayload(
+    "subscription",
+    `magicnet-webui-${stamp}.b64`,
+    `${snapshot}\n`,
+    "订阅私有载荷",
   );
-  if (execFailed(result)) {
-    await cleanupPayload(plan.cleanupCommand);
-    state.output = "订阅私有载荷准备失败，已执行尽力清理；订阅没有提交。";
+  if (!staged) {
+    state.output = "订阅私有载荷准备失败，订阅没有提交。";
     return null;
   }
-  for (const command of plan.appendCommands) {
-    result = await runShell(
-      command,
-      "写入订阅私有载荷",
-      true,
-      "su -M -c '[write redacted subscription payload]'",
-    );
-    if (execFailed(result)) {
-      await cleanupPayload(plan.cleanupCommand);
-      state.output = "订阅私有载荷写入失败，已执行尽力清理；订阅没有提交。";
-      return null;
-    }
-  }
-  return { payload, cleanupCommand: plan.cleanupCommand };
+  return staged;
 }
 
 async function applySubscriptions(): Promise<void> {
@@ -213,26 +195,26 @@ async function applySubscriptions(): Promise<void> {
     }
     const attempt = { snapshot, revision: editRevision.value };
     pendingApply.value = attempt;
-    const encoded = bytesToBase64(new TextEncoder().encode(`${snapshot}\n`));
-    const staged = await stagePrivatePayload(encoded);
+    const staged = await stageSubscriptionPayload(snapshot);
     if (!staged) {
       if (pendingApply.value === attempt) pendingApply.value = null;
       return;
     }
-    const launch = buildSubscriptionApplyLaunch(staged.payload);
-    const result = await startBackgroundCli(
+    const launch = buildSubscriptionApplyLaunch(staged.basename);
+    const result = await startPrivateBackgroundCli(
       launch.args,
       configured.value ? "应用订阅配置" : "首次启用订阅",
       launch.preview,
       launch.displayArgs,
-      launch.cleanupCommand,
+      launch.lifecycleArgs,
     );
     if (execFailed(result)) {
-      await cleanupPayload(launch.cleanupCommand);
+      const cleaned = await removePrivatePayload("subscription", staged.basename, "订阅私有载荷");
+      if (!cleaned) state.output = "订阅未投递，且私有临时数据清理未确认。";
       if (pendingApply.value === attempt) pendingApply.value = null;
       return;
     }
-    state.output = "订阅已投递到后台。成功后 URL 会保存在设备本地订阅配置；私有临时载荷仅用于本次提交，并在后台命令结束时清理。";
+    state.output = "订阅已投递到后台。成功后 URL 会保存在设备本地订阅配置；设备侧私有载荷只用于本次提交，并由受控命令清理。";
   });
 }
 

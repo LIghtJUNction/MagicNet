@@ -182,7 +182,7 @@ onMounted(() => {
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Unplug :size="17" /> 活动连接</h3>
         <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-          {{ snapshot ? `${snapshot.count} 条连接 · ${formatConnectionBytes(totalBytes)}` : rawOutput || "读取 sing-box API 连接列表。" }}
+          {{ snapshot ? `${snapshot.connections.length} 条连接 · ${formatConnectionBytes(totalBytes)}` : rawOutput || "读取 sing-box API 连接列表。" }}
         </p>
       </div>
       <div class="flex gap-2">

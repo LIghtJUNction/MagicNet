@@ -1,17 +1,23 @@
 use std::collections::HashSet;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::ffi::{CString, OsStr, OsString};
+use std::fs::{self, File};
+use std::io::{self, Seek, SeekFrom, Write};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     clean_lines, clear_node_cache, decode_base64, first_clean_line, run_magicnet_function,
-    write_text_file, App,
+    run_subscription_update_from_inherited_fd, App,
 };
 
 const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
 const SELECTOR_REPLAY_WARNING: &str =
     "subscription committed, but saved selector choices could not be replayed";
+static SUBSCRIPTION_CANDIDATE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 fn subscription_update_outcome(
     update: Result<(), String>,
@@ -79,13 +85,20 @@ pub fn sub_apply_file(app: &App, args: &[String]) -> Result<(), String> {
     apply_subscription_text(app, &text)
 }
 
+/// Apply raw UTF-8 subscription text from the private WebUI payload helper.
+/// The helper has already bound the input to a regular, module-owned file and
+/// removed that file before this path is entered; this function deliberately
+/// accepts no caller-controlled path or shell argument.
+pub(crate) fn apply_webui_subscription_payload(app: &App, bytes: &[u8]) -> Result<(), String> {
+    let payload = std::str::from_utf8(bytes)
+        .map_err(|_| "WebUI subscription payload is not valid UTF-8".to_string())?;
+    let text = normalized_subscription_text(payload)?;
+    apply_subscription_text(app, &text)
+}
+
 fn apply_subscription_text(app: &App, text: &str) -> Result<(), String> {
-    let result = with_subscription_candidate(app, text, |candidate| {
-        let candidate_arg = shell_single_quote(&candidate.to_string_lossy());
-        let command = format!(
-            "MAGICNET_SUB_CANDIDATE_URL_FILE={candidate_arg}; export MAGICNET_SUB_CANDIDATE_URL_FILE; . \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_singbox_update_subscription"
-        );
-        run_magicnet_function(app, &command)
+    let result = with_subscription_candidate(app, text, |candidate_fd| {
+        run_subscription_update_from_inherited_fd(app, candidate_fd)
     });
     finish_subscription_update(app, result)
 }
@@ -93,53 +106,232 @@ fn apply_subscription_text(app: &App, text: &str) -> Result<(), String> {
 fn with_subscription_candidate<T>(
     app: &App,
     text: &str,
-    activate: impl FnOnce(&std::path::Path) -> Result<T, String>,
+    activate: impl FnOnce(RawFd) -> Result<T, String>,
 ) -> Result<T, String> {
     let candidate = write_subscription_candidate(app, text)?;
-    let result = activate(&candidate);
-    let _ = fs::remove_file(candidate);
+    let result = activate(candidate.fd());
+    drop(candidate);
     result
 }
 
-fn write_subscription_candidate(app: &App, text: &str) -> Result<PathBuf, String> {
-    let candidate_dir = app.moddir.join(".state/sing-box/subscription-candidates");
-    cleanup_subscription_candidates(&candidate_dir)?;
-    fs::create_dir_all(&candidate_dir)
-        .map_err(|err| format!("create subscription candidate dir: {err}"))?;
-    fs::set_permissions(&candidate_dir, fs::Permissions::from_mode(0o700))
-        .map_err(|err| format!("secure subscription candidate dir: {err}"))?;
+/// An unlinked candidate inode retained only by this process's descriptor.
+/// `with_subscription_candidate` keeps it alive until the update shell exits.
+struct SubscriptionCandidate {
+    file: File,
+}
+
+impl SubscriptionCandidate {
+    fn fd(&self) -> RawFd {
+        self.file.as_raw_fd()
+    }
+}
+
+fn write_subscription_candidate(app: &App, text: &str) -> Result<SubscriptionCandidate, String> {
+    let directory = subscription_candidate_temp_directory(app)?;
+    let (mut file, name) = create_subscription_candidate_file(&directory)?;
+    let write_result = (|| {
+        require_private_subscription_candidate(&file)?;
+        file.write_all(text.as_bytes())
+            .map_err(|_| "write subscription candidate failed".to_string())?;
+        file.sync_all()
+            .map_err(|_| "sync subscription candidate failed".to_string())?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|_| "rewind subscription candidate failed".to_string())
+    })();
+    if let Err(err) = write_result {
+        return discard_named_subscription_candidate(&directory, &name, err);
+    }
+    if let Err(err) = require_private_subscription_candidate(&file) {
+        return discard_named_subscription_candidate(&directory, &name, err);
+    }
+    // Once this fd-only input is unlinked, the legacy shell glob has no name
+    // to race or remove. Its inherited `/proc/self/fd/<n>` handle is the sole
+    // route by which the update transaction can read these bytes.
+    remove_subscription_candidate(&directory, &name)?;
+    clear_close_on_exec(&file)?;
+    Ok(SubscriptionCandidate { file })
+}
+
+fn subscription_candidate_temp_directory(app: &App) -> Result<File, String> {
+    let root = open_subscription_module_root(app)?;
+    let tmp = ensure_subscription_directory_at(&root, OsStr::new(".tmp"), 0o700)?;
+    ensure_subscription_directory_at(&tmp, OsStr::new("subscription-candidates"), 0o700)
+}
+
+fn open_subscription_module_root(app: &App) -> Result<File, String> {
+    let path = CString::new(app.moddir.as_os_str().as_bytes())
+        .map_err(|_| "subscription module root contains an unsupported NUL byte".to_string())?;
+    let fd = unsafe {
+        libc::open(
+            path.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err("open subscription module root failed".to_string());
+    }
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+fn ensure_subscription_directory_at(
+    parent: &File,
+    name: &OsStr,
+    mode: u32,
+) -> Result<File, String> {
+    let name_c = subscription_cstring(name, "subscription directory")?;
+    let created = unsafe { libc::mkdirat(parent.as_raw_fd(), name_c.as_ptr(), mode) };
+    if created != 0 && io::Error::last_os_error().kind() != io::ErrorKind::AlreadyExists {
+        return Err("create subscription candidate directory failed".to_string());
+    }
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name_c.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err("open subscription candidate directory failed".to_string());
+    }
+    let directory = unsafe { File::from_raw_fd(fd) };
+    directory
+        .set_permissions(fs::Permissions::from_mode(mode))
+        .map_err(|_| "secure subscription candidate directory failed".to_string())?;
+    Ok(directory)
+}
+
+fn create_subscription_candidate_file(directory: &File) -> Result<(File, OsString), String> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before epoch: {err}"))?
         .as_nanos();
-    let candidate = candidate_dir.join(format!("{}-{nonce}.url", std::process::id()));
-    write_text_file(candidate.clone(), text)?;
-    fs::set_permissions(&candidate, fs::Permissions::from_mode(0o600))
-        .map_err(|err| format!("secure subscription candidate: {err}"))?;
-    Ok(candidate)
-}
-
-fn cleanup_subscription_candidates(candidate_dir: &PathBuf) -> Result<(), String> {
-    let Ok(entries) = fs::read_dir(candidate_dir) else {
-        return Ok(());
-    };
-    for entry in entries {
-        let entry = entry.map_err(|err| format!("read subscription candidate entry: {err}"))?;
-        let file_type = entry
-            .file_type()
-            .map_err(|err| format!("inspect subscription candidate entry: {err}"))?;
-        if file_type.is_file() {
-            fs::remove_file(entry.path())
-                .map_err(|err| format!("remove stale subscription candidate: {err}"))?;
+    for _ in 0..16 {
+        let name = OsString::from(format!(
+            "{}-{nonce}-{}.url",
+            std::process::id(),
+            SUBSCRIPTION_CANDIDATE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        let name_c = subscription_cstring(&name, "subscription candidate filename")?;
+        let fd = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                name_c.as_ptr(),
+                libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o600,
+            )
+        };
+        if fd >= 0 {
+            let file = unsafe { File::from_raw_fd(fd) };
+            if let Err(err) = require_private_subscription_candidate(&file) {
+                return discard_named_subscription_candidate(directory, &name, err);
+            }
+            if let Err(err) = file.set_permissions(fs::Permissions::from_mode(0o600)) {
+                return discard_named_subscription_candidate(
+                    directory,
+                    &name,
+                    format!("secure subscription candidate: {err}"),
+                );
+            }
+            return Ok((file, name));
+        }
+        if io::Error::last_os_error().kind() != io::ErrorKind::AlreadyExists {
+            return Err("create subscription candidate failed".to_string());
         }
     }
+    Err("create subscription candidate failed".to_string())
+}
+
+fn remove_subscription_candidate(directory: &File, name: &OsStr) -> Result<(), String> {
+    let metadata = subscription_candidate_metadata(directory, name)
+        .map_err(|_| "inspect subscription candidate failed".to_string())?;
+    if !is_regular_file(&metadata) || metadata.st_nlink != 1 {
+        return Err("refusing non-private subscription candidate".to_string());
+    }
+    unlink_subscription_candidate(directory, name)
+}
+
+fn discard_named_subscription_candidate<T>(
+    directory: &File,
+    name: &OsStr,
+    primary: String,
+) -> Result<T, String> {
+    match remove_subscription_candidate(directory, name) {
+        Ok(()) => Err(primary),
+        Err(cleanup) => Err(format!(
+            "{primary}; subscription candidate cleanup failed: {cleanup}"
+        )),
+    }
+}
+
+fn subscription_candidate_metadata(directory: &File, name: &OsStr) -> io::Result<libc::stat> {
+    let name_c = CString::new(name.as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid candidate filename"))?;
+    let mut metadata: libc::stat = unsafe { std::mem::zeroed() };
+    let status = unsafe {
+        libc::fstatat(
+            directory.as_raw_fd(),
+            name_c.as_ptr(),
+            &mut metadata,
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if status == 0 {
+        Ok(metadata)
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+fn unlink_subscription_candidate(directory: &File, name: &OsStr) -> Result<(), String> {
+    let name_c = subscription_cstring(name, "subscription candidate filename")?;
+    let removed = unsafe { libc::unlinkat(directory.as_raw_fd(), name_c.as_ptr(), 0) };
+    if removed == 0 {
+        Ok(())
+    } else {
+        Err("remove subscription candidate failed".to_string())
+    }
+}
+
+fn require_private_subscription_candidate(file: &File) -> Result<(), String> {
+    let metadata = file
+        .metadata()
+        .map_err(|_| "inspect subscription candidate failed".to_string())?;
+    if !metadata.file_type().is_file() || metadata.nlink() != 1 {
+        return Err("refusing non-private subscription candidate".to_string());
+    }
     Ok(())
+}
+
+fn clear_close_on_exec(file: &File) -> Result<(), String> {
+    let flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
+    if flags < 0 {
+        return Err("inspect subscription candidate descriptor failed".to_string());
+    }
+    let updated =
+        unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETFD, flags & !libc::FD_CLOEXEC) };
+    if updated < 0 {
+        return Err("make subscription candidate descriptor inheritable failed".to_string());
+    }
+    Ok(())
+}
+
+fn is_regular_file(metadata: &libc::stat) -> bool {
+    (metadata.st_mode & libc::S_IFMT) == libc::S_IFREG
+}
+
+fn subscription_cstring(value: &OsStr, description: &str) -> Result<CString, String> {
+    CString::new(value.as_bytes())
+        .map_err(|_| format!("{description} contains an unsupported NUL byte"))
 }
 
 fn normalized_subscription_payload(payload: &str) -> Result<String, String> {
     let bytes = decode_base64(payload)?;
     let text =
         String::from_utf8(bytes).map_err(|err| format!("subscription text is not UTF-8: {err}"))?;
+    normalized_subscription_text(&text)
+}
+
+fn normalized_subscription_text(text: &str) -> Result<String, String> {
     let mut seen = HashSet::new();
     let mut lines = Vec::new();
     for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
@@ -154,10 +346,6 @@ fn normalized_subscription_payload(payload: &str) -> Result<String, String> {
         }
     }
     Ok(format!("{}\n", lines.join("\n")))
-}
-
-fn shell_single_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub fn sub_list(app: &App) {
@@ -259,6 +447,8 @@ pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
@@ -269,6 +459,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("magicnet-cli-test-{stamp}"));
+        fs::create_dir_all(&dir).expect("create module directory");
         App::for_test(dir)
     }
 
@@ -287,6 +478,17 @@ mod tests {
         );
         let text = normalized_subscription_payload(&payload).unwrap();
         assert_eq!(text, "https://example.com/a\nhttp://example.com/b\n");
+    }
+
+    #[test]
+    fn webui_raw_subscription_text_uses_the_same_normalization_rules() {
+        let text = normalized_subscription_text(
+            "\nhttps://example.com/a\nhttps://example.com/a\n  http://example.com/b  \n",
+        )
+        .expect("normalize WebUI payload text");
+
+        assert_eq!(text, "https://example.com/a\nhttp://example.com/b\n");
+        assert!(normalized_subscription_text("vmess://not-a-subscription\n").is_err());
     }
 
     #[test]
@@ -332,20 +534,30 @@ mod tests {
     #[test]
     fn candidate_activation_failure_never_writes_the_active_url() {
         let app = temp_app();
-        let mut staged = None;
-        let error = with_subscription_candidate(&app, "https://example.com/sub\n", |candidate| {
-            staged = Some(candidate.to_path_buf());
-            assert_eq!(
-                fs::read_to_string(candidate).unwrap(),
-                "https://example.com/sub\n"
-            );
-            Err::<(), _>("activation rejected".to_string())
-        })
-        .unwrap_err();
+        let directory = app.moddir.join(".tmp/subscription-candidates");
+        let error =
+            with_subscription_candidate(&app, "https://example.com/sub\n", |candidate_fd| {
+                assert_eq!(
+                    fs::read_to_string(format!("/proc/self/fd/{candidate_fd}")).unwrap(),
+                    "https://example.com/sub\n"
+                );
+                assert!(
+                    fs::read_dir(&directory)
+                        .expect("read anonymous candidate directory")
+                        .next()
+                        .is_none(),
+                    "candidate must be unlinked before activation"
+                );
+                Err::<(), _>("activation rejected".to_string())
+            })
+            .unwrap_err();
 
         assert_eq!(error, "activation rejected");
         assert!(!sub_target_file(&app, "sing-box").exists());
-        assert!(!staged.unwrap().exists());
+        assert!(fs::read_dir(&directory)
+            .expect("read anonymous candidate directory")
+            .next()
+            .is_none());
     }
 
     #[test]
@@ -366,16 +578,76 @@ mod tests {
     }
 
     #[test]
-    fn subscription_candidate_uses_dedicated_private_location() {
+    fn anonymous_subscription_candidate_is_private_and_readable_by_a_child() {
         let app = temp_app();
         let candidate =
             write_subscription_candidate(&app, "https://example.com/private\n").unwrap();
-        let mode = fs::metadata(&candidate).unwrap().permissions().mode() & 0o777;
+        let metadata = candidate.file.metadata().expect("stat anonymous candidate");
+        let directory = app.moddir.join(".tmp/subscription-candidates");
 
-        assert_eq!(mode, 0o600);
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
         assert_eq!(
-            candidate.parent().unwrap(),
-            app.moddir.join(".state/sing-box/subscription-candidates")
+            metadata.nlink(),
+            0,
+            "candidate must be unlinked before spawn"
+        );
+        assert_eq!(
+            fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert!(
+            fs::read_dir(&directory)
+                .expect("read anonymous candidate directory")
+                .next()
+                .is_none(),
+            "no lexical candidate file may remain"
+        );
+
+        let fd_path = format!("/proc/self/fd/{}", candidate.fd());
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg("cat \"$1\"")
+            .arg("sh")
+            .arg(&fd_path)
+            .output()
+            .expect("spawn child reader");
+
+        assert!(output.status.success(), "child reader failed: {output:?}");
+        assert_eq!(output.stdout.as_slice(), b"https://example.com/private\n");
+    }
+
+    #[test]
+    fn candidate_temp_root_symlink_is_rejected_without_creating_outside_files() {
+        let app = temp_app();
+        let outside = app.moddir.join("outside");
+        fs::create_dir_all(&app.moddir).expect("create module directory");
+        fs::create_dir_all(&outside).expect("create outside directory");
+        symlink(&outside, app.moddir.join(".tmp")).expect("create temporary-root symlink");
+
+        assert!(write_subscription_candidate(&app, "https://example.com/sub\n").is_err());
+        assert!(
+            !outside.join("subscription-candidates").exists(),
+            "candidate setup must not traverse a .tmp symlink"
+        );
+    }
+
+    #[test]
+    fn candidate_temp_directory_symlink_is_rejected_without_creating_outside_files() {
+        let app = temp_app();
+        let outside = app.moddir.join("outside");
+        let parent = app.moddir.join(".tmp");
+        fs::create_dir_all(&parent).expect("create candidate parent");
+        fs::create_dir_all(&outside).expect("create outside directory");
+        symlink(&outside, parent.join("subscription-candidates"))
+            .expect("create candidate directory symlink");
+
+        assert!(write_subscription_candidate(&app, "https://example.com/sub\n").is_err());
+        assert!(
+            fs::read_dir(&outside)
+                .expect("read outside directory")
+                .next()
+                .is_none(),
+            "candidate setup must not traverse the candidate directory symlink"
         );
     }
 }

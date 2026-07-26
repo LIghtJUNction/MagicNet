@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 use crate::service::restart_current_core;
@@ -75,7 +76,8 @@ fn dns_status(app: &App) {
 fn dns_set(app: &App, profile: &str) -> Result<(), String> {
     let profile = normalize_profile(profile)?;
     write_text_file(
-        app.moddir.join(DNS_CONF),
+        app,
+        Path::new(DNS_CONF),
         &format!("MAGICNET_DNS_PROFILE={profile}\n"),
     )?;
     run_magicnet_function(app, "magicnet_dns_apply")?;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from "vue";
 import { Activity, Bell, Copy, Gauge, Pause, Play, RefreshCw, Trash2 } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -92,6 +92,13 @@ async function sampleNow(quiet = false): Promise<void> {
   });
 }
 
+function startTimer(): void {
+  stopTimer();
+  timer = window.setInterval(() => {
+    if (!isRunning("traffic-stats-sample")) void sampleNow(true);
+  }, 5000);
+}
+
 function toggleAutoSampling(): void {
   autoSampling.value = !autoSampling.value;
   if (!autoSampling.value) {
@@ -99,9 +106,7 @@ function toggleAutoSampling(): void {
     return;
   }
   void sampleNow(true);
-  timer = window.setInterval(() => {
-    if (!isRunning("traffic-stats-sample")) void sampleNow(true);
-  }, 5000);
+  startTimer();
 }
 
 function clearSamples(): void {
@@ -202,6 +207,9 @@ function formatDuration(seconds: number | null): string {
 }
 
 function startClock(): void {
+  // Idempotent: under <KeepAlive> both onMounted and onActivated fire on the
+  // first mount, and an overwritten handle would leak an unclearable interval.
+  stopClock();
   clockTimer = window.setInterval(() => {
     nowMillis.value = Date.now();
   }, 15000);
@@ -214,6 +222,17 @@ function stopClock(): void {
 }
 
 onMounted(startClock);
+// Under <KeepAlive> a tab switch deactivates (not unmounts) this panel; stop
+// both the sampling loop (which fires root `api stats` and writes global state)
+// and the clock while off-screen, and restart them on return.
+onDeactivated(() => {
+  stopTimer();
+  stopClock();
+});
+onActivated(() => {
+  startClock();
+  if (autoSampling.value) startTimer();
+});
 onUnmounted(() => {
   stopTimer();
   stopClock();

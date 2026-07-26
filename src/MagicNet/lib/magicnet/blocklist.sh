@@ -22,15 +22,73 @@ magicnet_block_allow_file() {
     printf '%s\n' "$(magicnet_block_dir)/block-allow-rules.list"
 }
 
+magicnet_block_default_url() {
+    printf '%s\n' 'https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/src/MagicNet/.config/magicnet/community-ban.yaml'
+}
+
+magicnet_block_conf_url_is_safe() {
+    case "$1" in
+        http://*|https://*) ;;
+        *) return 1 ;;
+    esac
+    case "$1" in
+        ''|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:/?=%+@,-]*) return 1 ;;
+    esac
+    return 0
+}
+
 magicnet_block_load_conf() {
     _conf="$(magicnet_block_conf)"
+    _default_url="$(magicnet_block_default_url)"
+    MAGICNET_BLOCK_ENABLED=1
+    MAGICNET_BLOCK_COMMUNITY_ENABLED=1
+    MAGICNET_BLOCK_URL="$_default_url"
+    _invalid=0
+    _seen_enabled=0
+    _seen_community=0
+    _seen_url=0
+
     if [ -f "$_conf" ]; then
-        . "$_conf"
+        # block.conf is data, not shell. Accept only its complete allowlisted
+        # assignment schema; any unknown, malformed, duplicate, or injected
+        # line invalidates the whole file and leaves safe defaults in effect.
+        while IFS= read -r _line || [ -n "$_line" ]; do
+            case "$_line" in
+                MAGICNET_BLOCK_ENABLED=0|MAGICNET_BLOCK_ENABLED=1)
+                    if [ "$_seen_enabled" -ne 0 ]; then
+                        _invalid=1
+                    else
+                        MAGICNET_BLOCK_ENABLED="${_line#MAGICNET_BLOCK_ENABLED=}"
+                        _seen_enabled=1
+                    fi
+                    ;;
+                MAGICNET_BLOCK_COMMUNITY_ENABLED=0|MAGICNET_BLOCK_COMMUNITY_ENABLED=1)
+                    if [ "$_seen_community" -ne 0 ]; then
+                        _invalid=1
+                    else
+                        MAGICNET_BLOCK_COMMUNITY_ENABLED="${_line#MAGICNET_BLOCK_COMMUNITY_ENABLED=}"
+                        _seen_community=1
+                    fi
+                    ;;
+                MAGICNET_BLOCK_URL=*)
+                    _value="${_line#MAGICNET_BLOCK_URL=}"
+                    if [ "$_seen_url" -ne 0 ] || ! magicnet_block_conf_url_is_safe "$_value"; then
+                        _invalid=1
+                    else
+                        MAGICNET_BLOCK_URL="$_value"
+                        _seen_url=1
+                    fi
+                    ;;
+                *) _invalid=1 ;;
+            esac
+        done < "$_conf"
     fi
-    MAGICNET_BLOCK_ENABLED="${MAGICNET_BLOCK_ENABLED:-1}"
-    MAGICNET_BLOCK_COMMUNITY_ENABLED="${MAGICNET_BLOCK_COMMUNITY_ENABLED:-1}"
-    MAGICNET_BLOCK_URL="${MAGICNET_BLOCK_URL:-https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/src/MagicNet/.config/magicnet/community-ban.yaml}"
-    unset _conf
+    if [ "$_invalid" -ne 0 ]; then
+        MAGICNET_BLOCK_ENABLED=1
+        MAGICNET_BLOCK_COMMUNITY_ENABLED=1
+        MAGICNET_BLOCK_URL="$_default_url"
+    fi
+    unset _conf _default_url _invalid _seen_enabled _seen_community _seen_url _line _value
 }
 
 magicnet_block_list_values() {

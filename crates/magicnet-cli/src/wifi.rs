@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
@@ -10,6 +11,10 @@ use crate::{clean_lines, read_kv, run_magicnet_function, write_kv, write_text_fi
 const DEFAULT_INTERVAL_SECONDS: u64 = 5;
 const MIN_INTERVAL_SECONDS: u64 = 3;
 const MAX_INTERVAL_SECONDS: u64 = 300;
+const WIFI_POLICY_CONF: &str = ".config/magicnet/wifi-policy.conf";
+const WIFI_SSID_LIST: &str = ".config/magicnet/wifi-ssid.list";
+const WIFI_BSSID_LIST: &str = ".config/magicnet/wifi-bssid.list";
+const WIFI_LAST_STATE: &str = ".state/wifi-policy/last-state.conf";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PolicyMode {
@@ -108,15 +113,15 @@ fn wifi_usage() -> String {
 }
 
 fn policy_config_path(app: &App) -> std::path::PathBuf {
-    app.moddir.join(".config/magicnet/wifi-policy.conf")
+    app.moddir.join(WIFI_POLICY_CONF)
 }
 
 fn ssid_list_path(app: &App) -> std::path::PathBuf {
-    app.moddir.join(".config/magicnet/wifi-ssid.list")
+    app.moddir.join(WIFI_SSID_LIST)
 }
 
 fn bssid_list_path(app: &App) -> std::path::PathBuf {
-    app.moddir.join(".config/magicnet/wifi-bssid.list")
+    app.moddir.join(WIFI_BSSID_LIST)
 }
 
 fn read_policy_config(app: &App) -> PolicyConfig {
@@ -141,7 +146,8 @@ fn read_policy_config(app: &App) -> PolicyConfig {
 
 fn write_policy_config(app: &App, config: &PolicyConfig) -> Result<(), String> {
     write_kv(
-        policy_config_path(app),
+        app,
+        Path::new(WIFI_POLICY_CONF),
         &[
             (
                 "MAGICNET_WIFI_POLICY_ENABLED",
@@ -217,11 +223,11 @@ enum ListAction {
 
 fn update_list(app: &App, kind: ListKind, value: &str, action: ListAction) -> Result<(), String> {
     let value = normalize_list_value(kind, value)?;
-    let path = match kind {
-        ListKind::Ssid => ssid_list_path(app),
-        ListKind::Bssid => bssid_list_path(app),
+    let (path, relative) = match kind {
+        ListKind::Ssid => (ssid_list_path(app), WIFI_SSID_LIST),
+        ListKind::Bssid => (bssid_list_path(app), WIFI_BSSID_LIST),
     };
-    let mut values = clean_lines(path.clone())
+    let mut values = clean_lines(path)
         .into_iter()
         .map(|item| match kind {
             ListKind::Ssid => item,
@@ -241,7 +247,7 @@ fn update_list(app: &App, kind: ListKind, value: &str, action: ListAction) -> Re
     } else {
         format!("{}\n", values.into_iter().collect::<Vec<_>>().join("\n"))
     };
-    write_text_file(path, &text)?;
+    write_text_file(app, Path::new(relative), &text)?;
     let config = read_policy_config(app);
     apply_if_enabled(app, &config)?;
     let noun = match kind {
@@ -508,7 +514,8 @@ fn write_last_state(
     decision: &PolicyDecision,
 ) -> Result<(), String> {
     write_kv(
-        app.moddir.join(".state/wifi-policy/last-state.conf"),
+        app,
+        Path::new(WIFI_LAST_STATE),
         &[
             (
                 "connected",

@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::service::restart_current_core;
 use crate::subscriptions::validate_subscription_url;
-use crate::{clean_lines, read_kv, run_magicnet_function, write_kv, App};
+use crate::{clean_lines, read_kv, run_magicnet_function, shell_inert_conf_value, write_kv, App};
 
 use super::{conf_dir, normalize_allow_rule, normalize_block_rule, print_lines, update_line};
+
+const BLOCK_CONF: &str = ".config/magicnet/block.conf";
 
 pub(crate) fn block_cmd(app: &App, args: &[String]) -> Result<(), String> {
     let dir = conf_dir(app);
@@ -30,7 +32,7 @@ pub(crate) fn block_cmd(app: &App, args: &[String]) -> Result<(), String> {
 
 fn block_list(app: &App) {
     let dir = conf_dir(app);
-    let conf = read_kv(dir.join("block.conf"));
+    let conf = block_conf_values(app);
     println!(
         "enabled={}",
         conf.get("MAGICNET_BLOCK_ENABLED")
@@ -109,6 +111,12 @@ fn block_community(app: &App, args: &[String]) -> Result<(), String> {
 fn block_url(app: &App, args: &[String]) -> Result<(), String> {
     let url = args.get(1).map(String::as_str).unwrap_or_default();
     validate_subscription_url(url)?;
+    // Keep the on-disk schema restricted to inert URL characters. The device
+    // reader parses this schema rather than sourcing it, but the same allowlist
+    // prevents malformed legacy data from being persisted again.
+    if !block_url_is_safe(url) {
+        return Err("Blocklist URL may only contain unreserved URL characters".to_string());
+    }
     let mut conf = block_conf_values(app);
     conf.insert("MAGICNET_BLOCK_URL".to_string(), url.to_string());
     write_block_conf(app, &conf)?;
@@ -122,6 +130,7 @@ fn block_domain(app: &App, args: &[String]) -> Result<(), String> {
         return Err("Usage: cli block {add-domain|remove-domain} <domain-suffix>".to_string());
     }
     update_line(
+        app,
         conf_dir(app).join("block-domain-suffix.list"),
         domain,
         args[0] == "add-domain",
@@ -142,10 +151,10 @@ fn block_allow(app: &App, args: &[String]) -> Result<(), String> {
     if !add {
         let legacy = normalize_block_rule(rule);
         if legacy != normalized {
-            update_line(path.clone(), &legacy, false)?;
+            update_line(app, path.clone(), &legacy, false)?;
         }
     }
-    update_line(path, &normalized, add)?;
+    update_line(app, path, &normalized, add)?;
     apply_and_restart(app)?;
     println!("[info] Local allow rule updated");
     Ok(())
@@ -153,7 +162,6 @@ fn block_allow(app: &App, args: &[String]) -> Result<(), String> {
 
 fn block_update(app: &App) -> Result<(), String> {
     let dir = conf_dir(app);
-    fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
     let conf = block_conf_values(app);
     let url = conf
         .get("MAGICNET_BLOCK_URL")
@@ -184,8 +192,8 @@ fn block_update(app: &App) -> Result<(), String> {
                 .map(ToOwned::to_owned)
         })
         .collect::<Vec<_>>();
-    write_lines(dir.join("community-ban-rules.list"), &rules)?;
-    write_lines(dir.join("community-ban-domain-suffix.list"), &domains)?;
+    write_lines(app, dir.join("community-ban-rules.list"), &rules)?;
+    write_lines(app, dir.join("community-ban-domain-suffix.list"), &domains)?;
     apply_and_restart(app)?;
     println!(
         "[info] Community blocklist updated from {source}: rules={}, domain_suffixes={}",
@@ -212,8 +220,17 @@ fn download_blocklist(url: &str) -> Result<String, String> {
 }
 
 fn apply_and_restart(app: &App) -> Result<(), String> {
+    // Runtime application reads block.conf on-device. Normalize and persist it
+    // immediately before that hand-off so `block apply` and `block update`
+    // cannot leave legacy or injected content for the shell reader.
+    persist_normalized_block_conf(app)?;
     run_magicnet_function(app, "magicnet_block_apply")?;
     restart_current_core(app)
+}
+
+fn persist_normalized_block_conf(app: &App) -> Result<(), String> {
+    let conf = block_conf_values(app);
+    write_block_conf(app, &conf)
 }
 
 fn parse_community_rules(text: &str) -> Vec<String> {
@@ -243,15 +260,15 @@ fn parse_community_rules(text: &str) -> Vec<String> {
     rules
 }
 
-fn write_lines(path: PathBuf, values: &[String]) -> Result<(), String> {
+fn write_lines(app: &App, path: PathBuf, values: &[String]) -> Result<(), String> {
     let text = values
         .iter()
         .map(|value| format!("{value}\n"))
         .collect::<String>();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
-    }
-    fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+    let relative = path
+        .strip_prefix(&app.moddir)
+        .map_err(|_| "refusing to write block rules outside the module root".to_string())?;
+    crate::write_text_file(app, relative, &text)
 }
 
 fn block_diff(dir: PathBuf) -> Result<(), String> {
@@ -266,41 +283,152 @@ fn block_diff(dir: PathBuf) -> Result<(), String> {
 
 fn block_conf_values(app: &App) -> HashMap<String, String> {
     let mut conf = read_kv(conf_dir(app).join("block.conf"));
-    conf.entry("MAGICNET_BLOCK_ENABLED".to_string())
-        .or_insert_with(|| "1".to_string());
-    conf.entry("MAGICNET_BLOCK_COMMUNITY_ENABLED".to_string())
-        .or_insert_with(|| "1".to_string());
-    conf.entry("MAGICNET_BLOCK_URL".to_string())
-        .or_insert_with(|| default_block_url().to_string());
+    sanitize_block_conf(&mut conf);
     conf
 }
 
 fn write_block_conf(app: &App, conf: &HashMap<String, String>) -> Result<(), String> {
+    // This is the persistence sink for both CLI and WebUI paths. Revalidate
+    // every field here so a malformed legacy map cannot be re-emitted into the
+    // shell-sourced configuration file.
     write_kv(
-        conf_dir(app).join("block.conf"),
+        app,
+        Path::new(BLOCK_CONF),
         &[
             (
                 "MAGICNET_BLOCK_ENABLED",
-                conf.get("MAGICNET_BLOCK_ENABLED")
-                    .cloned()
-                    .unwrap_or_else(|| "1".to_string()),
+                safe_block_flag(conf.get("MAGICNET_BLOCK_ENABLED")),
             ),
             (
                 "MAGICNET_BLOCK_COMMUNITY_ENABLED",
-                conf.get("MAGICNET_BLOCK_COMMUNITY_ENABLED")
-                    .cloned()
-                    .unwrap_or_else(|| "1".to_string()),
+                safe_block_flag(conf.get("MAGICNET_BLOCK_COMMUNITY_ENABLED")),
             ),
             (
                 "MAGICNET_BLOCK_URL",
-                conf.get("MAGICNET_BLOCK_URL")
-                    .cloned()
-                    .unwrap_or_else(|| default_block_url().to_string()),
+                safe_block_url(conf.get("MAGICNET_BLOCK_URL")),
             ),
         ],
     )
 }
 
+fn sanitize_block_conf(conf: &mut HashMap<String, String>) {
+    let enabled = safe_block_flag(conf.get("MAGICNET_BLOCK_ENABLED"));
+    let community_enabled = safe_block_flag(conf.get("MAGICNET_BLOCK_COMMUNITY_ENABLED"));
+    let url = safe_block_url(conf.get("MAGICNET_BLOCK_URL"));
+
+    conf.insert("MAGICNET_BLOCK_ENABLED".to_string(), enabled);
+    conf.insert(
+        "MAGICNET_BLOCK_COMMUNITY_ENABLED".to_string(),
+        community_enabled,
+    );
+    conf.insert("MAGICNET_BLOCK_URL".to_string(), url);
+}
+
+fn block_url_is_safe(url: &str) -> bool {
+    validate_subscription_url(url).is_ok() && shell_inert_conf_value(url)
+}
+
+fn safe_block_flag(value: Option<&String>) -> String {
+    value
+        .filter(|value| matches!(value.as_str(), "0" | "1"))
+        .cloned()
+        .unwrap_or_else(|| "1".to_string())
+}
+
+fn safe_block_url(value: Option<&String>) -> String {
+    value
+        .filter(|value| block_url_is_safe(value))
+        .cloned()
+        .unwrap_or_else(|| default_block_url().to_string())
+}
+
 fn default_block_url() -> &'static str {
     "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/src/MagicNet/.config/magicnet/community-ban.yaml"
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+
+    fn temp_app() -> App {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock is after the Unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("magicnet-block-conf-test-{stamp}"));
+        fs::create_dir_all(&root).expect("create module root");
+        App::for_test(root)
+    }
+
+    #[test]
+    fn invalid_legacy_block_url_is_replaced_before_it_can_be_reemitted() {
+        let app = temp_app();
+        let path = conf_dir(&app).join("block.conf");
+        fs::create_dir_all(path.parent().expect("block config parent"))
+            .expect("create block config parent");
+        fs::write(
+            &path,
+            "MAGICNET_BLOCK_ENABLED=1\nMAGICNET_BLOCK_COMMUNITY_ENABLED=1\nMAGICNET_BLOCK_URL=https://example.com/list;reboot\n",
+        )
+        .expect("write legacy block config");
+
+        let values = block_conf_values(&app);
+        assert_eq!(
+            values.get("MAGICNET_BLOCK_URL").map(String::as_str),
+            Some(default_block_url())
+        );
+        write_block_conf(&app, &values).expect("rewrite sanitized block config");
+
+        let contents = fs::read_to_string(path).expect("read rewritten block config");
+        assert!(!contents.contains("list;reboot"));
+        assert!(contents.contains(default_block_url()));
+    }
+
+    #[test]
+    fn write_block_conf_sanitizes_every_field_at_the_persistence_sink() {
+        let app = temp_app();
+        let mut values = HashMap::new();
+        values.insert("MAGICNET_BLOCK_ENABLED".to_string(), "yes".to_string());
+        values.insert(
+            "MAGICNET_BLOCK_COMMUNITY_ENABLED".to_string(),
+            "maybe".to_string(),
+        );
+        values.insert(
+            "MAGICNET_BLOCK_URL".to_string(),
+            "https://example.com/list;id".to_string(),
+        );
+
+        write_block_conf(&app, &values).expect("write sanitized block config");
+
+        let contents = fs::read_to_string(conf_dir(&app).join("block.conf"))
+            .expect("read sanitized block config");
+        assert!(contents.contains("MAGICNET_BLOCK_ENABLED=1\n"));
+        assert!(contents.contains("MAGICNET_BLOCK_COMMUNITY_ENABLED=1\n"));
+        assert!(contents.contains(&format!("MAGICNET_BLOCK_URL={}\n", default_block_url())));
+        assert!(!contents.contains(";id"));
+    }
+
+    #[test]
+    fn runtime_handoff_rewrites_legacy_block_conf_before_shell_consumption() {
+        let app = temp_app();
+        let path = conf_dir(&app).join("block.conf");
+        fs::create_dir_all(path.parent().expect("block config parent"))
+            .expect("create block config parent");
+        fs::write(
+            &path,
+            "MAGICNET_BLOCK_ENABLED=0\nMAGICNET_BLOCK_URL=https://example.com/list;touch /tmp/untrusted\nUNKNOWN=1\n",
+        )
+        .expect("write legacy block config");
+
+        persist_normalized_block_conf(&app).expect("rewrite normalized block config");
+
+        let contents = fs::read_to_string(path).expect("read normalized block config");
+        assert_eq!(contents.lines().count(), 3);
+        assert!(!contents.contains("UNKNOWN"));
+        assert!(!contents.contains(";touch"));
+        assert!(contents.contains(default_block_url()));
+    }
 }

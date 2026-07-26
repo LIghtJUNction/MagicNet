@@ -1,6 +1,11 @@
 use std::fs;
+use std::path::Path;
 
-use crate::{decode_base64, run_magicnet_function, write_text_file, App};
+use crate::subscriptions::validate_subscription_url;
+use crate::{
+    decode_base64, run_magicnet_function, shell_inert_conf_value, write_secret_file,
+    write_text_file, App,
+};
 
 pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("export") {
@@ -150,7 +155,100 @@ fn flush_restore(app: &App, rel: Option<String>, text: &str) -> Result<(), Strin
     if !backup_files().contains(&rel.as_str()) {
         return Ok(());
     }
-    write_text_file(app.moddir.join(rel), text)
+    // `.conf` files are `.`-sourced by the shell library. A shell-inert value
+    // alone is not enough: unknown keys such as PATH can still change the
+    // runtime environment. Each restored file therefore has its own fixed
+    // schema and value domain.
+    if rel.ends_with(".conf") && !sourced_conf_content_matches_schema(&rel, text) {
+        return Err(format!(
+            "refusing to restore {rel}: file is shell-sourced and violates its allowlisted schema"
+        ));
+    }
+    if secret_backup_file(&rel) {
+        write_secret_file(app, Path::new(&rel), text)
+    } else {
+        write_text_file(app, Path::new(&rel), text)
+    }
+}
+
+fn secret_backup_file(rel: &str) -> bool {
+    matches!(
+        rel,
+        ".config/sing-box/subscription.url" | ".config/magicnet/warp-endpoint.json"
+    )
+}
+
+/// Whether every line of a shell-sourced configuration file belongs to its
+/// file-specific key and value allowlist. Empty lines and comments are kept so
+/// existing user-facing config formatting survives a backup round trip.
+fn sourced_conf_content_matches_schema(rel: &str, text: &str) -> bool {
+    text.lines()
+        .all(|line| sourced_conf_line_matches_schema(rel, line))
+}
+
+fn sourced_conf_line_matches_schema(rel: &str, line: &str) -> bool {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return true;
+    }
+    let Some((key, value)) = line.split_once('=') else {
+        return false;
+    };
+    shell_inert_conf_value(value) && sourced_conf_value_is_allowed(rel, key, value)
+}
+
+fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
+    match (rel, key) {
+        (".config/magicnet/app-mode.conf", "MAGICNET_APP_MODE") => {
+            matches!(value, "blacklist" | "whitelist")
+        }
+        (".config/magicnet/block.conf", "MAGICNET_BLOCK_ENABLED")
+        | (".config/magicnet/block.conf", "MAGICNET_BLOCK_COMMUNITY_ENABLED") => {
+            matches!(value, "0" | "1")
+        }
+        (".config/magicnet/block.conf", "MAGICNET_BLOCK_URL") => {
+            validate_subscription_url(value).is_ok()
+        }
+        (".config/magicnet/dns.conf", "MAGICNET_DNS_PROFILE") => matches!(
+            value,
+            "default"
+                | "system"
+                | "local"
+                | "cloudflare"
+                | "cloudflare-doh"
+                | "1.1.1.1-doh"
+                | "doh"
+                | "cloudflare-dot"
+                | "1.1.1.1-dot"
+                | "dot"
+                | "cloudflare-udp"
+                | "1.1.1.1"
+                | "udp"
+        ),
+        (".config/magicnet/warp.conf", "MAGICNET_WARP_ENABLED") => {
+            matches!(
+                value,
+                "0" | "1" | "true" | "false" | "yes" | "no" | "on" | "off"
+            )
+        }
+        (".config/magicnet/transparent-mode.conf", "MAGICNET_TRANSPARENT_MODE") => {
+            matches!(
+                value,
+                "tun" | "proxy" | "external" | "external-tun" | "hybrid"
+            )
+        }
+        (".config/magicnet/wifi-policy.conf", "MAGICNET_WIFI_POLICY_ENABLED") => {
+            matches!(value, "0" | "1")
+        }
+        (".config/magicnet/wifi-policy.conf", "MAGICNET_WIFI_POLICY_MODE") => {
+            value.eq_ignore_ascii_case("blacklist") || value.eq_ignore_ascii_case("whitelist")
+        }
+        (".config/magicnet/wifi-policy.conf", "MAGICNET_WIFI_POLICY_INTERVAL") => value
+            .parse::<u64>()
+            .map(|seconds| (3..=300).contains(&seconds))
+            .unwrap_or(false),
+        _ => false,
+    }
 }
 
 fn backup_files() -> &'static [&'static str] {
@@ -179,6 +277,7 @@ fn backup_files() -> &'static [&'static str] {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::os::unix::fs::PermissionsExt;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
@@ -189,17 +288,16 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("magicnet-cli-test-{stamp}"));
+        fs::create_dir_all(&dir).unwrap();
         App::for_test(dir)
     }
 
     #[test]
     fn backup_without_password_is_plaintext_and_restores_known_files_only() {
         let app = temp_app();
-        write_text_file(
-            app.moddir.join(".config/magicnet/app-mode.conf"),
-            "MAGICNET_APP_MODE=whitelist\n",
-        )
-        .unwrap();
+        let app_mode = app.moddir.join(".config/magicnet/app-mode.conf");
+        fs::create_dir_all(app_mode.parent().expect("app mode parent")).unwrap();
+        fs::write(&app_mode, "MAGICNET_APP_MODE=whitelist\n").unwrap();
         let text = backup_text(&app, "");
 
         assert!(text.starts_with("MagicNet backup v1\npassword_set=0"));
@@ -213,6 +311,78 @@ mod tests {
             fs::read_to_string(restore_app.moddir.join(".config/magicnet/app-mode.conf")).unwrap();
         assert!(restored.starts_with("MAGICNET_APP_MODE=whitelist\n"));
         assert!(!restore_app.moddir.join("../ignored").exists());
+    }
+
+    #[test]
+    fn restore_rejects_shell_injection_into_sourced_conf() {
+        let app = temp_app();
+        // A password-less backup that smuggles a command substitution into the
+        // shell-sourced block.conf must be refused, not written.
+        let text = concat!(
+            "MagicNet backup v1\n",
+            "password_set=0\n",
+            "\n",
+            "--- .config/magicnet/block.conf\n",
+            "MAGICNET_BLOCK_ENABLED=1\n",
+            "id > /data/local/tmp/pwned; reboot\n",
+        );
+        let err = restore_backup(&app, text).unwrap_err();
+        assert!(err.contains("block.conf"), "unexpected error: {err}");
+        assert!(!app.moddir.join(".config/magicnet/block.conf").exists());
+    }
+
+    #[test]
+    fn sourced_conf_schema_accepts_known_values_and_rejects_unknown_or_unsafe_ones() {
+        let block = ".config/magicnet/block.conf";
+        assert!(sourced_conf_content_matches_schema(
+            block,
+            "MAGICNET_BLOCK_ENABLED=1\nMAGICNET_BLOCK_COMMUNITY_ENABLED=0\nMAGICNET_BLOCK_URL=https://example.com/list.txt\n# note\n"
+        ));
+        assert!(!sourced_conf_content_matches_schema(
+            block,
+            "PATH=/tmp/evil\n"
+        ));
+        assert!(!sourced_conf_content_matches_schema(
+            block,
+            "MAGICNET_BLOCK_ENABLED=yes\n"
+        ));
+        assert!(!sourced_conf_content_matches_schema(
+            block,
+            "MAGICNET_BLOCK_URL=https://example.com/list;id\n"
+        ));
+        assert!(!sourced_conf_content_matches_schema(
+            block,
+            "not a kv line\n"
+        ));
+    }
+
+    #[test]
+    fn restore_restricts_secret_backup_files_to_0600() {
+        let app = temp_app();
+        let text = concat!(
+            "MagicNet backup v1\n",
+            "password_set=0\n",
+            "\n",
+            "--- .config/sing-box/subscription.url\n",
+            "https://example.com/subscription\n",
+            "\n",
+            "--- .config/magicnet/warp-endpoint.json\n",
+            "{\"private_key\":\"fixture\"}\n",
+        );
+
+        restore_backup(&app, text).expect("restore secret-bearing files");
+
+        for rel in [
+            ".config/sing-box/subscription.url",
+            ".config/magicnet/warp-endpoint.json",
+        ] {
+            let mode = fs::metadata(app.moddir.join(rel))
+                .expect("stat restored secret")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "unexpected mode for {rel}");
+        }
     }
 
     #[test]
@@ -246,7 +416,8 @@ mod tests {
         let text =
             "MagicNet backup v1\npassword_set=1\npassword_md5=5ebe2294ecd0e0f08eab7690d2a6ee69\n";
         let encrypted = encode_backup_bytes(text, "secret");
-        write_text_file(path.clone(), &crate::encode_base64(&encrypted)).unwrap();
+        fs::create_dir_all(&app.moddir).unwrap();
+        fs::write(&path, crate::encode_base64(&encrypted)).unwrap();
 
         let args = vec![
             "restore-file".to_string(),
@@ -264,7 +435,8 @@ mod tests {
         let text =
             "MagicNet backup v1\npassword_set=1\npassword_md5=900150983cd24fb0d6963f7d28e17f72\n";
         let encrypted = encode_backup_bytes(text, "secret");
-        write_text_file(path.clone(), &crate::encode_base64(&encrypted)).unwrap();
+        fs::create_dir_all(&app.moddir).unwrap();
+        fs::write(&path, crate::encode_base64(&encrypted)).unwrap();
         let path = path.to_string_lossy().into_owned();
 
         let password_args = vec![

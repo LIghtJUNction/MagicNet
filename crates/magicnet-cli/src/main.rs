@@ -20,11 +20,13 @@ mod utils;
 mod warp;
 mod webui_api;
 mod webui_backup;
+mod webui_payload;
 mod wifi;
 
 use std::env;
 use std::fs;
 use std::io;
+use std::os::fd::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -50,8 +52,8 @@ use subscriptions::{
     sub_status, sub_target_file, sub_update, sub_update_all,
 };
 pub(crate) use utils::{
-    clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv, write_kv,
-    write_text_file,
+    clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv,
+    shell_inert_conf_value, write_kv, write_secret_file, write_text_file,
 };
 use warp::warp_cmd;
 use webui_api::{api_cmd, webui_cmd};
@@ -116,7 +118,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "config-editor",
-        usage: "cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|tmp-path]",
+        usage: "cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path]",
     },
     CommandHelp {
         command: "transparent",
@@ -164,7 +166,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "webui",
-        usage: "cli webui {status|verify|install-local <download-url> [name]}",
+        usage: "cli webui {status|verify|install-local <download-url> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>}}",
     },
     CommandHelp {
         command: "backup",
@@ -351,6 +353,31 @@ pub(crate) fn pid_summary(name: &str) -> String {
 }
 
 pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<(), String> {
+    run_magicnet_function_inner(app, function_name, None)
+}
+
+/// Run the fixed subscription-update entrypoint with a private, already-open
+/// candidate descriptor. The only injected environment value is derived from
+/// that descriptor; callers cannot supply arbitrary command environment.
+pub(crate) fn run_subscription_update_from_inherited_fd(
+    app: &App,
+    candidate_fd: RawFd,
+) -> Result<(), String> {
+    if candidate_fd < 0 {
+        return Err("invalid subscription candidate descriptor".to_string());
+    }
+    run_magicnet_function_inner(
+        app,
+        ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_singbox_update_subscription",
+        Some(candidate_fd),
+    )
+}
+
+fn run_magicnet_function_inner(
+    app: &App,
+    function_name: &str,
+    subscription_candidate_fd: Option<RawFd>,
+) -> Result<(), String> {
     let script = format!(
         ". '{0}/lib/kamfw/.kamfwrc'; export PATH='{0}/bin':'{0}/system/bin':\"$PATH\"; import __runtime__; . '{0}/lib/magicnet.sh'; {function_name}",
         app.moddir.display(),
@@ -367,6 +394,12 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
         .stdin(Stdio::null());
+    if let Some(candidate_fd) = subscription_candidate_fd {
+        command.env(
+            "MAGICNET_SUB_CANDIDATE_URL_FILE",
+            format!("/proc/self/fd/{candidate_fd}"),
+        );
+    }
     let status = match run_process_group(&mut command, Duration::from_secs(timeout)) {
         Ok(status) => status,
         Err(err) => {

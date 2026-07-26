@@ -1,4 +1,5 @@
 import { statusToneClasses } from "@/lib/statusTone";
+import { isSensitiveExternalUrl } from "@/utils";
 export type WebuiInstallPlan = {
   status: "ok" | "warning" | "danger";
   title: string;
@@ -24,10 +25,13 @@ export function buildWebuiInstallPlan(urlText: string, nameText: string): WebuiI
   }
   const protocolOk = parsed.protocol === "http:" || parsed.protocol === "https:";
   const archive = archiveKind(parsed.pathname);
-  const hasCredentials = Boolean(parsed.username || parsed.password || signedUrlPattern.test(url));
+  const hasCredentials = isSensitiveExternalUrl(url);
   const safeCommand = `webui install-local [filtered-url] ${shellWord(name)}`;
   if (!protocolOk) {
     return plan("danger", "不能安装", "只支持 http(s) 下载链接。", parsed.protocol, parsed.hostname, archive, hasCredentials, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
+  }
+  if (parsed.protocol !== "https:") {
+    return plan("danger", "不能安装", "明文 http 下载可被中间人劫持为恶意 root 写入，必须改用 https。", parsed.protocol, parsed.hostname, archive, hasCredentials, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
   }
   if (!archive) {
     return plan("danger", "不能安装", "CLI 当前只支持 zip 面板包。", parsed.protocol, parsed.hostname, "unsupported", hasCredentials, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
@@ -61,8 +65,6 @@ export function webuiInstallPlanTone(status: WebuiInstallPlan["status"]): string
   return statusToneClasses("ok");
 
 }
-
-const signedUrlPattern = /(token|secret|signature|expires|x-amz-|x-oss-)/i;
 
 function archiveKind(pathname: string): string {
   if (/\.zip$/i.test(pathname)) return "zip";

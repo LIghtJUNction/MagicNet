@@ -1,4 +1,4 @@
-import type { NodeDelayEntry } from "@/composables/nodeDelayParsers";
+import { fastestEntry, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
 import { statusToneClasses } from "@/lib/statusTone";
 
 export type NodeSwitchPlan = {
@@ -14,10 +14,10 @@ export type NodeSwitchPlan = {
 const MEANINGFUL_GAIN_MS = 30;
 
 export function buildNodeSwitchPlan(currentNode: string, entries: NodeDelayEntry[]): NodeSwitchPlan {
-  const fastest = entries.find((entry) => entry.delayMillis !== null) || null;
   if (!entries.length) {
     return plan("idle", "等待测速", "测速后会比较当前节点和最快节点。", currentNode, "", null, false);
   }
+  const fastest = fastestEntry(entries);
   if (!fastest) {
     return plan("warning", "没有可用节点", "全部节点测速失败，暂不建议切换。", currentNode, "", null, false);
   }

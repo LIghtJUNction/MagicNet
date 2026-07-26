@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 use serde_json::json;
@@ -50,9 +51,10 @@ pub(crate) fn webui_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "verify" => webui_verify(app),
         "install-local" => install_local(app, args),
-        _ => {
-            Err("Usage: cli webui {status|verify|install-local <download-url> [name]}".to_string())
-        }
+        "payload" => crate::webui_payload::webui_payload_cmd(app, &args[1..]),
+        _ => Err(
+            "Usage: cli webui {status|verify|install-local <download-url> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>}}".to_string(),
+        ),
     }
 }
 
@@ -290,8 +292,15 @@ fn api_ui(app: &App, target: &str) {
 
 fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     let url = args.get(1).map(String::as_str).unwrap_or_default();
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err("Usage: cli webui install-local <download-url> [name]".to_string());
+    // Require https: the zip is unpacked as root, so a plaintext download is a
+    // MITM → arbitrary root file write. (No integrity pinning yet — see notes.)
+    if !url.starts_with("https://") {
+        if url.starts_with("http://") {
+            return Err(
+                "refusing plaintext http download (MITM risk); use an https:// URL".to_string(),
+            );
+        }
+        return Err("Usage: cli webui install-local <https-download-url> [name]".to_string());
     }
     let name = args.get(2).map(String::as_str).unwrap_or("zashboard");
     let tmp = app.moddir.join(".tmp/webui-panel.zip");
@@ -313,13 +322,18 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
         .arg(&target)
         .status()
         .map_err(|err| format!("unzip panel: {err}"))?;
+    if !status.success() {
+        let _ = fs::remove_dir_all(&target);
+        let _ = fs::rename(&backup, &target);
+        return Err("panel unzip failed".to_string());
+    }
     promote_dist_dir(&target)?;
-    if !status.success() || !contains_index(&target) {
+    if !contains_index(&target) {
         let _ = fs::remove_dir_all(&target);
         let _ = fs::rename(&backup, &target);
         return Err("panel zip does not contain index.html".to_string());
     }
-    write_text_file(app.moddir.join("zashboard.version"), &format!("{name}\n"))?;
+    write_text_file(app, Path::new("zashboard.version"), &format!("{name}\n"))?;
     run_magicnet_function(app, "magicnet_singbox_apply_zashboard")?;
     println!("[info] Installed local panel {name}");
     Ok(())
@@ -340,9 +354,24 @@ fn download_panel_zip(url: &str, tmp: &std::path::Path) -> Result<(), String> {
     }
 }
 
+// The panel archive is unpacked as root. Keep curl's initial-URL and redirect
+// protocol policies adjacent so neither path can silently fall back to HTTP.
+const PANEL_DOWNLOAD_CURL_OPTIONS: [&str; 9] = [
+    "-fL",
+    "--proto",
+    "=https",
+    "--proto-redir",
+    "=https",
+    "--connect-timeout",
+    "15",
+    "--max-time",
+    "90",
+];
+
 fn curl_download(url: &str, tmp: &std::path::Path) -> Result<(), String> {
     let output = Command::new("curl")
-        .args(["-fL", "--connect-timeout", "15", "--max-time", "90", "-o"])
+        .args(PANEL_DOWNLOAD_CURL_OPTIONS)
+        .arg("-o")
         .arg(tmp)
         .arg(url)
         .output()
@@ -462,6 +491,24 @@ mod tests {
         assert_eq!(
             zashboard_fallback_url("https://example.com/panel/dist.zip"),
             None
+        );
+    }
+
+    #[test]
+    fn panel_download_curl_requires_https_for_initial_and_redirect_urls() {
+        assert_eq!(
+            PANEL_DOWNLOAD_CURL_OPTIONS,
+            [
+                "-fL",
+                "--proto",
+                "=https",
+                "--proto-redir",
+                "=https",
+                "--connect-timeout",
+                "15",
+                "--max-time",
+                "90",
+            ]
         );
     }
 

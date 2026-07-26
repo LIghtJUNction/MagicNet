@@ -30,7 +30,6 @@ import {
   mcpDefaults,
   parseApps,
   parseBlock,
-  parseConfigValidation,
   parseDns,
   parseHealth,
   parseMcp,
@@ -49,14 +48,16 @@ import {
 import { createMagicNetIssue } from "@/composables/issueReporter";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import {
-  bytesToBase64,
   compactCommand,
   compactOutput,
   ExecTimeoutError,
   execFailed,
   normalizeExecOutcome,
   nextFrame,
+  removePrivatePayload as removePrivatePayloadWithCli,
+  redactedCliPreview,
   shellQuote,
+  stagePrivatePayload as stagePrivatePayloadWithCli,
   unavailableExecOutcome,
   uniqueNonEmpty,
   withTimeout,
@@ -224,14 +225,53 @@ async function runCli(
   return runShell(`${CLI} ${args}`, label, quiet, previewOverride);
 }
 
+/**
+ * Run a command whose stdout/stderr may itself be sensitive. The real command
+ * never reaches reactive output state; callers must provide a redacted preview
+ * and turn the returned outcome into a safe user-facing status.
+ */
+async function runPrivateCli(
+  args: string,
+  label: string,
+  redactedPreview: string,
+): Promise<ExecOutcome> {
+  return runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview);
+}
+
+async function stagePrivatePayload(
+  namespace: "tmp" | "subscription",
+  basename: string,
+  payload: string,
+  label: string,
+) {
+  return stagePrivatePayloadWithCli(
+    runPrivateCli,
+    MODULE_DIR,
+    namespace,
+    basename,
+    payload,
+    label,
+  );
+}
+
+async function removePrivatePayload(
+  namespace: "tmp" | "subscription",
+  basename: string,
+  label: string,
+): Promise<boolean> {
+  return removePrivatePayloadWithCli(runPrivateCli, namespace, basename, label);
+}
+
 async function startBackgroundCli(
   args: string,
   label = args,
   previewOverride = "",
   displayArgs = args,
   cleanupCommand = "",
+  lifecycleArgs = displayArgs,
 ): Promise<string> {
-  const subscriptionTask = isSubscriptionBackgroundArgs(displayArgs);
+  const redactOutput = Boolean(previewOverride);
+  const subscriptionTask = isSubscriptionBackgroundArgs(lifecycleArgs);
   const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true) : false;
   const operationId = createBackgroundOperationId();
   const log = backgroundLogPath(label, operationId);
@@ -241,7 +281,7 @@ async function startBackgroundCli(
     id: operationId,
     label,
     args: displayArgs,
-    log,
+    log: redactOutput ? "" : log,
     startedAt,
     updatedAt: startedAt,
     finishedAt: 0,
@@ -253,7 +293,9 @@ async function startBackgroundCli(
   };
   state.phase = "accepted";
   state.notice = `已投递后台任务：${label}`;
-  state.output = `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
+  state.output = redactOutput
+    ? `${label} 已在后台执行；私有命令和日志不会显示。正在跟踪安全状态...`
+    : `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
   await nextTick();
   await nextFrame();
   const command = backgroundLaunchCommand(args, label, log, operationId, cleanupCommand);
@@ -267,21 +309,42 @@ async function startBackgroundCli(
   if (accepted || outcome.timedOut) {
     if (outcome.timedOut) {
       state.notice = `投递确认超时，继续对账：${label}`;
-      state.output = `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。`;
+      state.output = redactOutput
+        ? `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪安全状态。`
+        : `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。`;
     }
-    followBackgroundLogs(log, label, args, operationId);
+    followBackgroundLogs(log, label, lifecycleArgs, operationId, 0, redactOutput);
   } else {
     state.backgroundTask.status = "error";
     state.backgroundTask.updatedAt = Date.now();
     state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
     state.phase = "error";
     state.notice = `投递失败：${label}`;
-    state.output = `${label} 未投递到后台。\n\n${outcome.text || "[error] accepted marker missing"}`;
+    state.output = redactOutput
+      ? `${label} 未投递到后台；私有命令详情已隐藏。请检查设备状态后重试。`
+      : `${label} 未投递到后台。\n\n${outcome.text || "[error] accepted marker missing"}`;
   }
   if (outcome.timedOut) {
     return `[warning] background launch confirmation timed out; reconciliation continues in ${log}`;
   }
   return accepted ? outcome.text : `[error] errno=-1 background accepted marker missing`;
+}
+
+async function startPrivateBackgroundCli(
+  args: string,
+  label: string,
+  redactedPreview: string,
+  displayArgs: string,
+  lifecycleArgs = displayArgs,
+): Promise<string> {
+  return startBackgroundCli(
+    args,
+    label,
+    redactedPreview,
+    displayArgs,
+    "",
+    lifecycleArgs,
+  );
 }
 
 function stopBackgroundLogFollow(): void {
@@ -296,6 +359,7 @@ function followBackgroundLogs(
   args: string,
   operationId: string,
   attempt = 0,
+  redactOutput = false,
 ): void {
   const maxAttempts = 90;
   backgroundLogTimer = window.setTimeout(
@@ -337,9 +401,12 @@ function followBackgroundLogs(
         : failed
           ? `失败：${label}`
           : `正在执行：${label}`;
-      state.output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${logs || "等待日志输出..."}`;
+      const visibleLogs = redactOutput
+        ? "私有后台日志已隐藏。"
+        : logs || "等待日志输出...";
+      state.output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${visibleLogs}`;
       if (!done && !failed && attempt + 1 < maxAttempts) {
-        followBackgroundLogs(log, label, args, operationId, attempt + 1);
+        followBackgroundLogs(log, label, args, operationId, attempt + 1, redactOutput);
       } else {
         backgroundLogTimer = 0;
         if (!done && !failed) {
@@ -348,8 +415,9 @@ function followBackgroundLogs(
           state.backgroundTask.finishedAt = 0;
           state.phase = "running";
           state.notice = `${label} 仍在后台运行或等待对账`;
-          state.output +=
-            "\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。";
+          state.output += redactOutput
+            ? "\n\n[warn] 安全状态跟踪已超时，但这不代表任务失败。请刷新订阅状态完成对账。"
+            : "\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。";
         }
       }
     },
@@ -539,46 +607,57 @@ async function loadConfig(): Promise<void> {
 
 async function saveConfig(): Promise<void> {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const tmp = `${MODULE_DIR}/.tmp/config-editor-${state.config.target}-${stamp}.tmp`;
-  const chunkSize = 1600;
-  let text = await runShell(
-    `mkdir -p ${shellQuote(`${MODULE_DIR}/.tmp`)}; : > ${shellQuote(tmp)}`,
-    "准备配置临时文件",
-    true,
+  const basename = `config-editor-${state.config.target}-${stamp}.tmp`;
+  const staged = await stagePrivatePayload(
+    "tmp",
+    basename,
+    state.config.text,
+    "配置私有载荷",
   );
-  if (execFailed(text)) {
-    state.config.status = "写入失败，未保存";
-    return;
-  }
-  for (let offset = 0; offset < state.config.text.length; offset += chunkSize) {
-    const chunk = state.config.text.slice(offset, offset + chunkSize);
-    text = await runShell(
-      `printf %s ${shellQuote(chunk)} >> ${shellQuote(tmp)}`,
-      "写入配置临时文件",
-      true,
-    );
-    if (execFailed(text)) {
-      state.config.status = "写入失败，未保存";
-      await runShell(`rm -f ${shellQuote(tmp)}`, "清理配置临时文件", true);
-      return;
-    }
-  }
-  try {
-    text = await runCli(
-      `config-editor save-file ${state.config.target} ${shellQuote(tmp)}`,
-      `校验并保存 ${state.config.target}`,
-    );
-    const validation = parseConfigValidation(text);
+  if (!staged) {
+    state.config.status = "安全临时数据写入失败，未保存";
     state.config.validation = {
-      ...validation,
+      status: "error",
+      summary: "安全临时数据写入失败，未运行配置校验。",
       checkedAt: new Date().toLocaleTimeString(),
     };
-    state.config.status = execFailed(text)
-      ? "校验失败，未保存"
-      : "校验通过，已保存";
-    if (!execFailed(text)) state.config.dirty = false;
+    state.phase = "error";
+    state.notice = `${state.config.target} 配置未保存`;
+    state.output = state.config.status;
+    return;
+  }
+
+  try {
+    const outcome = await runPrivateCli(
+      `config-editor save-file ${state.config.target} ${shellQuote(staged.path)}`,
+      `校验并保存 ${state.config.target}`,
+      redactedCliPreview(`config-editor save-file ${state.config.target} [private-payload]`),
+    );
+    const saved = outcome.ok && /\[info\]\s+Saved and validated/i.test(outcome.stdout);
+    state.config.validation = {
+      status: saved ? "ok" : "error",
+      summary: saved ? "配置已通过校验并保存。" : "配置校验失败，未保存。",
+      checkedAt: new Date().toLocaleTimeString(),
+    };
+    state.config.status = saved ? "校验通过，已保存" : "校验失败，未保存";
+    state.phase = saved ? "done" : "error";
+    state.notice = saved
+      ? `${state.config.target} 配置已保存`
+      : `${state.config.target} 配置未保存`;
+    state.output = state.config.status;
+    if (saved) state.config.dirty = false;
   } finally {
-    await runShell(`rm -f ${shellQuote(tmp)}`, "清理配置临时文件", true);
+    const cleaned = await removePrivatePayload("tmp", staged.basename, "配置私有载荷");
+    if (!cleaned) {
+      state.config.status = `${state.config.status}；私有临时数据清理未确认`;
+      state.config.validation = {
+        status: "error",
+        summary: "私有临时数据清理未确认，请检查设备状态。",
+        checkedAt: new Date().toLocaleTimeString(),
+      };
+      state.phase = "error";
+      state.output = state.config.status;
+    }
   }
 }
 
@@ -626,7 +705,11 @@ export function useMagicNet() {
     AUTHOR_WHISPER_URL,
     runShell,
     runCli,
+    runPrivateCli,
+    stagePrivatePayload,
+    removePrivatePayload,
     startBackgroundCli,
+    startPrivateBackgroundCli,
     refreshAll,
     refreshStatus,
     refreshHealth,

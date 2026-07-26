@@ -6,7 +6,7 @@ use std::process::Command;
 use serde_json::{json, Map, Value};
 
 use crate::service::restart_current_core;
-use crate::{run_magicnet_function, write_text_file, App};
+use crate::{run_magicnet_function, write_secret_file, write_text_file, App};
 
 const WARP_CONF: &str = ".config/magicnet/warp.conf";
 const WARP_ENDPOINT: &str = ".config/magicnet/warp-endpoint.json";
@@ -76,7 +76,8 @@ fn import_file(app: &App, path: &str) -> Result<(), String> {
         fs::read_to_string(Path::new(path)).map_err(|err| format!("read WARP config: {err}"))?;
     let endpoint = parse_wireguard_config(&text)?;
     let pretty = serde_json::to_string_pretty(&endpoint).map_err(|err| err.to_string())?;
-    write_text_file(app.moddir.join(WARP_ENDPOINT), &format!("{pretty}\n"))?;
+    // Holds the WireGuard private key + PSK — keep it 0600, not umask-default.
+    write_secret_file(app, Path::new(WARP_ENDPOINT), &format!("{pretty}\n"))?;
     write_enabled(app, true)?;
     apply_and_restart(app)?;
     println!("[info] WARP WireGuard config imported");
@@ -180,7 +181,8 @@ fn warp_enabled(app: &App) -> bool {
 
 fn write_enabled(app: &App, enabled: bool) -> Result<(), String> {
     write_text_file(
-        app.moddir.join(WARP_CONF),
+        app,
+        Path::new(WARP_CONF),
         &format!("MAGICNET_WARP_ENABLED={}\n", enabled as u8),
     )
 }

@@ -9,13 +9,13 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText } from "@/utils";
+import { copyText, redactSensitiveText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
-import { buildWebuiInstallPlan, formatWebuiInstallPlanReport, webuiInstallPlanTone } from "./webuiInstallPlan";
+import { buildWebuiInstallPlan, formatWebuiInstallPlanReport, webuiInstallPlanTone, type WebuiInstallPlan } from "./webuiInstallPlan";
 import { buildWebuiPanelInsight, webuiInsightTone, type WebuiVerifyCheck } from "./webuiPanelInsights";
 
-const { state, runCli, startBackgroundCli, openExternal, shellQuote, REPO } = useMagicNet();
+const { state, runCli, startPrivateBackgroundCli, openExternal, shellQuote, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const status = ref("");
 const verifyOutput = ref("");
@@ -46,25 +46,31 @@ const panelPresets = [
 const verifyChecks = computed(() => parseVerifyChecks(verifyOutput.value));
 const verifyFailed = computed(() => verifyOutput.value.toLowerCase().includes("failed") || verifyChecks.value.some((item) => item.status !== "ok"));
 const panelInsight = computed(() => buildWebuiPanelInsight(verifyChecks.value, verifyOutput.value));
-const installCommand = computed(() => {
+const installArgs = computed(() => {
   const url = panel.value.url.trim();
   const name = panel.value.name.trim() || "custom";
   return url ? `webui install-local ${shellQuote(url)} ${shellQuote(name)}` : "";
 });
-const panelWarnings = computed(() => buildPanelWarnings(panel.value.url, panel.value.name));
-const installPlan = computed(() => buildWebuiInstallPlan(panel.value.url, panel.value.name));
+const installPlan = computed(() => buildWebuiInstallPlan(
+  panel.value.url,
+  redactSensitiveText(panel.value.name.trim() || "custom"),
+));
+const panelWarnings = computed(() => buildPanelWarnings(panel.value.url, panel.value.name, installPlan.value));
 
 async function refreshWebui(): Promise<void> {
   await withAction("webui-status", async () => {
-    status.value = await runCli("webui status", "读取 WebUI 配置", true);
+    const rawStatus = await runCli("webui status", "读取 WebUI 配置", true);
+    status.value = redactSensitiveText(rawStatus);
     state.output = status.value;
   });
 }
 
 async function verifyWebui(): Promise<void> {
   await withAction("webui-verify", async () => {
-    verifyOutput.value = await runCli("webui verify", "校验 WebUI 面板");
-    state.output = verifyOutput.value;
+    const rawVerifyOutput = await runCli("webui verify", "校验 WebUI 面板", true);
+    const safeVerifyOutput = redactSensitiveText(rawVerifyOutput);
+    verifyOutput.value = safeVerifyOutput;
+    state.output = safeVerifyOutput;
   });
 }
 
@@ -91,12 +97,13 @@ async function copyWebuiReport(): Promise<void> {
 }
 
 async function copyInstallCommand(): Promise<void> {
-  if (!installCommand.value) {
+  if (!installArgs.value) {
     state.output = "请先填写本地面板下载 URL。";
     return;
   }
-  commandCopied.value = await copyText(installCommand.value);
-  state.output = commandCopied.value ? "WebUI 安装命令已复制。" : "剪贴板不可用，WebUI 安装命令未复制。";
+  const safeCommand = installPlan.value.safeCommand || "webui install-local [filtered-url] custom";
+  commandCopied.value = await copyText(safeCommand);
+  state.output = commandCopied.value ? "WebUI 脱敏安装命令已复制。" : "剪贴板不可用，WebUI 脱敏安装命令未复制。";
 }
 
 async function copyInstallPlan(): Promise<void> {
@@ -105,12 +112,7 @@ async function copyInstallPlan(): Promise<void> {
 }
 
 function sanitizeWebuiReport(text: string): string {
-  return text
-    .replace(/https?:\/\/\S+/gi, "[filtered-url]")
-    .replace(/(["']?(?:authorization|proxy-authorization|password|passwd|token|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|key)["']?\s*[:=]\s*)["']?[^"',\s;}\]]+["']?/gi, "$1[filtered]")
-    .replace(/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, "bearer [filtered]")
-    .replace(/\b(?:gho|ghp|github_pat)_[A-Za-z0-9_]+/g, "[filtered-token]")
-    .replace(/\bsk-[A-Za-z0-9_-]+/g, "[filtered-token]");
+  return redactSensitiveText(text);
 }
 
 function cancelWebuiAction(): void {
@@ -129,7 +131,12 @@ async function confirmWebuiAction(): Promise<void> {
 
 async function runInstallLocal(command: string, preview: string): Promise<void> {
   await withAction("webui-install", async () => {
-    await startBackgroundCli(command, "安装本地 WebUI 面板", `su -M -c ${shellQuote(preview)}`, preview);
+    await startPrivateBackgroundCli(
+      command,
+      "安装本地 WebUI 面板",
+      `su -M -c ${shellQuote(preview)}`,
+      preview,
+    );
   });
 }
 
@@ -144,12 +151,13 @@ function installLocal(): void {
     state.output = "请先修正本地面板配置中的错误项。";
     return;
   }
-  const command = installCommand.value;
+  const command = installArgs.value;
+  const displayName = redactSensitiveText(name);
   const safeCommand = installPlan.value.safeCommand || "webui install-local [filtered-url] custom";
   pendingWebuiAction.value = {
     key: "webui-install",
     title: "后台下载并安装 WebUI 面板",
-    detail: `会下载 ${name} 面板压缩包并写入模块本地 WebUI 资源。${installPlan.value.status === "warning" ? ` ${installPlan.value.detail}` : ""}`,
+    detail: `会下载 ${displayName} 面板压缩包并写入模块本地 WebUI 资源。${installPlan.value.status === "warning" ? ` ${installPlan.value.detail}` : ""}`,
     command: safeCommand,
     run: () => runInstallLocal(command, safeCommand),
   };
@@ -166,18 +174,20 @@ function applyPanelPreset(item: { name: string; url: string; note: string }): vo
 }
 
 function issueUrl(): string {
+  const issueName = redactSensitiveText(panel.value.name.trim() || "custom");
+  const issueMetadata = redactSensitiveText(panel.value.metadata.trim()) || "(empty)";
   const body = [
     "## WebUI panel adaptation request",
     "",
-    `Name: ${panel.value.name || "custom"}`,
+    `Name: ${issueName}`,
     `Kind: ${panel.value.url ? "local-download" : "online"}`,
     "",
     "## Metadata",
-    panel.value.metadata || "(empty)",
+    issueMetadata,
     "",
     "请审核后决定是否内置该面板。"
   ].join("\n");
-  return `${REPO}/issues/new?${new URLSearchParams({ title: `申请适配 WebUI 面板：${panel.value.name || "custom"}`, body }).toString()}`;
+  return `${REPO}/issues/new?${new URLSearchParams({ title: `申请适配 WebUI 面板：${issueName}`, body }).toString()}`;
 }
 
 function parseVerifyChecks(text: string): WebuiVerifyCheck[] {
@@ -192,15 +202,17 @@ function parseVerifyChecks(text: string): WebuiVerifyCheck[] {
   }).filter((item): item is WebuiVerifyCheck => Boolean(item));
 }
 
-function buildPanelWarnings(url: string, name: string): Array<{ text: string; tone: "success" | "warning" | "danger" }> {
+function buildPanelWarnings(url: string, name: string, plan: WebuiInstallPlan): Array<{ text: string; tone: "success" | "warning" | "danger" }> {
   const trimmedUrl = url.trim();
   const trimmedName = name.trim();
   const warnings: Array<{ text: string; tone: "success" | "warning" | "danger" }> = [];
   if (!trimmedName) warnings.push({ text: "未填写面板名，CLI 会使用 custom。", tone: "warning" });
   if (!trimmedUrl) return [{ text: "未填写下载 URL，无法安装。", tone: "danger" }, ...warnings];
   if (!/^https?:\/\/\S+$/i.test(trimmedUrl)) warnings.push({ text: "URL 必须是 http(s) 链接且不能包含空白字符。", tone: "danger" });
-  if (!/\.zip(\?|#|$)/i.test(trimmedUrl)) warnings.push({ text: "CLI 当前只支持 zip 面板包。", tone: "danger" });
-  if (/(token|secret|signature|expires|x-amz-|x-oss-)/i.test(trimmedUrl)) warnings.push({ text: "链接可能包含签名或凭据，复制命令会包含完整 URL。", tone: "warning" });
+  // The http/zip/credential policy lives in buildWebuiInstallPlan — surface its
+  // verdict here instead of re-implementing the checks per page.
+  else if (plan.status === "danger") warnings.push({ text: plan.detail, tone: "danger" });
+  if (plan.status === "warning") warnings.push({ text: plan.detail, tone: "warning" });
   if (hasZashboardDistFallback(trimmedUrl)) warnings.push({ text: "zashboard dist.zip 失败时 CLI 会自动重试 dist-no-fonts.zip。", tone: "success" });
   if (!warnings.length) warnings.push({ text: "安装命令可执行，下载和解压结果以后台任务日志为准。", tone: "success" });
   return warnings;
@@ -249,7 +261,7 @@ function hasZashboardDistFallback(url: string): boolean {
         <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="text-sm font-medium text-[var(--mn-ink)]">安装前检查</span>
-            <Button variant="outline" :disabled="!installCommand" @click="copyInstallCommand"><Terminal :size="16" />{{ commandCopied ? '已复制命令' : '复制命令' }}</Button>
+            <Button variant="outline" :disabled="!installArgs" @click="copyInstallCommand"><Terminal :size="16" />{{ commandCopied ? '已复制脱敏命令' : '复制脱敏命令' }}</Button>
           </div>
           <div class="flex flex-wrap gap-2">
             <Badge v-for="item in panelWarnings" :key="item.text" :tone="item.tone">{{ item.text }}</Badge>
@@ -261,7 +273,7 @@ function hasZashboardDistFallback(url: string): boolean {
               {{ installPlan.host || '无主机' }} · {{ installPlan.archive || '未知包类型' }} · query {{ installPlan.hasQuery ? '有' : '无' }}
             </p>
           </div>
-          <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs leading-6 text-[var(--mn-ink-soft)]">{{ installCommand || "webui install-local <download-url> [name]" }}</code>
+          <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs leading-6 text-[var(--mn-ink-soft)]">{{ installPlan.safeCommand || "webui install-local [filtered-url] [name]" }}</code>
         </div>
         <Button variant="outline" :disabled="!panel.url.trim()" @click="copyInstallPlan"><Copy :size="17" />{{ planCopied ? '已复制计划' : '复制安装计划' }}</Button>
         <Button :disabled="panelWarnings.some((item) => item.tone === 'danger')" :loading="isRunning('webui-install')" @click="installLocal"><DownloadCloud :size="17" />后台下载并安装</Button>
