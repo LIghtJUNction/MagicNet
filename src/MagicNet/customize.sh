@@ -34,6 +34,7 @@ if [ -d "$MAGICNET_PREV_DIR" ] && [ "$MAGICNET_PREV_DIR" != "$MODPATH" ]; then
   mkdir -p "$MAGICNET_BACKUP_DIR"
   for _item in \
     ".config/sing-box/subscription.url" \
+    ".config/sing-box/subscription.user-agent" \
     ".config/sing-box/subscription-1.yaml" \
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \
@@ -207,6 +208,7 @@ fi
 if [ -d "$MAGICNET_BACKUP_DIR" ]; then
   for _item in \
     ".config/sing-box/subscription.url" \
+    ".config/sing-box/subscription.user-agent" \
     ".config/sing-box/subscription-1.yaml" \
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \
