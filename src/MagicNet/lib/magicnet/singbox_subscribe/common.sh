@@ -790,7 +790,13 @@ magicnet_singbox_is_info_tag() {
 }
 
 magicnet_singbox_subscription_filter_file() {
-    printf '%s\n' "${MODDIR}/.config/sing-box/subscription-filter.list"
+    if [ -n "${MAGICNET_SUB_FILTER_FILE:-}" ]; then
+        printf '%s\n' "$MAGICNET_SUB_FILTER_FILE"
+    elif [ -n "${MODDIR:-}" ]; then
+        printf '%s\n' "${MODDIR}/.config/sing-box/subscription-filter.list"
+    else
+        printf '%s\n' /dev/null
+    fi
 }
 
 magicnet_singbox_tag_matches_filter() {
