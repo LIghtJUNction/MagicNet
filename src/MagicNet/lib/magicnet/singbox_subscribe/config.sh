@@ -125,6 +125,14 @@ magicnet_singbox_build_outbounds_file_with_jq() {
               "default": $tags[0]}
         else {"type": "selector", "tag": "proxy", "outbounds": ["block"], "default": "block"}
         end;
+    def network_test_selector($tags):
+      if ($tags | length) > 0
+        then {"type": "selector", "tag": "network-test",
+              "outbounds": ["proxy-auto", "proxy", "direct", "block"],
+              "default": "proxy-auto"}
+        else {"type": "selector", "tag": "network-test",
+              "outbounds": ["block"], "default": "block"}
+        end;
     def mainland_node_tag:
       test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
     def ai_proxy_selector($tags):
@@ -182,7 +190,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           selector("icloud"; ["direct", "proxy"]; "direct"),
           selector("bing"; ["proxy", "direct"]; "proxy"),
           selector("dns-guard"; ["proxy", "block", "direct"]; "proxy"),
-          selector("network-test"; ["proxy", "direct"]; "proxy"),
+          network_test_selector($tags),
           ai_proxy_selector($ai_tags)
         ] + ai_service_outbounds($ai_tags) + [
           selector("proxy-rule"; ["proxy", "direct"]; "proxy"),
@@ -291,7 +299,14 @@ magicnet_singbox_emit_static_selectors() {
     printf ',\n'
     magicnet_emit_selector_json "dns-guard" "$(printf '%s\n%s\n%s\n' "proxy" "block" "direct")" "proxy"
     printf ',\n'
-    magicnet_emit_selector_json "network-test" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
+    if [ -n "$_proxy_tags" ]; then
+        magicnet_emit_selector_json_exact \
+            "network-test" \
+            "$(printf '%s\n%s\n%s\n%s\n' "proxy-auto" "proxy" "direct" "block")" \
+            "proxy-auto"
+    else
+        magicnet_emit_selector_json_exact "network-test" "block" "block"
+    fi
     printf ',\n'
     _pinned_ai_tags=$(magicnet_singbox_pinned_ai_tags "$_tags_file")
     _pinned_ai_default=$(printf '%s\n' "$_pinned_ai_tags" | sed -n '1p')

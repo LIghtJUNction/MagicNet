@@ -79,7 +79,13 @@ jq -e '
       outbounds: ($node_tags + ["proxy-auto", "direct", "block"]),
       default: $node_tags[0]
     })
-    and ([.outbounds[] | select(.type == "selector")] | all(. as $selector
+    and ($by_tag["network-test"] == {
+      type: "selector",
+      tag: "network-test",
+      outbounds: ["proxy-auto", "proxy", "direct", "block"],
+      default: "proxy-auto"
+    })
+    and ([.outbounds[] | select(.type == "selector" and .tag != "network-test")] | all(. as $selector
       | ($selector.outbounds | length) == ($selector.outbounds | unique | length)
         and (($selector.outbounds | index($selector.default)) != null)
         and (($by_tag[$selector.default].type // "") != "urltest")
@@ -542,10 +548,16 @@ jq -e '
       outbounds: ($node_tags + ["proxy-auto", "direct", "block"]),
       default: $node_tags[0]
     })
+    and ($by_tag["network-test"] == {
+      type: "selector",
+      tag: "network-test",
+      outbounds: ["proxy-auto", "proxy", "direct", "block"],
+      default: "proxy-auto"
+    })
     and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
     and ($by_tag["cn-direct"] == {type: "selector", tag: "cn-direct", outbounds: ["direct", "proxy", "block"], default: "direct"})
     and ($by_tag.final == {type: "selector", tag: "final", outbounds: ["proxy", "direct", "block"], default: "proxy"})
-    and ([.outbounds[] | select(.type == "selector")] | all(. as $selector
+    and ([.outbounds[] | select(.type == "selector" and .tag != "network-test")] | all(. as $selector
       | ($selector.outbounds | length) == ($selector.outbounds | unique | length)
         and (($selector.outbounds | index($selector.default)) != null)
         and (($by_tag[$selector.default].type // "") != "urltest")

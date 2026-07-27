@@ -2144,6 +2144,9 @@ for selector_config in "$selector_jq_zero" "$selector_no_jq_zero"; do
       and [.outbounds[] | select(.tag == "proxy")] == [
         {type: "selector", tag: "proxy", outbounds: ["block"], default: "block"}
       ]
+      and [.outbounds[] | select(.tag == "network-test")] == [
+        {type: "selector", tag: "network-test", outbounds: ["block"], default: "block"}
+      ]
     ' "$selector_config" >/dev/null || fail "zero-node generator emitted a fail-open proxy selector"
 done
 for selector_config in "$selector_jq_populated" "$selector_no_jq_populated"; do
@@ -2158,7 +2161,13 @@ for selector_config in "$selector_jq_populated" "$selector_no_jq_populated"; do
         outbounds: ["fixture-node", "proxy-auto", "direct", "block"],
         default: "fixture-node"
       }]
-    ' "$selector_config" >/dev/null || fail "populated generator changed canonical proxy behavior"
+      and [.outbounds[] | select(.tag == "network-test")] == [{
+        type: "selector", tag: "network-test",
+        outbounds: ["proxy-auto", "proxy", "direct", "block"],
+        default: "proxy-auto"
+      }]
+    ' "$selector_config" >/dev/null ||
+        fail "populated generator changed canonical proxy or network-test behavior"
 done
 
 for selector_config in "$selector_jq_zero" "$selector_jq_populated"; do
