@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Fix #64 by keeping Android network validation on the automatic healthy-node
+  group when the general proxy selector is pinned to a manual node, preventing
+  a stalled node from making the system mark Wi-Fi as disconnected.
 - Keep ChatGPT remote pairing feature traffic on the pinned ChatGPT path and
   route all X Android action requests before the FakeIP guard.
 - Start each AI service selector on its filtered service-specific automatic
