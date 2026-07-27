@@ -702,7 +702,25 @@ fn default_config(_target: &str) -> String {
         "fdfe:dcba:9876::1/126"
       ],
       "auto_route": true,
+      "auto_redirect": true,
       "strict_route": true,
+      "exclude_uid": [
+        0
+      ],
+      "route_exclude_address": [
+        "192.168.0.0/16",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "100.64.0.0/10",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "224.0.0.0/4",
+        "::1/128",
+        "fc00::/7",
+        "fe80::/10",
+        "ff00::/8",
+        "fd7a:115c:a1e0::/48"
+      ],
       "stack": "mixed"
     }
   ],
@@ -828,12 +846,19 @@ mod tests {
     fn default_sing_box_config_uses_mixed_tun_stack() {
         let config: serde_json::Value =
             serde_json::from_str(&default_config("sing-box")).expect("parse default config");
-        let tun_stack = config["inbounds"]
+        let tun = config["inbounds"]
             .as_array()
             .and_then(|inbounds| inbounds.iter().find(|inbound| inbound["tag"] == "tun-in"))
-            .and_then(|inbound| inbound["stack"].as_str());
+            .expect("default TUN inbound");
 
-        assert_eq!(tun_stack, Some("mixed"));
+        assert_eq!(tun["stack"].as_str(), Some("mixed"));
+        assert_eq!(tun["exclude_uid"], serde_json::json!([0]));
+        assert!(tun["route_exclude_address"]
+            .as_array()
+            .is_some_and(|routes| routes.iter().any(|route| route == "127.0.0.0/8")));
+        assert!(tun["route_exclude_address"]
+            .as_array()
+            .is_some_and(|routes| routes.iter().any(|route| route == "::1/128")));
     }
 
     #[test]

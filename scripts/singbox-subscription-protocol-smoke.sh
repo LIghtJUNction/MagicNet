@@ -182,4 +182,41 @@ jq -e '
 ' "$tmp_dir/generated-outbounds.json" >/dev/null \
     || fail "generated outbounds did not preserve all protocols in the proxy selector"
 
+# Configured keywords exclude matching tags before selectors are generated.
+MODDIR="$tmp_dir/module"
+mkdir -p "$MODDIR/.config/sing-box"
+printf '%s\n' 'FREE' '香港' >"$MODDIR/.config/sing-box/subscription-filter.list"
+filtered_nodes="$tmp_dir/filtered-nodes.json"
+jq '. + [
+  {
+    "type": "vless",
+    "tag": "Free trial",
+    "server": "free.invalid",
+    "server_port": 443,
+    "uuid": "00000000-0000-4000-8000-000000000004"
+  },
+  {
+    "type": "vless",
+    "tag": "香港 01",
+    "server": "hk.invalid",
+    "server_port": 443,
+    "uuid": "00000000-0000-4000-8000-000000000005"
+  }
+]' "$nodes_json" >"$filtered_nodes"
+filtered_fragment="$tmp_dir/filtered-outbounds.fragment"
+magicnet_singbox_write_outbounds_from_json "$filtered_nodes" "$filtered_fragment"
+{
+    printf '{\n'
+    sed 's/,$//' "$filtered_fragment"
+    printf '\n}\n'
+} >"$tmp_dir/filtered-outbounds.json"
+jq -e '
+  ([.outbounds[] | select(.tag == "Free trial" or .tag == "香港 01")] | length) == 0
+  and ((.outbounds[] | select(.type == "selector" and .tag == "proxy") | .outbounds) as $proxy
+    | ($proxy | index("Free trial")) == null
+    and ($proxy | index("香港 01")) == null
+    and ($proxy | index("fixture-vless")) != null)
+' "$tmp_dir/filtered-outbounds.json" >/dev/null \
+    || fail "subscription keyword filters were not applied to nodes and selectors"
+
 printf 'sing-box subscription protocol smoke passed\n'

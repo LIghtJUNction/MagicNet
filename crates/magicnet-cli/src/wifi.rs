@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
+use std::fs;
 use std::path::Path;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::diagnostics::supervisor_pid;
 use crate::utils::command_text_full_timeout;
@@ -11,6 +12,8 @@ use crate::{clean_lines, read_kv, run_magicnet_function, write_kv, write_text_fi
 const DEFAULT_INTERVAL_SECONDS: u64 = 5;
 const MIN_INTERVAL_SECONDS: u64 = 3;
 const MAX_INTERVAL_SECONDS: u64 = 300;
+const STABLE_RECONCILE_SECONDS: u64 = 60;
+const NETWORK_CHANGE_CONFIRMATIONS: u8 = 2;
 const WIFI_POLICY_CONF: &str = ".config/magicnet/wifi-policy.conf";
 const WIFI_SSID_LIST: &str = ".config/magicnet/wifi-ssid.list";
 const WIFI_BSSID_LIST: &str = ".config/magicnet/wifi-bssid.list";
@@ -295,12 +298,21 @@ fn apply_once(app: &App, verbose: bool) -> Result<bool, String> {
         return Ok(false);
     }
     let network = detect_wifi();
+    apply_network(app, &config, &network, verbose)
+}
+
+fn apply_network(
+    app: &App,
+    config: &PolicyConfig,
+    network: &WifiNetwork,
+    verbose: bool,
+) -> Result<bool, String> {
     let ssids = clean_lines(ssid_list_path(app));
     let bssids = clean_lines(bssid_list_path(app))
         .into_iter()
         .filter_map(|value| normalize_bssid(&value))
         .collect::<Vec<_>>();
-    let decision = decide(&config, &network, &ssids, &bssids);
+    let decision = decide(config, network, &ssids, &bssids);
     let current = current_clash_mode(app)?;
     let changed = current != decision.desired_mode;
     if changed {
@@ -323,6 +335,10 @@ fn apply_once(app: &App, verbose: bool) -> Result<bool, String> {
 
 fn watch(app: &App) -> Result<(), String> {
     let mut last_error = String::new();
+    let mut applied_network: Option<WifiNetwork> = None;
+    let mut pending_network: Option<WifiNetwork> = None;
+    let mut pending_confirmations = 0_u8;
+    let mut last_reconcile = Instant::now();
     loop {
         let config = read_policy_config(app);
         if !config.enabled
@@ -331,13 +347,38 @@ fn watch(app: &App) -> Result<(), String> {
         {
             break;
         }
-        match apply_once(app, false) {
-            Ok(_) => last_error.clear(),
-            Err(err) if err != last_error => {
-                eprintln!("[warn] Wi-Fi policy check failed: {err}");
-                last_error = err;
+        let network = detect_wifi();
+        let network_changed = applied_network.as_ref().is_some_and(|last| last != &network);
+        let should_apply = if applied_network.is_none() {
+            true
+        } else if network_changed {
+            if pending_network.as_ref() == Some(&network) {
+                pending_confirmations = pending_confirmations.saturating_add(1);
+            } else {
+                pending_network = Some(network.clone());
+                pending_confirmations = 1;
             }
-            Err(_) => {}
+            pending_confirmations >= NETWORK_CHANGE_CONFIRMATIONS
+        } else {
+            pending_network = None;
+            pending_confirmations = 0;
+            last_reconcile.elapsed() >= Duration::from_secs(STABLE_RECONCILE_SECONDS)
+        };
+        if should_apply {
+            match apply_network(app, &config, &network, false) {
+                Ok(_) => {
+                    last_error.clear();
+                    applied_network = Some(network);
+                    pending_network = None;
+                    pending_confirmations = 0;
+                    last_reconcile = Instant::now();
+                }
+                Err(err) if err != last_error => {
+                    eprintln!("[warn] Wi-Fi policy check failed: {err}");
+                    last_error = err;
+                }
+                Err(_) => {}
+            }
         }
         thread::sleep(Duration::from_secs(config.interval_seconds));
     }
@@ -378,12 +419,15 @@ fn decide(
 fn detect_wifi() -> WifiNetwork {
     let output = command_text_full_timeout("cmd", &["wifi", "status"], Duration::from_secs(3));
     if command_output_available(&output, "cmd") {
-        return parse_wifi_status(&output);
+        let network = parse_wifi_status(&output);
+        if network.connected || explicitly_disconnected(&output) {
+            return network;
+        }
     }
     let output = command_text_full_timeout("dumpsys", &["wifi"], Duration::from_secs(3));
     if command_output_available(&output, "dumpsys") {
         let network = parse_wifi_status(&output);
-        if network.connected {
+        if network.connected || explicitly_disconnected(&output) {
             return network;
         }
     }
@@ -392,6 +436,19 @@ fn detect_wifi() -> WifiNetwork {
         return parse_wifi_status(&output);
     }
     WifiNetwork::default()
+}
+
+fn explicitly_disconnected(output: &str) -> bool {
+    let lower = output.to_ascii_lowercase();
+    [
+        "not connected",
+        "disconnected",
+        "wi-fi is disabled",
+        "wifi is disabled",
+        "state: disabled",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
 }
 
 fn command_output_available(output: &str, program: &str) -> bool {
@@ -513,10 +570,7 @@ fn write_last_state(
     network: &WifiNetwork,
     decision: &PolicyDecision,
 ) -> Result<(), String> {
-    write_kv(
-        app,
-        Path::new(WIFI_LAST_STATE),
-        &[
+    let values = [
             (
                 "connected",
                 if network.connected { "1" } else { "0" }.to_string(),
@@ -528,8 +582,17 @@ fn write_last_state(
                 if decision.matched { "1" } else { "0" }.to_string(),
             ),
             ("desired_mode", decision.desired_mode.to_string()),
-        ],
-    )
+        ];
+    let expected = values
+        .iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    if fs::read_to_string(app.moddir.join(WIFI_LAST_STATE)).as_deref() == Ok(expected.as_str()) {
+        return Ok(());
+    }
+    write_kv(app, Path::new(WIFI_LAST_STATE), &values)
 }
 
 fn print_status(app: &App) {
@@ -606,6 +669,13 @@ mod tests {
             "WifiInfo: SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00",
         );
         assert_eq!(network, WifiNetwork::default());
+    }
+
+    #[test]
+    fn partial_wifi_status_is_not_treated_as_an_explicit_disconnect() {
+        assert!(!explicitly_disconnected("Wi-Fi is enabled\nscan state: idle"));
+        assert!(explicitly_disconnected("Wi-Fi is enabled\nNetwork is not connected"));
+        assert!(explicitly_disconnected("Wi-Fi is disabled"));
     }
 
     #[test]

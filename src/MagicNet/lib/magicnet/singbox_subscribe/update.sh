@@ -105,6 +105,40 @@ magicnet_singbox_status_reconcile() {
     magicnet_singbox_status_mark_interrupted
 }
 
+magicnet_singbox_prune_subscription_cache() {
+    _prune_cache_map="$1"
+    _prune_cache_dir=$(magicnet_singbox_subscription_cache_dir)
+    [ -d "$_prune_cache_dir" ] || {
+        unset _prune_cache_map _prune_cache_dir
+        return 0
+    }
+    _prune_expected="${_prune_cache_dir}/.active-fingerprints.$$"
+    : >"$_prune_expected" || return 1
+    if [ -f "$_prune_cache_map" ]; then
+        while IFS='|' read -r _prune_name _prune_file _prune_identity _prune_fingerprint _prune_extra; do
+            [ -z "$_prune_extra" ] || continue
+            printf '%s' "$_prune_fingerprint" | grep -Eq '^[0-9a-f]{64}$' || continue
+            printf '%s\n' "$_prune_fingerprint" >>"$_prune_expected"
+        done <"$_prune_cache_map"
+    fi
+    for _prune_file in "$_prune_cache_dir"/*.yaml; do
+        [ -f "$_prune_file" ] || continue
+        _prune_name=${_prune_file##*/}
+        _prune_fingerprint=${_prune_name%.yaml}
+        printf '%s' "$_prune_fingerprint" | grep -Eq '^[0-9a-f]{64}$' || continue
+        grep -F -x "$_prune_fingerprint" "$_prune_expected" >/dev/null 2>&1 ||
+            rm -f "$_prune_file" "${_prune_file}.identity" 2>/dev/null || true
+    done
+    for _prune_identity in "$_prune_cache_dir"/*.yaml.identity; do
+        [ -f "$_prune_identity" ] || continue
+        _prune_file=${_prune_identity%.identity}
+        [ -f "$_prune_file" ] || rm -f "$_prune_identity" 2>/dev/null || true
+    done
+    rm -f "$_prune_expected" 2>/dev/null || true
+    unset _prune_cache_map _prune_cache_dir _prune_expected _prune_name _prune_file
+    unset _prune_identity _prune_fingerprint _prune_extra
+}
+
 magicnet_singbox_transaction_dir() {
     printf '%s\n' "${MODDIR}/.state/sing-box/subscription-transaction"
 }
@@ -511,6 +545,8 @@ magicnet_singbox_update_subscription_unlocked() {
             fi
         done <"$_sub_cache_map"
     fi
+    magicnet_singbox_prune_subscription_cache "$_sub_cache_map" ||
+        warn "Subscription cache pruning failed"
 
     rm -rf "$(magicnet_singbox_transaction_dir)" 2>/dev/null || return 1
     _sub_success_epoch=$(date +%s)

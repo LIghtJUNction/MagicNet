@@ -16,7 +16,10 @@ use crate::{
 
 const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
 const MAX_SUBSCRIPTION_USER_AGENT_BYTES: usize = 256;
+const MAX_SUBSCRIPTION_FILTERS: usize = 32;
+const MAX_SUBSCRIPTION_FILTER_BYTES: usize = 64;
 const SUBSCRIPTION_USER_AGENT_PATH: &str = ".config/sing-box/subscription.user-agent";
+const SUBSCRIPTION_FILTER_PATH: &str = ".config/sing-box/subscription-filter.list";
 const SELECTOR_REPLAY_WARNING: &str =
     "subscription committed, but saved selector choices could not be replayed";
 static SUBSCRIPTION_CANDIDATE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -100,6 +103,30 @@ pub fn sub_user_agent(app: &App, args: &[String]) -> Result<(), String> {
         _ => Err(
             "Usage: cli sub user-agent {get|set <base64-value>|clear}".to_string(),
         ),
+    }
+}
+
+pub fn sub_filter(app: &App, args: &[String]) -> Result<(), String> {
+    match args.get(2).map(String::as_str).unwrap_or("list") {
+        "list" => {
+            for value in subscription_filters(app) {
+                println!("{value}");
+            }
+            Ok(())
+        }
+        "set" => {
+            let encoded = args.get(3).map(String::as_str).unwrap_or_default();
+            if encoded.is_empty() {
+                return Err("Usage: cli sub filter set <base64-lines>".to_string());
+            }
+            let bytes = decode_base64(encoded)?;
+            let value = String::from_utf8(bytes)
+                .map_err(|err| format!("subscription filters are not UTF-8: {err}"))?;
+            let value = normalize_subscription_filter_text(&value)?;
+            write_text_file(app, Path::new(SUBSCRIPTION_FILTER_PATH), &value)
+        }
+        "clear" => write_text_file(app, Path::new(SUBSCRIPTION_FILTER_PATH), ""),
+        _ => Err("Usage: cli sub filter {list|set <base64-lines>|clear}".to_string()),
     }
 }
 
@@ -391,6 +418,9 @@ pub fn sub_list(app: &App) {
         first_clean_line(app.moddir.join(".config/sing-box/subscription.url"))
     );
     println!("user-agent={}", subscription_user_agent(app));
+    for (idx, value) in subscription_filters(app).iter().enumerate() {
+        println!("filter.{}={value}", idx + 1);
+    }
 }
 
 pub fn sub_get(app: &App, target: &str) {
@@ -472,6 +502,44 @@ fn subscription_user_agent(app: &App) -> String {
         .into_iter()
         .next()
         .unwrap_or_default()
+}
+
+fn subscription_filters(app: &App) -> Vec<String> {
+    crate::utils::clean_module_lines(app, Path::new(SUBSCRIPTION_FILTER_PATH))
+        .unwrap_or_default()
+}
+
+pub(crate) fn normalize_subscription_filter_text(value: &str) -> Result<String, String> {
+    let mut seen = HashSet::new();
+    let mut filters = Vec::new();
+    for raw in value.lines() {
+        let filter = raw.trim();
+        if filter.is_empty() {
+            continue;
+        }
+        if filter.as_bytes().len() > MAX_SUBSCRIPTION_FILTER_BYTES {
+            return Err(format!(
+                "subscription filter must be at most {MAX_SUBSCRIPTION_FILTER_BYTES} bytes"
+            ));
+        }
+        if filter.chars().any(char::is_control) {
+            return Err("subscription filter must not contain control characters".to_string());
+        }
+        let folded = filter.to_lowercase();
+        if seen.insert(folded) {
+            filters.push(filter.to_string());
+        }
+        if filters.len() > MAX_SUBSCRIPTION_FILTERS {
+            return Err(format!(
+                "subscription filter list supports at most {MAX_SUBSCRIPTION_FILTERS} entries"
+            ));
+        }
+    }
+    if filters.is_empty() {
+        Ok(String::new())
+    } else {
+        Ok(format!("{}\n", filters.join("\n")))
+    }
 }
 
 pub(crate) fn validate_subscription_user_agent(value: &str) -> Result<(), String> {
@@ -559,6 +627,39 @@ mod tests {
         )
         .expect("clear subscription User-Agent");
         assert_eq!(subscription_user_agent(&app), "");
+    }
+
+    #[test]
+    fn subscription_filters_are_normalized_deduplicated_and_persisted() {
+        let app = temp_app();
+        let encoded = crate::encode_base64("免费\nFREE\nfree\n香港\n".as_bytes());
+
+        sub_filter(
+            &app,
+            &[
+                "sub".to_string(),
+                "filter".to_string(),
+                "set".to_string(),
+                encoded,
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(app.moddir.join(SUBSCRIPTION_FILTER_PATH)).unwrap(),
+            "免费\nFREE\n香港\n"
+        );
+        assert_eq!(subscription_filters(&app), ["免费", "FREE", "香港"]);
+    }
+
+    #[test]
+    fn subscription_filters_reject_oversized_or_excessive_entries() {
+        assert!(normalize_subscription_filter_text(&"x".repeat(65)).is_err());
+        let too_many = (0..=MAX_SUBSCRIPTION_FILTERS)
+            .map(|index| format!("filter-{index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(normalize_subscription_filter_text(&too_many).is_err());
     }
 
     #[test]

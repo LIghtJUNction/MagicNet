@@ -5,6 +5,7 @@ export type SubscriptionState = {
   singBox: string;
   singBoxUrls: string[];
   userAgent: string;
+  filters: string[];
   configuredCount: number;
   updateRunning: boolean;
   updateLockOwner: string;
@@ -34,6 +35,7 @@ export const subscriptionDefaults: SubscriptionState = {
   singBox: "",
   singBoxUrls: [],
   userAgent: "",
+  filters: [],
   configuredCount: 0,
   updateRunning: false,
   updateLockOwner: "none",
@@ -592,12 +594,13 @@ export function parseSubs(
   statusText: string,
   previous: SubscriptionState,
 ): SubscriptionState {
-  const next: SubscriptionState = { ...previous, singBoxUrls: [] };
+  const next: SubscriptionState = { ...previous, singBoxUrls: [], filters: [] };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (/^sing-box\.\d+=/.test(line)) next.singBoxUrls.push(line.replace(/^sing-box\.\d+=/, ""));
     else if (line.startsWith("sing-box=")) next.singBox = line.slice(9);
     else if (line.startsWith("user-agent=")) next.userAgent = line.slice(11);
+    else if (/^filter\.\d+=/.test(line)) next.filters.push(line.replace(/^filter\.\d+=/, ""));
   });
   if (!next.singBoxUrls.length && next.singBox) next.singBoxUrls = [next.singBox];
   const values = new Map<string, string>();
