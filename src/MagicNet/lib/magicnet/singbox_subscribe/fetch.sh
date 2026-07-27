@@ -31,20 +31,29 @@ magicnet_singbox_try_fetch_subscription() {
     case "$_method" in
         curl)
             command -v curl >/dev/null 2>&1 || return 127
+            set -- -fsSL
             if [ -n "${MAGICNET_SUB_PROXY:-}" ]; then
-                env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-                    timeout "$_max_time" curl -fsSL --proxy "$MAGICNET_SUB_PROXY" --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file"
+                set -- "$@" --proxy "$MAGICNET_SUB_PROXY"
             else
-                env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-                    timeout "$_max_time" curl -fsSL --noproxy '*' --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file"
+                set -- "$@" --noproxy '*'
             fi
+            [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] ||
+                set -- "$@" --user-agent "$MAGICNET_SUB_USER_AGENT"
+            set -- "$@" --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file"
+            env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
+                timeout "$_max_time" curl "$@"
             ;;
         wget)
             command -v wget >/dev/null 2>&1 || return 127
+            set -- -T "$_max_time" -qO "$_download_file"
+            [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] ||
+                set -- "$@" --user-agent "$MAGICNET_SUB_USER_AGENT"
+            set -- "$@" "$_url"
             env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-                timeout "$_max_time" wget -T "$_max_time" -qO "$_download_file" "$_url"
+                timeout "$_max_time" wget "$@"
             ;;
         sing-box)
+            [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] || return 127
             command -v sing-box >/dev/null 2>&1 || return 127
             env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
                 timeout "$_max_time" sing-box tools fetch "$_url" >"$_download_file"
@@ -80,6 +89,12 @@ magicnet_singbox_fetch_one_subscription() {
     _label="$6"
     _url_file=$(magicnet_singbox_subscription_url_file)
     _download_file="${_source_file}.download"
+    _user_agent_file=$(magicnet_singbox_subscription_user_agent_file)
+    MAGICNET_SUB_USER_AGENT=
+    if [ -s "$_user_agent_file" ]; then
+        IFS= read -r MAGICNET_SUB_USER_AGENT <"$_user_agent_file" || true
+    fi
+    export MAGICNET_SUB_USER_AGENT
 
     if [ -z "$_url" ]; then
         error "Subscription URL is empty in $_url_file"
@@ -96,6 +111,8 @@ magicnet_singbox_fetch_one_subscription() {
     _tried=0
     if [ -n "${MAGICNET_SUB_PROXY:-}" ]; then
         _methods="curl"
+    elif [ -n "$MAGICNET_SUB_USER_AGENT" ]; then
+        _methods="curl wget"
     else
         _methods="curl wget sing-box"
     fi
@@ -131,7 +148,11 @@ magicnet_singbox_fetch_one_subscription() {
     fi
 
     if [ "$_tried" -eq 0 ]; then
-        error "No downloader found: curl, wget or sing-box tools fetch"
+        if [ -n "$MAGICNET_SUB_USER_AGENT" ]; then
+            error "No downloader with custom User-Agent support found: curl or wget"
+        else
+            error "No downloader found: curl, wget or sing-box tools fetch"
+        fi
         return 1
     fi
     if [ "$_fetched" -ne 1 ]; then

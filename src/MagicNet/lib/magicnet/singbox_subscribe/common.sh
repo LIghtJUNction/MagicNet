@@ -829,6 +829,10 @@ magicnet_singbox_subscription_url_file() {
     printf '%s\n' "${MAGICNET_SUB_URL_FILE:-${MODDIR}/.config/sing-box/subscription.url}"
 }
 
+magicnet_singbox_subscription_user_agent_file() {
+    printf '%s\n' "${MAGICNET_SUB_USER_AGENT_FILE:-${MODDIR}/.config/sing-box/subscription.user-agent}"
+}
+
 magicnet_singbox_subscription_source_file() {
     printf '%s\n' "${MODDIR}/.config/sing-box/subscription.yaml"
 }

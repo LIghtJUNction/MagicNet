@@ -5,16 +5,18 @@ use std::io::{self, Seek, SeekFrom, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     clean_lines, clear_node_cache, decode_base64, first_clean_line, run_magicnet_function,
-    run_subscription_update_from_inherited_fd, App,
+    run_subscription_update_from_inherited_fd, write_text_file, App,
 };
 
 const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
+const MAX_SUBSCRIPTION_USER_AGENT_BYTES: usize = 256;
+const SUBSCRIPTION_USER_AGENT_PATH: &str = ".config/sing-box/subscription.user-agent";
 const SELECTOR_REPLAY_WARNING: &str =
     "subscription committed, but saved selector choices could not be replayed";
 static SUBSCRIPTION_CANDIDATE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -70,6 +72,35 @@ pub fn sub_set_file(app: &App, args: &[String]) -> Result<(), String> {
     }
     let text = normalized_subscription_payload(payload)?;
     apply_subscription_text(app, &text)
+}
+
+pub fn sub_user_agent(app: &App, args: &[String]) -> Result<(), String> {
+    match args.get(2).map(String::as_str).unwrap_or("get") {
+        "get" => {
+            println!("{}", subscription_user_agent(app));
+            Ok(())
+        }
+        "set" => {
+            let encoded = args.get(3).map(String::as_str).unwrap_or_default();
+            if encoded.is_empty() {
+                return Err("Usage: cli sub user-agent set <base64-value>".to_string());
+            }
+            let bytes = decode_base64(encoded)?;
+            let value = String::from_utf8(bytes)
+                .map_err(|err| format!("subscription User-Agent is not UTF-8: {err}"))?;
+            let value = value.trim();
+            validate_subscription_user_agent(value)?;
+            write_text_file(
+                app,
+                Path::new(SUBSCRIPTION_USER_AGENT_PATH),
+                &format!("{value}\n"),
+            )
+        }
+        "clear" => write_text_file(app, Path::new(SUBSCRIPTION_USER_AGENT_PATH), ""),
+        _ => Err(
+            "Usage: cli sub user-agent {get|set <base64-value>|clear}".to_string(),
+        ),
+    }
 }
 
 pub fn sub_apply_file(app: &App, args: &[String]) -> Result<(), String> {
@@ -359,6 +390,7 @@ pub fn sub_list(app: &App) {
         "sing-box={}",
         first_clean_line(app.moddir.join(".config/sing-box/subscription.url"))
     );
+    println!("user-agent={}", subscription_user_agent(app));
 }
 
 pub fn sub_get(app: &App, target: &str) {
@@ -434,6 +466,29 @@ pub(crate) fn sub_target_file(app: &App, _target: &str) -> PathBuf {
     app.moddir.join(".config/sing-box/subscription.url")
 }
 
+fn subscription_user_agent(app: &App) -> String {
+    crate::utils::clean_module_lines(app, Path::new(SUBSCRIPTION_USER_AGENT_PATH))
+        .unwrap_or_default()
+        .into_iter()
+        .next()
+        .unwrap_or_default()
+}
+
+pub(crate) fn validate_subscription_user_agent(value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err("Subscription User-Agent must not be empty; use clear instead".to_string());
+    }
+    if value.as_bytes().len() > MAX_SUBSCRIPTION_USER_AGENT_BYTES {
+        return Err(format!(
+            "Subscription User-Agent must be at most {MAX_SUBSCRIPTION_USER_AGENT_BYTES} bytes"
+        ));
+    }
+    if value.chars().any(char::is_control) {
+        return Err("Subscription User-Agent must not contain control characters".to_string());
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err("Subscription URL must start with http:// or https://".to_string());
@@ -469,6 +524,48 @@ mod tests {
         validate_subscription_url("http://127.0.0.1:8080/sub").unwrap();
         assert!(validate_subscription_url("ftp://example.com/sub").is_err());
         assert!(validate_subscription_url("https://example.com/a b").is_err());
+    }
+
+    #[test]
+    fn subscription_user_agent_is_validated_and_persisted() {
+        let app = temp_app();
+        let value = "sing-box/1.12.0 (Android)";
+        let encoded = crate::encode_base64(value.as_bytes());
+
+        sub_user_agent(
+            &app,
+            &[
+                "sub".to_string(),
+                "user-agent".to_string(),
+                "set".to_string(),
+                encoded,
+            ],
+        )
+        .expect("set subscription User-Agent");
+
+        assert_eq!(subscription_user_agent(&app), value);
+        assert_eq!(
+            fs::read_to_string(app.moddir.join(SUBSCRIPTION_USER_AGENT_PATH)).unwrap(),
+            format!("{value}\n")
+        );
+
+        sub_user_agent(
+            &app,
+            &[
+                "sub".to_string(),
+                "user-agent".to_string(),
+                "clear".to_string(),
+            ],
+        )
+        .expect("clear subscription User-Agent");
+        assert_eq!(subscription_user_agent(&app), "");
+    }
+
+    #[test]
+    fn subscription_user_agent_rejects_controls_and_oversized_values() {
+        assert!(validate_subscription_user_agent("sing-box\ninjected").is_err());
+        assert!(validate_subscription_user_agent(&"x".repeat(257)).is_err());
+        assert!(validate_subscription_user_agent("").is_err());
     }
 
     #[test]

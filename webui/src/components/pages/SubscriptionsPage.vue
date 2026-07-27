@@ -13,6 +13,7 @@ import {
 import { computed, ref, shallowRef, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
@@ -22,6 +23,7 @@ import {
   subscriptionLifecycleRunning,
 } from "@/composables/backgroundTasks";
 import {
+  bytesToBase64,
   copyText,
   execFailed,
   readClipboardText,
@@ -59,6 +61,8 @@ const pendingApply = shallowRef<PendingSubscriptionApply | null>(null);
 const summaryCopied = ref(false);
 const scheduleValue = ref<ScheduleValue>("off");
 const scheduleDirty = ref(false);
+const userAgentText = ref("");
+const userAgentDirty = ref(false);
 
 const inputSummary = computed(() => summarizeSubscriptionInput(singBoxText.value));
 const subscriptionPreview = computed<SubscriptionPreview[]>(() => buildSubscriptionPreview(singBoxText.value).slice(0, 8));
@@ -75,6 +79,14 @@ const canApply = computed(() => {
 });
 const applyLabel = computed(() => configured.value ? "保存并应用" : "保存并首次启用");
 const scheduleChanged = computed(() => scheduleValue.value !== state.subscriptions.scheduleIntervalHours);
+const normalizedUserAgent = computed(() => userAgentText.value.trim());
+const userAgentBytes = computed(() => new TextEncoder().encode(normalizedUserAgent.value).length);
+const userAgentError = computed(() => {
+  if (/[\u0000-\u001f\u007f]/.test(normalizedUserAgent.value)) return "User-Agent 不能包含控制字符。";
+  if (userAgentBytes.value > 256) return "User-Agent 最多 256 字节。";
+  return "";
+});
+const userAgentChanged = computed(() => normalizedUserAgent.value !== state.subscriptions.userAgent);
 const lifecycleStatus = computed(() => {
   if (subscriptionLifecycleRunning(state.backgroundTask, state.subscriptions.updateRunning)) return "running";
   if (state.backgroundTask.status === "timeout" && isSubscriptionBackgroundArgs(state.backgroundTask.args)) return "timeout";
@@ -147,6 +159,13 @@ watch(() => state.subscriptions.scheduleIntervalHours, (value) => {
   }
 }, { immediate: true });
 
+watch(() => state.subscriptions.userAgent, (value) => {
+  if (!userAgentDirty.value || value === normalizedUserAgent.value) {
+    userAgentText.value = value;
+    userAgentDirty.value = false;
+  }
+}, { immediate: true });
+
 watch(() => state.backgroundTask.status, async (status) => {
   if (!isSubscriptionBackgroundArgs(state.backgroundTask.args)) return;
   if (status === "done" && pendingApply.value) await refreshSubs(true);
@@ -187,6 +206,7 @@ async function stageSubscriptionPayload(snapshot: string) {
 async function applySubscriptions(): Promise<void> {
   if (!canApply.value) return;
   await withAction("apply-subscriptions", async () => {
+    if (userAgentChanged.value && !(await persistUserAgent())) return;
     const snapshot = canonicalDraft.value;
     if (singBoxText.value !== snapshot) {
       syncingEditor.value = true;
@@ -259,6 +279,46 @@ async function saveSchedule(): Promise<void> {
     await refreshSubs(true);
     scheduleDirty.value = false;
   });
+}
+
+async function saveUserAgent(): Promise<void> {
+  if (!userAgentChanged.value || userAgentError.value) return;
+  await withAction("save-user-agent", async () => {
+    if (!(await persistUserAgent())) return;
+    const value = normalizedUserAgent.value;
+    if (configured.value) {
+      await startBackgroundCli(
+        "sub update-all",
+        value ? "使用自定义 User-Agent 刷新订阅" : "使用默认 User-Agent 刷新订阅",
+        "",
+        "sub update-all",
+      );
+    } else {
+      state.output = value
+        ? "自定义 User-Agent 已保存，将在首次拉取订阅时使用。"
+        : "自定义 User-Agent 已清除，后续拉取将使用下载器默认值。";
+    }
+  });
+}
+
+async function persistUserAgent(): Promise<boolean> {
+  if (userAgentError.value) {
+    state.output = userAgentError.value;
+    return false;
+  }
+  if (!userAgentChanged.value) return true;
+  const value = normalizedUserAgent.value;
+  const encoded = value
+    ? bytesToBase64(new TextEncoder().encode(value))
+    : "";
+  const command = value
+    ? `sub user-agent set ${encoded}`
+    : "sub user-agent clear";
+  const result = await runCli(command, value ? "保存订阅 User-Agent" : "清除订阅 User-Agent");
+  if (execFailed(result)) return false;
+  if (!(await refreshSubs(true))) return false;
+  userAgentDirty.value = false;
+  return true;
 }
 </script>
 
@@ -425,6 +485,40 @@ async function saveSchedule(): Promise<void> {
           </div>
           <Button v-if="configured" variant="outline" class="mt-4 w-full" :loading="isRunning('update-all')" @click="updateAll">
             <RefreshCw :size="16" />立即刷新
+          </Button>
+        </Card>
+
+        <Card>
+          <div class="flex items-start gap-3">
+            <ShieldCheck :size="18" class="mt-0.5 shrink-0 text-[var(--mn-ink-muted)]" />
+            <div class="min-w-0">
+              <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Request identity</span>
+              <h3 class="mt-1 text-base font-semibold text-[var(--mn-ink)]">订阅 User-Agent</h3>
+            </div>
+          </div>
+
+          <label class="mt-4 block text-xs font-medium text-[var(--mn-ink-muted)]" for="subscription-user-agent">自定义值</label>
+          <Input
+            id="subscription-user-agent"
+            v-model="userAgentText"
+            class="mt-2"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="留空使用下载器默认值"
+            aria-describedby="subscription-user-agent-help"
+            @input="userAgentDirty = true"
+          />
+          <p id="subscription-user-agent-help" class="mt-2 text-xs leading-5" :class="userAgentError ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">
+            {{ userAgentError || `可填写 sing-box、mihomo 或服务商要求的完整值；${userAgentBytes}/256 字节。` }}
+          </p>
+
+          <Button
+            class="mt-4 w-full"
+            :disabled="!userAgentChanged || Boolean(userAgentError)"
+            :loading="isRunning('save-user-agent')"
+            @click="saveUserAgent"
+          >
+            <Save :size="16" />{{ configured ? '保存并刷新订阅' : '保存 User-Agent' }}
           </Button>
         </Card>
 

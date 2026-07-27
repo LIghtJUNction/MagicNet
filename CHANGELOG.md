@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Add a persistent custom User-Agent for subscription downloads, configurable
+  from the CLI and WebUI and applied consistently by curl and wget.
 - Fix #64 by keeping Android network validation on the automatic healthy-node
   group when the general proxy selector is pinned to a manual node, preventing
   a stalled node from making the system mark Wi-Fi as disconnected.

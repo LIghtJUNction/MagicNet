@@ -11,6 +11,10 @@ magicnet_singbox_subscription_url_file() {
   printf '%s\n' "$tmp/subscription.url"
 }
 
+magicnet_singbox_subscription_user_agent_file() {
+  printf '%s\n' "$tmp/subscription.user-agent"
+}
+
 error() {
   printf 'error %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
 }
@@ -62,6 +66,26 @@ grep -q 'curl .*--proxy http://127.0.0.1:7892' "$tmp/log"
 PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription sing-box https://example.invalid/sub "$tmp/sing" 2 11
 grep -q '^timeout 11$' "$tmp/log"
 grep -q '^sing-box tools fetch ' "$tmp/log"
+: >"$tmp/log"
+MAGICNET_SUB_USER_AGENT='sing-box/1.12.0 (Android)' PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_try_fetch_subscription wget https://example.invalid/sub "$tmp/wget-ua" 2 11 || true
+grep -q 'wget .*--user-agent sing-box/1.12.0 (Android).*https://example.invalid/sub' "$tmp/log"
+: >"$tmp/log"
+if MAGICNET_SUB_USER_AGENT=sing-box PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_try_fetch_subscription sing-box https://example.invalid/sub "$tmp/sing-ua" 2 11; then
+  exit 1
+fi
+if grep -q '^sing-box ' "$tmp/log"; then
+  exit 1
+fi
+: >"$tmp/log"
+printf '%s\n' 'mihomo/1.19.0' >"$tmp/subscription.user-agent"
+PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_fetch_one_subscription \
+    https://example.invalid/sub "$tmp/custom-ua" "" "" "" '#1'
+grep -q 'curl .*--user-agent mihomo/1.19.0.*https://example.invalid/sub' "$tmp/log"
+test "$(cat "$tmp/custom-ua")" = ok
+rm -f "$tmp/subscription.user-agent"
 : >"$tmp/log"
 MAGICNET_FETCH_FAIL=1 MAGICNET_SUB_PROXY=http://127.0.0.1:7892 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_fetch_one_subscription \
