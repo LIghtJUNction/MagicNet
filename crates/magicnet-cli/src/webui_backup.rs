@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::subscriptions::validate_subscription_url;
+use crate::subscriptions::{validate_subscription_url, validate_subscription_user_agent};
 use crate::{
     decode_base64, run_magicnet_function, shell_inert_conf_value, write_secret_file,
     write_text_file, App,
@@ -164,6 +164,17 @@ fn flush_restore(app: &App, rel: Option<String>, text: &str) -> Result<(), Strin
             "refusing to restore {rel}: file is shell-sourced and violates its allowlisted schema"
         ));
     }
+    if rel == ".config/sing-box/subscription.user-agent" {
+        let value = text.strip_suffix('\n').unwrap_or(text);
+        if value.contains('\r')
+            || value.contains('\n')
+            || (!value.is_empty() && validate_subscription_user_agent(value).is_err())
+        {
+            return Err(format!(
+                "refusing to restore {rel}: invalid subscription User-Agent"
+            ));
+        }
+    }
     if secret_backup_file(&rel) {
         write_secret_file(app, Path::new(&rel), text)
     } else {
@@ -254,6 +265,7 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
 fn backup_files() -> &'static [&'static str] {
     &[
         ".config/sing-box/subscription.url",
+        ".config/sing-box/subscription.user-agent",
         ".config/magicnet/app-mode.conf",
         ".config/magicnet/app-proxy.list",
         ".config/magicnet/app-bypass.list",

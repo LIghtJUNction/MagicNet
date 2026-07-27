@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Add a persistent custom User-Agent for subscription downloads, configurable
+  from the CLI and WebUI and applied consistently by curl and wget.
 - Keep ChatGPT remote pairing feature traffic on the pinned ChatGPT path and
   route all X Android action requests before the FakeIP guard.
 - Start each AI service selector on its filtered service-specific automatic

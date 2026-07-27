@@ -4,6 +4,7 @@ import type { AppPolicy, BlocklistState, DnsState, HealthItem, PackageInfo, Runt
 export type SubscriptionState = {
   singBox: string;
   singBoxUrls: string[];
+  userAgent: string;
   configuredCount: number;
   updateRunning: boolean;
   updateLockOwner: string;
@@ -32,6 +33,7 @@ export type SubscriptionState = {
 export const subscriptionDefaults: SubscriptionState = {
   singBox: "",
   singBoxUrls: [],
+  userAgent: "",
   configuredCount: 0,
   updateRunning: false,
   updateLockOwner: "none",
@@ -595,6 +597,7 @@ export function parseSubs(
     const line = raw.trim();
     if (/^sing-box\.\d+=/.test(line)) next.singBoxUrls.push(line.replace(/^sing-box\.\d+=/, ""));
     else if (line.startsWith("sing-box=")) next.singBox = line.slice(9);
+    else if (line.startsWith("user-agent=")) next.userAgent = line.slice(11);
   });
   if (!next.singBoxUrls.length && next.singBox) next.singBoxUrls = [next.singBox];
   const values = new Map<string, string>();
