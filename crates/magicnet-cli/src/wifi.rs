@@ -589,7 +589,11 @@ fn write_last_state(
         .collect::<Vec<_>>()
         .join("\n")
         + "\n";
-    if fs::read_to_string(app.moddir.join(WIFI_LAST_STATE)).as_deref() == Ok(expected.as_str()) {
+    if fs::read_to_string(app.moddir.join(WIFI_LAST_STATE))
+        .ok()
+        .as_deref()
+        == Some(expected.as_str())
+    {
         return Ok(());
     }
     write_kv(app, Path::new(WIFI_LAST_STATE), &values)
