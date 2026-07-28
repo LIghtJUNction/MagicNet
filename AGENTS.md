@@ -14,4 +14,4 @@
 
 通过 adb 给真机写入临时文件或中转补丁时，不要使用 `/data/local/tmp`。本设备该路径可能不可写。统一使用 `/sdcard/Download/MagicNet/` 作为中转目录，写入前 `mkdir -p /sdcard/Download/MagicNet`，任务结束后清理本次创建的临时文件，方便用户手动检查和清理。
 
-修改代码或文档时继续遵守项目既有约束：不要恢复已删除的 TProxy 主路径；sing-box 支持 TUN 与 MagicNet eBPF 路径；eBPF redirect 数据面未完成时默认 `auto` 必须回退到 TUN，不能自动 promote netd `ALLOW_MULTI`。
+修改代码或文档时继续遵守项目既有约束：不要恢复已删除的 TProxy、eBPF 或其他非 TUN 透明路径；当前主线只支持 sing-box `magicnet0` TUN。不要新增 `auto` 或 netd `ALLOW_MULTI` promote 路径，也不要假定 `cli ebpf status` 存在；真机状态以 `cli transparent status`、`cli health` 和 `magicnet0` 为准。

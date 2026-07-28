@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v1.1.27 (2026-07-28)
+
 - Add a persistent custom User-Agent for subscription downloads, configurable
   from the CLI and WebUI and applied consistently by curl and wget.
 - Fix #64 by keeping Android network validation on the automatic healthy-node
@@ -15,12 +17,12 @@
   destination-specific policy precedence.
 - Include the redacted startup blocker in support bundles so stopped-core issue
   reports distinguish missing subscriptions or nodes from runtime crashes.
-
-## v1.1.27 (2026-07-26)
-
 - Add line numbers, JSON syntax highlighting, and live JSON syntax checks to the
   configuration editor.
 - Remove the built-in supporter leaderboard.
+- Clarify the supported sing-box + `magicnet0` TUN runtime and align device
+  diagnostics with `cli transparent status`, `cli health`, and the available
+  CLI contract.
 
 ## v1.1.23 (2026-07-19)
 
