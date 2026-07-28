@@ -7,7 +7,7 @@
     <a href="Cargo.toml"><img alt="Rust workspace" src="https://img.shields.io/badge/Rust-workspace-f46623?logo=rust&logoColor=white" /></a>
     <a href="webui/package.json"><img alt="Vue WebUI" src="https://img.shields.io/badge/WebUI-Vue%203-42b883?logo=vue.js&logoColor=white" /></a>
     <a href="kam.toml"><img alt="Built with KAM" src="https://img.shields.io/badge/Built%20with-KAM-8b5cf6" /></a>
-    <a href="https://discord.gg/vXffnGge6"><img alt="Official Discord" src="https://img.shields.io/badge/Discord-official%20chat-5865F2?logo=discord&logoColor=white" /></a>
+    <a href="https://discord.gg/asRwgK9FpA"><img alt="Official Discord" src="https://img.shields.io/badge/Discord-official%20chat-5865F2?logo=discord&logoColor=white" /></a>
     <a href="https://github.com/LIghtJUNction/MagicNet/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/LIghtJUNction/MagicNet/total?label=downloads&logo=github" /></a>
   </p>
 </div>
@@ -272,7 +272,7 @@ MCP 工具可管理配置源、封锁名单、备份、状态检查、eCapture �
 
 ## 社区
 
-- 官方 Discord 群聊：[https://discord.gg/vXffnGge6](https://discord.gg/vXffnGge6)
+- 官方 Discord 群聊：[https://discord.gg/asRwgK9FpA](https://discord.gg/asRwgK9FpA)
 
 ## 参考与致谢
 
