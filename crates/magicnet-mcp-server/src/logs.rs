@@ -1,8 +1,11 @@
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::process::Command;
 
 use crate::{run_cli, Server};
+
+const MAX_LOG_READ_BYTES: u64 = 1024 * 1024;
 
 pub(crate) fn log_list(server: &Server) -> String {
     let mut rows = Vec::new();
@@ -39,7 +42,7 @@ pub(crate) fn log_read(server: &Server, source: &str, lines: usize, redact: bool
         Ok(path) => path,
         Err(err) => return err,
     };
-    let text = match fs::read_to_string(&path) {
+    let text = match read_bounded_tail(&path) {
         Ok(text) => text,
         Err(err) => return format!("log not found {}: {err}", path.display()),
     };
@@ -52,6 +55,21 @@ pub(crate) fn log_read(server: &Server, source: &str, lines: usize, redact: bool
     } else {
         body
     }
+}
+
+fn read_bounded_tail(path: &PathBuf) -> std::io::Result<String> {
+    let mut file = File::open(path)?;
+    let len = file.metadata()?.len();
+    let start = len.saturating_sub(MAX_LOG_READ_BYTES);
+    file.seek(SeekFrom::Start(start))?;
+    let mut bytes = Vec::with_capacity((len - start) as usize);
+    file.read_to_end(&mut bytes)?;
+    if start > 0 {
+        if let Some(index) = bytes.iter().position(|byte| *byte == b'\n') {
+            bytes.drain(..=index);
+        }
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 pub(crate) fn debug_snapshot(server: &Server, lines: usize) -> String {
@@ -139,4 +157,30 @@ fn redact_token(token: &str) -> String {
         return "<redacted-secret>".to_string();
     }
     token.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn bounded_log_tail_does_not_load_an_unbounded_prefix() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("magicnet-log-tail-{stamp}.log"));
+        let mut file = File::create(&path).unwrap();
+        file.write_all(&vec![b'x'; MAX_LOG_READ_BYTES as usize + 128])
+            .unwrap();
+        file.write_all(b"\nlast-line\n").unwrap();
+        drop(file);
+
+        let text = read_bounded_tail(&path).unwrap();
+        assert!(text.len() <= MAX_LOG_READ_BYTES as usize);
+        assert!(text.ends_with("last-line\n"));
+        let _ = fs::remove_file(path);
+    }
 }

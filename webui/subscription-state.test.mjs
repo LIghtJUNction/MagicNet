@@ -6,6 +6,8 @@ const list = [
   "sing-box.2=https://second.example.invalid/sub",
   "sing-box=https://first.example.invalid/path?token=secret",
   "user-agent=sing-box/1.12.0 (Android)",
+  "filter.1=免费",
+  "filter.2=HK",
 ].join("\n");
 const status = [
   "configured_count=2",
@@ -35,6 +37,7 @@ const status = [
 const parsed = parseSubs(list, status, subscriptionDefaults);
 assert.equal(parsed.singBoxUrls.length, 2);
 assert.equal(parsed.userAgent, "sing-box/1.12.0 (Android)");
+assert.deepEqual(parsed.filters, ["免费", "HK"]);
 assert.equal(parsed.configuredCount, 2);
 assert.equal(parsed.updateRunning, true);
 assert.equal(parsed.lastPhase, "commit");

@@ -45,6 +45,7 @@ magicnet_singbox_build_outbounds_with_proxylink() {
     _proxylink=$(magicnet_singbox_proxylink_bin) || return 1
     _tmp_config="${_out_file}.proxylink-config.json"
     _tmp_outbounds="${_out_file}.proxylink-outbounds.json"
+    _filtered_outbounds="${_out_file}.proxylink-filtered.json"
     _links_file="${_sources_file%/*}/nodes/links.txt"
 
     : >"$_tmp_config"
@@ -67,14 +68,26 @@ magicnet_singbox_build_outbounds_with_proxylink() {
     jq -c '.outbounds // []' "$_tmp_config" >"$_tmp_outbounds" || return 1
     _raw_count=$(jq 'length' "$_tmp_outbounds" 2>/dev/null || printf '0')
     [ "${_raw_count:-0}" -gt 0 ] || return 1
-
-    _valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds") || return 1
-    [ "${_valid_count:-0}" -gt 0 ] || return 1
-    if [ "${_expected_count:-0}" -gt 0 ] && [ "${_valid_count:-0}" -lt "${_expected_count:-0}" ]; then
+    _pre_filter_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds") || return 1
+    if [ "${_expected_count:-0}" -gt 0 ] &&
+        [ "${_pre_filter_valid_count:-0}" -lt "${_expected_count:-0}" ]; then
         return 1
     fi
 
-    magicnet_singbox_write_outbounds_from_json "$_tmp_outbounds" "$_out_file" || return 1
+    _filter_file=$(magicnet_singbox_subscription_filter_file)
+    [ -f "$_filter_file" ] || _filter_file=/dev/null
+    jq --rawfile configured_filters "$_filter_file" '
+      ($configured_filters
+        | split("\n")
+        | map(gsub("\r"; "") | select(length > 0) | ascii_downcase)) as $filters
+      | map(select((.tag // "" | ascii_downcase) as $tag
+          | ($filters | any(. as $filter | $tag | contains($filter))) | not))
+    ' "$_tmp_outbounds" >"$_filtered_outbounds" || return 1
+
+    _valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_filtered_outbounds") || return 1
+    [ "${_valid_count:-0}" -gt 0 ] || return 1
+
+    magicnet_singbox_write_outbounds_from_json "$_filtered_outbounds" "$_out_file" || return 1
     _skipped=$((_raw_count - _valid_count))
     printf '%s %s\n' "$_valid_count" "$_skipped"
 }

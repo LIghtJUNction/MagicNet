@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -15,6 +15,8 @@ const DEFAULT_BIND: &str = "127.0.0.1";
 const DEFAULT_PORT: &str = "8766";
 const MAX_SECRET_BYTES: usize = 256;
 const MCP_CONF: &str = ".config/magicnet/mcp.conf";
+const MAX_MCP_LOG_BYTES: u64 = 1024 * 1024;
+const KEEP_MCP_LOG_BYTES: u64 = 512 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct McpConfig {
@@ -235,6 +237,11 @@ fn start(app: &App) -> Result<(), String> {
     if let Some(parent) = pid_path(app).parent() {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir state dir: {err}"))?;
     }
+    trim_log_file(
+        &app.log_dir.join("mcp-server.log"),
+        MAX_MCP_LOG_BYTES,
+        KEEP_MCP_LOG_BYTES,
+    )?;
     let log = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -265,6 +272,35 @@ fn start(app: &App) -> Result<(), String> {
             app.log_dir.join("mcp-server.log").display()
         ))
     }
+}
+
+fn trim_log_file(path: &Path, max_bytes: u64, keep_bytes: u64) -> Result<(), String> {
+    let Ok(mut source) = fs::File::open(path) else {
+        return Ok(());
+    };
+    let len = source
+        .metadata()
+        .map_err(|err| format!("inspect MCP log: {err}"))?
+        .len();
+    if len <= max_bytes {
+        return Ok(());
+    }
+    source
+        .seek(SeekFrom::Start(len.saturating_sub(keep_bytes)))
+        .map_err(|err| format!("seek MCP log: {err}"))?;
+    let mut tail = Vec::with_capacity(keep_bytes as usize);
+    source
+        .read_to_end(&mut tail)
+        .map_err(|err| format!("read MCP log tail: {err}"))?;
+    drop(source);
+    let mut target = fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)
+        .map_err(|err| format!("truncate MCP log: {err}"))?;
+    target
+        .write_all(&tail)
+        .map_err(|err| format!("write MCP log tail: {err}"))
 }
 
 fn apply_endpoint_args(config: &mut McpConfig, args: &[String]) -> Result<(), String> {

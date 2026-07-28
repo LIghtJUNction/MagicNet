@@ -2,6 +2,26 @@ magicnet_supervisor_orphan_pids() {
     return 1
 }
 
+magicnet_trim_log_file() {
+    _trim_log_file="$1"
+    _trim_log_max="${2:-1048576}"
+    _trim_log_keep="${3:-524288}"
+    [ -f "$_trim_log_file" ] || {
+        unset _trim_log_file _trim_log_max _trim_log_keep
+        return 0
+    }
+    _trim_log_size=$(wc -c <"$_trim_log_file" 2>/dev/null | tr -d ' ')
+    case "$_trim_log_size" in '' | *[!0-9]*) _trim_log_size=0 ;; esac
+    if [ "$_trim_log_size" -gt "$_trim_log_max" ]; then
+        _trim_log_tmp="${_trim_log_file}.trim.$$"
+        if tail -c "$_trim_log_keep" "$_trim_log_file" >"$_trim_log_tmp" 2>/dev/null; then
+            cat "$_trim_log_tmp" >"$_trim_log_file" 2>/dev/null || true
+        fi
+        rm -f "$_trim_log_tmp" 2>/dev/null || true
+    fi
+    unset _trim_log_file _trim_log_max _trim_log_keep _trim_log_size _trim_log_tmp
+}
+
 magicnet_supervisor_kill_orphans() {
     _msko_target="$1"
     case "$_msko_target" in
@@ -108,6 +128,7 @@ magicnet_fswatch_start() {
         return 0
     fi
     unset _fw_rc
+    magicnet_trim_log_file "${MODDIR}/.log/fswatch.log"
     KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
         KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
         fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
@@ -200,6 +221,7 @@ magicnet_wifi_policy_start() {
     fi
     rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
     mkdir -p "${MODDIR}/.state/wifi-policy" "${MODDIR}/.log" || return 1
+    magicnet_trim_log_file "${MODDIR}/.log/wifi-policy.log"
     nohup "${MODDIR}/cli" wifi watch </dev/null >>"${MODDIR}/.log/wifi-policy.log" 2>&1 &
     _wifi_policy_pid=$!
     printf '%s\n' "$_wifi_policy_pid" >"$_wifi_policy_pid_file" || {
@@ -559,6 +581,7 @@ magicnet_subscription_refresh_start() {
     _refresh_owner_file=$(magicnet_subscription_refresh_owner_file)
     _refresh_log_file="${MODDIR}/.log/subscription-refresh.log"
     mkdir -p "$_refresh_state_dir" "${_refresh_log_file%/*}" || return 1
+    magicnet_trim_log_file "$_refresh_log_file"
     {
         printf '%s\n' '#!/system/bin/sh'
         printf 'MODDIR=%s\n' "'$(printf '%s' "$MODDIR" | sed "s/'/'\\\\''/g")'"

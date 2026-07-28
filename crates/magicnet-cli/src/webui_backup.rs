@@ -1,7 +1,10 @@
 use std::fs;
 use std::path::Path;
 
-use crate::subscriptions::{validate_subscription_url, validate_subscription_user_agent};
+use crate::subscriptions::{
+    normalize_subscription_filter_text, validate_subscription_url,
+    validate_subscription_user_agent,
+};
 use crate::{
     decode_base64, run_magicnet_function, shell_inert_conf_value, write_secret_file,
     write_text_file, App,
@@ -175,6 +178,15 @@ fn flush_restore(app: &App, rel: Option<String>, text: &str) -> Result<(), Strin
             ));
         }
     }
+    if rel == ".config/sing-box/subscription-filter.list" {
+        let normalized = normalize_subscription_filter_text(text)
+            .map_err(|_| format!("refusing to restore {rel}: invalid subscription filter list"))?;
+        if normalized != text {
+            return Err(format!(
+                "refusing to restore {rel}: subscription filter list is not normalized"
+            ));
+        }
+    }
     if secret_backup_file(&rel) {
         write_secret_file(app, Path::new(&rel), text)
     } else {
@@ -266,6 +278,7 @@ fn backup_files() -> &'static [&'static str] {
     &[
         ".config/sing-box/subscription.url",
         ".config/sing-box/subscription.user-agent",
+        ".config/sing-box/subscription-filter.list",
         ".config/magicnet/app-mode.conf",
         ".config/magicnet/app-proxy.list",
         ".config/magicnet/app-bypass.list",

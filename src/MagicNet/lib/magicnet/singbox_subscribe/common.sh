@@ -789,6 +789,35 @@ magicnet_singbox_is_info_tag() {
     return 1
 }
 
+magicnet_singbox_subscription_filter_file() {
+    if [ -n "${MAGICNET_SUB_FILTER_FILE:-}" ]; then
+        printf '%s\n' "$MAGICNET_SUB_FILTER_FILE"
+    elif [ -n "${MODDIR:-}" ]; then
+        printf '%s\n' "${MODDIR}/.config/sing-box/subscription-filter.list"
+    else
+        printf '%s\n' /dev/null
+    fi
+}
+
+magicnet_singbox_tag_matches_filter() {
+    _filter_tag="$1"
+    _filter_file=$(magicnet_singbox_subscription_filter_file)
+    [ -n "$_filter_tag" ] && [ -s "$_filter_file" ] || {
+        unset _filter_tag _filter_file
+        return 1
+    }
+    while IFS= read -r _filter_keyword || [ -n "$_filter_keyword" ]; do
+        _filter_keyword=$(printf '%s' "$_filter_keyword" | tr -d '\r')
+        [ -n "$_filter_keyword" ] || continue
+        if printf '%s' "$_filter_tag" | grep -i -F -e "$_filter_keyword" >/dev/null 2>&1; then
+            unset _filter_tag _filter_file _filter_keyword
+            return 0
+        fi
+    done <"$_filter_file"
+    unset _filter_tag _filter_file _filter_keyword
+    return 1
+}
+
 if ! command -v error >/dev/null 2>&1; then
     error() { printf '%s\n' "ERROR: $1"; }
 fi

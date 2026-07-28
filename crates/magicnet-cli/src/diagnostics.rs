@@ -7,6 +7,8 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use serde_json::Value;
+
 use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
 use crate::{clean_lines, command_text_timeout, mcp, pid_summary, App};
@@ -25,6 +27,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     let ecapture = app.moddir.join("bin/ecapture");
     let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
     let (routing_ok, routing_detail) = routing_policy_check(app);
+    let (loop_guard_ok, loop_guard_detail) = traffic_loop_guard_check(app);
     let (api_ok, api_detail) = api_probe(&app.api);
     let (_, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
     vec![
@@ -37,6 +40,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
         ),
         ("DNS Leak", dns_ok, dns_detail),
         ("Routing Policy", routing_ok, routing_detail),
+        ("Traffic Loop Guard", loop_guard_ok, loop_guard_detail),
         ("Core API", api_ok, api_detail),
         (
             "Subscription",
@@ -472,6 +476,87 @@ fn configured_tun_names(app: &App) -> Vec<String> {
     names
 }
 
+fn traffic_loop_guard_check(app: &App) -> (bool, String) {
+    let path = app.moddir.join(".config/sing-box/config.json");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return (false, format!("config missing: {}", path.display()));
+    };
+    let Ok(config) = serde_json::from_str::<Value>(&text) else {
+        return (false, "sing-box config is not valid JSON".to_string());
+    };
+    let tun = config
+        .get("inbounds")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item.get("type").and_then(Value::as_str) == Some("tun"))
+        });
+    let Some(tun) = tun else {
+        return (false, "TUN inbound missing".to_string());
+    };
+    let root_excluded = tun
+        .get("exclude_uid")
+        .and_then(Value::as_array)
+        .is_some_and(|items| items.iter().any(|value| value.as_u64() == Some(0)));
+    let excluded_routes = tun
+        .get("route_exclude_address")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let excludes_ipv4_loopback = excluded_routes
+        .iter()
+        .any(|value| value.as_str() == Some("127.0.0.0/8"));
+    let excludes_ipv6_loopback = excluded_routes
+        .iter()
+        .any(|value| value.as_str() == Some("::1/128"));
+    let loopback_servers = config
+        .get("outbounds")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|outbound| {
+            let kind = outbound.get("type").and_then(Value::as_str)?;
+            if !matches!(
+                kind,
+                "vless" | "vmess" | "trojan" | "shadowsocks" | "hysteria2" | "tuic" | "anytls"
+            ) {
+                return None;
+            }
+            let server = outbound.get("server").and_then(Value::as_str)?;
+            let loopback = server.eq_ignore_ascii_case("localhost")
+                || server
+                    .parse::<IpAddr>()
+                    .is_ok_and(|address| address.is_loopback());
+            loopback.then(|| {
+                outbound
+                    .get("tag")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unnamed")
+                    .to_string()
+            })
+        })
+        .collect::<Vec<_>>();
+    let ok = root_excluded
+        && excludes_ipv4_loopback
+        && excludes_ipv6_loopback
+        && loopback_servers.is_empty();
+    (
+        ok,
+        format!(
+            "exclude_uid_0={} ipv4_loopback_excluded={} ipv6_loopback_excluded={} loopback_proxy_servers={}",
+            root_excluded as u8,
+            excludes_ipv4_loopback as u8,
+            excludes_ipv6_loopback as u8,
+            if loopback_servers.is_empty() {
+                "none".to_string()
+            } else {
+                loopback_servers.join(",")
+            }
+        ),
+    )
+}
+
 fn json_string_value(line: &str, key: &str) -> Option<String> {
     let needle = format!("\"{key}\"");
     let (_, rest) = line.split_once(&needle)?;
@@ -872,10 +957,44 @@ fn looks_like_hostname(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_only_command_with_timeout, redact, support_bundle};
+    use super::{
+        read_only_command_with_timeout, redact, support_bundle, traffic_loop_guard_check,
+    };
     use crate::App;
     use std::fs;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn traffic_loop_guard_requires_root_and_loopback_exclusions() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("magicnet-loop-guard-{stamp}"));
+        fs::create_dir_all(root.join(".config/sing-box")).unwrap();
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{
+              "inbounds": [{
+                "type": "tun",
+                "exclude_uid": [0],
+                "route_exclude_address": ["127.0.0.0/8", "::1/128"]
+              }],
+              "outbounds": [{"type": "vless", "tag": "node", "server": "example.com"}]
+            }"#,
+        )
+        .unwrap();
+        let app = App::for_test(root.clone());
+        assert!(traffic_loop_guard_check(&app).0);
+
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{"inbounds":[{"type":"tun"}],"outbounds":[]}"#,
+        )
+        .unwrap();
+        assert!(!traffic_loop_guard_check(&app).0);
+        let _ = fs::remove_dir_all(root);
+    }
 
     #[test]
     fn redact_removes_subscription_and_node_identifiers() {

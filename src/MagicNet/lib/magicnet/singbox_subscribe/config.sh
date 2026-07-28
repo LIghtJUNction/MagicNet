@@ -27,7 +27,8 @@ magicnet_singbox_build_outbounds_file() {
             _tag=$(printf '%s' "$_json" | sed -n 's/.*"tag":"\([^"]*\)".*/\1/p')
             if [ -z "$_tag" ] || magicnet_singbox_tag_is_reserved "$_tag" ||
                 grep -F -x "$_tag" "$_tags_file" >/dev/null 2>&1 ||
-                magicnet_singbox_is_info_tag "$_tag"; then
+                magicnet_singbox_is_info_tag "$_tag" ||
+                magicnet_singbox_tag_matches_filter "$_tag"; then
                 _skipped=$((_skipped + 1))
                 continue
             fi
@@ -69,8 +70,11 @@ magicnet_singbox_build_outbounds_file_with_jq() {
     _out_file="$3"
     command -v jq >/dev/null 2>&1 || return 1
     _tags_json="${_out_file}.tags.json"
+    _filter_file=$(magicnet_singbox_subscription_filter_file)
+    [ -f "$_filter_file" ] || _filter_file=/dev/null
     jq -R -s 'split("\n") | map(select(length > 0))' "$_tags_file" >"$_tags_json" || return 1
-    jq -n -r --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" '
+    jq -n -r --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" \
+      --rawfile configured_filters "$_filter_file" '
       def normalize_tag:
         if type == "string"
         then gsub("[\\r\\n\\t]"; " ") | gsub("[[:cntrl:]]"; "")
@@ -164,11 +168,16 @@ magicnet_singbox_build_outbounds_file_with_jq() {
             else [pinned_ai_selector($service.tag; $tags)]
             end)
       | add;
-      ($nodes[0] // []
+      ($configured_filters
+        | split("\n")
+        | map(gsub("\r"; "") | select(length > 0) | ascii_downcase)) as $filters
+      | ($nodes[0] // []
         | map(.tag = ((.tag // "") | normalize_tag))
         | map(select(
             valid_proxy_node
             and (((.tag // "") | test("剩余流量|到期|过期|套餐|官网|订阅|Traffic|traffic|Expire|expire|Expired|expired|Subscription|subscription|官方网站|更新订阅")) | not)
+            and ((.tag // "" | ascii_downcase) as $tag
+              | ($filters | any(. as $filter | $tag | contains($filter))) | not)
           ))
         | reduce .[] as $node
             ([]; if (map(.tag) | index($node.tag)) != null then . else . + [$node] end)

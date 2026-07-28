@@ -48,8 +48,8 @@ use service::{
     transparent_cmd,
 };
 use subscriptions::{
-    setup_subscription, sub_apply_file, sub_get, sub_list, sub_schedule, sub_set, sub_set_file,
-    sub_status, sub_target_file, sub_update, sub_update_all, sub_user_agent,
+    setup_subscription, sub_apply_file, sub_filter, sub_get, sub_list, sub_schedule, sub_set,
+    sub_set_file, sub_status, sub_target_file, sub_update, sub_update_all, sub_user_agent,
 };
 pub(crate) use utils::{
     clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv,
@@ -154,7 +154,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "sub",
-        usage: "cli sub {update <sing-box|all>|update-all|status|schedule {status|set <off|12|24|48|72>}|user-agent {get|set <base64-value>|clear}|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|apply-file sing-box <base64-lines>|file [sing-box]}",
+        usage: "cli sub {update <sing-box|all>|update-all|status|schedule {status|set <off|12|24|48|72>}|user-agent {get|set <base64-value>|clear}|filter {list|set <base64-lines>|clear}|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|apply-file sing-box <base64-lines>|file [sing-box]}",
     },
     CommandHelp {
         command: "block",
@@ -290,6 +290,7 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "sub" if args.get(1).map(String::as_str) == Some("user-agent") => {
             sub_user_agent(app, args)
         }
+        "sub" if args.get(1).map(String::as_str) == Some("filter") => sub_filter(app, args),
         "config-editor" => config_editor(app, &args[1..]),
         "sub"
             if matches!(
