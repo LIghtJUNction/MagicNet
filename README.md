@@ -24,6 +24,8 @@
 > [!IMPORTANT]
 > DNS 防泄露必读：请打开系统设置，搜索 `DNS`，找到“私人 DNS”“私密 DNS”“Private DNS”或类似表述，把私人 DNS 关闭，不要设置为自动加密。必须让 DNS 正常走 53 端口，让 MagicNet 接管并代理 DNS；否则 Android 系统或浏览器可能直接使用 DoT/DoH，导致 DNS 泄露检测仍然显示外部解析器。
 
+![用户评论](https://github.com/KernelSU-Modules-Repo/MagicNet/blob/main/Screenshot_2026-07-29-00-26-30-23_97550f1d11c73369bbee8f7d47965447.jpg)
+
 MagicNet 是一个 Android root 网络编排模块，把设备流量或显式代理流量接入 `sing-box` 策略平面。MagicNet 不包含 Android 应用侧 `VpnService.establish()`，不会由 MagicNet App 独占系统 VPN slot；默认兼容路径仍可通过 root/sing-box `magicnet0` TUN 接管、分流、代理或拒绝流量。
 
 当前主线已经收敛为 **sing-box + TUN 用户态编排**。`sing-box` 是唯一代理核心，`tun` 是唯一透明代理模式。下一代设计详见 [docs/next-gen-architecture.md](docs/next-gen-architecture.md)。旧的 TProxy 主路径、多核心切换和抓包代理功能都不再作为主线能力维护。
