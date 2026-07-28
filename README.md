@@ -263,7 +263,10 @@ MCP 工具可管理配置源、封锁名单、备份、状态检查、eCapture �
 - [MagicBox](MagicBox)：Android 控制壳，面向 TUN-only MagicNet 模块。
 - [kamfw](https://github.com/MemDeco-WG/kamfw)：运行时辅助库。
 
+
+
 ## 推广
+> 想要推广联系我邮箱即可
 
 - [AI 自动推广系统](https://bizbot.zvo.cn/)：探索 AI 驱动的自动推广工具与工作流。
 
