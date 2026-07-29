@@ -521,7 +521,7 @@ cp "$MOCK_BIN/pidof" "$MODDIR/bin/pidof"
 install_runtime_path_fixtures() {
     local applet host_applet mock
     local applets=(
-        awk basename bash cat chmod cp cut date dirname env false find grep head id
+        awk basename bash cat chmod cksum cp cut date dirname env false find flock grep head id
         kill ln ls mkdir mv nohup printf ps pwd readlink realpath rm sed sh sleep sort
         tail timeout touch tr true uname wc whoami xargs
     )
