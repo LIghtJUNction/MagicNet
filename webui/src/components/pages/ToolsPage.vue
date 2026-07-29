@@ -13,6 +13,7 @@ import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import DnsToolsCard from "./DnsToolsCard.vue";
 import EcaptureToolsCard from "./EcaptureToolsCard.vue";
 import McpToolsCard from "./McpToolsCard.vue";
+import NetworkPolicyCard from "./NetworkPolicyCard.vue";
 import NetworkSnapshotPanel from "./NetworkSnapshotPanel.vue";
 import WarpRouteRulesPanel from "./WarpRouteRulesPanel.vue";
 import { summarizeBackupPayload } from "./backupPayloadSummary";
@@ -313,6 +314,8 @@ function selectWarpGlobal(enabled: boolean): void {
     />
 
     <div class="grid min-w-0 gap-3 md:grid-cols-2">
+      <NetworkPolicyCard />
+
       <DnsToolsCard />
 
       <Card class="grid gap-3">

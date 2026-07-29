@@ -3,6 +3,8 @@ magicnet_singbox_apply_transparent_mode() {
     [ -f "$_config" ] || return 0
     _mode="$(magicnet_transparent_mode)"
     _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "tun")"
+    _tun_mtu="$(magicnet_tun_mtu)"
+    _udp_timeout="$(magicnet_udp_timeout)"
     _jq="${MODDIR}/bin/jq"
     if [ ! -x "$_jq" ]; then
         _jq="$(command -v jq 2>/dev/null || true)"
@@ -10,7 +12,10 @@ magicnet_singbox_apply_transparent_mode() {
     _tmp="${_config}.transparent-mode.new"
     if [ -n "$_jq" ]; then
         # shellcheck disable=SC2016
-        if "$_jq" --arg dns_strategy "$_dns_strategy" '
+        if "$_jq" \
+            --arg dns_strategy "$_dns_strategy" \
+            --argjson tun_mtu "$_tun_mtu" \
+            --arg udp_timeout "$_udp_timeout" '
             def mixed_in:
               {
                 "type": "mixed",
@@ -55,7 +60,8 @@ magicnet_singbox_apply_transparent_mode() {
                   "fd7a:115c:a1e0::/48"
                 ],
                 "stack": "mixed",
-                "mtu": 1400
+                "mtu": $tun_mtu,
+                "udp_timeout": $udp_timeout
               };
             def managed_inbound:
               ((.type // "") as $type | ($type == "tun" or $type == "tproxy" or $type == "redirect"))
@@ -100,6 +106,7 @@ magicnet_singbox_apply_transparent_mode() {
             | .route.rules = (
               ((.route.rules // [])
                 | map(select(references_managed_inbound | not))
+                | map(select(is_managed_ipv6_guard | not))
                 | map(normalize_sniff_rule)) as $rules
               | ([dns_hijack_rule] + (if any($rules[]?; is_sniff_rule) then $rules else [sniff_rule] + $rules end)) as $managed_rules
               | if $dns_strategy == "ipv4_only" then
@@ -117,7 +124,7 @@ magicnet_singbox_apply_transparent_mode() {
             :
         else
             rm -f "$_tmp" 2>/dev/null || true
-            unset _dns_strategy _jq _mode
+            unset _dns_strategy _tun_mtu _udp_timeout _jq _mode
             return 1
         fi
     else
@@ -127,7 +134,7 @@ magicnet_singbox_apply_transparent_mode() {
         if [ -z "$_singbox" ]; then
             magicnet_warn "sing-box not found; cannot safely normalize config without jq"
             rm -f "$_tmp" "$_stage" "$_next" 2>/dev/null || true
-            unset _dns_strategy _jq _mode _singbox _stage _next
+            unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
             return 1
         fi
         if "$_singbox" format -c "$_config" -D "${_config%/*}" >"$_stage"; then
@@ -135,7 +142,7 @@ magicnet_singbox_apply_transparent_mode() {
         else
             magicnet_warn "sing-box format failed; refusing unsafe no-jq config rewrite"
             rm -f "$_tmp" "$_stage" "$_next" 2>/dev/null || true
-            unset _dns_strategy _jq _mode _singbox _stage _next
+            unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
             return 1
         fi
         if awk -v dns_strategy="$_dns_strategy" '
@@ -227,10 +234,10 @@ magicnet_singbox_apply_transparent_mode() {
             :
         else
             rm -f "$_tmp" "$_stage" "$_next" 2>/dev/null || true
-            unset _dns_strategy _jq _mode _singbox _stage _next
+            unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
             return 1
         fi
-        if awk '
+        if awk -v tun_mtu="$_tun_mtu" -v udp_timeout="$_udp_timeout" '
         function emit_mixed(comma) {
             print "    {"
             print "      \"type\": \"mixed\","
@@ -269,7 +276,8 @@ magicnet_singbox_apply_transparent_mode() {
             print "        \"fd7a:115c:a1e0::/48\""
             print "      ],"
             print "      \"stack\": \"mixed\","
-            print "      \"mtu\": 1400"
+            print "      \"mtu\": " tun_mtu ","
+            print "      \"udp_timeout\": \"" udp_timeout "\""
             printf "    }%s\n", comma
         }
         function emit_dns(comma) {
@@ -403,7 +411,7 @@ magicnet_singbox_apply_transparent_mode() {
             :
         else
             rm -f "$_tmp" "$_stage" "$_next" 2>/dev/null || true
-            unset _dns_strategy _jq _mode _singbox _stage _next
+            unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
             return 1
         fi
     fi
@@ -423,7 +431,7 @@ magicnet_singbox_apply_transparent_mode() {
             :
         else
             rm -f "$_tmp" "$_stage" "$_next" 2>/dev/null || true
-            unset _dns_strategy _jq _mode _singbox _stage _next
+            unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
             return 1
         fi
     fi
@@ -541,7 +549,7 @@ magicnet_singbox_apply_transparent_mode() {
             if (rule_action_sniff == 1) {
                 normalized = normalize_sniff_rule(normalized)
             }
-            if (dns_strategy == "ipv4_only" && is_managed_ipv6_guard()) return
+            if (is_managed_ipv6_guard()) return
             if (rule_action_sniff == 1) {
                 sniff_rules[++sniff_count] = normalized
             } else if (rule_action_hijack == 1) {
@@ -707,7 +715,7 @@ magicnet_singbox_apply_transparent_mode() {
         :
     elif [ -z "$_jq" ]; then
         rm -f "$_tmp" "$_stage" "$_next" 2>/dev/null || true
-        unset _dns_strategy _jq _mode _singbox _stage _next
+        unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
         return 1
     fi
     if [ -z "$_jq" ]; then
@@ -715,13 +723,13 @@ magicnet_singbox_apply_transparent_mode() {
             rm -f "$_next" 2>/dev/null || true
         else
             rm -f "$_stage" "$_next" 2>/dev/null || true
-            unset _dns_strategy _jq _mode _singbox _stage _next
+            unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
             return 1
         fi
     fi
     import __singbox__
     singbox_prepare_route_config "$_config" || true
-    unset _dns_strategy _jq _mode _singbox _stage _next
+    unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
 }
 
 magicnet_transparent_apply_unlocked() {

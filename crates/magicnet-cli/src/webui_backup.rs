@@ -322,6 +322,16 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
                 "tun" | "proxy" | "external" | "external-tun" | "hybrid"
             )
         }
+        (".config/magicnet/network-policy.conf", "MAGICNET_IPV6_MODE") => {
+            matches!(value, "ipv4_only" | "prefer_ipv4" | "prefer_ipv6")
+        }
+        (".config/magicnet/network-policy.conf", "MAGICNET_TUN_MTU") => value
+            .parse::<u16>()
+            .map(|mtu| (1280..=1500).contains(&mtu))
+            .unwrap_or(false),
+        (".config/magicnet/network-policy.conf", "MAGICNET_UDP_TIMEOUT") => {
+            matches!(value, "1m" | "3m" | "5m" | "10m" | "15m" | "30m")
+        }
         (".config/magicnet/wifi-policy.conf", "MAGICNET_WIFI_POLICY_ENABLED") => {
             matches!(value, "0" | "1")
         }
@@ -355,6 +365,7 @@ fn backup_files() -> &'static [&'static str] {
         ".config/magicnet/warp.conf",
         ".config/magicnet/warp-endpoint.json",
         ".config/magicnet/transparent-mode.conf",
+        ".config/magicnet/network-policy.conf",
         ".config/magicnet/wifi-policy.conf",
         ".config/magicnet/wifi-ssid.list",
         ".config/magicnet/wifi-bssid.list",
@@ -454,6 +465,20 @@ mod tests {
             block,
             "not a kv line\n"
         ));
+
+        let network = ".config/magicnet/network-policy.conf";
+        assert!(sourced_conf_content_matches_schema(
+            network,
+            "MAGICNET_IPV6_MODE=prefer_ipv4\nMAGICNET_TUN_MTU=1400\nMAGICNET_UDP_TIMEOUT=5m\n"
+        ));
+        for invalid in [
+            "MAGICNET_IPV6_MODE=ipv6_only\n",
+            "MAGICNET_TUN_MTU=1279\n",
+            "MAGICNET_TUN_MTU=1501\n",
+            "MAGICNET_UDP_TIMEOUT=1h\n",
+        ] {
+            assert!(!sourced_conf_content_matches_schema(network, invalid));
+        }
     }
 
     #[test]

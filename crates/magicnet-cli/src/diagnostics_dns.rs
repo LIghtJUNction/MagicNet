@@ -33,6 +33,7 @@ enum Ipv6GuardStatus {
     Ok,
     Missing,
     NotRequired,
+    Unexpected,
 }
 
 impl Ipv6GuardStatus {
@@ -41,11 +42,12 @@ impl Ipv6GuardStatus {
             Self::Ok => "ok",
             Self::Missing => "missing",
             Self::NotRequired => "not_required",
+            Self::Unexpected => "unexpected",
         }
     }
 
     fn ok(self) -> bool {
-        self != Self::Missing
+        !matches!(self, Self::Missing | Self::Unexpected)
     }
 }
 
@@ -129,14 +131,12 @@ fn value_contains_string(value: Option<&Value>, expected: &str) -> bool {
 }
 
 fn ipv6_guard_status(strategy: &str, config: Option<&Value>) -> Ipv6GuardStatus {
-    if strategy != "ipv4_only" {
-        return Ipv6GuardStatus::NotRequired;
-    }
-
-    if config.is_some_and(has_ipv6_reject_guard) {
-        Ipv6GuardStatus::Ok
-    } else {
-        Ipv6GuardStatus::Missing
+    let has_guard = config.is_some_and(has_ipv6_reject_guard);
+    match (strategy, has_guard) {
+        ("ipv4_only", true) => Ipv6GuardStatus::Ok,
+        ("ipv4_only", false) => Ipv6GuardStatus::Missing,
+        (_, true) => Ipv6GuardStatus::Unexpected,
+        (_, false) => Ipv6GuardStatus::NotRequired,
     }
 }
 
@@ -403,6 +403,17 @@ mod tests {
         let guard = ipv6_guard_status("prefer_ipv4", Some(&config));
 
         assert!(healthy_config("prefer_ipv4", guard).ok());
+    }
+
+    #[test]
+    fn prefer_ipv4_with_stale_ipv6_reject_guard_fails() {
+        let config = parsed(
+            r#"{"route":{"rules":[{"ip_version":6,"action":"reject","method":"default","no_drop":true}]}}"#,
+        );
+        let guard = ipv6_guard_status("prefer_ipv4", Some(&config));
+
+        assert_eq!(guard, Ipv6GuardStatus::Unexpected);
+        assert!(!healthy_config("prefer_ipv4", guard).ok());
     }
 
     #[test]

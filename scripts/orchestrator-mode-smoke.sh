@@ -38,9 +38,9 @@ import() { :; }
 info() { :; }
 warn() { printf '%s\n' "$*" >&2; }
 magicnet_warn() { warn "$@"; }
-magicnet_singbox_dns_strategy_for_mode() { printf '%s\n' "ipv4_only"; }
 singbox_prepare_route_config() { :; }
 . "$ROOT_DIR/src/MagicNet/lib/magicnet/common.sh"
+. "$ROOT_DIR/src/MagicNet/lib/magicnet/transparent_dns.sh"
 . "$MAGICNET_TRANSPARENT_SCRIPT"
 magicnet_singbox_apply_transparent_mode
 HARNESS
@@ -280,7 +280,7 @@ assert_mode() {
     fi
 
     if [ "$expect_tun" = "yes" ]; then
-        jq -e '.inbounds[] | select(.type == "tun" and .tag == "tun-in" and .interface_name == "magicnet0" and .stack == "mixed" and .mtu == 1400)' "$config" >/dev/null
+        jq -e '.inbounds[] | select(.type == "tun" and .tag == "tun-in" and .interface_name == "magicnet0" and .stack == "mixed" and .mtu == 1400 and .udp_timeout == "5m")' "$config" >/dev/null
         assert_tun_exclusions "$config" "$mode/$managed_variant second apply"
         jq -e '.route.rules[] | select(.action == "sniff" and (.inbound == ["mixed-in", "tun-in"]))' "$config" >/dev/null
     else
@@ -301,7 +301,59 @@ assert_mode() {
     jq -e '.dns.strategy == "ipv4_only"' "$config" >/dev/null
 }
 
+export MAGICNET_TEST_DNS_STRATEGY=ipv4_only
+export MAGICNET_TEST_TUN_MTU=1400
+export MAGICNET_TEST_UDP_TIMEOUT=5m
+export MAGICNET_IPV6_MODE="$MAGICNET_TEST_DNS_STRATEGY"
+export MAGICNET_TUN_MTU="$MAGICNET_TEST_TUN_MTU"
+export MAGICNET_UDP_TIMEOUT="$MAGICNET_TEST_UDP_TIMEOUT"
 assert_mode tun yes duplicate
+
+assert_dual_stack_policy() {
+    local strategy=$1
+    local mtu=$2
+    local udp_timeout=$3
+    local config="$MODDIR/.config/sing-box/config.json"
+    export MAGICNET_TEST_DNS_STRATEGY=$strategy
+    export MAGICNET_TEST_TUN_MTU=$mtu
+    export MAGICNET_TEST_UDP_TIMEOUT=$udp_timeout
+    export MAGICNET_IPV6_MODE=$strategy
+    export MAGICNET_TUN_MTU=$mtu
+    export MAGICNET_UDP_TIMEOUT=$udp_timeout
+    "$TMPDIR/harness.sh"
+    if ! jq -e --arg strategy "$strategy" --argjson mtu "$mtu" --arg timeout "$udp_timeout" '
+        def managed_guard:
+          . == {"ip_version": 6, "outbound": "block"}
+          or . == {"ip_version": 6, "action": "reject", "no_drop": true}
+          or . == {"ip_version": 6, "action": "reject", "method": "default", "no_drop": true};
+        .dns.strategy == $strategy
+        and ([.route.rules[]? | select(managed_guard)] | length) == 0
+        and ([.inbounds[]? | select(
+          .type == "tun"
+          and .tag == "tun-in"
+          and .stack == "mixed"
+          and .mtu == $mtu
+          and .udp_timeout == $timeout
+          and any(.address[]?; contains(":"))
+        )] | length) == 1
+    ' "$config" >/dev/null; then
+        echo "orchestrator smoke failed: invalid $strategy/$mtu/$udp_timeout policy output" >&2
+        jq '{dns:.dns.strategy,tun:(.inbounds[]? | select(.type == "tun")),ipv6:[.route.rules[]? | select(.ip_version == 6)]}' "$config" >&2
+        exit 1
+    fi
+    assert_singbox_check "$config" "$strategy/$mtu/$udp_timeout policy"
+}
+
+# A previous ipv4_only apply leaves a managed IPv6 guard. Switching back to
+# dual stack must remove it while retaining the IPv6 TUN address.
+assert_dual_stack_policy prefer_ipv4 1400 5m
+assert_dual_stack_policy prefer_ipv6 1280 10m
+export MAGICNET_TEST_DNS_STRATEGY=ipv4_only
+export MAGICNET_TEST_TUN_MTU=1400
+export MAGICNET_TEST_UDP_TIMEOUT=5m
+export MAGICNET_IPV6_MODE="$MAGICNET_TEST_DNS_STRATEGY"
+export MAGICNET_TUN_MTU="$MAGICNET_TEST_TUN_MTU"
+export MAGICNET_UDP_TIMEOUT="$MAGICNET_TEST_UDP_TIMEOUT"
 
 for legacy_mode in proxy external external-tun hybrid; do
     printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$legacy_mode" >"$MODDIR/.config/magicnet/transparent-mode.conf"
@@ -485,7 +537,7 @@ if ! jq -e . "$FALLBACK_CONFIG" >/dev/null; then
 fi
 jq -e '.inbounds[] | select(.type == "mixed" and .tag == "mixed-in" and .listen == "127.0.0.1" and .listen_port == 7892)' "$FALLBACK_CONFIG" >/dev/null
 jq -e '.inbounds[] | select(.type == "direct" and .tag == "magicnet-dns-in" and .listen == "127.0.0.1" and .listen_port == 1053)' "$FALLBACK_CONFIG" >/dev/null
-jq -e '.inbounds[] | select(.type == "tun" and .tag == "tun-in" and .stack == "mixed" and .mtu == 1400)' "$FALLBACK_CONFIG" >/dev/null
+jq -e '.inbounds[] | select(.type == "tun" and .tag == "tun-in" and .stack == "mixed" and .mtu == 1400 and .udp_timeout == "5m")' "$FALLBACK_CONFIG" >/dev/null
 assert_tun_exclusions "$FALLBACK_CONFIG" "no-jq fallback first apply"
 jq -e '.dns.strategy == "ipv4_only"' "$FALLBACK_CONFIG" >/dev/null
 jq -e '.route.rules[] | select(.action == "sniff" and (.inbound == ["mixed-in", "tun-in"]) and .network == "tcp")' "$FALLBACK_CONFIG" >/dev/null

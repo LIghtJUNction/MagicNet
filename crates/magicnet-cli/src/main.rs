@@ -9,6 +9,7 @@ mod diagnostics_routing;
 mod dns;
 mod ecapture;
 mod mcp;
+mod network;
 mod node_delay;
 mod nodes;
 mod ping;
@@ -40,6 +41,7 @@ use diagnostics::{health, support, sysroute, topology};
 use dns::dns_cmd;
 use ecapture::ecapture_cmd;
 use mcp::mcp;
+use network::network_cmd;
 use nodes::node_cmd;
 use ping::{pingtest, speedtest};
 use rules::{app_cmd, block_cmd, route_cmd};
@@ -124,6 +126,10 @@ const COMMAND_HELP: &[CommandHelp] = &[
     CommandHelp {
         command: "transparent",
         usage: "cli transparent {status|set tun|apply}",
+    },
+    CommandHelp {
+        command: "network",
+        usage: "cli network {status|set <ipv4_only|prefer_ipv4|prefer_ipv6> <mtu:1280-1500> <udp-timeout:1m|3m|5m|10m|15m|30m>|apply}",
     },
     CommandHelp {
         command: "core",
@@ -272,6 +278,7 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "setup" => setup_subscription(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "config" => config_cmd(app, &args[1..]),
         "transparent" => transparent_cmd(app, &args[1..]),
+        "network" => network_cmd(app, &args[1..]),
         "core" => core_cmd(app, &args[1..]),
         "api" => api_cmd(app, &args[1..]),
         "mode" => webui_api::clash_mode_cmd(app, &args[1..]),

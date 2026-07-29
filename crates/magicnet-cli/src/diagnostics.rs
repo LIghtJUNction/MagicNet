@@ -25,6 +25,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     let singbox = pid_summary("sing-box");
     let mode = transparent_mode(app);
     let (tun_ok, tun_detail) = tun_check(app, &mode);
+    let (network_ok, network_detail) = network_policy_check(app);
     let ecapture = app.moddir.join("bin/ecapture");
     let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
     let (routing_ok, routing_detail) = routing_policy_check(app);
@@ -34,6 +35,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     vec![
         ("Core", running(&singbox), format!("sing-box={singbox}")),
         ("TUN", tun_ok, tun_detail),
+        ("UDP/IPv6", network_ok, network_detail),
         (
             "eCapture",
             ecapture.is_file(),
@@ -720,6 +722,91 @@ fn traffic_loop_guard_check(app: &App) -> (bool, String) {
     )
 }
 
+fn network_policy_check(app: &App) -> (bool, String) {
+    let path = app.moddir.join(".config/sing-box/config.json");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return (false, format!("config missing: {}", path.display()));
+    };
+    let Ok(config) = serde_json::from_str::<Value>(&text) else {
+        return (false, "sing-box config is not valid JSON".to_string());
+    };
+    let strategy = config
+        .get("dns")
+        .and_then(|dns| dns.get("strategy"))
+        .and_then(Value::as_str)
+        .unwrap_or("unset");
+    let tun = config
+        .get("inbounds")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item.get("type").and_then(Value::as_str) == Some("tun"))
+        });
+    let stack = tun
+        .and_then(|tun| tun.get("stack"))
+        .and_then(Value::as_str)
+        .unwrap_or("unset");
+    let mtu = tun
+        .and_then(|tun| tun.get("mtu"))
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let udp_timeout = tun
+        .and_then(|tun| tun.get("udp_timeout"))
+        .and_then(Value::as_str)
+        .unwrap_or("unset");
+    let ipv6_address = tun
+        .and_then(|tun| tun.get("address"))
+        .and_then(Value::as_array)
+        .is_some_and(|addresses| {
+            addresses
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|address| address.contains(':'))
+        });
+    let ipv6_guard = config
+        .get("route")
+        .and_then(|route| route.get("rules"))
+        .and_then(Value::as_array)
+        .is_some_and(|rules| rules.iter().any(is_managed_ipv6_guard));
+    let strategy_ok = matches!(strategy, "ipv4_only" | "prefer_ipv4" | "prefer_ipv6");
+    let guard_ok = if strategy == "ipv4_only" {
+        ipv6_guard
+    } else {
+        !ipv6_guard
+    };
+    let address_ok = strategy == "ipv4_only" || ipv6_address;
+    let ok = strategy_ok
+        && stack == "mixed"
+        && (1280..=1500).contains(&mtu)
+        && matches!(udp_timeout, "1m" | "3m" | "5m" | "10m" | "15m" | "30m")
+        && guard_ok
+        && address_ok;
+    (
+        ok,
+        format!(
+            "strategy={strategy} stack={stack} mtu={mtu} udp_timeout={udp_timeout} ipv6_address={} ipv6_guard={}",
+            ipv6_address as u8, ipv6_guard as u8
+        ),
+    )
+}
+
+fn is_managed_ipv6_guard(rule: &Value) -> bool {
+    let Some(rule) = rule.as_object() else {
+        return false;
+    };
+    let legacy_guard = rule.len() == 2
+        && rule.get("ip_version").and_then(Value::as_u64) == Some(6)
+        && rule.get("outbound").and_then(Value::as_str) == Some("block");
+    let canonical_fields = (rule.len() == 3 && !rule.contains_key("method"))
+        || (rule.len() == 4 && rule.get("method").and_then(Value::as_str) == Some("default"));
+    legacy_guard
+        || (canonical_fields
+            && rule.get("ip_version").and_then(Value::as_u64) == Some(6)
+            && rule.get("action").and_then(Value::as_str) == Some("reject")
+            && rule.get("no_drop").and_then(Value::as_bool) == Some(true))
+}
+
 fn json_string_value(line: &str, key: &str) -> Option<String> {
     let needle = format!("\"{key}\"");
     let (_, rest) = line.split_once(&needle)?;
@@ -1121,8 +1208,8 @@ fn looks_like_hostname(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        proxy_chain_evidence_from_values, read_only_command_with_timeout, redact, support_bundle,
-        traffic_loop_guard_check,
+        network_policy_check, proxy_chain_evidence_from_values, read_only_command_with_timeout,
+        redact, support_bundle, traffic_loop_guard_check,
     };
     use crate::App;
     use std::fs;
@@ -1157,6 +1244,71 @@ mod tests {
         )
         .unwrap();
         assert!(!traffic_loop_guard_check(&app).0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn network_policy_accepts_dual_stack_and_rejects_stale_ipv6_guard() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("magicnet-network-policy-{stamp}"));
+        fs::create_dir_all(root.join(".config/sing-box")).unwrap();
+        let config_path = root.join(".config/sing-box/config.json");
+        fs::write(
+            &config_path,
+            r#"{
+              "dns": {"strategy": "prefer_ipv4"},
+              "inbounds": [{
+                "type": "tun",
+                "stack": "mixed",
+                "mtu": 1400,
+                "udp_timeout": "5m",
+                "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]
+              }],
+              "route": {"rules": []}
+            }"#,
+        )
+        .unwrap();
+        let app = App::for_test(root.clone());
+        assert!(network_policy_check(&app).0);
+
+        fs::write(
+            &config_path,
+            r#"{
+              "dns": {"strategy": "prefer_ipv4"},
+              "inbounds": [{
+                "type": "tun",
+                "stack": "mixed",
+                "mtu": 1400,
+                "udp_timeout": "5m",
+                "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]
+              }],
+              "route": {"rules": [
+                {"ip_version": 6, "action": "reject", "method": "default", "no_drop": true}
+              ]}
+            }"#,
+        )
+        .unwrap();
+        assert!(!network_policy_check(&app).0);
+
+        fs::write(
+            &config_path,
+            r#"{
+              "dns": {"strategy": "prefer_ipv6"},
+              "inbounds": [{
+                "type": "tun",
+                "stack": "mixed",
+                "mtu": 1280,
+                "udp_timeout": "10m",
+                "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]
+              }],
+              "route": {"rules": [{"ip_version": 6, "outbound": "block"}]}
+            }"#,
+        )
+        .unwrap();
+        assert!(!network_policy_check(&app).0);
         let _ = fs::remove_dir_all(root);
     }
 

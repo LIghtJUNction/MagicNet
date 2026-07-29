@@ -300,11 +300,28 @@ if len(packaged_tuns) != 1 or packaged_tuns[0].get("route_exclude_address") != c
         "packaged base TUN exclusions are not canonical or exactly ordered: "
         f"{[inbound.get('route_exclude_address') for inbound in packaged_tuns]}"
     )
+packaged_tun = packaged_tuns[0]
+if (
+    config.get("dns", {}).get("strategy") != "prefer_ipv4"
+    or packaged_tun.get("stack") != "mixed"
+    or packaged_tun.get("mtu") != 1400
+    or packaged_tun.get("udp_timeout") != "5m"
+    or 0 not in packaged_tun.get("exclude_uid", [])
+    or not any(":" in address for address in packaged_tun.get("address", []))
+):
+    raise SystemExit("packaged base UDP/IPv6 policy is not canonical dual stack")
 
 dns_rules = config.get("dns", {}).get("rules", [])
 dns_servers = config.get("dns", {}).get("servers", [])
 route_rules = config.get("route", {}).get("rules", [])
-if len(route_rules) != 67 or len(dns_rules) != 25:
+managed_ipv6_guards = [
+    {"ip_version": 6, "outbound": "block"},
+    {"ip_version": 6, "action": "reject", "no_drop": True},
+    {"ip_version": 6, "action": "reject", "method": "default", "no_drop": True},
+]
+if any(rule in managed_ipv6_guards for rule in route_rules):
+    raise SystemExit("packaged dual-stack config contains a managed IPv6 reject guard")
+if len(route_rules) != 66 or len(dns_rules) != 25:
     raise SystemExit(
         f"canonical rule counts changed: route={len(route_rules)} dns={len(dns_rules)}"
     )
@@ -419,20 +436,20 @@ legacy_early_local_msft_dns_rule = {
 }
 if legacy_early_local_msft_dns_rule in dns_rules:
     raise SystemExit("legacy early local Microsoft connectivity DNS rule must be absent")
-if route_rules[27] != {
+if route_rules[26] != {
     "domain_suffix": msft_network_test_suffixes,
     "outbound": "network-test",
 }:
-    raise SystemExit("route rule 27 Microsoft network-test suffixes changed")
-if route_rules[29] != {
+    raise SystemExit("route rule 26 Microsoft network-test suffixes changed")
+if route_rules[28] != {
     "domain_suffix": foreign_network_test_suffixes,
     "outbound": "network-test",
 }:
-    raise SystemExit("route rule 29 foreign network-test suffixes changed")
+    raise SystemExit("route rule 28 foreign network-test suffixes changed")
 if foreign_connectivity_rule["domain_suffix"] != (
-    route_rules[27]["domain_suffix"] + route_rules[29]["domain_suffix"]
+    route_rules[26]["domain_suffix"] + route_rules[28]["domain_suffix"]
 ):
-    raise SystemExit("foreign network-test DNS suffixes must equal route rules 27 + 29")
+    raise SystemExit("foreign network-test DNS suffixes must equal route rules 26 + 28")
 apple_icloud_rule = {
     "domain_suffix": [
         "apple.com",
@@ -1587,9 +1604,9 @@ foreign_priority_route_rule = {
     "domain_suffix": foreign_priority_domains,
     "outbound": "proxy-rule",
 }
-if route_rules[49] != foreign_priority_route_rule:
-    raise SystemExit("packaged exact 56-domain foreign-priority route must remain at index 49")
-if route_rules[49]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
+if route_rules[48] != foreign_priority_route_rule:
+    raise SystemExit("packaged exact 56-domain foreign-priority route must remain at index 48")
+if route_rules[48]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
     raise SystemExit("packaged foreign-priority route/DNS lists must remain identical")
 canonical_keyword_rule = {"domain_keyword": network_test_keywords, "outbound": "network-test"}
 keyword_routes = [
@@ -1864,12 +1881,12 @@ if recursively_effective_outbound(global_bing_route_rule["outbound"]) != "block"
     )
 
 if (
-    route_rules[31].get("outbound") != "cn-direct"
-    or not explicit_domain_matches(route_rules[31], "mmstat.com")
-    or any(explicit_domain_matches(rule, "mmstat.com") for rule in route_rules[:31])
-    or recursively_effective_outbound(route_rules[31]["outbound"]) != "direct"
+    route_rules[30].get("outbound") != "cn-direct"
+    or not explicit_domain_matches(route_rules[30], "mmstat.com")
+    or any(explicit_domain_matches(rule, "mmstat.com") for rule in route_rules[:30])
+    or recursively_effective_outbound(route_rules[30]["outbound"]) != "direct"
 ):
-    raise SystemExit("packaged mmstat.com route must first-match index 31 cn-direct/direct")
+    raise SystemExit("packaged mmstat.com route must first-match index 30 cn-direct/direct")
 
 download_probes = set(download_suffixes)
 for index, rule in enumerate(route_rules[:download_route_index]):
