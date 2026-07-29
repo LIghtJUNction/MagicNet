@@ -7,6 +7,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-fake-magisk.XXXXXX")"
 MODDIR="$TMP/module"
 MOCK_BIN="$TMP/bin"
 TOYBOX_APPLET_BIN="$TMP/toybox-bin"
+POISONED_CALLER_PATH="$TMP/poisoned-caller-path"
 MOCK_LOG="$TMP/mock-commands.log"
 CLI_BIN="$ROOT/target/debug/magicnet-cli"
 MCP_BIN="$ROOT/target/debug/magicnet-mcp-server"
@@ -103,9 +104,11 @@ need jq
 need python3
 need rg
 need unzip
+need env
 
 HOST_JQ="$(command -v jq)"
 HOST_GETENT="$(command -v getent || true)"
+HOST_ENV="$(command -v env)"
 
 if [[ -n "$ZIP_PATH" && "$ZIP_PATH" != /* ]]; then
     ZIP_PATH="$ROOT/$ZIP_PATH"
@@ -125,17 +128,58 @@ exit 0
 SH
         chmod +x "$MOCK_BIN/$name"
     done
+
+    install_customize_fixtures() {
+        local tool host_tool
+        for tool in bash chmod cp cut date find grep ln mkdir rm sed sh tr unzip; do
+            host_tool="$(command -v "$tool")" || {
+                echo "missing host tool fixture: $tool" >&2
+                exit 127
+            }
+            [[ -x "$host_tool" ]] || {
+                echo "host tool fixture is not executable: $tool" >&2
+                exit 127
+            }
+            [[ ! -e "$MODDIR/bin/$tool" ]] || {
+                echo "customize fixture collides with package binary: $tool" >&2
+                exit 1
+            }
+            ln -s "$host_tool" "$MODDIR/bin/$tool"
+        done
+        for tool in chcon restorecon getevent am cmd settings chown; do
+            [[ ! -e "$MODDIR/bin/$tool" ]] || {
+                echo "customize fixture collides with package binary: $tool" >&2
+                exit 1
+            }
+            ln -s "$MOCK_BIN/$tool" "$MODDIR/bin/$tool"
+        done
+    }
+
+    remove_customize_fixtures() {
+        rm -f "$MODDIR/bin"/{am,bash,chcon,chmod,chown,cmd,cp,cut,date,find,getevent,grep,ln,mkdir,restorecon,rm,sed,settings,sh,tr,unzip}
+    }
+
+    install_customize_fixtures
     export ZIPFILE="$ZIP_PATH"
     export MODPATH="$MODDIR"
     export MODDIR
     export BOOTMODE=true
     export MAGICNET_NONINTERACTIVE=1
     export TMPDIR="$TMP/tmp"
-    mkdir -p "$TMPDIR"
-    if ! PATH="$MOCK_BIN:$ORIGINAL_PATH" sh "$MODDIR/customize.sh" >"$TMP/customize.log" 2>&1; then
+    mkdir -p "$TMPDIR" "$POISONED_CALLER_PATH"
+    if ! "$HOST_ENV" -u LD_LIBRARY_PATH \
+        ZIPFILE="$ZIP_PATH" \
+        MODPATH="$MODDIR" \
+        MODDIR="$MODDIR" \
+        BOOTMODE=true \
+        MAGICNET_NONINTERACTIVE=1 \
+        TMPDIR="$TMPDIR" \
+        PATH="$MODDIR/bin:$POISONED_CALLER_PATH" \
+        "$MODDIR/bin/sh" "$MODDIR/customize.sh" >"$TMP/customize.log" 2>&1; then
         echo "customize.sh failed during fake Magisk zip smoke" >&2
         exit 1
     fi
+    remove_customize_fixtures
     legacy_bin="$MODDIR/.local/"bin
     if [[ -e "$legacy_bin" || -L "$legacy_bin" ]]; then
         echo "legacy runtime bin path still exists after customize.sh" >&2
