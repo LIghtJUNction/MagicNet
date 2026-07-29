@@ -955,6 +955,33 @@ def first_matching_dns(domain, flow):
     return None
 
 
+google_play_proxy_rule = {
+    "package_name": [
+        "com.android.vending",
+        "com.google.android.gms",
+        "com.google.android.gsf",
+    ],
+    "outbound": "proxy-rule",
+}
+google_play_proxy_indexes = [
+    index for index, rule in enumerate(rules) if rule == google_play_proxy_rule
+]
+if google_play_proxy_indexes != [9]:
+    raise AssertionError(
+        "Google Play package routing must have one early proxy owner at index 9: "
+        f"indexes={google_play_proxy_indexes}"
+    )
+for package_name in google_play_proxy_rule["package_name"]:
+    for base_flow in flows:
+        flow = dict(base_flow, package_name=package_name)
+        index, rule, _ = first_matching_outbound("play.googleapis.com", flow)
+        if index != 9 or rule != google_play_proxy_rule:
+            raise AssertionError(
+                f"{package_name} {base_flow['name']} must proxy before destination rules: "
+                f"index={index} rule={rule}"
+            )
+
+
 metacubex_false_positive_failures = []
 for domain, expected_outbound in metacubex_false_positive_expectations.items():
     if not binary_rule_set_matches("metacubex-geosite-cn", domain):

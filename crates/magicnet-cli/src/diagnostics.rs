@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
 use std::net::IpAddr;
@@ -165,6 +166,11 @@ fn support_bundle(app: &App) -> String {
         ]
         .join("\n"),
     );
+    append_support_section(
+        &mut output,
+        "proxy selector and connection chains",
+        &proxy_chain_evidence(app),
+    );
     let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
     let (api_ok, api_detail) = api_probe(&app.api);
     let (mcp_enabled, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
@@ -181,6 +187,162 @@ fn support_bundle(app: &App) -> String {
         &subscription_refresh_log_counts(app.log_dir.join("subscription-refresh.log")),
     );
     output
+}
+
+const SUPPORT_CHAIN_TAGS: &[&str] = &[
+    "proxy",
+    "select",
+    "final",
+    "proxy-rule",
+    "dns-guard",
+    "network-test",
+    "download-direct",
+    "dev-proxy",
+    "social-proxy",
+    "media-proxy",
+    "game-proxy",
+    "telegram-proxy",
+    "ai-proxy",
+    "ai-chatgpt",
+    "ai-gemini",
+    "ai-grok",
+    "ai-claude",
+    "direct",
+    "block",
+];
+
+fn proxy_chain_evidence(app: &App) -> String {
+    let proxies = crate::webui_api::curl_get_json(app, "/proxies").ok();
+    let connections = crate::webui_api::curl_get_json(app, "/connections").ok();
+    proxy_chain_evidence_from_values(proxies.as_ref(), connections.as_ref())
+}
+
+fn proxy_chain_evidence_from_values(
+    proxies: Option<&Value>,
+    connections: Option<&Value>,
+) -> String {
+    let proxy_map = proxies
+        .and_then(|root| root.get("proxies"))
+        .and_then(Value::as_object);
+    let mut lines = Vec::new();
+    if let Some(proxy_map) = proxy_map {
+        lines.push("selector_snapshot=available".to_string());
+        for tag in SUPPORT_CHAIN_TAGS {
+            if proxy_map.contains_key(*tag) {
+                lines.push(format!(
+                    "selector.{tag}={}",
+                    sanitized_selector_chain(tag, proxy_map)
+                ));
+            }
+        }
+    } else {
+        lines.push("selector_snapshot=unavailable".to_string());
+    }
+
+    let Some(items) = connections
+        .and_then(|root| root.get("connections"))
+        .and_then(Value::as_array)
+    else {
+        lines.push("active_connections=unavailable".to_string());
+        return lines.join("\n");
+    };
+    lines.push(format!("active_connection_count={}", items.len()));
+    let mut chain_counts = BTreeMap::<String, usize>::new();
+    for item in items {
+        let chain = item
+            .get("chains")
+            .and_then(Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(|tag| sanitized_chain_hop(tag, proxy_map))
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
+            })
+            .filter(|chain| !chain.is_empty())
+            .unwrap_or_else(|| "<empty>".to_string());
+        *chain_counts.entry(chain).or_default() += 1;
+    }
+    let mut chains = chain_counts.into_iter().collect::<Vec<_>>();
+    chains.sort_by(|(left_chain, left_count), (right_chain, right_count)| {
+        right_count
+            .cmp(left_count)
+            .then_with(|| left_chain.cmp(right_chain))
+    });
+    for (index, (chain, count)) in chains.into_iter().take(10).enumerate() {
+        lines.push(format!(
+            "active_chain.{}=count:{count} chain:{chain}",
+            index + 1
+        ));
+    }
+    lines.join("\n")
+}
+
+fn sanitized_selector_chain(
+    start: &str,
+    proxies: &serde_json::Map<String, Value>,
+) -> String {
+    let mut chain = Vec::new();
+    let mut visited = Vec::new();
+    let mut current = start;
+    loop {
+        if chain.len() >= 12 {
+            chain.push("<truncated>".to_string());
+            break;
+        }
+        if visited.contains(&current) {
+            chain.push("<cycle>".to_string());
+            break;
+        }
+        visited.push(current);
+        chain.push(sanitized_chain_hop(current, Some(proxies)));
+        let Some(next) = proxies
+            .get(current)
+            .and_then(|proxy| proxy.get("now"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            break;
+        };
+        current = next;
+    }
+    chain.join(" -> ")
+}
+
+fn sanitized_chain_hop(
+    tag: &str,
+    proxies: Option<&serde_json::Map<String, Value>>,
+) -> String {
+    if SUPPORT_CHAIN_TAGS.contains(&tag) {
+        return tag.to_string();
+    }
+    let kind = proxies
+        .and_then(|items| items.get(tag))
+        .and_then(|proxy| proxy.get("type"))
+        .and_then(Value::as_str)
+        .map(safe_proxy_kind)
+        .unwrap_or("unknown");
+    format!("<node:{kind}>")
+}
+
+fn safe_proxy_kind(value: &str) -> &str {
+    match value.to_ascii_lowercase().as_str() {
+        "shadowsocks" => "shadowsocks",
+        "vmess" => "vmess",
+        "vless" => "vless",
+        "trojan" => "trojan",
+        "hysteria2" => "hysteria2",
+        "anytls" => "anytls",
+        "tuic" => "tuic",
+        "wireguard" => "wireguard",
+        "selector" => "selector",
+        "urltest" => "urltest",
+        "direct" => "direct",
+        "block" => "block",
+        _ => "unknown",
+    }
 }
 
 fn startup_state_evidence(app: &App) -> String {
@@ -958,7 +1120,8 @@ fn looks_like_hostname(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        read_only_command_with_timeout, redact, support_bundle, traffic_loop_guard_check,
+        proxy_chain_evidence_from_values, read_only_command_with_timeout, redact, support_bundle,
+        traffic_loop_guard_check,
     };
     use crate::App;
     use std::fs;
@@ -1100,6 +1263,56 @@ mod tests {
     }
 
     #[test]
+    fn proxy_chain_evidence_keeps_routing_context_without_node_names_or_targets() {
+        let proxies = serde_json::json!({
+            "proxies": {
+                "proxy-rule": {"type": "Selector", "now": "proxy"},
+                "proxy": {"type": "Selector", "now": "PRIVATE-NODE-CANARY"},
+                "PRIVATE-NODE-CANARY": {"type": "VLESS"},
+                "direct": {"type": "Direct"},
+                "block": {"type": "Block"}
+            }
+        });
+        let connections = serde_json::json!({
+            "connections": [
+                {
+                    "metadata": {
+                        "host": "PRIVATE-TARGET-CANARY.example",
+                        "destinationIP": "203.0.113.9"
+                    },
+                    "chains": ["PRIVATE-NODE-CANARY", "proxy", "proxy-rule"]
+                },
+                {
+                    "metadata": {"host": "SECOND-PRIVATE-TARGET.example"},
+                    "chains": ["PRIVATE-NODE-CANARY", "proxy", "proxy-rule"]
+                },
+                {"chains": ["direct"]}
+            ]
+        });
+
+        let output = proxy_chain_evidence_from_values(Some(&proxies), Some(&connections));
+
+        assert!(output.contains("selector.proxy-rule=proxy-rule -> proxy -> <node:vless>"));
+        assert!(output.contains(
+            "active_chain.1=count:2 chain:<node:vless> -> proxy -> proxy-rule"
+        ));
+        assert!(output.contains("active_connection_count=3"));
+        let redacted = redact(&output);
+        assert!(redacted.contains("selector.proxy-rule=proxy-rule -> proxy -> <node:vless>"));
+        assert!(redacted.contains(
+            "active_chain.1=count:2 chain:<node:vless> -> proxy -> proxy-rule"
+        ));
+        for sensitive in [
+            "PRIVATE-NODE-CANARY",
+            "PRIVATE-TARGET-CANARY",
+            "SECOND-PRIVATE-TARGET",
+            "203.0.113.9",
+        ] {
+            assert!(!output.contains(sensitive), "leaked {sensitive}: {output}");
+        }
+    }
+
+    #[test]
     fn support_bundle_has_unique_redacted_read_only_evidence_sections() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1134,6 +1347,7 @@ mod tests {
             "[health]",
             "[core process and listeners]",
             "[tun routes and ip rules]",
+            "[proxy selector and connection chains]",
             "[dns api and mcp]",
             "[subscription refresh log counts]",
         ] {

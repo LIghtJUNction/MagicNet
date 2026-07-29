@@ -1868,16 +1868,18 @@ for index, rule in enumerate(route_rules[:download_route_index]):
             f"shadows download probes: {', '.join(matched_domains)}"
         )
 
-gms_quic_block_route = first_route_index(
+google_play_proxy_route = first_route_index(
     lambda rule: rule == {
-        "package_name": ["com.google.android.gms", "com.google.android.gsf"],
-        "network": "udp",
-        "port": 443,
-        "outbound": "block",
+        "package_name": [
+            "com.android.vending",
+            "com.google.android.gms",
+            "com.google.android.gsf",
+        ],
+        "outbound": "proxy-rule",
     }
 )
-if gms_quic_block_route < 0:
-    raise SystemExit("missing GMS UDP/443 block rule")
+if google_play_proxy_route < 0:
+    raise SystemExit("missing Google Play package proxy rule")
 PY
 
 routing_package_root="$elf_tmp/routing-package"

@@ -15,7 +15,7 @@ MagicNet 不分发任何第三方连通性资源，也不内置可直接使用�
 
 - 单核心：只启动和维护 `sing-box`。
 - TUN：唯一透明代理路径，覆盖设备侧应用流量。
-- 诊断：CLI / WebUI / MCP / support bundle 汇总运行状态、路由和 DNS 信息。
+- 诊断：CLI / WebUI / MCP / support bundle 汇总运行状态、路由、DNS、脱敏代理选择器链和活跃连接链信息。
 
 ## 功能
 
