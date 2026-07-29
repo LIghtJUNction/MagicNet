@@ -9,6 +9,10 @@ const routes = readFileSync(
   new URL("../src/MagicNet/lib/magicnet/routes.sh", import.meta.url),
   "utf8",
 );
+const network = readFileSync(
+  new URL("../src/MagicNet/lib/magicnet/network.sh", import.meta.url),
+  "utf8",
+);
 
 assert.match(control, /type="checkbox"/);
 assert.match(control, /允许热点使用代理/);
@@ -25,5 +29,9 @@ for (const source of [
 }
 assert.match(routes, /"outbound": "hotspot"/);
 assert.match(routes, /"outbounds": \["direct", "proxy"\]/);
+assert.match(
+  network,
+  /magicnet_after_kernel_start_deferred_unlocked\(\)[\s\S]*magicnet_singbox_apply_hotspot_policy/,
+);
 
 console.log("hotspot policy tests passed");

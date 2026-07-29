@@ -182,6 +182,10 @@ magicnet_after_kernel_start_deferred_unlocked() {
     magicnet_transparent_apply_unlocked || true
     magicnet_app_policy_apply_unlocked || true
     magicnet_warp_apply_unlocked || true
+    # Keep the hotspot route authoritative after every deferred config rewrite.
+    # These rewrites run asynchronously after the core starts and may otherwise
+    # publish a snapshot that predates the startup-time hotspot normalization.
+    magicnet_singbox_apply_hotspot_policy || true
     magicnet_enable_dns_capture || true
     magicnet_enable_dns_leak_guard || true
 }
