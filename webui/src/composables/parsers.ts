@@ -384,9 +384,20 @@ export function parseConfigValidation(text: string): Pick<ConfigValidationState,
     return { status: "ok", summary: firstUsefulLine(trimmed) || "配置已通过校验并保存。" };
   }
   if (/config validation failed|validator missing|config target must/i.test(trimmed)) {
-    return { status: "error", summary: firstUsefulLine(trimmed) || "配置校验失败。" };
+    return { status: "error", summary: configValidationFailureDetail(trimmed) };
   }
   return { status: trimmed.includes("[error]") ? "error" : "ok", summary: firstUsefulLine(trimmed) || trimmed.slice(0, 160) };
+}
+
+function configValidationFailureDetail(text: string): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("command:"));
+  return lines.find((line) =>
+    /(?:fatal|no such file|not found|permission denied|timed out|validator missing)/i.test(line)
+    && !/^config validation failed$/i.test(line),
+  ) || lines.find((line) => !/^config validation failed$/i.test(line)) || "配置校验失败。";
 }
 
 export function parseRouteRuleSummary(text: string): RouteRuleSummary {

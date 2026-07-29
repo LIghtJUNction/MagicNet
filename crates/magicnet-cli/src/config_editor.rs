@@ -69,8 +69,8 @@ fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Re
     if tmp.as_os_str().is_empty() {
         return Err("Usage: cli config-editor save-file sing-box <webui-payload-path>".to_string());
     }
-    let (source, tmp_directory) = open_webui_payload_source(app, &tmp)?;
-    validate_and_commit_open_config_file(app, target, path, &source, &tmp_directory)?;
+    let (source, _tmp_directory) = open_webui_payload_source(app, &tmp)?;
+    validate_and_commit_open_config_file(app, target, path, &source)?;
     println!(
         "[info] Saved and validated {target} config: {}\n[info] Runtime policy changes can be applied from the control/app pages.",
         path.display()
@@ -285,13 +285,17 @@ fn validate_and_commit_open_config_file(
     target: &str,
     path: &Path,
     source: &File,
-    data_directory: &File,
 ) -> Result<(), String> {
     let name = OsStr::new(config_target_filename(target)?);
     let directory = open_config_destination_directory(app, target)?;
     let (snapshot, staged_name) = snapshot_config_file(source, &directory)?;
     let result = (|| {
-        validate_config_from_open_file(app, target, &snapshot, data_directory)?;
+        // sing-box resolves relative rule-set and UI paths from its data
+        // directory. The candidate may originate in a private temporary
+        // namespace, but after commit it lives beside the existing rules
+        // under .config/sing-box. Validate against that final directory so
+        // the check sees the same resources as the runtime.
+        validate_config_from_open_file(app, target, &snapshot, &directory)?;
         backup_config_at(&directory, name)?;
         commit_staged_config_file(&directory, &staged_name, name, path)
     })();
@@ -428,8 +432,8 @@ fn commit_config_text(
     bytes: &[u8],
     role: &str,
 ) -> Result<(), String> {
-    with_generated_config_input(app, role, bytes, |source, directory| {
-        validate_and_commit_open_config_file(app, target, path, source, directory)
+    with_generated_config_input(app, role, bytes, |source, _directory| {
+        validate_and_commit_open_config_file(app, target, path, source)
     })?;
     println!(
         "[info] Saved and validated {target} config: {}\n[info] Runtime policy changes can be applied from the control/app pages.",
@@ -947,6 +951,57 @@ mod tests {
         assert!(
             open_webui_payload_source(&app, &nested).is_err(),
             "nested WebUI payload paths must not be accepted as a config source"
+        );
+    }
+
+    #[test]
+    fn validation_resolves_relative_resources_from_final_config_directory() {
+        let app = temp_app();
+        let bin_dir = app.moddir.join("bin");
+        let payload_dir = app.moddir.join(".tmp/webui-payload");
+        let rules_dir = app.moddir.join(".config/sing-box/rules");
+        fs::create_dir_all(&bin_dir).expect("create bin directory");
+        fs::create_dir_all(&payload_dir).expect("create WebUI payload directory");
+        fs::create_dir_all(&rules_dir).expect("create final rules directory");
+
+        let validator = bin_dir.join("sing-box");
+        fs::write(
+            &validator,
+            r#"#!/bin/sh
+config=
+data=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -c) config=$2; shift 2 ;;
+    -D) data=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+test -r "$config"
+test -r "$data/rules/required.srs"
+"#,
+        )
+        .expect("write fake validator");
+        let mut permissions = fs::metadata(&validator)
+            .expect("stat fake validator")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&validator, permissions).expect("make fake validator executable");
+
+        fs::write(rules_dir.join("required.srs"), "compiled rule set")
+            .expect("write final relative resource");
+        let payload = payload_dir.join("candidate.json");
+        fs::write(&payload, "{}\n").expect("write candidate config");
+
+        let (source, _source_directory) =
+            open_webui_payload_source(&app, &payload).expect("open candidate config");
+        let target = config_path(&app, "sing-box").expect("resolve config target");
+        validate_and_commit_open_config_file(&app, "sing-box", &target, &source)
+            .expect("validate candidate against final config directory");
+
+        assert_eq!(
+            fs::read_to_string(target).expect("read committed config"),
+            "{}\n"
         );
     }
 
