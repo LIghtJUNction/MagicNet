@@ -35,6 +35,7 @@ if [ -d "$MAGICNET_PREV_DIR" ] && [ "$MAGICNET_PREV_DIR" != "$MODPATH" ]; then
   for _item in \
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.user-agent" \
+    ".config/sing-box/subscription-filter.list" \
     ".config/sing-box/subscription-1.yaml" \
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \
@@ -199,6 +200,17 @@ magicnet_print_install_summary
 
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
 
+magicnet_seed_subscription_filters() {
+  _magicnet_filter_file="${MODPATH}/.config/sing-box/subscription-filter.list"
+  [ -e "$_magicnet_filter_file" ] || {
+    mkdir -p "${_magicnet_filter_file%/*}" || return 1
+    printf '%s\n' "免费" "free" "HK" "香港" "TW" "台湾" >"$_magicnet_filter_file"
+  }
+  unset _magicnet_filter_file
+}
+
+magicnet_seed_subscription_filters || abort "! failed to initialize subscription filters"
+
 if ! magicnet_install_is_interactive; then
   :
 else
@@ -209,6 +221,7 @@ if [ -d "$MAGICNET_BACKUP_DIR" ]; then
   for _item in \
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.user-agent" \
+    ".config/sing-box/subscription-filter.list" \
     ".config/sing-box/subscription-1.yaml" \
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \

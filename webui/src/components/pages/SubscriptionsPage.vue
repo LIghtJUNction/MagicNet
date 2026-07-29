@@ -575,7 +575,7 @@ async function saveFilters(): Promise<void> {
             <div class="min-w-0">
               <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Node filter</span>
               <h3 class="mt-1 text-base font-semibold text-[var(--mn-ink)]">节点关键词过滤</h3>
-              <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">节点名称包含任一关键词时跳过，英文匹配忽略大小写。</p>
+              <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">新安装默认过滤免费、香港和台湾节点；清空并保存即可关闭过滤。英文匹配忽略大小写。</p>
             </div>
           </div>
 

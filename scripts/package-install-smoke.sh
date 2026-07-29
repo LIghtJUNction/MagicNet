@@ -60,6 +60,7 @@ mkdir -p \
     "$PREV_MOD/.config/sing-box" \
     "$PREV_MOD/.config/magicnet"
 printf '%s\n' 'https://old.example/sing-box' >"$PREV_MOD/.config/sing-box/subscription.url"
+: >"$PREV_MOD/.config/sing-box/subscription-filter.list"
 printf '%s\n' 'old-sing-box-work' >"$PREV_MOD/.state/sing-box/subscription-work/marker.txt"
 printf '%s\n' 'MAGICNET_DEFAULT_CORE=sing-box' >"$PREV_MOD/.config/magicnet/current-core.conf"
 printf '%s\n' 'MAGICNET_MCP_ENABLED=1' 'MAGICNET_MCP_BIND=127.0.0.1' 'MAGICNET_MCP_PORT=18766' \
@@ -114,12 +115,11 @@ export MAGICNET_PREV_DIR="$PREV_MOD"
 export TMPDIR="$TMP/tmp"
 mkdir -p "$TMPDIR" "$POISONED_CALLER_PATH"
 
-if ! "$HOST_ENV" -u LD_LIBRARY_PATH -u MAGICNET_NONINTERACTIVE \
+if ! "$HOST_ENV" -u LD_LIBRARY_PATH -u MAGICNET_NONINTERACTIVE -u MAGICNET_PREV_DIR \
     ZIPFILE="$ZIP_PATH" \
     MODPATH="$MANAGER_MODPATH" \
     MODDIR="$MANAGER_MODPATH" \
     BOOTMODE=true \
-    MAGICNET_PREV_DIR="$PREV_MOD" \
     PATH="$MANAGER_MODPATH/bin:$POISONED_CALLER_PATH" \
     TMPDIR="$TMPDIR" \
     "$MANAGER_MODPATH/bin/timeout" 5 "$MANAGER_MODPATH/bin/sh" "$MANAGER_MODPATH/customize.sh" >"$MANAGER_LOG" 2>&1; then
@@ -148,6 +148,12 @@ remove_host_tool_fixtures "$MANAGER_MODPATH"
 [[ "$(readlink "$MODPATH/cli")" == "bin/magicnet-cli" ]] || fail "cli does not point to bin/magicnet-cli"
 [[ -x "$MODPATH/cli" ]] || fail "cli symlink target is not executable"
 
+expected_default_filters="$(printf '%s\n' '免费' 'free' 'HK' '香港' 'TW' '台湾')"
+actual_default_filters="$(cat "$MANAGER_MODPATH/.config/sing-box/subscription-filter.list")"
+[[ "$actual_default_filters" == "$expected_default_filters" ]] \
+    || fail "fresh install did not initialize the default subscription filters"
+unset expected_default_filters actual_default_filters
+
 for entry in action.sh service.sh boot-completed.sh; do
     [[ -x "$MODPATH/$entry" ]] || fail "$entry is not executable"
 done
@@ -159,6 +165,9 @@ PATH="$MODPATH/bin:$PATH" command -v ecapture >/dev/null \
 
 grep -qx 'https://old.example/sing-box' "$MODPATH/.config/sing-box/subscription.url" \
     || fail "sing-box subscription was not preserved from previous install"
+[[ -f "$MODPATH/.config/sing-box/subscription-filter.list" ]] \
+    && [[ ! -s "$MODPATH/.config/sing-box/subscription-filter.list" ]] \
+    || fail "explicit empty subscription filter list was not preserved from previous install"
 grep -qx 'old-sing-box-work' "$MODPATH/.state/sing-box/subscription-work/marker.txt" \
     || fail "sing-box subscription workdir was not preserved from previous install"
 legacy_core_dir="$MODPATH/.config/mi""homo"
