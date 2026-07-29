@@ -20,12 +20,99 @@ assert_failure() {
     fi
 }
 
+make_fake_download_commands() {
+    local bin_dir="$1"
+
+    mkdir -p "$bin_dir"
+    cat >"$bin_dir/curl" <<'SH'
+#!/bin/sh
+set -eu
+
+output_path=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -o)
+            output_path="$2"
+            shift 2
+            ;;
+        *) shift ;;
+    esac
+done
+[ -n "$output_path" ] || exit 64
+[ ! -e "$output_path" ] || {
+    printf 'curl invoked with a stale output asset\n' >&2
+    exit 65
+}
+
+attempt=0
+if [ -f "$FAKE_CURL_ATTEMPT_FILE" ]; then
+    attempt=$(cat "$FAKE_CURL_ATTEMPT_FILE")
+fi
+attempt=$((attempt + 1))
+printf '%s\n' "$attempt" >"$FAKE_CURL_ATTEMPT_FILE"
+
+if [ "$attempt" -ge "$FAKE_CURL_SUCCEED_ON" ]; then
+    printf 'complete asset\n' >"$output_path"
+    exit 0
+fi
+
+printf 'partial asset\n' >"$output_path"
+printf 'curl: (56) TLS unexpected EOF\n' >&2
+exit 56
+SH
+cat >"$bin_dir/sleep" <<'SH'
+#!/bin/sh
+set -eu
+
+count=0
+if [ -f "$FAKE_SLEEP_COUNT_FILE" ]; then
+    count=$(cat "$FAKE_SLEEP_COUNT_FILE")
+fi
+count=$((count + 1))
+printf '%s\n' "$count" >"$FAKE_SLEEP_COUNT_FILE"
+exit 0
+SH
+    chmod +x "$bin_dir/curl" "$bin_dir/sleep"
+}
+
+assert_download_retries() {
+    local case_dir="$1"
+    local succeed_on="$2"
+    local output_dir="$case_dir/download"
+    local output_path="$output_dir/asset.tar.gz"
+    local attempt_file="$case_dir/attempts"
+    local sleep_count_file="$case_dir/sleeps"
+    local stdout_file="$case_dir/stdout"
+    local fake_bin="$TEST_ROOT/fake-download-bin"
+
+    mkdir -p "$case_dir"
+    if PATH="$fake_bin:$PATH" \
+        FAKE_CURL_ATTEMPT_FILE="$attempt_file" \
+        FAKE_SLEEP_COUNT_FILE="$sleep_count_file" \
+        FAKE_CURL_SUCCEED_ON="$succeed_on" \
+        hook_download_locked_asset example/release v1.0.0 asset.tar.gz "$output_dir" >"$stdout_file" 2>/dev/null; then
+        [ "$succeed_on" -le 3 ] || fail "download unexpectedly succeeded after persistent failures"
+        [ "$(cat "$stdout_file")" = "$output_path" ] || fail "download returned the wrong output path"
+        [ "$(cat "$output_path")" = "complete asset" ] || fail "download did not replace partial content"
+    else
+        [ "$succeed_on" -gt 3 ] || fail "download unexpectedly failed before retry ceiling"
+        [ ! -e "$output_path" ] || fail "persistent download failure left a partial asset"
+        [ ! -s "$stdout_file" ] || fail "failed download returned an output path"
+    fi
+    [ "$(cat "$attempt_file")" = 3 ] || fail "download did not stop after exactly three attempts"
+    [ "$(cat "$sleep_count_file")" = 2 ] || fail "download did not wait only between attempts"
+}
+
 # shellcheck source=hooks/lib/utils.sh
 . "$ROOT/hooks/lib/utils.sh"
 # shellcheck source=hooks/lib/release_locks.sh
 . "$ROOT/hooks/lib/release_locks.sh"
 # shellcheck source=hooks/lib/release_utils.sh
 . "$ROOT/hooks/lib/release_utils.sh"
+
+make_fake_download_commands "$TEST_ROOT/fake-download-bin"
+assert_download_retries "$TEST_ROOT/download-eventual-success" 3
+assert_download_retries "$TEST_ROOT/download-persistent-failure" 4
 
 assert_lock() {
     local component="$1"
@@ -57,6 +144,10 @@ mkdir -p "$TEST_ROOT/archive"
 printf 'safe\n' >"$TEST_ROOT/archive/file"
 tar -czf "$TEST_ROOT/safe.tar.gz" -C "$TEST_ROOT/archive" file
 hook_preflight_archive "$TEST_ROOT/safe.tar.gz" || fail "safe tar archive was rejected"
+mv "$TEST_ROOT/safe.tar.gz" "$TEST_ROOT/safe-tar.archive"
+hook_preflight_archive "$TEST_ROOT/safe-tar.archive" || fail "safe tar cache archive was rejected"
+hook_extract_archive "$TEST_ROOT/safe-tar.archive" "$TEST_ROOT/extract-tar" || fail "safe tar cache extraction failed"
+cmp "$TEST_ROOT/archive/file" "$TEST_ROOT/extract-tar/file" || fail "safe tar cache extraction was altered"
 
 ln -s file "$TEST_ROOT/archive/link"
 tar -czf "$TEST_ROOT/link.tar.gz" -C "$TEST_ROOT/archive" link
@@ -67,10 +158,17 @@ assert_failure hook_preflight_archive "$TEST_ROOT/link.tar.gz"
     zip -q "$TEST_ROOT/safe.zip" file
 )
 hook_preflight_archive "$TEST_ROOT/safe.zip" || fail "safe zip archive was rejected"
+mv "$TEST_ROOT/safe.zip" "$TEST_ROOT/safe-zip.archive"
+hook_preflight_archive "$TEST_ROOT/safe-zip.archive" || fail "safe zip cache archive was rejected"
+hook_extract_archive "$TEST_ROOT/safe-zip.archive" "$TEST_ROOT/extract-zip" || fail "safe zip cache extraction failed"
+cmp "$TEST_ROOT/archive/file" "$TEST_ROOT/extract-zip/file" || fail "safe zip cache extraction was altered"
 (
     cd "$TEST_ROOT/archive"
     zip -y -q "$TEST_ROOT/link.zip" link
 )
 assert_failure hook_preflight_archive "$TEST_ROOT/link.zip"
+
+printf 'not an archive\n' >"$TEST_ROOT/invalid.archive"
+assert_failure hook_preflight_archive "$TEST_ROOT/invalid.archive"
 
 printf 'release integrity test passed\n'

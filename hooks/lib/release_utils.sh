@@ -68,6 +68,7 @@ hook_download_locked_asset() {
     local output_dir="$4"
     local output_path
     local url
+    local attempt
 
     case "$repo" in
         */*) ;;
@@ -83,14 +84,19 @@ hook_download_locked_asset() {
     mkdir -p "$output_dir" || return 1
     output_path="$output_dir/$asset"
     url="https://github.com/$repo/releases/download/$tag/$asset"
-    rm -f "$output_path"
-
-    if ! curl -fL --connect-timeout 20 --max-time "${GITHUB_DOWNLOAD_TIMEOUT:-120}" -o "$output_path" "$url"; then
+    for attempt in 1 2 3; do
         rm -f "$output_path"
-        return 1
-    fi
 
-    printf '%s\n' "$output_path"
+        if curl -fL --connect-timeout 20 --max-time "${GITHUB_DOWNLOAD_TIMEOUT:-120}" -o "$output_path" "$url"; then
+            printf '%s\n' "$output_path"
+            return 0
+        fi
+
+        rm -f "$output_path"
+        [ "$attempt" -eq 3 ] || sleep 1
+    done
+
+    return 1
 }
 
 hook_make_temp_dir() {
@@ -108,14 +114,49 @@ hook_validate_archive_member_path() {
     esac
 }
 
+hook_archive_format() {
+    local archive="$1"
+    local first_member
+
+    case "$archive" in
+        *.tar.gz|*.tgz)
+            printf '%s\n' tar
+            ;;
+        *.zip)
+            printf '%s\n' zip
+            ;;
+        *.archive)
+            if command -v tar >/dev/null 2>&1 \
+                && IFS= read -r first_member < <(tar -tzf "$archive" 2>/dev/null) \
+                && [ -n "$first_member" ]; then
+                printf '%s\n' tar
+            elif command -v unzip >/dev/null 2>&1 && command -v zipinfo >/dev/null 2>&1 \
+                && unzip -Z -1 "$archive" >/dev/null 2>&1; then
+                printf '%s\n' zip
+            else
+                log_error "unsupported release archive: $archive"
+                return 1
+            fi
+            ;;
+        *)
+            log_error "unsupported release archive: $archive"
+            return 1
+            ;;
+    esac
+}
+
 hook_preflight_archive() {
     local archive="$1"
+    local archive_format
     local member
     local entry
     local type
 
-    case "$archive" in
-        *.tar.gz|*.tgz)
+    HOOK_PREFLIGHT_ARCHIVE_FORMAT=""
+    archive_format=$(hook_archive_format "$archive") || return 1
+
+    case "$archive_format" in
+        tar)
             require_command tar "tar not found!"
             tar -tzf "$archive" >/dev/null || return 1
             while IFS= read -r member; do
@@ -133,7 +174,7 @@ hook_preflight_archive() {
                 esac
             done < <(LC_ALL=C tar -tvzf "$archive")
             ;;
-        *.zip)
+        zip)
             require_command unzip "unzip not found!"
             require_command zipinfo "zipinfo not found!"
             unzip -Z -1 "$archive" >/dev/null || return 1
@@ -153,22 +194,23 @@ hook_preflight_archive() {
                 esac
             done < <(zipinfo -l "$archive")
             ;;
-        *)
-            log_error "unsupported release archive: $archive"
-            return 1
-            ;;
     esac
+
+    HOOK_PREFLIGHT_ARCHIVE_FORMAT="$archive_format"
 }
 
 hook_extract_archive() {
     local archive="$1"
     local destination="$2"
+    local archive_format
 
+    HOOK_PREFLIGHT_ARCHIVE_FORMAT=""
     hook_preflight_archive "$archive" || return 1
+    archive_format="$HOOK_PREFLIGHT_ARCHIVE_FORMAT"
     mkdir -p "$destination" || return 1
-    case "$archive" in
-        *.tar.gz|*.tgz) tar -xzf "$archive" -C "$destination" ;;
-        *.zip) unzip -o "$archive" -d "$destination" >/dev/null ;;
+    case "$archive_format" in
+        tar) tar -xzf "$archive" -C "$destination" ;;
+        zip) unzip -o "$archive" -d "$destination" >/dev/null ;;
     esac
 }
 
