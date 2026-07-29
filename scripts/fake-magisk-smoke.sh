@@ -700,12 +700,13 @@ run sh "$MODDIR/service.sh"
 run sh "$MODDIR/boot-completed.sh"
 hotspot_policy_ready() {
     "$HOST_JQ" -e '
-    ([.outbounds[] | select(.tag == "hotspot")] == [{
-      "type": "selector",
-      "tag": "hotspot",
-      "outbounds": ["direct", "proxy"],
-      "default": "direct"
-    }])
+    ([.outbounds[] | select(.tag == "hotspot")] | length == 1)
+    and ([.outbounds[] | select(.tag == "hotspot")][0]
+      | .type == "selector"
+      and .outbounds == ["direct", "proxy"]
+      and .default == "direct"
+      and ((has("interrupt_exist_connections") | not) or .interrupt_exist_connections == true)
+    )
     and ([.route.rules[] | select(
       .inbound == ["tun-in"]
       and .source_ip_cidr == ["192.168.0.0/16", "10.42.0.0/16", "172.20.10.0/28"]
@@ -740,7 +741,7 @@ env -u MODDIR -u MODPATH \
     MAGICNET_FAKE_LOG="$MOCK_LOG" \
     MAGICNET_NOTIFY_ENABLED=0 \
     PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    "$MODDIR/cli" diagnose >"$TMP/cli-autodetect-diagnose.log" 2>&1
+    "$MODDIR/bin/magicnet-cli" diagnose >"$TMP/cli-autodetect-diagnose.log" 2>&1
 if rg -q '\.kamfwrc|\.kamrc|No such file or directory' "$TMP/cli-autodetect-diagnose.log"; then
     echo "cli autodetect failed to locate module root" >&2
     cat "$TMP/cli-autodetect-diagnose.log" >&2
