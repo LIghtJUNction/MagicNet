@@ -861,9 +861,13 @@ env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPA
 grep -qx 'sing-box' "$TMP/strict-core.log"
 
 mkdir -p "$MODDIR/.state/sing-box/subscription-work"
-"$HOST_JQ" -r '"  \"outbounds\": " + (.outbounds | tojson) + ","' \
+"$HOST_JQ" -r '
+    (.outbounds | walk(if . == "fresh-sub-node" then "old-cached-node" else . end)) as $outbounds
+    | "  \"outbounds\": " + ($outbounds | tojson) + ","
+' \
     "$MODDIR/.config/sing-box/config.json" \
     >"$MODDIR/.state/sing-box/subscription-work/outbounds.json"
+rg -q '"tag":"old-cached-node"' "$MODDIR/.state/sing-box/subscription-work/outbounds.json"
 "$HOST_JQ" '
     .outbounds |= map(select(
         (.type == "vmess"
