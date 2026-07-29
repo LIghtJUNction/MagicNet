@@ -518,6 +518,46 @@ SH
 chmod +x "$MOCK_BIN/pidof"
 cp "$MOCK_BIN/pidof" "$MODDIR/bin/pidof"
 
+install_runtime_path_fixtures() {
+    local applet host_applet mock
+    local applets=(
+        awk basename bash cat chmod cp cut date dirname env false find grep head id
+        kill ln ls mkdir mv nohup printf ps pwd readlink realpath rm sed sh sleep sort
+        tail timeout touch tr true uname wc whoami xargs
+    )
+    local mocks=(
+        am chcon chown cmd getent getevent getprop ip ip6tables ipset iptables
+        magiskpolicy ndc pkill pm resetprop restorecon setprop su svc
+    )
+
+    for applet in "${applets[@]}"; do
+        # `command -v` resolves shell builtins such as true and false to their
+        # names, not executable paths. Fixtures must always link to a host
+        # executable because the runtime PATH is deliberately module-only.
+        host_applet="$(PATH="$ORIGINAL_PATH" type -P -- "$applet" || true)"
+        if [[ -z "$host_applet" || ! -x "$host_applet" ]]; then
+            echo "runtime fixture is missing required host applet: $applet" >&2
+            exit 127
+        fi
+        if [[ -e "$MODDIR/bin/$applet" || -L "$MODDIR/bin/$applet" ]]; then
+            echo "runtime fixture collides with package binary: $applet" >&2
+            exit 1
+        fi
+        ln -s "$host_applet" "$MODDIR/bin/$applet"
+    done
+
+    for mock in "${mocks[@]}"; do
+        [[ -x "$MOCK_BIN/$mock" ]] || continue
+        if [[ -e "$MODDIR/bin/$mock" || -L "$MODDIR/bin/$mock" ]]; then
+            echo "runtime mock fixture collides with package binary: $mock" >&2
+            exit 1
+        fi
+        ln -s "$MOCK_BIN/$mock" "$MODDIR/bin/$mock"
+    done
+}
+
+install_runtime_path_fixtures
+
 "$HOST_JQ" '.outbounds += [{"type":"vmess","tag":"old-cached-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
     "$MODDIR/.config/sing-box/config.json" >"$TMP/sing-box-config.json"
 mv "$TMP/sing-box-config.json" "$MODDIR/.config/sing-box/config.json"
