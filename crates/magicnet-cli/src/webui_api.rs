@@ -45,6 +45,50 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    let action = args.first().map(String::as_str).unwrap_or("status");
+    match action {
+        "status" => {
+            let member = hotspot_member(app);
+            println!("enabled={}", usize::from(member == "proxy"));
+            println!("outbound={member}");
+            Ok(())
+        }
+        "enable" | "disable" => {
+            let member = if action == "enable" { "proxy" } else { "direct" };
+            if curl_get_json(app, "/proxies").is_ok() {
+                select_proxy(app, "hotspot", member)?;
+            } else {
+                selector_store::save(app, "hotspot", member)?;
+                println!(
+                    "[info] hotspot outbound set to {member}; applies when sing-box starts"
+                );
+            }
+            Ok(())
+        }
+        _ => Err("Usage: cli hotspot {status|enable|disable}".to_string()),
+    }
+}
+
+fn hotspot_member(app: &App) -> String {
+    let runtime = curl_get_json(app, "/proxies").ok();
+    runtime
+        .as_ref()
+        .and_then(hotspot_member_from_api)
+        .map(str::to_string)
+        .or_else(|| selector_store::selected(app, "hotspot"))
+        .filter(|member| matches!(member.as_str(), "direct" | "proxy"))
+        .unwrap_or_else(|| "direct".to_string())
+}
+
+fn hotspot_member_from_api(root: &serde_json::Value) -> Option<&str> {
+    root.get("proxies")
+        .and_then(|proxies| proxies.get("hotspot"))
+        .and_then(|hotspot| hotspot.get("now"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|member| matches!(*member, "direct" | "proxy"))
+}
+
 pub(crate) fn webui_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
         "status" => {
@@ -226,7 +270,7 @@ fn run_curl(args: &[&str]) -> Result<(), String> {
 
 #[cfg(test)]
 mod mode_tests {
-    use super::normalize_clash_mode;
+    use super::{hotspot_member_from_api, normalize_clash_mode};
 
     #[test]
     fn accepts_supported_clash_modes_case_insensitively() {
@@ -234,6 +278,18 @@ mod mode_tests {
         assert_eq!(normalize_clash_mode("GLOBAL").unwrap(), "global");
         assert_eq!(normalize_clash_mode("direct").unwrap(), "direct");
         assert!(normalize_clash_mode("tun").is_err());
+    }
+
+    #[test]
+    fn hotspot_status_only_accepts_direct_or_proxy() {
+        let direct = serde_json::json!({"proxies": {"hotspot": {"now": "direct"}}});
+        let proxy = serde_json::json!({"proxies": {"hotspot": {"now": "proxy"}}});
+        let private_node =
+            serde_json::json!({"proxies": {"hotspot": {"now": "PRIVATE-NODE"}}});
+
+        assert_eq!(hotspot_member_from_api(&direct), Some("direct"));
+        assert_eq!(hotspot_member_from_api(&proxy), Some("proxy"));
+        assert_eq!(hotspot_member_from_api(&private_node), None);
     }
 }
 

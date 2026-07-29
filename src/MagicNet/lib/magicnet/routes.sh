@@ -23,6 +23,67 @@ magicnet_route_has_rules() {
     return 1
 }
 
+magicnet_singbox_apply_hotspot_policy() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+    _jq="${MODDIR}/bin/jq"
+    [ -x "$_jq" ] || _jq="$(command -v jq 2>/dev/null || true)"
+    [ -n "$_jq" ] || {
+        magicnet_warn "jq not found; cannot apply hotspot proxy policy"
+        unset _config _jq
+        return 1
+    }
+    _tmp="${_config}.hotspot-policy.new"
+    # Forwarded Android tethering clients retain their LAN source address when
+    # entering the TUN. Device-local TUN traffic uses 172.19.0.1 and therefore
+    # does not match these hotspot source ranges.
+    if "$_jq" '
+        def hotspot_sources:
+          ["192.168.0.0/16", "10.42.0.0/16", "172.20.10.0/28"];
+        def hotspot_selector:
+          {
+            "type": "selector",
+            "tag": "hotspot",
+            "outbounds": ["direct", "proxy"],
+            "default": "direct"
+          };
+        def hotspot_rule:
+          {
+            "inbound": ["tun-in"],
+            "source_ip_cidr": hotspot_sources,
+            "outbound": "hotspot"
+          };
+        def is_hotspot_rule:
+          (.inbound // []) == ["tun-in"]
+            and (.source_ip_cidr // []) == hotspot_sources
+            and (.outbound // "") == "hotspot";
+        .outbounds = (
+          ((.outbounds // []) | map(select((.tag // "") != "hotspot")))
+          + [hotspot_selector]
+        )
+        | ((.route.rules // []) | map(select(is_hotspot_rule | not))) as $rules
+        | (
+            [$rules | to_entries[] | select((.value.outbound // "") == "dns-guard") | .key]
+            | last
+          ) as $dns_guard_anchor
+        | (
+            [$rules | to_entries[] | select(.value.action != null) | .key]
+            | last
+          ) as $action_anchor
+        | (($dns_guard_anchor // $action_anchor // -1) + 1) as $insert_at
+        | .route.rules = (
+            $rules[:$insert_at] + [hotspot_rule] + $rules[$insert_at:]
+          )
+    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        :
+    else
+        rm -f "$_tmp" 2>/dev/null || true
+        unset _config _jq _tmp
+        return 1
+    fi
+    unset _config _jq _tmp
+}
+
 magicnet_route_singbox_rules() {
     for _target in proxy direct block warp; do
         case "$_target" in
@@ -151,6 +212,7 @@ magicnet_route_apply_singbox() {
 magicnet_route_apply_unlocked() {
     _route_rc=0
     magicnet_route_apply_singbox || _route_rc=1
+    magicnet_singbox_apply_hotspot_policy || _route_rc=1
     return "$_route_rc"
 }
 

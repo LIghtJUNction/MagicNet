@@ -57,7 +57,7 @@ pub(crate) use utils::{
     shell_inert_conf_value, write_kv, write_secret_file, write_text_file,
 };
 use warp::warp_cmd;
-use webui_api::{api_cmd, webui_cmd};
+use webui_api::{api_cmd, hotspot_cmd, webui_cmd};
 use webui_backup::backup_cmd;
 use wifi::wifi_cmd;
 
@@ -140,6 +140,10 @@ const COMMAND_HELP: &[CommandHelp] = &[
     CommandHelp {
         command: "wifi",
         usage: "cli wifi {status|enable|disable|mode <blacklist|whitelist>|interval <3-300>|add-ssid <ssid>|remove-ssid <ssid>|add-bssid <mac>|remove-bssid <mac>|check}",
+    },
+    CommandHelp {
+        command: "hotspot",
+        usage: "cli hotspot {status|enable|disable}",
     },
     CommandHelp {
         command: "route",
@@ -272,6 +276,7 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "api" => api_cmd(app, &args[1..]),
         "mode" => webui_api::clash_mode_cmd(app, &args[1..]),
         "wifi" => wifi_cmd(app, &args[1..]),
+        "hotspot" => hotspot_cmd(app, &args[1..]),
         "node" => node_cmd(app, &args[1..]),
         "sub" if args.get(1).map(String::as_str) == Some("list") => {
             sub_list(app);

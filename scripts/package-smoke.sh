@@ -918,7 +918,7 @@ for tag in (
     effective = recursively_effective_outbound(tag)
     if effective != "block":
         raise SystemExit(f"packaged zero-node selector {tag} resolves to {effective}, expected block")
-for tag in ("lan", "cn-direct", "apple-cn", "microsoft-cn", "icloud", "download-direct"):
+for tag in ("lan", "hotspot", "cn-direct", "apple-cn", "microsoft-cn", "icloud", "download-direct"):
     effective = recursively_effective_outbound(tag)
     if effective != "direct":
         raise SystemExit(f"packaged domestic selector {tag} resolves to {effective}, expected direct")
@@ -929,6 +929,18 @@ for tag in ("ai-proxy", "ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"):
 
 if "dns-guard" not in outbound_tags:
     raise SystemExit("missing dns-guard outbound selector")
+
+hotspot_selectors = [
+    outbound for outbound in config.get("outbounds", []) if outbound.get("tag") == "hotspot"
+]
+expected_hotspot_selector = {
+    "type": "selector",
+    "tag": "hotspot",
+    "outbounds": ["direct", "proxy"],
+    "default": "direct",
+}
+if hotspot_selectors != [expected_hotspot_selector]:
+    raise SystemExit(f"hotspot selector is not canonical direct/proxy: {hotspot_selectors}")
 
 google_cn_outbounds = [
     outbound for outbound in config.get("outbounds", []) if outbound.get("tag") == "google-cn"

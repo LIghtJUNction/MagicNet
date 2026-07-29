@@ -23,6 +23,7 @@ magicnet_start_singbox_unlocked() {
     is_singbox_running >/dev/null 2>&1 && return 0
     magicnet_prepare_singbox_nodes_unlocked || return 1
     magicnet_singbox_apply_transparent_mode || return 1
+    magicnet_singbox_apply_hotspot_policy || return 1
     import __singbox__
     singbox_start || return 1
     if ! magicnet_singbox_running_has_nodes; then

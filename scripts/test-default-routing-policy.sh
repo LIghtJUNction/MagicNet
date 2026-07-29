@@ -1164,7 +1164,7 @@ for tag in (
     effective = recursively_effective_outbound(tag)
     if effective != "block":
         raise AssertionError(f"zero-node selector {tag} recursively resolves to {effective}, expected block")
-for tag in ("lan", "cn-direct", "apple-cn", "microsoft-cn", "icloud", "download-direct"):
+for tag in ("lan", "hotspot", "cn-direct", "apple-cn", "microsoft-cn", "icloud", "download-direct"):
     effective = recursively_effective_outbound(tag)
     if effective != "direct":
         raise AssertionError(f"domestic selector {tag} recursively resolves to {effective}, expected direct")
@@ -1177,6 +1177,16 @@ for tag in ("ai-proxy", "ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"):
 download_selectors = [outbound for outbound in outbound_list if outbound.get("tag") == "download-direct"]
 if download_selectors != [expected_download_selector]:
     raise AssertionError(f"download-direct selector is not canonical direct-default: {download_selectors}")
+
+expected_hotspot_selector = {
+    "type": "selector",
+    "tag": "hotspot",
+    "outbounds": ["direct", "proxy"],
+    "default": "direct",
+}
+hotspot_selectors = [outbound for outbound in outbound_list if outbound.get("tag") == "hotspot"]
+if hotspot_selectors != [expected_hotspot_selector]:
+    raise AssertionError(f"hotspot selector is not canonical direct/proxy: {hotspot_selectors}")
 
 for tag in fail_closed_ai_tags:
     expected_selector = {"type": "selector", "tag": tag, "outbounds": ["block"], "default": "block"}

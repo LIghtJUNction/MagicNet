@@ -8,13 +8,14 @@ import {
   Radar,
   RotateCcw,
   Save,
+  Share2,
   ShieldCheck,
   Trash2,
   Unplug,
   Wifi,
   Zap,
 } from "lucide-vue-next";
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -53,6 +54,8 @@ const dangerConfirmCard = ref<HTMLElement | null>(null);
 const snapshotCopied = ref(false);
 const wifiSsidInput = ref("");
 const wifiBssidInput = ref("");
+const hotspotProxyEnabled = ref(false);
+const hotspotPolicyLoaded = ref(false);
 
 const pendingDangerMessage = computed(
   () => pendingDangerAction.value?.message ?? "",
@@ -154,6 +157,30 @@ async function toggleWifiPolicy(): Promise<void> {
   );
 }
 
+async function refreshHotspotPolicy(): Promise<boolean> {
+  const output = await runCli("hotspot status", "读取热点代理策略", true);
+  const matched = output.match(/^enabled=([01])$/m);
+  if (!matched) return false;
+  hotspotProxyEnabled.value = matched[1] === "1";
+  hotspotPolicyLoaded.value = true;
+  return true;
+}
+
+async function toggleHotspotProxy(event: Event): Promise<void> {
+  const previous = hotspotProxyEnabled.value;
+  const enabled = (event.currentTarget as HTMLInputElement).checked;
+  hotspotProxyEnabled.value = enabled;
+  await withAction("hotspot-proxy", async () => {
+    await runCli(
+      `hotspot ${enabled ? "enable" : "disable"}`,
+      `${enabled ? "启用" : "停用"}热点代理`,
+    );
+    if (!(await refreshHotspotPolicy())) {
+      hotspotProxyEnabled.value = previous;
+    }
+  });
+}
+
 async function setWifiPolicyMode(mode: "blacklist" | "whitelist"): Promise<void> {
   if (state.wifiPolicy.policyMode === mode) return;
   await runWifiAction(
@@ -232,6 +259,10 @@ function classifyLastCommand(command: string): string {
   if (/\bwebui\b/.test(command)) return "webui";
   return "other";
 }
+
+onMounted(() => {
+  void refreshHotspotPolicy();
+});
 </script>
 
 <template>
@@ -431,6 +462,48 @@ function classifyLastCommand(command: string): string {
         >
           <Radar :size="17" />重新应用模式
         </Button>
+      </Card>
+
+      <Card
+        class="grid gap-4 !p-4 md:col-span-12 md:!p-6"
+        :class="
+          hotspotProxyEnabled
+            ? 'border-[color-mix(in_srgb,var(--mn-cactus)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_10%,var(--mn-ivory))]'
+            : ''
+        "
+      >
+        <label
+          class="flex cursor-pointer flex-col gap-4 rounded-[1.35rem] p-1 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span class="flex min-w-0 items-start gap-4">
+            <input
+              type="checkbox"
+              class="mt-1 size-7 shrink-0 accent-[var(--mn-cactus)]"
+              :checked="hotspotProxyEnabled"
+              :disabled="runtimeBusy || isRunning('hotspot-proxy')"
+              aria-describedby="hotspot-proxy-description"
+              @change="toggleHotspotProxy"
+            />
+            <span class="min-w-0">
+              <span class="flex items-center gap-2 text-xl font-semibold tracking-[-0.03em]">
+                <Share2 :size="21" />允许热点使用代理
+              </span>
+              <span
+                id="hotspot-proxy-description"
+                class="mt-2 block max-w-3xl text-sm leading-6 text-[var(--mn-ink-muted)]"
+              >
+                勾选后，连接本机热点的设备统一走 <code>proxy</code> 代理组；不勾选时统一走
+                <code>direct</code>。设置会持久保存并在核心重启后恢复。
+              </span>
+            </span>
+          </span>
+          <span class="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
+            <Badge v-if="!hotspotPolicyLoaded" tone="neutral">读取中</Badge>
+            <Badge v-else :tone="hotspotProxyEnabled ? 'success' : 'neutral'">
+              {{ hotspotProxyEnabled ? "Proxy" : "Direct" }}
+            </Badge>
+          </span>
+        </label>
       </Card>
 
       <Card class="grid gap-4 !p-4 md:col-span-12 md:gap-5 md:!p-6">

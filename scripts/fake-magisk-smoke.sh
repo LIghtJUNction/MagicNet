@@ -698,6 +698,27 @@ printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing
 
 run sh "$MODDIR/service.sh"
 run sh "$MODDIR/boot-completed.sh"
+"$HOST_JQ" -e '
+    ([.outbounds[] | select(.tag == "hotspot")] == [{
+      "type": "selector",
+      "tag": "hotspot",
+      "outbounds": ["direct", "proxy"],
+      "default": "direct"
+    }])
+    and ([.route.rules[] | select(
+      .inbound == ["tun-in"]
+      and .source_ip_cidr == ["192.168.0.0/16", "10.42.0.0/16", "172.20.10.0/28"]
+      and .outbound == "hotspot"
+    )] | length == 1)
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
+run "$MODDIR/cli" hotspot status >"$TMP/hotspot-direct.log"
+rg -q '^enabled=0$' "$TMP/hotspot-direct.log"
+rg -q '^outbound=direct$' "$TMP/hotspot-direct.log"
+run "$MODDIR/cli" hotspot enable
+run "$MODDIR/cli" hotspot status >"$TMP/hotspot-proxy.log"
+rg -q '^enabled=1$' "$TMP/hotspot-proxy.log"
+rg -q '^outbound=proxy$' "$TMP/hotspot-proxy.log"
+run "$MODDIR/cli" hotspot disable
 
 env -u MODDIR -u MODPATH \
     KAM_LANG="$KAM_LANG" \

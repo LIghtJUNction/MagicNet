@@ -38,7 +38,7 @@ magicnet_singbox_ai_selectors_canonical() {
           def reserved_tag:
             . as $tag
             | [
-                "proxy-auto", "proxy", "select", "lan", "ad-block", "ad-allow", "cn-direct",
+                "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
                 "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
                 "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
                 "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
@@ -148,7 +148,7 @@ magicnet_singbox_ai_selectors_canonical() {
               folded ~ /(^|[^[:alnum:]])(hong[ _-]?kong([ _-]?[0-9]+)?|hkg?[ _-]?[0-9]+|china|mainland|hk|hkg|cn|beijing|shanghai|guangzhou|shenzhen|chongqing|tianjin|hebei|shanxi|liaoning|jilin|heilongjiang|jiangsu|zhejiang|anhui|fujian|jiangxi|shandong|henan|hubei|hunan|guangdong|hainan|sichuan|guizhou|yunnan|shaanxi|gansu|qinghai|inner[ _-]?mongolia|guangxi|tibet|ningxia|xinjiang)([^[:alnum:]]|$)/
           }
           function reserved_tag(value) {
-            return value ~ /^(proxy-auto|proxy|select|lan|ad-block|ad-allow|cn-direct|apple-cn|microsoft-cn|google-cn|icloud|bing|dns-guard|network-test|ai-proxy|ai-chatgpt|ai-chatgpt-auto|ai-gemini|ai-gemini-auto|ai-grok|ai-grok-auto|ai-claude|ai-claude-auto|proxy-rule|dev-proxy|social-proxy|media-proxy|game-proxy|telegram-proxy|download-direct|final|direct|block|warp)$/
+            return value ~ /^(proxy-auto|proxy|select|lan|hotspot|ad-block|ad-allow|cn-direct|apple-cn|microsoft-cn|google-cn|icloud|bing|dns-guard|network-test|ai-proxy|ai-chatgpt|ai-chatgpt-auto|ai-gemini|ai-gemini-auto|ai-grok|ai-grok-auto|ai-claude|ai-claude-auto|proxy-rule|dev-proxy|social-proxy|media-proxy|game-proxy|telegram-proxy|download-direct|final|direct|block|warp)$/
           }
           function skip_space(s, position, length_s) {
             length_s = length(s)

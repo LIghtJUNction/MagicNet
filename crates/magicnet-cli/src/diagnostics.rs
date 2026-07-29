@@ -196,6 +196,7 @@ const SUPPORT_CHAIN_TAGS: &[&str] = &[
     "proxy-rule",
     "dns-guard",
     "network-test",
+    "hotspot",
     "download-direct",
     "dev-proxy",
     "social-proxy",

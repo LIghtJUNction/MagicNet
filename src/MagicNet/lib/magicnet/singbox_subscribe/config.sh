@@ -83,7 +83,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
       def reserved_tag:
         . as $tag
         | [
-            "proxy-auto", "proxy", "select", "lan", "ad-block", "ad-allow", "cn-direct",
+            "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
@@ -191,6 +191,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           proxy_selector($tags),
           selector("select"; ["proxy", "direct"]; "proxy"),
           selector("lan"; ["direct"]; "direct"),
+          selector_exact("hotspot"; ["direct", "proxy"]; "direct"),
           selector("ad-block"; ["block", "direct", "proxy"]; "block"),
           selector_exact("ad-allow"; ["final", "direct", "proxy"]; "final"),
           selector("cn-direct"; ["direct", "proxy"]; "direct"),
@@ -230,7 +231,7 @@ magicnet_singbox_count_valid_outbounds_nodes() {
       def reserved_tag:
         . as $tag
         | [
-            "proxy-auto", "proxy", "select", "lan", "ad-block", "ad-allow", "cn-direct",
+            "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
@@ -299,6 +300,8 @@ magicnet_singbox_emit_static_selectors() {
     done
     printf ',\n'
     magicnet_emit_selector_json_exact "cn-direct" "$(printf '%s\n%s\n%s\n' "direct" "proxy" "block")" "direct"
+    printf ',\n'
+    magicnet_emit_selector_json_exact "hotspot" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
     printf ',\n'
     magicnet_emit_selector_json "ad-block" "$(printf '%s\n%s\n%s\n' "block" "direct" "proxy")" "block"
     printf ',\n'
@@ -504,7 +507,7 @@ magicnet_singbox_sanitize_generated_config() {
       def reserved_tag:
         . as $tag
         | [
-            "proxy-auto", "proxy", "select", "lan", "ad-block", "ad-allow", "cn-direct",
+            "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",

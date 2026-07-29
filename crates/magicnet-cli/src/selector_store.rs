@@ -40,6 +40,11 @@ fn load(app: &App) -> BTreeMap<String, String> {
     }
 }
 
+pub(crate) fn selected(app: &App, group: &str) -> Option<String> {
+    let mut values = load(app);
+    values.remove(group)
+}
+
 struct StoreLock {
     path: std::path::PathBuf,
     token: String,
