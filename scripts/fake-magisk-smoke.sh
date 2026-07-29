@@ -698,7 +698,8 @@ printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing
 
 run sh "$MODDIR/service.sh"
 run sh "$MODDIR/boot-completed.sh"
-"$HOST_JQ" -e '
+hotspot_policy_ready() {
+    "$HOST_JQ" -e '
     ([.outbounds[] | select(.tag == "hotspot")] == [{
       "type": "selector",
       "tag": "hotspot",
@@ -710,7 +711,21 @@ run sh "$MODDIR/boot-completed.sh"
       and .source_ip_cidr == ["192.168.0.0/16", "10.42.0.0/16", "172.20.10.0/28"]
       and .outbound == "hotspot"
     )] | length == 1)
-' "$MODDIR/.config/sing-box/config.json" >/dev/null
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+}
+for _wait_hotspot_policy in {1..20}; do
+    hotspot_policy_ready && break
+    sleep 1
+done
+unset _wait_hotspot_policy
+if ! hotspot_policy_ready; then
+    echo "hotspot selector or managed route did not converge after startup" >&2
+    "$HOST_JQ" '{
+      hotspot_selectors: [.outbounds[]? | select(.tag == "hotspot")],
+      hotspot_routes: [.route.rules[]? | select((.outbound // "") == "hotspot")]
+    }' "$MODDIR/.config/sing-box/config.json" >&2
+    exit 1
+fi
 run "$MODDIR/cli" hotspot status >"$TMP/hotspot-direct.log"
 rg -q '^enabled=0$' "$TMP/hotspot-direct.log"
 rg -q '^outbound=direct$' "$TMP/hotspot-direct.log"
