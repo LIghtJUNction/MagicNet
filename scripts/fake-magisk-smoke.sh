@@ -692,6 +692,10 @@ run sh -c '
     test -f "$MODDIR/.state/kamfw-config/${MODDIR##*/}/persist/override.description"
 '
 
+# Production startup intentionally refuses to launch without a configured
+# subscription. Seed the fake subscription before the first lifecycle entrypoint.
+printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing-box/subscription.url"
+
 run sh "$MODDIR/service.sh"
 run sh "$MODDIR/boot-completed.sh"
 
@@ -812,7 +816,6 @@ env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPA
 ' >"$TMP/strict-core.log"
 grep -qx 'sing-box' "$TMP/strict-core.log"
 
-printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing-box/subscription.url"
 mkdir -p "$MODDIR/.state/sing-box/subscription-work"
 "$HOST_JQ" -r '"  \"outbounds\": " + (.outbounds | tojson) + ","' \
     "$MODDIR/.config/sing-box/config.json" \
