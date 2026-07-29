@@ -1,0 +1,76 @@
+#!/bin/bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEST_ROOT="$(mktemp -d)"
+
+cleanup() {
+    rm -rf "$TEST_ROOT"
+}
+trap cleanup EXIT
+
+fail() {
+    printf 'release integrity test failed: %s\n' "$*" >&2
+    exit 1
+}
+
+assert_failure() {
+    if "$@"; then
+        fail "unexpected success: $*"
+    fi
+}
+
+# shellcheck source=hooks/lib/utils.sh
+. "$ROOT/hooks/lib/utils.sh"
+# shellcheck source=hooks/lib/release_locks.sh
+. "$ROOT/hooks/lib/release_locks.sh"
+# shellcheck source=hooks/lib/release_utils.sh
+. "$ROOT/hooks/lib/release_utils.sh"
+
+assert_lock() {
+    local component="$1"
+    local tag="$2"
+    local asset="$3"
+    local sha256="$4"
+
+    release_lock_lookup "$component" || fail "missing $component lock"
+    release_lock_is_valid || fail "invalid $component lock"
+    [ "$RELEASE_LOCK_TAG" = "$tag" ] || fail "wrong $component tag"
+    [ "$RELEASE_LOCK_ASSET" = "$asset" ] || fail "wrong $component asset"
+    [ "$RELEASE_LOCK_SHA256" = "$sha256" ] || fail "wrong $component sha256"
+}
+
+assert_lock yq v4.53.3 yq_linux_arm64 578648e463a11c1b6db6010cbf41eafed6bee79466fcffa1bb446672cf7945ea
+assert_lock jq jq-1.8.2 jq-linux-arm64 8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309
+assert_lock sing-box v1.13.14 sing-box-1.13.14-android-arm64.tar.gz 59a4d18a4108e2f2a1bd49ca547829112712123975092d4a4bf1f443b6f3d747
+assert_lock ecapture v2.5.2 ecapture-v2.5.2-android-arm64.tar.gz 3531f47f60a45c02662188fb151fa8bbf9c40e5c245ff293e5a50477b99df2d1
+assert_lock zashboard v3.16.0 dist-no-fonts.zip 1d8c7aca69e6ddead5e4fe6e92ceda23a499105f675d053362f7c9b53a9730f9
+
+printf 'test' >"$TEST_ROOT/artifact"
+hook_verify_sha256 "$TEST_ROOT/artifact" 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 \
+    || fail "known artifact hash was rejected"
+assert_failure hook_verify_sha256 "$TEST_ROOT/artifact" 0000000000000000000000000000000000000000000000000000000000000000
+assert_failure hook_validate_archive_member_path ../outside
+assert_failure hook_validate_archive_member_path '..\\outside'
+
+mkdir -p "$TEST_ROOT/archive"
+printf 'safe\n' >"$TEST_ROOT/archive/file"
+tar -czf "$TEST_ROOT/safe.tar.gz" -C "$TEST_ROOT/archive" file
+hook_preflight_archive "$TEST_ROOT/safe.tar.gz" || fail "safe tar archive was rejected"
+
+ln -s file "$TEST_ROOT/archive/link"
+tar -czf "$TEST_ROOT/link.tar.gz" -C "$TEST_ROOT/archive" link
+assert_failure hook_preflight_archive "$TEST_ROOT/link.tar.gz"
+
+(
+    cd "$TEST_ROOT/archive"
+    zip -q "$TEST_ROOT/safe.zip" file
+)
+hook_preflight_archive "$TEST_ROOT/safe.zip" || fail "safe zip archive was rejected"
+(
+    cd "$TEST_ROOT/archive"
+    zip -y -q "$TEST_ROOT/link.zip" link
+)
+assert_failure hook_preflight_archive "$TEST_ROOT/link.zip"
+
+printf 'release integrity test passed\n'

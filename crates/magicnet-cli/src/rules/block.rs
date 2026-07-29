@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::service::restart_current_core;
 use crate::subscriptions::validate_subscription_url;
@@ -10,6 +11,11 @@ use crate::{clean_lines, read_kv, run_magicnet_function, shell_inert_conf_value,
 use super::{conf_dir, normalize_allow_rule, normalize_block_rule, print_lines, update_line};
 
 const BLOCK_CONF: &str = ".config/magicnet/block.conf";
+/// Keep a compromised community source from consuming more than 8 MiB of CLI memory.
+const MAX_COMMUNITY_BLOCKLIST_BYTES: usize = 8 * 1024 * 1024;
+/// Bound parser work independently of the byte budget.
+const MAX_COMMUNITY_BLOCKLIST_LINES: usize = 250_000;
+const MAX_COMMUNITY_BLOCKLIST_RULES: usize = 100_000;
 
 pub(crate) fn block_cmd(app: &App, args: &[String]) -> Result<(), String> {
     let dir = conf_dir(app);
@@ -182,7 +188,9 @@ fn block_update(app: &App) -> Result<(), String> {
             (text, format!("fallback: {}", fallback.display()))
         }
     };
-    let rules = parse_community_rules(&text);
+    // Parse everything before replacing either persisted rule file. A malformed
+    // or oversized update must leave the last known-good rules intact.
+    let rules = parse_community_rules(&text)?;
     let domains = rules
         .iter()
         .filter_map(|rule| {
@@ -204,19 +212,48 @@ fn block_update(app: &App) -> Result<(), String> {
 }
 
 fn download_blocklist(url: &str) -> Result<String, String> {
-    let output = Command::new("curl")
-        .args(["-fsSL", "--connect-timeout", "8", "--max-time", "30", url])
-        .output()
+    let max_bytes = MAX_COMMUNITY_BLOCKLIST_BYTES.to_string();
+    let mut child = Command::new("curl")
+        .args([
+            "-fsSL",
+            "--max-filesize",
+            &max_bytes,
+            "--connect-timeout",
+            "8",
+            "--max-time",
+            "30",
+            url,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
         .map_err(|err| format!("run curl: {err}"))?;
-    if output.status.success() {
-        return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "capture blocklist download failed".to_string())?;
+    let mut bytes = Vec::with_capacity(MAX_COMMUNITY_BLOCKLIST_BYTES.min(64 * 1024));
+    stdout
+        .by_ref()
+        .take((MAX_COMMUNITY_BLOCKLIST_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|err| format!("read blocklist download: {err}"))?;
+    if bytes.len() > MAX_COMMUNITY_BLOCKLIST_BYTES {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!(
+            "community blocklist exceeds {MAX_COMMUNITY_BLOCKLIST_BYTES} byte limit"
+        ));
     }
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    Err(if stderr.is_empty() {
-        url.to_string()
-    } else {
-        stderr
-    })
+    if child
+        .wait()
+        .map_err(|err| format!("wait for curl: {err}"))?
+        .success()
+    {
+        return String::from_utf8(bytes)
+            .map_err(|_| "community blocklist is not UTF-8".to_string());
+    }
+    Err(format!("download blocklist failed: {url}"))
 }
 
 fn apply_and_restart(app: &App) -> Result<(), String> {
@@ -233,9 +270,20 @@ fn persist_normalized_block_conf(app: &App) -> Result<(), String> {
     write_block_conf(app, &conf)
 }
 
-fn parse_community_rules(text: &str) -> Vec<String> {
+fn parse_community_rules(text: &str) -> Result<Vec<String>, String> {
+    if text.as_bytes().len() > MAX_COMMUNITY_BLOCKLIST_BYTES {
+        return Err(format!(
+            "community blocklist exceeds {MAX_COMMUNITY_BLOCKLIST_BYTES} byte limit"
+        ));
+    }
+    let mut seen = HashSet::new();
     let mut rules = Vec::new();
-    for raw in text.lines() {
+    for (line_number, raw) in text.lines().enumerate() {
+        if line_number >= MAX_COMMUNITY_BLOCKLIST_LINES {
+            return Err(format!(
+                "community blocklist exceeds {MAX_COMMUNITY_BLOCKLIST_LINES} line limit"
+            ));
+        }
         let line = raw
             .trim()
             .trim_start_matches('-')
@@ -252,12 +300,17 @@ fn parse_community_rules(text: &str) -> Vec<String> {
         if matches!(
             rule.split(',').next().unwrap_or_default(),
             "DOMAIN" | "DOMAIN-SUFFIX" | "DOMAIN-KEYWORD"
-        ) && !rules.contains(&rule)
+        ) && seen.insert(rule.clone())
         {
             rules.push(rule);
+            if rules.len() > MAX_COMMUNITY_BLOCKLIST_RULES {
+                return Err(format!(
+                    "community blocklist exceeds {MAX_COMMUNITY_BLOCKLIST_RULES} rule limit"
+                ));
+            }
         }
     }
-    rules
+    Ok(rules)
 }
 
 fn write_lines(app: &App, path: PathBuf, values: &[String]) -> Result<(), String> {
@@ -430,5 +483,33 @@ mod tests {
         assert!(!contents.contains("UNKNOWN"));
         assert!(!contents.contains(";touch"));
         assert!(contents.contains(default_block_url()));
+    }
+
+    #[test]
+    fn community_rules_preserve_first_seen_order_and_deduplicate() {
+        let rules = parse_community_rules(
+            "DOMAIN-SUFFIX,first.example\nDOMAIN,second.example\nDOMAIN-SUFFIX,first.example\n",
+        )
+        .expect("parse bounded community rules");
+
+        assert_eq!(
+            rules,
+            ["DOMAIN-SUFFIX,first.example", "DOMAIN,second.example"]
+        );
+    }
+
+    #[test]
+    fn community_rules_reject_the_rule_limit() {
+        let input = (0..=MAX_COMMUNITY_BLOCKLIST_RULES)
+            .map(|index| format!("DOMAIN,rule-{index}.example\n"))
+            .collect::<String>();
+
+        assert!(parse_community_rules(&input).is_err());
+    }
+
+    #[test]
+    fn community_rules_reject_the_byte_limit_before_parsing() {
+        let input = "x".repeat(MAX_COMMUNITY_BLOCKLIST_BYTES + 1);
+        assert!(parse_community_rules(&input).is_err());
     }
 }

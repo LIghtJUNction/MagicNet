@@ -1,8 +1,10 @@
 use std::fs;
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use crate::connection_control::{
     close_connections_through_chain, close_matching_connections, close_top_connections,
@@ -53,7 +55,7 @@ pub(crate) fn webui_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "install-local" => install_local(app, args),
         "payload" => crate::webui_payload::webui_payload_cmd(app, &args[1..]),
         _ => Err(
-            "Usage: cli webui {status|verify|install-local <download-url> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>}}".to_string(),
+            "Usage: cli webui {status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>}}".to_string(),
         ),
     }
 }
@@ -292,47 +294,50 @@ fn api_ui(app: &App, target: &str) {
 
 fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     let url = args.get(1).map(String::as_str).unwrap_or_default();
-    // Require https: the zip is unpacked as root, so a plaintext download is a
-    // MITM → arbitrary root file write. (No integrity pinning yet — see notes.)
     if !url.starts_with("https://") {
         if url.starts_with("http://") {
             return Err(
                 "refusing plaintext http download (MITM risk); use an https:// URL".to_string(),
             );
         }
-        return Err("Usage: cli webui install-local <https-download-url> [name]".to_string());
+        return Err(
+            "Usage: cli webui install-local <https-download-url> <sha256> [name]".to_string(),
+        );
     }
-    let name = args.get(2).map(String::as_str).unwrap_or("zashboard");
+    let expected_sha256 = args.get(2).map(String::as_str).unwrap_or_default();
+    validate_sha256(expected_sha256)?;
+    let name = args.get(3).map(String::as_str).unwrap_or("zashboard");
     let tmp = app.moddir.join(".tmp/webui-panel.zip");
+    let staging = app.moddir.join(".tmp/webui-panel-stage");
     let target = app.moddir.join(".config/sing-box/zashboard");
     if let Some(parent) = tmp.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
     }
+    clean_panel_staging(&tmp, &staging);
     download_panel_zip(url, &tmp)?;
+    if let Err(err) = verify_panel_archive(&tmp, expected_sha256)
+        .and_then(|_| unpack_panel_archive(&tmp, &staging))
+    {
+        clean_panel_staging(&tmp, &staging);
+        return Err(err);
+    }
+
     let backup = target.with_extension("bak");
     let _ = fs::remove_dir_all(&backup);
     if target.exists() {
-        let _ = fs::rename(&target, &backup);
+        if let Err(err) = fs::rename(&target, &backup) {
+            clean_panel_staging(&tmp, &staging);
+            return Err(format!("backup existing panel: {err}"));
+        }
     }
-    fs::create_dir_all(&target).map_err(|err| format!("mkdir {}: {err}", target.display()))?;
-    let status = Command::new("unzip")
-        .arg("-oq")
-        .arg(&tmp)
-        .arg("-d")
-        .arg(&target)
-        .status()
-        .map_err(|err| format!("unzip panel: {err}"))?;
-    if !status.success() {
-        let _ = fs::remove_dir_all(&target);
-        let _ = fs::rename(&backup, &target);
-        return Err("panel unzip failed".to_string());
+    if let Err(err) = fs::rename(&staging, &target) {
+        if backup.exists() {
+            let _ = fs::rename(&backup, &target);
+        }
+        clean_panel_staging(&tmp, &staging);
+        return Err(format!("promote validated panel: {err}"));
     }
-    promote_dist_dir(&target)?;
-    if !contains_index(&target) {
-        let _ = fs::remove_dir_all(&target);
-        let _ = fs::rename(&backup, &target);
-        return Err("panel zip does not contain index.html".to_string());
-    }
+    let _ = fs::remove_file(&tmp);
     write_text_file(app, Path::new("zashboard.version"), &format!("{name}\n"))?;
     run_magicnet_function(app, "magicnet_singbox_apply_zashboard")?;
     println!("[info] Installed local panel {name}");
@@ -340,23 +345,16 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn download_panel_zip(url: &str, tmp: &std::path::Path) -> Result<(), String> {
-    match curl_download(url, tmp) {
-        Ok(()) => Ok(()),
-        Err(first_err) => {
-            let Some(fallback) = zashboard_fallback_url(url) else {
-                return Err(first_err);
-            };
-            eprintln!("[warn] zashboard download failed, retrying smaller asset: {fallback}");
-            curl_download(&fallback, tmp).map_err(|fallback_err| {
-                format!("download panel failed\nprimary: {first_err}\nfallback: {fallback_err}")
-            })
-        }
+    if let Err(err) = curl_download(url, tmp) {
+        let _ = fs::remove_file(tmp);
+        return Err(err);
     }
+    Ok(())
 }
 
 // The panel archive is unpacked as root. Keep curl's initial-URL and redirect
 // protocol policies adjacent so neither path can silently fall back to HTTP.
-const PANEL_DOWNLOAD_CURL_OPTIONS: [&str; 9] = [
+const PANEL_DOWNLOAD_CURL_OPTIONS: [&str; 11] = [
     "-fL",
     "--proto",
     "=https",
@@ -366,41 +364,136 @@ const PANEL_DOWNLOAD_CURL_OPTIONS: [&str; 9] = [
     "15",
     "--max-time",
     "90",
+    "--max-filesize",
+    "33554432",
 ];
 
+const PANEL_MAX_BYTES: usize = 32 * 1024 * 1024;
+
 fn curl_download(url: &str, tmp: &std::path::Path) -> Result<(), String> {
-    let output = Command::new("curl")
-        .args(PANEL_DOWNLOAD_CURL_OPTIONS)
-        .arg("-o")
-        .arg(tmp)
-        .arg(url)
-        .output()
-        .map_err(|err| format!("run curl: {err}"))?;
-    if output.status.success() {
-        return Ok(());
+    let result = (|| {
+        let mut child = Command::new("curl")
+            .args(PANEL_DOWNLOAD_CURL_OPTIONS)
+            .arg(url)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|err| format!("run curl: {err}"))?;
+        let mut stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "capture curl response: stdout unavailable".to_string())?;
+        let body = match read_capped(&mut stdout, PANEL_MAX_BYTES) {
+            Ok(body) => body,
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(err);
+            }
+        };
+        let output = child
+            .wait_with_output()
+            .map_err(|err| format!("wait for curl: {err}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let detail = stderr.trim();
+            return Err(if detail.is_empty() {
+                format!(
+                    "curl exited with status {}",
+                    output.status.code().unwrap_or(1)
+                )
+            } else {
+                format!(
+                    "curl exited with status {}: {detail}",
+                    output.status.code().unwrap_or(1)
+                )
+            });
+        }
+        fs::write(tmp, body).map_err(|err| format!("stage downloaded panel: {err}"))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(tmp);
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let detail = stderr.trim();
-    if detail.is_empty() {
-        Err(format!(
-            "curl exited with status {}",
-            output.status.code().unwrap_or(1)
-        ))
+    result
+}
+
+fn read_capped(reader: &mut impl Read, max_bytes: usize) -> Result<Vec<u8>, String> {
+    let mut reader = reader.take(max_bytes as u64 + 1);
+    let mut body = Vec::new();
+    reader
+        .read_to_end(&mut body)
+        .map_err(|err| format!("read panel download: {err}"))?;
+    if body.len() > max_bytes {
+        return Err(format!("downloaded panel exceeds {max_bytes} byte limit"));
+    }
+    Ok(body)
+}
+
+fn validate_sha256(expected: &str) -> Result<(), String> {
+    if expected.len() == 64 && expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Ok(())
     } else {
-        Err(format!(
-            "curl exited with status {}: {detail}",
-            output.status.code().unwrap_or(1)
-        ))
+        Err("install-local requires a 64-character hexadecimal SHA-256 digest".to_string())
     }
 }
 
-fn zashboard_fallback_url(url: &str) -> Option<String> {
-    if !url.starts_with("https://github.com/Zephyruso/zashboard/releases/")
-        || !url.ends_with("/dist.zip")
-    {
-        return None;
+fn verify_panel_archive(path: &Path, expected: &str) -> Result<(), String> {
+    let mut archive =
+        fs::File::open(path).map_err(|err| format!("open downloaded panel: {err}"))?;
+    let mut reader = (&mut archive).take(PANEL_MAX_BYTES as u64 + 1);
+    let mut digest = Sha256::new();
+    let mut bytes_read = 0usize;
+    let mut buffer = [0u8; 8192];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|err| format!("read downloaded panel: {err}"))?;
+        if read == 0 {
+            break;
+        }
+        bytes_read += read;
+        ensure_panel_size(bytes_read)?;
+        digest.update(&buffer[..read]);
     }
-    Some(url.trim_end_matches("/dist.zip").to_string() + "/dist-no-fonts.zip")
+    let actual = format!("{:x}", digest.finalize());
+    if actual.eq_ignore_ascii_case(expected) {
+        Ok(())
+    } else {
+        Err("downloaded panel SHA-256 verification failed".to_string())
+    }
+}
+
+fn ensure_panel_size(bytes_read: usize) -> Result<(), String> {
+    if bytes_read <= PANEL_MAX_BYTES {
+        Ok(())
+    } else {
+        Err("downloaded panel exceeds 32 MiB limit".to_string())
+    }
+}
+
+fn unpack_panel_archive(archive: &Path, staging: &Path) -> Result<(), String> {
+    fs::create_dir_all(staging).map_err(|err| format!("mkdir {}: {err}", staging.display()))?;
+    let status = Command::new("unzip")
+        .arg("-oq")
+        .arg(archive)
+        .arg("-d")
+        .arg(staging)
+        .status()
+        .map_err(|err| format!("unzip panel: {err}"))?;
+    if !status.success() {
+        return Err("panel unzip failed".to_string());
+    }
+    promote_dist_dir(staging)?;
+    if contains_index(staging) {
+        Ok(())
+    } else {
+        Err("panel zip does not contain index.html".to_string())
+    }
+}
+
+fn clean_panel_staging(archive: &Path, staging: &Path) {
+    let _ = fs::remove_file(archive);
+    let _ = fs::remove_dir_all(staging);
 }
 
 fn contains_index(dir: &std::path::Path) -> bool {
@@ -480,18 +573,44 @@ mod tests {
     }
 
     #[test]
-    fn zashboard_dist_url_falls_back_to_no_fonts_asset() {
-        let url = "https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip";
-        assert_eq!(
-            zashboard_fallback_url(url).as_deref(),
-            Some(
-                "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip"
-            )
-        );
-        assert_eq!(
-            zashboard_fallback_url("https://example.com/panel/dist.zip"),
-            None
-        );
+    fn install_local_requires_a_sha256_digest() {
+        assert!(validate_sha256("not-a-digest").is_err());
+        assert!(validate_sha256(&"a".repeat(63)).is_err());
+        assert!(validate_sha256(&"A".repeat(64)).is_ok());
+    }
+
+    #[test]
+    fn panel_archive_hash_mismatch_is_rejected() {
+        let app = temp_app();
+        fs::create_dir_all(&app.moddir).unwrap();
+        let archive = app.moddir.join("panel.zip");
+        fs::write(&archive, b"test panel").unwrap();
+        assert!(verify_panel_archive(&archive, &"0".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn panel_staging_cleanup_removes_partial_download_and_unpack_dir() {
+        let app = temp_app();
+        let archive = app.moddir.join("partial.zip");
+        let staging = app.moddir.join("staging");
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(&archive, b"partial").unwrap();
+        clean_panel_staging(&archive, &staging);
+        assert!(!archive.exists());
+        assert!(!staging.exists());
+    }
+
+    #[test]
+    fn panel_download_size_limit_is_enforced() {
+        assert!(ensure_panel_size(PANEL_MAX_BYTES).is_ok());
+        assert!(ensure_panel_size(PANEL_MAX_BYTES + 1).is_err());
+    }
+
+    #[test]
+    fn oversized_stream_is_probed_once_past_the_limit_and_rejected() {
+        let mut reader = std::io::Cursor::new(b"12345".to_vec());
+        assert!(read_capped(&mut reader, 4).is_err());
+        assert_eq!(reader.position(), 5, "only the bounded probe may be read");
     }
 
     #[test]
@@ -508,6 +627,8 @@ mod tests {
                 "15",
                 "--max-time",
                 "90",
+                "--max-filesize",
+                "33554432",
             ]
         );
     }

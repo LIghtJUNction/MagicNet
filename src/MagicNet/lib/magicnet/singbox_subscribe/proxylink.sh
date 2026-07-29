@@ -1,18 +1,11 @@
 magicnet_singbox_proxylink_bin() {
-    for _bin in "${MODDIR}/bin/proxylink" proxylink; do
-        if command -v "$_bin" >/dev/null 2>&1; then
-            command -v "$_bin"
-            unset _bin
-            return 0
-        fi
-        [ -x "$_bin" ] && {
-            printf '%s\n' "$_bin"
-            unset _bin
-            return 0
-        }
-    done
+    _bin="${MODDIR}/bin/proxylink"
+    [ -x "$_bin" ] || {
+        unset _bin
+        return 1
+    }
+    printf '%s\n' "$_bin"
     unset _bin
-    return 1
 }
 
 magicnet_singbox_run_proxylink() {

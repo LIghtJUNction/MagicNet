@@ -1,9 +1,14 @@
 use std::fs;
 use std::path::Path;
 
+use argon2::{Algorithm, Argon2, Params, Version};
+use chacha20poly1305::{
+    aead::{rand_core::RngCore, Aead, AeadCore, KeyInit, OsRng, Payload},
+    Key, XChaCha20Poly1305, XNonce,
+};
+
 use crate::subscriptions::{
-    normalize_subscription_filter_text, validate_subscription_url,
-    validate_subscription_user_agent,
+    normalize_subscription_filter_text, validate_subscription_url, validate_subscription_user_agent,
 };
 use crate::{
     decode_base64, run_magicnet_function, shell_inert_conf_value, write_secret_file,
@@ -14,8 +19,8 @@ pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("export") {
         "export" => {
             let password = args.get(1).map(String::as_str).unwrap_or("");
-            let text = backup_text(app, password);
-            let bytes = encode_backup_bytes(&text, password);
+            let text = backup_text(app);
+            let bytes = encode_backup_bytes(&text, password)?;
             println!("{}", crate::encode_base64(&bytes));
             Ok(())
         }
@@ -47,9 +52,11 @@ pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
 
 fn restore_payload(app: &App, password: &str, payload: &str) -> Result<(), String> {
     let bytes = decode_base64(payload)?;
-    let bytes = decode_backup_bytes(bytes, password)?;
+    let (bytes, legacy_password_verifier) = decode_backup_bytes(bytes, password)?;
     let text = String::from_utf8(bytes).map_err(|err| format!("backup is not UTF-8: {err}"))?;
-    verify_backup_password(&text, password)?;
+    if legacy_password_verifier {
+        verify_legacy_backup_password(&text, password)?;
+    }
     restore_backup(app, &text)?;
     run_magicnet_function(
         app,
@@ -59,44 +66,99 @@ fn restore_payload(app: &App, password: &str, payload: &str) -> Result<(), Strin
     Ok(())
 }
 
-fn backup_text(app: &App, password: &str) -> String {
+fn backup_text(app: &App) -> String {
     let mut out = String::new();
-    out.push_str("MagicNet backup v1\n");
-    out.push_str(&format!("password_set={}\n", (!password.is_empty()) as u8));
-    if !password.is_empty() {
-        out.push_str(&format!(
-            "password_md5={:x}\n",
-            md5::compute(password.as_bytes())
-        ));
-    }
+    out.push_str("MagicNet backup v2\n");
     for rel in backup_files() {
         let path = app.moddir.join(rel);
-        out.push_str(&format!("\n--- {rel}\n"));
+        out.push_str(&format!("--- {rel}\n"));
         let text = fs::read_to_string(path).unwrap_or_default();
         out.push_str(&text);
-        out.push('\n');
+        if !text.is_empty() && !text.ends_with('\n') {
+            out.push('\n');
+        }
     }
     out
 }
 
-fn encode_backup_bytes(text: &str, password: &str) -> Vec<u8> {
+const ENCRYPTED_V1_PREFIX: &[u8] = b"MagicNet encrypted backup v1\n";
+const ENCRYPTED_V2_PREFIX: &[u8] = b"MagicNet encrypted backup v2\n";
+const V2_SALT_LEN: usize = 16;
+
+fn encode_backup_bytes(text: &str, password: &str) -> Result<Vec<u8>, String> {
     if password.is_empty() {
-        return text.as_bytes().to_vec();
+        return Ok(text.as_bytes().to_vec());
     }
-    let mut out = b"MagicNet encrypted backup v1\n".to_vec();
-    out.extend(xor_with_password(text.as_bytes(), password));
-    out
+
+    let mut salt = [0_u8; V2_SALT_LEN];
+    OsRng.fill_bytes(&mut salt);
+    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let key = derive_v2_key(password, &salt)?;
+    let cipher = XChaCha20Poly1305::new(Key::from_slice(&key));
+    let ciphertext = cipher
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: text.as_bytes(),
+                aad: ENCRYPTED_V2_PREFIX,
+            },
+        )
+        .map_err(|_| "backup encryption failed".to_string())?;
+
+    let mut out = ENCRYPTED_V2_PREFIX.to_vec();
+    out.extend_from_slice(&salt);
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&ciphertext);
+    Ok(out)
 }
 
-fn decode_backup_bytes(bytes: Vec<u8>, password: &str) -> Result<Vec<u8>, String> {
-    const PREFIX: &[u8] = b"MagicNet encrypted backup v1\n";
-    if !bytes.starts_with(PREFIX) {
-        return Ok(bytes);
+fn decode_backup_bytes(bytes: Vec<u8>, password: &str) -> Result<(Vec<u8>, bool), String> {
+    if bytes.starts_with(ENCRYPTED_V2_PREFIX) {
+        if password == "-" || password.is_empty() {
+            return Err("backup requires a safety code".to_string());
+        }
+        let envelope = &bytes[ENCRYPTED_V2_PREFIX.len()..];
+        if envelope.len() < V2_SALT_LEN + XNonce::default().len() + 16 {
+            return Err("backup authentication failed".to_string());
+        }
+        let (salt, envelope) = envelope.split_at(V2_SALT_LEN);
+        let (nonce, ciphertext) = envelope.split_at(XNonce::default().len());
+        let key = derive_v2_key(password, salt)?;
+        let cipher = XChaCha20Poly1305::new(Key::from_slice(&key));
+        let plaintext = cipher
+            .decrypt(
+                XNonce::from_slice(nonce),
+                Payload {
+                    msg: ciphertext,
+                    aad: ENCRYPTED_V2_PREFIX,
+                },
+            )
+            // Do not distinguish a wrong safety code from a modified envelope.
+            .map_err(|_| "backup authentication failed".to_string())?;
+        return Ok((plaintext, false));
+    }
+    if !bytes.starts_with(ENCRYPTED_V1_PREFIX) {
+        return Ok((bytes, true));
     }
     if password == "-" || password.is_empty() {
         return Err("backup requires a safety code".to_string());
     }
-    Ok(xor_with_password(&bytes[PREFIX.len()..], password))
+    Ok((
+        xor_with_password(&bytes[ENCRYPTED_V1_PREFIX.len()..], password),
+        true,
+    ))
+}
+
+fn derive_v2_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+    // OWASP's minimum interactive Argon2id profile: 19 MiB, two passes, one lane.
+    let params = Params::new(19 * 1024, 2, 1, Some(32))
+        .map_err(|_| "backup encryption parameters are invalid".to_string())?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut key = [0_u8; 32];
+    argon2
+        .hash_password_into(password.as_bytes(), salt, &mut key)
+        .map_err(|_| "backup key derivation failed".to_string())?;
+    Ok(key)
 }
 
 fn xor_with_password(input: &[u8], password: &str) -> Vec<u8> {
@@ -109,7 +171,7 @@ fn xor_with_password(input: &[u8], password: &str) -> Vec<u8> {
         .collect()
 }
 
-fn verify_backup_password(text: &str, password: &str) -> Result<(), String> {
+fn verify_legacy_backup_password(text: &str, password: &str) -> Result<(), String> {
     let mut password_set = false;
     let mut expected = "";
     for line in text.lines().take_while(|line| !line.starts_with("--- ")) {
@@ -323,11 +385,11 @@ mod tests {
         let app_mode = app.moddir.join(".config/magicnet/app-mode.conf");
         fs::create_dir_all(app_mode.parent().expect("app mode parent")).unwrap();
         fs::write(&app_mode, "MAGICNET_APP_MODE=whitelist\n").unwrap();
-        let text = backup_text(&app, "");
+        let text = backup_text(&app);
 
-        assert!(text.starts_with("MagicNet backup v1\npassword_set=0"));
-        assert_eq!(encode_backup_bytes(&text, ""), text.as_bytes());
-        verify_backup_password(&text, "").unwrap();
+        assert!(text.starts_with("MagicNet backup v2\n"));
+        assert!(!text.contains("password_md5="));
+        assert_eq!(encode_backup_bytes(&text, "").unwrap(), text.as_bytes());
 
         let restore_app = temp_app();
         let restore_text = format!("{text}\n--- ../ignored\nnope\n");
@@ -335,6 +397,19 @@ mod tests {
         let restored =
             fs::read_to_string(restore_app.moddir.join(".config/magicnet/app-mode.conf")).unwrap();
         assert!(restored.starts_with("MAGICNET_APP_MODE=whitelist\n"));
+        assert_eq!(
+            fs::read_to_string(
+                restore_app
+                    .moddir
+                    .join(".config/sing-box/subscription-filter.list")
+            )
+            .unwrap(),
+            ""
+        );
+        assert_eq!(
+            fs::read_to_string(restore_app.moddir.join(".config/magicnet/block.conf")).unwrap(),
+            ""
+        );
         assert!(!restore_app.moddir.join("../ignored").exists());
     }
 
@@ -411,27 +486,52 @@ mod tests {
     }
 
     #[test]
-    fn encrypted_backup_requires_matching_safety_code() {
-        let text =
-            "MagicNet backup v1\npassword_set=1\npassword_md5=900150983cd24fb0d6963f7d28e17f72\n";
-        let encoded = encode_backup_bytes(text, "abc");
+    fn v2_encrypted_backup_round_trips_and_is_nondeterministic() {
+        let text = "MagicNet backup v2\n\n--- .config/magicnet/app-mode.conf\nMAGICNET_APP_MODE=whitelist\n";
+        let first = encode_backup_bytes(text, "abc").unwrap();
+        let second = encode_backup_bytes(text, "abc").unwrap();
 
-        assert!(decode_backup_bytes(encoded.clone(), "").is_err());
-        assert!(decode_backup_bytes(encoded.clone(), "-").is_err());
-
-        let decoded = decode_backup_bytes(encoded, "abc").unwrap();
-        let decoded = String::from_utf8(decoded).unwrap();
-        verify_backup_password(&decoded, "abc").unwrap();
-        assert!(verify_backup_password(&decoded, "wrong")
-            .unwrap_err()
-            .contains("does not match"));
+        assert!(first.starts_with(ENCRYPTED_V2_PREFIX));
+        assert_ne!(first, second, "each export needs a fresh salt and nonce");
+        let (decoded, legacy) = decode_backup_bytes(first, "abc").unwrap();
+        assert!(!legacy);
+        assert_eq!(decoded, text.as_bytes());
     }
 
     #[test]
-    fn backup_password_metadata_must_be_present_when_password_is_set() {
-        let err =
-            verify_backup_password("MagicNet backup v1\npassword_set=1\n", "abc").unwrap_err();
-        assert!(err.contains("metadata is missing"), "{err}");
+    fn v2_encrypted_backup_rejects_wrong_code_and_tampering_before_parsing() {
+        let encoded = encode_backup_bytes("MagicNet backup v2\n", "abc").unwrap();
+
+        let wrong_code = decode_backup_bytes(encoded.clone(), "wrong").unwrap_err();
+        assert_eq!(wrong_code, "backup authentication failed");
+
+        let mut tampered = encoded;
+        *tampered.last_mut().unwrap() ^= 1;
+        let tampering = decode_backup_bytes(tampered, "abc").unwrap_err();
+        assert_eq!(tampering, "backup authentication failed");
+    }
+
+    #[test]
+    fn legacy_v1_xor_backup_fixture_remains_importable() {
+        let text =
+            "MagicNet backup v1\npassword_set=1\npassword_md5=900150983cd24fb0d6963f7d28e17f72\n";
+        let mut fixture = ENCRYPTED_V1_PREFIX.to_vec();
+        fixture.extend(xor_with_password(text.as_bytes(), "abc"));
+
+        let (decoded, legacy) = decode_backup_bytes(fixture, "abc").unwrap();
+        assert!(legacy);
+        let decoded = String::from_utf8(decoded).unwrap();
+        verify_legacy_backup_password(&decoded, "abc").unwrap();
+        assert!(verify_legacy_backup_password(&decoded, "wrong")
+            .unwrap_err()
+            .contains("does not match"));
+        let missing_metadata =
+            verify_legacy_backup_password("MagicNet backup v1\npassword_set=1\n", "abc")
+                .unwrap_err();
+        assert!(
+            missing_metadata.contains("metadata is missing"),
+            "{missing_metadata}"
+        );
     }
 
     #[test]
@@ -440,7 +540,7 @@ mod tests {
         let path = app.moddir.join("backup.txt");
         let text =
             "MagicNet backup v1\npassword_set=1\npassword_md5=5ebe2294ecd0e0f08eab7690d2a6ee69\n";
-        let encrypted = encode_backup_bytes(text, "secret");
+        let encrypted = encode_backup_bytes(text, "secret").unwrap();
         fs::create_dir_all(&app.moddir).unwrap();
         fs::write(&path, crate::encode_base64(&encrypted)).unwrap();
 
@@ -459,7 +559,8 @@ mod tests {
         let path = app.moddir.join("backup.txt");
         let text =
             "MagicNet backup v1\npassword_set=1\npassword_md5=900150983cd24fb0d6963f7d28e17f72\n";
-        let encrypted = encode_backup_bytes(text, "secret");
+        let mut encrypted = ENCRYPTED_V1_PREFIX.to_vec();
+        encrypted.extend(xor_with_password(text.as_bytes(), "secret"));
         fs::create_dir_all(&app.moddir).unwrap();
         fs::write(&path, crate::encode_base64(&encrypted)).unwrap();
         let path = path.to_string_lossy().into_owned();

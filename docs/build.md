@@ -28,3 +28,7 @@ scripts/package-install-smoke.sh dist/MagicNet.zip
 ## 注意
 
 `MAGIC_SINGBOX=0` 只应作为开发者临时调试构建钩子的开关使用，不是发布包或运行时禁用 sing-box 的设计。默认构建必须包含 `bin/sing-box` 和默认 `.config/sing-box/config.json`。
+
+## 发布依赖锁
+
+构建钩子只接受 `hooks/lib/release_locks.sh` 中已审核的固定 tag、资产名和 SHA-256。升级 yq、jq、sing-box、ecapture 或 zashboard 时，先独立审核发布资产，再在同一锁文件中同时更新这三项；不要把远端 release digest 或“最新版本”查询作为信任来源。

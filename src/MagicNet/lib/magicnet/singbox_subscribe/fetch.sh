@@ -22,55 +22,179 @@ magicnet_singbox_use_cached_subscription() {
     return 1
 }
 
-magicnet_singbox_try_fetch_subscription() {
-    _method="$1"
-    _url="$2"
-    _download_file="$3"
-    _connect_timeout="$4"
-    _max_time="$5"
-    case "$_method" in
-        curl)
-            command -v curl >/dev/null 2>&1 || return 127
-            set -- -fsSL
-            if [ -n "${MAGICNET_SUB_PROXY:-}" ]; then
-                set -- "$@" --proxy "$MAGICNET_SUB_PROXY"
-            else
-                set -- "$@" --noproxy '*'
-            fi
-            [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] ||
-                set -- "$@" --user-agent "$MAGICNET_SUB_USER_AGENT"
-            set -- "$@" --connect-timeout "$_connect_timeout" --max-time "$_max_time" "$_url" -o "$_download_file"
-            env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-                timeout "$_max_time" curl "$@"
-            ;;
-        wget)
-            command -v wget >/dev/null 2>&1 || return 127
-            set -- -T "$_max_time" -qO "$_download_file"
-            [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] ||
-                set -- "$@" --user-agent "$MAGICNET_SUB_USER_AGENT"
-            set -- "$@" "$_url"
-            env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-                timeout "$_max_time" wget "$@"
-            ;;
-        sing-box)
-            [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] || return 127
-            command -v sing-box >/dev/null 2>&1 || return 127
-            env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-                timeout "$_max_time" sing-box tools fetch "$_url" >"$_download_file"
+# A single per-subscription response limit. Keep this fixed so scheduled
+# refreshes cannot be expanded through an environment override.
+MAGICNET_SUB_MAX_RESPONSE_BYTES=8388608
+
+magicnet_singbox_subscription_parse_authority() {
+    _subscription_url="$1"
+    case "$_subscription_url" in
+        https://*) _subscription_rest=${_subscription_url#https://} ;;
+        *) return 1 ;;
+    esac
+    case "$_subscription_url" in *[[:space:]]*) return 1 ;; esac
+    _subscription_authority=${_subscription_rest%%/*}
+    _subscription_authority=${_subscription_authority%%\?*}
+    _subscription_authority=${_subscription_authority%%\#*}
+    [ -n "$_subscription_authority" ] || return 1
+    case "$_subscription_authority" in *@*) return 1 ;; esac
+
+    case "$_subscription_authority" in
+        \[* )
+            _subscription_after_open=${_subscription_authority#\[}
+            _subscription_host=${_subscription_after_open%%\]*}
+            [ "$_subscription_host" != "$_subscription_after_open" ] || return 1
+            _subscription_suffix=${_subscription_after_open#*\]}
+            case "$_subscription_suffix" in ''|:[0-9]*) ;; *) return 1 ;; esac
+            _subscription_port=${_subscription_suffix#:}
+            case "$_subscription_host" in *[!0-9A-Fa-f:.]*|'') return 1 ;; esac
             ;;
         *)
-            return 127
+            case "$_subscription_authority" in
+                *:*)
+                    _subscription_host=${_subscription_authority%:*}
+                    _subscription_port=${_subscription_authority##*:}
+                    case "$_subscription_host" in *:*) return 1 ;; esac
+                    ;;
+                *)
+                    _subscription_host=$_subscription_authority
+                    _subscription_port=
+                    ;;
+            esac
+            case "$_subscription_host" in
+                ''|.*|*.) return 1 ;;
+                *[!A-Za-z0-9.-]*|*..*) return 1 ;;
+                -*|*.-*|*-.?*) return 1 ;;
+            esac
             ;;
     esac
+    if [ -n "$_subscription_port" ]; then
+        case "$_subscription_port" in *[!0-9]*) return 1 ;; esac
+        [ "$_subscription_port" -ge 1 ] 2>/dev/null &&
+            [ "$_subscription_port" -le 65535 ] 2>/dev/null || return 1
+    else
+        _subscription_port=443
+    fi
 }
 
-magicnet_singbox_local_subscription_proxy() {
-    command -v curl >/dev/null 2>&1 || return 1
+magicnet_singbox_public_ipv4() {
+    _subscription_ipv4="$1"
+    case "$_subscription_ipv4" in *[!0-9.]*|*..*|.*|*.) return 1 ;; esac
+    _subscription_old_ifs=$IFS
+    IFS=.
+    # shellcheck disable=SC2086 # splitting the already character-checked IPv4 octets
+    set -- $_subscription_ipv4
+    IFS=$_subscription_old_ifs
+    [ "$#" -eq 4 ] || return 1
+    for _subscription_octet in "$@"; do
+        [ "$_subscription_octet" -ge 0 ] 2>/dev/null &&
+            [ "$_subscription_octet" -le 255 ] 2>/dev/null || return 1
+    done
+    _subscription_first=$1
+    _subscription_second=$2
+    [ "$_subscription_first" -ne 0 ] &&
+        [ "$_subscription_first" -ne 10 ] &&
+        [ "$_subscription_first" -ne 127 ] &&
+        [ "$_subscription_first" -lt 224 ] || return 1
+    [ "$_subscription_first" -ne 100 ] ||
+        { [ "$_subscription_second" -lt 64 ] || [ "$_subscription_second" -gt 127 ]; } || return 1
+    [ "$_subscription_first" -ne 169 ] || [ "$_subscription_second" -ne 254 ] || return 1
+    [ "$_subscription_first" -ne 172 ] ||
+        { [ "$_subscription_second" -lt 16 ] || [ "$_subscription_second" -gt 31 ]; } || return 1
+    [ "$_subscription_first" -ne 192 ] || [ "$_subscription_second" -ne 168 ] || return 1
+    [ "$_subscription_first" -ne 198 ] ||
+        { [ "$_subscription_second" -lt 18 ] || [ "$_subscription_second" -gt 19 ]; } || return 1
+}
+
+magicnet_singbox_public_address() {
+    _subscription_address="$1"
+    case "$_subscription_address" in
+        *.*)
+            _subscription_tail=${_subscription_address##*:}
+            magicnet_singbox_public_ipv4 "$_subscription_tail" || return 1
+            case "$_subscription_address" in *:*) ;; *) return 0 ;; esac
+            ;;
+    esac
+    case "$_subscription_address" in *:*) ;; *) return 1 ;; esac
+    case "$_subscription_address" in *[!0-9A-Fa-f:.]*|'') return 1 ;; esac
+    [ "$_subscription_address" != "::" ] && [ "$_subscription_address" != "::1" ] || return 1
+    _subscription_first_hextet=${_subscription_address%%:*}
+    if [ -z "$_subscription_first_hextet" ]; then
+        _subscription_first_value=0
+    else
+        [ "${#_subscription_first_hextet}" -le 4 ] || return 1
+        _subscription_first_value=$(printf '%d' "0x$_subscription_first_hextet" 2>/dev/null) || return 1
+    fi
+    [ "$_subscription_first_value" -lt 64512 ] || [ "$_subscription_first_value" -gt 65023 ] || return 1
+    [ "$_subscription_first_value" -lt 65152 ] || [ "$_subscription_first_value" -gt 65215 ] || return 1
+    [ "$_subscription_first_value" -lt 65280 ] || return 1
+}
+
+magicnet_singbox_subscription_resolve_public() {
+    _subscription_url="$1"
+    magicnet_singbox_subscription_parse_authority "$_subscription_url" || return 1
+    command -v getent >/dev/null 2>&1 || return 1
+    _subscription_resolved=0
+    getent ahosts "$_subscription_host" 2>/dev/null |
+        while IFS=' ' read -r _subscription_address _subscription_rest; do
+            magicnet_singbox_public_address "$_subscription_address" || exit 1
+            case "$_subscription_address" in
+                *:*) _subscription_resolve_address="[$_subscription_address]" ;;
+                *) _subscription_resolve_address=$_subscription_address ;;
+            esac
+            printf '%s|%s|%s\n' "$_subscription_host" "$_subscription_port" "$_subscription_resolve_address"
+        done
+}
+
+magicnet_singbox_try_fetch_subscription() {
+    _url="$1"
+    _download_file="$2"
+    _connect_timeout="$3"
+    _max_time="$4"
+    _resolve_file="${_download_file}.resolve"
+    _stream_fifo="${_download_file}.stream"
+    command -v curl >/dev/null 2>&1 || return 127
+    rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
+    magicnet_singbox_subscription_resolve_public "$_url" >"$_resolve_file" || {
+        rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
+        return 1
+    }
+    [ -s "$_resolve_file" ] || {
+        rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
+        return 1
+    }
+    mkfifo "$_stream_fifo" || {
+        rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
+        return 1
+    }
+    set -- -fsS --noproxy '*' --max-redirs 0 --proto '=https' --proto-redir '=https' \
+        --max-filesize "$MAGICNET_SUB_MAX_RESPONSE_BYTES"
+    [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] || set -- "$@" --user-agent "$MAGICNET_SUB_USER_AGENT"
+    while IFS='|' read -r _resolved_host _resolved_port _resolved_address; do
+        set -- "$@" --resolve "${_resolved_host}:${_resolved_port}:${_resolved_address}"
+    done <"$_resolve_file"
+    set -- "$@" --connect-timeout "$_connect_timeout" --max-time "$_max_time" -o - "$_url"
     env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-        timeout "${MAGICNET_SUB_PROXY_PROBE_TIMEOUT:-3}" \
-        curl -fsS --noproxy '*' --max-time "${MAGICNET_SUB_PROXY_PROBE_TIMEOUT:-3}" \
-        http://127.0.0.1:9090/version >/dev/null 2>&1 || return 1
-    printf '%s\n' "http://127.0.0.1:7892"
+        timeout "$_max_time" curl "$@" >"$_stream_fifo" &
+    _curl_pid=$!
+    # Consume the FIFO exactly once. `head -c` keeps reading short pipe reads
+    # until it reaches the budget plus one byte or EOF, so unknown-length and
+    # chunked bodies are rejected without reopening a FIFO after curl exits.
+    # `wait` preserves curl/HTTP/timeout failure separately.
+    head -c "$((MAGICNET_SUB_MAX_RESPONSE_BYTES + 1))" <"$_stream_fifo" >"$_download_file"
+    _stream_result=$?
+    if [ "$_stream_result" -ne 0 ]; then
+        kill "$_curl_pid" 2>/dev/null || true
+    fi
+    wait "$_curl_pid"
+    _fetch_result=$?
+    rm -f "$_resolve_file" "$_stream_fifo"
+    if [ "$_stream_result" -ne 0 ] || [ "$_fetch_result" -ne 0 ] ||
+        [ ! -s "$_download_file" ] ||
+        [ "$(wc -c <"$_download_file")" -gt "$MAGICNET_SUB_MAX_RESPONSE_BYTES" ]; then
+        rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
+        return 1
+    fi
 }
 
 magicnet_singbox_normalize_subscription_file() {
@@ -107,69 +231,36 @@ magicnet_singbox_fetch_one_subscription() {
     _connect_timeout="${MAGICNET_SUB_CONNECT_TIMEOUT:-10}"
     _max_time="${MAGICNET_SUB_MAX_TIME:-45}"
 
-    _fetched=0
-    _tried=0
     if [ -n "${MAGICNET_SUB_PROXY:-}" ]; then
-        _methods="curl"
-    elif [ -n "$MAGICNET_SUB_USER_AGENT" ]; then
-        _methods="curl wget"
-    else
-        _methods="curl wget sing-box"
-    fi
-    for _method in $_methods; do
+        error "Explicit subscription proxy is unsupported because it bypasses destination verification"
         rm -f "$_download_file"
-        magicnet_singbox_try_fetch_subscription "$_method" "$_url" "$_download_file" "$_connect_timeout" "$_max_time"
-        _fetch_rc=$?
-        [ "$_fetch_rc" -eq 127 ] && continue
-        _tried=1
-        if [ "$_fetch_rc" -eq 0 ] && [ -s "$_download_file" ]; then
-            _fetched=1
-            break
-        fi
-        warn "Failed to download subscription ${_label} with ${_method}"
-    done
-
-    if [ "$_fetched" -ne 1 ] && [ -z "${MAGICNET_SUB_PROXY:-}" ]; then
-        _local_proxy=$(magicnet_singbox_local_subscription_proxy 2>/dev/null || true)
-        if [ -n "$_local_proxy" ]; then
-            rm -f "$_download_file"
-            (
-                MAGICNET_SUB_PROXY="$_local_proxy"
-                magicnet_singbox_try_fetch_subscription curl "$_url" "$_download_file" "$_connect_timeout" "$_max_time"
-            )
-            _fetch_rc=$?
-            _tried=1
-            if [ "$_fetch_rc" -eq 0 ] && [ -s "$_download_file" ]; then
-                _fetched=1
-            else
-                warn "Failed to download subscription ${_label} with local sing-box proxy"
-            fi
-        fi
+        magicnet_singbox_use_cached_subscription "$_source_file" "$_cache_file" "$_identity_file" "$_expected_identity" || return 1
+        return 0
     fi
 
-    if [ "$_tried" -eq 0 ]; then
-        if [ -n "$MAGICNET_SUB_USER_AGENT" ]; then
-            error "No downloader with custom User-Agent support found: curl or wget"
-        else
-            error "No downloader found: curl, wget or sing-box tools fetch"
-        fi
+    magicnet_singbox_try_fetch_subscription "$_url" "$_download_file" "$_connect_timeout" "$_max_time"
+    _fetch_rc=$?
+    if [ "$_fetch_rc" -eq 127 ]; then
+        error "No downloader found with HTTPS address pinning: curl"
         return 1
     fi
-    if [ "$_fetched" -ne 1 ]; then
-        [ -z "${MAGICNET_SUB_PROXY:-}" ] || error "Explicit subscription proxy failed; refusing alternate egress"
+    if [ "$_fetch_rc" -ne 0 ]; then
+        warn "Failed to download subscription ${_label} with curl"
+        rm -f "$_download_file"
         magicnet_singbox_use_cached_subscription "$_source_file" "$_cache_file" "$_identity_file" "$_expected_identity" || return 1
         return 0
     fi
 
     [ -s "$_download_file" ] || {
         error "Downloaded subscription ${_label} is empty"
+        rm -f "$_download_file"
         magicnet_singbox_use_cached_subscription "$_source_file" "$_cache_file" "$_identity_file" "$_expected_identity" || return 1
         return 0
     }
 
     mv -f "$_download_file" "$_source_file"
     magicnet_singbox_normalize_subscription_file "$_source_file" || return 1
-    unset _fetched _tried _method _fetch_rc _local_proxy
+    unset _fetch_rc
 }
 
 magicnet_singbox_fetch_subscription() {

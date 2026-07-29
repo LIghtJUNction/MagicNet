@@ -13,9 +13,10 @@ export type WebuiInstallPlan = {
   safeCommand: string;
 };
 
-export function buildWebuiInstallPlan(urlText: string, nameText: string): WebuiInstallPlan {
+export function buildWebuiInstallPlan(urlText: string, sha256Text: string, nameText: string): WebuiInstallPlan {
   const name = nameText.trim() || "custom";
   const url = urlText.trim();
+  const sha256 = sha256Text.trim();
   if (!url) return plan("danger", "不能安装", "未填写下载 URL。", "", "", "", false, false, false, "");
   let parsed: URL;
   try {
@@ -26,7 +27,7 @@ export function buildWebuiInstallPlan(urlText: string, nameText: string): WebuiI
   const protocolOk = parsed.protocol === "http:" || parsed.protocol === "https:";
   const archive = archiveKind(parsed.pathname);
   const hasCredentials = isSensitiveExternalUrl(url);
-  const safeCommand = `webui install-local [filtered-url] ${shellWord(name)}`;
+  const safeCommand = `webui install-local [filtered-url] ${sha256 || "[sha256]"} ${shellWord(name)}`;
   if (!protocolOk) {
     return plan("danger", "不能安装", "只支持 http(s) 下载链接。", parsed.protocol, parsed.hostname, archive, hasCredentials, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
   }
@@ -36,10 +37,13 @@ export function buildWebuiInstallPlan(urlText: string, nameText: string): WebuiI
   if (!archive) {
     return plan("danger", "不能安装", "CLI 当前只支持 zip 面板包。", parsed.protocol, parsed.hostname, "unsupported", hasCredentials, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
   }
+  if (!/^[a-fA-F0-9]{64}$/.test(sha256)) {
+    return plan("danger", "不能安装", "必须提供 64 位十六进制 SHA-256 校验值。", parsed.protocol, parsed.hostname, archive, hasCredentials, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
+  }
   if (hasCredentials) {
     return plan("warning", "敏感链接", "链接包含凭据或签名参数，界面报告会隐藏完整 URL。", parsed.protocol, parsed.hostname, archive, true, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
   }
-  return plan("ok", "可安装", "后台下载和解压结果以任务日志为准。", parsed.protocol, parsed.hostname, archive, false, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
+  return plan("ok", "可安装", "后台下载、校验和解压结果以任务日志为准。", parsed.protocol, parsed.hostname, archive, false, Boolean(parsed.search), Boolean(parsed.hash), safeCommand);
 }
 
 export function formatWebuiInstallPlanReport(plan: WebuiInstallPlan): string {

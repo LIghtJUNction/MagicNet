@@ -49,18 +49,12 @@ pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_api","description":"Call core API helpers: groups, conns, stats, close-all, or ui.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["groups","conns","stats","close-all","ui"]}}}},
 {"name":"magicnet_webui_status","description":"Show WebUI panel status.","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_webui_verify","description":"Verify WebUI panel files.","inputSchema":{"type":"object","properties":{}}},
-{"name":"magicnet_webui_install_local","description":"Install a local core WebUI panel from a download URL.","inputSchema":{"type":"object","properties":{"url":{"type":"string"},"name":{"type":"string"}},"required":["url"]}},
-{"name":"magicnet_download_to_downloads","description":"Download a URL to /sdcard/Download with a safe filename. Used by WebUI donation QR save actions.","inputSchema":{"type":"object","properties":{"url":{"type":"string"},"filename":{"type":"string"}},"required":["url","filename"]}},
+{"name":"magicnet_webui_install_local","description":"Install a SHA-256-pinned local core WebUI panel from a download URL.","inputSchema":{"type":"object","properties":{"url":{"type":"string"},"sha256":{"type":"string"},"name":{"type":"string"}},"required":["url","sha256"]}},
 {"name":"magicnet_log_list","description":"List MagicNet runtime log files and known log aliases","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_log_read","description":"Read the tail of a MagicNet runtime log. Sources include sing-box, mcp, fswatch, kernel, service, or a log filename under .log. Redaction is enabled by default.","inputSchema":{"type":"object","properties":{"source":{"type":"string"},"lines":{"type":"integer","minimum":1,"maximum":1000},"redact":{"type":"boolean"}}}},
 {"name":"magicnet_debug_snapshot","description":"Collect a redacted MagicNet debug snapshot with MCP status, service status, health checks, listeners, routes, log inventory, and recent core/MCP logs.","inputSchema":{"type":"object","properties":{"lines":{"type":"integer","minimum":20,"maximum":300}}}},
 {"name":"magicnet_file_list","description":"List files under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},
-{"name":"magicnet_file_read","description":"Read a text file under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},
-{"name":"magicnet_file_write","description":"Hot-update a text file under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}},
-{"name":"magicnet_file_write_base64","description":"Hot-update a file from base64 content under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"content_base64":{"type":"string"},"mode":{"type":"string","enum":["0644","0755","0600","0640"]}},"required":["path","content_base64"]}},
-{"name":"magicnet_file_chmod","description":"Change permissions for a file or directory under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"mode":{"type":"string","enum":["0644","0755","0600","0640"]}},"required":["path","mode"]}},
-{"name":"magicnet_dir_make","description":"Create a directory under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}},
-{"name":"magicnet_webui_build","description":"Run MagicNet WebUI build hook to rebuild webroot after hot-updating frontend files","inputSchema":{"type":"object","properties":{}}}
+{"name":"magicnet_file_read","description":"Read a text file under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}}
 ]}"#;
 
 #[cfg(test)]
@@ -84,6 +78,30 @@ mod tests {
     #[test]
     fn tools_json_is_valid_json() {
         assert!(serde_json::from_str::<Value>(TOOLS_JSON).is_ok());
+    }
+
+    #[test]
+    fn local_webui_install_requires_a_sha256_digest() {
+        let document: Value = serde_json::from_str(TOOLS_JSON).expect("TOOLS_JSON must be valid");
+        let tool = document
+            .get("tools")
+            .and_then(Value::as_array)
+            .and_then(|tools| {
+                tools.iter().find(|tool| {
+                    tool.get("name").and_then(Value::as_str) == Some("magicnet_webui_install_local")
+                })
+            })
+            .expect("local WebUI install tool must exist");
+
+        assert_eq!(
+            tool.pointer("/inputSchema/properties/sha256/type")
+                .and_then(Value::as_str),
+            Some("string")
+        );
+        assert!(tool
+            .pointer("/inputSchema/required")
+            .and_then(Value::as_array)
+            .is_some_and(|required| required.iter().any(|value| value == "sha256")));
     }
 
     #[test]
@@ -119,5 +137,31 @@ mod tests {
             .expect("speedtest description must be a string");
 
         assert!(description.contains("10 MiB"));
+    }
+
+    #[test]
+    fn generic_write_tools_are_not_registered() {
+        let document: Value = serde_json::from_str(TOOLS_JSON).expect("TOOLS_JSON must be valid");
+        let names = document
+            .get("tools")
+            .and_then(Value::as_array)
+            .expect("tools must be an array")
+            .iter()
+            .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        for removed in [
+            "magicnet_file_write",
+            "magicnet_file_write_base64",
+            "magicnet_file_chmod",
+            "magicnet_dir_make",
+            "magicnet_webui_build",
+            "magicnet_download_to_downloads",
+        ] {
+            assert!(
+                !names.contains(&removed),
+                "{removed} must not be exposed by the MCP manifest"
+            );
+        }
     }
 }

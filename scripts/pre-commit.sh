@@ -41,6 +41,7 @@ bash scripts/test-action-routing.sh
 bash scripts/test-anthropic-routing.sh
 bash scripts/singbox-subscription-protocol-smoke.sh
 bash scripts/test-subscription-lifecycle.sh
+bash scripts/test-release-integrity.sh
 
 KAM_HOOKS_ROOT=hooks KAM_MODULE_ROOT=src/MagicNet bash hooks/pre-build/6000.check_config.sh
 MODPATH="$ROOT/src/MagicNet" sh -c '. "$MODPATH/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODPATH/lib/magicnet.sh"; kamfw run post-mount -- smoke'

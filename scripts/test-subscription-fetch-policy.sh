@@ -28,21 +28,24 @@ cat >"$tmp/bin/curl" <<'SH'
 #!/bin/sh
 printf 'env=%s/%s/%s/%s\n' "${http_proxy-}" "${HTTP_PROXY-}" "${all_proxy-}" "${ALL_PROXY-}" >>"$MAGICNET_FETCH_TEST_LOG"
 printf 'curl %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
-case "$*" in *127.0.0.1:9090/version*) printf '{"version":"test"}\n'; exit 0;; esac
+case " $* " in
+  *' http://127.0.0.1:9090/version '*)
+    printf '%s\n' '{"version":"test"}'
+    exit 0
+    ;;
+esac
 [ "${MAGICNET_FETCH_FAIL:-0}" = 1 ] && exit 1
-for last do :; done
-case " $* " in *' -o '*) while [ "$#" -gt 1 ]; do [ "$1" = -o ] && { printf ok >"$2"; break; }; shift; done;; esac
+if [ "${MAGICNET_FETCH_OVERFLOW:-0}" = 1 ]; then
+  dd if=/dev/zero bs=8388610 count=1 2>/dev/null
+elif [ "${MAGICNET_FETCH_LARGE:-0}" = 1 ]; then
+  dd if=/dev/zero bs=131072 count=1 2>/dev/null
+else
+  printf ok
+fi
 SH
-cat >"$tmp/bin/wget" <<'SH'
+cat >"$tmp/bin/getent" <<'SH'
 #!/bin/sh
-printf 'wget %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
-exit 1
-SH
-cat >"$tmp/bin/sing-box" <<'SH'
-#!/bin/sh
-printf 'sing-box %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
-[ "${MAGICNET_FETCH_FAIL:-0}" = 1 ] && exit 1
-printf ok
+printf '%s STREAM test\n' "1.1.1.1"
 SH
 cat >"$tmp/bin/timeout" <<'SH'
 #!/bin/sh
@@ -52,32 +55,25 @@ exec "$@"
 SH
 chmod +x "$tmp/bin/"*
 http_proxy=http://bad HTTP_PROXY=http://bad all_proxy=http://bad ALL_PROXY=http://bad \
-  PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription curl https://example.invalid/sub "$tmp/direct" 2 7
+  PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/direct" 2 7
 grep -q '^env=///$' "$tmp/log"
 grep -q 'curl .*--noproxy \*' "$tmp/log"
+grep -q 'curl .*--resolve example.invalid:443:1.1.1.1' "$tmp/log"
+grep -q 'curl .* -o - ' "$tmp/log"
 if grep -q -- '--proxy' "$tmp/log"; then
   exit 1
 fi
+test "$(cat "$tmp/direct")" = ok
 : >"$tmp/log"
-MAGICNET_SUB_PROXY=http://127.0.0.1:7892 PATH="$tmp/bin:$PATH" \
-  magicnet_singbox_try_fetch_subscription curl https://example.invalid/sub "$tmp/proxy" 2 9
-grep -q 'curl .*--proxy http://127.0.0.1:7892' "$tmp/log"
+MAGICNET_FETCH_LARGE=1 PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/large" 2 11
+test "$(wc -c <"$tmp/large")" -eq 131072
 : >"$tmp/log"
-PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription sing-box https://example.invalid/sub "$tmp/sing" 2 11
-grep -q '^timeout 11$' "$tmp/log"
-grep -q '^sing-box tools fetch ' "$tmp/log"
-: >"$tmp/log"
-MAGICNET_SUB_USER_AGENT='sing-box/1.12.0 (Android)' PATH="$tmp/bin:$PATH" \
-  magicnet_singbox_try_fetch_subscription wget https://example.invalid/sub "$tmp/wget-ua" 2 11 || true
-grep -q 'wget .*--user-agent sing-box/1.12.0 (Android).*https://example.invalid/sub' "$tmp/log"
-: >"$tmp/log"
-if MAGICNET_SUB_USER_AGENT=sing-box PATH="$tmp/bin:$PATH" \
-  magicnet_singbox_try_fetch_subscription sing-box https://example.invalid/sub "$tmp/sing-ua" 2 11; then
+if MAGICNET_FETCH_OVERFLOW=1 PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/overflow" 2 11; then
   exit 1
 fi
-if grep -q '^sing-box ' "$tmp/log"; then
-  exit 1
-fi
+test ! -e "$tmp/overflow"
 : >"$tmp/log"
 printf '%s\n' 'mihomo/1.19.0' >"$tmp/subscription.user-agent"
 PATH="$tmp/bin:$PATH" \
@@ -90,19 +86,15 @@ rm -f "$tmp/subscription.user-agent"
 MAGICNET_FETCH_FAIL=1 MAGICNET_SUB_PROXY=http://127.0.0.1:7892 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_fetch_one_subscription \
     https://example.invalid/sub "$tmp/missing" "" "" "" '#1' 2>/dev/null && exit 1 || true
-grep -q '^curl ' "$tmp/log"
-if grep -Eq '^(wget|sing-box) ' "$tmp/log"; then
+grep -qx 'error Explicit subscription proxy is unsupported because it bypasses destination verification' "$tmp/log"
+if grep -q '^curl ' "$tmp/log"; then
   exit 1
 fi
 : >"$tmp/log"
 MAGICNET_FETCH_FAIL=1 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_fetch_one_subscription \
     https://example.invalid/sub "$tmp/local-proxy" "" "" "" '#1' 2>/dev/null && exit 1 || true
-grep -q 'curl .*127.0.0.1:9090/version' "$tmp/log"
-grep -q 'curl .*--proxy http://127.0.0.1:7892.*https://example.invalid/sub' "$tmp/log"
-if grep -q 'wget .*--proxy' "$tmp/log" || grep -q 'sing-box .*--proxy' "$tmp/log"; then
-  exit 1
-fi
+grep -q '^curl ' "$tmp/log"
 MODDIR="$tmp/module"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
 magicnet_singbox_update_lock_acquire

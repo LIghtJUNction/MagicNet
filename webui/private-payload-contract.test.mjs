@@ -127,7 +127,7 @@ assert.match(webuiSource, /const safeVerifyOutput = redactSensitiveText\(rawVeri
 assert.match(webuiSource, /verifyOutput\.value = safeVerifyOutput;\s*state\.output = safeVerifyOutput;/);
 assert.doesNotMatch(webuiSource, /verifyOutput\.value = await runCli\(/);
 assert.match(webuiSource, /function sanitizeWebuiReport\(text: string\): string \{\s*return redactSensitiveText\(text\);\s*\}/);
-assert.match(webuiSource, /buildWebuiInstallPlan\(\s*panel\.value\.url,\s*redactSensitiveText\(panel\.value\.name\.trim\(\) \|\| "custom"\),\s*\)/);
+assert.match(webuiSource, /buildWebuiInstallPlan\(\s*panel\.value\.url,\s*panel\.value\.sha256,\s*redactSensitiveText\(panel\.value\.name\.trim\(\) \|\| "custom"\),\s*\)/);
 assert.match(webuiSource, /const displayName = redactSensitiveText\(name\);/);
 assert.match(webuiSource, /会下载 \$\{displayName\} 面板压缩包/);
 assert.match(webuiSource, /const issueName = redactSensitiveText\(panel\.value\.name\.trim\(\) \|\| "custom"\);/);
@@ -137,7 +137,7 @@ assert.match(webuiSource, /\n    issueMetadata,\n/);
 assert.match(webuiSource, /title: `申请适配 WebUI 面板：\$\{issueName\}`/);
 assert.match(subscriptionsSource, /startPrivateBackgroundCli/);
 assert.match(installPlanSource, /isSensitiveExternalUrl\(url\)/);
-assert.match(installPlanSource, /webui install-local \[filtered-url\]/);
+assert.match(installPlanSource, /webui install-local \[filtered-url\] \$\{sha256 \|\| "\[sha256\]"\}/);
 assert.match(linksSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(linksSource, /redactedCliPreview\("open external \[filtered-url\]"\)/);
 

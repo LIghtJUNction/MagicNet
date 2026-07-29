@@ -11,11 +11,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::Value as JsonValue;
+use sha2::{Digest, Sha256};
 
 use crate::{decode_base64, run_magicnet_function, App};
 
 const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
+const TEMPLATE_MAX_BYTES: usize = 1024 * 1024;
+const MAGIC_SINGBOX_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/b94082188300fd447966987b6d1989750675334e/config.json";
+const MAGIC_SINGBOX_TEMPLATE_SHA256: &str =
+    "5c827a3f7a341ce70cf372517c755e50b4d839a0af27af20a0a5faf4d89ad7ca";
 static CONFIG_EDITOR_STAGE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 pub(crate) fn config_editor(app: &App, args: &[String]) -> Result<(), String> {
@@ -550,7 +555,7 @@ fn sync_template(app: &App, target: &str) -> Result<(), String> {
 fn sync_template_one(app: &App, target: &str) -> Result<(), String> {
     let path = config_path(app, target)?;
     let url = upstream_template_url(target)?;
-    let template = fetch_template(app, &url)?;
+    let template = fetch_template(&url)?;
     let current = read_current_config(app, target)?.unwrap_or_default();
     let merged = prepare_template(target, &template, &current)?;
     commit_config_text(app, target, &path, merged.as_bytes(), "template")?;
@@ -578,69 +583,56 @@ fn read_current_config(app: &App, target: &str) -> Result<Option<String>, String
 
 fn upstream_template_url(target: &str) -> Result<String, String> {
     match target {
-        "sing-box" => Ok(
-            "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/main/config.json"
-                .to_string(),
-        ),
+        "sing-box" => Ok(MAGIC_SINGBOX_TEMPLATE_URL.to_string()),
         _ => Err("config target must be sing-box".to_string()),
     }
 }
 
-fn fetch_template(app: &App, url: &str) -> Result<String, String> {
-    let mut errors = Vec::new();
+fn fetch_template(url: &str) -> Result<String, String> {
     let mut command = Command::new("curl");
     command
         .arg("-fsSL")
+        .arg("--proto")
+        .arg("=https")
+        .arg("--proto-redir")
+        .arg("=https")
+        .arg("--max-filesize")
+        .arg(TEMPLATE_MAX_BYTES.to_string())
         .arg("--max-time")
         .arg(TEMPLATE_FETCH_TIMEOUT.as_secs().to_string())
         .arg(url);
-    if let Some(text) = fetch_with(command, "curl", &mut errors) {
-        return Ok(text);
+    let output = run_with_timeout(command, TEMPLATE_FETCH_TIMEOUT + Duration::from_secs(5))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "fetch template failed: curl command failed".to_string()
+        } else {
+            format!("fetch template failed: {stderr}")
+        });
     }
-
-    let mut command = Command::new("wget");
-    command.arg("-qO-").arg(url);
-    if let Some(text) = fetch_with(command, "wget", &mut errors) {
-        return Ok(text);
+    if output.stdout.len() > TEMPLATE_MAX_BYTES {
+        return Err(format!(
+            "fetch template failed: response exceeds {TEMPLATE_MAX_BYTES} byte limit"
+        ));
     }
-
-    for singbox in [app.moddir.join("bin/sing-box")] {
-        if singbox.exists() {
-            let mut command = Command::new(singbox);
-            command.arg("tools").arg("fetch").arg(url);
-            if let Some(text) = fetch_with(command, "sing-box tools fetch", &mut errors) {
-                return Ok(text);
-            }
-        }
-    }
-
-    Err(format!("fetch template failed: {}", errors.join("; ")))
+    verify_template_hash(&output.stdout)?;
+    String::from_utf8(output.stdout).map_err(|err| format!("template is not UTF-8: {err}"))
 }
 
-fn fetch_with(command: Command, label: &str, errors: &mut Vec<String>) -> Option<String> {
-    let output = match run_with_timeout(command, TEMPLATE_FETCH_TIMEOUT + Duration::from_secs(5)) {
-        Ok(output) => output,
-        Err(err) => {
-            errors.push(format!("{label}: {err}"));
-            return None;
-        }
-    };
-    if output.status.success() {
-        match String::from_utf8(output.stdout) {
-            Ok(text) => Some(text),
-            Err(err) => {
-                errors.push(format!("{label}: template is not UTF-8: {err}"));
-                None
-            }
-        }
+fn verify_template_hash(template: &[u8]) -> Result<(), String> {
+    verify_expected_sha256(
+        template,
+        MAGIC_SINGBOX_TEMPLATE_SHA256,
+        "upstream sing-box template",
+    )
+}
+
+fn verify_expected_sha256(bytes: &[u8], expected: &str, subject: &str) -> Result<(), String> {
+    let actual = format!("{:x}", Sha256::digest(bytes));
+    if actual.eq_ignore_ascii_case(expected) {
+        Ok(())
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        errors.push(if stderr.is_empty() {
-            format!("{label}: command failed")
-        } else {
-            format!("{label}: {stderr}")
-        });
-        None
+        Err(format!("{subject} SHA-256 verification failed"))
     }
 }
 
@@ -885,6 +877,14 @@ mod tests {
         assert!(merged.contains("\"tag\": \"proxy\""));
         assert!(merged.contains("\"inbounds\": []"));
         assert!(merged.contains("\"route\": {}"));
+    }
+
+    #[test]
+    fn template_hash_validation_rejects_mismatched_bytes() {
+        let fixture = b"immutable template fixture";
+        let expected = format!("{:x}", Sha256::digest(fixture));
+        assert!(verify_expected_sha256(fixture, &expected, "fixture").is_ok());
+        assert!(verify_expected_sha256(b"tampered", &expected, "fixture").is_err());
     }
 
     #[test]

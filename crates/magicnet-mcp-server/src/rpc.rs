@@ -1,10 +1,8 @@
 use serde_json::{json, Value};
 use std::process::Command;
 
-use crate::base64::{decode_base64, encode_base64};
-use crate::files::{
-    dir_make, download_to_downloads, file_chmod, file_list, file_read, file_write, webui_build,
-};
+use crate::base64::encode_base64;
+use crate::files::{file_list, file_read};
 use crate::logs::{debug_snapshot, log_list, log_read};
 use crate::tools::TOOLS_JSON;
 use crate::Server;
@@ -205,12 +203,9 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
                 "webui".into(),
                 "install-local".into(),
                 arg(args, "url").unwrap_or_default(),
+                arg(args, "sha256").unwrap_or_default(),
                 arg(args, "name").unwrap_or_else(|| "custom".to_string()),
             ],
-        ),
-        "magicnet_download_to_downloads" => download_to_downloads(
-            arg(args, "url").as_deref().unwrap_or(""),
-            arg(args, "filename").as_deref().unwrap_or(""),
         ),
         "magicnet_log_list" => log_list(server),
         "magicnet_log_read" => log_read(
@@ -224,31 +219,6 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         }
         "magicnet_file_list" => file_list(server, arg(args, "path").as_deref().unwrap_or(".")),
         "magicnet_file_read" => file_read(server, arg(args, "path").as_deref().unwrap_or("")),
-        "magicnet_file_write" => file_write(
-            server,
-            arg(args, "path").as_deref().unwrap_or(""),
-            arg(args, "content").unwrap_or_default().as_bytes(),
-            "0644",
-        ),
-        "magicnet_file_write_base64" => {
-            let decoded = match decode_base64(&arg(args, "content_base64").unwrap_or_default()) {
-                Ok(bytes) => bytes,
-                Err(err) => return format!("base64 decode failed: {err}"),
-            };
-            file_write(
-                server,
-                arg(args, "path").as_deref().unwrap_or(""),
-                &decoded,
-                arg(args, "mode").as_deref().unwrap_or("0644"),
-            )
-        }
-        "magicnet_file_chmod" => file_chmod(
-            server,
-            arg(args, "path").as_deref().unwrap_or(""),
-            arg(args, "mode").as_deref().unwrap_or("0644"),
-        ),
-        "magicnet_dir_make" => dir_make(server, arg(args, "path").as_deref().unwrap_or("")),
-        "magicnet_webui_build" => webui_build(server),
         _ => "unknown tool".to_string(),
     }
 }
@@ -488,5 +458,41 @@ mod tests {
                 .and_then(Value::as_str),
             Some("speedtest\n\nrc=0")
         );
+    }
+
+    #[test]
+    fn removed_generic_write_tools_are_rejected() {
+        let server = Server {
+            moddir: PathBuf::from("/tmp"),
+            cli: PathBuf::from("/bin/echo"),
+            secret: String::new(),
+        };
+
+        for tool in [
+            "magicnet_file_write",
+            "magicnet_file_write_base64",
+            "magicnet_file_chmod",
+            "magicnet_dir_make",
+            "magicnet_webui_build",
+            "magicnet_download_to_downloads",
+        ] {
+            let payload = json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": tool, "arguments": {}}
+            })
+            .to_string();
+            let response: Value = serde_json::from_str(&handle_jsonrpc(&payload, &server))
+                .expect("RPC response must be valid JSON");
+
+            assert_eq!(
+                response
+                    .pointer("/result/content/0/text")
+                    .and_then(Value::as_str),
+                Some("unknown tool"),
+                "{tool} must remain unavailable"
+            );
+        }
     }
 }

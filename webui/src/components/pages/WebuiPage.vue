@@ -25,21 +25,24 @@ const planCopied = ref(false);
 const pendingWebuiAction = ref<PendingToolAction | null>(null);
 const panel = ref({
   name: "zashboard",
-  url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip",
+  url: "https://github.com/Zephyruso/zashboard/releases/download/v3.16.0/dist-no-fonts.zip",
+  sha256: "1d8c7aca69e6ddead5e4fe6e92ceda23a499105f675d053362f7c9b53a9730f9",
   metadata: ""
 });
 const panelPresets = [
   {
     label: "zashboard no-fonts",
     name: "zashboard",
-    url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist-no-fonts.zip",
+    url: "https://github.com/Zephyruso/zashboard/releases/download/v3.16.0/dist-no-fonts.zip",
+    sha256: "1d8c7aca69e6ddead5e4fe6e92ceda23a499105f675d053362f7c9b53a9730f9",
     note: "MagicNet 默认本地面板，包体更小，适合设备侧后台下载。"
   },
   {
     label: "zashboard full",
     name: "zashboard",
-    url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip",
-    note: "完整字体包体积更大；CLI 下载失败时会重试 no-fonts 资源。"
+    url: "https://github.com/Zephyruso/zashboard/releases/download/v3.16.0/dist.zip",
+    sha256: "d103652ee04e9d73017230f483e0cb8875bf4bdf2c139faae47300ba7f5dfd16",
+    note: "完整字体包体积更大；下载包会在安装前校验 SHA-256。"
   }
 ];
 
@@ -48,14 +51,16 @@ const verifyFailed = computed(() => verifyOutput.value.toLowerCase().includes("f
 const panelInsight = computed(() => buildWebuiPanelInsight(verifyChecks.value, verifyOutput.value));
 const installArgs = computed(() => {
   const url = panel.value.url.trim();
+  const sha256 = panel.value.sha256.trim();
   const name = panel.value.name.trim() || "custom";
-  return url ? `webui install-local ${shellQuote(url)} ${shellQuote(name)}` : "";
+  return url && sha256 ? `webui install-local ${shellQuote(url)} ${shellQuote(sha256)} ${shellQuote(name)}` : "";
 });
 const installPlan = computed(() => buildWebuiInstallPlan(
   panel.value.url,
+  panel.value.sha256,
   redactSensitiveText(panel.value.name.trim() || "custom"),
 ));
-const panelWarnings = computed(() => buildPanelWarnings(panel.value.url, panel.value.name, installPlan.value));
+const panelWarnings = computed(() => buildPanelWarnings(panel.value.url, panel.value.name, panel.value.sha256, installPlan.value));
 
 async function refreshWebui(): Promise<void> {
   await withAction("webui-status", async () => {
@@ -101,7 +106,7 @@ async function copyInstallCommand(): Promise<void> {
     state.output = "请先填写本地面板下载 URL。";
     return;
   }
-  const safeCommand = installPlan.value.safeCommand || "webui install-local [filtered-url] custom";
+  const safeCommand = installPlan.value.safeCommand || "webui install-local [filtered-url] [sha256] custom";
   commandCopied.value = await copyText(safeCommand);
   state.output = commandCopied.value ? "WebUI 脱敏安装命令已复制。" : "剪贴板不可用，WebUI 脱敏安装命令未复制。";
 }
@@ -153,7 +158,7 @@ function installLocal(): void {
   }
   const command = installArgs.value;
   const displayName = redactSensitiveText(name);
-  const safeCommand = installPlan.value.safeCommand || "webui install-local [filtered-url] custom";
+  const safeCommand = installPlan.value.safeCommand || "webui install-local [filtered-url] [sha256] custom";
   pendingWebuiAction.value = {
     key: "webui-install",
     title: "后台下载并安装 WebUI 面板",
@@ -163,10 +168,11 @@ function installLocal(): void {
   };
 }
 
-function applyPanelPreset(item: { name: string; url: string; note: string }): void {
+function applyPanelPreset(item: { name: string; url: string; sha256: string; note: string }): void {
   panel.value = {
     name: item.name,
     url: item.url,
+    sha256: item.sha256,
     metadata: item.note
   };
   commandCopied.value = false;
@@ -202,7 +208,7 @@ function parseVerifyChecks(text: string): WebuiVerifyCheck[] {
   }).filter((item): item is WebuiVerifyCheck => Boolean(item));
 }
 
-function buildPanelWarnings(url: string, name: string, plan: WebuiInstallPlan): Array<{ text: string; tone: "success" | "warning" | "danger" }> {
+function buildPanelWarnings(url: string, name: string, sha256: string, plan: WebuiInstallPlan): Array<{ text: string; tone: "success" | "warning" | "danger" }> {
   const trimmedUrl = url.trim();
   const trimmedName = name.trim();
   const warnings: Array<{ text: string; tone: "success" | "warning" | "danger" }> = [];
@@ -213,19 +219,16 @@ function buildPanelWarnings(url: string, name: string, plan: WebuiInstallPlan): 
   // verdict here instead of re-implementing the checks per page.
   else if (plan.status === "danger") warnings.push({ text: plan.detail, tone: "danger" });
   if (plan.status === "warning") warnings.push({ text: plan.detail, tone: "warning" });
-  if (hasZashboardDistFallback(trimmedUrl)) warnings.push({ text: "zashboard dist.zip 失败时 CLI 会自动重试 dist-no-fonts.zip。", tone: "success" });
+  if (!/^[a-fA-F0-9]{64}$/.test(sha256.trim())) warnings.push({ text: "必须提供 64 位 SHA-256 校验值。", tone: "danger" });
   if (!warnings.length) warnings.push({ text: "安装命令可执行，下载和解压结果以后台任务日志为准。", tone: "success" });
   return warnings;
 }
 
-watch(() => [panel.value.name, panel.value.url], () => {
+watch(() => [panel.value.name, panel.value.url, panel.value.sha256], () => {
   commandCopied.value = false;
   planCopied.value = false;
 });
 
-function hasZashboardDistFallback(url: string): boolean {
-  return url.startsWith("https://github.com/Zephyruso/zashboard/releases/") && url.endsWith("/dist.zip");
-}
 </script>
 
 <template>
@@ -257,6 +260,7 @@ function hasZashboardDistFallback(url: string): boolean {
         </div>
         <Input v-model="panel.name" placeholder="面板名字，例如 zashboard" spellcheck="false" />
         <Input v-model="panel.url" placeholder="https://example.com/panel.zip" spellcheck="false" />
+        <Input v-model="panel.sha256" placeholder="面板包 SHA-256（64 位十六进制）" spellcheck="false" />
         <Textarea v-model="panel.metadata" class="min-h-28" placeholder="面板元数据、说明、仓库链接、适配注意事项" spellcheck="false" />
         <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -273,7 +277,7 @@ function hasZashboardDistFallback(url: string): boolean {
               {{ installPlan.host || '无主机' }} · {{ installPlan.archive || '未知包类型' }} · query {{ installPlan.hasQuery ? '有' : '无' }}
             </p>
           </div>
-          <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs leading-6 text-[var(--mn-ink-soft)]">{{ installPlan.safeCommand || "webui install-local [filtered-url] [name]" }}</code>
+          <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs leading-6 text-[var(--mn-ink-soft)]">{{ installPlan.safeCommand || "webui install-local [filtered-url] [sha256] [name]" }}</code>
         </div>
         <Button variant="outline" :disabled="!panel.url.trim()" @click="copyInstallPlan"><Copy :size="17" />{{ planCopied ? '已复制计划' : '复制安装计划' }}</Button>
         <Button :disabled="panelWarnings.some((item) => item.tone === 'danger')" :loading="isRunning('webui-install')" @click="installLocal"><DownloadCloud :size="17" />后台下载并安装</Button>

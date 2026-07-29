@@ -4,6 +4,7 @@
 
 MAGIC_PROXYLINK=${MAGIC_PROXYLINK:-1}
 REPO_URL="https://github.com/Fanju6/Proxylink.git"
+PINNED_REV="44929c0984944870297c260dc43a4aa9262f9e1c"
 STATE_DIR="${KAM_MODULE_ROOT}/.local/state/tools"
 VERSION_FILE="${STATE_DIR}/proxylink.version"
 TARGET_DIR="${KAM_MODULE_ROOT}/bin"
@@ -24,20 +25,16 @@ if ! command -v git >/dev/null 2>&1; then
     exit 0
 fi
 
-mkdir -p "$TARGET_DIR" "$STATE_DIR"
-
-LATEST_REV=$(git ls-remote "$REPO_URL" HEAD 2>/dev/null | awk '{print $1}' || true)
-if [ -z "$LATEST_REV" ]; then
-    log_warn "Proxylink: cannot resolve upstream HEAD; optional build skipped"
-    exit 0
-fi
-
 CURRENT_REV=none
 [ -f "$VERSION_FILE" ] && CURRENT_REV=$(cat "$VERSION_FILE")
-if [ "$CURRENT_REV" = "$LATEST_REV" ] && [ -x "$TARGET_BIN" ]; then
-    log_info "Proxylink: up to date (${LATEST_REV:0:12})"
+if [ "$CURRENT_REV" = "$PINNED_REV" ] && [ -x "$TARGET_BIN" ]; then
+    log_info "Proxylink: pinned revision already installed (${PINNED_REV:0:12})"
     exit 0
 fi
+
+# Do not retain an executable whose provenance is not the reviewed revision.
+rm -f "$TARGET_BIN" "$VERSION_FILE"
+mkdir -p "$TARGET_DIR" "$STATE_DIR"
 
 TMP_DIR=$(mktemp -d "${KAM_MODULE_ROOT}/.tmp.proxylink.XXXXXX" 2>/dev/null || mktemp -d)
 cleanup() {
@@ -45,15 +42,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-log_info "Proxylink: building ${LATEST_REV:0:12}"
-git clone --depth 1 "$REPO_URL" "$TMP_DIR/src" >/dev/null 2>&1 || {
-    log_warn "Proxylink: git clone failed; optional build skipped"
+log_info "Proxylink: building pinned revision ${PINNED_REV:0:12}"
+git init -q "$TMP_DIR/src" &&
+    git -C "$TMP_DIR/src" remote add origin "$REPO_URL" &&
+    git -C "$TMP_DIR/src" fetch -q --depth 1 origin "$PINNED_REV" &&
+    git -C "$TMP_DIR/src" checkout -q --detach "$PINNED_REV" &&
+    [ "$(git -C "$TMP_DIR/src" rev-parse HEAD)" = "$PINNED_REV" ] || {
+    log_warn "Proxylink: pinned revision is unavailable; optional build skipped"
     exit 0
 }
 
 (
     cd "$TMP_DIR/src/Proxylink" || exit 1
-    GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$TMP_DIR/proxylink" .
+    GOOS=linux GOARCH=arm64 go build -mod=readonly -trimpath -ldflags="-s -w" -o "$TMP_DIR/proxylink" .
 ) || {
     log_warn "Proxylink: go build failed; optional build skipped"
     exit 0
@@ -61,5 +62,5 @@ git clone --depth 1 "$REPO_URL" "$TMP_DIR/src" >/dev/null 2>&1 || {
 
 mv -f "$TMP_DIR/proxylink" "$TARGET_BIN"
 chmod 0755 "$TARGET_BIN"
-printf '%s\n' "$LATEST_REV" >"$VERSION_FILE"
-log_success "Proxylink: installed ${LATEST_REV:0:12} -> $TARGET_BIN"
+printf '%s\n' "$PINNED_REV" >"$VERSION_FILE"
+log_success "Proxylink: installed ${PINNED_REV:0:12} -> $TARGET_BIN"

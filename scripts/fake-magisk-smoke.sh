@@ -105,6 +105,7 @@ need rg
 need unzip
 
 HOST_JQ="$(command -v jq)"
+HOST_GETENT="$(command -v getent || true)"
 
 if [[ -n "$ZIP_PATH" && "$ZIP_PATH" != /* ]]; then
     ZIP_PATH="$ROOT/$ZIP_PATH"
@@ -378,8 +379,8 @@ case "$url" in
         exit 0
         ;;
 esac
-if [[ -n "$out" ]]; then
-    cat >"$out" <<YAML
+emit_subscription_fixture() {
+    cat <<YAML
 proxies:
   - name: fresh-sub-node
     type: vmess
@@ -389,11 +390,30 @@ proxies:
     alterId: 0
     cipher: auto
 YAML
-    printf "%b" "    tls: true\n    servername: \"edge.example\r.test\"\n" >>"$out"
+    printf "%b" "    tls: true\n    servername: \"edge.example\r.test\"\n"
+}
+if [[ -n "$out" ]]; then
+    if [[ "$out" == "-" ]]; then
+        emit_subscription_fixture
+    else
+        emit_subscription_fixture >"$out"
+    fi
     exit 0
 fi
 printf "%s\n" "{}"
 '
+# shellcheck disable=SC2016
+write_mock getent '
+if [[ "${1:-}" == "ahosts" && "${2:-}" == "example.invalid" ]]; then
+    printf "%s\\n" "1.1.1.1 STREAM example.invalid"
+    exit 0
+fi
+if [[ -n "${MAGICNET_FAKE_HOST_GETENT:-}" ]]; then
+    exec "$MAGICNET_FAKE_HOST_GETENT" "$@"
+fi
+exit 127
+'
+export MAGICNET_FAKE_HOST_GETENT="$HOST_GETENT"
 # shellcheck disable=SC2016
 write_mock ss '
 if [[ "${1:-}" == "-lnt" || "${1:-}" == "-lntp" ]]; then

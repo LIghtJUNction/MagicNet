@@ -2,10 +2,12 @@ use std::collections::HashSet;
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, Seek, SeekFrom, Write};
+use std::net::IpAddr;
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -558,13 +560,143 @@ pub(crate) fn validate_subscription_user_agent(value: &str) -> Result<(), String
 }
 
 pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err("Subscription URL must start with http:// or https://".to_string());
-    }
-    if url.chars().any(char::is_whitespace) {
-        return Err("Subscription URL must not contain whitespace".to_string());
+    let authority = parse_subscription_authority(url)?;
+    if let Ok(address) = IpAddr::from_str(authority.host) {
+        if !is_public_subscription_address(address) {
+            return Err(
+                "Subscription URL must not target a private or special-use address".to_string(),
+            );
+        }
     }
     Ok(())
+}
+
+struct SubscriptionAuthority<'a> {
+    host: &'a str,
+    port: u16,
+}
+
+/// Parse only the authority needed for URL policy. DNS resolution and pinning
+/// happen immediately before the privileged device-side curl invocation.
+fn parse_subscription_authority(url: &str) -> Result<SubscriptionAuthority<'_>, String> {
+    let remainder = url
+        .strip_prefix("https://")
+        .ok_or_else(|| "Subscription URL must use HTTPS".to_string())?;
+    if url.chars().any(char::is_whitespace) || url.chars().any(char::is_control) {
+        return Err(
+            "Subscription URL must not contain whitespace or control characters".to_string(),
+        );
+    }
+    let authority_end = remainder.find(['/', '?', '#']).unwrap_or(remainder.len());
+    let authority = &remainder[..authority_end];
+    if authority.is_empty() || authority.contains('@') {
+        return Err(
+            "Subscription URL authority must not be empty or include credentials".to_string(),
+        );
+    }
+
+    let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
+        let closing = bracketed
+            .find(']')
+            .ok_or_else(|| "Subscription URL has an invalid IPv6 authority".to_string())?;
+        let host = &bracketed[..closing];
+        let suffix = &bracketed[closing + 1..];
+        if !suffix.is_empty() && !suffix.starts_with(':') {
+            return Err("Subscription URL has an invalid IPv6 authority".to_string());
+        }
+        let port = parse_subscription_port(suffix)?;
+        if !matches!(IpAddr::from_str(host), Ok(IpAddr::V6(_))) {
+            return Err("Subscription URL has an invalid IPv6 address".to_string());
+        }
+        (host, port)
+    } else {
+        let (host, port_suffix) = authority
+            .rsplit_once(':')
+            .map_or((authority, ""), |(host, port)| (host, port));
+        if host.contains(':') {
+            return Err("Subscription URL has an invalid authority".to_string());
+        }
+        validate_subscription_hostname(host)?;
+        (host, parse_subscription_port(port_suffix)?)
+    };
+
+    Ok(SubscriptionAuthority { host, port })
+}
+
+fn parse_subscription_port(suffix: &str) -> Result<u16, String> {
+    if suffix.is_empty() {
+        return Ok(443);
+    }
+    let value = suffix.strip_prefix(':').unwrap_or(suffix);
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("Subscription URL has an invalid port".to_string());
+    }
+    let port = value
+        .parse::<u16>()
+        .map_err(|_| "Subscription URL has an invalid port".to_string())?;
+    if port == 0 {
+        return Err("Subscription URL has an invalid port".to_string());
+    }
+    Ok(port)
+}
+
+fn validate_subscription_hostname(host: &str) -> Result<(), String> {
+    if host.is_empty()
+        || host.len() > 253
+        || host.starts_with('.')
+        || host.ends_with('.')
+        || host.split('.').any(|label| {
+            label.is_empty()
+                || label.len() > 63
+                || label.starts_with('-')
+                || label.ends_with('-')
+                || !label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
+    {
+        return Err("Subscription URL has an invalid hostname".to_string());
+    }
+    // Reject non-canonical numeric spellings such as 127.1 and 0x7f000001,
+    // which curl may interpret as an IP address despite not being DNS names.
+    if host
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || byte == b'.')
+        || (host.len() > 2
+            && host[..2].eq_ignore_ascii_case("0x")
+            && host[2..].bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err("Subscription URL has an invalid hostname".to_string());
+    }
+    Ok(())
+}
+
+fn is_public_subscription_address(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => {
+            let [first, second, ..] = address.octets();
+            !(first == 0
+                || first == 10
+                || first == 127
+                || first >= 224
+                || (first == 100 && (64..=127).contains(&second))
+                || (first == 169 && second == 254)
+                || (first == 172 && (16..=31).contains(&second))
+                || (first == 192 && second == 168)
+                || (first == 198 && (18..=19).contains(&second)))
+        }
+        IpAddr::V6(address) => {
+            if let Some(mapped) = address.to_ipv4_mapped() {
+                return is_public_subscription_address(IpAddr::V4(mapped));
+            }
+            let first = address.segments()[0];
+            !(address.is_unspecified()
+                || address.is_loopback()
+                || address.is_multicast()
+                || (first & 0xfe00) == 0xfc00
+                || (first & 0xffc0) == 0xfe80)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -587,11 +719,68 @@ mod tests {
     }
 
     #[test]
-    fn subscription_url_validation_accepts_only_http_urls_without_whitespace() {
+    fn subscription_url_validation_requires_public_https_without_credentials() {
         validate_subscription_url("https://example.com/sub?profile=abc").unwrap();
-        validate_subscription_url("http://127.0.0.1:8080/sub").unwrap();
+        validate_subscription_url("https://example.com:8443/sub").unwrap();
+        assert!(validate_subscription_url("http://example.com/sub").is_err());
+        assert!(validate_subscription_url("https://user:secret@example.com/sub").is_err());
+        assert!(validate_subscription_url("https://127.0.0.1:8080/sub").is_err());
         assert!(validate_subscription_url("ftp://example.com/sub").is_err());
         assert!(validate_subscription_url("https://example.com/a b").is_err());
+    }
+
+    #[test]
+    fn subscription_authority_rejects_malformed_ports_and_ipv6_authorities() {
+        assert_eq!(
+            parse_subscription_authority("https://example.com:8443/sub")
+                .expect("valid explicit port")
+                .port,
+            8443
+        );
+        for url in [
+            "https://example.com:0/sub",
+            "https://example.com:not-a-port/sub",
+            "https://[::1]8443/sub",
+            "https://[not-an-ip]/sub",
+            "https://example.com:443:1/sub",
+        ] {
+            assert!(
+                parse_subscription_authority(url).is_err(),
+                "{url} must fail"
+            );
+        }
+    }
+
+    #[test]
+    fn subscription_address_policy_rejects_private_and_special_use_addresses() {
+        for address in [
+            "0.0.0.0",
+            "10.0.0.1",
+            "127.0.0.1",
+            "169.254.1.1",
+            "172.16.0.1",
+            "192.168.0.1",
+            "224.0.0.1",
+            "::",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+            "ff02::1",
+            "::ffff:127.0.0.1",
+        ] {
+            let address = IpAddr::from_str(address).expect("valid fixture address");
+            assert!(
+                !is_public_subscription_address(address),
+                "{address} must be rejected"
+            );
+        }
+        for address in ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] {
+            let address = IpAddr::from_str(address).expect("valid fixture address");
+            assert!(
+                is_public_subscription_address(address),
+                "{address} must remain permitted"
+            );
+        }
     }
 
     #[test]
@@ -672,20 +861,20 @@ mod tests {
     #[test]
     fn set_file_dedupes_and_trims_singbox_subscription_lines() {
         let payload = crate::encode_base64(
-            b"\nhttps://example.com/a\nhttps://example.com/a\n  http://example.com/b  \n",
+            b"\nhttps://example.com/a\nhttps://example.com/a\n  https://example.com/b  \n",
         );
         let text = normalized_subscription_payload(&payload).unwrap();
-        assert_eq!(text, "https://example.com/a\nhttp://example.com/b\n");
+        assert_eq!(text, "https://example.com/a\nhttps://example.com/b\n");
     }
 
     #[test]
     fn webui_raw_subscription_text_uses_the_same_normalization_rules() {
         let text = normalized_subscription_text(
-            "\nhttps://example.com/a\nhttps://example.com/a\n  http://example.com/b  \n",
+            "\nhttps://example.com/a\nhttps://example.com/a\n  https://example.com/b  \n",
         )
         .expect("normalize WebUI payload text");
 
-        assert_eq!(text, "https://example.com/a\nhttp://example.com/b\n");
+        assert_eq!(text, "https://example.com/a\nhttps://example.com/b\n");
         assert!(normalized_subscription_text("vmess://not-a-subscription\n").is_err());
     }
 
@@ -705,7 +894,7 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(err.contains("must start with http:// or https://"), "{err}");
+        assert!(err.contains("must use HTTPS"), "{err}");
     }
 
     #[test]
