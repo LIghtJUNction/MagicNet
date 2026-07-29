@@ -530,7 +530,15 @@ if [[ "${1:-}" == "sub" && "${2:-}" == "resolve-host" && "${3:-}" == "example.in
     printf '%s\n' "1.1.1.1"
     exit 0
 fi
-exec "${MODDIR:?}/bin/magicnet-cli" "$@"
+module_dir="${MODDIR:-}"
+if [[ -z "$module_dir" ]]; then
+    case "$0" in
+        */cli) module_dir="${0%/*}" ;;
+        */bin/*) module_dir="${0%/bin/*}" ;;
+        *) echo "cannot locate fake MagicNet module root" >&2; exit 1 ;;
+    esac
+fi
+exec "$module_dir/bin/magicnet-cli" "$@"
 SH
 chmod +x "$MODDIR/bin/magicnet-cli-smoke"
 rm -f "$MODDIR/cli"
@@ -854,9 +862,13 @@ env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPA
 grep -qx 'sing-box' "$TMP/strict-core.log"
 
 mkdir -p "$MODDIR/.state/sing-box/subscription-work"
-"$HOST_JQ" -r '"  \"outbounds\": " + (.outbounds | tojson) + ","' \
+"$HOST_JQ" -r '
+    (.outbounds | walk(if . == "fresh-sub-node" then "old-cached-node" else . end)) as $outbounds
+    | "  \"outbounds\": " + ($outbounds | tojson) + ","
+' \
     "$MODDIR/.config/sing-box/config.json" \
     >"$MODDIR/.state/sing-box/subscription-work/outbounds.json"
+rg -q '"tag":"old-cached-node"' "$MODDIR/.state/sing-box/subscription-work/outbounds.json"
 "$HOST_JQ" '
     .outbounds |= map(select(
         (.type == "vmess"
@@ -984,11 +996,16 @@ fi
           and $by_tag.proxy.default == "block"
       end)
       and ([.outbounds[] | select(.type == "selector")] | all(. as $selector
-        | (($by_tag[$selector.default].type // "") != "urltest")
-          and (if ($selector.outbounds | any(. as $member | ($by_tag[$member].type // "") == "urltest"))
-            then ($node_tags | index($selector.default)) != null
-            else true
-            end)))
+        | if $selector.tag == "network-test" then
+            $selector.default == "proxy-auto"
+              and $selector.outbounds == ["proxy-auto", "proxy", "direct", "block"]
+          else
+            (($by_tag[$selector.default].type // "") != "urltest")
+              and (if ($selector.outbounds | any(. as $member | ($by_tag[$member].type // "") == "urltest"))
+                then ($node_tags | index($selector.default)) != null
+                else true
+                end)
+          end))
       and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
