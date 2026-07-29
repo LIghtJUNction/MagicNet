@@ -49,7 +49,8 @@ use service::{
 };
 use subscriptions::{
     setup_subscription, sub_apply_file, sub_filter, sub_get, sub_list, sub_schedule, sub_set,
-    sub_set_file, sub_status, sub_target_file, sub_update, sub_update_all, sub_user_agent,
+    sub_resolve_host, sub_set_file, sub_status, sub_target_file, sub_update, sub_update_all,
+    sub_user_agent,
 };
 pub(crate) use utils::{
     clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv,
@@ -291,6 +292,9 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
             sub_user_agent(app, args)
         }
         "sub" if args.get(1).map(String::as_str) == Some("filter") => sub_filter(app, args),
+        "sub" if args.get(1).map(String::as_str) == Some("resolve-host") => {
+            sub_resolve_host(args)
+        }
         "config-editor" => config_editor(app, &args[1..]),
         "sub"
             if matches!(

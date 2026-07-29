@@ -25,6 +25,7 @@ magicnet_singbox_use_cached_subscription() {
 # A single per-subscription response limit. Keep this fixed so scheduled
 # refreshes cannot be expanded through an environment override.
 MAGICNET_SUB_MAX_RESPONSE_BYTES=8388608
+MAGICNET_SUB_RESOLVE_TIMEOUT=10
 
 magicnet_singbox_subscription_parse_authority() {
     _subscription_url="$1"
@@ -133,10 +134,10 @@ magicnet_singbox_public_address() {
 magicnet_singbox_subscription_resolve_public() {
     _subscription_url="$1"
     magicnet_singbox_subscription_parse_authority "$_subscription_url" || return 1
-    command -v getent >/dev/null 2>&1 || return 1
-    _subscription_resolved=0
-    getent ahosts "$_subscription_host" 2>/dev/null |
-        while IFS=' ' read -r _subscription_address _subscription_rest; do
+    [ -x "${MODDIR}/cli" ] || return 1
+    timeout "$MAGICNET_SUB_RESOLVE_TIMEOUT" \
+        "${MODDIR}/cli" sub resolve-host "$_subscription_host" "$_subscription_port" 2>/dev/null |
+        while IFS= read -r _subscription_address; do
             magicnet_singbox_public_address "$_subscription_address" || exit 1
             case "$_subscription_address" in
                 *:*) _subscription_resolve_address="[$_subscription_address]" ;;
