@@ -530,7 +530,15 @@ if [[ "${1:-}" == "sub" && "${2:-}" == "resolve-host" && "${3:-}" == "example.in
     printf '%s\n' "1.1.1.1"
     exit 0
 fi
-exec "${MODDIR:?}/bin/magicnet-cli" "$@"
+module_dir="${MODDIR:-}"
+if [[ -z "$module_dir" ]]; then
+    case "$0" in
+        */cli) module_dir="${0%/*}" ;;
+        */bin/*) module_dir="${0%/bin/*}" ;;
+        *) echo "cannot locate fake MagicNet module root" >&2; exit 1 ;;
+    esac
+fi
+exec "$module_dir/bin/magicnet-cli" "$@"
 SH
 chmod +x "$MODDIR/bin/magicnet-cli-smoke"
 rm -f "$MODDIR/cli"
