@@ -2918,17 +2918,8 @@ jq -e '
   | .route.final == "final"
     and (($dns_hijack_rules | length) > 0)
     and (($icmp_block_rules | length) > 0)
-    and (($ipv6_rules | length) == 1)
-    and ($ipv6_rules[0].value == {
-      ip_version: 6,
-      action: "reject",
-      method: "default",
-      no_drop: true
-    })
-    and ($dns_hijack_rules | all(.key < $ipv6_rules[0].key))
-    and ($icmp_block_rules | all(.key < $ipv6_rules[0].key))
+    and (($ipv6_rules | length) == 0)
     and (($cn_direct_rules | length) > 0)
-    and ($cn_direct_rules | all(.key > $ipv6_rules[0].key))
     and ([.outbounds[] | select(.tag == "cn-direct")] == [
       {type: "selector", tag: "cn-direct", outbounds: ["direct", "proxy", "block"], default: "direct"}
     ])
