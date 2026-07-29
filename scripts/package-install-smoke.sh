@@ -16,6 +16,7 @@ MODPATH="$TMP/module"
 MANAGER_MODPATH="$TMP/manager-module"
 PREV_MOD="$TMP/prev-module"
 MOCK_BIN="$TMP/bin"
+POISONED_CALLER_PATH="$TMP/poisoned-caller-path"
 LOG="$TMP/install.log"
 MANAGER_LOG="$TMP/manager-install.log"
 
@@ -43,9 +44,10 @@ fail() {
     exit 1
 }
 
-for tool in bash cargo chmod cp find grep ln mkdir python3 readlink rm sed sh timeout unzip; do
+for tool in bash cargo chmod cp env find grep ln mkdir python3 readlink rm sed sh timeout unzip; do
     command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
+HOST_ENV="$(command -v env)"
 
 "$ROOT/scripts/package-smoke.sh" "$ZIP_PATH"
 
@@ -72,11 +74,36 @@ SH
     chmod +x "$MOCK_BIN/$name"
 done
 
-cat >"$MOCK_BIN/unzip" <<SH
-#!/usr/bin/env bash
-exec "$(command -v unzip)" "\$@"
-SH
-chmod +x "$MOCK_BIN/unzip"
+install_host_tool_fixtures() {
+    fixture_module="$1"
+    for tool in bash chown chmod cp cut date find grep ln mkdir rm sed sh timeout tr unzip; do
+        host_tool="$(command -v "$tool")" || fail "missing host tool fixture: $tool"
+        [[ -x "$host_tool" ]] || fail "host tool fixture is not executable: $tool"
+        [[ ! -e "$fixture_module/bin/$tool" ]] || fail "host tool fixture collides with package binary: $tool"
+        ln -s "$host_tool" "$fixture_module/bin/$tool"
+    done
+    for name in chcon restorecon getevent am cmd settings; do
+        [[ ! -e "$fixture_module/bin/$name" ]] || fail "Android mock collides with package binary: $name"
+        ln -s "$MOCK_BIN/$name" "$fixture_module/bin/$name"
+    done
+}
+
+remove_host_tool_fixtures() {
+    fixture_module="$1"
+    rm -f "$fixture_module/bin"/{bash,chcon,chmod,chown,cmd,cp,cut,date,find,getevent,grep,ln,mkdir,restorecon,rm,sed,settings,sh,timeout,tr,unzip}
+}
+
+assert_fixture_path() {
+    fixture_module="$1"
+    resolved_tool="$("$HOST_ENV" PATH="$fixture_module/bin:$POISONED_CALLER_PATH" "$fixture_module/bin/sh" -c 'command -v unzip')"
+    [[ "$resolved_tool" == "$fixture_module/bin/unzip" ]] \
+        || fail "customize fixture PATH resolved unzip outside module bin"
+}
+
+install_host_tool_fixtures "$MODPATH"
+install_host_tool_fixtures "$MANAGER_MODPATH"
+assert_fixture_path "$MODPATH"
+assert_fixture_path "$MANAGER_MODPATH"
 
 export ZIPFILE="$ZIP_PATH"
 export MODPATH
@@ -84,25 +111,36 @@ export MODDIR="$MODPATH"
 export BOOTMODE=true
 export MAGICNET_NONINTERACTIVE=1
 export MAGICNET_PREV_DIR="$PREV_MOD"
-export PATH="$MOCK_BIN:$PATH"
 export TMPDIR="$TMP/tmp"
-mkdir -p "$TMPDIR"
+mkdir -p "$TMPDIR" "$POISONED_CALLER_PATH"
 
-if ! env -u MAGICNET_NONINTERACTIVE \
+if ! "$HOST_ENV" -u LD_LIBRARY_PATH -u MAGICNET_NONINTERACTIVE \
     ZIPFILE="$ZIP_PATH" \
     MODPATH="$MANAGER_MODPATH" \
     MODDIR="$MANAGER_MODPATH" \
     BOOTMODE=true \
     MAGICNET_PREV_DIR="$PREV_MOD" \
-    PATH="$MOCK_BIN:$PATH" \
+    PATH="$MANAGER_MODPATH/bin:$POISONED_CALLER_PATH" \
     TMPDIR="$TMPDIR" \
-    timeout 5 sh "$MANAGER_MODPATH/customize.sh" >"$MANAGER_LOG" 2>&1; then
+    "$MANAGER_MODPATH/bin/timeout" 5 "$MANAGER_MODPATH/bin/sh" "$MANAGER_MODPATH/customize.sh" >"$MANAGER_LOG" 2>&1; then
     fail "manager-style customize.sh should not require volume-key interaction"
 fi
 
-if ! sh "$MODPATH/customize.sh" >"$LOG" 2>&1; then
+if ! "$HOST_ENV" -u LD_LIBRARY_PATH \
+    ZIPFILE="$ZIP_PATH" \
+    MODPATH="$MODPATH" \
+    MODDIR="$MODPATH" \
+    BOOTMODE=true \
+    MAGICNET_NONINTERACTIVE=1 \
+    MAGICNET_PREV_DIR="$PREV_MOD" \
+    PATH="$MODPATH/bin:$POISONED_CALLER_PATH" \
+    TMPDIR="$TMPDIR" \
+    "$MODPATH/bin/sh" "$MODPATH/customize.sh" >"$LOG" 2>&1; then
     fail "customize.sh failed"
 fi
+
+remove_host_tool_fixtures "$MODPATH"
+remove_host_tool_fixtures "$MANAGER_MODPATH"
 
 [[ -x "$MODPATH/bin/magicnet-mcp-server" ]] || fail "bin/magicnet-mcp-server is not executable"
 [[ -x "$MODPATH/bin/ecapture" ]] || fail "bin/ecapture is not executable"
