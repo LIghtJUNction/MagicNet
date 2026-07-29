@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, Seek, SeekFrom, Write};
-use std::net::IpAddr;
+use std::net::{IpAddr, ToSocketAddrs};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -130,6 +130,34 @@ pub fn sub_filter(app: &App, args: &[String]) -> Result<(), String> {
         "clear" => write_text_file(app, Path::new(SUBSCRIPTION_FILTER_PATH), ""),
         _ => Err("Usage: cli sub filter {list|set <base64-lines>|clear}".to_string()),
     }
+}
+
+/// Resolve a validated subscription hostname through Android's libc resolver.
+///
+/// The shell fetcher pins curl to these addresses with `--resolve`, so DNS is
+/// completed before the privileged request and every returned address can be
+/// rejected if it targets a private or special-use network.
+pub fn sub_resolve_host(args: &[String]) -> Result<(), String> {
+    let host = args.get(2).map(String::as_str).unwrap_or_default();
+    let port = args.get(3).map(String::as_str).unwrap_or_default();
+    if host.is_empty() || port.is_empty() {
+        return Err("Usage: cli sub resolve-host <hostname> <port>".to_string());
+    }
+    validate_subscription_hostname(host)?;
+    let port = parse_subscription_port(port)?;
+    let resolved = (host, port)
+        .to_socket_addrs()
+        .map_err(|_| "Subscription hostname resolution failed".to_string())?
+        .map(|address| address.ip())
+        .collect::<HashSet<_>>();
+    validate_resolved_subscription_addresses(&resolved)?;
+
+    let mut addresses = resolved.into_iter().collect::<Vec<_>>();
+    addresses.sort_by_key(ToString::to_string);
+    for address in addresses {
+        println!("{address}");
+    }
+    Ok(())
 }
 
 pub fn sub_apply_file(app: &App, args: &[String]) -> Result<(), String> {
@@ -699,6 +727,21 @@ fn is_public_subscription_address(address: IpAddr) -> bool {
     }
 }
 
+fn validate_resolved_subscription_addresses(addresses: &HashSet<IpAddr>) -> Result<(), String> {
+    if addresses.is_empty() {
+        return Err("Subscription hostname returned no addresses".to_string());
+    }
+    if addresses
+        .iter()
+        .any(|address| !is_public_subscription_address(*address))
+    {
+        return Err(
+            "Subscription hostname resolved to a private or special-use address".to_string(),
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -781,6 +824,22 @@ mod tests {
                 "{address} must remain permitted"
             );
         }
+    }
+
+    #[test]
+    fn resolved_subscription_addresses_fail_closed() {
+        let public = HashSet::from([
+            IpAddr::from_str("1.1.1.1").unwrap(),
+            IpAddr::from_str("2606:4700:4700::1111").unwrap(),
+        ]);
+        validate_resolved_subscription_addresses(&public).unwrap();
+
+        let mixed = HashSet::from([
+            IpAddr::from_str("1.1.1.1").unwrap(),
+            IpAddr::from_str("127.0.0.1").unwrap(),
+        ]);
+        assert!(validate_resolved_subscription_addresses(&mixed).is_err());
+        assert!(validate_resolved_subscription_addresses(&HashSet::new()).is_err());
     }
 
     #[test]

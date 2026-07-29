@@ -3,9 +3,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-export MODDIR="$ROOT/src/MagicNet"
+export MODDIR="$tmp/module"
 export MAGICNET_FETCH_TEST_LOG="$tmp/log"
-. "$MODDIR/lib/magicnet/singbox_subscribe/fetch.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/fetch.sh"
 
 magicnet_singbox_subscription_url_file() {
   printf '%s\n' "$tmp/subscription.url"
@@ -24,6 +24,7 @@ warn() {
 }
 
 mkdir "$tmp/bin"
+mkdir -p "$MODDIR"
 cat >"$tmp/bin/curl" <<'SH'
 #!/bin/sh
 printf 'env=%s/%s/%s/%s\n' "${http_proxy-}" "${HTTP_PROXY-}" "${all_proxy-}" "${ALL_PROXY-}" >>"$MAGICNET_FETCH_TEST_LOG"
@@ -43,9 +44,16 @@ else
   printf ok
 fi
 SH
-cat >"$tmp/bin/getent" <<'SH'
+cat >"$MODDIR/cli" <<'SH'
 #!/bin/sh
-printf '%s STREAM test\n' "1.1.1.1"
+printf 'resolver %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
+[ "$1" = sub ] && [ "$2" = resolve-host ] || exit 2
+case "${MAGICNET_RESOLVE_RESULT:-public}" in
+  public) printf '%s\n' "1.1.1.1" "2606:4700:4700::1111" ;;
+  private) printf '%s\n' "127.0.0.1" ;;
+  empty) ;;
+  fail) exit 1 ;;
+esac
 SH
 cat >"$tmp/bin/timeout" <<'SH'
 #!/bin/sh
@@ -53,17 +61,30 @@ printf 'timeout %s\n' "$1" >>"$MAGICNET_FETCH_TEST_LOG"
 shift
 exec "$@"
 SH
-chmod +x "$tmp/bin/"*
+chmod +x "$tmp/bin/"* "$MODDIR/cli"
 http_proxy=http://bad HTTP_PROXY=http://bad all_proxy=http://bad ALL_PROXY=http://bad \
   PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/direct" 2 7
 grep -q '^env=///$' "$tmp/log"
 grep -q 'curl .*--noproxy \*' "$tmp/log"
 grep -q 'curl .*--resolve example.invalid:443:1.1.1.1' "$tmp/log"
+grep -Fq -- '--resolve example.invalid:443:[2606:4700:4700::1111]' "$tmp/log"
 grep -q 'curl .* -o - ' "$tmp/log"
 if grep -q -- '--proxy' "$tmp/log"; then
   exit 1
 fi
 test "$(cat "$tmp/direct")" = ok
+: >"$tmp/log"
+if MAGICNET_RESOLVE_RESULT=private PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/private" 2 7; then
+  exit 1
+fi
+test ! -e "$tmp/private"
+: >"$tmp/log"
+if MAGICNET_RESOLVE_RESULT=empty PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/unresolved" 2 7; then
+  exit 1
+fi
+test ! -e "$tmp/unresolved"
 : >"$tmp/log"
 MAGICNET_FETCH_LARGE=1 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/large" 2 11
@@ -95,7 +116,6 @@ MAGICNET_FETCH_FAIL=1 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_fetch_one_subscription \
     https://example.invalid/sub "$tmp/local-proxy" "" "" "" '#1' 2>/dev/null && exit 1 || true
 grep -q '^curl ' "$tmp/log"
-MODDIR="$tmp/module"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
 magicnet_singbox_update_lock_acquire
 if (magicnet_singbox_update_lock_acquire) 2>/dev/null; then

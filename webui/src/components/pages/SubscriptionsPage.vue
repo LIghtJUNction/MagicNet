@@ -41,6 +41,7 @@ import {
   type PendingSubscriptionApply,
   type SubscriptionPreview,
 } from "./subscriptionPreview";
+import { subscriptionUserAgentPresets } from "./subscriptionUserAgent";
 
 type ScheduleValue = "off" | "12" | "24" | "48" | "72";
 
@@ -354,6 +355,11 @@ async function persistUserAgent(): Promise<boolean> {
   return true;
 }
 
+function selectUserAgent(value: string): void {
+  userAgentText.value = value;
+  userAgentDirty.value = true;
+}
+
 function hasFilter(value: string): boolean {
   const folded = value.toLocaleLowerCase();
   return normalizedFilters.value.some((item) => item.toLocaleLowerCase() === folded);
@@ -636,6 +642,24 @@ async function saveFilters(): Promise<void> {
               <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Request identity</span>
               <h3 class="mt-1 text-base font-semibold text-[var(--mn-ink)]">订阅 User-Agent</h3>
             </div>
+          </div>
+
+          <div class="mt-4 flex flex-wrap gap-2" aria-label="User-Agent 预设">
+            <button
+              v-for="preset in subscriptionUserAgentPresets"
+              :key="preset.label"
+              type="button"
+              :aria-pressed="normalizedUserAgent === preset.value"
+              :class="[
+                'min-h-8 rounded-sm px-2.5 text-xs ring-1 transition-colors',
+                normalizedUserAgent === preset.value
+                  ? 'bg-[color-mix(in_srgb,var(--mn-cactus)_28%,var(--mn-carrier))] text-[var(--mn-success)] ring-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]'
+                  : 'bg-[var(--mn-ivory)] text-[var(--mn-ink-muted)] ring-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)]',
+              ]"
+              @click="selectUserAgent(preset.value)"
+            >
+              {{ preset.label }}
+            </button>
           </div>
 
           <label class="mt-4 block text-xs font-medium text-[var(--mn-ink-muted)]" for="subscription-user-agent">自定义值</label>

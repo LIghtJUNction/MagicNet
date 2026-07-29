@@ -518,6 +518,24 @@ SH
 chmod +x "$MOCK_BIN/pidof"
 cp "$MOCK_BIN/pidof" "$MODDIR/bin/pidof"
 
+# Keep the fake subscription refresh deterministic after the production
+# fetcher moved DNS resolution into magicnet-cli. All normal CLI commands still
+# execute the host-built binary; only the reserved example.invalid fixture is
+# resolved locally for this smoke test.
+cat >"$MODDIR/bin/magicnet-cli-smoke" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "sub" && "${2:-}" == "resolve-host" && "${3:-}" == "example.invalid" ]]; then
+    printf '%s\n' "magicnet-cli resolve-host ${3:-} ${4:-}" >>"${MAGICNET_FAKE_LOG:?}"
+    printf '%s\n' "1.1.1.1"
+    exit 0
+fi
+exec "${MODDIR:?}/bin/magicnet-cli" "$@"
+SH
+chmod +x "$MODDIR/bin/magicnet-cli-smoke"
+rm -f "$MODDIR/cli"
+ln -s "bin/magicnet-cli-smoke" "$MODDIR/cli"
+
 install_runtime_path_fixtures() {
     local applet host_applet mock
     local applets=(
@@ -1003,9 +1021,10 @@ fi
 python3 - "$MOCK_LOG" <<'PY'
 import sys
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+resolve = next((i for i, line in enumerate(lines) if line == "magicnet-cli resolve-host example.invalid 443"), None)
 fetch = next((i for i, line in enumerate(lines) if line.startswith("curl ") and "subscription.yaml" in line), None)
 run = next((i for i, line in enumerate(lines) if line.startswith("sing-box run")), None)
-if fetch is None or run is None or fetch > run:
+if resolve is None or fetch is None or run is None or resolve > fetch or fetch > run:
     raise SystemExit("forced refresh started sing-box before fetching the subscription")
 PY
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
