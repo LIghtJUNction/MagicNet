@@ -995,11 +995,16 @@ fi
           and $by_tag.proxy.default == "block"
       end)
       and ([.outbounds[] | select(.type == "selector")] | all(. as $selector
-        | (($by_tag[$selector.default].type // "") != "urltest")
-          and (if ($selector.outbounds | any(. as $member | ($by_tag[$member].type // "") == "urltest"))
-            then ($node_tags | index($selector.default)) != null
-            else true
-            end)))
+        | if $selector.tag == "network-test" then
+            $selector.default == "proxy-auto"
+              and $selector.outbounds == ["proxy-auto", "proxy", "direct", "block"]
+          else
+            (($by_tag[$selector.default].type // "") != "urltest")
+              and (if ($selector.outbounds | any(. as $member | ($by_tag[$member].type // "") == "urltest"))
+                then ($node_tags | index($selector.default)) != null
+                else true
+                end)
+          end))
       and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
