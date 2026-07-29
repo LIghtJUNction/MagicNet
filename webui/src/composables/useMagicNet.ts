@@ -34,6 +34,7 @@ import {
   parseHealth,
   parseMcp,
   parsePackages,
+  parseConfigValidation,
   parseRuntime,
   parseSubs,
   parseWifiPolicy,
@@ -667,15 +668,17 @@ async function syncConfigTemplate(): Promise<void> {
     `config-editor sync-template ${target}`,
     `同步 ${target} 上游模板`,
   );
-  state.config.status = execFailed(text) ? "同步失败" : "已同步上游模板";
+  const failed = execFailed(text);
+  const validation = parseConfigValidation(text);
+  state.config.status = failed ? "同步失败" : "已同步上游模板";
   state.config.validation = {
-    status: execFailed(text) ? "error" : "ok",
-    summary: execFailed(text)
-      ? "上游模板同步失败。"
+    status: failed ? "error" : "ok",
+    summary: failed
+      ? validation.summary
       : "上游模板已同步并通过校验。",
     checkedAt: new Date().toLocaleTimeString(),
   };
-  if (!execFailed(text)) {
+  if (!failed) {
     state.config.dirty = false;
     await loadConfig();
   }
