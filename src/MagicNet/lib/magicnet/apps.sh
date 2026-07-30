@@ -16,6 +16,7 @@ magicnet_app_policy_mode() {
 # App package policy is NOT the primary domestic/foreign split.
 # - Blacklist mode: most apps enter TUN; geosite/geoip (+ domain lists) choose cn-direct vs proxy.
 # - app-bypass.list: multi-VPN coexistence and optional user opt-outs only.
+# - app-direct.list: keep selected packages in TUN but force the direct outbound.
 # - app-proxy.list: force selected packages onto MagicNet proxy.
 # Do not auto-seed large “domestic app catalogs” into bypass — that does not scale and
 # duplicates work already done by rule-sets (lyc/metacubex geosite-cn / geoip-cn).
@@ -71,6 +72,7 @@ magicnet_app_proxy_packages() {
 # Idempotent rewrites strip rules containing this marker, then re-inject one
 # authoritative rule from app-proxy.list — single source of truth for that list.
 MAGICNET_APP_PROXY_MARKER="__magicnet_app_proxy__"
+MAGICNET_APP_DIRECT_MARKER="__magicnet_app_direct__"
 
 magicnet_app_proxy_rule() {
     _proxy_rule_packages="$(magicnet_app_proxy_packages "$1")"
@@ -96,6 +98,30 @@ magicnet_app_proxy_rule() {
     unset _proxy_rule_packages _proxy_rule_count _proxy_rule_idx _proxy_rule_package _proxy_rule_comma
 }
 
+magicnet_app_direct_rule() {
+    _direct_rule_packages="$(magicnet_app_proxy_packages "$1")"
+    if [ -z "$_direct_rule_packages" ]; then
+        unset _direct_rule_packages
+        return 0
+    fi
+    printf '      {\n'
+    printf '        "package_name": [\n'
+    printf '          "%s",\n' "$MAGICNET_APP_DIRECT_MARKER"
+    _direct_rule_count=$(printf '%s\n' "$_direct_rule_packages" | wc -l | tr -d ' ')
+    _direct_rule_idx=0
+    printf '%s\n' "$_direct_rule_packages" | while IFS= read -r _direct_rule_package; do
+        [ -n "$_direct_rule_package" ] || continue
+        _direct_rule_idx=$((_direct_rule_idx + 1))
+        _direct_rule_comma=","
+        [ "$_direct_rule_idx" -eq "$_direct_rule_count" ] && _direct_rule_comma=""
+        printf '          "%s"%s\n' "$(magicnet_json_escape "$_direct_rule_package")" "$_direct_rule_comma"
+    done
+    printf '        ],\n'
+    printf '        "outbound": "direct"\n'
+    printf '      }\n'
+    unset _direct_rule_packages _direct_rule_count _direct_rule_idx _direct_rule_package _direct_rule_comma
+}
+
 magicnet_singbox_apply_app_policy() {
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
@@ -103,28 +129,37 @@ magicnet_singbox_apply_app_policy() {
     _dir="$(magicnet_app_policy_dir)"
     _mode="$(magicnet_app_policy_mode)"
     _proxy_file="${_dir}/app-proxy.list"
+    _direct_file="${_dir}/app-direct.list"
     _bypass_file="${_dir}/app-bypass.list"
 
     _include_block=""
     _exclude_block=""
+    _include_packages_tmp="${_config}.include-packages.tmp"
     if [ "$_mode" = "whitelist" ]; then
-        _include_block="$(magicnet_package_array_block include_package "$_proxy_file" "," 1)"
+        {
+            magicnet_app_proxy_packages "$_direct_file"
+            magicnet_app_proxy_packages "$_proxy_file"
+        } | awk 'NF && !seen[$0]++' >"$_include_packages_tmp"
+        _include_block="$(magicnet_package_array_block include_package "$_include_packages_tmp" "," 1)"
     else
         _exclude_block="$(magicnet_package_array_block exclude_package "$_bypass_file" ",")"
+        rm -f "$_include_packages_tmp" 2>/dev/null || true
     fi
 
     _tmp="${_config}.app-policy.new"
     _include_tmp="${_config}.include-package.tmp"
     _exclude_tmp="${_config}.exclude-package.tmp"
     _proxy_rule_tmp="${_config}.app-proxy-rule.tmp"
+    _direct_rule_tmp="${_config}.app-direct-rule.tmp"
     _jq="${MODDIR}/bin/jq"
     if [ ! -x "$_jq" ]; then
         _jq="$(command -v jq 2>/dev/null || true)"
     fi
     if [ -n "$_jq" ]; then
         [ -f "$_proxy_file" ] || : >"$_proxy_file"
+        [ -f "$_direct_file" ] || : >"$_direct_file"
         [ -f "$_bypass_file" ] || : >"$_bypass_file"
-        if "$_jq" --arg mode "$_mode" --rawfile proxy "$_proxy_file" --rawfile bypass "$_bypass_file" '
+        if "$_jq" --arg mode "$_mode" --rawfile proxy "$_proxy_file" --rawfile direct "$_direct_file" --rawfile bypass "$_bypass_file" '
             def packages($text):
               $text
               | split("\n")
@@ -132,13 +167,14 @@ magicnet_singbox_apply_app_policy() {
               | map(select(. != "" and (startswith("#") | not)))
               | unique;
             (packages($proxy)) as $proxy_packages
+            | (packages($direct)) as $direct_packages
             | (packages($bypass)) as $bypass_packages
             | .inbounds = (
                 (.inbounds // []) | map(
                   if (.type // "") == "tun" then
                     del(.include_package, .exclude_package)
                     | if $mode == "whitelist" then
-                        .include_package = $proxy_packages
+                        .include_package = (($proxy_packages + $direct_packages) | unique)
                       elif ($bypass_packages | length) > 0 then
                         .exclude_package = $bypass_packages
                       else
@@ -151,8 +187,11 @@ magicnet_singbox_apply_app_policy() {
               )
             | .route.rules = (
                 ((.route.rules // [])
-                  | map(select(((.package_name // []) | index("__magicnet_app_proxy__")) == null))) as $rules
-                | if ($proxy_packages | length) == 0 then
+                  | map(select(
+                      ((.package_name // []) | index("__magicnet_app_proxy__")) == null
+                      and ((.package_name // []) | index("__magicnet_app_direct__")) == null
+                    ))) as $rules
+                | if (($proxy_packages | length) == 0 and ($direct_packages | length) == 0) then
                     $rules
                   else
                     ($rules
@@ -160,15 +199,20 @@ magicnet_singbox_apply_app_policy() {
                     | ($rules
                       | map(select((has("action") or (((.protocol // "") == "icmp") and ((.outbound // "") == "block"))) | not))) as $business_rules
                     | $protocol_guards
-                      + [{
+                      + (if ($direct_packages | length) == 0 then [] else [{
+                          "package_name": (["__magicnet_app_direct__"] + $direct_packages),
+                          "outbound": "direct"
+                        }] end)
+                      + (if ($proxy_packages | length) == 0 then [] else [{
                           "package_name": (["__magicnet_app_proxy__"] + $proxy_packages),
                           "outbound": "proxy"
-                        }]
+                        }] end)
                       + $business_rules
                   end
               )
         ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
-            unset _config _dir _mode _proxy_file _bypass_file _include_block _exclude_block _tmp _include_tmp _exclude_tmp _proxy_rule_tmp _jq
+            rm -f "$_include_packages_tmp" 2>/dev/null || true
+            unset _config _dir _mode _proxy_file _direct_file _bypass_file _include_block _exclude_block _include_packages_tmp _tmp _include_tmp _exclude_tmp _proxy_rule_tmp _direct_rule_tmp _jq
             return 0
         fi
         rm -f "$_tmp" 2>/dev/null || true
@@ -193,8 +237,14 @@ magicnet_singbox_apply_app_policy() {
         rm -f "$_proxy_rule_tmp" 2>/dev/null || true
         _proxy_rule_tmp=""
     fi
+    if magicnet_app_proxy_packages "$_direct_file" | grep -q .; then
+        magicnet_app_direct_rule "$_direct_file" >"$_direct_rule_tmp"
+    else
+        rm -f "$_direct_rule_tmp" 2>/dev/null || true
+        _direct_rule_tmp=""
+    fi
 
-    if awk -v include_file="$_include_tmp" -v exclude_file="$_exclude_tmp" -v proxy_rule_file="$_proxy_rule_tmp" '
+    if awk -v include_file="$_include_tmp" -v exclude_file="$_exclude_tmp" -v proxy_rule_file="$_proxy_rule_tmp" -v direct_rule_file="$_direct_rule_tmp" '
         function emit_file(path, line) {
             if (path == "") {
                 return
@@ -221,13 +271,30 @@ magicnet_singbox_apply_app_policy() {
             }
             proxy_inserted = 1
         }
+        function emit_direct_rule(comma, line, previous) {
+            if (direct_rule_file == "") {
+                return
+            }
+            previous = ""
+            while ((getline line < direct_rule_file) > 0) {
+                if (previous != "") {
+                    print previous
+                }
+                previous = line
+            }
+            close(direct_rule_file)
+            if (previous != "") {
+                print previous comma
+            }
+            direct_inserted = 1
+        }
         function route_rule_is_guard(rule) {
             return rule ~ /"action"[[:space:]]*:/ ||
                 (rule ~ /"protocol"[[:space:]]*:[[:space:]]*"icmp"/ &&
                  rule ~ /"outbound"[[:space:]]*:[[:space:]]*"block"/)
         }
         function flush_route_rule() {
-            if (route_buffer !~ /"__magicnet_app_proxy__"/) {
+            if (route_buffer !~ /"__magicnet_app_(proxy|direct)__"/) {
                 route_rule_count++
                 route_rules[route_rule_count] = route_buffer
             }
@@ -251,13 +318,17 @@ magicnet_singbox_apply_app_policy() {
                     business_count++
                 }
             }
-            output_count = guard_count + business_count + (proxy_rule_file != "" ? 1 : 0)
+            output_count = guard_count + business_count + (direct_rule_file != "" ? 1 : 0) + (proxy_rule_file != "" ? 1 : 0)
             emitted = 0
             for (i = 1; i <= route_rule_count; i++) {
                 if (route_rule_is_guard(route_rules[i])) {
                     emitted++
                     emit_route_rule(route_rules[i], emitted < output_count ? "," : "")
                 }
+            }
+            if (direct_rule_file != "") {
+                emitted++
+                emit_direct_rule(emitted < output_count ? "," : "")
             }
             if (proxy_rule_file != "") {
                 emitted++
@@ -279,6 +350,7 @@ magicnet_singbox_apply_app_policy() {
             route_buffer = ""
             route_rule_count = 0
             proxy_inserted = 0
+            direct_inserted = 0
         }
         route_buffering {
             route_buffer = route_buffer $0 "\n"
@@ -338,10 +410,10 @@ magicnet_singbox_apply_app_policy() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
-        rm -f "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" 2>/dev/null || true
+        rm -f "$_include_packages_tmp" "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" "$_direct_rule_tmp" 2>/dev/null || true
         return 1
     fi
-    rm -f "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" 2>/dev/null || true
+    rm -f "$_include_packages_tmp" "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" "$_direct_rule_tmp" 2>/dev/null || true
 }
 
 magicnet_app_policy_apply_unlocked() {

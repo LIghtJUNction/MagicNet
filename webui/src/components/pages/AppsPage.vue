@@ -25,6 +25,7 @@ type PendingAppAction = {
   plan: AppPolicyChangePlan;
   run: () => Promise<void>;
 };
+type AppTarget = "proxy" | "direct" | "bypass";
 
 const recycledBypass = computed(() => {
   const active = new Set(state.appPolicy.bypass);
@@ -43,7 +44,7 @@ const filteredPackages = computed(() => {
 });
 
 const availableRecommendedBypass = computed(() => {
-  const active = new Set([...state.appPolicy.proxy, ...state.appPolicy.bypass]);
+  const active = new Set([...state.appPolicy.proxy, ...state.appPolicy.direct, ...state.appPolicy.bypass]);
   const installed = installedNames.value;
   return recommendedBypass.filter((pkg) => {
     if (active.has(pkg)) return false;
@@ -54,6 +55,7 @@ const availableRecommendedBypass = computed(() => {
 const policySummary = computed(() => buildAppPolicySummary(
   state.appPolicy.mode,
   state.appPolicy.proxy,
+  state.appPolicy.direct,
   state.appPolicy.bypass,
   installedNames.value,
   availableRecommendedBypass.value.length
@@ -63,6 +65,7 @@ function actionPlan(operation: AppPolicyChangeOperation): AppPolicyChangePlan {
   return buildAppPolicyChangePlan({
     mode: state.appPolicy.mode,
     proxy: state.appPolicy.proxy,
+    direct: state.appPolicy.direct,
     bypass: state.appPolicy.bypass,
     installedPackages: installedNames.value
   }, operation);
@@ -80,12 +83,23 @@ function forgetRemovedBypass(pkg: string): void {
   removedBypass.value = removedBypass.value.filter((item) => item !== pkg);
 }
 
-function validateAppPackage(pkg: string, target: "proxy" | "bypass"): boolean {
+function targetList(target: AppTarget): string[] {
+  return state.appPolicy[target];
+}
+
+function moveLocalPackage(pkg: string, target: AppTarget): void {
+  state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
+  state.appPolicy.direct = state.appPolicy.direct.filter((item) => item !== pkg);
+  state.appPolicy.bypass = state.appPolicy.bypass.filter((item) => item !== pkg);
+  targetList(target).push(pkg);
+}
+
+function validateAppPackage(pkg: string, target: AppTarget): boolean {
   if (!isValidPackageName(pkg)) {
     state.output = "包名格式不对。示例：com.android.chrome";
     return false;
   }
-  const list = target === "proxy" ? state.appPolicy.proxy : state.appPolicy.bypass;
+  const list = targetList(target);
   if (list.includes(pkg)) {
     state.output = `${pkg} 已存在，已自动去重。`;
     state.packageInput = "";
@@ -94,18 +108,16 @@ function validateAppPackage(pkg: string, target: "proxy" | "bypass"): boolean {
   return true;
 }
 
-function addApp(target: "proxy" | "bypass"): void {
+function addApp(target: AppTarget): void {
   requestAddPackage(state.packageInput.trim(), target, `add-${target}`);
 }
 
-async function addPackage(pkg: string, target: "proxy" | "bypass", key = `add-${target}`): Promise<void> {
+async function addPackage(pkg: string, target: AppTarget, key = `add-${target}`): Promise<void> {
   await withAction(key, async () => {
     const previousProxy = [...state.appPolicy.proxy];
+    const previousDirect = [...state.appPolicy.direct];
     const previousBypass = [...state.appPolicy.bypass];
-    const list = target === "proxy" ? state.appPolicy.proxy : state.appPolicy.bypass;
-    if (target === "proxy") state.appPolicy.bypass = state.appPolicy.bypass.filter((item) => item !== pkg);
-    else state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
-    list.push(pkg);
+    moveLocalPackage(pkg, target);
     state.packageInput = "";
     if (target === "bypass") forgetRemovedBypass(pkg);
     state.output = `已加入界面，正在保存 ${pkg}...`;
@@ -113,6 +125,7 @@ async function addPackage(pkg: string, target: "proxy" | "bypass", key = `add-${
     if (commandFailed(text)) {
       state.output = text;
       state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
       state.appPolicy.bypass = previousBypass;
       return;
     }
@@ -120,25 +133,30 @@ async function addPackage(pkg: string, target: "proxy" | "bypass", key = `add-${
   });
 }
 
-function requestAddPackage(pkg: string, target: "proxy" | "bypass", key = `add-${target}`): void {
+function requestAddPackage(pkg: string, target: AppTarget, key = `add-${target}`): void {
   if (!validateAppPackage(pkg, target)) return;
   pendingAppAction.value = {
     key,
     command: `app add ${pkg} ${target}`,
     message: target === "proxy"
-      ? `确认把 ${pkg} 加入 Proxy 名单？该应用将强制走 MagicNet proxy。`
-      : `确认把 ${pkg} 加入 Bypass 名单？该应用将绕过 MagicNet TUN。`,
+      ? `确认把 ${pkg} 加入 Proxy？该应用将强制走 MagicNet proxy。`
+      : target === "direct"
+        ? `确认把 ${pkg} 加入 Direct？该应用保留在 MagicNet TUN 内并强制直连。`
+        : `确认把 ${pkg} 加入 Bypass TUN？该应用将完全离开 MagicNet，其他 VPN 或上游网络仍可能提供访问能力。`,
     plan: actionPlan({ type: "add", target, packages: [pkg] }),
     run: () => addPackage(pkg, target, key)
   };
 }
 
-async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void> {
+async function removeApp(pkg: string, target: AppTarget): Promise<void> {
   await withAction(`remove-${target}-${pkg}`, async () => {
     const previousProxy = [...state.appPolicy.proxy];
+    const previousDirect = [...state.appPolicy.direct];
     const previousBypass = [...state.appPolicy.bypass];
     if (target === "proxy") {
       state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
+    } else if (target === "direct") {
+      state.appPolicy.direct = state.appPolicy.direct.filter((item) => item !== pkg);
     } else {
       state.appPolicy.bypass = state.appPolicy.bypass.filter((item) => item !== pkg);
       rememberRemovedBypass(pkg);
@@ -148,6 +166,7 @@ async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void>
     if (commandFailed(text)) {
       state.output = text;
       state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
       state.appPolicy.bypass = previousBypass;
       return;
     }
@@ -158,14 +177,15 @@ async function removeApp(pkg: string, target: "proxy" | "bypass"): Promise<void>
 async function restoreBypass(pkg: string): Promise<void> {
   await withAction(`restore-bypass-${pkg}`, async () => {
     const previousProxy = [...state.appPolicy.proxy];
+    const previousDirect = [...state.appPolicy.direct];
     const previousBypass = [...state.appPolicy.bypass];
-    if (!state.appPolicy.bypass.includes(pkg)) state.appPolicy.bypass.push(pkg);
-    state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
+    moveLocalPackage(pkg, "bypass");
     state.output = `正在把 ${pkg} 加回 Bypass...`;
     const text = await runCli(`app add ${shellQuote(pkg)} bypass`, `恢复 Bypass 应用 ${pkg}`, true);
     if (commandFailed(text)) {
       state.output = text;
       state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
       state.appPolicy.bypass = previousBypass;
       return;
     }
@@ -199,6 +219,7 @@ async function copyAppPolicyReport(): Promise<void> {
   appReportCopied.value = await copyText(formatAppPolicyFullReport({
     mode: state.appPolicy.mode,
     proxy: state.appPolicy.proxy,
+    direct: state.appPolicy.direct,
     bypass: state.appPolicy.bypass,
     summary: policySummary.value
   }));
@@ -209,6 +230,7 @@ async function copyAppPolicySafeReport(): Promise<void> {
   safeReportCopied.value = await copyText(formatAppPolicySafeReport({
     mode: state.appPolicy.mode,
     proxy: state.appPolicy.proxy,
+    direct: state.appPolicy.direct,
     bypass: state.appPolicy.bypass,
     summary: policySummary.value
   }));
@@ -225,6 +247,7 @@ async function applyRecommendedBypass(): Promise<void> {
     packages.forEach((pkg) => {
       if (!state.appPolicy.bypass.includes(pkg)) state.appPolicy.bypass.push(pkg);
       state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
+      state.appPolicy.direct = state.appPolicy.direct.filter((item) => item !== pkg);
       forgetRemovedBypass(pkg);
     });
     const quoted = packages.map((pkg) => shellQuote(pkg)).join(" ");
@@ -249,7 +272,7 @@ function requestRecommendedBypass(): void {
   };
 }
 
-function requestRemoveApp(pkg: string, target: "proxy" | "bypass"): void {
+function requestRemoveApp(pkg: string, target: AppTarget): void {
   pendingAppAction.value = {
     key: `remove-${target}-${pkg}`,
     command: `app remove ${pkg} ${target}`,
@@ -291,7 +314,7 @@ onMounted(() => {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Per App Policy" title="应用名单" description="Proxy 强制应用走 MagicNet proxy；Bypass 让应用绕过 TUN；模式控制未列出应用是否进入 TUN。">
+    <PageHeader overline="Per App Policy" title="应用名单" description="Proxy 强制代理；Direct 在 TUN 内强制直连；Bypass TUN 让应用完全离开 MagicNet。">
       <div class="flex flex-wrap gap-2">
         <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取名单</Button>
         <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />重新读取应用</Button>
@@ -339,12 +362,13 @@ onMounted(() => {
           <button class="min-h-12 rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
           <button class="min-h-12 rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
         </div>
-        <span class="text-sm text-[var(--mn-ink-muted)]">Proxy 始终强制走 MagicNet proxy；Bypass 始终绕过 TUN；黑/白名单模式只控制未列出应用。</span>
+        <span class="text-sm text-[var(--mn-ink-muted)]">想验证应用没有使用代理，请选 Direct。Bypass TUN 不等于断网；上游网络或其他 VPN 仍可能让应用访问 Google。</span>
       </div>
-      <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+      <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
         <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
         <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />{{ isRunning('add-proxy') ? '保存中' : 'Proxy' }}</Button>
-        <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : 'Bypass' }}</Button>
+        <Button variant="secondary" :loading="isRunning('add-direct')" @click="addApp('direct')"><Plus :size="16" />{{ isRunning('add-direct') ? '保存中' : 'Direct' }}</Button>
+        <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : 'Bypass TUN' }}</Button>
       </div>
     </Card>
 
@@ -391,10 +415,11 @@ onMounted(() => {
           <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">重新读取</Button>
         </div>
         <div class="grid max-h-72 gap-2 overflow-auto">
-          <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+          <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center">
             <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ app.packageName }}</span>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'proxy', `pick-proxy-${app.packageName}`)">Proxy</Button>
-            <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'bypass', `pick-bypass-${app.packageName}`)">Bypass</Button>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-direct-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'direct', `pick-direct-${app.packageName}`)">Direct</Button>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'bypass', `pick-bypass-${app.packageName}`)">Bypass TUN</Button>
           </div>
           <em v-if="!filteredPackages.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无结果，点“列出应用”或输入关键字过滤。</em>
         </div>
@@ -403,7 +428,7 @@ onMounted(() => {
       <Card class="grid gap-3">
         <div class="flex items-start justify-between gap-3">
           <div>
-            <h3 class="text-base font-semibold">推荐 Bypass</h3>
+            <h3 class="text-base font-semibold">推荐 Bypass TUN</h3>
             <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">支付、银行、运营商、常用国内服务优先绕过，减少验证码、风控和国内服务误伤。</p>
           </div>
           <CheckCircle2 class="shrink-0 text-[var(--mn-ink-muted)]" :size="18" />
@@ -415,7 +440,7 @@ onMounted(() => {
       </Card>
     </div>
 
-    <div class="grid gap-3 md:grid-cols-2">
+    <div class="grid gap-3 md:grid-cols-3">
       <Card>
         <h3 class="mb-2 text-base font-semibold">Proxy</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
@@ -427,7 +452,17 @@ onMounted(() => {
         </div>
       </Card>
       <Card>
-        <h3 class="mb-2 text-base font-semibold">Bypass</h3>
+        <h3 class="mb-2 text-base font-semibold">Direct（TUN 内直连）</h3>
+        <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
+          <span v-for="pkg in state.appPolicy.direct" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
+            {{ pkg }}
+            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-direct-${pkg}`)" type="button" title="移除" @click="requestRemoveApp(pkg, 'direct')"><X :size="14" /></button>
+          </span>
+          <em v-if="!state.appPolicy.direct.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无应用</em>
+        </div>
+      </Card>
+      <Card>
+        <h3 class="mb-2 text-base font-semibold">Bypass TUN</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <span v-for="pkg in state.appPolicy.bypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
             {{ pkg }}

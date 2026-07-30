@@ -9,6 +9,7 @@ export type ExecResult = {
 export type AppPolicy = {
   mode: "blacklist" | "whitelist";
   proxy: string[];
+  direct: string[];
   bypass: string[];
 };
 

@@ -76,7 +76,7 @@ pub(crate) fn app_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "remove" => app_remove(app, args),
         "packages" => app_packages(args),
         "apply" => app_apply_and_restart(app),
-        _ => Err("Usage: cli app {list|packages [query]|mode <blacklist|whitelist>|add <package> [proxy|bypass]|add-many <proxy|bypass> <package...>|remove <package>|apply}".to_string()),
+        _ => Err("Usage: cli app {list|packages [query]|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}".to_string()),
     }
 }
 
@@ -85,6 +85,8 @@ fn app_list(app: &App) -> Result<(), String> {
     println!("mode={mode}");
     println!("proxy apps:");
     print_app_list_lines(&app_list_lines(app, "proxy")?);
+    println!("direct apps:");
+    print_app_list_lines(&app_list_lines(app, "direct")?);
     println!("bypass apps:");
     print_app_list_lines(&app_list_lines(app, "bypass")?);
     Ok(())
@@ -109,17 +111,19 @@ fn app_add(app: &App, args: &[String]) -> Result<(), String> {
     let package = args.get(1).map(String::as_str).unwrap_or_default();
     let target = args.get(2).map(String::as_str).unwrap_or("proxy");
     if package.is_empty() {
-        return Err("Usage: cli app add <package> [proxy|bypass]".to_string());
+        return Err("Usage: cli app add <package> [proxy|direct|bypass]".to_string());
     }
     if !valid_package_name(package) {
         return Err(format!("invalid package name: {package}"));
     }
-    let opposite = match target {
-        "proxy" => "bypass",
-        "bypass" => "proxy",
-        _ => return Err("Target must be proxy or bypass".to_string()),
-    };
-    update_app_list_line(app, opposite, package, false)?;
+    if !matches!(target, "proxy" | "direct" | "bypass") {
+        return Err("Target must be proxy, direct, or bypass".to_string());
+    }
+    for other in ["proxy", "direct", "bypass"] {
+        if other != target {
+            update_app_list_line(app, other, package, false)?;
+        }
+    }
     update_app_list_line(app, target, package, true)?;
     app_apply_and_restart(app)?;
     println!("[info] Added {package} to {target} app list");
@@ -128,16 +132,14 @@ fn app_add(app: &App, args: &[String]) -> Result<(), String> {
 
 fn app_add_many(app: &App, args: &[String]) -> Result<(), String> {
     let target = args.get(1).map(String::as_str).unwrap_or_default();
-    if !matches!(target, "proxy" | "bypass") || args.len() < 3 {
-        return Err("Usage: cli app add-many <proxy|bypass> <package...>".to_string());
+    if !matches!(target, "proxy" | "direct" | "bypass") || args.len() < 3 {
+        return Err("Usage: cli app add-many <proxy|direct|bypass> <package...>".to_string());
     }
-    let opposite = if target == "proxy" { "bypass" } else { "proxy" };
     let target_relative = app_file_relative(target)?;
-    let opposite_relative = app_file_relative(opposite)?;
     let mut lines = app_list_lines(app, target)?;
-    let mut opposite_lines = app_list_lines(app, opposite)?;
+    let packages = args.iter().skip(2).map(String::as_str).collect::<Vec<_>>();
     let mut added = 0usize;
-    for package in args.iter().skip(2).map(String::as_str) {
+    for &package in &packages {
         if !valid_package_name(package) {
             return Err(format!("invalid package name: {package}"));
         }
@@ -145,15 +147,22 @@ fn app_add_many(app: &App, args: &[String]) -> Result<(), String> {
             lines.push(package.to_string());
             added += 1;
         }
-        opposite_lines.retain(|line| line != package);
     }
-    crate::utils::replace_module_text_files_transactionally(
-        app,
-        Path::new(opposite_relative),
-        &unique_lines_text(&opposite_lines),
-        Path::new(target_relative),
-        &unique_lines_text(&lines),
-    )?;
+    for other in ["proxy", "direct", "bypass"] {
+        if other == target {
+            continue;
+        }
+        let filtered = app_list_lines(app, other)?
+            .into_iter()
+            .filter(|line| !packages.iter().any(|package| *package == line))
+            .collect::<Vec<_>>();
+        write_text_file(
+            app,
+            Path::new(app_file_relative(other)?),
+            &unique_lines_text(&filtered),
+        )?;
+    }
+    write_text_file(app, Path::new(target_relative), &unique_lines_text(&lines))?;
     app_apply_and_restart(app)?;
     println!("[info] Added {added} packages to {target} app list");
     Ok(())
@@ -163,18 +172,19 @@ fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
     let package = args.get(1).map(String::as_str).unwrap_or_default();
     let target = args.get(2).map(String::as_str);
     if package.is_empty() {
-        return Err("Usage: cli app remove <package> [proxy|bypass]".to_string());
+        return Err("Usage: cli app remove <package> [proxy|direct|bypass]".to_string());
     }
     if !valid_package_name(package) {
         return Err(format!("invalid package name: {package}"));
     }
     match target {
-        Some("proxy" | "bypass") => {
+        Some("proxy" | "direct" | "bypass") => {
             update_app_list_line(app, target.unwrap(), package, false)?;
         }
-        Some(_) => return Err("Target must be proxy or bypass".to_string()),
+        Some(_) => return Err("Target must be proxy, direct, or bypass".to_string()),
         None => {
             update_app_list_line(app, "proxy", package, false)?;
+            update_app_list_line(app, "direct", package, false)?;
             update_app_list_line(app, "bypass", package, false)?;
         }
     }
@@ -277,8 +287,9 @@ pub(super) fn conf_dir(app: &App) -> PathBuf {
 fn app_file_relative(target: &str) -> Result<&'static str, String> {
     match target {
         "proxy" => Ok(".config/magicnet/app-proxy.list"),
+        "direct" => Ok(".config/magicnet/app-direct.list"),
         "bypass" => Ok(".config/magicnet/app-bypass.list"),
-        _ => Err("Target must be proxy or bypass".to_string()),
+        _ => Err("Target must be proxy, direct, or bypass".to_string()),
     }
 }
 
