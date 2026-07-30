@@ -18,6 +18,8 @@ normalized_selector_tags_json=$(magicnet_selector_tags_json \
   fail "selector tag final-value deduplication mismatch: $normalized_selector_tags_json"
 cat >"$tmp_dir/nodes.json" <<'JSON'
 [
+ {"type":"vless","tag":"Germany edge","server":"de.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000030"},
+ {"type":"vless","tag":"日本 Tokyo","server":"jp.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000031"},
  {"type":"vless","tag":"US stable","server":"us.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000001"},
  {"type":"vless","tag":"上海 node","server":"cn.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000002"},
  {"type":"vless","tag":"CN node","server":"cn2.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000003"},
@@ -45,6 +47,14 @@ cat >"$tmp_dir/nodes.json" <<'JSON'
  ,{"type":"vless","tag":"hk_01 edge","server":"hk-underscore.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000025"}
  ,{"type":"vless","tag":"HKG01 edge","server":"hkg01.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000026"}
  ,{"type":"vless","tag":"HongKong01 edge","server":"hongkong01.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000027"}
+ ,{"type":"vless","tag":"台湾 edge","server":"tw.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000032"}
+ ,{"type":"vless","tag":"Taiwan edge","server":"taiwan.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000033"}
+ ,{"type":"vless","tag":"TW edge","server":"tw-code.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000034"}
+ ,{"type":"vless","tag":"TWN edge","server":"twn.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000035"}
+ ,{"type":"vless","tag":"Taipei edge","server":"taipei.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000036"}
+ ,{"type":"vless","tag":"🇹🇼 premium","server":"tw-flag.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000037"}
+ ,{"type":"vless","tag":"TWA edge","server":"twa.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000038"}
+ ,{"type":"vless","tag":"mytw edge","server":"mytw.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000039"}
 ]
 JSON
 magicnet_singbox_write_outbounds_from_json "$tmp_dir/nodes.json" "$tmp_dir/outbounds.fragment"
@@ -93,7 +103,7 @@ jq -e '
           then ($node_tags | index($selector.default)) != null
           else true
           end)))
-    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
+    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "日本 Tokyo", "Germany edge", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge", "TWA edge", "mytw edge"])
     and ($by_tag["cn-direct"] == {type: "selector", tag: "cn-direct", outbounds: ["direct", "proxy", "block"], default: "direct"})
     and ($by_tag.final == {type: "selector", tag: "final", outbounds: ["proxy", "direct", "block"], default: "proxy"})
     and ($services | all(. as $service
@@ -143,11 +153,28 @@ jq -e '
     and ([.outbounds[].tag] | length) == ([.outbounds[].tag] | unique | length)
 ' "$tmp_dir/adversarial-jq.json" >/dev/null || fail "jq adversarial tag filtering mismatch"
 magicnet_singbox_ai_selectors_canonical "$tmp_dir/generated.json" || fail "jq canonical validator rejected generated auto groups"
+printf '%s\n' 'opaque-42' >"$tmp_dir/custom-subscription-filter.list"
+cp "$tmp_dir/generated.json" "$tmp_dir/filter-repair.json"
+MAGICNET_SUB_FILTER_FILE="$tmp_dir/custom-subscription-filter.list" \
+  magicnet_singbox_sanitize_generated_config "$tmp_dir/filter-repair.json"
+jq -e '
+  (.outbounds | INDEX(.tag)) as $by_tag
+  | ($by_tag["opaque-42"] == null)
+    and ($by_tag.proxy.outbounds | index("opaque-42") == null)
+    and ($by_tag["proxy-auto"].outbounds | index("opaque-42") == null)
+    and ($by_tag["ai-proxy"].outbounds | index("opaque-42") == null)
+    and (["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"]
+      | all(. as $tag | $by_tag[$tag].outbounds | index("opaque-42") == null))
+' "$tmp_dir/filter-repair.json" >/dev/null ||
+  fail "sanitizer did not apply subscription filters to cached/generated nodes and selectors"
+MAGICNET_SUB_FILTER_FILE="$tmp_dir/custom-subscription-filter.list" \
+  magicnet_singbox_ai_selectors_canonical "$tmp_dir/filter-repair.json" ||
+  fail "filter-repaired config is not canonical"
 jq '(.outbounds[] | select(.tag == "proxy") | .interrupt_exist_connections) = true' \
   "$tmp_dir/generated.json" >"$tmp_dir/kamfw-proxy-runtime.json"
 magicnet_singbox_ai_selectors_canonical "$tmp_dir/kamfw-proxy-runtime.json" ||
   fail "jq canonical validator rejected kamfw proxy runtime field"
-special_tag='edge } { "quoted" \path,comma'
+special_tag='US edge } { "quoted" \path,comma'
 jq --arg special "$special_tag" '
   .outbounds |= map(
     (if .tag == "US stable" then
@@ -509,7 +536,7 @@ jq -e '
   fail "sanitizer did not migrate legacy proxy-auto probe policy without changing AI intervals"
 magicnet_singbox_ai_selectors_canonical "$tmp_dir/repaired-legacy-proxy-auto.json" ||
   fail "legacy proxy-auto repair is not canonical"
-printf '%s\n' 'US stable' '上海 node' 'CN node' 'CN2 premium' 'opaque-42' 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge' '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge' 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge' 'hk-01 edge' 'hk_01 edge' 'HKG01 edge' 'HongKong01 edge' >"$tmp_dir/tags"
+printf '%s\n' 'Germany edge' '日本 Tokyo' 'US stable' '上海 node' 'CN node' 'CN2 premium' 'opaque-42' 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge' '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge' 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge' 'hk-01 edge' 'hk_01 edge' 'HKG01 edge' 'HongKong01 edge' '台湾 edge' 'Taiwan edge' 'TW edge' 'TWN edge' 'Taipei edge' '🇹🇼 premium' 'TWA edge' 'mytw edge' >"$tmp_dir/tags"
 magicnet_singbox_emit_selector_block "$tmp_dir/tags" >"$tmp_dir/no-jq.fragment"
 {
   printf '{"outbounds":['
@@ -554,7 +581,7 @@ jq -e '
       outbounds: ["proxy-auto", "proxy", "direct", "block"],
       default: "proxy-auto"
     })
-    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
+    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "日本 Tokyo", "Germany edge", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge", "TWA edge", "mytw edge"])
     and ($by_tag["cn-direct"] == {type: "selector", tag: "cn-direct", outbounds: ["direct", "proxy", "block"], default: "direct"})
     and ($by_tag.final == {type: "selector", tag: "final", outbounds: ["proxy", "direct", "block"], default: "proxy"})
     and ([.outbounds[] | select(.type == "selector" and .tag != "network-test")] | all(. as $selector
@@ -795,6 +822,14 @@ done
 for tag in 'HKT edge' 'CHK edge' 'myhk edge'; do
   grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Hong Kong boundary false positive: $tag"
 done
+for tag in '台湾 edge' 'Taiwan edge' 'TW edge' 'TWN edge' 'Taipei edge' '🇹🇼 premium'; do
+  ! grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Taiwan label retained: $tag"
+done
+[[ "$(sed -n '1,3p' "$tmp_dir/pinned-ai-tags")" == $'US stable\n日本 Tokyo\nGermany edge' ]] ||
+  fail "AI node priority is not US, Japan, then other regions"
+for tag in 'TWA edge' 'mytw edge'; do
+  grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Taiwan boundary false positive: $tag"
+done
 jq 'del(.outbounds[] | select(.tag == "ai-chatgpt" or .tag == "ai-gemini" or .tag == "ai-grok" or .tag == "ai-claude"
       or .tag == "ai-chatgpt-auto" or .tag == "ai-gemini-auto" or .tag == "ai-grok-auto" or .tag == "ai-claude-auto"))' \
   "$tmp_dir/generated.json" >"$tmp_dir/legacy-cached.json"
@@ -809,7 +844,7 @@ jq -e '
   ] as $services
   | (.outbounds | INDEX(.tag)) as $by_tag
   | (.outbounds[] | select(.tag == "ai-proxy")) as $ai_proxy
-  | ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
+  | ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "日本 Tokyo", "Germany edge", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge", "TWA edge", "mytw edge"])
     and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
@@ -845,7 +880,7 @@ jq -e '
   | (.outbounds | INDEX(.tag)) as $by_tag
   | (.outbounds[] | select(.tag == "ai-proxy")) as $ai_proxy
   | ([.outbounds[] | select(.tag as $tag | ($expected_tags | index($tag)) != null)] | length) == 8
-    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge"])
+    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "日本 Tokyo", "Germany edge", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge", "TWA edge", "mytw edge"])
     and ($services | all(. as $service
       | ($service.name + "-auto") as $auto
       | $by_tag[$service.name].type == "selector"
