@@ -23,6 +23,7 @@ import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, 
 import { MAGICNET_LOGO_URL } from "@/branding";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
+import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { useTheme } from "@/composables/useTheme";
 
@@ -65,6 +66,8 @@ const {
   refreshDns,
   refreshWarp,
   createIssue,
+  closeIssueReporter,
+  submitIssue,
   openExternal,
   REPO,
   AUTHOR_WHISPER_URL,
@@ -156,6 +159,11 @@ function setTab(tab: TabKey): void {
     ).find((item) => item.offsetParent !== null);
     target?.scrollIntoView({ block: "nearest", inline: "center" });
   });
+}
+
+async function requestIssue(): Promise<void> {
+  if (showAdvancedNav.value) closeAdvancedNav(false);
+  await createIssue();
 }
 
 async function openAdvancedNav(event: MouseEvent): Promise<void> {
@@ -512,7 +520,7 @@ onUnmounted(() => {
             <Button
               class="min-h-11"
               :loading="state.task === '创建 GitHub issue'"
-              @click="createIssue"
+              @click="requestIssue"
             >
               <Bug :size="18" />反馈问题
             </Button>
@@ -527,6 +535,13 @@ onUnmounted(() => {
         </div>
       </div>
     </Transition>
+
+    <IssueReporterDialog
+      v-if="state.issueReporter.open"
+      :loading="state.task === '创建 GitHub issue'"
+      @cancel="closeIssueReporter"
+      @confirm="submitIssue"
+    />
 
     <Transition name="toast">
       <aside v-if="easterEggVisible" class="mn-chrome fixed bottom-28 right-3 z-50 max-w-[calc(100vw-1.5rem)] rounded-md p-1 md:bottom-8 md:right-8 md:max-w-sm" role="status" aria-live="polite">

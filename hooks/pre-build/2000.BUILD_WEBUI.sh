@@ -13,11 +13,11 @@ if [ ! -f "${WEBUI_ROOT}/package.json" ]; then
 fi
 
 if command -v bun >/dev/null 2>&1; then
-    log_info "Building MagicNet WebUI with bun"
-    (cd "$WEBUI_ROOT" && bun install --frozen-lockfile && bun run build)
+    log_info "Testing and building MagicNet WebUI with bun"
+    (cd "$WEBUI_ROOT" && bun install --frozen-lockfile && bun run check)
 elif command -v npm >/dev/null 2>&1; then
-    log_info "Building MagicNet WebUI with npm"
-    (cd "$WEBUI_ROOT" && npm install && npm run build)
+    log_info "Testing and building MagicNet WebUI with npm"
+    (cd "$WEBUI_ROOT" && npm install && npm run check)
 else
     log_error "bun or npm is required to build MagicNet WebUI"
     exit 1
