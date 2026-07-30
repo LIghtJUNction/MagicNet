@@ -137,8 +137,18 @@ magicnet_singbox_build_outbounds_file_with_jq() {
         else {"type": "selector", "tag": "network-test",
               "outbounds": ["block"], "default": "block"}
         end;
-    def mainland_node_tag:
-      test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+    def blocked_ai_node_tag:
+      test("中国|大陆|内地|香港|台湾|臺灣|台北|臺北|台中|臺中|台南|臺南|高雄|新竹|🇭🇰|🇹🇼|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|Taiwan|Taipei|Taichung|Tainan|Kaohsiung|Hsinchu|TW|TWN|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+    def us_node_tag:
+      test("美国|美國|美西|美东|美東|洛杉矶|洛杉磯|圣何塞|聖何塞|西雅图|西雅圖|达拉斯|達拉斯|纽约|紐約|芝加哥|迈阿密|邁阿密|凤凰城|鳳凰城|亚特兰大|亞特蘭大|波特兰|波特蘭|丹佛|拉斯维加斯|拉斯維加斯|硅谷|🇺🇸|(^|[^A-Za-z0-9])(?:US|USA|United[ _-]?States|America|Los[ _-]?Angeles|San[ _-]?Jose|Seattle|Dallas|New[ _-]?York|Chicago|Washington|Miami|Phoenix|Atlanta|Portland|Denver|Las[ _-]?Vegas|Silicon[ _-]?Valley)([^A-Za-z0-9]|$)"; "i");
+    def japan_node_tag:
+      test("日本|东京|東京|大阪|埼玉|名古屋|🇯🇵|(^|[^A-Za-z0-9])(?:JP|JPN|Japan|Tokyo|Osaka|Saitama|Nagoya)([^A-Za-z0-9]|$)"; "i");
+    def prioritize_ai_tags:
+      . as $tags
+      | ([$tags[]? | select(blocked_ai_node_tag | not)]) as $eligible
+      | ([$eligible[] | select(us_node_tag)])
+        + ([$eligible[] | select((us_node_tag | not) and japan_node_tag)])
+        + ([$eligible[] | select((us_node_tag | not) and (japan_node_tag | not))]);
     def ai_proxy_selector($tags):
       if ($tags | length) > 0
         then {"type": "selector", "tag": "ai-proxy", "outbounds": $tags, "default": $tags[0]}
@@ -183,7 +193,7 @@ magicnet_singbox_build_outbounds_file_with_jq() {
             ([]; if (map(.tag) | index($node.tag)) != null then . else . + [$node] end)
       ) as $nodes
       | ([ $nodes[] | .tag ]) as $tags
-      | ([ $tags[]? | select(mainland_node_tag | not) ]) as $ai_tags
+      | ($tags | prioritize_ai_tags) as $ai_tags
       | (if ($tags | length) > 0
           then [urltest("proxy-auto"; "https://www.gstatic.com/generate_204"; "3m"; $tags)]
           else []
@@ -428,10 +438,30 @@ EOF
 magicnet_singbox_pinned_ai_tags() {
     _pinned_ai_tags_file="$1"
     awk '
+      function blocked_ai(value, folded) {
+        folded = tolower(value)
+        return value ~ /中国|大陆|内地|香港|台湾|臺灣|台北|臺北|台中|臺中|台南|臺南|高雄|新竹|🇭🇰|🇹🇼|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ ||
+          folded ~ /(^|[^[:alnum:]])(hong[ _-]?kong([ _-]?[0-9]+)?|hkg?[ _-]?[0-9]+|taiwan|taipei|taichung|tainan|kaohsiung|hsinchu|tw|twn|china|mainland|hk|hkg|cn|beijing|shanghai|guangzhou|shenzhen|chongqing|tianjin|hebei|shanxi|liaoning|jilin|heilongjiang|jiangsu|zhejiang|anhui|fujian|jiangxi|shandong|henan|hubei|hunan|guangdong|hainan|sichuan|guizhou|yunnan|shaanxi|gansu|qinghai|inner[ _-]?mongolia|guangxi|tibet|ningxia|xinjiang)([^[:alnum:]]|$)/
+      }
+      function us_node(value, folded) {
+        folded = tolower(value)
+        return value ~ /美国|美國|美西|美东|美東|洛杉矶|洛杉磯|圣何塞|聖何塞|西雅图|西雅圖|达拉斯|達拉斯|纽约|紐約|芝加哥|迈阿密|邁阿密|凤凰城|鳳凰城|亚特兰大|亞特蘭大|波特兰|波特蘭|丹佛|拉斯维加斯|拉斯維加斯|硅谷|🇺🇸/ ||
+          folded ~ /(^|[^[:alnum:]])(us|usa|united[ _-]?states|america|los[ _-]?angeles|san[ _-]?jose|seattle|dallas|new[ _-]?york|chicago|washington|miami|phoenix|atlanta|portland|denver|las[ _-]?vegas|silicon[ _-]?valley)([^[:alnum:]]|$)/
+      }
+      function japan_node(value, folded) {
+        folded = tolower(value)
+        return value ~ /日本|东京|東京|大阪|埼玉|名古屋|🇯🇵/ ||
+          folded ~ /(^|[^[:alnum:]])(jp|jpn|japan|tokyo|osaka|saitama|nagoya)([^[:alnum:]]|$)/
+      }
       {
-        folded = tolower($0)
-        if ($0 !~ /中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ &&
-            folded !~ /(^|[^[:alnum:]])(hong[ _-]?kong([ _-]?[0-9]+)?|hkg?[ _-]?[0-9]+|china|mainland|hk|hkg|cn|beijing|shanghai|guangzhou|shenzhen|chongqing|tianjin|hebei|shanxi|liaoning|jilin|heilongjiang|jiangsu|zhejiang|anhui|fujian|jiangxi|shandong|henan|hubei|hunan|guangdong|hainan|sichuan|guizhou|yunnan|shaanxi|gansu|qinghai|inner[ _-]?mongolia|guangxi|tibet|ningxia|xinjiang)([^[:alnum:]]|$)/) print
+        if (blocked_ai($0)) next
+        tag[++count] = $0
+        priority[count] = us_node($0) ? 1 : (japan_node($0) ? 2 : 3)
+      }
+      END {
+        for (wanted = 1; wanted <= 3; wanted++)
+          for (item = 1; item <= count; item++)
+            if (priority[item] == wanted) print tag[item]
       }
     ' "$_pinned_ai_tags_file"
     unset _pinned_ai_tags_file
@@ -440,14 +470,16 @@ magicnet_singbox_pinned_ai_tags() {
 magicnet_singbox_sanitize_generated_config() {
     _sanitize_config_file="$1"
     _sanitize_jq="$(command -v jq 2>/dev/null || true)"
+    _sanitize_filter_file=$(magicnet_singbox_subscription_filter_file)
+    [ -f "$_sanitize_filter_file" ] || _sanitize_filter_file=/dev/null
     [ -n "$_sanitize_jq" ] || {
         if magicnet_singbox_ai_selectors_canonical "$_sanitize_config_file"; then
-            unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+            unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
             return 0
         fi
         magicnet_singbox_ai_selectors_canonical \
             "$_sanitize_config_file" "https://www.google.com/generate_204" "10m" || {
-            unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+            unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
             return 1
         }
 
@@ -489,18 +521,28 @@ magicnet_singbox_sanitize_generated_config() {
             rm -f "$_sanitize_tmp_file" 2>/dev/null || true
         fi
         if [ "$_sanitize_rc" -eq 0 ]; then
-            unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+            unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
             return 0
         fi
-        unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+        unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
         return 1
     }
 
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
     # shellcheck disable=SC2016
-    "$_sanitize_jq" '
-      def mainland_node_tag:
-        test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+    "$_sanitize_jq" --rawfile configured_filters "$_sanitize_filter_file" '
+      def blocked_ai_node_tag:
+        test("中国|大陆|内地|香港|台湾|臺灣|台北|臺北|台中|臺中|台南|臺南|高雄|新竹|🇭🇰|🇹🇼|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|Taiwan|Taipei|Taichung|Tainan|Kaohsiung|Hsinchu|TW|TWN|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+      def us_node_tag:
+        test("美国|美國|美西|美东|美東|洛杉矶|洛杉磯|圣何塞|聖何塞|西雅图|西雅圖|达拉斯|達拉斯|纽约|紐約|芝加哥|迈阿密|邁阿密|凤凰城|鳳凰城|亚特兰大|亞特蘭大|波特兰|波特蘭|丹佛|拉斯维加斯|拉斯維加斯|硅谷|🇺🇸|(^|[^A-Za-z0-9])(?:US|USA|United[ _-]?States|America|Los[ _-]?Angeles|San[ _-]?Jose|Seattle|Dallas|New[ _-]?York|Chicago|Washington|Miami|Phoenix|Atlanta|Portland|Denver|Las[ _-]?Vegas|Silicon[ _-]?Valley)([^A-Za-z0-9]|$)"; "i");
+      def japan_node_tag:
+        test("日本|东京|東京|大阪|埼玉|名古屋|🇯🇵|(^|[^A-Za-z0-9])(?:JP|JPN|Japan|Tokyo|Osaka|Saitama|Nagoya)([^A-Za-z0-9]|$)"; "i");
+      def prioritize_ai_tags:
+        . as $tags
+        | ([$tags[]? | select(blocked_ai_node_tag | not)]) as $eligible
+        | ([$eligible[] | select(us_node_tag)])
+          + ([$eligible[] | select((us_node_tag | not) and japan_node_tag)])
+          + ([$eligible[] | select((us_node_tag | not) and (japan_node_tag | not))]);
       def proxy_node_type:
         .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
           or .type == "hysteria2" or .type == "anytls" or .type == "tuic";
@@ -611,12 +653,21 @@ magicnet_singbox_sanitize_generated_config() {
           "user",
           "user_id"
         ] | any(. as $key | $rule | has($key));
-      (.outbounds // []) as $outbounds
-      | ($outbounds | dedupe_proxy_nodes) as $deduped_outbounds
+      ($configured_filters
+        | split("\n")
+        | map(gsub("\r"; "") | select(length > 0) | ascii_downcase)) as $filters
+      | (.outbounds // []) as $outbounds
+      | ($outbounds
+          | map(select(
+              (proxy_node
+                and ((.tag // "" | ascii_downcase) as $tag
+                  | $filters | any(. as $filter | $tag | contains($filter)))) | not
+            ))
+          | dedupe_proxy_nodes) as $deduped_outbounds
       | ([$deduped_outbounds[]
           | select(proxy_node)
           | .tag // empty]) as $node_tags
-      | ([$node_tags[] | select(mainland_node_tag | not)]) as $ai_tags
+      | ($node_tags | prioritize_ai_tags) as $ai_tags
       | .outbounds = ($deduped_outbounds
           | map(select(.tag as $tag | [
               "proxy", "proxy-auto",
@@ -636,10 +687,10 @@ magicnet_singbox_sanitize_generated_config() {
     _sanitize_rc=$?
     [ "$_sanitize_rc" -eq 0 ] || rm -f "$_sanitize_tmp_file" 2>/dev/null || true
     if [ "$_sanitize_rc" -eq 0 ]; then
-        unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+        unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
         return 0
     fi
-    unset _sanitize_config_file _sanitize_jq _sanitize_tmp_file _sanitize_rc _sanitize_return
+    unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
     return 1
 }
 

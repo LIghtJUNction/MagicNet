@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Reapply subscription keyword filters while sanitizing cached/generated
+  outbounds so filtered nodes cannot survive through a repair or cache replay.
+- Order every AI selector with United States nodes first, Japan second, and
+  other eligible regions afterward, while excluding mainland China, Hong Kong,
+  and Taiwan labels from all AI groups.
+
 ## v1.1.27 (2026-07-28)
 
 - Add a persistent custom User-Agent for subscription downloads, configurable

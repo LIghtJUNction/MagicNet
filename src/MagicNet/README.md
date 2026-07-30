@@ -113,7 +113,7 @@ su -c /data/adb/modules/MagicNet/cli sub update sing-box
 
 MagicNet 会抓取常见 Clash-style 节点 payload，并重新生成 `.config/sing-box/config.json` 里的 sing-box `outbounds`。旧的 mihomo 配置目录不会再被写入或启动。
 
-MagicNet 新安装默认按节点名过滤 `免费`、`free`、`HK`、`香港`、`TW`、`台湾`，可在 WebUI 的订阅页删除部分关键词，或清空并保存以关闭过滤。导入后的其余节点统一放进 `proxy` 选择器；规则选择器只在 `proxy`、`direct`、`block` 之间切换，不再生成固定的地区桶。如果节点数量明显少于订阅内容，也可能是订阅里包含当前 shell 导入器不支持的协议或字段；安装了 proxylink 时会优先用它生成 sing-box outbounds，以覆盖更多协议。
+MagicNet 新安装默认按节点名过滤 `免费`、`free`、`HK`、`香港`、`TW`、`台湾`，可在 WebUI 的订阅页删除部分关键词，或清空并保存以关闭过滤。过滤规则会同时作用于新下载、缓存回放与配置修复后的节点列表。导入后的其余节点统一放进 `proxy` 选择器；AI 选择器固定排除中国大陆、香港和台湾标签，并按美国、日本、其他地区的顺序排列候选节点。规则选择器只在 `proxy`、`direct`、`block` 之间切换，不再生成固定的地区桶。如果节点数量明显少于订阅内容，也可能是订阅里包含当前 shell 导入器不支持的协议或字段；安装了 proxylink 时会优先用它生成 sing-box outbounds，以覆盖更多协议。
 
 ## 透明代理边界
 

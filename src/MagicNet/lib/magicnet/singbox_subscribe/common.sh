@@ -30,8 +30,18 @@ magicnet_singbox_ai_selectors_canonical() {
         jq -e \
             --arg expected_proxy_url "$_ai_expected_proxy_url" \
             --arg expected_proxy_interval "$_ai_expected_proxy_interval" '
-          def mainland_node_tag:
-            test("中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+          def blocked_ai_node_tag:
+            test("中国|大陆|内地|香港|台湾|臺灣|台北|臺北|台中|臺中|台南|臺南|高雄|新竹|🇭🇰|🇹🇼|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|Taiwan|Taipei|Taichung|Tainan|Kaohsiung|Hsinchu|TW|TWN|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
+          def us_node_tag:
+            test("美国|美國|美西|美东|美東|洛杉矶|洛杉磯|圣何塞|聖何塞|西雅图|西雅圖|达拉斯|達拉斯|纽约|紐約|芝加哥|迈阿密|邁阿密|凤凰城|鳳凰城|亚特兰大|亞特蘭大|波特兰|波特蘭|丹佛|拉斯维加斯|拉斯維加斯|硅谷|🇺🇸|(^|[^A-Za-z0-9])(?:US|USA|United[ _-]?States|America|Los[ _-]?Angeles|San[ _-]?Jose|Seattle|Dallas|New[ _-]?York|Chicago|Washington|Miami|Phoenix|Atlanta|Portland|Denver|Las[ _-]?Vegas|Silicon[ _-]?Valley)([^A-Za-z0-9]|$)"; "i");
+          def japan_node_tag:
+            test("日本|东京|東京|大阪|埼玉|名古屋|🇯🇵|(^|[^A-Za-z0-9])(?:JP|JPN|Japan|Tokyo|Osaka|Saitama|Nagoya)([^A-Za-z0-9]|$)"; "i");
+          def prioritize_ai_tags:
+            . as $tags
+            | ([$tags[]? | select(blocked_ai_node_tag | not)]) as $eligible
+            | ([$eligible[] | select(us_node_tag)])
+              + ([$eligible[] | select((us_node_tag | not) and japan_node_tag)])
+              + ([$eligible[] | select((us_node_tag | not) and (japan_node_tag | not))]);
           def proxy_node:
             .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
               or .type == "hysteria2" or .type == "anytls" or .type == "tuic";
@@ -78,7 +88,7 @@ magicnet_singbox_ai_selectors_canonical() {
           | ([.outbounds[]? | select(.tag == "proxy-auto")]) as $proxy_autos
           | [.outbounds[]? | select(proxy_node)] as $nodes
           | [$nodes[] | .tag] as $node_tags
-          | ([ $node_tags[]? | select(mainland_node_tag | not) ]) as $ai_tags
+          | ($node_tags | prioritize_ai_tags) as $ai_tags
           | ([.outbounds[]?.tag] | unique) as $tags
           | ($groups | length) == 4
             and ($nodes | all(valid_proxy_node))
@@ -110,7 +120,8 @@ magicnet_singbox_ai_selectors_canonical() {
             and (($ai_proxies[0].outbounds == ["block"] and $ai_proxies[0].default == "block" and ($ai_tags | length) == 0)
               or (($ai_proxies[0].outbounds | length) > 0
                 and $ai_proxies[0].default == $ai_proxies[0].outbounds[0]
-                and ($ai_proxies[0].outbounds | all(. as $member | ($node_tags | index($member) != null) and ($member | mainland_node_tag | not)))))
+                and $ai_proxies[0].outbounds == $ai_tags
+                and ($ai_proxies[0].outbounds | all(. as $member | ($node_tags | index($member) != null) and ($member | blocked_ai_node_tag | not)))))
             and ($auto_groups | length) == (if ($ai_tags | length) > 0 then 4 else 0 end)
             and ($services | all(. as $service
               | ($service.name + "-auto") as $auto_name
@@ -128,7 +139,7 @@ magicnet_singbox_ai_selectors_canonical() {
                     and $service_auto_groups[0].type == "urltest"
                     and $service_auto_groups[0].outbounds == $ai_proxies[0].outbounds
                     and ($service_auto_groups[0].outbounds | all(. as $member
-                      | ($node_tags | index($member) != null) and ($member | mainland_node_tag | not)))
+                      | ($node_tags | index($member) != null) and ($member | blocked_ai_node_tag | not)))
                     and $service_auto_groups[0].url == $service.url
                     and $service_auto_groups[0].interval == "10m"
                     and $service_auto_groups[0].tolerance == 30
@@ -142,10 +153,23 @@ magicnet_singbox_ai_selectors_canonical() {
         awk \
             -v expected_proxy_url="$_ai_expected_proxy_url" \
             -v expected_proxy_interval="$_ai_expected_proxy_interval" '
-          function mainland(value, folded) {
+          function blocked_ai(value, folded) {
             folded = tolower(value)
-            return value ~ /中国|大陆|内地|香港|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ ||
-              folded ~ /(^|[^[:alnum:]])(hong[ _-]?kong([ _-]?[0-9]+)?|hkg?[ _-]?[0-9]+|china|mainland|hk|hkg|cn|beijing|shanghai|guangzhou|shenzhen|chongqing|tianjin|hebei|shanxi|liaoning|jilin|heilongjiang|jiangsu|zhejiang|anhui|fujian|jiangxi|shandong|henan|hubei|hunan|guangdong|hainan|sichuan|guizhou|yunnan|shaanxi|gansu|qinghai|inner[ _-]?mongolia|guangxi|tibet|ningxia|xinjiang)([^[:alnum:]]|$)/
+            return value ~ /中国|大陆|内地|香港|台湾|臺灣|台北|臺北|台中|臺中|台南|臺南|高雄|新竹|🇭🇰|🇹🇼|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ ||
+              folded ~ /(^|[^[:alnum:]])(hong[ _-]?kong([ _-]?[0-9]+)?|hkg?[ _-]?[0-9]+|taiwan|taipei|taichung|tainan|kaohsiung|hsinchu|tw|twn|china|mainland|hk|hkg|cn|beijing|shanghai|guangzhou|shenzhen|chongqing|tianjin|hebei|shanxi|liaoning|jilin|heilongjiang|jiangsu|zhejiang|anhui|fujian|jiangxi|shandong|henan|hubei|hunan|guangdong|hainan|sichuan|guizhou|yunnan|shaanxi|gansu|qinghai|inner[ _-]?mongolia|guangxi|tibet|ningxia|xinjiang)([^[:alnum:]]|$)/
+          }
+          function us_node(value, folded) {
+            folded = tolower(value)
+            return value ~ /美国|美國|美西|美东|美東|洛杉矶|洛杉磯|圣何塞|聖何塞|西雅图|西雅圖|达拉斯|達拉斯|纽约|紐約|芝加哥|迈阿密|邁阿密|凤凰城|鳳凰城|亚特兰大|亞特蘭大|波特兰|波特蘭|丹佛|拉斯维加斯|拉斯維加斯|硅谷|🇺🇸/ ||
+              folded ~ /(^|[^[:alnum:]])(us|usa|united[ _-]?states|america|los[ _-]?angeles|san[ _-]?jose|seattle|dallas|new[ _-]?york|chicago|washington|miami|phoenix|atlanta|portland|denver|las[ _-]?vegas|silicon[ _-]?valley)([^[:alnum:]]|$)/
+          }
+          function japan_node(value, folded) {
+            folded = tolower(value)
+            return value ~ /日本|东京|東京|大阪|埼玉|名古屋|🇯🇵/ ||
+              folded ~ /(^|[^[:alnum:]])(jp|jpn|japan|tokyo|osaka|saitama|nagoya)([^[:alnum:]]|$)/
+          }
+          function ai_priority(value) {
+            return us_node(value) ? 1 : (japan_node(value) ? 2 : 3)
           }
           function reserved_tag(value) {
             return value ~ /^(proxy-auto|proxy|select|lan|hotspot|ad-block|ad-allow|cn-direct|apple-cn|microsoft-cn|google-cn|icloud|bing|dns-guard|network-test|ai-proxy|ai-chatgpt|ai-chatgpt-auto|ai-gemini|ai-gemini-auto|ai-grok|ai-grok-auto|ai-claude|ai-claude-auto|proxy-rule|dev-proxy|social-proxy|media-proxy|game-proxy|telegram-proxy|download-direct|final|direct|block|warp)$/
@@ -494,11 +518,18 @@ magicnet_singbox_ai_selectors_canonical() {
                 } else {
                   node_tags[tag] = 1
                   node_order[++node_count] = tag
-                  if (!mainland(tag)) {
+                  if (!blocked_ai(tag)) {
                     eligible_nodes[tag] = 1
-                    eligible_count++
                   }
                 }
+              }
+            }
+            eligible_count = 0
+            for (priority = 1; priority <= 3; priority++) {
+              for (i = 1; i <= node_count; i++) {
+                tag = node_order[i]
+                if ((tag in eligible_nodes) && ai_priority(tag) == priority)
+                  eligible_order[++eligible_count] = tag
               }
             }
             if (duplicate_node_tag || invalid_node) bad = 1
@@ -525,9 +556,9 @@ magicnet_singbox_ai_selectors_canonical() {
                 if (ai_member_count == 1 && ai_member[1] == "block") {
                   if (default_member != "block" || eligible_count != 0) bad = 1
                 } else {
-                  if (ai_member_count < 1 || default_member != ai_member[1]) bad = 1
+                  if (ai_member_count != eligible_count || default_member != ai_member[1]) bad = 1
                   for (j = 1; j <= ai_member_count; j++) {
-                    if (!(ai_member[j] in eligible_nodes)) bad = 1
+                    if (!(ai_member[j] in eligible_nodes) || ai_member[j] != eligible_order[j]) bad = 1
                   }
                 }
                 continue
