@@ -362,12 +362,24 @@ magicnet_singbox_update_subscription() {
         return 1
     fi
     magicnet_singbox_cleanup_stale_candidates "${MAGICNET_SUB_CANDIDATE_URL_FILE:-}"
+    # Read by magicnet_singbox_restart_owned in config.sh.
+    # shellcheck disable=SC2034
+    MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
+    MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
     magicnet_with_config_lock magicnet_singbox_update_subscription_unlocked
     _update_rc=$?
+    unset MAGICNET_SUB_DEFER_FSWATCH_RESTORE
     if [ "$_update_rc" -ne 0 ]; then
         magicnet_with_config_lock magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true
         magicnet_singbox_update_cleanup_stage
     fi
+    if [ "${MAGICNET_SUB_FSWATCH_RESTORE_PENDING:-0}" -eq 1 ] &&
+        ! magicnet_singbox_supervisor_restore 1; then
+        _update_rc=1
+        magicnet_singbox_update_status complete failed fswatch_restore_failed || true
+        error "fswatch failed to restart after subscription update"
+    fi
+    unset MAGICNET_SUB_FSWATCH_RESTORE_PENDING
     trap - EXIT HUP INT TERM
     magicnet_singbox_update_lock_release
     return "$_update_rc"

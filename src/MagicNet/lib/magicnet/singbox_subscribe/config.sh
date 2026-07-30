@@ -752,13 +752,29 @@ magicnet_singbox_replay_cached_outbounds() {
 }
 
 magicnet_singbox_pids() {
-    for _proc_comm in /proc/[0-9]*/comm; do
+    if command -v pidof >/dev/null 2>&1; then
+        _singbox_pid_list=$(pidof sing-box 2>/dev/null) || _singbox_pid_list=
+        # shellcheck disable=SC2086 # pidof returns a whitespace-separated PID list.
+        for _pid in $_singbox_pid_list; do
+            case "$_pid" in
+                *[!0-9]* | '') continue ;;
+            esac
+            printf '%s\n' "$_pid"
+        done
+        unset _singbox_pid_list _pid
+        return 0
+    fi
+
+    _singbox_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    for _proc_comm in "$_singbox_proc_root"/[0-9]*/comm; do
         [ -r "$_proc_comm" ] || continue
-        if [ "$(cat "$_proc_comm" 2>/dev/null)" = "sing-box" ]; then
-            _pid=${_proc_comm#/proc/}
+        if IFS= read -r _proc_name <"$_proc_comm" 2>/dev/null &&
+            [ "$_proc_name" = "sing-box" ]; then
+            _pid=${_proc_comm#"$_singbox_proc_root"/}
             printf '%s\n' "${_pid%/comm}"
         fi
     done
+    unset _singbox_proc_root _proc_comm _proc_name _pid
 }
 
 magicnet_singbox_is_running() {
@@ -828,9 +844,19 @@ magicnet_singbox_listener_owned() {
 }
 
 magicnet_singbox_supervisor_restore() {
-    [ "${_owned_fswatch_active:-0}" -eq 1 ] || return 0
-    magicnet_fswatch_start >/dev/null 2>&1 || return 1
+    _restore_fswatch_active="${1:-${_owned_fswatch_active:-0}}"
+    [ "$_restore_fswatch_active" -eq 1 ] || {
+        unset _restore_fswatch_active
+        return 0
+    }
+    if ! magicnet_fswatch_start >/dev/null 2>&1; then
+        unset _restore_fswatch_active
+        return 1
+    fi
     magicnet_fswatch_status >/dev/null 2>&1
+    _restore_rc=$?
+    unset _restore_fswatch_active
+    return "$_restore_rc"
 }
 
 magicnet_singbox_ensure_start_owned() {
@@ -888,7 +914,13 @@ magicnet_singbox_restart_owned() {
         ip link delete tun0 2>/dev/null || true
         magicnet_singbox_ensure_start_owned "$_owned_config" || _restart_rc=1
     fi
-    magicnet_singbox_supervisor_restore || _restart_rc=1
+    if [ "${MAGICNET_SUB_DEFER_FSWATCH_RESTORE:-0}" -eq 1 ]; then
+        # Read by the subscription update wrapper after it releases the config lock.
+        # shellcheck disable=SC2034
+        MAGICNET_SUB_FSWATCH_RESTORE_PENDING="$_owned_fswatch_active"
+    else
+        magicnet_singbox_supervisor_restore "$_owned_fswatch_active" || _restart_rc=1
+    fi
     return "$_restart_rc"
 }
 
