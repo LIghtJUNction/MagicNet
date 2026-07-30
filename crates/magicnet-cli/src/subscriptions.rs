@@ -143,7 +143,7 @@ pub fn sub_resolve_host(args: &[String]) -> Result<(), String> {
     if host.is_empty() || port.is_empty() {
         return Err("Usage: cli sub resolve-host <hostname> <port>".to_string());
     }
-    validate_subscription_hostname(host)?;
+    validate_subscription_host(host)?;
     let port = parse_subscription_port(port)?;
     let resolved = (host, port)
         .to_socket_addrs()
@@ -644,7 +644,7 @@ fn parse_subscription_authority(url: &str) -> Result<SubscriptionAuthority<'_>, 
         if host.contains(':') {
             return Err("Subscription URL has an invalid authority".to_string());
         }
-        validate_subscription_hostname(host)?;
+        validate_subscription_host(host)?;
         (host, parse_subscription_port(port_suffix)?)
     };
 
@@ -668,7 +668,14 @@ fn parse_subscription_port(suffix: &str) -> Result<u16, String> {
     Ok(port)
 }
 
-fn validate_subscription_hostname(host: &str) -> Result<(), String> {
+fn validate_subscription_host(host: &str) -> Result<(), String> {
+    if let Ok(address) = IpAddr::from_str(host) {
+        return if is_public_subscription_address(address) {
+            Ok(())
+        } else {
+            Err("Subscription URL must not target a private or special-use address".to_string())
+        };
+    }
     if host.is_empty()
         || host.len() > 253
         || host.starts_with('.')
@@ -765,11 +772,29 @@ mod tests {
     fn subscription_url_validation_requires_public_https_without_credentials() {
         validate_subscription_url("https://example.com/sub?profile=abc").unwrap();
         validate_subscription_url("https://example.com:8443/sub").unwrap();
+        validate_subscription_url("https://1.1.1.1/sub").unwrap();
+        validate_subscription_url("https://8.8.8.8:8443/sub").unwrap();
+        validate_subscription_url("https://[2606:4700:4700::1111]/sub").unwrap();
         assert!(validate_subscription_url("http://example.com/sub").is_err());
         assert!(validate_subscription_url("https://user:secret@example.com/sub").is_err());
         assert!(validate_subscription_url("https://127.0.0.1:8080/sub").is_err());
+        assert!(validate_subscription_url("https://[::1]/sub").is_err());
+        assert!(validate_subscription_url("https://1.1/sub").is_err());
         assert!(validate_subscription_url("ftp://example.com/sub").is_err());
         assert!(validate_subscription_url("https://example.com/a b").is_err());
+    }
+
+    #[test]
+    fn subscription_host_validation_accepts_public_ip_literals_only() {
+        for host in ["1.1.1.1", "2606:4700:4700::1111", "example.com"] {
+            validate_subscription_host(host).unwrap();
+        }
+        for host in ["127.0.0.1", "::1", "192.168.1.1", "1.1", "0x7f000001"] {
+            assert!(
+                validate_subscription_host(host).is_err(),
+                "{host} must be rejected"
+            );
+        }
     }
 
     #[test]
