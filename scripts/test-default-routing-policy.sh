@@ -38,6 +38,24 @@ jq -e '
 ' "$CONFIG_FILE" >/dev/null || fail "base TUN exclusions are not canonical or exactly ordered"
 
 jq -e '
+  .dns.strategy == "prefer_ipv4"
+    and ([.inbounds[] | select(
+      .type == "tun"
+      and .tag == "tun-in"
+      and .stack == "mixed"
+      and .mtu == 1400
+      and .udp_timeout == "5m"
+      and (.exclude_uid | index(0)) != null
+      and (.address | any(contains(":")))
+    )] | length) == 1
+    and ([.route.rules[] | select(
+      . == {"ip_version": 6, "action": "reject", "method": "default", "no_drop": true}
+      or . == {"ip_version": 6, "action": "reject", "no_drop": true}
+      or . == {"ip_version": 6, "outbound": "block"}
+    )] | length) == 0
+' "$CONFIG_FILE" >/dev/null || fail "base UDP/IPv6 policy is not canonical dual stack"
+
+jq -e '
   .dns.cache_capacity == 4096
     and (.dns.disable_cache? != true)
     and (.dns.independent_cache? != true)
@@ -218,7 +236,7 @@ proxy_dns_tags = {
     for server in config["dns"]["servers"]
     if server.get("detour") == "proxy"
 }
-if len(rules) != 67 or len(dns_rules) != 25:
+if len(rules) != 66 or len(dns_rules) != 25:
     raise AssertionError(
         f"canonical rule counts changed: route={len(rules)} dns={len(dns_rules)}"
     )
@@ -274,12 +292,12 @@ legacy_early_local_msft_dns_rule = {
 }
 if legacy_early_local_msft_dns_rule in dns_rules:
     raise AssertionError("legacy early local Microsoft connectivity DNS rule must be absent")
-if rules[27] != {"domain_suffix": msft_network_test_suffixes, "outbound": "network-test"}:
-    raise AssertionError("route rule 27 Microsoft network-test suffixes changed")
-if rules[29] != {"domain_suffix": foreign_network_test_suffixes, "outbound": "network-test"}:
-    raise AssertionError("route rule 29 foreign network-test suffixes changed")
+if rules[26] != {"domain_suffix": msft_network_test_suffixes, "outbound": "network-test"}:
+    raise AssertionError("route rule 26 Microsoft network-test suffixes changed")
+if rules[28] != {"domain_suffix": foreign_network_test_suffixes, "outbound": "network-test"}:
+    raise AssertionError("route rule 28 foreign network-test suffixes changed")
 if foreign_network_test_dns_rule["domain_suffix"] != (
-    rules[27]["domain_suffix"] + rules[29]["domain_suffix"]
+    rules[26]["domain_suffix"] + rules[28]["domain_suffix"]
 ):
     raise AssertionError("foreign network-test DNS suffixes must equal route rules 27 + 29")
 cn_bing_dns_rule = {
@@ -730,9 +748,9 @@ if (
     != karing_false_positive_domains
 ):
     raise AssertionError("foreign-priority domain sequence must preserve 51 entries and append 5")
-if rules[49] != foreign_priority_route_rule or dns_rules[20] != foreign_priority_dns_rule:
+if rules[48] != foreign_priority_route_rule or dns_rules[20] != foreign_priority_dns_rule:
     raise AssertionError("exact 56-domain foreign-priority route/DNS indexes changed")
-if rules[49]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
+if rules[48]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
     raise AssertionError("foreign-priority route/DNS domain lists must remain identical")
 flows = (
     {
@@ -966,16 +984,16 @@ google_play_proxy_rule = {
 google_play_proxy_indexes = [
     index for index, rule in enumerate(rules) if rule == google_play_proxy_rule
 ]
-if google_play_proxy_indexes != [9]:
+if google_play_proxy_indexes != [8]:
     raise AssertionError(
-        "Google Play package routing must have one early proxy owner at index 9: "
+        "Google Play package routing must have one early proxy owner at index 8: "
         f"indexes={google_play_proxy_indexes}"
     )
 for package_name in google_play_proxy_rule["package_name"]:
     for base_flow in flows:
         flow = dict(base_flow, package_name=package_name)
         index, rule, _ = first_matching_outbound("play.googleapis.com", flow)
-        if index != 9 or rule != google_play_proxy_rule:
+        if index != 8 or rule != google_play_proxy_rule:
             raise AssertionError(
                 f"{package_name} {base_flow['name']} must proxy before destination rules: "
                 f"index={index} rule={rule}"
@@ -1041,7 +1059,7 @@ for domain in karing_false_positive_domains:
         dns_index, dns_rule, _ = dns_match
         dns_server = dns_rule.get("server")
     if (
-        route_index != 49
+        route_index != 48
         or route_rule.get("outbound") != "proxy-rule"
         or dns_index != 20
         or dns_server != "doh-google"
@@ -1570,9 +1588,9 @@ mmstat_dns_index = mmstat_dns_indexes[0]
 route_index, route_rule, matching_rule_sets = first_matching_outbound("mmstat.com", flows[0])
 route_outbound = route_rule.get("outbound")
 route_effective = recursively_effective_outbound(route_outbound)
-if route_index != 31 or route_outbound != "cn-direct" or route_effective != "direct":
+if route_index != 30 or route_outbound != "cn-direct" or route_effective != "direct":
     raise AssertionError(
-        "mmstat.com route must remain index 31 cn-direct/direct: "
+        "mmstat.com route must remain index 30 cn-direct/direct: "
         f"index={route_index} outbound={route_outbound} effective={route_effective}"
     )
 mmstat_dns = first_matching_dns("mmstat.com", flows[0])
@@ -1752,7 +1770,7 @@ network_test_route_indexes = [
 if (
     rule.get("outbound") != "dns-guard"
     or recursively_effective_outbound(rule["outbound"]) != "block"
-    or network_test_route_indexes != [29]
+    or network_test_route_indexes != [28]
     or not index < network_test_route_indexes[0]
 ):
     raise AssertionError(
@@ -2900,17 +2918,8 @@ jq -e '
   | .route.final == "final"
     and (($dns_hijack_rules | length) > 0)
     and (($icmp_block_rules | length) > 0)
-    and (($ipv6_rules | length) == 1)
-    and ($ipv6_rules[0].value == {
-      ip_version: 6,
-      action: "reject",
-      method: "default",
-      no_drop: true
-    })
-    and ($dns_hijack_rules | all(.key < $ipv6_rules[0].key))
-    and ($icmp_block_rules | all(.key < $ipv6_rules[0].key))
+    and (($ipv6_rules | length) == 0)
     and (($cn_direct_rules | length) > 0)
-    and ($cn_direct_rules | all(.key > $ipv6_rules[0].key))
     and ([.outbounds[] | select(.tag == "cn-direct")] == [
       {type: "selector", tag: "cn-direct", outbounds: ["direct", "proxy", "block"], default: "direct"}
     ])

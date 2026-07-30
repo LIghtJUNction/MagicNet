@@ -117,6 +117,9 @@ MagicNet 新安装默认按节点名过滤 `免费`、`free`、`HK`、`香港`�
 
 MagicNet 目前只支持 `tun` 透明模式，使用 `sing-box` `magicnet0` TUN 接管透明流量。旧配置中的 `proxy`、`external-tun`、`hybrid` 会安全归一为 `tun`，CLI 不再接受这些模式。
 
+- 默认网络策略是双栈、DNS 优先 IPv4、`mixed` TUN 栈、MTU `1400` 和 UDP 会话超时 `5m`。
+- 可在 WebUI 的“UDP / IPv6”卡片切换，或执行 `cli network set <ipv4_only|prefer_ipv4|prefer_ipv6> <1280-1500> <1m|3m|5m|10m|15m|30m>`。
+- `ipv4_only` 是网络或代理节点不支持 IPv6 时的兼容回退；切回双栈会自动移除 MagicNet 管理的 IPv6 拦截规则。
 - 可用性以 `cli health` 和物理出口抓包为准。
 - 发布前请用 `tcpdump` 验证没有 `port 53 or port 853` 泄露。
 

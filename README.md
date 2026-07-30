@@ -89,6 +89,12 @@ su -c /data/adb/modules/MagicNet/cli health
 # 查看透明代理是否运行在 magicnet0 TUN
 su -c /data/adb/modules/MagicNet/cli transparent status
 
+# 查看 UDP / IPv6 策略（默认双栈、IPv4 优先、MTU 1400、UDP 5m）
+su -c /data/adb/modules/MagicNet/cli network status
+
+# 网络或节点不支持 IPv6 时切换兼容模式
+su -c '/data/adb/modules/MagicNet/cli network set ipv4_only 1400 5m'
+
 # 重启 sing-box
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
 
