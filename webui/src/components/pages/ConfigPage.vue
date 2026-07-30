@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Braces, Copy, DownloadCloud, Github, ListTree, RefreshCw, Save } from "lucide-vue-next";
+import { Braces, Copy, DownloadCloud, FileUp, Github, ListTree, RefreshCw, Save } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -11,10 +11,12 @@ import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 import { buildConfigAudit, buildConfigOutline, buildUnifiedConfigDiff, MAX_CONFIG_ISSUE_DIFF_BYTES, sanitizeConfigText } from "./configEditorInsights";
+import { MAX_LOCAL_CONFIG_BYTES, parseLocalConfigFile } from "./configFileImport";
 
 const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pendingConfigAction = ref<PendingToolAction | null>(null);
+const configFileInput = ref<HTMLInputElement | null>(null);
 const localJsonStatus = ref("");
 const configSyntaxValid = ref(true);
 const sanitizedCopied = ref(false);
@@ -100,6 +102,39 @@ function formatConfigJson(): void {
   }
 }
 
+function chooseLocalConfig(): void {
+  configFileInput.value?.click();
+}
+
+async function importLocalConfig(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+
+  try {
+    if (file.size > MAX_LOCAL_CONFIG_BYTES) {
+      throw new Error("文件超过 4 MiB 限制。");
+    }
+    const imported = parseLocalConfigFile(file.name, new Uint8Array(await file.arrayBuffer()));
+    state.config.text = imported.text;
+    state.config.dirty = true;
+    state.config.status = `已导入 ${imported.fileName}，尚未保存`;
+    state.config.validation = {
+      status: "idle",
+      summary: "本地 JSON 已导入编辑器，点击“校验并保存”后才会写入运行配置。",
+      checkedAt: "",
+    };
+    configSyntaxValid.value = true;
+    localJsonStatus.value = `${imported.fileName} 已导入（${(imported.sizeBytes / 1024).toFixed(1)} KiB），尚未保存。`;
+    state.notice = "本地 JSON 已导入编辑器";
+    state.output = "导入完成，运行配置没有被修改；请检查内容后点击“校验并保存”。";
+  } catch (error) {
+    localJsonStatus.value = `导入错误：${error instanceof Error ? error.message : String(error)}`;
+    state.output = localJsonStatus.value;
+  }
+}
+
 async function copySanitizedConfig(): Promise<void> {
   if (!sanitizedConfig.value) return;
   sanitizedCopied.value = await copyText(sanitizedConfig.value);
@@ -159,9 +194,11 @@ async function openConfigIssue(): Promise<void> {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Validated Editor" title="配置编辑器" description="高级配置入口：编辑 sing-box config.json；订阅链接请到订阅页填写。">
+    <PageHeader overline="Validated Editor" title="配置编辑器" description="可直接导入本地 sing-box JSON，无需 URL；订阅链接请到订阅页填写。">
       <div class="flex flex-wrap items-center gap-2">
+        <input ref="configFileInput" class="hidden" type="file" accept=".json,application/json" @change="importLocalConfig">
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', loadConfigForEditing)"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
+        <Button variant="outline" @click="chooseLocalConfig"><FileUp :size="17" />导入本地 JSON</Button>
         <Button variant="outline" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化 JSON</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="copySanitizedConfig"><Copy :size="17" />{{ sanitizedCopied ? '已复制脱敏' : '复制脱敏' }}</Button>
@@ -186,7 +223,7 @@ async function openConfigIssue(): Promise<void> {
         <span v-if="state.config.dirty" class="shrink-0 rounded bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] px-2 py-1 text-xs text-[var(--mn-warning)]">未保存</span>
       </div>
       <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm leading-6 text-[var(--mn-ink-muted)]">
-        <p>sing-box 配置文件是 JSON。点击“加载配置”读取真实文件，修改后点“校验并保存”，会先执行 sing-box check，通过后才覆盖。</p>
+        <p>sing-box 配置文件是 JSON。没有订阅 URL 时可选择自己的本地配置文件；导入只会替换编辑器草稿，点击“校验并保存”并通过 sing-box check 后才会覆盖运行配置。</p>
       </div>
       <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
         <div>
@@ -211,7 +248,7 @@ async function openConfigIssue(): Promise<void> {
         <span>{{ configStats.lines }} 行</span>
         <span>{{ configStats.chars }} 字符</span>
         <span>{{ configStats.sizeKiB }} KiB</span>
-        <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">{{ localJsonStatus || "尚未执行本地格式化" }}</span>
+        <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">{{ localJsonStatus || "尚未导入或格式化本地 JSON" }}</span>
       </div>
       <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm text-[var(--mn-ink-muted)]">
         <div class="flex min-w-0 flex-wrap items-center gap-2">
