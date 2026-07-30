@@ -281,11 +281,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mn-shell relative mx-auto min-h-dvh w-full max-w-[1500px] px-3 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-3 sm:px-5 md:px-7 md:pb-12 md:pt-6">
-    <header class="mb-5 flex flex-nowrap items-center justify-between gap-1 md:mb-7">
-      <div class="mn-chrome flex min-w-0 items-center gap-1 rounded-md p-0.5 pr-1.5">
+  <div class="mn-shell relative mx-auto min-h-dvh w-full max-w-[1560px] px-3 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-3 sm:px-5 md:px-7 md:pb-12 md:pt-5">
+    <header class="mn-topbar mn-chrome mb-5 flex flex-nowrap items-center justify-between gap-2 rounded-[1.25rem] p-1.5 md:mb-6 md:p-2">
+      <div class="flex min-w-0 items-center gap-1 pr-1.5">
         <button
-          class="brand-mark mn-brand-mark grid size-11 shrink-0 place-items-center overflow-hidden rounded-[5px] transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.94]"
+          class="brand-mark mn-brand-mark grid size-11 shrink-0 place-items-center overflow-hidden rounded-[0.85rem] transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.94] active:duration-75"
           type="button"
           aria-label="MagicNet 品牌标记"
           title="MagicNet"
@@ -300,13 +300,13 @@ onUnmounted(() => {
             decoding="async"
           />
         </button>
-        <div class="hidden min-w-0 min-[360px]:block pl-1">
+        <div class="hidden min-w-0 min-[360px]:block pl-1.5">
           <h1 class="truncate text-[17px] font-semibold leading-tight tracking-[-0.03em] text-[var(--mn-ink)] sm:text-xl">MagicNet</h1>
-          <p class="hidden truncate text-[11px] text-[var(--mn-ink-faint)] sm:block">Root 网络工作台</p>
+          <p class="hidden truncate text-[11px] font-medium tracking-[0.01em] text-[var(--mn-ink-faint)] sm:block">Root 网络工作台</p>
         </div>
       </div>
 
-      <div class="mn-chrome flex items-center gap-0.5 rounded-md p-0.5">
+      <div class="flex items-center gap-0.5 rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-ink)_4%,transparent)] p-0.5 shadow-[inset_0_0_0_1px_var(--mn-border)]">
         <Button
           variant="outline"
           size="sm"
@@ -364,8 +364,8 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section class="runtime-cockpit mn-chrome relative z-20 mb-5 grid gap-3 rounded-md p-1 md:sticky md:top-4 md:grid-cols-[minmax(220px,1.05fr)_minmax(0,1fr)_auto] md:items-center md:gap-2">
-      <div class="rounded-[5px] bg-[color-mix(in_srgb,var(--mn-cactus)_28%,var(--mn-carrier))] px-4 py-3 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]">
+    <section class="runtime-cockpit mn-chrome relative z-20 mb-5 grid gap-3 rounded-[1.25rem] p-1.5 md:sticky md:top-4 md:grid-cols-[minmax(220px,1.05fr)_minmax(0,1fr)_auto] md:items-center md:gap-2">
+      <div class="rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-cactus)_30%,var(--mn-material-heavy))] px-4 py-3 shadow-[inset_0_1px_0_color-mix(in_srgb,#fff_45%,transparent),inset_0_0_0_1px_color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]">
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0 flex-1">
             <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">运行状态</span>
@@ -406,17 +406,19 @@ onUnmounted(() => {
       </Button>
     </section>
 
-    <main class="grid min-w-0 gap-5 md:grid-cols-[190px_minmax(0,1fr)] md:items-start md:gap-6">
-      <nav class="desktop-rail mn-chrome sticky top-36 hidden gap-1 rounded-md p-1.5 md:grid" aria-label="MagicNet 页面">
+    <main class="grid min-w-0 gap-5 md:grid-cols-[204px_minmax(0,1fr)] md:items-start md:gap-6">
+      <nav class="desktop-rail mn-chrome sticky top-36 hidden gap-1 rounded-[1.25rem] p-2 md:grid" aria-label="MagicNet 页面">
         <div class="px-3 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">常用工作区</div>
         <button
           v-for="item in primaryTabs"
           :key="item.key"
           :data-tab="item.key"
           :class="[
-            'flex min-h-11 min-w-0 items-center gap-3 rounded-[5px] px-3 text-sm font-medium transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
+            'flex min-h-11 min-w-0 items-center gap-3 rounded-[0.85rem] px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
             activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle',
           ]"
+          type="button"
+          :aria-current="activeTab === item.key ? 'page' : undefined"
           @click="setTab(item.key)"
         >
           <component :is="item.icon" :size="18" />
@@ -429,9 +431,11 @@ onUnmounted(() => {
           :key="item.key"
           :data-tab="item.key"
           :class="[
-            'flex min-h-11 min-w-0 items-center gap-3 rounded-[5px] px-3 text-sm font-medium transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
+            'flex min-h-11 min-w-0 items-center gap-3 rounded-[0.85rem] px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
             activeTab === item.key ? 'mn-nav-advanced-active' : 'mn-nav-idle',
           ]"
+          type="button"
+          :aria-current="activeTab === item.key ? 'page' : undefined"
           @click="setTab(item.key)"
         >
           <component :is="item.icon" :size="18" />
@@ -449,21 +453,23 @@ onUnmounted(() => {
             />
           </KeepAlive>
           <template #fallback>
-            <div class="mn-chrome rounded-md p-8 text-sm text-[var(--mn-ink-muted)]" role="status">加载面板…</div>
+            <div class="mn-chrome rounded-[1.25rem] p-8 text-sm text-[var(--mn-ink-muted)]" role="status">加载面板…</div>
           </template>
         </Suspense>
       </section>
     </main>
 
-    <nav class="mobile-nav mn-chrome fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 grid grid-cols-6 gap-1 rounded-md p-1 md:hidden" aria-label="MagicNet 移动导航">
+    <nav class="mobile-nav mn-chrome fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 grid grid-cols-6 gap-0.5 rounded-[1.35rem] p-1.5 md:hidden" aria-label="MagicNet 移动导航">
       <button
         v-for="item in primaryTabs"
         :key="item.key"
         :data-tab="item.key"
         :class="[
-          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[5px] px-1 text-[10px] font-medium transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
+          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.85rem] px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
           activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle',
         ]"
+        type="button"
+        :aria-current="activeTab === item.key ? 'page' : undefined"
         @click="setTab(item.key)"
       >
         <component :is="item.icon" :size="18" />
@@ -472,9 +478,11 @@ onUnmounted(() => {
       <button
         ref="advancedNavTrigger"
         :class="[
-          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[5px] px-1 text-[10px] font-medium transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
+          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.85rem] px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
           activeAdvancedTab ? 'mn-nav-advanced-active' : 'mn-nav-idle',
         ]"
+        type="button"
+        :aria-current="activeAdvancedTab ? 'page' : undefined"
         aria-haspopup="dialog"
         :aria-expanded="showAdvancedNav"
         @click="openAdvancedNav"
@@ -487,7 +495,7 @@ onUnmounted(() => {
     <Transition name="sheet">
       <div v-if="showAdvancedNav" class="fixed inset-0 z-40 md:hidden">
         <button class="absolute inset-0 size-full bg-[color-mix(in_srgb,var(--mn-ink)_35%,transparent)]" type="button" aria-label="关闭进阶导航" @click="closeAdvancedNav()" />
-        <div ref="advancedDialog" class="mn-chrome absolute inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] rounded-md p-1.5 pb-2" role="dialog" aria-modal="true" aria-label="进阶导航" tabindex="-1">
+        <div ref="advancedDialog" class="mn-chrome-raised absolute inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] rounded-[1.5rem] p-2 pb-2.5" role="dialog" aria-modal="true" aria-label="进阶导航" tabindex="-1">
           <div class="flex items-center justify-between px-3 pb-2 pt-2">
             <div>
               <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">更多工作区</span>
@@ -501,9 +509,11 @@ onUnmounted(() => {
               :key="item.key"
               :data-tab="item.key"
               :class="[
-                'flex min-h-11 min-w-0 items-center gap-3 rounded-[5px] px-4 text-sm font-medium transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-heather)_70%,var(--mn-ink))] active:scale-[0.97]',
+                'flex min-h-11 min-w-0 items-center gap-3 rounded-[0.95rem] px-4 text-sm font-medium transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-heather)_70%,var(--mn-ink))] active:scale-[0.97] active:duration-75',
                 activeTab === item.key ? 'mn-nav-active' : 'mn-inset-soft text-[var(--mn-ink-soft)]',
               ]"
+              type="button"
+              :aria-current="activeTab === item.key ? 'page' : undefined"
               @click="setTab(item.key)"
             >
               <component :is="item.icon" :size="19" />
@@ -529,9 +539,9 @@ onUnmounted(() => {
     </Transition>
 
     <Transition name="toast">
-      <aside v-if="easterEggVisible" class="mn-chrome fixed bottom-28 right-3 z-50 max-w-[calc(100vw-1.5rem)] rounded-md p-1 md:bottom-8 md:right-8 md:max-w-sm" role="status" aria-live="polite">
-        <div class="flex items-start gap-3 rounded-[5px] bg-[color-mix(in_srgb,var(--mn-cactus)_18%,var(--mn-carrier))] p-4">
-          <div class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-sm bg-[var(--mn-cactus)]">
+      <aside v-if="easterEggVisible" class="mn-chrome-raised fixed bottom-28 right-3 z-50 max-w-[calc(100vw-1.5rem)] rounded-[1.25rem] p-1.5 md:bottom-8 md:right-8 md:max-w-sm" role="status" aria-live="polite">
+        <div class="flex items-start gap-3 rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-cactus)_18%,var(--mn-material-heavy))] p-4">
+          <div class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-[0.75rem] bg-[var(--mn-cactus)]">
             <img :src="MAGICNET_LOGO_URL" alt="" class="size-10 object-cover" width="40" height="40" decoding="async" />
           </div>
           <div class="min-w-0 flex-1">
@@ -549,7 +559,7 @@ onUnmounted(() => {
               </template>
             </p>
           </div>
-          <button class="grid size-11 shrink-0 place-items-center rounded-[5px] text-[var(--mn-ink-faint)] transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] hover:text-[var(--mn-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.94]" type="button" aria-label="关闭彩蛋" @click="closeEasterEgg">
+          <button class="grid size-11 shrink-0 place-items-center rounded-[0.85rem] text-[var(--mn-ink-faint)] transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] hover:text-[var(--mn-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.94] active:duration-75" type="button" aria-label="关闭彩蛋" @click="closeEasterEgg">
             <X :size="16" />
           </button>
         </div>

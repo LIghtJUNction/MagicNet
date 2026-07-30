@@ -2,10 +2,9 @@
 
 /*
   MagicNet WebUI design tokens.
-  Light: anthropic-art ivory editorial field (#BCD1CA / #CBCADB / #E3DACC / #FAF9F5 / #141413).
-  Dark: near-black ink canvas with muted cactus/heather accents.
-  Toggle via document.documentElement[data-theme="light"|"dark"].
-  Contrast rule: body text uses ink scale; never pale accent-on-accent for readable copy.
+  The brand palette stays warm and quiet while functional layers use a restrained,
+  Apple-inspired material system: platform typography, translucent chrome, clear
+  depth, immediate press feedback, and accessibility fallbacks.
 */
 
 @theme {
@@ -71,8 +70,25 @@ html[data-theme="light"] {
   --mn-tone-info-border: color-mix(in srgb, var(--mn-info) 40%, transparent);
   --mn-code-bg: #ebe8de;
   --mn-overlay: color-mix(in srgb, var(--mn-ink) 42%, transparent);
+  --mn-material: color-mix(in srgb, #ffffff 76%, transparent);
+  --mn-material-heavy: color-mix(in srgb, #f7f5ef 90%, transparent);
+  --mn-material-edge: color-mix(in srgb, #ffffff 72%, transparent);
+  --mn-shadow-card:
+    0 1px 1px color-mix(in srgb, var(--mn-ink) 5%, transparent),
+    0 10px 30px color-mix(in srgb, var(--mn-ink) 7%, transparent);
+  --mn-shadow-float:
+    0 1px 1px color-mix(in srgb, var(--mn-ink) 6%, transparent),
+    0 18px 48px color-mix(in srgb, var(--mn-ink) 14%, transparent);
+  --mn-radius-sm: 0.75rem;
+  --mn-radius-md: 1rem;
+  --mn-radius-lg: 1.375rem;
+  --mn-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --mn-motion-press: 90ms;
 
-  font-family: "Plus Jakarta Sans", "MiSans", "HarmonyOS Sans SC", system-ui, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "HarmonyOS Sans SC", "MiSans", system-ui, sans-serif;
+  font-optical-sizing: auto;
   background: var(--mn-ivory);
   color: var(--mn-ink);
   font-synthesis: none;
@@ -119,6 +135,15 @@ html[data-theme="dark"] {
   --mn-tone-info-border: color-mix(in srgb, var(--mn-info) 45%, transparent);
   --mn-code-bg: #0e0e0d;
   --mn-overlay: color-mix(in srgb, #000 58%, transparent);
+  --mn-material: color-mix(in srgb, #2b2b28 72%, transparent);
+  --mn-material-heavy: color-mix(in srgb, #242421 91%, transparent);
+  --mn-material-edge: color-mix(in srgb, #ffffff 15%, transparent);
+  --mn-shadow-card:
+    0 1px 0 color-mix(in srgb, #ffffff 5%, transparent),
+    0 14px 34px color-mix(in srgb, #000 30%, transparent);
+  --mn-shadow-float:
+    0 1px 0 color-mix(in srgb, #ffffff 7%, transparent),
+    0 22px 54px color-mix(in srgb, #000 46%, transparent);
 
   background: var(--mn-ivory);
   color: var(--mn-ink);
@@ -143,6 +168,7 @@ body {
   color: var(--mn-ink);
   overflow-x: hidden;
   touch-action: pan-x pan-y pinch-zoom;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
@@ -153,6 +179,18 @@ body {
 
 button {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.rounded-md {
+  border-radius: var(--mn-radius-md);
 }
 
 .truncate {
@@ -167,9 +205,15 @@ button {
 }
 
 .magic-card {
-  background: var(--mn-carrier);
+  background: color-mix(in srgb, var(--mn-carrier) 94%, var(--mn-surface-input));
   color: var(--mn-ink);
-  box-shadow: inset 0 0 0 1px var(--mn-border);
+  box-shadow:
+    inset 0 0 0 1px var(--mn-border),
+    var(--mn-shadow-card);
+  transition:
+    box-shadow 300ms var(--mn-motion-spring),
+    transform 300ms var(--mn-motion-spring),
+    background-color 220ms ease-out;
 }
 
 .mn-shell {
@@ -177,24 +221,39 @@ button {
 }
 
 .mn-chrome {
-  background: var(--mn-carrier);
-  box-shadow: inset 0 0 0 1px var(--mn-border);
+  background: var(--mn-material);
+  box-shadow:
+    inset 0 1px 0 var(--mn-material-edge),
+    inset 0 0 0 1px var(--mn-border),
+    var(--mn-shadow-card);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
 }
 
 .mn-chrome-raised {
-  background: var(--mn-carrier);
-  box-shadow: inset 0 0 0 1px var(--mn-border-strong);
+  background: var(--mn-material-heavy);
+  box-shadow:
+    inset 0 1px 0 var(--mn-material-edge),
+    inset 0 0 0 1px var(--mn-border-strong),
+    var(--mn-shadow-float);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  backdrop-filter: blur(28px) saturate(160%);
 }
 
 .mn-brand-mark {
   background: var(--mn-cactus);
   color: var(--mn-on-accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-ink) 12%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--mn-ink) 12%, transparent),
+    0 5px 14px color-mix(in srgb, var(--mn-cactus-deep) 26%, transparent);
 }
 
 .mn-nav-active {
-  background: var(--mn-cactus);
+  background: color-mix(in srgb, var(--mn-cactus) 88%, var(--mn-surface-input));
   color: var(--mn-on-accent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 52%, transparent),
+    0 3px 12px color-mix(in srgb, var(--mn-cactus-deep) 18%, transparent);
   font-weight: 600;
 }
 
@@ -203,15 +262,71 @@ button {
 }
 
 .mn-nav-idle:hover {
-  background: color-mix(in srgb, var(--mn-ink) 8%, transparent);
+  background: color-mix(in srgb, var(--mn-ink) 7%, transparent);
   color: var(--mn-ink);
 }
 
 .mn-nav-advanced-active {
-  background: color-mix(in srgb, var(--mn-heather) 42%, var(--mn-carrier));
+  background: color-mix(in srgb, var(--mn-heather) 46%, var(--mn-material-heavy));
   color: var(--mn-ink);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-heather) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 36%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--mn-heather) 55%, transparent);
   font-weight: 600;
+}
+
+.mn-topbar {
+  position: relative;
+  isolation: isolate;
+}
+
+.mn-topbar::after,
+.runtime-cockpit::after,
+.mobile-nav::before,
+.mn-page-actions::after {
+  position: absolute;
+  pointer-events: none;
+  content: "";
+  opacity: 0.7;
+}
+
+.mn-topbar::after,
+.runtime-cockpit::after,
+.mn-page-actions::after {
+  right: 1rem;
+  bottom: -1px;
+  left: 1rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--mn-border-strong), transparent);
+}
+
+.mobile-nav::before {
+  inset: 0.18rem 1rem auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--mn-material-edge), transparent);
+}
+
+.runtime-cockpit {
+  transform: translateZ(0);
+}
+
+.desktop-rail,
+.mobile-nav {
+  transform: translateZ(0);
+}
+
+.desktop-rail button,
+.mobile-nav button {
+  transition:
+    transform var(--mn-motion-press) ease-out,
+    color 180ms ease-out,
+    background-color 240ms var(--mn-motion-spring),
+    box-shadow 240ms var(--mn-motion-spring);
+}
+
+.desktop-rail button:active,
+.mobile-nav button:active {
+  transition-duration: var(--mn-motion-press);
 }
 
 .mn-status-dot-ok {
@@ -248,7 +363,7 @@ pre {
 .sheet-leave-active,
 .toast-enter-active,
 .toast-leave-active {
-  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 220ms ease-out;
 }
 
 .sheet-enter-active > div:last-child,
@@ -256,8 +371,10 @@ pre {
 .toast-enter-active,
 .toast-leave-active {
   transition:
-    opacity 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity 220ms ease-out,
+    transform 360ms var(--mn-motion-spring),
+    filter 280ms ease-out;
+  transform-origin: bottom center;
 }
 
 .sheet-enter-from,
@@ -269,12 +386,14 @@ pre {
 
 .sheet-enter-from > div:last-child,
 .sheet-leave-to > div:last-child {
-  transform: translateY(16px);
+  filter: blur(6px);
+  transform: translateY(18px) scale(0.975);
 }
 
 .toast-enter-from,
 .toast-leave-to {
-  transform: translateY(8px);
+  filter: blur(4px);
+  transform: translateY(10px) scale(0.98);
 }
 
 code,
@@ -290,7 +409,9 @@ textarea {
 
 .mn-inset {
   background: var(--mn-surface-sunken);
-  box-shadow: inset 0 0 0 1px var(--mn-border);
+  box-shadow:
+    inset 0 0 0 1px var(--mn-border),
+    inset 0 1px 4px color-mix(in srgb, var(--mn-ink) 6%, transparent);
 }
 
 .mn-inset-soft {
@@ -298,7 +419,7 @@ textarea {
 }
 
 .mn-pill {
-  background: color-mix(in srgb, var(--mn-ink) 8%, transparent);
+  background: color-mix(in srgb, var(--mn-ink) 6%, transparent);
   color: var(--mn-ink-muted);
   box-shadow: inset 0 0 0 1px var(--mn-border);
 }
@@ -405,17 +526,23 @@ textarea {
   align-items: center;
   padding: 0.5rem;
   margin: 0 0 0.75rem;
-  border-radius: 0.375rem;
-  background: color-mix(in srgb, var(--mn-carrier) 94%, transparent);
-  box-shadow: inset 0 0 0 1px var(--mn-border);
-  backdrop-filter: blur(8px);
+  border-radius: var(--mn-radius-md);
+  background: var(--mn-material);
+  box-shadow:
+    inset 0 1px 0 var(--mn-material-edge),
+    inset 0 0 0 1px var(--mn-border),
+    0 8px 24px color-mix(in srgb, var(--mn-ink) 8%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
 }
 
 /* Form fields share theme surfaces (used by Input/Textarea and native controls) */
 .mn-field {
   background: var(--mn-surface-input);
   color: var(--mn-ink);
-  box-shadow: inset 0 0 0 1px var(--mn-border-strong);
+  box-shadow:
+    inset 0 0 0 1px var(--mn-border),
+    0 1px 2px color-mix(in srgb, var(--mn-ink) 5%, transparent);
 }
 
 .mn-field:focus,
@@ -439,6 +566,52 @@ textarea {
   color: var(--mn-ink);
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .magic-card:hover {
+    box-shadow:
+      inset 0 0 0 1px var(--mn-border-strong),
+      0 1px 1px color-mix(in srgb, var(--mn-ink) 5%, transparent),
+      0 16px 38px color-mix(in srgb, var(--mn-ink) 9%, transparent);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  html[data-theme="light"] {
+    --mn-material: #f4f2eb;
+    --mn-material-heavy: #f0eee6;
+  }
+
+  html[data-theme="dark"] {
+    --mn-material: #20201e;
+    --mn-material-heavy: #252522;
+  }
+
+  .mn-chrome,
+  .mn-chrome-raised,
+  .mn-page-actions {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  html[data-theme="light"] {
+    --mn-material: #faf9f5;
+    --mn-material-heavy: #ffffff;
+    --mn-border: color-mix(in srgb, var(--mn-ink) 34%, transparent);
+    --mn-border-strong: color-mix(in srgb, var(--mn-ink) 52%, transparent);
+  }
+
+  html[data-theme="dark"] {
+    --mn-material: #121211;
+    --mn-material-heavy: #1c1c1a;
+    --mn-border: color-mix(in srgb, var(--mn-ink) 42%, transparent);
+    --mn-border-strong: color-mix(in srgb, var(--mn-ink) 62%, transparent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -447,5 +620,13 @@ textarea {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .sheet-enter-from > div:last-child,
+  .sheet-leave-to > div:last-child,
+  .toast-enter-from,
+  .toast-leave-to {
+    filter: none;
+    transform: none;
   }
 }
