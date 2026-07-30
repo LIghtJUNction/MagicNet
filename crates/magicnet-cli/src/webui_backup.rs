@@ -1,5 +1,6 @@
+use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{
@@ -10,10 +11,8 @@ use chacha20poly1305::{
 use crate::subscriptions::{
     normalize_subscription_filter_text, validate_subscription_url, validate_subscription_user_agent,
 };
-use crate::{
-    decode_base64, run_magicnet_function, shell_inert_conf_value, write_secret_file,
-    write_text_file, App,
-};
+use crate::utils::replace_module_text_files_transactionally;
+use crate::{decode_base64, run_magicnet_function, shell_inert_conf_value, App};
 
 pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("export") {
@@ -200,9 +199,10 @@ fn verify_legacy_backup_password(text: &str, password: &str) -> Result<(), Strin
 fn restore_backup(app: &App, text: &str) -> Result<(), String> {
     let mut current: Option<String> = None;
     let mut buf = String::new();
+    let mut sections = Vec::new();
     for line in text.lines() {
         if let Some(path) = line.strip_prefix("--- ") {
-            flush_restore(app, current.take(), &buf)?;
+            collect_restore_section(&mut sections, current.take(), &buf);
             current = Some(path.to_string());
             buf.clear();
         } else if current.is_some() {
@@ -210,21 +210,51 @@ fn restore_backup(app: &App, text: &str) -> Result<(), String> {
             buf.push('\n');
         }
     }
-    flush_restore(app, current, &buf)
-}
+    collect_restore_section(&mut sections, current, &buf);
 
-fn flush_restore(app: &App, rel: Option<String>, text: &str) -> Result<(), String> {
-    let Some(rel) = rel else {
-        return Ok(());
-    };
-    if !backup_files().contains(&rel.as_str()) {
+    // Parse and validate the complete backup before touching any persisted
+    // configuration. The previous streaming restore could replace early files
+    // and then fail on a later malformed section, leaving disk and runtime
+    // configuration out of sync.
+    let mut seen = HashSet::new();
+    let mut replacements = Vec::new();
+    for (rel, text) in sections {
+        if !backup_files().contains(&rel.as_str()) {
+            continue;
+        }
+        if !seen.insert(rel.clone()) {
+            return Err(format!("refusing to restore duplicate config section: {rel}"));
+        }
+        validate_restore_section(&rel, &text)?;
+        replacements.push((PathBuf::from(rel), text));
+    }
+    if replacements.is_empty() {
         return Ok(());
     }
+    let replacement_refs = replacements
+        .iter()
+        .map(|(path, text)| (path.as_path(), text.as_str()))
+        .collect::<Vec<_>>();
+    replace_module_text_files_transactionally(app, &replacement_refs)
+}
+
+fn collect_restore_section(
+    sections: &mut Vec<(String, String)>,
+    rel: Option<String>,
+    text: &str,
+) {
+    let Some(rel) = rel else {
+        return;
+    };
+    sections.push((rel, text.to_string()));
+}
+
+fn validate_restore_section(rel: &str, text: &str) -> Result<(), String> {
     // `.conf` files are `.`-sourced by the shell library. A shell-inert value
     // alone is not enough: unknown keys such as PATH can still change the
     // runtime environment. Each restored file therefore has its own fixed
     // schema and value domain.
-    if rel.ends_with(".conf") && !sourced_conf_content_matches_schema(&rel, text) {
+    if rel.ends_with(".conf") && !sourced_conf_content_matches_schema(rel, text) {
         return Err(format!(
             "refusing to restore {rel}: file is shell-sourced and violates its allowlisted schema"
         ));
@@ -249,18 +279,7 @@ fn flush_restore(app: &App, rel: Option<String>, text: &str) -> Result<(), Strin
             ));
         }
     }
-    if secret_backup_file(&rel) {
-        write_secret_file(app, Path::new(&rel), text)
-    } else {
-        write_text_file(app, Path::new(&rel), text)
-    }
-}
-
-fn secret_backup_file(rel: &str) -> bool {
-    matches!(
-        rel,
-        ".config/sing-box/subscription.url" | ".config/magicnet/warp-endpoint.json"
-    )
+    Ok(())
 }
 
 /// Whether every line of a shell-sourced configuration file belongs to its
@@ -441,6 +460,61 @@ mod tests {
         let err = restore_backup(&app, text).unwrap_err();
         assert!(err.contains("block.conf"), "unexpected error: {err}");
         assert!(!app.moddir.join(".config/magicnet/block.conf").exists());
+    }
+
+    #[test]
+    fn restore_validation_failure_leaves_every_existing_config_unchanged() {
+        let app = temp_app();
+        let subscription = app
+            .moddir
+            .join(".config/sing-box/subscription.user-agent");
+        let app_mode = app.moddir.join(".config/magicnet/app-mode.conf");
+        fs::create_dir_all(subscription.parent().expect("subscription parent")).unwrap();
+        fs::create_dir_all(app_mode.parent().expect("app mode parent")).unwrap();
+        fs::write(&subscription, "old-agent\n").unwrap();
+        fs::write(&app_mode, "MAGICNET_APP_MODE=blacklist\n").unwrap();
+
+        let text = concat!(
+            "MagicNet backup v2\n",
+            "--- .config/sing-box/subscription.user-agent\n",
+            "new-agent\n",
+            "--- .config/magicnet/app-mode.conf\n",
+            "MAGICNET_APP_MODE=whitelist\n",
+            "--- .config/magicnet/dns.conf\n",
+            "PATH=/tmp/invalid\n",
+        );
+        let err = restore_backup(&app, text).expect_err("invalid final section must abort");
+
+        assert!(err.contains("dns.conf"), "{err}");
+        assert_eq!(fs::read_to_string(&subscription).unwrap(), "old-agent\n");
+        assert_eq!(
+            fs::read_to_string(&app_mode).unwrap(),
+            "MAGICNET_APP_MODE=blacklist\n"
+        );
+        assert!(!app.moddir.join(".config/magicnet/dns.conf").exists());
+    }
+
+    #[test]
+    fn restore_rejects_duplicate_known_sections_without_writing() {
+        let app = temp_app();
+        let app_mode = app.moddir.join(".config/magicnet/app-mode.conf");
+        fs::create_dir_all(app_mode.parent().expect("app mode parent")).unwrap();
+        fs::write(&app_mode, "MAGICNET_APP_MODE=blacklist\n").unwrap();
+        let text = concat!(
+            "MagicNet backup v2\n",
+            "--- .config/magicnet/app-mode.conf\n",
+            "MAGICNET_APP_MODE=whitelist\n",
+            "--- .config/magicnet/app-mode.conf\n",
+            "MAGICNET_APP_MODE=blacklist\n",
+        );
+
+        let err = restore_backup(&app, text).expect_err("duplicate section must abort");
+
+        assert!(err.contains("duplicate config section"), "{err}");
+        assert_eq!(
+            fs::read_to_string(&app_mode).unwrap(),
+            "MAGICNET_APP_MODE=blacklist\n"
+        );
     }
 
     #[test]
