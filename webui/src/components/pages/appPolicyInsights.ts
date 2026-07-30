@@ -11,12 +11,14 @@ export type AppPolicySummary = {
   items: AppPolicyInsight[];
   conflicts: string[];
   installedProxy: string[];
+  installedDirect: string[];
   installedBypass: string[];
 };
 
 export type AppPolicySafeReportInput = {
   mode: AppPolicyMode;
   proxy: string[];
+  direct: string[];
   bypass: string[];
   summary: AppPolicySummary;
 };
@@ -107,30 +109,37 @@ export function isValidPackageName(pkg: string): boolean {
 export function buildAppPolicySummary(
   mode: AppPolicyMode,
   proxy: string[],
+  direct: string[],
   bypass: string[],
   installedPackages: Set<string>,
   availableRecommendedCount: number
 ): AppPolicySummary {
-  const proxySet = new Set(proxy);
+  const directSet = new Set(direct);
   const bypassSet = new Set(bypass);
-  const conflicts = proxy.filter((pkg) => bypassSet.has(pkg));
+  const conflicts = Array.from(new Set([
+    ...proxy.filter((pkg) => directSet.has(pkg) || bypassSet.has(pkg)),
+    ...direct.filter((pkg) => bypassSet.has(pkg))
+  ]));
   const installedProxy = installedPackages.size ? proxy.filter((pkg) => installedPackages.has(pkg)) : [];
+  const installedDirect = installedPackages.size ? direct.filter((pkg) => installedPackages.has(pkg)) : [];
   const installedBypass = installedPackages.size ? bypass.filter((pkg) => installedPackages.has(pkg)) : [];
   const installedKnown = installedPackages.size > 0;
   const unlisted = mode === "whitelist" ? "绕过 TUN" : "进入 TUN";
   return {
     summary: mode === "whitelist"
-      ? "Proxy 名单强制走 MagicNet proxy；未列出应用绕过 TUN。"
-      : "Proxy 名单强制走 MagicNet proxy；Bypass 名单绕过 TUN，未列出应用正常进入 TUN。",
+      ? "Proxy 强制代理；Direct 在 TUN 内强制直连；未列出应用绕过 TUN。"
+      : "Proxy 强制代理；Direct 在 TUN 内强制直连；Bypass 完全绕过 TUN。",
     conflicts,
     installedProxy,
+    installedDirect,
     installedBypass,
     items: [
       insight("Proxy 强制", `${proxy.length} 个`, proxy.length ? "success" : "neutral"),
-      insight("Bypass 绕过", `${bypass.length} 个`, bypass.length ? "success" : "neutral"),
+      insight("Direct 直连", `${direct.length} 个`, direct.length ? "success" : "neutral"),
+      insight("Bypass TUN", `${bypass.length} 个`, bypass.length ? "warning" : "neutral"),
       insight("未列出应用", unlisted, mode === "blacklist" ? "success" : "neutral"),
       insight("名单冲突", conflicts.length ? `${conflicts.length} 个` : "无", conflicts.length ? "danger" : "success"),
-      insight("当前列表命中", installedKnown ? `Proxy ${installedProxy.length} / Bypass ${installedBypass.length}` : "未读取应用", installedKnown ? "success" : "warning"),
+      insight("当前列表命中", installedKnown ? `P ${installedProxy.length} / D ${installedDirect.length} / B ${installedBypass.length}` : "未读取应用", installedKnown ? "success" : "warning"),
       insight("可应用推荐", `${availableRecommendedCount} 个`, availableRecommendedCount ? "neutral" : "success")
     ]
   };
@@ -142,12 +151,15 @@ export function formatAppPolicySafeReport(input: AppPolicySafeReportInput): stri
     "privacy_note=package names omitted; fingerprints are weak change markers, not privacy proof",
     `mode=${input.mode}`,
     `proxy_count=${input.proxy.length}`,
+    `direct_count=${input.direct.length}`,
     `bypass_count=${input.bypass.length}`,
     `summary=${input.summary.summary}`,
     `conflict_count=${input.summary.conflicts.length}`,
     `current_list_proxy=${input.summary.installedProxy.length}`,
+    `current_list_direct=${input.summary.installedDirect.length}`,
     `current_list_bypass=${input.summary.installedBypass.length}`,
     `proxy_fingerprint=${fingerprintList(input.proxy)}`,
+    `direct_fingerprint=${fingerprintList(input.direct)}`,
     `bypass_fingerprint=${fingerprintList(input.bypass)}`,
     `conflict_fingerprint=${fingerprintList(input.summary.conflicts)}`,
     "",
@@ -162,10 +174,12 @@ export function formatAppPolicyFullReport(input: AppPolicySafeReportInput): stri
     "privacy_note=contains package names from app policy lists",
     `mode=${input.mode}`,
     `proxy_count=${input.proxy.length}`,
+    `direct_count=${input.direct.length}`,
     `bypass_count=${input.bypass.length}`,
     `summary=${input.summary.summary}`,
     `conflict_count=${input.summary.conflicts.length}`,
     `current_list_proxy=${input.summary.installedProxy.length}`,
+    `current_list_direct=${input.summary.installedDirect.length}`,
     `current_list_bypass=${input.summary.installedBypass.length}`,
     "",
     "[insights]",
@@ -173,6 +187,9 @@ export function formatAppPolicyFullReport(input: AppPolicySafeReportInput): stri
     "",
     "[proxy]",
     ...input.proxy,
+    "",
+    "[direct]",
+    ...input.direct,
     "",
     "[bypass]",
     ...input.bypass

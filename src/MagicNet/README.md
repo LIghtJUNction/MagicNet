@@ -119,6 +119,9 @@ MagicNet 新安装默认按节点名过滤 `免费`、`free`、`HK`、`香港`�
 
 MagicNet 目前只支持 `tun` 透明模式，使用 `sing-box` `magicnet0` TUN 接管透明流量。旧配置中的 `proxy`、`external-tun`、`hybrid` 会安全归一为 `tun`，CLI 不再接受这些模式。
 
+- 分应用策略分为三类：`Proxy` 强制走代理；`Direct` 仍进入 TUN，但强制走 `direct` 出站；`Bypass TUN` 则让应用完全离开 MagicNet。
+- `Bypass TUN` 不等于断网或阻止访问。应用离开 MagicNet 后会使用系统上游网络；如果上游网络或另一个 VPN 能访问 Google，加入 Bypass 后的 Chrome 仍然可以访问。
+- 要验证 Chrome 没有使用 MagicNet 代理，请在 WebUI“应用策略”中选择 `Direct`，或执行 `cli app add com.android.chrome direct`。只有多 VPN 共存或明确需要完全避开 MagicNet 时才选择 `Bypass TUN`。
 - 默认网络策略是双栈、DNS 优先 IPv4、`mixed` TUN 栈、MTU `1400` 和 UDP 会话超时 `5m`。
 - 可在 WebUI 的“UDP / IPv6”卡片切换，或执行 `cli network set <ipv4_only|prefer_ipv4|prefer_ipv6> <1280-1500> <1m|3m|5m|10m|15m|30m>`。
 - `ipv4_only` 是网络或代理节点不支持 IPv6 时的兼容回退；切回双栈会自动移除 MagicNet 管理的 IPv6 拦截规则。

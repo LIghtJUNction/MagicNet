@@ -340,13 +340,14 @@ export function parseHealth(text: string): HealthItem[] {
 }
 
 export function parseApps(text: string): AppPolicy {
-  const policy: AppPolicy = { mode: "blacklist", proxy: [], bypass: [] };
-  let section: "proxy" | "bypass" | null = null;
+  const policy: AppPolicy = { mode: "blacklist", proxy: [], direct: [], bypass: [] };
+  let section: "proxy" | "direct" | "bypass" | null = null;
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (!line) return;
     if (line.startsWith("mode=")) policy.mode = line.includes("whitelist") ? "whitelist" : "blacklist";
     else if (line === "proxy apps:") section = "proxy";
+    else if (line === "direct apps:") section = "direct";
     else if (line === "bypass apps:") section = "bypass";
     else if (section) policy[section].push(line);
   });

@@ -92,7 +92,7 @@ const state = reactive({
   runtime: { ...runtimeDefaults },
   health: [] as HealthItem[],
   pingtest: "",
-  appPolicy: { mode: "blacklist", proxy: [], bypass: [] } as AppPolicy,
+  appPolicy: { mode: "blacklist", proxy: [], direct: [], bypass: [] } as AppPolicy,
   packages: [] as PackageInfo[],
   packageQuery: "",
   packageInput: "",

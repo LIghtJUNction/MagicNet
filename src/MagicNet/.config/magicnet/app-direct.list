@@ -1,0 +1,6 @@
+# Packages that stay inside MagicNet TUN but always use the direct outbound.
+# One package name per line.
+#
+# Use this when an app must avoid proxy nodes while remaining observable and
+# controlled by MagicNet. Use app-bypass.list only when the app must leave the
+# TUN entirely, for example another VPN client.

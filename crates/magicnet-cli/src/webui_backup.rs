@@ -353,6 +353,7 @@ fn backup_files() -> &'static [&'static str] {
         ".config/sing-box/subscription-filter.list",
         ".config/magicnet/app-mode.conf",
         ".config/magicnet/app-proxy.list",
+        ".config/magicnet/app-direct.list",
         ".config/magicnet/app-bypass.list",
         ".config/magicnet/block.conf",
         ".config/magicnet/block-domain-suffix.list",

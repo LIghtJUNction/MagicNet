@@ -189,7 +189,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "app",
-        usage: "cli app {list|packages [query]|mode <blacklist|whitelist>|add <package> [proxy|bypass]|add-many <proxy|bypass> <package...>|remove <package>|apply}",
+        usage: "cli app {list|packages [query]|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}",
     },
     CommandHelp {
         command: "diagnose",
@@ -557,7 +557,7 @@ mod command_help_tests {
     fn app_help_lists_implemented_package_commands() {
         let usage = usage_for("app");
         assert!(usage.contains("packages [query]"));
-        assert!(usage.contains("add-many <proxy|bypass> <package...>"));
+        assert!(usage.contains("add-many <proxy|direct|bypass> <package...>"));
     }
 
     #[test]

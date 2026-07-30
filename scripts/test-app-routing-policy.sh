@@ -79,16 +79,27 @@ assert_proxy_rule_and_order() {
           | select((.package_name // []) | index("__magicnet_app_proxy__"))][0]
          | .package_name == ["__magicnet_app_proxy__", "com.example.proxy"]
            and .outbound == "proxy")
+    and ([.route.rules[]
+          | select((.package_name // []) | index("__magicnet_app_direct__"))][0]
+         | .package_name == ["__magicnet_app_direct__", "com.example.direct-force"]
+           and .outbound == "direct")
     and (([.route.rules | to_entries[]
             | select(.value | (has("action") or (.protocol == "icmp" and .outbound == "block")))
             | .key] | max) as $guard
          | ([.route.rules | to_entries[]
+              | select((.value.package_name // []) | index("__magicnet_app_direct__"))
+              | .key][0]) as $direct
+         | ([.route.rules | to_entries[]
               | select((.value.package_name // []) | index("__magicnet_app_proxy__"))
               | .key][0]) as $proxy
          | ([.route.rules | to_entries[]
-              | select(.value.outbound == "direct" and ((.value.package_name // .value.domain_suffix // []) | length) > 0)
+              | select(
+                  .value.outbound == "direct"
+                  and ((.value.package_name // []) | index("__magicnet_app_direct__")) == null
+                  and ((.value.package_name // .value.domain_suffix // []) | length) > 0
+                )
               | .key] | min) as $business
-         | $guard < $proxy and $proxy < $business)
+         | $guard < $direct and $direct < $proxy and $proxy < $business)
     and (([.route.rules | to_entries[]
             | select(.value == {"domain_suffix": ["local", "home.arpa", "lan"], "outbound": "lan"})
             | .key]) as $lan
@@ -110,7 +121,7 @@ assert_blacklist() {
 assert_whitelist() {
   "$JQ_BIN" -e '
     (.inbounds[] | select(.type == "tun")
-      | .include_package == ["com.example.proxy"] and (has("exclude_package") | not))
+      | .include_package == ["com.example.direct-force", "com.example.proxy"] and (has("exclude_package") | not))
   ' "$MODDIR/.config/sing-box/config.json" >/dev/null
   assert_proxy_rule_and_order
 }
@@ -136,6 +147,10 @@ run_case() {
 com.example.proxy
 com.example.proxy
 EOF
+  cat >"$MODDIR/.config/magicnet/app-direct.list" <<'EOF'
+com.example.direct-force
+com.example.direct-force
+EOF
   cat >"$MODDIR/.config/magicnet/app-bypass.list" <<'EOF'
 com.example.bypass
 com.example.bypass
@@ -153,7 +168,8 @@ EOF
   apply_policy "$implementation"
   apply_policy "$implementation"
   "$JQ_BIN" -e '
-    [.route.rules[] | select((.package_name // []) | index("__magicnet_app_proxy__"))] | length == 0
+    ([.route.rules[] | select((.package_name // []) | index("__magicnet_app_proxy__"))] | length) == 0
+    and ([.route.rules[] | select((.package_name // []) | index("__magicnet_app_direct__"))] | length) == 1
   ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 
   printf '%s\n' 'MAGICNET_APP_MODE=whitelist' >"$MODDIR/.config/magicnet/app-mode.conf"
