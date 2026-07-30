@@ -350,9 +350,9 @@ const MODULE_TRANSACTION_STAGING_PARENT: &str = ".tmp";
 const MODULE_TRANSACTION_STAGING_DIRECTORY: &str = "magicnet-app-transaction";
 
 /// Replaces ordinary module files as one recoverable transaction. All targets
-/// must be distinct strict relative paths below the same module directory.
-/// New contents and backups stay in a private module-root staging directory,
-/// so no stage name is ever resolved through the target directory.
+/// must be distinct strict relative paths below the module root. New contents
+/// and backups stay in a private module-root staging directory, so no stage
+/// name is ever resolved through a target directory.
 pub(crate) fn replace_module_text_files_transactionally(
     app: &App,
     replacements: &[(&Path, &str)],
@@ -449,37 +449,37 @@ where
     W: FnMut(&mut File, &[u8]) -> Result<(), String>,
     F: FnMut(ModuleTransactionRename, &File, &OsStr, &File, &OsStr) -> Result<(), String>,
 {
-    if replacements.len() < 2 {
-        return Err("module transaction requires at least two targets".to_string());
+    if replacements.is_empty() {
+        return Err("module transaction requires at least one target".to_string());
     }
     let targets = replacements
         .iter()
         .map(|(relative, _)| split_module_relative_file(relative))
         .collect::<Result<Vec<_>, _>>()?;
-    let target_directory = &targets[0].directory;
     if targets
         .iter()
-        .any(|target| target.directory.as_path() != target_directory.as_path())
-        || targets
-            .iter()
-            .enumerate()
-            .any(|(index, target)| {
-                targets[..index]
-                    .iter()
-                    .any(|seen| seen.name.as_os_str() == target.name.as_os_str())
+        .enumerate()
+        .any(|(index, target)| {
+            targets[..index].iter().any(|seen| {
+                seen.directory == target.directory
+                    && seen.name.as_os_str() == target.name.as_os_str()
             })
+        })
     {
-        return Err(
-            "module transaction targets must be distinct files in one directory".to_string(),
-        );
+        return Err("module transaction targets must be distinct files".to_string());
     }
     let module_root = open_module_root(app)?;
-    let directory = open_module_directory_from_root(
-        module_root
-            .try_clone()
-            .map_err(|err| format!("clone module root directory: {err}"))?,
-        target_directory,
-    )?;
+    let directories = targets
+        .iter()
+        .map(|target| {
+            open_module_directory_from_root(
+                module_root
+                    .try_clone()
+                    .map_err(|err| format!("clone module root directory: {err}"))?,
+                &target.directory,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let names = targets
         .into_iter()
         .map(|target| target.name)
@@ -490,9 +490,11 @@ where
         .collect::<Vec<_>>();
     let snapshots = names
         .iter()
-        .map(|name| snapshot_module_transaction_target(&directory, name))
+        .zip(&directories)
+        .map(|(name, directory)| snapshot_module_transaction_target(directory, name))
         .collect::<Result<Vec<_>, _>>()?;
-    let staging_directory = open_module_transaction_staging_directory(&module_root, &directory)?;
+    let staging_directory =
+        open_module_transaction_staging_directory(&module_root, &directories)?;
     let mut stages = std::iter::repeat_with(|| None)
         .take(names.len())
         .collect::<Vec<Option<ModuleTransactionStage>>>();
@@ -521,7 +523,7 @@ where
             .expect("each module transaction stage exists before commit");
         let commit = match commit_module_transaction_stage(
             &staging_directory,
-            &directory,
+            &directories[index],
             &names[index],
             &snapshots[index],
             stage,
@@ -541,7 +543,7 @@ where
                     if let Some(commit) = committed[rollback_index].take() {
                         if let Err(restore_err) = rollback_module_transaction_commit(
                             &staging_directory,
-                            &directory,
+                            &directories[rollback_index],
                             &names[rollback_index],
                             commit,
                             rollback_index + 1,
@@ -636,7 +638,7 @@ fn open_existing_private_module_file(
 
 fn open_module_transaction_staging_directory(
     module_root: &File,
-    target_directory: &File,
+    target_directories: &[File],
 ) -> Result<File, String> {
     let temporary = ensure_private_module_directory_at(
         module_root,
@@ -646,18 +648,20 @@ fn open_module_transaction_staging_directory(
         &temporary,
         OsStr::new(MODULE_TRANSACTION_STAGING_DIRECTORY),
     )?;
-    let target_device = target_directory
-        .metadata()
-        .map_err(|err| format!("inspect module transaction target directory: {err}"))?
-        .dev();
     let staging_device = staging
         .metadata()
         .map_err(|err| format!("inspect module transaction staging directory: {err}"))?
         .dev();
-    if target_device != staging_device {
-        return Err(
-            "module transaction staging directory is not on the target filesystem".to_string(),
-        );
+    for target_directory in target_directories {
+        let target_device = target_directory
+            .metadata()
+            .map_err(|err| format!("inspect module transaction target directory: {err}"))?
+            .dev();
+        if target_device != staging_device {
+            return Err(
+                "module transaction staging directory is not on the target filesystem".to_string(),
+            );
+        }
     }
     Ok(staging)
 }
@@ -1385,6 +1389,94 @@ mod tests {
 
         assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
         assert_eq!(fs::read_to_string(&proxy).unwrap(), "new-proxy\n");
+        assert_no_transaction_stages(&app);
+        fs::remove_dir_all(&directory).expect("remove test directory");
+    }
+
+    #[test]
+    fn module_transaction_replaces_files_across_module_directories() {
+        let (app, directory) = test_app("transaction-cross-directory");
+        let (bypass, _) = prepare_transaction_app_lists(&app);
+        let subscription = app
+            .moddir
+            .join(".config/sing-box/subscription.user-agent");
+        fs::create_dir_all(subscription.parent().expect("subscription parent"))
+            .expect("create subscription directory");
+        fs::write(&subscription, "old-agent\n").expect("write subscription fixture");
+
+        replace_module_text_files_transactionally(
+            &app,
+            &[
+                (
+                    Path::new(".config/sing-box/subscription.user-agent"),
+                    "new-agent\n",
+                ),
+                (
+                    Path::new(".config/magicnet/app-bypass.list"),
+                    "new-bypass\n",
+                ),
+            ],
+        )
+        .expect("replace files across module directories");
+
+        assert_eq!(fs::read_to_string(&subscription).unwrap(), "new-agent\n");
+        assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
+        assert_no_transaction_stages(&app);
+        fs::remove_dir_all(&directory).expect("remove test directory");
+    }
+
+    #[test]
+    fn module_transaction_rolls_back_across_directories_after_replace_failure() {
+        let (app, directory) = test_app("transaction-cross-directory-rollback");
+        let (bypass, proxy) = prepare_transaction_app_lists(&app);
+        let subscription = app
+            .moddir
+            .join(".config/sing-box/subscription.user-agent");
+        fs::create_dir_all(subscription.parent().expect("subscription parent"))
+            .expect("create subscription directory");
+        fs::write(&subscription, "old-agent\n").expect("write subscription fixture");
+        let mut replace_count = 0usize;
+
+        let error = replace_module_text_files_transactionally_with_rename(
+            &app,
+            &[
+                (
+                    Path::new(".config/sing-box/subscription.user-agent"),
+                    "new-agent\n",
+                ),
+                (
+                    Path::new(".config/magicnet/app-bypass.list"),
+                    "new-bypass\n",
+                ),
+                (
+                    Path::new(".config/magicnet/app-proxy.list"),
+                    "new-proxy\n",
+                ),
+            ],
+            |operation, source_directory, source, destination_directory, destination| {
+                replace_count += 1;
+                if replace_count == 3 {
+                    Err("injected cross-directory replace failure".to_string())
+                } else {
+                    rename_module_transaction_entry(
+                        operation,
+                        source_directory,
+                        source,
+                        destination_directory,
+                        destination,
+                    )
+                }
+            },
+        )
+        .expect_err("third replacement must fail");
+
+        assert!(
+            error.contains("injected cross-directory replace failure"),
+            "{error}"
+        );
+        assert_eq!(fs::read_to_string(&subscription).unwrap(), "old-agent\n");
+        assert_eq!(fs::read_to_string(&bypass).unwrap(), "old-bypass\n");
+        assert_eq!(fs::read_to_string(&proxy).unwrap(), "old-proxy\n");
         assert_no_transaction_stages(&app);
         fs::remove_dir_all(&directory).expect("remove test directory");
     }
