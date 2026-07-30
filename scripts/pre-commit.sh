@@ -40,6 +40,8 @@ bash scripts/test-wechat-routing.sh
 bash scripts/test-action-routing.sh
 bash scripts/test-anthropic-routing.sh
 bash scripts/singbox-subscription-protocol-smoke.sh
+bash scripts/test-singbox-pid-discovery.sh
+bash scripts/test-subscription-activation-order.sh
 bash scripts/test-subscription-lifecycle.sh
 bash scripts/test-release-integrity.sh
 
