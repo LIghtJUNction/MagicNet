@@ -74,6 +74,12 @@ if grep -q -- '--proxy' "$tmp/log"; then
 fi
 test "$(cat "$tmp/direct")" = ok
 : >"$tmp/log"
+PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_try_fetch_subscription https://1.1.1.1:8443/sub "$tmp/public-ip" 2 7
+grep -q '^resolver sub resolve-host 1.1.1.1 8443$' "$tmp/log"
+grep -q 'curl .*--resolve 1.1.1.1:8443:1.1.1.1' "$tmp/log"
+test "$(cat "$tmp/public-ip")" = ok
+: >"$tmp/log"
 if MAGICNET_RESOLVE_RESULT=private PATH="$tmp/bin:$PATH" \
   magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/private" 2 7; then
   exit 1
