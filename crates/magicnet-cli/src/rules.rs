@@ -5,10 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::service::restart_current_core;
-use crate::utils::clean_module_lines;
+use crate::utils::{clean_module_lines, replace_module_text_files_transactionally};
 use crate::{clean_lines, run_magicnet_function, write_text_file, App};
 
 pub(crate) use block::block_cmd;
+
+const APP_POLICY_TARGETS: [&str; 3] = ["proxy", "direct", "bypass"];
 
 pub(crate) fn route_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("list") {
@@ -119,12 +121,13 @@ fn app_add(app: &App, args: &[String]) -> Result<(), String> {
     if !matches!(target, "proxy" | "direct" | "bypass") {
         return Err("Target must be proxy, direct, or bypass".to_string());
     }
-    for other in ["proxy", "direct", "bypass"] {
-        if other != target {
-            update_app_list_line(app, other, package, false)?;
-        }
+    let target_index = app_policy_target_index(target)?;
+    let mut lists = app_policy_lists(app)?;
+    for lines in &mut lists {
+        lines.retain(|line| line != package);
     }
-    update_app_list_line(app, target, package, true)?;
+    lists[target_index].push(package.to_string());
+    write_app_policy_lists_transactionally(app, &lists)?;
     app_apply_and_restart(app)?;
     println!("[info] Added {package} to {target} app list");
     Ok(())
@@ -135,34 +138,26 @@ fn app_add_many(app: &App, args: &[String]) -> Result<(), String> {
     if !matches!(target, "proxy" | "direct" | "bypass") || args.len() < 3 {
         return Err("Usage: cli app add-many <proxy|direct|bypass> <package...>".to_string());
     }
-    let target_relative = app_file_relative(target)?;
-    let mut lines = app_list_lines(app, target)?;
+    let target_index = app_policy_target_index(target)?;
     let packages = args.iter().skip(2).map(String::as_str).collect::<Vec<_>>();
-    let mut added = 0usize;
     for &package in &packages {
         if !valid_package_name(package) {
             return Err(format!("invalid package name: {package}"));
         }
-        if !lines.iter().any(|line| line == package) {
-            lines.push(package.to_string());
+    }
+    let mut lists = app_policy_lists(app)?;
+    let mut added = 0usize;
+    for &package in &packages {
+        let already_targeted = lists[target_index].iter().any(|line| line == package);
+        for lines in &mut lists {
+            lines.retain(|line| line != package);
+        }
+        if !already_targeted {
             added += 1;
         }
+        lists[target_index].push(package.to_string());
     }
-    for other in ["proxy", "direct", "bypass"] {
-        if other == target {
-            continue;
-        }
-        let filtered = app_list_lines(app, other)?
-            .into_iter()
-            .filter(|line| !packages.iter().any(|package| *package == line))
-            .collect::<Vec<_>>();
-        write_text_file(
-            app,
-            Path::new(app_file_relative(other)?),
-            &unique_lines_text(&filtered),
-        )?;
-    }
-    write_text_file(app, Path::new(target_relative), &unique_lines_text(&lines))?;
+    write_app_policy_lists_transactionally(app, &lists)?;
     app_apply_and_restart(app)?;
     println!("[info] Added {added} packages to {target} app list");
     Ok(())
@@ -177,21 +172,20 @@ fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
     if !valid_package_name(package) {
         return Err(format!("invalid package name: {package}"));
     }
+    let mut lists = app_policy_lists(app)?;
     match target {
-        Some("proxy" | "direct" | "bypass") => {
-            update_app_list_line(app, target.unwrap(), package, false)?;
-        }
+        Some("proxy" | "direct" | "bypass") => lists[app_policy_target_index(target.unwrap())?]
+            .retain(|line| line != package),
         Some(_) => return Err("Target must be proxy, direct, or bypass".to_string()),
-        None => {
-            update_app_list_line(app, "proxy", package, false)?;
-            update_app_list_line(app, "direct", package, false)?;
-            update_app_list_line(app, "bypass", package, false)?;
-        }
+        None => lists
+            .iter_mut()
+            .for_each(|lines| lines.retain(|line| line != package)),
     }
+    write_app_policy_lists_transactionally(app, &lists)?;
     app_apply_and_restart(app)?;
     println!(
         "[info] Removed {package} from {} app list",
-        target.unwrap_or("both")
+        target.unwrap_or("all")
     );
     Ok(())
 }
@@ -293,6 +287,37 @@ fn app_file_relative(target: &str) -> Result<&'static str, String> {
     }
 }
 
+fn app_policy_target_index(target: &str) -> Result<usize, String> {
+    APP_POLICY_TARGETS
+        .iter()
+        .position(|candidate| *candidate == target)
+        .ok_or_else(|| "Target must be proxy, direct, or bypass".to_string())
+}
+
+fn app_policy_lists(app: &App) -> Result<[Vec<String>; 3], String> {
+    Ok([
+        app_list_lines(app, APP_POLICY_TARGETS[0])?,
+        app_list_lines(app, APP_POLICY_TARGETS[1])?,
+        app_list_lines(app, APP_POLICY_TARGETS[2])?,
+    ])
+}
+
+fn write_app_policy_lists_transactionally(
+    app: &App,
+    lists: &[Vec<String>; 3],
+) -> Result<(), String> {
+    let texts: [String; 3] =
+        std::array::from_fn(|index| unique_lines_text(&lists[index]));
+    replace_module_text_files_transactionally(
+        app,
+        &[
+            (Path::new(app_file_relative(APP_POLICY_TARGETS[0])?), texts[0].as_str()),
+            (Path::new(app_file_relative(APP_POLICY_TARGETS[1])?), texts[1].as_str()),
+            (Path::new(app_file_relative(APP_POLICY_TARGETS[2])?), texts[2].as_str()),
+        ],
+    )
+}
+
 fn app_mode_value(app: &App) -> Result<Option<String>, String> {
     Ok(
         clean_module_lines(app, Path::new(".config/magicnet/app-mode.conf"))?
@@ -317,18 +342,6 @@ fn app_mode_value(app: &App) -> Result<Option<String>, String> {
 
 fn app_list_lines(app: &App, target: &str) -> Result<Vec<String>, String> {
     clean_module_lines(app, Path::new(app_file_relative(target)?))
-}
-
-fn update_app_list_line(app: &App, target: &str, item: &str, add: bool) -> Result<(), String> {
-    let relative = app_file_relative(target)?;
-    let mut lines: Vec<String> = app_list_lines(app, target)?
-        .into_iter()
-        .filter(|line| line != item)
-        .collect();
-    if add {
-        lines.push(item.trim().to_string());
-    }
-    write_text_file(app, Path::new(relative), &unique_lines_text(&lines))
 }
 
 fn print_app_list_lines(lines: &[String]) {
@@ -454,28 +467,32 @@ mod tests {
     }
 
     #[test]
-    fn app_list_transaction_replaces_both_destinations() {
+    fn app_list_transaction_replaces_all_destinations() {
         let dir = test_dir("success");
         let module_root = dir.join("module");
         let config = module_root.join(".config/magicnet");
         fs::create_dir_all(&config).unwrap();
         let app = App::for_test(module_root);
-        let first = config.join("app-bypass.list");
-        let second = config.join("app-proxy.list");
-        fs::write(&first, "old-bypass\n").unwrap();
-        fs::write(&second, "old-proxy\n").unwrap();
+        let proxy = config.join("app-proxy.list");
+        let direct = config.join("app-direct.list");
+        let bypass = config.join("app-bypass.list");
+        fs::write(&proxy, "old-proxy\n").unwrap();
+        fs::write(&direct, "old-direct\n").unwrap();
+        fs::write(&bypass, "old-bypass\n").unwrap();
 
-        crate::utils::replace_module_text_files_transactionally(
+        write_app_policy_lists_transactionally(
             &app,
-            Path::new(".config/magicnet/app-bypass.list"),
-            "new-bypass\n",
-            Path::new(".config/magicnet/app-proxy.list"),
-            "new-proxy\n",
+            &[
+                vec!["new-proxy".to_string()],
+                vec!["new-direct".to_string()],
+                vec!["new-bypass".to_string()],
+            ],
         )
         .unwrap();
 
-        assert_eq!(fs::read_to_string(&first).unwrap(), "new-bypass\n");
-        assert_eq!(fs::read_to_string(&second).unwrap(), "new-proxy\n");
+        assert_eq!(fs::read_to_string(&proxy).unwrap(), "new-proxy\n");
+        assert_eq!(fs::read_to_string(&direct).unwrap(), "new-direct\n");
+        assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
         fs::remove_dir_all(dir).unwrap();
     }
 

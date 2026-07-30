@@ -1,4 +1,12 @@
-# MagicNet
+<p align="center">
+  <img src="./icon.png" alt="MagicNet Logo" width="180" />
+</p>
+
+<h1 align="center">MagicNet</h1>
+
+<p align="center">
+  Android root 设备上的 sing-box TUN 网络工作台
+</p>
 
 MagicNet 是 Android root 网络模块：用 `sing-box` 的 `magicnet0` TUN 接管、分流和代理设备流量。
 

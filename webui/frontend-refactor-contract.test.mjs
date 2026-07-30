@@ -17,7 +17,7 @@ const src = join(root, "src");
 const pagesDir = join(src, "components", "pages");
 const appPath = join(src, "App.vue");
 const stylesPath = join(src, "styles.css");
-const publicAsset = join(root, "public", "magicnet-network-card.svg");
+const logoAsset = join(root, "..", "icon.png");
 const distDir = join(root, "dist");
 
 function read(path) {
@@ -110,11 +110,16 @@ assert.doesNotMatch(
 assert.doesNotMatch(styles, /page-arrive|@keyframes page-arrive/, "page-arrive enter animation must be removed from default CSS");
 assert.match(styles, /background:\s*var\(--mn-ivory\)/, "body/html must use flat ivory field");
 
-// --- illustration asset present and anthropic-art form grammar ---
-const svg = read(publicAsset);
-assert.match(svg, /#BCD1CA/i, "illustration must use cactus full-frame field");
-assert.match(svg, /#FAF9F5/i, "illustration must include ivory carrier");
-assert.match(svg, /#141413/i, "illustration must use near-black linework");
+// --- shared logo asset: valid square PNG, large enough for module stores + WebUI ---
+assert.ok(existsSync(logoAsset), `missing shipped logo: ${logoAsset}`);
+const logo = readFileSync(logoAsset);
+assert.deepEqual(
+  [...logo.subarray(0, 8)],
+  [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  "icon.png must be a PNG",
+);
+assert.equal(logo.readUInt32BE(16), logo.readUInt32BE(20), "icon.png must be square");
+assert.ok(logo.readUInt32BE(16) >= 512, "icon.png must be at least 512px");
 
 // --- App shell: lazy pages, no full remount key, branding asset ---
 const app = read(appPath);
@@ -130,7 +135,7 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(app, /:key=["']activeTab["']/, "tab switches must not remount via :key=activeTab");
 assert.doesNotMatch(app, /class=["'][^"']*page-enter/, "active page surface must not use page-enter remount animation class");
-assert.match(app, /magicnet-network-card\.svg/, "shell must reference the illustration asset");
+assert.match(app, /MAGICNET_LOGO_URL/, "shell must reference the shared MagicNet logo");
 assert.match(app, /控制|配置|应用|黑名单|诊断/, "primary nav labels must remain");
 assert.match(app, /订阅|工具|面板|输出/, "advanced nav labels must remain");
 assert.match(app, /createIssue|refreshAll|openExternal/, "header actions must remain wired");
@@ -170,8 +175,10 @@ assert.match(styles, /--mn-on-accent/, "styles must define on-accent text for fi
 assert.match(styles, /\.mn-page-actions/, "styles must define sticky page action bar");
 const mainTs = read(join(src, "main.ts"));
 assert.match(mainTs, /bootstrapTheme/, "main.ts must bootstrap theme before mount");
+assert.match(mainTs, /installMagicNetFavicon/, "main.ts must install the shared logo as favicon");
 const indexHtml = read(join(root, "index.html"));
 assert.match(indexHtml, /color-scheme|data-theme|magicnet\.webui\.theme/, "index.html must prevent theme flash");
+assert.match(indexHtml, /id="magicnet-favicon"[^>]*type="image\/png"/, "index.html must expose the favicon target");
 
 // --- Theme root: design tokens + shared statusTone helper (primary guarantee) ---
 const statusTonePath = join(src, "lib", "statusTone.ts");
@@ -252,10 +259,8 @@ if (existsSync(distDir)) {
   const indexHtml = read(join(distDir, "index.html"));
   assert.match(indexHtml, /MagicNet/, "built index must keep MagicNet branding");
   assert.match(indexHtml, /assets\//, "built index must reference assets/");
-  assert.ok(
-    existsSync(join(distDir, "magicnet-network-card.svg")),
-    "built dist must include magicnet-network-card.svg from public/",
-  );
+  const pngAssets = readdirSync(assetsDir).filter((name) => name.endsWith(".png"));
+  assert.ok(pngAssets.length >= 1, "built dist must include the shared MagicNet PNG logo");
 }
 
 console.log("frontend-refactor-contract: ok");

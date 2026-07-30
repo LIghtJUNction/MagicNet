@@ -349,23 +349,17 @@ pub(crate) fn write_kv(
 const MODULE_TRANSACTION_STAGING_PARENT: &str = ".tmp";
 const MODULE_TRANSACTION_STAGING_DIRECTORY: &str = "magicnet-app-transaction";
 
-/// Replaces two ordinary module files as one recoverable transaction. Both
-/// targets must be strict relative paths below the same module directory.
+/// Replaces ordinary module files as one recoverable transaction. All targets
+/// must be distinct strict relative paths below the same module directory.
 /// New contents and backups stay in a private module-root staging directory,
 /// so no stage name is ever resolved through the target directory.
 pub(crate) fn replace_module_text_files_transactionally(
     app: &App,
-    first_relative: &Path,
-    first_text: &str,
-    second_relative: &Path,
-    second_text: &str,
+    replacements: &[(&Path, &str)],
 ) -> Result<(), String> {
     replace_module_text_files_transactionally_with_rename(
         app,
-        first_relative,
-        first_text,
-        second_relative,
-        second_text,
+        replacements,
         rename_module_transaction_entry,
     )
 }
@@ -414,10 +408,7 @@ enum ModuleFileSnapshot {
 
 fn replace_module_text_files_transactionally_with_rename<F>(
     app: &App,
-    first_relative: &Path,
-    first_text: &str,
-    second_relative: &Path,
-    second_text: &str,
+    replacements: &[(&Path, &str)],
     rename: F,
 ) -> Result<(), String>
 where
@@ -425,10 +416,7 @@ where
 {
     replace_module_text_files_transactionally_with_operations(
         app,
-        first_relative,
-        first_text,
-        second_relative,
-        second_text,
+        replacements,
         write_and_sync_module_transaction_stage,
         rename,
     )
@@ -437,10 +425,7 @@ where
 #[cfg(test)]
 fn replace_module_text_files_transactionally_with_stage_writer<W>(
     app: &App,
-    first_relative: &Path,
-    first_text: &str,
-    second_relative: &Path,
-    second_text: &str,
+    replacements: &[(&Path, &str)],
     stage_writer: W,
 ) -> Result<(), String>
 where
@@ -448,10 +433,7 @@ where
 {
     replace_module_text_files_transactionally_with_operations(
         app,
-        first_relative,
-        first_text,
-        second_relative,
-        second_text,
+        replacements,
         stage_writer,
         rename_module_transaction_entry,
     )
@@ -459,10 +441,7 @@ where
 
 fn replace_module_text_files_transactionally_with_operations<W, F>(
     app: &App,
-    first_relative: &Path,
-    first_text: &str,
-    second_relative: &Path,
-    second_text: &str,
+    replacements: &[(&Path, &str)],
     mut stage_writer: W,
     mut rename: F,
 ) -> Result<(), String>
@@ -470,9 +449,26 @@ where
     W: FnMut(&mut File, &[u8]) -> Result<(), String>,
     F: FnMut(ModuleTransactionRename, &File, &OsStr, &File, &OsStr) -> Result<(), String>,
 {
-    let first = split_module_relative_file(first_relative)?;
-    let second = split_module_relative_file(second_relative)?;
-    if first.directory != second.directory || first.name == second.name {
+    if replacements.len() < 2 {
+        return Err("module transaction requires at least two targets".to_string());
+    }
+    let targets = replacements
+        .iter()
+        .map(|(relative, _)| split_module_relative_file(relative))
+        .collect::<Result<Vec<_>, _>>()?;
+    let target_directory = &targets[0].directory;
+    if targets
+        .iter()
+        .any(|target| target.directory.as_path() != target_directory.as_path())
+        || targets
+            .iter()
+            .enumerate()
+            .any(|(index, target)| {
+                targets[..index]
+                    .iter()
+                    .any(|seen| seen.name.as_os_str() == target.name.as_os_str())
+            })
+    {
         return Err(
             "module transaction targets must be distinct files in one directory".to_string(),
         );
@@ -482,17 +478,27 @@ where
         module_root
             .try_clone()
             .map_err(|err| format!("clone module root directory: {err}"))?,
-        &first.directory,
+        target_directory,
     )?;
-    let names = [first.name, second.name];
-    let contents = [first_text.as_bytes(), second_text.as_bytes()];
-    let snapshots = [
-        snapshot_module_transaction_target(&directory, &names[0])?,
-        snapshot_module_transaction_target(&directory, &names[1])?,
-    ];
+    let names = targets
+        .into_iter()
+        .map(|target| target.name)
+        .collect::<Vec<_>>();
+    let contents = replacements
+        .iter()
+        .map(|(_, text)| text.as_bytes())
+        .collect::<Vec<_>>();
+    let snapshots = names
+        .iter()
+        .map(|name| snapshot_module_transaction_target(&directory, name))
+        .collect::<Result<Vec<_>, _>>()?;
     let staging_directory = open_module_transaction_staging_directory(&module_root, &directory)?;
-    let mut stages: [Option<ModuleTransactionStage>; 2] = [None, None];
-    let mut committed: [Option<ModuleTransactionCommit>; 2] = [None, None];
+    let mut stages = std::iter::repeat_with(|| None)
+        .take(names.len())
+        .collect::<Vec<Option<ModuleTransactionStage>>>();
+    let mut committed = std::iter::repeat_with(|| None)
+        .take(names.len())
+        .collect::<Vec<Option<ModuleTransactionCommit>>>();
 
     for index in 0..stages.len() {
         match create_module_transaction_stage(
@@ -1062,7 +1068,7 @@ where
 
 fn cleanup_module_transaction_stages(
     staging_directory: &File,
-    stages: &mut [Option<ModuleTransactionStage>; 2],
+    stages: &mut [Option<ModuleTransactionStage>],
 ) -> Vec<String> {
     let mut errors = Vec::new();
     for stage in stages.iter_mut() {
@@ -1077,7 +1083,7 @@ fn cleanup_module_transaction_stages(
 
 fn cleanup_module_transaction_commits(
     staging_directory: &File,
-    commits: &mut [Option<ModuleTransactionCommit>; 2],
+    commits: &mut [Option<ModuleTransactionCommit>],
 ) -> Vec<String> {
     let mut errors = Vec::new();
     for commit in commits.iter_mut() {
@@ -1371,13 +1377,10 @@ mod tests {
         let (app, directory) = test_app("transaction-success");
         let (bypass, proxy) = prepare_transaction_app_lists(&app);
 
-        replace_module_text_files_transactionally(
-            &app,
-            Path::new(".config/magicnet/app-bypass.list"),
-            "new-bypass\n",
-            Path::new(".config/magicnet/app-proxy.list"),
-            "new-proxy\n",
-        )
+        replace_module_text_files_transactionally(&app, &[
+            (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+            (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+        ])
         .expect("replace app lists");
 
         assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
@@ -1387,21 +1390,27 @@ mod tests {
     }
 
     #[test]
-    fn module_transaction_rolls_back_after_injected_second_replace_failure() {
+    fn module_transaction_rolls_back_three_files_after_injected_third_replace_failure() {
         let (app, directory) = test_app("transaction-rollback");
         let (bypass, proxy) = prepare_transaction_app_lists(&app);
+        let direct = bypass
+            .parent()
+            .expect("app list directory")
+            .join("app-direct.list");
+        fs::write(&direct, "old-direct\n").expect("write direct fixture");
         let mut replace_count = 0usize;
 
         let error = replace_module_text_files_transactionally_with_rename(
             &app,
-            Path::new(".config/magicnet/app-bypass.list"),
-            "new-bypass\n",
-            Path::new(".config/magicnet/app-proxy.list"),
-            "new-proxy\n",
+            &[
+                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+                (Path::new(".config/magicnet/app-direct.list"), "new-direct\n"),
+            ],
             |operation, source_directory, source, destination_directory, destination| {
                 replace_count += 1;
-                if replace_count == 2 {
-                    Err("injected second replace failure".to_string())
+                if replace_count == 3 {
+                    Err("injected third replace failure".to_string())
                 } else {
                     rename_module_transaction_entry(
                         operation,
@@ -1413,11 +1422,12 @@ mod tests {
                 }
             },
         )
-        .expect_err("second replacement must fail");
+        .expect_err("third replacement must fail");
 
-        assert!(error.contains("injected second replace failure"), "{error}");
+        assert!(error.contains("injected third replace failure"), "{error}");
         assert_eq!(fs::read_to_string(&bypass).unwrap(), "old-bypass\n");
         assert_eq!(fs::read_to_string(&proxy).unwrap(), "old-proxy\n");
+        assert_eq!(fs::read_to_string(&direct).unwrap(), "old-direct\n");
         assert_no_transaction_stages(&app);
         fs::remove_dir_all(&directory).expect("remove test directory");
     }
@@ -1428,10 +1438,10 @@ mod tests {
         let (write_bypass, write_proxy) = prepare_transaction_app_lists(&write_app);
         let write_error = replace_module_text_files_transactionally_with_stage_writer(
             &write_app,
-            Path::new(".config/magicnet/app-bypass.list"),
-            "new-bypass\n",
-            Path::new(".config/magicnet/app-proxy.list"),
-            "new-proxy\n",
+            &[
+                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+            ],
             |_file, _contents| Err("injected stage write failure".to_string()),
         )
         .expect_err("stage write failure must abort the transaction");
@@ -1448,10 +1458,10 @@ mod tests {
         let (sync_bypass, sync_proxy) = prepare_transaction_app_lists(&sync_app);
         let sync_error = replace_module_text_files_transactionally_with_stage_writer(
             &sync_app,
-            Path::new(".config/magicnet/app-bypass.list"),
-            "new-bypass\n",
-            Path::new(".config/magicnet/app-proxy.list"),
-            "new-proxy\n",
+            &[
+                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+            ],
             |file, contents| {
                 file.write_all(contents)
                     .expect("write private stage before injected sync failure");
@@ -1480,13 +1490,10 @@ mod tests {
         fs::write(&victim, "preserve me").expect("write victim");
         symlink(&victim, &target_directory_entry).expect("create target-directory stage symlink");
 
-        replace_module_text_files_transactionally(
-            &app,
-            Path::new(".config/magicnet/app-bypass.list"),
-            "new-bypass\n",
-            Path::new(".config/magicnet/app-proxy.list"),
-            "new-proxy\n",
-        )
+        replace_module_text_files_transactionally(&app, &[
+            (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+            (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+        ])
         .expect("target-directory entry must not be a transaction stage source");
 
         assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
@@ -1520,13 +1527,10 @@ mod tests {
         fs::write(&victim, "preserve me").expect("write victim");
         symlink(&victim, &stage).expect("create private stage symlink");
 
-        assert!(replace_module_text_files_transactionally(
-            &app,
-            Path::new(".config/magicnet/app-bypass.list"),
-            "new-bypass\n",
-            Path::new(".config/magicnet/app-proxy.list"),
-            "new-proxy\n",
-        )
+        assert!(replace_module_text_files_transactionally(&app, &[
+            (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+            (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+        ])
         .is_err());
         assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
         assert_eq!(fs::read_to_string(&bypass).unwrap(), "old-bypass\n");
@@ -1553,13 +1557,10 @@ mod tests {
             symlink(&outside, &linked_directory).expect("create intermediate symlink");
             let app = App::for_test(module_root);
 
-            assert!(replace_module_text_files_transactionally(
-                &app,
-                Path::new(".config/magicnet/app-bypass.list"),
-                "new-bypass\n",
-                Path::new(".config/magicnet/app-proxy.list"),
-                "new-proxy\n",
-            )
+            assert!(replace_module_text_files_transactionally(&app, &[
+                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+            ])
             .is_err());
             assert!(fs::read_dir(&outside).unwrap().next().is_none());
             fs::remove_dir_all(&directory).expect("remove test directory");
@@ -1580,13 +1581,10 @@ mod tests {
                 _ => unreachable!(),
             }
 
-            assert!(replace_module_text_files_transactionally(
-                &app,
-                Path::new(".config/magicnet/app-bypass.list"),
-                "new-bypass\n",
-                Path::new(".config/magicnet/app-proxy.list"),
-                "new-proxy\n",
-            )
+            assert!(replace_module_text_files_transactionally(&app, &[
+                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+            ])
             .is_err());
             assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
             fs::remove_dir_all(&directory).expect("remove test directory");

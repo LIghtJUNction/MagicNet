@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-vue-next";
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
+import { MAGICNET_LOGO_URL } from "@/branding";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
@@ -291,7 +292,7 @@ onUnmounted(() => {
           @click="handleBrandMarkClick"
         >
           <img
-            src="/magicnet-network-card.svg"
+            :src="MAGICNET_LOGO_URL"
             alt=""
             width="44"
             height="44"
@@ -531,7 +532,7 @@ onUnmounted(() => {
       <aside v-if="easterEggVisible" class="mn-chrome fixed bottom-28 right-3 z-50 max-w-[calc(100vw-1.5rem)] rounded-md p-1 md:bottom-8 md:right-8 md:max-w-sm" role="status" aria-live="polite">
         <div class="flex items-start gap-3 rounded-[5px] bg-[color-mix(in_srgb,var(--mn-cactus)_18%,var(--mn-carrier))] p-4">
           <div class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-sm bg-[var(--mn-cactus)]">
-            <img src="/magicnet-network-card.svg" alt="" class="size-10 object-cover" width="40" height="40" decoding="async" />
+            <img :src="MAGICNET_LOGO_URL" alt="" class="size-10 object-cover" width="40" height="40" decoding="async" />
           </div>
           <div class="min-w-0 flex-1">
             <strong class="text-sm font-semibold text-[var(--mn-ink)]">{{ easterEggPayload.title }}</strong>
