@@ -73,6 +73,8 @@ su -c '/data/adb/modules/MagicNet/cli sub user-agent clear'
 
 导入完成后，节点会写入 `sing-box` 配置的 `proxy` 选择器；节点选择、测速和切换在 `sing-box` WebUI 里完成。当前版本只维护 `sing-box`，Clash / mihomo 格式订阅也按 sing-box 来源导入。
 
+如果没有订阅 URL、而是已有完整的 sing-box JSON 配置，可以进入模块 WebUI 的“配置编辑器”，点击“导入本地 JSON”选择文件。导入只会把内容放进编辑器草稿；检查内容后点击“校验并保存”，MagicNet 会先执行 `sing-box check`，通过后才覆盖运行配置。文件不需要上传到服务器或转换成 URL。
+
 ## 常用 CLI
 
 ```bash
