@@ -15,6 +15,8 @@ scripts/package-install-smoke.sh dist/MagicNet.zip
 - `.config/kamfw/.envrc` 中的 `MAGIC_MIHOMO`、`MAGIC_HOTSPOT_FORWARD`、`MAGIC_VPN_COEXIST` 等旧运行时导出。
 - mihomo、TProxy、抓包代理和旧透明路径相关文件。
 
+这里拒绝的是旧版 `.envrc` 运行时导出。当前热点策略由 `cli hotspot {status|enable|disable}` 管理 sing-box 的 `hotspot` selector，不依赖 `MAGIC_HOTSPOT_FORWARD`。
+
 ## 本地私有配置
 
 仓库根目录的 `.env` 只用于本机私有变量，例如订阅地址或构建机私有参数。不要把 `.env`、订阅 URL、token、secret 或 password 写入文档、测试夹具、提交记录或发布包。
@@ -28,6 +30,8 @@ scripts/package-install-smoke.sh dist/MagicNet.zip
 ## 注意
 
 `MAGIC_SINGBOX=0` 只应作为开发者临时调试构建钩子的开关使用，不是发布包或运行时禁用 sing-box 的设计。默认构建必须包含 `bin/sing-box` 和默认 `.config/sing-box/config.json`。
+
+WebUI 构建钩子会运行 `npm run check` 或 `bun run check`，依次执行前端单元测试、TypeScript 类型检查和生产构建。任何一项失败都会中止模块打包。
 
 ## 发布依赖锁
 

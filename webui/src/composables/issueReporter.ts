@@ -1,5 +1,15 @@
 import { MODULE_DIR, REPO } from "@/constants";
-import { buildIssueBody, buildIssueUrl, propValue } from "@/composables/issueDrafts";
+import {
+  buildIssueBody,
+  buildIssueUrl,
+  commandFailureContext,
+  issueKindLabel,
+  propValue,
+  sanitizeConnectionLog,
+  summarizeConnectionsForIssue,
+  type IssueKind,
+  type IssueOperationContext,
+} from "@/composables/issueDrafts";
 import { copyText, intentDataQuote, shellQuote } from "@/utils";
 import type { RuntimeState } from "@/types";
 import type { BackgroundTaskState } from "@/composables/backgroundTasks";
@@ -22,10 +32,86 @@ type IssueReporterDeps = {
   runCli: (args: string, label?: string, quiet?: boolean) => Promise<string>;
 };
 
-export async function createMagicNetIssue({ state, runShell, runCli }: IssueReporterDeps): Promise<void> {
-  const operation = {
+function relevantLogTail(text: string, pattern: RegExp, fallbackLines = 32): string {
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  const relevant = lines.filter((line) => pattern.test(line));
+  return (relevant.length ? relevant.slice(-60) : lines.slice(-fallbackLines)).join("\n");
+}
+
+async function collectFocusedContext(
+  kind: IssueKind,
+  operation: IssueOperationContext,
+  runCli: IssueReporterDeps["runCli"],
+): Promise<string> {
+  if (kind === "command-error") return commandFailureContext(operation);
+  if (kind === "app-connectivity") {
+    const [connections, logs] = await Promise.all([
+      runCli("api conns", "读取近期活动连接", true),
+      runCli("service logs sing-box 160", "读取近期连接日志", true),
+    ]);
+    return [
+      "[recent connection paths]",
+      summarizeConnectionsForIssue(connections),
+      "",
+      "[recent sing-box log tail]",
+      sanitizeConnectionLog(relevantLogTail(
+        logs,
+        /\b(connect|connection|inbound|outbound|route|rule|reject|block|timeout|error|warn|fail|denied)\b/i,
+        40,
+      )),
+    ].join("\n");
+  }
+  if (kind === "subscription-node") {
+    const [status, logs] = await Promise.all([
+      runCli("sub status", "读取订阅状态", true),
+      runCli("service logs sing-box 160", "读取订阅与节点日志", true),
+    ]);
+    return [
+      "[subscription status]",
+      status,
+      "",
+      "[selector/subscription log tail]",
+      sanitizeConnectionLog(relevantLogTail(
+        logs,
+        /\b(subscription|selector|proxy|outbound|node|update|timeout|error|warn|fail)\b/i,
+      )),
+    ].join("\n");
+  }
+  if (kind === "dns-routing") {
+    const [health, dns, network, transparent] = await Promise.all([
+      runCli("health", "运行健康检查", true),
+      runCli("dns status", "读取 DNS 状态", true),
+      runCli("network status", "读取网络策略", true),
+      runCli("transparent status", "读取 TUN 状态", true),
+    ]);
+    return [
+      "[health]",
+      health,
+      "",
+      "[dns]",
+      dns,
+      "",
+      "[network]",
+      network,
+      "",
+      "[transparent]",
+      transparent,
+    ].join("\n");
+  }
+  return [
+    "No additional category-specific command was run.",
+    "The support summary and captured UI operation are included below.",
+  ].join("\n");
+}
+
+export async function createMagicNetIssue(
+  { state, runShell, runCli }: IssueReporterDeps,
+  kind: IssueKind,
+): Promise<void> {
+  const operation: IssueOperationContext = {
     phase: state.phase,
     lastCommand: state.lastCommand,
+    lastOutput: state.output,
     backgroundLabel: state.backgroundTask.label,
     backgroundArgs: state.backgroundTask.args,
     backgroundStatus: state.backgroundTask.status,
@@ -38,12 +124,20 @@ export async function createMagicNetIssue({ state, runShell, runCli }: IssueRepo
     const moduleProp = await runShell(`cat ${shellQuote(`${MODULE_DIR}/module.prop`)}`, "读取模块版本", true);
     const version = propValue(moduleProp, "version") || "unknown";
     const runtimeLabel = state.runtime.singBoxState === "unknown" ? "runtime" : state.runtime.singBoxState;
-    const title = `[MagicNet] ${version} ${runtimeLabel} diagnostic report`;
-    const [device, support] = await Promise.all([
+    const title = `[MagicNet] ${version} ${issueKindLabel(kind)} · ${runtimeLabel}`;
+    const [device, support, focusedContext] = await Promise.all([
       runShell("getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; uname -a", "读取设备信息", true),
-      runCli("support bundle", "生成支持包", true)
+      runCli("support bundle", "生成支持包", true),
+      collectFocusedContext(kind, operation, runCli),
     ]);
-    const body = buildIssueBody({ moduleProp, device, support, operation });
+    const body = buildIssueBody({
+      kind,
+      moduleProp,
+      device,
+      support,
+      focusedContext,
+      operation,
+    });
     const copied = await copyText(body);
     const issueUrl = buildIssueUrl(REPO, title, body);
     state.output = [

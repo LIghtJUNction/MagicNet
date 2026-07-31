@@ -79,6 +79,8 @@ scripts/fake-magisk-smoke.sh dist/MagicNet.zip
 scripts/pre-commit.sh
 ```
 
+这个入口也会检查仓库卫生、路由架构、应用分流、广告规则、配置解析安全、MCP 启动配置和 WebUI。WebUI 测试覆盖 Issue 类型选择、按类型收集上下文、连接目标脱敏和命令错误摘要；构建模块时同样会通过 WebUI `check` 执行这些测试。
+
 `fake-magisk-smoke.sh` 会：
 
 - 解包 zip 到临时模块目录。

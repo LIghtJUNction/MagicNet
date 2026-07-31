@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { buildIssueBody, buildIssueUrl, classifyOperationCommand, sanitizeDiagnosticText } from "./src/composables/issueDrafts.ts";
+import {
+  ISSUE_KIND_OPTIONS,
+  buildIssueBody,
+  buildIssueUrl,
+  classifyOperationCommand,
+  commandFailureContext,
+  sanitizeConnectionLog,
+  sanitizeDiagnosticText,
+  summarizeConnectionsForIssue,
+} from "./src/composables/issueDrafts.ts";
 
 const canaries = [
   "https://node.example.invalid/private/path?token=URL-CANARY",
@@ -10,12 +19,15 @@ const canaries = [
   "NODE-CANARY",
 ];
 const parts = {
+  kind: "command-error",
   moduleProp: `version=v-test\nupdateJson=${canaries[0]}`,
   device: `model=test\nemail=${canaries[2]}\nip=${canaries[3]}\npath=${canaries[4]}`,
   support: `token=${canaries[1]}\nnode=${canaries[5]}\n${"safe event\n".repeat(800)}`,
+  focusedContext: "captured failure errno=1",
   operation: {
     phase: "error",
     lastCommand: `magicnet sub apply-file sing-box ${canaries[0]}`,
+    lastOutput: `$ magicnet sub apply-file sing-box ${canaries[0]}\n[error] token=${canaries[1]}`,
     backgroundLabel: "refresh",
     backgroundArgs: `node=${canaries[5]}`,
     backgroundStatus: "timeout",
@@ -27,7 +39,9 @@ assert.equal(body, buildIssueBody(parts), "canonical body must be deterministic"
 assert.ok(body.length <= 5200, "canonical body must fit the URL budget");
 assert.match(body, /## Module/);
 assert.match(body, /## Device/);
-assert.match(body, /## Support Bundle/);
+assert.match(body, /问题类型：命令或操作报错/);
+assert.match(body, /## Focused Context/);
+assert.match(body, /## Support Summary/);
 assert.match(body, /## UI Operation/);
 assert.doesNotMatch(body, /Service Status|## Health|## MCP|Network Probe/);
 for (const canary of canaries) assert.equal(body.includes(canary), false, `leaked ${canary}`);
@@ -57,6 +71,12 @@ for (const command of sensitiveCommands) {
 }
 const passwordBody = buildIssueBody({
   ...parts,
+  focusedContext: commandFailureContext({
+    ...parts.operation,
+    lastCommand: sensitiveCommands[0],
+    lastOutput: `$ ${sensitiveCommands[0]}\n[error] backup failed password=${reviewerBarePassword}`,
+    backgroundArgs: sensitiveCommands[1],
+  }),
   operation: { ...parts.operation, lastCommand: sensitiveCommands[0], backgroundArgs: sensitiveCommands[1] },
 });
 const passwordUrl = buildIssueUrl("https://github.com/example/repo", "password regression", passwordBody);
@@ -102,5 +122,58 @@ const sanitizedDeviceKeys = sanitizeDiagnosticText(deviceKeyInput);
 for (const sensitive of Object.values(deviceCanaries)) {
   assert.equal(sanitizedDeviceKeys.includes(sensitive), false, `device-key sanitizer leaked ${sensitive}`);
 }
+
+assert.deepEqual(
+  ISSUE_KIND_OPTIONS.map(({ value }) => value),
+  ["app-connectivity", "command-error", "subscription-node", "dns-routing", "other"],
+);
+assert.ok(ISSUE_KIND_OPTIONS.every(({ context }) => context.startsWith("附带")));
+
+const connections = JSON.stringify({
+  connections: [
+    {
+      id: "private-connection-id",
+      metadata: {
+        host: "private.example.invalid",
+        destinationIP: "192.0.2.44",
+        sourceIP: "10.0.0.9",
+        processPackageName: "com.example.browser",
+        network: "tcp",
+      },
+      inbound: "tun-in",
+      rule: "RuleSet",
+      rulePayload: "private.example.invalid",
+      chains: ["ai-proxy", "US-Private-Node"],
+      upload: 1234,
+      download: 5678,
+    },
+  ],
+});
+const connectionSummary = summarizeConnectionsForIssue(connections);
+assert.match(connectionSummary, /active_connection_count=1/);
+assert.match(connectionSummary, /process=com\.example\.browser/);
+assert.match(connectionSummary, /inbound=tun-in/);
+assert.match(connectionSummary, /rule=RuleSet/);
+assert.match(connectionSummary, /chain=ai-proxy -> \[selected-node\]/);
+for (const sensitive of ["private-connection-id", "private.example.invalid", "192.0.2.44", "10.0.0.9", "US-Private-Node", "1234", "5678"]) {
+  assert.equal(connectionSummary.includes(sensitive), false, `connection summary leaked ${sensitive}`);
+}
+
+const sanitizedLog = sanitizeConnectionLog(
+  "INFO inbound/tun connection from 10.0.0.9:41234 to private.example.invalid:443 outbound=ai-proxy",
+);
+assert.match(sanitizedLog, /from \[filtered-endpoint\] to \[filtered-endpoint\]/);
+assert.match(sanitizedLog, /outbound=ai-proxy/);
+assert.doesNotMatch(sanitizedLog, /private\.example\.invalid|10\.0\.0\.9/);
+const selectedNodeLog = sanitizeConnectionLog("INFO selector=US-Private-Node selected node is JP-Secret");
+assert.match(selectedNodeLog, /selector=\[selected-node\]/);
+assert.match(selectedNodeLog, /selected node is \[selected-node\]/);
+assert.doesNotMatch(selectedNodeLog, /US-Private-Node|JP-Secret/);
+
+const commandContext = commandFailureContext(parts.operation);
+assert.match(commandContext, /captured_command=command=sub\.apply-file arguments=filtered/);
+assert.match(commandContext, /\[captured output\]/);
+assert.doesNotMatch(commandContext, /^\$\s/m);
+for (const sensitive of canaries) assert.equal(commandContext.includes(sensitive), false, `command context leaked ${sensitive}`);
 
 console.log("issue reporter tests passed");

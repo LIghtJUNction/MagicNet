@@ -47,6 +47,7 @@ import {
   wifiPolicyDefaults,
 } from "@/composables/parsers";
 import { createMagicNetIssue } from "@/composables/issueReporter";
+import type { IssueKind } from "@/composables/issueDrafts";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import {
   compactCommand,
@@ -89,6 +90,9 @@ const state = reactive({
     ? "正在读取 MagicNet 状态..."
     : "本地预览模式：真机 WebUI 才会执行 root 命令。",
   backgroundTask: { ...backgroundTaskDefaults },
+  issueReporter: {
+    open: false,
+  },
   runtime: { ...runtimeDefaults },
   health: [] as HealthItem[],
   pingtest: "",
@@ -562,7 +566,16 @@ async function refreshWifiPolicy(quiet = false): Promise<boolean> {
 }
 
 async function createIssue(): Promise<void> {
-  await createMagicNetIssue({ state, runShell, runCli });
+  state.issueReporter.open = true;
+}
+
+function closeIssueReporter(): void {
+  state.issueReporter.open = false;
+}
+
+async function submitIssue(kind: IssueKind): Promise<void> {
+  closeIssueReporter();
+  await createMagicNetIssue({ state, runShell, runCli }, kind);
 }
 
 async function refreshTopology(): Promise<void> {
@@ -726,6 +739,8 @@ export function useMagicNet() {
     refreshWarp,
     refreshWifiPolicy,
     createIssue,
+    closeIssueReporter,
+    submitIssue,
     refreshTopology,
     refreshSysroute,
     loadConfig,

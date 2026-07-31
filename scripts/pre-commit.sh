@@ -34,11 +34,18 @@ mapfile -t posix_shell_files < <(
 shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 "${posix_shell_files[@]}"
 
 jq empty src/MagicNet/.config/sing-box/config.json
+bash scripts/test-repository-hygiene.sh
 sh scripts/test-kamfw-i18n.sh
 bash scripts/test-default-routing-policy.sh
+bash scripts/test-policy-architecture.sh
+bash scripts/test-ad-routing.sh
+bash scripts/test-app-routing-policy.sh
+bash scripts/test-block-conf-safety.sh
 bash scripts/test-wechat-routing.sh
 bash scripts/test-action-routing.sh
 bash scripts/test-anthropic-routing.sh
+bash scripts/test-mcp-phase-config.sh
+bash scripts/test-rule-hash-retry.sh
 bash scripts/singbox-subscription-protocol-smoke.sh
 bash scripts/test-singbox-pid-discovery.sh
 bash scripts/test-subscription-activation-order.sh

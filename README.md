@@ -48,9 +48,11 @@ su -c /data/adb/modules/MagicNet/cli health
 - 通过 `magicnet0` TUN 接管设备应用流量。
 - 用 `sing-box` 导入订阅、选择节点和执行路由规则。
 - 拦截物理出口上的直连 DNS/DoT（53/853），减少 DNS 绕过。
+- 为已经进入 TUN 的热点转发流量选择 Direct 或 Proxy 出口。
+- 按应用设置代理、直连或 Bypass TUN，便于与外部 VPN 共存。
 - 提供 WebUI、CLI、MCP 和支持包，便于日常控制与排查。
 
-当前主线只维护 `sing-box` 和 TUN。不会维护 TProxy、多核心切换、热点代理或 VPN 共存模式。
+当前主线只维护 `sing-box` 和 `magicnet0` TUN，不恢复 TProxy 或多核心路径。热点功能只选择已经进入 TUN 的转发流量出口；应用的 `bypass` 策略会把指定应用排除在 TUN 之外，MagicNet 仍不会占用或管理 Android 的系统 VPN slot。
 
 ## 安装
 
@@ -103,6 +105,16 @@ su -c /data/adb/modules/MagicNet/cli network status
 # 网络或节点不支持 IPv6 时切换兼容模式
 su -c '/data/adb/modules/MagicNet/cli network set ipv4_only 1400 5m'
 
+# 查看热点流量当前走 Direct 还是 Proxy
+su -c /data/adb/modules/MagicNet/cli hotspot status
+
+# 允许热点流量使用 Proxy；disable 可恢复 Direct
+su -c /data/adb/modules/MagicNet/cli hotspot enable
+
+# 让指定应用走代理、直连或绕过 MagicNet TUN
+su -c '/data/adb/modules/MagicNet/cli app add com.example.app proxy'
+su -c '/data/adb/modules/MagicNet/cli app add com.example.vpn bypass'
+
 # 重启 sing-box
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
 
@@ -125,7 +137,18 @@ adb shell 'su -M -c "timeout 10 tcpdump -ni rmnet_data0 \"port 53 or port 853\""
 
 不同设备的蜂窝接口不一定叫 `rmnet_data0`，请以第一条命令的输出为准。
 
-MagicNet 只管理自身的数据面，不接管热点转发、外部 VPN overlay 或厂商 tethering 规则。
+MagicNet 只管理自身的数据面，不创建热点、不配置厂商 tethering/NAT，也不接管外部 VPN overlay。系统热点把转发流量送入 `magicnet0` 后，可以用 `cli hotspot {status|enable|disable}` 在 Direct 和 Proxy 之间切换。
+
+## 反馈问题
+
+WebUI 的“反馈问题 / 创建 Issue”会先选择问题类型，再收集对应的脱敏上下文：
+
+- App 无法联网：近期连接的进程、规则、代理链和 sing-box 日志尾部；目标地址、连接 ID 与私有节点名会被过滤。
+- 命令或操作报错：上一条命令的安全分类、执行阶段、后台状态和错误输出。
+- 订阅或节点异常：订阅状态、选择器摘要和相关日志。
+- DNS、TUN 或分流异常：健康检查、DNS、网络与透明代理状态。
+
+生成的正文会复制到剪贴板，并以同一份内容打开 GitHub。提交前仍建议快速检查一次正文。
 
 ## 文档
 
