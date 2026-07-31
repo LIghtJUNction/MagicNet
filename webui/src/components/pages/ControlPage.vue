@@ -20,6 +20,7 @@ import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
+import PageHeader from "@/components/ui/PageHeader.vue";
 import {
   applyConfigAction,
   applyTransparentModeAction,
@@ -267,20 +268,12 @@ onMounted(() => {
 
 <template>
   <div class="grid gap-4 md:gap-5">
-    <div
-      class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4"
+    <PageHeader
+      overline="Control Center"
+      title="模块控制"
+      description="管理模块生命周期和常用入口；节点、测速与代理组继续由 sing-box WebUI 负责。"
     >
-      <div class="max-w-3xl">
-        <span
-          class="inline-flex rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-muted)] shadow-[inset_0_0_0_1px_var(--mn-border)]"
-          >控制中心</span
-        >
-        <h2 class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--mn-ink)] md:mt-3 md:text-3xl">模块控制</h2>
-        <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)] md:text-[15px]">
-          只放模块生命周期和入口。节点、测速、代理模式交给 sing-box WebUI。
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
+      <template #actions>
         <Button variant="outline" @click="copyControlSnapshot"
           ><Copy :size="17" />{{
             snapshotCopied ? "已复制快照" : "复制快照"
@@ -292,8 +285,8 @@ onMounted(() => {
           "
           >{{ state.runtime.singBoxState }}</Badge
         >
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <div class="grid grid-cols-1 gap-3 md:grid-cols-12 md:gap-4">
       <Card
