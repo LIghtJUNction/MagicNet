@@ -32,7 +32,7 @@ test "$(cat "$pidof_log")" = sing-box
 printf 'sing-box\n' >"$fixture/proc/303/comm"
 : >"$pidof_log"
 pid_output="$(
-  PIDOF_LOG="$pidof_log" PIDOF_RESULT= PIDOF_RC=1 \
+  PIDOF_LOG="$pidof_log" PIDOF_RESULT='' PIDOF_RC=1 \
     MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" \
     PATH="$fixture/bin:$PATH" magicnet_singbox_pids
 )"
@@ -48,7 +48,7 @@ pid_output="$(
     printf 'cat must not be used for proc comm discovery\n' >&2
     return 99
   }
-  PATH= MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" magicnet_singbox_pids
+  PATH='' MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" magicnet_singbox_pids
 )"
 test "$pid_output" = $'101\n303'
 

@@ -56,10 +56,10 @@ KAM_HOOKS_ROOT=hooks KAM_MODULE_ROOT=src/MagicNet bash hooks/pre-build/6000.chec
 MODPATH="$ROOT/src/MagicNet" sh -c '. "$MODPATH/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODPATH/lib/magicnet.sh"; kamfw run post-mount -- smoke'
 
 if command -v bun >/dev/null 2>&1; then
-    (cd webui && bun install --frozen-lockfile && bun run test && bun run typecheck && bun run build)
+    (cd webui && bun install --frozen-lockfile && bun run typecheck && bun run build && bun run test)
 else
     need npm
-    (cd webui && npm install && npm run test && npm run typecheck && npm run build)
+    (cd webui && npm install && npm run typecheck && npm run build && npm run test)
 fi
 cargo check -p magicnet-cli
 cargo check -p magicnet-mcp-server

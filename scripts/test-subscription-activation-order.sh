@@ -24,7 +24,7 @@ ip() { :; }
 magicnet_fswatch_start() { printf 'restore-lock=%s\n' "$CONFIG_LOCK_HELD" >>"$events"; }
 magicnet_fswatch_status() { return 0; }
 
-MAGICNET_SUB_FSWATCH_WAS_ACTIVE=1
+export MAGICNET_SUB_FSWATCH_WAS_ACTIVE=1
 MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
 MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
 magicnet_singbox_restart_owned "$MODDIR/config.json"

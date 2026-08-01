@@ -862,6 +862,7 @@ env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPA
 grep -qx 'sing-box' "$TMP/strict-core.log"
 
 mkdir -p "$MODDIR/.state/sing-box/subscription-work"
+# shellcheck disable=SC2016
 "$HOST_JQ" -r '
     (.outbounds | walk(if . == "fresh-sub-node" then "old-cached-node" else . end)) as $outbounds
     | "  \"outbounds\": " + ($outbounds | tojson) + ","
