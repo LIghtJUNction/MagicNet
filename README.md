@@ -12,6 +12,15 @@ MagicNet 是 Android root 网络模块：用 `sing-box` 的 `magicnet0` TUN 接�
 
 需要 Magisk、KernelSU、APatch 等 root 管理器。它不使用 Android 应用的 `VpnService.establish()`，不会独占系统 VPN slot。
 
+## 推广
+
+- [作者的中转站](https://api.lmm.best): 测试迭代中，源代码已开源，购买token表示支持
+> 感谢各位“股东”的投资
+> 联系我，领取10刀余额
+
+- [AI 自动推广系统](https://bizbot.zvo.cn/)：探索 AI 驱动的自动推广工具与工作流。
+
+
 ## 开始前
 
 请先在系统设置里搜索“私人 DNS”“私密 DNS”或“Private DNS”，并关闭它。
