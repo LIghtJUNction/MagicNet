@@ -188,6 +188,9 @@ fn apply_subscription_text(app: &App, text: &str) -> Result<(), String> {
     let result = with_subscription_candidate(app, text, |candidate_fd| {
         run_subscription_update_from_inherited_fd(app, candidate_fd)
     });
+    if result.is_ok() {
+        let _ = fs::remove_file(app.moddir.join(".config/sing-box/standalone-config"));
+    }
     finish_subscription_update(app, result)
 }
 

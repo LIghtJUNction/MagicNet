@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Support validated standalone sing-box JSON configs without requiring a subscription URL.
+- Decode JSON Unicode escapes in native VMess share-link names.
+- Coordinate userspace Tailscale endpoints with `magicnet0`, preserve endpoints across template
+  sync, protect one-time auth keys, and expose route/state health evidence.
 - Reapply subscription keyword filters while sanitizing cached/generated
   outbounds so filtered nodes cannot survive through a repair or cache replay.
 - Order every AI selector with United States nodes first, Japan second, and

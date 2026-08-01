@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 
-use crate::{decode_base64, run_magicnet_function, App};
+use crate::{decode_base64, run_magicnet_function, write_secret_file, write_text_file, App};
 
 const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
@@ -21,6 +21,8 @@ const TEMPLATE_MAX_BYTES: usize = 1024 * 1024;
 const MAGIC_SINGBOX_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/b94082188300fd447966987b6d1989750675334e/config.json";
 const MAGIC_SINGBOX_TEMPLATE_SHA256: &str =
     "5c827a3f7a341ce70cf372517c755e50b4d839a0af27af20a0a5faf4d89ad7ca";
+const STANDALONE_CONFIG_MARKER: &str = ".config/sing-box/standalone-config";
+const TAILSCALE_AUTH_PATH: &str = ".config/sing-box/tailscale-auth.json";
 static CONFIG_EDITOR_STAGE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 pub(crate) fn config_editor(app: &App, args: &[String]) -> Result<(), String> {
@@ -66,7 +68,9 @@ fn save_config(app: &App, target: &str, path: &Path, args: &[String]) -> Result<
     }
     let bytes = decode_base64(payload)?;
     let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
-    commit_config_text(app, target, path, text.as_bytes(), "input")
+    let protected = protect_tailscale_auth_keys(app, &text)?;
+    commit_config_text(app, target, path, protected.as_bytes(), "input")?;
+    mark_standalone_config(app)
 }
 
 fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Result<(), String> {
@@ -74,13 +78,61 @@ fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Re
     if tmp.as_os_str().is_empty() {
         return Err("Usage: cli config-editor save-file sing-box <webui-payload-path>".to_string());
     }
-    let (source, _tmp_directory) = open_webui_payload_source(app, &tmp)?;
-    validate_and_commit_open_config_file(app, target, path, &source)?;
-    println!(
-        "[info] Saved and validated {target} config: {}\n[info] Runtime policy changes can be applied from the control/app pages.",
-        path.display()
-    );
-    Ok(())
+    let (mut source, _tmp_directory) = open_webui_payload_source(app, &tmp)?;
+    let mut bytes = Vec::new();
+    source
+        .read_to_end(&mut bytes)
+        .map_err(|err| format!("read WebUI config payload: {err}"))?;
+    let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
+    let protected = protect_tailscale_auth_keys(app, &text)?;
+    commit_config_text(app, target, path, protected.as_bytes(), "input")?;
+    mark_standalone_config(app)
+}
+
+fn protect_tailscale_auth_keys(app: &App, text: &str) -> Result<String, String> {
+    let Ok(mut config) = serde_json::from_str::<JsonValue>(text) else {
+        return Ok(text.to_string());
+    };
+    let mut keys = fs::read_to_string(app.moddir.join(TAILSCALE_AUTH_PATH))
+        .ok()
+        .and_then(|current| serde_json::from_str::<JsonValue>(&current).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    let mut changed = false;
+    if let Some(endpoints) = config.get_mut("endpoints").and_then(JsonValue::as_array_mut) {
+        for endpoint in endpoints {
+            let Some(object) = endpoint.as_object_mut() else {
+                continue;
+            };
+            if object.get("type").and_then(JsonValue::as_str) != Some("tailscale") {
+                continue;
+            }
+            let tag = object
+                .get("tag")
+                .and_then(JsonValue::as_str)
+                .unwrap_or_default()
+                .to_string();
+            if let Some(auth_key) = object.remove("auth_key") {
+                changed = true;
+                if !tag.is_empty() && auth_key.as_str().is_some_and(|value| !value.is_empty()) {
+                    keys.insert(tag, auth_key);
+                }
+            }
+        }
+    }
+    if !changed {
+        return Ok(text.to_string());
+    }
+    let protected_keys = serde_json::to_string(&JsonValue::Object(keys))
+        .map_err(|err| format!("serialize protected Tailscale auth keys: {err}"))?;
+    write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), &protected_keys)?;
+    serde_json::to_string_pretty(&config)
+        .map(|value| format!("{value}\n"))
+        .map_err(|err| format!("serialize sing-box config: {err}"))
+}
+
+fn mark_standalone_config(app: &App) -> Result<(), String> {
+    write_text_file(app, Path::new(STANDALONE_CONFIG_MARKER), "validated\n")
 }
 
 /// Open an externally supplied config source only from the WebUI-owned
@@ -655,6 +707,12 @@ fn preserve_singbox_subscription_config(template: &str, current: &str) -> Result
             return Err("upstream sing-box template is not a JSON object".to_string());
         };
         object.insert("outbounds".to_string(), outbounds);
+    }
+    if let Some(endpoints) = current_json.get("endpoints").cloned() {
+        let Some(object) = template_json.as_object_mut() else {
+            return Err("upstream sing-box template is not a JSON object".to_string());
+        };
+        object.insert("endpoints".to_string(), endpoints);
     }
     serde_json::to_string_pretty(&template_json)
         .map(|text| format!("{text}\n"))

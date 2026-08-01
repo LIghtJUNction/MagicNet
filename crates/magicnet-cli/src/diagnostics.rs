@@ -29,6 +29,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     let ecapture = app.moddir.join("bin/ecapture");
     let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
     let (routing_ok, routing_detail) = routing_policy_check(app);
+    let (tailscale_ok, tailscale_detail) = tailscale_check(app);
     let (loop_guard_ok, loop_guard_detail) = traffic_loop_guard_check(app);
     let (api_ok, api_detail) = api_probe(&app.api);
     let (_, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
@@ -43,12 +44,25 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
         ),
         ("DNS Leak", dns_ok, dns_detail),
         ("Routing Policy", routing_ok, routing_detail),
+        ("Tailscale", tailscale_ok, tailscale_detail),
         ("Traffic Loop Guard", loop_guard_ok, loop_guard_detail),
         ("Core API", api_ok, api_detail),
         (
             "Subscription",
-            has_subscription(app),
-            "subscription config present".to_string(),
+            has_subscription(app)
+                || app
+                    .moddir
+                    .join(".config/sing-box/standalone-config")
+                    .is_file(),
+            if app
+                .moddir
+                .join(".config/sing-box/standalone-config")
+                .is_file()
+            {
+                "validated standalone config present".to_string()
+            } else {
+                "subscription config present".to_string()
+            },
         ),
         (
             "MCP",
@@ -61,6 +75,82 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
             app.moddir.join("webroot").display().to_string(),
         ),
     ]
+}
+
+fn tailscale_check(app: &App) -> (bool, String) {
+    const TAILNETS: [&str; 2] = ["100.64.0.0/10", "fd7a:115c:a1e0::/48"];
+    let config_dir = app.moddir.join(".config/sing-box");
+    let Ok(text) = fs::read_to_string(config_dir.join("config.json")) else {
+        return (false, "config missing".to_string());
+    };
+    let Ok(config) = serde_json::from_str::<Value>(&text) else {
+        return (false, "config invalid".to_string());
+    };
+    let endpoint = config
+        .get("endpoints")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items.iter().find(|item| {
+                item.get("type").and_then(Value::as_str) == Some("tailscale")
+                    && item.get("tag").and_then(Value::as_str).is_some_and(|tag| !tag.is_empty())
+                    && !item
+                        .get("system_interface")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            })
+        });
+    let Some(endpoint) = endpoint else {
+        return (true, "configured=false".to_string());
+    };
+    let tag = endpoint.get("tag").and_then(Value::as_str).unwrap_or_default();
+    let state = endpoint
+        .get("state_directory")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .map(|path| if path.is_absolute() { path } else { config_dir.join(path) })
+        .unwrap_or_else(|| app.moddir.join(".state/sing-box/tailscale"));
+    let state_created = state.exists();
+    let tun_ingress = config
+        .get("inbounds")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items.iter().find(|item| {
+                item.get("type").and_then(Value::as_str) == Some("tun")
+                    && item.get("tag").and_then(Value::as_str) == Some("tun-in")
+            })
+        })
+        .and_then(|tun| tun.get("route_exclude_address"))
+        .and_then(Value::as_array)
+        .is_some_and(|excluded| {
+            TAILNETS
+                .iter()
+                .all(|cidr| !excluded.iter().any(|value| value.as_str() == Some(cidr)))
+        });
+    let route_linked = config
+        .get("route")
+        .and_then(|route| route.get("rules"))
+        .and_then(Value::as_array)
+        .is_some_and(|rules| {
+            rules.iter().any(|rule| {
+                rule.get("outbound").and_then(Value::as_str) == Some(tag)
+                    && rule
+                        .get("ip_cidr")
+                        .and_then(Value::as_array)
+                        .is_some_and(|cidrs| {
+                            TAILNETS.iter().all(|cidr| {
+                                cidrs.iter().any(|value| value.as_str() == Some(cidr))
+                            })
+                        })
+            })
+        });
+    (
+        state_created && tun_ingress && route_linked,
+        format!(
+            "configured=true tag={tag} state_created={} tun_ingress={} route_linked={}",
+            state_created as u8, tun_ingress as u8, route_linked as u8
+        ),
+    )
 }
 
 pub(crate) fn topology(app: &App) -> Result<(), String> {

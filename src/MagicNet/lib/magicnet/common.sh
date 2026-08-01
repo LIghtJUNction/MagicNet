@@ -96,12 +96,23 @@ magicnet_singbox_config_has_nodes() {
     return "$_rc"
 }
 
+magicnet_singbox_standalone_config_ready() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    _marker="${MODDIR}/.config/sing-box/standalone-config"
+    [ -f "$_marker" ] && [ -s "$_config" ] &&
+        grep -Eq '"inbounds"[[:space:]]*:' "$_config" &&
+        grep -Eq '"outbounds"[[:space:]]*:' "$_config"
+    _rc=$?
+    unset _config _marker
+    return "$_rc"
+}
+
 magicnet_subscription_required_message() {
     printf '%s\n' "No subscription URL is configured, so the kernel cannot start. Run: cli setup <subscription-url> or cli sub set sing-box <subscription-url>."
 }
 
 magicnet_any_subscription_ready() {
-    magicnet_singbox_has_subscription || magicnet_singbox_config_has_nodes
+    magicnet_singbox_standalone_config_ready || magicnet_singbox_has_subscription || magicnet_singbox_config_has_nodes
 }
 
 magicnet_mark_subscription_missing() {
@@ -137,6 +148,10 @@ magicnet_prepare_singbox_nodes_unlocked() {
         if is_singbox_running >/dev/null 2>&1; then
             return 0
         fi
+    fi
+    if magicnet_singbox_standalone_config_ready; then
+        magicnet_log "Using validated standalone sing-box config; subscription refresh skipped."
+        return 0
     fi
     if [ "${MAGICNET_FORCE_SUB_REFRESH:-0}" != "1" ] && magicnet_singbox_config_has_nodes; then
         magicnet_log "Using cached sing-box config; subscription refresh skipped before startup."
@@ -199,6 +214,7 @@ magicnet_prepare_singbox_nodes() {
 }
 
 magicnet_singbox_running_has_nodes() {
+    magicnet_singbox_standalone_config_ready && return 0
     magicnet_singbox_config_has_nodes && return 0
     if command -v curl >/dev/null 2>&1; then
         _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || true)

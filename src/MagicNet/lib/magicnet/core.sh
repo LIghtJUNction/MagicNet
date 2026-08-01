@@ -24,8 +24,15 @@ magicnet_start_singbox_unlocked() {
     magicnet_prepare_singbox_nodes_unlocked || return 1
     magicnet_singbox_apply_transparent_mode || return 1
     magicnet_singbox_apply_hotspot_policy || return 1
+    magicnet_tailscale_apply_unlocked || return 1
+    magicnet_tailscale_inject_auth_key || return 1
     import __singbox__
-    singbox_start || return 1
+    if ! singbox_start; then
+        magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
+        return 1
+    fi
+    magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 ||
+        magicnet_warn "Failed to scrub the transient Tailscale auth key from config.json."
     if ! magicnet_singbox_running_has_nodes; then
         magicnet_warn "sing-box started but no proxy nodes were detected; stopping sing-box."
         singbox_stop >/dev/null 2>&1 || true

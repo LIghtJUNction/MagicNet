@@ -54,6 +54,14 @@ assert_extracted_links "$links_fixture" plain
 base64 <"$links_fixture" >"$tmp_dir/mixed-links.base64"
 assert_extracted_links "$tmp_dir/mixed-links.base64" base64
 
+vmess_link_file="$tmp_dir/node-vmess-unicode.link"
+vmess_payload='{"v":"2","ps":"\u9999\u6e2f-\u4f18\u5316","add":"vmess.invalid","port":"443","id":"00000000-0000-4000-8000-000000000009","aid":"0","net":"tcp","tls":"tls","sni":"vmess.invalid"}'
+printf 'vmess://%s\n' "$(printf '%s' "$vmess_payload" | base64 | tr -d '\n')" >"$vmess_link_file"
+vmess_json="$(magicnet_singbox_emit_share_link_json "$vmess_link_file")" \
+    || fail "emit_share_link_json failed for VMess Unicode fixture"
+printf '%s\n' "$vmess_json" | jq -e '.tag == "香港-优化"' >/dev/null \
+    || fail "VMess JSON Unicode escapes were not decoded: $vmess_json"
+
 # Drive the real share-link emitter (not a hand-built JSON fixture) for anytls.
 anytls_link_file="$tmp_dir/node-anytls.link"
 printf '%s\n' 'anytls://fixture-password@anytls.invalid:443?sni=edge.example&fp=chrome&insecure=1&alpn=h2,http/1.1#fixture-anytls' \

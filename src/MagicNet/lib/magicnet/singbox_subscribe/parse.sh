@@ -278,14 +278,25 @@ magicnet_singbox_emit_share_link_json() {
     vmess)
         _decoded=$(magicnet_b64_decode "$_body")
         [ -n "$_decoded" ] || return 1
-        _name=$(printf '%s' "$_decoded" | sed -n 's/.*"ps"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-        _server=$(printf '%s' "$_decoded" | sed -n 's/.*"add"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-        _port=$(printf '%s' "$_decoded" | sed -n 's/.*"port"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
-        _uuid=$(printf '%s' "$_decoded" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-        _alter_id=$(printf '%s' "$_decoded" | sed -n 's/.*"aid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
-        _network=$(printf '%s' "$_decoded" | sed -n 's/.*"net"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-        _tls=$(printf '%s' "$_decoded" | sed -n 's/.*"tls"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-        _sni=$(printf '%s' "$_decoded" | sed -n 's/.*"sni"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        if command -v jq >/dev/null 2>&1; then
+            _name=$(printf '%s' "$_decoded" | jq -r '.ps // empty | tostring' 2>/dev/null)
+            _server=$(printf '%s' "$_decoded" | jq -r '.add // empty | tostring' 2>/dev/null)
+            _port=$(printf '%s' "$_decoded" | jq -r '.port // empty | tostring' 2>/dev/null)
+            _uuid=$(printf '%s' "$_decoded" | jq -r '.id // empty | tostring' 2>/dev/null)
+            _alter_id=$(printf '%s' "$_decoded" | jq -r '.aid // empty | tostring' 2>/dev/null)
+            _network=$(printf '%s' "$_decoded" | jq -r '.net // empty | tostring' 2>/dev/null)
+            _tls=$(printf '%s' "$_decoded" | jq -r '.tls // empty | tostring' 2>/dev/null)
+            _sni=$(printf '%s' "$_decoded" | jq -r '.sni // empty | tostring' 2>/dev/null)
+        else
+            _name=$(printf '%s' "$_decoded" | sed -n 's/.*"ps"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _server=$(printf '%s' "$_decoded" | sed -n 's/.*"add"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _port=$(printf '%s' "$_decoded" | sed -n 's/.*"port"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
+            _uuid=$(printf '%s' "$_decoded" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _alter_id=$(printf '%s' "$_decoded" | sed -n 's/.*"aid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
+            _network=$(printf '%s' "$_decoded" | sed -n 's/.*"net"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _tls=$(printf '%s' "$_decoded" | sed -n 's/.*"tls"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _sni=$(printf '%s' "$_decoded" | sed -n 's/.*"sni"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        fi
         [ -n "$_name" ] && _tag=$(magicnet_json_escape "$_name")
         [ -n "$_server" ] || return 1
         [ -n "$_port" ] || return 1
