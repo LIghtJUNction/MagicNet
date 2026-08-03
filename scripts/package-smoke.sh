@@ -322,7 +322,7 @@ managed_ipv6_guards = [
 ]
 if any(rule in managed_ipv6_guards for rule in route_rules):
     raise SystemExit("packaged dual-stack config contains a managed IPv6 reject guard")
-if len(route_rules) != 66 or len(dns_rules) != 25:
+if len(route_rules) != 65 or len(dns_rules) != 24:
     raise SystemExit(
         f"canonical rule counts changed: route={len(route_rules)} dns={len(dns_rules)}"
     )
@@ -1472,43 +1472,8 @@ final_foreign_keywords = [
     "google", "youtube", "facebook", "instagram", "twitter", "x.com", "github",
     "telegram", "wikipedia", "reddit", "discord",
 ]
-domestic_package_names = [
-    "com.tencent.mm", "com.tencent.mobileqq", "com.tencent.tim", "com.tencent.wework",
-    "com.tencent.mobileqqi", "com.tencent.minihd.qq", "com.tencent.qqlite",
-    "com.tencent.qqmusic", "com.tencent.news", "com.tencent.tmgp.sgame",
-    "com.tencent.tmgp.pubgmhd", "com.eg.android.AlipayGphone", "com.taobao.taobao",
-    "com.tmall.wireless", "com.jingdong.app.mall", "com.sina.weibo",
-    "com.ss.android.ugc.aweme", "com.ss.android.article.news", "com.smile.gifmaker",
-    "tv.danmaku.bili", "com.xingin.xhs", "com.zhihu.android",
-    "com.netease.cloudmusic", "com.autonavi.minimap", "com.baidu.BaiduMap",
-    "com.baidu.searchbox", "com.baidu.netdisk", "com.meituan.android",
-    "com.sankuai.meituan", "com.dianping.v1", "com.xunmeng.pinduoduo",
-    "com.xunmeng.merchant", "com.huawei.appmarket", "com.heytap.market",
-    "com.bbk.appstore", "com.xiaomi.market", "com.miui.weather2",
-    "com.coloros.weather2", "com.lenovo.leos.appstore",
-]
-domestic_package_fallback_rule = {
-    "package_name": domestic_package_names,
-    "outbound": "cn-direct",
-}
-domestic_package_dns_fallback_rule = {
-    "package_name": domestic_package_names,
-    "server": "bootstrap-local-dns",
-}
-domestic_package_dns_fallbacks = [
-    index for index, rule in enumerate(dns_rules)
-    if rule == domestic_package_dns_fallback_rule
-]
-if domestic_package_dns_fallbacks != [len(dns_rules) - 1]:
-    raise SystemExit(
-        "expected exactly one final domestic-package DNS fallback: "
-        f"indexes={domestic_package_dns_fallbacks}"
-    )
-domestic_package_dns_fallback_index = domestic_package_dns_fallbacks[0]
-if not dns_rule_set_indexes or not all(
-    index < domestic_package_dns_fallback_index for index in dns_rule_set_indexes
-):
-    raise SystemExit("rule-set DNS policies must precede domestic-package DNS fallback")
+if not dns_rule_set_indexes:
+    raise SystemExit("rule-set DNS policies must remain present")
 
 expected_rule_set_outbounds = {
     "lyc-geosite-ai": "ai-proxy",
@@ -1682,12 +1647,12 @@ if not (
         f"pcdn={pcdn_index} game={explicit_game_index} foreign={foreign_priority_index} "
         f"cn={canonical_cn_index}"
     )
-pre_fallback_cn_direct_indexes = [
+cn_direct_indexes = [
     index for index, rule in enumerate(route_rules)
-    if rule.get("outbound") == "cn-direct" and rule != domestic_package_fallback_rule
+    if rule.get("outbound") == "cn-direct"
 ]
-if not pre_fallback_cn_direct_indexes or not all(
-    index < keyword_route_index for index in pre_fallback_cn_direct_indexes
+if not cn_direct_indexes or not all(
+    index < keyword_route_index for index in cn_direct_indexes
 ):
     raise SystemExit(
         "destination/rule-set cn-direct routes must precede the network-test keyword fallback"
@@ -1778,27 +1743,8 @@ if len(final_keyword_routes) != 1 or final_keyword_routes[0] != telegram_ip_rout
         "unchanged final foreign keyword route must immediately follow the Telegram IP route: "
         f"actual={final_keyword_routes}"
     )
-domestic_package_fallbacks = [
-    index for index, rule in enumerate(route_rules) if rule == domestic_package_fallback_rule
-]
-if domestic_package_fallbacks != [len(route_rules) - 1]:
-    raise SystemExit(
-        f"expected one exact final domestic-package fallback, found {domestic_package_fallbacks}"
-    )
-domestic_package_fallback_index = domestic_package_fallbacks[0]
-if final_keyword_routes[0] + 1 != domestic_package_fallback_index:
-    raise SystemExit("domestic-package fallback must immediately follow final foreign keyword route")
-foreign_and_ad_indexes = [
-    index for index, rule in enumerate(route_rules)
-    if rule.get("outbound") in {
-        "ad-block", "proxy-rule", "dev-proxy", "media-proxy", "game-proxy",
-        "social-proxy", "telegram-proxy", "ai-proxy",
-    }
-]
-if not foreign_and_ad_indexes or not all(
-    index < domestic_package_fallback_index for index in foreign_and_ad_indexes
-):
-    raise SystemExit("foreign/ad destination routes must precede domestic-package fallback")
+if final_keyword_routes != [len(route_rules) - 1]:
+    raise SystemExit("final foreign keyword route must be the last explicit route rule")
 
 media_domains = {"youtube.com", "ytimg.com", "googlevideo.com"}
 media_rule_indexes = {

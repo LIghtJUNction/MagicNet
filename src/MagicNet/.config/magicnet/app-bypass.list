@@ -4,26 +4,8 @@
 # Architecture note:
 # - Domestic vs foreign traffic is decided mainly by geodata (geosite/geoip → cn-direct / proxy).
 # - Do NOT try to list “all domestic apps” here; that does not scale and fights the rule-set model.
-# - This file is only for: multi-VPN coexistence, and optional user opt-outs (e.g. a payment app
-#   that still misbehaves even with correct CN routing).
+# - This file is only for explicit user opt-outs. It intentionally ships empty.
 #
-# Optional shopping / local-service opt-outs (not a full domestic catalog):
-com.taobao.idlefish
-com.taobao.taobao
-com.xunmeng.pinduoduo
-com.sankuai.meituan
-ctrip.android.view
-com.MobileTicket
-
-# Other VPN / tunnel clients (avoid multi-TUN fights)
-com.tailscale.ipn
-com.wireguard.android
-net.openvpn.openvpn
-de.blinkt.openvpn
-com.zerotier.one
-com.cloudflare.onedotonedotonedotone
-io.nekohasekai.sfa
-moe.nb4a
-com.v2ray.ang
-com.github.kr328.clash
-com.github.metacubex.clash.meta
+# MagicBox and WebUI discover installed Android VpnService implementations at runtime and can
+# offer them as candidates. A recommendation must never silently become policy: only packages
+# explicitly selected by the user are written here.

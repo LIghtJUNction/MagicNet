@@ -84,74 +84,13 @@ jq -e '
 ' "$CONFIG_FILE" >/dev/null ||
     fail "DNS servers must contain exactly one canonical Cloudflare HTTPS endpoint and no legacy tag"
 
-forbidden_browsers=$(jq -r '
-  def values($value):
-    if $value == null then []
-    elif ($value | type) == "array" then $value
-    else [$value]
-    end;
-  ["com.tencent.mtt", "com.coloros.browser", "com.UCMobile", "com.quark.browser"] as $forbidden
-  | [.route.rules[]
-      | select(.outbound? == "cn-direct")
-      | values(.package_name?)[]
-      | select(. as $package | $forbidden | index($package))]
-  | unique
-  | join(" ")
-' "$CONFIG_FILE")
-[[ -z "$forbidden_browsers" ]] || fail "forbidden browser packages in cn-direct: $forbidden_browsers"
+package_cn_direct_count=$(jq '[.route.rules[] | select(.outbound? == "cn-direct" and .package_name? != null)] | length' "$CONFIG_FILE")
+[[ "$package_cn_direct_count" -eq 0 ]] ||
+    fail "cn-direct must be selected by destination/rule-set, not package catalog"
 
-missing_domestic_apps=$(jq -r '
-  def values($value):
-    if $value == null then []
-    elif ($value | type) == "array" then $value
-    else [$value]
-    end;
-  ["com.taobao.taobao", "com.jingdong.app.mall", "com.meituan.android", "com.xunmeng.pinduoduo"] as $required
-  | [.route.rules[]
-      | select(.outbound? == "cn-direct")
-      | values(.package_name?)[]] as $cn_direct_packages
-  | [$required[] | select(. as $package | $cn_direct_packages | index($package) == null)]
-  | join(" ")
-' "$CONFIG_FILE")
-[[ -z "$missing_domestic_apps" ]] || fail "representative domestic apps missing from cn-direct: $missing_domestic_apps"
-
-package_fixture=$(mktemp)
-trap 'rm -f "$package_fixture"' EXIT
-cat >"$package_fixture" <<'JSON'
-{
-  "route": {
-    "rules": [
-      {"outbound": "cn-direct", "package_name": "com.tencent.mtt"},
-      {"outbound": "cn-direct", "package_name": "com.taobao.taobao"},
-      {"outbound": "cn-direct", "package_name": [
-        "com.jingdong.app.mall",
-        "com.meituan.android",
-        "com.xunmeng.pinduoduo"
-      ]}
-    ]
-  }
-}
-JSON
-package_fixture_result=$(jq -er '
-  def values($value):
-    if $value == null then []
-    elif ($value | type) == "array" then $value
-    else [$value]
-    end;
-  ["com.tencent.mtt", "com.coloros.browser", "com.UCMobile", "com.quark.browser"] as $forbidden
-  | ["com.taobao.taobao", "com.jingdong.app.mall", "com.meituan.android", "com.xunmeng.pinduoduo"] as $required
-  | [.route.rules[]
-      | select(.outbound? == "cn-direct")
-      | values(.package_name?)[]] as $packages
-  | ([$packages[] | select(. as $package | $forbidden | index($package))] == ["com.tencent.mtt"])
-    and ([$required[] | select(. as $package | $packages | index($package) == null)] | length == 0)
-' "$package_fixture") || fail "scalar package_name fixture query failed"
-[[ "$package_fixture_result" == "true" ]] ||
-    fail "scalar package_name was not included in forbidden and required-package aggregation"
-rm -f "$package_fixture"
-package_fixture=
-trap - EXIT
-unset package_fixture_result
+multi_package_dns_count=$(jq '[.dns.rules[] | select(((.package_name // []) | length) > 1)] | length' "$CONFIG_FILE")
+[[ "$multi_package_dns_count" -eq 0 ]] ||
+    fail "DNS policy must not contain a hardcoded application catalog"
 
 first_matching_value() {
     local rules_path="$1"
@@ -236,7 +175,7 @@ proxy_dns_tags = {
     for server in config["dns"]["servers"]
     if server.get("detour") == "proxy"
 }
-if len(rules) != 66 or len(dns_rules) != 25:
+if len(rules) != 65 or len(dns_rules) != 24:
     raise AssertionError(
         f"canonical rule counts changed: route={len(rules)} dns={len(dns_rules)}"
     )
@@ -583,38 +522,6 @@ final_foreign_keywords = [
     "google", "youtube", "facebook", "instagram", "twitter", "x.com", "github",
     "telegram", "wikipedia", "reddit", "discord",
 ]
-domestic_package_names = [
-    "com.tencent.mm", "com.tencent.mobileqq", "com.tencent.tim", "com.tencent.wework",
-    "com.tencent.mobileqqi", "com.tencent.minihd.qq", "com.tencent.qqlite",
-    "com.tencent.qqmusic", "com.tencent.news", "com.tencent.tmgp.sgame",
-    "com.tencent.tmgp.pubgmhd", "com.eg.android.AlipayGphone", "com.taobao.taobao",
-    "com.tmall.wireless", "com.jingdong.app.mall", "com.sina.weibo",
-    "com.ss.android.ugc.aweme", "com.ss.android.article.news", "com.smile.gifmaker",
-    "tv.danmaku.bili", "com.xingin.xhs", "com.zhihu.android",
-    "com.netease.cloudmusic", "com.autonavi.minimap", "com.baidu.BaiduMap",
-    "com.baidu.searchbox", "com.baidu.netdisk", "com.meituan.android",
-    "com.sankuai.meituan", "com.dianping.v1", "com.xunmeng.pinduoduo",
-    "com.xunmeng.merchant", "com.huawei.appmarket", "com.heytap.market",
-    "com.bbk.appstore", "com.xiaomi.market", "com.miui.weather2",
-    "com.coloros.weather2", "com.lenovo.leos.appstore",
-]
-domestic_package_fallback_rule = {
-    "package_name": domestic_package_names,
-    "outbound": "cn-direct",
-}
-domestic_package_dns_fallback_rule = {
-    "package_name": domestic_package_names,
-    "server": "bootstrap-local-dns",
-}
-domestic_package_dns_fallbacks = [
-    index for index, rule in enumerate(dns_rules)
-    if rule == domestic_package_dns_fallback_rule
-]
-if domestic_package_dns_fallbacks != [len(dns_rules) - 1]:
-    raise AssertionError(
-        "expected exactly one final domestic-package DNS fallback: "
-        f"indexes={domestic_package_dns_fallbacks}"
-    )
 expected_dns_tail = [
     private_dns_rule,
     mmstat_local_dns_rule,
@@ -626,12 +533,11 @@ expected_dns_tail = [
     canonical_cn_dns_rule,
     generic_foreign_dns_rule,
     specialized_foreign_dns_rule,
-    domestic_package_dns_fallback_rule,
 ]
 if dns_rules[14:] != expected_dns_tail:
     raise AssertionError(
         "required DNS order is private < mmstat local < ad suffix < ad keyword < ad rule-set < game < "
-        "foreign priority < canonical CN < generic foreign < specialized < domestic package: "
+        "foreign priority < canonical CN < generic foreign < specialized: "
         f"{dns_rules[14:]}"
     )
 for expected_rule in expected_dns_tail:
@@ -1476,7 +1382,6 @@ for domain, (expected_outbound, expected_effective) in {
     "x.com": ("social-proxy", "block"),
     "doubleclick.net": ("ad-block", "block"),
     "baidu.com": ("cn-direct", "direct"),
-    "unclassified.magicnet-probe": ("cn-direct", "direct"),
 }.items():
     index, rule, matching_rule_sets = first_matching_outbound(domain, domestic_package_flow)
     actual_outbound = rule.get("outbound")
@@ -1490,31 +1395,11 @@ for domain, (expected_outbound, expected_effective) in {
             f"domestic package {domain}: index={index} outbound={actual_outbound} "
             f"effective={actual_effective}, expected={expected_outbound}/{expected_effective}"
         )
-    if domain == "unclassified.magicnet-probe":
-        if index != len(rules) - 1 or rule != domestic_package_fallback_rule:
-            raise AssertionError(
-                f"unclassified domestic-package traffic must use the exact final fallback: "
-                f"index={index} rule={rule}"
-            )
-    elif index >= len(rules) - 1:
-        raise AssertionError(f"destination policy did not precede package fallback for {domain}")
+    if index >= len(rules) - 1:
+        raise AssertionError(f"destination policy did not precede the generic final route for {domain}")
 
-domestic_package_dns_index = domestic_package_dns_fallbacks[0]
-unclassified_package_dns = first_matching_dns(
-    "unclassified.magicnet-probe", domestic_package_flow
-)
-if unclassified_package_dns is None:
-    raise AssertionError("unclassified domestic-package DNS unexpectedly used dns.final")
-index, rule, matching_rule_sets = unclassified_package_dns
-if (
-    index != domestic_package_dns_index
-    or rule != domestic_package_dns_fallback_rule
-    or rule.get("server") != "bootstrap-local-dns"
-):
-    raise AssertionError(
-        "unclassified domestic-package DNS did not use the exact final local fallback: "
-        f"index={index} server={rule.get('server')}"
-    )
+if first_matching_dns("unclassified.magicnet-probe", domestic_package_flow) is not None:
+    raise AssertionError("unclassified application DNS must use dns.final instead of a package fallback")
 
 for domain, expected_index, expected_rule in (
     ("doubleclick.net", 16, ad_suffix_dns_rule),
@@ -1550,33 +1435,30 @@ github_dns = first_matching_dns("github.com", domestic_package_flow)
 if github_dns is None:
     raise AssertionError("domestic-package github.com DNS unexpectedly used dns.final")
 index, rule, matching_rule_sets = github_dns
-if index >= domestic_package_dns_index or rule.get("server") not in proxy_dns_tags:
+if rule.get("server") not in proxy_dns_tags:
     raise AssertionError(
         "domestic-package github.com DNS must use an earlier proxy-detoured server: "
-        f"index={index} server={rule.get('server')} "
-        f"package_fallback_index={domestic_package_dns_index}"
+        f"index={index} server={rule.get('server')}"
     )
 
 x_dns = first_matching_dns("x.com", domestic_package_flow)
 if x_dns is None:
     raise AssertionError("domestic-package x.com DNS unexpectedly used dns.final")
 index, rule, matching_rule_sets = x_dns
-if index >= domestic_package_dns_index or rule.get("server") not in proxy_dns_tags:
+if rule.get("server") not in proxy_dns_tags:
     raise AssertionError(
         "domestic-package x.com DNS must use an earlier proxy-detoured server: "
-        f"index={index} server={rule.get('server')} "
-        f"package_fallback_index={domestic_package_dns_index}"
+        f"index={index} server={rule.get('server')}"
     )
 
 baidu_dns = first_matching_dns("baidu.com", domestic_package_flow)
 if baidu_dns is None:
     raise AssertionError("domestic-package baidu.com DNS unexpectedly used dns.final")
 index, rule, matching_rule_sets = baidu_dns
-if index >= domestic_package_dns_index or rule.get("server") != "bootstrap-local-dns":
+if rule.get("server") != "bootstrap-local-dns":
     raise AssertionError(
         "domestic-package baidu.com DNS precedence changed: "
-        f"index={index} server={rule.get('server')} "
-        f"package_fallback_index={domestic_package_dns_index}"
+        f"index={index} server={rule.get('server')}"
     )
 
 mmstat_dns_indexes = [
@@ -1926,12 +1808,12 @@ exact_suffix_routes = [
 if len(exact_suffix_routes) != 1:
     raise AssertionError(f"expected one unchanged foreign network-test suffix route, found {len(exact_suffix_routes)}")
 exact_suffix_index, _ = exact_suffix_routes[0]
-pre_fallback_cn_direct_indexes = [
+cn_direct_indexes = [
     index for index, rule in enumerate(rules)
-    if rule.get("outbound") == "cn-direct" and rule != domestic_package_fallback_rule
+    if rule.get("outbound") == "cn-direct"
 ]
-if not pre_fallback_cn_direct_indexes or not all(
-    index < keyword_index for index in pre_fallback_cn_direct_indexes
+if not cn_direct_indexes or not all(
+    index < keyword_index for index in cn_direct_indexes
 ):
     raise AssertionError(
         f"destination/rule-set cn-direct routes must precede keyword route index={keyword_index}"
@@ -2102,15 +1984,8 @@ if len(final_keyword_routes) != 1 or final_keyword_routes[0] != telegram_ip_rout
         "unchanged final foreign keyword route must immediately follow the Telegram IP route: "
         f"actual={final_keyword_routes}"
     )
-domestic_package_fallbacks = [
-    index for index, rule in enumerate(rules) if rule == domestic_package_fallback_rule
-]
-if domestic_package_fallbacks != [len(rules) - 1]:
-    raise AssertionError(
-        f"expected one exact final domestic-package fallback, found {domestic_package_fallbacks}"
-    )
-if final_keyword_routes[0] + 1 != domestic_package_fallbacks[0]:
-    raise AssertionError("domestic-package fallback must immediately follow final foreign keyword route")
+if final_keyword_routes != [len(rules) - 1]:
+    raise AssertionError("final foreign keyword route must be the last explicit route rule")
 PY
 
 selector_fixture_dir=$(mktemp -d)
