@@ -77,8 +77,9 @@ pub(crate) fn app_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "add-many" => app_add_many(app, args),
         "remove" => app_remove(app, args),
         "packages" => app_packages(args),
+        "recommendations" => app_recommendations(),
         "apply" => app_apply_and_restart(app),
-        _ => Err("Usage: cli app {list|packages [query]|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}".to_string()),
+        _ => Err("Usage: cli app {list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}".to_string()),
     }
 }
 
@@ -221,6 +222,38 @@ fn app_packages(args: &[String]) -> Result<(), String> {
         println!("{package}");
     }
     Ok(())
+}
+
+fn app_recommendations() -> Result<(), String> {
+    let output = Command::new("cmd")
+        .args([
+            "package",
+            "query-services",
+            "--brief",
+            "-a",
+            "android.net.VpnService",
+        ])
+        .output()
+        .map_err(|err| format!("query Android VPN services: {err}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    for package in vpn_service_packages(&String::from_utf8_lossy(&output.stdout)) {
+        println!("{package}");
+    }
+    Ok(())
+}
+
+fn vpn_service_packages(output: &str) -> Vec<String> {
+    let mut packages = output
+        .lines()
+        .filter_map(|line| line.trim().split_once('/').map(|(package, _)| package))
+        .filter(|package| valid_package_name(package))
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    packages.sort();
+    packages.dedup();
+    packages
 }
 
 fn valid_package_name(package: &str) -> bool {
@@ -494,6 +527,23 @@ mod tests {
         assert_eq!(fs::read_to_string(&direct).unwrap(), "new-direct\n");
         assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn vpn_recommendations_are_discovered_from_service_components() {
+        let output = r#"
+3 services found:
+  Service #0:
+    com.example.vpn/.TunnelService
+  Service #1:
+    com.example.vpn/com.example.vpn.SecondaryService
+  Service #2:
+    invalid-package/.VpnService
+"#;
+        assert_eq!(
+            vpn_service_packages(output),
+            vec!["com.example.vpn".to_string()]
+        );
     }
 
     #[test]

@@ -8,7 +8,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
-import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName, recommendedBypass } from "./appPolicyInsights";
+import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName } from "./appPolicyInsights";
 import { buildAppPolicyChangePlan, type AppPolicyChangeOperation, type AppPolicyChangePlan } from "./appPolicyChangePlan";
 
 const { state, runCli, refreshApps, refreshPackages, shellQuote } = useMagicNet();
@@ -18,6 +18,7 @@ const pendingAppAction = ref<PendingAppAction | null>(null);
 const appReportCopied = ref(false);
 const safeReportCopied = ref(false);
 const selectedPackages = ref<string[]>([]);
+const recommendedBypass = ref<string[]>([]);
 
 type PendingAppAction = {
   key: string;
@@ -52,7 +53,7 @@ const allVisibleSelected = computed(() => (
 const availableRecommendedBypass = computed(() => {
   const active = new Set([...state.appPolicy.proxy, ...state.appPolicy.direct, ...state.appPolicy.bypass]);
   const installed = installedNames.value;
-  return recommendedBypass.filter((pkg) => {
+  return recommendedBypass.value.filter((pkg) => {
     if (active.has(pkg)) return false;
     return installed.size === 0 || installed.has(pkg);
   });
@@ -369,6 +370,11 @@ async function confirmAppAction(): Promise<void> {
 }
 
 onMounted(() => {
+  void runCli("app recommendations", "读取动态推荐 Bypass", true).then((text) => {
+    recommendedBypass.value = Array.from(new Set(
+      text.split(/\r?\n/).map((item) => item.trim()).filter(isValidPackageName)
+    ));
+  });
   if (!state.packages.length) void refreshPackages(true);
 });
 </script>
