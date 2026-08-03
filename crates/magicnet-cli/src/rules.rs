@@ -206,7 +206,10 @@ fn app_packages(args: &[String]) -> Result<(), String> {
         .output()
         .map_err(|err| format!("run pm list packages: {err}"))?;
     if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        return Err(command_failure_message(
+            "query Android VPN services",
+            &output,
+        ));
     }
     let mut packages: Vec<String> = String::from_utf8_lossy(&output.stdout)
         .lines()
@@ -222,6 +225,16 @@ fn app_packages(args: &[String]) -> Result<(), String> {
         println!("{package}");
     }
     Ok(())
+}
+
+fn command_failure_message(operation: &str, output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr.trim();
+    if detail.is_empty() {
+        format!("{operation} failed: {}", output.status)
+    } else {
+        format!("{operation} failed: {detail}")
+    }
 }
 
 fn app_recommendations() -> Result<(), String> {
@@ -544,6 +557,17 @@ mod tests {
             vpn_service_packages(output),
             vec!["com.example.vpn".to_string()]
         );
+    }
+
+    #[test]
+    fn command_failure_message_falls_back_to_exit_status() {
+        let output = Command::new("sh")
+            .args(["-c", "exit 7"])
+            .output()
+            .unwrap();
+        let message = command_failure_message("query Android VPN services", &output);
+        assert!(message.starts_with("query Android VPN services failed:"));
+        assert!(message.contains('7'));
     }
 
     #[test]

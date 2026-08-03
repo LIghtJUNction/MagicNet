@@ -35,6 +35,14 @@ bypass_count=$(grep -Ecv '^[[:space:]]*(#|$)' "$BYPASS" || true)
 [[ "$bypass_count" -eq 0 ]] \
     || fail "shipped app-bypass.list must not hardcode device-specific packages ($bypass_count found)"
 
+jq -ne '
+  def package_catalog:
+    (.package_name? | type) == "array" and (.package_name | length) > 1;
+  ({"package_name": "single"} | package_catalog | not)
+  and ({"package_name": ["single"]} | package_catalog | not)
+  and ({"package_name": ["first", "second"]} | package_catalog)
+' >/dev/null || fail "package catalog detection must distinguish strings from multi-value arrays"
+
 # Geodata / CN rule-set path must exist in shipped config (primary domestic split).
 jq -e '
   ([.route.rules[]?
@@ -42,7 +50,7 @@ jq -e '
   and ([.route.rules[]?
     | select((.outbound? == "cn-direct") and (.package_name? != null))] | length) == 0
   and ([.dns.rules[]?
-    | select(((.package_name // []) | length) > 1)] | length) == 0
+    | select((.package_name? | type) == "array" and (.package_name | length) > 1)] | length) == 0
 ' "$CONFIG" >/dev/null \
     || fail "config must use rule-set routing instead of hardcoded domestic package catalogs"
 
