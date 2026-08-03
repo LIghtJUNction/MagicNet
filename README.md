@@ -55,13 +55,13 @@ su -c /data/adb/modules/MagicNet/cli health
 ## 能做什么
 
 - 通过 `magicnet0` TUN 接管设备应用流量。
-- 用 `sing-box` 导入订阅、选择节点和执行路由规则。
+- 用 `sing-box` 导入 URL 或本地文件订阅、选择节点和执行路由规则。
 - 拦截物理出口上的直连 DNS/DoT（53/853），减少 DNS 绕过。
 - 为已经进入 TUN 的热点转发流量选择 Direct 或 Proxy 出口。
 - 按应用设置代理、直连或 Bypass TUN，便于与外部 VPN 共存。
 - 提供 WebUI、CLI、MCP 和支持包，便于日常控制与排查。
 
-当前主线只维护 `sing-box` 和 `magicnet0` TUN，不恢复 TProxy 或多核心路径。热点功能只选择已经进入 TUN 的转发流量出口；应用的 `bypass` 策略会把指定应用排除在 TUN 之外，MagicNet 仍不会占用或管理 Android 的系统 VPN slot。
+当前主线只维护 `sing-box` 和 `magicnet0` TUN，不恢复 TProxy 或多核心路径。热点 Proxy 模式会暂时关闭 Android tether 硬件卸载，确保转发流量进入 TUN；关闭 Proxy 或卸载模块时恢复原系统值。应用的 `bypass` 策略会按 Android 用户动态解析包 UID 并把指定应用排除在 TUN 之外，MagicNet 仍不会占用或管理 Android 的系统 VPN slot。
 
 ## 安装
 
@@ -131,7 +131,7 @@ su -c /data/adb/modules/MagicNet/cli service restart sing-box
 su -c /data/adb/modules/MagicNet/cli support bundle
 ```
 
-模块 WebUI 的“保存并启用”也会走同一套订阅配置流程。导入后，在 sing-box WebUI 中选择节点和查看连接。
+模块 WebUI 的“保存并启用”和“导入本地文件”走同一套验证、原子激活和失败回滚流程。本地文件支持 Clash YAML、base64、分享链接及转换器可识别的文本格式；导入成功后会持久使用本地源，直到保存新的 URL 来源。
 
 ## DNS 与使用边界
 
@@ -146,7 +146,7 @@ adb shell 'su -M -c "timeout 10 tcpdump -ni rmnet_data0 \"port 53 or port 853\""
 
 不同设备的蜂窝接口不一定叫 `rmnet_data0`，请以第一条命令的输出为准。
 
-MagicNet 只管理自身的数据面，不创建热点、不配置厂商 tethering/NAT，也不接管外部 VPN overlay。系统热点把转发流量送入 `magicnet0` 后，可以用 `cli hotspot {status|enable|disable}` 在 Direct 和 Proxy 之间切换。
+MagicNet 不创建热点、不接管厂商 tethering/NAT，也不接管外部 VPN overlay。启用热点 Proxy 时，它只暂时关闭 Android tether 硬件卸载，让厂商转发流量进入 `magicnet0`；`cli hotspot disable` 和模块卸载都会恢复此前系统值。之后可用 `cli hotspot {status|enable|disable}` 在 Direct 和 Proxy 之间切换。
 
 ## 反馈问题
 

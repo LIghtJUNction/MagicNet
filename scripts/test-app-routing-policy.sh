@@ -14,13 +14,44 @@ fi
 
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/apps.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/core.sh"
 
 NO_JQ_BIN="$WORK/no-jq-bin"
 mkdir -p "$NO_JQ_BIN"
-for command_name in awk grep mv rm sed tr wc; do
+for command_name in awk cp grep mkdir mv rm sed tr wc; do
   command_path=$(command -v "$command_name")
   ln -s "$command_path" "$NO_JQ_BIN/$command_name"
 done
+
+MOCK_BIN="$WORK/mock-bin"
+mkdir -p "$MOCK_BIN"
+cat >"$MOCK_BIN/cmd" <<'EOF'
+#!/bin/sh
+case "${1:-} ${2:-}" in
+  "user list")
+    printf '%s\n' 'Users:' '  UserInfo{0:Owner:13} running' '  UserInfo{10:Work:30} running'
+    ;;
+  "package list")
+    package=""
+    user=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --user) user="${2:-}"; shift 2 ;;
+        -U) shift ;;
+        package|list|packages) shift ;;
+        *) package="$1"; shift ;;
+      esac
+    done
+    case "$user:$package" in
+      0:com.example.bypass) printf '%s\n' 'package:com.example.bypass uid:11001' ;;
+      10:com.example.bypass) printf '%s\n' 'package:com.example.bypass uid:1011001' ;;
+      0:com.example.direct-force) printf '%s\n' 'package:com.example.direct-force uid:11002' ;;
+      0:com.example.proxy) printf '%s\n' 'package:com.example.proxy uid:11003' ;;
+    esac
+    ;;
+esac
+EOF
+chmod +x "$MOCK_BIN/cmd"
 
 write_base_config() {
   cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
@@ -29,6 +60,7 @@ write_base_config() {
     {
       "type": "tun",
       "tag": "tun-in",
+      "exclude_uid": [0, 42],
       "include_package": ["stale.include"],
       "exclude_package": ["stale.exclude"],
       "stack": "system"
@@ -111,32 +143,62 @@ assert_proxy_rule_and_order() {
 }
 
 assert_blacklist() {
-  "$JQ_BIN" -e '
-    (.inbounds[] | select(.type == "tun")
-      | .exclude_package == ["com.example.bypass"] and (has("include_package") | not))
-  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  if [ "$EXPECT_UID_POLICY" = 1 ]; then
+    "$JQ_BIN" -e '
+      (.inbounds[] | select(.type == "tun")
+        | .exclude_package == ["com.example.bypass"]
+          and .exclude_uid == [0, 42, 11001, 1011001]
+          and (has("include_package") | not)
+          and (has("include_uid") | not))
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  else
+    "$JQ_BIN" -e '
+      (.inbounds[] | select(.type == "tun")
+        | .exclude_package == ["com.example.bypass"]
+          and .exclude_uid == [0, 42]
+          and (has("include_package") | not))
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  fi
   assert_proxy_rule_and_order
 }
 
 assert_whitelist() {
-  "$JQ_BIN" -e '
-    (.inbounds[] | select(.type == "tun")
-      | .include_package == ["com.example.direct-force", "com.example.proxy"] and (has("exclude_package") | not))
-  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  if [ "$EXPECT_UID_POLICY" = 1 ]; then
+    "$JQ_BIN" -e '
+      (.inbounds[] | select(.type == "tun")
+        | .include_package == ["com.example.direct-force", "com.example.proxy"]
+          and .include_uid == [11002, 11003]
+          and .exclude_uid == [0, 42]
+          and (has("exclude_package") | not))
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  else
+    "$JQ_BIN" -e '
+      (.inbounds[] | select(.type == "tun")
+        | .include_package == ["com.example.direct-force", "com.example.proxy"]
+          and .exclude_uid == [0, 42]
+          and (has("exclude_package") | not))
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  fi
   assert_proxy_rule_and_order
 }
 
 apply_policy() {
   implementation="$1"
   if [ "$implementation" = "no-jq" ]; then
-    PATH="$NO_JQ_BIN" magicnet_singbox_apply_app_policy
+    PATH="$MOCK_BIN:$NO_JQ_BIN" magicnet_singbox_apply_app_policy
   else
-    magicnet_singbox_apply_app_policy
+    PATH="$MOCK_BIN:$PATH" magicnet_singbox_apply_app_policy
   fi
 }
 
 run_case() {
   implementation="$1"
+  if [ "$implementation" = jq ]; then
+    EXPECT_UID_POLICY=1
+  else
+    EXPECT_UID_POLICY=0
+  fi
+  export EXPECT_UID_POLICY
   MODDIR="$WORK/$implementation/module"
   export MODDIR
   mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
@@ -181,5 +243,41 @@ EOF
 
 run_case jq
 run_case no-jq
+
+assert_startup_policy_order() {
+  startup_events="$WORK/startup-events.log"
+  : >"$startup_events"
+
+  magicnet_module_disabled() { return 1; }
+  magicnet_cmd_exists() { return 0; }
+  import() { return 0; }
+  is_singbox_running() { return 1; }
+  magicnet_prepare_singbox_nodes_unlocked() { printf '%s\n' prepare >>"$startup_events"; }
+  magicnet_singbox_apply_transparent_mode() { printf '%s\n' transparent >>"$startup_events"; }
+  magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot >>"$startup_events"; }
+  magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$startup_events"; }
+  magicnet_tailscale_apply_unlocked() { printf '%s\n' tailscale >>"$startup_events"; }
+  magicnet_tailscale_inject_auth_key() { printf '%s\n' tailscale-auth >>"$startup_events"; }
+  magicnet_tailscale_scrub_auth_key() { return 0; }
+  singbox_start() { printf '%s\n' singbox-start >>"$startup_events"; }
+  magicnet_singbox_running_has_nodes() { return 0; }
+
+  MAGIC_SINGBOX=1 magicnet_start_singbox_unlocked
+  if ! diff -u - "$startup_events" <<'EOF'
+prepare
+transparent
+hotspot
+tailscale
+app-policy
+tailscale-auth
+singbox-start
+EOF
+  then
+    printf '%s\n' 'app policy must be materialized before sing-box starts' >&2
+    exit 1
+  fi
+}
+
+assert_startup_policy_order
 
 printf '%s\n' 'app routing policy regression tests passed'

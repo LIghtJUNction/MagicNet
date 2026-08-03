@@ -7,7 +7,7 @@ use crate::{
     diagnostics::supervisor_pid, pid_summary, run_magicnet_function, write_text_file, App,
 };
 
-const START_SUPERVISORS_COMMAND: &str = "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 &";
+const START_SUPERVISORS_COMMAND: &str = "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1";
 const STOP_RUNTIME_CLEANUP_COMMAND: &str =
     "magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
@@ -29,12 +29,20 @@ pub(crate) fn service_status(app: &App) {
     println!("  Transparent: {}", transparent_mode(app));
     println!("  API:      {}", app.api);
     println!("  WebUI:    {}", singbox_webui(app));
-    println!(
-        "  Sub URL:  {}",
-        app.moddir
-            .join(".config/sing-box/subscription.url")
-            .display()
-    );
+    let local_source = app.moddir.join(".config/sing-box/subscription.local");
+    if fs::metadata(&local_source)
+        .map(|metadata| metadata.len() > 0)
+        .unwrap_or(false)
+    {
+        println!("  Sub source: local file");
+    } else {
+        println!(
+            "  Sub source: {}",
+            app.moddir
+                .join(".config/sing-box/subscription.url")
+                .display()
+        );
+    }
 }
 
 pub(crate) fn singbox_webui(app: &App) -> String {
@@ -69,7 +77,7 @@ pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "start" => run_magicnet_function(
             app,
-            "magicnet_start_kernel && { \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 & }",
+            "magicnet_start_kernel && \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1",
         ),
         "ensure" => run_magicnet_function(app, "magicnet_ensure_kernel"),
         "stop" => stop_all_direct(app),
@@ -187,7 +195,7 @@ pub(crate) fn restart_current_core(app: &App) -> Result<(), String> {
 fn restart_command(target: &str) -> &'static str {
     match target {
         "sing-box" | "singbox" => {
-            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel && { \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1 & }"
+            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel && \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1"
         }
         _ => unreachable!("restart validates the target before building the command"),
     }
@@ -384,7 +392,7 @@ mod tests {
             let command = restart_command(target);
             assert!(command.contains("magicnet_start_kernel"));
             assert!(command.contains("supervisor start all"));
-            assert!(command.contains("& }"));
+            assert!(!command.contains("2>&1 &"));
         }
     }
 

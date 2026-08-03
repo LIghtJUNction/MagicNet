@@ -13,6 +13,10 @@ const network = readFileSync(
   new URL("../src/MagicNet/lib/magicnet/network.sh", import.meta.url),
   "utf8",
 );
+const webuiApi = readFileSync(
+  new URL("../crates/magicnet-cli/src/webui_api.rs", import.meta.url),
+  "utf8",
+);
 
 assert.match(control, /type="checkbox"/);
 assert.match(control, /允许热点使用代理/);
@@ -29,6 +33,11 @@ for (const source of [
 }
 assert.match(routes, /"outbound": "hotspot"/);
 assert.match(routes, /"outbounds": \["direct", "proxy"\]/);
+assert.match(routes, /settings put global tether_offload_disabled 1/);
+assert.match(routes, /magicnet_hotspot_offload_restore/);
+assert.match(routes, /register_uninstall_cmd/);
+assert.match(control, /关闭 Android 热点硬件加速/);
+assert.match(webuiApi, /"replay"[\s\S]*sync_persisted_hotspot_offload/);
 assert.match(
   network,
   /magicnet_after_kernel_start_deferred_unlocked\(\)[\s\S]*magicnet_singbox_apply_hotspot_policy/,

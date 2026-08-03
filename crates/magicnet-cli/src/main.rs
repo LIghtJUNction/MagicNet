@@ -177,7 +177,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "webui",
-        usage: "cli webui {status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>}}",
+        usage: "cli webui {status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}}",
     },
     CommandHelp {
         command: "backup",
@@ -383,20 +383,43 @@ pub(crate) fn run_subscription_update_from_inherited_fd(
     app: &App,
     candidate_fd: RawFd,
 ) -> Result<(), String> {
+    run_subscription_update_from_inherited_fd_with_kind(
+        app,
+        candidate_fd,
+        "MAGICNET_SUB_CANDIDATE_URL_FILE",
+    )
+}
+
+pub(crate) fn run_subscription_source_update_from_inherited_fd(
+    app: &App,
+    candidate_fd: RawFd,
+) -> Result<(), String> {
+    run_subscription_update_from_inherited_fd_with_kind(
+        app,
+        candidate_fd,
+        "MAGICNET_SUB_CANDIDATE_SOURCE_FILE",
+    )
+}
+
+fn run_subscription_update_from_inherited_fd_with_kind(
+    app: &App,
+    candidate_fd: RawFd,
+    candidate_env: &'static str,
+) -> Result<(), String> {
     if candidate_fd < 0 {
         return Err("invalid subscription candidate descriptor".to_string());
     }
     run_magicnet_function_inner(
         app,
         ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_singbox_update_subscription",
-        Some(candidate_fd),
+        Some((candidate_env, candidate_fd)),
     )
 }
 
 fn run_magicnet_function_inner(
     app: &App,
     function_name: &str,
-    subscription_candidate_fd: Option<RawFd>,
+    subscription_candidate: Option<(&'static str, RawFd)>,
 ) -> Result<(), String> {
     let script = format!(
         ". '{0}/lib/kamfw/.kamfwrc'; export PATH='{0}/bin':'{0}/system/bin':\"$PATH\"; import __runtime__; . '{0}/lib/magicnet.sh'; {function_name}",
@@ -414,11 +437,8 @@ fn run_magicnet_function_inner(
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
         .stdin(Stdio::null());
-    if let Some(candidate_fd) = subscription_candidate_fd {
-        command.env(
-            "MAGICNET_SUB_CANDIDATE_URL_FILE",
-            format!("/proc/self/fd/{candidate_fd}"),
-        );
+    if let Some((candidate_env, candidate_fd)) = subscription_candidate {
+        command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
     }
     let status = match run_process_group(&mut command, Duration::from_secs(timeout)) {
         Ok(status) => status,

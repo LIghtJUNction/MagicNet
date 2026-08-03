@@ -161,6 +161,13 @@ export function buildPrivateSubscriptionApplyCommand(basename: string): string {
   return "webui payload apply-subscription " + shellQuote(basename);
 }
 
+export function buildPrivateSubscriptionSourceApplyCommand(basename: string): string {
+  if (!isSafePrivatePayloadBasename(basename)) {
+    throw new RangeError("private payload basename is invalid");
+  }
+  return "webui payload apply-subscription-source " + shellQuote(basename);
+}
+
 /**
  * Accept only the backend's one-line controlled absolute path. It remains in
  * local memory and is used solely as an argument to the existing file-path

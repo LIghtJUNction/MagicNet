@@ -153,6 +153,7 @@ magicnet_singbox_transaction_reconcile() {
     _tx_active_config="${MODDIR}/.config/sing-box/config.json"
     _tx_active_work="${MODDIR}/.state/sing-box/subscription-work"
     _tx_active_url="${MODDIR}/.config/sing-box/subscription.url"
+    _tx_active_local="${MODDIR}/.config/sing-box/subscription.local"
     _tx_generation=$(sed -n '1p' "$_tx_dir/generation-id" 2>/dev/null)
 
     mkdir -p "${_tx_active_config%/*}" "${_tx_active_work%/*}" || return 1
@@ -189,6 +190,17 @@ magicnet_singbox_transaction_reconcile() {
         rm -f "$_tx_active_url" 2>/dev/null || return 1
     fi
 
+    if [ -f "$_tx_dir/had-local" ]; then
+        [ -f "$_tx_dir/old-local" ] || return 1
+        _tx_tmp="${_tx_active_local}.reconcile.$$"
+        cp -f "$_tx_dir/old-local" "$_tx_tmp" && mv -f "$_tx_tmp" "$_tx_active_local" || {
+            rm -f "$_tx_tmp" 2>/dev/null || true
+            return 1
+        }
+    else
+        rm -f "$_tx_active_local" 2>/dev/null || return 1
+    fi
+
     if [ -n "$_tx_generation" ]; then
         rm -rf "${MODDIR}/.state/sing-box/subscription-generations/${_tx_generation}" 2>/dev/null || true
         rm -f "${_tx_active_config}.candidate-${_tx_generation}" \
@@ -206,7 +218,7 @@ magicnet_singbox_transaction_reconcile() {
     fi
 
     rm -rf "$_tx_dir" 2>/dev/null || return 1
-    unset _tx_dir _tx_active_config _tx_active_work _tx_active_url
+    unset _tx_dir _tx_active_config _tx_active_work _tx_active_url _tx_active_local
     unset _tx_generation _tx_tmp _tx_work_tmp
 }
 
@@ -216,6 +228,7 @@ magicnet_singbox_transaction_begin() {
     _tx_active_config="${MODDIR}/.config/sing-box/config.json"
     _tx_active_work="${MODDIR}/.state/sing-box/subscription-work"
     _tx_active_url="${MODDIR}/.config/sing-box/subscription.url"
+    _tx_active_local="${MODDIR}/.config/sing-box/subscription.local"
     rm -rf "$_tx_tmp" 2>/dev/null || true
     [ ! -e "$_tx_dir" ] || return 1
     mkdir -p "$_tx_tmp" || return 1
@@ -232,23 +245,36 @@ magicnet_singbox_transaction_begin() {
         : >"$_tx_tmp/had-url"
         cp -f "$_tx_active_url" "$_tx_tmp/old-url" || return 1
     fi
-    [ -f "$_sub_input_url" ] || return 1
-    cp -f "$_sub_input_url" "$_tx_tmp/input-url" || return 1
-    chmod 600 "$_tx_tmp/input-url" 2>/dev/null || true
+    if [ -f "$_tx_active_local" ]; then
+        : >"$_tx_tmp/had-local"
+        cp -f "$_tx_active_local" "$_tx_tmp/old-local" || return 1
+    fi
+    [ -f "$_sub_input_source" ] || return 1
+    cp -f "$_sub_input_source" "$_tx_tmp/input-source" || return 1
+    chmod 600 "$_tx_tmp/input-source" 2>/dev/null || true
+    printf '%s\n' "$_sub_source_mode" >"$_tx_tmp/input-mode"
     [ "${_sub_was_running:-0}" -eq 1 ] && : >"$_tx_tmp/was-running"
     printf '%s\n' "$_sub_generation_id" >"$_tx_tmp/generation-id"
     : >"$_tx_tmp/owns-generation"
     : >"$_tx_tmp/owns-config-candidate"
     printf '%s\n' prepared >"$_tx_tmp/phase"
     mv "$_tx_tmp" "$_tx_dir" || return 1
-    _sub_original_input_url="$_sub_input_url"
-    _sub_input_url="${_tx_dir}/input-url"
-    MAGICNET_SUB_URL_FILE="$_sub_input_url"
-    export MAGICNET_SUB_URL_FILE
-    if [ "$_sub_original_input_url" != "$_tx_active_url" ]; then
-        rm -f "$_sub_original_input_url" 2>/dev/null || true
+    _sub_original_input_source="$_sub_input_source"
+    _sub_input_source="${_tx_dir}/input-source"
+    if [ "$_sub_source_mode" = local ]; then
+        MAGICNET_SUB_SOURCE_FILE="$_sub_input_source"
+        unset MAGICNET_SUB_URL_FILE
+        export MAGICNET_SUB_SOURCE_FILE
+    else
+        MAGICNET_SUB_URL_FILE="$_sub_input_source"
+        unset MAGICNET_SUB_SOURCE_FILE
+        export MAGICNET_SUB_URL_FILE
     fi
-    unset _tx_dir _tx_tmp _tx_active_config _tx_active_work _tx_active_url
+    if [ "$_sub_original_input_source" != "$_tx_active_url" ] &&
+        [ "$_sub_original_input_source" != "$_tx_active_local" ]; then
+        rm -f "$_sub_original_input_source" 2>/dev/null || true
+    fi
+    unset _tx_dir _tx_tmp _tx_active_config _tx_active_work _tx_active_url _tx_active_local
 }
 
 magicnet_singbox_cleanup_stale_candidates() {
@@ -295,7 +321,14 @@ magicnet_singbox_status() {
         magicnet_singbox_status_reconcile >/dev/null 2>&1 || true
     fi
     _status_active_url="${MODDIR}/.config/sing-box/subscription.url"
-    _status_configured=$(awk 'NF { count++ } END { print count + 0 }' "$_status_active_url" 2>/dev/null || true)
+    _status_active_local="${MODDIR}/.config/sing-box/subscription.local"
+    if [ -s "$_status_active_local" ]; then
+        _status_source_mode=local
+        _status_configured=1
+    else
+        _status_source_mode=url
+        _status_configured=$(awk 'NF { count++ } END { print count + 0 }' "$_status_active_url" 2>/dev/null || true)
+    fi
     _status_cache_dir=$(magicnet_singbox_subscription_cache_dir)
     _status_cache_count=$(find "$_status_cache_dir" -maxdepth 1 -type f -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')
     if magicnet_singbox_update_lock_active; then
@@ -313,6 +346,7 @@ magicnet_singbox_status() {
         _status_cache_source=disabled_no_sha256
     fi
     printf 'configured_count=%s\n' "${_status_configured:-0}"
+    printf 'source_mode=%s\n' "$_status_source_mode"
     printf 'update_running=%s\n' "$_status_running"
     printf 'update_lock_owner=%s\n' "$_status_lock_owner"
     printf 'last_phase=%s\n' "$(magicnet_singbox_status_value phase never)"
@@ -333,7 +367,8 @@ magicnet_singbox_status() {
     else
         printf '%s\n' 'schedule_interval_hours=off' 'schedule_enabled=0' 'schedule_running=0'
     fi
-    unset _status_active_url _status_configured _status_cache_dir _status_cache_count _status_running
+    unset _status_active_url _status_active_local _status_source_mode _status_configured
+    unset _status_cache_dir _status_cache_count _status_running
     unset _status_lock_owner _status_cache_provenance_count _status_cache_probe _status_cache_source
 }
 
@@ -361,7 +396,7 @@ magicnet_singbox_update_subscription() {
         error "Previous subscription transaction recovery failed"
         return 1
     fi
-    magicnet_singbox_cleanup_stale_candidates "${MAGICNET_SUB_CANDIDATE_URL_FILE:-}"
+    magicnet_singbox_cleanup_stale_candidates "${MAGICNET_SUB_CANDIDATE_URL_FILE:-${MAGICNET_SUB_CANDIDATE_SOURCE_FILE:-}}"
     # Read by magicnet_singbox_restart_owned in config.sh.
     # shellcheck disable=SC2034
     MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
@@ -398,7 +433,28 @@ magicnet_singbox_update_subscription_unlocked() {
     _sources_file="${_sub_stage_dir}/sources.txt"
     _counts_file="${_sub_stage_dir}/counts.txt"
     _sub_active_url="${MODDIR}/.config/sing-box/subscription.url"
-    _sub_input_url="${MAGICNET_SUB_CANDIDATE_URL_FILE:-${MAGICNET_SUB_URL_FILE:-$_sub_active_url}}"
+    _sub_active_local="${MODDIR}/.config/sing-box/subscription.local"
+    if [ -n "${MAGICNET_SUB_CANDIDATE_URL_FILE:-}" ] &&
+        [ -n "${MAGICNET_SUB_CANDIDATE_SOURCE_FILE:-}" ]; then
+        magicnet_singbox_update_status prepare failed ambiguous_source_mode || true
+        return 1
+    fi
+    if [ -n "${MAGICNET_SUB_CANDIDATE_SOURCE_FILE:-}" ]; then
+        _sub_source_mode=local
+        _sub_input_source="$MAGICNET_SUB_CANDIDATE_SOURCE_FILE"
+    elif [ -n "${MAGICNET_SUB_CANDIDATE_URL_FILE:-}" ]; then
+        _sub_source_mode=url
+        _sub_input_source="$MAGICNET_SUB_CANDIDATE_URL_FILE"
+    elif [ -n "${MAGICNET_SUB_SOURCE_FILE:-}" ]; then
+        _sub_source_mode=local
+        _sub_input_source="$MAGICNET_SUB_SOURCE_FILE"
+    elif [ -s "$_sub_active_local" ]; then
+        _sub_source_mode=local
+        _sub_input_source="$_sub_active_local"
+    else
+        _sub_source_mode=url
+        _sub_input_source="${MAGICNET_SUB_URL_FILE:-$_sub_active_url}"
+    fi
     _sub_active_config="${MODDIR}/.config/sing-box/config.json"
     _sub_candidate_config="${_sub_active_config}.candidate-${_sub_generation_id}"
     _sub_was_running=0
@@ -408,7 +464,11 @@ magicnet_singbox_update_subscription_unlocked() {
         magicnet_singbox_update_status prepare failed journal_create_failed || true
         return 1
     fi
-    _sub_configured_count=$(awk 'NF { count++ } END { print count + 0 }' "$_sub_input_url" 2>/dev/null)
+    if [ "$_sub_source_mode" = local ]; then
+        _sub_configured_count=1
+    else
+        _sub_configured_count=$(awk 'NF { count++ } END { print count + 0 }' "$_sub_input_source" 2>/dev/null)
+    fi
     MAGICNET_SUB_CONFIGURED_COUNT="$_sub_configured_count"
     MAGICNET_SUB_SOURCE_COUNT=0
     _imported=0
@@ -526,15 +586,27 @@ magicnet_singbox_update_subscription_unlocked() {
     magicnet_singbox_transaction_phase work-switched
     magicnet_singbox_fault after-work-switch || return 1
 
-    if [ "$_sub_input_url" != "$_sub_active_url" ]; then
-        _sub_url_tmp="${_sub_active_url}.new-${_sub_generation_id}"
-        if ! cp -f "$_sub_input_url" "$_sub_url_tmp" || ! mv -f "$_sub_url_tmp" "$_sub_active_url"; then
-            rm -f "$_sub_url_tmp" 2>/dev/null || true
-            magicnet_singbox_update_status commit failed url_commit_failed || true
+    if [ "$_sub_source_mode" = local ]; then
+        _sub_source_target="$_sub_active_local"
+        _sub_source_other="$_sub_active_url"
+    else
+        _sub_source_target="$_sub_active_url"
+        _sub_source_other="$_sub_active_local"
+    fi
+    if [ "$_sub_input_source" != "$_sub_source_target" ]; then
+        _sub_source_tmp="${_sub_source_target}.new-${_sub_generation_id}"
+        if ! cp -f "$_sub_input_source" "$_sub_source_tmp" || ! mv -f "$_sub_source_tmp" "$_sub_source_target"; then
+            rm -f "$_sub_source_tmp" 2>/dev/null || true
+            magicnet_singbox_update_status commit failed source_commit_failed || true
             return 1
         fi
     fi
-    magicnet_singbox_transaction_phase url-committed
+    rm -f "$_sub_source_other" 2>/dev/null || {
+        magicnet_singbox_update_status commit failed source_mode_switch_failed || true
+        return 1
+    }
+    magicnet_singbox_transaction_phase source-committed
+    magicnet_singbox_fault after-source-commit || return 1
     magicnet_singbox_fault after-url-commit || return 1
 
     _sub_cache_map="${_work_dir}/cache-map.txt"

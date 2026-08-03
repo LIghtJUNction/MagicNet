@@ -265,6 +265,10 @@ magicnet_singbox_fetch_one_subscription() {
 }
 
 magicnet_singbox_fetch_subscription() {
+    if [ -n "${MAGICNET_SUB_SOURCE_FILE:-}" ]; then
+        magicnet_singbox_fetch_local_subscription "$1"
+        return $?
+    fi
     _url_file=$(magicnet_singbox_subscription_url_file)
     _generation_dir=${1%/*}
     _source_dir="${_generation_dir}/sources"
@@ -325,4 +329,37 @@ magicnet_singbox_fetch_subscription() {
     MAGICNET_SUB_SOURCE_COUNT="$_ok"
     MAGICNET_SUB_CACHE_MAP_FILE="$_cache_map"
     export MAGICNET_SUB_CONFIGURED_COUNT MAGICNET_SUB_SOURCE_COUNT MAGICNET_SUB_CACHE_MAP_FILE
+}
+
+magicnet_singbox_fetch_local_subscription() {
+    _local_input="${MAGICNET_SUB_SOURCE_FILE:-${MODDIR}/.config/sing-box/subscription.local}"
+    _local_generation_dir=${1%/*}
+    _local_source_dir="${_local_generation_dir}/sources"
+    _local_source_file="${_local_source_dir}/local-source.txt"
+    _local_cache_map="${_local_generation_dir}/cache-map.txt"
+
+    if [ ! -f "$_local_input" ] || [ ! -s "$_local_input" ]; then
+        error "Local subscription source is missing or empty"
+        return 1
+    fi
+    _local_size=$(wc -c <"$_local_input" 2>/dev/null | tr -d ' ')
+    case "$_local_size" in ''|*[!0-9]*) return 1 ;; esac
+    if [ "$_local_size" -gt "$MAGICNET_SUB_MAX_RESPONSE_BYTES" ]; then
+        error "Local subscription source exceeds the 8 MiB limit"
+        return 1
+    fi
+
+    mkdir -p "$_local_source_dir" || return 1
+    : >"$1"
+    : >"$_local_cache_map"
+    cp -f "$_local_input" "$_local_source_file" || return 1
+    magicnet_singbox_normalize_subscription_file "$_local_source_file" || return 1
+    [ -s "$_local_source_file" ] || return 1
+    printf '%s\n' "$_local_source_file" >"$1"
+    MAGICNET_SUB_CONFIGURED_COUNT=1
+    MAGICNET_SUB_SOURCE_COUNT=1
+    MAGICNET_SUB_CACHE_MAP_FILE="$_local_cache_map"
+    export MAGICNET_SUB_CONFIGURED_COUNT MAGICNET_SUB_SOURCE_COUNT MAGICNET_SUB_CACHE_MAP_FILE
+    unset _local_input _local_generation_dir _local_source_dir _local_source_file
+    unset _local_cache_map _local_size
 }

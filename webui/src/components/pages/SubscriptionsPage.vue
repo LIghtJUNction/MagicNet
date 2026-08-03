@@ -7,6 +7,7 @@ import {
   Database,
   DownloadCloud,
   Filter,
+  FileUp,
   Plus,
   RefreshCw,
   Save,
@@ -42,6 +43,11 @@ import {
   type SubscriptionPreview,
 } from "./subscriptionPreview";
 import { subscriptionUserAgentPresets } from "./subscriptionUserAgent";
+import {
+  MAX_LOCAL_SUBSCRIPTION_BYTES,
+  buildLocalSubscriptionApplyLaunch,
+  parseLocalSubscriptionFile,
+} from "./localSubscriptionFile";
 
 type ScheduleValue = "off" | "12" | "24" | "48" | "72";
 
@@ -70,6 +76,7 @@ const userAgentDirty = ref(false);
 const filterInput = ref("");
 const filterKeywords = ref<string[]>([]);
 const filterDirty = ref(false);
+const subscriptionFileInput = ref<HTMLInputElement | null>(null);
 const filterPresets = ["免费", "free", "HK", "香港", "TW", "台湾"] as const;
 
 const inputSummary = computed(() => summarizeSubscriptionInput(singBoxText.value));
@@ -202,7 +209,7 @@ watch(() => state.subscriptions.filters, (value) => {
 
 watch(() => state.backgroundTask.status, async (status) => {
   if (!isSubscriptionBackgroundArgs(state.backgroundTask.args)) return;
-  if (status === "done" && pendingApply.value) await refreshSubs(true);
+  if (status === "done") await refreshSubs(true);
   if (status === "error") pendingApply.value = null;
 });
 
@@ -281,6 +288,55 @@ async function pasteSubscriptions(): Promise<void> {
     }
     singBoxText.value = text;
     state.output = `已读取 ${text.split(/\r?\n/).filter((line) => line.trim()).length} 行；界面不会回显剪贴板原文到输出日志。`;
+  });
+}
+
+function chooseLocalSubscriptions(): void {
+  subscriptionFileInput.value?.click();
+}
+
+async function importLocalSubscriptions(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+
+  await withAction("apply-local-subscription", async () => {
+    try {
+      if (file.size > MAX_LOCAL_SUBSCRIPTION_BYTES) throw new Error("文件超过 8 MiB 限制。");
+      const imported = parseLocalSubscriptionFile(
+        file.name,
+        new Uint8Array(await file.arrayBuffer()),
+      );
+      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const staged = await stagePrivatePayload(
+        "subscription",
+        `magicnet-local-${stamp}.txt`,
+        imported.text,
+        "本地订阅源",
+        16 * 1024,
+      );
+      if (!staged) {
+        state.output = "本地订阅源准备失败，当前配置没有改变。";
+        return;
+      }
+      const launch = buildLocalSubscriptionApplyLaunch(staged.basename);
+      const result = await startPrivateBackgroundCli(
+        launch.args,
+        "应用本地订阅源",
+        launch.preview,
+        launch.displayArgs,
+        launch.lifecycleArgs,
+      );
+      if (execFailed(result)) {
+        await removePrivatePayload("subscription", staged.basename, "本地订阅源");
+        return;
+      }
+      state.notice = "本地订阅源已投递";
+      state.output = `已安全投递 ${imported.format} 格式本地订阅源；验证成功后会切换到本地模式。`;
+    } catch (error) {
+      state.output = `导入错误：${error instanceof Error ? error.message : String(error)}`;
+    }
   });
 }
 
@@ -408,7 +464,7 @@ async function saveFilters(): Promise<void> {
     <PageHeader
       overline="Subscription lifecycle"
       title="订阅生命周期"
-      description="URL 成功后保存在设备本地配置；提交使用可清理的私有临时载荷。"
+      description="URL 或本地文件验证成功后原子切换；提交使用可清理的私有临时载荷。"
     />
 
     <section class="lifecycle-strip hidden min-w-0 gap-px rounded-md bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] p-px ring-1 ring-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)] lg:grid lg:grid-cols-4" aria-label="订阅生命周期概览">
@@ -421,7 +477,7 @@ async function saveFilters(): Promise<void> {
       </div>
       <div class="min-w-0 rounded-[5px] bg-[var(--mn-ivory)] px-4 py-3.5">
         <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Sources / Cache</span>
-        <p class="mt-2 text-sm text-[var(--mn-ink-soft)]"><strong class="text-[var(--mn-ink)]">{{ state.subscriptions.configuredCount }}</strong> 来源 · <strong class="text-[var(--mn-ink)]">{{ state.subscriptions.cacheCount }}</strong> 缓存</p>
+        <p class="mt-2 text-sm text-[var(--mn-ink-soft)]"><strong class="text-[var(--mn-ink)]">{{ state.subscriptions.configuredCount }}</strong> 来源 · {{ state.subscriptions.sourceMode === 'local' ? '本地' : 'URL' }} · <strong class="text-[var(--mn-ink)]">{{ state.subscriptions.cacheCount }}</strong> 缓存</p>
       </div>
       <div class="min-w-0 rounded-[5px] bg-[var(--mn-ivory)] px-4 py-3.5">
         <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Last result</span>
@@ -441,7 +497,7 @@ async function saveFilters(): Promise<void> {
           <div>
             <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Secure source editor</span>
             <h3 class="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--mn-ink)]">sing-box 订阅来源</h3>
-            <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">最多 5 个，一行一个。保存会原子应用；失败时保留当前有效配置。</p>
+            <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">URL 最多 5 个，一行一个；也可直接导入 Clash YAML、base64 或分享链接文件。失败时保留当前有效配置。</p>
           </div>
           <div class="flex items-center gap-2 self-start">
             <span class="inline-flex min-h-7 items-center rounded-sm bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] px-2 text-xs ring-1 ring-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)]" :class="dirty ? 'text-[var(--mn-warning)]' : 'text-[var(--mn-ink-muted)]'">
@@ -501,11 +557,21 @@ async function saveFilters(): Promise<void> {
         </div>
 
         <div class="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <input
+            ref="subscriptionFileInput"
+            class="hidden"
+            type="file"
+            accept=".yaml,.yml,.txt,.list,.conf,application/yaml,text/yaml,text/plain"
+            @change="importLocalSubscriptions"
+          >
           <Button class="hidden w-full sm:w-auto lg:inline-flex" :disabled="!canApply" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions">
             <Save :size="16" />{{ applyLabel }}
           </Button>
           <Button variant="secondary" class="w-full sm:w-auto" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions">
             <ClipboardPaste :size="16" />粘贴
+          </Button>
+          <Button variant="secondary" class="w-full sm:w-auto" :loading="isRunning('apply-local-subscription')" @click="chooseLocalSubscriptions">
+            <FileUp :size="16" />导入本地文件
           </Button>
           <Button variant="outline" class="w-full sm:w-auto" :disabled="!singBoxText.trim()" @click="normalizeSubscriptions">规范化</Button>
           <Button variant="outline" class="w-full sm:w-auto" :disabled="!subscriptionPreview.length" @click="copySummary">
@@ -524,7 +590,7 @@ async function saveFilters(): Promise<void> {
         </div>
         <div class="min-w-0 rounded-[5px] bg-[var(--mn-ivory)] px-4 py-3">
           <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Sources / Cache</span>
-          <p class="mt-2 text-sm text-[var(--mn-ink-soft)]"><strong class="text-[var(--mn-ink)]">{{ state.subscriptions.configuredCount }}</strong> 来源 · <strong class="text-[var(--mn-ink)]">{{ state.subscriptions.cacheCount }}</strong> 缓存</p>
+          <p class="mt-2 text-sm text-[var(--mn-ink-soft)]"><strong class="text-[var(--mn-ink)]">{{ state.subscriptions.configuredCount }}</strong> 来源 · {{ state.subscriptions.sourceMode === 'local' ? '本地' : 'URL' }} · <strong class="text-[var(--mn-ink)]">{{ state.subscriptions.cacheCount }}</strong> 缓存</p>
         </div>
         <div class="min-w-0 rounded-[5px] bg-[var(--mn-ivory)] px-4 py-3">
           <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Last result</span>

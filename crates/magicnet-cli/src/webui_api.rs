@@ -28,6 +28,7 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
             &args[2..].join(" "),
         ),
         "replay" => {
+            sync_persisted_hotspot_offload(app);
             let applied = selector_store::replay(app)?;
             println!("[info] replayed {applied} persisted selectors");
             Ok(())
@@ -45,6 +46,18 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
+fn sync_persisted_hotspot_offload(app: &App) {
+    let member = selector_store::selected(app, "hotspot").unwrap_or_else(|| "direct".to_string());
+    let function = if member == "proxy" {
+        "magicnet_hotspot_offload_enable"
+    } else {
+        "magicnet_hotspot_offload_restore"
+    };
+    if let Err(err) = run_magicnet_function(app, function) {
+        eprintln!("[warning] persisted hotspot offload state could not be synchronized: {err}");
+    }
+}
+
 pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
     let action = args.first().map(String::as_str).unwrap_or("status");
     match action {
@@ -52,17 +65,31 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             let member = hotspot_member(app);
             println!("enabled={}", usize::from(member == "proxy"));
             println!("outbound={member}");
+            run_magicnet_function(app, "magicnet_hotspot_offload_status")?;
             Ok(())
         }
         "enable" | "disable" => {
             let member = if action == "enable" { "proxy" } else { "direct" };
-            if curl_get_json(app, "/proxies").is_ok() {
-                select_proxy(app, "hotspot", member)?;
+            if action == "enable" {
+                run_magicnet_function(app, "magicnet_hotspot_offload_enable")?;
+            }
+            let selected = if curl_get_json(app, "/proxies").is_ok() {
+                select_proxy(app, "hotspot", member)
             } else {
-                selector_store::save(app, "hotspot", member)?;
-                println!(
-                    "[info] hotspot outbound set to {member}; applies when sing-box starts"
-                );
+                selector_store::save(app, "hotspot", member).map(|()| {
+                    println!(
+                        "[info] hotspot outbound set to {member}; applies when sing-box starts"
+                    );
+                })
+            };
+            if let Err(error) = selected {
+                if action == "enable" {
+                    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
+                }
+                return Err(error);
+            }
+            if action == "disable" {
+                run_magicnet_function(app, "magicnet_hotspot_offload_restore")?;
             }
             Ok(())
         }
@@ -99,7 +126,7 @@ pub(crate) fn webui_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "install-local" => install_local(app, args),
         "payload" => crate::webui_payload::webui_payload_cmd(app, &args[1..]),
         _ => Err(
-            "Usage: cli webui {status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>}}".to_string(),
+            "Usage: cli webui {status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}}".to_string(),
         ),
     }
 }

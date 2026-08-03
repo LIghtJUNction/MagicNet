@@ -127,6 +127,7 @@ check_no_subscription_secret() {
 }
 
 check_no_subscription_secret '.config/sing-box/subscription.url'
+check_no_subscription_secret '.config/sing-box/subscription.local'
 
 subscription_module_root="$elf_tmp/subscription-module"
 mkdir -p "$subscription_module_root"
@@ -195,13 +196,13 @@ JSON
 )
 
 jq -e '
-    .route.auto_detect_interface == true
+    .route.auto_detect_interface == false
     and (.route | has("default_interface") | not)
     and ([.outbounds[] | select(.type == "direct") | has("bind_interface")] | all(. == false))
     and ([.outbounds[] | select(.type == "selector") | .interrupt_exist_connections] | all(. == true))
     and ([.outbounds[] | select(.type == "urltest") | .interrupt_exist_connections] == [false])
 ' "$route_fixture_dir/config.json" >/dev/null \
-    || fail "sing-box route preparation keeps stale interfaces or selector connections"
+    || fail "sing-box route preparation did not delegate interface changes to Android"
 
 route_no_jq_dir="$elf_tmp/route-config-no-jq"
 route_no_jq_bin="$route_no_jq_dir/bin"
@@ -252,7 +253,7 @@ JSON
 )
 
 jq -e '
-    .route.auto_detect_interface == true
+    .route.auto_detect_interface == false
     and (.route | has("default_interface") | not)
     and ([.outbounds[] | select(.type == "direct") | has("bind_interface")] | all(. == false))
     and ([.outbounds[] | select(.type == "selector") | .interrupt_exist_connections] == [true])

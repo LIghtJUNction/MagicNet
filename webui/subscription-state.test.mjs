@@ -11,6 +11,7 @@ const list = [
 ].join("\n");
 const status = [
   "configured_count=2",
+  "source_mode=url",
   "update_running=1",
   "update_lock_owner=active",
   "last_phase=commit",
@@ -39,6 +40,7 @@ assert.equal(parsed.singBoxUrls.length, 2);
 assert.equal(parsed.userAgent, "sing-box/1.12.0 (Android)");
 assert.deepEqual(parsed.filters, ["免费", "HK"]);
 assert.equal(parsed.configuredCount, 2);
+assert.equal(parsed.sourceMode, "url");
 assert.equal(parsed.updateRunning, true);
 assert.equal(parsed.lastPhase, "commit");
 assert.equal(parsed.lastResult, "success");
@@ -56,5 +58,9 @@ assert.equal(parsed.refreshErrorCount, 1);
 const inconsistent = parseSubs("sing-box=", "schedule_interval_hours=12\nschedule_enabled=1\nschedule_running=0\nschedule_owner=stale", parsed);
 assert.equal(inconsistent.scheduleOwnerValid, false);
 assert.equal(inconsistent.configuredCount, 0);
+
+const local = parseSubs("sing-box=", "configured_count=1\nsource_mode=local", inconsistent);
+assert.equal(local.configuredCount, 1);
+assert.equal(local.sourceMode, "local");
 
 console.log("subscription state tests passed");

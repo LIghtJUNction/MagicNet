@@ -486,7 +486,7 @@ onMounted(() => {
                 class="mt-2 block max-w-3xl text-sm leading-6 text-[var(--mn-ink-muted)]"
               >
                 勾选后，连接本机热点的设备统一走 <code>proxy</code> 代理组；不勾选时统一走
-                <code>direct</code>。设置会持久保存并在核心重启后恢复。
+                <code>direct</code>。Proxy 会关闭 Android 热点硬件加速以确保流量进入 TUN；关闭后恢复原设置。
               </span>
             </span>
           </span>

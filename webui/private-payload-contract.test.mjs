@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   buildPrivatePayloadCommand,
   buildPrivateSubscriptionApplyCommand,
+  buildPrivateSubscriptionSourceApplyCommand,
   isSensitiveExternalUrl,
   parsePrivatePayloadPath,
   redactSensitiveText,
@@ -16,6 +17,10 @@ const basename = "webui-warp-test.conf";
 assert.equal(
   buildPrivatePayloadCommand("create", "tmp", basename),
   "webui payload create tmp 'webui-warp-test.conf'",
+);
+assert.equal(
+  buildPrivateSubscriptionSourceApplyCommand("magicnet-local-test.txt"),
+  "webui payload apply-subscription-source 'magicnet-local-test.txt'",
 );
 assert.match(
   buildPrivatePayloadCommand("append", "tmp", basename, "YQ=="),

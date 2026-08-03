@@ -15,7 +15,8 @@ MagicNet 不分发任何第三方连通性资源，也不内置可直接使用�
 
 - 单核心：只启动和维护 `sing-box`。
 - TUN：唯一透明代理路径，覆盖设备侧应用流量。
-- 热点策略：WebUI 可勾选让热点客户端统一走 `proxy`；默认走 `direct`，选择会跨核心重启保留。
+- 热点策略：WebUI 可勾选让热点客户端统一走 `proxy`；Proxy 暂时关闭 Android tether 硬件卸载，关闭后恢复原值。
+- 订阅来源：支持 URL 列表和持久本地文件，切换时先验证再原子激活。
 - 诊断：CLI / WebUI / MCP / support bundle 汇总运行状态、路由、DNS、脱敏代理选择器链和活跃连接链信息。
 
 ## 功能
@@ -120,7 +121,7 @@ MagicNet 新安装默认按节点名过滤 `免费`、`free`、`HK`、`香港`�
 MagicNet 目前只支持 `tun` 透明模式，使用 `sing-box` `magicnet0` TUN 接管透明流量。旧配置中的 `proxy`、`external-tun`、`hybrid` 会安全归一为 `tun`，CLI 不再接受这些模式。
 
 - 分应用策略分为三类：`Proxy` 强制走代理；`Direct` 仍进入 TUN，但强制走 `direct` 出站；`Bypass TUN` 则让应用完全离开 MagicNet。
-- `Bypass TUN` 不等于断网或阻止访问。应用离开 MagicNet 后会使用系统上游网络；如果上游网络或另一个 VPN 能访问 Google，加入 Bypass 后的 Chrome 仍然可以访问。
+- `Bypass TUN` 会按每个 Android 用户动态解析应用 UID。应用离开 MagicNet 后会使用系统上游网络；如果上游网络或另一个 VPN 能访问 Google，加入 Bypass 后的 Chrome 仍然可以访问。
 - 要验证 Chrome 没有使用 MagicNet 代理，请在 WebUI“应用策略”中选择 `Direct`，或执行 `cli app add com.android.chrome direct`。只有多 VPN 共存或明确需要完全避开 MagicNet 时才选择 `Bypass TUN`。
 - 默认网络策略是双栈、DNS 优先 IPv4、`mixed` TUN 栈、MTU `1400` 和 UDP 会话超时 `5m`。
 - 可在 WebUI 的“UDP / IPv6”卡片切换，或执行 `cli network set <ipv4_only|prefer_ipv4|prefer_ipv6> <1280-1500> <1m|3m|5m|10m|15m|30m>`。

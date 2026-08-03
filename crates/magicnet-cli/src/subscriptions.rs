@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     clean_lines, clear_node_cache, decode_base64, first_clean_line, run_magicnet_function,
+    run_subscription_source_update_from_inherited_fd,
     run_subscription_update_from_inherited_fd, write_text_file, App,
 };
 
@@ -20,6 +21,7 @@ const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
 const MAX_SUBSCRIPTION_USER_AGENT_BYTES: usize = 256;
 const MAX_SUBSCRIPTION_FILTERS: usize = 32;
 const MAX_SUBSCRIPTION_FILTER_BYTES: usize = 64;
+const MAX_LOCAL_SUBSCRIPTION_BYTES: usize = 8 * 1024 * 1024;
 const SUBSCRIPTION_USER_AGENT_PATH: &str = ".config/sing-box/subscription.user-agent";
 const SUBSCRIPTION_FILTER_PATH: &str = ".config/sing-box/subscription-filter.list";
 const SELECTOR_REPLAY_WARNING: &str =
@@ -182,6 +184,35 @@ pub(crate) fn apply_webui_subscription_payload(app: &App, bytes: &[u8]) -> Resul
         .map_err(|_| "WebUI subscription payload is not valid UTF-8".to_string())?;
     let text = normalized_subscription_text(payload)?;
     apply_subscription_text(app, &text)
+}
+
+pub(crate) fn apply_webui_subscription_source_payload(
+    app: &App,
+    bytes: &[u8],
+) -> Result<(), String> {
+    if bytes.len() > MAX_LOCAL_SUBSCRIPTION_BYTES {
+        return Err("local subscription source exceeds the 8 MiB limit".to_string());
+    }
+    let payload = std::str::from_utf8(bytes)
+        .map_err(|_| "local subscription source is not valid UTF-8".to_string())?;
+    if payload.trim().is_empty() {
+        return Err("local subscription source is empty".to_string());
+    }
+    if payload.contains('\0') {
+        return Err("local subscription source contains a NUL byte".to_string());
+    }
+    let text = if payload.ends_with('\n') {
+        payload.to_string()
+    } else {
+        format!("{payload}\n")
+    };
+    let result = with_subscription_candidate(app, &text, |candidate_fd| {
+        run_subscription_source_update_from_inherited_fd(app, candidate_fd)
+    });
+    if result.is_ok() {
+        let _ = fs::remove_file(app.moddir.join(".config/sing-box/standalone-config"));
+    }
+    finish_subscription_update(app, result)
 }
 
 fn apply_subscription_text(app: &App, text: &str) -> Result<(), String> {

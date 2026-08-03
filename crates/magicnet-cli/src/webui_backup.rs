@@ -270,6 +270,13 @@ fn validate_restore_section(rel: &str, text: &str) -> Result<(), String> {
             ));
         }
     }
+    if rel == ".config/sing-box/subscription.local"
+        && (text.len() > 8 * 1024 * 1024 || text.contains('\0'))
+    {
+        return Err(format!(
+            "refusing to restore {rel}: invalid local subscription source"
+        ));
+    }
     if rel == ".config/sing-box/subscription-filter.list" {
         let normalized = normalize_subscription_filter_text(text)
             .map_err(|_| format!("refusing to restore {rel}: invalid subscription filter list"))?;
@@ -368,6 +375,7 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
 fn backup_files() -> &'static [&'static str] {
     &[
         ".config/sing-box/subscription.url",
+        ".config/sing-box/subscription.local",
         ".config/sing-box/subscription.user-agent",
         ".config/sing-box/subscription-filter.list",
         ".config/magicnet/app-mode.conf",

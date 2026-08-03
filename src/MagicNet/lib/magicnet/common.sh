@@ -78,7 +78,8 @@ magicnet_first_http_url() {
 }
 
 magicnet_singbox_has_subscription() {
-    magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
+    [ -s "${MODDIR}/.config/sing-box/subscription.local" ] ||
+        magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
 }
 
 magicnet_singbox_config_has_nodes() {
@@ -108,7 +109,7 @@ magicnet_singbox_standalone_config_ready() {
 }
 
 magicnet_subscription_required_message() {
-    printf '%s\n' "No subscription URL is configured, so the kernel cannot start. Run: cli setup <subscription-url> or cli sub set sing-box <subscription-url>."
+    printf '%s\n' "No subscription source is configured, so the kernel cannot start. Configure a URL or import a local subscription file."
 }
 
 magicnet_any_subscription_ready() {
@@ -138,7 +139,7 @@ magicnet_require_subscription_or_stop() {
 }
 
 magicnet_need_nodes_message() {
-    magicnet_warn "No sing-box nodes were found. Run: cli setup <subscription-url> or cli sub set sing-box <subscription-url>."
+    magicnet_warn "No sing-box nodes were found. Configure a subscription URL or import a local subscription file."
     config set override.description "[MagicNet]: sing-box has no nodes; configure subscription" 2>/dev/null || true
 }
 

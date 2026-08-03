@@ -1,5 +1,19 @@
 ## Unreleased
 
+- Delegate sing-box outbound interface changes to Android instead of relying on
+  default-interface auto-detection that can fail on Android 16 policy routes.
+- Disable Android tether offload while hotspot Proxy is enabled, then restore
+  the previous system value when disabled or uninstalled so tethered traffic
+  cannot bypass the TUN through vendor hardware/BPF forwarding.
+- Import Clash YAML, base64, share-link, JSON, or text subscription files as a
+  persistent local source with atomic URL/local switching and rollback.
+- Batch-assign selected installed apps with one confirmation, policy write,
+  and core restart.
+- Resolve configured app packages to per-user Android UIDs so Bypass TUN and
+  whitelist policies install effective kernel routing exclusions instead of
+  relying on package-name fields alone.
+- Wait for fswatch and the other supervisors before service start/restart
+  returns, preventing a transient stopped warning after the core is ready.
 - Support validated standalone sing-box JSON configs without requiring a subscription URL.
 - Decode JSON Unicode escapes in native VMess share-link names.
 - Coordinate userspace Tailscale endpoints with `magicnet0`, preserve endpoints across template

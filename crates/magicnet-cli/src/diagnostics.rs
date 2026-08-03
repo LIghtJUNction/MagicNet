@@ -583,7 +583,14 @@ fn subscription_evidence(app: &App) -> String {
     let mut lines = vec![
         format!(
             "configured_count={}",
-            clean_lines(app.moddir.join(".config/sing-box/subscription.url")).len()
+            if fs::metadata(app.moddir.join(".config/sing-box/subscription.local"))
+                .map(|metadata| metadata.len() > 0)
+                .unwrap_or(false)
+            {
+                1
+            } else {
+                clean_lines(app.moddir.join(".config/sing-box/subscription.url")).len()
+            }
         ),
         format!(
             "update_owner={}",
@@ -972,7 +979,10 @@ fn has_subscription(app: &App) -> bool {
 }
 
 fn sensitive_paths(app: &App) -> Vec<PathBuf> {
-    vec![app.moddir.join(".config/sing-box/subscription.url")]
+    vec![
+        app.moddir.join(".config/sing-box/subscription.url"),
+        app.moddir.join(".config/sing-box/subscription.local"),
+    ]
 }
 
 fn sysroute_snapshot() {

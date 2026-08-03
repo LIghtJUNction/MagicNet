@@ -7,6 +7,7 @@ export type SubscriptionState = {
   userAgent: string;
   filters: string[];
   configuredCount: number;
+  sourceMode: "url" | "local";
   updateRunning: boolean;
   updateLockOwner: string;
   lastPhase: string;
@@ -37,6 +38,7 @@ export const subscriptionDefaults: SubscriptionState = {
   userAgent: "",
   filters: [],
   configuredCount: 0,
+  sourceMode: "url",
   updateRunning: false,
   updateLockOwner: "none",
   lastPhase: "never",
@@ -621,6 +623,7 @@ export function parseSubs(
     if (match) values.set(match[1], match[2].trim());
   });
   next.configuredCount = statusNumber(values, "configured_count", next.singBoxUrls.length);
+  next.sourceMode = values.get("source_mode") === "local" ? "local" : "url";
   next.updateRunning = statusBoolean(values, "update_running", false);
   next.updateLockOwner = values.get("update_lock_owner") || "none";
   next.lastPhase = values.get("last_phase") || "never";

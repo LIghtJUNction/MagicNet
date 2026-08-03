@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 use crate::{decode_base64, App};
 
+const MAX_SUBSCRIPTION_PAYLOAD_BYTES: u64 = 8 * 1024 * 1024;
+
 #[derive(Clone, Copy)]
 enum PayloadNamespace {
     Tmp,
@@ -72,12 +74,21 @@ pub(crate) fn webui_payload_cmd(app: &App, args: &[String]) -> Result<(), String
                 crate::subscriptions::apply_webui_subscription_payload(app, bytes)
             })
         }
+        "apply-subscription-source" => {
+            let name = payload_name_arg(args, 1)?;
+            if args.len() != 2 {
+                return Err(payload_usage());
+            }
+            consume_subscription_payload_with(app, name, |bytes| {
+                crate::subscriptions::apply_webui_subscription_source_payload(app, bytes)
+            })
+        }
         _ => Err(payload_usage()),
     }
 }
 
 fn payload_usage() -> String {
-    "Usage: cli webui payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>}"
+    "Usage: cli webui payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}"
         .to_string()
 }
 
@@ -146,6 +157,15 @@ fn append_payload(
         libc::O_WRONLY | libc::O_APPEND | libc::O_NONBLOCK | libc::O_CLOEXEC,
     )?;
     secure_file_mode(&file)?;
+    if matches!(namespace, PayloadNamespace::Subscription) {
+        let current_size = file
+            .metadata()
+            .map_err(|_| "inspect WebUI payload failed".to_string())?
+            .len();
+        if current_size.saturating_add(bytes.len() as u64) > MAX_SUBSCRIPTION_PAYLOAD_BYTES {
+            return Err("WebUI subscription payload exceeds the 8 MiB limit".to_string());
+        }
+    }
     file.write_all(&bytes)
         .map_err(|_| "append WebUI payload failed".to_string())
 }

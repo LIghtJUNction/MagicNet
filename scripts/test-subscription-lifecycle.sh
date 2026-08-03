@@ -56,6 +56,7 @@ active_config="$MODDIR/.config/sing-box/config.json"
 work_marker="$MODDIR/.state/sing-box/subscription-work/marker"
 candidate_dir="$MODDIR/.state/sing-box/subscription-candidates"
 candidate_url="$candidate_dir/fixture.url"
+candidate_local="$candidate_dir/fixture.local"
 restart_log="$fixture/restarts.log"
 core_state="$fixture/core-state"
 mkdir -p "$candidate_dir"
@@ -64,10 +65,28 @@ printf 'active-candidate\n' >"$active_url"
 printf 'active-config\n' >"$active_config"
 printf 'last-good-work\n' >"$work_marker"
 
+# The production fetcher stages local content without a network request and
+# enforces the same fixed size budget as remote subscription responses.
+local_fetch_input="$fixture/local-fetch-input.yaml"
+local_fetch_sources="$fixture/local-fetch-generation/sources.txt"
+printf 'proxies:\n  - local-fetch-fixture\n' >"$local_fetch_input"
+# The production implementation is sourced above; a later same-name test double
+# intentionally replaces it for transaction-failure cases.
+# shellcheck disable=SC2218
+MAGICNET_SUB_SOURCE_FILE="$local_fetch_input" magicnet_singbox_fetch_subscription "$local_fetch_sources"
+assert_file "$local_fetch_sources" "$fixture/local-fetch-generation/sources/local-source.txt"
+assert_file "$fixture/local-fetch-generation/sources/local-source.txt" $'proxies:\n  - local-fetch-fixture'
+
 write_candidate() {
   mkdir -p "$candidate_dir"
   printf 'new-candidate\n' >"$candidate_url"
   chmod 600 "$candidate_url"
+}
+
+write_local_candidate() {
+  mkdir -p "$candidate_dir"
+  printf 'proxies:\n  - local-fixture\n' >"$candidate_local"
+  chmod 600 "$candidate_local"
 }
 
 magicnet_with_config_lock() { "$@"; }
@@ -135,6 +154,21 @@ assert_file "$MODDIR/.state/sing-box/subscription-cache/${test_fingerprint}.yaml
 test ! -e "$candidate_dir/stale.url"
 test ! -e "$MODDIR/.config/sing-box/config.json.candidate-orphan"
 
+# Local content is a first-class persisted source. Switching modes removes the
+# inactive source only after validation and activation have succeeded.
+write_local_candidate
+MAGICNET_SUB_CANDIDATE_SOURCE_FILE="$candidate_local" magicnet_singbox_update_subscription
+assert_file "$MODDIR/.config/sing-box/subscription.local" $'proxies:\n  - local-fixture'
+test ! -e "$active_url"
+local_status="$(magicnet_singbox_status)"
+grep -q '^source_mode=local$' <<<"$local_status"
+write_candidate
+MAGICNET_SUB_CANDIDATE_URL_FILE="$candidate_url" magicnet_singbox_update_subscription
+assert_file "$active_url" new-candidate
+test ! -e "$MODDIR/.config/sing-box/subscription.local"
+url_status="$(magicnet_singbox_status)"
+grep -q '^source_mode=url$' <<<"$url_status"
+
 # Every active-state commit boundary must survive an unhandled process exit.
 # The next status read performs the real recovery; the wrapper cannot pre-clean
 # the journal because exit 137 terminates it first.
@@ -163,8 +197,8 @@ run_fault_recovery_case() {
     exit 1
   fi
   test -d "$MODDIR/.state/sing-box/subscription-transaction"
-  test -f "$MODDIR/.state/sing-box/subscription-transaction/input-url"
-  test "$(stat -c '%a' "$MODDIR/.state/sing-box/subscription-transaction/input-url")" = 600
+  test -f "$MODDIR/.state/sing-box/subscription-transaction/input-source"
+  test "$(stat -c '%a' "$MODDIR/.state/sing-box/subscription-transaction/input-source")" = 600
   test ! -e "$candidate_url"
   status_after="$(magicnet_singbox_status)"
   grep -q '^update_running=0$' <<<"$status_after"
@@ -187,6 +221,41 @@ run_fault_recovery_case after-active-config-rename
 run_fault_recovery_case after-core-verification 1
 run_fault_recovery_case after-work-switch
 run_fault_recovery_case after-url-commit
+
+# A crash after changing source modes restores both source files exactly.
+printf 'old-url-before-local\n' >"$active_url"
+rm -f "$MODDIR/.config/sing-box/subscription.local"
+write_local_candidate
+set +e
+(
+  MAGICNET_SUB_CANDIDATE_SOURCE_FILE="$candidate_local" MAGICNET_SUB_FAULT=after-source-commit \
+    MAGICNET_SUB_FAULT_EXIT137=1 magicnet_singbox_update_subscription
+)
+local_switch_rc=$?
+set -e
+test "$local_switch_rc" -eq 137
+magicnet_singbox_status >/dev/null
+assert_file "$active_url" old-url-before-local
+test ! -e "$MODDIR/.config/sing-box/subscription.local"
+
+rm -f "$active_url"
+printf 'old-local-before-url\n' >"$MODDIR/.config/sing-box/subscription.local"
+write_candidate
+set +e
+(
+  MAGICNET_SUB_CANDIDATE_URL_FILE="$candidate_url" MAGICNET_SUB_FAULT=after-source-commit \
+    MAGICNET_SUB_FAULT_EXIT137=1 magicnet_singbox_update_subscription
+)
+url_switch_rc=$?
+set -e
+test "$url_switch_rc" -eq 137
+magicnet_singbox_status >/dev/null
+assert_file "$MODDIR/.config/sing-box/subscription.local" old-local-before-url
+test ! -e "$active_url"
+
+# Restore URL mode for the first-configuration absence checks below.
+rm -f "$MODDIR/.config/sing-box/subscription.local"
+printf 'active-candidate\n' >"$active_url"
 
 # Absence is part of a first-configuration rollback state.
 rm -f "$active_url"

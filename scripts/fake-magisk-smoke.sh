@@ -190,6 +190,27 @@ SH
 else
     cp -a "$ROOT/src/MagicNet" "$MODDIR"
 fi
+MAGICNET_FAKE_SETTINGS_FILE="$TMP/settings-global"
+cat >"$MOCK_BIN/settings" <<'SH'
+#!/usr/bin/env bash
+set -e
+case "${1:-} ${2:-} ${3:-}" in
+    "get global tether_offload_disabled")
+        if [[ -f "${MAGICNET_FAKE_SETTINGS_FILE:?}" ]]; then
+            cat "$MAGICNET_FAKE_SETTINGS_FILE"
+        else
+            printf '%s\n' null
+        fi
+        ;;
+    "put global tether_offload_disabled")
+        printf '%s\n' "${4:-}" >"${MAGICNET_FAKE_SETTINGS_FILE:?}"
+        ;;
+    "delete global tether_offload_disabled")
+        rm -f "${MAGICNET_FAKE_SETTINGS_FILE:?}"
+        ;;
+esac
+SH
+chmod +x "$MOCK_BIN/settings"
 mkdir -p "$MODDIR/bin"
 cp "$CLI_BIN" "$MODDIR/bin/magicnet-cli"
 cp "$MCP_BIN" "$MODDIR/bin/magicnet-mcp-server"
@@ -593,6 +614,7 @@ export MODPATH="$MODDIR"
 export BOOTMODE=true
 export KAM_LANG=en
 export MAGICNET_FAKE_LOG="$MOCK_LOG"
+export MAGICNET_FAKE_SETTINGS_FILE
 export MAGICNET_NOTIFY_ENABLED=0
 export MAGICNET_WATCHDOG_ENABLED=0
 export MAGICNET_FSWATCH_ENABLED=0
@@ -738,11 +760,18 @@ fi
 run "$MODDIR/cli" hotspot status >"$TMP/hotspot-direct.log"
 rg -q '^enabled=0$' "$TMP/hotspot-direct.log"
 rg -q '^outbound=direct$' "$TMP/hotspot-direct.log"
+rg -q '^offload_disabled=0$' "$TMP/hotspot-direct.log"
 run "$MODDIR/cli" hotspot enable
 run "$MODDIR/cli" hotspot status >"$TMP/hotspot-proxy.log"
 rg -q '^enabled=1$' "$TMP/hotspot-proxy.log"
 rg -q '^outbound=proxy$' "$TMP/hotspot-proxy.log"
+rg -q '^offload_disabled=1$' "$TMP/hotspot-proxy.log"
+rg -q '^offload_owned=1$' "$TMP/hotspot-proxy.log"
 run "$MODDIR/cli" hotspot disable
+run "$MODDIR/cli" hotspot status >"$TMP/hotspot-restored.log"
+rg -q '^offload_disabled=0$' "$TMP/hotspot-restored.log"
+rg -q '^offload_owned=0$' "$TMP/hotspot-restored.log"
+test ! -e "$MAGICNET_FAKE_SETTINGS_FILE"
 
 env -u MODDIR -u MODPATH \
     KAM_LANG="$KAM_LANG" \

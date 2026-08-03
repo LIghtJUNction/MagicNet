@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2, Copy, ListFilter, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
+import { CheckCheck, CheckCircle2, Copy, ListFilter, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -17,6 +17,7 @@ const removedBypass = ref<string[]>([]);
 const pendingAppAction = ref<PendingAppAction | null>(null);
 const appReportCopied = ref(false);
 const safeReportCopied = ref(false);
+const selectedPackages = ref<string[]>([]);
 
 type PendingAppAction = {
   key: string;
@@ -42,6 +43,11 @@ const filteredPackages = computed(() => {
   });
   return listed.slice(0, 120);
 });
+const visiblePackageNames = computed(() => filteredPackages.value.map((app) => app.packageName));
+const allVisibleSelected = computed(() => (
+  visiblePackageNames.value.length > 0
+  && visiblePackageNames.value.every((pkg) => selectedPackages.value.includes(pkg))
+));
 
 const availableRecommendedBypass = computed(() => {
   const active = new Set([...state.appPolicy.proxy, ...state.appPolicy.direct, ...state.appPolicy.bypass]);
@@ -110,6 +116,61 @@ function validateAppPackage(pkg: string, target: AppTarget): boolean {
 
 function addApp(target: AppTarget): void {
   requestAddPackage(state.packageInput.trim(), target, `add-${target}`);
+}
+
+function togglePackageSelection(pkg: string): void {
+  selectedPackages.value = selectedPackages.value.includes(pkg)
+    ? selectedPackages.value.filter((item) => item !== pkg)
+    : [...selectedPackages.value, pkg];
+}
+
+function selectVisiblePackages(): void {
+  if (allVisibleSelected.value) {
+    const visible = new Set(visiblePackageNames.value);
+    selectedPackages.value = selectedPackages.value.filter((pkg) => !visible.has(pkg));
+    return;
+  }
+  selectedPackages.value = Array.from(new Set([
+    ...selectedPackages.value,
+    ...visiblePackageNames.value,
+  ]));
+}
+
+async function applyBatchAdd(packages: string[], target: AppTarget): Promise<void> {
+  await withAction(`batch-${target}`, async () => {
+    const previousProxy = [...state.appPolicy.proxy];
+    const previousDirect = [...state.appPolicy.direct];
+    const previousBypass = [...state.appPolicy.bypass];
+    packages.forEach((pkg) => moveLocalPackage(pkg, target));
+    const quoted = packages.map((pkg) => shellQuote(pkg)).join(" ");
+    const text = await runCli(
+      `app add-many ${target} ${quoted}`,
+      `批量归类 ${packages.length} 个应用到 ${target}`,
+      true,
+    );
+    if (commandFailed(text)) {
+      state.output = text;
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
+      state.appPolicy.bypass = previousBypass;
+      return;
+    }
+    selectedPackages.value = selectedPackages.value.filter((pkg) => !packages.includes(pkg));
+    state.output = `已批量归类 ${packages.length} 个应用到 ${target}。`;
+    await refreshApps(true);
+  });
+}
+
+function requestBatchAdd(target: AppTarget): void {
+  const packages = [...selectedPackages.value];
+  if (!packages.length) return;
+  pendingAppAction.value = {
+    key: `batch-${target}`,
+    command: `app add-many ${target} (${packages.length} packages)`,
+    message: `确认把已选的 ${packages.length} 个应用批量归类到 ${target}？只会执行一次策略写入和核心重启。`,
+    plan: actionPlan({ type: "add", target, packages }),
+    run: () => applyBatchAdd(packages, target),
+  };
 }
 
 async function addPackage(pkg: string, target: AppTarget, key = `add-${target}`): Promise<void> {
@@ -414,9 +475,28 @@ onMounted(() => {
           </div>
           <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">重新读取</Button>
         </div>
+        <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" :disabled="!visiblePackageNames.length" @click="selectVisiblePackages">
+            <CheckCheck :size="15" />{{ allVisibleSelected ? '取消可见项' : '选择可见项' }}
+          </Button>
+          <span class="mr-auto text-xs text-[var(--mn-ink-muted)]">已选 {{ selectedPackages.length }} 个</span>
+          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-proxy')" @click="requestBatchAdd('proxy')">Proxy</Button>
+          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-direct')" @click="requestBatchAdd('direct')">Direct</Button>
+          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-bypass')" @click="requestBatchAdd('bypass')">Bypass TUN</Button>
+          <Button v-if="selectedPackages.length" size="icon" variant="outline" aria-label="清除已选应用" title="清除已选应用" @click="selectedPackages = []"><X :size="15" /></Button>
+        </div>
         <div class="grid max-h-72 gap-2 overflow-auto">
           <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center">
-            <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ app.packageName }}</span>
+            <label class="flex min-w-0 cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                class="size-4 shrink-0 accent-[var(--mn-cactus)]"
+                :checked="selectedPackages.includes(app.packageName)"
+                :aria-label="`选择 ${app.packageName}`"
+                @change="togglePackageSelection(app.packageName)"
+              >
+              <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ app.packageName }}</span>
+            </label>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'proxy', `pick-proxy-${app.packageName}`)">Proxy</Button>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-direct-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'direct', `pick-direct-${app.packageName}`)">Direct</Button>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'bypass', `pick-bypass-${app.packageName}`)">Bypass TUN</Button>

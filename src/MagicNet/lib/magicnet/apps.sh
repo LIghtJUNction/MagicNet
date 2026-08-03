@@ -68,6 +68,60 @@ magicnet_app_proxy_packages() {
     unset _proxy_packages_file
 }
 
+magicnet_android_user_ids() {
+    if command -v cmd >/dev/null 2>&1; then
+        cmd user list 2>/dev/null |
+            sed -n 's/.*UserInfo{\([0-9][0-9]*\):.*/\1/p'
+    fi
+}
+
+magicnet_package_uids() {
+    _uid_packages_file="$1"
+    command -v cmd >/dev/null 2>&1 || {
+        unset _uid_packages_file
+        return 0
+    }
+    _uid_users="$(magicnet_android_user_ids | awk '/^[0-9]+$/ && !seen[$0]++')"
+    [ -n "$_uid_users" ] || _uid_users=0
+    magicnet_app_proxy_packages "$_uid_packages_file" |
+        while IFS= read -r _uid_package; do
+            [ -n "$_uid_package" ] || continue
+            for _uid_user in $_uid_users; do
+                cmd package list packages --user "$_uid_user" -U "$_uid_package" 2>/dev/null |
+                    awk -v expected="package:${_uid_package}" '
+                        $1 == expected {
+                            for (field = 2; field <= NF; field++) {
+                                if ($field ~ /^uid:[0-9]+$/) {
+                                    sub(/^uid:/, "", $field)
+                                    print $field
+                                }
+                            }
+                        }
+                    '
+            done
+        done |
+        awk '/^[0-9]+$/ && !seen[$0]++'
+    unset _uid_packages_file _uid_users _uid_package _uid_user
+}
+
+magicnet_app_uid_state_commit() {
+    _uid_state_dir="$1"
+    _uid_include_source="$2"
+    _uid_exclude_source="$3"
+    mkdir -p "$_uid_state_dir" || return 1
+    _uid_include_tmp="${_uid_state_dir}/include-uids.list.new.$$"
+    _uid_exclude_tmp="${_uid_state_dir}/exclude-uids.list.new.$$"
+    if ! cp -f "$_uid_include_source" "$_uid_include_tmp" ||
+        ! cp -f "$_uid_exclude_source" "$_uid_exclude_tmp" ||
+        ! mv -f "$_uid_include_tmp" "${_uid_state_dir}/include-uids.list" ||
+        ! mv -f "$_uid_exclude_tmp" "${_uid_state_dir}/exclude-uids.list"; then
+        rm -f "$_uid_include_tmp" "$_uid_exclude_tmp" 2>/dev/null || true
+        unset _uid_state_dir _uid_include_source _uid_exclude_source _uid_include_tmp _uid_exclude_tmp
+        return 1
+    fi
+    unset _uid_state_dir _uid_include_source _uid_exclude_source _uid_include_tmp _uid_exclude_tmp
+}
+
 # Ownership marker for MagicNet-managed force-proxy rules (not a user package).
 # Idempotent rewrites strip rules containing this marker, then re-inject one
 # authoritative rule from app-proxy.list — single source of truth for that list.
@@ -135,13 +189,23 @@ magicnet_singbox_apply_app_policy() {
     _include_block=""
     _exclude_block=""
     _include_packages_tmp="${_config}.include-packages.tmp"
+    _include_uids_tmp="${_config}.include-uids.tmp"
+    _exclude_uids_tmp="${_config}.exclude-uids.tmp"
+    _uid_state_dir="${MODDIR}/.state/app-policy"
+    _old_include_uids="${_uid_state_dir}/include-uids.list"
+    _old_exclude_uids="${_uid_state_dir}/exclude-uids.list"
+    mkdir -p "$_uid_state_dir" || return 1
+    : >"$_include_uids_tmp"
+    : >"$_exclude_uids_tmp"
     if [ "$_mode" = "whitelist" ]; then
         {
             magicnet_app_proxy_packages "$_direct_file"
             magicnet_app_proxy_packages "$_proxy_file"
         } | awk 'NF && !seen[$0]++' >"$_include_packages_tmp"
+        magicnet_package_uids "$_include_packages_tmp" >"$_include_uids_tmp"
         _include_block="$(magicnet_package_array_block include_package "$_include_packages_tmp" "," 1)"
     else
+        magicnet_package_uids "$_bypass_file" >"$_exclude_uids_tmp"
         _exclude_block="$(magicnet_package_array_block exclude_package "$_bypass_file" ",")"
         rm -f "$_include_packages_tmp" 2>/dev/null || true
     fi
@@ -159,27 +223,57 @@ magicnet_singbox_apply_app_policy() {
         [ -f "$_proxy_file" ] || : >"$_proxy_file"
         [ -f "$_direct_file" ] || : >"$_direct_file"
         [ -f "$_bypass_file" ] || : >"$_bypass_file"
-        if "$_jq" --arg mode "$_mode" --rawfile proxy "$_proxy_file" --rawfile direct "$_direct_file" --rawfile bypass "$_bypass_file" '
+        [ -f "$_old_include_uids" ] || : >"$_old_include_uids"
+        [ -f "$_old_exclude_uids" ] || : >"$_old_exclude_uids"
+        if "$_jq" --arg mode "$_mode" \
+            --rawfile proxy "$_proxy_file" \
+            --rawfile direct "$_direct_file" \
+            --rawfile bypass "$_bypass_file" \
+            --rawfile include_uids "$_include_uids_tmp" \
+            --rawfile exclude_uids "$_exclude_uids_tmp" \
+            --rawfile old_include_uids "$_old_include_uids" \
+            --rawfile old_exclude_uids "$_old_exclude_uids" '
             def packages($text):
               $text
               | split("\n")
               | map(gsub("^[[:space:]]+|[[:space:]]+$"; ""))
               | map(select(. != "" and (startswith("#") | not)))
               | unique;
+            def uids($text):
+              $text
+              | split("\n")
+              | map(select(test("^[0-9]+$")) | tonumber)
+              | unique;
+            def without($values):
+              map(. as $value | select(($values | index($value)) == null));
             (packages($proxy)) as $proxy_packages
             | (packages($direct)) as $direct_packages
             | (packages($bypass)) as $bypass_packages
+            | (uids($include_uids)) as $include_uid_values
+            | (uids($exclude_uids)) as $exclude_uid_values
+            | (uids($old_include_uids)) as $old_include_uid_values
+            | (uids($old_exclude_uids)) as $old_exclude_uid_values
             | .inbounds = (
                 (.inbounds // []) | map(
                   if (.type // "") == "tun" then
-                    del(.include_package, .exclude_package)
+                    ((.include_uid // []) | without($old_include_uid_values)) as $base_include_uids
+                    | ((.exclude_uid // []) | without($old_exclude_uid_values)) as $base_exclude_uids
+                    | del(.include_package, .exclude_package, .include_uid, .exclude_uid)
                     | if $mode == "whitelist" then
                         .include_package = (($proxy_packages + $direct_packages) | unique)
-                      elif ($bypass_packages | length) > 0 then
-                        .exclude_package = $bypass_packages
+                        | .include_uid = (($base_include_uids + $include_uid_values) | unique)
+                        | .exclude_uid = ($base_exclude_uids | unique)
                       else
-                        .
+                        .include_uid = ($base_include_uids | unique)
+                        | .exclude_uid = (($base_exclude_uids + $exclude_uid_values) | unique)
+                        | if ($bypass_packages | length) > 0 then
+                            .exclude_package = $bypass_packages
+                          else
+                            .
+                          end
                       end
+                    | if ((.include_uid // []) | length) == 0 then del(.include_uid) else . end
+                    | if ((.exclude_uid // []) | length) == 0 then del(.exclude_uid) else . end
                   else
                     .
                   end
@@ -210,9 +304,13 @@ magicnet_singbox_apply_app_policy() {
                       + $business_rules
                   end
               )
-        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
-            rm -f "$_include_packages_tmp" 2>/dev/null || true
-            unset _config _dir _mode _proxy_file _direct_file _bypass_file _include_block _exclude_block _include_packages_tmp _tmp _include_tmp _exclude_tmp _proxy_rule_tmp _direct_rule_tmp _jq
+        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" &&
+            magicnet_app_uid_state_commit "$_uid_state_dir" "$_include_uids_tmp" "$_exclude_uids_tmp"; then
+            rm -f "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" 2>/dev/null || true
+            unset _config _dir _mode _proxy_file _direct_file _bypass_file _include_block _exclude_block
+            unset _include_packages_tmp _include_uids_tmp _exclude_uids_tmp _uid_state_dir
+            unset _old_include_uids _old_exclude_uids _tmp _include_tmp _exclude_tmp
+            unset _proxy_rule_tmp _direct_rule_tmp _jq
             return 0
         fi
         rm -f "$_tmp" 2>/dev/null || true
@@ -410,10 +508,10 @@ magicnet_singbox_apply_app_policy() {
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
-        rm -f "$_include_packages_tmp" "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" "$_direct_rule_tmp" 2>/dev/null || true
+        rm -f "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" "$_direct_rule_tmp" 2>/dev/null || true
         return 1
     fi
-    rm -f "$_include_packages_tmp" "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" "$_direct_rule_tmp" 2>/dev/null || true
+    rm -f "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" "$_direct_rule_tmp" 2>/dev/null || true
 }
 
 magicnet_app_policy_apply_unlocked() {

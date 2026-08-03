@@ -25,6 +25,7 @@ magicnet_start_singbox_unlocked() {
     magicnet_singbox_apply_transparent_mode || return 1
     magicnet_singbox_apply_hotspot_policy || return 1
     magicnet_tailscale_apply_unlocked || return 1
+    magicnet_app_policy_apply_unlocked || return 1
     magicnet_tailscale_inject_auth_key || return 1
     import __singbox__
     if ! singbox_start; then
@@ -112,6 +113,10 @@ magicnet_show_dashboard() {
     _fswatch_pid=$(magicnet_fswatch_status)
     panel_row "fswatch" "${_fswatch_pid:-Stopped}"
     panel_row "WebUI" "http://127.0.0.1:9090/ui/"
-    panel_row "sing-box subscription" "${MODDIR}/.config/sing-box/subscription.url"
+    if [ -s "${MODDIR}/.config/sing-box/subscription.local" ]; then
+        panel_row "sing-box subscription" "local file"
+    else
+        panel_row "sing-box subscription" "${MODDIR}/.config/sing-box/subscription.url"
+    fi
     panel_end
 }

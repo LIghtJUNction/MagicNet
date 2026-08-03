@@ -248,6 +248,7 @@ async function stagePrivatePayload(
   basename: string,
   payload: string,
   label: string,
+  chunkSize?: number,
 ) {
   return stagePrivatePayloadWithCli(
     runPrivateCli,
@@ -256,6 +257,7 @@ async function stagePrivatePayload(
     basename,
     payload,
     label,
+    chunkSize,
   );
 }
 

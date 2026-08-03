@@ -154,6 +154,7 @@ export type State = {
   subscriptions: {
     singBox: string;
     singBoxUrls: string[];
+    sourceMode: "url" | "local";
   };
   backupPassword: string;
   backupPayload: string;
