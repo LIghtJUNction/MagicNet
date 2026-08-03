@@ -34,6 +34,16 @@ magicnet_dns_capture_port() {
     printf '%s\n' "${MAGIC_DNS_CAPTURE_PORT:-1053}"
 }
 
+magicnet_dns_capture_bypass_uids() {
+    _dns_bypass_uid_file="${MODDIR}/.state/app-policy/exclude-uids.list"
+    [ -f "$_dns_bypass_uid_file" ] || {
+        unset _dns_bypass_uid_file
+        return 0
+    }
+    awk '/^[0-9]+$/ && !seen[$0]++ { print }' "$_dns_bypass_uid_file" 2>/dev/null
+    unset _dns_bypass_uid_file
+}
+
 magicnet_enable_dns_capture() {
     if ! magicnet_dns_capture_enabled; then
         magicnet_disable_dns_capture
@@ -52,9 +62,13 @@ magicnet_enable_dns_capture() {
     fi
 
     _dns_capture_port="$(magicnet_dns_capture_port)"
+    _dns_capture_bypass_uids="$(magicnet_dns_capture_bypass_uids)"
     iptables -t nat -N magicnet-dns-output >/dev/null 2>&1 || true
     iptables -t nat -F magicnet-dns-output >/dev/null 2>&1 || true
     iptables -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || iptables -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || true
+    for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
+        magicnet_iptables_ensure -t nat magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || true
+    done
     magicnet_iptables_ensure -t nat magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || true
     magicnet_iptables_ensure -t nat magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || true
 
@@ -62,12 +76,15 @@ magicnet_enable_dns_capture() {
         ip6tables -t nat -N magicnet-dns-output >/dev/null 2>&1 || true
         ip6tables -t nat -F magicnet-dns-output >/dev/null 2>&1 || true
         ip6tables -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || ip6tables -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || true
+        for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
+            magicnet_ip6tables_nat_ensure magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || true
+        done
         magicnet_ip6tables_nat_ensure magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || true
         magicnet_ip6tables_nat_ensure magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || true
     fi
 
     magicnet_log "DNS capture redirected port 53 to 127.0.0.1:${_dns_capture_port}"
-    unset _dns_capture_port
+    unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid
 }
 
 magicnet_disable_dns_capture() {

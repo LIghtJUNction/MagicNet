@@ -15,6 +15,7 @@ fi
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/apps.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/network.sh"
 
 NO_JQ_BIN="$WORK/no-jq-bin"
 mkdir -p "$NO_JQ_BIN"
@@ -243,6 +244,67 @@ EOF
 
 run_case jq
 run_case no-jq
+
+assert_dns_capture_bypass_uids() (
+  MODDIR="$WORK/dns-capture/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.state/app-policy"
+  cat >"$MODDIR/.state/app-policy/exclude-uids.list" <<'EOF'
+11001
+1011001
+11001
+invalid
+EOF
+
+  dns_capture_log="$WORK/dns-capture-iptables.log"
+  : >"$dns_capture_log"
+
+  iptables() {
+    printf '%s\n' "iptables $*" >>"$dns_capture_log"
+    case " $* " in
+      *' -C '*) return 1 ;;
+      *) return 0 ;;
+    esac
+  }
+  ip6tables() {
+    printf '%s\n' "ip6tables $*" >>"$dns_capture_log"
+    case " $* " in
+      *' -C '*) return 1 ;;
+      *) return 0 ;;
+    esac
+  }
+  magicnet_cmd_exists() { command -v "$1" >/dev/null 2>&1; }
+  magicnet_dns_profile() { printf '%s\n' default; }
+  magicnet_log() { :; }
+  magicnet_warn() { printf '%s\n' "$*" >&2; }
+
+  magicnet_enable_dns_capture
+
+  for family in iptables ip6tables; do
+    for uid in 11001 1011001; do
+      bypass_line=$(sed -n "/$family -t nat -A magicnet-dns-output -m owner --uid-owner $uid -j RETURN/=" "$dns_capture_log")
+      redirect_line=$(sed -n "/$family -t nat -A magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports 1053/=" "$dns_capture_log")
+      if [ -z "$bypass_line" ] || [ -z "$redirect_line" ] || [ "$bypass_line" -ge "$redirect_line" ]; then
+        printf '%s\n' "$family app-bypass UID $uid must return before DNS capture redirect" >&2
+        cat "$dns_capture_log" >&2
+        exit 1
+      fi
+    done
+  done
+
+  if [ "$(grep -c -- '--uid-owner 11001 -j RETURN' "$dns_capture_log")" -ne 4 ]; then
+    printf '%s\n' 'duplicate app-bypass UIDs must produce one check and one append per address family only' >&2
+    cat "$dns_capture_log" >&2
+    exit 1
+  fi
+  if grep -q -- '--uid-owner invalid' "$dns_capture_log"; then
+    printf '%s\n' 'invalid app-bypass UID reached iptables' >&2
+    cat "$dns_capture_log" >&2
+    exit 1
+  fi
+)
+
+assert_dns_capture_bypass_uids
 
 assert_startup_policy_order() {
   startup_events="$WORK/startup-events.log"

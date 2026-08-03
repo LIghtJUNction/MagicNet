@@ -61,7 +61,7 @@ su -c /data/adb/modules/MagicNet/cli health
 - 按应用设置代理、直连或 Bypass TUN，便于与外部 VPN 共存。
 - 提供 WebUI、CLI、MCP 和支持包，便于日常控制与排查。
 
-当前主线只维护 `sing-box` 和 `magicnet0` TUN，不恢复 TProxy 或多核心路径。热点 Proxy 模式会暂时关闭 Android tether 硬件卸载，确保转发流量进入 TUN；关闭 Proxy 或卸载模块时恢复原系统值。应用的 `bypass` 策略会按 Android 用户动态解析包 UID 并把指定应用排除在 TUN 之外，MagicNet 仍不会占用或管理 Android 的系统 VPN slot。
+当前主线只维护 `sing-box` 和 `magicnet0` TUN，不恢复 TProxy 或多核心路径。热点 Proxy 模式会暂时关闭 Android tether 硬件卸载，确保转发流量进入 TUN；关闭 Proxy 或卸载模块时恢复原系统值。应用的 `bypass` 策略会按 Android 用户动态解析包 UID，并把指定应用同时排除在 TUN 与 MagicNet DNS 捕获之外，使 DNS 和业务流量保持同一原生网络路径。MagicNet 仍不会占用或管理 Android 的系统 VPN slot。
 
 ## 安装
 

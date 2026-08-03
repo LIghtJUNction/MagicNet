@@ -30,6 +30,7 @@ magicnet_json_escape() { printf '%s' "$1"; }
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/fetch.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 
 printf '#!/system/bin/sh\n' >"$MODDIR/cli"
 chmod +x "$MODDIR/cli"
@@ -43,6 +44,21 @@ assert_file() {
     exit 1
   }
 }
+
+assert_issue_93_local_startup_sources() {
+  local issue_moddir="$fixture/issue-93-module"
+  mkdir -p "$issue_moddir/.config/sing-box"
+
+  printf 'proxies:\n  - local-fixture\n' >"$issue_moddir/.config/sing-box/subscription.local"
+  MODDIR="$issue_moddir" magicnet_require_subscription_or_stop
+
+  rm -f "$issue_moddir/.config/sing-box/subscription.local"
+  printf '%s\n' '{"inbounds":[],"outbounds":[]}' >"$issue_moddir/.config/sing-box/config.json"
+  printf '%s\n' validated >"$issue_moddir/.config/sing-box/standalone-config"
+  MODDIR="$issue_moddir" magicnet_require_subscription_or_stop
+}
+
+assert_issue_93_local_startup_sources
 
 with_no_refresh_loop_candidates() (
   trap - EXIT
