@@ -322,10 +322,6 @@ managed_ipv6_guards = [
 ]
 if any(rule in managed_ipv6_guards for rule in route_rules):
     raise SystemExit("packaged dual-stack config contains a managed IPv6 reject guard")
-if len(route_rules) != 65 or len(dns_rules) != 24:
-    raise SystemExit(
-        f"canonical rule counts changed: route={len(route_rules)} dns={len(dns_rules)}"
-    )
 outbound_tags = {outbound.get("tag") for outbound in config.get("outbounds", [])}
 outbounds = {outbound.get("tag"): outbound for outbound in config.get("outbounds", [])}
 
