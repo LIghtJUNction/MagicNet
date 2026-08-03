@@ -15,8 +15,7 @@ MagicNet 是 Android root 网络模块：用 `sing-box` 的 `magicnet0` TUN 接�
 ## 推广
 
 - [作者的中转站](https://api.lmm.best): 测试迭代中，源代码已开源，购买token表示支持
-> 感谢各位“股东”的投资
-> 联系我，领取10刀余额
+> 提交issue/pr有奖
 
 - [AI 自动推广系统](https://bizbot.zvo.cn/)：探索 AI 驱动的自动推广工具与工作流。
 
