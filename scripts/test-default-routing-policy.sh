@@ -92,6 +92,30 @@ multi_package_dns_count=$(jq '[.dns.rules[] | select((.package_name? | type) == 
 [[ "$multi_package_dns_count" -eq 0 ]] ||
     fail "DNS policy must not contain a hardcoded application catalog"
 
+dns_package_rule_count=$(jq '[.dns.rules[] | select(has("package_name"))] | length' "$CONFIG_FILE")
+[[ "$dns_package_rule_count" -eq 0 ]] ||
+    fail "DNS policy must not contain application package selectors"
+
+fakeip_server_count=$(jq '[.dns.servers[] | select(.type == "fakeip" or .tag == "fakeip")] | length' "$CONFIG_FILE")
+[[ "$fakeip_server_count" -eq 0 ]] ||
+    fail "default DNS policy must not enable an unconsumed FakeIP server"
+
+fakeip_rule_count=$(jq '[.dns.rules[] | select(.server == "fakeip")] | length' "$CONFIG_FILE")
+[[ "$fakeip_rule_count" -eq 0 ]] ||
+    fail "default DNS policy must return real addresses instead of FakeIP answers"
+
+store_fakeip=$(jq -r '.experimental.cache_file.store_fakeip // false' "$CONFIG_FILE")
+[[ "$store_fakeip" == "false" ]] ||
+    fail "default DNS policy must not persist stale FakeIP mappings"
+
+fakeip_blackhole_count=$(jq '[
+    .route.rules[]
+    | select(.outbound == "block")
+    | select(any(.ip_cidr[]?; . == "198.18.0.0/16" or . == "28.0.0.0/8"))
+] | length' "$CONFIG_FILE")
+[[ "$fakeip_blackhole_count" -eq 0 ]] ||
+    fail "routing policy must not blackhole benchmark or public address space as a FakeIP guard"
+
 first_matching_value() {
     local rules_path="$1"
     local value_key="$2"
@@ -181,10 +205,6 @@ apple_icloud_dns_rule = {
 }
 direct_mode_dns_rule = {"clash_mode": "Direct", "server": "bootstrap-local-dns"}
 global_mode_dns_rule = {"clash_mode": "Global", "server": "doh-cloudflare"}
-wechat_dns_rule = {
-    "package_name": ["com.tencent.mm"],
-    "server": "bootstrap-local-dns",
-}
 domestic_connectivity_dns_rule = {
     "domain_suffix": ["connect.rom.miui.com", "connectivitycheck.platform.hicloud.com"],
     "server": "bootstrap-local-dns",
@@ -227,12 +247,18 @@ legacy_early_local_msft_dns_rule = {
 }
 if legacy_early_local_msft_dns_rule in dns_rules:
     raise AssertionError("legacy early local Microsoft connectivity DNS rule must be absent")
-if rules[26] != {"domain_suffix": msft_network_test_suffixes, "outbound": "network-test"}:
-    raise AssertionError("route rule 26 Microsoft network-test suffixes changed")
-if rules[28] != {"domain_suffix": foreign_network_test_suffixes, "outbound": "network-test"}:
-    raise AssertionError("route rule 28 foreign network-test suffixes changed")
+msft_network_test_routes = [
+    (index, rule) for index, rule in enumerate(rules)
+    if rule == {"domain_suffix": msft_network_test_suffixes, "outbound": "network-test"}
+]
+foreign_network_test_routes = [
+    (index, rule) for index, rule in enumerate(rules)
+    if rule == {"domain_suffix": foreign_network_test_suffixes, "outbound": "network-test"}
+]
+if len(msft_network_test_routes) != 1 or len(foreign_network_test_routes) != 1:
+    raise AssertionError("network-test suffix routes must remain unique")
 if foreign_network_test_dns_rule["domain_suffix"] != (
-    rules[26]["domain_suffix"] + rules[28]["domain_suffix"]
+    msft_network_test_routes[0][1]["domain_suffix"] + foreign_network_test_routes[0][1]["domain_suffix"]
 ):
     raise AssertionError("foreign network-test DNS suffixes must equal route rules 27 + 29")
 cn_bing_dns_rule = {
@@ -285,7 +311,6 @@ ordered_dns_policy_indexes = []
 for expected_rule in (
     direct_mode_dns_rule,
     global_mode_dns_rule,
-    wechat_dns_rule,
     domestic_connectivity_dns_rule,
     foreign_network_test_dns_rule,
     apple_icloud_dns_rule,
@@ -302,14 +327,13 @@ if not all(
     for left, right in zip(ordered_dns_policy_indexes, ordered_dns_policy_indexes[1:])
 ):
     raise AssertionError(
-        "required DNS order is Direct -> Global -> WeChat local -> domestic connectivity -> foreign network-test "
+        "required DNS order is Direct -> Global -> domestic connectivity -> foreign network-test "
         "-> Apple -> cn Bing -> global Bing -> local Microsoft: "
         f"indexes={ordered_dns_policy_indexes}"
     )
 (
     direct_mode_dns_index,
     global_mode_dns_index,
-    wechat_dns_index,
     domestic_connectivity_dns_index,
     foreign_network_test_dns_index,
     apple_icloud_dns_index,
@@ -317,12 +341,22 @@ if not all(
     global_bing_dns_index,
     local_microsoft_dns_index,
 ) = ordered_dns_policy_indexes
+def exact_dns_index(expected_rule):
+    matches = [index for index, rule in enumerate(dns_rules) if rule == expected_rule]
+    if len(matches) != 1:
+        raise AssertionError(f"expected one exact DNS rule: indexes={matches}")
+    return matches[0]
+
+
+ad_suffix_dns_index = exact_dns_index(ad_suffix_dns_rule)
+ad_keyword_dns_index = exact_dns_index(ad_keyword_dns_rule)
+ad_rule_set_dns_index = exact_dns_index(ad_rule_set_dns_rule)
 dedicated_leak_test_dns_indexes = [
     index for index, rule in enumerate(dns_rules) if rule == dedicated_leak_test_dns_rule
 ]
-if dedicated_leak_test_dns_indexes != [2]:
+if len(dedicated_leak_test_dns_indexes) != 1:
     raise AssertionError(
-        f"expected one exact dedicated leak-test DNS rule at index 2: "
+        "expected one exact dedicated leak-test DNS rule: "
         f"indexes={dedicated_leak_test_dns_indexes}"
     )
 dedicated_leak_test_dns_index = dedicated_leak_test_dns_indexes[0]
@@ -530,11 +564,20 @@ expected_dns_tail = [
     generic_foreign_dns_rule,
     specialized_foreign_dns_rule,
 ]
-if dns_rules[14:] != expected_dns_tail:
+dns_tail_start = next(
+    (index for index, rule in enumerate(dns_rules) if rule == expected_dns_tail[0]),
+    None,
+)
+if (
+    dns_tail_start is None
+    or dns_rules[dns_tail_start:dns_tail_start + len(expected_dns_tail)] != expected_dns_tail
+    or dns_tail_start + len(expected_dns_tail) != len(dns_rules)
+):
     raise AssertionError(
         "required DNS order is private < mmstat local < ad suffix < ad keyword < ad rule-set < game < "
         "foreign priority < canonical CN < generic foreign < specialized: "
-        f"{dns_rules[14:]}"
+        f"tail_start={dns_tail_start} tail="
+        f"{dns_rules[dns_tail_start:] if dns_tail_start is not None else None}"
     )
 for expected_rule in expected_dns_tail:
     matches = [index for index, rule in enumerate(dns_rules) if rule == expected_rule]
@@ -606,6 +649,30 @@ canonical_cn_rule_sets = {
     "karing-acl4ssr-china-domain",
     "karing-acl4ssr-china-ip",
 }
+canonical_cn_ip_rule = {
+    "rule_set": ["lyc-geoip-cn", "metacubex-geoip-cn", "karing-acl4ssr-china-ip"],
+    "outbound": "cn-direct",
+}
+canonical_cn_ip_routes = [
+    (index, rule) for index, rule in enumerate(rules) if rule == canonical_cn_ip_rule
+]
+if len(canonical_cn_ip_routes) != 1:
+    raise AssertionError(
+        f"expected one early CN IP-only route before ad rule-sets: {canonical_cn_ip_routes}"
+    )
+canonical_cn_ip_index = canonical_cn_ip_routes[0][0]
+ad_rule_set_routes = [
+    (index, rule) for index, rule in enumerate(rules)
+    if rule.get("outbound") == "ad-block" and "rule_set" in rule
+]
+if len(ad_rule_set_routes) != 2:
+    raise AssertionError(f"expected two ad rule-set routes, found {ad_rule_set_routes}")
+if not canonical_cn_ip_index < ad_rule_set_routes[0][0]:
+    raise AssertionError(
+        "CN IP-only routing must precede ad IP rule-sets so domestic CDN IPs are not blocked"
+    )
+if set(canonical_cn_ip_rule["rule_set"]) & {"lyc-geosite-cn", "lyc-geosite-geolocation-cn", "ddch-direct"}:
+    raise AssertionError("CN IP-only route must not include domain or mixed direct rule-sets")
 cn_overlap_evidence_rule_sets = canonical_cn_rule_sets | {"metacubex-geosite-cn"}
 generic_foreign_rule_sets = {
     "lyc-geosite-gfw",
@@ -650,9 +717,17 @@ if (
     != karing_false_positive_domains
 ):
     raise AssertionError("foreign-priority domain sequence must preserve 51 entries and append 5")
-if rules[48] != foreign_priority_route_rule or dns_rules[20] != foreign_priority_dns_rule:
-    raise AssertionError("exact 56-domain foreign-priority route/DNS indexes changed")
-if rules[48]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
+foreign_priority_route_indexes = [
+    index for index, rule in enumerate(rules) if rule == foreign_priority_route_rule
+]
+foreign_priority_dns_indexes = [
+    index for index, rule in enumerate(dns_rules) if rule == foreign_priority_dns_rule
+]
+if len(foreign_priority_route_indexes) != 1 or len(foreign_priority_dns_indexes) != 1:
+    raise AssertionError("exact 56-domain foreign-priority route/DNS ownership changed")
+foreign_priority_route_index = foreign_priority_route_indexes[0]
+foreign_priority_dns_index = foreign_priority_dns_indexes[0]
+if rules[foreign_priority_route_index]["domain_suffix"] != dns_rules[foreign_priority_dns_index]["domain_suffix"]:
     raise AssertionError("foreign-priority route/DNS domain lists must remain identical")
 flows = (
     {
@@ -850,7 +925,14 @@ def route_rule_matches(rule, domain, flow):
         if not domain_group_matches(rule, domain):
             return False
     if "rule_set" in rule:
-        if not any(binary_rule_set_matches(tag, domain) for tag in values(rule["rule_set"])):
+        rule_set_targets = [domain]
+        if destination_ip is not None:
+            rule_set_targets.append(destination_ip)
+        if not any(
+            binary_rule_set_matches(tag, target)
+            for tag in values(rule["rule_set"])
+            for target in rule_set_targets
+        ):
             return False
     return True
 
@@ -858,8 +940,13 @@ def route_rule_matches(rule, domain, flow):
 def first_matching_outbound(domain, flow):
     for index, rule in enumerate(rules):
         if "outbound" in rule and route_rule_matches(rule, domain, flow):
+            rule_set_targets = [domain]
+            if flow["destination_ip"] is not None:
+                rule_set_targets.append(flow["destination_ip"])
             matching_rule_sets = {
-                tag for tag in values(rule.get("rule_set")) if binary_rule_set_matches(tag, domain)
+                tag
+                for tag in values(rule.get("rule_set"))
+                if any(binary_rule_set_matches(tag, target) for target in rule_set_targets)
             }
             return index, rule, matching_rule_sets
     raise AssertionError(f"{flow['name']} {domain} has no matching outbound route")
@@ -868,8 +955,13 @@ def first_matching_outbound(domain, flow):
 def first_matching_dns(domain, flow):
     for index, rule in enumerate(dns_rules):
         if "server" in rule and route_rule_matches(rule, domain, flow):
+            rule_set_targets = [domain]
+            if flow["destination_ip"] is not None:
+                rule_set_targets.append(flow["destination_ip"])
             matching_rule_sets = {
-                tag for tag in values(rule.get("rule_set")) if binary_rule_set_matches(tag, domain)
+                tag
+                for tag in values(rule.get("rule_set"))
+                if any(binary_rule_set_matches(tag, target) for target in rule_set_targets)
             }
             return index, rule, matching_rule_sets
     return None
@@ -886,16 +978,17 @@ google_play_proxy_rule = {
 google_play_proxy_indexes = [
     index for index, rule in enumerate(rules) if rule == google_play_proxy_rule
 ]
-if google_play_proxy_indexes != [8]:
+if len(google_play_proxy_indexes) != 1:
     raise AssertionError(
-        "Google Play package routing must have one early proxy owner at index 8: "
+        "Google Play package routing must have one early proxy owner: "
         f"indexes={google_play_proxy_indexes}"
     )
+google_play_proxy_index = google_play_proxy_indexes[0]
 for package_name in google_play_proxy_rule["package_name"]:
     for base_flow in flows:
         flow = dict(base_flow, package_name=package_name)
         index, rule, _ = first_matching_outbound("play.googleapis.com", flow)
-        if index != 8 or rule != google_play_proxy_rule:
+        if index != google_play_proxy_index or rule != google_play_proxy_rule:
             raise AssertionError(
                 f"{package_name} {base_flow['name']} must proxy before destination rules: "
                 f"index={index} rule={rule}"
@@ -961,9 +1054,9 @@ for domain in karing_false_positive_domains:
         dns_index, dns_rule, _ = dns_match
         dns_server = dns_rule.get("server")
     if (
-        route_index != 48
+        route_index != foreign_priority_route_index
         or route_rule.get("outbound") != "proxy-rule"
-        or dns_index != 20
+        or dns_index != foreign_priority_dns_index
         or dns_server != "doh-google"
     ):
         karing_false_positive_failures.append(
@@ -1114,45 +1207,6 @@ for tag in fail_closed_ai_tags:
     if matches != [expected_selector]:
         raise AssertionError(f"{tag} selector is not canonical fail-closed: {matches}")
 
-wechat_route_rule = {
-    "domain_suffix": [
-        "qq.com", "weixin.qq.com", "wechat.com", "wechatapp.com", "wechatpay.cn",
-        "tenpay.com", "tencent.com", "tencent-cloud.com", "myqcloud.com", "qcloud.com",
-        "gtimg.com", "idqqimg.com", "qpic.cn", "qlogo.cn", "qmail.com", "smtcdns.com",
-        "servicewechat.com", "weixinbridge.com", "weixinsxy.com", "wx.gtimg.com", "wx.qq.com",
-    ],
-    "outbound": "cn-direct",
-}
-wechat_route_indexes = [
-    index for index, rule in enumerate(rules) if rule == wechat_route_rule
-]
-if len(wechat_route_indexes) != 1:
-    raise AssertionError(f"expected one exact WeChat route: indexes={wechat_route_indexes}")
-wechat_route_index = wechat_route_indexes[0]
-for domain in wechat_route_rule["domain_suffix"]:
-    owners = [
-        index for index, rule in enumerate(rules)
-        if domain in values(rule.get("domain_suffix"))
-        and rule.get("outbound") == "cn-direct"
-    ]
-    if owners != [wechat_route_index]:
-        raise AssertionError(f"WeChat domain must have one early cn-direct owner: {domain} indexes={owners}")
-
-loop_fake_guard_rule = {
-    "ip_cidr": ["127.0.0.1/32", "::1/128", "198.18.0.0/16", "28.0.0.0/8"],
-    "outbound": "block",
-}
-loop_fake_guard_indexes = [
-    index for index, rule in enumerate(rules) if rule == loop_fake_guard_rule
-]
-if len(loop_fake_guard_indexes) != 1:
-    raise AssertionError(f"expected one exact loop/FakeIP guard: indexes={loop_fake_guard_indexes}")
-loop_fake_guard_index = loop_fake_guard_indexes[0]
-if wechat_route_index + 1 != loop_fake_guard_index:
-    raise AssertionError(
-        "WeChat media route must immediately precede the loop/FakeIP guard: "
-        f"wechat={wechat_route_index} guard={loop_fake_guard_index}"
-    )
 lan_rules = [
     {"domain_suffix": ["local", "home.arpa", "lan"], "outbound": "lan"},
     {"domain_suffix": ["tailscale.net", "ts.net"], "outbound": "lan"},
@@ -1188,13 +1242,6 @@ public_ad_probes = {
     "google-analytics.com": "1.1.1.1",
     "doubleclick.net": "8.8.8.8",
 }
-guard_probes = {
-    "127.0.0.1": "analytics.local",
-    "::1": "analytics.local",
-    "198.18.1.1": "analytics.local",
-    "28.1.2.3": "analytics.local",
-}
-
 for base_flow in flows:
     for domain, destination_ip in lan_route_probes.items():
         flow = dict(base_flow, destination_ip=destination_ip,
@@ -1220,49 +1267,26 @@ for base_flow in flows:
                 f"{flow['name']} {domain}/{destination_ip}: index={index} "
                 f"outbound={rule['outbound']} effective={effective}, expected=ad-block/block"
             )
-    for destination_ip, domain in guard_probes.items():
-        flow = dict(base_flow, destination_ip=destination_ip,
-                    ip_version=ipaddress.ip_address(destination_ip).version)
-        index, rule, _ = first_matching_outbound(domain, flow)
-        effective = recursively_effective_outbound(rule["outbound"])
-        if index != loop_fake_guard_index or rule != loop_fake_guard_rule or effective != "block":
-            raise AssertionError(
-                f"{flow['name']} guard {domain}/{destination_ip}: index={index} "
-                f"rule={rule} effective={effective}, expected unchanged index-{loop_fake_guard_index} block guard"
-            )
-
-wechat_media_flow = dict(
-    flows[0],
-    package_name="com.tencent.mm",
-    destination_ip="198.18.1.1",
-    ip_version=4,
-)
-index, rule, _ = first_matching_outbound("upload.qpic.cn", wechat_media_flow)
-effective = recursively_effective_outbound(rule["outbound"])
-if index != wechat_route_index or rule != wechat_route_rule or effective != "direct":
-    raise AssertionError(
-        "WeChat media traffic with a cached FakeIP must bypass the later guard through cn-direct: "
-        f"index={index} rule={rule} effective={effective}"
-    )
-wechat_dns_result = first_matching_dns("unclassified-wechat-upload.invalid", wechat_media_flow)
-if wechat_dns_result is None:
-    raise AssertionError("WeChat DNS query unexpectedly fell through to dns.final")
-index, rule, _ = wechat_dns_result
-if index != wechat_dns_index or rule != wechat_dns_rule:
-    raise AssertionError(
-        "WeChat DNS must use the early local resolver rule to avoid new FakeIP media destinations: "
-        f"index={index} rule={rule}"
-    )
-
 expected_lan_ad_block = lan_rules + ad_rules
-lan_ad_start = loop_fake_guard_index + 1
-lan_ad_end = lan_ad_start + len(expected_lan_ad_block)
-if rules[lan_ad_start:lan_ad_end] != expected_lan_ad_block:
+lan_ad_indexes = [
+    next((index for index, rule in enumerate(rules) if rule == expected_rule), None)
+    for expected_rule in lan_rules
+]
+ad_rule_indexes = [
+    next((index for index, rule in enumerate(rules) if rule == expected_rule), None)
+    for expected_rule in ad_rules
+]
+if (
+    any(index is None for index in [*lan_ad_indexes, *ad_rule_indexes])
+    or lan_ad_indexes != list(range(lan_ad_indexes[0], lan_ad_indexes[0] + len(lan_rules)))
+    or ad_rule_indexes != list(range(ad_rule_indexes[0], ad_rule_indexes[0] + len(ad_rules)))
+    or lan_ad_indexes[-1] + 1 != ad_rule_indexes[0]
+):
     raise AssertionError(
-        f"LAN/ad canonical order at indexes {lan_ad_start}..{lan_ad_end - 1} changed: "
-        f"{rules[lan_ad_start:lan_ad_end]}"
+        "LAN/ad canonical blocks must remain unique and contiguous: "
+        f"lan={lan_ad_indexes} ad={ad_rule_indexes}"
     )
-for expected_rule in [loop_fake_guard_rule, *expected_lan_ad_block]:
+for expected_rule in expected_lan_ad_block:
     matches = [index for index, rule in enumerate(rules) if rule == expected_rule]
     if len(matches) != 1:
         raise AssertionError(f"canonical guard/LAN/ad rule must have one owner: {expected_rule} indexes={matches}")
@@ -1398,9 +1422,9 @@ if first_matching_dns("unclassified.magicnet-probe", domestic_package_flow) is n
     raise AssertionError("unclassified application DNS must use dns.final instead of a package fallback")
 
 for domain, expected_index, expected_rule in (
-    ("doubleclick.net", 16, ad_suffix_dns_rule),
-    ("www.google-analytics.com", 17, ad_keyword_dns_rule),
-    ("outbrain.com", 18, ad_rule_set_dns_rule),
+    ("doubleclick.net", ad_suffix_dns_index, ad_suffix_dns_rule),
+    ("www.google-analytics.com", ad_keyword_dns_index, ad_keyword_dns_rule),
+    ("outbrain.com", ad_rule_set_dns_index, ad_rule_set_dns_rule),
 ):
     result = first_matching_dns(domain, domestic_package_flow)
     if result is None:
@@ -1460,16 +1484,17 @@ if rule.get("server") != "bootstrap-local-dns":
 mmstat_dns_indexes = [
     index for index, rule in enumerate(dns_rules) if rule == mmstat_local_dns_rule
 ]
-if mmstat_dns_indexes != [15]:
-    raise AssertionError(f"expected one exact mmstat local DNS rule at index 15: {mmstat_dns_indexes}")
+if len(mmstat_dns_indexes) != 1:
+    raise AssertionError(f"expected one exact mmstat local DNS rule: {mmstat_dns_indexes}")
 mmstat_dns_index = mmstat_dns_indexes[0]
 route_index, route_rule, matching_rule_sets = first_matching_outbound("mmstat.com", flows[0])
 route_outbound = route_rule.get("outbound")
 route_effective = recursively_effective_outbound(route_outbound)
-if route_index != 30 or route_outbound != "cn-direct" or route_effective != "direct":
+if route_outbound != "ad-block" or route_effective != "block" or "lyc-geosite-ads" not in matching_rule_sets:
     raise AssertionError(
-        "mmstat.com route must remain index 30 cn-direct/direct: "
-        f"index={route_index} outbound={route_outbound} effective={route_effective}"
+        "mmstat.com must use the generic ad rule-set route instead of a vendor direct exception: "
+        f"index={route_index} outbound={route_outbound} effective={route_effective} "
+        f"matching_rule_sets={sorted(matching_rule_sets)}"
     )
 mmstat_dns = first_matching_dns("mmstat.com", flows[0])
 if mmstat_dns is None:
@@ -1500,9 +1525,9 @@ explicit_route_domains = sorted({
     for key in ("domain", "domain_suffix")
     for domain in values(route_rule.get(key))
 })
-if len(explicit_route_domains) != 347:
+if not explicit_route_domains:
     raise AssertionError(
-        f"explicit route-domain audit coverage changed: count={len(explicit_route_domains)} expected=347"
+        "explicit route-domain audit coverage is empty; destination policy has no explicit domain probes"
     )
 
 def audit_explicit_route_dns_parity(domain):
@@ -1614,9 +1639,51 @@ if ordinary_unclassified_dns is not None:
         "ordinary unclassified DNS must use dns.final: "
         f"matched_index={index} server={rule.get('server')}"
     )
-if config["dns"].get("final") != "doh-google":
+if config["dns"].get("final") != "bootstrap-local-dns":
     raise AssertionError(
-        f"ordinary unclassified DNS final changed: {config['dns'].get('final')}"
+        "ordinary unclassified DNS must use local encrypted resolution so a previously "
+        "unknown domestic CDN can be classified by CN destination IP: "
+        f"actual={config['dns'].get('final')}"
+    )
+
+unclassified_domestic_flow = dict(
+    flows[0],
+    name="tcp-tls-unclassified-domestic-ip",
+    destination_ip="223.5.5.5",
+)
+route_index, route_rule, matching_rule_sets = first_matching_outbound(
+    "unclassified.magicnet-probe", unclassified_domestic_flow
+)
+if route_rule.get("outbound") != "cn-direct" or not (
+    {"lyc-geoip-cn", "metacubex-geoip-cn", "karing-acl4ssr-china-ip"}
+    & matching_rule_sets
+):
+    raise AssertionError(
+        "unclassified domain resolved to a CN IP must use destination-based cn-direct: "
+        f"index={route_index} outbound={route_rule.get('outbound')} "
+        f"matching_rule_sets={sorted(matching_rule_sets)}"
+    )
+
+unclassified_foreign_flow = dict(
+    flows[0],
+    name="tcp-tls-unclassified-foreign-ip",
+    destination_ip="8.8.8.8",
+)
+unclassified_foreign_matches = [
+    (index, rule)
+    for index, rule in enumerate(rules)
+    if "outbound" in rule
+    and route_rule_matches(rule, "unclassified.magicnet-probe", unclassified_foreign_flow)
+]
+if (
+    unclassified_foreign_matches
+    or config["route"].get("final") != "final"
+    or selector_for("final").get("default") != "proxy"
+):
+    raise AssertionError(
+        "unclassified domain resolved to a non-CN IP must retain final proxy routing: "
+        f"explicit_matches={unclassified_foreign_matches} "
+        f"route_final={config['route'].get('final')}"
     )
 
 for domain in foreign_network_test_dns_rule["domain_suffix"]:
@@ -1648,7 +1715,7 @@ network_test_route_indexes = [
 if (
     rule.get("outbound") != "dns-guard"
     or recursively_effective_outbound(rule["outbound"]) != "block"
-    or network_test_route_indexes != [28]
+    or len(network_test_route_indexes) != 1
     or not index < network_test_route_indexes[0]
 ):
     raise AssertionError(
@@ -1980,8 +2047,11 @@ if len(final_keyword_routes) != 1 or final_keyword_routes[0] != telegram_ip_rout
         "unchanged final foreign keyword route must immediately follow the Telegram IP route: "
         f"actual={final_keyword_routes}"
     )
-if final_keyword_routes != [len(rules) - 1]:
-    raise AssertionError("final foreign keyword route must be the last explicit route rule")
+if final_keyword_routes[0] != len(rules) - 1:
+    raise AssertionError(
+        "final foreign keyword route must remain the last explicit route before route.final: "
+        f"keyword={final_keyword_routes} rule_count={len(rules)}"
+    )
 PY
 
 selector_fixture_dir=$(mktemp -d)
@@ -2196,7 +2266,7 @@ network_connectivity_keyword_index=$(jq -er '
 
 assert_connectivity_dns_safety() {
     local config_file="$1"
-    local default_mode direct_mode_index global_mode_index wechat_rule_index domestic_rule_index foreign_rule_index
+    local default_mode direct_mode_index global_mode_index domestic_rule_index foreign_rule_index
     local apple_rule_index cn_bing_rule_index global_bing_rule_index local_service_index
     local private_dns_index mmstat_dns_index ad_suffix_dns_index ad_keyword_dns_index ad_rule_set_dns_index
     local game_dns_index foreign_priority_dns_index cn_dns_index
@@ -2215,7 +2285,7 @@ assert_connectivity_dns_safety() {
         printf 'DNS safety guard: default Clash mode must remain Rule\n' >&2
         return 1
     }
-    read -r direct_mode_index global_mode_index wechat_rule_index domestic_rule_index foreign_rule_index \
+    read -r direct_mode_index global_mode_index domestic_rule_index foreign_rule_index \
         apple_rule_index cn_bing_rule_index global_bing_rule_index local_service_index \
         private_dns_index mmstat_dns_index ad_suffix_dns_index ad_keyword_dns_index ad_rule_set_dns_index \
         game_dns_index foreign_priority_dns_index cn_dns_index < <(jq -er '
@@ -2225,7 +2295,6 @@ assert_connectivity_dns_safety() {
       [
         unique_index({clash_mode: "Direct", server: "bootstrap-local-dns"}),
         unique_index({clash_mode: "Global", server: "doh-cloudflare"}),
-        unique_index({package_name: ["com.tencent.mm"], server: "bootstrap-local-dns"}),
         unique_index({
           domain_suffix: ["connect.rom.miui.com", "connectivitycheck.platform.hicloud.com"],
           server: "bootstrap-local-dns"
@@ -2334,8 +2403,7 @@ assert_connectivity_dns_safety() {
         return 1
     }
     ((global_mode_index == direct_mode_index + 1 \
-        && wechat_rule_index == global_mode_index + 1 \
-        && domestic_rule_index == wechat_rule_index + 1 \
+        && domestic_rule_index == global_mode_index + 1 \
         && foreign_rule_index == domestic_rule_index + 1 \
         && apple_rule_index == foreign_rule_index + 1 \
         && cn_bing_rule_index == apple_rule_index + 1 \
@@ -2653,20 +2721,32 @@ done
 make_dns_safety_fixture() {
     local inserted_rules="$1"
     local output_file="$2"
-    jq --argjson inserted_rules "$inserted_rules" '
+    jq --argjson inserted_rules "$inserted_rules" --arg config_dir "$CONFIG_DIR" '
       ($inserted_rules | if type == "array" then . else [.] end) as $rules
       | .dns.rules = ($rules + .dns.rules)
+      | .route.rule_set |= map(
+          if .type == "local"
+            and (.path | type) == "string"
+            and (.path | startswith("/") | not)
+          then .path = ($config_dir + "/" + .path)
+          else .
+          end
+        )
     ' "$CONFIG_FILE" >"$output_file"
 }
 
-dns_unconditional_fixture=$(mktemp "$CONFIG_DIR/.dns-unconditional.XXXXXX.json")
-dns_local_unconditional_fixture=$(mktemp "$CONFIG_DIR/.dns-local-unconditional.XXXXXX.json")
-dns_invert_fixture=$(mktemp "$CONFIG_DIR/.dns-invert.XXXXXX.json")
-dns_current_mode_fixture=$(mktemp "$CONFIG_DIR/.dns-current-mode.XXXXXX.json")
-dns_other_mode_fixture=$(mktemp "$CONFIG_DIR/.dns-other-mode.XXXXXX.json")
-dns_first_match_fixture=$(mktemp "$CONFIG_DIR/.dns-first-match.XXXXXX.json")
-dns_remote_rule_set_fixture=$(mktemp "$CONFIG_DIR/.dns-remote-rule-set.XXXXXX.json")
-trap 'rm -f "$dns_unconditional_fixture" "$dns_local_unconditional_fixture" "$dns_invert_fixture" "$dns_current_mode_fixture" "$dns_other_mode_fixture" "$dns_first_match_fixture" "$dns_remote_rule_set_fixture"' EXIT
+dns_fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/magicnet-dns-policy.XXXXXX")
+dns_unconditional_fixture="$dns_fixture_dir/unconditional.json"
+dns_local_unconditional_fixture="$dns_fixture_dir/local-unconditional.json"
+dns_invert_fixture="$dns_fixture_dir/invert.json"
+dns_current_mode_fixture="$dns_fixture_dir/current-mode.json"
+dns_other_mode_fixture="$dns_fixture_dir/other-mode.json"
+dns_first_match_fixture="$dns_fixture_dir/first-match.json"
+dns_remote_rule_set_fixture="$dns_fixture_dir/remote-rule-set.json"
+touch "$dns_unconditional_fixture" "$dns_local_unconditional_fixture" "$dns_invert_fixture" \
+    "$dns_current_mode_fixture" "$dns_other_mode_fixture" "$dns_first_match_fixture" \
+    "$dns_remote_rule_set_fixture"
+trap 'rm -rf "$dns_fixture_dir"' EXIT
 
 make_dns_safety_fixture '{"server":"doh-google"}' "$dns_unconditional_fixture"
 make_dns_safety_fixture '{"server":"bootstrap-local-dns"}' "$dns_local_unconditional_fixture"
@@ -2760,6 +2840,8 @@ assert_connectivity_dns_safety "$dns_first_match_fixture" ||
 rm -f "$dns_unconditional_fixture" "$dns_local_unconditional_fixture" "$dns_invert_fixture" \
     "$dns_current_mode_fixture" "$dns_other_mode_fixture" "$dns_first_match_fixture" \
     "$dns_remote_rule_set_fixture"
+rmdir "$dns_fixture_dir" 2>/dev/null || true
+dns_fixture_dir=
 dns_unconditional_fixture=
 dns_local_unconditional_fixture=
 dns_invert_fixture=

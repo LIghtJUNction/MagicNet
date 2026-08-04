@@ -238,6 +238,66 @@ if [ -d "$MAGICNET_BACKUP_DIR" ]; then
   unset _item
 fi
 
+# Older releases shipped a domestic-app bypass catalog.  Keep only packages that
+# are still Android VPN services during the one-time migration; ordinary app
+# opt-outs can be added again explicitly after the migration completes.
+magicnet_migrate_legacy_app_bypass() {
+  _bypass_dir="${MODPATH}/.config/magicnet"
+  _bypass_file="${_bypass_dir}/app-bypass.list"
+  _migration_marker="${_bypass_dir}/app-policy-migration-vpn-only"
+  [ -f "$_migration_marker" ] || [ -f "$_bypass_file" ] || return 0
+  [ -f "$_migration_marker" ] && return 0
+  command -v cmd >/dev/null 2>&1 || return 0
+
+  _migration_state_dir="${MODPATH}/.state/app-policy"
+  _vpn_packages="${_migration_state_dir}/vpn-packages.$$"
+  _filtered_bypass="${_bypass_file}.migration.$$"
+  mkdir -p "$_migration_state_dir" || return 1
+  cmd package query-services --brief -a android.net.VpnService 2>/dev/null |
+    sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_.]*\)\/.*/\1/p' |
+    awk 'NF && !seen[$0]++' >"$_vpn_packages"
+  if [ ! -s "$_vpn_packages" ]; then
+    rm -f "$_vpn_packages" 2>/dev/null || true
+    unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
+    return 0
+  fi
+
+  if [ -f "$_bypass_file" ]; then
+    awk -v vpn_file="$_vpn_packages" '
+      BEGIN {
+        while ((getline package < vpn_file) > 0) {
+          vpn[package] = 1
+        }
+        close(vpn_file)
+      }
+      {
+        line = $0
+        trimmed = line
+        sub(/^[[:space:]]+/, "", trimmed)
+        sub(/[[:space:]]+$/, "", trimmed)
+        if (trimmed == "" || substr(trimmed, 1, 1) == "#" || vpn[trimmed]) {
+          print line
+        }
+      }
+    ' "$_bypass_file" >"$_filtered_bypass" || {
+      rm -f "$_filtered_bypass" "$_vpn_packages" 2>/dev/null || true
+      unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
+      return 1
+    }
+    if ! mv -f "$_filtered_bypass" "$_bypass_file"; then
+      rm -f "$_filtered_bypass" "$_vpn_packages" 2>/dev/null || true
+      unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
+      return 1
+    fi
+  fi
+
+  printf '%s\n' 'vpn-only bypass migration completed' >"$_migration_marker"
+  rm -f "$_vpn_packages" 2>/dev/null || true
+  unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
+}
+
+magicnet_migrate_legacy_app_bypass || abort "! failed to migrate legacy app bypass policy"
+
 magicnet_prune_legacy_capture_residue() {
   rm -rf \
     "${MODPATH}/.config/magicnet/capture.conf" \

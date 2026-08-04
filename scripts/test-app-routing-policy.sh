@@ -17,6 +17,8 @@ fi
 . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/network.sh"
 
+magicnet_warn() { :; }
+
 NO_JQ_BIN="$WORK/no-jq-bin"
 mkdir -p "$NO_JQ_BIN"
 for command_name in awk cp grep mkdir mv rm sed tr wc; do
@@ -244,6 +246,52 @@ EOF
 
 run_case jq
 run_case no-jq
+
+assert_jq_removes_legacy_dns_package_rules() {
+  MODDIR="$WORK/jq-dns/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
+  write_base_config
+  printf '%s\n' 'MAGICNET_APP_MODE=blacklist' >"$MODDIR/.config/magicnet/app-mode.conf"
+  printf '%s\n' 'com.example.proxy' >"$MODDIR/.config/magicnet/app-proxy.list"
+  printf '%s\n' 'com.example.direct-force' >"$MODDIR/.config/magicnet/app-direct.list"
+  printf '%s\n' 'com.example.bypass' >"$MODDIR/.config/magicnet/app-bypass.list"
+  "$JQ_BIN" '.dns = {"rules": [
+    {"package_name": ["com.example.legacy"], "server": "bootstrap-local-dns"},
+    {"domain_suffix": ["example.org"], "server": "doh-cloudflare"}
+  ]}' "$MODDIR/.config/sing-box/config.json" >"$MODDIR/config.new"
+  mv -f "$MODDIR/config.new" "$MODDIR/.config/sing-box/config.json"
+  PATH="$MOCK_BIN:$PATH" magicnet_singbox_apply_app_policy
+  "$JQ_BIN" -e '
+    ([.dns.rules[] | select(has("package_name"))] | length) == 0
+    and ([.dns.rules[] | select(.domain_suffix == ["example.org"])] | length) == 1
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+}
+
+assert_no_jq_rejects_legacy_dns_package_rules() {
+  MODDIR="$WORK/no-jq-dns/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
+  cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{
+  "dns": {
+    "rules": [
+      {"package_name": ["com.example.legacy"], "server": "bootstrap-local-dns"}
+    ]
+  },
+  "route": {"rules": []}
+}
+EOF
+  if PATH="$MOCK_BIN:$NO_JQ_BIN" magicnet_singbox_apply_app_policy; then
+    printf '%s\n' 'no-jq app policy must reject legacy DNS package rules' >&2
+    exit 1
+  fi
+  "$JQ_BIN" -e '([.dns.rules[] | select(has("package_name"))] | length) == 1' \
+    "$MODDIR/.config/sing-box/config.json" >/dev/null
+}
+
+assert_jq_removes_legacy_dns_package_rules
+assert_no_jq_rejects_legacy_dns_package_rules
 
 assert_dns_capture_bypass_uids() (
   MODDIR="$WORK/dns-capture/module"

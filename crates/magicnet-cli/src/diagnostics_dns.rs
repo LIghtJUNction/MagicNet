@@ -17,10 +17,10 @@ pub(super) fn dns_leak_check(app: &App, singbox: &str, mode: &str) -> (bool, Str
         format!(
             "core={core}, mode={mode}, valid_json={}, fakeip={}, hijack_dns={}, remote_dns_detour={}, store_fakeip={}, sniff_inbound={}, strategy={}, ipv6_guard={}",
             yes_no(cfg.valid_json),
-            yes_no(cfg.fake_ip),
+            disabled_enabled(cfg.fake_ip_disabled),
             yes_no(cfg.hijack),
             yes_no(cfg.remote_dns),
-            yes_no(cfg.store_fake_ip),
+            disabled_enabled(cfg.store_fake_ip_disabled),
             yes_no(cfg.sniff_inbound),
             cfg.strategy,
             cfg.ipv6_guard.as_str(),
@@ -54,10 +54,10 @@ impl Ipv6GuardStatus {
 #[derive(Clone, Copy)]
 struct SingboxDnsConfig {
     valid_json: bool,
-    fake_ip: bool,
+    fake_ip_disabled: bool,
     hijack: bool,
     remote_dns: bool,
-    store_fake_ip: bool,
+    store_fake_ip_disabled: bool,
     sniff_inbound: bool,
     strategy: &'static str,
     ipv6_guard: Ipv6GuardStatus,
@@ -67,10 +67,10 @@ struct SingboxDnsConfig {
 impl SingboxDnsConfig {
     fn ok(self) -> bool {
         self.valid_json
-            && self.fake_ip
+            && self.fake_ip_disabled
             && self.hijack
             && self.remote_dns
-            && self.store_fake_ip
+            && self.store_fake_ip_disabled
             && self.sniff_inbound
             && self.ipv6_guard.ok()
             && self.transparent_dns
@@ -95,15 +95,45 @@ fn singbox_dns_config_from_text(
     let sniff_inbound = sniff_rule_has(&compact, "mixed-in") && sniff_rule_has(&compact, "tun-in");
     SingboxDnsConfig {
         valid_json: parsed.is_some(),
-        fake_ip: compact.contains("\"type\":\"fakeip\"") && compact.contains("\"tag\":\"fakeip\""),
+        fake_ip_disabled: parsed.as_ref().is_some_and(|config| !has_fake_ip(config)),
         hijack: parsed.as_ref().is_some_and(has_dns_hijack_rule),
         remote_dns: has_remote_dns_detour(&compact),
-        store_fake_ip: compact.contains("\"store_fakeip\":true"),
+        store_fake_ip_disabled: parsed
+            .as_ref()
+            .is_some_and(|config| !stores_fake_ip(config)),
         sniff_inbound,
         strategy,
         ipv6_guard,
         transparent_dns,
     }
+}
+
+fn has_fake_ip(config: &Value) -> bool {
+    let has_server = config
+        .pointer("/dns/servers")
+        .and_then(Value::as_array)
+        .is_some_and(|servers| {
+            servers.iter().any(|server| {
+                server.get("type").and_then(Value::as_str) == Some("fakeip")
+                    || server.get("tag").and_then(Value::as_str) == Some("fakeip")
+            })
+        });
+    let has_rule = config
+        .pointer("/dns/rules")
+        .and_then(Value::as_array)
+        .is_some_and(|rules| {
+            rules
+                .iter()
+                .any(|rule| rule.get("server").and_then(Value::as_str) == Some("fakeip"))
+        });
+    has_server || has_rule
+}
+
+fn stores_fake_ip(config: &Value) -> bool {
+    config
+        .pointer("/experimental/cache_file/store_fakeip")
+        .and_then(Value::as_bool)
+        == Some(true)
 }
 
 fn has_dns_hijack_rule(config: &Value) -> bool {
@@ -202,6 +232,14 @@ fn yes_no(value: bool) -> &'static str {
     }
 }
 
+fn disabled_enabled(disabled: bool) -> &'static str {
+    if disabled {
+        "disabled"
+    } else {
+        "enabled"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -217,10 +255,10 @@ mod tests {
     fn healthy_config(strategy: &'static str, ipv6_guard: Ipv6GuardStatus) -> SingboxDnsConfig {
         SingboxDnsConfig {
             valid_json: true,
-            fake_ip: true,
+            fake_ip_disabled: true,
             hijack: true,
             remote_dns: true,
-            store_fake_ip: true,
+            store_fake_ip_disabled: true,
             sniff_inbound: true,
             strategy,
             ipv6_guard,
@@ -385,16 +423,58 @@ mod tests {
 
         assert_eq!(
             (
-                config.fake_ip,
+                config.fake_ip_disabled,
                 config.hijack,
                 config.remote_dns,
-                config.store_fake_ip,
+                config.store_fake_ip_disabled,
                 config.sniff_inbound,
                 config.valid_json,
                 config.ok(),
             ),
-            (true, false, true, true, true, false, false)
+            (false, false, true, false, true, false, false)
         );
+    }
+
+    #[test]
+    fn unused_fake_ip_server_is_unhealthy() {
+        let config = singbox_dns_config_from_text(
+            r#"{
+              "dns": {
+                "servers": [
+                  {"type":"fakeip","tag":"fakeip"},
+                  {"type":"https","tag":"remote","server":"dns.google","detour":"proxy"}
+                ]
+              },
+              "route": {"rules": [
+                {"protocol":"dns","action":"hijack-dns"},
+                {"action":"sniff","inbound":["mixed-in","tun-in"]}
+              ]}
+            }"#,
+            "tun",
+            true,
+        );
+
+        assert!(!config.ok());
+    }
+
+    #[test]
+    fn real_address_dns_without_fake_ip_is_healthy() {
+        let config = singbox_dns_config_from_text(
+            r#"{
+              "dns": {"servers": [
+                {"type":"https","tag":"remote","server":"dns.google","detour":"proxy"}
+              ], "strategy":"prefer_ipv4"},
+              "route": {"rules": [
+                {"protocol":"dns","action":"hijack-dns"},
+                {"action":"sniff","inbound":["mixed-in","tun-in"]}
+              ]},
+              "experimental":{"cache_file":{"enabled":true}}
+            }"#,
+            "tun",
+            true,
+        );
+
+        assert!(config.ok());
     }
 
     #[test]
