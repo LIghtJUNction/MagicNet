@@ -254,8 +254,7 @@ magicnet_migrate_legacy_app_bypass() {
   _filtered_bypass="${_bypass_file}.migration.$$"
   mkdir -p "$_migration_state_dir" || return 1
   cmd package query-services --brief -a android.net.VpnService 2>/dev/null |
-    sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_.]*\)\/.*/\1/p' |
-    awk 'NF && !seen[$0]++' >"$_vpn_packages"
+    sed -n 's/^[[:space:]]*\([A-Za-z_][A-Za-z0-9_.]*\)\/.*/\1/p' >"$_vpn_packages"
   if [ ! -s "$_vpn_packages" ]; then
     rm -f "$_vpn_packages" 2>/dev/null || true
     unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
@@ -263,30 +262,30 @@ magicnet_migrate_legacy_app_bypass() {
   fi
 
   if [ -f "$_bypass_file" ]; then
-    awk -v vpn_file="$_vpn_packages" '
-      BEGIN {
-        while ((getline package < vpn_file) > 0) {
-          vpn[package] = 1
+    : >"$_filtered_bypass" || return 1
+    while IFS= read -r _bypass_line || [ -n "$_bypass_line" ]; do
+      _bypass_package=$(printf '%s\n' "$_bypass_line" |
+        sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+      if [ -z "$_bypass_package" ] || [ "${_bypass_package#\#}" != "$_bypass_package" ] ||
+        grep -Fqx "$_bypass_package" "$_vpn_packages"; then
+        printf '%s\n' "$_bypass_line" >>"$_filtered_bypass" || {
+          rm -f "$_filtered_bypass" "$_vpn_packages" 2>/dev/null || true
+          unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
+          unset _bypass_line _bypass_package
+          return 1
         }
-        close(vpn_file)
-      }
-      {
-        line = $0
-        trimmed = line
-        sub(/^[[:space:]]+/, "", trimmed)
-        sub(/[[:space:]]+$/, "", trimmed)
-        if (trimmed == "" || substr(trimmed, 1, 1) == "#" || vpn[trimmed]) {
-          print line
-        }
-      }
-    ' "$_bypass_file" >"$_filtered_bypass" || {
+      fi
+    done <"$_bypass_file"
+    if [ ! -f "$_filtered_bypass" ]; then
       rm -f "$_filtered_bypass" "$_vpn_packages" 2>/dev/null || true
       unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
+      unset _bypass_line _bypass_package
       return 1
-    }
+    fi
     if ! mv -f "$_filtered_bypass" "$_bypass_file"; then
       rm -f "$_filtered_bypass" "$_vpn_packages" 2>/dev/null || true
       unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
+      unset _bypass_line _bypass_package
       return 1
     fi
   fi
@@ -294,6 +293,7 @@ magicnet_migrate_legacy_app_bypass() {
   printf '%s\n' 'vpn-only bypass migration completed' >"$_migration_marker"
   rm -f "$_vpn_packages" 2>/dev/null || true
   unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
+  unset _bypass_line _bypass_package
 }
 
 magicnet_migrate_legacy_app_bypass || abort "! failed to migrate legacy app bypass policy"
