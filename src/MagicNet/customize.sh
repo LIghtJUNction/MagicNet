@@ -282,12 +282,13 @@ magicnet_migrate_legacy_app_bypass() {
       unset _bypass_line _bypass_package
       return 1
     fi
-    if ! mv -f "$_filtered_bypass" "$_bypass_file"; then
+    if ! cp -f "$_filtered_bypass" "$_bypass_file"; then
       rm -f "$_filtered_bypass" "$_vpn_packages" 2>/dev/null || true
       unset _bypass_dir _bypass_file _migration_marker _migration_state_dir _vpn_packages _filtered_bypass
       unset _bypass_line _bypass_package
       return 1
     fi
+    rm -f "$_filtered_bypass" 2>/dev/null || true
   fi
 
   printf '%s\n' 'vpn-only bypass migration completed' >"$_migration_marker"
