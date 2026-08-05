@@ -28,6 +28,8 @@ EOF
 remove_zip_entries '(^|/)\.git($|/)' "Removing git metadata from module artifact"
 remove_zip_entries '^\.local/subscriptions\.env$' "Removing local subscription memory from module artifact"
 remove_zip_entries '(^|/)(mihomo|__mihomo__)(\.sh)?($|/)' "Removing legacy mihomo helpers from module artifact"
+remove_zip_entries '^bin/magicnet-ebpf$' "Removing the retired eBPF runtime binary from module artifact"
+remove_zip_entries '^\.config/sing-box/\.dns-.*\.json$' "Removing routing test fixtures from module artifact"
 
 # kamfw 97168da's no-jq fallback toggles this field on every outbound,
 # including URLTest groups. Keep the fallback aligned with the jq path until

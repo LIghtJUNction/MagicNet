@@ -122,6 +122,51 @@ magicnet_app_uid_state_commit() {
     unset _uid_state_dir _uid_include_source _uid_exclude_source _uid_include_tmp _uid_exclude_tmp
 }
 
+# DNS application selectors are legacy policy residue. Application routing
+# may still be used for explicit business features below, but DNS resolution
+# must remain destination/policy based so stale app catalogs cannot force a
+# different resolver after an upgrade.
+magicnet_singbox_dns_has_package_rules() {
+    _dns_package_config="$1"
+    [ -f "$_dns_package_config" ] || {
+        unset _dns_package_config
+        return 1
+    }
+    awk '
+        function count_delta(line,    i, c, delta, in_string, escaped) {
+            delta = 0
+            in_string = 0
+            escaped = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (in_string) {
+                    if (escaped) escaped = 0
+                    else if (c == "\\") escaped = 1
+                    else if (c == "\"") in_string = 0
+                    continue
+                }
+                if (c == "\"") in_string = 1
+                else if (c == "{") delta++
+                else if (c == "}") delta--
+            }
+            return delta
+        }
+        {
+            if (!in_dns && $0 ~ /^  "dns"[[:space:]]*:[[:space:]]*\{/) {
+                in_dns = 1
+                dns_depth = depth + count_delta($0)
+            }
+            if (in_dns && index($0, "\"package_name\"") > 0) found = 1
+            depth += count_delta($0)
+            if (in_dns && depth < dns_depth) in_dns = 0
+        }
+        END { exit found ? 0 : 1 }
+    ' "$_dns_package_config"
+    _dns_package_rc=$?
+    unset _dns_package_config
+    return "$_dns_package_rc"
+}
+
 # Ownership marker for MagicNet-managed force-proxy rules (not a user package).
 # Idempotent rewrites strip rules containing this marker, then re-inject one
 # authoritative rule from app-proxy.list — single source of truth for that list.
@@ -304,6 +349,10 @@ magicnet_singbox_apply_app_policy() {
                       + $business_rules
                   end
               )
+            | .dns = (
+                (.dns // {})
+                | .rules = ((.rules // []) | map(select(has("package_name") | not)))
+              )
         ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" &&
             magicnet_app_uid_state_commit "$_uid_state_dir" "$_include_uids_tmp" "$_exclude_uids_tmp"; then
             rm -f "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" 2>/dev/null || true
@@ -315,6 +364,22 @@ magicnet_singbox_apply_app_policy() {
         fi
         rm -f "$_tmp" 2>/dev/null || true
         unset _jq
+    fi
+
+    # The awk fallback can preserve and reorder route rules, but it is not a
+    # safe JSON editor for arbitrary DNS rule objects. Fail closed when a
+    # legacy DNS package selector is present so it can never continue running
+    # merely because jq is unavailable.
+    if [ -z "$_jq" ] && magicnet_singbox_dns_has_package_rules "$_config"; then
+        magicnet_warn "legacy DNS application rules require jq cleanup; refusing to start with them"
+        rm -f "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" \
+            "$_include_tmp" "$_exclude_tmp" "$_proxy_rule_tmp" "$_direct_rule_tmp" \
+            "$_tmp" 2>/dev/null || true
+        unset _config _dir _mode _proxy_file _direct_file _bypass_file _include_block _exclude_block
+        unset _include_packages_tmp _include_uids_tmp _exclude_uids_tmp _uid_state_dir
+        unset _old_include_uids _old_exclude_uids _tmp _include_tmp _exclude_tmp
+        unset _proxy_rule_tmp _direct_rule_tmp _jq
+        return 1
     fi
 
     if [ -n "$_include_block" ]; then

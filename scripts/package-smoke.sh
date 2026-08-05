@@ -118,6 +118,14 @@ if grep -E '(^|/)(capture_(common|mihomo|singbox)\.sh|capture\.conf|post-fs-data
     fail "zip contains legacy proxy-capture entries"
 fi
 
+if grep -Fx 'bin/magicnet-ebpf' "$entries_file" >/dev/null; then
+    fail "zip contains the removed eBPF runtime binary"
+fi
+
+if grep -E '^\.config/sing-box/\.dns-.*\.json$' "$entries_file" >/dev/null; then
+    fail "zip contains routing test fixtures"
+fi
+
 check_no_subscription_secret() {
     local entry="$1"
     grep -Fx "$entry" "$entries_file" >/dev/null || return 0
@@ -315,6 +323,12 @@ if (
 dns_rules = config.get("dns", {}).get("rules", [])
 dns_servers = config.get("dns", {}).get("servers", [])
 route_rules = config.get("route", {}).get("rules", [])
+if config.get("dns", {}).get("final") != "bootstrap-local-dns":
+    raise SystemExit(
+        "packaged unclassified DNS must use local encrypted resolution for destination-based CN routing"
+    )
+if any("package_name" in rule for rule in dns_rules):
+    raise SystemExit("packaged DNS policy must not contain application package selectors")
 managed_ipv6_guards = [
     {"ip_version": 6, "outbound": "block"},
     {"ip_version": 6, "action": "reject", "no_drop": True},
@@ -398,10 +412,6 @@ domestic_connectivity_rule = {
     ],
     "server": "bootstrap-local-dns",
 }
-wechat_dns_rule = {
-    "package_name": ["com.tencent.mm"],
-    "server": "bootstrap-local-dns",
-}
 msft_network_test_suffixes = ["msftconnecttest.com", "msftncsi.com"]
 foreign_network_test_suffixes = [
     "connectivitycheck.gstatic.com", "connectivitycheck.android.com",
@@ -433,20 +443,20 @@ legacy_early_local_msft_dns_rule = {
 }
 if legacy_early_local_msft_dns_rule in dns_rules:
     raise SystemExit("legacy early local Microsoft connectivity DNS rule must be absent")
-if route_rules[26] != {
-    "domain_suffix": msft_network_test_suffixes,
-    "outbound": "network-test",
-}:
-    raise SystemExit("route rule 26 Microsoft network-test suffixes changed")
-if route_rules[28] != {
-    "domain_suffix": foreign_network_test_suffixes,
-    "outbound": "network-test",
-}:
-    raise SystemExit("route rule 28 foreign network-test suffixes changed")
+msft_network_test_routes = [
+    (index, rule) for index, rule in enumerate(route_rules)
+    if rule == {"domain_suffix": msft_network_test_suffixes, "outbound": "network-test"}
+]
+foreign_network_test_routes = [
+    (index, rule) for index, rule in enumerate(route_rules)
+    if rule == {"domain_suffix": foreign_network_test_suffixes, "outbound": "network-test"}
+]
+if len(msft_network_test_routes) != 1 or len(foreign_network_test_routes) != 1:
+    raise SystemExit("network-test suffix routes must remain unique")
 if foreign_connectivity_rule["domain_suffix"] != (
-    route_rules[26]["domain_suffix"] + route_rules[28]["domain_suffix"]
+    msft_network_test_routes[0][1]["domain_suffix"] + foreign_network_test_routes[0][1]["domain_suffix"]
 ):
-    raise SystemExit("foreign network-test DNS suffixes must equal route rules 26 + 28")
+    raise SystemExit("foreign network-test DNS suffixes must equal the two network-test route blocks")
 apple_icloud_rule = {
     "domain_suffix": [
         "apple.com",
@@ -615,8 +625,15 @@ if (
     != karing_false_positive_domains
 ):
     raise SystemExit("packaged foreign-priority sequence must preserve 51 entries and append 5")
-if dns_rules[20] != foreign_priority_dns_rule:
-    raise SystemExit("packaged exact 56-domain foreign-priority DNS rule must remain at index 20")
+foreign_priority_dns_indexes = [
+    index for index, rule in enumerate(dns_rules) if rule == foreign_priority_dns_rule
+]
+if len(foreign_priority_dns_indexes) != 1:
+    raise SystemExit(
+        "packaged exact 56-domain foreign-priority DNS rule must remain unique: "
+        f"indexes={foreign_priority_dns_indexes}"
+    )
+foreign_priority_dns_index = foreign_priority_dns_indexes[0]
 supported_dns_safety_keys = {
     "clash_mode",
     "domain",
@@ -1021,9 +1038,6 @@ global_mode_rules = [
     index for index, rule in enumerate(dns_rules)
     if rule == {"clash_mode": "Global", "server": "doh-cloudflare"}
 ]
-wechat_dns_rules = [
-    index for index, rule in enumerate(dns_rules) if rule == wechat_dns_rule
-]
 domestic_connectivity_rules = [
     index for index, rule in enumerate(dns_rules) if rule == domestic_connectivity_rule
 ]
@@ -1071,16 +1085,15 @@ if len(direct_mode_rules) != 1 or len(global_mode_rules) != 1:
         f"Direct={direct_mode_rules} Global={global_mode_rules}"
     )
 if (
-    len(wechat_dns_rules) != 1
-    or len(domestic_connectivity_rules) != 1
+    len(domestic_connectivity_rules) != 1
     or len(foreign_connectivity_rules) != 1
     or len(apple_icloud_rules) != 1
     or len(cn_bing_dns_rules) != 1
     or len(global_bing_dns_rules) != 1
     or len(local_direct_service_rules) != 1
-    or dedicated_leak_test_dns_rules != [2]
+    or len(dedicated_leak_test_dns_rules) != 1
     or len(private_dns_rules) != 1
-    or mmstat_local_dns_rules != [15]
+    or len(mmstat_local_dns_rules) != 1
     or len(ad_suffix_dns_rules) != 1
     or len(ad_keyword_dns_rules) != 1
     or len(ad_rule_set_dns_rules) != 1
@@ -1090,7 +1103,7 @@ if (
 ):
     raise SystemExit(
         "expected unique exact explicit DNS policy rules, "
-        f"wechat={wechat_dns_rules} domestic={domestic_connectivity_rules} "
+        f"domestic={domestic_connectivity_rules} "
         f"foreign={foreign_connectivity_rules} "
         f"apple={apple_icloud_rules} cn_bing={cn_bing_dns_rules} "
         f"global_bing={global_bing_dns_rules} "
@@ -1103,7 +1116,6 @@ if (
     )
 direct_mode_index = direct_mode_rules[0]
 global_mode_index = global_mode_rules[0]
-wechat_dns_index = wechat_dns_rules[0]
 domestic_connectivity_index = domestic_connectivity_rules[0]
 foreign_connectivity_index = foreign_connectivity_rules[0]
 apple_icloud_index = apple_icloud_rules[0]
@@ -1121,15 +1133,10 @@ foreign_priority_dns_index = foreign_priority_dns_rules[0]
 canonical_cn_dns_index = canonical_cn_dns_rules[0]
 if global_mode_index != direct_mode_index + 1:
     raise SystemExit("Global DNS override must remain immediately after the Direct override")
-if wechat_dns_index != global_mode_index + 1:
-    raise SystemExit(
-        f"WeChat local DNS rule index {wechat_dns_index} must immediately follow "
-        f"Direct/Global overrides ending at {global_mode_index}"
-    )
-if domestic_connectivity_index != wechat_dns_index + 1:
+if domestic_connectivity_index != global_mode_index + 1:
     raise SystemExit(
         f"domestic connectivity DNS rule index {domestic_connectivity_index} must immediately "
-        f"follow WeChat local DNS rule index {wechat_dns_index}"
+        f"follow Direct/Global overrides ending at {global_mode_index}"
     )
 if foreign_connectivity_index != domestic_connectivity_index + 1:
     raise SystemExit(
@@ -1403,24 +1410,18 @@ x_package_routes = [
     for index, rule in enumerate(route_rules)
     if rule == {"package_name": ["com.twitter.android"], "outbound": "social-proxy"}
 ]
-fakeip_guard_routes = [
-    index
-    for index, rule in enumerate(route_rules)
-    if rule == {
-        "ip_cidr": ["127.0.0.1/32", "::1/128", "198.18.0.0/16", "28.0.0.0/8"],
-        "outbound": "block",
-    }
-]
-if len(x_package_routes) != 1 or len(fakeip_guard_routes) != 1:
-    raise SystemExit(
-        "packaged X action route or FakeIP guard is non-canonical: "
-        f"x={x_package_routes} guard={fakeip_guard_routes}"
-    )
-if x_package_routes[0] >= fakeip_guard_routes[0]:
-    raise SystemExit(
-        "packaged X action route must precede the FakeIP guard: "
-        f"x={x_package_routes[0]} guard={fakeip_guard_routes[0]}"
-    )
+if len(x_package_routes) != 1:
+    raise SystemExit(f"packaged X action route is non-canonical: x={x_package_routes}")
+if any(server.get("type") == "fakeip" or server.get("tag") == "fakeip" for server in config["dns"]["servers"]):
+    raise SystemExit("packaged default DNS must not enable FakeIP")
+if config.get("experimental", {}).get("cache_file", {}).get("store_fakeip") is True:
+    raise SystemExit("packaged default DNS must not persist FakeIP mappings")
+if any(
+    rule.get("outbound") == "block"
+    and ({"198.18.0.0/16", "28.0.0.0/8"} & set(rule.get("ip_cidr", [])))
+    for rule in route_rules
+):
+    raise SystemExit("packaged routing must not blackhole benchmark or public address space")
 
 for tag in ("ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude", "ai-proxy"):
     expected_selector = {"type": "selector", "tag": tag, "outbounds": ["block"], "default": "block"}
@@ -1562,13 +1563,45 @@ canonical_cn_rule_sets = [
     "karing-acl4ssr-china-domain",
     "karing-acl4ssr-china-ip",
 ]
+canonical_cn_ip_rule = {
+    "rule_set": ["lyc-geoip-cn", "metacubex-geoip-cn", "karing-acl4ssr-china-ip"],
+    "outbound": "cn-direct",
+}
+canonical_cn_ip_routes = [
+    (index, rule) for index, rule in enumerate(route_rules) if rule == canonical_cn_ip_rule
+]
+if len(canonical_cn_ip_routes) != 1:
+    raise SystemExit(
+        f"expected one early CN IP-only route before ad rule-sets, found {canonical_cn_ip_routes}"
+    )
+canonical_cn_ip_index = canonical_cn_ip_routes[0][0]
+ad_rule_set_routes = [
+    (index, rule) for index, rule in enumerate(route_rules)
+    if rule.get("outbound") == "ad-block" and "rule_set" in rule
+]
+if len(ad_rule_set_routes) != 2 or not canonical_cn_ip_index < ad_rule_set_routes[0][0]:
+    raise SystemExit(
+        "CN IP-only routing must precede both ad IP rule-set routes: "
+        f"cn_ip={canonical_cn_ip_routes} ad={ad_rule_set_routes}"
+    )
+if set(canonical_cn_ip_rule["rule_set"]) & {
+    "lyc-geosite-cn", "lyc-geosite-geolocation-cn", "ddch-direct"
+}:
+    raise SystemExit("CN IP-only route must not include domain or mixed direct rule-sets")
 foreign_priority_route_rule = {
     "domain_suffix": foreign_priority_domains,
     "outbound": "proxy-rule",
 }
-if route_rules[48] != foreign_priority_route_rule:
-    raise SystemExit("packaged exact 56-domain foreign-priority route must remain at index 48")
-if route_rules[48]["domain_suffix"] != dns_rules[20]["domain_suffix"]:
+foreign_priority_route_indexes = [
+    index for index, rule in enumerate(route_rules) if rule == foreign_priority_route_rule
+]
+if len(foreign_priority_route_indexes) != 1:
+    raise SystemExit(
+        "packaged exact 56-domain foreign-priority route must remain unique: "
+        f"{foreign_priority_route_indexes}"
+    )
+foreign_priority_route_index = foreign_priority_route_indexes[0]
+if route_rules[foreign_priority_route_index]["domain_suffix"] != dns_rules[foreign_priority_dns_index]["domain_suffix"]:
     raise SystemExit("packaged foreign-priority route/DNS lists must remain identical")
 canonical_keyword_rule = {"domain_keyword": network_test_keywords, "outbound": "network-test"}
 keyword_routes = [
@@ -1739,8 +1772,11 @@ if len(final_keyword_routes) != 1 or final_keyword_routes[0] != telegram_ip_rout
         "unchanged final foreign keyword route must immediately follow the Telegram IP route: "
         f"actual={final_keyword_routes}"
     )
-if final_keyword_routes != [len(route_rules) - 1]:
-    raise SystemExit("final foreign keyword route must be the last explicit route rule")
+if final_keyword_routes[0] != len(route_rules) - 1:
+    raise SystemExit(
+        "final foreign keyword route must remain the last explicit route before route.final: "
+        f"keyword={final_keyword_routes} rule_count={len(route_rules)}"
+    )
 
 media_domains = {"youtube.com", "ytimg.com", "googlevideo.com"}
 media_rule_indexes = {
@@ -1823,13 +1859,24 @@ if recursively_effective_outbound(global_bing_route_rule["outbound"]) != "block"
         f"r.bing.com route index {global_bing_route_index} must resolve through bing/block"
     )
 
+mmstat_route_index = first_route_index(
+    lambda rule: rule.get("outbound") == "ad-block"
+    and "lyc-geosite-ads" in (
+        rule.get("rule_set")
+        if isinstance(rule.get("rule_set"), list)
+        else [rule.get("rule_set")]
+    )
+    and binary_rule_set_matches("lyc-geosite-ads", "mmstat.com")
+)
 if (
-    route_rules[30].get("outbound") != "cn-direct"
-    or not explicit_domain_matches(route_rules[30], "mmstat.com")
-    or any(explicit_domain_matches(rule, "mmstat.com") for rule in route_rules[:30])
-    or recursively_effective_outbound(route_rules[30]["outbound"]) != "direct"
+    mmstat_route_index < 0
+    or recursively_effective_outbound(route_rules[mmstat_route_index]["outbound"]) != "block"
+    or not binary_rule_set_matches("lyc-geosite-ads", "mmstat.com")
 ):
-    raise SystemExit("packaged mmstat.com route must first-match index 30 cn-direct/direct")
+    raise SystemExit(
+        "packaged mmstat.com must use the generic ad rule-set route instead of a vendor direct exception: "
+        f"index={mmstat_route_index}"
+    )
 
 download_probes = set(download_suffixes)
 for index, rule in enumerate(route_rules[:download_route_index]):

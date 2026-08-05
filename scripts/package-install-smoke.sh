@@ -66,10 +66,16 @@ printf '%s\n' 'MAGICNET_DEFAULT_CORE=sing-box' >"$PREV_MOD/.config/magicnet/curr
 printf '%s\n' 'MAGICNET_MCP_ENABLED=1' 'MAGICNET_MCP_BIND=127.0.0.1' 'MAGICNET_MCP_PORT=18766' \
     >"$PREV_MOD/.config/magicnet/mcp.conf"
 printf '%s\n' 'legacy proxy capture config' >"$PREV_MOD/.config/magicnet/capture.conf"
+printf '%s\n' '# legacy app policy' 'com.example.vpn' 'com.example.domestic' \
+    >"$PREV_MOD/.config/magicnet/app-bypass.list"
 
 for name in chcon restorecon getevent am cmd settings; do
     cat >"$MOCK_BIN/$name" <<'SH'
 #!/usr/bin/env bash
+if [[ "$1 $2 $3 $4 $5" == "package query-services --brief -a android.net.VpnService" ]]; then
+    printf '%s\n' '1 services found:' '  com.example.vpn/com.example.vpn.TunnelService'
+    exit 0
+fi
 exit 0
 SH
     chmod +x "$MOCK_BIN/$name"
@@ -180,6 +186,13 @@ grep -qx 'MAGICNET_MCP_PORT=18766' "$MODPATH/.config/magicnet/mcp.conf" \
     || fail "MCP config was not preserved from previous install"
 [[ ! -e "$MODPATH/.config/magicnet/capture.conf" ]] \
     || fail "legacy capture config should not be restored"
+grep -qx 'com.example.vpn' "$MODPATH/.config/magicnet/app-bypass.list" \
+    || fail "VPN app bypass was not preserved during migration"
+if grep -qx 'com.example.domestic' "$MODPATH/.config/magicnet/app-bypass.list"; then
+    fail "legacy non-VPN app bypass was restored during migration"
+fi
+[[ -f "$MODPATH/.config/magicnet/app-policy-migration-vpn-only" ]] \
+    || fail "app bypass migration marker was not written"
 
 cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
 cp "$ROOT/target/debug/magicnet-cli" "$MODPATH/bin/magicnet-cli"

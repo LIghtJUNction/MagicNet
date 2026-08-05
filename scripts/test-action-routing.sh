@@ -23,10 +23,6 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     config = json.load(handle)
 
 route_rules = config["route"]["rules"]
-fakeip_guard = {
-    "ip_cidr": ["127.0.0.1/32", "::1/128", "198.18.0.0/16", "28.0.0.0/8"],
-    "outbound": "block",
-}
 chatgpt_packages = {"com.openai.chatgpt", "com.openai.chat", "ai.openai.chatgpt"}
 x_packages = {"com.twitter.android"}
 
@@ -51,23 +47,12 @@ def package_indexes(packages, outbound):
     ]
 
 
-guard_indexes = exact_indexes(fakeip_guard)
 chatgpt_indexes = package_indexes(chatgpt_packages, "ai-chatgpt")
 x_indexes = package_indexes(x_packages, "social-proxy")
-if len(guard_indexes) != 1:
-    raise AssertionError(f"expected one exact FakeIP guard, got {guard_indexes}")
 if len(chatgpt_indexes) != 1:
     raise AssertionError(f"expected one exact ChatGPT package route, got {chatgpt_indexes}")
 if len(x_indexes) != 1:
     raise AssertionError(f"expected one exact X package route, got {x_indexes}")
-
-guard_index = guard_indexes[0]
-if chatgpt_indexes[0] >= guard_index or x_indexes[0] >= guard_index:
-    raise AssertionError(
-        "ChatGPT and X package routes must precede the FakeIP guard: "
-        f"chatgpt={chatgpt_indexes[0]} x={x_indexes[0]} guard={guard_index}"
-    )
-
 
 def domain_matches(rule, domain):
     return any(
@@ -120,18 +105,18 @@ for package_name, expected_index, expected_outbound in (
 ):
     index, outbound = first_modeled_outbound(
         "unclassified-action.invalid",
-        "198.18.1.1",
+        "203.0.113.10",
         package_name,
     )
     if (index, outbound) != (expected_index, expected_outbound):
         raise AssertionError(
-            f"{package_name} FakeIP action flow matched index={index} outbound={outbound}"
+            f"{package_name} package-first action flow matched index={index} outbound={outbound}"
         )
 
 for domain in ("api.x.com", "upload.twitter.com", "abs.twimg.com"):
     index, outbound = first_modeled_outbound(
         domain,
-        "198.18.1.1",
+        "203.0.113.10",
         "com.twitter.android",
     )
     if (index, outbound) != (x_indexes[0], "social-proxy"):

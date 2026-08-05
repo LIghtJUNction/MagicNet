@@ -152,7 +152,7 @@ adb shell 'su -M -c "timeout 10 tcpdump -ni rmnet_data0 \"port 53 or port 853\""
 
 目标状态是访问测试期间没有明文 DNS/DoT 流量从物理出口泄露。MagicNet 会在物理出口接口上拦截直连 53/853，避免绕过 TUN 的 DNS 直接出网；如需临时关闭，可设置 `MAGIC_DNS_LEAK_GUARD=0` 后重新应用配置。
 
-DNS 模板保留 `bootstrap-local-dns` 作为启动和直连例外：它解析代理节点域名、局域网、国内直连域名和连通性检测，避免代理尚未建立时让 DNS detour 到代理造成自引用循环，也避免国内网站拿到错误 CDN。代理域名、AI、GFW 和海外媒体仍按规则走海外 DoH 和代理 detour；如果把 `default_domain_resolver` 指向走代理的 DNS，可能出现 `DNS query loopback in transport[...]` 并导致大量站点超时。
+DNS 模板使用 `bootstrap-local-dns` 解析代理节点域名、局域网、国内直连域名和未分类域名，避免代理尚未建立时让 DNS detour 到代理造成自引用循环，也让规则集暂未收录的国内 CDN 先获得本地地址，再由 `geoip-cn` 决定是否直连。已明确识别的代理域名、AI、GFW、海外媒体和泄露检测仍按规则走海外 DoH 和代理 detour；未分类域名若解析为非中国 IP，路由最终策略仍是代理。这样不依赖 App 包名名单，同时保持 DNS 与目标路由一致。
 
 DNS 泄露检测站点会生成一次性探测域名，并根据收到查询的递归解析器判断是否泄露。为了避免这类探测域名被 `bootstrap-local-dns` 或运营商 DNS 解析，模板在所有国内/本地 DNS 规则之前放置高优先级规则，将 BrowserScan、BrowserLeaks、IPLeak、DNSLeakTest、Perfect Privacy、Surfshark、Whoer、DoILeak、Bash.ws、DNS.SB、NextDNS test 等泄露检测域名强制交给 `doh-cloudflare`。`doh-cloudflare` 本身配置了 `detour: proxy`，所以这些探测查询会从代理出口的远端 DoH 发出，而不是从手机本地运营商 DNS 发出。
 
