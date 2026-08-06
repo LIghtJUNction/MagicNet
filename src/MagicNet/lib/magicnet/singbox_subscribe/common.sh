@@ -44,7 +44,7 @@ magicnet_singbox_ai_selectors_canonical() {
               + ([$eligible[] | select((us_node_tag | not) and (japan_node_tag | not))]);
           def proxy_node:
             .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-              or .type == "hysteria2" or .type == "anytls" or .type == "tuic";
+              or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks";
           def reserved_tag:
             . as $tag
             | [
@@ -71,6 +71,11 @@ magicnet_singbox_ai_selectors_canonical() {
                 elif .type == "tuic" then
                   (.uuid | type == "string" and length > 0)
                     and (.password | type == "string" and length > 0)
+                elif .type == "socks" then
+                  (.version == "4" or .version == "4a" or .version == "5")
+                    and (((has("username") | not) and (has("password") | not))
+                      or ((.username | type == "string" and length > 0)
+                        and (.password | type == "string" and length > 0)))
                 else false
                 end);
           [
@@ -490,7 +495,7 @@ magicnet_singbox_ai_selectors_canonical() {
               if (tag_valid) tags[tag] = 1
               type = field_string(objects[i], "type")
               if (!field_valid) continue
-              if (type ~ /^(shadowsocks|vmess|vless|trojan|hysteria2|anytls|tuic)$/) {
+              if (type ~ /^(shadowsocks|vmess|vless|trojan|hysteria2|anytls|tuic|socks)$/) {
                 node_server = field_string(objects[i], "server")
                 server_valid = field_valid && node_server != ""
                 node_port = field_scalar(objects[i], "server_port")
@@ -506,6 +511,17 @@ magicnet_singbox_ai_selectors_canonical() {
                 } else if (type == "tuic") {
                   schema_valid = field_nonempty_string(objects[i], "uuid") &&
                     field_nonempty_string(objects[i], "password")
+                } else if (type == "socks") {
+                  socks_version = field_string(objects[i], "version")
+                  version_valid = field_valid && socks_version ~ /^(4|4a|5)$/
+                  socks_username = field_string(objects[i], "username")
+                  username_present = field_found
+                  username_valid = field_valid && socks_username != ""
+                  socks_password = field_string(objects[i], "password")
+                  password_present = field_found
+                  password_valid = field_valid && socks_password != ""
+                  schema_valid = version_valid &&
+                    ((!username_present && !password_present) || (username_valid && password_valid))
                 } else {
                   schema_valid = 0
                 }

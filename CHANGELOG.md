@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Import `socks://` and `socks5://` nodes natively with validated optional
+  authentication, and preserve independent VMess WebSocket path, Host, server,
+  and SNI fields through sing-box outbound generation.
+- Refresh release, onboarding, user, MCP, simulation, architecture, MagicBox,
+  and embedded kamfw documentation around the current TUN-only workflow.
 - Delegate sing-box outbound interface changes to Android instead of relying on
   default-interface auto-detection that can fail on Android 16 policy routes.
 - Disable Android tether offload while hotspot Proxy is enabled, then restore

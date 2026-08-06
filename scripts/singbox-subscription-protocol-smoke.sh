@@ -32,6 +32,8 @@ cat >"$links_fixture" <<'EOF'
 vless://00000000-0000-4000-8000-000000000001@vless.invalid:443#fixture-vless
 anytls://fixture-password@anytls.invalid:443#fixture-anytls
 tuic://00000000-0000-4000-8000-000000000002:fixture-password@tuic.invalid:443#fixture-tuic
+socks://fixture%20user:fixture%40password@socks.invalid:1080#fixture%20socks
+socks5://Zml4dHVyZS11c2VyOmZpeHR1cmUtcGFzc3dvcmQ@socks5.invalid:1081#fixture-socks5
 EOF
 
 assert_extracted_links() {
@@ -41,10 +43,10 @@ assert_extracted_links() {
     local count
 
     count="$(magicnet_singbox_extract_share_links "$source_file" "$nodes_dir")"
-    [[ "$count" == "3" ]] || fail "$case_name extraction returned $count nodes, expected 3"
-    [[ "$(wc -l <"$nodes_dir/links.txt")" == "3" ]] \
-        || fail "$case_name links.txt does not contain exactly 3 links"
-    for scheme in vless anytls tuic; do
+    [[ "$count" == "5" ]] || fail "$case_name extraction returned $count nodes, expected 5"
+    [[ "$(wc -l <"$nodes_dir/links.txt")" == "5" ]] \
+        || fail "$case_name links.txt does not contain exactly 5 links"
+    for scheme in vless anytls tuic socks socks5; do
         grep -Eq "^${scheme}://" "$nodes_dir/links.txt" \
             || fail "$case_name links.txt is missing ${scheme}://"
     done
@@ -61,6 +63,82 @@ vmess_json="$(magicnet_singbox_emit_share_link_json "$vmess_link_file")" \
     || fail "emit_share_link_json failed for VMess Unicode fixture"
 printf '%s\n' "$vmess_json" | jq -e '.tag == "香港-优化"' >/dev/null \
     || fail "VMess JSON Unicode escapes were not decoded: $vmess_json"
+
+vmess_ws_link_file="$tmp_dir/node-vmess-ws.link"
+vmess_ws_payload='{"v":"2","ps":"fixture-vmess-ws","add":"origin.invalid","port":"443","id":"00000000-0000-4000-8000-000000000010","aid":"0","net":"ws","path":"/edge/path","host":"host.invalid","tls":"tls","sni":"sni.invalid"}'
+printf 'vmess://%s\n' "$(printf '%s' "$vmess_ws_payload" | base64 | tr -d '\n')" >"$vmess_ws_link_file"
+vmess_ws_json="$(magicnet_singbox_emit_share_link_json "$vmess_ws_link_file")" \
+    || fail "emit_share_link_json failed for VMess WebSocket fixture"
+printf '%s\n' "$vmess_ws_json" | jq -e '
+  .server == "origin.invalid"
+  and .transport.type == "ws"
+  and .transport.path == "/edge/path"
+  and .transport.headers.Host == "host.invalid"
+  and .tls.server_name == "sni.invalid"
+' >/dev/null || fail "VMess WebSocket fields were not preserved independently: $vmess_ws_json"
+
+# Exercise the Android/no-jq fallback without changing the host installation.
+command() {
+    if [[ "${1:-}" == "-v" && "${2:-}" == "jq" ]]; then
+        return 1
+    fi
+    builtin command "$@"
+}
+vmess_ws_nojq_json="$(magicnet_singbox_emit_share_link_json "$vmess_ws_link_file")" \
+    || fail "no-jq emit_share_link_json failed for VMess WebSocket fixture"
+unset -f command
+printf '%s\n' "$vmess_ws_nojq_json" | jq -e '
+  .server == "origin.invalid"
+  and .transport.type == "ws"
+  and .transport.path == "/edge/path"
+  and .transport.headers.Host == "host.invalid"
+  and .tls.server_name == "sni.invalid"
+' >/dev/null || fail "no-jq VMess WebSocket fields were not preserved independently: $vmess_ws_nojq_json"
+
+socks_link_file="$tmp_dir/node-socks.link"
+printf '%s\n' 'socks://fixture%20user:fixture%40password@socks.invalid:1080#fixture%20socks' >"$socks_link_file"
+socks_json="$(magicnet_singbox_emit_share_link_json "$socks_link_file")" \
+    || fail "emit_share_link_json failed for percent-encoded socks:// credentials"
+printf '%s\n' "$socks_json" | jq -e '
+  .type == "socks"
+  and .tag == "fixture socks"
+  and .server == "socks.invalid"
+  and .server_port == 1080
+  and .version == "5"
+  and .username == "fixture user"
+  and .password == "fixture@password"
+' >/dev/null || fail "percent-encoded socks:// JSON did not match expected shape: $socks_json"
+
+socks5_link_file="$tmp_dir/node-socks5.link"
+printf '%s\n' 'socks5://Zml4dHVyZS11c2VyOmZpeHR1cmUtcGFzc3dvcmQ@socks5.invalid:1081#fixture-socks5' >"$socks5_link_file"
+socks5_json="$(magicnet_singbox_emit_share_link_json "$socks5_link_file")" \
+    || fail "emit_share_link_json failed for base64 socks5:// credentials"
+printf '%s\n' "$socks5_json" | jq -e '
+  .type == "socks"
+  and .tag == "fixture-socks5"
+  and .server == "socks5.invalid"
+  and .server_port == 1081
+  and .version == "5"
+  and .username == "fixture-user"
+  and .password == "fixture-password"
+' >/dev/null || fail "base64 socks5:// JSON did not match expected shape: $socks5_json"
+
+socks_unauth_file="$tmp_dir/node-socks-unauth.link"
+printf '%s\n' 'socks://socks-unauth.invalid:1082#fixture-unauth' >"$socks_unauth_file"
+socks_unauth_json="$(magicnet_singbox_emit_share_link_json "$socks_unauth_file")" \
+    || fail "emit_share_link_json failed for unauthenticated socks://"
+printf '%s\n' "$socks_unauth_json" | jq -e '
+  .type == "socks"
+  and .version == "5"
+  and (has("username") | not)
+  and (has("password") | not)
+' >/dev/null || fail "unauthenticated socks:// emitted unexpected credentials: $socks_unauth_json"
+
+socks_malformed_file="$tmp_dir/node-socks-malformed.link"
+printf '%s\n' 'socks://not-valid-base64@socks.invalid:1080#fixture-invalid' >"$socks_malformed_file"
+if magicnet_singbox_emit_share_link_json "$socks_malformed_file" >"$tmp_dir/malformed-socks.json"; then
+    fail "malformed SOCKS credentials were accepted"
+fi
 
 # Drive the real share-link emitter (not a hand-built JSON fixture) for anytls.
 anytls_link_file="$tmp_dir/node-anytls.link"
@@ -153,7 +231,7 @@ printf '%s\n' "$tuic_yaml_json" | jq -e '
 
 # Mixed outbounds from native emitters land in proxy selector.
 nodes_json="$tmp_dir/outbounds.json"
-jq -n --argjson anytls "$anytls_json" --argjson tuic "$tuic_json" '
+jq -n --argjson anytls "$anytls_json" --argjson tuic "$tuic_json" --argjson socks "$socks_json" '
 [
   {
     "type": "vless",
@@ -163,12 +241,35 @@ jq -n --argjson anytls "$anytls_json" --argjson tuic "$tuic_json" '
     "uuid": "00000000-0000-4000-8000-000000000001"
   },
   $anytls,
-  $tuic
+  $tuic,
+  $socks
 ]
 ' >"$nodes_json"
 
 valid_count="$(magicnet_singbox_count_valid_outbounds_nodes "$nodes_json")"
-[[ "$valid_count" == "3" ]] || fail "valid outbound count was $valid_count, expected 3"
+[[ "$valid_count" == "4" ]] || fail "valid outbound count was $valid_count, expected 4"
+
+invalid_socks_nodes="$tmp_dir/invalid-socks-nodes.json"
+jq -n '[
+  {
+    "type": "socks",
+    "tag": "invalid-version",
+    "server": "socks.invalid",
+    "server_port": 1080,
+    "version": "6"
+  },
+  {
+    "type": "socks",
+    "tag": "incomplete-credentials",
+    "server": "socks.invalid",
+    "server_port": 1080,
+    "version": "5",
+    "username": "fixture-user"
+  }
+]' >"$invalid_socks_nodes"
+invalid_socks_count="$(magicnet_singbox_count_valid_outbounds_nodes "$invalid_socks_nodes")"
+[[ "$invalid_socks_count" == "0" ]] \
+    || fail "invalid SOCKS outbounds passed production validation: $invalid_socks_count"
 
 outbounds_fragment="$tmp_dir/generated-outbounds.fragment"
 magicnet_singbox_write_outbounds_from_json "$nodes_json" "$outbounds_fragment"
@@ -179,14 +280,16 @@ magicnet_singbox_write_outbounds_from_json "$nodes_json" "$outbounds_fragment"
 } >"$tmp_dir/generated-outbounds.json"
 
 jq -e '
-  ([.outbounds[] | select(.type == "vless" or .type == "anytls" or .type == "tuic")] | length) == 3
+  ([.outbounds[] | select(.type == "vless" or .type == "anytls" or .type == "tuic" or .type == "socks")] | length) == 4
   and ([.outbounds[] | select(.type == "vless") | .tag] == ["fixture-vless"])
   and ([.outbounds[] | select(.type == "anytls") | .tag] == ["fixture-anytls"])
   and ([.outbounds[] | select(.type == "tuic") | .tag] == ["fixture-tuic"])
+  and ([.outbounds[] | select(.type == "socks") | .tag] == ["fixture socks"])
   and ((.outbounds[] | select(.type == "selector" and .tag == "proxy") | .outbounds) as $proxy
     | ($proxy | index("fixture-vless")) != null
     and ($proxy | index("fixture-anytls")) != null
-    and ($proxy | index("fixture-tuic")) != null)
+    and ($proxy | index("fixture-tuic")) != null
+    and ($proxy | index("fixture socks")) != null)
 ' "$tmp_dir/generated-outbounds.json" >/dev/null \
     || fail "generated outbounds did not preserve all protocols in the proxy selector"
 

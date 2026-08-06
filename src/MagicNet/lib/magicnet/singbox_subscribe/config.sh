@@ -106,6 +106,11 @@ magicnet_singbox_build_outbounds_file_with_jq() {
             elif .type == "tuic" then
               (.uuid | type == "string" and length > 0)
                 and (.password | type == "string" and length > 0)
+            elif .type == "socks" then
+              (.version == "4" or .version == "4a" or .version == "5")
+                and (((has("username") | not) and (has("password") | not))
+                  or ((.username | type == "string" and length > 0)
+                    and (.password | type == "string" and length > 0)))
             else false
             end);
       def with_base($outs; $fallback):
@@ -264,6 +269,11 @@ magicnet_singbox_count_valid_outbounds_nodes() {
             elif .type == "tuic" then
               (.uuid | type == "string" and length > 0)
                 and (.password | type == "string" and length > 0)
+            elif .type == "socks" then
+              (.version == "4" or .version == "4a" or .version == "5")
+                and (((has("username") | not) and (has("password") | not))
+                  or ((.username | type == "string" and length > 0)
+                    and (.password | type == "string" and length > 0)))
             else false
             end);
       ($nodes[0] // []
@@ -545,7 +555,7 @@ magicnet_singbox_sanitize_generated_config() {
           + ([$eligible[] | select((us_node_tag | not) and (japan_node_tag | not))]);
       def proxy_node_type:
         .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-          or .type == "hysteria2" or .type == "anytls" or .type == "tuic";
+          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks";
       def reserved_tag:
         . as $tag
         | [
@@ -573,6 +583,11 @@ magicnet_singbox_sanitize_generated_config() {
             elif .type == "tuic" then
               (.uuid | type == "string" and length > 0)
                 and (.password | type == "string" and length > 0)
+            elif .type == "socks" then
+              (.version == "4" or .version == "4a" or .version == "5")
+                and (((has("username") | not) and (has("password") | not))
+                  or ((.username | type == "string" and length > 0)
+                    and (.password | type == "string" and length > 0)))
             else false
             end);
       def dedupe_proxy_nodes:
@@ -778,7 +793,7 @@ magicnet_singbox_replay_cached_outbounds() {
         unset _cached_outbounds
         return 1
     }
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic)"' \
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic|socks)"' \
         "$_cached_outbounds" || {
         unset _cached_outbounds
         return 1
@@ -983,12 +998,12 @@ magicnet_singbox_restart_if_running() {
 magicnet_singbox_api_has_nodes() {
     _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
     [ -n "$_api" ] || return 1
-    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Selector)"'
+    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Socks|SOCKS|Selector)"'
 }
 
 magicnet_singbox_config_has_nodes() {
     _config_file=$(magicnet_singbox_subscription_config_file)
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic)"' "$_config_file"
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic|socks)"' "$_config_file"
 }
 
 magicnet_singbox_google_works() {

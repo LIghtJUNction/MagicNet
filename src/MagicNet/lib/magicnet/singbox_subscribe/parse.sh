@@ -41,22 +41,22 @@ magicnet_singbox_extract_share_links() {
     _current_links_file=$(mktemp "${_nodes_dir}/links.current.XXXXXX") || return 1
     _first_line=$(sed -n '1{s/^[[:space:]]*//;p;}' "$_source_file" | tr -d '\r')
     case "$_first_line" in
-    vless://* | anytls://* | tuic://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://*)
+    vless://* | anytls://* | tuic://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://* | socks://* | socks5://*)
         tr -d '\r' <"$_source_file" |
-            grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss)://' |
+            grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
             sed 's/^[[:space:]]*//' >"$_current_links_file"
         ;;
     *)
         if command -v base64 >/dev/null 2>&1; then
             base64 -d "$_source_file" 2>/dev/null |
                 tr -d '\r' |
-                grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss)://' |
+                grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
                 sed 's/^[[:space:]]*//' >"$_current_links_file"
             if [ ! -s "$_current_links_file" ]; then
                 tr '_-' '/+' <"$_source_file" 2>/dev/null |
                     base64 -d 2>/dev/null |
                     tr -d '\r' |
-                    grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss)://' |
+                    grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
                     sed 's/^[[:space:]]*//' >"$_current_links_file"
             fi
         else
@@ -106,6 +106,27 @@ magicnet_singbox_emit_node_json() {
         [ -n "$_password" ] || return 1
         printf '{"type":"shadowsocks","tag":"%s","server":"%s","server_port":%s,"method":"%s","password":"%s"}' \
             "$_name" "$_server" "$_port" "$_cipher" "$_password"
+        ;;
+    socks | socks5)
+        _version=$(magicnet_yaml_value version)
+        [ -n "$_version" ] || _version=5
+        case "$_version" in
+        4 | 4a | 5) ;;
+        *) return 1 ;;
+        esac
+        _username=$(magicnet_yaml_value username)
+        _password=$(magicnet_yaml_value password)
+        if { [ -n "$_username" ] && [ -z "$_password" ]; } ||
+            { [ -z "$_username" ] && [ -n "$_password" ]; }; then
+            return 1
+        fi
+        printf '{"type":"socks","tag":"%s","server":"%s","server_port":%s,"version":"%s"' \
+            "$_name" "$_server" "$_port" "$_version"
+        if [ -n "$_username" ]; then
+            printf ',"username":"%s","password":"%s"' \
+                "$(magicnet_json_escape "$_username")" "$(magicnet_json_escape "$_password")"
+        fi
+        printf '}'
         ;;
     vmess)
         _uuid=$(magicnet_json_escape "$(magicnet_yaml_value uuid)")
@@ -285,6 +306,8 @@ magicnet_singbox_emit_share_link_json() {
             _uuid=$(printf '%s' "$_decoded" | jq -r '.id // empty | tostring' 2>/dev/null)
             _alter_id=$(printf '%s' "$_decoded" | jq -r '.aid // empty | tostring' 2>/dev/null)
             _network=$(printf '%s' "$_decoded" | jq -r '.net // empty | tostring' 2>/dev/null)
+            _path=$(printf '%s' "$_decoded" | jq -r '.path // empty | tostring' 2>/dev/null)
+            _host=$(printf '%s' "$_decoded" | jq -r '.host // empty | tostring' 2>/dev/null)
             _tls=$(printf '%s' "$_decoded" | jq -r '.tls // empty | tostring' 2>/dev/null)
             _sni=$(printf '%s' "$_decoded" | jq -r '.sni // empty | tostring' 2>/dev/null)
         else
@@ -294,6 +317,8 @@ magicnet_singbox_emit_share_link_json() {
             _uuid=$(printf '%s' "$_decoded" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
             _alter_id=$(printf '%s' "$_decoded" | sed -n 's/.*"aid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
             _network=$(printf '%s' "$_decoded" | sed -n 's/.*"net"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _path=$(printf '%s' "$_decoded" | sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _host=$(printf '%s' "$_decoded" | sed -n 's/.*"host"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
             _tls=$(printf '%s' "$_decoded" | sed -n 's/.*"tls"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
             _sni=$(printf '%s' "$_decoded" | sed -n 's/.*"sni"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
         fi
@@ -305,10 +330,61 @@ magicnet_singbox_emit_share_link_json() {
         [ -n "$_network" ] || _network=tcp
         printf '{"type":"vmess","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","alter_id":%s' \
             "$_tag" "$(magicnet_json_escape "$_server")" "$_port" "$(magicnet_json_escape "$_uuid")" "$_alter_id"
-        [ "$_network" != "tcp" ] && printf ',"transport":{"type":"%s"}' "$(magicnet_json_escape "$_network")"
+        if [ "$_network" = "ws" ]; then
+            printf ',"transport":{"type":"ws"'
+            [ -n "$_path" ] && printf ',"path":"%s"' "$(magicnet_json_escape "$_path")"
+            [ -n "$_host" ] && printf ',"headers":{"Host":"%s"}' "$(magicnet_json_escape "$_host")"
+            printf '}'
+        elif [ "$_network" != "tcp" ]; then
+            printf ',"transport":{"type":"%s"}' "$(magicnet_json_escape "$_network")"
+        fi
         if [ "$_tls" = "tls" ]; then
             [ -n "$_sni" ] || _sni="$_server"
             printf ',"tls":{"enabled":true,"server_name":"%s"}' "$(magicnet_json_escape "$_sni")"
+        fi
+        printf '}'
+        ;;
+    socks | socks5)
+        case "$_port" in
+        '' | *[!0-9]*) return 1 ;;
+        esac
+        _port=$(printf '%s' "$_port" | sed 's/^0*//')
+        [ -n "$_port" ] || _port=0
+        [ "${#_port}" -le 5 ] || return 1
+        [ "$_port" -ge 1 ] && [ "$_port" -le 65535 ] || return 1
+
+        _username=""
+        _password=""
+        case "$_base" in
+        *@*)
+            [ -n "$_userinfo" ] || return 1
+            case "$_userinfo" in
+            *:*) _credentials="$_userinfo" ;;
+            *)
+                _credentials=$(magicnet_b64_decode "$_userinfo")
+                [ -n "$_credentials" ] || return 1
+                case "$_credentials" in
+                *:*) ;;
+                *) return 1 ;;
+                esac
+                ;;
+            esac
+            _username=${_credentials%%:*}
+            _password=${_credentials#*:}
+            [ -n "$_username" ] || return 1
+            [ -n "$_password" ] || return 1
+            _username=$(magicnet_percent_decode "$_username")
+            _password=$(magicnet_percent_decode "$_password")
+            [ -n "$_username" ] || return 1
+            [ -n "$_password" ] || return 1
+            ;;
+        esac
+
+        printf '{"type":"socks","tag":"%s","server":"%s","server_port":%s,"version":"5"' \
+            "$_tag" "$_server" "$_port"
+        if [ -n "$_username" ]; then
+            printf ',"username":"%s","password":"%s"' \
+                "$(magicnet_json_escape "$_username")" "$(magicnet_json_escape "$_password")"
         fi
         printf '}'
         ;;
