@@ -10,7 +10,7 @@
 
 MagicNet 用 root 管理的 `sing-box` `magicnet0` TUN 接管、分流和代理 Android 设备流量。它不调用应用侧 `VpnService.establish()`，不会占用系统 VPN slot；当前主线只有 TUN，不包含 TProxy 或 eBPF 透明路径。
 
-## 本项目入选我主办的开源激励计划
+## 开源激励计划
 - 前往https://api.lmm.best
 - 接受挑战
 - 完成挑战，中途我可以赠送一些小费
