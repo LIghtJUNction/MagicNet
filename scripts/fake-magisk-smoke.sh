@@ -963,6 +963,24 @@ assert_dns_interception_not_enabled "$MOCK_LOG" "toggle stop"
 sleep 3600 &
 echo "$!" >"$MODDIR/.state/fake-sing-box.pid"
 : >"$MOCK_LOG"
+# A deferred config rewrite can fail after sing-box is already running. DNS
+# interception must stay disabled until every managed rewrite succeeds.
+# shellcheck disable=SC2016
+if run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
+    . "$MODDIR/lib/kamfw/.kamfwrc"
+    import __runtime__
+    . "$MODDIR/lib/magicnet.sh"
+    magicnet_dns_apply_unlocked() {
+        return 1
+    }
+    magicnet_after_kernel_start_deferred_unlocked
+'; then
+    echo "deferred config failure was reported as success" >&2
+    exit 1
+fi
+assert_dns_interception_not_enabled "$MOCK_LOG" "deferred config failure"
+
+: >"$MOCK_LOG"
 run env MAGIC_DNS_GUARD_IFACES=lo "$MODDIR/cli" service stop
 assert_dns_cleanup_log "$MOCK_LOG"
 : >"$MOCK_LOG"
