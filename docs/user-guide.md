@@ -2,6 +2,15 @@
 
 MagicNet 的目标是让 Android root 设备通过一条可观察、可回滚的 `sing-box` TUN 路径完成代理、直连、应用分流和网络诊断。透明数据面固定为 `magicnet0`；模块不占用 Android 系统 VPN slot，也不提供 TProxy 或 eBPF 模式。
 
+## 第一次使用：跟着新手引导完成
+
+WebUI 首次打开会自动弹出“新手引导”，后续也可以从页面里的“新手引导”入口重新打开。引导只讲当前主线支持的流程，不会提供订阅 URL、节点、token、password 或示例密钥。
+
+- 确认设备前提：模块已安装、Root 可用、Private DNS 已关闭，MagicNet 只走 `sing-box` + `magicnet0` TUN。
+- 添加来源：在“订阅”里填写你自己的订阅 URL，或者导入本地配置/订阅文件。MagicNet 不提供订阅服务，也不生成节点。
+- 交给 MagicNet 校验并应用：保存后由 MagicNet 拉取、解析、校验并生成运行配置；节点选择通过现有控制流程完成，不要手工改运行中的 `sing-box` 配置文件。
+- 验证链路后再做进阶策略：优先看“运行状态”和“诊断”，确认基础链路已经可用，再考虑应用、Wi‑Fi、热点等策略；异常细节继续看“输出”。
+
 ## 安装与控制入口
 
 从 [MagicNet Releases](https://github.com/LIghtJUNction/MagicNet/releases) 下载 ZIP，在 Magisk、KernelSU 或 APatch 中安装并重启。系统“私人 DNS / 私密 DNS / Private DNS”应关闭，避免 DoT 绕过模块的 DNS 路径。
