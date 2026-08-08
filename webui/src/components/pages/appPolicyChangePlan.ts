@@ -98,9 +98,9 @@ function changedPackages(
 function modeWarnings(beforeMode: AppPolicyMode, after: { mode: AppPolicyMode; proxy: string[]; direct: string[]; bypass: string[] }): string[] {
   if (beforeMode === after.mode) return [];
   if (after.mode === "whitelist" && !after.proxy.length && !after.direct.length) {
-    return ["白名单模式下 Proxy 和 Direct 均为空，所有应用都将绕过 TUN。"];
+    return ["仅名单接管下 Proxy 和 Direct 均为空，所有应用都将绕过 TUN。"];
   }
-  if (after.mode === "blacklist" && !after.bypass.length) return ["黑名单模式下 Bypass 为空，除系统排除外应用会默认进入 TUN。"];
+  if (after.mode === "blacklist" && !after.bypass.length) return ["全局接管下 Bypass 为空，除系统排除外应用会默认进入 TUN。"];
   return [];
 }
 
