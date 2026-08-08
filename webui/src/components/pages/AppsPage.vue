@@ -258,7 +258,7 @@ async function restoreBypass(pkg: string): Promise<void> {
 
 async function setMode(mode: "blacklist" | "whitelist"): Promise<void> {
   await withAction(`mode-${mode}`, async () => {
-    await runCli(`app mode ${mode}`, mode === "blacklist" ? "切换黑名单模式" : "切换白名单模式");
+    await runCli(`app mode ${mode}`, mode === "blacklist" ? "切换全局接管" : "切换仅名单接管");
     await refreshApps(true);
   });
 }
@@ -267,7 +267,9 @@ function requestSetMode(mode: "blacklist" | "whitelist"): void {
   pendingAppAction.value = {
     key: `mode-${mode}`,
     command: `app mode ${mode}`,
-    message: mode === "blacklist" ? "确认切换到黑名单模式？未列出应用将正常进入 TUN。" : "确认切换到白名单模式？未列出应用将绕过 TUN。",
+    message: mode === "blacklist"
+      ? "确认切换到全局接管？未列出应用会进入 TUN，只有 Bypass TUN 名单走系统网络。"
+      : "确认切换到仅名单接管？只有 Proxy 和 Direct 名单进入 TUN，未列出应用走系统网络。",
     plan: actionPlan({ type: "mode", mode }),
     run: () => setMode(mode)
   };
@@ -391,46 +393,66 @@ onMounted(() => {
       </div>
     </PageHeader>
 
-    <Card v-if="pendingAppAction" class="grid gap-3 mn-panel-warn">
-      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div class="min-w-0">
-          <span class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]">Confirm app policy</span>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">{{ pendingAppAction.message }}</p>
-          <code class="mt-2 block break-all rounded-md bg-[var(--mn-ivory)]/60 px-3 py-2 text-xs text-[var(--mn-ink)]">{{ pendingAppAction.command }}</code>
-          <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
-            <span
-              v-for="item in pendingAppAction.plan.items"
-              :key="item.label"
-              class="rounded border px-2 py-1"
-              :class="{
-                'mn-chip-ok': item.tone === 'success',
-                'mn-chip-warn': item.tone === 'warning',
-                'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-                'mn-chip-neutral': item.tone === 'neutral',
-              }"
-            >
-              {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
-            </span>
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div v-if="pendingAppAction" class="fixed inset-0 z-[70]" role="presentation">
+          <button
+            class="absolute inset-0 size-full bg-[color-mix(in_srgb,var(--mn-ink)_38%,transparent)]"
+            type="button"
+            aria-label="取消应用策略操作"
+            @click="cancelAppAction"
+          />
+          <div
+            class="mn-chrome absolute inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] mx-auto grid max-h-[min(80dvh,680px)] max-w-3xl gap-3 overflow-auto rounded-md p-1"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="app-policy-confirm-title"
+          >
+            <div class="rounded-[5px] bg-[color-mix(in_srgb,var(--mn-warning)_14%,var(--mn-carrier))] p-4">
+              <span class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]">Confirm app policy</span>
+              <p id="app-policy-confirm-title" class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">{{ pendingAppAction.message }}</p>
+              <code class="mt-2 block break-all rounded-md bg-[var(--mn-ivory)]/60 px-3 py-2 text-xs text-[var(--mn-ink)]">{{ pendingAppAction.command }}</code>
+              <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
+                <span
+                  v-for="item in pendingAppAction.plan.items"
+                  :key="item.label"
+                  class="rounded border px-2 py-1"
+                  :class="{
+                    'mn-chip-ok': item.tone === 'success',
+                    'mn-chip-warn': item.tone === 'warning',
+                    'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
+                    'mn-chip-neutral': item.tone === 'neutral',
+                  }"
+                >
+                  {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
+                </span>
+              </div>
+              <p v-if="pendingAppAction.plan.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
+                {{ pendingAppAction.plan.warnings.join("；") }}
+              </p>
+              <div class="mt-4 grid grid-cols-2 gap-2">
+                <Button variant="secondary" :loading="isRunning(pendingAppAction.key)" @click="confirmAppAction">确认执行</Button>
+                <Button variant="outline" @click="cancelAppAction">取消</Button>
+              </div>
+            </div>
           </div>
-          <p v-if="pendingAppAction.plan.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
-            {{ pendingAppAction.plan.warnings.join("；") }}
-          </p>
         </div>
-        <div class="flex shrink-0 gap-2">
-          <Button variant="secondary" :loading="isRunning(pendingAppAction.key)" @click="confirmAppAction">确认</Button>
-          <Button variant="outline" @click="cancelAppAction">取消</Button>
-        </div>
-      </div>
-    </Card>
+      </Transition>
+    </Teleport>
 
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-center gap-3">
         <div class="inline-flex w-fit rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-1">
-          <button class="min-h-12 rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">黑名单</button>
-          <button class="min-h-12 rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">白名单</button>
+          <button class="min-h-12 rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">全局接管</button>
+          <button class="min-h-12 rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">仅名单接管</button>
         </div>
-        <span class="text-sm text-[var(--mn-ink-muted)]">想验证应用没有使用代理，请选 Direct。Bypass TUN 不等于断网；上游网络或其他 VPN 仍可能让应用访问 Google。</span>
+        <span class="text-sm text-[var(--mn-ink-muted)]">
+          {{ state.appPolicy.mode === 'whitelist'
+            ? '仅 Proxy 和 Direct 名单中的应用进入 TUN；未列出应用直接走系统网络。'
+            : '默认所有应用进入 TUN；Bypass TUN 名单中的应用走系统网络。' }}
+        </span>
       </div>
+      <p class="text-xs leading-5 text-[var(--mn-ink-faint)]">Proxy 强制代理，Direct 在 TUN 内直连。应用名单会解析成 Android UID；共享同一 UID 的应用会一起生效。</p>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
         <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
         <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />{{ isRunning('add-proxy') ? '保存中' : 'Proxy' }}</Button>

@@ -25,6 +25,9 @@ magicnet_start_singbox_unlocked() {
     magicnet_singbox_apply_transparent_mode || return 1
     magicnet_singbox_apply_hotspot_policy || return 1
     magicnet_tailscale_apply_unlocked || return 1
+    # The preceding normalizers rebuild the managed TUN inbound.  Materialize
+    # per-app UID boundaries after all of them and before sing-box starts; a
+    # deferred rewrite cannot change the already-running core's in-memory routes.
     magicnet_app_policy_apply_unlocked || return 1
     magicnet_tailscale_inject_auth_key || return 1
     import __singbox__

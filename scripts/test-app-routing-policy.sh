@@ -48,13 +48,14 @@ case "${1:-} ${2:-}" in
     case "$user:$package" in
       0:com.example.bypass) printf '%s\n' 'package:com.example.bypass uid:11001' ;;
       10:com.example.bypass) printf '%s\n' 'package:com.example.bypass uid:1011001' ;;
-      0:com.example.direct-force) printf '%s\n' 'package:com.example.direct-force uid:11002' ;;
+      0:com.example.directforce) printf '%s\n' 'package:com.example.directforce uid:11002' ;;
       0:com.example.proxy) printf '%s\n' 'package:com.example.proxy uid:11003' ;;
     esac
     ;;
 esac
 EOF
 chmod +x "$MOCK_BIN/cmd"
+ln -s "$MOCK_BIN/cmd" "$NO_JQ_BIN/cmd"
 
 write_base_config() {
   cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
@@ -116,7 +117,7 @@ assert_proxy_rule_and_order() {
            and .outbound == "proxy")
     and ([.route.rules[]
           | select((.package_name // []) | index("__magicnet_app_direct__"))][0]
-         | .package_name == ["__magicnet_app_direct__", "com.example.direct-force"]
+         | .package_name == ["__magicnet_app_direct__", "com.example.directforce"]
            and .outbound == "direct")
     and (([.route.rules | to_entries[]
             | select(.value | (has("action") or (.protocol == "icmp" and .outbound == "block")))
@@ -146,42 +147,24 @@ assert_proxy_rule_and_order() {
 }
 
 assert_blacklist() {
-  if [ "$EXPECT_UID_POLICY" = 1 ]; then
-    "$JQ_BIN" -e '
-      (.inbounds[] | select(.type == "tun")
-        | .exclude_package == ["com.example.bypass"]
-          and .exclude_uid == [0, 42, 11001, 1011001]
-          and (has("include_package") | not)
-          and (has("include_uid") | not))
-    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
-  else
-    "$JQ_BIN" -e '
-      (.inbounds[] | select(.type == "tun")
-        | .exclude_package == ["com.example.bypass"]
-          and .exclude_uid == [0, 42]
-          and (has("include_package") | not))
-    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
-  fi
+  "$JQ_BIN" -e '
+    (.inbounds[] | select(.type == "tun")
+      | (.exclude_uid | sort) == [0, 42, 11001, 1011001]
+        and (has("include_uid") | not)
+        and (has("include_package") | not)
+        and (has("exclude_package") | not))
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
   assert_proxy_rule_and_order
 }
 
 assert_whitelist() {
-  if [ "$EXPECT_UID_POLICY" = 1 ]; then
-    "$JQ_BIN" -e '
-      (.inbounds[] | select(.type == "tun")
-        | .include_package == ["com.example.direct-force", "com.example.proxy"]
-          and .include_uid == [11002, 11003]
-          and .exclude_uid == [0, 42]
-          and (has("exclude_package") | not))
-    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
-  else
-    "$JQ_BIN" -e '
-      (.inbounds[] | select(.type == "tun")
-        | .include_package == ["com.example.direct-force", "com.example.proxy"]
-          and .exclude_uid == [0, 42]
-          and (has("exclude_package") | not))
-    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
-  fi
+  "$JQ_BIN" -e '
+    (.inbounds[] | select(.type == "tun")
+      | (.include_uid | sort) == [11002, 11003]
+        and (.exclude_uid | sort) == [0, 42]
+        and (has("include_package") | not)
+        and (has("exclude_package") | not))
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
   assert_proxy_rule_and_order
 }
 
@@ -196,12 +179,6 @@ apply_policy() {
 
 run_case() {
   implementation="$1"
-  if [ "$implementation" = jq ]; then
-    EXPECT_UID_POLICY=1
-  else
-    EXPECT_UID_POLICY=0
-  fi
-  export EXPECT_UID_POLICY
   MODDIR="$WORK/$implementation/module"
   export MODDIR
   mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
@@ -213,8 +190,8 @@ com.example.proxy
 com.example.proxy
 EOF
   cat >"$MODDIR/.config/magicnet/app-direct.list" <<'EOF'
-com.example.direct-force
-com.example.direct-force
+	com.example.directforce
+	com.example.directforce
 EOF
   cat >"$MODDIR/.config/magicnet/app-bypass.list" <<'EOF'
 com.example.bypass
@@ -242,6 +219,17 @@ EOF
   apply_policy "$implementation"
   apply_policy "$implementation"
   assert_whitelist
+
+  : >"$MODDIR/.config/magicnet/app-proxy.list"
+  : >"$MODDIR/.config/magicnet/app-direct.list"
+  apply_policy "$implementation"
+  "$JQ_BIN" -e '
+    (.inbounds[] | select(.type == "tun")
+      | .include_uid == [4294967294]
+        and (.exclude_uid | sort) == [0, 42]
+        and (has("include_package") | not)
+        and (has("exclude_package") | not))
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 }
 
 run_case jq
@@ -254,7 +242,7 @@ assert_jq_removes_legacy_dns_package_rules() {
   write_base_config
   printf '%s\n' 'MAGICNET_APP_MODE=blacklist' >"$MODDIR/.config/magicnet/app-mode.conf"
   printf '%s\n' 'com.example.proxy' >"$MODDIR/.config/magicnet/app-proxy.list"
-  printf '%s\n' 'com.example.direct-force' >"$MODDIR/.config/magicnet/app-direct.list"
+  printf '%s\n' 'com.example.directforce' >"$MODDIR/.config/magicnet/app-direct.list"
   printf '%s\n' 'com.example.bypass' >"$MODDIR/.config/magicnet/app-bypass.list"
   "$JQ_BIN" '.dns = {"rules": [
     {"package_name": ["com.example.legacy"], "server": "bootstrap-local-dns"},
