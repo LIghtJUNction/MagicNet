@@ -21,6 +21,8 @@ import {
 } from "lucide-vue-next";
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
 import { MAGICNET_LOGO_URL } from "@/branding";
+import OnboardingDialog from "@/components/OnboardingDialog.vue";
+import OpenSourceSupportNote from "@/components/OpenSourceSupportNote.vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
@@ -28,6 +30,10 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { useTheme } from "@/composables/useTheme";
 
 type TabKey = "control" | "config" | "apps" | "block" | "subs" | "tools" | "health" | "webui" | "output";
+type OnboardingTarget = Extract<TabKey, "control" | "subs" | "health" | "output">;
+type OnboardingPreference = "dismissed" | "completed";
+
+const ONBOARDING_STORAGE_KEY = "magicnet.webui.onboarding.v1";
 
 const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   control: () => import("@/components/pages/ControlPage.vue"),
@@ -77,8 +83,10 @@ const activeTab = ref<TabKey>("control");
 /** Keep visited panels mounted so forms/lists survive tab switches. */
 const visitedTabs = ref<TabKey[]>(["control"]);
 const showAdvancedNav = ref(false);
+const showOnboarding = ref(false);
 const advancedDialog = ref<HTMLElement | null>(null);
 const advancedNavTrigger = ref<HTMLElement | null>(null);
+const onboardingTrigger = ref<HTMLElement | null>(null);
 const easterEggVisitors = [
   {
     name: "SOL",
@@ -159,6 +167,69 @@ function setTab(tab: TabKey): void {
     ).find((item) => item.offsetParent !== null);
     target?.scrollIntoView({ block: "nearest", inline: "center" });
   });
+}
+
+function readOnboardingPreference(): OnboardingPreference | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(ONBOARDING_STORAGE_KEY);
+    if (stored === "dismissed" || stored === "completed") return stored;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function persistOnboardingPreference(value: OnboardingPreference): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, value);
+  } catch {
+    // Ignore storage failures; the dialog remains usable for the current session.
+  }
+}
+
+function restoreOnboardingTriggerFocus(): void {
+  const trigger = onboardingTrigger.value;
+  onboardingTrigger.value = null;
+  if (!(trigger instanceof HTMLElement) || typeof trigger.focus !== "function") return;
+  void nextTick(() => {
+    if (trigger instanceof HTMLElement && trigger.isConnected && typeof trigger.focus === "function") {
+      trigger.focus();
+    }
+  });
+}
+
+function launchOnboarding(trigger: HTMLElement | null = null): void {
+  onboardingTrigger.value = trigger;
+  showOnboarding.value = true;
+}
+
+async function requestOnboarding(event?: MouseEvent): Promise<void> {
+  const trigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (showAdvancedNav.value) {
+    closeAdvancedNav(false);
+    await nextTick();
+    launchOnboarding(advancedNavTrigger.value);
+    return;
+  }
+  launchOnboarding(trigger);
+}
+
+function closeOnboarding(preference: OnboardingPreference = "dismissed"): void {
+  if (!showOnboarding.value) return;
+  persistOnboardingPreference(preference);
+  showOnboarding.value = false;
+  restoreOnboardingTriggerFocus();
+}
+
+function completeOnboarding(): void {
+  closeOnboarding("completed");
+}
+
+function handleOnboardingNavigate(target: OnboardingTarget): void {
+  closeOnboarding("dismissed");
+  setTab(target);
 }
 
 async function requestIssue(): Promise<void> {
@@ -271,6 +342,11 @@ onMounted(() => {
   void refreshStatus();
   document.addEventListener("keydown", handleEscape);
   void pageLoaders.control();
+  if (!readOnboardingPreference()) {
+    void nextTick(() => {
+      if (!showOnboarding.value) launchOnboarding();
+    });
+  }
   // Warm common tabs after first paint so switches feel instant.
   const warm = () => {
     void pageLoaders.config();
@@ -327,6 +403,16 @@ onUnmounted(() => {
           <Moon v-else-if="themePreference === 'dark'" :size="16" aria-hidden="true" />
           <Monitor v-else :size="16" aria-hidden="true" />
           <span class="hidden sm:inline">{{ themeLabel }}</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="hidden size-11 px-0 md:inline-flex md:w-auto md:px-4"
+          aria-label="打开新手引导"
+          title="打开新手引导"
+          @click="requestOnboarding"
+        >
+          <ScrollText :size="16" /><span>新手引导</span>
         </Button>
         <Button
           size="sm"
@@ -467,6 +553,8 @@ onUnmounted(() => {
       </section>
     </main>
 
+    <OpenSourceSupportNote />
+
     <nav class="mobile-nav mn-chrome fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 grid grid-cols-6 gap-0.5 rounded-[1.35rem] p-1.5 md:hidden" aria-label="MagicNet 移动导航">
       <button
         v-for="item in primaryTabs"
@@ -528,6 +616,13 @@ onUnmounted(() => {
               <span>{{ item.label }}</span>
             </button>
             <Button
+              variant="outline"
+              class="min-h-11"
+              @click="requestOnboarding"
+            >
+              <ScrollText :size="18" />新手引导
+            </Button>
+            <Button
               class="min-h-11"
               :loading="state.task === '创建 GitHub issue'"
               @click="requestIssue"
@@ -545,6 +640,13 @@ onUnmounted(() => {
         </div>
       </div>
     </Transition>
+
+    <OnboardingDialog
+      v-if="showOnboarding"
+      @dismiss="closeOnboarding()"
+      @complete="completeOnboarding"
+      @navigate="handleOnboardingNavigate"
+    />
 
     <IssueReporterDialog
       v-if="state.issueReporter.open"

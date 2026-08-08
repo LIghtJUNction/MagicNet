@@ -62,6 +62,7 @@ su -c '/data/adb/modules/MagicNet/cli app add com.example.vpn bypass'
 su -c '/data/adb/modules/MagicNet/cli wifi add-ssid "Home WiFi"'
 su -c /data/adb/modules/MagicNet/cli wifi enable
 su -c /data/adb/modules/MagicNet/cli hotspot enable
+su -c /data/adb/modules/MagicNet/cli hotspot status
 
 # 网络兼容与支持包
 su -c /data/adb/modules/MagicNet/cli network status
@@ -124,7 +125,7 @@ kam build
 - Discord：[加入官方群聊](https://discord.gg/asRwgK9FpA)
 - GitHub Issue：建议附上 `cli health`、`cli transparent status` 和 `cli support bundle` 的脱敏结果。
 
-WebUI 的“反馈问题 / 创建 Issue”会按问题类型生成脱敏上下文。提交前仍应检查正文，不要公开订阅 URL、token、secret、password、完整节点地址或设备标识。
+WebUI 的“反馈问题 / 创建 Issue”会先选择问题类型，再按类型生成脱敏上下文。提交前仍应检查正文，不要公开订阅 URL、token、secret、password、完整节点地址或设备标识。
 
 ## 推广
 
