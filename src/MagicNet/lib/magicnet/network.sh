@@ -195,16 +195,32 @@ magicnet_after_kernel_start() {
 }
 
 magicnet_after_kernel_start_deferred_unlocked() {
-    magicnet_dns_apply_unlocked || true
-    magicnet_transparent_apply_unlocked || true
-    magicnet_app_policy_apply_unlocked || true
-    magicnet_warp_apply_unlocked || true
+    _deferred_rc=0
+    magicnet_dns_apply_unlocked || _deferred_rc=1
+    magicnet_transparent_apply_unlocked || _deferred_rc=1
+    magicnet_app_policy_apply_unlocked || _deferred_rc=1
+    magicnet_warp_apply_unlocked || _deferred_rc=1
     # Keep the hotspot route authoritative after every deferred config rewrite.
     # These rewrites run asynchronously after the core starts and may otherwise
     # publish a snapshot that predates the startup-time hotspot normalization.
-    magicnet_singbox_apply_hotspot_policy || true
-    magicnet_enable_dns_capture || true
-    magicnet_enable_dns_leak_guard || true
+    magicnet_singbox_apply_hotspot_policy || _deferred_rc=1
+    if [ "$_deferred_rc" -ne 0 ]; then
+        # A partially applied configuration must not leave stale interception
+        # or leak-guard rules pointing at a failed DNS/core setup.
+        magicnet_disable_dns_capture || true
+        magicnet_disable_dns_leak_guard || true
+        unset _deferred_rc
+        return 1
+    fi
+    magicnet_enable_dns_capture || _deferred_rc=1
+    magicnet_enable_dns_leak_guard || _deferred_rc=1
+    _deferred_result="$_deferred_rc"
+    if [ "$_deferred_rc" -ne 0 ]; then
+        magicnet_disable_dns_capture || true
+        magicnet_disable_dns_leak_guard || true
+    fi
+    unset _deferred_rc
+    return "$_deferred_result"
 }
 
 magicnet_after_kernel_start_deferred() {

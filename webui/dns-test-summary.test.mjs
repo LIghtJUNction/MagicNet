@@ -1,0 +1,47 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import ts from "./node_modules/typescript/lib/typescript.js";
+
+function transpile(source) {
+  return ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+      verbatimModuleSyntax: true,
+    },
+  }).outputText;
+}
+
+const dir = await mkdtemp(join(tmpdir(), "magicnet-dns-summary-"));
+try {
+  const tone = readFileSync(new URL("./src/lib/statusTone.ts", import.meta.url), "utf8");
+  await writeFile(join(dir, "statusTone.mjs"), transpile(tone), "utf8");
+  const source = readFileSync(new URL("./src/components/pages/dnsTestSummary.ts", import.meta.url), "utf8")
+    .replace(/from\s+["']@\/lib\/statusTone["']/g, 'from "./statusTone.mjs"');
+  await writeFile(join(dir, "dnsTestSummary.mjs"), transpile(source), "utf8");
+  const summary = await import(pathToFileURL(join(dir, "dnsTestSummary.mjs")).href);
+
+  const httpError = summary.parseDnsTestSummary(
+    "domain=https://www.gstatic.com/\nhttp_code=404\nremote_ip=203.0.113.10\ntime_total=0.42\n",
+  );
+  assert.equal(httpError.httpStatus, 404);
+  assert.equal(httpError.issueCount, 0);
+  assert.equal(httpError.status, "warn");
+  assert.match(httpError.summary, /DNS\/网络链路可达/);
+  assert.match(summary.formatDnsTestReport(httpError, "default", "bootstrap", "", "default", "raw"), /http_code=404/);
+
+  const transportError = summary.parseDnsTestSummary(
+    "domain=https://example.invalid/\nhttp_code=000\nremote_ip=\ntime_total=6.00\ncurl: (6) Could not resolve host\n",
+  );
+  assert.equal(transportError.httpStatus, 0);
+  assert.equal(transportError.status, "fail");
+  assert.equal(transportError.issueCount, 1);
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("dns test summary tests passed");

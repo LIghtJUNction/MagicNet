@@ -209,9 +209,10 @@ transport={{ state.dns.transport }}</pre>
         <p class="text-sm font-semibold">DNS 测试摘要</p>
         <p class="mt-1 text-sm leading-6 opacity-80">{{ dnsSummary.summary }}</p>
       </div>
-      <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
+      <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-5">
         <span>{{ dnsSummary.lineCount }} 行输出</span>
         <span>{{ dnsSummary.issueCount }} 条问题线索</span>
+        <span>http_code={{ dnsSummary.httpStatus ?? "none" }}</span>
         <span>remote_ip={{ dnsSummary.remoteIp || "none" }}</span>
         <span>time={{ dnsSummary.timeTotalMillis ?? "none" }}ms</span>
       </div>

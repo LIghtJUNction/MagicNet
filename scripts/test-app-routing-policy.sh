@@ -16,6 +16,7 @@ fi
 . "$ROOT/src/MagicNet/lib/magicnet/apps.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/network.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/runtime_config.sh"
 
 magicnet_warn() { :; }
 
@@ -377,5 +378,34 @@ EOF
 }
 
 assert_startup_policy_order
+
+assert_deferred_failure_disables_dns_controls() (
+  events="$WORK/deferred-failure-events.log"
+  : >"$events"
+
+  magicnet_dns_apply_unlocked() { printf '%s\n' dns-apply >>"$events"; return 1; }
+  magicnet_transparent_apply_unlocked() { printf '%s\n' transparent >>"$events"; }
+  magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$events"; }
+  magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$events"; }
+  magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot >>"$events"; }
+  magicnet_enable_dns_capture() { printf '%s\n' capture-enable >>"$events"; }
+  magicnet_enable_dns_leak_guard() { printf '%s\n' guard-enable >>"$events"; }
+  magicnet_disable_dns_capture() { printf '%s\n' capture-disable >>"$events"; }
+  magicnet_disable_dns_leak_guard() { printf '%s\n' guard-disable >>"$events"; }
+
+  if magicnet_after_kernel_start_deferred_unlocked; then
+    printf '%s\n' 'deferred config failure must return non-zero' >&2
+    exit 1
+  fi
+  grep -qx capture-disable "$events"
+  grep -qx guard-disable "$events"
+  if grep -Eq '^(capture|guard)-enable$' "$events"; then
+    printf '%s\n' 'deferred config failure enabled DNS controls' >&2
+    cat "$events" >&2
+    exit 1
+  fi
+)
+
+assert_deferred_failure_disables_dns_controls
 
 printf '%s\n' 'app routing policy regression tests passed'
