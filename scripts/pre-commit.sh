@@ -45,6 +45,7 @@ bash scripts/test-wechat-routing.sh
 bash scripts/test-action-routing.sh
 bash scripts/test-anthropic-routing.sh
 bash scripts/test-mcp-phase-config.sh
+bash scripts/test-chatgpt-voice-rules.sh
 bash scripts/test-rule-hash-retry.sh
 bash scripts/singbox-subscription-protocol-smoke.sh
 bash scripts/test-singbox-pid-discovery.sh

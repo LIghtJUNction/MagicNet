@@ -26,6 +26,11 @@ route_rules = config["route"]["rules"]
 chatgpt_packages = {"com.openai.chatgpt", "com.openai.chat", "ai.openai.chatgpt"}
 x_packages = {"com.twitter.android"}
 
+if config.get("dns", {}).get("reverse_mapping") is not True:
+    raise AssertionError(
+        "DNS reverse_mapping must preserve domain ownership for IP-only Android flows"
+    )
+
 
 def values(value):
     if value is None:
@@ -74,7 +79,14 @@ def package_matches(rule, package_name):
     return not packages or package_name in packages
 
 
-def first_modeled_outbound(domain, destination_ip, package_name):
+def first_modeled_outbound(
+    domain,
+    destination_ip,
+    package_name,
+    *,
+    network="tcp",
+    port=443,
+):
     for index, rule in enumerate(route_rules):
         if "outbound" not in rule:
             continue
@@ -82,10 +94,11 @@ def first_modeled_outbound(domain, destination_ip, package_name):
             continue
         if rule.get("protocol") not in (None, "tls"):
             continue
-        if rule.get("network") not in (None, "tcp"):
+        networks = values(rule.get("network"))
+        if networks and network not in networks:
             continue
         ports = values(rule.get("port"))
-        if ports and 443 not in ports:
+        if ports and port not in ports:
             continue
         if not package_matches(rule, package_name):
             continue
@@ -125,6 +138,17 @@ for domain in ("api.x.com", "upload.twitter.com", "abs.twimg.com"):
             f"index={index} outbound={outbound}"
         )
 
+    mapped_index, mapped_outbound = first_modeled_outbound(
+        domain,
+        "203.0.113.10",
+        "",
+    )
+    if mapped_outbound != "social-proxy":
+        raise AssertionError(
+            f"reverse-mapped X domain {domain} did not select social-proxy: "
+            f"index={mapped_index} outbound={mapped_outbound}"
+        )
+
 for domain in ("api.openai.com", "auth.openai.com", "ws.chatgpt.com", "events.oaistatsig.com"):
     index, outbound = first_modeled_outbound(
         domain,
@@ -136,6 +160,59 @@ for domain in ("api.openai.com", "auth.openai.com", "ws.chatgpt.com", "events.oa
             f"ChatGPT voice/auth domain {domain} did not keep the package-first ai-chatgpt route: "
             f"index={index} outbound={outbound}"
         )
+
+    mapped_index, mapped_outbound = first_modeled_outbound(
+        domain,
+        "203.0.113.10",
+        "",
+    )
+    if mapped_outbound != "ai-chatgpt":
+        raise AssertionError(
+            f"reverse-mapped ChatGPT domain {domain} did not select ai-chatgpt: "
+            f"index={mapped_index} outbound={mapped_outbound}"
+        )
+
+voice_rules = [
+    (index, rule)
+    for index, rule in enumerate(route_rules)
+    if rule.get("network") == "udp"
+    and rule.get("port") == 3478
+    and rule.get("outbound") == "ai-chatgpt"
+    and set(rule) == {"network", "port", "ip_cidr", "outbound"}
+]
+if len(voice_rules) != 1:
+    raise AssertionError(f"expected one exact ChatGPT Voice route, got {voice_rules}")
+voice_index, voice_rule = voice_rules[0]
+voice_cidrs = values(voice_rule.get("ip_cidr"))
+if not voice_cidrs:
+    raise AssertionError("ChatGPT Voice route must contain the official IP prefixes")
+for prefix in voice_cidrs:
+    ipaddress.ip_network(prefix)
+
+cn_ip_indexes = [
+    index
+    for index, rule in enumerate(route_rules)
+    if rule.get("outbound") == "cn-direct"
+    and (rule.get("ip_cidr") or rule.get("rule_set"))
+]
+if not cn_ip_indexes or voice_index >= min(cn_ip_indexes):
+    raise AssertionError(
+        f"ChatGPT Voice route must precede CN IP ownership: voice={voice_index} cn={cn_ip_indexes}"
+    )
+
+voice_address = str(ipaddress.ip_network(voice_cidrs[0]).network_address)
+matched_index, matched_outbound = first_modeled_outbound(
+    "",
+    voice_address,
+    "",
+    network="udp",
+    port=3478,
+)
+if (matched_index, matched_outbound) != (voice_index, "ai-chatgpt"):
+    raise AssertionError(
+        "official ChatGPT Voice IP-only flow did not select ai-chatgpt: "
+        f"index={matched_index} outbound={matched_outbound}"
+    )
 
 chatgpt_domain_rules = [
     rule

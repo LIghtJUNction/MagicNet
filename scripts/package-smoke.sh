@@ -271,6 +271,7 @@ jq -e '
 
 python3 - "$ZIP_PATH" <<'PY'
 import functools
+import ipaddress
 import json
 import os
 import posixpath
@@ -1404,6 +1405,35 @@ ai_domain_routes = {
 for outbound, required_domains in ai_domain_routes.items():
     if find_rule(route_rules, required_domains, outbound=outbound) < 0:
         raise SystemExit(f"missing dedicated domain route for {outbound}")
+
+if config.get("dns", {}).get("reverse_mapping") is not True:
+    raise SystemExit("packaged DNS must preserve reverse mappings for IP-only app flows")
+
+chatgpt_voice_routes = [
+    (index, rule)
+    for index, rule in enumerate(route_rules)
+    if rule.get("network") == "udp"
+    and rule.get("port") == 3478
+    and rule.get("outbound") == "ai-chatgpt"
+    and set(rule) == {"network", "port", "ip_cidr", "outbound"}
+]
+if len(chatgpt_voice_routes) != 1:
+    raise SystemExit(f"packaged ChatGPT Voice route is non-canonical: {chatgpt_voice_routes}")
+voice_index, voice_rule = chatgpt_voice_routes[0]
+if not voice_rule["ip_cidr"]:
+    raise SystemExit("packaged ChatGPT Voice route has no official IP prefixes")
+for prefix in voice_rule["ip_cidr"]:
+    ipaddress.ip_network(prefix)
+cn_ip_indexes = [
+    index
+    for index, rule in enumerate(route_rules)
+    if rule.get("outbound") == "cn-direct" and (rule.get("ip_cidr") or rule.get("rule_set"))
+]
+if not cn_ip_indexes or voice_index >= min(cn_ip_indexes):
+    raise SystemExit(
+        f"packaged ChatGPT Voice route must precede CN IP ownership: "
+        f"voice={voice_index} cn={cn_ip_indexes}"
+    )
 
 x_package_routes = [
     index
