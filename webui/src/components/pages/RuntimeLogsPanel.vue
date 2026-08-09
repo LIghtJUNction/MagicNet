@@ -47,7 +47,7 @@ const warningCount = computed(() => logAnalysis.value.warningCount);
 const errorCount = computed(() => logAnalysis.value.errorCount);
 const visibleOutput = computed(() => filteredLines.value.join("\n"));
 const issueLines = computed(() => logAnalysis.value.issueLines);
-const logInsight = computed(() => buildRuntimeLogInsight(logLines.value, warningCount.value, errorCount.value, issueLines.value));
+const logInsight = computed(() => buildRuntimeLogInsight(logLines.value, warningCount.value, errorCount.value, issueLines.value, logAnalysis.value.issueCount));
 const quickFilters = [
   { label: "错误", query: "", level: "error" },
   { label: "警告", query: "", level: "warn" },
@@ -95,6 +95,7 @@ async function copyIssueSummary(): Promise<void> {
     target: loadedTarget.value,
     lines: logLines.value,
     issueLines: issueLines.value,
+    issueCount: logAnalysis.value.issueCount,
     warningCount: warningCount.value,
     errorCount: errorCount.value,
     otherIssueCount: logAnalysis.value.otherIssueCount

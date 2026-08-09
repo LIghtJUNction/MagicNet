@@ -35,6 +35,7 @@ try {
     target: "sing-box",
     lines: [issue],
     issueLines: [issue],
+    issueCount: 1,
     warningCount: 0,
     errorCount: 1,
     otherIssueCount: 0,
@@ -71,6 +72,19 @@ try {
     ...caretAnalysis,
   });
   assert.doesNotMatch(caretReport, /\^\[\[/);
+
+  const timeoutLines = Array.from({ length: 90 }, (_, index) => `request ${index}: timeout`);
+  const cappedAnalysis = insights.analyzeRuntimeLogLines(timeoutLines);
+  assert.equal(cappedAnalysis.issueCount, 90);
+  assert.equal(cappedAnalysis.issueLines.length, 80);
+  assert.equal(cappedAnalysis.otherIssueCount, 90);
+  const cappedReport = insights.formatRuntimeLogIssueReport({
+    target: "sing-box",
+    lines: timeoutLines,
+    ...cappedAnalysis,
+  });
+  assert.match(cappedReport, /issues=90/);
+  assert.match(cappedReport, /excerpt_lines=80/);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

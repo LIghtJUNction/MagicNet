@@ -57,7 +57,7 @@ fn dns_test_curl_args(url: &str) -> Vec<&str> {
         "-o",
         "/dev/null",
         "-w",
-        "domain=%{url_effective}\nhttp_code=%{http_code}\nremote_ip=%{remote_ip}\ntime_total=%{time_total}\n",
+        "domain=%{url_effective}\nprobe_path=magicnet-mixed\nhttp_code=%{http_code}\nproxy_ip=%{remote_ip}\ntime_total=%{time_total}\n",
         url,
     ]
 }
@@ -168,5 +168,13 @@ mod tests {
         let args = dns_test_curl_args("https://www.gstatic.com/");
         assert!(args.windows(2).any(|pair| pair == ["--noproxy", ""]));
         assert!(args.windows(2).any(|pair| pair == ["-x", DNS_TEST_PROXY]));
+        let write_out = args
+            .windows(2)
+            .find(|pair| pair[0] == "-w")
+            .map(|pair| pair[1])
+            .expect("curl write-out format");
+        assert!(write_out.contains("\nprobe_path=magicnet-mixed\n"));
+        assert!(write_out.contains("\nproxy_ip=%{remote_ip}\n"));
+        assert!(!write_out.contains("\nremote_ip="));
     }
 }

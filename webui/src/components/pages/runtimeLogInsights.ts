@@ -16,13 +16,14 @@ export type RuntimeLogIssueReportInput = {
   target: string;
   lines: string[];
   issueLines: string[];
+  issueCount: number;
   warningCount: number;
   errorCount: number;
   otherIssueCount: number;
 };
 
 export type RuntimeLogAnalysis = Pick<RuntimeLogIssueReportInput,
-  "issueLines" | "warningCount" | "errorCount" | "otherIssueCount"
+  "issueLines" | "issueCount" | "warningCount" | "errorCount" | "otherIssueCount"
 >;
 
 export function analyzeRuntimeLogLines(lines: string[]): RuntimeLogAnalysis {
@@ -33,6 +34,7 @@ export function analyzeRuntimeLogLines(lines: string[]): RuntimeLogAnalysis {
   const issues = classified.filter(({ normalized }) => ISSUE_PATTERN.test(normalized));
   return {
     issueLines: issues.map(({ line }) => line).slice(-80),
+    issueCount: issues.length,
     warningCount: classified.filter(({ normalized }) => WARNING_PATTERN.test(normalized)).length,
     errorCount: classified.filter(({ normalized }) => ERROR_PATTERN.test(normalized)).length,
     otherIssueCount: issues.filter(({ normalized }) => (
@@ -47,7 +49,7 @@ export function runtimeLogLevelMatches(line: string, level: "all" | "warn" | "er
   return level === "warn" ? WARNING_PATTERN.test(normalized) : ERROR_PATTERN.test(normalized);
 }
 
-export function buildRuntimeLogInsight(lines: string[], warningCount: number, errorCount: number, issueLines: string[]): RuntimeLogInsight {
+export function buildRuntimeLogInsight(lines: string[], warningCount: number, errorCount: number, issueLines: string[], issueCount = issueLines.length): RuntimeLogInsight {
   if (!lines.length) {
     return {
       status: "idle",
@@ -73,11 +75,11 @@ export function buildRuntimeLogInsight(lines: string[], warningCount: number, er
       lastIssue
     };
   }
-  if (issueLines.length) {
+  if (issueCount) {
     return {
       status: "warning",
       label: "发现异常线索",
-      detail: `${issueLines.length} 行匹配 timeout/denied/not found 等异常关键词。`,
+      detail: `${issueCount} 行匹配 timeout/denied/not found 等异常关键词。`,
       lastIssue
     };
   }
@@ -97,6 +99,8 @@ export function formatRuntimeLogIssueReport(input: RuntimeLogIssueReportInput): 
     `warnings=${input.warningCount}`,
     `errors=${input.errorCount}`,
     `other_issues=${input.otherIssueCount}`,
+    `issues=${input.issueCount}`,
+    `excerpt_lines=${input.issueLines.length}`,
     "",
     ...input.issueLines.map((line) => sanitizeDiagnosticText(line))
   ].join("\n").trim();

@@ -3,7 +3,9 @@ export type DnsTestSummary = {
   lineCount: number;
   issueCount: number;
   domain: string;
+  probePath: string;
   httpStatus: number | null;
+  proxyIp: string;
   remoteIp: string;
   timeTotalMillis: number | null;
   status: "ok" | "warn" | "fail" | "idle";
@@ -18,19 +20,23 @@ export function parseDnsTestSummary(text: string, fallbackDomain = ""): DnsTestS
   const fields = parseFields(lines);
   const issueLines = lines.filter((line) => ISSUE_PATTERN.test(line));
   const httpStatus = parseHttpStatus(fields.http_code || "");
+  const probePath = fields.probe_path || "";
+  const proxyIp = fields.proxy_ip || "";
   const remoteIp = fields.remote_ip || "";
   const timeTotalMillis = parseSecondsToMillis(fields.time_total || "");
   const domain = cleanDomain(fields.domain || fallbackDomain);
-  const status = dnsStatus(lines.length, issueLines.length, httpStatus, remoteIp, timeTotalMillis);
+  const status = dnsStatus(lines.length, issueLines.length, probePath, httpStatus, proxyIp, remoteIp, timeTotalMillis);
   return {
     lineCount: lines.length,
     issueCount: issueLines.length,
     domain,
+    probePath,
     httpStatus,
+    proxyIp,
     remoteIp,
     timeTotalMillis,
     status,
-    summary: dnsSummary(status, domain, httpStatus, remoteIp, timeTotalMillis, issueLines.length),
+    summary: dnsSummary(status, domain, probePath, httpStatus, proxyIp, remoteIp, timeTotalMillis, issueLines.length),
     issueLines
   };
 }
@@ -43,7 +49,9 @@ export function formatDnsTestReport(summary: DnsTestSummary, profile: string, pr
     `secondary=${secondary || "-"}`,
     `transport=${transport}`,
     `domain=${summary.domain || "unknown"}`,
+    `probe_path=${summary.probePath || "legacy-direct"}`,
     `http_code=${summary.httpStatus ?? "none"}`,
+    `proxy_ip=${summary.proxyIp || "none"}`,
     `remote_ip=${summary.remoteIp || "none"}`,
     `time_total_ms=${summary.timeTotalMillis ?? "none"}`,
     `status=${summary.status}`,
@@ -81,17 +89,36 @@ function cleanDomain(value: string): string {
   return value.replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
 }
 
-function dnsStatus(lineCount: number, issueCount: number, httpStatus: number | null, remoteIp: string, timeTotalMillis: number | null): DnsTestSummary["status"] {
+function dnsStatus(lineCount: number, issueCount: number, probePath: string, httpStatus: number | null, proxyIp: string, remoteIp: string, timeTotalMillis: number | null): DnsTestSummary["status"] {
   if (!lineCount) return "idle";
-  if (!remoteIp || issueCount) return "fail";
+  if (issueCount) return "fail";
+  if (probePath === "magicnet-mixed") {
+    if (!proxyIp || httpStatus === null) return "fail";
+  } else if (probePath || !remoteIp) {
+    return "fail";
+  }
   if (httpStatus !== null && httpStatus >= 400) return "warn";
   if (timeTotalMillis !== null && timeTotalMillis > 2500) return "warn";
   return "ok";
 }
 
-function dnsSummary(status: DnsTestSummary["status"], domain: string, httpStatus: number | null, remoteIp: string, timeTotalMillis: number | null, issueCount: number): string {
+function dnsSummary(status: DnsTestSummary["status"], domain: string, probePath: string, httpStatus: number | null, proxyIp: string, remoteIp: string, timeTotalMillis: number | null, issueCount: number): string {
   if (status === "idle") return "尚未运行 DNS 测试。";
-  if (status === "fail") return issueCount ? `发现 ${issueCount} 条 DNS/连接问题线索。` : "未解析到 remote_ip，DNS 或 HTTPS 连通性需要检查。";
+  if (status === "fail") {
+    if (issueCount) return `发现 ${issueCount} 条 DNS/连接问题线索。`;
+    return probePath === "magicnet-mixed"
+      ? "未取得有效的 MagicNet 混合入口与 HTTP 结果，DNS 或 HTTPS 连通性需要检查。"
+      : "未解析到 remote_ip，DNS 或 HTTPS 连通性需要检查。";
+  }
+  if (probePath === "magicnet-mixed") {
+    if (httpStatus !== null && httpStatus >= 400) {
+      return `${domain || "目标域名"} 已通过 MagicNet 混合入口（${proxyIp}）完成 DNS/HTTPS 连接，但目标返回 HTTP ${httpStatus}；链路可达。`;
+    }
+    if (status === "warn") {
+      return `${domain || "目标域名"} 已通过 MagicNet 混合入口（${proxyIp}）完成 DNS/HTTPS 探测，但总耗时 ${timeTotalMillis}ms 偏高。`;
+    }
+    return `${domain || "目标域名"} 已通过 MagicNet 混合入口（${proxyIp}）完成 DNS/HTTPS 探测，总耗时 ${timeTotalMillis ?? "未知"}ms。`;
+  }
   if (httpStatus !== null && httpStatus >= 400) {
     return `${domain || "目标域名"} 已解析到 ${remoteIp}，但 HTTPS 返回 HTTP ${httpStatus}；DNS/网络链路可达。`;
   }

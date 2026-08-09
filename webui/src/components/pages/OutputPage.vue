@@ -24,7 +24,7 @@ const outputStats = computed(() => {
   return {
     lines: outputLines.value.length,
     chars: state.output.length,
-    issueLines: analysis.issueLines.length
+    issueLines: analysis.issueCount
   };
 });
 const filteredOutput = computed(() => {
