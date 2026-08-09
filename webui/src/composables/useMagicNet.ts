@@ -379,7 +379,6 @@ async function startBackgroundCli(
     label,
   );
   const subscriptionTask = isSubscriptionBackgroundArgs(lifecycleArgs);
-  const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true, false) : false;
   const operationId = createBackgroundOperationId();
   const log = backgroundLogPath(label, operationId);
   stopBackgroundLogFollow();
@@ -393,7 +392,7 @@ async function startBackgroundCli(
     updatedAt: startedAt,
     finishedAt: 0,
     status: "running",
-    subscriptionBaselineKnown,
+    subscriptionBaselineKnown: false,
     subscriptionBaselineAttemptEpoch: state.subscriptions.lastAttemptEpoch,
     subscriptionBaselineGenerationId: state.subscriptions.lastGenerationId,
     subscriptionBaselineResult: state.subscriptions.lastResult,
@@ -403,6 +402,13 @@ async function startBackgroundCli(
     ? `${label} 已在后台执行；私有命令和日志不会显示。正在跟踪安全状态...`
     : `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
   publishTrackedOperation(operationSequence, "accepted", launchNotice, launchOutput);
+  const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true, false) : false;
+  if (state.backgroundTask.id === operationId) {
+    state.backgroundTask.subscriptionBaselineKnown = subscriptionBaselineKnown;
+    state.backgroundTask.subscriptionBaselineAttemptEpoch = state.subscriptions.lastAttemptEpoch;
+    state.backgroundTask.subscriptionBaselineGenerationId = state.subscriptions.lastGenerationId;
+    state.backgroundTask.subscriptionBaselineResult = state.subscriptions.lastResult;
+  }
   await nextTick();
   await nextFrame();
   const command = backgroundLaunchCommand(args, label, log, operationId, cleanupCommand);
@@ -413,6 +419,7 @@ async function startBackgroundCli(
     previewOverride,
   );
   const accepted = outcome.ok && backgroundAccepted(outcome.stdout, operationId);
+  const ownsBackgroundTask = state.backgroundTask.id === operationId;
   if (accepted || outcome.timedOut) {
     if (outcome.timedOut) {
       const notice = `投递确认超时，继续对账：${label}`;
@@ -421,11 +428,15 @@ async function startBackgroundCli(
         : `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。`;
       publishTrackedOperation(operationSequence, "running", notice, output);
     }
-    followBackgroundLogs(log, label, lifecycleArgs, operationId, operationSequence, 0, redactOutput);
+    if (ownsBackgroundTask) {
+      followBackgroundLogs(log, label, lifecycleArgs, operationId, operationSequence, 0, redactOutput);
+    }
   } else {
-    state.backgroundTask.status = "error";
-    state.backgroundTask.updatedAt = Date.now();
-    state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
+    if (ownsBackgroundTask) {
+      state.backgroundTask.status = "error";
+      state.backgroundTask.updatedAt = Date.now();
+      state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
+    }
     const notice = `投递失败：${label}`;
     const output = redactOutput
       ? `${label} 未投递到后台；私有命令详情已隐藏。请检查设备状态后重试。`
@@ -433,7 +444,9 @@ async function startBackgroundCli(
     publishTrackedOperation(operationSequence, "error", notice, output);
   }
   if (outcome.timedOut) {
-    return `[warning] background launch confirmation timed out; reconciliation continues in ${log}`;
+    return ownsBackgroundTask
+      ? `[warning] background launch confirmation timed out; reconciliation continues in ${log}`
+      : "[warning] background launch confirmation timed out after a newer task took over tracking";
   }
   return accepted ? outcome.text : `[error] errno=-1 background accepted marker missing`;
 }

@@ -15,6 +15,8 @@ const useMagicNetSource = readFileSync(new URL("./src/composables/useMagicNet.ts
 assert.match(useMagicNetSource, /async function startBackgroundCli[\s\S]*?const operationSequence = trackRedactedOperation\(\s*previewOverride \|\| redactedCliPreview\(displayArgs\),\s*label,\s*\);/);
 assert.match(useMagicNetSource, /function followBackgroundLogs\([\s\S]*?operationSequence: number,[\s\S]*?publishTrackedOperation\(\s*operationSequence,/);
 assert.match(useMagicNetSource, /function followBackgroundLogs[\s\S]*?refreshSubs\(true, false\)/);
+assert.match(useMagicNetSource, /async function startBackgroundCli[\s\S]*?const operationId = createBackgroundOperationId\(\);[\s\S]*?await refreshSubs\(true, false\)/);
+assert.match(useMagicNetSource, /const ownsBackgroundTask = state\.backgroundTask\.id === operationId;[\s\S]*?if \(ownsBackgroundTask\) \{\s*followBackgroundLogs/);
 
 const firstId = createBackgroundOperationId(1000);
 const secondId = createBackgroundOperationId(1000);
