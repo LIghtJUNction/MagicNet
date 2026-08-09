@@ -2,8 +2,8 @@ import { sanitizeDiagnosticText, stripTerminalControlSequences } from "@/composa
 import { statusToneClasses } from "@/lib/statusTone";
 
 const WARNING_PATTERN = /\b(warn|warning)\b/i;
-const ERROR_PATTERN = /\b(error|fail|failed|fatal|panic)\b/i;
-const ISSUE_PATTERN = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|not found)\b/i;
+const ERROR_PATTERN = /\b(error|fail|failed|fatal|panic|denied|timeout|timed out|not found)\b/i;
+const ISSUE_PATTERN = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|timed out|not found)\b/i;
 
 export type RuntimeLogInsight = {
   status: "idle" | "ok" | "warning" | "error";

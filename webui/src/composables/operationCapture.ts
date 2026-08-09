@@ -39,3 +39,11 @@ export function updateOperationCapture(
   if (update.output !== undefined) state.output = update.output;
   return true;
 }
+
+export function invalidateOperationCapture(state: OperationCapture): number {
+  state.sequence += 1;
+  state.phase = "idle";
+  state.command = "";
+  state.output = "";
+  return state.sequence;
+}

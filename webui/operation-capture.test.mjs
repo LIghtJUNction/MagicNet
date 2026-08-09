@@ -46,6 +46,16 @@ try {
   }), true);
   assert.equal(state.phase, "error");
   assert.match(state.output, /Could not resolve host/);
+
+  const invalidatedSequence = capture.invalidateOperationCapture(state);
+  assert.equal(invalidatedSequence, dns + 1);
+  assert.equal(state.command, "");
+  assert.equal(state.output, "");
+  assert.equal(state.phase, "idle");
+  assert.equal(capture.updateOperationCapture(state, dns, {
+    phase: "done",
+    output: "stale private output",
+  }), false);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

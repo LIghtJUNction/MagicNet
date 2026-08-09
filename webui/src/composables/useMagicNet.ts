@@ -51,6 +51,7 @@ import type { IssueKind } from "@/composables/issueDrafts";
 import {
   beginOperationCapture,
   emptyOperationCapture,
+  invalidateOperationCapture,
   updateOperationCapture,
 } from "@/composables/operationCapture";
 import { useExternalLinks } from "@/composables/useExternalLinks";
@@ -137,6 +138,12 @@ const state = reactive({
   },
 });
 
+function trackRedactedOperation(commandPreview: string): void {
+  invalidateOperationCapture(state.operationCapture);
+  state.lastCommand = commandPreview;
+  state.phase = "accepted";
+}
+
 async function queued<T>(task: () => Promise<T>): Promise<T> {
   state.queueDepth += 1;
   const run = writeQueue.then(task, task).finally(() => {
@@ -151,10 +158,11 @@ async function runShellOutcome(
   label: string,
   quiet = false,
   previewOverride = "",
+  trackCommand = true,
 ): Promise<ExecOutcome> {
   const command = `su -M -c ${shellQuote(commandBody)}`;
   const commandPreview = previewOverride || compactCommand(command);
-  if (!quiet || previewOverride) state.lastCommand = commandPreview;
+  if (trackCommand && (!quiet || previewOverride)) state.lastCommand = commandPreview;
   const pendingOutput = `$ ${commandPreview}\n执行中...`;
   const captureSequence = quiet
     ? 0
@@ -260,7 +268,18 @@ async function runPrivateCli(
   label: string,
   redactedPreview: string,
 ): Promise<ExecOutcome> {
+  trackRedactedOperation(redactedPreview);
   return runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview);
+}
+
+async function runPrivatePayloadCli(
+  args: string,
+  label: string,
+  redactedPreview: string,
+): Promise<ExecOutcome> {
+  // Payload staging and cleanup are implementation details. Keep the user's
+  // redacted parent-operation preview as the diagnostic fallback.
+  return runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview, false);
 }
 
 async function stagePrivatePayload(
@@ -270,8 +289,9 @@ async function stagePrivatePayload(
   label: string,
   chunkSize?: number,
 ) {
+  trackRedactedOperation(redactedCliPreview(`webui payload stage ${namespace} [private-payload]`));
   return stagePrivatePayloadWithCli(
-    runPrivateCli,
+    runPrivatePayloadCli,
     MODULE_DIR,
     namespace,
     basename,
@@ -286,7 +306,7 @@ async function removePrivatePayload(
   basename: string,
   label: string,
 ): Promise<boolean> {
-  return removePrivatePayloadWithCli(runPrivateCli, namespace, basename, label);
+  return removePrivatePayloadWithCli(runPrivatePayloadCli, namespace, basename, label);
 }
 
 async function startBackgroundCli(
@@ -298,6 +318,7 @@ async function startBackgroundCli(
   lifecycleArgs = displayArgs,
 ): Promise<string> {
   const redactOutput = Boolean(previewOverride);
+  if (redactOutput) trackRedactedOperation(previewOverride);
   const subscriptionTask = isSubscriptionBackgroundArgs(lifecycleArgs);
   const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true) : false;
   const operationId = createBackgroundOperationId();

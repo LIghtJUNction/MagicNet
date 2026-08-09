@@ -73,11 +73,16 @@ try {
   });
   assert.doesNotMatch(caretReport, /\^\[\[/);
 
+  for (const line of ["dial i/o timeout", "connection timed out", "permission denied", "route not found"]) {
+    assert.equal(insights.runtimeLogLevelMatches(line, "error"), true, `${line} must remain in the error filter`);
+  }
+
   const timeoutLines = Array.from({ length: 90 }, (_, index) => `request ${index}: timeout`);
   const cappedAnalysis = insights.analyzeRuntimeLogLines(timeoutLines);
   assert.equal(cappedAnalysis.issueCount, 90);
   assert.equal(cappedAnalysis.issueLines.length, 80);
-  assert.equal(cappedAnalysis.otherIssueCount, 90);
+  assert.equal(cappedAnalysis.errorCount, 90);
+  assert.equal(cappedAnalysis.otherIssueCount, 0);
   const cappedReport = insights.formatRuntimeLogIssueReport({
     target: "sing-box",
     lines: timeoutLines,

@@ -117,6 +117,7 @@ assert.match(redactedBearerHeaders, /说明/);
 const toolsSource = readFileSync(new URL("./src/components/pages/ToolsPage.vue", import.meta.url), "utf8");
 const subscriptionsSource = readFileSync(new URL("./src/components/pages/SubscriptionsPage.vue", import.meta.url), "utf8");
 const webuiSource = readFileSync(new URL("./src/components/pages/WebuiPage.vue", import.meta.url), "utf8");
+const useMagicNetSource = readFileSync(new URL("./src/composables/useMagicNet.ts", import.meta.url), "utf8");
 const installPlanSource = readFileSync(new URL("./src/components/pages/webuiInstallPlan.ts", import.meta.url), "utf8");
 const linksSource = readFileSync(new URL("./src/composables/useExternalLinks.ts", import.meta.url), "utf8");
 for (const source of [toolsSource, subscriptionsSource]) {
@@ -145,5 +146,8 @@ assert.match(installPlanSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(installPlanSource, /webui install-local \[filtered-url\] \$\{sha256 \|\| "\[sha256\]"\}/);
 assert.match(linksSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(linksSource, /redactedCliPreview\("open external \[filtered-url\]"\)/);
+assert.match(useMagicNetSource, /async function runPrivateCli[\s\S]*?trackRedactedOperation\(redactedPreview\)[\s\S]*?runShellOutcome/);
+assert.match(useMagicNetSource, /stagePrivatePayloadWithCli\(\s*runPrivatePayloadCli,/);
+assert.match(useMagicNetSource, /removePrivatePayloadWithCli\(runPrivatePayloadCli,/);
 
 console.log("private payload and signed URL contract tests passed");
