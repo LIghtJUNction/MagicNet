@@ -51,7 +51,6 @@ import type { IssueKind } from "@/composables/issueDrafts";
 import {
   beginOperationCapture,
   emptyOperationCapture,
-  invalidateOperationCapture,
   updateOperationCapture,
 } from "@/composables/operationCapture";
 import { useExternalLinks } from "@/composables/useExternalLinks";
@@ -146,12 +145,26 @@ function releaseForegroundTask(sequence: number): void {
 }
 
 function trackRedactedOperation(commandPreview: string, label = ""): number {
-  const sequence = invalidateOperationCapture(state.operationCapture);
+  const output = `$ ${commandPreview}\n执行中；私密输出已隐藏。`;
+  const sequence = beginOperationCapture(state.operationCapture, commandPreview, output);
   state.lastCommand = commandPreview;
   state.phase = "accepted";
-  state.output = `$ ${commandPreview}\n执行中；私密输出已隐藏。`;
+  state.output = output;
   if (label) state.notice = `已接收：${label}`;
   return sequence;
+}
+
+function publishTrackedOperation(
+  sequence: number,
+  phase: Phase,
+  notice: string,
+  output: string,
+): boolean {
+  if (!updateOperationCapture(state.operationCapture, sequence, { phase, output })) return false;
+  state.phase = phase;
+  state.notice = notice;
+  state.output = output;
+  return true;
 }
 
 async function queued<T>(task: () => Promise<T>): Promise<T> {
@@ -288,16 +301,18 @@ async function runTrackedQuietShellOutcome(
 ): Promise<ExecOutcome> {
   const operationSequence = trackRedactedOperation(redactedPreview, label);
   const outcome = await runShellOutcome(commandBody, label, true, redactedPreview);
-  if (state.operationCapture.sequence === operationSequence) {
-    state.phase = outcome.ok ? "done" : "error";
-    state.notice = outcome.ok ? `完成：${label}` : `失败：${label}`;
-    const result = outcome.ok
-      ? "[info] completed; private output hidden"
-      : outcome.timedOut
-        ? "[exec-timeout] private output hidden"
-        : `[error] errno=${outcome.errno}; private output hidden`;
-    state.output = `$ ${redactedPreview}\n${result}`;
-  }
+  const phase = outcome.ok ? "done" : "error";
+  const result = outcome.ok
+    ? "[info] completed; private output hidden"
+    : outcome.timedOut
+      ? "[exec-timeout] private output hidden"
+      : `[error] errno=${outcome.errno}; private output hidden`;
+  publishTrackedOperation(
+    operationSequence,
+    phase,
+    outcome.ok ? `完成：${label}` : `失败：${label}`,
+    `$ ${redactedPreview}\n${result}`,
+  );
   return outcome;
 }
 
@@ -331,13 +346,14 @@ async function stagePrivatePayload(
     label,
     chunkSize,
   );
-  if (state.operationCapture.sequence === operationSequence) {
-    state.phase = staged ? "done" : "error";
-    state.notice = staged ? `完成：${label}` : `失败：${label}`;
-    state.output = staged
+  publishTrackedOperation(
+    operationSequence,
+    staged ? "done" : "error",
+    staged ? `完成：${label}` : `失败：${label}`,
+    staged
       ? `$ ${state.lastCommand}\n[info] completed; private output hidden`
-      : `$ ${state.lastCommand}\n[error] private payload staging failed; private output hidden`;
-  }
+      : `$ ${state.lastCommand}\n[error] private payload staging failed; private output hidden`,
+  );
   return staged;
 }
 
@@ -358,9 +374,12 @@ async function startBackgroundCli(
   lifecycleArgs = displayArgs,
 ): Promise<string> {
   const redactOutput = Boolean(previewOverride);
-  if (redactOutput) trackRedactedOperation(previewOverride);
+  const operationSequence = trackRedactedOperation(
+    previewOverride || redactedCliPreview(displayArgs),
+    label,
+  );
   const subscriptionTask = isSubscriptionBackgroundArgs(lifecycleArgs);
-  const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true) : false;
+  const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true, false) : false;
   const operationId = createBackgroundOperationId();
   const log = backgroundLogPath(label, operationId);
   stopBackgroundLogFollow();
@@ -379,11 +398,11 @@ async function startBackgroundCli(
     subscriptionBaselineGenerationId: state.subscriptions.lastGenerationId,
     subscriptionBaselineResult: state.subscriptions.lastResult,
   };
-  state.phase = "accepted";
-  state.notice = `已投递后台任务：${label}`;
-  state.output = redactOutput
+  const launchNotice = `已投递后台任务：${label}`;
+  const launchOutput = redactOutput
     ? `${label} 已在后台执行；私有命令和日志不会显示。正在跟踪安全状态...`
     : `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
+  publishTrackedOperation(operationSequence, "accepted", launchNotice, launchOutput);
   await nextTick();
   await nextFrame();
   const command = backgroundLaunchCommand(args, label, log, operationId, cleanupCommand);
@@ -396,21 +415,22 @@ async function startBackgroundCli(
   const accepted = outcome.ok && backgroundAccepted(outcome.stdout, operationId);
   if (accepted || outcome.timedOut) {
     if (outcome.timedOut) {
-      state.notice = `投递确认超时，继续对账：${label}`;
-      state.output = redactOutput
+      const notice = `投递确认超时，继续对账：${label}`;
+      const output = redactOutput
         ? `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪安全状态。`
         : `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。`;
+      publishTrackedOperation(operationSequence, "running", notice, output);
     }
-    followBackgroundLogs(log, label, lifecycleArgs, operationId, 0, redactOutput);
+    followBackgroundLogs(log, label, lifecycleArgs, operationId, operationSequence, 0, redactOutput);
   } else {
     state.backgroundTask.status = "error";
     state.backgroundTask.updatedAt = Date.now();
     state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
-    state.phase = "error";
-    state.notice = `投递失败：${label}`;
-    state.output = redactOutput
+    const notice = `投递失败：${label}`;
+    const output = redactOutput
       ? `${label} 未投递到后台；私有命令详情已隐藏。请检查设备状态后重试。`
       : `${label} 未投递到后台。\n\n${outcome.text || "[error] accepted marker missing"}`;
+    publishTrackedOperation(operationSequence, "error", notice, output);
   }
   if (outcome.timedOut) {
     return `[warning] background launch confirmation timed out; reconciliation continues in ${log}`;
@@ -446,6 +466,7 @@ function followBackgroundLogs(
   label: string,
   args: string,
   operationId: string,
+  operationSequence: number,
   attempt = 0,
   redactOutput = false,
 ): void {
@@ -453,7 +474,7 @@ function followBackgroundLogs(
   backgroundLogTimer = window.setTimeout(
     async () => {
       const subscriptionTask = isSubscriptionBackgroundArgs(args)
-        ? refreshSubs(true)
+        ? refreshSubs(true, false)
         : Promise.resolve(true);
       const [logs, status] = await Promise.all([
         runShell(backgroundLogCommand(log, args, operationId), `跟踪 ${label}`, true),
@@ -483,8 +504,8 @@ function followBackgroundLogs(
           : "running";
       state.backgroundTask.updatedAt = now;
       state.backgroundTask.finishedAt = done || failed ? now : 0;
-      state.phase = done ? "done" : failed ? "error" : "running";
-      state.notice = done
+      const phase = done ? "done" : failed ? "error" : "running";
+      const notice = done
         ? `完成：${label}`
         : failed
           ? `失败：${label}`
@@ -492,20 +513,21 @@ function followBackgroundLogs(
       const visibleLogs = redactOutput
         ? "私有后台日志已隐藏。"
         : logs || "等待日志输出...";
-      state.output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${visibleLogs}`;
+      const output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${visibleLogs}`;
+      publishTrackedOperation(operationSequence, phase, notice, output);
       if (!done && !failed && attempt + 1 < maxAttempts) {
-        followBackgroundLogs(log, label, args, operationId, attempt + 1, redactOutput);
+        followBackgroundLogs(log, label, args, operationId, operationSequence, attempt + 1, redactOutput);
       } else {
         backgroundLogTimer = 0;
         if (!done && !failed) {
           state.backgroundTask.status = "timeout";
           state.backgroundTask.updatedAt = Date.now();
           state.backgroundTask.finishedAt = 0;
-          state.phase = "running";
-          state.notice = `${label} 仍在后台运行或等待对账`;
-          state.output += redactOutput
+          const timeoutNotice = `${label} 仍在后台运行或等待对账`;
+          const timeoutOutput = output + (redactOutput
             ? "\n\n[warn] 安全状态跟踪已超时，但这不代表任务失败。请刷新订阅状态完成对账。"
-            : "\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。";
+            : "\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。");
+          publishTrackedOperation(operationSequence, "running", timeoutNotice, timeoutOutput);
         }
       }
     },
@@ -601,7 +623,7 @@ async function refreshBlock(quiet = false): Promise<boolean> {
   return true;
 }
 
-async function refreshSubs(quiet = false): Promise<boolean> {
+async function refreshSubs(quiet = false, reportFailure = true): Promise<boolean> {
   const [listText, statusText] = await Promise.all([
     runCli("sub list", "读取订阅列表", quiet),
     runCli("sub status", "读取订阅状态", quiet),
@@ -611,9 +633,11 @@ async function refreshSubs(quiet = false): Promise<boolean> {
     execFailed(statusText) ? "订阅状态" : "",
   ].filter(Boolean);
   if (failed.length) {
-    state.phase = "error";
-    state.notice = "订阅刷新不完整";
-    state.output = `读取${failed.join("和")}失败，旧数据已保留。\n\n${[listText, statusText].filter(execFailed).join("\n")}`;
+    if (reportFailure) {
+      state.phase = "error";
+      state.notice = "订阅刷新不完整";
+      state.output = `读取${failed.join("和")}失败，旧数据已保留。\n\n${[listText, statusText].filter(execFailed).join("\n")}`;
+    }
     return false;
   }
   state.subscriptions = parseSubs(listText, statusText, state.subscriptions);

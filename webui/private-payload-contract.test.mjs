@@ -153,13 +153,14 @@ assert.match(installPlanSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(installPlanSource, /webui install-local \[filtered-url\] \$\{sha256 \|\| "\[sha256\]"\}/);
 assert.match(linksSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(linksSource, /redactedCliPreview\("open external \[filtered-url\]"\)/);
-assert.match(useMagicNetSource, /async function runTrackedQuietShellOutcome[\s\S]*?trackRedactedOperation\(redactedPreview, label\)[\s\S]*?state\.phase = outcome\.ok \? "done" : "error"/);
-assert.match(useMagicNetSource, /function trackRedactedOperation[\s\S]*?state\.output = `\$ \$\{commandPreview\}\\n执行中；私密输出已隐藏。`/);
+assert.match(useMagicNetSource, /async function runTrackedQuietShellOutcome[\s\S]*?trackRedactedOperation\(redactedPreview, label\)[\s\S]*?publishTrackedOperation\(\s*operationSequence,\s*phase,/);
+assert.match(useMagicNetSource, /function trackRedactedOperation[\s\S]*?const output = `\$ \$\{commandPreview\}\\n执行中；私密输出已隐藏。`[\s\S]*?state\.output = output/);
+assert.match(useMagicNetSource, /function trackRedactedOperation[\s\S]*?beginOperationCapture\(state\.operationCapture, commandPreview, output\)/);
 assert.match(useMagicNetSource, /async function runTrackedQuietShellOutcome[\s\S]*?private output hidden/);
 assert.match(useMagicNetSource, /async function runShell[\s\S]*?quiet && previewOverride[\s\S]*?runTrackedQuietShellOutcome/);
 assert.match(useMagicNetSource, /async function runPrivateCli[\s\S]*?runTrackedQuietShellOutcome/);
 assert.match(useMagicNetSource, /stagePrivatePayloadWithCli\(\s*runPrivatePayloadCli,/);
-assert.match(useMagicNetSource, /const staged = await stagePrivatePayloadWithCli[\s\S]*?state\.phase = staged \? "done" : "error"/);
+assert.match(useMagicNetSource, /const staged = await stagePrivatePayloadWithCli[\s\S]*?publishTrackedOperation\(\s*operationSequence,\s*staged \? "done" : "error"/);
 assert.match(useMagicNetSource, /removePrivatePayloadWithCli\(runPrivatePayloadCli,/);
 assert.match(useMagicNetSource, /config-editor get \$\{target\}`,[\s\S]*?true,[\s\S]*?redactedCliPreview\(`config-editor get \$\{target\} \[private-output\]`\)/);
 for (const [source, preview] of [

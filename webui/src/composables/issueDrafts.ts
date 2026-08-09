@@ -103,9 +103,10 @@ export type IssueOperationContext = {
 };
 
 const SAFE_COMMANDS: Record<string, readonly string[]> = {
+  api: ["preflight", "groups", "conns", "proxies"],
   app: ["list", "packages", "add", "add-many", "remove"],
-  backup: ["create", "restore", "restore-file"],
-  block: ["list", "add", "remove", "update"],
+  backup: ["create", "export", "restore", "restore-file"],
+  block: ["list", "add", "add-domain", "allow-rule", "remove", "remove-domain", "unallow-rule", "update"],
   config: ["apply", "show"],
   "config-editor": ["get", "save-file", "sync-template"],
   core: ["status", "logs"],
@@ -113,15 +114,20 @@ const SAFE_COMMANDS: Record<string, readonly string[]> = {
   dns: ["status", "set", "test"],
   health: [],
   mcp: ["status", "start", "stop"],
+  open: ["external"],
   repair: [],
+  refresh: ["background", "tools"],
+  route: ["list"],
   service: ["status", "logs", "start", "stop", "restart", "ensure"],
   setup: [],
   sub: ["apply-file", "get", "list", "schedule", "set", "set-file", "status", "update", "update-all"],
   supervisor: ["status", "start", "stop", "restart"],
+  support: ["bundle"],
   sysroute: ["snapshot", "list", "add-rule", "del-rule", "add-route", "del-route"],
   topology: [],
   transparent: ["get", "set"],
-  warp: ["status", "import", "route"],
+  warp: ["status", "import", "import-file", "route"],
+  webui: ["status", "verify", "payload", "install-local"],
 };
 
 export function classifyOperationCommand(raw: string): string {

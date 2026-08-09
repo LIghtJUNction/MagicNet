@@ -9,6 +9,7 @@ import {
   sanitizeDiagnosticText,
   summarizeConnectionsForIssue,
 } from "./src/composables/issueDrafts.ts";
+import { redactedCliPreview } from "./src/utils.ts";
 
 const canaries = [
   "https://node.example.invalid/private/path?token=URL-CANARY",
@@ -38,6 +39,7 @@ const body = buildIssueBody(parts);
 assert.equal(body, buildIssueBody(parts), "canonical body must be deterministic");
 assert.ok(body.length <= 5200, "canonical body must fit the URL budget");
 assert.match(body, /## Module/);
+assert.equal((body.match(/## Module/g) || []).length, 1, "canonical body must not duplicate module metadata");
 assert.match(body, /## Device/);
 assert.match(body, /问题类型：命令或操作报错/);
 assert.match(body, /## Focused Context/);
@@ -68,6 +70,20 @@ for (const command of sensitiveCommands) {
   for (const secret of [reviewerBarePassword, "device-serial-123", "private.example.invalid", "token-canary", "secret-canary", "device-id-canary"]) {
     assert.equal(classified.includes(secret), false, `classified command leaked ${secret}`);
   }
+}
+for (const [displayArgs, expected] of [
+  ["app add [package] bypass", "command=app.add arguments=filtered"],
+  ["block add-domain [domain]", "command=block.add-domain arguments=filtered"],
+  ["config-editor get sing-box [private-output]", "command=config-editor.get arguments=filtered"],
+  ["backup export [private-output]", "command=backup.export arguments=filtered"],
+  ["support bundle [private-output]", "command=support.bundle arguments=filtered"],
+  ["webui verify [private-output]", "command=webui.verify arguments=filtered"],
+  ["route list [private-output]", "command=route.list arguments=filtered"],
+  ["api preflight [private-output]", "command=api.preflight arguments=filtered"],
+  ["refresh tools [private-output]", "command=refresh.tools arguments=filtered"],
+  ["open external [filtered-url]", "command=open.external arguments=filtered"],
+]) {
+  assert.equal(classifyOperationCommand(redactedCliPreview(displayArgs)), expected);
 }
 const passwordBody = buildIssueBody({
   ...parts,
