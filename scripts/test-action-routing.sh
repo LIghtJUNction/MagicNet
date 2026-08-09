@@ -125,6 +125,18 @@ for domain in ("api.x.com", "upload.twitter.com", "abs.twimg.com"):
             f"index={index} outbound={outbound}"
         )
 
+for domain in ("api.openai.com", "auth.openai.com", "ws.chatgpt.com", "events.oaistatsig.com"):
+    index, outbound = first_modeled_outbound(
+        domain,
+        "203.0.113.10",
+        "com.openai.chatgpt",
+    )
+    if (index, outbound) != (chatgpt_indexes[0], "ai-chatgpt"):
+        raise AssertionError(
+            f"ChatGPT voice/auth domain {domain} did not keep the package-first ai-chatgpt route: "
+            f"index={index} outbound={outbound}"
+        )
+
 chatgpt_domain_rules = [
     rule
     for rule in route_rules

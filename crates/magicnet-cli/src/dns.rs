@@ -28,13 +28,18 @@ fn dns_test(domain: &str) -> Result<(), String> {
     let url = format!("https://{domain}/");
     let output = Command::new("curl")
         .args([
-            "-fsS",
+            // A DNS/transport probe must not fail merely because a healthy
+            // endpoint returns HTTP 4xx/5xx (for example, www.gstatic.com/
+            // commonly returns 404).  Curl still fails on DNS, connect, and
+            // TLS errors, which are the failures this command is intended to
+            // report.
+            "-sS",
             "--max-time",
             "6",
             "-o",
             "/dev/null",
             "-w",
-            "domain=%{url_effective}\nremote_ip=%{remote_ip}\ntime_total=%{time_total}\n",
+            "domain=%{url_effective}\nhttp_code=%{http_code}\nremote_ip=%{remote_ip}\ntime_total=%{time_total}\n",
             &url,
         ])
         .output()

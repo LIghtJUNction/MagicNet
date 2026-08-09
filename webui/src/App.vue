@@ -508,7 +508,7 @@ onUnmounted(() => {
           :key="item.key"
           :data-tab="item.key"
           :class="[
-            'flex min-h-11 min-w-0 items-center gap-3 rounded-[0.85rem] px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
+            'flex min-h-11 min-w-0 items-center gap-3 whitespace-nowrap rounded-[0.85rem] px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
             activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle',
           ]"
           type="button"
@@ -525,7 +525,7 @@ onUnmounted(() => {
           :key="item.key"
           :data-tab="item.key"
           :class="[
-            'flex min-h-11 min-w-0 items-center gap-3 rounded-[0.85rem] px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
+            'flex min-h-11 min-w-0 items-center gap-3 whitespace-nowrap rounded-[0.85rem] px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
             activeTab === item.key ? 'mn-nav-advanced-active' : 'mn-nav-idle',
           ]"
           type="button"
@@ -561,7 +561,7 @@ onUnmounted(() => {
         :key="item.key"
         :data-tab="item.key"
         :class="[
-          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.85rem] px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
+          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-[0.85rem] px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
           activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle',
         ]"
         type="button"
@@ -574,7 +574,7 @@ onUnmounted(() => {
       <button
         ref="advancedNavTrigger"
         :class="[
-          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.85rem] px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
+          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-[0.85rem] px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
           activeAdvancedTab ? 'mn-nav-advanced-active' : 'mn-nav-idle',
         ]"
         type="button"

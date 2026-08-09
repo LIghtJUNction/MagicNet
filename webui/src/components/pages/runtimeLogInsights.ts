@@ -1,4 +1,4 @@
-import { sanitizeOutputText } from "./outputDiagnostics";
+import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
 import { statusToneClasses } from "@/lib/statusTone";
 
 export type RuntimeLogInsight = {
@@ -26,7 +26,7 @@ export function buildRuntimeLogInsight(lines: string[], warningCount: number, er
       lastIssue: ""
     };
   }
-  const lastIssue = sanitizeOutputText(issueLines.at(-1) || "");
+  const lastIssue = sanitizeDiagnosticText(issueLines.at(-1) || "");
   if (errorCount) {
     return {
       status: "error",
@@ -68,7 +68,7 @@ export function formatRuntimeLogIssueReport(input: RuntimeLogIssueReportInput): 
     `errors=${input.errorCount}`,
     `other_issues=${input.otherIssueCount}`,
     "",
-    ...input.issueLines.map((line) => sanitizeOutputText(line))
+    ...input.issueLines.map((line) => sanitizeDiagnosticText(line))
   ].join("\n").trim();
 }
 
