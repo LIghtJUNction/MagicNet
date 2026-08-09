@@ -6,6 +6,7 @@ use crate::service::restart_current_core;
 use crate::{run_magicnet_function, write_text_file, App};
 
 const DNS_CONF: &str = ".config/magicnet/dns.conf";
+const DNS_TEST_PROXY: &str = "http://127.0.0.1:7892";
 
 pub(crate) fn dns_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
@@ -27,21 +28,7 @@ fn dns_test(domain: &str) -> Result<(), String> {
     let domain = normalize_test_domain(domain)?;
     let url = format!("https://{domain}/");
     let output = Command::new("curl")
-        .args([
-            // A DNS/transport probe must not fail merely because a healthy
-            // endpoint returns HTTP 4xx/5xx (for example, www.gstatic.com/
-            // commonly returns 404).  Curl still fails on DNS, connect, and
-            // TLS errors, which are the failures this command is intended to
-            // report.
-            "-sS",
-            "--max-time",
-            "6",
-            "-o",
-            "/dev/null",
-            "-w",
-            "domain=%{url_effective}\nhttp_code=%{http_code}\nremote_ip=%{remote_ip}\ntime_total=%{time_total}\n",
-            &url,
-        ])
+        .args(dns_test_curl_args(&url))
         .output()
         .map_err(|err| format!("run curl: {err}"))?;
     print!("{}", String::from_utf8_lossy(&output.stdout));
@@ -50,6 +37,29 @@ fn dns_test(domain: &str) -> Result<(), String> {
     } else {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
+}
+
+fn dns_test_curl_args(url: &str) -> Vec<&str> {
+    vec![
+        // Root is deliberately outside the magicnet0 TUN boundary. Route the
+        // probe through MagicNet's loopback mixed inbound so it exercises the
+        // same managed DNS and outbound path as proxied applications.
+        "--noproxy",
+        "",
+        "-x",
+        DNS_TEST_PROXY,
+        // A DNS/transport probe must not fail merely because a healthy
+        // endpoint returns HTTP 4xx/5xx (for example, www.gstatic.com/
+        // commonly returns 404). Curl still fails on DNS, connect, and TLS.
+        "-sS",
+        "--max-time",
+        "6",
+        "-o",
+        "/dev/null",
+        "-w",
+        "domain=%{url_effective}\nhttp_code=%{http_code}\nremote_ip=%{remote_ip}\ntime_total=%{time_total}\n",
+        url,
+    ]
 }
 
 fn dns_status(app: &App) {
@@ -143,7 +153,7 @@ fn dns_usage() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_test_domain;
+    use super::{dns_test_curl_args, normalize_test_domain, DNS_TEST_PROXY};
 
     #[test]
     fn dns_test_domain_rejects_urls_and_shell_fragments() {
@@ -151,5 +161,12 @@ mod tests {
         assert!(normalize_test_domain("https://example.com").is_err());
         assert!(normalize_test_domain("example.com;id").is_err());
         assert!(normalize_test_domain("localhost").is_err());
+    }
+
+    #[test]
+    fn dns_test_curl_uses_local_proxy_for_root_callers() {
+        let args = dns_test_curl_args("https://www.gstatic.com/");
+        assert!(args.windows(2).any(|pair| pair == ["--noproxy", ""]));
+        assert!(args.windows(2).any(|pair| pair == ["-x", DNS_TEST_PROXY]));
     }
 }
