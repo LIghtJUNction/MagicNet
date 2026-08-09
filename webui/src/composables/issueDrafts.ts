@@ -75,8 +75,12 @@ export function propValue(text: string, key: string): string {
     .trim() || "";
 }
 
+export function stripTerminalControlSequences(text: string): string {
+  return text.replace(/(?:\u001b\[|\u009b|\^\[\[)[0-?]*[ -/]*[@-~]/g, "");
+}
+
 export function sanitizeDiagnosticText(text: string): string {
-  return text
+  return stripTerminalControlSequences(text)
     .replace(/\b(?:https?|socks?|ss|ssr|vmess|vless|trojan|hysteria2?|tuic):\/\/[^\s"'<>]+/gi, "[filtered-url]")
     .replace(/\b(?:token|secret|password|passwd|node|query|path)[=:._-][A-Za-z0-9._~+/-]{4,}\b/gi, "[filtered-value]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[filtered-email]")

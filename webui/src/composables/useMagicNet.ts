@@ -48,6 +48,11 @@ import {
 } from "@/composables/parsers";
 import { createMagicNetIssue } from "@/composables/issueReporter";
 import type { IssueKind } from "@/composables/issueDrafts";
+import {
+  beginOperationCapture,
+  emptyOperationCapture,
+  updateOperationCapture,
+} from "@/composables/operationCapture";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import {
   compactCommand,
@@ -75,6 +80,9 @@ function hasKsuExec(): boolean {
 }
 
 const hasKsu = hasKsuExec();
+const initialOutput = hasKsu
+  ? "正在读取 MagicNet 状态..."
+  : "本地预览模式：真机 WebUI 才会执行 root 命令。";
 let writeQueue: Promise<unknown> = Promise.resolve();
 let backgroundLogTimer = 0;
 
@@ -86,9 +94,8 @@ const state = reactive({
   notice: "面板已加载，所有耗时命令都会异步执行。",
   queueDepth: 0,
   lastCommand: "",
-  output: hasKsu
-    ? "正在读取 MagicNet 状态..."
-    : "本地预览模式：真机 WebUI 才会执行 root 命令。",
+  output: initialOutput,
+  operationCapture: emptyOperationCapture(initialOutput),
   backgroundTask: { ...backgroundTaskDefaults },
   issueReporter: {
     open: false,
@@ -148,13 +155,18 @@ async function runShellOutcome(
   const command = `su -M -c ${shellQuote(commandBody)}`;
   const commandPreview = previewOverride || compactCommand(command);
   if (!quiet || previewOverride) state.lastCommand = commandPreview;
+  const pendingOutput = `$ ${commandPreview}\n执行中...`;
+  const captureSequence = quiet
+    ? 0
+    : beginOperationCapture(state.operationCapture, commandPreview, pendingOutput);
   if (!quiet) {
     state.task = label;
     state.notice = `已接收：${label}`;
     const wasBusy = state.busy;
     state.busy = true;
     state.phase = wasBusy ? "queued" : "accepted";
-    state.output = `$ ${commandPreview}\n执行中...`;
+    updateOperationCapture(state.operationCapture, captureSequence, { phase: state.phase });
+    state.output = pendingOutput;
   }
   await nextTick();
   await nextFrame();
@@ -162,8 +174,9 @@ async function runShellOutcome(
   state.hasKsu = hasKsuExec();
   if (!state.hasKsu) {
     const outcome = unavailableExecOutcome(commandPreview);
-    if (!quiet) {
-      state.output = `当前没有 KernelSU 执行通道，命令未执行。\n\n${outcome.text}`;
+    const output = `当前没有 KernelSU 执行通道，命令未执行。\n\n${outcome.text}`;
+    if (!quiet && updateOperationCapture(state.operationCapture, captureSequence, { phase: "error", output })) {
+      state.output = output;
       state.phase = "error";
       state.notice = `未执行：${label}`;
       state.busy = false;
@@ -179,8 +192,10 @@ async function runShellOutcome(
         await nextFrame();
         return withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, label);
       }
-      state.phase = "running";
-      state.notice = `正在执行：${label}`;
+      if (updateOperationCapture(state.operationCapture, captureSequence, { phase: "running" })) {
+        state.phase = "running";
+        state.notice = `正在执行：${label}`;
+      }
       await nextTick();
       await nextFrame();
       await nextFrame();
@@ -188,24 +203,29 @@ async function runShellOutcome(
     });
     const outcome = normalizeExecOutcome(result);
     const text = outcome.text;
-    if (!quiet) {
+    const output = `$ ${commandPreview}\n${text || "完成"}`;
+    if (!quiet && updateOperationCapture(state.operationCapture, captureSequence, {
+      phase: outcome.ok ? "done" : "error",
+      output,
+    })) {
       state.phase = outcome.ok ? "done" : "error";
       state.notice = outcome.ok ? `完成：${label}` : `失败：${label}`;
-      state.output = `$ ${commandPreview}\n${text || "完成"}`;
+      state.output = output;
     }
     return outcome;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const timedOut = error instanceof ExecTimeoutError;
     const text = `${timedOut ? "[exec-timeout]" : "[error] errno=-1"} ${message}`;
-    if (!quiet) {
+    const output = `$ ${commandPreview}\n${text}`;
+    if (!quiet && updateOperationCapture(state.operationCapture, captureSequence, { phase: "error", output })) {
       state.phase = "error";
       state.notice = timedOut ? `等待超时：${label}` : `失败：${label}`;
-      state.output = `$ ${commandPreview}\n${text}`;
+      state.output = output;
     }
     return { ok: false, timedOut, errno: -1, stdout: "", stderr: message, text };
   } finally {
-    if (!quiet) {
+    if (!quiet && state.operationCapture.sequence === captureSequence) {
       state.busy = false;
       state.task = "";
     }

@@ -66,7 +66,6 @@ async function testDns(): Promise<void> {
       dnsTestOutput.value = await runCli(`dns test ${shellQuote(domain)}`, `DNS 测试 ${domain}`);
       testedDomain.value = domain;
       dnsCopied.value = false;
-      state.output = dnsTestOutput.value;
     } finally {
       runningDomain.value = "";
     }

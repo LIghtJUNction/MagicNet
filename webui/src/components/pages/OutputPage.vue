@@ -10,21 +10,21 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import RuntimeLogsPanel from "./RuntimeLogsPanel.vue";
 import { buildOutputDiagnostic, outputDiagnosticTone, sanitizeOutputText } from "./outputDiagnostics";
+import { analyzeRuntimeLogLines } from "./runtimeLogInsights";
 
 const { state, compactOutput, runShell } = useMagicNet();
 const outputQuery = ref("");
 const copied = ref(false);
 const issueCopied = ref(false);
-const issuePattern = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|not found)\b/i;
 
 const outputLines = computed(() => state.output.split(/\r?\n/));
 const outputStats = computed(() => {
   const nonEmpty = outputLines.value.filter((line) => line.trim());
-  const issueLines = nonEmpty.filter((line) => issuePattern.test(line));
+  const analysis = analyzeRuntimeLogLines(nonEmpty);
   return {
     lines: outputLines.value.length,
     chars: state.output.length,
-    issueLines: issueLines.length
+    issueLines: analysis.issueLines.length
   };
 });
 const filteredOutput = computed(() => {
@@ -39,11 +39,9 @@ const outputDiagnostic = computed(() => buildOutputDiagnostic({
   issueLines: outputStats.value.issueLines,
   filtered: Boolean(outputQuery.value.trim())
 }));
-const issueSummary = computed(() => outputLines.value
-  .map((line) => line.trim())
-  .filter((line) => issuePattern.test(line))
-  .slice(0, 60)
-  .join("\n"));
+const issueSummary = computed(() => analyzeRuntimeLogLines(
+  outputLines.value.map((line) => line.trim()).filter(Boolean),
+).issueLines.slice(0, 60).join("\n"));
 const visibleOutput = computed(() => compactOutput(filteredOutput.value || "没有匹配的输出行。", 7000));
 
 watch(outputQuery, () => {

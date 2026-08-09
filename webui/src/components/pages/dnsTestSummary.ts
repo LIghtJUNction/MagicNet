@@ -73,7 +73,8 @@ function parseSecondsToMillis(value: string): number | null {
 
 function parseHttpStatus(value: string): number | null {
   if (!/^\d{3}$/.test(value)) return null;
-  return Number(value);
+  const status = Number(value);
+  return status >= 100 && status <= 599 ? status : null;
 }
 
 function cleanDomain(value: string): string {

@@ -8,7 +8,13 @@ import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import { sanitizeOutputText } from "./outputDiagnostics";
-import { buildRuntimeLogInsight, formatRuntimeLogIssueReport, runtimeLogInsightTone } from "./runtimeLogInsights";
+import {
+  analyzeRuntimeLogLines,
+  buildRuntimeLogInsight,
+  formatRuntimeLogIssueReport,
+  runtimeLogInsightTone,
+  runtimeLogLevelMatches,
+} from "./runtimeLogInsights";
 
 const { runCli, state, compactOutput } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -23,7 +29,6 @@ const lastLabel = ref("");
 const loadedTarget = ref<"sing-box" | "mcp">("sing-box");
 const autoRefresh = ref(false);
 let timer = 0;
-const issuePattern = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|not found)\b/i;
 
 const commandPreview = computed(() => {
   const count = normalizedLines();
@@ -34,17 +39,14 @@ const filteredLines = computed(() => logLines.value.filter((line) => {
   const lower = line.toLowerCase();
   const keyword = query.value.trim().toLowerCase();
   const matchesKeyword = !keyword || lower.includes(keyword);
-  const matchesLevel = level.value === "all"
-    || (level.value === "warn" && /\b(warn|warning)\b/i.test(line))
-    || (level.value === "error" && /\b(error|fail|failed|fatal|panic|denied|timeout|not found)\b/i.test(line));
+  const matchesLevel = runtimeLogLevelMatches(line, level.value);
   return matchesKeyword && matchesLevel;
 }));
-const warningCount = computed(() => logLines.value.filter((line) => /\b(warn|warning)\b/i.test(line)).length);
-const errorCount = computed(() => logLines.value.filter((line) => /\b(error|fail|failed|fatal|panic)\b/i.test(line)).length);
+const logAnalysis = computed(() => analyzeRuntimeLogLines(logLines.value));
+const warningCount = computed(() => logAnalysis.value.warningCount);
+const errorCount = computed(() => logAnalysis.value.errorCount);
 const visibleOutput = computed(() => filteredLines.value.join("\n"));
-const issueLines = computed(() => logLines.value
-  .filter((line) => issuePattern.test(line))
-  .slice(-80));
+const issueLines = computed(() => logAnalysis.value.issueLines);
 const logInsight = computed(() => buildRuntimeLogInsight(logLines.value, warningCount.value, errorCount.value, issueLines.value));
 const quickFilters = [
   { label: "错误", query: "", level: "error" },
@@ -95,7 +97,7 @@ async function copyIssueSummary(): Promise<void> {
     issueLines: issueLines.value,
     warningCount: warningCount.value,
     errorCount: errorCount.value,
-    otherIssueCount: Math.max(0, issueLines.value.length - warningCount.value - errorCount.value)
+    otherIssueCount: logAnalysis.value.otherIssueCount
   }));
   state.output = issueCopied.value ? "日志问题摘要已复制。" : "剪贴板不可用，日志问题摘要未复制。";
 }

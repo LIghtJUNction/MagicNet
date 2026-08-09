@@ -1,5 +1,9 @@
-import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
+import { sanitizeDiagnosticText, stripTerminalControlSequences } from "@/composables/issueDrafts";
 import { statusToneClasses } from "@/lib/statusTone";
+
+const WARNING_PATTERN = /\b(warn|warning)\b/i;
+const ERROR_PATTERN = /\b(error|fail|failed|fatal|panic)\b/i;
+const ISSUE_PATTERN = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|not found)\b/i;
 
 export type RuntimeLogInsight = {
   status: "idle" | "ok" | "warning" | "error";
@@ -16,6 +20,32 @@ export type RuntimeLogIssueReportInput = {
   errorCount: number;
   otherIssueCount: number;
 };
+
+export type RuntimeLogAnalysis = Pick<RuntimeLogIssueReportInput,
+  "issueLines" | "warningCount" | "errorCount" | "otherIssueCount"
+>;
+
+export function analyzeRuntimeLogLines(lines: string[]): RuntimeLogAnalysis {
+  const classified = lines.map((line) => ({
+    line,
+    normalized: stripTerminalControlSequences(line),
+  }));
+  const issues = classified.filter(({ normalized }) => ISSUE_PATTERN.test(normalized));
+  return {
+    issueLines: issues.map(({ line }) => line).slice(-80),
+    warningCount: classified.filter(({ normalized }) => WARNING_PATTERN.test(normalized)).length,
+    errorCount: classified.filter(({ normalized }) => ERROR_PATTERN.test(normalized)).length,
+    otherIssueCount: issues.filter(({ normalized }) => (
+      !WARNING_PATTERN.test(normalized) && !ERROR_PATTERN.test(normalized)
+    )).length,
+  };
+}
+
+export function runtimeLogLevelMatches(line: string, level: "all" | "warn" | "error"): boolean {
+  if (level === "all") return true;
+  const normalized = stripTerminalControlSequences(line);
+  return level === "warn" ? WARNING_PATTERN.test(normalized) : ERROR_PATTERN.test(normalized);
+}
 
 export function buildRuntimeLogInsight(lines: string[], warningCount: number, errorCount: number, issueLines: string[]): RuntimeLogInsight {
   if (!lines.length) {

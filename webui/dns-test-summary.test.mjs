@@ -37,9 +37,16 @@ try {
   const transportError = summary.parseDnsTestSummary(
     "domain=https://example.invalid/\nhttp_code=000\nremote_ip=\ntime_total=6.00\ncurl: (6) Could not resolve host\n",
   );
-  assert.equal(transportError.httpStatus, 0);
+  assert.equal(transportError.httpStatus, null);
   assert.equal(transportError.status, "fail");
   assert.equal(transportError.issueCount, 1);
+
+  for (const invalidCode of ["000", "099", "600", "999"]) {
+    const invalid = summary.parseDnsTestSummary(
+      `domain=https://example.invalid/\nhttp_code=${invalidCode}\nremote_ip=\ntime_total=6.00\n`,
+    );
+    assert.equal(invalid.httpStatus, null, `${invalidCode} is not an HTTP status`);
+  }
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
