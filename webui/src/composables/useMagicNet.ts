@@ -86,6 +86,7 @@ const initialOutput = hasKsu
   : "本地预览模式：真机 WebUI 才会执行 root 命令。";
 let writeQueue: Promise<unknown> = Promise.resolve();
 let backgroundLogTimer = 0;
+let foregroundTaskSequence = 0;
 
 const state = reactive({
   hasKsu,
@@ -138,11 +139,18 @@ const state = reactive({
   },
 });
 
-function trackRedactedOperation(commandPreview: string): number {
+function releaseForegroundTask(sequence: number): void {
+  if (!sequence || sequence !== foregroundTaskSequence) return;
+  state.busy = false;
+  state.task = "";
+}
+
+function trackRedactedOperation(commandPreview: string, label = ""): number {
   const sequence = invalidateOperationCapture(state.operationCapture);
   state.lastCommand = commandPreview;
   state.phase = "accepted";
   state.output = `$ ${commandPreview}\n执行中；私密输出已隐藏。`;
+  if (label) state.notice = `已接收：${label}`;
   return sequence;
 }
 
@@ -166,6 +174,7 @@ async function runShellOutcome(
   const commandPreview = previewOverride || compactCommand(command);
   if (trackCommand && (!quiet || previewOverride)) state.lastCommand = commandPreview;
   const pendingOutput = `$ ${commandPreview}\n执行中...`;
+  const foregroundSequence = quiet ? 0 : ++foregroundTaskSequence;
   const captureSequence = quiet
     ? 0
     : beginOperationCapture(state.operationCapture, commandPreview, pendingOutput);
@@ -189,9 +198,8 @@ async function runShellOutcome(
       state.output = output;
       state.phase = "error";
       state.notice = `未执行：${label}`;
-      state.busy = false;
-      state.task = "";
     }
+    releaseForegroundTask(foregroundSequence);
     return outcome;
   }
 
@@ -235,10 +243,7 @@ async function runShellOutcome(
     }
     return { ok: false, timedOut, errno: -1, stdout: "", stderr: message, text };
   } finally {
-    if (!quiet && state.operationCapture.sequence === captureSequence) {
-      state.busy = false;
-      state.task = "";
-    }
+    releaseForegroundTask(foregroundSequence);
   }
 }
 
@@ -281,10 +286,11 @@ async function runTrackedQuietShellOutcome(
   label: string,
   redactedPreview: string,
 ): Promise<ExecOutcome> {
-  const operationSequence = trackRedactedOperation(redactedPreview);
+  const operationSequence = trackRedactedOperation(redactedPreview, label);
   const outcome = await runShellOutcome(commandBody, label, true, redactedPreview);
   if (state.operationCapture.sequence === operationSequence) {
     state.phase = outcome.ok ? "done" : "error";
+    state.notice = outcome.ok ? `完成：${label}` : `失败：${label}`;
     const result = outcome.ok
       ? "[info] completed; private output hidden"
       : outcome.timedOut
@@ -314,6 +320,7 @@ async function stagePrivatePayload(
 ) {
   const operationSequence = trackRedactedOperation(
     redactedCliPreview(`webui payload stage ${namespace} [private-payload]`),
+    label,
   );
   const staged = await stagePrivatePayloadWithCli(
     runPrivatePayloadCli,
@@ -326,6 +333,7 @@ async function stagePrivatePayload(
   );
   if (state.operationCapture.sequence === operationSequence) {
     state.phase = staged ? "done" : "error";
+    state.notice = staged ? `完成：${label}` : `失败：${label}`;
     state.output = staged
       ? `$ ${state.lastCommand}\n[info] completed; private output hidden`
       : `$ ${state.lastCommand}\n[error] private payload staging failed; private output hidden`;

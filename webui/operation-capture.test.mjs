@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import ts from "./node_modules/typescript/lib/typescript.js";
 
 const source = readFileSync(new URL("./src/composables/operationCapture.ts", import.meta.url), "utf8");
+const useMagicNetSource = readFileSync(new URL("./src/composables/useMagicNet.ts", import.meta.url), "utf8");
 const output = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2022,
@@ -56,6 +57,12 @@ try {
     phase: "done",
     output: "stale private output",
   }), false);
+
+  assert.match(useMagicNetSource, /let foregroundTaskSequence = 0;/);
+  assert.match(useMagicNetSource, /const foregroundSequence = quiet \? 0 : \+\+foregroundTaskSequence;/);
+  assert.match(useMagicNetSource, /function releaseForegroundTask\(sequence: number\)[\s\S]*?sequence !== foregroundTaskSequence[\s\S]*?state\.busy = false;[\s\S]*?state\.task = "";/);
+  assert.match(useMagicNetSource, /finally \{\s*releaseForegroundTask\(foregroundSequence\);\s*\}/);
+  assert.doesNotMatch(useMagicNetSource, /state\.operationCapture\.sequence === captureSequence\) \{\s*state\.busy = false;/);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

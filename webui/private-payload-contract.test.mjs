@@ -153,7 +153,7 @@ assert.match(installPlanSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(installPlanSource, /webui install-local \[filtered-url\] \$\{sha256 \|\| "\[sha256\]"\}/);
 assert.match(linksSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(linksSource, /redactedCliPreview\("open external \[filtered-url\]"\)/);
-assert.match(useMagicNetSource, /async function runTrackedQuietShellOutcome[\s\S]*?trackRedactedOperation\(redactedPreview\)[\s\S]*?state\.phase = outcome\.ok \? "done" : "error"/);
+assert.match(useMagicNetSource, /async function runTrackedQuietShellOutcome[\s\S]*?trackRedactedOperation\(redactedPreview, label\)[\s\S]*?state\.phase = outcome\.ok \? "done" : "error"/);
 assert.match(useMagicNetSource, /function trackRedactedOperation[\s\S]*?state\.output = `\$ \$\{commandPreview\}\\n执行中；私密输出已隐藏。`/);
 assert.match(useMagicNetSource, /async function runTrackedQuietShellOutcome[\s\S]*?private output hidden/);
 assert.match(useMagicNetSource, /async function runShell[\s\S]*?quiet && previewOverride[\s\S]*?runTrackedQuietShellOutcome/);
