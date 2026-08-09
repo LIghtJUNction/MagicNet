@@ -10,7 +10,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import RuntimeLogsPanel from "./RuntimeLogsPanel.vue";
 import { buildOutputDiagnostic, outputDiagnosticTone, sanitizeOutputText } from "./outputDiagnostics";
-import { analyzeRuntimeLogLines } from "./runtimeLogInsights";
+import { analyzeRuntimeLogLines, latestRuntimeLogIssueLines } from "./runtimeLogInsights";
 
 const { state, compactOutput, runShell } = useMagicNet();
 const outputQuery = ref("");
@@ -39,9 +39,9 @@ const outputDiagnostic = computed(() => buildOutputDiagnostic({
   issueLines: outputStats.value.issueLines,
   filtered: Boolean(outputQuery.value.trim())
 }));
-const issueSummary = computed(() => analyzeRuntimeLogLines(
+const issueSummary = computed(() => latestRuntimeLogIssueLines(
   outputLines.value.map((line) => line.trim()).filter(Boolean),
-).issueLines.slice(0, 60).join("\n"));
+).join("\n"));
 const visibleOutput = computed(() => compactOutput(filteredOutput.value || "没有匹配的输出行。", 7000));
 
 watch(outputQuery, () => {

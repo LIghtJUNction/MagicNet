@@ -83,6 +83,10 @@ try {
   assert.equal(cappedAnalysis.issueLines.length, 80);
   assert.equal(cappedAnalysis.errorCount, 90);
   assert.equal(cappedAnalysis.otherIssueCount, 0);
+  const latestExcerpt = insights.latestRuntimeLogIssueLines(timeoutLines);
+  assert.equal(latestExcerpt.length, 60);
+  assert.match(latestExcerpt[0], /request 30:/);
+  assert.match(latestExcerpt.at(-1), /request 89:/);
   const cappedReport = insights.formatRuntimeLogIssueReport({
     target: "sing-box",
     lines: timeoutLines,

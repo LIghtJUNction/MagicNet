@@ -43,6 +43,10 @@ export function analyzeRuntimeLogLines(lines: string[]): RuntimeLogAnalysis {
   };
 }
 
+export function latestRuntimeLogIssueLines(lines: string[]): string[] {
+  return analyzeRuntimeLogLines(lines).issueLines.slice(-60);
+}
+
 export function runtimeLogLevelMatches(line: string, level: "all" | "warn" | "error"): boolean {
   if (level === "all") return true;
   const normalized = stripTerminalControlSequences(line);

@@ -138,10 +138,11 @@ const state = reactive({
   },
 });
 
-function trackRedactedOperation(commandPreview: string): void {
-  invalidateOperationCapture(state.operationCapture);
+function trackRedactedOperation(commandPreview: string): number {
+  const sequence = invalidateOperationCapture(state.operationCapture);
   state.lastCommand = commandPreview;
   state.phase = "accepted";
+  return sequence;
 }
 
 async function queued<T>(task: () => Promise<T>): Promise<T> {
@@ -268,8 +269,12 @@ async function runPrivateCli(
   label: string,
   redactedPreview: string,
 ): Promise<ExecOutcome> {
-  trackRedactedOperation(redactedPreview);
-  return runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview);
+  const operationSequence = trackRedactedOperation(redactedPreview);
+  const outcome = await runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview);
+  if (state.operationCapture.sequence === operationSequence) {
+    state.phase = outcome.ok ? "done" : "error";
+  }
+  return outcome;
 }
 
 async function runPrivatePayloadCli(
@@ -289,8 +294,10 @@ async function stagePrivatePayload(
   label: string,
   chunkSize?: number,
 ) {
-  trackRedactedOperation(redactedCliPreview(`webui payload stage ${namespace} [private-payload]`));
-  return stagePrivatePayloadWithCli(
+  const operationSequence = trackRedactedOperation(
+    redactedCliPreview(`webui payload stage ${namespace} [private-payload]`),
+  );
+  const staged = await stagePrivatePayloadWithCli(
     runPrivatePayloadCli,
     MODULE_DIR,
     namespace,
@@ -299,6 +306,10 @@ async function stagePrivatePayload(
     label,
     chunkSize,
   );
+  if (state.operationCapture.sequence === operationSequence) {
+    state.phase = staged ? "done" : "error";
+  }
+  return staged;
 }
 
 async function removePrivatePayload(

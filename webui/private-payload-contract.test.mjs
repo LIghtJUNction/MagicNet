@@ -123,6 +123,8 @@ const linksSource = readFileSync(new URL("./src/composables/useExternalLinks.ts"
 for (const source of [toolsSource, subscriptionsSource]) {
   assert.doesNotMatch(source, /secureTempFilePrepareCommand|printf\s+%s|:\s*>|\bcat\s+|\brm\s+-f/);
 }
+assert.match(toolsSource, /const exported = outcome\.ok && Boolean\(payload\);[\s\S]*?state\.phase = exported \? "done" : "error";/);
+assert.match(toolsSource, /const restored = outcome\.ok && outcome\.stdout\.includes\("\[info\] Backup restored"\);[\s\S]*?state\.phase = restored \? "done" : "error";/);
 assert.match(webuiSource, /copyText\(safeCommand\)/);
 assert.doesNotMatch(webuiSource, /\{\{\s*installArgs/);
 assert.match(webuiSource, /startPrivateBackgroundCli/);
@@ -147,7 +149,9 @@ assert.match(installPlanSource, /webui install-local \[filtered-url\] \$\{sha256
 assert.match(linksSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(linksSource, /redactedCliPreview\("open external \[filtered-url\]"\)/);
 assert.match(useMagicNetSource, /async function runPrivateCli[\s\S]*?trackRedactedOperation\(redactedPreview\)[\s\S]*?runShellOutcome/);
+assert.match(useMagicNetSource, /async function runPrivateCli[\s\S]*?state\.phase = outcome\.ok \? "done" : "error"/);
 assert.match(useMagicNetSource, /stagePrivatePayloadWithCli\(\s*runPrivatePayloadCli,/);
+assert.match(useMagicNetSource, /const staged = await stagePrivatePayloadWithCli[\s\S]*?state\.phase = staged \? "done" : "error"/);
 assert.match(useMagicNetSource, /removePrivatePayloadWithCli\(runPrivatePayloadCli,/);
 
 console.log("private payload and signed URL contract tests passed");
