@@ -6,7 +6,7 @@ import Input from "@/components/ui/Input.vue";
 import { parseRouteRuleSummary } from "@/composables/parsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, execFailed } from "@/utils";
+import { copyText, execFailed, redactedCliPreview } from "@/utils";
 import { buildRouteRuleChangePlan, formatRouteRuleChangePlanReport, type RouteRuleChangePlan } from "./routeRuleChangePlan";
 import type { PendingToolAction } from "./toolActions";
 
@@ -26,8 +26,13 @@ const visibleWarpDomains = computed(() => {
   return summary.value.warp.filter((item) => item.toLowerCase().includes(query));
 });
 
-async function refreshRoutes(): Promise<void> {
-  routeOutput.value = await runCli("route list", "读取路由规则", true);
+async function refreshRoutes(trackUserAction = false): Promise<void> {
+  routeOutput.value = await runCli(
+    "route list",
+    "读取路由规则",
+    true,
+    trackUserAction ? redactedCliPreview("route list [private-output]") : "",
+  );
   pendingAction.value = null;
   pendingPlan.value = null;
   planCopied.value = false;
@@ -212,7 +217,7 @@ onMounted(() => {
       <p v-if="!visibleWarpDomains.length" class="rounded bg-[var(--mn-carrier-deep)]/30 px-2 py-2 text-[var(--mn-ink-muted)]">没有匹配的 WARP 域名。</p>
     </div>
     <div class="grid gap-2 sm:grid-cols-2">
-      <Button variant="outline" :loading="isRunning('warp-route-refresh')" @click="withAction('warp-route-refresh', () => refreshRoutes())">
+      <Button variant="outline" :loading="isRunning('warp-route-refresh')" @click="withAction('warp-route-refresh', () => refreshRoutes(true))">
         <RefreshCw :size="16" />刷新路由规则
       </Button>
       <Button variant="outline" @click="copyRouteSnapshot">

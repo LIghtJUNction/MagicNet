@@ -47,7 +47,7 @@ async function refreshTools(): Promise<void> {
   toolsRefreshing.value = true;
   state.task = "刷新工具状态";
   try {
-    await refreshDns(true);
+    await refreshDns(true, redactedCliPreview("refresh tools [private-output]"));
     await refreshWarp(true);
     await refreshMcp(true);
     state.output = "工具状态已刷新。";

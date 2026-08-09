@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { backgroundLogCommand, formatBackgroundDuration, formatBackgroundTime } from "@/composables/backgroundTasks";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText } from "@/utils";
+import { copyText, redactedCliPreview } from "@/utils";
 import RuntimeLogsPanel from "./RuntimeLogsPanel.vue";
 import { buildOutputDiagnostic, outputDiagnosticTone, sanitizeOutputText } from "./outputDiagnostics";
 import { analyzeRuntimeLogLines, latestRuntimeLogIssueLines } from "./runtimeLogInsights";
@@ -72,7 +72,12 @@ async function copyBackgroundLogPath(): Promise<void> {
 async function refreshBackgroundLog(): Promise<void> {
   const { log, args, label } = state.backgroundTask;
   if (!log) return;
-  const text = await runShell(backgroundLogCommand(log, args), `刷新后台日志 ${label}`, true);
+  const text = await runShell(
+    backgroundLogCommand(log, args),
+    `刷新后台日志 ${label}`,
+    true,
+    redactedCliPreview("refresh background log [private-output]"),
+  );
   state.backgroundTask.updatedAt = Date.now();
   state.output = `后台日志已刷新：${label}\n\n${text || "日志为空。"}`;
   copied.value = false;

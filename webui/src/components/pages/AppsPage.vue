@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText } from "@/utils";
+import { copyText, redactedCliPreview } from "@/utils";
 import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName } from "./appPolicyInsights";
 import { buildAppPolicyChangePlan, type AppPolicyChangeOperation, type AppPolicyChangePlan } from "./appPolicyChangePlan";
 
@@ -183,7 +183,12 @@ async function addPackage(pkg: string, target: AppTarget, key = `add-${target}`)
     state.packageInput = "";
     if (target === "bypass") forgetRemovedBypass(pkg);
     state.output = `已加入界面，正在保存 ${pkg}...`;
-    const text = await runCli(`app add ${shellQuote(pkg)} ${target}`, `添加应用 ${pkg}`, true);
+    const text = await runCli(
+      `app add ${shellQuote(pkg)} ${target}`,
+      `添加应用 ${pkg}`,
+      true,
+      redactedCliPreview(`app add [package] ${target}`),
+    );
     if (commandFailed(text)) {
       state.output = text;
       state.appPolicy.proxy = previousProxy;
@@ -224,7 +229,12 @@ async function removeApp(pkg: string, target: AppTarget): Promise<void> {
       rememberRemovedBypass(pkg);
     }
     state.output = `已从界面移除 ${pkg}，正在后台保存...`;
-    const text = await runCli(`app remove ${shellQuote(pkg)} ${target}`, `移除应用 ${pkg}`, true);
+    const text = await runCli(
+      `app remove ${shellQuote(pkg)} ${target}`,
+      `移除应用 ${pkg}`,
+      true,
+      redactedCliPreview(`app remove [package] ${target}`),
+    );
     if (commandFailed(text)) {
       state.output = text;
       state.appPolicy.proxy = previousProxy;
@@ -243,7 +253,12 @@ async function restoreBypass(pkg: string): Promise<void> {
     const previousBypass = [...state.appPolicy.bypass];
     moveLocalPackage(pkg, "bypass");
     state.output = `正在把 ${pkg} 加回 Bypass...`;
-    const text = await runCli(`app add ${shellQuote(pkg)} bypass`, `恢复 Bypass 应用 ${pkg}`, true);
+    const text = await runCli(
+      `app add ${shellQuote(pkg)} bypass`,
+      `恢复 Bypass 应用 ${pkg}`,
+      true,
+      redactedCliPreview("app add [package] bypass"),
+    );
     if (commandFailed(text)) {
       state.output = text;
       state.appPolicy.proxy = previousProxy;

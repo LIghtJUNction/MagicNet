@@ -8,7 +8,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, probeFailed } from "@/utils";
+import { copyText, probeFailed, redactedCliPreview } from "@/utils";
 import { formatApiEndpointProbeReport, summarizeApiEndpointProbes, summarizeApiProbeOutput, validateApiProbeOutput, type ApiEndpointProbe, type ApiProbeKey } from "./apiEndpointProbe";
 import ConnectionsPanel from "./ConnectionsPanel.vue";
 import { formatHealthCheckReport, summarizeHealthChecks } from "./healthCheckSummary";
@@ -52,7 +52,12 @@ const assistants = [
 ];
 
 async function copyContextUnlocked(): Promise<void> {
-  const text = await runCli("support bundle", "生成诊断上下文", true);
+  const text = await runCli(
+    "support bundle",
+    "生成诊断上下文",
+    true,
+    redactedCliPreview("support bundle [private-output]"),
+  );
   const sanitized = sanitizeDiagnosticText(text);
   supportBundle.value = sanitized;
   supportCopied.value = false;
@@ -67,7 +72,12 @@ async function copyContext(): Promise<void> {
 
 async function refreshSupportBundle(): Promise<void> {
   await withAction("support-bundle", async () => {
-    const text = await runCli("support bundle", "生成支持包", true);
+    const text = await runCli(
+      "support bundle",
+      "生成支持包",
+      true,
+      redactedCliPreview("support bundle [private-output]"),
+    );
     supportBundle.value = sanitizeDiagnosticText(text);
     supportCopied.value = false;
     supportIssuesCopied.value = false;
@@ -111,7 +121,12 @@ async function runApiProbe(): Promise<void> {
     const next: ApiEndpointProbe[] = [];
     for (const target of targets) {
       const startedAt = performance.now();
-      const text = await runCli(target.command, `预检 ${target.label}`, true);
+      const text = await runCli(
+        target.command,
+        `预检 ${target.label}`,
+        true,
+        redactedCliPreview("api preflight [private-output]"),
+      );
       next.push({
         ...target,
         ok: !probeFailed(text) && validateApiProbeOutput(target.key, text),

@@ -142,6 +142,7 @@ function trackRedactedOperation(commandPreview: string): number {
   const sequence = invalidateOperationCapture(state.operationCapture);
   state.lastCommand = commandPreview;
   state.phase = "accepted";
+  state.output = `$ ${commandPreview}\n执行中；私密输出已隐藏。`;
   return sequence;
 }
 
@@ -247,7 +248,10 @@ async function runShell(
   quiet = false,
   previewOverride = "",
 ): Promise<string> {
-  return (await runShellOutcome(commandBody, label, quiet, previewOverride)).text;
+  const outcome = quiet && previewOverride
+    ? await runTrackedQuietShellOutcome(commandBody, label, previewOverride)
+    : await runShellOutcome(commandBody, label, quiet, previewOverride);
+  return outcome.text;
 }
 
 async function runCli(
@@ -269,10 +273,24 @@ async function runPrivateCli(
   label: string,
   redactedPreview: string,
 ): Promise<ExecOutcome> {
+  return runTrackedQuietShellOutcome(`${CLI} ${args}`, label, redactedPreview);
+}
+
+async function runTrackedQuietShellOutcome(
+  commandBody: string,
+  label: string,
+  redactedPreview: string,
+): Promise<ExecOutcome> {
   const operationSequence = trackRedactedOperation(redactedPreview);
-  const outcome = await runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview);
+  const outcome = await runShellOutcome(commandBody, label, true, redactedPreview);
   if (state.operationCapture.sequence === operationSequence) {
     state.phase = outcome.ok ? "done" : "error";
+    const result = outcome.ok
+      ? "[info] completed; private output hidden"
+      : outcome.timedOut
+        ? "[exec-timeout] private output hidden"
+        : `[error] errno=${outcome.errno}; private output hidden`;
+    state.output = `$ ${redactedPreview}\n${result}`;
   }
   return outcome;
 }
@@ -308,6 +326,9 @@ async function stagePrivatePayload(
   );
   if (state.operationCapture.sequence === operationSequence) {
     state.phase = staged ? "done" : "error";
+    state.output = staged
+      ? `$ ${state.lastCommand}\n[info] completed; private output hidden`
+      : `$ ${state.lastCommand}\n[error] private payload staging failed; private output hidden`;
   }
   return staged;
 }
@@ -598,8 +619,8 @@ async function refreshMcp(quiet = false): Promise<boolean> {
   return true;
 }
 
-async function refreshDns(quiet = false): Promise<boolean> {
-  const text = await runCli("dns status", "读取 DNS", quiet);
+async function refreshDns(quiet = false, previewOverride = ""): Promise<boolean> {
+  const text = await runCli("dns status", "读取 DNS", quiet, previewOverride);
   if (quiet && markQuietFailure("读取 DNS", text)) return false;
   state.dns = parseDns(text, state.dns);
   return true;
@@ -633,7 +654,12 @@ async function submitIssue(kind: IssueKind): Promise<void> {
 }
 
 async function refreshTopology(): Promise<void> {
-  const text = await runCli("topology", "刷新网络拓扑", true);
+  const text = await runCli(
+    "topology",
+    "刷新网络拓扑",
+    true,
+    redactedCliPreview("topology [private-output]"),
+  );
   state.topology = execFailed(text)
     ? await runCli("sysroute snapshot", "刷新路由快照")
     : text;
@@ -651,11 +677,12 @@ async function loadConfig(): Promise<void> {
     `config-editor get ${target}`,
     `加载 ${target} 配置`,
     true,
+    redactedCliPreview(`config-editor get ${target} [private-output]`),
   );
   if (execFailed(text)) {
     state.config.status = "加载失败";
     state.notice = `${target} 配置加载失败`;
-    state.output = text || "加载失败：没有返回内容。";
+    state.output = "加载失败：配置读取命令未成功，私密输出未显示。";
     state.phase = "error";
     return;
   }
