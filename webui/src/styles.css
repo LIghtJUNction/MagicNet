@@ -2,9 +2,9 @@
 
 /*
   MagicNet WebUI design tokens.
-  The brand palette stays warm and quiet while functional layers use a restrained,
-  Apple-inspired material system: platform typography, translucent chrome, clear
-  depth, immediate press feedback, and accessibility fallbacks.
+  Verified editorial colors provide the flat field/carrier/ink hierarchy. Functional
+  layers retain restrained platform typography, translucent chrome, immediate press
+  feedback, and accessibility fallbacks.
 */
 
 @theme {
@@ -19,10 +19,10 @@
   --color-mn-cactus-deep: #8fafa4;
   --color-mn-heather: #cbcadb;
   --color-mn-oat: #e3dacc;
-  --color-mn-clay: #c45f3f;
-  --color-mn-olive: #5f7549;
-  --color-mn-sky: #4f84b5;
-  --color-mn-coral: #d9a8a8;
+  --color-mn-clay: #d97757;
+  --color-mn-olive: #788c5d;
+  --color-mn-sky: #6a9bcc;
+  --color-mn-coral: #ebcece;
   --color-mn-success: #1f4a32;
   --color-mn-warning: #7a5410;
   --color-mn-danger: #9a342a;
@@ -44,10 +44,12 @@ html[data-theme="light"] {
   --mn-cactus-deep: #8fafa4;
   --mn-heather: #cbcadb;
   --mn-oat: #e3dacc;
-  --mn-clay: #c45f3f;
-  --mn-olive: #5f7549;
-  --mn-sky: #4f84b5;
-  --mn-coral: #d4a0a0;
+  --mn-clay: #d97757;
+  --mn-clay-ink: #8a341f;
+  --mn-olive: #788c5d;
+  --mn-sky: #6a9bcc;
+  --mn-sky-ink: #275b83;
+  --mn-coral: #ebcece;
   --mn-surface: var(--mn-ivory);
   --mn-surface-raised: var(--mn-carrier);
   --mn-surface-sunken: #e8e5db;
@@ -110,8 +112,10 @@ html[data-theme="dark"] {
   --mn-heather: #9a98b0;
   --mn-oat: #b8a888;
   --mn-clay: #d97757;
+  --mn-clay-ink: #f0a58f;
   --mn-olive: #8fad72;
   --mn-sky: #6a9bcc;
+  --mn-sky-ink: #a7c8e3;
   --mn-coral: #c48a8a;
   --mn-surface: var(--mn-ivory);
   --mn-surface-raised: var(--mn-carrier);
@@ -182,13 +186,6 @@ button {
   touch-action: manipulation;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
 .rounded-md {
   border-radius: var(--mn-radius-md);
 }
@@ -240,6 +237,24 @@ textarea {
   backdrop-filter: blur(28px) saturate(160%);
 }
 
+/*
+  Editorial status hierarchy: one flat cactus field, one irregular ivory
+  carrier, then near-black information. This is the shell's single expressive
+  surface; functional cards elsewhere stay quiet.
+*/
+.mn-editorial-field {
+  overflow: hidden;
+  background: var(--mn-cactus);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--mn-ink) 18%, transparent),
+    var(--mn-shadow-card);
+}
+
+.mn-editorial-carrier {
+  background: var(--mn-ivory);
+  border-radius: 1rem 1.65rem 1.1rem 1.45rem;
+}
+
 .mn-brand-mark {
   background: var(--mn-cactus);
   color: var(--mn-on-accent);
@@ -278,32 +293,6 @@ textarea {
 .mn-topbar {
   position: relative;
   isolation: isolate;
-}
-
-.mn-topbar::after,
-.runtime-cockpit::after,
-.mobile-nav::before,
-.mn-page-actions::after {
-  position: absolute;
-  pointer-events: none;
-  content: "";
-  opacity: 0.7;
-}
-
-.mn-topbar::after,
-.runtime-cockpit::after,
-.mn-page-actions::after {
-  right: 1rem;
-  bottom: -1px;
-  left: 1rem;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--mn-border-strong), transparent);
-}
-
-.mobile-nav::before {
-  inset: 0.18rem 1rem auto;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--mn-material-edge), transparent);
 }
 
 .runtime-cockpit {

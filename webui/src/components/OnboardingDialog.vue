@@ -155,7 +155,7 @@ onUnmounted(() => {
       <div class="rounded-[5px] bg-[var(--mn-ivory)] p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <span class="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mn-clay)]">
+            <span class="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mn-clay-ink)]">
               <CheckCircle2 :size="14" /> 新手引导
             </span>
             <h2 id="onboarding-title" class="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
@@ -184,7 +184,7 @@ onUnmounted(() => {
             >
               <div class="flex items-center justify-between gap-3">
                 <strong class="text-sm font-semibold text-[var(--mn-ink)]">{{ index + 1 }}. {{ step.title }}</strong>
-                <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mn-clay)]">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mn-clay-ink)]">
                   {{ index === currentStep ? "当前" : "待完成" }}
                 </span>
               </div>
@@ -194,7 +194,7 @@ onUnmounted(() => {
 
           <article class="rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] p-4 sm:p-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-clay)]">{{ progressLabel }}</span>
+              <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-clay-ink)]">{{ progressLabel }}</span>
               <div class="flex items-center gap-2 text-xs text-[var(--mn-ink-muted)]">
                 <span class="inline-flex size-2.5 rounded-full bg-[var(--mn-cactus)]" aria-hidden="true" />
                 <span>可随时重新打开，不会修改现有运行状态</span>
