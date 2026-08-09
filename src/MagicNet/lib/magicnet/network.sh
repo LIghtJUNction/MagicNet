@@ -194,34 +194,37 @@ magicnet_after_kernel_start() {
     unset _after_kernel_runner
 }
 
-magicnet_after_kernel_start_deferred_unlocked() {
-    _deferred_rc=0
-    magicnet_dns_apply_unlocked || _deferred_rc=1
-    magicnet_transparent_apply_unlocked || _deferred_rc=1
-    magicnet_app_policy_apply_unlocked || _deferred_rc=1
-    magicnet_warp_apply_unlocked || _deferred_rc=1
+magicnet_after_kernel_start_deferred_unlocked() (
+    _deferred_failures=
+    _deferred_mark_failed() {
+        _deferred_failures="${_deferred_failures}${_deferred_failures:+,}$1"
+    }
+
+    magicnet_dns_apply_unlocked || _deferred_mark_failed dns
+    magicnet_transparent_apply_unlocked || _deferred_mark_failed transparent
+    magicnet_app_policy_apply_unlocked || _deferred_mark_failed app-policy
+    magicnet_warp_apply_unlocked || _deferred_mark_failed warp
     # Keep the hotspot route authoritative after every deferred config rewrite.
     # These rewrites run asynchronously after the core starts and may otherwise
     # publish a snapshot that predates the startup-time hotspot normalization.
-    magicnet_singbox_apply_hotspot_policy || _deferred_rc=1
-    if [ "$_deferred_rc" -ne 0 ]; then
+    magicnet_singbox_apply_hotspot_policy || _deferred_mark_failed hotspot
+
+    if [ -z "$_deferred_failures" ]; then
+        magicnet_enable_dns_capture || _deferred_mark_failed dns-capture
+        magicnet_enable_dns_leak_guard || _deferred_mark_failed dns-leak-guard
+    fi
+
+    if [ -n "$_deferred_failures" ]; then
         # A partially applied configuration must not leave stale interception
         # or leak-guard rules pointing at a failed DNS/core setup.
         magicnet_disable_dns_capture || true
         magicnet_disable_dns_leak_guard || true
-        unset _deferred_rc
+        magicnet_warn "Deferred network configuration failed: ${_deferred_failures}; DNS interception disabled"
         return 1
     fi
-    magicnet_enable_dns_capture || _deferred_rc=1
-    magicnet_enable_dns_leak_guard || _deferred_rc=1
-    _deferred_result="$_deferred_rc"
-    if [ "$_deferred_rc" -ne 0 ]; then
-        magicnet_disable_dns_capture || true
-        magicnet_disable_dns_leak_guard || true
-    fi
-    unset _deferred_rc
-    return "$_deferred_result"
-}
+
+    return 0
+)
 
 magicnet_after_kernel_start_deferred() {
     magicnet_with_config_lock magicnet_after_kernel_start_deferred_unlocked

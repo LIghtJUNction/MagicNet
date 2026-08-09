@@ -386,12 +386,13 @@ assert_deferred_failure_disables_dns_controls() (
   magicnet_dns_apply_unlocked() { printf '%s\n' dns-apply >>"$events"; return 1; }
   magicnet_transparent_apply_unlocked() { printf '%s\n' transparent >>"$events"; }
   magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$events"; }
-  magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$events"; }
+  magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$events"; return 1; }
   magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot >>"$events"; }
   magicnet_enable_dns_capture() { printf '%s\n' capture-enable >>"$events"; }
   magicnet_enable_dns_leak_guard() { printf '%s\n' guard-enable >>"$events"; }
   magicnet_disable_dns_capture() { printf '%s\n' capture-disable >>"$events"; }
   magicnet_disable_dns_leak_guard() { printf '%s\n' guard-disable >>"$events"; }
+  magicnet_warn() { printf 'warning:%s\n' "$*" >>"$events"; }
 
   if magicnet_after_kernel_start_deferred_unlocked; then
     printf '%s\n' 'deferred config failure must return non-zero' >&2
@@ -399,6 +400,7 @@ assert_deferred_failure_disables_dns_controls() (
   fi
   grep -qx capture-disable "$events"
   grep -qx guard-disable "$events"
+  grep -qx 'warning:Deferred network configuration failed: dns,warp; DNS interception disabled' "$events"
   if grep -Eq '^(capture|guard)-enable$' "$events"; then
     printf '%s\n' 'deferred config failure enabled DNS controls' >&2
     cat "$events" >&2
