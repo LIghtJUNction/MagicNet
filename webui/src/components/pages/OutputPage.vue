@@ -7,24 +7,24 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { backgroundLogCommand, formatBackgroundDuration, formatBackgroundTime } from "@/composables/backgroundTasks";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText } from "@/utils";
+import { copyText, redactedCliPreview } from "@/utils";
 import RuntimeLogsPanel from "./RuntimeLogsPanel.vue";
 import { buildOutputDiagnostic, outputDiagnosticTone, sanitizeOutputText } from "./outputDiagnostics";
+import { analyzeRuntimeLogLines, latestRuntimeLogIssueLines } from "./runtimeLogInsights";
 
 const { state, compactOutput, runShell } = useMagicNet();
 const outputQuery = ref("");
 const copied = ref(false);
 const issueCopied = ref(false);
-const issuePattern = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|not found)\b/i;
 
 const outputLines = computed(() => state.output.split(/\r?\n/));
 const outputStats = computed(() => {
   const nonEmpty = outputLines.value.filter((line) => line.trim());
-  const issueLines = nonEmpty.filter((line) => issuePattern.test(line));
+  const analysis = analyzeRuntimeLogLines(nonEmpty);
   return {
     lines: outputLines.value.length,
     chars: state.output.length,
-    issueLines: issueLines.length
+    issueLines: analysis.issueCount
   };
 });
 const filteredOutput = computed(() => {
@@ -39,11 +39,9 @@ const outputDiagnostic = computed(() => buildOutputDiagnostic({
   issueLines: outputStats.value.issueLines,
   filtered: Boolean(outputQuery.value.trim())
 }));
-const issueSummary = computed(() => outputLines.value
-  .map((line) => line.trim())
-  .filter((line) => issuePattern.test(line))
-  .slice(0, 60)
-  .join("\n"));
+const issueSummary = computed(() => latestRuntimeLogIssueLines(
+  outputLines.value.map((line) => line.trim()).filter(Boolean),
+).join("\n"));
 const visibleOutput = computed(() => compactOutput(filteredOutput.value || "没有匹配的输出行。", 7000));
 
 watch(outputQuery, () => {
@@ -74,7 +72,12 @@ async function copyBackgroundLogPath(): Promise<void> {
 async function refreshBackgroundLog(): Promise<void> {
   const { log, args, label } = state.backgroundTask;
   if (!log) return;
-  const text = await runShell(backgroundLogCommand(log, args), `刷新后台日志 ${label}`, true);
+  const text = await runShell(
+    backgroundLogCommand(log, args),
+    `刷新后台日志 ${label}`,
+    true,
+    redactedCliPreview("refresh background log [private-output]"),
+  );
   state.backgroundTask.updatedAt = Date.now();
   state.output = `后台日志已刷新：${label}\n\n${text || "日志为空。"}`;
   copied.value = false;

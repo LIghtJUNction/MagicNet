@@ -34,12 +34,32 @@ try {
   assert.match(httpError.summary, /DNS\/网络链路可达/);
   assert.match(summary.formatDnsTestReport(httpError, "default", "bootstrap", "", "default", "raw"), /http_code=404/);
 
+  const proxied = summary.parseDnsTestSummary(
+    "domain=https://chatgpt.com/\nprobe_path=magicnet-mixed\nhttp_code=200\nproxy_ip=127.0.0.1\ntime_total=0.31\n",
+  );
+  assert.equal(proxied.status, "ok");
+  assert.equal(proxied.probePath, "magicnet-mixed");
+  assert.equal(proxied.proxyIp, "127.0.0.1");
+  assert.equal(proxied.remoteIp, "");
+  assert.match(proxied.summary, /MagicNet 混合入口/);
+  const proxiedReport = summary.formatDnsTestReport(proxied, "default", "bootstrap", "", "default", "raw");
+  assert.match(proxiedReport, /probe_path=magicnet-mixed/);
+  assert.match(proxiedReport, /proxy_ip=127\.0\.0\.1/);
+  assert.match(proxiedReport, /remote_ip=none/);
+
   const transportError = summary.parseDnsTestSummary(
     "domain=https://example.invalid/\nhttp_code=000\nremote_ip=\ntime_total=6.00\ncurl: (6) Could not resolve host\n",
   );
-  assert.equal(transportError.httpStatus, 0);
+  assert.equal(transportError.httpStatus, null);
   assert.equal(transportError.status, "fail");
   assert.equal(transportError.issueCount, 1);
+
+  for (const invalidCode of ["000", "099", "600", "999"]) {
+    const invalid = summary.parseDnsTestSummary(
+      `domain=https://example.invalid/\nhttp_code=${invalidCode}\nremote_ip=\ntime_total=6.00\n`,
+    );
+    assert.equal(invalid.httpStatus, null, `${invalidCode} is not an HTTP status`);
+  }
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

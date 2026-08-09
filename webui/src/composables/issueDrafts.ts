@@ -75,8 +75,12 @@ export function propValue(text: string, key: string): string {
     .trim() || "";
 }
 
+export function stripTerminalControlSequences(text: string): string {
+  return text.replace(/(?:\u001b\[|\u009b|\^\[\[)[0-?]*[ -/]*[@-~]/g, "");
+}
+
 export function sanitizeDiagnosticText(text: string): string {
-  return text
+  return stripTerminalControlSequences(text)
     .replace(/\b(?:https?|socks?|ss|ssr|vmess|vless|trojan|hysteria2?|tuic):\/\/[^\s"'<>]+/gi, "[filtered-url]")
     .replace(/\b(?:token|secret|password|passwd|node|query|path)[=:._-][A-Za-z0-9._~+/-]{4,}\b/gi, "[filtered-value]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[filtered-email]")
@@ -99,9 +103,10 @@ export type IssueOperationContext = {
 };
 
 const SAFE_COMMANDS: Record<string, readonly string[]> = {
+  api: ["preflight", "groups", "conns", "proxies"],
   app: ["list", "packages", "add", "add-many", "remove"],
-  backup: ["create", "restore", "restore-file"],
-  block: ["list", "add", "remove", "update"],
+  backup: ["create", "export", "restore", "restore-file"],
+  block: ["list", "add", "add-domain", "allow-rule", "remove", "remove-domain", "unallow-rule", "update"],
   config: ["apply", "show"],
   "config-editor": ["get", "save-file", "sync-template"],
   core: ["status", "logs"],
@@ -109,15 +114,20 @@ const SAFE_COMMANDS: Record<string, readonly string[]> = {
   dns: ["status", "set", "test"],
   health: [],
   mcp: ["status", "start", "stop"],
+  open: ["external"],
   repair: [],
+  refresh: ["background", "tools"],
+  route: ["list"],
   service: ["status", "logs", "start", "stop", "restart", "ensure"],
   setup: [],
   sub: ["apply-file", "get", "list", "schedule", "set", "set-file", "status", "update", "update-all"],
   supervisor: ["status", "start", "stop", "restart"],
+  support: ["bundle"],
   sysroute: ["snapshot", "list", "add-rule", "del-rule", "add-route", "del-route"],
   topology: [],
   transparent: ["get", "set"],
-  warp: ["status", "import", "route"],
+  warp: ["status", "import", "import-file", "route"],
+  webui: ["status", "verify", "payload", "install-local"],
 };
 
 export function classifyOperationCommand(raw: string): string {

@@ -38,7 +38,7 @@ const buttonVariants = cva(
         ghost:
           "bg-transparent text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)] hover:text-[var(--mn-ink)]",
         destructive:
-          "bg-[var(--mn-clay)] text-white shadow-[inset_0_1px_0_color-mix(in_srgb,#fff_28%,transparent),inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_12%,transparent),0_4px_12px_color-mix(in_srgb,var(--mn-clay)_20%,transparent)] hover:brightness-105",
+          "bg-[var(--mn-clay)] text-[var(--mn-on-accent)] shadow-[inset_0_1px_0_color-mix(in_srgb,#fff_28%,transparent),inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_12%,transparent),0_4px_12px_color-mix(in_srgb,var(--mn-clay)_20%,transparent)] hover:brightness-105",
       },
       size: {
         sm: "min-h-11 px-4",

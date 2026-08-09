@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText } from "@/utils";
+import { copyText, redactedCliPreview } from "@/utils";
 import { buildBlocklistSummary, filterBlocklistEntries } from "./blocklistInsights";
 
 const { state, runCli, startBackgroundCli, refreshBlock, openExternal, shellQuote, REPO } = useMagicNet();
@@ -48,7 +48,12 @@ async function addDomain(domain: string): Promise<void> {
   await withAction(`add-domain-${domain}`, async () => {
     state.blocklist.manual.push(domain);
     state.blocklist.newDomain = "";
-    await runCli(`block add-domain ${shellQuote(domain)}`, `添加黑名单 ${domain}`, true);
+    await runCli(
+      `block add-domain ${shellQuote(domain)}`,
+      `添加黑名单 ${domain}`,
+      true,
+      redactedCliPreview("block add-domain [domain]"),
+    );
     await refreshBlock(true);
   });
 }
@@ -68,7 +73,12 @@ async function removeDomain(domain: string): Promise<void> {
   await withAction(`remove-domain-${domain}`, async () => {
     state.blocklist.manual = state.blocklist.manual.filter((item) => item !== domain);
     state.output = `正在移除阻断：${domain}`;
-    const text = await runCli(`block remove-domain ${shellQuote(domain)}`, `移除阻断 ${domain}`, true);
+    const text = await runCli(
+      `block remove-domain ${shellQuote(domain)}`,
+      `移除阻断 ${domain}`,
+      true,
+      redactedCliPreview("block remove-domain [domain]"),
+    );
     if (text.includes("[error]")) {
       state.output = text;
       state.blocklist.manual.unshift(domain);
@@ -94,7 +104,12 @@ async function allowRule(rule: string): Promise<void> {
     if (suffix !== rule) state.blocklist.communityDomains = state.blocklist.communityDomains.filter((item) => item !== suffix);
     if (!state.blocklist.allowRules.includes(rule)) state.blocklist.allowRules.push(rule);
     state.output = `正在加入广告放行白名单：${rule}`;
-    const text = await runCli(`block allow-rule ${shellQuote(rule)}`, `广告放行 ${rule}`, true);
+    const text = await runCli(
+      `block allow-rule ${shellQuote(rule)}`,
+      `广告放行 ${rule}`,
+      true,
+      redactedCliPreview("block allow-rule [rule]"),
+    );
     if (text.includes("[error]")) {
       state.output = text;
       state.blocklist.allowRules = state.blocklist.allowRules.filter((item) => item !== rule);
@@ -179,7 +194,12 @@ async function removeAllowRule(rule: string): Promise<void> {
   await withAction(`unallow-${rule}`, async () => {
     state.blocklist.allowRules = state.blocklist.allowRules.filter((item) => item !== rule);
     state.output = `正在从广告放行白名单删除：${rule}`;
-    const text = await runCli(`block unallow-rule ${shellQuote(rule)}`, `从广告放行白名单删除 ${rule}`, true);
+    const text = await runCli(
+      `block unallow-rule ${shellQuote(rule)}`,
+      `从广告放行白名单删除 ${rule}`,
+      true,
+      redactedCliPreview("block unallow-rule [rule]"),
+    );
     if (text.includes("[error]")) {
       state.output = text;
       if (!state.blocklist.allowRules.includes(rule)) state.blocklist.allowRules.push(rule);

@@ -82,11 +82,11 @@ export function* chunkSurrogateSafe(text: string, size: number): Generator<strin
 
 /**
  * Redacted `lastCommand` preview for a CLI invocation whose real arguments
- * carry a secret. Owns the `su -M -c '…'` framing in one place so previews
- * can't drift from the wrapper actually built by `runShellOutcome`.
+ * carry a secret. Preserve a safe `cli` token so issue diagnostics can classify
+ * the operation without retaining the executable path or private arguments.
  */
 export function redactedCliPreview(displayArgs: string): string {
-  return `su -M -c '… ${displayArgs}'`;
+  return `su -M -c '… cli ${displayArgs}'`;
 }
 
 export function compactOutput(value: string, limit = OUTPUT_RENDER_LIMIT): string {

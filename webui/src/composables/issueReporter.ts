@@ -13,6 +13,7 @@ import {
 import { copyText, intentDataQuote, shellQuote } from "@/utils";
 import type { RuntimeState } from "@/types";
 import type { BackgroundTaskState } from "@/composables/backgroundTasks";
+import type { OperationCapture } from "@/composables/operationCapture";
 
 type IssueReporterState = {
   task: string;
@@ -23,6 +24,7 @@ type IssueReporterState = {
   hasKsu: boolean;
   runtime: RuntimeState;
   lastCommand: string;
+  operationCapture: OperationCapture;
   backgroundTask: BackgroundTaskState;
 };
 
@@ -108,10 +110,13 @@ export async function createMagicNetIssue(
   { state, runShell, runCli }: IssueReporterDeps,
   kind: IssueKind,
 ): Promise<void> {
+  const captured = state.operationCapture.command
+    ? state.operationCapture
+    : { phase: state.phase, command: state.lastCommand, output: state.output };
   const operation: IssueOperationContext = {
-    phase: state.phase,
-    lastCommand: state.lastCommand,
-    lastOutput: state.output,
+    phase: captured.phase,
+    lastCommand: captured.command,
+    lastOutput: captured.output,
     backgroundLabel: state.backgroundTask.label,
     backgroundArgs: state.backgroundTask.args,
     backgroundStatus: state.backgroundTask.status,

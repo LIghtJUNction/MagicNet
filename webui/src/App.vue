@@ -458,46 +458,48 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section class="runtime-cockpit mn-chrome relative z-20 mb-5 grid gap-3 rounded-[1.25rem] p-1.5 md:sticky md:top-4 md:grid-cols-[minmax(220px,1.05fr)_minmax(0,1fr)_auto] md:items-center md:gap-2">
-      <div class="rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-cactus)_30%,var(--mn-material-heavy))] px-4 py-3 shadow-[inset_0_1px_0_color-mix(in_srgb,#fff_45%,transparent),inset_0_0_0_1px_color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]">
-        <div class="flex items-center justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">运行状态</span>
-            <div class="mt-1.5 flex min-w-0 items-center gap-2.5">
-              <span :class="['size-2.5 shrink-0 rounded-full', statusDotClass]" />
-              <strong class="w-0 min-w-0 flex-1 truncate text-lg font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
-                {{ runtimeStateLabel }}
-              </strong>
+    <section class="runtime-cockpit mn-editorial-field relative z-20 mb-5 rounded-[1.25rem] p-1.5 md:sticky md:top-4">
+      <div class="mn-editorial-carrier grid gap-3 p-1.5 md:grid-cols-[minmax(220px,1.05fr)_minmax(0,1fr)_auto] md:items-center md:gap-2">
+        <div class="rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-cactus)_34%,var(--mn-carrier))] px-4 py-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">运行状态</span>
+              <div class="mt-1.5 flex min-w-0 items-center gap-2.5">
+                <span :class="['size-2.5 shrink-0 rounded-full', statusDotClass]" />
+                <strong class="w-0 min-w-0 flex-1 truncate text-lg font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
+                  {{ runtimeStateLabel }}
+                </strong>
+              </div>
             </div>
+            <Badge :tone="statusTone">{{ runtimeStateLabel }}</Badge>
           </div>
-          <Badge :tone="statusTone">{{ runtimeStateLabel }}</Badge>
         </div>
-      </div>
 
-      <div class="grid min-w-0 grid-cols-2 gap-2 px-2 pb-2 md:px-3 md:pb-0">
-        <div class="min-w-0">
-          <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">模式</span>
-          <code class="mn-code mt-1 block truncate text-xs md:text-sm">TUN</code>
+        <div class="grid min-w-0 grid-cols-2 gap-2 px-2 pb-2 md:px-3 md:pb-0">
+          <div class="min-w-0">
+            <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">模式</span>
+            <code class="mn-code mt-1 block truncate text-xs md:text-sm">TUN</code>
+          </div>
+          <div class="min-w-0">
+            <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">核心</span>
+            <code class="mn-code mt-1 block truncate text-xs md:text-sm">{{ state.runtime.singBox }}</code>
+          </div>
+          <div class="col-span-2 flex min-w-0 items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)] md:text-sm">
+            <ScrollText class="shrink-0 text-[var(--mn-clay)]" :size="14" />
+            <span class="min-w-0 truncate" :title="statusMessage">{{ statusMessage }}</span>
+          </div>
         </div>
-        <div class="min-w-0">
-          <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">核心</span>
-          <code class="mn-code mt-1 block truncate text-xs md:text-sm">{{ state.runtime.singBox }}</code>
-        </div>
-        <div class="col-span-2 flex min-w-0 items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)] md:text-sm">
-          <ScrollText class="shrink-0 text-[var(--mn-clay)]" :size="14" />
-          <span class="min-w-0 truncate" :title="statusMessage">{{ statusMessage }}</span>
-        </div>
-      </div>
 
-      <Button
-        v-if="state.backgroundTask.log"
-        variant="outline"
-        size="sm"
-        class="mx-2 mb-2 md:mx-1 md:mb-0"
-        @click="setTab('output')"
-      >
-        <Terminal :size="15" />后台日志
-      </Button>
+        <Button
+          v-if="state.backgroundTask.log"
+          variant="outline"
+          size="sm"
+          class="mx-2 mb-2 md:mx-1 md:mb-0"
+          @click="setTab('output')"
+        >
+          <Terminal :size="15" />后台日志
+        </Button>
+      </div>
     </section>
 
     <main class="grid min-w-0 gap-5 md:grid-cols-[204px_minmax(0,1fr)] md:items-start md:gap-6">

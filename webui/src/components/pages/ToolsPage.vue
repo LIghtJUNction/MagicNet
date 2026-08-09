@@ -47,7 +47,7 @@ async function refreshTools(): Promise<void> {
   toolsRefreshing.value = true;
   state.task = "刷新工具状态";
   try {
-    await refreshDns(true);
+    await refreshDns(true, redactedCliPreview("refresh tools [private-output]"));
     await refreshWarp(true);
     await refreshMcp(true);
     state.output = "工具状态已刷新。";
@@ -82,7 +82,9 @@ async function exportBackup(): Promise<void> {
       preview,
     );
     const payload = outcome.ok ? outcome.stdout.trim().split(/\s+/).pop() || "" : "";
-    if (!payload) {
+    const exported = outcome.ok && Boolean(payload);
+    state.phase = exported ? "done" : "error";
+    if (!exported) {
       state.backup.status = "导出失败，请检查设备状态后重试。";
       state.output = state.backup.status;
       return;
@@ -141,7 +143,9 @@ async function runRestoreBackup(payload: string): Promise<void> {
         "导入配置备份",
         redactedCliPreview("backup restore-file [安全码和备份内容已隐藏]"),
       );
-      state.backup.status = outcome.ok && outcome.stdout.includes("[info] Backup restored")
+      const restored = outcome.ok && outcome.stdout.includes("[info] Backup restored");
+      state.phase = restored ? "done" : "error";
+      state.backup.status = restored
         ? "导入成功，运行配置已应用"
         : "导入失败，请检查安全码和备份内容后重试。";
       state.output = state.backup.status;
@@ -149,6 +153,7 @@ async function runRestoreBackup(payload: string): Promise<void> {
       const cleaned = await removePrivatePayload("tmp", staged.basename, "备份导入载荷");
       if (!cleaned) {
         state.backup.status = `${state.backup.status} 私有临时数据清理未确认。`;
+        state.phase = "error";
         state.output = state.backup.status;
       }
     }
@@ -225,6 +230,7 @@ async function runImportWarp(payload: string): Promise<void> {
     } finally {
       const cleaned = await removePrivatePayload("tmp", staged.basename, "WARP 导入载荷");
       if (!cleaned) {
+        state.phase = "error";
         state.output = state.output + "\n\nWARP 私有临时数据清理未确认。";
       }
     }

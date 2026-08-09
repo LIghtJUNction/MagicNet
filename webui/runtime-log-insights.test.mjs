@@ -35,6 +35,7 @@ try {
     target: "sing-box",
     lines: [issue],
     issueLines: [issue],
+    issueCount: 1,
     warningCount: 0,
     errorCount: 1,
     otherIssueCount: 0,
@@ -44,6 +45,55 @@ try {
   assert.match(report, /\[filtered-url\]/);
   const insight = insights.buildRuntimeLogInsight([issue], 0, 1, [issue]);
   assert.doesNotMatch(insight.lastIssue, /192\.0\.2\.7|private\.example\.invalid/);
+
+  const coloredError = "+0800 2026-08-08 01:02:45 \u001b[31mERROR\u001b[0m connection: dial tcp 0.0.0.1:23861: i/o timeout";
+  const analysis = insights.analyzeRuntimeLogLines([coloredError]);
+  assert.equal(analysis.warningCount, 0);
+  assert.equal(analysis.errorCount, 1);
+  assert.equal(analysis.otherIssueCount, 0);
+  assert.deepEqual(analysis.issueLines, [coloredError]);
+
+  const coloredReport = insights.formatRuntimeLogIssueReport({
+    target: "sing-box",
+    lines: [coloredError],
+    ...analysis,
+  });
+  assert.match(coloredReport, /errors=1/);
+  assert.match(coloredReport, /other_issues=0/);
+  assert.doesNotMatch(coloredReport, /\u001b\[|\^\[\[/);
+
+  const caretEncodedError = "+0800 2026-08-08 01:02:45 ^[[31mERROR^[[0m connection: i/o timeout";
+  const caretAnalysis = insights.analyzeRuntimeLogLines([caretEncodedError]);
+  assert.equal(caretAnalysis.errorCount, 1);
+  assert.equal(caretAnalysis.otherIssueCount, 0);
+  const caretReport = insights.formatRuntimeLogIssueReport({
+    target: "sing-box",
+    lines: [caretEncodedError],
+    ...caretAnalysis,
+  });
+  assert.doesNotMatch(caretReport, /\^\[\[/);
+
+  for (const line of ["dial i/o timeout", "connection timed out", "permission denied", "route not found"]) {
+    assert.equal(insights.runtimeLogLevelMatches(line, "error"), true, `${line} must remain in the error filter`);
+  }
+
+  const timeoutLines = Array.from({ length: 90 }, (_, index) => `request ${index}: timeout`);
+  const cappedAnalysis = insights.analyzeRuntimeLogLines(timeoutLines);
+  assert.equal(cappedAnalysis.issueCount, 90);
+  assert.equal(cappedAnalysis.issueLines.length, 80);
+  assert.equal(cappedAnalysis.errorCount, 90);
+  assert.equal(cappedAnalysis.otherIssueCount, 0);
+  const latestExcerpt = insights.latestRuntimeLogIssueLines(timeoutLines);
+  assert.equal(latestExcerpt.length, 60);
+  assert.match(latestExcerpt[0], /request 30:/);
+  assert.match(latestExcerpt.at(-1), /request 89:/);
+  const cappedReport = insights.formatRuntimeLogIssueReport({
+    target: "sing-box",
+    lines: timeoutLines,
+    ...cappedAnalysis,
+  });
+  assert.match(cappedReport, /issues=90/);
+  assert.match(cappedReport, /excerpt_lines=80/);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

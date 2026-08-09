@@ -1,5 +1,9 @@
-import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
+import { sanitizeDiagnosticText, stripTerminalControlSequences } from "@/composables/issueDrafts";
 import { statusToneClasses } from "@/lib/statusTone";
+
+const WARNING_PATTERN = /\b(warn|warning)\b/i;
+const ERROR_PATTERN = /\b(error|fail|failed|fatal|panic|denied|timeout|timed out|not found)\b/i;
+const ISSUE_PATTERN = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|timed out|not found)\b/i;
 
 export type RuntimeLogInsight = {
   status: "idle" | "ok" | "warning" | "error";
@@ -12,12 +16,44 @@ export type RuntimeLogIssueReportInput = {
   target: string;
   lines: string[];
   issueLines: string[];
+  issueCount: number;
   warningCount: number;
   errorCount: number;
   otherIssueCount: number;
 };
 
-export function buildRuntimeLogInsight(lines: string[], warningCount: number, errorCount: number, issueLines: string[]): RuntimeLogInsight {
+export type RuntimeLogAnalysis = Pick<RuntimeLogIssueReportInput,
+  "issueLines" | "issueCount" | "warningCount" | "errorCount" | "otherIssueCount"
+>;
+
+export function analyzeRuntimeLogLines(lines: string[]): RuntimeLogAnalysis {
+  const classified = lines.map((line) => ({
+    line,
+    normalized: stripTerminalControlSequences(line),
+  }));
+  const issues = classified.filter(({ normalized }) => ISSUE_PATTERN.test(normalized));
+  return {
+    issueLines: issues.map(({ line }) => line).slice(-80),
+    issueCount: issues.length,
+    warningCount: classified.filter(({ normalized }) => WARNING_PATTERN.test(normalized)).length,
+    errorCount: classified.filter(({ normalized }) => ERROR_PATTERN.test(normalized)).length,
+    otherIssueCount: issues.filter(({ normalized }) => (
+      !WARNING_PATTERN.test(normalized) && !ERROR_PATTERN.test(normalized)
+    )).length,
+  };
+}
+
+export function latestRuntimeLogIssueLines(lines: string[]): string[] {
+  return analyzeRuntimeLogLines(lines).issueLines.slice(-60);
+}
+
+export function runtimeLogLevelMatches(line: string, level: "all" | "warn" | "error"): boolean {
+  if (level === "all") return true;
+  const normalized = stripTerminalControlSequences(line);
+  return level === "warn" ? WARNING_PATTERN.test(normalized) : ERROR_PATTERN.test(normalized);
+}
+
+export function buildRuntimeLogInsight(lines: string[], warningCount: number, errorCount: number, issueLines: string[], issueCount = issueLines.length): RuntimeLogInsight {
   if (!lines.length) {
     return {
       status: "idle",
@@ -43,11 +79,11 @@ export function buildRuntimeLogInsight(lines: string[], warningCount: number, er
       lastIssue
     };
   }
-  if (issueLines.length) {
+  if (issueCount) {
     return {
       status: "warning",
       label: "发现异常线索",
-      detail: `${issueLines.length} 行匹配 timeout/denied/not found 等异常关键词。`,
+      detail: `${issueCount} 行匹配 timeout/denied/not found 等异常关键词。`,
       lastIssue
     };
   }
@@ -67,6 +103,8 @@ export function formatRuntimeLogIssueReport(input: RuntimeLogIssueReportInput): 
     `warnings=${input.warningCount}`,
     `errors=${input.errorCount}`,
     `other_issues=${input.otherIssueCount}`,
+    `issues=${input.issueCount}`,
+    `excerpt_lines=${input.issueLines.length}`,
     "",
     ...input.issueLines.map((line) => sanitizeDiagnosticText(line))
   ].join("\n").trim();

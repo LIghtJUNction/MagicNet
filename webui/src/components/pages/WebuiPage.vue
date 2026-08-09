@@ -9,7 +9,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, redactSensitiveText } from "@/utils";
+import { copyText, redactSensitiveText, redactedCliPreview } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 import { buildWebuiInstallPlan, formatWebuiInstallPlanReport, webuiInstallPlanTone, type WebuiInstallPlan } from "./webuiInstallPlan";
@@ -64,7 +64,12 @@ const panelWarnings = computed(() => buildPanelWarnings(panel.value.url, panel.v
 
 async function refreshWebui(): Promise<void> {
   await withAction("webui-status", async () => {
-    const rawStatus = await runCli("webui status", "读取 WebUI 配置", true);
+    const rawStatus = await runCli(
+      "webui status",
+      "读取 WebUI 配置",
+      true,
+      redactedCliPreview("webui status [private-output]"),
+    );
     status.value = redactSensitiveText(rawStatus);
     state.output = status.value;
   });
@@ -72,7 +77,12 @@ async function refreshWebui(): Promise<void> {
 
 async function verifyWebui(): Promise<void> {
   await withAction("webui-verify", async () => {
-    const rawVerifyOutput = await runCli("webui verify", "校验 WebUI 面板", true);
+    const rawVerifyOutput = await runCli(
+      "webui verify",
+      "校验 WebUI 面板",
+      true,
+      redactedCliPreview("webui verify [private-output]"),
+    );
     const safeVerifyOutput = redactSensitiveText(rawVerifyOutput);
     verifyOutput.value = safeVerifyOutput;
     state.output = safeVerifyOutput;

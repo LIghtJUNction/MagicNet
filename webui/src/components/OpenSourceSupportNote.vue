@@ -11,7 +11,7 @@
         <span class="mt-1 block text-sm font-semibold text-[var(--mn-ink)]">关于 MagicNet 的维护与支持</span>
       </span>
       <span
-        class="shrink-0 rounded-full border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--mn-clay)]"
+        class="shrink-0 rounded-full border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--mn-clay-ink)]"
       >
         展开
       </span>
@@ -28,7 +28,7 @@
         <p class="leading-6">
           我不太想把它做成一段单纯的捐赠请求，所以开了一个 AI API 中转站：如果你刚好有实际使用需求，可以在那里购买 AI 使用额度，在满足自己需求的同时，也顺手支持 MagicNet 继续做开源维护。
           <a
-            class="font-medium text-[var(--mn-sky)] underline decoration-[color-mix(in_srgb,var(--mn-sky)_45%,transparent)] underline-offset-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))]"
+            class="font-medium text-[var(--mn-sky-ink)] underline decoration-[color-mix(in_srgb,var(--mn-sky)_55%,transparent)] underline-offset-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))]"
             href="https://api.lmm.best/"
             target="_blank"
             rel="noopener noreferrer"

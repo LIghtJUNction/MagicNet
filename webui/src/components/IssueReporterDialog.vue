@@ -83,7 +83,7 @@ onUnmounted(() => {
       <div class="rounded-[5px] bg-[var(--mn-ivory)] p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <span class="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mn-clay)]">
+            <span class="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mn-clay-ink)]">
               <Bug :size="14" /> Issue Context
             </span>
             <h2 id="issue-reporter-title" class="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
