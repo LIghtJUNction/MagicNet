@@ -22,10 +22,26 @@ magicnet_warn() { :; }
 
 NO_JQ_BIN="$WORK/no-jq-bin"
 mkdir -p "$NO_JQ_BIN"
-for command_name in awk cp grep mkdir mv rm sed tr wc; do
+for command_name in awk chmod cp grep mkdir mv rm sed tr wc; do
   command_path=$(command -v "$command_name")
   ln -s "$command_path" "$NO_JQ_BIN/$command_name"
 done
+
+REAL_MV=$(command -v mv)
+FAIL_MV_BIN="$WORK/fail-mv-bin"
+mkdir -p "$FAIL_MV_BIN"
+cat >"$FAIL_MV_BIN/mv" <<EOF
+#!/bin/sh
+case "\${3:-}" in
+  *.include-uids.tmp|*.exclude-uids.tmp|*.base-include-uids.tmp|*.base-exclude-uids.tmp)
+    exit 1
+    ;;
+  *)
+    exec "$REAL_MV" "\$@"
+    ;;
+esac
+EOF
+chmod +x "$FAIL_MV_BIN/mv"
 
 MOCK_BIN="$WORK/mock-bin"
 mkdir -p "$MOCK_BIN"
@@ -236,6 +252,27 @@ EOF
 run_case jq
 run_case no-jq
 
+assert_publish_failure_is_visible() (
+  MODDIR="$WORK/publish-failure/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
+  write_base_config
+  printf '%s\n' 'MAGICNET_APP_MODE=blacklist' >"$MODDIR/.config/magicnet/app-mode.conf"
+  printf '%s\n' 'com.example.bypass' >"$MODDIR/.config/magicnet/app-bypass.list"
+  original_hash=$($JQ_BIN -c . "$MODDIR/.config/sing-box/config.json" | sha256sum)
+  if PATH="$MOCK_BIN:$FAIL_MV_BIN:$PATH" magicnet_singbox_apply_app_policy; then
+    printf '%s\n' 'app policy must report temporary UID publish failure' >&2
+    exit 1
+  fi
+  current_hash=$($JQ_BIN -c . "$MODDIR/.config/sing-box/config.json" | sha256sum)
+  if [ "$current_hash" != "$original_hash" ]; then
+    printf '%s\n' 'app policy publish failure must not replace the active config' >&2
+    exit 1
+  fi
+)
+
+assert_publish_failure_is_visible
+
 assert_jq_removes_legacy_dns_package_rules() {
   MODDIR="$WORK/jq-dns/module"
   export MODDIR
@@ -343,6 +380,466 @@ EOF
 
 assert_dns_capture_bypass_uids
 
+assert_dns_capture_failure_is_visible() (
+  MODDIR="$WORK/dns-capture-failure/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  dns_capture_log="$WORK/dns-capture-failure-iptables.log"
+  : >"$dns_capture_log"
+
+  iptables() {
+    printf '%s\n' "iptables $*" >>"$dns_capture_log"
+    return 1
+  }
+  ip6tables() {
+    printf '%s\n' "ip6tables $*" >>"$dns_capture_log"
+    return 1
+  }
+  magicnet_cmd_exists() { return 0; }
+  magicnet_dns_profile() { printf '%s\n' default; }
+  magicnet_ipv6_mode() { printf '%s\n' ipv4_only; }
+  magicnet_log() { printf '%s\n' "$*" >>"$dns_capture_log"; }
+  magicnet_warn() { printf '%s\n' "$*" >&2; }
+
+  if magicnet_enable_dns_capture; then
+    printf '%s\n' 'DNS capture must report an iptables installation failure' >&2
+    exit 1
+  fi
+  if grep -q 'DNS capture redirected' "$dns_capture_log"; then
+    printf '%s\n' 'DNS capture must not claim success after iptables failure' >&2
+    exit 1
+  fi
+
+  if MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=lo magicnet_enable_dns_leak_guard; then
+    printf '%s\n' 'DNS leak guard must report an iptables installation failure' >&2
+    exit 1
+  fi
+  if grep -q 'DNS leak guard blocked' "$dns_capture_log"; then
+    printf '%s\n' 'DNS leak guard must not claim success after iptables failure' >&2
+    exit 1
+  fi
+)
+
+assert_dns_capture_failure_is_visible
+
+assert_dns_capture_disable_removes_duplicate_output_jumps() (
+  MODDIR="$WORK/dns-capture-duplicate-jumps/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  dns_output_jump_count=2
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT -j magicnet-dns-output '*)
+        if [ "$dns_output_jump_count" -gt 0 ]; then
+          dns_output_jump_count=$((dns_output_jump_count - 1))
+          return 0
+        fi
+        return 1
+        ;;
+      *' -C OUTPUT -j magicnet-dns-output '*)
+        [ "$dns_output_jump_count" -gt 0 ]
+        ;;
+      *' -L magicnet-dns-output '*|*' -F magicnet-dns-output '*|*' -X magicnet-dns-output '*)
+        return 0
+        ;;
+      *)
+        return 0
+        ;;
+    esac
+  }
+  ip6tables() { return 1; }
+  magicnet_cmd_exists() {
+    [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
+  }
+
+  magicnet_disable_dns_capture
+  if [ "$dns_output_jump_count" -ne 0 ]; then
+    printf '%s\n' 'DNS capture cleanup must remove every duplicate OUTPUT jump' >&2
+    exit 1
+  fi
+)
+
+assert_dns_capture_disable_removes_duplicate_output_jumps
+
+assert_dns_capture_disable_retries_transient_delete_failure() (
+  MODDIR="$WORK/dns-capture-transient-delete/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  dns_output_jump_count=1
+  transient_delete=1
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT -j magicnet-dns-output '*)
+        if [ "$transient_delete" -eq 1 ]; then
+          transient_delete=0
+          return 1
+        fi
+        if [ "$dns_output_jump_count" -gt 0 ]; then
+          dns_output_jump_count=$((dns_output_jump_count - 1))
+          return 0
+        fi
+        return 1
+        ;;
+      *' -C OUTPUT -j magicnet-dns-output '*)
+        [ "$dns_output_jump_count" -gt 0 ]
+        ;;
+      *)
+        return 0
+        ;;
+    esac
+  }
+  ip6tables() { return 1; }
+  magicnet_cmd_exists() {
+    [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
+  }
+
+  magicnet_disable_dns_capture
+  if [ "$dns_output_jump_count" -ne 0 ]; then
+    printf '%s\n' 'DNS capture cleanup must retry a transient OUTPUT jump deletion failure' >&2
+    exit 1
+  fi
+)
+
+assert_dns_capture_disable_retries_transient_delete_failure
+
+assert_dns_capture_disable_reports_cleanup_failure() (
+  MODDIR="$WORK/dns-capture-cleanup-failure/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT -j magicnet-dns-output '*) return 1 ;;
+      *' -C OUTPUT -j magicnet-dns-output '*) return 0 ;;
+      *' -L magicnet-dns-output '*|*' -F magicnet-dns-output '*|*' -X magicnet-dns-output '*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+
+  if magicnet_disable_dns_capture; then
+    printf '%s\n' 'DNS capture cleanup must report a jump that remains installed' >&2
+    exit 1
+  fi
+  if MAGIC_DNS_CAPTURE=0 magicnet_enable_dns_capture; then
+    printf '%s\n' 'disabled DNS capture must not hide a failed cleanup' >&2
+    exit 1
+  fi
+)
+
+assert_dns_capture_disable_reports_cleanup_failure
+
+assert_dns_leak_guard_disable_removes_duplicate_rules() (
+  MODDIR="$WORK/dns-leak-guard-duplicate-rules/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  dns_guard_rule_count=2
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+        if [ "$dns_guard_rule_count" -gt 0 ]; then
+          dns_guard_rule_count=$((dns_guard_rule_count - 1))
+          return 0
+        fi
+        return 1
+        ;;
+      *' -D OUTPUT -o wlan0 '*|*' -C OUTPUT -o wlan0 '*)
+        return 1
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
+
+  magicnet_disable_dns_leak_guard
+  if [ "$dns_guard_rule_count" -ne 0 ]; then
+    printf '%s\n' 'DNS leak guard cleanup must remove every duplicate interface rule' >&2
+    exit 1
+  fi
+)
+
+assert_dns_leak_guard_disable_removes_duplicate_rules
+
+assert_dns_leak_guard_disable_cleans_previous_interfaces() (
+  MODDIR="$WORK/dns-leak-guard-stale-interface/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.state"
+  printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
+  stale_guard_rule_count=1
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+        if [ "$stale_guard_rule_count" -gt 0 ]; then
+          stale_guard_rule_count=$((stale_guard_rule_count - 1))
+          return 0
+        fi
+        return 1
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
+
+  magicnet_disable_dns_leak_guard
+  if [ "$stale_guard_rule_count" -ne 0 ]; then
+    printf '%s\n' 'DNS leak guard cleanup must include interfaces saved before a network switch' >&2
+    exit 1
+  fi
+)
+
+assert_dns_leak_guard_disable_cleans_previous_interfaces
+
+assert_dns_leak_guard_records_interfaces() (
+  MODDIR="$WORK/dns-leak-guard-state/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+
+  iptables() {
+    case " $* " in
+      *' -D '*|*' -C '*) return 1 ;;
+      *) return 0 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0 rmnet0 wlan0; }
+  magicnet_ipv6_mode() { printf '%s\n' ipv4_only; }
+  magicnet_log() { :; }
+  magicnet_warn() { printf '%s\n' "$*" >&2; }
+
+  MAGIC_DNS_LEAK_GUARD=1 magicnet_enable_dns_leak_guard
+  test "$(sed -n '1p' "$MODDIR/.state/dns-leak-guard.ifaces")" = wlan0
+  grep -qx rmnet0 "$MODDIR/.state/dns-leak-guard.ifaces"
+  magicnet_disable_dns_leak_guard
+  test ! -e "$MODDIR/.state/dns-leak-guard.ifaces"
+)
+
+assert_dns_leak_guard_records_interfaces
+
+assert_dns_leak_guard_ipv4_first_tolerates_missing_ipv6_nat() (
+  MODDIR="$WORK/dns-leak-guard-ipv4-first/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  guard_log="$WORK/dns-leak-guard-ipv4-first.log"
+  : >"$guard_log"
+
+  iptables() {
+    case " $* " in
+      *' -D '*|*' -C '*) return 1 ;;
+      *' -I '*) return 0 ;;
+      *) printf '%s\n' "iptables $*" >>"$guard_log"; return 1 ;;
+    esac
+  }
+  ip6tables() { return 1; }
+  magicnet_cmd_exists() { return 0; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
+  magicnet_ipv6_mode() { printf '%s\n' prefer_ipv4; }
+  magicnet_log() { printf '%s\n' "$*" >>"$guard_log"; }
+  magicnet_warn() { printf '%s\n' "$*" >>"$guard_log"; }
+
+  MAGIC_DNS_LEAK_GUARD=1 magicnet_enable_dns_leak_guard
+  grep -q 'IPv6 DNS leak guard unavailable' "$guard_log"
+  magicnet_disable_dns_leak_guard
+)
+
+assert_dns_leak_guard_ipv4_first_tolerates_missing_ipv6_nat
+
+assert_dns_leak_guard_uses_ipv6_filter_without_nat() (
+  MODDIR="$WORK/dns-leak-guard-ipv6-filter/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  guard_log="$WORK/dns-leak-guard-ipv6-filter.log"
+  : >"$guard_log"
+
+  iptables() {
+    case " $* " in
+      *' -C '*|*' -D '*) return 1 ;;
+      *' -I '*) printf '%s\n' "iptables $*" >>"$guard_log"; return 0 ;;
+      *) return 0 ;;
+    esac
+  }
+  ip6tables() {
+    case " $* " in
+      *' -t nat -L '*) return 1 ;;
+      *' -C '*|*' -D '*) return 1 ;;
+      *' -I '*) printf '%s\n' "ip6tables $*" >>"$guard_log"; return 0 ;;
+      *' -L '*) return 0 ;;
+      *) return 0 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' lo; }
+  magicnet_ipv6_mode() { printf '%s\n' prefer_ipv6; }
+  magicnet_log() { printf '%s\n' "$*" >>"$guard_log"; }
+  magicnet_warn() { printf '%s\n' "$*" >>"$guard_log"; }
+
+  MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=lo magicnet_enable_dns_leak_guard
+  grep -q '^ip6tables -I OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$guard_log"
+  if grep -q 'IPv6 DNS leak guard unavailable' "$guard_log"; then
+    printf '%s\n' 'IPv6 leak guard must probe the filter table, not the optional nat table' >&2
+    exit 1
+  fi
+)
+
+assert_dns_leak_guard_uses_ipv6_filter_without_nat
+
+assert_dns_leak_guard_preserves_state_after_cleanup_failure() (
+  MODDIR="$WORK/dns-leak-guard-cleanup-failure/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.state"
+  state_file="$MODDIR/.state/dns-leak-guard.ifaces"
+  printf '%s\n' wlan0 >"$state_file"
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*) return 1 ;;
+      *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
+
+  if magicnet_disable_dns_leak_guard; then
+    printf '%s\n' 'DNS leak guard cleanup must report a failed rule deletion' >&2
+    exit 1
+  fi
+  if [ ! -e "$state_file" ]; then
+    printf '%s\n' 'DNS leak guard cleanup must retain interface state after a failed rule deletion' >&2
+    exit 1
+  fi
+)
+
+assert_dns_leak_guard_preserves_state_after_cleanup_failure
+
+assert_dns_leak_guard_disabled_cleanup_failure_is_visible() (
+  MODDIR="$WORK/dns-leak-guard-disabled-cleanup-failure/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.state"
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT '* ) return 1 ;;
+      *' -C OUTPUT '* ) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
+
+  if MAGIC_DNS_LEAK_GUARD=0 magicnet_enable_dns_leak_guard; then
+    printf '%s\n' 'disabled DNS leak guard must not hide a failed cleanup' >&2
+    exit 1
+  fi
+)
+
+assert_dns_leak_guard_disabled_cleanup_failure_is_visible
+
+assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure() (
+  MODDIR="$WORK/dns-leak-guard-reapply-failure/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.state"
+  printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
+  new_rule_attempts=0
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT '*) return 1 ;;
+      *' -C OUTPUT '*) return 2 ;;
+      *' -I OUTPUT '*) new_rule_attempts=$((new_rule_attempts + 1)); return 0 ;;
+      *) return 0 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
+  magicnet_ipv6_mode() { printf '%s\n' ipv4_only; }
+  magicnet_log() { :; }
+  magicnet_warn() { :; }
+
+  if MAGIC_DNS_LEAK_GUARD=1 magicnet_enable_dns_leak_guard; then
+    printf '%s\n' 'DNS leak guard must fail when old rules cannot be removed' >&2
+    exit 1
+  fi
+  if [ "$new_rule_attempts" -ne 0 ]; then
+    printf '%s\n' 'DNS leak guard must not install new rules after cleanup failure' >&2
+    exit 1
+  fi
+  test -f "$MODDIR/.state/dns-leak-guard.ifaces"
+)
+
+assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure
+
+assert_dns_leak_guard_reapply_cleans_old_interfaces() (
+  MODDIR="$WORK/dns-leak-guard-reapply/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.state"
+  printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
+  stale_guard_rule_count=1
+
+  iptables() {
+    case " $* " in
+      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+        if [ "$stale_guard_rule_count" -gt 0 ]; then
+          stale_guard_rule_count=$((stale_guard_rule_count - 1))
+          return 0
+        fi
+        return 1
+        ;;
+      *' -C '*) return 1 ;;
+      *) return 0 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
+  magicnet_ipv6_mode() { printf '%s\n' ipv4_only; }
+  magicnet_log() { :; }
+  magicnet_warn() { printf '%s\n' "$*" >&2; }
+
+  MAGIC_DNS_LEAK_GUARD=1 magicnet_enable_dns_leak_guard
+  if [ "$stale_guard_rule_count" -ne 0 ]; then
+    printf '%s\n' 'reapplying DNS leak guard must clear rules from the previous interface' >&2
+    exit 1
+  fi
+  grep -qx rmnet0 "$MODDIR/.state/dns-leak-guard.ifaces"
+  if grep -qx wlan0 "$MODDIR/.state/dns-leak-guard.ifaces"; then
+    printf '%s\n' 'reapplying DNS leak guard must replace the saved interface set' >&2
+    exit 1
+  fi
+)
+
+assert_dns_leak_guard_reapply_cleans_old_interfaces
+
+assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat() (
+  MODDIR="$WORK/dns-capture-ipv4-first/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  dns_capture_log="$WORK/dns-capture-ipv4-first.log"
+  : >"$dns_capture_log"
+
+  iptables() { printf '%s\n' "iptables $*" >>"$dns_capture_log"; return 0; }
+  ip6tables() { printf '%s\n' "ip6tables $*" >>"$dns_capture_log"; return 1; }
+  magicnet_cmd_exists() { return 0; }
+  magicnet_dns_profile() { printf '%s\n' default; }
+  magicnet_ipv6_mode() { printf '%s\n' prefer_ipv4; }
+  magicnet_log() { printf '%s\n' "$*" >>"$dns_capture_log"; }
+  magicnet_warn() { printf '%s\n' "$*" >>"$dns_capture_log"; }
+  magicnet_disable_dns_capture() { :; }
+
+  magicnet_enable_dns_capture
+  grep -q 'IPv6 DNS capture unavailable; continuing with IPv4-first capture' "$dns_capture_log"
+)
+
+assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat
+
 assert_startup_policy_order() {
   startup_events="$WORK/startup-events.log"
   : >"$startup_events"
@@ -354,8 +851,10 @@ assert_startup_policy_order() {
   magicnet_prepare_singbox_nodes_unlocked() { printf '%s\n' prepare >>"$startup_events"; }
   magicnet_singbox_apply_transparent_mode() { printf '%s\n' transparent >>"$startup_events"; }
   magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot >>"$startup_events"; }
+  magicnet_dns_apply_unlocked() { printf '%s\n' dns >>"$startup_events"; }
   magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$startup_events"; }
   magicnet_tailscale_apply_unlocked() { printf '%s\n' tailscale >>"$startup_events"; }
+  magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$startup_events"; }
   magicnet_tailscale_inject_auth_key() { printf '%s\n' tailscale-auth >>"$startup_events"; }
   magicnet_tailscale_scrub_auth_key() { return 0; }
   singbox_start() { printf '%s\n' singbox-start >>"$startup_events"; }
@@ -366,8 +865,10 @@ assert_startup_policy_order() {
 prepare
 transparent
 hotspot
+dns
 tailscale
 app-policy
+warp
 tailscale-auth
 singbox-start
 EOF
@@ -401,6 +902,7 @@ assert_deferred_failure_disables_dns_controls() (
   grep -qx capture-disable "$events"
   grep -qx guard-disable "$events"
   grep -qx 'warning:Deferred network configuration failed: dns,warp; DNS interception disabled' "$events"
+  grep -qx 'warning:Post-start network rewrites failed: dns,warp' "$events"
   if grep -Eq '^(capture|guard)-enable$' "$events"; then
     printf '%s\n' 'deferred config failure enabled DNS controls' >&2
     cat "$events" >&2
@@ -409,5 +911,107 @@ assert_deferred_failure_disables_dns_controls() (
 )
 
 assert_deferred_failure_disables_dns_controls
+
+assert_startup_reports_deferred_failure() (
+  module="$WORK/startup-failure-module"
+  mkdir -p "$module"
+  printf '%s\n' '#!/bin/sh' >"$module/cli"
+  chmod +x "$module/cli"
+  MODDIR="$module"
+
+  magicnet_module_disabled() { return 1; }
+  magicnet_kernel_running() { return 1; }
+  magicnet_require_subscription_or_stop() { return 0; }
+  magicnet_start_singbox() { return 0; }
+  magicnet_after_kernel_start() { return 1; }
+  magicnet_kernel_stopped=0
+  import() { :; }
+  singbox_stop() { magicnet_kernel_stopped=1; }
+  magicnet_disable_dns_capture() { return 0; }
+  magicnet_disable_dns_leak_guard() { return 0; }
+  magicnet_notify() { :; }
+
+  if magicnet_start_kernel; then
+    printf '%s\n' 'startup must report a deferred configuration failure' >&2
+    exit 1
+  fi
+  [ "$magicnet_kernel_stopped" -eq 1 ] || {
+    printf '%s\n' 'failed startup must stop the half-initialized sing-box core' >&2
+    exit 1
+  }
+)
+
+assert_startup_reports_deferred_failure
+
+assert_post_start_phase_is_synchronous() (
+  magicnet_with_config_lock() { "$@"; }
+  magicnet_singbox_apply_zashboard() { return 0; }
+  magicnet_after_kernel_start_deferred() { return 1; }
+
+  if magicnet_after_kernel_start; then
+    printf '%s\n' 'post-start phase must not hide a deferred failure' >&2
+    exit 1
+  fi
+)
+
+assert_post_start_phase_is_synchronous
+
+assert_post_start_phase_holds_config_lock() (
+  post_start_events="$WORK/post-start-lock-events.log"
+  : >"$post_start_events"
+  magicnet_with_config_lock() {
+    MAGICNET_CONFIG_LOCK_HELD=1
+    "$@"
+  }
+  magicnet_singbox_apply_zashboard() {
+    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ] || return 1
+    printf '%s\n' zashboard >>"$post_start_events"
+  }
+  magicnet_after_kernel_start_deferred() {
+    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ] || return 1
+    printf '%s\n' deferred >>"$post_start_events"
+  }
+
+  magicnet_after_kernel_start
+  diff -u - "$post_start_events" <<'EOF'
+zashboard
+deferred
+EOF
+)
+
+assert_post_start_phase_holds_config_lock
+
+assert_runtime_config_failure_is_visible() (
+  magicnet_module_disabled() { return 1; }
+  magicnet_ipset_lkm_prepare() { return 0; }
+  magicnet_dns_apply_unlocked() { return 0; }
+  magicnet_transparent_apply_unlocked() { return 0; }
+  magicnet_app_policy_apply_unlocked() { return 0; }
+  magicnet_warp_apply_unlocked() { return 0; }
+  magicnet_route_apply_unlocked() { return 0; }
+  magicnet_block_apply_unlocked() { return 0; }
+  magicnet_tailscale_apply_unlocked() { return 0; }
+  magicnet_wifi_policy_start() { return 0; }
+  magicnet_kernel_running() { return 0; }
+  magicnet_disable_dns_capture() { return 0; }
+  magicnet_disable_dns_leak_guard() { return 0; }
+
+  magicnet_singbox_apply_zashboard() { return 1; }
+  magicnet_enable_dns_capture() { return 0; }
+  magicnet_enable_dns_leak_guard() { return 0; }
+  if magicnet_apply_runtime_config_unlocked; then
+    printf '%s\n' 'runtime config must report a zashboard materialization failure' >&2
+    exit 1
+  fi
+
+  magicnet_singbox_apply_zashboard() { return 0; }
+  magicnet_enable_dns_capture() { return 1; }
+  if magicnet_apply_runtime_config_unlocked; then
+    printf '%s\n' 'runtime config must report a DNS capture installation failure' >&2
+    exit 1
+  fi
+)
+
+assert_runtime_config_failure_is_visible
 
 printf '%s\n' 'app routing policy regression tests passed'

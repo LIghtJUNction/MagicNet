@@ -12,7 +12,7 @@ magicnet_singbox_apply_transparent_mode() {
     _tmp="${_config}.transparent-mode.new"
     if [ -n "$_jq" ]; then
         # shellcheck disable=SC2016
-        if "$_jq" \
+        if (umask 077; "$_jq" \
             --arg dns_strategy "$_dns_strategy" \
             --argjson tun_mtu "$_tun_mtu" \
             --arg udp_timeout "$_udp_timeout" '
@@ -120,7 +120,7 @@ magicnet_singbox_apply_transparent_mode() {
                 end
             )
             | if $dns_strategy != "" then .dns.strategy = $dns_strategy else . end
-        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+        ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"; then
             :
         else
             rm -f "$_tmp" 2>/dev/null || true
@@ -137,7 +137,7 @@ magicnet_singbox_apply_transparent_mode() {
             unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
             return 1
         fi
-        if "$_singbox" format -c "$_config" -D "${_config%/*}" >"$_stage"; then
+        if (umask 077; "$_singbox" format -c "$_config" -D "${_config%/*}" >"$_stage"); then
             :
         else
             magicnet_warn "sing-box format failed; refusing unsafe no-jq config rewrite"
@@ -145,7 +145,7 @@ magicnet_singbox_apply_transparent_mode() {
             unset _dns_strategy _tun_mtu _udp_timeout _jq _mode _singbox _stage _next
             return 1
         fi
-        if awk -v dns_strategy="$_dns_strategy" '
+        if (umask 077; awk -v dns_strategy="$_dns_strategy" '
             {
                 lines[NR] = $0
                 if ($0 ~ /^  "dns": \{/) {
@@ -230,7 +230,7 @@ magicnet_singbox_apply_transparent_mode() {
                     }
                 }
             }
-        ' "$_stage" >"$_next" && mv -f "$_next" "$_stage"; then
+        ' "$_stage" >"$_next") && mv -f "$_next" "$_stage"; then
             :
         else
             rm -f "$_tmp" "$_stage" "$_next" 2>/dev/null || true
@@ -719,7 +719,7 @@ magicnet_singbox_apply_transparent_mode() {
         return 1
     fi
     if [ -z "$_jq" ]; then
-        if mv -f "$_stage" "$_config"; then
+        if chmod 600 "$_stage" && mv -f "$_stage" "$_config" && chmod 600 "$_config"; then
             rm -f "$_next" 2>/dev/null || true
         else
             rm -f "$_stage" "$_next" 2>/dev/null || true

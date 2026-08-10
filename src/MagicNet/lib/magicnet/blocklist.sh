@@ -291,7 +291,7 @@ magicnet_block_ensure_ad_selectors() {
     _selector_tmp="${_selector_config}.magicnet-selectors.new"
     _selector_has_allow=0
     grep -q '"tag"[[:space:]]*:[[:space:]]*"ad-allow"' "$_selector_config" && _selector_has_allow=1
-    awk -v has_allow="$_selector_has_allow" '
+    (umask 077; awk -v has_allow="$_selector_has_allow" '
         function emit_block(comma) {
             print "    {"
             print "      \"type\": \"selector\","
@@ -354,13 +354,19 @@ magicnet_block_ensure_ad_selectors() {
             }
             print
         }
-    ' "$_selector_config" >"$_selector_tmp" || {
+    ' "$_selector_config" >"$_selector_tmp") || {
         _selector_rc=$?
         rm -f "$_selector_tmp"
         unset _selector_config _selector_tmp _selector_has_allow _selector_rc
         return 1
     }
-    mv -f "$_selector_tmp" "$_selector_config"
+    if ! chmod 600 "$_selector_tmp" ||
+        ! mv -f "$_selector_tmp" "$_selector_config" ||
+        ! chmod 600 "$_selector_config"; then
+        rm -f "$_selector_tmp" 2>/dev/null || true
+        unset _selector_config _selector_tmp _selector_has_allow
+        return 1
+    fi
     unset _selector_config _selector_tmp _selector_has_allow
 }
 
@@ -371,12 +377,27 @@ magicnet_block_apply_singbox() {
     magicnet_block_ensure_ad_selectors "$_config" || return 1
     _tmp="${_config}.magicnet-block.new"
     _rules_file="${MODDIR}/.tmp/magicnet-block-singbox.rules"
-    mkdir -p "${_rules_file%/*}"
-    {
-        magicnet_block_allow_singbox_rules
-        magicnet_block_singbox_rules
-    } >"$_rules_file"
-    if awk -v rules_file="$_rules_file" '
+    if ! mkdir -p "${_rules_file%/*}" ||
+        ! {
+            magicnet_block_allow_singbox_rules &&
+                magicnet_block_singbox_rules
+        } >"$_rules_file"; then
+        rm -f "$_rules_file" "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+    if magicnet_block_has_domains &&
+        ! grep -q '"__magicnet_block__"' "$_rules_file"; then
+        magicnet_warn "sing-box block rules were not generated"
+        rm -f "$_rules_file" "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+    if magicnet_block_list_values "$(magicnet_block_allow_file)" | grep -q . &&
+        ! grep -q '"__magicnet_ad_allow__"' "$_rules_file"; then
+        magicnet_warn "sing-box block allow rules were not generated"
+        rm -f "$_rules_file" "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+    if ! (umask 077; awk -v rules_file="$_rules_file" '
         BEGIN {
             in_route = 0
             in_rules = 0
@@ -455,9 +476,33 @@ magicnet_block_apply_singbox() {
             }
             print
         }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
-        :
-    else
+    ' "$_config" >"$_tmp"); then
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+    if magicnet_block_has_domains; then
+        if ! grep -q '"__magicnet_block__"' "$_tmp"; then
+            magicnet_warn "sing-box block rules were not inserted"
+            rm -f "$_tmp" 2>/dev/null || true
+            return 1
+        fi
+    elif grep -q '"__magicnet_block__"' "$_tmp"; then
+        magicnet_warn "sing-box block marker was not removed"
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+    if magicnet_block_list_values "$(magicnet_block_allow_file)" | grep -q .; then
+        if ! grep -q '"__magicnet_ad_allow__"' "$_tmp"; then
+            magicnet_warn "sing-box block allow rules were not inserted"
+            rm -f "$_tmp" 2>/dev/null || true
+            return 1
+        fi
+    elif grep -q '"__magicnet_ad_allow__"' "$_tmp"; then
+        magicnet_warn "sing-box block allow marker was not removed"
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+    if ! chmod 600 "$_tmp" || ! mv -f "$_tmp" "$_config" || ! chmod 600 "$_config"; then
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi

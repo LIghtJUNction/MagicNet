@@ -8,9 +8,58 @@ magicnet_json_escape() {
         sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
 }
 
+# Extract a JSON string value while preserving its JSON escapes. This is the
+# jq-free path used on Android; preserving escapes lets generated JSON carry
+# Unicode and escaped quotes without trying to decode them in ash.
+magicnet_json_field_raw() {
+    _field="$1"
+    _json="$2"
+    printf '%s' "$_json" | awk -v wanted="$_field" '
+        function valid_escape(value) {
+            return value == "\"" || value == "\\" || value == "/" ||
+                value == "b" || value == "f" || value == "n" ||
+                value == "r" || value == "t"
+        }
+        {
+            pattern = "\"" wanted "\"[[:space:]]*:[[:space:]]*\""
+            if (!match($0, pattern)) next
+            rest = substr($0, RSTART + RLENGTH)
+            value = ""
+            escaped = 0
+            for (i = 1; i <= length(rest); i++) {
+                c = substr(rest, i, 1)
+                if (escaped) {
+                    if (c == "u") {
+                        hex = substr(rest, i + 1, 4)
+                        if (length(hex) != 4 || hex ~ /[^0-9A-Fa-f]/) exit 1
+                        value = value "\\u" hex
+                        i += 4
+                    } else if (valid_escape(c)) {
+                        value = value "\\" c
+                    } else {
+                        exit 1
+                    }
+                    escaped = 0
+                } else if (c == "\\") {
+                    escaped = 1
+                } else if (c == "\"") {
+                    print value
+                    found = 1
+                    exit 0
+                } else {
+                    if (c ~ /[[:cntrl:]]/) exit 1
+                    value = value c
+                }
+            }
+            if (escaped) exit 1
+        }
+        END { if (!found) exit 1 }
+    '
+}
+
 magicnet_singbox_tag_is_reserved() {
     case "$1" in
-    proxy-auto | proxy | select | lan | ad-block | ad-allow | cn-direct | \
+    proxy-auto | proxy | select | lan | hotspot | ad-block | ad-allow | cn-direct | \
         apple-cn | microsoft-cn | google-cn | icloud | bing | dns-guard | network-test | \
         ai-proxy | ai-chatgpt | ai-chatgpt-auto | ai-gemini | ai-gemini-auto | \
         ai-grok | ai-grok-auto | ai-claude | ai-claude-auto | proxy-rule | dev-proxy | \
@@ -762,18 +811,59 @@ EOF
 magicnet_uri_query_value() {
     _key="$1"
     _query="$2"
-    printf '%s' "$_query" | tr '&' '\n' |
-        sed -n "s/^${_key}=//p" | tail -n 1
+    _query_value=$(printf '%s' "$_query" | tr '&' '\n' |
+        sed -n "s/^${_key}=//p" | tail -n 1)
+    if [ -n "$_query_value" ]; then
+        magicnet_percent_decode "$_query_value"
+        _rc=$?
+        unset _query_value
+        return "$_rc"
+    fi
+    unset _query_value
+    return 0
 }
 
 magicnet_b64_decode() {
     _value=$(printf '%s' "$1" | tr '_-' '/+')
-    _pad=$(((${#_value} + 3) % 4))
+    case "$_value" in
+    '' | *[!A-Za-z0-9+/=]*) return 1 ;;
+    esac
+    _unpadded=${_value%%=*}
+    _padding=${_value#$_unpadded}
+    case "$_padding" in
+    '' | '=' | '==') ;;
+    *) return 1 ;;
+    esac
+    _length=${#_unpadded}
+    [ "$_length" -gt 0 ] || return 1
+    [ $((_length % 4)) -ne 1 ] || return 1
+    if [ -n "$_padding" ]; then
+        [ $(((${#_value}) % 4)) -eq 0 ] || return 1
+        case "${#_padding}:$((_length % 4))" in
+        1:3 | 2:2) ;;
+        *) return 1 ;;
+        esac
+    fi
+    _pad=$(( (4 - (_length % 4)) % 4 ))
     case "$_pad" in
-    2) _value="${_value}==" ;;
-    3) _value="${_value}=" ;;
+    0) _value="$_unpadded" ;;
+    1) _value="${_unpadded}=" ;;
+    2) _value="${_unpadded}==" ;;
+    3) return 1 ;;
     esac
     printf '%s' "$_value" | base64 -d 2>/dev/null
+}
+
+magicnet_singbox_normalize_port() {
+    _port="$1"
+    case "$_port" in
+    '' | *[!0-9]*) return 1 ;;
+    esac
+    _port=$(printf '%s' "$_port" | sed 's/^0*//')
+    [ -n "$_port" ] || return 1
+    [ "${#_port}" -le 5 ] || return 1
+    [ "$_port" -ge 1 ] 2>/dev/null && [ "$_port" -le 65535 ] 2>/dev/null || return 1
+    printf '%s\n' "$_port"
 }
 
 magicnet_percent_decode() {
@@ -781,14 +871,12 @@ magicnet_percent_decode() {
     _out=""
     while [ -n "$_value" ]; do
         case "$_value" in
-        %??*)
+        %*)
             _hex=${_value#%}
+            [ "${#_hex}" -ge 2 ] || return 1
             _hex=${_hex%"${_hex#??}"}
             case "$_hex" in
-            *[!0-9A-Fa-f]*)
-                _out="${_out}%"
-                _value=${_value#%}
-                ;;
+            *[!0-9A-Fa-f]*) return 1 ;;
             *)
                 _out="${_out}\\x${_hex}"
                 _value=${_value#???}
@@ -796,11 +884,16 @@ magicnet_percent_decode() {
             esac
             ;;
         +*)
-            _out="${_out} "
+            # `+` is a literal URI character; spaces must be percent-encoded.
+            _out="${_out}+"
             _value=${_value#?}
             ;;
         *)
-            _out="${_out}${_value%"${_value#?}"}"
+            _char=${_value%"${_value#?}"}
+            case "$_char" in
+            \\) _out="${_out}\\\\" ;;
+            *) _out="${_out}${_char}" ;;
+            esac
             _value=${_value#?}
             ;;
         esac

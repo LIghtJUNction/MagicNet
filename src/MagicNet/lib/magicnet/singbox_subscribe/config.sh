@@ -494,7 +494,7 @@ magicnet_singbox_sanitize_generated_config() {
         }
 
         _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
-        if awk '
+        if (umask 077; awk '
           BEGIN {
             legacy_url_re = "https://www\\.google\\.com/generate_204"
             current_url = "https://www.gstatic.com/generate_204"
@@ -522,9 +522,11 @@ magicnet_singbox_sanitize_generated_config() {
             printf "%s%s%s\n", substr(text, 1, pair_start - 1), pair, \
               substr(text, pair_start + pair_length)
           }
-        ' "$_sanitize_config_file" >"$_sanitize_tmp_file" &&
+        ' "$_sanitize_config_file" >"$_sanitize_tmp_file") &&
             magicnet_singbox_ai_selectors_canonical "$_sanitize_tmp_file" &&
-            mv -f "$_sanitize_tmp_file" "$_sanitize_config_file"; then
+            chmod 600 "$_sanitize_tmp_file" &&
+            mv -f "$_sanitize_tmp_file" "$_sanitize_config_file" &&
+            chmod 600 "$_sanitize_config_file"; then
             _sanitize_rc=0
         else
             _sanitize_rc=1
@@ -540,7 +542,7 @@ magicnet_singbox_sanitize_generated_config() {
 
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
     # shellcheck disable=SC2016
-    "$_sanitize_jq" --rawfile configured_filters "$_sanitize_filter_file" '
+    (umask 077; "$_sanitize_jq" --rawfile configured_filters "$_sanitize_filter_file" '
       def blocked_ai_node_tag:
         test("中国|大陆|内地|香港|台湾|臺灣|台北|臺北|台中|臺中|台南|臺南|高雄|新竹|🇭🇰|🇹🇼|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|Taiwan|Taipei|Taichung|Tainan|Kaohsiung|Hsinchu|TW|TWN|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
       def us_node_tag:
@@ -698,7 +700,10 @@ magicnet_singbox_sanitize_generated_config() {
           | . + ai_service_outbounds($ai_tags))
       | .route.rules = ((.route.rules // [])
         | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
-    ' "$_sanitize_config_file" >"$_sanitize_tmp_file" && mv -f "$_sanitize_tmp_file" "$_sanitize_config_file"
+    ' "$_sanitize_config_file" >"$_sanitize_tmp_file") &&
+        chmod 600 "$_sanitize_tmp_file" &&
+            mv -f "$_sanitize_tmp_file" "$_sanitize_config_file" &&
+            chmod 600 "$_sanitize_config_file"
     _sanitize_rc=$?
     [ "$_sanitize_rc" -eq 0 ] || rm -f "$_sanitize_tmp_file" 2>/dev/null || true
     if [ "$_sanitize_rc" -eq 0 ]; then
@@ -714,7 +719,7 @@ magicnet_singbox_update_config_with_nodes() {
     _outbounds_file="$1"
     _tmp_file="${_config_file}.new"
 
-    awk -v repl="$_outbounds_file" '
+    (umask 077; awk -v repl="$_outbounds_file" '
         function count_delta(s, i, c, d) {
             d = 0
             for (i = 1; i <= length(s); i++) {
@@ -770,7 +775,7 @@ magicnet_singbox_update_config_with_nodes() {
         END {
             if (prev != "") print prev
         }
-    ' "$_config_file" >"$_tmp_file"
+    ' "$_config_file" >"$_tmp_file")
 
     magicnet_singbox_sanitize_generated_config "$_tmp_file" || {
         error "Generated sing-box config failed sanitization"
@@ -784,7 +789,9 @@ magicnet_singbox_update_config_with_nodes() {
         }
     fi
 
-    mv -f "$_tmp_file" "$_config_file"
+    chmod 600 "$_tmp_file" &&
+        mv -f "$_tmp_file" "$_config_file" &&
+        chmod 600 "$_config_file"
 }
 
 magicnet_singbox_replay_cached_outbounds() {
@@ -801,7 +808,7 @@ magicnet_singbox_replay_cached_outbounds() {
 
     _config_file=$(magicnet_singbox_subscription_config_file)
     _previous_config="${_config_file}.cache-replay.previous"
-    cp -f "$_config_file" "$_previous_config" || {
+    (umask 077; cp -f "$_config_file" "$_previous_config") || {
         unset _cached_outbounds _config_file _previous_config
         return 1
     }
@@ -812,9 +819,63 @@ magicnet_singbox_replay_cached_outbounds() {
         return 0
     fi
 
-    mv -f "$_previous_config" "$_config_file" 2>/dev/null || true
+    chmod 600 "$_previous_config" 2>/dev/null &&
+        mv -f "$_previous_config" "$_config_file" 2>/dev/null &&
+        chmod 600 "$_config_file" 2>/dev/null || true
     unset _cached_outbounds _config_file _previous_config
     return 1
+}
+
+magicnet_singbox_config_has_clash_api() {
+    _api_config="$1"
+    [ -f "$_api_config" ] || {
+        unset _api_config
+        return 1
+    }
+    _api_jq="${MODDIR:-}/bin/jq"
+    [ -x "$_api_jq" ] || _api_jq="$(command -v jq 2>/dev/null || true)"
+    if [ -n "$_api_jq" ] &&
+        "$_api_jq" -e '
+            (.experimental.clash_api.external_controller // "")
+            | type == "string" and length > 0
+        ' "$_api_config" >/dev/null 2>&1; then
+        unset _api_config _api_jq
+        return 0
+    fi
+    if [ -z "$_api_jq" ] &&
+        awk '
+            /"clash_api"[[:space:]]*:[[:space:]]*\{/ { in_clash_api = 1; next }
+            in_clash_api &&
+                /"external_controller"[[:space:]]*:[[:space:]]*"[^"]+"/ {
+                found_controller = 1
+            }
+            in_clash_api && /\}/ { in_clash_api = 0 }
+            END { exit(found_controller ? 0 : 1) }
+        ' "$_api_config"; then
+        unset _api_config _api_jq
+        return 0
+    fi
+    unset _api_config _api_jq
+    return 1
+}
+
+magicnet_singbox_pid_live() {
+    _live_pid="$1"
+    case "$_live_pid" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    _live_stat="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}/${_live_pid}/stat"
+    [ -r "$_live_stat" ] || {
+        unset _live_pid _live_stat
+        return 1
+    }
+    _live_state="$(sed -n 's/^.*) \([^ ]\) .*$/\1/p' "$_live_stat" 2>/dev/null)"
+    [ -n "$_live_state" ] && [ "$_live_state" != "Z" ] || {
+        unset _live_pid _live_stat _live_state
+        return 1
+    }
+    unset _live_pid _live_stat _live_state
+    return 0
 }
 
 magicnet_singbox_pids() {
@@ -825,6 +886,7 @@ magicnet_singbox_pids() {
             case "$_pid" in
                 *[!0-9]* | '') continue ;;
             esac
+            magicnet_singbox_pid_live "$_pid" || continue
             printf '%s\n' "$_pid"
         done
         unset _singbox_pid_list _pid
@@ -837,6 +899,7 @@ magicnet_singbox_pids() {
         if IFS= read -r _proc_name <"$_proc_comm" 2>/dev/null &&
             [ "$_proc_name" = "sing-box" ]; then
             _pid=${_proc_comm#"$_singbox_proc_root"/}
+            magicnet_singbox_pid_live "${_pid%/comm}" || continue
             printf '%s\n' "${_pid%/comm}"
         fi
     done
@@ -844,29 +907,63 @@ magicnet_singbox_pids() {
 }
 
 magicnet_singbox_is_running() {
-    [ -n "$(magicnet_singbox_pids)" ]
+    _running_config="${1:-$(magicnet_singbox_subscription_config_file)}"
+    [ -n "$(magicnet_singbox_owned_pids "$_running_config")" ]
 }
 
 magicnet_singbox_pid_owned() {
     _owned_pid="$1"
     _owned_config="$2"
+    magicnet_singbox_pid_live "$_owned_pid" || return 1
     _owned_expected=$(readlink -f "${MODDIR}/bin/sing-box" 2>/dev/null) || return 1
-    _owned_exe_link=$(readlink "/proc/${_owned_pid}/exe" 2>/dev/null) || return 1
-    _owned_exe_path=${_owned_exe_link% (deleted)}
-    [ "$_owned_exe_path" = "$_owned_expected" ] || return 1
+    [ -x "${MODDIR}/bin/sing-box" ] || return 1
+    _owned_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    _owned_proc_dir="$_owned_proc_root/$_owned_pid"
+    _owned_comm=$(tr -d '\r\n' <"$_owned_proc_dir/comm" 2>/dev/null) || return 1
+    [ "$_owned_comm" = "sing-box" ] || return 1
+    _owned_exe_link=$(readlink "$_owned_proc_dir/exe" 2>/dev/null || true)
+    _owned_exe_visible=0
+    _owned_exe_match=0
+    if [ -n "$_owned_exe_link" ]; then
+        _owned_exe_path=${_owned_exe_link% (deleted)}
+        _owned_exe_visible=1
+        [ "$_owned_exe_path" = "$_owned_expected" ] && _owned_exe_match=1
+    fi
     (
         _argv_index=0
         _argv_run=0
+        _argv_after_run=0
+        _argv0=
+        _argv_wrapper=0
         _argv_config_count=0
         _argv_config_ok=0
         _argv_work_count=0
         _argv_work_ok=0
         _argv_pending=
-        # Android sh and the host-side Bash fixture use an empty read delimiter for NUL.
-        # shellcheck disable=SC3045
-        while IFS= read -r -d '' _argv_arg; do
+        _argv_cmdline_file="$_owned_proc_dir/cmdline"
+        # Normalize proc's NUL-delimited argv before reading it.  Android ash
+        # and Debian dash do not agree on `read -d`, while newline preserves
+        # the argument boundaries needed by this exact ownership tuple.  A
+        # literal newline inside one argv would otherwise be mistaken for a
+        # second argument, so reject it before normalization.
+        _argv_bytes_with_newline=$(tr -d '\000' <"$_argv_cmdline_file" 2>/dev/null | wc -c)
+        _argv_bytes_without_newline=$(tr -d '\000\n' <"$_argv_cmdline_file" 2>/dev/null | wc -c)
+        [ "$_argv_bytes_with_newline" = "$_argv_bytes_without_newline" ] || return 1
+        _argv_cmdline=$(tr '\000' '\n' <"$_argv_cmdline_file" 2>/dev/null) || return 1
+        while IFS= read -r _argv_arg || [ -n "$_argv_arg" ]; do
             _argv_index=$((_argv_index + 1))
-            [ "$_argv_index" -ne 2 ] || [ "$_argv_arg" != "run" ] || _argv_run=1
+            [ "$_argv_index" -ne 1 ] || _argv0="$_argv_arg"
+            if [ "$_argv_after_run" -eq 0 ]; then
+                if [ "$_argv_arg" = "$_owned_expected" ] ||
+                    [ "$_argv_arg" = "${MODDIR}/bin/sing-box" ]; then
+                    _argv_wrapper=1
+                fi
+                if [ "$_argv_arg" = "run" ]; then
+                    _argv_run=1
+                    _argv_after_run=1
+                fi
+                continue
+            fi
             case "$_argv_pending" in
                 config)
                     [ "$_argv_arg" != "$_owned_config" ] || _argv_config_ok=1
@@ -889,12 +986,23 @@ magicnet_singbox_pid_owned() {
                     _argv_pending=work
                     ;;
             esac
-        done <"/proc/${_owned_pid}/cmdline"
+        done <<EOF
+$_argv_cmdline
+EOF
         [ "$_argv_run" -eq 1 ] &&
             [ "$_argv_config_count" -eq 1 ] && [ "$_argv_config_ok" -eq 1 ] &&
             [ "$_argv_work_count" -eq 1 ] && [ "$_argv_work_ok" -eq 1 ] &&
-            [ -z "$_argv_pending" ]
+            [ -z "$_argv_pending" ] &&
+            {
+                [ "$_owned_exe_match" -eq 1 ] ||
+                    [ "$_argv_wrapper" -eq 1 ] ||
+                    { [ "$_owned_exe_visible" -eq 0 ] && [ "$_argv0" = "sing-box" ]; }
+            }
     ) 2>/dev/null
+    _owned_rc=$?
+    unset _owned_pid _owned_config _owned_expected _owned_proc_root _owned_proc_dir \
+        _owned_comm _owned_exe_link _owned_exe_visible _owned_exe_match _owned_exe_path
+    return "$_owned_rc"
 }
 
 magicnet_singbox_owned_pids() {
@@ -930,6 +1038,10 @@ magicnet_singbox_ensure_start_owned() {
     _owned_work="${_owned_config%/*}"
     _owned_binary="${MODDIR}/bin/sing-box"
     _owned_log="${MODDIR}/.log/sing-box.log"
+    _api_expected=0
+    if magicnet_singbox_config_has_clash_api "$_owned_config"; then
+        _api_expected=1
+    fi
     [ -x "$_owned_binary" ] || return 1
     ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]' && return 1
     mkdir -p "${MODDIR}/.log"
@@ -938,15 +1050,49 @@ magicnet_singbox_ensure_start_owned() {
     _ready_deadline=$(($(date +%s) + ${MAGICNET_SUB_READY_TIMEOUT:-15}))
     while [ "$(date +%s)" -lt "$_ready_deadline" ]; do
         if kill -0 "$_new_pid" 2>/dev/null &&
-            magicnet_singbox_pid_owned "$_new_pid" "$_owned_config" &&
-            magicnet_singbox_listener_owned "$_new_pid" &&
-            curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null | grep -q '"version"'; then
+            magicnet_singbox_pid_owned "$_new_pid" "$_owned_config" && {
+            [ "$_api_expected" -eq 0 ] ||
+                {
+                    magicnet_singbox_listener_owned "$_new_pid" &&
+                        curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |
+                        grep -q '"version"'
+                }
+            }; then
+            unset _api_expected
             return 0
         fi
         sleep 1
     done
     kill "$_new_pid" 2>/dev/null || true
+    unset _api_expected
     return 1
+}
+
+magicnet_singbox_stop_owned_after_failure() {
+    _failure_config="$1"
+    for _failure_pid in $(magicnet_singbox_owned_pids "$_failure_config"); do
+        kill "$_failure_pid" 2>/dev/null || true
+    done
+    _failure_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-8}))
+    while [ -n "$(magicnet_singbox_owned_pids "$_failure_config")" ] &&
+        [ "$(date +%s)" -lt "$_failure_deadline" ]; do
+        sleep 1
+    done
+    if [ -n "$(magicnet_singbox_owned_pids "$_failure_config")" ]; then
+        for _failure_pid in $(magicnet_singbox_owned_pids "$_failure_config"); do
+            kill -9 "$_failure_pid" 2>/dev/null || true
+        done
+        _failure_kill_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
+        while [ -n "$(magicnet_singbox_owned_pids "$_failure_config")" ] &&
+            [ "$(date +%s)" -lt "$_failure_kill_deadline" ]; do
+            sleep 1
+        done
+    fi
+    ip link delete magicnet0 2>/dev/null || true
+    _failure_rc=0
+    [ -z "$(magicnet_singbox_owned_pids "$_failure_config")" ] || _failure_rc=1
+    unset _failure_config _failure_pid _failure_deadline _failure_kill_deadline
+    return "$_failure_rc"
 }
 
 magicnet_singbox_restart_owned() {
@@ -955,6 +1101,13 @@ magicnet_singbox_restart_owned() {
     if [ -z "${MAGICNET_SUB_FSWATCH_WAS_ACTIVE+x}" ]; then
         magicnet_fswatch_status >/dev/null 2>&1 && _owned_fswatch_active=1
     fi
+    # Remove host-side DNS interception before stopping the core.  Leaving a
+    # REDIRECT to 127.0.0.1:1053 in place while sing-box is down turns the
+    # bounded restart window into an avoidable DNS outage for every app.
+    magicnet_disable_dns_capture >/dev/null 2>&1 ||
+        warn "Failed to clear DNS capture before subscription restart"
+    magicnet_disable_dns_leak_guard >/dev/null 2>&1 ||
+        warn "Failed to clear DNS leak guard before subscription restart"
     magicnet_supervisors_stop >/dev/null 2>&1 || return 1
     for _pid in $(magicnet_singbox_owned_pids "$_owned_config"); do
         kill "$_pid" 2>/dev/null || true
@@ -977,8 +1130,31 @@ magicnet_singbox_restart_owned() {
     fi
     if [ "$_restart_rc" -eq 0 ]; then
         ip link delete magicnet0 2>/dev/null || true
-        ip link delete tun0 2>/dev/null || true
         magicnet_singbox_ensure_start_owned "$_owned_config" || _restart_rc=1
+        if [ "$_restart_rc" -eq 0 ]; then
+            # The core is started outside magicnet_start_kernel, so its normal
+            # post-start network phase does not run automatically here. DNS
+            # interception and the TUN/app policy must be rebuilt after the
+            # pre-stop cleanup above, while the subscription transaction still
+            # owns the config lock.
+            _post_start_rc=0
+            if command -v magicnet_after_kernel_start_unlocked >/dev/null 2>&1; then
+                magicnet_after_kernel_start_unlocked || _post_start_rc=1
+            else
+                magicnet_enable_dns_capture || _post_start_rc=1
+                magicnet_enable_dns_leak_guard || _post_start_rc=1
+            fi
+            if [ "$_post_start_rc" -ne 0 ]; then
+                # Do not leave a live core behind when the network phase did
+                # not finish.  A running process without its TUN/DNS policy
+                # is a half-initialized generation that can black-hole apps.
+                magicnet_disable_dns_capture >/dev/null 2>&1 || true
+                magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
+                magicnet_singbox_stop_owned_after_failure "$_owned_config" || true
+                _restart_rc=1
+            fi
+        fi
+        unset _post_start_rc
     fi
     if [ "${MAGICNET_SUB_DEFER_FSWATCH_RESTORE:-0}" -eq 1 ]; then
         # Read by the subscription update wrapper after it releases the config lock.

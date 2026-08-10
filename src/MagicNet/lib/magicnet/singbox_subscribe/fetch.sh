@@ -16,7 +16,10 @@ magicnet_singbox_use_cached_subscription() {
         [ -n "$_expected_identity" ] &&
         [ "$(sed -n '1p' "$_identity_file" 2>/dev/null)" = "$_expected_identity" ]; then
         warn "Using identity-verified subscription cache"
-        cp "$_cache_file" "$_source_file"
+        if ! cp "$_cache_file" "$_source_file"; then
+            rm -f "$_source_file" 2>/dev/null || true
+            return 1
+        fi
         return 0
     fi
     return 1
@@ -29,8 +32,9 @@ MAGICNET_SUB_RESOLVE_TIMEOUT=10
 
 magicnet_singbox_subscription_parse_authority() {
     _subscription_url="$1"
-    case "$_subscription_url" in
-        https://*) _subscription_rest=${_subscription_url#https://} ;;
+    _subscription_scheme=${_subscription_url%%://*}
+    case "$_subscription_scheme" in
+        [hH][tT][tT][pP][sS]) _subscription_rest=${_subscription_url#*://} ;;
         *) return 1 ;;
     esac
     case "$_subscription_url" in *[[:space:]]*) return 1 ;; esac
@@ -93,6 +97,7 @@ magicnet_singbox_public_ipv4() {
     done
     _subscription_first=$1
     _subscription_second=$2
+    _subscription_third=$3
     [ "$_subscription_first" -ne 0 ] &&
         [ "$_subscription_first" -ne 10 ] &&
         [ "$_subscription_first" -ne 127 ] &&
@@ -102,34 +107,189 @@ magicnet_singbox_public_ipv4() {
     [ "$_subscription_first" -ne 169 ] || [ "$_subscription_second" -ne 254 ] || return 1
     [ "$_subscription_first" -ne 172 ] ||
         { [ "$_subscription_second" -lt 16 ] || [ "$_subscription_second" -gt 31 ]; } || return 1
-    [ "$_subscription_first" -ne 192 ] || [ "$_subscription_second" -ne 168 ] || return 1
+    if [ "$_subscription_first" -eq 192 ]; then
+        case "$_subscription_second/$_subscription_third" in
+            0/*|2/*|168/*|31/196|52/193|88/99|175/48) return 1 ;;
+        esac
+    fi
     [ "$_subscription_first" -ne 198 ] ||
-        { [ "$_subscription_second" -lt 18 ] || [ "$_subscription_second" -gt 19 ]; } || return 1
+        {
+            {
+                [ "$_subscription_second" -lt 18 ] ||
+                [ "$_subscription_second" -gt 19 ];
+            } && [ "$_subscription_second" -ne 51 ];
+        } || return 1
+    [ "$_subscription_first" -ne 203 ] ||
+        [ "$_subscription_second" -ne 0 ] ||
+        [ "$_subscription_third" -ne 113 ] || return 1
 }
 
-magicnet_singbox_public_address() {
+magicnet_singbox_public_ipv6() (
+    _subscription_ipv6="$1"
+    case "$_subscription_ipv6" in *:*) ;; *) return 1 ;; esac
+    case "$_subscription_ipv6" in *[!0-9A-Fa-f:]*|'') return 1 ;; esac
+
+    _subscription_left=
+    _subscription_right=
+    _subscription_count=0
+    _subscription_left_values=
+    _subscription_right_values=
+    _subscription_values=
+    case "$_subscription_ipv6" in
+        *::*)
+            _subscription_left=${_subscription_ipv6%%::*}
+            _subscription_right=${_subscription_ipv6#*::}
+            case "$_subscription_left" in *::*|:*|*:) return 1 ;; esac
+            case "$_subscription_right" in *::*|:*|*:) return 1 ;; esac
+            if [ -n "$_subscription_left" ]; then
+                _subscription_old_ifs=$IFS
+                IFS=:
+                # shellcheck disable=SC2086 # splitting character-checked hextets
+                set -- $_subscription_left
+                IFS=$_subscription_old_ifs
+                for _subscription_hextet in "$@"; do
+                    [ -n "$_subscription_hextet" ] || return 1
+                    [ "${#_subscription_hextet}" -le 4 ] || return 1
+                    case "$_subscription_hextet" in *[!0-9A-Fa-f]*) return 1 ;; esac
+                    _subscription_value=$(printf '%d' "0x$_subscription_hextet" 2>/dev/null) || return 1
+                    if [ -n "$_subscription_left_values" ]; then
+                        _subscription_left_values="$_subscription_left_values $_subscription_value"
+                    else
+                        _subscription_left_values=$_subscription_value
+                    fi
+                    _subscription_count=$((_subscription_count + 1))
+                done
+            else
+                # A leading `::` compresses zero-valued hextets, so the
+                # first address group is zero even when the right side starts
+                # with a non-zero group.
+                :
+            fi
+            if [ -n "$_subscription_right" ]; then
+                _subscription_old_ifs=$IFS
+                IFS=:
+                # shellcheck disable=SC2086 # splitting character-checked hextets
+                set -- $_subscription_right
+                IFS=$_subscription_old_ifs
+                for _subscription_hextet in "$@"; do
+                    [ -n "$_subscription_hextet" ] || return 1
+                    [ "${#_subscription_hextet}" -le 4 ] || return 1
+                    case "$_subscription_hextet" in *[!0-9A-Fa-f]*) return 1 ;; esac
+                    _subscription_value=$(printf '%d' "0x$_subscription_hextet" 2>/dev/null) || return 1
+                    if [ -n "$_subscription_right_values" ]; then
+                        _subscription_right_values="$_subscription_right_values $_subscription_value"
+                    else
+                        _subscription_right_values=$_subscription_value
+                    fi
+                    _subscription_count=$((_subscription_count + 1))
+                done
+            fi
+            # `::` must compress at least one hextet; eight explicit hextets
+            # would make the address overlong rather than compressed.
+            [ "$_subscription_count" -lt 8 ] || return 1
+            ;;
+        *)
+            case "$_subscription_ipv6" in :*|*:) return 1 ;; esac
+            _subscription_old_ifs=$IFS
+            IFS=:
+            # shellcheck disable=SC2086 # splitting character-checked hextets
+            set -- $_subscription_ipv6
+            IFS=$_subscription_old_ifs
+            [ "$#" -eq 8 ] || return 1
+            for _subscription_hextet in "$@"; do
+                [ -n "$_subscription_hextet" ] || return 1
+                [ "${#_subscription_hextet}" -le 4 ] || return 1
+                case "$_subscription_hextet" in *[!0-9A-Fa-f]*) return 1 ;; esac
+                _subscription_value=$(printf '%d' "0x$_subscription_hextet" 2>/dev/null) || return 1
+                if [ -n "$_subscription_values" ]; then
+                    _subscription_values="$_subscription_values $_subscription_value"
+                else
+                    _subscription_values=$_subscription_value
+                fi
+            done
+            ;;
+    esac
+
+    case "$_subscription_ipv6" in
+        *::*)
+            _subscription_missing=$((8 - _subscription_count))
+            [ "$_subscription_missing" -ge 1 ] || return 1
+            _subscription_values=$_subscription_left_values
+            _subscription_index=0
+            while [ "$_subscription_index" -lt "$_subscription_missing" ]; do
+                if [ -n "$_subscription_values" ]; then
+                    _subscription_values="$_subscription_values 0"
+                else
+                    _subscription_values=0
+                fi
+                _subscription_index=$((_subscription_index + 1))
+            done
+            if [ -n "$_subscription_right_values" ]; then
+                if [ -n "$_subscription_values" ]; then
+                    _subscription_values="$_subscription_values $_subscription_right_values"
+                else
+                    _subscription_values=$_subscription_right_values
+                fi
+            fi
+            ;;
+    esac
+    _subscription_old_ifs=$IFS
+    IFS=' '
+    # shellcheck disable=SC2086 # splitting normalized decimal hextet values
+    set -- $_subscription_values
+    IFS=$_subscription_old_ifs
+    [ "$#" -eq 8 ] || return 1
+    _subscription_segment1=$1
+    _subscription_segment2=$2
+    _subscription_segment3=$3
+    _subscription_segment4=$4
+    _subscription_segment5=$5
+    _subscription_segment6=$6
+    _subscription_first_value=$_subscription_segment1
+    # Unspecified, loopback and IPv4-mapped forms are not usable public
+    # subscription endpoints even when their textual shape is valid.
+    [ "$_subscription_first_value" -ne 0 ] || return 1
+    [ "$_subscription_first_value" -lt 64512 ] || [ "$_subscription_first_value" -gt 65023 ] || return 1
+    [ "$_subscription_first_value" -lt 65152 ] || [ "$_subscription_first_value" -gt 65215 ] || return 1
+    [ "$_subscription_first_value" -lt 65280 ] || return 1
+    # Match the Rust resolver policy for documentation, benchmarking,
+    # discard, Teredo, and well-known NAT64 ranges.
+    [ "$_subscription_segment1" -eq 256 ] &&
+        [ "$_subscription_segment2" -eq 0 ] &&
+        [ "$_subscription_segment3" -eq 0 ] &&
+        [ "$_subscription_segment4" -eq 0 ] && return 1
+    [ "$_subscription_segment1" -eq 100 ] &&
+        [ "$_subscription_segment2" -eq 65435 ] &&
+        [ "$_subscription_segment3" -eq 0 ] &&
+        [ "$_subscription_segment4" -eq 0 ] &&
+        [ "$_subscription_segment5" -eq 0 ] &&
+        [ "$_subscription_segment6" -eq 0 ] && return 1
+    if [ "$_subscription_segment1" -eq 8193 ] && {
+        [ "$_subscription_segment2" -eq 0 ] ||
+            { [ "$_subscription_segment2" -eq 2 ] && [ "$_subscription_segment3" -eq 0 ]; } ||
+            [ "$_subscription_segment2" -eq 3512 ] ||
+            { [ "$_subscription_segment2" -ge 16 ] && [ "$_subscription_segment2" -le 31 ]; } ||
+            { [ "$_subscription_segment2" -ge 32 ] && [ "$_subscription_segment2" -le 47 ]; }
+    }; then
+        return 1
+    fi
+    return 0
+)
+
+magicnet_singbox_public_address() (
     _subscription_address="$1"
     case "$_subscription_address" in
         *.*)
             _subscription_tail=${_subscription_address##*:}
             magicnet_singbox_public_ipv4 "$_subscription_tail" || return 1
-            case "$_subscription_address" in *:*) ;; *) return 0 ;; esac
+            case "$_subscription_address" in
+                *:*) _subscription_address="${_subscription_address%:*}:0:0" ;;
+                *) return 0 ;;
+            esac
             ;;
     esac
-    case "$_subscription_address" in *:*) ;; *) return 1 ;; esac
-    case "$_subscription_address" in *[!0-9A-Fa-f:.]*|'') return 1 ;; esac
-    [ "$_subscription_address" != "::" ] && [ "$_subscription_address" != "::1" ] || return 1
-    _subscription_first_hextet=${_subscription_address%%:*}
-    if [ -z "$_subscription_first_hextet" ]; then
-        _subscription_first_value=0
-    else
-        [ "${#_subscription_first_hextet}" -le 4 ] || return 1
-        _subscription_first_value=$(printf '%d' "0x$_subscription_first_hextet" 2>/dev/null) || return 1
-    fi
-    [ "$_subscription_first_value" -lt 64512 ] || [ "$_subscription_first_value" -gt 65023 ] || return 1
-    [ "$_subscription_first_value" -lt 65152 ] || [ "$_subscription_first_value" -gt 65215 ] || return 1
-    [ "$_subscription_first_value" -lt 65280 ] || return 1
-}
+    magicnet_singbox_public_ipv6 "$_subscription_address"
+)
 
 magicnet_singbox_subscription_resolve_public() {
     _subscription_url="$1"
@@ -202,7 +362,14 @@ magicnet_singbox_normalize_subscription_file() {
     _source_file="$1"
     _tmp_file="${_source_file}.normalized"
 
-    tr -d '\r' <"$_source_file" >"$_tmp_file" && mv -f "$_tmp_file" "$_source_file"
+    if ! tr -d '\r' <"$_source_file" >"$_tmp_file"; then
+        rm -f "$_tmp_file" 2>/dev/null || true
+        return 1
+    fi
+    if ! mv -f "$_tmp_file" "$_source_file"; then
+        rm -f "$_tmp_file" 2>/dev/null || true
+        return 1
+    fi
 }
 
 magicnet_singbox_fetch_one_subscription() {
@@ -226,7 +393,7 @@ magicnet_singbox_fetch_one_subscription() {
         return 1
     fi
 
-    mkdir -p "${_source_file%/*}"
+    mkdir -p "${_source_file%/*}" || return 1
     rm -f "$_download_file"
 
     _connect_timeout="${MAGICNET_SUB_CONNECT_TIMEOUT:-10}"
@@ -259,8 +426,14 @@ magicnet_singbox_fetch_one_subscription() {
         return 0
     }
 
-    mv -f "$_download_file" "$_source_file"
-    magicnet_singbox_normalize_subscription_file "$_source_file" || return 1
+    if ! mv -f "$_download_file" "$_source_file"; then
+        rm -f "$_download_file" 2>/dev/null || true
+        return 1
+    fi
+    if ! magicnet_singbox_normalize_subscription_file "$_source_file"; then
+        rm -f "$_source_file" "${_source_file}.normalized" 2>/dev/null || true
+        return 1
+    fi
     unset _fetch_rc
 }
 
@@ -281,9 +454,9 @@ magicnet_singbox_fetch_subscription() {
         return 1
     fi
 
-    mkdir -p "$_source_dir" "$_cache_dir"
-    : >"$_sources_file"
-    : >"$_cache_map"
+    mkdir -p "$_source_dir" "$_cache_dir" || return 1
+    : >"$_sources_file" || return 1
+    : >"$_cache_map" || return 1
 
     _index=0
     _ok=0
@@ -307,9 +480,15 @@ magicnet_singbox_fetch_subscription() {
         fi
 
         if magicnet_singbox_fetch_one_subscription "$_url" "$_source_file" "$_cache_file" "$_identity_file" "$_fingerprint" "#${_index}"; then
-            printf '%s\n' "$_source_file" >>"$_sources_file"
+            if ! printf '%s\n' "$_source_file" >>"$_sources_file"; then
+                error "Failed to record subscription source #${_index}"
+                return 1
+            fi
             if [ -n "$_fingerprint" ]; then
-                printf '%s|%s|%s|%s\n' "${_source_file##*/}" "$_cache_file" "$_identity_file" "$_fingerprint" >>"$_cache_map"
+                if ! printf '%s|%s|%s|%s\n' "${_source_file##*/}" "$_cache_file" "$_identity_file" "$_fingerprint" >>"$_cache_map"; then
+                    error "Failed to record subscription cache metadata #${_index}"
+                    return 1
+                fi
             fi
             _ok=$((_ok + 1))
         else
@@ -350,12 +529,12 @@ magicnet_singbox_fetch_local_subscription() {
     fi
 
     mkdir -p "$_local_source_dir" || return 1
-    : >"$1"
-    : >"$_local_cache_map"
+    : >"$1" || return 1
+    : >"$_local_cache_map" || return 1
     cp -f "$_local_input" "$_local_source_file" || return 1
     magicnet_singbox_normalize_subscription_file "$_local_source_file" || return 1
     [ -s "$_local_source_file" ] || return 1
-    printf '%s\n' "$_local_source_file" >"$1"
+    printf '%s\n' "$_local_source_file" >"$1" || return 1
     MAGICNET_SUB_CONFIGURED_COUNT=1
     MAGICNET_SUB_SOURCE_COUNT=1
     MAGICNET_SUB_CACHE_MAP_FILE="$_local_cache_map"

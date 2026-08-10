@@ -318,7 +318,7 @@ fn apply_network(
     if changed {
         set_clash_mode(app, decision.desired_mode)?;
     }
-    write_last_state(app, &network, &decision)?;
+    write_last_state(app, network, &decision)?;
     if verbose || changed {
         println!(
             "[info] Wi-Fi policy: connected={} ssid={} bssid={} matched={} mode={}{}",
@@ -348,7 +348,9 @@ fn watch(app: &App) -> Result<(), String> {
             break;
         }
         let network = detect_wifi();
-        let network_changed = applied_network.as_ref().is_some_and(|last| last != &network);
+        let network_changed = applied_network
+            .as_ref()
+            .is_some_and(|last| last != &network);
         let should_apply = if applied_network.is_none() {
             true
         } else if network_changed {
@@ -571,18 +573,18 @@ fn write_last_state(
     decision: &PolicyDecision,
 ) -> Result<(), String> {
     let values = [
-            (
-                "connected",
-                if network.connected { "1" } else { "0" }.to_string(),
-            ),
-            ("ssid", network.ssid.clone().unwrap_or_default()),
-            ("bssid", network.bssid.clone().unwrap_or_default()),
-            (
-                "matched",
-                if decision.matched { "1" } else { "0" }.to_string(),
-            ),
-            ("desired_mode", decision.desired_mode.to_string()),
-        ];
+        (
+            "connected",
+            if network.connected { "1" } else { "0" }.to_string(),
+        ),
+        ("ssid", network.ssid.clone().unwrap_or_default()),
+        ("bssid", network.bssid.clone().unwrap_or_default()),
+        (
+            "matched",
+            if decision.matched { "1" } else { "0" }.to_string(),
+        ),
+        ("desired_mode", decision.desired_mode.to_string()),
+    ];
     let expected = values
         .iter()
         .map(|(key, value)| format!("{key}={value}"))
@@ -677,8 +679,12 @@ mod tests {
 
     #[test]
     fn partial_wifi_status_is_not_treated_as_an_explicit_disconnect() {
-        assert!(!explicitly_disconnected("Wi-Fi is enabled\nscan state: idle"));
-        assert!(explicitly_disconnected("Wi-Fi is enabled\nNetwork is not connected"));
+        assert!(!explicitly_disconnected(
+            "Wi-Fi is enabled\nscan state: idle"
+        ));
+        assert!(explicitly_disconnected(
+            "Wi-Fi is enabled\nNetwork is not connected"
+        ));
         assert!(explicitly_disconnected("Wi-Fi is disabled"));
     }
 

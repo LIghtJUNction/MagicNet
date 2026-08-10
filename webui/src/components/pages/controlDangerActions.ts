@@ -33,7 +33,7 @@ export function applyConfigAction(): ControlDangerAction {
     key: "apply-config",
     args: "config apply",
     label: "应用全部配置",
-    message: "确认应用配置？配置生效时可能会重启相关运行状态。",
+    message: "确认应用配置？运行中的 sing-box 会重启以读取最新配置，当前连接可能会短暂中断。",
     background: false
   };
 }
@@ -73,7 +73,7 @@ export function applyTransparentModeAction(): ControlDangerAction {
     key: "transparent-apply",
     args: "transparent apply",
     label: "应用编排模式",
-    message: "确认重新应用编排模式？当前连接可能会短暂中断。",
+    message: "确认重新应用编排模式并重启 sing-box？当前连接可能会短暂中断。",
     background: false
   };
 }

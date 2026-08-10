@@ -72,9 +72,8 @@ fn set_read_timeout(stream: &TcpStream, timeout: Duration) -> io::Result<()> {
 fn read_headers(stream: &mut TcpStream, buffer: &mut Vec<u8>) -> Result<usize, RequestError> {
     let mut temp = [0_u8; 4096];
     loop {
-        match header_end_or_error(buffer)? {
-            Some(header_end) => return Ok(header_end),
-            None => {}
+        if let Some(header_end) = header_end_or_error(buffer)? {
+            return Ok(header_end);
         }
 
         // Limit each read to the remaining header budget. This prevents a

@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import { connectionBuckets, connectionFlowSummary, connectionMatchesQuery, parseConnectionSnapshot, type ConnectionTarget } from "@/composables/parsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, shellQuote } from "@/utils";
+import { copyText, execFailed, shellQuote } from "@/utils";
 import { buildConnectionClosePlan, connectionClosePlanTone, formatConnectionCloseDetail } from "./connectionClosePlan";
 import { buildConnectionInsights, formatConnectionBytes } from "./connectionInsights";
 
@@ -98,8 +98,14 @@ async function copyReport(): Promise<void> {
 async function runConnectionAction(command: string, label: string): Promise<void> {
   await withAction("connections-action", async () => {
     const text = await runCli(command, label);
+    if (execFailed(text)) return;
     state.output = text;
-    rawOutput.value = await runCli("api conns", "刷新活动连接", true);
+    const refreshed = await runCli("api conns", "刷新活动连接", true);
+    if (execFailed(refreshed)) {
+      state.output = `操作已执行，但活动连接刷新未确认：\n${refreshed}`;
+      return;
+    }
+    rawOutput.value = refreshed;
   });
 }
 

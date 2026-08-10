@@ -129,7 +129,7 @@ fi
 check_no_subscription_secret() {
     local entry="$1"
     grep -Fx "$entry" "$entries_file" >/dev/null || return 0
-    if unzip -p "$ZIP_PATH" "$entry" | grep -Eiq '^[[:space:]]*[^#[:space:]].*(https?://|ss://|trojan://|vmess://|vless://|hysteria2://|tuic://|socks5://|sub=|token=|uuid=|password=|passwd=)'; then
+    if unzip -p "$ZIP_PATH" "$entry" | grep -Eiq '^[[:space:]]*[^#[:space:]].*(https?://|ss://|trojan://|vmess://|vless://|hysteria2://|tuic://|socks://|socks5://|sub=|token=|uuid=|password=|passwd=)'; then
         fail "$entry contains subscription-like secrets"
     fi
 }
@@ -864,7 +864,7 @@ def assert_packaged_connectivity_dns_safety(domestic_index, foreign_index, leak_
                 f"rule index {canonical_index}"
             )
 
-proxy_node_types = {"shadowsocks", "vmess", "vless", "trojan", "hysteria2", "anytls", "tuic"}
+proxy_node_types = {"shadowsocks", "vmess", "vless", "trojan", "hysteria2", "anytls", "tuic", "socks"}
 base_proxy_nodes = [
     outbound for outbound in config.get("outbounds", []) if outbound.get("type") in proxy_node_types
 ]
@@ -1442,6 +1442,57 @@ x_package_routes = [
 ]
 if len(x_package_routes) != 1:
     raise SystemExit(f"packaged X action route is non-canonical: x={x_package_routes}")
+x_domain_rule = {
+    "domain_suffix": ["twitter.com", "x.com", "twimg.com"],
+    "outbound": "social-proxy",
+}
+cn_ip_rule = {
+    "rule_set": ["lyc-geoip-cn", "metacubex-geoip-cn", "karing-acl4ssr-china-ip"],
+    "outbound": "cn-direct",
+}
+invalid_destination_rule = {
+    "ip_cidr": ["0.0.0.0/8"],
+    "outbound": "block",
+}
+x_domain_routes = [index for index, rule in enumerate(route_rules) if rule == x_domain_rule]
+cn_ip_routes = [index for index, rule in enumerate(route_rules) if rule == cn_ip_rule]
+invalid_destination_routes = [
+    index for index, rule in enumerate(route_rules) if rule == invalid_destination_rule
+]
+if len(x_domain_routes) != 1 or len(cn_ip_routes) != 1 or len(invalid_destination_routes) != 1:
+    raise SystemExit(
+        "packaged invalid-destination/X/CN routing owners are non-canonical: "
+        f"invalid={invalid_destination_routes} x={x_domain_routes} cn={cn_ip_routes}"
+    )
+if x_domain_routes[0] >= cn_ip_routes[0]:
+    raise SystemExit(
+        "packaged X domains must precede the canonical CN IP route so API/CDN IPs stay proxied"
+    )
+
+chatgpt_voice_routes = [
+    (index, rule)
+    for index, rule in enumerate(route_rules)
+    if rule.get("network") == "udp"
+    and rule.get("port") == 3478
+    and rule.get("outbound") == "ai-chatgpt"
+    and set(rule) == {"network", "port", "ip_cidr", "outbound"}
+]
+if len(chatgpt_voice_routes) != 1:
+    raise SystemExit(f"packaged ChatGPT Voice route is non-canonical: {chatgpt_voice_routes}")
+voice_index, voice_rule = chatgpt_voice_routes[0]
+voice_prefixes = voice_rule.get("ip_cidr", [])
+if not voice_prefixes:
+    raise SystemExit("packaged ChatGPT Voice route has no official IP prefixes")
+for prefix in voice_prefixes:
+    ipaddress.ip_network(prefix, strict=True)
+if voice_index >= cn_ip_routes[0]:
+    raise SystemExit(
+        f"packaged ChatGPT Voice route must precede CN IP ownership: "
+        f"voice={voice_index} cn={cn_ip_routes}"
+    )
+
+if invalid_destination_routes[0] > cn_ip_routes[0]:
+    raise SystemExit("packaged reserved 0.0.0.0/8 destinations must fail closed before CN routing")
 if any(server.get("type") == "fakeip" or server.get("tag") == "fakeip" for server in config["dns"]["servers"]):
     raise SystemExit("packaged default DNS must not enable FakeIP")
 if config.get("experimental", {}).get("cache_file", {}).get("store_fakeip") is True:

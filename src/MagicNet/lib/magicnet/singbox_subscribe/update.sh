@@ -2,6 +2,35 @@ magicnet_singbox_update_lock_active() {
     _update_lock="${MODDIR}/.state/sing-box/subscription-update.lock"
     [ -d "$_update_lock" ] || return 1
     _update_owner=$(sed -n '1p' "$_update_lock/owner" 2>/dev/null)
+    if [ -z "$_update_owner" ]; then
+        # mkdir publishes the lock before the owner marker can be written.
+        # Treat that short publication window as busy instead of reclaiming
+        # the directory out from under the updater.  A crashed process can
+        # still be reclaimed after the bounded grace period below.
+        _update_init_grace="${MAGICNET_SUB_UPDATE_LOCK_INIT_GRACE:-5}"
+        case "$_update_init_grace" in
+            '' | *[!0-9]*) _update_init_grace=5 ;;
+        esac
+        _update_lock_mtime=$(stat -c '%Y' "$_update_lock" 2>/dev/null || true)
+        _update_now=$(date +%s 2>/dev/null || true)
+        case "$_update_lock_mtime" in
+            '' | *[!0-9]*)
+                # If the platform cannot provide a reliable age, fail closed
+                # and leave the markerless lock for an explicit cleanup.
+                return 0
+                ;;
+        esac
+        case "$_update_now" in
+            '' | *[!0-9]*)
+                return 0
+                ;;
+        esac
+        if [ "$_update_now" -lt "$_update_lock_mtime" ] ||
+            [ "$((_update_now - _update_lock_mtime))" -lt "$_update_init_grace" ]; then
+            return 0
+        fi
+        unset _update_init_grace _update_lock_mtime _update_now
+    fi
     _update_pid=${_update_owner%%:*}
     _update_rest=${_update_owner#*:}
     _update_start=${_update_rest%%:*}
@@ -11,7 +40,13 @@ magicnet_singbox_update_lock_active() {
         return 0
     fi
     _update_current=$(sed -n '1p' "$_update_lock/owner" 2>/dev/null)
-    [ "$_update_current" = "$_update_owner" ] && rm -rf "$_update_lock" 2>/dev/null || true
+    if [ "$_update_current" = "$_update_owner" ]; then
+        # Remove only the marker we just re-read, then use rmdir.  A
+        # recursive delete could erase a replacement lock if another updater
+        # wins the directory race after the stale-owner check.
+        rm -f "$_update_lock/owner" 2>/dev/null || true
+        rmdir "$_update_lock" 2>/dev/null || true
+    fi
     return 1
 }
 
@@ -28,14 +63,24 @@ magicnet_singbox_update_lock_acquire() {
     _update_start=$(awk '{print $22}' "/proc/$$/stat" 2>/dev/null || true)
     _update_nonce=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)
     _update_token="$$:${_update_start:-unknown}:${_update_nonce}"
-    printf '%s\n' "$_update_token" >"$_update_lock/owner"
+    if ! printf '%s\n' "$_update_token" >"$_update_lock/owner"; then
+        # Do not leave an empty lock directory behind when publishing the
+        # owner marker fails.  Such a directory is indistinguishable from a
+        # crashed updater and would force every later update through stale
+        # reclamation/timeouts.
+        rm -f "$_update_lock/owner" 2>/dev/null || true
+        rmdir "$_update_lock" 2>/dev/null || true
+        return 1
+    fi
 }
 
 magicnet_singbox_update_lock_release() {
     _update_lock="${MODDIR}/.state/sing-box/subscription-update.lock"
     _update_owner=$(sed -n '1p' "$_update_lock/owner" 2>/dev/null)
-    [ -n "${_update_token:-}" ] && [ "$_update_owner" = "$_update_token" ] &&
-        rm -rf "$_update_lock" 2>/dev/null || true
+    if [ -n "${_update_token:-}" ] && [ "$_update_owner" = "$_update_token" ]; then
+        rm -f "$_update_lock/owner" 2>/dev/null || true
+        rmdir "$_update_lock" 2>/dev/null || true
+    fi
 }
 
 magicnet_singbox_status_value() {
@@ -160,7 +205,9 @@ magicnet_singbox_transaction_reconcile() {
     if [ -f "$_tx_dir/had-config" ]; then
         [ -f "$_tx_dir/old-config" ] || return 1
         _tx_tmp="${_tx_active_config}.reconcile.$$"
-        cp -f "$_tx_dir/old-config" "$_tx_tmp" && mv -f "$_tx_tmp" "$_tx_active_config" || {
+        (umask 077; cp -f "$_tx_dir/old-config" "$_tx_tmp") &&
+            mv -f "$_tx_tmp" "$_tx_active_config" &&
+            chmod 600 "$_tx_active_config" || {
             rm -f "$_tx_tmp" 2>/dev/null || true
             return 1
         }
@@ -171,10 +218,26 @@ magicnet_singbox_transaction_reconcile() {
     if [ -f "$_tx_dir/had-work" ]; then
         [ -d "$_tx_dir/old-work" ] || return 1
         _tx_work_tmp="${_tx_active_work}.reconcile.$$"
+        _tx_work_backup="${_tx_active_work}.reconcile-backup.$$"
         rm -rf "$_tx_work_tmp" 2>/dev/null || true
+        rm -rf "$_tx_work_backup" 2>/dev/null || true
         cp -a "$_tx_dir/old-work" "$_tx_work_tmp" || return 1
-        rm -rf "$_tx_active_work" 2>/dev/null || return 1
-        mv "$_tx_work_tmp" "$_tx_active_work" || return 1
+        if [ -e "$_tx_active_work" ]; then
+            mv "$_tx_active_work" "$_tx_work_backup" || {
+                rm -rf "$_tx_work_tmp" 2>/dev/null || true
+                return 1
+            }
+        fi
+        if ! mv "$_tx_work_tmp" "$_tx_active_work"; then
+            # Keep the current work tree available when the replacement is
+            # interrupted.  The journal remains in place for a later retry.
+            if [ -e "$_tx_work_backup" ]; then
+                mv "$_tx_work_backup" "$_tx_active_work" 2>/dev/null || true
+            fi
+            rm -rf "$_tx_work_tmp" 2>/dev/null || true
+            return 1
+        fi
+        rm -rf "$_tx_work_backup" 2>/dev/null || true
     else
         rm -rf "$_tx_active_work" 2>/dev/null || return 1
     fi
@@ -219,7 +282,13 @@ magicnet_singbox_transaction_reconcile() {
 
     rm -rf "$_tx_dir" 2>/dev/null || return 1
     unset _tx_dir _tx_active_config _tx_active_work _tx_active_url _tx_active_local
-    unset _tx_generation _tx_tmp _tx_work_tmp
+    unset _tx_generation _tx_tmp _tx_work_tmp _tx_work_backup
+}
+
+magicnet_singbox_transaction_begin_abort() {
+    [ -n "${_tx_tmp:-}" ] && rm -rf "$_tx_tmp" 2>/dev/null || true
+    unset _tx_dir _tx_tmp _tx_active_config _tx_active_work _tx_active_url _tx_active_local
+    return 1
 }
 
 magicnet_singbox_transaction_begin() {
@@ -230,35 +299,40 @@ magicnet_singbox_transaction_begin() {
     _tx_active_url="${MODDIR}/.config/sing-box/subscription.url"
     _tx_active_local="${MODDIR}/.config/sing-box/subscription.local"
     rm -rf "$_tx_tmp" 2>/dev/null || true
-    [ ! -e "$_tx_dir" ] || return 1
-    mkdir -p "$_tx_tmp" || return 1
+    [ ! -e "$_tx_dir" ] || { magicnet_singbox_transaction_begin_abort; return 1; }
+    mkdir -p "$_tx_tmp" || { magicnet_singbox_transaction_begin_abort; return 1; }
 
     if [ -f "$_tx_active_config" ]; then
-        : >"$_tx_tmp/had-config"
-        cp -f "$_tx_active_config" "$_tx_tmp/old-config" || return 1
+        : >"$_tx_tmp/had-config" || { magicnet_singbox_transaction_begin_abort; return 1; }
+        (umask 077; cp -f "$_tx_active_config" "$_tx_tmp/old-config") || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
     fi
     if [ -d "$_tx_active_work" ]; then
-        : >"$_tx_tmp/had-work"
-        cp -a "$_tx_active_work" "$_tx_tmp/old-work" || return 1
+        : >"$_tx_tmp/had-work" || { magicnet_singbox_transaction_begin_abort; return 1; }
+        cp -a "$_tx_active_work" "$_tx_tmp/old-work" || { magicnet_singbox_transaction_begin_abort; return 1; }
     fi
     if [ -f "$_tx_active_url" ]; then
-        : >"$_tx_tmp/had-url"
-        cp -f "$_tx_active_url" "$_tx_tmp/old-url" || return 1
+        : >"$_tx_tmp/had-url" || { magicnet_singbox_transaction_begin_abort; return 1; }
+        cp -f "$_tx_active_url" "$_tx_tmp/old-url" || { magicnet_singbox_transaction_begin_abort; return 1; }
     fi
     if [ -f "$_tx_active_local" ]; then
-        : >"$_tx_tmp/had-local"
-        cp -f "$_tx_active_local" "$_tx_tmp/old-local" || return 1
+        : >"$_tx_tmp/had-local" || { magicnet_singbox_transaction_begin_abort; return 1; }
+        cp -f "$_tx_active_local" "$_tx_tmp/old-local" || { magicnet_singbox_transaction_begin_abort; return 1; }
     fi
-    [ -f "$_sub_input_source" ] || return 1
-    cp -f "$_sub_input_source" "$_tx_tmp/input-source" || return 1
+    [ -f "$_sub_input_source" ] || { magicnet_singbox_transaction_begin_abort; return 1; }
+    cp -f "$_sub_input_source" "$_tx_tmp/input-source" || { magicnet_singbox_transaction_begin_abort; return 1; }
     chmod 600 "$_tx_tmp/input-source" 2>/dev/null || true
-    printf '%s\n' "$_sub_source_mode" >"$_tx_tmp/input-mode"
-    [ "${_sub_was_running:-0}" -eq 1 ] && : >"$_tx_tmp/was-running"
-    printf '%s\n' "$_sub_generation_id" >"$_tx_tmp/generation-id"
-    : >"$_tx_tmp/owns-generation"
-    : >"$_tx_tmp/owns-config-candidate"
-    printf '%s\n' prepared >"$_tx_tmp/phase"
-    mv "$_tx_tmp" "$_tx_dir" || return 1
+    printf '%s\n' "$_sub_source_mode" >"$_tx_tmp/input-mode" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    if [ "${_sub_was_running:-0}" -eq 1 ]; then
+        : >"$_tx_tmp/was-running" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    fi
+    printf '%s\n' "$_sub_generation_id" >"$_tx_tmp/generation-id" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    : >"$_tx_tmp/owns-generation" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    : >"$_tx_tmp/owns-config-candidate" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    printf '%s\n' prepared >"$_tx_tmp/phase" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    mv "$_tx_tmp" "$_tx_dir" || { magicnet_singbox_transaction_begin_abort; return 1; }
     _sub_original_input_source="$_sub_input_source"
     _sub_input_source="${_tx_dir}/input-source"
     if [ "$_sub_source_mode" = local ]; then
@@ -296,10 +370,22 @@ magicnet_singbox_cleanup_stale_candidates() {
 
 magicnet_singbox_transaction_phase() {
     _tx_dir=$(magicnet_singbox_transaction_dir)
-    [ -d "$_tx_dir" ] || return 1
+    [ -d "$_tx_dir" ] || {
+        unset _tx_dir
+        return 1
+    }
     _tx_phase=$(printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-48)
-    printf '%s\n' "${_tx_phase:-unknown}" >"$_tx_dir/phase"
-    unset _tx_dir _tx_phase
+    _tx_phase_tmp="$_tx_dir/phase.tmp.$$"
+    # Phase metadata is part of the durable journal.  Write it privately and
+    # publish it atomically so a transient filesystem failure cannot truncate
+    # the last known phase or make the caller believe the write succeeded.
+    if ! (umask 077; printf '%s\n' "${_tx_phase:-unknown}" >"$_tx_phase_tmp") ||
+        ! mv -f "$_tx_phase_tmp" "$_tx_dir/phase"; then
+        rm -f "$_tx_phase_tmp" 2>/dev/null || true
+        unset _tx_dir _tx_phase _tx_phase_tmp
+        return 1
+    fi
+    unset _tx_dir _tx_phase _tx_phase_tmp
 }
 
 magicnet_singbox_fault() {
@@ -317,8 +403,7 @@ magicnet_singbox_fault() {
 
 magicnet_singbox_status() {
     if ! magicnet_singbox_update_lock_active; then
-        magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true
-        magicnet_singbox_status_reconcile >/dev/null 2>&1 || true
+        magicnet_with_config_lock magicnet_singbox_status_reconcile_locked >/dev/null 2>&1 || true
     fi
     _status_active_url="${MODDIR}/.config/sing-box/subscription.url"
     _status_active_local="${MODDIR}/.config/sing-box/subscription.local"
@@ -370,6 +455,15 @@ magicnet_singbox_status() {
     unset _status_active_url _status_active_local _status_source_mode _status_configured
     unset _status_cache_dir _status_cache_count _status_running
     unset _status_lock_owner _status_cache_provenance_count _status_cache_probe _status_cache_source
+}
+
+magicnet_singbox_status_reconcile_locked() {
+    # Both operations can restore or rewrite persisted subscription state.  A
+    # status read must serialize them with an update transaction, otherwise a
+    # just-started updater can race the recovery path and lose its active
+    # files intermittently.
+    magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true
+    magicnet_singbox_status_reconcile >/dev/null 2>&1 || true
 }
 
 magicnet_singbox_update_status() {
@@ -458,7 +552,7 @@ magicnet_singbox_update_subscription_unlocked() {
     _sub_active_config="${MODDIR}/.config/sing-box/config.json"
     _sub_candidate_config="${_sub_active_config}.candidate-${_sub_generation_id}"
     _sub_was_running=0
-    magicnet_singbox_is_running && _sub_was_running=1
+    magicnet_singbox_is_running "$_sub_active_config" && _sub_was_running=1
     if ! magicnet_singbox_transaction_begin; then
         rm -rf "$(magicnet_singbox_transaction_dir).new.$$" 2>/dev/null || true
         magicnet_singbox_update_status prepare failed journal_create_failed || true
@@ -529,7 +623,7 @@ magicnet_singbox_update_subscription_unlocked() {
     fi
 
     if [ "${_imported:-0}" -le 0 ]; then
-        error "No supported nodes imported. Supported natively: Clash/share-link ss, vmess, vless, trojan, hysteria2, anytls, tuic. Proxylink remains an optional converter for other formats when present."
+        error "No supported nodes imported. Supported natively: Clash/share-link ss, socks, vmess, vless, trojan, hysteria2, anytls, tuic. Proxylink remains an optional converter for other formats when present."
         magicnet_singbox_update_status convert failed no_nodes_imported || true
         magicnet_singbox_update_cleanup_stage
         return 1
@@ -537,7 +631,7 @@ magicnet_singbox_update_subscription_unlocked() {
 
     info "Subscription update stage: validate"
     magicnet_singbox_update_status validate running none || true
-    if ! cp -f "$_sub_active_config" "$_sub_candidate_config"; then
+    if ! (umask 077; cp -f "$_sub_active_config" "$_sub_candidate_config"); then
         magicnet_singbox_update_status validate failed config_stage_failed || true
         magicnet_singbox_update_cleanup_stage
         return 1
@@ -556,11 +650,16 @@ magicnet_singbox_update_subscription_unlocked() {
     magicnet_singbox_update_status activate running none || true
     _update_fswatch_active=0
     magicnet_fswatch_status >/dev/null 2>&1 && _update_fswatch_active=1
-    if ! mv -f "$_sub_candidate_config" "$_sub_active_config"; then
+    if ! chmod 600 "$_sub_candidate_config" 2>/dev/null ||
+        ! mv -f "$_sub_candidate_config" "$_sub_active_config" ||
+        ! chmod 600 "$_sub_active_config" 2>/dev/null; then
         magicnet_singbox_update_status activate failed config_activate_failed || true
         return 1
     fi
-    magicnet_singbox_transaction_phase active-config
+    if ! magicnet_singbox_transaction_phase active-config; then
+        magicnet_singbox_update_status activate failed journal_phase_write_failed || true
+        return 1
+    fi
     magicnet_singbox_fault after-active-config-rename || return 1
     # Read by magicnet_singbox_restart_owned in config.sh.
     # shellcheck disable=SC2034
@@ -574,7 +673,10 @@ magicnet_singbox_update_subscription_unlocked() {
         return 1
     fi
     unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH
-    magicnet_singbox_transaction_phase core-verified
+    if ! magicnet_singbox_transaction_phase core-verified; then
+        magicnet_singbox_update_status activate failed journal_phase_write_failed || true
+        return 1
+    fi
     magicnet_singbox_fault after-core-verification || return 1
 
     magicnet_singbox_update_status commit running none || true
@@ -583,7 +685,10 @@ magicnet_singbox_update_subscription_unlocked() {
         magicnet_singbox_update_status commit failed work_commit_failed || true
         return 1
     fi
-    magicnet_singbox_transaction_phase work-switched
+    if ! magicnet_singbox_transaction_phase work-switched; then
+        magicnet_singbox_update_status commit failed journal_phase_write_failed || true
+        return 1
+    fi
     magicnet_singbox_fault after-work-switch || return 1
 
     if [ "$_sub_source_mode" = local ]; then
@@ -605,7 +710,10 @@ magicnet_singbox_update_subscription_unlocked() {
         magicnet_singbox_update_status commit failed source_mode_switch_failed || true
         return 1
     }
-    magicnet_singbox_transaction_phase source-committed
+    if ! magicnet_singbox_transaction_phase source-committed; then
+        magicnet_singbox_update_status commit failed journal_phase_write_failed || true
+        return 1
+    fi
     magicnet_singbox_fault after-source-commit || return 1
     magicnet_singbox_fault after-url-commit || return 1
 

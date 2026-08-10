@@ -15,6 +15,8 @@ daemon_cksum_marker="$fixture/daemon-cksum"
 daemon_sort_marker="$fixture/daemon-sort"
 daemon_sleep_marker="$fixture/daemon-sleep"
 real_loop_marker="$fixture/fswatch-real-loop-marker"
+retry_first_marker="$fixture/fswatch-retry-first-marker"
+retry_success_marker="$fixture/fswatch-retry-success-marker"
 test_bin="$fixture/bin"
 real_cksum="$(command -v cksum)"
 real_flock="$(command -v flock)"
@@ -220,6 +222,30 @@ EOF
 
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/kamfw/fswatch.sh"
+
+# A failed module-local temp-dir setup must fail closed.  The device contract
+# does not permit falling back to /data/local/tmp (it is unavailable on the
+# target device), and a fallback assignment here would make an otherwise
+# recoverable watcher snapshot fail in a misleading, intermittent way.
+fallback_trace="$fixture/fswatch-fallback.trace"
+blocked_kam_home="$fixture/blocked-kam-home"
+printf 'not-a-directory\n' >"$blocked_kam_home"
+exec 9>"$fallback_trace"
+export BASH_XTRACEFD=9
+set +e
+set -x
+TMPDIR="$fixture/missing-tmp" KAM_HOME="$blocked_kam_home" \
+  fswatch_changed "$MODDIR/.config/value" "$fixture/missing.snapshot"
+fallback_rc=$?
+set +x
+set -e
+unset BASH_XTRACEFD
+exec 9>&-
+test "$fallback_rc" -ne 0
+if grep -F '/data/local/tmp' "$fallback_trace" >/dev/null; then
+  printf 'fswatch_changed used the unavailable /data/local/tmp fallback\n' >&2
+  exit 1
+fi
 
 pid_file="$KAM_FSWATCH_STATE_DIR/$watch_name.pid"
 loop_script="$KAM_FSWATCH_STATE_DIR/$watch_name.loop.sh"
@@ -471,6 +497,21 @@ for ((attempt = 0; attempt < 500; attempt++)); do
 done
 test "$(cat "$real_loop_marker")" = changed
 unset LD_LIBRARY_PATH
+fswatch_stop "$watch_name" >/dev/null
+
+# A failed watcher command must not consume the change notification. The
+# previous snapshot is restored so a transient config/subscription failure is
+# retried on the next poll without requiring another file edit.
+rm -f "$retry_first_marker" "$retry_success_marker"
+retry_command="if test -e '$retry_first_marker'; then printf 'retried\\n' >'$retry_success_marker'; else : >'$retry_first_marker'; exit 42; fi"
+fswatch_start "$watch_name" "$MODDIR/.config" 1 "$retry_command"
+printf 'retry\n' >>"$MODDIR/.config/value"
+for ((attempt = 0; attempt < 500; attempt++)); do
+  test -e "$retry_success_marker" && break
+  sleep 0.01
+done
+test -e "$retry_first_marker"
+test "$(cat "$retry_success_marker")" = retried
 fswatch_stop "$watch_name" >/dev/null
 
 # Delayed nohup cannot expose a pre-exec PID file. start returns only after the

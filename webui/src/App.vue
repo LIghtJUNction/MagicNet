@@ -518,7 +518,7 @@ onUnmounted(() => {
           @click="setTab(item.key)"
         >
           <component :is="item.icon" :size="18" />
-          <span>{{ item.label }}</span>
+          <span class="min-w-0 truncate">{{ item.label }}</span>
         </button>
 
         <div class="mt-3 px-3 pb-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">进阶工具</div>
@@ -535,7 +535,7 @@ onUnmounted(() => {
           @click="setTab(item.key)"
         >
           <component :is="item.icon" :size="18" />
-          <span>{{ item.label }}</span>
+          <span class="min-w-0 truncate">{{ item.label }}</span>
         </button>
       </nav>
 
@@ -571,7 +571,7 @@ onUnmounted(() => {
         @click="setTab(item.key)"
       >
         <component :is="item.icon" :size="18" />
-        <span>{{ item.label }}</span>
+        <span class="max-w-full truncate leading-none">{{ item.label }}</span>
       </button>
       <button
         ref="advancedNavTrigger"
@@ -586,7 +586,7 @@ onUnmounted(() => {
         @click="openAdvancedNav"
       >
         <component :is="activeAdvancedTab?.icon || MoreHorizontal" :size="18" />
-        <span>{{ activeAdvancedTab?.label || "更多" }}</span>
+        <span class="max-w-full truncate leading-none">{{ activeAdvancedTab?.label || "更多" }}</span>
       </button>
     </nav>
 
@@ -615,7 +615,7 @@ onUnmounted(() => {
               @click="setTab(item.key)"
             >
               <component :is="item.icon" :size="19" />
-              <span>{{ item.label }}</span>
+              <span class="min-w-0 truncate">{{ item.label }}</span>
             </button>
             <Button
               variant="outline"

@@ -12,6 +12,7 @@ use crate::connection_control::{
 };
 use crate::selector_store;
 use crate::service::singbox_webui;
+use crate::subscriptions::validate_subscription_url;
 use crate::{run_magicnet_function, write_text_file, App};
 
 pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -69,7 +70,11 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "enable" | "disable" => {
-            let member = if action == "enable" { "proxy" } else { "direct" };
+            let member = if action == "enable" {
+                "proxy"
+            } else {
+                "direct"
+            };
             if action == "enable" {
                 run_magicnet_function(app, "magicnet_hotspot_offload_enable")?;
             }
@@ -218,6 +223,21 @@ fn normalize_clash_mode(mode: &str) -> Result<&'static str, String> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum SelectorCleanupOutcome {
+    Complete(crate::connection_control::ConnectionCloseSummary),
+    Degraded(String),
+}
+
+fn classify_selector_cleanup(
+    result: Result<crate::connection_control::ConnectionCloseSummary, String>,
+) -> SelectorCleanupOutcome {
+    match result {
+        Ok(summary) => SelectorCleanupOutcome::Complete(summary),
+        Err(error) => SelectorCleanupOutcome::Degraded(error),
+    }
+}
+
 pub(crate) fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), String> {
     let clean_group = group.trim();
     let clean_node = node.trim();
@@ -227,8 +247,8 @@ pub(crate) fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), Str
     let payload = json!({ "name": clean_node }).to_string();
     curl_put_selection(app, clean_group, &payload)?;
     let persist_error = selector_store::save(app, clean_group, clean_node).err();
-    match close_connections_through_chain(app, clean_group) {
-        Ok(summary) => {
+    match classify_selector_cleanup(close_connections_through_chain(app, clean_group)) {
+        SelectorCleanupOutcome::Complete(summary) => {
             if let Some(err) = persist_error {
                 eprintln!("[warn] runtime applied, persistence failed: {err}");
             }
@@ -236,12 +256,17 @@ pub(crate) fn select_proxy(app: &App, group: &str, node: &str) -> Result<(), Str
                 "[info] {clean_group} selector set to {clean_node}; closed {}/{} stale connections",
                 summary.closed, summary.targets
             );
-            Ok(())
         }
-        Err(err) => Err(format!(
-            "selector changed to {clean_node}, but stale connections were not fully closed: {err}"
-        )),
+        SelectorCleanupOutcome::Degraded(err) => {
+            if let Some(persist_error) = persist_error {
+                eprintln!("[warn] runtime applied, persistence failed: {persist_error}");
+            }
+            println!(
+                "[warning] {clean_group} selector set to {clean_node}; stale connections were not fully closed: {err}"
+            );
+        }
     }
+    Ok(())
 }
 
 pub(crate) fn curl_put_selection(app: &App, group: &str, payload: &str) -> Result<(), String> {
@@ -311,8 +336,7 @@ mod mode_tests {
     fn hotspot_status_only_accepts_direct_or_proxy() {
         let direct = serde_json::json!({"proxies": {"hotspot": {"now": "direct"}}});
         let proxy = serde_json::json!({"proxies": {"hotspot": {"now": "proxy"}}});
-        let private_node =
-            serde_json::json!({"proxies": {"hotspot": {"now": "PRIVATE-NODE"}}});
+        let private_node = serde_json::json!({"proxies": {"hotspot": {"now": "PRIVATE-NODE"}}});
 
         assert_eq!(hotspot_member_from_api(&direct), Some("direct"));
         assert_eq!(hotspot_member_from_api(&proxy), Some("proxy"));
@@ -377,16 +401,12 @@ fn api_ui(app: &App, target: &str) {
 
 fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     let url = args.get(1).map(String::as_str).unwrap_or_default();
-    if !url.starts_with("https://") {
-        if url.starts_with("http://") {
-            return Err(
-                "refusing plaintext http download (MITM risk); use an https:// URL".to_string(),
-            );
-        }
+    if url.is_empty() {
         return Err(
             "Usage: cli webui install-local <https-download-url> <sha256> [name]".to_string(),
         );
     }
+    validate_panel_download_url(url)?;
     let expected_sha256 = args.get(2).map(String::as_str).unwrap_or_default();
     validate_sha256(expected_sha256)?;
     let name = args.get(3).map(String::as_str).unwrap_or("zashboard");
@@ -399,6 +419,7 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     clean_panel_staging(&tmp, &staging);
     download_panel_zip(url, &tmp)?;
     if let Err(err) = verify_panel_archive(&tmp, expected_sha256)
+        .and_then(|_| validate_panel_archive_entries(&tmp))
         .and_then(|_| unpack_panel_archive(&tmp, &staging))
     {
         clean_panel_staging(&tmp, &staging);
@@ -425,6 +446,16 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     run_magicnet_function(app, "magicnet_singbox_apply_zashboard")?;
     println!("[info] Installed local panel {name}");
     Ok(())
+}
+
+fn validate_panel_download_url(url: &str) -> Result<(), String> {
+    validate_subscription_url(url).map_err(|error| {
+        if error.contains("must use HTTPS") {
+            "refusing plaintext http download (MITM risk); use an https:// URL".to_string()
+        } else {
+            format!("invalid WebUI download URL: {error}")
+        }
+    })
 }
 
 fn download_panel_zip(url: &str, tmp: &std::path::Path) -> Result<(), String> {
@@ -566,12 +597,66 @@ fn unpack_panel_archive(archive: &Path, staging: &Path) -> Result<(), String> {
     if !status.success() {
         return Err("panel unzip failed".to_string());
     }
+    ensure_panel_tree_safe(staging)?;
     promote_dist_dir(staging)?;
     if contains_index(staging) {
         Ok(())
     } else {
         Err("panel zip does not contain index.html".to_string())
     }
+}
+
+fn validate_panel_archive_entries(archive: &Path) -> Result<(), String> {
+    let output = Command::new("unzip")
+        .args(["-Z1"])
+        .arg(archive)
+        .output()
+        .map_err(|err| format!("list panel archive: {err}"))?;
+    if !output.status.success() {
+        return Err("panel archive entry listing failed".to_string());
+    }
+    for entry in String::from_utf8_lossy(&output.stdout).lines() {
+        validate_panel_archive_entry(entry)?;
+    }
+    Ok(())
+}
+
+fn validate_panel_archive_entry(entry: &str) -> Result<(), String> {
+    let entry = entry.trim_end_matches('/');
+    if entry.is_empty()
+        || entry.starts_with('/')
+        || entry.starts_with('\\')
+        || entry.chars().any(char::is_control)
+        || entry.split('/').any(|component| {
+            component.is_empty()
+                || component == "."
+                || component == ".."
+                || component.contains('\\')
+        })
+    {
+        return Err("panel archive contains an unsafe path".to_string());
+    }
+    Ok(())
+}
+
+fn ensure_panel_tree_safe(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|err| format!("inspect extracted panel {}: {err}", path.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Err("panel archive contains a symlink".to_string());
+    }
+    if metadata.is_dir() {
+        for entry in fs::read_dir(path)
+            .map_err(|err| format!("read extracted panel {}: {err}", path.display()))?
+        {
+            ensure_panel_tree_safe(
+                &entry
+                    .map_err(|err| format!("read extracted panel entry: {err}"))?
+                    .path(),
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn clean_panel_staging(archive: &Path, staging: &Path) {
@@ -663,6 +748,18 @@ mod tests {
     }
 
     #[test]
+    fn panel_download_url_reuses_public_https_policy() {
+        validate_panel_download_url("https://github.com/example/panel.zip").unwrap();
+        assert!(
+            validate_panel_download_url("http://github.com/example/panel.zip")
+                .unwrap_err()
+                .contains("plaintext")
+        );
+        assert!(validate_panel_download_url("https://127.0.0.1/panel.zip").is_err());
+        assert!(validate_panel_download_url("https://user:secret@example.com/panel.zip").is_err());
+    }
+
+    #[test]
     fn panel_archive_hash_mismatch_is_rejected() {
         let app = temp_app();
         fs::create_dir_all(&app.moddir).unwrap();
@@ -681,6 +778,35 @@ mod tests {
         clean_panel_staging(&archive, &staging);
         assert!(!archive.exists());
         assert!(!staging.exists());
+    }
+
+    #[test]
+    fn panel_archive_entries_reject_escape_paths() {
+        for entry in [
+            "../outside.js",
+            "panel/../../outside.js",
+            "/absolute/index.html",
+            "panel\\outside.js",
+            "panel/./index.html",
+        ] {
+            assert!(
+                validate_panel_archive_entry(entry).is_err(),
+                "unsafe archive entry accepted: {entry}"
+            );
+        }
+        validate_panel_archive_entry("panel/index.html").unwrap();
+        validate_panel_archive_entry("panel/assets/").unwrap();
+    }
+
+    #[test]
+    fn panel_tree_rejects_symlinks_before_promotion() {
+        let app = temp_app();
+        let root = app.moddir.join("panel-stage");
+        fs::create_dir_all(&root).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("/etc", root.join("escape")).unwrap();
+        #[cfg(unix)]
+        assert!(ensure_panel_tree_safe(&root).is_err());
     }
 
     #[test]
@@ -732,5 +858,14 @@ mod tests {
         assert!(select_proxy(&app, "proxy", "")
             .unwrap_err()
             .contains("Usage"));
+    }
+
+    #[test]
+    fn selector_cleanup_failure_is_degraded_not_primary_failure() {
+        let outcome = classify_selector_cleanup(Err("API cleanup unavailable".to_string()));
+        assert!(matches!(
+            outcome,
+            SelectorCleanupOutcome::Degraded(message) if message == "API cleanup unavailable"
+        ));
     }
 }

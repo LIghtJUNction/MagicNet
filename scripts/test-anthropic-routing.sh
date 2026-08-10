@@ -672,6 +672,7 @@ for empty_config in "$tmp_dir/empty-jq.json" "$tmp_dir/empty-no-jq.json"; do
 done
 mkdir "$tmp_dir/no-jq-bin"
 ln -s "$(command -v awk)" "$tmp_dir/no-jq-bin/awk"
+ln -s "$(command -v chmod)" "$tmp_dir/no-jq-bin/chmod"
 ln -s "$(command -v mv)" "$tmp_dir/no-jq-bin/mv"
 ln -s "$(command -v rm)" "$tmp_dir/no-jq-bin/rm"
 jq . "$tmp_dir/no-jq.json" >"$tmp_dir/no-jq-pretty.json"

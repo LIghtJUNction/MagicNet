@@ -10,7 +10,10 @@ export function buildNetworkSnapshotInsights(text: string): NetworkSnapshotInsig
   const lower = text.toLowerCase();
   const interfaces = collectInterfaceNames(text);
   const egress = interfaces.filter((name) => /^(wlan|wlp|enp|rmnet|ccmni|eth|usb|rndis|pdp|ap|swlan|wwan|cell|p2p|ppp)/i.test(name));
-  const hasTun = interfaces.some((name) => /^(tun|utun|magicnet)/i.test(name)) || /\btun\b/i.test(text);
+  // The current MagicNet architecture owns only sing-box's magicnet0 TUN.
+  // A stale mihomo/Meta/utun interface must not make a snapshot look healthy.
+  const hasTun = interfaces.some((name) => name.toLowerCase() === "magicnet0")
+    || /\bmagicnet0\b/i.test(text);
   const hasPolicyRule = hasSnapshotLine(text, /\bip rule:|from all fwmark\b|lookup \d+\b|lookup main\b/i);
   const hasNat = hasSnapshotLine(text, /\bmasquerade\b|\bsnat\b|\bdnat\b|-t nat\b|chain postrouting\b/i);
   const hasDnsRedirect = hasSnapshotLine(text, /\b(dpt:53|--dport 53|udp dpt:domain|tcp dpt:domain|redirect\b.*:53|to-ports (?:53|1053))\b/i);
@@ -18,7 +21,7 @@ export function buildNetworkSnapshotInsights(text: string): NetworkSnapshotInsig
     {
       label: "TUN",
       value: hasTun ? "detected" : "not detected",
-      detail: hasTun ? "快照中出现 TUN/MagicNet 接口线索。" : "未看到 TUN 接口线索，透明代理可能未生效或快照不完整。",
+      detail: hasTun ? "快照中发现 magicnet0 TUN。" : "未发现 magicnet0 TUN，透明代理可能未生效或快照不完整。",
       tone: hasTun ? "ok" : "warn"
     },
     {

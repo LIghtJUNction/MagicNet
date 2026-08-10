@@ -55,9 +55,23 @@ magicnet_transparent_set_mode() {
         *) return 1 ;;
     esac
     mkdir -p "${MODDIR}/.config/magicnet" || return 1
-    printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$_mode" >"$(magicnet_transparent_conf)"
+    _mode_file="$(magicnet_transparent_conf)" || {
+        unset _mode
+        return 1
+    }
+    _mode_tmp="${_mode_file}.tmp.$$"
+    if ! (umask 077; printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$_mode" >"$_mode_tmp"); then
+        rm -f "$_mode_tmp" 2>/dev/null || true
+        unset _mode _mode_file _mode_tmp
+        return 1
+    fi
+    if ! mv -f "$_mode_tmp" "$_mode_file"; then
+        rm -f "$_mode_tmp" 2>/dev/null || true
+        unset _mode _mode_file _mode_tmp
+        return 1
+    fi
     MAGICNET_TRANSPARENT_MODE="$_mode"
-    unset _mode
+    unset _mode _mode_file _mode_tmp
 }
 
 magicnet_first_http_url() {
@@ -90,7 +104,7 @@ magicnet_singbox_config_has_nodes() {
     }
     [ "$(command -v magicnet_singbox_ai_selectors_canonical 2>/dev/null)" ] ||
         . "${MODDIR}/lib/magicnet/singbox_subscribe/common.sh"
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls)"' "$_config" &&
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls|socks)"' "$_config" &&
         magicnet_singbox_ai_selectors_canonical "$_config"
     _rc=$?
     unset _config
@@ -220,7 +234,7 @@ magicnet_singbox_running_has_nodes() {
     if command -v curl >/dev/null 2>&1; then
         _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || true)
         if [ -n "$_api" ]; then
-            printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|Selector|WireGuard|TUIC|AnyTLS)"' && {
+            printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|Selector|WireGuard|TUIC|AnyTLS|Socks|SOCKS)"' && {
                 unset _api
                 return 0
             }
@@ -256,7 +270,87 @@ magicnet_preferred_core() {
 }
 
 magicnet_config_lock_dir() {
-    printf '%s\n' "${MODDIR}/.state/config.lock"
+    printf '%s\n' "$MODDIR/.state/config.lock"
+}
+
+magicnet_config_lock_proc_start() {
+    awk '{print $22}' "/proc/$1/stat" 2>/dev/null || true
+}
+
+magicnet_config_lock_proc_live() {
+    _owner_proc_pid="$1"
+    _owner_proc_stat="/proc/$_owner_proc_pid/stat"
+    if [ -r "$_owner_proc_stat" ]; then
+        _owner_proc_state="$(sed -n 's/^.*) \([^ ]\) .*$/\1/p' \
+            "$_owner_proc_stat" 2>/dev/null || true)"
+        [ -n "$_owner_proc_state" ] && [ "$_owner_proc_state" != "Z" ] || {
+            unset _owner_proc_pid _owner_proc_stat _owner_proc_state
+            return 1
+        }
+    fi
+    unset _owner_proc_pid _owner_proc_stat _owner_proc_state
+    return 0
+}
+
+magicnet_config_lock_owner_matches() {
+    _owner_check="$1"
+    _owner_check_pid="$(printf '%s\n' "$_owner_check" | cut -d: -f1)"
+    case "$_owner_check_pid" in
+        '' | *[!0-9]*)
+            unset _owner_check _owner_check_pid
+            return 1
+            ;;
+    esac
+    if [ "$_owner_check" = "$_owner_check_pid" ]; then
+        if kill -0 "$_owner_check_pid" 2>/dev/null &&
+            magicnet_config_lock_proc_live "$_owner_check_pid"; then
+            _owner_check_rc=0
+        else
+            _owner_check_rc=1
+        fi
+        unset _owner_check _owner_check_pid
+        return "$_owner_check_rc"
+    fi
+    _owner_check_start="$(printf '%s\n' "$_owner_check" | cut -d: -f2)"
+    case "$_owner_check_start" in
+        '' | *[!0-9]*)
+            unset _owner_check _owner_check_pid _owner_check_start
+            return 1
+            ;;
+    esac
+    if ! kill -0 "$_owner_check_pid" 2>/dev/null ||
+        ! magicnet_config_lock_proc_live "$_owner_check_pid"; then
+        unset _owner_check _owner_check_pid _owner_check_start
+        return 1
+    fi
+    _owner_check_live_start="$(magicnet_config_lock_proc_start "$_owner_check_pid")"
+    [ -n "$_owner_check_live_start" ] &&
+        [ "$_owner_check_live_start" = "$_owner_check_start" ]
+    _owner_check_rc=$?
+    unset _owner_check _owner_check_pid _owner_check_start \
+        _owner_check_live_start
+    return "$_owner_check_rc"
+}
+
+magicnet_config_lock_reclaim() {
+    _reclaim_expected="$1"
+    _reclaim_dir="$(magicnet_config_lock_dir)"
+    _reclaim_current="$(sed -n '1p' "$_reclaim_dir/pid" 2>/dev/null || true)"
+    [ "$_reclaim_current" = "$_reclaim_expected" ] || {
+        unset _reclaim_expected _reclaim_dir _reclaim_current
+        return 1
+    }
+    # Re-check ownership immediately before removing the marker, then use
+    # rmdir instead of recursive deletion.  A concurrent new owner can make
+    # rmdir fail, but cannot have its marker recursively removed by us.
+    rm -f "$_reclaim_dir/pid" 2>/dev/null || {
+        unset _reclaim_expected _reclaim_dir _reclaim_current
+        return 1
+    }
+    rmdir "$_reclaim_dir" 2>/dev/null
+    _reclaim_rc=$?
+    unset _reclaim_expected _reclaim_dir _reclaim_current
+    return "$_reclaim_rc"
 }
 
 magicnet_config_lock_acquire() {
@@ -269,15 +363,14 @@ magicnet_config_lock_acquire() {
     _lock_no_pid_timeout="${MAGICNET_CONFIG_LOCK_NO_PID_TIMEOUT:-3}"
     mkdir -p "$_lock_parent"
     while ! mkdir "$_lock_dir" 2>/dev/null; do
-        _lock_pid="$(sed -n '1p' "${_lock_dir}/pid" 2>/dev/null)"
-        if [ -n "$_lock_pid" ] && ! kill -0 "$_lock_pid" 2>/dev/null; then
-            rm -rf "$_lock_dir" 2>/dev/null || true
-            continue
+        _lock_pid="$(sed -n '1p' "$_lock_dir/pid" 2>/dev/null || true)"
+        if [ -n "$_lock_pid" ] && ! magicnet_config_lock_owner_matches "$_lock_pid"; then
+            magicnet_config_lock_reclaim "$_lock_pid" && continue
         fi
         if [ -z "$_lock_pid" ]; then
             _lock_no_pid_wait=$((_lock_no_pid_wait + 1))
             if [ "$_lock_no_pid_wait" -ge "$_lock_no_pid_timeout" ]; then
-                rm -rf "$_lock_dir" 2>/dev/null || true
+                magicnet_config_lock_reclaim "$_lock_pid" || true
                 _lock_no_pid_wait=0
                 continue
             fi
@@ -292,12 +385,45 @@ magicnet_config_lock_acquire() {
         sleep 1
         _lock_waited=$((_lock_waited + 1))
     done
-    printf '%s\n' "$$" >"${_lock_dir}/pid"
-    unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid
+    _lock_start="$(magicnet_config_lock_proc_start "$$")"
+    if [ -n "$_lock_start" ]; then
+        if ! printf '%s:%s\n' "$$" "$_lock_start" >"$_lock_dir/pid"; then
+            rm -f "$_lock_dir/pid" 2>/dev/null || true
+            rmdir "$_lock_dir" 2>/dev/null || true
+            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start
+            return 1
+        fi
+    else
+        # Keep compatibility with environments without /proc start times;
+        # the legacy PID form remains fail-closed for a live process.
+        if ! printf '%s\n' "$$" >"$_lock_dir/pid"; then
+            rm -f "$_lock_dir/pid" 2>/dev/null || true
+            rmdir "$_lock_dir" 2>/dev/null || true
+            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start
+            return 1
+        fi
+    fi
+    unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start
 }
 
 magicnet_config_lock_release() {
-    rm -rf "$(magicnet_config_lock_dir)" 2>/dev/null || true
+    _lock_dir="$(magicnet_config_lock_dir)"
+    _lock_owner="$(sed -n '1p' "$_lock_dir/pid" 2>/dev/null || true)"
+    _lock_start="$(magicnet_config_lock_proc_start "$$")"
+    if [ -n "$_lock_start" ]; then
+        _lock_self="$$:$_lock_start"
+    else
+        _lock_self="$$"
+    fi
+    # A signal trap from an old owner must never remove a lock that another
+    # process has already acquired after the old owner died.  Remove our
+    # marker first and use rmdir so a newly-created non-empty lock directory
+    # cannot be recursively deleted by the stale trap.
+    if [ "$_lock_owner" = "$_lock_self" ]; then
+        rm -f "$_lock_dir/pid" 2>/dev/null || true
+        rmdir "$_lock_dir" 2>/dev/null || true
+    fi
+    unset _lock_dir _lock_owner _lock_start _lock_self
 }
 
 magicnet_with_config_lock() {

@@ -100,12 +100,13 @@ export function buildSubscriptionApplyLaunch(basename: string): SubscriptionAppl
 
 export function summarizeSubscriptionInput(text: string, limit = 5): SubscriptionInputSummary {
   const raw = subscriptionLines(text);
-  const valid = raw.filter(isHttpUrl);
+  const validUrls = raw.map(parseSubscriptionLine).filter((item): item is URL => item instanceof URL);
+  const uniqueUrls = uniqueNonEmpty(validUrls.map((url) => url.toString()));
   return {
     raw: raw.length,
-    valid: valid.length,
-    duplicate: Math.max(0, raw.length - uniqueNonEmpty(raw).length),
-    overLimit: Math.max(0, uniqueNonEmpty(raw).length - limit)
+    valid: validUrls.length,
+    duplicate: Math.max(0, validUrls.length - uniqueUrls.length),
+    overLimit: Math.max(0, uniqueUrls.length - limit)
   };
 }
 
@@ -124,16 +125,22 @@ export function buildSubscriptionSavePlan(text: string, limit = 5): Subscription
   const invalid = parsed.length - validUrls.length;
   const duplicate = Math.max(0, validUrls.length - uniqueUrls.length);
   const overLimit = Math.max(0, uniqueUrls.length - limit);
-  const http = validUrls.filter((url) => url.protocol === "http:").length;
+  const http = raw.filter((line) => /^http:\/\/\S+$/i.test(line)).length;
   if (invalid) {
-    return plan("error", `${invalid} 行不是 http(s) 订阅 URL，修正后才能保存。`, lines, raw, limit);
+    return {
+      ...plan("error", `${invalid} 行不是 HTTPS 订阅 URL，或包含凭据；修正后才能保存。`, lines, raw, limit),
+      valid: validUrls.length,
+      invalid,
+      duplicate,
+      overLimit,
+      http,
+    };
   }
   if (!lines.length) return plan("error", "没有可保存的订阅 URL。", lines, raw, limit);
-  if (overLimit || duplicate || http) {
+  if (overLimit || duplicate) {
     const notes = [
       duplicate ? `去重 ${duplicate} 个` : "",
       overLimit ? `只保存前 ${limit} 个唯一 URL` : "",
-      http ? `${http} 个非 HTTPS` : ""
     ].filter(Boolean).join("，");
     return { ...plan("warning", notes, lines, raw, limit), duplicate, overLimit, http };
   }
@@ -170,18 +177,19 @@ function previewSubscriptionLine(line: string, index: number, seen: Set<string>,
     if (!url) throw new Error("invalid URL");
     const normalized = url.toString();
     const duplicate = seen.has(normalized);
+    const uniqueCount = duplicate ? seen.size : seen.size + 1;
     seen.add(normalized);
-    const protocolOk = url.protocol === "http:" || url.protocol === "https:";
+    const protocolOk = url.protocol === "https:";
     const notes = [
       url.search || url.hash ? "含参数，界面已隐藏" : "无 query/hash",
       url.pathname.length > 1 ? "含路径，界面已隐藏" : "无路径",
-      url.protocol === "http:" ? "非 HTTPS" : ""
+      url.protocol === "http:" ? "设备侧仅支持 HTTPS" : ""
     ].filter(Boolean);
     return {
       key: `${index}-${url.hostname}`,
       index: index + 1,
       label: protocolOk ? `${url.protocol}//${url.hostname}` : "协议不支持",
-      status: !protocolOk ? "invalid" : index >= limit ? "over-limit" : duplicate ? "duplicate" : "ok",
+      status: !protocolOk ? "invalid" : uniqueCount > limit ? "over-limit" : duplicate ? "duplicate" : "ok",
       notes
     };
   } catch {
@@ -190,23 +198,23 @@ function previewSubscriptionLine(line: string, index: number, seen: Set<string>,
       index: index + 1,
       label: "无法解析 URL",
       status: "invalid",
-      notes: ["必须是一行一个 http(s) URL"]
+      notes: ["必须是一行一个 HTTPS URL，且不能包含凭据"]
     };
   }
 }
 
 function parseSubscriptionLine(line: string): URL | null {
-  if (!isHttpUrl(line)) return null;
+  if (!isHttpsUrl(line)) return null;
   try {
     const url = new URL(line);
-    return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+    return url.protocol === "https:" && !url.username && !url.password ? url : null;
   } catch {
     return null;
   }
 }
 
 function plan(status: SubscriptionSavePlan["status"], message: string, lines: string[], raw: string[], limit: number): SubscriptionSavePlan {
-  const valid = raw.filter(isHttpUrl);
+  const valid = raw.filter((line) => parseSubscriptionLine(line) !== null);
   const unique = uniqueNonEmpty(valid);
   return {
     status,
@@ -217,7 +225,7 @@ function plan(status: SubscriptionSavePlan["status"], message: string, lines: st
     invalid: raw.length - valid.length,
     duplicate: Math.max(0, valid.length - unique.length),
     overLimit: Math.max(0, unique.length - limit),
-    http: valid.filter((line) => line.toLowerCase().startsWith("http://")).length
+    http: raw.filter((line) => /^http:\/\/\S+$/i.test(line)).length
   };
 }
 
@@ -225,8 +233,8 @@ function subscriptionLines(text: string): string[] {
   return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-function isHttpUrl(line: string): boolean {
-  return /^https?:\/\/\S+$/.test(line);
+function isHttpsUrl(line: string): boolean {
+  return /^https:\/\/\S+$/i.test(line);
 }
 
 function uniqueNonEmpty(values: string[]): string[] {

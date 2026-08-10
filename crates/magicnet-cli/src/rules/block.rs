@@ -271,7 +271,7 @@ fn persist_normalized_block_conf(app: &App) -> Result<(), String> {
 }
 
 fn parse_community_rules(text: &str) -> Result<Vec<String>, String> {
-    if text.as_bytes().len() > MAX_COMMUNITY_BLOCKLIST_BYTES {
+    if text.len() > MAX_COMMUNITY_BLOCKLIST_BYTES {
         return Err(format!(
             "community blocklist exceeds {MAX_COMMUNITY_BLOCKLIST_BYTES} byte limit"
         ));

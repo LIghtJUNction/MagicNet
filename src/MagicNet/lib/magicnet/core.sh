@@ -24,11 +24,16 @@ magicnet_start_singbox_unlocked() {
     magicnet_prepare_singbox_nodes_unlocked || return 1
     magicnet_singbox_apply_transparent_mode || return 1
     magicnet_singbox_apply_hotspot_policy || return 1
+    # sing-box snapshots DNS servers and WARP endpoints when the process
+    # starts.  Applying these only in the post-start rewrite made a fresh
+    # start report success while the running core still held the old config.
+    magicnet_dns_apply_unlocked || return 1
     magicnet_tailscale_apply_unlocked || return 1
     # The preceding normalizers rebuild the managed TUN inbound.  Materialize
     # per-app UID boundaries after all of them and before sing-box starts; a
     # deferred rewrite cannot change the already-running core's in-memory routes.
     magicnet_app_policy_apply_unlocked || return 1
+    magicnet_warp_apply_unlocked || return 1
     magicnet_tailscale_inject_auth_key || return 1
     import __singbox__
     if ! singbox_start; then
@@ -83,7 +88,19 @@ magicnet_start_kernel() {
     magicnet_require_subscription_or_stop || return 1
 
     if magicnet_start_singbox; then
-        magicnet_after_kernel_start
+        # The post-start phase installs DNS interception and leak guards.  It
+        # used to run detached, so callers could immediately issue dns.test or
+        # open the WebUI while the runtime was only half initialized.  Keep
+        # startup fail-closed and report the real readiness result.
+        if ! magicnet_after_kernel_start; then
+            # Do not leave a half-initialized core running: the next start
+            # attempt would otherwise hit magicnet_kernel_running and report
+            # success without ever retrying DNS/TUN materialization.
+            import __singbox__
+            singbox_stop >/dev/null 2>&1 || true
+            magicnet_warn "sing-box started but post-start network initialization failed"
+            return 1
+        fi
         "${MODDIR}/cli" api replay >/dev/null 2>&1 || true
         magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
         return 0

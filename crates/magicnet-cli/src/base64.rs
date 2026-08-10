@@ -1,24 +1,75 @@
 pub(crate) fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
-    let mut out = Vec::with_capacity(input.len() * 3 / 4);
-    let mut buf = 0_u32;
-    let mut bits = 0_u8;
-    for byte in input.bytes().filter(|b| !b.is_ascii_whitespace()) {
-        if byte == b'=' {
-            break;
+    let bytes: Vec<u8> = input
+        .bytes()
+        .filter(|byte| !byte.is_ascii_whitespace())
+        .collect();
+    if bytes.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let first_padding = bytes.iter().position(|byte| *byte == b'=');
+    let (data, padding) = match first_padding {
+        Some(index) => {
+            let padding = bytes.len() - index;
+            if !(1..=2).contains(&padding) || bytes[index..].iter().any(|byte| *byte != b'=') {
+                return Err("invalid base64 padding".to_string());
+            }
+            (&bytes[..index], padding)
         }
-        let value = match byte {
-            b'A'..=b'Z' => byte - b'A',
-            b'a'..=b'z' => byte - b'a' + 26,
-            b'0'..=b'9' => byte - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            _ => return Err(format!("invalid base64 byte {byte}")),
-        } as u32;
-        buf = (buf << 6) | value;
-        bits += 6;
-        while bits >= 8 {
-            bits -= 8;
-            out.push(((buf >> bits) & 0xff) as u8);
+        None => (&bytes[..], 0),
+    };
+
+    let value = |byte: u8| -> Result<u8, String> {
+        match byte {
+            b'A'..=b'Z' => Ok(byte - b'A'),
+            b'a'..=b'z' => Ok(byte - b'a' + 26),
+            b'0'..=b'9' => Ok(byte - b'0' + 52),
+            b'+' | b'-' => Ok(62),
+            b'/' | b'_' => Ok(63),
+            _ => Err(format!("invalid base64 byte {byte}")),
+        }
+    };
+    for byte in data {
+        value(*byte)?;
+    }
+
+    let remainder = data.len() % 4;
+    if remainder == 1 {
+        return Err("invalid base64 length".to_string());
+    }
+    if padding > 0
+        && (!bytes.len().is_multiple_of(4)
+            || (padding == 2 && remainder != 2)
+            || (padding == 1 && remainder != 3))
+    {
+        return Err("invalid base64 padding".to_string());
+    }
+
+    let mut out = Vec::with_capacity(data.len() * 3 / 4);
+    for chunk in data.chunks_exact(4) {
+        let a = value(chunk[0])? as u32;
+        let b = value(chunk[1])? as u32;
+        let c = value(chunk[2])? as u32;
+        let d = value(chunk[3])? as u32;
+        out.push(((a << 2) | (b >> 4)) as u8);
+        out.push(((b << 4) | (c >> 2)) as u8);
+        out.push(((c << 6) | d) as u8);
+    }
+    if remainder >= 2 {
+        let offset = data.len() - remainder;
+        let a = value(data[offset])?;
+        let b = value(data[offset + 1])?;
+        out.push(a << 2 | b >> 4);
+        if remainder == 2 {
+            if b & 0x0f != 0 {
+                return Err("invalid base64 trailing bits".to_string());
+            }
+        } else {
+            let c = value(data[offset + 2])?;
+            if c & 0x03 != 0 {
+                return Err("invalid base64 trailing bits".to_string());
+            }
+            out.push(b << 4 | c >> 2);
         }
     }
     Ok(out)

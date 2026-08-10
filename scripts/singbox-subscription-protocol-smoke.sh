@@ -27,11 +27,15 @@ MODDIR="$MODULE_ROOT"
 # shellcheck disable=SC1090
 . "$MODULE_ROOT/lib/magicnet_singbox_subscribe.sh"
 
+magicnet_singbox_tag_is_reserved hotspot \
+    || fail "jq-free reserved-tag fallback does not protect the hotspot selector"
+
 links_fixture="$tmp_dir/mixed-links.txt"
 cat >"$links_fixture" <<'EOF'
 vless://00000000-0000-4000-8000-000000000001@vless.invalid:443#fixture-vless
 anytls://fixture-password@anytls.invalid:443#fixture-anytls
 tuic://00000000-0000-4000-8000-000000000002:fixture-password@tuic.invalid:443#fixture-tuic
+TROJAN://fixture%40password@trojan.invalid:443?sni=trojan%2Eexample&allowInsecure=1#fixture-trojan
 socks://fixture%20user:fixture%40password@socks.invalid:1080#fixture%20socks
 socks5://Zml4dHVyZS11c2VyOmZpeHR1cmUtcGFzc3dvcmQ@socks5.invalid:1081#fixture-socks5
 EOF
@@ -43,16 +47,21 @@ assert_extracted_links() {
     local count
 
     count="$(magicnet_singbox_extract_share_links "$source_file" "$nodes_dir")"
-    [[ "$count" == "5" ]] || fail "$case_name extraction returned $count nodes, expected 5"
-    [[ "$(wc -l <"$nodes_dir/links.txt")" == "5" ]] \
-        || fail "$case_name links.txt does not contain exactly 5 links"
-    for scheme in vless anytls tuic socks socks5; do
-        grep -Eq "^${scheme}://" "$nodes_dir/links.txt" \
+    [[ "$count" == "6" ]] || fail "$case_name extraction returned $count nodes, expected 6"
+    [[ "$(wc -l <"$nodes_dir/links.txt")" == "6" ]] \
+        || fail "$case_name links.txt does not contain exactly 6 links"
+    for scheme in vless anytls tuic trojan socks socks5; do
+        grep -Eiq "^${scheme}://" "$nodes_dir/links.txt" \
             || fail "$case_name links.txt is missing ${scheme}://"
     done
 }
 
 assert_extracted_links "$links_fixture" plain
+{
+    printf '\n# leading comment should not change plain-link detection\n'
+    cat "$links_fixture"
+} >"$tmp_dir/leading-links.txt"
+assert_extracted_links "$tmp_dir/leading-links.txt" leading-plain
 base64 <"$links_fixture" >"$tmp_dir/mixed-links.base64"
 assert_extracted_links "$tmp_dir/mixed-links.base64" base64
 
@@ -94,6 +103,23 @@ printf '%s\n' "$vmess_ws_nojq_json" | jq -e '
   and .transport.headers.Host == "host.invalid"
   and .tls.server_name == "sni.invalid"
 ' >/dev/null || fail "no-jq VMess WebSocket fields were not preserved independently: $vmess_ws_nojq_json"
+
+vmess_escaped_link_file="$tmp_dir/node-vmess-escaped.link"
+vmess_escaped_payload='{"v":"2","ps":"escaped \"tag\"","add":"origin.invalid","port":"443","id":"00000000-0000-4000-8000-000000000011","aid":"0","net":"ws","path":"/edge/\"path","host":"host.invalid","tls":"tls","sni":"sni.invalid"}'
+printf 'vmess://%s\n' "$(printf '%s' "$vmess_escaped_payload" | base64 | tr -d '\n')" >"$vmess_escaped_link_file"
+command() {
+    if [[ "${1:-}" == "-v" && "${2:-}" == "jq" ]]; then
+        return 1
+    fi
+    builtin command "$@"
+}
+vmess_escaped_nojq_json="$(magicnet_singbox_emit_share_link_json "$vmess_escaped_link_file")" \
+    || fail "no-jq emit_share_link_json failed for escaped VMess fields"
+unset -f command
+printf '%s\n' "$vmess_escaped_nojq_json" | jq -e '
+  .tag == "escaped \"tag\""
+  and .transport.path == "/edge/\"path"
+' >/dev/null || fail "no-jq VMess escaped fields were corrupted: $vmess_escaped_nojq_json"
 
 socks_link_file="$tmp_dir/node-socks.link"
 printf '%s\n' 'socks://fixture%20user:fixture%40password@socks.invalid:1080#fixture%20socks' >"$socks_link_file"
@@ -138,6 +164,95 @@ socks_malformed_file="$tmp_dir/node-socks-malformed.link"
 printf '%s\n' 'socks://not-valid-base64@socks.invalid:1080#fixture-invalid' >"$socks_malformed_file"
 if magicnet_singbox_emit_share_link_json "$socks_malformed_file" >"$tmp_dir/malformed-socks.json"; then
     fail "malformed SOCKS credentials were accepted"
+fi
+
+socks_corrupt_base64_file="$tmp_dir/node-socks-corrupt-base64.link"
+printf '%s\n' 'socks://YTph!!!!@socks.invalid:1080#fixture-corrupt-base64' >"$socks_corrupt_base64_file"
+if magicnet_singbox_emit_share_link_json "$socks_corrupt_base64_file" >"$tmp_dir/corrupt-base64-socks.json"; then
+    fail "base64 credentials with trailing garbage were accepted"
+fi
+
+socks_malformed_percent_file="$tmp_dir/node-socks-malformed-percent.link"
+printf '%s\n' 'socks://user%ZZ:password@socks.invalid:1080#fixture-malformed-percent' >"$socks_malformed_percent_file"
+if magicnet_singbox_emit_share_link_json "$socks_malformed_percent_file" >"$tmp_dir/malformed-percent-socks.json"; then
+    fail "malformed percent-encoded SOCKS credentials were accepted"
+fi
+
+trojan_link_file="$tmp_dir/node-trojan.link"
+printf '%s\n' 'trojan://fixture%40+password@trojan.invalid:443?sni=trojan%2Eexample&allowInsecure=1&alpn=h2#fixture-trojan' \
+    >"$trojan_link_file"
+trojan_json="$(magicnet_singbox_emit_share_link_json "$trojan_link_file")" \
+    || fail "emit_share_link_json failed for trojan://"
+printf '%s\n' "$trojan_json" | jq -e '
+  .type == "trojan"
+  and .tag == "fixture-trojan"
+  and .server == "trojan.invalid"
+  and .server_port == 443
+  and .password == "fixture@+password"
+  and .tls.enabled == true
+  and .tls.server_name == "trojan.example"
+  and .tls.insecure == true
+  and (.tls.alpn | index("h2")) != null
+' >/dev/null || fail "trojan share-link JSON did not match expected shape: $trojan_json"
+
+trojan_backslash_file="$tmp_dir/node-trojan-backslash.link"
+printf '%s\n' 'trojan://fixture%5Cn@trojan.invalid:443#fixture-trojan-backslash' \
+    >"$trojan_backslash_file"
+trojan_backslash_json="$(magicnet_singbox_emit_share_link_json "$trojan_backslash_file")" \
+    || fail "emit_share_link_json failed for a backslash-containing trojan password"
+printf '%s\n' "$trojan_backslash_json" | jq -e \
+    '.password == ("fixture" + "\\" + "n")' >/dev/null \
+    || fail "percent-decoded backslash was interpreted as an escape: $trojan_backslash_json"
+
+hysteria2_link_file="$tmp_dir/node-hysteria2.link"
+printf '%s\n' 'hysteria2://fixture%40password@hysteria.invalid:443?sni=hysteria%2Eexample&alpn=h3#fixture-hysteria2' \
+    >"$hysteria2_link_file"
+hysteria2_json="$(magicnet_singbox_emit_share_link_json "$hysteria2_link_file")" \
+    || fail "emit_share_link_json failed for hysteria2://"
+printf '%s\n' "$hysteria2_json" | jq -e '
+  .type == "hysteria2"
+  and .tag == "fixture-hysteria2"
+  and .server == "hysteria.invalid"
+  and .server_port == 443
+  and .password == "fixture@password"
+  and .tls.server_name == "hysteria.example"
+  and (.tls.alpn | index("h3")) != null
+' >/dev/null || fail "hysteria2 share-link JSON did not decode credentials/query values: $hysteria2_json"
+
+ipv6_link_file="$tmp_dir/node-ipv6.link"
+printf '%s\n' 'trojan://fixture-password@[2001:db8::7]:443#fixture-ipv6' >"$ipv6_link_file"
+ipv6_json="$(magicnet_singbox_emit_share_link_json "$ipv6_link_file")" \
+    || fail "emit_share_link_json failed for a bracketed IPv6 share link"
+printf '%s\n' "$ipv6_json" | jq -e '
+  .type == "trojan"
+  and .server == "2001:db8::7"
+  and .server_port == 443
+' >/dev/null || fail "bracketed IPv6 authority was not normalized: $ipv6_json"
+
+vless_reality_file="$tmp_dir/node-vless-reality.link"
+printf '%s\n' 'VLESS://00000000%2D0000%2D4000%2D8000%2D000000000001@reality.invalid:443?security=Reality&sni=reality.example&pbk=fixture-public-key&sid=abcd#fixture-reality' \
+    >"$vless_reality_file"
+vless_reality_json="$(magicnet_singbox_emit_share_link_json "$vless_reality_file")" \
+    || fail "emit_share_link_json failed for VLESS Reality"
+printf '%s\n' "$vless_reality_json" | jq -e '
+  .type == "vless"
+  and .uuid == "00000000-0000-4000-8000-000000000001"
+  and .tls.reality.enabled == true
+  and .tls.reality.public_key == "fixture-public-key"
+  and .tls.reality.short_id == "abcd"
+' >/dev/null || fail "VLESS Reality fields were not validated or normalized: $vless_reality_json"
+
+vless_reality_missing_key="$tmp_dir/node-vless-reality-missing-key.link"
+printf '%s\n' 'vless://00000000-0000-4000-8000-000000000001@reality.invalid:443?security=reality&sni=reality.example#fixture-reality-missing-key' \
+    >"$vless_reality_missing_key"
+if magicnet_singbox_emit_share_link_json "$vless_reality_missing_key" >"$tmp_dir/vless-reality-missing-key.json"; then
+    fail "VLESS Reality without a public key was accepted"
+fi
+
+invalid_port_file="$tmp_dir/node-invalid-port.link"
+printf '%s\n' 'trojan://fixture-password@trojan.invalid:65536#fixture-invalid-port' >"$invalid_port_file"
+if magicnet_singbox_emit_share_link_json "$invalid_port_file" >"$tmp_dir/invalid-port.json"; then
+    fail "share-link emitter accepted an out-of-range port"
 fi
 
 # Drive the real share-link emitter (not a hand-built JSON fixture) for anytls.

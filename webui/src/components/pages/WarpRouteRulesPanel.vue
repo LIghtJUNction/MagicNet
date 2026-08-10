@@ -27,12 +27,18 @@ const visibleWarpDomains = computed(() => {
 });
 
 async function refreshRoutes(trackUserAction = false): Promise<void> {
-  routeOutput.value = await runCli(
+  const text = await runCli(
     "route list",
     "读取路由规则",
     true,
     trackUserAction ? redactedCliPreview("route list [private-output]") : "",
   );
+  routeOutput.value = text;
+  if (execFailed(text)) {
+    state.phase = "error";
+    state.notice = "读取路由规则失败";
+    state.output = text;
+  }
   pendingAction.value = null;
   pendingPlan.value = null;
   planCopied.value = false;
@@ -48,7 +54,8 @@ async function addWarpRoute(cleanDomain: string): Promise<void> {
 
 async function removeWarpRoute(cleanDomain: string): Promise<void> {
   await withAction(`warp-route-remove-${cleanDomain}`, async () => {
-    await runCli(`route remove-domain warp ${shellQuote(cleanDomain)}`, `移除 WARP 路由 ${cleanDomain}`);
+    const text = await runCli(`route remove-domain warp ${shellQuote(cleanDomain)}`, `移除 WARP 路由 ${cleanDomain}`);
+    if (execFailed(text)) return;
     await refreshRoutes();
   });
 }

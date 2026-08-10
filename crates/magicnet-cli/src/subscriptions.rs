@@ -13,8 +13,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     clean_lines, clear_node_cache, decode_base64, first_clean_line, run_magicnet_function,
-    run_subscription_source_update_from_inherited_fd,
-    run_subscription_update_from_inherited_fd, write_text_file, App,
+    run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,
+    write_text_file, App,
 };
 
 const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
@@ -104,9 +104,7 @@ pub fn sub_user_agent(app: &App, args: &[String]) -> Result<(), String> {
             )
         }
         "clear" => write_text_file(app, Path::new(SUBSCRIPTION_USER_AGENT_PATH), ""),
-        _ => Err(
-            "Usage: cli sub user-agent {get|set <base64-value>|clear}".to_string(),
-        ),
+        _ => Err("Usage: cli sub user-agent {get|set <base64-value>|clear}".to_string()),
     }
 }
 
@@ -569,8 +567,7 @@ fn subscription_user_agent(app: &App) -> String {
 }
 
 fn subscription_filters(app: &App) -> Vec<String> {
-    crate::utils::clean_module_lines(app, Path::new(SUBSCRIPTION_FILTER_PATH))
-        .unwrap_or_default()
+    crate::utils::clean_module_lines(app, Path::new(SUBSCRIPTION_FILTER_PATH)).unwrap_or_default()
 }
 
 pub(crate) fn normalize_subscription_filter_text(value: &str) -> Result<String, String> {
@@ -581,7 +578,7 @@ pub(crate) fn normalize_subscription_filter_text(value: &str) -> Result<String, 
         if filter.is_empty() {
             continue;
         }
-        if filter.as_bytes().len() > MAX_SUBSCRIPTION_FILTER_BYTES {
+        if filter.len() > MAX_SUBSCRIPTION_FILTER_BYTES {
             return Err(format!(
                 "subscription filter must be at most {MAX_SUBSCRIPTION_FILTER_BYTES} bytes"
             ));
@@ -610,7 +607,7 @@ pub(crate) fn validate_subscription_user_agent(value: &str) -> Result<(), String
     if value.is_empty() {
         return Err("Subscription User-Agent must not be empty; use clear instead".to_string());
     }
-    if value.as_bytes().len() > MAX_SUBSCRIPTION_USER_AGENT_BYTES {
+    if value.len() > MAX_SUBSCRIPTION_USER_AGENT_BYTES {
         return Err(format!(
             "Subscription User-Agent must be at most {MAX_SUBSCRIPTION_USER_AGENT_BYTES} bytes"
         ));
@@ -635,15 +632,17 @@ pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
 
 struct SubscriptionAuthority<'a> {
     host: &'a str,
-    port: u16,
 }
 
 /// Parse only the authority needed for URL policy. DNS resolution and pinning
 /// happen immediately before the privileged device-side curl invocation.
 fn parse_subscription_authority(url: &str) -> Result<SubscriptionAuthority<'_>, String> {
-    let remainder = url
-        .strip_prefix("https://")
+    let (scheme, remainder) = url
+        .split_once("://")
         .ok_or_else(|| "Subscription URL must use HTTPS".to_string())?;
+    if !scheme.eq_ignore_ascii_case("https") {
+        return Err("Subscription URL must use HTTPS".to_string());
+    }
     if url.chars().any(char::is_whitespace) || url.chars().any(char::is_control) {
         return Err(
             "Subscription URL must not contain whitespace or control characters".to_string(),
@@ -657,7 +656,7 @@ fn parse_subscription_authority(url: &str) -> Result<SubscriptionAuthority<'_>, 
         );
     }
 
-    let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
+    let (host, _port) = if let Some(bracketed) = authority.strip_prefix('[') {
         let closing = bracketed
             .find(']')
             .ok_or_else(|| "Subscription URL has an invalid IPv6 authority".to_string())?;
@@ -682,7 +681,7 @@ fn parse_subscription_authority(url: &str) -> Result<SubscriptionAuthority<'_>, 
         (host, parse_subscription_port(port_suffix)?)
     };
 
-    Ok(SubscriptionAuthority { host, port })
+    Ok(SubscriptionAuthority { host })
 }
 
 fn parse_subscription_port(suffix: &str) -> Result<u16, String> {
@@ -743,7 +742,7 @@ fn validate_subscription_host(host: &str) -> Result<(), String> {
 fn is_public_subscription_address(address: IpAddr) -> bool {
     match address {
         IpAddr::V4(address) => {
-            let [first, second, ..] = address.octets();
+            let [first, second, third, _] = address.octets();
             !(first == 0
                 || first == 10
                 || first == 127
@@ -751,19 +750,42 @@ fn is_public_subscription_address(address: IpAddr) -> bool {
                 || (first == 100 && (64..=127).contains(&second))
                 || (first == 169 && second == 254)
                 || (first == 172 && (16..=31).contains(&second))
-                || (first == 192 && second == 168)
-                || (first == 198 && (18..=19).contains(&second)))
+                || (first == 192
+                    && (second == 0
+                        || second == 2
+                        || second == 168
+                        || (second == 31 && third == 196)
+                        || (second == 52 && third == 193)
+                        || (second == 88 && third == 99)
+                        || (second == 175 && third == 48)))
+                || (first == 198 && ((18..=19).contains(&second) || second == 51))
+                || (first == 203 && second == 0 && third == 113))
         }
         IpAddr::V6(address) => {
             if let Some(mapped) = address.to_ipv4_mapped() {
                 return is_public_subscription_address(IpAddr::V4(mapped));
             }
-            let first = address.segments()[0];
+            let segments = address.segments();
+            let first = segments[0];
             !(address.is_unspecified()
                 || address.is_loopback()
                 || address.is_multicast()
                 || (first & 0xfe00) == 0xfc00
-                || (first & 0xffc0) == 0xfe80)
+                || (first & 0xffc0) == 0xfe80
+                // Documentation, benchmarking, discard, Teredo, and
+                // well-known NAT64 ranges are not routable subscription
+                // endpoints and must not be treated as public addresses.
+                || (first == 0x0100 && segments[1..4] == [0, 0, 0])
+                || (first == 0x0064
+                    && segments[1] == 0xff9b
+                    && segments[2..6] == [0, 0, 0, 0])
+                || (first == 0x2001 && segments[1] == 0)
+                || (first == 0x2001 && segments[1] == 2 && segments[2] == 0)
+                || (first == 0x2001 && segments[1] == 0xdb8)
+                || (first == 0x2001
+                    && (segments[1] & 0xfff0) == 0x0010)
+                || (first == 0x2001
+                    && (segments[1] & 0xfff0) == 0x0020))
         }
     }
 }
@@ -805,6 +827,8 @@ mod tests {
     #[test]
     fn subscription_url_validation_requires_public_https_without_credentials() {
         validate_subscription_url("https://example.com/sub?profile=abc").unwrap();
+        validate_subscription_url("HTTPS://example.com/sub").unwrap();
+        validate_subscription_url("HtTpS://example.com/sub").unwrap();
         validate_subscription_url("https://example.com:8443/sub").unwrap();
         validate_subscription_url("https://1.1.1.1/sub").unwrap();
         validate_subscription_url("https://8.8.8.8:8443/sub").unwrap();
@@ -834,9 +858,7 @@ mod tests {
     #[test]
     fn subscription_authority_rejects_malformed_ports_and_ipv6_authorities() {
         assert_eq!(
-            parse_subscription_authority("https://example.com:8443/sub")
-                .expect("valid explicit port")
-                .port,
+            parse_subscription_port(":8443").expect("valid explicit port"),
             8443
         );
         for url in [
@@ -861,14 +883,31 @@ mod tests {
             "127.0.0.1",
             "169.254.1.1",
             "172.16.0.1",
+            "192.0.0.1",
+            "192.0.2.1",
             "192.168.0.1",
+            "192.31.196.1",
+            "192.52.193.1",
+            "192.88.99.1",
+            "192.175.48.1",
+            "198.18.0.1",
+            "198.51.100.1",
+            "203.0.113.1",
             "224.0.0.1",
             "::",
             "::1",
             "fc00::1",
             "fe80::1",
+            "100::1",
+            "64:ff9b::1",
+            "2001:0::1",
+            "2001:2::1",
+            "2001:10::1",
+            "2001:20::1",
+            "2001:db8::1",
             "ff02::1",
             "::ffff:127.0.0.1",
+            "::ffff:192.0.2.1",
         ] {
             let address = IpAddr::from_str(address).expect("valid fixture address");
             assert!(

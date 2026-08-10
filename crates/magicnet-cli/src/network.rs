@@ -3,6 +3,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use crate::service::restart_current_core;
 use crate::{read_kv, run_magicnet_function, write_kv, App};
 
 const NETWORK_POLICY_CONF: &str = ".config/magicnet/network-policy.conf";
@@ -36,18 +37,25 @@ pub(crate) fn network_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "set" => {
             let policy = NetworkPolicy::from_args(&args[1..])?;
             policy.write(app)?;
-            run_magicnet_function(app, "magicnet_transparent_apply")?;
+            apply_network_policy(app)?;
             print_status(app, &policy);
             println!("[info] Network policy applied");
             Ok(())
         }
         "apply" => {
-            run_magicnet_function(app, "magicnet_transparent_apply")?;
+            apply_network_policy(app)?;
             print_status(app, &NetworkPolicy::load(app));
             Ok(())
         }
         _ => Err(network_usage()),
     }
+}
+
+fn apply_network_policy(app: &App) -> Result<(), String> {
+    run_magicnet_function(app, "magicnet_transparent_apply")?;
+    // sing-box reads the TUN inbound and DNS strategy at process start; a
+    // successful file rewrite alone leaves a running core on the old policy.
+    restart_current_core(app)
 }
 
 impl NetworkPolicy {

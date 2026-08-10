@@ -123,6 +123,7 @@ const appsSource = readFileSync(new URL("./src/components/pages/AppsPage.vue", i
 const outputSource = readFileSync(new URL("./src/components/pages/OutputPage.vue", import.meta.url), "utf8");
 const warpRoutesSource = readFileSync(new URL("./src/components/pages/WarpRouteRulesPanel.vue", import.meta.url), "utf8");
 const useMagicNetSource = readFileSync(new URL("./src/composables/useMagicNet.ts", import.meta.url), "utf8");
+const magicnetSource = useMagicNetSource;
 const installPlanSource = readFileSync(new URL("./src/components/pages/webuiInstallPlan.ts", import.meta.url), "utf8");
 const linksSource = readFileSync(new URL("./src/composables/useExternalLinks.ts", import.meta.url), "utf8");
 for (const source of [toolsSource, subscriptionsSource]) {
@@ -173,5 +174,8 @@ for (const [source, preview] of [
 ]) {
   assert.match(source, new RegExp(`redactedCliPreview\\("${preview.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\)`));
 }
+assert.match(magicnetSource, /config-editor get \$\{target\}[\s\S]*redactedCliPreview\(`config-editor get \$\{target\} \[private-output\]`\)/);
+assert.match(magicnetSource, /加载失败：配置读取命令未成功，私密输出未显示。/);
+assert.doesNotMatch(magicnetSource, /state\.output = text \|\| "加载失败：没有返回内容。"/);
 
 console.log("private payload and signed URL contract tests passed");

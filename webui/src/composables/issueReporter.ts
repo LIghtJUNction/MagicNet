@@ -112,7 +112,11 @@ export async function createMagicNetIssue(
 ): Promise<void> {
   const captured = state.operationCapture.command
     ? state.operationCapture
-    : { phase: state.phase, command: state.lastCommand, output: state.output };
+    : {
+        phase: state.phase,
+        command: state.lastCommand,
+        output: state.output,
+      };
   const operation: IssueOperationContext = {
     phase: captured.phase,
     lastCommand: captured.command,

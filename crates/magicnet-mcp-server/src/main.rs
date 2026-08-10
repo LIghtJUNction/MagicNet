@@ -18,6 +18,7 @@ pub(crate) use rpc::run_cli;
 pub(crate) use server::Server;
 
 const MAX_CONCURRENT_CONNECTIONS: usize = 32;
+const MODULE_DIR: &str = "/data/adb/modules/MagicNet";
 
 struct ConnectionPermit {
     active: Arc<AtomicUsize>,
@@ -43,15 +44,25 @@ impl Drop for ConnectionPermit {
 }
 
 fn main() {
-    let moddir = env::var("MODDIR").unwrap_or_else(|_| "/data/adb/modules/MagicNet".to_string());
+    let moddir = if cfg!(target_os = "android") {
+        // The installed module root is a privileged boundary. A direct
+        // launcher must not redirect the server to an attacker-writable tree.
+        MODULE_DIR.to_string()
+    } else {
+        env::var("MODDIR").unwrap_or_else(|_| MODULE_DIR.to_string())
+    };
     let bind = env::var("MAGICNET_MCP_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = env::var("MAGICNET_MCP_PORT").unwrap_or_else(|_| "8766".to_string());
     let secret = env::var("MAGICNET_MCP_SECRET").unwrap_or_default();
     let addr = parse_listen_addr(&bind, &port).unwrap_or_else(|error| panic!("{error}"));
     let listener = TcpListener::bind(addr).unwrap_or_else(|err| panic!("listen {addr}: {err}"));
-    let cli = env::var("MAGICNET_CLI")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(&moddir).join("bin/magicnet-cli"));
+    let cli = if cfg!(target_os = "android") {
+        PathBuf::from(&moddir).join("bin/magicnet-cli")
+    } else {
+        env::var("MAGICNET_CLI")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(&moddir).join("bin/magicnet-cli"))
+    };
     let server = Server {
         cli,
         moddir: PathBuf::from(moddir),

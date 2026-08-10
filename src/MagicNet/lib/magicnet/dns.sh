@@ -32,13 +32,13 @@ magicnet_dns_apply_singbox() {
         return 1
     }
     _tmp="${_config}.magicnet-dns.new"
-    "$_jq" --arg profile "$_profile" '
+    (umask 077; "$_jq" --arg profile "$_profile" '
       def cf_udp($tag; $server):
-        {"type":"udp","tag":$tag,"server":$server};
+        {"type":"udp","tag":$tag,"server":$server,"detour":"proxy"};
       def cf_tls($tag; $server):
-        {"type":"tls","tag":$tag,"server":$server,"server_port":853,"tls":{"server_name":"cloudflare-dns.com"}};
+        {"type":"tls","tag":$tag,"server":$server,"server_port":853,"detour":"proxy","tls":{"server_name":"cloudflare-dns.com"}};
       def cf_https($tag; $server):
-        {"type":"https","tag":$tag,"server":$server,"server_port":443,"path":"/dns-query","tls":{"server_name":"cloudflare-dns.com"}};
+        {"type":"https","tag":$tag,"server":$server,"server_port":443,"detour":"proxy","path":"/dns-query","tls":{"server_name":"cloudflare-dns.com"}};
       def default_bootstrap:
         {"type":"https","tag":"bootstrap-local-dns","server":"223.5.5.5","server_port":443,"path":"/dns-query","headers":{"Host":"dns.alidns.com"},"tls":{"server_name":"dns.alidns.com"}};
       def server_for($profile; $tag; $server):
@@ -48,10 +48,20 @@ magicnet_dns_apply_singbox() {
         end;
       .dns.servers = (
         (.dns.servers // [])
-        | map(select((.tag // "") as $tag | ($tag != "bootstrap-local-dns" and $tag != "cloudflare-backup-dns")))
-        | (if $profile == "default" then [default_bootstrap] else [server_for($profile; "bootstrap-local-dns"; "1.1.1.1"), server_for($profile; "cloudflare-backup-dns"; "1.0.0.1")] end) + .
+        | map(select((.tag // "") as $tag |
+          ($tag != "bootstrap-local-dns" and
+           $tag != "cloudflare-profile-dns" and
+           $tag != "cloudflare-backup-dns")))
+        | (if $profile == "default" then [default_bootstrap]
+           else [default_bootstrap,
+                 server_for($profile; "cloudflare-profile-dns"; "1.1.1.1"),
+                 server_for($profile; "cloudflare-backup-dns"; "1.0.0.1")]
+           end) + .
       )
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"
+      | if $profile == "default" then .dns.final = "bootstrap-local-dns"
+        else .dns.final = "cloudflare-profile-dns"
+        end
+    ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
     _rc=$?
     [ "$_rc" -eq 0 ] || rm -f "$_tmp" 2>/dev/null || true
     unset _profile _config _jq _tmp

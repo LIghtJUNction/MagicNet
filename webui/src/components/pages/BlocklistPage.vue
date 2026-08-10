@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, redactedCliPreview } from "@/utils";
+import { copyText, execFailed, redactedCliPreview } from "@/utils";
 import { buildBlocklistSummary, filterBlocklistEntries } from "./blocklistInsights";
 
 const { state, runCli, startBackgroundCli, refreshBlock, openExternal, shellQuote, REPO } = useMagicNet();
@@ -46,15 +46,25 @@ function validateBlockDomain(domain: string): boolean {
 
 async function addDomain(domain: string): Promise<void> {
   await withAction(`add-domain-${domain}`, async () => {
+    const previousManual = [...state.blocklist.manual];
     state.blocklist.manual.push(domain);
     state.blocklist.newDomain = "";
-    await runCli(
+    const text = await runCli(
       `block add-domain ${shellQuote(domain)}`,
       `添加黑名单 ${domain}`,
       true,
       redactedCliPreview("block add-domain [domain]"),
     );
-    await refreshBlock(true);
+    if (execFailed(text)) {
+      state.blocklist.manual = previousManual;
+      state.output = text;
+      return;
+    }
+    if (!(await refreshBlock(true))) {
+      state.blocklist.manual = previousManual;
+      return;
+    }
+    state.output = `已添加黑名单：${domain}`;
   });
 }
 
@@ -79,7 +89,7 @@ async function removeDomain(domain: string): Promise<void> {
       true,
       redactedCliPreview("block remove-domain [domain]"),
     );
-    if (text.includes("[error]")) {
+    if (execFailed(text)) {
       state.output = text;
       state.blocklist.manual.unshift(domain);
       return;
@@ -110,7 +120,7 @@ async function allowRule(rule: string): Promise<void> {
       true,
       redactedCliPreview("block allow-rule [rule]"),
     );
-    if (text.includes("[error]")) {
+    if (execFailed(text)) {
       state.output = text;
       state.blocklist.allowRules = state.blocklist.allowRules.filter((item) => item !== rule);
       if (suffix !== rule) {
@@ -200,7 +210,7 @@ async function removeAllowRule(rule: string): Promise<void> {
       true,
       redactedCliPreview("block unallow-rule [rule]"),
     );
-    if (text.includes("[error]")) {
+    if (execFailed(text)) {
       state.output = text;
       if (!state.blocklist.allowRules.includes(rule)) state.blocklist.allowRules.push(rule);
       return;
@@ -276,7 +286,8 @@ function requestToggleBlocklist(): void {
     message: state.blocklist.enabled ? "确认关闭黑名单？阻断规则将不再生效。" : "确认启用黑名单？阻断规则会立即生效。",
     run: async () => {
       await withAction("toggle-block", async () => {
-        await runCli(command, "切换黑名单");
+        const text = await runCli(command, "切换黑名单");
+        if (execFailed(text)) return;
         await refreshBlock(true);
       });
     }
@@ -291,7 +302,8 @@ function requestToggleCommunity(): void {
     message: state.blocklist.community ? "确认关闭社区库？社区阻断规则将不再生效。" : "确认启用社区库？社区阻断规则会立即生效。",
     run: async () => {
       await withAction("toggle-community", async () => {
-        await runCli(command, "切换社区库");
+        const text = await runCli(command, "切换社区库");
+        if (execFailed(text)) return;
         await refreshBlock(true);
       });
     }

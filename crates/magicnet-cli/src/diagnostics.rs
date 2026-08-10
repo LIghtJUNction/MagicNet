@@ -3,7 +3,7 @@ use std::fs;
 use std::io::Read;
 use std::net::IpAddr;
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
-use crate::{clean_lines, command_text_timeout, mcp, pid_summary, App};
+use crate::{clean_lines, command_text_timeout, mcp, pid_summary, singbox_pid_summary, App};
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
     for (key, ok, detail) in health_items(app) {
@@ -22,7 +22,7 @@ pub(crate) fn health(app: &App) -> Result<(), String> {
 }
 
 fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
-    let singbox = pid_summary("sing-box");
+    let singbox = singbox_pid_summary(app);
     let mode = transparent_mode(app);
     let (tun_ok, tun_detail) = tun_check(app, &mode);
     let (network_ok, network_detail) = network_policy_check(app);
@@ -92,7 +92,10 @@ fn tailscale_check(app: &App) -> (bool, String) {
         .and_then(|items| {
             items.iter().find(|item| {
                 item.get("type").and_then(Value::as_str) == Some("tailscale")
-                    && item.get("tag").and_then(Value::as_str).is_some_and(|tag| !tag.is_empty())
+                    && item
+                        .get("tag")
+                        .and_then(Value::as_str)
+                        .is_some_and(|tag| !tag.is_empty())
                     && !item
                         .get("system_interface")
                         .and_then(Value::as_bool)
@@ -102,13 +105,22 @@ fn tailscale_check(app: &App) -> (bool, String) {
     let Some(endpoint) = endpoint else {
         return (true, "configured=false".to_string());
     };
-    let tag = endpoint.get("tag").and_then(Value::as_str).unwrap_or_default();
+    let tag = endpoint
+        .get("tag")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let state = endpoint
         .get("state_directory")
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .map(|path| if path.is_absolute() { path } else { config_dir.join(path) })
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                config_dir.join(path)
+            }
+        })
         .unwrap_or_else(|| app.moddir.join(".state/sing-box/tailscale"));
     let state_created = state.exists();
     let tun_ingress = config
@@ -138,9 +150,9 @@ fn tailscale_check(app: &App) -> (bool, String) {
                         .get("ip_cidr")
                         .and_then(Value::as_array)
                         .is_some_and(|cidrs| {
-                            TAILNETS.iter().all(|cidr| {
-                                cidrs.iter().any(|value| value.as_str() == Some(cidr))
-                            })
+                            TAILNETS
+                                .iter()
+                                .all(|cidr| cidrs.iter().any(|value| value.as_str() == Some(cidr)))
                         })
             })
         });
@@ -214,7 +226,7 @@ pub(crate) fn support(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn support_bundle(app: &App) -> String {
-    let singbox = pid_summary("sing-box");
+    let singbox = singbox_pid_summary(app);
     let mode = transparent_mode(app);
     let mut output = String::from("MagicNet canonical support bundle\n");
     append_support_section(
@@ -372,10 +384,7 @@ fn proxy_chain_evidence_from_values(
     lines.join("\n")
 }
 
-fn sanitized_selector_chain(
-    start: &str,
-    proxies: &serde_json::Map<String, Value>,
-) -> String {
+fn sanitized_selector_chain(start: &str, proxies: &serde_json::Map<String, Value>) -> String {
     let mut chain = Vec::new();
     let mut visited = Vec::new();
     let mut current = start;
@@ -404,10 +413,7 @@ fn sanitized_selector_chain(
     chain.join(" -> ")
 }
 
-fn sanitized_chain_hop(
-    tag: &str,
-    proxies: Option<&serde_json::Map<String, Value>>,
-) -> String {
+fn sanitized_chain_hop(tag: &str, proxies: Option<&serde_json::Map<String, Value>>) -> String {
     if SUPPORT_CHAIN_TAGS.contains(&tag) {
         return tag.to_string();
     }
@@ -710,20 +716,30 @@ fn iface_detail(name: &str) -> String {
 }
 
 fn tun_check(app: &App, _mode: &str) -> (bool, String) {
-    let mut names = configured_tun_names(app);
-    for fallback in ["magicnet0", "utun", "Meta", "mihoyo"] {
-        push_unique(&mut names, fallback.to_string());
-    }
-    let checked = names.join(",");
-    for name in &names {
-        if PathBuf::from(format!("/sys/class/net/{name}")).exists() {
-            return (true, format!("{name}: {}", iface_detail(name)));
-        }
+    // MagicNet owns one transparent interface.  Accepting foreign TUN names
+    // here can report a stale mihomo/Meta/utun interface as a healthy
+    // MagicNet runtime even when magicnet0 is missing.
+    let expected = "magicnet0";
+    let configured = configured_tun_names(app);
+    let configured_ok = configured_tun_is_canonical(&configured);
+    if configured_ok && PathBuf::from(format!("/sys/class/net/{expected}")).exists() {
+        return (true, format!("{expected}: {}", iface_detail(expected)));
     }
     (
         false,
-        format!("No MagicNet TUN interface found. checked={checked}"),
+        format!(
+            "No canonical MagicNet TUN interface found. checked={expected} configured={}",
+            if configured.is_empty() {
+                "none".to_string()
+            } else {
+                configured.join(",")
+            }
+        ),
     )
+}
+
+fn configured_tun_is_canonical(names: &[String]) -> bool {
+    names.iter().all(|name| name == "magicnet0")
 }
 
 fn configured_tun_names(app: &App) -> Vec<String> {
@@ -781,7 +797,14 @@ fn traffic_loop_guard_check(app: &App) -> (bool, String) {
             let kind = outbound.get("type").and_then(Value::as_str)?;
             if !matches!(
                 kind,
-                "vless" | "vmess" | "trojan" | "shadowsocks" | "hysteria2" | "tuic" | "anytls"
+                "vless"
+                    | "vmess"
+                    | "trojan"
+                    | "shadowsocks"
+                    | "hysteria2"
+                    | "tuic"
+                    | "anytls"
+                    | "socks"
             ) {
                 return None;
             }
@@ -965,11 +988,48 @@ fn supervisor_pid_matches(app: &App, pid: u32, name: &str) -> bool {
                 .to_string()
         })
         .unwrap_or_default();
-    let moddir = app.moddir.display().to_string();
-    cmdline.contains(name)
-        || (cmdline.contains("service ensure") && cmdline.contains(&moddir))
-        || (cmdline.contains("config apply") && cmdline.contains(&moddir))
-        || cmdline.contains(&moddir)
+    supervisor_cmdline_matches(&app.moddir, name, &cmdline)
+}
+
+fn supervisor_cmdline_matches(moddir: &Path, name: &str, cmdline: &str) -> bool {
+    let module = moddir.to_string_lossy();
+    match name {
+        "magicnet-config" => {
+            cmdline_has_script(
+                cmdline,
+                &format!("{module}/.state/fswatch/magicnet-config.loop.sh"),
+            ) || cmdline_has_command(cmdline, &format!("{module}/cli"), &["config", "apply"])
+        }
+        "magicnet-wifi-policy" => {
+            cmdline_has_command(cmdline, &format!("{module}/cli"), &["wifi", "watch"])
+                || cmdline_has_command(
+                    cmdline,
+                    &format!("{module}/bin/magicnet-cli"),
+                    &["wifi", "watch"],
+                )
+        }
+        _ => false,
+    }
+}
+
+fn cmdline_has_script(cmdline: &str, script: &str) -> bool {
+    cmdline
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .any(|pair| {
+            matches!(
+                pair[0].rsplit('/').next(),
+                Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
+            ) && pair[1] == script
+        })
+}
+
+fn cmdline_has_command(cmdline: &str, executable: &str, args: &[&str]) -> bool {
+    let tokens = cmdline.split_whitespace().collect::<Vec<_>>();
+    tokens.windows(args.len() + 1).any(|window| {
+        window[0] == executable && window[1..].iter().copied().eq(args.iter().copied())
+    })
 }
 
 fn has_subscription(app: &App) -> bool {
@@ -1308,12 +1368,49 @@ fn looks_like_hostname(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        network_policy_check, proxy_chain_evidence_from_values, read_only_command_with_timeout,
-        redact, support_bundle, traffic_loop_guard_check,
+        configured_tun_is_canonical, network_policy_check, proxy_chain_evidence_from_values,
+        read_only_command_with_timeout, redact, supervisor_cmdline_matches, support_bundle,
+        traffic_loop_guard_check,
     };
     use crate::App;
     use std::fs;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn tun_health_accepts_only_the_canonical_magicnet_interface() {
+        assert!(configured_tun_is_canonical(&[]));
+        assert!(configured_tun_is_canonical(&[String::from("magicnet0")]));
+        assert!(!configured_tun_is_canonical(&[String::from("utun")]));
+        assert!(!configured_tun_is_canonical(&[
+            String::from("magicnet0"),
+            String::from("Meta"),
+        ]));
+    }
+
+    #[test]
+    fn supervisor_status_requires_exact_managed_argv() {
+        let module = std::path::PathBuf::from("/data/adb/modules/MagicNet");
+        assert!(supervisor_cmdline_matches(
+            &module,
+            "magicnet-config",
+            "/system/bin/sh /data/adb/modules/MagicNet/.state/fswatch/magicnet-config.loop.sh"
+        ));
+        assert!(supervisor_cmdline_matches(
+            &module,
+            "magicnet-wifi-policy",
+            "/system/bin/sh /data/adb/modules/MagicNet/cli wifi watch"
+        ));
+        assert!(!supervisor_cmdline_matches(
+            &module,
+            "magicnet-config",
+            "sleep 600 /data/adb/modules/MagicNet/.state/fswatch/magicnet-config.loop.sh"
+        ));
+        assert!(!supervisor_cmdline_matches(
+            &module,
+            "magicnet-wifi-policy",
+            "/system/bin/sh /data/adb/modules/Other/cli wifi watch"
+        ));
+    }
 
     #[test]
     fn traffic_loop_guard_requires_root_and_loopback_exclusions() {
@@ -1546,15 +1643,13 @@ mod tests {
         let output = proxy_chain_evidence_from_values(Some(&proxies), Some(&connections));
 
         assert!(output.contains("selector.proxy-rule=proxy-rule -> proxy -> <node:vless>"));
-        assert!(output.contains(
-            "active_chain.1=count:2 chain:<node:vless> -> proxy -> proxy-rule"
-        ));
+        assert!(output.contains("active_chain.1=count:2 chain:<node:vless> -> proxy -> proxy-rule"));
         assert!(output.contains("active_connection_count=3"));
         let redacted = redact(&output);
         assert!(redacted.contains("selector.proxy-rule=proxy-rule -> proxy -> <node:vless>"));
-        assert!(redacted.contains(
-            "active_chain.1=count:2 chain:<node:vless> -> proxy -> proxy-rule"
-        ));
+        assert!(
+            redacted.contains("active_chain.1=count:2 chain:<node:vless> -> proxy -> proxy-rule")
+        );
         for sensitive in [
             "PRIVATE-NODE-CANARY",
             "PRIVATE-TARGET-CANARY",

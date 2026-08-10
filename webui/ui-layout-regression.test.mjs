@@ -7,6 +7,8 @@ const styles = readFileSync(new URL("./src/styles.css", import.meta.url), "utf8"
 
 assert.match(app, /desktop-rail[\s\S]*whitespace-nowrap/, "desktop navigation labels must stay on one line");
 assert.match(app, /mobile-nav[\s\S]*whitespace-nowrap/, "mobile navigation labels must stay on one line");
+assert.match(app, /mobile-nav[\s\S]*max-w-full truncate leading-none/, "mobile navigation labels must clip instead of wrapping");
+assert.match(app, /desktop-rail[\s\S]*min-w-0 truncate/, "desktop navigation labels must not force rail overflow");
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*全局接管/);
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*仅名单接管/);
 assert.doesNotMatch(
