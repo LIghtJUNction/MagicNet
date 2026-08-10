@@ -129,14 +129,22 @@ magicnet_singbox_runtime_fingerprint() (
     _runtime_root="${MODDIR}/.config/sing-box"
     _runtime_config="${_runtime_root}/config.json"
     [ -f "$_runtime_config" ] || return 1
+    _runtime_jq="${MODDIR}/bin/jq"
+    [ -x "$_runtime_jq" ] || _runtime_jq="$(command -v jq 2>/dev/null || true)"
+    [ -n "$_runtime_jq" ] || return 1
     command -v cksum >/dev/null 2>&1 || return 1
     command -v find >/dev/null 2>&1 || return 1
     command -v sort >/dev/null 2>&1 || return 1
 
     {
-        cksum "$_runtime_config" || exit 1
+        # Runtime materializers may emit equivalent JSON with a different key
+        # order or whitespace.  sing-box sees the same configuration in that
+        # case, so hash a stable representation instead of the file bytes.
+        "$_runtime_jq" -e . "$_runtime_config" >/dev/null || exit 1
+        "$_runtime_jq" -S -c . "$_runtime_config" | cksum || exit 1
         if [ -f "${_runtime_root}/tailscale-auth.json" ]; then
-            cksum "${_runtime_root}/tailscale-auth.json" || exit 1
+            "$_runtime_jq" -e . "${_runtime_root}/tailscale-auth.json" >/dev/null || exit 1
+            "$_runtime_jq" -S -c . "${_runtime_root}/tailscale-auth.json" | cksum || exit 1
         fi
         if [ -d "${_runtime_root}/rules" ]; then
             find "${_runtime_root}/rules" -type f -name '*.srs' -print 2>/dev/null |
