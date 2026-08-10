@@ -1202,7 +1202,7 @@ run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >
 rg -q '^fswatch=[0-9]+$' "$TMP/supervisor-status.log"
 test -s "$MODDIR/.state/fswatch/magicnet-config.pid"
 rg -q 'config apply' "$MODDIR/.state/fswatch/magicnet-config.loop.sh"
-rg -q 'fswatch_snapshot' "$MODDIR/.state/fswatch/magicnet-config.loop.sh"
+rg -q 'fswatch_changed' "$MODDIR/.state/fswatch/magicnet-config.loop.sh"
 _fswatch_pid_file="$MODDIR/.state/fswatch/magicnet-config.pid"
 _fswatch_loop_file="$MODDIR/.state/fswatch/magicnet-config.loop.sh"
 _fswatch_first_pid="$(sed -n '1p' "$_fswatch_pid_file")"
