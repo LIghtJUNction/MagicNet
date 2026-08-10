@@ -874,6 +874,14 @@ magicnet_supervisors_start() {
     magicnet_fswatch_start || _mss_rc=1
     magicnet_subscription_refresh_start || _mss_rc=1
     magicnet_wifi_policy_start || _mss_rc=1
+    # Startup may materialize supervisor-owned policy after the core's initial
+    # fingerprint was recorded.  Publish the settled generation so the next
+    # fswatch pass does not restart an already-current core and tear down
+    # long-lived application connections.
+    if magicnet_kernel_running; then
+        magicnet_singbox_record_runtime_fingerprint ||
+            magicnet_warn "Failed to record the settled sing-box configuration fingerprint."
+    fi
     return "$_mss_rc"
 }
 
