@@ -30,6 +30,24 @@ try {
     writeFile(join(dir, "runtimeLogInsights.mjs"), transpile(source), "utf8"),
   ]);
   const insights = await import(pathToFileURL(join(dir, "runtimeLogInsights.mjs")).href);
+  const ansiIssue = "\u001b[31mERROR\u001b[0m connection: timeout while opening outbound";
+  const analysis = insights.analyzeRuntimeLogLines([ansiIssue]);
+  assert.equal(analysis.issueCount, 1);
+  assert.equal(analysis.errorCount, 1);
+  assert.equal(analysis.otherIssueCount, 0);
+  assert.equal(insights.runtimeLogLevelMatches(ansiIssue, "error"), true);
+  const ansiReport = insights.formatRuntimeLogIssueReport({
+    target: "sing-box",
+    lines: [ansiIssue],
+    issueLines: [ansiIssue],
+    issueCount: 1,
+    warningCount: 0,
+    errorCount: 1,
+    otherIssueCount: 0,
+  });
+  assert.doesNotMatch(ansiReport, /\u001b/);
+  assert.match(ansiReport, /issues=1/);
+
   const issue = "ERROR connection from 192.0.2.7:443 to https://private.example.invalid/path?token=secret";
   const report = insights.formatRuntimeLogIssueReport({
     target: "sing-box",
@@ -47,16 +65,16 @@ try {
   assert.doesNotMatch(insight.lastIssue, /192\.0\.2\.7|private\.example\.invalid/);
 
   const coloredError = "+0800 2026-08-08 01:02:45 \u001b[31mERROR\u001b[0m connection: dial tcp 0.0.0.1:23861: i/o timeout";
-  const analysis = insights.analyzeRuntimeLogLines([coloredError]);
-  assert.equal(analysis.warningCount, 0);
-  assert.equal(analysis.errorCount, 1);
-  assert.equal(analysis.otherIssueCount, 0);
-  assert.deepEqual(analysis.issueLines, [coloredError]);
+  const coloredAnalysis = insights.analyzeRuntimeLogLines([coloredError]);
+  assert.equal(coloredAnalysis.warningCount, 0);
+  assert.equal(coloredAnalysis.errorCount, 1);
+  assert.equal(coloredAnalysis.otherIssueCount, 0);
+  assert.deepEqual(coloredAnalysis.issueLines, [coloredError]);
 
   const coloredReport = insights.formatRuntimeLogIssueReport({
     target: "sing-box",
     lines: [coloredError],
-    ...analysis,
+    ...coloredAnalysis,
   });
   assert.match(coloredReport, /errors=1/);
   assert.match(coloredReport, /other_issues=0/);

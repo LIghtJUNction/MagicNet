@@ -288,6 +288,10 @@ local_microsoft_dns_rule = {
     ],
     "server": "bootstrap-local-dns",
 }
+x_social_dns_rule = {
+    "domain_suffix": ["twitter.com", "x.com", "twimg.com"],
+    "server": "doh-google",
+}
 ad_suffix_dns_rule = {
     "domain_suffix": [
         "doubleclick.net", "googlesyndication.com", "googleadservices.com",
@@ -351,6 +355,22 @@ def exact_dns_index(expected_rule):
 ad_suffix_dns_index = exact_dns_index(ad_suffix_dns_rule)
 ad_keyword_dns_index = exact_dns_index(ad_keyword_dns_rule)
 ad_rule_set_dns_index = exact_dns_index(ad_rule_set_dns_rule)
+x_social_dns_index = exact_dns_index(x_social_dns_rule)
+cn_dns_rule_indexes = [
+    index for index, rule in enumerate(dns_rules)
+    if "lyc-geosite-cn" in (
+        rule.get("rule_set")
+        if isinstance(rule.get("rule_set"), list)
+        else [rule.get("rule_set")]
+    )
+]
+if not cn_dns_rule_indexes or not local_microsoft_dns_index < x_social_dns_index < min(cn_dns_rule_indexes):
+    raise AssertionError(
+        "explicit X/Twitter DNS rule must follow the canonical explicit DNS block and precede "
+        "the domestic China rule-set classifier: "
+        f"local_index={local_microsoft_dns_index} x_index={x_social_dns_index} "
+        f"cn_rule_set_index={min(cn_dns_rule_indexes) if cn_dns_rule_indexes else None}"
+    )
 dedicated_leak_test_dns_indexes = [
     index for index, rule in enumerate(dns_rules) if rule == dedicated_leak_test_dns_rule
 ]
@@ -560,6 +580,7 @@ expected_dns_tail = [
     ad_rule_set_dns_rule,
     game_dns_rule,
     foreign_priority_dns_rule,
+    x_social_dns_rule,
     canonical_cn_dns_rule,
     generic_foreign_dns_rule,
     specialized_foreign_dns_rule,
@@ -575,7 +596,7 @@ if (
 ):
     raise AssertionError(
         "required DNS order is private < mmstat local < ad suffix < ad keyword < ad rule-set < game < "
-        "foreign priority < canonical CN < generic foreign < specialized: "
+        "foreign priority < explicit X/Twitter < canonical CN < generic foreign < specialized: "
         f"tail_start={dns_tail_start} tail="
         f"{dns_rules[dns_tail_start:] if dns_tail_start is not None else None}"
     )
@@ -661,6 +682,38 @@ if len(canonical_cn_ip_routes) != 1:
         f"expected one early CN IP-only route before ad rule-sets: {canonical_cn_ip_routes}"
     )
 canonical_cn_ip_index = canonical_cn_ip_routes[0][0]
+invalid_destination_rule = {
+    "ip_cidr": ["0.0.0.0/8"],
+    "outbound": "block",
+}
+invalid_destination_routes = [
+    (index, rule) for index, rule in enumerate(rules) if rule == invalid_destination_rule
+]
+if len(invalid_destination_routes) != 1:
+    raise AssertionError(
+        f"expected one reserved 0.0.0.0/8 fail-closed route: {invalid_destination_routes}"
+    )
+invalid_destination_index = invalid_destination_routes[0][0]
+if not invalid_destination_index < canonical_cn_ip_index:
+    raise AssertionError(
+        "reserved 0.0.0.0/8 destinations must fail closed before CN IP routing: "
+        f"invalid={invalid_destination_index} cn={canonical_cn_ip_index}"
+    )
+x_domain_rule = {
+    "domain_suffix": ["twitter.com", "x.com", "twimg.com"],
+    "outbound": "social-proxy",
+}
+x_domain_routes = [
+    (index, rule) for index, rule in enumerate(rules) if rule == x_domain_rule
+]
+if len(x_domain_routes) != 1:
+    raise AssertionError(f"expected one early X domain route: {x_domain_routes}")
+x_domain_index = x_domain_routes[0][0]
+if not x_domain_index < canonical_cn_ip_index:
+    raise AssertionError(
+        "X API/CDN domains must precede the canonical CN IP route so domain-sniffed "
+        f"connections cannot fall back to direct: x={x_domain_index} cn={canonical_cn_ip_index}"
+    )
 ad_rule_set_routes = [
     (index, rule) for index, rule in enumerate(rules)
     if rule.get("outbound") == "ad-block" and "rule_set" in rule
@@ -1146,7 +1199,7 @@ def recursively_effective_outbound(tag):
         current = default
 
 
-proxy_node_types = {"shadowsocks", "vmess", "vless", "trojan", "hysteria2", "anytls", "tuic"}
+proxy_node_types = {"shadowsocks", "vmess", "vless", "trojan", "hysteria2", "anytls", "tuic", "socks"}
 base_proxy_nodes = [
     outbound for outbound in outbound_list if outbound.get("type") in proxy_node_types
 ]
@@ -1418,6 +1471,20 @@ for domain, (expected_outbound, expected_effective) in {
     if index >= len(rules) - 1:
         raise AssertionError(f"destination policy did not precede the generic final route for {domain}")
 
+x_domain_flow = dict(
+    flows[0],
+    name="tcp-tls-x-domain-only",
+    package_name=None,
+    destination_ip="114.114.114.114",
+)
+for domain in ("api.x.com", "upload.twitter.com", "abs.twimg.com"):
+    index, rule, matching_rule_sets = first_matching_outbound(domain, x_domain_flow)
+    if index != x_domain_index or rule != x_domain_rule:
+        raise AssertionError(
+            f"{domain} must keep the early social route even when its destination IP "
+            f"matches CN data: index={index} rule={rule} matching_rule_sets={sorted(matching_rule_sets)}"
+        )
+
 if first_matching_dns("unclassified.magicnet-probe", domestic_package_flow) is not None:
     raise AssertionError("unclassified application DNS must use dns.final instead of a package fallback")
 
@@ -1465,11 +1532,21 @@ x_dns = first_matching_dns("x.com", domestic_package_flow)
 if x_dns is None:
     raise AssertionError("domestic-package x.com DNS unexpectedly used dns.final")
 index, rule, matching_rule_sets = x_dns
-if rule.get("server") not in proxy_dns_tags:
+if rule != x_social_dns_rule:
     raise AssertionError(
-        "domestic-package x.com DNS must use an earlier proxy-detoured server: "
-        f"index={index} server={rule.get('server')}"
+        "domestic-package x.com DNS must use the explicit social proxy DNS rule: "
+        f"index={index} rule={rule} matching_rule_sets={sorted(matching_rule_sets)}"
     )
+for x_domain in ("api.x.com", "upload.twitter.com", "abs.twimg.com"):
+    x_domain_dns = first_matching_dns(x_domain, domestic_package_flow)
+    if x_domain_dns is None:
+        raise AssertionError(f"domestic-package {x_domain} DNS unexpectedly used dns.final")
+    index, rule, matching_rule_sets = x_domain_dns
+    if rule != x_social_dns_rule:
+        raise AssertionError(
+            f"domestic-package {x_domain} DNS must use the explicit social proxy DNS rule: "
+            f"index={index} rule={rule} matching_rule_sets={sorted(matching_rule_sets)}"
+        )
 
 baidu_dns = first_matching_dns("baidu.com", domestic_package_flow)
 if baidu_dns is None:
@@ -2066,6 +2143,7 @@ selector_legacy_upgrade="$selector_fixture_dir/legacy-upgrade.json"
 selector_no_jq_bin="$selector_fixture_dir/no-jq-bin"
 mkdir -p "$selector_no_jq_bin"
 ln -s "$(command -v awk)" "$selector_no_jq_bin/awk"
+ln -s "$(command -v chmod)" "$selector_no_jq_bin/chmod"
 ln -s "$CONFIG_DIR/rules" "$selector_fixture_dir/rules"
 trap 'rm -rf "$selector_fixture_dir"' EXIT
 
@@ -2269,7 +2347,7 @@ assert_connectivity_dns_safety() {
     local default_mode direct_mode_index global_mode_index domestic_rule_index foreign_rule_index
     local apple_rule_index cn_bing_rule_index global_bing_rule_index local_service_index
     local private_dns_index mmstat_dns_index ad_suffix_dns_index ad_keyword_dns_index ad_rule_set_dns_index
-    local game_dns_index foreign_priority_dns_index cn_dns_index
+    local game_dns_index foreign_priority_dns_index x_social_dns_index cn_dns_index
     local policy domain expected_server canonical_rule_index rule_index rule_result rule_server
     local first_match_found=false
     local -a connectivity_policies=()
@@ -2288,7 +2366,7 @@ assert_connectivity_dns_safety() {
     read -r direct_mode_index global_mode_index domestic_rule_index foreign_rule_index \
         apple_rule_index cn_bing_rule_index global_bing_rule_index local_service_index \
         private_dns_index mmstat_dns_index ad_suffix_dns_index ad_keyword_dns_index ad_rule_set_dns_index \
-        game_dns_index foreign_priority_dns_index cn_dns_index < <(jq -er '
+        game_dns_index foreign_priority_dns_index x_social_dns_index cn_dns_index < <(jq -er '
       def unique_index($rule):
         [.dns.rules | to_entries[] | select(.value == $rule) | .key]
         | if length == 1 then .[0] else error("expected one exact DNS rule") end;
@@ -2389,6 +2467,10 @@ assert_connectivity_dns_safety() {
           server: "doh-google"
         }),
         unique_index({
+          domain_suffix: ["twitter.com", "x.com", "twimg.com"],
+          server: "doh-google"
+        }),
+        unique_index({
           rule_set: [
             "lyc-geosite-cn", "lyc-geosite-geolocation-cn", "lyc-geoip-cn",
             "metacubex-geoip-cn", "ddch-direct",
@@ -2416,7 +2498,8 @@ assert_connectivity_dns_safety() {
         && ad_rule_set_dns_index == ad_keyword_dns_index + 1 \
         && game_dns_index == ad_rule_set_dns_index + 1 \
         && foreign_priority_dns_index == game_dns_index + 1 \
-        && cn_dns_index == foreign_priority_dns_index + 1)) || {
+        && x_social_dns_index == foreign_priority_dns_index + 1 \
+        && cn_dns_index == x_social_dns_index + 1)) || {
         printf '%s\n' \
             'DNS safety guard: explicit DNS policy rules are not in canonical adjacent order' >&2
         return 1

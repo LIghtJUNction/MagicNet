@@ -13,7 +13,9 @@ use std::time::{Duration, Instant};
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 
-use crate::{decode_base64, run_magicnet_function, write_secret_file, write_text_file, App};
+use crate::service::apply_config;
+use crate::webui_payload::MAX_WEBUI_PAYLOAD_BYTES;
+use crate::{decode_base64, write_secret_file, write_text_file, App};
 
 const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
@@ -78,11 +80,17 @@ fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Re
     if tmp.as_os_str().is_empty() {
         return Err("Usage: cli config-editor save-file sing-box <webui-payload-path>".to_string());
     }
-    let (mut source, _tmp_directory) = open_webui_payload_source(app, &tmp)?;
+    let (source, _tmp_directory) = open_webui_payload_source(app, &tmp)?;
     let mut bytes = Vec::new();
     source
+        .take(MAX_WEBUI_PAYLOAD_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|err| format!("read WebUI config payload: {err}"))?;
+    if bytes.len() as u64 > MAX_WEBUI_PAYLOAD_BYTES {
+        return Err(format!(
+            "WebUI config payload exceeds the {MAX_WEBUI_PAYLOAD_BYTES} byte limit"
+        ));
+    }
     let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
     let protected = protect_tailscale_auth_keys(app, &text)?;
     commit_config_text(app, target, path, protected.as_bytes(), "input")?;
@@ -99,7 +107,10 @@ fn protect_tailscale_auth_keys(app: &App, text: &str) -> Result<String, String> 
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_default();
     let mut changed = false;
-    if let Some(endpoints) = config.get_mut("endpoints").and_then(JsonValue::as_array_mut) {
+    if let Some(endpoints) = config
+        .get_mut("endpoints")
+        .and_then(JsonValue::as_array_mut)
+    {
         for endpoint in endpoints {
             let Some(object) = endpoint.as_object_mut() else {
                 continue;
@@ -611,7 +622,7 @@ fn sync_template_one(app: &App, target: &str) -> Result<(), String> {
     let current = read_current_config(app, target)?.unwrap_or_default();
     let merged = prepare_template(target, &template, &current)?;
     commit_config_text(app, target, &path, merged.as_bytes(), "template")?;
-    run_magicnet_function(app, "magicnet_apply_runtime_config")?;
+    apply_config(app)?;
     println!(
         "[info] Synced {target} template from {url}\n[info] Preserved subscription-facing config and re-applied runtime rules."
     );

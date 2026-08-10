@@ -623,6 +623,9 @@ export MAGIC_HOTSPOT_IFACES="ap0"
 export MAGIC_VPN_COEXIST_IFACES="tun0"
 export MAGIC_TUN_IFACES="magicnet0"
 export PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH"
+# The host-only CLI test runner keeps its command doubles out of the
+# production trusted PATH and opts into them explicitly here.
+export MAGICNET_TEST_PATH="$PATH"
 
 
 run() {
@@ -695,6 +698,22 @@ stop_fake_core() {
     fi
 }
 
+start_fake_core() {
+    # Use the same fake binary as production startup so the strict sing-box
+    # ownership check sees a process whose /proc comm is actually sing-box.
+    "$MODDIR/bin/sing-box" run -c "$MODDIR/.config/sing-box/config.json" \
+        -D "$MODDIR/.config/sing-box" >/dev/null 2>&1 &
+    local pid="$!"
+    for _wait_fake_core in {1..20}; do
+        [[ -s "$MODDIR/.state/fake-sing-box.pid" ]] && break
+        sleep 0.05
+    done
+    [[ -s "$MODDIR/.state/fake-sing-box.pid" ]] || {
+        kill "$pid" 2>/dev/null || true
+        return 1
+    }
+}
+
 assert_dns_cleanup_log() {
     local log_file="$1"
     rg -q '^iptables -t nat -D OUTPUT -j magicnet-dns-output$' "$log_file"
@@ -757,6 +776,40 @@ if ! hotspot_policy_ready; then
     }' "$MODDIR/.config/sing-box/config.json" >&2
     exit 1
 fi
+
+count_singbox_runs() {
+    rg -c '^sing-box run ' "$MOCK_LOG" 2>/dev/null || true
+}
+
+network_set_runs_before="$(count_singbox_runs)"
+run "$MODDIR/cli" network set prefer_ipv4 1500 3m >"$TMP/network-set.log"
+network_set_runs_after="$(count_singbox_runs)"
+if [[ "$network_set_runs_after" -le "$network_set_runs_before" ]]; then
+    echo "network set reported success without restarting the running sing-box core" >&2
+    cat "$TMP/network-set.log" >&2
+    exit 1
+fi
+"$HOST_JQ" -e '
+    [.inbounds[] | select(.tag == "tun-in")][0]
+    | .mtu == 1500 and .udp_timeout == "3m"
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+
+dns_apply_runs_before="$(count_singbox_runs)"
+run "$MODDIR/cli" dns apply >/dev/null
+dns_apply_runs_after="$(count_singbox_runs)"
+if [[ "$dns_apply_runs_after" -le "$dns_apply_runs_before" ]]; then
+    echo "dns apply reported success without restarting the running sing-box core" >&2
+    exit 1
+fi
+
+transparent_apply_runs_before="$(count_singbox_runs)"
+run "$MODDIR/cli" transparent apply >/dev/null
+transparent_apply_runs_after="$(count_singbox_runs)"
+if [[ "$transparent_apply_runs_after" -le "$transparent_apply_runs_before" ]]; then
+    echo "transparent apply reported success without restarting the running sing-box core" >&2
+    exit 1
+fi
+
 run "$MODDIR/cli" hotspot status >"$TMP/hotspot-direct.log"
 rg -q '^enabled=0$' "$TMP/hotspot-direct.log"
 rg -q '^outbound=direct$' "$TMP/hotspot-direct.log"
@@ -948,8 +1001,7 @@ if capture is None or guard is None or run is None or capture > run or guard > r
     raise SystemExit("kernel bootstrap did not clear DNS interception before starting sing-box")
 PY
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
-sleep 3600 &
-echo "$!" >"$MODDIR/.state/fake-sing-box.pid"
+start_fake_core
 : >"$MOCK_LOG"
 # shellcheck disable=SC2016
 run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
@@ -960,8 +1012,7 @@ run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
 '
 assert_dns_cleanup_log "$MOCK_LOG"
 assert_dns_interception_not_enabled "$MOCK_LOG" "toggle stop"
-sleep 3600 &
-echo "$!" >"$MODDIR/.state/fake-sing-box.pid"
+start_fake_core
 : >"$MOCK_LOG"
 # A deferred config rewrite can fail after sing-box is already running. DNS
 # interception must stay disabled until every managed rewrite succeeds.
@@ -1133,8 +1184,7 @@ if resolve is None or fetch is None or run is None or resolve > fetch or fetch >
     raise SystemExit("forced refresh started sing-box before fetching the subscription")
 PY
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
-sleep 3600 &
-echo "$!" >"$MODDIR/.state/fake-sing-box.pid"
+start_fake_core
 sleep 1
 env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" pidof sing-box >/dev/null
 run env \
@@ -1152,6 +1202,7 @@ run env MODDIR="$MODDIR" MODPATH="$MODDIR" "$MODDIR/cli" supervisor status all >
 rg -q '^fswatch=[0-9]+$' "$TMP/supervisor-status.log"
 test -s "$MODDIR/.state/fswatch/magicnet-config.pid"
 rg -q 'config apply' "$MODDIR/.state/fswatch/magicnet-config.loop.sh"
+rg -q 'fswatch_snapshot' "$MODDIR/.state/fswatch/magicnet-config.loop.sh"
 _fswatch_pid_file="$MODDIR/.state/fswatch/magicnet-config.pid"
 _fswatch_loop_file="$MODDIR/.state/fswatch/magicnet-config.loop.sh"
 _fswatch_first_pid="$(sed -n '1p' "$_fswatch_pid_file")"
@@ -1222,6 +1273,15 @@ printf '999999:0:dead\n' >"$MODDIR/.state/sing-box/subscription-update.lock/owne
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
     "$MODDIR/cli" config apply
 test ! -d "$MODDIR/.state/sing-box/subscription-update.lock"
+config_apply_runs_before="$(count_singbox_runs)"
+run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    "$MODDIR/cli" config apply
+config_apply_runs_after="$(count_singbox_runs)"
+if [[ "$config_apply_runs_after" -le "$config_apply_runs_before" ]]; then
+    echo "config apply reported success without restarting the running sing-box core" >&2
+    exit 1
+fi
+unset config_apply_runs_before config_apply_runs_after
 mkdir -p "$MODDIR/.state/sing-box/subscription-update.lock"
 _live_start=$(awk '{print $22}' "/proc/$$/stat")
 printf '%s:%s:live\n' "$$" "$_live_start" >"$MODDIR/.state/sing-box/subscription-update.lock/owner"

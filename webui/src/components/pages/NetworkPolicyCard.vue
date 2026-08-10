@@ -5,6 +5,7 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { execFailed } from "@/utils";
 
 const { state, runCli } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -38,7 +39,14 @@ function parseStatus(text: string): void {
 }
 
 async function refreshStatus(silent = false): Promise<void> {
-  parseStatus(await runCli("network status", "读取 UDP / IPv6 策略", silent));
+  const output = await runCli("network status", "读取 UDP / IPv6 策略", silent);
+  if (execFailed(output)) {
+    state.phase = "error";
+    state.notice = "读取 UDP / IPv6 策略失败";
+    state.output = output;
+    return;
+  }
+  parseStatus(output);
 }
 
 async function applyPolicy(): Promise<void> {
@@ -46,7 +54,7 @@ async function applyPolicy(): Promise<void> {
     const command = `network set ${ipv6Mode.value} ${mtu.value} ${udpTimeout.value}`;
     const output = await runCli(command, "应用 UDP / IPv6 策略");
     state.output = output;
-    if (!output.includes("[error]")) await refreshStatus(true);
+    if (!execFailed(output)) await refreshStatus(true);
   });
 }
 

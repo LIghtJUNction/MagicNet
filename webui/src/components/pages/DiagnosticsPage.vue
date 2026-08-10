@@ -8,7 +8,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, probeFailed, redactedCliPreview } from "@/utils";
+import { copyText, execFailed, probeFailed, redactedCliPreview } from "@/utils";
 import { formatApiEndpointProbeReport, summarizeApiEndpointProbes, summarizeApiProbeOutput, validateApiProbeOutput, type ApiEndpointProbe, type ApiProbeKey } from "./apiEndpointProbe";
 import ConnectionsPanel from "./ConnectionsPanel.vue";
 import { formatHealthCheckReport, summarizeHealthChecks } from "./healthCheckSummary";
@@ -58,6 +58,10 @@ async function copyContextUnlocked(): Promise<void> {
     true,
     redactedCliPreview("support bundle [private-output]"),
   );
+  if (execFailed(text)) {
+    state.output = text;
+    return;
+  }
   const sanitized = sanitizeDiagnosticText(text);
   supportBundle.value = sanitized;
   supportCopied.value = false;
@@ -78,6 +82,10 @@ async function refreshSupportBundle(): Promise<void> {
       true,
       redactedCliPreview("support bundle [private-output]"),
     );
+    if (execFailed(text)) {
+      state.output = text;
+      return;
+    }
     supportBundle.value = sanitizeDiagnosticText(text);
     supportCopied.value = false;
     supportIssuesCopied.value = false;
@@ -105,8 +113,18 @@ async function copySupportTriage(): Promise<void> {
 }
 
 async function refreshDiagnostics(): Promise<void> {
-  await refreshMcp(true);
-  await refreshHealth();
+  const mcpOk = await refreshMcp(true);
+  const mcpOutput = mcpOk ? "" : state.output;
+  const healthOk = await refreshHealth();
+  const healthOutput = healthOk ? "" : state.output;
+  if (!mcpOk || !healthOk) {
+    state.phase = "error";
+    state.notice = "诊断刷新不完整";
+    state.output = [
+      !mcpOk ? `MCP 刷新失败：${mcpOutput}` : "",
+      !healthOk ? `健康检查刷新失败：${healthOutput}` : "",
+    ].filter(Boolean).join("\n\n");
+  }
   healthSummaryCopied.value = false;
 }
 

@@ -39,24 +39,34 @@ magicnet_singbox_extract_share_links() {
 
     _links_file="${_nodes_dir}/links.txt"
     _current_links_file=$(mktemp "${_nodes_dir}/links.current.XXXXXX") || return 1
-    _first_line=$(sed -n '1{s/^[[:space:]]*//;p;}' "$_source_file" | tr -d '\r')
-    case "$_first_line" in
+    _first_line=$(awk '
+        {
+            sub(/\r$/, "")
+            sub(/^[[:space:]]+/, "")
+            if ($0 != "" && $0 !~ /^#/) {
+                print
+                exit
+            }
+        }
+    ' "$_source_file")
+    _first_line_lc=$(printf '%s' "$_first_line" | tr '[:upper:]' '[:lower:]')
+    case "$_first_line_lc" in
     vless://* | anytls://* | tuic://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://* | socks://* | socks5://*)
         tr -d '\r' <"$_source_file" |
-            grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+            grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
             sed 's/^[[:space:]]*//' >"$_current_links_file"
         ;;
     *)
         if command -v base64 >/dev/null 2>&1; then
             base64 -d "$_source_file" 2>/dev/null |
                 tr -d '\r' |
-                grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+                grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
                 sed 's/^[[:space:]]*//' >"$_current_links_file"
             if [ ! -s "$_current_links_file" ]; then
                 tr '_-' '/+' <"$_source_file" 2>/dev/null |
                     base64 -d 2>/dev/null |
                     tr -d '\r' |
-                    grep -E '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+                    grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
                     sed 's/^[[:space:]]*//' >"$_current_links_file"
             fi
         else
@@ -93,6 +103,7 @@ magicnet_singbox_emit_node_json() {
     [ -n "$_type" ] || return 1
     [ -n "$_server" ] || return 1
     [ -n "$_port" ] || return 1
+    _port=$(magicnet_singbox_normalize_port "$_port") || return 1
 
     _name=$(magicnet_percent_decode "$_name")
     _name=$(magicnet_json_escape "$_name")
@@ -252,6 +263,7 @@ magicnet_singbox_emit_share_link_json() {
     _node_file="$1"
     _link=$(sed -n '1p' "$_node_file" | tr -d '\r')
     _scheme=${_link%%://*}
+    _scheme=$(printf '%s' "$_scheme" | tr '[:upper:]' '[:lower:]')
     _rest=${_link#*://}
     _body=${_rest%%\#*}
     _base=${_body%%\?*}
@@ -260,8 +272,19 @@ magicnet_singbox_emit_share_link_json() {
     _userinfo=${_base%@*}
     _hostport=${_base#*@}
     _hostport=${_hostport%/}
-    _server=${_hostport%:*}
-    _port=${_hostport##*:}
+    case "$_hostport" in
+    \[*\]:*)
+        # Share links bracket IPv6 literals.  The brackets delimit the
+        # authority and must not become part of sing-box's server value.
+        _server=${_hostport#\[}
+        _server=${_server%%\]*}
+        _port=${_hostport#*\]:}
+        ;;
+    *)
+        _server=${_hostport%:*}
+        _port=${_hostport##*:}
+        ;;
+    esac
     _tag=$(magicnet_share_link_tag "$_link" "${_scheme}-${_server}-${_port}")
 
     [ -n "$_scheme" ] || return 1
@@ -292,6 +315,7 @@ magicnet_singbox_emit_share_link_json() {
         [ -n "$_password" ] || return 1
         [ -n "$_server" ] || return 1
         [ -n "$_port" ] || return 1
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
         printf '{"type":"shadowsocks","tag":"%s","server":"%s","server_port":%s,"method":"%s","password":"%s"}' \
             "$_tag" "$(magicnet_json_escape "$_server")" "$_port" \
             "$(magicnet_json_escape "$_method")" "$(magicnet_json_escape "$_password")"
@@ -300,6 +324,7 @@ magicnet_singbox_emit_share_link_json() {
         _decoded=$(magicnet_b64_decode "$_body")
         [ -n "$_decoded" ] || return 1
         if command -v jq >/dev/null 2>&1; then
+            _vmess_json_raw=0
             _name=$(printf '%s' "$_decoded" | jq -r '.ps // empty | tostring' 2>/dev/null)
             _server=$(printf '%s' "$_decoded" | jq -r '.add // empty | tostring' 2>/dev/null)
             _port=$(printf '%s' "$_decoded" | jq -r '.port // empty | tostring' 2>/dev/null)
@@ -311,48 +336,62 @@ magicnet_singbox_emit_share_link_json() {
             _tls=$(printf '%s' "$_decoded" | jq -r '.tls // empty | tostring' 2>/dev/null)
             _sni=$(printf '%s' "$_decoded" | jq -r '.sni // empty | tostring' 2>/dev/null)
         else
-            _name=$(printf '%s' "$_decoded" | sed -n 's/.*"ps"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-            _server=$(printf '%s' "$_decoded" | sed -n 's/.*"add"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _vmess_json_raw=1
+            _name=$(magicnet_json_field_raw ps "$_decoded") || _name=
+            _server=$(magicnet_json_field_raw add "$_decoded") || return 1
             _port=$(printf '%s' "$_decoded" | sed -n 's/.*"port"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
-            _uuid=$(printf '%s' "$_decoded" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _uuid=$(magicnet_json_field_raw id "$_decoded") || return 1
             _alter_id=$(printf '%s' "$_decoded" | sed -n 's/.*"aid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
-            _network=$(printf '%s' "$_decoded" | sed -n 's/.*"net"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-            _path=$(printf '%s' "$_decoded" | sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-            _host=$(printf '%s' "$_decoded" | sed -n 's/.*"host"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-            _tls=$(printf '%s' "$_decoded" | sed -n 's/.*"tls"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-            _sni=$(printf '%s' "$_decoded" | sed -n 's/.*"sni"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            _network=$(magicnet_json_field_raw net "$_decoded") || _network=
+            _path=$(magicnet_json_field_raw path "$_decoded") || _path=
+            _host=$(magicnet_json_field_raw host "$_decoded") || _host=
+            _tls=$(magicnet_json_field_raw tls "$_decoded") || _tls=
+            _sni=$(magicnet_json_field_raw sni "$_decoded") || _sni=
         fi
-        [ -n "$_name" ] && _tag=$(magicnet_json_escape "$_name")
+        if [ "${_vmess_json_raw:-0}" = 1 ]; then
+            [ -n "$_name" ] && _tag="$_name"
+            _server_json=$_server
+            _uuid_json=$_uuid
+            _path_json=$_path
+            _host_json=$_host
+            _sni_json=$_sni
+        else
+            [ -n "$_name" ] && _tag=$(magicnet_json_escape "$_name")
+            _server_json=$(magicnet_json_escape "$_server")
+            _uuid_json=$(magicnet_json_escape "$_uuid")
+            _path_json=$(magicnet_json_escape "$_path")
+            _host_json=$(magicnet_json_escape "$_host")
+            _sni_json=$(magicnet_json_escape "$_sni")
+        fi
         [ -n "$_server" ] || return 1
         [ -n "$_port" ] || return 1
         [ -n "$_uuid" ] || return 1
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
         [ -n "$_alter_id" ] || _alter_id=0
         [ -n "$_network" ] || _network=tcp
         printf '{"type":"vmess","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","alter_id":%s' \
-            "$_tag" "$(magicnet_json_escape "$_server")" "$_port" "$(magicnet_json_escape "$_uuid")" "$_alter_id"
+            "$_tag" "$_server_json" "$_port" "$_uuid_json" "$_alter_id"
         if [ "$_network" = "ws" ]; then
             printf ',"transport":{"type":"ws"'
-            [ -n "$_path" ] && printf ',"path":"%s"' "$(magicnet_json_escape "$_path")"
-            [ -n "$_host" ] && printf ',"headers":{"Host":"%s"}' "$(magicnet_json_escape "$_host")"
+            [ -n "$_path" ] && printf ',"path":"%s"' "$_path_json"
+            [ -n "$_host" ] && printf ',"headers":{"Host":"%s"}' "$_host_json"
             printf '}'
         elif [ "$_network" != "tcp" ]; then
             printf ',"transport":{"type":"%s"}' "$(magicnet_json_escape "$_network")"
         fi
         if [ "$_tls" = "tls" ]; then
             [ -n "$_sni" ] || _sni="$_server"
-            printf ',"tls":{"enabled":true,"server_name":"%s"}' "$(magicnet_json_escape "$_sni")"
+            if [ "${_vmess_json_raw:-0}" = 1 ]; then
+                [ -n "$_sni_json" ] || _sni_json=$_server_json
+            else
+                _sni_json=$(magicnet_json_escape "$_sni")
+            fi
+            printf ',"tls":{"enabled":true,"server_name":"%s"}' "$_sni_json"
         fi
         printf '}'
         ;;
     socks | socks5)
-        case "$_port" in
-        '' | *[!0-9]*) return 1 ;;
-        esac
-        _port=$(printf '%s' "$_port" | sed 's/^0*//')
-        [ -n "$_port" ] || _port=0
-        [ "${#_port}" -le 5 ] || return 1
-        [ "$_port" -ge 1 ] && [ "$_port" -le 65535 ] || return 1
-
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
         _username=""
         _password=""
         case "$_base" in
@@ -389,8 +428,12 @@ magicnet_singbox_emit_share_link_json() {
         printf '}'
         ;;
     vless)
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
+        _userinfo=$(magicnet_percent_decode "$_userinfo") || return 1
+        [ -n "$_userinfo" ] || return 1
         _flow=$(magicnet_uri_query_value flow "$_query")
         _security=$(magicnet_uri_query_value security "$_query")
+        _security=$(printf '%s' "$_security" | tr '[:upper:]' '[:lower:]')
         _sni=$(magicnet_uri_query_value sni "$_query")
         [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value servername "$_query")
         _fp=$(magicnet_uri_query_value fp "$_query")
@@ -402,6 +445,7 @@ magicnet_singbox_emit_share_link_json() {
         [ -n "$_flow" ] && printf ',"flow":"%s"' "$(magicnet_json_escape "$_flow")"
         if [ "$_security" = "reality" ]; then
             [ -n "$_sni" ] || return 1
+            [ -n "$_pbk" ] || return 1
             printf ',"tls":{"enabled":true,"server_name":"%s"' "$(magicnet_json_escape "$_sni")"
             [ -n "$_fp" ] && printf ',"utls":{"enabled":true,"fingerprint":"%s"}' "$(magicnet_json_escape "$_fp")"
             printf ',"reality":{"enabled":true,"public_key":"%s"' "$(magicnet_json_escape "$_pbk")"
@@ -416,17 +460,41 @@ magicnet_singbox_emit_share_link_json() {
         printf '}'
         ;;
     hysteria2 | hy2)
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
+        _password=$(magicnet_percent_decode "$_userinfo")
+        [ -n "$_password" ] || return 1
         _sni=$(magicnet_uri_query_value sni "$_query")
         [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value servername "$_query")
         [ -n "$_sni" ] || _sni="$_server"
         _alpn=$(magicnet_uri_query_value alpn "$_query")
         printf '{"type":"hysteria2","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s"' \
-            "$_tag" "$_server" "$_port" "$(magicnet_json_escape "$_userinfo")" "$(magicnet_json_escape "$_sni")"
+            "$_tag" "$_server" "$_port" "$(magicnet_json_escape "$_password")" "$(magicnet_json_escape "$_sni")"
+        [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
+        printf '}}'
+        ;;
+    trojan)
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
+        _password=$(magicnet_percent_decode "$_userinfo")
+        [ -n "$_password" ] || return 1
+        _sni=$(magicnet_uri_query_value sni "$_query")
+        [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value servername "$_query")
+        [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value peer "$_query")
+        [ -n "$_sni" ] || _sni="$_server"
+        _insecure=$(magicnet_uri_query_value insecure "$_query")
+        [ -n "$_insecure" ] || _insecure=$(magicnet_uri_query_value allowInsecure "$_query")
+        [ -n "$_insecure" ] || _insecure=$(magicnet_uri_query_value skip-cert-verify "$_query")
+        _alpn=$(magicnet_uri_query_value alpn "$_query")
+        printf '{"type":"trojan","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s"' \
+            "$_tag" "$_server" "$_port" "$(magicnet_json_escape "$_password")" "$(magicnet_json_escape "$_sni")"
+        if magicnet_truthy "$_insecure"; then
+            printf ',"insecure":true'
+        fi
         [ -n "$_alpn" ] && printf ',"alpn":%s' "$(magicnet_json_array_csv "$_alpn")"
         printf '}}'
         ;;
     anytls)
         # anytls://password@host:port?sni=&insecure=&fp=&alpn=#tag
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
         _password=$(magicnet_percent_decode "$_userinfo")
         [ -n "$_password" ] || return 1
         _sni=$(magicnet_uri_query_value sni "$_query")
@@ -449,6 +517,7 @@ magicnet_singbox_emit_share_link_json() {
         ;;
     tuic)
         # tuic://uuid:password@host:port?sni=&congestion_control=&alpn=&udp_relay_mode=#tag
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
         _uuid=${_userinfo%%:*}
         _password=${_userinfo#*:}
         [ -n "$_uuid" ] || return 1

@@ -3,13 +3,14 @@ use std::env;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{read_kv, App};
+use crate::{read_kv, write_text_file, App};
 
 const DEFAULT_BIND: &str = "127.0.0.1";
 const DEFAULT_PORT: &str = "8766";
@@ -82,7 +83,7 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
             println!("bind={}", config.bind);
             println!("port={}", config.port);
             println!("secret_set={}", (!config.secret.is_empty()) as u8);
-            if let Some(pid) = live_pid(pid_path(app)) {
+            if let Some(pid) = live_pid(app) {
                 println!("pid={pid}");
                 println!("url={}", config.url());
             } else {
@@ -126,7 +127,7 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
             let mut config = load(app);
             config.secret = generate_secret();
             write_conf(app, &config)?;
-            if live_pid(pid_path(app)).is_some() {
+            if live_pid(app).is_some() {
                 let _ = stop(app);
                 start(app)?;
             }
@@ -152,7 +153,7 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
 
 pub(crate) fn status(app: &App) -> (String, String, String, String) {
     let config = load(app);
-    let pid = live_pid(pid_path(app))
+    let pid = live_pid(app)
         .map(|value| value.to_string())
         .unwrap_or_else(|| "stopped".to_string());
     (
@@ -168,10 +169,15 @@ fn conf_path(app: &App) -> PathBuf {
 }
 
 fn pid_path(app: &App) -> PathBuf {
-    env::var("KAM_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| app.moddir.clone())
-        .join(".state/magicnet-mcp.pid")
+    let root = if cfg!(target_os = "android") {
+        app.moddir.clone()
+    } else {
+        env::var_os("KAM_HOME")
+            .map(PathBuf::from)
+            .filter(|candidate| candidate == &app.moddir)
+            .unwrap_or_else(|| app.moddir.clone())
+    };
+    root.join(".state/magicnet-mcp.pid")
 }
 
 fn load(app: &App) -> McpConfig {
@@ -220,7 +226,7 @@ fn start(app: &App) -> Result<(), String> {
     // Persist only the sanitized typed configuration. This also repairs a
     // legacy unsafe mcp.conf before the server is launched.
     write_conf(app, &config)?;
-    if let Some(pid) = live_pid(pid_path(app)) {
+    if let Some(pid) = live_pid(app) {
         println!("[info] MCP server already running: {pid}");
         return mcp(app, &[String::from("status")]);
     }
@@ -230,28 +236,26 @@ fn start(app: &App) -> Result<(), String> {
         return Err(format!("MCP port unavailable: {address}: {err}; {owner}",));
     }
     let target = app.moddir.join("bin/magicnet-mcp-server");
-    if !target.exists() {
-        return Err(format!("MCP server missing: {}", target.display()));
-    }
+    validate_mcp_binary(&target)?;
     fs::create_dir_all(app.log_dir.clone()).map_err(|err| format!("mkdir log dir: {err}"))?;
     if let Some(parent) = pid_path(app).parent() {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir state dir: {err}"))?;
     }
-    trim_log_file(
-        &app.log_dir.join("mcp-server.log"),
-        MAX_MCP_LOG_BYTES,
-        KEEP_MCP_LOG_BYTES,
-    )?;
-    let log = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(app.log_dir.join("mcp-server.log"))
-        .map_err(|err| format!("open mcp log: {err}"))?;
+    let log_path = safe_mcp_log_path(app)?;
+    trim_log_file(&log_path, MAX_MCP_LOG_BYTES, KEEP_MCP_LOG_BYTES)?;
+    let log = open_mcp_log_append(&log_path).map_err(|err| format!("open mcp log: {err}"))?;
+    require_private_mcp_log(&log)?;
     let log_err = log
         .try_clone()
         .map_err(|err| format!("clone mcp log: {err}"))?;
-    let child = Command::new(&target)
+    let cli = app.moddir.join("bin/magicnet-cli");
+    let mut child = Command::new(&target)
+        // The MCP process is a privileged long-lived child. Do not let an
+        // inherited PATH or MAGICNET_CLI redirect its command execution.
+        .env_clear()
+        .env("PATH", trusted_runtime_path(&app.moddir))
         .env("MODDIR", &app.moddir)
+        .env("MAGICNET_CLI", &cli)
         .env("MAGICNET_MCP_BIND", config.bind.to_string())
         .env("MAGICNET_MCP_PORT", config.port.to_string())
         .env("MAGICNET_MCP_SECRET", &config.secret)
@@ -260,24 +264,133 @@ fn start(app: &App) -> Result<(), String> {
         .stderr(Stdio::from(log_err))
         .spawn()
         .map_err(|err| format!("start MCP server: {err}"))?;
-    let pid = child.id();
-    fs::write(pid_path(app), format!("{pid}\n")).map_err(|err| format!("write pid: {err}"))?;
+    let pid =
+        i32::try_from(child.id()).map_err(|_| "MCP server PID is out of range".to_string())?;
+    if let Err(err) = write_text_file(
+        app,
+        Path::new(".state/magicnet-mcp.pid"),
+        &format!("{pid}\n"),
+    ) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(err);
+    }
     thread::sleep(Duration::from_millis(350));
-    if Path::new("/proc").join(pid.to_string()).exists() {
+    if live_pid(app) == Some(pid) {
         println!("[info] MCP server started: {}", config.url());
         Ok(())
     } else {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = fs::remove_file(pid_path(app));
         Err(format!(
             "MCP server failed to start; see {}",
-            app.log_dir.join("mcp-server.log").display()
+            log_path.display()
         ))
     }
 }
 
-fn trim_log_file(path: &Path, max_bytes: u64, keep_bytes: u64) -> Result<(), String> {
-    let Ok(mut source) = fs::File::open(path) else {
-        return Ok(());
+fn trusted_runtime_path(moddir: &Path) -> String {
+    let system_path = if cfg!(target_os = "android") {
+        "/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
+    } else {
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     };
+    format!(
+        "{}:{}:{system_path}",
+        moddir.join("bin").display(),
+        moddir.join("system/bin").display()
+    )
+}
+
+fn validate_mcp_binary(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|err| format!("MCP server missing {}: {err}", path.display()))?;
+    if metadata.file_type().is_symlink()
+        || !metadata.file_type().is_file()
+        || metadata.nlink() != 1
+        || metadata.permissions().mode() & 0o111 == 0
+    {
+        return Err(format!(
+            "MCP server is not a private executable: {}",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn safe_mcp_log_path(app: &App) -> Result<PathBuf, String> {
+    let module_root =
+        fs::canonicalize(&app.moddir).map_err(|err| format!("module root unavailable: {err}"))?;
+    let log_root = fs::canonicalize(&app.log_dir)
+        .map_err(|err| format!("log directory unavailable: {err}"))?;
+    if !log_root.starts_with(&module_root) || !log_root.is_dir() {
+        return Err("MCP log directory escapes module directory".to_string());
+    }
+    let path = log_root.join("mcp-server.log");
+    validate_mcp_log_entry(&path)?;
+    Ok(path)
+}
+
+fn validate_mcp_log_entry(path: &Path) -> Result<(), String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(format!("inspect MCP log failed: {err}")),
+    };
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() || metadata.nlink() != 1
+    {
+        return Err(format!(
+            "MCP log is not a private regular file: {}",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn open_mcp_log_append(path: &Path) -> std::io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+}
+
+fn open_mcp_log_read(path: &Path) -> std::io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+}
+
+fn open_mcp_log_truncate(path: &Path) -> std::io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+}
+
+fn require_private_mcp_log(file: &fs::File) -> Result<(), String> {
+    let metadata = file
+        .metadata()
+        .map_err(|err| format!("inspect MCP log: {err}"))?;
+    if !metadata.file_type().is_file() || metadata.nlink() != 1 {
+        return Err("MCP log must be a private regular file".to_string());
+    }
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+        .map_err(|err| format!("secure MCP log: {err}"))
+}
+
+fn trim_log_file(path: &Path, max_bytes: u64, keep_bytes: u64) -> Result<(), String> {
+    validate_mcp_log_entry(path)?;
+    let mut source = match open_mcp_log_read(path) {
+        Ok(file) => file,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(format!("open MCP log for trim: {err}")),
+    };
+    require_private_mcp_log(&source)?;
     let len = source
         .metadata()
         .map_err(|err| format!("inspect MCP log: {err}"))?
@@ -293,11 +406,9 @@ fn trim_log_file(path: &Path, max_bytes: u64, keep_bytes: u64) -> Result<(), Str
         .read_to_end(&mut tail)
         .map_err(|err| format!("read MCP log tail: {err}"))?;
     drop(source);
-    let mut target = fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(path)
-        .map_err(|err| format!("truncate MCP log: {err}"))?;
+    let mut target =
+        open_mcp_log_truncate(path).map_err(|err| format!("truncate MCP log: {err}"))?;
+    require_private_mcp_log(&target)?;
     target
         .write_all(&tail)
         .map_err(|err| format!("write MCP log tail: {err}"))
@@ -348,11 +459,11 @@ fn conf_path_fallback_hash() -> usize {
 }
 
 fn stop(app: &App) -> Result<(), String> {
-    if let Some(pid) = live_pid(pid_path(app)) {
-        let _ = Command::new("kill").arg(pid.to_string()).status();
+    if let Some(pid) = live_pid(app) {
+        signal_mcp_pid(pid, false);
         thread::sleep(Duration::from_millis(250));
-        if Path::new("/proc").join(pid.to_string()).exists() {
-            let _ = Command::new("kill").arg("-9").arg(pid.to_string()).status();
+        if live_pid(app) == Some(pid) {
+            signal_mcp_pid(pid, true);
         }
     }
     let _ = fs::remove_file(pid_path(app));
@@ -360,23 +471,58 @@ fn stop(app: &App) -> Result<(), String> {
     Ok(())
 }
 
-fn live_pid(pid_file: PathBuf) -> Option<i32> {
-    let text = fs::read_to_string(pid_file).ok()?;
+fn signal_mcp_pid(pid: i32, force: bool) {
+    let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+    unsafe {
+        libc::kill(pid, signal);
+    }
+}
+
+fn live_pid(app: &App) -> Option<i32> {
+    let text = fs::read_to_string(pid_path(app)).ok()?;
     let pid = text.trim().parse::<i32>().ok()?;
+    if pid <= 0 {
+        return None;
+    }
     let proc_dir = Path::new("/proc").join(pid.to_string());
     if !proc_dir.exists() {
         return None;
     }
-    let cmdline = fs::read(proc_dir.join("cmdline")).unwrap_or_default();
-    let cmdline = String::from_utf8_lossy(&cmdline).replace('\0', " ");
-    if cmdline.contains("magicnet-mcp-server") {
-        return Some(pid);
+    let target = app.moddir.join("bin/magicnet-mcp-server");
+    let expected = fs::canonicalize(&target).ok()?;
+    let expected_name = target.file_name()?.to_string_lossy();
+    if let Ok(comm) = fs::read_to_string(proc_dir.join("comm")) {
+        let comm = comm.trim();
+        let truncated = expected_name
+            .as_bytes()
+            .get(..expected_name.len().min(15))
+            .map(String::from_utf8_lossy)
+            .unwrap_or_default();
+        if comm != expected_name.as_ref() && comm != truncated.as_ref() {
+            return None;
+        }
     }
-    let exe = fs::read_link(proc_dir.join("exe"))
+    let argv = fs::read(proc_dir.join("cmdline"))
+        .ok()?
+        .split(|byte| *byte == 0)
+        .filter(|value| !value.is_empty())
+        .map(|value| String::from_utf8_lossy(value).into_owned())
+        .collect::<Vec<_>>();
+    let argv0 = argv.first()?;
+    let target_text = target.to_string_lossy();
+    let argv_owned = argv0 == target_text.as_ref();
+    let executable_owned = fs::read_link(proc_dir.join("exe"))
         .ok()
-        .map(|path| path.display().to_string())
-        .unwrap_or_default();
-    exe.contains("magicnet-mcp-server").then_some(pid)
+        .and_then(|path| fs::canonicalize(path).ok())
+        .map(|path| path == expected);
+    if executable_owned == Some(false) {
+        return None;
+    }
+    if executable_owned == Some(true) || (executable_owned.is_none() && argv_owned) {
+        Some(pid)
+    } else {
+        None
+    }
 }
 
 fn parse_enabled(enabled: &str) -> Result<bool, String> {
@@ -427,8 +573,11 @@ fn port_owner(address: SocketAddr) -> Option<String> {
 }
 
 fn print_log_tail(app: &App, file_name: &str, lines: usize) -> Result<(), String> {
-    let file = app.log_dir.join(file_name);
-    let text = fs::read_to_string(&file)
+    if file_name != "mcp-server.log" {
+        return Err("invalid MCP log target".to_string());
+    }
+    let file = safe_mcp_log_path(app)?;
+    let text = read_bounded_log_tail(&file, MAX_MCP_LOG_BYTES)
         .map_err(|err| format!("log not found {}: {err}", file.display()))?;
     let lines = lines.clamp(1, 1000);
     let all = text.lines().collect::<Vec<_>>();
@@ -437,6 +586,28 @@ fn print_log_tail(app: &App, file_name: &str, lines: usize) -> Result<(), String
         println!("{line}");
     }
     Ok(())
+}
+
+fn read_bounded_log_tail(path: &Path, max_bytes: u64) -> std::io::Result<String> {
+    let mut source = open_mcp_log_read(path)?;
+    let metadata = source.metadata()?;
+    if !metadata.file_type().is_file() || metadata.nlink() != 1 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "MCP log is not a regular file",
+        ));
+    }
+    let length = source.metadata()?.len();
+    let start = length.saturating_sub(max_bytes);
+    source.seek(SeekFrom::Start(start))?;
+    let mut tail = Vec::with_capacity((length - start) as usize);
+    source.read_to_end(&mut tail)?;
+    if start > 0 {
+        if let Some(index) = tail.iter().position(|byte| *byte == b'\n') {
+            tail.drain(..=index);
+        }
+    }
+    Ok(String::from_utf8_lossy(&tail).into_owned())
 }
 
 #[cfg(test)]
@@ -475,5 +646,25 @@ mod tests {
         ]);
 
         assert_eq!(load_config(&conf), McpConfig::default());
+    }
+
+    #[test]
+    fn mcp_log_path_rejects_symlink_entries() {
+        let root = std::env::temp_dir().join(format!(
+            "magicnet-mcp-log-{}-{}",
+            std::process::id(),
+            UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        fs::create_dir_all(root.join(".log")).unwrap();
+        let outside = root.join("outside.log");
+        fs::write(&outside, "must remain untouched\n").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join(".log/mcp-server.log")).unwrap();
+        let app = App::for_test(root.clone());
+        assert!(safe_mcp_log_path(&app).is_err());
+        assert_eq!(
+            fs::read_to_string(outside).unwrap(),
+            "must remain untouched\n"
+        );
+        let _ = fs::remove_dir_all(root);
     }
 }

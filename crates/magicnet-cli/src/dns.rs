@@ -18,7 +18,7 @@ pub(crate) fn dns_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "test" => dns_test(args.get(1).map(String::as_str).unwrap_or("www.gstatic.com")),
         "apply" => {
             run_magicnet_function(app, "magicnet_dns_apply")?;
-            Ok(())
+            restart_current_core(app)
         }
         _ => Err(dns_usage()),
     }
@@ -28,6 +28,10 @@ fn dns_test(domain: &str) -> Result<(), String> {
     let domain = normalize_test_domain(domain)?;
     let url = format!("https://{domain}/");
     let output = Command::new("curl")
+        // The CLI runs as uid 0, which is intentionally excluded from
+        // magicnet0 to prevent proxy loops.  Force this diagnostic through
+        // the local mixed inbound so it measures the running sing-box path
+        // instead of bypassing the tunnel and producing a false timeout.
         .args(dns_test_curl_args(&url))
         .output()
         .map_err(|err| format!("run curl: {err}"))?;
@@ -44,13 +48,13 @@ fn dns_test_curl_args(url: &str) -> Vec<&str> {
         // Root is deliberately outside the magicnet0 TUN boundary. Route the
         // probe through MagicNet's loopback mixed inbound so it exercises the
         // same managed DNS and outbound path as proxied applications.
+        // A DNS/transport probe must not fail merely because a healthy
+        // endpoint returns HTTP 4xx/5xx (for example, www.gstatic.com/
+        // commonly returns 404). Curl still fails on DNS, connect, and TLS.
         "--noproxy",
         "",
         "-x",
         DNS_TEST_PROXY,
-        // A DNS/transport probe must not fail merely because a healthy
-        // endpoint returns HTTP 4xx/5xx (for example, www.gstatic.com/
-        // commonly returns 404). Curl still fails on DNS, connect, and TLS.
         "-sS",
         "--max-time",
         "6",

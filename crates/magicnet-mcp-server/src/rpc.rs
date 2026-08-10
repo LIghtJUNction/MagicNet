@@ -233,7 +233,7 @@ pub(crate) fn run_cli(server: &Server, args: &[&str]) -> String {
             text.push_str(&format!("\nrc={}", output.status.code().unwrap_or(-1)));
             text
         }
-        Err(err) => format!("failed to run cli: {err}"),
+        Err(err) => format!("failed to run cli: {err}\nrc=-1"),
     }
 }
 
@@ -424,7 +424,17 @@ fn rpc_error(id: &Value, code: i32, message: &str) -> String {
 }
 
 fn text_content(text: &str) -> Value {
-    json!({"content":[{"type":"text","text":text}]})
+    let is_error = text
+        .lines()
+        .last()
+        .and_then(|line| line.strip_prefix("rc="))
+        .and_then(|value| value.parse::<i32>().ok())
+        .is_some_and(|code| code != 0);
+    if is_error {
+        json!({"content":[{"type":"text","text":text}],"isError":true})
+    } else {
+        json!({"content":[{"type":"text","text":text}]})
+    }
 }
 
 #[cfg(test)]
@@ -457,6 +467,36 @@ mod tests {
                 .pointer("/result/content/0/text")
                 .and_then(Value::as_str),
             Some("speedtest\n\nrc=0")
+        );
+        assert_eq!(response.pointer("/result/isError"), None);
+    }
+
+    #[test]
+    fn nonzero_cli_exit_is_an_mcp_tool_error() {
+        let server = Server {
+            moddir: PathBuf::from("/tmp"),
+            cli: PathBuf::from("/bin/false"),
+            secret: String::new(),
+        };
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "magicnet_status", "arguments": {}}
+        })
+        .to_string();
+        let response: Value = serde_json::from_str(&handle_jsonrpc(&payload, &server))
+            .expect("RPC response must be valid JSON");
+
+        assert_eq!(
+            response.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            response
+                .pointer("/result/content/0/text")
+                .and_then(Value::as_str),
+            Some("\nrc=1")
         );
     }
 

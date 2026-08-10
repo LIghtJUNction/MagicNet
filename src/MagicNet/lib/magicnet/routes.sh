@@ -129,7 +129,7 @@ magicnet_singbox_apply_hotspot_policy() {
     # Forwarded Android tethering clients retain their LAN source address when
     # entering the TUN. Device-local TUN traffic uses 172.19.0.1 and therefore
     # does not match these hotspot source ranges.
-    if "$_jq" '
+    if (umask 077; "$_jq" '
         def hotspot_sources:
           ["192.168.0.0/16", "10.42.0.0/16", "172.20.10.0/28"];
         def hotspot_selector:
@@ -166,7 +166,7 @@ magicnet_singbox_apply_hotspot_policy() {
         | .route.rules = (
             $rules[:$insert_at] + [hotspot_rule] + $rules[$insert_at:]
           )
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+    ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"; then
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
@@ -210,9 +210,18 @@ magicnet_route_apply_singbox() {
     [ -f "$_config" ] || return 0
     _tmp="${_config}.magicnet-route.new"
     _rules_file="${MODDIR}/.tmp/magicnet-route-singbox.rules"
-    mkdir -p "${_rules_file%/*}"
-    magicnet_route_singbox_rules >"$_rules_file"
-    if awk -v rules_file="$_rules_file" '
+    if ! mkdir -p "${_rules_file%/*}" ||
+        ! magicnet_route_singbox_rules >"$_rules_file"; then
+        rm -f "$_rules_file" "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+    if magicnet_route_has_rules &&
+        ! grep -q '"__magicnet_route__"' "$_rules_file"; then
+        magicnet_warn "sing-box custom route rules were not generated"
+        rm -f "$_rules_file" "$_tmp" 2>/dev/null || true
+        return 1
+    fi
+    if ! (umask 077; awk -v rules_file="$_rules_file" '
         BEGIN {
             in_route = 0
             in_rules = 0
@@ -282,22 +291,31 @@ magicnet_route_apply_singbox() {
             }
             print
         }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
-        :
-    else
+    ' "$_config" >"$_tmp"); then
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi
+
+    # Validate the candidate before publishing it. The old order moved the
+    # snapshot first and only then noticed that a failed rule generation had
+    # removed the managed marker, leaving the live config damaged even though
+    # the function returned failure.
     if magicnet_route_has_rules; then
-        grep -q '"__magicnet_route__"' "$_config" || {
+        grep -q '"__magicnet_route__"' "$_tmp" || {
             magicnet_warn "sing-box custom route rules were not inserted"
+            rm -f "$_tmp" 2>/dev/null || true
             return 1
         }
     else
-        if grep -q '"__magicnet_route__"' "$_config"; then
+        if grep -q '"__magicnet_route__"' "$_tmp"; then
             magicnet_warn "sing-box custom route marker was not removed"
+            rm -f "$_tmp" 2>/dev/null || true
             return 1
         fi
+    fi
+    if ! chmod 600 "$_tmp" || ! mv -f "$_tmp" "$_config" || ! chmod 600 "$_config"; then
+        rm -f "$_tmp" 2>/dev/null || true
+        return 1
     fi
 }
 

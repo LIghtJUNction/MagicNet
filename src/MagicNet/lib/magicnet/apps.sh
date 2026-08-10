@@ -362,14 +362,20 @@ magicnet_singbox_apply_app_policy() {
         # An empty include list means “unrestricted” in sing-box.  Keep
         # whitelist mode fail-closed when no selected package resolves.
         [ -s "${_include_uids_tmp}.new" ] || printf '%s\n' "$MAGICNET_APP_UID_SENTINEL" >"${_include_uids_tmp}.new"
-        mv -f "${_include_uids_tmp}.new" "$_include_uids_tmp"
+        if ! mv -f "${_include_uids_tmp}.new" "$_include_uids_tmp"; then
+            rm -f "${_include_uids_tmp}.new" 2>/dev/null || true
+            return 1
+        fi
         _include_block="$(magicnet_uid_array_block include_uid "$_include_uids_tmp" "," 1)"
         : >"$_exclude_uids_tmp"
     else
         magicnet_package_uids "$_bypass_file" >"$_exclude_uids_tmp"
         awk 'BEGIN { print 0 } /^[0-9]+$/ && !seen[$0]++ { print }' \
             "$_exclude_uids_tmp" >"${_exclude_uids_tmp}.new"
-        mv -f "${_exclude_uids_tmp}.new" "$_exclude_uids_tmp"
+        if ! mv -f "${_exclude_uids_tmp}.new" "$_exclude_uids_tmp"; then
+            rm -f "${_exclude_uids_tmp}.new" 2>/dev/null || true
+            return 1
+        fi
         _exclude_block="$(magicnet_uid_array_block exclude_uid "$_exclude_uids_tmp" "," 1)"
         rm -f "$_include_packages_tmp" 2>/dev/null || true
         : >"$_include_uids_tmp"
@@ -392,7 +398,7 @@ magicnet_singbox_apply_app_policy() {
         [ -f "$_bypass_file" ] || : >"$_bypass_file"
         [ -f "$_include_uids_tmp" ] || : >"$_include_uids_tmp"
         [ -f "$_exclude_uids_tmp" ] || : >"$_exclude_uids_tmp"
-        if "$_jq" --arg mode "$_mode" --argjson uid_sentinel "$MAGICNET_APP_UID_SENTINEL" \
+        if (umask 077; "$_jq" --arg mode "$_mode" --argjson uid_sentinel "$MAGICNET_APP_UID_SENTINEL" \
             --rawfile proxy "$_proxy_file" \
             --rawfile direct "$_direct_file" \
             --rawfile bypass "$_bypass_file" \
@@ -470,7 +476,7 @@ magicnet_singbox_apply_app_policy() {
                 (.dns // {})
                 | .rules = ((.rules // []) | map(select(has("package_name") | not)))
               )
-        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" &&
+        ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config" &&
             magicnet_app_uid_state_commit "$_uid_state_dir" "$_include_uids_tmp" "$_exclude_uids_tmp"; then
             rm -f "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" \
                 "$_base_include_uids_tmp" "$_base_exclude_uids_tmp" \
@@ -508,9 +514,15 @@ magicnet_singbox_apply_app_policy() {
     magicnet_singbox_tun_uid_values "$_config" exclude_uid |
         awk '/^[0-9]+$/ && !seen[$0]++ { print }' >"$_base_exclude_uids_tmp"
     magicnet_uid_values_without_managed "$_old_include_uids" "$_base_include_uids_tmp" >"${_base_include_uids_tmp}.new"
-    mv -f "${_base_include_uids_tmp}.new" "$_base_include_uids_tmp"
+    if ! mv -f "${_base_include_uids_tmp}.new" "$_base_include_uids_tmp"; then
+        rm -f "${_base_include_uids_tmp}.new" 2>/dev/null || true
+        return 1
+    fi
     magicnet_uid_values_without_managed "$_old_exclude_uids" "$_base_exclude_uids_tmp" >"${_base_exclude_uids_tmp}.new"
-    mv -f "${_base_exclude_uids_tmp}.new" "$_base_exclude_uids_tmp"
+    if ! mv -f "${_base_exclude_uids_tmp}.new" "$_base_exclude_uids_tmp"; then
+        rm -f "${_base_exclude_uids_tmp}.new" 2>/dev/null || true
+        return 1
+    fi
     awk '/^[0-9]+$/ && !seen[$0]++ { print }' \
         "$_base_include_uids_tmp" "$_include_uids_tmp" >"$_render_include_uids_tmp"
     if [ "$_mode" = "whitelist" ]; then
@@ -553,7 +565,7 @@ magicnet_singbox_apply_app_policy() {
         _direct_rule_tmp=""
     fi
 
-    if awk -v include_file="$_include_tmp" -v exclude_file="$_exclude_tmp" -v proxy_rule_file="$_proxy_rule_tmp" -v direct_rule_file="$_direct_rule_tmp" '
+    if (umask 077; awk -v include_file="$_include_tmp" -v exclude_file="$_exclude_tmp" -v proxy_rule_file="$_proxy_rule_tmp" -v direct_rule_file="$_direct_rule_tmp" '
         function emit_file(path, line) {
             if (path == "") {
                 return
@@ -715,7 +727,7 @@ magicnet_singbox_apply_app_policy() {
                 in_tun = 0
             }
         }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config" &&
+    ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config" &&
         magicnet_app_uid_state_commit "$_uid_state_dir" "$_include_uids_tmp" "$_exclude_uids_tmp"; then
         :
     else

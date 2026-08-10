@@ -60,6 +60,27 @@ assert_issue_93_local_startup_sources() {
 
 assert_issue_93_local_startup_sources
 
+# Config-lock ownership records include the process start time so a reused PID
+# cannot hold a stale lock forever or be mistaken for the current owner.
+magicnet_config_lock_acquire
+lock_owner="$(cat "$MODDIR/.state/config.lock/pid")"
+case "$lock_owner" in
+  "$$:"*) ;;
+  *) printf 'config lock owner is not start-time bound: %s\n' "$lock_owner" >&2; exit 1 ;;
+esac
+magicnet_config_lock_release
+sleep 60 &
+stale_pid=$!
+stale_start="$(awk '{print $22}' "/proc/$stale_pid/stat")"
+mkdir -p "$MODDIR/.state/config.lock"
+printf '%s:%s\n' "$stale_pid" "$((stale_start + 1))" >"$MODDIR/.state/config.lock/pid"
+magicnet_config_lock_acquire
+test "$(cut -d: -f1 "$MODDIR/.state/config.lock/pid")" = "$$"
+magicnet_config_lock_release
+kill "$stale_pid" 2>/dev/null || true
+wait "$stale_pid" 2>/dev/null || true
+stale_pid=
+
 with_no_refresh_loop_candidates() (
   trap - EXIT
   # shellcheck disable=SC2329 # Called indirectly by the production owner-state function.
@@ -418,8 +439,8 @@ else
 fi
 unset fake_pid prefiltered_pids
 
-# A transient proc race gets one fresh readable-file snapshot and one more
-# batched grep. Persistent grep errors remain fail-closed after that retry.
+# A transient proc race gets fresh readable-file snapshots and bounded batched
+# grep retries. Persistent grep errors remain fail-closed after the retries.
 scan_grep_bin="$fixture/scan-grep-bin"
 scan_grep_count_file="$fixture/scan-grep-count"
 real_grep="$(command -v grep)"
@@ -429,9 +450,11 @@ cat >"$scan_grep_bin/grep" <<'EOF'
 count=$(cat "$SCAN_GREP_COUNT_FILE" 2>/dev/null || printf '0\n')
 count=$((count + 1))
 printf '%s\n' "$count" >"$SCAN_GREP_COUNT_FILE"
-if [ "$SCAN_GREP_MODE" = persistent ] || [ "$count" -eq 1 ]; then
-  exit 2
-fi
+case "$SCAN_GREP_MODE" in
+  persistent) exit 2 ;;
+  transient) [ "$count" -eq 1 ] && exit 2 ;;
+  two-transient) [ "$count" -le 2 ] && exit 2 ;;
+esac
 exec "$SCAN_GREP_REAL" "$@"
 EOF
 chmod +x "$scan_grep_bin/grep"
@@ -449,6 +472,19 @@ test "$transient_scan_pids" = 920121
 assert_file "$scan_grep_count_file" 2
 assert_file "$tr_count_file" 2
 printf '0\n' >"$scan_grep_count_file"
+printf '0\n' >"$tr_count_file"
+two_transient_scan_pids="$({
+  PATH="$scan_grep_bin:$command_wrappers:$PATH" \
+    SCAN_GREP_COUNT_FILE="$scan_grep_count_file" \
+    SCAN_GREP_MODE=two-transient SCAN_GREP_REAL="$real_grep" \
+    TR_COUNT_FILE="$tr_count_file" TR_REAL="$real_tr" \
+    MAGICNET_SUB_REFRESH_PROC_ROOT="$fake_proc" \
+    magicnet_subscription_refresh_loop_pids
+})"
+test "$two_transient_scan_pids" = 920121
+assert_file "$scan_grep_count_file" 3
+assert_file "$tr_count_file" 2
+printf '0\n' >"$scan_grep_count_file"
 if PATH="$scan_grep_bin:$PATH" \
   SCAN_GREP_COUNT_FILE="$scan_grep_count_file" \
   SCAN_GREP_MODE=persistent SCAN_GREP_REAL="$real_grep" \
@@ -459,8 +495,8 @@ if PATH="$scan_grep_bin:$PATH" \
 else
   test "$?" -eq 2
 fi
-assert_file "$scan_grep_count_file" 2
-unset scan_grep_bin scan_grep_count_file real_grep transient_scan_pids
+assert_file "$scan_grep_count_file" 3
+unset scan_grep_bin scan_grep_count_file real_grep transient_scan_pids two_transient_scan_pids
 
 # A real prefilter scan error is not equivalent to finding no process. With no
 # trustworthy owner state, status is stale and an enabled schedule must refuse
@@ -566,7 +602,7 @@ if PATH="$exact_read_error_bin:$PATH" \
 else
   test "$?" -eq 2
 fi
-assert_file "$exact_read_count_file" 2
+assert_file "$exact_read_count_file" 3
 unset no_candidate_proc off_schedule_output disappearing_grep_bin disappeared_output
 unset exact_read_error_proc exact_read_error_bin exact_read_count_file transient_exact_pids
 
@@ -580,6 +616,68 @@ else
   test "$?" -eq 2
 fi
 unset missing_cmdline_proc
+
+# The child can exist before its /proc identity is readable. A single
+# immediately-failing identity probe must not reject a valid refresh loop.
+(
+  race_pid=
+  cleanup_race_loop() {
+    if [ -n "${race_pid:-}" ]; then
+      kill "$race_pid" 2>/dev/null || true
+      wait "$race_pid" 2>/dev/null || true
+    fi
+  }
+  trap cleanup_race_loop EXIT
+  race_proc_start_count_file="$fixture/race-proc-start-count"
+  printf '0\n' >"$race_proc_start_count_file"
+  # shellcheck disable=SC2329 # Called by the production start path.
+  magicnet_subscription_refresh_proc_start() {
+    race_proc_start_calls=$(cat "$race_proc_start_count_file")
+    race_proc_start_calls=$((race_proc_start_calls + 1))
+    printf '%s\n' "$race_proc_start_calls" >"$race_proc_start_count_file"
+    if [ "$race_proc_start_calls" -eq 1 ]; then
+      return 1
+    fi
+    printf '4242\n'
+  }
+  # shellcheck disable=SC2329 # Called by the production start path.
+  magicnet_subscription_refresh_proc_command_matches() { return 0; }
+  rm -f \
+    "$(magicnet_subscription_refresh_owner_file)" \
+    "$(magicnet_subscription_refresh_pid_file)" \
+    "$(magicnet_subscription_refresh_loop_file)"
+  printf '24\n' >"$(magicnet_subscription_schedule_file)"
+  with_no_refresh_loop_candidates magicnet_subscription_refresh_start
+  test "$(cat "$race_proc_start_count_file")" -ge 2
+  race_pid="$(sed -n '1p' "$(magicnet_subscription_refresh_pid_file)")"
+  test -n "$race_pid"
+  printf 'off\n' >"$(magicnet_subscription_schedule_file)"
+  rm -f \
+    "$(magicnet_subscription_refresh_owner_file)" \
+    "$(magicnet_subscription_refresh_pid_file)" \
+    "$(magicnet_subscription_refresh_loop_file)"
+)
+
+if magicnet_subscription_refresh_wait_for_identity invalid-pid; then
+  echo 'invalid refresh identity PID unexpectedly succeeded' >&2
+  exit 1
+fi
+test -z "${_refresh_wait_pid:-}"
+test -z "${_refresh_wait_attempts:-}"
+test -z "${_refresh_wait_delay:-}"
+
+if magicnet_subscription_refresh_proc_start invalid-pid; then
+  echo 'invalid refresh proc PID unexpectedly succeeded' >&2
+  exit 1
+fi
+test -z "${_refresh_proc_pid:-}"
+test -z "${_refresh_proc_root:-}"
+if MAGICNET_SUB_REFRESH_PROC_ROOT=relative-proc-root magicnet_subscription_refresh_proc_start 1; then
+  echo 'relative refresh proc root unexpectedly succeeded' >&2
+  exit 1
+fi
+test -z "${_refresh_proc_pid:-}"
+test -z "${_refresh_proc_root:-}"
 
 # Owner persistence failure must tear down the just-spawned, strictly matched
 # loop and leave no state that could cause duplicate refreshers.

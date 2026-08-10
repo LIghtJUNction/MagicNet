@@ -8,7 +8,7 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, readClipboardText, redactedCliPreview } from "@/utils";
+import { copyText, execFailed, readClipboardText, redactedCliPreview } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import DnsToolsCard from "./DnsToolsCard.vue";
 import EcaptureToolsCard from "./EcaptureToolsCard.vue";
@@ -19,6 +19,7 @@ import WarpRouteRulesPanel from "./WarpRouteRulesPanel.vue";
 import { summarizeBackupPayload } from "./backupPayloadSummary";
 import type { PendingToolAction } from "./toolActions";
 import { formatWarpImportSummaryReport, summarizeWarpImport, warpImportTone } from "./warpImportSummary";
+import { summarizeRefreshTools } from "./refreshToolsState";
 
 const {
   state,
@@ -47,10 +48,15 @@ async function refreshTools(): Promise<void> {
   toolsRefreshing.value = true;
   state.task = "刷新工具状态";
   try {
-    await refreshDns(true, redactedCliPreview("refresh tools [private-output]"));
-    await refreshWarp(true);
-    await refreshMcp(true);
-    state.output = "工具状态已刷新。";
+    const steps = [
+      { label: "DNS", ok: await refreshDns(true, redactedCliPreview("refresh tools [private-output]")) },
+      { label: "WARP", ok: await refreshWarp(true) },
+      { label: "MCP", ok: await refreshMcp(true) },
+    ] as const;
+    const summary = summarizeRefreshTools(steps, state.output);
+    state.notice = summary.notice;
+    state.output = summary.output;
+    state.phase = summary.completed ? "done" : "error";
   } finally {
     toolsRefreshing.value = false;
     state.task = "";
@@ -226,7 +232,11 @@ async function runImportWarp(payload: string): Promise<void> {
       }
       state.warp.importText = "";
       state.output = "WARP 配置已导入并应用。";
-      await refreshWarp(true);
+      if (!(await refreshWarp(true))) {
+        state.output = "WARP 配置已导入，但状态刷新未确认，请检查输出后重试。";
+        return;
+      }
+      state.output = "WARP 配置已导入并应用。";
     } finally {
       const cleaned = await removePrivatePayload("tmp", staged.basename, "WARP 导入载荷");
       if (!cleaned) {
@@ -264,8 +274,13 @@ async function copyWarpSummary(): Promise<void> {
 async function runSetWarpEnabled(enabled: boolean): Promise<void> {
   await withAction(enabled ? "warp-enable" : "warp-disable", async () => {
     const text = await runCli(enabled ? "warp enable" : "warp disable", enabled ? "启用 WARP" : "禁用 WARP");
+    if (execFailed(text)) return;
     state.output = text;
-    await refreshWarp(true);
+    if (!(await refreshWarp(true))) {
+      state.output = "WARP 开关已执行，但状态刷新未确认，请检查输出后重试。";
+      return;
+    }
+    state.output = text || (enabled ? "WARP 已启用。" : "WARP 已禁用。");
   });
 }
 

@@ -20,8 +20,8 @@ pub(crate) fn warp_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "import-file" => import_file(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "enable" => set_enabled(app, true),
         "disable" => set_enabled(app, false),
-        "global" => select_final("warp"),
-        "rule" => select_final("proxy"),
+        "global" => select_final(app, "warp"),
+        "rule" => select_final(app, "proxy"),
         "apply" => apply_and_restart(app),
         "test" => test_warp(app),
         _ => Err(warp_usage()),
@@ -136,8 +136,9 @@ fn test_warp(app: &App) -> Result<(), String> {
     Ok(())
 }
 
-fn select_final(outbound: &str) -> Result<(), String> {
+fn select_final(app: &App, outbound: &str) -> Result<(), String> {
     let payload = format!(r#"{{"name":"{outbound}"}}"#);
+    let endpoint = format!("{}/proxies/final", app.api);
     let output = Command::new("curl")
         .args([
             "-fsS",
@@ -149,7 +150,7 @@ fn select_final(outbound: &str) -> Result<(), String> {
             "Content-Type: application/json",
             "--data",
             &payload,
-            "http://127.0.0.1:9090/proxies/final",
+            &endpoint,
         ])
         .output()
         .map_err(|err| format!("run curl: {err}"))?;

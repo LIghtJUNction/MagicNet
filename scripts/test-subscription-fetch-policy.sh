@@ -62,6 +62,55 @@ shift
 exec "$@"
 SH
 chmod +x "$tmp/bin/"* "$MODDIR/cli"
+for special_address in \
+  192.0.0.1 \
+  192.0.2.1 \
+  192.31.196.1 \
+  192.52.193.1 \
+  192.88.99.1 \
+  192.168.1.1 \
+  192.175.48.1 \
+  198.18.0.1 \
+  198.51.100.1 \
+  203.0.113.1; do
+  if magicnet_singbox_public_address "$special_address"; then
+    printf 'special-use address was accepted: %s\n' "$special_address" >&2
+    exit 1
+  fi
+done
+for special_ipv6 in \
+  '::' \
+  '::1' \
+  'fc00::1' \
+  'fe80::1' \
+  '100::1' \
+  '64:ff9b::1' \
+  '2001:0::1' \
+  '2001:2::1' \
+  '2001:10::1' \
+  '2001:20::1' \
+  '2001:db8::1' \
+  'ff02::1' \
+  '::ffff:127.0.0.1' \
+  '::ffff:192.0.2.1'; do
+  if magicnet_singbox_public_address "$special_ipv6"; then
+    printf 'special-use IPv6 address was accepted: %s\n' "$special_ipv6" >&2
+    exit 1
+  fi
+done
+for malformed_ipv6 in \
+  '2001:db8' \
+  '2001:db8:::1' \
+  '2001:0:0:0:0:0:0:0:1' \
+  '2001:db8:1:2:3:4:5:6:7' \
+  '::2'; do
+  if magicnet_singbox_public_address "$malformed_ipv6"; then
+    printf 'malformed or non-public IPv6 address was accepted: %s\n' "$malformed_ipv6" >&2
+    exit 1
+  fi
+done
+magicnet_singbox_public_address '2001:4860:4860::8888'
+magicnet_singbox_public_address 1.1.1.1
 http_proxy=http://bad HTTP_PROXY=http://bad all_proxy=http://bad ALL_PROXY=http://bad \
   PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/direct" 2 7
 grep -q '^env=///$' "$tmp/log"
@@ -73,6 +122,11 @@ if grep -q -- '--proxy' "$tmp/log"; then
   exit 1
 fi
 test "$(cat "$tmp/direct")" = ok
+: >"$tmp/log"
+PATH="$tmp/bin:$PATH" \
+  magicnet_singbox_try_fetch_subscription HTTPS://example.invalid/sub "$tmp/uppercase" 2 7
+grep -q 'resolver sub resolve-host example.invalid 443' "$tmp/log"
+test "$(cat "$tmp/uppercase")" = ok
 : >"$tmp/log"
 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_try_fetch_subscription https://1.1.1.1:8443/sub "$tmp/public-ip" 2 7
@@ -110,6 +164,46 @@ grep -q 'curl .*--user-agent mihomo/1.19.0.*https://example.invalid/sub' "$tmp/l
 test "$(cat "$tmp/custom-ua")" = ok
 rm -f "$tmp/subscription.user-agent"
 : >"$tmp/log"
+
+# A failed publish must not fall through to normalizing the previous source
+# and report a fresh subscription as successful.
+stale_source="$tmp/stale-source.yaml"
+printf '%s\n' 'old-source' >"$stale_source"
+if (
+  mv() {
+    if [ "${MAGICNET_FETCH_FAIL_PUBLISH:-0}" = 1 ] &&
+      [ "${3:-}" = "$stale_source" ]; then
+      unset MAGICNET_FETCH_FAIL_PUBLISH
+      return 1
+    fi
+    command mv "$@"
+  }
+  MAGICNET_FETCH_FAIL_PUBLISH=1 PATH="$tmp/bin:$PATH" \
+    magicnet_singbox_fetch_one_subscription \
+      https://example.invalid/sub "$stale_source" "" "" "" '#publish-failure'
+); then
+  printf '%s\n' 'subscription publish failure must not be reported as success' >&2
+  exit 1
+fi
+test "$(cat "$stale_source")" = old-source
+test ! -e "${stale_source}.download"
+: >"$tmp/log"
+
+cache_file="$tmp/cache.yaml"
+cache_identity="$tmp/cache.yaml.identity"
+cache_stage="$tmp/cache-stage.yaml"
+printf '%s\n' 'cached-source' >"$cache_file"
+printf '%s\n' 'cache-identity' >"$cache_identity"
+if (
+  cp() { return 1; }
+  magicnet_singbox_use_cached_subscription \
+    "$cache_stage" "$cache_file" "$cache_identity" cache-identity
+); then
+  printf '%s\n' 'cache fallback must fail when staging the cache fails' >&2
+  exit 1
+fi
+test ! -e "$cache_stage"
+unset cache_file cache_identity cache_stage
 MAGICNET_FETCH_FAIL=1 MAGICNET_SUB_PROXY=http://127.0.0.1:7892 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_fetch_one_subscription \
     https://example.invalid/sub "$tmp/missing" "" "" "" '#1' 2>/dev/null && exit 1 || true
@@ -195,6 +289,7 @@ old_core=$!
 magicnet_singbox_pids() { kill -0 "$old_core" 2>/dev/null && printf '%s\n' "$old_core"; }
 magicnet_singbox_is_running() { kill -0 "$old_core" 2>/dev/null; }
 magicnet_supervisors_stop() { printf 'stop\n' >>"$order_log"; }
+magicnet_after_kernel_start_unlocked() { :; }
 magicnet_fswatch_start() { printf 'start\n' >>"$order_log"; }
 magicnet_fswatch_status() { return 0; }
 magicnet_singbox_listener_owned() { kill -0 "$1" 2>/dev/null; }
@@ -213,6 +308,19 @@ wait "$old_core" 2>/dev/null || true
 "$MODDIR/bin/sing-box" run -c "$tmp/config.json" -D "$tmp" &
 old_core=$!
 magicnet_singbox_pid_owned "$old_core" "$tmp/config.json"
+mkdir -p "$tmp/proc/12345"
+printf 'sing-box\n' >"$tmp/proc/12345/comm"
+printf '12345 (sing-box) S 1 2 3 4 5 6\n' >"$tmp/proc/12345/stat"
+printf 'sing-box\0sing-box\0run\0-c\0%s\0-D\0%s\0' "$tmp/config.json" "$tmp" >"$tmp/proc/12345/cmdline"
+MAGICNET_SINGBOX_PROC_ROOT="$tmp/proc" magicnet_singbox_pid_owned 12345 "$tmp/config.json"
+mkdir -p "$tmp/proc/505"
+printf 'sing-box\n' >"$tmp/proc/505/comm"
+if MAGICNET_SINGBOX_PROC_ROOT="$tmp/proc" magicnet_singbox_pid_live 505; then
+  printf 'magicnet_singbox_pid_live accepted a PID with unreadable proc stat\n' >&2
+  exit 1
+fi
+MAGICNET_SINGBOX_PROC_ROOT="$tmp/proc" magicnet_singbox_pid_owned 12345 "$tmp/other.json" && exit 1 || true
+rm -rf "$tmp/proc"
 "$tmp/foreign/sing-box" run -c "$tmp/config.json" -D "$tmp" &
 foreign_exe=$!
 magicnet_singbox_pid_owned "$foreign_exe" "$tmp/config.json" && exit 1 || true

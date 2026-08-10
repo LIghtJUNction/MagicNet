@@ -29,6 +29,8 @@ assert.match(reporter, /runCli\("api conns", "读取近期活动连接", true\)/
 assert.match(reporter, /runCli\("service logs sing-box 160", "读取近期连接日志", true\)/);
 assert.match(reporter, /kind === "command-error"/);
 assert.match(reporter, /commandFailureContext\(operation\)/);
+assert.match(reporter, /state\.operationCapture\.command/);
+assert.match(reporter, /lastCommand: captured\.command/);
 assert.match(reporter, /kind === "subscription-node"/);
 assert.match(reporter, /runCli\("sub status", "读取订阅状态", true\)/);
 assert.match(reporter, /kind === "dns-routing"/);

@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { formatMcpHostPort, isMcpIpLiteral, isValidMcpPort } from "@/composables/parsers";
-import { copyText } from "@/utils";
+import { copyText, execFailed } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import { buildMcpConnectionPlan } from "./mcpConnectionPlan";
 import type { PendingToolAction } from "./toolActions";
@@ -58,8 +58,12 @@ function validateMcpEndpoint(): { bind: string; port: string } | null {
 
 async function runSaveMcpEndpoint(endpoint: { bind: string; port: string }): Promise<void> {
   await withAction("save-mcp", async () => {
-    await runCli(`mcp set ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, "保存 MCP 地址");
-    if (state.mcp.pid !== "stopped") await runCli("mcp restart", "重启 MCP");
+    const saved = await runCli(`mcp set ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, "保存 MCP 地址");
+    if (execFailed(saved)) return;
+    if (state.mcp.pid !== "stopped") {
+      const restarted = await runCli("mcp restart", "重启 MCP");
+      if (execFailed(restarted)) return;
+    }
     await refreshMcp(true);
   });
 }
@@ -78,7 +82,8 @@ function saveMcpEndpoint(): void {
 
 async function runStartMcp(endpoint: { bind: string; port: string }): Promise<void> {
   await withAction("start-mcp", async () => {
-    await runCli(`mcp enable ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, "启动 MCP");
+    const started = await runCli(`mcp enable ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, "启动 MCP");
+    if (execFailed(started)) return;
     await refreshMcp(true);
   });
 }
@@ -97,7 +102,8 @@ function startMcp(): void {
 
 async function runStopMcp(): Promise<void> {
   await withAction("stop-mcp", async () => {
-    await runCli("mcp stop", "停止 MCP");
+    const stopped = await runCli("mcp stop", "停止 MCP");
+    if (execFailed(stopped)) return;
     await refreshMcp(true);
   });
 }
@@ -114,7 +120,8 @@ function stopMcp(): void {
 
 async function runDisableMcp(): Promise<void> {
   await withAction("disable-mcp", async () => {
-    await runCli("mcp disable", "禁用 MCP");
+    const disabled = await runCli("mcp disable", "禁用 MCP");
+    if (execFailed(disabled)) return;
     await refreshMcp(true);
   });
 }

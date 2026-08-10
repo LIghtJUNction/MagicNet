@@ -16,7 +16,10 @@ magicnet_json_escape() { printf '%s' "$1"; }
 
 # A subscription-owned restart records the prior fswatch state without
 # restoring it while the caller still owns the config transaction.
-magicnet_supervisors_stop() { :; }
+magicnet_supervisors_stop() { printf 'supervisors-stop\n' >>"$events"; }
+magicnet_disable_dns_capture() { printf 'dns-capture-disable\n' >>"$events"; }
+magicnet_disable_dns_leak_guard() { printf 'dns-leak-guard-disable\n' >>"$events"; }
+magicnet_after_kernel_start_unlocked() { printf 'post-start\n' >>"$events"; }
 magicnet_singbox_owned_pids() { :; }
 magicnet_singbox_ensure_start_owned() { :; }
 ss() { :; }
@@ -29,8 +32,45 @@ MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
 MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
 magicnet_singbox_restart_owned "$MODDIR/config.json"
 test "$MAGICNET_SUB_FSWATCH_RESTORE_PENDING" -eq 1
-test ! -s "$events"
+test "$(tr '\n' ' ' <"$events")" = 'dns-capture-disable dns-leak-guard-disable supervisors-stop post-start '
+: >"$events"
 unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_DEFER_FSWATCH_RESTORE
+
+# A failed post-start phase must tear down the newly started generation. The
+# old generation is already gone at this point; leaving PID 222 alive would
+# expose a core without its TUN/DNS policy and make the next request flaky.
+failure_state="$fixture/failure-state"
+printf 'stopped\n' >"$failure_state"
+failure_owned_pids=
+magicnet_singbox_owned_pids() {
+  test -n "$failure_owned_pids" && printf '%s\n' "$failure_owned_pids"
+}
+magicnet_singbox_ensure_start_owned() {
+  printf 'running\n' >"$failure_state"
+  failure_owned_pids=222
+}
+magicnet_after_kernel_start_unlocked() { return 1; }
+kill() {
+  case "$*" in
+    *222*)
+      failure_owned_pids=
+      printf 'stopped\n' >"$failure_state"
+      ;;
+  esac
+  return 0
+}
+export MAGICNET_SUB_STOP_TIMEOUT=0 MAGICNET_SUB_KILL_TIMEOUT=0
+CONFIG_LOCK_HELD=0
+set +e
+magicnet_singbox_restart_owned "$MODDIR/config.json"
+failure_restart_rc=$?
+set -e
+test "$failure_restart_rc" -ne 0
+test "$(cat "$failure_state")" = stopped
+test -z "$failure_owned_pids"
+unset failure_state failure_owned_pids failure_restart_rc
+unset MAGICNET_SUB_STOP_TIMEOUT MAGICNET_SUB_KILL_TIMEOUT CONFIG_LOCK_HELD
+: >"$events"
 
 # The update wrapper restores fswatch after magicnet_with_config_lock returns.
 CONFIG_LOCK_HELD=0

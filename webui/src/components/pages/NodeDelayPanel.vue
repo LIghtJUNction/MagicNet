@@ -6,7 +6,7 @@ import Card from "@/components/ui/Card.vue";
 import { buildNodeDelayStats, formatNodeDelayReport, nodeDelayHealthText, nodeDelayQualityLabel, parseCurrentNode, parseNodeTestAll, sanitizeNodeText, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, shellQuote } from "@/utils";
+import { copyText, execFailed, shellQuote } from "@/utils";
 import { buildNodeSwitchPlan, formatNodeSwitchPlanReport, nodeSwitchPlanTone } from "./nodeSwitchPlan";
 
 type PendingNodeAction = {
@@ -28,7 +28,12 @@ const switchPlan = computed(() => buildNodeSwitchPlan(currentNode.value, entries
 
 async function refreshCurrentNode(): Promise<void> {
   await withAction("node-current", async () => {
-    currentNode.value = parseCurrentNode(await runCli("node current", "读取当前节点", true));
+    const text = await runCli("node current", "读取当前节点", true);
+    if (execFailed(text)) {
+      state.output = text;
+      return;
+    }
+    currentNode.value = parseCurrentNode(text);
   });
 }
 
@@ -45,8 +50,14 @@ async function testAndPrepareFastest(): Promise<void> {
     copied.value = false;
     pendingAction.value = null;
     const text = await runCli("node test-all", "测速并选择最快节点");
+    if (execFailed(text)) return;
     rawOutput.value = text;
-    const latestCurrent = parseCurrentNode(await runCli("node current", "读取当前节点", true));
+    const currentText = await runCli("node current", "读取当前节点", true);
+    if (execFailed(currentText)) {
+      state.output = currentText;
+      return;
+    }
+    const latestCurrent = parseCurrentNode(currentText);
     currentNode.value = latestCurrent;
     const parsedEntries = parseNodeTestAll(text);
     const plan = buildNodeSwitchPlan(latestCurrent, parsedEntries);
@@ -80,8 +91,14 @@ function requestUseFastest(): void {
 async function useNode(node: string): Promise<void> {
   await withAction("node-use-fastest", async () => {
     const text = await runCli(`node use ${shellQuote(node)}`, "切换到最快节点");
+    if (execFailed(text)) return;
     state.output = text;
-    currentNode.value = parseCurrentNode(await runCli("node current", "读取当前节点", true));
+    const currentText = await runCli("node current", "读取当前节点", true);
+    if (execFailed(currentText)) {
+      state.output = `节点已切换，但当前节点读取未确认：\n${currentText}`;
+      return;
+    }
+    currentNode.value = parseCurrentNode(currentText);
   });
 }
 

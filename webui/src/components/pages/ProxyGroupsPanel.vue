@@ -8,7 +8,7 @@ import { buildNodeDelayStats, nodeDelayQualityLabel, parseNodeTestAll, sanitizeN
 import { parseProxyGroupsSnapshot, sanitizeProxyName, type ProxyGroupSummary } from "@/composables/proxyGroupParsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, shellQuote } from "@/utils";
+import { copyText, execFailed, shellQuote } from "@/utils";
 import { buildProxySelectionPlan, formatProxySelectionPlanReport, type ProxySelectionPlan } from "./proxySelectionPlan";
 
 type PendingProxyAction = {
@@ -110,8 +110,14 @@ function visibleGroupNodes(group: ProxyGroupSummary): string[] {
 async function selectNode(group: string, node: string): Promise<void> {
   await withAction("proxy-groups-select", async () => {
     const text = await runCli(`api select ${shellQuote(group)} ${shellQuote(node)}`, "切换代理节点");
+    if (execFailed(text)) return;
     state.output = text;
-    rawOutput.value = await runCli("api proxies", "刷新代理组", true);
+    const refreshed = await runCli("api proxies", "刷新代理组", true);
+    if (execFailed(refreshed)) {
+      state.output = `代理节点切换已执行，但代理组刷新未确认：\n${refreshed}`;
+      return;
+    }
+    rawOutput.value = refreshed;
   });
 }
 

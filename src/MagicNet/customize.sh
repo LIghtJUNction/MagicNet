@@ -324,6 +324,13 @@ rm -f "${MODPATH}/kam.log" "${MODPATH}/cli.legacy.sh" "${MODPATH}/mcp-server.sh"
 [ -d "${MODPATH}/bin" ] && set_perm_recursive "${MODPATH}/bin" 0 0 0755 0755 u:object_r:system_file:s0
 [ -d "${MODPATH}/webroot" ] && set_perm_recursive "${MODPATH}/webroot" 0 0 0755 0644 u:object_r:system_file:s0
 
+# sing-box configs contain subscription credentials and node secrets.  Atomic
+# runtime writers enforce this too, but set the permission before the first
+# boot so a packaged or restored config never starts world-readable.
+if [ -f "${MODPATH}/.config/sing-box/config.json" ]; then
+  chmod 600 "${MODPATH}/.config/sing-box/config.json" || abort "! failed to protect sing-box config"
+fi
+
 rm -f "${MODPATH}/cli" 2>/dev/null || true
 ln -s "bin/magicnet-cli" "${MODPATH}/cli" 2>/dev/null || true
 

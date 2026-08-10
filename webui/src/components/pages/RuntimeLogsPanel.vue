@@ -35,6 +35,7 @@ const commandPreview = computed(() => {
   return target.value === "mcp" ? `mcp logs ${count}` : `service logs sing-box ${count}`;
 });
 const logLines = computed(() => output.value.split(/\r?\n/).filter(Boolean));
+const logAnalysis = computed(() => analyzeRuntimeLogLines(logLines.value));
 const filteredLines = computed(() => logLines.value.filter((line) => {
   const lower = line.toLowerCase();
   const keyword = query.value.trim().toLowerCase();
@@ -42,7 +43,6 @@ const filteredLines = computed(() => logLines.value.filter((line) => {
   const matchesLevel = runtimeLogLevelMatches(line, level.value);
   return matchesKeyword && matchesLevel;
 }));
-const logAnalysis = computed(() => analyzeRuntimeLogLines(logLines.value));
 const warningCount = computed(() => logAnalysis.value.warningCount);
 const errorCount = computed(() => logAnalysis.value.errorCount);
 const visibleOutput = computed(() => filteredLines.value.join("\n"));

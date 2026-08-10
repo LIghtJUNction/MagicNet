@@ -15,14 +15,14 @@ pub(crate) fn node_cmd(app: &App, args: &[String]) -> Result<(), String> {
             node_list(app);
             Ok(())
         }
-        "current" => node_current(),
+        "current" => node_current(app),
         "use" => {
             let name = args[1..].join(" ");
             node_use(app, &name)
         }
         "test" => {
             let name = args[1..].join(" ");
-            node_test(&name)
+            node_test(app, &name)
         }
         "test-all" => node_test_all(app, &args[1..]),
         _ => Err("Usage: cli node {list|current|use|test <name>|test-all [name ...]}".to_string()),
@@ -43,8 +43,8 @@ fn node_list(app: &App) {
     }
 }
 
-fn node_current() -> Result<(), String> {
-    let proxy = read_proxy_selector()?;
+fn node_current(app: &App) -> Result<(), String> {
+    let proxy = read_proxy_selector(app)?;
     let current = proxy
         .get("now")
         .and_then(Value::as_str)
@@ -65,12 +65,12 @@ fn node_use(app: &App, name: &str) -> Result<(), String> {
     select_proxy(app, "proxy", clean)
 }
 
-fn node_test(name: &str) -> Result<(), String> {
+fn node_test(app: &App, name: &str) -> Result<(), String> {
     let clean = name.trim();
     if clean.is_empty() {
         return Err("Usage: cli node test <name>".to_string());
     }
-    let delay = node_delay(clean).map_err(|err| format!("test node failed: {err}"))?;
+    let delay = node_delay(&app.api, clean).map_err(|err| format!("test node failed: {err}"))?;
     println!("{clean}={delay}ms");
     Ok(())
 }
@@ -80,9 +80,10 @@ fn node_test_all(app: &App, args: &[String]) -> Result<(), String> {
     if nodes.is_empty() {
         return Err("Usage: cli node test-all [name ...]".to_string());
     }
+    let total = nodes.len();
     let mut failed = 0usize;
     for node in nodes {
-        match node_delay(&node) {
+        match node_delay(&app.api, &node) {
             Ok(delay) => println!("{node}={delay}ms"),
             Err(err) => {
                 failed += 1;
@@ -90,9 +91,16 @@ fn node_test_all(app: &App, args: &[String]) -> Result<(), String> {
             }
         }
     }
-    if failed > 0 {
+    node_test_all_status(total.saturating_sub(failed), failed)
+}
+
+fn node_test_all_status(successful: usize, failed: usize) -> Result<(), String> {
+    if successful == 0 && failed > 0 {
         Err(format!("{failed} node tests failed"))
     } else {
+        if failed > 0 {
+            eprintln!("[warning] {failed} node tests failed; {successful} node tests succeeded");
+        }
         Ok(())
     }
 }
@@ -110,13 +118,13 @@ fn test_all_targets(app: &App, args: &[String]) -> Vec<String> {
     resolve_node_names(app, 16, true, &cache)
 }
 
-fn read_proxy_selector() -> Result<Value, String> {
+fn read_proxy_selector(app: &App) -> Result<Value, String> {
     let output = Command::new("curl")
         .args([
             "-fsS",
             "--max-time",
             "5",
-            "http://127.0.0.1:9090/proxies/proxy",
+            &format!("{}/proxies/proxy", app.api),
         ])
         .output()
         .map_err(|err| format!("run curl: {err}"))?;
@@ -391,5 +399,15 @@ mod tests {
         let app = temp_app();
         let names = test_all_targets(&app, &["alpha".to_string(), " beta ".to_string()]);
         assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);
+    }
+
+    #[test]
+    fn partial_node_batch_is_not_reported_as_total_failure() {
+        assert!(node_test_all_status(3, 1).is_ok());
+    }
+
+    #[test]
+    fn all_failed_node_batch_still_reports_failure() {
+        assert!(node_test_all_status(0, 4).is_err());
     }
 }

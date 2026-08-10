@@ -18,6 +18,10 @@ function transpile(source) {
 
 const dir = await mkdtemp(join(tmpdir(), "magicnet-dns-summary-"));
 try {
+  const dnsCard = readFileSync(new URL("./src/components/pages/DnsToolsCard.vue", import.meta.url), "utf8");
+  assert.match(dnsCard, /dnsTestOutput\.value = await runCli\(/);
+  assert.doesNotMatch(dnsCard, /state\.output\s*=\s*dnsTestOutput\.value/);
+
   const tone = readFileSync(new URL("./src/lib/statusTone.ts", import.meta.url), "utf8");
   await writeFile(join(dir, "statusTone.mjs"), transpile(tone), "utf8");
   const source = readFileSync(new URL("./src/components/pages/dnsTestSummary.ts", import.meta.url), "utf8")

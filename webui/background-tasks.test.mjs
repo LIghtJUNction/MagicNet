@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
   backgroundAccepted,
   backgroundLaunchCommand,
+  backgroundLogCommand,
   backgroundLogPath,
   createBackgroundOperationId,
   isActiveSubscriptionBackgroundTask,
@@ -10,13 +13,14 @@ import {
   reconcileSubscriptionCompletion,
   subscriptionLifecycleRunning,
 } from "./src/composables/backgroundTasks.ts";
+import { CLI, MODULE_DIR } from "./src/constants.ts";
 
 const useMagicNetSource = readFileSync(new URL("./src/composables/useMagicNet.ts", import.meta.url), "utf8");
 assert.match(useMagicNetSource, /async function startBackgroundCli[\s\S]*?const operationSequence = trackRedactedOperation\(\s*previewOverride \|\| redactedCliPreview\(displayArgs\),\s*label,\s*\);/);
 assert.match(useMagicNetSource, /function followBackgroundLogs\([\s\S]*?operationSequence: number,[\s\S]*?publishTrackedOperation\(\s*operationSequence,/);
-assert.match(useMagicNetSource, /function followBackgroundLogs[\s\S]*?refreshSubs\(true, false\)/);
-assert.match(useMagicNetSource, /async function startBackgroundCli[\s\S]*?const operationId = createBackgroundOperationId\(\);[\s\S]*?await refreshSubs\(true, false\)/);
-assert.match(useMagicNetSource, /const ownsBackgroundTask = state\.backgroundTask\.id === operationId;[\s\S]*?if \(ownsBackgroundTask\) \{\s*followBackgroundLogs/);
+assert.match(useMagicNetSource, /function followBackgroundLogs[\s\S]*?refreshSubs\(true(?:,|\))/);
+assert.match(useMagicNetSource, /async function startBackgroundCli[\s\S]*?const operationId = createBackgroundOperationId\(\);[\s\S]*?refreshSubs\(true\)/);
+assert.match(useMagicNetSource, /const ownsForegroundUi = \(\): boolean => foregroundUiGate\.owns\(foregroundToken\);[\s\S]*?if \(!ownsForegroundUi\(\)\)[\s\S]*?followBackgroundLogs/);
 
 const firstId = createBackgroundOperationId(1000);
 const secondId = createBackgroundOperationId(1000);
@@ -66,6 +70,51 @@ const clearTrapIndex = command.indexOf("trap - EXIT HUP INT TERM", statusIndex);
 const cleanupInvokeIndex = command.indexOf("cleanup; echo", clearTrapIndex);
 const exitMarkerIndex = command.indexOf(`[exit] id=${firstId} status=$status`, cleanupInvokeIndex);
 assert.ok(statusIndex < clearTrapIndex && clearTrapIndex < cleanupInvokeIndex && cleanupInvokeIndex < exitMarkerIndex, "cleanup must run after CLI status capture and before exit marker");
+
+// The launch command must not claim acceptance when its log directory cannot
+// be prepared. Execute the generated shell rather than relying on string
+// shape alone so a storage/permission failure cannot become a false success.
+const launchFixture = mkdtempSync(`${tmpdir()}/magicnet-background-`);
+try {
+  writeFileSync(`${launchFixture}/.log`, "not-a-directory");
+  const setupFailureCommand = backgroundLaunchCommand(
+    "true",
+    "刷新",
+    `${launchFixture}/task.log`,
+    firstId,
+  )
+    .replaceAll(MODULE_DIR, launchFixture)
+    .replaceAll(CLI, "/bin/true");
+  const setupFailure = spawnSync("/bin/sh", ["-c", setupFailureCommand], {
+    encoding: "utf8",
+  });
+  const setupOutput = `${setupFailure.stdout || ""}\n${setupFailure.stderr || ""}`;
+  assert.notEqual(setupFailure.status, 0, "background setup failure must fail the launch command");
+  assert.equal(setupOutput.includes(`[accepted] id=${firstId}`), false, "background setup failure must not emit accepted");
+} finally {
+  rmSync(launchFixture, { recursive: true, force: true });
+}
+
+// Completion markers can be older than the last 80 lines of a verbose CLI
+// log. The reader must retain matching markers so reconciliation still sees a
+// completed operation instead of timing out forever.
+const longLogFixture = mkdtempSync(`${tmpdir()}/magicnet-background-log-`);
+try {
+  const longLog = `${longLogFixture}/task.log`;
+  const filler = Array.from({ length: 100 }, (_, index) => `diagnostic-${index}`);
+  writeFileSync(longLog, [
+    `[launch] id=${firstId} label=refresh`,
+    ...filler,
+    `[exit] id=${firstId} status=0`,
+  ].join("\n"));
+  const logRead = spawnSync("/bin/sh", ["-c", backgroundLogCommand(longLog, "sub update-all", firstId)], {
+    encoding: "utf8",
+  });
+  assert.equal(logRead.status, 0);
+  assert.equal(parseBackgroundCompletion(logRead.stdout || "", firstId), "done", "long logs must retain launch/exit markers");
+} finally {
+  rmSync(longLogFixture, { recursive: true, force: true });
+}
 
 const lifecycleBaseline = {
   subscriptionBaselineKnown: true,

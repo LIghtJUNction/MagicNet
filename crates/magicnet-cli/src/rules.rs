@@ -175,8 +175,9 @@ fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
     }
     let mut lists = app_policy_lists(app)?;
     match target {
-        Some("proxy" | "direct" | "bypass") => lists[app_policy_target_index(target.unwrap())?]
-            .retain(|line| line != package),
+        Some("proxy" | "direct" | "bypass") => {
+            lists[app_policy_target_index(target.unwrap())?].retain(|line| line != package)
+        }
         Some(_) => return Err("Target must be proxy, direct, or bypass".to_string()),
         None => lists
             .iter_mut()
@@ -352,14 +353,22 @@ fn write_app_policy_lists_transactionally(
     app: &App,
     lists: &[Vec<String>; 3],
 ) -> Result<(), String> {
-    let texts: [String; 3] =
-        std::array::from_fn(|index| unique_lines_text(&lists[index]));
+    let texts: [String; 3] = std::array::from_fn(|index| unique_lines_text(&lists[index]));
     replace_module_text_files_transactionally(
         app,
         &[
-            (Path::new(app_file_relative(APP_POLICY_TARGETS[0])?), texts[0].as_str()),
-            (Path::new(app_file_relative(APP_POLICY_TARGETS[1])?), texts[1].as_str()),
-            (Path::new(app_file_relative(APP_POLICY_TARGETS[2])?), texts[2].as_str()),
+            (
+                Path::new(app_file_relative(APP_POLICY_TARGETS[0])?),
+                texts[0].as_str(),
+            ),
+            (
+                Path::new(app_file_relative(APP_POLICY_TARGETS[1])?),
+                texts[1].as_str(),
+            ),
+            (
+                Path::new(app_file_relative(APP_POLICY_TARGETS[2])?),
+                texts[2].as_str(),
+            ),
         ],
     )
 }
@@ -561,10 +570,7 @@ mod tests {
 
     #[test]
     fn command_failure_message_falls_back_to_exit_status() {
-        let output = Command::new("sh")
-            .args(["-c", "exit 7"])
-            .output()
-            .unwrap();
+        let output = Command::new("sh").args(["-c", "exit 7"]).output().unwrap();
         let message = command_failure_message("query Android VPN services", &output);
         assert!(message.starts_with("query Android VPN services failed:"));
         assert!(message.contains('7'));

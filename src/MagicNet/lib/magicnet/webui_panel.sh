@@ -3,7 +3,7 @@ magicnet_singbox_apply_zashboard() {
     [ -f "$_config" ] || return 0
 
     _tmp="${_config}.zashboard.new"
-    if awk '
+    if (umask 077; awk '
         /"external_ui"[[:space:]]*:/ {
             sub(/"external_ui"[[:space:]]*:[[:space:]]*"[^"]*"/, "\"external_ui\": \"zashboard\"")
         }
@@ -14,7 +14,7 @@ magicnet_singbox_apply_zashboard() {
             next
         }
         { print }
-    ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"; then
+    ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"; then
         :
     else
         rm -f "$_tmp" 2>/dev/null || true

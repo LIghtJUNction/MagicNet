@@ -28,7 +28,8 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 log_info "Refreshing ChatGPT Voice IP prefixes from OpenAI"
-curl -fsSL --retry 3 --retry-delay 1 "$VOICE_URL" -o "$VOICE_RESPONSE" || {
+curl -fsSL --connect-timeout 5 --max-time 20 --retry 3 --retry-delay 1 \
+    "$VOICE_URL" -o "$VOICE_RESPONSE" || {
     log_error "ChatGPT Voice prefix download failed"
     exit 1
 }
@@ -89,7 +90,7 @@ jq empty "$CONFIG_CANDIDATE"
 if cmp -s "$CONFIG_FILE" "$CONFIG_CANDIDATE"; then
     log_info "ChatGPT Voice prefixes are already current"
 else
-    mv "$CONFIG_CANDIDATE" "$CONFIG_FILE"
+    mv -f "$CONFIG_CANDIDATE" "$CONFIG_FILE"
     log_success "ChatGPT Voice prefixes updated"
 fi
 jq -r '.creationTime' "$VOICE_RESPONSE" >"$STATE_DIR/creation-time"

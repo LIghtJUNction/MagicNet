@@ -9,13 +9,28 @@ const MAX_LOG_READ_BYTES: u64 = 1024 * 1024;
 
 pub(crate) fn log_list(server: &Server) -> String {
     let mut rows = Vec::new();
-    rows.push(format!("log_dir={}", log_dir(server).display()));
     rows.push("known=sing-box,mcp,fswatch,kernel,service".to_string());
 
-    match fs::read_dir(log_dir(server)) {
+    let root = match safe_log_dir(server) {
+        Ok(root) => {
+            rows.insert(0, format!("log_dir={}", root.display()));
+            root
+        }
+        Err(err) => {
+            rows.insert(0, format!("read log dir failed: {err}"));
+            return rows.join("\n");
+        }
+    };
+    match fs::read_dir(root) {
         Ok(entries) => {
             for entry in entries.flatten().take(200) {
                 let path = entry.path();
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                if file_type.is_symlink() {
+                    continue;
+                }
                 let Ok(meta) = entry.metadata() else {
                     continue;
                 };
@@ -38,7 +53,11 @@ pub(crate) fn log_list(server: &Server) -> String {
 }
 
 pub(crate) fn log_read(server: &Server, source: &str, lines: usize, redact: bool) -> String {
-    let path = match log_path(server, source) {
+    let requested = match log_path(server, source) {
+        Ok(path) => path,
+        Err(err) => return err,
+    };
+    let path = match safe_log_path(server, &requested) {
         Ok(path) => path,
         Err(err) => return err,
     };
@@ -115,6 +134,30 @@ fn log_path(server: &Server, source: &str) -> Result<PathBuf, String> {
     Ok(log_dir(server).join(name))
 }
 
+fn safe_log_dir(server: &Server) -> Result<PathBuf, String> {
+    let module_root = fs::canonicalize(&server.moddir)
+        .map_err(|err| format!("module root unavailable: {err}"))?;
+    let root = fs::canonicalize(log_dir(server))
+        .map_err(|err| format!("log directory unavailable: {err}"))?;
+    if !root.starts_with(&module_root) {
+        return Err("log directory escapes module directory".to_string());
+    }
+    if !root.is_dir() {
+        return Err("log path is not a directory".to_string());
+    }
+    Ok(root)
+}
+
+fn safe_log_path(server: &Server, requested: &PathBuf) -> Result<PathBuf, String> {
+    let root = safe_log_dir(server)?;
+    let resolved =
+        fs::canonicalize(requested).map_err(|err| format!("log path unavailable: {err}"))?;
+    if !resolved.starts_with(&root) {
+        return Err("log path escapes module directory".to_string());
+    }
+    Ok(resolved)
+}
+
 fn section(name: &str, body: &str) -> String {
     format!("## {name}\n{body}")
 }
@@ -163,6 +206,8 @@ fn redact_token(token: &str) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::os::unix::fs::symlink;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -182,5 +227,32 @@ mod tests {
         assert!(text.len() <= MAX_LOG_READ_BYTES as usize);
         assert!(text.ends_with("last-line\n"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn log_read_rejects_symlink_escape() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("magicnet-log-root-{stamp}"));
+        let log_root = root.join(".log");
+        let outside = std::env::temp_dir().join(format!("magicnet-log-outside-{stamp}.log"));
+        fs::create_dir_all(&log_root).unwrap();
+        fs::write(&outside, "outside\n").unwrap();
+        symlink(&outside, log_root.join("mcp-server.log")).unwrap();
+        let server = Server {
+            moddir: PathBuf::from(&root),
+            cli: PathBuf::from("/bin/echo"),
+            secret: String::new(),
+        };
+
+        assert_eq!(
+            log_read(&server, "mcp", 10, false),
+            "log path escapes module directory"
+        );
+
+        let _ = fs::remove_file(outside);
+        let _ = fs::remove_dir_all(root);
     }
 }

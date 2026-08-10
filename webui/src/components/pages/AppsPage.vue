@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, redactedCliPreview } from "@/utils";
+import { copyText, execFailed, redactedCliPreview } from "@/utils";
 import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName } from "./appPolicyInsights";
 import { buildAppPolicyChangePlan, type AppPolicyChangeOperation, type AppPolicyChangePlan } from "./appPolicyChangePlan";
 
@@ -79,7 +79,7 @@ function actionPlan(operation: AppPolicyChangeOperation): AppPolicyChangePlan {
 }
 
 function commandFailed(text: string): boolean {
-  return /\b(error|failed|fail|Usage:|not found)\b/i.test(text);
+  return execFailed(text);
 }
 
 function rememberRemovedBypass(pkg: string): void {
@@ -158,7 +158,12 @@ async function applyBatchAdd(packages: string[], target: AppTarget): Promise<voi
     }
     selectedPackages.value = selectedPackages.value.filter((pkg) => !packages.includes(pkg));
     state.output = `已批量归类 ${packages.length} 个应用到 ${target}。`;
-    await refreshApps(true);
+    if (!(await refreshApps(true))) {
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
+      state.appPolicy.bypass = previousBypass;
+      selectedPackages.value = Array.from(new Set([...selectedPackages.value, ...packages]));
+    }
   });
 }
 
@@ -196,7 +201,11 @@ async function addPackage(pkg: string, target: AppTarget, key = `add-${target}`)
       state.appPolicy.bypass = previousBypass;
       return;
     }
-    await refreshApps(true);
+    if (!(await refreshApps(true))) {
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
+      state.appPolicy.bypass = previousBypass;
+    }
   });
 }
 
@@ -242,7 +251,11 @@ async function removeApp(pkg: string, target: AppTarget): Promise<void> {
       state.appPolicy.bypass = previousBypass;
       return;
     }
-    await refreshApps(true);
+    if (!(await refreshApps(true))) {
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
+      state.appPolicy.bypass = previousBypass;
+    }
   });
 }
 
@@ -266,14 +279,20 @@ async function restoreBypass(pkg: string): Promise<void> {
       state.appPolicy.bypass = previousBypass;
       return;
     }
-    await refreshApps(true);
+    if (!(await refreshApps(true))) {
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
+      state.appPolicy.bypass = previousBypass;
+      return;
+    }
     forgetRemovedBypass(pkg);
   });
 }
 
 async function setMode(mode: "blacklist" | "whitelist"): Promise<void> {
   await withAction(`mode-${mode}`, async () => {
-    await runCli(`app mode ${mode}`, mode === "blacklist" ? "切换全局接管" : "切换仅名单接管");
+    const text = await runCli(`app mode ${mode}`, mode === "blacklist" ? "切换全局接管" : "切换仅名单接管");
+    if (commandFailed(text)) return;
     await refreshApps(true);
   });
 }
@@ -323,6 +342,9 @@ async function applyRecommendedBypass(): Promise<void> {
       state.output = "没有可加入的推荐 Bypass 应用。";
       return;
     }
+    const previousProxy = [...state.appPolicy.proxy];
+    const previousDirect = [...state.appPolicy.direct];
+    const previousBypass = [...state.appPolicy.bypass];
     packages.forEach((pkg) => {
       if (!state.appPolicy.bypass.includes(pkg)) state.appPolicy.bypass.push(pkg);
       state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
@@ -333,10 +355,16 @@ async function applyRecommendedBypass(): Promise<void> {
     const text = await runCli(`app add-many bypass ${quoted}`, `应用推荐 Bypass 名单`);
     if (commandFailed(text)) {
       state.output = text;
-      await refreshApps(true);
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
+      state.appPolicy.bypass = previousBypass;
       return;
     }
-    await refreshApps(true);
+    if (!(await refreshApps(true))) {
+      state.appPolicy.proxy = previousProxy;
+      state.appPolicy.direct = previousDirect;
+      state.appPolicy.bypass = previousBypass;
+    }
   });
 }
 
@@ -388,6 +416,7 @@ async function confirmAppAction(): Promise<void> {
 
 onMounted(() => {
   void runCli("app recommendations", "读取动态推荐 Bypass", true).then((text) => {
+    if (execFailed(text)) return;
     recommendedBypass.value = Array.from(new Set(
       text.split(/\r?\n/).map((item) => item.trim()).filter(isValidPackageName)
     ));

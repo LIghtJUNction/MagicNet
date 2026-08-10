@@ -456,16 +456,11 @@ where
         .iter()
         .map(|(relative, _)| split_module_relative_file(relative))
         .collect::<Result<Vec<_>, _>>()?;
-    if targets
-        .iter()
-        .enumerate()
-        .any(|(index, target)| {
-            targets[..index].iter().any(|seen| {
-                seen.directory == target.directory
-                    && seen.name.as_os_str() == target.name.as_os_str()
-            })
+    if targets.iter().enumerate().any(|(index, target)| {
+        targets[..index].iter().any(|seen| {
+            seen.directory == target.directory && seen.name.as_os_str() == target.name.as_os_str()
         })
-    {
+    }) {
         return Err("module transaction targets must be distinct files".to_string());
     }
     let module_root = open_module_root(app)?;
@@ -493,8 +488,7 @@ where
         .zip(&directories)
         .map(|(name, directory)| snapshot_module_transaction_target(directory, name))
         .collect::<Result<Vec<_>, _>>()?;
-    let staging_directory =
-        open_module_transaction_staging_directory(&module_root, &directories)?;
+    let staging_directory = open_module_transaction_staging_directory(&module_root, &directories)?;
     let mut stages = std::iter::repeat_with(|| None)
         .take(names.len())
         .collect::<Vec<Option<ModuleTransactionStage>>>();
@@ -1381,10 +1375,16 @@ mod tests {
         let (app, directory) = test_app("transaction-success");
         let (bypass, proxy) = prepare_transaction_app_lists(&app);
 
-        replace_module_text_files_transactionally(&app, &[
-            (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
-            (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-        ])
+        replace_module_text_files_transactionally(
+            &app,
+            &[
+                (
+                    Path::new(".config/magicnet/app-bypass.list"),
+                    "new-bypass\n",
+                ),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+            ],
+        )
         .expect("replace app lists");
 
         assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
@@ -1397,9 +1397,7 @@ mod tests {
     fn module_transaction_replaces_files_across_module_directories() {
         let (app, directory) = test_app("transaction-cross-directory");
         let (bypass, _) = prepare_transaction_app_lists(&app);
-        let subscription = app
-            .moddir
-            .join(".config/sing-box/subscription.user-agent");
+        let subscription = app.moddir.join(".config/sing-box/subscription.user-agent");
         fs::create_dir_all(subscription.parent().expect("subscription parent"))
             .expect("create subscription directory");
         fs::write(&subscription, "old-agent\n").expect("write subscription fixture");
@@ -1429,9 +1427,7 @@ mod tests {
     fn module_transaction_rolls_back_across_directories_after_replace_failure() {
         let (app, directory) = test_app("transaction-cross-directory-rollback");
         let (bypass, proxy) = prepare_transaction_app_lists(&app);
-        let subscription = app
-            .moddir
-            .join(".config/sing-box/subscription.user-agent");
+        let subscription = app.moddir.join(".config/sing-box/subscription.user-agent");
         fs::create_dir_all(subscription.parent().expect("subscription parent"))
             .expect("create subscription directory");
         fs::write(&subscription, "old-agent\n").expect("write subscription fixture");
@@ -1448,10 +1444,7 @@ mod tests {
                     Path::new(".config/magicnet/app-bypass.list"),
                     "new-bypass\n",
                 ),
-                (
-                    Path::new(".config/magicnet/app-proxy.list"),
-                    "new-proxy\n",
-                ),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
             ],
             |operation, source_directory, source, destination_directory, destination| {
                 replace_count += 1;
@@ -1495,9 +1488,15 @@ mod tests {
         let error = replace_module_text_files_transactionally_with_rename(
             &app,
             &[
-                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+                (
+                    Path::new(".config/magicnet/app-bypass.list"),
+                    "new-bypass\n",
+                ),
                 (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-                (Path::new(".config/magicnet/app-direct.list"), "new-direct\n"),
+                (
+                    Path::new(".config/magicnet/app-direct.list"),
+                    "new-direct\n",
+                ),
             ],
             |operation, source_directory, source, destination_directory, destination| {
                 replace_count += 1;
@@ -1531,7 +1530,10 @@ mod tests {
         let write_error = replace_module_text_files_transactionally_with_stage_writer(
             &write_app,
             &[
-                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+                (
+                    Path::new(".config/magicnet/app-bypass.list"),
+                    "new-bypass\n",
+                ),
                 (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
             ],
             |_file, _contents| Err("injected stage write failure".to_string()),
@@ -1551,7 +1553,10 @@ mod tests {
         let sync_error = replace_module_text_files_transactionally_with_stage_writer(
             &sync_app,
             &[
-                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
+                (
+                    Path::new(".config/magicnet/app-bypass.list"),
+                    "new-bypass\n",
+                ),
                 (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
             ],
             |file, contents| {
@@ -1582,10 +1587,16 @@ mod tests {
         fs::write(&victim, "preserve me").expect("write victim");
         symlink(&victim, &target_directory_entry).expect("create target-directory stage symlink");
 
-        replace_module_text_files_transactionally(&app, &[
-            (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
-            (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-        ])
+        replace_module_text_files_transactionally(
+            &app,
+            &[
+                (
+                    Path::new(".config/magicnet/app-bypass.list"),
+                    "new-bypass\n",
+                ),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+            ],
+        )
         .expect("target-directory entry must not be a transaction stage source");
 
         assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
@@ -1619,10 +1630,16 @@ mod tests {
         fs::write(&victim, "preserve me").expect("write victim");
         symlink(&victim, &stage).expect("create private stage symlink");
 
-        assert!(replace_module_text_files_transactionally(&app, &[
-            (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
-            (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-        ])
+        assert!(replace_module_text_files_transactionally(
+            &app,
+            &[
+                (
+                    Path::new(".config/magicnet/app-bypass.list"),
+                    "new-bypass\n"
+                ),
+                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+            ]
+        )
         .is_err());
         assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
         assert_eq!(fs::read_to_string(&bypass).unwrap(), "old-bypass\n");
@@ -1649,10 +1666,16 @@ mod tests {
             symlink(&outside, &linked_directory).expect("create intermediate symlink");
             let app = App::for_test(module_root);
 
-            assert!(replace_module_text_files_transactionally(&app, &[
-                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-            ])
+            assert!(replace_module_text_files_transactionally(
+                &app,
+                &[
+                    (
+                        Path::new(".config/magicnet/app-bypass.list"),
+                        "new-bypass\n"
+                    ),
+                    (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+                ]
+            )
             .is_err());
             assert!(fs::read_dir(&outside).unwrap().next().is_none());
             fs::remove_dir_all(&directory).expect("remove test directory");
@@ -1673,10 +1696,16 @@ mod tests {
                 _ => unreachable!(),
             }
 
-            assert!(replace_module_text_files_transactionally(&app, &[
-                (Path::new(".config/magicnet/app-bypass.list"), "new-bypass\n"),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-            ])
+            assert!(replace_module_text_files_transactionally(
+                &app,
+                &[
+                    (
+                        Path::new(".config/magicnet/app-bypass.list"),
+                        "new-bypass\n"
+                    ),
+                    (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
+                ]
+            )
             .is_err());
             assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
             fs::remove_dir_all(&directory).expect("remove test directory");

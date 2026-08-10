@@ -27,6 +27,7 @@ mod wifi;
 use std::env;
 use std::fs;
 use std::io;
+use std::net::IpAddr;
 use std::os::fd::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -50,8 +51,8 @@ use service::{
     transparent_cmd,
 };
 use subscriptions::{
-    setup_subscription, sub_apply_file, sub_filter, sub_get, sub_list, sub_schedule, sub_set,
-    sub_resolve_host, sub_set_file, sub_status, sub_target_file, sub_update, sub_update_all,
+    setup_subscription, sub_apply_file, sub_filter, sub_get, sub_list, sub_resolve_host,
+    sub_schedule, sub_set, sub_set_file, sub_status, sub_target_file, sub_update, sub_update_all,
     sub_user_agent,
 };
 pub(crate) use utils::{
@@ -64,6 +65,15 @@ use webui_backup::backup_cmd;
 use wifi::wifi_cmd;
 
 const SHORT_TIMEOUT: Duration = Duration::from_secs(3);
+const DEFAULT_COMMAND_TIMEOUT_SECS: u64 = 180;
+const MAX_COMMAND_TIMEOUT_SECS: u64 = 900;
+
+fn command_timeout_secs(value: Option<&str>) -> u64 {
+    value
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|seconds| (1..=MAX_COMMAND_TIMEOUT_SECS).contains(seconds))
+        .unwrap_or(DEFAULT_COMMAND_TIMEOUT_SECS)
+}
 
 struct CommandHelp {
     command: &'static str,
@@ -219,11 +229,20 @@ fn main() {
 
 impl App {
     fn from_env() -> Self {
-        let moddir = env::var("MODDIR")
-            .map(PathBuf::from)
-            .or_else(|_| current_exe_moddir())
-            .unwrap_or_else(|_| PathBuf::from("/data/adb/modules/MagicNet"));
-        let api = env::var("MAGICNET_API").unwrap_or_else(|_| "http://127.0.0.1:9090".to_string());
+        let moddir = if cfg!(target_os = "android") {
+            // On the device the module directory is a privileged code/data
+            // boundary. Do not allow a caller-provided MODDIR to redirect
+            // root shell execution to an arbitrary writable directory.
+            current_exe_moddir().unwrap_or_else(|_| PathBuf::from(MODULE_DIR))
+        } else {
+            // Host-side fixture tests intentionally provide their own module
+            // root while invoking the workspace binary.
+            env::var("MODDIR")
+                .map(PathBuf::from)
+                .or_else(|_| current_exe_moddir())
+                .unwrap_or_else(|_| PathBuf::from(MODULE_DIR))
+        };
+        let api = local_api_from_env();
         Self {
             log_dir: moddir.join(".log"),
             moddir,
@@ -233,7 +252,7 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn for_test(moddir: PathBuf) -> Self {
-        let api = "http://127.0.0.1:9090".to_string();
+        let api = DEFAULT_API.to_string();
         Self {
             log_dir: moddir.join(".log"),
             moddir,
@@ -242,9 +261,52 @@ impl App {
     }
 }
 
+const MODULE_DIR: &str = "/data/adb/modules/MagicNet";
+const DEFAULT_API: &str = "http://127.0.0.1:9090";
+
+fn local_api_from_env() -> String {
+    env::var("MAGICNET_API")
+        .ok()
+        .map(|value| value.trim_end_matches('/').to_string())
+        .filter(|value| is_loopback_http_api(value))
+        .unwrap_or_else(|| DEFAULT_API.to_string())
+}
+
+fn is_loopback_http_api(value: &str) -> bool {
+    let Some(authority) = value.strip_prefix("http://") else {
+        return false;
+    };
+    if authority.is_empty()
+        || authority
+            .bytes()
+            .any(|byte| matches!(byte, b'/' | b'?' | b'#' | b'@'))
+        || authority.chars().any(char::is_whitespace)
+    {
+        return false;
+    }
+    let (host, port) = if let Some(rest) = authority.strip_prefix('[') {
+        let Some((host, port)) = rest.split_once("]:") else {
+            return false;
+        };
+        (host, port)
+    } else {
+        let Some((host, port)) = authority.rsplit_once(':') else {
+            return false;
+        };
+        if host.contains(':') {
+            return false;
+        }
+        (host, port)
+    };
+    let Ok(address) = host.parse::<IpAddr>() else {
+        return false;
+    };
+    address.is_loopback() && port.parse::<u16>().ok().is_some_and(|port| port != 0)
+}
+
 fn current_exe_moddir() -> io::Result<PathBuf> {
     let exe = env::current_exe()?;
-    Ok(infer_moddir_from_exe(&exe).unwrap_or_else(|| PathBuf::from("/data/adb/modules/MagicNet")))
+    Ok(infer_moddir_from_exe(&exe).unwrap_or_else(|| PathBuf::from(MODULE_DIR)))
 }
 
 fn infer_moddir_from_exe(exe: &Path) -> Option<PathBuf> {
@@ -300,13 +362,9 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "sub" if args.get(1).map(String::as_str) == Some("update-all") => sub_update_all(app),
         "sub" if args.get(1).map(String::as_str) == Some("status") => sub_status(app),
         "sub" if args.get(1).map(String::as_str) == Some("schedule") => sub_schedule(app, args),
-        "sub" if args.get(1).map(String::as_str) == Some("user-agent") => {
-            sub_user_agent(app, args)
-        }
+        "sub" if args.get(1).map(String::as_str) == Some("user-agent") => sub_user_agent(app, args),
         "sub" if args.get(1).map(String::as_str) == Some("filter") => sub_filter(app, args),
-        "sub" if args.get(1).map(String::as_str) == Some("resolve-host") => {
-            sub_resolve_host(args)
-        }
+        "sub" if args.get(1).map(String::as_str) == Some("resolve-host") => sub_resolve_host(args),
         "config-editor" => config_editor(app, &args[1..]),
         "sub"
             if matches!(
@@ -356,6 +414,9 @@ pub(crate) fn pid_summary(name: &str) -> String {
             else {
                 continue;
             };
+            if !proc_pid_is_live(&entry.path()) {
+                continue;
+            }
             let comm = entry.path().join("comm");
             if fs::read_to_string(comm)
                 .map(|value| value.trim() == name)
@@ -369,6 +430,232 @@ pub(crate) fn pid_summary(name: &str) -> String {
         "stopped".to_string()
     } else {
         pids.join(",")
+    }
+}
+
+/// Return only sing-box processes launched from this module's managed
+/// binary/configuration. A process named `sing-box` is not sufficient proof
+/// of ownership: another VPN/core can legitimately use the same name and
+/// must not make MagicNet report a healthy core or be killed on stop.
+pub(crate) fn singbox_pid_summary(app: &App) -> String {
+    let pids = owned_singbox_pids(app);
+    if pids.is_empty() {
+        "stopped".to_string()
+    } else {
+        pids.join(",")
+    }
+}
+
+fn owned_singbox_pids(app: &App) -> Vec<String> {
+    let expected_binary = app.moddir.join("bin/sing-box");
+    let expected_config = app.moddir.join(".config/sing-box/config.json");
+    let expected_workdir = app.moddir.join(".config/sing-box");
+    let expected_binary = fs::canonicalize(&expected_binary).ok();
+    let mut pids = Vec::new();
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return pids;
+    };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(pid) = file_name
+            .to_str()
+            .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit()))
+        else {
+            continue;
+        };
+        let proc_dir = entry.path();
+        if !proc_pid_is_live(&proc_dir) {
+            continue;
+        }
+        if !fs::read_to_string(proc_dir.join("comm"))
+            .map(|value| value.trim() == "sing-box")
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let argv = fs::read(proc_dir.join("cmdline"))
+            .ok()
+            .map(|bytes| {
+                bytes
+                    .split(|byte| *byte == 0)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| String::from_utf8_lossy(value).into_owned())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let commandline_owned =
+            singbox_commandline_owned(&argv, &expected_binary, &expected_config, &expected_workdir);
+        let executable_owned = singbox_executable_owned(&proc_dir, &expected_binary);
+        let argv0_fallback = executable_owned.is_none()
+            && argv.first().map(String::as_str) == Some("sing-box")
+            && expected_binary.is_some();
+        if commandline_owned
+            && (executable_owned == Some(true)
+                || singbox_script_arg_owned(&argv, &expected_binary)
+                || argv0_fallback)
+        {
+            pids.push(pid.to_string());
+        }
+    }
+    pids
+}
+
+fn proc_pid_is_live(proc_dir: &Path) -> bool {
+    fs::read_to_string(proc_dir.join("stat"))
+        .map(|stat| proc_pid_stat_is_live(&stat))
+        .unwrap_or(false)
+}
+
+fn proc_pid_stat_is_live(stat: &str) -> bool {
+    stat.rsplit_once(") ")
+        .and_then(|(_, fields)| fields.chars().next())
+        .is_some_and(|state| state != 'Z')
+}
+
+fn singbox_executable_owned(proc_dir: &Path, expected_binary: &Option<PathBuf>) -> Option<bool> {
+    let Some(expected_binary) = expected_binary else {
+        return Some(false);
+    };
+    let Ok(executable) = fs::read_link(proc_dir.join("exe")) else {
+        // Script-backed host fixtures expose the module script in argv while
+        // /proc/exe points at the interpreter. On Android some SELinux
+        // contexts also hide this link; the caller may then use the exact
+        // `sing-box run -c <module-config> -D <module-workdir>` argv fallback.
+        return None;
+    };
+    Some(
+        fs::canonicalize(executable)
+            .map(|path| path == *expected_binary)
+            .unwrap_or(false),
+    )
+}
+
+fn singbox_script_arg_owned(argv: &[String], expected_binary: &Option<PathBuf>) -> bool {
+    let Some(expected_binary) = expected_binary else {
+        return false;
+    };
+    let expected_binary = expected_binary.to_string_lossy();
+    argv.iter().any(|arg| arg == expected_binary.as_ref())
+}
+
+fn singbox_commandline_owned(
+    argv: &[String],
+    expected_binary: &Option<PathBuf>,
+    expected_config: &Path,
+    expected_workdir: &Path,
+) -> bool {
+    let Some(run_index) = argv.iter().position(|arg| arg == "run") else {
+        return false;
+    };
+    let expected_binary = expected_binary
+        .as_ref()
+        .map(|path| path.to_string_lossy().into_owned());
+    let binary_arg = expected_binary.as_deref();
+    let script_arg_matches = binary_arg.is_some_and(|binary| argv.iter().any(|arg| arg == binary));
+    if !script_arg_matches && !argv.first().is_some_and(|arg| arg == "sing-box") {
+        return false;
+    }
+    let mut config = None;
+    let mut workdir = None;
+    let mut config_count = 0;
+    let mut workdir_count = 0;
+    let mut index = run_index + 1;
+    while index < argv.len() {
+        match argv[index].as_str() {
+            "-c" => {
+                config_count += 1;
+                config = argv.get(index + 1).map(String::as_str);
+                index += 1;
+            }
+            "-D" => {
+                workdir_count += 1;
+                workdir = argv.get(index + 1).map(String::as_str);
+                index += 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    let expected_config = expected_config.to_string_lossy();
+    let expected_workdir = expected_workdir.to_string_lossy();
+    config_count == 1
+        && workdir_count == 1
+        && config == Some(expected_config.as_ref())
+        && workdir == Some(expected_workdir.as_ref())
+}
+
+pub(crate) fn stop_owned_singbox(app: &App) {
+    let pids = owned_singbox_pids(app);
+    for pid in &pids {
+        signal_pid(pid, false);
+    }
+    thread::sleep(Duration::from_secs(1));
+    for pid in pids {
+        let proc_dir = Path::new("/proc").join(&pid);
+        if proc_dir.exists() && owned_singbox_pids(app).iter().any(|live| live == &pid) {
+            signal_pid(&pid, true);
+        }
+    }
+}
+
+fn signal_pid(pid: &str, force: bool) {
+    let program = if cfg!(target_os = "android") {
+        "/system/bin/kill"
+    } else {
+        "/bin/kill"
+    };
+    let mut command = Command::new(program);
+    if force {
+        command.arg("-9");
+    }
+    let _ = command.arg(pid).status();
+}
+
+// These variables are implementation details of the subscription transaction.
+// A privileged CLI process must not let a caller-provided environment replace
+// the module-owned URL/configuration files, candidate descriptor, or test-only
+// transaction controls before the shell entrypoint runs.
+const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
+    "MAGICNET_SUB_CANDIDATE_URL_FILE",
+    "MAGICNET_SUB_CANDIDATE_SOURCE_FILE",
+    "MAGICNET_SUB_CONFIG_FILE",
+    "MAGICNET_SUB_FILTER_FILE",
+    "MAGICNET_SUB_SOURCE_FILE",
+    "MAGICNET_SUB_URL_FILE",
+    "MAGICNET_SUB_USER_AGENT_FILE",
+    "MAGICNET_SUB_FAULT",
+    "MAGICNET_SUB_FAULT_EXIT137",
+    "MAGICNET_SUB_FAULT_TERM",
+    "MAGICNET_SUB_REFRESH_OWNER_WRITE_FAIL",
+    "MAGICNET_SUB_REFRESH_PROC_ROOT",
+    "MAGICNET_SUB_DEFER_FSWATCH_RESTORE",
+    "MAGICNET_SUB_FSWATCH_RESTORE_PENDING",
+    "MAGICNET_SUB_FSWATCH_WAS_ACTIVE",
+    "MAGICNET_SUB_PRESERVE_REFRESH",
+];
+
+fn clear_unsafe_subscription_environment(command: &mut Command) {
+    for key in UNSAFE_SUBSCRIPTION_ENV {
+        command.env_remove(key);
+    }
+}
+
+fn trusted_shell() -> &'static str {
+    if cfg!(target_os = "android") {
+        "/system/bin/sh"
+    } else {
+        "/bin/sh"
+    }
+}
+
+fn trusted_path() -> &'static str {
+    if cfg!(target_os = "android") {
+        "$MODDIR/bin:$MODDIR/system/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
+    } else {
+        // The fake-Magisk smoke harness supplies its command doubles through
+        // this explicitly named test-only variable. Normal host invocations
+        // use a fixed system path just like the Android build.
+        "$MODDIR/bin:$MODDIR/system/bin:${MAGICNET_TEST_PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
     }
 }
 
@@ -421,15 +708,19 @@ fn run_magicnet_function_inner(
     function_name: &str,
     subscription_candidate: Option<(&'static str, RawFd)>,
 ) -> Result<(), String> {
+    // Keep the module path in the environment and quote it at every shell
+    // use.  MODDIR can be inherited from an untrusted launcher; interpolating
+    // its display form into a single-quoted script would turn a path quote
+    // into root shell syntax before the command even starts.
     let script = format!(
-        ". '{0}/lib/kamfw/.kamfwrc'; export PATH='{0}/bin':'{0}/system/bin':\"$PATH\"; import __runtime__; . '{0}/lib/magicnet.sh'; {function_name}",
-        app.moddir.display(),
+        ". \"$MODDIR/lib/kamfw/.kamfwrc\"; export PATH=\"{}\"; import __runtime__; . \"$MODDIR/lib/magicnet.sh\"; {function_name}",
+        trusted_path(),
     );
-    let timeout = env::var("MAGICNET_COMMAND_TIMEOUT")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(180);
-    let mut command = Command::new("sh");
+    let timeout = Duration::from_secs(command_timeout_secs(
+        env::var("MAGICNET_COMMAND_TIMEOUT").ok().as_deref(),
+    ));
+    // Do not resolve the privileged shell through a caller-controlled PATH.
+    let mut command = Command::new(trusted_shell());
     command
         .arg("-c")
         .arg(script)
@@ -437,10 +728,11 @@ fn run_magicnet_function_inner(
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
         .stdin(Stdio::null());
+    clear_unsafe_subscription_environment(&mut command);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
     }
-    let status = match run_process_group(&mut command, Duration::from_secs(timeout)) {
+    let status = match run_process_group(&mut command, timeout) {
         Ok(status) => status,
         Err(err) => {
             if function_name.contains("magicnet_singbox_update_subscription") {
@@ -525,10 +817,13 @@ fn help() {
 
 #[cfg(test)]
 mod path_tests {
-    use super::infer_moddir_from_exe;
+    use super::{
+        infer_moddir_from_exe, is_loopback_http_api, proc_pid_stat_is_live,
+        singbox_commandline_owned,
+    };
     use std::env;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn fixture_root() -> std::path::PathBuf {
@@ -558,6 +853,73 @@ mod path_tests {
         assert_infers(&root, "cli");
         assert_infers(&root, "bin/magicnet-cli");
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn api_override_is_loopback_http_only() {
+        assert!(is_loopback_http_api("http://127.0.0.1:9090"));
+        assert!(is_loopback_http_api("http://[::1]:19090"));
+        assert!(!is_loopback_http_api("https://127.0.0.1:9090"));
+        assert!(!is_loopback_http_api("http://localhost:9090"));
+        assert!(!is_loopback_http_api("http://127.0.0.1:9090@evil.example"));
+        assert!(!is_loopback_http_api("http://127.0.0.1:0"));
+    }
+
+    #[test]
+    fn singbox_ownership_requires_module_binary_and_exact_runtime_paths() {
+        let binary = Some(PathBuf::from("/module/bin/sing-box"));
+        let config = Path::new("/module/.config/sing-box/config.json");
+        let workdir = Path::new("/module/.config/sing-box");
+        let owned = vec![
+            "/module/bin/sing-box".to_string(),
+            "run".to_string(),
+            "-c".to_string(),
+            config.display().to_string(),
+            "-D".to_string(),
+            workdir.display().to_string(),
+        ];
+        assert!(singbox_commandline_owned(&owned, &binary, config, workdir));
+
+        let script_owned = vec![
+            "/bin/sh".to_string(),
+            "/module/bin/sing-box".to_string(),
+            "run".to_string(),
+            "-c".to_string(),
+            config.display().to_string(),
+            "-D".to_string(),
+            workdir.display().to_string(),
+        ];
+        assert!(singbox_commandline_owned(
+            &script_owned,
+            &binary,
+            config,
+            workdir
+        ));
+
+        let mut wrong_config = owned.clone();
+        wrong_config[3] = "/other/config.json".to_string();
+        assert!(!singbox_commandline_owned(
+            &wrong_config,
+            &binary,
+            config,
+            workdir
+        ));
+
+        let mut duplicate_workdir = owned.clone();
+        duplicate_workdir.extend(["-D".to_string(), workdir.display().to_string()]);
+        assert!(!singbox_commandline_owned(
+            &duplicate_workdir,
+            &binary,
+            config,
+            workdir
+        ));
+    }
+
+    #[test]
+    fn singbox_zombie_processes_are_not_reported_as_running() {
+        assert!(proc_pid_stat_is_live("123 (sing-box) S 1 2 3 4 5 6"));
+        assert!(!proc_pid_stat_is_live("123 (sing-box) Z 1 2 3 4 5 6"));
+        assert!(!proc_pid_stat_is_live("malformed"));
     }
 }
 
@@ -594,10 +956,28 @@ mod command_help_tests {
 
 #[cfg(test)]
 mod process_group_tests {
-    use super::{run_process_group, App};
+    use super::{
+        clear_unsafe_subscription_environment, command_timeout_secs, run_magicnet_function,
+        run_process_group, trusted_shell, App, DEFAULT_COMMAND_TIMEOUT_SECS,
+        MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
+    };
     use std::fs;
     use std::process::Command;
     use std::time::Duration;
+
+    #[test]
+    fn command_timeout_is_finite_and_rejects_zero_or_overflow() {
+        assert_eq!(command_timeout_secs(None), DEFAULT_COMMAND_TIMEOUT_SECS);
+        assert_eq!(command_timeout_secs(Some("1")), 1);
+        assert_eq!(command_timeout_secs(Some("900")), MAX_COMMAND_TIMEOUT_SECS);
+        for value in ["", "0", "-1", "901", "18446744073709551616", "junk"] {
+            assert_eq!(
+                command_timeout_secs(Some(value)),
+                DEFAULT_COMMAND_TIMEOUT_SECS,
+                "unexpected timeout parse for {value:?}"
+            );
+        }
+    }
 
     #[test]
     fn timeout_reaps_command_and_kills_grandchild() {
@@ -638,5 +1018,53 @@ mod process_group_tests {
         crate::subscriptions::cleanup_stale_update_lock(&app);
         assert!(!lock.exists());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn function_runner_does_not_interpolate_shell_sensitive_module_paths() {
+        let root =
+            std::env::temp_dir().join(format!("magicnet-function-quote-{}-'", std::process::id()));
+        fs::create_dir_all(root.join("lib/kamfw")).unwrap();
+        fs::write(root.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+        fs::write(root.join("lib/magicnet.sh"), "").unwrap();
+        let app = App {
+            moddir: root.clone(),
+            api: String::new(),
+            log_dir: root.join(".log"),
+        };
+
+        run_magicnet_function(&app, "printf '%s' safe > \"$MODDIR/function-result\"")
+            .expect("shell-sensitive module path must remain data");
+        assert_eq!(
+            fs::read_to_string(root.join("function-result")).unwrap(),
+            "safe"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn function_runner_does_not_inherit_subscription_file_overrides() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "env"]);
+        for key in UNSAFE_SUBSCRIPTION_ENV {
+            command.env(key, "attacker-controlled");
+        }
+        clear_unsafe_subscription_environment(&mut command);
+        let output = command.output().expect("environment probe must run");
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        for key in UNSAFE_SUBSCRIPTION_ENV {
+            assert!(
+                !stdout
+                    .lines()
+                    .any(|line| line.starts_with(&format!("{key}="))),
+                "unsafe subscription variable leaked: {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn function_runner_uses_an_absolute_shell_path() {
+        assert!(trusted_shell().starts_with('/'));
     }
 }

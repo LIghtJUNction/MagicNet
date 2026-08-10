@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{decode_base64, App};
 
-const MAX_SUBSCRIPTION_PAYLOAD_BYTES: u64 = 8 * 1024 * 1024;
+pub(crate) const MAX_WEBUI_PAYLOAD_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 enum PayloadNamespace {
@@ -157,14 +157,17 @@ fn append_payload(
         libc::O_WRONLY | libc::O_APPEND | libc::O_NONBLOCK | libc::O_CLOEXEC,
     )?;
     secure_file_mode(&file)?;
-    if matches!(namespace, PayloadNamespace::Subscription) {
-        let current_size = file
-            .metadata()
-            .map_err(|_| "inspect WebUI payload failed".to_string())?
-            .len();
-        if current_size.saturating_add(bytes.len() as u64) > MAX_SUBSCRIPTION_PAYLOAD_BYTES {
-            return Err("WebUI subscription payload exceeds the 8 MiB limit".to_string());
-        }
+    let current_size = file
+        .metadata()
+        .map_err(|_| "inspect WebUI payload failed".to_string())?
+        .len();
+    if current_size.saturating_add(bytes.len() as u64) > MAX_WEBUI_PAYLOAD_BYTES {
+        return Err(match namespace {
+            PayloadNamespace::Subscription => {
+                "WebUI subscription payload exceeds the 8 MiB limit".to_string()
+            }
+            PayloadNamespace::Tmp => "WebUI temporary payload exceeds the 8 MiB limit".to_string(),
+        });
     }
     file.write_all(&bytes)
         .map_err(|_| "append WebUI payload failed".to_string())
@@ -195,9 +198,17 @@ fn take_payload(app: &App, namespace: PayloadNamespace, name: &OsStr) -> Result<
         libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC,
     )?;
     let mut bytes = Vec::new();
-    let read_result = file
+    let read_result = (&mut file)
+        .take(MAX_WEBUI_PAYLOAD_BYTES + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| "read WebUI payload failed".to_string());
+        .map_err(|_| "read WebUI payload failed".to_string())
+        .and_then(|_| {
+            if bytes.len() as u64 > MAX_WEBUI_PAYLOAD_BYTES {
+                Err("WebUI payload exceeds the 8 MiB limit".to_string())
+            } else {
+                Ok(())
+            }
+        });
     drop(file);
 
     // A payload name is validated and its parent is a private directory opened
@@ -449,6 +460,52 @@ mod tests {
             .file_type()
             .is_symlink());
         drop(directory);
+    }
+
+    #[test]
+    fn temporary_payload_is_bounded_like_subscription_payload() {
+        let app = temp_app();
+        fs::create_dir_all(&app.moddir).expect("create module directory");
+        let name = OsStr::new("large.tmp");
+        create_payload(&app, PayloadNamespace::Tmp, name).expect("create payload");
+        let chunk = vec![b'x'; MAX_WEBUI_PAYLOAD_BYTES as usize];
+        append_payload(
+            &app,
+            PayloadNamespace::Tmp,
+            name,
+            &crate::encode_base64(&chunk),
+        )
+        .expect("append payload up to limit");
+        assert!(append_payload(
+            &app,
+            PayloadNamespace::Tmp,
+            name,
+            &crate::encode_base64(b"x"),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn oversized_payload_is_removed_after_bounded_read() {
+        let app = temp_app();
+        fs::create_dir_all(&app.moddir).expect("create module directory");
+        let name = OsStr::new("oversized.tmp");
+        let path = create_payload(&app, PayloadNamespace::Tmp, name).expect("create payload");
+        let directory = payload_directory(&app, PayloadNamespace::Tmp).expect("open namespace");
+        let mut file = open_payload_file(
+            &directory,
+            name,
+            libc::O_WRONLY | libc::O_APPEND | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+        .expect("open payload");
+        file.write_all(&vec![b'x'; (MAX_WEBUI_PAYLOAD_BYTES + 1) as usize])
+            .expect("write oversized fixture");
+        drop(file);
+        drop(directory);
+
+        let result = take_payload(&app, PayloadNamespace::Tmp, name);
+        assert_eq!(result.unwrap_err(), "WebUI payload exceeds the 8 MiB limit");
+        assert!(!path.exists());
     }
 
     #[test]

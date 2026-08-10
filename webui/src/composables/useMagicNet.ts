@@ -24,6 +24,14 @@ import {
   parseBackgroundCompletion,
   reconcileSubscriptionCompletion,
 } from "@/composables/backgroundTasks";
+import { SerialExecQueue } from "@/composables/execQueue";
+import { ForegroundUiGate } from "@/composables/foregroundUiGate";
+import {
+  beginOperationCapture,
+  emptyOperationCapture,
+  updateOperationCapture,
+} from "@/composables/operationCapture";
+import { refreshAllNotice } from "@/composables/refreshAllState";
 import {
   blockDefaults,
   dnsDefaults,
@@ -48,11 +56,6 @@ import {
 } from "@/composables/parsers";
 import { createMagicNetIssue } from "@/composables/issueReporter";
 import type { IssueKind } from "@/composables/issueDrafts";
-import {
-  beginOperationCapture,
-  emptyOperationCapture,
-  updateOperationCapture,
-} from "@/composables/operationCapture";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import {
   compactCommand,
@@ -67,7 +70,6 @@ import {
   stagePrivatePayload as stagePrivatePayloadWithCli,
   unavailableExecOutcome,
   uniqueNonEmpty,
-  withTimeout,
   type ExecOutcome,
 } from "@/utils";
 
@@ -80,12 +82,7 @@ function hasKsuExec(): boolean {
 }
 
 const hasKsu = hasKsuExec();
-const initialOutput = hasKsu
-  ? "正在读取 MagicNet 状态..."
-  : "本地预览模式：真机 WebUI 才会执行 root 命令。";
-let writeQueue: Promise<unknown> = Promise.resolve();
 let backgroundLogTimer = 0;
-let foregroundTaskSequence = 0;
 
 const state = reactive({
   hasKsu,
@@ -95,8 +92,10 @@ const state = reactive({
   notice: "面板已加载，所有耗时命令都会异步执行。",
   queueDepth: 0,
   lastCommand: "",
-  output: initialOutput,
-  operationCapture: emptyOperationCapture(initialOutput),
+  output: hasKsu
+    ? "正在读取 MagicNet 状态..."
+    : "本地预览模式：真机 WebUI 才会执行 root 命令。",
+  operationCapture: emptyOperationCapture(),
   backgroundTask: { ...backgroundTaskDefaults },
   issueReporter: {
     open: false,
@@ -138,11 +137,10 @@ const state = reactive({
   },
 });
 
-function releaseForegroundTask(sequence: number): void {
-  if (!sequence || sequence !== foregroundTaskSequence) return;
-  state.busy = false;
-  state.task = "";
-}
+const execQueue = new SerialExecQueue((depth) => {
+  state.queueDepth = depth;
+});
+const foregroundUiGate = new ForegroundUiGate();
 
 function trackRedactedOperation(commandPreview: string, label = ""): number {
   const output = `$ ${commandPreview}\n执行中；私密输出已隐藏。`;
@@ -167,15 +165,6 @@ function publishTrackedOperation(
   return true;
 }
 
-async function queued<T>(task: () => Promise<T>): Promise<T> {
-  state.queueDepth += 1;
-  const run = writeQueue.then(task, task).finally(() => {
-    state.queueDepth = Math.max(0, state.queueDepth - 1);
-  });
-  writeQueue = run.catch(() => undefined);
-  return run;
-}
-
 async function runShellOutcome(
   commandBody: string,
   label: string,
@@ -185,20 +174,24 @@ async function runShellOutcome(
 ): Promise<ExecOutcome> {
   const command = `su -M -c ${shellQuote(commandBody)}`;
   const commandPreview = previewOverride || compactCommand(command);
-  if (trackCommand && (!quiet || previewOverride)) state.lastCommand = commandPreview;
-  const pendingOutput = `$ ${commandPreview}\n执行中...`;
-  const foregroundSequence = quiet ? 0 : ++foregroundTaskSequence;
+  const foregroundToken = quiet ? 0 : foregroundUiGate.begin();
+  const ownsForegroundUi = (): boolean => !quiet && foregroundUiGate.owns(foregroundToken);
   const captureSequence = quiet
     ? 0
-    : beginOperationCapture(state.operationCapture, commandPreview, pendingOutput);
-  if (!quiet) {
+    : beginOperationCapture(
+      state.operationCapture,
+      commandPreview,
+      `$ ${commandPreview}\n执行中...`,
+    );
+  if (trackCommand && (!quiet || previewOverride)) state.lastCommand = commandPreview;
+  if (ownsForegroundUi()) {
     state.task = label;
     state.notice = `已接收：${label}`;
     const wasBusy = state.busy;
     state.busy = true;
     state.phase = wasBusy ? "queued" : "accepted";
     updateOperationCapture(state.operationCapture, captureSequence, { phase: state.phase });
-    state.output = pendingOutput;
+    state.output = `$ ${commandPreview}\n执行中...`;
   }
   await nextTick();
   await nextFrame();
@@ -207,35 +200,40 @@ async function runShellOutcome(
   if (!state.hasKsu) {
     const outcome = unavailableExecOutcome(commandPreview);
     const output = `当前没有 KernelSU 执行通道，命令未执行。\n\n${outcome.text}`;
-    if (!quiet && updateOperationCapture(state.operationCapture, captureSequence, { phase: "error", output })) {
+    if (ownsForegroundUi() && updateOperationCapture(state.operationCapture, captureSequence, {
+      phase: "error",
+      output,
+    })) {
       state.output = output;
       state.phase = "error";
       state.notice = `未执行：${label}`;
+      state.busy = false;
+      state.task = "";
     }
-    releaseForegroundTask(foregroundSequence);
     return outcome;
   }
 
   try {
-    const result = await queued(async () => {
+    const result = await execQueue.enqueue(async () => {
       if (quiet) {
         await nextTick();
         await nextFrame();
-        return withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, label);
       }
-      if (updateOperationCapture(state.operationCapture, captureSequence, { phase: "running" })) {
+      if (ownsForegroundUi() && updateOperationCapture(state.operationCapture, captureSequence, {
+        phase: "running",
+      })) {
         state.phase = "running";
         state.notice = `正在执行：${label}`;
+        await nextTick();
+        await nextFrame();
+        await nextFrame();
       }
-      await nextTick();
-      await nextFrame();
-      await nextFrame();
-      return withTimeout(kernelsu.exec(command), CLI_TIMEOUT_MS, label);
-    });
+      return kernelsu.exec(command);
+    }, CLI_TIMEOUT_MS, label);
     const outcome = normalizeExecOutcome(result);
     const text = outcome.text;
     const output = `$ ${commandPreview}\n${text || "完成"}`;
-    if (!quiet && updateOperationCapture(state.operationCapture, captureSequence, {
+    if (ownsForegroundUi() && updateOperationCapture(state.operationCapture, captureSequence, {
       phase: outcome.ok ? "done" : "error",
       output,
     })) {
@@ -249,15 +247,46 @@ async function runShellOutcome(
     const timedOut = error instanceof ExecTimeoutError;
     const text = `${timedOut ? "[exec-timeout]" : "[error] errno=-1"} ${message}`;
     const output = `$ ${commandPreview}\n${text}`;
-    if (!quiet && updateOperationCapture(state.operationCapture, captureSequence, { phase: "error", output })) {
+    if (ownsForegroundUi() && updateOperationCapture(state.operationCapture, captureSequence, {
+      phase: "error",
+      output,
+    })) {
       state.phase = "error";
       state.notice = timedOut ? `等待超时：${label}` : `失败：${label}`;
       state.output = output;
     }
     return { ok: false, timedOut, errno: -1, stdout: "", stderr: message, text };
   } finally {
-    releaseForegroundTask(foregroundSequence);
+    if (ownsForegroundUi()) {
+      state.busy = false;
+      state.task = "";
+    }
   }
+}
+
+async function runTrackedQuietShellOutcome(
+  commandBody: string,
+  label: string,
+  redactedPreview: string,
+): Promise<ExecOutcome> {
+  const foregroundToken = foregroundUiGate.begin();
+  const operationSequence = trackRedactedOperation(redactedPreview, label);
+  const outcome = await runShellOutcome(commandBody, label, true, redactedPreview, false);
+  if (foregroundUiGate.owns(foregroundToken)) {
+    const phase = outcome.ok ? "done" : "error";
+    const result = outcome.ok
+      ? "[info] completed; private output hidden"
+      : outcome.timedOut
+        ? "[exec-timeout] private output hidden"
+        : `[error] errno=${outcome.errno}; private output hidden`;
+    publishTrackedOperation(
+      operationSequence,
+      phase,
+      outcome.ok ? `完成：${label}` : `失败：${label}`,
+      `$ ${redactedPreview}\n${result}`,
+    );
+  }
+  return outcome;
 }
 
 async function runShell(
@@ -281,6 +310,34 @@ async function runCli(
   return runShell(`${CLI} ${args}`, label, quiet, previewOverride);
 }
 
+type ForegroundCommand = {
+  promise: Promise<string>;
+  token: number;
+};
+
+/**
+ * Capture the token owned by a command before its first await. Non-quiet
+ * commands and redacted quiet commands allocate their own token inside
+ * runCli; ordinary quiet reads inherit the caller's token so refresh-all and
+ * background reconciliation do not steal foreground ownership merely by
+ * reading state.
+ */
+function startForegroundCommand(
+  args: string,
+  label: string,
+  quiet = false,
+  previewOverride = "",
+  inheritedToken?: number,
+): ForegroundCommand {
+  const before = foregroundUiGate.current();
+  const promise = runCli(args, label, quiet, previewOverride);
+  const after = foregroundUiGate.current();
+  return {
+    promise,
+    token: after !== before ? after : inheritedToken ?? before,
+  };
+}
+
 /**
  * Run a command whose stdout/stderr may itself be sensitive. The real command
  * never reaches reactive output state; callers must provide a redacted preview
@@ -294,35 +351,11 @@ async function runPrivateCli(
   return runTrackedQuietShellOutcome(`${CLI} ${args}`, label, redactedPreview);
 }
 
-async function runTrackedQuietShellOutcome(
-  commandBody: string,
-  label: string,
-  redactedPreview: string,
-): Promise<ExecOutcome> {
-  const operationSequence = trackRedactedOperation(redactedPreview, label);
-  const outcome = await runShellOutcome(commandBody, label, true, redactedPreview);
-  const phase = outcome.ok ? "done" : "error";
-  const result = outcome.ok
-    ? "[info] completed; private output hidden"
-    : outcome.timedOut
-      ? "[exec-timeout] private output hidden"
-      : `[error] errno=${outcome.errno}; private output hidden`;
-  publishTrackedOperation(
-    operationSequence,
-    phase,
-    outcome.ok ? `完成：${label}` : `失败：${label}`,
-    `$ ${redactedPreview}\n${result}`,
-  );
-  return outcome;
-}
-
 async function runPrivatePayloadCli(
   args: string,
   label: string,
   redactedPreview: string,
 ): Promise<ExecOutcome> {
-  // Payload staging and cleanup are implementation details. Keep the user's
-  // redacted parent-operation preview as the diagnostic fallback.
   return runShellOutcome(`${CLI} ${args}`, label, true, redactedPreview, false);
 }
 
@@ -333,6 +366,7 @@ async function stagePrivatePayload(
   label: string,
   chunkSize?: number,
 ) {
+  const foregroundToken = foregroundUiGate.begin();
   const operationSequence = trackRedactedOperation(
     redactedCliPreview(`webui payload stage ${namespace} [private-payload]`),
     label,
@@ -346,14 +380,16 @@ async function stagePrivatePayload(
     label,
     chunkSize,
   );
-  publishTrackedOperation(
-    operationSequence,
-    staged ? "done" : "error",
-    staged ? `完成：${label}` : `失败：${label}`,
-    staged
-      ? `$ ${state.lastCommand}\n[info] completed; private output hidden`
-      : `$ ${state.lastCommand}\n[error] private payload staging failed; private output hidden`,
-  );
+  if (foregroundUiGate.owns(foregroundToken)) {
+    publishTrackedOperation(
+      operationSequence,
+      staged ? "done" : "error",
+      staged ? `完成：${label}` : `失败：${label}`,
+      staged
+        ? `$ ${state.lastCommand}\n[info] completed; private output hidden`
+        : `$ ${state.lastCommand}\n[error] private payload staging failed; private output hidden`,
+    );
+  }
   return staged;
 }
 
@@ -373,12 +409,14 @@ async function startBackgroundCli(
   cleanupCommand = "",
   lifecycleArgs = displayArgs,
 ): Promise<string> {
+  const foregroundToken = foregroundUiGate.begin();
+  const ownsForegroundUi = (): boolean => foregroundUiGate.owns(foregroundToken);
   const redactOutput = Boolean(previewOverride);
-  const operationSequence = trackRedactedOperation(
-    previewOverride || redactedCliPreview(displayArgs),
-    label,
-  );
   const subscriptionTask = isSubscriptionBackgroundArgs(lifecycleArgs);
+  const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true) : false;
+  if (!ownsForegroundUi()) {
+    return `[warning] ${label} superseded by a newer foreground operation`;
+  }
   const operationId = createBackgroundOperationId();
   const log = backgroundLogPath(label, operationId);
   stopBackgroundLogFollow();
@@ -392,23 +430,18 @@ async function startBackgroundCli(
     updatedAt: startedAt,
     finishedAt: 0,
     status: "running",
-    subscriptionBaselineKnown: false,
+    subscriptionBaselineKnown,
     subscriptionBaselineAttemptEpoch: state.subscriptions.lastAttemptEpoch,
     subscriptionBaselineGenerationId: state.subscriptions.lastGenerationId,
     subscriptionBaselineResult: state.subscriptions.lastResult,
   };
-  const launchNotice = `已投递后台任务：${label}`;
   const launchOutput = redactOutput
     ? `${label} 已在后台执行；私有命令和日志不会显示。正在跟踪安全状态...`
     : `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
-  publishTrackedOperation(operationSequence, "accepted", launchNotice, launchOutput);
-  const subscriptionBaselineKnown = subscriptionTask ? await refreshSubs(true, false) : false;
-  if (state.backgroundTask.id === operationId) {
-    state.backgroundTask.subscriptionBaselineKnown = subscriptionBaselineKnown;
-    state.backgroundTask.subscriptionBaselineAttemptEpoch = state.subscriptions.lastAttemptEpoch;
-    state.backgroundTask.subscriptionBaselineGenerationId = state.subscriptions.lastGenerationId;
-    state.backgroundTask.subscriptionBaselineResult = state.subscriptions.lastResult;
-  }
+  const operationSequence = trackRedactedOperation(
+    previewOverride || redactedCliPreview(displayArgs),
+    label,
+  );
   await nextTick();
   await nextFrame();
   const command = backgroundLaunchCommand(args, label, log, operationId, cleanupCommand);
@@ -418,35 +451,43 @@ async function startBackgroundCli(
     true,
     previewOverride,
   );
+  if (!ownsForegroundUi()) {
+    return outcome.text;
+  }
   const accepted = outcome.ok && backgroundAccepted(outcome.stdout, operationId);
-  const ownsBackgroundTask = state.backgroundTask.id === operationId;
   if (accepted || outcome.timedOut) {
     if (outcome.timedOut) {
-      const notice = `投递确认超时，继续对账：${label}`;
       const output = redactOutput
         ? `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪安全状态。`
         : `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。`;
-      publishTrackedOperation(operationSequence, "running", notice, output);
+      publishTrackedOperation(
+        operationSequence,
+        "running",
+        `投递确认超时，继续对账：${label}`,
+        output,
+      );
     }
-    if (ownsBackgroundTask) {
-      followBackgroundLogs(log, label, lifecycleArgs, operationId, operationSequence, 0, redactOutput);
-    }
+    followBackgroundLogs(
+      log,
+      label,
+      lifecycleArgs,
+      operationId,
+      operationSequence,
+      foregroundToken,
+      0,
+      redactOutput,
+    );
   } else {
-    if (ownsBackgroundTask) {
-      state.backgroundTask.status = "error";
-      state.backgroundTask.updatedAt = Date.now();
-      state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
-    }
-    const notice = `投递失败：${label}`;
+    state.backgroundTask.status = "error";
+    state.backgroundTask.updatedAt = Date.now();
+    state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
     const output = redactOutput
       ? `${label} 未投递到后台；私有命令详情已隐藏。请检查设备状态后重试。`
       : `${label} 未投递到后台。\n\n${outcome.text || "[error] accepted marker missing"}`;
-    publishTrackedOperation(operationSequence, "error", notice, output);
+    publishTrackedOperation(operationSequence, "error", `投递失败：${label}`, output);
   }
   if (outcome.timedOut) {
-    return ownsBackgroundTask
-      ? `[warning] background launch confirmation timed out; reconciliation continues in ${log}`
-      : "[warning] background launch confirmation timed out after a newer task took over tracking";
+    return `[warning] background launch confirmation timed out; reconciliation continues in ${log}`;
   }
   return accepted ? outcome.text : `[error] errno=-1 background accepted marker missing`;
 }
@@ -480,6 +521,7 @@ function followBackgroundLogs(
   args: string,
   operationId: string,
   operationSequence: number,
+  foregroundToken: number,
   attempt = 0,
   redactOutput = false,
 ): void {
@@ -487,14 +529,14 @@ function followBackgroundLogs(
   backgroundLogTimer = window.setTimeout(
     async () => {
       const subscriptionTask = isSubscriptionBackgroundArgs(args)
-        ? refreshSubs(true, false)
+        ? refreshSubs(true)
         : Promise.resolve(true);
       const [logs, status] = await Promise.all([
         runShell(backgroundLogCommand(log, args, operationId), `跟踪 ${label}`, true),
         runCli("service status", "刷新状态", true),
         subscriptionTask,
       ]);
-      if (state.backgroundTask.id !== operationId) return;
+      if (state.backgroundTask.id !== operationId || !foregroundUiGate.owns(foregroundToken)) return;
       if (!execFailed(status)) {
         state.runtime = parseRuntime(status, state.runtime);
       }
@@ -510,6 +552,16 @@ function followBackgroundLogs(
       const done = completion === "done";
       const failed = completion === "error";
       const now = Date.now();
+      const visibleLogs = redactOutput
+        ? "私有后台日志已隐藏。"
+        : logs || "等待日志输出...";
+      const output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${visibleLogs}`;
+      if (!publishTrackedOperation(
+        operationSequence,
+        done ? "done" : failed ? "error" : "running",
+        done ? `完成：${label}` : failed ? `失败：${label}` : `正在执行：${label}`,
+        output,
+      )) return;
       state.backgroundTask.status = done
         ? "done"
         : failed
@@ -517,30 +569,32 @@ function followBackgroundLogs(
           : "running";
       state.backgroundTask.updatedAt = now;
       state.backgroundTask.finishedAt = done || failed ? now : 0;
-      const phase = done ? "done" : failed ? "error" : "running";
-      const notice = done
-        ? `完成：${label}`
-        : failed
-          ? `失败：${label}`
-          : `正在执行：${label}`;
-      const visibleLogs = redactOutput
-        ? "私有后台日志已隐藏。"
-        : logs || "等待日志输出...";
-      const output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${visibleLogs}`;
-      publishTrackedOperation(operationSequence, phase, notice, output);
       if (!done && !failed && attempt + 1 < maxAttempts) {
-        followBackgroundLogs(log, label, args, operationId, operationSequence, attempt + 1, redactOutput);
+        followBackgroundLogs(
+          log,
+          label,
+          args,
+          operationId,
+          operationSequence,
+          foregroundToken,
+          attempt + 1,
+          redactOutput,
+        );
       } else {
         backgroundLogTimer = 0;
         if (!done && !failed) {
           state.backgroundTask.status = "timeout";
           state.backgroundTask.updatedAt = Date.now();
           state.backgroundTask.finishedAt = 0;
-          const timeoutNotice = `${label} 仍在后台运行或等待对账`;
-          const timeoutOutput = output + (redactOutput
+          const timeoutOutput = state.output + (redactOutput
             ? "\n\n[warn] 安全状态跟踪已超时，但这不代表任务失败。请刷新订阅状态完成对账。"
             : "\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。");
-          publishTrackedOperation(operationSequence, "running", timeoutNotice, timeoutOutput);
+          publishTrackedOperation(
+            operationSequence,
+            "running",
+            `${label} 仍在后台运行或等待对账`,
+            timeoutOutput,
+          );
         }
       }
     },
@@ -548,140 +602,230 @@ function followBackgroundLogs(
   );
 }
 
-function markQuietFailure(label: string, text: string): boolean {
+function canUpdateRefreshUi(uiToken: number | undefined, allowBusy = false): boolean {
+  if (uiToken === undefined) return !state.busy;
+  return foregroundUiGate.owns(uiToken) && (allowBusy || !state.busy);
+}
+
+function markQuietFailure(
+  label: string,
+  text: string,
+  uiToken?: number,
+  allowBusy = false,
+): boolean {
   if (!execFailed(text)) return false;
-  state.phase = "error";
-  state.output = `${label} 失败：\n${text}`;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.phase = "error";
+    state.notice = `${label}失败`;
+    state.output = `${label} 失败：\n${text}`;
+  }
   return true;
 }
 
-async function refreshStatus(): Promise<boolean> {
-  const text = await runCli("service status", "刷新状态", true);
-  if (markQuietFailure("刷新状态", text)) return false;
-  state.runtime = parseRuntime(text, state.runtime);
+async function refreshStatus(foregroundToken?: number): Promise<boolean> {
+  const command = startForegroundCommand(
+    "service status",
+    "刷新状态",
+    true,
+    "",
+    foregroundToken,
+  );
+  const uiToken = command.token;
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("刷新状态", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.runtime = parseRuntime(text, state.runtime);
+  }
   return true;
 }
 
 async function refreshAll(): Promise<void> {
-  state.task = "刷新面板";
-  state.notice = "正在刷新面板数据";
+  const foregroundToken = foregroundUiGate.begin();
+  const ownsForegroundUi = (): boolean => foregroundUiGate.owns(foregroundToken);
+  if (ownsForegroundUi()) {
+    state.busy = true;
+    state.task = "刷新面板";
+    state.notice = "正在刷新面板数据";
+  }
+  let completed = false;
   try {
     const failed: string[] = [];
-    if (!(await refreshStatus())) failed.push("刷新状态");
+    if (!(await refreshStatus(foregroundToken))) failed.push("刷新状态");
     const steps: Array<[string, () => Promise<boolean>]> = [
-      ["读取应用规则", () => refreshApps(true)],
-      ["读取黑名单", () => refreshBlock(true)],
-      ["读取订阅", () => refreshSubs(true)],
-      ["读取 DNS", () => refreshDns(true)],
-      ["读取 WARP", () => refreshWarp(true)],
-      ["读取 Wi-Fi 策略", () => refreshWifiPolicy(true)],
-      ["读取 MCP 信息", () => refreshMcp(true)],
-      ["运行诊断", () => refreshHealth(true)],
+      ["读取应用规则", () => refreshApps(true, foregroundToken)],
+      ["读取黑名单", () => refreshBlock(true, foregroundToken)],
+      ["读取订阅", () => refreshSubs(true, foregroundToken)],
+      ["读取 DNS", () => refreshDns(true, foregroundToken)],
+      ["读取 WARP", () => refreshWarp(true, foregroundToken)],
+      ["读取 Wi-Fi 策略", () => refreshWifiPolicy(true, foregroundToken)],
+      ["读取 MCP 信息", () => refreshMcp(true, foregroundToken)],
+      ["运行诊断", () => refreshHealth(true, foregroundToken)],
     ];
     for (const [label, step] of steps) {
-      state.task = label;
-      state.notice = label;
+      if (ownsForegroundUi()) {
+        state.task = label;
+        state.notice = label;
+      }
       await nextTick();
       await nextFrame();
       if (!(await step())) failed.push(label);
     }
-    if (failed.length) {
+    if (failed.length && ownsForegroundUi()) {
       state.phase = "error";
       state.notice = "面板刷新不完整";
       state.output = `以下步骤失败：${failed.join("、")}。请查看输出并重试。\n\n${state.output}`;
       return;
     }
-    state.output = "面板数据已刷新。";
-    state.phase = "done";
+    if (ownsForegroundUi()) {
+      state.output = "面板数据已刷新。";
+      state.phase = "done";
+    }
+    completed = true;
   } finally {
-    state.task = "";
-    state.notice = "面板数据已刷新。";
+    if (ownsForegroundUi()) {
+      state.busy = false;
+      state.task = "";
+      state.notice = refreshAllNotice(completed, state.notice);
+    }
   }
 }
 
-async function refreshHealth(quiet = false): Promise<boolean> {
-  const text = await runCli("health", "运行诊断", quiet);
-  if (quiet && markQuietFailure("运行诊断", text)) return false;
-  state.health = parseHealth(text);
+async function refreshHealth(quiet = false, foregroundToken?: number): Promise<boolean> {
+  const command = startForegroundCommand("health", "运行诊断", quiet, "", foregroundToken);
+  const uiToken = command.token;
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("运行诊断", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.health = parseHealth(text);
+  }
   return true;
 }
 
 async function refreshPing(): Promise<void> {
-  state.pingtest = await runCli("pingtest", "连通性测试");
+  const command = startForegroundCommand("pingtest", "连通性测试");
+  const text = await command.promise;
+  if (foregroundUiGate.owns(command.token)) state.pingtest = text;
 }
 
-async function refreshApps(quiet = false): Promise<boolean> {
-  const text = await runCli("app list", "读取应用规则", quiet);
-  if (quiet && markQuietFailure("读取应用规则", text)) return false;
-  state.appPolicy = parseApps(text);
+async function refreshApps(quiet = false, foregroundToken?: number): Promise<boolean> {
+  const command = startForegroundCommand("app list", "读取应用规则", quiet, "", foregroundToken);
+  const uiToken = command.token;
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("读取应用规则", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.appPolicy = parseApps(text);
+  }
   return true;
 }
 
-async function refreshPackages(quiet = false): Promise<boolean> {
+async function refreshPackages(quiet = false, foregroundToken?: number): Promise<boolean> {
   const query = state.packageQuery.trim();
-  const text = await runCli(
+  const command = startForegroundCommand(
     `app packages ${shellQuote(query)}`,
     query ? `搜索应用 ${query}` : "读取已安装应用",
     quiet,
+    "",
+    foregroundToken,
   );
-  if (markQuietFailure("读取已安装应用", text)) return false;
-  state.packages = parsePackages(text);
+  const uiToken = command.token;
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("读取已安装应用", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.packages = parsePackages(text);
+  }
   return true;
 }
 
-async function refreshBlock(quiet = false): Promise<boolean> {
-  const text = await runCli("block list", "读取黑名单", quiet);
-  if (quiet && markQuietFailure("读取黑名单", text)) return false;
-  state.blocklist = parseBlock(text, state.blocklist);
+async function refreshBlock(quiet = false, foregroundToken?: number): Promise<boolean> {
+  const command = startForegroundCommand("block list", "读取黑名单", quiet, "", foregroundToken);
+  const uiToken = command.token;
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("读取黑名单", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.blocklist = parseBlock(text, state.blocklist);
+  }
   return true;
 }
 
-async function refreshSubs(quiet = false, reportFailure = true): Promise<boolean> {
+async function refreshSubs(quiet = false, foregroundToken?: number): Promise<boolean> {
+  const listCommand = startForegroundCommand("sub list", "读取订阅列表", quiet, "", foregroundToken);
+  const statusCommand = startForegroundCommand("sub status", "读取订阅状态", quiet, "", foregroundToken);
+  const uiToken = statusCommand.token;
+  const allowBusy = foregroundToken !== undefined;
   const [listText, statusText] = await Promise.all([
-    runCli("sub list", "读取订阅列表", quiet),
-    runCli("sub status", "读取订阅状态", quiet),
+    listCommand.promise,
+    statusCommand.promise,
   ]);
   const failed = [
     execFailed(listText) ? "订阅列表" : "",
     execFailed(statusText) ? "订阅状态" : "",
   ].filter(Boolean);
   if (failed.length) {
-    if (reportFailure) {
+    if (canUpdateRefreshUi(uiToken, allowBusy)) {
       state.phase = "error";
       state.notice = "订阅刷新不完整";
       state.output = `读取${failed.join("和")}失败，旧数据已保留。\n\n${[listText, statusText].filter(execFailed).join("\n")}`;
     }
     return false;
   }
-  state.subscriptions = parseSubs(listText, statusText, state.subscriptions);
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.subscriptions = parseSubs(listText, statusText, state.subscriptions);
+  }
   return true;
 }
 
-async function refreshMcp(quiet = false): Promise<boolean> {
-  const text = await runCli("mcp status", "读取 MCP", quiet);
-  if (quiet && markQuietFailure("读取 MCP", text)) return false;
-  state.mcp = parseMcp(text, state.mcp);
+async function refreshMcp(quiet = false, foregroundToken?: number): Promise<boolean> {
+  const command = startForegroundCommand("mcp status", "读取 MCP", quiet, "", foregroundToken);
+  const uiToken = command.token;
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("读取 MCP", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.mcp = parseMcp(text, state.mcp);
+  }
   return true;
 }
 
-async function refreshDns(quiet = false, previewOverride = ""): Promise<boolean> {
-  const text = await runCli("dns status", "读取 DNS", quiet, previewOverride);
-  if (quiet && markQuietFailure("读取 DNS", text)) return false;
-  state.dns = parseDns(text, state.dns);
+async function refreshDns(quiet = false, foregroundTokenOrPreview?: number | string): Promise<boolean> {
+  const foregroundToken = typeof foregroundTokenOrPreview === "number" ? foregroundTokenOrPreview : undefined;
+  const previewOverride = typeof foregroundTokenOrPreview === "string" ? foregroundTokenOrPreview : "";
+  const command = startForegroundCommand("dns status", "读取 DNS", quiet, previewOverride, foregroundToken);
+  const uiToken = command.token;
+  const allowBusy = foregroundTokenOrPreview !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("读取 DNS", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.dns = parseDns(text, state.dns);
+  }
   return true;
 }
 
-async function refreshWarp(quiet = false): Promise<boolean> {
-  const text = await runCli("warp status", "读取 WARP", quiet);
-  if (quiet && markQuietFailure("读取 WARP", text)) return false;
-  state.warp = parseWarp(text, state.warp);
+async function refreshWarp(quiet = false, foregroundToken?: number): Promise<boolean> {
+  const command = startForegroundCommand("warp status", "读取 WARP", quiet, "", foregroundToken);
+  const uiToken = command.token;
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("读取 WARP", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.warp = parseWarp(text, state.warp);
+  }
   return true;
 }
 
-async function refreshWifiPolicy(quiet = false): Promise<boolean> {
-  const text = await runCli("wifi status", "读取 Wi-Fi 策略", quiet);
-  if (quiet && markQuietFailure("读取 Wi-Fi 策略", text)) return false;
-  state.wifiPolicy = parseWifiPolicy(text);
+async function refreshWifiPolicy(quiet = false, foregroundToken?: number): Promise<boolean> {
+  const command = startForegroundCommand("wifi status", "读取 Wi-Fi 策略", quiet, "", foregroundToken);
+  const uiToken = command.token;
+  const allowBusy = foregroundToken !== undefined;
+  const text = await command.promise;
+  if (markQuietFailure("读取 Wi-Fi 策略", text, uiToken, allowBusy)) return false;
+  if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    state.wifiPolicy = parseWifiPolicy(text);
+  }
   return true;
 }
 
@@ -699,31 +843,43 @@ async function submitIssue(kind: IssueKind): Promise<void> {
 }
 
 async function refreshTopology(): Promise<void> {
-  const text = await runCli(
+  const topologyCommand = startForegroundCommand(
     "topology",
     "刷新网络拓扑",
     true,
     redactedCliPreview("topology [private-output]"),
   );
-  state.topology = execFailed(text)
-    ? await runCli("sysroute snapshot", "刷新路由快照")
-    : text;
+  const text = await topologyCommand.promise;
+  if (!foregroundUiGate.owns(topologyCommand.token)) return;
+  if (!execFailed(text)) {
+    state.topology = text;
+    return;
+  }
+  const fallbackCommand = startForegroundCommand("sysroute snapshot", "刷新路由快照");
+  const fallbackText = await fallbackCommand.promise;
+  if (foregroundUiGate.owns(fallbackCommand.token)) state.sysroute = fallbackText;
 }
 
 async function refreshSysroute(): Promise<void> {
-  state.sysroute = await runCli("sysroute snapshot", "刷新路由表");
+  const command = startForegroundCommand("sysroute snapshot", "刷新路由表");
+  const text = await command.promise;
+  if (foregroundUiGate.owns(command.token)) state.sysroute = text;
 }
 
 async function loadConfig(): Promise<void> {
   const target = state.config.target;
-  state.config.status = "加载中";
-  state.notice = `正在加载 ${target} 配置`;
-  const text = await runCli(
+  const command = startForegroundCommand(
     `config-editor get ${target}`,
     `加载 ${target} 配置`,
     true,
     redactedCliPreview(`config-editor get ${target} [private-output]`),
   );
+  if (foregroundUiGate.owns(command.token)) {
+    state.config.status = "加载中";
+    state.notice = `正在加载 ${target} 配置`;
+  }
+  const text = await command.promise;
+  if (!foregroundUiGate.owns(command.token)) return;
   if (execFailed(text)) {
     state.config.status = "加载失败";
     state.notice = `${target} 配置加载失败`;
@@ -748,13 +904,16 @@ async function loadConfig(): Promise<void> {
 async function saveConfig(): Promise<void> {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const basename = `config-editor-${state.config.target}-${stamp}.tmp`;
-  const staged = await stagePrivatePayload(
+  const stagePromise = stagePrivatePayload(
     "tmp",
     basename,
     state.config.text,
     "配置私有载荷",
   );
+  const stageToken = foregroundUiGate.current();
+  const staged = await stagePromise;
   if (!staged) {
+    if (!foregroundUiGate.owns(stageToken)) return;
     state.config.status = "安全临时数据写入失败，未保存";
     state.config.validation = {
       status: "error",
@@ -766,13 +925,21 @@ async function saveConfig(): Promise<void> {
     state.output = state.config.status;
     return;
   }
+  if (!foregroundUiGate.owns(stageToken)) {
+    await removePrivatePayload("tmp", staged.basename, "配置私有载荷");
+    return;
+  }
 
+  let uiToken = stageToken;
   try {
-    const outcome = await runPrivateCli(
+    const commandPromise = runPrivateCli(
       `config-editor save-file ${state.config.target} ${shellQuote(staged.path)}`,
       `校验并保存 ${state.config.target}`,
       redactedCliPreview(`config-editor save-file ${state.config.target} [private-payload]`),
     );
+    uiToken = foregroundUiGate.current();
+    const outcome = await commandPromise;
+    if (!foregroundUiGate.owns(uiToken)) return;
     const saved = outcome.ok && /\[info\]\s+Saved and validated/i.test(outcome.stdout);
     state.config.validation = {
       status: saved ? "ok" : "error",
@@ -788,6 +955,7 @@ async function saveConfig(): Promise<void> {
     if (saved) state.config.dirty = false;
   } finally {
     const cleaned = await removePrivatePayload("tmp", staged.basename, "配置私有载荷");
+    if (!foregroundUiGate.owns(uiToken)) return;
     if (!cleaned) {
       state.config.status = `${state.config.status}；私有临时数据清理未确认`;
       state.config.validation = {
@@ -803,10 +971,12 @@ async function saveConfig(): Promise<void> {
 
 async function syncConfigTemplate(): Promise<void> {
   const target = state.config.target;
-  const text = await runCli(
+  const command = startForegroundCommand(
     `config-editor sync-template ${target}`,
     `同步 ${target} 上游模板`,
   );
+  const text = await command.promise;
+  if (!foregroundUiGate.owns(command.token)) return;
   const failed = execFailed(text);
   const validation = parseConfigValidation(text);
   state.config.status = failed ? "同步失败" : "已同步上游模板";

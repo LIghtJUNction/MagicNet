@@ -93,13 +93,31 @@ export function backgroundLaunchCommand(
     `echo "[exit] id=${operationId} status=$status"`,
     `exit $status`,
   ].join("; ");
-  return `mkdir -p ${shellQuote(`${MODULE_DIR}/.log`)}; : >${shellQuote(log)}; nohup sh -c ${shellQuote(body)} >${shellQuote(log)} 2>&1 </dev/null & echo ${shellQuote(`[accepted] id=${operationId}`)}`;
+  const logDir = shellQuote(`${MODULE_DIR}/.log`);
+  const logFile = shellQuote(log);
+  const accepted = shellQuote(`[accepted] id=${operationId}`);
+  const setupFailure = shellQuote(`[error] background launch setup failed: ${label}`);
+  const missingLauncher = shellQuote(`[error] background launcher unavailable: nohup`);
+  // Check all foreground preparation before emitting the accepted marker. The
+  // previous `; ... & echo accepted` chain reported success even when the log
+  // directory could not be created, leaving the UI to reconcile a task that
+  // had never been launched. Keep the log fd open across the background fork
+  // so a permission/unlink race cannot make the child's redirection fail.
+  return [
+    `if ! mkdir -p ${logDir} || ! : >${logFile} || ! exec 9>>${logFile}; then echo ${setupFailure} >&2; exit 1; fi`,
+    `if ! command -v nohup >/dev/null 2>&1 || ! command -v sh >/dev/null 2>&1; then exec 9>&-; echo ${missingLauncher} >&2; exit 127; fi`,
+    `nohup sh -c ${shellQuote(body)} >&9 2>&1 </dev/null & _magicnet_background_pid=$!; exec 9>&-; case "$_magicnet_background_pid" in ''|*[!0-9]*) echo ${setupFailure} >&2; exit 1;; esac; echo ${accepted}`,
+  ].join("; ");
 }
 
 export function backgroundLogCommand(log: string, args: string, operationId = ""): string {
+  const logFile = shellQuote(log);
+  const markerRead = operationId
+    ? `{ grep -F ${shellQuote(`[launch] id=${operationId}`)} ${logFile} || true; grep -F ${shellQuote(`[exit] id=${operationId} status=`)} ${logFile} || true; tail -n 80 ${logFile}; }`
+    : `tail -n 80 ${logFile}`;
   const parts = [
     `echo ${shellQuote(`[task log] id=${operationId || "unknown"} ${log}`)}`,
-    `[ -f ${shellQuote(log)} ] && tail -n 80 ${shellQuote(log)} || echo "[info] waiting for task log..."`,
+    `[ -f ${logFile} ] && ${markerRead} || echo "[info] waiting for task log..."`,
   ];
   if (/\bservice\s+(start|restart|ensure)\b/.test(args)) {
     parts.push(

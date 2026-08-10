@@ -32,7 +32,7 @@ import {
 } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText } from "@/utils";
+import { copyText, execFailed } from "@/utils";
 import {
   buildControlRuntimeInsight,
   controlInsightTone,
@@ -94,10 +94,12 @@ async function runAction(
 ): Promise<void> {
   await withAction(key, async () => {
     if (background) {
-      await startBackgroundCli(args, label);
+      const launch = await startBackgroundCli(args, label);
+      if (execFailed(launch)) return;
       window.setTimeout(() => void refreshStatus(), 1200);
     } else {
-      await runCli(args, label);
+      const output = await runCli(args, label);
+      if (execFailed(output)) return;
       await refreshAll();
     }
   });
@@ -105,8 +107,19 @@ async function runAction(
 
 async function rebuildNodeCache(): Promise<void> {
   await withAction("rebuild-node-cache", async () => {
-    await startBackgroundCli("sub update sing-box", "重建 sing-box 节点缓存");
-    window.setTimeout(() => void refreshAll(), 1600);
+    const launch = await startBackgroundCli("sub update sing-box", "重建 sing-box 节点缓存");
+    if (execFailed(launch)) return;
+    const operationId = state.backgroundTask.id;
+    const refreshWhenComplete = (): void => {
+      if (state.backgroundTask.id !== operationId) return;
+      if (state.backgroundTask.status === "done") {
+        void refreshAll();
+        return;
+      }
+      if (state.backgroundTask.status === "error" || state.backgroundTask.status === "timeout") return;
+      window.setTimeout(refreshWhenComplete, 500);
+    };
+    window.setTimeout(refreshWhenComplete, 1600);
   });
 }
 
@@ -144,7 +157,8 @@ async function runWifiAction(
   label: string,
 ): Promise<void> {
   await withAction(key, async () => {
-    await runCli(args, label);
+    const output = await runCli(args, label);
+    if (execFailed(output)) return;
     await refreshWifiPolicy(true);
   });
 }
@@ -160,8 +174,19 @@ async function toggleWifiPolicy(): Promise<void> {
 
 async function refreshHotspotPolicy(): Promise<boolean> {
   const output = await runCli("hotspot status", "读取热点代理策略", true);
+  if (execFailed(output)) {
+    state.phase = "error";
+    state.notice = "读取热点代理策略失败";
+    state.output = `读取热点代理策略失败：\n${output}`;
+    return false;
+  }
   const matched = output.match(/^enabled=([01])$/m);
-  if (!matched) return false;
+  if (!matched) {
+    state.phase = "error";
+    state.notice = "热点代理状态无效";
+    state.output = "读取热点代理策略失败：设备返回了无法解析的状态。";
+    return false;
+  }
   hotspotProxyEnabled.value = matched[1] === "1";
   hotspotPolicyLoaded.value = true;
   return true;
@@ -172,10 +197,14 @@ async function toggleHotspotProxy(event: Event): Promise<void> {
   const enabled = (event.currentTarget as HTMLInputElement).checked;
   hotspotProxyEnabled.value = enabled;
   await withAction("hotspot-proxy", async () => {
-    await runCli(
+    const output = await runCli(
       `hotspot ${enabled ? "enable" : "disable"}`,
       `${enabled ? "启用" : "停用"}热点代理`,
     );
+    if (execFailed(output)) {
+      hotspotProxyEnabled.value = previous;
+      return;
+    }
     if (!(await refreshHotspotPolicy())) {
       hotspotProxyEnabled.value = previous;
     }

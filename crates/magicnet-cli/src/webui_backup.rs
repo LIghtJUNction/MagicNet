@@ -223,7 +223,9 @@ fn restore_backup(app: &App, text: &str) -> Result<(), String> {
             continue;
         }
         if !seen.insert(rel.clone()) {
-            return Err(format!("refusing to restore duplicate config section: {rel}"));
+            return Err(format!(
+                "refusing to restore duplicate config section: {rel}"
+            ));
         }
         validate_restore_section(&rel, &text)?;
         replacements.push((PathBuf::from(rel), text));
@@ -238,11 +240,7 @@ fn restore_backup(app: &App, text: &str) -> Result<(), String> {
     replace_module_text_files_transactionally(app, &replacement_refs)
 }
 
-fn collect_restore_section(
-    sections: &mut Vec<(String, String)>,
-    rel: Option<String>,
-    text: &str,
-) {
+fn collect_restore_section(sections: &mut Vec<(String, String)>, rel: Option<String>, text: &str) {
     let Some(rel) = rel else {
         return;
     };
@@ -473,9 +471,7 @@ mod tests {
     #[test]
     fn restore_validation_failure_leaves_every_existing_config_unchanged() {
         let app = temp_app();
-        let subscription = app
-            .moddir
-            .join(".config/sing-box/subscription.user-agent");
+        let subscription = app.moddir.join(".config/sing-box/subscription.user-agent");
         let app_mode = app.moddir.join(".config/magicnet/app-mode.conf");
         fs::create_dir_all(subscription.parent().expect("subscription parent")).unwrap();
         fs::create_dir_all(app_mode.parent().expect("app mode parent")).unwrap();

@@ -6,7 +6,7 @@ import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText } from "@/utils";
+import { copyText, execFailed } from "@/utils";
 import { buildDnsProfilePlan, formatDnsProfilePlanReport, type DnsProfilePlan } from "./dnsProfilePlan";
 import { dnsStatusTone, formatDnsTestReport, parseDnsTestSummary } from "./dnsTestSummary";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
@@ -29,7 +29,7 @@ const dnsSummary = computed(() => parseDnsTestSummary(dnsTestOutput.value, teste
 async function runSetDnsProfile(profile: string): Promise<void> {
   await withAction(`dns-${profile}`, async () => {
     const text = await runCli(`dns set ${shellQuote(profile)}`, `切换 DNS ${profile}`);
-    if (!text.includes("[error]")) await refreshDns(true);
+    if (!execFailed(text)) await refreshDns(true);
   });
 }
 

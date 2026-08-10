@@ -59,6 +59,33 @@ if len(chatgpt_indexes) != 1:
 if len(x_indexes) != 1:
     raise AssertionError(f"expected one exact X package route, got {x_indexes}")
 
+x_domain_rule = {
+    "domain_suffix": ["twitter.com", "x.com", "twimg.com"],
+    "outbound": "social-proxy",
+}
+cn_ip_rule = {
+    "rule_set": ["lyc-geoip-cn", "metacubex-geoip-cn", "karing-acl4ssr-china-ip"],
+    "outbound": "cn-direct",
+}
+invalid_destination_rule = {
+    "ip_cidr": ["0.0.0.0/8"],
+    "outbound": "block",
+}
+x_domain_indexes = [index for index, rule in enumerate(route_rules) if rule == x_domain_rule]
+cn_ip_indexes = [index for index, rule in enumerate(route_rules) if rule == cn_ip_rule]
+invalid_destination_indexes = [
+    index for index, rule in enumerate(route_rules) if rule == invalid_destination_rule
+]
+if len(x_domain_indexes) != 1 or len(cn_ip_indexes) != 1 or len(invalid_destination_indexes) != 1:
+    raise AssertionError(
+        f"expected one invalid-destination guard, one early X route and one canonical CN IP route: "
+        f"invalid={invalid_destination_indexes} x={x_domain_indexes} cn={cn_ip_indexes}"
+    )
+if x_domain_indexes[0] >= cn_ip_indexes[0]:
+    raise AssertionError(
+        "X domains must be routed before the canonical CN IP rule so CDN/API IPs "
+        f"cannot be sent direct: x={x_domain_indexes[0]} cn={cn_ip_indexes[0]}"
+    )
 def domain_matches(rule, domain):
     return any(
         domain == suffix or domain.endswith("." + suffix)
@@ -112,6 +139,13 @@ def first_modeled_outbound(
     raise AssertionError("action flow did not match any modeled route")
 
 
+if first_modeled_outbound("invalid-action.invalid", "0.0.0.1", None) != (
+    invalid_destination_indexes[0],
+    "block",
+):
+    raise AssertionError("reserved 0.0.0.0/8 destinations must fail closed before direct routing")
+
+
 for package_name, expected_index, expected_outbound in (
     ("com.openai.chatgpt", chatgpt_indexes[0], "ai-chatgpt"),
     ("com.twitter.android", x_indexes[0], "social-proxy"),
@@ -147,6 +181,18 @@ for domain in ("api.x.com", "upload.twitter.com", "abs.twimg.com"):
         raise AssertionError(
             f"reverse-mapped X domain {domain} did not select social-proxy: "
             f"index={mapped_index} outbound={mapped_outbound}"
+        )
+
+for domain in ("api.x.com", "upload.twitter.com", "abs.twimg.com"):
+    index, outbound = first_modeled_outbound(
+        domain,
+        "203.0.113.10",
+        None,
+    )
+    if (index, outbound) != (x_domain_indexes[0], "social-proxy"):
+        raise AssertionError(
+            f"X domain-only action flow did not beat CN IP routing for {domain}: "
+            f"index={index} outbound={outbound}"
         )
 
 for domain in ("api.openai.com", "auth.openai.com", "ws.chatgpt.com", "events.oaistatsig.com"):

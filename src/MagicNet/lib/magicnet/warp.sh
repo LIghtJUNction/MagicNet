@@ -37,7 +37,7 @@ magicnet_warp_apply_singbox() {
     _endpoint="$(magicnet_warp_endpoint_file)"
     _tmp="${_config}.magicnet-warp.new"
     if magicnet_warp_enabled && magicnet_warp_configured; then
-        "$_jq" --slurpfile warp "$_endpoint" '
+        (umask 077; "$_jq" --slurpfile warp "$_endpoint" '
           def with_warp($items):
             reduce (($items // []) + ["warp"])[] as $item ([]; if ($item == "" or index($item)) then . else . + [$item] end);
           .endpoints = ((.endpoints // []) | map(select((.tag // "") != "warp")) + [$warp[0]])
@@ -47,9 +47,9 @@ magicnet_warp_apply_singbox() {
               else .
               end
             ))
-        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"
+        ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
     else
-        "$_jq" '
+        (umask 077; "$_jq" '
           def without_warp($items): ($items // []) | map(select(. != "warp"));
           .endpoints = ((.endpoints // []) | map(select((.tag // "") != "warp")))
           | if (.endpoints | length) == 0 then del(.endpoints) else . end
@@ -60,7 +60,7 @@ magicnet_warp_apply_singbox() {
               else .
               end
             ))
-        ' "$_config" >"$_tmp" && mv -f "$_tmp" "$_config"
+        ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
     fi
     _rc=$?
     [ "$_rc" -eq 0 ] || rm -f "$_tmp" 2>/dev/null || true
