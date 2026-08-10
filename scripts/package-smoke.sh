@@ -600,6 +600,10 @@ foreign_priority_dns_rule = {
     "domain_suffix": foreign_priority_domains,
     "server": "doh-google",
 }
+x_social_dns_rule = {
+    "domain_suffix": ["twitter.com", "x.com", "twimg.com"],
+    "server": "doh-google",
+}
 canonical_cn_dns_rule = {
     "rule_set": [
         "lyc-geosite-cn", "lyc-geosite-geolocation-cn", "lyc-geoip-cn",
@@ -1077,6 +1081,9 @@ game_dns_rules = [index for index, rule in enumerate(dns_rules) if rule == game_
 foreign_priority_dns_rules = [
     index for index, rule in enumerate(dns_rules) if rule == foreign_priority_dns_rule
 ]
+x_social_dns_rules = [
+    index for index, rule in enumerate(dns_rules) if rule == x_social_dns_rule
+]
 canonical_cn_dns_rules = [
     index for index, rule in enumerate(dns_rules) if rule == canonical_cn_dns_rule
 ]
@@ -1100,6 +1107,7 @@ if (
     or len(ad_rule_set_dns_rules) != 1
     or len(game_dns_rules) != 1
     or len(foreign_priority_dns_rules) != 1
+    or len(x_social_dns_rules) != 1
     or len(canonical_cn_dns_rules) != 1
 ):
     raise SystemExit(
@@ -1113,6 +1121,7 @@ if (
         f"ad_suffix={ad_suffix_dns_rules} ad_keyword={ad_keyword_dns_rules} "
         f"ad_rule_set={ad_rule_set_dns_rules} "
         f"game={game_dns_rules} foreign_priority={foreign_priority_dns_rules} "
+        f"x_social={x_social_dns_rules} "
         f"cn={canonical_cn_dns_rules}"
     )
 direct_mode_index = direct_mode_rules[0]
@@ -1131,6 +1140,7 @@ ad_keyword_dns_index = ad_keyword_dns_rules[0]
 ad_rule_set_dns_index = ad_rule_set_dns_rules[0]
 game_dns_index = game_dns_rules[0]
 foreign_priority_dns_index = foreign_priority_dns_rules[0]
+x_social_dns_index = x_social_dns_rules[0]
 canonical_cn_dns_index = canonical_cn_dns_rules[0]
 if global_mode_index != direct_mode_index + 1:
     raise SystemExit("Global DNS override must remain immediately after the Direct override")
@@ -1173,15 +1183,17 @@ if not (
     and ad_keyword_dns_index + 1 == ad_rule_set_dns_index
     and ad_rule_set_dns_index + 1 == game_dns_index
     and game_dns_index + 1 == foreign_priority_dns_index
-    and foreign_priority_dns_index + 1 == canonical_cn_dns_index
+    and foreign_priority_dns_index + 1 == x_social_dns_index
+    and x_social_dns_index + 1 == canonical_cn_dns_index
 ):
     raise SystemExit(
         "required DNS order is private < mmstat local < ad suffix < ad keyword < ad rule-set < game < "
-        "foreign priority < canonical CN: "
+        "foreign priority < explicit X/Twitter < canonical CN: "
         f"private={private_dns_index} mmstat={mmstat_local_dns_index} "
         f"ad_suffix={ad_suffix_dns_index} "
         f"ad_keyword={ad_keyword_dns_index} ad_rule_set={ad_rule_set_dns_index} "
         f"game={game_dns_index} foreign_priority={foreign_priority_dns_index} "
+        f"x_social={x_social_dns_index} "
         f"cn={canonical_cn_dns_index}"
     )
 if not dedicated_leak_test_dns_index < foreign_connectivity_index:
