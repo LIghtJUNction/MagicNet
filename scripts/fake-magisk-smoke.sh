@@ -1275,11 +1275,21 @@ run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$M
 test ! -d "$MODDIR/.state/sing-box/subscription-update.lock"
 cp "$MODDIR/.config/sing-box/config.json" "$TMP/config-apply-first.json"
 if ! env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    sh -c '. "$MODDIR/lib/magicnet.sh"; magicnet_singbox_runtime_fingerprint_matches'; then
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_singbox_runtime_fingerprint_matches'; then
     echo "first config apply left a stale sing-box runtime fingerprint" >&2
     echo "stored: $(cat "$MODDIR/.state/sing-box/runtime-fingerprint" 2>/dev/null || echo missing)" >&2
     env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-        sh -c '. "$MODDIR/lib/magicnet.sh"; printf "current: "; magicnet_singbox_runtime_fingerprint' >&2 || true
+        sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; printf "current: "; magicnet_singbox_runtime_fingerprint' >&2 || true
+    exit 1
+fi
+run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_apply_runtime_config'
+if ! env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_singbox_runtime_fingerprint_matches'; then
+    echo "runtime materialization changed the running sing-box inputs:" >&2
+    diff -u \
+        <("$HOST_JQ" -S . "$TMP/config-apply-first.json") \
+        <("$HOST_JQ" -S . "$MODDIR/.config/sing-box/config.json") >&2 || true
     exit 1
 fi
 config_apply_runs_before="$(count_singbox_runs)"
@@ -1373,8 +1383,3 @@ unset _diag_name
 assert_transparent_mode() {
     local mode="$1"
     local before_marker after_marker
-
-    before_marker="$(wc -l <"$MOCK_LOG")"
-    # shellcheck disable=SC2016
-    run env MAGICNET_TEST_MODE="$mode" sh -c '
-        . "$MODDIR/lib/kamfw/.kamfwrc"
