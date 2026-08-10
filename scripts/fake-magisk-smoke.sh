@@ -1277,8 +1277,8 @@ config_apply_runs_before="$(count_singbox_runs)"
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
     "$MODDIR/cli" config apply
 config_apply_runs_after="$(count_singbox_runs)"
-if [[ "$config_apply_runs_after" -le "$config_apply_runs_before" ]]; then
-    echo "config apply reported success without restarting the running sing-box core" >&2
+if [[ "$config_apply_runs_after" -ne "$config_apply_runs_before" ]]; then
+    echo "unchanged config apply restarted the running sing-box core" >&2
     exit 1
 fi
 unset config_apply_runs_before config_apply_runs_after

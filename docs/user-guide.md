@@ -135,7 +135,7 @@ su -c /data/adb/modules/MagicNet/cli transparent apply
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
 ```
 
-`repair` 修复模块管理的配置/运行状态；`config apply` 会物化全部运行时配置，并在 MagicNet 自己的核心运行时重启 sing-box，让它重新读取有效配置。`transparent apply` 也会重应用 TUN 与 DNS 捕获并重启核心。需要完整恢复时再执行 `service restart sing-box`。
+`repair` 修复模块管理的配置/运行状态；`config apply` 会物化全部运行时配置，仅在有效的 sing-box 配置或本地规则集发生变化时重启核心，避免无关文件变化切断邮件和消息应用的后台长连接。`transparent apply` 会重应用 TUN 与 DNS 捕获并重启核心。需要完整恢复时再执行 `service restart sing-box`。
 
 ## 健康检查与支持
 

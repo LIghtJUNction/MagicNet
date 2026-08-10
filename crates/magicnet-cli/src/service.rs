@@ -189,12 +189,21 @@ pub(crate) fn apply_config(app: &App) -> Result<(), String> {
     let _config_apply_guard = config_apply_lock(app)?;
     run_magicnet_function(app, ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; if magicnet_singbox_update_lock_active; then echo '[error] subscription update in progress' >&2; false; else magicnet_apply_runtime_config; fi")?;
 
-    // sing-box snapshots config.json at startup.  Applying generated runtime
-    // files while the owned core is alive would otherwise report success but
-    // leave the process using stale DNS/routes/inbounds until a later restart.
-    // Do not start a stopped core just because the user asked to apply config.
+    // sing-box snapshots config.json and local rule sets at startup.  Restart
+    // only when those effective inputs changed.  Fswatch may invoke this for
+    // unrelated files under .config; an unconditional restart tears down
+    // background mail/message sockets even when the running policy is already
+    // current.  A missing or unreadable fingerprint remains fail-safe and
+    // takes the restart path.
     if singbox_pid_summary(app) != "stopped" {
-        restart_current_core_preserving_config_apply(app)?;
+        let runtime_unchanged = run_magicnet_function(
+            app,
+            "magicnet_singbox_runtime_fingerprint_matches",
+        )
+        .is_ok();
+        if !runtime_unchanged {
+            restart_current_core_preserving_config_apply(app)?;
+        }
     }
     Ok(())
 }

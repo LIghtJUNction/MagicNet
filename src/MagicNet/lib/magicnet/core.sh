@@ -101,6 +101,8 @@ magicnet_start_kernel() {
             magicnet_warn "sing-box started but post-start network initialization failed"
             return 1
         fi
+        magicnet_singbox_record_runtime_fingerprint ||
+            magicnet_warn "Failed to record the running sing-box configuration fingerprint."
         "${MODDIR}/cli" api replay >/dev/null 2>&1 || true
         magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
         return 0

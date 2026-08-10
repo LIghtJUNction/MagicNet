@@ -117,6 +117,76 @@ magicnet_tailscale_scrub_auth_key() {
     return "$_rc"
 }
 
+magicnet_singbox_runtime_fingerprint_file() {
+    printf '%s\n' "${MODDIR}/.state/sing-box/runtime-fingerprint"
+}
+
+# Record only inputs consumed by the running sing-box process.  User-facing
+# policy files are materialized into config.json before this is called, while
+# UI assets, subscription caches and other mutable runtime files must not
+# force a core restart and disconnect every long-lived application socket.
+magicnet_singbox_runtime_fingerprint() (
+    _runtime_root="${MODDIR}/.config/sing-box"
+    _runtime_config="${_runtime_root}/config.json"
+    [ -f "$_runtime_config" ] || return 1
+    command -v cksum >/dev/null 2>&1 || return 1
+    command -v find >/dev/null 2>&1 || return 1
+    command -v sort >/dev/null 2>&1 || return 1
+
+    {
+        cksum "$_runtime_config" || exit 1
+        if [ -f "${_runtime_root}/tailscale-auth.json" ]; then
+            cksum "${_runtime_root}/tailscale-auth.json" || exit 1
+        fi
+        if [ -d "${_runtime_root}/rules" ]; then
+            find "${_runtime_root}/rules" -type f -name '*.srs' -print 2>/dev/null |
+                sort |
+                while IFS= read -r _runtime_rule || [ -n "$_runtime_rule" ]; do
+                    [ -n "$_runtime_rule" ] || continue
+                    cksum "$_runtime_rule" || exit 1
+                done
+        fi
+    } | cksum | awk '{ print $1 ":" $2 }'
+)
+
+magicnet_singbox_record_runtime_fingerprint() {
+    _runtime_fingerprint_file="$(magicnet_singbox_runtime_fingerprint_file)"
+    _runtime_fingerprint_dir=${_runtime_fingerprint_file%/*}
+    _runtime_fingerprint_tmp="${_runtime_fingerprint_file}.new.$$"
+    mkdir -p "$_runtime_fingerprint_dir" || return 1
+    (umask 077; magicnet_singbox_runtime_fingerprint >"$_runtime_fingerprint_tmp") || {
+        rm -f "$_runtime_fingerprint_tmp" 2>/dev/null || true
+        unset _runtime_fingerprint_file _runtime_fingerprint_dir _runtime_fingerprint_tmp
+        return 1
+    }
+    chmod 600 "$_runtime_fingerprint_tmp" &&
+        mv -f "$_runtime_fingerprint_tmp" "$_runtime_fingerprint_file" &&
+        chmod 600 "$_runtime_fingerprint_file"
+    _runtime_fingerprint_rc=$?
+    [ "$_runtime_fingerprint_rc" -eq 0 ] || rm -f "$_runtime_fingerprint_tmp" 2>/dev/null || true
+    set -- "$_runtime_fingerprint_rc"
+    unset _runtime_fingerprint_file _runtime_fingerprint_dir _runtime_fingerprint_tmp _runtime_fingerprint_rc
+    return "$1"
+}
+
+magicnet_singbox_runtime_fingerprint_matches() {
+    _runtime_fingerprint_file="$(magicnet_singbox_runtime_fingerprint_file)"
+    [ -s "$_runtime_fingerprint_file" ] || {
+        unset _runtime_fingerprint_file
+        return 1
+    }
+    _runtime_fingerprint="$(magicnet_singbox_runtime_fingerprint)" || {
+        unset _runtime_fingerprint_file _runtime_fingerprint
+        return 1
+    }
+    grep -F -x "$_runtime_fingerprint" "$_runtime_fingerprint_file" >/dev/null 2>&1
+    _runtime_fingerprint_rc=$?
+    set -- "$_runtime_fingerprint_rc"
+    unset _runtime_fingerprint_file _runtime_fingerprint
+    unset _runtime_fingerprint_rc
+    return "$1"
+}
+
 magicnet_apply_runtime_config_unlocked() {
     if magicnet_module_disabled; then
         magicnet_supervisors_stop >/dev/null 2>&1 || true

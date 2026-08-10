@@ -1152,6 +1152,9 @@ magicnet_singbox_restart_owned() {
                 magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
                 magicnet_singbox_stop_owned_after_failure "$_owned_config" || true
                 _restart_rc=1
+            else
+                magicnet_singbox_record_runtime_fingerprint ||
+                    warn "Failed to record the running sing-box configuration fingerprint"
             fi
         fi
         unset _post_start_rc
