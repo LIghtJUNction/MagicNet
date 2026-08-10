@@ -56,6 +56,21 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Resolve release request
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f .github/release-request ]; then
+            exit 0
+          fi
+          request="$(tr -d '\r\n' < .github/release-request)"
+          if [ "$request" != "patch" ]; then
+            echo "::error::Unsupported release request: $request"
+            exit 1
+          fi
+          echo "RELEASE_REQUESTED=1" >> "$GITHUB_ENV"
+          echo "MAGICNET_SIGN_REQUIRED=1" >> "$GITHUB_ENV"
+
       - name: Cache Cargo
         uses: actions/cache@v5
         with:
@@ -81,6 +96,15 @@ jobs:
         run: |
           set -euo pipefail
           kam version "${{ inputs.bump }}"
+          kam export prop
+          kam export update
+
+      - name: Bump requested release version
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          kam version patch
           kam export prop
           kam export update
 
@@ -163,7 +187,7 @@ jobs:
           scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
 
       - name: Commit bumped version
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.bump != 'none') || env.RELEASE_REQUESTED == '1' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -177,12 +201,15 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "${RELEASE_REQUESTED:-0}" = "1" ]; then
+            git rm -- .github/release-request
+          fi
           git add -- kam.toml src/MagicNet/module.prop update.json
           git commit -m "chore: bump module version"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Create GitHub release
-        if: ${{ inputs.release == true }}
+        if: ${{ inputs.release == true || env.RELEASE_REQUESTED == '1' }}
         shell: bash
         run: |
           set -euo pipefail
