@@ -392,7 +392,7 @@ done
 rm -f "$MODDIR/bin/jq"
 FALLBACK_BIN="$TMPDIR/fallback-bin"
 mkdir -p "$FALLBACK_BIN"
-for command_name in mv rm sing-box; do
+for command_name in chmod mv rm sing-box; do
     ln -s "$(command -v "$command_name")" "$FALLBACK_BIN/$command_name"
 done
 MAGICNET_REAL_AWK=$(command -v awk)
