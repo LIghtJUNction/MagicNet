@@ -120,6 +120,25 @@ MagicNet 会抓取常见 Clash-style 节点 payload，并重新生成 `.config/s
 
 MagicNet 新安装默认按节点名过滤 `免费`、`free`、`HK`、`香港`、`TW`、`台湾`，可在 WebUI 的订阅页删除部分关键词，或清空并保存以关闭过滤。过滤规则会同时作用于新下载、缓存回放与配置修复后的节点列表。导入后的其余节点统一放进 `proxy` 选择器；AI 选择器固定排除中国大陆、香港和台湾标签，并按美国、日本、其他地区的顺序排列候选节点。规则选择器只在 `proxy`、`direct`、`block` 之间切换，不再生成固定的地区桶。如果节点数量明显少于订阅内容，也可能是订阅里包含当前 shell 导入器不支持的协议或字段；安装了 proxylink 时会优先用它生成 sing-box outbounds，以覆盖更多协议。
 
+## 两跳链式代理
+
+MagicNet 支持基于 sing-box detour 的本地两跳链路。它保持单进程、单 magicnet0 TUN，默认关闭；第一版按 TCP 链路设计，链路失败时不会静默回落到直连。
+
+先从当前订阅节点中指定中转和落地节点：
+
+    su -c '/data/adb/modules/MagicNet/cli chain set-upstream "中转节点名"'
+    su -c '/data/adb/modules/MagicNet/cli chain set-exit "落地节点名"'
+    su -c /data/adb/modules/MagicNet/cli chain enable
+    su -c /data/adb/modules/MagicNet/cli chain status
+
+链路策略只保存节点 tag，保存在 .config/magicnet/proxy-chain.json；节点凭据仍只存在 sing-box 配置中。启用后会生成 chain、chain-hop1、chain-exit 和 chain-auto 标准代理组，并把 proxy 的默认出口切换到 chain。
+
+Zashboard 可以直接连接 MagicNet 的 Clash API 或 sing-box 原生 API，选择这些代理组并展开查看嵌套链路。Zashboard 负责选择和观察，链路创建、detour 生成、节点角色校验由 MagicNet 完成。
+
+切换回普通代理：
+
+    su -c /data/adb/modules/MagicNet/cli chain disable
+
 ## 透明代理边界
 
 MagicNet 目前只支持 `tun` 透明模式，使用 `sing-box` `magicnet0` TUN 接管透明流量。旧配置中的 `proxy`、`external-tun`、`hybrid` 会安全归一为 `tun`，CLI 不再接受这些模式。

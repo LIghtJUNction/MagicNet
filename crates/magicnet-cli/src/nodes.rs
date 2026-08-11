@@ -278,6 +278,10 @@ fn is_obvious_group(name: &str) -> bool {
             | "Global"
             | "global"
             | "proxy"
+            | "chain"
+            | "chain-hop1"
+            | "chain-exit"
+            | "chain-auto"
             | "select"
             | "lan"
             | "ad-block"
@@ -299,6 +303,7 @@ fn is_obvious_group(name: &str) -> bool {
             | "final"
     ) || name.contains("选择")
         || name.contains("策略")
+        || name.starts_with("magicnet-chain-")
         || name.contains("Selector")
         || name.contains("selector")
         || name.contains("URLTest")

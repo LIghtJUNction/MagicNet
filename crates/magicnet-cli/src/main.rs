@@ -1,6 +1,7 @@
 mod base64;
 #[cfg(test)]
 mod base64_tests;
+mod chain;
 mod config_editor;
 mod connection_control;
 mod diagnostics;
@@ -37,6 +38,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 pub(crate) use base64::{decode_base64, encode_base64};
+use chain::chain_cmd;
 use config_editor::config_editor;
 use diagnostics::{health, support, sysroute, topology};
 use dns::dns_cmd;
@@ -148,6 +150,10 @@ const COMMAND_HELP: &[CommandHelp] = &[
     CommandHelp {
         command: "node",
         usage: "cli node {list|current|use|test <name>|test-all [name ...]}",
+    },
+    CommandHelp {
+        command: "chain",
+        usage: "cli chain {status|enable|disable|set-upstream <tag>|set-exit <tag>|clear-upstream|clear-exit|mode <manual|auto>|select-upstream <tag>|select-exit <tag>}",
     },
     CommandHelp {
         command: "mode",
@@ -347,6 +353,7 @@ fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
         "wifi" => wifi_cmd(app, &args[1..]),
         "hotspot" => hotspot_cmd(app, &args[1..]),
         "node" => node_cmd(app, &args[1..]),
+        "chain" => chain_cmd(app, &args[1..]),
         "sub" if args.get(1).map(String::as_str) == Some("list") => {
             sub_list(app);
             Ok(())

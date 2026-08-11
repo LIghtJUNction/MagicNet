@@ -204,6 +204,7 @@ magicnet_apply_runtime_config_unlocked() {
     fi
     _runtime_rc=0
     magicnet_ipset_lkm_prepare || true
+    magicnet_singbox_chain_apply || _runtime_rc=1
     magicnet_singbox_apply_zashboard || _runtime_rc=1
     magicnet_dns_apply_unlocked || _runtime_rc=1
     magicnet_transparent_apply_unlocked || _runtime_rc=1

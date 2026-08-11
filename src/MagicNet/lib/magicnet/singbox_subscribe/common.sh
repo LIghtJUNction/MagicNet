@@ -60,6 +60,7 @@ magicnet_json_field_raw() {
 magicnet_singbox_tag_is_reserved() {
     case "$1" in
     proxy-auto | proxy | select | lan | hotspot | ad-block | ad-allow | cn-direct | \
+        chain | chain-hop1 | chain-exit | chain-auto | magicnet-chain-* | \
         apple-cn | microsoft-cn | google-cn | icloud | bing | dns-guard | network-test | \
         ai-proxy | ai-chatgpt | ai-chatgpt-auto | ai-gemini | ai-gemini-auto | \
         ai-grok | ai-grok-auto | ai-claude | ai-claude-auto | proxy-rule | dev-proxy | \
@@ -92,19 +93,21 @@ magicnet_singbox_ai_selectors_canonical() {
               + ([$eligible[] | select((us_node_tag | not) and japan_node_tag)])
               + ([$eligible[] | select((us_node_tag | not) and (japan_node_tag | not))]);
           def proxy_node:
-            .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-              or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks";
+            ((.tag // "") | startswith("magicnet-chain-") | not)
+              and (.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
+              or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks");
           def reserved_tag:
             . as $tag
             | [
                 "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
+                "chain", "chain-hop1", "chain-exit", "chain-auto",
                 "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
                 "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
                 "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
                 "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
                 "final", "direct", "block", "warp"
               ]
-            | index($tag) != null;
+            | index($tag) != null or ($tag | startswith("magicnet-chain-"));
           def valid_proxy_node:
             (.tag | type == "string" and length > 0 and (reserved_tag | not))
               and (.server | type == "string" and length > 0)
@@ -140,6 +143,8 @@ magicnet_singbox_ai_selectors_canonical() {
           | ([.outbounds[]? | select(.tag == "ai-proxy")]) as $ai_proxies
           | ([.outbounds[]? | select(.tag == "proxy")]) as $proxies
           | ([.outbounds[]? | select(.tag == "proxy-auto")]) as $proxy_autos
+          | ([.outbounds[]? | select(.tag == "chain")]) as $chain_groups
+          | (($chain_groups | length) == 1) as $chain_active
           | [.outbounds[]? | select(proxy_node)] as $nodes
           | [$nodes[] | .tag] as $node_tags
           | ($node_tags | prioritize_ai_tags) as $ai_tags
@@ -160,8 +165,11 @@ magicnet_singbox_ai_selectors_canonical() {
                 and $proxy_autos[0].interrupt_exist_connections == false
                 and $proxies[0].type == "selector"
                 and $proxies[0].tag == "proxy"
-                and $proxies[0].outbounds == ($node_tags + ["proxy-auto", "direct", "block"])
-                and $proxies[0].default == $node_tags[0]
+                and (($proxies[0].outbounds == ($node_tags + ["proxy-auto", "direct", "block"]))
+                  or ($proxies[0].outbounds == ($node_tags + ["proxy-auto", "chain", "direct", "block"])
+                    and ($chain_groups | length) == 1))
+                and (($proxies[0].default == $node_tags[0])
+                  or ($proxies[0].default == "chain" and ($chain_groups | length) == 1))
               else
                 ($proxy_autos | length) == 0
                   and $proxies[0].type == "selector"
@@ -171,11 +179,19 @@ magicnet_singbox_ai_selectors_canonical() {
               end)
             and ($ai_proxies | length) == 1
             and ($ai_proxies[0].type == "selector")
-            and (($ai_proxies[0].outbounds == ["block"] and $ai_proxies[0].default == "block" and ($ai_tags | length) == 0)
-              or (($ai_proxies[0].outbounds | length) > 0
-                and $ai_proxies[0].default == $ai_proxies[0].outbounds[0]
-                and $ai_proxies[0].outbounds == $ai_tags
-                and ($ai_proxies[0].outbounds | all(. as $member | ($node_tags | index($member) != null) and ($member | blocked_ai_node_tag | not)))))
+            and (if $chain_active
+                 then $ai_proxies[0].type == "selector"
+                   and $ai_proxies[0].outbounds == ["chain", "block"]
+                   and $ai_proxies[0].default == "chain"
+                 else (($ai_proxies[0].outbounds == ["block"]
+                    and $ai_proxies[0].default == "block" and ($ai_tags | length) == 0)
+                   or (($ai_proxies[0].outbounds | length) > 0
+                    and $ai_proxies[0].default == $ai_proxies[0].outbounds[0]
+                    and $ai_proxies[0].outbounds == $ai_tags
+                    and ($ai_proxies[0].outbounds | all(. as $member
+                      | ($node_tags | index($member) != null)
+                        and ($member | blocked_ai_node_tag | not)))))
+                 end)
             and ($auto_groups | length) == (if ($ai_tags | length) > 0 then 4 else 0 end)
             and ($services | all(. as $service
               | ($service.name + "-auto") as $auto_name
@@ -184,11 +200,24 @@ magicnet_singbox_ai_selectors_canonical() {
               | ($service_groups | length) == 1
                 and $service_groups[0].type == "selector"
                 and $service_groups[0].default
-                  == (if ($ai_tags | length) > 0 then $ai_tags[0] else "block" end)
+                  == (if $chain_active then "chain"
+                      elif ($ai_tags | length) > 0 then $ai_tags[0]
+                      else "block" end)
                 and ($service_groups[0].outbounds
-                  == (if ($ai_tags | length) > 0 then ($ai_tags + ["block", $auto_name]) else ["block"] end))
+                  == (if $chain_active then ["chain", "block", $auto_name]
+                      elif ($ai_tags | length) > 0 then ($ai_tags + ["block", $auto_name])
+                      else ["block"] end))
                 and ($service_groups[0].outbounds | all(. as $member | $tags | index($member) != null))
-                and (if ($ai_tags | length) > 0 then
+                and (if $chain_active then
+                  ($service_auto_groups | length) == 1
+                    and $service_auto_groups[0].type == "urltest"
+                    and $service_auto_groups[0].outbounds == ["chain"]
+                    and $service_auto_groups[0].url == $service.url
+                    and $service_auto_groups[0].interval == "10m"
+                    and $service_auto_groups[0].tolerance == 30
+                    and $service_auto_groups[0].idle_timeout == "10m"
+                    and $service_auto_groups[0].interrupt_exist_connections == false
+                elif ($ai_tags | length) > 0 then
                   ($service_auto_groups | length) == 1
                     and $service_auto_groups[0].type == "urltest"
                     and $service_auto_groups[0].outbounds == $ai_proxies[0].outbounds
