@@ -22,6 +22,7 @@ magicnet_start_singbox_unlocked() {
     import __singbox__
     is_singbox_running >/dev/null 2>&1 && return 0
     magicnet_prepare_singbox_nodes_unlocked || return 1
+    magicnet_singbox_chain_apply || return 1
     magicnet_singbox_apply_transparent_mode || return 1
     magicnet_singbox_apply_hotspot_policy || return 1
     # sing-box snapshots DNS servers and WARP endpoints when the process

@@ -11,7 +11,7 @@ use crate::{
 
 const START_SUPERVISORS_COMMAND: &str = "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1";
 const STOP_RUNTIME_CLEANUP_COMMAND: &str =
-    "magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
+    "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
 const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
 const CONFIG_APPLY_LOCK: &str = ".state/config-apply.lock";
@@ -196,11 +196,8 @@ pub(crate) fn apply_config(app: &App) -> Result<(), String> {
     // current.  A missing or unreadable fingerprint remains fail-safe and
     // takes the restart path.
     if singbox_pid_summary(app) != "stopped" {
-        let runtime_unchanged = run_magicnet_function(
-            app,
-            "magicnet_singbox_runtime_fingerprint_matches",
-        )
-        .is_ok();
+        let runtime_unchanged =
+            run_magicnet_function(app, "magicnet_singbox_runtime_fingerprint_matches").is_ok();
         if !runtime_unchanged {
             restart_current_core_preserving_config_apply(app)?;
         }
@@ -638,7 +635,7 @@ mod tests {
     fn stop_runtime_cleanup_disables_dns_capture_before_leak_guard() {
         assert_eq!(
             stop_runtime_cleanup_command(),
-            "magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"
+            "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"
         );
     }
 

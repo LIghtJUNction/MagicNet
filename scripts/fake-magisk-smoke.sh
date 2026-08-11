@@ -758,7 +758,7 @@ hotspot_policy_ready() {
     )
     and ([.route.rules[] | select(
       .inbound == ["tun-in"]
-      and .source_ip_cidr == ["192.168.0.0/16", "10.42.0.0/16", "172.20.10.0/28"]
+      and .source_ip_cidr == ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
       and .outbound == "hotspot"
     )] | length == 1)
     ' "$MODDIR/.config/sing-box/config.json" >/dev/null
@@ -1274,18 +1274,22 @@ run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$M
     "$MODDIR/cli" config apply
 test ! -d "$MODDIR/.state/sing-box/subscription-update.lock"
 cp "$MODDIR/.config/sing-box/config.json" "$TMP/config-apply-first.json"
+# shellcheck disable=SC2016
 if ! env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_singbox_runtime_fingerprint_matches'; then
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; magicnet_singbox_runtime_fingerprint_matches'; then
     echo "first config apply left a stale sing-box runtime fingerprint" >&2
     echo "stored: $(cat "$MODDIR/.state/sing-box/runtime-fingerprint" 2>/dev/null || echo missing)" >&2
+    # shellcheck disable=SC2016
     env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-        sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; printf "current: "; magicnet_singbox_runtime_fingerprint' >&2 || true
+        sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; printf "current: "; magicnet_singbox_runtime_fingerprint' >&2 || true
     exit 1
 fi
+# shellcheck disable=SC2016
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_apply_runtime_config'
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; magicnet_apply_runtime_config'
+# shellcheck disable=SC2016
 if ! env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_singbox_runtime_fingerprint_matches'; then
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; magicnet_singbox_runtime_fingerprint_matches'; then
     echo "runtime materialization changed the running sing-box inputs:" >&2
     diff -u \
         <("$HOST_JQ" -S . "$TMP/config-apply-first.json") \
@@ -1383,3 +1387,97 @@ unset _diag_name
 assert_transparent_mode() {
     local mode="$1"
     local before_marker after_marker
+
+    before_marker="$(wc -l <"$MOCK_LOG")"
+    # shellcheck disable=SC2016
+    run env MAGICNET_TEST_MODE="$mode" sh -c '
+        . "$MODDIR/lib/kamfw/.kamfwrc"
+        import __runtime__
+        . "$MODDIR/lib/magicnet.sh"
+        mkdir -p "$MODDIR/.config/magicnet"
+        magicnet_transparent_set_mode "$MAGICNET_TEST_MODE"
+        magicnet_transparent_apply
+    '
+    after_marker="$(wc -l <"$MOCK_LOG")"
+    sed -n "$((before_marker + 1)),${after_marker}p" "$MOCK_LOG" >"$TMP/${mode}-commands.log"
+
+    "$MODDIR/cli" transparent status | tee "$TMP/${mode}-transparent-status.log"
+    rg -qx "mode=${mode}" "$TMP/${mode}-transparent-status.log"
+
+    python3 - "$MODDIR/.config/sing-box/config.json" "$mode" <<'PY'
+import json
+import pathlib
+import sys
+
+singbox_path = sys.argv[1]
+mode = sys.argv[2]
+singbox = json.loads(pathlib.Path(singbox_path).read_text())
+
+inbound_types = [inbound.get("type") for inbound in singbox.get("inbounds", [])]
+inbound_tags = [inbound.get("tag") for inbound in singbox.get("inbounds", [])]
+sniff_rule = next((rule for rule in singbox.get("route", {}).get("rules", []) if rule.get("action") == "sniff"), None)
+legacy_inbound_fields = {"sniff", "sniff_timeout", "domain_strategy"}
+
+if inbound_tags.count("mixed-in") != 1:
+    raise SystemExit(f"mixed-in inbound should appear exactly once in {mode} mode: {inbound_tags!r}")
+dns_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("tag") == "magicnet-dns-in"), None)
+if not dns_inbound:
+    raise SystemExit(f"magicnet DNS inbound missing in {mode} mode")
+if dns_inbound.get("type") != "direct" or dns_inbound.get("listen") != "127.0.0.1" or dns_inbound.get("listen_port") != 1053:
+    raise SystemExit(f"magicnet DNS inbound mismatch in {mode} mode: {dns_inbound!r}")
+dns_hijack = next(
+    (
+        rule for rule in singbox.get("route", {}).get("rules", [])
+        if rule.get("action") == "hijack-dns"
+        and rule.get("inbound") == ["magicnet-dns-in"]
+        and "protocol" not in rule
+    ),
+    None,
+)
+if not dns_hijack:
+    raise SystemExit(f"magicnet DNS hijack rule missing in {mode} mode")
+for inbound in singbox.get("inbounds", []):
+    present = sorted(legacy_inbound_fields.intersection(inbound))
+    if present:
+        raise SystemExit(f"legacy inbound fields present in {mode} mode: tag={inbound.get('tag')!r} fields={present!r}")
+if "tun" not in inbound_types:
+    raise SystemExit(f"sing-box tun inbound missing in {mode} mode")
+tun_inbound = next((inbound for inbound in singbox.get("inbounds", []) if inbound.get("type") == "tun"), {})
+if tun_inbound.get("tag") != "tun-in":
+    raise SystemExit(f"sing-box tun tag mismatch in {mode} mode: {tun_inbound.get('tag')!r}")
+if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
+    raise SystemExit(f"sing-box tun address is not dual-stack in {mode} mode: {tun_inbound.get('address')!r}")
+expected_sniff_inbounds = ["mixed-in", "tun-in"]
+if any(kind in inbound_types for kind in ("tproxy", "redirect")):
+    raise SystemExit(f"legacy transparent inbound still present in {mode} mode: {inbound_types!r}")
+if any((inbound.get("tag") or "").startswith("magicnet-") and inbound.get("tag") != "magicnet-dns-in" for inbound in singbox.get("inbounds", [])):
+    raise SystemExit(f"managed transparent inbound still present in {mode} mode")
+if not sniff_rule:
+    raise SystemExit(f"sing-box sniff rule missing in {mode} mode")
+if sniff_rule.get("inbound") != expected_sniff_inbounds:
+    raise SystemExit(f"sing-box sniff inbound list mismatch in {mode} mode: {sniff_rule.get('inbound')!r}")
+PY
+
+    if rg -q -- '-j TPROXY|REDIRECT --to-ports' "$TMP/${mode}-commands.log"; then
+        exit 1
+    fi
+}
+
+assert_transparent_mode tun
+
+for legacy_mode in proxy external external-tun hybrid; do
+    # shellcheck disable=SC2016
+    if run env MAGICNET_TEST_MODE="$legacy_mode" sh -c '
+        . "$MODDIR/lib/kamfw/.kamfwrc"
+        import __runtime__
+        . "$MODDIR/lib/magicnet.sh"
+        magicnet_transparent_set_mode "$MAGICNET_TEST_MODE"
+    '; then
+        echo "legacy transparent mode was still accepted: $legacy_mode" >&2
+        exit 1
+    fi
+done
+
+"$HOST_JQ" empty "$MODDIR/.config/sing-box/config.json"
+
+echo "fake Magisk smoke passed: $MODDIR"

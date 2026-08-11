@@ -52,6 +52,7 @@ require_entry lib/kamfw/watchdog.sh
 require_entry lib/kamfw/fswatch.sh
 require_entry lib/kamfw/__singbox__.sh
 require_entry lib/magicnet_singbox_subscribe.sh
+require_entry lib/magicnet/chain.sh
 require_entry lib/magicnet/transparent.sh
 require_entry .config/sing-box/config.json
 for entry in common fetch parse config proxylink update; do
@@ -141,6 +142,7 @@ subscription_module_root="$elf_tmp/subscription-module"
 mkdir -p "$subscription_module_root"
 unzip -oq "$ZIP_PATH" \
     'lib/magicnet_singbox_subscribe.sh' \
+    'lib/magicnet/chain.sh' \
     'lib/magicnet/singbox_subscribe/*.sh' \
     -d "$subscription_module_root"
 bash "$ROOT/scripts/singbox-subscription-protocol-smoke.sh" "$subscription_module_root"

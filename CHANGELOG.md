@@ -1,5 +1,20 @@
 ## Unreleased
 
+## v1.2.11 (2026-08-11)
+
+- Add a configurable sing-box two-hop proxy chain with manual or automatic
+  exit selection, CLI controls, persisted policy, and Zashboard selector
+  integration.
+- Fix hotspot proxy sharing by dynamically discovering tether interfaces and
+  subnets, routing tethered IPv4 traffic into `magicnet0`, and reconciling the
+  policy when Android creates, removes, or renumbers the hotspot interface.
+- Restore the X/Twitter DNS ownership rule and harden packaged subscription and
+  route configuration updates against partial writes.
+- Keep repeated runtime configuration application idempotent while preserving
+  selector connection-interruption semantics.
+- Pin transitive WebUI `nanoid` to `3.3.17` to remediate Dependabot alert #3
+  (GHSA-2v37-7h3g-55p8 / CVE-2026-67213).
+
 - Import `socks://` and `socks5://` nodes natively with validated optional
   authentication, and preserve independent VMess WebSocket path, Host, server,
   and SNI fields through sing-box outbound generation.
@@ -10,6 +25,9 @@
 - Disable Android tether offload while hotspot Proxy is enabled, then restore
   the previous system value when disabled or uninstalled so tethered traffic
   cannot bypass the TUN through vendor hardware/BPF forwarding.
+- Discover Android tether interfaces dynamically and install reversible
+  `ip rule` entries ahead of the OEM tethering rule so hotspot clients reach
+  the `magicnet0` TUN even when the OEM changes the SoftAP subnet.
 - Fix #93 by accepting validated standalone sing-box JSON configs and imported
   Clash YAML, base64, share-link, JSON, or text subscription files as local
   startup sources without requiring a subscription URL, with atomic URL/local

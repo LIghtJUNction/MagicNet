@@ -45,6 +45,7 @@ bash scripts/test-block-apply-safety.sh
 bash scripts/test-wechat-routing.sh
 bash scripts/test-action-routing.sh
 bash scripts/test-route-apply-safety.sh
+bash scripts/test-hotspot-routing.sh
 bash scripts/test-singbox-route-apply-safety.sh
 bash scripts/test-anthropic-routing.sh
 bash scripts/test-mcp-phase-config.sh

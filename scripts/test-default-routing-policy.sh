@@ -2146,7 +2146,13 @@ ln -s "$(command -v awk)" "$selector_no_jq_bin/awk"
 ln -s "$(command -v chmod)" "$selector_no_jq_bin/chmod"
 ln -s "$CONFIG_DIR/rules" "$selector_fixture_dir/rules"
 trap 'rm -rf "$selector_fixture_dir"' EXIT
+export MODDIR="$selector_fixture_dir"
 
+# config.sh materializes the optional proxy chain during subscription updates;
+# load the shared helper explicitly so this standalone policy test matches the
+# module entrypoint and package smoke environment.
+# shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/chain.sh"
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 # shellcheck disable=SC1091

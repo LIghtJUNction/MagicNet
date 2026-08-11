@@ -446,6 +446,11 @@ magicnet_after_kernel_start_deferred_unlocked() {
     # These rewrites run asynchronously after the core starts and may otherwise
     # publish a snapshot that predates the startup-time hotspot normalization.
     magicnet_singbox_apply_hotspot_policy || _deferred_mark_failed hotspot
+    # Android inserts a higher-priority tethering rule after the hotspot
+    # interface appears. Install MagicNet's per-interface rule after the TUN
+    # table exists so forwarded clients reach magicnet0 before that rule.
+    magicnet_hotspot_reconcile ||
+        magicnet_warn "Hotspot TUN policy is not ready; the interface watcher will retry it."
 
     if [ -n "$_deferred_failures" ]; then
         # A partially applied configuration must not leave stale interception

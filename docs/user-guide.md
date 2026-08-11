@@ -102,7 +102,7 @@ su -c /data/adb/modules/MagicNet/cli wifi status
 
 ## 热点
 
-MagicNet 不创建热点，也不替代 Android 的 tethering/NAT。热点客户端流量已经进入 `magicnet0` 后，可通过 `hotspot` selector 选择 Direct 或 Proxy：
+MagicNet 不创建热点，也不替代 Android 的 DHCP/NAT。启用热点 Proxy 后，MagicNet 会把当前 tether 接口的 IPv4 入站策略路由到 `magicnet0`，再通过 `hotspot` selector 选择 Direct 或 Proxy：
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli hotspot status
@@ -152,7 +152,7 @@ su -c /data/adb/modules/MagicNet/cli support bundle
 - 域名失败但 IP 可达：检查 Private DNS、`cli dns status` 和 DNS 相关诊断。
 - TCP 正常、UDP/QUIC 异常：检查网络策略、MTU、节点 UDP 能力和 `ipv4_only` 对照结果。
 - 某应用策略无效：检查包名、Android 用户、`cli app list`，再执行 `cli app apply`。
-- 热点设备异常而手机正常：检查 `cli hotspot status`、tether offload 状态和热点客户端是否真正进入 `magicnet0`。
+- 热点设备异常而手机正常：检查 `cli hotspot status`，确认 `route_status=ready`、`downstream_interfaces` 和 `policy_rule`，再确认 tether offload 已关闭且客户端流量进入 `magicnet0`。
 - 更新订阅失败：保留原配置，查看 `cli sub status` 和支持包中的失败阶段，不要删除回滚现场。
 
 支持包和 WebUI Issue 草稿会做脱敏，但提交前仍应人工检查。不要公开订阅 URL、token、MCP secret、password、完整节点地址、设备序列号或未经检查的完整日志。

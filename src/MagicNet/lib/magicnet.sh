@@ -20,6 +20,7 @@ for _magicnet_lib in \
     blocklist \
     routes \
     warp \
+    chain \
     runtime_config \
     supervisors \
     core \

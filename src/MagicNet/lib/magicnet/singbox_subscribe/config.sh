@@ -84,13 +84,14 @@ magicnet_singbox_build_outbounds_file_with_jq() {
         . as $tag
         | [
             "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
+            "chain", "chain-hop1", "chain-exit", "chain-auto",
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
             "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
             "final", "direct", "block", "warp"
           ]
-        | index($tag) != null;
+        | index($tag) != null or ($tag | startswith("magicnet-chain-"));
       def valid_proxy_node:
         (.tag | type == "string" and length > 0 and (reserved_tag | not))
           and (.server | type == "string" and length > 0)
@@ -247,13 +248,14 @@ magicnet_singbox_count_valid_outbounds_nodes() {
         . as $tag
         | [
             "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
+            "chain", "chain-hop1", "chain-exit", "chain-auto",
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
             "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
             "final", "direct", "block", "warp"
           ]
-        | index($tag) != null;
+        | index($tag) != null or ($tag | startswith("magicnet-chain-"));
       def valid_proxy_node:
         (.tag | type == "string" and length > 0 and (reserved_tag | not))
           and (.server | type == "string" and length > 0)
@@ -562,15 +564,17 @@ magicnet_singbox_sanitize_generated_config() {
         . as $tag
         | [
             "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
+            "chain", "chain-hop1", "chain-exit", "chain-auto",
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
             "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
             "final", "direct", "block", "warp"
           ]
-        | index($tag) != null;
+        | index($tag) != null or ($tag | startswith("magicnet-chain-"));
       def proxy_node:
         proxy_node_type
+          and ((.tag // "") | startswith("magicnet-chain-") | not)
           and (.tag | type == "string" and length > 0 and (reserved_tag | not))
           and (.server | type == "string" and length > 0)
           and (.server_port
@@ -687,7 +691,7 @@ magicnet_singbox_sanitize_generated_config() {
       | ($node_tags | prioritize_ai_tags) as $ai_tags
       | .outbounds = ($deduped_outbounds
           | map(select(.tag as $tag | [
-              "proxy", "proxy-auto",
+              "proxy", "proxy-auto", "chain", "chain-hop1", "chain-exit", "chain-auto",
               "ai-proxy",
               "ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude",
               "ai-chatgpt-auto", "ai-gemini-auto", "ai-grok-auto", "ai-claude-auto"
@@ -779,6 +783,11 @@ magicnet_singbox_update_config_with_nodes() {
 
     magicnet_singbox_sanitize_generated_config "$_tmp_file" || {
         error "Generated sing-box config failed sanitization"
+        return 1
+    }
+
+    magicnet_singbox_chain_apply "$_tmp_file" || {
+        error "Generated sing-box config failed proxy chain materialization"
         return 1
     }
 

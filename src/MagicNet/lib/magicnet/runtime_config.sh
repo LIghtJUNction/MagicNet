@@ -48,13 +48,15 @@ magicnet_tailscale_apply_unlocked() (
       def managed_tailnet_rule:
         (((.ip_cidr // []) | sort) == (tailnets | sort))
           and ((.outbound // "") != "lan");
-      .endpoints = ((.endpoints // []) | map(
-        if .type == "tailscale" then
-          del(.auth_key)
-          | if (.state_directory // "") == "" then .state_directory = $state_dir else . end
-          | .system_interface = false
-        else . end
-      ))
+      if has("endpoints") then
+        .endpoints = ((.endpoints // []) | map(
+          if .type == "tailscale" then
+            del(.auth_key)
+            | if (.state_directory // "") == "" then .state_directory = $state_dir else . end
+            | .system_interface = false
+          else . end
+        ))
+      else . end
       | ((.endpoints // []) | map(select(userspace_tailscale)) | first) as $endpoint
       | if $endpoint == null then . else
           .inbounds = ((.inbounds // []) | map(
@@ -204,6 +206,7 @@ magicnet_apply_runtime_config_unlocked() {
     fi
     _runtime_rc=0
     magicnet_ipset_lkm_prepare || true
+    magicnet_singbox_chain_apply || _runtime_rc=1
     magicnet_singbox_apply_zashboard || _runtime_rc=1
     magicnet_dns_apply_unlocked || _runtime_rc=1
     magicnet_transparent_apply_unlocked || _runtime_rc=1

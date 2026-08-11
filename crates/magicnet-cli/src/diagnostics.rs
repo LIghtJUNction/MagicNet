@@ -295,6 +295,10 @@ fn support_bundle(app: &App) -> String {
 
 const SUPPORT_CHAIN_TAGS: &[&str] = &[
     "proxy",
+    "chain",
+    "chain-hop1",
+    "chain-exit",
+    "chain-auto",
     "select",
     "final",
     "proxy-rule",
@@ -436,6 +440,8 @@ fn safe_proxy_kind(value: &str) -> &str {
         "anytls" => "anytls",
         "tuic" => "tuic",
         "wireguard" => "wireguard",
+        "socks" => "socks",
+        "http" => "http",
         "selector" => "selector",
         "urltest" => "urltest",
         "direct" => "direct",
