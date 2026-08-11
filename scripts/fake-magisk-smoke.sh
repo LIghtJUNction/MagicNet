@@ -1276,20 +1276,20 @@ test ! -d "$MODDIR/.state/sing-box/subscription-update.lock"
 cp "$MODDIR/.config/sing-box/config.json" "$TMP/config-apply-first.json"
 # shellcheck disable=SC2016
 if ! env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_singbox_runtime_fingerprint_matches'; then
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; magicnet_singbox_runtime_fingerprint_matches'; then
     echo "first config apply left a stale sing-box runtime fingerprint" >&2
     echo "stored: $(cat "$MODDIR/.state/sing-box/runtime-fingerprint" 2>/dev/null || echo missing)" >&2
     # shellcheck disable=SC2016
     env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-        sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; printf "current: "; magicnet_singbox_runtime_fingerprint' >&2 || true
+        sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; printf "current: "; magicnet_singbox_runtime_fingerprint' >&2 || true
     exit 1
 fi
 # shellcheck disable=SC2016
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_apply_runtime_config'
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; magicnet_apply_runtime_config'
 # shellcheck disable=SC2016
 if ! env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
-    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import magicnet; magicnet_singbox_runtime_fingerprint_matches'; then
+    sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; magicnet_singbox_runtime_fingerprint_matches'; then
     echo "runtime materialization changed the running sing-box inputs:" >&2
     diff -u \
         <("$HOST_JQ" -S . "$TMP/config-apply-first.json") \

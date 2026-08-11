@@ -10,6 +10,8 @@
   policy when Android creates, removes, or renumbers the hotspot interface.
 - Restore the X/Twitter DNS ownership rule and harden packaged subscription and
   route configuration updates against partial writes.
+- Keep repeated runtime configuration application idempotent while preserving
+  selector connection-interruption semantics.
 - Pin transitive WebUI `nanoid` to `3.3.17` to remediate Dependabot alert #3
   (GHSA-2v37-7h3g-55p8 / CVE-2026-67213).
 

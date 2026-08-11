@@ -48,13 +48,15 @@ magicnet_tailscale_apply_unlocked() (
       def managed_tailnet_rule:
         (((.ip_cidr // []) | sort) == (tailnets | sort))
           and ((.outbound // "") != "lan");
-      .endpoints = ((.endpoints // []) | map(
-        if .type == "tailscale" then
-          del(.auth_key)
-          | if (.state_directory // "") == "" then .state_directory = $state_dir else . end
-          | .system_interface = false
-        else . end
-      ))
+      if has("endpoints") then
+        .endpoints = ((.endpoints // []) | map(
+          if .type == "tailscale" then
+            del(.auth_key)
+            | if (.state_directory // "") == "" then .state_directory = $state_dir else . end
+            | .system_interface = false
+          else . end
+        ))
+      else . end
       | ((.endpoints // []) | map(select(userspace_tailscale)) | first) as $endpoint
       | if $endpoint == null then . else
           .inbounds = ((.inbounds // []) | map(

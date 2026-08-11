@@ -296,6 +296,7 @@ magicnet_block_ensure_ad_selectors() {
             print "    {"
             print "      \"type\": \"selector\","
             print "      \"tag\": \"ad-block\","
+            print "      \"interrupt_exist_connections\": true,"
             print "      \"outbounds\": [\"block\", \"direct\", \"proxy\"],"
             print "      \"default\": \"block\""
             print "    }" comma
@@ -304,6 +305,7 @@ magicnet_block_ensure_ad_selectors() {
             print "    {"
             print "      \"type\": \"selector\","
             print "      \"tag\": \"ad-allow\","
+            print "      \"interrupt_exist_connections\": true,"
             print "      \"outbounds\": [\"final\", \"direct\", \"proxy\"],"
             print "      \"default\": \"final\""
             print "    }" comma
