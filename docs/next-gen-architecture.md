@@ -24,7 +24,7 @@ Android 应用 / 已进入内核转发的热点流量
 
 设备应用包由 root 管理的 TUN 自动路由进入 sing-box。MagicNet 不调用 Android 应用的 `VpnService.establish()`，因此不会占用系统 VPN slot。`Bypass TUN` UID 是明确例外：它们同时绕过 TUN 和 MagicNet DNS 捕获，回到原生网络或外部 VPN 的路径。
 
-热点仍由 Android/OEM tethering 完成 DHCP、NAT 与转发。选择热点 Proxy 时，MagicNet 暂时关闭 tether 硬件卸载，使转发包有机会进入 `magicnet0`，再由 `hotspot` selector 决定 Direct 或 Proxy；退出 Proxy 或卸载会恢复原值。
+热点仍由 Android/OEM tethering 完成 DHCP 与 NAT。选择热点 Proxy 时，MagicNet 发现真实 tether 接口，在 Android tethering 规则之前添加指向 sing-box `table 2022` 的临时 `ip rule`，并关闭 tether 硬件卸载，让转发包进入 `magicnet0`，再由 `hotspot` selector 决定 Direct 或 Proxy；接口变化由 watcher 重算，退出 Proxy、停止服务或卸载会清理策略规则并恢复原值。
 
 ## 控制面
 

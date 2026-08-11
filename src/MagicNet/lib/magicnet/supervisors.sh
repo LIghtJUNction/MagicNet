@@ -165,6 +165,47 @@ magicnet_supervisor_pidfile_matches() (
 magicnet_watchdog_stop() {
     magicnet_supervisor_stop_pidfile "${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid"
     magicnet_supervisor_kill_orphans watchdog
+    magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true
+}
+
+magicnet_hotspot_watchdog_name() {
+    printf '%s\n' "magicnet-hotspot-route"
+}
+
+magicnet_hotspot_watchdog_interval() {
+    printf '%s\n' "${MAGICNET_HOTSPOT_WATCH_INTERVAL:-3}"
+}
+
+magicnet_hotspot_watchdog_start() {
+    if magicnet_module_disabled || ! magicnet_hotspot_proxy_enabled || ! magicnet_kernel_running; then
+        magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true
+        return 0
+    fi
+    import watchdog
+    _hotspot_watch_name="$(magicnet_hotspot_watchdog_name)"
+    if watchdog status "$_hotspot_watch_name" >/dev/null 2>&1; then
+        magicnet_hotspot_reconcile >/dev/null 2>&1 || true
+        unset _hotspot_watch_name
+        return 0
+    fi
+    magicnet_hotspot_reconcile >/dev/null 2>&1 || true
+    _hotspot_watch_interval="$(magicnet_hotspot_watchdog_interval)"
+    case "$_hotspot_watch_interval" in
+        '' | *[!0-9]* | 0) _hotspot_watch_interval=3 ;;
+    esac
+    KAM_WATCHDOG_LOG_FILE="${MODDIR}/.log/hotspot-route.log" \
+        watchdog start --quiet "$_hotspot_watch_name" "$_hotspot_watch_interval" \
+        "\"${MODDIR}/cli\" hotspot reconcile >/dev/null 2>&1"
+    _hotspot_watch_rc=$?
+    unset _hotspot_watch_name _hotspot_watch_interval
+    return "$_hotspot_watch_rc"
+}
+
+magicnet_hotspot_watchdog_stop() {
+    import watchdog
+    _hotspot_watch_name="$(magicnet_hotspot_watchdog_name)"
+    watchdog stop "$_hotspot_watch_name" >/dev/null 2>&1 || true
+    unset _hotspot_watch_name
 }
 
 magicnet_fswatch_name() {
@@ -874,6 +915,7 @@ magicnet_supervisors_start() {
     magicnet_fswatch_start || _mss_rc=1
     magicnet_subscription_refresh_start || _mss_rc=1
     magicnet_wifi_policy_start || _mss_rc=1
+    magicnet_hotspot_watchdog_start || _mss_rc=1
     # Startup may materialize supervisor-owned policy after the core's initial
     # fingerprint was recorded.  Publish the settled generation so the next
     # fswatch pass does not restart an already-current core and tear down
@@ -889,5 +931,6 @@ magicnet_supervisors_stop() {
     magicnet_watchdog_stop
     magicnet_fswatch_stop
     magicnet_wifi_policy_stop
+    magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
     [ "${MAGICNET_SUB_PRESERVE_REFRESH:-0}" = "1" ] || magicnet_subscription_refresh_stop
 }

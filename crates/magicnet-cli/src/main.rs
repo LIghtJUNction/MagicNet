@@ -165,7 +165,7 @@ const COMMAND_HELP: &[CommandHelp] = &[
     },
     CommandHelp {
         command: "hotspot",
-        usage: "cli hotspot {status|enable|disable}",
+        usage: "cli hotspot {status|enable|disable|reconcile}",
     },
     CommandHelp {
         command: "route",

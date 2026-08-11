@@ -59,7 +59,7 @@ su -c /data/adb/modules/MagicNet/cli hotspot status
 
 应用策略按 Android 多用户解析 UID。Bypass UID 同时绕过 TUN 与 DNS 捕获，主要用于外部 VPN 共存；普通“不走代理”优先选择 Direct。
 
-热点由 Android/OEM 创建和 NAT。MagicNet 只管理已经进入 TUN 的转发流量；Proxy 期间临时关闭 tether 硬件卸载，disable 或卸载时恢复原值。
+热点由 Android/OEM 创建 DHCP 和 NAT。启用 Proxy 后，MagicNet 会发现当前 tether 接口和私网网段，写入指向 `table 2022` 的临时 `ip rule`，把下游 IPv4 流量置于 Android tethering 规则之前送入 `magicnet0`；同时临时关闭 tether 硬件卸载，disable、停止或卸载时清理规则并恢复原值。接口变化由 watcher 自动重算。
 
 ## 网络与恢复
 

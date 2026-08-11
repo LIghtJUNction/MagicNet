@@ -11,7 +11,7 @@ use crate::connection_control::{
     print_close_all_summary,
 };
 use crate::selector_store;
-use crate::service::singbox_webui;
+use crate::service::{apply_config, singbox_webui};
 use crate::subscriptions::validate_subscription_url;
 use crate::{run_magicnet_function, write_text_file, App};
 
@@ -57,6 +57,17 @@ fn sync_persisted_hotspot_offload(app: &App) {
     if let Err(err) = run_magicnet_function(app, function) {
         eprintln!("[warning] persisted hotspot offload state could not be synchronized: {err}");
     }
+    if member == "proxy" {
+        if let Err(err) = run_magicnet_function(app, "magicnet_hotspot_reconcile") {
+            eprintln!("[warning] persisted hotspot TUN route could not be reconciled: {err}");
+        }
+        if let Err(err) = run_magicnet_function(app, "magicnet_hotspot_watchdog_start") {
+            eprintln!("[warning] hotspot route watcher could not be started: {err}");
+        }
+    } else {
+        let _ = run_magicnet_function(app, "magicnet_hotspot_watchdog_stop");
+        let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+    }
 }
 
 pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -67,8 +78,10 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             println!("enabled={}", usize::from(member == "proxy"));
             println!("outbound={member}");
             run_magicnet_function(app, "magicnet_hotspot_offload_status")?;
+            run_magicnet_function(app, "magicnet_hotspot_route_status")?;
             Ok(())
         }
+        "reconcile" => run_magicnet_function(app, "magicnet_hotspot_reconcile"),
         "enable" | "disable" => {
             let member = if action == "enable" {
                 "proxy"
@@ -93,12 +106,39 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 }
                 return Err(error);
             }
+            if action == "enable" {
+                // The hotspot source rule is consumed at sing-box startup.
+                // Apply the canonical RFC1918 rule and restart only when the
+                // effective runtime fingerprint changed; this upgrades an
+                // already-running process from the legacy fixed subnets.
+                if let Err(error) = apply_config(app) {
+                    let _ = select_proxy(app, "hotspot", "direct");
+                    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
+                    return Err(format!("apply hotspot TUN policy: {error}"));
+                }
+                if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_reconcile") {
+                    let _ = select_proxy(app, "hotspot", "direct");
+                    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
+                    let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+                    return Err(format!("apply hotspot TUN route: {error}"));
+                }
+                if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_watchdog_start") {
+                    let _ = select_proxy(app, "hotspot", "direct");
+                    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
+                    let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+                    return Err(format!("start hotspot route watcher: {error}"));
+                }
+            }
             if action == "disable" {
                 run_magicnet_function(app, "magicnet_hotspot_offload_restore")?;
+                let stop_result = run_magicnet_function(app, "magicnet_hotspot_watchdog_stop");
+                let cleanup_result = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+                stop_result?;
+                cleanup_result?;
             }
             Ok(())
         }
-        _ => Err("Usage: cli hotspot {status|enable|disable}".to_string()),
+        _ => Err("Usage: cli hotspot {status|enable|disable|reconcile}".to_string()),
     }
 }
 

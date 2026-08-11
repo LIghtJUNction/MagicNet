@@ -25,14 +25,18 @@ assert.match(control, /proxy<\/code> 代理组/);
 assert.match(control, /不勾选时统一走\s*<code>direct<\/code>/);
 
 for (const source of [
+  "10.0.0.0/8",
+  "172.16.0.0/12",
   "192.168.0.0/16",
-  "10.42.0.0/16",
-  "172.20.10.0/28",
 ]) {
   assert.match(routes, new RegExp(source.replaceAll(".", String.raw`\.`)));
 }
 assert.match(routes, /"outbound": "hotspot"/);
 assert.match(routes, /"outbounds": \["direct", "proxy"\]/);
+assert.match(routes, /ip rule add priority/);
+assert.match(routes, /lookup 2022/);
+assert.match(routes, /magicnet_hotspot_discover_interfaces/);
+assert.match(routes, /magicnet_hotspot_route_cleanup/);
 assert.match(routes, /settings put global tether_offload_disabled 1/);
 assert.match(routes, /magicnet_hotspot_offload_restore/);
 assert.match(routes, /register_uninstall_cmd/);

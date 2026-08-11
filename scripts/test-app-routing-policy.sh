@@ -14,6 +14,10 @@ fi
 
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/apps.sh"
+# network.sh reconciles the hotspot policy provided by routes.sh.
+. "$ROOT/src/MagicNet/lib/magicnet/routes.sh"
+# core.sh materializes the optional proxy chain during config startup.
+. "$ROOT/src/MagicNet/lib/magicnet/chain.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/network.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/runtime_config.sh"
