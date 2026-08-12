@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Select a reachable AliDNS HTTPS bootstrap across IPv4 and IPv6 to reduce DNS timeouts during proxy-node resolution.
+
 ## v1.2.11 (2026-08-11)
 
 - Add a configurable sing-box two-hop proxy chain with manual or automatic
