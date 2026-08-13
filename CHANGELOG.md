@@ -1,6 +1,7 @@
 ## Unreleased
 
 - Select a reachable AliDNS HTTPS bootstrap across IPv4 and IPv6 to reduce DNS timeouts during proxy-node resolution.
+- Resolve WeChat and Tencent media domains with local DNS and route them directly so image CDN requests keep regional affinity and avoid slow proxy fallthrough.
 
 ## v1.2.11 (2026-08-11)
 

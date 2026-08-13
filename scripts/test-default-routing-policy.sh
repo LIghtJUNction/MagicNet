@@ -205,6 +205,15 @@ apple_icloud_dns_rule = {
 }
 direct_mode_dns_rule = {"clash_mode": "Direct", "server": "bootstrap-local-dns"}
 global_mode_dns_rule = {"clash_mode": "Global", "server": "doh-cloudflare"}
+wechat_media_dns_rule = {
+    "domain_suffix": [
+        "qq.com", "weixin.qq.com", "wechat.com", "wechatapp.com", "wechatpay.cn",
+        "tenpay.com", "tencent.com", "tencent-cloud.com", "myqcloud.com", "qcloud.com",
+        "gtimg.com", "idqqimg.com", "qpic.cn", "qlogo.cn", "qmail.com", "smtcdns.com",
+        "servicewechat.com", "weixinbridge.com", "weixinsxy.com", "wx.gtimg.com", "wx.qq.com",
+    ],
+    "server": "bootstrap-local-dns",
+}
 domestic_connectivity_dns_rule = {
     "domain_suffix": ["connect.rom.miui.com", "connectivitycheck.platform.hicloud.com"],
     "server": "bootstrap-local-dns",
@@ -315,6 +324,7 @@ ordered_dns_policy_indexes = []
 for expected_rule in (
     direct_mode_dns_rule,
     global_mode_dns_rule,
+    wechat_media_dns_rule,
     domestic_connectivity_dns_rule,
     foreign_network_test_dns_rule,
     apple_icloud_dns_rule,
@@ -331,13 +341,14 @@ if not all(
     for left, right in zip(ordered_dns_policy_indexes, ordered_dns_policy_indexes[1:])
 ):
     raise AssertionError(
-        "required DNS order is Direct -> Global -> domestic connectivity -> foreign network-test "
-        "-> Apple -> cn Bing -> global Bing -> local Microsoft: "
+        "required DNS order is Direct -> Global -> WeChat media -> domestic connectivity "
+        "-> foreign network-test -> Apple -> cn Bing -> global Bing -> local Microsoft: "
         f"indexes={ordered_dns_policy_indexes}"
     )
 (
     direct_mode_dns_index,
     global_mode_dns_index,
+    wechat_media_dns_index,
     domestic_connectivity_dns_index,
     foreign_network_test_dns_index,
     apple_icloud_dns_index,
@@ -2350,7 +2361,7 @@ network_connectivity_keyword_index=$(jq -er '
 
 assert_connectivity_dns_safety() {
     local config_file="$1"
-    local default_mode direct_mode_index global_mode_index domestic_rule_index foreign_rule_index
+    local default_mode direct_mode_index global_mode_index wechat_rule_index domestic_rule_index foreign_rule_index
     local apple_rule_index cn_bing_rule_index global_bing_rule_index local_service_index
     local private_dns_index mmstat_dns_index ad_suffix_dns_index ad_keyword_dns_index ad_rule_set_dns_index
     local game_dns_index foreign_priority_dns_index x_social_dns_index cn_dns_index
@@ -2369,7 +2380,7 @@ assert_connectivity_dns_safety() {
         printf 'DNS safety guard: default Clash mode must remain Rule\n' >&2
         return 1
     }
-    read -r direct_mode_index global_mode_index domestic_rule_index foreign_rule_index \
+    read -r direct_mode_index global_mode_index wechat_rule_index domestic_rule_index foreign_rule_index \
         apple_rule_index cn_bing_rule_index global_bing_rule_index local_service_index \
         private_dns_index mmstat_dns_index ad_suffix_dns_index ad_keyword_dns_index ad_rule_set_dns_index \
         game_dns_index foreign_priority_dns_index x_social_dns_index cn_dns_index < <(jq -er '
@@ -2379,6 +2390,15 @@ assert_connectivity_dns_safety() {
       [
         unique_index({clash_mode: "Direct", server: "bootstrap-local-dns"}),
         unique_index({clash_mode: "Global", server: "doh-cloudflare"}),
+        unique_index({
+          domain_suffix: [
+            "qq.com", "weixin.qq.com", "wechat.com", "wechatapp.com", "wechatpay.cn",
+            "tenpay.com", "tencent.com", "tencent-cloud.com", "myqcloud.com", "qcloud.com",
+            "gtimg.com", "idqqimg.com", "qpic.cn", "qlogo.cn", "qmail.com", "smtcdns.com",
+            "servicewechat.com", "weixinbridge.com", "weixinsxy.com", "wx.gtimg.com", "wx.qq.com"
+          ],
+          server: "bootstrap-local-dns"
+        }),
         unique_index({
           domain_suffix: ["connect.rom.miui.com", "connectivitycheck.platform.hicloud.com"],
           server: "bootstrap-local-dns"
@@ -2491,7 +2511,8 @@ assert_connectivity_dns_safety() {
         return 1
     }
     ((global_mode_index == direct_mode_index + 1 \
-        && domestic_rule_index == global_mode_index + 1 \
+        && wechat_rule_index == global_mode_index + 1 \
+        && domestic_rule_index == wechat_rule_index + 1 \
         && foreign_rule_index == domestic_rule_index + 1 \
         && apple_rule_index == foreign_rule_index + 1 \
         && cn_bing_rule_index == apple_rule_index + 1 \
