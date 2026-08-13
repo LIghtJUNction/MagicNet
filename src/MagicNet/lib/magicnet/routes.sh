@@ -37,7 +37,27 @@ magicnet_hotspot_proxy_enabled() {
 
 magicnet_hotspot_source_cidrs() {
     magicnet_hotspot_proxy_enabled || return 0
-    magicnet_hotspot_active_networks | awk -F'|' 'NF == 2 && !seen[$2]++ { print $2 }'
+    magicnet_hotspot_active_networks |
+        awk -F'|' 'NF == 2 { print $2 }' |
+        LC_ALL=C sort -u
+}
+
+magicnet_hotspot_jq() {
+    if [ -x "${MODDIR}/bin/jq" ]; then
+        printf '%s\n' "${MODDIR}/bin/jq"
+    else
+        command -v jq 2>/dev/null || true
+    fi
+}
+
+magicnet_hotspot_source_cidrs_json() {
+    _hotspot_json_jq="$1"
+    magicnet_hotspot_source_cidrs | "$_hotspot_json_jq" -Rsc '
+        split("\n") | map(select(length > 0))
+    '
+    _hotspot_json_rc=$?
+    unset _hotspot_json_jq
+    return "$_hotspot_json_rc"
 }
 
 magicnet_hotspot_interface_allowed() {
@@ -454,24 +474,19 @@ magicnet_hotspot_offload_status() {
     unset _hotspot_value
 }
 
-magicnet_singbox_apply_hotspot_policy() {
-    _config="${MODDIR}/.config/sing-box/config.json"
-    [ -f "$_config" ] || return 0
-    _jq="${MODDIR}/bin/jq"
-    [ -x "$_jq" ] || _jq="$(command -v jq 2>/dev/null || true)"
+magicnet_singbox_render_hotspot_policy() {
+    _hotspot_render_source="$1"
+    _hotspot_render_target="$2"
+    _jq="$(magicnet_hotspot_jq)"
     [ -n "$_jq" ] || {
         magicnet_warn "jq not found; cannot apply hotspot proxy policy"
-        unset _config _jq
+        unset _hotspot_render_source _hotspot_render_target _jq
         return 1
     }
-    _hotspot_sources="$(magicnet_hotspot_source_cidrs || true)"
-    _hotspot_sources_json="$(printf '%s\n' "$_hotspot_sources" | "$_jq" -Rsc '
-        split("\n") | map(select(length > 0))
-    ')" || {
-        unset _config _jq _hotspot_sources _hotspot_sources_json
+    _hotspot_sources_json="$(magicnet_hotspot_source_cidrs_json "$_jq")" || {
+        unset _hotspot_render_source _hotspot_render_target _jq _hotspot_sources_json
         return 1
     }
-    _tmp="${_config}.hotspot-policy.new"
     # Forwarded clients retain an address from the active downstream subnet
     # when entering the TUN. Match only those discovered subnets: matching all
     # RFC1918 space also catches the phone's own Wi-Fi traffic whenever process
@@ -490,69 +505,75 @@ magicnet_singbox_apply_hotspot_policy() {
             "source_ip_cidr": $hotspot_sources,
             "outbound": "hotspot"
           };
-        def is_hotspot_rule:
-          (.inbound // []) == ["tun-in"]
+        def is_managed_hotspot_rule:
+          type == "object"
+            and (keys | sort) == ["inbound", "outbound", "source_ip_cidr"]
+            and (.inbound // []) == ["tun-in"]
             and (.outbound // "") == "hotspot"
             and (.source_ip_cidr | type) == "array";
+        def insertion_index($rules):
+          (
+            [$rules | to_entries[] | select((.value.outbound // "") == "dns-guard") | .key]
+            | last
+          ) as $dns_guard_anchor
+          | (
+              [$rules | to_entries[] | select(.value.action != null) | .key]
+              | last
+            ) as $action_anchor
+          | (($dns_guard_anchor // $action_anchor // -1) + 1);
         .outbounds = (
           ((.outbounds // []) | map(select((.tag // "") != "hotspot")))
           + [hotspot_selector]
         )
-        | ((.route.rules // []) | map(select(is_hotspot_rule | not))) as $rules
+        | (.route.rules // []) as $original_rules
+        | insertion_index($original_rules) as $managed_index
         | (
-            [$rules | to_entries[] | select((.value.outbound // "") == "dns-guard") | .key]
-            | last
-          ) as $dns_guard_anchor
-        | (
-            [$rules | to_entries[] | select(.value.action != null) | .key]
-            | last
-          ) as $action_anchor
-        | (($dns_guard_anchor // $action_anchor // -1) + 1) as $insert_at
+            if (($original_rules[$managed_index] // {}) | is_managed_hotspot_rule)
+            then $original_rules[:$managed_index] + $original_rules[($managed_index + 1):]
+            else $original_rules
+            end
+          ) as $rules
+        | insertion_index($rules) as $insert_at
         | .route.rules = (
             if ($hotspot_sources | length) > 0
             then $rules[:$insert_at] + [hotspot_rule] + $rules[$insert_at:]
             else $rules
             end
           )
-    ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"; then
-        :
+    ' "$_hotspot_render_source" >"$_hotspot_render_target") && chmod 600 "$_hotspot_render_target"; then
+        _hotspot_render_rc=0
     else
+        rm -f "$_hotspot_render_target" 2>/dev/null || true
+        _hotspot_render_rc=1
+    fi
+    unset _hotspot_render_source _hotspot_render_target _jq _hotspot_sources_json
+    return "$_hotspot_render_rc"
+}
+
+magicnet_singbox_apply_hotspot_policy() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+    _tmp="${_config}.hotspot-policy.new"
+    if ! magicnet_singbox_render_hotspot_policy "$_config" "$_tmp" ||
+        ! mv -f "$_tmp" "$_config" || ! chmod 600 "$_config"; then
         rm -f "$_tmp" 2>/dev/null || true
-        unset _config _jq _hotspot_sources _hotspot_sources_json _tmp
+        unset _config _tmp
         return 1
     fi
-    unset _config _jq _hotspot_sources _hotspot_sources_json _tmp
+    unset _config _tmp
 }
 
 magicnet_singbox_hotspot_policy_current() {
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
-    _jq="${MODDIR}/bin/jq"
-    [ -x "$_jq" ] || _jq="$(command -v jq 2>/dev/null || true)"
-    [ -n "$_jq" ] || {
-        unset _config _jq
-        return 1
-    }
-    _hotspot_sources="$(magicnet_hotspot_source_cidrs || true)"
-    _hotspot_sources_json="$(printf '%s\n' "$_hotspot_sources" | "$_jq" -Rsc '
-        split("\n") | map(select(length > 0))
-    ')" || {
-        unset _config _jq _hotspot_sources _hotspot_sources_json
-        return 1
-    }
-    "$_jq" -e --argjson hotspot_sources "$_hotspot_sources_json" '
-        [.route.rules[]? | select(
-          (.inbound // []) == ["tun-in"]
-            and (.outbound // "") == "hotspot"
-            and (.source_ip_cidr | type) == "array"
-        )] as $rules
-        | if ($hotspot_sources | length) > 0
-          then ($rules | length) == 1 and $rules[0].source_ip_cidr == $hotspot_sources
-          else ($rules | length) == 0
-          end
-    ' "$_config" >/dev/null 2>&1
-    _hotspot_policy_rc=$?
-    unset _config _jq _hotspot_sources _hotspot_sources_json
+    _tmp="${_config}.hotspot-policy.check.$$"
+    if magicnet_singbox_render_hotspot_policy "$_config" "$_tmp" && cmp -s "$_config" "$_tmp"; then
+        _hotspot_policy_rc=0
+    else
+        _hotspot_policy_rc=1
+    fi
+    rm -f "$_tmp" 2>/dev/null || true
+    unset _config _tmp
     return "$_hotspot_policy_rc"
 }
 
