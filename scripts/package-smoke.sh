@@ -1045,6 +1045,18 @@ global_mode_rules = [
     index for index, rule in enumerate(dns_rules)
     if rule == {"clash_mode": "Global", "server": "doh-cloudflare"}
 ]
+wechat_media_dns_rule = {
+    "domain_suffix": [
+        "qq.com", "weixin.qq.com", "wechat.com", "wechatapp.com", "wechatpay.cn",
+        "tenpay.com", "tencent.com", "tencent-cloud.com", "myqcloud.com", "qcloud.com",
+        "gtimg.com", "idqqimg.com", "qpic.cn", "qlogo.cn", "qmail.com", "smtcdns.com",
+        "servicewechat.com", "weixinbridge.com", "weixinsxy.com", "wx.gtimg.com", "wx.qq.com",
+    ],
+    "server": "bootstrap-local-dns",
+}
+wechat_media_dns_rules = [
+    index for index, rule in enumerate(dns_rules) if rule == wechat_media_dns_rule
+]
 domestic_connectivity_rules = [
     index for index, rule in enumerate(dns_rules) if rule == domestic_connectivity_rule
 ]
@@ -1095,7 +1107,8 @@ if len(direct_mode_rules) != 1 or len(global_mode_rules) != 1:
         f"Direct={direct_mode_rules} Global={global_mode_rules}"
     )
 if (
-    len(domestic_connectivity_rules) != 1
+    len(wechat_media_dns_rules) != 1
+    or len(domestic_connectivity_rules) != 1
     or len(foreign_connectivity_rules) != 1
     or len(apple_icloud_rules) != 1
     or len(cn_bing_dns_rules) != 1
@@ -1114,6 +1127,7 @@ if (
 ):
     raise SystemExit(
         "expected unique exact explicit DNS policy rules, "
+        f"wechat_media={wechat_media_dns_rules} "
         f"domestic={domestic_connectivity_rules} "
         f"foreign={foreign_connectivity_rules} "
         f"apple={apple_icloud_rules} cn_bing={cn_bing_dns_rules} "
@@ -1128,6 +1142,7 @@ if (
     )
 direct_mode_index = direct_mode_rules[0]
 global_mode_index = global_mode_rules[0]
+wechat_media_dns_index = wechat_media_dns_rules[0]
 domestic_connectivity_index = domestic_connectivity_rules[0]
 foreign_connectivity_index = foreign_connectivity_rules[0]
 apple_icloud_index = apple_icloud_rules[0]
@@ -1146,10 +1161,15 @@ x_social_dns_index = x_social_dns_rules[0]
 canonical_cn_dns_index = canonical_cn_dns_rules[0]
 if global_mode_index != direct_mode_index + 1:
     raise SystemExit("Global DNS override must remain immediately after the Direct override")
-if domestic_connectivity_index != global_mode_index + 1:
+if wechat_media_dns_index != global_mode_index + 1:
+    raise SystemExit(
+        f"WeChat media DNS rule index {wechat_media_dns_index} must immediately "
+        f"follow Direct/Global overrides ending at {global_mode_index}"
+    )
+if domestic_connectivity_index != wechat_media_dns_index + 1:
     raise SystemExit(
         f"domestic connectivity DNS rule index {domestic_connectivity_index} must immediately "
-        f"follow Direct/Global overrides ending at {global_mode_index}"
+        f"follow WeChat media DNS rule index {wechat_media_dns_index}"
     )
 if foreign_connectivity_index != domestic_connectivity_index + 1:
     raise SystemExit(
