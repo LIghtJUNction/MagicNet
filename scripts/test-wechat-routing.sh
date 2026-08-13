@@ -22,6 +22,15 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     config = json.load(handle)
 
 route_rules = config["route"]["rules"]
+dns_rules = config["dns"]["rules"]
+wechat_domains = [
+    "qq.com", "weixin.qq.com", "wechat.com", "wechatapp.com", "wechatpay.cn",
+    "tenpay.com", "tencent.com", "tencent-cloud.com", "myqcloud.com", "qcloud.com",
+    "gtimg.com", "idqqimg.com", "qpic.cn", "qlogo.cn", "qmail.com", "smtcdns.com",
+    "servicewechat.com", "weixinbridge.com", "weixinsxy.com", "wx.gtimg.com", "wx.qq.com",
+]
+wechat_route = {"domain_suffix": wechat_domains, "outbound": "cn-direct"}
+wechat_dns = {"domain_suffix": wechat_domains, "server": "bootstrap-local-dns"}
 
 
 def exact_indexes(rules, expected):
@@ -53,15 +62,36 @@ def domain_matches(rule, domain):
     )
 
 
+wechat_route_indexes = exact_indexes(route_rules, wechat_route)
+wechat_dns_indexes = exact_indexes(dns_rules, wechat_dns)
+if len(wechat_route_indexes) != 1:
+    raise AssertionError(f"expected one canonical WeChat direct route, got {wechat_route_indexes}")
+if len(wechat_dns_indexes) != 1:
+    raise AssertionError(f"expected one canonical WeChat local-DNS rule, got {wechat_dns_indexes}")
+
+global_route_indexes = [
+    index for index, rule in enumerate(route_rules) if rule.get("clash_mode") == "Global"
+]
+global_dns_indexes = [
+    index for index, rule in enumerate(dns_rules) if rule.get("clash_mode") == "Global"
+]
+if global_route_indexes and wechat_route_indexes[0] <= global_route_indexes[-1]:
+    raise AssertionError("Global route mode must retain priority over the WeChat direct route")
+if global_dns_indexes and wechat_dns_indexes[0] <= global_dns_indexes[-1]:
+    raise AssertionError("Global DNS mode must retain priority over the WeChat local resolver")
+
 if any(
-    any(
-        token in suffix
-        for suffix in rule.get("domain_suffix", [])
-        for token in ("qq", "wechat", "weixin", "qpic", "qlogo", "tencent")
-    )
+    "com.tencent.mm" in rule.get("package_name", [])
+    and rule.get("outbound") == "cn-direct"
     for rule in route_rules
 ):
-    raise AssertionError("routing policy must not contain QQ/WeChat/Tencent-specific exceptions")
+    raise AssertionError("WeChat must not be forced wholly direct by package name")
 
-print("Generic domestic routing policy test passed")
+for domain in ("mmbiz.qpic.cn", "wx.qlogo.cn", "res.wx.qq.com", "weixin.qq.com"):
+    if not domain_matches(wechat_route, domain):
+        raise AssertionError(f"WeChat media domain is missing from direct routing: {domain}")
+    if not domain_matches(wechat_dns, domain):
+        raise AssertionError(f"WeChat media domain is missing from local DNS: {domain}")
+
+print("WeChat media routing policy test passed")
 PY
