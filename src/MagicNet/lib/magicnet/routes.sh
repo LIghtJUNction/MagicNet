@@ -35,6 +35,11 @@ magicnet_hotspot_proxy_enabled() {
     [ -f "$(magicnet_hotspot_offload_state_file)" ]
 }
 
+magicnet_hotspot_source_cidrs() {
+    magicnet_hotspot_proxy_enabled || return 0
+    magicnet_hotspot_active_networks | awk -F'|' 'NF == 2 && !seen[$2]++ { print $2 }'
+}
+
 magicnet_hotspot_interface_allowed() {
     _hotspot_allowed_iface="$1"
     case "$_hotspot_allowed_iface" in
@@ -459,14 +464,19 @@ magicnet_singbox_apply_hotspot_policy() {
         unset _config _jq
         return 1
     }
+    _hotspot_sources="$(magicnet_hotspot_source_cidrs || true)"
+    _hotspot_sources_json="$(printf '%s\n' "$_hotspot_sources" | "$_jq" -Rsc '
+        split("\n") | map(select(length > 0))
+    ')" || {
+        unset _config _jq _hotspot_sources _hotspot_sources_json
+        return 1
+    }
     _tmp="${_config}.hotspot-policy.new"
-    # Forwarded Android tethering clients retain a private source address when
-    # entering the TUN. The policy route below selects the actual tethered
-    # interface; these RFC1918 ranges keep the sing-box rule valid even when an
-    # OEM changes the DHCP subnet after the core has already started.
-    if (umask 077; "$_jq" '
-        def hotspot_sources:
-          ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"];
+    # Forwarded clients retain an address from the active downstream subnet
+    # when entering the TUN. Match only those discovered subnets: matching all
+    # RFC1918 space also catches the phone's own Wi-Fi traffic whenever process
+    # attribution or domain sniffing is unavailable.
+    if (umask 077; "$_jq" --argjson hotspot_sources "$_hotspot_sources_json" '
         def hotspot_selector:
           {
             "type": "selector",
@@ -477,13 +487,13 @@ magicnet_singbox_apply_hotspot_policy() {
         def hotspot_rule:
           {
             "inbound": ["tun-in"],
-            "source_ip_cidr": hotspot_sources,
+            "source_ip_cidr": $hotspot_sources,
             "outbound": "hotspot"
           };
         def is_hotspot_rule:
           (.inbound // []) == ["tun-in"]
-            and (.source_ip_cidr // []) == hotspot_sources
-            and (.outbound // "") == "hotspot";
+            and (.outbound // "") == "hotspot"
+            and (.source_ip_cidr | type) == "array";
         .outbounds = (
           ((.outbounds // []) | map(select((.tag // "") != "hotspot")))
           + [hotspot_selector]
@@ -499,16 +509,51 @@ magicnet_singbox_apply_hotspot_policy() {
           ) as $action_anchor
         | (($dns_guard_anchor // $action_anchor // -1) + 1) as $insert_at
         | .route.rules = (
-            $rules[:$insert_at] + [hotspot_rule] + $rules[$insert_at:]
+            if ($hotspot_sources | length) > 0
+            then $rules[:$insert_at] + [hotspot_rule] + $rules[$insert_at:]
+            else $rules
+            end
           )
     ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"; then
         :
     else
         rm -f "$_tmp" 2>/dev/null || true
-        unset _config _jq _tmp
+        unset _config _jq _hotspot_sources _hotspot_sources_json _tmp
         return 1
     fi
-    unset _config _jq _tmp
+    unset _config _jq _hotspot_sources _hotspot_sources_json _tmp
+}
+
+magicnet_singbox_hotspot_policy_current() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+    _jq="${MODDIR}/bin/jq"
+    [ -x "$_jq" ] || _jq="$(command -v jq 2>/dev/null || true)"
+    [ -n "$_jq" ] || {
+        unset _config _jq
+        return 1
+    }
+    _hotspot_sources="$(magicnet_hotspot_source_cidrs || true)"
+    _hotspot_sources_json="$(printf '%s\n' "$_hotspot_sources" | "$_jq" -Rsc '
+        split("\n") | map(select(length > 0))
+    ')" || {
+        unset _config _jq _hotspot_sources _hotspot_sources_json
+        return 1
+    }
+    "$_jq" -e --argjson hotspot_sources "$_hotspot_sources_json" '
+        [.route.rules[]? | select(
+          (.inbound // []) == ["tun-in"]
+            and (.outbound // "") == "hotspot"
+            and (.source_ip_cidr | type) == "array"
+        )] as $rules
+        | if ($hotspot_sources | length) > 0
+          then ($rules | length) == 1 and $rules[0].source_ip_cidr == $hotspot_sources
+          else ($rules | length) == 0
+          end
+    ' "$_config" >/dev/null 2>&1
+    _hotspot_policy_rc=$?
+    unset _config _jq _hotspot_sources _hotspot_sources_json
+    return "$_hotspot_policy_rc"
 }
 
 magicnet_route_singbox_rules() {

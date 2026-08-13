@@ -758,9 +758,8 @@ hotspot_policy_ready() {
     )
     and ([.route.rules[] | select(
       .inbound == ["tun-in"]
-      and .source_ip_cidr == ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
       and .outbound == "hotspot"
-    )] | length == 1)
+    )] | length == 0)
     ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 }
 for _wait_hotspot_policy in {1..20}; do

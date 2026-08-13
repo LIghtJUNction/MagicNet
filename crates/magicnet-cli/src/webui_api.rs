@@ -81,7 +81,13 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             run_magicnet_function(app, "magicnet_hotspot_route_status")?;
             Ok(())
         }
-        "reconcile" => run_magicnet_function(app, "magicnet_hotspot_reconcile"),
+        "reconcile" => {
+            run_magicnet_function(app, "magicnet_hotspot_reconcile")?;
+            if run_magicnet_function(app, "magicnet_singbox_hotspot_policy_current").is_err() {
+                apply_config(app)?;
+            }
+            Ok(())
+        }
         "enable" | "disable" => {
             let member = if action == "enable" {
                 "proxy"
@@ -108,9 +114,8 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             }
             if action == "enable" {
                 // The hotspot source rule is consumed at sing-box startup.
-                // Apply the canonical RFC1918 rule and restart only when the
-                // effective runtime fingerprint changed; this upgrades an
-                // already-running process from the legacy fixed subnets.
+                // Materialize the active downstream subnet and restart only
+                // when the effective runtime fingerprint changed.
                 if let Err(error) = apply_config(app) {
                     let _ = select_proxy(app, "hotspot", "direct");
                     let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
