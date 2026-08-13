@@ -67,7 +67,23 @@ fn sync_persisted_hotspot_offload(app: &App) {
     } else {
         let _ = run_magicnet_function(app, "magicnet_hotspot_watchdog_stop");
         let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+        if let Err(err) = refresh_hotspot_policy_if_stale(app) {
+            eprintln!("[warning] stale hotspot source policy could not be removed: {err}");
+        }
     }
+}
+
+fn refresh_hotspot_policy_if_stale(app: &App) -> Result<(), String> {
+    if run_magicnet_function(app, "magicnet_singbox_hotspot_policy_current").is_err() {
+        apply_config(app)?;
+    }
+    Ok(())
+}
+
+fn rollback_hotspot_enable(app: &App) {
+    let _ = select_proxy(app, "hotspot", "direct");
+    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
+    let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
 }
 
 pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -83,10 +99,7 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "reconcile" => {
             run_magicnet_function(app, "magicnet_hotspot_reconcile")?;
-            if run_magicnet_function(app, "magicnet_singbox_hotspot_policy_current").is_err() {
-                apply_config(app)?;
-            }
-            Ok(())
+            refresh_hotspot_policy_if_stale(app)
         }
         "enable" | "disable" => {
             let member = if action == "enable" {
@@ -108,7 +121,7 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             };
             if let Err(error) = selected {
                 if action == "enable" {
-                    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
+                    rollback_hotspot_enable(app);
                 }
                 return Err(error);
             }
@@ -117,20 +130,15 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 // Materialize the active downstream subnet and restart only
                 // when the effective runtime fingerprint changed.
                 if let Err(error) = apply_config(app) {
-                    let _ = select_proxy(app, "hotspot", "direct");
-                    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
+                    rollback_hotspot_enable(app);
                     return Err(format!("apply hotspot TUN policy: {error}"));
                 }
                 if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_reconcile") {
-                    let _ = select_proxy(app, "hotspot", "direct");
-                    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
-                    let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+                    rollback_hotspot_enable(app);
                     return Err(format!("apply hotspot TUN route: {error}"));
                 }
                 if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_watchdog_start") {
-                    let _ = select_proxy(app, "hotspot", "direct");
-                    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
-                    let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+                    rollback_hotspot_enable(app);
                     return Err(format!("start hotspot route watcher: {error}"));
                 }
             }
@@ -140,6 +148,7 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 let cleanup_result = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
                 stop_result?;
                 cleanup_result?;
+                refresh_hotspot_policy_if_stale(app)?;
             }
             Ok(())
         }

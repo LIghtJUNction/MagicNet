@@ -11,6 +11,8 @@ mkdir -p "$MODDIR/.state/hotspot" "$MODDIR/.config/sing-box"
 printf '%s\n' '21000: from all iif wlan2 lookup wlan0' >"$RULES"
 printf '%s\n' 'value=0' >"$MODDIR/.state/hotspot/tether-offload.previous"
 HOTSPOT_CIDR=10.199.43.0/24
+HOTSPOT_SECONDARY_CIDR=
+HOTSPOT_INTERFACE_ORDER=primary-first
 cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 {
   "outbounds": [
@@ -19,7 +21,13 @@ cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
   "route": {
     "rules": [
       {"inbound": ["mixed-in", "tun-in"], "action": "sniff"},
-      {"domain_suffix": ["qq.com"], "outbound": "cn-direct"}
+      {"domain_suffix": ["qq.com"], "outbound": "cn-direct"},
+      {
+        "inbound": ["tun-in"],
+        "source_ip_cidr": ["198.51.100.0/24"],
+        "network": "tcp",
+        "outbound": "hotspot"
+      }
     ]
   }
 }
@@ -33,7 +41,7 @@ magicnet_cmd_exists() {
 }
 
 magicnet_iface_exists() {
-  [ "$1" = magicnet0 ] || [ "$1" = wlan2 ]
+  [ "$1" = magicnet0 ] || [ "$1" = wlan2 ] || [ "$1" = usb0 ]
 }
 
 magicnet_warn() {
@@ -42,7 +50,15 @@ magicnet_warn() {
 
 dumpsys() {
   [ "${1:-}" = tethering ] || return 1
-  printf '%s\n' 'wlan2 - TetheredState - lastError = 0'
+  if [ -n "$HOTSPOT_SECONDARY_CIDR" ] && [ "$HOTSPOT_INTERFACE_ORDER" = secondary-first ]; then
+    printf '%s\n' \
+      'usb0 - TetheredState - lastError = 0' \
+      'wlan2 - TetheredState - lastError = 0'
+  else
+    printf '%s\n' 'wlan2 - TetheredState - lastError = 0'
+    [ -z "$HOTSPOT_SECONDARY_CIDR" ] ||
+      printf '%s\n' 'usb0 - TetheredState - lastError = 0'
+  fi
 }
 
 settings() {
@@ -63,6 +79,13 @@ ip() {
     [ "${3:-}" = dev ] && [ "${4:-}" = wlan2 ] &&
     [ "${5:-}" = scope ] && [ "${6:-}" = link ]; then
     printf '%s proto kernel scope link src 10.199.43.11\n' "$HOTSPOT_CIDR"
+    return 0
+  fi
+  if [ "${1:-}" = route ] && [ "${2:-}" = show ] &&
+    [ "${3:-}" = dev ] && [ "${4:-}" = usb0 ] &&
+    [ "${5:-}" = scope ] && [ "${6:-}" = link ]; then
+    [ -z "$HOTSPOT_SECONDARY_CIDR" ] ||
+      printf '%s proto kernel scope link src 10.88.0.1\n' "$HOTSPOT_SECONDARY_CIDR"
     return 0
   fi
   if [ "${1:-}" = rule ] && [ "${2:-}" = show ]; then
@@ -92,6 +115,7 @@ magicnet_singbox_apply_hotspot_policy
 jq -e '
   [.route.rules[] | select(
     .inbound == ["tun-in"] and .outbound == "hotspot"
+      and ((has("network") | not))
   )] == [{
     "inbound": ["tun-in"],
     "source_ip_cidr": ["10.199.43.0/24"],
@@ -99,6 +123,14 @@ jq -e '
   }]
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 magicnet_singbox_hotspot_policy_current
+jq -e '
+  [.route.rules[] | select(
+    .inbound == ["tun-in"]
+      and .source_ip_cidr == ["198.51.100.0/24"]
+      and .network == "tcp"
+      and .outbound == "hotspot"
+  )] | length == 1
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
 if jq -e '
   [.route.rules[] | select(
     .outbound == "hotspot"
@@ -109,6 +141,7 @@ if jq -e '
   exit 1
 fi
 HOTSPOT_CIDR=192.168.52.0/24
+HOTSPOT_SECONDARY_CIDR=10.88.0.0/24
 if magicnet_singbox_hotspot_policy_current; then
   printf '%s\n' 'renumbered hotspot subnet was incorrectly treated as current' >&2
   exit 1
@@ -117,9 +150,13 @@ magicnet_singbox_apply_hotspot_policy
 jq -e '
   [.route.rules[] | select(
     .inbound == ["tun-in"] and .outbound == "hotspot"
-  )][0].source_ip_cidr == ["192.168.52.0/24"]
+      and ((has("network") | not))
+  )][0].source_ip_cidr == ["10.88.0.0/24", "192.168.52.0/24"]
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 magicnet_singbox_hotspot_policy_current
+HOTSPOT_INTERFACE_ORDER=secondary-first
+magicnet_singbox_hotspot_policy_current
+HOTSPOT_SECONDARY_CIDR=
 
 magicnet_hotspot_reconcile
 grep -Fqx '20999|wlan2' "$MODDIR/.state/hotspot/tun-rules.list"
@@ -143,7 +180,16 @@ magicnet_singbox_apply_hotspot_policy
 jq -e '
   [.route.rules[] | select(
     .inbound == ["tun-in"] and .outbound == "hotspot"
+      and ((has("network") | not))
   )] | length == 0
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
+jq -e '
+  [.route.rules[] | select(
+    .inbound == ["tun-in"]
+      and .source_ip_cidr == ["198.51.100.0/24"]
+      and .network == "tcp"
+      and .outbound == "hotspot"
+  )] | length == 1
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 magicnet_singbox_hotspot_policy_current
 
