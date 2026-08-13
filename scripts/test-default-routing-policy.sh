@@ -205,6 +205,15 @@ apple_icloud_dns_rule = {
 }
 direct_mode_dns_rule = {"clash_mode": "Direct", "server": "bootstrap-local-dns"}
 global_mode_dns_rule = {"clash_mode": "Global", "server": "doh-cloudflare"}
+wechat_media_dns_rule = {
+    "domain_suffix": [
+        "qq.com", "weixin.qq.com", "wechat.com", "wechatapp.com", "wechatpay.cn",
+        "tenpay.com", "tencent.com", "tencent-cloud.com", "myqcloud.com", "qcloud.com",
+        "gtimg.com", "idqqimg.com", "qpic.cn", "qlogo.cn", "qmail.com", "smtcdns.com",
+        "servicewechat.com", "weixinbridge.com", "weixinsxy.com", "wx.gtimg.com", "wx.qq.com",
+    ],
+    "server": "bootstrap-local-dns",
+}
 domestic_connectivity_dns_rule = {
     "domain_suffix": ["connect.rom.miui.com", "connectivitycheck.platform.hicloud.com"],
     "server": "bootstrap-local-dns",
@@ -315,6 +324,7 @@ ordered_dns_policy_indexes = []
 for expected_rule in (
     direct_mode_dns_rule,
     global_mode_dns_rule,
+    wechat_media_dns_rule,
     domestic_connectivity_dns_rule,
     foreign_network_test_dns_rule,
     apple_icloud_dns_rule,
@@ -331,13 +341,14 @@ if not all(
     for left, right in zip(ordered_dns_policy_indexes, ordered_dns_policy_indexes[1:])
 ):
     raise AssertionError(
-        "required DNS order is Direct -> Global -> domestic connectivity -> foreign network-test "
-        "-> Apple -> cn Bing -> global Bing -> local Microsoft: "
+        "required DNS order is Direct -> Global -> WeChat media -> domestic connectivity "
+        "-> foreign network-test -> Apple -> cn Bing -> global Bing -> local Microsoft: "
         f"indexes={ordered_dns_policy_indexes}"
     )
 (
     direct_mode_dns_index,
     global_mode_dns_index,
+    wechat_media_dns_index,
     domestic_connectivity_dns_index,
     foreign_network_test_dns_index,
     apple_icloud_dns_index,
