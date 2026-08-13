@@ -10,6 +10,20 @@ RULES="$WORK/ip-rules"
 mkdir -p "$MODDIR/.state/hotspot" "$MODDIR/.config/sing-box"
 printf '%s\n' '21000: from all iif wlan2 lookup wlan0' >"$RULES"
 printf '%s\n' 'value=0' >"$MODDIR/.state/hotspot/tether-offload.previous"
+HOTSPOT_CIDR=10.199.43.0/24
+cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{
+  "outbounds": [
+    {"type": "selector", "tag": "hotspot", "outbounds": ["direct", "proxy"], "default": "direct"}
+  ],
+  "route": {
+    "rules": [
+      {"inbound": ["mixed-in", "tun-in"], "action": "sniff"},
+      {"domain_suffix": ["qq.com"], "outbound": "cn-direct"}
+    ]
+  }
+}
+EOF
 
 magicnet_cmd_exists() {
   case "$1" in
@@ -48,7 +62,7 @@ ip() {
   if [ "${1:-}" = route ] && [ "${2:-}" = show ] &&
     [ "${3:-}" = dev ] && [ "${4:-}" = wlan2 ] &&
     [ "${5:-}" = scope ] && [ "${6:-}" = link ]; then
-    printf '%s\n' '10.199.43.0/24 proto kernel scope link src 10.199.43.11'
+    printf '%s proto kernel scope link src 10.199.43.11\n' "$HOTSPOT_CIDR"
     return 0
   fi
   if [ "${1:-}" = rule ] && [ "${2:-}" = show ]; then
@@ -74,6 +88,39 @@ ip() {
 
 . "$ROOT/src/MagicNet/lib/magicnet/routes.sh"
 
+magicnet_singbox_apply_hotspot_policy
+jq -e '
+  [.route.rules[] | select(
+    .inbound == ["tun-in"] and .outbound == "hotspot"
+  )] == [{
+    "inbound": ["tun-in"],
+    "source_ip_cidr": ["10.199.43.0/24"],
+    "outbound": "hotspot"
+  }]
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
+magicnet_singbox_hotspot_policy_current
+if jq -e '
+  [.route.rules[] | select(
+    .outbound == "hotspot"
+      and (.source_ip_cidr // [] | index("192.168.0.0/16")) != null
+  )] | length > 0
+' "$MODDIR/.config/sing-box/config.json" >/dev/null; then
+  printf '%s\n' 'phone Wi-Fi RFC1918 space leaked into the hotspot source policy' >&2
+  exit 1
+fi
+HOTSPOT_CIDR=192.168.52.0/24
+if magicnet_singbox_hotspot_policy_current; then
+  printf '%s\n' 'renumbered hotspot subnet was incorrectly treated as current' >&2
+  exit 1
+fi
+magicnet_singbox_apply_hotspot_policy
+jq -e '
+  [.route.rules[] | select(
+    .inbound == ["tun-in"] and .outbound == "hotspot"
+  )][0].source_ip_cidr == ["192.168.52.0/24"]
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
+magicnet_singbox_hotspot_policy_current
+
 magicnet_hotspot_reconcile
 grep -Fqx '20999|wlan2' "$MODDIR/.state/hotspot/tun-rules.list"
 grep -Fqx '20999: from all iif wlan2 lookup 2022' "$RULES"
@@ -84,7 +131,7 @@ magicnet_hotspot_reconcile
 magicnet_hotspot_route_status >"$WORK/status"
 grep -Fqx 'route_table_ready=1' "$WORK/status"
 grep -Fqx 'downstream_interfaces=wlan2' "$WORK/status"
-grep -Fqx 'downstream_networks=10.199.43.0/24' "$WORK/status"
+grep -Fqx 'downstream_networks=192.168.52.0/24' "$WORK/status"
 grep -Fqx 'route_status=ready' "$WORK/status"
 
 magicnet_hotspot_offload_restore
@@ -92,5 +139,12 @@ magicnet_hotspot_offload_restore
 if grep -q '^20999:' "$RULES"; then
   exit 1
 fi
+magicnet_singbox_apply_hotspot_policy
+jq -e '
+  [.route.rules[] | select(
+    .inbound == ["tun-in"] and .outbound == "hotspot"
+  )] | length == 0
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
+magicnet_singbox_hotspot_policy_current
 
 printf '%s\n' 'hotspot routing test passed'

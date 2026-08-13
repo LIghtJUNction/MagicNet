@@ -24,13 +24,9 @@ assert.match(control, /hotspot \$\{enabled \? "enable" : "disable"\}/);
 assert.match(control, /proxy<\/code> 代理组/);
 assert.match(control, /不勾选时统一走\s*<code>direct<\/code>/);
 
-for (const source of [
-  "10.0.0.0/8",
-  "172.16.0.0/12",
-  "192.168.0.0/16",
-]) {
-  assert.match(routes, new RegExp(source.replaceAll(".", String.raw`\.`)));
-}
+assert.match(routes, /magicnet_hotspot_source_cidrs/);
+assert.match(routes, /magicnet_hotspot_active_networks/);
+assert.doesNotMatch(routes, /\["10\.0\.0\.0\/8", "172\.16\.0\.0\/12", "192\.168\.0\.0\/16"\]/);
 assert.match(routes, /"outbound": "hotspot"/);
 assert.match(routes, /"outbounds": \["direct", "proxy"\]/);
 assert.match(routes, /ip rule add priority/);
@@ -42,6 +38,7 @@ assert.match(routes, /magicnet_hotspot_offload_restore/);
 assert.match(routes, /register_uninstall_cmd/);
 assert.match(control, /关闭 Android 热点硬件加速/);
 assert.match(webuiApi, /"replay"[\s\S]*sync_persisted_hotspot_offload/);
+assert.match(webuiApi, /"reconcile"[\s\S]*magicnet_singbox_hotspot_policy_current/);
 assert.match(
   network,
   /magicnet_after_kernel_start_deferred_unlocked\(\)[\s\S]*magicnet_singbox_apply_hotspot_policy/,
