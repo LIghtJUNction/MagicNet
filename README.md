@@ -10,13 +10,9 @@
 
 MagicNet 用 root 管理的 `sing-box` `magicnet0` TUN 接管、分流和代理 Android 设备流量。它不调用应用侧 `VpnService.establish()`，不会占用系统 VPN slot；当前主线只有 TUN，不包含 TProxy 或 eBPF 透明路径。
 
-## 开源激励计划
-- 前往https://api.lmm.best
-- 接受挑战
-- 完成挑战，中途我可以赠送一些小费
-（提交issue/pr）
-- 由我审核
-- 审核通过，可兑换token使用
+## 支持开源开发
+
+MagicNet 的网络接管、分流和代理功能不依赖任何 LLM API。项目开发中的自动化测试、MCP 调试与 AI 协作会持续消耗模型额度；如果你也需要 OpenAI 兼容的多模型接口，可以使用作者维护的 [LMM API Gateway](https://api.lmm.best)。通过 LMM 购买 API 额度会帮助承担这些开发成本；有价值的 Issue、PR 和测试反馈也可能获得 API 额度奖励。
 
 ## 安装与首次成功运行
 
@@ -134,13 +130,6 @@ kam build
 - GitHub Issue：建议附上 `cli health`、`cli transparent status` 和 `cli support bundle` 的脱敏结果。
 
 WebUI 的“反馈问题 / 创建 Issue”会先选择问题类型，再按类型生成脱敏上下文。提交前仍应检查正文，不要公开订阅 URL、token、secret、password、完整节点地址或设备标识。
-
-## 推广
-
-- [作者的中转站](https://api.lmm.best)：测试迭代中，源代码已开源；购买 token 表示支持。
-- [AI 自动推广系统](https://bizbot.zvo.cn/)：探索 AI 驱动的自动推广工具与工作流。
-
-提交 Issue 或 PR 有机会获得奖励。
 
 ## 许可证
 
