@@ -96,8 +96,10 @@ candidate_url="$candidate_dir/fixture.url"
 candidate_local="$candidate_dir/fixture.local"
 restart_log="$fixture/restarts.log"
 core_state="$fixture/core-state"
+proxylink_calls="$fixture/proxylink-calls"
 mkdir -p "$candidate_dir"
 : >"$restart_log"
+: >"$proxylink_calls"
 printf 'active-candidate\n' >"$active_url"
 printf 'active-config\n' >"$active_config"
 printf 'last-good-work\n' >"$work_marker"
@@ -129,11 +131,23 @@ write_local_candidate() {
 magicnet_with_config_lock() { "$@"; }
 magicnet_fswatch_status() { return 1; }
 RUNNING=0
+NATIVE_NODE_COUNT=1
+PROXYLINK_AVAILABLE=0
 magicnet_singbox_is_running() { test "$RUNNING" -eq 1; }
-magicnet_singbox_extract_clash_nodes() { printf '1\n'; }
-magicnet_singbox_extract_share_links() { printf '1\n'; }
-magicnet_singbox_build_outbounds_with_proxylink() { return 1; }
-magicnet_singbox_proxylink_bin() { return 1; }
+magicnet_singbox_extract_clash_nodes() { printf '%s\n' "$NATIVE_NODE_COUNT"; }
+magicnet_singbox_extract_share_links() { printf '%s\n' "$NATIVE_NODE_COUNT"; }
+magicnet_singbox_build_outbounds_with_proxylink() {
+  test "$PROXYLINK_AVAILABLE" -eq 1 || return 1
+  # shellcheck disable=SC2034 # consumed by the production status writer
+  MAGICNET_SUB_CONVERTER_FORMAT=singbox
+  printf 'called\n' >>"$proxylink_calls"
+  printf '  "outbounds": [{"type":"vless","tag":"redacted-node"}]\n' >"$2"
+  printf '1 0\n'
+}
+magicnet_singbox_proxylink_bin() {
+  test "$PROXYLINK_AVAILABLE" -eq 1 || return 1
+  printf '%s\n' fixture-proxylink
+}
 magicnet_singbox_build_outbounds_file() {
   printf '  "outbounds": [{"type":"vless","tag":"redacted-node"}]\n' >"$2"
   printf '1 0\n'
@@ -168,6 +182,28 @@ magicnet_singbox_fetch_subscription() {
   MAGICNET_SUB_SOURCE_COUNT=1
   export MAGICNET_SUB_CONFIGURED_COUNT MAGICNET_SUB_SOURCE_COUNT
 }
+
+# Native parsing may produce no nodes for a format delegated to Proxylink.
+# The converter must still be attempted before the update is rejected.
+FETCH_RC=0
+NATIVE_NODE_COUNT=0
+PROXYLINK_AVAILABLE=1
+write_candidate
+MAGICNET_SUB_CANDIDATE_URL_FILE="$candidate_url" magicnet_singbox_update_subscription
+assert_file "$active_config" candidate-config
+assert_file "$proxylink_calls" called
+regression_status="$(magicnet_singbox_status)"
+grep -q '^last_native_parser=clash$' <<<"$regression_status"
+grep -q '^last_native_node_count=0$' <<<"$regression_status"
+grep -q '^last_converter_attempted=1$' <<<"$regression_status"
+grep -q '^last_converter_format=singbox$' <<<"$regression_status"
+grep -q '^last_converter_result=success$' <<<"$regression_status"
+NATIVE_NODE_COUNT=1
+PROXYLINK_AVAILABLE=0
+FETCH_RC=1
+printf 'active-candidate\n' >"$active_url"
+printf 'active-config\n' >"$active_config"
+printf 'last-good-work\n' >"$work_marker"
 
 write_candidate
 if MAGICNET_SUB_CANDIDATE_URL_FILE="$candidate_url" magicnet_singbox_update_subscription; then

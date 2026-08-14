@@ -45,6 +45,18 @@ export const ISSUE_KIND_OPTIONS: ReadonlyArray<{
   },
 ];
 
+export type IssueReport = {
+  summary: string;
+  reproduction: string;
+  expected: string;
+  actual: string;
+  frequency: string;
+};
+
+export type IssueReportInput = IssueReport & {
+  kind: IssueKind;
+};
+
 export function issueKindLabel(kind: IssueKind): string {
   return ISSUE_KIND_OPTIONS.find((option) => option.value === kind)?.label || "其他问题";
 }
@@ -269,6 +281,20 @@ export function commandFailureContext(operation: IssueOperationContext): string 
   ].join("\n");
 }
 
+function issueReportText(report: Partial<IssueReport> = {}): string {
+  const field = (label: string, value: string | undefined, limit: number): string => {
+    const sanitized = deterministicSlice(sanitizeDiagnosticText(value || ""), limit);
+    return `${label}：\n${sanitized || "未填写"}`;
+  };
+  return [
+    field("问题概述", report.summary, 360),
+    field("复现步骤", report.reproduction, 520),
+    field("期望结果", report.expected, 260),
+    field("实际结果", report.actual, 360),
+    field("发生频率 / 影响范围", report.frequency, 220),
+  ].join("\n\n");
+}
+
 export function buildIssueBody(parts: {
   kind: IssueKind;
   moduleProp: string;
@@ -276,21 +302,22 @@ export function buildIssueBody(parts: {
   support: string;
   focusedContext: string;
   operation: IssueOperationContext;
+  report?: Partial<IssueReport>;
 }): string {
   const sections = [
     "## Problem",
     "",
-    "请在这里描述你遇到的问题、复现步骤和期望结果。",
+    issueReportText(parts.report),
     "",
     `问题类型：${issueKindLabel(parts.kind)}`,
     "",
     "## Generated Context",
     "",
-    issueSection("Focused Context", deterministicSlice(sanitizeDiagnosticText(parts.focusedContext), 2350)),
-    issueSection("Support Summary", deterministicSlice(sanitizeDiagnosticText(parts.support), 1150)),
-    issueSection("Module", deterministicSlice(sanitizeDiagnosticText(parts.moduleProp), 350)),
-    issueSection("Device", deterministicSlice(sanitizeDiagnosticText(parts.device), 350)),
-    issueSection("UI Operation", deterministicSlice(sanitizeDiagnosticText(operationText(parts.operation)), 650)),
+    issueSection("Focused Context", deterministicSlice(sanitizeDiagnosticText(parts.focusedContext), 1800)),
+    issueSection("Support Summary", deterministicSlice(sanitizeDiagnosticText(parts.support), 900)),
+    issueSection("Module", deterministicSlice(sanitizeDiagnosticText(parts.moduleProp), 220)),
+    issueSection("Device", deterministicSlice(sanitizeDiagnosticText(parts.device), 220)),
+    issueSection("UI Operation", deterministicSlice(sanitizeDiagnosticText(operationText(parts.operation)), 350)),
   ].join("\n");
   return deterministicSlice(sections, MAX_ISSUE_BODY_CHARS);
 }

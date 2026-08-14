@@ -31,6 +31,97 @@ magicnet_singbox_run_proxylink() {
     return "$_proxylink_rc"
 }
 
+magicnet_singbox_proxylink_source_is_singbox_json() {
+    _proxylink_detect_source_file="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -e 'type == "object" and (((.outbounds | type == "array") or (.endpoints | type == "array")) or ((.type | type == "string" and length > 0) and (.server | type == "string" and length > 0)))' \
+            "$_proxylink_detect_source_file" >/dev/null 2>&1
+        _proxylink_detect_json_rc=$?
+    else
+        grep -Eq '"(outbounds|endpoints)"[[:space:]]*:[[:space:]]*\[' "$_proxylink_detect_source_file" ||
+            { grep -Eq '"type"[[:space:]]*:' "$_proxylink_detect_source_file" &&
+                grep -Eq '"server"[[:space:]]*:' "$_proxylink_detect_source_file"; }
+        _proxylink_detect_json_rc=$?
+    fi
+    unset _proxylink_detect_source_file
+    return "$_proxylink_detect_json_rc"
+}
+
+magicnet_singbox_proxylink_decode_source() {
+    _proxylink_decode_source_file="$1"
+    _proxylink_decode_file="$2"
+    command -v base64 >/dev/null 2>&1 || {
+        unset _proxylink_decode_source_file _proxylink_decode_file
+        return 1
+    }
+
+    if base64 -d "$_proxylink_decode_source_file" >"$_proxylink_decode_file" 2>/dev/null &&
+        [ -s "$_proxylink_decode_file" ]; then
+        unset _proxylink_decode_source_file _proxylink_decode_file
+        return 0
+    fi
+
+    : >"$_proxylink_decode_file" || {
+        unset _proxylink_decode_source_file _proxylink_decode_file
+        return 1
+    }
+    if tr -d '\r\n' <"$_proxylink_decode_source_file" | tr '_-' '/+' |
+        awk '{ value = value $0 }
+            END {
+                remainder = length(value) % 4
+                if (remainder == 1) exit 1
+                if (remainder == 2) value = value "=="
+                else if (remainder == 3) value = value "="
+                print value
+            }' |
+        base64 -d >"$_proxylink_decode_file" 2>/dev/null && [ -s "$_proxylink_decode_file" ]; then
+        unset _proxylink_decode_source_file _proxylink_decode_file
+        return 0
+    fi
+
+    unset _proxylink_decode_source_file _proxylink_decode_file
+    return 1
+}
+
+magicnet_singbox_run_proxylink_source() {
+    _proxylink_source_bin="$1"
+    _proxylink_source_file="$2"
+    _proxylink_output_file="$3"
+    _proxylink_source_for="$_proxylink_source_file"
+    _proxylink_decoded_file="${_proxylink_source_file}.proxylink-decoded.$$"
+
+    if ! magicnet_singbox_proxylink_source_is_singbox_json "$_proxylink_source_file" &&
+        magicnet_singbox_proxylink_decode_source "$_proxylink_source_file" "$_proxylink_decoded_file" &&
+        { magicnet_singbox_proxylink_source_is_singbox_json "$_proxylink_decoded_file" ||
+            grep -Eq '^[[:space:]]*proxies:[[:space:]]*$|^[[:space:]]*[[:alpha:]][[:alnum:]+.-]*://' \
+                "$_proxylink_decoded_file"; }; then
+        _proxylink_source_for="$_proxylink_decoded_file"
+    fi
+
+    if magicnet_singbox_proxylink_source_is_singbox_json "$_proxylink_source_for"; then
+        MAGICNET_SUB_CONVERTER_FORMAT=singbox
+        if magicnet_singbox_run_proxylink "$_proxylink_source_bin" -singbox "$_proxylink_source_for" \
+            -format singbox -o "$_proxylink_output_file"; then
+            _proxylink_source_rc=0
+        else
+            _proxylink_source_rc=$?
+        fi
+    else
+        # shellcheck disable=SC2034,SC2209 # consumed by update.sh status metadata
+        MAGICNET_SUB_CONVERTER_FORMAT="file"
+        if magicnet_singbox_run_proxylink "$_proxylink_source_bin" -file "$_proxylink_source_for" \
+            -format singbox -o "$_proxylink_output_file"; then
+            _proxylink_source_rc=0
+        else
+            _proxylink_source_rc=$?
+        fi
+    fi
+    rm -f "$_proxylink_decoded_file" 2>/dev/null || true
+    unset _proxylink_source_bin _proxylink_source_file _proxylink_output_file
+    unset _proxylink_source_for _proxylink_decoded_file
+    return "$_proxylink_source_rc"
+}
+
 magicnet_singbox_build_outbounds_with_proxylink() {
     _sources_file="$1"
     _out_file="$2"
@@ -40,9 +131,12 @@ magicnet_singbox_build_outbounds_with_proxylink() {
     _tmp_outbounds="${_out_file}.proxylink-outbounds.json"
     _filtered_outbounds="${_out_file}.proxylink-filtered.json"
     _links_file="${_sources_file%/*}/nodes/links.txt"
+    MAGICNET_SUB_CONVERTER_FORMAT=none
 
     : >"$_tmp_config"
     if [ -s "$_links_file" ]; then
+        # shellcheck disable=SC2034,SC2209 # consumed by update.sh status metadata
+        MAGICNET_SUB_CONVERTER_FORMAT="file"
         magicnet_singbox_run_proxylink "$_proxylink" -file "$_links_file" -format singbox -o "$_tmp_config" >/dev/null 2>&1 ||
             return 1
     else
@@ -50,7 +144,7 @@ magicnet_singbox_build_outbounds_with_proxylink() {
         while IFS= read -r _source_file || [ -n "$_source_file" ]; do
             [ -s "$_source_file" ] || continue
             [ "$_first" -eq 1 ] || return 1
-            magicnet_singbox_run_proxylink "$_proxylink" -file "$_source_file" -format singbox -o "$_tmp_config" >/dev/null 2>&1 ||
+            magicnet_singbox_run_proxylink_source "$_proxylink" "$_source_file" "$_tmp_config" >/dev/null 2>&1 ||
                 return 1
             _first=0
         done <"$_sources_file"

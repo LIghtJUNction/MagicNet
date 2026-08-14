@@ -9,6 +9,7 @@ import {
   summarizeConnectionsForIssue,
   type IssueKind,
   type IssueOperationContext,
+  type IssueReportInput,
 } from "@/composables/issueDrafts";
 import { copyText, intentDataQuote, shellQuote } from "@/utils";
 import type { RuntimeState } from "@/types";
@@ -64,13 +65,21 @@ async function collectFocusedContext(
     ].join("\n");
   }
   if (kind === "subscription-node") {
-    const [status, logs] = await Promise.all([
+    const [status, health, transparent, logs] = await Promise.all([
       runCli("sub status", "读取订阅状态", true),
+      runCli("health", "检查订阅相关健康状态", true),
+      runCli("transparent status", "检查 TUN 状态", true),
       runCli("service logs sing-box 160", "读取订阅与节点日志", true),
     ]);
     return [
       "[subscription status]",
       status,
+      "",
+      "[health]",
+      health,
+      "",
+      "[transparent]",
+      transparent,
       "",
       "[selector/subscription log tail]",
       sanitizeConnectionLog(relevantLogTail(
@@ -108,7 +117,7 @@ async function collectFocusedContext(
 
 export async function createMagicNetIssue(
   { state, runShell, runCli }: IssueReporterDeps,
-  kind: IssueKind,
+  report: IssueReportInput,
 ): Promise<void> {
   const captured = state.operationCapture.command
     ? state.operationCapture
@@ -133,19 +142,20 @@ export async function createMagicNetIssue(
     const moduleProp = await runShell(`cat ${shellQuote(`${MODULE_DIR}/module.prop`)}`, "读取模块版本", true);
     const version = propValue(moduleProp, "version") || "unknown";
     const runtimeLabel = state.runtime.singBoxState === "unknown" ? "runtime" : state.runtime.singBoxState;
-    const title = `[MagicNet] ${version} ${issueKindLabel(kind)} · ${runtimeLabel}`;
+    const title = `[MagicNet] ${version} ${issueKindLabel(report.kind)} · ${runtimeLabel}`;
     const [device, support, focusedContext] = await Promise.all([
       runShell("getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; uname -a", "读取设备信息", true),
       runCli("support bundle", "生成支持包", true),
-      collectFocusedContext(kind, operation, runCli),
+      collectFocusedContext(report.kind, operation, runCli),
     ]);
     const body = buildIssueBody({
-      kind,
+      kind: report.kind,
       moduleProp,
       device,
       support,
       focusedContext,
       operation,
+      report,
     });
     const copied = await copyText(body);
     const issueUrl = buildIssueUrl(REPO, title, body);

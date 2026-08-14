@@ -110,6 +110,22 @@ magicnet_singbox_status_write() {
     _status_result=$(printf '%s' "$_status_result" | tr -cd 'A-Za-z0-9._-' | cut -c1-32)
     _status_generation=$(printf '%s' "$_status_generation" | tr -cd 'A-Za-z0-9._-' | cut -c1-64)
     _status_reason=$(printf '%s' "$_status_reason" | tr -cd 'A-Za-z0-9._-' | cut -c1-80)
+    _status_source_mode="${MAGICNET_SUB_SOURCE_MODE:-$(magicnet_singbox_status_value source_mode unknown)}"
+    _status_native_parser="${MAGICNET_SUB_NATIVE_PARSER:-$(magicnet_singbox_status_value native_parser unknown)}"
+    _status_native_count="${MAGICNET_SUB_NATIVE_NODE_COUNT:-$(magicnet_singbox_status_value native_node_count 0)}"
+    _status_converter_enabled="${MAGICNET_SUB_CONVERTER_ENABLED:-$(magicnet_singbox_status_value converter_enabled unknown)}"
+    _status_converter_available="${MAGICNET_SUB_CONVERTER_AVAILABLE:-$(magicnet_singbox_status_value converter_available unknown)}"
+    _status_converter_attempted="${MAGICNET_SUB_CONVERTER_ATTEMPTED:-$(magicnet_singbox_status_value converter_attempted 0)}"
+    _status_converter_format="${MAGICNET_SUB_CONVERTER_FORMAT:-$(magicnet_singbox_status_value converter_format none)}"
+    _status_converter_result="${MAGICNET_SUB_CONVERTER_RESULT:-$(magicnet_singbox_status_value converter_result unknown)}"
+    _status_source_mode=$(printf '%s' "$_status_source_mode" | tr -cd 'A-Za-z0-9._-' | cut -c1-16)
+    _status_native_parser=$(printf '%s' "$_status_native_parser" | tr -cd 'A-Za-z0-9._-' | cut -c1-32)
+    _status_native_count=$(printf '%s' "$_status_native_count" | tr -cd '0-9' | cut -c1-10)
+    _status_converter_enabled=$(printf '%s' "$_status_converter_enabled" | tr -cd 'A-Za-z0-9._-' | cut -c1-16)
+    _status_converter_available=$(printf '%s' "$_status_converter_available" | tr -cd 'A-Za-z0-9._-' | cut -c1-16)
+    _status_converter_attempted=$(printf '%s' "$_status_converter_attempted" | tr -cd 'A-Za-z0-9._-' | cut -c1-16)
+    _status_converter_format=$(printf '%s' "$_status_converter_format" | tr -cd 'A-Za-z0-9._-' | cut -c1-32)
+    _status_converter_result=$(printf '%s' "$_status_converter_result" | tr -cd 'A-Za-z0-9._-' | cut -c1-32)
     mkdir -p "${_status_file%/*}" || return 1
     {
         printf 'phase=%s\n' "${_status_phase:-unknown}"
@@ -122,11 +138,22 @@ magicnet_singbox_status_write() {
         printf 'skipped_count=%s\n' "${_status_skipped:-0}"
         printf 'generation_id=%s\n' "${_status_generation:-none}"
         printf 'reason=%s\n' "${_status_reason:-none}"
+        printf 'source_mode=%s\n' "${_status_source_mode:-unknown}"
+        printf 'native_parser=%s\n' "${_status_native_parser:-unknown}"
+        printf 'native_node_count=%s\n' "${_status_native_count:-0}"
+        printf 'converter_enabled=%s\n' "${_status_converter_enabled:-unknown}"
+        printf 'converter_available=%s\n' "${_status_converter_available:-unknown}"
+        printf 'converter_attempted=%s\n' "${_status_converter_attempted:-0}"
+        printf 'converter_format=%s\n' "${_status_converter_format:-none}"
+        printf 'converter_result=%s\n' "${_status_converter_result:-unknown}"
     } >"$_status_tmp" && mv -f "$_status_tmp" "$_status_file"
     _status_rc=$?
     [ "$_status_rc" -eq 0 ] || rm -f "$_status_tmp" 2>/dev/null || true
     unset _status_phase _status_result _status_attempt _status_success _status_configured
     unset _status_sources _status_imported _status_skipped _status_generation _status_reason
+    unset _status_source_mode _status_native_parser _status_native_count
+    unset _status_converter_enabled _status_converter_available _status_converter_attempted
+    unset _status_converter_format _status_converter_result
     unset _status_file _status_tmp
     return "$_status_rc"
 }
@@ -444,6 +471,14 @@ magicnet_singbox_status() {
     printf 'last_skipped_count=%s\n' "$(magicnet_singbox_status_value skipped_count 0)"
     printf 'last_generation_id=%s\n' "$(magicnet_singbox_status_value generation_id none)"
     printf 'last_reason=%s\n' "$(magicnet_singbox_status_value reason none)"
+    printf 'last_source_mode=%s\n' "$(magicnet_singbox_status_value source_mode unknown)"
+    printf 'last_native_parser=%s\n' "$(magicnet_singbox_status_value native_parser unknown)"
+    printf 'last_native_node_count=%s\n' "$(magicnet_singbox_status_value native_node_count 0)"
+    printf 'last_converter_enabled=%s\n' "$(magicnet_singbox_status_value converter_enabled unknown)"
+    printf 'last_converter_available=%s\n' "$(magicnet_singbox_status_value converter_available unknown)"
+    printf 'last_converter_attempted=%s\n' "$(magicnet_singbox_status_value converter_attempted 0)"
+    printf 'last_converter_format=%s\n' "$(magicnet_singbox_status_value converter_format none)"
+    printf 'last_converter_result=%s\n' "$(magicnet_singbox_status_value converter_result unknown)"
     printf 'cache_count=%s\n' "${_status_cache_count:-0}"
     printf 'cache_provenance_count=%s\n' "${_status_cache_provenance_count:-0}"
     printf 'cache_source=%s\n' "$_status_cache_source"
@@ -549,6 +584,28 @@ magicnet_singbox_update_subscription_unlocked() {
         _sub_source_mode=url
         _sub_input_source="${MAGICNET_SUB_URL_FILE:-$_sub_active_url}"
     fi
+    MAGICNET_SUB_SOURCE_MODE="$_sub_source_mode"
+    MAGICNET_SUB_NATIVE_PARSER=unknown
+    MAGICNET_SUB_NATIVE_NODE_COUNT=0
+    case "${MAGICNET_PROXYLINK_ENABLED:-1}" in
+        1) MAGICNET_SUB_CONVERTER_ENABLED=1 ;;
+        *) MAGICNET_SUB_CONVERTER_ENABLED=0 ;;
+    esac
+    if [ "$MAGICNET_SUB_CONVERTER_ENABLED" = 1 ] &&
+        magicnet_singbox_proxylink_bin >/dev/null 2>&1; then
+        MAGICNET_SUB_CONVERTER_AVAILABLE=1
+    else
+        MAGICNET_SUB_CONVERTER_AVAILABLE=0
+    fi
+    MAGICNET_SUB_CONVERTER_ATTEMPTED=0
+    MAGICNET_SUB_CONVERTER_FORMAT=none
+    if [ "$MAGICNET_SUB_CONVERTER_ENABLED" != 1 ]; then
+        MAGICNET_SUB_CONVERTER_RESULT=disabled
+    elif [ "$MAGICNET_SUB_CONVERTER_AVAILABLE" != 1 ]; then
+        MAGICNET_SUB_CONVERTER_RESULT=unavailable
+    else
+        MAGICNET_SUB_CONVERTER_RESULT=not_attempted
+    fi
     _sub_active_config="${MODDIR}/.config/sing-box/config.json"
     _sub_candidate_config="${_sub_active_config}.candidate-${_sub_generation_id}"
     _sub_was_running=0
@@ -583,33 +640,42 @@ magicnet_singbox_update_subscription_unlocked() {
     fi
 
     _node_total=0
+    _native_parser=none
     while IFS= read -r _source_file || [ -n "$_source_file" ]; do
         [ -s "$_source_file" ] || continue
         if grep -Eq '^proxies:[[:space:]]*$' "$_source_file"; then
             _node_count=$(magicnet_singbox_extract_clash_nodes "$_source_file" "$_nodes_dir")
+            _native_kind=clash
         else
             _node_count=$(magicnet_singbox_extract_share_links "$_source_file" "$_nodes_dir")
+            _native_kind=share-links
         fi
         _node_total=$((_node_total + ${_node_count:-0}))
+        case "$_native_parser:$_native_kind" in
+            none:*) _native_parser="$_native_kind" ;;
+            *:"$_native_kind") : ;;
+            *) _native_parser=mixed ;;
+        esac
     done <"$_sources_file"
-
-    if [ "${_node_total:-0}" -le 0 ]; then
-        error "No supported subscription nodes found"
-        magicnet_singbox_update_status parse failed no_supported_nodes || true
-        magicnet_singbox_update_cleanup_stage
-        return 1
-    fi
+    MAGICNET_SUB_NATIVE_PARSER="$_native_parser"
+    MAGICNET_SUB_NATIVE_NODE_COUNT="$_node_total"
 
     info "Subscription update stage: convert"
     magicnet_singbox_update_status convert running none || true
-    if [ "${MAGICNET_PROXYLINK_ENABLED:-1}" = "1" ] &&
-        magicnet_singbox_proxylink_bin >/dev/null 2>&1 &&
-        magicnet_singbox_build_outbounds_with_proxylink "$_sources_file" "$_outbounds_file" "$_node_total" >"${_sub_stage_dir}/proxylink-counts.txt" 2>/dev/null; then
-        # shellcheck disable=SC2046
-        set -- $(cat "${_sub_stage_dir}/proxylink-counts.txt")
-        _imported="$1"
-        _skipped="$2"
-    else
+    if [ "$MAGICNET_SUB_CONVERTER_ENABLED" = 1 ] &&
+        [ "$MAGICNET_SUB_CONVERTER_AVAILABLE" = 1 ]; then
+        MAGICNET_SUB_CONVERTER_ATTEMPTED=1
+        MAGICNET_SUB_CONVERTER_RESULT=failed
+        if magicnet_singbox_build_outbounds_with_proxylink "$_sources_file" "$_outbounds_file" "$_node_total" >"${_sub_stage_dir}/proxylink-counts.txt" 2>/dev/null; then
+            # shellcheck disable=SC2046
+            set -- $(cat "${_sub_stage_dir}/proxylink-counts.txt")
+            _imported="$1"
+            _skipped="$2"
+            MAGICNET_SUB_CONVERTER_RESULT=success
+        fi
+    fi
+    if [ "${MAGICNET_SUB_CONVERTER_RESULT:-not_attempted}" != success ] &&
+        [ "${_node_total:-0}" -gt 0 ]; then
         magicnet_singbox_build_outbounds_file "$_nodes_dir" "$_outbounds_file" "$_tags_file" >"$_counts_file" ||
             {
                 magicnet_singbox_update_status convert failed conversion_failed || true
@@ -620,6 +686,14 @@ magicnet_singbox_update_subscription_unlocked() {
         set -- $(cat "$_counts_file")
         _imported="$1"
         _skipped="$2"
+    elif [ "${_imported:-0}" -le 0 ]; then
+        # Native parsing may legitimately return zero for formats handled by
+        # the optional converter (for example sing-box JSON). At this point
+        # both conversion paths have been exhausted.
+        error "No supported subscription nodes found"
+        magicnet_singbox_update_status convert failed no_supported_nodes || true
+        magicnet_singbox_update_cleanup_stage
+        return 1
     fi
 
     if [ "${_imported:-0}" -le 0 ]; then

@@ -55,7 +55,7 @@ import {
   wifiPolicyDefaults,
 } from "@/composables/parsers";
 import { createMagicNetIssue } from "@/composables/issueReporter";
-import type { IssueKind } from "@/composables/issueDrafts";
+import type { IssueReportInput } from "@/composables/issueDrafts";
 import { useExternalLinks } from "@/composables/useExternalLinks";
 import {
   compactCommand,
@@ -837,9 +837,9 @@ function closeIssueReporter(): void {
   state.issueReporter.open = false;
 }
 
-async function submitIssue(kind: IssueKind): Promise<void> {
+async function submitIssue(report: IssueReportInput): Promise<void> {
   closeIssueReporter();
-  await createMagicNetIssue({ state, runShell, runCli }, kind);
+  await createMagicNetIssue({ state, runShell, runCli }, report);
 }
 
 async function refreshTopology(): Promise<void> {

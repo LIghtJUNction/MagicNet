@@ -65,6 +65,45 @@ assert_extracted_links "$tmp_dir/leading-links.txt" leading-plain
 base64 <"$links_fixture" >"$tmp_dir/mixed-links.base64"
 assert_extracted_links "$tmp_dir/mixed-links.base64" base64
 
+# Proxylink uses -singbox for a full sing-box JSON document. Keep this path
+# isolated from the bundled ARM binary by observing the production wrapper's
+# arguments with a test double.
+proxylink_args="$tmp_dir/proxylink-args"
+proxylink_output="$tmp_dir/proxylink-output.json"
+proxylink_json="$tmp_dir/proxylink-source.json"
+proxylink_bin_definition="$(declare -f magicnet_singbox_proxylink_bin)"
+proxylink_run_definition="$(declare -f magicnet_singbox_run_proxylink)"
+printf '%s\n' '{"outbounds":[{"type":"vless","tag":"fixture-json","server":"json.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000003"}]}' >"$proxylink_json"
+magicnet_singbox_proxylink_bin() { printf '%s\n' fixture-proxylink; }
+magicnet_singbox_run_proxylink() {
+    printf '%s\n' "$@" >"$proxylink_args"
+    local output_file=""
+    while [[ "$#" -gt 0 ]]; do
+        if [[ "$1" == "-o" ]]; then
+            shift
+            output_file="$1"
+        fi
+        shift
+    done
+    printf '%s\n' '{"outbounds":[]}' >"$output_file"
+}
+magicnet_singbox_run_proxylink_source fixture-proxylink "$proxylink_json" "$proxylink_output" \
+    || fail "sing-box JSON was not accepted by the Proxylink source wrapper"
+grep -Fx -- '-singbox' "$proxylink_args" >/dev/null \
+    || fail "sing-box JSON was not passed with -singbox"
+if grep -Fx -- '-file' "$proxylink_args" >/dev/null 2>&1; then
+    fail "sing-box JSON was incorrectly passed with -file"
+fi
+base64 <"$proxylink_json" >"$tmp_dir/proxylink-source.base64"
+: >"$proxylink_args"
+magicnet_singbox_run_proxylink_source fixture-proxylink "$tmp_dir/proxylink-source.base64" "$proxylink_output" \
+    || fail "Base64 sing-box JSON was not accepted by the Proxylink source wrapper"
+grep -Fx -- '-singbox' "$proxylink_args" >/dev/null \
+    || fail "Base64 sing-box JSON was not passed with -singbox"
+eval "$proxylink_bin_definition"
+eval "$proxylink_run_definition"
+unset proxylink_bin_definition proxylink_run_definition
+
 vmess_link_file="$tmp_dir/node-vmess-unicode.link"
 vmess_payload='{"v":"2","ps":"\u9999\u6e2f-\u4f18\u5316","add":"vmess.invalid","port":"443","id":"00000000-0000-4000-8000-000000000009","aid":"0","net":"tcp","tls":"tls","sni":"vmess.invalid"}'
 printf 'vmess://%s\n' "$(printf '%s' "$vmess_payload" | base64 | tr -d '\n')" >"$vmess_link_file"

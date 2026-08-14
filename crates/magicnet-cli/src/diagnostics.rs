@@ -589,13 +589,35 @@ fn subscription_evidence(app: &App) -> String {
         ("skipped_count", "last_skipped_count"),
         ("generation_id", "last_generation_id"),
         ("reason", "last_reason"),
+        ("source_mode", "last_source_mode"),
+        ("native_parser", "last_native_parser"),
+        ("native_node_count", "last_native_node_count"),
+        ("converter_enabled", "last_converter_enabled"),
+        ("converter_available", "last_converter_available"),
+        ("converter_attempted", "last_converter_attempted"),
+        ("converter_format", "last_converter_format"),
+        ("converter_result", "last_converter_result"),
     ];
     let status = fs::read_to_string(app.moddir.join(".state/sing-box/subscription-status"))
         .unwrap_or_default();
+    let local_source = app.moddir.join(".config/sing-box/subscription.local");
+    let source_mode = if fs::metadata(&local_source)
+        .map(|metadata| metadata.len() > 0)
+        .unwrap_or(false)
+    {
+        "local"
+    } else {
+        "url"
+    };
+    let update_owner = process_owner_state(
+        &app.moddir
+            .join(".state/sing-box/subscription-update.lock/owner"),
+        None,
+    );
     let mut lines = vec![
         format!(
             "configured_count={}",
-            if fs::metadata(app.moddir.join(".config/sing-box/subscription.local"))
+            if fs::metadata(&local_source)
                 .map(|metadata| metadata.len() > 0)
                 .unwrap_or(false)
             {
@@ -604,14 +626,10 @@ fn subscription_evidence(app: &App) -> String {
                 clean_lines(app.moddir.join(".config/sing-box/subscription.url")).len()
             }
         ),
-        format!(
-            "update_owner={}",
-            process_owner_state(
-                &app.moddir
-                    .join(".state/sing-box/subscription-update.lock/owner"),
-                None,
-            )
-        ),
+        format!("source_mode={source_mode}"),
+        format!("update_running={}", (update_owner == "active") as u8),
+        format!("update_lock_owner={update_owner}"),
+        format!("update_owner={update_owner}"),
     ];
     for (source_key, output_key) in STATUS_KEYS {
         let value = status
@@ -1684,7 +1702,7 @@ mod tests {
         .unwrap();
         fs::write(
             root.join(".state/sing-box/subscription-status"),
-            "phase=activate\nresult=failed\nattempt_epoch=123\nsuccess_epoch=100\nconfigured_count=1\nsource_count=1\nimported_count=2\nskipped_count=0\ngeneration_id=123-456\nreason=token=BUNDLE-TOKEN-CANARY\n",
+            "phase=activate\nresult=failed\nattempt_epoch=123\nsuccess_epoch=100\nconfigured_count=1\nsource_count=1\nimported_count=2\nskipped_count=0\ngeneration_id=123-456\nreason=token=BUNDLE-TOKEN-CANARY\nsource_mode=url\nnative_parser=share-links\nnative_node_count=0\nconverter_enabled=1\nconverter_available=1\nconverter_attempted=1\nconverter_format=singbox\nconverter_result=failed\n",
         )
         .unwrap();
         fs::write(
@@ -1713,6 +1731,11 @@ mod tests {
         }
         assert!(bundle.contains("last_phase=activate"));
         assert!(bundle.contains("last_result=failed"));
+        assert!(bundle.contains("source_mode=url"));
+        assert!(bundle.contains("update_running=0"));
+        assert!(bundle.contains("last_native_node_count=0"));
+        assert!(bundle.contains("last_converter_format=singbox"));
+        assert!(bundle.contains("last_converter_result=failed"));
         assert!(bundle.contains("blocked=true"));
         assert!(bundle.contains("reason=No subscription URL is configured"));
         for sensitive in [

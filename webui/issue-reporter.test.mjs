@@ -25,6 +25,13 @@ const parts = {
   device: `model=test\nemail=${canaries[2]}\nip=${canaries[3]}\npath=${canaries[4]}`,
   support: `token=${canaries[1]}\nnode=${canaries[5]}\n${"safe event\n".repeat(800)}`,
   focusedContext: "captured failure errno=1",
+  report: {
+    summary: `订阅更新失败：${canaries[0]}`,
+    reproduction: "打开订阅页面并点击更新；每次都会失败。",
+    expected: "节点应被导入并启动核心。",
+    actual: `实际输出包含 token=${canaries[1]}`,
+    frequency: "每次更新，影响全部节点。",
+  },
   operation: {
     phase: "error",
     lastCommand: `magicnet sub apply-file sing-box ${canaries[0]}`,
@@ -45,6 +52,12 @@ assert.match(body, /问题类型：命令或操作报错/);
 assert.match(body, /## Focused Context/);
 assert.match(body, /## Support Summary/);
 assert.match(body, /## UI Operation/);
+assert.match(body, /问题概述：/);
+assert.match(body, /复现步骤：/);
+assert.match(body, /期望结果：/);
+assert.match(body, /实际结果：/);
+assert.match(body, /发生频率 \/ 影响范围：/);
+assert.doesNotMatch(body, /请在这里描述你遇到的问题/);
 assert.doesNotMatch(body, /Service Status|## Health|## MCP|Network Probe/);
 for (const canary of canaries) assert.equal(body.includes(canary), false, `leaked ${canary}`);
 

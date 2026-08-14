@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Bug, ShieldCheck, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import {
   ISSUE_KIND_OPTIONS,
   type IssueKind,
+  type IssueReportInput,
 } from "@/composables/issueDrafts";
 
 defineProps<{
@@ -13,22 +14,36 @@ defineProps<{
 
 const emit = defineEmits<{
   cancel: [];
-  confirm: [kind: IssueKind];
+  confirm: [report: IssueReportInput];
 }>();
 
 const dialog = ref<HTMLElement | null>(null);
 const selected = ref<IssueKind>("app-connectivity");
+const summary = ref("");
+const reproduction = ref("");
+const expected = ref("");
+const actual = ref("");
+const frequency = ref("");
+const canConfirm = computed(() => summary.value.trim().length >= 3);
 let previousBodyOverflow = "";
 
 function confirm(): void {
-  emit("confirm", selected.value);
+  if (!canConfirm.value) return;
+  emit("confirm", {
+    kind: selected.value,
+    summary: summary.value.trim(),
+    reproduction: reproduction.value.trim(),
+    expected: expected.value.trim(),
+    actual: actual.value.trim(),
+    frequency: frequency.value.trim(),
+  });
 }
 
 function trapFocus(event: KeyboardEvent): void {
   if (event.key !== "Tab" || !dialog.value) return;
   const focusable = Array.from(
     dialog.value.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
     ),
   ).filter((element) => element.getClientRects().length > 0);
   if (!focusable.length) {
@@ -52,7 +67,7 @@ onMounted(() => {
   previousBodyOverflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
   void nextTick(() => {
-    dialog.value?.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.focus();
+    dialog.value?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
   });
 });
 
@@ -127,14 +142,76 @@ onUnmounted(() => {
           </label>
         </fieldset>
 
+        <div class="mt-4 grid gap-3 border-t border-[var(--mn-border)] pt-4">
+          <div>
+            <label for="issue-summary" class="block text-sm font-semibold text-[var(--mn-ink)]">
+              问题概述 <span class="text-[var(--mn-clay-ink)]">*</span>
+            </label>
+            <textarea
+              id="issue-summary"
+              v-model="summary"
+              class="mt-1.5 min-h-20 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
+              maxlength="240"
+              placeholder="例如：更新订阅后节点数量变成 0，sing-box 没有启动"
+              aria-describedby="issue-summary-hint"
+              @keydown.ctrl.enter="confirm"
+            />
+            <p id="issue-summary-hint" class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">
+              用一句话说明看到的现象；这是必填项。
+            </p>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="grid gap-1.5">
+              <span class="text-sm font-semibold text-[var(--mn-ink)]">复现步骤</span>
+              <textarea
+                v-model="reproduction"
+                class="min-h-28 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
+                maxlength="1200"
+                placeholder="1. 做了什么操作？&#10;2. 何时开始异常？&#10;3. 是否每次都能复现？"
+              />
+            </label>
+            <label class="grid gap-1.5">
+              <span class="text-sm font-semibold text-[var(--mn-ink)]">期望结果</span>
+              <textarea
+                v-model="expected"
+                class="min-h-28 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
+                maxlength="600"
+                placeholder="例如：订阅应导入节点并启动 sing-box。"
+              />
+            </label>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="grid gap-1.5">
+              <span class="text-sm font-semibold text-[var(--mn-ink)]">实际结果</span>
+              <textarea
+                v-model="actual"
+                class="min-h-24 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
+                maxlength="800"
+                placeholder="例如：报告 last_reason=no_supported_nodes，核心 stopped。"
+              />
+            </label>
+            <label class="grid gap-1.5">
+              <span class="text-sm font-semibold text-[var(--mn-ink)]">发生频率 / 影响范围</span>
+              <textarea
+                v-model="frequency"
+                class="min-h-24 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
+                maxlength="400"
+                placeholder="例如：仅 Android 15、只影响某个订阅、每次更新都会发生。"
+              />
+            </label>
+          </div>
+        </div>
+
         <div class="mt-4 flex flex-col gap-3 border-t border-[var(--mn-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p class="inline-flex items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)]">
             <ShieldCheck :size="16" class="shrink-0 text-[var(--mn-cactus-deep)]" />
-            订阅地址、token、IP、目标域名和本地路径会被过滤。
+            描述和诊断都会脱敏；请勿直接粘贴订阅地址、token、IP、目标域名或本地路径。
           </p>
           <div class="flex gap-2 sm:shrink-0">
             <Button class="flex-1 sm:flex-none" variant="outline" @click="emit('cancel')">取消</Button>
-            <Button class="flex-1 sm:flex-none" :loading="loading" @click="confirm">收集并创建</Button>
+            <Button class="flex-1 sm:flex-none" :loading="loading" :disabled="!canConfirm" @click="confirm">收集并创建</Button>
           </div>
         </div>
       </div>
