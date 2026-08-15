@@ -4,6 +4,7 @@ import {
   Ban,
   Bug,
   DownloadCloud,
+  GitBranch,
   Monitor,
   MonitorCog,
   Gauge,
@@ -29,7 +30,7 @@ import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { useTheme } from "@/composables/useTheme";
 
-type TabKey = "control" | "config" | "apps" | "block" | "subs" | "tools" | "health" | "webui" | "output";
+type TabKey = "control" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
 type OnboardingTarget = Extract<TabKey, "control" | "subs" | "health" | "output">;
 type OnboardingPreference = "dismissed" | "completed";
 
@@ -40,6 +41,7 @@ const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   config: () => import("@/components/pages/ConfigPage.vue"),
   apps: () => import("@/components/pages/AppsPage.vue"),
   block: () => import("@/components/pages/BlocklistPage.vue"),
+  chain: () => import("@/components/pages/ProxyChainPage.vue"),
   subs: () => import("@/components/pages/SubscriptionsPage.vue"),
   tools: () => import("@/components/pages/ToolsPage.vue"),
   webui: () => import("@/components/pages/WebuiPage.vue"),
@@ -129,6 +131,7 @@ const tabs = [
   { key: "apps", label: "应用", icon: ListFilter, group: "primary" },
   { key: "block", label: "黑名单", icon: Ban, group: "primary" },
   { key: "health", label: "诊断", icon: Stethoscope, group: "primary" },
+  { key: "chain", label: "链路", icon: GitBranch, group: "advanced" },
   { key: "subs", label: "订阅", icon: DownloadCloud, group: "advanced" },
   { key: "tools", label: "工具", icon: Stethoscope, group: "advanced" },
   { key: "webui", label: "面板", icon: MonitorCog, group: "advanced" },
