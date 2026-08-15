@@ -2,6 +2,89 @@ magicnet_iface_exists() {
     [ -n "$1" ] && [ -d "/sys/class/net/$1" ]
 }
 
+# Android's iptables front-end can wait indefinitely for the netd xtables
+# writer when a vendor process leaves a restore transaction open.  Network
+# setup is called while starting/restarting sing-box, so an unbounded probe
+# can strand the subscription transaction and its config lock forever.  Keep
+# test doubles untouched, but bound real device calls and fail closed when
+# the lock is not available promptly.
+magicnet_xtables_function_defined() {
+    _xtables_command="$1"
+    case "$(command -V "$_xtables_command" 2>/dev/null || true)" in
+        *function* | *Function*)
+            unset _xtables_command
+            return 0
+            ;;
+    esac
+    unset _xtables_command
+    return 1
+}
+
+magicnet_xtables_timeout() {
+    case "${MAGICNET_XTABLES_TIMEOUT:-5}" in
+        '' | *[!0-9]*) printf '%s\n' 5 ;;
+        *) printf '%s\n' "${MAGICNET_XTABLES_TIMEOUT:-5}" ;;
+    esac
+}
+
+magicnet_iptables_cmd() {
+    if magicnet_xtables_function_defined iptables; then
+        iptables "$@"
+        return $?
+    fi
+    if magicnet_cmd_exists timeout; then
+        timeout "$(magicnet_xtables_timeout)" iptables "$@"
+    else
+        # All supported Android builds ship toybox timeout.  Keep a bounded
+        # xtables wait even on a minimal test/runtime image without it.
+        iptables -w 1 "$@"
+    fi
+}
+
+magicnet_ip6tables_cmd() {
+    if magicnet_xtables_function_defined ip6tables; then
+        ip6tables "$@"
+        return $?
+    fi
+    if magicnet_cmd_exists timeout; then
+        timeout "$(magicnet_xtables_timeout)" ip6tables "$@"
+    else
+        ip6tables -w 1 "$@"
+    fi
+}
+
+# Root is not sufficient for legacy xtables on every Android vendor build:
+# the KSU shell context may see the binaries but still be denied access to
+# the kernel table.  DNS interception is already handled by sing-box inside
+# the MagicNet TUN, so these optional kernel rules must not make TUN startup
+# fail closed.  Test doubles remain treated as available so the shell tests
+# can still exercise their failure paths.
+magicnet_xtables_available() {
+    _xtables_family="$1"
+    case "$_xtables_family" in
+        iptables|ip6tables) ;;
+        *)
+            unset _xtables_family
+            return 1
+            ;;
+    esac
+    if ! magicnet_cmd_exists "$_xtables_family"; then
+        unset _xtables_family
+        return 1
+    fi
+    if magicnet_xtables_function_defined "$_xtables_family"; then
+        unset _xtables_family
+        return 0
+    fi
+    case "$_xtables_family" in
+        iptables) magicnet_iptables_cmd -L >/dev/null 2>&1 ;;
+        ip6tables) magicnet_ip6tables_cmd -L >/dev/null 2>&1 ;;
+    esac
+    _xtables_rc=$?
+    unset _xtables_family
+    return "$_xtables_rc"
+}
+
 magicnet_iptables_ensure() {
     _table=""
     if [ "$1" = "-t" ]; then
@@ -10,20 +93,24 @@ magicnet_iptables_ensure() {
     fi
 
     if [ -n "$_table" ]; then
-        iptables -t "$_table" -C "$@" >/dev/null 2>&1 || iptables -t "$_table" -A "$@" >/dev/null 2>&1
+        magicnet_iptables_cmd -t "$_table" -C "$@" >/dev/null 2>&1 ||
+            magicnet_iptables_cmd -t "$_table" -A "$@" >/dev/null 2>&1
     else
-        iptables -C "$@" >/dev/null 2>&1 || iptables -I "$@" >/dev/null 2>&1
+        magicnet_iptables_cmd -C "$@" >/dev/null 2>&1 ||
+            magicnet_iptables_cmd -I "$@" >/dev/null 2>&1
     fi
 }
 
 magicnet_ip6tables_ensure() {
     magicnet_cmd_exists ip6tables || return 1
-    ip6tables -C "$@" >/dev/null 2>&1 || ip6tables -I "$@" >/dev/null 2>&1
+    magicnet_ip6tables_cmd -C "$@" >/dev/null 2>&1 ||
+        magicnet_ip6tables_cmd -I "$@" >/dev/null 2>&1
 }
 
 magicnet_ip6tables_nat_ensure() {
     magicnet_cmd_exists ip6tables || return 1
-    ip6tables -t nat -C "$@" >/dev/null 2>&1 || ip6tables -t nat -A "$@" >/dev/null 2>&1
+    magicnet_ip6tables_cmd -t nat -C "$@" >/dev/null 2>&1 ||
+        magicnet_ip6tables_cmd -t nat -A "$@" >/dev/null 2>&1
 }
 
 magicnet_dns_capture_enabled() {
@@ -62,21 +149,21 @@ magicnet_enable_dns_capture() {
         return 1
     fi
 
-    if ! magicnet_cmd_exists iptables; then
-        magicnet_warn "iptables not found; DNS capture cannot be enforced"
-        return 1
+    if ! magicnet_xtables_available iptables; then
+        magicnet_warn "iptables is unavailable in the current Android root context; skipping kernel DNS capture and keeping sing-box TUN DNS"
+        return 0
     fi
 
     _dns_capture_port="$(magicnet_dns_capture_port)"
     _dns_capture_bypass_uids="$(magicnet_dns_capture_bypass_uids)"
     _dns_capture_rc=0
     _dns_capture_ipv6_unavailable=0
-    if ! iptables -t nat -N magicnet-dns-output >/dev/null 2>&1; then
-        iptables -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+    if ! magicnet_iptables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
+        magicnet_iptables_cmd -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
     fi
-    iptables -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
-    if ! iptables -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1; then
-        iptables -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+    magicnet_iptables_cmd -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+    if ! magicnet_iptables_cmd -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1; then
+        magicnet_iptables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
     fi
     for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
         magicnet_iptables_ensure -t nat magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
@@ -86,7 +173,7 @@ magicnet_enable_dns_capture() {
 
     _dns_capture_ipv6_mode="$(magicnet_ipv6_mode 2>/dev/null || printf '%s\n' prefer_ipv4)"
     if [ "$_dns_capture_ipv6_mode" != ipv4_only ]; then
-        if ! magicnet_cmd_exists ip6tables || ! ip6tables -t nat -L >/dev/null 2>&1; then
+        if ! magicnet_cmd_exists ip6tables || ! magicnet_ip6tables_cmd -t nat -L >/dev/null 2>&1; then
             if [ "$_dns_capture_ipv6_mode" = prefer_ipv6 ]; then
                 _dns_capture_rc=1
             else
@@ -98,12 +185,12 @@ magicnet_enable_dns_capture() {
                 magicnet_warn "IPv6 DNS capture unavailable; continuing with IPv4-first capture"
             fi
         else
-            if ! ip6tables -t nat -N magicnet-dns-output >/dev/null 2>&1; then
-                ip6tables -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+            if ! magicnet_ip6tables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
+                magicnet_ip6tables_cmd -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
             fi
-            ip6tables -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
-            if ! ip6tables -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1; then
-                ip6tables -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+            magicnet_ip6tables_cmd -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+            if ! magicnet_ip6tables_cmd -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1; then
+                magicnet_ip6tables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
             fi
             for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
                 magicnet_ip6tables_nat_ensure magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
@@ -178,27 +265,27 @@ magicnet_dns_capture_delete_jump() {
 
 magicnet_disable_dns_capture() {
     _dns_capture_cleanup_rc=0
-    if magicnet_cmd_exists iptables; then
+    if magicnet_xtables_available iptables; then
         # A failed/repeated enable can leave duplicate jumps in OUTPUT.  A
         # single `-D` only removes the first one, so keep deleting until the
         # chain is no longer referenced before flushing/removing it.
-        magicnet_dns_capture_delete_jump iptables -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
+        magicnet_dns_capture_delete_jump magicnet_iptables_cmd -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
         _dns_capture_chain_rc=0
-        iptables -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_chain_rc=$?
+        magicnet_iptables_cmd -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_chain_rc=$?
         if [ "$_dns_capture_chain_rc" -eq 0 ]; then
-            iptables -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
-            iptables -t nat -X magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
+            magicnet_iptables_cmd -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
+            magicnet_iptables_cmd -t nat -X magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
         elif [ "$_dns_capture_chain_rc" -ne 1 ]; then
             _dns_capture_cleanup_rc=1
         fi
     fi
-    if magicnet_cmd_exists ip6tables && ip6tables -t nat -L >/dev/null 2>&1; then
-        magicnet_dns_capture_delete_jump ip6tables -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
+    if magicnet_xtables_available ip6tables && magicnet_ip6tables_cmd -t nat -L >/dev/null 2>&1; then
+        magicnet_dns_capture_delete_jump magicnet_ip6tables_cmd -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
         _dns_capture_chain_rc=0
-        ip6tables -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_chain_rc=$?
+        magicnet_ip6tables_cmd -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_chain_rc=$?
         if [ "$_dns_capture_chain_rc" -eq 0 ]; then
-            ip6tables -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
-            ip6tables -t nat -X magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
+            magicnet_ip6tables_cmd -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
+            magicnet_ip6tables_cmd -t nat -X magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
         elif [ "$_dns_capture_chain_rc" -ne 1 ]; then
             _dns_capture_cleanup_rc=1
         fi
@@ -286,9 +373,9 @@ magicnet_enable_dns_leak_guard() {
         return 1
     fi
 
-    if ! magicnet_cmd_exists iptables; then
-        magicnet_warn "iptables not found; DNS leak guard cannot be enforced"
-        return 1
+    if ! magicnet_xtables_available iptables; then
+        magicnet_warn "iptables is unavailable in the current Android root context; skipping optional DNS leak guard"
+        return 0
     fi
 
     # Re-apply is also used after a network transition.  Remove rules owned
@@ -316,7 +403,7 @@ magicnet_enable_dns_leak_guard() {
         # devices commonly expose filter support while omitting an IPv6 nat
         # table; probing nat here would silently disable IPv6 leak protection
         # on exactly those devices.
-        if magicnet_cmd_exists ip6tables && ip6tables -L >/dev/null 2>&1; then
+        if magicnet_cmd_exists ip6tables && magicnet_ip6tables_cmd -L >/dev/null 2>&1; then
             _dns_guard_ipv6_available=1
         elif [ "$_dns_guard_ipv6_mode" = prefer_ipv6 ]; then
             _dns_guard_rc=1
@@ -366,7 +453,7 @@ magicnet_enable_dns_leak_guard() {
 
 magicnet_disable_dns_leak_guard() {
     _dns_guard_result=0
-    if magicnet_cmd_exists iptables; then
+    if magicnet_xtables_available iptables; then
         _dns_guard_state_file="$(magicnet_dns_leak_guard_state_file)"
         _dns_guard_saved_ifaces=
         _dns_guard_cleanup_rc=0
@@ -380,14 +467,14 @@ magicnet_disable_dns_leak_guard() {
             awk 'NF && !seen[$0]++')"
         for _dns_guard_iface in $_dns_guard_ifaces; do
             for _dns_guard_port in 53 853; do
-                magicnet_dns_leak_guard_delete_rule iptables OUTPUT -o "$_dns_guard_iface" \
+                magicnet_dns_leak_guard_delete_rule magicnet_iptables_cmd OUTPUT -o "$_dns_guard_iface" \
                     -p udp --dport "$_dns_guard_port" -j REJECT || _dns_guard_cleanup_rc=1
-                magicnet_dns_leak_guard_delete_rule iptables OUTPUT -o "$_dns_guard_iface" \
+                magicnet_dns_leak_guard_delete_rule magicnet_iptables_cmd OUTPUT -o "$_dns_guard_iface" \
                     -p tcp --dport "$_dns_guard_port" -j REJECT || _dns_guard_cleanup_rc=1
-                if magicnet_cmd_exists ip6tables && ip6tables -L >/dev/null 2>&1; then
-                    magicnet_dns_leak_guard_delete_rule ip6tables OUTPUT -o "$_dns_guard_iface" \
+                if magicnet_xtables_available ip6tables; then
+                    magicnet_dns_leak_guard_delete_rule magicnet_ip6tables_cmd OUTPUT -o "$_dns_guard_iface" \
                         -p udp --dport "$_dns_guard_port" -j REJECT || _dns_guard_cleanup_rc=1
-                    magicnet_dns_leak_guard_delete_rule ip6tables OUTPUT -o "$_dns_guard_iface" \
+                    magicnet_dns_leak_guard_delete_rule magicnet_ip6tables_cmd OUTPUT -o "$_dns_guard_iface" \
                         -p tcp --dport "$_dns_guard_port" -j REJECT || _dns_guard_cleanup_rc=1
                 fi
             done
