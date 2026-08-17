@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Fix #115 by aligning config-editor template sync with the packaged MagicSingBox routing baseline, removing the stale FakeIP blackhole and restoring early X domain ownership.
 - Select a reachable AliDNS HTTPS bootstrap across IPv4 and IPv6 to reduce DNS timeouts during proxy-node resolution.
 - Resolve WeChat and Tencent media domains with local DNS and route them directly so image CDN requests keep regional affinity and avoid slow proxy fallthrough.
 - Restrict hotspot routing to discovered tether subnets so ordinary private-address Wi-Fi traffic cannot bypass app and domain routing rules.
