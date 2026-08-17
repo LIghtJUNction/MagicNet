@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const minimum = [3, 3, 17];
+const minimum = [3, 3, 18];
 const atLeast = (version, expected) => {
   const actual = version.split(".").map((part) => Number.parseInt(part, 10));
   return actual.some((part, index) => part !== expected[index])
@@ -13,7 +13,7 @@ const atLeast = (version, expected) => {
 };
 
 const packageJson = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
-assert.equal(packageJson.overrides?.nanoid, "3.3.17");
+assert.equal(packageJson.overrides?.nanoid, "3.3.18");
 
 const packageLock = JSON.parse(
   readFileSync(new URL("./package-lock.json", import.meta.url), "utf8"),
@@ -27,7 +27,7 @@ for (const [path, metadata] of nanoidPackages) {
 }
 
 const bunLock = readFileSync(new URL("./bun.lock", import.meta.url), "utf8");
-assert.match(bunLock, /"nanoid": "3\.3\.17"/);
-assert.match(bunLock, /"nanoid": \["nanoid@3\.3\.17"/);
+assert.match(bunLock, /"nanoid": "3\.3\.18"/);
+assert.match(bunLock, /"nanoid": \["nanoid@3\.3\.18"/);
 
 console.log("dependency security tests passed");
