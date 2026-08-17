@@ -20,9 +20,9 @@ use crate::{decode_base64, write_secret_file, write_text_file, App};
 const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 const TEMPLATE_MAX_BYTES: usize = 1024 * 1024;
-const MAGIC_SINGBOX_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/9f6dc75833ee435c7f15ee4cd5ba273af1d4022e/config.json";
+const MAGIC_SINGBOX_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/9d354b0717636271eaa4bb1a3cbe5bb93cafd8f5/config.json";
 const MAGIC_SINGBOX_TEMPLATE_SHA256: &str =
-    "5f7d822c66159fb126fa4187083000367946e2dcc9c5290b19059712c9f54500";
+    "8e91177e9222b2e5dee91ec849716757601156a28e7a056e6091ab5c71e102a5";
 const STANDALONE_CONFIG_MARKER: &str = ".config/sing-box/standalone-config";
 const TAILSCALE_AUTH_PATH: &str = ".config/sing-box/tailscale-auth.json";
 static CONFIG_EDITOR_STAGE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
