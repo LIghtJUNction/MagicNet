@@ -35,6 +35,7 @@ shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 "${posix_shell_files[@]}"
 
 jq empty src/MagicNet/.config/sing-box/config.json
 bash scripts/test-repository-hygiene.sh
+bash scripts/test-config-template-pin.sh
 sh scripts/test-kamfw-i18n.sh
 bash scripts/test-default-routing-policy.sh
 bash scripts/test-policy-architecture.sh
