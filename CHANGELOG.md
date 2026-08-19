@@ -4,6 +4,7 @@
 - Select a reachable AliDNS HTTPS bootstrap across IPv4 and IPv6 to reduce DNS timeouts during proxy-node resolution.
 - Resolve WeChat and Tencent media domains with local DNS and route them directly so image CDN requests keep regional affinity and avoid slow proxy fallthrough.
 - Restrict hotspot routing to discovered tether subnets so ordinary private-address Wi-Fi traffic cannot bypass app and domain routing rules.
+- Fix APatch fswatch startup by probing root-tool BusyBox locking helpers and keeping an optional watcher failure from masking a healthy sing-box restart.
 
 ## v1.2.11 (2026-08-11)
 

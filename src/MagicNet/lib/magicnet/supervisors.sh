@@ -70,6 +70,9 @@ magicnet_supervisor_kill_orphans() {
 set_i18n "MAGICNET_FSWATCH_START_FAILED" \
     "zh" "fswatch 启动失败 (rc=\$_1)；请查看 \$_2" \
     "en" "fswatch failed to start (rc=\$_1); see \$_2"
+set_i18n "MAGICNET_FSWATCH_FLOCK_INCOMPATIBLE" \
+    "zh" "fswatch 找到的 flock 不兼容: \$_1；请使用 APatch/KSU/Magisk BusyBox" \
+    "en" "fswatch found an incompatible flock: \$_1; use the APatch/KSU/Magisk BusyBox"
 
 magicnet_supervisor_status_with_orphans() {
     _msswo_pid="$1"
@@ -220,6 +223,36 @@ magicnet_fswatch_path() {
     printf '%s\n' "${MODDIR}/.config"
 }
 
+magicnet_fswatch_busybox_bin() (
+    _mfb_busybox_bin="${KAM_FSWATCH_BUSYBOX_BIN:-}"
+    if [ -n "$_mfb_busybox_bin" ] && [ -x "$_mfb_busybox_bin" ] &&
+        "$_mfb_busybox_bin" flock --help >/dev/null 2>&1; then
+        printf '%s\n' "$_mfb_busybox_bin"
+        return 0
+    fi
+
+    # Root solutions keep their private BusyBox in different fixed locations.
+    # Do not rely on the lifecycle shell exporting those directories in PATH.
+    for _mfb_candidate in \
+        /data/adb/ap/bin/busybox \
+        /data/adb/ksu/bin/busybox \
+        /data/adb/magisk/busybox; do
+        if [ -x "$_mfb_candidate" ] &&
+            "$_mfb_candidate" flock --help >/dev/null 2>&1; then
+            printf '%s\n' "$_mfb_candidate"
+            return 0
+        fi
+    done
+
+    _mfb_candidate="$(command -v busybox 2>/dev/null || true)"
+    if [ -n "$_mfb_candidate" ] && [ -x "$_mfb_candidate" ] &&
+        "$_mfb_candidate" flock --help >/dev/null 2>&1; then
+        printf '%s\n' "$_mfb_candidate"
+        return 0
+    fi
+    return 1
+)
+
 magicnet_fswatch_command() {
     printf '%s\n' "[ ! -f '$(magicnet_json_escape "$MODDIR")/disable' ] && [ ! -f '$(magicnet_json_escape "$MODDIR")/remove' ] || exit 0; MODDIR='$(magicnet_json_escape "$MODDIR")' '$(magicnet_json_escape "$MODDIR")/cli' config apply >/dev/null 2>&1"
 }
@@ -240,15 +273,31 @@ magicnet_fswatch_start() {
     fi
     unset _fw_rc
     magicnet_trim_log_file "${MODDIR}/.log/fswatch.log"
-    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
-        KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
-        fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
+    _fswatch_busybox_bin="$(magicnet_fswatch_busybox_bin 2>/dev/null || true)"
+    _fswatch_flock_bin="$(command -v flock 2>/dev/null || true)"
+    if [ -z "$_fswatch_busybox_bin" ] && [ -n "$_fswatch_flock_bin" ] &&
+        ! flock -n -o /dev/null true >/dev/null 2>&1; then
+        magicnet_warn "$(i18n MAGICNET_FSWATCH_FLOCK_INCOMPATIBLE | t "$_fswatch_flock_bin")"
+        set -- 1
+        unset _fswatch_name _fswatch_busybox_bin _fswatch_flock_bin _fw_rc
+        return "$1"
+    fi
+    if [ -n "$_fswatch_busybox_bin" ]; then
+        KAM_FSWATCH_BUSYBOX_BIN="$_fswatch_busybox_bin" \
+            KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
+            KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
+            fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
+    else
+        KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
+            KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
+            fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
+    fi
     _fswatch_rc=$?
     if [ "$_fswatch_rc" -ne 0 ]; then
         magicnet_warn "$(i18n "MAGICNET_FSWATCH_START_FAILED" | t "$_fswatch_rc" "${MODDIR}/.log/fswatch.log")"
     fi
     set -- "$_fswatch_rc"
-    unset _fswatch_name _fswatch_rc _fw_rc
+    unset _fswatch_name _fswatch_rc _fswatch_busybox_bin _fswatch_flock_bin _fw_rc
     return "$1"
 }
 
@@ -912,7 +961,9 @@ magicnet_subscription_schedule_report() {
 
 magicnet_supervisors_start() {
     _mss_rc=0
-    magicnet_fswatch_start || _mss_rc=1
+    # fswatch only accelerates config convergence.  A missing or incompatible
+    # locking helper must not make an otherwise healthy core startup fail.
+    magicnet_fswatch_start || true
     magicnet_subscription_refresh_start || _mss_rc=1
     magicnet_wifi_policy_start || _mss_rc=1
     magicnet_hotspot_watchdog_start || _mss_rc=1

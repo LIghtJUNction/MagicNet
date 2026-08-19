@@ -657,7 +657,7 @@ fn trusted_shell() -> &'static str {
 
 fn trusted_path() -> &'static str {
     if cfg!(target_os = "android") {
-        "$MODDIR/bin:$MODDIR/system/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
+        "$MODDIR/bin:$MODDIR/system/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
     } else {
         // The fake-Magisk smoke harness supplies its command doubles through
         // this explicitly named test-only variable. Normal host invocations

@@ -59,6 +59,7 @@ bash scripts/test-singbox-ownership.sh
 bash scripts/test-singbox-readiness.sh
 bash scripts/test-supervisor-pid-safety.sh
 bash scripts/test-fswatch-install-contract.sh
+bash scripts/test-supervisor-start-policy.sh
 bash scripts/test-tun-interface-safety.sh
 bash scripts/test-transparent-mode-config-safety.sh
 bash scripts/test-config-permissions.sh
