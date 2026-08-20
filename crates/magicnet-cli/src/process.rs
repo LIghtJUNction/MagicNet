@@ -1,4 +1,4 @@
-use crate::App;
+use crate::{subscriptions, App};
 use std::env;
 use std::fs;
 use std::io;
@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const SHORT_TIMEOUT: Duration = Duration::from_secs(3);
+pub(crate) const SHORT_TIMEOUT: Duration = Duration::from_secs(3);
 const DEFAULT_COMMAND_TIMEOUT_SECS: u64 = 180;
 const MAX_COMMAND_TIMEOUT_SECS: u64 = 900;
 
