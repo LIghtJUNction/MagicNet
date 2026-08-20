@@ -128,7 +128,17 @@ write_local_candidate() {
   chmod 600 "$candidate_local"
 }
 
-magicnet_with_config_lock() { "$@"; }
+magicnet_with_config_lock() {
+  if test "${MAGICNET_CONFIG_LOCK_HELD:-0}" -eq 1; then
+    "$@"
+    return $?
+  fi
+  MAGICNET_CONFIG_LOCK_HELD=1
+  "$@"
+  local lock_rc=$?
+  unset MAGICNET_CONFIG_LOCK_HELD
+  return "$lock_rc"
+}
 magicnet_fswatch_status() { return 1; }
 RUNNING=0
 NATIVE_NODE_COUNT=1
@@ -294,6 +304,36 @@ run_fault_recovery_case after-active-config-rename
 run_fault_recovery_case after-core-verification 1
 run_fault_recovery_case after-work-switch
 run_fault_recovery_case after-url-commit
+
+# Service startup checks the durable subscription journal before accepting an
+# already-running core, so a reboot/startup also repairs an interrupted update.
+(
+  startup_recovery="$MODDIR/.state/sing-box/subscription-transaction"
+  mkdir -p "$startup_recovery"
+  magicnet_singbox_update_lock_active() { return 1; }
+  magicnet_singbox_status_reconcile_locked() {
+    rm -rf "$startup_recovery"
+    printf '%s\n' recovered >"$fixture/startup-recovery"
+  }
+  magicnet_recover_interrupted_subscription
+  test ! -e "$startup_recovery"
+  assert_file "$fixture/startup-recovery" recovered
+)
+
+# `service ensure` has its own live-core fast path. It must run recovery before
+# accepting that core, just like an explicit service start.
+(
+  # shellcheck disable=SC1090
+  . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
+  ensure_recovery_count=0
+  magicnet_module_disabled() { return 1; }
+  magicnet_kernel_running() { return 0; }
+  magicnet_recover_interrupted_subscription() {
+    ensure_recovery_count=$((ensure_recovery_count + 1))
+  }
+  magicnet_ensure_kernel
+  test "$ensure_recovery_count" -eq 1
+)
 
 # A crash after changing source modes restores both source files exactly.
 printf 'old-url-before-local\n' >"$active_url"

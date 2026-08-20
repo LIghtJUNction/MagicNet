@@ -87,7 +87,9 @@ printf '%s\n' 'subscription update lock publication-window safety test passed'
 (
     status_lock_held=0
     status_cache="$MODDIR/.state/sing-box/subscription-cache"
-    mkdir -p "$MODDIR/.config/sing-box" "$status_cache"
+    status_transaction="$MODDIR/.state/sing-box/subscription-transaction"
+    status_timeout_file="$MODDIR/.state/sing-box/status-lock-timeout"
+    mkdir -p "$MODDIR/.config/sing-box" "$status_cache" "$status_transaction"
     magicnet_singbox_subscription_status_file() {
         printf '%s\n' "$MODDIR/.state/sing-box/subscription-status"
     }
@@ -99,6 +101,7 @@ printf '%s\n' 'subscription update lock publication-window safety test passed'
     }
     magicnet_with_config_lock() {
         status_lock_held=1
+        printf '%s\n' "$MAGICNET_CONFIG_LOCK_TIMEOUT" >"$status_timeout_file"
         "$@"
         local status_rc=$?
         status_lock_held=0
@@ -106,13 +109,67 @@ printf '%s\n' 'subscription update lock publication-window safety test passed'
     }
     magicnet_singbox_transaction_reconcile() {
         [ "$status_lock_held" -eq 1 ]
+        rm -rf "$status_transaction"
     }
     magicnet_singbox_status_reconcile() {
         [ "$status_lock_held" -eq 1 ]
     }
-    magicnet_singbox_status >/dev/null
+    status_output="$(magicnet_singbox_status)"
+    [ "$(<"$status_timeout_file")" -eq 3 ]
+    grep -q '^recovery_result=recovered$' <<<"$status_output"
 )
 printf '%s\n' 'subscription status reconciliation lock-safety test passed'
+
+# A signal can arrive after restart_owned stopped fswatch but before the update
+# wrapper reached its normal deferred restore. The interrupt path must release
+# the config lock first, then restore fswatch before dropping the update lock.
+interrupt_trace="$MODDIR/.state/sing-box/interrupt-trace"
+set +e
+(
+    MAGICNET_CONFIG_LOCK_HELD=1
+    MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
+    MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
+    MAGICNET_SUB_FSWATCH_WAS_ACTIVE=1
+    magicnet_singbox_transaction_reconcile() { :; }
+    magicnet_singbox_update_cleanup_stage() { :; }
+    magicnet_singbox_status_mark_interrupted() { :; }
+    magicnet_config_lock_release() { printf '%s\n' config-release >>"$interrupt_trace"; }
+    magicnet_singbox_supervisor_restore() {
+        [ "$1" -eq 1 ]
+        [ -z "${MAGICNET_SUB_DEFER_FSWATCH_RESTORE+x}" ]
+        printf '%s\n' fswatch-restore >>"$interrupt_trace"
+    }
+    magicnet_singbox_update_lock_release() { printf '%s\n' update-release >>"$interrupt_trace"; }
+    magicnet_singbox_update_interrupt 143
+)
+interrupt_rc=$?
+set -e
+[ "$interrupt_rc" -eq 143 ]
+[ "$(<"$interrupt_trace")" = $'config-release\nfswatch-restore\nupdate-release' ]
+
+printf '%s\n' 'subscription interrupt fswatch restoration test passed'
+
+# A signal while config-lock acquisition is still waiting must not reconcile
+# another operation's files without owning that lock. Leave the journal for a
+# later status/startup recovery and release only the update lock.
+prelock_interrupt_trace="$MODDIR/.state/sing-box/prelock-interrupt-trace"
+set +e
+(
+    unset MAGICNET_CONFIG_LOCK_HELD MAGICNET_SUB_FSWATCH_RESTORE_PENDING
+    unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_DEFER_FSWATCH_RESTORE
+    magicnet_singbox_transaction_reconcile() { printf '%s\n' reconcile >>"$prelock_interrupt_trace"; }
+    magicnet_singbox_update_cleanup_stage() { :; }
+    magicnet_singbox_status_mark_interrupted() { :; }
+    magicnet_config_lock_release() { printf '%s\n' config-release >>"$prelock_interrupt_trace"; }
+    magicnet_singbox_update_lock_release() { printf '%s\n' update-release >>"$prelock_interrupt_trace"; }
+    magicnet_singbox_update_interrupt 143
+)
+prelock_interrupt_rc=$?
+set -e
+[ "$prelock_interrupt_rc" -eq 143 ]
+[ "$(<"$prelock_interrupt_trace")" = update-release ]
+
+printf '%s\n' 'subscription pre-lock interrupt serialization test passed'
 
 # An owner marker write failure must not leave an empty directory that blocks
 # every later subscription update until a timeout-based reclamation.

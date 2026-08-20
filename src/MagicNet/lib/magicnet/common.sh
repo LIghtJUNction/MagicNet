@@ -433,12 +433,53 @@ magicnet_with_config_lock() {
     fi
     magicnet_config_lock_acquire || return 1
     MAGICNET_CONFIG_LOCK_HELD=1
-    trap 'magicnet_config_lock_release' INT TERM HUP
+    # Do not replace caller-owned signal handlers here.  Subscription updates
+    # install a transaction rollback handler before entering this critical
+    # section; replacing and then clearing it made an interrupted activation
+    # leave both journals and locks behind.  An uncatchable process death is
+    # still safe because lock ownership is PID/start-time bound and the next
+    # caller can reclaim it.
     "$@"
     _lock_rc=$?
-    trap - INT TERM HUP
     magicnet_config_lock_release
     MAGICNET_CONFIG_LOCK_HELD=0
     unset MAGICNET_CONFIG_LOCK_HELD
     return "$_lock_rc"
+}
+
+magicnet_recover_interrupted_subscription() {
+    _recover_tx="${MODDIR}/.state/sing-box/subscription-transaction"
+    [ -d "$_recover_tx" ] || {
+        unset _recover_tx
+        return 0
+    }
+
+    if ! command -v magicnet_singbox_transaction_reconcile >/dev/null 2>&1; then
+        . "${MODDIR}/lib/magicnet_singbox_subscribe.sh" || {
+            unset _recover_tx
+            return 1
+        }
+    fi
+    if magicnet_singbox_update_lock_active; then
+        # A live updater owns the journal.  Startup must not race it.
+        unset _recover_tx
+        return 0
+    fi
+
+    _recover_lock_was_set="${MAGICNET_CONFIG_LOCK_TIMEOUT+x}"
+    _recover_lock_timeout="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
+    case "$_recover_lock_timeout" in
+        '' | *[!0-9]*) _recover_lock_timeout=45 ;;
+    esac
+    _recover_old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
+    MAGICNET_CONFIG_LOCK_TIMEOUT="$_recover_lock_timeout"
+    magicnet_with_config_lock magicnet_singbox_status_reconcile_locked
+    _recover_rc=$?
+    if [ -n "$_recover_lock_was_set" ]; then
+        MAGICNET_CONFIG_LOCK_TIMEOUT="$_recover_old_lock_timeout"
+    else
+        unset MAGICNET_CONFIG_LOCK_TIMEOUT
+    fi
+    unset _recover_tx _recover_lock_was_set _recover_lock_timeout _recover_old_lock_timeout
+    return "$_recover_rc"
 }

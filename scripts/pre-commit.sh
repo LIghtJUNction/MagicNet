@@ -83,6 +83,7 @@ else
 fi
 cargo check -p magicnet-cli
 cargo check -p magicnet-mcp-server
+cargo test -p magicnet-cli --test process_lifecycle
 if compgen -G "dist/*.zip" >/dev/null; then
     package_zip="$(compgen -G "dist/*.zip" | head -n1)"
     scripts/package-smoke.sh "$package_zip"
