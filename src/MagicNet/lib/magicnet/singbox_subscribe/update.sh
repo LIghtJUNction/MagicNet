@@ -226,7 +226,21 @@ magicnet_singbox_transaction_reconcile() {
     _tx_active_work="${MODDIR}/.state/sing-box/subscription-work"
     _tx_active_url="${MODDIR}/.config/sing-box/subscription.url"
     _tx_active_local="${MODDIR}/.config/sing-box/subscription.local"
-    _tx_generation=$(sed -n '1p' "$_tx_dir/generation-id" 2>/dev/null)
+    _tx_generation=$(sed -n '1p' "$_tx_dir/generation-id" 2>/dev/null || true)
+    _tx_restart_required=0
+    if [ -f "$_tx_dir/was-running" ]; then
+        _tx_restart_required=1
+        # An activation can be interrupted immediately after an idempotent
+        # config rename.  If the durable backup and active config are already
+        # byte-identical and that config still owns a live core, restoring
+        # metadata does not require a disruptive stop/start cycle.
+        if [ -f "$_tx_dir/had-config" ] && [ -f "$_tx_dir/old-config" ] &&
+            [ -f "$_tx_active_config" ] && command -v cmp >/dev/null 2>&1 &&
+            cmp -s "$_tx_dir/old-config" "$_tx_active_config" &&
+            magicnet_singbox_is_running "$_tx_active_config"; then
+            _tx_restart_required=0
+        fi
+    fi
 
     mkdir -p "${_tx_active_config%/*}" "${_tx_active_work%/*}" || return 1
     if [ -f "$_tx_dir/had-config" ]; then
@@ -297,7 +311,7 @@ magicnet_singbox_transaction_reconcile() {
             "${_tx_active_config}.candidate-${_tx_generation}.new" 2>/dev/null || true
     fi
 
-    if [ -f "$_tx_dir/was-running" ]; then
+    if [ "$_tx_restart_required" -eq 1 ]; then
         MAGICNET_SUB_PRESERVE_REFRESH=1
         export MAGICNET_SUB_PRESERVE_REFRESH
         magicnet_singbox_restart_owned "$_tx_active_config" >/dev/null 2>&1 || {
@@ -309,7 +323,7 @@ magicnet_singbox_transaction_reconcile() {
 
     rm -rf "$_tx_dir" 2>/dev/null || return 1
     unset _tx_dir _tx_active_config _tx_active_work _tx_active_url _tx_active_local
-    unset _tx_generation _tx_tmp _tx_work_tmp _tx_work_backup
+    unset _tx_generation _tx_restart_required _tx_tmp _tx_work_tmp _tx_work_backup
 }
 
 magicnet_singbox_transaction_begin_abort() {
@@ -428,9 +442,50 @@ magicnet_singbox_fault() {
     return 1
 }
 
+magicnet_singbox_status_try_reconcile() {
+    _status_lock_was_set="${MAGICNET_CONFIG_LOCK_TIMEOUT+x}"
+    _status_old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
+    _status_lock_timeout="${MAGICNET_SUB_STATUS_LOCK_TIMEOUT:-3}"
+    case "$_status_lock_timeout" in
+        '' | *[!0-9]*) _status_lock_timeout=3 ;;
+    esac
+    [ "$_status_lock_timeout" -le 10 ] || _status_lock_timeout=10
+    MAGICNET_CONFIG_LOCK_TIMEOUT="$_status_lock_timeout"
+    magicnet_with_config_lock magicnet_singbox_status_reconcile_locked >/dev/null 2>&1
+    _status_reconcile_rc=$?
+    if [ -n "$_status_lock_was_set" ]; then
+        MAGICNET_CONFIG_LOCK_TIMEOUT="$_status_old_lock_timeout"
+    else
+        unset MAGICNET_CONFIG_LOCK_TIMEOUT
+    fi
+    unset _status_lock_was_set _status_old_lock_timeout _status_lock_timeout
+    return "$_status_reconcile_rc"
+}
+
 magicnet_singbox_status() {
-    if ! magicnet_singbox_update_lock_active; then
-        magicnet_with_config_lock magicnet_singbox_status_reconcile_locked >/dev/null 2>&1 || true
+    _status_tx_dir=$(magicnet_singbox_transaction_dir)
+    _status_recovery_needed=0
+    [ -d "$_status_tx_dir" ] && _status_recovery_needed=1
+    [ "$(magicnet_singbox_status_value result never)" = running ] && _status_recovery_needed=1
+    if magicnet_singbox_update_lock_active; then
+        if [ "$_status_recovery_needed" -eq 1 ]; then
+            _status_recovery_result=active
+        else
+            _status_recovery_result=none
+        fi
+    elif magicnet_singbox_status_try_reconcile; then
+        if [ "$_status_recovery_needed" -eq 1 ] && [ ! -d "$_status_tx_dir" ] &&
+            [ "$(magicnet_singbox_status_value result never)" != running ]; then
+            _status_recovery_result=recovered
+        elif [ "$_status_recovery_needed" -eq 1 ]; then
+            _status_recovery_result=pending
+        else
+            _status_recovery_result=none
+        fi
+    elif [ "$_status_recovery_needed" -eq 1 ]; then
+        _status_recovery_result=pending
+    else
+        _status_recovery_result=busy
     fi
     _status_active_url="${MODDIR}/.config/sing-box/subscription.url"
     _status_active_local="${MODDIR}/.config/sing-box/subscription.local"
@@ -461,6 +516,7 @@ magicnet_singbox_status() {
     printf 'source_mode=%s\n' "$_status_source_mode"
     printf 'update_running=%s\n' "$_status_running"
     printf 'update_lock_owner=%s\n' "$_status_lock_owner"
+    printf 'recovery_result=%s\n' "$_status_recovery_result"
     printf 'last_phase=%s\n' "$(magicnet_singbox_status_value phase never)"
     printf 'last_result=%s\n' "$(magicnet_singbox_status_value result never)"
     printf 'last_attempt_epoch=%s\n' "$(magicnet_singbox_status_value attempt_epoch 0)"
@@ -490,6 +546,7 @@ magicnet_singbox_status() {
     unset _status_active_url _status_active_local _status_source_mode _status_configured
     unset _status_cache_dir _status_cache_count _status_running
     unset _status_lock_owner _status_cache_provenance_count _status_cache_probe _status_cache_source
+    unset _status_tx_dir _status_recovery_needed _status_recovery_result _status_reconcile_rc
 }
 
 magicnet_singbox_status_reconcile_locked() {
@@ -497,8 +554,14 @@ magicnet_singbox_status_reconcile_locked() {
     # status read must serialize them with an update transaction, otherwise a
     # just-started updater can race the recovery path and lose its active
     # files intermittently.
-    magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true
-    magicnet_singbox_status_reconcile >/dev/null 2>&1 || true
+    _status_locked_rc=0
+    magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || _status_locked_rc=1
+    if [ "$_status_locked_rc" -eq 0 ]; then
+        magicnet_singbox_status_reconcile >/dev/null 2>&1 || _status_locked_rc=1
+    fi
+    set -- "$_status_locked_rc"
+    unset _status_locked_rc
+    return "$1"
 }
 
 magicnet_singbox_update_status() {
@@ -513,12 +576,27 @@ magicnet_singbox_update_cleanup_stage() {
     [ -n "${_sub_stage_dir:-}" ] && rm -rf "$_sub_stage_dir" 2>/dev/null || true
 }
 
+magicnet_singbox_update_interrupt() {
+    _update_interrupt_code="$1"
+    trap - EXIT HUP INT TERM
+    magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true
+    magicnet_singbox_update_cleanup_stage
+    magicnet_singbox_status_mark_interrupted
+    if command -v magicnet_config_lock_release >/dev/null 2>&1; then
+        magicnet_config_lock_release
+    fi
+    MAGICNET_CONFIG_LOCK_HELD=0
+    unset MAGICNET_CONFIG_LOCK_HELD
+    magicnet_singbox_update_lock_release
+    exit "$_update_interrupt_code"
+}
+
 magicnet_singbox_update_subscription() {
     magicnet_singbox_update_lock_acquire || return 1
     trap 'magicnet_singbox_update_lock_release' EXIT
-    trap 'magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true; magicnet_singbox_update_cleanup_stage; magicnet_singbox_status_mark_interrupted; magicnet_singbox_update_lock_release; exit 129' HUP
-    trap 'magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true; magicnet_singbox_update_cleanup_stage; magicnet_singbox_status_mark_interrupted; magicnet_singbox_update_lock_release; exit 130' INT
-    trap 'magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true; magicnet_singbox_update_cleanup_stage; magicnet_singbox_status_mark_interrupted; magicnet_singbox_update_lock_release; exit 143' TERM
+    trap 'magicnet_singbox_update_interrupt 129' HUP
+    trap 'magicnet_singbox_update_interrupt 130' INT
+    trap 'magicnet_singbox_update_interrupt 143' TERM
     if ! magicnet_with_config_lock magicnet_singbox_transaction_reconcile; then
         trap - EXIT HUP INT TERM
         magicnet_singbox_update_lock_release

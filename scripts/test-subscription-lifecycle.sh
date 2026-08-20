@@ -295,6 +295,21 @@ run_fault_recovery_case after-core-verification 1
 run_fault_recovery_case after-work-switch
 run_fault_recovery_case after-url-commit
 
+# Service startup checks the durable subscription journal before accepting an
+# already-running core, so a reboot/startup also repairs an interrupted update.
+(
+  startup_recovery="$MODDIR/.state/sing-box/subscription-transaction"
+  mkdir -p "$startup_recovery"
+  magicnet_singbox_update_lock_active() { return 1; }
+  magicnet_singbox_status_reconcile_locked() {
+    rm -rf "$startup_recovery"
+    printf '%s\n' recovered >"$fixture/startup-recovery"
+  }
+  magicnet_recover_interrupted_subscription
+  test ! -e "$startup_recovery"
+  assert_file "$fixture/startup-recovery" recovered
+)
+
 # A crash after changing source modes restores both source files exactly.
 printf 'old-url-before-local\n' >"$active_url"
 rm -f "$MODDIR/.config/sing-box/subscription.local"

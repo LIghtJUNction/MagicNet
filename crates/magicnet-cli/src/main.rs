@@ -767,10 +767,20 @@ fn run_process_group(
     command: &mut Command,
     timeout: Duration,
 ) -> Result<std::process::ExitStatus, String> {
-    // SAFETY: pre_exec only invokes async-signal-safe setsid before exec.
+    let parent_pid = unsafe { libc::getpid() };
+    // SAFETY: pre_exec only invokes async-signal-safe libc operations before
+    // exec.  The parent-death signal prevents an externally killed CLI from
+    // leaving its privileged shell alive with subscription/config locks.  The
+    // parent check closes the fork-to-prctl race: if the CLI died before the
+    // child armed PR_SET_PDEATHSIG, the child aborts instead of becoming an
+    // untracked session leader.
     unsafe {
-        command.pre_exec(|| {
-            if libc::setsid() == -1 {
+        command.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) == -1 {
+                Err(io::Error::last_os_error())
+            } else if libc::getppid() != parent_pid {
+                Err(io::Error::from_raw_os_error(libc::ECHILD))
+            } else if libc::setsid() == -1 {
                 Err(io::Error::last_os_error())
             } else {
                 Ok(())

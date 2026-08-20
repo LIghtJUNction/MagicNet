@@ -87,7 +87,9 @@ printf '%s\n' 'subscription update lock publication-window safety test passed'
 (
     status_lock_held=0
     status_cache="$MODDIR/.state/sing-box/subscription-cache"
-    mkdir -p "$MODDIR/.config/sing-box" "$status_cache"
+    status_transaction="$MODDIR/.state/sing-box/subscription-transaction"
+    status_timeout_file="$MODDIR/.state/sing-box/status-lock-timeout"
+    mkdir -p "$MODDIR/.config/sing-box" "$status_cache" "$status_transaction"
     magicnet_singbox_subscription_status_file() {
         printf '%s\n' "$MODDIR/.state/sing-box/subscription-status"
     }
@@ -99,6 +101,7 @@ printf '%s\n' 'subscription update lock publication-window safety test passed'
     }
     magicnet_with_config_lock() {
         status_lock_held=1
+        printf '%s\n' "$MAGICNET_CONFIG_LOCK_TIMEOUT" >"$status_timeout_file"
         "$@"
         local status_rc=$?
         status_lock_held=0
@@ -106,11 +109,14 @@ printf '%s\n' 'subscription update lock publication-window safety test passed'
     }
     magicnet_singbox_transaction_reconcile() {
         [ "$status_lock_held" -eq 1 ]
+        rm -rf "$status_transaction"
     }
     magicnet_singbox_status_reconcile() {
         [ "$status_lock_held" -eq 1 ]
     }
-    magicnet_singbox_status >/dev/null
+    status_output="$(magicnet_singbox_status)"
+    [ "$(<"$status_timeout_file")" -eq 3 ]
+    grep -q '^recovery_result=recovered$' <<<"$status_output"
 )
 printf '%s\n' 'subscription status reconciliation lock-safety test passed'
 

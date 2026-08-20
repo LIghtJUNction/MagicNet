@@ -22,6 +22,17 @@ printf '%s:%s\n' "$$" "$start" >"$MODDIR/.state/config.lock/pid"
 magicnet_config_lock_release
 test ! -e "$MODDIR/.state/config.lock"
 
+# Locking must not replace a caller's transaction/signal cleanup handlers.
+# The subscription updater relies on its TERM trap to roll back its journal.
+trap 'exit 143' TERM
+caller_term_trap="$(trap -p TERM)"
+assert_caller_trap_preserved() {
+    test "$(trap -p TERM)" = "$caller_term_trap"
+}
+magicnet_with_config_lock assert_caller_trap_preserved
+test "$(trap -p TERM)" = "$caller_term_trap"
+trap - TERM
+
 # Stale and marker-less owners are reclaimed without recursive deletion.
 mkdir -p "$MODDIR/.state/config.lock"
 printf '%s\n' '999999:1' >"$MODDIR/.state/config.lock/pid"

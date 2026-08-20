@@ -64,3 +64,28 @@ unset -f mv
 }
 
 printf '%s\n' 'subscription transaction atomicity test passed'
+
+# If an idempotent activation was interrupted after publishing the same config
+# and the old core is still healthy, recovery should restore journaled metadata
+# without an unnecessary stop/start cycle. This keeps status recovery bounded.
+rm -rf "$TRANSACTION" "$ACTIVE_WORK"
+mkdir -p "$TRANSACTION"
+printf '%s\n' stable-config >"$MODDIR/.config/sing-box/config.json"
+printf '%s\n' stable-config >"$TRANSACTION/old-config"
+touch "$TRANSACTION/had-config" "$TRANSACTION/was-running"
+restart_count=0
+magicnet_singbox_is_running() { return 0; }
+magicnet_singbox_restart_owned() { restart_count=$((restart_count + 1)); }
+magicnet_singbox_transaction_reconcile
+
+[ "$restart_count" -eq 0 ] || {
+    printf '%s\n' 'idempotent recovery restarted an already healthy core' >&2
+    exit 1
+}
+[ ! -e "$TRANSACTION" ] || {
+    printf '%s\n' 'idempotent recovery left its transaction journal behind' >&2
+    exit 1
+}
+[ "$(<"$MODDIR/.config/sing-box/config.json")" = stable-config ]
+
+printf '%s\n' 'subscription idempotent recovery test passed'

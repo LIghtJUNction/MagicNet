@@ -80,6 +80,11 @@ magicnet_start_kernel() {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         return 1
     }
+    if command -v magicnet_recover_interrupted_subscription >/dev/null 2>&1 &&
+        ! magicnet_recover_interrupted_subscription; then
+        magicnet_warn "Interrupted subscription transaction recovery failed"
+        return 1
+    fi
     if magicnet_kernel_running; then
         return 0
     fi
