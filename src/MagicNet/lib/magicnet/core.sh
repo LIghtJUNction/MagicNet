@@ -123,6 +123,11 @@ magicnet_ensure_kernel() {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         return 1
     }
+    if command -v magicnet_recover_interrupted_subscription >/dev/null 2>&1 &&
+        ! magicnet_recover_interrupted_subscription; then
+        magicnet_warn "Interrupted subscription transaction recovery failed"
+        return 1
+    fi
     magicnet_kernel_running && return 0
     magicnet_require_subscription_or_stop || return 1
     MAGICNET_WATCHDOG=1 magicnet_start_kernel

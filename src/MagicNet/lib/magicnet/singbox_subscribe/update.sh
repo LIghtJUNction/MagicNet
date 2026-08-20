@@ -237,7 +237,7 @@ magicnet_singbox_transaction_reconcile() {
         if [ -f "$_tx_dir/had-config" ] && [ -f "$_tx_dir/old-config" ] &&
             [ -f "$_tx_active_config" ] && command -v cmp >/dev/null 2>&1 &&
             cmp -s "$_tx_dir/old-config" "$_tx_active_config" &&
-            magicnet_singbox_is_running "$_tx_active_config"; then
+            magicnet_singbox_owned_ready "$_tx_active_config"; then
             _tx_restart_required=0
         fi
     fi
@@ -602,9 +602,14 @@ magicnet_singbox_update_interrupt() {
     MAGICNET_CONFIG_LOCK_HELD=0
     unset MAGICNET_CONFIG_LOCK_HELD
     unset MAGICNET_SUB_DEFER_FSWATCH_RESTORE
-    if [ "${MAGICNET_SUB_FSWATCH_RESTORE_PENDING:-0}" -eq 1 ]; then
+    _update_restore_fswatch="${MAGICNET_SUB_FSWATCH_RESTORE_PENDING:-0}"
+    if [ "${MAGICNET_SUB_FSWATCH_WAS_ACTIVE:-0}" -eq 1 ]; then
+        _update_restore_fswatch=1
+    fi
+    if [ "$_update_restore_fswatch" -eq 1 ]; then
         magicnet_singbox_supervisor_restore 1 >/dev/null 2>&1 || true
     fi
+    unset _update_restore_fswatch
     unset MAGICNET_SUB_FSWATCH_RESTORE_PENDING MAGICNET_SUB_FSWATCH_WAS_ACTIVE
     magicnet_singbox_update_lock_release
     exit "$_update_interrupt_code"

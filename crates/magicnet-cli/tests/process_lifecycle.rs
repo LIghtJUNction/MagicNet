@@ -51,6 +51,7 @@ fn killing_cli_parent_terminates_privileged_shell() {
         fixture.join("lib/magicnet_singbox_subscribe.sh"),
         r#"magicnet_singbox_status() {
     printf '%s\n' "$$" >"$MODDIR/status-shell.pid"
+    trap 'sleep 1; printf "%s\n" complete >"$MODDIR/rollback-marker"; exit 143' TERM
     sleep 30 &
     printf '%s\n' "$!" >"$MODDIR/status-grandchild.pid"
     wait
@@ -103,6 +104,11 @@ fn killing_cli_parent_terminates_privileged_shell() {
         }
         panic!("privileged status process group survived its CLI parent");
     }
+    assert_eq!(
+        fs::read_to_string(fixture.join("rollback-marker"))
+            .expect("watchdog killed the worker before TERM rollback completed"),
+        "complete\n"
+    );
 
     let _ = fs::remove_dir_all(fixture);
 }

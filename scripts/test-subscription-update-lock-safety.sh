@@ -128,7 +128,8 @@ set +e
 (
     MAGICNET_CONFIG_LOCK_HELD=1
     MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
-    MAGICNET_SUB_FSWATCH_RESTORE_PENDING=1
+    MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
+    MAGICNET_SUB_FSWATCH_WAS_ACTIVE=1
     magicnet_singbox_transaction_reconcile() { :; }
     magicnet_singbox_update_cleanup_stage() { :; }
     magicnet_singbox_status_mark_interrupted() { :; }

@@ -310,6 +310,21 @@ run_fault_recovery_case after-url-commit
   assert_file "$fixture/startup-recovery" recovered
 )
 
+# `service ensure` has its own live-core fast path. It must run recovery before
+# accepting that core, just like an explicit service start.
+(
+  # shellcheck disable=SC1090
+  . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
+  ensure_recovery_count=0
+  magicnet_module_disabled() { return 1; }
+  magicnet_kernel_running() { return 0; }
+  magicnet_recover_interrupted_subscription() {
+    ensure_recovery_count=$((ensure_recovery_count + 1))
+  }
+  magicnet_ensure_kernel
+  test "$ensure_recovery_count" -eq 1
+)
+
 # A crash after changing source modes restores both source files exactly.
 printf 'old-url-before-local\n' >"$active_url"
 rm -f "$MODDIR/.config/sing-box/subscription.local"

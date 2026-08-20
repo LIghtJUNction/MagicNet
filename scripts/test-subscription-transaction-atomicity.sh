@@ -75,7 +75,7 @@ printf '%s\n' stable-config >"$TRANSACTION/old-config"
 touch "$TRANSACTION/had-config" "$TRANSACTION/was-running"
 restart_count=0
 policy_count=0
-magicnet_singbox_is_running() { return 0; }
+magicnet_singbox_owned_ready() { return 0; }
 magicnet_singbox_restart_owned() { restart_count=$((restart_count + 1)); }
 magicnet_after_kernel_start_unlocked() { policy_count=$((policy_count + 1)); }
 magicnet_singbox_transaction_reconcile
@@ -96,11 +96,25 @@ magicnet_singbox_transaction_reconcile
 
 printf '%s\n' 'subscription idempotent recovery test passed'
 
+# A merely spawned core is not enough to suppress rollback restart. If its
+# listener/API readiness probe fails, recovery must take the restart path.
+mkdir -p "$TRANSACTION"
+printf '%s\n' stable-config >"$TRANSACTION/old-config"
+touch "$TRANSACTION/had-config" "$TRANSACTION/was-running"
+magicnet_singbox_owned_ready() { return 1; }
+magicnet_singbox_restart_owned() { restart_count=$((restart_count + 1)); }
+magicnet_singbox_transaction_reconcile
+[ "$restart_count" -eq 1 ]
+[ ! -e "$TRANSACTION" ]
+
+printf '%s\n' 'subscription unready-core recovery test passed'
+
 # A failed runtime-policy repair must retain the durable journal so startup or
 # a later bounded status call can retry instead of accepting a half-ready core.
 mkdir -p "$TRANSACTION"
 printf '%s\n' stable-config >"$TRANSACTION/old-config"
 touch "$TRANSACTION/had-config" "$TRANSACTION/was-running"
+magicnet_singbox_owned_ready() { return 0; }
 magicnet_after_kernel_start_unlocked() { return 1; }
 set +e
 magicnet_singbox_transaction_reconcile

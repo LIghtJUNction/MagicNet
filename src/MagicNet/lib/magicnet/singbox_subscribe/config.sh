@@ -1026,6 +1026,24 @@ magicnet_singbox_listener_owned() {
     ss -lntp 2>/dev/null | grep -E '127\.0\.0\.1:9090[[:space:]]' | grep -q "pid=${_listener_pid},"
 }
 
+magicnet_singbox_owned_ready() {
+    _ready_owned_config="$1"
+    _ready_api_expected=0
+    magicnet_singbox_config_has_clash_api "$_ready_owned_config" && _ready_api_expected=1
+    for _ready_owned_pid in $(magicnet_singbox_owned_pids "$_ready_owned_config"); do
+        if [ "$_ready_api_expected" -eq 0 ] || {
+            magicnet_singbox_listener_owned "$_ready_owned_pid" &&
+                curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |
+                grep -q '"version"'
+        }; then
+            unset _ready_owned_config _ready_api_expected _ready_owned_pid
+            return 0
+        fi
+    done
+    unset _ready_owned_config _ready_api_expected _ready_owned_pid
+    return 1
+}
+
 magicnet_singbox_supervisor_restore() {
     _restore_fswatch_active="${1:-${_owned_fswatch_active:-0}}"
     [ "$_restore_fswatch_active" -eq 1 ] || {

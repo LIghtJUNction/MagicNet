@@ -767,6 +767,9 @@ fn run_process_group(
     command: &mut Command,
     timeout: Duration,
 ) -> Result<std::process::ExitStatus, String> {
+    let mut watchdog = ParentDeathWatchdog::arm(timeout)?;
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    let watchdog_worker_fd = watchdog.worker_pid_fd();
     #[cfg(any(target_os = "android", target_os = "linux"))]
     let parent_pid = unsafe { libc::getpid() };
     // SAFETY: pre_exec only invokes async-signal-safe libc operations before
@@ -774,7 +777,8 @@ fn run_process_group(
     // leaving its privileged shell alive with subscription/config locks.  The
     // parent check closes the fork-to-prctl race: if the CLI died before the
     // child armed PR_SET_PDEATHSIG, the child aborts instead of becoming an
-    // untracked session leader.
+    // untracked session leader. The child publishes its process-group ID to a
+    // watchdog that was armed before spawn, closing the post-spawn gap too.
     unsafe {
         command.pre_exec(move || {
             #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -789,6 +793,19 @@ fn run_process_group(
             if libc::setsid() == -1 {
                 Err(io::Error::last_os_error())
             } else {
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                {
+                    let worker_pid = libc::getpid();
+                    let written = libc::write(
+                        watchdog_worker_fd,
+                        (&worker_pid as *const libc::pid_t).cast::<libc::c_void>(),
+                        std::mem::size_of::<libc::pid_t>(),
+                    );
+                    libc::close(watchdog_worker_fd);
+                    if written != std::mem::size_of::<libc::pid_t>() as isize {
+                        return Err(io::Error::last_os_error());
+                    }
+                }
                 Ok(())
             }
         });
@@ -796,17 +813,7 @@ fn run_process_group(
     let mut child = command
         .spawn()
         .map_err(|err| format!("spawn failed: {err}"))?;
-    let _watchdog = match ParentDeathWatchdog::spawn(child.id() as i32) {
-        Ok(watchdog) => watchdog,
-        Err(err) => {
-            let group = -(child.id() as i32);
-            unsafe {
-                libc::kill(group, libc::SIGKILL);
-            }
-            let _ = child.wait();
-            return Err(err);
-        }
-    };
+    watchdog.worker_spawned();
     let deadline = Instant::now() + timeout;
     loop {
         if let Some(status) = child
@@ -835,15 +842,27 @@ fn run_process_group(
 struct ParentDeathWatchdog {
     pid: libc::pid_t,
     control_fd: libc::c_int,
+    worker_pid_fd: libc::c_int,
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 impl ParentDeathWatchdog {
-    fn spawn(worker_pid: i32) -> Result<Self, String> {
+    fn arm(timeout: Duration) -> Result<Self, String> {
         let mut control = [-1; 2];
         if unsafe { libc::pipe2(control.as_mut_ptr(), libc::O_CLOEXEC) } == -1 {
             return Err(format!(
                 "parent-death watchdog pipe failed: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        let mut worker_pid_pipe = [-1; 2];
+        if unsafe { libc::pipe2(worker_pid_pipe.as_mut_ptr(), libc::O_CLOEXEC) } == -1 {
+            unsafe {
+                libc::close(control[0]);
+                libc::close(control[1]);
+            }
+            return Err(format!(
+                "parent-death watchdog PID pipe failed: {}",
                 io::Error::last_os_error()
             ));
         }
@@ -853,6 +872,8 @@ impl ParentDeathWatchdog {
             unsafe {
                 libc::close(control[0]);
                 libc::close(control[1]);
+                libc::close(worker_pid_pipe[0]);
+                libc::close(worker_pid_pipe[1]);
             }
             return Err(format!(
                 "parent-death watchdog fork failed: {}",
@@ -860,46 +881,79 @@ impl ParentDeathWatchdog {
             ));
         }
         if watchdog_pid == 0 {
-            // SAFETY: this post-fork child uses only libc calls and exits via
-            // _exit. The CLI owns the pipe's write end; an EOF means the CLI
-            // died without disarming us. Give the worker shell's PDEATHSIG
-            // handler a short rollback window, then kill every process still
-            // left in its independent process group, including grandchildren.
+            // SAFETY: this post-fork child uses stack values and libc calls,
+            // then exits via _exit. The worker publishes its process-group ID
+            // before exec. After that, EOF on the control pipe means the CLI
+            // died without disarming us. Let the TERM rollback finish (up to
+            // the same bounded command timeout), then reap any descendants
+            // still left in the independent process group.
             unsafe {
                 libc::close(control[1]);
-                let mut marker = 0_u8;
-                loop {
+                libc::close(worker_pid_pipe[1]);
+                let mut worker_pid: libc::pid_t = 0;
+                let worker_pid_size = std::mem::size_of::<libc::pid_t>();
+                let mut worker_pid_read = 0_usize;
+                while worker_pid_read < worker_pid_size {
                     let read_result = libc::read(
-                        control[0],
-                        (&mut marker as *mut u8).cast::<libc::c_void>(),
-                        1,
+                        worker_pid_pipe[0],
+                        ((&mut worker_pid as *mut libc::pid_t).cast::<u8>())
+                            .add(worker_pid_read)
+                            .cast::<libc::c_void>(),
+                        worker_pid_size - worker_pid_read,
                     );
-                    if read_result == -1
-                        && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted
-                    {
-                        continue;
+                    if read_result <= 0 {
+                        libc::close(worker_pid_pipe[0]);
+                        libc::close(control[0]);
+                        libc::_exit(0);
                     }
-                    if read_result == 0 {
-                        let grace = libc::timespec {
-                            tv_sec: 2,
-                            tv_nsec: 0,
-                        };
-                        libc::nanosleep(&grace, std::ptr::null_mut());
-                        libc::kill(-worker_pid, libc::SIGKILL);
-                    }
-                    libc::close(control[0]);
-                    libc::_exit(0);
+                    worker_pid_read += read_result as usize;
                 }
+                libc::close(worker_pid_pipe[0]);
+
+                let mut marker = 0_u8;
+                let read_result = libc::read(
+                    control[0],
+                    (&mut marker as *mut u8).cast::<libc::c_void>(),
+                    1,
+                );
+                if read_result == 0 {
+                    let poll_interval = libc::timespec {
+                        tv_sec: 0,
+                        tv_nsec: 100_000_000,
+                    };
+                    let max_polls = timeout.as_millis().saturating_add(99) / 100;
+                    let mut polls = 0_u128;
+                    while polls < max_polls && libc::kill(worker_pid, 0) == 0 {
+                        libc::nanosleep(&poll_interval, std::ptr::null_mut());
+                        polls += 1;
+                    }
+                    libc::kill(-worker_pid, libc::SIGKILL);
+                }
+                libc::close(control[0]);
+                libc::_exit(0);
             }
         }
 
         unsafe {
             libc::close(control[0]);
+            libc::close(worker_pid_pipe[0]);
         }
         Ok(Self {
             pid: watchdog_pid,
             control_fd: control[1],
+            worker_pid_fd: worker_pid_pipe[1],
         })
+    }
+
+    fn worker_pid_fd(&self) -> libc::c_int {
+        self.worker_pid_fd
+    }
+
+    fn worker_spawned(&mut self) {
+        unsafe {
+            libc::close(self.worker_pid_fd);
+        }
+        self.worker_pid_fd = -1;
     }
 }
 
@@ -918,6 +972,9 @@ impl Drop for ParentDeathWatchdog {
                 }
             }
             libc::close(self.control_fd);
+            if self.worker_pid_fd != -1 {
+                libc::close(self.worker_pid_fd);
+            }
         }
     }
 }
@@ -927,9 +984,11 @@ struct ParentDeathWatchdog;
 
 #[cfg(not(any(target_os = "android", target_os = "linux")))]
 impl ParentDeathWatchdog {
-    fn spawn(_worker_pid: i32) -> Result<Self, String> {
+    fn arm(_timeout: Duration) -> Result<Self, String> {
         Ok(Self)
     }
+
+    fn worker_spawned(&mut self) {}
 }
 
 fn should_report_startup_error(function_name: &str) -> bool {
