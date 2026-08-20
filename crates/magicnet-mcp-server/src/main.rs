@@ -7,8 +7,11 @@ mod server;
 mod tools;
 
 use std::env;
+use std::fmt;
+use std::io;
 use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -43,7 +46,57 @@ impl Drop for ConnectionPermit {
     }
 }
 
-fn main() {
+#[derive(Debug)]
+enum StartupError {
+    Configuration(String),
+    Listen { addr: SocketAddr, source: io::Error },
+}
+
+impl StartupError {
+    fn recovery(&self) -> &'static str {
+        match self {
+            Self::Configuration(_) => {
+                "set MAGICNET_MCP_BIND to an IP literal and MAGICNET_MCP_PORT to 1-65535"
+            }
+            Self::Listen { .. } => {
+                "check whether the address is available and another MCP server already uses the port"
+            }
+        }
+    }
+}
+
+impl fmt::Display for StartupError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Configuration(message) => {
+                write!(formatter, "invalid MCP configuration: {message}")
+            }
+            Self::Listen { addr, source } => write!(formatter, "cannot listen on {addr}: {source}"),
+        }
+    }
+}
+
+impl std::error::Error for StartupError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Configuration(_) => None,
+            Self::Listen { source, .. } => Some(source),
+        }
+    }
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("[error] {error}");
+            eprintln!("[hint] {}", error.recovery());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), StartupError> {
     let moddir = if cfg!(target_os = "android") {
         // The installed module root is a privileged boundary. A direct
         // launcher must not redirect the server to an attacker-writable tree.
@@ -54,8 +107,9 @@ fn main() {
     let bind = env::var("MAGICNET_MCP_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = env::var("MAGICNET_MCP_PORT").unwrap_or_else(|_| "8766".to_string());
     let secret = env::var("MAGICNET_MCP_SECRET").unwrap_or_default();
-    let addr = parse_listen_addr(&bind, &port).unwrap_or_else(|error| panic!("{error}"));
-    let listener = TcpListener::bind(addr).unwrap_or_else(|err| panic!("listen {addr}: {err}"));
+    let addr = parse_listen_addr(&bind, &port).map_err(StartupError::Configuration)?;
+    let listener =
+        TcpListener::bind(addr).map_err(|source| StartupError::Listen { addr, source })?;
     let cli = if cfg!(target_os = "android") {
         PathBuf::from(&moddir).join("bin/magicnet-cli")
     } else {
@@ -87,6 +141,7 @@ fn main() {
             Err(err) => eprintln!("accept failed: {err}"),
         }
     }
+    Ok(())
 }
 
 fn parse_listen_addr(bind: &str, port: &str) -> Result<SocketAddr, String> {
@@ -127,5 +182,22 @@ mod tests {
         drop(first);
         assert!(ConnectionPermit::try_acquire(&active, 2).is_some());
         drop(second);
+    }
+
+    #[test]
+    fn startup_errors_include_actionable_recovery_context() {
+        let configuration =
+            StartupError::Configuration("MAGICNET_MCP_BIND must be an IP literal".to_string());
+        assert!(configuration
+            .to_string()
+            .contains("invalid MCP configuration"));
+        assert!(configuration.recovery().contains("MAGICNET_MCP_BIND"));
+
+        let listen = StartupError::Listen {
+            addr: "127.0.0.1:8766".parse().unwrap(),
+            source: io::Error::new(io::ErrorKind::AddrInUse, "address in use"),
+        };
+        assert!(listen.to_string().contains("127.0.0.1:8766"));
+        assert!(listen.recovery().contains("already uses the port"));
     }
 }
