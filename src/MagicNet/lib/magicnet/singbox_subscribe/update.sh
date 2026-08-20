@@ -850,15 +850,11 @@ magicnet_singbox_update_subscription_unlocked() {
     MAGICNET_SUB_RESET_BOOTSTRAP_CACHE=0
     if [ "$_sub_success_epoch" = 0 ] && [ "${_imported:-0}" -gt 0 ]; then
         if [ "$_sub_was_running" -eq 1 ]; then
-            # The packaged zero-node config deliberately pins every selector
-            # to block. sing-box persists that choice by selector tag, so the
-            # first populated config must not inherit the bootstrap decision.
+            # The zero-node bootstrap config pins selectors to block. Do not
+            # let that cached choice survive the first populated config.
             MAGICNET_SUB_RESET_BOOTSTRAP_CACHE=1
         elif ! magicnet_singbox_reset_bootstrap_cache "$_sub_active_config"; then
-            unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH \
-                MAGICNET_SUB_RESET_BOOTSTRAP_CACHE
             magicnet_singbox_update_status activate failed cache_reset_failed || true
-            error "Failed to reset the zero-node bootstrap selector cache"
             return 1
         fi
     fi

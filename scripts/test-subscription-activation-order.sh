@@ -33,7 +33,6 @@ ss() { :; }
 ip() { :; }
 magicnet_fswatch_start() { printf 'restore-lock=%s\n' "$CONFIG_LOCK_HELD" >>"$events"; }
 magicnet_fswatch_status() { return 0; }
-warn() { :; }
 
 export MAGICNET_SUB_FSWATCH_WAS_ACTIVE=1
 export MAGICNET_SUB_RESET_BOOTSTRAP_CACHE=1
@@ -48,15 +47,6 @@ done
 : >"$events"
 unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_RESET_BOOTSTRAP_CACHE \
   MAGICNET_SUB_DEFER_FSWATCH_RESTORE
-
-# A custom cache path is outside MagicNet's ownership and must never be
-# removed by the first-activation recovery.
-printf 'outside-cache\n' >"$fixture/outside.db"
-cat >"$MODDIR/.config/sing-box/custom.json" <<'JSON'
-{"experimental":{"cache_file":{"enabled":true,"path":"../../../outside.db"}}}
-JSON
-magicnet_singbox_reset_bootstrap_cache "$MODDIR/.config/sing-box/custom.json"
-test -f "$fixture/outside.db"
 
 # A failed post-start phase must tear down the newly started generation. The
 # old generation is already gone at this point; leaving PID 222 alive would

@@ -1098,10 +1098,6 @@ foreign_priority_dns_rules = [
 x_social_dns_rules = [
     index for index, rule in enumerate(dns_rules) if rule == x_social_dns_rule
 ]
-chatgpt_fake_dns_rules = [
-    index for index, rule in enumerate(dns_rules)
-    if rule.get("server") == "chatgpt-fakeip"
-]
 canonical_cn_dns_rules = [
     index for index, rule in enumerate(dns_rules) if rule == canonical_cn_dns_rule
 ]
@@ -1127,7 +1123,6 @@ if (
     or len(game_dns_rules) != 1
     or len(foreign_priority_dns_rules) != 1
     or len(x_social_dns_rules) != 1
-    or len(chatgpt_fake_dns_rules) != 1
     or len(canonical_cn_dns_rules) != 1
 ):
     raise SystemExit(
@@ -1142,7 +1137,7 @@ if (
         f"ad_suffix={ad_suffix_dns_rules} ad_keyword={ad_keyword_dns_rules} "
         f"ad_rule_set={ad_rule_set_dns_rules} "
         f"game={game_dns_rules} foreign_priority={foreign_priority_dns_rules} "
-        f"x_social={x_social_dns_rules} chatgpt_fake={chatgpt_fake_dns_rules} "
+        f"x_social={x_social_dns_rules} "
         f"cn={canonical_cn_dns_rules}"
     )
 direct_mode_index = direct_mode_rules[0]
@@ -1163,7 +1158,6 @@ ad_rule_set_dns_index = ad_rule_set_dns_rules[0]
 game_dns_index = game_dns_rules[0]
 foreign_priority_dns_index = foreign_priority_dns_rules[0]
 x_social_dns_index = x_social_dns_rules[0]
-chatgpt_fake_dns_index = chatgpt_fake_dns_rules[0]
 canonical_cn_dns_index = canonical_cn_dns_rules[0]
 if global_mode_index != direct_mode_index + 1:
     raise SystemExit("Global DNS override must remain immediately after the Direct override")
@@ -1212,17 +1206,16 @@ if not (
     and ad_rule_set_dns_index + 1 == game_dns_index
     and game_dns_index + 1 == foreign_priority_dns_index
     and foreign_priority_dns_index + 1 == x_social_dns_index
-    and x_social_dns_index + 1 == chatgpt_fake_dns_index
-    and chatgpt_fake_dns_index + 1 == canonical_cn_dns_index
+    and x_social_dns_index + 1 == canonical_cn_dns_index
 ):
     raise SystemExit(
         "required DNS order is private < mmstat local < ad suffix < ad keyword < ad rule-set < game < "
-        "foreign priority < explicit X/Twitter < ChatGPT FakeIP < canonical CN: "
+        "foreign priority < explicit X/Twitter < canonical CN: "
         f"private={private_dns_index} mmstat={mmstat_local_dns_index} "
         f"ad_suffix={ad_suffix_dns_index} "
         f"ad_keyword={ad_keyword_dns_index} ad_rule_set={ad_rule_set_dns_index} "
         f"game={game_dns_index} foreign_priority={foreign_priority_dns_index} "
-        f"x_social={x_social_dns_index} chatgpt_fake={chatgpt_fake_dns_index} "
+        f"x_social={x_social_dns_index} "
         f"cn={canonical_cn_dns_index}"
     )
 if not dedicated_leak_test_dns_index < foreign_connectivity_index:
@@ -1534,48 +1527,13 @@ if voice_index >= cn_ip_routes[0]:
 
 if invalid_destination_routes[0] > cn_ip_routes[0]:
     raise SystemExit("packaged reserved 0.0.0.0/8 destinations must fail closed before CN routing")
-chatgpt_domain_rules = [
-    rule for rule in route_rules
-    if rule.get("outbound") == "ai-chatgpt"
-    and "chatgpt.com" in rule.get("domain_suffix", [])
-]
-if len(chatgpt_domain_rules) != 1:
-    raise SystemExit(f"packaged ChatGPT domain ownership is ambiguous: {chatgpt_domain_rules}")
-chatgpt_fakeip_server = {
-    "type": "fakeip",
-    "tag": "chatgpt-fakeip",
-    "inet4_range": "198.18.0.0/24",
-}
-chatgpt_fakeip_dns = {
-    "domain_suffix": chatgpt_domain_rules[0]["domain_suffix"],
-    "server": "chatgpt-fakeip",
-}
-chatgpt_fakeip_route = {
-    "ip_cidr": ["198.18.0.0/24"],
-    "outbound": "ai-chatgpt",
-}
-if [server for server in dns_servers if server == chatgpt_fakeip_server] != [chatgpt_fakeip_server]:
-    raise SystemExit("packaged DNS must contain one canonical ChatGPT FakeIP server")
-if [rule for rule in dns_rules if rule == chatgpt_fakeip_dns] != [chatgpt_fakeip_dns]:
-    raise SystemExit("packaged DNS must contain one canonical ChatGPT FakeIP rule")
-chatgpt_fakeip_routes = [
-    index for index, rule in enumerate(route_rules) if rule == chatgpt_fakeip_route
-]
-if len(chatgpt_fakeip_routes) != 1 or chatgpt_fakeip_routes[0] >= cn_ip_routes[0]:
-    raise SystemExit(
-        "packaged ChatGPT FakeIP route must uniquely precede CN destination-IP ownership: "
-        f"chatgpt={chatgpt_fakeip_routes} cn={cn_ip_routes}"
-    )
-if config.get("experimental", {}).get("cache_file", {}).get("store_fakeip") is not True:
-    raise SystemExit("packaged DNS must persist ChatGPT FakeIP mappings")
-if any(
-    server.get("type") == "fakeip" and server != chatgpt_fakeip_server
-    for server in dns_servers
-):
-    raise SystemExit("packaged DNS contains an unmanaged FakeIP server")
+if any(server.get("type") == "fakeip" or server.get("tag") == "fakeip" for server in config["dns"]["servers"]):
+    raise SystemExit("packaged default DNS must not enable FakeIP")
+if config.get("experimental", {}).get("cache_file", {}).get("store_fakeip") is True:
+    raise SystemExit("packaged default DNS must not persist FakeIP mappings")
 if any(
     rule.get("outbound") == "block"
-    and ({"198.18.0.0/24", "198.18.0.0/16", "28.0.0.0/8"} & set(rule.get("ip_cidr", [])))
+    and ({"198.18.0.0/16", "28.0.0.0/8"} & set(rule.get("ip_cidr", [])))
     for rule in route_rules
 ):
     raise SystemExit("packaged routing must not blackhole benchmark or public address space")

@@ -1128,31 +1128,23 @@ magicnet_singbox_reset_bootstrap_cache() {
       .experimental.cache_file
       | select(.enabled == true)
       | (.path // "cache.db")
-      | select(type == "string" and length > 0)
-    ' "$_bootstrap_config" 2>/dev/null) || {
-        warn "Cannot verify the sing-box selector cache path; bootstrap cache reset skipped"
+    ' "$_bootstrap_config" 2>/dev/null) || return 0
+
+    # Only the packaged cache basename belongs to MagicNet. Never follow a
+    # custom path from a user-edited config.
+    [ "$_bootstrap_cache_path" = cache.db ] || {
         unset _bootstrap_config _bootstrap_cache_path
         return 0
     }
-
-    # MagicNet owns only the packaged cache basename. Never follow a custom
-    # path from a user-edited config when clearing the zero-node bootstrap
-    # selector state.
-    if [ "$_bootstrap_cache_path" != cache.db ]; then
-        warn "Custom sing-box cache path detected; bootstrap cache reset skipped"
-        unset _bootstrap_config _bootstrap_cache_path
-        return 0
-    fi
-
     _bootstrap_cache_dir=${_bootstrap_config%/*}
     [ "$_bootstrap_cache_dir" != "$_bootstrap_config" ] || _bootstrap_cache_dir=.
-    for _bootstrap_cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal; do
-        rm -f "${_bootstrap_cache_dir}/${_bootstrap_cache_name}" || {
-            unset _bootstrap_config _bootstrap_cache_path _bootstrap_cache_dir _bootstrap_cache_name
-            return 1
-        }
-    done
-    unset _bootstrap_config _bootstrap_cache_path _bootstrap_cache_dir _bootstrap_cache_name
+    rm -f "$_bootstrap_cache_dir"/cache.db \
+        "$_bootstrap_cache_dir"/cache.db-wal \
+        "$_bootstrap_cache_dir"/cache.db-shm \
+        "$_bootstrap_cache_dir"/cache.db-journal
+    _bootstrap_cache_rc=$?
+    unset _bootstrap_config _bootstrap_cache_path _bootstrap_cache_dir
+    return "$_bootstrap_cache_rc"
 }
 
 magicnet_singbox_restart_owned() {
