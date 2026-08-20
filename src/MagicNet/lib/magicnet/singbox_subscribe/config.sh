@@ -1122,6 +1122,31 @@ magicnet_singbox_stop_owned_after_failure() {
     return "$_failure_rc"
 }
 
+magicnet_singbox_reset_bootstrap_cache() {
+    _bootstrap_config="$1"
+    _bootstrap_cache_path=$(jq -er '
+      .experimental.cache_file
+      | select(.enabled == true)
+      | (.path // "cache.db")
+    ' "$_bootstrap_config" 2>/dev/null) || return 0
+
+    # Only the packaged cache basename belongs to MagicNet. Never follow a
+    # custom path from a user-edited config.
+    [ "$_bootstrap_cache_path" = cache.db ] || {
+        unset _bootstrap_config _bootstrap_cache_path
+        return 0
+    }
+    _bootstrap_cache_dir=${_bootstrap_config%/*}
+    [ "$_bootstrap_cache_dir" != "$_bootstrap_config" ] || _bootstrap_cache_dir=.
+    rm -f "$_bootstrap_cache_dir"/cache.db \
+        "$_bootstrap_cache_dir"/cache.db-wal \
+        "$_bootstrap_cache_dir"/cache.db-shm \
+        "$_bootstrap_cache_dir"/cache.db-journal
+    _bootstrap_cache_rc=$?
+    unset _bootstrap_config _bootstrap_cache_path _bootstrap_cache_dir
+    return "$_bootstrap_cache_rc"
+}
+
 magicnet_singbox_restart_owned() {
     _owned_config="$1"
     _owned_fswatch_active="${MAGICNET_SUB_FSWATCH_WAS_ACTIVE:-0}"
@@ -1154,6 +1179,9 @@ magicnet_singbox_restart_owned() {
     [ -z "$(magicnet_singbox_owned_pids "$_owned_config")" ] || _restart_rc=1
     if [ "$_restart_rc" -eq 0 ] && ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]'; then
         _restart_rc=1
+    fi
+    if [ "$_restart_rc" -eq 0 ] && [ "${MAGICNET_SUB_RESET_BOOTSTRAP_CACHE:-0}" = 1 ]; then
+        magicnet_singbox_reset_bootstrap_cache "$_owned_config" || _restart_rc=1
     fi
     if [ "$_restart_rc" -eq 0 ]; then
         ip link delete magicnet0 2>/dev/null || true

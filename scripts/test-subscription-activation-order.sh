@@ -6,9 +6,16 @@ fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
 
 export MODDIR="$fixture/module"
-mkdir -p "$MODDIR"
+mkdir -p "$MODDIR/.config/sing-box"
 events="$fixture/events"
 : >"$events"
+
+cat >"$MODDIR/.config/sing-box/config.json" <<'JSON'
+{"experimental":{"cache_file":{"enabled":true,"path":"cache.db"}}}
+JSON
+for cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal; do
+  printf 'bootstrap-selector\n' >"$MODDIR/.config/sing-box/$cache_name"
+done
 
 magicnet_json_escape() { printf '%s' "$1"; }
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
@@ -28,13 +35,18 @@ magicnet_fswatch_start() { printf 'restore-lock=%s\n' "$CONFIG_LOCK_HELD" >>"$ev
 magicnet_fswatch_status() { return 0; }
 
 export MAGICNET_SUB_FSWATCH_WAS_ACTIVE=1
+export MAGICNET_SUB_RESET_BOOTSTRAP_CACHE=1
 MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
 MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
-magicnet_singbox_restart_owned "$MODDIR/config.json"
+magicnet_singbox_restart_owned "$MODDIR/.config/sing-box/config.json"
 test "$MAGICNET_SUB_FSWATCH_RESTORE_PENDING" -eq 1
 test "$(tr '\n' ' ' <"$events")" = 'dns-capture-disable dns-leak-guard-disable supervisors-stop post-start '
+for cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal; do
+  test ! -e "$MODDIR/.config/sing-box/$cache_name"
+done
 : >"$events"
-unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_DEFER_FSWATCH_RESTORE
+unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_RESET_BOOTSTRAP_CACHE \
+  MAGICNET_SUB_DEFER_FSWATCH_RESTORE
 
 # A failed post-start phase must tear down the newly started generation. The
 # old generation is already gone at this point; leaving PID 222 alive would
@@ -62,7 +74,7 @@ kill() {
 export MAGICNET_SUB_STOP_TIMEOUT=0 MAGICNET_SUB_KILL_TIMEOUT=0
 CONFIG_LOCK_HELD=0
 set +e
-magicnet_singbox_restart_owned "$MODDIR/config.json"
+magicnet_singbox_restart_owned "$MODDIR/.config/sing-box/config.json"
 failure_restart_rc=$?
 set -e
 test "$failure_restart_rc" -ne 0
