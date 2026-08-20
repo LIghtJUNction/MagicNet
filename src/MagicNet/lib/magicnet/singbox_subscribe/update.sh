@@ -319,11 +319,25 @@ magicnet_singbox_transaction_reconcile() {
             return 1
         }
         unset MAGICNET_SUB_PRESERVE_REFRESH
+    elif [ -f "$_tx_dir/was-running" ]; then
+        # The core can still be alive while a signal interrupts restart_owned
+        # after it removed DNS interception and the leak guard. Reapply the
+        # complete post-start policy before treating an identical config as
+        # recovered; otherwise startup would see a live core and return early
+        # with the TUN/DNS runtime only half initialized.
+        _tx_policy_rc=0
+        if command -v magicnet_after_kernel_start_unlocked >/dev/null 2>&1; then
+            magicnet_after_kernel_start_unlocked || _tx_policy_rc=1
+        else
+            magicnet_enable_dns_capture || _tx_policy_rc=1
+            magicnet_enable_dns_leak_guard || _tx_policy_rc=1
+        fi
+        [ "$_tx_policy_rc" -eq 0 ] || return 1
     fi
 
     rm -rf "$_tx_dir" 2>/dev/null || return 1
     unset _tx_dir _tx_active_config _tx_active_work _tx_active_url _tx_active_local
-    unset _tx_generation _tx_restart_required _tx_tmp _tx_work_tmp _tx_work_backup
+    unset _tx_generation _tx_restart_required _tx_policy_rc _tx_tmp _tx_work_tmp _tx_work_backup
 }
 
 magicnet_singbox_transaction_begin_abort() {
@@ -587,6 +601,11 @@ magicnet_singbox_update_interrupt() {
     fi
     MAGICNET_CONFIG_LOCK_HELD=0
     unset MAGICNET_CONFIG_LOCK_HELD
+    unset MAGICNET_SUB_DEFER_FSWATCH_RESTORE
+    if [ "${MAGICNET_SUB_FSWATCH_RESTORE_PENDING:-0}" -eq 1 ]; then
+        magicnet_singbox_supervisor_restore 1 >/dev/null 2>&1 || true
+    fi
+    unset MAGICNET_SUB_FSWATCH_RESTORE_PENDING MAGICNET_SUB_FSWATCH_WAS_ACTIVE
     magicnet_singbox_update_lock_release
     exit "$_update_interrupt_code"
 }

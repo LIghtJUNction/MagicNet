@@ -767,6 +767,7 @@ fn run_process_group(
     command: &mut Command,
     timeout: Duration,
 ) -> Result<std::process::ExitStatus, String> {
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     let parent_pid = unsafe { libc::getpid() };
     // SAFETY: pre_exec only invokes async-signal-safe libc operations before
     // exec.  The parent-death signal prevents an externally killed CLI from
@@ -776,11 +777,16 @@ fn run_process_group(
     // untracked session leader.
     unsafe {
         command.pre_exec(move || {
-            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) == -1 {
-                Err(io::Error::last_os_error())
-            } else if libc::getppid() != parent_pid {
-                Err(io::Error::from_raw_os_error(libc::ECHILD))
-            } else if libc::setsid() == -1 {
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) == -1 {
+                    return Err(io::Error::last_os_error());
+                }
+                if libc::getppid() != parent_pid {
+                    return Err(io::Error::from_raw_os_error(libc::ECHILD));
+                }
+            }
+            if libc::setsid() == -1 {
                 Err(io::Error::last_os_error())
             } else {
                 Ok(())
@@ -790,6 +796,17 @@ fn run_process_group(
     let mut child = command
         .spawn()
         .map_err(|err| format!("spawn failed: {err}"))?;
+    let _watchdog = match ParentDeathWatchdog::spawn(child.id() as i32) {
+        Ok(watchdog) => watchdog,
+        Err(err) => {
+            let group = -(child.id() as i32);
+            unsafe {
+                libc::kill(group, libc::SIGKILL);
+            }
+            let _ = child.wait();
+            return Err(err);
+        }
+    };
     let deadline = Instant::now() + timeout;
     loop {
         if let Some(status) = child
@@ -811,6 +828,107 @@ fn run_process_group(
             return Err(format!("timed out after {}ms", timeout.as_millis()));
         }
         thread::sleep(Duration::from_millis(40));
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+struct ParentDeathWatchdog {
+    pid: libc::pid_t,
+    control_fd: libc::c_int,
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+impl ParentDeathWatchdog {
+    fn spawn(worker_pid: i32) -> Result<Self, String> {
+        let mut control = [-1; 2];
+        if unsafe { libc::pipe2(control.as_mut_ptr(), libc::O_CLOEXEC) } == -1 {
+            return Err(format!(
+                "parent-death watchdog pipe failed: {}",
+                io::Error::last_os_error()
+            ));
+        }
+
+        let watchdog_pid = unsafe { libc::fork() };
+        if watchdog_pid == -1 {
+            unsafe {
+                libc::close(control[0]);
+                libc::close(control[1]);
+            }
+            return Err(format!(
+                "parent-death watchdog fork failed: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        if watchdog_pid == 0 {
+            // SAFETY: this post-fork child uses only libc calls and exits via
+            // _exit. The CLI owns the pipe's write end; an EOF means the CLI
+            // died without disarming us. Give the worker shell's PDEATHSIG
+            // handler a short rollback window, then kill every process still
+            // left in its independent process group, including grandchildren.
+            unsafe {
+                libc::close(control[1]);
+                let mut marker = 0_u8;
+                loop {
+                    let read_result = libc::read(
+                        control[0],
+                        (&mut marker as *mut u8).cast::<libc::c_void>(),
+                        1,
+                    );
+                    if read_result == -1
+                        && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted
+                    {
+                        continue;
+                    }
+                    if read_result == 0 {
+                        let grace = libc::timespec {
+                            tv_sec: 2,
+                            tv_nsec: 0,
+                        };
+                        libc::nanosleep(&grace, std::ptr::null_mut());
+                        libc::kill(-worker_pid, libc::SIGKILL);
+                    }
+                    libc::close(control[0]);
+                    libc::_exit(0);
+                }
+            }
+        }
+
+        unsafe {
+            libc::close(control[0]);
+        }
+        Ok(Self {
+            pid: watchdog_pid,
+            control_fd: control[1],
+        })
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+impl Drop for ParentDeathWatchdog {
+    fn drop(&mut self) {
+        // A normal CLI path disarms the watcher before closing the pipe. If
+        // the CLI is killed, Drop cannot run and pipe EOF triggers cleanup.
+        unsafe {
+            libc::kill(self.pid, libc::SIGTERM);
+            loop {
+                if libc::waitpid(self.pid, std::ptr::null_mut(), 0) != -1
+                    || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted
+                {
+                    break;
+                }
+            }
+            libc::close(self.control_fd);
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "linux")))]
+struct ParentDeathWatchdog;
+
+#[cfg(not(any(target_os = "android", target_os = "linux")))]
+impl ParentDeathWatchdog {
+    fn spawn(_worker_pid: i32) -> Result<Self, String> {
+        Ok(Self)
     }
 }
 

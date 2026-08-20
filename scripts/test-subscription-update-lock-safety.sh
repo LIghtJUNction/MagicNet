@@ -120,6 +120,34 @@ printf '%s\n' 'subscription update lock publication-window safety test passed'
 )
 printf '%s\n' 'subscription status reconciliation lock-safety test passed'
 
+# A signal can arrive after restart_owned stopped fswatch but before the update
+# wrapper reached its normal deferred restore. The interrupt path must release
+# the config lock first, then restore fswatch before dropping the update lock.
+interrupt_trace="$MODDIR/.state/sing-box/interrupt-trace"
+set +e
+(
+    MAGICNET_CONFIG_LOCK_HELD=1
+    MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
+    MAGICNET_SUB_FSWATCH_RESTORE_PENDING=1
+    magicnet_singbox_transaction_reconcile() { :; }
+    magicnet_singbox_update_cleanup_stage() { :; }
+    magicnet_singbox_status_mark_interrupted() { :; }
+    magicnet_config_lock_release() { printf '%s\n' config-release >>"$interrupt_trace"; }
+    magicnet_singbox_supervisor_restore() {
+        [ "$1" -eq 1 ]
+        [ -z "${MAGICNET_SUB_DEFER_FSWATCH_RESTORE+x}" ]
+        printf '%s\n' fswatch-restore >>"$interrupt_trace"
+    }
+    magicnet_singbox_update_lock_release() { printf '%s\n' update-release >>"$interrupt_trace"; }
+    magicnet_singbox_update_interrupt 143
+)
+interrupt_rc=$?
+set -e
+[ "$interrupt_rc" -eq 143 ]
+[ "$(<"$interrupt_trace")" = $'config-release\nfswatch-restore\nupdate-release' ]
+
+printf '%s\n' 'subscription interrupt fswatch restoration test passed'
+
 # An owner marker write failure must not leave an empty directory that blocks
 # every later subscription update until a timeout-based reclamation.
 rm -rf "$UPDATE_LOCK"

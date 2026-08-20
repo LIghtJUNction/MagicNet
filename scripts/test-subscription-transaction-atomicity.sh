@@ -74,12 +74,18 @@ printf '%s\n' stable-config >"$MODDIR/.config/sing-box/config.json"
 printf '%s\n' stable-config >"$TRANSACTION/old-config"
 touch "$TRANSACTION/had-config" "$TRANSACTION/was-running"
 restart_count=0
+policy_count=0
 magicnet_singbox_is_running() { return 0; }
 magicnet_singbox_restart_owned() { restart_count=$((restart_count + 1)); }
+magicnet_after_kernel_start_unlocked() { policy_count=$((policy_count + 1)); }
 magicnet_singbox_transaction_reconcile
 
 [ "$restart_count" -eq 0 ] || {
     printf '%s\n' 'idempotent recovery restarted an already healthy core' >&2
+    exit 1
+}
+[ "$policy_count" -eq 1 ] || {
+    printf '%s\n' 'idempotent recovery did not reapply runtime network policy' >&2
     exit 1
 }
 [ ! -e "$TRANSACTION" ] || {
@@ -89,3 +95,18 @@ magicnet_singbox_transaction_reconcile
 [ "$(<"$MODDIR/.config/sing-box/config.json")" = stable-config ]
 
 printf '%s\n' 'subscription idempotent recovery test passed'
+
+# A failed runtime-policy repair must retain the durable journal so startup or
+# a later bounded status call can retry instead of accepting a half-ready core.
+mkdir -p "$TRANSACTION"
+printf '%s\n' stable-config >"$TRANSACTION/old-config"
+touch "$TRANSACTION/had-config" "$TRANSACTION/was-running"
+magicnet_after_kernel_start_unlocked() { return 1; }
+set +e
+magicnet_singbox_transaction_reconcile
+policy_recovery_rc=$?
+set -e
+[ "$policy_recovery_rc" -ne 0 ]
+[ -d "$TRANSACTION" ]
+
+printf '%s\n' 'subscription runtime-policy recovery failure test passed'
