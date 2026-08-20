@@ -1122,6 +1122,39 @@ magicnet_singbox_stop_owned_after_failure() {
     return "$_failure_rc"
 }
 
+magicnet_singbox_reset_bootstrap_cache() {
+    _bootstrap_config="$1"
+    _bootstrap_cache_path=$(jq -er '
+      .experimental.cache_file
+      | select(.enabled == true)
+      | (.path // "cache.db")
+      | select(type == "string" and length > 0)
+    ' "$_bootstrap_config" 2>/dev/null) || {
+        warn "Cannot verify the sing-box selector cache path; bootstrap cache reset skipped"
+        unset _bootstrap_config _bootstrap_cache_path
+        return 0
+    }
+
+    # MagicNet owns only the packaged cache basename. Never follow a custom
+    # path from a user-edited config when clearing the zero-node bootstrap
+    # selector state.
+    if [ "$_bootstrap_cache_path" != cache.db ]; then
+        warn "Custom sing-box cache path detected; bootstrap cache reset skipped"
+        unset _bootstrap_config _bootstrap_cache_path
+        return 0
+    fi
+
+    _bootstrap_cache_dir=${_bootstrap_config%/*}
+    [ "$_bootstrap_cache_dir" != "$_bootstrap_config" ] || _bootstrap_cache_dir=.
+    for _bootstrap_cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal; do
+        rm -f "${_bootstrap_cache_dir}/${_bootstrap_cache_name}" || {
+            unset _bootstrap_config _bootstrap_cache_path _bootstrap_cache_dir _bootstrap_cache_name
+            return 1
+        }
+    done
+    unset _bootstrap_config _bootstrap_cache_path _bootstrap_cache_dir _bootstrap_cache_name
+}
+
 magicnet_singbox_restart_owned() {
     _owned_config="$1"
     _owned_fswatch_active="${MAGICNET_SUB_FSWATCH_WAS_ACTIVE:-0}"
@@ -1154,6 +1187,9 @@ magicnet_singbox_restart_owned() {
     [ -z "$(magicnet_singbox_owned_pids "$_owned_config")" ] || _restart_rc=1
     if [ "$_restart_rc" -eq 0 ] && ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]'; then
         _restart_rc=1
+    fi
+    if [ "$_restart_rc" -eq 0 ] && [ "${MAGICNET_SUB_RESET_BOOTSTRAP_CACHE:-0}" = 1 ]; then
+        magicnet_singbox_reset_bootstrap_cache "$_owned_config" || _restart_rc=1
     fi
     if [ "$_restart_rc" -eq 0 ]; then
         ip link delete magicnet0 2>/dev/null || true

@@ -96,17 +96,35 @@ dns_package_rule_count=$(jq '[.dns.rules[] | select(has("package_name"))] | leng
 [[ "$dns_package_rule_count" -eq 0 ]] ||
     fail "DNS policy must not contain application package selectors"
 
-fakeip_server_count=$(jq '[.dns.servers[] | select(.type == "fakeip" or .tag == "fakeip")] | length' "$CONFIG_FILE")
-[[ "$fakeip_server_count" -eq 0 ]] ||
-    fail "default DNS policy must not enable an unconsumed FakeIP server"
-
-fakeip_rule_count=$(jq '[.dns.rules[] | select(.server == "fakeip")] | length' "$CONFIG_FILE")
-[[ "$fakeip_rule_count" -eq 0 ]] ||
-    fail "default DNS policy must return real addresses instead of FakeIP answers"
-
-store_fakeip=$(jq -r '.experimental.cache_file.store_fakeip // false' "$CONFIG_FILE")
-[[ "$store_fakeip" == "false" ]] ||
-    fail "default DNS policy must not persist stale FakeIP mappings"
+fakeip_state=$(jq -r '
+  ([.dns.servers[]? | select(.type? == "fakeip")]) as $servers
+  | ([.route.rules[]
+      | select(
+          .outbound? == "ai-chatgpt"
+          and (.domain_suffix? | type) == "array"
+          and (.domain_suffix | index("chatgpt.com")) != null
+        )]) as $chatgpt_domains
+  | ([.dns.rules[]? | select(.server? == "chatgpt-fakeip")]) as $dns_rules
+  | ([.route.rules[]?
+      | select(. == {ip_cidr: ["198.18.0.0/24"], outbound: "ai-chatgpt"})]) as $route_rules
+  | if (
+      ($servers | length) == 0
+      and ($dns_rules | length) == 0
+      and ($route_rules | length) == 0
+      and (.experimental.cache_file.store_fakeip? != true)
+    ) then "absent"
+    elif (
+      $servers == [{type: "fakeip", tag: "chatgpt-fakeip", inet4_range: "198.18.0.0/24"}]
+      and ($chatgpt_domains | length) == 1
+      and $dns_rules == [{domain_suffix: $chatgpt_domains[0].domain_suffix, server: "chatgpt-fakeip"}]
+      and ($route_rules | length) == 1
+      and .experimental.cache_file.store_fakeip == true
+    ) then "managed"
+    else "invalid"
+    end
+' "$CONFIG_FILE")
+[[ "$fakeip_state" != "invalid" ]] ||
+    fail "FakeIP must be absent or uniquely consumed by the canonical ChatGPT WebView policy"
 
 fakeip_blackhole_count=$(jq '[
     .route.rules[]
@@ -198,6 +216,11 @@ proxy_dns_tags = {
     server["tag"]
     for server in config["dns"]["servers"]
     if server.get("detour") == "proxy"
+}
+non_direct_dns_tags = proxy_dns_tags | {
+    server["tag"]
+    for server in config["dns"]["servers"]
+    if server.get("type") == "fakeip"
 }
 apple_icloud_dns_rule = {
     "domain_suffix": ["apple.com", "icloud.com", "icloud-content.com", "me.com"],
@@ -583,6 +606,13 @@ final_foreign_keywords = [
     "google", "youtube", "facebook", "instagram", "twitter", "x.com", "github",
     "telegram", "wikipedia", "reddit", "discord",
 ]
+managed_chatgpt_fake_dns_rules = [
+    rule for rule in dns_rules if rule.get("server") == "chatgpt-fakeip"
+]
+if len(managed_chatgpt_fake_dns_rules) > 1:
+    raise AssertionError(
+        f"ChatGPT FakeIP DNS rule must be unique: {managed_chatgpt_fake_dns_rules}"
+    )
 expected_dns_tail = [
     private_dns_rule,
     mmstat_local_dns_rule,
@@ -592,6 +622,7 @@ expected_dns_tail = [
     game_dns_rule,
     foreign_priority_dns_rule,
     x_social_dns_rule,
+] + managed_chatgpt_fake_dns_rules + [
     canonical_cn_dns_rule,
     generic_foreign_dns_rule,
     specialized_foreign_dns_rule,
@@ -607,7 +638,8 @@ if (
 ):
     raise AssertionError(
         "required DNS order is private < mmstat local < ad suffix < ad keyword < ad rule-set < game < "
-        "foreign priority < explicit X/Twitter < canonical CN < generic foreign < specialized: "
+        "foreign priority < explicit X/Twitter < optional ChatGPT FakeIP < canonical CN "
+        "< generic foreign < specialized: "
         f"tail_start={dns_tail_start} tail="
         f"{dns_rules[dns_tail_start:] if dns_tail_start is not None else None}"
     )
@@ -1632,11 +1664,15 @@ def audit_explicit_route_dns_parity(domain):
     parity_ok = (
         dns_server == "bootstrap-local-dns"
         if route_effective == "direct"
-        else dns_server in proxy_dns_tags
+        else dns_server in non_direct_dns_tags
     )
     if parity_ok:
         return None
-    expected_dns = "bootstrap-local-dns" if route_effective == "direct" else "proxy-detoured DNS"
+    expected_dns = (
+        "bootstrap-local-dns"
+        if route_effective == "direct"
+        else "proxy-detoured or managed synthetic DNS"
+    )
     return (
         f"domain={domain} route_index={route_index} outbound={route_outbound} "
         f"effective={route_effective} dns_index={dns_index} server={dns_server} "
@@ -2361,7 +2397,7 @@ network_connectivity_keyword_index=$(jq -er '
 
 assert_connectivity_dns_safety() {
     local config_file="$1"
-    local default_mode direct_mode_index global_mode_index wechat_rule_index domestic_rule_index foreign_rule_index
+    local default_mode direct_mode_index global_mode_index chatgpt_fake_index wechat_rule_index domestic_rule_index foreign_rule_index
     local apple_rule_index cn_bing_rule_index global_bing_rule_index local_service_index
     local private_dns_index mmstat_dns_index ad_suffix_dns_index ad_keyword_dns_index ad_rule_set_dns_index
     local game_dns_index foreign_priority_dns_index x_social_dns_index cn_dns_index
@@ -2380,7 +2416,7 @@ assert_connectivity_dns_safety() {
         printf 'DNS safety guard: default Clash mode must remain Rule\n' >&2
         return 1
     }
-    read -r direct_mode_index global_mode_index wechat_rule_index domestic_rule_index foreign_rule_index \
+    read -r direct_mode_index global_mode_index chatgpt_fake_index wechat_rule_index domestic_rule_index foreign_rule_index \
         apple_rule_index cn_bing_rule_index global_bing_rule_index local_service_index \
         private_dns_index mmstat_dns_index ad_suffix_dns_index ad_keyword_dns_index ad_rule_set_dns_index \
         game_dns_index foreign_priority_dns_index x_social_dns_index cn_dns_index < <(jq -er '
@@ -2390,6 +2426,11 @@ assert_connectivity_dns_safety() {
       [
         unique_index({clash_mode: "Direct", server: "bootstrap-local-dns"}),
         unique_index({clash_mode: "Global", server: "doh-cloudflare"}),
+        ([.dns.rules | to_entries[] | select(.value.server? == "chatgpt-fakeip") | .key]
+          | if length == 0 then -1
+            elif length == 1 then .[0]
+            else error("expected at most one ChatGPT FakeIP DNS rule")
+            end),
         unique_index({
           domain_suffix: [
             "qq.com", "weixin.qq.com", "wechat.com", "wechatapp.com", "wechatpay.cn",
@@ -2526,7 +2567,8 @@ assert_connectivity_dns_safety() {
         && game_dns_index == ad_rule_set_dns_index + 1 \
         && foreign_priority_dns_index == game_dns_index + 1 \
         && x_social_dns_index == foreign_priority_dns_index + 1 \
-        && cn_dns_index == x_social_dns_index + 1)) || {
+        && ((chatgpt_fake_index == -1 && cn_dns_index == x_social_dns_index + 1) \
+            || (chatgpt_fake_index == x_social_dns_index + 1 && cn_dns_index == chatgpt_fake_index + 1)))) || {
         printf '%s\n' \
             'DNS safety guard: explicit DNS policy rules are not in canonical adjacent order' >&2
         return 1

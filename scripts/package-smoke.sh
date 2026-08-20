@@ -1527,13 +1527,48 @@ if voice_index >= cn_ip_routes[0]:
 
 if invalid_destination_routes[0] > cn_ip_routes[0]:
     raise SystemExit("packaged reserved 0.0.0.0/8 destinations must fail closed before CN routing")
-if any(server.get("type") == "fakeip" or server.get("tag") == "fakeip" for server in config["dns"]["servers"]):
-    raise SystemExit("packaged default DNS must not enable FakeIP")
-if config.get("experimental", {}).get("cache_file", {}).get("store_fakeip") is True:
-    raise SystemExit("packaged default DNS must not persist FakeIP mappings")
+chatgpt_domain_rules = [
+    rule for rule in route_rules
+    if rule.get("outbound") == "ai-chatgpt"
+    and "chatgpt.com" in rule.get("domain_suffix", [])
+]
+if len(chatgpt_domain_rules) != 1:
+    raise SystemExit(f"packaged ChatGPT domain ownership is ambiguous: {chatgpt_domain_rules}")
+chatgpt_fakeip_server = {
+    "type": "fakeip",
+    "tag": "chatgpt-fakeip",
+    "inet4_range": "198.18.0.0/24",
+}
+chatgpt_fakeip_dns = {
+    "domain_suffix": chatgpt_domain_rules[0]["domain_suffix"],
+    "server": "chatgpt-fakeip",
+}
+chatgpt_fakeip_route = {
+    "ip_cidr": ["198.18.0.0/24"],
+    "outbound": "ai-chatgpt",
+}
+if [server for server in dns_servers if server == chatgpt_fakeip_server] != [chatgpt_fakeip_server]:
+    raise SystemExit("packaged DNS must contain one canonical ChatGPT FakeIP server")
+if [rule for rule in dns_rules if rule == chatgpt_fakeip_dns] != [chatgpt_fakeip_dns]:
+    raise SystemExit("packaged DNS must contain one canonical ChatGPT FakeIP rule")
+chatgpt_fakeip_routes = [
+    index for index, rule in enumerate(route_rules) if rule == chatgpt_fakeip_route
+]
+if len(chatgpt_fakeip_routes) != 1 or chatgpt_fakeip_routes[0] >= cn_ip_routes[0]:
+    raise SystemExit(
+        "packaged ChatGPT FakeIP route must uniquely precede CN destination-IP ownership: "
+        f"chatgpt={chatgpt_fakeip_routes} cn={cn_ip_routes}"
+    )
+if config.get("experimental", {}).get("cache_file", {}).get("store_fakeip") is not True:
+    raise SystemExit("packaged DNS must persist ChatGPT FakeIP mappings")
+if any(
+    server.get("type") == "fakeip" and server != chatgpt_fakeip_server
+    for server in dns_servers
+):
+    raise SystemExit("packaged DNS contains an unmanaged FakeIP server")
 if any(
     rule.get("outbound") == "block"
-    and ({"198.18.0.0/16", "28.0.0.0/8"} & set(rule.get("ip_cidr", [])))
+    and ({"198.18.0.0/24", "198.18.0.0/16", "28.0.0.0/8"} & set(rule.get("ip_cidr", [])))
     for rule in route_rules
 ):
     raise SystemExit("packaged routing must not blackhole benchmark or public address space")

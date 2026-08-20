@@ -847,14 +847,31 @@ magicnet_singbox_update_subscription_unlocked() {
     # shellcheck disable=SC2034
     MAGICNET_SUB_FSWATCH_WAS_ACTIVE="$_update_fswatch_active"
     MAGICNET_SUB_PRESERVE_REFRESH=1
-    export MAGICNET_SUB_PRESERVE_REFRESH
+    MAGICNET_SUB_RESET_BOOTSTRAP_CACHE=0
+    if [ "$_sub_success_epoch" = 0 ] && [ "${_imported:-0}" -gt 0 ]; then
+        if [ "$_sub_was_running" -eq 1 ]; then
+            # The packaged zero-node config deliberately pins every selector
+            # to block. sing-box persists that choice by selector tag, so the
+            # first populated config must not inherit the bootstrap decision.
+            MAGICNET_SUB_RESET_BOOTSTRAP_CACHE=1
+        elif ! magicnet_singbox_reset_bootstrap_cache "$_sub_active_config"; then
+            unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH \
+                MAGICNET_SUB_RESET_BOOTSTRAP_CACHE
+            magicnet_singbox_update_status activate failed cache_reset_failed || true
+            error "Failed to reset the zero-node bootstrap selector cache"
+            return 1
+        fi
+    fi
+    export MAGICNET_SUB_PRESERVE_REFRESH MAGICNET_SUB_RESET_BOOTSTRAP_CACHE
     if ! magicnet_singbox_verify_subscription_ready; then
-        unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH
+        unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH \
+            MAGICNET_SUB_RESET_BOOTSTRAP_CACHE
         magicnet_singbox_update_status activate failed activation_failed || true
         error "Subscription activation failed"
         return 1
     fi
-    unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH
+    unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH \
+        MAGICNET_SUB_RESET_BOOTSTRAP_CACHE
     if ! magicnet_singbox_transaction_phase core-verified; then
         magicnet_singbox_update_status activate failed journal_phase_write_failed || true
         return 1
