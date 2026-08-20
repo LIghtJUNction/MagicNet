@@ -36,6 +36,12 @@ kam check
 普通 push 和 pull request 会构建并上传 workflow artifact；如果存在
 `KAM_PRIVATE_KEY`，上传内容也会包含模块签名旁路文件。
 
+## quality.yml
+
+`quality.yml` 将代码质量检查与打包流程分离。它会检查 Rust 格式、以警告即错误
+运行 Clippy、执行完整 Rust workspace 测试，并分别检查主机 Bash 工具和设备端
+POSIX shell。
+
 ## 本地自定义
 
 共享基线只放通用逻辑。项目自己的 workflow 放到额外文件里；

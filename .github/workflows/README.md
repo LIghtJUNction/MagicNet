@@ -40,6 +40,12 @@ Normal push and pull request runs build and upload workflow artifacts. When
 `KAM_PRIVATE_KEY` is available, the uploaded artifact also includes the module
 signature sidecar.
 
+## quality.yml
+
+`quality.yml` keeps code-level checks independent from packaging. It requires
+Rust formatting, Clippy with warnings denied, the complete Rust workspace test
+suite, and ShellCheck for both host Bash tooling and device-side POSIX shell.
+
 ## Local Customization
 
 Keep this shared baseline generic. Put project-specific workflows in additional

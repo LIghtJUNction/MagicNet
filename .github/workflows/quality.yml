@@ -1,0 +1,81 @@
+name: Code Quality
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: code-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust quality tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-quality-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-quality-rust-
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test Rust workspace
+        run: cargo test --workspace
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Lint Bash tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(
+            find hooks/pre-build hooks/post-build hooks/lib -type f -name '*.sh' -print
+            find scripts -maxdepth 1 -type f -name '*.sh' -print
+            printf '%s\n' kam.sh
+          )
+          shellcheck -s bash -e SC1091,SC2317,SC2329,SC2059 "${files[@]}"
+
+      - name: Lint device shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(
+            find src/MagicNet -maxdepth 1 -type f -name '*.sh' -print
+            find src/MagicNet/system/bin -type f -print 2>/dev/null || true
+            printf '%s\n' src/MagicNet/lib/magicnet.sh
+          )
+          shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 "${files[@]}"
