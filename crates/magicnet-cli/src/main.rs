@@ -839,6 +839,65 @@ fn run_process_group(
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
+unsafe fn watchdog_worker_is_live(pid: libc::pid_t) -> bool {
+    if pid <= 0 {
+        return false;
+    }
+
+    let mut path = [0_u8; 64];
+    let prefix = b"/proc/";
+    path[..prefix.len()].copy_from_slice(prefix);
+    let mut path_len = prefix.len();
+    let mut digits = [0_u8; 20];
+    let mut digit_len = 0_usize;
+    let mut remaining = pid as u64;
+    loop {
+        digits[digit_len] = b'0' + (remaining % 10) as u8;
+        digit_len += 1;
+        remaining /= 10;
+        if remaining == 0 {
+            break;
+        }
+    }
+    while digit_len > 0 {
+        digit_len -= 1;
+        path[path_len] = digits[digit_len];
+        path_len += 1;
+    }
+    let suffix = b"/stat\0";
+    path[path_len..path_len + suffix.len()].copy_from_slice(suffix);
+
+    let stat_fd = libc::open(
+        path.as_ptr().cast::<libc::c_char>(),
+        libc::O_RDONLY | libc::O_CLOEXEC,
+    );
+    if stat_fd == -1 {
+        return false;
+    }
+    let mut stat = [0_u8; 512];
+    let stat_len = libc::read(
+        stat_fd,
+        stat.as_mut_ptr().cast::<libc::c_void>(),
+        stat.len(),
+    );
+    libc::close(stat_fd);
+    if stat_len < 4 {
+        return false;
+    }
+
+    let mut index = stat_len as usize - 3;
+    loop {
+        if stat[index] == b')' && stat[index + 1] == b' ' {
+            return !matches!(stat[index + 2], b'Z' | b'X' | b'x');
+        }
+        if index == 0 {
+            return false;
+        }
+        index -= 1;
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
 struct ParentDeathWatchdog {
     pid: libc::pid_t,
     control_fd: libc::c_int,
@@ -923,7 +982,7 @@ impl ParentDeathWatchdog {
                     };
                     let max_polls = timeout.as_millis().saturating_add(99) / 100;
                     let mut polls = 0_u128;
-                    while polls < max_polls && libc::kill(worker_pid, 0) == 0 {
+                    while polls < max_polls && watchdog_worker_is_live(worker_pid) {
                         libc::nanosleep(&poll_interval, std::ptr::null_mut());
                         polls += 1;
                     }
@@ -1158,6 +1217,20 @@ mod process_group_tests {
     use std::fs;
     use std::process::Command;
     use std::time::Duration;
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[test]
+    fn watchdog_treats_a_zombie_worker_as_finished() {
+        let mut child = Command::new("sh").args(["-c", "exit 0"]).spawn().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while unsafe { super::watchdog_worker_is_live(child.id() as libc::pid_t) }
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!unsafe { super::watchdog_worker_is_live(child.id() as libc::pid_t) });
+        let _ = child.wait();
+    }
 
     #[test]
     fn command_timeout_is_finite_and_rejects_zero_or_overflow() {

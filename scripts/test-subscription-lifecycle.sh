@@ -128,7 +128,17 @@ write_local_candidate() {
   chmod 600 "$candidate_local"
 }
 
-magicnet_with_config_lock() { "$@"; }
+magicnet_with_config_lock() {
+  if test "${MAGICNET_CONFIG_LOCK_HELD:-0}" -eq 1; then
+    "$@"
+    return $?
+  fi
+  MAGICNET_CONFIG_LOCK_HELD=1
+  "$@"
+  local lock_rc=$?
+  unset MAGICNET_CONFIG_LOCK_HELD
+  return "$lock_rc"
+}
 magicnet_fswatch_status() { return 1; }
 RUNNING=0
 NATIVE_NODE_COUNT=1

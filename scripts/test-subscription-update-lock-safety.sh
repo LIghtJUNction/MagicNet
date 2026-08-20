@@ -149,6 +149,28 @@ set -e
 
 printf '%s\n' 'subscription interrupt fswatch restoration test passed'
 
+# A signal while config-lock acquisition is still waiting must not reconcile
+# another operation's files without owning that lock. Leave the journal for a
+# later status/startup recovery and release only the update lock.
+prelock_interrupt_trace="$MODDIR/.state/sing-box/prelock-interrupt-trace"
+set +e
+(
+    unset MAGICNET_CONFIG_LOCK_HELD MAGICNET_SUB_FSWATCH_RESTORE_PENDING
+    unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_DEFER_FSWATCH_RESTORE
+    magicnet_singbox_transaction_reconcile() { printf '%s\n' reconcile >>"$prelock_interrupt_trace"; }
+    magicnet_singbox_update_cleanup_stage() { :; }
+    magicnet_singbox_status_mark_interrupted() { :; }
+    magicnet_config_lock_release() { printf '%s\n' config-release >>"$prelock_interrupt_trace"; }
+    magicnet_singbox_update_lock_release() { printf '%s\n' update-release >>"$prelock_interrupt_trace"; }
+    magicnet_singbox_update_interrupt 143
+)
+prelock_interrupt_rc=$?
+set -e
+[ "$prelock_interrupt_rc" -eq 143 ]
+[ "$(<"$prelock_interrupt_trace")" = update-release ]
+
+printf '%s\n' 'subscription pre-lock interrupt serialization test passed'
+
 # An owner marker write failure must not leave an empty directory that blocks
 # every later subscription update until a timeout-based reclamation.
 rm -rf "$UPDATE_LOCK"

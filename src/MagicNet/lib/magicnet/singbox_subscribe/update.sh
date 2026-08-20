@@ -237,7 +237,9 @@ magicnet_singbox_transaction_reconcile() {
         if [ -f "$_tx_dir/had-config" ] && [ -f "$_tx_dir/old-config" ] &&
             [ -f "$_tx_active_config" ] && command -v cmp >/dev/null 2>&1 &&
             cmp -s "$_tx_dir/old-config" "$_tx_active_config" &&
-            magicnet_singbox_owned_ready "$_tx_active_config"; then
+            magicnet_singbox_owned_ready "$_tx_active_config" &&
+            command -v magicnet_singbox_runtime_fingerprint_matches >/dev/null 2>&1 &&
+            magicnet_singbox_runtime_fingerprint_matches; then
             _tx_restart_required=0
         fi
     fi
@@ -593,23 +595,27 @@ magicnet_singbox_update_cleanup_stage() {
 magicnet_singbox_update_interrupt() {
     _update_interrupt_code="$1"
     trap - EXIT HUP INT TERM
-    magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true
+    _update_interrupt_had_config_lock="${MAGICNET_CONFIG_LOCK_HELD:-0}"
+    if [ "$_update_interrupt_had_config_lock" = 1 ]; then
+        magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || true
+    fi
     magicnet_singbox_update_cleanup_stage
     magicnet_singbox_status_mark_interrupted
-    if command -v magicnet_config_lock_release >/dev/null 2>&1; then
+    if [ "$_update_interrupt_had_config_lock" = 1 ] &&
+        command -v magicnet_config_lock_release >/dev/null 2>&1; then
         magicnet_config_lock_release
     fi
     MAGICNET_CONFIG_LOCK_HELD=0
     unset MAGICNET_CONFIG_LOCK_HELD
     unset MAGICNET_SUB_DEFER_FSWATCH_RESTORE
     _update_restore_fswatch="${MAGICNET_SUB_FSWATCH_RESTORE_PENDING:-0}"
-    if [ "${MAGICNET_SUB_FSWATCH_WAS_ACTIVE:-0}" -eq 1 ]; then
+    if [ "${MAGICNET_SUB_FSWATCH_WAS_ACTIVE:-0}" = 1 ]; then
         _update_restore_fswatch=1
     fi
-    if [ "$_update_restore_fswatch" -eq 1 ]; then
+    if [ "$_update_restore_fswatch" = 1 ]; then
         magicnet_singbox_supervisor_restore 1 >/dev/null 2>&1 || true
     fi
-    unset _update_restore_fswatch
+    unset _update_restore_fswatch _update_interrupt_had_config_lock
     unset MAGICNET_SUB_FSWATCH_RESTORE_PENDING MAGICNET_SUB_FSWATCH_WAS_ACTIVE
     magicnet_singbox_update_lock_release
     exit "$_update_interrupt_code"
