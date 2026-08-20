@@ -32,11 +32,11 @@ use std::env;
 
 pub(crate) use app::App;
 pub(crate) use base64::{decode_base64, encode_base64};
+use commands::dispatch;
 pub(crate) use process::{
     pid_summary, run_magicnet_function, run_subscription_source_update_from_inherited_fd,
     run_subscription_update_from_inherited_fd, singbox_pid_summary, stop_owned_singbox,
 };
-use commands::dispatch;
 pub(crate) use utils::{
     clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv,
     shell_inert_conf_value, write_kv, write_secret_file, write_text_file,

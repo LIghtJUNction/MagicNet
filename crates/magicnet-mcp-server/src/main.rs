@@ -49,10 +49,7 @@ impl Drop for ConnectionPermit {
 #[derive(Debug)]
 enum StartupError {
     Configuration(String),
-    Listen {
-        addr: SocketAddr,
-        source: io::Error,
-    },
+    Listen { addr: SocketAddr, source: io::Error },
 }
 
 impl StartupError {
@@ -111,7 +108,8 @@ fn run() -> Result<(), StartupError> {
     let port = env::var("MAGICNET_MCP_PORT").unwrap_or_else(|_| "8766".to_string());
     let secret = env::var("MAGICNET_MCP_SECRET").unwrap_or_default();
     let addr = parse_listen_addr(&bind, &port).map_err(StartupError::Configuration)?;
-    let listener = TcpListener::bind(addr).map_err(|source| StartupError::Listen { addr, source })?;
+    let listener =
+        TcpListener::bind(addr).map_err(|source| StartupError::Listen { addr, source })?;
     let cli = if cfg!(target_os = "android") {
         PathBuf::from(&moddir).join("bin/magicnet-cli")
     } else {
@@ -188,9 +186,8 @@ mod tests {
 
     #[test]
     fn startup_errors_include_actionable_recovery_context() {
-        let configuration = StartupError::Configuration(
-            "MAGICNET_MCP_BIND must be an IP literal".to_string(),
-        );
+        let configuration =
+            StartupError::Configuration("MAGICNET_MCP_BIND must be an IP literal".to_string());
         assert!(configuration
             .to_string()
             .contains("invalid MCP configuration"));

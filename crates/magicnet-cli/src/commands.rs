@@ -332,7 +332,11 @@ mod tests {
     fn command_names_are_unique_and_usage_matches_the_registry_key() {
         let mut names = HashSet::new();
         for command in COMMANDS {
-            assert!(names.insert(command.name), "duplicate command {}", command.name);
+            assert!(
+                names.insert(command.name),
+                "duplicate command {}",
+                command.name
+            );
             assert!(
                 command.usage.starts_with(&format!("cli {}", command.name)),
                 "usage does not match command {}: {}",
