@@ -7,10 +7,11 @@ magicnet_singbox_emitted_node_port_valid() {
     [ "$_emitted_port" -le 65535 ] 2>/dev/null
 }
 
-magicnet_singbox_build_outbounds_file() {
+magicnet_singbox_build_outbounds_file() (
     _nodes_dir="$1"
     _out_file="$2"
     _tags_file="$3"
+    trap 'rm -f "${_out_file}.nodes"' 0 1 2 3 15
     _first=1
     _imported=0
     _skipped=0
@@ -43,37 +44,23 @@ magicnet_singbox_build_outbounds_file() {
     done
     printf ']' >>"${_out_file}.nodes"
 
-    if magicnet_singbox_build_outbounds_file_with_jq "${_out_file}.nodes" "$_tags_file" "$_out_file"; then
-        printf '%s %s\n' "$_imported" "$_skipped"
-        return 0
-    fi
-
-    {
-        printf '  "outbounds": [\n'
-        magicnet_singbox_emit_selector_block "$_tags_file"
-        _nodes=$(sed 's/^\[//; s/\]$//' "${_out_file}.nodes")
-        if [ -n "$_nodes" ]; then
-            printf ',\n    %s' "$_nodes"
-        fi
-        printf ',\n'
-        printf '    {\n      "type": "direct",\n      "tag": "direct"\n    },\n'
-        printf '    {\n      "type": "block",\n      "tag": "block"\n    }\n'
-        printf '  ],'
-    } >"$_out_file"
-
+    magicnet_singbox_build_outbounds_file_with_jq \
+        "${_out_file}.nodes" "$_tags_file" "$_out_file" || return 1
     printf '%s %s\n' "$_imported" "$_skipped"
-}
+)
 
-magicnet_singbox_build_outbounds_file_with_jq() {
+magicnet_singbox_build_outbounds_file_with_jq() (
     _nodes_json="$1"
     _tags_file="$2"
     _out_file="$3"
     command -v jq >/dev/null 2>&1 || return 1
     _tags_json="${_out_file}.tags.json"
+    _out_tmp="${_out_file}.new.$$"
+    trap 'rm -f "$_tags_json" "$_out_tmp"' 0 1 2 3 15
     _filter_file=$(magicnet_singbox_subscription_filter_file)
     [ -f "$_filter_file" ] || _filter_file=/dev/null
     jq -R -s 'split("\n") | map(select(length > 0))' "$_tags_file" >"$_tags_json" || return 1
-    jq -n -r --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" \
+    jq -n --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" \
       --rawfile configured_filters "$_filter_file" '
       def normalize_tag:
         if type == "string"
@@ -231,9 +218,9 @@ magicnet_singbox_build_outbounds_file_with_jq() {
           {"type": "direct", "tag": "direct"},
           {"type": "block", "tag": "block"}
         ]
-      | "  \"outbounds\": " + tojson + ","
-    ' >"$_out_file" || return 1
-}
+    ' >"$_out_tmp" || return 1
+    chmod 600 "$_out_tmp" && mv -f "$_out_tmp" "$_out_file"
+)
 
 magicnet_singbox_count_valid_outbounds_nodes() {
     _nodes_json="$1"
@@ -291,256 +278,12 @@ magicnet_singbox_count_valid_outbounds_nodes() {
     '
 }
 
-magicnet_singbox_emit_selector_block() {
-    _tags_file="$1"
-    _proxy_tags=$(awk 'NF && !seen[$0]++' "$_tags_file")
-    if [ -n "$_proxy_tags" ]; then
-        _proxy_default=$(printf '%s\n' "$_proxy_tags" | sed -n '1p')
-        magicnet_singbox_emit_urltest \
-            "proxy-auto" "https://www.gstatic.com/generate_204" "3m" "$_proxy_tags"
-        printf ',\n'
-        magicnet_emit_selector_json_exact "proxy" \
-            "$(printf '%s\n%s\n%s\n%s\n' "$_proxy_tags" "proxy-auto" "direct" "block")" \
-            "$_proxy_default"
-    else
-        magicnet_emit_selector_json_exact "proxy" "block" "block"
-    fi
-    printf ',\n'
-    magicnet_emit_selector_json "select" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
-    magicnet_singbox_emit_static_selectors
-    unset _tags_file _proxy_tags _proxy_default
-}
-
-magicnet_singbox_emit_static_selectors() {
-    for _pair in \
-        "lan::direct" \
-        "apple-cn::direct" "microsoft-cn::direct" "icloud::direct"; do
-        _name=${_pair%%:*}
-        _default=${_pair##*:}
-        printf ',\n'
-        magicnet_emit_selector_json "$_name" "" "$_default"
-    done
-    printf ',\n'
-    magicnet_emit_selector_json_exact "cn-direct" "$(printf '%s\n%s\n%s\n' "direct" "proxy" "block")" "direct"
-    printf ',\n'
-    magicnet_emit_selector_json_exact "hotspot" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
-    printf ',\n'
-    magicnet_emit_selector_json "ad-block" "$(printf '%s\n%s\n%s\n' "block" "direct" "proxy")" "block"
-    printf ',\n'
-    magicnet_emit_selector_json_exact "ad-allow" "$(printf '%s\n%s\n%s\n' "final" "direct" "proxy")" "final"
-    printf ',\n'
-    magicnet_emit_selector_json "bing" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
-    printf ',\n'
-    magicnet_emit_selector_json "dns-guard" "$(printf '%s\n%s\n%s\n' "proxy" "block" "direct")" "proxy"
-    printf ',\n'
-    if [ -n "$_proxy_tags" ]; then
-        magicnet_emit_selector_json_exact \
-            "network-test" \
-            "$(printf '%s\n%s\n%s\n%s\n' "proxy-auto" "proxy" "direct" "block")" \
-            "proxy-auto"
-    else
-        magicnet_emit_selector_json_exact "network-test" "block" "block"
-    fi
-    printf ',\n'
-    _pinned_ai_tags=$(magicnet_singbox_pinned_ai_tags "$_tags_file")
-    _pinned_ai_default=$(printf '%s\n' "$_pinned_ai_tags" | sed -n '1p')
-    if [ -n "$_pinned_ai_default" ]; then
-        magicnet_emit_selector_json_exact "ai-proxy" "$_pinned_ai_tags" "$_pinned_ai_default"
-    else
-        magicnet_emit_selector_json_exact "ai-proxy" "block" "block"
-    fi
-    for _name in ai-chatgpt ai-gemini ai-grok ai-claude; do
-        printf ',\n'
-        if [ -n "$_pinned_ai_tags" ]; then
-            magicnet_singbox_emit_ai_urltest "$_name" "$_pinned_ai_tags"
-            printf ',\n'
-        fi
-        magicnet_singbox_emit_pinned_ai_selector "$_name" "$_pinned_ai_tags"
-    done
-    for _name in proxy-rule dev-proxy social-proxy media-proxy game-proxy telegram-proxy; do
-        printf ',\n'
-        magicnet_emit_selector_json "$_name" "$(printf '%s\n%s\n' "proxy" "direct")" "proxy"
-    done
-    printf ',\n'
-    magicnet_emit_selector_json "download-direct" "$(printf '%s\n%s\n' "direct" "proxy")" "direct"
-    printf ',\n'
-    magicnet_emit_selector_json_exact "final" "$(printf '%s\n%s\n%s\n' "proxy" "direct" "block")" "proxy"
-    unset _pair _name _default _pinned_ai_tags _pinned_ai_default
-}
-
-magicnet_singbox_ai_url() {
-    case "$1" in
-    ai-chatgpt) printf '%s\n' "https://chatgpt.com/" ;;
-    ai-gemini) printf '%s\n' "https://gemini.google.com/" ;;
-    ai-grok) printf '%s\n' "https://grok.com/" ;;
-    ai-claude) printf '%s\n' "https://claude.ai/" ;;
-    *) return 1 ;;
-    esac
-}
-
-magicnet_singbox_emit_ai_urltest() {
-    _ai_urltest_name="$1"
-    _ai_urltest_tags="$2"
-    magicnet_singbox_emit_urltest \
-        "${_ai_urltest_name}-auto" "$(magicnet_singbox_ai_url "$_ai_urltest_name")" \
-        "10m" "$_ai_urltest_tags"
-    unset _ai_urltest_name _ai_urltest_tags
-}
-
-magicnet_singbox_emit_urltest() {
-    _urltest_name="$1"
-    _urltest_url="$2"
-    _urltest_interval="$3"
-    _urltest_tags="$4"
-    _urltest_first=1
-    printf '    {\n'
-    printf '      "type": "urltest",\n'
-    printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_urltest_name")"
-    printf '      "outbounds": ['
-    while IFS= read -r _urltest_tag; do
-        [ -n "$_urltest_tag" ] || continue
-        [ "$_urltest_first" -eq 1 ] || printf ', '
-        printf '"%s"' "$(magicnet_json_escape "$_urltest_tag")"
-        _urltest_first=0
-    done <<EOF
-$_urltest_tags
-EOF
-    printf '],\n'
-    printf '      "url": "%s",\n' "$(magicnet_json_escape "$_urltest_url")"
-    printf '      "interval": "%s",\n' "$(magicnet_json_escape "$_urltest_interval")"
-    printf '      "tolerance": 30,\n'
-    printf '      "idle_timeout": "10m",\n'
-    printf '      "interrupt_exist_connections": false\n'
-    printf '    }'
-    unset _urltest_name _urltest_url _urltest_interval _urltest_tags _urltest_first _urltest_tag
-}
-
-# Manual node selection by default.
-# outbounds = [first-node, ...other-nodes, block, name-auto]
-# default   = first-node
-magicnet_singbox_emit_pinned_ai_selector() {
-    _pinned_ai_name="$1"
-    _pinned_ai_selector_tags="$2"
-    _pinned_ai_first=$(printf '%s\n' "$_pinned_ai_selector_tags" | sed -n '1p')
-    printf '    {\n'
-    printf '      "type": "selector",\n'
-    printf '      "tag": "%s",\n' "$(magicnet_json_escape "$_pinned_ai_name")"
-    printf '      "outbounds": ['
-    if [ -n "$_pinned_ai_first" ]; then
-        _first_out=1
-        while IFS= read -r _tag; do
-            [ -n "$_tag" ] || continue
-            [ "$_first_out" -eq 1 ] || printf ', '
-            printf '"%s"' "$(magicnet_json_escape "$_tag")"
-            _first_out=0
-        done <<EOF
-$_pinned_ai_selector_tags
-EOF
-        printf ', "block", "%s-auto"' "$(magicnet_json_escape "$_pinned_ai_name")"
-        printf '],\n'
-        printf '      "default": "%s"\n' "$(magicnet_json_escape "$_pinned_ai_first")"
-    else
-        printf '"block"],\n'
-        printf '      "default": "block"\n'
-    fi
-    printf '    }'
-    unset _pinned_ai_name _pinned_ai_selector_tags _pinned_ai_first _first_out _tag
-}
-
-magicnet_singbox_pinned_ai_tags() {
-    _pinned_ai_tags_file="$1"
-    awk '
-      function blocked_ai(value, folded) {
-        folded = tolower(value)
-        return value ~ /中国|大陆|内地|香港|台湾|臺灣|台北|臺北|台中|臺中|台南|臺南|高雄|新竹|🇭🇰|🇹🇼|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西/ ||
-          folded ~ /(^|[^[:alnum:]])(hong[ _-]?kong([ _-]?[0-9]+)?|hkg?[ _-]?[0-9]+|taiwan|taipei|taichung|tainan|kaohsiung|hsinchu|tw|twn|china|mainland|hk|hkg|cn|beijing|shanghai|guangzhou|shenzhen|chongqing|tianjin|hebei|shanxi|liaoning|jilin|heilongjiang|jiangsu|zhejiang|anhui|fujian|jiangxi|shandong|henan|hubei|hunan|guangdong|hainan|sichuan|guizhou|yunnan|shaanxi|gansu|qinghai|inner[ _-]?mongolia|guangxi|tibet|ningxia|xinjiang)([^[:alnum:]]|$)/
-      }
-      function us_node(value, folded) {
-        folded = tolower(value)
-        return value ~ /美国|美國|美西|美东|美東|洛杉矶|洛杉磯|圣何塞|聖何塞|西雅图|西雅圖|达拉斯|達拉斯|纽约|紐約|芝加哥|迈阿密|邁阿密|凤凰城|鳳凰城|亚特兰大|亞特蘭大|波特兰|波特蘭|丹佛|拉斯维加斯|拉斯維加斯|硅谷|🇺🇸/ ||
-          folded ~ /(^|[^[:alnum:]])(us|usa|united[ _-]?states|america|los[ _-]?angeles|san[ _-]?jose|seattle|dallas|new[ _-]?york|chicago|washington|miami|phoenix|atlanta|portland|denver|las[ _-]?vegas|silicon[ _-]?valley)([^[:alnum:]]|$)/
-      }
-      function japan_node(value, folded) {
-        folded = tolower(value)
-        return value ~ /日本|东京|東京|大阪|埼玉|名古屋|🇯🇵/ ||
-          folded ~ /(^|[^[:alnum:]])(jp|jpn|japan|tokyo|osaka|saitama|nagoya)([^[:alnum:]]|$)/
-      }
-      {
-        if (blocked_ai($0)) next
-        tag[++count] = $0
-        priority[count] = us_node($0) ? 1 : (japan_node($0) ? 2 : 3)
-      }
-      END {
-        for (wanted = 1; wanted <= 3; wanted++)
-          for (item = 1; item <= count; item++)
-            if (priority[item] == wanted) print tag[item]
-      }
-    ' "$_pinned_ai_tags_file"
-    unset _pinned_ai_tags_file
-}
-
 magicnet_singbox_sanitize_generated_config() {
     _sanitize_config_file="$1"
     _sanitize_jq="$(command -v jq 2>/dev/null || true)"
     _sanitize_filter_file=$(magicnet_singbox_subscription_filter_file)
     [ -f "$_sanitize_filter_file" ] || _sanitize_filter_file=/dev/null
-    [ -n "$_sanitize_jq" ] || {
-        if magicnet_singbox_ai_selectors_canonical "$_sanitize_config_file"; then
-            unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
-            return 0
-        fi
-        magicnet_singbox_ai_selectors_canonical \
-            "$_sanitize_config_file" "https://www.google.com/generate_204" "10m" || {
-            unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
-            return 1
-        }
-
-        _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
-        if (umask 077; awk '
-          BEGIN {
-            legacy_url_re = "https://www\\.google\\.com/generate_204"
-            current_url = "https://www.gstatic.com/generate_204"
-            pair_re = "\"url\"[[:space:]]*:[[:space:]]*\"" legacy_url_re \
-              "\"[[:space:]]*,[[:space:]]*\"interval\"[[:space:]]*:[[:space:]]*\"10m\""
-          }
-          {
-            text = text (NR == 1 ? "" : "\n") $0
-          }
-          END {
-            scan = text
-            scan_offset = 0
-            pair_count = 0
-            while (match(scan, pair_re)) {
-              pair_count++
-              pair_start = scan_offset + RSTART
-              pair_length = RLENGTH
-              scan_offset += RSTART + RLENGTH - 1
-              scan = substr(scan, RSTART + RLENGTH)
-            }
-            if (pair_count != 1) exit 1
-            pair = substr(text, pair_start, pair_length)
-            if (sub(legacy_url_re, current_url, pair) != 1) exit 1
-            if (sub(/"10m"$/, "\"3m\"", pair) != 1) exit 1
-            printf "%s%s%s\n", substr(text, 1, pair_start - 1), pair, \
-              substr(text, pair_start + pair_length)
-          }
-        ' "$_sanitize_config_file" >"$_sanitize_tmp_file") &&
-            magicnet_singbox_ai_selectors_canonical "$_sanitize_tmp_file" &&
-            chmod 600 "$_sanitize_tmp_file" &&
-            mv -f "$_sanitize_tmp_file" "$_sanitize_config_file" &&
-            chmod 600 "$_sanitize_config_file"; then
-            _sanitize_rc=0
-        else
-            _sanitize_rc=1
-            rm -f "$_sanitize_tmp_file" 2>/dev/null || true
-        fi
-        if [ "$_sanitize_rc" -eq 0 ]; then
-            unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
-            return 0
-        fi
-        unset _sanitize_config_file _sanitize_jq _sanitize_filter_file _sanitize_tmp_file _sanitize_rc _sanitize_return
-        return 1
-    }
+    [ -n "$_sanitize_jq" ] || return 1
 
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
     # shellcheck disable=SC2016
@@ -718,68 +461,29 @@ magicnet_singbox_sanitize_generated_config() {
     return 1
 }
 
-magicnet_singbox_update_config_with_nodes() {
+magicnet_singbox_update_config_with_nodes() (
     _config_file=$(magicnet_singbox_subscription_config_file)
     _outbounds_file="$1"
     _tmp_file="${_config_file}.new"
+    trap 'rm -f "$_tmp_file"' 0 1 2 3 15
 
-    (umask 077; awk -v repl="$_outbounds_file" '
-        function count_delta(s, i, c, d) {
-            d = 0
-            for (i = 1; i <= length(s); i++) {
-                c = substr(s, i, 1)
-                if (c == "[") d++
-                if (c == "]") d--
-            }
-            return d
-        }
-        BEGIN {
-            while ((getline line < repl) > 0) {
-                replacement = replacement line "\n"
-            }
-            close(repl)
-            skipping = 0
-            depth = 0
-            found = 0
-        }
-        skipping == 0 && $0 ~ /^[[:space:]]*"outbounds"[[:space:]]*:/ {
-            found = 1
-            if (prev != "") {
-                sub(/,[[:space:]]*$/, "", prev)
-                sub(/[[:space:]]*$/, ",", prev)
-                print prev
-                prev = ""
-            }
-            printf "%s", replacement
-            depth = count_delta($0)
-            skipping = 1
-            next
-        }
-        skipping == 1 {
-            depth += count_delta($0)
-            if (depth <= 0) {
-                skipping = 0
-            }
-            next
-        }
-        skipping == 0 && found == 0 && $0 ~ /^  "(route|experimental)"[[:space:]]*:/ {
-            if (prev != "") {
-                sub(/,[[:space:]]*$/, "", prev)
-                sub(/[[:space:]]*$/, ",", prev)
-                print prev
-                prev = ""
-            }
-            printf "%s", replacement
-            found = 1
-        }
-        {
-            if (prev != "") print prev
-            prev = $0
-        }
-        END {
-            if (prev != "") print prev
-        }
-    ' "$_config_file" >"$_tmp_file")
+    _update_jq="$(command -v jq 2>/dev/null || true)"
+    [ -n "$_update_jq" ] || return 1
+    (umask 077; "$_update_jq" --rawfile generated_outbounds "$_outbounds_file" '
+      def decoded_outbounds:
+        try ($generated_outbounds | fromjson)
+        catch ($generated_outbounds
+          | sub(",[[:space:]]*$"; "")
+          | ("{" + . + "}")
+          | fromjson
+          | .outbounds);
+      (decoded_outbounds) as $generated
+      | if ($generated | type) == "array" then
+          .outbounds = $generated
+        else
+          error("generated outbounds must be a JSON array")
+        end
+    ' "$_config_file" >"$_tmp_file") || return 1
 
     magicnet_singbox_sanitize_generated_config "$_tmp_file" || {
         error "Generated sing-box config failed sanitization"
@@ -800,8 +504,9 @@ magicnet_singbox_update_config_with_nodes() {
 
     chmod 600 "$_tmp_file" &&
         mv -f "$_tmp_file" "$_config_file" &&
-        chmod 600 "$_config_file"
-}
+        chmod 600 "$_config_file" || return 1
+    trap - 0 1 2 3 15
+)
 
 magicnet_singbox_replay_cached_outbounds() {
     _cached_outbounds="${MODDIR}/.state/sing-box/subscription-work/outbounds.json"

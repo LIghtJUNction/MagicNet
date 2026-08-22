@@ -146,10 +146,12 @@ magicnet_singbox_emit_node_json() {
         _tls=$(magicnet_yaml_value tls)
         [ -n "$_uuid" ] || return 1
         [ -n "$_alter_id" ] || _alter_id=0
+        case "$_alter_id" in '' | *[!0-9]*) return 1 ;; esac
+        [ "$_alter_id" -le 65535 ] 2>/dev/null || return 1
         [ -n "$_network" ] || _network=tcp
         printf '{"type":"vmess","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","alter_id":%s' \
             "$_name" "$_server" "$_port" "$_uuid" "$_alter_id"
-        [ "$_network" != "tcp" ] && printf ',"transport":{"type":"%s"}' "$_network"
+        [ "$_network" != "tcp" ] && printf ',"transport":{"type":"%s"}' "$(magicnet_json_escape "$_network")"
         if magicnet_truthy "$_tls"; then
             _sni=$(magicnet_yaml_value servername)
             [ -n "$_sni" ] || _sni=$(magicnet_yaml_value sni)
@@ -323,51 +325,31 @@ magicnet_singbox_emit_share_link_json() {
     vmess)
         _decoded=$(magicnet_b64_decode "$_body")
         [ -n "$_decoded" ] || return 1
-        if command -v jq >/dev/null 2>&1; then
-            _vmess_json_raw=0
-            _name=$(printf '%s' "$_decoded" | jq -r '.ps // empty | tostring' 2>/dev/null)
-            _server=$(printf '%s' "$_decoded" | jq -r '.add // empty | tostring' 2>/dev/null)
-            _port=$(printf '%s' "$_decoded" | jq -r '.port // empty | tostring' 2>/dev/null)
-            _uuid=$(printf '%s' "$_decoded" | jq -r '.id // empty | tostring' 2>/dev/null)
-            _alter_id=$(printf '%s' "$_decoded" | jq -r '.aid // empty | tostring' 2>/dev/null)
-            _network=$(printf '%s' "$_decoded" | jq -r '.net // empty | tostring' 2>/dev/null)
-            _path=$(printf '%s' "$_decoded" | jq -r '.path // empty | tostring' 2>/dev/null)
-            _host=$(printf '%s' "$_decoded" | jq -r '.host // empty | tostring' 2>/dev/null)
-            _tls=$(printf '%s' "$_decoded" | jq -r '.tls // empty | tostring' 2>/dev/null)
-            _sni=$(printf '%s' "$_decoded" | jq -r '.sni // empty | tostring' 2>/dev/null)
-        else
-            _vmess_json_raw=1
-            _name=$(magicnet_json_field_raw ps "$_decoded") || _name=
-            _server=$(magicnet_json_field_raw add "$_decoded") || return 1
-            _port=$(printf '%s' "$_decoded" | sed -n 's/.*"port"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
-            _uuid=$(magicnet_json_field_raw id "$_decoded") || return 1
-            _alter_id=$(printf '%s' "$_decoded" | sed -n 's/.*"aid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}.*/\1/p')
-            _network=$(magicnet_json_field_raw net "$_decoded") || _network=
-            _path=$(magicnet_json_field_raw path "$_decoded") || _path=
-            _host=$(magicnet_json_field_raw host "$_decoded") || _host=
-            _tls=$(magicnet_json_field_raw tls "$_decoded") || _tls=
-            _sni=$(magicnet_json_field_raw sni "$_decoded") || _sni=
-        fi
-        if [ "${_vmess_json_raw:-0}" = 1 ]; then
-            [ -n "$_name" ] && _tag="$_name"
-            _server_json=$_server
-            _uuid_json=$_uuid
-            _path_json=$_path
-            _host_json=$_host
-            _sni_json=$_sni
-        else
-            [ -n "$_name" ] && _tag=$(magicnet_json_escape "$_name")
-            _server_json=$(magicnet_json_escape "$_server")
-            _uuid_json=$(magicnet_json_escape "$_uuid")
-            _path_json=$(magicnet_json_escape "$_path")
-            _host_json=$(magicnet_json_escape "$_host")
-            _sni_json=$(magicnet_json_escape "$_sni")
-        fi
+        _vmess_jq="$(command -v jq 2>/dev/null || true)"
+        [ -n "$_vmess_jq" ] || return 1
+        _name=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.ps // empty | tostring' 2>/dev/null)
+        _server=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.add // empty | tostring' 2>/dev/null)
+        _port=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.port // empty | tostring' 2>/dev/null)
+        _uuid=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.id // empty | tostring' 2>/dev/null)
+        _alter_id=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.aid // empty | tostring' 2>/dev/null)
+        _network=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.net // empty | tostring' 2>/dev/null)
+        _path=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.path // empty | tostring' 2>/dev/null)
+        _host=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.host // empty | tostring' 2>/dev/null)
+        _tls=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.tls // empty | tostring' 2>/dev/null)
+        _sni=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.sni // empty | tostring' 2>/dev/null)
+        [ -n "$_name" ] && _tag=$(magicnet_json_escape "$_name")
+        _server_json=$(magicnet_json_escape "$_server")
+        _uuid_json=$(magicnet_json_escape "$_uuid")
+        _path_json=$(magicnet_json_escape "$_path")
+        _host_json=$(magicnet_json_escape "$_host")
+        _sni_json=$(magicnet_json_escape "$_sni")
         [ -n "$_server" ] || return 1
         [ -n "$_port" ] || return 1
         [ -n "$_uuid" ] || return 1
         _port=$(magicnet_singbox_normalize_port "$_port") || return 1
         [ -n "$_alter_id" ] || _alter_id=0
+        case "$_alter_id" in '' | *[!0-9]*) return 1 ;; esac
+        [ "$_alter_id" -le 65535 ] 2>/dev/null || return 1
         [ -n "$_network" ] || _network=tcp
         printf '{"type":"vmess","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","alter_id":%s' \
             "$_tag" "$_server_json" "$_port" "$_uuid_json" "$_alter_id"
@@ -381,11 +363,7 @@ magicnet_singbox_emit_share_link_json() {
         fi
         if [ "$_tls" = "tls" ]; then
             [ -n "$_sni" ] || _sni="$_server"
-            if [ "${_vmess_json_raw:-0}" = 1 ]; then
-                [ -n "$_sni_json" ] || _sni_json=$_server_json
-            else
-                _sni_json=$(magicnet_json_escape "$_sni")
-            fi
+            _sni_json=$(magicnet_json_escape "$_sni")
             printf ',"tls":{"enabled":true,"server_name":"%s"}' "$_sni_json"
         fi
         printf '}'

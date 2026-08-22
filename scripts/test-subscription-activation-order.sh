@@ -6,7 +6,8 @@ fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
 
 export MODDIR="$fixture/module"
-mkdir -p "$MODDIR/.config/sing-box"
+mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/bin"
+ln -s "$(command -v jq)" "$MODDIR/bin/jq"
 events="$fixture/events"
 : >"$events"
 

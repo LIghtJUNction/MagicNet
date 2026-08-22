@@ -2144,17 +2144,11 @@ PY
 
 selector_fixture_dir=$(mktemp -d)
 selector_jq_zero="$selector_fixture_dir/jq-zero.json"
-selector_no_jq_zero="$selector_fixture_dir/no-jq-zero.json"
 selector_jq_populated="$selector_fixture_dir/jq-populated.json"
-selector_no_jq_populated="$selector_fixture_dir/no-jq-populated.json"
 selector_direct_mutant="$selector_fixture_dir/direct-mutant.json"
 selector_missing_block_mutant="$selector_fixture_dir/missing-block-mutant.json"
 selector_jq_repaired="$selector_fixture_dir/jq-repaired.json"
 selector_legacy_upgrade="$selector_fixture_dir/legacy-upgrade.json"
-selector_no_jq_bin="$selector_fixture_dir/no-jq-bin"
-mkdir -p "$selector_no_jq_bin"
-ln -s "$(command -v awk)" "$selector_no_jq_bin/awk"
-ln -s "$(command -v chmod)" "$selector_no_jq_bin/chmod"
 ln -s "$CONFIG_DIR/rules" "$selector_fixture_dir/rules"
 trap 'rm -rf "$selector_fixture_dir"' EXIT
 export MODDIR="$selector_fixture_dir"
@@ -2170,26 +2164,10 @@ export MODDIR="$selector_fixture_dir"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 
 write_fragment_config() {
-    local fragment_file="$1" output_file="$2"
-    {
-        printf '{\n'
-        cat "$fragment_file"
-        printf '\n  "route": {"rules": []}\n}\n'
-    } >"$output_file"
-}
-
-write_no_jq_config() {
-    local tags_file="$1" node_json="$2" output_file="$3"
-    {
-        printf '{\n  "outbounds": [\n'
-        magicnet_singbox_emit_selector_block "$tags_file"
-        if [[ -n "$node_json" ]]; then
-            printf ',\n    %s' "$node_json"
-        fi
-        printf ',\n    {"type":"direct","tag":"direct"},\n'
-        printf '    {"type":"block","tag":"block"}\n'
-        printf '  ],\n  "route": {"rules": []}\n}\n'
-    } >"$output_file"
+    local outbounds_file="$1" output_file="$2"
+    jq -n --slurpfile generated_outbounds "$outbounds_file" '
+      {outbounds: $generated_outbounds[0], route: {rules: []}}
+    ' >"$output_file"
 }
 
 : >"$selector_fixture_dir/zero.tags"
@@ -2199,7 +2177,6 @@ magicnet_singbox_build_outbounds_file_with_jq \
     "$selector_fixture_dir/zero.tags" \
     "$selector_fixture_dir/jq-zero.fragment"
 write_fragment_config "$selector_fixture_dir/jq-zero.fragment" "$selector_jq_zero"
-write_no_jq_config "$selector_fixture_dir/zero.tags" "" "$selector_no_jq_zero"
 
 fixture_node='{"type":"vless","tag":"fixture-node","server":"example.com","server_port":443,"uuid":"00000000-0000-4000-8000-000000000001"}'
 printf '[%s]\n' "$fixture_node" >"$selector_fixture_dir/populated.nodes.json"
@@ -2209,69 +2186,45 @@ magicnet_singbox_build_outbounds_file_with_jq \
     "$selector_fixture_dir/populated.tags" \
     "$selector_fixture_dir/jq-populated.fragment"
 write_fragment_config "$selector_fixture_dir/jq-populated.fragment" "$selector_jq_populated"
-write_no_jq_config "$selector_fixture_dir/populated.tags" "$fixture_node" "$selector_no_jq_populated"
 
-for selector_config in \
-    "$selector_jq_zero" "$selector_no_jq_zero" \
-    "$selector_jq_populated" "$selector_no_jq_populated"; do
+for selector_config in "$selector_jq_zero" "$selector_jq_populated"; do
     jq -e 'all(.outbounds[]; .tag != "google-cn")' "$selector_config" >/dev/null ||
         fail "generated config retained google-cn before sanitization: $selector_config"
 done
 
-cmp <(jq -S -c '[.outbounds[] | select(.tag == "proxy" or .tag == "proxy-auto")]' \
-        "$selector_jq_zero") \
-    <(jq -S -c '[.outbounds[] | select(.tag == "proxy" or .tag == "proxy-auto")]' \
-        "$selector_no_jq_zero") ||
-    fail "zero-node jq and no-jq generators diverged"
-cmp <(jq -S -c '[.outbounds[] | select(.tag == "proxy" or .tag == "proxy-auto")]' \
-        "$selector_jq_populated") \
-    <(jq -S -c '[.outbounds[] | select(.tag == "proxy" or .tag == "proxy-auto")]' \
-        "$selector_no_jq_populated") ||
-    fail "populated jq and no-jq generators diverged"
-
-for selector_config in "$selector_jq_zero" "$selector_no_jq_zero"; do
-    jq -e '
-      [.outbounds[] | select(.tag == "proxy-auto")] == []
-      and [.outbounds[] | select(.tag == "proxy")] == [
-        {type: "selector", tag: "proxy", outbounds: ["block"], default: "block"}
-      ]
-      and [.outbounds[] | select(.tag == "network-test")] == [
-        {type: "selector", tag: "network-test", outbounds: ["block"], default: "block"}
-      ]
-    ' "$selector_config" >/dev/null || fail "zero-node generator emitted a fail-open proxy selector"
-done
-for selector_config in "$selector_jq_populated" "$selector_no_jq_populated"; do
-    jq -e '
-      [.outbounds[] | select(.tag == "proxy-auto")] == [{
-        type: "urltest", tag: "proxy-auto", outbounds: ["fixture-node"],
-        url: "https://www.gstatic.com/generate_204", interval: "3m", tolerance: 30,
-        idle_timeout: "10m", interrupt_exist_connections: false
-      }]
-      and [.outbounds[] | select(.tag == "proxy")] == [{
-        type: "selector", tag: "proxy",
-        outbounds: ["fixture-node", "proxy-auto", "direct", "block"],
-        default: "fixture-node"
-      }]
-      and [.outbounds[] | select(.tag == "network-test")] == [{
-        type: "selector", tag: "network-test",
-        outbounds: ["proxy-auto", "proxy", "direct", "block"],
-        default: "proxy-auto"
-      }]
-    ' "$selector_config" >/dev/null ||
-        fail "populated generator changed canonical proxy or network-test behavior"
-done
+jq -e '
+  [.outbounds[] | select(.tag == "proxy-auto")] == []
+  and [.outbounds[] | select(.tag == "proxy")] == [
+    {type: "selector", tag: "proxy", outbounds: ["block"], default: "block"}
+  ]
+  and [.outbounds[] | select(.tag == "network-test")] == [
+    {type: "selector", tag: "network-test", outbounds: ["block"], default: "block"}
+  ]
+' "$selector_jq_zero" >/dev/null || fail "zero-node generator emitted a fail-open proxy selector"
+jq -e '
+  [.outbounds[] | select(.tag == "proxy-auto")] == [{
+    type: "urltest", tag: "proxy-auto", outbounds: ["fixture-node"],
+    url: "https://www.gstatic.com/generate_204", interval: "3m", tolerance: 30,
+    idle_timeout: "10m", interrupt_exist_connections: false
+  }]
+  and [.outbounds[] | select(.tag == "proxy")] == [{
+    type: "selector", tag: "proxy",
+    outbounds: ["fixture-node", "proxy-auto", "direct", "block"],
+    default: "fixture-node"
+  }]
+  and [.outbounds[] | select(.tag == "network-test")] == [{
+    type: "selector", tag: "network-test",
+    outbounds: ["proxy-auto", "proxy", "direct", "block"],
+    default: "proxy-auto"
+  }]
+' "$selector_jq_populated" >/dev/null ||
+    fail "populated generator changed canonical proxy or network-test behavior"
 
 for selector_config in "$selector_jq_zero" "$selector_jq_populated"; do
     magicnet_singbox_sanitize_generated_config "$selector_config" ||
         fail "jq sanitizer rejected a canonical generated selector config"
 done
-for selector_config in "$selector_no_jq_zero" "$selector_no_jq_populated"; do
-    (PATH="$selector_no_jq_bin"; magicnet_singbox_sanitize_generated_config "$selector_config") ||
-        fail "no-jq sanitizer rejected a canonical generated selector config"
-done
-for selector_config in \
-    "$selector_jq_zero" "$selector_no_jq_zero" \
-    "$selector_jq_populated" "$selector_no_jq_populated"; do
+for selector_config in "$selector_jq_zero" "$selector_jq_populated"; do
     jq -e 'all(.outbounds[]; .tag != "google-cn")' "$selector_config" >/dev/null ||
         fail "sanitized generated config retained google-cn: $selector_config"
 done
@@ -2302,9 +2255,6 @@ for selector_mutant in "$selector_direct_mutant" "$selector_missing_block_mutant
     if magicnet_singbox_ai_selectors_canonical "$selector_mutant"; then
         fail "jq canonical validator accepted an unsafe zero-node proxy mutant"
     fi
-    if (PATH="$selector_no_jq_bin"; magicnet_singbox_ai_selectors_canonical "$selector_mutant"); then
-        fail "no-jq canonical validator accepted an unsafe zero-node proxy mutant"
-    fi
 done
 cp "$selector_direct_mutant" "$selector_jq_repaired"
 magicnet_singbox_sanitize_generated_config "$selector_jq_repaired" ||
@@ -2313,10 +2263,6 @@ jq -e '[.outbounds[] | select(.tag == "proxy")] == [
     {type: "selector", tag: "proxy", outbounds: ["block"], default: "block"}
   ]' "$selector_jq_repaired" >/dev/null ||
     fail "jq sanitizer repair did not produce the canonical fail-closed proxy"
-if (PATH="$selector_no_jq_bin"; magicnet_singbox_sanitize_generated_config "$selector_direct_mutant"); then
-    fail "no-jq sanitizer accepted an unsafe zero-node proxy selector"
-fi
-
 rm -rf "$selector_fixture_dir"
 selector_fixture_dir=
 trap - EXIT

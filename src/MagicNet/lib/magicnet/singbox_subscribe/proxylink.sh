@@ -8,8 +8,16 @@ magicnet_singbox_proxylink_bin() {
     unset _bin
 }
 
-magicnet_singbox_run_proxylink() {
+magicnet_singbox_run_proxylink() (
     _proxylink_timeout="${MAGICNET_PROXYLINK_TIMEOUT:-12}"
+    case "$_proxylink_timeout" in
+        '' | *[!0-9]*) _proxylink_timeout=12 ;;
+        *)
+            if [ "$_proxylink_timeout" -lt 1 ] || [ "$_proxylink_timeout" -gt 60 ]; then
+                _proxylink_timeout=12
+            fi
+            ;;
+    esac
     "$@" &
     _proxylink_pid=$!
     _proxylink_wait=0
@@ -19,33 +27,22 @@ magicnet_singbox_run_proxylink() {
             sleep 1
             kill -9 "$_proxylink_pid" 2>/dev/null || true
             wait "$_proxylink_pid" 2>/dev/null || true
-            unset _proxylink_timeout _proxylink_pid _proxylink_wait
             return 124
         fi
         sleep 1
         _proxylink_wait=$((_proxylink_wait + 1))
     done
     wait "$_proxylink_pid"
-    _proxylink_rc=$?
-    unset _proxylink_timeout _proxylink_pid _proxylink_wait
-    return "$_proxylink_rc"
-}
+    return $?
+)
 
-magicnet_singbox_proxylink_source_is_singbox_json() {
+magicnet_singbox_proxylink_source_is_singbox_json() (
     _proxylink_detect_source_file="$1"
-    if command -v jq >/dev/null 2>&1; then
-        jq -e 'type == "object" and (((.outbounds | type == "array") or (.endpoints | type == "array")) or ((.type | type == "string" and length > 0) and (.server | type == "string" and length > 0)))' \
-            "$_proxylink_detect_source_file" >/dev/null 2>&1
-        _proxylink_detect_json_rc=$?
-    else
-        grep -Eq '"(outbounds|endpoints)"[[:space:]]*:[[:space:]]*\[' "$_proxylink_detect_source_file" ||
-            { grep -Eq '"type"[[:space:]]*:' "$_proxylink_detect_source_file" &&
-                grep -Eq '"server"[[:space:]]*:' "$_proxylink_detect_source_file"; }
-        _proxylink_detect_json_rc=$?
-    fi
-    unset _proxylink_detect_source_file
-    return "$_proxylink_detect_json_rc"
-}
+    _proxylink_detect_jq="$(command -v jq 2>/dev/null || true)"
+    [ -n "$_proxylink_detect_jq" ] || return 1
+    "$_proxylink_detect_jq" -e 'type == "object" and (((.outbounds | type == "array") or (.endpoints | type == "array")) or ((.type | type == "string" and length > 0) and (.server | type == "string" and length > 0)))' \
+        "$_proxylink_detect_source_file" >/dev/null 2>&1
+)
 
 magicnet_singbox_proxylink_decode_source() {
     _proxylink_decode_source_file="$1"

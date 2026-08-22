@@ -125,40 +125,34 @@ printf '%s\n' "$vmess_ws_json" | jq -e '
   and .tls.server_name == "sni.invalid"
 ' >/dev/null || fail "VMess WebSocket fields were not preserved independently: $vmess_ws_json"
 
-# Exercise the Android/no-jq fallback without changing the host installation.
+# A missing JSON parser is a packaging failure and must be rejected before
+# emitting a partially parsed node.
 command() {
     if [[ "${1:-}" == "-v" && "${2:-}" == "jq" ]]; then
         return 1
     fi
     builtin command "$@"
 }
-vmess_ws_nojq_json="$(magicnet_singbox_emit_share_link_json "$vmess_ws_link_file")" \
-    || fail "no-jq emit_share_link_json failed for VMess WebSocket fixture"
+if magicnet_singbox_emit_share_link_json "$vmess_ws_link_file" >/dev/null 2>&1; then
+    fail "VMess parsing unexpectedly succeeded without jq"
+fi
 unset -f command
-printf '%s\n' "$vmess_ws_nojq_json" | jq -e '
-  .server == "origin.invalid"
-  and .transport.type == "ws"
-  and .transport.path == "/edge/path"
-  and .transport.headers.Host == "host.invalid"
-  and .tls.server_name == "sni.invalid"
-' >/dev/null || fail "no-jq VMess WebSocket fields were not preserved independently: $vmess_ws_nojq_json"
 
 vmess_escaped_link_file="$tmp_dir/node-vmess-escaped.link"
 vmess_escaped_payload='{"v":"2","ps":"escaped \"tag\"","add":"origin.invalid","port":"443","id":"00000000-0000-4000-8000-000000000011","aid":"0","net":"ws","path":"/edge/\"path","host":"host.invalid","tls":"tls","sni":"sni.invalid"}'
 printf 'vmess://%s\n' "$(printf '%s' "$vmess_escaped_payload" | base64 | tr -d '\n')" >"$vmess_escaped_link_file"
-command() {
-    if [[ "${1:-}" == "-v" && "${2:-}" == "jq" ]]; then
-        return 1
-    fi
-    builtin command "$@"
-}
-vmess_escaped_nojq_json="$(magicnet_singbox_emit_share_link_json "$vmess_escaped_link_file")" \
-    || fail "no-jq emit_share_link_json failed for escaped VMess fields"
-unset -f command
-printf '%s\n' "$vmess_escaped_nojq_json" | jq -e '
+vmess_escaped_json="$(magicnet_singbox_emit_share_link_json "$vmess_escaped_link_file")" \
+    || fail "emit_share_link_json failed for escaped VMess fields"
+printf '%s\n' "$vmess_escaped_json" | jq -e '
   .tag == "escaped \"tag\""
   and .transport.path == "/edge/\"path"
-' >/dev/null || fail "no-jq VMess escaped fields were corrupted: $vmess_escaped_nojq_json"
+' >/dev/null || fail "VMess escaped fields were corrupted: $vmess_escaped_json"
+
+vmess_invalid_aid_payload=$(printf '%s' '{"v":"2","ps":"invalid aid","add":"vmess.invalid","port":"443","id":"00000000-0000-4000-8000-000000000099","aid":"0} , \"injected\": true","net":"tcp"}' | base64 | tr -d '\n')
+printf 'vmess://%s\n' "$vmess_invalid_aid_payload" >"$tmp_dir/node-vmess-invalid-aid.link"
+if magicnet_singbox_emit_share_link_json "$tmp_dir/node-vmess-invalid-aid.link" >/dev/null 2>&1; then
+  fail "VMess parser accepted a non-numeric alter_id"
+fi
 
 socks_link_file="$tmp_dir/node-socks.link"
 printf '%s\n' 'socks://fixture%20user:fixture%40password@socks.invalid:1080#fixture%20socks' >"$socks_link_file"
@@ -425,13 +419,10 @@ invalid_socks_count="$(magicnet_singbox_count_valid_outbounds_nodes "$invalid_so
 [[ "$invalid_socks_count" == "0" ]] \
     || fail "invalid SOCKS outbounds passed production validation: $invalid_socks_count"
 
-outbounds_fragment="$tmp_dir/generated-outbounds.fragment"
-magicnet_singbox_write_outbounds_from_json "$nodes_json" "$outbounds_fragment"
-{
-    printf '{\n'
-    sed 's/,$//' "$outbounds_fragment"
-    printf '\n}\n'
-} >"$tmp_dir/generated-outbounds.json"
+outbounds_array="$tmp_dir/generated-outbounds.array.json"
+magicnet_singbox_write_outbounds_from_json "$nodes_json" "$outbounds_array"
+jq -n --slurpfile generated_outbounds "$outbounds_array" \
+    '{outbounds: $generated_outbounds[0]}' >"$tmp_dir/generated-outbounds.json"
 
 jq -e '
   ([.outbounds[] | select(.type == "vless" or .type == "anytls" or .type == "tuic" or .type == "socks")] | length) == 4
@@ -468,13 +459,10 @@ jq '. + [
     "uuid": "00000000-0000-4000-8000-000000000005"
   }
 ]' "$nodes_json" >"$filtered_nodes"
-filtered_fragment="$tmp_dir/filtered-outbounds.fragment"
-magicnet_singbox_write_outbounds_from_json "$filtered_nodes" "$filtered_fragment"
-{
-    printf '{\n'
-    sed 's/,$//' "$filtered_fragment"
-    printf '\n}\n'
-} >"$tmp_dir/filtered-outbounds.json"
+filtered_array="$tmp_dir/filtered-outbounds.array.json"
+magicnet_singbox_write_outbounds_from_json "$filtered_nodes" "$filtered_array"
+jq -n --slurpfile generated_outbounds "$filtered_array" \
+    '{outbounds: $generated_outbounds[0]}' >"$tmp_dir/filtered-outbounds.json"
 jq -e '
   ([.outbounds[] | select(.tag == "Free trial" or .tag == "香港 01")] | length) == 0
   and ((.outbounds[] | select(.type == "selector" and .tag == "proxy") | .outbounds) as $proxy

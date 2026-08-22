@@ -50,13 +50,20 @@ jq -e '
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 magicnet_singbox_sanitize_generated_config() { return 0; }
 mkdir -p "$WORK/clean-path"
-for command_name in awk jq chmod mv rm sed tr grep wc; do
+for command_name in jq chmod mv rm; do
     ln -s "$(command -v "$command_name")" "$WORK/clean-path/$command_name"
 done
-printf '%s\n' '  "outbounds": [{"type":"vless","tag":"fixture-node","server":"node.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000001"}], ' \
-    >"$WORK/outbounds.fragment"
+printf '%s\n' '[{"type":"vless","tag":"fixture-node","server":"node.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000001"}]' \
+    >"$WORK/outbounds.json"
+jq -c . "$MODDIR/.config/sing-box/config.json" >"$WORK/config.minified.json"
+mv "$WORK/config.minified.json" "$MODDIR/.config/sing-box/config.json"
 chmod 644 "$MODDIR/.config/sing-box/config.json"
-PATH="$WORK/clean-path" magicnet_singbox_update_config_with_nodes "$WORK/outbounds.fragment"
+PATH="$WORK/clean-path" magicnet_singbox_update_config_with_nodes "$WORK/outbounds.json"
+assert_mode_600 "$MODDIR/.config/sing-box/config.json"
+printf '%s\n' '"outbounds": [{"type":"vless","tag":"legacy-cached-node","server":"legacy.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000002"}],' \
+    >"$WORK/legacy-outbounds.fragment"
+PATH="$WORK/clean-path" magicnet_singbox_update_config_with_nodes "$WORK/legacy-outbounds.fragment"
+jq -e '.outbounds[0].tag == "legacy-cached-node"' "$MODDIR/.config/sing-box/config.json" >/dev/null
 assert_mode_600 "$MODDIR/.config/sing-box/config.json"
 
 for stale in \

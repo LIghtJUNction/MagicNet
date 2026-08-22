@@ -5,6 +5,9 @@ MODULE_ROOT="$ROOT/src/MagicNet"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 fail() { printf 'pinned AI routing test failed: %s\n' "$*" >&2; exit 1; }
+write_outbounds_config() {
+  jq -n --slurpfile generated_outbounds "$1" '{outbounds: $generated_outbounds[0]}' >"$2"
+}
 # shellcheck disable=SC2034
 MODDIR="$MODULE_ROOT"
 . "$MODULE_ROOT/lib/magicnet_singbox_subscribe.sh"
@@ -58,7 +61,7 @@ cat >"$tmp_dir/nodes.json" <<'JSON'
 ]
 JSON
 magicnet_singbox_write_outbounds_from_json "$tmp_dir/nodes.json" "$tmp_dir/outbounds.fragment"
-{ printf '{\n'; sed 's/,$//' "$tmp_dir/outbounds.fragment"; printf '\n}\n'; } >"$tmp_dir/generated.json"
+write_outbounds_config "$tmp_dir/outbounds.fragment" "$tmp_dir/generated.json"
 jq -e '
   [
     {name: "ai-chatgpt", url: "https://chatgpt.com/"},
@@ -138,8 +141,7 @@ JSON
   fail "jq adversarial valid-node count mismatch"
 magicnet_singbox_write_outbounds_from_json \
   "$tmp_dir/adversarial-nodes.json" "$tmp_dir/adversarial-jq.fragment"
-{ printf '{\n'; sed 's/,$//' "$tmp_dir/adversarial-jq.fragment"; printf '\n}\n'; } \
-  >"$tmp_dir/adversarial-jq.json"
+write_outbounds_config "$tmp_dir/adversarial-jq.fragment" "$tmp_dir/adversarial-jq.json"
 jq -e '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
@@ -236,8 +238,7 @@ cat >"$tmp_dir/schema-nodes.json" <<'JSON'
 JSON
 magicnet_singbox_write_outbounds_from_json \
   "$tmp_dir/schema-nodes.json" "$tmp_dir/schema-generated.fragment"
-{ printf '{\n'; sed 's/,$//' "$tmp_dir/schema-generated.fragment"; printf '\n}\n'; } \
-  >"$tmp_dir/schema-generated.json"
+write_outbounds_config "$tmp_dir/schema-generated.fragment" "$tmp_dir/schema-generated.json"
 magicnet_singbox_ai_selectors_canonical "$tmp_dir/schema-generated.json" ||
   fail "jq canonical validator rejected all-protocol schema fixture"
 schema_requirements=(
@@ -295,8 +296,7 @@ JSON
   fail "jq valid-node count accepted malformed endpoint or type-specific fields"
 magicnet_singbox_write_outbounds_from_json \
   "$tmp_dir/adversarial-endpoint-nodes.json" "$tmp_dir/adversarial-endpoint.fragment"
-{ printf '{\n'; sed 's/,$//' "$tmp_dir/adversarial-endpoint.fragment"; printf '\n}\n'; } \
-  >"$tmp_dir/adversarial-endpoint.json"
+write_outbounds_config "$tmp_dir/adversarial-endpoint.fragment" "$tmp_dir/adversarial-endpoint.json"
 jq -e '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
@@ -315,8 +315,7 @@ jq -s '.[0] + .[1] + .[2]' \
   fail "jq valid-node count diverged across endpoint and type-specific adversarial inputs"
 magicnet_singbox_write_outbounds_from_json \
   "$tmp_dir/adversarial-all-nodes.json" "$tmp_dir/adversarial-all.fragment"
-{ printf '{\n'; sed 's/,$//' "$tmp_dir/adversarial-all.fragment"; printf '\n}\n'; } \
-  >"$tmp_dir/adversarial-all.json"
+write_outbounds_config "$tmp_dir/adversarial-all.fragment" "$tmp_dir/adversarial-all.json"
 jq -e '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
@@ -536,301 +535,13 @@ jq -e '
   fail "sanitizer did not migrate legacy proxy-auto probe policy without changing AI intervals"
 magicnet_singbox_ai_selectors_canonical "$tmp_dir/repaired-legacy-proxy-auto.json" ||
   fail "legacy proxy-auto repair is not canonical"
-printf '%s\n' 'Germany edge' '日本 Tokyo' 'US stable' '上海 node' 'CN node' 'CN2 premium' 'opaque-42' 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge' '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge' 'HKT edge' 'CHK edge' 'hk01 edge' 'myhk edge' 'hk-01 edge' 'hk_01 edge' 'HKG01 edge' 'HongKong01 edge' '台湾 edge' 'Taiwan edge' 'TW edge' 'TWN edge' 'Taipei edge' '🇹🇼 premium' 'TWA edge' 'mytw edge' >"$tmp_dir/tags"
-magicnet_singbox_emit_selector_block "$tmp_dir/tags" >"$tmp_dir/no-jq.fragment"
-{
-  printf '{"outbounds":['
-  cat "$tmp_dir/no-jq.fragment"
-  printf ',\n'
-  sed '1d;$d' "$tmp_dir/nodes.json"
-  printf ']}\n'
-} >"$tmp_dir/no-jq.json"
-jq -e '
-  [
-    {name: "ai-chatgpt", url: "https://chatgpt.com/"},
-    {name: "ai-gemini", url: "https://gemini.google.com/"},
-    {name: "ai-grok", url: "https://grok.com/"},
-    {name: "ai-claude", url: "https://claude.ai/"}
-  ] as $services
-  | [.outbounds[]
-      | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-          or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
-      | .tag] as $node_tags
-  | (.outbounds | INDEX(.tag)) as $by_tag
-  | [.outbounds[] | select(.tag == "proxy-auto")] as $proxy_auto
-  | (.outbounds[] | select(.tag == "ai-proxy")) as $ai_proxy
-  | ($proxy_auto == [{
-      type: "urltest",
-      tag: "proxy-auto",
-      outbounds: $node_tags,
-      url: "https://www.gstatic.com/generate_204",
-      interval: "3m",
-      tolerance: 30,
-      idle_timeout: "10m",
-      interrupt_exist_connections: false
-    }])
-    and ($by_tag.proxy == {
-      type: "selector",
-      tag: "proxy",
-      outbounds: ($node_tags + ["proxy-auto", "direct", "block"]),
-      default: $node_tags[0]
-    })
-    and ($by_tag["network-test"] == {
-      type: "selector",
-      tag: "network-test",
-      outbounds: ["proxy-auto", "proxy", "direct", "block"],
-      default: "proxy-auto"
-    })
-    and ($ai_proxy.default == "US stable" and $ai_proxy.outbounds == ["US stable", "日本 Tokyo", "Germany edge", "CN2 premium", "opaque-42", "HKT edge", "CHK edge", "myhk edge", "TWA edge", "mytw edge"])
-    and ($by_tag["cn-direct"] == {type: "selector", tag: "cn-direct", outbounds: ["direct", "proxy", "block"], default: "direct"})
-    and ($by_tag.final == {type: "selector", tag: "final", outbounds: ["proxy", "direct", "block"], default: "proxy"})
-    and ([.outbounds[] | select(.type == "selector" and .tag != "network-test")] | all(. as $selector
-      | ($selector.outbounds | length) == ($selector.outbounds | unique | length)
-        and (($selector.outbounds | index($selector.default)) != null)
-        and (($by_tag[$selector.default].type // "") != "urltest")
-        and (if ($selector.outbounds | any(. as $member | ($by_tag[$member].type // "") == "urltest"))
-          then ($node_tags | index($selector.default)) != null
-          else true
-          end)))
-    and ($services | all(. as $service
-      | ($service.name + "-auto") as $auto
-      | $by_tag[$service.name].type == "selector"
-        and $by_tag[$service.name].default == $ai_proxy.outbounds[0]
-        and $by_tag[$service.name].outbounds == ($ai_proxy.outbounds + ["block", $auto])
-        and $by_tag[$auto] == {
-          type: "urltest",
-          tag: $auto,
-          outbounds: $ai_proxy.outbounds,
-          url: $service.url,
-          interval: "10m",
-          tolerance: 30,
-          idle_timeout: "10m",
-          interrupt_exist_connections: false
-        }
-    ))
-' "$tmp_dir/no-jq.json" >/dev/null || fail "no-jq generator selector mismatch"
-mkdir "$tmp_dir/native-nodes"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000001@native.invalid:443#node-x' \
-  >"$tmp_dir/native-nodes/node-1.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000002@native.invalid:443#direct' \
-  >"$tmp_dir/native-nodes/node-2.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000003@native.invalid:443#proxy-auto' \
-  >"$tmp_dir/native-nodes/node-3.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000004@native.invalid:443#node-x' \
-  >"$tmp_dir/native-nodes/node-4.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000005@native.invalid:443#node%09space' \
-  >"$tmp_dir/native-nodes/node-5.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000006@native.invalid:443#node%20space' \
-  >"$tmp_dir/native-nodes/node-6.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000007@native.invalid:443#%01' \
-  >"$tmp_dir/native-nodes/node-7.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000008@native.invalid:0#zero-port' \
-  >"$tmp_dir/native-nodes/node-8.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000009@native.invalid:65536#high-port' \
-  >"$tmp_dir/native-nodes/node-9.link"
-printf '%s\n' 'vless://20000000-0000-4000-8000-000000000010@native.invalid:443.5#fractional-port' \
-  >"$tmp_dir/native-nodes/node-10.link"
-native_counts=$(
-  (
-    # shellcheck disable=SC2329
-    magicnet_singbox_build_outbounds_file_with_jq() { return 1; }
-    magicnet_singbox_build_outbounds_file \
-      "$tmp_dir/native-nodes" "$tmp_dir/adversarial-native.fragment" "$tmp_dir/adversarial-native.tags"
-  )
-)
-[[ "$native_counts" == '2 8' ]] || fail "native adversarial counts mismatch: $native_counts"
-[[ "$(cat "$tmp_dir/adversarial-native.tags")" == $'node-x\nnode space' ]] ||
-  fail "native adversarial accepted tags mismatch"
-{ printf '{\n'; sed '$s/,$//' "$tmp_dir/adversarial-native.fragment"; printf '\n}\n'; } \
-  >"$tmp_dir/adversarial-native.json"
-jq -e '
-  [.outbounds[]
-    | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-        or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
-    | .tag] as $node_tags
-  | (.outbounds | INDEX(.tag)) as $by_tag
-  | $node_tags == ["node-x", "node space"]
-    and $by_tag["proxy-auto"].outbounds == $node_tags
-    and ($by_tag["proxy-auto"].outbounds | index("proxy-auto")) == null
-    and ([.outbounds[].tag] | length) == ([.outbounds[].tag] | unique | length)
-' "$tmp_dir/adversarial-native.json" >/dev/null || fail "native adversarial tag filtering mismatch"
-printf '[]\n' >"$tmp_dir/empty-nodes.json"
-: >"$tmp_dir/empty-tags"
-magicnet_singbox_write_outbounds_from_json "$tmp_dir/empty-nodes.json" "$tmp_dir/empty-jq.fragment"
-{ printf '{\n'; sed 's/,$//' "$tmp_dir/empty-jq.fragment"; printf '\n}\n'; } >"$tmp_dir/empty-jq.json"
-magicnet_singbox_emit_selector_block "$tmp_dir/empty-tags" >"$tmp_dir/empty-no-jq.fragment"
-{ printf '{"outbounds":['; cat "$tmp_dir/empty-no-jq.fragment"; printf ']}\n'; } >"$tmp_dir/empty-no-jq.json"
-for empty_config in "$tmp_dir/empty-jq.json" "$tmp_dir/empty-no-jq.json"; do
-  jq -e '
-    (.outbounds | INDEX(.tag)) as $by_tag
-    | ([.outbounds[] | select(.tag == "proxy-auto")] | length) == 0
-      and ($by_tag.proxy == {type: "selector", tag: "proxy", outbounds: ["block"], default: "block"})
-      and ([.outbounds[] | select(.type == "selector")] | all(. as $selector
-        | ($selector.outbounds | length) == ($selector.outbounds | unique | length)
-          and (($selector.outbounds | index($selector.default)) != null)))
-  ' "$empty_config" >/dev/null || fail "empty-node proxy fallback mismatch: $empty_config"
-done
-mkdir "$tmp_dir/no-jq-bin"
-ln -s "$(command -v awk)" "$tmp_dir/no-jq-bin/awk"
-ln -s "$(command -v chmod)" "$tmp_dir/no-jq-bin/chmod"
-ln -s "$(command -v mv)" "$tmp_dir/no-jq-bin/mv"
-ln -s "$(command -v rm)" "$tmp_dir/no-jq-bin/rm"
-jq . "$tmp_dir/no-jq.json" >"$tmp_dir/no-jq-pretty.json"
-cp "$tmp_dir/adversarial-native.json" "$tmp_dir/no-jq-current.json"
-cp "$tmp_dir/no-jq-current.json" "$tmp_dir/no-jq-current.before.json"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_sanitize_generated_config \
-  "$tmp_dir/no-jq-current.json" || fail "no-jq sanitizer rejected current canonical input"
-cmp -s "$tmp_dir/no-jq-current.before.json" "$tmp_dir/no-jq-current.json" ||
-  fail "no-jq sanitizer rewrote current canonical input"
-for legacy_format in compact pretty; do
-  if [[ "$legacy_format" == "compact" ]]; then
-    jq -c '(.outbounds[] | select(.tag == "proxy-auto")) |=
-        (.url = "https://www.google.com/generate_204" | .interval = "10m")' \
-      "$tmp_dir/adversarial-native.json" >"$tmp_dir/no-jq-legacy-$legacy_format.json"
-  else
-    jq '(.outbounds[] | select(.tag == "proxy-auto")) |=
-        (.url = "https://www.google.com/generate_204" | .interval = "10m")' \
-      "$tmp_dir/adversarial-native.json" >"$tmp_dir/no-jq-legacy-$legacy_format.json"
-  fi
-  cp "$tmp_dir/no-jq-legacy-$legacy_format.json" \
-    "$tmp_dir/no-jq-legacy-$legacy_format.before.json"
-  ! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical \
-    "$tmp_dir/no-jq-legacy-$legacy_format.json" ||
-    fail "pure-shell current canonical accepted $legacy_format legacy proxy-auto"
-  PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical \
-    "$tmp_dir/no-jq-legacy-$legacy_format.json" \
-    "https://www.google.com/generate_204" "10m" ||
-    fail "pure-shell legacy canonical rejected $legacy_format native fixture"
-  if PATH="$tmp_dir/no-jq-bin" magicnet_singbox_sanitize_generated_config \
-    "$tmp_dir/no-jq-legacy-$legacy_format.json"; then
-    legacy_sanitize_rc=0
-  else
-    legacy_sanitize_rc=$?
-  fi
-  if ((legacy_sanitize_rc != 0)); then
-    cmp -s "$tmp_dir/no-jq-legacy-$legacy_format.before.json" \
-      "$tmp_dir/no-jq-legacy-$legacy_format.json" ||
-      fail "failed no-jq sanitizer modified $legacy_format legacy input"
-    fail "no-jq sanitizer returned $legacy_sanitize_rc for $legacy_format legacy proxy-auto"
-  fi
-  [[ -z "${_sanitize_return+x}" ]] || fail "no-jq sanitizer leaked _sanitize_return"
-  jq -S '(.outbounds[] | select(.tag == "proxy-auto")) |=
-      (.url = "<probe-url>" | .interval = "<probe-interval>")' \
-    "$tmp_dir/no-jq-legacy-$legacy_format.before.json" \
-    >"$tmp_dir/no-jq-legacy-$legacy_format.before.structure.json"
-  jq -S '(.outbounds[] | select(.tag == "proxy-auto")) |=
-      (.url = "<probe-url>" | .interval = "<probe-interval>")' \
-    "$tmp_dir/no-jq-legacy-$legacy_format.json" \
-    >"$tmp_dir/no-jq-legacy-$legacy_format.after.structure.json"
-  cmp -s "$tmp_dir/no-jq-legacy-$legacy_format.before.structure.json" \
-    "$tmp_dir/no-jq-legacy-$legacy_format.after.structure.json" ||
-    fail "no-jq sanitizer changed fields outside proxy-auto probe policy"
-  jq -e '
-    (.outbounds | INDEX(.tag)) as $by_tag
-    | $by_tag["proxy-auto"].url == "https://www.gstatic.com/generate_204"
-      and $by_tag["proxy-auto"].interval == "3m"
-      and (["ai-chatgpt-auto", "ai-gemini-auto", "ai-grok-auto", "ai-claude-auto"]
-        | all(. as $tag | $by_tag[$tag].interval == "10m"))
-  ' "$tmp_dir/no-jq-legacy-$legacy_format.json" >/dev/null ||
-    fail "no-jq sanitizer produced wrong $legacy_format probe policy"
-  magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-legacy-$legacy_format.json" ||
-    fail "jq canonical validator rejected native no-jq $legacy_format repair"
-  PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical \
-    "$tmp_dir/no-jq-legacy-$legacy_format.json" ||
-    fail "pure-shell canonical validator rejected native no-jq $legacy_format repair"
-done
-jq '(.outbounds[] | select(.tag == "proxy-auto")) |=
-      (.url = "https://www.google.com/generate_204" | .interval = "10m")
-    | (.outbounds[] | select(.tag == "ai-chatgpt-auto") | .interval) = "9m"' \
-  "$tmp_dir/adversarial-native.json" >"$tmp_dir/no-jq-noncanonical-legacy.json"
-cp "$tmp_dir/no-jq-noncanonical-legacy.json" "$tmp_dir/no-jq-noncanonical-legacy.before.json"
-if PATH="$tmp_dir/no-jq-bin" magicnet_singbox_sanitize_generated_config \
-  "$tmp_dir/no-jq-noncanonical-legacy.json"; then
-  fail "no-jq sanitizer accepted a noncanonical file containing the legacy probe pair"
+cp "$tmp_dir/generated.json" "$tmp_dir/missing-jq-before.json"
+cp "$tmp_dir/generated.json" "$tmp_dir/missing-jq.json"
+if PATH=/nonexistent magicnet_singbox_sanitize_generated_config "$tmp_dir/missing-jq.json"; then
+  fail "subscription sanitizer unexpectedly succeeded without jq"
 fi
-cmp -s "$tmp_dir/no-jq-noncanonical-legacy.before.json" \
-  "$tmp_dir/no-jq-noncanonical-legacy.json" ||
-  fail "no-jq sanitizer modified rejected noncanonical input"
-[[ ! -e "$tmp_dir/no-jq-noncanonical-legacy.json.sanitized" ]] ||
-  fail "no-jq sanitizer left a temporary file for rejected input"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-pretty.json" || fail "pure-shell canonical validator rejected generated auto groups"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/syntax-base-compact.json" ||
-  fail "pure-shell canonical validator rejected compact JSON"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/kamfw-proxy-runtime.json" ||
-  fail "pure-shell canonical validator rejected kamfw proxy runtime field"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/structural-special-tag.json" ||
-  fail "pure-shell canonical validator rejected nested special-tag config"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/valid-json-syntax-probe.json" ||
-  fail "pure-shell canonical validator rejected valid JSON syntax probe"
-for valid_literal_config in "${valid_literal_configs[@]}"; do
-  PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$valid_literal_config" ||
-    fail "pure-shell canonical validator rejected lowercase JSON literal: $valid_literal_config"
-done
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/duplicate-proxy-node.json" 2>/dev/null ||
-  fail "pure-shell canonical validator accepted duplicate proxy node tag"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/repaired-duplicate-proxy-node.json" ||
-  fail "pure-shell canonical validator rejected repaired duplicate proxy nodes"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/schema-generated.json" ||
-  fail "pure-shell canonical validator rejected all-protocol schema fixture"
-for invalid_config in "${invalid_schema_node_configs[@]}"; do
-  ! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$invalid_config" 2>/dev/null ||
-    fail "pure-shell canonical validator accepted invalid type-specific proxy node: $invalid_config"
-done
-for invalid_config in "${invalid_configs[@]}"; do
-  ! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$invalid_config" 2>/dev/null ||
-    fail "pure-shell canonical validator accepted invalid JSON: $invalid_config"
-done
-for invalid_config in "${semantic_invalid_configs[@]}"; do
-  ! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$invalid_config" 2>/dev/null ||
-    fail "pure-shell canonical validator accepted invalid canonical fields: $invalid_config"
-done
-for invalid_config in "${invalid_proxy_node_configs[@]}"; do
-  ! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$invalid_config" 2>/dev/null ||
-    fail "pure-shell canonical validator accepted invalid proxy node: $invalid_config"
-done
-jq '(.outbounds[] | select(.tag == "ai-chatgpt-auto") | .url) = "https://invalid.example/"' \
-  "$tmp_dir/no-jq-pretty.json" >"$tmp_dir/no-jq-bad-auto-url.json"
-jq '(.outbounds[] | select(.tag == "ai-chatgpt-auto") | .outbounds) += ["stale-missing-node"]' \
-  "$tmp_dir/no-jq-pretty.json" >"$tmp_dir/no-jq-bad-auto-member.json"
-jq '(.outbounds[] | select(.tag == "proxy-auto") | .tolerance) = 100' \
-  "$tmp_dir/no-jq-pretty.json" >"$tmp_dir/no-jq-stale-proxy-auto-tolerance.json"
-jq 'del(.outbounds[] | select(.tag == "proxy-auto"))' \
-  "$tmp_dir/no-jq-pretty.json" >"$tmp_dir/no-jq-missing-proxy-auto.json"
-jq '.outbounds += [.outbounds[] | select(.tag == "proxy-auto")]' \
-  "$tmp_dir/no-jq-pretty.json" >"$tmp_dir/no-jq-duplicate-proxy-auto.json"
-jq '(.outbounds[] | select(.tag == "proxy-auto") | .url) = "https://invalid.example/"' \
-  "$tmp_dir/no-jq-pretty.json" >"$tmp_dir/no-jq-malformed-proxy-auto.json"
-jq '(.outbounds[] | select(.tag == "proxy-auto") | .outbounds) += ["stale-missing-node"]' \
-  "$tmp_dir/no-jq-pretty.json" >"$tmp_dir/no-jq-stale-proxy-auto-member.json"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-bad-auto-url.json" 2>/dev/null || fail "pure-shell canonical validator accepted wrong auto URL"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-bad-auto-member.json" 2>/dev/null || fail "pure-shell canonical validator accepted stale auto member"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-stale-proxy-auto-tolerance.json" 2>/dev/null || fail "pure-shell canonical validator accepted stale proxy-auto tolerance"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-missing-proxy-auto.json" 2>/dev/null || fail "pure-shell canonical validator accepted missing proxy-auto"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-duplicate-proxy-auto.json" 2>/dev/null || fail "pure-shell canonical validator accepted duplicate proxy-auto"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-malformed-proxy-auto.json" 2>/dev/null || fail "pure-shell canonical validator accepted malformed proxy-auto"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-stale-proxy-auto-member.json" 2>/dev/null || fail "pure-shell canonical validator accepted stale proxy-auto member"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/stale-legacy-proxy-auto.json" 2>/dev/null || fail "pure-shell canonical validator accepted legacy proxy-auto probe policy"
-magicnet_singbox_pinned_ai_tags "$tmp_dir/tags" >"$tmp_dir/pinned-ai-tags"
-grep -Fxq 'CN2 premium' "$tmp_dir/pinned-ai-tags" || fail "CN2 false positive"
-grep -Fxq 'opaque-42' "$tmp_dir/pinned-ai-tags" || fail "opaque node filtered"
-! grep -Fxq '上海 node' "$tmp_dir/pinned-ai-tags" || fail "mainland node retained"
-for tag in 'Mainland premium' 'Beijing edge' 'Shanghai edge' 'Guangzhou edge' 'Shenzhen edge' 'Sichuan edge' 'Inner-Mongolia edge' 'Xinjiang edge'; do
-  ! grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "English mainland label retained: $tag"
-done
-for tag in '香港 edge' 'Hong Kong edge' 'Hong-Kong edge' 'Hong_Kong edge' 'HK edge' 'HKG edge' 'hk01 edge' 'hk-01 edge' 'hk_01 edge' 'HKG01 edge' 'HongKong01 edge'; do
-  ! grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Hong Kong label retained: $tag"
-done
-for tag in 'HKT edge' 'CHK edge' 'myhk edge'; do
-  grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Hong Kong boundary false positive: $tag"
-done
-for tag in '台湾 edge' 'Taiwan edge' 'TW edge' 'TWN edge' 'Taipei edge' '🇹🇼 premium'; do
-  ! grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Taiwan label retained: $tag"
-done
-[[ "$(sed -n '1,3p' "$tmp_dir/pinned-ai-tags")" == $'US stable\n日本 Tokyo\nGermany edge' ]] ||
-  fail "AI node priority is not US, Japan, then other regions"
-for tag in 'TWA edge' 'mytw edge'; do
-  grep -Fxq "$tag" "$tmp_dir/pinned-ai-tags" || fail "Taiwan boundary false positive: $tag"
-done
+cmp -s "$tmp_dir/missing-jq-before.json" "$tmp_dir/missing-jq.json" ||
+  fail "missing jq mutated the subscription config"
 jq 'del(.outbounds[] | select(.tag == "ai-chatgpt" or .tag == "ai-gemini" or .tag == "ai-grok" or .tag == "ai-claude"
       or .tag == "ai-chatgpt-auto" or .tag == "ai-gemini-auto" or .tag == "ai-grok-auto" or .tag == "ai-claude-auto"))' \
   "$tmp_dir/generated.json" >"$tmp_dir/legacy-cached.json"
@@ -898,12 +609,6 @@ jq -e '
 ' "$tmp_dir/malformed-cached.json" >/dev/null || fail "malformed or duplicate AI selectors not canonicalized"
 base_config="$MODULE_ROOT/.config/sing-box/config.json"
 magicnet_singbox_ai_selectors_canonical "$base_config" || fail "jq canonical validator rejected fresh empty-node config"
-jq 'del(.outbounds[] | select(.tag == "ai-chatgpt"))' "$base_config" >"$tmp_dir/no-jq-legacy.json"
-jq '(.outbounds[] | select(.tag == "ai-grok") | .default) = "direct"' "$base_config" >"$tmp_dir/no-jq-malformed.json"
-jq '(.outbounds[] | select(.tag == "ai-chatgpt") | .outbounds) += ["stale-missing-node"]' "$base_config" >"$tmp_dir/no-jq-stale-member.json"
-jq 'del(.outbounds[] | select(.tag == "ai-proxy"))' "$base_config" >"$tmp_dir/no-jq-missing-ai-proxy.json"
-jq '(.outbounds[] | select(.tag == "ai-proxy")) = {"type":"selector","tag":"ai-proxy","outbounds":["proxy"],"default":"proxy"}' \
-  "$base_config" >"$tmp_dir/no-jq-generic-ai-proxy.json"
 jq '(.outbounds[] | select(.tag == "ai-proxy")) = {"type":"selector","tag":"ai-proxy","outbounds":["上海 node"],"default":"上海 node"}' \
   "$tmp_dir/generated.json" >"$tmp_dir/mainland-ai-proxy.json"
 jq '(.outbounds[] | select(.tag == "ai-proxy")) = {"type":"selector","tag":"ai-proxy","outbounds":["proxy-rule"],"default":"proxy-rule"}' \
@@ -916,16 +621,6 @@ jq '(.outbounds[] | select(.tag == "ai-proxy")) = {"type":"selector","tag":"ai-p
 ! magicnet_singbox_ai_selectors_canonical "$tmp_dir/nested-selector-ai-proxy.json" 2>/dev/null || fail "jq canonical validator accepted nested selector AI proxy"
 ! magicnet_singbox_ai_selectors_canonical "$tmp_dir/nonfirst-default-ai-proxy.json" 2>/dev/null || fail "jq canonical validator accepted non-first AI proxy default"
 ! magicnet_singbox_ai_selectors_canonical "$tmp_dir/block-with-nodes-ai-proxy.json" 2>/dev/null || fail "jq canonical validator accepted block fallback with nodes"
-PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$base_config" || fail "pure-shell canonical validator rejected fresh config"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-legacy.json" 2>/dev/null || fail "pure-shell canonical validator accepted missing selectors"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-malformed.json" 2>/dev/null || fail "pure-shell canonical validator accepted malformed selectors"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-stale-member.json" 2>/dev/null || fail "pure-shell canonical validator accepted undefined selector member"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-missing-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted missing AI proxy"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/no-jq-generic-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted generic AI proxy"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/mainland-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted mainland AI proxy"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/nested-selector-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted nested selector AI proxy"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/nonfirst-default-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted non-first AI proxy default"
-! PATH="$tmp_dir/no-jq-bin" magicnet_singbox_ai_selectors_canonical "$tmp_dir/block-with-nodes-ai-proxy.json" 2>/dev/null || fail "pure-shell canonical validator accepted block fallback with nodes"
 jq -e '
   ["ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude"] as $names
   | ($names | map(. + "-auto")) as $auto_names

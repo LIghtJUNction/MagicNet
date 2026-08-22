@@ -22,11 +22,9 @@ mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
 assert_subscription_ad_allow() {
   _fragment="$1"
   _config="$2"
-  {
-    printf '{\n'
-    cat "$_fragment"
-    printf '\n  "route": {}\n}\n'
-  } >"$_config"
+  jq -n --slurpfile generated_outbounds "$_fragment" '
+    {outbounds: $generated_outbounds[0], route: {}}
+  ' >"$_config"
   jq -e '
     [.outbounds[] | select(.tag == "ad-allow")] == [{
       "type": "selector",
@@ -38,7 +36,7 @@ assert_subscription_ad_allow() {
   unset _fragment _config
 }
 
-mkdir -p "$WORK/subscription-jq" "$WORK/subscription-no-jq/nodes"
+mkdir -p "$WORK/subscription-jq"
 printf '[]' >"$WORK/subscription-jq/nodes.json"
 : >"$WORK/subscription-jq/tags"
 magicnet_singbox_build_outbounds_file_with_jq \
@@ -48,17 +46,6 @@ magicnet_singbox_build_outbounds_file_with_jq \
 assert_subscription_ad_allow \
   "$WORK/subscription-jq/outbounds" \
   "$WORK/subscription-jq/config.json"
-
-magicnet_singbox_build_outbounds_file_with_jq() {
-  return 1
-}
-magicnet_singbox_build_outbounds_file \
-  "$WORK/subscription-no-jq/nodes" \
-  "$WORK/subscription-no-jq/outbounds" \
-  "$WORK/subscription-no-jq/tags" >/dev/null
-assert_subscription_ad_allow \
-  "$WORK/subscription-no-jq/outbounds" \
-  "$WORK/subscription-no-jq/config.json"
 
 cat >"$MODDIR/.config/magicnet/block-allow-rules.list" <<'EOF'
 DOMAIN,ads.example.com
