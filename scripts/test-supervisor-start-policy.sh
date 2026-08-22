@@ -10,7 +10,11 @@ i18n() { printf '%s\n' "$1"; }
 t() { cat; }
 import() { :; }
 magicnet_json_escape() { printf '%s' "$1"; }
+MODDIR="$fixture/module"
+export MODDIR
 
+# shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
 
@@ -36,7 +40,6 @@ fi
 # The Android Toybox flock command exists but does not implement the
 # util-linux-style -o form. A known incompatible implementation should be
 # reported clearly and must not reach the generic fswatch launcher.
-MODDIR="$fixture/module"
 mkdir -p "$MODDIR/.config" "$MODDIR/.log"
 : >"$MODDIR/cli"
 incompatible_bin="$fixture/incompatible-bin"

@@ -18,6 +18,7 @@ for cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal; do
 done
 
 magicnet_json_escape() { printf '%s' "$1"; }
+. "$ROOT/src/MagicNet/lib/magicnet/runtime_config.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
 

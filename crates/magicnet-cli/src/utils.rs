@@ -1,91 +1,122 @@
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::{self, File};
-use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{self, ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::App;
+
+const MAX_COMMAND_STREAM_BYTES: usize = 1024 * 1024;
 
 pub(crate) fn command_text_timeout(program: &str, args: &[&str], timeout: Duration) -> String {
     compact_command_output(&command_text_full_timeout(program, args, timeout))
 }
 
 pub(crate) fn command_text_full_timeout(program: &str, args: &[&str], timeout: Duration) -> String {
-    let mut child = match Command::new(program)
-        .args(args)
+    let mut command = Command::new(program);
+    command.args(args);
+    match run_bounded_command(command, timeout, MAX_COMMAND_STREAM_BYTES) {
+        Ok(output) if output.timed_out => format!("timeout after {}ms", timeout.as_millis()),
+        Ok(output) => merge_command_output(&output.stdout, &output.stderr),
+        Err(err) => format!("{program} not available: {err}"),
+    }
+}
+
+pub(crate) struct BoundedCommandOutput {
+    pub(crate) status: Option<ExitStatus>,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
+    pub(crate) timed_out: bool,
+}
+
+pub(crate) fn run_bounded_command(
+    mut command: Command,
+    timeout: Duration,
+    stream_limit: usize,
+) -> Result<BoundedCommandOutput, String> {
+    let mut child = command
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-    {
-        Ok(child) => child,
-        Err(err) => return format!("{program} not available: {err}"),
-    };
-    let stdout_reader = child.stdout.take().map(spawn_output_reader);
-    let stderr_reader = child.stderr.take().map(spawn_output_reader);
+        .map_err(|err| err.to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .map(|stream| spawn_output_reader(stream, stream_limit));
+    let stderr = child
+        .stderr
+        .take()
+        .map(|stream| spawn_output_reader(stream, stream_limit));
     let deadline = Instant::now() + timeout;
-    loop {
+    let mut timed_out = false;
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => {
-                return match join_output_readers(stdout_reader, stderr_reader) {
-                    Ok((stdout, stderr)) => merge_command_output(&stdout, &stderr),
-                    Err(err) => err,
-                };
-            }
+            Ok(Some(status)) => break Some(status),
             Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(40)),
             Ok(None) => {
+                timed_out = true;
                 let _ = child.kill();
-                let _ = child.wait();
-                let _ = join_output_readers(stdout_reader, stderr_reader);
-                return format!("timeout after {}ms", timeout.as_millis());
+                break child.wait().ok();
             }
             Err(err) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                let _ = join_output_readers(stdout_reader, stderr_reader);
-                return format!("wait failed: {err}");
+                return Err(format!("wait failed: {err}"));
             }
         }
-    }
-}
-
-type OutputReader = thread::JoinHandle<std::io::Result<Vec<u8>>>;
-
-fn spawn_output_reader<R>(mut reader: R) -> OutputReader
-where
-    R: Read + Send + 'static,
-{
-    thread::spawn(move || {
-        let mut output = Vec::new();
-        reader.read_to_end(&mut output)?;
-        Ok(output)
+    };
+    Ok(BoundedCommandOutput {
+        status,
+        stdout: receive_output(stdout, "stdout"),
+        stderr: receive_output(stderr, "stderr"),
+        timed_out,
     })
 }
 
-fn join_output_readers(
-    stdout: Option<OutputReader>,
-    stderr: Option<OutputReader>,
-) -> Result<(Vec<u8>, Vec<u8>), String> {
-    let stdout = join_output_reader(stdout, "stdout");
-    let stderr = join_output_reader(stderr, "stderr");
-    match (stdout, stderr) {
-        (Ok(stdout), Ok(stderr)) => Ok((stdout, stderr)),
-        (Err(err), _) | (_, Err(err)) => Err(err),
-    }
+type OutputReader = Receiver<io::Result<Vec<u8>>>;
+
+fn spawn_output_reader<R>(mut reader: R, limit: usize) -> OutputReader
+where
+    R: Read + Send + 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let result = (|| {
+            let mut output = Vec::new();
+            let mut buffer = [0_u8; 8192];
+            let mut truncated = false;
+            loop {
+                let read = reader.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                let available = limit.saturating_sub(output.len());
+                let keep = read.min(available);
+                output.extend_from_slice(&buffer[..keep]);
+                truncated |= keep < read;
+            }
+            if truncated {
+                output.extend_from_slice(b"\n[output truncated]");
+            }
+            Ok(output)
+        })();
+        let _ = sender.send(result);
+    });
+    receiver
 }
 
-fn join_output_reader(reader: Option<OutputReader>, name: &str) -> Result<Vec<u8>, String> {
-    match reader {
-        Some(reader) => match reader.join() {
-            Ok(Ok(output)) => Ok(output),
-            Ok(Err(err)) => Err(format!("read failed: {name}: {err}")),
-            Err(_) => Err(format!("read failed: {name} reader thread panicked")),
-        },
-        None => Err(format!("read failed: {name} pipe unavailable")),
+fn receive_output(reader: Option<OutputReader>, name: &str) -> Vec<u8> {
+    match reader.and_then(|reader| reader.recv_timeout(Duration::from_millis(500)).ok()) {
+        Some(Ok(output)) => output,
+        Some(Err(err)) => format!("[{name} read failed: {err}]").into_bytes(),
+        None => format!("[{name} unavailable]").into_bytes(),
     }
 }
 
@@ -129,54 +160,15 @@ pub(crate) fn first_clean_line(path: PathBuf) -> String {
 /// caller-supplied absolute path. Every component must be a normal relative
 /// component and is opened from the module root descriptor with `O_NOFOLLOW`.
 pub(crate) fn write_text_file(app: &App, relative: &Path, text: &str) -> Result<(), String> {
-    write_module_file(app, relative, text, ModuleFileKind::Text)
+    replace_module_text_files_transactionally(app, &[(relative, text)])
 }
 
-/// Like [`write_text_file`], but makes the final file exactly `0600` before
-/// its first byte is written. This is for WireGuard keys, tokens, and other
-/// on-disk secrets that must never be world-readable.
+/// Like [`write_text_file`], but documents that the payload contains secret
+/// material. The transaction writer always creates a synced `0600` stage and
+/// atomically publishes it, so an interrupted write cannot expose or truncate
+/// the previous secret.
 pub(crate) fn write_secret_file(app: &App, relative: &Path, text: &str) -> Result<(), String> {
-    write_module_file(app, relative, text, ModuleFileKind::Secret)
-}
-
-#[derive(Clone, Copy)]
-enum ModuleFileKind {
-    Text,
-    Secret,
-}
-
-fn write_module_file(
-    app: &App,
-    relative: &Path,
-    text: &str,
-    kind: ModuleFileKind,
-) -> Result<(), String> {
-    let mut components = module_relative_components(relative)?;
-    let name = components
-        .pop()
-        .expect("nonempty module-relative path has a final component");
-    let mut directory = open_module_root(app)?;
-    for component in components {
-        directory = ensure_module_directory_at(&directory, component)?;
-    }
-
-    // No O_TRUNC is used: bind and validate the final inode first, then
-    // truncate the already-open descriptor. This rejects symlinks, devices,
-    // directories, and hard-linked files before any existing bytes change.
-    let mut file = open_module_output_file(&directory, name, kind)?;
-    require_private_regular_module_file(&file)?;
-    if matches!(kind, ModuleFileKind::Secret) {
-        // `openat(..., 0600)` is still filtered by the process umask. Set the
-        // exact final mode before truncating or writing secret material.
-        file.set_permissions(fs::Permissions::from_mode(0o600))
-            .map_err(|err| format!("secure module secret: {err}"))?;
-    }
-    file.set_len(0)
-        .map_err(|err| format!("truncate module file: {err}"))?;
-    file.seek(SeekFrom::Start(0))
-        .map_err(|err| format!("seek module file: {err}"))?;
-    file.write_all(text.as_bytes())
-        .map_err(|err| format!("write module file: {err}"))
+    replace_module_text_files_transactionally(app, &[(relative, text)])
 }
 
 fn module_relative_components(relative: &Path) -> Result<Vec<&OsStr>, String> {
@@ -243,40 +235,6 @@ fn ensure_module_directory_at(parent: &File, name: &OsStr) -> Result<File, Strin
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-fn open_module_output_file(
-    directory: &File,
-    name: &OsStr,
-    kind: ModuleFileKind,
-) -> Result<File, String> {
-    let name = module_cstring(name, "module file name")?;
-    let flags = libc::O_WRONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC;
-    let create_mode = match kind {
-        ModuleFileKind::Text => 0o666,
-        ModuleFileKind::Secret => 0o600,
-    };
-    let fd = unsafe {
-        libc::openat(
-            directory.as_raw_fd(),
-            name.as_ptr(),
-            flags | libc::O_CREAT | libc::O_EXCL,
-            create_mode,
-        )
-    };
-    if fd >= 0 {
-        return Ok(unsafe { File::from_raw_fd(fd) });
-    }
-    let create_error = io::Error::last_os_error();
-    if create_error.kind() != ErrorKind::AlreadyExists {
-        return Err(format!("create module file: {create_error}"));
-    }
-
-    let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), flags) };
-    if fd < 0 {
-        return Err(format!("open module file: {}", io::Error::last_os_error()));
-    }
-    Ok(unsafe { File::from_raw_fd(fd) })
-}
-
 fn require_private_regular_module_file(file: &File) -> Result<(), String> {
     private_regular_module_file_identity(file).map(|_| ())
 }
@@ -297,6 +255,11 @@ fn private_regular_module_file_identity(file: &File) -> Result<ModuleFileIdentit
 fn module_cstring(value: &OsStr, description: &str) -> Result<CString, String> {
     CString::new(value.as_bytes())
         .map_err(|_| format!("{description} contains an unsupported NUL byte"))
+}
+
+pub(crate) fn proc_start_time(stat: &str) -> Option<String> {
+    let fields = stat.rsplit_once(") ")?.1;
+    fields.split_whitespace().nth(19).map(ToOwned::to_owned)
 }
 
 pub(crate) fn clear_node_cache(app: &App) {
@@ -1154,12 +1117,21 @@ mod tests {
 
     use super::{
         command_text_full_timeout, command_text_timeout, compact_command_output,
-        merge_command_output, module_transaction_stage_name, rename_module_transaction_entry,
-        replace_module_text_files_transactionally,
+        merge_command_output, module_transaction_stage_name, proc_start_time,
+        rename_module_transaction_entry, replace_module_text_files_transactionally,
         replace_module_text_files_transactionally_with_rename,
         replace_module_text_files_transactionally_with_stage_writer, write_secret_file,
-        write_text_file, MODULE_TRANSACTION_STAGING_DIRECTORY, MODULE_TRANSACTION_STAGING_PARENT,
+        write_text_file, MAX_COMMAND_STREAM_BYTES, MODULE_TRANSACTION_STAGING_DIRECTORY,
+        MODULE_TRANSACTION_STAGING_PARENT,
     };
+
+    #[test]
+    fn proc_start_time_allows_spaces_and_parentheses_in_comm() {
+        let stat =
+            "42 (worker name (stage)) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 424242 20";
+        assert_eq!(proc_start_time(stat).as_deref(), Some("424242"));
+        assert_eq!(proc_start_time("malformed"), None);
+    }
 
     fn test_directory(label: &str) -> PathBuf {
         let directory = std::env::temp_dir().join(format!(
@@ -1233,6 +1205,18 @@ mod tests {
     }
 
     #[test]
+    fn command_output_is_drained_but_retained_within_the_memory_budget() {
+        let script = "chunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 65536 ]; do printf %s \"$chunk\"; i=$((i + 1)); done";
+        let output = command_text_full_timeout("sh", &["-c", script], Duration::from_secs(8));
+
+        assert_eq!(
+            output.len(),
+            MAX_COMMAND_STREAM_BYTES + "\n[output truncated]".len()
+        );
+        assert!(output.ends_with("[output truncated]"));
+    }
+
+    #[test]
     fn builtin_infinite_loop_times_out_promptly_and_exactly() {
         let started = Instant::now();
         let output = command_text_full_timeout(
@@ -1301,15 +1285,15 @@ mod tests {
         fs::write(&victim, "preserve me").expect("write victim");
         symlink(&victim, &path).expect("create secret symlink");
 
-        let err = write_secret_file(&app, relative, "replacement").expect_err("refuse symlink");
+        write_secret_file(&app, relative, "replacement").expect_err("refuse symlink");
         let contents = fs::read_to_string(&victim).expect("read victim");
         fs::remove_dir_all(&directory).expect("remove test directory");
 
-        assert!(err.contains("module file"), "unexpected error: {err}");
         assert_eq!(contents, "preserve me");
     }
 
     #[test]
+    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
     fn write_secret_file_refuses_a_hard_linked_target_without_mutating_it() {
         let (app, directory) = test_app("secret-final-hardlink");
         let original = directory.join("original");
@@ -1330,6 +1314,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
     fn write_text_file_refuses_final_symlink_and_hard_link() {
         for link_kind in ["symlink", "hardlink"] {
             let (app, directory) = test_app(&format!("text-final-{link_kind}"));
@@ -1683,6 +1668,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
     fn module_transaction_rejects_final_symlink_and_hard_link() {
         for link_kind in ["symlink", "hardlink"] {
             let (app, directory) = test_app(&format!("transaction-final-{link_kind}"));

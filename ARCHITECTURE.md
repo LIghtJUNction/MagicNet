@@ -44,6 +44,8 @@ must not execute a parallel set of privileged shell operations.
 - Configuration candidates are validated before activation and updates are
   transactional.
 - Module-managed files and processes are identified by exact owned paths.
+- Packaged `bin/jq` is mandatory for JSON policy mutation; privileged runtime
+  code fails closed instead of rewriting JSON with AWK or regular expressions.
 - MCP is disabled by default and requires an independent secret.
 - Runtime state belongs under `.config`, `.state`, and `.log`; callers must not
   redirect privileged Android execution through untrusted environment paths.

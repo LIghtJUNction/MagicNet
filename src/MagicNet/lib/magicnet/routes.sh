@@ -43,11 +43,8 @@ magicnet_hotspot_source_cidrs() {
 }
 
 magicnet_hotspot_jq() {
-    if [ -x "${MODDIR}/bin/jq" ]; then
-        printf '%s\n' "${MODDIR}/bin/jq"
-    else
-        command -v jq 2>/dev/null || true
-    fi
+    [ -x "${MODDIR}/bin/jq" ] || return 1
+    printf '%s\n' "${MODDIR}/bin/jq"
 }
 
 magicnet_hotspot_source_cidrs_json() {
@@ -398,38 +395,46 @@ magicnet_hotspot_register_offload_rollback() {
 
 magicnet_hotspot_offload_enable() {
     _hotspot_state="$(magicnet_hotspot_offload_state_file)"
+    _hotspot_state_created=0
     if [ ! -f "$_hotspot_state" ]; then
         _hotspot_previous="$(magicnet_hotspot_offload_value)" || {
             magicnet_warn "Android settings service is unavailable; cannot disable tether offload"
-            unset _hotspot_state _hotspot_previous
+            unset _hotspot_state _hotspot_state_created _hotspot_previous
             return 1
         }
         case "$_hotspot_previous" in
-            "" | null) _hotspot_saved=unset ;;
+            "" | null) _hotspot_saved="unset" ;;
             0 | 1) _hotspot_saved="value=$_hotspot_previous" ;;
             *)
                 magicnet_warn "Unexpected tether_offload_disabled value; refusing to overwrite it"
-                unset _hotspot_state _hotspot_previous _hotspot_saved
+                unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved
                 return 1
                 ;;
         esac
-        mkdir -p "${_hotspot_state%/*}" || return 1
+        if ! mkdir -p "${_hotspot_state%/*}"; then
+            unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved
+            return 1
+        fi
         _hotspot_tmp="${_hotspot_state}.new.$$"
         if ! printf '%s\n' "$_hotspot_saved" >"$_hotspot_tmp" ||
             ! mv -f "$_hotspot_tmp" "$_hotspot_state"; then
             rm -f "$_hotspot_tmp" 2>/dev/null || true
-            unset _hotspot_state _hotspot_previous _hotspot_saved _hotspot_tmp
+            unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
             return 1
         fi
+        _hotspot_state_created=1
         magicnet_hotspot_register_offload_rollback
     fi
     if ! settings put global tether_offload_disabled 1 >/dev/null 2>&1 ||
         [ "$(magicnet_hotspot_offload_value)" != 1 ]; then
         magicnet_warn "Failed to disable Android tether offload"
-        unset _hotspot_state _hotspot_previous _hotspot_saved _hotspot_tmp
+        if [ "$_hotspot_state_created" -eq 1 ]; then
+            magicnet_hotspot_offload_restore >/dev/null 2>&1 || true
+        fi
+        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
         return 1
     fi
-    unset _hotspot_state _hotspot_previous _hotspot_saved _hotspot_tmp
+    unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
 }
 
 magicnet_hotspot_offload_restore() {

@@ -1,3 +1,33 @@
+use std::fmt;
+use std::io::{self, Write};
+
+// Rust's standard print macros panic when a WebUI/background-task reader closes
+// its pipe before a long-running command reports completion.  Release builds
+// abort on that panic, creating a tombstone and bypassing normal cleanup.  CLI
+// output is best-effort: keep executing cleanup and preserve the real status
+// even after the consumer disconnects.
+fn write_stdout(args: fmt::Arguments<'_>) {
+    let _ = io::stdout().lock().write_fmt(args);
+}
+
+fn write_stderr(args: fmt::Arguments<'_>) {
+    let _ = io::stderr().lock().write_fmt(args);
+}
+
+macro_rules! print {
+    ($($arg:tt)*) => {{ crate::write_stdout(format_args!($($arg)*)); }};
+}
+
+macro_rules! println {
+    () => {{ crate::write_stdout(format_args!("\n")); }};
+    ($($arg:tt)*) => {{ crate::write_stdout(format_args!("{}\n", format_args!($($arg)*))); }};
+}
+
+macro_rules! eprintln {
+    () => {{ crate::write_stderr(format_args!("\n")); }};
+    ($($arg:tt)*) => {{ crate::write_stderr(format_args!("{}\n", format_args!($($arg)*))); }};
+}
+
 mod app;
 mod base64;
 #[cfg(test)]
@@ -39,7 +69,8 @@ pub(crate) use process::{
     SHORT_TIMEOUT,
 };
 pub(crate) use utils::{
-    clean_lines, clear_node_cache, command_text_timeout, first_clean_line, read_kv,
+    clean_lines, clear_node_cache, command_text_timeout, first_clean_line, proc_start_time,
+    read_kv, replace_module_text_files_transactionally, run_bounded_command,
     shell_inert_conf_value, write_kv, write_secret_file, write_text_file,
 };
 

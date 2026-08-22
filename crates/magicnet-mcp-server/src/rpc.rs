@@ -1,5 +1,9 @@
 use serde_json::{json, Value};
-use std::process::Command;
+use std::io::{self, Read};
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::base64::encode_base64;
 use crate::files::{file_list, file_read};
@@ -7,16 +11,23 @@ use crate::logs::{debug_snapshot, log_list, log_read};
 use crate::tools::TOOLS_JSON;
 use crate::Server;
 
+const CLI_TIMEOUT: Duration = Duration::from_secs(300);
+const MAX_CLI_STREAM_BYTES: usize = 1024 * 1024;
+type CliStreamResult = io::Result<(Vec<u8>, bool)>;
+type CliStreamReceiver = Receiver<CliStreamResult>;
+
 pub(crate) fn handle_jsonrpc(payload: &str, server: &Server) -> String {
     let request: Value = match serde_json::from_str(payload) {
         Ok(value) => value,
         Err(err) => return rpc_error(&Value::Null, -32700, &format!("parse error: {err}")),
     };
     let id = request.get("id").cloned().unwrap_or(Value::Null);
-    let method = request
-        .get("method")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    if !request.is_object() || request.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        return rpc_error(&id, -32600, "invalid request");
+    }
+    let Some(method) = request.get("method").and_then(Value::as_str) else {
+        return rpc_error(&id, -32600, "invalid request");
+    };
     match method {
         "initialize" => rpc_result(
             &id,
@@ -219,21 +230,93 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         }
         "magicnet_file_list" => file_list(server, arg(args, "path").as_deref().unwrap_or(".")),
         "magicnet_file_read" => file_read(server, arg(args, "path").as_deref().unwrap_or("")),
-        _ => "unknown tool".to_string(),
+        _ => "unknown tool\nrc=-1".to_string(),
     }
 }
 
 pub(crate) fn run_cli(server: &Server, args: &[&str]) -> String {
-    let output = Command::new(&server.cli).args(args).output();
-    match output {
-        Ok(output) => {
-            let mut text = String::new();
-            text.push_str(&String::from_utf8_lossy(&output.stdout));
-            text.push_str(&String::from_utf8_lossy(&output.stderr));
-            text.push_str(&format!("\nrc={}", output.status.code().unwrap_or(-1)));
-            text
+    let mut child = match Command::new(&server.cli)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(err) => return format!("failed to run cli: {err}\nrc=-1"),
+    };
+    let stdout = child.stdout.take().map(spawn_cli_reader);
+    let stderr = child.stderr.take().map(spawn_cli_reader);
+    let started = Instant::now();
+    let (status, timed_out, wait_error) = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break (Some(status), false, None),
+            Ok(None) if started.elapsed() < CLI_TIMEOUT => thread::sleep(Duration::from_millis(25)),
+            Ok(None) => {
+                let _ = child.kill();
+                break (child.wait().ok(), true, None);
+            }
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break (None, false, Some(err));
+            }
         }
-        Err(err) => format!("failed to run cli: {err}\nrc=-1"),
+    };
+
+    let mut text = String::new();
+    append_cli_stream(&mut text, "stdout", stdout);
+    append_cli_stream(&mut text, "stderr", stderr);
+    if timed_out {
+        text.push_str("\ncli timed out");
+    }
+    if let Some(error) = wait_error {
+        text.push_str(&format!("\nwait for cli failed: {error}"));
+    }
+    let code = if timed_out {
+        124
+    } else {
+        status.and_then(|value| value.code()).unwrap_or(-1)
+    };
+    text.push_str(&format!("\nrc={code}"));
+    text
+}
+
+fn drain_cli_stream(mut pipe: impl Read) -> CliStreamResult {
+    let mut retained = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    let mut truncated = false;
+    loop {
+        let read = pipe.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        let available = MAX_CLI_STREAM_BYTES.saturating_sub(retained.len());
+        let keep = read.min(available);
+        retained.extend_from_slice(&buffer[..keep]);
+        truncated |= keep < read;
+    }
+    Ok((retained, truncated))
+}
+
+fn spawn_cli_reader(pipe: impl Read + Send + 'static) -> CliStreamReceiver {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let _ = sender.send(drain_cli_stream(pipe));
+    });
+    receiver
+}
+
+fn append_cli_stream(text: &mut String, name: &str, reader: Option<CliStreamReceiver>) {
+    match reader.and_then(|reader| reader.recv_timeout(Duration::from_secs(2)).ok()) {
+        Some(Ok((bytes, truncated))) => {
+            text.push_str(&String::from_utf8_lossy(&bytes));
+            if truncated {
+                text.push_str(&format!("\n[{name} truncated]"));
+            }
+        }
+        Some(Err(err)) => text.push_str(&format!("\n[{name} read failed: {err}]")),
+        None => text.push_str(&format!("\n[{name} unavailable]")),
     }
 }
 
@@ -241,10 +324,10 @@ fn subscription_set(server: &Server, args: &Value) -> String {
     let target = arg(args, "target").unwrap_or_else(|| "sing-box".to_string());
     let url = arg(args, "url").unwrap_or_default();
     if url.trim().is_empty() {
-        return "missing url".to_string();
+        return "missing url\nrc=-1".to_string();
     }
     if !matches!(target.as_str(), "sing-box" | "singbox") {
-        return "unsupported subscription target; use sing-box".to_string();
+        return "unsupported subscription target; use sing-box\nrc=-1".to_string();
     }
     run_cli_owned(server, vec!["sub".into(), "set".into(), target, url])
 }
@@ -306,20 +389,23 @@ fn run_cli_owned(server: &Server, args: Vec<String>) -> String {
 
 fn cli_args(server: &Server, args: &Value) -> String {
     let Some(values) = args.get("args").and_then(Value::as_array) else {
-        return "missing args array".to_string();
+        return "missing args array\nrc=-1".to_string();
     };
+    if values.len() > 24 {
+        return "too many args\nrc=-1".to_string();
+    }
     let mut out = Vec::new();
-    for value in values.iter().take(24) {
+    for value in values {
         let Some(item) = value.as_str() else {
-            return "args must be strings".to_string();
+            return "args must be strings\nrc=-1".to_string();
         };
         if item.contains('\0') {
-            return "invalid arg".to_string();
+            return "invalid arg\nrc=-1".to_string();
         }
         out.push(item.to_string());
     }
     if out.is_empty() {
-        return "missing args".to_string();
+        return "missing args\nrc=-1".to_string();
     }
     run_cli_owned(server, out)
 }
@@ -389,12 +475,15 @@ fn app_package(server: &Server, args: &Value, action: &str) -> String {
 fn app_add_many(server: &Server, args: &Value) -> String {
     let target = arg(args, "target").unwrap_or_else(|| "bypass".to_string());
     let Some(packages) = args.get("packages").and_then(Value::as_array) else {
-        return "missing packages array".to_string();
+        return "missing packages array\nrc=-1".to_string();
     };
+    if packages.len() > 200 {
+        return "too many packages\nrc=-1".to_string();
+    }
     let mut values = vec!["app".to_string(), "add-many".to_string(), target];
-    for package in packages.iter().take(200) {
+    for package in packages {
         let Some(package) = package.as_str() else {
-            return "packages must be strings".to_string();
+            return "packages must be strings\nrc=-1".to_string();
         };
         values.push(package.to_string());
     }
@@ -530,9 +619,32 @@ mod tests {
                 response
                     .pointer("/result/content/0/text")
                     .and_then(Value::as_str),
-                Some("unknown tool"),
+                Some("unknown tool\nrc=-1"),
                 "{tool} must remain unavailable"
             );
+            assert_eq!(
+                response.pointer("/result/isError").and_then(Value::as_bool),
+                Some(true),
+                "{tool} must report an MCP tool error"
+            );
         }
+    }
+
+    #[test]
+    fn invalid_jsonrpc_envelope_is_rejected_before_dispatch() {
+        let server = Server {
+            moddir: PathBuf::from("/tmp"),
+            cli: PathBuf::from("/bin/echo"),
+            secret: String::new(),
+        };
+        let response: Value = serde_json::from_str(&handle_jsonrpc(
+            r#"{"id":1,"method":"tools/list"}"#,
+            &server,
+        ))
+        .unwrap();
+        assert_eq!(
+            response.pointer("/error/code").and_then(Value::as_i64),
+            Some(-32600)
+        );
     }
 }

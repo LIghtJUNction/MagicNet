@@ -12,6 +12,10 @@ if [ -z "$JQ_BIN" ]; then
   exit 1
 fi
 
+MODDIR="$WORK/bootstrap"
+export MODDIR
+import() { :; }
+. "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/apps.sh"
 # network.sh reconciles the hotspot policy provided by routes.sh.
@@ -24,20 +28,13 @@ fi
 
 magicnet_warn() { :; }
 
-NO_JQ_BIN="$WORK/no-jq-bin"
-mkdir -p "$NO_JQ_BIN"
-for command_name in awk chmod cp grep mkdir mv rm sed tr wc; do
-  command_path=$(command -v "$command_name")
-  ln -s "$command_path" "$NO_JQ_BIN/$command_name"
-done
-
 REAL_MV=$(command -v mv)
 FAIL_MV_BIN="$WORK/fail-mv-bin"
 mkdir -p "$FAIL_MV_BIN"
 cat >"$FAIL_MV_BIN/mv" <<EOF
 #!/bin/sh
 case "\${3:-}" in
-  *.include-uids.tmp|*.exclude-uids.tmp|*.base-include-uids.tmp|*.base-exclude-uids.tmp)
+  *.include-uids.tmp|*.exclude-uids.tmp)
     exit 1
     ;;
   *)
@@ -76,8 +73,6 @@ case "${1:-} ${2:-}" in
 esac
 EOF
 chmod +x "$MOCK_BIN/cmd"
-ln -s "$MOCK_BIN/cmd" "$NO_JQ_BIN/cmd"
-
 write_base_config() {
   cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 {
@@ -190,12 +185,7 @@ assert_whitelist() {
 }
 
 apply_policy() {
-  implementation="$1"
-  if [ "$implementation" = "no-jq" ]; then
-    PATH="$MOCK_BIN:$NO_JQ_BIN" magicnet_singbox_apply_app_policy
-  else
-    PATH="$MOCK_BIN:$PATH" magicnet_singbox_apply_app_policy
-  fi
+  PATH="$MOCK_BIN:$PATH" magicnet_singbox_apply_app_policy
 }
 
 run_case() {
@@ -203,6 +193,8 @@ run_case() {
   MODDIR="$WORK/$implementation/module"
   export MODDIR
   mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
+  mkdir -p "$MODDIR/bin"
+  ln -sf "$JQ_BIN" "$MODDIR/bin/jq"
   write_base_config
 
   printf '%s\n' 'MAGICNET_APP_MODE=blacklist' >"$MODDIR/.config/magicnet/app-mode.conf"
@@ -254,12 +246,12 @@ EOF
 }
 
 run_case jq
-run_case no-jq
 
 assert_publish_failure_is_visible() (
   MODDIR="$WORK/publish-failure/module"
   export MODDIR
-  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
+  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box" "$MODDIR/bin"
+  ln -sf "$JQ_BIN" "$MODDIR/bin/jq"
   write_base_config
   printf '%s\n' 'MAGICNET_APP_MODE=blacklist' >"$MODDIR/.config/magicnet/app-mode.conf"
   printf '%s\n' 'com.example.bypass' >"$MODDIR/.config/magicnet/app-bypass.list"
@@ -280,7 +272,8 @@ assert_publish_failure_is_visible
 assert_jq_removes_legacy_dns_package_rules() {
   MODDIR="$WORK/jq-dns/module"
   export MODDIR
-  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
+  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box" "$MODDIR/bin"
+  ln -sf "$JQ_BIN" "$MODDIR/bin/jq"
   write_base_config
   printf '%s\n' 'MAGICNET_APP_MODE=blacklist' >"$MODDIR/.config/magicnet/app-mode.conf"
   printf '%s\n' 'com.example.proxy' >"$MODDIR/.config/magicnet/app-proxy.list"
@@ -298,30 +291,22 @@ assert_jq_removes_legacy_dns_package_rules() {
   ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 }
 
-assert_no_jq_rejects_legacy_dns_package_rules() {
-  MODDIR="$WORK/no-jq-dns/module"
+assert_missing_packaged_jq_does_not_mutate_config() {
+  MODDIR="$WORK/missing-jq/module"
   export MODDIR
-  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
-  cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
-{
-  "dns": {
-    "rules": [
-      {"package_name": ["com.example.legacy"], "server": "bootstrap-local-dns"}
-    ]
-  },
-  "route": {"rules": []}
-}
-EOF
-  if PATH="$MOCK_BIN:$NO_JQ_BIN" magicnet_singbox_apply_app_policy; then
-    printf '%s\n' 'no-jq app policy must reject legacy DNS package rules' >&2
+  mkdir -p "$MODDIR/.config/sing-box"
+  write_base_config
+  original_hash=$($JQ_BIN -c . "$MODDIR/.config/sing-box/config.json" | sha256sum)
+  if PATH="$MOCK_BIN:$PATH" magicnet_singbox_apply_app_policy; then
+    printf '%s\n' 'application policy must reject a missing packaged jq' >&2
     exit 1
   fi
-  "$JQ_BIN" -e '([.dns.rules[] | select(has("package_name"))] | length) == 1' \
-    "$MODDIR/.config/sing-box/config.json" >/dev/null
+  current_hash=$($JQ_BIN -c . "$MODDIR/.config/sing-box/config.json" | sha256sum)
+  test "$current_hash" = "$original_hash"
 }
 
 assert_jq_removes_legacy_dns_package_rules
-assert_no_jq_rejects_legacy_dns_package_rules
+assert_missing_packaged_jq_does_not_mutate_config
 
 assert_dns_capture_bypass_uids() (
   MODDIR="$WORK/dns-capture/module"
@@ -430,13 +415,15 @@ assert_dns_capture_disable_removes_duplicate_output_jumps() (
   MODDIR="$WORK/dns-capture-duplicate-jumps/module"
   export MODDIR
   mkdir -p "$MODDIR"
-  dns_output_jump_count=2
+  dns_output_jump_count_file="$WORK/dns-capture-duplicate-jumps.count"
+  printf '%s\n' 2 >"$dns_output_jump_count_file"
 
   iptables() {
+    dns_output_jump_count=$(cat "$dns_output_jump_count_file")
     case " $* " in
       *' -D OUTPUT -j magicnet-dns-output '*)
         if [ "$dns_output_jump_count" -gt 0 ]; then
-          dns_output_jump_count=$((dns_output_jump_count - 1))
+          printf '%s\n' "$((dns_output_jump_count - 1))" >"$dns_output_jump_count_file"
           return 0
         fi
         return 1
@@ -458,7 +445,7 @@ assert_dns_capture_disable_removes_duplicate_output_jumps() (
   }
 
   magicnet_disable_dns_capture
-  if [ "$dns_output_jump_count" -ne 0 ]; then
+  if [ "$(cat "$dns_output_jump_count_file")" -ne 0 ]; then
     printf '%s\n' 'DNS capture cleanup must remove every duplicate OUTPUT jump' >&2
     exit 1
   fi
@@ -470,18 +457,21 @@ assert_dns_capture_disable_retries_transient_delete_failure() (
   MODDIR="$WORK/dns-capture-transient-delete/module"
   export MODDIR
   mkdir -p "$MODDIR"
-  dns_output_jump_count=1
-  transient_delete=1
+  dns_output_jump_count_file="$WORK/dns-capture-transient-delete.count"
+  transient_delete_file="$WORK/dns-capture-transient-delete.once"
+  printf '%s\n' 1 >"$dns_output_jump_count_file"
+  : >"$transient_delete_file"
 
   iptables() {
+    dns_output_jump_count=$(cat "$dns_output_jump_count_file")
     case " $* " in
       *' -D OUTPUT -j magicnet-dns-output '*)
-        if [ "$transient_delete" -eq 1 ]; then
-          transient_delete=0
+        if [ -e "$transient_delete_file" ]; then
+          rm -f "$transient_delete_file"
           return 1
         fi
         if [ "$dns_output_jump_count" -gt 0 ]; then
-          dns_output_jump_count=$((dns_output_jump_count - 1))
+          printf '%s\n' "$((dns_output_jump_count - 1))" >"$dns_output_jump_count_file"
           return 0
         fi
         return 1
@@ -500,7 +490,7 @@ assert_dns_capture_disable_retries_transient_delete_failure() (
   }
 
   magicnet_disable_dns_capture
-  if [ "$dns_output_jump_count" -ne 0 ]; then
+  if [ "$(cat "$dns_output_jump_count_file")" -ne 0 ]; then
     printf '%s\n' 'DNS capture cleanup must retry a transient OUTPUT jump deletion failure' >&2
     exit 1
   fi
@@ -539,16 +529,21 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
   MODDIR="$WORK/dns-leak-guard-duplicate-rules/module"
   export MODDIR
   mkdir -p "$MODDIR"
-  dns_guard_rule_count=2
+  dns_guard_count_file="$WORK/dns-leak-guard-duplicate-rules.count"
+  printf '%s\n' 2 >"$dns_guard_count_file"
 
   iptables() {
     case " $* " in
       *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+        dns_guard_rule_count="$(cat "$dns_guard_count_file")"
         if [ "$dns_guard_rule_count" -gt 0 ]; then
-          dns_guard_rule_count=$((dns_guard_rule_count - 1))
+          printf '%s\n' "$((dns_guard_rule_count - 1))" >"$dns_guard_count_file"
           return 0
         fi
         return 1
+        ;;
+      *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+        [ "$(cat "$dns_guard_count_file")" -gt 0 ]
         ;;
       *' -D OUTPUT -o wlan0 '*|*' -C OUTPUT -o wlan0 '*)
         return 1
@@ -562,7 +557,7 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
   magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
 
   magicnet_disable_dns_leak_guard
-  if [ "$dns_guard_rule_count" -ne 0 ]; then
+  if [ "$(cat "$dns_guard_count_file")" -ne 0 ]; then
     printf '%s\n' 'DNS leak guard cleanup must remove every duplicate interface rule' >&2
     exit 1
   fi
@@ -575,13 +570,15 @@ assert_dns_leak_guard_disable_cleans_previous_interfaces() (
   export MODDIR
   mkdir -p "$MODDIR/.state"
   printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
-  stale_guard_rule_count=1
+  stale_guard_count_file="$WORK/dns-leak-guard-stale-interface.count"
+  printf '%s\n' 1 >"$stale_guard_count_file"
 
   iptables() {
     case " $* " in
       *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+        stale_guard_rule_count="$(cat "$stale_guard_count_file")"
         if [ "$stale_guard_rule_count" -gt 0 ]; then
-          stale_guard_rule_count=$((stale_guard_rule_count - 1))
+          printf '%s\n' "$((stale_guard_rule_count - 1))" >"$stale_guard_count_file"
           return 0
         fi
         return 1
@@ -595,7 +592,7 @@ assert_dns_leak_guard_disable_cleans_previous_interfaces() (
   magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
 
   magicnet_disable_dns_leak_guard
-  if [ "$stale_guard_rule_count" -ne 0 ]; then
+  if [ "$(cat "$stale_guard_count_file")" -ne 0 ]; then
     printf '%s\n' 'DNS leak guard cleanup must include interfaces saved before a network switch' >&2
     exit 1
   fi
@@ -787,13 +784,15 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
   export MODDIR
   mkdir -p "$MODDIR/.state"
   printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
-  stale_guard_rule_count=1
+  stale_guard_count_file="$WORK/dns-leak-guard-reapply.count"
+  printf '%s\n' 1 >"$stale_guard_count_file"
 
   iptables() {
     case " $* " in
       *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+        stale_guard_rule_count="$(cat "$stale_guard_count_file")"
         if [ "$stale_guard_rule_count" -gt 0 ]; then
-          stale_guard_rule_count=$((stale_guard_rule_count - 1))
+          printf '%s\n' "$((stale_guard_rule_count - 1))" >"$stale_guard_count_file"
           return 0
         fi
         return 1
@@ -809,7 +808,7 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
   magicnet_warn() { printf '%s\n' "$*" >&2; }
 
   MAGIC_DNS_LEAK_GUARD=1 magicnet_enable_dns_leak_guard
-  if [ "$stale_guard_rule_count" -ne 0 ]; then
+  if [ "$(cat "$stale_guard_count_file")" -ne 0 ]; then
     printf '%s\n' 'reapplying DNS leak guard must clear rules from the previous interface' >&2
     exit 1
   fi

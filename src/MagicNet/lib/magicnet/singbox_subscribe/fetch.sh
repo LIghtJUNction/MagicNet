@@ -30,6 +30,23 @@ magicnet_singbox_use_cached_subscription() {
 MAGICNET_SUB_MAX_RESPONSE_BYTES=8388608
 MAGICNET_SUB_RESOLVE_TIMEOUT=10
 
+magicnet_singbox_subscription_hostname_valid() (
+    _subscription_hostname="$1"
+    case "$_subscription_hostname" in
+        '' | .* | *. | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-]* | *..*) return 1 ;;
+    esac
+    [ "${#_subscription_hostname}" -le 253 ] || return 1
+    _subscription_hostname_ifs=$IFS
+    IFS=.
+    # shellcheck disable=SC2086 # the hostname was restricted to DNS-label characters above
+    set -- $_subscription_hostname
+    IFS=$_subscription_hostname_ifs
+    for _subscription_label in "$@"; do
+        [ -n "$_subscription_label" ] && [ "${#_subscription_label}" -le 63 ] || return 1
+        case "$_subscription_label" in -* | *-) return 1 ;; esac
+    done
+)
+
 magicnet_singbox_subscription_parse_authority() {
     _subscription_url="$1"
     _subscription_scheme=${_subscription_url%%://*}
@@ -66,11 +83,7 @@ magicnet_singbox_subscription_parse_authority() {
                     _subscription_port=
                     ;;
             esac
-            case "$_subscription_host" in
-                ''|.*|*.) return 1 ;;
-                *[!A-Za-z0-9.-]*|*..*) return 1 ;;
-                -*|*.-*|*-.?*) return 1 ;;
-            esac
+            magicnet_singbox_subscription_hostname_valid "$_subscription_host" || return 1
             ;;
     esac
     if [ -n "$_subscription_port" ]; then

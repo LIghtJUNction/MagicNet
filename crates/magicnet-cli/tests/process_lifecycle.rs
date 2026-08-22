@@ -16,6 +16,19 @@ fn process_is_live(pid: i32) -> bool {
         != Some("Z")
 }
 
+fn wait_for_published_pid(path: &std::path::Path, deadline: Instant) -> i32 {
+    while Instant::now() < deadline {
+        if let Some(pid) = fs::read_to_string(path)
+            .ok()
+            .and_then(|value| value.trim().parse().ok())
+        {
+            return pid;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    panic!("PID was not published to {}", path.display());
+}
+
 #[test]
 fn process_is_live_treats_a_zombie_as_terminated() {
     let mut child = Command::new("sh")
@@ -44,7 +57,9 @@ fn killing_cli_parent_terminates_privileged_shell() {
         "magicnet-parent-death-{}-{nonce}",
         std::process::id()
     ));
+    fs::create_dir_all(fixture.join("bin")).unwrap();
     fs::create_dir_all(fixture.join("lib/kamfw")).unwrap();
+    fs::write(fixture.join("module.prop"), "id=MagicNet\n").unwrap();
     fs::write(fixture.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
     fs::write(fixture.join("lib/magicnet.sh"), "").unwrap();
     fs::write(
@@ -60,9 +75,14 @@ fn killing_cli_parent_terminates_privileged_shell() {
     )
     .unwrap();
 
-    let mut cli = Command::new(env!("CARGO_BIN_EXE_magicnet-cli"))
+    // Android production builds intentionally ignore MODDIR.  Execute a copy
+    // from a fixture that satisfies the same trusted module-root discovery
+    // contract instead of weakening that boundary for tests.
+    let fixture_cli = fixture.join("bin/magicnet-cli");
+    fs::copy(env!("CARGO_BIN_EXE_magicnet-cli"), &fixture_cli)
+        .expect("copy fixture CLI into trusted module layout");
+    let mut cli = Command::new(&fixture_cli)
         .args(["sub", "status"])
-        .env("MODDIR", &fixture)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -72,19 +92,8 @@ fn killing_cli_parent_terminates_privileged_shell() {
     let pid_file = fixture.join("status-shell.pid");
     let grandchild_pid_file = fixture.join("status-grandchild.pid");
     let deadline = Instant::now() + Duration::from_secs(5);
-    while (!pid_file.exists() || !grandchild_pid_file.exists()) && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(20));
-    }
-    let shell_pid = fs::read_to_string(&pid_file)
-        .expect("status shell did not publish its PID")
-        .trim()
-        .parse::<i32>()
-        .unwrap();
-    let grandchild_pid = fs::read_to_string(&grandchild_pid_file)
-        .expect("status grandchild did not publish its PID")
-        .trim()
-        .parse::<i32>()
-        .unwrap();
+    let shell_pid = wait_for_published_pid(&pid_file, deadline);
+    let grandchild_pid = wait_for_published_pid(&grandchild_pid_file, deadline);
     assert!(process_is_live(shell_pid));
     assert!(process_is_live(grandchild_pid));
 

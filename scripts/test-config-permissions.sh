@@ -6,7 +6,8 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-config-permissions.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 export MODDIR="$WORK/module"
-mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet"
+mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet" "$MODDIR/bin"
+ln -s "$(command -v jq)" "$MODDIR/bin/jq"
 
 assert_mode_600() {
     local file="$1"
@@ -37,9 +38,15 @@ assert_mode_600 "$MODDIR/.config/sing-box/config.json"
 chmod 644 "$MODDIR/.config/sing-box/config.json"
 magicnet_singbox_apply_zashboard
 assert_mode_600 "$MODDIR/.config/sing-box/config.json"
+jq -e '
+  .experimental.clash_api.external_ui == "zashboard"
+  and (.experimental.clash_api | has("external_ui_download_url") | not)
+  and (.experimental.clash_api | has("external_ui_download_detour") | not)
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
 
 # Subscription generation is a separate atomic writer and must keep the same
 # contract even when the caller supplies a permissive umask.
+. "$ROOT/src/MagicNet/lib/magicnet/chain.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 magicnet_singbox_sanitize_generated_config() { return 0; }
 mkdir -p "$WORK/clean-path"

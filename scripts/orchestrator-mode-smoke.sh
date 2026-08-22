@@ -372,6 +372,20 @@ for legacy_mode in proxy external external-tun hybrid; do
 done
 printf 'MAGICNET_TRANSPARENT_MODE=tun\n' >"$MODDIR/.config/magicnet/transparent-mode.conf"
 
+# JSON mutation is owned by the packaged jq binary. Missing tooling must fail
+# before touching the active config rather than entering a textual fallback.
+cp "$MODDIR/.config/sing-box/config.json" "$TMPDIR/missing-jq.before.json"
+rm -f "$MODDIR/bin/jq"
+if /bin/sh "$TMPDIR/harness.sh" >/dev/null 2>&1; then
+    echo "orchestrator smoke failed: missing packaged jq unexpectedly succeeded" >&2
+    exit 1
+fi
+cmp -s "$TMPDIR/missing-jq.before.json" "$MODDIR/.config/sing-box/config.json" || {
+    echo "orchestrator smoke failed: missing packaged jq mutated active config" >&2
+    exit 1
+}
+ln -s "$(command -v jq)" "$MODDIR/bin/jq"
+
 TUN_CANONICAL_CONFIG="$TMPDIR/tun-duplicate-first.json"
 jq 'del(.inbounds[] | select(.type == "tun" and .tag == "tun-in") | .route_exclude_address[3])' \
     "$TUN_CANONICAL_CONFIG" >"$TMPDIR/tun-exclusions-missing.json"
@@ -384,243 +398,6 @@ jq '(.inbounds[] | select(.type == "tun" and .tag == "tun-in") | .route_exclude_
 for exclusion_mutant in missing reordered duplicate; do
     if tun_exclusions_canonical "$TMPDIR/tun-exclusions-$exclusion_mutant.json"; then
         echo "orchestrator smoke failed: canonical guard accepted $exclusion_mutant TUN exclusions" >&2
-        exit 1
-    fi
-done
-
-# Exercise the explicit jq-less awk fallback with a PATH that cannot discover host jq.
-rm -f "$MODDIR/bin/jq"
-FALLBACK_BIN="$TMPDIR/fallback-bin"
-mkdir -p "$FALLBACK_BIN"
-for command_name in chmod mv rm sing-box; do
-    ln -s "$(command -v "$command_name")" "$FALLBACK_BIN/$command_name"
-done
-MAGICNET_REAL_AWK=$(command -v awk)
-export MAGICNET_REAL_AWK
-cat >"$FALLBACK_BIN/awk" <<'SH'
-#!/bin/sh
-set -eu
-if [ -n "${MAGICNET_AWK_COUNT_FILE:-}" ]; then
-    count=0
-    if [ -r "$MAGICNET_AWK_COUNT_FILE" ]; then
-        IFS= read -r count <"$MAGICNET_AWK_COUNT_FILE" || true
-    fi
-    count=$((count + 1))
-    printf '%s\n' "$count" >"$MAGICNET_AWK_COUNT_FILE"
-    if [ "$count" -eq "${MAGICNET_AWK_FAIL_AT:-0}" ]; then
-        exit 70
-    fi
-fi
-exec "$MAGICNET_REAL_AWK" "$@"
-SH
-chmod +x "$FALLBACK_BIN/awk"
-printf 'MAGICNET_TRANSPARENT_MODE=tun\n' >"$MODDIR/.config/magicnet/transparent-mode.conf"
-
-assert_transaction_failure() {
-    local fail_at=$1
-    local context=$2
-    local config="$MODDIR/.config/sing-box/config.json"
-    local count_file="$TMPDIR/awk-count"
-    cat >"$config" <<'JSON'
-{"dns":{"strategy":"ipv4_only"},"outbounds":[{"type":"direct","tag":"direct"},{"type":"block","tag":"block"}]}
-JSON
-    cp "$config" "$TMPDIR/transaction-original.json"
-    rm -f "$count_file"
-    if MAGICNET_AWK_COUNT_FILE="$count_file" MAGICNET_AWK_FAIL_AT="$fail_at" \
-        PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh" >/dev/null 2>&1; then
-        echo "orchestrator smoke failed: injected $context failure unexpectedly succeeded" >&2
-        exit 1
-    fi
-    if ! cmp -s "$TMPDIR/transaction-original.json" "$config"; then
-        echo "orchestrator smoke failed: injected $context failure mutated original config" >&2
-        exit 1
-    fi
-    shopt -s nullglob
-    local residue=("$config".transparent-mode.stage.* "$config".transparent-mode.tmp.*)
-    shopt -u nullglob
-    if [ "${#residue[@]}" -ne 0 ]; then
-        echo "orchestrator smoke failed: injected $context failure left transaction residue" >&2
-        printf '%s\n' "${residue[@]}" >&2
-        exit 1
-    fi
-}
-
-assert_transaction_failure 1 "after formatter"
-assert_transaction_failure 3 "after inbounds"
-assert_transaction_failure 4 "during route"
-
-cat >"$MODDIR/.config/sing-box/config.json" <<'JSON'
-{"dns":{"strategy":"ipv4_only"},"inbounds":[{"type":"mixed","tag":"user-invalid","listen":"127.0.0.1","listen_port":1080,"users":[{"username":"user","password":"pass","metadata":{"action":"sniff"}}]}],"route":{"rules":[]},"outbounds":[{"type":"direct","tag":"direct"}]}
-JSON
-cp "$MODDIR/.config/sing-box/config.json" "$TMPDIR/invalid-original.json"
-if PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh" >/dev/null 2>&1; then
-    echo "orchestrator smoke failed: invalid no-jq config unexpectedly succeeded" >&2
-    exit 1
-fi
-if ! cmp -s "$TMPDIR/invalid-original.json" "$MODDIR/.config/sing-box/config.json"; then
-    echo "orchestrator smoke failed: format failure mutated original config" >&2
-    exit 1
-fi
-
-cat >"$MODDIR/.config/sing-box/config.json" <<'JSON'
-{
-  "dns": {
-    "strategy": "prefer_ipv6",
-    "servers": [],
-    "rules": [
-      { "query_type": ["A", "AAAA"], "server": "local" }
-    ]
-  },
-  "inbounds": [
-    {
-      "type": "mixed",
-      "tag": "user-fallback",
-      "listen": "127.0.0.1",
-      "listen_port": 1080,
-      "users": [
-        {
-          "username": "type=tun",
-          "password": "tag=magicnet-old }"
-        }
-      ]
-    },
-    {
-      "type": "tun",
-      "tag": "old-tun"
-    }
-  ],
-  "route": {
-    "rules": [
-      { "action": "sniff", "inbound": ["old-tun"], "network": "tcp" },
-      { "action": "sniff", "network": "udp" },
-      { "inbound": "magicnet-stale", "outbound": "direct" },
-      { "inbound": ["user-in", "magicnet-stale"], "outbound": "direct" },
-      { "ip_version": 6, "outbound": "block" },
-      { "protocol": "dns", "action": "hijack-dns" },
-      { "domain_suffix": ["example.com"], "domain_keyword": ["}"], "outbound": "proxy-rule" },
-      { "outbound": "block", "ip_version": 6 },
-      { "no_drop": true, "action": "reject", "ip_version": 6 },
-      { "no_drop": true, "method": "default", "action": "reject", "ip_version": 6 },
-      { "ip_version": 6, "domain_suffix": ["custom-ipv6.example"], "outbound": "direct" },
-      { "ip_version": 6, "outbound": "block", "network": "tcp" },
-      { "no_drop": true, "method": "default", "action": "reject", "ip_version": 6, "network": "udp" },
-      { "domain_keyword": ["action=sniff", "action=hijack-dns", "protocol=icmp", "outbound=block"], "outbound": "proxy-rule" },
-      { "domain_keyword": ["magicnet-stale"], "outbound": "proxy-rule" },
-      { "ip_version": 6, "outbound": "bl ock" },
-      { "protocol": "icmp", "outbound": "block" },
-      { "domain_suffix": ["local", "home.arpa", "lan"], "outbound": "lan" },
-      { "domain_keyword": ["adservice", "analytics", "tracking", "tracker"], "outbound": "ad-block" },
-      { "domain_suffix": ["cn.example"], "outbound": "cn-direct" }
-    ],
-    "final": "direct"
-  },
-  "outbounds": [
-    { "type": "direct", "tag": "direct" },
-    { "type": "block", "tag": "block" },
-    { "type": "direct", "tag": "proxy-rule" },
-    { "type": "direct", "tag": "cn-direct" },
-    { "type": "direct", "tag": "lan" },
-    { "type": "block", "tag": "ad-block" },
-    { "type": "direct", "tag": "bl ock" }
-  ]
-}
-JSON
-jq -c . "$MODDIR/.config/sing-box/config.json" >"$TMPDIR/compact-valid.json"
-mv "$TMPDIR/compact-valid.json" "$MODDIR/.config/sing-box/config.json"
-FALLBACK_DNS_RULES_BEFORE=$(jq -c '.dns.rules' "$MODDIR/.config/sing-box/config.json")
-PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh"
-FALLBACK_CONFIG="$MODDIR/.config/sing-box/config.json"
-if ! jq -e . "$FALLBACK_CONFIG" >/dev/null; then
-    echo "orchestrator smoke failed: no-jq fallback emitted invalid JSON" >&2
-    cat "$FALLBACK_CONFIG" >&2
-    exit 1
-fi
-jq -e '.inbounds[] | select(.type == "mixed" and .tag == "mixed-in" and .listen == "127.0.0.1" and .listen_port == 7892)' "$FALLBACK_CONFIG" >/dev/null
-jq -e '.inbounds[] | select(.type == "direct" and .tag == "magicnet-dns-in" and .listen == "127.0.0.1" and .listen_port == 1053)' "$FALLBACK_CONFIG" >/dev/null
-jq -e '.inbounds[] | select(.type == "tun" and .tag == "tun-in" and .stack == "mixed" and .mtu == 1400 and .udp_timeout == "5m")' "$FALLBACK_CONFIG" >/dev/null
-assert_tun_exclusions "$FALLBACK_CONFIG" "no-jq fallback first apply"
-jq -e '.dns.strategy == "ipv4_only"' "$FALLBACK_CONFIG" >/dev/null
-jq -e '.route.rules[] | select(.action == "sniff" and (.inbound == ["mixed-in", "tun-in"]) and .network == "tcp")' "$FALLBACK_CONFIG" >/dev/null
-jq -e '.route.rules[] | select(.action == "sniff" and (.inbound == ["mixed-in", "tun-in"]) and .network == "udp")' "$FALLBACK_CONFIG" >/dev/null
-assert_ipv6_migration "$FALLBACK_CONFIG" "no-jq fallback first apply"
-assert_singbox_check "$FALLBACK_CONFIG" "no-jq fallback first apply"
-cp "$FALLBACK_CONFIG" "$TMPDIR/fallback-first.json"
-PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh"
-jq -e . "$FALLBACK_CONFIG" >/dev/null
-assert_ipv6_migration "$FALLBACK_CONFIG" "no-jq fallback second apply"
-if ! jq -e --argjson expected "$FALLBACK_DNS_RULES_BEFORE" '.dns.rules == $expected' "$FALLBACK_CONFIG" >/dev/null; then
-    echo "orchestrator smoke failed: no-jq fallback changed DNS rules" >&2
-    exit 1
-fi
-if ! jq -e '
-  .inbounds[]
-  | select(.tag == "user-fallback")
-  | (.users[0].username // .users[0].Username) == "type=tun"
-    and (.users[0].password // .users[0].Password) == "tag=magicnet-old }"
-' "$FALLBACK_CONFIG" >/dev/null; then
-    echo "orchestrator smoke failed: no-jq fallback changed brace-bearing user inbound" >&2
-    exit 1
-fi
-if ! cmp -s "$TMPDIR/fallback-first.json" "$FALLBACK_CONFIG"; then
-    echo "orchestrator smoke failed: repeated no-jq apply changed config ordering" >&2
-    diff -u "$TMPDIR/fallback-first.json" "$FALLBACK_CONFIG" >&2 || true
-    exit 1
-fi
-
-assert_managed_skeleton() {
-    local config=$1
-    if ! jq -e '
-  ([.inbounds[] | select(.type == "mixed" and .tag == "mixed-in")] | length) == 1
-  and ([.inbounds[] | select(.type == "direct" and .tag == "magicnet-dns-in")] | length) == 1
-  and ([.inbounds[] | select(.type == "tun" and .tag == "tun-in")] | length) == 1
-  and ([.route.rules[] | select(.action == "sniff" and .inbound == ["mixed-in", "tun-in"])] | length) == 1
-  and ([.route.rules[] | select(.action == "hijack-dns")] == [
-    {"inbound": ["magicnet-dns-in"], "action": "hijack-dns"}
-  ])
-  and ([.route.rules[] | select(. == {
-    "ip_version": 6,
-    "action": "reject",
-    "method": "default",
-    "no_drop": true
-  })] | length) == 1
-' "$config" >/dev/null; then
-        echo "orchestrator smoke failed: managed skeleton missing" >&2
-        cat "$config" >&2
-        return 1
-    fi
-    assert_tun_exclusions "$config" "managed skeleton"
-}
-
-# sing-box format omits empty inbounds and route.rules; the fallback must recreate both.
-EMPTY_CONFIG="$MODDIR/.config/sing-box/config.json"
-cat >"$EMPTY_CONFIG" <<'JSON'
-{"dns":{"strategy":"ipv4_only"},"inbounds":[],"route":{"rules":[]},"outbounds":[{"type":"direct","tag":"direct"},{"type":"block","tag":"block"}]}
-JSON
-PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh"
-assert_managed_skeleton "$EMPTY_CONFIG"
-assert_singbox_check "$EMPTY_CONFIG" "no-jq omitted-empty skeleton"
-cp "$EMPTY_CONFIG" "$TMPDIR/empty-first.json"
-PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh"
-if ! cmp -s "$TMPDIR/empty-first.json" "$EMPTY_CONFIG"; then
-    echo "orchestrator smoke failed: omitted-empty no-jq config was not idempotent" >&2
-    diff -u "$TMPDIR/empty-first.json" "$EMPTY_CONFIG" >&2 || true
-    exit 1
-fi
-
-for root_fixture in dns-only empty-root; do
-    if [ "$root_fixture" = "dns-only" ]; then
-        printf '%s\n' '{"dns":{"strategy":"ipv4_only"}}' >"$EMPTY_CONFIG"
-    else
-        printf '%s\n' '{}' >"$EMPTY_CONFIG"
-    fi
-    PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh"
-    assert_managed_skeleton "$EMPTY_CONFIG"
-    jq -e 'has("outbounds") | not' "$EMPTY_CONFIG" >/dev/null
-    cp "$EMPTY_CONFIG" "$TMPDIR/$root_fixture-first.json"
-    PATH="$FALLBACK_BIN" /bin/sh "$TMPDIR/harness.sh"
-    if ! cmp -s "$TMPDIR/$root_fixture-first.json" "$EMPTY_CONFIG"; then
-        echo "orchestrator smoke failed: $root_fixture no-jq config was not idempotent" >&2
-        diff -u "$TMPDIR/$root_fixture-first.json" "$EMPTY_CONFIG" >&2 || true
         exit 1
     fi
 done

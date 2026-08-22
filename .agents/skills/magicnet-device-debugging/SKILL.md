@@ -7,6 +7,15 @@ description: Debug and verify MagicNet on a real Android root device. Use when w
 
 Use the connected Android device as the source of truth. MagicNet is a root module; local config checks cannot prove vendor networking, KernelSU/Magisk behavior, TUN state, DNS routing, or real packet capture.
 
+## Execution Environment
+
+This skill may run in either of two environments:
+
+- **Android Termux (the current device):** commands execute on the Android device itself. Do not use `adb`; inspect `/data/adb/modules/MagicNet` directly and use `su -M -c '...'` for root-only operations.
+- **Computer/host shell:** commands execute on a separate computer. Use `adb shell`/`adb pull` only when a connected device is actually needed, and first select the reported device serial.
+
+Determine the environment before collecting evidence: `uname -a`, `getprop ro.build.version.sdk 2>/dev/null`, and `command -v adb`. The presence of `adb` alone does not mean the shell is a host; Android Termux may have adb installed while still being the device shell. Prefer direct local access when `/data/adb/modules/MagicNet` exists.
+
 ## Ground Rules
 
 - Never print or commit secrets from `.env`, subscriptions, MCP secrets, device tokens, or raw logs containing private traffic.

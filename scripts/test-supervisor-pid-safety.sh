@@ -31,21 +31,22 @@ info() { :; }
 warn() { :; }
 error() { :; }
 success() { :; }
+import() { :; }
 
 export MODDIR="$fixture/module"
 export KAM_HOME="$MODDIR"
 mkdir -p "$MODDIR/.state/watchdog" "$MODDIR/.state/fswatch"
 # shellcheck disable=SC1090
-. "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 # shellcheck disable=SC1090
-. "$ROOT/src/MagicNet/lib/kamfw/watchdog.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
 
 # Subscription refresh process identity checks must use the same proc root as
 # the scanner.  This makes disappearing-PID races testable and avoids mixing a
 # synthetic/isolated proc view with the host's /proc.
 refresh_proc_root="$MODDIR/fake-proc"
 mkdir -p "$refresh_proc_root/4242"
-printf '%s\n' '4242 (magicnet-refresh) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 4242' \
+printf '%s\n' '4242 (magicnet refresh (worker)) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 4242' \
   >"$refresh_proc_root/4242/stat"
 if test "$(MAGICNET_SUB_REFRESH_PROC_ROOT="$refresh_proc_root" magicnet_subscription_refresh_proc_start 4242)" != 4242; then
   printf '%s\n' 'subscription refresh proc start must honor MAGICNET_SUB_REFRESH_PROC_ROOT' >&2
@@ -66,42 +67,14 @@ magicnet_supervisor_stop_pidfile "$decoy_pid_file"
 test ! -e "$decoy_pid_file"
 kill -0 "$decoy_pid"
 
-# Status must reject the same reused PID; otherwise fswatch start would see a
-# stale, unrelated process and skip launching the actual watcher.
+# Status must reject the same reused PID without mutating supervisor state;
+# startup/stop commands own stale pidfile cleanup.
 printf '%s\n' "$decoy_pid" >"$MODDIR/.state/fswatch/magicnet-config.pid"
 if magicnet_fswatch_status >/dev/null 2>&1; then
   printf '%s\n' 'unrelated process reported as active fswatch' >&2
   exit 1
 fi
-test ! -e "$MODDIR/.state/fswatch/magicnet-config.pid"
-
-# Generic KAM watchdog status/stop must apply the same script identity check.
-watchdog_pid_file="$MODDIR/.state/watchdog/test-watchdog.pid"
-sleep 60 &
-decoy_pid=$!
-printf '%s\n' "$decoy_pid" >"$watchdog_pid_file"
-if watchdog_status test-watchdog >/dev/null 2>&1; then
-  printf '%s\n' 'unrelated process reported as active watchdog' >&2
-  exit 1
-fi
-test ! -e "$watchdog_pid_file"
-kill "$decoy_pid" 2>/dev/null || true
-wait "$decoy_pid" 2>/dev/null || true
-decoy_pid=''
-
-watchdog_loop_file="$MODDIR/.state/watchdog/test-watchdog.loop.sh"
-sh -c 'sleep 60 & wait' "$watchdog_loop_file decoy" &
-orphan_decoy_pid=$!
-sleep 0.1
-watchdog_start test-watchdog 60 true >/dev/null
-if ! kill -0 "$orphan_decoy_pid" 2>/dev/null; then
-  printf '%s\n' 'generic watchdog start killed a substring-only decoy process' >&2
-  exit 1
-fi
-watchdog_stop test-watchdog >/dev/null 2>&1 || true
-kill "$orphan_decoy_pid" 2>/dev/null || true
-wait "$orphan_decoy_pid" 2>/dev/null || true
-orphan_decoy_pid=''
+test -e "$MODDIR/.state/fswatch/magicnet-config.pid"
 
 # A command launched from the exact managed loop is stoppable.
 kernel_loop="$MODDIR/.state/watchdog/magicnet-kernel.loop.sh"

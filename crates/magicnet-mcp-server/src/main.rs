@@ -117,11 +117,11 @@ fn run() -> Result<(), StartupError> {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(&moddir).join("bin/magicnet-cli"))
     };
-    let server = Server {
+    let server = Arc::new(Server {
         cli,
         moddir: PathBuf::from(moddir),
         secret,
-    };
+    });
     let active_connections = Arc::new(AtomicUsize::new(0));
     for stream in listener.incoming() {
         match stream {
@@ -132,7 +132,7 @@ fn run() -> Result<(), StartupError> {
                     eprintln!("connection limit reached; dropping request");
                     continue;
                 };
-                let server = server.clone_ref();
+                let server = Arc::clone(&server);
                 thread::spawn(move || {
                     let _permit = permit;
                     let _ = handle_connection(stream, &server);

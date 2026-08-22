@@ -167,7 +167,6 @@ fn block_allow(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn block_update(app: &App) -> Result<(), String> {
-    let dir = conf_dir(app);
     let conf = block_conf_values(app);
     let url = conf
         .get("MAGICNET_BLOCK_URL")
@@ -200,8 +199,21 @@ fn block_update(app: &App) -> Result<(), String> {
                 .map(ToOwned::to_owned)
         })
         .collect::<Vec<_>>();
-    write_lines(app, dir.join("community-ban-rules.list"), &rules)?;
-    write_lines(app, dir.join("community-ban-domain-suffix.list"), &domains)?;
+    let rules_text = lines_text(&rules);
+    let domains_text = lines_text(&domains);
+    crate::replace_module_text_files_transactionally(
+        app,
+        &[
+            (
+                Path::new(".config/magicnet/community-ban-rules.list"),
+                rules_text.as_str(),
+            ),
+            (
+                Path::new(".config/magicnet/community-ban-domain-suffix.list"),
+                domains_text.as_str(),
+            ),
+        ],
+    )?;
     apply_and_restart(app)?;
     println!(
         "[info] Community blocklist updated from {source}: rules={}, domain_suffixes={}",
@@ -313,15 +325,8 @@ fn parse_community_rules(text: &str) -> Result<Vec<String>, String> {
     Ok(rules)
 }
 
-fn write_lines(app: &App, path: PathBuf, values: &[String]) -> Result<(), String> {
-    let text = values
-        .iter()
-        .map(|value| format!("{value}\n"))
-        .collect::<String>();
-    let relative = path
-        .strip_prefix(&app.moddir)
-        .map_err(|_| "refusing to write block rules outside the module root".to_string())?;
-    crate::write_text_file(app, relative, &text)
+fn lines_text(values: &[String]) -> String {
+    values.iter().map(|value| format!("{value}\n")).collect()
 }
 
 fn block_diff(dir: PathBuf) -> Result<(), String> {

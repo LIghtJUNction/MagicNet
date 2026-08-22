@@ -858,7 +858,7 @@ magicnet_b64_decode() {
     '' | *[!A-Za-z0-9+/=]*) return 1 ;;
     esac
     _unpadded=${_value%%=*}
-    _padding=${_value#$_unpadded}
+    _padding=${_value#"$_unpadded"}
     case "$_padding" in
     '' | '=' | '==') ;;
     *) return 1 ;;
@@ -1001,6 +1001,9 @@ fi
 
 magicnet_yaml_value() {
     _key="$1"
+    # This parser is called only from magicnet_singbox_emit_node_json, whose
+    # dynamically scoped _node_file is the current isolated node fixture.
+    # shellcheck disable=SC2154
     _value=$(
         sed -n "s/^[[:space:]]*${_key}:[[:space:]]*//p" "$_node_file" | tail -n 1
     )

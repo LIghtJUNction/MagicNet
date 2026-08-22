@@ -82,13 +82,13 @@ set -e
 rm -rf "$UPDATE_LOCK"
 printf '%s\n' 'subscription update lock publication-window safety test passed'
 
-# Status recovery mutates the same persisted files as an update.  Verify the
-# public status path executes both reconciliation hooks under the config lock.
+# Public status is diagnostic-only.  An interrupted transaction may require a
+# disruptive rollback/restart, so status must report it without taking the
+# config lock or invoking either reconciliation hook.
 (
-    status_lock_held=0
     status_cache="$MODDIR/.state/sing-box/subscription-cache"
     status_transaction="$MODDIR/.state/sing-box/subscription-transaction"
-    status_timeout_file="$MODDIR/.state/sing-box/status-lock-timeout"
+    status_mutation_marker="$MODDIR/.state/sing-box/status-mutated"
     mkdir -p "$MODDIR/.config/sing-box" "$status_cache" "$status_transaction"
     magicnet_singbox_subscription_status_file() {
         printf '%s\n' "$MODDIR/.state/sing-box/subscription-status"
@@ -100,25 +100,23 @@ printf '%s\n' 'subscription update lock publication-window safety test passed'
         printf '%064d\n' 0
     }
     magicnet_with_config_lock() {
-        status_lock_held=1
-        printf '%s\n' "$MAGICNET_CONFIG_LOCK_TIMEOUT" >"$status_timeout_file"
-        "$@"
-        local status_rc=$?
-        status_lock_held=0
-        return "$status_rc"
+        : >"$status_mutation_marker"
+        return 99
     }
     magicnet_singbox_transaction_reconcile() {
-        [ "$status_lock_held" -eq 1 ]
-        rm -rf "$status_transaction"
+        : >"$status_mutation_marker"
+        return 99
     }
     magicnet_singbox_status_reconcile() {
-        [ "$status_lock_held" -eq 1 ]
+        : >"$status_mutation_marker"
+        return 99
     }
     status_output="$(magicnet_singbox_status)"
-    [ "$(<"$status_timeout_file")" -eq 3 ]
-    grep -q '^recovery_result=recovered$' <<<"$status_output"
+    [ ! -e "$status_mutation_marker" ]
+    [ -d "$status_transaction" ]
+    grep -q '^recovery_result=pending$' <<<"$status_output"
 )
-printf '%s\n' 'subscription status reconciliation lock-safety test passed'
+printf '%s\n' 'subscription status read-only safety test passed'
 
 # A signal can arrive after restart_owned stopped fswatch but before the update
 # wrapper reached its normal deferred restore. The interrupt path must release
@@ -126,10 +124,10 @@ printf '%s\n' 'subscription status reconciliation lock-safety test passed'
 interrupt_trace="$MODDIR/.state/sing-box/interrupt-trace"
 set +e
 (
-    MAGICNET_CONFIG_LOCK_HELD=1
-    MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
-    MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
-    MAGICNET_SUB_FSWATCH_WAS_ACTIVE=1
+    export MAGICNET_CONFIG_LOCK_HELD=1
+    export MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
+    export MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
+    export MAGICNET_SUB_FSWATCH_WAS_ACTIVE=1
     magicnet_singbox_transaction_reconcile() { :; }
     magicnet_singbox_update_cleanup_stage() { :; }
     magicnet_singbox_status_mark_interrupted() { :; }

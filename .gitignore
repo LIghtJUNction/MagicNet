@@ -3,6 +3,7 @@ target/
 .env
 .tokensave/
 .playwright-mcp/
+.pi/
 .kam/
 Kam
 logs/

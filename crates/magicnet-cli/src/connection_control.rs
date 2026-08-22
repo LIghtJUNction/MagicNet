@@ -222,7 +222,7 @@ fn connection_match(item: &Value) -> Option<ConnectionMatch> {
         id: id.to_string(),
         label,
         haystack,
-        bytes: upload + download,
+        bytes: upload.saturating_add(download),
     })
 }
 
@@ -299,7 +299,14 @@ fn format_close_summary(targets: usize, closed: usize, failed: usize) -> String 
 
 fn curl_text(app: &App, path: &str) -> Result<String, String> {
     let output = Command::new("curl")
-        .args(["-fsS", "--max-time", "4", &format!("{}{}", app.api, path)])
+        .args([
+            "-fsS",
+            "--max-time",
+            "4",
+            "--max-filesize",
+            "8388608",
+            &format!("{}{}", app.api, path),
+        ])
         .output()
         .map_err(|err| format!("run curl: {err}"))?;
     if output.status.success() {
@@ -317,6 +324,8 @@ fn curl_delete(app: &App, path: &str) -> Result<(), String> {
             "DELETE",
             "--max-time",
             "4",
+            "--max-filesize",
+            "1048576",
             &format!("{}{}", app.api, path),
         ])
         .output()

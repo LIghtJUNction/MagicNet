@@ -157,6 +157,8 @@ fn append_payload(
         libc::O_WRONLY | libc::O_APPEND | libc::O_NONBLOCK | libc::O_CLOEXEC,
     )?;
     secure_file_mode(&file)?;
+    lock_payload_file(&file)?;
+    ensure_current_payload_file(&directory, name, &file)?;
     let current_size = file
         .metadata()
         .map_err(|_| "inspect WebUI payload failed".to_string())?
@@ -197,8 +199,11 @@ fn take_payload(app: &App, namespace: PayloadNamespace, name: &OsStr) -> Result<
         name,
         libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC,
     )?;
+    lock_payload_file(&file)?;
+    ensure_current_payload_file(&directory, name, &file)?;
+    unlink_payload_at(&directory, name)?;
     let mut bytes = Vec::new();
-    let read_result = (&mut file)
+    (&mut file)
         .take(MAX_WEBUI_PAYLOAD_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| "read WebUI payload failed".to_string())
@@ -208,17 +213,8 @@ fn take_payload(app: &App, namespace: PayloadNamespace, name: &OsStr) -> Result<
             } else {
                 Ok(())
             }
-        });
-    drop(file);
-
-    // A payload name is validated and its parent is a private directory opened
-    // by fd. remove_payload_at rechecks the final component with O_NOFOLLOW.
-    let remove_result = remove_payload_at(&directory, name);
-    match (read_result, remove_result) {
-        (Ok(_), Ok(())) => Ok(bytes),
-        (Err(err), Ok(())) | (Ok(_), Err(err)) => Err(err),
-        (Err(read_err), Err(_)) => Err(read_err),
-    }
+        })?;
+    Ok(bytes)
 }
 
 fn remove_payload_at(directory: &File, name: &OsStr) -> Result<(), String> {
@@ -227,10 +223,41 @@ fn remove_payload_at(directory: &File, name: &OsStr) -> Result<(), String> {
         name,
         libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC,
     )?;
-    drop(file);
+    lock_payload_file(&file)?;
+    ensure_current_payload_file(directory, name, &file)?;
+    unlink_payload_at(directory, name)
+}
+
+fn lock_payload_file(file: &File) -> Result<(), String> {
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0 {
+        Ok(())
+    } else {
+        Err("lock WebUI payload failed".to_string())
+    }
+}
+
+fn ensure_current_payload_file(directory: &File, name: &OsStr, file: &File) -> Result<(), String> {
+    let current = open_payload_file(
+        directory,
+        name,
+        libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC,
+    )?;
+    let expected = file
+        .metadata()
+        .map_err(|_| "inspect WebUI payload failed".to_string())?;
+    let observed = current
+        .metadata()
+        .map_err(|_| "inspect WebUI payload failed".to_string())?;
+    if expected.dev() == observed.dev() && expected.ino() == observed.ino() {
+        Ok(())
+    } else {
+        Err("WebUI payload changed during operation".to_string())
+    }
+}
+
+fn unlink_payload_at(directory: &File, name: &OsStr) -> Result<(), String> {
     let name_c = cstring_from_os_str(name, "payload filename")?;
-    let removed = unsafe { libc::unlinkat(directory.as_raw_fd(), name_c.as_ptr(), 0) };
-    if removed == 0 {
+    if unsafe { libc::unlinkat(directory.as_raw_fd(), name_c.as_ptr(), 0) } == 0 {
         Ok(())
     } else {
         Err("remove WebUI payload failed".to_string())
@@ -433,6 +460,37 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_appends_are_serialized_without_lost_chunks() {
+        let app = temp_app();
+        let root = app.moddir.clone();
+        fs::create_dir_all(&root).unwrap();
+        let name = OsStr::new("concurrent.payload");
+        let path = create_payload(&app, PayloadNamespace::Tmp, name).unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let mut workers = Vec::new();
+        for chunk in ["QUFB", "QkJC"] {
+            let worker_app = App::for_test(root.clone());
+            let worker_barrier = barrier.clone();
+            workers.push(std::thread::spawn(move || {
+                worker_barrier.wait();
+                append_payload(
+                    &worker_app,
+                    PayloadNamespace::Tmp,
+                    OsStr::new("concurrent.payload"),
+                    chunk,
+                )
+            }));
+        }
+        barrier.wait();
+        for worker in workers {
+            worker.join().unwrap().unwrap();
+        }
+        let bytes = fs::read(path).unwrap();
+        assert!(bytes == b"AAABBB" || bytes == b"BBBAAA");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn append_and_remove_refuse_symlinks_without_touching_their_targets() {
         let app = temp_app();
         fs::create_dir_all(&app.moddir).expect("create module directory");
@@ -509,6 +567,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
     fn append_and_remove_refuse_hard_linked_payloads_without_mutating_them() {
         let app = temp_app();
         fs::create_dir_all(&app.moddir).expect("create module directory");

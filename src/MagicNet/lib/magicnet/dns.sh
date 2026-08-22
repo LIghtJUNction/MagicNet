@@ -4,9 +4,8 @@ magicnet_dns_conf() {
 
 magicnet_dns_profile() {
     _profile="${MAGICNET_DNS_PROFILE:-}"
-    if [ -z "$_profile" ] && [ -f "$(magicnet_dns_conf)" ]; then
-        . "$(magicnet_dns_conf)" 2>/dev/null || true
-        _profile="${MAGICNET_DNS_PROFILE:-}"
+    if [ -z "$_profile" ]; then
+        _profile="$(magicnet_conf_value "$(magicnet_dns_conf)" MAGICNET_DNS_PROFILE 2>/dev/null || true)"
     fi
     case "${_profile:-default}" in
         default|cloudflare-doh|cloudflare-dot|cloudflare-udp) printf '%s\n' "${_profile:-default}" ;;
@@ -81,9 +80,9 @@ magicnet_dns_apply_singbox() {
         unset _profile _bootstrap_server _config
         return 0
     }
-    _jq="$(command -v jq 2>/dev/null || true)"
-    [ -n "$_jq" ] || {
-        magicnet_warn "jq not found; DNS profile apply skipped"
+    _jq="${MODDIR}/bin/jq"
+    [ -x "$_jq" ] || {
+        magicnet_warn "packaged jq is unavailable; DNS profile apply rejected"
         unset _profile _bootstrap_server _config _jq
         return 1
     }

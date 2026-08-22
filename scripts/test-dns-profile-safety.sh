@@ -7,7 +7,8 @@ trap 'rm -rf "$WORK"' EXIT
 
 MODDIR="$WORK/module"
 export MODDIR
-mkdir -p "$MODDIR/.config/sing-box"
+mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/bin"
+ln -s "$(command -v jq)" "$MODDIR/bin/jq"
 
 cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 {
@@ -59,7 +60,8 @@ jq -e '
 }
 
 FULL_MODDIR="$WORK/full-module"
-mkdir -p "$FULL_MODDIR/.config/sing-box"
+mkdir -p "$FULL_MODDIR/.config/sing-box" "$FULL_MODDIR/bin"
+ln -s "$(command -v jq)" "$FULL_MODDIR/bin/jq"
 cp "$ROOT/src/MagicNet/.config/sing-box/config.json" "$FULL_MODDIR/.config/sing-box/config.json"
 cp -R "$ROOT/src/MagicNet/.config/sing-box/rules" "$FULL_MODDIR/.config/sing-box/"
 MODDIR="$FULL_MODDIR" MAGICNET_DNS_PROFILE=cloudflare-udp magicnet_dns_apply_singbox

@@ -23,6 +23,7 @@ enum RequestError {
 
 pub(crate) fn handle_connection(mut stream: TcpStream, server: &Server) -> io::Result<()> {
     set_read_timeout(&stream, READ_TIMEOUT)?;
+    stream.set_write_timeout(Some(READ_TIMEOUT))?;
 
     let mut buffer = Vec::with_capacity(4096);
     let header_end = match read_headers(&mut stream, &mut buffer) {

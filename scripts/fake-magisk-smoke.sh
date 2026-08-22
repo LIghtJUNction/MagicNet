@@ -574,7 +574,7 @@ install_runtime_path_fixtures() {
     )
     local mocks=(
         am chcon chown cmd getent getevent getprop ip ip6tables ipset iptables
-        magiskpolicy ndc pkill pm resetprop restorecon setprop su svc
+        magiskpolicy ndc pkill pm resetprop restorecon setprop settings su svc
     )
 
     for applet in "${applets[@]}"; do

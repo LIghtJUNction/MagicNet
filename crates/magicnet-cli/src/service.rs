@@ -4,6 +4,8 @@ use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde_json::Value;
+
 use crate::{
     diagnostics::supervisor_pid, run_magicnet_function, singbox_pid_summary, stop_owned_singbox,
     write_text_file, App,
@@ -12,6 +14,8 @@ use crate::{
 const START_SUPERVISORS_COMMAND: &str = "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1";
 const STOP_RUNTIME_CLEANUP_COMMAND: &str =
     "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
+const REPAIR_COMMAND: &str =
+    "magicnet_apply_runtime_config; MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_ensure_kernel";
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
 const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
 const CONFIG_APPLY_LOCK: &str = ".state/config-apply.lock";
@@ -84,7 +88,13 @@ pub(crate) fn service_status(app: &App) {
 pub(crate) fn singbox_webui(app: &App) -> String {
     let ui = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
         .ok()
-        .and_then(|text| json_string_value(&text, "external_ui"))
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|config| {
+            config
+                .pointer("/experimental/clash_api/external_ui")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "ui".to_string());
     let (hostname, port) = api_host_port(&app.api);
@@ -107,17 +117,6 @@ fn api_host_port(api: &str) -> (String, String) {
         }
     }
     ("127.0.0.1".to_string(), "9090".to_string())
-}
-
-fn json_string_value(text: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let start = text.find(&needle)?;
-    let after_key = &text[start + needle.len()..];
-    let colon = after_key.find(':')?;
-    let after_colon = after_key[colon + 1..].trim_start();
-    let value = after_colon.strip_prefix('"')?;
-    let end = value.find('"')?;
-    Some(value[..end].to_string())
 }
 
 pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -236,7 +235,7 @@ pub(crate) fn core_cmd(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 pub(crate) fn repair(app: &App) -> Result<(), String> {
-    run_magicnet_function(app, "magicnet_apply_runtime_config; magicnet_ensure_kernel")
+    run_magicnet_function(app, REPAIR_COMMAND)
 }
 
 pub(crate) fn service_logs(app: &App, args: &[String]) -> Result<(), String> {
@@ -593,6 +592,7 @@ mod tests {
     use super::{
         api_host_port, config_apply_lock, normalize_transparent_mode, restart_command,
         safe_log_name, service_log_path, stop_runtime_cleanup_command, supervisor_cmdline_matches,
+        REPAIR_COMMAND,
     };
     use crate::App;
     use std::fs;
@@ -637,6 +637,12 @@ mod tests {
             stop_runtime_cleanup_command(),
             "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"
         );
+    }
+
+    #[test]
+    fn repair_explicitly_opts_into_disruptive_recovery() {
+        assert!(REPAIR_COMMAND.contains("MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1"));
+        assert!(REPAIR_COMMAND.contains("magicnet_ensure_kernel"));
     }
 
     #[test]

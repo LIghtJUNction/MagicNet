@@ -111,6 +111,16 @@ for malformed_ipv6 in \
 done
 magicnet_singbox_public_address '2001:4860:4860::8888'
 magicnet_singbox_public_address 1.1.1.1
+magicnet_singbox_subscription_parse_authority 'https://edge-node.example.invalid/sub'
+for invalid_url in \
+  'https://-edge.example.invalid/sub' \
+  'https://edge-.example.invalid/sub' \
+  'https://edge..example.invalid/sub'; do
+  if magicnet_singbox_subscription_parse_authority "$invalid_url"; then
+    printf 'invalid subscription hostname was accepted: %s\n' "$invalid_url" >&2
+    exit 1
+  fi
+done
 http_proxy=http://bad HTTP_PROXY=http://bad all_proxy=http://bad ALL_PROXY=http://bad \
   PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription https://example.invalid/sub "$tmp/direct" 2 7
 grep -q '^env=///$' "$tmp/log"
@@ -272,6 +282,7 @@ waiter=$!
 magicnet_singbox_update_subscription
 wait "$waiter"
 test "$(tr '\n' ' ' <"$order_log")" = 'update-waited global-after-apply global-after-apply update-body '
+. "$ROOT/src/MagicNet/lib/magicnet/runtime_config.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 mkdir -p "$MODDIR/bin" "$tmp/foreign"
 cat >"$tmp/sing-box.c" <<'C'

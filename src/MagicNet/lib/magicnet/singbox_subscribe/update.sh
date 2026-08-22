@@ -1,54 +1,42 @@
-magicnet_singbox_update_lock_active() {
-    _update_lock="${MODDIR}/.state/sing-box/subscription-update.lock"
-    [ -d "$_update_lock" ] || return 1
-    _update_owner=$(sed -n '1p' "$_update_lock/owner" 2>/dev/null)
-    if [ -z "$_update_owner" ]; then
-        # mkdir publishes the lock before the owner marker can be written.
-        # Treat that short publication window as busy instead of reclaiming
-        # the directory out from under the updater.  A crashed process can
-        # still be reclaimed after the bounded grace period below.
-        _update_init_grace="${MAGICNET_SUB_UPDATE_LOCK_INIT_GRACE:-5}"
-        case "$_update_init_grace" in
-            '' | *[!0-9]*) _update_init_grace=5 ;;
-        esac
-        _update_lock_mtime=$(stat -c '%Y' "$_update_lock" 2>/dev/null || true)
-        _update_now=$(date +%s 2>/dev/null || true)
-        case "$_update_lock_mtime" in
-            '' | *[!0-9]*)
-                # If the platform cannot provide a reliable age, fail closed
-                # and leave the markerless lock for an explicit cleanup.
-                return 0
-                ;;
-        esac
-        case "$_update_now" in
-            '' | *[!0-9]*)
-                return 0
-                ;;
-        esac
-        if [ "$_update_now" -lt "$_update_lock_mtime" ] ||
-            [ "$((_update_now - _update_lock_mtime))" -lt "$_update_init_grace" ]; then
+magicnet_singbox_proc_start() {
+    awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
+        "$1" 2>/dev/null || true
+}
+
+# Read-only lock probe for status/reporting paths.
+magicnet_singbox_update_lock_live() (
+    _lock="${MODDIR}/.state/sing-box/subscription-update.lock"
+    [ -d "$_lock" ] || return 1
+    _owner=$(sed -n '1p' "$_lock/owner" 2>/dev/null || true)
+    if [ -z "$_owner" ]; then
+        _grace="${MAGICNET_SUB_UPDATE_LOCK_INIT_GRACE:-5}"
+        case "$_grace" in '' | *[!0-9]*) _grace=5 ;; esac
+        _mtime=$(stat -c '%Y' "$_lock" 2>/dev/null || true)
+        _now=$(date +%s 2>/dev/null || true)
+        case "$_mtime:$_now" in *[!0-9:]* | :* | *:) return 0 ;; esac
+        if [ "$_now" -lt "$_mtime" ] || [ "$((_now - _mtime))" -lt "$_grace" ]; then
             return 0
         fi
-        unset _update_init_grace _update_lock_mtime _update_now
+        return 1
     fi
-    _update_pid=${_update_owner%%:*}
-    _update_rest=${_update_owner#*:}
-    _update_start=${_update_rest%%:*}
-    _update_live_start=$(awk '{print $22}' "/proc/${_update_pid}/stat" 2>/dev/null || true)
-    if [ -n "$_update_pid" ] && kill -0 "$_update_pid" 2>/dev/null &&
-        [ -n "$_update_start" ] && [ "$_update_start" = "$_update_live_start" ]; then
-        return 0
-    fi
-    _update_current=$(sed -n '1p' "$_update_lock/owner" 2>/dev/null)
-    if [ "$_update_current" = "$_update_owner" ]; then
-        # Remove only the marker we just re-read, then use rmdir.  A
-        # recursive delete could erase a replacement lock if another updater
-        # wins the directory race after the stale-owner check.
-        rm -f "$_update_lock/owner" 2>/dev/null || true
-        rmdir "$_update_lock" 2>/dev/null || true
-    fi
+    _pid=${_owner%%:*}
+    _rest=${_owner#*:}
+    _start=${_rest%%:*}
+    case "$_pid:$_start" in *[!0-9:]* | :* | *:) return 1 ;; esac
+    _live_start=$(magicnet_singbox_proc_start "/proc/${_pid}/stat")
+    kill -0 "$_pid" 2>/dev/null && [ "$_start" = "$_live_start" ]
+)
+
+magicnet_singbox_update_lock_active() (
+    _lock="${MODDIR}/.state/sing-box/subscription-update.lock"
+    [ -d "$_lock" ] || return 1
+    _owner=$(sed -n '1p' "$_lock/owner" 2>/dev/null || true)
+    magicnet_singbox_update_lock_live && return 0
+    [ "$(sed -n '1p' "$_lock/owner" 2>/dev/null || true)" = "$_owner" ] || return 1
+    [ -z "$_owner" ] || rm -f "$_lock/owner" 2>/dev/null || true
+    rmdir "$_lock" 2>/dev/null || true
     return 1
-}
+)
 
 magicnet_singbox_update_lock_acquire() {
     _update_lock="${MODDIR}/.state/sing-box/subscription-update.lock"
@@ -60,7 +48,7 @@ magicnet_singbox_update_lock_acquire() {
         fi
         mkdir "$_update_lock" 2>/dev/null || return 1
     fi
-    _update_start=$(awk '{print $22}' "/proc/$$/stat" 2>/dev/null || true)
+    _update_start=$(magicnet_singbox_proc_start "/proc/$$/stat")
     _update_nonce=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)
     _update_token="$$:${_update_start:-unknown}:${_update_nonce}"
     if ! printf '%s\n' "$_update_token" >"$_update_lock/owner"; then
@@ -248,12 +236,12 @@ magicnet_singbox_transaction_reconcile() {
     if [ -f "$_tx_dir/had-config" ]; then
         [ -f "$_tx_dir/old-config" ] || return 1
         _tx_tmp="${_tx_active_config}.reconcile.$$"
-        (umask 077; cp -f "$_tx_dir/old-config" "$_tx_tmp") &&
-            mv -f "$_tx_tmp" "$_tx_active_config" &&
-            chmod 600 "$_tx_active_config" || {
+        if ! (umask 077; cp -f "$_tx_dir/old-config" "$_tx_tmp") ||
+            ! mv -f "$_tx_tmp" "$_tx_active_config" ||
+            ! chmod 600 "$_tx_active_config"; then
             rm -f "$_tx_tmp" 2>/dev/null || true
             return 1
-        }
+        fi
     else
         rm -f "$_tx_active_config" 2>/dev/null || return 1
     fi
@@ -288,10 +276,10 @@ magicnet_singbox_transaction_reconcile() {
     if [ -f "$_tx_dir/had-url" ]; then
         [ -f "$_tx_dir/old-url" ] || return 1
         _tx_tmp="${_tx_active_url}.reconcile.$$"
-        cp -f "$_tx_dir/old-url" "$_tx_tmp" && mv -f "$_tx_tmp" "$_tx_active_url" || {
+        if ! cp -f "$_tx_dir/old-url" "$_tx_tmp" || ! mv -f "$_tx_tmp" "$_tx_active_url"; then
             rm -f "$_tx_tmp" 2>/dev/null || true
             return 1
-        }
+        fi
     else
         rm -f "$_tx_active_url" 2>/dev/null || return 1
     fi
@@ -299,10 +287,10 @@ magicnet_singbox_transaction_reconcile() {
     if [ -f "$_tx_dir/had-local" ]; then
         [ -f "$_tx_dir/old-local" ] || return 1
         _tx_tmp="${_tx_active_local}.reconcile.$$"
-        cp -f "$_tx_dir/old-local" "$_tx_tmp" && mv -f "$_tx_tmp" "$_tx_active_local" || {
+        if ! cp -f "$_tx_dir/old-local" "$_tx_tmp" || ! mv -f "$_tx_tmp" "$_tx_active_local"; then
             rm -f "$_tx_tmp" 2>/dev/null || true
             return 1
-        }
+        fi
     else
         rm -f "$_tx_active_local" 2>/dev/null || return 1
     fi
@@ -449,6 +437,7 @@ magicnet_singbox_fault() {
     [ "${MAGICNET_SUB_FAULT:-}" = "$1" ] || return 0
     warn "Injected subscription transaction fault at $1"
     if [ "${MAGICNET_SUB_FAULT_TERM:-0}" = "1" ]; then
+        # shellcheck disable=SC3028 # Bash test hook; Android sh falls back to $$.
         kill -TERM "${BASHPID:-$$}"
         return 1
     fi
@@ -458,50 +447,29 @@ magicnet_singbox_fault() {
     return 1
 }
 
-magicnet_singbox_status_try_reconcile() {
-    _status_lock_was_set="${MAGICNET_CONFIG_LOCK_TIMEOUT+x}"
-    _status_old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
-    _status_lock_timeout="${MAGICNET_SUB_STATUS_LOCK_TIMEOUT:-3}"
-    case "$_status_lock_timeout" in
-        '' | *[!0-9]*) _status_lock_timeout=3 ;;
-    esac
-    [ "$_status_lock_timeout" -le 10 ] || _status_lock_timeout=10
-    MAGICNET_CONFIG_LOCK_TIMEOUT="$_status_lock_timeout"
-    magicnet_with_config_lock magicnet_singbox_status_reconcile_locked >/dev/null 2>&1
-    _status_reconcile_rc=$?
-    if [ -n "$_status_lock_was_set" ]; then
-        MAGICNET_CONFIG_LOCK_TIMEOUT="$_status_old_lock_timeout"
-    else
-        unset MAGICNET_CONFIG_LOCK_TIMEOUT
-    fi
-    unset _status_lock_was_set _status_old_lock_timeout _status_lock_timeout
-    return "$_status_reconcile_rc"
-}
-
 magicnet_singbox_status() {
     _status_tx_dir=$(magicnet_singbox_transaction_dir)
-    _status_recovery_needed=0
-    [ -d "$_status_tx_dir" ] && _status_recovery_needed=1
-    [ "$(magicnet_singbox_status_value result never)" = running ] && _status_recovery_needed=1
-    if magicnet_singbox_update_lock_active; then
-        if [ "$_status_recovery_needed" -eq 1 ]; then
+    _status_tx_pending=0
+    [ -d "$_status_tx_dir" ] && _status_tx_pending=1
+    _status_last_result=$(magicnet_singbox_status_value result never)
+    _status_update_active=0
+    magicnet_singbox_update_lock_live && _status_update_active=1
+    if [ "$_status_update_active" -eq 1 ]; then
+        if [ "$_status_tx_pending" -eq 1 ]; then
             _status_recovery_result=active
         else
             _status_recovery_result=none
         fi
-    elif magicnet_singbox_status_try_reconcile; then
-        if [ "$_status_recovery_needed" -eq 1 ] && [ ! -d "$_status_tx_dir" ] &&
-            [ "$(magicnet_singbox_status_value result never)" != running ]; then
-            _status_recovery_result=recovered
-        elif [ "$_status_recovery_needed" -eq 1 ]; then
-            _status_recovery_result=pending
-        else
-            _status_recovery_result=none
-        fi
-    elif [ "$_status_recovery_needed" -eq 1 ]; then
+    elif [ "$_status_tx_pending" -eq 1 ]; then
+        # Status is a diagnostic command and must never restore files, rewrite
+        # firewall state, or restart a live core.  Lifecycle/update entrypoints
+        # own interrupted-transaction recovery; report it here as pending.
         _status_recovery_result=pending
     else
-        _status_recovery_result=busy
+        _status_recovery_result=none
+    fi
+    if [ "$_status_last_result" = running ] && [ "$_status_update_active" -eq 0 ]; then
+        _status_last_result=interrupted
     fi
     _status_active_url="${MODDIR}/.config/sing-box/subscription.url"
     _status_active_local="${MODDIR}/.config/sing-box/subscription.local"
@@ -514,7 +482,7 @@ magicnet_singbox_status() {
     fi
     _status_cache_dir=$(magicnet_singbox_subscription_cache_dir)
     _status_cache_count=$(find "$_status_cache_dir" -maxdepth 1 -type f -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')
-    if magicnet_singbox_update_lock_active; then
+    if [ "$_status_update_active" -eq 1 ]; then
         _status_running=1
         _status_lock_owner=active
     else
@@ -534,7 +502,7 @@ magicnet_singbox_status() {
     printf 'update_lock_owner=%s\n' "$_status_lock_owner"
     printf 'recovery_result=%s\n' "$_status_recovery_result"
     printf 'last_phase=%s\n' "$(magicnet_singbox_status_value phase never)"
-    printf 'last_result=%s\n' "$(magicnet_singbox_status_value result never)"
+    printf 'last_result=%s\n' "$_status_last_result"
     printf 'last_attempt_epoch=%s\n' "$(magicnet_singbox_status_value attempt_epoch 0)"
     printf 'last_success_epoch=%s\n' "$(magicnet_singbox_status_value success_epoch 0)"
     printf 'last_configured_count=%s\n' "$(magicnet_singbox_status_value configured_count 0)"
@@ -562,14 +530,14 @@ magicnet_singbox_status() {
     unset _status_active_url _status_active_local _status_source_mode _status_configured
     unset _status_cache_dir _status_cache_count _status_running
     unset _status_lock_owner _status_cache_provenance_count _status_cache_probe _status_cache_source
-    unset _status_tx_dir _status_recovery_needed _status_recovery_result _status_reconcile_rc
+    unset _status_tx_dir _status_tx_pending _status_last_result
+    unset _status_recovery_result _status_update_active
 }
 
-magicnet_singbox_status_reconcile_locked() {
-    # Both operations can restore or rewrite persisted subscription state.  A
-    # status read must serialize them with an update transaction, otherwise a
-    # just-started updater can race the recovery path and lose its active
-    # files intermittently.
+magicnet_singbox_recover_interrupted_locked() {
+    # Both operations can restore or rewrite persisted subscription state.
+    # Lifecycle callers must hold the config lock so a just-started updater
+    # cannot race recovery and lose its active files intermittently.
     _status_locked_rc=0
     magicnet_singbox_transaction_reconcile >/dev/null 2>&1 || _status_locked_rc=1
     if [ "$_status_locked_rc" -eq 0 ]; then

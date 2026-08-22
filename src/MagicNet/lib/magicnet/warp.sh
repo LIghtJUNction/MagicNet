@@ -8,9 +8,8 @@ magicnet_warp_endpoint_file() {
 
 magicnet_warp_enabled() {
     _enabled="${MAGICNET_WARP_ENABLED:-}"
-    if [ -z "$_enabled" ] && [ -f "$(magicnet_warp_conf)" ]; then
-        . "$(magicnet_warp_conf)" 2>/dev/null || true
-        _enabled="${MAGICNET_WARP_ENABLED:-}"
+    if [ -z "$_enabled" ]; then
+        _enabled="$(magicnet_conf_value "$(magicnet_warp_conf)" MAGICNET_WARP_ENABLED 2>/dev/null || true)"
     fi
     case "$_enabled" in
         1|true|yes|on) return 0 ;;
@@ -28,9 +27,9 @@ magicnet_warp_apply_singbox() {
         unset _config
         return 0
     }
-    _jq="$(command -v jq 2>/dev/null || true)"
-    [ -n "$_jq" ] || {
-        magicnet_warn "jq not found; WARP apply skipped"
+    _jq="${MODDIR}/bin/jq"
+    [ -x "$_jq" ] || {
+        magicnet_warn "packaged jq is unavailable; WARP apply rejected"
         unset _config _jq
         return 1
     }

@@ -1,37 +1,39 @@
-magicnet_supervisor_orphan_pids() {
+magicnet_supervisor_target_pid_matches() (
+    _mstm_target="$1"
+    _mstm_pid_file="$2"
+    _mstm_pid="$3"
+    case "$_mstm_target" in
+        fswatch | watchdog) magicnet_supervisor_pidfile_matches "$_mstm_pid_file" "$_mstm_pid" ;;
+        wifi-policy) magicnet_wifi_policy_pid_matches "$_mstm_pid" ;;
+        *) return 1 ;;
+    esac
+)
+
+magicnet_supervisor_orphan_pids() (
     _mso_target="$1"
     case "$_mso_target" in
-        fswatch)
-            _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid"
-            ;;
-        watchdog)
-            _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid"
-            ;;
-        wifi-policy)
-            _mso_pid_file="$(magicnet_wifi_policy_pid_file)"
-            ;;
-        *)
-            unset _mso_target _mso_pid_file
-            return 1
-            ;;
+        fswatch) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid" ;;
+        watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid" ;;
+        wifi-policy) _mso_pid_file="$(magicnet_wifi_policy_pid_file)" ;;
+        *) return 1 ;;
     esac
-    for _mso_pid_dir in /proc/[0-9]*; do
-        [ -d "$_mso_pid_dir" ] || continue
-        _mso_pid=${_mso_pid_dir##*/}
+
+    _mso_ps=$(ps -A -o pid=,args= 2>/dev/null || true)
+    if [ -n "$_mso_ps" ]; then
+        _mso_candidates=$(printf '%s\n' "$_mso_ps" |
+            awk -v root="$MODDIR" 'index($0, root) { print $1 }')
+    else
+        _mso_candidates=$(for _mso_proc in /proc/[0-9]*; do
+            [ -d "$_mso_proc" ] && printf '%s\n' "${_mso_proc##*/}"
+        done)
+    fi
+    for _mso_pid in $_mso_candidates; do
         [ "$_mso_pid" = "$$" ] && continue
-        case "$_mso_target" in
-            fswatch | watchdog)
-                magicnet_supervisor_pidfile_matches "$_mso_pid_file" "$_mso_pid" &&
-                    printf '%s\n' "$_mso_pid"
-                ;;
-            wifi-policy)
-                magicnet_wifi_policy_pid_matches "$_mso_pid" &&
-                    printf '%s\n' "$_mso_pid"
-                ;;
-        esac
+        magicnet_supervisor_target_pid_matches "$_mso_target" "$_mso_pid_file" "$_mso_pid" &&
+            printf '%s\n' "$_mso_pid"
     done
-    unset _mso_target _mso_pid_file _mso_pid_dir _mso_pid
-}
+    return 0
+)
 
 magicnet_trim_log_file() {
     _trim_log_file="$1"
@@ -53,9 +55,10 @@ magicnet_trim_log_file() {
     unset _trim_log_file _trim_log_max _trim_log_keep _trim_log_size _trim_log_tmp
 }
 
-magicnet_supervisor_kill_orphans() {
+magicnet_supervisor_kill_orphans() (
     _msko_target="$1"
     _msko_pids="$(magicnet_supervisor_orphan_pids "$_msko_target")"
+    [ -n "$_msko_pids" ] || return 0
     for _msko_pid in $_msko_pids; do
         kill "$_msko_pid" 2>/dev/null || true
     done
@@ -64,8 +67,7 @@ magicnet_supervisor_kill_orphans() {
     for _msko_pid in $_msko_pids; do
         kill -9 "$_msko_pid" 2>/dev/null || true
     done
-    unset _msko_target _msko_pids _msko_pid
-}
+)
 
 set_i18n "MAGICNET_FSWATCH_START_FAILED" \
     "zh" "fswatch 启动失败 (rc=\$_1)；请查看 \$_2" \
@@ -320,26 +322,15 @@ magicnet_fswatch_status() {
         unset _fswatch_pid_file _fswatch_pid
         return 0
     fi
-    # A reused PID can leave a live, unrelated process behind.  Do not let
-    # that stale pidfile suppress a fresh watcher start or report a false
-    # healthy status.
-    rm -f "$_fswatch_pid_file" 2>/dev/null || true
+    # Status is observational. Startup/stop paths own stale pidfile cleanup.
     unset _fswatch_pid_file _fswatch_pid
     magicnet_supervisor_status_with_orphans "" fswatch
 }
 
 magicnet_wifi_policy_enabled() {
-    _wifi_policy_conf="${MODDIR}/.config/magicnet/wifi-policy.conf"
-    [ -f "$_wifi_policy_conf" ] || {
-        unset _wifi_policy_conf
-        return 1
-    }
-    MAGICNET_WIFI_POLICY_ENABLED=0
-    # shellcheck disable=SC1090
-    . "$_wifi_policy_conf" 2>/dev/null || true
-    _wifi_policy_enabled="${MAGICNET_WIFI_POLICY_ENABLED:-0}"
-    unset MAGICNET_WIFI_POLICY_ENABLED
-    unset _wifi_policy_conf
+    _wifi_policy_enabled="$(magicnet_conf_value \
+        "${MODDIR}/.config/magicnet/wifi-policy.conf" \
+        MAGICNET_WIFI_POLICY_ENABLED 2>/dev/null || true)"
     [ "$_wifi_policy_enabled" = "1" ]
     _wifi_policy_enabled_rc=$?
     unset _wifi_policy_enabled
@@ -448,7 +439,6 @@ magicnet_wifi_policy_status() {
         unset _wifi_policy_pid_file _wifi_policy_pid
         return 0
     fi
-    rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
     unset _wifi_policy_pid_file _wifi_policy_pid
     return 1
 }
@@ -494,7 +484,8 @@ magicnet_subscription_refresh_proc_start() {
         unset _refresh_proc_pid _refresh_proc_root _refresh_proc_stat
         return 1
     }
-    _refresh_proc_start="$(awk '{print $22}' "$_refresh_proc_stat" 2>/dev/null || true)"
+    _refresh_proc_start="$(awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
+        "$_refresh_proc_stat" 2>/dev/null || true)"
     case "$_refresh_proc_start" in '' | *[!0-9]*)
         unset _refresh_proc_pid _refresh_proc_root _refresh_proc_stat _refresh_proc_start
         return 1
@@ -849,7 +840,8 @@ magicnet_subscription_refresh_start() {
     }
     _refresh_owner_state=$(magicnet_subscription_refresh_owner_state 2>/dev/null || true)
     if [ "$_refresh_owner_state" = active ]; then
-        magicnet_subscription_refresh_stop || return 1
+        unset _refresh_hours _refresh_owner_state
+        return 0
     elif [ "$_refresh_owner_state" = stale ] || [ "$_refresh_owner_state" = orphan ]; then
         warn "Subscription refresh owner is ${_refresh_owner_state}; refusing to start a duplicate or terminate an unowned loop"
         unset _refresh_hours _refresh_owner_state
@@ -932,6 +924,7 @@ magicnet_subscription_schedule_set() {
     if [ "$_schedule_value" = "off" ]; then
         magicnet_subscription_refresh_stop >/dev/null 2>&1 || true
     else
+        magicnet_subscription_refresh_stop >/dev/null 2>&1 || true
         magicnet_subscription_refresh_start
     fi
     _schedule_rc=$?

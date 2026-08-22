@@ -46,39 +46,14 @@ chmod +x "$bin_dir/pidof"
 export MODDIR="$module"
 export MAGICNET_SINGBOX_PROC_ROOT="$proc_root"
 export PATH="$bin_dir:$PATH"
-import() { :; }
-set_i18n() { :; }
-config() { :; }
-i18n() { printf '%s' "$1"; }
-info() { :; }
-warn() { :; }
-success() { :; }
-. "$ROOT/src/MagicNet/lib/kamfw/__singbox__.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 
-if singbox_pid_live 505; then
-    printf 'singbox_pid_live accepted a PID with unreadable proc stat\n' >&2
+if magicnet_singbox_pid_live 505; then
+    printf 'magicnet_singbox_pid_live accepted a PID with unreadable proc stat\n' >&2
     exit 1
 fi
 
-owned="$(singbox_owned_pids)"
+owned="$(magicnet_singbox_owned_pids "$module/.config/sing-box/config.json")"
 test "$owned" = '101'
-is_singbox_running
-
-kill_log="$fixture/kill.log"
-kill() {
-    printf '%s\n' "$*" >>"$kill_log"
-    for pid in "$@"; do
-        case "$pid" in
-            -*) continue ;;
-        esac
-        rm -rf "${proc_root:?}/$pid"
-    done
-}
-sleep() { :; }
-singbox_stop
-test "$(cat "$kill_log")" = '101'
-test -d "$proc_root/202"
-test -d "$proc_root/303"
-test -d "$proc_root/404"
 
 printf '%s\n' 'sing-box ownership test passed'

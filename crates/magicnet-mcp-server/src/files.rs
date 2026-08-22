@@ -16,7 +16,7 @@ pub(crate) fn file_list(server: &Server, rel: &str) -> String {
         Ok(entries) => entries,
         Err(err) => return format!("not a directory: {rel}: {err}"),
     };
-    for entry in entries.flatten().take(200) {
+    for entry in entries.flatten().take(1001) {
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
@@ -28,6 +28,11 @@ pub(crate) fn file_list(server: &Server, rel: &str) -> String {
             .display()
             .to_string();
         rows.push(format!("{display}{suffix}"));
+    }
+    rows.sort_unstable();
+    if rows.len() > 200 {
+        rows.truncate(200);
+        rows.push("[listing truncated]".to_string());
     }
     rows.join("\n")
 }

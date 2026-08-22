@@ -9,7 +9,14 @@ pub(crate) fn node_delay(api: &str, name: &str) -> Result<i64, String> {
     }
     let endpoint = delay_endpoint(api, clean);
     let output = Command::new("curl")
-        .args(["-fsS", "--max-time", "7", &endpoint])
+        .args([
+            "-fsS",
+            "--max-time",
+            "7",
+            "--max-filesize",
+            "1048576",
+            &endpoint,
+        ])
         .output()
         .map_err(|err| format!("run curl: {err}"))?;
     if !output.status.success() {

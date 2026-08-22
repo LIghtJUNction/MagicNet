@@ -5,10 +5,9 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
@@ -20,6 +19,7 @@ use crate::{decode_base64, write_secret_file, write_text_file, App};
 const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 const TEMPLATE_MAX_BYTES: usize = 1024 * 1024;
+const VALIDATOR_OUTPUT_LIMIT: usize = 256 * 1024;
 const MAGIC_SINGBOX_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/9d354b0717636271eaa4bb1a3cbe5bb93cafd8f5/config.json";
 const MAGIC_SINGBOX_TEMPLATE_SHA256: &str =
     "8e91177e9222b2e5dee91ec849716757601156a28e7a056e6091ab5c71e102a5";
@@ -71,7 +71,14 @@ fn save_config(app: &App, target: &str, path: &Path, args: &[String]) -> Result<
     let bytes = decode_base64(payload)?;
     let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
     let protected = protect_tailscale_auth_keys(app, &text)?;
-    commit_config_text(app, target, path, protected.as_bytes(), "input")?;
+    commit_config_text(
+        app,
+        target,
+        path,
+        protected.text.as_bytes(),
+        "input",
+        protected.keys.as_deref(),
+    )?;
     mark_standalone_config(app)
 }
 
@@ -93,13 +100,28 @@ fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Re
     }
     let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
     let protected = protect_tailscale_auth_keys(app, &text)?;
-    commit_config_text(app, target, path, protected.as_bytes(), "input")?;
+    commit_config_text(
+        app,
+        target,
+        path,
+        protected.text.as_bytes(),
+        "input",
+        protected.keys.as_deref(),
+    )?;
     mark_standalone_config(app)
 }
 
-fn protect_tailscale_auth_keys(app: &App, text: &str) -> Result<String, String> {
+struct ProtectedConfig {
+    text: String,
+    keys: Option<String>,
+}
+
+fn protect_tailscale_auth_keys(app: &App, text: &str) -> Result<ProtectedConfig, String> {
     let Ok(mut config) = serde_json::from_str::<JsonValue>(text) else {
-        return Ok(text.to_string());
+        return Ok(ProtectedConfig {
+            text: text.to_string(),
+            keys: None,
+        });
     };
     let mut keys = fs::read_to_string(app.moddir.join(TAILSCALE_AUTH_PATH))
         .ok()
@@ -132,14 +154,20 @@ fn protect_tailscale_auth_keys(app: &App, text: &str) -> Result<String, String> 
         }
     }
     if !changed {
-        return Ok(text.to_string());
+        return Ok(ProtectedConfig {
+            text: text.to_string(),
+            keys: None,
+        });
     }
     let protected_keys = serde_json::to_string(&JsonValue::Object(keys))
         .map_err(|err| format!("serialize protected Tailscale auth keys: {err}"))?;
-    write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), &protected_keys)?;
-    serde_json::to_string_pretty(&config)
+    let text = serde_json::to_string_pretty(&config)
         .map(|value| format!("{value}\n"))
-        .map_err(|err| format!("serialize sing-box config: {err}"))
+        .map_err(|err| format!("serialize sing-box config: {err}"))?;
+    Ok(ProtectedConfig {
+        text,
+        keys: Some(protected_keys),
+    })
 }
 
 fn mark_standalone_config(app: &App) -> Result<(), String> {
@@ -348,11 +376,22 @@ fn validate_config_from_open_file(
 /// rename the snapshot into place. The caller-owned source inode is never
 /// linked into the destination, so later hard-link writes cannot change bytes
 /// that were already accepted by the validator.
+#[cfg(test)]
 fn validate_and_commit_open_config_file(
     app: &App,
     target: &str,
     path: &Path,
     source: &File,
+) -> Result<(), String> {
+    validate_and_commit_open_config_file_with(app, target, path, source, || Ok(()))
+}
+
+fn validate_and_commit_open_config_file_with(
+    app: &App,
+    target: &str,
+    path: &Path,
+    source: &File,
+    before_commit: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
     let name = OsStr::new(config_target_filename(target)?);
     let directory = open_config_destination_directory(app, target)?;
@@ -364,6 +403,7 @@ fn validate_and_commit_open_config_file(
         // under .config/sing-box. Validate against that final directory so
         // the check sees the same resources as the runtime.
         validate_config_from_open_file(app, target, &snapshot, &directory)?;
+        before_commit()?;
         backup_config_at(&directory, name)?;
         commit_staged_config_file(&directory, &staged_name, name, path)
     })();
@@ -499,9 +539,15 @@ fn commit_config_text(
     path: &Path,
     bytes: &[u8],
     role: &str,
+    protected_keys: Option<&str>,
 ) -> Result<(), String> {
     with_generated_config_input(app, role, bytes, |source, _directory| {
-        validate_and_commit_open_config_file(app, target, path, source)
+        validate_and_commit_open_config_file_with(app, target, path, source, || {
+            if let Some(keys) = protected_keys {
+                write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), keys)?;
+            }
+            Ok(())
+        })
     })?;
     println!(
         "[info] Saved and validated {target} config: {}\n[info] Runtime policy changes can be applied from the control/app pages.",
@@ -621,7 +667,7 @@ fn sync_template_one(app: &App, target: &str) -> Result<(), String> {
     let template = fetch_template(&url)?;
     let current = read_current_config(app, target)?.unwrap_or_default();
     let merged = prepare_template(target, &template, &current)?;
-    commit_config_text(app, target, &path, merged.as_bytes(), "template")?;
+    commit_config_text(app, target, &path, merged.as_bytes(), "template", None)?;
     apply_config(app)?;
     println!(
         "[info] Synced {target} template from {url}\n[info] Preserved subscription-facing config and re-applied runtime rules."
@@ -857,35 +903,23 @@ fn validate_config_with_data_directory(
     }
 }
 
-fn run_with_timeout(
-    mut command: Command,
-    timeout: Duration,
-) -> Result<std::process::Output, String> {
-    let mut child = command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+fn run_with_timeout(command: Command, timeout: Duration) -> Result<std::process::Output, String> {
+    let output = crate::run_bounded_command(command, timeout, VALIDATOR_OUTPUT_LIMIT)
         .map_err(|err| format!("run validator: {err}"))?;
-    let deadline = Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .map_err(|err| format!("read validator output: {err}"))
-            }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(50)),
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!(
-                    "config validation timed out after {}s",
-                    timeout.as_secs()
-                ));
-            }
-            Err(err) => return Err(format!("wait validator: {err}")),
-        }
+    if output.timed_out {
+        return Err(format!(
+            "config validation timed out after {}s",
+            timeout.as_secs()
+        ));
     }
+    let status = output
+        .status
+        .ok_or_else(|| "validator exited without a status".to_string())?;
+    Ok(std::process::Output {
+        status,
+        stdout: output.stdout,
+        stderr: output.stderr,
+    })
 }
 
 #[cfg(test)]
@@ -908,6 +942,22 @@ mod tests {
     }
 
     #[test]
+    fn validator_runner_drains_output_without_unbounded_retention() {
+        let mut command = Command::new("sh");
+        command.args([
+            "-c",
+            "chunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 16384 ]; do printf %s \"$chunk\"; i=$((i + 1)); done",
+        ]);
+        let output = run_with_timeout(command, Duration::from_secs(8)).unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            output.stdout.len(),
+            VALIDATOR_OUTPUT_LIMIT + "\n[output truncated]".len()
+        );
+        assert!(output.stdout.ends_with(b"[output truncated]"));
+    }
+
+    #[test]
     fn default_sing_box_config_uses_mixed_tun_stack() {
         let config: serde_json::Value =
             serde_json::from_str(&default_config("sing-box")).expect("parse default config");
@@ -924,6 +974,23 @@ mod tests {
         assert!(tun["route_exclude_address"]
             .as_array()
             .is_some_and(|routes| routes.iter().any(|route| route == "::1/128")));
+    }
+
+    #[test]
+    fn tailscale_keys_are_staged_in_memory_until_config_validation() {
+        let app = temp_app();
+        let protected = protect_tailscale_auth_keys(
+            &app,
+            r#"{"endpoints":[{"type":"tailscale","tag":"tailscale","auth_key":"tskey-secret"}]}"#,
+        )
+        .unwrap();
+
+        assert!(!protected.text.contains("tskey-secret"));
+        assert!(protected
+            .keys
+            .as_deref()
+            .is_some_and(|keys| keys.contains("tskey-secret")));
+        assert!(!app.moddir.join(TAILSCALE_AUTH_PATH).exists());
     }
 
     #[test]
@@ -1075,6 +1142,7 @@ test -r "$data/rules/required.srs"
     }
 
     #[test]
+    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
     fn save_file_rejects_hard_linked_webui_payloads() {
         let app = temp_app();
         let payload_dir = app.moddir.join(".tmp/webui-payload");
@@ -1146,6 +1214,7 @@ test -r "$data/rules/required.srs"
     }
 
     #[test]
+    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
     fn save_file_snapshot_is_immutable_after_same_inode_mutation() {
         let app = temp_app();
         let payload_dir = app.moddir.join(".tmp/webui-payload");

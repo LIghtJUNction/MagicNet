@@ -8,9 +8,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(test)]
+use std::time::UNIX_EPOCH;
 
-use crate::{read_kv, write_text_file, App};
+use crate::{write_text_file, App};
 
 const DEFAULT_BIND: &str = "127.0.0.1";
 const DEFAULT_PORT: &str = "8766";
@@ -78,7 +79,7 @@ impl McpConfig {
 pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
         "status" => {
-            let config = load(app);
+            let config = load_checked(app)?;
             println!("enabled={}", config.enabled_value());
             println!("bind={}", config.bind);
             println!("port={}", config.port);
@@ -95,37 +96,37 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "enable" => {
-            let mut config = load(app);
+            let mut config = load_checked(app)?;
             config.enabled = true;
             apply_endpoint_args(&mut config, args)?;
-            ensure_secret(&mut config);
+            ensure_secret(&mut config)?;
             write_conf(app, &config)?;
             start(app)
         }
         "disable" => {
-            let mut config = load(app);
+            let mut config = load_checked(app)?;
             config.enabled = false;
             write_conf(app, &config)?;
             stop(app)
         }
         "set" => {
-            let mut config = load(app);
+            let mut config = load_checked(app)?;
             apply_endpoint_args(&mut config, args)?;
-            ensure_secret(&mut config);
+            ensure_secret(&mut config)?;
             write_conf(app, &config)?;
             println!("[info] MCP endpoint set: {}", config.url());
             Ok(())
         }
         "secret" => {
-            let mut config = load(app);
-            ensure_secret(&mut config);
+            let mut config = load_checked(app)?;
+            ensure_secret(&mut config)?;
             write_conf(app, &config)?;
             println!("{}", config.secret);
             Ok(())
         }
         "rotate-secret" => {
-            let mut config = load(app);
-            config.secret = generate_secret();
+            let mut config = load_checked(app)?;
+            config.secret = generate_secret()?;
             write_conf(app, &config)?;
             if live_pid(app).is_some() {
                 let _ = stop(app);
@@ -133,6 +134,13 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
             }
             println!("[info] MCP secret rotated");
             Ok(())
+        }
+        "start-if-enabled" => {
+            if load_checked(app)?.enabled {
+                start(app)
+            } else {
+                Ok(())
+            }
         }
         "start" => start(app),
         "stop" => stop(app),
@@ -181,10 +189,51 @@ fn pid_path(app: &App) -> PathBuf {
 }
 
 fn load(app: &App) -> McpConfig {
-    load_config(&read_kv(conf_path(app)))
+    load_checked(app).unwrap_or_default()
 }
 
-fn load_config(conf: &HashMap<String, String>) -> McpConfig {
+fn load_checked(app: &App) -> Result<McpConfig, String> {
+    match fs::read_to_string(conf_path(app)) {
+        Ok(text) => {
+            load_config_text(&text).map_err(|err| format!("invalid MCP configuration: {err}"))
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(McpConfig::default()),
+        Err(err) => Err(format!("read MCP configuration: {err}")),
+    }
+}
+
+fn load_config_text(text: &str) -> Result<McpConfig, String> {
+    let mut fields = HashMap::new();
+    for line in text.lines() {
+        let (key, value) = line
+            .split_once('=')
+            .ok_or_else(|| "invalid MCP configuration line".to_string())?;
+        if !matches!(
+            key,
+            "MAGICNET_MCP_ENABLED"
+                | "MAGICNET_MCP_BIND"
+                | "MAGICNET_MCP_PORT"
+                | "MAGICNET_MCP_SECRET"
+        ) {
+            return Err("unknown MCP configuration field".to_string());
+        }
+        if fields.insert(key.to_string(), value.to_string()).is_some() {
+            return Err("duplicate MCP configuration field".to_string());
+        }
+    }
+    for required in [
+        "MAGICNET_MCP_ENABLED",
+        "MAGICNET_MCP_BIND",
+        "MAGICNET_MCP_PORT",
+    ] {
+        if !fields.contains_key(required) {
+            return Err("missing MCP configuration field".to_string());
+        }
+    }
+    load_config(&fields)
+}
+
+fn load_config(conf: &HashMap<String, String>) -> Result<McpConfig, String> {
     // Legacy values are untrusted because mcp.conf is shell-sourced. A single
     // malformed field yields a fully safe, deterministic configuration rather
     // than being copied into the next write.
@@ -202,7 +251,6 @@ fn load_config(conf: &HashMap<String, String>) -> McpConfig {
             .map(String::as_str)
             .unwrap_or_default(),
     )
-    .unwrap_or_default()
 }
 
 fn write_conf(app: &App, config: &McpConfig) -> Result<(), String> {
@@ -221,8 +269,8 @@ fn write_conf(app: &App, config: &McpConfig) -> Result<(), String> {
 }
 
 fn start(app: &App) -> Result<(), String> {
-    let mut config = load(app);
-    ensure_secret(&mut config);
+    let mut config = load_checked(app)?;
+    ensure_secret(&mut config)?;
     // Persist only the sanitized typed configuration. This also repairs a
     // legacy unsafe mcp.conf before the server is launched.
     write_conf(app, &config)?;
@@ -424,44 +472,30 @@ fn apply_endpoint_args(config: &mut McpConfig, args: &[String]) -> Result<(), St
     Ok(())
 }
 
-fn ensure_secret(config: &mut McpConfig) {
+fn ensure_secret(config: &mut McpConfig) -> Result<(), String> {
     if config.secret.is_empty() {
-        config.secret = generate_secret();
+        config.secret = generate_secret()?;
     }
+    Ok(())
 }
 
-fn generate_secret() -> String {
+fn generate_secret() -> Result<String, String> {
     let mut bytes = [0_u8; 32];
-    if fs::File::open("/dev/urandom")
+    fs::File::open("/dev/urandom")
         .and_then(|mut file| file.read_exact(&mut bytes))
-        .is_err()
-    {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or_default();
-        bytes[..16].copy_from_slice(&nanos.to_le_bytes());
-        bytes[16..24].copy_from_slice(&(std::process::id() as u64).to_le_bytes());
-        bytes[24..32].copy_from_slice(&(conf_path_fallback_hash() as u64).to_le_bytes());
-    }
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn conf_path_fallback_hash() -> usize {
-    let text = format!(
-        "{:?}{:?}",
-        env::current_exe().ok(),
-        env::args().collect::<Vec<_>>()
-    );
-    text.bytes().fold(0usize, |acc, byte| {
-        acc.wrapping_mul(131).wrapping_add(byte as usize)
-    })
+        .map_err(|err| format!("secure MCP secret generation failed: {err}"))?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn stop(app: &App) -> Result<(), String> {
     if let Some(pid) = live_pid(app) {
         signal_mcp_pid(pid, false);
-        thread::sleep(Duration::from_millis(250));
+        for _ in 0..40 {
+            if live_pid(app) != Some(pid) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
         if live_pid(app) == Some(pid) {
             signal_mcp_pid(pid, true);
         }
@@ -623,7 +657,7 @@ mod tests {
     }
 
     #[test]
-    fn sourced_mcp_conf_rejects_unsafe_fields() {
+    fn mcp_conf_rejects_unsafe_fields() {
         assert!(McpConfig::from_fields("enabled", "127.0.0.1", "8766", "safe").is_err());
         assert!(McpConfig::from_fields("1", "localhost", "8766", "safe").is_err());
         assert!(McpConfig::from_fields("1", "127.0.0.1", "0", "safe").is_err());
@@ -645,7 +679,35 @@ mod tests {
             ),
         ]);
 
-        assert_eq!(load_config(&conf), McpConfig::default());
+        assert_eq!(load_config(&conf).unwrap_or_default(), McpConfig::default());
+    }
+
+    #[test]
+    fn config_text_requires_one_canonical_schema() {
+        let valid = "MAGICNET_MCP_ENABLED=1\nMAGICNET_MCP_BIND=127.0.0.1\nMAGICNET_MCP_PORT=8766\n";
+        assert!(load_config_text(valid).unwrap().enabled);
+        assert!(load_config_text(&format!("{valid}MAGICNET_MCP_PORT=8766\n")).is_err());
+        assert!(load_config_text(&format!("{valid}UNKNOWN=value\n")).is_err());
+        assert!(load_config_text(&format!("{valid}# comment\n")).is_err());
+    }
+
+    #[test]
+    fn malformed_config_is_reported_instead_of_overwritten_by_mutation() {
+        let root = std::env::temp_dir().join(format!(
+            "magicnet-mcp-conf-{}-{}",
+            std::process::id(),
+            UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        fs::create_dir_all(root.join(".config/magicnet")).unwrap();
+        let conf = root.join(MCP_CONF);
+        let original = "MAGICNET_MCP_ENABLED=1\nMAGICNET_MCP_BIND=127.0.0.1\nMAGICNET_MCP_PORT=8766\nUNKNOWN=value\n";
+        fs::write(&conf, original).unwrap();
+        let app = App::for_test(root.clone());
+
+        assert!(load_checked(&app).is_err());
+        assert!(mcp(&app, &["set".to_string(), "127.0.0.1".to_string()]).is_err());
+        assert_eq!(fs::read_to_string(conf).unwrap(), original);
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

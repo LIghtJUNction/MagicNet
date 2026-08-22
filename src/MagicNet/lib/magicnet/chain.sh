@@ -19,11 +19,8 @@ magicnet_singbox_chain_config_file() {
 }
 
 magicnet_singbox_chain_jq() {
-    if [ -x "${MODDIR}/bin/jq" ]; then
-        printf '%s\n' "${MODDIR}/bin/jq"
-    else
-        command -v jq 2>/dev/null || true
-    fi
+    [ -x "${MODDIR}/bin/jq" ] || return 1
+    printf '%s\n' "${MODDIR}/bin/jq"
 }
 
 magicnet_singbox_chain_apply() {
@@ -35,14 +32,12 @@ magicnet_singbox_chain_apply() {
         return 1
     }
     [ -s "$_chain_policy_file" ] || {
-        # A missing policy is the backwards-compatible disabled state. Keep
-        # the existing subscription path usable on minimal systems without
-        # jq; the CLI creates the policy before enabling chain mode.
+        # A missing policy is the backwards-compatible disabled state.
         unset _chain_config _chain_policy_file _chain_jq _chain_policy _chain_tmp _chain_rc
         return 0
     }
     [ -n "$_chain_jq" ] || {
-        magicnet_warn "jq not found; refusing to materialize the proxy chain"
+        magicnet_warn "packaged jq is unavailable; refusing to materialize the proxy chain"
         unset _chain_config _chain_policy_file _chain_jq _chain_policy _chain_tmp _chain_rc
         return 1
     }

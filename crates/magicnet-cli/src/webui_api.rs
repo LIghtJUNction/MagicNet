@@ -333,7 +333,14 @@ pub(crate) fn curl_put_selection(app: &App, group: &str, payload: &str) -> Resul
 
 pub(crate) fn curl_get_json(app: &App, path: &str) -> Result<serde_json::Value, String> {
     let output = Command::new("curl")
-        .args(["-fsS", "--max-time", "3", &format!("{}{}", app.api, path)])
+        .args([
+            "-fsS",
+            "--max-time",
+            "3",
+            "--max-filesize",
+            "8388608",
+            &format!("{}{}", app.api, path),
+        ])
         .output()
         .map_err(|err| format!("run curl: {err}"))?;
     if !output.status.success() {
@@ -363,6 +370,7 @@ fn encode_path_segment(value: &str) -> String {
 
 fn run_curl(args: &[&str]) -> Result<(), String> {
     let output = Command::new("curl")
+        .args(["--max-filesize", "8388608"])
         .args(args)
         .output()
         .map_err(|err| format!("run curl: {err}"))?;

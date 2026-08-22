@@ -27,11 +27,12 @@ mapfile -t bash_shell_files < <(
 shellcheck -s bash -e SC1091,SC2317,SC2329,SC2059 "${bash_shell_files[@]}"
 
 mapfile -t posix_shell_files < <(
-    find src/MagicNet -maxdepth 1 -type f -name '*.sh' -print
-    find src/MagicNet/system/bin -type f -print 2>/dev/null || true
-    printf '%s\n' src/MagicNet/lib/magicnet.sh
+    find src/MagicNet -type f \( -name '*.sh' -o -path '*/system/bin/*' \) \
+        -not -path '*/lib/kamfw/*' -print | sort
 )
-shellcheck -s sh -e SC1091,SC1090,SC2329,SC2059 "${posix_shell_files[@]}"
+# Every first-party runtime fragment is sourced into a privileged Android shell;
+# lint the fragments themselves instead of relying on analysis of the entrypoint.
+shellcheck -s sh -e SC1091,SC1090,SC2016,SC2329,SC2059 "${posix_shell_files[@]}"
 
 jq empty src/MagicNet/.config/sing-box/config.json
 bash scripts/test-repository-hygiene.sh
@@ -58,13 +59,16 @@ bash scripts/test-singbox-pid-discovery.sh
 bash scripts/test-singbox-ownership.sh
 bash scripts/test-singbox-readiness.sh
 bash scripts/test-supervisor-pid-safety.sh
-bash scripts/test-fswatch-install-contract.sh
+bash scripts/test-supervisor-orphan-prefilter.sh
+# Generic KAM fswatch internals are tested in the KAM repository; keep this
+# gate focused on MagicNet's supervisor policy and process-identity boundary.
 bash scripts/test-supervisor-start-policy.sh
 bash scripts/test-tun-interface-safety.sh
 bash scripts/test-transparent-mode-config-safety.sh
 bash scripts/test-config-permissions.sh
 bash scripts/test-config-lock-safety.sh
 bash scripts/test-dns-profile-safety.sh
+bash scripts/test-dns-leak-guard-timeout.sh
 bash scripts/test-subscription-activation-order.sh
 bash scripts/test-subscription-transaction-atomicity.sh
 bash scripts/test-subscription-update-lock-safety.sh
@@ -84,6 +88,7 @@ fi
 cargo check -p magicnet-cli
 cargo check -p magicnet-mcp-server
 cargo test -p magicnet-cli --test process_lifecycle
+cargo test -p magicnet-cli --test broken_pipe
 if compgen -G "dist/*.zip" >/dev/null; then
     package_zip="$(compgen -G "dist/*.zip" | head -n1)"
     scripts/package-smoke.sh "$package_zip"

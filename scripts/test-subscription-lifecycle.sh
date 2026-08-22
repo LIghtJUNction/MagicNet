@@ -28,6 +28,7 @@ magicnet_json_escape() { printf '%s' "$1"; }
 
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/fetch.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
@@ -252,13 +253,21 @@ test ! -e "$MODDIR/.config/sing-box/subscription.local"
 url_status="$(magicnet_singbox_status)"
 grep -q '^source_mode=url$' <<<"$url_status"
 
+assert_subscription_recovery_pending() {
+  local status
+  status="$(magicnet_singbox_status)"
+  grep -q '^update_running=0$' <<<"$status"
+  grep -q '^recovery_result=pending$' <<<"$status"
+  test -d "$MODDIR/.state/sing-box/subscription-transaction"
+}
+
 # Every active-state commit boundary must survive an unhandled process exit.
-# The next status read performs the real recovery; the wrapper cannot pre-clean
-# the journal because exit 137 terminates it first.
+# Status remains read-only and reports pending recovery; an explicit lifecycle
+# recovery then restores the journaled state.
 run_fault_recovery_case() {
   local boundary="$1"
   local running="${2:-0}"
-  local restart_before restart_after crash_rc status_after
+  local restart_before restart_after crash_rc
   rm -rf "$MODDIR/.state/sing-box/subscription-work"
   mkdir -p "$MODDIR/.state/sing-box/subscription-work"
   printf 'old-url\n' >"$active_url"
@@ -283,8 +292,11 @@ run_fault_recovery_case() {
   test -f "$MODDIR/.state/sing-box/subscription-transaction/input-source"
   test "$(stat -c '%a' "$MODDIR/.state/sing-box/subscription-transaction/input-source")" = 600
   test ! -e "$candidate_url"
-  status_after="$(magicnet_singbox_status)"
-  grep -q '^update_running=0$' <<<"$status_after"
+  assert_subscription_recovery_pending
+  restart_after="$(wc -l <"$restart_log" 2>/dev/null || printf '0\n')"
+  test "$restart_after" -eq "$restart_before"
+
+  magicnet_recover_interrupted_subscription
   assert_file "$active_url" old-url
   assert_file "$active_config" old-config
   assert_file "$work_marker" old-work
@@ -311,7 +323,7 @@ run_fault_recovery_case after-url-commit
   startup_recovery="$MODDIR/.state/sing-box/subscription-transaction"
   mkdir -p "$startup_recovery"
   magicnet_singbox_update_lock_active() { return 1; }
-  magicnet_singbox_status_reconcile_locked() {
+  magicnet_singbox_recover_interrupted_locked() {
     rm -rf "$startup_recovery"
     printf '%s\n' recovered >"$fixture/startup-recovery"
   }
@@ -320,19 +332,24 @@ run_fault_recovery_case after-url-commit
   assert_file "$fixture/startup-recovery" recovered
 )
 
-# `service ensure` has its own live-core fast path. It must run recovery before
-# accepting that core, just like an explicit service start.
+# `service start/ensure` must preserve a live connection when recovery would
+# be disruptive. Explicit repair opts in and is still allowed to reconcile.
 (
   # shellcheck disable=SC1090
   . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
-  ensure_recovery_count=0
+  live_recovery_count=0
+  mkdir -p "$MODDIR/.state/sing-box/subscription-transaction"
   magicnet_module_disabled() { return 1; }
   magicnet_kernel_running() { return 0; }
   magicnet_recover_interrupted_subscription() {
-    ensure_recovery_count=$((ensure_recovery_count + 1))
+    live_recovery_count=$((live_recovery_count + 1))
+    rm -rf "$MODDIR/.state/sing-box/subscription-transaction"
   }
   magicnet_ensure_kernel
-  test "$ensure_recovery_count" -eq 1
+  magicnet_start_kernel
+  test "$live_recovery_count" -eq 0
+  MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_ensure_kernel
+  test "$live_recovery_count" -eq 1
 )
 
 # A crash after changing source modes restores both source files exactly.
@@ -347,7 +364,8 @@ set +e
 local_switch_rc=$?
 set -e
 test "$local_switch_rc" -eq 137
-magicnet_singbox_status >/dev/null
+assert_subscription_recovery_pending
+magicnet_recover_interrupted_subscription
 assert_file "$active_url" old-url-before-local
 test ! -e "$MODDIR/.config/sing-box/subscription.local"
 
@@ -362,7 +380,8 @@ set +e
 url_switch_rc=$?
 set -e
 test "$url_switch_rc" -eq 137
-magicnet_singbox_status >/dev/null
+assert_subscription_recovery_pending
+magicnet_recover_interrupted_subscription
 assert_file "$MODDIR/.config/sing-box/subscription.local" old-local-before-url
 test ! -e "$active_url"
 
@@ -387,7 +406,8 @@ if test "$absent_rc" -ne 137; then
   exit 1
 fi
 test -d "$MODDIR/.state/sing-box/subscription-transaction"
-magicnet_singbox_status >/dev/null
+assert_subscription_recovery_pending
+magicnet_recover_interrupted_subscription
 assert_file "$active_config" old-config-without-url-or-work
 test ! -e "$active_url"
 test ! -e "$MODDIR/.state/sing-box/subscription-work"

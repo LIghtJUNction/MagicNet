@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::OpenOptionsExt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -45,15 +46,9 @@ pub(crate) fn selected(app: &App, group: &str) -> Option<String> {
     values.remove(group)
 }
 
-struct StoreLock {
-    path: std::path::PathBuf,
-    token: String,
-    nonce: String,
-}
+struct StoreLock(fs::File);
 
-struct LockGuard(fs::File);
-
-impl Drop for LockGuard {
+impl Drop for StoreLock {
     fn drop(&mut self) {
         unsafe {
             libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
@@ -61,58 +56,38 @@ impl Drop for LockGuard {
     }
 }
 
-fn lock_guard(path: &std::path::Path) -> Result<LockGuard, String> {
+fn lock(app: &App) -> Result<StoreLock, String> {
+    let lock_path = path(app).with_extension("json.lock");
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(path)
-        .map_err(|err| format!("open selector lock guard: {err}"))?;
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-        return Err(format!(
-            "lock selector guard: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    Ok(LockGuard(file))
-}
+        .mode(0o600)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .open(&lock_path)
+        .map_err(|err| format!("open selector store lock: {err}"))?;
 
-impl Drop for StoreLock {
-    fn drop(&mut self) {
-        if fs::read_to_string(&self.path)
-            .ok()
-            .as_deref()
-            .map(str::trim)
-            == Some(&self.token)
-        {
-            let _ = fs::remove_file(&self.path);
+    for _ in 0..40 {
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(StoreLock(file));
         }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::WouldBlock {
+            return Err(format!("lock selector store: {error}"));
+        }
+        thread::sleep(Duration::from_millis(25));
     }
+    Err("selector store is busy".to_string())
 }
 
-fn process_start(pid: u32) -> Option<String> {
-    fs::read_to_string(format!("/proc/{pid}/stat"))
-        .ok()?
-        .split_whitespace()
-        .nth(21)
-        .map(str::to_string)
-}
-
-fn owner_stale(text: &str) -> bool {
-    let mut fields = text.trim().split(':');
-    let Some(pid) = fields.next().and_then(|value| value.parse::<u32>().ok()) else {
-        return true;
-    };
-    let Some(started) = fields.next() else {
-        return true;
-    };
-    process_start(pid).as_deref() != Some(started)
-}
-
-fn lock(app: &App) -> Result<StoreLock, String> {
-    let lock = path(app).with_extension("json.lock");
-    let guard_path = path(app).with_extension("json.lock.guard");
+pub(crate) fn save(app: &App, group: &str, member: &str) -> Result<(), String> {
+    let target = path(app);
+    let parent = target.parent().ok_or("selector store has no parent")?;
+    fs::create_dir_all(parent).map_err(|err| format!("create selector store: {err}"))?;
+    let _store_lock = lock(app)?;
+    let mut values = load(app);
+    values.insert(group.to_string(), member.to_string());
     let nonce = format!(
         "{}-{}-{}",
         std::process::id(),
@@ -122,73 +97,20 @@ fn lock(app: &App) -> Result<StoreLock, String> {
             .as_nanos(),
         LOCK_NONCE.fetch_add(1, Ordering::Relaxed)
     );
-    let token = format!(
-        "{}:{}:{}",
-        std::process::id(),
-        process_start(std::process::id()).unwrap_or_default(),
-        nonce
-    );
-    let claim = path(app).with_extension(format!("json.lock.claim.{nonce}"));
-    let mut claim_file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&claim)
-        .map_err(|err| format!("create selector lock claim: {err}"))?;
-    if let Err(err) = writeln!(claim_file, "{token}").and_then(|_| claim_file.sync_all()) {
-        let _ = fs::remove_file(&claim);
-        return Err(format!("write selector lock claim: {err}"));
-    }
-    drop(claim_file);
-    for _ in 0..40 {
-        let guard = match lock_guard(&guard_path) {
-            Ok(guard) => guard,
-            Err(err) => {
-                let _ = fs::remove_file(&claim);
-                return Err(err);
-            }
-        };
-        match fs::hard_link(&claim, &lock) {
-            Ok(()) => {
-                let _ = fs::remove_file(&claim);
-                drop(guard);
-                return Ok(StoreLock {
-                    path: lock,
-                    token,
-                    nonce,
-                });
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                let observed = fs::read_to_string(&lock).ok();
-                if observed.as_deref().is_some_and(owner_stale) {
-                    let confirmed = fs::read_to_string(&lock).ok();
-                    if confirmed == observed {
-                        let _ = fs::remove_file(&lock);
-                    }
-                }
-                drop(guard);
-                thread::sleep(Duration::from_millis(25));
-            }
-            Err(err) => {
-                let _ = fs::remove_file(&claim);
-                return Err(format!("publish selector lock: {err}"));
-            }
-        }
-    }
-    let _ = fs::remove_file(&claim);
-    Err("selector store is busy".to_string())
-}
-
-pub(crate) fn save(app: &App, group: &str, member: &str) -> Result<(), String> {
-    let target = path(app);
-    let parent = target.parent().ok_or("selector store has no parent")?;
-    fs::create_dir_all(parent).map_err(|err| format!("create selector store: {err}"))?;
-    let store_lock = lock(app)?;
-    let mut values = load(app);
-    values.insert(group.to_string(), member.to_string());
-    let tmp = target.with_extension(format!("json.tmp.{}", store_lock.nonce));
+    let tmp = target.with_extension(format!("json.tmp.{nonce}"));
     let bytes =
         serde_json::to_vec(&values).map_err(|err| format!("encode selector store: {err}"))?;
-    if let Err(err) = fs::write(&tmp, bytes) {
+    let write_result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            .open(&tmp)?;
+        file.write_all(&bytes)?;
+        file.sync_all()
+    })();
+    if let Err(err) = write_result {
         let _ = fs::remove_file(&tmp);
         return Err(format!("write selector store: {err}"));
     }
@@ -316,15 +238,10 @@ mod tests {
     }
 
     #[test]
-    fn stale_lock_recovers_and_concurrent_updates_survive() {
+    fn flock_serializes_concurrent_updates_without_lost_writes() {
         for _ in 0..20 {
             let (_, root) = app();
             fs::create_dir_all(root.join(".state/sing-box")).unwrap();
-            fs::write(
-                root.join(".state/sing-box/selector-selections.json.lock"),
-                "invalid",
-            )
-            .unwrap();
             let root_a = root.clone();
             let a = std::thread::spawn(move || {
                 let app = App {
@@ -352,34 +269,21 @@ mod tests {
             assert_eq!(values.len(), 2);
             assert!(!fs::read_dir(root.join(".state/sing-box"))
                 .unwrap()
-                .any(|entry| {
-                    let name = entry.unwrap().file_name();
-                    let name = name.to_string_lossy();
-                    name.contains(".claim.") || name.contains(".tmp.")
-                }));
+                .any(|entry| entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".tmp.")));
             fs::remove_dir_all(root).unwrap();
         }
     }
 
     #[test]
-    fn live_owner_never_expires_by_age() {
-        let pid = std::process::id();
-        let owner = format!("{pid}:{}:0", process_start(pid).unwrap());
-        assert!(!owner_stale(&owner));
-    }
-
-    #[test]
-    fn old_owner_does_not_remove_replacement_lock() {
-        let (_, root) = app();
-        let lock_path = root.join(".state/sing-box/selector-selections.json.lock");
-        fs::create_dir_all(lock_path.parent().unwrap()).unwrap();
-        fs::write(&lock_path, "new-owner").unwrap();
-        drop(StoreLock {
-            path: lock_path.clone(),
-            token: "old-owner".into(),
-            nonce: "old-nonce".into(),
-        });
-        assert_eq!(fs::read_to_string(&lock_path).unwrap(), "new-owner");
+    fn dropped_flock_can_be_reacquired() {
+        let (app, root) = app();
+        fs::create_dir_all(root.join(".state/sing-box")).unwrap();
+        drop(lock(&app).unwrap());
+        drop(lock(&app).unwrap());
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -22,10 +22,6 @@ magicnet_block_allow_file() {
     printf '%s\n' "$(magicnet_block_dir)/block-allow-rules.list"
 }
 
-magicnet_block_default_url() {
-    printf '%s\n' 'https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/src/MagicNet/.config/magicnet/community-ban.yaml'
-}
-
 magicnet_block_conf_url_is_safe() {
     case "$1" in
         http://*|https://*) ;;
@@ -39,10 +35,8 @@ magicnet_block_conf_url_is_safe() {
 
 magicnet_block_load_conf() {
     _conf="$(magicnet_block_conf)"
-    _default_url="$(magicnet_block_default_url)"
     MAGICNET_BLOCK_ENABLED=1
     MAGICNET_BLOCK_COMMUNITY_ENABLED=1
-    MAGICNET_BLOCK_URL="$_default_url"
     _invalid=0
     _seen_enabled=0
     _seen_community=0
@@ -75,7 +69,6 @@ magicnet_block_load_conf() {
                     if [ "$_seen_url" -ne 0 ] || ! magicnet_block_conf_url_is_safe "$_value"; then
                         _invalid=1
                     else
-                        MAGICNET_BLOCK_URL="$_value"
                         _seen_url=1
                     fi
                     ;;
@@ -86,9 +79,8 @@ magicnet_block_load_conf() {
     if [ "$_invalid" -ne 0 ]; then
         MAGICNET_BLOCK_ENABLED=1
         MAGICNET_BLOCK_COMMUNITY_ENABLED=1
-        MAGICNET_BLOCK_URL="$_default_url"
     fi
-    unset _conf _default_url _invalid _seen_enabled _seen_community _seen_url _line _value
+    unset _conf _invalid _seen_enabled _seen_community _seen_url _line _value
 }
 
 magicnet_block_list_values() {

@@ -696,7 +696,7 @@ fn process_owner_state(
     };
     let live_start = fs::read_to_string(format!("/proc/{pid}/stat"))
         .ok()
-        .and_then(|stat| stat.split_whitespace().nth(21).map(str::to_string));
+        .and_then(|stat| crate::proc_start_time(&stat));
     if live_start.as_deref() != Some(expected_start) {
         return "stale";
     }
@@ -763,16 +763,26 @@ fn tun_check(app: &App, _mode: &str) -> (bool, String) {
 }
 
 fn configured_tun_is_canonical(names: &[String]) -> bool {
-    names.iter().all(|name| name == "magicnet0")
+    !names.is_empty() && names.iter().all(|name| name == "magicnet0")
 }
 
 fn configured_tun_names(app: &App) -> Vec<String> {
+    let Ok(text) = fs::read_to_string(app.moddir.join(".config/sing-box/config.json")) else {
+        return Vec::new();
+    };
+    let Ok(config) = serde_json::from_str::<Value>(&text) else {
+        return Vec::new();
+    };
     let mut names = Vec::new();
-    if let Ok(text) = fs::read_to_string(app.moddir.join(".config/sing-box/config.json")) {
-        for line in text.lines() {
-            if let Some(value) = json_string_value(line, "interface_name") {
-                push_unique(&mut names, value);
-            }
+    for inbound in config
+        .get("inbounds")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|inbound| inbound.get("type").and_then(Value::as_str) == Some("tun"))
+    {
+        if let Some(name) = inbound.get("interface_name").and_then(Value::as_str) {
+            push_unique(&mut names, name.to_string());
         }
     }
     names
@@ -951,17 +961,6 @@ fn is_managed_ipv6_guard(rule: &Value) -> bool {
             && rule.get("no_drop").and_then(Value::as_bool) == Some(true))
 }
 
-fn json_string_value(line: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let (_, rest) = line.split_once(&needle)?;
-    let (_, value) = rest.split_once(':')?;
-    let value = value.trim().trim_end_matches(',').trim();
-    value
-        .strip_prefix('"')?
-        .strip_suffix('"')
-        .map(ToOwned::to_owned)
-}
-
 fn push_unique(values: &mut Vec<String>, value: String) {
     if !value.is_empty() && !values.iter().any(|item| item == &value) {
         values.push(value);
@@ -986,16 +985,12 @@ pub(crate) fn supervisor_pid(app: &App, kind: &str, name: &str) -> String {
         .join(".state")
         .join(kind)
         .join(format!("{name}.pid"));
-    let pid_path = path.clone();
     fs::read_to_string(path)
         .ok()
         .and_then(|text| text.trim().parse::<u32>().ok())
         .filter(|pid| supervisor_pid_matches(app, *pid, name))
         .map(|pid| pid.to_string())
-        .unwrap_or_else(|| {
-            let _ = fs::remove_file(pid_path);
-            "stopped".to_string()
-        })
+        .unwrap_or_else(|| "stopped".to_string())
 }
 
 fn supervisor_pid_matches(app: &App, pid: u32, name: &str) -> bool {
@@ -1402,7 +1397,7 @@ mod tests {
 
     #[test]
     fn tun_health_accepts_only_the_canonical_magicnet_interface() {
-        assert!(configured_tun_is_canonical(&[]));
+        assert!(!configured_tun_is_canonical(&[]));
         assert!(configured_tun_is_canonical(&[String::from("magicnet0")]));
         assert!(!configured_tun_is_canonical(&[String::from("utun")]));
         assert!(!configured_tun_is_canonical(&[

@@ -88,16 +88,17 @@ fn singbox_dns_config_from_text(
     _mode: &str,
     transparent_dns: bool,
 ) -> SingboxDnsConfig {
-    let compact = compact_jsonish(text);
     let parsed = serde_json::from_str::<Value>(text).ok();
     let strategy = singbox_dns_strategy(parsed.as_ref());
     let ipv6_guard = ipv6_guard_status(strategy, parsed.as_ref());
-    let sniff_inbound = sniff_rule_has(&compact, "mixed-in") && sniff_rule_has(&compact, "tun-in");
+    let sniff_inbound = parsed.as_ref().is_some_and(|config| {
+        sniff_rule_has(config, "mixed-in") && sniff_rule_has(config, "tun-in")
+    });
     SingboxDnsConfig {
         valid_json: parsed.is_some(),
         fake_ip_disabled: parsed.as_ref().is_some_and(|config| !has_fake_ip(config)),
         hijack: parsed.as_ref().is_some_and(has_dns_hijack_rule),
-        remote_dns: has_remote_dns_detour(&compact),
+        remote_dns: parsed.as_ref().is_some_and(has_remote_dns_detour),
         store_fake_ip_disabled: parsed
             .as_ref()
             .is_some_and(|config| !stores_fake_ip(config)),
@@ -190,8 +191,16 @@ fn has_ipv6_reject_guard(config: &Value) -> bool {
         })
 }
 
-fn sniff_rule_has(compact: &str, tag: &str) -> bool {
-    compact.contains("\"action\":\"sniff\"") && compact.contains(&format!("\"{tag}\""))
+fn sniff_rule_has(config: &Value, tag: &str) -> bool {
+    config
+        .pointer("/route/rules")
+        .and_then(Value::as_array)
+        .is_some_and(|rules| {
+            rules.iter().any(|rule| {
+                rule.get("action").and_then(Value::as_str) == Some("sniff")
+                    && value_contains_string(rule.get("inbound"), tag)
+            })
+        })
 }
 
 fn singbox_dns_strategy(config: Option<&Value>) -> &'static str {
@@ -208,20 +217,23 @@ fn singbox_dns_strategy(config: Option<&Value>) -> &'static str {
     }
 }
 
-fn has_remote_dns_detour(compact: &str) -> bool {
-    compact.contains("\"detour\":\"proxy\"")
-        && (compact.contains("\"server\":\"dns.google\"")
-            || compact.contains("\"server\":\"cloudflare-dns.com\"")
-            || compact.contains("\"server\":\"dns.adguard-dns.com\"")
-            || compact.contains("\"server_name\":\"dns.google\"")
-            || compact.contains("\"server_name\":\"cloudflare-dns.com\"")
-            || compact.contains("\"server_name\":\"dns.adguard-dns.com\""))
-}
-
-fn compact_jsonish(text: &str) -> String {
-    text.chars()
-        .filter(|ch| !ch.is_ascii_whitespace())
-        .collect()
+fn has_remote_dns_detour(config: &Value) -> bool {
+    const REMOTE_DNS_NAMES: [&str; 3] = ["dns.google", "cloudflare-dns.com", "dns.adguard-dns.com"];
+    config
+        .pointer("/dns/servers")
+        .and_then(Value::as_array)
+        .is_some_and(|servers| {
+            servers.iter().any(|server| {
+                if server.get("detour").and_then(Value::as_str) != Some("proxy") {
+                    return false;
+                }
+                let host = server.get("server").and_then(Value::as_str);
+                let tls_name = server.pointer("/tls/server_name").and_then(Value::as_str);
+                REMOTE_DNS_NAMES
+                    .iter()
+                    .any(|expected| host == Some(expected) || tls_name == Some(expected))
+            })
+        })
 }
 
 fn yes_no(value: bool) -> &'static str {
@@ -243,7 +255,7 @@ fn disabled_enabled(disabled: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        compact_jsonish, has_remote_dns_detour, ipv6_guard_status, singbox_dns_config_from_text,
+        has_remote_dns_detour, ipv6_guard_status, singbox_dns_config_from_text,
         singbox_dns_strategy, Ipv6GuardStatus, SingboxDnsConfig,
     };
     use serde_json::Value;
@@ -342,7 +354,7 @@ mod tests {
         }
         "#;
 
-        assert!(has_remote_dns_detour(&compact_jsonish(config)));
+        assert!(has_remote_dns_detour(&parsed(config)));
     }
 
     #[test]
@@ -361,7 +373,25 @@ mod tests {
         }
         "#;
 
-        assert!(!has_remote_dns_detour(&compact_jsonish(config)));
+        assert!(!has_remote_dns_detour(&parsed(config)));
+    }
+
+    #[test]
+    fn remote_dns_detour_rejects_fields_split_across_servers() {
+        let config = parsed(
+            r#"{"dns":{"servers":[{"detour":"proxy","server":"other.invalid"},{"server":"dns.google"}]}}"#,
+        );
+        assert!(!has_remote_dns_detour(&config));
+    }
+
+    #[test]
+    fn sniff_inbound_rejects_action_and_inbound_split_across_rules() {
+        let config = singbox_dns_config_from_text(
+            r#"{"route":{"rules":[{"action":"sniff"},{"inbound":["mixed-in","tun-in"]}]}}"#,
+            "tun",
+            true,
+        );
+        assert!(!config.sniff_inbound);
     }
 
     #[test]
@@ -431,7 +461,7 @@ mod tests {
                 config.valid_json,
                 config.ok(),
             ),
-            (false, false, true, false, true, false, false)
+            (false, false, false, false, false, false, false)
         );
     }
 

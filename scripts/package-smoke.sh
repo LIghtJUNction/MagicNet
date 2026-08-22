@@ -48,6 +48,7 @@ require_entry bin/magicnet-cli
 require_entry bin/magicnet-mcp-server
 require_entry bin/sing-box
 require_entry bin/ecapture
+require_entry bin/jq
 require_entry lib/kamfw/watchdog.sh
 require_entry lib/kamfw/fswatch.sh
 require_entry lib/kamfw/__singbox__.sh
@@ -82,11 +83,11 @@ require_android_arm64_elf() {
         || fail "$entry ELF machine is not AArch64"
 }
 
-for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/sing-box bin/ecapture; do
+for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/sing-box bin/ecapture bin/jq; do
     require_executable_entry "$entry"
 done
 
-for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/sing-box bin/ecapture; do
+for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/sing-box bin/ecapture bin/jq; do
     require_android_arm64_elf "$entry"
 done
 

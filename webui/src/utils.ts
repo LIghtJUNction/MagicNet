@@ -206,7 +206,7 @@ export async function stagePrivatePayload(
   basename: string,
   payload: string,
   label: string,
-  chunkSize = 1024,
+  chunkSize = 32 * 1024,
 ): Promise<PrivatePayloadHandle | null> {
   let created: Pick<ExecOutcome, "ok" | "stdout">;
   try {

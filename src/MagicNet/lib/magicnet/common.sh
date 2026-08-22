@@ -27,8 +27,20 @@ magicnet_module_disabled() {
 }
 
 magicnet_json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+    LC_ALL=C printf '%s' "$1" | sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
 }
+
+# Persisted *.conf files are data. Never source them into the privileged
+# runtime shell; read one exact assignment and reject duplicates.
+magicnet_conf_value() (
+    _conf_file="$1"
+    _conf_key="$2"
+    [ -f "$_conf_file" ] || return 1
+    awk -F= -v key="$_conf_key" '
+        $1 == key { value = substr($0, index($0, "=") + 1); count++ }
+        END { if (count == 1) print value; else exit 1 }
+    ' "$_conf_file"
+)
 
 magicnet_transparent_conf() {
     printf '%s\n' "${MODDIR}/.config/magicnet/transparent-mode.conf"
@@ -36,10 +48,8 @@ magicnet_transparent_conf() {
 
 magicnet_transparent_mode() {
     _mode="${MAGICNET_TRANSPARENT_MODE:-}"
-    if [ -z "$_mode" ] && [ -f "$(magicnet_transparent_conf)" ]; then
-        # shellcheck disable=SC1090
-        . "$(magicnet_transparent_conf)" 2>/dev/null || true
-        _mode="${MAGICNET_TRANSPARENT_MODE:-}"
+    if [ -z "$_mode" ]; then
+        _mode="$(magicnet_conf_value "$(magicnet_transparent_conf)" MAGICNET_TRANSPARENT_MODE 2>/dev/null || true)"
     fi
     case "${_mode:-tun}" in
         tun) printf '%s\n' "tun" ;;
@@ -247,26 +257,9 @@ magicnet_singbox_running_has_nodes() {
 }
 
 magicnet_preferred_core() {
-    _current_core_conf="${MODDIR}/.config/magicnet/current-core.conf"
-    _requested_core="${MAGICNET_DEFAULT_CORE:-}"
-    if [ "${MAGICNET_STRICT_CORE:-0}" = "1" ] && [ -n "$_requested_core" ]; then
-        MAGICNET_DEFAULT_CORE="$_requested_core"
-    elif [ -f "$_current_core_conf" ]; then
-        . "$_current_core_conf"
-    elif [ -f "${MODDIR}/.config/magicnet/core.conf" ]; then
-        . "${MODDIR}/.config/magicnet/core.conf"
-    fi
-
-    case "${MAGICNET_DEFAULT_CORE:-auto}" in
-        sing-box|singbox)
-            printf '%s\n' "sing-box"
-            unset _current_core_conf _requested_core
-            return 0
-            ;;
-    esac
-
+    # MagicNet has one transparent runtime. Legacy core selectors are ignored
+    # rather than sourced or promoted through an implicit "auto" path.
     printf '%s\n' "sing-box"
-    unset _current_core_conf _requested_core
 }
 
 magicnet_config_lock_dir() {
@@ -274,7 +267,9 @@ magicnet_config_lock_dir() {
 }
 
 magicnet_config_lock_proc_start() {
-    awk '{print $22}' "/proc/$1/stat" 2>/dev/null || true
+    case "$1" in '' | *[!0-9]*) return 1 ;; esac
+    awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
+        "/proc/$1/stat" 2>/dev/null || true
 }
 
 magicnet_config_lock_proc_live() {
@@ -447,39 +442,30 @@ magicnet_with_config_lock() {
     return "$_lock_rc"
 }
 
-magicnet_recover_interrupted_subscription() {
-    _recover_tx="${MODDIR}/.state/sing-box/subscription-transaction"
-    [ -d "$_recover_tx" ] || {
-        unset _recover_tx
-        return 0
-    }
-
+magicnet_recover_interrupted_subscription() (
+    [ -d "${MODDIR}/.state/sing-box/subscription-transaction" ] || return 0
+    _started=$(date +%s 2>/dev/null || printf '%s' 0)
+    magicnet_log "Interrupted subscription transaction detected; recovery is starting."
     if ! command -v magicnet_singbox_transaction_reconcile >/dev/null 2>&1; then
-        . "${MODDIR}/lib/magicnet_singbox_subscribe.sh" || {
-            unset _recover_tx
-            return 1
-        }
+        . "${MODDIR}/lib/magicnet_singbox_subscribe.sh" || return 1
     fi
     if magicnet_singbox_update_lock_active; then
-        # A live updater owns the journal.  Startup must not race it.
-        unset _recover_tx
+        magicnet_log "Interrupted subscription journal is owned by a live updater; recovery deferred."
         return 0
     fi
 
-    _recover_lock_was_set="${MAGICNET_CONFIG_LOCK_TIMEOUT+x}"
-    _recover_lock_timeout="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
-    case "$_recover_lock_timeout" in
-        '' | *[!0-9]*) _recover_lock_timeout=45 ;;
+    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
+    case "$MAGICNET_CONFIG_LOCK_TIMEOUT" in
+        '' | *[!0-9]*) MAGICNET_CONFIG_LOCK_TIMEOUT=45 ;;
     esac
-    _recover_old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
-    MAGICNET_CONFIG_LOCK_TIMEOUT="$_recover_lock_timeout"
-    magicnet_with_config_lock magicnet_singbox_status_reconcile_locked
-    _recover_rc=$?
-    if [ -n "$_recover_lock_was_set" ]; then
-        MAGICNET_CONFIG_LOCK_TIMEOUT="$_recover_old_lock_timeout"
+    _rc=0
+    magicnet_with_config_lock magicnet_singbox_recover_interrupted_locked || _rc=$?
+    _finished=$(date +%s 2>/dev/null || printf '%s' 0)
+    _elapsed=$((_finished - _started))
+    if [ "$_rc" -eq 0 ]; then
+        magicnet_log "Interrupted subscription recovery completed in ${_elapsed}s."
     else
-        unset MAGICNET_CONFIG_LOCK_TIMEOUT
+        magicnet_warn "Interrupted subscription recovery failed after ${_elapsed}s"
     fi
-    unset _recover_tx _recover_lock_was_set _recover_lock_timeout _recover_old_lock_timeout
-    return "$_recover_rc"
-}
+    return "$_rc"
+)

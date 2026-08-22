@@ -33,6 +33,7 @@ fn node_list(app: &App) {
     let limit = env::var("MAGICNET_NODE_LIST_LIMIT")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
+        .map(|value| value.min(500))
         .unwrap_or(48);
     let cache = app.moddir.join(".tmp/magicnet-node-list.cache");
     let cache_enabled = env::var("MAGICNET_NODE_CACHE").unwrap_or_else(|_| "1".to_string()) != "0";
@@ -124,6 +125,8 @@ fn read_proxy_selector(app: &App) -> Result<Value, String> {
             "-fsS",
             "--max-time",
             "5",
+            "--max-filesize",
+            "8388608",
             &format!("{}/proxies/proxy", app.api),
         ])
         .output()

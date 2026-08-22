@@ -1015,10 +1015,12 @@ EOF
 }
 
 magicnet_singbox_owned_pids() {
-    _owned_config="$1"
-    for _pid in $(magicnet_singbox_pids); do
-        magicnet_singbox_pid_owned "$_pid" "$_owned_config" && printf '%s\n' "$_pid"
+    _owned_list_config="$1"
+    for _owned_list_pid in $(magicnet_singbox_pids); do
+        magicnet_singbox_pid_owned "$_owned_list_pid" "$_owned_list_config" &&
+            printf '%s\n' "$_owned_list_pid"
     done
+    unset _owned_list_config _owned_list_pid
 }
 
 magicnet_singbox_listener_owned() {

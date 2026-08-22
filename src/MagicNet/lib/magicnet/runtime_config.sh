@@ -6,8 +6,7 @@ magicnet_tailscale_apply_unlocked() (
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
     _jq="${MODDIR}/bin/jq"
-    [ -x "$_jq" ] || _jq="$(command -v jq 2>/dev/null || true)"
-    [ -n "$_jq" ] || return 1
+    [ -x "$_jq" ] || return 1
     _auth="$(magicnet_tailscale_auth_file)"
     _state="${MODDIR}/.state/sing-box/tailscale"
     _tmp="${_config}.tailscale.new"
@@ -75,10 +74,14 @@ magicnet_tailscale_apply_unlocked() (
           | (([$rules | to_entries[] | select((.value.outbound // "") == "lan") | .key] | first) // ($rules | length)) as $at
           | .route.rules = ($rules[:$at] + [{"ip_cidr": tailnets, "outbound": $endpoint.tag}] + $rules[$at:])
         end
-    ' "$_config" >"$_tmp" && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config" || {
+    ' "$_config" >"$_tmp" || {
         rm -f "$_tmp" "$_new_auth" "$_merged_auth"
         return 1
     }
+    if ! chmod 600 "$_tmp" || ! mv -f "$_tmp" "$_config" || ! chmod 600 "$_config"; then
+        rm -f "$_tmp" "$_new_auth" "$_merged_auth"
+        return 1
+    fi
     umask "$_old_umask"
     trap - 0
     unset _config _jq _auth _state _tmp _new_auth _merged_auth _old_umask
@@ -89,8 +92,7 @@ magicnet_tailscale_inject_auth_key() {
     _auth="$(magicnet_tailscale_auth_file)"
     [ -s "$_auth" ] || return 0
     _jq="${MODDIR}/bin/jq"
-    [ -x "$_jq" ] || _jq="$(command -v jq 2>/dev/null || true)"
-    [ -n "$_jq" ] || return 1
+    [ -x "$_jq" ] || return 1
     _tmp="${_config}.tailscale-auth.new"
     (umask 077; "$_jq" --slurpfile auth "$_auth" '
       ($auth[0] // {}) as $keys
@@ -99,18 +101,21 @@ magicnet_tailscale_inject_auth_key() {
             .auth_key = $keys[.tag]
           else . end
         ))
-    ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config" || {
+    ' "$_config" >"$_tmp") || {
         rm -f "$_tmp"
         return 1
     }
+    if ! chmod 600 "$_tmp" || ! mv -f "$_tmp" "$_config" || ! chmod 600 "$_config"; then
+        rm -f "$_tmp"
+        return 1
+    fi
     unset _config _auth _jq _tmp
 }
 
 magicnet_tailscale_scrub_auth_key() {
     _config="${MODDIR}/.config/sing-box/config.json"
     _jq="${MODDIR}/bin/jq"
-    [ -x "$_jq" ] || _jq="$(command -v jq 2>/dev/null || true)"
-    [ -n "$_jq" ] || return 1
+    [ -x "$_jq" ] || return 1
     _tmp="${_config}.tailscale-scrub.new"
     (umask 077; "$_jq" '.endpoints = ((.endpoints // []) | map(if .type == "tailscale" then del(.auth_key) else . end))' "$_config" >"$_tmp") &&
         chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
@@ -132,8 +137,7 @@ magicnet_singbox_runtime_fingerprint() (
     _runtime_config="${_runtime_root}/config.json"
     [ -f "$_runtime_config" ] || return 1
     _runtime_jq="${MODDIR}/bin/jq"
-    [ -x "$_runtime_jq" ] || _runtime_jq="$(command -v jq 2>/dev/null || true)"
-    [ -n "$_runtime_jq" ] || return 1
+    [ -x "$_runtime_jq" ] || return 1
     command -v cksum >/dev/null 2>&1 || return 1
     command -v find >/dev/null 2>&1 || return 1
     command -v sort >/dev/null 2>&1 || return 1

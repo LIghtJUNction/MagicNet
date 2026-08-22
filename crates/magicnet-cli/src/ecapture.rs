@@ -1,13 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
 use crate::{command_text_timeout, App, SHORT_TIMEOUT};
 
 const DEFAULT_CAPTURE_SECONDS: u64 = 15;
 const MAX_CAPTURE_SECONDS: u64 = 300;
+const MAX_CAPTURE_OUTPUT_BYTES: usize = 1024 * 1024;
 
 pub(crate) fn ecapture_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
@@ -270,55 +270,20 @@ struct RunOutcome {
 }
 
 fn run_with_timeout(program: &Path, args: &[&str], timeout: Duration) -> RunOutcome {
-    let mut child = match Command::new(program)
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(err) => {
-            return RunOutcome {
-                stdout: String::new(),
-                stderr: format!("failed to run {}: {err}", program.display()),
-                code: Some(127),
-                timed_out: false,
-            }
-        }
-    };
-    let deadline = Instant::now() + timeout;
-    let mut timed_out = false;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(100)),
-            Ok(None) => {
-                timed_out = true;
-                let _ = child.kill();
-                break;
-            }
-            Err(err) => {
-                return RunOutcome {
-                    stdout: String::new(),
-                    stderr: format!("wait failed: {err}"),
-                    code: Some(1),
-                    timed_out: false,
-                }
-            }
-        }
-    }
-    match child.wait_with_output() {
+    let mut command = Command::new(program);
+    command.args(args);
+    match crate::run_bounded_command(command, timeout, MAX_CAPTURE_OUTPUT_BYTES) {
         Ok(output) => RunOutcome {
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-            code: output.status.code(),
-            timed_out,
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            code: output.status.and_then(|status| status.code()),
+            timed_out: output.timed_out,
         },
         Err(err) => RunOutcome {
             stdout: String::new(),
-            stderr: format!("read failed: {err}"),
-            code: Some(1),
-            timed_out,
+            stderr: format!("failed to run {}: {err}", program.display()),
+            code: Some(127),
+            timed_out: false,
         },
     }
 }

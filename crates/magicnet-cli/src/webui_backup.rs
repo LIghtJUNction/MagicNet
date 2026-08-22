@@ -14,11 +14,14 @@ use crate::subscriptions::{
 use crate::utils::replace_module_text_files_transactionally;
 use crate::{decode_base64, run_magicnet_function, shell_inert_conf_value, App};
 
+const MAX_BACKUP_BYTES: usize = 32 * 1024 * 1024;
+const MAX_BACKUP_BASE64_BYTES: usize = MAX_BACKUP_BYTES.div_ceil(3) * 4;
+
 pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("export") {
         "export" => {
             let password = args.get(1).map(String::as_str).unwrap_or("");
-            let text = backup_text(app);
+            let text = backup_text(app)?;
             let bytes = encode_backup_bytes(&text, password)?;
             println!("{}", crate::encode_base64(&bytes));
             Ok(())
@@ -41,6 +44,10 @@ pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
                     )
                 }
             };
+            let metadata = fs::metadata(path).map_err(|err| format!("inspect backup file: {err}"))?;
+            if metadata.len() > MAX_BACKUP_BASE64_BYTES as u64 {
+                return Err("backup file exceeds size limit".to_string());
+            }
             let payload =
                 fs::read_to_string(path).map_err(|err| format!("read backup file: {err}"))?;
             restore_payload(app, password, payload.trim())
@@ -50,8 +57,17 @@ pub(crate) fn backup_cmd(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn restore_payload(app: &App, password: &str, payload: &str) -> Result<(), String> {
+    if payload.len() > MAX_BACKUP_BASE64_BYTES {
+        return Err("backup payload exceeds size limit".to_string());
+    }
     let bytes = decode_base64(payload)?;
+    if bytes.len() > MAX_BACKUP_BYTES {
+        return Err("backup payload exceeds size limit".to_string());
+    }
     let (bytes, legacy_password_verifier) = decode_backup_bytes(bytes, password)?;
+    if bytes.len() > MAX_BACKUP_BYTES {
+        return Err("backup plaintext exceeds size limit".to_string());
+    }
     let text = String::from_utf8(bytes).map_err(|err| format!("backup is not UTF-8: {err}"))?;
     if legacy_password_verifier {
         verify_legacy_backup_password(&text, password)?;
@@ -65,19 +81,28 @@ fn restore_payload(app: &App, password: &str, payload: &str) -> Result<(), Strin
     Ok(())
 }
 
-fn backup_text(app: &App) -> String {
-    let mut out = String::new();
-    out.push_str("MagicNet backup v2\n");
+fn backup_text(app: &App) -> Result<String, String> {
+    let mut out = String::from("MagicNet backup v2\n");
     for rel in backup_files() {
         let path = app.moddir.join(rel);
-        out.push_str(&format!("--- {rel}\n"));
+        let length = fs::metadata(&path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        if length > MAX_BACKUP_BYTES as u64 {
+            return Err(format!("backup source exceeds size limit: {rel}"));
+        }
         let text = fs::read_to_string(path).unwrap_or_default();
+        let additional = rel.len() + text.len() + 6;
+        if out.len().saturating_add(additional) > MAX_BACKUP_BYTES {
+            return Err("backup exceeds size limit".to_string());
+        }
+        out.push_str(&format!("--- {rel}\n"));
         out.push_str(&text);
         if !text.is_empty() && !text.ends_with('\n') {
             out.push('\n');
         }
     }
-    out
+    Ok(out)
 }
 
 const ENCRYPTED_V1_PREFIX: &[u8] = b"MagicNet encrypted backup v1\n";
@@ -197,6 +222,15 @@ fn verify_legacy_backup_password(text: &str, password: &str) -> Result<(), Strin
 }
 
 fn restore_backup(app: &App, text: &str) -> Result<(), String> {
+    if text.len() > MAX_BACKUP_BYTES {
+        return Err("backup plaintext exceeds size limit".to_string());
+    }
+    if !matches!(
+        text.lines().next(),
+        Some("MagicNet backup v1" | "MagicNet backup v2")
+    ) {
+        return Err("backup header is invalid".to_string());
+    }
     let mut current: Option<String> = None;
     let mut buf = String::new();
     let mut sections = Vec::new();
@@ -417,12 +451,24 @@ mod tests {
     }
 
     #[test]
+    fn restore_rejects_unversioned_payload_before_parsing_sections() {
+        let app = temp_app();
+        let error = restore_backup(
+            &app,
+            "--- .config/magicnet/app-mode.conf\nMAGICNET_APP_MODE=whitelist\n",
+        )
+        .unwrap_err();
+        assert_eq!(error, "backup header is invalid");
+        assert!(!app.moddir.join(".config/magicnet/app-mode.conf").exists());
+    }
+
+    #[test]
     fn backup_without_password_is_plaintext_and_restores_known_files_only() {
         let app = temp_app();
         let app_mode = app.moddir.join(".config/magicnet/app-mode.conf");
         fs::create_dir_all(app_mode.parent().expect("app mode parent")).unwrap();
         fs::write(&app_mode, "MAGICNET_APP_MODE=whitelist\n").unwrap();
-        let text = backup_text(&app);
+        let text = backup_text(&app).unwrap();
 
         assert!(text.starts_with("MagicNet backup v2\n"));
         assert!(!text.contains("password_md5="));

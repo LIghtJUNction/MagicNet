@@ -11,9 +11,11 @@ export type ControlDangerAction = {
 export function singBoxToggleAction(running: boolean): ControlDangerAction {
   return {
     key: "toggle-sing-box",
-    args: running ? "service stop" : "service restart sing-box",
+    args: running ? "service stop" : "service start",
     label: running ? "停止 sing-box" : "启动 sing-box",
-    message: running ? "确认停止 sing-box？停止后流量可能无法继续通过 MagicNet。" : "确认启动 sing-box？当前连接可能会短暂中断。",
+    message: running
+      ? "确认停止 sing-box？停止后流量可能无法继续通过 MagicNet。"
+      : "确认启动 sing-box？该操作不会主动停止一个已运行的内核。",
     background: true
   };
 }

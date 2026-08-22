@@ -75,11 +75,21 @@ magicnet_kernel_running() {
     return 1
 }
 
+magicnet_live_kernel_fast_path() {
+    magicnet_kernel_running || return 1
+    [ "${MAGICNET_ALLOW_DISRUPTIVE_RECOVERY:-0}" != 1 ] || return 1
+    if [ -d "${MODDIR}/.state/sing-box/subscription-transaction" ]; then
+        magicnet_warn "A live sing-box core has pending subscription recovery; keeping the connection and deferring recovery until an explicit repair, update, or restart."
+    fi
+    return 0
+}
+
 magicnet_start_kernel() {
     magicnet_module_disabled && {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         return 1
     }
+    magicnet_live_kernel_fast_path && return 0
     if command -v magicnet_recover_interrupted_subscription >/dev/null 2>&1 &&
         ! magicnet_recover_interrupted_subscription; then
         magicnet_warn "Interrupted subscription transaction recovery failed"
@@ -123,6 +133,7 @@ magicnet_ensure_kernel() {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         return 1
     }
+    magicnet_live_kernel_fast_path && return 0
     if command -v magicnet_recover_interrupted_subscription >/dev/null 2>&1 &&
         ! magicnet_recover_interrupted_subscription; then
         magicnet_warn "Interrupted subscription transaction recovery failed"

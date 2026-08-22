@@ -20,9 +20,12 @@ printf '%s\n' "${PIDOF_RESULT:-202 101 invalid}"
 exit "${PIDOF_RC:-0}"
 EOF
 chmod +x "$fixture/bin/pidof"
+printf '101 (sing-box) S 1 2 3 4 5 6\n' >"$fixture/proc/101/stat"
+printf '202 (sing-box) S 1 2 3 4 5 6\n' >"$fixture/proc/202/stat"
 
 pid_output="$(
   PIDOF_LOG="$pidof_log" PIDOF_RESULT='202 101 invalid' \
+    MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" \
     PATH="$fixture/bin:$PATH" magicnet_singbox_pids
 )"
 test "$pid_output" = $'202\n101'
@@ -54,18 +57,5 @@ pid_output="$(
   PATH="$fixture/sed-bin" MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" magicnet_singbox_pids
 )"
 test "$pid_output" = $'101\n303'
-
-# The early-boot kamfw helper has its own /proc fallback.  Keep its proc root
-# extraction covered too: a custom fixture root must not be parsed as though it
-# were literally /proc (which would yield an empty PID and hide sing-box).
-mkdir -p "$fixture/kamproc/515"
-printf 'sing-box\n' >"$fixture/kamproc/515/comm"
-printf '515 (sing-box) S 1 2 3 4 5 6\n' >"$fixture/kamproc/515/stat"
-import() { :; }
-set_i18n() { :; }
-. "$ROOT/src/MagicNet/lib/kamfw/__singbox__.sh"
-pidof() { return 1; }
-pid_output="$(MAGICNET_SINGBOX_PROC_ROOT="$fixture/kamproc" singbox_pids)"
-test "$pid_output" = 515
 
 printf 'sing-box pid discovery test passed\n'

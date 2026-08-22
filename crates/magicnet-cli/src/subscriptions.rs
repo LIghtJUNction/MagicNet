@@ -465,6 +465,9 @@ fn normalized_subscription_text(text: &str) -> Result<String, String> {
             }
         }
     }
+    if lines.is_empty() {
+        return Err("sing-box subscription URL list is empty".to_string());
+    }
     Ok(format!("{}\n", lines.join("\n")))
 }
 
@@ -540,7 +543,7 @@ pub(crate) fn cleanup_stale_update_lock(app: &App) {
     let expected_start = fields.next();
     let live_start = pid
         .and_then(|pid| fs::read_to_string(format!("/proc/{pid}/stat")).ok())
-        .and_then(|stat| stat.split_whitespace().nth(21).map(str::to_string));
+        .and_then(|stat| crate::proc_start_time(&stat));
     if expected_start.is_some() && live_start.as_deref() == expected_start {
         return;
     }
@@ -1033,6 +1036,7 @@ mod tests {
 
         assert_eq!(text, "https://example.com/a\nhttps://example.com/b\n");
         assert!(normalized_subscription_text("vmess://not-a-subscription\n").is_err());
+        assert!(normalized_subscription_text("\n  \n").is_err());
     }
 
     #[test]

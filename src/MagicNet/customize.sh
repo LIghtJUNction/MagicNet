@@ -164,22 +164,10 @@ magicnet_ask_default_core() {
 }
 
 magicnet_install_selected_core() {
-  _magicnet_install_core="auto"
-  if [ -f "${MODPATH}/.config/magicnet/current-core.conf" ]; then
-    . "${MODPATH}/.config/magicnet/current-core.conf"
-  elif [ -f "${MODPATH}/.config/magicnet/core.conf" ]; then
-    . "${MODPATH}/.config/magicnet/core.conf"
-  fi
-  case "${MAGICNET_DEFAULT_CORE:-auto}" in
-    sing-box) _magicnet_install_core="$MAGICNET_DEFAULT_CORE" ;;
-  esac
-
-  if [ "$_magicnet_install_core" = "sing-box" ] && [ "$MAGIC_SINGBOX" != "0" ] && { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
-    printf '%s\n' sing-box
-  elif [ "$MAGIC_SINGBOX" != "0" ] && { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
+  if [ "$MAGIC_SINGBOX" != "0" ] &&
+    { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
     printf '%s\n' sing-box
   fi
-  unset _magicnet_install_core
 }
 
 magicnet_print_install_summary() {
