@@ -1,6 +1,7 @@
 use serde_json::{json, Value};
 use std::io::{self, Read};
-use std::process::{Command, Stdio};
+use std::os::unix::process::CommandExt;
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -235,13 +236,26 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
 }
 
 pub(crate) fn run_cli(server: &Server, args: &[&str]) -> String {
-    let mut child = match Command::new(&server.cli)
+    run_cli_with_timeout(server, args, CLI_TIMEOUT)
+}
+
+fn run_cli_with_timeout(server: &Server, args: &[&str], timeout: Duration) -> String {
+    let mut command = Command::new(&server.cli);
+    command
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+        .stderr(Stdio::piped());
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setpgid(0, 0) == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        });
+    }
+    let mut child = match command.spawn() {
         Ok(child) => child,
         Err(err) => return format!("failed to run cli: {err}\nrc=-1"),
     };
@@ -251,14 +265,10 @@ pub(crate) fn run_cli(server: &Server, args: &[&str]) -> String {
     let (status, timed_out, wait_error) = loop {
         match child.try_wait() {
             Ok(Some(status)) => break (Some(status), false, None),
-            Ok(None) if started.elapsed() < CLI_TIMEOUT => thread::sleep(Duration::from_millis(25)),
-            Ok(None) => {
-                let _ = child.kill();
-                break (child.wait().ok(), true, None);
-            }
+            Ok(None) if started.elapsed() < timeout => thread::sleep(Duration::from_millis(25)),
+            Ok(None) => break (terminate_cli_group(&mut child), true, None),
             Err(err) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                let _ = terminate_cli_group(&mut child);
                 break (None, false, Some(err));
             }
         }
@@ -280,6 +290,27 @@ pub(crate) fn run_cli(server: &Server, args: &[&str]) -> String {
     };
     text.push_str(&format!("\nrc={code}"));
     text
+}
+
+fn terminate_cli_group(child: &mut Child) -> Option<ExitStatus> {
+    let group = -(child.id() as libc::pid_t);
+    unsafe {
+        libc::kill(group, libc::SIGTERM);
+    }
+    let deadline = Instant::now() + Duration::from_millis(250);
+    while Instant::now() < deadline {
+        if let Ok(Some(status)) = child.try_wait() {
+            unsafe {
+                libc::kill(group, libc::SIGKILL);
+            }
+            return Some(status);
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    unsafe {
+        libc::kill(group, libc::SIGKILL);
+    }
+    child.wait().ok()
 }
 
 fn drain_cli_stream(mut pipe: impl Read) -> CliStreamResult {
@@ -528,11 +559,13 @@ fn text_content(text: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::path::PathBuf;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use serde_json::{json, Value};
 
-    use super::{handle_jsonrpc, Server};
+    use super::{handle_jsonrpc, run_cli_with_timeout, Server};
 
     #[test]
     fn speedtest_tool_call_runs_only_speedtest_cli_argv() {
@@ -628,6 +661,48 @@ mod tests {
                 "{tool} must report an MCP tool error"
             );
         }
+    }
+
+    #[test]
+    fn cli_timeout_terminates_background_children() {
+        let directory = std::env::temp_dir().join(format!(
+            "magicnet-mcp-process-group-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let pid_file = directory.join("child.pid");
+        let script = format!(
+            "sh -c 'trap \"\" TERM; printf \"%s\\\\n\" \"$$\" > \"{}\"; while :; do sleep 1; done' & wait",
+            pid_file.display()
+        );
+        let server = Server {
+            moddir: directory.clone(),
+            cli: PathBuf::from("/bin/sh"),
+            secret: String::new(),
+        };
+        let output = run_cli_with_timeout(&server, &["-c", &script], Duration::from_millis(300));
+        assert!(output.ends_with("rc=124"), "{output}");
+        let pid = fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse::<libc::pid_t>()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && unsafe { libc::kill(pid, 0) } == 0 {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let alive = unsafe { libc::kill(pid, 0) } == 0;
+        if alive {
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
+        }
+        assert!(!alive, "background child survived MCP CLI timeout: {pid}");
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

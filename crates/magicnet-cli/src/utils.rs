@@ -4,8 +4,9 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -40,6 +41,17 @@ pub(crate) fn run_bounded_command(
     timeout: Duration,
     stream_limit: usize,
 ) -> Result<BoundedCommandOutput, String> {
+    // Isolate the command so timeout cleanup also reaches shell helpers and
+    // grandchildren that inherited the captured pipes.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setpgid(0, 0) == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        });
+    }
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -62,12 +74,10 @@ pub(crate) fn run_bounded_command(
             Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(40)),
             Ok(None) => {
                 timed_out = true;
-                let _ = child.kill();
-                break child.wait().ok();
+                break terminate_command_group(&mut child);
             }
             Err(err) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                let _ = terminate_command_group(&mut child);
                 return Err(format!("wait failed: {err}"));
             }
         }
@@ -78,6 +88,27 @@ pub(crate) fn run_bounded_command(
         stderr: receive_output(stderr, "stderr"),
         timed_out,
     })
+}
+
+fn terminate_command_group(child: &mut Child) -> Option<ExitStatus> {
+    let group = -(child.id() as libc::pid_t);
+    unsafe {
+        libc::kill(group, libc::SIGTERM);
+    }
+    let deadline = Instant::now() + Duration::from_millis(250);
+    while Instant::now() < deadline {
+        if let Ok(Some(status)) = child.try_wait() {
+            unsafe {
+                libc::kill(group, libc::SIGKILL);
+            }
+            return Some(status);
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    unsafe {
+        libc::kill(group, libc::SIGKILL);
+    }
+    child.wait().ok()
 }
 
 type OutputReader = Receiver<io::Result<Vec<u8>>>;
@@ -1214,6 +1245,36 @@ mod tests {
             MAX_COMMAND_STREAM_BYTES + "\n[output truncated]".len()
         );
         assert!(output.ends_with("[output truncated]"));
+    }
+
+    #[test]
+    fn timeout_terminates_background_children_in_the_command_group() {
+        let directory = test_directory("command-group-timeout");
+        fs::create_dir_all(&directory).unwrap();
+        let pid_file = directory.join("child.pid");
+        let script = format!(
+            "sh -c 'trap \"\" TERM; printf \"%s\\\\n\" \"$$\" > \"{}\"; while :; do sleep 1; done' & wait",
+            pid_file.display()
+        );
+        let output = command_text_full_timeout("sh", &["-c", &script], Duration::from_millis(300));
+        assert_eq!(output, "timeout after 300ms");
+        let pid = fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse::<libc::pid_t>()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && unsafe { libc::kill(pid, 0) } == 0 {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let alive = unsafe { libc::kill(pid, 0) } == 0;
+        if alive {
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
+        }
+        assert!(!alive, "background child survived command timeout: {pid}");
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
