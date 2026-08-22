@@ -327,16 +327,34 @@ magicnet_singbox_emit_share_link_json() {
         [ -n "$_decoded" ] || return 1
         _vmess_jq="$(command -v jq 2>/dev/null || true)"
         [ -n "$_vmess_jq" ] || return 1
-        _name=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.ps // empty | tostring' 2>/dev/null)
-        _server=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.add // empty | tostring' 2>/dev/null)
-        _port=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.port // empty | tostring' 2>/dev/null)
-        _uuid=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.id // empty | tostring' 2>/dev/null)
-        _alter_id=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.aid // empty | tostring' 2>/dev/null)
-        _network=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.net // empty | tostring' 2>/dev/null)
-        _path=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.path // empty | tostring' 2>/dev/null)
-        _host=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.host // empty | tostring' 2>/dev/null)
-        _tls=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.tls // empty | tostring' 2>/dev/null)
-        _sni=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '.sni // empty | tostring' 2>/dev/null)
+        _vmess_fields=$(printf '%s' "$_decoded" | "$_vmess_jq" -r '
+          def clean:
+            if . == null then "" else tostring end
+            | gsub("[\u0000-\u001f]"; " ");
+          [
+            ["name", .ps], ["server", .add], ["port", .port], ["uuid", .id],
+            ["alter_id", .aid], ["network", .net], ["path", .path],
+            ["host", .host], ["tls", .tls], ["sni", .sni]
+          ]
+          | .[]
+          | "\(.[0])=\(.[1] | clean)"
+        ' 2>/dev/null) || return 1
+        while IFS= read -r _vmess_field; do
+            case "$_vmess_field" in
+            name=*) _name=${_vmess_field#*=} ;;
+            server=*) _server=${_vmess_field#*=} ;;
+            port=*) _port=${_vmess_field#*=} ;;
+            uuid=*) _uuid=${_vmess_field#*=} ;;
+            alter_id=*) _alter_id=${_vmess_field#*=} ;;
+            network=*) _network=${_vmess_field#*=} ;;
+            path=*) _path=${_vmess_field#*=} ;;
+            host=*) _host=${_vmess_field#*=} ;;
+            tls=*) _tls=${_vmess_field#*=} ;;
+            sni=*) _sni=${_vmess_field#*=} ;;
+            esac
+        done <<EOF
+$_vmess_fields
+EOF
         [ -n "$_name" ] && _tag=$(magicnet_json_escape "$_name")
         _server_json=$(magicnet_json_escape "$_server")
         _uuid_json=$(magicnet_json_escape "$_uuid")
