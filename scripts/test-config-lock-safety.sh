@@ -17,7 +17,10 @@ printf '%s\n' 'https://example.invalid/sub/user@example.com' >"$subscription_fil
 test "$(magicnet_first_http_url "$subscription_file")" = \
     'https://example.invalid/sub/user@example.com'
 printf '%s\n' 'https://user@example.invalid/sub' >"$subscription_file"
-! magicnet_first_http_url "$subscription_file" >/dev/null
+if magicnet_first_http_url "$subscription_file" >/dev/null; then
+    printf '%s\n' 'subscription credentials were accepted in the URL authority' >&2
+    exit 1
+fi
 
 # A stale signal trap from another PID must not remove the current owner.
 printf '%s\n' '999999:1' >"$MODDIR/.state/config.lock/pid"
