@@ -805,8 +805,32 @@ magicnet_subscription_refresh_start() {
     if [ "$_refresh_owner_state" = active ]; then
         unset _refresh_hours _refresh_owner_state
         return 0
-    elif [ "$_refresh_owner_state" = stale ] || [ "$_refresh_owner_state" = orphan ]; then
-        warn "Subscription refresh owner is ${_refresh_owner_state}; refusing to start a duplicate or terminate an unowned loop"
+    elif [ "$_refresh_owner_state" = stale ]; then
+        _refresh_stale_owner_file=$(magicnet_subscription_refresh_owner_file)
+        _refresh_stale_record=$(sed -n '1p' "$_refresh_stale_owner_file" 2>/dev/null || true)
+        _refresh_stale_proc_root="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
+        if magicnet_subscription_refresh_owner_parse "$_refresh_stale_record" &&
+            [ ! -d "${_refresh_stale_proc_root}/${_refresh_owner_pid}" ]; then
+            if _refresh_stale_orphans=$(magicnet_subscription_refresh_loop_pids); then
+                _refresh_stale_scan_rc=0
+            else
+                _refresh_stale_scan_rc=$?
+            fi
+            if [ "$_refresh_stale_scan_rc" -eq 0 ] && [ -z "$_refresh_stale_orphans" ]; then
+                rm -f "$_refresh_stale_owner_file"                     "$(magicnet_subscription_refresh_pid_file)"                     "$(magicnet_subscription_refresh_loop_file)" 2>/dev/null || true
+                _refresh_owner_state=none
+            fi
+        fi
+        unset _refresh_stale_owner_file _refresh_stale_record _refresh_stale_proc_root
+        unset _refresh_stale_orphans _refresh_stale_scan_rc
+        unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
+        if [ "$_refresh_owner_state" = stale ]; then
+            warn "Subscription refresh owner is stale; refusing to start a duplicate or terminate an unowned loop"
+            unset _refresh_hours _refresh_owner_state
+            return 1
+        fi
+    elif [ "$_refresh_owner_state" = orphan ]; then
+        warn "Subscription refresh owner is orphan; refusing to start a duplicate or terminate an unowned loop"
         unset _refresh_hours _refresh_owner_state
         return 1
     fi
