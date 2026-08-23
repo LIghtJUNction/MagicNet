@@ -535,7 +535,10 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
 
   iptables() {
     case " $* " in
-      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+      *' -S OUTPUT '*)
+        printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -m comment --comment MagicNet-DNS-Guard -j REJECT'
+        ;;
+      *' -D OUTPUT -o wlan0 -p udp --dport 53 -m comment --comment MagicNet-DNS-Guard -j REJECT '*)
         dns_guard_rule_count="$(cat "$dns_guard_count_file")"
         if [ "$dns_guard_rule_count" -gt 0 ]; then
           printf '%s\n' "$((dns_guard_rule_count - 1))" >"$dns_guard_count_file"
@@ -543,7 +546,7 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
         fi
         return 1
         ;;
-      *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+      *' -C OUTPUT -o wlan0 -p udp --dport 53 -m comment --comment MagicNet-DNS-Guard -j REJECT '*)
         [ "$(cat "$dns_guard_count_file")" -gt 0 ]
         ;;
       *' -D OUTPUT -o wlan0 '*|*' -C OUTPUT -o wlan0 '*)
@@ -565,6 +568,36 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
 )
 
 assert_dns_leak_guard_disable_removes_duplicate_rules
+
+assert_dns_leak_guard_preserves_foreign_reject_rules() (
+  MODDIR="$WORK/dns-leak-guard-foreign-rule/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  foreign_delete_log="$WORK/dns-leak-guard-foreign-rule.delete"
+  : >"$foreign_delete_log"
+
+  iptables() {
+    case " $* " in
+      *' -S OUTPUT '*)
+        printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'
+        ;;
+      *' -D OUTPUT '*)
+        printf '%s\n' "$*" >>"$foreign_delete_log"
+        return 1
+        ;;
+      *) return 1 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+
+  magicnet_disable_dns_leak_guard
+  if [ -s "$foreign_delete_log" ]; then
+    printf '%s\n' 'DNS leak guard cleanup deleted an unowned reject rule' >&2
+    exit 1
+  fi
+)
+
+assert_dns_leak_guard_preserves_foreign_reject_rules
 
 assert_disabled_dns_leak_guard_skips_per_interface_deletes_without_rules() (
   MODDIR="$WORK/dns-leak-guard-fast-cleanup/module"
@@ -652,7 +685,8 @@ assert_dns_leak_guard_records_interfaces() (
   magicnet_warn() { printf '%s\n' "$*" >&2; }
 
   MAGIC_DNS_LEAK_GUARD=1 magicnet_enable_dns_leak_guard
-  test "$(sed -n '1p' "$MODDIR/.state/dns-leak-guard.ifaces")" = wlan0
+  grep -qx 'version=2' "$MODDIR/.state/dns-leak-guard.ifaces"
+  grep -qx wlan0 "$MODDIR/.state/dns-leak-guard.ifaces"
   grep -qx rmnet0 "$MODDIR/.state/dns-leak-guard.ifaces"
   magicnet_disable_dns_leak_guard
   test ! -e "$MODDIR/.state/dns-leak-guard.ifaces"
@@ -718,7 +752,7 @@ assert_dns_leak_guard_uses_ipv6_filter_without_nat() (
   magicnet_warn() { printf '%s\n' "$*" >>"$guard_log"; }
 
   MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=lo magicnet_enable_dns_leak_guard
-  grep -q '^ip6tables -I OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$guard_log"
+  grep -q '^ip6tables -I OUTPUT -o lo -p udp --dport 53 -m comment --comment MagicNet-DNS-Guard -j REJECT$' "$guard_log"
   if grep -q 'IPv6 DNS leak guard unavailable' "$guard_log"; then
     printf '%s\n' 'IPv6 leak guard must probe the filter table, not the optional nat table' >&2
     exit 1

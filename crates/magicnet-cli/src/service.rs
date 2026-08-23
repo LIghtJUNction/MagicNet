@@ -9,18 +9,20 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use crate::{
-    cmdline_has_command, cmdline_has_script, diagnostics::supervisor_pid, run_magicnet_function,
-    singbox_pid_summary, stop_owned_singbox, write_text_file, App,
+    cmdline_has_command, cmdline_has_script, config_editor::validate_active_config,
+    diagnostics::supervisor_pid, run_magicnet_function, singbox_pid_summary, stop_owned_singbox,
+    write_secret_file, write_text_file, App,
 };
 
 const START_SUPERVISORS_COMMAND: &str = "magicnet_supervisors_start_detached";
 const START_KERNEL_COMMAND: &str =
     "MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached";
-const STOP_RUNTIME_CLEANUP_COMMAND: &str =
-    "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
+const STOP_RUNTIME_CLEANUP_COMMAND: &str = r#"[ "${MAGICNET_PRESERVE_HOTSPOT_WATCHDOG:-0}" = 1 ] || magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"#;
 const REPAIR_COMMAND: &str =
     "magicnet_apply_runtime_config; MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_ensure_kernel";
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
+const SINGBOX_CONFIG_RELATIVE: &str = ".config/sing-box/config.json";
+const RUNTIME_FINGERPRINT_RELATIVE: &str = ".state/sing-box/runtime-fingerprint";
 const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
 const CONFIG_APPLY_LOCK: &str = ".state/config-apply.lock";
 const LIFECYCLE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
@@ -61,6 +63,14 @@ fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
         ));
     }
     Ok(ConfigApplyGuard(file))
+}
+
+pub(crate) fn with_config_apply_lock<T>(
+    app: &App,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let _guard = config_apply_lock(app)?;
+    operation()
 }
 
 fn config_apply_lock_bounded(app: &App, timeout: Duration) -> Result<ConfigApplyGuard, String> {
@@ -186,7 +196,7 @@ fn stop_service(app: &App) -> Result<(), String> {
     // otherwise a lifecycle button can sit behind a full config restart.
     quiesce_config_apply(app);
     let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
-    stop_all_direct(app, false)
+    stop_all_direct(app, false, false)
 }
 
 fn quiesce_config_apply(app: &App) {
@@ -234,28 +244,85 @@ pub(crate) fn config_cmd(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 pub(crate) fn apply_config(app: &App) -> Result<(), String> {
+    apply_config_with_options(app, false)
+}
+
+pub(crate) fn apply_config_preserving_hotspot_watchdog(app: &App) -> Result<(), String> {
+    apply_config_with_options(app, true)
+}
+
+fn apply_config_with_options(app: &App, preserve_hotspot_watchdog: bool) -> Result<(), String> {
     // Runtime materialization and the following core restart are one logical
-    // operation.  The shell config lock only covers the writers themselves;
+    // operation. The shell config lock only covers the writers themselves;
     // without this process-level guard two fswatch/WebUI invocations can both
     // pass that lock and then interleave stop/start, leaving DNS/TUN rules
     // attached to different core generations.
     let _config_apply_guard = config_apply_lock(app)?;
-    run_magicnet_function(app, ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; if magicnet_singbox_update_lock_active; then echo '[error] subscription update in progress' >&2; false; else magicnet_apply_runtime_config; fi")?;
+    let config_path = app.moddir.join(SINGBOX_CONFIG_RELATIVE);
+    let previous_config = fs::read_to_string(&config_path)
+        .map_err(|err| format!("read current sing-box config before apply: {err}"))?;
+    if let Err(error) = run_magicnet_function(app, ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; if magicnet_singbox_update_lock_active; then echo '[error] subscription update in progress' >&2; false; else magicnet_apply_runtime_config; fi") {
+        return Err(restore_after_failed_apply(app, &previous_config, error));
+    }
+    if let Err(error) = validate_active_config(app, "sing-box") {
+        return Err(restore_after_failed_apply(
+            app,
+            &previous_config,
+            format!("materialized sing-box config failed validation: {error}"),
+        ));
+    }
 
-    // sing-box snapshots config.json and local rule sets at startup.  Restart
-    // only when those effective inputs changed.  Fswatch may invoke this for
+    // sing-box snapshots config.json and local rule sets at startup. Restart
+    // only when those effective inputs changed. Fswatch may invoke this for
     // unrelated files under .config; an unconditional restart tears down
     // background mail/message sockets even when the running policy is already
-    // current.  A missing or unreadable fingerprint remains fail-safe and
+    // current. A missing or unreadable fingerprint remains fail-safe and
     // takes the restart path.
     if singbox_pid_summary(app) != "stopped" {
         let runtime_unchanged =
             run_magicnet_function(app, "magicnet_singbox_runtime_fingerprint_matches").is_ok();
         if !runtime_unchanged {
-            restart_current_core_preserving_config_apply(app)?;
+            if let Err(error) =
+                restart_current_core_preserving_config_apply(app, preserve_hotspot_watchdog)
+            {
+                restore_previous_config(app, &previous_config).map_err(|restore_error| {
+                        format!(
+                            "restart with materialized config failed: {error}; restore previous config failed: {restore_error}"
+                        )
+                    })?;
+                let rollback_restart =
+                    restart_current_core_preserving_config_apply(app, preserve_hotspot_watchdog);
+                return match rollback_restart {
+                    Ok(()) => Err(format!(
+                        "restart with materialized config failed: {error}; previous config restored and restarted"
+                    )),
+                    Err(rollback_error) => Err(format!(
+                        "restart with materialized config failed: {error}; previous config restored but restart failed: {rollback_error}"
+                    )),
+                };
+            }
         }
     }
     Ok(())
+}
+
+fn restore_previous_config(app: &App, previous_config: &str) -> Result<(), String> {
+    write_secret_file(app, Path::new(SINGBOX_CONFIG_RELATIVE), previous_config)?;
+    let fingerprint = app.moddir.join(RUNTIME_FINGERPRINT_RELATIVE);
+    match fs::remove_file(&fingerprint) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("invalidate runtime fingerprint: {error}")),
+    }
+}
+
+fn restore_after_failed_apply(app: &App, previous_config: &str, error: String) -> String {
+    match restore_previous_config(app, previous_config) {
+        Ok(()) => format!("{error}; previous sing-box config restored"),
+        Err(restore_error) => {
+            format!("{error}; restore previous sing-box config failed: {restore_error}")
+        }
+    }
 }
 
 pub(crate) fn transparent_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -412,23 +479,27 @@ fn read_bounded_log_tail(path: &Path) -> std::io::Result<String> {
 fn restart(app: &App, target: &str) -> Result<(), String> {
     quiesce_config_apply(app);
     let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
-    restart_with_options_unlocked(app, target, false)
+    restart_with_options_unlocked(app, target, false, false)
 }
 
 pub(crate) fn restart_current_core(app: &App) -> Result<(), String> {
     restart(app, "current")
 }
 
-fn restart_current_core_preserving_config_apply(app: &App) -> Result<(), String> {
-    restart_with_options_unlocked(app, "current", true)
+fn restart_current_core_preserving_config_apply(
+    app: &App,
+    preserve_hotspot_watchdog: bool,
+) -> Result<(), String> {
+    restart_with_options_unlocked(app, "current", true, preserve_hotspot_watchdog)
 }
 
 fn restart_with_options_unlocked(
     app: &App,
     target: &str,
     preserve_config_apply: bool,
+    preserve_hotspot_watchdog: bool,
 ) -> Result<(), String> {
-    stop_all_direct(app, preserve_config_apply)?;
+    stop_all_direct(app, preserve_config_apply, preserve_hotspot_watchdog)?;
     let target = if target == "current" {
         selected_core(app)
     } else {
@@ -449,13 +520,19 @@ fn restart_command(target: &str) -> &'static str {
     }
 }
 
-fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String> {
+fn stop_all_direct(
+    app: &App,
+    preserve_config_apply: bool,
+    preserve_hotspot_watchdog: bool,
+) -> Result<(), String> {
     stop_supervisor_pidfile(app, app.moddir.join(".state/watchdog/magicnet-kernel.pid"));
-    stop_supervisor_pidfile(
-        app,
-        app.moddir
-            .join(".state/watchdog/magicnet-hotspot-route.pid"),
-    );
+    if !preserve_hotspot_watchdog {
+        stop_supervisor_pidfile(
+            app,
+            app.moddir
+                .join(".state/watchdog/magicnet-hotspot-route.pid"),
+        );
+    }
     stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"));
     stop_supervisor_pidfile(app, app.moddir.join(".state/after-kernel-start.pid"));
     ignore_command(
@@ -502,7 +579,15 @@ fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String>
     // VPN/core may legitimately use the same process name and must survive a
     // MagicNet stop/restart.
     stop_owned_singbox(app);
-    run_magicnet_function(app, stop_runtime_cleanup_command())?;
+    let cleanup_command = if preserve_hotspot_watchdog {
+        format!(
+            "MAGICNET_PRESERVE_HOTSPOT_WATCHDOG=1 {}",
+            stop_runtime_cleanup_command()
+        )
+    } else {
+        stop_runtime_cleanup_command().to_string()
+    };
+    run_magicnet_function(app, &cleanup_command)?;
     Ok(())
 }
 
@@ -601,7 +686,7 @@ fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
     let mode = normalize_transparent_mode(mode)?;
     let _config_apply_guard = config_apply_lock(app)?;
     write_transparent_mode(app, mode)?;
-    stop_all_direct(app, false)?;
+    stop_all_direct(app, false, false)?;
     run_magicnet_function(app, "magicnet_transparent_apply")?;
     run_magicnet_function(app, "magicnet_start_kernel")?;
     start_supervisors(app)?;
@@ -681,12 +766,15 @@ fn tail_lines(text: &str, lines: usize) -> Vec<&str> {
 mod tests {
     use super::{
         api_host_port, config_apply_lock, config_apply_lock_bounded, normalize_transparent_mode,
-        restart_command, safe_log_name, service_log_path, stop_runtime_cleanup_command,
-        supervisor_cmdline_matches, REPAIR_COMMAND, START_KERNEL_COMMAND,
+        restart_command, restore_after_failed_apply, safe_log_name, service_log_path,
+        stop_runtime_cleanup_command, supervisor_cmdline_matches, REPAIR_COMMAND,
+        RUNTIME_FINGERPRINT_RELATIVE, SINGBOX_CONFIG_RELATIVE, START_KERNEL_COMMAND,
     };
     use crate::App;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::mpsc;
+    use std::thread;
     use std::time::{Duration, Instant};
 
     fn fixture_app(name: &str) -> (App, PathBuf) {
@@ -727,10 +815,10 @@ mod tests {
     }
 
     #[test]
-    fn stop_runtime_cleanup_disables_dns_capture_before_leak_guard() {
+    fn stop_runtime_cleanup_preserves_hotspot_when_requested_and_orders_dns_cleanup() {
         assert_eq!(
             stop_runtime_cleanup_command(),
-            "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"
+            r#"[ "${MAGICNET_PRESERVE_HOTSPOT_WATCHDOG:-0}" = 1 ] || magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"#
         );
     }
 
@@ -738,6 +826,22 @@ mod tests {
     fn repair_explicitly_opts_into_disruptive_recovery() {
         assert!(REPAIR_COMMAND.contains("MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1"));
         assert!(REPAIR_COMMAND.contains("magicnet_ensure_kernel"));
+    }
+
+    #[test]
+    fn failed_runtime_apply_restores_the_previous_config_atomically() {
+        let (app, root) = fixture_app("apply-rollback");
+        let config = root.join(SINGBOX_CONFIG_RELATIVE);
+        fs::create_dir_all(config.parent().unwrap()).unwrap();
+        fs::write(&config, "new invalid config").unwrap();
+        let fingerprint = root.join(RUNTIME_FINGERPRINT_RELATIVE);
+        fs::create_dir_all(fingerprint.parent().unwrap()).unwrap();
+        fs::write(&fingerprint, "new fingerprint\n").unwrap();
+        let error = restore_after_failed_apply(&app, "old valid config\n", "apply failed".into());
+        assert!(error.contains("previous sing-box config restored"));
+        assert_eq!(fs::read_to_string(&config).unwrap(), "old valid config\n");
+        assert!(!fingerprint.exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -771,6 +875,30 @@ mod tests {
         let reacquired = config_apply_lock(&app).expect("reacquire config apply lock");
         drop(reacquired);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shared_config_apply_lock_serializes_mutating_operations() {
+        let (app, root) = fixture_app("shared-config-apply-lock");
+        let first = config_apply_lock(&app).unwrap();
+        let worker_app = app.clone();
+        let (sent, received) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            super::with_config_apply_lock(&worker_app, || {
+                sent.send(()).unwrap();
+                Ok(())
+            })
+            .unwrap();
+        });
+        thread::sleep(Duration::from_millis(30));
+        assert!(matches!(
+            received.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        drop(first);
+        received.recv_timeout(Duration::from_secs(1)).unwrap();
+        worker.join().unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

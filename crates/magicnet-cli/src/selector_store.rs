@@ -147,8 +147,7 @@ pub(crate) fn replay(app: &App) -> Result<usize, String> {
     for (group, member) in values {
         let member = replay_member(&group, &member);
         if valid_member(groups, &group, &member) {
-            if let Err(err) = curl_put_selection(app, &group, &json!({"name": member}).to_string())
-            {
+            if let Err(err) = replay_selection(app, &group, &member) {
                 failed += 1;
                 eprintln!("[warn] persisted selector replay failed for one group: {err}");
             } else {
@@ -157,9 +156,26 @@ pub(crate) fn replay(app: &App) -> Result<usize, String> {
         }
     }
     if failed > 0 {
-        eprintln!("[warn] selector replay completed with {failed} failed item(s)");
+        return Err(format!(
+            "selector replay failed for {failed} item(s) after applying {applied}"
+        ));
     }
     Ok(applied)
+}
+
+fn replay_selection(app: &App, group: &str, member: &str) -> Result<(), String> {
+    let payload = json!({"name": member}).to_string();
+    let mut last_error = None;
+    for attempt in 0..3 {
+        match curl_put_selection(app, group, &payload) {
+            Ok(()) => return Ok(()),
+            Err(error) => last_error = Some(error),
+        }
+        if attempt < 2 {
+            thread::sleep(Duration::from_millis(250));
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "selector update failed".to_string()))
 }
 
 fn replay_member(group: &str, member: &str) -> String {

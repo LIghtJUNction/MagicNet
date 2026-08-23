@@ -12,7 +12,7 @@ use std::time::Duration;
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 
-use crate::service::apply_config;
+use crate::service::{apply_config, with_config_apply_lock};
 use crate::webui_payload::MAX_WEBUI_PAYLOAD_BYTES;
 use crate::{cstring_from_os_str, decode_base64, write_secret_file, write_text_file, App};
 
@@ -536,12 +536,14 @@ fn commit_config_text(
     role: &str,
     protected_keys: Option<&str>,
 ) -> Result<(), String> {
-    with_generated_config_input(app, role, bytes, |source, _directory| {
-        validate_and_commit_open_config_file_with(app, target, path, source, || {
-            if let Some(keys) = protected_keys {
-                write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), keys)?;
-            }
-            Ok(())
+    with_config_apply_lock(app, || {
+        with_generated_config_input(app, role, bytes, |source, _directory| {
+            validate_and_commit_open_config_file_with(app, target, path, source, || {
+                if let Some(keys) = protected_keys {
+                    write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), keys)?;
+                }
+                Ok(())
+            })
         })
     })?;
     println!(
@@ -861,6 +863,11 @@ fn default_config(_target: &str) -> String {
 }
 "#
     .to_string()
+}
+
+pub(crate) fn validate_active_config(app: &App, target: &str) -> Result<(), String> {
+    let path = config_path(app, target)?;
+    validate_config(app, target, &path)
 }
 
 fn validate_config(app: &App, target: &str, _path: &Path) -> Result<(), String> {

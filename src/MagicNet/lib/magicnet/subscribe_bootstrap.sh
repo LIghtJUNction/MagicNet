@@ -58,15 +58,32 @@ magicnet_require_jq() {
     printf '%s\n' "$_jq"
 }
 
-magicnet_jq_install_config() {
+magicnet_jq_install_config() (
     _config="$1"
-    _tmp="$2"
+    _tmp_hint="$2"
     shift 2
-    (umask 077; "$@" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
-    _rc=$?
-    [ "$_rc" -eq 0 ] || rm -f "$_tmp" 2>/dev/null || true
-    return "$_rc"
-}
+    if { [ -e "$_tmp_hint" ] || [ -L "$_tmp_hint" ]; } &&
+        ! rm -f "$_tmp_hint" 2>/dev/null; then
+        unset _config _tmp_hint
+        return 1
+    fi
+    _tmp=$(mktemp "${_tmp_hint}.XXXXXX") || {
+        unset _config _tmp_hint
+        return 1
+    }
+    if (umask 077; "$@" >"$_tmp") &&
+        [ -f "$_tmp" ] && [ ! -L "$_tmp" ] &&
+        chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"; then
+        _rc=0
+    else
+        _rc=$?
+        [ "$_rc" -ne 0 ] || _rc=1
+        rm -f "$_tmp" 2>/dev/null || true
+    fi
+    set -- "$_rc"
+    unset _config _tmp_hint _tmp _rc
+    return "$1"
+)
 
 magicnet_list_file_values() {
     _file="$1"

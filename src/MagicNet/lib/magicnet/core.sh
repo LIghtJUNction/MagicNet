@@ -136,7 +136,8 @@ magicnet_start_kernel() {
         # Startup already materialized hotspot policy before launching sing-box.
         # Replaying it through the full WebUI path can recursively apply config
         # and restart the core that is still starting.
-        "${MODDIR}/cli" api replay-startup >/dev/null 2>&1 || true
+        "${MODDIR}/cli" api replay-startup >/dev/null 2>&1 ||
+        magicnet_warn "Persisted selector or hotspot policy replay was incomplete."
         magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
         return 0
     fi

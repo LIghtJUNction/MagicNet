@@ -721,7 +721,10 @@ start_fake_core() {
 assert_dns_cleanup_log() {
     local log_file="$1"
     rg -q '^iptables -t nat -D OUTPUT -j magicnet-dns-output$' "$log_file"
-    rg -q '^iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$log_file"
+    if rg -q '^iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$log_file"; then
+        echo 'DNS cleanup deleted an unowned reject rule' >&2
+        return 1
+    fi
 }
 
 assert_dns_interception_not_enabled() {
@@ -1017,10 +1020,12 @@ import sys
 
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
 capture = next((i for i, line in enumerate(lines) if line == "iptables -t nat -D OUTPUT -j magicnet-dns-output"), None)
-guard = next((i for i, line in enumerate(lines) if line == "iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT"), None)
+foreign_guard_delete = next((i for i, line in enumerate(lines) if line == "iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT"), None)
 run = next((i for i, line in enumerate(lines) if line.startswith("sing-box run")), None)
-if capture is None or guard is None or run is None or capture > run or guard > run:
-    raise SystemExit("kernel bootstrap did not clear DNS interception before starting sing-box")
+if capture is None or run is None or capture > run:
+    raise SystemExit("kernel bootstrap did not clear owned DNS interception before starting sing-box")
+if foreign_guard_delete is not None:
+    raise SystemExit("kernel bootstrap deleted an unowned DNS reject rule")
 PY
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
 start_fake_core
