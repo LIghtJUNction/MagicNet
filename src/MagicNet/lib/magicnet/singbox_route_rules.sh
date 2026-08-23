@@ -49,11 +49,14 @@ magicnet_singbox_insert_route_rules() (
           else
             has_value("domain_suffix"; "__magicnet_route__")
           end;
-        def is_boundary:
+        def is_block_precedence_rule:
+          has("action")
+            or ((has_value("protocol"; "icmp")) and ((.outbound? // "") == "block"))
+            or has_value("package_name"; "__magicnet_app_proxy__")
+            or has_value("domain"; "__magicnet_app_proxy__");
+        def is_insertion_point:
           if $mode == "block" then
-            has("action")
-              or ((has_value("protocol"; "icmp")) and ((.outbound? // "") == "block"))
-              or has_value("domain"; "__magicnet_app_proxy__")
+            (is_block_precedence_rule | not)
           else
             (.action? // "") == "sniff"
           end;
@@ -63,7 +66,7 @@ magicnet_singbox_insert_route_rules() (
           ($managed[0] // []) as $new
           | (.route.rules | map(select(is_managed | not))) as $clean
           | ([range(0; ($clean | length)) as $index
-              | select($clean[$index] | is_boundary)
+              | select($clean[$index] | is_insertion_point)
               | $index][0] // ($clean | length)) as $position
           | .route.rules = (
               $clean[0:$position] + $new + $clean[$position:]
