@@ -50,7 +50,8 @@ magicnet_singbox_insert_route_rules() (
             has_value("domain_suffix"; "__magicnet_route__")
           end;
         def is_block_precedence_rule:
-          has("action")
+          has_value("domain_suffix"; "__magicnet_route__")
+            or has("action")
             or ((has_value("protocol"; "icmp")) and ((.outbound? // "") == "block"))
             or has_value("package_name"; "__magicnet_app_proxy__")
             or has_value("domain"; "__magicnet_app_proxy__");
