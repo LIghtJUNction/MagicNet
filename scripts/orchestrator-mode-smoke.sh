@@ -28,8 +28,12 @@ trap cleanup EXIT
 
 MODDIR="$TMPDIR/module"
 export MODDIR
-mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet" "$MODDIR/bin"
+mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet" "$MODDIR/bin" "$MODDIR/lib/magicnet/jq"
 ln -s "$(command -v jq)" "$MODDIR/bin/jq"
+cp "$ROOT_DIR/src/MagicNet/lib/magicnet/primitives.sh" \
+    "$ROOT_DIR/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh" \
+    "$MODDIR/lib/magicnet/"
+cp "$ROOT_DIR"/src/MagicNet/lib/magicnet/jq/*.jq "$MODDIR/lib/magicnet/jq/"
 
 cat >"$TMPDIR/harness.sh" <<'HARNESS'
 #!/usr/bin/env sh
