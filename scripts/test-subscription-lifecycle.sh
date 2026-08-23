@@ -754,6 +754,55 @@ unset missing_cmdline_proc
     "$(magicnet_subscription_refresh_loop_file)"
 )
 
+# A just-forked child can briefly expose the parent's argv before exec. Keep
+# retrying that readable mismatch while its immutable process start time stays
+# unchanged, but stop immediately if the PID is reused.
+(
+  pre_exec_match_count="$fixture/pre-exec-match-count"
+  printf '0\n' >"$pre_exec_match_count"
+  magicnet_subscription_refresh_proc_start() { printf '4242\n'; }
+  magicnet_subscription_refresh_proc_command_matches() {
+    pre_exec_calls=$(cat "$pre_exec_match_count")
+    pre_exec_calls=$((pre_exec_calls + 1))
+    printf '%s\n' "$pre_exec_calls" >"$pre_exec_match_count"
+    [ "$pre_exec_calls" -ge 2 ]
+  }
+  pre_exec_start="$({
+    MAGICNET_SUB_REFRESH_IDENTITY_ATTEMPTS=3 \
+      MAGICNET_SUB_REFRESH_IDENTITY_DELAY=0 \
+      magicnet_subscription_refresh_wait_for_identity 4242
+  })"
+  test "$pre_exec_start" = 4242
+  assert_file "$pre_exec_match_count" 2
+)
+(
+  reused_start_count="$fixture/reused-start-count"
+  reused_match_count="$fixture/reused-match-count"
+  printf '0\n' >"$reused_start_count"
+  printf '0\n' >"$reused_match_count"
+  magicnet_subscription_refresh_proc_start() {
+    reused_start_calls=$(cat "$reused_start_count")
+    reused_start_calls=$((reused_start_calls + 1))
+    printf '%s\n' "$reused_start_calls" >"$reused_start_count"
+    if [ "$reused_start_calls" -eq 1 ]; then printf '4242\n'; else printf '4343\n'; fi
+  }
+  magicnet_subscription_refresh_proc_command_matches() {
+    reused_match_calls=$(cat "$reused_match_count")
+    printf '%s\n' "$((reused_match_calls + 1))" >"$reused_match_count"
+    return 1
+  }
+  if MAGICNET_SUB_REFRESH_IDENTITY_ATTEMPTS=3 \
+    MAGICNET_SUB_REFRESH_IDENTITY_DELAY=0 \
+    magicnet_subscription_refresh_wait_for_identity 4242; then
+    echo 'reused refresh PID unexpectedly passed identity wait' >&2
+    exit 1
+  else
+    test "$?" -eq 1
+  fi
+  assert_file "$reused_start_count" 2
+  assert_file "$reused_match_count" 1
+)
+
 if magicnet_subscription_refresh_wait_for_identity invalid-pid; then
   echo 'invalid refresh identity PID unexpectedly succeeded' >&2
   exit 1
@@ -796,7 +845,14 @@ printf 'off\n' >"$(magicnet_subscription_schedule_file)"
 orphan_loop="$(magicnet_subscription_refresh_loop_file)"
 cat >"$orphan_loop" <<'EOF'
 #!/bin/sh
-while :; do sleep 30; done
+child=
+trap 'test -z "$child" || kill "$child" 2>/dev/null || true; exit 0' TERM INT
+while :; do
+  sleep 30 &
+  child=$!
+  wait "$child"
+  child=
+done
 EOF
 chmod +x "$orphan_loop"
 sh "$orphan_loop" &
@@ -810,6 +866,15 @@ if magicnet_subscription_refresh_start; then
 fi
 kill -0 "$orphan_pid"
 test "$(magicnet_subscription_refresh_loop_pids)" = "$orphan_pid"
+ps_only_bin="$fixture/ps-only-bin"
+mkdir -p "$ps_only_bin"
+cat >"$ps_only_bin/grep" <<'EOF'
+#!/bin/sh
+exit 2
+EOF
+chmod +x "$ps_only_bin/grep"
+test "$(PATH="$ps_only_bin:$PATH" magicnet_subscription_refresh_loop_pids)" = "$orphan_pid"
+unset ps_only_bin
 test ! -e "$(magicnet_subscription_refresh_owner_file)"
 kill "$orphan_pid"
 wait "$orphan_pid" 2>/dev/null || true

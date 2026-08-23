@@ -514,28 +514,33 @@ magicnet_subscription_refresh_wait_for_identity() {
     case "$_refresh_wait_attempts" in '' | *[!0-9]*) _refresh_wait_attempts=20 ;; esac
     case "$_refresh_wait_delay" in '' | *[!0-9.]* | .* | *.*.*) _refresh_wait_delay=0.05 ;; esac
     [ "$_refresh_wait_attempts" -gt 0 ] || _refresh_wait_attempts=1
+    _refresh_wait_observed_start=
     while [ "$_refresh_wait_attempts" -gt 0 ]; do
         _refresh_wait_start=$(magicnet_subscription_refresh_proc_start "$_refresh_wait_pid" 2>/dev/null || true)
         if [ -n "$_refresh_wait_start" ]; then
-            if magicnet_subscription_refresh_proc_command_matches "$_refresh_wait_pid"; then
-                printf '%s\n' "$_refresh_wait_start"
-                unset _refresh_wait_pid _refresh_wait_attempts _refresh_wait_delay _refresh_wait_start
-                unset _refresh_wait_match_rc
-                return 0
-            else
-                _refresh_wait_match_rc=$?
-                # A readable, mismatched command is not a startup race. Only
-                # the transient live-but-unreadable proc result is retryable.
-                if [ "$_refresh_wait_match_rc" -ne 2 ]; then
-                    break
-                fi
+            if [ -z "$_refresh_wait_observed_start" ]; then
+                _refresh_wait_observed_start=$_refresh_wait_start
+            elif [ "$_refresh_wait_start" != "$_refresh_wait_observed_start" ]; then
+                # The PID was reused while identity was pending. Never accept
+                # a later process, even if it eventually presents similar argv.
+                break
             fi
+            if magicnet_subscription_refresh_proc_command_matches "$_refresh_wait_pid"; then
+                printf '%s\n' "$_refresh_wait_observed_start"
+                unset _refresh_wait_pid _refresh_wait_attempts _refresh_wait_delay _refresh_wait_start
+                unset _refresh_wait_observed_start
+                return 0
+            fi
+            # Immediately after fork, /proc can still expose the parent's argv
+            # before the child execs nohup/sh. Retry both readable mismatches and
+            # transient read errors only while the process start time is stable.
         fi
         _refresh_wait_attempts=$((_refresh_wait_attempts - 1))
         [ "$_refresh_wait_attempts" -gt 0 ] || break
         sleep "$_refresh_wait_delay"
     done
-    unset _refresh_wait_pid _refresh_wait_attempts _refresh_wait_delay _refresh_wait_start _refresh_wait_match_rc
+    unset _refresh_wait_pid _refresh_wait_attempts _refresh_wait_delay _refresh_wait_start
+    unset _refresh_wait_observed_start
     return 1
 }
 
@@ -577,6 +582,57 @@ magicnet_subscription_refresh_stop_known() {
     unset _refresh_known_pid _refresh_known_start _refresh_known_deadline
 }
 
+magicnet_subscription_refresh_ps_loop_pids() (
+    _refresh_ps_expected="$1"
+    _refresh_ps_attempts="$2"
+    _refresh_ps_delay="$3"
+    command -v ps >/dev/null 2>&1 || return 3
+    command -v awk >/dev/null 2>&1 || return 3
+    _refresh_ps_attempt=0
+    _refresh_ps_usable=0
+    while [ "$_refresh_ps_attempt" -lt "$_refresh_ps_attempts" ]; do
+        if ! _refresh_ps_output=$(ps -A -o pid=,args= 2>/dev/null); then
+            [ "$_refresh_ps_usable" -eq 0 ] && return 3
+            return 2
+        fi
+        if ! printf '%s\n' "$_refresh_ps_output" |
+            awk -v pid="$$" '$1 == pid { found=1 } END { exit(found ? 0 : 1) }'; then
+            [ "$_refresh_ps_usable" -eq 0 ] && return 3
+            return 2
+        fi
+        _refresh_ps_usable=1
+        _refresh_ps_candidates=$(printf '%s\n' "$_refresh_ps_output" |
+            awk -v expected="$_refresh_ps_expected" 'index($0, expected) { print $1 }')
+        _refresh_ps_matches=
+        _refresh_ps_exact_error=0
+        for _refresh_ps_pid in $_refresh_ps_candidates; do
+            case "$_refresh_ps_pid" in '' | *[!0-9]*) continue ;; esac
+            if magicnet_subscription_refresh_proc_command_matches "$_refresh_ps_pid"; then
+                if [ -n "$_refresh_ps_matches" ]; then
+                    _refresh_ps_matches="${_refresh_ps_matches}
+${_refresh_ps_pid}"
+                else
+                    _refresh_ps_matches=$_refresh_ps_pid
+                fi
+            else
+                _refresh_ps_match_rc=$?
+                if [ "$_refresh_ps_match_rc" -eq 2 ]; then
+                    _refresh_ps_exact_error=1
+                    break
+                fi
+            fi
+        done
+        if [ "$_refresh_ps_exact_error" -eq 0 ]; then
+            [ -z "$_refresh_ps_matches" ] || printf '%s\n' "$_refresh_ps_matches"
+            return 0
+        fi
+        _refresh_ps_attempt=$((_refresh_ps_attempt + 1))
+        [ "$_refresh_ps_attempt" -lt "$_refresh_ps_attempts" ] || break
+        sleep "$_refresh_ps_delay"
+    done
+    return 2
+)
+
 magicnet_subscription_refresh_loop_pids() {
     _refresh_loop_proc_root="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
     _refresh_loop_expected=$(magicnet_subscription_refresh_loop_file)
@@ -605,6 +661,32 @@ magicnet_subscription_refresh_loop_pids() {
     case "$_refresh_loop_scan_delay" in
         '' | *[!0-9.]* | .* | *.*.*) _refresh_loop_scan_delay=0.05 ;;
     esac
+
+    # A successful full ps snapshot avoids unrelated /proc read failures under
+    # Android SELinux. Every prefiltered hit is still verified against exact
+    # argv from /proc; fake proc roots retain the fail-closed scanner below.
+    if [ "$_refresh_loop_proc_root" = /proc ]; then
+        if _refresh_loop_ps_pids=$(magicnet_subscription_refresh_ps_loop_pids \
+            "$_refresh_loop_expected" "$_refresh_loop_scan_attempts" "$_refresh_loop_scan_delay"); then
+            _refresh_loop_ps_rc=0
+        else
+            _refresh_loop_ps_rc=$?
+        fi
+        case "$_refresh_loop_ps_rc" in
+        0)
+            [ -z "$_refresh_loop_ps_pids" ] || printf '%s\n' "$_refresh_loop_ps_pids"
+            unset _refresh_loop_proc_root _refresh_loop_expected _refresh_loop_scan_attempts
+            unset _refresh_loop_scan_delay _refresh_loop_ps_pids _refresh_loop_ps_rc
+            return 0
+            ;;
+        2)
+            unset _refresh_loop_proc_root _refresh_loop_expected _refresh_loop_scan_attempts
+            unset _refresh_loop_scan_delay _refresh_loop_ps_pids _refresh_loop_ps_rc
+            return 2
+            ;;
+        esac
+        unset _refresh_loop_ps_pids _refresh_loop_ps_rc
+    fi
     _refresh_loop_scan_attempt=0
     while [ "$_refresh_loop_scan_attempt" -lt "$_refresh_loop_scan_attempts" ]; do
         set --
@@ -693,6 +775,7 @@ magicnet_subscription_refresh_loop_pids() {
     unset _refresh_loop_match_rc _refresh_loop_exact_error
     return 2
 }
+
 
 magicnet_subscription_refresh_owner_state() {
     _refresh_state_owner=$(magicnet_subscription_refresh_owner_file)
@@ -837,9 +920,13 @@ magicnet_subscription_refresh_start() {
     nohup sh "$_refresh_loop_file" </dev/null >>"$_refresh_log_file" 2>&1 &
     _refresh_pid=$!
     if ! _refresh_start=$(magicnet_subscription_refresh_wait_for_identity "$_refresh_pid"); then
-        kill "$_refresh_pid" 2>/dev/null || true
+        _refresh_failed_start=$(magicnet_subscription_refresh_proc_start "$_refresh_pid" 2>/dev/null || true)
+        if [ -n "$_refresh_failed_start" ]; then
+            magicnet_subscription_refresh_stop_known "$_refresh_pid" "$_refresh_failed_start"
+        fi
         unset _refresh_hours _refresh_owner_state _refresh_seconds _refresh_state_dir _refresh_loop_file
         unset _refresh_pid_file _refresh_owner_file _refresh_log_file _refresh_pid _refresh_start
+        unset _refresh_failed_start
         return 1
     fi
     _refresh_owner_tmp="${_refresh_owner_file}.tmp.$$"

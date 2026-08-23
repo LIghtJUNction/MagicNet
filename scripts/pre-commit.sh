@@ -38,6 +38,7 @@ jq empty src/MagicNet/.config/sing-box/config.json
 bash scripts/test-repository-hygiene.sh
 bash scripts/test-config-template-pin.sh
 sh scripts/test-kamfw-i18n.sh
+bash scripts/test-kamfw-rich-output.sh
 bash scripts/test-default-routing-policy.sh
 bash scripts/test-policy-architecture.sh
 bash scripts/test-ad-routing.sh
