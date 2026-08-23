@@ -929,6 +929,18 @@ kill "$stale_pid"
 wait "$stale_pid" 2>/dev/null || true
 stale_pid=
 
+# Once the recorded PID is gone and a complete scan proves no orphan loop is
+# present, stale metadata can be removed without signaling any process.
+printf '24\n' >"$(magicnet_subscription_schedule_file)"
+magicnet_subscription_refresh_start
+recovered_refresh_record=$(sed -n '1p' "$(magicnet_subscription_refresh_owner_file)")
+test -n "$recovered_refresh_record"
+test "$recovered_refresh_record" != "$stale_record"
+test "$(magicnet_subscription_refresh_owner_state)" = active
+magicnet_subscription_schedule_set off
+assert_file "$(magicnet_subscription_schedule_file)" off
+unset recovered_refresh_record
+
 sleep 30 &
 mismatch_pid=$!
 mismatch_start="$(magicnet_subscription_refresh_proc_start "$mismatch_pid")"
