@@ -1,5 +1,6 @@
 use crate::{subscriptions, App};
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::os::fd::RawFd;
@@ -262,10 +263,61 @@ const UNSAFE_RUNTIME_ENV: &[&str] = &[
     "MAGICNET_SUB_PRESERVE_REFRESH",
 ];
 
+const UNSAFE_CHILD_ENV: &[&str] = &[
+    "BASH_ENV",
+    "CDPATH",
+    "CURL_HOME",
+    "ENV",
+    "GLOBIGNORE",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+    "SSL_CERT_DIR",
+    "SSL_CERT_FILE",
+    "UNZIP",
+    "UNZIPOPT",
+    "XDG_CONFIG_HOME",
+];
+
 fn clear_unsafe_runtime_environment(command: &mut Command) {
-    for key in UNSAFE_RUNTIME_ENV {
+    for key in UNSAFE_RUNTIME_ENV.iter().chain(UNSAFE_CHILD_ENV) {
         command.env_remove(key);
     }
+}
+
+fn trusted_runtime_path(app: &App) -> OsString {
+    let module_prefix = format!(
+        "{}/bin:{}/system/bin",
+        app.moddir.display(),
+        app.moddir.display()
+    );
+    let system_path = if cfg!(target_os = "android") {
+        "/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin".into()
+    } else {
+        env::var_os("MAGICNET_TEST_PATH").unwrap_or_else(|| {
+            OsString::from("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+        })
+    };
+    let mut path = OsString::from(module_prefix);
+    path.push(":");
+    path.push(system_path);
+    path
+}
+
+pub(crate) fn sanitize_privileged_environment(app: &App) {
+    let trusted_path = trusted_runtime_path(app);
+    for key in UNSAFE_RUNTIME_ENV.iter().chain(UNSAFE_CHILD_ENV) {
+        env::remove_var(key);
+    }
+    env::set_var("PATH", trusted_path);
+    env::set_var("HOME", "/");
 }
 
 fn trusted_shell() -> &'static str {
@@ -749,8 +801,8 @@ mod path_tests {
 mod process_group_tests {
     use super::{
         clear_unsafe_runtime_environment, command_timeout_secs, run_magicnet_function,
-        run_process_group, trusted_shell, App, DEFAULT_COMMAND_TIMEOUT_SECS,
-        MAX_COMMAND_TIMEOUT_SECS, UNSAFE_RUNTIME_ENV,
+        run_process_group, trusted_runtime_path, trusted_shell, App, DEFAULT_COMMAND_TIMEOUT_SECS,
+        MAX_COMMAND_TIMEOUT_SECS, UNSAFE_CHILD_ENV, UNSAFE_RUNTIME_ENV,
     };
     use std::fs;
     use std::process::Command;
@@ -851,14 +903,14 @@ mod process_group_tests {
     fn function_runner_does_not_inherit_unsafe_runtime_overrides() {
         let mut command = Command::new("sh");
         command.args(["-c", "env"]);
-        for key in UNSAFE_RUNTIME_ENV {
+        for key in UNSAFE_RUNTIME_ENV.iter().chain(UNSAFE_CHILD_ENV) {
             command.env(key, "attacker-controlled");
         }
         clear_unsafe_runtime_environment(&mut command);
         let output = command.output().expect("environment probe must run");
         assert!(output.status.success());
         let stdout = String::from_utf8(output.stdout).unwrap();
-        for key in UNSAFE_RUNTIME_ENV {
+        for key in UNSAFE_RUNTIME_ENV.iter().chain(UNSAFE_CHILD_ENV) {
             assert!(
                 !stdout
                     .lines()
@@ -866,6 +918,24 @@ mod process_group_tests {
                 "unsafe runtime variable leaked: {key}"
             );
         }
+    }
+
+    #[test]
+    fn trusted_runtime_path_is_module_scoped_and_ignores_inherited_path() {
+        let root =
+            std::env::temp_dir().join(format!("magicnet-trusted-path-{}", std::process::id()));
+        let app = App {
+            moddir: root.clone(),
+            api: String::new(),
+            log_dir: root.join(".log"),
+        };
+        let path = trusted_runtime_path(&app).to_string_lossy().into_owned();
+        assert!(path.starts_with(&format!(
+            "{}/bin:{}/system/bin:",
+            root.display(),
+            root.display()
+        )));
+        assert!(!path.contains("/attacker"));
     }
 
     #[test]

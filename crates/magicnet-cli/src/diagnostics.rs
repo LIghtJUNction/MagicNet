@@ -1130,6 +1130,26 @@ pub(crate) fn redact(text: &str) -> String {
             if lower.contains("http://") || lower.contains("https://") {
                 "<redacted-url>".to_string()
             } else if contains_sensitive_assignment(&lower) {
+                let value = part
+                    .split_once('=')
+                    .or_else(|| part.split_once(':'))
+                    .map(|(_, value)| {
+                        value.trim_matches(|ch: char| {
+                            matches!(ch, '(' | ')' | ',' | ';' | '"' | '\'')
+                        })
+                    })
+                    .unwrap_or_default();
+                if value.is_empty() {
+                    let authorization = lower.contains("authorization");
+                    let scheme_follows = parts.get(index + 1).is_some_and(|next| {
+                        matches!(next.to_ascii_lowercase().as_str(), "bearer" | "basic")
+                    });
+                    redact_next = if authorization && scheme_follows {
+                        2
+                    } else {
+                        1
+                    };
+                }
                 "<redacted-sensitive>".to_string()
             } else if let Some(has_inline_value) = sensitive_key(part) {
                 let is_safe_url_status = !has_inline_value
@@ -1157,9 +1177,30 @@ pub(crate) fn redact(text: &str) -> String {
                         && parts.get(index + 1).is_some_and(|next| {
                             matches!(next.to_ascii_lowercase().as_str(), "is" | "was")
                         });
+                    let separator_follows = parts.get(index + 1).is_some_and(|next| {
+                        matches!(
+                            next.trim_matches(|ch: char| {
+                                matches!(ch, '(' | ')' | ',' | ';' | '"' | '\'')
+                            }),
+                            "=" | ":"
+                        )
+                    });
+                    let authorization = lower.contains("authorization");
+                    let scheme_index = index + if separator_follows { 2 } else { 1 };
+                    let scheme_follows = parts.get(scheme_index).is_some_and(|next| {
+                        matches!(next.to_ascii_lowercase().as_str(), "bearer" | "basic")
+                    });
                     redact_next = if has_inline_value {
                         0
                     } else if url_precedes_copula {
+                        2
+                    } else if authorization && scheme_follows {
+                        if separator_follows {
+                            3
+                        } else {
+                            2
+                        }
+                    } else if separator_follows {
                         2
                     } else {
                         1
@@ -1587,6 +1628,20 @@ mod tests {
         ] {
             let output = redact(input);
             assert!(!output.contains("short-secret"), "leaked value: {output}");
+        }
+    }
+
+    #[test]
+    fn redact_filters_short_separate_and_authorization_values() {
+        for (input, secret) in [
+            ("password: tiny-secret", "tiny-secret"),
+            (r#""token": "json-secret""#, "json-secret"),
+            ("token = split-secret", "split-secret"),
+            ("Authorization: Bearer bearer-secret", "bearer-secret"),
+            ("Authorization : Basic basic-secret", "basic-secret"),
+        ] {
+            let output = redact(input);
+            assert!(!output.contains(secret), "leaked value: {output}");
         }
     }
 

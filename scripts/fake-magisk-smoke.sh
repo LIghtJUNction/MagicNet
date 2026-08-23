@@ -637,6 +637,21 @@ run() {
     "$@"
 }
 
+attacker_bin="$TMP/attacker-bin"
+attacker_marker="$TMP/attacker-curl-ran"
+mkdir -p "$attacker_bin"
+cat >"$attacker_bin/curl" <<EOF
+#!/bin/sh
+: >"$attacker_marker"
+exit 99
+EOF
+chmod +x "$attacker_bin/curl"
+run env PATH="$attacker_bin:$PATH" "$MODDIR/cli" api groups >/dev/null
+if [[ -e "$attacker_marker" ]]; then
+    echo 'privileged CLI resolved curl through inherited PATH' >&2
+    exit 1
+fi
+
 stop_fake_core_processes() {
     local name="$1"
     local comm pid cmdline

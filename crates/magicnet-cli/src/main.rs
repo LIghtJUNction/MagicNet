@@ -66,18 +66,19 @@ pub(crate) use base64::{decode_base64, encode_base64};
 use commands::dispatch;
 pub(crate) use process::{
     pid_summary, run_magicnet_function, run_subscription_source_update_from_inherited_fd,
-    run_subscription_update_from_inherited_fd, singbox_pid_summary, stop_owned_singbox,
-    SHORT_TIMEOUT,
+    run_subscription_update_from_inherited_fd, sanitize_privileged_environment,
+    singbox_pid_summary, stop_owned_singbox, SHORT_TIMEOUT,
 };
 pub(crate) use utils::{
     clean_module_lines, clear_node_cache, cmdline_has_command, cmdline_has_script,
     command_text_timeout, cstring_from_os_str, first_clean_module_line, proc_start_time, read_kv,
     replace_module_text_files_transactionally, run_bounded_command, shell_inert_conf_value,
-    write_kv, write_secret_file, write_text_file,
+    write_kv, write_secret_file, write_text_file, BoundedCommandOutput,
 };
 
 fn main() {
     let app = App::from_env();
+    sanitize_privileged_environment(&app);
     let args: Vec<String> = env::args().skip(1).collect();
     let code = match dispatch(&app, &args) {
         Ok(()) => 0,

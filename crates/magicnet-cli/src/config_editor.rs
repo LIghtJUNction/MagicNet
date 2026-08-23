@@ -108,7 +108,12 @@ fn commit_standalone_config(
         "input",
         protected.keys.as_deref(),
     )?;
-    mark_standalone_config(app)
+    if let Err(error) = mark_standalone_config(app) {
+        eprintln!(
+            "[warning] config was committed but standalone metadata could not be updated: {error}"
+        );
+    }
+    Ok(())
 }
 
 struct ProtectedConfig {
@@ -536,21 +541,54 @@ fn commit_config_text(
     role: &str,
     protected_keys: Option<&str>,
 ) -> Result<(), String> {
-    with_config_apply_lock(app, || {
+    let previous_keys = if protected_keys.is_some() {
+        match fs::read_to_string(app.moddir.join(TAILSCALE_AUTH_PATH)) {
+            Ok(value) => Some(value),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(format!("read current protected Tailscale keys: {error}")),
+        }
+    } else {
+        None
+    };
+    let keys_written = std::cell::Cell::new(false);
+    let committed = with_config_apply_lock(app, || {
         with_generated_config_input(app, role, bytes, |source, _directory| {
             validate_and_commit_open_config_file_with(app, target, path, source, || {
                 if let Some(keys) = protected_keys {
                     write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), keys)?;
+                    keys_written.set(true);
                 }
                 Ok(())
             })
         })
-    })?;
+    });
+    if let Err(error) = committed {
+        if keys_written.get() {
+            restore_tailscale_auth(app, previous_keys.as_deref()).map_err(|restore_error| {
+                format!(
+                    "{error}; restore previous protected Tailscale keys failed: {restore_error}"
+                )
+            })?;
+        }
+        return Err(error);
+    }
     println!(
         "[info] Saved and validated {target} config: {}\n[info] Runtime policy changes can be applied from the control/app pages.",
         path.display()
     );
     Ok(())
+}
+
+fn restore_tailscale_auth(app: &App, previous: Option<&str>) -> Result<(), String> {
+    if let Some(previous) = previous {
+        write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), previous)
+    } else {
+        match fs::remove_file(app.moddir.join(TAILSCALE_AUTH_PATH)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("remove newly staged Tailscale keys: {error}")),
+        }
+    }
 }
 
 fn with_generated_config_input<T>(
@@ -982,6 +1020,21 @@ mod tests {
             .as_deref()
             .is_some_and(|keys| keys.contains("tskey-secret")));
         assert!(!app.moddir.join(TAILSCALE_AUTH_PATH).exists());
+    }
+
+    #[test]
+    fn tailscale_secret_rollback_restores_or_removes_staged_keys() {
+        let app = temp_app();
+        let path = app.moddir.join(TAILSCALE_AUTH_PATH);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "old-keys\n").unwrap();
+        fs::write(&path, "new-keys\n").unwrap();
+        restore_tailscale_auth(&app, Some("old-keys\n")).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "old-keys\n");
+
+        restore_tailscale_auth(&app, None).unwrap();
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(&app.moddir);
     }
 
     #[test]
