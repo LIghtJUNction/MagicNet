@@ -69,6 +69,39 @@ magicnet_singbox_insert_route_rules \
 jq -e . "$route_hint" >/dev/null
 rm -f "$route_hint"
 
+# Managed ad rules must follow custom routes, sniffing, ICMP handling, and
+# per-app proxy policy. Placing them before these precedence rules can override
+# an explicit custom route, evaluate domains before sniffing, or bypass the
+# selected application route.
+cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{"outbounds":[
+  {"type":"direct","tag":"direct"},
+  {"type":"selector","tag":"final","outbounds":["direct"],"default":"direct"}
+],"route":{"rules":[
+  {"domain_suffix":["__magicnet_route__","custom.example"],"outbound":"proxy-rule"},
+  {"action":"sniff"},
+  {"protocol":"icmp","outbound":"block"},
+  {"package_name":["__magicnet_app_proxy__","com.example.proxy"],"outbound":"proxy"},
+  {"outbound":"final"}
+]}}
+EOF
+cat >"$route_rules" <<'EOF'
+  {"domain":["__magicnet_block__"],"outbound":"ad-block"},
+EOF
+magicnet_singbox_insert_route_rules \
+  "$MODDIR/.config/sing-box/config.json" "$route_hint" "$route_rules" block
+jq -e '
+  [.route.rules[]
+    | if ((.domain_suffix // []) | index("__magicnet_route__")) != null then "route"
+      elif .action == "sniff" then "sniff"
+      elif .protocol == "icmp" then "icmp"
+      elif ((.package_name // []) | index("__magicnet_app_proxy__")) != null then "app"
+      elif ((.domain // []) | index("__magicnet_block__")) != null then "block"
+      else "final"
+      end] == ["route", "sniff", "icmp", "app", "block", "final"]
+' "$route_hint" >/dev/null
+rm -f "$route_hint"
+
 magicnet_block_apply_singbox
 jq -e '
   ([.outbounds[] | select(.tag == "ad-block")] | length == 1)
