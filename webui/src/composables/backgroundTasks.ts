@@ -129,14 +129,6 @@ export function backgroundLogCommand(log: string, args: string, operationId = ""
   return parts.join("; ");
 }
 
-export function backgroundFailed(logs: string, operationId: string): boolean {
-  return parseBackgroundCompletion(logs, operationId) === "error";
-}
-
-export function backgroundDone(logs: string, operationId: string): boolean {
-  return parseBackgroundCompletion(logs, operationId) === "done";
-}
-
 export type BackgroundCompletion = "running" | "done" | "error";
 
 export function backgroundAccepted(output: string, operationId: string): boolean {

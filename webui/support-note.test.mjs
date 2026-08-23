@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
-const note = readFileSync(new URL("./src/components/OpenSourceSupportNote.vue", import.meta.url), "utf8");
+const note = readFileSync(
+  new URL("./src/components/OpenSourceSupportNote.vue", import.meta.url),
+  "utf8",
+);
 
 for (const copy of [
   "关于 MagicNet 的维护与支持",
@@ -47,8 +50,24 @@ for (const forbidden of [
   assert.doesNotMatch(note, forbidden);
 }
 
-assert.match(app, /import OpenSourceSupportNote from "@\/components\/OpenSourceSupportNote\.vue";/);
-assert.match(app, /<\/main>\s*<OpenSourceSupportNote \/>\s*<nav class="mobile-nav/m);
-assert.doesNotMatch(app, /showSupportNote|supportNoteVisible|SUPPORT_NOTE_STORAGE_KEY/);
+assert.match(
+  app,
+  /import OpenSourceSupportNote from "@\/components\/OpenSourceSupportNote\.vue";/,
+);
+const mainEnd = app.lastIndexOf("</main>");
+const supportIndex = app.indexOf("<OpenSourceSupportNote />", mainEnd);
+const mobileNavIndex = app.indexOf('<nav class="mobile-nav"', supportIndex);
+assert.ok(
+  mainEnd >= 0 && supportIndex > mainEnd,
+  "support note must follow the main workspace",
+);
+assert.ok(
+  mobileNavIndex > supportIndex,
+  "support note must remain before mobile navigation",
+);
+assert.doesNotMatch(
+  app,
+  /showSupportNote|supportNoteVisible|SUPPORT_NOTE_STORAGE_KEY/,
+);
 
 console.log("support note tests passed");

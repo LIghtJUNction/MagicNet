@@ -2,7 +2,10 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover"
+    />
     <meta name="color-scheme" content="light dark" />
     <!--
       Defense-in-depth CSP. The WebView's JS bridge is a root shell, so a single
@@ -24,13 +27,16 @@
         var t = localStorage.getItem("magicnet.webui.theme") || "system";
         var dark =
           t === "dark" ||
-          (t === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          (t === "system" &&
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.dataset.theme = dark ? "dark" : "light";
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
       } catch (e) {}
     </script>
   </head>
   <body>
+    <!-- DIRECTION_CONTRACT: 国内移动端 Android root 用户在模块 WebUI 中控制、路由、配置并诊断 MagicNet。视觉文化来自单色磷光终端和 CLI 运行现场，而不是普通 VPN 仪表盘。首屏先证明真实运行状态与 Android root → magicnet0 → sing-box → 策略/出口路径。使用支持中文的等宽优先字体、近黑/冷纸底与单一磷光绿信号色；签名机制是只读实时路径栈。允许紧凑但必须保持 44px 触控目标、清晰中文和未来长文本扩展。避免巨型连接圆钮、玻璃卡片、紫蓝渐变、霓虹光晕及遮挡正文的 ASCII 艺术。 -->
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

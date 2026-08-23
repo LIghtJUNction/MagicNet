@@ -9,14 +9,15 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use crate::{
-    diagnostics::supervisor_pid, run_magicnet_function, singbox_pid_summary, stop_owned_singbox,
-    write_text_file, App,
+    cmdline_has_command, cmdline_has_script, diagnostics::supervisor_pid, run_magicnet_function,
+    singbox_pid_summary, stop_owned_singbox, write_text_file, App,
 };
 
 const START_SUPERVISORS_COMMAND: &str = "magicnet_supervisors_start_detached";
 const START_KERNEL_COMMAND: &str =
     "MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached";
-const STOP_RUNTIME_CLEANUP_COMMAND: &str = r#"[ "${MAGICNET_PRESERVE_HOTSPOT_WATCHDOG:-0}" = 1 ] || magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"#;
+const STOP_RUNTIME_CLEANUP_COMMAND: &str =
+    "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
 const REPAIR_COMMAND: &str =
     "magicnet_apply_runtime_config; MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_ensure_kernel";
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
@@ -185,7 +186,7 @@ fn stop_service(app: &App) -> Result<(), String> {
     // otherwise a lifecycle button can sit behind a full config restart.
     quiesce_config_apply(app);
     let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
-    stop_all_direct(app, false, false)
+    stop_all_direct(app, false)
 }
 
 fn quiesce_config_apply(app: &App) {
@@ -233,14 +234,6 @@ pub(crate) fn config_cmd(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 pub(crate) fn apply_config(app: &App) -> Result<(), String> {
-    apply_config_with_options(app, false)
-}
-
-pub(crate) fn apply_config_preserving_hotspot_watchdog(app: &App) -> Result<(), String> {
-    apply_config_with_options(app, true)
-}
-
-fn apply_config_with_options(app: &App, preserve_hotspot_watchdog: bool) -> Result<(), String> {
     // Runtime materialization and the following core restart are one logical
     // operation.  The shell config lock only covers the writers themselves;
     // without this process-level guard two fswatch/WebUI invocations can both
@@ -259,7 +252,7 @@ fn apply_config_with_options(app: &App, preserve_hotspot_watchdog: bool) -> Resu
         let runtime_unchanged =
             run_magicnet_function(app, "magicnet_singbox_runtime_fingerprint_matches").is_ok();
         if !runtime_unchanged {
-            restart_current_core_preserving_config_apply(app, preserve_hotspot_watchdog)?;
+            restart_current_core_preserving_config_apply(app)?;
         }
     }
     Ok(())
@@ -419,27 +412,23 @@ fn read_bounded_log_tail(path: &Path) -> std::io::Result<String> {
 fn restart(app: &App, target: &str) -> Result<(), String> {
     quiesce_config_apply(app);
     let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
-    restart_with_options_unlocked(app, target, false, false)
+    restart_with_options_unlocked(app, target, false)
 }
 
 pub(crate) fn restart_current_core(app: &App) -> Result<(), String> {
     restart(app, "current")
 }
 
-fn restart_current_core_preserving_config_apply(
-    app: &App,
-    preserve_hotspot_watchdog: bool,
-) -> Result<(), String> {
-    restart_with_options_unlocked(app, "current", true, preserve_hotspot_watchdog)
+fn restart_current_core_preserving_config_apply(app: &App) -> Result<(), String> {
+    restart_with_options_unlocked(app, "current", true)
 }
 
 fn restart_with_options_unlocked(
     app: &App,
     target: &str,
     preserve_config_apply: bool,
-    preserve_hotspot_watchdog: bool,
 ) -> Result<(), String> {
-    stop_all_direct(app, preserve_config_apply, preserve_hotspot_watchdog)?;
+    stop_all_direct(app, preserve_config_apply)?;
     let target = if target == "current" {
         selected_core(app)
     } else {
@@ -460,19 +449,13 @@ fn restart_command(target: &str) -> &'static str {
     }
 }
 
-fn stop_all_direct(
-    app: &App,
-    preserve_config_apply: bool,
-    preserve_hotspot_watchdog: bool,
-) -> Result<(), String> {
+fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String> {
     stop_supervisor_pidfile(app, app.moddir.join(".state/watchdog/magicnet-kernel.pid"));
-    if !preserve_hotspot_watchdog {
-        stop_supervisor_pidfile(
-            app,
-            app.moddir
-                .join(".state/watchdog/magicnet-hotspot-route.pid"),
-        );
-    }
+    stop_supervisor_pidfile(
+        app,
+        app.moddir
+            .join(".state/watchdog/magicnet-hotspot-route.pid"),
+    );
     stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"));
     stop_supervisor_pidfile(app, app.moddir.join(".state/after-kernel-start.pid"));
     ignore_command(
@@ -519,15 +502,7 @@ fn stop_all_direct(
     // VPN/core may legitimately use the same process name and must survive a
     // MagicNet stop/restart.
     stop_owned_singbox(app);
-    let cleanup_command = if preserve_hotspot_watchdog {
-        format!(
-            "MAGICNET_PRESERVE_HOTSPOT_WATCHDOG=1 {}",
-            stop_runtime_cleanup_command()
-        )
-    } else {
-        stop_runtime_cleanup_command().to_string()
-    };
-    run_magicnet_function(app, &cleanup_command)?;
+    run_magicnet_function(app, stop_runtime_cleanup_command())?;
     Ok(())
 }
 
@@ -561,13 +536,13 @@ fn supervisor_cmdline_matches(moddir: &Path, path: &Path, cmdline: &str) -> bool
             cmdline_has_script(
                 cmdline,
                 &format!("{module}/.state/watchdog/magicnet-kernel.loop.sh"),
-            ) || cmdline_has_module_command(cmdline, &module, &["service", "ensure"])
+            ) || cmdline_has_command(cmdline, &format!("{module}/cli"), &["service", "ensure"])
         }
         Some("magicnet-config.pid") => {
             cmdline_has_script(
                 cmdline,
                 &format!("{module}/.state/fswatch/magicnet-config.loop.sh"),
-            ) || cmdline_has_module_command(cmdline, &module, &["config", "apply"])
+            ) || cmdline_has_command(cmdline, &format!("{module}/cli"), &["config", "apply"])
         }
         Some("magicnet-hotspot-route.pid") => cmdline_has_script(
             cmdline,
@@ -578,26 +553,6 @@ fn supervisor_cmdline_matches(moddir: &Path, path: &Path, cmdline: &str) -> bool
         Some("after-kernel-start.pid") => false,
         _ => false,
     }
-}
-
-fn cmdline_has_script(cmdline: &str, script: &str) -> bool {
-    cmdline
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .windows(2)
-        .any(|pair| {
-            matches!(
-                pair[0].rsplit('/').next(),
-                Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
-            ) && pair[1] == script
-        })
-}
-
-fn cmdline_has_module_command(cmdline: &str, module: &str, args: &[&str]) -> bool {
-    let tokens = cmdline.split_whitespace().collect::<Vec<_>>();
-    tokens.windows(args.len() + 1).any(|window| {
-        window[0] == format!("{module}/cli") && window[1..].iter().copied().eq(args.iter().copied())
-    })
 }
 
 fn ignore_command(program: &str, args: &[&str]) {
@@ -646,7 +601,7 @@ fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
     let mode = normalize_transparent_mode(mode)?;
     let _config_apply_guard = config_apply_lock(app)?;
     write_transparent_mode(app, mode)?;
-    stop_all_direct(app, false, false)?;
+    stop_all_direct(app, false)?;
     run_magicnet_function(app, "magicnet_transparent_apply")?;
     run_magicnet_function(app, "magicnet_start_kernel")?;
     start_supervisors(app)?;
@@ -772,10 +727,10 @@ mod tests {
     }
 
     #[test]
-    fn stop_runtime_cleanup_preserves_hotspot_when_requested_and_orders_dns_cleanup() {
+    fn stop_runtime_cleanup_disables_dns_capture_before_leak_guard() {
         assert_eq!(
             stop_runtime_cleanup_command(),
-            r#"[ "${MAGICNET_PRESERVE_HOTSPOT_WATCHDOG:-0}" = 1 ] || magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"#
+            "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"
         );
     }
 

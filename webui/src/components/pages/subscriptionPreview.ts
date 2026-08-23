@@ -1,6 +1,7 @@
 import {
   buildPrivateSubscriptionApplyCommand,
   redactedCliPreview,
+  uniqueNonEmpty,
 } from "../../utils.ts";
 
 export type SubscriptionPreview = {
@@ -235,8 +236,4 @@ function subscriptionLines(text: string): string[] {
 
 function isHttpsUrl(line: string): boolean {
   return /^https:\/\/\S+$/i.test(line);
-}
-
-function uniqueNonEmpty(values: string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean)));
 }

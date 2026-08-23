@@ -198,11 +198,14 @@ fn clean_tag(tag: &str) -> Result<String, String> {
     Ok(tag.to_string())
 }
 
-fn base_node_exists(app: &App, tag: &str) -> Result<bool, String> {
+fn load_singbox_config(app: &App) -> Result<Value, String> {
     let config = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
         .map_err(|error| format!("read sing-box config: {error}"))?;
-    let value: Value =
-        serde_json::from_str(&config).map_err(|error| format!("parse sing-box config: {error}"))?;
+    serde_json::from_str(&config).map_err(|error| format!("parse sing-box config: {error}"))
+}
+
+fn base_node_exists(app: &App, tag: &str) -> Result<bool, String> {
+    let value = load_singbox_config(app)?;
     Ok(value
         .get("outbounds")
         .and_then(Value::as_array)
@@ -231,10 +234,7 @@ fn base_node_exists(app: &App, tag: &str) -> Result<bool, String> {
 }
 
 fn proxy_default_member(app: &App) -> Result<String, String> {
-    let config = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
-        .map_err(|error| format!("read sing-box config: {error}"))?;
-    let value: Value =
-        serde_json::from_str(&config).map_err(|error| format!("parse sing-box config: {error}"))?;
+    let value = load_singbox_config(app)?;
     let default = value
         .get("outbounds")
         .and_then(Value::as_array)
@@ -284,10 +284,7 @@ fn select_exit(app: &App, tag: &str) -> Result<(), String> {
 }
 
 fn generated_exit_exists(app: &App, tag: &str) -> Result<bool, String> {
-    let config = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
-        .map_err(|error| format!("read sing-box config: {error}"))?;
-    let value: Value =
-        serde_json::from_str(&config).map_err(|error| format!("parse sing-box config: {error}"))?;
+    let value = load_singbox_config(app)?;
     Ok(value
         .get("outbounds")
         .and_then(Value::as_array)

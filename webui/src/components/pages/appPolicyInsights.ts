@@ -1,3 +1,5 @@
+import { fnv32Hex } from "@/lib/fnv32";
+
 export type AppPolicyMode = "blacklist" | "whitelist";
 
 export type AppPolicyInsight = {
@@ -123,14 +125,5 @@ function insight(label: string, value: string, tone: AppPolicyInsight["tone"]): 
 
 function fingerprintList(values: string[]): string {
   if (!values.length) return "none";
-  return fnv32(values.slice().sort().join("\n")).toString(16).padStart(8, "0");
-}
-
-function fnv32(value: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash;
+  return fnv32Hex(values.slice().sort().join("\n"));
 }

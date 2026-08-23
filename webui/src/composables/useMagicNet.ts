@@ -1,5 +1,5 @@
 import * as kernelsu from "kernelsu";
-import { computed, nextTick, reactive } from "vue";
+import { nextTick, reactive } from "vue";
 import {
   AUTHOR_WHISPER_URL,
   CLI,
@@ -70,7 +70,6 @@ import {
   shellQuote,
   stagePrivatePayload as stagePrivatePayloadWithCli,
   unavailableExecOutcome,
-  uniqueNonEmpty,
   type ExecOutcome,
 } from "@/utils";
 
@@ -1002,24 +1001,13 @@ async function syncConfigTemplate(): Promise<void> {
 }
 
 const {
-  autoSingBoxUiOpen,
   openExternal,
   openSingBoxUi,
-  setAutoSingBoxUiOpen,
-  tryAutoOpenSingBoxUi,
-} = useExternalLinks(state, runShell, runCli, refreshStatus);
-
-const statusTone = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "success";
-  if (state.runtime.singBoxState === "stopped") return "warning";
-  return "neutral";
-});
+} = useExternalLinks(state, runShell, runCli);
 
 export function useMagicNet() {
   return {
     state,
-    autoSingBoxUiOpen,
-    statusTone,
     compactOutput,
     REPO,
     AUTHOR_WHISPER_URL,
@@ -1052,9 +1040,6 @@ export function useMagicNet() {
     syncConfigTemplate,
     openExternal,
     openSingBoxUi,
-    setAutoSingBoxUiOpen,
-    tryAutoOpenSingBoxUi,
     shellQuote,
-    uniqueNonEmpty,
   };
 }

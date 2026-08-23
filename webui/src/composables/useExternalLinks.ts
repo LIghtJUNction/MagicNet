@@ -1,5 +1,3 @@
-import { reactive } from "vue";
-import { AUTO_SING_BOX_UI_OPEN_ENABLED_KEY, AUTO_SING_BOX_UI_OPEN_TARGET_KEY } from "@/constants";
 import type { SingBoxUiTarget } from "@/types";
 import {
   copyText,
@@ -27,14 +25,7 @@ export function useExternalLinks(
   state: MagicNetState,
   runShell: (command: string, label: string, quiet?: boolean, previewOverride?: string) => Promise<string>,
   runCli: (args: string, label?: string, quiet?: boolean) => Promise<string>,
-  refreshStatus: () => Promise<unknown>
 ) {
-  const autoSingBoxUiOpen = reactive({
-    enabled: localStorage.getItem(AUTO_SING_BOX_UI_OPEN_ENABLED_KEY) === "1",
-    target: (localStorage.getItem(AUTO_SING_BOX_UI_OPEN_TARGET_KEY) || "zashboard") as SingBoxUiTarget,
-    attempted: false
-  });
-
   async function openExternal(
     url: string,
     label = "链接",
@@ -91,10 +82,6 @@ export function useExternalLinks(
     state.output = `已打开 ${label}；敏感链接未复制或显示。`;
   }
 
-  function singBoxUiUrl(target: SingBoxUiTarget): string {
-    return `${state.runtime.api}/ui/`;
-  }
-
   async function openSingBoxUi(target: SingBoxUiTarget): Promise<void> {
     state.notice = `正在打开 ${target}`;
     const ok = await runCli("api groups", "检查 sing-box WebUI", true);
@@ -103,36 +90,11 @@ export function useExternalLinks(
       state.phase = "error";
       return;
     }
-    await openExternal(singBoxUiUrl(target), target);
-  }
-
-  function setAutoSingBoxUiOpen(target: SingBoxUiTarget | ""): void {
-    if (!target) {
-      autoSingBoxUiOpen.enabled = false;
-      localStorage.setItem(AUTO_SING_BOX_UI_OPEN_ENABLED_KEY, "0");
-      state.output = "已关闭默认进入 sing-box WebUI。";
-      return;
-    }
-    autoSingBoxUiOpen.enabled = true;
-    autoSingBoxUiOpen.target = target;
-    localStorage.setItem(AUTO_SING_BOX_UI_OPEN_ENABLED_KEY, "1");
-    localStorage.setItem(AUTO_SING_BOX_UI_OPEN_TARGET_KEY, target);
-    state.output = `下次进入管理面板将自动打开 ${target}。`;
-  }
-
-  async function tryAutoOpenSingBoxUi(): Promise<void> {
-    if (!autoSingBoxUiOpen.enabled || autoSingBoxUiOpen.attempted || !state.hasKsu) return;
-    autoSingBoxUiOpen.attempted = true;
-    await refreshStatus();
-    if (state.runtime.singBoxState === "stopped" || state.runtime.singBoxState === "unknown") return;
-    await openSingBoxUi(autoSingBoxUiOpen.target);
+    await openExternal(`${state.runtime.api}/ui/`, target);
   }
 
   return {
-    autoSingBoxUiOpen,
     openExternal,
     openSingBoxUi,
-    setAutoSingBoxUiOpen,
-    tryAutoOpenSingBoxUi
   };
 }

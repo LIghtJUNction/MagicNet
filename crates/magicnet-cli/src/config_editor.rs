@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::service::apply_config;
 use crate::webui_payload::MAX_WEBUI_PAYLOAD_BYTES;
-use crate::{decode_base64, write_secret_file, write_text_file, App};
+use crate::{cstring_from_os_str, decode_base64, write_secret_file, write_text_file, App};
 
 const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
@@ -350,11 +350,6 @@ fn require_private_webui_payload_source(file: &File) -> Result<(), String> {
         return Err("config-editor save-file requires a private regular WebUI payload".to_string());
     }
     Ok(())
-}
-
-fn cstring_from_os_str(value: &OsStr, description: &str) -> Result<CString, String> {
-    CString::new(value.as_bytes())
-        .map_err(|_| format!("{description} contains an unsupported NUL byte"))
 }
 
 fn validate_config_from_open_file(

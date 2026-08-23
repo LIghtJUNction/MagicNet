@@ -2,9 +2,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
-const dialog = readFileSync(new URL("./src/components/OnboardingDialog.vue", import.meta.url), "utf8");
-const focus = readFileSync(new URL("./src/lib/focus.ts", import.meta.url), "utf8");
-const guide = readFileSync(new URL("../docs/user-guide.md", import.meta.url), "utf8");
+const dialog = readFileSync(
+  new URL("./src/components/OnboardingDialog.vue", import.meta.url),
+  "utf8",
+);
+const focus = readFileSync(
+  new URL("./src/lib/focus.ts", import.meta.url),
+  "utf8",
+);
+const guide = readFileSync(
+  new URL("../docs/user-guide.md", import.meta.url),
+  "utf8",
+);
 
 for (const copy of [
   "第一次使用 MagicNet",
@@ -21,19 +30,25 @@ for (const copy of [
   assert.match(dialog, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 }
 
-assert.match(app, /const ONBOARDING_STORAGE_KEY = "magicnet\.webui\.onboarding\.v1"/);
+assert.match(
+  app,
+  /const ONBOARDING_STORAGE_KEY = "magicnet\.webui\.onboarding\.v1"/,
+);
 assert.match(app, /window\.localStorage\.getItem\(ONBOARDING_STORAGE_KEY\)/);
-assert.match(app, /window\.localStorage\.setItem\(ONBOARDING_STORAGE_KEY, value\)/);
+assert.match(
+  app,
+  /window\.localStorage\.setItem\(ONBOARDING_STORAGE_KEY, value\)/,
+);
 assert.match(app, /if \(!readOnboardingPreference\(\)\)/);
 assert.match(app, /<OnboardingDialog/);
 assert.match(app, /@dismiss="closeOnboarding\(\)"/);
 assert.match(app, /@complete="completeOnboarding"/);
 assert.match(app, /@navigate="handleOnboardingNavigate"/);
-assert.match(app, /closeAdvancedNav\(false\)/);
-assert.match(app, /launchOnboarding\(advancedNavTrigger\.value\)/);
+assert.match(app, /closeUtilityMenu\(false\)/);
+assert.match(app, /launchOnboarding\(utilityMenuTrigger\.value\)/);
 assert.match(app, /restoreFocusAfterUpdate\(trigger\)/);
-assert.match(app, /<ScrollText :size="16" \/><span>新手引导<\/span>/);
-assert.match(app, /<ScrollText :size="18" \/>新手引导/);
+assert.match(app, /<ScrollText :size="16"[^>]*\/>引导/);
+assert.match(app, /<ScrollText :size="18"[^>]*\/>新手引导/);
 
 for (const invariant of [
   'role="dialog"',
@@ -42,7 +57,7 @@ for (const invariant of [
   'aria-describedby="onboarding-description"',
   "data-dialog-initial-focus",
   "@keydown.esc.prevent.stop",
-  "document.body.style.overflow = \"hidden\"",
+  'document.body.style.overflow = "hidden"',
   "document.body.style.overflow = previousBodyOverflow",
   "trapFocusWithin(event, dialog.value)",
   "emit('navigate', activeStep.target)",
@@ -51,18 +66,37 @@ for (const invariant of [
   "稍后再看",
   "完成引导",
 ]) {
-  assert.ok(dialog.includes(invariant), `onboarding dialog missing ${invariant}`);
+  assert.ok(
+    dialog.includes(invariant),
+    `onboarding dialog missing ${invariant}`,
+  );
 }
 
-assert.match(dialog, /type GuideTarget = "subs" \| "control" \| "health" \| "output"/);
-assert.match(dialog, /第 \{\{ currentStep \+ 1 \}\} \/ \{\{ steps\.length \}\} 步|const progressLabel = computed/);
-assert.match(focus, /if \(event\.shiftKey && \(active === first \|\| !root\.contains\(active\)\)\)/);
-assert.match(focus, /else if \(!event\.shiftKey && \(active === last \|\| !root\.contains\(active\)\)\)/);
+assert.match(
+  dialog,
+  /type GuideTarget = "subs" \| "control" \| "health" \| "output"/,
+);
+assert.match(
+  dialog,
+  /第 \{\{ currentStep \+ 1 \}\} \/ \{\{ steps\.length \}\} 步|const progressLabel = computed/,
+);
+assert.match(
+  focus,
+  /if \(event\.shiftKey && \(active === first \|\| !root\.contains\(active\)\)\)/,
+);
+assert.match(
+  focus,
+  /else if \(!event\.shiftKey && \(active === last \|\| !root\.contains\(active\)\)\)/,
+);
 assert.match(focus, /restoreFocusAfterUpdate/);
 assert.match(focus, /element\.isConnected/);
 
 for (const target of ["subs", "control", "health", "output"]) {
-  assert.match(dialog, new RegExp(`"${target}"`), `missing onboarding navigation target ${target}`);
+  assert.match(
+    dialog,
+    new RegExp(`"${target}"`),
+    `missing onboarding navigation target ${target}`,
+  );
 }
 
 for (const required of [
@@ -72,7 +106,10 @@ for (const required of [
   "不要手工改运行中的 `sing-box` 配置文件",
   "异常细节继续看“输出”",
 ]) {
-  assert.match(guide, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(
+    guide,
+    new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  );
 }
 
 for (const forbidden of [

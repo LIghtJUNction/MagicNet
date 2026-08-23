@@ -203,8 +203,8 @@ function buildPcapPlan(): { status: "ok" | "error"; summary: string; detail: str
     </div>
     <div class="rounded-md border p-3" :class="pcapPlan.status === 'ok' ? 'mn-tone-ok' : 'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]'">
       <p class="text-sm font-semibold">PCAP 抓包计划</p>
-      <p class="mt-1 break-words text-sm leading-6 opacity-80">{{ pcapPlan.summary }}</p>
-      <p class="mt-1 break-words text-xs opacity-60">{{ pcapPlan.detail }}</p>
+      <p class="mt-1 break-words text-sm leading-6">{{ pcapPlan.summary }}</p>
+      <p class="mt-1 break-words text-xs leading-5">{{ pcapPlan.detail }}</p>
     </div>
     <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs text-[var(--mn-ink-muted)]">
       {{ pcapCommandPreview || "PCAP 参数无效，修正后再执行。" }}

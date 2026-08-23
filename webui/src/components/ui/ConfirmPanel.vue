@@ -48,7 +48,7 @@ onMounted(() => {
       <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div class="min-w-0">
           <h3 class="text-sm font-semibold text-[var(--mn-warning)]">{{ title }}</h3>
-          <p v-if="detail" class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/75">
+          <p v-if="detail" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
             {{ detail }}
           </p>
           <code v-if="command" class="mn-confirm-code mt-2">{{ command }}</code>

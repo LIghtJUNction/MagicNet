@@ -6,8 +6,6 @@ set_i18n "MAGICNET_MCP_START_FAILED" \
     "en" "MCP server failed to start; see \$_1"
 
 kamfw_phase_boot_completed() {
-    magicnet_detach_pid_from_app_cgroup "$$" ||
-        magicnet_warn "Failed to detach the service launcher from the caller cgroup."
     if magicnet_module_disabled; then
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         magicnet_disable_dns_capture >/dev/null 2>&1 || true

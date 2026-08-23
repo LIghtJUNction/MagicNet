@@ -25,24 +25,24 @@ const props = withDefaults(
 );
 
 const buttonVariants = cva(
-  "group inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-[0.85rem] text-sm font-semibold tracking-[-0.01em] transition-[transform,color,background-color,opacity,box-shadow,filter] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:scale-[0.97] active:duration-75 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
+  "mn-button group inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-[2px] border text-[13px] font-semibold tracking-[0.01em] transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0",
   {
     variants: {
       variant: {
         default:
-          "bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] shadow-[inset_0_1px_0_color-mix(in_srgb,#fff_45%,transparent),inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_12%,transparent),0_4px_12px_color-mix(in_srgb,var(--mn-cactus-deep)_18%,transparent)] hover:bg-[color-mix(in_srgb,var(--mn-cactus)_72%,var(--mn-cactus-deep))] active:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_14%,transparent)]",
+          "border-[var(--mn-cactus)] bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] hover:border-[var(--mn-cactus-deep)] hover:bg-[var(--mn-cactus-deep)]",
         secondary:
-          "bg-[color-mix(in_srgb,var(--mn-ink)_7%,transparent)] text-[var(--mn-ink)] shadow-[inset_0_1px_0_var(--mn-material-edge),inset_0_0_0_1px_var(--mn-border)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_11%,transparent)]",
+          "border-[var(--mn-border-strong)] bg-[var(--mn-surface-sunken)] text-[var(--mn-ink)] hover:border-[var(--mn-cactus)] hover:text-[var(--mn-cactus-deep)]",
         outline:
-          "bg-[var(--mn-material-heavy)] text-[var(--mn-ink)] shadow-[inset_0_1px_0_var(--mn-material-edge),inset_0_0_0_1px_var(--mn-border),0_2px_7px_color-mix(in_srgb,var(--mn-ink)_5%,transparent)] hover:bg-[color-mix(in_srgb,var(--mn-carrier-deep)_72%,var(--mn-material-heavy))]",
+          "border-[var(--mn-border-strong)] bg-transparent text-[var(--mn-ink)] hover:border-[var(--mn-cactus)] hover:bg-[color-mix(in_srgb,var(--mn-cactus)_9%,transparent)]",
         ghost:
-          "bg-transparent text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)] hover:text-[var(--mn-ink)]",
+          "border-transparent bg-transparent text-[var(--mn-ink-muted)] hover:border-[var(--mn-border)] hover:bg-[var(--mn-surface-sunken)] hover:text-[var(--mn-ink)]",
         destructive:
-          "bg-[var(--mn-clay)] text-[var(--mn-on-accent)] shadow-[inset_0_1px_0_color-mix(in_srgb,#fff_28%,transparent),inset_0_0_0_1px_color-mix(in_srgb,var(--mn-ink)_12%,transparent),0_4px_12px_color-mix(in_srgb,var(--mn-clay)_20%,transparent)] hover:brightness-105",
+          "border-[var(--mn-danger)] bg-[var(--mn-danger)] text-[var(--mn-on-danger)] hover:brightness-110",
       },
       size: {
-        sm: "min-h-11 px-4",
-        md: "min-h-11 px-5",
+        sm: "min-h-11 px-3.5",
+        md: "min-h-11 px-4",
         icon: "size-11 shrink-0 p-0",
       },
     },

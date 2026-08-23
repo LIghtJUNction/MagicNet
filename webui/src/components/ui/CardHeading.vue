@@ -22,8 +22,8 @@ const titleClass = computed(() =>
   cn(
     "mn-card-title break-words text-[var(--mn-ink)]",
     props.size === "lg"
-      ? "mt-2 text-2xl md:text-[1.65rem]"
-      : "mt-2 text-xl tracking-[-0.03em]",
+      ? "text-xl leading-tight md:text-[1.35rem]"
+      : "text-lg leading-tight tracking-[-0.01em]",
   ),
 );
 </script>
@@ -31,12 +31,14 @@ const titleClass = computed(() =>
 <template>
   <div :class="cn('flex flex-wrap items-start justify-between gap-3', props.class)">
     <div class="min-w-0">
-      <Eyebrow v-if="overline || $slots.overline" :tone="overlineTone">
-        <slot name="overline">{{ overline }}</slot>
-      </Eyebrow>
-      <h3 v-if="title || $slots.title" :class="titleClass">
-        <slot name="title">{{ title }}</slot>
-      </h3>
+      <div class="mn-card-title-row">
+        <h3 v-if="title || $slots.title" :class="titleClass">
+          <slot name="title">{{ title }}</slot>
+        </h3>
+        <Eyebrow v-if="overline || $slots.overline" :tone="overlineTone">
+          <slot name="overline">{{ overline }}</slot>
+        </Eyebrow>
+      </div>
       <p
         v-if="description || $slots.description"
         class="mt-2 max-w-3xl text-sm leading-6 text-[var(--mn-ink-muted)]"

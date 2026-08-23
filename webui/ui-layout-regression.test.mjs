@@ -4,17 +4,16 @@ import { readFileSync } from "node:fs";
 const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
 const apps = readFileSync(new URL("./src/components/pages/AppsPage.vue", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./src/styles.css", import.meta.url), "utf8");
+const button = readFileSync(new URL("./src/components/ui/Button.vue", import.meta.url), "utf8");
 
-assert.match(app, /desktop-rail[\s\S]*whitespace-nowrap/, "desktop navigation labels must stay on one line");
-assert.match(app, /mobile-nav[\s\S]*whitespace-nowrap/, "mobile navigation labels must stay on one line");
-assert.match(app, /mobile-nav[\s\S]*max-w-full truncate leading-none/, "mobile navigation labels must clip instead of wrapping");
-assert.match(app, /desktop-rail[\s\S]*min-w-0 truncate/, "desktop navigation labels must not force rail overflow");
+assert.match(app, /type WorkspaceKey = "run" \| "route" \| "configure" \| "diagnose"/);
+assert.match(styles, /\.mobile-nav\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,/);
+assert.match(styles, /\.mobile-nav button span\s*\{[\s\S]*overflow-wrap:\s*anywhere[\s\S]*white-space:\s*normal/);
+assert.match(styles, /\.mn-section-tabs\s*\{[\s\S]*overflow-x:\s*auto/);
+assert.match(styles, /\.desktop-rail nav button\s*\{[\s\S]*grid-template-columns:\s*auto minmax\(0, 1fr\) auto/);
+assert.match(styles, /\.mn-shell\s*\{[\s\S]*padding:[^;]*env\(safe-area-inset-bottom\)/);
+assert.match(button, /text-\[13px\]/, "shared buttons must own their text size after font inheritance");
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*全局接管/);
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*仅名单接管/);
-assert.doesNotMatch(
-  styles,
-  /button,\s*input,\s*select,\s*textarea\s*\{\s*font:\s*inherit;/,
-  "an unlayered font shorthand must not override responsive button text sizes",
-);
 
 console.log("UI layout regression tests passed");

@@ -385,17 +385,14 @@ onMounted(() => {
         :class="controlInsightTone(runtimeInsight.status)"
       >
         <div class="flex items-start justify-between gap-3">
-          <Eyebrow tone="inherit" class="opacity-60">运行状态</Eyebrow>
-          <StatusDot tone="current" />
-        </div>
-        <div class="my-auto max-w-xl">
-          <h3 class="break-words text-2xl font-semibold tracking-[-0.035em] md:text-3xl">
+          <h3 class="max-w-xl break-words text-2xl font-semibold tracking-[-0.025em] md:text-3xl">
             {{ runtimeInsight.title }}
           </h3>
-          <p class="mt-3 break-words text-sm leading-7 opacity-75 md:text-[15px]">
-            {{ runtimeInsight.detail }}
-          </p>
+          <StatusDot tone="current" />
         </div>
+        <p class="my-auto max-w-xl break-words text-sm leading-7 md:text-[15px]">
+          {{ runtimeInsight.detail }}
+        </p>
         <div class="flex flex-wrap items-start gap-2">
           <Badge
             v-for="item in runtimeInsight.actions"
@@ -411,7 +408,7 @@ onMounted(() => {
             @click="rebuildNodeCache"
             ><DownloadCloud :size="17" />更新订阅并重建节点</Button
           >
-          <p class="text-xs leading-5 opacity-75">
+          <p class="text-xs leading-5">
             会执行 <code>sub update sing-box</code>，成功后再启动 sing-box。
           </p>
         </div>
@@ -440,7 +437,7 @@ onMounted(() => {
       </Card>
 
       <Card class="!p-4 md:col-span-5 md:!p-6">
-        <Eyebrow>快捷操作</Eyebrow>
+        <h3 class="text-lg font-semibold text-[var(--mn-ink)]">快捷操作</h3>
         <div class="mt-3 grid grid-cols-2 gap-2 md:mt-4 md:grid-cols-1 xl:grid-cols-2">
           <Button
             variant="secondary"
@@ -625,7 +622,7 @@ onMounted(() => {
             :aria-pressed="state.wifiPolicy.policyMode === mode"
             :disabled="runtimeBusy || state.wifiPolicy.policyMode === mode"
             :class="[
-              'rounded-[1.25rem] px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60 disabled:cursor-default',
+              'rounded-[2px] border border-transparent px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] disabled:cursor-default',
               state.wifiPolicy.policyMode === mode
                 ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]'
                 : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
@@ -633,7 +630,7 @@ onMounted(() => {
             @click="setWifiPolicyMode(mode)"
           >
             <span class="font-semibold">{{ mode === "blacklist" ? "黑名单" : "白名单" }}</span>
-            <span class="mt-1 block text-xs opacity-70">
+            <span class="mt-1 block text-xs">
               {{ mode === "blacklist" ? "名单命中 → Direct" : "名单命中 → Rule" }}
             </span>
           </button>

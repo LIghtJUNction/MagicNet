@@ -25,6 +25,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -167,6 +173,7 @@ name = "magicnet-cli"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "base64",
  "chacha20poly1305",
  "libc",
  "md5",
@@ -178,6 +185,7 @@ dependencies = [
 name = "magicnet-mcp-server"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "libc",
  "serde_json",
 ]

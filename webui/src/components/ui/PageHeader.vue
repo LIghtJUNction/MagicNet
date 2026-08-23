@@ -9,8 +9,10 @@ defineProps<{
 <template>
   <div class="contents">
     <div class="max-w-3xl">
-      <span class="mn-pill inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]">{{ overline }}</span>
-      <h2 class="mt-2.5 text-[clamp(1.75rem,4vw,2.25rem)] font-semibold leading-[1.08] tracking-[-0.04em] text-[var(--mn-ink)]">{{ title }}</h2>
+      <div class="mn-page-title-row">
+        <h2 class="text-[clamp(1.45rem,6vw,2rem)] font-semibold leading-tight tracking-[-0.02em] text-[var(--mn-ink)]">{{ title }}</h2>
+        <span class="mn-page-kicker">[ {{ overline }} ]</span>
+      </div>
       <p class="mt-2 max-w-[68ch] text-sm leading-6 text-[var(--mn-ink-muted)] md:text-[15px] md:leading-7">{{ description }}</p>
     </div>
     <div v-if="$slots.default || $slots.actions" class="mn-page-actions md:justify-end">

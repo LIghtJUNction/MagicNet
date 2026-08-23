@@ -138,11 +138,8 @@ onUnmounted(() => {
       <div class="rounded-[5px] bg-[var(--mn-ivory)] p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <Eyebrow tone="clay" class="inline-flex items-center gap-2">
-              <CheckCircle2 :size="14" /> 新手引导
-            </Eyebrow>
-            <h2 id="onboarding-title" class="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
-              第一次使用 MagicNet
+            <h2 id="onboarding-title" class="flex items-center gap-2 text-xl font-semibold tracking-[-0.025em] text-[var(--mn-ink)]">
+              <CheckCircle2 :size="18" aria-hidden="true" />第一次使用 MagicNet
             </h2>
             <p id="onboarding-description" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
               先确认 TUN 能运行，再添加配置。配置生效后去 zashboard 选节点，最后跑一次诊断。

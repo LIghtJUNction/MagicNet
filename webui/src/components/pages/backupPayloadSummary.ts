@@ -1,3 +1,5 @@
+import { fnv32Hex } from "@/lib/fnv32";
+
 export type BackupPayloadSummary = {
   chars: number;
   compactChars: number;
@@ -18,18 +20,9 @@ export function summarizeBackupPayload(payload: string): BackupPayloadSummary {
     compactChars: compact.length,
     lines: payload ? payload.split(/\r?\n/).length : 0,
     hasWhitespace: /\s/.test(payload),
-    fingerprint: compact ? fnv32(compact) : "-",
+    fingerprint: compact ? fnv32Hex(compact) : "-",
     invalidChars,
     tooLarge,
     looksValid: compact.length >= 32 && !invalidChars && !tooLarge
   };
-}
-
-function fnv32(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
 }

@@ -46,8 +46,6 @@ export type HealthItem = {
   detail: string;
 };
 
-export type AiAssistant = "chatgpt" | "gemini" | "kimi" | "qwen" | "deepseek";
-
 export type PackageInfo = {
   packageName: string;
   versionName: string;
@@ -55,20 +53,6 @@ export type PackageInfo = {
   appLabel: string;
   isSystem: boolean;
   uid: number;
-};
-
-export type SysrouteSnapshot = {
-  generatedAt: string;
-  interfaces: string[];
-  addresses: string[];
-  rules: string[];
-  mainRoutes: string[];
-  defaultRoutes: string[];
-  tunRoutes: string[];
-  allRoutes: string[];
-  outputGuards: string[];
-  notes: string[];
-  raw: string;
 };
 
 export type BlocklistState = {
@@ -80,16 +64,6 @@ export type BlocklistState = {
   communityDomains: string[];
   allowRules: string[];
   newDomain: string;
-};
-
-export type McpState = {
-  enabled: boolean;
-  bind: string;
-  port: string;
-  pid: string;
-  url: string;
-  secretSet: boolean;
-  portOwner: string;
 };
 
 export type DnsState = {
@@ -111,74 +85,5 @@ export type WarpState = {
 };
 
 export type SingBoxUiTarget = "zashboard";
-export type WebuiPanelKind = "online" | "local";
-
-export type WebuiPanel = {
-  id: string;
-  kind: WebuiPanelKind;
-  name: string;
-  url: string;
-  downloadUrl: string;
-  metadata: string;
-};
 
 export type ConfigEditorTarget = "sing-box";
-
-export type ConfigEditorState = {
-  target: ConfigEditorTarget;
-  text: string;
-  originalText: string;
-  loadedTarget: ConfigEditorTarget | "";
-  dirty: boolean;
-  lastCheck: "idle" | "ok" | "error";
-  path: string;
-};
-
-export type State = {
-  hasKsu: boolean;
-  busy: boolean;
-  activeTask: string;
-  activeCommand: string;
-  webuiPanels: WebuiPanel[];
-  webuiPanelForm: WebuiPanel;
-  commandPhase: "idle" | "accepted" | "queued" | "running" | "done" | "error";
-  commandNotice: string;
-  commandQueueDepth: number;
-  statusDrawerOpen: boolean;
-  status: "checking" | "online" | "offline" | "local";
-  statusText: string;
-  runtime: RuntimeState;
-  lastCommand: string;
-  output: string;
-  appPolicy: AppPolicy;
-  subscriptions: {
-    singBox: string;
-    singBoxUrls: string[];
-    sourceMode: "url" | "local";
-  };
-  backupPassword: string;
-  backupPayload: string;
-  restorePassword: string;
-  restorePayload: string;
-  blocklist: BlocklistState;
-  mcp: McpState;
-  pingtest: string;
-  topology: string;
-  topologyFocus: string;
-  sysrouteSnapshot: SysrouteSnapshot;
-  sysroute: {
-    rulePriority: string;
-    ruleTable: string;
-    routeTable: string;
-    routeDest: string;
-    routeDev: string;
-    routeVia: string;
-  };
-  health: HealthItem[];
-  packages: PackageInfo[];
-  packageQuery: string;
-  newPackage: string;
-  newTarget: "proxy" | "bypass";
-  configEditor: ConfigEditorState;
-  activeTab: "control" | "config" | "health" | "topology" | "apps" | "block" | "subs" | "webui" | "logs";
-};

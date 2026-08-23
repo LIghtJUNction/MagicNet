@@ -1,4 +1,5 @@
 import { fastestEntry, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
+import { fnv32Hex } from "@/lib/fnv32";
 import { statusToneClasses } from "@/lib/statusTone";
 
 export type NodeSwitchPlan = {
@@ -51,8 +52,8 @@ export function formatNodeSwitchPlanReport(plan: NodeSwitchPlan): string {
     `detail=${plan.detail}`,
     `current_present=${plan.currentNode ? 1 : 0}`,
     `target_present=${plan.targetNode ? 1 : 0}`,
-    `current_fingerprint=${plan.currentNode ? fnv32(plan.currentNode) : "none"}`,
-    `target_fingerprint=${plan.targetNode ? fnv32(plan.targetNode) : "none"}`,
+    `current_fingerprint=${plan.currentNode ? fnv32Hex(plan.currentNode) : "none"}`,
+    `target_fingerprint=${plan.targetNode ? fnv32Hex(plan.targetNode) : "none"}`,
     `improvement_ms=${plan.improvementMillis ?? "none"}`
   ].join("\n");
 }
@@ -75,13 +76,4 @@ function plan(
   recommended: boolean
 ): NodeSwitchPlan {
   return { status, title, detail, currentNode, targetNode, improvementMillis, recommended };
-}
-
-function fnv32(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
 }

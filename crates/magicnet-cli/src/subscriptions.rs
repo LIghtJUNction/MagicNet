@@ -13,9 +13,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    clean_module_lines, clear_node_cache, decode_base64, first_clean_module_line,
-    run_magicnet_function, run_subscription_source_update_from_inherited_fd,
-    run_subscription_update_from_inherited_fd, write_text_file, App,
+    clean_module_lines, clear_node_cache, cstring_from_os_str, decode_base64,
+    first_clean_module_line, run_magicnet_function,
+    run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,
+    write_text_file, App,
 };
 
 const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
@@ -281,8 +282,7 @@ fn subscription_candidate_temp_directory(app: &App) -> Result<File, String> {
 }
 
 fn open_subscription_module_root(app: &App) -> Result<File, String> {
-    let path = CString::new(app.moddir.as_os_str().as_bytes())
-        .map_err(|_| "subscription module root contains an unsupported NUL byte".to_string())?;
+    let path = cstring_from_os_str(app.moddir.as_os_str(), "subscription module root")?;
     let fd = unsafe {
         libc::open(
             path.as_ptr(),
@@ -300,7 +300,7 @@ fn ensure_subscription_directory_at(
     name: &OsStr,
     mode: u32,
 ) -> Result<File, String> {
-    let name_c = subscription_cstring(name, "subscription directory")?;
+    let name_c = cstring_from_os_str(name, "subscription directory")?;
     let created = unsafe { libc::mkdirat(parent.as_raw_fd(), name_c.as_ptr(), mode) };
     if created != 0 && io::Error::last_os_error().kind() != io::ErrorKind::AlreadyExists {
         return Err("create subscription candidate directory failed".to_string());
@@ -333,7 +333,7 @@ fn create_subscription_candidate_file(directory: &File) -> Result<(File, OsStrin
             std::process::id(),
             SUBSCRIPTION_CANDIDATE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
-        let name_c = subscription_cstring(&name, "subscription candidate filename")?;
+        let name_c = cstring_from_os_str(&name, "subscription candidate filename")?;
         let fd = unsafe {
             libc::openat(
                 directory.as_raw_fd(),
@@ -405,7 +405,7 @@ fn subscription_candidate_metadata(directory: &File, name: &OsStr) -> io::Result
 }
 
 fn unlink_subscription_candidate(directory: &File, name: &OsStr) -> Result<(), String> {
-    let name_c = subscription_cstring(name, "subscription candidate filename")?;
+    let name_c = cstring_from_os_str(name, "subscription candidate filename")?;
     let removed = unsafe { libc::unlinkat(directory.as_raw_fd(), name_c.as_ptr(), 0) };
     if removed == 0 {
         Ok(())
@@ -439,11 +439,6 @@ fn clear_close_on_exec(file: &File) -> Result<(), String> {
 
 fn is_regular_file(metadata: &libc::stat) -> bool {
     (metadata.st_mode & libc::S_IFMT) == libc::S_IFREG
-}
-
-fn subscription_cstring(value: &OsStr, description: &str) -> Result<CString, String> {
-    CString::new(value.as_bytes())
-        .map_err(|_| format!("{description} contains an unsupported NUL byte"))
 }
 
 fn normalized_subscription_payload(payload: &str) -> Result<String, String> {

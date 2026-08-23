@@ -24,7 +24,6 @@ macro_rules! println {
 }
 
 macro_rules! eprintln {
-    () => {{ crate::write_stderr(format_args!("\n")); }};
     ($($arg:tt)*) => {{ crate::write_stderr(format_args!("{}\n", format_args!($($arg)*))); }};
 }
 
@@ -71,9 +70,10 @@ pub(crate) use process::{
     SHORT_TIMEOUT,
 };
 pub(crate) use utils::{
-    clean_module_lines, clear_node_cache, command_text_timeout, first_clean_module_line,
-    proc_start_time, read_kv, replace_module_text_files_transactionally, run_bounded_command,
-    shell_inert_conf_value, write_kv, write_secret_file, write_text_file,
+    clean_module_lines, clear_node_cache, cmdline_has_command, cmdline_has_script,
+    command_text_timeout, cstring_from_os_str, first_clean_module_line, proc_start_time, read_kv,
+    replace_module_text_files_transactionally, run_bounded_command, shell_inert_conf_value,
+    write_kv, write_secret_file, write_text_file,
 };
 
 fn main() {

@@ -241,7 +241,7 @@ fn normal_module_components(relative: &Path) -> Result<Vec<&OsStr>, String> {
 }
 
 fn open_module_root(app: &App) -> Result<File, String> {
-    let path = module_cstring(app.moddir.as_os_str(), "module root")?;
+    let path = cstring_from_os_str(app.moddir.as_os_str(), "module root")?;
     let fd = unsafe {
         libc::open(
             path.as_ptr(),
@@ -255,7 +255,7 @@ fn open_module_root(app: &App) -> Result<File, String> {
 }
 
 fn ensure_module_directory_at(parent: &File, name: &OsStr) -> Result<File, String> {
-    let name = module_cstring(name, "module directory name")?;
+    let name = cstring_from_os_str(name, "module directory name")?;
     let result = unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o755) };
     if result != 0 && io::Error::last_os_error().kind() != ErrorKind::AlreadyExists {
         return Err(format!(
@@ -296,9 +296,29 @@ fn private_regular_module_file_identity(file: &File) -> Result<ModuleFileIdentit
     })
 }
 
-fn module_cstring(value: &OsStr, description: &str) -> Result<CString, String> {
+pub(crate) fn cstring_from_os_str(value: &OsStr, description: &str) -> Result<CString, String> {
     CString::new(value.as_bytes())
         .map_err(|_| format!("{description} contains an unsupported NUL byte"))
+}
+
+pub(crate) fn cmdline_has_script(cmdline: &str, script: &str) -> bool {
+    cmdline
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .any(|pair| {
+            matches!(
+                pair[0].rsplit('/').next(),
+                Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
+            ) && pair[1] == script
+        })
+}
+
+pub(crate) fn cmdline_has_command(cmdline: &str, executable: &str, args: &[&str]) -> bool {
+    let tokens = cmdline.split_whitespace().collect::<Vec<_>>();
+    tokens.windows(args.len() + 1).any(|window| {
+        window[0] == executable && window[1..].iter().copied().eq(args.iter().copied())
+    })
 }
 
 pub(crate) fn proc_start_time(stat: &str) -> Option<String> {
@@ -617,7 +637,7 @@ fn open_existing_private_module_file(
     directory: &File,
     name: &OsStr,
 ) -> Result<Option<File>, String> {
-    let name = module_cstring(name, "module transaction file name")?;
+    let name = cstring_from_os_str(name, "module transaction file name")?;
     let fd = unsafe {
         libc::openat(
             directory.as_raw_fd(),
@@ -668,7 +688,7 @@ fn open_module_transaction_staging_directory(
 }
 
 fn ensure_private_module_directory_at(parent: &File, name: &OsStr) -> Result<File, String> {
-    let name = module_cstring(name, "module transaction staging directory name")?;
+    let name = cstring_from_os_str(name, "module transaction staging directory name")?;
     let created = unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o700) };
     if created != 0 {
         let err = io::Error::last_os_error();
@@ -732,7 +752,7 @@ where
     W: FnMut(&mut File, &[u8]) -> Result<(), String>,
 {
     let stage = module_transaction_stage_name(slot);
-    let stage_c = module_cstring(&stage, "module transaction stage name")?;
+    let stage_c = cstring_from_os_str(&stage, "module transaction stage name")?;
     let fd = unsafe {
         libc::openat(
             staging_directory.as_raw_fd(),
@@ -922,8 +942,8 @@ fn rename_module_transaction_entry(
     destination_directory: &File,
     destination: &OsStr,
 ) -> Result<(), String> {
-    let source = module_cstring(source, "module transaction source name")?;
-    let destination = module_cstring(destination, "module transaction destination name")?;
+    let source = cstring_from_os_str(source, "module transaction source name")?;
+    let destination = cstring_from_os_str(destination, "module transaction destination name")?;
     let flags: libc::c_uint = match operation {
         ModuleTransactionRename::NoReplace => 1,
         ModuleTransactionRename::Exchange => 2,
@@ -1105,7 +1125,7 @@ fn cleanup_module_transaction_commits(
 }
 
 fn remove_module_transaction_stage(staging_directory: &File, name: &OsStr) -> Result<(), String> {
-    let name = module_cstring(name, "module transaction stage name")?;
+    let name = cstring_from_os_str(name, "module transaction stage name")?;
     let removed = unsafe { libc::unlinkat(staging_directory.as_raw_fd(), name.as_ptr(), 0) };
     if removed == 0 {
         Ok(())

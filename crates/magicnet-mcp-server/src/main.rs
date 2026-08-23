@@ -1,4 +1,3 @@
-mod base64;
 mod files;
 mod http;
 mod logs;

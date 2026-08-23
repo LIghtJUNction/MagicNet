@@ -1,5 +1,3 @@
-import type { TransparentMode } from "@/types";
-
 export type ControlDangerAction = {
   key: string;
   args: string;
@@ -56,16 +54,6 @@ export function stopAllServicesAction(): ControlDangerAction {
     args: "service stop",
     label: "停止全部服务",
     message: "确认停止全部服务？流量可能无法继续通过 MagicNet。",
-    background: true
-  };
-}
-
-export function transparentModeAction(mode: TransparentMode): ControlDangerAction {
-  return {
-    key: `transparent-${mode}`,
-    args: `transparent set ${mode}`,
-    label: `切换 ${mode} 模式`,
-    message: `确认切换到 ${mode} 模式？当前连接可能会短暂中断。`,
     background: true
   };
 }

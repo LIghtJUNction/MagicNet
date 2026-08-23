@@ -8,7 +8,7 @@ const props = defineProps<{ class?: string }>();
 const model = defineModel<string>();
 const classes = computed(() =>
   cn(
-    "mn-field min-h-28 w-full resize-y rounded-[0.85rem] px-3.5 py-3 outline-none transition-[color,background-color,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+    "mn-field min-h-28 w-full resize-y rounded-[2px] px-3.5 py-3 outline-none transition-[color,background-color,border-color,box-shadow] duration-150 ease-out",
     props.class,
   ),
 );

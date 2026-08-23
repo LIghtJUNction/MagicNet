@@ -296,13 +296,13 @@ onMounted(() => {
             :aria-pressed="draft.mode === mode"
             :disabled="!loaded || isRunning('proxy-chain-apply')"
             :class="[
-              'rounded-[1.05rem] px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] disabled:cursor-not-allowed disabled:opacity-60',
+              'rounded-[2px] border border-transparent px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] disabled:cursor-not-allowed disabled:opacity-60',
               draft.mode === mode ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]' : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_9%,transparent)]',
             ]"
             @click="setMode(mode)"
           >
             <span class="block font-semibold">{{ mode === 'manual' ? '手动模式' : '自动模式' }}</span>
-            <span class="mt-1 block text-xs leading-5 opacity-75">{{ mode === 'manual' ? '固定使用 chain-exit 当前选择' : '使用 chain-auto URLTest 选择' }}</span>
+            <span class="mt-1 block text-xs leading-5">{{ mode === 'manual' ? '固定使用 chain-exit 当前选择' : '使用 chain-auto URLTest 选择' }}</span>
           </button>
         </div>
         <p class="rounded-[1.05rem] bg-[var(--mn-ivory)] px-4 py-3 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ modeHint }}</p>

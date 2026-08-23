@@ -1,4 +1,4 @@
-use std::ffi::{CString, OsStr};
+use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
@@ -6,7 +6,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use crate::{decode_base64, App};
+use crate::{cstring_from_os_str, decode_base64, App};
 
 pub(crate) const MAX_WEBUI_PAYLOAD_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -359,11 +359,6 @@ fn absolute_payload_path(
         .join(".tmp")
         .join(namespace.directory_name())
         .join(name))
-}
-
-fn cstring_from_os_str(value: &OsStr, description: &str) -> Result<CString, String> {
-    CString::new(value.as_bytes())
-        .map_err(|_| format!("{description} contains an unsupported NUL byte"))
 }
 
 #[cfg(test)]

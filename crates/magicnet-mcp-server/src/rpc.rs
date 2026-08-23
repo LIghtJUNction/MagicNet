@@ -6,11 +6,11 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::base64::encode_base64;
 use crate::files::{file_list, file_read};
 use crate::logs::{debug_snapshot, log_list, log_read};
 use crate::tools::TOOLS_JSON;
 use crate::Server;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 const CLI_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_CLI_STREAM_BYTES: usize = 1024 * 1024;
@@ -365,7 +365,7 @@ fn subscription_set(server: &Server, args: &Value) -> String {
 
 fn subscription_set_singbox_lines(server: &Server, args: &Value) -> String {
     let content = arg(args, "content").unwrap_or_default();
-    let encoded = encode_base64(content.as_bytes());
+    let encoded = STANDARD.encode(content.as_bytes());
     run_cli_owned(
         server,
         vec!["sub".into(), "set-file".into(), "sing-box".into(), encoded],

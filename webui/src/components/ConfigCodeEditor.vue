@@ -13,6 +13,11 @@ type JsonSyntaxState = {
   error: JsonSyntaxError | null;
 };
 
+type JsonToken = {
+  value: string;
+  className?: string;
+};
+
 const model = defineModel<string>({ default: "" });
 const emit = defineEmits<{
   syntaxState: [state: JsonSyntaxState];
@@ -24,7 +29,7 @@ const scrollLeft = ref(0);
 
 const syntaxState = computed<JsonSyntaxState>(() => validateJson(model.value));
 const lineCount = computed(() => Math.max(1, model.value.split("\n").length));
-const highlightedHtml = computed(() => highlightJson(model.value || " "));
+const highlightedTokens = computed(() => tokenizeJson(model.value || " "));
 const editorStatus = computed(() => {
   if (!model.value.trim()) return "Waiting for JSON";
   if (syntaxState.value.valid) return `${lineCount.value} lines · JSON syntax OK`;
@@ -109,8 +114,8 @@ function lineColumnToPosition(text: string, line: number, column: number): numbe
   return Math.min(text.length, position + Math.max(0, column - 1));
 }
 
-function highlightJson(text: string): string {
-  let output = "";
+function tokenizeJson(text: string): JsonToken[] {
+  const output: JsonToken[] = [];
   let index = 0;
 
   while (index < text.length) {
@@ -119,7 +124,7 @@ function highlightJson(text: string): string {
     if (/\s/.test(char)) {
       let end = index + 1;
       while (end < text.length && /\s/.test(text[end])) end += 1;
-      output += escapeHtml(text.slice(index, end));
+      output.push({ value: text.slice(index, end) });
       index = end;
       continue;
     }
@@ -129,32 +134,35 @@ function highlightJson(text: string): string {
       const className = token.closed
         ? isObjectKey(text, token.end) ? "json-token-key" : "json-token-string"
         : "json-token-error";
-      output += wrapToken(className, text.slice(index, token.end));
+      output.push({ value: text.slice(index, token.end), className });
       index = token.end;
       continue;
     }
 
     const numberMatch = text.slice(index).match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
     if (numberMatch) {
-      output += wrapToken("json-token-number", numberMatch[0]);
+      output.push({ value: numberMatch[0], className: "json-token-number" });
       index += numberMatch[0].length;
       continue;
     }
 
     const wordMatch = text.slice(index).match(/^(true|false|null)\b/);
     if (wordMatch) {
-      output += wrapToken(wordMatch[0] === "null" ? "json-token-null" : "json-token-boolean", wordMatch[0]);
+      output.push({
+        value: wordMatch[0],
+        className: wordMatch[0] === "null" ? "json-token-null" : "json-token-boolean",
+      });
       index += wordMatch[0].length;
       continue;
     }
 
     if ("{}[]:,".includes(char)) {
-      output += wrapToken("json-token-punctuation", char);
+      output.push({ value: char, className: "json-token-punctuation" });
       index += 1;
       continue;
     }
 
-    output += wrapToken("json-token-error", char);
+    output.push({ value: char, className: "json-token-error" });
     index += 1;
   }
 
@@ -188,16 +196,6 @@ function isObjectKey(text: string, end: number): boolean {
   return false;
 }
 
-function wrapToken(className: string, value: string): string {
-  return `<span class="${className}">${escapeHtml(value)}</span>`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 </script>
 
 <template>
@@ -220,7 +218,11 @@ function escapeHtml(value: string): string {
           class="json-editor__highlight"
           aria-hidden="true"
           :style="{ transform: `translate(${-scrollLeft}px, ${-scrollTop}px)` }"
-        ><code v-html="highlightedHtml" /></pre>
+        ><code><span
+            v-for="(token, index) in highlightedTokens"
+            :key="index"
+            :class="token.className"
+          >{{ token.value }}</span></code></pre>
         <textarea
           ref="textarea"
           v-model="model"
@@ -243,14 +245,13 @@ function escapeHtml(value: string): string {
 </template>
 
 <style scoped>
-/* Dedicated code surface: always high-contrast dark canvas so JSON stays readable in both app themes */
+/* Dedicated code surface: inherit the active phosphor theme instead of carrying a second palette. */
 .json-editor {
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--mn-ink) 22%, transparent);
-  border-radius: 8px;
-  background: #141413;
-  color: #f2f0e9;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #faf9f5 6%, transparent);
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-code-bg);
+  color: var(--mn-ink);
 }
 
 .json-editor--invalid {
@@ -267,10 +268,10 @@ function escapeHtml(value: string): string {
 .json-editor__gutter {
   position: relative;
   overflow: hidden;
-  border-right: 1px solid color-mix(in srgb, #faf9f5 12%, transparent);
-  background: #1a1a18;
-  color: #9a978d;
-  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  border-right: 1px solid var(--mn-border);
+  background: var(--mn-surface-sunken);
+  color: var(--mn-ink-faint);
+  font-family: inherit;
   font-size: 0.875rem;
   line-height: 1.5rem;
   user-select: none;
@@ -288,7 +289,7 @@ function escapeHtml(value: string): string {
 }
 
 .json-editor__line--error {
-  color: #f0a090;
+  color: var(--mn-danger);
   font-weight: 700;
 }
 
@@ -318,7 +319,7 @@ function escapeHtml(value: string): string {
 
 .json-editor__highlight {
   pointer-events: none;
-  color: #e8e6dc;
+  color: var(--mn-ink-soft);
   will-change: transform;
 }
 
@@ -328,57 +329,57 @@ function escapeHtml(value: string): string {
   outline: none;
   background: transparent;
   color: transparent;
-  caret-color: #faf9f5;
+  caret-color: var(--mn-cactus);
 }
 
 .json-editor__textarea::selection {
-  background: color-mix(in srgb, #bcd1ca 45%, transparent);
+  background: color-mix(in srgb, var(--mn-cactus) 38%, transparent);
 }
 
 .json-editor__textarea::placeholder {
-  color: #8f8c82;
+  color: var(--mn-ink-faint);
   opacity: 1;
 }
 
 .json-editor__status {
-  border-top: 1px solid color-mix(in srgb, #faf9f5 12%, transparent);
-  background: #1a1a18;
+  border-top: 1px solid var(--mn-border);
+  background: var(--mn-surface-sunken);
   padding: 0.55rem 0.75rem;
-  color: #c4c1b7;
+  color: var(--mn-ink-muted);
   font-size: 0.75rem;
 }
 
 .json-editor__status--error {
-  color: #f0c0b8;
-  background: color-mix(in srgb, #9a342a 35%, #1a1a18);
+  color: var(--mn-danger);
+  background: var(--mn-tone-danger-bg);
 }
 
 :deep(.json-token-key) {
-  color: #9bc0dc;
+  color: var(--mn-info);
 }
 
 :deep(.json-token-string) {
-  color: #9dccaa;
+  color: var(--mn-success);
 }
 
 :deep(.json-token-number) {
-  color: #e8c06a;
+  color: var(--mn-warning);
 }
 
 :deep(.json-token-boolean) {
-  color: #b8b0e0;
+  color: var(--mn-cactus-deep);
 }
 
 :deep(.json-token-null) {
-  color: #d4a0c8;
+  color: var(--mn-clay-ink);
 }
 
 :deep(.json-token-punctuation) {
-  color: #c4c1b7;
+  color: var(--mn-ink-muted);
 }
 
 :deep(.json-token-error) {
-  color: #f0a090;
-  text-decoration: underline wavy color-mix(in srgb, #f0a090 80%, transparent);
+  color: var(--mn-danger);
+  text-decoration: underline wavy color-mix(in srgb, var(--mn-danger) 80%, transparent);
 }
 </style>

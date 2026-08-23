@@ -12,7 +12,10 @@ use serde_json::Value;
 
 use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
-use crate::{clean_module_lines, command_text_timeout, mcp, pid_summary, singbox_pid_summary, App};
+use crate::{
+    clean_module_lines, cmdline_has_command, cmdline_has_script, command_text_timeout, mcp,
+    pid_summary, singbox_pid_summary, App,
+};
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
     for (key, ok, detail) in health_items(app) {
@@ -1031,26 +1034,6 @@ fn supervisor_cmdline_matches(moddir: &Path, name: &str, cmdline: &str) -> bool 
         }
         _ => false,
     }
-}
-
-fn cmdline_has_script(cmdline: &str, script: &str) -> bool {
-    cmdline
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .windows(2)
-        .any(|pair| {
-            matches!(
-                pair[0].rsplit('/').next(),
-                Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
-            ) && pair[1] == script
-        })
-}
-
-fn cmdline_has_command(cmdline: &str, executable: &str, args: &[&str]) -> bool {
-    let tokens = cmdline.split_whitespace().collect::<Vec<_>>();
-    tokens.windows(args.len() + 1).any(|window| {
-        window[0] == executable && window[1..].iter().copied().eq(args.iter().copied())
-    })
 }
 
 fn has_subscription(app: &App) -> bool {

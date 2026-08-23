@@ -1,16 +1,12 @@
 <script setup lang="ts">
 import {
   Activity,
-  Ban,
   Bug,
-  DownloadCloud,
-  GitBranch,
-  Monitor,
-  MonitorCog,
   Gauge,
+  GitBranch,
   Github,
-  ListFilter,
   MessageCircle,
+  Monitor,
   Moon,
   MoreHorizontal,
   ScrollText,
@@ -22,20 +18,35 @@ import {
 } from "lucide-vue-next";
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
 import { MAGICNET_LOGO_URL } from "@/branding";
+import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import OnboardingDialog from "@/components/OnboardingDialog.vue";
 import OpenSourceSupportNote from "@/components/OpenSourceSupportNote.vue";
-import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Eyebrow from "@/components/ui/Eyebrow.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
-import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { useTheme } from "@/composables/useTheme";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
 type TabKey = "control" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
+type WorkspaceKey = "run" | "route" | "configure" | "diagnose";
 type OnboardingTarget = Extract<TabKey, "control" | "subs" | "health" | "output">;
 type OnboardingPreference = "dismissed" | "completed";
+
+type TabDefinition = {
+  key: TabKey;
+  label: string;
+  code: string;
+  workspace: WorkspaceKey;
+};
+
+type WorkspaceDefinition = {
+  key: WorkspaceKey;
+  label: string;
+  code: string;
+  description: string;
+  icon: Component;
+};
 
 const ONBOARDING_STORAGE_KEY = "magicnet.webui.onboarding.v1";
 
@@ -52,7 +63,7 @@ const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   output: () => import("@/components/pages/OutputPage.vue"),
 };
 
-/** Lazy page components — inactive tabs stay off the first-load critical path */
+/** Lazy page components keep inactive workspaces off the first-load critical path. */
 const asyncPages = Object.fromEntries(
   (Object.keys(pageLoaders) as TabKey[]).map((key) => [
     key,
@@ -64,9 +75,52 @@ const asyncPages = Object.fromEntries(
   ]),
 ) as Record<TabKey, Component>;
 
+const tabs: readonly TabDefinition[] = [
+  { key: "control", label: "运行总览", code: "STATUS", workspace: "run" },
+  { key: "apps", label: "应用策略", code: "APPS", workspace: "route" },
+  { key: "block", label: "规则黑名单", code: "BLOCK", workspace: "route" },
+  { key: "chain", label: "链式代理", code: "CHAIN", workspace: "route" },
+  { key: "subs", label: "订阅", code: "SUBS", workspace: "configure" },
+  { key: "config", label: "配置文件", code: "CONFIG", workspace: "configure" },
+  { key: "webui", label: "面板入口", code: "WEBUI", workspace: "configure" },
+  { key: "health", label: "健康检查", code: "HEALTH", workspace: "diagnose" },
+  { key: "tools", label: "工具箱", code: "TOOLS", workspace: "diagnose" },
+  { key: "output", label: "命令输出", code: "OUTPUT", workspace: "diagnose" },
+];
+
+const workspaces: readonly WorkspaceDefinition[] = [
+  {
+    key: "run",
+    label: "运行",
+    code: "RUN",
+    description: "确认核心状态并执行设备级高频控制。",
+    icon: Gauge,
+  },
+  {
+    key: "route",
+    label: "路由",
+    code: "ROUTE",
+    description: "决定应用、规则与两跳链路如何处理流量。",
+    icon: GitBranch,
+  },
+  {
+    key: "configure",
+    label: "配置",
+    code: "CONFIG",
+    description: "管理订阅、配置文件与 sing-box 面板入口。",
+    icon: Settings,
+  },
+  {
+    key: "diagnose",
+    label: "诊断",
+    code: "DIAG",
+    description: "运行检查、工具命令并查看脱敏输出。",
+    icon: Stethoscope,
+  },
+];
+
 const {
   state,
-  statusTone,
   refreshAll,
   refreshStatus,
   refreshApps,
@@ -84,14 +138,22 @@ const {
   AUTHOR_WHISPER_URL,
 } = useMagicNet();
 const { preference: themePreference, label: themeLabel, cycleTheme } = useTheme();
+
 const activeTab = ref<TabKey>("control");
-/** Keep visited panels mounted so forms/lists survive tab switches. */
+/** Keep the complete ten-page surface warm so unfinished forms survive workspace switches. */
 const visitedTabs = ref<TabKey[]>(["control"]);
-const showAdvancedNav = ref(false);
+const lastTabByWorkspace = ref<Record<WorkspaceKey, TabKey>>({
+  run: "control",
+  route: "apps",
+  configure: "subs",
+  diagnose: "health",
+});
+const showUtilityMenu = ref(false);
 const showOnboarding = ref(false);
-const advancedDialog = ref<HTMLElement | null>(null);
-const advancedNavTrigger = ref<HTMLElement | null>(null);
+const utilityDialog = ref<HTMLElement | null>(null);
+const utilityMenuTrigger = ref<HTMLElement | null>(null);
 const onboardingTrigger = ref<HTMLElement | null>(null);
+
 const easterEggVisitors = [
   {
     name: "SOL",
@@ -116,9 +178,7 @@ const easterEggVisitors = [
 ] as const;
 
 const easterEggVisible = ref(false);
-/** Index of the visitor currently shown (advances after each unlock). */
 const easterEggShownIndex = ref(0);
-/** Next visitor to show on the following unlock. */
 let easterEggNextIndex = 0;
 const easterEggPayload = computed(
   () => easterEggVisitors[easterEggShownIndex.value] ?? easterEggVisitors[0],
@@ -128,23 +188,15 @@ let brandClickWindowStartedAt = 0;
 let easterEggTimer: number | undefined;
 let bodyOverflowBeforeDialog = "";
 
-const tabs = [
-  { key: "control", label: "控制", icon: Gauge, group: "primary" },
-  { key: "config", label: "配置", icon: Settings, group: "primary" },
-  { key: "apps", label: "应用", icon: ListFilter, group: "primary" },
-  { key: "block", label: "黑名单", icon: Ban, group: "primary" },
-  { key: "health", label: "诊断", icon: Stethoscope, group: "primary" },
-  { key: "chain", label: "链路", icon: GitBranch, group: "advanced" },
-  { key: "subs", label: "订阅", icon: DownloadCloud, group: "advanced" },
-  { key: "tools", label: "工具", icon: Stethoscope, group: "advanced" },
-  { key: "webui", label: "面板", icon: MonitorCog, group: "advanced" },
-  { key: "output", label: "输出", icon: Terminal, group: "advanced" },
-] as const;
-
-const primaryTabs = computed(() => tabs.filter((item) => item.group === "primary"));
-const advancedTabs = computed(() => tabs.filter((item) => item.group === "advanced"));
-const activeAdvancedTab = computed(() => advancedTabs.value.find((item) => item.key === activeTab.value));
-
+const activeTabDefinition = computed(
+  () => tabs.find((item) => item.key === activeTab.value) ?? tabs[0],
+);
+const activeWorkspace = computed(
+  () => workspaces.find((item) => item.key === activeTabDefinition.value.workspace) ?? workspaces[0],
+);
+const activeSectionTabs = computed(() =>
+  tabs.filter((item) => item.workspace === activeWorkspace.value.key),
+);
 const activeComponent = computed(() => asyncPages[activeTab.value]);
 
 const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice || "等待操作"));
@@ -153,7 +205,16 @@ const runtimeStateLabel = computed(() => {
   if (state.runtime.singBoxState === "stopped") return "已停止";
   return "状态未知";
 });
-
+const runtimeStateCode = computed(() => {
+  if (state.runtime.singBoxState === "sing-box") return "ONLINE";
+  if (state.runtime.singBoxState === "stopped") return "STOPPED";
+  return "UNKNOWN";
+});
+const routeStackState = computed(() => {
+  if (state.runtime.singBoxState === "sing-box") return "active";
+  if (state.runtime.singBoxState === "stopped") return "stopped";
+  return "unknown";
+});
 const statusDotTone = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "ok" as const;
   if (state.runtime.singBoxState === "stopped") return "stop" as const;
@@ -162,10 +223,11 @@ const statusDotTone = computed(() => {
 
 function setTab(tab: TabKey): void {
   activeTab.value = tab;
+  const definition = tabs.find((item) => item.key === tab);
+  if (definition) lastTabByWorkspace.value[definition.workspace] = tab;
   if (!visitedTabs.value.includes(tab)) {
-    visitedTabs.value = [...visitedTabs.value, tab].slice(-6);
+    visitedTabs.value = [...visitedTabs.value, tab];
   }
-  if (showAdvancedNav.value) closeAdvancedNav();
   warmActiveTab(tab);
   void nextTick(() => {
     const target = Array.from(
@@ -173,6 +235,10 @@ function setTab(tab: TabKey): void {
     ).find((item) => item.offsetParent !== null);
     target?.scrollIntoView({ block: "nearest", inline: "center" });
   });
+}
+
+function setWorkspace(workspace: WorkspaceKey): void {
+  setTab(lastTabByWorkspace.value[workspace]);
 }
 
 function readOnboardingPreference(): OnboardingPreference | null {
@@ -208,10 +274,10 @@ function launchOnboarding(trigger: HTMLElement | null = null): void {
 
 async function requestOnboarding(event?: MouseEvent): Promise<void> {
   const trigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-  if (showAdvancedNav.value) {
-    closeAdvancedNav(false);
+  if (showUtilityMenu.value) {
+    closeUtilityMenu(false);
     await nextTick();
-    launchOnboarding(advancedNavTrigger.value);
+    launchOnboarding(utilityMenuTrigger.value);
     return;
   }
   launchOnboarding(trigger);
@@ -234,33 +300,33 @@ function handleOnboardingNavigate(target: OnboardingTarget): void {
 }
 
 async function requestIssue(): Promise<void> {
-  if (showAdvancedNav.value) closeAdvancedNav(false);
+  if (showUtilityMenu.value) closeUtilityMenu(false);
   await createIssue();
 }
 
-async function openAdvancedNav(event: MouseEvent): Promise<void> {
+async function openUtilityMenu(event: MouseEvent): Promise<void> {
   if (event.currentTarget instanceof HTMLElement) {
-    advancedNavTrigger.value = event.currentTarget;
+    utilityMenuTrigger.value = event.currentTarget;
   }
   bodyOverflowBeforeDialog = document.body.style.overflow;
   document.body.style.overflow = "hidden";
-  showAdvancedNav.value = true;
+  showUtilityMenu.value = true;
   await nextTick();
-  const initial = advancedDialog.value?.querySelector<HTMLElement>("[data-dialog-initial-focus]");
-  (initial || advancedDialog.value)?.focus();
+  const initial = utilityDialog.value?.querySelector<HTMLElement>("[data-dialog-initial-focus]");
+  (initial || utilityDialog.value)?.focus();
 }
 
-function closeAdvancedNav(restoreFocus = true): void {
-  if (!showAdvancedNav.value) return;
-  showAdvancedNav.value = false;
+function closeUtilityMenu(restoreFocus = true): void {
+  if (!showUtilityMenu.value) return;
+  showUtilityMenu.value = false;
   document.body.style.overflow = bodyOverflowBeforeDialog;
-  const trigger = advancedNavTrigger.value;
+  const trigger = utilityMenuTrigger.value;
   if (restoreFocus) restoreFocusAfterUpdate(trigger);
 }
 
-function trapAdvancedNavFocus(event: KeyboardEvent): void {
-  if (!showAdvancedNav.value) return;
-  trapFocusWithin(event, advancedDialog.value);
+function trapUtilityMenuFocus(event: KeyboardEvent): void {
+  if (!showUtilityMenu.value) return;
+  trapFocusWithin(event, utilityDialog.value);
 }
 
 function closeEasterEgg(): void {
@@ -277,7 +343,6 @@ function handleBrandMarkClick(): void {
   if (brandClickCount < 5) return;
 
   brandClickCount = 0;
-  // Rotate: SOL → Grok 4.5 → Kimi K3 → …
   easterEggShownIndex.value = easterEggNextIndex % easterEggVisitors.length;
   easterEggNextIndex = (easterEggShownIndex.value + 1) % easterEggVisitors.length;
   easterEggVisible.value = true;
@@ -287,13 +352,13 @@ function handleBrandMarkClick(): void {
 
 function handleEscape(event: KeyboardEvent): void {
   if (event.key === "Tab") {
-    trapAdvancedNavFocus(event);
+    trapUtilityMenuFocus(event);
     return;
   }
   if (event.key !== "Escape") return;
-  if (showAdvancedNav.value) {
+  if (showUtilityMenu.value) {
     event.preventDefault();
-    closeAdvancedNav();
+    closeUtilityMenu();
     return;
   }
   closeEasterEgg();
@@ -323,7 +388,6 @@ onMounted(() => {
       if (!showOnboarding.value) launchOnboarding();
     });
   }
-  // Warm common tabs after first paint so switches feel instant.
   const warm = () => {
     void pageLoaders.config();
     void pageLoaders.apps();
@@ -336,16 +400,16 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener("keydown", handleEscape);
   if (easterEggTimer !== undefined) window.clearTimeout(easterEggTimer);
-  if (showAdvancedNav.value) document.body.style.overflow = bodyOverflowBeforeDialog;
+  if (showUtilityMenu.value) document.body.style.overflow = bodyOverflowBeforeDialog;
 });
 </script>
 
 <template>
-  <div class="mn-shell relative mx-auto min-h-dvh w-full max-w-[1560px] px-3 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-3 sm:px-5 md:px-7 md:pb-12 md:pt-5">
-    <header class="mn-topbar mn-chrome mb-5 flex flex-nowrap items-center justify-between gap-2 rounded-[1.25rem] p-1.5 md:mb-6 md:p-2">
-      <div class="flex min-w-0 items-center gap-1 pr-1.5">
+  <div class="mn-shell">
+    <header class="mn-command-bar">
+      <div class="mn-brand-lockup">
         <button
-          class="brand-mark mn-brand-mark grid size-11 shrink-0 place-items-center overflow-hidden rounded-[0.85rem] transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.94] active:duration-75"
+          class="mn-brand-mark brand-mark"
           type="button"
           aria-label="MagicNet 品牌标记"
           title="MagicNet"
@@ -354,265 +418,252 @@ onUnmounted(() => {
           <img
             :src="MAGICNET_LOGO_URL"
             alt=""
-            width="44"
-            height="44"
-            class="size-11 object-cover"
+            width="42"
+            height="42"
             decoding="async"
           />
         </button>
-        <div class="hidden min-w-0 min-[360px]:block pl-1.5">
-          <h1 class="truncate text-[17px] font-semibold leading-tight tracking-[-0.03em] text-[var(--mn-ink)] sm:text-xl">MagicNet</h1>
-          <p class="hidden truncate text-[11px] font-medium tracking-[0.01em] text-[var(--mn-ink-faint)] sm:block">Root 网络工作台</p>
+        <div class="mn-brand-copy">
+          <p aria-hidden="true">ROOT://MAGICNET</p>
+          <h1>MagicNet</h1>
         </div>
       </div>
 
-      <div class="flex items-center gap-0.5 rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-ink)_4%,transparent)] p-0.5 shadow-[inset_0_0_0_1px_var(--mn-border)]">
+      <div class="mn-global-actions">
         <Button
           variant="outline"
-          size="sm"
-          class="size-11 px-0 sm:w-auto sm:px-3"
+          size="icon"
           :aria-label="`外观主题：${themeLabel}，点击切换`"
           :title="`外观：${themeLabel}（亮色 → 暗色 → 跟随系统）`"
           @click="cycleTheme"
         >
-          <Sun v-if="themePreference === 'light'" :size="16" aria-hidden="true" />
-          <Moon v-else-if="themePreference === 'dark'" :size="16" aria-hidden="true" />
-          <Monitor v-else :size="16" aria-hidden="true" />
-          <span class="hidden sm:inline">{{ themeLabel }}</span>
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          class="hidden size-11 px-0 md:inline-flex md:w-auto md:px-4"
-          aria-label="打开新手引导"
-          title="打开新手引导"
-          @click="requestOnboarding"
-        >
-          <ScrollText :size="16" /><span>新手引导</span>
-        </Button>
-        <Button
-          size="sm"
-          class="hidden size-11 px-0 md:inline-flex md:w-auto md:px-4"
-          :loading="state.task === '创建 GitHub issue'"
-          aria-label="创建 GitHub Issue"
-          title="创建 GitHub Issue"
-          @click="createIssue"
-        >
-          <Bug :size="16" /><span>反馈问题</span>
+          <Sun v-if="themePreference === 'light'" :size="17" aria-hidden="true" />
+          <Moon v-else-if="themePreference === 'dark'" :size="17" aria-hidden="true" />
+          <Monitor v-else :size="17" aria-hidden="true" />
         </Button>
         <Button
           variant="ghost"
-          size="sm"
-          class="size-11 px-0 sm:w-auto sm:px-4"
+          size="icon"
           :loading="state.task === '刷新面板'"
           aria-label="刷新面板"
           title="刷新面板"
           @click="refreshAll"
         >
-          <Activity :size="16" /><span class="hidden sm:inline">刷新</span>
+          <Activity :size="17" aria-hidden="true" />
         </Button>
         <Button
+          class="mn-desktop-action"
           variant="outline"
           size="sm"
-          class="hidden size-11 px-0 md:inline-flex md:w-auto md:px-4"
-          aria-label="打开悄悄话"
-          title="打开悄悄话"
-          @click="openExternal(AUTHOR_WHISPER_URL, '悄悄话')"
+          aria-label="打开新手引导"
+          @click="requestOnboarding"
         >
-          <MessageCircle :size="16" /><span>悄悄话</span>
+          <ScrollText :size="16" aria-hidden="true" />引导
         </Button>
         <Button
+          class="mn-desktop-action"
           variant="outline"
           size="sm"
-          class="size-11 px-0 sm:w-auto sm:px-4"
+          :loading="state.task === '创建 GitHub issue'"
+          aria-label="创建 GitHub Issue"
+          @click="createIssue"
+        >
+          <Bug :size="16" aria-hidden="true" />反馈
+        </Button>
+        <Button
+          class="mn-desktop-action"
+          variant="outline"
+          size="sm"
           aria-label="打开 GitHub"
-          title="打开 GitHub"
           @click="openExternal(REPO, 'GitHub')"
         >
-          <Github :size="16" /><span class="hidden sm:inline">GitHub</span>
+          <Github :size="16" aria-hidden="true" />GitHub
+        </Button>
+        <Button
+          class="mn-mobile-action"
+          variant="outline"
+          size="icon"
+          aria-label="打开系统工具"
+          aria-haspopup="dialog"
+          :aria-expanded="showUtilityMenu"
+          @click="openUtilityMenu"
+        >
+          <MoreHorizontal :size="18" aria-hidden="true" />
         </Button>
       </div>
     </header>
 
-    <section class="runtime-cockpit mn-editorial-field relative z-20 mb-5 rounded-[1.25rem] p-1.5 md:sticky md:top-4">
-      <div class="mn-editorial-carrier grid gap-3 p-1.5 md:grid-cols-[minmax(220px,1.05fr)_minmax(0,1fr)_auto] md:items-center md:gap-2">
-        <div class="rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-cactus)_34%,var(--mn-carrier))] px-4 py-3">
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              <Eyebrow tone="faint">运行状态</Eyebrow>
-              <div class="mt-1.5 flex min-w-0 items-center gap-2.5">
-                <StatusDot :tone="statusDotTone" />
-                <strong class="w-0 min-w-0 flex-1 truncate text-lg font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
-                  {{ runtimeStateLabel }}
-                </strong>
-              </div>
-            </div>
-            <Badge :tone="statusTone">{{ runtimeStateLabel }}</Badge>
-          </div>
+    <section class="runtime-cockpit" aria-labelledby="runtime-cockpit-title">
+      <div class="mn-status-line" :data-state="routeStackState" role="status" aria-live="polite" aria-atomic="true">
+        <span class="mn-prompt" aria-hidden="true">root@magicnet:~$</span>
+        <div class="mn-runtime-state">
+          <StatusDot :tone="statusDotTone" />
+          <strong id="runtime-cockpit-title">{{ runtimeStateLabel }}</strong>
+          <code class="mn-state-code">[{{ runtimeStateCode }}]</code>
         </div>
+        <p :title="statusMessage">{{ statusMessage }}</p>
+      </div>
 
-        <div class="grid min-w-0 grid-cols-2 gap-2 px-2 pb-2 md:px-3 md:pb-0">
-          <div class="min-w-0">
-            <Eyebrow tone="faint">模式</Eyebrow>
-            <code class="mn-code mt-1 block truncate text-xs md:text-sm">TUN</code>
-          </div>
-          <div class="min-w-0">
-            <Eyebrow tone="faint">核心</Eyebrow>
-            <code class="mn-code mt-1 block truncate text-xs md:text-sm">{{ state.runtime.singBox }}</code>
-          </div>
-          <div class="col-span-2 flex min-w-0 items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)] md:text-sm">
-            <ScrollText class="shrink-0 text-[var(--mn-clay)]" :size="14" />
-            <span class="min-w-0 truncate" :title="statusMessage">{{ statusMessage }}</span>
-          </div>
+      <div class="mn-route-stack" :data-state="routeStackState" aria-label="MagicNet TUN 运行路径">
+        <div class="mn-route-caption">
+          <span>ROUTE_STACK</span>
+          <span>[READ_ONLY]</span>
         </div>
+        <ol>
+          <li>
+            <span class="mn-route-index">01</span>
+            <span class="mn-route-node">ANDROID ROOT</span>
+            <code>ENTRY</code>
+          </li>
+          <li>
+            <span class="mn-route-index">02</span>
+            <span class="mn-route-node">magicnet0</span>
+            <code>TUN</code>
+          </li>
+          <li>
+            <span class="mn-route-index">03</span>
+            <span class="mn-route-node">sing-box</span>
+            <code>{{ state.runtime.singBox || "UNKNOWN" }}</code>
+          </li>
+          <li>
+            <span class="mn-route-index">04</span>
+            <span class="mn-route-node">POLICY / OUTBOUND</span>
+            <code>ROUTE</code>
+          </li>
+        </ol>
+      </div>
 
+      <div class="mn-runtime-readout">
+        <div>
+          <Eyebrow tone="faint">MODE</Eyebrow>
+          <code>TUN</code>
+        </div>
+        <div>
+          <Eyebrow tone="faint">CORE</Eyebrow>
+          <code>{{ state.runtime.singBox }}</code>
+        </div>
         <Button
           v-if="state.backgroundTask.log"
           variant="outline"
           size="sm"
-          class="mx-2 mb-2 md:mx-1 md:mb-0"
+          aria-label="查看后台日志"
           @click="setTab('output')"
         >
-          <Terminal :size="15" />后台日志
+          <Terminal :size="15" aria-hidden="true" />后台输出
         </Button>
       </div>
     </section>
 
-    <main class="grid min-w-0 gap-5 md:grid-cols-[204px_minmax(0,1fr)] md:items-start md:gap-6">
-      <nav class="desktop-rail mn-chrome sticky top-36 hidden gap-1 rounded-[1.25rem] p-2 md:grid" aria-label="MagicNet 页面">
-        <div class="px-3 pb-1 pt-2"><Eyebrow tone="faint">常用工作区</Eyebrow></div>
-        <button
-          v-for="item in primaryTabs"
-          :key="item.key"
-          :data-tab="item.key"
-          :class="[
-            'flex min-h-11 min-w-0 items-center gap-3 whitespace-nowrap rounded-[0.85rem] px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
-            activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle',
-          ]"
-          type="button"
-          :aria-current="activeTab === item.key ? 'page' : undefined"
-          @click="setTab(item.key)"
-        >
-          <component :is="item.icon" :size="18" />
-          <span class="min-w-0 truncate">{{ item.label }}</span>
-        </button>
+    <div class="mn-workspace-frame">
+      <aside class="desktop-rail" aria-label="MagicNet 工作区">
+        <div class="mn-rail-label">WORKSPACES</div>
+        <nav>
+          <button
+            v-for="workspace in workspaces"
+            :key="workspace.key"
+            :class="activeWorkspace.key === workspace.key ? 'mn-nav-active' : 'mn-nav-idle'"
+            type="button"
+            :aria-current="activeWorkspace.key === workspace.key ? 'page' : undefined"
+            @click="setWorkspace(workspace.key)"
+          >
+            <component :is="workspace.icon" :size="18" aria-hidden="true" />
+            <span>{{ workspace.label }}</span>
+            <code>{{ workspace.code }}</code>
+          </button>
+        </nav>
+        <div class="mn-rail-foot">
+          <span>MODE::TUN</span>
+          <span>IFACE::magicnet0</span>
+        </div>
+      </aside>
 
-        <div class="mt-3 px-3 pb-1"><Eyebrow tone="faint">进阶工具</Eyebrow></div>
-        <button
-          v-for="item in advancedTabs"
-          :key="item.key"
-          :data-tab="item.key"
-          :class="[
-            'flex min-h-11 min-w-0 items-center gap-3 whitespace-nowrap rounded-[0.85rem] px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.98]',
-            activeTab === item.key ? 'mn-nav-advanced-active' : 'mn-nav-idle',
-          ]"
-          type="button"
-          :aria-current="activeTab === item.key ? 'page' : undefined"
-          @click="setTab(item.key)"
-        >
-          <component :is="item.icon" :size="18" />
-          <span class="min-w-0 truncate">{{ item.label }}</span>
-        </button>
-      </nav>
-
-      <!-- KeepAlive: preserve form state across tabs; no full remount animation -->
-      <section class="page-surface min-w-0 overflow-hidden">
-        <Suspense>
-          <KeepAlive :max="6">
-            <component
-              :is="activeComponent"
-              @goto-output="setTab('output')"
-            />
-          </KeepAlive>
-          <template #fallback>
-            <div class="mn-chrome rounded-[1.25rem] p-8 text-sm text-[var(--mn-ink-muted)]" role="status">加载面板…</div>
-          </template>
-        </Suspense>
-      </section>
-    </main>
-
-    <OpenSourceSupportNote />
-
-    <nav class="mobile-nav mn-chrome fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 grid grid-cols-6 gap-0.5 rounded-[1.35rem] p-1.5 md:hidden" aria-label="MagicNet 移动导航">
-      <button
-        v-for="item in primaryTabs"
-        :key="item.key"
-        :data-tab="item.key"
-        :class="[
-          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-[0.85rem] px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
-          activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle',
-        ]"
-        type="button"
-        :aria-current="activeTab === item.key ? 'page' : undefined"
-        @click="setTab(item.key)"
-      >
-        <component :is="item.icon" :size="18" />
-        <span class="max-w-full truncate leading-none">{{ item.label }}</span>
-      </button>
-      <button
-        ref="advancedNavTrigger"
-        :class="[
-          'flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-[0.85rem] px-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.95]',
-          activeAdvancedTab ? 'mn-nav-advanced-active' : 'mn-nav-idle',
-        ]"
-        type="button"
-        :aria-current="activeAdvancedTab ? 'page' : undefined"
-        aria-haspopup="dialog"
-        :aria-expanded="showAdvancedNav"
-        @click="openAdvancedNav"
-      >
-        <component :is="activeAdvancedTab?.icon || MoreHorizontal" :size="18" />
-        <span class="max-w-full truncate leading-none">{{ activeAdvancedTab?.label || "更多" }}</span>
-      </button>
-    </nav>
-
-    <Transition name="sheet">
-      <div v-if="showAdvancedNav" class="fixed inset-0 z-40 md:hidden">
-        <button class="mn-overlay absolute inset-0 size-full" type="button" aria-label="关闭进阶导航" @click="closeAdvancedNav()" />
-        <div ref="advancedDialog" class="mn-chrome-raised absolute inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] rounded-[1.5rem] p-2 pb-2.5" role="dialog" aria-modal="true" aria-label="进阶导航" tabindex="-1">
-          <div class="flex items-center justify-between px-3 pb-2 pt-2">
-            <div>
-              <Eyebrow tone="faint">更多工作区</Eyebrow>
-              <h2 class="mt-1 text-lg font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">进阶工具</h2>
-            </div>
-            <Button data-dialog-initial-focus variant="ghost" size="icon" aria-label="关闭进阶导航" @click="closeAdvancedNav()"><X :size="18" /></Button>
+      <main class="mn-workspace-main">
+        <header class="mn-workspace-header">
+          <div>
+            <h2>{{ activeWorkspace.label }}</h2>
+            <p>{{ activeWorkspace.description }}</p>
           </div>
-          <div class="grid grid-cols-2 gap-1.5">
+          <nav class="mn-section-tabs" :aria-label="`${activeWorkspace.label}分区`">
             <button
-              v-for="item in advancedTabs"
+              v-for="item in activeSectionTabs"
               :key="item.key"
               :data-tab="item.key"
-              :class="[
-                'flex min-h-11 min-w-0 items-center gap-3 rounded-[0.95rem] px-4 text-sm font-medium transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-heather)_70%,var(--mn-ink))] active:scale-[0.97] active:duration-75',
-                activeTab === item.key ? 'mn-nav-active' : 'mn-inset-soft text-[var(--mn-ink-soft)]',
-              ]"
+              :class="activeTab === item.key ? 'is-active' : undefined"
               type="button"
               :aria-current="activeTab === item.key ? 'page' : undefined"
               @click="setTab(item.key)"
             >
-              <component :is="item.icon" :size="19" />
-              <span class="min-w-0 truncate">{{ item.label }}</span>
+              <code>{{ item.code }}</code>
+              <span>{{ item.label }}</span>
             </button>
-            <Button
-              variant="outline"
-              class="min-h-11"
-              @click="requestOnboarding"
-            >
-              <ScrollText :size="18" />新手引导
+          </nav>
+        </header>
+
+        <!-- KeepAlive preserves form state across all four workspaces. -->
+        <section class="page-surface">
+          <Suspense>
+            <KeepAlive :max="10">
+              <component
+                :is="activeComponent"
+                @goto-output="setTab('output')"
+              />
+            </KeepAlive>
+            <template #fallback>
+              <div class="mn-loading-panel" role="status">[LOAD] 正在加载工作区…</div>
+            </template>
+          </Suspense>
+        </section>
+      </main>
+    </div>
+
+    <OpenSourceSupportNote />
+
+    <nav class="mobile-nav" aria-label="MagicNet 移动导航">
+      <button
+        v-for="workspace in workspaces"
+        :key="workspace.key"
+        :class="activeWorkspace.key === workspace.key ? 'mn-nav-active' : 'mn-nav-idle'"
+        type="button"
+        :aria-current="activeWorkspace.key === workspace.key ? 'page' : undefined"
+        @click="setWorkspace(workspace.key)"
+      >
+        <component :is="workspace.icon" :size="19" aria-hidden="true" />
+        <span>{{ workspace.label }}</span>
+        <code aria-hidden="true">{{ workspace.code }}</code>
+      </button>
+    </nav>
+
+    <Transition name="sheet">
+      <div v-if="showUtilityMenu" class="mn-sheet-layer">
+        <button class="mn-overlay" type="button" aria-label="关闭系统工具" @click="closeUtilityMenu()" />
+        <div
+          ref="utilityDialog"
+          class="mn-utility-sheet"
+          role="dialog"
+          aria-modal="true"
+          aria-label="系统工具"
+          tabindex="-1"
+        >
+          <div class="mn-sheet-header">
+            <div>
+              <h2>系统工具</h2>
+            </div>
+            <Button data-dialog-initial-focus variant="ghost" size="icon" aria-label="关闭系统工具" @click="closeUtilityMenu()">
+              <X :size="18" aria-hidden="true" />
             </Button>
-            <Button
-              class="min-h-11"
-              :loading="state.task === '创建 GitHub issue'"
-              @click="requestIssue"
-            >
-              <Bug :size="18" />反馈问题
+          </div>
+          <div class="mn-utility-grid">
+            <Button variant="outline" @click="requestOnboarding">
+              <ScrollText :size="18" aria-hidden="true" />新手引导
             </Button>
-            <Button
-              variant="outline"
-              class="min-h-11"
-              @click="openExternal(AUTHOR_WHISPER_URL, '悄悄话')"
-            >
-              <MessageCircle :size="18" />悄悄话
+            <Button variant="outline" :loading="state.task === '创建 GitHub issue'" @click="requestIssue">
+              <Bug :size="18" aria-hidden="true" />反馈问题
+            </Button>
+            <Button variant="outline" @click="openExternal(AUTHOR_WHISPER_URL, '悄悄话')">
+              <MessageCircle :size="18" aria-hidden="true" />悄悄话
+            </Button>
+            <Button variant="outline" @click="openExternal(REPO, 'GitHub')">
+              <Github :size="18" aria-hidden="true" />GitHub
             </Button>
           </div>
         </div>
@@ -634,30 +685,24 @@ onUnmounted(() => {
     />
 
     <Transition name="toast">
-      <aside v-if="easterEggVisible" class="mn-chrome-raised fixed bottom-28 right-3 z-50 max-w-[calc(100vw-1.5rem)] rounded-[1.25rem] p-1.5 md:bottom-8 md:right-8 md:max-w-sm" role="status" aria-live="polite">
-        <div class="flex items-start gap-3 rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-cactus)_18%,var(--mn-material-heavy))] p-4">
-          <div class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-[0.75rem] bg-[var(--mn-cactus)]">
-            <img :src="MAGICNET_LOGO_URL" alt="" class="size-10 object-cover" width="40" height="40" decoding="async" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <strong class="text-sm font-semibold text-[var(--mn-ink)]">{{ easterEggPayload.title }}</strong>
-            <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ easterEggPayload.body }}</p>
-            <p class="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] uppercase tracking-[0.16em] text-[var(--mn-ink-faint)]">
-              <span>访客</span>
-              <template v-for="(visitor, index) in easterEggVisitors" :key="visitor.name">
-                <span aria-hidden="true" class="opacity-50">·</span>
-                <span
-                  :class="index === easterEggShownIndex
-                    ? 'rounded-full bg-[var(--mn-cactus)] px-1.5 py-0.5 font-semibold text-[var(--mn-on-accent)]'
-                    : ''"
-                >{{ visitor.name }}</span>
-              </template>
-            </p>
-          </div>
-          <button class="grid size-11 shrink-0 place-items-center rounded-[0.85rem] text-[var(--mn-ink-faint)] transition-[transform,color,background-color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] hover:text-[var(--mn-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.94] active:duration-75" type="button" aria-label="关闭彩蛋" @click="closeEasterEgg">
-            <X :size="16" />
-          </button>
+      <aside v-if="easterEggVisible" class="mn-easter-egg" role="status" aria-live="polite">
+        <div class="mn-easter-mark">
+          <img :src="MAGICNET_LOGO_URL" alt="" width="38" height="38" decoding="async" />
         </div>
+        <div class="mn-easter-copy">
+          <strong>{{ easterEggPayload.title }}</strong>
+          <p>{{ easterEggPayload.body }}</p>
+          <p class="mn-visitor-line">
+            <span>VISITORS::</span>
+            <template v-for="(visitor, index) in easterEggVisitors" :key="visitor.name">
+              <span aria-hidden="true">/</span>
+              <span :class="index === easterEggShownIndex ? 'is-current' : undefined">{{ visitor.name }}</span>
+            </template>
+          </p>
+        </div>
+        <button type="button" aria-label="关闭彩蛋" @click="closeEasterEgg">
+          <X :size="16" aria-hidden="true" />
+        </button>
       </aside>
     </Transition>
   </div>

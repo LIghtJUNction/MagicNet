@@ -2,7 +2,6 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Bug, ShieldCheck, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
-import Eyebrow from "@/components/ui/Eyebrow.vue";
 import Field from "@/components/ui/Field.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { trapFocusWithin } from "@/lib/focus";
@@ -82,11 +81,8 @@ onUnmounted(() => {
       <div class="rounded-[5px] bg-[var(--mn-ivory)] p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <Eyebrow tone="clay" class="inline-flex items-center gap-2">
-              <Bug :size="14" /> Issue Context
-            </Eyebrow>
-            <h2 id="issue-reporter-title" class="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
-              你遇到了哪类问题？
+            <h2 id="issue-reporter-title" class="flex items-center gap-2 text-xl font-semibold tracking-[-0.025em] text-[var(--mn-ink)]">
+              <Bug :size="18" aria-hidden="true" />你遇到了哪类问题？
             </h2>
             <p id="issue-reporter-description" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
               选择一项后，MagicNet 只收集与该问题最相关的诊断上下文，并在打开 GitHub 前完成脱敏。

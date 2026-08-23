@@ -83,37 +83,3 @@ magicnet_singbox_proc_start() {
         "$_proc_stat_path" 2>/dev/null || true
     unset _proc_stat_path
 }
-
-# KernelSU WebUI commands inherit the manager app's killable cgroup. Move only
-# verified MagicNet daemons into stable parent cgroups before the bridge exits.
-magicnet_detach_pid_from_app_cgroup() (
-    _detach_pid="$1"
-    _detach_proc_root="${MAGICNET_PROC_ROOT:-/proc}"
-    case "$_detach_pid" in
-        '' | *[!0-9]* | 0 | 1) return 1 ;;
-    esac
-    _detach_cgroup_file="${_detach_proc_root}/${_detach_pid}/cgroup"
-    [ -r "$_detach_cgroup_file" ] || return 1
-    _detach_cgroup="$(cat "$_detach_cgroup_file" 2>/dev/null || true)"
-    case "$_detach_cgroup" in
-        *'/apps/uid_'*) ;;
-        *) return 0 ;;
-    esac
-
-    _detach_roots="${MAGICNET_PROCESS_CGROUP_ROOTS:-/sys/fs/cgroup:/dev/memcg/apps:/dev/cpuset:/dev/cpuctl:/dev/blkio:/dev/freezer}"
-    _detach_old_ifs=$IFS
-    IFS=:
-    _detach_moved=0
-    for _detach_root in $_detach_roots; do
-        [ -d "$_detach_root" ] || continue
-        if [ -w "${_detach_root}/cgroup.procs" ] &&
-            printf '%s\n' "$_detach_pid" >"${_detach_root}/cgroup.procs" 2>/dev/null; then
-            _detach_moved=1
-        elif [ -w "${_detach_root}/tasks" ] &&
-            printf '%s\n' "$_detach_pid" >"${_detach_root}/tasks" 2>/dev/null; then
-            _detach_moved=1
-        fi
-    done
-    IFS=$_detach_old_ifs
-    [ "$_detach_moved" -eq 1 ]
-)

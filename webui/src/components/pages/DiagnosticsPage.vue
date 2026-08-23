@@ -184,9 +184,9 @@ async function askAi(url: string, name: string): Promise<void> {
   <div class="grid gap-4">
     <PageHeader overline="Diagnostics" title="诊断" description="运行健康检查、连通性测试，并复制脱敏上下文给 AI。">
       <template #actions>
-        <Button variant="outline" :loading="isRunning('health')" @click="withAction('health', refreshDiagnostics)"><RefreshCw :size="17" />健康检查</Button>
-        <Button :loading="isRunning('ping')" @click="withAction('ping', () => refreshPing())"><RadioTower :size="17" />连通性测试</Button>
-        <Button :loading="isRunning('create-issue')" @click="withAction('create-issue', createIssue)"><Bug :size="17" />创建 Issue</Button>
+        <Button :loading="isRunning('health')" @click="withAction('health', refreshDiagnostics)"><RefreshCw :size="17" />健康检查</Button>
+        <Button variant="outline" :loading="isRunning('ping')" @click="withAction('ping', () => refreshPing())"><RadioTower :size="17" />连通性测试</Button>
+        <Button variant="outline" :loading="isRunning('create-issue')" @click="withAction('create-issue', createIssue)"><Bug :size="17" />创建 Issue</Button>
         <Button variant="outline" :loading="isRunning('copy-context')" @click="copyContext"><Copy :size="17" />复制上下文</Button>
       </template>
     </PageHeader>

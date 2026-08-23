@@ -17,17 +17,27 @@ type ControlRuntimeInput = {
   output?: string;
 };
 
-export function controlRuntimeBusy(phase: string, queueDepth: number, backgroundStatus = "idle"): boolean {
-  return ["accepted", "queued", "running"].includes(phase)
-    || queueDepth > 0
-    || ["running", "timeout"].includes(backgroundStatus);
+export function controlRuntimeBusy(
+  phase: string,
+  queueDepth: number,
+  backgroundStatus = "idle",
+): boolean {
+  return (
+    ["accepted", "queued", "running"].includes(phase) ||
+    queueDepth > 0 ||
+    ["running", "timeout"].includes(backgroundStatus)
+  );
 }
 
 export function buildControlRuntimeInsight(
   input: ControlRuntimeInput,
 ): ControlRuntimeInsight {
   const running = input.runtime.singBoxState === "sing-box";
-  const busy = controlRuntimeBusy(input.phase, input.queueDepth, input.backgroundStatus);
+  const busy = controlRuntimeBusy(
+    input.phase,
+    input.queueDepth,
+    input.backgroundStatus,
+  );
   if (!input.hasKsu) {
     return {
       status: "warning",
@@ -98,5 +108,4 @@ export function controlInsightTone(
   if (status === "danger") return statusToneClasses("danger");
   if (status === "warning") return statusToneClasses("warning");
   return statusToneClasses("info");
-
 }

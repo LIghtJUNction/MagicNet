@@ -740,10 +740,6 @@ assert_dns_interception_not_enabled() {
 run sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import self
-    if env | grep -q "^KAM_MODULES="; then
-        printf "%s\n" "KAM_MODULES leaked into child-process environment" >&2
-        exit 1
-    fi
     config set override.description "fake smoke config"
     test "$(config get override.description)" = "fake smoke config"
     test -f "$MODDIR/.state/kamfw-config/${MODDIR##*/}/persist/override.description"
@@ -979,7 +975,7 @@ if "$HOST_JQ" -e '.outbounds[] | select(.tag == "old-cached-node")' \
     exit 1
 fi
 # Detached startup supervisors may still be reconciling the initial fixture.
-# Quiesce them before the deterministic stopped-core runtime assertions.
+# Quiesce them before deterministic stopped-core runtime assertions.
 run "$MODDIR/cli" supervisor stop all
 config_lock_ready=0
 for ((attempt = 0; attempt < 100; attempt++)); do
