@@ -2,7 +2,10 @@
 import { computed, onMounted, ref } from "vue";
 import { Copy, RefreshCw, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
+import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import Input from "@/components/ui/Input.vue";
+import InsightChip from "@/components/ui/InsightChip.vue";
+import StatTile from "@/components/ui/StatTile.vue";
 import { parseRouteRuleSummary } from "@/composables/parsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
@@ -155,56 +158,43 @@ onMounted(() => {
 
 <template>
   <div class="grid gap-3">
-    <div v-if="pendingAction" class="mn-panel-warn rounded-md p-3">
-      <p class="text-sm font-semibold text-[var(--mn-warning)]">{{ pendingAction.title }}</p>
-      <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">{{ pendingAction.detail }}</p>
-      <code class="mt-2 block break-words rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">{{ pendingAction.command }}</code>
-      <div v-if="pendingPlan" class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
-        <span
+    <ConfirmPanel
+      v-if="pendingAction"
+      :title="pendingAction.title"
+      :detail="pendingAction.detail"
+      :command="pendingAction.command"
+      :loading="isRunning(pendingAction.key)"
+      @cancel="cancelAction"
+      @confirm="confirmAction"
+    >
+      <div v-if="pendingPlan" class="mt-3 flex flex-wrap gap-2">
+        <InsightChip
           v-for="item in pendingPlan.items"
           :key="item.label"
-          class="rounded border px-2 py-1"
-          :class="{
-            'mn-chip-ok': item.tone === 'success',
-            'mn-chip-warn': item.tone === 'warning',
-            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-            'mn-chip-neutral': item.tone === 'neutral',
-          }"
-        >
-          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
-        </span>
+          :label="item.label"
+          :value="item.value"
+          :tone="item.tone"
+        />
       </div>
       <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
         {{ pendingPlan.warnings.join("；") }}
       </p>
-      <div class="mt-3 grid gap-2 sm:grid-cols-3">
+      <template #actions>
         <Button variant="outline" :disabled="isRunning(pendingAction.key)" @click="cancelAction">取消</Button>
         <Button variant="outline" @click="copyRouteChangePlan"><Copy :size="15" />{{ planCopied ? '已复制计划' : '复制计划' }}</Button>
         <Button :loading="isRunning(pendingAction.key)" @click="confirmAction">确认执行</Button>
-      </div>
-    </div>
+      </template>
+    </ConfirmPanel>
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
       <Input v-model="domain" placeholder="example.com" spellcheck="false" />
       <Button variant="secondary" :disabled="!state.warp.enabled" :loading="isRunning('warp-route')" @click="requestAddWarpRoute">域名走 WARP</Button>
     </div>
     <Input v-model="routeQuery" placeholder="过滤 WARP 域名，例如 google / openai" spellcheck="false" />
     <div class="grid gap-2 sm:grid-cols-4">
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">Proxy</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.proxy.length }}</p>
-      </div>
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">Direct</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.direct.length }}</p>
-      </div>
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">Block</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.block.length }}</p>
-      </div>
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">WARP</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.warp.length }}</p>
-      </div>
+      <StatTile label="Proxy" :value="summary.proxy.length" />
+      <StatTile label="Direct" :value="summary.direct.length" />
+      <StatTile label="Block" :value="summary.block.length" />
+      <StatTile label="WARP" :value="summary.warp.length" />
     </div>
     <div v-if="summary.warp.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)]">
       <p class="mb-1 text-[var(--mn-ink-muted)]">WARP 域名 · {{ visibleWarpDomains.length }} / {{ summary.warp.length }}</p>

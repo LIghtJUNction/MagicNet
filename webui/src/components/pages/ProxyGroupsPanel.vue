@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Copy, RefreshCw, Route, Search } from "lucide-vue-next";
+import { Copy, RefreshCw, Route } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
-import Input from "@/components/ui/Input.vue";
+import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
+import InsightChip from "@/components/ui/InsightChip.vue";
+import SearchField from "@/components/ui/SearchField.vue";
 import { buildNodeDelayStats, nodeDelayQualityLabel, parseNodeTestAll, sanitizeNodeText, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
 import { parseProxyGroupsSnapshot, sanitizeProxyName, type ProxyGroupSummary } from "@/composables/proxyGroupParsers";
 import { useActionLock } from "@/composables/useActionLock";
@@ -187,45 +189,41 @@ onMounted(() => {
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <label class="relative block">
-        <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-muted)]" :size="15" />
-        <Input v-model="groupQuery" class="pl-9" placeholder="搜索代理组或节点" spellcheck="false" />
-      </label>
+      <SearchField v-model="groupQuery" placeholder="搜索代理组或节点" />
       <span class="text-sm text-[var(--mn-ink-muted)]">
         {{ filteredGroups.length }} / {{ snapshot?.groups.length || 0 }} 组
       </span>
     </div>
 
-    <div v-if="pendingAction" class="mn-panel-warn rounded-md p-3">
-      <p class="text-sm font-semibold text-[var(--mn-warning)]">切换代理节点</p>
-      <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">
-        {{ sanitizeProxyName(pendingAction.group.name) }}：{{ sanitizeProxyName(pendingPlan?.summary || "") }}
-      </p>
-      <code class="mt-2 block rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">api select &lt;group&gt; &lt;node&gt;</code>
-      <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
-        <span
+    <ConfirmPanel
+      v-if="pendingAction"
+      title="切换代理节点"
+      :detail="`${sanitizeProxyName(pendingAction.group.name)}：${sanitizeProxyName(pendingPlan?.summary || '')}`"
+      command="api select <group> <node>"
+      :loading="isRunning('proxy-groups-select')"
+      confirm-label="确认切换"
+      confirm-variant="secondary"
+      @cancel="cancelAction"
+      @confirm="confirmAction"
+    >
+      <div class="mt-3 flex flex-wrap gap-2">
+        <InsightChip
           v-for="item in pendingPlan?.items || []"
           :key="item.label"
-          class="rounded border px-2 py-1"
-          :class="{
-            'mn-chip-ok': item.tone === 'success',
-            'mn-chip-warn': item.tone === 'warning',
-            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-            'mn-chip-neutral': item.tone === 'neutral',
-          }"
-        >
-          {{ item.label }}: <b class="font-medium">{{ sanitizeProxyName(item.value) }}</b>
-        </span>
+          :label="item.label"
+          :value="sanitizeProxyName(item.value)"
+          :tone="item.tone"
+        />
       </div>
       <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
         {{ pendingPlan.warnings.join("；") }}
       </p>
-      <div class="mt-3 grid gap-2 sm:grid-cols-3">
-        <Button size="sm" variant="secondary" :loading="isRunning('proxy-groups-select')" @click="confirmAction">确认切换</Button>
-        <Button size="sm" variant="outline" @click="copySelectionPlan">{{ selectionPlanCopied ? "已复制计划" : "复制计划" }}</Button>
+      <template #actions>
         <Button size="sm" variant="outline" @click="cancelAction">取消</Button>
-      </div>
-    </div>
+        <Button size="sm" variant="outline" @click="copySelectionPlan">{{ selectionPlanCopied ? "已复制计划" : "复制计划" }}</Button>
+        <Button size="sm" variant="secondary" :loading="isRunning('proxy-groups-select')" @click="confirmAction">确认切换</Button>
+      </template>
+    </ConfirmPanel>
 
     <div v-if="visibleGroups.length" class="grid gap-3">
       <div v-for="group in visibleGroups" :key="group.name" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">

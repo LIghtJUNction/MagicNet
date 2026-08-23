@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { Copy, DownloadCloud, Github, ListFilter, Plus, RefreshCw, Search, X } from "lucide-vue-next";
+import { Copy, DownloadCloud, Github, ListFilter, Plus, RefreshCw } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import Input from "@/components/ui/Input.vue";
+import InsightChip from "@/components/ui/InsightChip.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import RemovableTag from "@/components/ui/RemovableTag.vue";
+import SearchField from "@/components/ui/SearchField.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed, redactedCliPreview } from "@/utils";
@@ -333,19 +337,17 @@ async function confirmBlockAction(): Promise<void> {
       </div>
     </PageHeader>
 
-    <Card v-if="pendingBlockAction" class="grid gap-3 mn-panel-warn">
-      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div class="min-w-0">
-          <span class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]">Confirm blocklist</span>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">{{ pendingBlockAction.message }}</p>
-          <code class="mt-2 block break-all rounded-md bg-[var(--mn-ivory)]/60 px-3 py-2 text-xs text-[var(--mn-ink)]">{{ pendingBlockAction.command }}</code>
-        </div>
-        <div class="flex shrink-0 gap-2">
-          <Button variant="secondary" :loading="isRunning(pendingBlockAction.key)" @click="confirmBlockAction">确认</Button>
-          <Button variant="outline" @click="cancelBlockAction">取消</Button>
-        </div>
-      </div>
-    </Card>
+    <ConfirmPanel
+      v-if="pendingBlockAction"
+      title="Confirm blocklist"
+      :detail="pendingBlockAction.message"
+      :command="pendingBlockAction.command"
+      :loading="isRunning(pendingBlockAction.key)"
+      confirm-label="确认"
+      confirm-variant="secondary"
+      @cancel="cancelBlockAction"
+      @confirm="confirmBlockAction"
+    />
 
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
@@ -365,20 +367,14 @@ async function confirmBlockAction(): Promise<void> {
           {{ blockSummary.status === 'active' ? '完整启用' : blockSummary.status === 'partial' ? '部分启用' : blockSummary.status === 'empty' ? '无有效规则' : '已关闭' }}
         </span>
       </div>
-      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
-        <span
+      <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <InsightChip
           v-for="item in blockSummary.insights"
           :key="item.label"
-          class="rounded border px-2 py-1"
-          :class="{
-            'mn-chip-ok': item.tone === 'success',
-            'mn-chip-warn': item.tone === 'warning',
-            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-            'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
-          }"
-        >
-          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
-        </span>
+          :label="item.label"
+          :value="item.value"
+          :tone="item.tone"
+        />
       </div>
       <div class="grid gap-2 sm:grid-cols-2">
         <Button :variant="state.blocklist.enabled ? 'default' : 'outline'" :loading="isRunning('toggle-block')" @click="requestToggleBlocklist">
@@ -392,32 +388,35 @@ async function confirmBlockAction(): Promise<void> {
         <Input v-model="state.blocklist.newDomain" placeholder="malware.example.com" spellcheck="false" />
         <Button variant="secondary" :loading="isRunning(`add-domain-${state.blocklist.newDomain.trim()}`)" @click="requestAddDomain"><Plus :size="16" />添加</Button>
       </div>
-      <div class="relative">
-        <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-faint)]" :size="16" />
-        <Input v-model="blockQuery" class="pl-9" placeholder="过滤本地阻断、社区规则和广告放行白名单" spellcheck="false" />
-      </div>
+      <SearchField v-model="blockQuery" placeholder="过滤本地阻断、社区规则和广告放行白名单" />
     </Card>
 
     <div class="grid gap-3 md:grid-cols-2">
       <Card>
         <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><ListFilter :size="16" />阻断</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
-          <span v-for="domain in visibleManualDomains" :key="domain" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
-            {{ domain }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-domain-${domain}`)" type="button" @click="requestRemoveDomain(domain)"><X :size="14" /></button>
-          </span>
-          <em v-if="!visibleManualDomains.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ state.blocklist.manual.length ? '没有匹配项' : '暂无域名' }}</em>
+          <RemovableTag
+            v-for="domain in visibleManualDomains"
+            :key="domain"
+            :disabled="isRunning(`remove-domain-${domain}`)"
+            :remove-label="`移除 ${domain}`"
+            @remove="requestRemoveDomain(domain)"
+          >{{ domain }}</RemovableTag>
+          <em v-if="!visibleManualDomains.length" class="mn-empty">{{ state.blocklist.manual.length ? '没有匹配项' : '暂无域名' }}</em>
         </div>
       </Card>
 
       <Card>
         <h3 class="mb-2 text-base font-semibold">社区库缓存</h3>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
-          <span v-for="rule in visibleCommunityEntries.slice(0, 120)" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
-            {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`allow-${rule}`)" type="button" title="排除这条社区规则" @click="requestAllowRule(rule)"><X :size="14" /></button>
-          </span>
-          <em v-if="!visibleCommunityEntries.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ communityEntries.length ? '没有匹配项' : '未读取到社区规则' }}</em>
+          <RemovableTag
+            v-for="rule in visibleCommunityEntries.slice(0, 120)"
+            :key="rule"
+            :disabled="isRunning(`allow-${rule}`)"
+            title="排除这条社区规则"
+            @remove="requestAllowRule(rule)"
+          >{{ rule }}</RemovableTag>
+          <em v-if="!visibleCommunityEntries.length" class="mn-empty">{{ communityEntries.length ? '没有匹配项' : '未读取到社区规则' }}</em>
         </div>
       </Card>
 
@@ -429,11 +428,16 @@ async function confirmBlockAction(): Promise<void> {
           <Button variant="secondary" :loading="isRunning(`allow-${allowRuleInput.trim()}`)" @click="requestAddAllowRule"><Plus :size="16" />加入白名单</Button>
         </div>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
-          <span v-for="rule in visibleAllowRules" :key="rule" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
-            {{ rule }}
-            <button class="grid size-6 place-items-center rounded-full bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)] hover:bg-[color-mix(in_srgb,var(--mn-coral)_70%,var(--mn-carrier))] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`unallow-${rule}`)" type="button" :title="`从广告放行白名单删除 ${rule}`" :aria-label="`从广告放行白名单删除 ${rule}`" @click="requestRemoveAllowRule(rule)"><X :size="14" /></button>
-          </span>
-          <em v-if="!visibleAllowRules.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无白名单规则' }}</em>
+          <RemovableTag
+            v-for="rule in visibleAllowRules"
+            :key="rule"
+            remove-variant="danger"
+            :disabled="isRunning(`unallow-${rule}`)"
+            :title="`从广告放行白名单删除 ${rule}`"
+            :remove-label="`从广告放行白名单删除 ${rule}`"
+            @remove="requestRemoveAllowRule(rule)"
+          >{{ rule }}</RemovableTag>
+          <em v-if="!visibleAllowRules.length" class="mn-empty">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无白名单规则' }}</em>
         </div>
       </Card>
     </div>

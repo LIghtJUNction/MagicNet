@@ -26,6 +26,8 @@ import OnboardingDialog from "@/components/OnboardingDialog.vue";
 import OpenSourceSupportNote from "@/components/OpenSourceSupportNote.vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
+import Eyebrow from "@/components/ui/Eyebrow.vue";
+import StatusDot from "@/components/ui/StatusDot.vue";
 import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { useTheme } from "@/composables/useTheme";
@@ -152,10 +154,10 @@ const runtimeStateLabel = computed(() => {
   return "状态未知";
 });
 
-const statusDotClass = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "mn-status-dot-ok";
-  if (state.runtime.singBoxState === "stopped") return "mn-status-dot-stop";
-  return "mn-status-dot-unknown";
+const statusDotTone = computed(() => {
+  if (state.runtime.singBoxState === "sing-box") return "ok" as const;
+  if (state.runtime.singBoxState === "stopped") return "stop" as const;
+  return "unknown" as const;
 });
 
 function setTab(tab: TabKey): void {
@@ -437,9 +439,9 @@ onUnmounted(() => {
         <div class="rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-cactus)_34%,var(--mn-carrier))] px-4 py-3">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0 flex-1">
-              <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">运行状态</span>
+              <Eyebrow tone="faint">运行状态</Eyebrow>
               <div class="mt-1.5 flex min-w-0 items-center gap-2.5">
-                <span :class="['size-2.5 shrink-0 rounded-full', statusDotClass]" />
+                <StatusDot :tone="statusDotTone" />
                 <strong class="w-0 min-w-0 flex-1 truncate text-lg font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
                   {{ runtimeStateLabel }}
                 </strong>
@@ -451,11 +453,11 @@ onUnmounted(() => {
 
         <div class="grid min-w-0 grid-cols-2 gap-2 px-2 pb-2 md:px-3 md:pb-0">
           <div class="min-w-0">
-            <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">模式</span>
+            <Eyebrow tone="faint">模式</Eyebrow>
             <code class="mn-code mt-1 block truncate text-xs md:text-sm">TUN</code>
           </div>
           <div class="min-w-0">
-            <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-ink-faint)]">核心</span>
+            <Eyebrow tone="faint">核心</Eyebrow>
             <code class="mn-code mt-1 block truncate text-xs md:text-sm">{{ state.runtime.singBox }}</code>
           </div>
           <div class="col-span-2 flex min-w-0 items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)] md:text-sm">
@@ -478,7 +480,7 @@ onUnmounted(() => {
 
     <main class="grid min-w-0 gap-5 md:grid-cols-[204px_minmax(0,1fr)] md:items-start md:gap-6">
       <nav class="desktop-rail mn-chrome sticky top-36 hidden gap-1 rounded-[1.25rem] p-2 md:grid" aria-label="MagicNet 页面">
-        <div class="px-3 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">常用工作区</div>
+        <div class="px-3 pb-1 pt-2"><Eyebrow tone="faint">常用工作区</Eyebrow></div>
         <button
           v-for="item in primaryTabs"
           :key="item.key"
@@ -495,7 +497,7 @@ onUnmounted(() => {
           <span class="min-w-0 truncate">{{ item.label }}</span>
         </button>
 
-        <div class="mt-3 px-3 pb-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">进阶工具</div>
+        <div class="mt-3 px-3 pb-1"><Eyebrow tone="faint">进阶工具</Eyebrow></div>
         <button
           v-for="item in advancedTabs"
           :key="item.key"
@@ -566,11 +568,11 @@ onUnmounted(() => {
 
     <Transition name="sheet">
       <div v-if="showAdvancedNav" class="fixed inset-0 z-40 md:hidden">
-        <button class="absolute inset-0 size-full bg-[color-mix(in_srgb,var(--mn-ink)_35%,transparent)]" type="button" aria-label="关闭进阶导航" @click="closeAdvancedNav()" />
+        <button class="mn-overlay absolute inset-0 size-full" type="button" aria-label="关闭进阶导航" @click="closeAdvancedNav()" />
         <div ref="advancedDialog" class="mn-chrome-raised absolute inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] rounded-[1.5rem] p-2 pb-2.5" role="dialog" aria-modal="true" aria-label="进阶导航" tabindex="-1">
           <div class="flex items-center justify-between px-3 pb-2 pt-2">
             <div>
-              <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]">更多工作区</span>
+              <Eyebrow tone="faint">更多工作区</Eyebrow>
               <h2 class="mt-1 text-lg font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">进阶工具</h2>
             </div>
             <Button data-dialog-initial-focus variant="ghost" size="icon" aria-label="关闭进阶导航" @click="closeAdvancedNav()"><X :size="18" /></Button>

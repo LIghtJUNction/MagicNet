@@ -4,6 +4,7 @@ import { Cloud, Copy, RadioTower, RefreshCw } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
+import InsightChip from "@/components/ui/InsightChip.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed } from "@/utils";
@@ -136,20 +137,14 @@ function normalizeDomain(value: string): string {
       @confirm="confirmDnsAction"
     />
     <div v-if="pendingDnsPlan" class="grid gap-2 rounded-md mn-panel-warn p-3">
-      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
-        <span
+      <div class="flex flex-wrap gap-2">
+        <InsightChip
           v-for="item in pendingDnsPlan.items"
           :key="item.label"
-          class="rounded border px-2 py-1"
-          :class="{
-            'mn-chip-ok': item.tone === 'success',
-            'mn-chip-warn': item.tone === 'warning',
-            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-            'mn-chip-neutral': item.tone === 'neutral',
-          }"
-        >
-          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
-        </span>
+          :label="item.label"
+          :value="item.value"
+          :tone="item.tone"
+        />
       </div>
       <p v-if="pendingDnsPlan.warnings.length" class="text-xs leading-5 text-[var(--mn-warning)]/80">
         {{ pendingDnsPlan.warnings.join("；") }}
