@@ -15,6 +15,7 @@ for _magicnet_lib in \
     transparent_dns \
     transparent \
     webui_panel \
+    singbox_route_rules \
     blocklist \
     routes \
     warp \

@@ -4,18 +4,15 @@
 # This file owns MagicNet-specific lifecycle handlers and keeps entry scripts
 # thin while using kamfw's phase dispatcher as the runtime boundary.
 
-if ! type magicnet_json_escape >/dev/null 2>&1; then
-    _magicnet_lib_dir="${MAGICNET_LIB_DIR:-}"
-    if [ -z "$_magicnet_lib_dir" ]; then
-        if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
-            _magicnet_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        else
-            _magicnet_lib_dir="${MODDIR}/lib/magicnet"
-        fi
+type magicnet_source_primitives >/dev/null 2>&1 || {
+    if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/primitives.sh"
+    else
+        . "${MODDIR}/lib/magicnet/primitives.sh"
     fi
-    . "${_magicnet_lib_dir}/primitives.sh"
-    unset _magicnet_lib_dir
-fi
+}
+magicnet_source_primitives
+. "$(magicnet_lib_dir)/subscribe_bootstrap.sh"
 
 import wait
 import rich
@@ -39,11 +36,6 @@ magicnet_module_disabled() {
     [ -f "${MODDIR}/disable" ] || [ -f "${MODDIR}/remove" ]
 }
 
-magicnet_jq() {
-    [ -x "${MODDIR}/bin/jq" ] || return 1
-    printf '%s\n' "${MODDIR}/bin/jq"
-}
-
 # Persisted *.conf files are data. Never source them into the privileged
 # runtime shell; read one exact assignment and reject duplicates.
 magicnet_conf_value() (
@@ -61,16 +53,7 @@ magicnet_transparent_conf() {
 }
 
 magicnet_transparent_mode() {
-    _mode="${MAGICNET_TRANSPARENT_MODE:-}"
-    if [ -z "$_mode" ]; then
-        _mode="$(magicnet_conf_value "$(magicnet_transparent_conf)" MAGICNET_TRANSPARENT_MODE 2>/dev/null || true)"
-    fi
-    case "${_mode:-tun}" in
-        tun) printf '%s\n' "tun" ;;
-        proxy|external|external-tun|hybrid) printf '%s\n' "tun" ;;
-        *) printf '%s\n' "tun" ;;
-    esac
-    unset _mode
+    printf '%s\n' "tun"
 }
 
 magicnet_transparent_set_mode() {
@@ -120,29 +103,6 @@ magicnet_singbox_has_subscription() {
         magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
 }
 
-magicnet_subscription_schedule_file() {
-    printf '%s\n' "${MODDIR}/.config/magicnet/subscription-refresh-hours"
-}
-
-magicnet_singbox_config_has_nodes() {
-    if command -v magicnet_singbox_subscription_config_file >/dev/null 2>&1; then
-        _config=$(magicnet_singbox_subscription_config_file)
-    else
-        _config="${MAGICNET_SUB_CONFIG_FILE:-${MODDIR}/.config/sing-box/config.json}"
-    fi
-    [ -f "$_config" ] || {
-        unset _config
-        return 1
-    }
-    type magicnet_singbox_ai_selectors_canonical >/dev/null 2>&1 ||
-        . "${MODDIR}/lib/magicnet/singbox_subscribe/common.sh"
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls|socks)"' "$_config" &&
-        magicnet_singbox_ai_selectors_canonical "$_config"
-    _rc=$?
-    unset _config
-    return "$_rc"
-}
-
 magicnet_singbox_api_has_nodes() {
     magicnet_cmd_exists curl || return 1
     _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null ||
@@ -158,7 +118,7 @@ magicnet_singbox_api_has_nodes() {
 }
 
 magicnet_singbox_standalone_config_ready() {
-    _config="${MODDIR}/.config/sing-box/config.json"
+    _config="$(magicnet_singbox_config_file)"
     _marker="${MODDIR}/.config/sing-box/standalone-config"
     [ -f "$_marker" ] && [ -s "$_config" ] &&
         grep -Eq '"inbounds"[[:space:]]*:' "$_config" &&

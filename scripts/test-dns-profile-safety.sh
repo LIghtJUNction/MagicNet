@@ -23,6 +23,8 @@ cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 EOF
 
 # shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/dns.sh"
 
 assert_profile_uses_proxy_detour() {

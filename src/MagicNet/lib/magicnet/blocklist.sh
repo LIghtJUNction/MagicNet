@@ -124,9 +124,7 @@ magicnet_block_load_conf() {
 }
 
 magicnet_block_list_values() {
-    _file="$1"
-    [ -f "$_file" ] || return 0
-    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++'
+    magicnet_list_file_values "$1"
 }
 
 magicnet_block_normalize_allow_rules() {
@@ -431,86 +429,15 @@ magicnet_block_apply_singbox() {
         rm -f "$_rules_file" "$_tmp" 2>/dev/null || true
         return 1
     fi
-    if ! (umask 077; awk -v rules_file="$_rules_file" '
-        BEGIN {
-            in_route = 0
-            in_rules = 0
-            buffering = 0
-            buffer = ""
-            skip_custom = 0
-            inserted = 0
-        }
-        function reset_buffer() {
-            buffer = ""
-            buffering = 0
-            skip_custom = 0
-        }
-        function route_rule_precedes_ads(rule) {
-            return rule ~ /"action"[[:space:]]*:/ ||
-                (rule ~ /"protocol"[[:space:]]*:[[:space:]]*"icmp"/ &&
-                 rule ~ /"outbound"[[:space:]]*:[[:space:]]*"block"/) ||
-                rule ~ /"__magicnet_app_proxy__"/
-        }
-        function flush_rule() {
-            if (!skip_custom) {
-                if (!inserted && !route_rule_precedes_ads(buffer)) {
-                    while ((getline rule_line < rules_file) > 0) {
-                        print rule_line
-                    }
-                    close(rules_file)
-                    inserted = 1
-                }
-                printf "%s", buffer
-            }
-            reset_buffer()
-        }
-        {
-            if (buffering) {
-                buffer = buffer $0 "\n"
-                if ($0 ~ /"__magicnet_(ad_allow|block)__"/) {
-                    skip_custom = 1
-                }
-                if ($0 ~ /^      }[,]?[[:space:]]*$/) {
-                    flush_rule()
-                }
-                next
-            }
-            if ($0 ~ /^  "route"[[:space:]]*:[[:space:]]*\{[[:space:]]*$/) {
-                in_route = 1
-                print
-                next
-            }
-            if (in_route && $0 ~ /^  }[,]?[[:space:]]*$/) {
-                in_route = 0
-                print
-                next
-            }
-            if (in_route && $0 ~ /^    "rules"[[:space:]]*:[[:space:]]*\[[[:space:]]*$/) {
-                in_rules = 1
-                print
-                next
-            }
-            if (in_rules && $0 ~ /^    ][,]?[[:space:]]*$/) {
-                if (!inserted) {
-                    while ((getline rule_line < rules_file) > 0) {
-                        print rule_line
-                    }
-                    close(rules_file)
-                    inserted = 1
-                }
-                in_rules = 0
-                print
-                next
-            }
-            if (in_rules && $0 ~ /^      \{[[:space:]]*$/) {
-                buffering = 1
-                buffer = $0 "\n"
-                skip_custom = 0
-                next
-            }
-            print
-        }
-    ' "$_config" >"$_tmp"); then
+    type magicnet_singbox_insert_route_rules >/dev/null 2>&1 || {
+        _route_rules_lib="${MODDIR}/lib/magicnet/singbox_route_rules.sh"
+        if [ ! -f "$_route_rules_lib" ] && type magicnet_lib_dir >/dev/null 2>&1; then
+            _route_rules_lib="$(magicnet_lib_dir)/singbox_route_rules.sh"
+        fi
+        . "$_route_rules_lib"
+        unset _route_rules_lib
+    }
+    if ! magicnet_singbox_insert_route_rules "$_config" "$_tmp" "$_rules_file" block; then
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi

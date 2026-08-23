@@ -56,12 +56,8 @@ magicnet_start_singbox_unlocked() {
     return 0
 }
 
-magicnet_with_start_config_lock() {
-    magicnet_with_sub_config_lock "$@"
-}
-
 magicnet_start_singbox() {
-    magicnet_with_start_config_lock magicnet_start_singbox_unlocked
+    magicnet_with_sub_config_lock magicnet_start_singbox_unlocked
 }
 
 magicnet_start_singbox_ready_unlocked() {
@@ -80,7 +76,7 @@ magicnet_start_singbox_ready_unlocked() {
 }
 
 magicnet_start_singbox_ready() {
-    magicnet_with_start_config_lock magicnet_start_singbox_ready_unlocked
+    magicnet_with_sub_config_lock magicnet_start_singbox_ready_unlocked
 }
 
 magicnet_kernel_running() {

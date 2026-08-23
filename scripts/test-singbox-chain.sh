@@ -11,12 +11,15 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 export MODDIR="$tmp/module"
-mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet"
+mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet" "$MODDIR/bin"
+ln -s "$(command -v jq)" "$MODDIR/bin/jq"
 
 magicnet_warn() {
   printf '[warn] %s\n' "$1" >&2
 }
 
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/chain.sh"
 
 config="$MODDIR/.config/sing-box/config.json"
