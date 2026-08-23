@@ -30,10 +30,6 @@ magicnet_warn() {
     warn "$1"
 }
 
-magicnet_cmd_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
 magicnet_module_disabled() {
     [ -f "${MODDIR}/disable" ] || [ -f "${MODDIR}/remove" ]
 }
@@ -105,20 +101,6 @@ magicnet_first_http_url() {
 magicnet_singbox_has_subscription() {
     [ -s "${MODDIR}/.config/sing-box/subscription.local" ] ||
         magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
-}
-
-magicnet_singbox_api_has_nodes() {
-    magicnet_cmd_exists curl || return 1
-    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null ||
-        curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
-    [ -n "$_api" ] || {
-        unset _api
-        return 1
-    }
-    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Socks|SOCKS|Selector|WireGuard)"'
-    _rc=$?
-    unset _api
-    return "$_rc"
 }
 
 magicnet_singbox_standalone_config_ready() {

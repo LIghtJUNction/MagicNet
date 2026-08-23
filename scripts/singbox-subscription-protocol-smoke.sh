@@ -27,6 +27,15 @@ MODDIR="$MODULE_ROOT"
 # shellcheck disable=SC1090
 . "$MODULE_ROOT/lib/magicnet_singbox_subscribe.sh"
 
+type magicnet_singbox_api_has_nodes >/dev/null 2>&1 \
+    || fail "standalone subscription loader omitted sing-box API validation"
+curl() {
+    printf '%s\n' '{"proxies":{"fixture":{"type":"VLESS"}}}'
+}
+magicnet_singbox_api_has_nodes \
+    || fail "standalone sing-box API validation rejected a node response"
+unset -f curl
+
 magicnet_singbox_tag_is_reserved hotspot \
     || fail "jq-free reserved-tag fallback does not protect the hotspot selector"
 
