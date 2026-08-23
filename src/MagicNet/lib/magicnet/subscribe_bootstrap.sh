@@ -2,7 +2,7 @@
 #
 # Kamfw-free helpers for isolated sing-box subscription loads.
 
-magicnet_cmd_exists() {
+type magicnet_cmd_exists >/dev/null 2>&1 || magicnet_cmd_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 

@@ -24,6 +24,19 @@ trap cleanup EXIT
 
 # shellcheck disable=SC2034
 MODDIR="$MODULE_ROOT"
+
+# The isolated bootstrap provides command discovery only as a fallback. Tests
+# and embedding callers may inject a narrower resolver before sourcing it.
+(
+    magicnet_cmd_exists() { [[ "$1" == fixture-command ]]; }
+    # shellcheck disable=SC1090
+    . "$MODULE_ROOT/lib/magicnet/subscribe_bootstrap.sh"
+    magicnet_cmd_exists fixture-command \
+        || fail "subscription bootstrap replaced an injected command resolver"
+    ! magicnet_cmd_exists curl \
+        || fail "injected command resolver no longer controls discovery"
+)
+
 # shellcheck disable=SC1090
 . "$MODULE_ROOT/lib/magicnet_singbox_subscribe.sh"
 
