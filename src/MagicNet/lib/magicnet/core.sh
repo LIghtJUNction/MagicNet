@@ -112,6 +112,8 @@ magicnet_kernel_start_preamble() {
 }
 
 magicnet_start_kernel() {
+    magicnet_detach_pid_from_app_cgroup "$$" ||
+        magicnet_warn "Failed to detach the core launcher from the caller cgroup."
     magicnet_kernel_start_preamble || return 1
     if magicnet_kernel_running; then
         return 0

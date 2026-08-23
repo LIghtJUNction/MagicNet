@@ -12,7 +12,7 @@ use crate::connection_control::{
 };
 use crate::node_delay::encode_path_segment;
 use crate::selector_store;
-use crate::service::{apply_config, singbox_webui};
+use crate::service::{apply_config, apply_config_preserving_hotspot_watchdog, singbox_webui};
 use crate::subscriptions::{download_pinned_https_url, validate_subscription_url};
 use crate::{run_magicnet_function, write_text_file, App};
 
@@ -81,7 +81,7 @@ fn sync_persisted_hotspot_offload(app: &App, refresh_stale_policy: bool) {
 
 fn refresh_hotspot_policy_if_stale(app: &App) -> Result<(), String> {
     if run_magicnet_function(app, "magicnet_singbox_hotspot_policy_current").is_err() {
-        apply_config(app)?;
+        apply_config_preserving_hotspot_watchdog(app)?;
     }
     Ok(())
 }
