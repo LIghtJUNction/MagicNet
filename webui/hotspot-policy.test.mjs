@@ -9,8 +9,8 @@ const routes = readFileSync(
   new URL("../src/MagicNet/lib/magicnet/routes.sh", import.meta.url),
   "utf8",
 );
-const network = readFileSync(
-  new URL("../src/MagicNet/lib/magicnet/network.sh", import.meta.url),
+const core = readFileSync(
+  new URL("../src/MagicNet/lib/magicnet/core.sh", import.meta.url),
   "utf8",
 );
 const webuiApi = readFileSync(
@@ -58,9 +58,15 @@ assert.match(webuiApi, /"replay"[\s\S]*sync_persisted_hotspot_offload/);
 assert.match(webuiApi, /"reconcile"[\s\S]*refresh_hotspot_policy_if_stale/);
 assert.match(webuiApi, /"disable"[\s\S]*refresh_hotspot_policy_if_stale/);
 assert.match(webuiApi, /rollback_hotspot_enable/);
-assert.match(
-  network,
-  /magicnet_after_kernel_start_deferred_unlocked\(\)[\s\S]*magicnet_singbox_apply_hotspot_policy/,
+const startSingBox = core.slice(
+  core.indexOf("magicnet_start_singbox_unlocked()"),
+  core.indexOf("magicnet_with_start_config_lock()"),
+);
+assert.match(startSingBox, /magicnet_singbox_apply_hotspot_policy/);
+assert.ok(
+  startSingBox.indexOf("magicnet_singbox_apply_hotspot_policy") <
+    startSingBox.indexOf("singbox_start"),
+  "hotspot policy must be materialized before sing-box snapshots the config",
 );
 
 console.log("hotspot policy tests passed");

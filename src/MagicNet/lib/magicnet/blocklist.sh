@@ -37,6 +37,8 @@ magicnet_block_load_conf() {
     _conf="$(magicnet_block_conf)"
     MAGICNET_BLOCK_ENABLED=1
     MAGICNET_BLOCK_COMMUNITY_ENABLED=1
+    _default_url="https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/src/MagicNet/.config/magicnet/community-ban.yaml"
+    MAGICNET_BLOCK_URL="$_default_url"
     _invalid=0
     _seen_enabled=0
     _seen_community=0
@@ -69,18 +71,25 @@ magicnet_block_load_conf() {
                     if [ "$_seen_url" -ne 0 ] || ! magicnet_block_conf_url_is_safe "$_value"; then
                         _invalid=1
                     else
+                        MAGICNET_BLOCK_URL="$_value"
                         _seen_url=1
                     fi
                     ;;
                 *) _invalid=1 ;;
             esac
         done < "$_conf"
+        if [ "$_seen_enabled" -ne 1 ] || [ "$_seen_community" -ne 1 ] || [ "$_seen_url" -ne 1 ]; then
+            _invalid=1
+        fi
     fi
     if [ "$_invalid" -ne 0 ]; then
         MAGICNET_BLOCK_ENABLED=1
         MAGICNET_BLOCK_COMMUNITY_ENABLED=1
+        # Consumed by blocklist callers after this loader returns.
+        # shellcheck disable=SC2034
+        MAGICNET_BLOCK_URL="$_default_url"
     fi
-    unset _conf _invalid _seen_enabled _seen_community _seen_url _line _value
+    unset _conf _default_url _invalid _seen_enabled _seen_community _seen_url _line _value
 }
 
 magicnet_block_list_values() {

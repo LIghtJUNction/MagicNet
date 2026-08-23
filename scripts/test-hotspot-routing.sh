@@ -7,7 +7,9 @@ trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
 MODDIR="$WORK/module"
 RULES="$WORK/ip-rules"
-mkdir -p "$MODDIR/.state/hotspot" "$MODDIR/.config/sing-box"
+JQ_BIN=$(command -v jq)
+mkdir -p "$MODDIR/.state/hotspot" "$MODDIR/.config/sing-box" "$MODDIR/bin"
+ln -s "$JQ_BIN" "$MODDIR/bin/jq"
 printf '%s\n' '21000: from all iif wlan2 lookup wlan0' >"$RULES"
 printf '%s\n' 'value=0' >"$MODDIR/.state/hotspot/tether-offload.previous"
 HOTSPOT_CIDR=10.199.43.0/24

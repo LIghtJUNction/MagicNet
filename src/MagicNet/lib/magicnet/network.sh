@@ -17,7 +17,7 @@ magicnet_iface_exists() {
 # the lock is not available promptly.
 magicnet_xtables_function_defined() {
     _xtables_command="$1"
-    case "$(command -V "$_xtables_command" 2>/dev/null || true)" in
+    case "$(LC_ALL=C LANG=C command -V "$_xtables_command" 2>/dev/null || true)" in
         *function* | *Function*)
             unset _xtables_command
             return 0
@@ -536,8 +536,14 @@ magicnet_disable_dns_leak_guard() (
     # Keep the saved state as a fallback and discover all current interfaces
     # only when the ruleset cannot be inspected.
     _cleanup_ipv4_scan_failed=0
+    _cleanup_ipv4_scan_rc=0
     _cleanup_ipv4_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_iptables_cmd)" ||
-        _cleanup_ipv4_scan_failed=1
+        _cleanup_ipv4_scan_rc=$?
+    case "$_cleanup_ipv4_scan_rc" in
+        124 | 137 | 143) return 1 ;;
+        0) ;;
+        *) _cleanup_ipv4_scan_failed=1 ;;
+    esac
     _cleanup_ipv4_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$_cleanup_ipv4_rules" |
         awk 'NF && !seen[$0]++')
     if [ "$_cleanup_ipv4_scan_failed" -ne 0 ]; then
@@ -557,8 +563,14 @@ magicnet_disable_dns_leak_guard() (
     magicnet_xtables_available ip6tables || _cleanup_probe=$?
     if [ "$_cleanup_probe" -eq 0 ]; then
         _cleanup_ipv6_scan_failed=0
+        _cleanup_ipv6_scan_rc=0
         _cleanup_ipv6_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_ip6tables_cmd)" ||
-            _cleanup_ipv6_scan_failed=1
+            _cleanup_ipv6_scan_rc=$?
+        case "$_cleanup_ipv6_scan_rc" in
+            124 | 137 | 143) return 1 ;;
+            0) ;;
+            *) _cleanup_ipv6_scan_failed=1 ;;
+        esac
         _cleanup_ipv6_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$_cleanup_ipv6_rules" |
             awk 'NF && !seen[$0]++')
         if [ "$_cleanup_ipv6_scan_failed" -ne 0 ]; then
