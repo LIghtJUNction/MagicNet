@@ -5,9 +5,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::diagnostics::supervisor_pid;
-use crate::utils::command_text_full_timeout;
+use crate::utils::{clean_module_lines, command_text_full_timeout};
 use crate::webui_api::{current_clash_mode, set_clash_mode};
-use crate::{clean_lines, read_kv, run_magicnet_function, write_kv, write_text_file, App};
+use crate::{read_kv, run_magicnet_function, write_kv, write_text_file, App};
 
 const DEFAULT_INTERVAL_SECONDS: u64 = 5;
 const MIN_INTERVAL_SECONDS: u64 = 3;
@@ -119,14 +119,6 @@ fn policy_config_path(app: &App) -> std::path::PathBuf {
     app.moddir.join(WIFI_POLICY_CONF)
 }
 
-fn ssid_list_path(app: &App) -> std::path::PathBuf {
-    app.moddir.join(WIFI_SSID_LIST)
-}
-
-fn bssid_list_path(app: &App) -> std::path::PathBuf {
-    app.moddir.join(WIFI_BSSID_LIST)
-}
-
 fn read_policy_config(app: &App) -> PolicyConfig {
     let values = read_kv(policy_config_path(app));
     let mode = values
@@ -226,11 +218,12 @@ enum ListAction {
 
 fn update_list(app: &App, kind: ListKind, value: &str, action: ListAction) -> Result<(), String> {
     let value = normalize_list_value(kind, value)?;
-    let (path, relative) = match kind {
-        ListKind::Ssid => (ssid_list_path(app), WIFI_SSID_LIST),
-        ListKind::Bssid => (bssid_list_path(app), WIFI_BSSID_LIST),
+    let relative = match kind {
+        ListKind::Ssid => WIFI_SSID_LIST,
+        ListKind::Bssid => WIFI_BSSID_LIST,
     };
-    let mut values = clean_lines(path)
+    let mut values = clean_module_lines(app, Path::new(relative))
+        .unwrap_or_default()
         .into_iter()
         .map(|item| match kind {
             ListKind::Ssid => item,
@@ -307,8 +300,9 @@ fn apply_network(
     network: &WifiNetwork,
     verbose: bool,
 ) -> Result<bool, String> {
-    let ssids = clean_lines(ssid_list_path(app));
-    let bssids = clean_lines(bssid_list_path(app))
+    let ssids = clean_module_lines(app, Path::new(WIFI_SSID_LIST)).unwrap_or_default();
+    let bssids = clean_module_lines(app, Path::new(WIFI_BSSID_LIST))
+        .unwrap_or_default()
         .into_iter()
         .filter_map(|value| normalize_bssid(&value))
         .collect::<Vec<_>>();
@@ -604,8 +598,9 @@ fn write_last_state(
 fn print_status(app: &App) {
     let config = read_policy_config(app);
     let network = detect_wifi();
-    let ssids = clean_lines(ssid_list_path(app));
-    let bssids = clean_lines(bssid_list_path(app))
+    let ssids = clean_module_lines(app, Path::new(WIFI_SSID_LIST)).unwrap_or_default();
+    let bssids = clean_module_lines(app, Path::new(WIFI_BSSID_LIST))
+        .unwrap_or_default()
         .into_iter()
         .filter_map(|value| normalize_bssid(&value))
         .collect::<Vec<_>>();

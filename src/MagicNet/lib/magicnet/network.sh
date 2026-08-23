@@ -368,10 +368,6 @@ magicnet_dns_leak_guard_state_file() {
     printf '%s\n' "${MODDIR}/.state/dns-leak-guard.ifaces"
 }
 
-magicnet_dns_leak_guard_supported_for_mode() {
-    return 0
-}
-
 magicnet_dns_leak_guard_delete_rule() (
     _dns_guard_delete_cmd="$1"
     shift
@@ -639,8 +635,4 @@ magicnet_after_kernel_start_deferred_unlocked() {
     fi
     unset _deferred_failures _deferred_failure_names
     return 0
-}
-
-magicnet_after_kernel_start_deferred() {
-    magicnet_after_kernel_start_deferred_unlocked
 }

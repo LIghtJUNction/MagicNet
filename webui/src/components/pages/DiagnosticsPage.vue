@@ -5,6 +5,7 @@ import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import { statusToneClasses } from "@/lib/statusTone";
 import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
@@ -228,12 +229,7 @@ async function askAi(url: string, name: string): Promise<void> {
           </Button>
         </div>
       </div>
-      <div class="rounded-md border p-3 text-sm leading-6" :class="{
-        'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]': apiProbeSummary.level === 'idle',
-        'mn-tone-ok': apiProbeSummary.level === 'ok',
-        'mn-tone-warn': apiProbeSummary.level === 'warning',
-        'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': apiProbeSummary.level === 'danger',
-      }">
+      <div class="rounded-md p-3 text-sm leading-6" :class="statusToneClasses(apiProbeSummary.level)">
         <p class="font-semibold">{{ apiProbeSummary.label }}</p>
         <p class="mt-1 text-xs opacity-80">
           {{ apiProbeSummary.detail }} · 总耗时 {{ apiProbeSummary.totalMillis }}ms

@@ -10,7 +10,6 @@ import {
   Save,
   Share2,
   ShieldCheck,
-  Trash2,
   Unplug,
   Wifi,
   Zap,
@@ -19,8 +18,14 @@ import { computed, nextTick, onMounted, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import CardHeading from "@/components/ui/CardHeading.vue";
+import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
+import Eyebrow from "@/components/ui/Eyebrow.vue";
 import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import RemovableTag from "@/components/ui/RemovableTag.vue";
+import StatTile from "@/components/ui/StatTile.vue";
+import StatusDot from "@/components/ui/StatusDot.vue";
 import {
   applyConfigAction,
   applyTransparentModeAction,
@@ -379,8 +384,8 @@ onMounted(() => {
         :class="controlInsightTone(runtimeInsight.status)"
       >
         <div class="flex items-start justify-between gap-3">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.22em] opacity-60">运行状态</span>
-          <span class="size-2.5 rounded-full bg-current opacity-70 " />
+          <Eyebrow tone="inherit" class="opacity-60">运行状态</Eyebrow>
+          <StatusDot tone="current" />
         </div>
         <div class="my-auto max-w-xl">
           <h3 class="break-words text-2xl font-semibold tracking-[-0.035em] md:text-3xl">
@@ -412,18 +417,9 @@ onMounted(() => {
       </Card>
 
       <Card class="grid gap-3 !p-4 md:col-span-5 md:!p-6">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <span
-              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
-              >sing-box</span
-            >
-            <h3 class="mt-2 break-words text-2xl font-semibold tracking-[-0.035em]">
-              {{ singBoxStatus.label }}
-            </h3>
-          </div>
+        <CardHeading overline="sing-box" :title="singBoxStatus.label">
           <span :class="['mt-1 size-3 rounded-full', singBoxStatus.dotClass]" />
-        </div>
+        </CardHeading>
         <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">
           MagicNet 当前只运行 sing-box 核心。
         </p>
@@ -443,10 +439,7 @@ onMounted(() => {
       </Card>
 
       <Card class="!p-4 md:col-span-5 md:!p-6">
-        <span
-          class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
-          >快捷操作</span
-        >
+        <Eyebrow>快捷操作</Eyebrow>
         <div class="mt-3 grid grid-cols-2 gap-2 md:mt-4 md:grid-cols-1 xl:grid-cols-2">
           <Button
             variant="secondary"
@@ -484,12 +477,11 @@ onMounted(() => {
       </Card>
 
       <Card class="!p-4 md:col-span-4 md:!p-6">
-        <span
-          class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
-          >sing-box WebUI</span
-        >
-        <h3 class="mt-3 text-xl font-semibold tracking-[-0.03em]">核心控制入口</h3>
-        <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)]">进入 zashboard 管理节点与代理组，或直接检查 API 连通性。</p>
+        <CardHeading
+          overline="sing-box WebUI"
+          title="核心控制入口"
+          description="进入 zashboard 管理节点与代理组，或直接检查 API 连通性。"
+        />
         <div class="mt-5 grid gap-2">
           <Button
             variant="outline"
@@ -513,21 +505,13 @@ onMounted(() => {
       </Card>
 
       <Card class="grid gap-4 !p-4 md:col-span-8 md:gap-5 md:!p-6">
-        <div class="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <span
-              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]"
-              >透明代理模式</span
-            >
-            <h3 class="mt-2 text-2xl font-semibold tracking-[-0.035em]">TUN</h3>
-            <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)]">
-              MagicNet 统一使用 sing-box TUN 透明代理路径。
-            </p>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <Badge tone="neutral">TUN</Badge>
-          </div>
-        </div>
+        <CardHeading
+          overline="透明代理模式"
+          title="TUN"
+          description="MagicNet 统一使用 sing-box TUN 透明代理路径。"
+        >
+          <Badge tone="neutral">TUN</Badge>
+        </CardHeading>
         <Button
           variant="secondary"
           :disabled="runtimeBusy"
@@ -609,35 +593,28 @@ onMounted(() => {
       </Card>
 
       <Card class="grid gap-4 !p-4 md:col-span-12 md:gap-5 md:!p-6">
-        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <span
-              class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-faint)]"
-              >Wi-Fi 模式策略</span
-            >
-            <h3 class="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-[-0.035em]">
-              <Wifi :size="22" />按 Wi-Fi 自动切换
-            </h3>
-            <p class="mt-2 max-w-2xl text-sm leading-6 text-[var(--mn-ink-muted)]">
-              黑名单命中 SSID 或 BSSID 时切换为 Direct，离开 Wi-Fi 后自动恢复 Rule。白名单模式会让名单内 Wi-Fi 使用 Rule，其他 Wi-Fi 使用 Direct。
-            </p>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <Badge :tone="state.wifiPolicy.connected ? 'success' : 'neutral'">
-              {{ state.wifiPolicy.connected ? state.wifiPolicy.ssid || "Wi-Fi 已连接" : "未连接 Wi-Fi" }}
-            </Badge>
-            <Badge :tone="state.wifiPolicy.enabled ? 'success' : 'warning'">
-              {{ state.wifiPolicy.enabled ? "已启用" : "已停用" }}
-            </Badge>
-            <Button
-              :loading="isRunning('wifi-toggle')"
-              :disabled="runtimeBusy"
-              @click="toggleWifiPolicy"
-            >
-              <Power :size="17" />{{ state.wifiPolicy.enabled ? "停用" : "启用" }}
-            </Button>
-          </div>
-        </div>
+        <CardHeading
+          overline="Wi-Fi 模式策略"
+          overline-tone="faint"
+          description="黑名单命中 SSID 或 BSSID 时切换为 Direct，离开 Wi-Fi 后自动恢复 Rule。白名单模式会让名单内 Wi-Fi 使用 Rule，其他 Wi-Fi 使用 Direct。"
+        >
+          <template #title>
+            <span class="inline-flex items-center gap-2"><Wifi :size="22" />按 Wi-Fi 自动切换</span>
+          </template>
+          <Badge :tone="state.wifiPolicy.connected ? 'success' : 'neutral'">
+            {{ state.wifiPolicy.connected ? state.wifiPolicy.ssid || "Wi-Fi 已连接" : "未连接 Wi-Fi" }}
+          </Badge>
+          <Badge :tone="state.wifiPolicy.enabled ? 'success' : 'warning'">
+            {{ state.wifiPolicy.enabled ? "已启用" : "已停用" }}
+          </Badge>
+          <Button
+            :loading="isRunning('wifi-toggle')"
+            :disabled="runtimeBusy"
+            @click="toggleWifiPolicy"
+          >
+            <Power :size="17" />{{ state.wifiPolicy.enabled ? "停用" : "启用" }}
+          </Button>
+        </CardHeading>
 
         <div class="grid gap-3 md:grid-cols-2">
           <button
@@ -661,21 +638,10 @@ onMounted(() => {
           </button>
         </div>
 
-        <div class="grid gap-3 rounded-[1.4rem] bg-black/20 p-4 md:grid-cols-3">
-          <div>
-            <span class="text-xs text-[var(--mn-ink-faint)]">当前 BSSID</span>
-            <p class="mt-1 break-all text-sm text-[var(--mn-ink-soft)]">{{ state.wifiPolicy.bssid || "—" }}</p>
-          </div>
-          <div>
-            <span class="text-xs text-[var(--mn-ink-faint)]">匹配结果</span>
-            <p class="mt-1 text-sm text-[var(--mn-ink-soft)]">{{ state.wifiPolicy.matched ? "已命中名单" : "未命中" }}</p>
-          </div>
-          <div>
-            <span class="text-xs text-[var(--mn-ink-faint)]">代理模式</span>
-            <p class="mt-1 text-sm text-[var(--mn-ink-soft)]">
-              {{ state.wifiPolicy.currentMode }} → {{ state.wifiPolicy.desiredMode }}
-            </p>
-          </div>
+        <div class="grid gap-3 md:grid-cols-3">
+          <StatTile label="当前 BSSID" :value="state.wifiPolicy.bssid || '—'" />
+          <StatTile label="匹配结果" :value="state.wifiPolicy.matched ? '已命中名单' : '未命中'" />
+          <StatTile label="代理模式" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
         </div>
 
         <div class="grid gap-5 lg:grid-cols-2">
@@ -693,23 +659,15 @@ onMounted(() => {
               ><Plus :size="17" />SSID</Button>
             </div>
             <div class="flex flex-wrap gap-2">
-              <span
-                v-if="!state.wifiPolicy.ssids.length"
-                class="text-xs text-[var(--mn-ink-faint)]"
-              >还没有 SSID 条目</span>
-              <span
+              <span v-if="!state.wifiPolicy.ssids.length" class="mn-empty text-xs">还没有 SSID 条目</span>
+              <RemovableTag
                 v-for="ssid in state.wifiPolicy.ssids"
                 :key="ssid"
-                class="inline-flex items-center gap-2 rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] px-3 py-1.5 text-xs text-[var(--mn-ink-soft)]"
-              >
-                {{ ssid }}
-                <button
-                  type="button"
-                  class="text-[var(--mn-ink-faint)] hover:text-[var(--mn-danger)]"
-                  :aria-label="`移除 SSID ${ssid}`"
-                  @click="removeWifiEntry('ssid', ssid)"
-                ><Trash2 :size="14" /></button>
-              </span>
+                variant="soft"
+                remove-variant="ghost"
+                :remove-label="`移除 SSID ${ssid}`"
+                @remove="removeWifiEntry('ssid', ssid)"
+              >{{ ssid }}</RemovableTag>
             </div>
           </div>
 
@@ -727,23 +685,16 @@ onMounted(() => {
               ><Plus :size="17" />BSSID</Button>
             </div>
             <div class="flex flex-wrap gap-2">
-              <span
-                v-if="!state.wifiPolicy.bssids.length"
-                class="text-xs text-[var(--mn-ink-faint)]"
-              >还没有 BSSID 条目</span>
-              <span
+              <span v-if="!state.wifiPolicy.bssids.length" class="mn-empty text-xs">还没有 BSSID 条目</span>
+              <RemovableTag
                 v-for="bssid in state.wifiPolicy.bssids"
                 :key="bssid"
-                class="inline-flex items-center gap-2 rounded-full bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] px-3 py-1.5 font-mono text-xs text-[var(--mn-ink-soft)]"
-              >
-                {{ bssid }}
-                <button
-                  type="button"
-                  class="text-[var(--mn-ink-faint)] hover:text-[var(--mn-danger)]"
-                  :aria-label="`移除 BSSID ${bssid}`"
-                  @click="removeWifiEntry('bssid', bssid)"
-                ><Trash2 :size="14" /></button>
-              </span>
+                class="font-mono"
+                variant="soft"
+                remove-variant="ghost"
+                :remove-label="`移除 BSSID ${bssid}`"
+                @remove="removeWifiEntry('bssid', bssid)"
+              >{{ bssid }}</RemovableTag>
             </div>
           </div>
         </div>
@@ -751,40 +702,31 @@ onMounted(() => {
     </div>
 
     <div v-if="pendingDangerAction" ref="dangerConfirmCard" tabindex="-1">
-      <Card class="grid gap-3 !bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] text-[var(--mn-warning)] shadow-[inset_0_0_0_1px_rgba(251,191,36,0.25),inset_0_0_0_7px_rgba(251,191,36,0.025)]">
-        <div
-          class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
-        >
-          <div class="min-w-0">
-            <span
-              class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]"
-              >确认操作</span
-            >
-            <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">
-              {{ pendingDangerMessage }}
-            </p>
-            <code
-              class="mt-3 block break-all rounded-[1.15rem] bg-[var(--mn-carrier-deep)]/30 px-4 py-3 text-xs text-[var(--mn-ink)] shadow-[inset_0_0_0_1px_var(--mn-border)]"
-              >{{ pendingDangerAction.args }}</code
-            >
-          </div>
-          <div class="flex shrink-0 gap-2">
-            <Button
-              data-danger-cancel
-              variant="outline"
-              @click="cancelDangerAction"
-              >取消</Button
-            >
-            <Button
-              variant="secondary"
-              :disabled="runtimeBusy"
-              :loading="isRunning(pendingDangerAction.key)"
-              @click="confirmDangerAction"
-              >确认</Button
-            >
-          </div>
-        </div>
-      </Card>
+      <ConfirmPanel
+        title="确认操作"
+        :detail="pendingDangerMessage"
+        :command="pendingDangerAction.args"
+        :loading="isRunning(pendingDangerAction.key)"
+        confirm-label="确认"
+        confirm-variant="secondary"
+        :auto-focus="false"
+      >
+        <template #actions>
+          <Button
+            data-danger-cancel
+            variant="outline"
+            @click="cancelDangerAction"
+            >取消</Button
+          >
+          <Button
+            variant="secondary"
+            :disabled="runtimeBusy"
+            :loading="isRunning(pendingDangerAction.key)"
+            @click="confirmDangerAction"
+            >确认</Button
+          >
+        </template>
+      </ConfirmPanel>
     </div>
   </div>
 </template>

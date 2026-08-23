@@ -39,6 +39,11 @@ magicnet_module_disabled() {
     [ -f "${MODDIR}/disable" ] || [ -f "${MODDIR}/remove" ]
 }
 
+magicnet_jq() {
+    [ -x "${MODDIR}/bin/jq" ] || return 1
+    printf '%s\n' "${MODDIR}/bin/jq"
+}
+
 # Persisted *.conf files are data. Never source them into the privileged
 # runtime shell; read one exact assignment and reject duplicates.
 magicnet_conf_value() (
@@ -100,7 +105,7 @@ magicnet_first_http_url() {
             line = $0
             sub(/[[:space:]]*#.*$/, "", line)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-            if (line ~ /^https?:\/\/[^[:space:]]+$/) {
+            if (line ~ /^https:\/\/[^[:space:]@]+$/) {
                 print line
                 found = 1
                 exit 0
@@ -115,12 +120,16 @@ magicnet_singbox_has_subscription() {
         magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
 }
 
-magicnet_singbox_config_path() {
-    printf '%s\n' "${MAGICNET_SUB_CONFIG_FILE:-${MODDIR}/.config/sing-box/config.json}"
+magicnet_subscription_schedule_file() {
+    printf '%s\n' "${MODDIR}/.config/magicnet/subscription-refresh-hours"
 }
 
 magicnet_singbox_config_has_nodes() {
-    _config="$(magicnet_singbox_config_path)"
+    if command -v magicnet_singbox_subscription_config_file >/dev/null 2>&1; then
+        _config=$(magicnet_singbox_subscription_config_file)
+    else
+        _config="${MAGICNET_SUB_CONFIG_FILE:-${MODDIR}/.config/sing-box/config.json}"
+    fi
     [ -f "$_config" ] || {
         unset _config
         return 1
@@ -280,7 +289,7 @@ magicnet_config_lock_dir() {
 }
 
 magicnet_config_lock_proc_start() {
-    magicnet_proc_start_time "$1"
+    magicnet_proc_start "$1"
 }
 
 magicnet_config_lock_proc_live() {

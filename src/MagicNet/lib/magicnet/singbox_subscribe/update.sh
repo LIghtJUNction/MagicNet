@@ -2,7 +2,7 @@
 
 [ -n "${MODDIR:-}" ] && {
     _magicnet_lib_dir="${MAGICNET_LIB_DIR:-${MODDIR}/lib/magicnet}"
-    if ! type magicnet_proc_start_time >/dev/null 2>&1; then
+    if ! type magicnet_proc_start >/dev/null 2>&1; then
         if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
             _magicnet_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
         fi
@@ -17,6 +17,28 @@ magicnet_reapply_post_start_policy() {
     else
         magicnet_enable_dns_capture && magicnet_enable_dns_leak_guard
     fi
+}
+
+magicnet_singbox_proc_start() {
+    # Path form kept for update-lock fixtures that only source this file.
+    _proc_stat_path="$1"
+    case "$_proc_stat_path" in
+        */[0-9]*/stat)
+            _proc_pid="${_proc_stat_path%/stat}"
+            _proc_pid="${_proc_pid##*/}"
+            _proc_root="${_proc_stat_path%/"$_proc_pid"/stat}"
+            if command -v magicnet_proc_start >/dev/null 2>&1; then
+                magicnet_proc_start "$_proc_pid" "$_proc_root"
+                _proc_rc=$?
+                unset _proc_stat_path _proc_pid _proc_root
+                return "$_proc_rc"
+            fi
+            unset _proc_pid _proc_root
+            ;;
+    esac
+    awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
+        "$_proc_stat_path" 2>/dev/null || true
+    unset _proc_stat_path
 }
 
 # Read-only lock probe for status/reporting paths.
@@ -39,7 +61,7 @@ magicnet_singbox_update_lock_live() (
     _rest=${_owner#*:}
     _start=${_rest%%:*}
     case "$_pid:$_start" in *[!0-9:]* | :* | *:) return 1 ;; esac
-    _live_start=$(magicnet_proc_start_time "$_pid")
+    _live_start=$(magicnet_singbox_proc_start "/proc/${_pid}/stat")
     kill -0 "$_pid" 2>/dev/null && [ "$_start" = "$_live_start" ]
 )
 
@@ -64,7 +86,7 @@ magicnet_singbox_update_lock_acquire() {
         fi
         mkdir "$_update_lock" 2>/dev/null || return 1
     fi
-    _update_start=$(magicnet_proc_start_time "$$")
+    _update_start=$(magicnet_proc_start "$$")
     _update_nonce=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)
     _update_token="$$:${_update_start:-unknown}:${_update_nonce}"
     if ! printf '%s\n' "$_update_token" >"$_update_lock/owner"; then

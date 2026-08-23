@@ -7,7 +7,7 @@
       class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-ink)_3%,transparent)] px-4 py-3 text-left text-[var(--mn-ink)] transition-[background-color,transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.99]"
     >
       <span class="min-w-0">
-        <span class="block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mn-ink-faint)]">可选</span>
+        <span class="mn-eyebrow mn-eyebrow-faint block tracking-[0.18em]">可选</span>
         <span class="mt-1 block text-sm font-semibold text-[var(--mn-ink)]">关于 MagicNet 的维护与支持</span>
       </span>
       <span

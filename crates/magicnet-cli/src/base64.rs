@@ -46,7 +46,7 @@ pub(crate) fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
     }
 
     let mut out = Vec::with_capacity(data.len() * 3 / 4);
-    for chunk in data.chunks_exact(4) {
+    for chunk in data.as_chunks::<4>().0 {
         let a = value(chunk[0])? as u32;
         let b = value(chunk[1])? as u32;
         let c = value(chunk[2])? as u32;

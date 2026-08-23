@@ -443,6 +443,29 @@ magicnet_singbox_subscription_status_file() {
     printf '%s\n' "${MODDIR}/.state/sing-box/subscription-status"
 }
 
+if ! command -v magicnet_subscription_schedule_file >/dev/null 2>&1; then
+    magicnet_subscription_schedule_file() {
+        printf '%s\n' "${MODDIR}/.config/magicnet/subscription-refresh-hours"
+    }
+fi
+
+# Keep the strict node-presence check available when the subscription library is
+# loaded without the full module runtime.
+if ! command -v magicnet_singbox_config_has_nodes >/dev/null 2>&1; then
+    magicnet_singbox_config_has_nodes() {
+        _config="${MAGICNET_SUB_CONFIG_FILE:-${MODDIR}/.config/sing-box/config.json}"
+        [ -f "$_config" ] || {
+            unset _config
+            return 1
+        }
+        grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls|socks)"' "$_config" &&
+            magicnet_singbox_ai_selectors_canonical "$_config"
+        _rc=$?
+        unset _config
+        return "$_rc"
+    }
+fi
+
 magicnet_singbox_subscription_fingerprint() {
     _fingerprint_value="$1"
     if command -v sha256sum >/dev/null 2>&1; then

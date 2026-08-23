@@ -3,6 +3,7 @@ import { Braces, Copy, DownloadCloud, FileUp, Github, ListTree, RefreshCw, Save 
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import InsightChip from "@/components/ui/InsightChip.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import ConfigCodeEditor from "@/components/ConfigCodeEditor.vue";
 import { useActionLock } from "@/composables/useActionLock";
@@ -294,20 +295,14 @@ async function openConfigIssue(): Promise<void> {
           </div>
           <Button variant="outline" :disabled="!configAudit.items.length" @click="copyConfigAudit"><Copy :size="16" />{{ auditCopied ? '已复制审计' : '复制审计' }}</Button>
         </div>
-        <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
-          <span
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <InsightChip
             v-for="item in configAudit.items"
             :key="item.label"
-            class="rounded border px-2 py-1"
-            :class="{
-              'mn-chip-ok': item.tone === 'success',
-              'mn-chip-warn': item.tone === 'warning',
-              'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-              'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
-            }"
-          >
-            {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
-          </span>
+            :label="item.label"
+            :value="item.value"
+            :tone="item.tone"
+          />
         </div>
         <p class="break-words text-xs text-[var(--mn-ink-muted)]">
           出站 tag：{{ configAudit.outboundTags.length ? configAudit.outboundTags.join(", ") : "无" }}

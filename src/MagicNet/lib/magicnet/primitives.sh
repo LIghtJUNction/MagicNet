@@ -8,9 +8,11 @@ magicnet_json_escape() {
         sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
 }
 
-magicnet_proc_start_time() {
+# Read /proc/<pid>/stat starttime. Optional second argument overrides the proc
+# root (tests inject a fixture tree via MAGICNET_SUB_REFRESH_PROC_ROOT).
+magicnet_proc_start() {
     _proc_pid="$1"
-    _proc_root="${2:-/proc}"
+    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
     case "$_proc_pid" in
         '' | *[!0-9]*)
             unset _proc_pid _proc_root _proc_stat _proc_start
