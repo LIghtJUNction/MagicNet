@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { CheckCheck, CheckCircle2, Copy, ListFilter, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
+import { CheckCheck, CheckCircle2, Copy, ListFilter, Plus, RefreshCw, RotateCcw, ShieldCheck, Trash2, X } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import Input from "@/components/ui/Input.vue";
+import InsightChip from "@/components/ui/InsightChip.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import RemovableTag from "@/components/ui/RemovableTag.vue";
+import SearchField from "@/components/ui/SearchField.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed, redactedCliPreview } from "@/utils";
@@ -441,44 +445,40 @@ onMounted(() => {
       <Transition name="sheet">
         <div v-if="pendingAppAction" class="fixed inset-0 z-[70]" role="presentation">
           <button
-            class="absolute inset-0 size-full bg-[color-mix(in_srgb,var(--mn-ink)_38%,transparent)]"
+            class="mn-overlay absolute inset-0 size-full"
             type="button"
             aria-label="取消应用策略操作"
             @click="cancelAppAction"
           />
           <div
-            class="mn-chrome absolute inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] mx-auto grid max-h-[min(80dvh,680px)] max-w-3xl gap-3 overflow-auto rounded-md p-1"
+            class="absolute inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] mx-auto max-h-[min(80dvh,680px)] max-w-3xl overflow-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="app-policy-confirm-title"
           >
-            <div class="rounded-[5px] bg-[color-mix(in_srgb,var(--mn-warning)_14%,var(--mn-carrier))] p-4">
-              <span class="text-[11px] font-bold uppercase tracking-wide text-[var(--mn-warning)]">Confirm app policy</span>
-              <p id="app-policy-confirm-title" class="mt-1 text-sm leading-6 text-[var(--mn-warning)]">{{ pendingAppAction.message }}</p>
-              <code class="mt-2 block break-all rounded-md bg-[var(--mn-ivory)]/60 px-3 py-2 text-xs text-[var(--mn-ink)]">{{ pendingAppAction.command }}</code>
-              <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-5">
-                <span
+            <ConfirmPanel
+              title="Confirm app policy"
+              :detail="pendingAppAction.message"
+              :command="pendingAppAction.command"
+              :loading="isRunning(pendingAppAction.key)"
+              confirm-variant="secondary"
+              @cancel="cancelAppAction"
+              @confirm="confirmAppAction"
+            >
+              <p id="app-policy-confirm-title" class="sr-only">{{ pendingAppAction.message }}</p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <InsightChip
                   v-for="item in pendingAppAction.plan.items"
                   :key="item.label"
-                  class="rounded border px-2 py-1"
-                  :class="{
-                    'mn-chip-ok': item.tone === 'success',
-                    'mn-chip-warn': item.tone === 'warning',
-                    'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-                    'mn-chip-neutral': item.tone === 'neutral',
-                  }"
-                >
-                  {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
-                </span>
+                  :label="item.label"
+                  :value="item.value"
+                  :tone="item.tone"
+                />
               </div>
               <p v-if="pendingAppAction.plan.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
                 {{ pendingAppAction.plan.warnings.join("；") }}
               </p>
-              <div class="mt-4 grid grid-cols-2 gap-2">
-                <Button variant="secondary" :loading="isRunning(pendingAppAction.key)" @click="confirmAppAction">确认执行</Button>
-                <Button variant="outline" @click="cancelAppAction">取消</Button>
-              </div>
-            </div>
+            </ConfirmPanel>
           </div>
         </div>
       </Transition>
@@ -486,7 +486,7 @@ onMounted(() => {
 
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-center gap-3">
-        <div class="inline-flex w-fit rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-1">
+        <div class="mn-segmented">
           <button class="min-h-12 whitespace-nowrap rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">全局接管</button>
           <button class="min-h-12 whitespace-nowrap rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-whitelist') || state.appPolicy.mode === 'whitelist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'whitelist' }" @click="requestSetMode('whitelist')">仅名单接管</button>
         </div>
@@ -518,20 +518,14 @@ onMounted(() => {
           {{ policySummary.conflicts.length ? `${policySummary.conflicts.length} 个冲突` : '无冲突' }}
         </span>
       </div>
-      <div class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-6">
-        <span
+      <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        <InsightChip
           v-for="item in policySummary.items"
           :key="item.label"
-          class="rounded border px-2 py-1"
-          :class="{
-            'mn-chip-ok': item.tone === 'success',
-            'mn-chip-warn': item.tone === 'warning',
-            'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] text-[var(--mn-danger)]': item.tone === 'danger',
-            'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] text-[var(--mn-ink-muted)]': item.tone === 'neutral',
-          }"
-        >
-          {{ item.label }}: <b class="font-medium">{{ item.value }}</b>
-        </span>
+          :label="item.label"
+          :value="item.value"
+          :tone="item.tone"
+        />
       </div>
       <p v-if="policySummary.conflicts.length" class="break-all text-xs text-[var(--mn-danger)]">
         冲突包名：{{ policySummary.conflicts.join(", ") }}
@@ -541,10 +535,7 @@ onMounted(() => {
     <div class="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
       <Card class="grid gap-3">
         <div class="flex flex-wrap items-center gap-2">
-          <div class="relative min-w-0 flex-1">
-            <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-faint)]" :size="16" />
-            <Input v-model="state.packageQuery" class="pl-9" placeholder="搜索已安装应用包名" spellcheck="false" @keyup.enter="searchPackages" />
-          </div>
+          <SearchField v-model="state.packageQuery" placeholder="搜索已安装应用包名" @keyup.enter="searchPackages" />
           <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">重新读取</Button>
         </div>
         <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -573,7 +564,7 @@ onMounted(() => {
             <Button size="sm" variant="outline" :loading="isRunning(`pick-direct-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'direct', `pick-direct-${app.packageName}`)">Direct</Button>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'bypass', `pick-bypass-${app.packageName}`)">Bypass TUN</Button>
           </div>
-          <em v-if="!filteredPackages.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无结果，点“列出应用”或输入关键字过滤。</em>
+          <em v-if="!filteredPackages.length" class="mn-empty">暂无结果，点“列出应用”或输入关键字过滤。</em>
         </div>
       </Card>
 
@@ -586,8 +577,8 @@ onMounted(() => {
           <CheckCircle2 class="shrink-0 text-[var(--mn-ink-muted)]" :size="18" />
         </div>
         <div class="flex max-h-64 flex-wrap gap-2 overflow-auto">
-          <span v-for="pkg in availableRecommendedBypass" :key="pkg" class="inline-flex max-w-full items-center rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs text-[var(--mn-ink-soft)] break-all">{{ pkg }}</span>
-          <em v-if="!availableRecommendedBypass.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">推荐项已在名单中，或当前设备未读取到匹配应用。</em>
+          <span v-for="pkg in availableRecommendedBypass" :key="pkg" class="mn-tag text-[var(--mn-ink-soft)]">{{ pkg }}</span>
+          <em v-if="!availableRecommendedBypass.length" class="mn-empty">推荐项已在名单中，或当前设备未读取到匹配应用。</em>
         </div>
       </Card>
     </div>
@@ -596,31 +587,40 @@ onMounted(() => {
       <Card>
         <h3 class="mb-2 text-base font-semibold">Proxy</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
-          <span v-for="pkg in state.appPolicy.proxy" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
-            {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-proxy-${pkg}`)" type="button" title="移除" @click="requestRemoveApp(pkg, 'proxy')"><X :size="14" /></button>
-          </span>
-          <em v-if="!state.appPolicy.proxy.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无应用</em>
+          <RemovableTag
+            v-for="pkg in state.appPolicy.proxy"
+            :key="pkg"
+            :disabled="isRunning(`remove-proxy-${pkg}`)"
+            title="移除"
+            @remove="requestRemoveApp(pkg, 'proxy')"
+          >{{ pkg }}</RemovableTag>
+          <em v-if="!state.appPolicy.proxy.length" class="mn-empty">暂无应用</em>
         </div>
       </Card>
       <Card>
         <h3 class="mb-2 text-base font-semibold">Direct（TUN 内直连）</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
-          <span v-for="pkg in state.appPolicy.direct" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
-            {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-direct-${pkg}`)" type="button" title="移除" @click="requestRemoveApp(pkg, 'direct')"><X :size="14" /></button>
-          </span>
-          <em v-if="!state.appPolicy.direct.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无应用</em>
+          <RemovableTag
+            v-for="pkg in state.appPolicy.direct"
+            :key="pkg"
+            :disabled="isRunning(`remove-direct-${pkg}`)"
+            title="移除"
+            @remove="requestRemoveApp(pkg, 'direct')"
+          >{{ pkg }}</RemovableTag>
+          <em v-if="!state.appPolicy.direct.length" class="mn-empty">暂无应用</em>
         </div>
       </Card>
       <Card>
         <h3 class="mb-2 text-base font-semibold">Bypass TUN</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
-          <span v-for="pkg in state.appPolicy.bypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs break-all">
-            {{ pkg }}
-            <button class="grid size-6 place-items-center rounded-full bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`remove-bypass-${pkg}`)" type="button" title="移入回收站" @click="requestRemoveApp(pkg, 'bypass')"><X :size="14" /></button>
-          </span>
-          <em v-if="!state.appPolicy.bypass.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">暂无应用</em>
+          <RemovableTag
+            v-for="pkg in state.appPolicy.bypass"
+            :key="pkg"
+            :disabled="isRunning(`remove-bypass-${pkg}`)"
+            title="移入回收站"
+            @remove="requestRemoveApp(pkg, 'bypass')"
+          >{{ pkg }}</RemovableTag>
+          <em v-if="!state.appPolicy.bypass.length" class="mn-empty">暂无应用</em>
         </div>
       </Card>
     </div>
@@ -634,13 +634,19 @@ onMounted(() => {
         <Trash2 class="shrink-0 text-[var(--mn-ink-muted)]" :size="18" />
       </div>
       <div class="flex max-h-56 flex-wrap gap-2 overflow-auto">
-        <span v-for="pkg in recycledBypass" :key="pkg" class="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-[color-mix(in_srgb,var(--mn-ink)_14%,transparent)] bg-[var(--mn-ivory)] px-2 py-1 text-xs text-[var(--mn-ink-soft)] break-all">
+        <RemovableTag
+          v-for="pkg in recycledBypass"
+          :key="pkg"
+          variant="dashed"
+          remove-variant="restore"
+          :disabled="isRunning(`restore-bypass-${pkg}`)"
+          title="加回 Bypass"
+          @remove="requestRestoreBypass(pkg)"
+        >
           {{ pkg }}
-          <button class="grid size-6 place-items-center rounded-full bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)] disabled:cursor-progress disabled:opacity-60" :disabled="isRunning(`restore-bypass-${pkg}`)" type="button" title="加回 Bypass" @click="requestRestoreBypass(pkg)">
-            <RotateCcw :size="14" />
-          </button>
-        </span>
-        <em v-if="!recycledBypass.length" class="text-sm not-italic text-[var(--mn-ink-muted)]">回收站为空</em>
+          <template #icon><RotateCcw :size="14" /></template>
+        </RemovableTag>
+        <em v-if="!recycledBypass.length" class="mn-empty">回收站为空</em>
       </div>
     </Card>
   </div>

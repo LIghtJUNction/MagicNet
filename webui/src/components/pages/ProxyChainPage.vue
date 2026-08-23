@@ -4,7 +4,9 @@ import { GitBranch, RefreshCw, Save, ShieldCheck, Trash2 } from "lucide-vue-next
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import CardHeading from "@/components/ui/CardHeading.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import StatTile from "@/components/ui/StatTile.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { sanitizeNodeText } from "@/composables/nodeDelayParsers";
@@ -193,21 +195,16 @@ onMounted(() => {
     </PageHeader>
 
     <Card class="grid gap-4 !p-4 md:!p-6">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="min-w-0">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]">当前配置</span>
-          <h2 class="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-[-0.035em]">
-            <GitBranch :size="23" />两跳链路
-          </h2>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-[var(--mn-ink-muted)]">
-            页面只保存节点 tag；节点凭据继续由 sing-box 订阅配置管理。链路默认关闭，保存后会重新应用运行配置。
-          </p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <Badge :tone="status.enabled ? 'success' : 'neutral'">策略：{{ status.enabled ? "启用" : "停用" }}</Badge>
-          <Badge tone="neutral">{{ status.mode === "auto" ? "自动出口" : "手动出口" }}</Badge>
-        </div>
-      </div>
+      <CardHeading
+        overline="当前配置"
+        description="页面只保存节点 tag；节点凭据继续由 sing-box 订阅配置管理。链路默认关闭，保存后会重新应用运行配置。"
+      >
+        <template #title>
+          <span class="inline-flex items-center gap-2"><GitBranch :size="23" />两跳链路</span>
+        </template>
+        <Badge :tone="status.enabled ? 'success' : 'neutral'">策略：{{ status.enabled ? "启用" : "停用" }}</Badge>
+        <Badge tone="neutral">{{ status.mode === "auto" ? "自动出口" : "手动出口" }}</Badge>
+      </CardHeading>
 
       <label class="flex cursor-pointer items-start gap-3 rounded-[1.15rem] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-4">
         <input
@@ -224,39 +221,24 @@ onMounted(() => {
         </span>
       </label>
 
-      <div class="grid gap-3 rounded-[1.15rem] bg-[var(--mn-ivory)] p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <span class="text-xs text-[var(--mn-ink-faint)]">策略状态</span>
-          <p class="mt-1 text-sm font-semibold">{{ status.enabled ? "已启用" : "已停用" }}</p>
-        </div>
-        <div>
-          <span class="text-xs text-[var(--mn-ink-faint)]">运行 API</span>
-          <p class="mt-1 text-sm font-semibold">{{ status.runtime.available ? "可用" : "不可用" }}</p>
-        </div>
-        <div>
-          <span class="text-xs text-[var(--mn-ink-faint)]">proxy 当前出口</span>
-          <p class="mt-1 truncate text-sm font-mono" :title="status.runtime.proxy">{{ status.runtime.proxy || "—" }}</p>
-        </div>
-        <div>
-          <span class="text-xs text-[var(--mn-ink-faint)]">当前链路出口</span>
-          <p class="mt-1 truncate text-sm font-mono" :title="status.runtime.exit">{{ status.runtime.exit || "—" }}</p>
-        </div>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label="策略状态" :value="status.enabled ? '已启用' : '已停用'" />
+        <StatTile label="运行 API" :value="status.runtime.available ? '可用' : '不可用'" />
+        <StatTile label="proxy 当前出口" :value="status.runtime.proxy || '—'" mono />
+        <StatTile label="当前链路出口" :value="status.runtime.exit || '—'" mono />
       </div>
     </Card>
 
     <Card class="grid gap-5 !p-4 md:!p-6">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]">链路角色</span>
-          <h2 class="mt-2 text-2xl font-semibold tracking-[-0.035em]">选择两跳节点</h2>
-          <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)]">
-            节点来自当前 sing-box 订阅缓存；订阅更新后请点击刷新重新读取。
-          </p>
-        </div>
+      <CardHeading
+        overline="链路角色"
+        title="选择两跳节点"
+        description="节点来自当前 sing-box 订阅缓存；订阅更新后请点击刷新重新读取。"
+      >
         <Badge :tone="nodeLoadFailed ? 'warning' : 'neutral'">
           {{ nodeLoadFailed ? "节点读取失败" : `${nodes.length} 个可用节点` }}
         </Badge>
-      </div>
+      </CardHeading>
 
       <div class="grid gap-4 lg:grid-cols-2">
         <label class="grid gap-2 text-sm font-medium">
@@ -341,11 +323,12 @@ onMounted(() => {
     </Card>
 
     <Card class="grid gap-4 !p-4 md:!p-6">
-      <div>
-        <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]">应用预览</span>
-        <h2 class="mt-2 text-xl font-semibold tracking-[-0.03em]">确认配置变更</h2>
-        <p class="mt-2 text-sm leading-6 text-[var(--mn-ink-muted)]">每次保存会按顺序执行 CLI 配置操作；如果中途失败，页面会重新读取已落盘状态。</p>
-      </div>
+      <CardHeading
+        size="md"
+        overline="应用预览"
+        title="确认配置变更"
+        description="每次保存会按顺序执行 CLI 配置操作；如果中途失败，页面会重新读取已落盘状态。"
+      />
       <div v-if="pendingPlan" class="grid gap-3 rounded-[1.15rem] bg-[color-mix(in_srgb,var(--mn-oat)_45%,var(--mn-carrier))] p-4" role="alert">
         <div class="flex items-start gap-3">
           <ShieldCheck class="mt-0.5 shrink-0 text-[var(--mn-warning)]" :size="18" />
@@ -365,20 +348,20 @@ onMounted(() => {
     </Card>
 
     <Card class="grid gap-3 !p-4 md:!p-6">
-      <div>
-        <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--mn-ink-muted)]">运行观察</span>
-        <h2 class="mt-2 text-xl font-semibold tracking-[-0.03em]">链路选择器状态</h2>
-      </div>
+      <CardHeading size="md" overline="运行观察" title="链路选择器状态" />
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div v-for="item in [
-          ['proxy', status.runtime.proxy],
-          ['chain', status.runtime.chain],
-          ['chain-hop1', status.runtime.hop1],
-          ['chain-exit', status.runtime.exit],
-        ]" :key="item[0]" class="min-w-0 rounded-[1.05rem] bg-[var(--mn-ivory)] p-3">
-          <span class="text-xs text-[var(--mn-ink-faint)]">{{ item[0] }}</span>
-          <p class="mt-1 truncate font-mono text-sm text-[var(--mn-ink-soft)]" :title="item[1]">{{ item[1] || "—" }}</p>
-        </div>
+        <StatTile
+          v-for="item in [
+            ['proxy', status.runtime.proxy],
+            ['chain', status.runtime.chain],
+            ['chain-hop1', status.runtime.hop1],
+            ['chain-exit', status.runtime.exit],
+          ]"
+          :key="item[0]"
+          :label="item[0]"
+          :value="item[1] || '—'"
+          mono
+        />
       </div>
       <p class="text-xs leading-5 text-[var(--mn-ink-muted)]">
         这里显示的是设备当前 sing-box API 选择器状态；策略已启用但 API 不可用时，需要先检查 sing-box 和 <code>magicnet0</code>。

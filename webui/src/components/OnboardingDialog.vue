@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { ArrowRight, CheckCircle2, DownloadCloud, Gauge, Stethoscope, Terminal, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
+import Eyebrow from "@/components/ui/Eyebrow.vue";
+import StatusDot from "@/components/ui/StatusDot.vue";
 import { trapFocusWithin } from "@/lib/focus";
 
 type GuideTarget = "subs" | "control" | "health" | "output";
@@ -117,7 +119,7 @@ onUnmounted(() => {
 <template>
   <div class="fixed inset-0 z-[70] grid place-items-end p-3 sm:place-items-center sm:p-6">
     <button
-      class="absolute inset-0 size-full bg-[color-mix(in_srgb,var(--mn-ink)_42%,transparent)]"
+      class="mn-overlay absolute inset-0 size-full"
       type="button"
       aria-label="关闭新手引导"
       @click="emit('dismiss')"
@@ -136,9 +138,9 @@ onUnmounted(() => {
       <div class="rounded-[5px] bg-[var(--mn-ivory)] p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <span class="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mn-clay-ink)]">
+            <Eyebrow tone="clay" class="inline-flex items-center gap-2">
               <CheckCircle2 :size="14" /> 新手引导
-            </span>
+            </Eyebrow>
             <h2 id="onboarding-title" class="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
               第一次使用 MagicNet
             </h2>
@@ -157,17 +159,15 @@ onUnmounted(() => {
               v-for="(step, index) in steps"
               :key="step.title"
               :class="[
-                'rounded-md border p-3 text-left',
-                index === currentStep
-                  ? 'border-[var(--mn-cactus)] bg-[color-mix(in_srgb,var(--mn-cactus)_12%,var(--mn-ivory))]'
-                  : 'border-[var(--mn-border)] bg-[var(--mn-carrier)] text-[var(--mn-ink-soft)]',
+                'mn-choice rounded-md p-3 text-left',
+                index === currentStep ? 'mn-choice-active' : 'text-[var(--mn-ink-soft)]',
               ]"
             >
               <div class="flex items-center justify-between gap-3">
                 <strong class="text-sm font-semibold text-[var(--mn-ink)]">{{ index + 1 }}. {{ step.title }}</strong>
-                <span class="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mn-clay-ink)]">
+                <Eyebrow tone="clay" class="shrink-0 whitespace-nowrap tracking-[0.16em]">
                   {{ index === currentStep ? "当前" : "待完成" }}
-                </span>
+                </Eyebrow>
               </div>
               <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ step.eyebrow }}</p>
             </li>
@@ -175,9 +175,9 @@ onUnmounted(() => {
 
           <article class="rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] p-4 sm:p-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <span class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--mn-clay-ink)]">{{ progressLabel }}</span>
+              <Eyebrow tone="clay">{{ progressLabel }}</Eyebrow>
               <div class="flex items-center gap-2 text-xs text-[var(--mn-ink-muted)]">
-                <span class="inline-flex size-2.5 rounded-full bg-[var(--mn-cactus)]" aria-hidden="true" />
+                <StatusDot tone="ok" />
                 <span>可随时重新打开，不会修改现有运行状态</span>
               </div>
             </div>

@@ -2,6 +2,9 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Bug, ShieldCheck, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
+import Eyebrow from "@/components/ui/Eyebrow.vue";
+import Field from "@/components/ui/Field.vue";
+import Textarea from "@/components/ui/Textarea.vue";
 import { trapFocusWithin } from "@/lib/focus";
 import {
   ISSUE_KIND_OPTIONS,
@@ -60,7 +63,7 @@ onUnmounted(() => {
 <template>
   <div class="fixed inset-0 z-[70] grid place-items-end p-3 sm:place-items-center sm:p-6">
     <button
-      class="absolute inset-0 size-full bg-[color-mix(in_srgb,var(--mn-ink)_42%,transparent)]"
+      class="mn-overlay absolute inset-0 size-full"
       type="button"
       aria-label="取消创建 Issue"
       @click="emit('cancel')"
@@ -79,9 +82,9 @@ onUnmounted(() => {
       <div class="rounded-[5px] bg-[var(--mn-ivory)] p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <span class="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--mn-clay-ink)]">
+            <Eyebrow tone="clay" class="inline-flex items-center gap-2">
               <Bug :size="14" /> Issue Context
-            </span>
+            </Eyebrow>
             <h2 id="issue-reporter-title" class="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--mn-ink)]">
               你遇到了哪类问题？
             </h2>
@@ -100,10 +103,10 @@ onUnmounted(() => {
             v-for="option in ISSUE_KIND_OPTIONS"
             :key="option.value"
             :class="[
-              'grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md border p-3 transition-colors',
+              'mn-choice grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md p-3 transition-colors',
               selected === option.value
-                ? 'border-[var(--mn-cactus)] bg-[color-mix(in_srgb,var(--mn-cactus)_12%,var(--mn-ivory))]'
-                : 'border-[var(--mn-border)] bg-[var(--mn-carrier)] hover:bg-[var(--mn-carrier-deep)]',
+                ? 'mn-choice-active'
+                : 'hover:bg-[var(--mn-carrier-deep)]',
             ]"
           >
             <input
@@ -124,64 +127,58 @@ onUnmounted(() => {
         </fieldset>
 
         <div class="mt-4 grid gap-3 border-t border-[var(--mn-border)] pt-4">
-          <div>
-            <label for="issue-summary" class="block text-sm font-semibold text-[var(--mn-ink)]">
-              问题概述 <span class="text-[var(--mn-clay-ink)]">*</span>
-            </label>
-            <textarea
+          <Field
+            label="问题概述"
+            hint="用一句话说明看到的现象；这是必填项。"
+            hint-id="issue-summary-hint"
+            required
+            for-id="issue-summary"
+          >
+            <Textarea
               id="issue-summary"
               v-model="summary"
-              class="mt-1.5 min-h-20 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
+              class="min-h-20"
               maxlength="240"
               placeholder="例如：更新订阅后节点数量变成 0，sing-box 没有启动"
               aria-describedby="issue-summary-hint"
               @keydown.ctrl.enter="confirm"
             />
-            <p id="issue-summary-hint" class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">
-              用一句话说明看到的现象；这是必填项。
-            </p>
-          </div>
+          </Field>
 
           <div class="grid gap-3 sm:grid-cols-2">
-            <label class="grid gap-1.5">
-              <span class="text-sm font-semibold text-[var(--mn-ink)]">复现步骤</span>
-              <textarea
+            <Field label="复现步骤">
+              <Textarea
                 v-model="reproduction"
-                class="min-h-28 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
                 maxlength="1200"
                 placeholder="1. 做了什么操作？&#10;2. 何时开始异常？&#10;3. 是否每次都能复现？"
               />
-            </label>
-            <label class="grid gap-1.5">
-              <span class="text-sm font-semibold text-[var(--mn-ink)]">期望结果</span>
-              <textarea
+            </Field>
+            <Field label="期望结果">
+              <Textarea
                 v-model="expected"
-                class="min-h-28 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
                 maxlength="600"
                 placeholder="例如：订阅应导入节点并启动 sing-box。"
               />
-            </label>
+            </Field>
           </div>
 
           <div class="grid gap-3 sm:grid-cols-2">
-            <label class="grid gap-1.5">
-              <span class="text-sm font-semibold text-[var(--mn-ink)]">实际结果</span>
-              <textarea
+            <Field label="实际结果">
+              <Textarea
                 v-model="actual"
-                class="min-h-24 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
+                class="min-h-24"
                 maxlength="800"
                 placeholder="例如：报告 last_reason=no_supported_nodes，核心 stopped。"
               />
-            </label>
-            <label class="grid gap-1.5">
-              <span class="text-sm font-semibold text-[var(--mn-ink)]">发生频率 / 影响范围</span>
-              <textarea
+            </Field>
+            <Field label="发生频率 / 影响范围">
+              <Textarea
                 v-model="frequency"
-                class="min-h-24 w-full resize-y rounded-md border border-[var(--mn-border)] bg-[var(--mn-carrier)] px-3 py-2 text-sm leading-6 text-[var(--mn-ink)] outline-none transition-colors placeholder:text-[var(--mn-ink-faint)] focus:border-[var(--mn-cactus)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)]"
+                class="min-h-24"
                 maxlength="400"
                 placeholder="例如：仅 Android 15、只影响某个订阅、每次更新都会发生。"
               />
-            </label>
+            </Field>
           </div>
         </div>
 

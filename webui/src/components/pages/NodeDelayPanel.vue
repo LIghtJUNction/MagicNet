@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from "vue";
 import { Copy, Gauge, RefreshCw, Zap } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
+import StatTile from "@/components/ui/StatTile.vue";
 import { buildNodeDelayStats, formatNodeDelayReport, nodeDelayHealthText, nodeDelayQualityLabel, parseCurrentNode, parseNodeTestAll, sanitizeNodeText, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
@@ -148,17 +150,17 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="pendingAction" class="mn-panel-warn rounded-md p-3">
-      <p class="text-sm font-semibold text-[var(--mn-warning)]">切换到最快节点</p>
-      <p class="mt-1 text-sm leading-6 text-[var(--mn-warning)]/80">
-        将把 proxy selector 切换到 {{ sanitizeNodeText(pendingAction.node.node) }}，当前连接可能重新选择出站。
-      </p>
-      <code class="mt-2 block rounded bg-[var(--mn-carrier-deep)]/50 p-2 text-xs text-[var(--mn-ink-soft)]">node use &lt;fastest-node&gt;</code>
-      <div class="mt-3 grid gap-2 sm:grid-cols-2">
-        <Button size="sm" variant="secondary" :loading="isRunning('node-use-fastest')" @click="confirmAction">确认切换</Button>
-        <Button size="sm" variant="outline" @click="cancelAction">取消</Button>
-      </div>
-    </div>
+    <ConfirmPanel
+      v-if="pendingAction"
+      title="切换到最快节点"
+      :detail="`将把 proxy selector 切换到 ${sanitizeNodeText(pendingAction.node.node)}，当前连接可能重新选择出站。`"
+      command="node use <fastest-node>"
+      :loading="isRunning('node-use-fastest')"
+      confirm-label="确认切换"
+      confirm-variant="secondary"
+      @cancel="cancelAction"
+      @confirm="confirmAction"
+    />
 
     <div v-if="entries.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-heather)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,var(--mn-carrier))] p-3">
       <p class="text-sm font-semibold text-[var(--mn-info)]">测速健康摘要</p>
@@ -174,26 +176,11 @@ onMounted(() => {
     </div>
 
     <div class="grid gap-2 sm:grid-cols-5">
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">已测</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ stats.tested }}</p>
-      </div>
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">可用</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ stats.usable }}</p>
-      </div>
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">失败</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ stats.failed }}</p>
-      </div>
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">平均</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ delayLabel(stats.averageMillis) }}</p>
-      </div>
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">中位/解析可用率</p>
-        <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ delayLabel(stats.medianMillis) }} · {{ stats.usablePercent }}%</p>
-      </div>
+      <StatTile label="已测" :value="stats.tested" />
+      <StatTile label="可用" :value="stats.usable" />
+      <StatTile label="失败" :value="stats.failed" />
+      <StatTile label="平均" :value="delayLabel(stats.averageMillis)" />
+      <StatTile label="中位/解析可用率" :value="`${delayLabel(stats.medianMillis)} · ${stats.usablePercent}%`" />
     </div>
 
     <div v-if="stats.fastest || stats.slowest" class="grid gap-2 sm:grid-cols-2">
