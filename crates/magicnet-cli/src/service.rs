@@ -3,6 +3,8 @@ use std::io::{Read, Seek, SeekFrom};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -11,7 +13,9 @@ use crate::{
     write_text_file, App,
 };
 
-const START_SUPERVISORS_COMMAND: &str = "\"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1";
+const START_SUPERVISORS_COMMAND: &str = "magicnet_supervisors_start_detached";
+const START_KERNEL_COMMAND: &str =
+    "MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached";
 const STOP_RUNTIME_CLEANUP_COMMAND: &str =
     "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
 const REPAIR_COMMAND: &str =
@@ -19,6 +23,8 @@ const REPAIR_COMMAND: &str =
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
 const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
 const CONFIG_APPLY_LOCK: &str = ".state/config-apply.lock";
+const LIFECYCLE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
+const CONFIG_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const MAX_SERVICE_LOG_READ_BYTES: u64 = 1024 * 1024;
 
 struct ConfigApplyGuard(fs::File);
@@ -31,19 +37,23 @@ impl Drop for ConfigApplyGuard {
     }
 }
 
-fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
+fn open_config_apply_lock(app: &App) -> Result<File, String> {
     let path = app.moddir.join(CONFIG_APPLY_LOCK);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|err| format!("create config apply lock directory: {err}"))?;
     }
-    let file = fs::OpenOptions::new()
+    fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
         .open(&path)
-        .map_err(|err| format!("open config apply lock: {err}"))?;
+        .map_err(|err| format!("open config apply lock: {err}"))
+}
+
+fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
+    let file = open_config_apply_lock(app)?;
     if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
         return Err(format!(
             "lock config apply: {}",
@@ -51,6 +61,28 @@ fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
         ));
     }
     Ok(ConfigApplyGuard(file))
+}
+
+fn config_apply_lock_bounded(app: &App, timeout: Duration) -> Result<ConfigApplyGuard, String> {
+    let file = open_config_apply_lock(app)?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(ConfigApplyGuard(file));
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::WouldBlock {
+            return Err(format!("lock config apply: {error}"));
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "config apply is still busy after {} ms; retry the lifecycle action",
+                timeout.as_millis()
+            ));
+        }
+        thread::sleep(CONFIG_LOCK_POLL_INTERVAL.min(deadline.saturating_duration_since(now)));
+    }
 }
 
 pub(crate) fn service_status(app: &App) {
@@ -125,22 +157,44 @@ pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
             service_status(app);
             Ok(())
         }
-        "start" => run_magicnet_function(
-            app,
-            "magicnet_start_kernel && \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1",
-        ),
+        "start" => start_service(app),
         "ensure" => run_magicnet_function(app, "magicnet_ensure_kernel"),
-        "stop" => {
-            let _config_apply_guard = config_apply_lock(app)?;
-            stop_all_direct(app, false)
-        }
+        "stop" => stop_service(app),
         "restart" => restart(app, args.get(1).map(String::as_str).unwrap_or("current")),
         "toggle" => match args.get(1).map(String::as_str).unwrap_or_default() {
-            "sing-box" | "singbox" => run_magicnet_function(app, "magicnet_action_toggle_singbox"),
+            "sing-box" | "singbox" => {
+                if singbox_pid_summary(app) == "stopped" {
+                    start_service(app)
+                } else {
+                    stop_service(app)
+                }
+            }
             _ => Err("Usage: cli service toggle sing-box".to_string()),
         },
         _ => Err("Usage: cli service {status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [core] [lines]}".to_string()),
     }
+}
+
+fn start_service(app: &App) -> Result<(), String> {
+    let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
+    run_magicnet_function(app, START_KERNEL_COMMAND)
+}
+
+fn stop_service(app: &App) -> Result<(), String> {
+    // A user-requested stop takes precedence over an fswatch apply.  Stop the
+    // producer and its current worker before waiting for the process lock;
+    // otherwise a lifecycle button can sit behind a full config restart.
+    quiesce_config_apply(app);
+    let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
+    stop_all_direct(app, false)
+}
+
+fn quiesce_config_apply(app: &App) {
+    stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"));
+    ignore_command(
+        "pkill",
+        &["-f", &format!("{}/cli.*config apply", app.moddir.display())],
+    );
 }
 
 pub(crate) fn supervisor_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -317,7 +371,8 @@ fn read_bounded_log_tail(path: &Path) -> std::io::Result<String> {
 }
 
 fn restart(app: &App, target: &str) -> Result<(), String> {
-    let _config_apply_guard = config_apply_lock(app)?;
+    quiesce_config_apply(app);
+    let _config_apply_guard = config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)?;
     restart_with_options_unlocked(app, target, false)
 }
 
@@ -349,7 +404,7 @@ fn restart_with_options_unlocked(
 fn restart_command(target: &str) -> &'static str {
     match target {
         "sing-box" | "singbox" => {
-            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 magicnet_start_kernel && \"${MODDIR}/cli\" supervisor start all >/dev/null 2>&1"
+            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached"
         }
         _ => unreachable!("restart validates the target before building the command"),
     }
@@ -357,8 +412,20 @@ fn restart_command(target: &str) -> &'static str {
 
 fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String> {
     stop_supervisor_pidfile(app, app.moddir.join(".state/watchdog/magicnet-kernel.pid"));
+    stop_supervisor_pidfile(
+        app,
+        app.moddir
+            .join(".state/watchdog/magicnet-hotspot-route.pid"),
+    );
     stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"));
     stop_supervisor_pidfile(app, app.moddir.join(".state/after-kernel-start.pid"));
+    ignore_command(
+        "pkill",
+        &[
+            "-f",
+            &format!("{}/cli.*supervisor start all", app.moddir.display()),
+        ],
+    );
     ignore_command(
         "pkill",
         &[
@@ -438,6 +505,10 @@ fn supervisor_cmdline_matches(moddir: &Path, path: &Path, cmdline: &str) -> bool
                 &format!("{module}/.state/fswatch/magicnet-config.loop.sh"),
             ) || cmdline_has_module_command(cmdline, &module, &["config", "apply"])
         }
+        Some("magicnet-hotspot-route.pid") => cmdline_has_script(
+            cmdline,
+            &format!("{module}/.state/watchdog/magicnet-hotspot-route.loop.sh"),
+        ),
         // There is no current producer for this legacy pidfile.  Requiring a
         // known command is safer than killing a reused PID from old state.
         Some("after-kernel-start.pid") => false,
@@ -590,13 +661,14 @@ fn tail_lines(text: &str, lines: usize) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        api_host_port, config_apply_lock, normalize_transparent_mode, restart_command,
-        safe_log_name, service_log_path, stop_runtime_cleanup_command, supervisor_cmdline_matches,
-        REPAIR_COMMAND,
+        api_host_port, config_apply_lock, config_apply_lock_bounded, normalize_transparent_mode,
+        restart_command, safe_log_name, service_log_path, stop_runtime_cleanup_command,
+        supervisor_cmdline_matches, REPAIR_COMMAND, START_KERNEL_COMMAND,
     };
     use crate::App;
     use std::fs;
     use std::path::PathBuf;
+    use std::time::{Duration, Instant};
 
     fn fixture_app(name: &str) -> (App, PathBuf) {
         let root =
@@ -622,12 +694,16 @@ mod tests {
     }
 
     #[test]
-    fn restart_commands_restore_supervisors_after_core_start() {
+    fn lifecycle_commands_detach_optional_supervisors_after_core_start() {
+        assert!(START_KERNEL_COMMAND.contains("MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2"));
+        assert!(START_KERNEL_COMMAND.contains("magicnet_start_kernel"));
+        assert!(START_KERNEL_COMMAND.contains("magicnet_supervisors_start_detached"));
         for target in ["sing-box", "singbox"] {
             let command = restart_command(target);
+            assert!(command.contains("MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2"));
             assert!(command.contains("magicnet_start_kernel"));
-            assert!(command.contains("supervisor start all"));
-            assert!(!command.contains("2>&1 &"));
+            assert!(command.contains("magicnet_supervisors_start_detached"));
+            assert!(!command.contains("supervisor start all >/dev/null"));
         }
     }
 
@@ -666,6 +742,12 @@ mod tests {
             "a second config apply must not enter while the first owns the lock"
         );
         drop(probe);
+        let started = Instant::now();
+        let error = config_apply_lock_bounded(&app, Duration::from_millis(30))
+            .err()
+            .expect("bounded lifecycle lock must not wait behind config apply forever");
+        assert!(error.contains("config apply is still busy"));
+        assert!(started.elapsed() < Duration::from_secs(1));
         drop(guard);
         let reacquired = config_apply_lock(&app).expect("reacquire config apply lock");
         drop(reacquired);
@@ -714,6 +796,7 @@ mod tests {
         let module = PathBuf::from("/data/adb/modules/MagicNet");
         let kernel = module.join(".state/watchdog/magicnet-kernel.pid");
         let fswatch = module.join(".state/fswatch/magicnet-config.pid");
+        let hotspot = module.join(".state/watchdog/magicnet-hotspot-route.pid");
         assert!(supervisor_cmdline_matches(
             &module,
             &kernel,
@@ -723,6 +806,11 @@ mod tests {
             &module,
             &fswatch,
             "/data/adb/modules/MagicNet/cli config apply"
+        ));
+        assert!(supervisor_cmdline_matches(
+            &module,
+            &hotspot,
+            "/system/bin/sh /data/adb/modules/MagicNet/.state/watchdog/magicnet-hotspot-route.loop.sh"
         ));
         assert!(!supervisor_cmdline_matches(
             &module,

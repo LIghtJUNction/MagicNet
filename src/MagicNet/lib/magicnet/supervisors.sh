@@ -3,7 +3,7 @@ magicnet_supervisor_target_pid_matches() (
     _mstm_pid_file="$2"
     _mstm_pid="$3"
     case "$_mstm_target" in
-        fswatch | watchdog) magicnet_supervisor_pidfile_matches "$_mstm_pid_file" "$_mstm_pid" ;;
+        fswatch | watchdog | hotspot-watchdog) magicnet_supervisor_pidfile_matches "$_mstm_pid_file" "$_mstm_pid" ;;
         wifi-policy) magicnet_wifi_policy_pid_matches "$_mstm_pid" ;;
         *) return 1 ;;
     esac
@@ -14,6 +14,7 @@ magicnet_supervisor_orphan_pids() (
     case "$_mso_target" in
         fswatch) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid" ;;
         watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid" ;;
+        hotspot-watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_hotspot_watchdog_name).pid" ;;
         wifi-policy) _mso_pid_file="$(magicnet_wifi_policy_pid_file)" ;;
         *) return 1 ;;
     esac
@@ -62,8 +63,13 @@ magicnet_supervisor_kill_orphans() (
     for _msko_pid in $_msko_pids; do
         kill "$_msko_pid" 2>/dev/null || true
     done
-    sleep 1
-    _msko_pids="$(magicnet_supervisor_orphan_pids "$_msko_target")"
+    _msko_attempt=0
+    while [ "$_msko_attempt" -lt 20 ]; do
+        _msko_pids="$(magicnet_supervisor_orphan_pids "$_msko_target")"
+        [ -n "$_msko_pids" ] || return 0
+        _msko_attempt=$((_msko_attempt + 1))
+        [ "$_msko_attempt" -lt 20 ] && sleep 0.05
+    done
     for _msko_pid in $_msko_pids; do
         kill -9 "$_msko_pid" 2>/dev/null || true
     done
@@ -133,6 +139,12 @@ magicnet_supervisor_pidfile_matches() (
             _msp_arg1=config
             _msp_arg2=apply
             ;;
+        */.state/watchdog/magicnet-hotspot-route.pid)
+            _msp_root=${_msp_pid_file%/.state/watchdog/magicnet-hotspot-route.pid}
+            _msp_expected="$_msp_root/.state/watchdog/magicnet-hotspot-route.loop.sh"
+            _msp_arg1=
+            _msp_arg2=
+            ;;
         *)
             unset _msp_pid_file _msp_pid _msp_root _msp_expected _msp_arg1 _msp_arg2
             return 1
@@ -189,11 +201,12 @@ magicnet_hotspot_watchdog_start() {
     import watchdog
     _hotspot_watch_name="$(magicnet_hotspot_watchdog_name)"
     if watchdog status "$_hotspot_watch_name" >/dev/null 2>&1; then
-        magicnet_hotspot_reconcile >/dev/null 2>&1 || true
         unset _hotspot_watch_name
         return 0
     fi
-    magicnet_hotspot_reconcile >/dev/null 2>&1 || true
+    # magicnet_start_kernel already performs the synchronous initial
+    # reconciliation.  The watcher owns only later interface transitions and
+    # must not repeat slow OEM tethering discovery on the start button path.
     _hotspot_watch_interval="$(magicnet_hotspot_watchdog_interval)"
     case "$_hotspot_watch_interval" in
         '' | *[!0-9]* | 0) _hotspot_watch_interval=3 ;;
@@ -207,10 +220,10 @@ magicnet_hotspot_watchdog_start() {
 }
 
 magicnet_hotspot_watchdog_stop() {
-    import watchdog
-    _hotspot_watch_name="$(magicnet_hotspot_watchdog_name)"
-    watchdog stop "$_hotspot_watch_name" >/dev/null 2>&1 || true
-    unset _hotspot_watch_name
+    _hotspot_watch_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_hotspot_watchdog_name).pid"
+    magicnet_supervisor_stop_pidfile "$_hotspot_watch_pid_file"
+    magicnet_supervisor_kill_orphans hotspot-watchdog
+    unset _hotspot_watch_pid_file
 }
 
 magicnet_fswatch_name() {
@@ -952,22 +965,50 @@ magicnet_subscription_schedule_report() {
     unset _schedule_hours _schedule_enabled _schedule_running _schedule_owner
 }
 
+magicnet_supervisors_start_detached() {
+    _mssd_timeout="${MAGICNET_SUPERVISOR_START_TIMEOUT:-15}"
+    case "$_mssd_timeout" in '' | *[!0-9]* | 0) _mssd_timeout=15 ;; esac
+    [ "$_mssd_timeout" -le 60 ] || _mssd_timeout=60
+    _mssd_log="${MODDIR}/.log/supervisors.log"
+    mkdir -p "${MODDIR}/.log" || return 1
+    magicnet_trim_log_file "$_mssd_log"
+
+    # Maintenance supervisors are not part of core/TUN readiness.  Starting
+    # them synchronously made an optional stale fswatch flock hold the manual
+    # start button indefinitely.  Detach into a new session and bound the
+    # nested CLI so it cannot outlive a broken helper forever.
+    if [ -x "${MODDIR}/bin/busybox" ]; then
+        MAGICNET_COMMAND_TIMEOUT="$_mssd_timeout" \
+            "${MODDIR}/bin/busybox" setsid "${MODDIR}/cli" supervisor start all \
+            </dev/null >>"$_mssd_log" 2>&1 &
+    elif magicnet_cmd_exists setsid; then
+        MAGICNET_COMMAND_TIMEOUT="$_mssd_timeout" \
+            setsid "${MODDIR}/cli" supervisor start all \
+            </dev/null >>"$_mssd_log" 2>&1 &
+    else
+        MAGICNET_COMMAND_TIMEOUT="$_mssd_timeout" \
+            "${MODDIR}/cli" supervisor start all \
+            </dev/null >>"$_mssd_log" 2>&1 &
+    fi
+    unset _mssd_timeout _mssd_log
+    return 0
+}
+
 magicnet_supervisors_start() {
     _mss_rc=0
-    # fswatch only accelerates config convergence.  A missing or incompatible
-    # locking helper must not make an otherwise healthy core startup fail.
-    magicnet_fswatch_start || true
-    magicnet_subscription_refresh_start || _mss_rc=1
-    magicnet_wifi_policy_start || _mss_rc=1
-    magicnet_hotspot_watchdog_start || _mss_rc=1
-    # Startup may materialize supervisor-owned policy after the core's initial
-    # fingerprint was recorded.  Publish the settled generation so the next
-    # fswatch pass does not restart an already-current core and tear down
-    # long-lived application connections.
+    # Publish the settled generation before fswatch can observe .config.  The
+    # optional watcher starts last so a broken lifecycle lock cannot prevent
+    # the other maintenance supervisors from becoming ready.
     if magicnet_kernel_running; then
         magicnet_singbox_record_runtime_fingerprint ||
             magicnet_warn "Failed to record the settled sing-box configuration fingerprint."
     fi
+    magicnet_subscription_refresh_start || _mss_rc=1
+    magicnet_wifi_policy_start || _mss_rc=1
+    magicnet_hotspot_watchdog_start || _mss_rc=1
+    # fswatch only accelerates config convergence.  A missing or incompatible
+    # locking helper must not make an otherwise healthy core startup fail.
+    magicnet_fswatch_start || true
     return "$_mss_rc"
 }
 

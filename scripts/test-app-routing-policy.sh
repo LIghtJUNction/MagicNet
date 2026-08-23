@@ -18,6 +18,7 @@ import() { :; }
 . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/apps.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/dns.sh"
 # network.sh reconciles the hotspot policy provided by routes.sh.
 . "$ROOT/src/MagicNet/lib/magicnet/routes.sh"
 # core.sh materializes the optional proxy chain during config startup.
@@ -565,6 +566,39 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
 
 assert_dns_leak_guard_disable_removes_duplicate_rules
 
+assert_disabled_dns_leak_guard_skips_per_interface_deletes_without_rules() (
+  MODDIR="$WORK/dns-leak-guard-fast-cleanup/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  guard_delete_log="$WORK/dns-leak-guard-fast-cleanup.log"
+  guard_discovery_log="$WORK/dns-leak-guard-fast-discovery.log"
+
+  iptables() {
+    case " $* " in
+      *' -L '*|*' -S OUTPUT '*) return 0 ;;
+      *' -D '*|*' -C '*) printf '%s\n' "$*" >>"$guard_delete_log"; return 1 ;;
+      *) return 0 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() {
+    printf '%s\n' called >>"$guard_discovery_log"
+    printf '%s\n' wlan0
+  }
+
+  magicnet_disable_dns_leak_guard
+  [ ! -e "$guard_delete_log" ] || {
+    printf '%s\n' 'disabled DNS guard cleanup issued needless per-interface deletes' >&2
+    exit 1
+  }
+  [ ! -e "$guard_discovery_log" ] || {
+    printf '%s\n' 'successful DNS guard ruleset scan fell back to interface discovery' >&2
+    exit 1
+  }
+)
+
+assert_disabled_dns_leak_guard_skips_per_interface_deletes_without_rules
+
 assert_dns_leak_guard_disable_cleans_previous_interfaces() (
   MODDIR="$WORK/dns-leak-guard-stale-interface/module"
   export MODDIR
@@ -843,6 +877,45 @@ assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat() (
 
 assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat
 
+assert_dns_bootstrap_selection_does_not_probe_network() (
+  probe_log="$WORK/dns-bootstrap-probe.log"
+  magicnet_network_policy_value() { printf '%s\n' prefer_ipv4; }
+  ip() { return 1; }
+  curl() { printf '%s\n' called >>"$probe_log"; return 1; }
+
+  [ "$(magicnet_dns_bootstrap_server)" = "223.6.6.6" ]
+  [ ! -e "$probe_log" ] || {
+    printf '%s\n' 'DNS config materialization must not probe the Internet' >&2
+    exit 1
+  }
+)
+
+assert_dns_bootstrap_selection_does_not_probe_network
+
+assert_hotspot_startup_reuses_one_discovery_snapshot() (
+  MODDIR="$WORK/hotspot-startup-snapshot/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.state/hotspot"
+  : >"$(magicnet_hotspot_offload_state_file)"
+  discovery_count_file="$WORK/hotspot-startup-snapshot.count"
+  printf '%s\n' 0 >"$discovery_count_file"
+  magicnet_hotspot_active_networks_uncached() {
+    count=$(cat "$discovery_count_file")
+    printf '%s\n' "$((count + 1))" >"$discovery_count_file"
+    printf '%s\n' 'wlan1|192.168.43.0/24'
+  }
+
+  magicnet_hotspot_startup_snapshot_prepare
+  [ "$(magicnet_hotspot_source_cidrs)" = '192.168.43.0/24' ]
+  [ "$(magicnet_hotspot_active_networks)" = 'wlan1|192.168.43.0/24' ]
+  [ "$(cat "$discovery_count_file")" -eq 1 ]
+  startup_snapshot="$MAGICNET_HOTSPOT_STARTUP_SNAPSHOT"
+  magicnet_hotspot_startup_snapshot_clear
+  [ ! -e "$startup_snapshot" ]
+)
+
+assert_hotspot_startup_reuses_one_discovery_snapshot
+
 assert_startup_policy_order() {
   startup_events="$WORK/startup-events.log"
   : >"$startup_events"
@@ -858,6 +931,7 @@ assert_startup_policy_order() {
   magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$startup_events"; }
   magicnet_tailscale_apply_unlocked() { printf '%s\n' tailscale >>"$startup_events"; }
   magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$startup_events"; }
+  magicnet_singbox_apply_zashboard() { printf '%s\n' zashboard >>"$startup_events"; }
   magicnet_tailscale_inject_auth_key() { printf '%s\n' tailscale-auth >>"$startup_events"; }
   magicnet_tailscale_scrub_auth_key() { return 0; }
   singbox_start() { printf '%s\n' singbox-start >>"$startup_events"; }
@@ -872,6 +946,7 @@ dns
 tailscale
 app-policy
 warp
+zashboard
 tailscale-auth
 singbox-start
 EOF
@@ -883,106 +958,89 @@ EOF
 
 assert_startup_policy_order
 
-assert_deferred_failure_disables_dns_controls() (
-  events="$WORK/deferred-failure-events.log"
+assert_post_start_only_installs_kernel_controls() (
+  events="$WORK/post-start-events.log"
   : >"$events"
 
+  magicnet_with_config_lock() { printf '%s\n' config-lock >>"$events"; return 1; }
   magicnet_dns_apply_unlocked() { printf '%s\n' dns-apply >>"$events"; return 1; }
-  magicnet_transparent_apply_unlocked() { printf '%s\n' transparent >>"$events"; }
-  magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$events"; }
+  magicnet_transparent_apply_unlocked() { printf '%s\n' transparent >>"$events"; return 1; }
+  magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$events"; return 1; }
   magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$events"; return 1; }
-  magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot >>"$events"; }
+  magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot-config >>"$events"; return 1; }
+  magicnet_hotspot_reconcile() { printf '%s\n' hotspot-route >>"$events"; }
   magicnet_enable_dns_capture() { printf '%s\n' capture-enable >>"$events"; }
+  magicnet_enable_dns_leak_guard() { printf '%s\n' guard-enable >>"$events"; }
+
+  magicnet_after_kernel_start
+  diff -u - "$events" <<'EOF'
+hotspot-route
+capture-enable
+guard-enable
+EOF
+)
+
+assert_post_start_only_installs_kernel_controls
+
+assert_post_start_control_failure_disables_dns_controls() (
+  events="$WORK/post-start-failure-events.log"
+  : >"$events"
+
+  magicnet_hotspot_reconcile() { :; }
+  magicnet_enable_dns_capture() { printf '%s\n' capture-enable >>"$events"; return 1; }
   magicnet_enable_dns_leak_guard() { printf '%s\n' guard-enable >>"$events"; }
   magicnet_disable_dns_capture() { printf '%s\n' capture-disable >>"$events"; }
   magicnet_disable_dns_leak_guard() { printf '%s\n' guard-disable >>"$events"; }
   magicnet_warn() { printf 'warning:%s\n' "$*" >>"$events"; }
 
-  if magicnet_after_kernel_start_deferred_unlocked; then
-    printf '%s\n' 'deferred config failure must return non-zero' >&2
+  if magicnet_after_kernel_start; then
+    printf '%s\n' 'post-start DNS control failure must return non-zero' >&2
     exit 1
   fi
   grep -qx capture-disable "$events"
   grep -qx guard-disable "$events"
-  grep -qx 'warning:Deferred network configuration failed: dns,warp; DNS interception disabled' "$events"
-  grep -qx 'warning:Post-start network rewrites failed: dns,warp' "$events"
-  if grep -Eq '^(capture|guard)-enable$' "$events"; then
-    printf '%s\n' 'deferred config failure enabled DNS controls' >&2
-    cat "$events" >&2
-    exit 1
-  fi
+  grep -qx 'warning:Post-start network controls failed: dns-capture' "$events"
 )
 
-assert_deferred_failure_disables_dns_controls
+assert_post_start_control_failure_disables_dns_controls
 
-assert_startup_reports_deferred_failure() (
-  module="$WORK/startup-failure-module"
-  mkdir -p "$module"
-  printf '%s\n' '#!/bin/sh' >"$module/cli"
-  chmod +x "$module/cli"
-  MODDIR="$module"
-
-  magicnet_module_disabled() { return 1; }
-  magicnet_kernel_running() { return 1; }
-  magicnet_require_subscription_or_stop() { return 0; }
-  magicnet_start_singbox() { return 0; }
-  magicnet_after_kernel_start() { return 1; }
-  magicnet_kernel_stopped=0
-  import() { :; }
-  singbox_stop() { magicnet_kernel_stopped=1; }
-  magicnet_disable_dns_capture() { return 0; }
-  magicnet_disable_dns_leak_guard() { return 0; }
-  magicnet_notify() { :; }
-
-  if magicnet_start_kernel; then
-    printf '%s\n' 'startup must report a deferred configuration failure' >&2
-    exit 1
-  fi
-  [ "$magicnet_kernel_stopped" -eq 1 ] || {
-    printf '%s\n' 'failed startup must stop the half-initialized sing-box core' >&2
-    exit 1
-  }
-)
-
-assert_startup_reports_deferred_failure
-
-assert_post_start_phase_is_synchronous() (
-  magicnet_with_config_lock() { "$@"; }
-  magicnet_singbox_apply_zashboard() { return 0; }
-  magicnet_after_kernel_start_deferred() { return 1; }
-
-  if magicnet_after_kernel_start; then
-    printf '%s\n' 'post-start phase must not hide a deferred failure' >&2
-    exit 1
-  fi
-)
-
-assert_post_start_phase_is_synchronous
-
-assert_post_start_phase_holds_config_lock() (
-  post_start_events="$WORK/post-start-lock-events.log"
-  : >"$post_start_events"
+assert_ready_start_holds_one_lock_and_stops_failed_generation() (
+  events="$WORK/ready-start-lock-events.log"
+  : >"$events"
   magicnet_with_config_lock() {
     MAGICNET_CONFIG_LOCK_HELD=1
+    printf '%s\n' lock >>"$events"
     "$@"
   }
-  magicnet_singbox_apply_zashboard() {
-    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ] || return 1
-    printf '%s\n' zashboard >>"$post_start_events"
+  magicnet_start_singbox_unlocked() {
+    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+    printf '%s\n' core >>"$events"
   }
-  magicnet_after_kernel_start_deferred() {
-    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ] || return 1
-    printf '%s\n' deferred >>"$post_start_events"
+  magicnet_after_kernel_start_unlocked() {
+    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+    printf '%s\n' network >>"$events"
+    return 1
   }
+  import() { :; }
+  singbox_stop() {
+    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+    printf '%s\n' stop >>"$events"
+  }
+  magicnet_warn() { :; }
 
-  magicnet_after_kernel_start
-  diff -u - "$post_start_events" <<'EOF'
-zashboard
-deferred
+  if magicnet_start_singbox_ready; then
+    printf '%s\n' 'failed post-start controls must fail the ready generation' >&2
+    exit 1
+  fi
+  diff -u - "$events" <<'EOF'
+lock
+core
+network
+stop
 EOF
 )
 
-assert_post_start_phase_holds_config_lock
+assert_ready_start_holds_one_lock_and_stops_failed_generation
 
 assert_runtime_config_failure_is_visible() (
   magicnet_module_disabled() { return 1; }

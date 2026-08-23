@@ -35,6 +35,10 @@ magicnet_start_singbox_unlocked() {
     # deferred rewrite cannot change the already-running core's in-memory routes.
     magicnet_app_policy_apply_unlocked || return 1
     magicnet_warp_apply_unlocked || return 1
+    # The running core snapshots clash_api.external_ui at process start.  A
+    # post-start rewrite only dirties config.json and cannot affect that core.
+    magicnet_singbox_apply_zashboard ||
+        magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
     magicnet_tailscale_inject_auth_key || return 1
     import __singbox__
     if ! singbox_start; then
@@ -52,10 +56,10 @@ magicnet_start_singbox_unlocked() {
     return 0
 }
 
-magicnet_start_singbox() {
+magicnet_with_start_config_lock() {
     _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
     MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
-    magicnet_with_config_lock magicnet_start_singbox_unlocked
+    magicnet_with_config_lock "$@"
     _start_rc=$?
     if [ -n "$_old_lock_timeout" ]; then
         MAGICNET_CONFIG_LOCK_TIMEOUT="$_old_lock_timeout"
@@ -64,6 +68,29 @@ magicnet_start_singbox() {
     fi
     unset _old_lock_timeout
     return "$_start_rc"
+}
+
+magicnet_start_singbox() {
+    magicnet_with_start_config_lock magicnet_start_singbox_unlocked
+}
+
+magicnet_start_singbox_ready_unlocked() {
+    magicnet_start_singbox_unlocked || return 1
+    # Keep core materialization, process readiness, and the kernel controls
+    # that target this exact generation under one lock acquisition.  Releasing
+    # and reacquiring here let fswatch win the gap and made manual startup wait
+    # behind a redundant config apply.
+    if magicnet_after_kernel_start_unlocked; then
+        return 0
+    fi
+    import __singbox__
+    singbox_stop >/dev/null 2>&1 || true
+    magicnet_warn "sing-box started but post-start network initialization failed"
+    return 1
+}
+
+magicnet_start_singbox_ready() {
+    magicnet_with_start_config_lock magicnet_start_singbox_ready_unlocked
 }
 
 magicnet_kernel_running() {
@@ -103,20 +130,14 @@ magicnet_start_kernel() {
     magicnet_disable_dns_leak_guard || true
     magicnet_require_subscription_or_stop || return 1
 
-    if magicnet_start_singbox; then
-        # The post-start phase installs DNS interception and leak guards.  It
-        # used to run detached, so callers could immediately issue dns.test or
-        # open the WebUI while the runtime was only half initialized.  Keep
-        # startup fail-closed and report the real readiness result.
-        if ! magicnet_after_kernel_start; then
-            # Do not leave a half-initialized core running: the next start
-            # attempt would otherwise hit magicnet_kernel_running and report
-            # success without ever retrying DNS/TUN materialization.
-            import __singbox__
-            singbox_stop >/dev/null 2>&1 || true
-            magicnet_warn "sing-box started but post-start network initialization failed"
-            return 1
-        fi
+    if command -v magicnet_hotspot_startup_snapshot_prepare >/dev/null 2>&1; then
+        magicnet_hotspot_startup_snapshot_prepare ||
+            magicnet_warn "Hotspot discovery snapshot failed; falling back to live discovery."
+    fi
+
+    if magicnet_start_singbox_ready; then
+        command -v magicnet_hotspot_startup_snapshot_clear >/dev/null 2>&1 &&
+            magicnet_hotspot_startup_snapshot_clear
         magicnet_singbox_record_runtime_fingerprint ||
             magicnet_warn "Failed to record the running sing-box configuration fingerprint."
         "${MODDIR}/cli" api replay >/dev/null 2>&1 || true
@@ -124,6 +145,8 @@ magicnet_start_kernel() {
         return 0
     fi
 
+    command -v magicnet_hotspot_startup_snapshot_clear >/dev/null 2>&1 &&
+        magicnet_hotspot_startup_snapshot_clear
     magicnet_warn "No supported sing-box core found or starting is disabled."
     return 1
 }

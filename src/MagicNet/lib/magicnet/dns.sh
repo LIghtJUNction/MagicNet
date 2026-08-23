@@ -40,36 +40,17 @@ magicnet_dns_bootstrap_server() {
             _bootstrap_candidates="$_bootstrap_candidates 6:2400:3200::1 6:2400:3200:baba::1"
     fi
 
-    if ! command -v curl >/dev/null 2>&1; then
-        printf '%s\n' "$_bootstrap_fallback"
-        unset _bootstrap_ipv6_mode _bootstrap_ipv6_available _bootstrap_ipv6_first
-        unset _bootstrap_candidates _bootstrap_fallback
-        return 0
-    fi
-    for _bootstrap_candidate in $_bootstrap_candidates; do
-        _bootstrap_family=${_bootstrap_candidate%%:*}
-        _bootstrap_server=${_bootstrap_candidate#*:}
-        if [ "$_bootstrap_family" = "6" ]; then
-            _bootstrap_resolve="dns.alidns.com:443:[${_bootstrap_server}]"
-            _bootstrap_curl_family="-6"
-        else
-            _bootstrap_resolve="dns.alidns.com:443:${_bootstrap_server}"
-            _bootstrap_curl_family=""
-        fi
-        if curl $_bootstrap_curl_family -ksS --connect-timeout 2 --max-time 3 \
-            --resolve "$_bootstrap_resolve" \
-            -o /dev/null https://dns.alidns.com/dns-query >/dev/null 2>&1; then
-            printf '%s\n' "$_bootstrap_server"
-            unset _bootstrap_ipv6_mode _bootstrap_ipv6_available _bootstrap_ipv6_first
-            unset _bootstrap_candidates _bootstrap_candidate _bootstrap_family
-            unset _bootstrap_server _bootstrap_resolve _bootstrap_curl_family _bootstrap_fallback
-            return 0
-        fi
-    done
-    printf '%s\n' "$_bootstrap_fallback"
+    # Config materialization must not perform synchronous Internet probes.
+    # A stopped TUN can make each curl attempt consume its full timeout and a
+    # manual start used to probe as many as four addresses.  Select the first
+    # policy-compatible static bootstrap address; sing-box owns reachability
+    # and retry behavior after the core is running.
+    _bootstrap_server=${_bootstrap_candidates%% *}
+    _bootstrap_server=${_bootstrap_server#*:}
+    [ -n "$_bootstrap_server" ] || _bootstrap_server="$_bootstrap_fallback"
+    printf '%s\n' "$_bootstrap_server"
     unset _bootstrap_ipv6_mode _bootstrap_ipv6_available _bootstrap_ipv6_first
-    unset _bootstrap_candidates _bootstrap_candidate _bootstrap_family
-    unset _bootstrap_server _bootstrap_resolve _bootstrap_curl_family _bootstrap_fallback
+    unset _bootstrap_candidates _bootstrap_server _bootstrap_fallback
 }
 
 magicnet_dns_apply_singbox() {

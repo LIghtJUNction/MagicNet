@@ -79,14 +79,35 @@ magicnet_hotspot_interface_allowed() {
     esac
 }
 
+magicnet_hotspot_dumpsys_tethering() {
+    _hotspot_dumpsys_timeout="${MAGICNET_HOTSPOT_DUMPSYS_TIMEOUT:-2}"
+    case "$_hotspot_dumpsys_timeout" in
+        '' | *[!0-9]* | 0) _hotspot_dumpsys_timeout=2 ;;
+    esac
+    [ "$_hotspot_dumpsys_timeout" -le 5 ] || _hotspot_dumpsys_timeout=5
+    if [ -x "${MODDIR}/bin/busybox" ]; then
+        "${MODDIR}/bin/busybox" timeout "$_hotspot_dumpsys_timeout" dumpsys tethering
+    elif magicnet_cmd_exists timeout; then
+        timeout "$_hotspot_dumpsys_timeout" dumpsys tethering
+    else
+        dumpsys tethering
+    fi
+    _hotspot_dumpsys_rc=$?
+    set -- "$_hotspot_dumpsys_rc"
+    unset _hotspot_dumpsys_timeout _hotspot_dumpsys_rc
+    return "$1"
+}
+
 # Android exposes the active tethering interfaces through dumpsys, but OEMs
 # differ in which command output is available to a root shell. Prefer the
 # authoritative tethering state and fall back to the standard SoftAP/USB/Bt
-# interface names only when dumpsys returns no active interface.
+# interface names only when dumpsys returns no active interface. OEM dumpsys
+# implementations are bounded because this discovery sits on the core startup
+# path and `ip link` remains a safe fallback.
 magicnet_hotspot_discover_interfaces() {
     _hotspot_tethered=
     if magicnet_cmd_exists dumpsys; then
-        _hotspot_tethered="$(dumpsys tethering 2>/dev/null | awk '
+        _hotspot_tethered="$(magicnet_hotspot_dumpsys_tethering 2>/dev/null | awk '
             $2 == "-" && $3 == "TetheredState" && $1 !~ /[^A-Za-z0-9_.-]/ {
                 print $1
             }
@@ -114,7 +135,7 @@ magicnet_hotspot_discover_interfaces() {
     unset _hotspot_tethered _hotspot_iface
 }
 
-magicnet_hotspot_active_networks() {
+magicnet_hotspot_active_networks_uncached() {
     _hotspot_iface=
     _hotspot_routes=
     for _hotspot_iface in $(magicnet_hotspot_discover_interfaces); do
@@ -142,6 +163,43 @@ magicnet_hotspot_active_networks() {
         done
     done
     unset _hotspot_iface _hotspot_routes _hotspot_cidr
+}
+
+magicnet_hotspot_active_networks() {
+    if [ -n "${MAGICNET_HOTSPOT_STARTUP_SNAPSHOT:-}" ] &&
+        [ -f "$MAGICNET_HOTSPOT_STARTUP_SNAPSHOT" ]; then
+        cat "$MAGICNET_HOTSPOT_STARTUP_SNAPSHOT"
+        return 0
+    fi
+    magicnet_hotspot_active_networks_uncached
+}
+
+magicnet_hotspot_startup_snapshot_prepare() {
+    magicnet_hotspot_startup_snapshot_clear
+    magicnet_hotspot_proxy_enabled || return 0
+    _hotspot_snapshot_dir="${MODDIR}/.state/hotspot"
+    _hotspot_snapshot="${_hotspot_snapshot_dir}/startup-networks.$$"
+    _hotspot_snapshot_tmp="${_hotspot_snapshot}.tmp"
+    mkdir -p "$_hotspot_snapshot_dir" || return 1
+    if (umask 077; magicnet_hotspot_active_networks_uncached >"$_hotspot_snapshot_tmp") &&
+        mv -f "$_hotspot_snapshot_tmp" "$_hotspot_snapshot"; then
+        MAGICNET_HOTSPOT_STARTUP_SNAPSHOT="$_hotspot_snapshot"
+        export MAGICNET_HOTSPOT_STARTUP_SNAPSHOT
+        unset _hotspot_snapshot_dir _hotspot_snapshot _hotspot_snapshot_tmp
+        return 0
+    fi
+    rm -f "$_hotspot_snapshot_tmp" "$_hotspot_snapshot" 2>/dev/null || true
+    unset _hotspot_snapshot_dir _hotspot_snapshot _hotspot_snapshot_tmp
+    return 1
+}
+
+magicnet_hotspot_startup_snapshot_clear() {
+    case "${MAGICNET_HOTSPOT_STARTUP_SNAPSHOT:-}" in
+        "${MODDIR}/.state/hotspot/startup-networks."*)
+            rm -f "$MAGICNET_HOTSPOT_STARTUP_SNAPSHOT" 2>/dev/null || true
+            ;;
+    esac
+    unset MAGICNET_HOTSPOT_STARTUP_SNAPSHOT
 }
 
 magicnet_hotspot_rule_present() {

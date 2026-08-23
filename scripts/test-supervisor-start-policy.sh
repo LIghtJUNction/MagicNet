@@ -37,6 +37,41 @@ if magicnet_supervisors_start; then
 fi
 )
 
+(
+start_order="$fixture/supervisor-start-order.log"
+magicnet_kernel_running() { return 0; }
+magicnet_singbox_record_runtime_fingerprint() { printf '%s\n' fingerprint >>"$start_order"; }
+magicnet_subscription_refresh_start() { printf '%s\n' subscription >>"$start_order"; }
+magicnet_wifi_policy_start() { printf '%s\n' wifi >>"$start_order"; }
+magicnet_hotspot_watchdog_start() { printf '%s\n' hotspot >>"$start_order"; }
+magicnet_fswatch_start() { printf '%s\n' fswatch >>"$start_order"; }
+magicnet_supervisors_start
+diff -u - "$start_order" <<'EOF'
+fingerprint
+subscription
+wifi
+hotspot
+fswatch
+EOF
+)
+
+mkdir -p "$MODDIR/.log"
+cat >"$MODDIR/cli" <<'EOF'
+#!/bin/sh
+sleep 5
+EOF
+chmod +x "$MODDIR/cli"
+detached_started=$(date +%s%N)
+magicnet_supervisors_start_detached
+detached_pid=$!
+detached_elapsed_ms=$((($(date +%s%N) - detached_started) / 1000000))
+if [ "$detached_elapsed_ms" -ge 1000 ]; then
+    printf 'detached supervisor launch blocked for %s ms\n' "$detached_elapsed_ms" >&2
+    exit 1
+fi
+kill "$detached_pid" 2>/dev/null || true
+wait "$detached_pid" 2>/dev/null || true
+
 # The Android Toybox flock command exists but does not implement the
 # util-linux-style -o form. A known incompatible implementation should be
 # reported clearly and must not reach the generic fswatch launcher.

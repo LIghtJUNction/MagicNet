@@ -205,10 +205,17 @@ pub(crate) fn stop_owned_singbox(app: &App) {
     for pid in &pids {
         signal_pid(pid, false);
     }
-    thread::sleep(Duration::from_secs(1));
+
+    // Most cores exit immediately after SIGTERM.  Poll instead of charging
+    // every manual stop the full one-second grace period.
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let mut live = owned_singbox_pids(app);
+    while live.iter().any(|pid| pids.contains(pid)) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(25));
+        live = owned_singbox_pids(app);
+    }
     for pid in pids {
-        let proc_dir = Path::new("/proc").join(&pid);
-        if proc_dir.exists() && owned_singbox_pids(app).iter().any(|live| live == &pid) {
+        if live.contains(&pid) {
             signal_pid(&pid, true);
         }
     }

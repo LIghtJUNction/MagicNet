@@ -401,6 +401,27 @@ magicnet_dns_leak_guard_delete_family() (
     return "$_delete_family_result"
 )
 
+magicnet_dns_leak_guard_rule_ifaces() (
+    _dns_guard_scan_cmd="$1"
+    _dns_guard_scan_rules="$("$_dns_guard_scan_cmd" -S OUTPUT 2>/dev/null)" || return $?
+    printf '%s\n' "$_dns_guard_scan_rules" | awk '
+        $1 == "-A" && $2 == "OUTPUT" {
+            iface = proto = port = target = ""
+            for (field_index = 3; field_index <= NF; field_index++) {
+                if ($field_index == "-o" && field_index < NF) iface = $(field_index + 1)
+                if ($field_index == "-p" && field_index < NF) proto = $(field_index + 1)
+                if ($field_index == "--dport" && field_index < NF) port = $(field_index + 1)
+                if ($field_index == "-j" && field_index < NF) target = $(field_index + 1)
+            }
+            if (iface ~ /^[[:alnum:]_.-]+$/ && target == "REJECT" &&
+                ((proto == "udp" && (port == "53" || port == "853")) ||
+                 (proto == "tcp" && (port == "53" || port == "853")))) {
+                print iface
+            }
+        }
+    ' | awk '!seen[$0]++'
+)
+
 magicnet_enable_dns_leak_guard() {
     if ! magicnet_dns_leak_guard_enabled; then
         if magicnet_disable_dns_leak_guard; then
@@ -509,11 +530,23 @@ magicnet_disable_dns_leak_guard() (
         _cleanup_saved=$(awk '/^[[:alnum:]_.-]+$/ { print }' "$_cleanup_state" 2>/dev/null) ||
             _cleanup_result=1
     fi
-    _cleanup_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$(magicnet_collect_physical_egress_ifaces)" |
+
+    # Listing OUTPUT once is much cheaper than issuing four delete/check pairs
+    # for every physical interface when the guard is disabled (the default).
+    # Keep the saved state as a fallback and discover all current interfaces
+    # only when the ruleset cannot be inspected.
+    _cleanup_ipv4_scan_failed=0
+    _cleanup_ipv4_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_iptables_cmd)" ||
+        _cleanup_ipv4_scan_failed=1
+    _cleanup_ipv4_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$_cleanup_ipv4_rules" |
         awk 'NF && !seen[$0]++')
+    if [ "$_cleanup_ipv4_scan_failed" -ne 0 ]; then
+        _cleanup_ipv4_ifaces=$(printf '%s\n%s\n' "$_cleanup_ipv4_ifaces" "$(magicnet_collect_physical_egress_ifaces)" |
+            awk 'NF && !seen[$0]++')
+    fi
 
     _cleanup_rc=0
-    magicnet_dns_leak_guard_delete_family magicnet_iptables_cmd "$_cleanup_ifaces" || _cleanup_rc=$?
+    magicnet_dns_leak_guard_delete_family magicnet_iptables_cmd "$_cleanup_ipv4_ifaces" || _cleanup_rc=$?
     case "$_cleanup_rc" in
         124) return 1 ;;
         0) ;;
@@ -523,8 +556,17 @@ magicnet_disable_dns_leak_guard() (
     _cleanup_probe=0
     magicnet_xtables_available ip6tables || _cleanup_probe=$?
     if [ "$_cleanup_probe" -eq 0 ]; then
+        _cleanup_ipv6_scan_failed=0
+        _cleanup_ipv6_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_ip6tables_cmd)" ||
+            _cleanup_ipv6_scan_failed=1
+        _cleanup_ipv6_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$_cleanup_ipv6_rules" |
+            awk 'NF && !seen[$0]++')
+        if [ "$_cleanup_ipv6_scan_failed" -ne 0 ]; then
+            _cleanup_ipv6_ifaces=$(printf '%s\n%s\n' "$_cleanup_ipv6_ifaces" "$(magicnet_collect_physical_egress_ifaces)" |
+                awk 'NF && !seen[$0]++')
+        fi
         _cleanup_rc=0
-        magicnet_dns_leak_guard_delete_family magicnet_ip6tables_cmd "$_cleanup_ifaces" || _cleanup_rc=$?
+        magicnet_dns_leak_guard_delete_family magicnet_ip6tables_cmd "$_cleanup_ipv6_ifaces" || _cleanup_rc=$?
         case "$_cleanup_rc" in
             124) return 1 ;;
             0) ;;
@@ -539,13 +581,11 @@ magicnet_disable_dns_leak_guard() (
 )
 
 magicnet_after_kernel_start_unlocked() {
-    magicnet_singbox_apply_zashboard ||
-        magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
-    # This phase used to be detached from the caller.  That allowed a
-    # successful `service start` to race the DNS/TUN materialization and made
-    # the first diagnostic or WebUI action fail intermittently.  Run it in the
-    # current root shell so the caller observes the actual ready/failed state.
-    magicnet_after_kernel_start_deferred
+    # Configuration is fully materialized before sing-box snapshots it.  The
+    # synchronous post-start phase now installs only kernel state that requires
+    # magicnet0 to exist, avoiding a second round of jq rewrites and config-lock
+    # waits after the core is already healthy.
+    magicnet_after_kernel_start_deferred_unlocked
     _after_result=$?
     if [ "$_after_result" -ne 0 ]; then
         magicnet_warn "Post-start network initialization failed; DNS interception remains disabled."
@@ -555,12 +595,8 @@ magicnet_after_kernel_start_unlocked() {
     return "$1"
 }
 
-# Keep the post-start config rewrites and their corresponding kernel rules in
-# one transaction.  Without this outer lock, fswatch or a concurrent WebUI
-# action can observe the startup-time rewrites after `singbox_start` returns,
-# restart the core, and leave DNS interception attached to the wrong instance.
 magicnet_after_kernel_start() {
-    magicnet_with_config_lock magicnet_after_kernel_start_unlocked
+    magicnet_after_kernel_start_unlocked
 }
 
 magicnet_after_kernel_start_deferred_unlocked() {
@@ -569,31 +605,11 @@ magicnet_after_kernel_start_deferred_unlocked() {
         _deferred_failures="${_deferred_failures}${_deferred_failures:+,}$1"
     }
 
-    magicnet_dns_apply_unlocked || _deferred_mark_failed dns
-    magicnet_transparent_apply_unlocked || _deferred_mark_failed transparent
-    magicnet_app_policy_apply_unlocked || _deferred_mark_failed app-policy
-    magicnet_warp_apply_unlocked || _deferred_mark_failed warp
-    # Keep the hotspot route authoritative after every deferred config rewrite.
-    # These rewrites run asynchronously after the core starts and may otherwise
-    # publish a snapshot that predates the startup-time hotspot normalization.
-    magicnet_singbox_apply_hotspot_policy || _deferred_mark_failed hotspot
     # Android inserts a higher-priority tethering rule after the hotspot
     # interface appears. Install MagicNet's per-interface rule after the TUN
     # table exists so forwarded clients reach magicnet0 before that rule.
     magicnet_hotspot_reconcile ||
         magicnet_warn "Hotspot TUN policy is not ready; the interface watcher will retry it."
-
-    if [ -n "$_deferred_failures" ]; then
-        # A partially applied configuration must not leave stale interception
-        # or leak-guard rules pointing at a failed DNS/core setup.
-        _deferred_failure_names="$_deferred_failures"
-        magicnet_warn "Post-start network rewrites failed: $_deferred_failure_names"
-        magicnet_disable_dns_capture || true
-        magicnet_disable_dns_leak_guard || true
-        magicnet_warn "Deferred network configuration failed: ${_deferred_failures}; DNS interception disabled"
-        unset _deferred_failures _deferred_failure_names
-        return 1
-    fi
 
     if ! magicnet_enable_dns_capture; then
         _deferred_mark_failed dns-capture
@@ -614,5 +630,5 @@ magicnet_after_kernel_start_deferred_unlocked() {
 }
 
 magicnet_after_kernel_start_deferred() {
-    magicnet_with_config_lock magicnet_after_kernel_start_deferred_unlocked
+    magicnet_after_kernel_start_deferred_unlocked
 }
