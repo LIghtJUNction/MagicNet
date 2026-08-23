@@ -88,7 +88,11 @@ magicnet_first_http_url() {
             line = $0
             sub(/[[:space:]]*#.*$/, "", line)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-            if (line ~ /^https:\/\/[^[:space:]@]+$/) {
+            if (line ~ /^https:\/\/[^[:space:]]+$/) {
+                remainder = substr(line, 9)
+                authority = remainder
+                sub(/[\/?#].*$/, "", authority)
+                if (authority == "" || authority ~ /@/) next
                 print line
                 found = 1
                 exit 0
@@ -208,7 +212,14 @@ magicnet_prepare_singbox_nodes_unlocked() {
 
 magicnet_with_sub_config_lock() {
     _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
-    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
+    _sub_lock_timeout="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
+    case "$_sub_lock_timeout" in
+        '' | *[!0-9]*) _sub_lock_timeout=45 ;;
+    esac
+    if ! [ "$_sub_lock_timeout" -le 86400 ] 2>/dev/null; then
+        _sub_lock_timeout=45
+    fi
+    MAGICNET_CONFIG_LOCK_TIMEOUT="$_sub_lock_timeout"
     magicnet_with_config_lock "$@"
     _sub_lock_rc=$?
     if [ -n "$_old_lock_timeout" ]; then
@@ -216,7 +227,7 @@ magicnet_with_sub_config_lock() {
     else
         unset MAGICNET_CONFIG_LOCK_TIMEOUT
     fi
-    unset _old_lock_timeout
+    unset _old_lock_timeout _sub_lock_timeout
     return "$_sub_lock_rc"
 }
 
