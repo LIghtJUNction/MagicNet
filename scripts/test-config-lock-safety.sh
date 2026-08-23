@@ -88,6 +88,8 @@ expected_timeout=17
 MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=17 magicnet_with_sub_config_lock :
 expected_timeout=45
 MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=not-a-number magicnet_with_sub_config_lock :
+MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=999999999999999999999999999999 \
+    magicnet_with_sub_config_lock :
 unset -f magicnet_with_config_lock
 
 printf '%s\n' 'config lock safety test passed'

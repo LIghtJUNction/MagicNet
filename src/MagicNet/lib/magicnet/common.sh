@@ -216,6 +216,9 @@ magicnet_with_sub_config_lock() {
     case "$_sub_lock_timeout" in
         '' | *[!0-9]*) _sub_lock_timeout=45 ;;
     esac
+    if ! [ "$_sub_lock_timeout" -le 86400 ] 2>/dev/null; then
+        _sub_lock_timeout=45
+    fi
     MAGICNET_CONFIG_LOCK_TIMEOUT="$_sub_lock_timeout"
     magicnet_with_config_lock "$@"
     _sub_lock_rc=$?
