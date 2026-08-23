@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Bug, ShieldCheck, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
+import { trapFocusWithin } from "@/lib/focus";
 import {
   ISSUE_KIND_OPTIONS,
   type IssueKind,
@@ -40,27 +41,7 @@ function confirm(): void {
 }
 
 function trapFocus(event: KeyboardEvent): void {
-  if (event.key !== "Tab" || !dialog.value) return;
-  const focusable = Array.from(
-    dialog.value.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter((element) => element.getClientRects().length > 0);
-  if (!focusable.length) {
-    event.preventDefault();
-    dialog.value.focus();
-    return;
-  }
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  const active = document.activeElement;
-  if (event.shiftKey && (active === first || !dialog.value.contains(active))) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && active === last) {
-    event.preventDefault();
-    first.focus();
-  }
+  trapFocusWithin(event, dialog.value);
 }
 
 onMounted(() => {

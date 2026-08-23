@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { ArrowRight, CheckCircle2, DownloadCloud, Gauge, Stethoscope, Terminal, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
+import { trapFocusWithin } from "@/lib/focus";
 
 type GuideTarget = "subs" | "control" | "health" | "output";
 
@@ -29,55 +30,55 @@ let previousBodyOverflow = "";
 const steps: Step[] = [
   {
     eyebrow: "步骤 1",
-    title: "确认设备已经准备好走 TUN",
-    summary: "MagicNet 当前主线只支持 sing-box + magicnet0 TUN。Root 模块安装完成后，再从 WebUI 开始配置。",
+    title: "先确认 TUN 能运行",
+    summary: "MagicNet 只走 sing-box 的 magicnet0 TUN。装好 Root 模块后，在控制页查看运行状态。",
     details: [
-      "Private DNS 需要保持关闭，避免域名请求绕过 MagicNet。",
-      "不要寻找其他透明模式或系统 VPN slot。",
-      "运行状态页能先帮你确认核心是否已经起来。",
+      "请关闭 Private DNS，否则 DNS 请求可能绕过 MagicNet。",
+      "MagicNet 不使用其他透明代理模式，也不占用系统 VPN slot。",
+      "你可以在控制页确认 sing-box 和 TUN 是否已启动。",
     ],
     target: "control",
-    targetLabel: "查看运行状态",
+    targetLabel: "去控制页",
   },
   {
     eyebrow: "步骤 2",
-    title: "添加你自己的订阅或本地文件",
-    summary: "订阅页支持填写订阅 URL，也支持导入本地配置或订阅文件。MagicNet 不提供订阅链接、节点或账号。",
+    title: "添加订阅或本地文件",
+    summary: "在订阅页填入你自己的订阅 URL，或导入本地文件。MagicNet 不提供节点和账号。",
     details: [
-      "把来源交给你自己的服务商或本地文件，不要期待 MagicNet 生成节点。",
-      "URL、token、密码、账号和示例密钥都不应该写进截图、反馈或共享文档。",
-      "本地导入会进入和 URL 一样的候选解析与校验流程。",
+      "请使用自己的服务商订阅或本地文件。",
+      "截图和反馈里不要出现 URL、token、密码或账号。",
+      "MagicNet 会先解析并校验本地文件，确认可用后才会应用。",
     ],
     target: "subs",
-    targetLabel: "打开订阅页",
+    targetLabel: "去订阅页",
   },
   {
     eyebrow: "步骤 3",
-    title: "让 MagicNet 校验、应用并选择节点",
-    summary: "保存后由 MagicNet 拉取、解析、校验并应用运行配置；节点选择放在现有控制流程里完成。",
+    title: "应用配置，再去 zashboard 选节点",
+    summary: "MagicNet 检查并应用配置后，你可以从控制页打开 zashboard 选节点。",
     details: [
-      "失败时会保留上一次有效配置，不需要手工覆盖 runtime config。",
-      "节点切换、自动组和当前运行状态都在现有控制入口处理。",
-      "如果想看失败细节，直接去输出页，不要跳过校验流程。",
+      "校验没通过时，MagicNet 继续使用上一次可用的配置。",
+      "你在 zashboard 里切换节点和代理组，也可以测速。",
+      "MagicNet 把失败原因写到输出页。",
     ],
     target: "control",
-    targetLabel: "打开控制页",
+    targetLabel: "去控制页",
     secondaryTarget: "output",
-    secondaryLabel: "查看输出",
+    secondaryLabel: "看输出",
   },
   {
     eyebrow: "步骤 4",
-    title: "验证通过后再碰应用、Wi‑Fi、热点",
-    summary: "把基础链路跑通后，再考虑分流和网络策略。先看运行状态与诊断，再决定是否调整进阶策略。",
+    title: "链路正常后，再设置分流",
+    summary: "先看运行状态和诊断。链路正常后，再调整应用、Wi‑Fi 或热点策略。",
     details: [
-      "优先确认 sing-box 状态、transparent/TUN 状态和诊断结果。",
-      "应用、Wi‑Fi、热点策略都建立在已经可用的 magicnet0 路径之上。",
-      "诊断仍有异常时继续查输出，不要直接改底层运行文件。",
+      "确认 sing-box 已运行，magicnet0 存在，诊断没有报错。",
+      "应用、Wi‑Fi 和热点策略都依赖 magicnet0。",
+      "还有报错就去输出页查看原因，不要手改运行文件。",
     ],
     target: "health",
-    targetLabel: "打开诊断",
+    targetLabel: "跑一次诊断",
     secondaryTarget: "output",
-    secondaryLabel: "查看输出",
+    secondaryLabel: "看输出",
   },
 ];
 
@@ -97,27 +98,7 @@ function next(): void {
 }
 
 function trapFocus(event: KeyboardEvent): void {
-  if (event.key !== "Tab" || !dialog.value) return;
-  const focusable = Array.from(
-    dialog.value.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter((element) => element.getClientRects().length > 0);
-  if (!focusable.length) {
-    event.preventDefault();
-    dialog.value.focus();
-    return;
-  }
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  const active = document.activeElement;
-  if (event.shiftKey && (active === first || !dialog.value.contains(active))) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && (active === last || !dialog.value.contains(active))) {
-    event.preventDefault();
-    first.focus();
-  }
+  trapFocusWithin(event, dialog.value);
 }
 
 onMounted(() => {
@@ -162,7 +143,7 @@ onUnmounted(() => {
               第一次使用 MagicNet
             </h2>
             <p id="onboarding-description" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-              跟着这 4 步完成首次配置：确认 TUN 前提、添加来源、让 MagicNet 校验并应用，再用运行状态与诊断确认链路。
+              先确认 TUN 能运行，再添加配置。配置生效后去 zashboard 选节点，最后跑一次诊断。
             </p>
           </div>
           <Button data-dialog-initial-focus variant="ghost" size="icon" aria-label="关闭新手引导" @click="emit('dismiss')">
@@ -184,7 +165,7 @@ onUnmounted(() => {
             >
               <div class="flex items-center justify-between gap-3">
                 <strong class="text-sm font-semibold text-[var(--mn-ink)]">{{ index + 1 }}. {{ step.title }}</strong>
-                <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mn-clay-ink)]">
+                <span class="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--mn-clay-ink)]">
                   {{ index === currentStep ? "当前" : "待完成" }}
                 </span>
               </div>

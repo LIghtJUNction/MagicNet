@@ -23,6 +23,22 @@ assert.match(control, /允许热点使用代理/);
 assert.match(control, /hotspot \$\{enabled \? "enable" : "disable"\}/);
 assert.match(control, /proxy<\/code> 代理组/);
 assert.match(control, /不勾选时统一走\s*<code>direct<\/code>/);
+assert.match(control, /type HotspotPolicyPhase = "loading" \| "ready" \| "error"/);
+assert.match(control, /hotspotPolicyPhase\.value = "loading"/);
+assert.match(control, /hotspotPolicyPhase\.value = "error"/);
+assert.match(control, /hotspotPolicyPhase !== 'ready'/);
+assert.match(control, /aria-busy="hotspotPolicyPhase === 'loading'"/);
+assert.match(control, /role="alert"/);
+assert.match(control, /MagicNet 没读到当前热点设置/);
+assert.match(control, /设备设置没变/);
+assert.match(control, /重新读取/);
+
+const hotspotRefresh = control.slice(
+  control.indexOf("async function refreshHotspotPolicy"),
+  control.indexOf("async function retryHotspotPolicy"),
+);
+assert.doesNotMatch(hotspotRefresh, /state\.(?:phase|notice)\s*=/);
+assert.match(hotspotRefresh, /state\.output =/);
 
 assert.match(routes, /magicnet_hotspot_source_cidrs/);
 assert.match(routes, /magicnet_hotspot_source_cidrs_json/);

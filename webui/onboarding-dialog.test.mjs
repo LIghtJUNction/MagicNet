@@ -3,14 +3,19 @@ import { readFileSync } from "node:fs";
 
 const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
 const dialog = readFileSync(new URL("./src/components/OnboardingDialog.vue", import.meta.url), "utf8");
+const focus = readFileSync(new URL("./src/lib/focus.ts", import.meta.url), "utf8");
 const guide = readFileSync(new URL("../docs/user-guide.md", import.meta.url), "utf8");
 
 for (const copy of [
   "第一次使用 MagicNet",
-  "MagicNet 当前主线只支持 sing-box + magicnet0 TUN",
-  "MagicNet 不提供订阅链接、节点或账号",
-  "不需要手工覆盖 runtime config",
-  "验证通过后再碰应用、Wi‑Fi、热点",
+  "MagicNet 只走 sing-box 的 magicnet0 TUN",
+  "MagicNet 不提供节点和账号",
+  "校验没通过时，MagicNet 继续使用上一次可用的配置",
+  "MagicNet 检查并应用配置后",
+  "你可以从控制页打开 zashboard 选节点",
+  "你在 zashboard 里切换节点和代理组",
+  "去控制页",
+  "链路正常后，再设置分流",
   "MagicNet 不提供订阅 URL、节点、token、password 或账号",
 ]) {
   assert.match(dialog, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -26,9 +31,7 @@ assert.match(app, /@complete="completeOnboarding"/);
 assert.match(app, /@navigate="handleOnboardingNavigate"/);
 assert.match(app, /closeAdvancedNav\(false\)/);
 assert.match(app, /launchOnboarding\(advancedNavTrigger\.value\)/);
-assert.match(app, /trigger instanceof HTMLElement/);
-assert.match(app, /trigger\.isConnected/);
-assert.match(app, /trigger\.focus\(\)/);
+assert.match(app, /restoreFocusAfterUpdate\(trigger\)/);
 assert.match(app, /<ScrollText :size="16" \/><span>新手引导<\/span>/);
 assert.match(app, /<ScrollText :size="18" \/>新手引导/);
 
@@ -41,9 +44,7 @@ for (const invariant of [
   "@keydown.esc.prevent.stop",
   "document.body.style.overflow = \"hidden\"",
   "document.body.style.overflow = previousBodyOverflow",
-  "event.key !== \"Tab\"",
-  "event.shiftKey",
-  "!dialog.value.contains(active)",
+  "trapFocusWithin(event, dialog.value)",
   "emit('navigate', activeStep.target)",
   "emit('complete')",
   "emit('dismiss')",
@@ -55,8 +56,10 @@ for (const invariant of [
 
 assert.match(dialog, /type GuideTarget = "subs" \| "control" \| "health" \| "output"/);
 assert.match(dialog, /第 \{\{ currentStep \+ 1 \}\} \/ \{\{ steps\.length \}\} 步|const progressLabel = computed/);
-assert.match(dialog, /if \(event\.shiftKey && \(active === first \|\| !dialog\.value\.contains\(active\)\)\)/);
-assert.match(dialog, /else if \(!event\.shiftKey && \(active === last \|\| !dialog\.value\.contains\(active\)\)\)/);
+assert.match(focus, /if \(event\.shiftKey && \(active === first \|\| !root\.contains\(active\)\)\)/);
+assert.match(focus, /else if \(!event\.shiftKey && \(active === last \|\| !root\.contains\(active\)\)\)/);
+assert.match(focus, /restoreFocusAfterUpdate/);
+assert.match(focus, /element\.isConnected/);
 
 for (const target of ["subs", "control", "health", "output"]) {
   assert.match(dialog, new RegExp(`"${target}"`), `missing onboarding navigation target ${target}`);

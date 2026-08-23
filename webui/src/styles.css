@@ -84,6 +84,7 @@ html[data-theme="light"] {
   --mn-radius-sm: 0.75rem;
   --mn-radius-md: 1rem;
   --mn-radius-lg: 1.375rem;
+  --mn-page-actions-desktop-top: 9rem;
   --mn-motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --mn-motion-press: 90ms;
 
@@ -506,8 +507,8 @@ textarea {
 
 /* Sticky action bar for long pages */
 .mn-page-actions {
-  position: sticky;
-  top: 0.5rem;
+  position: static;
+  top: auto;
   z-index: 10;
   display: flex;
   flex-wrap: wrap;
@@ -523,6 +524,17 @@ textarea {
     0 8px 24px color-mix(in srgb, var(--mn-ink) 8%, transparent);
   -webkit-backdrop-filter: blur(18px) saturate(145%);
   backdrop-filter: blur(18px) saturate(145%);
+}
+
+@media (min-width: 1024px) {
+  .page-surface {
+    overflow: clip;
+  }
+
+  .mn-page-actions {
+    position: sticky;
+    top: var(--mn-page-actions-desktop-top);
+  }
 }
 
 /* Form fields share theme surfaces (used by Input/Textarea and native controls) */

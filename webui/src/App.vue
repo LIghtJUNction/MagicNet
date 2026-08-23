@@ -29,6 +29,7 @@ import Button from "@/components/ui/Button.vue";
 import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { useTheme } from "@/composables/useTheme";
+import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
 type TabKey = "control" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
 type OnboardingTarget = Extract<TabKey, "control" | "subs" | "health" | "output">;
@@ -195,12 +196,7 @@ function persistOnboardingPreference(value: OnboardingPreference): void {
 function restoreOnboardingTriggerFocus(): void {
   const trigger = onboardingTrigger.value;
   onboardingTrigger.value = null;
-  if (!(trigger instanceof HTMLElement) || typeof trigger.focus !== "function") return;
-  void nextTick(() => {
-    if (trigger instanceof HTMLElement && trigger.isConnected && typeof trigger.focus === "function") {
-      trigger.focus();
-    }
-  });
+  restoreFocusAfterUpdate(trigger);
 }
 
 function launchOnboarding(trigger: HTMLElement | null = null): void {
@@ -257,37 +253,12 @@ function closeAdvancedNav(restoreFocus = true): void {
   showAdvancedNav.value = false;
   document.body.style.overflow = bodyOverflowBeforeDialog;
   const trigger = advancedNavTrigger.value;
-  if (restoreFocus && trigger instanceof HTMLElement && typeof trigger.focus === "function") {
-    void nextTick(() => {
-      if (trigger instanceof HTMLElement && trigger.isConnected && typeof trigger.focus === "function") {
-        trigger.focus();
-      }
-    });
-  }
+  if (restoreFocus) restoreFocusAfterUpdate(trigger);
 }
 
 function trapAdvancedNavFocus(event: KeyboardEvent): void {
-  if (!showAdvancedNav.value || event.key !== "Tab" || !advancedDialog.value) return;
-  const focusable = Array.from(
-    advancedDialog.value.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter((element) => element.getClientRects().length > 0);
-  if (!focusable.length) {
-    event.preventDefault();
-    advancedDialog.value.focus();
-    return;
-  }
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  const active = document.activeElement;
-  if (event.shiftKey && (active === first || !advancedDialog.value.contains(active))) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && (active === last || !advancedDialog.value.contains(active))) {
-    event.preventDefault();
-    first.focus();
-  }
+  if (!showAdvancedNav.value) return;
+  trapFocusWithin(event, advancedDialog.value);
 }
 
 function closeEasterEgg(): void {

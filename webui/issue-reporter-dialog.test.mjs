@@ -29,6 +29,7 @@ assert.match(dialog, /请勿直接粘贴订阅地址、token、IP、目标域名
 assert.match(dialog, /role="dialog"/);
 assert.match(dialog, /aria-modal="true"/);
 assert.match(dialog, /@keydown\.esc\.prevent\.stop/);
+assert.match(dialog, /trapFocusWithin\(event, dialog\.value\)/);
 
 assert.match(reporter, /kind === "app-connectivity"/);
 assert.match(reporter, /runCli\("api conns", "读取近期活动连接", true\)/);

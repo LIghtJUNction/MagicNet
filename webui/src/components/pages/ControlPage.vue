@@ -32,6 +32,7 @@ import {
 } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { restoreFocusAfterUpdate } from "@/lib/focus";
 import { copyText, execFailed } from "@/utils";
 import {
   buildControlRuntimeInsight,
@@ -50,17 +51,48 @@ const {
   shellQuote,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+type HotspotPolicyPhase = "loading" | "ready" | "error";
+type SingBoxStatusPresentation = {
+  label: string;
+  tone: "neutral" | "success" | "warning";
+  dotClass: string;
+};
+
 const pendingDangerAction = ref<ControlDangerAction | null>(null);
 const dangerConfirmCard = ref<HTMLElement | null>(null);
 const snapshotCopied = ref(false);
 const wifiSsidInput = ref("");
 const wifiBssidInput = ref("");
 const hotspotProxyEnabled = ref(false);
-const hotspotPolicyLoaded = ref(false);
+const hotspotPolicyPhase = ref<HotspotPolicyPhase>("loading");
+const hotspotPolicyError = ref("");
+let dangerActionTrigger: HTMLElement | null = null;
 
 const pendingDangerMessage = computed(
   () => pendingDangerAction.value?.message ?? "",
 );
+const singBoxStatus = computed<SingBoxStatusPresentation>(() => {
+  const rawState = state.runtime.singBoxState;
+  if (rawState === "sing-box") {
+    return {
+      label: "运行中",
+      tone: "success",
+      dotClass: "bg-[var(--mn-cactus)]",
+    };
+  }
+  if (rawState === "stopped") {
+    return {
+      label: "已停止",
+      tone: "warning",
+      dotClass: "bg-[var(--mn-oat)]",
+    };
+  }
+  return {
+    label: !rawState || rawState === "unknown" ? "状态未知" : rawState,
+    tone: "neutral",
+    dotClass: "bg-[var(--mn-ink-faint)]",
+  };
+});
 const runtimeInsight = computed(() =>
   buildControlRuntimeInsight({
     hasKsu: state.hasKsu,
@@ -81,9 +113,9 @@ const missingNodeCache = computed(() =>
 
 const wifiPolicyModes = ["blacklist", "whitelist"] as const;
 
-async function toggleSingBox(): Promise<void> {
+async function toggleSingBox(event: MouseEvent): Promise<void> {
   const running = state.runtime.singBoxState === "sing-box";
-  requestDangerAction(singBoxToggleAction(running));
+  requestDangerAction(singBoxToggleAction(running), event.currentTarget);
 }
 
 async function runAction(
@@ -123,21 +155,34 @@ async function rebuildNodeCache(): Promise<void> {
   });
 }
 
-function requestDangerAction(action: ControlDangerAction): void {
+function restoreDangerActionFocus(): void {
+  const trigger = dangerActionTrigger;
+  dangerActionTrigger = null;
+  restoreFocusAfterUpdate(trigger);
+}
+
+function requestDangerAction(
+  action: ControlDangerAction,
+  trigger: EventTarget | null = document.activeElement,
+): void {
+  dangerActionTrigger = trigger instanceof HTMLElement ? trigger : null;
   pendingDangerAction.value = action;
   void nextTick(() => {
+    const reduceMotion =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     dangerConfirmCard.value?.scrollIntoView({
       block: "nearest",
-      behavior: "smooth",
+      behavior: reduceMotion ? "auto" : "smooth",
     });
     dangerConfirmCard.value
-      ?.querySelector<HTMLButtonElement>("button")
+      ?.querySelector<HTMLButtonElement>("[data-danger-cancel]")
       ?.focus();
   });
 }
 
 function cancelDangerAction(): void {
   pendingDangerAction.value = null;
+  restoreDangerActionFocus();
 }
 
 async function confirmDangerAction(): Promise<void> {
@@ -148,6 +193,7 @@ async function confirmDangerAction(): Promise<void> {
     return;
   }
   pendingDangerAction.value = null;
+  restoreDangerActionFocus();
   await runAction(action.key, action.args, action.label, action.background);
 }
 
@@ -173,28 +219,43 @@ async function toggleWifiPolicy(): Promise<void> {
 }
 
 async function refreshHotspotPolicy(): Promise<boolean> {
+  hotspotPolicyPhase.value = "loading";
+  hotspotPolicyError.value = "";
   const output = await runCli("hotspot status", "读取热点代理策略", true);
   if (execFailed(output)) {
-    state.phase = "error";
-    state.notice = "读取热点代理策略失败";
+    hotspotPolicyPhase.value = "error";
+    hotspotPolicyError.value =
+      "MagicNet 没读到当前热点设置。设备设置没变，请重新读取。";
     state.output = `读取热点代理策略失败：\n${output}`;
     return false;
   }
   const matched = output.match(/^enabled=([01])$/m);
   if (!matched) {
-    state.phase = "error";
-    state.notice = "热点代理状态无效";
+    hotspotPolicyPhase.value = "error";
+    hotspotPolicyError.value =
+      "MagicNet 没认出设备返回的热点状态。设备设置没变，请重新读取。";
     state.output = "读取热点代理策略失败：设备返回了无法解析的状态。";
     return false;
   }
   hotspotProxyEnabled.value = matched[1] === "1";
-  hotspotPolicyLoaded.value = true;
+  hotspotPolicyPhase.value = "ready";
   return true;
 }
 
+async function retryHotspotPolicy(): Promise<void> {
+  await withAction("hotspot-policy-refresh", async () => {
+    await refreshHotspotPolicy();
+  });
+}
+
 async function toggleHotspotProxy(event: Event): Promise<void> {
+  const checkbox = event.currentTarget as HTMLInputElement;
+  if (hotspotPolicyPhase.value !== "ready") {
+    checkbox.checked = hotspotProxyEnabled.value;
+    return;
+  }
   const previous = hotspotProxyEnabled.value;
-  const enabled = (event.currentTarget as HTMLInputElement).checked;
+  const enabled = checkbox.checked;
   hotspotProxyEnabled.value = enabled;
   await withAction("hotspot-proxy", async () => {
     const output = await runCli(
@@ -308,12 +369,7 @@ onMounted(() => {
             snapshotCopied ? "已复制快照" : "复制快照"
           }}</Button
         >
-        <Badge
-          :tone="
-            state.runtime.singBoxState === 'stopped' ? 'warning' : 'success'
-          "
-          >{{ state.runtime.singBoxState }}</Badge
-        >
+        <Badge :tone="singBoxStatus.tone">{{ singBoxStatus.label }}</Badge>
       </template>
     </PageHeader>
 
@@ -363,14 +419,10 @@ onMounted(() => {
               >sing-box</span
             >
             <h3 class="mt-2 break-words text-2xl font-semibold tracking-[-0.035em]">
-              {{
-                state.runtime.singBoxState === "sing-box"
-                  ? "运行中"
-                  : state.runtime.singBoxState
-              }}
+              {{ singBoxStatus.label }}
             </h3>
           </div>
-          <span :class="['mt-1 size-3 rounded-full ', state.runtime.singBoxState === 'sing-box' ? 'bg-[var(--mn-cactus)] text-[var(--mn-success)]' : 'bg-[var(--mn-clay)] text-[var(--mn-danger)]']" />
+          <span :class="['mt-1 size-3 rounded-full', singBoxStatus.dotClass]" />
         </div>
         <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">
           MagicNet 当前只运行 sing-box 核心。
@@ -400,7 +452,7 @@ onMounted(() => {
             variant="secondary"
             :disabled="runtimeBusy"
             :loading="isRunning('restart-sing-box')"
-            @click="requestDangerAction(restartSingBoxAction())"
+            @click="requestDangerAction(restartSingBoxAction(), $event.currentTarget)"
           >
             <RotateCcw :size="17" />重启 sing-box
           </Button>
@@ -408,7 +460,7 @@ onMounted(() => {
             variant="secondary"
             :disabled="runtimeBusy"
             :loading="isRunning('apply-config')"
-            @click="requestDangerAction(applyConfigAction())"
+            @click="requestDangerAction(applyConfigAction(), $event.currentTarget)"
           >
             <Save :size="17" />应用配置
           </Button>
@@ -416,7 +468,7 @@ onMounted(() => {
             variant="secondary"
             :disabled="runtimeBusy"
             :loading="isRunning('repair')"
-            @click="requestDangerAction(repairAction())"
+            @click="requestDangerAction(repairAction(), $event.currentTarget)"
           >
             <Zap :size="17" />一键自修复
           </Button>
@@ -424,7 +476,7 @@ onMounted(() => {
             variant="secondary"
             :disabled="runtimeBusy"
             :loading="isRunning('stop-all')"
-            @click="requestDangerAction(stopAllServicesAction())"
+            @click="requestDangerAction(stopAllServicesAction(), $event.currentTarget)"
           >
             <Unplug :size="17" />停止全部
           </Button>
@@ -480,7 +532,7 @@ onMounted(() => {
           variant="secondary"
           :disabled="runtimeBusy"
           :loading="isRunning('transparent-apply')"
-          @click="requestDangerAction(applyTransparentModeAction())"
+          @click="requestDangerAction(applyTransparentModeAction(), $event.currentTarget)"
         >
           <Radar :size="17" />重新应用模式
         </Button>
@@ -493,17 +545,25 @@ onMounted(() => {
             ? 'border-[color-mix(in_srgb,var(--mn-cactus)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_10%,var(--mn-ivory))]'
             : ''
         "
+        :aria-busy="hotspotPolicyPhase === 'loading'"
       >
         <label
-          class="flex cursor-pointer flex-col gap-4 rounded-[1.35rem] p-1 sm:flex-row sm:items-center sm:justify-between"
+          :class="[
+            'flex flex-col gap-4 rounded-[1.35rem] p-1 sm:flex-row sm:items-center sm:justify-between',
+            hotspotPolicyPhase === 'ready' ? 'cursor-pointer' : 'cursor-default',
+          ]"
         >
           <span class="flex min-w-0 items-start gap-4">
             <input
               type="checkbox"
               class="mt-1 size-7 shrink-0 accent-[var(--mn-cactus)]"
               :checked="hotspotProxyEnabled"
-              :disabled="runtimeBusy || isRunning('hotspot-proxy')"
-              aria-describedby="hotspot-proxy-description"
+              :disabled="
+                hotspotPolicyPhase !== 'ready' ||
+                runtimeBusy ||
+                isRunning('hotspot-proxy')
+              "
+              aria-describedby="hotspot-proxy-description hotspot-proxy-status"
               @change="toggleHotspotProxy"
             />
             <span class="min-w-0">
@@ -519,13 +579,33 @@ onMounted(() => {
               </span>
             </span>
           </span>
-          <span class="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
-            <Badge v-if="!hotspotPolicyLoaded" tone="neutral">读取中</Badge>
+          <span
+            id="hotspot-proxy-status"
+            class="flex shrink-0 items-center gap-2 pl-11 sm:pl-0"
+          >
+            <Badge v-if="hotspotPolicyPhase === 'loading'" tone="neutral">读取中</Badge>
+            <Badge v-else-if="hotspotPolicyPhase === 'error'" tone="warning">读取失败</Badge>
             <Badge v-else :tone="hotspotProxyEnabled ? 'success' : 'neutral'">
               {{ hotspotProxyEnabled ? "Proxy" : "Direct" }}
             </Badge>
           </span>
         </label>
+        <div
+          v-if="hotspotPolicyPhase === 'error'"
+          class="flex flex-col gap-3 rounded-[var(--mn-radius-md)] bg-[var(--mn-tone-warn-bg)] p-4 text-[var(--mn-warning)] shadow-[inset_0_0_0_1px_var(--mn-tone-warn-border)] sm:flex-row sm:items-center sm:justify-between"
+          role="alert"
+        >
+          <p class="text-sm leading-6">{{ hotspotPolicyError }}</p>
+          <Button
+            class="shrink-0"
+            variant="outline"
+            size="sm"
+            :loading="isRunning('hotspot-policy-refresh')"
+            @click="retryHotspotPolicy"
+          >
+            <RotateCcw :size="16" />重新读取
+          </Button>
+        </div>
       </Card>
 
       <Card class="grid gap-4 !p-4 md:col-span-12 md:gap-5 md:!p-6">
@@ -690,13 +770,18 @@ onMounted(() => {
           </div>
           <div class="flex shrink-0 gap-2">
             <Button
+              data-danger-cancel
+              variant="outline"
+              @click="cancelDangerAction"
+              >取消</Button
+            >
+            <Button
               variant="secondary"
               :disabled="runtimeBusy"
               :loading="isRunning(pendingDangerAction.key)"
               @click="confirmDangerAction"
               >确认</Button
             >
-            <Button variant="outline" @click="cancelDangerAction">取消</Button>
           </div>
         </div>
       </Card>

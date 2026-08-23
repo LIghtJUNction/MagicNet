@@ -64,7 +64,7 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
     const parsersSrc = read(join(src, "composables", "nodeDelayParsers.ts")).replace(/^import type .*;\n/gm, "");
     await writeFile(join(dir, "nodeDelayParsers.mjs"), transpile(parsersSrc), "utf8");
     source = source
-      .replace(/import\s*\{([^}]*)\}\s*from\s*["']@\/composables\/nodeDelayParsers["']/g, (whole, names) => {
+      .replace(/import\s*\{([^}]*)\}\s*from\s*["']@\/composables\/nodeDelayParsers["']/g, (_whole, names) => {
         const valueNames = names
           .split(",")
           .map((name) => name.trim())
@@ -141,18 +141,19 @@ assert.match(app, /订阅|工具|面板|输出/, "advanced nav labels must remai
 assert.match(app, /createIssue|refreshAll|openExternal/, "header actions must remain wired");
 const header = app.slice(app.indexOf("<header"), app.indexOf("</header>") + "</header>".length);
 function headerButton(action) {
-  const match = header.match(
-    new RegExp(`<Button(?:(?!<\\/Button>)[\\s\\S])*?@click="${action}"(?:(?!<\\/Button>)[\\s\\S])*?<\\/Button>`),
-  );
-  assert.ok(match, `missing header action: ${action}`);
-  return match[0].slice(0, match[0].indexOf(">") + 1);
+  const actionIndex = header.indexOf(`@click="${action}"`);
+  assert.notEqual(actionIndex, -1, `missing header action: ${action}`);
+  const buttonStart = header.lastIndexOf("<Button", actionIndex);
+  const buttonEnd = header.indexOf(">", buttonStart);
+  assert.ok(buttonStart >= 0 && buttonEnd > buttonStart, `invalid header action: ${action}`);
+  return header.slice(buttonStart, buttonEnd + 1);
 }
 assert.doesNotMatch(headerButton("cycleTheme"), /class="hidden /, "theme must remain visible on mobile");
 assert.doesNotMatch(headerButton("refreshAll"), /class="hidden /, "refresh must remain visible on mobile");
-assert.doesNotMatch(headerButton("openExternal\\(REPO, 'GitHub'\\)"), /class="hidden /, "GitHub must remain visible on mobile");
+assert.doesNotMatch(headerButton("openExternal(REPO, 'GitHub')"), /class="hidden /, "GitHub must remain visible on mobile");
 assert.match(headerButton("createIssue"), /class="hidden /, "feedback must move to More on mobile");
 assert.match(
-  headerButton("openExternal\\(AUTHOR_WHISPER_URL, '悄悄话'\\)"),
+  headerButton("openExternal(AUTHOR_WHISPER_URL, '悄悄话')"),
   /class="hidden /,
   "whisper must move to More on mobile",
 );
@@ -160,9 +161,21 @@ assert.match(app, /反馈问题[\s\S]*悄悄话/, "mobile more sheet must expose
 assert.match(app, /useTheme|cycleTheme/, "shell must wire light/dark theme toggle");
 assert.match(app, /KeepAlive/, "shell must KeepAlive tab pages so form state survives switches");
 assert.doesNotMatch(app, /backdrop-blur/, "shell chrome must not default to heavy backdrop-blur");
+const pageHeader = read(join(src, "components", "ui", "PageHeader.vue"));
+assert.match(pageHeader, /<div class="contents">/, "PageHeader actions must participate in the owning page grid");
 const controlPage = read(join(pagesDir, "ControlPage.vue"));
 assert.doesNotMatch(controlPage, /AI 自动推广系统|PROMOTION_URL|Megaphone/, "control page must not ship the promotion card");
 assert.doesNotMatch(controlPage, /external-tun|Hybrid|modeActionKey/, "control page must expose only TUN mode");
+assert.match(controlPage, /const singBoxStatus = computed/);
+assert.match(controlPage, /tone: "neutral"/);
+assert.match(controlPage, /label: !rawState \|\| rawState === "unknown" \? "状态未知" : rawState/);
+assert.doesNotMatch(controlPage, /singBoxState === 'stopped' \? 'warning' : 'success'/, "unknown sing-box state must not inherit success tone");
+assert.match(controlPage, /data-danger-cancel/);
+assert.match(controlPage, /prefers-reduced-motion: reduce/);
+assert.match(controlPage, /\[data-danger-cancel\]/);
+assert.match(controlPage, /restoreDangerActionFocus\(\)/);
+const focusManagement = read(join(src, "lib", "focus.ts"));
+assert.match(focusManagement, /element\.isConnected/);
 
 // --- Light/dark theme system ---
 const themePath = join(src, "composables", "useTheme.ts");
@@ -172,7 +185,9 @@ assert.match(themeSrc, /magicnet\.webui\.theme/, "theme preference must persist 
 assert.match(styles, /html\[data-theme=["']light["']\]/, "styles must define light theme tokens");
 assert.match(styles, /html\[data-theme=["']dark["']\]/, "styles must define dark theme tokens");
 assert.match(styles, /--mn-on-accent/, "styles must define on-accent text for filled controls");
-assert.match(styles, /\.mn-page-actions/, "styles must define sticky page action bar");
+assert.match(styles, /--mn-page-actions-desktop-top:\s*9rem/, "styles must align page actions below the desktop cockpit");
+assert.match(styles, /\.mn-page-actions\s*\{[^}]*position:\s*static/, "page actions must stay in normal flow on compact screens");
+assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.page-surface\s*\{[^}]*overflow:\s*clip;[^}]*\}[\s\S]*?\.mn-page-actions\s*\{[^}]*position:\s*sticky;[^}]*top:\s*var\(--mn-page-actions-desktop-top\)/, "desktop page actions must escape the page clip and stick below the global cockpit");
 const mainTs = read(join(src, "main.ts"));
 assert.match(mainTs, /bootstrapTheme/, "main.ts must bootstrap theme before mount");
 assert.match(mainTs, /installMagicNetFavicon/, "main.ts must install the shared logo as favicon");

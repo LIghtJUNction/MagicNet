@@ -2,23 +2,31 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
+const focus = readFileSync(new URL("./src/lib/focus.ts", import.meta.url), "utf8");
 
 for (const invariant of [
   'ref="advancedDialog"',
   "data-dialog-initial-focus",
   "trapAdvancedNavFocus(event)",
-  "event.shiftKey",
+  "trapFocusWithin(event, advancedDialog.value)",
   'event.key !== "Escape"',
   'document.body.style.overflow = "hidden"',
   "document.body.style.overflow = bodyOverflowBeforeDialog",
-  "trigger instanceof HTMLElement",
-  'typeof trigger.focus === "function"',
-  "trigger.isConnected",
-  "trigger.focus()",
+  "restoreFocusAfterUpdate(trigger)",
   'role="dialog"',
   'aria-modal="true"',
 ]) {
   assert.ok(source.includes(invariant), `advanced navigation modal missing ${invariant}`);
+}
+
+for (const invariant of [
+  'event.key !== "Tab"',
+  "event.shiftKey",
+  "!root.contains(active)",
+  "element.isConnected",
+  "element.focus()",
+]) {
+  assert.ok(focus.includes(invariant), `shared focus helper missing ${invariant}`);
 }
 
 assert.doesNotMatch(
