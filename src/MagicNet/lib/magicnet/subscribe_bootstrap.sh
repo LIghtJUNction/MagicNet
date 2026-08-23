@@ -2,6 +2,24 @@
 #
 # Kamfw-free helpers for isolated sing-box subscription loads.
 
+type magicnet_cmd_exists >/dev/null 2>&1 || magicnet_cmd_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+magicnet_singbox_api_has_nodes() {
+    magicnet_cmd_exists curl || return 1
+    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null ||
+        curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
+    [ -n "$_api" ] || {
+        unset _api
+        return 1
+    }
+    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Socks|SOCKS|Selector|WireGuard)"'
+    _rc=$?
+    unset _api
+    return "$_rc"
+}
+
 magicnet_singbox_config_file() {
     printf '%s\n' "${MAGICNET_SUB_CONFIG_FILE:-${MODDIR}/.config/sing-box/config.json}"
 }
