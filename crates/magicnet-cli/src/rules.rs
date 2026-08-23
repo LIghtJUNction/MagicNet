@@ -6,7 +6,7 @@ use std::process::Command;
 
 use crate::service::restart_current_core;
 use crate::utils::{clean_module_lines, replace_module_text_files_transactionally};
-use crate::{clean_lines, run_magicnet_function, write_text_file, App};
+use crate::{run_magicnet_function, write_text_file, App};
 
 pub(crate) use block::block_cmd;
 
@@ -27,7 +27,12 @@ pub(crate) fn route_cmd(app: &App, args: &[String]) -> Result<(), String> {
 fn route_list(app: &App) {
     for target in ["proxy", "direct", "block", "warp"] {
         println!("{target} domain suffixes:");
-        print_lines(route_file(app, target).unwrap());
+        print_lines(
+            app,
+            Path::new(&format!(
+                ".config/magicnet/route-{target}-domain-suffix.list"
+            )),
+        );
     }
 }
 
@@ -289,7 +294,10 @@ fn valid_package_name(package: &str) -> bool {
 }
 
 pub(super) fn update_line(app: &App, path: PathBuf, item: &str, add: bool) -> Result<(), String> {
-    let mut lines: Vec<String> = clean_lines(path.clone())
+    let relative = path
+        .strip_prefix(&app.moddir)
+        .map_err(|_| "refusing to update a list outside the module root".to_string())?;
+    let mut lines: Vec<String> = clean_module_lines(app, relative)?
         .into_iter()
         .filter(|line| line != item)
         .collect();
@@ -405,8 +413,8 @@ fn print_app_list_lines(lines: &[String]) {
     }
 }
 
-pub(super) fn print_lines(path: PathBuf) {
-    for line in clean_lines(path) {
+pub(super) fn print_lines(app: &App, relative: &Path) {
+    for line in clean_module_lines(app, relative).unwrap_or_default() {
         println!("  {line}");
     }
 }

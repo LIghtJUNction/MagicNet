@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -13,7 +13,7 @@ use crate::connection_control::{
 use crate::node_delay::encode_path_segment;
 use crate::selector_store;
 use crate::service::{apply_config, singbox_webui};
-use crate::subscriptions::validate_subscription_url;
+use crate::subscriptions::{download_pinned_https_url, validate_subscription_url};
 use crate::{run_magicnet_function, write_text_file, App};
 
 pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -517,81 +517,19 @@ fn download_panel_zip(url: &str, tmp: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-// The panel archive is unpacked as root. Keep curl's initial-URL and redirect
-// protocol policies adjacent so neither path can silently fall back to HTTP.
-const PANEL_DOWNLOAD_CURL_OPTIONS: [&str; 11] = [
-    "-fL",
-    "--proto",
-    "=https",
-    "--proto-redir",
-    "=https",
-    "--connect-timeout",
-    "15",
-    "--max-time",
-    "90",
-    "--max-filesize",
-    "33554432",
-];
-
 const PANEL_MAX_BYTES: usize = 32 * 1024 * 1024;
 
 fn curl_download(url: &str, tmp: &std::path::Path) -> Result<(), String> {
+    // Panel archives unpack as root. Reuse the subscription pinned-HTTPS
+    // downloader so redirects and private targets cannot re-aim the request.
     let result = (|| {
-        let mut child = Command::new("curl")
-            .args(PANEL_DOWNLOAD_CURL_OPTIONS)
-            .arg(url)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|err| format!("run curl: {err}"))?;
-        let mut stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| "capture curl response: stdout unavailable".to_string())?;
-        let body = match read_capped(&mut stdout, PANEL_MAX_BYTES) {
-            Ok(body) => body,
-            Err(err) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(err);
-            }
-        };
-        let output = child
-            .wait_with_output()
-            .map_err(|err| format!("wait for curl: {err}"))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let detail = stderr.trim();
-            return Err(if detail.is_empty() {
-                format!(
-                    "curl exited with status {}",
-                    output.status.code().unwrap_or(1)
-                )
-            } else {
-                format!(
-                    "curl exited with status {}: {detail}",
-                    output.status.code().unwrap_or(1)
-                )
-            });
-        }
+        let body = download_pinned_https_url(url, PANEL_MAX_BYTES, 15, 90)?;
         fs::write(tmp, body).map_err(|err| format!("stage downloaded panel: {err}"))
     })();
     if result.is_err() {
         let _ = fs::remove_file(tmp);
     }
     result
-}
-
-fn read_capped(reader: &mut impl Read, max_bytes: usize) -> Result<Vec<u8>, String> {
-    let mut reader = reader.take(max_bytes as u64 + 1);
-    let mut body = Vec::new();
-    reader
-        .read_to_end(&mut body)
-        .map_err(|err| format!("read panel download: {err}"))?;
-    if body.len() > max_bytes {
-        return Err(format!("downloaded panel exceeds {max_bytes} byte limit"));
-    }
-    Ok(body)
 }
 
 fn validate_sha256(expected: &str) -> Result<(), String> {
@@ -855,33 +793,6 @@ mod tests {
     fn panel_download_size_limit_is_enforced() {
         assert!(ensure_panel_size(PANEL_MAX_BYTES).is_ok());
         assert!(ensure_panel_size(PANEL_MAX_BYTES + 1).is_err());
-    }
-
-    #[test]
-    fn oversized_stream_is_probed_once_past_the_limit_and_rejected() {
-        let mut reader = std::io::Cursor::new(b"12345".to_vec());
-        assert!(read_capped(&mut reader, 4).is_err());
-        assert_eq!(reader.position(), 5, "only the bounded probe may be read");
-    }
-
-    #[test]
-    fn panel_download_curl_requires_https_for_initial_and_redirect_urls() {
-        assert_eq!(
-            PANEL_DOWNLOAD_CURL_OPTIONS,
-            [
-                "-fL",
-                "--proto",
-                "=https",
-                "--proto-redir",
-                "=https",
-                "--connect-timeout",
-                "15",
-                "--max-time",
-                "90",
-                "--max-filesize",
-                "33554432",
-            ]
-        );
     }
 
     #[test]

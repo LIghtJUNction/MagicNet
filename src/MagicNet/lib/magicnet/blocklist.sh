@@ -23,13 +23,44 @@ magicnet_block_allow_file() {
 }
 
 magicnet_block_conf_url_is_safe() {
+    # Align with CLI validate_subscription_url + shell_inert_conf_value:
+    # HTTPS only, no credentials, inert charset, and no private IP literals.
     case "$1" in
-        http://*|https://*) ;;
+        https://*) ;;
         *) return 1 ;;
     esac
     case "$1" in
-        ''|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:/?=%+@,-]*) return 1 ;;
+        *@*) return 1 ;;
     esac
+    case "$1" in
+        ''|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:/?=%+,-]*) return 1 ;;
+    esac
+    _block_url_host="${1#https://}"
+    _block_url_host="${_block_url_host%%/*}"
+    _block_url_host="${_block_url_host%%\?*}"
+    _block_url_host="${_block_url_host%%#*}"
+    case "$_block_url_host" in
+        \[*\]*)
+            _block_url_host="${_block_url_host#\[}"
+            _block_url_host="${_block_url_host%%\]*}"
+            case "$_block_url_host" in
+                ::1|::|0:0:0:0:0:0:0:1|0:0:0:0:0:0:0:0|fe80:*|fc*|fd*)
+                    unset _block_url_host
+                    return 1
+                    ;;
+            esac
+            ;;
+        *:*)
+            _block_url_host="${_block_url_host%:*}"
+            ;;
+    esac
+    case "$_block_url_host" in
+        localhost|localhost.*|127.*|0.0.0.0|10.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
+            unset _block_url_host
+            return 1
+            ;;
+    esac
+    unset _block_url_host
     return 0
 }
 

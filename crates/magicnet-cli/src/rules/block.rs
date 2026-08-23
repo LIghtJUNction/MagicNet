@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::Path;
 
 use crate::service::restart_current_core;
-use crate::subscriptions::validate_subscription_url;
-use crate::{clean_lines, read_kv, run_magicnet_function, shell_inert_conf_value, write_kv, App};
+use crate::subscriptions::{download_pinned_https_url, validate_subscription_url};
+use crate::utils::clean_module_lines;
+use crate::{read_kv, run_magicnet_function, shell_inert_conf_value, write_kv, App};
 
-use super::{conf_dir, normalize_allow_rule, normalize_block_rule, print_lines, update_line};
+use super::{conf_dir, normalize_allow_rule, normalize_block_rule, update_line};
 
 const BLOCK_CONF: &str = ".config/magicnet/block.conf";
 /// Keep a compromised community source from consuming more than 8 MiB of CLI memory.
@@ -18,7 +17,6 @@ const MAX_COMMUNITY_BLOCKLIST_LINES: usize = 250_000;
 const MAX_COMMUNITY_BLOCKLIST_RULES: usize = 100_000;
 
 pub(crate) fn block_cmd(app: &App, args: &[String]) -> Result<(), String> {
-    let dir = conf_dir(app);
     match args.first().map(String::as_str).unwrap_or("list") {
         "list" => {
             block_list(app);
@@ -31,13 +29,12 @@ pub(crate) fn block_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "allow-rule" | "unallow-rule" => block_allow(app, args),
         "apply" => apply_and_restart(app),
         "update" => block_update(app),
-        "diff" => block_diff(dir),
+        "diff" => block_diff(app),
         _ => Err("Usage: cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}".to_string()),
     }
 }
 
 fn block_list(app: &App) {
-    let dir = conf_dir(app);
     let conf = block_conf_values(app);
     println!(
         "enabled={}",
@@ -58,17 +55,17 @@ fn block_list(app: &App) {
             .unwrap_or(default_block_url())
     );
     println!("manual domain suffixes:");
-    print_lines(dir.join("block-domain-suffix.list"));
-    let allow = clean_lines(dir.join("block-allow-rules.list"));
+    print_module_lines(app, "block-domain-suffix.list");
+    let allow = module_list_lines(app, "block-allow-rules.list");
     println!("community rules:");
-    for line in clean_lines(dir.join("community-ban-rules.list"))
+    for line in module_list_lines(app, "community-ban-rules.list")
         .into_iter()
         .filter(|line| !allow.contains(line))
     {
         println!("  {line}");
     }
     println!("community domain suffixes:");
-    print_lines(dir.join("community-ban-domain-suffix.list"));
+    print_module_lines(app, "community-ban-domain-suffix.list");
     println!("local allow rules:");
     for line in allow {
         println!("  {line}");
@@ -224,48 +221,8 @@ fn block_update(app: &App) -> Result<(), String> {
 }
 
 fn download_blocklist(url: &str) -> Result<String, String> {
-    let max_bytes = MAX_COMMUNITY_BLOCKLIST_BYTES.to_string();
-    let mut child = Command::new("curl")
-        .args([
-            "-fsSL",
-            "--max-filesize",
-            &max_bytes,
-            "--connect-timeout",
-            "8",
-            "--max-time",
-            "30",
-            url,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|err| format!("run curl: {err}"))?;
-    let mut stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "capture blocklist download failed".to_string())?;
-    let mut bytes = Vec::with_capacity(MAX_COMMUNITY_BLOCKLIST_BYTES.min(64 * 1024));
-    stdout
-        .by_ref()
-        .take((MAX_COMMUNITY_BLOCKLIST_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)
-        .map_err(|err| format!("read blocklist download: {err}"))?;
-    if bytes.len() > MAX_COMMUNITY_BLOCKLIST_BYTES {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(format!(
-            "community blocklist exceeds {MAX_COMMUNITY_BLOCKLIST_BYTES} byte limit"
-        ));
-    }
-    if child
-        .wait()
-        .map_err(|err| format!("wait for curl: {err}"))?
-        .success()
-    {
-        return String::from_utf8(bytes)
-            .map_err(|_| "community blocklist is not UTF-8".to_string());
-    }
-    Err(format!("download blocklist failed: {url}"))
+    let bytes = download_pinned_https_url(url, MAX_COMMUNITY_BLOCKLIST_BYTES, 8, 30)?;
+    String::from_utf8(bytes).map_err(|_| "community blocklist is not UTF-8".to_string())
 }
 
 fn apply_and_restart(app: &App) -> Result<(), String> {
@@ -329,14 +286,24 @@ fn lines_text(values: &[String]) -> String {
     values.iter().map(|value| format!("{value}\n")).collect()
 }
 
-fn block_diff(dir: PathBuf) -> Result<(), String> {
-    for domain in clean_lines(dir.join("block-domain-suffix.list")) {
+fn block_diff(app: &App) -> Result<(), String> {
+    for domain in module_list_lines(app, "block-domain-suffix.list") {
         println!("+ DOMAIN-SUFFIX,{domain}");
     }
-    for rule in clean_lines(dir.join("block-allow-rules.list")) {
+    for rule in module_list_lines(app, "block-allow-rules.list") {
         println!("- {rule}");
     }
     Ok(())
+}
+
+fn module_list_lines(app: &App, name: &str) -> Vec<String> {
+    clean_module_lines(app, &Path::new(".config/magicnet").join(name)).unwrap_or_default()
+}
+
+fn print_module_lines(app: &App, name: &str) {
+    for line in module_list_lines(app, name) {
+        println!("  {line}");
+    }
 }
 
 fn block_conf_values(app: &App) -> HashMap<String, String> {
@@ -411,7 +378,7 @@ mod tests {
     use super::*;
     use crate::test_support::temp_app;
 
-    fn write_block_conf_fixture(app: &App, text: &str) -> PathBuf {
+    fn write_block_conf_fixture(app: &App, text: &str) -> std::path::PathBuf {
         let path = conf_dir(app).join("block.conf");
         fs::create_dir_all(path.parent().expect("block config parent"))
             .expect("create block config parent");

@@ -151,10 +151,17 @@ fn receive_output(reader: Option<OutputReader>, name: &str) -> Vec<u8> {
     }
 }
 
+/// Soft reader that follows symlinks. Prefer [`clean_module_lines`] for
+/// module-owned state so symlink swaps cannot redirect privileged reads.
+#[allow(dead_code)]
 pub(crate) fn clean_lines(path: PathBuf) -> Vec<String> {
     fs::read_to_string(path)
+        .map(|text| filter_clean_lines(&text))
         .unwrap_or_default()
-        .lines()
+}
+
+fn filter_clean_lines(text: &str) -> Vec<String> {
+    text.lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(ToOwned::to_owned)
@@ -175,16 +182,22 @@ pub(crate) fn clean_module_lines(app: &App, relative: &Path) -> Result<Vec<Strin
     if file.read_to_string(&mut text).is_err() {
         return Ok(Vec::new());
     }
-    Ok(text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(ToOwned::to_owned)
-        .collect())
+    Ok(filter_clean_lines(&text))
 }
 
+/// Soft reader for non-module paths. Prefer [`clean_module_lines`] /
+/// [`first_clean_module_line`] for anything under the module root.
+#[allow(dead_code)]
 pub(crate) fn first_clean_line(path: PathBuf) -> String {
     clean_lines(path).into_iter().next().unwrap_or_default()
+}
+
+pub(crate) fn first_clean_module_line(app: &App, relative: &Path) -> String {
+    clean_module_lines(app, relative)
+        .unwrap_or_default()
+        .into_iter()
+        .next()
+        .unwrap_or_default()
 }
 
 /// Writes an ordinary file below `app.moddir` without resolving any

@@ -19,8 +19,7 @@ magicnet_singbox_chain_config_file() {
 }
 
 magicnet_singbox_chain_jq() {
-    [ -x "${MODDIR}/bin/jq" ] || return 1
-    printf '%s\n' "${MODDIR}/bin/jq"
+    magicnet_jq
 }
 
 magicnet_singbox_chain_apply() {
