@@ -10,6 +10,15 @@ mkdir -p "$MODDIR/.state/config.lock"
 import() { :; }
 . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 
+# URL credentials are forbidden only in the authority. A literal @ in the
+# path/query/fragment is valid and must not hide a persisted subscription.
+subscription_file="$fixture/subscription.url"
+printf '%s\n' 'https://example.invalid/sub/user@example.com' >"$subscription_file"
+test "$(magicnet_first_http_url "$subscription_file")" = \
+    'https://example.invalid/sub/user@example.com'
+printf '%s\n' 'https://user@example.invalid/sub' >"$subscription_file"
+! magicnet_first_http_url "$subscription_file" >/dev/null
+
 # A stale signal trap from another PID must not remove the current owner.
 printf '%s\n' '999999:1' >"$MODDIR/.state/config.lock/pid"
 magicnet_config_lock_release
@@ -66,5 +75,16 @@ unset -f printf
     printf '%s\n' 'failed config lock acquisition leaked its directory' >&2
     exit 1
 }
+
+# Invalid inherited subscription timeouts must fall back to the bounded
+# default before reaching the config lock's numeric comparisons.
+magicnet_with_config_lock() {
+    test "$MAGICNET_CONFIG_LOCK_TIMEOUT" = "$expected_timeout"
+}
+expected_timeout=17
+MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=17 magicnet_with_sub_config_lock :
+expected_timeout=45
+MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=not-a-number magicnet_with_sub_config_lock :
+unset -f magicnet_with_config_lock
 
 printf '%s\n' 'config lock safety test passed'
