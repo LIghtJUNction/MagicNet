@@ -444,18 +444,6 @@ magicnet_wifi_policy_stop() {
     unset _wifi_policy_pid_file _wifi_policy_pid
 }
 
-magicnet_wifi_policy_status() {
-    _wifi_policy_pid_file="$(magicnet_wifi_policy_pid_file)"
-    _wifi_policy_pid="$(sed -n '1p' "$_wifi_policy_pid_file" 2>/dev/null || true)"
-    if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
-        printf '%s\n' "$_wifi_policy_pid"
-        unset _wifi_policy_pid_file _wifi_policy_pid
-        return 0
-    fi
-    unset _wifi_policy_pid_file _wifi_policy_pid
-    return 1
-}
-
 magicnet_subscription_refresh_name() {
     printf '%s\n' "magicnet-subscription-refresh"
 }
@@ -477,35 +465,7 @@ magicnet_subscription_refresh_loop_file() {
 }
 
 magicnet_subscription_refresh_proc_start() {
-    _refresh_proc_pid="$1"
-    _refresh_proc_root="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
-    case "$_refresh_proc_pid" in
-        '' | *[!0-9]*)
-            unset _refresh_proc_pid _refresh_proc_root
-            return 1
-            ;;
-    esac
-    case "$_refresh_proc_root" in
-        /*) ;;
-        *)
-            unset _refresh_proc_pid _refresh_proc_root
-            return 1
-            ;;
-    esac
-    _refresh_proc_stat="${_refresh_proc_root}/${_refresh_proc_pid}/stat"
-    [ -r "$_refresh_proc_stat" ] || {
-        unset _refresh_proc_pid _refresh_proc_root _refresh_proc_stat
-        return 1
-    }
-    _refresh_proc_start="$(awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
-        "$_refresh_proc_stat" 2>/dev/null || true)"
-    case "$_refresh_proc_start" in '' | *[!0-9]*)
-        unset _refresh_proc_pid _refresh_proc_root _refresh_proc_stat _refresh_proc_start
-        return 1
-        ;;
-    esac
-    printf '%s\n' "$_refresh_proc_start"
-    unset _refresh_proc_pid _refresh_proc_root _refresh_proc_stat _refresh_proc_start
+    magicnet_proc_start "$1" "${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
 }
 
 magicnet_subscription_refresh_proc_command_matches() {
@@ -773,10 +733,6 @@ magicnet_subscription_refresh_owner_state() {
     unset _refresh_state_owner _refresh_state_record
     unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
     return "$_refresh_state_rc"
-}
-
-magicnet_subscription_schedule_file() {
-    printf '%s\n' "${MODDIR}/.config/magicnet/subscription-refresh-hours"
 }
 
 magicnet_subscription_schedule_interval() {

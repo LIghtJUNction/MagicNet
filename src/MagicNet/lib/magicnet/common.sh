@@ -27,7 +27,14 @@ magicnet_module_disabled() {
 }
 
 magicnet_json_escape() {
-    LC_ALL=C printf '%s' "$1" | sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
+    # Normalize line breaks before stripping remaining controls so subscription
+    # tags and route domains cannot inject raw newlines into generated JSON.
+    LC_ALL=C printf '%s' "$1" | tr '\r\n\t' '   ' | sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
+}
+
+magicnet_jq() {
+    [ -x "${MODDIR}/bin/jq" ] || return 1
+    printf '%s\n' "${MODDIR}/bin/jq"
 }
 
 # Persisted *.conf files are data. Never source them into the privileged
@@ -91,7 +98,7 @@ magicnet_first_http_url() {
             line = $0
             sub(/[[:space:]]*#.*$/, "", line)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-            if (line ~ /^https?:\/\/[^[:space:]]+$/) {
+            if (line ~ /^https:\/\/[^[:space:]@]+$/) {
                 print line
                 found = 1
                 exit 0
@@ -106,8 +113,16 @@ magicnet_singbox_has_subscription() {
         magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
 }
 
+magicnet_subscription_schedule_file() {
+    printf '%s\n' "${MODDIR}/.config/magicnet/subscription-refresh-hours"
+}
+
 magicnet_singbox_config_has_nodes() {
-    _config="${MODDIR}/.config/sing-box/config.json"
+    if command -v magicnet_singbox_subscription_config_file >/dev/null 2>&1; then
+        _config=$(magicnet_singbox_subscription_config_file)
+    else
+        _config="${MAGICNET_SUB_CONFIG_FILE:-${MODDIR}/.config/sing-box/config.json}"
+    fi
     [ -f "$_config" ] || {
         unset _config
         return 1
@@ -262,14 +277,47 @@ magicnet_preferred_core() {
     printf '%s\n' "sing-box"
 }
 
+# Read /proc/<pid>/stat starttime. Optional second argument overrides the proc
+# root (tests inject a fixture tree via MAGICNET_SUB_REFRESH_PROC_ROOT).
+magicnet_proc_start() {
+    _proc_pid="$1"
+    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    case "$_proc_pid" in
+        '' | *[!0-9]*)
+            unset _proc_pid _proc_root
+            return 1
+            ;;
+    esac
+    case "$_proc_root" in
+        /*) ;;
+        *)
+            unset _proc_pid _proc_root
+            return 1
+            ;;
+    esac
+    _proc_stat="${_proc_root}/${_proc_pid}/stat"
+    [ -r "$_proc_stat" ] || {
+        unset _proc_pid _proc_root _proc_stat
+        return 1
+    }
+    _proc_start="$(awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
+        "$_proc_stat" 2>/dev/null || true)"
+    case "$_proc_start" in
+        '' | *[!0-9]*)
+            unset _proc_pid _proc_root _proc_stat _proc_start
+            return 1
+            ;;
+    esac
+    printf '%s\n' "$_proc_start"
+    unset _proc_pid _proc_root _proc_stat _proc_start
+}
+
 magicnet_config_lock_dir() {
     printf '%s\n' "$MODDIR/.state/config.lock"
 }
 
 magicnet_config_lock_proc_start() {
-    case "$1" in '' | *[!0-9]*) return 1 ;; esac
-    awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
-        "/proc/$1/stat" 2>/dev/null || true
+    magicnet_proc_start "$1"
 }
 
 magicnet_config_lock_proc_live() {

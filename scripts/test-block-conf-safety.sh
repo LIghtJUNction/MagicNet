@@ -71,4 +71,21 @@ magicnet_block_load_conf
 assert_eq "$MAGICNET_BLOCK_ENABLED" '1' 'unknown field is rejected'
 assert_eq "$MAGICNET_BLOCK_URL" "$default_url" 'unknown field resets URL'
 
+printf '%s\n' \
+    'MAGICNET_BLOCK_ENABLED=0' \
+    'MAGICNET_BLOCK_COMMUNITY_ENABLED=0' \
+    'MAGICNET_BLOCK_URL=http://example.com/community.yaml' \
+    >"$conf"
+magicnet_block_load_conf
+assert_eq "$MAGICNET_BLOCK_ENABLED" '1' 'plaintext URL is rejected'
+assert_eq "$MAGICNET_BLOCK_URL" "$default_url" 'plaintext URL resets to default'
+
+printf '%s\n' \
+    'MAGICNET_BLOCK_ENABLED=0' \
+    'MAGICNET_BLOCK_COMMUNITY_ENABLED=0' \
+    'MAGICNET_BLOCK_URL=https://127.0.0.1/community.yaml' \
+    >"$conf"
+magicnet_block_load_conf
+assert_eq "$MAGICNET_BLOCK_URL" "$default_url" 'loopback URL is rejected'
+
 printf 'block.conf parser safety test passed\n'

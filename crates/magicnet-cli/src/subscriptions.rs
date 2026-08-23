@@ -1,20 +1,21 @@
 use std::collections::HashSet;
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::{self, File};
-use std::io::{self, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::net::{IpAddr, ToSocketAddrs};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    clean_lines, clear_node_cache, decode_base64, first_clean_line, run_magicnet_function,
-    run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,
-    write_text_file, App,
+    clean_module_lines, clear_node_cache, decode_base64, first_clean_module_line,
+    run_magicnet_function, run_subscription_source_update_from_inherited_fd,
+    run_subscription_update_from_inherited_fd, write_text_file, App,
 };
 
 const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
@@ -24,6 +25,7 @@ const MAX_SUBSCRIPTION_FILTER_BYTES: usize = 64;
 const MAX_LOCAL_SUBSCRIPTION_BYTES: usize = 8 * 1024 * 1024;
 const SUBSCRIPTION_USER_AGENT_PATH: &str = ".config/sing-box/subscription.user-agent";
 const SUBSCRIPTION_FILTER_PATH: &str = ".config/sing-box/subscription-filter.list";
+const SUBSCRIPTION_URL_PATH: &str = ".config/sing-box/subscription.url";
 const SELECTOR_REPLAY_WARNING: &str =
     "subscription committed, but saved selector choices could not be replayed";
 static SUBSCRIPTION_CANDIDATE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -472,7 +474,8 @@ fn normalized_subscription_text(text: &str) -> Result<String, String> {
 }
 
 pub fn sub_list(app: &App) {
-    for (idx, url) in clean_lines(app.moddir.join(".config/sing-box/subscription.url"))
+    for (idx, url) in clean_module_lines(app, Path::new(SUBSCRIPTION_URL_PATH))
+        .unwrap_or_default()
         .iter()
         .enumerate()
     {
@@ -480,7 +483,7 @@ pub fn sub_list(app: &App) {
     }
     println!(
         "sing-box={}",
-        first_clean_line(app.moddir.join(".config/sing-box/subscription.url"))
+        first_clean_module_line(app, Path::new(SUBSCRIPTION_URL_PATH))
     );
     println!("user-agent={}", subscription_user_agent(app));
     for (idx, value) in subscription_filters(app).iter().enumerate() {
@@ -489,7 +492,11 @@ pub fn sub_list(app: &App) {
 }
 
 pub fn sub_get(app: &App, target: &str) {
-    println!("{}", first_clean_line(sub_target_file(app, target)));
+    let _ = target;
+    println!(
+        "{}",
+        first_clean_module_line(app, Path::new(SUBSCRIPTION_URL_PATH))
+    );
 }
 
 pub fn sub_update(app: &App, args: &[String]) -> Result<(), String> {
@@ -635,6 +642,7 @@ pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
 
 struct SubscriptionAuthority<'a> {
     host: &'a str,
+    port: u16,
 }
 
 /// Parse only the authority needed for URL policy. DNS resolution and pinning
@@ -659,7 +667,7 @@ fn parse_subscription_authority(url: &str) -> Result<SubscriptionAuthority<'_>, 
         );
     }
 
-    let (host, _port) = if let Some(bracketed) = authority.strip_prefix('[') {
+    let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
         let closing = bracketed
             .find(']')
             .ok_or_else(|| "Subscription URL has an invalid IPv6 authority".to_string())?;
@@ -684,7 +692,100 @@ fn parse_subscription_authority(url: &str) -> Result<SubscriptionAuthority<'_>, 
         (host, parse_subscription_port(port_suffix)?)
     };
 
-    Ok(SubscriptionAuthority { host })
+    Ok(SubscriptionAuthority { host, port })
+}
+
+/// Download an HTTPS URL with the same public-address and redirect policy as
+/// subscription fetches: resolve first, reject private targets, pin curl with
+/// `--resolve`, and refuse redirects that could re-target the request.
+pub(crate) fn download_pinned_https_url(
+    url: &str,
+    max_bytes: usize,
+    connect_timeout_secs: u64,
+    max_time_secs: u64,
+) -> Result<Vec<u8>, String> {
+    validate_subscription_url(url)?;
+    let authority = parse_subscription_authority(url)?;
+    let resolved = (authority.host, authority.port)
+        .to_socket_addrs()
+        .map_err(|_| "HTTPS hostname resolution failed".to_string())?
+        .map(|address| address.ip())
+        .collect::<HashSet<_>>();
+    validate_resolved_subscription_addresses(&resolved)?;
+
+    let mut addresses = resolved.into_iter().collect::<Vec<_>>();
+    addresses.sort_by_key(ToString::to_string);
+    let resolve_args = addresses
+        .into_iter()
+        .map(|address| {
+            let pinned = match address {
+                IpAddr::V6(v6) => format!("[{v6}]"),
+                IpAddr::V4(v4) => v4.to_string(),
+            };
+            format!("{}:{}:{pinned}", authority.host, authority.port)
+        })
+        .collect::<Vec<_>>();
+
+    let max_bytes_arg = max_bytes.to_string();
+    let connect_timeout = connect_timeout_secs.to_string();
+    let max_time = max_time_secs.to_string();
+    let mut command = Command::new("curl");
+    command.args([
+        "-fsS",
+        "--noproxy",
+        "*",
+        "--max-redirs",
+        "0",
+        "--proto",
+        "=https",
+        "--proto-redir",
+        "=https",
+        "--max-filesize",
+        &max_bytes_arg,
+        "--connect-timeout",
+        &connect_timeout,
+        "--max-time",
+        &max_time,
+    ]);
+    for resolve in &resolve_args {
+        command.args(["--resolve", resolve]);
+    }
+    command.arg(url);
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|err| format!("run curl: {err}"))?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "capture HTTPS download failed".to_string())?;
+    let mut bytes = Vec::with_capacity(max_bytes.min(64 * 1024));
+    stdout
+        .by_ref()
+        .take((max_bytes + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|err| format!("read HTTPS download: {err}"))?;
+    if bytes.len() > max_bytes {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!("HTTPS download exceeds {max_bytes} byte limit"));
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|err| format!("wait for curl: {err}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let detail = detail.trim();
+        return Err(if detail.is_empty() {
+            format!(
+                "curl exited with status {}",
+                output.status.code().unwrap_or(1)
+            )
+        } else {
+            format!("curl failed: {detail}")
+        });
+    }
+    Ok(bytes)
 }
 
 fn parse_subscription_port(suffix: &str) -> Result<u16, String> {

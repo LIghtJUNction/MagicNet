@@ -1,6 +1,23 @@
 magicnet_singbox_proc_start() {
+    # Path form kept for update-lock fixtures that only source this file.
+    _proc_stat_path="$1"
+    case "$_proc_stat_path" in
+        */[0-9]*/stat)
+            _proc_pid="${_proc_stat_path%/stat}"
+            _proc_pid="${_proc_pid##*/}"
+            _proc_root="${_proc_stat_path%/"$_proc_pid"/stat}"
+            if command -v magicnet_proc_start >/dev/null 2>&1; then
+                magicnet_proc_start "$_proc_pid" "$_proc_root"
+                _proc_rc=$?
+                unset _proc_stat_path _proc_pid _proc_root
+                return "$_proc_rc"
+            fi
+            unset _proc_pid _proc_root
+            ;;
+    esac
     awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
-        "$1" 2>/dev/null || true
+        "$_proc_stat_path" 2>/dev/null || true
+    unset _proc_stat_path
 }
 
 # Read-only lock probe for status/reporting paths.

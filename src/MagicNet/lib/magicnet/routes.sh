@@ -43,8 +43,7 @@ magicnet_hotspot_source_cidrs() {
 }
 
 magicnet_hotspot_jq() {
-    [ -x "${MODDIR}/bin/jq" ] || return 1
-    printf '%s\n' "${MODDIR}/bin/jq"
+    magicnet_jq
 }
 
 magicnet_hotspot_source_cidrs_json() {

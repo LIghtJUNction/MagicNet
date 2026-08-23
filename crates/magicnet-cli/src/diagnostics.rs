@@ -12,7 +12,9 @@ use serde_json::Value;
 
 use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
-use crate::{clean_lines, command_text_timeout, mcp, pid_summary, singbox_pid_summary, App};
+use crate::{
+    clean_module_lines, command_text_timeout, mcp, pid_summary, singbox_pid_summary, App,
+};
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
     for (key, ok, detail) in health_items(app) {
@@ -623,7 +625,9 @@ fn subscription_evidence(app: &App) -> String {
             {
                 1
             } else {
-                clean_lines(app.moddir.join(".config/sing-box/subscription.url")).len()
+                clean_module_lines(app, Path::new(".config/sing-box/subscription.url"))
+                    .unwrap_or_default()
+                    .len()
             }
         ),
         format!("source_mode={source_mode}"),
@@ -1052,16 +1056,16 @@ fn cmdline_has_command(cmdline: &str, executable: &str, args: &[&str]) -> bool {
 }
 
 fn has_subscription(app: &App) -> bool {
-    sensitive_paths(app)
-        .into_iter()
-        .any(|path| !clean_lines(path).is_empty())
-}
-
-fn sensitive_paths(app: &App) -> Vec<PathBuf> {
-    vec![
-        app.moddir.join(".config/sing-box/subscription.url"),
-        app.moddir.join(".config/sing-box/subscription.local"),
+    [
+        ".config/sing-box/subscription.url",
+        ".config/sing-box/subscription.local",
     ]
+    .into_iter()
+    .any(|relative| {
+        clean_module_lines(app, Path::new(relative))
+            .map(|lines| !lines.is_empty())
+            .unwrap_or(false)
+    })
 }
 
 fn sysroute_snapshot() {
