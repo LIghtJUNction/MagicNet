@@ -429,44 +429,38 @@ magicnet_block_apply_singbox() {
         rm -f "$_rules_file" "$_tmp" 2>/dev/null || true
         return 1
     fi
-    type magicnet_singbox_insert_route_rules >/dev/null 2>&1 || {
-        _route_rules_lib="${MODDIR}/lib/magicnet/singbox_route_rules.sh"
-        if [ ! -f "$_route_rules_lib" ] && type magicnet_lib_dir >/dev/null 2>&1; then
-            _route_rules_lib="$(magicnet_lib_dir)/singbox_route_rules.sh"
-        fi
-        . "$_route_rules_lib"
-        unset _route_rules_lib
-    }
+    magicnet_singbox_require_route_rules
     if ! magicnet_singbox_insert_route_rules "$_config" "$_tmp" "$_rules_file" block; then
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi
     if magicnet_block_has_domains; then
-        if ! grep -q '"__magicnet_block__"' "$_tmp"; then
-            magicnet_warn "sing-box block rules were not inserted"
+        magicnet_singbox_validate_managed_marker "$_tmp" '"__magicnet_block__"' 1 \
+            "sing-box block rules were not inserted" || {
             rm -f "$_tmp" 2>/dev/null || true
             return 1
-        fi
-    elif grep -q '"__magicnet_block__"' "$_tmp"; then
-        magicnet_warn "sing-box block marker was not removed"
-        rm -f "$_tmp" 2>/dev/null || true
-        return 1
+        }
+    else
+        magicnet_singbox_validate_managed_marker "$_tmp" '"__magicnet_block__"' 0 \
+            "sing-box block marker was not removed" || {
+            rm -f "$_tmp" 2>/dev/null || true
+            return 1
+        }
     fi
     if magicnet_block_list_values "$(magicnet_block_allow_file)" | grep -q .; then
-        if ! grep -q '"__magicnet_ad_allow__"' "$_tmp"; then
-            magicnet_warn "sing-box block allow rules were not inserted"
+        magicnet_singbox_validate_managed_marker "$_tmp" '"__magicnet_ad_allow__"' 1 \
+            "sing-box block allow rules were not inserted" || {
             rm -f "$_tmp" 2>/dev/null || true
             return 1
-        fi
-    elif grep -q '"__magicnet_ad_allow__"' "$_tmp"; then
-        magicnet_warn "sing-box block allow marker was not removed"
-        rm -f "$_tmp" 2>/dev/null || true
-        return 1
+        }
+    else
+        magicnet_singbox_validate_managed_marker "$_tmp" '"__magicnet_ad_allow__"' 0 \
+            "sing-box block allow marker was not removed" || {
+            rm -f "$_tmp" 2>/dev/null || true
+            return 1
+        }
     fi
-    if ! chmod 600 "$_tmp" || ! mv -f "$_tmp" "$_config" || ! chmod 600 "$_config"; then
-        rm -f "$_tmp" 2>/dev/null || true
-        return 1
-    fi
+    magicnet_singbox_publish_config "$_config" "$_tmp" || return 1
 }
 
 magicnet_block_apply_unlocked() {

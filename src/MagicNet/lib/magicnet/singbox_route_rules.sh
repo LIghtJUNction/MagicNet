@@ -1,6 +1,6 @@
 # shellcheck shell=ash
 #
-# Shared awk helper for inserting managed sing-box route.rules entries.
+# Shared sing-box route.rules helpers.
 
 magicnet_singbox_insert_route_rules() {
     _insert_config="$1"
@@ -112,4 +112,41 @@ magicnet_singbox_insert_route_rules() {
     _insert_rc=$?
     unset _insert_config _insert_tmp _insert_rules_file _insert_mode
     return "$_insert_rc"
+}
+
+magicnet_singbox_validate_managed_marker() {
+    _validate_file="$1"
+    _validate_marker="$2"
+    _validate_required="$3"
+    _validate_warn="$4"
+    case "$_validate_required" in
+        0 | 1) ;;
+        *)
+            unset _validate_file _validate_marker _validate_required _validate_warn
+            return 1
+            ;;
+    esac
+    if [ "$_validate_required" -eq 1 ]; then
+        grep -q "$_validate_marker" "$_validate_file" || {
+            magicnet_warn "$_validate_warn"
+            unset _validate_file _validate_marker _validate_required _validate_warn
+            return 1
+        }
+    elif grep -q "$_validate_marker" "$_validate_file"; then
+        magicnet_warn "$_validate_warn"
+        unset _validate_file _validate_marker _validate_required _validate_warn
+        return 1
+    fi
+    unset _validate_file _validate_marker _validate_required _validate_warn
+    return 0
+}
+
+magicnet_singbox_publish_config() {
+    _publish_config="$1"
+    _publish_tmp="$2"
+    chmod 600 "$_publish_tmp" && mv -f "$_publish_tmp" "$_publish_config" && chmod 600 "$_publish_config"
+    _publish_rc=$?
+    [ "$_publish_rc" -eq 0 ] || rm -f "$_publish_tmp" 2>/dev/null || true
+    unset _publish_config _publish_tmp
+    return "$_publish_rc"
 }

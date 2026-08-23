@@ -33,7 +33,7 @@ command -v error >/dev/null 2>&1 || error() { printf '%s\n' "ERROR: $1"; }
 command -v warn >/dev/null 2>&1 || warn() { printf '%s\n' "WARN: $1"; }
 command -v success >/dev/null 2>&1 || success() { printf '%s\n' "$1"; }
 
-magicnet_jq_ai_tags_lib() {
+type magicnet_jq_ai_tags_lib >/dev/null 2>&1 || magicnet_jq_ai_tags_lib() {
     if type magicnet_lib_dir >/dev/null 2>&1; then
         printf '%s\n' "$(magicnet_lib_dir)/jq"
     else
@@ -72,4 +72,14 @@ magicnet_list_file_values() {
     _file="$1"
     [ -f "$_file" ] || return 0
     sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++'
+}
+
+magicnet_singbox_require_route_rules() {
+    type magicnet_singbox_insert_route_rules >/dev/null 2>&1 && return 0
+    _route_rules_lib="${MODDIR}/lib/magicnet/singbox_route_rules.sh"
+    if [ ! -f "$_route_rules_lib" ] && type magicnet_lib_dir >/dev/null 2>&1; then
+        _route_rules_lib="$(magicnet_lib_dir)/singbox_route_rules.sh"
+    fi
+    . "$_route_rules_lib"
+    unset _route_rules_lib
 }

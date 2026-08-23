@@ -37,45 +37,7 @@ magicnet_singbox_ai_selectors_canonical() (
     "$_ai_jq" -L "$_ai_lib" \
         --arg expected_proxy_url "$_ai_expected_proxy_url" \
         --arg expected_proxy_interval "$_ai_expected_proxy_interval" \
-        -e 'include "ai-node-tags";
-      def proxy_node:
-        ((.tag // "") | startswith("magicnet-chain-") | not)
-          and (.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks");
-      def reserved_tag:
-        . as $tag
-        | [
-            "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
-            "chain", "chain-hop1", "chain-exit", "chain-auto",
-            "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
-            "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
-            "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
-            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
-            "final", "direct", "block", "warp"
-          ]
-        | index($tag) != null or ($tag | startswith("magicnet-chain-"));
-      def valid_proxy_node:
-        (.tag | type == "string" and length > 0 and (reserved_tag | not))
-          and (.server | type == "string" and length > 0)
-          and (.server_port
-            | type == "number" and . == floor and . >= 1 and . <= 65535)
-          and (if .type == "shadowsocks" then
-              (.method | type == "string" and length > 0)
-                and (.password | type == "string" and length > 0)
-            elif .type == "vmess" or .type == "vless" then
-              (.uuid | type == "string" and length > 0)
-            elif .type == "trojan" or .type == "hysteria2" or .type == "anytls" then
-              (.password | type == "string" and length > 0)
-            elif .type == "tuic" then
-              (.uuid | type == "string" and length > 0)
-                and (.password | type == "string" and length > 0)
-            elif .type == "socks" then
-              (.version == "4" or .version == "4a" or .version == "5")
-                and (((has("username") | not) and (has("password") | not))
-                  or ((.username | type == "string" and length > 0)
-                    and (.password | type == "string" and length > 0)))
-            else false
-            end);
+        -e 'include "ai-node-tags"; include "outbounds-common";
       [
         {name: "ai-chatgpt", url: "https://chatgpt.com/"},
         {name: "ai-gemini", url: "https://gemini.google.com/"},
@@ -91,7 +53,7 @@ magicnet_singbox_ai_selectors_canonical() (
       | ([.outbounds[]? | select(.tag == "proxy-auto")]) as $proxy_autos
       | ([.outbounds[]? | select(.tag == "chain")]) as $chain_groups
       | (($chain_groups | length) == 1) as $chain_active
-      | [.outbounds[]? | select(proxy_node)] as $nodes
+      | [.outbounds[]? | select(proxy_node_kind)] as $nodes
       | [$nodes[] | .tag] as $node_tags
       | ($node_tags | prioritize_ai_tags) as $ai_tags
       | ([.outbounds[]?.tag] | unique) as $tags

@@ -682,14 +682,7 @@ magicnet_route_apply_singbox() {
         rm -f "$_rules_file" "$_tmp" 2>/dev/null || true
         return 1
     fi
-    type magicnet_singbox_insert_route_rules >/dev/null 2>&1 || {
-        _route_rules_lib="${MODDIR}/lib/magicnet/singbox_route_rules.sh"
-        if [ ! -f "$_route_rules_lib" ] && type magicnet_lib_dir >/dev/null 2>&1; then
-            _route_rules_lib="$(magicnet_lib_dir)/singbox_route_rules.sh"
-        fi
-        . "$_route_rules_lib"
-        unset _route_rules_lib
-    }
+    magicnet_singbox_require_route_rules
     if ! magicnet_singbox_insert_route_rules "$_config" "$_tmp" "$_rules_file" route; then
         rm -f "$_tmp" 2>/dev/null || true
         return 1
@@ -700,22 +693,19 @@ magicnet_route_apply_singbox() {
     # removed the managed marker, leaving the live config damaged even though
     # the function returned failure.
     if magicnet_route_has_rules; then
-        grep -q '"__magicnet_route__"' "$_tmp" || {
-            magicnet_warn "sing-box custom route rules were not inserted"
+        magicnet_singbox_validate_managed_marker "$_tmp" '"__magicnet_route__"' 1 \
+            "sing-box custom route rules were not inserted" || {
             rm -f "$_tmp" 2>/dev/null || true
             return 1
         }
     else
-        if grep -q '"__magicnet_route__"' "$_tmp"; then
-            magicnet_warn "sing-box custom route marker was not removed"
+        magicnet_singbox_validate_managed_marker "$_tmp" '"__magicnet_route__"' 0 \
+            "sing-box custom route marker was not removed" || {
             rm -f "$_tmp" 2>/dev/null || true
             return 1
-        fi
+        }
     fi
-    if ! chmod 600 "$_tmp" || ! mv -f "$_tmp" "$_config" || ! chmod 600 "$_config"; then
-        rm -f "$_tmp" 2>/dev/null || true
-        return 1
-    fi
+    magicnet_singbox_publish_config "$_config" "$_tmp" || return 1
 }
 
 magicnet_route_apply_unlocked() {

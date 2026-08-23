@@ -62,47 +62,8 @@ magicnet_singbox_build_outbounds_file_with_jq() (
     jq -R -s 'split("\n") | map(select(length > 0))' "$_tags_file" >"$_tags_json" || return 1
     _ai_lib="$(magicnet_jq_ai_tags_lib)"
     jq -L "$_ai_lib" -n --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" \
-      --rawfile configured_filters "$_filter_file" -e 'include "ai-node-tags";
-      def normalize_tag:
-        if type == "string"
-        then gsub("[\\r\\n\\t]"; " ") | gsub("[[:cntrl:]]"; "")
-        else ""
-        end;
-      def reserved_tag:
-        . as $tag
-        | [
-            "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
-            "chain", "chain-hop1", "chain-exit", "chain-auto",
-            "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
-            "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
-            "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
-            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
-            "final", "direct", "block", "warp"
-          ]
-        | index($tag) != null or ($tag | startswith("magicnet-chain-"));
-      def valid_proxy_node:
-        (.tag | type == "string" and length > 0 and (reserved_tag | not))
-          and (.server | type == "string" and length > 0)
-          and (.server_port
-            | type == "number" and . == floor and . >= 1 and . <= 65535)
-          and (if .type == "shadowsocks" then
-              (.method | type == "string" and length > 0)
-                and (.password | type == "string" and length > 0)
-            elif .type == "vmess" or .type == "vless" then
-              (.uuid | type == "string" and length > 0)
-            elif .type == "trojan" or .type == "hysteria2" or .type == "anytls" then
-              (.password | type == "string" and length > 0)
-            elif .type == "tuic" then
-              (.uuid | type == "string" and length > 0)
-                and (.password | type == "string" and length > 0)
-            elif .type == "socks" then
-              (.version == "4" or .version == "4a" or .version == "5")
-                and (((has("username") | not) and (has("password") | not))
-                  or ((.username | type == "string" and length > 0)
-                    and (.password | type == "string" and length > 0)))
-            else false
-            end);
-      def with_base($outs; $fallback):
+      --rawfile configured_filters "$_filter_file" -e 'include "ai-node-tags"; include "outbounds-common";
+    def with_base($outs; $fallback):
         reduce ([$fallback] + $outs + ["direct", "block"])[] as $item
           ([]; if ($item == "" or index($item)) then . else . + [$item] end);
     def selector($tag; $outs; $fallback):
@@ -214,46 +175,8 @@ magicnet_singbox_build_outbounds_file_with_jq() (
 magicnet_singbox_count_valid_outbounds_nodes() {
     _nodes_json="$1"
     command -v jq >/dev/null 2>&1 || return 1
-    jq -n -r --slurpfile nodes "$_nodes_json" '
-      def normalize_tag:
-        if type == "string"
-        then gsub("[\\r\\n\\t]"; " ") | gsub("[[:cntrl:]]"; "")
-        else ""
-        end;
-      def reserved_tag:
-        . as $tag
-        | [
-            "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
-            "chain", "chain-hop1", "chain-exit", "chain-auto",
-            "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
-            "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
-            "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
-            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
-            "final", "direct", "block", "warp"
-          ]
-        | index($tag) != null or ($tag | startswith("magicnet-chain-"));
-      def valid_proxy_node:
-        (.tag | type == "string" and length > 0 and (reserved_tag | not))
-          and (.server | type == "string" and length > 0)
-          and (.server_port
-            | type == "number" and . == floor and . >= 1 and . <= 65535)
-          and (if .type == "shadowsocks" then
-              (.method | type == "string" and length > 0)
-                and (.password | type == "string" and length > 0)
-            elif .type == "vmess" or .type == "vless" then
-              (.uuid | type == "string" and length > 0)
-            elif .type == "trojan" or .type == "hysteria2" or .type == "anytls" then
-              (.password | type == "string" and length > 0)
-            elif .type == "tuic" then
-              (.uuid | type == "string" and length > 0)
-                and (.password | type == "string" and length > 0)
-            elif .type == "socks" then
-              (.version == "4" or .version == "4a" or .version == "5")
-                and (((has("username") | not) and (has("password") | not))
-                  or ((.username | type == "string" and length > 0)
-                    and (.password | type == "string" and length > 0)))
-            else false
-            end);
+    _count_lib="$(magicnet_jq_ai_tags_lib)"
+    jq -L "$_count_lib" -n -r --slurpfile nodes "$_nodes_json" 'include "outbounds-common";
       ($nodes[0] // []
         | map(.tag = ((.tag // "") | normalize_tag))
         | map(select(
@@ -277,46 +200,7 @@ magicnet_singbox_sanitize_generated_config() {
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
     _sanitize_ai_lib="$(magicnet_jq_ai_tags_lib)"
     # shellcheck disable=SC2016
-    (umask 077; "$_sanitize_jq" -L "$_sanitize_ai_lib" --rawfile configured_filters "$_sanitize_filter_file" -e 'include "ai-node-tags";
-      def proxy_node_type:
-        .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks";
-      def reserved_tag:
-        . as $tag
-        | [
-            "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
-            "chain", "chain-hop1", "chain-exit", "chain-auto",
-            "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
-            "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
-            "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
-            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
-            "final", "direct", "block", "warp"
-          ]
-        | index($tag) != null or ($tag | startswith("magicnet-chain-"));
-      def proxy_node:
-        proxy_node_type
-          and ((.tag // "") | startswith("magicnet-chain-") | not)
-          and (.tag | type == "string" and length > 0 and (reserved_tag | not))
-          and (.server | type == "string" and length > 0)
-          and (.server_port
-            | type == "number" and . == floor and . >= 1 and . <= 65535)
-          and (if .type == "shadowsocks" then
-              (.method | type == "string" and length > 0)
-                and (.password | type == "string" and length > 0)
-            elif .type == "vmess" or .type == "vless" then
-              (.uuid | type == "string" and length > 0)
-            elif .type == "trojan" or .type == "hysteria2" or .type == "anytls" then
-              (.password | type == "string" and length > 0)
-            elif .type == "tuic" then
-              (.uuid | type == "string" and length > 0)
-                and (.password | type == "string" and length > 0)
-            elif .type == "socks" then
-              (.version == "4" or .version == "4a" or .version == "5")
-                and (((has("username") | not) and (has("password") | not))
-                  or ((.username | type == "string" and length > 0)
-                    and (.password | type == "string" and length > 0)))
-            else false
-            end);
+    (umask 077; "$_sanitize_jq" -L "$_sanitize_ai_lib" --rawfile configured_filters "$_sanitize_filter_file" -e 'include "ai-node-tags"; include "outbounds-common";
       def dedupe_proxy_nodes:
         reduce .[] as $outbound (
           {items: [], node_tags: []};
