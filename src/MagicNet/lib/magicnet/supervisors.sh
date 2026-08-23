@@ -297,16 +297,10 @@ magicnet_fswatch_start() {
         unset _fswatch_name _fswatch_busybox_bin _fswatch_flock_bin _fw_rc
         return "$1"
     fi
-    if [ -n "$_fswatch_busybox_bin" ]; then
-        KAM_FSWATCH_BUSYBOX_BIN="$_fswatch_busybox_bin" \
-            KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
-            KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
-            fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
-    else
-        KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
-            KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
-            fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
-    fi
+    [ -n "$_fswatch_busybox_bin" ] && KAM_FSWATCH_BUSYBOX_BIN="$_fswatch_busybox_bin"
+    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
+        KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
+        fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
     _fswatch_rc=$?
     if [ "$_fswatch_rc" -ne 0 ]; then
         magicnet_warn "$(i18n "MAGICNET_FSWATCH_START_FAILED" | t "$_fswatch_rc" "${MODDIR}/.log/fswatch.log")"

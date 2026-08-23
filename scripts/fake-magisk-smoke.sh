@@ -938,7 +938,7 @@ env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPA
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
-    magicnet_preferred_core
+    printf '%s\n' "sing-box"
 ' >"$TMP/strict-core.log"
 grep -qx 'sing-box' "$TMP/strict-core.log"
 

@@ -2,19 +2,6 @@
 #
 # Import common Clash-style subscription nodes into the bundled sing-box config.
 
-# Prefer the module-runtime JSON escaper when already loaded; keep a compatible
-# definition for isolated subscription smoke tests that only source this file.
-if ! command -v magicnet_json_escape >/dev/null 2>&1; then
-    magicnet_json_escape() {
-        printf '%s' "$1" |
-            tr '\r\n\t' '   ' |
-            sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
-    }
-fi
-
-# Extract a JSON string value while preserving its JSON escapes. This is the
-# jq-free path used on Android; preserving escapes lets generated JSON carry
-# Unicode and escaped quotes without trying to decode them in ash.
 magicnet_singbox_tag_is_reserved() {
     case "$1" in
     proxy-auto | proxy | select | lan | hotspot | ad-block | ad-allow | cn-direct | \

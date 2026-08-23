@@ -1,3 +1,24 @@
+# shellcheck shell=ash
+
+[ -n "${MODDIR:-}" ] && {
+    _magicnet_lib_dir="${MAGICNET_LIB_DIR:-${MODDIR}/lib/magicnet}"
+    if ! type magicnet_proc_start >/dev/null 2>&1; then
+        if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+            _magicnet_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        fi
+        . "${_magicnet_lib_dir}/primitives.sh"
+    fi
+    unset _magicnet_lib_dir
+}
+
+magicnet_reapply_post_start_policy() {
+    if command -v magicnet_after_kernel_start_unlocked >/dev/null 2>&1; then
+        magicnet_after_kernel_start_unlocked
+    else
+        magicnet_enable_dns_capture && magicnet_enable_dns_leak_guard
+    fi
+}
+
 magicnet_singbox_proc_start() {
     # Path form kept for update-lock fixtures that only source this file.
     _proc_stat_path="$1"
@@ -65,7 +86,7 @@ magicnet_singbox_update_lock_acquire() {
         fi
         mkdir "$_update_lock" 2>/dev/null || return 1
     fi
-    _update_start=$(magicnet_singbox_proc_start "/proc/$$/stat")
+    _update_start=$(magicnet_proc_start "$$")
     _update_nonce=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)
     _update_token="$$:${_update_start:-unknown}:${_update_nonce}"
     if ! printf '%s\n' "$_update_token" >"$_update_lock/owner"; then
@@ -333,12 +354,7 @@ magicnet_singbox_transaction_reconcile() {
         # recovered; otherwise startup would see a live core and return early
         # with the TUN/DNS runtime only half initialized.
         _tx_policy_rc=0
-        if command -v magicnet_after_kernel_start_unlocked >/dev/null 2>&1; then
-            magicnet_after_kernel_start_unlocked || _tx_policy_rc=1
-        else
-            magicnet_enable_dns_capture || _tx_policy_rc=1
-            magicnet_enable_dns_leak_guard || _tx_policy_rc=1
-        fi
+        magicnet_reapply_post_start_policy || _tx_policy_rc=1
         [ "$_tx_policy_rc" -eq 0 ] || return 1
     fi
 

@@ -2,12 +2,10 @@
 #
 # MagicNet module runtime entrypoint. Feature modules live under lib/magicnet/.
 
-import wait
-import rich
-
 export PATH="${MODDIR}/bin:${PATH}"
 
 _magicnet_lib_dir="${MODDIR}/lib/magicnet"
+. "${_magicnet_lib_dir}/primitives.sh"
 for _magicnet_lib in \
     common \
     ipset_lkm \

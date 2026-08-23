@@ -4,6 +4,19 @@
 # This file owns MagicNet-specific lifecycle handlers and keeps entry scripts
 # thin while using kamfw's phase dispatcher as the runtime boundary.
 
+if ! type magicnet_json_escape >/dev/null 2>&1; then
+    _magicnet_lib_dir="${MAGICNET_LIB_DIR:-}"
+    if [ -z "$_magicnet_lib_dir" ]; then
+        if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+            _magicnet_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        else
+            _magicnet_lib_dir="${MODDIR}/lib/magicnet"
+        fi
+    fi
+    . "${_magicnet_lib_dir}/primitives.sh"
+    unset _magicnet_lib_dir
+fi
+
 import wait
 import rich
 
@@ -24,12 +37,6 @@ magicnet_cmd_exists() {
 
 magicnet_module_disabled() {
     [ -f "${MODDIR}/disable" ] || [ -f "${MODDIR}/remove" ]
-}
-
-magicnet_json_escape() {
-    # Normalize line breaks before stripping remaining controls so subscription
-    # tags and route domains cannot inject raw newlines into generated JSON.
-    LC_ALL=C printf '%s' "$1" | tr '\r\n\t' '   ' | sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
 }
 
 magicnet_jq() {
@@ -127,12 +134,26 @@ magicnet_singbox_config_has_nodes() {
         unset _config
         return 1
     }
-    [ "$(command -v magicnet_singbox_ai_selectors_canonical 2>/dev/null)" ] ||
+    type magicnet_singbox_ai_selectors_canonical >/dev/null 2>&1 ||
         . "${MODDIR}/lib/magicnet/singbox_subscribe/common.sh"
     grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls|socks)"' "$_config" &&
         magicnet_singbox_ai_selectors_canonical "$_config"
     _rc=$?
     unset _config
+    return "$_rc"
+}
+
+magicnet_singbox_api_has_nodes() {
+    magicnet_cmd_exists curl || return 1
+    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null ||
+        curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
+    [ -n "$_api" ] || {
+        unset _api
+        return 1
+    }
+    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Socks|SOCKS|Selector|WireGuard)"'
+    _rc=$?
+    unset _api
     return "$_rc"
 }
 
@@ -239,77 +260,28 @@ magicnet_prepare_singbox_nodes_unlocked() {
     return 1
 }
 
-magicnet_prepare_singbox_nodes() {
+magicnet_with_sub_config_lock() {
     _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
     MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
-    magicnet_with_config_lock magicnet_prepare_singbox_nodes_unlocked
-    _prepare_rc=$?
+    magicnet_with_config_lock "$@"
+    _sub_lock_rc=$?
     if [ -n "$_old_lock_timeout" ]; then
         MAGICNET_CONFIG_LOCK_TIMEOUT="$_old_lock_timeout"
     else
         unset MAGICNET_CONFIG_LOCK_TIMEOUT
     fi
     unset _old_lock_timeout
-    return "$_prepare_rc"
+    return "$_sub_lock_rc"
+}
+
+magicnet_prepare_singbox_nodes() {
+    magicnet_with_sub_config_lock magicnet_prepare_singbox_nodes_unlocked
 }
 
 magicnet_singbox_running_has_nodes() {
-    magicnet_singbox_standalone_config_ready && return 0
-    magicnet_singbox_config_has_nodes && return 0
-    if command -v curl >/dev/null 2>&1; then
-        _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || true)
-        if [ -n "$_api" ]; then
-            printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|Selector|WireGuard|TUIC|AnyTLS|Socks|SOCKS)"' && {
-                unset _api
-                return 0
-            }
-        fi
-    fi
-    magicnet_singbox_config_has_nodes
-    _rc=$?
-    unset _api
-    return "$_rc"
-}
-
-magicnet_preferred_core() {
-    # MagicNet has one transparent runtime. Legacy core selectors are ignored
-    # rather than sourced or promoted through an implicit "auto" path.
-    printf '%s\n' "sing-box"
-}
-
-# Read /proc/<pid>/stat starttime. Optional second argument overrides the proc
-# root (tests inject a fixture tree via MAGICNET_SUB_REFRESH_PROC_ROOT).
-magicnet_proc_start() {
-    _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
-    case "$_proc_pid" in
-        '' | *[!0-9]*)
-            unset _proc_pid _proc_root
-            return 1
-            ;;
-    esac
-    case "$_proc_root" in
-        /*) ;;
-        *)
-            unset _proc_pid _proc_root
-            return 1
-            ;;
-    esac
-    _proc_stat="${_proc_root}/${_proc_pid}/stat"
-    [ -r "$_proc_stat" ] || {
-        unset _proc_pid _proc_root _proc_stat
-        return 1
-    }
-    _proc_start="$(awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
-        "$_proc_stat" 2>/dev/null || true)"
-    case "$_proc_start" in
-        '' | *[!0-9]*)
-            unset _proc_pid _proc_root _proc_stat _proc_start
-            return 1
-            ;;
-    esac
-    printf '%s\n' "$_proc_start"
-    unset _proc_pid _proc_root _proc_stat _proc_start
+    magicnet_singbox_standalone_config_ready ||
+        magicnet_singbox_config_has_nodes ||
+        magicnet_singbox_api_has_nodes
 }
 
 magicnet_config_lock_dir() {
@@ -502,12 +474,8 @@ magicnet_recover_interrupted_subscription() (
         return 0
     fi
 
-    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
-    case "$MAGICNET_CONFIG_LOCK_TIMEOUT" in
-        '' | *[!0-9]*) MAGICNET_CONFIG_LOCK_TIMEOUT=45 ;;
-    esac
     _rc=0
-    magicnet_with_config_lock magicnet_singbox_recover_interrupted_locked || _rc=$?
+    magicnet_with_sub_config_lock magicnet_singbox_recover_interrupted_locked || _rc=$?
     _finished=$(date +%s 2>/dev/null || printf '%s' 0)
     _elapsed=$((_finished - _started))
     if [ "$_rc" -eq 0 ]; then
