@@ -57,17 +57,7 @@ magicnet_start_singbox_unlocked() {
 }
 
 magicnet_with_start_config_lock() {
-    _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
-    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
-    magicnet_with_config_lock "$@"
-    _start_rc=$?
-    if [ -n "$_old_lock_timeout" ]; then
-        MAGICNET_CONFIG_LOCK_TIMEOUT="$_old_lock_timeout"
-    else
-        unset MAGICNET_CONFIG_LOCK_TIMEOUT
-    fi
-    unset _old_lock_timeout
-    return "$_start_rc"
+    magicnet_with_sub_config_lock "$@"
 }
 
 magicnet_start_singbox() {
@@ -111,7 +101,7 @@ magicnet_live_kernel_fast_path() {
     return 0
 }
 
-magicnet_start_kernel() {
+magicnet_kernel_start_preamble() {
     magicnet_module_disabled && {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         return 1
@@ -122,6 +112,11 @@ magicnet_start_kernel() {
         magicnet_warn "Interrupted subscription transaction recovery failed"
         return 1
     fi
+    return 0
+}
+
+magicnet_start_kernel() {
+    magicnet_kernel_start_preamble || return 1
     if magicnet_kernel_running; then
         return 0
     fi
@@ -152,16 +147,7 @@ magicnet_start_kernel() {
 }
 
 magicnet_ensure_kernel() {
-    magicnet_module_disabled && {
-        magicnet_supervisors_stop >/dev/null 2>&1 || true
-        return 1
-    }
-    magicnet_live_kernel_fast_path && return 0
-    if command -v magicnet_recover_interrupted_subscription >/dev/null 2>&1 &&
-        ! magicnet_recover_interrupted_subscription; then
-        magicnet_warn "Interrupted subscription transaction recovery failed"
-        return 1
-    fi
+    magicnet_kernel_start_preamble || return 1
     magicnet_kernel_running && return 0
     magicnet_require_subscription_or_stop || return 1
     MAGICNET_WATCHDOG=1 magicnet_start_kernel

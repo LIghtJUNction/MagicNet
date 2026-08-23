@@ -297,16 +297,10 @@ magicnet_fswatch_start() {
         unset _fswatch_name _fswatch_busybox_bin _fswatch_flock_bin _fw_rc
         return "$1"
     fi
-    if [ -n "$_fswatch_busybox_bin" ]; then
-        KAM_FSWATCH_BUSYBOX_BIN="$_fswatch_busybox_bin" \
-            KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
-            KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
-            fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
-    else
-        KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
-            KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
-            fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
-    fi
+    [ -n "$_fswatch_busybox_bin" ] && KAM_FSWATCH_BUSYBOX_BIN="$_fswatch_busybox_bin"
+    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
+        KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
+        fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
     _fswatch_rc=$?
     if [ "$_fswatch_rc" -ne 0 ]; then
         magicnet_warn "$(i18n "MAGICNET_FSWATCH_START_FAILED" | t "$_fswatch_rc" "${MODDIR}/.log/fswatch.log")"
@@ -477,35 +471,7 @@ magicnet_subscription_refresh_loop_file() {
 }
 
 magicnet_subscription_refresh_proc_start() {
-    _refresh_proc_pid="$1"
-    _refresh_proc_root="${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
-    case "$_refresh_proc_pid" in
-        '' | *[!0-9]*)
-            unset _refresh_proc_pid _refresh_proc_root
-            return 1
-            ;;
-    esac
-    case "$_refresh_proc_root" in
-        /*) ;;
-        *)
-            unset _refresh_proc_pid _refresh_proc_root
-            return 1
-            ;;
-    esac
-    _refresh_proc_stat="${_refresh_proc_root}/${_refresh_proc_pid}/stat"
-    [ -r "$_refresh_proc_stat" ] || {
-        unset _refresh_proc_pid _refresh_proc_root _refresh_proc_stat
-        return 1
-    }
-    _refresh_proc_start="$(awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
-        "$_refresh_proc_stat" 2>/dev/null || true)"
-    case "$_refresh_proc_start" in '' | *[!0-9]*)
-        unset _refresh_proc_pid _refresh_proc_root _refresh_proc_stat _refresh_proc_start
-        return 1
-        ;;
-    esac
-    printf '%s\n' "$_refresh_proc_start"
-    unset _refresh_proc_pid _refresh_proc_root _refresh_proc_stat _refresh_proc_start
+    magicnet_proc_start_time "$1" "${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}"
 }
 
 magicnet_subscription_refresh_proc_command_matches() {

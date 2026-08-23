@@ -2,15 +2,6 @@
 #
 # Import common Clash-style subscription nodes into the bundled sing-box config.
 
-magicnet_json_escape() {
-    printf '%s' "$1" |
-        tr '\r\n\t' '   ' |
-        sed 's/[[:cntrl:]]//g; s/\\/\\\\/g; s/"/\\"/g'
-}
-
-# Extract a JSON string value while preserving its JSON escapes. This is the
-# jq-free path used on Android; preserving escapes lets generated JSON carry
-# Unicode and escaped quotes without trying to decode them in ash.
 magicnet_singbox_tag_is_reserved() {
     case "$1" in
     proxy-auto | proxy | select | lan | hotspot | ad-block | ad-allow | cn-direct | \
@@ -450,10 +441,6 @@ magicnet_singbox_subscription_cache_dir() {
 
 magicnet_singbox_subscription_status_file() {
     printf '%s\n' "${MODDIR}/.state/sing-box/subscription-status"
-}
-
-magicnet_subscription_schedule_file() {
-    printf '%s\n' "${MODDIR}/.config/magicnet/subscription-refresh-hours"
 }
 
 magicnet_singbox_subscription_fingerprint() {

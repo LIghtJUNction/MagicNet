@@ -2,6 +2,8 @@
 #
 # Import common Clash-style subscription nodes into the bundled sing-box config.
 
+. "${MODDIR}/lib/magicnet/primitives.sh"
+
 _magicnet_subscribe_lib_dir="${MODDIR}/lib/magicnet/singbox_subscribe"
 # The subscription updater can be invoked in isolation during first boot and
 # package validation; load the shared chain materializer before config.sh calls

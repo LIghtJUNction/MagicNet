@@ -900,12 +900,7 @@ magicnet_singbox_restart_owned() {
             # pre-stop cleanup above, while the subscription transaction still
             # owns the config lock.
             _post_start_rc=0
-            if command -v magicnet_after_kernel_start_unlocked >/dev/null 2>&1; then
-                magicnet_after_kernel_start_unlocked || _post_start_rc=1
-            else
-                magicnet_enable_dns_capture || _post_start_rc=1
-                magicnet_enable_dns_leak_guard || _post_start_rc=1
-            fi
+            magicnet_reapply_post_start_policy || _post_start_rc=1
             if [ "$_post_start_rc" -ne 0 ]; then
                 # Do not leave a live core behind when the network phase did
                 # not finish.  A running process without its TUN/DNS policy
@@ -934,17 +929,6 @@ magicnet_singbox_restart_owned() {
 magicnet_singbox_restart_if_running() {
     _config_file=$(magicnet_singbox_subscription_config_file)
     magicnet_singbox_restart_owned "$_config_file"
-}
-
-magicnet_singbox_api_has_nodes() {
-    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null || curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
-    [ -n "$_api" ] || return 1
-    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Socks|SOCKS|Selector)"'
-}
-
-magicnet_singbox_config_has_nodes() {
-    _config_file=$(magicnet_singbox_subscription_config_file)
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic|socks)"' "$_config_file"
 }
 
 magicnet_singbox_google_works() {
