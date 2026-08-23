@@ -318,18 +318,9 @@ fn is_obvious_group(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-
-    fn temp_app() -> App {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("magicnet-cli-nodes-test-{stamp}"));
-        App::for_test(dir)
-    }
+    use crate::test_support::temp_app;
 
     fn write_file(path: impl AsRef<Path>, text: &str) {
         let path = path.as_ref();
@@ -339,19 +330,21 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
-    #[test]
-    fn compact_config_json_skips_selector_groups_and_keeps_real_nodes() {
+    fn resolve_config_nodes(config: &str) -> Vec<String> {
         let app = temp_app();
-        write_file(
-            app.moddir.join(".config/sing-box/config.json"),
-            r#"{"outbounds":[{"tag":"dns-guard","type":"selector","outbounds":["alpha"]},{"tag":"alpha","type":"shadowsocks"},{"tag":"beta","type":"vless"}]}"#,
-        );
-
-        let names = resolve_node_names(
+        write_file(app.moddir.join(".config/sing-box/config.json"), config);
+        resolve_node_names(
             &app,
             48,
             false,
             &app.moddir.join(".tmp/magicnet-node-list.cache"),
+        )
+    }
+
+    #[test]
+    fn compact_config_json_skips_selector_groups_and_keeps_real_nodes() {
+        let names = resolve_config_nodes(
+            r#"{"outbounds":[{"tag":"dns-guard","type":"selector","outbounds":["alpha"]},{"tag":"alpha","type":"shadowsocks"},{"tag":"beta","type":"vless"}]}"#,
         );
 
         assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);
@@ -359,17 +352,8 @@ mod tests {
 
     #[test]
     fn proxy_selector_members_control_included_nodes() {
-        let app = temp_app();
-        write_file(
-            app.moddir.join(".config/sing-box/config.json"),
+        let names = resolve_config_nodes(
             r#"{"outbounds":[{"tag":"dns-guard","type":"selector","outbounds":["alpha"]},{"tag":"proxy","type":"selector","outbounds":["alpha","beta"]},{"tag":"alpha","type":"shadowsocks"},{"tag":"beta","type":"vless"},{"tag":"gamma","type":"trojan"}]}"#,
-        );
-
-        let names = resolve_node_names(
-            &app,
-            48,
-            false,
-            &app.moddir.join(".tmp/magicnet-node-list.cache"),
         );
 
         assert_eq!(names, vec!["alpha".to_string(), "beta".to_string()]);

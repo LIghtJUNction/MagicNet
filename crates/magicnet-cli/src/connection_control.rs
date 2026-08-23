@@ -2,6 +2,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
+use crate::node_delay::encode_path_segment;
 use crate::App;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -335,18 +336,6 @@ fn curl_delete(app: &App, path: &str) -> Result<(), String> {
     } else {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
-}
-
-fn encode_path_segment(value: &str) -> String {
-    value
-        .bytes()
-        .map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (byte as char).to_string()
-            }
-            _ => format!("%{byte:02X}"),
-        })
-        .collect()
 }
 
 fn value_text(value: &Value) -> String {

@@ -370,20 +370,9 @@ fn cstring_from_os_str(value: &OsStr, description: &str) -> Result<CString, Stri
 mod tests {
     use std::fs;
     use std::os::unix::fs::{symlink, PermissionsExt};
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-
-    fn temp_app() -> App {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock is after the Unix epoch")
-            .as_nanos();
-        App::for_test(std::env::temp_dir().join(format!(
-            "magicnet-webui-payload-test-{}-{stamp}",
-            std::process::id()
-        )))
-    }
+    use crate::test_support::temp_app;
 
     #[test]
     fn create_uses_a_private_absolute_controlled_path() {

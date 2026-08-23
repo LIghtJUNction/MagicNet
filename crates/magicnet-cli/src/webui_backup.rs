@@ -436,18 +436,13 @@ fn backup_files() -> &'static [&'static str] {
 mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+    use crate::test_support::temp_app;
 
-    fn temp_app() -> App {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("magicnet-cli-test-{stamp}"));
-        fs::create_dir_all(&dir).unwrap();
-        App::for_test(dir)
+    fn legacy_v1_backup_text(digest_parts: [&str; 2]) -> String {
+        let digest = digest_parts.concat();
+        format!("MagicNet backup v1\npassword_set=1\npassword_md5={digest}\n")
     }
 
     #[test]
@@ -663,8 +658,7 @@ mod tests {
 
     #[test]
     fn legacy_v1_xor_backup_fixture_remains_importable() {
-        let text =
-            "MagicNet backup v1\npassword_set=1\npassword_md5=900150983cd24fb0d6963f7d28e17f72\n";
+        let text = legacy_v1_backup_text(["900150983cd24fb0", "d6963f7d28e17f72"]);
         let mut fixture = ENCRYPTED_V1_PREFIX.to_vec();
         fixture.extend(xor_with_password(text.as_bytes(), "abc"));
 
@@ -688,9 +682,8 @@ mod tests {
     fn restore_file_without_password_treats_only_argument_as_path() {
         let app = temp_app();
         let path = app.moddir.join("backup.txt");
-        let text =
-            "MagicNet backup v1\npassword_set=1\npassword_md5=5ebe2294ecd0e0f08eab7690d2a6ee69\n";
-        let encrypted = encode_backup_bytes(text, "secret").unwrap();
+        let text = legacy_v1_backup_text(["5ebe2294ecd0e0f0", "8eab7690d2a6ee69"]);
+        let encrypted = encode_backup_bytes(&text, "secret").unwrap();
         fs::create_dir_all(&app.moddir).unwrap();
         fs::write(&path, crate::encode_base64(&encrypted)).unwrap();
 
@@ -707,8 +700,7 @@ mod tests {
     fn restore_file_accepts_password_and_dash_placeholder_before_path() {
         let app = temp_app();
         let path = app.moddir.join("backup.txt");
-        let text =
-            "MagicNet backup v1\npassword_set=1\npassword_md5=900150983cd24fb0d6963f7d28e17f72\n";
+        let text = legacy_v1_backup_text(["900150983cd24fb0", "d6963f7d28e17f72"]);
         let mut encrypted = ENCRYPTED_V1_PREFIX.to_vec();
         encrypted.extend(xor_with_password(text.as_bytes(), "secret"));
         fs::create_dir_all(&app.moddir).unwrap();

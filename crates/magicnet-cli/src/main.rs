@@ -51,6 +51,8 @@ mod rules;
 mod selector_store;
 mod service;
 mod subscriptions;
+#[cfg(test)]
+mod test_support;
 mod utils;
 mod warp;
 mod webui_api;

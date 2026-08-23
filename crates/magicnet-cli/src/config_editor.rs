@@ -70,16 +70,7 @@ fn save_config(app: &App, target: &str, path: &Path, args: &[String]) -> Result<
     }
     let bytes = decode_base64(payload)?;
     let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
-    let protected = protect_tailscale_auth_keys(app, &text)?;
-    commit_config_text(
-        app,
-        target,
-        path,
-        protected.text.as_bytes(),
-        "input",
-        protected.keys.as_deref(),
-    )?;
-    mark_standalone_config(app)
+    commit_standalone_config(app, target, path, &text)
 }
 
 fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Result<(), String> {
@@ -99,7 +90,16 @@ fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Re
         ));
     }
     let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
-    let protected = protect_tailscale_auth_keys(app, &text)?;
+    commit_standalone_config(app, target, path, &text)
+}
+
+fn commit_standalone_config(
+    app: &App,
+    target: &str,
+    path: &Path,
+    text: &str,
+) -> Result<(), String> {
+    let protected = protect_tailscale_auth_keys(app, text)?;
     commit_config_text(
         app,
         target,
@@ -926,20 +926,9 @@ fn run_with_timeout(command: Command, timeout: Duration) -> Result<std::process:
 mod tests {
     use std::fs;
     use std::os::unix::fs::symlink;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-
-    fn temp_app() -> App {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock is after the Unix epoch")
-            .as_nanos();
-        App::for_test(std::env::temp_dir().join(format!(
-            "magicnet-config-editor-test-{}-{stamp}",
-            std::process::id()
-        )))
-    }
+    use crate::test_support::temp_app;
 
     #[test]
     fn validator_runner_drains_output_without_unbounded_retention() {

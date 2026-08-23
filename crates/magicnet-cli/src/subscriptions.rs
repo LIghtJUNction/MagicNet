@@ -813,19 +813,9 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
     use std::process::Command;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-
-    fn temp_app() -> App {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("magicnet-cli-test-{stamp}"));
-        fs::create_dir_all(&dir).expect("create module directory");
-        App::for_test(dir)
-    }
+    use crate::test_support::temp_app;
 
     #[test]
     fn subscription_url_validation_requires_public_https_without_credentials() {

@@ -407,31 +407,25 @@ fn default_block_url() -> &'static str {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+    use crate::test_support::temp_app;
 
-    fn temp_app() -> App {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock is after the Unix epoch")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("magicnet-block-conf-test-{stamp}"));
-        fs::create_dir_all(&root).expect("create module root");
-        App::for_test(root)
+    fn write_block_conf_fixture(app: &App, text: &str) -> PathBuf {
+        let path = conf_dir(app).join("block.conf");
+        fs::create_dir_all(path.parent().expect("block config parent"))
+            .expect("create block config parent");
+        fs::write(&path, text).expect("write legacy block config");
+        path
     }
 
     #[test]
     fn invalid_legacy_block_url_is_replaced_before_it_can_be_reemitted() {
         let app = temp_app();
-        let path = conf_dir(&app).join("block.conf");
-        fs::create_dir_all(path.parent().expect("block config parent"))
-            .expect("create block config parent");
-        fs::write(
-            &path,
+        let path = write_block_conf_fixture(
+            &app,
             "MAGICNET_BLOCK_ENABLED=1\nMAGICNET_BLOCK_COMMUNITY_ENABLED=1\nMAGICNET_BLOCK_URL=https://example.com/list;reboot\n",
-        )
-        .expect("write legacy block config");
+        );
 
         let values = block_conf_values(&app);
         assert_eq!(
@@ -472,14 +466,10 @@ mod tests {
     #[test]
     fn runtime_handoff_rewrites_legacy_block_conf_before_shell_consumption() {
         let app = temp_app();
-        let path = conf_dir(&app).join("block.conf");
-        fs::create_dir_all(path.parent().expect("block config parent"))
-            .expect("create block config parent");
-        fs::write(
-            &path,
+        let path = write_block_conf_fixture(
+            &app,
             "MAGICNET_BLOCK_ENABLED=0\nMAGICNET_BLOCK_URL=https://example.com/list;touch /tmp/untrusted\nUNKNOWN=1\n",
-        )
-        .expect("write legacy block config");
+        );
 
         persist_normalized_block_conf(&app).expect("rewrite normalized block config");
 

@@ -10,6 +10,7 @@ use crate::connection_control::{
     close_connections_through_chain, close_matching_connections, close_top_connections,
     print_close_all_summary,
 };
+use crate::node_delay::encode_path_segment;
 use crate::selector_store;
 use crate::service::{apply_config, singbox_webui};
 use crate::subscriptions::validate_subscription_url;
@@ -354,18 +355,6 @@ fn close_connection(app: &App, id: &str) -> Result<(), String> {
         return Err("Usage: cli api close <id>".to_string());
     }
     curl_delete(app, &format!("/connections/{}", encode_path_segment(id)))
-}
-
-fn encode_path_segment(value: &str) -> String {
-    value
-        .bytes()
-        .map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (byte as char).to_string()
-            }
-            _ => format!("%{byte:02X}"),
-        })
-        .collect()
 }
 
 fn run_curl(args: &[&str]) -> Result<(), String> {
@@ -764,18 +753,9 @@ fn promote_dist_dir(target: &std::path::Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-
-    fn temp_app() -> App {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("magicnet-cli-test-{stamp}"));
-        App::for_test(dir)
-    }
+    use crate::test_support::temp_app;
 
     #[test]
     fn contains_index_searches_nested_panel_directories() {
