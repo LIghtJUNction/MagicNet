@@ -12,9 +12,7 @@ use serde_json::Value;
 
 use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
-use crate::{
-    clean_module_lines, command_text_timeout, mcp, pid_summary, singbox_pid_summary, App,
-};
+use crate::{clean_module_lines, command_text_timeout, mcp, pid_summary, singbox_pid_summary, App};
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
     for (key, ok, detail) in health_items(app) {
