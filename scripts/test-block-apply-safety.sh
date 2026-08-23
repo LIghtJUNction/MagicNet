@@ -33,6 +33,8 @@ EOF
 
 magicnet_warn() { :; }
 magicnet_json_escape() { printf '%s' "$1"; }
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/blocklist.sh"
 
 # A failed selector publish must be reported instead of being masked by the

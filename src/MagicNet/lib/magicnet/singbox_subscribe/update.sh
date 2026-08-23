@@ -1,15 +1,13 @@
 # shellcheck shell=ash
 
-[ -n "${MODDIR:-}" ] && {
-    _magicnet_lib_dir="${MAGICNET_LIB_DIR:-${MODDIR}/lib/magicnet}"
-    if ! type magicnet_proc_start >/dev/null 2>&1; then
-        if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
-            _magicnet_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-        fi
-        . "${_magicnet_lib_dir}/primitives.sh"
+type magicnet_source_primitives >/dev/null 2>&1 || {
+    if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/primitives.sh"
+    else
+        . "${MODDIR}/lib/magicnet/primitives.sh"
     fi
-    unset _magicnet_lib_dir
 }
+magicnet_source_primitives
 
 magicnet_reapply_post_start_policy() {
     if command -v magicnet_after_kernel_start_unlocked >/dev/null 2>&1; then
@@ -17,28 +15,6 @@ magicnet_reapply_post_start_policy() {
     else
         magicnet_enable_dns_capture && magicnet_enable_dns_leak_guard
     fi
-}
-
-magicnet_singbox_proc_start() {
-    # Path form kept for update-lock fixtures that only source this file.
-    _proc_stat_path="$1"
-    case "$_proc_stat_path" in
-        */[0-9]*/stat)
-            _proc_pid="${_proc_stat_path%/stat}"
-            _proc_pid="${_proc_pid##*/}"
-            _proc_root="${_proc_stat_path%/"$_proc_pid"/stat}"
-            if command -v magicnet_proc_start >/dev/null 2>&1; then
-                magicnet_proc_start "$_proc_pid" "$_proc_root"
-                _proc_rc=$?
-                unset _proc_stat_path _proc_pid _proc_root
-                return "$_proc_rc"
-            fi
-            unset _proc_pid _proc_root
-            ;;
-    esac
-    awk '{ line = $0; sub(/^.*\) /, "", line); count = split(line, field, /[[:space:]]+/); if (count >= 20) print field[20] }' \
-        "$_proc_stat_path" 2>/dev/null || true
-    unset _proc_stat_path
 }
 
 # Read-only lock probe for status/reporting paths.

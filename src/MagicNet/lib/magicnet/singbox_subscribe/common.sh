@@ -2,6 +2,16 @@
 #
 # Import common Clash-style subscription nodes into the bundled sing-box config.
 
+type magicnet_source_primitives >/dev/null 2>&1 || {
+    if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/primitives.sh"
+    else
+        . "${MODDIR}/lib/magicnet/primitives.sh"
+    fi
+}
+magicnet_source_primitives
+type magicnet_singbox_config_file >/dev/null 2>&1 || . "$(magicnet_lib_dir)/subscribe_bootstrap.sh"
+
 magicnet_singbox_tag_is_reserved() {
     case "$1" in
     proxy-auto | proxy | select | lan | hotspot | ad-block | ad-allow | cn-direct | \
@@ -23,21 +33,11 @@ magicnet_singbox_ai_selectors_canonical() (
     _ai_expected_proxy_interval="${3:-3m}"
     _ai_jq="$(command -v jq 2>/dev/null || true)"
     [ -n "$_ai_jq" ] || return 1
-    "$_ai_jq" -e \
+    _ai_lib="$(magicnet_jq_ai_tags_lib)"
+    "$_ai_jq" -L "$_ai_lib" \
         --arg expected_proxy_url "$_ai_expected_proxy_url" \
-        --arg expected_proxy_interval "$_ai_expected_proxy_interval" '
-      def blocked_ai_node_tag:
-        test("中国|大陆|内地|香港|台湾|臺灣|台北|臺北|台中|臺中|台南|臺南|高雄|新竹|🇭🇰|🇹🇼|北京|上海|广州|深圳|天津|重庆|江苏|浙江|福建|山东|河南|河北|湖北|湖南|四川|陕西|安徽|辽宁|吉林|黑龙江|海南|广西|贵州|云南|山西|江西|(^|[^A-Za-z0-9])(?:Hong[ _-]?Kong(?:[ _-]?[0-9]+)?|HKG?[ _-]?[0-9]+|Taiwan|Taipei|Taichung|Tainan|Kaohsiung|Hsinchu|TW|TWN|China|Mainland|HK|HKG|CN|Beijing|Shanghai|Guangzhou|Shenzhen|Chongqing|Tianjin|Hebei|Shanxi|Liaoning|Jilin|Heilongjiang|Jiangsu|Zhejiang|Anhui|Fujian|Jiangxi|Shandong|Henan|Hubei|Hunan|Guangdong|Hainan|Sichuan|Guizhou|Yunnan|Shaanxi|Gansu|Qinghai|Inner[ _-]?Mongolia|Guangxi|Tibet|Ningxia|Xinjiang)([^A-Za-z0-9]|$)"; "i");
-      def us_node_tag:
-        test("美国|美國|美西|美东|美東|洛杉矶|洛杉磯|圣何塞|聖何塞|西雅图|西雅圖|达拉斯|達拉斯|纽约|紐約|芝加哥|迈阿密|邁阿密|凤凰城|鳳凰城|亚特兰大|亞特蘭大|波特兰|波特蘭|丹佛|拉斯维加斯|拉斯維加斯|硅谷|🇺🇸|(^|[^A-Za-z0-9])(?:US|USA|United[ _-]?States|America|Los[ _-]?Angeles|San[ _-]?Jose|Seattle|Dallas|New[ _-]?York|Chicago|Washington|Miami|Phoenix|Atlanta|Portland|Denver|Las[ _-]?Vegas|Silicon[ _-]?Valley)([^A-Za-z0-9]|$)"; "i");
-      def japan_node_tag:
-        test("日本|东京|東京|大阪|埼玉|名古屋|🇯🇵|(^|[^A-Za-z0-9])(?:JP|JPN|Japan|Tokyo|Osaka|Saitama|Nagoya)([^A-Za-z0-9]|$)"; "i");
-      def prioritize_ai_tags:
-        . as $tags
-        | ([$tags[]? | select(blocked_ai_node_tag | not)]) as $eligible
-        | ([$eligible[] | select(us_node_tag)])
-          + ([$eligible[] | select((us_node_tag | not) and japan_node_tag)])
-          + ([$eligible[] | select((us_node_tag | not) and (japan_node_tag | not))]);
+        --arg expected_proxy_interval "$_ai_expected_proxy_interval" \
+        -e 'include "ai-node-tags";
       def proxy_node:
         ((.tag // "") | startswith("magicnet-chain-") | not)
           and (.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
@@ -376,18 +376,6 @@ magicnet_singbox_tag_matches_filter() {
     return 1
 }
 
-if ! command -v error >/dev/null 2>&1; then
-    error() { printf '%s\n' "ERROR: $1"; }
-fi
-
-if ! command -v warn >/dev/null 2>&1; then
-    warn() { printf '%s\n' "WARN: $1"; }
-fi
-
-if ! command -v success >/dev/null 2>&1; then
-    success() { printf '%s\n' "$1"; }
-fi
-
 magicnet_yaml_value() {
     _key="$1"
     # This parser is called only from magicnet_singbox_emit_node_json, whose
@@ -431,10 +419,6 @@ magicnet_singbox_subscription_source_dir() {
     printf '%s\n' "${MODDIR}/.config/sing-box"
 }
 
-magicnet_singbox_subscription_config_file() {
-    printf '%s\n' "${MAGICNET_SUB_CONFIG_FILE:-${MODDIR}/.config/sing-box/config.json}"
-}
-
 magicnet_singbox_subscription_cache_dir() {
     printf '%s\n' "${MODDIR}/.state/sing-box/subscription-cache"
 }
@@ -442,29 +426,6 @@ magicnet_singbox_subscription_cache_dir() {
 magicnet_singbox_subscription_status_file() {
     printf '%s\n' "${MODDIR}/.state/sing-box/subscription-status"
 }
-
-if ! command -v magicnet_subscription_schedule_file >/dev/null 2>&1; then
-    magicnet_subscription_schedule_file() {
-        printf '%s\n' "${MODDIR}/.config/magicnet/subscription-refresh-hours"
-    }
-fi
-
-# Keep the strict node-presence check available when the subscription library is
-# loaded without the full module runtime.
-if ! command -v magicnet_singbox_config_has_nodes >/dev/null 2>&1; then
-    magicnet_singbox_config_has_nodes() {
-        _config="${MAGICNET_SUB_CONFIG_FILE:-${MODDIR}/.config/sing-box/config.json}"
-        [ -f "$_config" ] || {
-            unset _config
-            return 1
-        }
-        grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|wireguard|tuic|anytls|socks)"' "$_config" &&
-            magicnet_singbox_ai_selectors_canonical "$_config"
-        _rc=$?
-        unset _config
-        return "$_rc"
-    }
-fi
 
 magicnet_singbox_subscription_fingerprint() {
     _fingerprint_value="$1"

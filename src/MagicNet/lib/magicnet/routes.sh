@@ -7,9 +7,7 @@ magicnet_route_list_file() {
 }
 
 magicnet_route_list_values() {
-    _file="$1"
-    [ -f "$_file" ] || return 0
-    sed '/^[[:space:]]*$/d; /^[[:space:]]*#/d' "$_file" 2>/dev/null | awk '!seen[$0]++'
+    magicnet_list_file_values "$1"
 }
 
 magicnet_route_has_rules() {

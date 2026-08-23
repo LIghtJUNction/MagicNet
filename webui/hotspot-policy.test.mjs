@@ -60,7 +60,7 @@ assert.match(webuiApi, /"disable"[\s\S]*refresh_hotspot_policy_if_stale/);
 assert.match(webuiApi, /rollback_hotspot_enable/);
 const startSingBox = core.slice(
   core.indexOf("magicnet_start_singbox_unlocked()"),
-  core.indexOf("magicnet_with_start_config_lock()"),
+  core.indexOf("magicnet_with_sub_config_lock magicnet_start_singbox"),
 );
 assert.match(startSingBox, /magicnet_singbox_apply_hotspot_policy/);
 assert.ok(

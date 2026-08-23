@@ -56,19 +56,17 @@ magicnet_dns_bootstrap_server() {
 magicnet_dns_apply_singbox() {
     _profile="$(magicnet_dns_profile)"
     _bootstrap_server="$(magicnet_dns_bootstrap_server)"
-    _config="${MODDIR}/.config/sing-box/config.json"
+    _config="$(magicnet_singbox_config_file)"
     [ -f "$_config" ] || {
         unset _profile _bootstrap_server _config
         return 0
     }
-    _jq="${MODDIR}/bin/jq"
-    [ -x "$_jq" ] || {
-        magicnet_warn "packaged jq is unavailable; DNS profile apply rejected"
-        unset _profile _bootstrap_server _config _jq
+    _jq="$(magicnet_require_jq "packaged jq is unavailable; DNS profile apply rejected")" || {
+        unset _profile _bootstrap_server _config
         return 1
     }
     _tmp="${_config}.magicnet-dns.new"
-    (umask 077; "$_jq" --arg profile "$_profile" --arg bootstrap_server "$_bootstrap_server" '
+    magicnet_jq_install_config "$_config" "$_tmp" "$_jq" --arg profile "$_profile" --arg bootstrap_server "$_bootstrap_server" -e '
       def cf_udp($tag; $server):
         {"type":"udp","tag":$tag,"server":$server,"detour":"proxy"};
       def cf_tls($tag; $server):
@@ -97,9 +95,8 @@ magicnet_dns_apply_singbox() {
       | if $profile == "default" then .dns.final = "bootstrap-local-dns"
         else .dns.final = "cloudflare-profile-dns"
         end
-    ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
+    ' "$_config"
     _rc=$?
-    [ "$_rc" -eq 0 ] || rm -f "$_tmp" 2>/dev/null || true
     unset _profile _bootstrap_server _config _jq _tmp
     return "$_rc"
 }
