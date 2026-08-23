@@ -950,7 +950,7 @@ assert_hotspot_startup_reuses_one_discovery_snapshot() (
 
 assert_hotspot_startup_reuses_one_discovery_snapshot
 
-assert_startup_policy_order() {
+assert_startup_policy_order() (
   startup_events="$WORK/startup-events.log"
   : >"$startup_events"
 
@@ -959,13 +959,7 @@ assert_startup_policy_order() {
   import() { return 0; }
   is_singbox_running() { return 1; }
   magicnet_prepare_singbox_nodes_unlocked() { printf '%s\n' prepare >>"$startup_events"; }
-  magicnet_singbox_apply_transparent_mode() { printf '%s\n' transparent >>"$startup_events"; }
-  magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot >>"$startup_events"; }
-  magicnet_dns_apply_unlocked() { printf '%s\n' dns >>"$startup_events"; }
-  magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$startup_events"; }
-  magicnet_tailscale_apply_unlocked() { printf '%s\n' tailscale >>"$startup_events"; }
-  magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$startup_events"; }
-  magicnet_singbox_apply_zashboard() { printf '%s\n' zashboard >>"$startup_events"; }
+  magicnet_apply_runtime_config_unlocked() { printf '%s\n' runtime-policy >>"$startup_events"; }
   magicnet_tailscale_inject_auth_key() { printf '%s\n' tailscale-auth >>"$startup_events"; }
   magicnet_tailscale_scrub_auth_key() { return 0; }
   singbox_start() { printf '%s\n' singbox-start >>"$startup_events"; }
@@ -974,21 +968,15 @@ assert_startup_policy_order() {
   MAGIC_SINGBOX=1 magicnet_start_singbox_unlocked
   if ! diff -u - "$startup_events" <<'EOF'
 prepare
-transparent
-hotspot
-dns
-tailscale
-app-policy
-warp
-zashboard
+runtime-policy
 tailscale-auth
 singbox-start
 EOF
   then
-    printf '%s\n' 'app policy must be materialized before sing-box starts' >&2
+    printf '%s\n' 'the complete runtime policy pipeline must run before sing-box starts' >&2
     exit 1
   fi
-}
+)
 
 assert_startup_policy_order
 

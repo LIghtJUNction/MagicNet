@@ -22,23 +22,11 @@ magicnet_start_singbox_unlocked() {
     import __singbox__
     is_singbox_running >/dev/null 2>&1 && return 0
     magicnet_prepare_singbox_nodes_unlocked || return 1
-    magicnet_singbox_chain_apply || return 1
-    magicnet_singbox_apply_transparent_mode || return 1
-    magicnet_singbox_apply_hotspot_policy || return 1
-    # sing-box snapshots DNS servers and WARP endpoints when the process
-    # starts.  Applying these only in the post-start rewrite made a fresh
-    # start report success while the running core still held the old config.
-    magicnet_dns_apply_unlocked || return 1
-    magicnet_tailscale_apply_unlocked || return 1
-    # The preceding normalizers rebuild the managed TUN inbound.  Materialize
-    # per-app UID boundaries after all of them and before sing-box starts; a
-    # deferred rewrite cannot change the already-running core's in-memory routes.
-    magicnet_app_policy_apply_unlocked || return 1
-    magicnet_warp_apply_unlocked || return 1
-    # The running core snapshots clash_api.external_ui at process start.  A
-    # post-start rewrite only dirties config.json and cannot affect that core.
-    magicnet_singbox_apply_zashboard ||
-        magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
+    # Cold start and WebUI/fswatch apply must materialize the same ordered set
+    # of runtime transforms. Keeping a shorter startup-only list omitted block
+    # and custom route policy, so fswatch immediately rewrote config.json and
+    # restarted the core that had just become ready.
+    magicnet_apply_runtime_config_unlocked || return 1
     magicnet_tailscale_inject_auth_key || return 1
     import __singbox__
     if ! singbox_start; then

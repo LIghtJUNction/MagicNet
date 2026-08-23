@@ -13,6 +13,10 @@ const core = readFileSync(
   new URL("../src/MagicNet/lib/magicnet/core.sh", import.meta.url),
   "utf8",
 );
+const runtimeConfig = readFileSync(
+  new URL("../src/MagicNet/lib/magicnet/runtime_config.sh", import.meta.url),
+  "utf8",
+);
 const webuiApi = readFileSync(
   new URL("../crates/magicnet-cli/src/webui_api.rs", import.meta.url),
   "utf8",
@@ -65,11 +69,12 @@ const startSingBox = core.slice(
   core.indexOf("magicnet_start_singbox_unlocked()"),
   core.indexOf("magicnet_with_sub_config_lock magicnet_start_singbox"),
 );
-assert.match(startSingBox, /magicnet_singbox_apply_hotspot_policy/);
+assert.match(startSingBox, /magicnet_apply_runtime_config_unlocked/);
 assert.ok(
-  startSingBox.indexOf("magicnet_singbox_apply_hotspot_policy") <
+  startSingBox.indexOf("magicnet_apply_runtime_config_unlocked") <
     startSingBox.indexOf("singbox_start"),
-  "hotspot policy must be materialized before sing-box snapshots the config",
+  "the complete runtime policy must be materialized before sing-box snapshots the config",
 );
+assert.match(runtimeConfig, /magicnet_singbox_apply_hotspot_policy/);
 
 console.log("hotspot policy tests passed");

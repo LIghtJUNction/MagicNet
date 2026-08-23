@@ -219,6 +219,7 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_singbox_apply_zashboard || _runtime_rc=1
     magicnet_dns_apply_unlocked || _runtime_rc=1
     magicnet_transparent_apply_unlocked || _runtime_rc=1
+    magicnet_singbox_apply_hotspot_policy || _runtime_rc=1
     magicnet_app_policy_apply_unlocked || _runtime_rc=1
     magicnet_warp_apply_unlocked || _runtime_rc=1
     magicnet_route_apply_unlocked || _runtime_rc=1

@@ -940,6 +940,13 @@ rg -q "^port=$MCP_TEST_PORT$" "$TMP/mcp-service-start.log"
 rg -q '^pid=[0-9]+$' "$TMP/mcp-service-start.log"
 
 run "$MODDIR/cli" service status
+# shellcheck disable=SC2016
+run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" sh -c '
+    . "$MODDIR/lib/kamfw/.kamfwrc"
+    import __runtime__
+    . "$MODDIR/lib/magicnet.sh"
+    magicnet_singbox_runtime_fingerprint_matches
+'
 run "$MODDIR/cli" core status
 run "$MODDIR/cli" core select sing-box
 run "$MODDIR/cli" core status
