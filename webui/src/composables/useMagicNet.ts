@@ -18,6 +18,7 @@ import {
   backgroundAccepted,
   backgroundLogCommand,
   backgroundLogPath,
+  backgroundTaskBlocksLaunch,
   backgroundTaskDefaults,
   createBackgroundOperationId,
   isSubscriptionBackgroundArgs,
@@ -409,6 +410,13 @@ async function startBackgroundCli(
   cleanupCommand = "",
   lifecycleArgs = displayArgs,
 ): Promise<string> {
+  if (backgroundTaskBlocksLaunch(state.backgroundTask)) {
+    const activeLabel = state.backgroundTask.label || "上一个后台任务";
+    const text = `[error] unavailable: ${activeLabel} 仍在后台运行或等待对账，请到“输出”页确认完成后再试。`;
+    state.notice = `未执行：${label}`;
+    state.output = text;
+    return text;
+  }
   const foregroundToken = foregroundUiGate.begin();
   const ownsForegroundUi = (): boolean => foregroundUiGate.owns(foregroundToken);
   const redactOutput = Boolean(previewOverride);

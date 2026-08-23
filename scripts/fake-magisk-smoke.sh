@@ -313,6 +313,10 @@ exit 0
 # shellcheck disable=SC2016
 write_mock iptables '
 if [[ "${1:-}" == "-nL" && "${2:-}" == "tetherctrl_FORWARD" ]]; then exit 0; fi
+if [[ "${1:-}" == "-S" && "${2:-}" == "OUTPUT" ]]; then
+    echo "-A OUTPUT -o lo -p udp --dport 53 -j REJECT"
+    exit 0
+fi
 for arg in "$@"; do
     if [[ "$arg" == "-C" ]]; then exit 1; fi
 done
@@ -736,6 +740,10 @@ assert_dns_interception_not_enabled() {
 run sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import self
+    if env | grep -q "^KAM_MODULES="; then
+        printf "%s\n" "KAM_MODULES leaked into child-process environment" >&2
+        exit 1
+    fi
     config set override.description "fake smoke config"
     test "$(config get override.description)" = "fake smoke config"
     test -f "$MODDIR/.state/kamfw-config/${MODDIR##*/}/persist/override.description"
@@ -938,7 +946,7 @@ env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPA
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
-    printf '%s\n' "sing-box"
+    printf "%s\n" "sing-box"
 ' >"$TMP/strict-core.log"
 grep -qx 'sing-box' "$TMP/strict-core.log"
 
@@ -968,6 +976,21 @@ mv "$TMP/base-sing-box-config.json" "$MODDIR/.config/sing-box/config.json"
 if "$HOST_JQ" -e '.outbounds[] | select(.tag == "old-cached-node")' \
     "$MODDIR/.config/sing-box/config.json" >/dev/null; then
     echo "sing-box cache replay fixture still has a runtime node" >&2
+    exit 1
+fi
+# Detached startup supervisors may still be reconciling the initial fixture.
+# Quiesce them before the deterministic stopped-core runtime assertions.
+run "$MODDIR/cli" supervisor stop all
+config_lock_ready=0
+for ((attempt = 0; attempt < 100; attempt++)); do
+    if flock -n "$MODDIR/.state/config-apply.lock" true; then
+        config_lock_ready=1
+        break
+    fi
+    sleep 0.1
+done
+if [[ "$config_lock_ready" -ne 1 ]]; then
+    echo "startup config reconciliation did not release its lock" >&2
     exit 1
 fi
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
@@ -1020,7 +1043,7 @@ if run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
-    magicnet_dns_apply_unlocked() {
+    magicnet_enable_dns_capture() {
         return 1
     }
     magicnet_after_kernel_start_deferred_unlocked

@@ -2150,12 +2150,15 @@ selector_missing_block_mutant="$selector_fixture_dir/missing-block-mutant.json"
 selector_jq_repaired="$selector_fixture_dir/jq-repaired.json"
 selector_legacy_upgrade="$selector_fixture_dir/legacy-upgrade.json"
 ln -s "$CONFIG_DIR/rules" "$selector_fixture_dir/rules"
+mkdir -p "$selector_fixture_dir/bin"
+ln -s "$(command -v jq)" "$selector_fixture_dir/bin/jq"
 trap 'rm -rf "$selector_fixture_dir"' EXIT
 export MODDIR="$selector_fixture_dir"
 
-# config.sh materializes the optional proxy chain during subscription updates;
-# load the shared helper explicitly so this standalone policy test matches the
-# module entrypoint and package smoke environment.
+# config.sh materializes the optional proxy chain during subscription updates
+# and requires jq at the packaged module path. The fixture exposes the host jq
+# there and loads the shared helper so this standalone test matches the module
+# entrypoint and package smoke environment.
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/chain.sh"
 # shellcheck disable=SC1091

@@ -106,7 +106,7 @@ export function backgroundLaunchCommand(
   return [
     `if ! mkdir -p ${logDir} || ! : >${logFile} || ! exec 9>>${logFile}; then echo ${setupFailure} >&2; exit 1; fi`,
     `if ! command -v nohup >/dev/null 2>&1 || ! command -v sh >/dev/null 2>&1; then exec 9>&-; echo ${missingLauncher} >&2; exit 127; fi`,
-    `nohup sh -c ${shellQuote(body)} >&9 2>&1 </dev/null & _magicnet_background_pid=$!; exec 9>&-; case "$_magicnet_background_pid" in ''|*[!0-9]*) echo ${setupFailure} >&2; exit 1;; esac; echo ${accepted}`,
+    `if command -v setsid >/dev/null 2>&1; then nohup setsid sh -c ${shellQuote(body)} >&9 2>&1 </dev/null & else nohup sh -c ${shellQuote(body)} >&9 2>&1 </dev/null & fi; _magicnet_background_pid=$!; exec 9>&-; case "$_magicnet_background_pid" in ''|*[!0-9]*) echo ${setupFailure} >&2; exit 1;; esac; echo ${accepted}`,
   ].join("; ");
 }
 
@@ -171,6 +171,12 @@ export function reconcileSubscriptionCompletion(
 
 export function isSubscriptionBackgroundArgs(args: string): boolean {
   return /(?:^|\s)sub\s+(?:apply-file|update|update-all)\b/.test(args);
+}
+
+export function backgroundTaskBlocksLaunch(
+  task: Pick<BackgroundTaskState, "status">,
+): boolean {
+  return task.status === "running" || task.status === "timeout";
 }
 
 export function isActiveSubscriptionBackgroundTask(

@@ -6,6 +6,8 @@
 
 type magicnet_source_primitives >/dev/null 2>&1 || {
     if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        # BASH_SOURCE is guarded by the Bash-only branch above.
+        # shellcheck disable=SC3054
         . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/primitives.sh"
     else
         . "${MODDIR}/lib/magicnet/primitives.sh"
@@ -77,6 +79,8 @@ magicnet_transparent_set_mode() {
         unset _mode _mode_file _mode_tmp
         return 1
     fi
+    # Published module state is consumed by callers after sourcing.
+    # shellcheck disable=SC2034
     MAGICNET_TRANSPARENT_MODE="$_mode"
     unset _mode _mode_file _mode_tmp
 }

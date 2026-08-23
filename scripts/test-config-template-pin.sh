@@ -12,7 +12,7 @@ fail() {
 
 [[ -f "$CONFIG_DIR/config.json" ]] || fail "MagicSingBox submodule is not initialized"
 
-submodule_revision=$(git -C "$CONFIG_DIR" rev-parse HEAD)
+submodule_revision=$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$CONFIG_DIR" rev-parse HEAD)
 pinned_revision=$(sed -n 's#.*MagicSingBox/\([0-9a-f]\{40\}\)/config\.json.*#\1#p' "$EDITOR")
 [[ "$pinned_revision" == "$submodule_revision" ]] ||
     fail "runtime template revision $pinned_revision differs from submodule $submodule_revision"

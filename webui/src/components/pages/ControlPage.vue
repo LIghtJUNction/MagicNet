@@ -103,12 +103,13 @@ const runtimeInsight = computed(() =>
     hasKsu: state.hasKsu,
     phase: state.phase,
     queueDepth: state.queueDepth,
+    backgroundStatus: state.backgroundTask.status,
     runtime: state.runtime,
     output: state.output,
   }),
 );
 const runtimeBusy = computed(() =>
-  controlRuntimeBusy(state.phase, state.queueDepth),
+  controlRuntimeBusy(state.phase, state.queueDepth, state.backgroundTask.status),
 );
 const missingNodeCache = computed(() =>
   /No cached sing-box nodes found|run cli sub update sing-box/i.test(

@@ -131,7 +131,10 @@ magicnet_start_kernel() {
             magicnet_hotspot_startup_snapshot_clear
         magicnet_singbox_record_runtime_fingerprint ||
             magicnet_warn "Failed to record the running sing-box configuration fingerprint."
-        "${MODDIR}/cli" api replay >/dev/null 2>&1 || true
+        # Startup already materialized hotspot policy before launching sing-box.
+        # Replaying it through the full WebUI path can recursively apply config
+        # and restart the core that is still starting.
+        "${MODDIR}/cli" api replay-startup >/dev/null 2>&1 || true
         magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
         return 0
     fi

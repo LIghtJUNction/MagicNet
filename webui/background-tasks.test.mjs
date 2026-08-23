@@ -6,6 +6,7 @@ import {
   backgroundAccepted,
   backgroundLaunchCommand,
   backgroundLogCommand,
+  backgroundTaskBlocksLaunch,
   backgroundLogPath,
   createBackgroundOperationId,
   isActiveSubscriptionBackgroundTask,
@@ -16,11 +17,16 @@ import {
 import { CLI, MODULE_DIR } from "./src/constants.ts";
 
 const useMagicNetSource = readFileSync(new URL("./src/composables/useMagicNet.ts", import.meta.url), "utf8");
+const controlRuntimeSource = readFileSync(new URL("./src/components/pages/controlRuntimeInsight.ts", import.meta.url), "utf8");
+const controlPageSource = readFileSync(new URL("./src/components/pages/ControlPage.vue", import.meta.url), "utf8");
 assert.match(useMagicNetSource, /async function startBackgroundCli[\s\S]*?const operationSequence = trackRedactedOperation\(\s*previewOverride \|\| redactedCliPreview\(displayArgs\),\s*label,\s*\);/);
 assert.match(useMagicNetSource, /function followBackgroundLogs\([\s\S]*?operationSequence: number,[\s\S]*?publishTrackedOperation\(\s*operationSequence,/);
 assert.match(useMagicNetSource, /function followBackgroundLogs[\s\S]*?refreshSubs\(true(?:,|\))/);
 assert.match(useMagicNetSource, /async function startBackgroundCli[\s\S]*?const operationId = createBackgroundOperationId\(\);[\s\S]*?refreshSubs\(true\)/);
 assert.match(useMagicNetSource, /const ownsForegroundUi = \(\): boolean => foregroundUiGate\.owns\(foregroundToken\);[\s\S]*?if \(!ownsForegroundUi\(\)\)[\s\S]*?followBackgroundLogs/);
+assert.match(useMagicNetSource, /backgroundTaskBlocksLaunch\(state\.backgroundTask\)[\s\S]*?仍在后台运行或等待对账/);
+assert.match(controlRuntimeSource, /\["running", "timeout"\]\.includes\(backgroundStatus\)/);
+assert.match(controlPageSource, /controlRuntimeBusy\(state\.phase, state\.queueDepth, state\.backgroundTask\.status\)/);
 
 const firstId = createBackgroundOperationId(1000);
 const secondId = createBackgroundOperationId(1000);
@@ -42,6 +48,11 @@ assert.equal(isActiveSubscriptionBackgroundTask({ status: "running", args: "sub 
 assert.equal(isActiveSubscriptionBackgroundTask({ status: "running", args: "service restart" }), false);
 assert.equal(subscriptionLifecycleRunning({ status: "done", args: "sub update-all" }, true), true, "device update_running must win over stale done task");
 assert.equal(subscriptionLifecycleRunning({ status: "error", args: "sub update-all" }, false), false);
+assert.equal(backgroundTaskBlocksLaunch({ status: "idle" }), false);
+assert.equal(backgroundTaskBlocksLaunch({ status: "done" }), false);
+assert.equal(backgroundTaskBlocksLaunch({ status: "error" }), false);
+assert.equal(backgroundTaskBlocksLaunch({ status: "running" }), true);
+assert.equal(backgroundTaskBlocksLaunch({ status: "timeout" }), true, "an unverified timeout must block another mutating background task");
 
 const command = backgroundLaunchCommand(
   "sub update-all",
@@ -52,6 +63,7 @@ const command = backgroundLaunchCommand(
 );
 for (const token of [
   "trap",
+  "setsid",
   "EXIT",
   "HUP",
   "INT",

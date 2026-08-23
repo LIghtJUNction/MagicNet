@@ -752,9 +752,7 @@ pub(crate) fn download_pinned_https_url(
     }
     command.arg(url);
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|err| format!("run curl: {err}"))?;
+    let mut child = command.spawn().map_err(|err| format!("run curl: {err}"))?;
     let mut stdout = child
         .stdout
         .take()

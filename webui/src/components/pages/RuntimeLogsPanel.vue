@@ -18,7 +18,8 @@ import {
 
 const { runCli, state, compactOutput } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
-const target = ref<"sing-box" | "mcp">("sing-box");
+type RuntimeLogTarget = "webui" | "sing-box" | "mcp" | "fswatch" | "supervisors";
+const target = ref<RuntimeLogTarget>("webui");
 const lines = ref("120");
 const query = ref("");
 const level = ref<"all" | "warn" | "error">("all");
@@ -26,13 +27,13 @@ const output = ref("");
 const copied = ref(false);
 const issueCopied = ref(false);
 const lastLabel = ref("");
-const loadedTarget = ref<"sing-box" | "mcp">("sing-box");
+const loadedTarget = ref<RuntimeLogTarget>("webui");
 const autoRefresh = ref(false);
 let timer = 0;
 
 const commandPreview = computed(() => {
   const count = normalizedLines();
-  return target.value === "mcp" ? `mcp logs ${count}` : `service logs sing-box ${count}`;
+  return target.value === "mcp" ? `mcp logs ${count}` : `service logs ${target.value} ${count}`;
 });
 const logLines = computed(() => output.value.split(/\r?\n/).filter(Boolean));
 const logAnalysis = computed(() => analyzeRuntimeLogLines(logLines.value));
@@ -58,7 +59,13 @@ const quickFilters = [
 
 async function refreshLogs(): Promise<void> {
   const command = commandPreview.value;
-  const label = target.value === "mcp" ? "读取 MCP 日志" : "读取 sing-box 日志";
+  const label = {
+    webui: "读取 WebUI 后台任务日志",
+    "sing-box": "读取 sing-box 日志",
+    mcp: "读取 MCP 日志",
+    fswatch: "读取 fswatch 日志",
+    supervisors: "读取监督器日志",
+  }[target.value];
   await withAction("runtime-logs", async () => {
     output.value = await runCli(command, label);
     lastLabel.value = label;
@@ -158,7 +165,10 @@ onUnmounted(stopTimer);
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
       <select v-model="target" class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]">
+        <option value="webui">WebUI 后台任务</option>
         <option value="sing-box">sing-box</option>
+        <option value="fswatch">fswatch</option>
+        <option value="supervisors">监督器</option>
         <option value="mcp">MCP</option>
       </select>
       <Input v-model="lines" inputmode="numeric" placeholder="120" />

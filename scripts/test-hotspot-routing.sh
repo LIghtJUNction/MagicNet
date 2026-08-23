@@ -111,6 +111,11 @@ ip() {
   return 1
 }
 
+# shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+# shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
+# shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/routes.sh"
 
 magicnet_singbox_apply_hotspot_policy

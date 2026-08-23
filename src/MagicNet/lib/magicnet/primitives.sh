@@ -8,6 +8,8 @@ magicnet_lib_dir() {
     elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
         printf '%s\n' "${MODDIR}/lib/magicnet"
     elif [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        # BASH_SOURCE is guarded by the Bash-only branch above.
+        # shellcheck disable=SC3054
         cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
     else
         printf '%s\n' "${MODDIR}/lib/magicnet"

@@ -298,13 +298,50 @@ pub(crate) fn service_logs(app: &App, args: &[String]) -> Result<(), String> {
         .get(3)
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(120);
-    let file = service_log_path(app, target)?;
+    let file = match service_log_path(app, target) {
+        Ok(file) => file,
+        Err(error) if error.starts_with("log file unavailable:") => {
+            println!("[info] no log available yet for target={target}");
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
     let text = read_bounded_log_tail(&file)
         .map_err(|err| format!("log not found {}: {err}", file.display()))?;
     for line in tail_lines(&text, lines.clamp(1, 1000)) {
         println!("{line}");
     }
     Ok(())
+}
+
+fn latest_webui_log_path(log_root: &Path) -> Result<PathBuf, String> {
+    let mut candidates = Vec::new();
+    for entry in fs::read_dir(log_root).map_err(|err| format!("log file unavailable: {err}"))? {
+        let entry = entry.map_err(|err| format!("log file unavailable: {err}"))?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !name.starts_with("webui-") || !name.ends_with(".log") {
+            continue;
+        }
+        let file_type = entry
+            .file_type()
+            .map_err(|err| format!("log file unavailable: {err}"))?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let modified = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
+        candidates.push((modified, entry.path()));
+    }
+    candidates
+        .into_iter()
+        .max_by(|left, right| left.cmp(right))
+        .map(|(_, path)| path)
+        .ok_or_else(|| "log file unavailable: no WebUI task logs".to_string())
 }
 
 fn service_log_path(app: &App, target: &str) -> Result<PathBuf, String> {
@@ -314,18 +351,17 @@ fn service_log_path(app: &App, target: &str) -> Result<PathBuf, String> {
         target.trim()
     };
     let name = match target {
-        "sing-box" | "singbox" | "core" => "sing-box.log".to_string(),
-        "mcp" | "mcp-server" => "mcp-server.log".to_string(),
-        "fswatch" => "fswatch.log".to_string(),
-        "kernel" => "magicnet-kernel.log".to_string(),
-        "service" => "service.log".to_string(),
-        other if safe_log_name(other) => {
-            if other.ends_with(".log") {
-                other.to_string()
-            } else {
-                format!("{other}.log")
-            }
-        }
+        "webui" | "background" => None,
+        "sing-box" | "singbox" | "core" => Some("sing-box.log".to_string()),
+        "mcp" | "mcp-server" => Some("mcp-server.log".to_string()),
+        "fswatch" => Some("fswatch.log".to_string()),
+        "kernel" => Some("magicnet-kernel.log".to_string()),
+        "service" => Some("service.log".to_string()),
+        other if safe_log_name(other) => Some(if other.ends_with(".log") {
+            other.to_string()
+        } else {
+            format!("{other}.log")
+        }),
         _ => return Err("invalid service log target".to_string()),
     };
 
@@ -336,7 +372,10 @@ fn service_log_path(app: &App, target: &str) -> Result<PathBuf, String> {
     if !log_root.starts_with(&module_root) || !log_root.is_dir() {
         return Err("log directory escapes module directory".to_string());
     }
-    let requested = log_root.join(name);
+    let requested = match name {
+        Some(name) => log_root.join(name),
+        None => latest_webui_log_path(&log_root)?,
+    };
     let resolved =
         fs::canonicalize(&requested).map_err(|err| format!("log file unavailable: {err}"))?;
     if !resolved.starts_with(&log_root) || !resolved.is_file() {
@@ -772,6 +811,31 @@ mod tests {
         std::os::unix::fs::symlink(&outside, app.log_dir.join("custom.log")).unwrap();
         #[cfg(unix)]
         assert!(service_log_path(&app, "custom").is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn service_log_path_selects_latest_webui_task_log() {
+        let (app, root) = fixture_app("latest-webui");
+        let older = app.log_dir.join("webui-start-old.log");
+        let newer = app.log_dir.join("webui-start-new.log");
+        fs::write(&older, "older\n").unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        fs::write(&newer, "newer\n").unwrap();
+        fs::write(app.log_dir.join("service.log"), "unrelated\n").unwrap();
+
+        assert_eq!(
+            service_log_path(&app, "webui").unwrap(),
+            fs::canonicalize(&newer).unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn service_log_path_reports_missing_webui_task_log() {
+        let (app, root) = fixture_app("missing-webui");
+        let error = service_log_path(&app, "webui").unwrap_err();
+        assert!(error.starts_with("log file unavailable:"));
         let _ = fs::remove_dir_all(root);
     }
 

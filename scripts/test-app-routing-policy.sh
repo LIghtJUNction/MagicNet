@@ -292,7 +292,7 @@ assert_jq_removes_legacy_dns_package_rules() {
   ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 }
 
-assert_missing_packaged_jq_does_not_mutate_config() {
+assert_missing_packaged_jq_does_not_mutate_config() (
   MODDIR="$WORK/missing-jq/module"
   export MODDIR
   mkdir -p "$MODDIR/.config/sing-box"
@@ -304,7 +304,7 @@ assert_missing_packaged_jq_does_not_mutate_config() {
   fi
   current_hash=$($JQ_BIN -c . "$MODDIR/.config/sing-box/config.json" | sha256sum)
   test "$current_hash" = "$original_hash"
-}
+)
 
 assert_jq_removes_legacy_dns_package_rules
 assert_missing_packaged_jq_does_not_mutate_config

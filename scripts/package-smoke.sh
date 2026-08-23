@@ -70,7 +70,7 @@ require_android_arm64_elf() {
     local entry="$1"
     local output
     unzip -oq "$ZIP_PATH" "$entry" -d "$elf_tmp"
-    output="$(file -L "$elf_tmp/$entry")"
+    output="$(LC_ALL=C file -L "$elf_tmp/$entry")"
     grep -F 'ELF 64-bit' <<<"$output" >/dev/null \
         || fail "$entry is not an ELF64 binary: $output"
     grep -F 'ARM aarch64' <<<"$output" >/dev/null \
@@ -79,7 +79,7 @@ require_android_arm64_elf() {
         && ! grep -F 'statically linked' <<<"$output" >/dev/null; then
         fail "$entry is neither linked for Android linker64 nor static: $output"
     fi
-    readelf -h "$elf_tmp/$entry" | grep -F 'Machine:                           AArch64' >/dev/null \
+    LC_ALL=C readelf -h "$elf_tmp/$entry" | grep -F 'Machine:                           AArch64' >/dev/null \
         || fail "$entry ELF machine is not AArch64"
 }
 
@@ -143,7 +143,10 @@ subscription_module_root="$elf_tmp/subscription-module"
 mkdir -p "$subscription_module_root"
 unzip -oq "$ZIP_PATH" \
     'lib/magicnet_singbox_subscribe.sh' \
+    'lib/magicnet/primitives.sh' \
+    'lib/magicnet/subscribe_bootstrap.sh' \
     'lib/magicnet/chain.sh' \
+    'lib/magicnet/jq/*.jq' \
     'lib/magicnet/singbox_subscribe/*.sh' \
     -d "$subscription_module_root"
 bash "$ROOT/scripts/singbox-subscription-protocol-smoke.sh" "$subscription_module_root"

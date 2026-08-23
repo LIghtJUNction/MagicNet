@@ -2,6 +2,8 @@
 
 type magicnet_source_primitives >/dev/null 2>&1 || {
     if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+        # BASH_SOURCE is guarded by the Bash-only branch above.
+        # shellcheck disable=SC3054
         . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/primitives.sh"
     else
         . "${MODDIR}/lib/magicnet/primitives.sh"

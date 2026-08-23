@@ -29,12 +29,8 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
             args.get(1).map(String::as_str).unwrap_or_default(),
             &args[2..].join(" "),
         ),
-        "replay" => {
-            sync_persisted_hotspot_offload(app);
-            let applied = selector_store::replay(app)?;
-            println!("[info] replayed {applied} persisted selectors");
-            Ok(())
-        }
+        "replay" => replay_persisted_selectors(app, true),
+        "replay-startup" => replay_persisted_selectors(app, false),
         "conns" => curl(app, "/connections"),
         "stats" => curl(app, "/traffic"),
         "close" => close_connection(app, args.get(1).map(String::as_str).unwrap_or_default()),
@@ -42,13 +38,20 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "close-matching" => close_matching_connections(app, &args[1..].join(" ")),
         "close-all" => print_close_all_summary(app),
         _ => Err(
-            "Usage: cli api {ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}"
+            "Usage: cli api {ui [current|sing-box|all]|groups|proxies|select <group> <node>|replay|replay-startup|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}"
                 .to_string(),
         ),
     }
 }
 
-fn sync_persisted_hotspot_offload(app: &App) {
+fn replay_persisted_selectors(app: &App, refresh_stale_policy: bool) -> Result<(), String> {
+    sync_persisted_hotspot_offload(app, refresh_stale_policy);
+    let applied = selector_store::replay(app)?;
+    println!("[info] replayed {applied} persisted selectors");
+    Ok(())
+}
+
+fn sync_persisted_hotspot_offload(app: &App, refresh_stale_policy: bool) {
     let member = selector_store::selected(app, "hotspot").unwrap_or_else(|| "direct".to_string());
     let function = if member == "proxy" {
         "magicnet_hotspot_offload_enable"
@@ -68,8 +71,10 @@ fn sync_persisted_hotspot_offload(app: &App) {
     } else {
         let _ = run_magicnet_function(app, "magicnet_hotspot_watchdog_stop");
         let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
-        if let Err(err) = refresh_hotspot_policy_if_stale(app) {
-            eprintln!("[warning] stale hotspot source policy could not be removed: {err}");
+        if refresh_stale_policy {
+            if let Err(err) = refresh_hotspot_policy_if_stale(app) {
+                eprintln!("[warning] stale hotspot source policy could not be removed: {err}");
+            }
         }
     }
 }

@@ -34,7 +34,7 @@ struct Command {
 const COMMANDS: &[Command] = &[
     Command {
         name: "service",
-        usage: "cli service {status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [sing-box] [lines]}",
+        usage: "cli service {status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [webui|sing-box|mcp|fswatch|supervisors|filename] [lines]}",
         handler: service_command,
     },
     Command {

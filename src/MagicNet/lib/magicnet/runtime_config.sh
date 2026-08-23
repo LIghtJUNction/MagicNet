@@ -117,7 +117,12 @@ magicnet_tailscale_scrub_auth_key() {
     _jq="${MODDIR}/bin/jq"
     [ -x "$_jq" ] || return 1
     _tmp="${_config}.tailscale-scrub.new"
-    (umask 077; "$_jq" '.endpoints = ((.endpoints // []) | map(if .type == "tailscale" then del(.auth_key) else . end))' "$_config" >"$_tmp") &&
+    (umask 077; "$_jq" '
+        if has("endpoints") then
+            .endpoints = ((.endpoints // []) | map(if .type == "tailscale" then del(.auth_key) else . end))
+            | if (.endpoints | length) == 0 then del(.endpoints) else . end
+        else . end
+    ' "$_config" >"$_tmp") &&
         chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
     _rc=$?
     unset _config _jq _tmp
@@ -219,6 +224,11 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_route_apply_unlocked || _runtime_rc=1
     magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_tailscale_apply_unlocked || _runtime_rc=1
+    # Runtime policy writers rebuild selector objects. Normalize route-level
+    # sing-box fields afterwards so a no-op apply remains byte-equivalent to
+    # the configuration used by the running core.
+    import __singbox__ &&
+        singbox_prepare_route_config "$(magicnet_singbox_config_file)" || _runtime_rc=1
     magicnet_wifi_policy_start || _runtime_rc=1
     if magicnet_kernel_running; then
         magicnet_enable_dns_capture || _runtime_rc=1
