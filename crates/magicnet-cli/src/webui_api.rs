@@ -732,31 +732,39 @@ fn unpack_panel_archive(archive: &Path, staging: &Path) -> Result<(), String> {
 }
 
 fn validate_panel_archive_entries(archive: &Path) -> Result<(), String> {
-    let mut names_command = Command::new("unzip");
-    names_command.args(["-Z1"]).arg(archive);
-    let names_output = run_panel_command(names_command, "list panel archive entries")?;
-    let names = String::from_utf8_lossy(&names_output.stdout);
-    let entries = names.lines().collect::<Vec<_>>();
+    // Android toybox unzip does not implement Info-ZIP's `-Z1`; its portable
+    // `-l` listing contains both the entry name and uncompressed size.
+    let mut command = Command::new("unzip");
+    command.arg("-l").arg(archive);
+    let output = run_panel_command(command, "inspect panel archive")?;
+    let entries = parse_panel_archive_listing(&String::from_utf8_lossy(&output.stdout))?;
+    validate_panel_archive_listing_entries(&entries)
+}
+
+fn validate_panel_archive_listing_entries(entries: &[(String, u64)]) -> Result<(), String> {
     if entries.is_empty() || entries.len() > PANEL_MAX_ENTRIES {
         return Err(format!(
             "panel archive must contain 1-{PANEL_MAX_ENTRIES} entries"
         ));
     }
     let mut seen = HashSet::new();
-    for entry in &entries {
+    let mut total = 0u64;
+    for (entry, size) in entries {
         validate_panel_archive_entry(entry)?;
-        if !seen.insert(entry.trim_end_matches('/')) {
+        if !seen.insert(entry.trim_end_matches('/').to_string()) {
             return Err("panel archive contains duplicate entry paths".to_string());
         }
+        if *size > PANEL_MAX_ENTRY_BYTES {
+            return Err("panel archive entry exceeds 32 MiB unpacked limit".to_string());
+        }
+        total = total
+            .checked_add(*size)
+            .ok_or("panel archive size overflow")?;
     }
-
-    let mut sizes_command = Command::new("unzip");
-    sizes_command.arg("-l").arg(archive);
-    let sizes_output = run_panel_command(sizes_command, "inspect panel archive sizes")?;
-    validate_panel_archive_sizes(
-        &String::from_utf8_lossy(&sizes_output.stdout),
-        entries.len(),
-    )
+    if total > PANEL_MAX_UNPACKED_BYTES {
+        return Err("panel archive exceeds 128 MiB total unpacked limit".to_string());
+    }
+    Ok(())
 }
 
 fn run_panel_command(
@@ -776,33 +784,25 @@ fn run_panel_command(
     Ok(output)
 }
 
-fn validate_panel_archive_sizes(listing: &str, expected_entries: usize) -> Result<(), String> {
-    let mut sizes = Vec::new();
+fn parse_panel_archive_listing(listing: &str) -> Result<Vec<(String, u64)>, String> {
+    let mut entries = Vec::new();
     for line in listing.lines() {
-        let fields = line.split_whitespace().collect::<Vec<_>>();
-        if fields.len() < 4 || !fields[1].contains('-') || !fields[2].contains(':') {
-            continue;
-        }
-        let Ok(size) = fields[0].parse::<u64>() else {
+        let mut fields = line.split_whitespace();
+        let Some(size) = fields.next().and_then(|value| value.parse::<u64>().ok()) else {
             continue;
         };
-        if size > PANEL_MAX_ENTRY_BYTES {
-            return Err("panel archive entry exceeds 32 MiB unpacked limit".to_string());
+        let Some(date) = fields.next() else { continue };
+        let Some(time) = fields.next() else { continue };
+        if !date.contains('-') || !time.contains(':') {
+            continue;
         }
-        sizes.push(size);
+        let name = fields.collect::<Vec<_>>().join(" ");
+        if name.is_empty() {
+            return Err("panel archive size metadata is incomplete".to_string());
+        }
+        entries.push((name, size));
     }
-    if sizes.len() != expected_entries {
-        return Err("panel archive size metadata is incomplete".to_string());
-    }
-    let total = sizes.iter().try_fold(0u64, |total, size| {
-        total
-            .checked_add(*size)
-            .ok_or("panel archive size overflow")
-    })?;
-    if total > PANEL_MAX_UNPACKED_BYTES {
-        return Err("panel archive exceeds 128 MiB total unpacked limit".to_string());
-    }
-    Ok(())
+    Ok(entries)
 }
 
 fn validate_panel_archive_entry(entry: &str) -> Result<(), String> {
@@ -1036,11 +1036,25 @@ mod tests {
     #[test]
     fn panel_archive_limits_entry_count_depth_and_unpacked_size() {
         let valid = "Archive: panel.zip\n Length Date Time Name\n 1024 2026-08-24 00:00 index.html\n 2048 2026-08-24 00:00 assets/app.js\n";
-        validate_panel_archive_sizes(valid, 2).unwrap();
-        assert!(validate_panel_archive_sizes(valid, 3).is_err());
+        let entries = parse_panel_archive_listing(valid).unwrap();
+        assert_eq!(entries.len(), 2);
+        validate_panel_archive_listing_entries(&entries).unwrap();
 
-        let oversized = format!(" {} 2026-08-24 00:00 huge.bin\n", PANEL_MAX_ENTRY_BYTES + 1);
-        assert!(validate_panel_archive_sizes(&oversized, 1).is_err());
+        let oversized = vec![("huge.bin".to_string(), PANEL_MAX_ENTRY_BYTES + 1)];
+        assert!(validate_panel_archive_listing_entries(&oversized).is_err());
+        let too_many = (0..=PANEL_MAX_ENTRIES)
+            .map(|index| (format!("asset-{index}"), 0))
+            .collect::<Vec<_>>();
+        assert!(validate_panel_archive_listing_entries(&too_many).is_err());
+        let too_large = (0..5)
+            .map(|index| (format!("asset-{index}"), PANEL_MAX_ENTRY_BYTES))
+            .collect::<Vec<_>>();
+        assert!(validate_panel_archive_listing_entries(&too_large).is_err());
+        assert!(validate_panel_archive_listing_entries(&[
+            ("same".to_string(), 0),
+            ("same/".to_string(), 0),
+        ])
+        .is_err());
         assert!(validate_panel_archive_entry(&format!(
             "{}/index.html",
             "nested/".repeat(PANEL_MAX_PATH_DEPTH)
