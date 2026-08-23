@@ -234,11 +234,16 @@ fn signal_pid(pid: &str, force: bool) {
     let _ = command.arg(pid).status();
 }
 
-// These variables are implementation details of the subscription transaction.
-// A privileged CLI process must not let a caller-provided environment replace
-// the module-owned URL/configuration files, candidate descriptor, or test-only
-// transaction controls before the shell entrypoint runs.
-const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
+// These variables are internal path/process overrides or implementation details
+// of the subscription transaction. A privileged CLI process must not let a
+// caller replace module-owned code and configuration, forge /proc ownership
+// data, redirect cgroup writes, or enable test-only transaction controls before
+// the shell entrypoint runs.
+const UNSAFE_RUNTIME_ENV: &[&str] = &[
+    "MAGICNET_LIB_DIR",
+    "MAGICNET_PROC_ROOT",
+    "MAGICNET_PROCESS_CGROUP_ROOTS",
+    "MAGICNET_SINGBOX_PROC_ROOT",
     "MAGICNET_SUB_CANDIDATE_URL_FILE",
     "MAGICNET_SUB_CANDIDATE_SOURCE_FILE",
     "MAGICNET_SUB_CONFIG_FILE",
@@ -257,8 +262,8 @@ const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
     "MAGICNET_SUB_PRESERVE_REFRESH",
 ];
 
-fn clear_unsafe_subscription_environment(command: &mut Command) {
-    for key in UNSAFE_SUBSCRIPTION_ENV {
+fn clear_unsafe_runtime_environment(command: &mut Command) {
+    for key in UNSAFE_RUNTIME_ENV {
         command.env_remove(key);
     }
 }
@@ -351,7 +356,7 @@ fn run_magicnet_function_inner(
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
         .stdin(Stdio::null());
-    clear_unsafe_subscription_environment(&mut command);
+    clear_unsafe_runtime_environment(&mut command);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
     }
@@ -743,9 +748,9 @@ mod path_tests {
 #[cfg(test)]
 mod process_group_tests {
     use super::{
-        clear_unsafe_subscription_environment, command_timeout_secs, run_magicnet_function,
+        clear_unsafe_runtime_environment, command_timeout_secs, run_magicnet_function,
         run_process_group, trusted_shell, App, DEFAULT_COMMAND_TIMEOUT_SECS,
-        MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
+        MAX_COMMAND_TIMEOUT_SECS, UNSAFE_RUNTIME_ENV,
     };
     use std::fs;
     use std::process::Command;
@@ -843,22 +848,22 @@ mod process_group_tests {
     }
 
     #[test]
-    fn function_runner_does_not_inherit_subscription_file_overrides() {
+    fn function_runner_does_not_inherit_unsafe_runtime_overrides() {
         let mut command = Command::new("sh");
         command.args(["-c", "env"]);
-        for key in UNSAFE_SUBSCRIPTION_ENV {
+        for key in UNSAFE_RUNTIME_ENV {
             command.env(key, "attacker-controlled");
         }
-        clear_unsafe_subscription_environment(&mut command);
+        clear_unsafe_runtime_environment(&mut command);
         let output = command.output().expect("environment probe must run");
         assert!(output.status.success());
         let stdout = String::from_utf8(output.stdout).unwrap();
-        for key in UNSAFE_SUBSCRIPTION_ENV {
+        for key in UNSAFE_RUNTIME_ENV {
             assert!(
                 !stdout
                     .lines()
                     .any(|line| line.starts_with(&format!("{key}="))),
-                "unsafe subscription variable leaked: {key}"
+                "unsafe runtime variable leaked: {key}"
             );
         }
     }
