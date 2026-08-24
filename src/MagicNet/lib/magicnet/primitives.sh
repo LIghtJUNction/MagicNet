@@ -18,6 +18,8 @@ magicnet_lib_dir() {
 
 magicnet_source_primitives() {
     type magicnet_json_escape >/dev/null 2>&1 && return 0
+    # Runtime module roots are resolved above.
+    # shellcheck disable=SC1091
     . "$(magicnet_lib_dir)/primitives.sh"
 }
 
@@ -83,3 +85,81 @@ magicnet_singbox_proc_start() {
         "$_proc_stat_path" 2>/dev/null || true
     unset _proc_stat_path
 }
+
+# KernelSU WebUI commands inherit the manager app's killable cgroups. Move an
+# explicitly selected MagicNet launcher into each matching stable parent before
+# the bridge exits, so its persistent children are not reclaimed with the app.
+magicnet_detach_pid_from_app_cgroup() (
+    _detach_pid="$1"
+    _detach_proc_root="${MAGICNET_PROC_ROOT:-/proc}"
+    case "$_detach_pid" in
+        '' | *[!0-9]* | 0 | 1) return 1 ;;
+    esac
+    _detach_cgroup_file="${_detach_proc_root}/${_detach_pid}/cgroup"
+    [ -r "$_detach_cgroup_file" ] || return 1
+    _detach_cgroup="$(cat "$_detach_cgroup_file" 2>/dev/null || true)"
+    _detach_app_lines=$(printf '%s\n' "$_detach_cgroup" |
+        awk -F: '$3 ~ "^/apps/" { count++ } END { print count + 0 }')
+    [ "$_detach_app_lines" -gt 0 ] || return 0
+
+    _detach_default_roots='/sys/fs/cgroup:/dev/memcg/apps:/dev/cpuset:/dev/cpuctl:/dev/blkio:/dev/freezer'
+    _detach_roots="${MAGICNET_PROCESS_CGROUP_ROOTS:-$_detach_default_roots}"
+    _detach_custom=0
+    [ -z "${MAGICNET_PROCESS_CGROUP_ROOTS:-}" ] || _detach_custom=1
+    _detach_required=0
+    _detach_moved=0
+    _detach_failed=0
+    _detach_remaining=$_detach_roots
+    while [ -n "$_detach_remaining" ]; do
+        case "$_detach_remaining" in
+            *:*)
+                _detach_root=${_detach_remaining%%:*}
+                _detach_remaining=${_detach_remaining#*:}
+                ;;
+            *)
+                _detach_root=$_detach_remaining
+                _detach_remaining=''
+                ;;
+        esac
+        [ -n "$_detach_root" ] || continue
+        _detach_applicable=0
+        if [ "$_detach_custom" -eq 1 ]; then
+            _detach_applicable=1
+        else
+            case "$_detach_root" in
+                /sys/fs/cgroup)
+                    printf '%s\n' "$_detach_cgroup" | grep -q '^0::/apps/' && _detach_applicable=1
+                    ;;
+                /dev/memcg/apps)
+                    printf '%s\n' "$_detach_cgroup" | grep -Eq ':[^:]*memory[^:]*:/apps/' && _detach_applicable=1
+                    ;;
+                /dev/cpuset)
+                    printf '%s\n' "$_detach_cgroup" | grep -Eq ':[^:]*cpuset[^:]*:/apps/' && _detach_applicable=1
+                    ;;
+                /dev/cpuctl)
+                    printf '%s\n' "$_detach_cgroup" | grep -Eq ':[^:]*(cpu|cpuacct)[^:]*:/apps/' && _detach_applicable=1
+                    ;;
+                /dev/blkio)
+                    printf '%s\n' "$_detach_cgroup" | grep -Eq ':[^:]*blkio[^:]*:/apps/' && _detach_applicable=1
+                    ;;
+                /dev/freezer)
+                    printf '%s\n' "$_detach_cgroup" | grep -Eq ':[^:]*freezer[^:]*:/apps/' && _detach_applicable=1
+                    ;;
+            esac
+        fi
+        [ "$_detach_applicable" -eq 1 ] || continue
+        _detach_required=$((_detach_required + 1))
+        if [ -d "$_detach_root" ] && [ -w "${_detach_root}/cgroup.procs" ] &&
+            printf '%s\n' "$_detach_pid" >"${_detach_root}/cgroup.procs" 2>/dev/null; then
+            _detach_moved=$((_detach_moved + 1))
+        elif [ -d "$_detach_root" ] && [ -w "${_detach_root}/tasks" ] &&
+            printf '%s\n' "$_detach_pid" >"${_detach_root}/tasks" 2>/dev/null; then
+            _detach_moved=$((_detach_moved + 1))
+        else
+            _detach_failed=1
+        fi
+    done
+    [ "$_detach_required" -ge "$_detach_app_lines" ] &&
+        [ "$_detach_moved" -eq "$_detach_required" ] &&
+        [ "$_detach_failed" -eq 0 ]
+)

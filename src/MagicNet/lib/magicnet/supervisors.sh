@@ -945,6 +945,8 @@ magicnet_supervisors_start_detached() {
 }
 
 magicnet_supervisors_start() {
+    magicnet_detach_pid_from_app_cgroup "$$" ||
+        magicnet_warn "Failed to detach the supervisor launcher from the caller cgroup."
     _mss_rc=0
     # Publish the settled generation before fswatch can observe .config.  The
     # optional watcher starts last so a broken lifecycle lock cannot prevent
