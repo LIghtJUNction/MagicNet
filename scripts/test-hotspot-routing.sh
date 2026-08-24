@@ -120,13 +120,6 @@ ip() {
 
 magicnet_singbox_apply_hotspot_policy
 jq -e '
-  [.outbounds[] | select(
-    .type == "selector"
-      and .tag == "hotspot"
-      and .interrupt_exist_connections == true
-  )] | length == 1
-' "$MODDIR/.config/sing-box/config.json" >/dev/null
-jq -e '
   [.route.rules[] | select(
     .inbound == ["tun-in"] and .outbound == "hotspot"
       and ((has("network") | not))

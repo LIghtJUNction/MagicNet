@@ -556,7 +556,6 @@ magicnet_singbox_render_hotspot_policy() {
           {
             "type": "selector",
             "tag": "hotspot",
-            "interrupt_exist_connections": true,
             "outbounds": ["direct", "proxy"],
             "default": "direct"
           };

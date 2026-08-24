@@ -1,36 +1,21 @@
 import { MODULE_DIR, SING_BOX_UI } from "../constants.ts";
-import type { AppPolicy, BlocklistState, DnsState, HealthItem, PackageInfo, RuntimeState, TransparentMode, WarpState, WifiPolicyState } from "../types.ts";
+import type {
+  AppPolicy,
+  BlocklistState,
+  ConfigValidationState,
+  DnsState,
+  HealthItem,
+  McpState,
+  PackageInfo,
+  RouteRuleSummary,
+  RuntimeState,
+  SubscriptionState,
+  TransparentMode,
+  WarpState,
+  WifiPolicyState,
+} from "../types.ts";
 
-export type SubscriptionState = {
-  singBox: string;
-  singBoxUrls: string[];
-  userAgent: string;
-  filters: string[];
-  configuredCount: number;
-  sourceMode: "url" | "local";
-  updateRunning: boolean;
-  updateLockOwner: string;
-  lastPhase: string;
-  lastResult: string;
-  lastAttemptEpoch: number;
-  lastSuccessEpoch: number;
-  lastConfiguredCount: number;
-  lastSourceCount: number;
-  lastImportedCount: number;
-  lastSkippedCount: number;
-  lastGenerationId: string;
-  lastReason: string;
-  cacheCount: number;
-  cacheProvenanceCount: number;
-  cacheSource: string;
-  scheduleIntervalHours: "off" | "12" | "24" | "48" | "72";
-  scheduleEnabled: boolean;
-  scheduleRunning: boolean;
-  scheduleOwner: string;
-  scheduleOwnerValid: boolean;
-  refreshEventCount: number;
-  refreshErrorCount: number;
-};
+export type { SubscriptionState, McpState, ConfigValidationState, RouteRuleSummary };
 
 export const subscriptionDefaults: SubscriptionState = {
   singBox: "",
@@ -63,34 +48,11 @@ export const subscriptionDefaults: SubscriptionState = {
   refreshErrorCount: 0,
 };
 
-export type McpState = {
-  enabled: boolean;
-  bind: string;
-  port: string;
-  pid: string;
-  url: string;
-  secretSet: boolean;
-  portOwner: string;
-};
-
 export type NetworkSnapshotSummary = {
   interfaces: number;
   ipRules: number;
   routes: number;
   natRules: number;
-};
-
-export type ConfigValidationState = {
-  status: "idle" | "ok" | "error";
-  summary: string;
-  checkedAt: string;
-};
-
-export type RouteRuleSummary = {
-  proxy: string[];
-  direct: string[];
-  block: string[];
-  warp: string[];
 };
 
 export type ConnectionTarget = {

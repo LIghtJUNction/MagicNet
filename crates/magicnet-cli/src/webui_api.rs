@@ -1,11 +1,7 @@
-use std::collections::HashSet;
-use std::fs::{self, File, OpenOptions};
+use std::fs;
 use std::io::Read;
-use std::os::fd::AsRawFd;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::process::Command;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -16,59 +12,9 @@ use crate::connection_control::{
 };
 use crate::node_delay::encode_path_segment;
 use crate::selector_store;
-use crate::service::{
-    apply_config, apply_config_preserving_hotspot_watchdog, singbox_webui, with_config_apply_lock,
-};
+use crate::service::{apply_config, singbox_webui};
 use crate::subscriptions::{download_pinned_https_url, validate_subscription_url};
-use crate::{run_bounded_command, run_magicnet_function, write_text_file, App};
-
-const PANEL_MAX_BYTES: usize = 32 * 1024 * 1024;
-const PANEL_MAX_ENTRY_BYTES: u64 = 32 * 1024 * 1024;
-const PANEL_MAX_UNPACKED_BYTES: u64 = 128 * 1024 * 1024;
-const PANEL_MAX_ENTRIES: usize = 4096;
-const PANEL_MAX_PATH_BYTES: usize = 512;
-const PANEL_MAX_PATH_DEPTH: usize = 16;
-const PANEL_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
-const PANEL_COMMAND_OUTPUT_LIMIT: usize = 2 * 1024 * 1024;
-
-struct PanelInstallGuard(File);
-
-impl Drop for PanelInstallGuard {
-    fn drop(&mut self) {
-        unsafe {
-            libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
-        }
-    }
-}
-
-fn panel_install_lock(app: &App) -> Result<PanelInstallGuard, String> {
-    let path = app.moddir.join(".state/webui-panel-install.lock");
-    let parent = path.parent().ok_or("panel lock has no parent")?;
-    fs::create_dir_all(parent).map_err(|err| format!("create panel lock directory: {err}"))?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .mode(0o600)
-        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
-        .open(&path)
-        .map_err(|err| format!("open panel install lock: {err}"))?;
-    let metadata = file
-        .metadata()
-        .map_err(|err| format!("inspect panel install lock: {err}"))?;
-    if !metadata.is_file() || metadata.nlink() != 1 {
-        return Err("panel install lock is not a private regular file".to_string());
-    }
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
-        .map_err(|err| format!("protect panel install lock: {err}"))?;
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-        return Err(format!(
-            "lock panel install: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    Ok(PanelInstallGuard(file))
-}
+use crate::{run_magicnet_function, write_text_file, App};
 
 pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or_default() {
@@ -83,8 +29,12 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
             args.get(1).map(String::as_str).unwrap_or_default(),
             &args[2..].join(" "),
         ),
-        "replay" => replay_persisted_selectors(app, true),
-        "replay-startup" => replay_persisted_selectors(app, false),
+        "replay" => {
+            sync_persisted_hotspot_offload(app);
+            let applied = selector_store::replay(app)?;
+            println!("[info] replayed {applied} persisted selectors");
+            Ok(())
+        }
         "conns" => curl(app, "/connections"),
         "stats" => curl(app, "/traffic"),
         "close" => close_connection(app, args.get(1).map(String::as_str).unwrap_or_default()),
@@ -92,61 +42,47 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "close-matching" => close_matching_connections(app, &args[1..].join(" ")),
         "close-all" => print_close_all_summary(app),
         _ => Err(
-            "Usage: cli api {ui [current|sing-box|all]|groups|proxies|select <group> <node>|replay|replay-startup|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}"
+            "Usage: cli api {ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}"
                 .to_string(),
         ),
     }
 }
 
-fn replay_persisted_selectors(app: &App, refresh_stale_policy: bool) -> Result<(), String> {
-    sync_persisted_hotspot_offload(app, refresh_stale_policy)?;
-    let applied = selector_store::replay(app)?;
-    println!("[info] replayed {applied} persisted selectors");
-    Ok(())
-}
-
-fn sync_persisted_hotspot_offload(app: &App, refresh_stale_policy: bool) -> Result<(), String> {
+fn sync_persisted_hotspot_offload(app: &App) {
     let member = selector_store::selected(app, "hotspot").unwrap_or_else(|| "direct".to_string());
+    let function = if member == "proxy" {
+        "magicnet_hotspot_offload_enable"
+    } else {
+        "magicnet_hotspot_offload_restore"
+    };
+    if let Err(err) = run_magicnet_function(app, function) {
+        eprintln!("[warning] persisted hotspot offload state could not be synchronized: {err}");
+    }
     if member == "proxy" {
-        let result = (|| {
-            run_magicnet_function(app, "magicnet_hotspot_offload_enable")
-                .map_err(|err| format!("disable hotspot offload: {err}"))?;
-            run_magicnet_function(app, "magicnet_hotspot_reconcile")
-                .map_err(|err| format!("reconcile hotspot TUN route: {err}"))?;
-            run_magicnet_function(app, "magicnet_hotspot_watchdog_start")
-                .map_err(|err| format!("start hotspot route watcher: {err}"))?;
-            Ok(())
-        })();
-        if let Err(error) = result {
-            rollback_hotspot_enable(app);
-            return Err(error);
+        if let Err(err) = run_magicnet_function(app, "magicnet_hotspot_reconcile") {
+            eprintln!("[warning] persisted hotspot TUN route could not be reconciled: {err}");
+        }
+        if let Err(err) = run_magicnet_function(app, "magicnet_hotspot_watchdog_start") {
+            eprintln!("[warning] hotspot route watcher could not be started: {err}");
         }
     } else {
-        if let Err(err) = run_magicnet_function(app, "magicnet_hotspot_offload_restore") {
-            eprintln!("[warning] persisted hotspot offload state could not be restored: {err}");
-        }
         let _ = run_magicnet_function(app, "magicnet_hotspot_watchdog_stop");
         let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
-        if refresh_stale_policy {
-            if let Err(err) = refresh_hotspot_policy_if_stale(app) {
-                eprintln!("[warning] stale hotspot source policy could not be removed: {err}");
-            }
+        if let Err(err) = refresh_hotspot_policy_if_stale(app) {
+            eprintln!("[warning] stale hotspot source policy could not be removed: {err}");
         }
     }
-    Ok(())
 }
 
 fn refresh_hotspot_policy_if_stale(app: &App) -> Result<(), String> {
     if run_magicnet_function(app, "magicnet_singbox_hotspot_policy_current").is_err() {
-        apply_config_preserving_hotspot_watchdog(app)?;
+        apply_config(app)?;
     }
     Ok(())
 }
 
 fn rollback_hotspot_enable(app: &App) {
     let _ = select_proxy(app, "hotspot", "direct");
-    let _ = selector_store::save(app, "hotspot", "direct");
-    let _ = run_magicnet_function(app, "magicnet_hotspot_watchdog_stop");
     let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
     let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
 }
@@ -525,123 +461,42 @@ fn install_local(app: &App, args: &[String]) -> Result<(), String> {
     let expected_sha256 = args.get(2).map(String::as_str).unwrap_or_default();
     validate_sha256(expected_sha256)?;
     let name = args.get(3).map(String::as_str).unwrap_or("zashboard");
-    if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
-        return Err("panel name must be 1-128 bytes without control characters".to_string());
-    }
-
-    let _panel_guard = panel_install_lock(app)?;
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let operation = format!("{}-{nonce}", std::process::id());
-    let tmp = app.moddir.join(format!(".tmp/webui-panel-{operation}.zip"));
-    let staging = app
-        .moddir
-        .join(format!(".tmp/webui-panel-stage-{operation}"));
+    let tmp = app.moddir.join(".tmp/webui-panel.zip");
+    let staging = app.moddir.join(".tmp/webui-panel-stage");
     let target = app.moddir.join(".config/sing-box/zashboard");
-    let backup = app
-        .moddir
-        .join(format!(".tmp/webui-panel-backup-{operation}"));
     if let Some(parent) = tmp.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
     }
     clean_panel_staging(&tmp, &staging);
-    let prepared = download_panel_zip(url, &tmp)
-        .and_then(|_| verify_panel_archive(&tmp, expected_sha256))
+    download_panel_zip(url, &tmp)?;
+    if let Err(err) = verify_panel_archive(&tmp, expected_sha256)
         .and_then(|_| validate_panel_archive_entries(&tmp))
-        .and_then(|_| unpack_panel_archive(&tmp, &staging));
-    if let Err(error) = prepared {
+        .and_then(|_| unpack_panel_archive(&tmp, &staging))
+    {
         clean_panel_staging(&tmp, &staging);
-        return Err(error);
+        return Err(err);
     }
 
-    let promoted = with_config_apply_lock(app, || {
-        promote_panel_transaction(app, name, &staging, &target, &backup)
-    });
-    clean_panel_staging(&tmp, &staging);
-    promoted?;
+    let backup = target.with_extension("bak");
+    let _ = fs::remove_dir_all(&backup);
+    if target.exists() {
+        if let Err(err) = fs::rename(&target, &backup) {
+            clean_panel_staging(&tmp, &staging);
+            return Err(format!("backup existing panel: {err}"));
+        }
+    }
+    if let Err(err) = fs::rename(&staging, &target) {
+        if backup.exists() {
+            let _ = fs::rename(&backup, &target);
+        }
+        clean_panel_staging(&tmp, &staging);
+        return Err(format!("promote validated panel: {err}"));
+    }
+    let _ = fs::remove_file(&tmp);
+    write_text_file(app, Path::new("zashboard.version"), &format!("{name}\n"))?;
+    run_magicnet_function(app, "magicnet_singbox_apply_zashboard")?;
     println!("[info] Installed local panel {name}");
     Ok(())
-}
-
-fn promote_panel_transaction(
-    app: &App,
-    name: &str,
-    staging: &Path,
-    target: &Path,
-    backup: &Path,
-) -> Result<(), String> {
-    let version_path = app.moddir.join("zashboard.version");
-    let previous_version = match fs::read_to_string(&version_path) {
-        Ok(value) => Some(value),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(format!("read current panel version: {error}")),
-    };
-    let had_target = fs::symlink_metadata(target).is_ok();
-    if had_target {
-        fs::rename(target, backup).map_err(|err| format!("backup existing panel: {err}"))?;
-    }
-    if let Err(error) = fs::rename(staging, target) {
-        if had_target {
-            let _ = fs::rename(backup, target);
-        }
-        return Err(format!("promote validated panel: {error}"));
-    }
-
-    let activated = write_text_file(app, Path::new("zashboard.version"), &format!("{name}\n"))
-        .and_then(|_| run_magicnet_function(app, "magicnet_singbox_apply_zashboard"));
-    if let Err(error) = activated {
-        let rollback = rollback_panel_transaction(app, target, backup, previous_version.as_deref());
-        return match rollback {
-            Ok(()) => Err(format!(
-                "activate installed panel: {error}; previous panel restored"
-            )),
-            Err(rollback_error) => Err(format!(
-                "activate installed panel: {error}; rollback failed: {rollback_error}"
-            )),
-        };
-    }
-    if let Err(error) = remove_panel_path(backup) {
-        eprintln!("[warning] installed panel backup could not be removed: {error}");
-    }
-    Ok(())
-}
-
-fn rollback_panel_transaction(
-    app: &App,
-    target: &Path,
-    backup: &Path,
-    previous_version: Option<&str>,
-) -> Result<(), String> {
-    remove_panel_path(target).map_err(|err| format!("remove failed panel: {err}"))?;
-    if fs::symlink_metadata(backup).is_ok() {
-        fs::rename(backup, target).map_err(|err| format!("restore previous panel: {err}"))?;
-    }
-    if let Some(version) = previous_version {
-        write_text_file(app, Path::new("zashboard.version"), version)?;
-    } else {
-        match fs::remove_file(app.moddir.join("zashboard.version")) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("remove failed panel version: {error}")),
-        }
-    }
-    Ok(())
-}
-
-fn remove_panel_path(path: &Path) -> Result<(), String> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.to_string()),
-    };
-    if metadata.is_dir() && !metadata.file_type().is_symlink() {
-        fs::remove_dir_all(path)
-    } else {
-        fs::remove_file(path)
-    }
-    .map_err(|error| error.to_string())
 }
 
 fn validate_panel_download_url(url: &str) -> Result<(), String> {
@@ -661,6 +516,8 @@ fn download_panel_zip(url: &str, tmp: &std::path::Path) -> Result<(), String> {
     }
     Ok(())
 }
+
+const PANEL_MAX_BYTES: usize = 32 * 1024 * 1024;
 
 fn curl_download(url: &str, tmp: &std::path::Path) -> Result<(), String> {
     // Panel archives unpack as root. Reuse the subscription pinned-HTTPS
@@ -719,9 +576,16 @@ fn ensure_panel_size(bytes_read: usize) -> Result<(), String> {
 
 fn unpack_panel_archive(archive: &Path, staging: &Path) -> Result<(), String> {
     fs::create_dir_all(staging).map_err(|err| format!("mkdir {}: {err}", staging.display()))?;
-    let mut command = Command::new("unzip");
-    command.arg("-oq").arg(archive).arg("-d").arg(staging);
-    run_panel_command(command, "extract panel archive")?;
+    let status = Command::new("unzip")
+        .arg("-oq")
+        .arg(archive)
+        .arg("-d")
+        .arg(staging)
+        .status()
+        .map_err(|err| format!("unzip panel: {err}"))?;
+    if !status.success() {
+        return Err("panel unzip failed".to_string());
+    }
     ensure_panel_tree_safe(staging)?;
     promote_dist_dir(staging)?;
     if contains_index(staging) {
@@ -732,84 +596,23 @@ fn unpack_panel_archive(archive: &Path, staging: &Path) -> Result<(), String> {
 }
 
 fn validate_panel_archive_entries(archive: &Path) -> Result<(), String> {
-    // Android toybox unzip does not implement Info-ZIP's `-Z1`; its portable
-    // `-l` listing contains both the entry name and uncompressed size.
-    let mut command = Command::new("unzip");
-    command.arg("-l").arg(archive);
-    let output = run_panel_command(command, "inspect panel archive")?;
-    let entries = parse_panel_archive_listing(&String::from_utf8_lossy(&output.stdout))?;
-    validate_panel_archive_listing_entries(&entries)
-}
-
-fn validate_panel_archive_listing_entries(entries: &[(String, u64)]) -> Result<(), String> {
-    if entries.is_empty() || entries.len() > PANEL_MAX_ENTRIES {
-        return Err(format!(
-            "panel archive must contain 1-{PANEL_MAX_ENTRIES} entries"
-        ));
+    let output = Command::new("unzip")
+        .args(["-Z1"])
+        .arg(archive)
+        .output()
+        .map_err(|err| format!("list panel archive: {err}"))?;
+    if !output.status.success() {
+        return Err("panel archive entry listing failed".to_string());
     }
-    let mut seen = HashSet::new();
-    let mut total = 0u64;
-    for (entry, size) in entries {
+    for entry in String::from_utf8_lossy(&output.stdout).lines() {
         validate_panel_archive_entry(entry)?;
-        if !seen.insert(entry.trim_end_matches('/').to_string()) {
-            return Err("panel archive contains duplicate entry paths".to_string());
-        }
-        if *size > PANEL_MAX_ENTRY_BYTES {
-            return Err("panel archive entry exceeds 32 MiB unpacked limit".to_string());
-        }
-        total = total
-            .checked_add(*size)
-            .ok_or("panel archive size overflow")?;
-    }
-    if total > PANEL_MAX_UNPACKED_BYTES {
-        return Err("panel archive exceeds 128 MiB total unpacked limit".to_string());
     }
     Ok(())
 }
 
-fn run_panel_command(
-    command: Command,
-    operation: &str,
-) -> Result<crate::BoundedCommandOutput, String> {
-    let output = run_bounded_command(command, PANEL_COMMAND_TIMEOUT, PANEL_COMMAND_OUTPUT_LIMIT)?;
-    if output.timed_out {
-        return Err(format!(
-            "{operation} timed out after {} seconds",
-            PANEL_COMMAND_TIMEOUT.as_secs()
-        ));
-    }
-    if !output.status.is_some_and(|status| status.success()) {
-        return Err(format!("{operation} failed"));
-    }
-    Ok(output)
-}
-
-fn parse_panel_archive_listing(listing: &str) -> Result<Vec<(String, u64)>, String> {
-    let mut entries = Vec::new();
-    for line in listing.lines() {
-        let mut fields = line.split_whitespace();
-        let Some(size) = fields.next().and_then(|value| value.parse::<u64>().ok()) else {
-            continue;
-        };
-        let Some(date) = fields.next() else { continue };
-        let Some(time) = fields.next() else { continue };
-        if !date.contains('-') || !time.contains(':') {
-            continue;
-        }
-        let name = fields.collect::<Vec<_>>().join(" ");
-        if name.is_empty() {
-            return Err("panel archive size metadata is incomplete".to_string());
-        }
-        entries.push((name, size));
-    }
-    Ok(entries)
-}
-
 fn validate_panel_archive_entry(entry: &str) -> Result<(), String> {
     let entry = entry.trim_end_matches('/');
-    if entry.len() > PANEL_MAX_PATH_BYTES
-        || entry.split('/').count() > PANEL_MAX_PATH_DEPTH
-        || entry.is_empty()
+    if entry.is_empty()
         || entry.starts_with('/')
         || entry.starts_with('\\')
         || entry.chars().any(char::is_control)
@@ -936,64 +739,6 @@ mod tests {
         assert!(validate_panel_download_url("https://user:secret@example.com/panel.zip").is_err());
     }
 
-    fn stored_empty_zip(name: &str) -> Vec<u8> {
-        let name = name.as_bytes();
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
-        bytes.extend_from_slice(&20u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(&(name.len() as u16).to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(name);
-        let central_offset = bytes.len() as u32;
-        bytes.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
-        bytes.extend_from_slice(&20u16.to_le_bytes());
-        bytes.extend_from_slice(&20u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(&(name.len() as u16).to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(name);
-        let central_size = bytes.len() as u32 - central_offset;
-        bytes.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&1u16.to_le_bytes());
-        bytes.extend_from_slice(&1u16.to_le_bytes());
-        bytes.extend_from_slice(&central_size.to_le_bytes());
-        bytes.extend_from_slice(&central_offset.to_le_bytes());
-        bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes
-    }
-
-    #[test]
-    fn panel_archive_metadata_and_extraction_use_bounded_unzip_runner() {
-        let app = temp_app();
-        let archive = app.moddir.join("panel.zip");
-        let staging = app.moddir.join("staging");
-        fs::create_dir_all(&app.moddir).unwrap();
-        fs::write(&archive, stored_empty_zip("index.html")).unwrap();
-        validate_panel_archive_entries(&archive).unwrap();
-        unpack_panel_archive(&archive, &staging).unwrap();
-        assert!(staging.join("index.html").is_file());
-    }
-
     #[test]
     fn panel_archive_hash_mismatch_is_rejected() {
         let app = temp_app();
@@ -1031,63 +776,6 @@ mod tests {
         }
         validate_panel_archive_entry("panel/index.html").unwrap();
         validate_panel_archive_entry("panel/assets/").unwrap();
-    }
-
-    #[test]
-    fn panel_archive_limits_entry_count_depth_and_unpacked_size() {
-        let valid = "Archive: panel.zip\n Length Date Time Name\n 1024 2026-08-24 00:00 index.html\n 2048 2026-08-24 00:00 assets/app.js\n";
-        let entries = parse_panel_archive_listing(valid).unwrap();
-        assert_eq!(entries.len(), 2);
-        validate_panel_archive_listing_entries(&entries).unwrap();
-
-        let oversized = vec![("huge.bin".to_string(), PANEL_MAX_ENTRY_BYTES + 1)];
-        assert!(validate_panel_archive_listing_entries(&oversized).is_err());
-        let too_many = (0..=PANEL_MAX_ENTRIES)
-            .map(|index| (format!("asset-{index}"), 0))
-            .collect::<Vec<_>>();
-        assert!(validate_panel_archive_listing_entries(&too_many).is_err());
-        let too_large = (0..5)
-            .map(|index| (format!("asset-{index}"), PANEL_MAX_ENTRY_BYTES))
-            .collect::<Vec<_>>();
-        assert!(validate_panel_archive_listing_entries(&too_large).is_err());
-        assert!(validate_panel_archive_listing_entries(&[
-            ("same".to_string(), 0),
-            ("same/".to_string(), 0),
-        ])
-        .is_err());
-        assert!(validate_panel_archive_entry(&format!(
-            "{}/index.html",
-            "nested/".repeat(PANEL_MAX_PATH_DEPTH)
-        ))
-        .is_err());
-        assert!(validate_panel_archive_entry(&"x".repeat(PANEL_MAX_PATH_BYTES + 1)).is_err());
-    }
-
-    #[test]
-    fn failed_panel_activation_restores_assets_and_version_metadata() {
-        let app = temp_app();
-        let target = app.moddir.join(".config/sing-box/zashboard");
-        let staging = app.moddir.join(".tmp/staging");
-        let backup = app.moddir.join(".tmp/backup");
-        fs::create_dir_all(&target).unwrap();
-        fs::create_dir_all(&staging).unwrap();
-        fs::write(target.join("index.html"), "old").unwrap();
-        fs::write(staging.join("index.html"), "new").unwrap();
-        fs::write(app.moddir.join("zashboard.version"), "old-panel\n").unwrap();
-
-        let error =
-            promote_panel_transaction(&app, "new-panel", &staging, &target, &backup).unwrap_err();
-        assert!(error.contains("previous panel restored"));
-        assert_eq!(
-            fs::read_to_string(target.join("index.html")).unwrap(),
-            "old"
-        );
-        assert_eq!(
-            fs::read_to_string(app.moddir.join("zashboard.version")).unwrap(),
-            "old-panel\n"
-        );
-        assert!(!backup.exists());
-        let _ = fs::remove_dir_all(&app.moddir);
     }
 
     #[test]

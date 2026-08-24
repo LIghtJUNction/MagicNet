@@ -4,10 +4,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fixture="$(mktemp -d)"
 cleanup() {
-  if [ "${concurrent_refresh_started:-0}" = 1 ] &&
-    command -v magicnet_subscription_schedule_set >/dev/null 2>&1; then
-    magicnet_subscription_schedule_set off >/dev/null 2>&1 || true
-  fi
   test -z "${stale_pid:-}" || kill "$stale_pid" 2>/dev/null || true
   test -z "${mismatch_pid:-}" || kill "$mismatch_pid" 2>/dev/null || true
   test -z "${owned_pid:-}" || kill "$owned_pid" 2>/dev/null || true
@@ -758,55 +754,6 @@ unset missing_cmdline_proc
     "$(magicnet_subscription_refresh_loop_file)"
 )
 
-# A just-forked child can briefly expose the parent's argv before exec. Keep
-# retrying that readable mismatch while its immutable process start time stays
-# unchanged, but stop immediately if the PID is reused.
-(
-  pre_exec_match_count="$fixture/pre-exec-match-count"
-  printf '0\n' >"$pre_exec_match_count"
-  magicnet_subscription_refresh_proc_start() { printf '4242\n'; }
-  magicnet_subscription_refresh_proc_command_matches() {
-    pre_exec_calls=$(cat "$pre_exec_match_count")
-    pre_exec_calls=$((pre_exec_calls + 1))
-    printf '%s\n' "$pre_exec_calls" >"$pre_exec_match_count"
-    [ "$pre_exec_calls" -ge 2 ]
-  }
-  pre_exec_start="$({
-    MAGICNET_SUB_REFRESH_IDENTITY_ATTEMPTS=3 \
-      MAGICNET_SUB_REFRESH_IDENTITY_DELAY=0 \
-      magicnet_subscription_refresh_wait_for_identity 4242
-  })"
-  test "$pre_exec_start" = 4242
-  assert_file "$pre_exec_match_count" 2
-)
-(
-  reused_start_count="$fixture/reused-start-count"
-  reused_match_count="$fixture/reused-match-count"
-  printf '0\n' >"$reused_start_count"
-  printf '0\n' >"$reused_match_count"
-  magicnet_subscription_refresh_proc_start() {
-    reused_start_calls=$(cat "$reused_start_count")
-    reused_start_calls=$((reused_start_calls + 1))
-    printf '%s\n' "$reused_start_calls" >"$reused_start_count"
-    if [ "$reused_start_calls" -eq 1 ]; then printf '4242\n'; else printf '4343\n'; fi
-  }
-  magicnet_subscription_refresh_proc_command_matches() {
-    reused_match_calls=$(cat "$reused_match_count")
-    printf '%s\n' "$((reused_match_calls + 1))" >"$reused_match_count"
-    return 1
-  }
-  if MAGICNET_SUB_REFRESH_IDENTITY_ATTEMPTS=3 \
-    MAGICNET_SUB_REFRESH_IDENTITY_DELAY=0 \
-    magicnet_subscription_refresh_wait_for_identity 4242; then
-    echo 'reused refresh PID unexpectedly passed identity wait' >&2
-    exit 1
-  else
-    test "$?" -eq 1
-  fi
-  assert_file "$reused_start_count" 2
-  assert_file "$reused_match_count" 1
-)
-
 if magicnet_subscription_refresh_wait_for_identity invalid-pid; then
   echo 'invalid refresh identity PID unexpectedly succeeded' >&2
   exit 1
@@ -849,14 +796,7 @@ printf 'off\n' >"$(magicnet_subscription_schedule_file)"
 orphan_loop="$(magicnet_subscription_refresh_loop_file)"
 cat >"$orphan_loop" <<'EOF'
 #!/bin/sh
-child=
-trap 'test -z "$child" || kill "$child" 2>/dev/null || true; exit 0' TERM INT
-while :; do
-  sleep 30 &
-  child=$!
-  wait "$child"
-  child=
-done
+while :; do sleep 30; done
 EOF
 chmod +x "$orphan_loop"
 sh "$orphan_loop" &
@@ -870,15 +810,6 @@ if magicnet_subscription_refresh_start; then
 fi
 kill -0 "$orphan_pid"
 test "$(magicnet_subscription_refresh_loop_pids)" = "$orphan_pid"
-ps_only_bin="$fixture/ps-only-bin"
-mkdir -p "$ps_only_bin"
-cat >"$ps_only_bin/grep" <<'EOF'
-#!/bin/sh
-exit 2
-EOF
-chmod +x "$ps_only_bin/grep"
-test "$(PATH="$ps_only_bin:$PATH" magicnet_subscription_refresh_loop_pids)" = "$orphan_pid"
-unset ps_only_bin
 test ! -e "$(magicnet_subscription_refresh_owner_file)"
 kill "$orphan_pid"
 wait "$orphan_pid" 2>/dev/null || true
@@ -933,18 +864,6 @@ kill "$stale_pid"
 wait "$stale_pid" 2>/dev/null || true
 stale_pid=
 
-# Once the recorded PID is gone and a complete scan proves no orphan loop is
-# present, stale metadata can be removed without signaling any process.
-printf '24\n' >"$(magicnet_subscription_schedule_file)"
-magicnet_subscription_refresh_start
-recovered_refresh_record=$(sed -n '1p' "$(magicnet_subscription_refresh_owner_file)")
-test -n "$recovered_refresh_record"
-test "$recovered_refresh_record" != "$stale_record"
-test "$(magicnet_subscription_refresh_owner_state)" = active
-magicnet_subscription_schedule_set off
-assert_file "$(magicnet_subscription_schedule_file)" off
-unset recovered_refresh_record
-
 sleep 30 &
 mismatch_pid=$!
 mismatch_start="$(magicnet_subscription_refresh_proc_start "$mismatch_pid")"
@@ -982,23 +901,5 @@ test ! -e "$(magicnet_subscription_refresh_owner_file)"
 test ! -e "$(magicnet_subscription_refresh_pid_file)"
 test ! -e "$(magicnet_subscription_refresh_loop_file)"
 owned_pid=
-
-# Independent start requests must serialize across processes. Exactly one loop
-# and one active owner may survive the race.
-printf '24\n' >"$(magicnet_subscription_schedule_file)"
-concurrent_refresh_started=1
-magicnet_subscription_refresh_stop >/dev/null 2>&1 || true
-magicnet_subscription_refresh_start &
-concurrent_start_a=$!
-magicnet_subscription_refresh_start &
-concurrent_start_b=$!
-wait "$concurrent_start_a"
-wait "$concurrent_start_b"
-test "$(magicnet_subscription_refresh_owner_state)" = active
-concurrent_pids="$(magicnet_subscription_refresh_loop_pids)"
-test "$(printf '%s\n' "$concurrent_pids" | awk 'NF { count++ } END { print count + 0 }')" -eq 1
-magicnet_subscription_schedule_set off
-concurrent_refresh_started=0
-unset concurrent_start_a concurrent_start_b concurrent_pids
 
 echo 'subscription lifecycle tests passed'

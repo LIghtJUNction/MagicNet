@@ -30,6 +30,10 @@ magicnet_warn() {
     warn "$1"
 }
 
+magicnet_cmd_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
 magicnet_module_disabled() {
     [ -f "${MODDIR}/disable" ] || [ -f "${MODDIR}/remove" ]
 }
@@ -88,11 +92,7 @@ magicnet_first_http_url() {
             line = $0
             sub(/[[:space:]]*#.*$/, "", line)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-            if (line ~ /^https:\/\/[^[:space:]]+$/) {
-                remainder = substr(line, 9)
-                authority = remainder
-                sub(/[\/?#].*$/, "", authority)
-                if (authority == "" || authority ~ /@/) next
+            if (line ~ /^https:\/\/[^[:space:]@]+$/) {
                 print line
                 found = 1
                 exit 0
@@ -105,6 +105,20 @@ magicnet_first_http_url() {
 magicnet_singbox_has_subscription() {
     [ -s "${MODDIR}/.config/sing-box/subscription.local" ] ||
         magicnet_first_http_url "${MODDIR}/.config/sing-box/subscription.url" >/dev/null 2>&1
+}
+
+magicnet_singbox_api_has_nodes() {
+    magicnet_cmd_exists curl || return 1
+    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null ||
+        curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
+    [ -n "$_api" ] || {
+        unset _api
+        return 1
+    }
+    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Socks|SOCKS|Selector|WireGuard)"'
+    _rc=$?
+    unset _api
+    return "$_rc"
 }
 
 magicnet_singbox_standalone_config_ready() {
@@ -212,14 +226,7 @@ magicnet_prepare_singbox_nodes_unlocked() {
 
 magicnet_with_sub_config_lock() {
     _old_lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-}"
-    _sub_lock_timeout="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
-    case "$_sub_lock_timeout" in
-        '' | *[!0-9]*) _sub_lock_timeout=45 ;;
-    esac
-    if ! [ "$_sub_lock_timeout" -le 86400 ] 2>/dev/null; then
-        _sub_lock_timeout=45
-    fi
-    MAGICNET_CONFIG_LOCK_TIMEOUT="$_sub_lock_timeout"
+    MAGICNET_CONFIG_LOCK_TIMEOUT="${MAGICNET_SUB_CONFIG_LOCK_TIMEOUT:-45}"
     magicnet_with_config_lock "$@"
     _sub_lock_rc=$?
     if [ -n "$_old_lock_timeout" ]; then
@@ -227,7 +234,7 @@ magicnet_with_sub_config_lock() {
     else
         unset MAGICNET_CONFIG_LOCK_TIMEOUT
     fi
-    unset _old_lock_timeout _sub_lock_timeout
+    unset _old_lock_timeout
     return "$_sub_lock_rc"
 }
 

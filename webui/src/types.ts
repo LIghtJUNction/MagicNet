@@ -87,3 +87,59 @@ export type WarpState = {
 export type SingBoxUiTarget = "zashboard";
 
 export type ConfigEditorTarget = "sing-box";
+
+export type SubscriptionScheduleInterval = "off" | "12" | "24" | "48" | "72";
+
+export type SubscriptionState = {
+  singBox: string;
+  singBoxUrls: string[];
+  userAgent: string;
+  filters: string[];
+  configuredCount: number;
+  sourceMode: "url" | "local";
+  updateRunning: boolean;
+  updateLockOwner: string;
+  lastPhase: string;
+  lastResult: string;
+  lastAttemptEpoch: number;
+  lastSuccessEpoch: number;
+  lastConfiguredCount: number;
+  lastSourceCount: number;
+  lastImportedCount: number;
+  lastSkippedCount: number;
+  lastGenerationId: string;
+  lastReason: string;
+  cacheCount: number;
+  cacheProvenanceCount: number;
+  cacheSource: string;
+  scheduleIntervalHours: SubscriptionScheduleInterval;
+  scheduleEnabled: boolean;
+  scheduleRunning: boolean;
+  scheduleOwner: string;
+  scheduleOwnerValid: boolean;
+  refreshEventCount: number;
+  refreshErrorCount: number;
+};
+
+export type McpState = {
+  enabled: boolean;
+  bind: string;
+  port: string;
+  pid: string;
+  url: string;
+  secretSet: boolean;
+  portOwner: string;
+};
+
+export type ConfigValidationState = {
+  status: "idle" | "ok" | "error";
+  summary: string;
+  checkedAt: string;
+};
+
+export type RouteRuleSummary = {
+  proxy: string[];
+  direct: string[];
+  block: string[];
+  warp: string[];
+};

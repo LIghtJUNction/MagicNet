@@ -368,10 +368,6 @@ magicnet_dns_leak_guard_state_file() {
     printf '%s\n' "${MODDIR}/.state/dns-leak-guard.ifaces"
 }
 
-magicnet_dns_leak_guard_comment() {
-    printf '%s\n' 'MagicNet-DNS-Guard'
-}
-
 magicnet_dns_leak_guard_delete_rule() (
     _dns_guard_delete_cmd="$1"
     shift
@@ -382,15 +378,13 @@ magicnet_dns_leak_guard_delete_family() (
     _delete_family_cmd="$1"
     shift
     _delete_family_result=0
-    _delete_family_comment=$(magicnet_dns_leak_guard_comment)
     for _delete_family_iface in $1; do
         for _delete_family_port in 53 853; do
             for _delete_family_proto in udp tcp; do
                 _delete_family_rc=0
                 magicnet_dns_leak_guard_delete_rule "$_delete_family_cmd" OUTPUT \
                     -o "$_delete_family_iface" -p "$_delete_family_proto" \
-                    --dport "$_delete_family_port" -m comment \
-                    --comment "$_delete_family_comment" -j REJECT ||
+                    --dport "$_delete_family_port" -j REJECT ||
                     _delete_family_rc=$?
                 case "$_delete_family_rc" in
                     0) ;;
@@ -403,44 +397,19 @@ magicnet_dns_leak_guard_delete_family() (
     return "$_delete_family_result"
 )
 
-magicnet_dns_leak_guard_delete_legacy_family() (
-    _delete_legacy_cmd="$1"
-    shift
-    _delete_legacy_result=0
-    for _delete_legacy_iface in $1; do
-        for _delete_legacy_port in 53 853; do
-            for _delete_legacy_proto in udp tcp; do
-                _delete_legacy_rc=0
-                magicnet_dns_leak_guard_delete_rule "$_delete_legacy_cmd" OUTPUT \
-                    -o "$_delete_legacy_iface" -p "$_delete_legacy_proto" \
-                    --dport "$_delete_legacy_port" -j REJECT ||
-                    _delete_legacy_rc=$?
-                case "$_delete_legacy_rc" in
-                    0) ;;
-                    124) return 124 ;;
-                    *) _delete_legacy_result=1 ;;
-                esac
-            done
-        done
-    done
-    return "$_delete_legacy_result"
-)
-
 magicnet_dns_leak_guard_rule_ifaces() (
     _dns_guard_scan_cmd="$1"
     _dns_guard_scan_rules="$("$_dns_guard_scan_cmd" -S OUTPUT 2>/dev/null)" || return $?
     printf '%s\n' "$_dns_guard_scan_rules" | awk '
         $1 == "-A" && $2 == "OUTPUT" {
-            iface = proto = port = target = comment = ""
+            iface = proto = port = target = ""
             for (field_index = 3; field_index <= NF; field_index++) {
                 if ($field_index == "-o" && field_index < NF) iface = $(field_index + 1)
                 if ($field_index == "-p" && field_index < NF) proto = $(field_index + 1)
                 if ($field_index == "--dport" && field_index < NF) port = $(field_index + 1)
-                if ($field_index == "--comment" && field_index < NF) comment = $(field_index + 1)
                 if ($field_index == "-j" && field_index < NF) target = $(field_index + 1)
             }
             if (iface ~ /^[[:alnum:]_.-]+$/ && target == "REJECT" &&
-                comment == "MagicNet-DNS-Guard" &&
                 ((proto == "udp" && (port == "53" || port == "853")) ||
                  (proto == "tcp" && (port == "53" || port == "853")))) {
                 print iface
@@ -496,14 +465,13 @@ magicnet_enable_dns_leak_guard() {
             magicnet_warn "IPv6 DNS leak guard unavailable; continuing with IPv4-first guard"
         fi
     fi
-    _dns_guard_comment=$(magicnet_dns_leak_guard_comment)
     for _dns_guard_iface in $_dns_guard_ifaces; do
         for _dns_guard_port in 53 853; do
-            magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" -m comment --comment "$_dns_guard_comment" -j REJECT || _dns_guard_rc=1
-            magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p tcp --dport "$_dns_guard_port" -m comment --comment "$_dns_guard_comment" -j REJECT || _dns_guard_rc=1
+            magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" -j REJECT || _dns_guard_rc=1
+            magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p tcp --dport "$_dns_guard_port" -j REJECT || _dns_guard_rc=1
             if [ "$_dns_guard_ipv6_available" -eq 1 ]; then
-                magicnet_ip6tables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" -m comment --comment "$_dns_guard_comment" -j REJECT || _dns_guard_rc=1
-                magicnet_ip6tables_ensure OUTPUT -o "$_dns_guard_iface" -p tcp --dport "$_dns_guard_port" -m comment --comment "$_dns_guard_comment" -j REJECT || _dns_guard_rc=1
+                magicnet_ip6tables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" -j REJECT || _dns_guard_rc=1
+                magicnet_ip6tables_ensure OUTPUT -o "$_dns_guard_iface" -p tcp --dport "$_dns_guard_port" -j REJECT || _dns_guard_rc=1
             fi
         done
     done
@@ -511,7 +479,7 @@ magicnet_enable_dns_leak_guard() {
     if [ "$_dns_guard_rc" -ne 0 ]; then
         magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
         unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
-        unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_comment
+        unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available
         return 1
     fi
 
@@ -522,19 +490,19 @@ magicnet_enable_dns_leak_guard() {
     _dns_guard_state_file="$(magicnet_dns_leak_guard_state_file)"
     _dns_guard_state_tmp="${_dns_guard_state_file}.new.$$"
     if ! mkdir -p "${_dns_guard_state_file%/*}" ||
-        ! (umask 077; printf 'version=2\n%s\n' "$_dns_guard_ifaces" >"$_dns_guard_state_tmp") ||
+        ! (umask 077; printf '%s\n' "$_dns_guard_ifaces" >"$_dns_guard_state_tmp") ||
         ! mv -f "$_dns_guard_state_tmp" "$_dns_guard_state_file"; then
         magicnet_warn "Failed to persist DNS leak guard interface state"
         rm -f "$_dns_guard_state_tmp" 2>/dev/null || true
         magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
         unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
-        unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_comment _dns_guard_state_file _dns_guard_state_tmp
+        unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_state_tmp
         return 1
     fi
 
     magicnet_log "DNS leak guard blocked direct 53/853 on: $_dns_guard_ifaces"
     unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
-    unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_comment _dns_guard_state_file _dns_guard_state_tmp
+    unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_state_tmp
 }
 
 magicnet_disable_dns_leak_guard() (
@@ -554,9 +522,7 @@ magicnet_disable_dns_leak_guard() (
     _cleanup_state="$(magicnet_dns_leak_guard_state_file)"
     _cleanup_saved=
     _cleanup_result=0
-    _cleanup_legacy=0
     if [ -f "$_cleanup_state" ]; then
-        grep -qx 'version=2' "$_cleanup_state" 2>/dev/null || _cleanup_legacy=1
         _cleanup_saved=$(awk '/^[[:alnum:]_.-]+$/ { print }' "$_cleanup_state" 2>/dev/null) ||
             _cleanup_result=1
     fi
@@ -588,15 +554,6 @@ magicnet_disable_dns_leak_guard() (
         0) ;;
         *) _cleanup_result=1 ;;
     esac
-    if [ "$_cleanup_legacy" -eq 1 ] && [ -n "$_cleanup_saved" ]; then
-        _cleanup_rc=0
-        magicnet_dns_leak_guard_delete_legacy_family magicnet_iptables_cmd "$_cleanup_saved" || _cleanup_rc=$?
-        case "$_cleanup_rc" in
-            124) return 1 ;;
-            0) ;;
-            *) _cleanup_result=1 ;;
-        esac
-    fi
 
     _cleanup_probe=0
     magicnet_xtables_available ip6tables || _cleanup_probe=$?
@@ -623,15 +580,6 @@ magicnet_disable_dns_leak_guard() (
             0) ;;
             *) _cleanup_result=1 ;;
         esac
-        if [ "$_cleanup_legacy" -eq 1 ] && [ -n "$_cleanup_saved" ]; then
-            _cleanup_rc=0
-            magicnet_dns_leak_guard_delete_legacy_family magicnet_ip6tables_cmd "$_cleanup_saved" || _cleanup_rc=$?
-            case "$_cleanup_rc" in
-                124) return 1 ;;
-                0) ;;
-                *) _cleanup_result=1 ;;
-            esac
-        fi
     else
         case "$_cleanup_probe" in 124 | 137 | 143) return 1 ;; esac
     fi

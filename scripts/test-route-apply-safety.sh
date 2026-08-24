@@ -6,8 +6,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 export MODDIR="$tmp/module"
-mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box" "$MODDIR/bin"
-ln -s "$(command -v jq)" "$MODDIR/bin/jq"
+mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
 cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 {
   "route": {

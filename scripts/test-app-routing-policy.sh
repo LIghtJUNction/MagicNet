@@ -535,10 +535,7 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
 
   iptables() {
     case " $* " in
-      *' -S OUTPUT '*)
-        printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -m comment --comment MagicNet-DNS-Guard -j REJECT'
-        ;;
-      *' -D OUTPUT -o wlan0 -p udp --dport 53 -m comment --comment MagicNet-DNS-Guard -j REJECT '*)
+      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
         dns_guard_rule_count="$(cat "$dns_guard_count_file")"
         if [ "$dns_guard_rule_count" -gt 0 ]; then
           printf '%s\n' "$((dns_guard_rule_count - 1))" >"$dns_guard_count_file"
@@ -546,7 +543,7 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
         fi
         return 1
         ;;
-      *' -C OUTPUT -o wlan0 -p udp --dport 53 -m comment --comment MagicNet-DNS-Guard -j REJECT '*)
+      *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
         [ "$(cat "$dns_guard_count_file")" -gt 0 ]
         ;;
       *' -D OUTPUT -o wlan0 '*|*' -C OUTPUT -o wlan0 '*)
@@ -568,36 +565,6 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
 )
 
 assert_dns_leak_guard_disable_removes_duplicate_rules
-
-assert_dns_leak_guard_preserves_foreign_reject_rules() (
-  MODDIR="$WORK/dns-leak-guard-foreign-rule/module"
-  export MODDIR
-  mkdir -p "$MODDIR"
-  foreign_delete_log="$WORK/dns-leak-guard-foreign-rule.delete"
-  : >"$foreign_delete_log"
-
-  iptables() {
-    case " $* " in
-      *' -S OUTPUT '*)
-        printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'
-        ;;
-      *' -D OUTPUT '*)
-        printf '%s\n' "$*" >>"$foreign_delete_log"
-        return 1
-        ;;
-      *) return 1 ;;
-    esac
-  }
-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
-
-  magicnet_disable_dns_leak_guard
-  if [ -s "$foreign_delete_log" ]; then
-    printf '%s\n' 'DNS leak guard cleanup deleted an unowned reject rule' >&2
-    exit 1
-  fi
-)
-
-assert_dns_leak_guard_preserves_foreign_reject_rules
 
 assert_disabled_dns_leak_guard_skips_per_interface_deletes_without_rules() (
   MODDIR="$WORK/dns-leak-guard-fast-cleanup/module"
@@ -685,8 +652,7 @@ assert_dns_leak_guard_records_interfaces() (
   magicnet_warn() { printf '%s\n' "$*" >&2; }
 
   MAGIC_DNS_LEAK_GUARD=1 magicnet_enable_dns_leak_guard
-  grep -qx 'version=2' "$MODDIR/.state/dns-leak-guard.ifaces"
-  grep -qx wlan0 "$MODDIR/.state/dns-leak-guard.ifaces"
+  test "$(sed -n '1p' "$MODDIR/.state/dns-leak-guard.ifaces")" = wlan0
   grep -qx rmnet0 "$MODDIR/.state/dns-leak-guard.ifaces"
   magicnet_disable_dns_leak_guard
   test ! -e "$MODDIR/.state/dns-leak-guard.ifaces"
@@ -752,7 +718,7 @@ assert_dns_leak_guard_uses_ipv6_filter_without_nat() (
   magicnet_warn() { printf '%s\n' "$*" >>"$guard_log"; }
 
   MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=lo magicnet_enable_dns_leak_guard
-  grep -q '^ip6tables -I OUTPUT -o lo -p udp --dport 53 -m comment --comment MagicNet-DNS-Guard -j REJECT$' "$guard_log"
+  grep -q '^ip6tables -I OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$guard_log"
   if grep -q 'IPv6 DNS leak guard unavailable' "$guard_log"; then
     printf '%s\n' 'IPv6 leak guard must probe the filter table, not the optional nat table' >&2
     exit 1
@@ -950,35 +916,45 @@ assert_hotspot_startup_reuses_one_discovery_snapshot() (
 
 assert_hotspot_startup_reuses_one_discovery_snapshot
 
-assert_startup_policy_order() (
+assert_startup_policy_order() {
   startup_events="$WORK/startup-events.log"
   : >"$startup_events"
 
   magicnet_module_disabled() { return 1; }
   magicnet_cmd_exists() { return 0; }
   import() { return 0; }
-  magicnet_owned_singbox_running() { return 1; }
+  is_singbox_running() { return 1; }
   magicnet_prepare_singbox_nodes_unlocked() { printf '%s\n' prepare >>"$startup_events"; }
-  magicnet_apply_runtime_config_unlocked() { printf '%s\n' runtime-policy >>"$startup_events"; }
+  magicnet_singbox_apply_transparent_mode() { printf '%s\n' transparent >>"$startup_events"; }
+  magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot >>"$startup_events"; }
+  magicnet_dns_apply_unlocked() { printf '%s\n' dns >>"$startup_events"; }
+  magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$startup_events"; }
+  magicnet_tailscale_apply_unlocked() { printf '%s\n' tailscale >>"$startup_events"; }
+  magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$startup_events"; }
+  magicnet_singbox_apply_zashboard() { printf '%s\n' zashboard >>"$startup_events"; }
   magicnet_tailscale_inject_auth_key() { printf '%s\n' tailscale-auth >>"$startup_events"; }
   magicnet_tailscale_scrub_auth_key() { return 0; }
-  magicnet_ensure_singbox_ownership_helpers() { return 0; }
-  magicnet_singbox_subscription_config_file() { printf '%s\n' /fixture/config.json; }
-  magicnet_singbox_ensure_start_owned() { printf '%s\n' singbox-start >>"$startup_events"; }
+  singbox_start() { printf '%s\n' singbox-start >>"$startup_events"; }
   magicnet_singbox_running_has_nodes() { return 0; }
 
   MAGIC_SINGBOX=1 magicnet_start_singbox_unlocked
   if ! diff -u - "$startup_events" <<'EOF'
 prepare
-runtime-policy
+transparent
+hotspot
+dns
+tailscale
+app-policy
+warp
+zashboard
 tailscale-auth
 singbox-start
 EOF
   then
-    printf '%s\n' 'the complete runtime policy pipeline must run before sing-box starts' >&2
+    printf '%s\n' 'app policy must be materialized before sing-box starts' >&2
     exit 1
   fi
-)
+}
 
 assert_startup_policy_order
 
@@ -1046,7 +1022,7 @@ assert_ready_start_holds_one_lock_and_stops_failed_generation() (
     return 1
   }
   import() { :; }
-  magicnet_stop_owned_singbox_after_failure() {
+  singbox_stop() {
     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
     printf '%s\n' stop >>"$events"
   }

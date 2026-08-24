@@ -127,24 +127,4 @@ write_valid_conf 0
 magicnet_mcp_start_if_enabled
 assert_delegated_once
 
-# A disable marker appearing during wait_boot must prevent every later daemon
-# boundary and stop MCP as part of the disabled-runtime cleanup.
-reset_case
-disable_marker="$module_dir/disable"
-magicnet_detach_pid_from_app_cgroup() { return 0; }
-magicnet_module_disabled() { [ -f "$disable_marker" ]; }
-wait_boot() { : >"$disable_marker"; }
-sleep() { :; }
-magicnet_supervisors_stop() { printf '%s\n' 'shell supervisors stop' >>"$call_log"; }
-magicnet_disable_dns_capture() { :; }
-magicnet_disable_dns_leak_guard() { :; }
-magicnet_start_kernel() { : >"$marker"; }
-kamfw_phase_boot_completed
-assert_marker_absent
-grep -qx 'mcp stop' "$call_log" || fail 'late disable did not stop MCP'
-if grep -qE 'mcp start-if-enabled|service start|supervisor start all' "$call_log"; then
-    fail 'late disable started a daemon after wait_boot'
-fi
-rm -f "$disable_marker"
-
 printf 'MCP phase configuration test passed\n'

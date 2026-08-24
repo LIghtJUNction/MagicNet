@@ -16,7 +16,7 @@ use crate::{
     clean_module_lines, clear_node_cache, cstring_from_os_str, decode_base64,
     first_clean_module_line, run_magicnet_function,
     run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,
-    service::with_config_apply_lock, write_text_file, App,
+    write_text_file, App,
 };
 
 const MAX_SINGBOX_SUBSCRIPTION_URLS: usize = 5;
@@ -207,10 +207,8 @@ pub(crate) fn apply_webui_subscription_source_payload(
     } else {
         format!("{payload}\n")
     };
-    let result = with_config_apply_lock(app, || {
-        with_subscription_candidate(app, &text, |candidate_fd| {
-            run_subscription_source_update_from_inherited_fd(app, candidate_fd)
-        })
+    let result = with_subscription_candidate(app, &text, |candidate_fd| {
+        run_subscription_source_update_from_inherited_fd(app, candidate_fd)
     });
     if result.is_ok() {
         let _ = fs::remove_file(app.moddir.join(".config/sing-box/standalone-config"));
@@ -219,10 +217,8 @@ pub(crate) fn apply_webui_subscription_source_payload(
 }
 
 fn apply_subscription_text(app: &App, text: &str) -> Result<(), String> {
-    let result = with_config_apply_lock(app, || {
-        with_subscription_candidate(app, text, |candidate_fd| {
-            run_subscription_update_from_inherited_fd(app, candidate_fd)
-        })
+    let result = with_subscription_candidate(app, text, |candidate_fd| {
+        run_subscription_update_from_inherited_fd(app, candidate_fd)
     });
     if result.is_ok() {
         let _ = fs::remove_file(app.moddir.join(".config/sing-box/standalone-config"));
@@ -531,12 +527,10 @@ pub fn sub_schedule(app: &App, args: &[String]) -> Result<(), String> {
 }
 
 fn update_singbox_subscription(app: &App) -> Result<(), String> {
-    let update = with_config_apply_lock(app, || {
-        run_magicnet_function(
-            app,
-            ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_singbox_update_subscription",
-        )
-    });
+    let update = run_magicnet_function(
+        app,
+        ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_singbox_update_subscription",
+    );
     finish_subscription_update(app, update)
 }
 

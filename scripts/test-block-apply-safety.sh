@@ -6,8 +6,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 export MODDIR="$tmp/module"
-mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box" "$MODDIR/bin"
-ln -s "$(command -v jq)" "$MODDIR/bin/jq"
+mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
 cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 {
   "outbounds": [
@@ -37,77 +36,6 @@ magicnet_json_escape() { printf '%s' "$1"; }
 . "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/blocklist.sh"
-
-# Valid compact JSON must be normalized structurally; line-oriented insertion
-# used to return success while adding neither selector. A deterministic legacy
-# temp symlink must not redirect generated config bytes outside the module.
-printf '%s\n' 'outside-canary' >"$tmp/outside"
-selector_hint="$MODDIR/.config/sing-box/config.json.magicnet-selectors.new"
-ln -s "$tmp/outside" "$selector_hint"
-printf '%s\n' 'allowed.example' >"$(magicnet_block_allow_file)"
-printf '%s\n' '{"outbounds":[{"type":"direct","tag":"direct"},{"type":"selector","tag":"final","outbounds":["direct"],"default":"direct"}],"route":{"rules":[]}}' >"$MODDIR/.config/sing-box/config.json"
-magicnet_block_ensure_ad_selectors "$MODDIR/.config/sing-box/config.json"
-jq -e '
-  ([.outbounds[] | select(.tag == "ad-block")] | length == 1)
-  and ([.outbounds[] | select(.tag == "ad-allow")] | length == 1)
-' "$MODDIR/.config/sing-box/config.json" >/dev/null
-[[ "$(<"$tmp/outside")" == outside-canary ]]
-[[ ! -e "$selector_hint" && ! -L "$selector_hint" ]]
-
-# The shared route-rule renderer must also replace, rather than follow, a
-# deterministic legacy stage symlink.
-# shellcheck source=/dev/null
-. "$ROOT/src/MagicNet/lib/magicnet/singbox_route_rules.sh"
-route_hint="$MODDIR/.config/sing-box/config.json.magicnet-block.new"
-route_rules="$tmp/route-rules"
-: >"$route_rules"
-ln -s "$tmp/outside" "$route_hint"
-magicnet_singbox_insert_route_rules \
-  "$MODDIR/.config/sing-box/config.json" "$route_hint" "$route_rules" block
-[[ "$(<"$tmp/outside")" == outside-canary ]]
-[[ -f "$route_hint" && ! -L "$route_hint" ]]
-jq -e . "$route_hint" >/dev/null
-rm -f "$route_hint"
-
-# Managed ad rules must follow custom routes, sniffing, ICMP handling, and
-# per-app proxy policy. Placing them before these precedence rules can override
-# an explicit custom route, evaluate domains before sniffing, or bypass the
-# selected application route.
-cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
-{"outbounds":[
-  {"type":"direct","tag":"direct"},
-  {"type":"selector","tag":"final","outbounds":["direct"],"default":"direct"}
-],"route":{"rules":[
-  {"domain_suffix":["__magicnet_route__","custom.example"],"outbound":"proxy-rule"},
-  {"action":"sniff"},
-  {"protocol":"icmp","outbound":"block"},
-  {"package_name":["__magicnet_app_proxy__","com.example.proxy"],"outbound":"proxy"},
-  {"outbound":"final"}
-]}}
-EOF
-cat >"$route_rules" <<'EOF'
-  {"domain":["__magicnet_block__"],"outbound":"ad-block"},
-EOF
-magicnet_singbox_insert_route_rules \
-  "$MODDIR/.config/sing-box/config.json" "$route_hint" "$route_rules" block
-jq -e '
-  [.route.rules[]
-    | if ((.domain_suffix // []) | index("__magicnet_route__")) != null then "route"
-      elif .action == "sniff" then "sniff"
-      elif .protocol == "icmp" then "icmp"
-      elif ((.package_name // []) | index("__magicnet_app_proxy__")) != null then "app"
-      elif ((.domain // []) | index("__magicnet_block__")) != null then "block"
-      else "final"
-      end] == ["route", "sniff", "icmp", "app", "block", "final"]
-' "$route_hint" >/dev/null
-rm -f "$route_hint"
-
-magicnet_block_apply_singbox
-jq -e '
-  ([.outbounds[] | select(.tag == "ad-block")] | length == 1)
-  and ([.outbounds[] | select(.tag == "ad-allow")] | length == 1)
-  and ([.route.rules[] | select(.outbound == "ad-allow")] | length == 1)
-' "$MODDIR/.config/sing-box/config.json" >/dev/null
 
 # A failed selector publish must be reported instead of being masked by the
 # cleanup/unset commands that follow it.

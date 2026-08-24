@@ -6,34 +6,10 @@ magicnet_status_text() {
     fi
 }
 
-magicnet_ensure_singbox_ownership_helpers() {
-    if ! command -v magicnet_singbox_subscription_config_file >/dev/null 2>&1 ||
-        ! command -v magicnet_singbox_is_running >/dev/null 2>&1 ||
-        ! command -v magicnet_singbox_ensure_start_owned >/dev/null 2>&1 ||
-        ! command -v magicnet_singbox_stop_owned_after_failure >/dev/null 2>&1; then
-        _ownership_lib="${MODDIR}/lib/magicnet_singbox_subscribe.sh"
-        [ -f "$_ownership_lib" ] || {
-            unset _ownership_lib
-            return 1
-        }
-        . "$_ownership_lib" || return 1
-        unset _ownership_lib
-    fi
-}
-
-magicnet_owned_singbox_running() {
-    magicnet_ensure_singbox_ownership_helpers || return 1
-    magicnet_singbox_is_running "$(magicnet_singbox_subscription_config_file)"
-}
-
-magicnet_stop_owned_singbox_after_failure() {
-    magicnet_ensure_singbox_ownership_helpers || return 1
-    magicnet_singbox_stop_owned_after_failure "$(magicnet_singbox_subscription_config_file)"
-}
-
 magicnet_refresh_status() {
     if magicnet_cmd_exists sing-box; then
-        magicnet_owned_singbox_running >/dev/null 2>&1 && return 0
+        import __singbox__
+        is_singbox_running >/dev/null 2>&1 && return 0
     fi
 
     config set override.description "[MagicNet]: No kernel running" 2>/dev/null || true
@@ -43,16 +19,29 @@ magicnet_start_singbox_unlocked() {
     magicnet_module_disabled && return 1
     [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
     magicnet_cmd_exists sing-box || return 1
-    magicnet_owned_singbox_running >/dev/null 2>&1 && return 0
+    import __singbox__
+    is_singbox_running >/dev/null 2>&1 && return 0
     magicnet_prepare_singbox_nodes_unlocked || return 1
-    # Cold start and WebUI/fswatch apply must materialize the same ordered set
-    # of runtime transforms. Keeping a shorter startup-only list omitted block
-    # and custom route policy, so fswatch immediately rewrote config.json and
-    # restarted the core that had just become ready.
-    magicnet_apply_runtime_config_unlocked || return 1
+    magicnet_singbox_chain_apply || return 1
+    magicnet_singbox_apply_transparent_mode || return 1
+    magicnet_singbox_apply_hotspot_policy || return 1
+    # sing-box snapshots DNS servers and WARP endpoints when the process
+    # starts.  Applying these only in the post-start rewrite made a fresh
+    # start report success while the running core still held the old config.
+    magicnet_dns_apply_unlocked || return 1
+    magicnet_tailscale_apply_unlocked || return 1
+    # The preceding normalizers rebuild the managed TUN inbound.  Materialize
+    # per-app UID boundaries after all of them and before sing-box starts; a
+    # deferred rewrite cannot change the already-running core's in-memory routes.
+    magicnet_app_policy_apply_unlocked || return 1
+    magicnet_warp_apply_unlocked || return 1
+    # The running core snapshots clash_api.external_ui at process start.  A
+    # post-start rewrite only dirties config.json and cannot affect that core.
+    magicnet_singbox_apply_zashboard ||
+        magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
     magicnet_tailscale_inject_auth_key || return 1
-    magicnet_ensure_singbox_ownership_helpers || return 1
-    if ! magicnet_singbox_ensure_start_owned "$(magicnet_singbox_subscription_config_file)"; then
+    import __singbox__
+    if ! singbox_start; then
         magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
         return 1
     fi
@@ -60,7 +49,7 @@ magicnet_start_singbox_unlocked() {
         magicnet_warn "Failed to scrub the transient Tailscale auth key from config.json."
     if ! magicnet_singbox_running_has_nodes; then
         magicnet_warn "sing-box started but no proxy nodes were detected; stopping sing-box."
-        magicnet_stop_owned_singbox_after_failure >/dev/null 2>&1 || true
+        singbox_stop >/dev/null 2>&1 || true
         magicnet_need_nodes_message sing-box
         return 1
     fi
@@ -80,7 +69,8 @@ magicnet_start_singbox_ready_unlocked() {
     if magicnet_after_kernel_start_unlocked; then
         return 0
     fi
-    magicnet_stop_owned_singbox_after_failure >/dev/null 2>&1 || true
+    import __singbox__
+    singbox_stop >/dev/null 2>&1 || true
     magicnet_warn "sing-box started but post-start network initialization failed"
     return 1
 }
@@ -91,7 +81,8 @@ magicnet_start_singbox_ready() {
 
 magicnet_kernel_running() {
     if magicnet_cmd_exists sing-box; then
-        magicnet_owned_singbox_running >/dev/null 2>&1 && return 0
+        import __singbox__
+        is_singbox_running >/dev/null 2>&1 && return 0
     fi
 
     return 1
@@ -121,8 +112,6 @@ magicnet_kernel_start_preamble() {
 }
 
 magicnet_start_kernel() {
-    magicnet_detach_pid_from_app_cgroup "$$" ||
-        magicnet_warn "Failed to detach the core launcher from the caller cgroup."
     magicnet_kernel_start_preamble || return 1
     if magicnet_kernel_running; then
         return 0
@@ -145,8 +134,7 @@ magicnet_start_kernel() {
         # Startup already materialized hotspot policy before launching sing-box.
         # Replaying it through the full WebUI path can recursively apply config
         # and restart the core that is still starting.
-        "${MODDIR}/cli" api replay-startup >/dev/null 2>&1 ||
-        magicnet_warn "Persisted selector or hotspot policy replay was incomplete."
+        "${MODDIR}/cli" api replay-startup >/dev/null 2>&1 || true
         magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
         return 0
     fi
@@ -167,7 +155,8 @@ magicnet_ensure_kernel() {
 magicnet_show_dashboard() {
     panel "MagicNet"
     if magicnet_cmd_exists sing-box; then
-        _singbox_state=$(magicnet_status_text magicnet_owned_singbox_running)
+        import __singbox__
+        _singbox_state=$(magicnet_status_text is_singbox_running)
     else
         _singbox_state="Not installed"
     fi

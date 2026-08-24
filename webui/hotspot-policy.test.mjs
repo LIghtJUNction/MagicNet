@@ -13,10 +13,6 @@ const core = readFileSync(
   new URL("../src/MagicNet/lib/magicnet/core.sh", import.meta.url),
   "utf8",
 );
-const runtimeConfig = readFileSync(
-  new URL("../src/MagicNet/lib/magicnet/runtime_config.sh", import.meta.url),
-  "utf8",
-);
 const webuiApi = readFileSync(
   new URL("../crates/magicnet-cli/src/webui_api.rs", import.meta.url),
   "utf8",
@@ -58,10 +54,7 @@ assert.match(routes, /settings put global tether_offload_disabled 1/);
 assert.match(routes, /magicnet_hotspot_offload_restore/);
 assert.match(routes, /register_uninstall_cmd/);
 assert.match(control, /关闭 Android 热点硬件加速/);
-assert.match(webuiApi, /"replay"[\s\S]*replay_persisted_selectors/);
-assert.match(webuiApi, /"replay-startup"[\s\S]*replay_persisted_selectors/);
-assert.match(webuiApi, /sync_persisted_hotspot_offload[\s\S]*rollback_hotspot_enable/);
-assert.match(webuiApi, /apply_config_preserving_hotspot_watchdog/);
+assert.match(webuiApi, /"replay"[\s\S]*sync_persisted_hotspot_offload/);
 assert.match(webuiApi, /"reconcile"[\s\S]*refresh_hotspot_policy_if_stale/);
 assert.match(webuiApi, /"disable"[\s\S]*refresh_hotspot_policy_if_stale/);
 assert.match(webuiApi, /rollback_hotspot_enable/);
@@ -69,12 +62,11 @@ const startSingBox = core.slice(
   core.indexOf("magicnet_start_singbox_unlocked()"),
   core.indexOf("magicnet_with_sub_config_lock magicnet_start_singbox"),
 );
-assert.match(startSingBox, /magicnet_apply_runtime_config_unlocked/);
+assert.match(startSingBox, /magicnet_singbox_apply_hotspot_policy/);
 assert.ok(
-  startSingBox.indexOf("magicnet_apply_runtime_config_unlocked") <
-    startSingBox.indexOf("magicnet_singbox_ensure_start_owned"),
-  "the complete runtime policy must be materialized before sing-box snapshots the config",
+  startSingBox.indexOf("magicnet_singbox_apply_hotspot_policy") <
+    startSingBox.indexOf("singbox_start"),
+  "hotspot policy must be materialized before sing-box snapshots the config",
 );
-assert.match(runtimeConfig, /magicnet_singbox_apply_hotspot_policy/);
 
 console.log("hotspot policy tests passed");

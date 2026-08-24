@@ -94,14 +94,17 @@ magicnet_tailscale_inject_auth_key() {
     _jq="${MODDIR}/bin/jq"
     [ -x "$_jq" ] || return 1
     _tmp="${_config}.tailscale-auth.new"
-    (umask 077; "$_jq" --slurpfile auth "$_auth" '
+    (
+        umask 077
+        "$_jq" --slurpfile auth "$_auth" '
       ($auth[0] // {}) as $keys
       | .endpoints = ((.endpoints // []) | map(
           if .type == "tailscale" and ($keys[.tag] // "") != "" then
             .auth_key = $keys[.tag]
           else . end
         ))
-    ' "$_config" >"$_tmp") || {
+    ' "$_config" >"$_tmp"
+    ) || {
         rm -f "$_tmp"
         return 1
     }
@@ -117,12 +120,15 @@ magicnet_tailscale_scrub_auth_key() {
     _jq="${MODDIR}/bin/jq"
     [ -x "$_jq" ] || return 1
     _tmp="${_config}.tailscale-scrub.new"
-    (umask 077; "$_jq" '
+    (
+        umask 077
+        "$_jq" '
         if has("endpoints") then
             .endpoints = ((.endpoints // []) | map(if .type == "tailscale" then del(.auth_key) else . end))
             | if (.endpoints | length) == 0 then del(.endpoints) else . end
         else . end
-    ' "$_config" >"$_tmp") &&
+    ' "$_config" >"$_tmp"
+    ) &&
         chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
     _rc=$?
     unset _config _jq _tmp
@@ -173,7 +179,10 @@ magicnet_singbox_record_runtime_fingerprint() {
     _runtime_fingerprint_dir=${_runtime_fingerprint_file%/*}
     _runtime_fingerprint_tmp="${_runtime_fingerprint_file}.new.$$"
     mkdir -p "$_runtime_fingerprint_dir" || return 1
-    (umask 077; magicnet_singbox_runtime_fingerprint >"$_runtime_fingerprint_tmp") || {
+    (
+        umask 077
+        magicnet_singbox_runtime_fingerprint >"$_runtime_fingerprint_tmp"
+    ) || {
         rm -f "$_runtime_fingerprint_tmp" 2>/dev/null || true
         unset _runtime_fingerprint_file _runtime_fingerprint_dir _runtime_fingerprint_tmp
         return 1
@@ -219,7 +228,6 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_singbox_apply_zashboard || _runtime_rc=1
     magicnet_dns_apply_unlocked || _runtime_rc=1
     magicnet_transparent_apply_unlocked || _runtime_rc=1
-    magicnet_singbox_apply_hotspot_policy || _runtime_rc=1
     magicnet_app_policy_apply_unlocked || _runtime_rc=1
     magicnet_warp_apply_unlocked || _runtime_rc=1
     magicnet_route_apply_unlocked || _runtime_rc=1

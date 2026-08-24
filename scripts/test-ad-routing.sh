@@ -13,8 +13,7 @@ fi
 
 MODDIR="$WORK/module"
 export MODDIR
-mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box" "$MODDIR/bin"
-ln -s "$(command -v jq)" "$MODDIR/bin/jq"
+mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box"
 
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"

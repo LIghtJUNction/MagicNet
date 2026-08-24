@@ -20,7 +20,6 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import CardHeading from "@/components/ui/CardHeading.vue";
 import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
-import Eyebrow from "@/components/ui/Eyebrow.vue";
 import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import RemovableTag from "@/components/ui/RemovableTag.vue";

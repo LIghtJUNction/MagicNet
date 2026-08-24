@@ -319,45 +319,87 @@ magicnet_block_singbox_rules() {
 magicnet_block_ensure_ad_selectors() {
     _selector_config="$1"
     _selector_tmp="${_selector_config}.magicnet-selectors.new"
-    _selector_has_allow=false
-    if grep -q '"tag"[[:space:]]*:[[:space:]]*"ad-allow"' "$_selector_config" ||
-        magicnet_block_list_values "$(magicnet_block_allow_file)" | grep -q .; then
-        _selector_has_allow=true
-    fi
-    _selector_jq=$(magicnet_require_jq "packaged jq is unavailable; ad selector apply rejected") || {
-        unset _selector_config _selector_tmp _selector_has_allow _selector_jq
+    _selector_has_allow=0
+    grep -q '"tag"[[:space:]]*:[[:space:]]*"ad-allow"' "$_selector_config" && _selector_has_allow=1
+    (umask 077; awk -v has_allow="$_selector_has_allow" '
+        function emit_block(comma) {
+            print "    {"
+            print "      \"type\": \"selector\","
+            print "      \"tag\": \"ad-block\","
+            print "      \"interrupt_exist_connections\": true,"
+            print "      \"outbounds\": [\"block\", \"direct\", \"proxy\"],"
+            print "      \"default\": \"block\""
+            print "    }" comma
+        }
+        function emit_allow(comma) {
+            print "    {"
+            print "      \"type\": \"selector\","
+            print "      \"tag\": \"ad-allow\","
+            print "      \"interrupt_exist_connections\": true,"
+            print "      \"outbounds\": [\"final\", \"direct\", \"proxy\"],"
+            print "      \"default\": \"final\""
+            print "    }" comma
+        }
+        function brace_delta(s, i, c, d) {
+            d = 0
+            for (i = 1; i <= length(s); i++) {
+                c = substr(s, i, 1)
+                if (c == "{") d++
+                if (c == "}") d--
+            }
+            return d
+        }
+        BEGIN { in_outbounds = 0; buffering = 0; depth = 0; buffer = ""; found_block = 0 }
+        {
+            if (buffering) {
+                buffer = buffer $0 "\n"
+                depth += brace_delta($0)
+                if ($0 ~ /"tag"[[:space:]]*:[[:space:]]*"ad-block"/) tag = "block"
+                if ($0 ~ /"tag"[[:space:]]*:[[:space:]]*"ad-allow"/) tag = "allow"
+                if (depth <= 0) {
+                    comma = ($0 ~ /},[[:space:]]*$/) ? "," : ""
+                    if (tag == "block") {
+                        emit_block(has_allow ? comma : ",")
+                        found_block = 1
+                        if (!has_allow) emit_allow(comma)
+                    } else if (tag == "allow") {
+                        emit_allow(comma)
+                    } else {
+                        printf "%s", buffer
+                    }
+                    buffering = 0; buffer = ""; tag = ""
+                }
+                next
+            }
+            if ($0 ~ /^  "outbounds"[[:space:]]*:[[:space:]]*\[[[:space:]]*$/) {
+                in_outbounds = 1
+                print
+                next
+            }
+            if (in_outbounds && $0 ~ /^    \{[[:space:]]*$/) {
+                buffering = 1; buffer = $0 "\n"; depth = 1; tag = ""
+                next
+            }
+            if (in_outbounds && $0 ~ /^  ][,]?[[:space:]]*$/) {
+                if (!found_block) exit 42
+                in_outbounds = 0
+            }
+            print
+        }
+    ' "$_selector_config" >"$_selector_tmp") || {
+        _selector_rc=$?
+        rm -f "$_selector_tmp"
+        unset _selector_config _selector_tmp _selector_has_allow _selector_rc
         return 1
     }
-    magicnet_jq_install_config "$_selector_config" "$_selector_tmp" \
-        "$_selector_jq" --argjson has_allow "$_selector_has_allow" -e '
-        def is_ad_selector:
-          ((.tag // "") == "ad-block") or ((.tag // "") == "ad-allow");
-        def ad_block:
-          {"type":"selector","tag":"ad-block","interrupt_exist_connections":true,"outbounds":["block","direct","proxy"],"default":"block"};
-        def ad_allow:
-          {"type":"selector","tag":"ad-allow","interrupt_exist_connections":true,"outbounds":["final","direct","proxy"],"default":"final"};
-        if (.outbounds | type) != "array" then
-          error("sing-box outbounds must be an array")
-        else
-          .outbounds as $current
-          | ([range(0; ($current | length)) as $index
-              | select($current[$index] | is_ad_selector)
-              | $index][0] // ($current | length)) as $first
-          | ($current[0:$first] | map(select(is_ad_selector | not)) | length) as $position
-          | ($current | map(select(is_ad_selector | not))) as $clean
-          | .outbounds = (
-              $clean[0:$position]
-              + [ad_block]
-              + (if $has_allow then [ad_allow] else [] end)
-              + $clean[$position:]
-            )
-        end
-        ' "$_selector_config"
-    _selector_rc=$?
-    unset _selector_config _selector_tmp _selector_has_allow _selector_jq
-    set -- "$_selector_rc"
-    unset _selector_rc
-    return "$1"
+    if ! chmod 600 "$_selector_tmp" ||
+        ! mv -f "$_selector_tmp" "$_selector_config" ||
+        ! chmod 600 "$_selector_config"; then
+        rm -f "$_selector_tmp" 2>/dev/null || true
+        unset _selector_config _selector_tmp _selector_has_allow
+        return 1
+    fi
+    unset _selector_config _selector_tmp _selector_has_allow
 }
 
 magicnet_block_apply_singbox() {

@@ -1130,26 +1130,6 @@ pub(crate) fn redact(text: &str) -> String {
             if lower.contains("http://") || lower.contains("https://") {
                 "<redacted-url>".to_string()
             } else if contains_sensitive_assignment(&lower) {
-                let value = part
-                    .split_once('=')
-                    .or_else(|| part.split_once(':'))
-                    .map(|(_, value)| {
-                        value.trim_matches(|ch: char| {
-                            matches!(ch, '(' | ')' | ',' | ';' | '"' | '\'')
-                        })
-                    })
-                    .unwrap_or_default();
-                if value.is_empty() {
-                    let authorization = lower.contains("authorization");
-                    let scheme_follows = parts.get(index + 1).is_some_and(|next| {
-                        matches!(next.to_ascii_lowercase().as_str(), "bearer" | "basic")
-                    });
-                    redact_next = if authorization && scheme_follows {
-                        2
-                    } else {
-                        1
-                    };
-                }
                 "<redacted-sensitive>".to_string()
             } else if let Some(has_inline_value) = sensitive_key(part) {
                 let is_safe_url_status = !has_inline_value
@@ -1177,30 +1157,9 @@ pub(crate) fn redact(text: &str) -> String {
                         && parts.get(index + 1).is_some_and(|next| {
                             matches!(next.to_ascii_lowercase().as_str(), "is" | "was")
                         });
-                    let separator_follows = parts.get(index + 1).is_some_and(|next| {
-                        matches!(
-                            next.trim_matches(|ch: char| {
-                                matches!(ch, '(' | ')' | ',' | ';' | '"' | '\'')
-                            }),
-                            "=" | ":"
-                        )
-                    });
-                    let authorization = lower.contains("authorization");
-                    let scheme_index = index + if separator_follows { 2 } else { 1 };
-                    let scheme_follows = parts.get(scheme_index).is_some_and(|next| {
-                        matches!(next.to_ascii_lowercase().as_str(), "bearer" | "basic")
-                    });
                     redact_next = if has_inline_value {
                         0
                     } else if url_precedes_copula {
-                        2
-                    } else if authorization && scheme_follows {
-                        if separator_follows {
-                            3
-                        } else {
-                            2
-                        }
-                    } else if separator_follows {
                         2
                     } else {
                         1
@@ -1458,13 +1417,13 @@ mod tests {
     }
 
     #[test]
-    fn traffic_loop_guard_requires_root_and_loopback_exclusions() {
+    fn traffic_loop_guard_requires_root_and_loopback_exclusions(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .duration_since(UNIX_EPOCH)?
             .as_nanos();
         let root = std::env::temp_dir().join(format!("magicnet-loop-guard-{stamp}"));
-        fs::create_dir_all(root.join(".config/sing-box")).unwrap();
+        fs::create_dir_all(root.join(".config/sing-box"))?;
         fs::write(
             root.join(".config/sing-box/config.json"),
             r#"{
@@ -1475,28 +1434,27 @@ mod tests {
               }],
               "outbounds": [{"type": "vless", "tag": "node", "server": "example.com"}]
             }"#,
-        )
-        .unwrap();
+        )?;
         let app = App::for_test(root.clone());
         assert!(traffic_loop_guard_check(&app).0);
 
         fs::write(
             root.join(".config/sing-box/config.json"),
             r#"{"inbounds":[{"type":"tun"}],"outbounds":[]}"#,
-        )
-        .unwrap();
+        )?;
         assert!(!traffic_loop_guard_check(&app).0);
         let _ = fs::remove_dir_all(root);
+        Ok(())
     }
 
     #[test]
-    fn network_policy_accepts_dual_stack_and_rejects_stale_ipv6_guard() {
+    fn network_policy_accepts_dual_stack_and_rejects_stale_ipv6_guard(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .duration_since(UNIX_EPOCH)?
             .as_nanos();
         let root = std::env::temp_dir().join(format!("magicnet-network-policy-{stamp}"));
-        fs::create_dir_all(root.join(".config/sing-box")).unwrap();
+        fs::create_dir_all(root.join(".config/sing-box"))?;
         let config_path = root.join(".config/sing-box/config.json");
         fs::write(
             &config_path,
@@ -1511,8 +1469,7 @@ mod tests {
               }],
               "route": {"rules": []}
             }"#,
-        )
-        .unwrap();
+        )?;
         let app = App::for_test(root.clone());
         assert!(network_policy_check(&app).0);
 
@@ -1531,8 +1488,7 @@ mod tests {
                 {"ip_version": 6, "action": "reject", "method": "default", "no_drop": true}
               ]}
             }"#,
-        )
-        .unwrap();
+        )?;
         assert!(!network_policy_check(&app).0);
 
         fs::write(
@@ -1548,10 +1504,10 @@ mod tests {
               }],
               "route": {"rules": [{"ip_version": 6, "outbound": "block"}]}
             }"#,
-        )
-        .unwrap();
+        )?;
         assert!(!network_policy_check(&app).0);
         let _ = fs::remove_dir_all(root);
+        Ok(())
     }
 
     #[test]
@@ -1632,20 +1588,6 @@ mod tests {
     }
 
     #[test]
-    fn redact_filters_short_separate_and_authorization_values() {
-        for (input, secret) in [
-            ("password: tiny-secret", "tiny-secret"),
-            (r#""token": "json-secret""#, "json-secret"),
-            ("token = split-secret", "split-secret"),
-            ("Authorization: Bearer bearer-secret", "bearer-secret"),
-            ("Authorization : Basic basic-secret", "basic-secret"),
-        ] {
-            let output = redact(input);
-            assert!(!output.contains(secret), "leaked value: {output}");
-        }
-    }
-
-    #[test]
     fn read_only_command_reports_explicit_timeout() {
         let started = Instant::now();
         let output = read_only_command_with_timeout(
@@ -1720,31 +1662,28 @@ mod tests {
     }
 
     #[test]
-    fn support_bundle_has_unique_redacted_read_only_evidence_sections() {
+    fn support_bundle_has_unique_redacted_read_only_evidence_sections(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .duration_since(UNIX_EPOCH)?
             .as_nanos();
         let root = std::env::temp_dir().join(format!("magicnet-support-{nonce}"));
         let app = App::for_test(root.clone());
-        fs::create_dir_all(root.join(".config/sing-box")).unwrap();
-        fs::create_dir_all(root.join(".state/sing-box")).unwrap();
-        fs::create_dir_all(root.join(".log")).unwrap();
+        fs::create_dir_all(root.join(".config/sing-box"))?;
+        fs::create_dir_all(root.join(".state/sing-box"))?;
+        fs::create_dir_all(root.join(".log"))?;
         fs::write(
             root.join(".config/sing-box/subscription.url"),
             "https://private.example.invalid/sub?token=BUNDLE-URL-CANARY\n",
-        )
-        .unwrap();
+        )?;
         fs::write(
             root.join(".state/sing-box/subscription-status"),
             "phase=activate\nresult=failed\nattempt_epoch=123\nsuccess_epoch=100\nconfigured_count=1\nsource_count=1\nimported_count=2\nskipped_count=0\ngeneration_id=123-456\nreason=token=BUNDLE-TOKEN-CANARY\nsource_mode=url\nnative_parser=share-links\nnative_node_count=0\nconverter_enabled=1\nconverter_available=1\nconverter_attempted=1\nconverter_format=singbox\nconverter_result=failed\n",
-        )
-        .unwrap();
+        )?;
         fs::write(
             root.join(".state/startup-error"),
             "No subscription URL is configured; token=BUNDLE-STARTUP-CANARY\n",
-        )
-        .unwrap();
+        )?;
 
         let bundle = support_bundle(&app);
         for heading in [
@@ -1785,6 +1724,7 @@ mod tests {
                 "support bundle leaked {sensitive}"
             );
         }
-        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 }

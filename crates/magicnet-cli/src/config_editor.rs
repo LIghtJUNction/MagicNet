@@ -12,7 +12,7 @@ use std::time::Duration;
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 
-use crate::service::{apply_config, with_config_apply_lock};
+use crate::service::apply_config;
 use crate::webui_payload::MAX_WEBUI_PAYLOAD_BYTES;
 use crate::{cstring_from_os_str, decode_base64, write_secret_file, write_text_file, App};
 
@@ -108,12 +108,7 @@ fn commit_standalone_config(
         "input",
         protected.keys.as_deref(),
     )?;
-    if let Err(error) = mark_standalone_config(app) {
-        eprintln!(
-            "[warning] config was committed but standalone metadata could not be updated: {error}"
-        );
-    }
-    Ok(())
+    mark_standalone_config(app)
 }
 
 struct ProtectedConfig {
@@ -541,54 +536,19 @@ fn commit_config_text(
     role: &str,
     protected_keys: Option<&str>,
 ) -> Result<(), String> {
-    let previous_keys = if protected_keys.is_some() {
-        match fs::read_to_string(app.moddir.join(TAILSCALE_AUTH_PATH)) {
-            Ok(value) => Some(value),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-            Err(error) => return Err(format!("read current protected Tailscale keys: {error}")),
-        }
-    } else {
-        None
-    };
-    let keys_written = std::cell::Cell::new(false);
-    let committed = with_config_apply_lock(app, || {
-        with_generated_config_input(app, role, bytes, |source, _directory| {
-            validate_and_commit_open_config_file_with(app, target, path, source, || {
-                if let Some(keys) = protected_keys {
-                    write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), keys)?;
-                    keys_written.set(true);
-                }
-                Ok(())
-            })
+    with_generated_config_input(app, role, bytes, |source, _directory| {
+        validate_and_commit_open_config_file_with(app, target, path, source, || {
+            if let Some(keys) = protected_keys {
+                write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), keys)?;
+            }
+            Ok(())
         })
-    });
-    if let Err(error) = committed {
-        if keys_written.get() {
-            restore_tailscale_auth(app, previous_keys.as_deref()).map_err(|restore_error| {
-                format!(
-                    "{error}; restore previous protected Tailscale keys failed: {restore_error}"
-                )
-            })?;
-        }
-        return Err(error);
-    }
+    })?;
     println!(
         "[info] Saved and validated {target} config: {}\n[info] Runtime policy changes can be applied from the control/app pages.",
         path.display()
     );
     Ok(())
-}
-
-fn restore_tailscale_auth(app: &App, previous: Option<&str>) -> Result<(), String> {
-    if let Some(previous) = previous {
-        write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), previous)
-    } else {
-        match fs::remove_file(app.moddir.join(TAILSCALE_AUTH_PATH)) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(format!("remove newly staged Tailscale keys: {error}")),
-        }
-    }
 }
 
 fn with_generated_config_input<T>(
@@ -903,11 +863,6 @@ fn default_config(_target: &str) -> String {
     .to_string()
 }
 
-pub(crate) fn validate_active_config(app: &App, target: &str) -> Result<(), String> {
-    let path = config_path(app, target)?;
-    validate_config(app, target, &path)
-}
-
 fn validate_config(app: &App, target: &str, _path: &Path) -> Result<(), String> {
     let directory = open_config_destination_directory(app, target)?;
     let name = OsStr::new(config_target_filename(target)?);
@@ -971,19 +926,22 @@ mod tests {
     use crate::test_support::temp_app;
 
     #[test]
-    fn validator_runner_drains_output_without_unbounded_retention() {
+    fn validator_runner_drains_output_without_unbounded_retention(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut command = Command::new("sh");
         command.args([
             "-c",
             "chunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 16384 ]; do printf %s \"$chunk\"; i=$((i + 1)); done",
         ]);
-        let output = run_with_timeout(command, Duration::from_secs(8)).unwrap();
+        let output = run_with_timeout(command, Duration::from_secs(8))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         assert!(output.status.success());
         assert_eq!(
             output.stdout.len(),
             VALIDATOR_OUTPUT_LIMIT + "\n[output truncated]".len()
         );
         assert!(output.stdout.ends_with(b"[output truncated]"));
+        Ok(())
     }
 
     #[test]
@@ -1006,13 +964,14 @@ mod tests {
     }
 
     #[test]
-    fn tailscale_keys_are_staged_in_memory_until_config_validation() {
+    fn tailscale_keys_are_staged_in_memory_until_config_validation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let app = temp_app();
         let protected = protect_tailscale_auth_keys(
             &app,
             r#"{"endpoints":[{"type":"tailscale","tag":"tailscale","auth_key":"tskey-secret"}]}"#,
         )
-        .unwrap();
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         assert!(!protected.text.contains("tskey-secret"));
         assert!(protected
@@ -1020,25 +979,11 @@ mod tests {
             .as_deref()
             .is_some_and(|keys| keys.contains("tskey-secret")));
         assert!(!app.moddir.join(TAILSCALE_AUTH_PATH).exists());
+        Ok(())
     }
 
     #[test]
-    fn tailscale_secret_rollback_restores_or_removes_staged_keys() {
-        let app = temp_app();
-        let path = app.moddir.join(TAILSCALE_AUTH_PATH);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, "old-keys\n").unwrap();
-        fs::write(&path, "new-keys\n").unwrap();
-        restore_tailscale_auth(&app, Some("old-keys\n")).unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "old-keys\n");
-
-        restore_tailscale_auth(&app, None).unwrap();
-        assert!(!path.exists());
-        let _ = fs::remove_dir_all(&app.moddir);
-    }
-
-    #[test]
-    fn preserves_singbox_outbounds_block() {
+    fn preserves_singbox_outbounds_block() -> Result<(), Box<dyn std::error::Error>> {
         let template = r#"{
   "inbounds": [],
   "outbounds": [
@@ -1053,10 +998,12 @@ mod tests {
   ]
 }
 "#;
-        let merged = preserve_singbox_subscription_config(template, current).unwrap();
+        let merged = preserve_singbox_subscription_config(template, current)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         assert!(merged.contains("\"tag\": \"proxy\""));
         assert!(merged.contains("\"inbounds\": []"));
         assert!(merged.contains("\"route\": {}"));
+        Ok(())
     }
 
     #[test]
