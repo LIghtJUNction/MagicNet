@@ -72,7 +72,7 @@ const startSingBox = core.slice(
 assert.match(startSingBox, /magicnet_apply_runtime_config_unlocked/);
 assert.ok(
   startSingBox.indexOf("magicnet_apply_runtime_config_unlocked") <
-    startSingBox.indexOf("singbox_start"),
+    startSingBox.indexOf("magicnet_singbox_ensure_start_owned"),
   "the complete runtime policy must be materialized before sing-box snapshots the config",
 );
 assert.match(runtimeConfig, /magicnet_singbox_apply_hotspot_policy/);

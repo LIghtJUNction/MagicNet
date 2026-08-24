@@ -4,6 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fixture="$(mktemp -d)"
 cleanup() {
+  if [ "${concurrent_refresh_started:-0}" = 1 ] &&
+    command -v magicnet_subscription_schedule_set >/dev/null 2>&1; then
+    magicnet_subscription_schedule_set off >/dev/null 2>&1 || true
+  fi
   test -z "${stale_pid:-}" || kill "$stale_pid" 2>/dev/null || true
   test -z "${mismatch_pid:-}" || kill "$mismatch_pid" 2>/dev/null || true
   test -z "${owned_pid:-}" || kill "$owned_pid" 2>/dev/null || true
@@ -978,5 +982,23 @@ test ! -e "$(magicnet_subscription_refresh_owner_file)"
 test ! -e "$(magicnet_subscription_refresh_pid_file)"
 test ! -e "$(magicnet_subscription_refresh_loop_file)"
 owned_pid=
+
+# Independent start requests must serialize across processes. Exactly one loop
+# and one active owner may survive the race.
+printf '24\n' >"$(magicnet_subscription_schedule_file)"
+concurrent_refresh_started=1
+magicnet_subscription_refresh_stop >/dev/null 2>&1 || true
+magicnet_subscription_refresh_start &
+concurrent_start_a=$!
+magicnet_subscription_refresh_start &
+concurrent_start_b=$!
+wait "$concurrent_start_a"
+wait "$concurrent_start_b"
+test "$(magicnet_subscription_refresh_owner_state)" = active
+concurrent_pids="$(magicnet_subscription_refresh_loop_pids)"
+test "$(printf '%s\n' "$concurrent_pids" | awk 'NF { count++ } END { print count + 0 }')" -eq 1
+magicnet_subscription_schedule_set off
+concurrent_refresh_started=0
+unset concurrent_start_a concurrent_start_b concurrent_pids
 
 echo 'subscription lifecycle tests passed'

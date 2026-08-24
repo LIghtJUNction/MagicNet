@@ -39,6 +39,16 @@ for target in "$WORK/cgroup-v2/cgroup.procs" "$WORK/memcg/apps/tasks" "$WORK/cpu
     : >"$target"
 done
 
+failed_root="$WORK/failed-cgroup"
+mkdir -p "$failed_root"
+MAGICNET_PROCESS_CGROUP_ROOTS="$WORK/cgroup-v2:$failed_root"
+export MAGICNET_PROCESS_CGROUP_ROOTS
+if magicnet_detach_pid_from_app_cgroup 123; then
+    printf 'partial app-cgroup detachment was reported as success\n' >&2
+    exit 1
+fi
+grep -qx '123' "$WORK/cgroup-v2/cgroup.procs"
+: >"$WORK/cgroup-v2/cgroup.procs"
 printf '0::/apps\n' >"$MAGICNET_PROC_ROOT/456/cgroup"
 magicnet_detach_pid_from_app_cgroup 456
 for target in "$WORK/cgroup-v2/cgroup.procs" "$WORK/memcg/apps/tasks" "$WORK/cpuset/cgroup.procs"; do

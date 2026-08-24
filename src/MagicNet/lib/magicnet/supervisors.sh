@@ -193,17 +193,25 @@ magicnet_hotspot_watchdog_interval() {
     printf '%s\n' "${MAGICNET_HOTSPOT_WATCH_INTERVAL:-3}"
 }
 
-magicnet_hotspot_watchdog_start() {
+magicnet_hotspot_watchdog_start_unlocked() {
     if magicnet_module_disabled || ! magicnet_hotspot_proxy_enabled || ! magicnet_kernel_running; then
         magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true
         return 0
     fi
     import watchdog
     _hotspot_watch_name="$(magicnet_hotspot_watchdog_name)"
-    if watchdog status "$_hotspot_watch_name" >/dev/null 2>&1; then
-        unset _hotspot_watch_name
+    _hotspot_watch_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/${_hotspot_watch_name}.pid"
+    _hotspot_watch_pid="$(sed -n '1p' "$_hotspot_watch_pid_file" 2>/dev/null || true)"
+    if [ -n "$_hotspot_watch_pid" ] &&
+        magicnet_supervisor_pidfile_matches "$_hotspot_watch_pid_file" "$_hotspot_watch_pid"; then
+        unset _hotspot_watch_name _hotspot_watch_pid_file _hotspot_watch_pid
         return 0
     fi
+    # Never trust watchdog's kill -0-only status for a stale, reused PID. The
+    # exact script matcher above is authoritative and removal cannot signal the
+    # unrelated process that currently owns the recycled number.
+    rm -f "$_hotspot_watch_pid_file" 2>/dev/null || true
+    magicnet_supervisor_kill_orphans hotspot-watchdog
     # magicnet_start_kernel already performs the synchronous initial
     # reconciliation.  The watcher owns only later interface transitions and
     # must not repeat slow OEM tethering discovery on the start button path.
@@ -215,15 +223,23 @@ magicnet_hotspot_watchdog_start() {
         watchdog start --quiet "$_hotspot_watch_name" "$_hotspot_watch_interval" \
         "\"${MODDIR}/cli\" hotspot reconcile >/dev/null 2>&1"
     _hotspot_watch_rc=$?
-    unset _hotspot_watch_name _hotspot_watch_interval
+    unset _hotspot_watch_name _hotspot_watch_interval _hotspot_watch_pid_file _hotspot_watch_pid
     return "$_hotspot_watch_rc"
 }
 
-magicnet_hotspot_watchdog_stop() {
+magicnet_hotspot_watchdog_start() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_hotspot_watchdog_start_unlocked
+}
+
+magicnet_hotspot_watchdog_stop_unlocked() {
     _hotspot_watch_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_hotspot_watchdog_name).pid"
     magicnet_supervisor_stop_pidfile "$_hotspot_watch_pid_file"
     magicnet_supervisor_kill_orphans hotspot-watchdog
     unset _hotspot_watch_pid_file
+}
+
+magicnet_hotspot_watchdog_stop() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_hotspot_watchdog_stop_unlocked
 }
 
 magicnet_fswatch_name() {
@@ -267,6 +283,118 @@ magicnet_fswatch_busybox_bin() (
     fi
     return 1
 )
+
+magicnet_supervisor_lifecycle_lock_dir() {
+    printf '%s\n' "${MODDIR}/.state/supervisor-lifecycle.lock"
+}
+
+magicnet_supervisor_lifecycle_owner_matches() (
+    _lifecycle_owner="$1"
+    _lifecycle_owner_pid=${_lifecycle_owner%%:*}
+    case "$_lifecycle_owner_pid" in '' | *[!0-9]*) return 1 ;; esac
+    kill -0 "$_lifecycle_owner_pid" 2>/dev/null || return 1
+    case "$_lifecycle_owner" in
+        *:*)
+            _lifecycle_owner_start=${_lifecycle_owner#*:}
+            case "$_lifecycle_owner_start" in '' | *[!0-9]*) return 1 ;; esac
+            _lifecycle_live_start=$(magicnet_proc_start \
+                "$_lifecycle_owner_pid" "${MAGICNET_SUPERVISOR_PROC_ROOT:-/proc}")
+            [ -n "$_lifecycle_live_start" ] &&
+                [ "$_lifecycle_live_start" = "$_lifecycle_owner_start" ]
+            ;;
+        *) return 0 ;;
+    esac
+)
+
+magicnet_supervisor_lifecycle_reclaim() (
+    _lifecycle_expected="$1"
+    _lifecycle_lock=$(magicnet_supervisor_lifecycle_lock_dir)
+    _lifecycle_current=$(sed -n '1p' "$_lifecycle_lock/owner" 2>/dev/null || true)
+    [ "$_lifecycle_current" = "$_lifecycle_expected" ] || return 1
+    [ -z "$_lifecycle_current" ] || ! magicnet_supervisor_lifecycle_owner_matches "$_lifecycle_current" || return 1
+    if [ -n "$_lifecycle_current" ]; then
+        rm -f "$_lifecycle_lock/owner" 2>/dev/null || return 1
+    fi
+    rmdir "$_lifecycle_lock" 2>/dev/null
+)
+
+magicnet_supervisor_lifecycle_acquire() {
+    _lifecycle_lock=$(magicnet_supervisor_lifecycle_lock_dir)
+    _lifecycle_timeout="${MAGICNET_SUPERVISOR_LIFECYCLE_LOCK_TIMEOUT:-30}"
+    case "$_lifecycle_timeout" in '' | *[!0-9]* | 0) _lifecycle_timeout=30 ;; esac
+    [ "$_lifecycle_timeout" -le 120 ] || _lifecycle_timeout=120
+    _lifecycle_limit=$((_lifecycle_timeout * 20))
+    _lifecycle_attempt=0
+    _lifecycle_empty_attempt=0
+    mkdir -p "${_lifecycle_lock%/*}" || return 1
+    while ! mkdir "$_lifecycle_lock" 2>/dev/null; do
+        _lifecycle_owner=$(sed -n '1p' "$_lifecycle_lock/owner" 2>/dev/null || true)
+        if [ -n "$_lifecycle_owner" ]; then
+            _lifecycle_empty_attempt=0
+            if ! magicnet_supervisor_lifecycle_owner_matches "$_lifecycle_owner"; then
+                magicnet_supervisor_lifecycle_reclaim "$_lifecycle_owner" && continue
+            fi
+        else
+            _lifecycle_empty_attempt=$((_lifecycle_empty_attempt + 1))
+            if [ "$_lifecycle_empty_attempt" -ge 20 ]; then
+                magicnet_supervisor_lifecycle_reclaim '' && continue
+                _lifecycle_empty_attempt=0
+            fi
+        fi
+        if [ "$_lifecycle_attempt" -ge "$_lifecycle_limit" ]; then
+            magicnet_warn "Timed out waiting for supervisor lifecycle lock: $_lifecycle_lock"
+            return 1
+        fi
+        sleep 0.05
+        _lifecycle_attempt=$((_lifecycle_attempt + 1))
+    done
+    # Bash background-function tests need BASHPID; Android ash falls back to $$.
+    # shellcheck disable=SC3028
+    _lifecycle_pid="${BASHPID:-$$}"
+    _lifecycle_start=$(magicnet_proc_start "$_lifecycle_pid" "${MAGICNET_SUPERVISOR_PROC_ROOT:-/proc}")
+    if [ -n "$_lifecycle_start" ]; then
+        _lifecycle_self="${_lifecycle_pid}:$_lifecycle_start"
+    else
+        _lifecycle_self="$_lifecycle_pid"
+    fi
+    if ! (umask 077; printf '%s\n' "$_lifecycle_self" >"$_lifecycle_lock/owner"); then
+        rmdir "$_lifecycle_lock" 2>/dev/null || true
+        return 1
+    fi
+    MAGICNET_SUPERVISOR_LIFECYCLE_OWNER=$_lifecycle_self
+    export MAGICNET_SUPERVISOR_LIFECYCLE_OWNER
+    unset _lifecycle_lock _lifecycle_timeout _lifecycle_limit _lifecycle_attempt
+    unset _lifecycle_empty_attempt _lifecycle_owner _lifecycle_pid _lifecycle_start _lifecycle_self
+}
+
+magicnet_supervisor_lifecycle_release() {
+    _lifecycle_lock=$(magicnet_supervisor_lifecycle_lock_dir)
+    _lifecycle_owner=$(sed -n '1p' "$_lifecycle_lock/owner" 2>/dev/null || true)
+    if [ -n "${MAGICNET_SUPERVISOR_LIFECYCLE_OWNER:-}" ] &&
+        [ "$_lifecycle_owner" = "$MAGICNET_SUPERVISOR_LIFECYCLE_OWNER" ]; then
+        rm -f "$_lifecycle_lock/owner" 2>/dev/null || true
+        rmdir "$_lifecycle_lock" 2>/dev/null || true
+    fi
+    unset MAGICNET_SUPERVISOR_LIFECYCLE_OWNER
+    unset _lifecycle_lock _lifecycle_owner
+}
+
+magicnet_with_supervisor_lifecycle_lock() {
+    if [ "${MAGICNET_SUPERVISOR_LIFECYCLE_LOCK_HELD:-0}" = "1" ]; then
+        "$@"
+        return $?
+    fi
+    magicnet_supervisor_lifecycle_acquire || return 1
+    MAGICNET_SUPERVISOR_LIFECYCLE_LOCK_HELD=1
+    "$@"
+    _lifecycle_rc=$?
+    MAGICNET_SUPERVISOR_LIFECYCLE_LOCK_HELD=0
+    unset MAGICNET_SUPERVISOR_LIFECYCLE_LOCK_HELD
+    magicnet_supervisor_lifecycle_release
+    set -- "$_lifecycle_rc"
+    unset _lifecycle_rc
+    return "$1"
+}
 
 magicnet_fswatch_command() {
     printf '%s\n' "[ ! -f '$(magicnet_json_escape "$MODDIR")/disable' ] && [ ! -f '$(magicnet_json_escape "$MODDIR")/remove' ] || exit 0; MODDIR='$(magicnet_json_escape "$MODDIR")' '$(magicnet_json_escape "$MODDIR")/cli' config apply >/dev/null 2>&1"
@@ -376,7 +504,7 @@ magicnet_wifi_policy_pid_matches() (
     return "$_wifi_policy_match_result"
 )
 
-magicnet_wifi_policy_start() {
+magicnet_wifi_policy_start_unlocked() {
     if magicnet_module_disabled || ! magicnet_wifi_policy_enabled; then
         magicnet_wifi_policy_stop >/dev/null 2>&1 || true
         return 0
@@ -427,7 +555,11 @@ magicnet_wifi_policy_start() {
     return 1
 }
 
-magicnet_wifi_policy_stop() {
+magicnet_wifi_policy_start() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_wifi_policy_start_unlocked
+}
+
+magicnet_wifi_policy_stop_unlocked() {
     _wifi_policy_pid_file="$(magicnet_wifi_policy_pid_file)"
     _wifi_policy_pid="$(sed -n '1p' "$_wifi_policy_pid_file" 2>/dev/null || true)"
     if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
@@ -436,6 +568,10 @@ magicnet_wifi_policy_stop() {
     rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
     magicnet_supervisor_kill_orphans wifi-policy
     unset _wifi_policy_pid_file _wifi_policy_pid
+}
+
+magicnet_wifi_policy_stop() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_wifi_policy_stop_unlocked
 }
 
 magicnet_subscription_refresh_name() {
@@ -839,7 +975,7 @@ magicnet_subscription_refresh_status() {
     return 1
 }
 
-magicnet_subscription_refresh_stop() {
+magicnet_subscription_refresh_stop_unlocked() {
     _refresh_stop_owner=$(magicnet_subscription_refresh_owner_file)
     _refresh_stop_record=$(sed -n '1p' "$_refresh_stop_owner" 2>/dev/null || true)
     if ! magicnet_subscription_refresh_owner_parse "$_refresh_stop_record" ||
@@ -868,7 +1004,11 @@ magicnet_subscription_refresh_stop() {
     unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
 }
 
-magicnet_subscription_refresh_start() {
+magicnet_subscription_refresh_stop() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_subscription_refresh_stop_unlocked
+}
+
+magicnet_subscription_refresh_start_unlocked() {
     _refresh_hours=$(magicnet_subscription_schedule_interval)
     if [ "$_refresh_hours" = "off" ]; then
         magicnet_subscription_refresh_stop >/dev/null 2>&1 || true
@@ -978,7 +1118,11 @@ magicnet_subscription_refresh_start() {
     return "$_refresh_rc"
 }
 
-magicnet_subscription_schedule_set() {
+magicnet_subscription_refresh_start() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_subscription_refresh_start_unlocked
+}
+
+magicnet_subscription_schedule_set_unlocked() {
     _schedule_value="$1"
     case "$_schedule_value" in
     off | 12 | 24 | 48 | 72) ;;
@@ -1006,6 +1150,10 @@ magicnet_subscription_schedule_set() {
     _schedule_rc=$?
     unset _schedule_value _schedule_file _schedule_tmp
     return "$_schedule_rc"
+}
+
+magicnet_subscription_schedule_set() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_subscription_schedule_set_unlocked "$@"
 }
 
 magicnet_subscription_schedule_report() {
@@ -1057,7 +1205,7 @@ magicnet_supervisors_start_detached() {
     return 0
 }
 
-magicnet_supervisors_start() {
+magicnet_supervisors_start_unlocked() {
     magicnet_detach_pid_from_app_cgroup "$$" ||
         magicnet_warn "Failed to detach the supervisor launcher from the caller cgroup."
     _mss_rc=0
@@ -1077,10 +1225,18 @@ magicnet_supervisors_start() {
     return "$_mss_rc"
 }
 
-magicnet_supervisors_stop() {
+magicnet_supervisors_start() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_supervisors_start_unlocked
+}
+
+magicnet_supervisors_stop_unlocked() {
     magicnet_watchdog_stop
     magicnet_fswatch_stop
     magicnet_wifi_policy_stop
     magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
     [ "${MAGICNET_SUB_PRESERVE_REFRESH:-0}" = "1" ] || magicnet_subscription_refresh_stop
+}
+
+magicnet_supervisors_stop() {
+    magicnet_with_supervisor_lifecycle_lock magicnet_supervisors_stop_unlocked
 }

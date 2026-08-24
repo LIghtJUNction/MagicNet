@@ -371,7 +371,19 @@ case "${1:-}" in
         mkdir -p "${MODDIR:?}/.state"
         echo "$$" >"$MODDIR/.state/fake-sing-box.pid"
         printf "%s" "sing-box" >/proc/$$/comm 2>/dev/null || true
-        while :; do sleep 3600; done
+        fake_fifo="$MODDIR/.state/fake-sing-box.fifo.$$"
+        rm -f "$fake_fifo"
+        mkfifo "$fake_fifo"
+        exec 3<>"$fake_fifo"
+        cleanup_fake_singbox() {
+            rm -f "$fake_fifo"
+            if [[ "$(cat "$MODDIR/.state/fake-sing-box.pid" 2>/dev/null || true)" == "$$" ]]; then
+                rm -f "$MODDIR/.state/fake-sing-box.pid"
+            fi
+            exit 0
+        }
+        trap cleanup_fake_singbox TERM INT
+        while :; do read -r -t 3600 _ <&3 || true; done
         ;;
 esac
 exit 0
@@ -487,8 +499,12 @@ export MAGICNET_FAKE_HOST_GETENT="$HOST_GETENT"
 write_mock ss '
 if [[ "${1:-}" == "-lnt" || "${1:-}" == "-lntp" ]]; then
     if [[ -s "${MODDIR:?}/.state/fake-sing-box.pid" ]]; then
-        printf "%s\n" "LISTEN 0 4096 127.0.0.1:7892 0.0.0.0:*"
-        printf "%s\n" "LISTEN 0 4096 127.0.0.1:9090 0.0.0.0:*"
+        pid="$(cat "$MODDIR/.state/fake-sing-box.pid")"
+        kill -0 "$pid" 2>/dev/null || exit 0
+        suffix=""
+        [[ "${1:-}" != "-lntp" ]] || suffix=" users:((\"sing-box\",pid=$pid,fd=7))"
+        printf "%s\n" "LISTEN 0 4096 127.0.0.1:7892 0.0.0.0:*$suffix"
+        printf "%s\n" "LISTEN 0 4096 127.0.0.1:9090 0.0.0.0:*$suffix"
     fi
 fi
 exit 0
@@ -772,6 +788,19 @@ run sh -c '
 printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing-box/subscription.url"
 
 run sh "$MODDIR/service.sh"
+# shellcheck disable=SC2016
+run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" sh -c '
+    . "$MODDIR/lib/kamfw/.kamfwrc"
+    import __runtime__
+    . "$MODDIR/lib/magicnet.sh"
+    attempt=0
+    while [ "$attempt" -lt 100 ]; do
+        magicnet_owned_singbox_running && exit 0
+        sleep 0.05
+        attempt=$((attempt + 1))
+    done
+    exit 1
+'
 run sh "$MODDIR/boot-completed.sh"
 hotspot_policy_ready() {
     "$HOST_JQ" -e '

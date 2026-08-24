@@ -957,12 +957,14 @@ assert_startup_policy_order() (
   magicnet_module_disabled() { return 1; }
   magicnet_cmd_exists() { return 0; }
   import() { return 0; }
-  is_singbox_running() { return 1; }
+  magicnet_owned_singbox_running() { return 1; }
   magicnet_prepare_singbox_nodes_unlocked() { printf '%s\n' prepare >>"$startup_events"; }
   magicnet_apply_runtime_config_unlocked() { printf '%s\n' runtime-policy >>"$startup_events"; }
   magicnet_tailscale_inject_auth_key() { printf '%s\n' tailscale-auth >>"$startup_events"; }
   magicnet_tailscale_scrub_auth_key() { return 0; }
-  singbox_start() { printf '%s\n' singbox-start >>"$startup_events"; }
+  magicnet_ensure_singbox_ownership_helpers() { return 0; }
+  magicnet_singbox_subscription_config_file() { printf '%s\n' /fixture/config.json; }
+  magicnet_singbox_ensure_start_owned() { printf '%s\n' singbox-start >>"$startup_events"; }
   magicnet_singbox_running_has_nodes() { return 0; }
 
   MAGIC_SINGBOX=1 magicnet_start_singbox_unlocked
@@ -1044,7 +1046,7 @@ assert_ready_start_holds_one_lock_and_stops_failed_generation() (
     return 1
   }
   import() { :; }
-  singbox_stop() {
+  magicnet_stop_owned_singbox_after_failure() {
     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
     printf '%s\n' stop >>"$events"
   }
