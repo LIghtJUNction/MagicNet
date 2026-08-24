@@ -388,7 +388,10 @@ test "$(tr '\n' ' ' <"$order_log")" = 'stop start '
   kill "$foreign"
 )
 (
-  magicnet_singbox_owned_pids() { printf '999999\n'; }
+  magicnet_singbox_owned_pids_to_file() {
+    printf '999999\n' >"$2"
+    return 0
+  }
   magicnet_supervisors_stop() { :; }
   magicnet_fswatch_status() { return 1; }
   kill() { :; }
@@ -396,7 +399,10 @@ test "$(tr '\n' ' ' <"$order_log")" = 'stop start '
     magicnet_singbox_restart_owned "$tmp/config.json" && exit 1 || true
 )
 (
-  magicnet_singbox_owned_pids() { :; }
+  magicnet_singbox_owned_pids_to_file() {
+    : >"$2"
+    return 1
+  }
   magicnet_supervisors_stop() { :; }
   magicnet_fswatch_status() { return 0; }
   magicnet_fswatch_start() { return 1; }

@@ -1,15 +1,26 @@
 magicnet_status_text() {
-    if "$1" >/dev/null 2>&1; then
-        printf '%s\n' "Running"
-    else
-        printf '%s\n' "Stopped"
-    fi
+    "$1" >/dev/null 2>&1
+    _status_text_rc=$?
+    case "$_status_text_rc" in
+    0) printf '%s\n' "Running" ;;
+    1) printf '%s\n' "Stopped" ;;
+    *) printf '%s\n' "Unknown" ;;
+    esac
 }
 
 magicnet_refresh_status() {
     if magicnet_cmd_exists sing-box; then
         import __singbox__
-        is_singbox_running >/dev/null 2>&1 && return 0
+        if is_singbox_running >/dev/null 2>&1; then
+            _refresh_running_rc=0
+        else
+            _refresh_running_rc=$?
+        fi
+        case "$_refresh_running_rc" in
+        0) return 0 ;;
+        1) ;;
+        *) return 2 ;;
+        esac
     fi
 
     config set override.description "[MagicNet]: No kernel running" 2>/dev/null || true
@@ -20,7 +31,19 @@ magicnet_start_singbox_unlocked() {
     [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
     magicnet_cmd_exists sing-box || return 1
     import __singbox__
-    is_singbox_running >/dev/null 2>&1 && return 0
+    if is_singbox_running >/dev/null 2>&1; then
+        _start_running_rc=0
+    else
+        _start_running_rc=$?
+    fi
+    case "$_start_running_rc" in
+    0) return 0 ;;
+    1) ;;
+    *)
+        magicnet_warn "sing-box process discovery is indeterminate; start aborted."
+        return 2
+        ;;
+    esac
     magicnet_prepare_singbox_nodes_unlocked || return 1
     magicnet_singbox_chain_apply || return 1
     magicnet_singbox_apply_transparent_mode || return 1
@@ -82,14 +105,28 @@ magicnet_start_singbox_ready() {
 magicnet_kernel_running() {
     if magicnet_cmd_exists sing-box; then
         import __singbox__
-        is_singbox_running >/dev/null 2>&1 && return 0
+        if is_singbox_running >/dev/null 2>&1; then
+            _kernel_status_rc=0
+        else
+            _kernel_status_rc=$?
+        fi
+        return "$_kernel_status_rc"
     fi
 
     return 1
 }
 
 magicnet_live_kernel_fast_path() {
-    magicnet_kernel_running || return 1
+    if magicnet_kernel_running; then
+        _live_kernel_rc=0
+    else
+        _live_kernel_rc=$?
+    fi
+    case "$_live_kernel_rc" in
+    0) ;;
+    1) return 1 ;;
+    *) return 2 ;;
+    esac
     [ "${MAGICNET_ALLOW_DISRUPTIVE_RECOVERY:-0}" != 1 ] || return 1
     if [ -d "${MODDIR}/.state/sing-box/subscription-transaction" ]; then
         magicnet_warn "A live sing-box core has pending subscription recovery; keeping the connection and deferring recovery until an explicit repair, update, or restart."
@@ -102,7 +139,19 @@ magicnet_kernel_start_preamble() {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         return 1
     }
-    magicnet_live_kernel_fast_path && return 0
+    if magicnet_live_kernel_fast_path; then
+        _preamble_live_rc=0
+    else
+        _preamble_live_rc=$?
+    fi
+    case "$_preamble_live_rc" in
+    0) return 0 ;;
+    1) ;;
+    *)
+        magicnet_warn "sing-box process discovery is indeterminate; startup preamble aborted."
+        return 2
+        ;;
+    esac
     if command -v magicnet_recover_interrupted_subscription >/dev/null 2>&1 &&
         ! magicnet_recover_interrupted_subscription; then
         magicnet_warn "Interrupted subscription transaction recovery failed"
@@ -114,10 +163,20 @@ magicnet_kernel_start_preamble() {
 magicnet_start_kernel() {
     magicnet_detach_pid_from_app_cgroup "$$" ||
         magicnet_warn "Failed to detach the core launcher from the caller cgroup."
-    magicnet_kernel_start_preamble || return 1
+    magicnet_kernel_start_preamble || return $?
     if magicnet_kernel_running; then
-        return 0
+        _kernel_running_rc=0
+    else
+        _kernel_running_rc=$?
     fi
+    case "$_kernel_running_rc" in
+    0) return 0 ;;
+    1) ;;
+    *)
+        magicnet_warn "sing-box process discovery is indeterminate; network teardown and start aborted."
+        return 2
+        ;;
+    esac
 
     magicnet_disable_dns_capture || true
     magicnet_disable_dns_leak_guard || true
@@ -148,8 +207,17 @@ magicnet_start_kernel() {
 }
 
 magicnet_ensure_kernel() {
-    magicnet_kernel_start_preamble || return 1
-    magicnet_kernel_running && return 0
+    magicnet_kernel_start_preamble || return $?
+    if magicnet_kernel_running; then
+        _ensure_running_rc=0
+    else
+        _ensure_running_rc=$?
+    fi
+    case "$_ensure_running_rc" in
+    0) return 0 ;;
+    1) ;;
+    *) return 2 ;;
+    esac
     magicnet_require_subscription_or_stop || return 1
     MAGICNET_WATCHDOG=1 magicnet_start_kernel
 }

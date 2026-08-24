@@ -9,8 +9,9 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use crate::{
-    cmdline_has_command, cmdline_has_script, diagnostics::supervisor_pid, read_proc_argv,
-    run_magicnet_function, singbox_pid_summary, stop_owned_singbox, write_text_file, App,
+    cmdline_has_command, cmdline_has_script, diagnostics::supervisor_pid, owned_singbox_pids,
+    read_proc_argv, run_magicnet_function, singbox_pid_summary, stop_owned_singbox,
+    write_text_file, App,
 };
 
 const START_SUPERVISORS_COMMAND: &str = "magicnet_supervisors_start_detached";
@@ -450,6 +451,10 @@ fn restart_command(target: &str) -> &'static str {
 }
 
 fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String> {
+    // Discovery is a fail-closed gate. A temporary pidof/proc-reader failure
+    // must leave the old core, supervisors, TUN, and DNS policy untouched.
+    let owned_singbox = owned_singbox_pids(app)?;
+
     stop_supervisor_pidfile(app, app.moddir.join(".state/watchdog/magicnet-kernel.pid"));
     stop_supervisor_pidfile(
         app,
@@ -500,8 +505,12 @@ fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String>
     );
     // Only stop the sing-box process launched from this module. A separate
     // VPN/core may legitimately use the same process name and must survive a
-    // MagicNet stop/restart.
-    stop_owned_singbox(app);
+    // MagicNet stop/restart. If a stop-wait lookup becomes indeterminate,
+    // restore optional supervisors and preserve all network runtime state.
+    if let Err(err) = stop_owned_singbox(app, owned_singbox) {
+        let _ = run_magicnet_function(app, START_SUPERVISORS_COMMAND);
+        return Err(err);
+    }
     run_magicnet_function(app, stop_runtime_cleanup_command())?;
     Ok(())
 }

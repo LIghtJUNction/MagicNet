@@ -933,8 +933,8 @@ mod tests {
             "-c",
             "chunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 16384 ]; do printf %s \"$chunk\"; i=$((i + 1)); done",
         ]);
-        let output = run_with_timeout(command, Duration::from_secs(8))
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let output =
+            run_with_timeout(command, Duration::from_secs(8)).map_err(std::io::Error::other)?;
         assert!(output.status.success());
         assert_eq!(
             output.stdout.len(),
@@ -971,7 +971,7 @@ mod tests {
             &app,
             r#"{"endpoints":[{"type":"tailscale","tag":"tailscale","auth_key":"tskey-secret"}]}"#,
         )
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
 
         assert!(!protected.text.contains("tskey-secret"));
         assert!(protected
@@ -999,7 +999,7 @@ mod tests {
 }
 "#;
         let merged = preserve_singbox_subscription_config(template, current)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         assert!(merged.contains("\"tag\": \"proxy\""));
         assert!(merged.contains("\"inbounds\": []"));
         assert!(merged.contains("\"route\": {}"));

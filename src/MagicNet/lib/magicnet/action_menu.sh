@@ -16,15 +16,29 @@ magicnet_action_update_singbox_subscription() {
 magicnet_action_toggle_singbox() {
     import __singbox__
     if is_singbox_running >/dev/null 2>&1; then
+        _running_status=0
+    else
+        _running_status=$?
+    fi
+    case "$_running_status" in
+    0)
         singbox_stop
         _status=$?
-        magicnet_disable_dns_capture || true
-        magicnet_disable_dns_leak_guard || true
-    else
+        if [ "$_status" -eq 0 ]; then
+            magicnet_disable_dns_capture || true
+            magicnet_disable_dns_leak_guard || true
+        fi
+        ;;
+    1)
         magicnet_start_kernel
         _status=$?
-    fi
-    magicnet_refresh_status
+        ;;
+    *)
+        panel_error "sing-box process discovery is indeterminate"
+        _status=2
+        ;;
+    esac
+    magicnet_refresh_status || true
     return "$_status"
 }
 

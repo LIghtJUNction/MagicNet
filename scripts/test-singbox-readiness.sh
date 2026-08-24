@@ -16,8 +16,12 @@ exit "${CURL_RC:-1}"
 SH
 chmod +x "$fixture/curl"
 
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
-magicnet_singbox_owned_pids() { printf '%s\n' 123; }
+magicnet_singbox_owned_pids_to_file() {
+    printf '%s\n' 123 >"$2"
+    return 0
+}
 magicnet_singbox_listener_owned() { return 0; }
 
 curl_log="$fixture/curl.log"

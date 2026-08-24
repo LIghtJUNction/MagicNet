@@ -29,7 +29,10 @@ magicnet_supervisors_stop() { printf 'supervisors-stop\n' >>"$events"; }
 magicnet_disable_dns_capture() { printf 'dns-capture-disable\n' >>"$events"; }
 magicnet_disable_dns_leak_guard() { printf 'dns-leak-guard-disable\n' >>"$events"; }
 magicnet_after_kernel_start_unlocked() { printf 'post-start\n' >>"$events"; }
-magicnet_singbox_owned_pids() { :; }
+magicnet_singbox_owned_pids_to_file() {
+  : >"$2"
+  return 1
+}
 magicnet_singbox_ensure_start_owned() { :; }
 ss() { :; }
 ip() { :; }
@@ -42,7 +45,7 @@ MAGICNET_SUB_DEFER_FSWATCH_RESTORE=1
 MAGICNET_SUB_FSWATCH_RESTORE_PENDING=0
 magicnet_singbox_restart_owned "$MODDIR/.config/sing-box/config.json"
 test "$MAGICNET_SUB_FSWATCH_RESTORE_PENDING" -eq 1
-test "$(tr '\n' ' ' <"$events")" = 'dns-capture-disable dns-leak-guard-disable supervisors-stop post-start '
+test "$(tr '\n' ' ' <"$events")" = 'supervisors-stop dns-capture-disable dns-leak-guard-disable post-start '
 for cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal; do
   test ! -e "$MODDIR/.config/sing-box/$cache_name"
 done
@@ -56,8 +59,13 @@ unset MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_RESET_BOOTSTRAP_CACHE \
 failure_state="$fixture/failure-state"
 printf 'stopped\n' >"$failure_state"
 failure_owned_pids=
-magicnet_singbox_owned_pids() {
-  test -n "$failure_owned_pids" && printf '%s\n' "$failure_owned_pids"
+magicnet_singbox_owned_pids_to_file() {
+  : >"$2"
+  if test -n "$failure_owned_pids"; then
+    printf '%s\n' "$failure_owned_pids" >"$2"
+    return 0
+  fi
+  return 1
 }
 magicnet_singbox_ensure_start_owned() {
   printf 'running\n' >"$failure_state"

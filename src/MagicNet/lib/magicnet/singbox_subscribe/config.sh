@@ -560,95 +560,157 @@ magicnet_singbox_config_has_clash_api() {
     return 1
 }
 
-magicnet_singbox_pid_live() {
+# Process discovery uses a tri-state contract throughout this file:
+#   0 = one or more matching processes were found
+#   1 = the process set is authoritatively empty
+#   2 = discovery or identity is indeterminate
+# Callers must preserve 2 and must never interpret it as an empty process set.
+magicnet_singbox_pid_live() (
     _live_pid="$1"
     case "$_live_pid" in
-    '' | *[!0-9]*) return 1 ;;
+    '' | *[!0-9]* | 0) return 1 ;;
     esac
     _live_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    _live_proc_dir="$_live_proc_root/$_live_pid"
+    [ -d "$_live_proc_dir" ] || {
+        unset _live_pid _live_proc_root _live_proc_dir
+        return 1
+    }
     _live_state="$(magicnet_proc_state "$_live_pid" "$_live_proc_root")" || {
-        unset _live_pid _live_proc_root _live_state
-        return 1
-    }
-    [ -n "$_live_state" ] && [ "$_live_state" != "Z" ] || {
-        unset _live_pid _live_proc_root _live_state
-        return 1
-    }
-    unset _live_pid _live_proc_root _live_state
-    return 0
-}
-
-magicnet_singbox_pids() {
-    _singbox_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
-    _singbox_pid_list=''
-    _singbox_pid_lookup_rc=1
-    _singbox_pid_lookup_available=0
-    if [ "$_singbox_proc_root" = /proc ] && [ -x /system/bin/getprop ]; then
-        _singbox_pid_lookup_available=1
-        _singbox_pid_list=$("${MODDIR}/cli" __proc-pids sing-box 2>/dev/null)
-        _singbox_pid_lookup_rc=$?
-        [ "$_singbox_pid_lookup_rc" -eq 0 ] || {
-            unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
-            unset _singbox_pid_lookup_available
-            return 1
-        }
-    elif command -v pidof >/dev/null 2>&1; then
-        _singbox_pid_lookup_available=1
-        _singbox_pid_list=$(pidof sing-box 2>/dev/null)
-        _singbox_pid_lookup_rc=$?
-    fi
-    if [ "$_singbox_pid_lookup_rc" -eq 0 ]; then
-        # shellcheck disable=SC2086 # bounded pid lookup returns whitespace-separated PIDs.
-        for _pid in $_singbox_pid_list; do
-            case "$_pid" in *[!0-9]* | '') continue ;; esac
-            magicnet_singbox_pid_live "$_pid" || continue
-            printf '%s\n' "$_pid"
-        done
-        unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
-        unset _singbox_pid_lookup_available _pid
-        return 0
-    fi
-    if [ "$_singbox_pid_lookup_available" -eq 1 ]; then
-        unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
-        unset _singbox_pid_lookup_available
-        return 0
-    fi
-    # Custom proc roots are test/diagnostic fixtures. Never fall back to an
-    # N-entry helper scan against the production /proc tree.
-    [ "$_singbox_proc_root" != /proc ] || {
-        unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
-        unset _singbox_pid_lookup_available
-        return 1
-    }
-    for _proc_comm in "$_singbox_proc_root"/[0-9]*/comm; do
-        [ -r "$_proc_comm" ] || continue
-        _pid=${_proc_comm#"$_singbox_proc_root"/}
-        _pid=${_pid%/comm}
-        _proc_name=$(magicnet_proc_comm "$_pid" "$_singbox_proc_root") || continue
-        if [ "$_proc_name" = "sing-box" ]; then
-            magicnet_singbox_pid_live "$_pid" || continue
-            printf '%s\n' "$_pid"
+        if [ -d "$_live_proc_dir" ]; then
+            _live_rc=2
+        else
+            _live_rc=1
         fi
-    done
-    unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
-    unset _singbox_pid_lookup_available _proc_comm _proc_name _pid
-}
+        unset _live_pid _live_proc_root _live_proc_dir _live_state
+        return "$_live_rc"
+    }
+    [ -n "$_live_state" ] && [ "$_live_state" != Z ]
+    _live_rc=$?
+    unset _live_pid _live_proc_root _live_proc_dir _live_state
+    return "$_live_rc"
+)
 
-magicnet_singbox_is_running() {
-    _running_config="${1:-$(magicnet_singbox_subscription_config_file)}"
-    [ -n "$(magicnet_singbox_owned_pids "$_running_config")" ]
-}
+magicnet_singbox_pids_to_file() (
+    _singbox_output="$1"
+    [ -f "$_singbox_output" ] && [ ! -L "$_singbox_output" ] || return 2
+    chmod 600 "$_singbox_output" 2>/dev/null || return 2
+    : >"$_singbox_output" || return 2
+    _singbox_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    _singbox_candidates=$(magicnet_proc_query_temp_create) || return 2
+    _singbox_found=0
 
-magicnet_singbox_pid_owned() {
+    if [ "$_singbox_proc_root" = /proc ] || command -v pidof >/dev/null 2>&1; then
+        if magicnet_proc_named_pids_to_file sing-box "$_singbox_candidates"; then
+            _singbox_lookup_rc=0
+        else
+            _singbox_lookup_rc=$?
+        fi
+        case "$_singbox_lookup_rc" in
+        1)
+            rm -f "$_singbox_candidates"
+            return 1
+            ;;
+        0) ;;
+        *)
+            rm -f "$_singbox_candidates"
+            return 2
+            ;;
+        esac
+    else
+        # Only custom test roots may use the bounded per-entry fallback.
+        for _proc_comm in "$_singbox_proc_root"/[0-9]*/comm; do
+            [ -r "$_proc_comm" ] || continue
+            _pid=${_proc_comm#"$_singbox_proc_root"/}
+            _pid=${_pid%/comm}
+            _proc_name="$(magicnet_proc_comm "$_pid" "$_singbox_proc_root")" || {
+                [ -d "$_singbox_proc_root/$_pid" ] || continue
+                rm -f "$_singbox_candidates"
+                unset _singbox_output _singbox_proc_root _singbox_candidates
+                unset _singbox_found _proc_comm _proc_name _pid
+                return 2
+            }
+            [ "$_proc_name" = sing-box ] || continue
+            printf '%s\n' "$_pid" >>"$_singbox_candidates" || {
+                rm -f "$_singbox_candidates"
+                return 2
+            }
+        done
+    fi
+
+    _singbox_loop_rc=0
+    while IFS= read -r _pid; do
+        if magicnet_singbox_pid_live "$_pid"; then
+            _singbox_live_rc=0
+        else
+            _singbox_live_rc=$?
+        fi
+        case "$_singbox_live_rc" in
+        0)
+            if printf '%s\n' "$_pid" >>"$_singbox_output"; then
+                _singbox_found=1
+            else
+                _singbox_loop_rc=2
+                break
+            fi
+            ;;
+        1) ;;
+        *)
+            _singbox_loop_rc=2
+            break
+            ;;
+        esac
+    done <"$_singbox_candidates"
+    rm -f "$_singbox_candidates"
+    if [ "$_singbox_loop_rc" -eq 2 ]; then
+        : >"$_singbox_output" 2>/dev/null || true
+        return 2
+    fi
+    _singbox_rc=1
+    [ "$_singbox_found" -eq 0 ] || _singbox_rc=0
+    unset _singbox_output _singbox_proc_root _singbox_candidates
+    unset _singbox_found _singbox_lookup_rc _singbox_live_rc _pid _proc_comm _proc_name
+    return "$_singbox_rc"
+)
+
+# Compatibility emitter for diagnostics/tests. Lifecycle code must use the
+# explicit *_to_file API so command substitution cannot erase the tri-state.
+magicnet_singbox_pids() (
+    _singbox_emit=$(magicnet_proc_query_temp_create) || return 2
+    if magicnet_singbox_pids_to_file "$_singbox_emit"; then
+        _singbox_emit_rc=0
+    else
+        _singbox_emit_rc=$?
+    fi
+    if [ "$_singbox_emit_rc" -eq 0 ]; then
+        while IFS= read -r _singbox_emit_pid; do
+            printf '%s\n' "$_singbox_emit_pid"
+        done <"$_singbox_emit"
+    fi
+    rm -f "$_singbox_emit"
+    unset _singbox_emit _singbox_emit_pid
+    return "$_singbox_emit_rc"
+)
+
+magicnet_singbox_pid_owned() (
     _owned_pid="$1"
     _owned_config="$2"
-    magicnet_singbox_pid_live "$_owned_pid" || return 1
-    _owned_expected=$(readlink -f "${MODDIR}/bin/sing-box" 2>/dev/null) || return 1
-    [ -x "${MODDIR}/bin/sing-box" ] || return 1
+    if magicnet_singbox_pid_live "$_owned_pid"; then
+        _owned_live_rc=0
+    else
+        _owned_live_rc=$?
+    fi
+    [ "$_owned_live_rc" -ne 2 ] || return 2
+    [ "$_owned_live_rc" -eq 0 ] || return 1
+    [ -x "${MODDIR}/bin/sing-box" ] || return 2
+    _owned_expected=$(readlink -f "${MODDIR}/bin/sing-box" 2>/dev/null) || return 2
     _owned_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
     _owned_proc_dir="$_owned_proc_root/$_owned_pid"
-    _owned_comm=$(magicnet_proc_comm "$_owned_pid" "$_owned_proc_root") || return 1
-    [ "$_owned_comm" = "sing-box" ] || return 1
+    _owned_comm="$(magicnet_proc_comm "$_owned_pid" "$_owned_proc_root")" || {
+        [ -d "$_owned_proc_dir" ] && return 2
+        return 1
+    }
+    [ "$_owned_comm" = sing-box ] || return 1
     _owned_exe_link=$(readlink "$_owned_proc_dir/exe" 2>/dev/null || true)
     _owned_exe_visible=0
     _owned_exe_match=0
@@ -657,81 +719,171 @@ magicnet_singbox_pid_owned() {
         _owned_exe_visible=1
         [ "$_owned_exe_path" = "$_owned_expected" ] && _owned_exe_match=1
     fi
-    (
-        _argv_index=0
-        _argv_run=0
-        _argv_after_run=0
-        _argv0=
-        _argv_wrapper=0
-        _argv_config_count=0
-        _argv_config_ok=0
-        _argv_work_count=0
-        _argv_work_ok=0
-        _argv_pending=
-        _argv_cmdline=$(magicnet_proc_cmdline_lines "$_owned_pid" "$_owned_proc_root") || return 1
-        while IFS= read -r _argv_arg || [ -n "$_argv_arg" ]; do
-            _argv_index=$((_argv_index + 1))
-            [ "$_argv_index" -ne 1 ] || _argv0="$_argv_arg"
-            if [ "$_argv_after_run" -eq 0 ]; then
-                if [ "$_argv_arg" = "$_owned_expected" ] ||
-                    [ "$_argv_arg" = "${MODDIR}/bin/sing-box" ]; then
-                    _argv_wrapper=1
-                fi
-                if [ "$_argv_arg" = "run" ]; then
-                    _argv_run=1
-                    _argv_after_run=1
-                fi
-                continue
-            fi
-            case "$_argv_pending" in
-            config)
-                [ "$_argv_arg" != "$_owned_config" ] || _argv_config_ok=1
-                _argv_pending=
-                continue
-                ;;
-            work)
-                [ "$_argv_arg" != "${_owned_config%/*}" ] || _argv_work_ok=1
-                _argv_pending=
-                continue
-                ;;
-            esac
-            case "$_argv_arg" in
-            -c)
-                _argv_config_count=$((_argv_config_count + 1))
-                _argv_pending=config
-                ;;
-            -D)
-                _argv_work_count=$((_argv_work_count + 1))
-                _argv_pending=work
-                ;;
-            esac
-        done <<EOF
-$_argv_cmdline
-EOF
-        [ "$_argv_run" -eq 1 ] &&
-            [ "$_argv_config_count" -eq 1 ] && [ "$_argv_config_ok" -eq 1 ] &&
-            [ "$_argv_work_count" -eq 1 ] && [ "$_argv_work_ok" -eq 1 ] &&
-            [ -z "$_argv_pending" ] &&
-            {
-                [ "$_owned_exe_match" -eq 1 ] ||
-                    [ "$_argv_wrapper" -eq 1 ] ||
-                    { [ "$_owned_exe_visible" -eq 0 ] && [ "$_argv0" = "sing-box" ]; }
-            }
-    ) 2>/dev/null
-    _owned_rc=$?
-    unset _owned_pid _owned_config _owned_expected _owned_proc_root _owned_proc_dir \
-        _owned_comm _owned_exe_link _owned_exe_visible _owned_exe_match _owned_exe_path
-    return "$_owned_rc"
-}
+    _owned_argv=$(magicnet_proc_query_temp_create) || return 2
+    magicnet_proc_cmdline_lines "$_owned_pid" "$_owned_proc_root" >"$_owned_argv" 2>/dev/null
+    _owned_argv_rc=$?
+    if [ "$_owned_argv_rc" -ne 0 ]; then
+        rm -f "$_owned_argv"
+        [ -d "$_owned_proc_dir" ] && return 2
+        return 1
+    fi
 
-magicnet_singbox_owned_pids() {
+    _argv_index=0
+    _argv_run=0
+    _argv_after_run=0
+    _argv0=
+    _argv_wrapper=0
+    _argv_config_count=0
+    _argv_config_ok=0
+    _argv_work_count=0
+    _argv_work_ok=0
+    _argv_pending=
+    while IFS= read -r _argv_arg; do
+        _argv_index=$((_argv_index + 1))
+        [ "$_argv_index" -ne 1 ] || _argv0="$_argv_arg"
+        if [ "$_argv_after_run" -eq 0 ]; then
+            if [ "$_argv_arg" = "$_owned_expected" ] ||
+                [ "$_argv_arg" = "${MODDIR}/bin/sing-box" ]; then
+                _argv_wrapper=1
+            fi
+            if [ "$_argv_arg" = run ]; then
+                _argv_run=1
+                _argv_after_run=1
+            fi
+            continue
+        fi
+        case "$_argv_pending" in
+        config)
+            [ "$_argv_arg" != "$_owned_config" ] || _argv_config_ok=1
+            _argv_pending=
+            continue
+            ;;
+        work)
+            [ "$_argv_arg" != "${_owned_config%/*}" ] || _argv_work_ok=1
+            _argv_pending=
+            continue
+            ;;
+        esac
+        case "$_argv_arg" in
+        -c)
+            _argv_config_count=$((_argv_config_count + 1))
+            _argv_pending=config
+            ;;
+        -D)
+            _argv_work_count=$((_argv_work_count + 1))
+            _argv_pending=work
+            ;;
+        esac
+    done <"$_owned_argv"
+    rm -f "$_owned_argv"
+    _owned_rc=1
+    if [ "$_argv_run" -eq 1 ] &&
+        [ "$_argv_config_count" -eq 1 ] && [ "$_argv_config_ok" -eq 1 ] &&
+        [ "$_argv_work_count" -eq 1 ] && [ "$_argv_work_ok" -eq 1 ] &&
+        [ -z "$_argv_pending" ] && {
+        [ "$_owned_exe_match" -eq 1 ] ||
+            [ "$_argv_wrapper" -eq 1 ] ||
+            { [ "$_owned_exe_visible" -eq 0 ] && [ "$_argv0" = sing-box ]; }
+    }; then
+        _owned_rc=0
+    fi
+    unset _owned_pid _owned_config _owned_live_rc _owned_expected _owned_proc_root
+    unset _owned_proc_dir _owned_comm _owned_exe_link _owned_exe_visible
+    unset _owned_exe_match _owned_exe_path _owned_argv _owned_argv_rc
+    unset _argv_index _argv_run _argv_after_run _argv0 _argv_wrapper
+    unset _argv_config_count _argv_config_ok _argv_work_count _argv_work_ok
+    unset _argv_pending _argv_arg
+    return "$_owned_rc"
+)
+
+magicnet_singbox_owned_pids_to_file() (
     _owned_list_config="$1"
-    for _owned_list_pid in $(magicnet_singbox_pids); do
-        magicnet_singbox_pid_owned "$_owned_list_pid" "$_owned_list_config" &&
-            printf '%s\n' "$_owned_list_pid"
-    done
-    unset _owned_list_config _owned_list_pid
-}
+    _owned_list_output="$2"
+    [ -f "$_owned_list_output" ] && [ ! -L "$_owned_list_output" ] || return 2
+    chmod 600 "$_owned_list_output" 2>/dev/null || return 2
+    : >"$_owned_list_output" || return 2
+    _owned_list_candidates=$(magicnet_proc_query_temp_create) || return 2
+    if magicnet_singbox_pids_to_file "$_owned_list_candidates"; then
+        _owned_list_lookup_rc=0
+    else
+        _owned_list_lookup_rc=$?
+    fi
+    case "$_owned_list_lookup_rc" in
+    1)
+        rm -f "$_owned_list_candidates"
+        return 1
+        ;;
+    0) ;;
+    *)
+        rm -f "$_owned_list_candidates"
+        return 2
+        ;;
+    esac
+    _owned_list_found=0
+    _owned_list_loop_rc=0
+    while IFS= read -r _owned_list_pid; do
+        if magicnet_singbox_pid_owned "$_owned_list_pid" "$_owned_list_config"; then
+            _owned_list_pid_rc=0
+        else
+            _owned_list_pid_rc=$?
+        fi
+        case "$_owned_list_pid_rc" in
+        0)
+            if printf '%s\n' "$_owned_list_pid" >>"$_owned_list_output"; then
+                _owned_list_found=1
+            else
+                _owned_list_loop_rc=2
+                break
+            fi
+            ;;
+        1) ;;
+        *)
+            _owned_list_loop_rc=2
+            break
+            ;;
+        esac
+    done <"$_owned_list_candidates"
+    rm -f "$_owned_list_candidates"
+    if [ "$_owned_list_loop_rc" -eq 2 ]; then
+        : >"$_owned_list_output" 2>/dev/null || true
+        return 2
+    fi
+    _owned_list_rc=1
+    [ "$_owned_list_found" -eq 0 ] || _owned_list_rc=0
+    unset _owned_list_config _owned_list_output _owned_list_candidates
+    unset _owned_list_lookup_rc _owned_list_found _owned_list_pid _owned_list_pid_rc
+    return "$_owned_list_rc"
+)
+
+magicnet_singbox_owned_pids() (
+    _owned_emit=$(magicnet_proc_query_temp_create) || return 2
+    if magicnet_singbox_owned_pids_to_file "$1" "$_owned_emit"; then
+        _owned_emit_rc=0
+    else
+        _owned_emit_rc=$?
+    fi
+    if [ "$_owned_emit_rc" -eq 0 ]; then
+        while IFS= read -r _owned_emit_pid; do
+            printf '%s\n' "$_owned_emit_pid"
+        done <"$_owned_emit"
+    fi
+    rm -f "$_owned_emit"
+    unset _owned_emit _owned_emit_pid
+    return "$_owned_emit_rc"
+)
+
+magicnet_singbox_is_running() (
+    _running_config="${1:-$(magicnet_singbox_subscription_config_file)}"
+    _running_pids=$(magicnet_proc_query_temp_create) || return 2
+    if magicnet_singbox_owned_pids_to_file "$_running_config" "$_running_pids"; then
+        _running_rc=0
+    else
+        _running_rc=$?
+    fi
+    rm -f "$_running_pids"
+    unset _running_config _running_pids
+    return "$_running_rc"
+)
 
 magicnet_singbox_listener_owned() {
     _listener_pid="$1"
@@ -740,20 +892,41 @@ magicnet_singbox_listener_owned() {
 
 magicnet_singbox_owned_ready() {
     _ready_owned_config="$1"
+    _ready_owned_pids=$(magicnet_proc_query_temp_create) || return 2
+    if magicnet_singbox_owned_pids_to_file "$_ready_owned_config" "$_ready_owned_pids"; then
+        _ready_lookup_rc=0
+    else
+        _ready_lookup_rc=$?
+    fi
+    case "$_ready_lookup_rc" in
+    1)
+        rm -f "$_ready_owned_pids"
+        return 1
+        ;;
+    0) ;;
+    *)
+        rm -f "$_ready_owned_pids"
+        return 2
+        ;;
+    esac
     _ready_api_expected=0
+    _ready_found=0
     magicnet_singbox_config_has_clash_api "$_ready_owned_config" && _ready_api_expected=1
-    for _ready_owned_pid in $(magicnet_singbox_owned_pids "$_ready_owned_config"); do
+    while IFS= read -r _ready_owned_pid; do
         if [ "$_ready_api_expected" -eq 0 ] || {
             magicnet_singbox_listener_owned "$_ready_owned_pid" &&
                 curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |
                 grep -q '"version"'
         }; then
-            unset _ready_owned_config _ready_api_expected _ready_owned_pid
-            return 0
+            _ready_found=1
+            break
         fi
-    done
-    unset _ready_owned_config _ready_api_expected _ready_owned_pid
-    return 1
+    done <"$_ready_owned_pids"
+    rm -f "$_ready_owned_pids"
+    _ready_rc=1
+    [ "$_ready_found" -eq 0 ] || _ready_rc=0
+    unset _ready_owned_config _ready_api_expected _ready_owned_pid _ready_found
+    return "$_ready_rc"
 }
 
 magicnet_singbox_supervisor_restore() {
@@ -777,6 +950,18 @@ magicnet_singbox_ensure_start_owned() {
     _owned_work="${_owned_config%/*}"
     _owned_binary="${MODDIR}/bin/sing-box"
     _owned_log="${MODDIR}/.log/sing-box.log"
+    _owned_start_pids=$(magicnet_proc_query_temp_create) || return 2
+    if magicnet_singbox_owned_pids_to_file "$_owned_config" "$_owned_start_pids"; then
+        _owned_start_lookup_rc=0
+    else
+        _owned_start_lookup_rc=$?
+    fi
+    rm -f "$_owned_start_pids"
+    case "$_owned_start_lookup_rc" in
+    1) ;;
+    0) return 1 ;;
+    *) return 2 ;;
+    esac
     _api_expected=0
     if magicnet_singbox_config_has_clash_api "$_owned_config"; then
         _api_expected=1
@@ -807,30 +992,92 @@ magicnet_singbox_ensure_start_owned() {
     return 1
 }
 
+magicnet_singbox_signal_pids_file() {
+    _signal_file="$1"
+    _signal_number="$2"
+    [ -f "$_signal_file" ] && [ ! -L "$_signal_file" ] || return 1
+    while IFS= read -r _signal_pid; do
+        case "$_signal_pid" in '' | *[!0-9]* | 0) return 1 ;; esac
+        if [ "$_signal_number" = 9 ]; then
+            kill -9 "$_signal_pid" 2>/dev/null || true
+        else
+            kill "$_signal_pid" 2>/dev/null || true
+        fi
+    done <"$_signal_file"
+    unset _signal_file _signal_number _signal_pid
+}
+
+# Refresh the destination until the owned set is empty or the deadline passes.
+# The return code remains tri-state: 0=still found at deadline, 1=empty,
+# 2=indeterminate. A failed lookup is never accepted as successful shutdown.
+magicnet_singbox_wait_owned_state() {
+    _wait_config="$1"
+    _wait_output="$2"
+    _wait_deadline="$3"
+    while :; do
+        if magicnet_singbox_owned_pids_to_file "$_wait_config" "$_wait_output"; then
+            _wait_rc=0
+        else
+            _wait_rc=$?
+        fi
+        case "$_wait_rc" in
+        1) return 1 ;;
+        0)
+            [ "$(date +%s)" -lt "$_wait_deadline" ] || return 0
+            sleep 1
+            ;;
+        *) return 2 ;;
+        esac
+    done
+}
+
 magicnet_singbox_stop_owned_after_failure() {
     _failure_config="$1"
-    for _failure_pid in $(magicnet_singbox_owned_pids "$_failure_config"); do
-        kill "$_failure_pid" 2>/dev/null || true
-    done
-    _failure_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-8}))
-    while [ -n "$(magicnet_singbox_owned_pids "$_failure_config")" ] &&
-        [ "$(date +%s)" -lt "$_failure_deadline" ]; do
-        sleep 1
-    done
-    if [ -n "$(magicnet_singbox_owned_pids "$_failure_config")" ]; then
-        for _failure_pid in $(magicnet_singbox_owned_pids "$_failure_config"); do
-            kill -9 "$_failure_pid" 2>/dev/null || true
-        done
-        _failure_kill_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
-        while [ -n "$(magicnet_singbox_owned_pids "$_failure_config")" ] &&
-            [ "$(date +%s)" -lt "$_failure_kill_deadline" ]; do
-            sleep 1
-        done
+    _failure_pids=$(magicnet_proc_query_temp_create) || return 2
+    if magicnet_singbox_owned_pids_to_file "$_failure_config" "$_failure_pids"; then
+        _failure_query_rc=0
+    else
+        _failure_query_rc=$?
     fi
-    ip link delete magicnet0 2>/dev/null || true
-    _failure_rc=0
-    [ -z "$(magicnet_singbox_owned_pids "$_failure_config")" ] || _failure_rc=1
-    unset _failure_config _failure_pid _failure_deadline _failure_kill_deadline
+    case "$_failure_query_rc" in
+    0) magicnet_singbox_signal_pids_file "$_failure_pids" 15 || true ;;
+    1)
+        ip link delete magicnet0 2>/dev/null || true
+        rm -f "$_failure_pids"
+        return 0
+        ;;
+    *)
+        rm -f "$_failure_pids"
+        return 2
+        ;;
+    esac
+    _failure_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-8}))
+    if magicnet_singbox_wait_owned_state \
+        "$_failure_config" "$_failure_pids" "$_failure_deadline"; then
+        _failure_query_rc=0
+    else
+        _failure_query_rc=$?
+    fi
+    if [ "$_failure_query_rc" -eq 0 ]; then
+        magicnet_singbox_signal_pids_file "$_failure_pids" 9 || true
+        _failure_kill_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
+        if magicnet_singbox_wait_owned_state \
+            "$_failure_config" "$_failure_pids" "$_failure_kill_deadline"; then
+            _failure_query_rc=0
+        else
+            _failure_query_rc=$?
+        fi
+    fi
+    _failure_rc=1
+    if [ "$_failure_query_rc" -eq 1 ]; then
+        ip link delete magicnet0 2>/dev/null || true
+        _failure_rc=0
+    elif [ "$_failure_query_rc" -eq 2 ]; then
+        _failure_rc=2
+    fi
+    rm -f "$_failure_pids"
+    unset _failure_config _failure_pids _failure_query_rc _failure_deadline
+    unset _failure_kill_deadline
     return "$_failure_rc"
 }
 
@@ -865,51 +1112,93 @@ magicnet_singbox_restart_owned() {
     if [ -z "${MAGICNET_SUB_FSWATCH_WAS_ACTIVE+x}" ]; then
         magicnet_fswatch_status >/dev/null 2>&1 && _owned_fswatch_active=1
     fi
-    # Remove host-side DNS interception before stopping the core.  Leaving a
-    # REDIRECT to 127.0.0.1:1053 in place while sing-box is down turns the
-    # bounded restart window into an avoidable DNS outage for every app.
+
+    # Establish an authoritative owned-process set before touching DNS, TUN,
+    # supervisors, or any process. An indeterminate lookup leaves the complete
+    # running generation unchanged and must not be treated as an empty set.
+    _owned_pids=$(magicnet_proc_query_temp_create) || return 2
+    if magicnet_singbox_owned_pids_to_file "$_owned_config" "$_owned_pids"; then
+        _owned_query_rc=0
+    else
+        _owned_query_rc=$?
+    fi
+    case "$_owned_query_rc" in
+    0)
+        magicnet_singbox_signal_pids_file "$_owned_pids" 15 || true
+        _stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-8}))
+        if magicnet_singbox_wait_owned_state \
+            "$_owned_config" "$_owned_pids" "$_stop_deadline"; then
+            _owned_query_rc=0
+        else
+            _owned_query_rc=$?
+        fi
+        if [ "$_owned_query_rc" -eq 0 ]; then
+            magicnet_singbox_signal_pids_file "$_owned_pids" 9 || true
+            _kill_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
+            if magicnet_singbox_wait_owned_state \
+                "$_owned_config" "$_owned_pids" "$_kill_deadline"; then
+                _owned_query_rc=0
+            else
+                _owned_query_rc=$?
+            fi
+        fi
+        ;;
+    1) ;;
+    *)
+        warn "sing-box process discovery is indeterminate; restart aborted before runtime teardown"
+        rm -f "$_owned_pids"
+        return 2
+        ;;
+    esac
+
+    case "$_owned_query_rc" in
+    1) ;;
+    2)
+        warn "sing-box stop state is indeterminate; preserving TUN, DNS rules, and supervisors"
+        rm -f "$_owned_pids"
+        return 2
+        ;;
+    *)
+        warn "sing-box did not stop before the bounded restart deadline"
+        rm -f "$_owned_pids"
+        return 1
+        ;;
+    esac
+    rm -f "$_owned_pids"
+
+    # A listener with no authoritatively owned process is not safe to replace.
+    if ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]'; then
+        warn "sing-box API listener ownership is unknown; restart aborted"
+        return 2
+    fi
+
+    # Only now is the old core definitely absent. Keep all network policy and
+    # supervisor state intact throughout discovery and stop-wait uncertainty.
+    magicnet_supervisors_stop >/dev/null 2>&1 || return 1
     magicnet_disable_dns_capture >/dev/null 2>&1 ||
         warn "Failed to clear DNS capture before subscription restart"
     magicnet_disable_dns_leak_guard >/dev/null 2>&1 ||
         warn "Failed to clear DNS leak guard before subscription restart"
-    magicnet_supervisors_stop >/dev/null 2>&1 || return 1
-    for _pid in $(magicnet_singbox_owned_pids "$_owned_config"); do
-        kill "$_pid" 2>/dev/null || true
-    done
-    _stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_STOP_TIMEOUT:-8}))
-    while [ -n "$(magicnet_singbox_owned_pids "$_owned_config")" ] && [ "$(date +%s)" -lt "$_stop_deadline" ]; do
-        sleep 1
-    done
-    if [ -n "$(magicnet_singbox_owned_pids "$_owned_config")" ]; then
-        for _pid in $(magicnet_singbox_owned_pids "$_owned_config"); do
-            kill -9 "$_pid" 2>/dev/null || true
-        done
-        _kill_deadline=$(($(date +%s) + ${MAGICNET_SUB_KILL_TIMEOUT:-3}))
-        while [ -n "$(magicnet_singbox_owned_pids "$_owned_config")" ] && [ "$(date +%s)" -lt "$_kill_deadline" ]; do sleep 1; done
-    fi
+
     _restart_rc=0
-    [ -z "$(magicnet_singbox_owned_pids "$_owned_config")" ] || _restart_rc=1
-    if [ "$_restart_rc" -eq 0 ] && ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]'; then
-        _restart_rc=1
-    fi
-    if [ "$_restart_rc" -eq 0 ] && [ "${MAGICNET_SUB_RESET_BOOTSTRAP_CACHE:-0}" = 1 ]; then
+    if [ "${MAGICNET_SUB_RESET_BOOTSTRAP_CACHE:-0}" = 1 ]; then
         magicnet_singbox_reset_bootstrap_cache "$_owned_config" || _restart_rc=1
     fi
     if [ "$_restart_rc" -eq 0 ]; then
         ip link delete magicnet0 2>/dev/null || true
-        magicnet_singbox_ensure_start_owned "$_owned_config" || _restart_rc=1
+        if magicnet_singbox_ensure_start_owned "$_owned_config"; then
+            _restart_rc=0
+        else
+            _restart_rc=$?
+        fi
         if [ "$_restart_rc" -eq 0 ]; then
             # The core is started outside magicnet_start_kernel, so its normal
             # post-start network phase does not run automatically here. DNS
-            # interception and the TUN/app policy must be rebuilt after the
-            # pre-stop cleanup above, while the subscription transaction still
-            # owns the config lock.
+            # interception and the TUN/app policy must be rebuilt while the
+            # subscription transaction still owns the config lock.
             _post_start_rc=0
             magicnet_reapply_post_start_policy || _post_start_rc=1
             if [ "$_post_start_rc" -ne 0 ]; then
-                # Do not leave a live core behind when the network phase did
-                # not finish.  A running process without its TUN/DNS policy
-                # is a half-initialized generation that can black-hole apps.
                 magicnet_disable_dns_capture >/dev/null 2>&1 || true
                 magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
                 magicnet_singbox_stop_owned_after_failure "$_owned_config" || true
@@ -928,6 +1217,7 @@ magicnet_singbox_restart_owned() {
     else
         magicnet_singbox_supervisor_restore "$_owned_fswatch_active" || _restart_rc=1
     fi
+    unset _owned_pids _owned_query_rc _stop_deadline _kill_deadline
     return "$_restart_rc"
 }
 
@@ -944,6 +1234,11 @@ magicnet_singbox_google_works() {
 
 magicnet_singbox_verify_subscription_ready() {
     if magicnet_singbox_is_running; then
+        _verify_running_rc=0
+    else
+        _verify_running_rc=$?
+    fi
+    if [ "$_verify_running_rc" -eq 0 ]; then
         magicnet_singbox_restart_if_running || {
             error "sing-box restart failed after subscription update"
             return 1
@@ -955,6 +1250,10 @@ magicnet_singbox_verify_subscription_ready() {
             warn "sing-box proxy test failed: https://www.google.com is not reachable"
         }
         return 0
+    fi
+    if [ "$_verify_running_rc" -eq 2 ]; then
+        error "sing-box process state is indeterminate; subscription activation aborted"
+        return 2
     fi
 
     magicnet_singbox_config_has_nodes || {

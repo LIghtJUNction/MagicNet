@@ -57,6 +57,7 @@ bash scripts/singbox-subscription-protocol-smoke.sh
 bash scripts/test-subscription-fetch-policy.sh
 bash scripts/test-singbox-pid-discovery.sh
 bash scripts/test-singbox-ownership.sh
+bash scripts/test-singbox-tristate-safety.sh
 bash scripts/test-singbox-readiness.sh
 bash scripts/test-supervisor-pid-safety.sh
 bash scripts/test-process-cgroup-detach.sh

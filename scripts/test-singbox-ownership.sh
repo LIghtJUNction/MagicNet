@@ -44,7 +44,7 @@ printf 'sing-box\0run\0-c\0%s\0-D\0%s\0' \
 
 cat >"$bin_dir/pidof" <<'SH'
 #!/bin/sh
-printf '%s\n' '101 202 303 404 505'
+printf '%s\n' "${PIDOF_RESULT:-101 202 303 404}"
 SH
 chmod +x "$bin_dir/pidof"
 
@@ -55,12 +55,24 @@ export PATH="$bin_dir:$PATH"
 . "$ROOT/scripts/test-lib/proc-reader-hook.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 
-if magicnet_singbox_pid_live 505; then
-    printf 'magicnet_singbox_pid_live accepted a PID with unreadable proc stat\n' >&2
-    exit 1
-fi
+set +e
+magicnet_singbox_pid_live 505
+unreadable_rc=$?
+set -e
+test "$unreadable_rc" -eq 2
 
-owned="$(magicnet_singbox_owned_pids "$module/.config/sing-box/config.json")"
+owned="$(PIDOF_RESULT='101 202 303 404' \
+    magicnet_singbox_owned_pids "$module/.config/sing-box/config.json")"
 test "$owned" = '101'
+
+# A still-present candidate whose identity cannot be read makes the complete
+# ownership set indeterminate; it must not be silently skipped as unowned.
+set +e
+owned="$(PIDOF_RESULT='101 505' \
+    magicnet_singbox_owned_pids "$module/.config/sing-box/config.json")"
+owned_rc=$?
+set -e
+test "$owned_rc" -eq 2
+test -z "$owned"
 
 printf '%s\n' 'sing-box ownership test passed'

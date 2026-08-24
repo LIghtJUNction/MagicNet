@@ -7,7 +7,9 @@ trap 'rm -rf "$fixture"' EXIT
 
 export MODDIR="$fixture/module"
 mkdir -p "$MODDIR" "$fixture/bin" "$fixture/sed-bin" "$fixture/proc/101" "$fixture/proc/202" "$fixture/proc/303"
-ln -s "$(command -v sed)" "$fixture/sed-bin/sed"
+for tool in sed mkdir chmod mktemp rm stat; do
+  ln -s "$(command -v "$tool")" "$fixture/sed-bin/$tool"
+done
 
 . "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
 . "$ROOT/scripts/test-lib/proc-reader-hook.sh"
@@ -30,7 +32,7 @@ write_proc_stat 101 S 10101
 write_proc_stat 202 S 20202
 
 pid_output="$(
-  PIDOF_LOG="$pidof_log" PIDOF_RESULT='202 101 invalid' \
+  PIDOF_LOG="$pidof_log" PIDOF_RESULT='202 101' \
     MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" \
     PATH="$fixture/bin:$PATH" magicnet_singbox_pids
 )"
@@ -59,11 +61,15 @@ test "$(cat "$reader_count")" -le 2
 printf 'sing-box\n' >"$fixture/proc/303/comm"
 write_proc_stat 303 S 30303
 : >"$pidof_log"
+set +e
 pid_output="$(
   PIDOF_LOG="$pidof_log" PIDOF_RESULT='' PIDOF_RC=1 \
     MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" \
     PATH="$fixture/bin:$PATH" magicnet_singbox_pids
 )"
+pid_rc=$?
+set -e
+test "$pid_rc" -eq 1
 test -z "$pid_output"
 test "$(cat "$pidof_log")" = sing-box
 
@@ -80,5 +86,26 @@ pid_output="$(
   PATH="$fixture/sed-bin" MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" magicnet_singbox_pids
 )"
 test "$pid_output" = $'101\n303'
+
+# Malformed, failed, and count-framed truncated results are indeterminate, not
+# authoritative empty process sets.
+for fault in malformed exit2 truncated; do
+  magicnet_proc_named_pids_test_hook() {
+    case "$fault" in
+    malformed) printf '%s\n' MAGICNET_PROC_PIDS_V1 invalid 'MAGICNET_PROC_PIDS_END 1' ;;
+    exit2) return 2 ;;
+    truncated) printf '%s\n' MAGICNET_PROC_PIDS_V1 101 ;;
+    esac
+  }
+  fault_output=$(magicnet_proc_query_temp_create)
+  set +e
+  MAGICNET_SINGBOX_PROC_ROOT=/proc magicnet_singbox_pids_to_file "$fault_output"
+  fault_rc=$?
+  set -e
+  test "$fault_rc" -eq 2
+  test ! -s "$fault_output"
+  rm -f "$fault_output"
+  unset -f magicnet_proc_named_pids_test_hook
+done
 
 printf 'sing-box pid discovery test passed\n'

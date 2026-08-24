@@ -696,7 +696,19 @@ magicnet_singbox_update_subscription_unlocked() {
     _sub_active_config="${MODDIR}/.config/sing-box/config.json"
     _sub_candidate_config="${_sub_active_config}.candidate-${_sub_generation_id}"
     _sub_was_running=0
-    magicnet_singbox_is_running "$_sub_active_config" && _sub_was_running=1
+    if magicnet_singbox_is_running "$_sub_active_config"; then
+        _sub_running_rc=0
+    else
+        _sub_running_rc=$?
+    fi
+    case "$_sub_running_rc" in
+    0) _sub_was_running=1 ;;
+    1) ;;
+    *)
+        magicnet_singbox_update_status prepare failed process_state_indeterminate || true
+        return 2
+        ;;
+    esac
     if ! magicnet_singbox_transaction_begin; then
         rm -rf "$(magicnet_singbox_transaction_dir).new.$$" 2>/dev/null || true
         magicnet_singbox_update_status prepare failed journal_create_failed || true

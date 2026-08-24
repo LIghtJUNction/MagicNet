@@ -39,6 +39,10 @@ info() { :; }
 warn() { printf '%s\n' "$*" >&2; }
 magicnet_warn() { warn "$@"; }
 singbox_prepare_route_config() { :; }
+# common.sh intentionally resolves primitives through the production MODDIR
+# path under ash. Source the real dependency first instead of weakening that
+# production contract for this synthetic fixture.
+. "$ROOT_DIR/src/MagicNet/lib/magicnet/primitives.sh"
 . "$ROOT_DIR/src/MagicNet/lib/magicnet/common.sh"
 . "$ROOT_DIR/src/MagicNet/lib/magicnet/transparent_dns.sh"
 . "$MAGICNET_TRANSPARENT_SCRIPT"

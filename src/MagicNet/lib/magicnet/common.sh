@@ -174,8 +174,18 @@ magicnet_prepare_singbox_nodes_unlocked() {
     if [ "${MAGICNET_FORCE_SUB_REFRESH:-0}" != "1" ] && magicnet_cmd_exists sing-box; then
         import __singbox__
         if is_singbox_running >/dev/null 2>&1; then
-            return 0
+            _prepare_running_rc=0
+        else
+            _prepare_running_rc=$?
         fi
+        case "$_prepare_running_rc" in
+        0) return 0 ;;
+        1) ;;
+        *)
+            magicnet_warn "sing-box process discovery is indeterminate; subscription preparation aborted."
+            return 2
+            ;;
+        esac
     fi
     if magicnet_singbox_standalone_config_ready; then
         magicnet_log "Using validated standalone sing-box config; subscription refresh skipped."

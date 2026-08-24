@@ -65,9 +65,9 @@ pub(crate) use app::App;
 pub(crate) use base64::{decode_base64, encode_base64};
 use commands::dispatch;
 pub(crate) use process::{
-    pid_summary, run_magicnet_function, run_subscription_source_update_from_inherited_fd,
-    run_subscription_update_from_inherited_fd, singbox_pid_summary, stop_owned_singbox,
-    SHORT_TIMEOUT,
+    owned_singbox_pids, pid_summary, run_magicnet_function,
+    run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,
+    singbox_pid_summary, stop_owned_singbox, SHORT_TIMEOUT,
 };
 pub(crate) use utils::{
     clean_module_lines, clear_node_cache, cmdline_has_command, cmdline_has_script,

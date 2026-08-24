@@ -86,6 +86,180 @@ magicnet_host_proc_reader() (
     esac
 )
 
+# Create a private scratch file for process discovery. Callers may obtain the
+# pathname with command substitution, but process presence is always conveyed
+# by the tri-state return code of the *_to_file APIs below.
+magicnet_proc_query_temp_create() (
+    _query_dir="${MAGICNET_PROC_QUERY_DIR:-${MODDIR}/.state/sing-box}"
+    case "$_query_dir" in /*) ;; *) return 1 ;; esac
+    if [ ! -d "$_query_dir" ]; then
+        mkdir -p "$_query_dir" || return 1
+    fi
+    [ -d "$_query_dir" ] && [ ! -L "$_query_dir" ] || return 1
+    chmod 700 "$_query_dir" 2>/dev/null || return 1
+    umask 077
+    _query_file=$(mktemp "$_query_dir/.proc-query.XXXXXX") || return 1
+    chmod 600 "$_query_file" 2>/dev/null || {
+        rm -f "$_query_file"
+        return 1
+    }
+    printf '%s\n' "$_query_file"
+)
+
+# Validate the count-framed output of the hidden Rust pid lookup. Return 0 with
+# one PID per line in the destination, 1 for an authoritative empty result, and
+# 2 for malformed/truncated/otherwise indeterminate output.
+magicnet_proc_framed_pids_to_file() (
+    _framed_source="$1"
+    _framed_output="$2"
+    [ -f "$_framed_source" ] && [ ! -L "$_framed_source" ] || return 2
+    [ -f "$_framed_output" ] && [ ! -L "$_framed_output" ] || return 2
+    [ "$(stat -c %h "$_framed_source" 2>/dev/null)" = 1 ] || return 2
+    [ "$(stat -c %h "$_framed_output" 2>/dev/null)" = 1 ] || return 2
+    chmod 600 "$_framed_output" 2>/dev/null || return 2
+    : >"$_framed_output" || return 2
+    exec 3<"$_framed_source" || return 2
+    IFS= read -r _framed_line <&3 || return 2
+    [ "$_framed_line" = MAGICNET_PROC_PIDS_V1 ] || return 2
+    _framed_count=0
+    _framed_seen=' '
+    _framed_complete=0
+    while IFS= read -r _framed_line <&3; do
+        case "$_framed_line" in
+        'MAGICNET_PROC_PIDS_END '*)
+            [ "$_framed_complete" -eq 0 ] || return 2
+            _framed_expected=${_framed_line#MAGICNET_PROC_PIDS_END }
+            case "$_framed_expected" in '' | *[!0-9]*) return 2 ;; esac
+            [ "$_framed_expected" -eq "$_framed_count" ] || return 2
+            _framed_complete=1
+            _framed_extra=
+            if IFS= read -r _framed_extra <&3 || [ -n "$_framed_extra" ]; then
+                return 2
+            fi
+            break
+            ;;
+        '' | *[!0-9]* | 0) return 2 ;;
+        *)
+            case "$_framed_seen" in *" $_framed_line "*) return 2 ;; esac
+            _framed_seen="${_framed_seen}${_framed_line} "
+            printf '%s\n' "$_framed_line" >>"$_framed_output" || return 2
+            _framed_count=$((_framed_count + 1))
+            ;;
+        esac
+    done
+    [ "$_framed_complete" -eq 1 ] || return 2
+    [ "$_framed_count" -gt 0 ] && return 0
+    return 1
+)
+
+magicnet_proc_unframed_pids_to_file() (
+    _unframed_source="$1"
+    _unframed_output="$2"
+    [ -f "$_unframed_source" ] && [ ! -L "$_unframed_source" ] || return 2
+    [ -f "$_unframed_output" ] && [ ! -L "$_unframed_output" ] || return 2
+    chmod 600 "$_unframed_output" 2>/dev/null || return 2
+    : >"$_unframed_output" || return 2
+    _unframed_count=0
+    _unframed_seen=' '
+    while IFS= read -r _unframed_line || [ -n "$_unframed_line" ]; do
+        # shellcheck disable=SC2086 # pidof emits a whitespace-separated list.
+        for _unframed_pid in $_unframed_line; do
+            case "$_unframed_pid" in '' | *[!0-9]* | 0) return 2 ;; esac
+            case "$_unframed_seen" in *" $_unframed_pid "*) continue ;; esac
+            _unframed_seen="${_unframed_seen}${_unframed_pid} "
+            printf '%s\n' "$_unframed_pid" >>"$_unframed_output" || return 2
+            _unframed_count=$((_unframed_count + 1))
+        done
+    done <"$_unframed_source"
+    [ "$_unframed_count" -gt 0 ] && return 0
+    return 1
+)
+
+# Query a process name without exposing a partially written list. Production
+# Android uses a bounded Rust worker with a count-framed protocol. Host-only
+# fixtures may use pidof directly. Return: 0=found, 1=definitely empty,
+# 2=indeterminate.
+magicnet_proc_named_pids_to_file() (
+    _named_process="$1"
+    _named_output="$2"
+    case "$_named_process" in '' | *[!A-Za-z0-9._-]*) return 2 ;; esac
+    [ -f "$_named_output" ] && [ ! -L "$_named_output" ] || return 2
+    chmod 600 "$_named_output" 2>/dev/null || return 2
+    : >"$_named_output" || return 2
+    _named_raw=$(magicnet_proc_query_temp_create) || return 2
+    _named_result=$(magicnet_proc_query_temp_create) || {
+        rm -f "$_named_raw"
+        return 2
+    }
+    _named_rc=2
+    if type magicnet_proc_named_pids_test_hook >/dev/null 2>&1; then
+        if magicnet_proc_named_pids_test_hook "$_named_process" >"$_named_raw" 2>/dev/null; then
+            _named_lookup_rc=0
+        else
+            _named_lookup_rc=$?
+        fi
+        if [ "$_named_lookup_rc" -eq 0 ]; then
+            if magicnet_proc_framed_pids_to_file "$_named_raw" "$_named_result"; then
+                _named_rc=0
+            else
+                _named_rc=$?
+            fi
+        fi
+    elif [ -x /system/bin/getprop ]; then
+        _named_reader="${MODDIR}/cli"
+        if [ -x "$_named_reader" ]; then
+            if "$_named_reader" __proc-pids "$_named_process" >"$_named_raw" 2>/dev/null; then
+                _named_lookup_rc=0
+            else
+                _named_lookup_rc=$?
+            fi
+            if [ "$_named_lookup_rc" -eq 0 ]; then
+                if magicnet_proc_framed_pids_to_file "$_named_raw" "$_named_result"; then
+                    _named_rc=0
+                else
+                    _named_rc=$?
+                fi
+            fi
+        fi
+    elif command -v pidof >/dev/null 2>&1; then
+        if pidof "$_named_process" >"$_named_raw" 2>/dev/null; then
+            _named_lookup_rc=0
+        else
+            _named_lookup_rc=$?
+        fi
+        case "$_named_lookup_rc" in
+        0)
+            if magicnet_proc_unframed_pids_to_file "$_named_raw" "$_named_result"; then
+                _named_rc=0
+            else
+                _named_rc=$?
+            fi
+            ;;
+        1)
+            if : >"$_named_result"; then
+                _named_rc=1
+            else
+                _named_rc=2
+            fi
+            ;;
+        *) _named_rc=2 ;;
+        esac
+    fi
+    if [ "$_named_rc" -eq 0 ]; then
+        while IFS= read -r _named_pid; do
+            printf '%s\n' "$_named_pid" >>"$_named_output" || {
+                _named_rc=2
+                break
+            }
+        done <"$_named_result"
+    fi
+    if [ "$_named_rc" -eq 2 ]; then
+        : >"$_named_output" 2>/dev/null || true
+    fi
+    rm -f "$_named_raw" "$_named_result"
+    return "$_named_rc"
+)
+
 # Emit one validated argv entry per line through the Rust bounded proc reader.
 # It caps cmdline at 64 KiB, enforces a monotonic deadline, fails closed on
 # malformed entries, and kills its reader worker if this shell disappears.

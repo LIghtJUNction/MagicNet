@@ -4,7 +4,7 @@ use crate::{
 };
 use std::env;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::os::fd::RawFd;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -52,14 +52,38 @@ pub(crate) fn named_process_candidates(name: &str) -> Result<Vec<String>, String
     }
     let text = String::from_utf8(output.stdout)
         .map_err(|_| format!("pid lookup returned non-UTF-8 output for {name}"))?;
-    let mut pids = text
-        .split_whitespace()
-        .filter(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
+    parse_named_process_output(name, &text)
+}
+
+fn parse_named_process_output(name: &str, text: &str) -> Result<Vec<String>, String> {
+    if text.ends_with("\n[output truncated]") {
+        return Err(format!("pid lookup output was truncated for {name}"));
+    }
+    let mut pids = Vec::new();
+    for pid in text.split_whitespace() {
+        if pid == "0" || !pid.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(format!("pid lookup returned malformed output for {name}"));
+        }
+        pids.push(pid.to_owned());
+    }
+    if pids.is_empty() {
+        return Err(format!("pid lookup returned an empty success for {name}"));
+    }
     pids.sort_unstable();
     pids.dedup();
     Ok(pids)
+}
+
+const PROC_PIDS_HEADER: &str = "MAGICNET_PROC_PIDS_V1";
+const PROC_PIDS_FOOTER: &str = "MAGICNET_PROC_PIDS_END";
+
+fn write_named_process_candidates<W: Write>(writer: &mut W, pids: &[String]) -> io::Result<()> {
+    writeln!(writer, "{PROC_PIDS_HEADER}")?;
+    for pid in pids {
+        writeln!(writer, "{pid}")?;
+    }
+    writeln!(writer, "{PROC_PIDS_FOOTER} {}", pids.len())?;
+    writer.flush()
 }
 
 pub(crate) fn proc_named_pids_command(args: &[String]) -> Result<(), String> {
@@ -73,10 +97,10 @@ pub(crate) fn proc_named_pids_command(args: &[String]) -> Result<(), String> {
         return Err("internal proc name usage error".to_string());
     }
     crate::utils::arm_parent_death_signal()?;
-    for pid in named_process_candidates(&args[0])? {
-        println!("{pid}");
-    }
-    Ok(())
+    let pids = named_process_candidates(&args[0])?;
+    let stdout = io::stdout();
+    write_named_process_candidates(&mut stdout.lock(), &pids)
+        .map_err(|err| format!("write framed pid lookup: {err}"))
 }
 
 pub(crate) fn pid_summary(name: &str) -> String {
@@ -103,32 +127,59 @@ pub(crate) fn pid_summary(name: &str) -> String {
 /// of ownership: another VPN/core can legitimately use the same name and
 /// must not make MagicNet report a healthy core or be killed on stop.
 pub(crate) fn singbox_pid_summary(app: &App) -> String {
-    let pids = owned_singbox_pids(app);
-    if pids.is_empty() {
-        "stopped".to_string()
-    } else {
-        pids.join(",")
+    match owned_singbox_pids(app) {
+        Ok(pids) if pids.is_empty() => "stopped".to_string(),
+        Ok(pids) => pids.join(","),
+        Err(_) => "unknown".to_string(),
     }
 }
 
-fn owned_singbox_pids(app: &App) -> Vec<String> {
-    let expected_binary = app.moddir.join("bin/sing-box");
+pub(crate) fn owned_singbox_pids(app: &App) -> Result<Vec<String>, String> {
+    let candidates = named_process_candidates("sing-box")?;
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    let expected_binary_path = app.moddir.join("bin/sing-box");
     let expected_config = app.moddir.join(".config/sing-box/config.json");
     let expected_workdir = app.moddir.join(".config/sing-box");
-    let expected_binary = fs::canonicalize(&expected_binary).ok();
+    let expected_binary = Some(fs::canonicalize(&expected_binary_path).map_err(|err| {
+        format!(
+            "cannot identify managed sing-box binary {}: {err}",
+            expected_binary_path.display()
+        )
+    })?);
     let mut pids = Vec::new();
-    for pid in named_process_candidates("sing-box").unwrap_or_default() {
+    for pid in candidates {
         let proc_dir = Path::new("/proc").join(&pid);
-        if !proc_pid_is_live(&proc_dir) {
+        let stat = match read_proc_text_bounded(&proc_dir.join("stat"), MAX_PROC_STAT_BYTES) {
+            Ok(stat) => stat,
+            Err(_) if !proc_dir.exists() => continue,
+            Err(err) => return Err(format!("cannot determine sing-box PID {pid} state: {err}")),
+        };
+        if !proc_pid_stat_is_live(&stat) {
             continue;
         }
-        if !read_proc_text_bounded(&proc_dir.join("comm"), MAX_PROC_COMM_BYTES)
-            .map(|value| value.trim() == "sing-box")
-            .unwrap_or(false)
-        {
+        let comm = match read_proc_text_bounded(&proc_dir.join("comm"), MAX_PROC_COMM_BYTES) {
+            Ok(comm) => comm,
+            Err(_) if !proc_dir.exists() => continue,
+            Err(err) => {
+                return Err(format!(
+                    "cannot determine sing-box PID {pid} identity: {err}"
+                ));
+            }
+        };
+        if comm.trim() != "sing-box" {
             continue;
         }
-        let argv = read_proc_argv(&proc_dir.join("cmdline")).unwrap_or_default();
+        let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
+            Ok(argv) => argv,
+            Err(_) if !proc_dir.exists() => continue,
+            Err(err) => {
+                return Err(format!(
+                    "cannot determine sing-box PID {pid} arguments: {err}"
+                ));
+            }
+        };
         let commandline_owned =
             singbox_commandline_owned(&argv, &expected_binary, &expected_config, &expected_workdir);
         let executable_owned = singbox_executable_owned(&proc_dir, &expected_binary);
@@ -140,10 +191,10 @@ fn owned_singbox_pids(app: &App) -> Vec<String> {
                 || singbox_script_arg_owned(&argv, &expected_binary)
                 || argv0_fallback)
         {
-            pids.push(pid.to_string());
+            pids.push(pid);
         }
     }
-    pids
+    Ok(pids)
 }
 
 fn proc_pid_is_live(proc_dir: &Path) -> bool {
@@ -230,25 +281,40 @@ fn singbox_commandline_owned(
         && workdir == Some(expected_workdir.as_ref())
 }
 
-pub(crate) fn stop_owned_singbox(app: &App) {
-    let pids = owned_singbox_pids(app);
-    for pid in &pids {
+pub(crate) fn stop_owned_singbox(app: &App, initial_pids: Vec<String>) -> Result<(), String> {
+    for pid in &initial_pids {
         signal_pid(pid, false);
     }
 
-    // Most cores exit immediately after SIGTERM.  Poll instead of charging
-    // every manual stop the full one-second grace period.
+    // Most cores exit immediately after SIGTERM. Poll instead of charging
+    // every manual stop the full grace period. Any lookup error remains
+    // indeterminate and must block runtime cleanup and a replacement start.
     let deadline = Instant::now() + Duration::from_secs(1);
-    let mut live = owned_singbox_pids(app);
-    while live.iter().any(|pid| pids.contains(pid)) && Instant::now() < deadline {
+    let mut live = owned_singbox_pids(app)?;
+    while !live.is_empty() && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(25));
-        live = owned_singbox_pids(app);
+        live = owned_singbox_pids(app)?;
     }
-    for pid in pids {
-        if live.contains(&pid) {
-            signal_pid(&pid, true);
+    for pid in &live {
+        signal_pid(pid, true);
+    }
+    if !live.is_empty() {
+        let kill_deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            live = owned_singbox_pids(app)?;
+            if live.is_empty() {
+                break;
+            }
+            if Instant::now() >= kill_deadline {
+                return Err(format!(
+                    "managed sing-box did not stop after SIGKILL: {}",
+                    live.join(",")
+                ));
+            }
+            thread::sleep(Duration::from_millis(25));
         }
     }
+    Ok(())
 }
 
 fn signal_pid(pid: &str, force: bool) {
@@ -713,7 +779,10 @@ fn startup_error(app: &App) -> Option<String> {
 
 #[cfg(test)]
 mod path_tests {
-    use super::{proc_pid_stat_is_live, singbox_commandline_owned};
+    use super::{
+        parse_named_process_output, proc_pid_stat_is_live, singbox_commandline_owned,
+        write_named_process_candidates,
+    };
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -771,6 +840,34 @@ mod path_tests {
         assert!(proc_pid_stat_is_live("123 (sing-box) S 1 2 3 4 5 6"));
         assert!(!proc_pid_stat_is_live("123 (sing-box) Z 1 2 3 4 5 6"));
         assert!(!proc_pid_stat_is_live("malformed"));
+    }
+
+    #[test]
+    fn named_pid_output_is_count_framed() {
+        let mut output = Vec::new();
+        write_named_process_candidates(&mut output, &["17".into(), "2048".into()]).unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "MAGICNET_PROC_PIDS_V1\n17\n2048\nMAGICNET_PROC_PIDS_END 2\n"
+        );
+
+        let mut empty = Vec::new();
+        write_named_process_candidates(&mut empty, &[]).unwrap();
+        assert_eq!(
+            String::from_utf8(empty).unwrap(),
+            "MAGICNET_PROC_PIDS_V1\nMAGICNET_PROC_PIDS_END 0\n"
+        );
+    }
+
+    #[test]
+    fn named_pid_parser_rejects_empty_malformed_and_truncated_success() {
+        assert_eq!(
+            parse_named_process_output("sing-box", "42 7 42\n").unwrap(),
+            vec!["42", "7"]
+        );
+        assert!(parse_named_process_output("sing-box", "").is_err());
+        assert!(parse_named_process_output("sing-box", "42 invalid\n").is_err());
+        assert!(parse_named_process_output("sing-box", "42\n[output truncated]").is_err());
     }
 }
 
@@ -868,7 +965,7 @@ mod process_group_tests {
         };
 
         run_magicnet_function(&app, "printf '%s' safe > \"$MODDIR/function-result\"")
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         assert_eq!(fs::read_to_string(root.join("function-result"))?, "safe");
         let _ = fs::remove_dir_all(root);
         Ok(())
