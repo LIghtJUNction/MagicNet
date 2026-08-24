@@ -19,21 +19,26 @@ printf 'sing-box\n' >"$proc_root/202/comm"
 printf 'sing-box\n' >"$proc_root/303/comm"
 printf 'sing-box\n' >"$proc_root/404/comm"
 printf 'sing-box\n' >"$proc_root/505/comm"
-printf '101 (sing-box) S 1 2 3 4 5 6\n' >"$proc_root/101/stat"
-printf '202 (sing-box) S 1 2 3 4 5 6\n' >"$proc_root/202/stat"
-printf '303 (sing-box) S 1 2 3 4 5 6\n' >"$proc_root/303/stat"
-printf '404 (sing-box) Z 1 2 3 4 5 6\n' >"$proc_root/404/stat"
-printf 'sing-box\0run\0-c\0%s\0-D\0%s\0\0' \
+write_proc_stat() {
+    local pid="$1" state="$2" start="$3"
+    printf '%s (sing-box) %s 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 %s 0\n' \
+        "$pid" "$state" "$start" >"$proc_root/$pid/stat"
+}
+write_proc_stat 101 S 10101
+write_proc_stat 202 S 20202
+write_proc_stat 303 S 30303
+write_proc_stat 404 Z 40404
+printf 'sing-box\0run\0-c\0%s\0-D\0%s\0' \
     "$module/.config/sing-box/config.json" "$module/.config/sing-box" \
     >"$proc_root/101/cmdline"
-printf 'sing-box\0run\0-c\0%s\0-D\0%s\0\0' \
+printf 'sing-box\0run\0-c\0%s\0-D\0%s\0' \
     "$module/.config/sing-box/config.json" "$module/.config/sing-box" \
     >"$proc_root/202/cmdline"
 # Same executable but a different config must not be treated as MagicNet-owned.
-printf 'sing-box\0run\0-c\0%s\0-D\0%s\0\0' \
+printf 'sing-box\0run\0-c\0%s\0-D\0%s\0' \
     "$fixture/other/config.json" "$fixture/other" >"$proc_root/303/cmdline"
 # A zombie with the exact command line is still not a live core.
-printf 'sing-box\0run\0-c\0%s\0-D\0%s\0\0' \
+printf 'sing-box\0run\0-c\0%s\0-D\0%s\0' \
     "$module/.config/sing-box/config.json" "$module/.config/sing-box" \
     >"$proc_root/404/cmdline"
 
@@ -46,6 +51,8 @@ chmod +x "$bin_dir/pidof"
 export MODDIR="$module"
 export MAGICNET_SINGBOX_PROC_ROOT="$proc_root"
 export PATH="$bin_dir:$PATH"
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+. "$ROOT/scripts/test-lib/proc-reader-hook.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 
 if magicnet_singbox_pid_live 505; then

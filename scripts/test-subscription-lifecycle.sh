@@ -33,6 +33,40 @@ magicnet_json_escape() { printf '%s' "$1"; }
 . "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 
+magicnet_proc_reader_test_hook() {
+  local kind="$1" proc_root="$2" pid="$3" argument count stat rest
+  local -a argv=() fields=()
+  if test "$kind" = stat; then
+    test -r "$proc_root/$pid/stat" || return 1
+    stat=$(<"$proc_root/$pid/stat")
+    rest=${stat##*) }
+    read -r -a fields <<<"$rest"
+    test "${#fields[@]}" -ge 20 || return 1
+    printf '%s %s\n' "${fields[0]}" "${fields[19]}"
+    return 0
+  fi
+  test "$kind" = cmdline || return 1
+  if test -n "${TR_COUNT_FILE:-}"; then
+    count=$(cat "$TR_COUNT_FILE" 2>/dev/null || printf '0\n')
+    printf '%s\n' "$((count + 1))" >"$TR_COUNT_FILE"
+  fi
+  if test -n "${EXACT_READ_COUNT_FILE:-}"; then
+    count=$(cat "$EXACT_READ_COUNT_FILE" 2>/dev/null || printf '0\n')
+    count=$((count + 1))
+    printf '%s\n' "$count" >"$EXACT_READ_COUNT_FILE"
+    if test "${EXACT_READ_MODE:-}" = persistent || test "$count" -eq 1; then
+      return 2
+    fi
+  fi
+  mapfile -d '' -t argv <"$proc_root/$pid/cmdline" || true
+  test "${#argv[@]}" -gt 0 || return 1
+  for argument in "${argv[@]}"; do
+    test -n "$argument" || return 1
+    case "$argument" in *$'\n'* | *$'\r'*) return 1 ;; esac
+    printf '%s\n' "$argument"
+  done
+}
+
 printf '#!/system/bin/sh\n' >"$MODDIR/cli"
 chmod +x "$MODDIR/cli"
 
@@ -66,8 +100,11 @@ assert_issue_93_local_startup_sources
 magicnet_config_lock_acquire
 lock_owner="$(cat "$MODDIR/.state/config.lock/pid")"
 case "$lock_owner" in
-  "$$:"*) ;;
-  *) printf 'config lock owner is not start-time bound: %s\n' "$lock_owner" >&2; exit 1 ;;
+"$$:"*) ;;
+*)
+  printf 'config lock owner is not start-time bound: %s\n' "$lock_owner" >&2
+  exit 1
+  ;;
 esac
 magicnet_config_lock_release
 sleep 60 &

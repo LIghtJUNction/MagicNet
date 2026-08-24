@@ -11,7 +11,7 @@ use std::time::Duration;
 #[cfg(test)]
 use std::time::UNIX_EPOCH;
 
-use crate::{write_text_file, App};
+use crate::{read_proc_argv, read_proc_text_bounded, write_text_file, App, MAX_PROC_COMM_BYTES};
 
 const DEFAULT_BIND: &str = "127.0.0.1";
 const DEFAULT_PORT: &str = "8766";
@@ -525,23 +525,17 @@ fn live_pid(app: &App) -> Option<i32> {
     let target = app.moddir.join("bin/magicnet-mcp-server");
     let expected = fs::canonicalize(&target).ok()?;
     let expected_name = target.file_name()?.to_string_lossy();
-    if let Ok(comm) = fs::read_to_string(proc_dir.join("comm")) {
-        let comm = comm.trim();
-        let truncated = expected_name
-            .as_bytes()
-            .get(..expected_name.len().min(15))
-            .map(String::from_utf8_lossy)
-            .unwrap_or_default();
-        if comm != expected_name.as_ref() && comm != truncated.as_ref() {
-            return None;
-        }
+    let comm = read_proc_text_bounded(&proc_dir.join("comm"), MAX_PROC_COMM_BYTES).ok()?;
+    let comm = comm.trim();
+    let truncated = expected_name
+        .as_bytes()
+        .get(..expected_name.len().min(15))
+        .map(String::from_utf8_lossy)
+        .unwrap_or_default();
+    if comm != expected_name.as_ref() && comm != truncated.as_ref() {
+        return None;
     }
-    let argv = fs::read(proc_dir.join("cmdline"))
-        .ok()?
-        .split(|byte| *byte == 0)
-        .filter(|value| !value.is_empty())
-        .map(|value| String::from_utf8_lossy(value).into_owned())
-        .collect::<Vec<_>>();
+    let argv = read_proc_argv(&proc_dir.join("cmdline")).ok()?;
     let argv0 = argv.first()?;
     let target_text = target.to_string_lossy();
     let argv_owned = argv0 == target_text.as_ref();

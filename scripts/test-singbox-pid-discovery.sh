@@ -9,7 +9,8 @@ export MODDIR="$fixture/module"
 mkdir -p "$MODDIR" "$fixture/bin" "$fixture/sed-bin" "$fixture/proc/101" "$fixture/proc/202" "$fixture/proc/303"
 ln -s "$(command -v sed)" "$fixture/sed-bin/sed"
 
-magicnet_json_escape() { printf '%s' "$1"; }
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+. "$ROOT/scripts/test-lib/proc-reader-hook.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 
 pidof_log="$fixture/pidof.log"
@@ -20,8 +21,13 @@ printf '%s\n' "${PIDOF_RESULT:-202 101 invalid}"
 exit "${PIDOF_RC:-0}"
 EOF
 chmod +x "$fixture/bin/pidof"
-printf '101 (sing-box) S 1 2 3 4 5 6\n' >"$fixture/proc/101/stat"
-printf '202 (sing-box) S 1 2 3 4 5 6\n' >"$fixture/proc/202/stat"
+write_proc_stat() {
+  local pid="$1" state="$2" start="$3"
+  printf '%s (sing-box) %s 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 %s 0\n' \
+    "$pid" "$state" "$start" >"$fixture/proc/$pid/stat"
+}
+write_proc_stat 101 S 10101
+write_proc_stat 202 S 20202
 
 pid_output="$(
   PIDOF_LOG="$pidof_log" PIDOF_RESULT='202 101 invalid' \
@@ -31,10 +37,27 @@ pid_output="$(
 test "$pid_output" = $'202\n101'
 test "$(cat "$pidof_log")" = sing-box
 
+# Production discovery must stay O(1) in total proc entries: one bounded name
+# lookup followed by identity checks for only the returned candidates.
+for fake_pid in $(seq 1000 1999); do
+  mkdir -p "$fixture/proc/$fake_pid"
+  printf 'unrelated\n' >"$fixture/proc/$fake_pid/comm"
+done
+reader_count="$fixture/proc-reader.count"
+printf '0\n' >"$reader_count"
+pid_output="$(
+  PIDOF_LOG="$pidof_log" PIDOF_RESULT='101' \
+    PROC_READER_COUNT_FILE="$reader_count" \
+    MAGICNET_SINGBOX_PROC_ROOT="$fixture/proc" \
+    PATH="$fixture/bin:$PATH" magicnet_singbox_pids
+)"
+test "$pid_output" = 101
+test "$(cat "$reader_count")" -le 2
+
 # An installed pidof is authoritative even when no process exists. Falling
 # through to /proc here would reintroduce a full scan in every stop-wait poll.
 printf 'sing-box\n' >"$fixture/proc/303/comm"
-printf '303 (sing-box) S 1 2 3 4 5 6\n' >"$fixture/proc/303/stat"
+write_proc_stat 303 S 30303
 : >"$pidof_log"
 pid_output="$(
   PIDOF_LOG="$pidof_log" PIDOF_RESULT='' PIDOF_RC=1 \
@@ -47,7 +70,7 @@ test "$(cat "$pidof_log")" = sing-box
 # The fallback must use the shell read builtin. A cat override makes any
 # per-process external cat regression fail deterministically.
 printf 'sing-box\n' >"$fixture/proc/101/comm"
-printf '101 (sing-box) S 1 2 3 4 5 6\n' >"$fixture/proc/101/stat"
+write_proc_stat 101 S 10101
 printf 'sh\n' >"$fixture/proc/202/comm"
 pid_output="$(
   cat() {

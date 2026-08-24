@@ -41,6 +41,9 @@ mkdir -p "$MODDIR/.state/watchdog" "$MODDIR/.state/fswatch"
 # shellcheck disable=SC1090
 . "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
 
+# shellcheck disable=SC1091
+. "$ROOT/scripts/test-lib/proc-reader-hook.sh"
+
 # Subscription refresh process identity checks must use the same proc root as
 # the scanner.  This makes disappearing-PID races testable and avoids mixing a
 # synthetic/isolated proc view with the host's /proc.

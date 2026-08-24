@@ -200,6 +200,36 @@ export KAM_FSWATCH_BUSYBOX_BIN="$test_bin/mock-busybox"
 export FSWATCH_SOURCE="$ROOT/src/MagicNet/lib/kamfw/fswatch.sh"
 mkdir -p "$MODDIR/.config" "$MODDIR/.log" "$KAMFW_DIR"
 printf 'fixture\n' >"$MODDIR/.config/value"
+cat >"$MODDIR/cli" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+kind="${1:-}"
+root="${2:-}"
+pid="${3:-}"
+case "$pid" in '' | *[!0-9]* | 0) exit 2 ;; esac
+case "$kind" in
+  __proc-cmdline)
+    exec 3<"$root/$pid/cmdline"
+    count=0
+    while IFS= read -r -d '' argument <&3; do
+      [ -n "$argument" ] || exit 1
+      case "$argument" in *$'\n'* | *$'\r'*) exit 1 ;; esac
+      printf '%s\n' "$argument"
+      count=$((count + 1))
+    done
+    [ "$count" -gt 0 ]
+    ;;
+  __proc-stat)
+    stat=$(<"$root/$pid/stat")
+    rest=${stat##*) }
+    read -r -a fields <<<"$rest"
+    [ "${#fields[@]}" -ge 20 ]
+    printf '%s %s\n' "${fields[0]}" "${fields[19]}"
+    ;;
+  *) exit 2 ;;
+esac
+EOF
+chmod +x "$MODDIR/cli"
 
 cat >"$KAMFW_DIR/.kamfwrc" <<'EOF'
 print() { printf '%s\n' "$*"; }
@@ -322,13 +352,13 @@ status_pid="$(fswatch_status "$watch_name")"
 test "$tracked_pid" = "$status_pid"
 fswatch_pid_matches_script "$tracked_pid" "$loop_script"
 : >"$tr_counter_file"
-_fw_read_d_supported=0 fswatch_pid_matches_script "$tracked_pid" "$loop_script"
-test "$(wc -l <"$tr_counter_file")" -eq 1
+fswatch_pid_matches_script "$tracked_pid" "$loop_script"
+test ! -s "$tr_counter_file"
 # shellcheck disable=SC2031 # fswatch_start intentionally runs in a subshell.
 test "${LD_LIBRARY_PATH+x}" != x
 
-# read -d capable shells parse one proc cmdline FD without external tr. They
-# must distinguish no argv2 from both nonempty and explicitly empty argv2.
+# The bounded reader must distinguish no argv2 from both nonempty and
+# explicitly empty argv2 without launching the legacy tr parser.
 sh "$loop_script" extra-argv2 &
 argv2_pid=$!
 sh "$loop_script" '' &
@@ -343,8 +373,8 @@ if fswatch_pid_matches_script "$empty_argv2_pid" "$loop_script"; then
   printf 'empty argv2 was accepted as an exact loop process\n' >&2
   exit 1
 fi
-if _fw_read_d_supported=0 fswatch_pid_matches_script "$empty_argv2_pid" "$loop_script"; then
-  printf 'empty argv2 was accepted by the tr fallback\n' >&2
+if fswatch_pid_matches_script "$empty_argv2_pid" "$loop_script"; then
+  printf 'empty argv2 was accepted by the bounded reader\n' >&2
   exit 1
 fi
 : >"$tr_counter_file"

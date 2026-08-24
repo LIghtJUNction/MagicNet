@@ -1,4 +1,7 @@
-use crate::{subscriptions, App};
+use crate::{
+    read_proc_argv, read_proc_text_bounded, run_bounded_command, subscriptions, App,
+    MAX_PROC_COMM_BYTES, MAX_PROC_STAT_BYTES,
+};
 use std::env;
 use std::fs;
 use std::io;
@@ -19,29 +22,75 @@ fn command_timeout_secs(value: Option<&str>) -> u64 {
         .filter(|seconds| (1..=MAX_COMMAND_TIMEOUT_SECS).contains(seconds))
         .unwrap_or(DEFAULT_COMMAND_TIMEOUT_SECS)
 }
-pub(crate) fn pid_summary(name: &str) -> String {
-    let mut pids = Vec::new();
-    if let Ok(entries) = fs::read_dir("/proc") {
-        for entry in entries.flatten() {
-            let file_name = entry.file_name();
-            let Some(pid) = file_name
-                .to_str()
-                .filter(|value| value.bytes().all(|b| b.is_ascii_digit()))
-            else {
-                continue;
-            };
-            if !proc_pid_is_live(&entry.path()) {
-                continue;
-            }
-            let comm = entry.path().join("comm");
-            if fs::read_to_string(comm)
-                .map(|value| value.trim() == name)
-                .unwrap_or(false)
-            {
-                pids.push(pid.to_string());
-            }
-        }
+pub(crate) fn named_process_candidates(name: &str) -> Result<Vec<String>, String> {
+    let pidof = if Path::new("/system/bin/getprop").is_file() {
+        ["/system/bin/pidof", "/system/xbin/pidof"]
+            .into_iter()
+            .find(|path| Path::new(path).is_file())
+            .ok_or_else(|| "trusted Android pidof is unavailable".to_string())?
+    } else {
+        // Host package smoke supplies a fixture pidof through PATH. Android
+        // never reaches this branch, so production process discovery cannot
+        // be redirected by inherited environment variables.
+        "pidof"
+    };
+    let mut command = Command::new(pidof);
+    command.arg(name);
+    let output = run_bounded_command(command, Duration::from_millis(750), 16 * 1024)?;
+    if output.timed_out {
+        return Err(format!("pid lookup timed out for {name}"));
     }
+    match output
+        .status
+        .as_ref()
+        .and_then(std::process::ExitStatus::code)
+    {
+        Some(0) => {}
+        Some(1) => return Ok(Vec::new()),
+        Some(code) => return Err(format!("pid lookup failed for {name} with status {code}")),
+        None => return Err(format!("pid lookup was terminated for {name}")),
+    }
+    let text = String::from_utf8(output.stdout)
+        .map_err(|_| format!("pid lookup returned non-UTF-8 output for {name}"))?;
+    let mut pids = text
+        .split_whitespace()
+        .filter(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    pids.sort_unstable();
+    pids.dedup();
+    Ok(pids)
+}
+
+pub(crate) fn proc_named_pids_command(args: &[String]) -> Result<(), String> {
+    if args.len() != 1
+        || args[0].is_empty()
+        || args[0].len() > 64
+        || !args[0]
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err("internal proc name usage error".to_string());
+    }
+    crate::utils::arm_parent_death_signal()?;
+    for pid in named_process_candidates(&args[0])? {
+        println!("{pid}");
+    }
+    Ok(())
+}
+
+pub(crate) fn pid_summary(name: &str) -> String {
+    let pids = named_process_candidates(name)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|pid| {
+            let proc_dir = Path::new("/proc").join(pid);
+            proc_pid_is_live(&proc_dir)
+                && read_proc_text_bounded(&proc_dir.join("comm"), MAX_PROC_COMM_BYTES)
+                    .map(|value| value.trim() == name)
+                    .unwrap_or(false)
+        })
+        .collect::<Vec<_>>();
     if pids.is_empty() {
         "stopped".to_string()
     } else {
@@ -68,37 +117,18 @@ fn owned_singbox_pids(app: &App) -> Vec<String> {
     let expected_workdir = app.moddir.join(".config/sing-box");
     let expected_binary = fs::canonicalize(&expected_binary).ok();
     let mut pids = Vec::new();
-    let Ok(entries) = fs::read_dir("/proc") else {
-        return pids;
-    };
-    for entry in entries.flatten() {
-        let file_name = entry.file_name();
-        let Some(pid) = file_name
-            .to_str()
-            .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit()))
-        else {
-            continue;
-        };
-        let proc_dir = entry.path();
+    for pid in named_process_candidates("sing-box").unwrap_or_default() {
+        let proc_dir = Path::new("/proc").join(&pid);
         if !proc_pid_is_live(&proc_dir) {
             continue;
         }
-        if !fs::read_to_string(proc_dir.join("comm"))
+        if !read_proc_text_bounded(&proc_dir.join("comm"), MAX_PROC_COMM_BYTES)
             .map(|value| value.trim() == "sing-box")
             .unwrap_or(false)
         {
             continue;
         }
-        let argv = fs::read(proc_dir.join("cmdline"))
-            .ok()
-            .map(|bytes| {
-                bytes
-                    .split(|byte| *byte == 0)
-                    .filter(|value| !value.is_empty())
-                    .map(|value| String::from_utf8_lossy(value).into_owned())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let argv = read_proc_argv(&proc_dir.join("cmdline")).unwrap_or_default();
         let commandline_owned =
             singbox_commandline_owned(&argv, &expected_binary, &expected_config, &expected_workdir);
         let executable_owned = singbox_executable_owned(&proc_dir, &expected_binary);
@@ -117,7 +147,7 @@ fn owned_singbox_pids(app: &App) -> Vec<String> {
 }
 
 fn proc_pid_is_live(proc_dir: &Path) -> bool {
-    fs::read_to_string(proc_dir.join("stat"))
+    read_proc_text_bounded(&proc_dir.join("stat"), MAX_PROC_STAT_BYTES)
         .map(|stat| proc_pid_stat_is_live(&stat))
         .unwrap_or(false)
 }
@@ -792,9 +822,7 @@ mod process_group_tests {
         let mut command = Command::new("sh");
         command.args(["-c", &script]);
         assert!(run_process_group(&mut command, Duration::from_millis(100)).is_err());
-        let pid = fs::read_to_string(&pid_file)?
-            .trim()
-            .parse::<i32>()?;
+        let pid = fs::read_to_string(&pid_file)?.trim().parse::<i32>()?;
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
         let _ = fs::remove_file(pid_file);
@@ -841,10 +869,7 @@ mod process_group_tests {
 
         run_magicnet_function(&app, "printf '%s' safe > \"$MODDIR/function-result\"")
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        assert_eq!(
-            fs::read_to_string(root.join("function-result"))?,
-            "safe"
-        );
+        assert_eq!(fs::read_to_string(root.join("function-result"))?, "safe");
         let _ = fs::remove_dir_all(root);
         Ok(())
     }

@@ -169,7 +169,7 @@ test ! -e "$tmp/overflow"
 printf '%s\n' 'mihomo/1.19.0' >"$tmp/subscription.user-agent"
 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_fetch_one_subscription \
-    https://example.invalid/sub "$tmp/custom-ua" "" "" "" '#1'
+  https://example.invalid/sub "$tmp/custom-ua" "" "" "" '#1'
 grep -q 'curl .*--user-agent mihomo/1.19.0.*https://example.invalid/sub' "$tmp/log"
 test "$(cat "$tmp/custom-ua")" = ok
 rm -f "$tmp/subscription.user-agent"
@@ -190,7 +190,7 @@ if (
   }
   MAGICNET_FETCH_FAIL_PUBLISH=1 PATH="$tmp/bin:$PATH" \
     magicnet_singbox_fetch_one_subscription \
-      https://example.invalid/sub "$stale_source" "" "" "" '#publish-failure'
+    https://example.invalid/sub "$stale_source" "" "" "" '#publish-failure'
 ); then
   printf '%s\n' 'subscription publish failure must not be reported as success' >&2
   exit 1
@@ -216,7 +216,7 @@ test ! -e "$cache_stage"
 unset cache_file cache_identity cache_stage
 MAGICNET_FETCH_FAIL=1 MAGICNET_SUB_PROXY=http://127.0.0.1:7892 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_fetch_one_subscription \
-    https://example.invalid/sub "$tmp/missing" "" "" "" '#1' 2>/dev/null && exit 1 || true
+  https://example.invalid/sub "$tmp/missing" "" "" "" '#1' 2>/dev/null && exit 1 || true
 grep -qx 'error Explicit subscription proxy is unsupported because it bypasses destination verification' "$tmp/log"
 if grep -q '^curl ' "$tmp/log"; then
   exit 1
@@ -224,7 +224,7 @@ fi
 : >"$tmp/log"
 MAGICNET_FETCH_FAIL=1 PATH="$tmp/bin:$PATH" \
   magicnet_singbox_fetch_one_subscription \
-    https://example.invalid/sub "$tmp/local-proxy" "" "" "" '#1' 2>/dev/null && exit 1 || true
+  https://example.invalid/sub "$tmp/local-proxy" "" "" "" '#1' 2>/dev/null && exit 1 || true
 grep -q '^curl ' "$tmp/log"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
 magicnet_singbox_update_lock_acquire
@@ -283,6 +283,8 @@ magicnet_singbox_update_subscription
 wait "$waiter"
 test "$(tr '\n' ' ' <"$order_log")" = 'update-waited global-after-apply global-after-apply update-body '
 . "$ROOT/src/MagicNet/lib/magicnet/runtime_config.sh"
+. "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
+. "$ROOT/scripts/test-lib/proc-reader-hook.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 mkdir -p "$MODDIR/bin" "$tmp/foreign"
 cat >"$tmp/sing-box.c" <<'C'
@@ -321,7 +323,7 @@ old_core=$!
 magicnet_singbox_pid_owned "$old_core" "$tmp/config.json"
 mkdir -p "$tmp/proc/12345"
 printf 'sing-box\n' >"$tmp/proc/12345/comm"
-printf '12345 (sing-box) S 1 2 3 4 5 6\n' >"$tmp/proc/12345/stat"
+printf '12345 (sing-box) S 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 12345 0\n' >"$tmp/proc/12345/stat"
 printf 'sing-box\0sing-box\0run\0-c\0%s\0-D\0%s\0' "$tmp/config.json" "$tmp" >"$tmp/proc/12345/cmdline"
 MAGICNET_SINGBOX_PROC_ROOT="$tmp/proc" magicnet_singbox_pid_owned 12345 "$tmp/config.json"
 mkdir -p "$tmp/proc/505"
@@ -374,7 +376,8 @@ wait "$old_core" 2>/dev/null || true
 kill "$_new_pid" 2>/dev/null || true
 test "$(tr '\n' ' ' <"$order_log")" = 'stop start '
 (
-  "$tmp/foreign/sing-box" run -c "$tmp/foreign.json" -D "$tmp/foreign" & foreign=$!
+  "$tmp/foreign/sing-box" run -c "$tmp/foreign.json" -D "$tmp/foreign" &
+  foreign=$!
   magicnet_singbox_pids() { printf '%s\n' "$foreign"; }
   magicnet_supervisors_stop() { :; }
   magicnet_fswatch_status() { return 0; }

@@ -62,7 +62,7 @@ magicnet_singbox_build_outbounds_file_with_jq() (
     jq -R -s 'split("\n") | map(select(length > 0))' "$_tags_file" >"$_tags_json" || return 1
     _ai_lib="$(magicnet_jq_ai_tags_lib)"
     jq -L "$_ai_lib" -n --slurpfile nodes "$_nodes_json" --slurpfile tags "$_tags_json" \
-      --rawfile configured_filters "$_filter_file" -e 'include "ai-node-tags";
+        --rawfile configured_filters "$_filter_file" -e 'include "ai-node-tags";
       def normalize_tag:
         if type == "string"
         then gsub("[\\r\\n\\t]"; " ") | gsub("[[:cntrl:]]"; "")
@@ -277,7 +277,9 @@ magicnet_singbox_sanitize_generated_config() {
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
     _sanitize_ai_lib="$(magicnet_jq_ai_tags_lib)"
     # shellcheck disable=SC2016
-    (umask 077; "$_sanitize_jq" -L "$_sanitize_ai_lib" --rawfile configured_filters "$_sanitize_filter_file" -e 'include "ai-node-tags";
+    (
+        umask 077
+        "$_sanitize_jq" -L "$_sanitize_ai_lib" --rawfile configured_filters "$_sanitize_filter_file" -e 'include "ai-node-tags";
       def proxy_node_type:
         .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
           or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks";
@@ -425,10 +427,11 @@ magicnet_singbox_sanitize_generated_config() {
           | . + ai_service_outbounds($ai_tags))
       | .route.rules = ((.route.rules // [])
         | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
-    ' "$_sanitize_config_file" >"$_sanitize_tmp_file") &&
+    ' "$_sanitize_config_file" >"$_sanitize_tmp_file"
+    ) &&
         chmod 600 "$_sanitize_tmp_file" &&
-            mv -f "$_sanitize_tmp_file" "$_sanitize_config_file" &&
-            chmod 600 "$_sanitize_config_file"
+        mv -f "$_sanitize_tmp_file" "$_sanitize_config_file" &&
+        chmod 600 "$_sanitize_config_file"
     _sanitize_rc=$?
     [ "$_sanitize_rc" -eq 0 ] || rm -f "$_sanitize_tmp_file" 2>/dev/null || true
     if [ "$_sanitize_rc" -eq 0 ]; then
@@ -447,7 +450,9 @@ magicnet_singbox_update_config_with_nodes() (
 
     _update_jq="$(command -v jq 2>/dev/null || true)"
     [ -n "$_update_jq" ] || return 1
-    (umask 077; "$_update_jq" --rawfile generated_outbounds "$_outbounds_file" '
+    (
+        umask 077
+        "$_update_jq" --rawfile generated_outbounds "$_outbounds_file" '
       def decoded_outbounds:
         try ($generated_outbounds | fromjson)
         catch ($generated_outbounds
@@ -461,7 +466,8 @@ magicnet_singbox_update_config_with_nodes() (
         else
           error("generated outbounds must be a JSON array")
         end
-    ' "$_config_file" >"$_tmp_file") || return 1
+    ' "$_config_file" >"$_tmp_file"
+    ) || return 1
 
     magicnet_singbox_sanitize_generated_config "$_tmp_file" || {
         error "Generated sing-box config failed sanitization"
@@ -500,7 +506,10 @@ magicnet_singbox_replay_cached_outbounds() {
 
     _config_file=$(magicnet_singbox_subscription_config_file)
     _previous_config="${_config_file}.cache-replay.previous"
-    (umask 077; cp -f "$_config_file" "$_previous_config") || {
+    (
+        umask 077
+        cp -f "$_config_file" "$_previous_config"
+    ) || {
         unset _cached_outbounds _config_file _previous_config
         return 1
     }
@@ -554,48 +563,75 @@ magicnet_singbox_config_has_clash_api() {
 magicnet_singbox_pid_live() {
     _live_pid="$1"
     case "$_live_pid" in
-        '' | *[!0-9]*) return 1 ;;
+    '' | *[!0-9]*) return 1 ;;
     esac
-    _live_stat="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}/${_live_pid}/stat"
-    [ -r "$_live_stat" ] || {
-        unset _live_pid _live_stat
+    _live_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    _live_state="$(magicnet_proc_state "$_live_pid" "$_live_proc_root")" || {
+        unset _live_pid _live_proc_root _live_state
         return 1
     }
-    _live_state="$(sed -n 's/^.*) \([^ ]\) .*$/\1/p' "$_live_stat" 2>/dev/null)"
     [ -n "$_live_state" ] && [ "$_live_state" != "Z" ] || {
-        unset _live_pid _live_stat _live_state
+        unset _live_pid _live_proc_root _live_state
         return 1
     }
-    unset _live_pid _live_stat _live_state
+    unset _live_pid _live_proc_root _live_state
     return 0
 }
 
 magicnet_singbox_pids() {
-    if command -v pidof >/dev/null 2>&1; then
-        _singbox_pid_list=$(pidof sing-box 2>/dev/null) || _singbox_pid_list=
-        # shellcheck disable=SC2086 # pidof returns a whitespace-separated PID list.
+    _singbox_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    _singbox_pid_list=''
+    _singbox_pid_lookup_rc=1
+    _singbox_pid_lookup_available=0
+    if [ "$_singbox_proc_root" = /proc ] && [ -x /system/bin/getprop ]; then
+        _singbox_pid_lookup_available=1
+        _singbox_pid_list=$("${MODDIR}/cli" __proc-pids sing-box 2>/dev/null)
+        _singbox_pid_lookup_rc=$?
+        [ "$_singbox_pid_lookup_rc" -eq 0 ] || {
+            unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
+            unset _singbox_pid_lookup_available
+            return 1
+        }
+    elif command -v pidof >/dev/null 2>&1; then
+        _singbox_pid_lookup_available=1
+        _singbox_pid_list=$(pidof sing-box 2>/dev/null)
+        _singbox_pid_lookup_rc=$?
+    fi
+    if [ "$_singbox_pid_lookup_rc" -eq 0 ]; then
+        # shellcheck disable=SC2086 # bounded pid lookup returns whitespace-separated PIDs.
         for _pid in $_singbox_pid_list; do
-            case "$_pid" in
-                *[!0-9]* | '') continue ;;
-            esac
+            case "$_pid" in *[!0-9]* | '') continue ;; esac
             magicnet_singbox_pid_live "$_pid" || continue
             printf '%s\n' "$_pid"
         done
-        unset _singbox_pid_list _pid
+        unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
+        unset _singbox_pid_lookup_available _pid
         return 0
     fi
-
-    _singbox_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    if [ "$_singbox_pid_lookup_available" -eq 1 ]; then
+        unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
+        unset _singbox_pid_lookup_available
+        return 0
+    fi
+    # Custom proc roots are test/diagnostic fixtures. Never fall back to an
+    # N-entry helper scan against the production /proc tree.
+    [ "$_singbox_proc_root" != /proc ] || {
+        unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
+        unset _singbox_pid_lookup_available
+        return 1
+    }
     for _proc_comm in "$_singbox_proc_root"/[0-9]*/comm; do
         [ -r "$_proc_comm" ] || continue
-        if IFS= read -r _proc_name <"$_proc_comm" 2>/dev/null &&
-            [ "$_proc_name" = "sing-box" ]; then
-            _pid=${_proc_comm#"$_singbox_proc_root"/}
-            magicnet_singbox_pid_live "${_pid%/comm}" || continue
-            printf '%s\n' "${_pid%/comm}"
+        _pid=${_proc_comm#"$_singbox_proc_root"/}
+        _pid=${_pid%/comm}
+        _proc_name=$(magicnet_proc_comm "$_pid" "$_singbox_proc_root") || continue
+        if [ "$_proc_name" = "sing-box" ]; then
+            magicnet_singbox_pid_live "$_pid" || continue
+            printf '%s\n' "$_pid"
         fi
     done
-    unset _singbox_proc_root _proc_comm _proc_name _pid
+    unset _singbox_proc_root _singbox_pid_list _singbox_pid_lookup_rc
+    unset _singbox_pid_lookup_available _proc_comm _proc_name _pid
 }
 
 magicnet_singbox_is_running() {
@@ -611,7 +647,7 @@ magicnet_singbox_pid_owned() {
     [ -x "${MODDIR}/bin/sing-box" ] || return 1
     _owned_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
     _owned_proc_dir="$_owned_proc_root/$_owned_pid"
-    _owned_comm=$(tr -d '\r\n' <"$_owned_proc_dir/comm" 2>/dev/null) || return 1
+    _owned_comm=$(magicnet_proc_comm "$_owned_pid" "$_owned_proc_root") || return 1
     [ "$_owned_comm" = "sing-box" ] || return 1
     _owned_exe_link=$(readlink "$_owned_proc_dir/exe" 2>/dev/null || true)
     _owned_exe_visible=0
@@ -632,16 +668,7 @@ magicnet_singbox_pid_owned() {
         _argv_work_count=0
         _argv_work_ok=0
         _argv_pending=
-        _argv_cmdline_file="$_owned_proc_dir/cmdline"
-        # Normalize proc's NUL-delimited argv before reading it.  Android ash
-        # and Debian dash do not agree on `read -d`, while newline preserves
-        # the argument boundaries needed by this exact ownership tuple.  A
-        # literal newline inside one argv would otherwise be mistaken for a
-        # second argument, so reject it before normalization.
-        _argv_bytes_with_newline=$(tr -d '\000' <"$_argv_cmdline_file" 2>/dev/null | wc -c)
-        _argv_bytes_without_newline=$(tr -d '\000\n' <"$_argv_cmdline_file" 2>/dev/null | wc -c)
-        [ "$_argv_bytes_with_newline" = "$_argv_bytes_without_newline" ] || return 1
-        _argv_cmdline=$(tr '\000' '\n' <"$_argv_cmdline_file" 2>/dev/null) || return 1
+        _argv_cmdline=$(magicnet_proc_cmdline_lines "$_owned_pid" "$_owned_proc_root") || return 1
         while IFS= read -r _argv_arg || [ -n "$_argv_arg" ]; do
             _argv_index=$((_argv_index + 1))
             [ "$_argv_index" -ne 1 ] || _argv0="$_argv_arg"
@@ -657,26 +684,26 @@ magicnet_singbox_pid_owned() {
                 continue
             fi
             case "$_argv_pending" in
-                config)
-                    [ "$_argv_arg" != "$_owned_config" ] || _argv_config_ok=1
-                    _argv_pending=
-                    continue
-                    ;;
-                work)
-                    [ "$_argv_arg" != "${_owned_config%/*}" ] || _argv_work_ok=1
-                    _argv_pending=
-                    continue
-                    ;;
+            config)
+                [ "$_argv_arg" != "$_owned_config" ] || _argv_config_ok=1
+                _argv_pending=
+                continue
+                ;;
+            work)
+                [ "$_argv_arg" != "${_owned_config%/*}" ] || _argv_work_ok=1
+                _argv_pending=
+                continue
+                ;;
             esac
             case "$_argv_arg" in
-                -c)
-                    _argv_config_count=$((_argv_config_count + 1))
-                    _argv_pending=config
-                    ;;
-                -D)
-                    _argv_work_count=$((_argv_work_count + 1))
-                    _argv_pending=work
-                    ;;
+            -c)
+                _argv_config_count=$((_argv_config_count + 1))
+                _argv_pending=config
+                ;;
+            -D)
+                _argv_work_count=$((_argv_work_count + 1))
+                _argv_pending=work
+                ;;
             esac
         done <<EOF
 $_argv_cmdline
@@ -769,7 +796,7 @@ magicnet_singbox_ensure_start_owned() {
                         curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |
                         grep -q '"version"'
                 }
-            }; then
+        }; then
             unset _api_expected
             return 0
         fi

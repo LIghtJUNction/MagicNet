@@ -45,11 +45,37 @@ MAGICNET_CONFIG_LOCK_NO_PID_TIMEOUT=1 magicnet_config_lock_acquire
 test "$(cut -d: -f1 "$MODDIR/.state/config.lock/pid")" = "$$"
 magicnet_config_lock_release
 
+# An unreadable/blocked proc identity is indeterminate, not proof that a live
+# owner died. Acquisition must time out without stealing or rewriting it.
+mkdir -p "$MODDIR/.state/config.lock"
+printf '%s:%s\n' "$$" "$start" >"$MODDIR/.state/config.lock/pid"
+magicnet_proc_reader_test_hook() {
+    test "$1" != stat || return 2
+    return 1
+}
+set +e
+MAGICNET_CONFIG_LOCK_TIMEOUT=1 magicnet_config_lock_acquire
+indeterminate_rc=$?
+set -e
+unset -f magicnet_proc_reader_test_hook
+[ "$indeterminate_rc" -ne 0 ]
+test "$(cat "$MODDIR/.state/config.lock/pid")" = "$$:$start"
+rm -f "$MODDIR/.state/config.lock/pid"
+rmdir "$MODDIR/.state/config.lock"
+
+# A starttime mismatch is definite PID reuse and can be reclaimed after the
+# marker is rechecked immediately before removal.
+mkdir -p "$MODDIR/.state/config.lock"
+printf '%s:%s\n' "$$" '1' >"$MODDIR/.state/config.lock/pid"
+magicnet_config_lock_acquire
+test "$(cut -d: -f1 "$MODDIR/.state/config.lock/pid")" = "$$"
+magicnet_config_lock_release
+
 # A marker write failure must not leave an empty directory that blocks every
 # later config update until the timeout-based reclamation path runs.
 printf() {
     case "${2:-}" in
-        "$$"|"$$:"*) return 1 ;;
+    "$$" | "$$:"*) return 1 ;;
     esac
     command printf "$@"
 }

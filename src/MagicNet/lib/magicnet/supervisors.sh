@@ -3,20 +3,20 @@ magicnet_supervisor_target_pid_matches() (
     _mstm_pid_file="$2"
     _mstm_pid="$3"
     case "$_mstm_target" in
-        fswatch | watchdog | hotspot-watchdog) magicnet_supervisor_pidfile_matches "$_mstm_pid_file" "$_mstm_pid" ;;
-        wifi-policy) magicnet_wifi_policy_pid_matches "$_mstm_pid" ;;
-        *) return 1 ;;
+    fswatch | watchdog | hotspot-watchdog) magicnet_supervisor_pidfile_matches "$_mstm_pid_file" "$_mstm_pid" ;;
+    wifi-policy) magicnet_wifi_policy_pid_matches "$_mstm_pid" ;;
+    *) return 1 ;;
     esac
 )
 
 magicnet_supervisor_orphan_pids() (
     _mso_target="$1"
     case "$_mso_target" in
-        fswatch) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid" ;;
-        watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid" ;;
-        hotspot-watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_hotspot_watchdog_name).pid" ;;
-        wifi-policy) _mso_pid_file="$(magicnet_wifi_policy_pid_file)" ;;
-        *) return 1 ;;
+    fswatch) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid" ;;
+    watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid" ;;
+    hotspot-watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_hotspot_watchdog_name).pid" ;;
+    wifi-policy) _mso_pid_file="$(magicnet_wifi_policy_pid_file)" ;;
+    *) return 1 ;;
     esac
 
     _mso_ps=$(ps -A -o pid=,args= 2>/dev/null || true)
@@ -127,36 +127,35 @@ magicnet_supervisor_pidfile_matches() (
         return 1
     }
     case "$_msp_pid_file" in
-        */.state/watchdog/magicnet-kernel.pid)
-            _msp_root=${_msp_pid_file%/.state/watchdog/magicnet-kernel.pid}
-            _msp_expected="$_msp_root/.state/watchdog/magicnet-kernel.loop.sh"
-            _msp_arg1=service
-            _msp_arg2=ensure
-            ;;
-        */.state/fswatch/magicnet-config.pid)
-            _msp_root=${_msp_pid_file%/.state/fswatch/magicnet-config.pid}
-            _msp_expected="$_msp_root/.state/fswatch/magicnet-config.loop.sh"
-            _msp_arg1=config
-            _msp_arg2=apply
-            ;;
-        */.state/watchdog/magicnet-hotspot-route.pid)
-            _msp_root=${_msp_pid_file%/.state/watchdog/magicnet-hotspot-route.pid}
-            _msp_expected="$_msp_root/.state/watchdog/magicnet-hotspot-route.loop.sh"
-            _msp_arg1=
-            _msp_arg2=
-            ;;
-        *)
-            unset _msp_pid_file _msp_pid _msp_root _msp_expected _msp_arg1 _msp_arg2
-            return 1
-            ;;
+    */.state/watchdog/magicnet-kernel.pid)
+        _msp_root=${_msp_pid_file%/.state/watchdog/magicnet-kernel.pid}
+        _msp_expected="$_msp_root/.state/watchdog/magicnet-kernel.loop.sh"
+        _msp_arg1=service
+        _msp_arg2=ensure
+        ;;
+    */.state/fswatch/magicnet-config.pid)
+        _msp_root=${_msp_pid_file%/.state/fswatch/magicnet-config.pid}
+        _msp_expected="$_msp_root/.state/fswatch/magicnet-config.loop.sh"
+        _msp_arg1=config
+        _msp_arg2=apply
+        ;;
+    */.state/watchdog/magicnet-hotspot-route.pid)
+        _msp_root=${_msp_pid_file%/.state/watchdog/magicnet-hotspot-route.pid}
+        _msp_expected="$_msp_root/.state/watchdog/magicnet-hotspot-route.loop.sh"
+        _msp_arg1=
+        _msp_arg2=
+        ;;
+    *)
+        unset _msp_pid_file _msp_pid _msp_root _msp_expected _msp_arg1 _msp_arg2
+        return 1
+        ;;
     esac
     _msp_rc=1
-    # Preserve NUL-delimited argv boundaries. Tokenizing a space-normalized
-    # command line lets one argument containing "cli config apply" look like
-    # the managed command and made broad orphan cleanup unsafe.
-    if tr '\000' '\n' <"/proc/$_msp_pid/cmdline" 2>/dev/null |
-        awk -v expected="$_msp_expected" -v cli="$_msp_root/cli" \
-            -v arg1="$_msp_arg1" -v arg2="$_msp_arg2" '
+    # Preserve exact argv boundaries without directly streaming an OEM proc
+    # pseudo-file into a pipeline.
+    _msp_argv=$(magicnet_proc_cmdline_lines "$_msp_pid" /proc) || return 1
+    if awk -v expected="$_msp_expected" -v cli="$_msp_root/cli" \
+        -v arg1="$_msp_arg1" -v arg2="$_msp_arg2" '
             function is_shell(value) {
                 return value == "sh" || value == "ash" || value == "dash" ||
                     value == "bash" || value == "ksh" || value == "mksh" ||
@@ -172,7 +171,9 @@ magicnet_supervisor_pidfile_matches() (
                 before_previous = previous
                 previous = $0
             }
-            END { exit matched ? 0 : 1 }'; then
+            END { exit matched ? 0 : 1 }' <<EOF; then
+$_msp_argv
+EOF
         _msp_rc=0
     fi
     unset _msp_pid_file _msp_pid _msp_root _msp_expected _msp_arg1 _msp_arg2
@@ -209,7 +210,7 @@ magicnet_hotspot_watchdog_start() {
     # must not repeat slow OEM tethering discovery on the start button path.
     _hotspot_watch_interval="$(magicnet_hotspot_watchdog_interval)"
     case "$_hotspot_watch_interval" in
-        '' | *[!0-9]* | 0) _hotspot_watch_interval=3 ;;
+    '' | *[!0-9]* | 0) _hotspot_watch_interval=3 ;;
     esac
     KAM_WATCHDOG_LOG_FILE="${MODDIR}/.log/hotspot-route.log" \
         watchdog start --quiet "$_hotspot_watch_name" "$_hotspot_watch_interval" \
@@ -356,10 +357,10 @@ magicnet_wifi_policy_pid_matches() (
         return 1
     }
     _wifi_policy_match_rc=1
-    # Preserve NUL-delimited argv boundaries so one argument containing
+    # Preserve exact argv boundaries so one argument containing
     # "cli wifi watch" cannot impersonate the managed supervisor.
-    if tr '\000' '\n' <"/proc/${_wifi_policy_match_pid}/cmdline" 2>/dev/null |
-        awk -v cli="${MODDIR}/cli" -v alt_cli="${MODDIR}/bin/magicnet-cli" '
+    _wifi_policy_match_argv=$(magicnet_proc_cmdline_lines "$_wifi_policy_match_pid" /proc) || return 1
+    if awk -v cli="${MODDIR}/cli" -v alt_cli="${MODDIR}/bin/magicnet-cli" '
             {
                 if ((before_previous == cli || before_previous == alt_cli) &&
                     previous == "wifi" && $0 == "watch") {
@@ -368,7 +369,9 @@ magicnet_wifi_policy_pid_matches() (
                 before_previous = previous
                 previous = $0
             }
-            END { exit matched ? 0 : 1 }'; then
+            END { exit matched ? 0 : 1 }' <<EOF; then
+$_wifi_policy_match_argv
+EOF
         _wifi_policy_match_rc=0
     fi
     _wifi_policy_match_result="$_wifi_policy_match_rc"
@@ -406,7 +409,7 @@ magicnet_wifi_policy_start() {
     # broken binary still fails closed instead of blocking boot indefinitely.
     _wifi_policy_ready_attempts="${MAGICNET_WIFI_POLICY_READY_ATTEMPTS:-20}"
     case "$_wifi_policy_ready_attempts" in
-        '' | *[!0-9]*) _wifi_policy_ready_attempts=20 ;;
+    '' | *[!0-9]*) _wifi_policy_ready_attempts=20 ;;
     esac
     [ "$_wifi_policy_ready_attempts" -gt 40 ] && _wifi_policy_ready_attempts=40
     [ "$_wifi_policy_ready_attempts" -gt 0 ] || _wifi_policy_ready_attempts=1
@@ -478,7 +481,7 @@ magicnet_subscription_refresh_proc_command_matches() {
         unset _refresh_proc_cmdline
         return "$_refresh_proc_rc"
     }
-    if _refresh_proc_argv=$(tr '\000' '\n' <"$_refresh_proc_cmdline" 2>/dev/null); then
+    if _refresh_proc_argv=$(magicnet_proc_cmdline_lines "$_refresh_proc_pid" "$_refresh_proc_root"); then
         _refresh_proc_read_rc=0
     else
         _refresh_proc_read_rc=$?
@@ -506,10 +509,10 @@ magicnet_subscription_refresh_wait_for_identity() {
     _refresh_wait_attempts="${MAGICNET_SUB_REFRESH_IDENTITY_ATTEMPTS:-20}"
     _refresh_wait_delay="${MAGICNET_SUB_REFRESH_IDENTITY_DELAY:-0.05}"
     case "$_refresh_wait_pid" in
-        '' | *[!0-9]*)
-            unset _refresh_wait_pid _refresh_wait_attempts _refresh_wait_delay
-            return 1
-            ;;
+    '' | *[!0-9]*)
+        unset _refresh_wait_pid _refresh_wait_attempts _refresh_wait_delay
+        return 1
+        ;;
     esac
     case "$_refresh_wait_attempts" in '' | *[!0-9]*) _refresh_wait_attempts=20 ;; esac
     case "$_refresh_wait_delay" in '' | *[!0-9.]* | .* | *.*.*) _refresh_wait_delay=0.05 ;; esac
@@ -597,13 +600,13 @@ magicnet_subscription_refresh_loop_pids() {
     # keep a hard cap and return 2 when the snapshot never becomes trustworthy.
     _refresh_loop_scan_attempts="${MAGICNET_SUB_REFRESH_SCAN_ATTEMPTS:-3}"
     case "$_refresh_loop_scan_attempts" in
-        '' | *[!0-9]*) _refresh_loop_scan_attempts=3 ;;
+    '' | *[!0-9]*) _refresh_loop_scan_attempts=3 ;;
     esac
     [ "$_refresh_loop_scan_attempts" -gt 0 ] || _refresh_loop_scan_attempts=1
     [ "$_refresh_loop_scan_attempts" -le 5 ] || _refresh_loop_scan_attempts=5
     _refresh_loop_scan_delay="${MAGICNET_SUB_REFRESH_SCAN_DELAY:-0.05}"
     case "$_refresh_loop_scan_delay" in
-        '' | *[!0-9.]* | .* | *.*.*) _refresh_loop_scan_delay=0.05 ;;
+    '' | *[!0-9.]* | .* | *.*.*) _refresh_loop_scan_delay=0.05 ;;
     esac
     _refresh_loop_scan_attempt=0
     while [ "$_refresh_loop_scan_attempt" -lt "$_refresh_loop_scan_attempts" ]; do

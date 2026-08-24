@@ -60,8 +60,8 @@ magicnet_transparent_mode() {
 
 magicnet_transparent_set_mode() {
     case "${1:-tun}" in
-        tun) _mode="tun" ;;
-        *) return 1 ;;
+    tun) _mode="tun" ;;
+    *) return 1 ;;
     esac
     mkdir -p "${MODDIR}/.config/magicnet" || return 1
     _mode_file="$(magicnet_transparent_conf)" || {
@@ -69,7 +69,10 @@ magicnet_transparent_set_mode() {
         return 1
     }
     _mode_tmp="${_mode_file}.tmp.$$"
-    if ! (umask 077; printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$_mode" >"$_mode_tmp"); then
+    if ! (
+        umask 077
+        printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$_mode" >"$_mode_tmp"
+    ); then
         rm -f "$_mode_tmp" 2>/dev/null || true
         unset _mode _mode_file _mode_tmp
         return 1
@@ -256,59 +259,56 @@ magicnet_config_lock_proc_start() {
     magicnet_proc_start "$1"
 }
 
-magicnet_config_lock_proc_live() {
-    _owner_proc_pid="$1"
-    _owner_proc_stat="/proc/$_owner_proc_pid/stat"
-    if [ -r "$_owner_proc_stat" ]; then
-        _owner_proc_state="$(sed -n 's/^.*) \([^ ]\) .*$/\1/p' \
-            "$_owner_proc_stat" 2>/dev/null || true)"
-        [ -n "$_owner_proc_state" ] && [ "$_owner_proc_state" != "Z" ] || {
-            unset _owner_proc_pid _owner_proc_stat _owner_proc_state
-            return 1
-        }
-    fi
-    unset _owner_proc_pid _owner_proc_stat _owner_proc_state
-    return 0
-}
-
+# Return 0 only for the same live owner, 1 only when the owner is definitely
+# dead/reused, and 2 when proc identity cannot be read safely. Callers must not
+# reclaim an indeterminate lock.
 magicnet_config_lock_owner_matches() {
     _owner_check="$1"
-    _owner_check_pid="$(printf '%s\n' "$_owner_check" | cut -d: -f1)"
+    _owner_check_pid=${_owner_check%%:*}
     case "$_owner_check_pid" in
-        '' | *[!0-9]*)
-            unset _owner_check _owner_check_pid
-            return 1
-            ;;
-    esac
-    if [ "$_owner_check" = "$_owner_check_pid" ]; then
-        if kill -0 "$_owner_check_pid" 2>/dev/null &&
-            magicnet_config_lock_proc_live "$_owner_check_pid"; then
-            _owner_check_rc=0
-        else
-            _owner_check_rc=1
-        fi
+    '' | *[!0-9]*)
         unset _owner_check _owner_check_pid
-        return "$_owner_check_rc"
-    fi
-    _owner_check_start="$(printf '%s\n' "$_owner_check" | cut -d: -f2)"
-    case "$_owner_check_start" in
+        return 1
+        ;;
+    esac
+    _owner_check_start=''
+    if [ "$_owner_check" != "$_owner_check_pid" ]; then
+        _owner_check_start=${_owner_check#*:}
+        case "$_owner_check_start" in
         '' | *[!0-9]*)
             unset _owner_check _owner_check_pid _owner_check_start
             return 1
             ;;
-    esac
-    if ! kill -0 "$_owner_check_pid" 2>/dev/null ||
-        ! magicnet_config_lock_proc_live "$_owner_check_pid"; then
+        esac
+    fi
+    if [ ! -d "/proc/$_owner_check_pid" ]; then
         unset _owner_check _owner_check_pid _owner_check_start
         return 1
     fi
-    _owner_check_live_start="$(magicnet_config_lock_proc_start "$_owner_check_pid")"
-    [ -n "$_owner_check_live_start" ] &&
-        [ "$_owner_check_live_start" = "$_owner_check_start" ]
-    _owner_check_rc=$?
-    unset _owner_check _owner_check_pid _owner_check_start \
-        _owner_check_live_start
-    return "$_owner_check_rc"
+    _owner_check_identity="$(magicnet_proc_stat_identity "$_owner_check_pid" /proc)" || {
+        if [ ! -d "/proc/$_owner_check_pid" ]; then
+            _owner_check_rc=1
+        else
+            _owner_check_rc=2
+        fi
+        set -- "$_owner_check_rc"
+        unset _owner_check _owner_check_pid _owner_check_start _owner_check_identity _owner_check_rc
+        return "$1"
+    }
+    _owner_check_state=${_owner_check_identity%% *}
+    _owner_check_live_start=${_owner_check_identity#* }
+    if [ "$_owner_check_state" = Z ]; then
+        _owner_check_rc=1
+    elif [ -n "$_owner_check_start" ] &&
+        [ "$_owner_check_live_start" != "$_owner_check_start" ]; then
+        _owner_check_rc=1
+    else
+        _owner_check_rc=0
+    fi
+    set -- "$_owner_check_rc"
+    unset _owner_check _owner_check_pid _owner_check_start _owner_check_identity
+    unset _owner_check_state _owner_check_live_start _owner_check_rc
+    return "$1"
 }
 
 magicnet_config_lock_reclaim() {
@@ -319,17 +319,29 @@ magicnet_config_lock_reclaim() {
         unset _reclaim_expected _reclaim_dir _reclaim_current
         return 1
     }
-    # Re-check ownership immediately before removing the marker, then use
-    # rmdir instead of recursive deletion.  A concurrent new owner can make
+    # Re-check immediately before removal. Timeout, EACCES, or malformed proc
+    # data is indeterminate and must preserve the lock rather than enabling a
+    # second writer.
+    if magicnet_config_lock_owner_matches "$_reclaim_expected"; then
+        _reclaim_owner_rc=0
+    else
+        _reclaim_owner_rc=$?
+    fi
+    [ "$_reclaim_owner_rc" -eq 1 ] || {
+        unset _reclaim_expected _reclaim_dir _reclaim_current _reclaim_owner_rc
+        return 1
+    }
+    # Use rmdir instead of recursive deletion. A concurrent new owner can make
     # rmdir fail, but cannot have its marker recursively removed by us.
     rm -f "$_reclaim_dir/pid" 2>/dev/null || {
-        unset _reclaim_expected _reclaim_dir _reclaim_current
+        unset _reclaim_expected _reclaim_dir _reclaim_current _reclaim_owner_rc
         return 1
     }
     rmdir "$_reclaim_dir" 2>/dev/null
     _reclaim_rc=$?
-    unset _reclaim_expected _reclaim_dir _reclaim_current
-    return "$_reclaim_rc"
+    set -- "$_reclaim_rc"
+    unset _reclaim_expected _reclaim_dir _reclaim_current _reclaim_owner_rc _reclaim_rc
+    return "$1"
 }
 
 magicnet_config_lock_acquire() {
@@ -343,8 +355,15 @@ magicnet_config_lock_acquire() {
     mkdir -p "$_lock_parent"
     while ! mkdir "$_lock_dir" 2>/dev/null; do
         _lock_pid="$(sed -n '1p' "$_lock_dir/pid" 2>/dev/null || true)"
-        if [ -n "$_lock_pid" ] && ! magicnet_config_lock_owner_matches "$_lock_pid"; then
-            magicnet_config_lock_reclaim "$_lock_pid" && continue
+        if [ -n "$_lock_pid" ]; then
+            if magicnet_config_lock_owner_matches "$_lock_pid"; then
+                _lock_owner_rc=0
+            else
+                _lock_owner_rc=$?
+            fi
+            if [ "$_lock_owner_rc" -eq 1 ]; then
+                magicnet_config_lock_reclaim "$_lock_pid" && continue
+            fi
         fi
         if [ -z "$_lock_pid" ]; then
             _lock_no_pid_wait=$((_lock_no_pid_wait + 1))
@@ -358,7 +377,7 @@ magicnet_config_lock_acquire() {
         fi
         if [ "$_lock_waited" -ge "$_lock_timeout" ]; then
             magicnet_warn "Timed out waiting for config lock: $_lock_dir"
-            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid
+            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_owner_rc
             return 1
         fi
         sleep 1
@@ -369,7 +388,7 @@ magicnet_config_lock_acquire() {
         if ! printf '%s:%s\n' "$$" "$_lock_start" >"$_lock_dir/pid"; then
             rm -f "$_lock_dir/pid" 2>/dev/null || true
             rmdir "$_lock_dir" 2>/dev/null || true
-            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start
+            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start _lock_owner_rc
             return 1
         fi
     else
@@ -378,11 +397,11 @@ magicnet_config_lock_acquire() {
         if ! printf '%s\n' "$$" >"$_lock_dir/pid"; then
             rm -f "$_lock_dir/pid" 2>/dev/null || true
             rmdir "$_lock_dir" 2>/dev/null || true
-            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start
+            unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start _lock_owner_rc
             return 1
         fi
     fi
-    unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start
+    unset _lock_dir _lock_parent _lock_waited _lock_timeout _lock_no_pid_wait _lock_no_pid_timeout _lock_pid _lock_start _lock_owner_rc
 }
 
 magicnet_config_lock_release() {

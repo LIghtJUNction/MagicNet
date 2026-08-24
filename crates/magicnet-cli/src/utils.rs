@@ -1,19 +1,408 @@
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::App;
 
 const MAX_COMMAND_STREAM_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_PROC_CMDLINE_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_PROC_STAT_BYTES: usize = 4 * 1024;
+pub(crate) const MAX_PROC_COMM_BYTES: usize = 256;
+const MAX_PROC_FILE_BYTES: usize = MAX_PROC_CMDLINE_BYTES;
+const PROC_FILE_READ_TIMEOUT: Duration = Duration::from_millis(500);
+const PROC_READER_OVERSIZE_EXIT: i32 = 65;
+const PROC_READER_IO_EXIT: i32 = 66;
+const PROC_READER_PARENT_EXIT: i32 = 67;
+
+fn close_raw_fd(fd: RawFd) {
+    if fd >= 0 {
+        unsafe {
+            libc::close(fd);
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
+fn child_errno() -> libc::c_int {
+    unsafe { *libc::__errno() }
+}
+
+#[cfg(not(target_os = "android"))]
+fn child_errno() -> libc::c_int {
+    unsafe { *libc::__errno_location() }
+}
+
+fn kill_and_reap(pid: libc::pid_t) {
+    unsafe {
+        libc::kill(pid, libc::SIGKILL);
+        loop {
+            let mut status = 0;
+            let result = libc::waitpid(pid, &mut status, 0);
+            if result == pid
+                || (result < 0 && io::Error::last_os_error().kind() != ErrorKind::Interrupted)
+            {
+                break;
+            }
+        }
+    }
+}
+
+fn child_exit_code(status: i32) -> Option<i32> {
+    if libc::WIFEXITED(status) {
+        Some(libc::WEXITSTATUS(status))
+    } else {
+        None
+    }
+}
+
+/// Read a proc-style pseudo-file with both a byte ceiling and a monotonic
+/// deadline. The actual open/read runs in a short-lived child so a wedged OEM
+/// proc handler can always be killed and reaped. PR_SET_PDEATHSIG prevents the
+/// worker from surviving if its caller is interrupted.
+pub(crate) fn read_proc_file_bounded(path: &Path, max_bytes: usize) -> Result<Vec<u8>, String> {
+    if max_bytes == 0 || max_bytes > MAX_PROC_FILE_BYTES {
+        return Err(format!(
+            "invalid proc read limit {max_bytes}; expected 1..={MAX_PROC_FILE_BYTES}"
+        ));
+    }
+    let path_c = cstring_from_os_str(path.as_os_str(), "proc path")?;
+    let mut pipe_fds = [-1; 2];
+    if unsafe { libc::pipe2(pipe_fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        return Err(format!(
+            "create bounded proc reader pipe for {}: {}",
+            path.display(),
+            io::Error::last_os_error()
+        ));
+    }
+
+    let mut worker_buffer = vec![0_u8; max_bytes + 1];
+    let parent_pid = unsafe { libc::getpid() };
+    let worker_pid = unsafe { libc::fork() };
+    if worker_pid < 0 {
+        let err = io::Error::last_os_error();
+        close_raw_fd(pipe_fds[0]);
+        close_raw_fd(pipe_fds[1]);
+        return Err(format!(
+            "fork bounded proc reader for {}: {err}",
+            path.display()
+        ));
+    }
+
+    if worker_pid == 0 {
+        close_raw_fd(pipe_fds[0]);
+        let armed = unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) } == 0;
+        if !armed || unsafe { libc::getppid() } != parent_pid {
+            unsafe { libc::_exit(PROC_READER_PARENT_EXIT) };
+        }
+        let source_fd = unsafe {
+            libc::open(
+                path_c.as_ptr(),
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            )
+        };
+        if source_fd < 0 {
+            unsafe { libc::_exit(PROC_READER_IO_EXIT) };
+        }
+
+        let mut read_len = 0_usize;
+        while read_len < worker_buffer.len() {
+            let result = unsafe {
+                libc::read(
+                    source_fd,
+                    worker_buffer.as_mut_ptr().add(read_len).cast(),
+                    worker_buffer.len() - read_len,
+                )
+            };
+            if result > 0 {
+                read_len += result as usize;
+                continue;
+            }
+            if result == 0 {
+                break;
+            }
+            if child_errno() == libc::EINTR {
+                continue;
+            }
+            close_raw_fd(source_fd);
+            unsafe { libc::_exit(PROC_READER_IO_EXIT) };
+        }
+        close_raw_fd(source_fd);
+        if read_len > max_bytes {
+            unsafe { libc::_exit(PROC_READER_OVERSIZE_EXIT) };
+        }
+
+        let mut written = 0_usize;
+        while written < read_len {
+            let result = unsafe {
+                libc::write(
+                    pipe_fds[1],
+                    worker_buffer.as_ptr().add(written).cast(),
+                    read_len - written,
+                )
+            };
+            if result > 0 {
+                written += result as usize;
+                continue;
+            }
+            if result < 0 && child_errno() == libc::EINTR {
+                continue;
+            }
+            close_raw_fd(pipe_fds[1]);
+            unsafe { libc::_exit(PROC_READER_IO_EXIT) };
+        }
+        close_raw_fd(pipe_fds[1]);
+        unsafe { libc::_exit(0) };
+    }
+
+    close_raw_fd(pipe_fds[1]);
+    let flags = unsafe { libc::fcntl(pipe_fds[0], libc::F_GETFL) };
+    if flags < 0 || unsafe { libc::fcntl(pipe_fds[0], libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
+    {
+        let err = io::Error::last_os_error();
+        close_raw_fd(pipe_fds[0]);
+        kill_and_reap(worker_pid);
+        return Err(format!(
+            "configure bounded proc reader for {}: {err}",
+            path.display()
+        ));
+    }
+
+    let deadline = Instant::now() + PROC_FILE_READ_TIMEOUT;
+    let mut output = Vec::with_capacity(max_bytes.min(4096));
+    let mut pipe_eof = false;
+    let mut worker_status = None;
+    loop {
+        let mut chunk = [0_u8; 4096];
+        loop {
+            let read_count =
+                unsafe { libc::read(pipe_fds[0], chunk.as_mut_ptr().cast(), chunk.len()) };
+            if read_count > 0 {
+                output.extend_from_slice(&chunk[..read_count as usize]);
+                if output.len() > max_bytes {
+                    close_raw_fd(pipe_fds[0]);
+                    kill_and_reap(worker_pid);
+                    return Err(format!(
+                        "proc file exceeds {max_bytes} bytes: {}",
+                        path.display()
+                    ));
+                }
+                continue;
+            }
+            if read_count == 0 {
+                pipe_eof = true;
+                break;
+            }
+            let err = io::Error::last_os_error();
+            if err.kind() == ErrorKind::Interrupted {
+                continue;
+            }
+            if err.kind() == ErrorKind::WouldBlock {
+                break;
+            }
+            close_raw_fd(pipe_fds[0]);
+            kill_and_reap(worker_pid);
+            return Err(format!(
+                "read bounded proc result for {}: {err}",
+                path.display()
+            ));
+        }
+
+        if worker_status.is_none() {
+            let mut status = 0;
+            let waited = unsafe { libc::waitpid(worker_pid, &mut status, libc::WNOHANG) };
+            if waited == worker_pid {
+                worker_status = Some(status);
+            } else if waited < 0 {
+                let err = io::Error::last_os_error();
+                if err.kind() == ErrorKind::Interrupted {
+                    continue;
+                }
+                close_raw_fd(pipe_fds[0]);
+                return Err(format!(
+                    "reap bounded proc reader for {}: {err}",
+                    path.display()
+                ));
+            }
+        }
+        if pipe_eof && worker_status.is_some() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            close_raw_fd(pipe_fds[0]);
+            kill_and_reap(worker_pid);
+            return Err(format!(
+                "proc read timed out after {}ms: {}",
+                PROC_FILE_READ_TIMEOUT.as_millis(),
+                path.display()
+            ));
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let wait_ms = remaining.as_millis().clamp(1, 25) as i32;
+        let mut poll_fd = libc::pollfd {
+            fd: pipe_fds[0],
+            events: libc::POLLIN | libc::POLLHUP,
+            revents: 0,
+        };
+        let polled = unsafe { libc::poll(&mut poll_fd, 1, wait_ms) };
+        if polled < 0 && io::Error::last_os_error().kind() != ErrorKind::Interrupted {
+            let err = io::Error::last_os_error();
+            close_raw_fd(pipe_fds[0]);
+            kill_and_reap(worker_pid);
+            return Err(format!(
+                "poll bounded proc reader for {}: {err}",
+                path.display()
+            ));
+        }
+    }
+    close_raw_fd(pipe_fds[0]);
+
+    match worker_status.and_then(child_exit_code) {
+        Some(0) => Ok(output),
+        Some(PROC_READER_OVERSIZE_EXIT) => Err(format!(
+            "proc file exceeds {max_bytes} bytes: {}",
+            path.display()
+        )),
+        Some(PROC_READER_IO_EXIT) => Err(format!("proc file read failed: {}", path.display())),
+        Some(PROC_READER_PARENT_EXIT) => Err(format!(
+            "proc reader parent changed before startup: {}",
+            path.display()
+        )),
+        Some(code) => Err(format!(
+            "proc reader exited with status {code}: {}",
+            path.display()
+        )),
+        None => Err(format!("proc reader was terminated: {}", path.display())),
+    }
+}
+
+pub(crate) fn read_proc_text_bounded(path: &Path, max_bytes: usize) -> Result<String, String> {
+    String::from_utf8(read_proc_file_bounded(path, max_bytes)?)
+        .map_err(|_| format!("proc file is not UTF-8: {}", path.display()))
+}
+
+pub(crate) fn read_proc_argv(path: &Path) -> Result<Vec<String>, String> {
+    let bytes = read_proc_file_bounded(path, MAX_PROC_CMDLINE_BYTES)?;
+    if bytes.is_empty() || bytes.last() != Some(&0) {
+        return Err(format!(
+            "proc cmdline is empty or unterminated: {}",
+            path.display()
+        ));
+    }
+    let mut argv = Vec::new();
+    for argument in bytes[..bytes.len() - 1].split(|byte| *byte == 0) {
+        if argument.is_empty() || argument.contains(&b'\n') || argument.contains(&b'\r') {
+            return Err(format!(
+                "proc cmdline contains an invalid argument: {}",
+                path.display()
+            ));
+        }
+        argv.push(
+            String::from_utf8(argument.to_vec())
+                .map_err(|_| format!("proc cmdline is not UTF-8: {}", path.display()))?,
+        );
+    }
+    if argv.is_empty() {
+        return Err(format!("proc cmdline has no arguments: {}", path.display()));
+    }
+    Ok(argv)
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub(crate) fn arm_parent_death_signal() -> Result<(), String> {
+    let parent = unsafe { libc::getppid() };
+    if parent <= 1 || unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) } != 0 {
+        return Err(format!(
+            "arm proc reader parent-death signal: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    if unsafe { libc::getppid() } != parent {
+        return Err("proc reader parent exited during startup".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+pub(crate) fn arm_parent_death_signal() -> Result<(), String> {
+    Ok(())
+}
+
+fn internal_proc_path(args: &[String], file_name: &str) -> Result<PathBuf, String> {
+    if args.len() != 2 {
+        return Err("internal proc reader usage error".to_string());
+    }
+    let root = Path::new(&args[0]);
+    if !root.is_absolute()
+        || root
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("invalid proc root".to_string());
+    }
+    let pid = args[1]
+        .parse::<u32>()
+        .ok()
+        .filter(|pid| *pid > 0)
+        .ok_or_else(|| "invalid proc PID".to_string())?;
+    Ok(root.join(pid.to_string()).join(file_name))
+}
+
+pub(crate) fn proc_cmdline_command(args: &[String]) -> Result<(), String> {
+    arm_parent_death_signal()?;
+    let path = internal_proc_path(args, "cmdline")?;
+    let argv = read_proc_argv(&path)?;
+    let mut stdout = io::stdout().lock();
+    for argument in argv {
+        stdout
+            .write_all(argument.as_bytes())
+            .and_then(|_| stdout.write_all(b"\n"))
+            .map_err(|err| format!("write bounded proc cmdline: {err}"))?;
+    }
+    Ok(())
+}
+
+pub(crate) fn proc_comm_command(args: &[String]) -> Result<(), String> {
+    arm_parent_death_signal()?;
+    let path = internal_proc_path(args, "comm")?;
+    let comm = read_proc_text_bounded(&path, MAX_PROC_COMM_BYTES)?;
+    let comm = comm.trim_end_matches(['\r', '\n']);
+    if comm.is_empty() || comm.contains(['\r', '\n']) {
+        return Err(format!("invalid proc comm: {}", path.display()));
+    }
+    let mut stdout = io::stdout().lock();
+    stdout
+        .write_all(comm.as_bytes())
+        .and_then(|_| stdout.write_all(b"\n"))
+        .map_err(|err| format!("write bounded proc comm: {err}"))
+}
+
+pub(crate) fn proc_stat_command(args: &[String]) -> Result<(), String> {
+    arm_parent_death_signal()?;
+    let path = internal_proc_path(args, "stat")?;
+    let stat = read_proc_text_bounded(&path, MAX_PROC_STAT_BYTES)?;
+    let close = stat
+        .rfind(')')
+        .ok_or_else(|| format!("malformed proc stat: {}", path.display()))?;
+    let state = stat[close + 1..]
+        .split_whitespace()
+        .next()
+        .filter(|value| value.len() == 1)
+        .ok_or_else(|| format!("missing proc state: {}", path.display()))?;
+    let start = proc_start_time(&stat)
+        .ok_or_else(|| format!("missing proc starttime: {}", path.display()))?;
+    let mut stdout = io::stdout().lock();
+    writeln!(stdout, "{state} {start}").map_err(|err| format!("write bounded proc stat: {err}"))
+}
 
 pub(crate) fn command_text_timeout(program: &str, args: &[&str], timeout: Duration) -> String {
     compact_command_output(&command_text_full_timeout(program, args, timeout))
@@ -42,9 +431,19 @@ pub(crate) fn run_bounded_command(
     stream_limit: usize,
 ) -> Result<BoundedCommandOutput, String> {
     // Isolate the command so timeout cleanup also reaches shell helpers and
-    // grandchildren that inherited the captured pipes.
+    // grandchildren that inherited the captured pipes. The direct child also
+    // dies with this CLI if an outer app/su timeout interrupts its parent.
+    let parent_pid = unsafe { libc::getpid() };
     unsafe {
-        command.pre_exec(|| {
+        command.pre_exec(move || {
+            #[cfg(any(target_os = "linux", target_os = "android"))]
+            {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0
+                    || libc::getppid() != parent_pid
+                {
+                    return Err(io::Error::last_os_error());
+                }
+            }
             if libc::setpgid(0, 0) == 0 {
                 Ok(())
             } else {
@@ -68,24 +467,36 @@ pub(crate) fn run_bounded_command(
         .map(|stream| spawn_output_reader(stream, stream_limit));
     let deadline = Instant::now() + timeout;
     let mut timed_out = false;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(40)),
-            Ok(None) => {
-                timed_out = true;
-                break terminate_command_group(&mut child);
-            }
-            Err(err) => {
-                let _ = terminate_command_group(&mut child);
-                return Err(format!("wait failed: {err}"));
+    let mut status = None;
+    let mut stdout_result = None;
+    let mut stderr_result = None;
+    loop {
+        if status.is_none() {
+            match child.try_wait() {
+                Ok(Some(exit)) => status = Some(exit),
+                Ok(None) => {}
+                Err(err) => {
+                    let _ = terminate_command_group(&mut child);
+                    return Err(format!("wait failed: {err}"));
+                }
             }
         }
-    };
+        try_receive_output(&stdout, &mut stdout_result);
+        try_receive_output(&stderr, &mut stderr_result);
+        if status.is_some() && stdout_result.is_some() && stderr_result.is_some() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            timed_out = true;
+            status = terminate_command_group(&mut child).or(status);
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
     Ok(BoundedCommandOutput {
         status,
-        stdout: receive_output(stdout, "stdout"),
-        stderr: receive_output(stderr, "stderr"),
+        stdout: finish_output(stdout, stdout_result, "stdout"),
+        stderr: finish_output(stderr, stderr_result, "stderr"),
         timed_out,
     })
 }
@@ -143,8 +554,33 @@ where
     receiver
 }
 
-fn receive_output(reader: Option<OutputReader>, name: &str) -> Vec<u8> {
-    match reader.and_then(|reader| reader.recv_timeout(Duration::from_millis(500)).ok()) {
+fn try_receive_output(reader: &Option<OutputReader>, result: &mut Option<io::Result<Vec<u8>>>) {
+    if result.is_some() {
+        return;
+    }
+    let Some(reader) = reader else {
+        return;
+    };
+    match reader.try_recv() {
+        Ok(output) => *result = Some(output),
+        Err(TryRecvError::Empty) => {}
+        Err(TryRecvError::Disconnected) => {
+            *result = Some(Err(io::Error::new(
+                ErrorKind::BrokenPipe,
+                "output reader disconnected",
+            )));
+        }
+    }
+}
+
+fn finish_output(
+    reader: Option<OutputReader>,
+    result: Option<io::Result<Vec<u8>>>,
+    name: &str,
+) -> Vec<u8> {
+    let result = result
+        .or_else(|| reader.and_then(|reader| reader.recv_timeout(Duration::from_millis(100)).ok()));
+    match result {
         Some(Ok(output)) => output,
         Some(Err(err)) => format!("[{name} read failed: {err}]").into_bytes(),
         None => format!("[{name} unavailable]").into_bytes(),
@@ -301,23 +737,22 @@ pub(crate) fn cstring_from_os_str(value: &OsStr, description: &str) -> Result<CS
         .map_err(|_| format!("{description} contains an unsupported NUL byte"))
 }
 
-pub(crate) fn cmdline_has_script(cmdline: &str, script: &str) -> bool {
-    cmdline
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .windows(2)
-        .any(|pair| {
-            matches!(
-                pair[0].rsplit('/').next(),
-                Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
-            ) && pair[1] == script
-        })
+pub(crate) fn cmdline_has_script(argv: &[String], script: &str) -> bool {
+    argv.windows(2).any(|pair| {
+        matches!(
+            pair[0].rsplit('/').next(),
+            Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
+        ) && pair[1] == script
+    })
 }
 
-pub(crate) fn cmdline_has_command(cmdline: &str, executable: &str, args: &[&str]) -> bool {
-    let tokens = cmdline.split_whitespace().collect::<Vec<_>>();
-    tokens.windows(args.len() + 1).any(|window| {
-        window[0] == executable && window[1..].iter().copied().eq(args.iter().copied())
+pub(crate) fn cmdline_has_command(argv: &[String], executable: &str, args: &[&str]) -> bool {
+    argv.windows(args.len() + 1).any(|window| {
+        window[0] == executable
+            && window[1..]
+                .iter()
+                .map(String::as_str)
+                .eq(args.iter().copied())
     })
 }
 
@@ -1170,689 +1605,5 @@ fn compact_command_output(output: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::io::Write;
-    use std::os::unix::fs::{symlink, PermissionsExt};
-    use std::path::{Path, PathBuf};
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-    use crate::App;
-
-    use super::{
-        command_text_full_timeout, command_text_timeout, compact_command_output,
-        merge_command_output, module_transaction_stage_name, proc_start_time,
-        rename_module_transaction_entry, replace_module_text_files_transactionally,
-        replace_module_text_files_transactionally_with_rename,
-        replace_module_text_files_transactionally_with_stage_writer, write_secret_file,
-        write_text_file, MAX_COMMAND_STREAM_BYTES, MODULE_TRANSACTION_STAGING_DIRECTORY,
-        MODULE_TRANSACTION_STAGING_PARENT,
-    };
-
-    #[test]
-    fn proc_start_time_allows_spaces_and_parentheses_in_comm() {
-        let stat =
-            "42 (worker name (stage)) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 424242 20";
-        assert_eq!(proc_start_time(stat).as_deref(), Some("424242"));
-        assert_eq!(proc_start_time("malformed"), None);
-    }
-
-    fn test_directory(label: &str) -> PathBuf {
-        let directory = std::env::temp_dir().join(format!(
-            "magicnet-utils-{label}-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system clock is after the Unix epoch")
-                .as_nanos()
-        ));
-        fs::create_dir_all(&directory).expect("create test directory");
-        directory
-    }
-
-    fn test_app(label: &str) -> (App, PathBuf) {
-        let directory = test_directory(label);
-        let module_root = directory.join("module");
-        fs::create_dir_all(&module_root).expect("create module root");
-        (App::for_test(module_root), directory)
-    }
-
-    #[test]
-    fn full_output_preserves_trimmed_stdout_and_appends_trimmed_stderr() {
-        assert_eq!(
-            merge_command_output(b"  first\nsecond  \n", b"  warning\n  "),
-            "first\nsecond; warning"
-        );
-    }
-
-    #[test]
-    fn compact_output_keeps_the_last_nonempty_line() {
-        assert_eq!(
-            compact_command_output("first\n\n  final; warning  \n"),
-            "final; warning"
-        );
-    }
-
-    #[test]
-    fn compact_output_keeps_timeout_errors_byte_for_byte() {
-        assert_eq!(
-            compact_command_output("timeout after 5000ms"),
-            "timeout after 5000ms"
-        );
-    }
-
-    #[test]
-    fn full_and_compact_helpers_share_process_output_semantics() {
-        let args = ["-c", "printf 'first\\nsecond'; printf 'warning' >&2"];
-        let full = command_text_full_timeout("sh", &args, Duration::from_secs(1));
-        let compact = command_text_timeout("sh", &args, Duration::from_secs(1));
-
-        assert_eq!(
-            (full, compact),
-            (
-                "first\nsecond; warning".to_string(),
-                "second; warning".to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn full_output_drains_more_than_pipe_capacity_without_waiting_for_timeout() {
-        let script = "chunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 8192 ]; do printf %s \"$chunk\"; i=$((i + 1)); done";
-        let started = Instant::now();
-        let output = command_text_full_timeout("sh", &["-c", script], Duration::from_secs(8));
-
-        assert_eq!(
-            (output.len(), started.elapsed() < Duration::from_secs(4)),
-            (32 * 8192, true)
-        );
-    }
-
-    #[test]
-    fn command_output_is_drained_but_retained_within_the_memory_budget() {
-        let script = "chunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 65536 ]; do printf %s \"$chunk\"; i=$((i + 1)); done";
-        let output = command_text_full_timeout("sh", &["-c", script], Duration::from_secs(8));
-
-        assert_eq!(
-            output.len(),
-            MAX_COMMAND_STREAM_BYTES + "\n[output truncated]".len()
-        );
-        assert!(output.ends_with("[output truncated]"));
-    }
-
-    #[test]
-    fn timeout_terminates_background_children_in_the_command_group() {
-        let directory = test_directory("command-group-timeout");
-        fs::create_dir_all(&directory).unwrap();
-        let pid_file = directory.join("child.pid");
-        let script = format!(
-            "sh -c 'trap \"\" TERM; printf \"%s\\\\n\" \"$$\" > \"{}\"; while :; do sleep 1; done' & wait",
-            pid_file.display()
-        );
-        let output = command_text_full_timeout("sh", &["-c", &script], Duration::from_millis(300));
-        assert_eq!(output, "timeout after 300ms");
-        let pid = fs::read_to_string(&pid_file)
-            .unwrap()
-            .trim()
-            .parse::<libc::pid_t>()
-            .unwrap();
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while Instant::now() < deadline && unsafe { libc::kill(pid, 0) } == 0 {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        let alive = unsafe { libc::kill(pid, 0) } == 0;
-        if alive {
-            unsafe {
-                libc::kill(pid, libc::SIGKILL);
-            }
-        }
-        assert!(!alive, "background child survived command timeout: {pid}");
-        fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
-    fn builtin_infinite_loop_times_out_promptly_and_exactly() {
-        let started = Instant::now();
-        let output = command_text_full_timeout(
-            "sh",
-            &["-c", "while :; do :; done"],
-            Duration::from_millis(120),
-        );
-
-        assert_eq!(
-            (output, started.elapsed() < Duration::from_secs(2)),
-            ("timeout after 120ms".to_string(), true)
-        );
-    }
-
-    #[test]
-    fn write_secret_file_replaces_contents_and_restricts_existing_mode() {
-        let (app, directory) = test_app("replace-secret");
-        let relative = Path::new(".config/magicnet/secret");
-        let path = app.moddir.join(relative);
-        fs::create_dir_all(path.parent().expect("secret parent")).expect("create secret parent");
-        fs::write(&path, "old value").expect("write existing file");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o644))
-            .expect("broaden existing file permissions");
-
-        write_secret_file(&app, relative, "replacement value").expect("replace secret file");
-
-        let contents = fs::read_to_string(&path).expect("read replacement contents");
-        let mode = fs::metadata(&path)
-            .expect("stat replacement file")
-            .permissions()
-            .mode()
-            & 0o777;
-        fs::remove_dir_all(&directory).expect("remove test directory");
-
-        assert_eq!(contents, "replacement value");
-        assert_eq!(mode, 0o600);
-    }
-
-    #[test]
-    fn write_secret_file_creates_a_new_0600_file() {
-        let (app, directory) = test_app("new-secret");
-        let relative = Path::new(".config/magicnet/secret");
-        let path = app.moddir.join(relative);
-
-        write_secret_file(&app, relative, "new value").expect("create secret file");
-
-        let contents = fs::read_to_string(&path).expect("read new secret");
-        let mode = fs::metadata(&path)
-            .expect("stat new secret")
-            .permissions()
-            .mode()
-            & 0o777;
-        fs::remove_dir_all(&directory).expect("remove test directory");
-
-        assert_eq!(contents, "new value");
-        assert_eq!(mode, 0o600);
-    }
-
-    #[test]
-    fn write_secret_file_refuses_a_final_symlink_without_touching_its_target() {
-        let (app, directory) = test_app("secret-final-symlink");
-        let victim = directory.join("victim");
-        let relative = Path::new(".config/magicnet/secret");
-        let path = app.moddir.join(relative);
-        fs::create_dir_all(path.parent().expect("secret parent")).expect("create secret parent");
-        fs::write(&victim, "preserve me").expect("write victim");
-        symlink(&victim, &path).expect("create secret symlink");
-
-        write_secret_file(&app, relative, "replacement").expect_err("refuse symlink");
-        let contents = fs::read_to_string(&victim).expect("read victim");
-        fs::remove_dir_all(&directory).expect("remove test directory");
-
-        assert_eq!(contents, "preserve me");
-    }
-
-    #[test]
-    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
-    fn write_secret_file_refuses_a_hard_linked_target_without_mutating_it() {
-        let (app, directory) = test_app("secret-final-hardlink");
-        let original = directory.join("original");
-        let relative = Path::new(".config/magicnet/secret");
-        let linked = app.moddir.join(relative);
-        fs::create_dir_all(linked.parent().expect("secret parent")).expect("create secret parent");
-        fs::write(&original, "preserve me").expect("write original");
-        fs::hard_link(&original, &linked).expect("create hard link");
-
-        let err = write_secret_file(&app, relative, "replacement").expect_err("refuse hard link");
-
-        assert!(err.contains("non-private"), "unexpected error: {err}");
-        assert_eq!(
-            fs::read_to_string(&original).expect("read original"),
-            "preserve me"
-        );
-        fs::remove_dir_all(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
-    fn write_text_file_refuses_final_symlink_and_hard_link() {
-        for link_kind in ["symlink", "hardlink"] {
-            let (app, directory) = test_app(&format!("text-final-{link_kind}"));
-            let victim = directory.join("victim");
-            let relative = Path::new(".config/magicnet/text.conf");
-            let path = app.moddir.join(relative);
-            fs::create_dir_all(path.parent().expect("text parent")).expect("create text parent");
-            fs::write(&victim, "preserve me").expect("write victim");
-            match link_kind {
-                "symlink" => symlink(&victim, &path).expect("create text symlink"),
-                "hardlink" => fs::hard_link(&victim, &path).expect("create text hard link"),
-                _ => unreachable!(),
-            }
-
-            assert!(write_text_file(&app, relative, "replacement").is_err());
-            assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
-            fs::remove_dir_all(&directory).expect("remove test directory");
-        }
-    }
-
-    #[test]
-    fn module_writers_reject_intermediate_symlinks() {
-        assert_intermediate_symlinks_rejected("text", write_text_file);
-        assert_intermediate_symlinks_rejected("secret", write_secret_file);
-    }
-
-    #[test]
-    fn module_writers_reject_non_relative_paths() {
-        let (app, directory) = test_app("relative-paths");
-        for path in [
-            Path::new("../escape"),
-            Path::new("/escape"),
-            Path::new("./escape"),
-        ] {
-            assert!(write_text_file(&app, path, "nope").is_err());
-            assert!(write_secret_file(&app, path, "nope").is_err());
-        }
-        fs::remove_dir_all(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn module_transaction_replaces_both_app_lists() {
-        let (app, directory) = test_app("transaction-success");
-        let (bypass, proxy) = prepare_transaction_app_lists(&app);
-
-        replace_module_text_files_transactionally(
-            &app,
-            &[
-                (
-                    Path::new(".config/magicnet/app-bypass.list"),
-                    "new-bypass\n",
-                ),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-            ],
-        )
-        .expect("replace app lists");
-
-        assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
-        assert_eq!(fs::read_to_string(&proxy).unwrap(), "new-proxy\n");
-        assert_no_transaction_stages(&app);
-        fs::remove_dir_all(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn module_transaction_replaces_files_across_module_directories() {
-        let (app, directory) = test_app("transaction-cross-directory");
-        let (bypass, _) = prepare_transaction_app_lists(&app);
-        let subscription = app.moddir.join(".config/sing-box/subscription.user-agent");
-        fs::create_dir_all(subscription.parent().expect("subscription parent"))
-            .expect("create subscription directory");
-        fs::write(&subscription, "old-agent\n").expect("write subscription fixture");
-
-        replace_module_text_files_transactionally(
-            &app,
-            &[
-                (
-                    Path::new(".config/sing-box/subscription.user-agent"),
-                    "new-agent\n",
-                ),
-                (
-                    Path::new(".config/magicnet/app-bypass.list"),
-                    "new-bypass\n",
-                ),
-            ],
-        )
-        .expect("replace files across module directories");
-
-        assert_eq!(fs::read_to_string(&subscription).unwrap(), "new-agent\n");
-        assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
-        assert_no_transaction_stages(&app);
-        fs::remove_dir_all(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn module_transaction_rolls_back_across_directories_after_replace_failure() {
-        let (app, directory) = test_app("transaction-cross-directory-rollback");
-        let (bypass, proxy) = prepare_transaction_app_lists(&app);
-        let subscription = app.moddir.join(".config/sing-box/subscription.user-agent");
-        fs::create_dir_all(subscription.parent().expect("subscription parent"))
-            .expect("create subscription directory");
-        fs::write(&subscription, "old-agent\n").expect("write subscription fixture");
-        let mut replace_count = 0usize;
-
-        let error = replace_module_text_files_transactionally_with_rename(
-            &app,
-            &[
-                (
-                    Path::new(".config/sing-box/subscription.user-agent"),
-                    "new-agent\n",
-                ),
-                (
-                    Path::new(".config/magicnet/app-bypass.list"),
-                    "new-bypass\n",
-                ),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-            ],
-            |operation, source_directory, source, destination_directory, destination| {
-                replace_count += 1;
-                if replace_count == 3 {
-                    Err("injected cross-directory replace failure".to_string())
-                } else {
-                    rename_module_transaction_entry(
-                        operation,
-                        source_directory,
-                        source,
-                        destination_directory,
-                        destination,
-                    )
-                }
-            },
-        )
-        .expect_err("third replacement must fail");
-
-        assert!(
-            error.contains("injected cross-directory replace failure"),
-            "{error}"
-        );
-        assert_eq!(fs::read_to_string(&subscription).unwrap(), "old-agent\n");
-        assert_eq!(fs::read_to_string(&bypass).unwrap(), "old-bypass\n");
-        assert_eq!(fs::read_to_string(&proxy).unwrap(), "old-proxy\n");
-        assert_no_transaction_stages(&app);
-        fs::remove_dir_all(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn module_transaction_rolls_back_three_files_after_injected_third_replace_failure() {
-        let (app, directory) = test_app("transaction-rollback");
-        let (bypass, proxy) = prepare_transaction_app_lists(&app);
-        let direct = bypass
-            .parent()
-            .expect("app list directory")
-            .join("app-direct.list");
-        fs::write(&direct, "old-direct\n").expect("write direct fixture");
-        let mut replace_count = 0usize;
-
-        let error = replace_module_text_files_transactionally_with_rename(
-            &app,
-            &[
-                (
-                    Path::new(".config/magicnet/app-bypass.list"),
-                    "new-bypass\n",
-                ),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-                (
-                    Path::new(".config/magicnet/app-direct.list"),
-                    "new-direct\n",
-                ),
-            ],
-            |operation, source_directory, source, destination_directory, destination| {
-                replace_count += 1;
-                if replace_count == 3 {
-                    Err("injected third replace failure".to_string())
-                } else {
-                    rename_module_transaction_entry(
-                        operation,
-                        source_directory,
-                        source,
-                        destination_directory,
-                        destination,
-                    )
-                }
-            },
-        )
-        .expect_err("third replacement must fail");
-
-        assert!(error.contains("injected third replace failure"), "{error}");
-        assert_eq!(fs::read_to_string(&bypass).unwrap(), "old-bypass\n");
-        assert_eq!(fs::read_to_string(&proxy).unwrap(), "old-proxy\n");
-        assert_eq!(fs::read_to_string(&direct).unwrap(), "old-direct\n");
-        assert_no_transaction_stages(&app);
-        fs::remove_dir_all(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn module_transaction_cleans_private_stage_after_injected_write_or_sync_failure() {
-        let (write_app, write_directory) = test_app("transaction-stage-write-failure");
-        let (write_bypass, write_proxy) = prepare_transaction_app_lists(&write_app);
-        let write_error = replace_module_text_files_transactionally_with_stage_writer(
-            &write_app,
-            &[
-                (
-                    Path::new(".config/magicnet/app-bypass.list"),
-                    "new-bypass\n",
-                ),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-            ],
-            |_file, _contents| Err("injected stage write failure".to_string()),
-        )
-        .expect_err("stage write failure must abort the transaction");
-        assert!(
-            write_error.contains("injected stage write failure"),
-            "{write_error}"
-        );
-        assert_eq!(fs::read_to_string(&write_bypass).unwrap(), "old-bypass\n");
-        assert_eq!(fs::read_to_string(&write_proxy).unwrap(), "old-proxy\n");
-        assert_no_transaction_stages(&write_app);
-        fs::remove_dir_all(&write_directory).expect("remove write-failure test directory");
-
-        let (sync_app, sync_directory) = test_app("transaction-stage-sync-failure");
-        let (sync_bypass, sync_proxy) = prepare_transaction_app_lists(&sync_app);
-        let sync_error = replace_module_text_files_transactionally_with_stage_writer(
-            &sync_app,
-            &[
-                (
-                    Path::new(".config/magicnet/app-bypass.list"),
-                    "new-bypass\n",
-                ),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-            ],
-            |file, contents| {
-                file.write_all(contents)
-                    .expect("write private stage before injected sync failure");
-                Err("injected stage sync failure".to_string())
-            },
-        )
-        .expect_err("stage sync failure must abort the transaction");
-        assert!(
-            sync_error.contains("injected stage sync failure"),
-            "{sync_error}"
-        );
-        assert_eq!(fs::read_to_string(&sync_bypass).unwrap(), "old-bypass\n");
-        assert_eq!(fs::read_to_string(&sync_proxy).unwrap(), "old-proxy\n");
-        assert_no_transaction_stages(&sync_app);
-        fs::remove_dir_all(&sync_directory).expect("remove sync-failure test directory");
-    }
-
-    #[test]
-    fn module_transaction_stages_are_isolated_from_target_directory() {
-        let (app, directory) = test_app("transaction-stage-isolation");
-        let (bypass, proxy) = prepare_transaction_app_lists(&app);
-        let config = bypass.parent().expect("app list directory");
-        let victim = directory.join("victim");
-        let stage_name = module_transaction_stage_name(1);
-        let target_directory_entry = config.join(Path::new(stage_name.as_os_str()));
-        fs::write(&victim, "preserve me").expect("write victim");
-        symlink(&victim, &target_directory_entry).expect("create target-directory stage symlink");
-
-        replace_module_text_files_transactionally(
-            &app,
-            &[
-                (
-                    Path::new(".config/magicnet/app-bypass.list"),
-                    "new-bypass\n",
-                ),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-            ],
-        )
-        .expect("target-directory entry must not be a transaction stage source");
-
-        assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
-        assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
-        assert_eq!(fs::read_to_string(&proxy).unwrap(), "new-proxy\n");
-        assert!(fs::symlink_metadata(&target_directory_entry)
-            .unwrap()
-            .file_type()
-            .is_symlink());
-        let mode = fs::metadata(transaction_staging_directory(&app))
-            .expect("stat private staging directory")
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o700);
-        assert_no_transaction_stages(&app);
-        fs::remove_dir_all(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn module_transaction_rejects_a_private_stage_collision_without_touching_its_target() {
-        let (app, directory) = test_app("transaction-private-stage-collision");
-        let (bypass, proxy) = prepare_transaction_app_lists(&app);
-        let victim = directory.join("victim");
-        let staging_directory = transaction_staging_directory(&app);
-        let stage_name = module_transaction_stage_name(1);
-        let stage = staging_directory.join(Path::new(stage_name.as_os_str()));
-        fs::create_dir_all(&staging_directory).expect("create private staging fixture");
-        fs::set_permissions(&staging_directory, fs::Permissions::from_mode(0o700))
-            .expect("secure private staging fixture");
-        fs::write(&victim, "preserve me").expect("write victim");
-        symlink(&victim, &stage).expect("create private stage symlink");
-
-        assert!(replace_module_text_files_transactionally(
-            &app,
-            &[
-                (
-                    Path::new(".config/magicnet/app-bypass.list"),
-                    "new-bypass\n"
-                ),
-                (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-            ]
-        )
-        .is_err());
-        assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
-        assert_eq!(fs::read_to_string(&bypass).unwrap(), "old-bypass\n");
-        assert_eq!(fs::read_to_string(&proxy).unwrap(), "old-proxy\n");
-        assert!(fs::symlink_metadata(&stage)
-            .unwrap()
-            .file_type()
-            .is_symlink());
-        fs::remove_dir_all(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn module_transaction_rejects_intermediate_symlinks_without_writing_outside() {
-        for (case, linked_directory) in [("config", ".config"), ("magicnet", ".config/magicnet")] {
-            let directory = test_directory(&format!("transaction-intermediate-{case}"));
-            let module_root = directory.join("module");
-            let outside = directory.join("outside");
-            fs::create_dir_all(&module_root).expect("create module root");
-            fs::create_dir_all(&outside).expect("create outside directory");
-            let linked_directory = module_root.join(linked_directory);
-            if let Some(parent) = linked_directory.parent() {
-                fs::create_dir_all(parent).expect("create symlink parent");
-            }
-            symlink(&outside, &linked_directory).expect("create intermediate symlink");
-            let app = App::for_test(module_root);
-
-            assert!(replace_module_text_files_transactionally(
-                &app,
-                &[
-                    (
-                        Path::new(".config/magicnet/app-bypass.list"),
-                        "new-bypass\n"
-                    ),
-                    (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-                ]
-            )
-            .is_err());
-            assert!(fs::read_dir(&outside).unwrap().next().is_none());
-            fs::remove_dir_all(&directory).expect("remove test directory");
-        }
-    }
-
-    #[test]
-    #[cfg_attr(target_os = "android", ignore = "Termux SELinux forbids hard links")]
-    fn module_transaction_rejects_final_symlink_and_hard_link() {
-        for link_kind in ["symlink", "hardlink"] {
-            let (app, directory) = test_app(&format!("transaction-final-{link_kind}"));
-            let (bypass, _) = prepare_transaction_app_lists(&app);
-            let victim = directory.join("victim");
-            fs::remove_file(&bypass).expect("remove fixture bypass list");
-            fs::write(&victim, "preserve me").expect("write victim");
-            match link_kind {
-                "symlink" => symlink(&victim, &bypass).expect("create final symlink"),
-                "hardlink" => fs::hard_link(&victim, &bypass).expect("create final hard link"),
-                _ => unreachable!(),
-            }
-
-            assert!(replace_module_text_files_transactionally(
-                &app,
-                &[
-                    (
-                        Path::new(".config/magicnet/app-bypass.list"),
-                        "new-bypass\n"
-                    ),
-                    (Path::new(".config/magicnet/app-proxy.list"), "new-proxy\n"),
-                ]
-            )
-            .is_err());
-            assert_eq!(fs::read_to_string(&victim).unwrap(), "preserve me");
-            fs::remove_dir_all(&directory).expect("remove test directory");
-        }
-    }
-
-    fn prepare_transaction_app_lists(app: &App) -> (PathBuf, PathBuf) {
-        let config = app.moddir.join(".config/magicnet");
-        let bypass = config.join("app-bypass.list");
-        let proxy = config.join("app-proxy.list");
-        fs::create_dir_all(&config).expect("create app list directory");
-        fs::write(&bypass, "old-bypass\n").expect("write bypass fixture");
-        fs::write(&proxy, "old-proxy\n").expect("write proxy fixture");
-        (bypass, proxy)
-    }
-
-    fn transaction_staging_directory(app: &App) -> PathBuf {
-        app.moddir
-            .join(MODULE_TRANSACTION_STAGING_PARENT)
-            .join(MODULE_TRANSACTION_STAGING_DIRECTORY)
-    }
-
-    fn assert_no_transaction_stages(app: &App) {
-        let staging_directory = transaction_staging_directory(app);
-        assert!(
-            staging_directory.is_dir(),
-            "private staging directory was not created"
-        );
-        assert!(
-            fs::read_dir(&staging_directory)
-                .expect("read private staging directory")
-                .next()
-                .is_none(),
-            "private staging directory still contains transaction entries"
-        );
-    }
-
-    fn assert_intermediate_symlinks_rejected(
-        writer_name: &str,
-        writer: fn(&App, &Path, &str) -> Result<(), String>,
-    ) {
-        for (case, relative, linked_directory) in [
-            ("config", ".config/magicnet/value", ".config"),
-            ("magicnet", ".config/magicnet/value", ".config/magicnet"),
-            ("sing-box", ".config/sing-box/value", ".config/sing-box"),
-        ] {
-            let directory = test_directory(&format!("intermediate-{writer_name}-{case}"));
-            let module_root = directory.join("module");
-            let outside = directory.join("outside");
-            fs::create_dir_all(&module_root).expect("create module root");
-            fs::create_dir_all(&outside).expect("create outside directory");
-            let linked_directory = module_root.join(linked_directory);
-            if let Some(parent) = linked_directory.parent() {
-                fs::create_dir_all(parent).expect("create symlink parent");
-            }
-            symlink(&outside, &linked_directory).expect("create intermediate symlink");
-            let app = App::for_test(module_root);
-
-            assert!(writer(&app, Path::new(relative), "replacement").is_err());
-            assert!(
-                fs::read_dir(&outside)
-                    .expect("read outside directory")
-                    .next()
-                    .is_none(),
-                "{writer_name} writer followed {linked_directory:?}"
-            );
-            fs::remove_dir_all(&directory).expect("remove test directory");
-        }
-    }
-}
+#[path = "../tests/internal/utils.rs"]
+mod tests;
