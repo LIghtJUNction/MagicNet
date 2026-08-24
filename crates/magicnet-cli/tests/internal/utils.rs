@@ -12,12 +12,13 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::App;
 
 use super::{
-    command_text_full_timeout, command_text_timeout, compact_command_output, merge_command_output,
+    cmdline_has_command, cmdline_has_script, command_text_full_timeout, command_text_timeout,
+    compact_command_output, kill_and_reap_with, merge_command_output,
     module_transaction_stage_name, proc_start_time, read_proc_argv, read_proc_file_bounded,
     rename_module_transaction_entry, replace_module_text_files_transactionally,
     replace_module_text_files_transactionally_with_rename,
     replace_module_text_files_transactionally_with_stage_writer, write_secret_file,
-    write_text_file, MAX_COMMAND_STREAM_BYTES, MAX_PROC_CMDLINE_BYTES,
+    write_text_file, KillAndWait, MAX_COMMAND_STREAM_BYTES, MAX_PROC_CMDLINE_BYTES,
     MODULE_TRANSACTION_STAGING_DIRECTORY, MODULE_TRANSACTION_STAGING_PARENT,
 };
 
@@ -80,6 +81,68 @@ fn bounded_proc_reader_times_out_and_reaps_a_blocked_worker() {
         "bounded proc timeout took {elapsed:?}"
     );
     fs::remove_dir_all(directory).unwrap();
+}
+
+struct NeverReap {
+    killed: bool,
+}
+
+impl KillAndWait for NeverReap {
+    fn kill(&mut self) {
+        self.killed = true;
+    }
+
+    fn try_reap(&mut self) -> Result<bool, std::io::Error> {
+        Ok(false)
+    }
+}
+
+#[test]
+fn proc_reader_cleanup_does_not_wait_forever_after_sigkill() {
+    let mut waiter = NeverReap { killed: false };
+    let started = Instant::now();
+    assert!(!kill_and_reap_with(&mut waiter, Duration::from_millis(35)));
+    assert!(waiter.killed);
+    assert!(started.elapsed() < Duration::from_millis(250));
+}
+
+#[test]
+fn managed_cmdlines_are_exact_and_prefix_decoys_are_rejected() {
+    let script = "/module/.state/fswatch/magicnet-config.loop.sh";
+    assert!(cmdline_has_script(
+        &["/system/bin/sh".to_string(), script.to_string()],
+        script
+    ));
+    assert!(!cmdline_has_script(
+        &[
+            "/tmp/decoy".to_string(),
+            "-c".to_string(),
+            "sleep 30; :".to_string(),
+            "/system/bin/sh".to_string(),
+            script.to_string(),
+        ],
+        script
+    ));
+
+    let cli = "/module/cli";
+    assert!(cmdline_has_command(
+        &[cli.to_string(), "config".to_string(), "apply".to_string()],
+        cli,
+        &["config", "apply"]
+    ));
+    assert!(!cmdline_has_command(
+        &[
+            "/tmp/decoy".to_string(),
+            "-c".to_string(),
+            "sleep 30; :".to_string(),
+            "ignored".to_string(),
+            cli.to_string(),
+            "config".to_string(),
+            "apply".to_string(),
+        ],
+        cli,
+        &["config", "apply"]
+    ));
 }
 
 fn test_directory(label: &str) -> PathBuf {

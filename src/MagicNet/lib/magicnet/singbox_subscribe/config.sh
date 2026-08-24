@@ -728,71 +728,75 @@ magicnet_singbox_pid_owned() (
         return 1
     fi
 
-    _argv_index=0
-    _argv_run=0
-    _argv_after_run=0
-    _argv0=
-    _argv_wrapper=0
-    _argv_config_count=0
-    _argv_config_ok=0
-    _argv_work_count=0
-    _argv_work_ok=0
-    _argv_pending=
-    while IFS= read -r _argv_arg; do
-        _argv_index=$((_argv_index + 1))
-        [ "$_argv_index" -ne 1 ] || _argv0="$_argv_arg"
-        if [ "$_argv_after_run" -eq 0 ]; then
-            if [ "$_argv_arg" = "$_owned_expected" ] ||
-                [ "$_argv_arg" = "${MODDIR}/bin/sing-box" ]; then
-                _argv_wrapper=1
-            fi
-            if [ "$_argv_arg" = run ]; then
-                _argv_run=1
-                _argv_after_run=1
-            fi
-            continue
-        fi
-        case "$_argv_pending" in
-        config)
-            [ "$_argv_arg" != "$_owned_config" ] || _argv_config_ok=1
-            _argv_pending=
-            continue
-            ;;
-        work)
-            [ "$_argv_arg" != "${_owned_config%/*}" ] || _argv_work_ok=1
-            _argv_pending=
-            continue
-            ;;
-        esac
-        case "$_argv_arg" in
-        -c)
-            _argv_config_count=$((_argv_config_count + 1))
-            _argv_pending=config
-            ;;
-        -D)
-            _argv_work_count=$((_argv_work_count + 1))
-            _argv_pending=work
-            ;;
+    _argv_count=0
+    _argv1=
+    _argv2=
+    _argv3=
+    _argv4=
+    _argv5=
+    _argv6=
+    _argv7=
+    while IFS= read -r _argv_arg || [ -n "$_argv_arg" ]; do
+        _argv_count=$((_argv_count + 1))
+        case "$_argv_count" in
+        1) _argv1="$_argv_arg" ;;
+        2) _argv2="$_argv_arg" ;;
+        3) _argv3="$_argv_arg" ;;
+        4) _argv4="$_argv_arg" ;;
+        5) _argv5="$_argv_arg" ;;
+        6) _argv6="$_argv_arg" ;;
+        7) _argv7="$_argv_arg" ;;
+        *) _argv_count=8; break ;;
         esac
     done <"$_owned_argv"
     rm -f "$_owned_argv"
+
+    _argv_direct=0
+    if [ "$_argv_count" -eq 6 ] &&
+        { [ "$_argv1" = "$_owned_expected" ] ||
+            [ "$_argv1" = "${MODDIR}/bin/sing-box" ] ||
+            [ "$_argv1" = sing-box ]; } &&
+        [ "$_argv2" = run ] && [ "$_argv3" = -c ] &&
+        [ "$_argv4" = "$_owned_config" ] && [ "$_argv5" = -D ] &&
+        [ "$_argv6" = "${_owned_config%/*}" ]; then
+        _argv_direct=1
+    fi
+    _argv_wrapper=0
+    case "${_argv1##*/}" in
+    sh | ash | dash | bash | ksh | mksh)
+        if [ "$_argv_count" -eq 7 ] &&
+            { [ "$_argv2" = "$_owned_expected" ] ||
+                [ "$_argv2" = "${MODDIR}/bin/sing-box" ]; } &&
+            [ "$_argv3" = run ] && [ "$_argv4" = -c ] &&
+            [ "$_argv5" = "$_owned_config" ] && [ "$_argv6" = -D ] &&
+            [ "$_argv7" = "${_owned_config%/*}" ]; then
+            _argv_wrapper=1
+        fi
+        ;;
+    esac
+    # Some Android launchers publish argv as `sing-box sing-box run ...` while
+    # hiding /proc/<pid>/exe. Accept only that complete, position-anchored form.
+    _argv_compat=0
+    if [ "$_argv_count" -eq 7 ] && [ "$_argv1" = sing-box ] &&
+        [ "$_argv2" = sing-box ] && [ "$_argv3" = run ] &&
+        [ "$_argv4" = -c ] && [ "$_argv5" = "$_owned_config" ] &&
+        [ "$_argv6" = -D ] && [ "$_argv7" = "${_owned_config%/*}" ]; then
+        _argv_compat=1
+    fi
     _owned_rc=1
-    if [ "$_argv_run" -eq 1 ] &&
-        [ "$_argv_config_count" -eq 1 ] && [ "$_argv_config_ok" -eq 1 ] &&
-        [ "$_argv_work_count" -eq 1 ] && [ "$_argv_work_ok" -eq 1 ] &&
-        [ -z "$_argv_pending" ] && {
-        [ "$_owned_exe_match" -eq 1 ] ||
-            [ "$_argv_wrapper" -eq 1 ] ||
-            { [ "$_owned_exe_visible" -eq 0 ] && [ "$_argv0" = sing-box ]; }
+    if { [ "$_argv_direct" -eq 1 ] || [ "$_argv_wrapper" -eq 1 ] ||
+        [ "$_argv_compat" -eq 1 ]; } && {
+        [ "$_owned_exe_match" -eq 1 ] || [ "$_argv_wrapper" -eq 1 ] ||
+            { [ "$_owned_exe_visible" -eq 0 ] &&
+                { [ "$_argv_direct" -eq 1 ] || [ "$_argv_compat" -eq 1 ]; }; }
     }; then
         _owned_rc=0
     fi
     unset _owned_pid _owned_config _owned_live_rc _owned_expected _owned_proc_root
     unset _owned_proc_dir _owned_comm _owned_exe_link _owned_exe_visible
     unset _owned_exe_match _owned_exe_path _owned_argv _owned_argv_rc
-    unset _argv_index _argv_run _argv_after_run _argv0 _argv_wrapper
-    unset _argv_config_count _argv_config_ok _argv_work_count _argv_work_ok
-    unset _argv_pending _argv_arg
+    unset _argv_count _argv1 _argv2 _argv3 _argv4 _argv5 _argv6 _argv7
+    unset _argv_arg _argv_direct _argv_wrapper _argv_compat
     return "$_owned_rc"
 )
 

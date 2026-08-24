@@ -28,11 +28,21 @@ magicnet_supervisor_orphan_pids() (
             [ -d "$_mso_proc" ] && printf '%s\n' "${_mso_proc##*/}"
         done)
     fi
+    _mso_result=''
     for _mso_pid in $_mso_candidates; do
         [ "$_mso_pid" = "$$" ] && continue
-        magicnet_supervisor_target_pid_matches "$_mso_target" "$_mso_pid_file" "$_mso_pid" &&
-            printf '%s\n' "$_mso_pid"
+        if magicnet_supervisor_target_pid_matches "$_mso_target" "$_mso_pid_file" "$_mso_pid"; then
+            _mso_match_rc=0
+        else
+            _mso_match_rc=$?
+        fi
+        [ "$_mso_match_rc" -ne 2 ] || return 2
+        [ "$_mso_match_rc" -eq 0 ] || continue
+        _mso_result="${_mso_result}${_mso_result:+
+}${_mso_pid}"
     done
+    [ -n "$_mso_result" ] || return 1
+    printf '%s\n' "$_mso_result"
     return 0
 )
 
@@ -58,21 +68,32 @@ magicnet_trim_log_file() {
 
 magicnet_supervisor_kill_orphans() (
     _msko_target="$1"
-    _msko_pids="$(magicnet_supervisor_orphan_pids "$_msko_target")"
-    [ -n "$_msko_pids" ] || return 0
+    if _msko_pids=$(magicnet_supervisor_orphan_pids "$_msko_target"); then
+        _msko_rc=0
+    else
+        _msko_rc=$?
+    fi
+    [ "$_msko_rc" -ne 2 ] || return 2
+    [ "$_msko_rc" -eq 0 ] || return 0
     for _msko_pid in $_msko_pids; do
         kill "$_msko_pid" 2>/dev/null || true
     done
     _msko_attempt=0
     while [ "$_msko_attempt" -lt 20 ]; do
-        _msko_pids="$(magicnet_supervisor_orphan_pids "$_msko_target")"
-        [ -n "$_msko_pids" ] || return 0
+        if _msko_pids=$(magicnet_supervisor_orphan_pids "$_msko_target"); then
+            _msko_rc=0
+        else
+            _msko_rc=$?
+        fi
+        [ "$_msko_rc" -ne 2 ] || return 2
+        [ "$_msko_rc" -eq 0 ] || return 0
         _msko_attempt=$((_msko_attempt + 1))
         [ "$_msko_attempt" -lt 20 ] && sleep 0.05
     done
     for _msko_pid in $_msko_pids; do
         kill -9 "$_msko_pid" 2>/dev/null || true
     done
+    sleep 0.05
 )
 
 set_i18n "MAGICNET_FSWATCH_START_FAILED" \
@@ -90,13 +111,18 @@ magicnet_supervisor_status_with_orphans() {
         unset _msswo_pid _msswo_target
         return 0
     fi
-    _msswo_orphan="$(magicnet_supervisor_orphan_pids "$_msswo_target" | sed -n '1p')"
+    if _msswo_orphans=$(magicnet_supervisor_orphan_pids "$_msswo_target"); then
+        _msswo_orphan_rc=0
+        _msswo_orphan=$(printf '%s\n' "$_msswo_orphans" | sed -n '1p')
+    else
+        _msswo_orphan_rc=$?
+        _msswo_orphan=''
+    fi
+    [ "$_msswo_orphan_rc" -ne 2 ] || return 2
     if [ -n "$_msswo_orphan" ]; then
         printf '%s\n' "orphan:${_msswo_orphan}"
-        unset _msswo_pid _msswo_target _msswo_orphan
         return 0
     fi
-    unset _msswo_pid _msswo_target _msswo_orphan
     return 1
 }
 
@@ -108,21 +134,49 @@ magicnet_notify() {
 
 magicnet_supervisor_stop_pidfile() {
     _mssp_pid_file="$1"
-    if [ -f "$_mssp_pid_file" ]; then
-        _mssp_pid="$(sed -n '1p' "$_mssp_pid_file" 2>/dev/null)"
-        if magicnet_supervisor_pidfile_matches "$_mssp_pid_file" "$_mssp_pid"; then
-            kill "$_mssp_pid" 2>/dev/null || true
-        fi
-        rm -f "$_mssp_pid_file" 2>/dev/null || true
+    [ -f "$_mssp_pid_file" ] || return 0
+    _mssp_pid="$(sed -n '1p' "$_mssp_pid_file" 2>/dev/null)"
+    if magicnet_supervisor_pidfile_matches "$_mssp_pid_file" "$_mssp_pid"; then
+        _mssp_match_rc=0
+    else
+        _mssp_match_rc=$?
     fi
-    unset _mssp_pid_file _mssp_pid
+    [ "$_mssp_match_rc" -ne 2 ] || return 2
+    if [ "$_mssp_match_rc" -eq 0 ]; then
+        kill "$_mssp_pid" 2>/dev/null || true
+        _mssp_attempt=0
+        while [ "$_mssp_attempt" -lt 20 ]; do
+            if magicnet_supervisor_pidfile_matches "$_mssp_pid_file" "$_mssp_pid"; then
+                _mssp_match_rc=0
+            else
+                _mssp_match_rc=$?
+            fi
+            [ "$_mssp_match_rc" -ne 2 ] || return 2
+            [ "$_mssp_match_rc" -eq 0 ] || break
+            _mssp_attempt=$((_mssp_attempt + 1))
+            [ "$_mssp_attempt" -lt 20 ] && sleep 0.05
+        done
+        if [ "$_mssp_match_rc" -eq 0 ]; then
+            kill -9 "$_mssp_pid" 2>/dev/null || true
+            sleep 0.05
+            if magicnet_supervisor_pidfile_matches "$_mssp_pid_file" "$_mssp_pid"; then
+                return 1
+            else
+                _mssp_match_rc=$?
+            fi
+            [ "$_mssp_match_rc" -ne 2 ] || return 2
+        fi
+    fi
+    rm -f "$_mssp_pid_file" 2>/dev/null || return 1
+    unset _mssp_pid_file _mssp_pid _mssp_match_rc _mssp_attempt
+    return 0
 }
 
 magicnet_supervisor_pidfile_matches() (
     _msp_pid_file="$1"
     _msp_pid="$2"
     case "$_msp_pid" in '' | *[!0-9]*) return 1 ;; esac
-    [ -r "/proc/$_msp_pid/cmdline" ] || {
+    [ -d "/proc/$_msp_pid" ] || {
         unset _msp_pid_file _msp_pid
         return 1
     }
@@ -152,8 +206,13 @@ magicnet_supervisor_pidfile_matches() (
     esac
     _msp_rc=1
     # Preserve exact argv boundaries without directly streaming an OEM proc
-    # pseudo-file into a pipeline.
-    _msp_argv=$(magicnet_proc_cmdline_lines "$_msp_pid" /proc) || return 1
+    # pseudo-file into a pipeline. A live unreadable cmdline is indeterminate.
+    if _msp_argv=$(magicnet_proc_cmdline_lines "$_msp_pid" /proc); then
+        _msp_read_rc=0
+    else
+        _msp_read_rc=$?
+    fi
+    [ "$_msp_read_rc" -eq 0 ] || return "$_msp_read_rc"
     if awk -v expected="$_msp_expected" -v cli="$_msp_root/cli" \
         -v arg1="$_msp_arg1" -v arg2="$_msp_arg2" '
             function is_shell(value) {
@@ -161,17 +220,14 @@ magicnet_supervisor_pidfile_matches() (
                     value == "bash" || value == "ksh" || value == "mksh" ||
                     value ~ /\/(sh|ash|dash|bash|ksh|mksh)$/
             }
-            {
-                if (is_shell(previous) && $0 == expected) {
-                    matched = 1
-                }
-                if (before_previous == cli && previous == arg1 && $0 == arg2) {
-                    matched = 1
-                }
-                before_previous = previous
-                previous = $0
-            }
-            END { exit matched ? 0 : 1 }' <<EOF; then
+            { argv[++count] = $0 }
+            END {
+                loop = count == 2 && is_shell(argv[1]) && argv[2] == expected
+                cli_command = arg1 != "" && arg2 != "" &&
+                    ((count == 3 && argv[1] == cli && argv[2] == arg1 && argv[3] == arg2) ||
+                    (count == 4 && is_shell(argv[1]) && argv[2] == cli && argv[3] == arg1 && argv[4] == arg2))
+                exit (loop || cli_command) ? 0 : 1
+            }' <<EOF; then
 $_msp_argv
 EOF
         _msp_rc=0
@@ -181,9 +237,13 @@ EOF
 )
 
 magicnet_watchdog_stop() {
-    magicnet_supervisor_stop_pidfile "${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid"
-    magicnet_supervisor_kill_orphans watchdog
-    magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true
+    _watchdog_stop_rc=0
+    magicnet_supervisor_stop_pidfile "${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid" || _watchdog_stop_rc=$?
+    [ "$_watchdog_stop_rc" -ne 2 ] || return 2
+    magicnet_supervisor_kill_orphans watchdog || _watchdog_stop_rc=$?
+    [ "$_watchdog_stop_rc" -ne 2 ] || return 2
+    magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || _watchdog_stop_rc=$?
+    return "$_watchdog_stop_rc"
 }
 
 magicnet_hotspot_watchdog_name() {
@@ -204,7 +264,10 @@ magicnet_hotspot_watchdog_start() {
     if watchdog status "$_hotspot_watch_name" >/dev/null 2>&1; then
         unset _hotspot_watch_name
         return 0
+    else
+        _hotspot_watch_status_rc=$?
     fi
+    [ "$_hotspot_watch_status_rc" -ne 2 ] || return 2
     # magicnet_start_kernel already performs the synchronous initial
     # reconciliation.  The watcher owns only later interface transitions and
     # must not repeat slow OEM tethering discovery on the start button path.
@@ -222,9 +285,11 @@ magicnet_hotspot_watchdog_start() {
 
 magicnet_hotspot_watchdog_stop() {
     _hotspot_watch_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_hotspot_watchdog_name).pid"
-    magicnet_supervisor_stop_pidfile "$_hotspot_watch_pid_file"
+    magicnet_supervisor_stop_pidfile "$_hotspot_watch_pid_file" || return $?
     magicnet_supervisor_kill_orphans hotspot-watchdog
+    _hotspot_watch_stop_rc=$?
     unset _hotspot_watch_pid_file
+    return "$_hotspot_watch_stop_rc"
 }
 
 magicnet_fswatch_name() {
@@ -286,8 +351,10 @@ magicnet_fswatch_start() {
     if fswatch status "$_fswatch_name" >/dev/null 2>&1; then
         unset _fswatch_name _fw_rc
         return 0
+    else
+        _fw_rc=$?
     fi
-    unset _fw_rc
+    [ "$_fw_rc" -ne 2 ] || return 2
     magicnet_trim_log_file "${MODDIR}/.log/fswatch.log"
     _fswatch_busybox_bin="$(magicnet_fswatch_busybox_bin 2>/dev/null || true)"
     _fswatch_flock_bin="$(command -v flock 2>/dev/null || true)"
@@ -312,7 +379,7 @@ magicnet_fswatch_start() {
 }
 
 magicnet_fswatch_stop() {
-    magicnet_supervisor_stop_pidfile "${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid"
+    magicnet_supervisor_stop_pidfile "${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid" || return $?
     magicnet_supervisor_kill_orphans fswatch
 }
 
@@ -324,11 +391,15 @@ magicnet_fswatch_status() {
         return $?
     fi
     _fswatch_pid="$(sed -n '1p' "$_fswatch_pid_file" 2>/dev/null)"
-    if [ -n "$_fswatch_pid" ] &&
-        magicnet_supervisor_pidfile_matches "$_fswatch_pid_file" "$_fswatch_pid"; then
-        magicnet_supervisor_status_with_orphans "$_fswatch_pid" fswatch
-        unset _fswatch_pid_file _fswatch_pid
-        return 0
+    if [ -n "$_fswatch_pid" ]; then
+        if magicnet_supervisor_pidfile_matches "$_fswatch_pid_file" "$_fswatch_pid"; then
+            magicnet_supervisor_status_with_orphans "$_fswatch_pid" fswatch
+            unset _fswatch_pid_file _fswatch_pid
+            return 0
+        else
+            _fswatch_match_rc=$?
+        fi
+        [ "$_fswatch_match_rc" -ne 2 ] || return 2
     fi
     # Status is observational. Startup/stop paths own stale pidfile cleanup.
     unset _fswatch_pid_file _fswatch_pid
@@ -352,31 +423,24 @@ magicnet_wifi_policy_pid_file() {
 magicnet_wifi_policy_pid_matches() (
     _wifi_policy_match_pid="$1"
     case "$_wifi_policy_match_pid" in '' | *[!0-9]*) return 1 ;; esac
-    [ -r "/proc/${_wifi_policy_match_pid}/cmdline" ] || {
-        unset _wifi_policy_match_pid
-        return 1
-    }
-    _wifi_policy_match_rc=1
-    # Preserve exact argv boundaries so one argument containing
-    # "cli wifi watch" cannot impersonate the managed supervisor.
-    _wifi_policy_match_argv=$(magicnet_proc_cmdline_lines "$_wifi_policy_match_pid" /proc) || return 1
-    if awk -v cli="${MODDIR}/cli" -v alt_cli="${MODDIR}/bin/magicnet-cli" '
-            {
-                if ((before_previous == cli || before_previous == alt_cli) &&
-                    previous == "wifi" && $0 == "watch") {
-                    matched = 1
-                }
-                before_previous = previous
-                previous = $0
-            }
-            END { exit matched ? 0 : 1 }' <<EOF; then
+    [ -d "/proc/${_wifi_policy_match_pid}" ] || return 1
+    if _wifi_policy_match_argv=$(magicnet_proc_cmdline_lines "$_wifi_policy_match_pid" /proc); then
+        _wifi_policy_match_read_rc=0
+    else
+        _wifi_policy_match_read_rc=$?
+    fi
+    [ "$_wifi_policy_match_read_rc" -eq 0 ] || return "$_wifi_policy_match_read_rc"
+    awk -v cli="${MODDIR}/cli" -v alt_cli="${MODDIR}/bin/magicnet-cli" '
+        { argv[++count] = $0 }
+        END {
+            direct = count == 3 && (argv[1] == cli || argv[1] == alt_cli) && argv[2] == "wifi" && argv[3] == "watch"
+            wrapper = count == 4 && argv[1] ~ /(^|\/)(sh|ash|dash|bash|ksh|mksh)$/ &&
+                (argv[2] == cli || argv[2] == alt_cli) && argv[3] == "wifi" && argv[4] == "watch"
+            exit (direct || wrapper) ? 0 : 1
+        }
+    ' <<EOF
 $_wifi_policy_match_argv
 EOF
-        _wifi_policy_match_rc=0
-    fi
-    _wifi_policy_match_result="$_wifi_policy_match_rc"
-    unset _wifi_policy_match_pid _wifi_policy_match_rc
-    return "$_wifi_policy_match_result"
 )
 
 magicnet_wifi_policy_start() {
@@ -390,8 +454,17 @@ magicnet_wifi_policy_start() {
     if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
         unset _wifi_policy_pid_file _wifi_policy_pid
         return 0
+    else
+        _wifi_policy_match_rc=$?
     fi
-    rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
+    [ "$_wifi_policy_match_rc" -ne 2 ] || return 2
+    if _wifi_policy_orphans=$(magicnet_supervisor_orphan_pids wifi-policy); then
+        return 2
+    else
+        _wifi_policy_orphan_rc=$?
+    fi
+    [ "$_wifi_policy_orphan_rc" -ne 2 ] || return 2
+    rm -f "$_wifi_policy_pid_file" 2>/dev/null || return 1
     mkdir -p "${MODDIR}/.state/wifi-policy" "${MODDIR}/.log" || return 1
     magicnet_trim_log_file "${MODDIR}/.log/wifi-policy.log"
     nohup "${MODDIR}/cli" wifi watch </dev/null >>"${MODDIR}/.log/wifi-policy.log" 2>&1 &
@@ -414,15 +487,19 @@ magicnet_wifi_policy_start() {
     [ "$_wifi_policy_ready_attempts" -gt 40 ] && _wifi_policy_ready_attempts=40
     [ "$_wifi_policy_ready_attempts" -gt 0 ] || _wifi_policy_ready_attempts=1
     _wifi_policy_ready_attempt=0
+    _wifi_policy_ready_rc=1
     while [ "$_wifi_policy_ready_attempt" -lt "$_wifi_policy_ready_attempts" ]; do
         if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
             unset _wifi_policy_pid_file _wifi_policy_pid _wifi_policy_ready_attempts \
-                _wifi_policy_ready_attempt
+                _wifi_policy_ready_attempt _wifi_policy_ready_rc
             return 0
+        else
+            _wifi_policy_ready_rc=$?
         fi
         _wifi_policy_ready_attempt=$((_wifi_policy_ready_attempt + 1))
         [ "$_wifi_policy_ready_attempt" -lt "$_wifi_policy_ready_attempts" ] && sleep 0.05
     done
+    [ "$_wifi_policy_ready_rc" -ne 2 ] || return 2
     kill "$_wifi_policy_pid" 2>/dev/null || true
     rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
     unset _wifi_policy_pid_file _wifi_policy_pid _wifi_policy_ready_attempts \
@@ -434,11 +511,38 @@ magicnet_wifi_policy_stop() {
     _wifi_policy_pid_file="$(magicnet_wifi_policy_pid_file)"
     _wifi_policy_pid="$(sed -n '1p' "$_wifi_policy_pid_file" 2>/dev/null || true)"
     if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
-        kill "$_wifi_policy_pid" 2>/dev/null || true
+        _wifi_policy_match_rc=0
+    else
+        _wifi_policy_match_rc=$?
     fi
-    rm -f "$_wifi_policy_pid_file" 2>/dev/null || true
-    magicnet_supervisor_kill_orphans wifi-policy
-    unset _wifi_policy_pid_file _wifi_policy_pid
+    [ "$_wifi_policy_match_rc" -ne 2 ] || return 2
+    if [ "$_wifi_policy_match_rc" -eq 0 ]; then
+        kill "$_wifi_policy_pid" 2>/dev/null || true
+        sleep 1
+        if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
+            return 1
+        else
+            _wifi_policy_match_rc=$?
+        fi
+        [ "$_wifi_policy_match_rc" -ne 2 ] || return 2
+    fi
+    magicnet_supervisor_kill_orphans wifi-policy || return $?
+    rm -f "$_wifi_policy_pid_file" 2>/dev/null || return 1
+    return 0
+}
+
+magicnet_wifi_policy_status() {
+    _wifi_policy_pid_file="$(magicnet_wifi_policy_pid_file)"
+    [ -f "$_wifi_policy_pid_file" ] || return 1
+    _wifi_policy_pid="$(sed -n '1p' "$_wifi_policy_pid_file" 2>/dev/null)"
+    if magicnet_wifi_policy_pid_matches "$_wifi_policy_pid"; then
+        printf '%s\n' "$_wifi_policy_pid"
+        return 0
+    else
+        _wifi_policy_status_rc=$?
+    fi
+    [ "$_wifi_policy_status_rc" -ne 2 ] || return 2
+    return 1
 }
 
 magicnet_subscription_refresh_name() {
@@ -492,9 +596,14 @@ magicnet_subscription_refresh_proc_command_matches() {
         else
             _refresh_proc_rc=1
         fi
-    elif ! _refresh_proc_script=$(printf '%s\n' "$_refresh_proc_argv" | sed -n '2p'); then
-        _refresh_proc_rc=2
-    elif [ "$_refresh_proc_script" = "$_refresh_proc_expected" ]; then
+    elif awk -v expected="$_refresh_proc_expected" '
+        function is_shell(value) { return value ~ /(^|\/)(sh|ash|dash|bash|ksh|mksh)$/ }
+        { argv[++count] = $0 }
+        END { exit (count == 2 && is_shell(argv[1]) && argv[2] == expected) ? 0 : 1 }
+    ' <<EOF
+$_refresh_proc_argv
+EOF
+    then
         _refresh_proc_rc=0
     else
         _refresh_proc_rc=1
@@ -556,11 +665,20 @@ magicnet_subscription_refresh_owner_parse() {
 magicnet_subscription_refresh_owner_matches() {
     _refresh_match_pid="$1"
     _refresh_match_start="$2"
-    kill -0 "$_refresh_match_pid" 2>/dev/null &&
-        [ "$(magicnet_subscription_refresh_proc_start "$_refresh_match_pid")" = "$_refresh_match_start" ] &&
-        magicnet_subscription_refresh_proc_command_matches "$_refresh_match_pid"
-    _refresh_match_rc=$?
-    unset _refresh_match_pid _refresh_match_start
+    if ! kill -0 "$_refresh_match_pid" 2>/dev/null; then
+        [ -d "${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}/$_refresh_match_pid" ] && _refresh_match_rc=2 || _refresh_match_rc=1
+    elif _refresh_match_actual_start=$(magicnet_subscription_refresh_proc_start "$_refresh_match_pid"); then
+        if [ "$_refresh_match_actual_start" != "$_refresh_match_start" ]; then
+            _refresh_match_rc=1
+        elif magicnet_subscription_refresh_proc_command_matches "$_refresh_match_pid"; then
+            _refresh_match_rc=0
+        else
+            _refresh_match_rc=$?
+        fi
+    else
+        _refresh_match_rc=$?
+    fi
+    unset _refresh_match_pid _refresh_match_start _refresh_match_actual_start
     return "$_refresh_match_rc"
 }
 
@@ -595,6 +713,42 @@ magicnet_subscription_refresh_loop_pids() {
         unset _refresh_loop_proc_root _refresh_loop_expected
         return 2
     fi
+    # Production uses one bounded Rust scan: 64 KiB per cmdline, 750 ms total,
+    # and 4096 candidates. The count/footer frame rejects partial output.
+    if ! type magicnet_proc_script_pids_test_hook >/dev/null 2>&1; then
+        _refresh_loop_reader="${MODDIR}/cli"
+        [ -x "$_refresh_loop_reader" ] || return 2
+        _refresh_loop_frame=$(magicnet_proc_query_temp_create) || return 2
+        _refresh_loop_pids=$(magicnet_proc_query_temp_create) || {
+            rm -f "$_refresh_loop_frame"
+            return 2
+        }
+        if "$_refresh_loop_reader" __proc-script-pids \
+            "$_refresh_loop_proc_root" "$_refresh_loop_expected" \
+            >"$_refresh_loop_frame" 2>/dev/null; then
+            if magicnet_proc_framed_pids_to_file \
+                "$_refresh_loop_frame" "$_refresh_loop_pids"; then
+                _refresh_loop_decode_rc=0
+            else
+                _refresh_loop_decode_rc=$?
+            fi
+        else
+            _refresh_loop_decode_rc=2
+        fi
+        rm -f "$_refresh_loop_frame"
+        case "$_refresh_loop_decode_rc" in
+        0)
+            while IFS= read -r _refresh_loop_pid || [ -n "$_refresh_loop_pid" ]; do
+                printf '%s\n' "$_refresh_loop_pid"
+            done <"$_refresh_loop_pids"
+            ;;
+        1) ;;
+        *) _refresh_loop_decode_rc=2 ;;
+        esac
+        rm -f "$_refresh_loop_pids"
+        return "$_refresh_loop_decode_rc"
+    fi
+    # Test-only regular-file hook; production never enters this fallback.
     # /proc is a live directory: an unrelated process can disappear between
     # the readable snapshot and the batched grep. Retry that narrow race, but
     # keep a hard cap and return 2 when the snapshot never becomes trustworthy.
@@ -612,9 +766,15 @@ magicnet_subscription_refresh_loop_pids() {
     while [ "$_refresh_loop_scan_attempt" -lt "$_refresh_loop_scan_attempts" ]; do
         set --
         _refresh_loop_snapshot_error=0
+        _refresh_loop_candidate_count=0
         for _refresh_loop_pid_dir in "$_refresh_loop_proc_root"/[0-9]*; do
             _refresh_loop_pid_name=${_refresh_loop_pid_dir#"$_refresh_loop_proc_root"/}
             case "$_refresh_loop_pid_name" in '' | *[!0-9]*) continue ;; esac
+            _refresh_loop_candidate_count=$((_refresh_loop_candidate_count + 1))
+            [ "$_refresh_loop_candidate_count" -le 4096 ] || {
+                _refresh_loop_snapshot_error=1
+                break
+            }
             if [ ! -d "$_refresh_loop_pid_dir" ]; then
                 [ ! -e "$_refresh_loop_pid_dir" ] || _refresh_loop_snapshot_error=1
                 continue
@@ -634,14 +794,27 @@ magicnet_subscription_refresh_loop_pids() {
             unset _refresh_loop_proc_root _refresh_loop_expected _refresh_loop_scan_attempt
             unset _refresh_loop_scan_attempts _refresh_loop_scan_delay
             unset _refresh_loop_snapshot_error _refresh_loop_proc _refresh_loop_pid_dir _refresh_loop_pid_name
-            return 0
+            return 1
         fi
         if [ "$_refresh_loop_snapshot_error" -eq 0 ]; then
-            if _refresh_loop_candidates=$(grep -l -F "$_refresh_loop_expected" "$@" 2>/dev/null); then
-                _refresh_loop_scan_rc=0
-            else
-                _refresh_loop_scan_rc=$?
-            fi
+            _refresh_loop_candidates=''
+            _refresh_loop_scan_rc=1
+            for _refresh_loop_proc in "$@"; do
+                _refresh_loop_pid=${_refresh_loop_proc#"$_refresh_loop_proc_root"/}
+                _refresh_loop_pid=${_refresh_loop_pid%/cmdline}
+                if magicnet_proc_script_pids_test_hook "$_refresh_loop_proc_root" \
+                    "$_refresh_loop_expected" "$_refresh_loop_pid"; then
+                    _refresh_loop_candidates="${_refresh_loop_candidates}${_refresh_loop_candidates:+
+}${_refresh_loop_proc}"
+                    _refresh_loop_scan_rc=0
+                else
+                    _refresh_loop_prefilter_rc=$?
+                    if [ "$_refresh_loop_prefilter_rc" -eq 2 ]; then
+                        _refresh_loop_scan_rc=2
+                        break
+                    fi
+                fi
+            done
             case "$_refresh_loop_scan_rc" in
             0)
                 set --
@@ -680,7 +853,7 @@ magicnet_subscription_refresh_loop_pids() {
                 unset _refresh_loop_scan_attempts _refresh_loop_scan_delay
                 unset _refresh_loop_proc _refresh_loop_pid_dir _refresh_loop_pid_name
                 unset _refresh_loop_pid _refresh_loop_match_rc _refresh_loop_exact_error
-                return 0
+                return 1
                 ;;
             esac
         fi
@@ -705,12 +878,12 @@ magicnet_subscription_refresh_owner_state() {
         else
             _refresh_state_scan_rc=$?
         fi
-        if [ "$_refresh_state_scan_rc" -ne 0 ]; then
-            printf '%s\n' stale
+        if [ "$_refresh_state_scan_rc" -eq 2 ]; then
+            printf '%s\n' indeterminate
             unset _refresh_state_owner _refresh_state_orphans _refresh_state_scan_rc
-            return 1
+            return 2
         fi
-        if [ -n "$_refresh_state_orphans" ]; then
+        if [ "$_refresh_state_scan_rc" -eq 0 ] && [ -n "$_refresh_state_orphans" ]; then
             printf '%s\n' orphan
         else
             printf '%s\n' none
@@ -719,13 +892,15 @@ magicnet_subscription_refresh_owner_state() {
         return 1
     }
     _refresh_state_record=$(sed -n '1p' "$_refresh_state_owner" 2>/dev/null)
-    if magicnet_subscription_refresh_owner_parse "$_refresh_state_record" &&
-        magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
+    if ! magicnet_subscription_refresh_owner_parse "$_refresh_state_record"; then
+        printf '%s\n' stale
+        _refresh_state_rc=1
+    elif magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
         printf '%s\n' active
         _refresh_state_rc=0
     else
-        printf '%s\n' stale
-        _refresh_state_rc=1
+        _refresh_state_rc=$?
+        [ "$_refresh_state_rc" -ne 2 ] && printf '%s\n' stale || printf '%s\n' indeterminate
     fi
     unset _refresh_state_owner _refresh_state_record
     unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
@@ -745,47 +920,54 @@ magicnet_subscription_schedule_interval() {
 magicnet_subscription_refresh_status() {
     _refresh_status_owner=$(magicnet_subscription_refresh_owner_file)
     _refresh_status_record=$(sed -n '1p' "$_refresh_status_owner" 2>/dev/null)
-    if magicnet_subscription_refresh_owner_parse "$_refresh_status_record" &&
-        magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
-        _refresh_status_pid="$_refresh_owner_pid"
-        unset _refresh_status_owner _refresh_status_record
-        unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
-        printf '%s\n' "$_refresh_status_pid"
-        unset _refresh_status_pid
-        return 0
+    magicnet_subscription_refresh_owner_parse "$_refresh_status_record" || return 1
+    if magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
+        printf '%s\n' "$_refresh_owner_pid"
+        _refresh_status_rc=0
+    else
+        _refresh_status_rc=$?
     fi
-    unset _refresh_status_owner _refresh_status_record
-    unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
-    return 1
+    return "$_refresh_status_rc"
 }
 
 magicnet_subscription_refresh_stop() {
     _refresh_stop_owner=$(magicnet_subscription_refresh_owner_file)
-    _refresh_stop_record=$(sed -n '1p' "$_refresh_stop_owner" 2>/dev/null || true)
-    if ! magicnet_subscription_refresh_owner_parse "$_refresh_stop_record" ||
-        ! magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
-        unset _refresh_stop_owner _refresh_stop_record
-        unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
+    if [ ! -f "$_refresh_stop_owner" ]; then
+        if magicnet_subscription_refresh_loop_pids >/dev/null 2>&1; then return 2; fi
+        _refresh_stop_scan_rc=$?
+        [ "$_refresh_stop_scan_rc" -ne 2 ] || return 2
         return 0
     fi
-
-    kill "$_refresh_owner_pid" 2>/dev/null || true
-    _refresh_stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_REFRESH_STOP_TIMEOUT:-3}))
-    while magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start" &&
-        [ "$(date +%s)" -lt "$_refresh_stop_deadline" ]; do
-        sleep 1
-    done
+    _refresh_stop_record=$(sed -n '1p' "$_refresh_stop_owner" 2>/dev/null)
+    magicnet_subscription_refresh_owner_parse "$_refresh_stop_record" || return 2
     if magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
-        kill -9 "$_refresh_owner_pid" 2>/dev/null || true
+        _refresh_stop_match_rc=0
+    else
+        _refresh_stop_match_rc=$?
     fi
-    _refresh_stop_current=$(sed -n '1p' "$_refresh_stop_owner" 2>/dev/null)
-    [ "$_refresh_stop_current" = "$_refresh_stop_record" ] && rm -f "$_refresh_stop_owner" 2>/dev/null || true
+    [ "$_refresh_stop_match_rc" -ne 2 ] || return 2
+    [ "$_refresh_stop_match_rc" -eq 0 ] || return 1
+    if [ "$_refresh_stop_match_rc" -eq 0 ]; then
+        kill "$_refresh_owner_pid" 2>/dev/null || true
+        _refresh_stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_REFRESH_STOP_TIMEOUT:-3}))
+        while [ "$_refresh_stop_match_rc" -eq 0 ] && [ "$(date +%s)" -lt "$_refresh_stop_deadline" ]; do
+            sleep 1
+            if magicnet_subscription_refresh_owner_matches "$_refresh_owner_pid" "$_refresh_owner_start"; then
+                _refresh_stop_match_rc=0
+            else
+                _refresh_stop_match_rc=$?
+            fi
+            [ "$_refresh_stop_match_rc" -ne 2 ] || return 2
+        done
+        [ "$_refresh_stop_match_rc" -ne 0 ] || return 1
+    fi
+    [ "$(sed -n '1p' "$_refresh_stop_owner" 2>/dev/null)" = "$_refresh_stop_record" ] || return 2
+    rm -f "$_refresh_stop_owner" 2>/dev/null || return 1
     _refresh_stop_pid_file=$(magicnet_subscription_refresh_pid_file)
-    [ "$(sed -n '1p' "$_refresh_stop_pid_file" 2>/dev/null)" = "$_refresh_owner_pid" ] &&
-        rm -f "$_refresh_stop_pid_file" 2>/dev/null || true
+    [ "$(sed -n '1p' "$_refresh_stop_pid_file" 2>/dev/null)" != "$_refresh_owner_pid" ] ||
+        rm -f "$_refresh_stop_pid_file" 2>/dev/null || return 1
     rm -f "$(magicnet_subscription_refresh_loop_file)" 2>/dev/null || true
-    unset _refresh_stop_owner _refresh_stop_record _refresh_stop_deadline _refresh_stop_current _refresh_stop_pid_file
-    unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest _refresh_owner_start _refresh_owner_identity
+    return 0
 }
 
 magicnet_subscription_refresh_start() {
@@ -804,13 +986,18 @@ magicnet_subscription_refresh_start() {
         unset _refresh_hours
         return 0
     }
-    _refresh_owner_state=$(magicnet_subscription_refresh_owner_state 2>/dev/null || true)
-    if [ "$_refresh_owner_state" = active ]; then
-        unset _refresh_hours _refresh_owner_state
+    if _refresh_owner_state=$(magicnet_subscription_refresh_owner_state 2>/dev/null); then
+        _refresh_owner_state_rc=0
+    else
+        _refresh_owner_state_rc=$?
+    fi
+    if [ "$_refresh_owner_state_rc" -eq 2 ] || [ "$_refresh_owner_state" = indeterminate ]; then
+        warn "Subscription refresh ownership is indeterminate; refusing to start a duplicate"
+        return 2
+    elif [ "$_refresh_owner_state" = active ]; then
         return 0
     elif [ "$_refresh_owner_state" = stale ] || [ "$_refresh_owner_state" = orphan ]; then
         warn "Subscription refresh owner is ${_refresh_owner_state}; refusing to start a duplicate or terminate an unowned loop"
-        unset _refresh_hours _refresh_owner_state
         return 1
     fi
 
@@ -958,19 +1145,42 @@ magicnet_supervisors_start() {
         magicnet_singbox_record_runtime_fingerprint ||
             magicnet_warn "Failed to record the settled sing-box configuration fingerprint."
     fi
-    magicnet_subscription_refresh_start || _mss_rc=1
-    magicnet_wifi_policy_start || _mss_rc=1
-    magicnet_hotspot_watchdog_start || _mss_rc=1
-    # fswatch only accelerates config convergence.  A missing or incompatible
-    # locking helper must not make an otherwise healthy core startup fail.
-    magicnet_fswatch_start || true
+    for _mss_start_target in refresh wifi-policy hotspot-watchdog fswatch; do
+        case "$_mss_start_target" in
+        refresh) magicnet_subscription_refresh_start ;;
+        wifi-policy) magicnet_wifi_policy_start ;;
+        hotspot-watchdog) magicnet_hotspot_watchdog_start ;;
+        fswatch) magicnet_fswatch_start ;;
+        esac
+        _mss_target_rc=$?
+        [ "$_mss_target_rc" -ne 2 ] || _mss_rc=2
+        if [ "$_mss_target_rc" -ne 0 ] && [ "$_mss_start_target" != fswatch ] && [ "$_mss_rc" -eq 0 ]; then
+            _mss_rc=1
+        fi
+    done
     return "$_mss_rc"
 }
 
 magicnet_supervisors_stop() {
-    magicnet_watchdog_stop
-    magicnet_fswatch_stop
-    magicnet_wifi_policy_stop
-    magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
-    [ "${MAGICNET_SUB_PRESERVE_REFRESH:-0}" = "1" ] || magicnet_subscription_refresh_stop
+    _mss_stop_rc=0
+    magicnet_watchdog_stop || _mss_stop_rc=$?
+    magicnet_fswatch_stop || {
+        _mss_target_rc=$?
+        [ "$_mss_target_rc" -ne 2 ] || _mss_stop_rc=2
+        [ "$_mss_stop_rc" -ne 0 ] || _mss_stop_rc=1
+    }
+    magicnet_wifi_policy_stop || {
+        _mss_target_rc=$?
+        [ "$_mss_target_rc" -ne 2 ] || _mss_stop_rc=2
+        [ "$_mss_stop_rc" -ne 0 ] || _mss_stop_rc=1
+    }
+    if [ "${MAGICNET_SUB_PRESERVE_REFRESH:-0}" != "1" ]; then
+        magicnet_subscription_refresh_stop || {
+            _mss_target_rc=$?
+            [ "$_mss_target_rc" -ne 2 ] || _mss_stop_rc=2
+            [ "$_mss_stop_rc" -ne 0 ] || _mss_stop_rc=1
+        }
+    fi
+    [ "$_mss_stop_rc" -ne 0 ] || magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
+    return "$_mss_stop_rc"
 }

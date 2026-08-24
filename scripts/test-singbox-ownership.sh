@@ -8,17 +8,20 @@ trap 'rm -rf "$fixture"' EXIT
 module="$fixture/module"
 proc_root="$fixture/proc"
 bin_dir="$fixture/bin"
-mkdir -p "$module/bin" "$proc_root/101" "$proc_root/202" "$proc_root/303" "$proc_root/404" "$proc_root/505" "$bin_dir"
+mkdir -p "$module/bin" "$proc_root/101" "$proc_root/202" "$proc_root/303" \
+    "$proc_root/404" "$proc_root/505" "$proc_root/606" "$bin_dir"
 printf '#!/bin/sh\nexit 0\n' >"$module/bin/sing-box"
 chmod +x "$module/bin/sing-box"
 ln -s "$module/bin/sing-box" "$proc_root/101/exe"
 ln -s "$(command -v sh)" "$proc_root/202/exe"
 ln -s "$module/bin/sing-box" "$proc_root/303/exe"
+ln -s "$module/bin/sing-box" "$proc_root/606/exe"
 printf 'sing-box\n' >"$proc_root/101/comm"
 printf 'sing-box\n' >"$proc_root/202/comm"
 printf 'sing-box\n' >"$proc_root/303/comm"
 printf 'sing-box\n' >"$proc_root/404/comm"
 printf 'sing-box\n' >"$proc_root/505/comm"
+printf 'sing-box\n' >"$proc_root/606/comm"
 write_proc_stat() {
     local pid="$1" state="$2" start="$3"
     printf '%s (sing-box) %s 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 %s 0\n' \
@@ -28,6 +31,7 @@ write_proc_stat 101 S 10101
 write_proc_stat 202 S 20202
 write_proc_stat 303 S 30303
 write_proc_stat 404 Z 40404
+write_proc_stat 606 S 60606
 printf 'sing-box\0run\0-c\0%s\0-D\0%s\0' \
     "$module/.config/sing-box/config.json" "$module/.config/sing-box" \
     >"$proc_root/101/cmdline"
@@ -41,6 +45,10 @@ printf 'sing-box\0run\0-c\0%s\0-D\0%s\0' \
 printf 'sing-box\0run\0-c\0%s\0-D\0%s\0' \
     "$module/.config/sing-box/config.json" "$module/.config/sing-box" \
     >"$proc_root/404/cmdline"
+# An exact managed argv embedded after an attacker-controlled prefix is a decoy.
+printf '/tmp/decoy\0-c\0sleep 30\0ignored\0sing-box\0run\0-c\0%s\0-D\0%s\0' \
+    "$module/.config/sing-box/config.json" "$module/.config/sing-box" \
+    >"$proc_root/606/cmdline"
 
 cat >"$bin_dir/pidof" <<'SH'
 #!/bin/sh
@@ -61,7 +69,7 @@ unreadable_rc=$?
 set -e
 test "$unreadable_rc" -eq 2
 
-owned="$(PIDOF_RESULT='101 202 303 404' \
+owned="$(PIDOF_RESULT='101 202 303 404 606' \
     magicnet_singbox_owned_pids "$module/.config/sing-box/config.json")"
 test "$owned" = '101'
 

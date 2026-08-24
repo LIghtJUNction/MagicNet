@@ -1,6 +1,7 @@
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -129,6 +130,59 @@ fn blocked_proc_reader_times_out_without_a_live_worker() {
     assert!(started.elapsed() >= Duration::from_millis(400));
     assert!(started.elapsed() < Duration::from_secs(2));
     fs::remove_dir_all(root).expect("remove timeout proc reader fixture");
+}
+
+#[test]
+fn script_scan_is_framed_and_fifo_failure_is_indeterminate() {
+    let root = fixture("script-scan");
+    let script = "/module/.state/fswatch/managed.loop.sh";
+    fs::write(
+        root.join("123/cmdline"),
+        format!("/system/bin/sh\0{script}\0").as_bytes(),
+    )
+    .expect("write matching script cmdline");
+    let cli = env!("CARGO_BIN_EXE_magicnet-cli");
+    let output = Command::new(cli)
+        .args(["__proc-script-pids", root.to_str().unwrap(), script])
+        .output()
+        .expect("run framed script scan");
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        output.stdout,
+        b"MAGICNET_PROC_PIDS_V1\n123\nMAGICNET_PROC_PIDS_END 1\n"
+    );
+
+    fs::remove_file(root.join("123/cmdline")).expect("remove regular cmdline");
+    make_fifo(&root.join("123/cmdline"));
+    let started = Instant::now();
+    let output = Command::new(cli)
+        .args(["__proc-script-pids", root.to_str().unwrap(), script])
+        .output()
+        .expect("run FIFO script scan");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(started.elapsed() < Duration::from_secs(2));
+    fs::remove_dir_all(root).expect("remove script scan fixture");
+}
+
+#[test]
+fn oversized_pidof_output_is_indeterminate_and_never_framed() {
+    let root = fixture("pidof-truncation");
+    let pidof = root.join("pidof");
+    fs::write(
+        &pidof,
+        "#!/bin/sh\ni=0\nwhile [ \"$i\" -lt 4000 ]; do printf '12345 '; i=$((i + 1)); done\nprintf '\\n'\n",
+    )
+    .expect("write pidof fixture");
+    fs::set_permissions(&pidof, fs::Permissions::from_mode(0o755)).expect("chmod pidof fixture");
+    let output = Command::new(env!("CARGO_BIN_EXE_magicnet-cli"))
+        .args(["__proc-pids", "sing-box"])
+        .env("PATH", &root)
+        .output()
+        .expect("run oversized pid lookup");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    fs::remove_dir_all(root).expect("remove pidof fixture");
 }
 
 #[test]

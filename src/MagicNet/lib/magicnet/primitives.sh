@@ -273,17 +273,20 @@ magicnet_proc_cmdline_lines() (
     /*) ;;
     *) return 1 ;;
     esac
+    _proc_pid_dir="$_proc_root/$_proc_pid"
+    [ -d "$_proc_pid_dir" ] || return 1
     if type magicnet_proc_reader_test_hook >/dev/null 2>&1; then
-        magicnet_proc_reader_test_hook cmdline "$_proc_root" "$_proc_pid"
-        return $?
+        if magicnet_proc_reader_test_hook cmdline "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
+    elif magicnet_host_proc_reader_allowed; then
+        if magicnet_host_proc_reader cmdline "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
+    else
+        _proc_reader="${MODDIR}/cli"
+        [ -x "$_proc_reader" ] || return 2
+        if "$_proc_reader" __proc-cmdline "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
     fi
-    if magicnet_host_proc_reader_allowed; then
-        magicnet_host_proc_reader cmdline "$_proc_root" "$_proc_pid"
-        return $?
-    fi
-    _proc_reader="${MODDIR}/cli"
-    [ -x "$_proc_reader" ] || return 1
-    "$_proc_reader" __proc-cmdline "$_proc_root" "$_proc_pid"
+    [ "$_proc_rc" -eq 0 ] && return 0
+    [ -d "$_proc_pid_dir" ] || return 1
+    return 2
 )
 
 magicnet_proc_comm() (
@@ -296,17 +299,20 @@ magicnet_proc_comm() (
     /*) ;;
     *) return 1 ;;
     esac
+    _proc_pid_dir="$_proc_root/$_proc_pid"
+    [ -d "$_proc_pid_dir" ] || return 1
     if type magicnet_proc_reader_test_hook >/dev/null 2>&1; then
-        magicnet_proc_reader_test_hook comm "$_proc_root" "$_proc_pid"
-        return $?
+        if magicnet_proc_reader_test_hook comm "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
+    elif magicnet_host_proc_reader_allowed; then
+        if magicnet_host_proc_reader comm "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
+    else
+        _proc_reader="${MODDIR}/cli"
+        [ -x "$_proc_reader" ] || return 2
+        if "$_proc_reader" __proc-comm "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
     fi
-    if magicnet_host_proc_reader_allowed; then
-        magicnet_host_proc_reader comm "$_proc_root" "$_proc_pid"
-        return $?
-    fi
-    _proc_reader="${MODDIR}/cli"
-    [ -x "$_proc_reader" ] || return 1
-    "$_proc_reader" __proc-comm "$_proc_root" "$_proc_pid"
+    [ "$_proc_rc" -eq 0 ] && return 0
+    [ -d "$_proc_pid_dir" ] || return 1
+    return 2
 )
 
 magicnet_proc_stat_identity() (
@@ -319,17 +325,20 @@ magicnet_proc_stat_identity() (
     /*) ;;
     *) return 1 ;;
     esac
+    _proc_pid_dir="$_proc_root/$_proc_pid"
+    [ -d "$_proc_pid_dir" ] || return 1
     if type magicnet_proc_reader_test_hook >/dev/null 2>&1; then
-        magicnet_proc_reader_test_hook stat "$_proc_root" "$_proc_pid"
-        return $?
+        if magicnet_proc_reader_test_hook stat "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
+    elif magicnet_host_proc_reader_allowed; then
+        if magicnet_host_proc_reader stat "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
+    else
+        _proc_reader="${MODDIR}/cli"
+        [ -x "$_proc_reader" ] || return 2
+        if "$_proc_reader" __proc-stat "$_proc_root" "$_proc_pid"; then _proc_rc=0; else _proc_rc=$?; fi
     fi
-    if magicnet_host_proc_reader_allowed; then
-        magicnet_host_proc_reader stat "$_proc_root" "$_proc_pid"
-        return $?
-    fi
-    _proc_reader="${MODDIR}/cli"
-    [ -x "$_proc_reader" ] || return 1
-    "$_proc_reader" __proc-stat "$_proc_root" "$_proc_pid"
+    [ "$_proc_rc" -eq 0 ] && return 0
+    [ -d "$_proc_pid_dir" ] || return 1
+    return 2
 )
 
 # Read /proc/<pid>/stat starttime. Optional second argument overrides the proc
@@ -339,56 +348,66 @@ magicnet_proc_start() {
     _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
     case "$_proc_pid" in
     '' | *[!0-9]*)
-        unset _proc_pid _proc_root _proc_identity _proc_state _proc_start
+        unset _proc_pid _proc_root _proc_identity _proc_state _proc_start _proc_read_rc
         return 1
         ;;
     esac
     case "$_proc_root" in
     /*) ;;
     *)
-        unset _proc_pid _proc_root _proc_identity _proc_state _proc_start
+        unset _proc_pid _proc_root _proc_identity _proc_state _proc_start _proc_read_rc
         return 1
         ;;
     esac
-    _proc_identity="$(magicnet_proc_stat_identity "$_proc_pid" "$_proc_root")" || {
+    if _proc_identity="$(magicnet_proc_stat_identity "$_proc_pid" "$_proc_root")"; then
+        _proc_read_rc=0
+    else
+        _proc_read_rc=$?
+    fi
+    if [ "$_proc_read_rc" -ne 0 ]; then
         unset _proc_pid _proc_root _proc_identity _proc_state _proc_start
-        return 1
-    }
+        return "$_proc_read_rc"
+    fi
     _proc_state=${_proc_identity%% *}
     _proc_start=${_proc_identity#* }
     case "$_proc_state" in
     [A-Za-z]) ;;
     *)
-        unset _proc_pid _proc_root _proc_identity _proc_state _proc_start
-        return 1
+        unset _proc_pid _proc_root _proc_identity _proc_state _proc_start _proc_read_rc
+        return 2
         ;;
     esac
     case "$_proc_start" in
     '' | *[!0-9]*)
-        unset _proc_pid _proc_root _proc_identity _proc_state _proc_start
-        return 1
+        unset _proc_pid _proc_root _proc_identity _proc_state _proc_start _proc_read_rc
+        return 2
         ;;
     esac
     printf '%s\n' "$_proc_start"
-    unset _proc_pid _proc_root _proc_identity _proc_state _proc_start
+    unset _proc_pid _proc_root _proc_identity _proc_state _proc_start _proc_read_rc
 }
 
 magicnet_proc_state() {
     _proc_state_pid="$1"
     _proc_state_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
-    _proc_state_identity="$(magicnet_proc_stat_identity "$_proc_state_pid" "$_proc_state_root")" || {
-        unset _proc_state_pid _proc_state_root _proc_state_identity
-        return 1
-    }
+    if _proc_state_identity="$(magicnet_proc_stat_identity "$_proc_state_pid" "$_proc_state_root")"; then
+        _proc_state_read_rc=0
+    else
+        _proc_state_read_rc=$?
+    fi
+    if [ "$_proc_state_read_rc" -ne 0 ]; then
+        unset _proc_state_pid _proc_state_root _proc_state_identity _proc_state
+        return "$_proc_state_read_rc"
+    fi
     _proc_state=${_proc_state_identity%% *}
     case "$_proc_state" in
     [A-Za-z]) printf '%s\n' "$_proc_state" ;;
     *)
-        unset _proc_state_pid _proc_state_root _proc_state_identity _proc_state
-        return 1
+        unset _proc_state_pid _proc_state_root _proc_state_identity _proc_state _proc_state_read_rc
+        return 2
         ;;
     esac
-    unset _proc_state_pid _proc_state_root _proc_state_identity _proc_state
+    unset _proc_state_pid _proc_state_root _proc_state_identity _proc_state _proc_state_read_rc
 }
 
 magicnet_singbox_proc_start() {

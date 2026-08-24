@@ -1,13 +1,13 @@
 use crate::{
-    read_proc_argv, read_proc_text_bounded, run_bounded_command, subscriptions, App,
-    MAX_PROC_COMM_BYTES, MAX_PROC_STAT_BYTES,
+    cmdline_has_script, read_proc_argv, read_proc_text_bounded, run_bounded_command, subscriptions,
+    App, MAX_PROC_COMM_BYTES, MAX_PROC_STAT_BYTES,
 };
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::os::fd::RawFd;
 use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 pub(crate) const SHORT_TIMEOUT: Duration = Duration::from_secs(3);
 const DEFAULT_COMMAND_TIMEOUT_SECS: u64 = 180;
 const MAX_COMMAND_TIMEOUT_SECS: u64 = 900;
+const PROC_SCAN_TIMEOUT: Duration = Duration::from_millis(750);
+const PROC_SCAN_MAX_CANDIDATES: usize = 4096;
 
 fn command_timeout_secs(value: Option<&str>) -> u64 {
     value
@@ -39,6 +41,9 @@ pub(crate) fn named_process_candidates(name: &str) -> Result<Vec<String>, String
     let output = run_bounded_command(command, Duration::from_millis(750), 16 * 1024)?;
     if output.timed_out {
         return Err(format!("pid lookup timed out for {name}"));
+    }
+    if output.truncated {
+        return Err(format!("pid lookup output was truncated for {name}"));
     }
     match output
         .status
@@ -103,18 +108,85 @@ pub(crate) fn proc_named_pids_command(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("write framed pid lookup: {err}"))
 }
 
+pub(crate) fn proc_script_pids_command(args: &[String]) -> Result<(), String> {
+    if args.len() != 2 {
+        return Err("internal proc script scan usage error".to_string());
+    }
+    let proc_root = Path::new(&args[0]);
+    let expected_script = Path::new(&args[1]);
+    if !proc_root.is_absolute()
+        || !expected_script.is_absolute()
+        || proc_root
+            .components()
+            .chain(expected_script.components())
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("invalid proc scan path".to_string());
+    }
+    crate::utils::arm_parent_death_signal()?;
+    let deadline = Instant::now() + PROC_SCAN_TIMEOUT;
+    let entries = fs::read_dir(proc_root)
+        .map_err(|err| format!("read proc scan root {}: {err}", proc_root.display()))?;
+    let mut candidates = Vec::new();
+    let mut inspected = 0_usize;
+    for entry in entries {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err("proc script scan deadline exceeded".to_string());
+        }
+        let entry = entry.map_err(|err| format!("read proc scan entry: {err}"))?;
+        let name = entry.file_name();
+        let Some(pid) = name
+            .to_str()
+            .filter(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
+        else {
+            continue;
+        };
+        inspected += 1;
+        if inspected > PROC_SCAN_MAX_CANDIDATES {
+            return Err(format!(
+                "proc script scan exceeded {PROC_SCAN_MAX_CANDIDATES} candidates"
+            ));
+        }
+        let proc_dir = proc_root.join(pid);
+        match crate::utils::read_proc_argv_with_timeout(&proc_dir.join("cmdline"), remaining) {
+            Ok(argv) if cmdline_has_script(&argv, &args[1]) => candidates.push(pid.to_string()),
+            Ok(_) => {}
+            Err(_) if !proc_dir.exists() => {}
+            Err(err) => {
+                return Err(format!("indeterminate proc script candidate {pid}: {err}"));
+            }
+        }
+    }
+    if Instant::now() >= deadline {
+        return Err("proc script scan deadline exceeded".to_string());
+    }
+    candidates.sort_unstable();
+    candidates.dedup();
+    let stdout = io::stdout();
+    write_named_process_candidates(&mut stdout.lock(), &candidates)
+        .map_err(|err| format!("write framed proc script scan: {err}"))
+}
+
 pub(crate) fn pid_summary(name: &str) -> String {
-    let pids = named_process_candidates(name)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|pid| {
-            let proc_dir = Path::new("/proc").join(pid);
-            proc_pid_is_live(&proc_dir)
-                && read_proc_text_bounded(&proc_dir.join("comm"), MAX_PROC_COMM_BYTES)
-                    .map(|value| value.trim() == name)
-                    .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
+    let candidates = match named_process_candidates(name) {
+        Ok(candidates) => candidates,
+        Err(_) => return "unknown".to_string(),
+    };
+    let mut pids = Vec::new();
+    for pid in candidates {
+        let proc_dir = Path::new("/proc").join(&pid);
+        match proc_pid_is_live(&proc_dir) {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(_) => return "unknown".to_string(),
+        }
+        match read_live_proc_text(&proc_dir, "comm", MAX_PROC_COMM_BYTES) {
+            Ok(Some(value)) if value.trim() == name => pids.push(pid),
+            Ok(_) => {}
+            Err(_) => return "unknown".to_string(),
+        }
+    }
     if pids.is_empty() {
         "stopped".to_string()
     } else {
@@ -142,31 +214,21 @@ pub(crate) fn owned_singbox_pids(app: &App) -> Result<Vec<String>, String> {
     let expected_binary_path = app.moddir.join("bin/sing-box");
     let expected_config = app.moddir.join(".config/sing-box/config.json");
     let expected_workdir = app.moddir.join(".config/sing-box");
-    let expected_binary = Some(fs::canonicalize(&expected_binary_path).map_err(|err| {
+    let expected_binary = fs::canonicalize(&expected_binary_path).map_err(|err| {
         format!(
-            "cannot identify managed sing-box binary {}: {err}",
+            "cannot bind sing-box ownership to {}: {err}",
             expected_binary_path.display()
         )
-    })?);
+    })?;
     let mut pids = Vec::new();
     for pid in candidates {
         let proc_dir = Path::new("/proc").join(&pid);
-        let stat = match read_proc_text_bounded(&proc_dir.join("stat"), MAX_PROC_STAT_BYTES) {
-            Ok(stat) => stat,
-            Err(_) if !proc_dir.exists() => continue,
-            Err(err) => return Err(format!("cannot determine sing-box PID {pid} state: {err}")),
-        };
-        if !proc_pid_stat_is_live(&stat) {
-            continue;
+        match proc_pid_is_live(&proc_dir)? {
+            true => {}
+            false => continue,
         }
-        let comm = match read_proc_text_bounded(&proc_dir.join("comm"), MAX_PROC_COMM_BYTES) {
-            Ok(comm) => comm,
-            Err(_) if !proc_dir.exists() => continue,
-            Err(err) => {
-                return Err(format!(
-                    "cannot determine sing-box PID {pid} identity: {err}"
-                ));
-            }
+        let Some(comm) = read_live_proc_text(&proc_dir, "comm", MAX_PROC_COMM_BYTES)? else {
+            continue;
         };
         if comm.trim() != "sing-box" {
             continue;
@@ -174,33 +236,44 @@ pub(crate) fn owned_singbox_pids(app: &App) -> Result<Vec<String>, String> {
         let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
             Ok(argv) => argv,
             Err(_) if !proc_dir.exists() => continue,
-            Err(err) => {
+            Err(err) => return Err(format!("read sing-box candidate {pid} cmdline: {err}")),
+        };
+        if !singbox_commandline_owned(&argv, &expected_binary, &expected_config, &expected_workdir)
+        {
+            continue;
+        }
+        match singbox_executable_owned(&proc_dir, &expected_binary) {
+            Some(true) => pids.push(pid),
+            Some(false) if singbox_script_arg_owned(&argv, &expected_binary) => pids.push(pid),
+            Some(false) => {}
+            None if singbox_script_arg_owned(&argv, &expected_binary) => pids.push(pid),
+            None => {
                 return Err(format!(
-                    "cannot determine sing-box PID {pid} arguments: {err}"
+                    "cannot verify executable identity for live sing-box candidate {pid}"
                 ));
             }
-        };
-        let commandline_owned =
-            singbox_commandline_owned(&argv, &expected_binary, &expected_config, &expected_workdir);
-        let executable_owned = singbox_executable_owned(&proc_dir, &expected_binary);
-        let argv0_fallback = executable_owned.is_none()
-            && argv.first().map(String::as_str) == Some("sing-box")
-            && expected_binary.is_some();
-        if commandline_owned
-            && (executable_owned == Some(true)
-                || singbox_script_arg_owned(&argv, &expected_binary)
-                || argv0_fallback)
-        {
-            pids.push(pid);
         }
     }
     Ok(pids)
 }
 
-fn proc_pid_is_live(proc_dir: &Path) -> bool {
-    read_proc_text_bounded(&proc_dir.join("stat"), MAX_PROC_STAT_BYTES)
-        .map(|stat| proc_pid_stat_is_live(&stat))
-        .unwrap_or(false)
+fn read_live_proc_text(
+    proc_dir: &Path,
+    file_name: &str,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
+    match read_proc_text_bounded(&proc_dir.join(file_name), max_bytes) {
+        Ok(value) => Ok(Some(value)),
+        Err(_) if !proc_dir.exists() => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+fn proc_pid_is_live(proc_dir: &Path) -> Result<bool, String> {
+    let Some(stat) = read_live_proc_text(proc_dir, "stat", MAX_PROC_STAT_BYTES)? else {
+        return Ok(false);
+    };
+    Ok(proc_pid_stat_is_live(&stat))
 }
 
 fn proc_pid_stat_is_live(stat: &str) -> bool {
@@ -209,10 +282,7 @@ fn proc_pid_stat_is_live(stat: &str) -> bool {
         .is_some_and(|state| state != 'Z')
 }
 
-fn singbox_executable_owned(proc_dir: &Path, expected_binary: &Option<PathBuf>) -> Option<bool> {
-    let Some(expected_binary) = expected_binary else {
-        return Some(false);
-    };
+fn singbox_executable_owned(proc_dir: &Path, expected_binary: &Path) -> Option<bool> {
     let Ok(executable) = fs::read_link(proc_dir.join("exe")) else {
         // Script-backed host fixtures expose the module script in argv while
         // /proc/exe points at the interpreter. On Android some SELinux
@@ -222,34 +292,40 @@ fn singbox_executable_owned(proc_dir: &Path, expected_binary: &Option<PathBuf>) 
     };
     Some(
         fs::canonicalize(executable)
-            .map(|path| path == *expected_binary)
+            .map(|path| path == expected_binary)
             .unwrap_or(false),
     )
 }
 
-fn singbox_script_arg_owned(argv: &[String], expected_binary: &Option<PathBuf>) -> bool {
-    let Some(expected_binary) = expected_binary else {
-        return false;
-    };
+fn singbox_script_arg_owned(argv: &[String], expected_binary: &Path) -> bool {
     let expected_binary = expected_binary.to_string_lossy();
     argv.iter().any(|arg| arg == expected_binary.as_ref())
 }
 
 fn singbox_commandline_owned(
     argv: &[String],
-    expected_binary: &Option<PathBuf>,
+    expected_binary: &Path,
     expected_config: &Path,
     expected_workdir: &Path,
 ) -> bool {
-    let Some(run_index) = argv.iter().position(|arg| arg == "run") else {
+    let expected_binary = expected_binary.to_string_lossy();
+    let run_index = if argv
+        .first()
+        .is_some_and(|arg| arg == expected_binary.as_ref() || arg == "sing-box")
+    {
+        1
+    } else if argv.len() >= 2
+        && matches!(
+            argv[0].rsplit('/').next(),
+            Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
+        )
+        && argv[1] == expected_binary.as_ref()
+    {
+        2
+    } else {
         return false;
     };
-    let expected_binary = expected_binary
-        .as_ref()
-        .map(|path| path.to_string_lossy().into_owned());
-    let binary_arg = expected_binary.as_deref();
-    let script_arg_matches = binary_arg.is_some_and(|binary| argv.iter().any(|arg| arg == binary));
-    if !script_arg_matches && !argv.first().is_some_and(|arg| arg == "sing-box") {
+    if argv.get(run_index).map(String::as_str) != Some("run") {
         return false;
     }
     let mut config = None;
@@ -269,7 +345,7 @@ fn singbox_commandline_owned(
                 workdir = argv.get(index + 1).map(String::as_str);
                 index += 1;
             }
-            _ => {}
+            _ => return false,
         }
         index += 1;
     }
@@ -495,7 +571,10 @@ fn run_process_group(
         command.pre_exec(move || {
             #[cfg(any(target_os = "android", target_os = "linux"))]
             {
-                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) == -1 {
+                // Freeze the session leader on abrupt CLI death. The bound
+                // watchdog signals the whole group and resumes the leader so
+                // rollback traps run without letting descendants escape.
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGSTOP) == -1 {
                     return Err(io::Error::last_os_error());
                 }
                 if libc::getppid() != parent_pid {
@@ -535,25 +614,87 @@ fn run_process_group(
             return Ok(status);
         }
         if Instant::now() >= deadline {
-            let group = -(child.id() as i32);
-            unsafe {
-                libc::kill(group, libc::SIGTERM);
+            if !terminate_timed_out_child(
+                &mut child,
+                Duration::from_millis(100),
+                Duration::from_millis(100),
+            ) {
+                defer_child_reap(child);
             }
-            thread::sleep(Duration::from_millis(100));
-            unsafe {
-                libc::kill(group, libc::SIGKILL);
-            }
-            let _ = child.wait();
             return Err(format!("timed out after {}ms", timeout.as_millis()));
         }
         thread::sleep(Duration::from_millis(40));
     }
 }
 
+trait TimedChildWait {
+    fn signal_group(&mut self, signal: libc::c_int);
+    fn try_reap(&mut self) -> Result<bool, io::Error>;
+}
+
+impl TimedChildWait for std::process::Child {
+    fn signal_group(&mut self, signal: libc::c_int) {
+        unsafe {
+            libc::kill(-(self.id() as libc::pid_t), signal);
+        }
+    }
+
+    fn try_reap(&mut self) -> Result<bool, io::Error> {
+        self.try_wait().map(|status| status.is_some())
+    }
+}
+
+fn terminate_timed_out_child<W: TimedChildWait>(
+    child: &mut W,
+    term_grace: Duration,
+    kill_grace: Duration,
+) -> bool {
+    child.signal_group(libc::SIGTERM);
+    let term_deadline = Instant::now() + term_grace;
+    loop {
+        match child.try_reap() {
+            Ok(true) => {
+                child.signal_group(libc::SIGKILL);
+                return true;
+            }
+            Err(_) => return true,
+            Ok(false) if Instant::now() >= term_deadline => break,
+            Ok(false) => thread::sleep(Duration::from_millis(10)),
+        }
+    }
+    child.signal_group(libc::SIGKILL);
+    let kill_deadline = Instant::now() + kill_grace;
+    loop {
+        match child.try_reap() {
+            Ok(true) | Err(_) => return true,
+            Ok(false) if Instant::now() >= kill_deadline => return false,
+            Ok(false) => thread::sleep(Duration::from_millis(10)),
+        }
+    }
+}
+
+fn defer_child_reap(mut child: std::process::Child) {
+    let _ = thread::Builder::new()
+        .name("magicnet-process-reaper".to_string())
+        .spawn(move || loop {
+            match child.try_wait() {
+                Ok(Some(_)) | Err(_) => break,
+                Ok(None) => thread::sleep(Duration::from_millis(250)),
+            }
+        });
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
-fn watchdog_worker_is_live(pid: libc::pid_t) -> bool {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WatchdogWorkerIdentity {
+    starttime: u64,
+    live: bool,
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn watchdog_worker_identity(pid: libc::pid_t) -> Option<WatchdogWorkerIdentity> {
     if pid <= 0 {
-        return false;
+        return None;
     }
 
     let mut path = [0_u8; 64];
@@ -586,7 +727,7 @@ fn watchdog_worker_is_live(pid: libc::pid_t) -> bool {
         )
     };
     if stat_fd == -1 {
-        return false;
+        return None;
     }
     let mut stat = [0_u8; 512];
     let stat_len = unsafe {
@@ -598,19 +739,176 @@ fn watchdog_worker_is_live(pid: libc::pid_t) -> bool {
     };
     unsafe { libc::close(stat_fd) };
     if stat_len < 4 {
-        return false;
+        return None;
+    }
+    let stat = &stat[..stat_len as usize];
+    let close = stat.windows(2).rposition(|pair| pair == b") ")?;
+    let fields = &stat[close + 2..];
+    let state = *fields.first()?;
+    let mut field_index = 0_usize;
+    let mut index = 0_usize;
+    let mut starttime = None;
+    while index < fields.len() {
+        while index < fields.len() && fields[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        let start = index;
+        while index < fields.len() && !fields[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if start == index {
+            break;
+        }
+        if field_index == 19 {
+            let mut value = 0_u64;
+            for byte in &fields[start..index] {
+                if !byte.is_ascii_digit() {
+                    return None;
+                }
+                value = value.checked_mul(10)?.checked_add((byte - b'0') as u64)?;
+            }
+            starttime = Some(value);
+            break;
+        }
+        field_index += 1;
+    }
+    Some(WatchdogWorkerIdentity {
+        starttime: starttime?,
+        live: !matches!(state, b'Z' | b'X' | b'x'),
+    })
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn watchdog_worker_is_live(pid: libc::pid_t) -> bool {
+    watchdog_worker_identity(pid).is_some_and(|identity| identity.live)
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+unsafe fn watchdog_close_inherited_fds(keep_a: libc::c_int, keep_b: libc::c_int) {
+    let (low, high) = if keep_a <= keep_b {
+        (keep_a, keep_b)
+    } else {
+        (keep_b, keep_a)
+    };
+    let close_range = |first: libc::c_uint, last: libc::c_uint| {
+        if first > last {
+            0
+        } else {
+            libc::syscall(libc::SYS_close_range, first, last, 0) as libc::c_int
+        }
+    };
+    let closed = close_range(0, low.saturating_sub(1) as libc::c_uint) == 0
+        && close_range(
+            (low + 1) as libc::c_uint,
+            high.saturating_sub(1) as libc::c_uint,
+        ) == 0
+        && close_range((high + 1) as libc::c_uint, libc::c_uint::MAX) == 0;
+    if closed {
+        return;
     }
 
-    let mut index = stat_len as usize - 3;
-    loop {
-        if stat[index] == b')' && stat[index + 1] == b' ' {
-            return !matches!(stat[index + 2], b'Z' | b'X' | b'x');
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    let max_fd = if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) == 0 {
+        limit.rlim_cur.min(libc::c_int::MAX as libc::rlim_t) as libc::c_int
+    } else {
+        65_536
+    };
+    for fd in 0..max_fd {
+        if fd != keep_a && fd != keep_b {
+            libc::close(fd);
         }
-        if index == 0 {
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+unsafe fn watchdog_pidfd_open(pid: libc::pid_t) -> libc::c_int {
+    libc::syscall(libc::SYS_pidfd_open, pid, 0) as libc::c_int
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+unsafe fn watchdog_pidfd_signal(pidfd: libc::c_int, signal: libc::c_int) -> bool {
+    libc::syscall(
+        libc::SYS_pidfd_send_signal,
+        pidfd,
+        signal,
+        std::ptr::null::<libc::siginfo_t>(),
+        0,
+    ) == 0
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+unsafe fn watchdog_signal_bound_group(
+    pid: libc::pid_t,
+    pidfd: libc::c_int,
+    expected_starttime: Option<u64>,
+    signal: libc::c_int,
+) -> bool {
+    if pidfd >= 0 {
+        // Pin the original leader while the process-group API still has to
+        // address a numeric PGID. A recycled PID can never receive the signal.
+        if !watchdog_pidfd_signal(pidfd, libc::SIGSTOP) {
             return false;
         }
-        index -= 1;
+        libc::kill(-pid, signal);
+        if signal == libc::SIGKILL {
+            watchdog_pidfd_signal(pidfd, libc::SIGKILL);
+        } else {
+            watchdog_pidfd_signal(pidfd, libc::SIGCONT);
+        }
+        return true;
     }
+
+    let Some(expected_starttime) = expected_starttime else {
+        return false;
+    };
+    if watchdog_worker_identity(pid)
+        .is_none_or(|identity| !identity.live || identity.starttime != expected_starttime)
+    {
+        return false;
+    }
+    libc::kill(pid, libc::SIGSTOP);
+    if watchdog_worker_identity(pid)
+        .is_none_or(|identity| !identity.live || identity.starttime != expected_starttime)
+    {
+        if watchdog_worker_identity(pid)
+            .is_some_and(|identity| identity.starttime == expected_starttime)
+        {
+            libc::kill(pid, libc::SIGCONT);
+        }
+        return false;
+    }
+    libc::kill(-pid, signal);
+    if signal != libc::SIGKILL {
+        libc::kill(pid, libc::SIGCONT);
+    }
+    true
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+unsafe fn watchdog_resume_bound_worker(
+    pid: libc::pid_t,
+    pidfd: libc::c_int,
+    expected_starttime: Option<u64>,
+) {
+    if pidfd >= 0 {
+        watchdog_pidfd_signal(pidfd, libc::SIGCONT);
+    } else if expected_starttime.is_some_and(|expected| {
+        watchdog_worker_identity(pid).is_some_and(|identity| identity.starttime == expected)
+    }) {
+        libc::kill(pid, libc::SIGCONT);
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+unsafe fn watchdog_kill_bound_group(
+    pid: libc::pid_t,
+    pidfd: libc::c_int,
+    expected_starttime: Option<u64>,
+) -> bool {
+    watchdog_signal_bound_group(pid, pidfd, expected_starttime, libc::SIGKILL)
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -657,14 +955,11 @@ impl ParentDeathWatchdog {
         }
         if watchdog_pid == 0 {
             // SAFETY: this post-fork child uses stack values and libc calls,
-            // then exits via _exit. The worker publishes its process-group ID
-            // before exec. After that, EOF on the control pipe means the CLI
-            // died without disarming us. Let the TERM rollback finish (up to
-            // the same bounded command timeout), then reap any descendants
-            // still left in the independent process group.
+            // then exits via _exit. Close every inherited descriptor except
+            // the two control reads immediately: otherwise a killed CLI can
+            // leave stdout/stderr consumers waiting for EOF on this watchdog.
             unsafe {
-                libc::close(control[1]);
-                libc::close(worker_pid_pipe[1]);
+                watchdog_close_inherited_fds(control[0], worker_pid_pipe[0]);
                 let mut worker_pid: libc::pid_t = 0;
                 let worker_pid_size = std::mem::size_of::<libc::pid_t>();
                 let mut worker_pid_read = 0_usize;
@@ -684,6 +979,8 @@ impl ParentDeathWatchdog {
                     worker_pid_read += read_result as usize;
                 }
                 libc::close(worker_pid_pipe[0]);
+                let worker_identity = watchdog_worker_identity(worker_pid);
+                let worker_pidfd = watchdog_pidfd_open(worker_pid);
 
                 let mut marker = 0_u8;
                 let read_result = libc::read(
@@ -692,6 +989,15 @@ impl ParentDeathWatchdog {
                     1,
                 );
                 if read_result == 0 {
+                    // PR_SET_PDEATHSIG froze the leader. TERM the entire
+                    // identity-bound group, then resume the leader so its
+                    // rollback trap can complete during the grace window.
+                    watchdog_signal_bound_group(
+                        worker_pid,
+                        worker_pidfd,
+                        worker_identity.map(|identity| identity.starttime),
+                        libc::SIGTERM,
+                    );
                     let poll_interval = libc::timespec {
                         tv_sec: 0,
                         tv_nsec: 100_000_000,
@@ -699,10 +1005,27 @@ impl ParentDeathWatchdog {
                     let max_polls = timeout.as_millis().saturating_add(99) / 100;
                     let mut polls = 0_u128;
                     while polls < max_polls && watchdog_worker_is_live(worker_pid) {
+                        // PR_SET_PDEATHSIG can be delivered just after the
+                        // first SIGCONT; reassert resume through the bound
+                        // identity until TERM rollback starts or it exits.
+                        watchdog_resume_bound_worker(
+                            worker_pid,
+                            worker_pidfd,
+                            worker_identity.map(|identity| identity.starttime),
+                        );
                         libc::nanosleep(&poll_interval, std::ptr::null_mut());
                         polls += 1;
                     }
-                    libc::kill(-worker_pid, libc::SIGKILL);
+                    if watchdog_worker_is_live(worker_pid) {
+                        watchdog_kill_bound_group(
+                            worker_pid,
+                            worker_pidfd,
+                            worker_identity.map(|identity| identity.starttime),
+                        );
+                    }
+                }
+                if worker_pidfd >= 0 {
+                    libc::close(worker_pidfd);
                 }
                 libc::close(control[0]);
                 libc::_exit(0);
@@ -738,14 +1061,7 @@ impl Drop for ParentDeathWatchdog {
         // A normal CLI path disarms the watcher before closing the pipe. If
         // the CLI is killed, Drop cannot run and pipe EOF triggers cleanup.
         unsafe {
-            libc::kill(self.pid, libc::SIGTERM);
-            loop {
-                if libc::waitpid(self.pid, std::ptr::null_mut(), 0) != -1
-                    || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted
-                {
-                    break;
-                }
-            }
+            crate::utils::kill_and_reap(self.pid);
             libc::close(self.control_fd);
             if self.worker_pid_fd != -1 {
                 libc::close(self.worker_pid_fd);
@@ -787,7 +1103,7 @@ mod path_tests {
 
     #[test]
     fn singbox_ownership_requires_module_binary_and_exact_runtime_paths() {
-        let binary = Some(PathBuf::from("/module/bin/sing-box"));
+        let binary = PathBuf::from("/module/bin/sing-box");
         let config = Path::new("/module/.config/sing-box/config.json");
         let workdir = Path::new("/module/.config/sing-box");
         let owned = vec![
@@ -829,6 +1145,20 @@ mod path_tests {
         duplicate_workdir.extend(["-D".to_string(), workdir.display().to_string()]);
         assert!(!singbox_commandline_owned(
             &duplicate_workdir,
+            &binary,
+            config,
+            workdir
+        ));
+
+        let mut prefix_decoy = vec![
+            "/tmp/decoy".to_string(),
+            "-c".to_string(),
+            "sleep 30; :".to_string(),
+            "ignored".to_string(),
+        ];
+        prefix_decoy.extend(owned);
+        assert!(!singbox_commandline_owned(
+            &prefix_decoy,
             &binary,
             config,
             workdir
@@ -875,8 +1205,8 @@ mod path_tests {
 mod process_group_tests {
     use super::{
         clear_unsafe_subscription_environment, command_timeout_secs, run_magicnet_function,
-        run_process_group, trusted_shell, App, DEFAULT_COMMAND_TIMEOUT_SECS,
-        MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
+        run_process_group, terminate_timed_out_child, trusted_shell, App, TimedChildWait,
+        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
     };
     use std::fs;
     use std::process::Command;
@@ -909,6 +1239,51 @@ mod process_group_tests {
                 "unexpected timeout parse for {value:?}"
             );
         }
+    }
+
+    struct NeverReap {
+        signals: Vec<libc::c_int>,
+    }
+
+    impl TimedChildWait for NeverReap {
+        fn signal_group(&mut self, signal: libc::c_int) {
+            self.signals.push(signal);
+        }
+
+        fn try_reap(&mut self) -> Result<bool, std::io::Error> {
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn timeout_cleanup_has_a_fixed_grace_when_sigkill_cannot_reap() {
+        let mut child = NeverReap {
+            signals: Vec::new(),
+        };
+        let started = std::time::Instant::now();
+        assert!(!terminate_timed_out_child(
+            &mut child,
+            Duration::from_millis(30),
+            Duration::from_millis(30),
+        ));
+        assert!(started.elapsed() < Duration::from_millis(250));
+        assert_eq!(child.signals, vec![libc::SIGTERM, libc::SIGKILL]);
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[test]
+    fn watchdog_fallback_refuses_a_reused_pid_identity() -> Result<(), Box<dyn std::error::Error>> {
+        let mut child = Command::new("sleep").arg("30").spawn()?;
+        let pid = child.id() as libc::pid_t;
+        let identity = super::watchdog_worker_identity(pid).ok_or("missing child identity")?;
+        let killed = unsafe {
+            super::watchdog_kill_bound_group(pid, -1, Some(identity.starttime.saturating_add(1)))
+        };
+        assert!(!killed);
+        assert_eq!(unsafe { libc::kill(pid, 0) }, 0);
+        child.kill()?;
+        child.wait()?;
+        Ok(())
     }
 
     #[test]

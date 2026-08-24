@@ -79,19 +79,27 @@ pub(crate) use utils::{
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    let result = if args.first().map(String::as_str) == Some("__proc-cmdline") {
-        utils::proc_cmdline_command(&args[1..])
-    } else if args.first().map(String::as_str) == Some("__proc-comm") {
-        utils::proc_comm_command(&args[1..])
-    } else if args.first().map(String::as_str) == Some("__proc-stat") {
-        utils::proc_stat_command(&args[1..])
-    } else if args.first().map(String::as_str) == Some("__proc-pids") {
-        process::proc_named_pids_command(&args[1..])
-    } else {
-        let app = App::from_env();
-        dispatch(&app, &args)
+    let internal = match args.first().map(String::as_str) {
+        Some("__proc-cmdline") => Some(utils::proc_cmdline_command(&args[1..])),
+        Some("__proc-comm") => Some(utils::proc_comm_command(&args[1..])),
+        Some("__proc-stat") => Some(utils::proc_stat_command(&args[1..])),
+        Some("__proc-pids") => Some(process::proc_named_pids_command(&args[1..])),
+        Some("__proc-script-pids") => Some(process::proc_script_pids_command(&args[1..])),
+        _ => None,
     };
-    let code = match result {
+    if let Some(result) = internal {
+        let code = match result {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("[error] {err}");
+                2
+            }
+        };
+        std::process::exit(code);
+    }
+
+    let app = App::from_env();
+    let code = match dispatch(&app, &args) {
         Ok(()) => 0,
         Err(err) => {
             eprintln!("[error] {err}");

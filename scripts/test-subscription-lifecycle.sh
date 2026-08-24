@@ -67,6 +67,30 @@ magicnet_proc_reader_test_hook() {
   done
 }
 
+# Test-only scan hook. Production uses the bounded Rust scanner.
+magicnet_proc_script_pids_test_hook() {
+  local proc_root="$1" expected="$2" pid="$3" first count
+  if test -n "${SCAN_GREP_COUNT_FILE:-}"; then
+    first=$(printf '%s\n' "$proc_root"/[0-9]* | sed -n '1p')
+    first=${first##*/}
+    if test "$pid" = "$first"; then
+      count=$(cat "$SCAN_GREP_COUNT_FILE" 2>/dev/null || printf '0\n')
+      count=$((count + 1))
+      printf '%s\n' "$count" >"$SCAN_GREP_COUNT_FILE"
+      case "${SCAN_GREP_MODE:-}" in
+        persistent) return 2 ;;
+        transient) test "$count" -ne 1 || return 2 ;;
+        two-transient) test "$count" -gt 2 || return 2 ;;
+      esac
+    fi
+  fi
+  # Empty cmdlines belong to kernel threads and are definite non-matches for
+  # this script scan, not ownership read failures.
+  test -s "$proc_root/$pid/cmdline" || return 1
+  MAGICNET_SUB_REFRESH_PROC_ROOT="$proc_root" \
+    magicnet_subscription_refresh_proc_command_matches "$pid"
+}
+
 printf '#!/system/bin/sh\n' >"$MODDIR/cli"
 chmod +x "$MODDIR/cli"
 
@@ -562,7 +586,7 @@ prefiltered_pids="$({
     magicnet_subscription_refresh_loop_pids
 })"
 test "$prefiltered_pids" = 920121
-assert_file "$tr_count_file" 2
+assert_file "$tr_count_file" 123
 if MAGICNET_SUB_REFRESH_PROC_ROOT="$fake_proc" \
   magicnet_subscription_refresh_proc_command_matches 920120; then
   echo 'trustworthy argv mismatch unexpectedly matched' >&2
@@ -603,7 +627,7 @@ transient_scan_pids="$({
 })"
 test "$transient_scan_pids" = 920121
 assert_file "$scan_grep_count_file" 2
-assert_file "$tr_count_file" 2
+assert_file "$tr_count_file" 123
 printf '0\n' >"$scan_grep_count_file"
 printf '0\n' >"$tr_count_file"
 two_transient_scan_pids="$({
@@ -616,7 +640,7 @@ two_transient_scan_pids="$({
 })"
 test "$two_transient_scan_pids" = 920121
 assert_file "$scan_grep_count_file" 3
-assert_file "$tr_count_file" 2
+assert_file "$tr_count_file" 123
 printf '0\n' >"$scan_grep_count_file"
 if PATH="$scan_grep_bin:$PATH" \
   SCAN_GREP_COUNT_FILE="$scan_grep_count_file" \
@@ -644,7 +668,7 @@ scan_error_state="$(
   MAGICNET_SUB_REFRESH_PROC_ROOT="$scan_error_root" \
     magicnet_subscription_refresh_owner_state 2>/dev/null || true
 )"
-test "$scan_error_state" = stale
+test "$scan_error_state" = indeterminate
 mkdir -p "$(magicnet_subscription_schedule_file | sed 's@/[^/]*$@@')"
 printf '24\n' >"$(magicnet_subscription_schedule_file)"
 if MAGICNET_SUB_REFRESH_PROC_ROOT="$scan_error_root" magicnet_subscription_refresh_start; then
@@ -675,7 +699,7 @@ grep -q '^schedule_interval_hours=off$' <<<"$off_schedule_output"
 grep -q '^schedule_enabled=0$' <<<"$off_schedule_output"
 grep -q '^schedule_running=0$' <<<"$off_schedule_output"
 grep -q '^schedule_owner=none$' <<<"$off_schedule_output"
-assert_file "$tr_count_file" 0
+assert_file "$tr_count_file" 1
 disappearing_grep_bin="$fixture/disappearing-grep-bin"
 mkdir -p "$disappearing_grep_bin"
 cat >"$disappearing_grep_bin/grep" <<'EOF'
@@ -683,12 +707,17 @@ cat >"$disappearing_grep_bin/grep" <<'EOF'
 printf '%s\n' "$DISAPPEARED_CMDLINE"
 EOF
 chmod +x "$disappearing_grep_bin/grep"
-disappeared_output="$({
+if disappeared_output="$({
   PATH="$disappearing_grep_bin:$PATH" \
     DISAPPEARED_CMDLINE="$no_candidate_proc/930001/cmdline" \
     MAGICNET_SUB_REFRESH_PROC_ROOT="$no_candidate_proc" \
     magicnet_subscription_refresh_loop_pids
-})"
+})"; then
+  echo 'no-candidate scan unexpectedly reported a result' >&2
+  exit 1
+else
+  test "$?" -eq 1
+fi
 test -z "$disappeared_output"
 if MAGICNET_SUB_REFRESH_PROC_ROOT="$no_candidate_proc" \
   magicnet_subscription_refresh_proc_command_matches 999999 2>/dev/null; then
@@ -723,7 +752,7 @@ transient_exact_pids="$({
     magicnet_subscription_refresh_loop_pids
 })"
 test "$transient_exact_pids" = 930002
-assert_file "$exact_read_count_file" 2
+assert_file "$exact_read_count_file" 3
 printf '0\n' >"$exact_read_count_file"
 if PATH="$exact_read_error_bin:$PATH" \
   EXACT_READ_COUNT_FILE="$exact_read_count_file" \
@@ -838,15 +867,21 @@ EOF
 chmod +x "$orphan_loop"
 sh "$orphan_loop" &
 orphan_pid=$!
+sleep 0.1
+orphan_proc="$fixture/orphan-proc"
+write_fake_cmdline "$orphan_pid" /system/bin/sh "$orphan_loop"
+mv "$fake_proc/$orphan_pid" "$orphan_proc"
+mkdir -p "$orphan_proc/$orphan_pid"
+mv "$orphan_proc/cmdline" "$orphan_proc/$orphan_pid/cmdline"
 rm -f "$(magicnet_subscription_refresh_owner_file)" "$(magicnet_subscription_refresh_pid_file)"
 printf '24\n' >"$(magicnet_subscription_schedule_file)"
-test "$(magicnet_subscription_refresh_owner_state 2>/dev/null || true)" = orphan
-if magicnet_subscription_refresh_start; then
+test "$(MAGICNET_SUB_REFRESH_PROC_ROOT="$orphan_proc" magicnet_subscription_refresh_owner_state 2>/dev/null || true)" = orphan
+if MAGICNET_SUB_REFRESH_PROC_ROOT="$orphan_proc" magicnet_subscription_refresh_start; then
   echo 'orphan refresh loop unexpectedly allowed a duplicate' >&2
   exit 1
 fi
 kill -0 "$orphan_pid"
-test "$(magicnet_subscription_refresh_loop_pids)" = "$orphan_pid"
+test "$(MAGICNET_SUB_REFRESH_PROC_ROOT="$orphan_proc" magicnet_subscription_refresh_loop_pids)" = "$orphan_pid"
 test ! -e "$(magicnet_subscription_refresh_owner_file)"
 kill "$orphan_pid"
 wait "$orphan_pid" 2>/dev/null || true
@@ -854,11 +889,19 @@ orphan_pid=
 rm -f "$orphan_loop"
 printf 'off\n' >"$(magicnet_subscription_schedule_file)"
 
-# Stopping is a safe, idempotent no-op without a valid owned record.
+# Stopping is idempotent only after a trustworthy empty scan. Malformed owner
+# state is indeterminate and must be retained.
+empty_stop_proc="$fixture/empty-stop-proc"
+mkdir -p "$empty_stop_proc"
 rm -f "$(magicnet_subscription_refresh_owner_file)"
-magicnet_subscription_refresh_stop
+MAGICNET_SUB_REFRESH_PROC_ROOT="$empty_stop_proc" magicnet_subscription_refresh_stop
 printf 'malformed-owner\n' >"$(magicnet_subscription_refresh_owner_file)"
-magicnet_subscription_refresh_stop
+if MAGICNET_SUB_REFRESH_PROC_ROOT="$empty_stop_proc" magicnet_subscription_refresh_stop; then
+  echo 'malformed owner unexpectedly reported stopped' >&2
+  exit 1
+else
+  test "$?" -eq 2
+fi
 assert_file "$(magicnet_subscription_refresh_owner_file)" malformed-owner
 rm -f "$(magicnet_subscription_refresh_owner_file)"
 
@@ -884,7 +927,12 @@ printf '%s:%s:%s\n' "$stale_pid" "$((stale_start + 1))" subscription-refresh-v1 
   >"$(magicnet_subscription_refresh_owner_file)"
 printf '%s\n' "$stale_pid" >"$(magicnet_subscription_refresh_pid_file)"
 stale_record="${stale_pid}:$((stale_start + 1)):subscription-refresh-v1"
-magicnet_subscription_refresh_stop
+if magicnet_subscription_refresh_stop; then
+  echo 'stale refresh owner unexpectedly reported stopped' >&2
+  exit 1
+else
+  test "$?" -eq 1
+fi
 kill -0 "$stale_pid"
 assert_file "$(magicnet_subscription_refresh_owner_file)" "$stale_record"
 assert_file "$(magicnet_subscription_refresh_pid_file)" "$stale_pid"
@@ -908,7 +956,12 @@ printf '%s:%s:%s\n' "$mismatch_pid" "$mismatch_start" subscription-refresh-v1 \
   >"$(magicnet_subscription_refresh_owner_file)"
 printf '%s\n' "$mismatch_pid" >"$(magicnet_subscription_refresh_pid_file)"
 mismatch_record="${mismatch_pid}:${mismatch_start}:subscription-refresh-v1"
-magicnet_subscription_refresh_stop
+if magicnet_subscription_refresh_stop; then
+  echo 'mismatched refresh owner unexpectedly reported stopped' >&2
+  exit 1
+else
+  test "$?" -eq 1
+fi
 kill -0 "$mismatch_pid"
 assert_file "$(magicnet_subscription_refresh_owner_file)" "$mismatch_record"
 assert_file "$(magicnet_subscription_refresh_pid_file)" "$mismatch_pid"

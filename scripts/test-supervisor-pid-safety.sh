@@ -260,4 +260,50 @@ kill "$orphan_decoy_pid" 2>/dev/null || true
 wait "$orphan_decoy_pid" 2>/dev/null || true
 orphan_decoy_pid=''
 
+# A full argv prefix decoy must never match or be killed by orphan cleanup.
+PYTHON="$(command -v python3)" CLI="$MODDIR/cli" \
+  python3 -c 'import os; os.execv(os.environ["PYTHON"], ["decoy", "-c", "import time; time.sleep(60)", "ignored", os.environ["CLI"], "config", "apply"])' &
+orphan_decoy_pid=$!
+sleep 0.1
+magicnet_supervisor_kill_orphans fswatch
+kill -0 "$orphan_decoy_pid"
+kill "$orphan_decoy_pid" 2>/dev/null || true
+wait "$orphan_decoy_pid" 2>/dev/null || true
+orphan_decoy_pid=''
+
+# Reader indeterminacy must retain the owner, report failure for status/stop,
+# and refuse a duplicate start.
+launch_log="$fixture/wifi-launches"
+cat >"$MODDIR/cli" <<SH
+#!/bin/sh
+printf '%s\\n' "\$*" >>"$launch_log"
+sleep 60
+SH
+chmod 700 "$MODDIR/cli"
+"$MODDIR/cli" wifi watch &
+kernel_pid=$!
+printf '%s\n' "$kernel_pid" >"$(magicnet_wifi_policy_pid_file)"
+sleep 0.1
+saved_proc_reader=$(declare -f magicnet_proc_reader_test_hook)
+magicnet_proc_reader_test_hook() { return 2; }
+mkdir -p "$MODDIR/.config/magicnet"
+printf '%s\n' 'MAGICNET_WIFI_POLICY_ENABLED=1' >"$MODDIR/.config/magicnet/wifi-policy.conf"
+magicnet_module_disabled() { return 1; }
+for operation in magicnet_wifi_policy_status magicnet_wifi_policy_stop magicnet_wifi_policy_start; do
+  if "$operation" >/dev/null 2>&1; then
+    printf '%s\n' "$operation unexpectedly succeeded with an indeterminate reader" >&2
+    exit 1
+  else
+    test "$?" -eq 2
+  fi
+done
+test "$(sed -n '1p' "$(magicnet_wifi_policy_pid_file)")" = "$kernel_pid"
+test "$(wc -l <"$launch_log")" -eq 1
+kill -0 "$kernel_pid"
+eval "$saved_proc_reader"
+kill "$kernel_pid" 2>/dev/null || true
+wait "$kernel_pid" 2>/dev/null || true
+kernel_pid=''
+rm -f "$(magicnet_wifi_policy_pid_file)"
+
 printf '%s\n' 'supervisor pid safety test passed'

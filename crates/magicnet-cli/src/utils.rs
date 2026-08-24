@@ -22,6 +22,8 @@ const PROC_FILE_READ_TIMEOUT: Duration = Duration::from_millis(500);
 const PROC_READER_OVERSIZE_EXIT: i32 = 65;
 const PROC_READER_IO_EXIT: i32 = 66;
 const PROC_READER_PARENT_EXIT: i32 = 67;
+const PROCESS_REAP_GRACE: Duration = Duration::from_millis(100);
+const PROCESS_REAP_POLL: Duration = Duration::from_millis(10);
 
 fn close_raw_fd(fd: RawFd) {
     if fd >= 0 {
@@ -41,18 +43,80 @@ fn child_errno() -> libc::c_int {
     unsafe { *libc::__errno_location() }
 }
 
-fn kill_and_reap(pid: libc::pid_t) {
-    unsafe {
-        libc::kill(pid, libc::SIGKILL);
+trait KillAndWait {
+    fn kill(&mut self);
+    fn try_reap(&mut self) -> Result<bool, io::Error>;
+}
+
+struct LibcKillAndWait {
+    pid: libc::pid_t,
+}
+
+impl KillAndWait for LibcKillAndWait {
+    fn kill(&mut self) {
+        unsafe {
+            libc::kill(self.pid, libc::SIGKILL);
+        }
+    }
+
+    fn try_reap(&mut self) -> Result<bool, io::Error> {
         loop {
             let mut status = 0;
-            let result = libc::waitpid(pid, &mut status, 0);
-            if result == pid
-                || (result < 0 && io::Error::last_os_error().kind() != ErrorKind::Interrupted)
-            {
-                break;
+            let result = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
+            if result == self.pid {
+                return Ok(true);
             }
+            if result == 0 {
+                return Ok(false);
+            }
+            let err = io::Error::last_os_error();
+            if err.kind() == ErrorKind::Interrupted {
+                continue;
+            }
+            // ECHILD means another reaper already collected it.
+            return if err.raw_os_error() == Some(libc::ECHILD) {
+                Ok(true)
+            } else {
+                Err(err)
+            };
         }
+    }
+}
+
+fn kill_and_reap_with<W: KillAndWait>(waiter: &mut W, grace: Duration) -> bool {
+    waiter.kill();
+    let deadline = Instant::now() + grace;
+    loop {
+        match waiter.try_reap() {
+            Ok(true) => return true,
+            Err(_) => return false,
+            Ok(false) if Instant::now() >= deadline => return false,
+            Ok(false) => thread::sleep(PROCESS_REAP_POLL),
+        }
+    }
+}
+
+fn defer_reap(pid: libc::pid_t) {
+    // Never put an unbounded wait on a deadline-bearing API path. A single
+    // detached poller eventually collects the child if a kernel-side D state
+    // clears; process exit safely reparents it otherwise.
+    let _ = thread::Builder::new()
+        .name("magicnet-child-reaper".to_string())
+        .spawn(move || {
+            let mut waiter = LibcKillAndWait { pid };
+            loop {
+                match waiter.try_reap() {
+                    Ok(true) | Err(_) => break,
+                    Ok(false) => thread::sleep(Duration::from_millis(250)),
+                }
+            }
+        });
+}
+
+pub(crate) fn kill_and_reap(pid: libc::pid_t) {
+    let mut waiter = LibcKillAndWait { pid };
+    if !kill_and_reap_with(&mut waiter, PROCESS_REAP_GRACE) {
+        defer_reap(pid);
     }
 }
 
@@ -69,10 +133,21 @@ fn child_exit_code(status: i32) -> Option<i32> {
 /// proc handler can always be killed and reaped. PR_SET_PDEATHSIG prevents the
 /// worker from surviving if its caller is interrupted.
 pub(crate) fn read_proc_file_bounded(path: &Path, max_bytes: usize) -> Result<Vec<u8>, String> {
+    read_proc_file_bounded_with_timeout(path, max_bytes, PROC_FILE_READ_TIMEOUT)
+}
+
+pub(crate) fn read_proc_file_bounded_with_timeout(
+    path: &Path,
+    max_bytes: usize,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
     if max_bytes == 0 || max_bytes > MAX_PROC_FILE_BYTES {
         return Err(format!(
             "invalid proc read limit {max_bytes}; expected 1..={MAX_PROC_FILE_BYTES}"
         ));
+    }
+    if timeout.is_zero() {
+        return Err(format!("proc read deadline expired: {}", path.display()));
     }
     let path_c = cstring_from_os_str(path.as_os_str(), "proc path")?;
     let mut pipe_fds = [-1; 2];
@@ -176,7 +251,7 @@ pub(crate) fn read_proc_file_bounded(path: &Path, max_bytes: usize) -> Result<Ve
         ));
     }
 
-    let deadline = Instant::now() + PROC_FILE_READ_TIMEOUT;
+    let deadline = Instant::now() + timeout;
     let mut output = Vec::with_capacity(max_bytes.min(4096));
     let mut pipe_eof = false;
     let mut worker_status = None;
@@ -241,7 +316,7 @@ pub(crate) fn read_proc_file_bounded(path: &Path, max_bytes: usize) -> Result<Ve
             kill_and_reap(worker_pid);
             return Err(format!(
                 "proc read timed out after {}ms: {}",
-                PROC_FILE_READ_TIMEOUT.as_millis(),
+                timeout.as_millis(),
                 path.display()
             ));
         }
@@ -292,6 +367,24 @@ pub(crate) fn read_proc_text_bounded(path: &Path, max_bytes: usize) -> Result<St
 
 pub(crate) fn read_proc_argv(path: &Path) -> Result<Vec<String>, String> {
     let bytes = read_proc_file_bounded(path, MAX_PROC_CMDLINE_BYTES)?;
+    parse_proc_argv(path, &bytes)
+}
+
+pub(crate) fn read_proc_argv_with_timeout(
+    path: &Path,
+    timeout: Duration,
+) -> Result<Vec<String>, String> {
+    let bytes = read_proc_file_bounded_with_timeout(path, MAX_PROC_CMDLINE_BYTES, timeout)?;
+    // Kernel threads legitimately expose an empty cmdline and cannot match a
+    // userspace script. The bounded all-/proc scanner treats that as a
+    // definite non-match; exact ownership reads remain strict.
+    if bytes.is_empty() {
+        return Ok(Vec::new());
+    }
+    parse_proc_argv(path, &bytes)
+}
+
+fn parse_proc_argv(path: &Path, bytes: &[u8]) -> Result<Vec<String>, String> {
     if bytes.is_empty() || bytes.last() != Some(&0) {
         return Err(format!(
             "proc cmdline is empty or unterminated: {}",
@@ -423,6 +516,7 @@ pub(crate) struct BoundedCommandOutput {
     pub(crate) stdout: Vec<u8>,
     pub(crate) stderr: Vec<u8>,
     pub(crate) timed_out: bool,
+    pub(crate) truncated: bool,
 }
 
 pub(crate) fn run_bounded_command(
@@ -493,36 +587,88 @@ pub(crate) fn run_bounded_command(
         }
         thread::sleep(Duration::from_millis(10));
     }
+    let stdout = finish_output(stdout, stdout_result, "stdout");
+    let stderr = finish_output(stderr, stderr_result, "stderr");
     Ok(BoundedCommandOutput {
         status,
-        stdout: finish_output(stdout, stdout_result, "stdout"),
-        stderr: finish_output(stderr, stderr_result, "stderr"),
+        stdout: stdout.bytes,
+        stderr: stderr.bytes,
         timed_out,
+        truncated: stdout.truncated || stderr.truncated,
     })
 }
 
-fn terminate_command_group(child: &mut Child) -> Option<ExitStatus> {
-    let group = -(child.id() as libc::pid_t);
-    unsafe {
-        libc::kill(group, libc::SIGTERM);
-    }
-    let deadline = Instant::now() + Duration::from_millis(250);
-    while Instant::now() < deadline {
-        if let Ok(Some(status)) = child.try_wait() {
-            unsafe {
-                libc::kill(group, libc::SIGKILL);
-            }
-            return Some(status);
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-    unsafe {
-        libc::kill(group, libc::SIGKILL);
-    }
-    child.wait().ok()
+trait CommandGroupWait {
+    fn signal_group(&mut self, signal: libc::c_int);
+    fn try_wait(&mut self) -> Result<Option<ExitStatus>, io::Error>;
+    fn pid(&self) -> libc::pid_t;
 }
 
-type OutputReader = Receiver<io::Result<Vec<u8>>>;
+impl CommandGroupWait for Child {
+    fn signal_group(&mut self, signal: libc::c_int) {
+        unsafe {
+            libc::kill(-(self.id() as libc::pid_t), signal);
+        }
+    }
+
+    fn try_wait(&mut self) -> Result<Option<ExitStatus>, io::Error> {
+        Child::try_wait(self)
+    }
+
+    fn pid(&self) -> libc::pid_t {
+        self.id() as libc::pid_t
+    }
+}
+
+fn terminate_command_group_with<W: CommandGroupWait>(
+    child: &mut W,
+    term_grace: Duration,
+    reap_grace: Duration,
+) -> Option<ExitStatus> {
+    child.signal_group(libc::SIGTERM);
+    let term_deadline = Instant::now() + term_grace;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // The leader may have exited while pipe-holding descendants
+                // remain. Kill the now-identity-bound group before returning.
+                child.signal_group(libc::SIGKILL);
+                return Some(status);
+            }
+            Err(_) => return None,
+            Ok(None) if Instant::now() >= term_deadline => break,
+            Ok(None) => thread::sleep(PROCESS_REAP_POLL),
+        }
+    }
+
+    child.signal_group(libc::SIGKILL);
+    let reap_deadline = Instant::now() + reap_grace;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Err(_) => return None,
+            Ok(None) if Instant::now() >= reap_deadline => return None,
+            Ok(None) => thread::sleep(PROCESS_REAP_POLL),
+        }
+    }
+}
+
+fn terminate_command_group(child: &mut Child) -> Option<ExitStatus> {
+    let pid = child.pid();
+    let status =
+        terminate_command_group_with(child, Duration::from_millis(250), PROCESS_REAP_GRACE);
+    if status.is_none() {
+        defer_reap(pid);
+    }
+    status
+}
+
+struct OutputCapture {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+type OutputReader = Receiver<io::Result<OutputCapture>>;
 
 fn spawn_output_reader<R>(mut reader: R, limit: usize) -> OutputReader
 where
@@ -547,14 +693,20 @@ where
             if truncated {
                 output.extend_from_slice(b"\n[output truncated]");
             }
-            Ok(output)
+            Ok(OutputCapture {
+                bytes: output,
+                truncated,
+            })
         })();
         let _ = sender.send(result);
     });
     receiver
 }
 
-fn try_receive_output(reader: &Option<OutputReader>, result: &mut Option<io::Result<Vec<u8>>>) {
+fn try_receive_output(
+    reader: &Option<OutputReader>,
+    result: &mut Option<io::Result<OutputCapture>>,
+) {
     if result.is_some() {
         return;
     }
@@ -575,15 +727,21 @@ fn try_receive_output(reader: &Option<OutputReader>, result: &mut Option<io::Res
 
 fn finish_output(
     reader: Option<OutputReader>,
-    result: Option<io::Result<Vec<u8>>>,
+    result: Option<io::Result<OutputCapture>>,
     name: &str,
-) -> Vec<u8> {
+) -> OutputCapture {
     let result = result
         .or_else(|| reader.and_then(|reader| reader.recv_timeout(Duration::from_millis(100)).ok()));
     match result {
         Some(Ok(output)) => output,
-        Some(Err(err)) => format!("[{name} read failed: {err}]").into_bytes(),
-        None => format!("[{name} unavailable]").into_bytes(),
+        Some(Err(err)) => OutputCapture {
+            bytes: format!("[{name} read failed: {err}]").into_bytes(),
+            truncated: true,
+        },
+        None => OutputCapture {
+            bytes: format!("[{name} unavailable]").into_bytes(),
+            truncated: true,
+        },
     }
 }
 
@@ -738,22 +896,32 @@ pub(crate) fn cstring_from_os_str(value: &OsStr, description: &str) -> Result<CS
 }
 
 pub(crate) fn cmdline_has_script(argv: &[String], script: &str) -> bool {
-    argv.windows(2).any(|pair| {
-        matches!(
-            pair[0].rsplit('/').next(),
+    argv.len() == 2
+        && matches!(
+            argv[0].rsplit('/').next(),
             Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
-        ) && pair[1] == script
-    })
+        )
+        && argv[1] == script
 }
 
 pub(crate) fn cmdline_has_command(argv: &[String], executable: &str, args: &[&str]) -> bool {
-    argv.windows(args.len() + 1).any(|window| {
-        window[0] == executable
-            && window[1..]
-                .iter()
-                .map(String::as_str)
-                .eq(args.iter().copied())
-    })
+    let direct = argv.len() == args.len() + 1
+        && argv[0] == executable
+        && argv[1..]
+            .iter()
+            .map(String::as_str)
+            .eq(args.iter().copied());
+    let shell_wrapper = argv.len() == args.len() + 2
+        && matches!(
+            argv[0].rsplit('/').next(),
+            Some("sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
+        )
+        && argv[1] == executable
+        && argv[2..]
+            .iter()
+            .map(String::as_str)
+            .eq(args.iter().copied());
+    direct || shell_wrapper
 }
 
 pub(crate) fn proc_start_time(stat: &str) -> Option<String> {

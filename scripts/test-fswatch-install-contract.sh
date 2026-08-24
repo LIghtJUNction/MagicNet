@@ -206,6 +206,26 @@ set -eu
 kind="${1:-}"
 root="${2:-}"
 pid="${3:-}"
+[ "${TEST_PROC_INDETERMINATE:-0}" != 1 ] || exit 2
+if [ "$kind" = __proc-script-pids ]; then
+  expected="$pid"
+  pids=()
+  for cmdline in "$root"/[0-9]*/cmdline; do
+    [ -r "$cmdline" ] || continue
+    argv=()
+    mapfile -d '' -t argv <"$cmdline" || true
+    [ "${#argv[@]}" -eq 2 ] || continue
+    case "${argv[0]##*/}" in sh | ash | dash | bash | ksh | mksh) ;; *) continue ;; esac
+    [ "${argv[1]}" = "$expected" ] || continue
+    candidate=${cmdline#"$root"/}
+    pids+=("${candidate%/cmdline}")
+  done
+  printf 'MAGICNET_PID_FRAME_V1 %s\n' "${#pids[@]}"
+  printf '%s\n' "${pids[@]}"
+  printf 'MAGICNET_PID_FRAME_END_V1 %s\n' "${#pids[@]}"
+  [ "${#pids[@]}" -gt 0 ]
+  exit $?
+fi
 case "$pid" in '' | *[!0-9]* | 0) exit 2 ;; esac
 case "$kind" in
   __proc-cmdline)
@@ -581,6 +601,60 @@ if compgen -G "${pid_file}.publish.*" >/dev/null; then
 fi
 test "$(count_loop_processes)" -eq 0
 lifecycle_lock_is_free
+
+# Indeterminate proc reads retain owners and make status/stop/start fail closed.
+sh "$loop_script" &
+uncertain_pid=$!
+printf '%s\n' "$uncertain_pid" >"$pid_file"
+export TEST_PROC_INDETERMINATE=1
+for operation in \
+  "fswatch_status $watch_name" \
+  "fswatch_stop $watch_name" \
+  "fswatch_start $watch_name $MODDIR/.config 30 :"; do
+  if eval "$operation" >/dev/null 2>&1; then
+    printf 'indeterminate fswatch operation unexpectedly succeeded: %s\n' "$operation" >&2
+    exit 1
+  else
+    test "$?" -eq 2
+  fi
+done
+test "$(sed -n '1p' "$pid_file")" = "$uncertain_pid"
+kill -0 "$uncertain_pid"
+unset TEST_PROC_INDETERMINATE
+kill "$uncertain_pid" 2>/dev/null || true
+wait "$uncertain_pid" 2>/dev/null || true
+rm -f "$pid_file"
+
+# shellcheck disable=SC1090
+. "$ROOT/src/MagicNet/lib/kamfw/watchdog.sh"
+watchdog_pid_file_path=$(watchdog_pid_file contract-watchdog)
+watchdog_loop_file=${watchdog_pid_file_path%.pid}.loop.sh
+cat >"$watchdog_loop_file" <<'SH'
+#!/bin/sh
+while :; do sleep 60; done
+SH
+chmod 700 "$watchdog_loop_file"
+sh "$watchdog_loop_file" &
+uncertain_watchdog_pid=$!
+printf '%s\n' "$uncertain_watchdog_pid" >"$watchdog_pid_file_path"
+export TEST_PROC_INDETERMINATE=1
+for operation in \
+  'watchdog_status contract-watchdog' \
+  'watchdog_stop contract-watchdog' \
+  'watchdog_start --quiet contract-watchdog 30 :'; do
+  if eval "$operation" >/dev/null 2>&1; then
+    printf 'indeterminate watchdog operation unexpectedly succeeded: %s\n' "$operation" >&2
+    exit 1
+  else
+    test "$?" -eq 2
+  fi
+done
+test "$(sed -n '1p' "$watchdog_pid_file_path")" = "$uncertain_watchdog_pid"
+kill -0 "$uncertain_watchdog_pid"
+unset TEST_PROC_INDETERMINATE
+kill "$uncertain_watchdog_pid" 2>/dev/null || true
+wait "$uncertain_watchdog_pid" 2>/dev/null || true
+rm -f "$watchdog_pid_file_path" "$watchdog_loop_file"
 
 expected_url='launch url "https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md"'
 grep -F -x "$expected_url" "$ROOT/src/MagicNet/customize.sh" >/dev/null
