@@ -603,7 +603,7 @@ magicnet_singbox_is_running() {
     [ -n "$(magicnet_singbox_owned_pids "$_running_config")" ]
 }
 
-magicnet_singbox_pid_owned() {
+magicnet_singbox_pid_owned() (
     _owned_pid="$1"
     _owned_config="$2"
     magicnet_singbox_pid_live "$_owned_pid" || return 1
@@ -695,16 +695,16 @@ EOF
     unset _owned_pid _owned_config _owned_expected _owned_proc_root _owned_proc_dir \
         _owned_comm _owned_exe_link _owned_exe_visible _owned_exe_match _owned_exe_path
     return "$_owned_rc"
-}
+)
 
-magicnet_singbox_owned_pids() {
+magicnet_singbox_owned_pids() (
     _owned_list_config="$1"
     for _owned_list_pid in $(magicnet_singbox_pids); do
         magicnet_singbox_pid_owned "$_owned_list_pid" "$_owned_list_config" &&
             printf '%s\n' "$_owned_list_pid"
     done
     unset _owned_list_config _owned_list_pid
-}
+)
 
 magicnet_singbox_listener_owned() {
     _listener_pid="$1"

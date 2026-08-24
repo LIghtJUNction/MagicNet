@@ -55,6 +55,10 @@ fi
 
 owned="$(magicnet_singbox_owned_pids "$module/.config/sing-box/config.json")"
 test "$owned" = '101'
+_owned_config=caller-sentinel
+magicnet_singbox_pid_owned 101 "$module/.config/sing-box/config.json"
+test "$_owned_config" = caller-sentinel
+unset _owned_config
 
 # Core lifecycle checks must use the same executable+config ownership tuple,
 # not KAM's process-name-only pidof fast path.
