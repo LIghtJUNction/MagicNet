@@ -65,6 +65,40 @@ assert_extracted_links "$tmp_dir/leading-links.txt" leading-plain
 base64 <"$links_fixture" >"$tmp_dir/mixed-links.base64"
 assert_extracted_links "$tmp_dir/mixed-links.base64" base64
 
+# Clash/Mihomo permits a sequence item indicator on its own line before the
+# node mapping. Keep both that block style and the usual inline style working.
+clash_sequence_fixture="$tmp_dir/clash-sequence-styles.yaml"
+cat >"$clash_sequence_fixture" <<'YAML'
+proxies:
+  - name: inline-vmess
+    type: vmess
+    server: inline.invalid
+    port: 443
+    uuid: 00000000-0000-4000-8000-000000000101
+  -
+    name: block-vmess
+    type: vmess
+    server: block.invalid
+    port: 8443
+    uuid: 00000000-0000-4000-8000-000000000102
+proxy-groups:
+  - name: ignored-group
+YAML
+clash_nodes_dir="$tmp_dir/clash-sequence-nodes"
+clash_node_count="$(magicnet_singbox_extract_clash_nodes "$clash_sequence_fixture" "$clash_nodes_dir")"
+[[ "$clash_node_count" == "2" ]] \
+    || fail "Clash sequence extraction returned $clash_node_count nodes, expected 2"
+inline_clash_json="$(magicnet_singbox_emit_node_json "$clash_nodes_dir/node-1.yaml")" \
+    || fail "inline Clash sequence item did not emit a node"
+block_clash_json="$(magicnet_singbox_emit_node_json "$clash_nodes_dir/node-2.yaml")" \
+    || fail "block-style Clash sequence item did not emit a node"
+printf '%s\n' "$inline_clash_json" | jq -e \
+    '.tag == "inline-vmess" and .server == "inline.invalid" and .server_port == 443' >/dev/null \
+    || fail "inline Clash sequence item was parsed incorrectly: $inline_clash_json"
+printf '%s\n' "$block_clash_json" | jq -e \
+    '.tag == "block-vmess" and .server == "block.invalid" and .server_port == 8443' >/dev/null \
+    || fail "block-style Clash sequence item was parsed incorrectly: $block_clash_json"
+
 # Proxylink uses -singbox for a full sing-box JSON document. Keep this path
 # isolated from the bundled ARM binary by observing the production wrapper's
 # arguments with a test double.

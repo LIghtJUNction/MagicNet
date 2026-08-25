@@ -16,7 +16,7 @@ magicnet_singbox_extract_clash_nodes() {
                 in_proxies = 0
             }
         }
-        in_proxies && /^[[:space:]]*-[[:space:]]+/ {
+        in_proxies && /^[[:space:]]*-[[:space:]]*/ {
             idx++
             file = outdir "/node-" (start + idx) ".yaml"
             line = $0
