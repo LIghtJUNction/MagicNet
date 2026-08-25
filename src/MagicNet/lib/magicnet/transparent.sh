@@ -34,10 +34,11 @@ magicnet_singbox_apply_transparent_mode() {
             "type": "tun",
             "tag": "tun-in",
             "interface_name": "magicnet0",
-            "address": [
-              "172.19.0.1/30",
-              "fdfe:dcba:9876::1/126"
-            ],
+            "address": (if $dns_strategy == "ipv4_only" then
+              ["172.19.0.1/30"]
+            else
+              ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]
+            end),
             "auto_route": true,
             "auto_redirect": true,
             "strict_route": true,
