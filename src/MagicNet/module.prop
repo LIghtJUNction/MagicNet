@@ -1,7 +1,7 @@
 id=MagicNet
 name=MagicNet
-version=v1.3.1
-versionCode=1787642512783
+version=v1.3.2
+versionCode=1787666184859
 author=LIghtJUNction
 description=[MagicNet]:Android root network module with magicnet0 TUN, sing-box, WebUI, MCP, and DNS leak guard tools. Built with KAM.
 updateJson=https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json
