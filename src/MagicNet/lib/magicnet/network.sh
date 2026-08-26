@@ -170,7 +170,9 @@ magicnet_dns_capture_bypass_uids() {
         unset _dns_bypass_uid_file
         return 0
     }
-    awk '/^[0-9]+$/ && !seen[$0]++ { print }' "$_dns_bypass_uid_file" 2>/dev/null
+    # UID 0 is excluded from the TUN boundary but must not bypass DNS
+    # capture: Android netd commonly sends system queries as root.
+    awk '/^[0-9]+$/ && ($0 + 0) != 0 && !seen[$0]++ { print }' "$_dns_bypass_uid_file" 2>/dev/null
     unset _dns_bypass_uid_file
 }
 

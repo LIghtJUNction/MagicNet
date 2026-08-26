@@ -314,6 +314,7 @@ assert_dns_capture_bypass_uids() (
   export MODDIR
   mkdir -p "$MODDIR/.state/app-policy"
   cat >"$MODDIR/.state/app-policy/exclude-uids.list" <<'EOF'
+0
 11001
 1011001
 11001
@@ -356,6 +357,11 @@ EOF
     done
   done
 
+  if grep -q -- '--uid-owner 0 -j RETURN' "$dns_capture_log"; then
+    printf '%s\n' 'root UID must remain subject to DNS capture' >&2
+    cat "$dns_capture_log" >&2
+    exit 1
+  fi
   if [ "$(grep -c -- '--uid-owner 11001 -j RETURN' "$dns_capture_log")" -ne 4 ]; then
     printf '%s\n' 'duplicate app-bypass UIDs must produce one check and one append per address family only' >&2
     cat "$dns_capture_log" >&2
