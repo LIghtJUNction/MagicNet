@@ -146,6 +146,7 @@ MagicNet 目前只支持 `tun` 透明模式，使用 `sing-box` `magicnet0` TUN 
 - 分应用策略分为三类：`Proxy` 强制走代理；`Direct` 仍进入 TUN，但强制走 `direct` 出站；`Bypass TUN` 则让应用完全离开 MagicNet。
 - WebUI 的“全局接管”对应黑名单语义：默认应用进入 TUN，`Bypass TUN` 名单走系统网络；“仅名单接管”对应白名单语义：只有 `Proxy` 和 `Direct` 名单进入 TUN。
 - Root 命令行模式会把包名解析为 Android UID，再通过 TUN 的 `include_uid` / `exclude_uid` 执行边界，避免包名过滤在重启后失效。共享同一 UID 的应用会一起生效。
+- Android `netd` 在部分设备上会把 Bypass 应用的系统 DNS 请求统一以 UID 0 发出；存在 Bypass UID 时，DNS 捕获链会保守保留 UID 0 的 `RETURN`，避免无法归属的请求重新进入 MagicNet。
 - `Bypass TUN` 不等于断网或阻止访问。应用离开 MagicNet 后会使用系统上游网络；如果上游网络或另一个 VPN 能访问 Google，加入 Bypass 后的 Chrome 仍然可以访问。
 - 要验证 Chrome 没有使用 MagicNet 代理，请在 WebUI“应用策略”中选择 `Direct`，或执行 `cli app add com.android.chrome direct`。只有多 VPN 共存或明确需要完全避开 MagicNet 时才选择 `Bypass TUN`。
 - 默认网络策略是双栈、DNS 优先 IPv4、`mixed` TUN 栈、MTU `1400` 和 UDP 会话超时 `5m`。

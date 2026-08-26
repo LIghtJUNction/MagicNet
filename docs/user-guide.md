@@ -72,7 +72,7 @@ WebUI 可查看延迟、手动选择节点或切回自动组。选择结果会�
 
 - `Proxy`：应用进入 `magicnet0`，并强制使用代理规则。
 - `Direct`：应用仍进入 TUN，但使用 `direct` 出站；验证“不要走 MagicNet 代理”通常选它。
-- `Bypass TUN`：应用完全离开 MagicNet。模块按所有 Android 用户解析包 UID，并让这些 UID 同时绕过 TUN 与 DNS 捕获，适合外部 VPN 或明确的共存需求。
+- `Bypass TUN`：应用完全离开 MagicNet。模块按所有 Android 用户解析包 UID，并让这些 UID 同时绕过 TUN 与 DNS 捕获，适合外部 VPN 或明确的共存需求。部分设备的 `netd` 会以 UID 0 代发系统 DNS；存在 Bypass UID 时，DNS 捕获链会保守保留 UID 0 直通，以维持这项边界。
 
 ```bash
 su -c '/data/adb/modules/MagicNet/cli app add com.example.app proxy'

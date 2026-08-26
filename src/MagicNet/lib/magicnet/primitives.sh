@@ -2,6 +2,13 @@
 #
 # Kamfw-free helpers shared by common.sh and isolated subscribe loads.
 
+# High-bit fwmark reserved for direct sing-box UDP DNS sockets. Android's
+# netd fwmark rules use the low bits, so this mark distinguishes resolver
+# traffic without changing the selected network route.
+magicnet_dns_capture_singbox_mark() {
+    printf '%s\n' 1073741824
+}
+
 magicnet_lib_dir() {
     if [ -n "${MAGICNET_LIB_DIR:-}" ]; then
         printf '%s\n' "$MAGICNET_LIB_DIR"

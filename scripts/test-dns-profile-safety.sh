@@ -16,7 +16,8 @@ cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
     "servers": [
       {"type": "https", "tag": "bootstrap-local-dns", "server": "223.5.5.5"},
       {"type": "https", "tag": "cloudflare-backup-dns", "server": "1.0.0.1"},
-      {"type": "https", "tag": "doh-cloudflare", "server": "1.1.1.1", "detour": "proxy"}
+      {"type": "https", "tag": "doh-cloudflare", "server": "1.1.1.1", "detour": "proxy"},
+      {"type": "udp", "tag": "retained-udp", "server": "9.9.9.9"}
     ]
   }
 }
@@ -56,6 +57,7 @@ MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
 jq -e '
   .dns.final == "bootstrap-local-dns"
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
+    and ([.dns.servers[] | select(.tag == "retained-udp") | .routing_mark] == [1073741824])
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
     printf 'default DNS profile must restore direct bootstrap final and remove managed profile servers\n' >&2
     exit 1
