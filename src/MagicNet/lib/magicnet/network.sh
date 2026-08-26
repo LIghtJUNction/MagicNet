@@ -170,10 +170,16 @@ magicnet_dns_capture_bypass_uids() {
         unset _dns_bypass_uid_file
         return 0
     }
-    # UID 0 is excluded from the TUN boundary but must not bypass DNS
-    # capture: Android netd commonly sends system queries as root.
-    awk '/^[0-9]+$/ && ($0 + 0) != 0 && !seen[$0]++ { print }' "$_dns_bypass_uid_file" 2>/dev/null
-    unset _dns_bypass_uid_file
+    # Android netd can emit a Bypass TUN app's DNS request as UID 0. Once
+    # netd proxies the lookup, xt_owner cannot recover the originating app;
+    # keep UID 0 outside capture whenever a real bypass UID is configured so
+    # the app and its DNS stay on the same non-MagicNet path.
+    _dns_bypass_uids="$(awk '/^[0-9]+$/ && ($0 + 0) != 0 && !seen[$0]++ { print }' "$_dns_bypass_uid_file" 2>/dev/null)"
+    if [ -n "$_dns_bypass_uids" ]; then
+        printf '%s\n' 0
+    fi
+    printf '%s\n' "$_dns_bypass_uids"
+    unset _dns_bypass_uid_file _dns_bypass_uids
 }
 
 magicnet_enable_dns_capture() {
@@ -201,6 +207,7 @@ magicnet_enable_dns_capture() {
 
     _dns_capture_port="$(magicnet_dns_capture_port)"
     _dns_capture_bypass_uids="$(magicnet_dns_capture_bypass_uids)"
+    _dns_capture_singbox_mark="${MAGICNET_DNS_CAPTURE_SINGBOX_MARK:-1073741824}"
     _dns_capture_rc=0
     _dns_capture_ipv6_unavailable=0
     if ! magicnet_iptables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
@@ -213,6 +220,14 @@ magicnet_enable_dns_capture() {
         0) ;;
         1) magicnet_iptables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
         *) _dns_capture_rc=1 ;;
+    esac
+    # Direct UDP DNS servers are marked in the sing-box config. Keep those
+    # resolver packets out of this chain without exempting all UID-0 traffic.
+    magicnet_iptables_ensure -t nat magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
+    case " $_dns_capture_bypass_uids " in
+        *" 0 "*)
+            magicnet_log "DNS capture keeps UID 0 outside interception while Bypass TUN UIDs are configured"
+            ;;
     esac
     for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
         magicnet_iptables_ensure -t nat magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
@@ -245,6 +260,7 @@ magicnet_enable_dns_capture() {
                 1) magicnet_ip6tables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
                 *) _dns_capture_rc=1 ;;
             esac
+            magicnet_ip6tables_nat_ensure magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
             for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
                 magicnet_ip6tables_nat_ensure magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
             done
@@ -255,7 +271,7 @@ magicnet_enable_dns_capture() {
 
     if [ "$_dns_capture_rc" -ne 0 ]; then
         magicnet_disable_dns_capture >/dev/null 2>&1 || true
-        unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid
+        unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid _dns_capture_singbox_mark
         unset _dns_capture_rc _dns_capture_check_rc _dns_capture_ipv6_mode _dns_capture_ipv6_unavailable
         return 1
     fi
@@ -265,7 +281,7 @@ magicnet_enable_dns_capture() {
     else
         magicnet_log "DNS capture redirected port 53 to 127.0.0.1:${_dns_capture_port}"
     fi
-    unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid
+    unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid _dns_capture_singbox_mark
     unset _dns_capture_rc _dns_capture_check_rc _dns_capture_ipv6_mode _dns_capture_ipv6_unavailable
 }
 

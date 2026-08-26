@@ -346,10 +346,17 @@ EOF
   magicnet_enable_dns_capture
 
   for family in iptables ip6tables; do
+    mark_line=$(grep -nF "$family -t nat -A magicnet-dns-output -m mark --mark 1073741824/1073741824 -j RETURN" "$dns_capture_log" | cut -d: -f1 | head -n 1)
+    root_line=$(grep -nF "$family -t nat -A magicnet-dns-output -m owner --uid-owner 0 -j RETURN" "$dns_capture_log" | cut -d: -f1 | head -n 1)
+    redirect_line=$(sed -n "/$family -t nat -A magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports 1053/=" "$dns_capture_log")
+    if [ -z "$mark_line" ] || [ -z "$root_line" ] || [ -z "$redirect_line" ] || [ "$mark_line" -ge "$redirect_line" ] || [ "$root_line" -ge "$redirect_line" ]; then
+      printf '%s\n' "$family DNS bypass rules must return before DNS capture redirect" >&2
+      cat "$dns_capture_log" >&2
+      exit 1
+    fi
     for uid in 11001 1011001; do
       bypass_line=$(sed -n "/$family -t nat -A magicnet-dns-output -m owner --uid-owner $uid -j RETURN/=" "$dns_capture_log")
-      redirect_line=$(sed -n "/$family -t nat -A magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports 1053/=" "$dns_capture_log")
-      if [ -z "$bypass_line" ] || [ -z "$redirect_line" ] || [ "$bypass_line" -ge "$redirect_line" ]; then
+      if [ -z "$bypass_line" ] || [ "$bypass_line" -ge "$redirect_line" ]; then
         printf '%s\n' "$family app-bypass UID $uid must return before DNS capture redirect" >&2
         cat "$dns_capture_log" >&2
         exit 1
@@ -357,8 +364,8 @@ EOF
     done
   done
 
-  if grep -q -- '--uid-owner 0 -j RETURN' "$dns_capture_log"; then
-    printf '%s\n' 'root UID must remain subject to DNS capture' >&2
+  if [ "$(grep -c -- '-A magicnet-dns-output -m owner --uid-owner 0 -j RETURN' "$dns_capture_log")" -ne 2 ]; then
+    printf '%s\n' 'root UID must bypass DNS capture when Bypass TUN UIDs are configured' >&2
     cat "$dns_capture_log" >&2
     exit 1
   fi
@@ -369,6 +376,15 @@ EOF
   fi
   if grep -q -- '--uid-owner invalid' "$dns_capture_log"; then
     printf '%s\n' 'invalid app-bypass UID reached iptables' >&2
+    cat "$dns_capture_log" >&2
+    exit 1
+  fi
+
+  printf '%s\n' 0 >"$MODDIR/.state/app-policy/exclude-uids.list"
+  : >"$dns_capture_log"
+  magicnet_enable_dns_capture
+  if grep -q -- '-m owner --uid-owner 0 -j RETURN' "$dns_capture_log"; then
+    printf '%s\n' 'root UID must be captured when no Bypass TUN UID is configured' >&2
     cat "$dns_capture_log" >&2
     exit 1
   fi

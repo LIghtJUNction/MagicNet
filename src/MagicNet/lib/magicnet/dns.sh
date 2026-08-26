@@ -66,7 +66,8 @@ magicnet_dns_apply_singbox() {
         return 1
     }
     _tmp="${_config}.magicnet-dns.new"
-    magicnet_jq_install_config "$_config" "$_tmp" "$_jq" --arg profile "$_profile" --arg bootstrap_server "$_bootstrap_server" -e '
+    magicnet_jq_install_config "$_config" "$_tmp" "$_jq" --arg profile "$_profile" --arg bootstrap_server "$_bootstrap_server" \
+        --argjson dns_capture_singbox_mark "${MAGICNET_DNS_CAPTURE_SINGBOX_MARK:-1073741824}" -e '
       def cf_udp($tag; $server):
         {"type":"udp","tag":$tag,"server":$server,"detour":"proxy"};
       def cf_tls($tag; $server):
@@ -92,6 +93,15 @@ magicnet_dns_apply_singbox() {
                  server_for($profile; "cloudflare-backup-dns"; "1.0.0.1")]
            end) + .
       )
+      # Direct UDP DNS servers are contacted by sing-box itself. Mark those
+      # sockets so the kernel DNS redirect can exempt them without exempting
+      # every UID-0 Android resolver query.
+      | .dns.servers |= map(
+          if (.type == "udp" and (.detour // "") == "") then
+            .routing_mark = $dns_capture_singbox_mark
+          else .
+          end
+        )
       | if $profile == "default" then .dns.final = "bootstrap-local-dns"
         else .dns.final = "cloudflare-profile-dns"
         end
