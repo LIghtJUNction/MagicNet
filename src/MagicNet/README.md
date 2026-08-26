@@ -166,7 +166,7 @@ MCP 工具可管理配置源、黑名单、备份、状态检查和脱敏上下�
 
 ## 社区
 
-- 官方 Discord 群聊：[https://discord.gg/vXffnGge6](https://discord.gg/vXffnGge6)
+- 官方 Discord 群聊：[https://discord.gg/asRwgK9FpA](https://discord.gg/asRwgK9FpA)
 
 ## DNS 泄露验证
 
