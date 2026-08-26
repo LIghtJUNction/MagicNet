@@ -182,6 +182,22 @@ magicnet_dns_capture_bypass_uids() {
     unset _dns_bypass_uid_file _dns_bypass_uids
 }
 
+magicnet_dns_capture_singbox_udp_marked() {
+    _dns_marked_config="$(magicnet_singbox_config_file 2>/dev/null || printf '%s\n' "${MODDIR}/.config/sing-box/config.json")"
+    _dns_marked_jq="${MODDIR}/bin/jq"
+    [ -x "$_dns_marked_jq" ] || _dns_marked_jq="$(command -v jq 2>/dev/null || true)"
+    [ -f "$_dns_marked_config" ] && [ -n "$_dns_marked_jq" ] || {
+        unset _dns_marked_config _dns_marked_jq
+        return 1
+    }
+    "$_dns_marked_jq" -e --argjson dns_capture_singbox_mark "${MAGICNET_DNS_CAPTURE_SINGBOX_MARK:-1073741824}" \
+        'any((.dns.servers // [])[]?; .type == "udp" and .routing_mark == $dns_capture_singbox_mark)' \
+        "$_dns_marked_config" >/dev/null 2>&1
+    _dns_marked_rc=$?
+    unset _dns_marked_config _dns_marked_jq
+    return "$_dns_marked_rc"
+}
+
 magicnet_enable_dns_capture() {
     if ! magicnet_dns_capture_enabled; then
         if magicnet_disable_dns_capture; then
@@ -208,6 +224,8 @@ magicnet_enable_dns_capture() {
     _dns_capture_port="$(magicnet_dns_capture_port)"
     _dns_capture_bypass_uids="$(magicnet_dns_capture_bypass_uids)"
     _dns_capture_singbox_mark="${MAGICNET_DNS_CAPTURE_SINGBOX_MARK:-1073741824}"
+    _dns_capture_singbox_marked=0
+    magicnet_dns_capture_singbox_udp_marked && _dns_capture_singbox_marked=1
     _dns_capture_rc=0
     _dns_capture_ipv6_unavailable=0
     if ! magicnet_iptables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
@@ -223,7 +241,9 @@ magicnet_enable_dns_capture() {
     esac
     # Direct UDP DNS servers are marked in the sing-box config. Keep those
     # resolver packets out of this chain without exempting all UID-0 traffic.
-    magicnet_iptables_ensure -t nat magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
+    if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
+        magicnet_iptables_ensure -t nat magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
+    fi
     case " $_dns_capture_bypass_uids " in
         *" 0 "*)
             magicnet_log "DNS capture keeps UID 0 outside interception while Bypass TUN UIDs are configured"
@@ -260,7 +280,9 @@ magicnet_enable_dns_capture() {
                 1) magicnet_ip6tables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
                 *) _dns_capture_rc=1 ;;
             esac
-            magicnet_ip6tables_nat_ensure magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
+            if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
+                magicnet_ip6tables_nat_ensure magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
+            fi
             for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
                 magicnet_ip6tables_nat_ensure magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
             done
@@ -271,7 +293,7 @@ magicnet_enable_dns_capture() {
 
     if [ "$_dns_capture_rc" -ne 0 ]; then
         magicnet_disable_dns_capture >/dev/null 2>&1 || true
-        unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid _dns_capture_singbox_mark
+        unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid _dns_capture_singbox_mark _dns_capture_singbox_marked
         unset _dns_capture_rc _dns_capture_check_rc _dns_capture_ipv6_mode _dns_capture_ipv6_unavailable
         return 1
     fi
@@ -281,7 +303,7 @@ magicnet_enable_dns_capture() {
     else
         magicnet_log "DNS capture redirected port 53 to 127.0.0.1:${_dns_capture_port}"
     fi
-    unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid _dns_capture_singbox_mark
+    unset _dns_capture_port _dns_capture_bypass_uids _dns_capture_bypass_uid _dns_capture_singbox_mark _dns_capture_singbox_marked
     unset _dns_capture_rc _dns_capture_check_rc _dns_capture_ipv6_mode _dns_capture_ipv6_unavailable
 }
 

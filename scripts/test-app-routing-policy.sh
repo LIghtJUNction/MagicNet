@@ -340,6 +340,7 @@ EOF
   }
   magicnet_cmd_exists() { command -v "$1" >/dev/null 2>&1; }
   magicnet_dns_profile() { printf '%s\n' default; }
+  magicnet_dns_capture_singbox_udp_marked() { return 0; }
   magicnet_log() { :; }
   magicnet_warn() { printf '%s\n' "$*" >&2; }
 
