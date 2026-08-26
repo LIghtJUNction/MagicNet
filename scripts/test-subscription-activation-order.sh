@@ -74,10 +74,10 @@ magicnet_singbox_ensure_start_owned() {
 magicnet_after_kernel_start_unlocked() { return 1; }
 kill() {
   case "$*" in
-    *222*)
-      failure_owned_pids=
-      printf 'stopped\n' >"$failure_state"
-      ;;
+  *222*)
+    failure_owned_pids=
+    printf 'stopped\n' >"$failure_state"
+    ;;
   esac
   return 0
 }

@@ -252,7 +252,10 @@ magicnet_singbox_transaction_reconcile() {
     if [ -f "$_tx_dir/had-config" ]; then
         [ -f "$_tx_dir/old-config" ] || return 1
         _tx_tmp="${_tx_active_config}.reconcile.$$"
-        if ! (umask 077; cp -f "$_tx_dir/old-config" "$_tx_tmp") ||
+        if ! (
+            umask 077
+            cp -f "$_tx_dir/old-config" "$_tx_tmp"
+        ) ||
             ! mv -f "$_tx_tmp" "$_tx_active_config" ||
             ! chmod 600 "$_tx_active_config"; then
             rm -f "$_tx_tmp" 2>/dev/null || true
@@ -355,40 +358,97 @@ magicnet_singbox_transaction_begin() {
     _tx_active_url="${MODDIR}/.config/sing-box/subscription.url"
     _tx_active_local="${MODDIR}/.config/sing-box/subscription.local"
     rm -rf "$_tx_tmp" 2>/dev/null || true
-    [ ! -e "$_tx_dir" ] || { magicnet_singbox_transaction_begin_abort; return 1; }
-    mkdir -p "$_tx_tmp" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    [ ! -e "$_tx_dir" ] || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
+    mkdir -p "$_tx_tmp" || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
 
     if [ -f "$_tx_active_config" ]; then
-        : >"$_tx_tmp/had-config" || { magicnet_singbox_transaction_begin_abort; return 1; }
-        (umask 077; cp -f "$_tx_active_config" "$_tx_tmp/old-config") || {
+        : >"$_tx_tmp/had-config" || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
+        (
+            umask 077
+            cp -f "$_tx_active_config" "$_tx_tmp/old-config"
+        ) || {
             magicnet_singbox_transaction_begin_abort
             return 1
         }
     fi
     if [ -d "$_tx_active_work" ]; then
-        : >"$_tx_tmp/had-work" || { magicnet_singbox_transaction_begin_abort; return 1; }
-        cp -a "$_tx_active_work" "$_tx_tmp/old-work" || { magicnet_singbox_transaction_begin_abort; return 1; }
+        : >"$_tx_tmp/had-work" || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
+        cp -a "$_tx_active_work" "$_tx_tmp/old-work" || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
     fi
     if [ -f "$_tx_active_url" ]; then
-        : >"$_tx_tmp/had-url" || { magicnet_singbox_transaction_begin_abort; return 1; }
-        cp -f "$_tx_active_url" "$_tx_tmp/old-url" || { magicnet_singbox_transaction_begin_abort; return 1; }
+        : >"$_tx_tmp/had-url" || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
+        cp -f "$_tx_active_url" "$_tx_tmp/old-url" || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
     fi
     if [ -f "$_tx_active_local" ]; then
-        : >"$_tx_tmp/had-local" || { magicnet_singbox_transaction_begin_abort; return 1; }
-        cp -f "$_tx_active_local" "$_tx_tmp/old-local" || { magicnet_singbox_transaction_begin_abort; return 1; }
+        : >"$_tx_tmp/had-local" || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
+        cp -f "$_tx_active_local" "$_tx_tmp/old-local" || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
     fi
-    [ -f "$_sub_input_source" ] || { magicnet_singbox_transaction_begin_abort; return 1; }
-    cp -f "$_sub_input_source" "$_tx_tmp/input-source" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    [ -f "$_sub_input_source" ] || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
+    cp -f "$_sub_input_source" "$_tx_tmp/input-source" || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
     chmod 600 "$_tx_tmp/input-source" 2>/dev/null || true
-    printf '%s\n' "$_sub_source_mode" >"$_tx_tmp/input-mode" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    printf '%s\n' "$_sub_source_mode" >"$_tx_tmp/input-mode" || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
     if [ "${_sub_was_running:-0}" -eq 1 ]; then
-        : >"$_tx_tmp/was-running" || { magicnet_singbox_transaction_begin_abort; return 1; }
+        : >"$_tx_tmp/was-running" || {
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        }
     fi
-    printf '%s\n' "$_sub_generation_id" >"$_tx_tmp/generation-id" || { magicnet_singbox_transaction_begin_abort; return 1; }
-    : >"$_tx_tmp/owns-generation" || { magicnet_singbox_transaction_begin_abort; return 1; }
-    : >"$_tx_tmp/owns-config-candidate" || { magicnet_singbox_transaction_begin_abort; return 1; }
-    printf '%s\n' prepared >"$_tx_tmp/phase" || { magicnet_singbox_transaction_begin_abort; return 1; }
-    mv "$_tx_tmp" "$_tx_dir" || { magicnet_singbox_transaction_begin_abort; return 1; }
+    printf '%s\n' "$_sub_generation_id" >"$_tx_tmp/generation-id" || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
+    : >"$_tx_tmp/owns-generation" || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
+    : >"$_tx_tmp/owns-config-candidate" || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
+    printf '%s\n' prepared >"$_tx_tmp/phase" || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
+    mv "$_tx_tmp" "$_tx_dir" || {
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    }
     _sub_original_input_source="$_sub_input_source"
     _sub_input_source="${_tx_dir}/input-source"
     if [ "$_sub_source_mode" = local ]; then
@@ -435,7 +495,10 @@ magicnet_singbox_transaction_phase() {
     # Phase metadata is part of the durable journal.  Write it privately and
     # publish it atomically so a transient filesystem failure cannot truncate
     # the last known phase or make the caller believe the write succeeded.
-    if ! (umask 077; printf '%s\n' "${_tx_phase:-unknown}" >"$_tx_phase_tmp") ||
+    if ! (
+        umask 077
+        printf '%s\n' "${_tx_phase:-unknown}" >"$_tx_phase_tmp"
+    ) ||
         ! mv -f "$_tx_phase_tmp" "$_tx_dir/phase"; then
         rm -f "$_tx_phase_tmp" 2>/dev/null || true
         unset _tx_dir _tx_phase _tx_phase_tmp
@@ -675,8 +738,8 @@ magicnet_singbox_update_subscription_unlocked() {
     MAGICNET_SUB_NATIVE_PARSER=unknown
     MAGICNET_SUB_NATIVE_NODE_COUNT=0
     case "${MAGICNET_PROXYLINK_ENABLED:-1}" in
-        1) MAGICNET_SUB_CONVERTER_ENABLED=1 ;;
-        *) MAGICNET_SUB_CONVERTER_ENABLED=0 ;;
+    1) MAGICNET_SUB_CONVERTER_ENABLED=1 ;;
+    *) MAGICNET_SUB_CONVERTER_ENABLED=0 ;;
     esac
     if [ "$MAGICNET_SUB_CONVERTER_ENABLED" = 1 ] &&
         magicnet_singbox_proxylink_bin >/dev/null 2>&1; then
@@ -751,9 +814,9 @@ magicnet_singbox_update_subscription_unlocked() {
         fi
         _node_total=$((_node_total + ${_node_count:-0}))
         case "$_native_parser:$_native_kind" in
-            none:*) _native_parser="$_native_kind" ;;
-            *:"$_native_kind") : ;;
-            *) _native_parser=mixed ;;
+        none:*) _native_parser="$_native_kind" ;;
+        *:"$_native_kind") : ;;
+        *) _native_parser=mixed ;;
         esac
     done <"$_sources_file"
     MAGICNET_SUB_NATIVE_PARSER="$_native_parser"
@@ -804,7 +867,10 @@ magicnet_singbox_update_subscription_unlocked() {
 
     info "Subscription update stage: validate"
     magicnet_singbox_update_status validate running none || true
-    if ! (umask 077; cp -f "$_sub_active_config" "$_sub_candidate_config"); then
+    if ! (
+        umask 077
+        cp -f "$_sub_active_config" "$_sub_candidate_config"
+    ); then
         magicnet_singbox_update_status validate failed config_stage_failed || true
         magicnet_singbox_update_cleanup_stage
         return 1
