@@ -67,7 +67,7 @@ magicnet_dns_apply_singbox() {
     }
     _tmp="${_config}.magicnet-dns.new"
     magicnet_jq_install_config "$_config" "$_tmp" "$_jq" --arg profile "$_profile" --arg bootstrap_server "$_bootstrap_server" \
-        --argjson dns_capture_singbox_mark "${MAGICNET_DNS_CAPTURE_SINGBOX_MARK:-1073741824}" -e '
+        --argjson dns_capture_singbox_mark "$(magicnet_dns_capture_singbox_mark)" -e '
       def cf_udp($tag; $server):
         {"type":"udp","tag":$tag,"server":$server,"detour":"proxy"};
       def cf_tls($tag; $server):

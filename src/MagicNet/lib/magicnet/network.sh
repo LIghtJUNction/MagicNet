@@ -190,7 +190,7 @@ magicnet_dns_capture_singbox_udp_marked() {
         unset _dns_marked_config _dns_marked_jq
         return 1
     }
-    "$_dns_marked_jq" -e --argjson dns_capture_singbox_mark "${MAGICNET_DNS_CAPTURE_SINGBOX_MARK:-1073741824}" \
+    "$_dns_marked_jq" -e --argjson dns_capture_singbox_mark "$(magicnet_dns_capture_singbox_mark)" \
         'any((.dns.servers // [])[]?; .type == "udp" and .routing_mark == $dns_capture_singbox_mark)' \
         "$_dns_marked_config" >/dev/null 2>&1
     _dns_marked_rc=$?
@@ -223,7 +223,7 @@ magicnet_enable_dns_capture() {
 
     _dns_capture_port="$(magicnet_dns_capture_port)"
     _dns_capture_bypass_uids="$(magicnet_dns_capture_bypass_uids)"
-    _dns_capture_singbox_mark="${MAGICNET_DNS_CAPTURE_SINGBOX_MARK:-1073741824}"
+    _dns_capture_singbox_mark="$(magicnet_dns_capture_singbox_mark)"
     _dns_capture_singbox_marked=0
     magicnet_dns_capture_singbox_udp_marked && _dns_capture_singbox_marked=1
     _dns_capture_rc=0
