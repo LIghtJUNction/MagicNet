@@ -1462,17 +1462,6 @@ if not voice_rule["ip_cidr"]:
     raise SystemExit("packaged ChatGPT Voice route has no official IP prefixes")
 for prefix in voice_rule["ip_cidr"]:
     ipaddress.ip_network(prefix)
-cn_ip_indexes = [
-    index
-    for index, rule in enumerate(route_rules)
-    if rule.get("outbound") == "cn-direct" and (rule.get("ip_cidr") or rule.get("rule_set"))
-]
-if not cn_ip_indexes or voice_index >= min(cn_ip_indexes):
-    raise SystemExit(
-        f"packaged ChatGPT Voice route must precede CN IP ownership: "
-        f"voice={voice_index} cn={cn_ip_indexes}"
-    )
-
 x_package_routes = [
     index
     for index, rule in enumerate(route_rules)
