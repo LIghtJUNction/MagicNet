@@ -235,15 +235,10 @@ if not voice_cidrs:
 for prefix in voice_cidrs:
     ipaddress.ip_network(prefix)
 
-cn_ip_indexes = [
-    index
-    for index, rule in enumerate(route_rules)
-    if rule.get("outbound") == "cn-direct"
-    and (rule.get("ip_cidr") or rule.get("rule_set"))
-]
-if not cn_ip_indexes or voice_index >= min(cn_ip_indexes):
+if voice_index >= cn_ip_indexes[0]:
     raise AssertionError(
-        f"ChatGPT Voice route must precede CN IP ownership: voice={voice_index} cn={cn_ip_indexes}"
+        "ChatGPT Voice route must precede generic CN IP ownership: "
+        f"voice={voice_index} cn={cn_ip_indexes}"
     )
 
 voice_address = str(ipaddress.ip_network(voice_cidrs[0]).network_address)

@@ -68,6 +68,7 @@ rule_source() {
         hagezi-normal.srs) printf '%s|%s|%s\n' "https://github.com/razaxq/dns-blocklists-sing-box.git" "rule-set" "hagezi-normal.srs" ;;
         hagezi-anti-piracy.srs) printf '%s|%s|%s\n' "https://github.com/razaxq/dns-blocklists-sing-box.git" "rule-set" "hagezi-anti-piracy.srs" ;;
         karing-acl4ssr-ai.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/AI.srs" ;;
+        karing-acl4ssr-wechat.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/Wechat.srs" ;;
         karing-acl4ssr-proxy-lite.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ProxyLite.srs" ;;
         karing-acl4ssr-proxy-gfwlist.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ProxyGFWlist.srs" ;;
         karing-acl4ssr-banad.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/BanAD.srs" ;;

@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Route maintained WeChat destination IPs through `cn-direct` so push long
+  connections do not fall through to the proxy after domain information is lost.
 - Fix #121 by clearing the zero-node bootstrap selector cache after the first successful subscription import so populated proxy groups cannot remain pinned to `block`.
 - Fix #119 by propagating CLI parent death to privileged workers, preserving subscription rollback traps, bounding status lock recovery, and reconciling interrupted transactions during startup.
 - Fix #115 by aligning config-editor template sync with the packaged MagicSingBox routing baseline, removing the stale FakeIP blackhole and restoring early X domain ownership.

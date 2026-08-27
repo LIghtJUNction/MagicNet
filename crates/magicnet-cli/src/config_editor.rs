@@ -20,9 +20,9 @@ const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 const TEMPLATE_MAX_BYTES: usize = 1024 * 1024;
 const VALIDATOR_OUTPUT_LIMIT: usize = 256 * 1024;
-const MAGIC_SINGBOX_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/9d354b0717636271eaa4bb1a3cbe5bb93cafd8f5/config.json";
+const MAGIC_SINGBOX_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/63780ca3a96ee65af18b17aa87e11b536bbc5a73/config.json";
 const MAGIC_SINGBOX_TEMPLATE_SHA256: &str =
-    "8e91177e9222b2e5dee91ec849716757601156a28e7a056e6091ab5c71e102a5";
+    "ba0f9057b2b6ac896a8783a5691388325306be066e81c4098d9f62d79ac7ee50";
 const STANDALONE_CONFIG_MARKER: &str = ".config/sing-box/standalone-config";
 const TAILSCALE_AUTH_PATH: &str = ".config/sing-box/tailscale-auth.json";
 static CONFIG_EDITOR_STAGE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
