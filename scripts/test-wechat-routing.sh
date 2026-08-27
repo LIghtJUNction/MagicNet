@@ -31,6 +31,8 @@ wechat_domains = [
 ]
 wechat_route = {"domain_suffix": wechat_domains, "outbound": "cn-direct"}
 wechat_dns = {"domain_suffix": wechat_domains, "server": "bootstrap-local-dns"}
+wechat_rule_set_tag = "karing-acl4ssr-wechat"
+wechat_ip_route = {"rule_set": wechat_rule_set_tag, "outbound": "cn-direct"}
 
 
 def exact_indexes(rules, expected):
@@ -64,10 +66,27 @@ def domain_matches(rule, domain):
 
 wechat_route_indexes = exact_indexes(route_rules, wechat_route)
 wechat_dns_indexes = exact_indexes(dns_rules, wechat_dns)
+wechat_ip_route_indexes = exact_indexes(route_rules, wechat_ip_route)
 if len(wechat_route_indexes) != 1:
     raise AssertionError(f"expected one canonical WeChat direct route, got {wechat_route_indexes}")
 if len(wechat_dns_indexes) != 1:
     raise AssertionError(f"expected one canonical WeChat local-DNS rule, got {wechat_dns_indexes}")
+if len(wechat_ip_route_indexes) != 1:
+    raise AssertionError(f"expected one maintained WeChat IP route, got {wechat_ip_route_indexes}")
+
+wechat_rule_set_definitions = [
+    rule for rule in config["route"]["rule_set"]
+    if rule.get("tag") == wechat_rule_set_tag
+]
+if wechat_rule_set_definitions != [{
+    "type": "local",
+    "tag": wechat_rule_set_tag,
+    "format": "binary",
+    "path": "rules/karing-acl4ssr-wechat.srs",
+}]:
+    raise AssertionError(
+        f"expected one packaged WeChat rule-set definition, got {wechat_rule_set_definitions}"
+    )
 
 global_route_indexes = [
     index for index, rule in enumerate(route_rules) if rule.get("clash_mode") == "Global"
@@ -79,6 +98,8 @@ if global_route_indexes and wechat_route_indexes[0] <= global_route_indexes[-1]:
     raise AssertionError("Global route mode must retain priority over the WeChat direct route")
 if global_dns_indexes and wechat_dns_indexes[0] <= global_dns_indexes[-1]:
     raise AssertionError("Global DNS mode must retain priority over the WeChat local resolver")
+if wechat_ip_route_indexes[0] != wechat_route_indexes[0] + 1:
+    raise AssertionError("maintained WeChat IP routing must immediately follow its domain route")
 
 if any(
     "com.tencent.mm" in rule.get("package_name", [])
@@ -95,3 +116,17 @@ for domain in ("mmbiz.qpic.cn", "wx.qlogo.cn", "res.wx.qq.com", "weixin.qq.com")
 
 print("WeChat media routing policy test passed")
 PY
+
+WECHAT_RULE_FILE="$CONFIG_DIR/rules/karing-acl4ssr-wechat.srs"
+if command -v sing-box >/dev/null 2>&1 && [[ -s "$WECHAT_RULE_FILE" ]]; then
+    match_output=$(sing-box rule-set match -f binary "$WECHAT_RULE_FILE" 101.32.104.4 2>&1)
+    [[ "$match_output" == *"match rules."* ]] || {
+        printf 'WeChat routing test failed: packaged rule set misses a dedicated WeChat IP\n' >&2
+        exit 1
+    }
+    non_match_output=$(sing-box rule-set match -f binary "$WECHAT_RULE_FILE" 8.8.8.8 2>&1)
+    [[ -z "$non_match_output" ]] || {
+        printf 'WeChat routing test failed: packaged rule set captures unrelated public IPs\n' >&2
+        exit 1
+    }
+fi
