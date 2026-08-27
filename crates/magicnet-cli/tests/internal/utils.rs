@@ -43,6 +43,27 @@ fn bounded_proc_reader_preserves_exact_argv() {
 }
 
 #[test]
+fn bounded_proc_reader_ignores_only_trailing_nul_padding() {
+    let directory = test_directory("proc-reader-nul-padding");
+    let cmdline = directory.join("cmdline");
+    fs::write(&cmdline, b"/system/bin/sh\0/module/worker.sh\0\0\0").unwrap();
+
+    assert_eq!(
+        read_proc_argv(&cmdline).unwrap(),
+        vec![
+            "/system/bin/sh".to_string(),
+            "/module/worker.sh".to_string()
+        ]
+    );
+
+    fs::write(&cmdline, b"/system/bin/sh\0\0/module/worker.sh\0").unwrap();
+    assert!(read_proc_argv(&cmdline)
+        .unwrap_err()
+        .contains("invalid argument"));
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn bounded_proc_reader_rejects_oversize_and_malformed_cmdlines() {
     let directory = test_directory("proc-reader-limits");
     let oversized = directory.join("oversized");
