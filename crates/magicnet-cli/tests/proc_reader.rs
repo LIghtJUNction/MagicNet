@@ -152,7 +152,32 @@ fn script_scan_is_framed_and_fifo_failure_is_indeterminate() {
         b"MAGICNET_PROC_PIDS_V1\n123\nMAGICNET_PROC_PIDS_END 1\n"
     );
 
-    fs::remove_file(root.join("123/cmdline")).expect("remove regular cmdline");
+    fs::create_dir_all(root.join("967")).expect("create padded unrelated process");
+    let mut padded = b"com.tencent.mm:appbrand0".to_vec();
+    padded.extend([0u8; 75]);
+    fs::write(root.join("967/cmdline"), padded).expect("write padded unrelated cmdline");
+    let output = Command::new(cli)
+        .args(["__proc-script-pids", root.to_str().unwrap(), script])
+        .output()
+        .expect("run padded unrelated script scan");
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        output.stdout,
+        b"MAGICNET_PROC_PIDS_V1\n123\nMAGICNET_PROC_PIDS_END 1\n"
+    );
+
+    fs::remove_file(root.join("123/cmdline")).expect("remove matching cmdline");
+    let output = Command::new(cli)
+        .args(["__proc-script-pids", root.to_str().unwrap(), script])
+        .output()
+        .expect("run padded-only script scan");
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        output.stdout,
+        b"MAGICNET_PROC_PIDS_V1\nMAGICNET_PROC_PIDS_END 0\n"
+    );
+
+    fs::create_dir_all(root.join("123")).expect("restore FIFO candidate directory");
     make_fifo(&root.join("123/cmdline"));
     let started = Instant::now();
     let output = Command::new(cli)

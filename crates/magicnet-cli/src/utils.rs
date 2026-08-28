@@ -376,9 +376,10 @@ pub(crate) fn read_proc_argv_with_timeout(
 ) -> Result<Vec<String>, String> {
     let bytes = read_proc_file_bounded_with_timeout(path, MAX_PROC_CMDLINE_BYTES, timeout)?;
     // Kernel threads legitimately expose an empty cmdline and cannot match a
-    // userspace script. The bounded all-/proc scanner treats that as a
-    // definite non-match; exact ownership reads remain strict.
-    if bytes.is_empty() {
+    // userspace script. An all-NUL buffer is the same non-match: some Android
+    // processes zero the entire argv area. The bounded all-/proc scanner
+    // treats both as a definite skip; exact ownership reads remain strict.
+    if bytes.is_empty() || bytes.iter().all(|byte| *byte == 0) {
         return Ok(Vec::new());
     }
     parse_proc_argv(path, &bytes)
@@ -391,8 +392,15 @@ fn parse_proc_argv(path: &Path, bytes: &[u8]) -> Result<Vec<String>, String> {
             path.display()
         ));
     }
+    // Android apps may rewrite argv[0] and leave extra NUL padding after the
+    // logical terminator. Keep one terminator and reject empty arguments
+    // that appear before that logical end.
+    let Some(last_non_nul) = bytes.iter().rposition(|byte| *byte != 0) else {
+        return Err(format!("proc cmdline has no arguments: {}", path.display()));
+    };
+    let logical = &bytes[..=last_non_nul + 1];
     let mut argv = Vec::new();
-    for argument in bytes[..bytes.len() - 1].split(|byte| *byte == 0) {
+    for argument in logical[..logical.len() - 1].split(|byte| *byte == 0) {
         if argument.is_empty() || argument.contains(&b'\n') || argument.contains(&b'\r') {
             return Err(format!(
                 "proc cmdline contains an invalid argument: {}",
@@ -745,15 +753,6 @@ fn finish_output(
     }
 }
 
-/// Soft reader that follows symlinks. Prefer [`clean_module_lines`] for
-/// module-owned state so symlink swaps cannot redirect privileged reads.
-#[allow(dead_code)]
-pub(crate) fn clean_lines(path: PathBuf) -> Vec<String> {
-    fs::read_to_string(path)
-        .map(|text| filter_clean_lines(&text))
-        .unwrap_or_default()
-}
-
 fn filter_clean_lines(text: &str) -> Vec<String> {
     text.lines()
         .map(str::trim)
@@ -763,9 +762,9 @@ fn filter_clean_lines(text: &str) -> Vec<String> {
 }
 
 /// Reads a text file through the same module-root fd boundary used by the
-/// writers. Missing or malformed ordinary list files retain `clean_lines`'
-/// empty-list semantics, while symlinks, nonregular files, and hard links are
-/// rejected instead of being silently followed.
+/// writers. Missing or malformed ordinary list files return an empty list,
+/// while symlinks, nonregular files, and hard links are rejected instead of
+/// being silently followed.
 pub(crate) fn clean_module_lines(app: &App, relative: &Path) -> Result<Vec<String>, String> {
     let target = split_module_relative_file(relative)?;
     let directory = open_module_directory(app, &target.directory)?;
@@ -777,13 +776,6 @@ pub(crate) fn clean_module_lines(app: &App, relative: &Path) -> Result<Vec<Strin
         return Ok(Vec::new());
     }
     Ok(filter_clean_lines(&text))
-}
-
-/// Soft reader for non-module paths. Prefer [`clean_module_lines`] /
-/// [`first_clean_module_line`] for anything under the module root.
-#[allow(dead_code)]
-pub(crate) fn first_clean_line(path: PathBuf) -> String {
-    clean_lines(path).into_iter().next().unwrap_or_default()
 }
 
 pub(crate) fn first_clean_module_line(app: &App, relative: &Path) -> String {

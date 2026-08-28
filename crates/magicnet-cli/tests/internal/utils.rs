@@ -43,6 +43,34 @@ fn bounded_proc_reader_preserves_exact_argv() {
 }
 
 #[test]
+fn bounded_proc_reader_ignores_only_trailing_nul_padding() {
+    let directory = test_directory("proc-reader-trailing-nul");
+    let cmdline = directory.join("cmdline");
+    fs::write(&cmdline, b"/system/bin/sh\0/module/worker.sh\0\0\0").unwrap();
+    assert_eq!(
+        read_proc_argv(&cmdline).unwrap(),
+        vec![
+            "/system/bin/sh".to_string(),
+            "/module/worker.sh".to_string()
+        ]
+    );
+
+    let mut android_padding = b"com.tencent.mm:appbrand0".to_vec();
+    android_padding.extend([0u8; 75]);
+    fs::write(&cmdline, android_padding).unwrap();
+    assert_eq!(
+        read_proc_argv(&cmdline).unwrap(),
+        vec!["com.tencent.mm:appbrand0".to_string()]
+    );
+
+    fs::write(&cmdline, b"/system/bin/sh\0\0/module/worker.sh\0\0\0").unwrap();
+    assert!(read_proc_argv(&cmdline)
+        .unwrap_err()
+        .contains("invalid argument"));
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn bounded_proc_reader_rejects_oversize_and_malformed_cmdlines() {
     let directory = test_directory("proc-reader-limits");
     let oversized = directory.join("oversized");

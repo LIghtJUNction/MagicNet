@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Fix #141 by ignoring Android trailing NUL padding in `/proc/<pid>/cmdline`
+  so an unrelated app process cannot mark subscription-refresh ownership as
+  indeterminate and block the scheduled updater.
+- Remove unused symlink-following list readers; module state is read only
+  through the fd-bounded helpers that refuse symlink and hard-link swaps.
 - Route maintained WeChat destination IPs through `cn-direct` so push long
   connections do not fall through to the proxy after domain information is lost.
 - Fix #121 by clearing the zero-node bootstrap selector cache after the first successful subscription import so populated proxy groups cannot remain pinned to `block`.
