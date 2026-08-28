@@ -166,7 +166,7 @@ fn script_scan_is_framed_and_fifo_failure_is_indeterminate() {
         b"MAGICNET_PROC_PIDS_V1\n123\nMAGICNET_PROC_PIDS_END 1\n"
     );
 
-    fs::remove_file(root.join("123/cmdline")).expect("remove matching cmdline");
+    fs::remove_dir_all(root.join("123")).expect("remove matching process");
     let output = Command::new(cli)
         .args(["__proc-script-pids", root.to_str().unwrap(), script])
         .output()
