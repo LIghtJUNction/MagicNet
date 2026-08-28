@@ -391,8 +391,16 @@ fn parse_proc_argv(path: &Path, bytes: &[u8]) -> Result<Vec<String>, String> {
             path.display()
         ));
     }
+    // Android processes may rewrite argv[0] without clearing the rest of the
+    // kernel-exposed argument buffer, leaving NUL padding after the logical
+    // command line. Ignore only that trailing padding; empty arguments between
+    // non-empty arguments remain invalid below.
+    let logical_end = bytes
+        .iter()
+        .rposition(|byte| *byte != 0)
+        .ok_or_else(|| format!("proc cmdline has no arguments: {}", path.display()))?;
     let mut argv = Vec::new();
-    for argument in bytes[..bytes.len() - 1].split(|byte| *byte == 0) {
+    for argument in bytes[..=logical_end].split(|byte| *byte == 0) {
         if argument.is_empty() || argument.contains(&b'\n') || argument.contains(&b'\r') {
             return Err(format!(
                 "proc cmdline contains an invalid argument: {}",
