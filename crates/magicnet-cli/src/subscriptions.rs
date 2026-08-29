@@ -668,6 +668,25 @@ pub(crate) fn validate_subscription_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Empty files are valid local-only restores. Non-empty lines must pass the
+/// same HTTPS/public-host policy as `cli sub set`.
+pub(crate) fn validate_restored_subscription_urls(text: &str) -> Result<(), String> {
+    if text.contains('\0') {
+        return Err("subscription URL list must not contain NUL bytes".to_string());
+    }
+    let mut count = 0_usize;
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        validate_subscription_url(line)?;
+        count += 1;
+        if count > MAX_SINGBOX_SUBSCRIPTION_URLS {
+            return Err(format!(
+                "sing-box subscription URL list supports at most {MAX_SINGBOX_SUBSCRIPTION_URLS} entries"
+            ));
+        }
+    }
+    Ok(())
+}
+
 struct SubscriptionAuthority<'a> {
     host: &'a str,
     port: u16,

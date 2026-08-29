@@ -1,4 +1,4 @@
 interface:
   display_name: "MagicNet Device Debugging"
-  short_description: "Debug MagicNet MCP, eBPF, DNS, and packet capture"
+  short_description: "Debug MagicNet MCP, DNS, eCapture diagnostics, and TUN health"
   default_prompt: "Use $magicnet-device-debugging to verify a MagicNet Android device, MCP server, and certificate-less packet capture."

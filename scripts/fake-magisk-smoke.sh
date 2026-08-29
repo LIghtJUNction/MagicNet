@@ -623,9 +623,6 @@ export MAGICNET_NOTIFY_ENABLED=0
 export MAGICNET_WATCHDOG_ENABLED=0
 export MAGICNET_FSWATCH_ENABLED=0
 export MAGICNET_CONFIG_LOCK_TIMEOUT=2
-export MAGIC_HOTSPOT_IFACES="ap0"
-export MAGIC_VPN_COEXIST_IFACES="tun0"
-export MAGIC_TUN_IFACES="magicnet0"
 export PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH"
 # The host-only CLI test runner keeps its command doubles out of the
 # production trusted PATH and opts into them explicitly here.

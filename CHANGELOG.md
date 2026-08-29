@@ -1,5 +1,15 @@
 ## Unreleased
 
+- Fail closed when `config-editor sync-template` cannot parse the current
+  sing-box config, so a corrupt file cannot drop preserved subscription
+  outbounds.
+- Validate restored `subscription.url` and `warp-endpoint.json` with the same
+  policy as the CLI write paths, so backups cannot persist credentialed,
+  private, or non-WireGuard endpoints.
+- Pin Android CLI helper lookups to the module-owned PATH instead of an
+  inherited caller PATH.
+- Remove leftover mihomo/VPN-coexist smoke exports and stale skill wording.
+
 - Route maintained WeChat destination IPs through `cn-direct` so push long
   connections do not fall through to the proxy after domain information is lost.
 - Fix #121 by clearing the zero-node bootstrap selector cache after the first successful subscription import so populated proxy groups cannot remain pinned to `block`.

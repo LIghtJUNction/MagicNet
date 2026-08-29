@@ -197,6 +197,75 @@ fn read_endpoint(app: &App) -> Option<Value> {
     serde_json::from_str(&text).ok()
 }
 
+pub(crate) fn validate_warp_endpoint_json(text: &str) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Ok(());
+    }
+    if text.contains('\0') {
+        return Err("WARP endpoint JSON must not contain NUL bytes".to_string());
+    }
+    let value: Value = serde_json::from_str(text)
+        .map_err(|err| format!("WARP endpoint JSON is invalid: {err}"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| "WARP endpoint JSON must be an object".to_string())?;
+    if object.get("type").and_then(Value::as_str) != Some("wireguard") {
+        return Err("WARP endpoint type must be wireguard".to_string());
+    }
+    if object
+        .get("tag")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return Err("WARP endpoint tag is required".to_string());
+    }
+    if object
+        .get("private_key")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return Err("WARP endpoint private_key is required".to_string());
+    }
+    let addresses = object
+        .get("address")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "WARP endpoint address list is required".to_string())?;
+    if addresses.is_empty()
+        || addresses
+            .iter()
+            .any(|item| item.as_str().is_none_or(str::is_empty))
+    {
+        return Err("WARP endpoint address list is invalid".to_string());
+    }
+    let peers = object
+        .get("peers")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "WARP endpoint peers are required".to_string())?;
+    let peer = peers
+        .first()
+        .and_then(Value::as_object)
+        .ok_or_else(|| "WARP endpoint peer is invalid".to_string())?;
+    if peer
+        .get("address")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return Err("WARP endpoint peer address is required".to_string());
+    }
+    let port = peer.get("port").and_then(Value::as_u64).unwrap_or(0);
+    if !(1..=65535).contains(&port) {
+        return Err("WARP endpoint peer port is invalid".to_string());
+    }
+    if peer
+        .get("public_key")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return Err("WARP endpoint public_key is required".to_string());
+    }
+    Ok(())
+}
+
 fn parse_wireguard_config(text: &str) -> Result<Value, String> {
     let mut current = "";
     let mut iface = HashMap::new();
@@ -366,5 +435,18 @@ Reserved = 1, 2, 3
         );
         assert_eq!(endpoint["peers"][0]["port"], 2408);
         assert_eq!(endpoint["peers"][0]["reserved"][2], 3);
+        validate_warp_endpoint_json(&format!("{}\n", serde_json::to_string(&endpoint).unwrap()))
+            .unwrap();
+    }
+
+    #[test]
+    fn warp_endpoint_json_requires_wireguard_shape() {
+        validate_warp_endpoint_json("").unwrap();
+        assert!(validate_warp_endpoint_json("{\"private_key\":\"fixture\"}").is_err());
+        assert!(validate_warp_endpoint_json(
+            "{\"type\":\"socks\",\"tag\":\"warp\",\"server\":\"127.0.0.1\"}"
+        )
+        .is_err());
+        assert!(validate_warp_endpoint_json("[]").is_err());
     }
 }
