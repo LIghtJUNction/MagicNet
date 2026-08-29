@@ -25,6 +25,7 @@ for _magicnet_lib in \
     core \
     action_menu \
     phases; do
+    # transparent_dns.sh = IPv6/MTU/UDP policy; DNS capture remains in network.sh.
     . "${_magicnet_lib_dir}/${_magicnet_lib}.sh"
 done
 unset _magicnet_lib _magicnet_lib_dir

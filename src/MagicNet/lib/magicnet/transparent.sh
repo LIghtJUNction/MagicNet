@@ -1,4 +1,8 @@
 magicnet_singbox_apply_transparent_mode() {
+    # Materialize the only supported dataplane: sing-box magicnet0 TUN (+
+    # mixed-in / magicnet-dns-in). Older tproxy/redirect inbounds are stripped
+    # below so leftover configs cannot keep a deleted transparent path alive;
+    # they are never regenerated.
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
     _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "tun")"
@@ -42,6 +46,12 @@ magicnet_singbox_apply_transparent_mode() {
             "auto_route": true,
             "auto_redirect": true,
             "strict_route": true,
+            # UID 0 matrix (keep in sync with network.sh DNS capture):
+            # - TUN exclude_uid always includes 0 so root/netd traffic is not
+            #   sucked into magicnet0.
+            # - DNS REDIRECT normally captures UID 0 (netd DNS).
+            # - When Bypass TUN UIDs exist, DNS capture also RETURNs UID 0 so
+            #   proxied lookups stay off MagicNet with their apps.
             "exclude_uid": [
               0
             ],
@@ -63,6 +73,9 @@ magicnet_singbox_apply_transparent_mode() {
             "mtu": $tun_mtu,
             "udp_timeout": $udp_timeout
           };
+        # managed_inbound matches current TUN/mixed/dns tags and legacy
+        # tproxy/redirect types so apply can delete them. Do not treat this as
+        # support for regenerating non-TUN transparent modes.
         def managed_inbound:
           ((.type // "") as $type | ($type == "tun" or $type == "tproxy" or $type == "redirect"))
           or ((.tag // "") == "mixed-in")

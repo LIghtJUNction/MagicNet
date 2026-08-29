@@ -210,7 +210,7 @@ fn supervisor_pidfiles_require_the_matching_module_command() {
     ));
     assert!(!supervisor_cmdline_matches(
         &module,
-        &module.join(".state/after-kernel-start.pid"),
+        &module.join(".state/unknown-supervisor.pid"),
         &argv(&["/data/adb/modules/MagicNet/cli", "config", "apply"])
     ));
 }

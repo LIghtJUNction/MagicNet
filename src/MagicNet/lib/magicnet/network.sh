@@ -170,10 +170,13 @@ magicnet_dns_capture_bypass_uids() {
         unset _dns_bypass_uid_file
         return 0
     }
-    # Android netd can emit a Bypass TUN app's DNS request as UID 0. Once
-    # netd proxies the lookup, xt_owner cannot recover the originating app;
-    # keep UID 0 outside capture whenever a real bypass UID is configured so
-    # the app and its DNS stay on the same non-MagicNet path.
+    # UID 0 matrix (keep in sync with transparent.sh TUN exclude_uid):
+    # - TUN always excludes UID 0 from magicnet0.
+    # - DNS capture usually intercepts UID 0 (Android netd).
+    # - Android netd can emit a Bypass TUN app's DNS request as UID 0. Once
+    #   netd proxies the lookup, xt_owner cannot recover the originating app;
+    #   keep UID 0 outside capture whenever a real bypass UID is configured so
+    #   the app and its DNS stay on the same non-MagicNet path.
     _dns_bypass_uids="$(awk '/^[0-9]+$/ && ($0 + 0) != 0 && !seen[$0]++ { print }' "$_dns_bypass_uid_file" 2>/dev/null)"
     if [ -n "$_dns_bypass_uids" ]; then
         printf '%s\n' 0

@@ -646,6 +646,9 @@ fn valid_user_id(value: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
     use serde_json::{json, Value};
 
     use super::{
@@ -1913,9 +1916,18 @@ mod tests {
 
     #[test]
     fn source_config_fails_closed_without_subscription_nodes() {
-        let status = analyze_text(include_str!(
-            "../../../src/MagicNet/.config/sing-box/config.json"
-        ));
+        // Bundled MagicSingBox template lives in the sing-box config submodule.
+        // Prefer a runtime read so `cargo check` still works before
+        // `git submodule update --init src/MagicNet/.config/sing-box`.
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../src/MagicNet/.config/sing-box/config.json");
+        let text = fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "bundled sing-box config missing at {}: {err}; run `git submodule update --init src/MagicNet/.config/sing-box`",
+                path.display()
+            )
+        });
+        let status = analyze_text(&text);
 
         assert_eq!(
             status,

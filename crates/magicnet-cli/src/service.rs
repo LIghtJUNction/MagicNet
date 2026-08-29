@@ -462,7 +462,6 @@ fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String>
             .join(".state/watchdog/magicnet-hotspot-route.pid"),
     );
     stop_supervisor_pidfile(app, app.moddir.join(".state/fswatch/magicnet-config.pid"));
-    stop_supervisor_pidfile(app, app.moddir.join(".state/after-kernel-start.pid"));
     ignore_command(
         "pkill",
         &[
@@ -554,9 +553,6 @@ fn supervisor_cmdline_matches(moddir: &Path, path: &Path, argv: &[String]) -> bo
             argv,
             &format!("{module}/.state/watchdog/magicnet-hotspot-route.loop.sh"),
         ),
-        // There is no current producer for this legacy pidfile.  Requiring a
-        // known command is safer than killing a reused PID from old state.
-        Some("after-kernel-start.pid") => false,
         _ => false,
     }
 }
@@ -635,14 +631,18 @@ fn write_transparent_mode(app: &App, mode: &str) -> Result<(), String> {
 }
 
 fn transparent_mode(app: &App) -> String {
+    // Status/read path only. `transparent set` already rejects non-tun values;
+    // legacy conf leftovers (proxy/hybrid/external*) are remapped to tun so
+    // callers never see deleted dataplanes, without rewriting the file here.
     fs::read_to_string(app.moddir.join(TRANSPARENT_MODE_CONF))
         .ok()
         .and_then(|text| {
             text.lines().find_map(|line| {
                 let (_, value) = line.split_once('=')?;
                 match value.trim().trim_matches('"').trim_matches('\'') {
-                    "proxy" | "external" | "external-tun" | "hybrid" => Some("tun".to_string()),
-                    "tun" => Some("tun".to_string()),
+                    "proxy" | "external" | "external-tun" | "hybrid" | "tun" => {
+                        Some("tun".to_string())
+                    }
                     _ => None,
                 }
             })
