@@ -1,6 +1,6 @@
 magicnet_iface_name_valid() {
     case "$1" in
-        '' | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.:-]*) return 1 ;;
+    '' | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.:-]*) return 1 ;;
     esac
     [ "${#1}" -le 15 ]
 }
@@ -18,10 +18,10 @@ magicnet_iface_exists() {
 magicnet_xtables_function_defined() {
     _xtables_command="$1"
     case "$(LC_ALL=C LANG=C command -V "$_xtables_command" 2>/dev/null || true)" in
-        *function* | *Function*)
-            unset _xtables_command
-            return 0
-            ;;
+    *function* | *Function*)
+        unset _xtables_command
+        return 0
+        ;;
     esac
     unset _xtables_command
     return 1
@@ -30,12 +30,12 @@ magicnet_xtables_function_defined() {
 magicnet_xtables_timeout() {
     _xtables_timeout="${MAGICNET_XTABLES_TIMEOUT:-5}"
     case "$_xtables_timeout" in
-        '' | *[!0-9]*) _xtables_timeout=5 ;;
-        *)
-            if [ "$_xtables_timeout" -lt 1 ] || [ "$_xtables_timeout" -gt 30 ]; then
-                _xtables_timeout=5
-            fi
-            ;;
+    '' | *[!0-9]*) _xtables_timeout=5 ;;
+    *)
+        if [ "$_xtables_timeout" -lt 1 ] || [ "$_xtables_timeout" -gt 30 ]; then
+            _xtables_timeout=5
+        fi
+        ;;
     esac
     printf '%s\n' "$_xtables_timeout"
     unset _xtables_timeout
@@ -76,11 +76,11 @@ magicnet_ip6tables_cmd() {
 magicnet_xtables_available() {
     _xtables_family="$1"
     case "$_xtables_family" in
-        iptables|ip6tables) ;;
-        *)
-            unset _xtables_family
-            return 1
-            ;;
+    iptables | ip6tables) ;;
+    *)
+        unset _xtables_family
+        return 1
+        ;;
     esac
     if ! magicnet_cmd_exists "$_xtables_family"; then
         unset _xtables_family
@@ -91,8 +91,8 @@ magicnet_xtables_available() {
         return 0
     fi
     case "$_xtables_family" in
-        iptables) magicnet_iptables_cmd -L >/dev/null 2>&1 ;;
-        ip6tables) magicnet_ip6tables_cmd -L >/dev/null 2>&1 ;;
+    iptables) magicnet_iptables_cmd -L >/dev/null 2>&1 ;;
+    ip6tables) magicnet_ip6tables_cmd -L >/dev/null 2>&1 ;;
     esac
     _xtables_rc=$?
     unset _xtables_family
@@ -111,16 +111,16 @@ magicnet_xtables_ensure_rule() (
         "$_ensure_cmd" -C "$@" >/dev/null 2>&1 || _ensure_rc=$?
     fi
     case "$_ensure_rc" in
-        0) return 0 ;;
-        1)
-            if [ -n "$_ensure_table" ]; then
-                "$_ensure_cmd" -t "$_ensure_table" "$_ensure_add" "$@" >/dev/null 2>&1
-            else
-                "$_ensure_cmd" "$_ensure_add" "$@" >/dev/null 2>&1
-            fi
-            ;;
-        124 | 137 | 143) return 124 ;;
-        *) return "$_ensure_rc" ;;
+    0) return 0 ;;
+    1)
+        if [ -n "$_ensure_table" ]; then
+            "$_ensure_cmd" -t "$_ensure_table" "$_ensure_add" "$@" >/dev/null 2>&1
+        else
+            "$_ensure_cmd" "$_ensure_add" "$@" >/dev/null 2>&1
+        fi
+        ;;
+    124 | 137 | 143) return 124 ;;
+    *) return "$_ensure_rc" ;;
     esac
 )
 
@@ -153,12 +153,12 @@ magicnet_dns_capture_enabled() {
 magicnet_dns_capture_port() {
     _dns_capture_port="${MAGIC_DNS_CAPTURE_PORT:-1053}"
     case "$_dns_capture_port" in
-        '' | *[!0-9]*) _dns_capture_port=1053 ;;
-        *)
-            if [ "$_dns_capture_port" -lt 1 ] || [ "$_dns_capture_port" -gt 65535 ]; then
-                _dns_capture_port=1053
-            fi
-            ;;
+    '' | *[!0-9]*) _dns_capture_port=1053 ;;
+    *)
+        if [ "$_dns_capture_port" -lt 1 ] || [ "$_dns_capture_port" -gt 65535 ]; then
+            _dns_capture_port=1053
+        fi
+        ;;
     esac
     printf '%s\n' "$_dns_capture_port"
     unset _dns_capture_port
@@ -238,9 +238,9 @@ magicnet_enable_dns_capture() {
     _dns_capture_check_rc=0
     magicnet_iptables_cmd -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_check_rc=$?
     case "$_dns_capture_check_rc" in
-        0) ;;
-        1) magicnet_iptables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
-        *) _dns_capture_rc=1 ;;
+    0) ;;
+    1) magicnet_iptables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
+    *) _dns_capture_rc=1 ;;
     esac
     # Direct UDP DNS servers are marked in the sing-box config. Keep those
     # resolver packets out of this chain without exempting all UID-0 traffic.
@@ -248,9 +248,9 @@ magicnet_enable_dns_capture() {
         magicnet_iptables_ensure -t nat magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
     fi
     case " $_dns_capture_bypass_uids " in
-        *" 0 "*)
-            magicnet_log "DNS capture keeps UID 0 outside interception while Bypass TUN UIDs are configured"
-            ;;
+    *" 0 "*)
+        magicnet_log "DNS capture keeps UID 0 outside interception while Bypass TUN UIDs are configured"
+        ;;
     esac
     for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
         magicnet_iptables_ensure -t nat magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
@@ -279,9 +279,9 @@ magicnet_enable_dns_capture() {
             _dns_capture_check_rc=0
             magicnet_ip6tables_cmd -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_check_rc=$?
             case "$_dns_capture_check_rc" in
-                0) ;;
-                1) magicnet_ip6tables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
-                *) _dns_capture_rc=1 ;;
+            0) ;;
+            1) magicnet_ip6tables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
+            *) _dns_capture_rc=1 ;;
             esac
             if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
                 magicnet_ip6tables_nat_ensure magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
@@ -330,13 +330,13 @@ magicnet_xtables_delete_rule() (
             "$_delete_cmd" -C "$@" >/dev/null 2>&1 || _delete_rc=$?
         fi
         case "$_delete_rc" in
-            0)
-                _delete_attempt=$((_delete_attempt + 1))
-                continue
-                ;;
-            1) return 0 ;;
-            124 | 137 | 143) return 124 ;;
-            *) return 1 ;;
+        0)
+            _delete_attempt=$((_delete_attempt + 1))
+            continue
+            ;;
+        1) return 0 ;;
+        124 | 137 | 143) return 124 ;;
+        *) return 1 ;;
         esac
     done
     return 1
@@ -396,9 +396,9 @@ magicnet_collect_physical_egress_ifaces() {
         [ -d "$_path" ] || continue
         _iface=${_path##*/}
         case "$_iface" in
-            rmnet*|ccmni*|ccemni*|pdp*|wwan*|wlan*|wifi*|eth*)
-                printf '%s\n' "$_iface"
-                ;;
+        rmnet* | ccmni* | ccemni* | pdp* | wwan* | wlan* | wifi* | eth*)
+            printf '%s\n' "$_iface"
+            ;;
         esac
     done | awk '!seen[$0]++'
 }
@@ -430,9 +430,9 @@ magicnet_dns_leak_guard_delete_family() (
                     --dport "$_delete_family_port" -j REJECT ||
                     _delete_family_rc=$?
                 case "$_delete_family_rc" in
-                    0) ;;
-                    124) return 124 ;;
-                    *) _delete_family_result=1 ;;
+                0) ;;
+                124) return 124 ;;
+                *) _delete_family_result=1 ;;
                 esac
             done
         done
@@ -533,7 +533,10 @@ magicnet_enable_dns_leak_guard() {
     _dns_guard_state_file="$(magicnet_dns_leak_guard_state_file)"
     _dns_guard_state_tmp="${_dns_guard_state_file}.new.$$"
     if ! mkdir -p "${_dns_guard_state_file%/*}" ||
-        ! (umask 077; printf '%s\n' "$_dns_guard_ifaces" >"$_dns_guard_state_tmp") ||
+        ! (
+            umask 077
+            printf '%s\n' "$_dns_guard_ifaces" >"$_dns_guard_state_tmp"
+        ) ||
         ! mv -f "$_dns_guard_state_tmp" "$_dns_guard_state_file"; then
         magicnet_warn "Failed to persist DNS leak guard interface state"
         rm -f "$_dns_guard_state_tmp" 2>/dev/null || true
@@ -551,15 +554,15 @@ magicnet_enable_dns_leak_guard() {
 magicnet_disable_dns_leak_guard() (
     MAGICNET_XTABLES_TIMEOUT="${MAGICNET_DNS_GUARD_XTABLES_TIMEOUT:-1}"
     case "$MAGICNET_XTABLES_TIMEOUT" in
-        '' | *[!0-9]* | 0) MAGICNET_XTABLES_TIMEOUT=1 ;;
+    '' | *[!0-9]* | 0) MAGICNET_XTABLES_TIMEOUT=1 ;;
     esac
 
     _cleanup_probe=0
     magicnet_xtables_available iptables || _cleanup_probe=$?
     case "$_cleanup_probe" in
-        124 | 137 | 143) return 1 ;;
-        0) ;;
-        *) return 0 ;;
+    124 | 137 | 143) return 1 ;;
+    0) ;;
+    *) return 0 ;;
     esac
 
     _cleanup_state="$(magicnet_dns_leak_guard_state_file)"
@@ -579,9 +582,9 @@ magicnet_disable_dns_leak_guard() (
     _cleanup_ipv4_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_iptables_cmd)" ||
         _cleanup_ipv4_scan_rc=$?
     case "$_cleanup_ipv4_scan_rc" in
-        124 | 137 | 143) return 1 ;;
-        0) ;;
-        *) _cleanup_ipv4_scan_failed=1 ;;
+    124 | 137 | 143) return 1 ;;
+    0) ;;
+    *) _cleanup_ipv4_scan_failed=1 ;;
     esac
     _cleanup_ipv4_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$_cleanup_ipv4_rules" |
         awk 'NF && !seen[$0]++')
@@ -593,9 +596,9 @@ magicnet_disable_dns_leak_guard() (
     _cleanup_rc=0
     magicnet_dns_leak_guard_delete_family magicnet_iptables_cmd "$_cleanup_ipv4_ifaces" || _cleanup_rc=$?
     case "$_cleanup_rc" in
-        124) return 1 ;;
-        0) ;;
-        *) _cleanup_result=1 ;;
+    124) return 1 ;;
+    0) ;;
+    *) _cleanup_result=1 ;;
     esac
 
     _cleanup_probe=0
@@ -606,9 +609,9 @@ magicnet_disable_dns_leak_guard() (
         _cleanup_ipv6_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_ip6tables_cmd)" ||
             _cleanup_ipv6_scan_rc=$?
         case "$_cleanup_ipv6_scan_rc" in
-            124 | 137 | 143) return 1 ;;
-            0) ;;
-            *) _cleanup_ipv6_scan_failed=1 ;;
+        124 | 137 | 143) return 1 ;;
+        0) ;;
+        *) _cleanup_ipv6_scan_failed=1 ;;
         esac
         _cleanup_ipv6_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$_cleanup_ipv6_rules" |
             awk 'NF && !seen[$0]++')
@@ -619,9 +622,9 @@ magicnet_disable_dns_leak_guard() (
         _cleanup_rc=0
         magicnet_dns_leak_guard_delete_family magicnet_ip6tables_cmd "$_cleanup_ipv6_ifaces" || _cleanup_rc=$?
         case "$_cleanup_rc" in
-            124) return 1 ;;
-            0) ;;
-            *) _cleanup_result=1 ;;
+        124) return 1 ;;
+        0) ;;
+        *) _cleanup_result=1 ;;
         esac
     else
         case "$_cleanup_probe" in 124 | 137 | 143) return 1 ;; esac

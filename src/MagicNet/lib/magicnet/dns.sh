@@ -8,11 +8,11 @@ magicnet_dns_profile() {
         _profile="$(magicnet_conf_value "$(magicnet_dns_conf)" MAGICNET_DNS_PROFILE 2>/dev/null || true)"
     fi
     case "${_profile:-default}" in
-        default|cloudflare-doh|cloudflare-dot|cloudflare-udp) printf '%s\n' "${_profile:-default}" ;;
-        cloudflare|doh) printf '%s\n' "cloudflare-doh" ;;
-        dot) printf '%s\n' "cloudflare-dot" ;;
-        udp|1.1.1.1) printf '%s\n' "cloudflare-udp" ;;
-        *) printf '%s\n' "default" ;;
+    default | cloudflare-doh | cloudflare-dot | cloudflare-udp) printf '%s\n' "${_profile:-default}" ;;
+    cloudflare | doh) printf '%s\n' "cloudflare-doh" ;;
+    dot) printf '%s\n' "cloudflare-dot" ;;
+    udp | 1.1.1.1) printf '%s\n' "cloudflare-udp" ;;
+    *) printf '%s\n' "default" ;;
     esac
     unset _profile
 }

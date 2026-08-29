@@ -327,15 +327,15 @@ EOF
   iptables() {
     printf '%s\n' "iptables $*" >>"$dns_capture_log"
     case " $* " in
-      *' -C '*) return 1 ;;
-      *) return 0 ;;
+    *' -C '*) return 1 ;;
+    *) return 0 ;;
     esac
   }
   ip6tables() {
     printf '%s\n' "ip6tables $*" >>"$dns_capture_log"
     case " $* " in
-      *' -C '*) return 1 ;;
-      *) return 0 ;;
+    *' -C '*) return 1 ;;
+    *) return 0 ;;
     esac
   }
   magicnet_cmd_exists() { command -v "$1" >/dev/null 2>&1; }
@@ -445,22 +445,22 @@ assert_dns_capture_disable_removes_duplicate_output_jumps() (
   iptables() {
     dns_output_jump_count=$(cat "$dns_output_jump_count_file")
     case " $* " in
-      *' -D OUTPUT -j magicnet-dns-output '*)
-        if [ "$dns_output_jump_count" -gt 0 ]; then
-          printf '%s\n' "$((dns_output_jump_count - 1))" >"$dns_output_jump_count_file"
-          return 0
-        fi
-        return 1
-        ;;
-      *' -C OUTPUT -j magicnet-dns-output '*)
-        [ "$dns_output_jump_count" -gt 0 ]
-        ;;
-      *' -L magicnet-dns-output '*|*' -F magicnet-dns-output '*|*' -X magicnet-dns-output '*)
+    *' -D OUTPUT -j magicnet-dns-output '*)
+      if [ "$dns_output_jump_count" -gt 0 ]; then
+        printf '%s\n' "$((dns_output_jump_count - 1))" >"$dns_output_jump_count_file"
         return 0
-        ;;
-      *)
-        return 0
-        ;;
+      fi
+      return 1
+      ;;
+    *' -C OUTPUT -j magicnet-dns-output '*)
+      [ "$dns_output_jump_count" -gt 0 ]
+      ;;
+    *' -L magicnet-dns-output '* | *' -F magicnet-dns-output '* | *' -X magicnet-dns-output '*)
+      return 0
+      ;;
+    *)
+      return 0
+      ;;
     esac
   }
   ip6tables() { return 1; }
@@ -489,23 +489,23 @@ assert_dns_capture_disable_retries_transient_delete_failure() (
   iptables() {
     dns_output_jump_count=$(cat "$dns_output_jump_count_file")
     case " $* " in
-      *' -D OUTPUT -j magicnet-dns-output '*)
-        if [ -e "$transient_delete_file" ]; then
-          rm -f "$transient_delete_file"
-          return 1
-        fi
-        if [ "$dns_output_jump_count" -gt 0 ]; then
-          printf '%s\n' "$((dns_output_jump_count - 1))" >"$dns_output_jump_count_file"
-          return 0
-        fi
+    *' -D OUTPUT -j magicnet-dns-output '*)
+      if [ -e "$transient_delete_file" ]; then
+        rm -f "$transient_delete_file"
         return 1
-        ;;
-      *' -C OUTPUT -j magicnet-dns-output '*)
-        [ "$dns_output_jump_count" -gt 0 ]
-        ;;
-      *)
+      fi
+      if [ "$dns_output_jump_count" -gt 0 ]; then
+        printf '%s\n' "$((dns_output_jump_count - 1))" >"$dns_output_jump_count_file"
         return 0
-        ;;
+      fi
+      return 1
+      ;;
+    *' -C OUTPUT -j magicnet-dns-output '*)
+      [ "$dns_output_jump_count" -gt 0 ]
+      ;;
+    *)
+      return 0
+      ;;
     esac
   }
   ip6tables() { return 1; }
@@ -529,10 +529,10 @@ assert_dns_capture_disable_reports_cleanup_failure() (
 
   iptables() {
     case " $* " in
-      *' -D OUTPUT -j magicnet-dns-output '*) return 1 ;;
-      *' -C OUTPUT -j magicnet-dns-output '*) return 0 ;;
-      *' -L magicnet-dns-output '*|*' -F magicnet-dns-output '*|*' -X magicnet-dns-output '*) return 0 ;;
-      *) return 1 ;;
+    *' -D OUTPUT -j magicnet-dns-output '*) return 1 ;;
+    *' -C OUTPUT -j magicnet-dns-output '*) return 0 ;;
+    *' -L magicnet-dns-output '* | *' -F magicnet-dns-output '* | *' -X magicnet-dns-output '*) return 0 ;;
+    *) return 1 ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -558,23 +558,23 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
 
   iptables() {
     case " $* " in
-      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
-        dns_guard_rule_count="$(cat "$dns_guard_count_file")"
-        if [ "$dns_guard_rule_count" -gt 0 ]; then
-          printf '%s\n' "$((dns_guard_rule_count - 1))" >"$dns_guard_count_file"
-          return 0
-        fi
-        return 1
-        ;;
-      *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
-        [ "$(cat "$dns_guard_count_file")" -gt 0 ]
-        ;;
-      *' -D OUTPUT -o wlan0 '*|*' -C OUTPUT -o wlan0 '*)
-        return 1
-        ;;
-      *)
-        return 1
-        ;;
+    *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+      dns_guard_rule_count="$(cat "$dns_guard_count_file")"
+      if [ "$dns_guard_rule_count" -gt 0 ]; then
+        printf '%s\n' "$((dns_guard_rule_count - 1))" >"$dns_guard_count_file"
+        return 0
+      fi
+      return 1
+      ;;
+    *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+      [ "$(cat "$dns_guard_count_file")" -gt 0 ]
+      ;;
+    *' -D OUTPUT -o wlan0 '* | *' -C OUTPUT -o wlan0 '*)
+      return 1
+      ;;
+    *)
+      return 1
+      ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -598,9 +598,12 @@ assert_disabled_dns_leak_guard_skips_per_interface_deletes_without_rules() (
 
   iptables() {
     case " $* " in
-      *' -L '*|*' -S OUTPUT '*) return 0 ;;
-      *' -D '*|*' -C '*) printf '%s\n' "$*" >>"$guard_delete_log"; return 1 ;;
-      *) return 0 ;;
+    *' -L '* | *' -S OUTPUT '*) return 0 ;;
+    *' -D '* | *' -C '*)
+      printf '%s\n' "$*" >>"$guard_delete_log"
+      return 1
+      ;;
+    *) return 0 ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -632,17 +635,17 @@ assert_dns_leak_guard_disable_cleans_previous_interfaces() (
 
   iptables() {
     case " $* " in
-      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
-        stale_guard_rule_count="$(cat "$stale_guard_count_file")"
-        if [ "$stale_guard_rule_count" -gt 0 ]; then
-          printf '%s\n' "$((stale_guard_rule_count - 1))" >"$stale_guard_count_file"
-          return 0
-        fi
-        return 1
-        ;;
-      *)
-        return 1
-        ;;
+    *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+      stale_guard_rule_count="$(cat "$stale_guard_count_file")"
+      if [ "$stale_guard_rule_count" -gt 0 ]; then
+        printf '%s\n' "$((stale_guard_rule_count - 1))" >"$stale_guard_count_file"
+        return 0
+      fi
+      return 1
+      ;;
+    *)
+      return 1
+      ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -664,8 +667,8 @@ assert_dns_leak_guard_records_interfaces() (
 
   iptables() {
     case " $* " in
-      *' -D '*|*' -C '*) return 1 ;;
-      *) return 0 ;;
+    *' -D '* | *' -C '*) return 1 ;;
+    *) return 0 ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -692,9 +695,12 @@ assert_dns_leak_guard_ipv4_first_tolerates_missing_ipv6_nat() (
 
   iptables() {
     case " $* " in
-      *' -D '*|*' -C '*) return 1 ;;
-      *' -I '*) return 0 ;;
-      *) printf '%s\n' "iptables $*" >>"$guard_log"; return 1 ;;
+    *' -D '* | *' -C '*) return 1 ;;
+    *' -I '*) return 0 ;;
+    *)
+      printf '%s\n' "iptables $*" >>"$guard_log"
+      return 1
+      ;;
     esac
   }
   ip6tables() { return 1; }
@@ -720,18 +726,24 @@ assert_dns_leak_guard_uses_ipv6_filter_without_nat() (
 
   iptables() {
     case " $* " in
-      *' -C '*|*' -D '*) return 1 ;;
-      *' -I '*) printf '%s\n' "iptables $*" >>"$guard_log"; return 0 ;;
-      *) return 0 ;;
+    *' -C '* | *' -D '*) return 1 ;;
+    *' -I '*)
+      printf '%s\n' "iptables $*" >>"$guard_log"
+      return 0
+      ;;
+    *) return 0 ;;
     esac
   }
   ip6tables() {
     case " $* " in
-      *' -t nat -L '*) return 1 ;;
-      *' -C '*|*' -D '*) return 1 ;;
-      *' -I '*) printf '%s\n' "ip6tables $*" >>"$guard_log"; return 0 ;;
-      *' -L '*) return 0 ;;
-      *) return 0 ;;
+    *' -t nat -L '*) return 1 ;;
+    *' -C '* | *' -D '*) return 1 ;;
+    *' -I '*)
+      printf '%s\n' "ip6tables $*" >>"$guard_log"
+      return 0
+      ;;
+    *' -L '*) return 0 ;;
+    *) return 0 ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]; }
@@ -759,9 +771,9 @@ assert_dns_leak_guard_preserves_state_after_cleanup_failure() (
 
   iptables() {
     case " $* " in
-      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*) return 1 ;;
-      *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*) return 0 ;;
-      *) return 1 ;;
+    *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*) return 1 ;;
+    *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*) return 0 ;;
+    *) return 1 ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -786,9 +798,9 @@ assert_dns_leak_guard_disabled_cleanup_failure_is_visible() (
 
   iptables() {
     case " $* " in
-      *' -D OUTPUT '* ) return 1 ;;
-      *' -C OUTPUT '* ) return 0 ;;
-      *) return 1 ;;
+    *' -D OUTPUT '*) return 1 ;;
+    *' -C OUTPUT '*) return 0 ;;
+    *) return 1 ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -811,10 +823,13 @@ assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure() (
 
   iptables() {
     case " $* " in
-      *' -D OUTPUT '*) return 1 ;;
-      *' -C OUTPUT '*) return 2 ;;
-      *' -I OUTPUT '*) new_rule_attempts=$((new_rule_attempts + 1)); return 0 ;;
-      *) return 0 ;;
+    *' -D OUTPUT '*) return 1 ;;
+    *' -C OUTPUT '*) return 2 ;;
+    *' -I OUTPUT '*)
+      new_rule_attempts=$((new_rule_attempts + 1))
+      return 0
+      ;;
+    *) return 0 ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -846,16 +861,16 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
 
   iptables() {
     case " $* " in
-      *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
-        stale_guard_rule_count="$(cat "$stale_guard_count_file")"
-        if [ "$stale_guard_rule_count" -gt 0 ]; then
-          printf '%s\n' "$((stale_guard_rule_count - 1))" >"$stale_guard_count_file"
-          return 0
-        fi
-        return 1
-        ;;
-      *' -C '*) return 1 ;;
-      *) return 0 ;;
+    *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+      stale_guard_rule_count="$(cat "$stale_guard_count_file")"
+      if [ "$stale_guard_rule_count" -gt 0 ]; then
+        printf '%s\n' "$((stale_guard_rule_count - 1))" >"$stale_guard_count_file"
+        return 0
+      fi
+      return 1
+      ;;
+    *' -C '*) return 1 ;;
+    *) return 0 ;;
     esac
   }
   magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
@@ -885,8 +900,14 @@ assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat() (
   dns_capture_log="$WORK/dns-capture-ipv4-first.log"
   : >"$dns_capture_log"
 
-  iptables() { printf '%s\n' "iptables $*" >>"$dns_capture_log"; return 0; }
-  ip6tables() { printf '%s\n' "ip6tables $*" >>"$dns_capture_log"; return 1; }
+  iptables() {
+    printf '%s\n' "iptables $*" >>"$dns_capture_log"
+    return 0
+  }
+  ip6tables() {
+    printf '%s\n' "ip6tables $*" >>"$dns_capture_log"
+    return 1
+  }
   magicnet_cmd_exists() { return 0; }
   magicnet_dns_profile() { printf '%s\n' default; }
   magicnet_ipv6_mode() { printf '%s\n' prefer_ipv4; }
@@ -904,7 +925,10 @@ assert_dns_bootstrap_selection_does_not_probe_network() (
   probe_log="$WORK/dns-bootstrap-probe.log"
   magicnet_network_policy_value() { printf '%s\n' prefer_ipv4; }
   ip() { return 1; }
-  curl() { printf '%s\n' called >>"$probe_log"; return 1; }
+  curl() {
+    printf '%s\n' called >>"$probe_log"
+    return 1
+  }
 
   [ "$(magicnet_dns_bootstrap_server)" = "223.6.6.6" ]
   [ ! -e "$probe_log" ] || {
@@ -961,7 +985,7 @@ assert_startup_policy_order() {
   magicnet_singbox_running_has_nodes() { return 0; }
 
   MAGIC_SINGBOX=1 magicnet_start_singbox_unlocked
-  if ! diff -u - "$startup_events" <<'EOF'
+  if ! diff -u - "$startup_events" <<'EOF'; then
 prepare
 transparent
 hotspot
@@ -973,7 +997,6 @@ zashboard
 tailscale-auth
 singbox-start
 EOF
-  then
     printf '%s\n' 'app policy must be materialized before sing-box starts' >&2
     exit 1
   fi
@@ -985,12 +1008,30 @@ assert_post_start_only_installs_kernel_controls() (
   events="$WORK/post-start-events.log"
   : >"$events"
 
-  magicnet_with_config_lock() { printf '%s\n' config-lock >>"$events"; return 1; }
-  magicnet_dns_apply_unlocked() { printf '%s\n' dns-apply >>"$events"; return 1; }
-  magicnet_transparent_apply_unlocked() { printf '%s\n' transparent >>"$events"; return 1; }
-  magicnet_app_policy_apply_unlocked() { printf '%s\n' app-policy >>"$events"; return 1; }
-  magicnet_warp_apply_unlocked() { printf '%s\n' warp >>"$events"; return 1; }
-  magicnet_singbox_apply_hotspot_policy() { printf '%s\n' hotspot-config >>"$events"; return 1; }
+  magicnet_with_config_lock() {
+    printf '%s\n' config-lock >>"$events"
+    return 1
+  }
+  magicnet_dns_apply_unlocked() {
+    printf '%s\n' dns-apply >>"$events"
+    return 1
+  }
+  magicnet_transparent_apply_unlocked() {
+    printf '%s\n' transparent >>"$events"
+    return 1
+  }
+  magicnet_app_policy_apply_unlocked() {
+    printf '%s\n' app-policy >>"$events"
+    return 1
+  }
+  magicnet_warp_apply_unlocked() {
+    printf '%s\n' warp >>"$events"
+    return 1
+  }
+  magicnet_singbox_apply_hotspot_policy() {
+    printf '%s\n' hotspot-config >>"$events"
+    return 1
+  }
   magicnet_hotspot_reconcile() { printf '%s\n' hotspot-route >>"$events"; }
   magicnet_enable_dns_capture() { printf '%s\n' capture-enable >>"$events"; }
   magicnet_enable_dns_leak_guard() { printf '%s\n' guard-enable >>"$events"; }
@@ -1010,7 +1051,10 @@ assert_post_start_control_failure_disables_dns_controls() (
   : >"$events"
 
   magicnet_hotspot_reconcile() { :; }
-  magicnet_enable_dns_capture() { printf '%s\n' capture-enable >>"$events"; return 1; }
+  magicnet_enable_dns_capture() {
+    printf '%s\n' capture-enable >>"$events"
+    return 1
+  }
   magicnet_enable_dns_leak_guard() { printf '%s\n' guard-enable >>"$events"; }
   magicnet_disable_dns_capture() { printf '%s\n' capture-disable >>"$events"; }
   magicnet_disable_dns_leak_guard() { printf '%s\n' guard-disable >>"$events"; }

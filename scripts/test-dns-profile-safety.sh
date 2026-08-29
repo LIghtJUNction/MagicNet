@@ -29,12 +29,12 @@ EOF
 . "$ROOT/src/MagicNet/lib/magicnet/dns.sh"
 
 assert_profile_uses_proxy_detour() {
-    local profile="$1"
-    local expected_type="$2"
-    local expected_port="$3"
-    MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
+  local profile="$1"
+  local expected_type="$2"
+  local expected_port="$3"
+  MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
 
-    jq -e --arg expected_type "$expected_type" --argjson expected_port "$expected_port" '
+  jq -e --arg expected_type "$expected_type" --argjson expected_port "$expected_port" '
       ([.dns.servers[]
         | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")
         | select(.type == $expected_type and .detour == "proxy")
@@ -43,10 +43,10 @@ assert_profile_uses_proxy_detour() {
         and ([.dns.servers[] | select(.tag == "bootstrap-local-dns")
           | .type == "https" and .server == "223.5.5.5" and has("detour") | not] | length) == 1
     ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
-        printf 'DNS profile %s must use proxy detour for both managed %s servers\n' \
-            "$profile" "$expected_type" >&2
-        exit 1
-    }
+    printf 'DNS profile %s must use proxy detour for both managed %s servers\n' \
+      "$profile" "$expected_type" >&2
+    exit 1
+  }
 }
 
 assert_profile_uses_proxy_detour cloudflare-udp udp 53
@@ -59,8 +59,8 @@ jq -e '
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
     and ([.dns.servers[] | select(.tag == "retained-udp") | .routing_mark] == [1073741824])
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
-    printf 'default DNS profile must restore direct bootstrap final and remove managed profile servers\n' >&2
-    exit 1
+  printf 'default DNS profile must restore direct bootstrap final and remove managed profile servers\n' >&2
+  exit 1
 }
 
 FULL_MODDIR="$WORK/full-module"
