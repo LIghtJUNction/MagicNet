@@ -55,6 +55,10 @@ const {
   shellQuote,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+
+const emit = defineEmits<{
+  (e: "goto-tab", tab: "about" | "health" | "output"): void;
+}>();
 type HotspotPolicyPhase = "loading" | "ready" | "error";
 type SingBoxStatusPresentation = {
   label: string;
@@ -369,6 +373,7 @@ onMounted(() => {
       description="管理模块生命周期和常用入口；节点、测速与代理组继续由 sing-box WebUI 负责。"
     >
       <template #actions>
+        <Button variant="outline" @click="emit('goto-tab', 'about')">路径速览</Button>
         <Button variant="outline" @click="copyControlSnapshot"
           ><Copy :size="17" />{{
             snapshotCopied ? "已复制快照" : "复制快照"

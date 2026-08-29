@@ -184,6 +184,11 @@ assert.match(
 );
 assert.match(
   app,
+  /import\("@\/components\/pages\/AboutPage\.vue"\)/,
+  "App.vue must dynamic-import AboutPage",
+);
+assert.match(
+  app,
   /import\("@\/components\/pages\/ConfigPage\.vue"\)/,
   "App.vue must dynamic-import ConfigPage",
 );
@@ -224,7 +229,7 @@ assert.match(
 );
 assert.match(
   app,
-  /应用|黑名单|链式代理|订阅|工具|面板|输出/,
+  /路径速览|应用|黑名单|链式代理|订阅|工具|面板|输出/,
   "all local page labels must remain reachable",
 );
 assert.match(
