@@ -17,6 +17,21 @@ export type AboutCheck = {
   expect: string;
 };
 
+export type AboutPathNode = {
+  index: string;
+  label: string;
+  code: string;
+};
+
+export function pathFlowNodes(): AboutPathNode[] {
+  return [
+    { index: "01", label: "Android root", code: "ROOT" },
+    { index: "02", label: DATAPLANE_IFACE, code: "TUN" },
+    { index: "03", label: "sing-box", code: "CORE" },
+    { index: "04", label: "策略 / 出口", code: "OUT" },
+  ];
+}
+
 export function dataPlaneFacts(): AboutFact[] {
   return [
     {

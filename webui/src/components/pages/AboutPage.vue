@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { Activity, CheckCircle2, Copy, Radio, Stethoscope } from "lucide-vue-next";
+import { Activity, ArrowRight, CheckCircle2, Copy, Radio, Stethoscope } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import CardHeading from "@/components/ui/CardHeading.vue";
+import InsightChip from "@/components/ui/InsightChip.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import StatTile from "@/components/ui/StatTile.vue";
+import StatusDot from "@/components/ui/StatusDot.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import {
@@ -14,6 +16,7 @@ import {
   dataPlaneFacts,
   firstRunSteps,
   formatAboutOverview,
+  pathFlowNodes,
   successChecks,
 } from "./aboutOverview";
 
@@ -27,6 +30,7 @@ const copied = ref(false);
 const facts = dataPlaneFacts();
 const steps = firstRunSteps();
 const checks = successChecks();
+const pathNodes = pathFlowNodes();
 const overview = computed(() => formatAboutOverview(facts, steps, checks));
 
 const tunLabel = computed(() => {
@@ -41,6 +45,18 @@ const tunTone = computed(() => {
   return "neutral" as const;
 });
 
+const pathState = computed(() => {
+  if (state.runtime.singBoxState === "sing-box") return "active";
+  if (state.runtime.singBoxState === "stopped") return "stopped";
+  return "unknown";
+});
+
+const statusDotTone = computed(() => {
+  if (state.runtime.singBoxState === "sing-box") return "ok" as const;
+  if (state.runtime.singBoxState === "stopped") return "stop" as const;
+  return "unknown" as const;
+});
+
 async function copyOverview(): Promise<void> {
   copied.value = await copyText(overview.value);
   state.notice = copied.value
@@ -50,7 +66,7 @@ async function copyOverview(): Promise<void> {
 </script>
 
 <template>
-  <div class="grid gap-4 md:gap-5">
+  <div class="mn-path-page grid gap-4 md:gap-5">
     <PageHeader
       overline="Data Plane"
       title="路径速览"
@@ -60,7 +76,10 @@ async function copyOverview(): Promise<void> {
         <Button variant="outline" @click="copyOverview">
           <Copy :size="17" aria-hidden="true" />{{ copied ? "已复制说明" : "复制说明" }}
         </Button>
-        <Badge :tone="tunTone">{{ tunLabel }}</Badge>
+        <Badge :tone="tunTone" class="gap-2">
+          <StatusDot :tone="statusDotTone" />
+          {{ tunLabel }}
+        </Badge>
       </template>
     </PageHeader>
 
@@ -74,24 +93,54 @@ async function copyOverview(): Promise<void> {
       />
     </div>
 
+    <Card class="mn-path-board !p-0">
+      <div class="mn-path-board__head">
+        <CardHeading
+          overline="LIVE PATH"
+          title="Android root → magicnet0 → sing-box"
+          description="这是模块 WebUI 要先证明的真实路径。节点选择仍由 sing-box 面板负责。"
+        >
+          <Radio :size="18" aria-hidden="true" />
+        </CardHeading>
+      </div>
+      <ol class="mn-path-flow" :data-state="pathState" aria-label="MagicNet TUN 数据面路径">
+        <li
+          v-for="(node, index) in pathNodes"
+          :key="node.code"
+          class="mn-path-flow__node"
+          :style="{ '--mn-path-delay': `${index * 45}ms` }"
+        >
+          <span class="mn-path-flow__index" aria-hidden="true">{{ node.index }}</span>
+          <div class="mn-path-flow__body">
+            <strong>{{ node.label }}</strong>
+            <code>{{ node.code }}</code>
+          </div>
+          <ArrowRight
+            v-if="index < pathNodes.length - 1"
+            class="mn-path-flow__arrow"
+            :size="16"
+            aria-hidden="true"
+          />
+        </li>
+      </ol>
+    </Card>
+
     <Card class="grid gap-4 !p-4 md:!p-6">
       <CardHeading
         overline="PATH"
-        title="Android root → magicnet0 → sing-box"
-        description="这是模块 WebUI 要先证明的真实路径。节点选择仍由 sing-box 面板负责。"
-      >
-        <Radio :size="18" aria-hidden="true" />
-      </CardHeading>
-      <div class="grid gap-3 md:grid-cols-3">
-        <div
+        title="为什么只保留这条路径"
+        description="主线刻意收敛，避免旁路模式把状态判断搞乱。"
+      />
+      <div class="mn-path-facts">
+        <article
           v-for="fact in facts"
           :key="fact.code"
-          class="grid gap-2 rounded-[2px] border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3"
+          class="mn-path-fact"
         >
-          <code class="text-[11px] tracking-[0.08em] text-[var(--mn-ink-faint)]">{{ fact.code }}</code>
-          <h3 class="text-base font-semibold text-[var(--mn-ink)]">{{ fact.title }}</h3>
-          <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ fact.detail }}</p>
-        </div>
+          <code>{{ fact.code }}</code>
+          <h3>{{ fact.title }}</h3>
+          <p>{{ fact.detail }}</p>
+        </article>
       </div>
     </Card>
 
@@ -102,16 +151,16 @@ async function copyOverview(): Promise<void> {
           title="首次成功运行"
           description="三步就能确认设备已经被 TUN 接管。"
         />
-        <ol class="grid gap-3">
+        <ol class="mn-path-steps">
           <li
             v-for="(step, index) in steps"
             :key="step.id"
-            class="grid gap-1 rounded-[2px] border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start sm:gap-3"
+            class="mn-path-step"
           >
-            <span class="font-mono text-xs text-[var(--mn-ink-faint)]">{{ String(index + 1).padStart(2, "0") }}</span>
-            <div class="grid gap-1">
-              <strong class="text-sm text-[var(--mn-ink)]">{{ step.title }}</strong>
-              <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ step.detail }}</p>
+            <span class="mn-path-step__index" aria-hidden="true">{{ String(index + 1).padStart(2, "0") }}</span>
+            <div class="mn-path-step__body">
+              <strong>{{ step.title }}</strong>
+              <p>{{ step.detail }}</p>
             </div>
           </li>
         </ol>
@@ -131,17 +180,18 @@ async function copyOverview(): Promise<void> {
           title="成功判据"
           description="不要寻找已删除的旁路。主线只支持 sing-box magicnet0 TUN。"
         />
-        <ul class="grid gap-3">
+        <ul class="mn-path-checks">
           <li
             v-for="check in checks"
             :key="check.command"
-            class="grid gap-1 rounded-[2px] border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3"
+            class="mn-path-check"
           >
-            <div class="flex items-center gap-2">
+            <div class="mn-path-check__title">
               <CheckCircle2 :size="16" aria-hidden="true" />
-              <code class="text-sm text-[var(--mn-ink)]">{{ check.command }}</code>
+              <code>{{ check.command }}</code>
+              <InsightChip tone="ok" label="required" />
             </div>
-            <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ check.expect }}</p>
+            <p>{{ check.expect }}</p>
           </li>
         </ul>
         <Button variant="outline" @click="emit('goto-tab', 'control')">

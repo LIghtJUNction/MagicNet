@@ -31,12 +31,15 @@ try {
   const facts = overview.dataPlaneFacts();
   const steps = overview.firstRunSteps();
   const checks = overview.successChecks();
+  const pathNodes = overview.pathFlowNodes();
   const report = overview.formatAboutOverview();
 
   assert.equal(overview.DATAPLANE_IFACE, "magicnet0");
   assert.equal(facts.length, 3);
   assert.equal(steps.length, 3);
   assert.equal(checks.length, 3);
+  assert.equal(pathNodes.length, 4);
+  assert.equal(pathNodes.map((item) => item.code).join("|"), "ROOT|TUN|CORE|OUT");
   assert.ok(facts.every((item) => item.code && item.title && item.detail));
   assert.match(report, /dataplane=sing-box TUN/);
   assert.match(report, /iface=magicnet0/);
@@ -58,6 +61,8 @@ try {
 assert.match(aboutPage, /路径速览/);
 assert.match(aboutPage, /goto-tab/);
 assert.match(aboutPage, /DATAPLANE_IFACE/);
+assert.match(aboutPage, /mn-path-flow/);
+assert.match(aboutPage, /InsightChip/);
 assert.doesNotMatch(aboutPage, /TProxy|eBPF|ALLOW_MULTI|cli ebpf status/);
 
 assert.match(app, /type TabKey =[\s\S]*"about"/);
@@ -65,5 +70,12 @@ assert.match(app, /import\("@\/components\/pages\/AboutPage\.vue"\)/);
 assert.match(app, /key: "about", label: "路径速览"/);
 assert.match(app, /@goto-tab="setTab"/);
 assert.match(app, /<KeepAlive :max="11">/);
+
+const controlPage = readFileSync(
+  new URL("./src/components/pages/ControlPage.vue", import.meta.url),
+  "utf8",
+);
+assert.match(controlPage, /goto-tab',\s*'about'|goto-tab",\s*"about"/);
+assert.match(controlPage, /路径速览/);
 
 console.log("about overview tests passed");

@@ -95,7 +95,7 @@ const workspaces: readonly WorkspaceDefinition[] = [
     key: "run",
     label: "运行",
     code: "RUN",
-    description: "确认核心状态并执行设备级高频控制。",
+    description: "确认核心状态、路径速览并执行设备级高频控制。",
     icon: Gauge,
   },
   {

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "test": "node --test *.test.mjs",
+    "test": "node --experimental-strip-types --test *.test.mjs",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "check": "npm run test && npm run typecheck && npm run build",
