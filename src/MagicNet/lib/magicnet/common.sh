@@ -55,6 +55,8 @@ magicnet_transparent_conf() {
 }
 
 magicnet_transparent_mode() {
+    # Runtime dataplane is TUN-only (magicnet0). Keep this constant so shell
+    # callers never revive proxy/hybrid/external paths from stale conf.
     printf '%s\n' "tun"
 }
 

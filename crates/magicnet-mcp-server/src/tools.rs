@@ -2,7 +2,7 @@ pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_status","description":"Show MagicNet service status","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_cli","description":"Run a MagicNet CLI command with explicit argv. This is restricted to the MagicNet CLI binary, not a shell.","inputSchema":{"type":"object","properties":{"args":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":24}},"required":["args"]}},
 {"name":"magicnet_service_control","description":"Run service status/start/ensure/stop/restart/toggle/logs, optionally with a target such as current or sing-box.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["status","start","ensure","stop","restart","toggle","logs"]},"target":{"type":"string"}}}},
-{"name":"magicnet_core_select","description":"Select the default core.","inputSchema":{"type":"object","properties":{"core":{"type":"string","enum":["sing-box"]}},"required":["core"]}},
+{"name":"magicnet_core_select","description":"Confirm MagicNet uses the sing-box core. Only sing-box is supported.","inputSchema":{"type":"object","properties":{"core":{"type":"string","enum":["sing-box"]}},"required":["core"]}},
 {"name":"magicnet_config_apply","description":"Apply runtime config helpers.","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_config_get","description":"Read generated sing-box config through the config editor.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box"]}},"required":["target"]}},
 {"name":"magicnet_config_validate","description":"Validate sing-box config.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box","all"]}}}},
@@ -137,6 +137,31 @@ mod tests {
             .expect("speedtest description must be a string");
 
         assert!(description.contains("10 MiB"));
+    }
+
+    #[test]
+    fn core_select_describes_singbox_only() {
+        let document: Value = serde_json::from_str(TOOLS_JSON).expect("TOOLS_JSON must be valid");
+        let tool = document
+            .get("tools")
+            .and_then(Value::as_array)
+            .and_then(|tools| {
+                tools.iter().find(|tool| {
+                    tool.get("name").and_then(Value::as_str) == Some("magicnet_core_select")
+                })
+            })
+            .expect("core select tool must exist");
+
+        let description = tool
+            .get("description")
+            .and_then(Value::as_str)
+            .expect("core select description must be a string");
+        assert!(description.contains("sing-box"));
+        assert!(!description.to_lowercase().contains("default core"));
+        assert_eq!(
+            tool.pointer("/inputSchema/properties/core/enum"),
+            Some(&json!(["sing-box"]))
+        );
     }
 
     #[test]

@@ -1,3 +1,5 @@
+# Network policy helpers (IPv6 preference, TUN MTU, UDP timeout).
+# Kernel DNS capture / leak-guard live in network.sh, not here.
 magicnet_network_policy_conf() {
     printf '%s\n' "${MODDIR}/.config/magicnet/network-policy.conf"
 }
