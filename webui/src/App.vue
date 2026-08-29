@@ -28,7 +28,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { useTheme } from "@/composables/useTheme";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
-type TabKey = "control" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
+type TabKey = "control" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
 type WorkspaceKey = "run" | "route" | "configure" | "diagnose";
 type OnboardingTarget = Extract<TabKey, "control" | "subs" | "health" | "output">;
 type OnboardingPreference = "dismissed" | "completed";
@@ -52,6 +52,7 @@ const ONBOARDING_STORAGE_KEY = "magicnet.webui.onboarding.v1";
 
 const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   control: () => import("@/components/pages/ControlPage.vue"),
+  about: () => import("@/components/pages/AboutPage.vue"),
   config: () => import("@/components/pages/ConfigPage.vue"),
   apps: () => import("@/components/pages/AppsPage.vue"),
   block: () => import("@/components/pages/BlocklistPage.vue"),
@@ -77,6 +78,7 @@ const asyncPages = Object.fromEntries(
 
 const tabs: readonly TabDefinition[] = [
   { key: "control", label: "运行总览", code: "STATUS", workspace: "run" },
+  { key: "about", label: "路径速览", code: "PATH", workspace: "run" },
   { key: "apps", label: "应用策略", code: "APPS", workspace: "route" },
   { key: "block", label: "规则黑名单", code: "BLOCK", workspace: "route" },
   { key: "chain", label: "链式代理", code: "CHAIN", workspace: "route" },
@@ -140,7 +142,7 @@ const {
 const { preference: themePreference, label: themeLabel, cycleTheme } = useTheme();
 
 const activeTab = ref<TabKey>("control");
-/** Keep the complete ten-page surface warm so unfinished forms survive workspace switches. */
+/** Keep the complete page surface warm so unfinished forms survive workspace switches. */
 const visitedTabs = ref<TabKey[]>(["control"]);
 const lastTabByWorkspace = ref<Record<WorkspaceKey, TabKey>>({
   run: "control",
@@ -602,10 +604,11 @@ onUnmounted(() => {
         <!-- KeepAlive preserves form state across all four workspaces. -->
         <section class="page-surface">
           <Suspense>
-            <KeepAlive :max="10">
+            <KeepAlive :max="11">
               <component
                 :is="activeComponent"
                 @goto-output="setTab('output')"
+                @goto-tab="setTab"
               />
             </KeepAlive>
             <template #fallback>
