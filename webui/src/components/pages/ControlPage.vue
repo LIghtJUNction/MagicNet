@@ -122,9 +122,11 @@ const missingNodeCache = computed(() =>
   ),
 );
 
-const transparentModeLabel = computed(() =>
-  state.runtime.transparentMode === "ebpf" ? "eBPF" : "TUN",
-);
+const transparentModeLabel = computed(() => {
+  if (state.runtime.transparentMode === "tun") return "TUN";
+  if (state.runtime.transparentMode === "ebpf") return "eBPF";
+  return "状态未知";
+});
 const transparentEffectiveLabel = computed(() => {
   const effective = state.runtime.transparentEffectiveMode;
   if (effective === "tun") return "TUN · magicnet0";
@@ -133,6 +135,9 @@ const transparentEffectiveLabel = computed(() => {
   return "状态未知";
 });
 const transparentDescription = computed(() => {
+  if (state.runtime.transparentMode === "unknown") {
+    return "无法读取透明代理状态；当前模式不会按 TUN 或 eBPF 猜测。";
+  }
   if (state.runtime.transparentMode === "tun") {
     return "sing-box TUN 通过 magicnet0 接管本机流量。";
   }

@@ -36,7 +36,7 @@ try {
 
   const previous = { ...runtimeDefaults, transparentMode: "ebpf" };
   for (const legacy of ["proxy", "external", "hybrid", "invalid"]) {
-    assert.equal(parseRuntime(`mode=${legacy}\n`, previous).transparentMode, "ebpf");
+    assert.equal(parseRuntime(`mode=${legacy}\n`, previous).transparentMode, "unknown");
   }
   assert.equal(parseRuntime("mode=tun\n", previous).transparentMode, "tun");
   assert.equal(parseRuntime("mode=ebpf\n", runtimeDefaults).transparentMode, "ebpf");

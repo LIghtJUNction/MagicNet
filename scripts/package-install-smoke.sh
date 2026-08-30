@@ -17,6 +17,7 @@ MANAGER_MODPATH="$TMP/manager-module"
 PREV_MOD="$TMP/prev-module"
 MOCK_BIN="$TMP/bin"
 POISONED_CALLER_PATH="$TMP/poisoned-caller-path"
+POISONED_BACKUP_PATH="$TMP/poisoned-backup-path"
 LOG="$TMP/install.log"
 MANAGER_LOG="$TMP/manager-install.log"
 
@@ -122,7 +123,9 @@ export MAGICNET_PREV_DIR="$PREV_MOD"
 # stay in a manager-owned sibling path instead of being silently discarded.
 export TMPDIR="$TMP/not-a-directory"
 : >"$TMPDIR"
-mkdir -p "$POISONED_CALLER_PATH"
+mkdir -p "$POISONED_CALLER_PATH" "$POISONED_BACKUP_PATH"
+printf '%s\n' 'must-survive' >"$POISONED_BACKUP_PATH/sentinel"
+export MAGICNET_BACKUP_DIR="$POISONED_BACKUP_PATH"
 
 if ! "$HOST_ENV" -u LD_LIBRARY_PATH -u MAGICNET_NONINTERACTIVE -u MAGICNET_PREV_DIR \
     ZIPFILE="$ZIP_PATH" \
@@ -150,6 +153,12 @@ fi
 
 remove_host_tool_fixtures "$MODPATH"
 remove_host_tool_fixtures "$MANAGER_MODPATH"
+
+[[ -f "$POISONED_BACKUP_PATH/sentinel" ]] \
+    || fail "caller-selected MAGICNET_BACKUP_DIR was deleted or reused"
+if find "$TMP" -maxdepth 1 -type d -name '*.install-backup.*' -print -quit | grep -q .; then
+    fail "successful install left a migration backup behind"
+fi
 
 [[ -x "$MODPATH/bin/magicnet-mcp-server" ]] || fail "bin/magicnet-mcp-server is not executable"
 [[ -x "$MODPATH/bin/ecapture" ]] || fail "bin/ecapture is not executable"
@@ -225,5 +234,37 @@ if missing:
 if seen["id"] != "MagicNet":
     raise SystemExit(seen)
 PY
+
+FAIL_MOD="$TMP/failure-module"
+FAIL_PREV="$TMP/failure-prev"
+FAIL_TARGET="$TMP/failure-target"
+FAIL_LOG="$TMP/failure-install.log"
+mkdir -p "$FAIL_MOD" "$FAIL_PREV/.config/sing-box" "$FAIL_TARGET"
+unzip -oq "$ZIP_PATH" -d "$FAIL_MOD"
+install_host_tool_fixtures "$FAIL_MOD"
+printf '%s\n' 'https://old.example/must-not-remain' >"$FAIL_PREV/.config/sing-box/subscription.url"
+ln -s "$FAIL_TARGET" "$FAIL_PREV/.config/magicnet"
+stale_backup="${FAIL_MOD}.install-backup.999999"
+mkdir -p "$stale_backup"
+printf '%s\n' 'magicnet-install-backup-v1' >"$stale_backup/.magicnet-install-backup-v1"
+printf '%s\n' 'stale-secret-must-be-removed' >"$stale_backup/secret"
+if "$HOST_ENV" -u LD_LIBRARY_PATH \
+    ZIPFILE="$ZIP_PATH" \
+    MODPATH="$FAIL_MOD" \
+    MODDIR="$FAIL_MOD" \
+    BOOTMODE=true \
+    MAGICNET_NONINTERACTIVE=1 \
+    MAGICNET_PREV_DIR="$FAIL_PREV" \
+    MAGICNET_BACKUP_DIR="$POISONED_BACKUP_PATH" \
+    PATH="$FAIL_MOD/bin:$POISONED_CALLER_PATH" \
+    TMPDIR="$TMPDIR" \
+    "$FAIL_MOD/bin/sh" "$FAIL_MOD/customize.sh" >"$FAIL_LOG" 2>&1; then
+    fail "unsafe previous-config symlink unexpectedly passed installer migration"
+fi
+if find "$TMP" -maxdepth 1 -type d -name 'failure-module.install-backup.*' -print -quit | grep -q .; then
+    fail "failed install left current or stale migration secrets behind"
+fi
+[[ -f "$POISONED_BACKUP_PATH/sentinel" ]] \
+    || fail "failed install touched caller-selected MAGICNET_BACKUP_DIR"
 
 printf 'package install smoke passed: %s\n' "$ZIP_PATH"

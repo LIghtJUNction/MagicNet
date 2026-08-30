@@ -215,6 +215,16 @@ const routeStackState = computed(() => {
   if (state.runtime.singBoxState === "stopped") return "stopped";
   return "unknown";
 });
+const transparentRouteNode = computed(() => {
+  if (state.runtime.transparentMode === "tun") return "magicnet0";
+  if (state.runtime.transparentMode === "ebpf") return "cgroup + TC";
+  return "STATUS UNAVAILABLE";
+});
+const transparentRouteData = computed(() => {
+  if (state.runtime.transparentMode === "tun") return "magicnet0";
+  if (state.runtime.transparentMode === "ebpf") return state.runtime.transparentEffectiveMode;
+  return "unknown";
+});
 const statusDotTone = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "ok" as const;
   if (state.runtime.singBoxState === "stopped") return "stop" as const;
@@ -507,7 +517,7 @@ onUnmounted(() => {
         <p :title="statusMessage">{{ statusMessage }}</p>
       </div>
 
-      <div class="mn-route-stack" :data-state="routeStackState" aria-label="MagicNet TUN 运行路径">
+      <div class="mn-route-stack" :data-state="routeStackState" aria-label="MagicNet 透明代理运行路径">
         <div class="mn-route-caption">
           <span>ROUTE_STACK</span>
           <span>[READ_ONLY]</span>
@@ -521,7 +531,7 @@ onUnmounted(() => {
           <li>
             <span class="mn-route-index">02</span>
           <span class="mn-route-node">
-            {{ state.runtime.transparentMode === "tun" ? "magicnet0" : "cgroup + TC" }}
+            {{ state.runtime.transparentMode === "tun" ? "magicnet0" : transparentRouteNode }}
           </span>
           <code>{{ state.runtime.transparentMode.toUpperCase() }}</code>
           </li>
@@ -541,7 +551,7 @@ onUnmounted(() => {
       <div class="mn-runtime-readout">
         <div>
           <Eyebrow tone="faint">MODE</Eyebrow>
-          <code>TUN</code>
+          <code>{{ state.runtime.transparentMode.toUpperCase() }}</code>
         </div>
         <div>
           <Eyebrow tone="faint">CORE</Eyebrow>
@@ -579,11 +589,7 @@ onUnmounted(() => {
         <div class="mn-rail-foot">
       <span>MODE::{{ state.runtime.transparentMode.toUpperCase() }}</span>
       <span>
-        DATA::{{
-          state.runtime.transparentMode === "tun"
-            ? "magicnet0"
-            : state.runtime.transparentEffectiveMode
-        }}
+        DATA::{{ transparentRouteData }}
       </span>
         </div>
       </aside>

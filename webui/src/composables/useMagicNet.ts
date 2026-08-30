@@ -42,6 +42,7 @@ import {
   parseDns,
   parseHealth,
   parseMcp,
+  invalidateTransparentRuntime,
   parsePackages,
   parseConfigValidation,
   parseRuntime,
@@ -442,9 +443,6 @@ async function startBackgroundCli(
     subscriptionBaselineGenerationId: state.subscriptions.lastGenerationId,
     subscriptionBaselineResult: state.subscriptions.lastResult,
   };
-  const launchOutput = redactOutput
-    ? `${label} 已在后台执行；私有命令和日志不会显示。正在跟踪安全状态...`
-    : `${label} 已在后台执行。\n日志：${log}\n正在跟踪启动日志...`;
   const operationSequence = trackRedactedOperation(
     previewOverride || redactedCliPreview(displayArgs),
     label,
@@ -650,10 +648,21 @@ async function refreshStatus(foregroundToken?: number): Promise<boolean> {
     serviceCommand.promise,
     transparentCommand.promise,
   ]);
-  const failure = [serviceText, transparentText].find(execFailed);
-  if (failure && markQuietFailure("刷新状态", failure, uiToken, allowBusy)) return false;
+  const serviceFailed = execFailed(serviceText);
+  const transparentFailed = execFailed(transparentText);
+  const failure = serviceFailed ? serviceText : transparentFailed ? transparentText : "";
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.runtime = parseRuntime(`${serviceText}\n${transparentText}`, state.runtime);
+    const validText = [serviceFailed ? "" : serviceText, transparentFailed ? "" : transparentText]
+      .filter(Boolean)
+      .join("\n");
+    state.runtime = parseRuntime(validText, state.runtime);
+    if (transparentFailed) {
+      state.runtime = invalidateTransparentRuntime(state.runtime);
+    }
+  }
+  if (failure) {
+    markQuietFailure("刷新状态", failure, uiToken, allowBusy);
+    return false;
   }
   return true;
 }

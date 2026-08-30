@@ -85,6 +85,17 @@ export function buildControlRuntimeInsight(
       actions: ["启动 sing-box", "一键自修复"],
     };
   }
+  if (
+    input.runtime.transparentMode === "unknown" ||
+    input.runtime.transparentEffectiveMode === "unknown"
+  ) {
+    return {
+      status: "warning",
+      title: "透明代理状态不可用",
+      detail: "无法确认 configured/effective 模式；不会按 TUN 或 eBPF 猜测当前数据面。",
+      actions: ["刷新状态", "查看最近输出"],
+    };
+  }
   if (input.runtime.fswatch === "stopped") {
     return {
       status: "warning",

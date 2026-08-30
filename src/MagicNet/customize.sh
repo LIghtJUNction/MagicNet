@@ -28,18 +28,57 @@ import rich
 import this
 
 MAGICNET_PREV_DIR="${MAGICNET_PREV_DIR:-/data/adb/modules/MagicNet}"
-# Keep migration data beside the manager-owned update directory. Some rooted
-# Android builds make TMPDIR (notably /data/local/tmp) unavailable to module
-# installers; silently using it would discard subscriptions and user policy.
-MAGICNET_BACKUP_DIR="${MAGICNET_BACKUP_DIR:-${MODPATH}.install-backup}"
-case "$MAGICNET_BACKUP_DIR" in
-"" | / | "$MODPATH" | "$MAGICNET_PREV_DIR")
-  abort "! unsafe MagicNet migration backup path: $MAGICNET_BACKUP_DIR"
-  ;;
-esac
+# Keep migration data in a private, per-installer sibling directory. Never
+# accept a caller-selected deletion path: module-manager environments are not a
+# trust boundary, and this directory temporarily contains subscription secrets.
+MAGICNET_BACKUP_DIR="${MODPATH}.install-backup.$$"
+MAGICNET_BACKUP_MARKER=".magicnet-install-backup-v1"
+MAGICNET_BACKUP_ACTIVE=0
+MAGICNET_BACKUP_READY=0
+
+magicnet_cleanup_install_backup() {
+  [ "${MAGICNET_BACKUP_ACTIVE:-0}" = 1 ] || return 0
+  if [ -d "$MAGICNET_BACKUP_DIR" ] && [ ! -L "$MAGICNET_BACKUP_DIR" ] &&
+    [ -f "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
+    [ ! -L "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
+    [ "$(cat "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
+    rm -rf "$MAGICNET_BACKUP_DIR" || return 1
+  else
+    return 1
+  fi
+  MAGICNET_BACKUP_ACTIVE=0
+  MAGICNET_BACKUP_READY=0
+}
+
+# A SIGKILL cannot run EXIT handlers. Remove only prior MagicNet-owned sibling
+# directories bearing the exact marker; never restore them into a later run.
+for _stale_backup in "${MODPATH}.install-backup."*; do
+  [ -e "$_stale_backup" ] || [ -L "$_stale_backup" ] || continue
+  case "$_stale_backup" in
+  "${MODPATH}.install-backup."*[!0-9]*) continue ;;
+  esac
+  if [ -d "$_stale_backup" ] && [ ! -L "$_stale_backup" ] &&
+    [ -f "$_stale_backup/$MAGICNET_BACKUP_MARKER" ] &&
+    [ ! -L "$_stale_backup/$MAGICNET_BACKUP_MARKER" ] &&
+    [ "$(cat "$_stale_backup/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
+    rm -rf "$_stale_backup" || abort "! failed to remove stale MagicNet migration data"
+  fi
+done
+unset _stale_backup
+
+at_exit_register_trap
+at_exit_add 'magicnet_cleanup_install_backup'
+
 if [ -d "$MAGICNET_PREV_DIR" ]; then
-  rm -rf "$MAGICNET_BACKUP_DIR" || abort "! failed to reset the MagicNet migration backup"
-  mkdir -p "$MAGICNET_BACKUP_DIR" || abort "! failed to create the MagicNet migration backup"
+  if [ -e "$MAGICNET_BACKUP_DIR" ] || [ -L "$MAGICNET_BACKUP_DIR" ]; then
+    abort "! MagicNet migration backup path already exists"
+  fi
+  (
+    umask 077
+    mkdir "$MAGICNET_BACKUP_DIR" &&
+      printf '%s\n' 'magicnet-install-backup-v1' >"$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER"
+  ) || abort "! failed to create the MagicNet migration backup"
+  MAGICNET_BACKUP_ACTIVE=1
   for _item in \
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.local" \
@@ -57,6 +96,7 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
       cp -a "${MAGICNET_PREV_DIR}/${_item}" "${MAGICNET_BACKUP_DIR}/${_item}" || abort "! failed to back up MagicNet migration data: $_item"
     fi
   done
+  MAGICNET_BACKUP_READY=1
   unset _item
 fi
 
@@ -217,7 +257,7 @@ else
   magicnet_ask_default_core
 fi
 
-if [ -d "$MAGICNET_BACKUP_DIR" ]; then
+if [ "$MAGICNET_BACKUP_READY" = 1 ]; then
   for _item in \
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.local" \
@@ -233,7 +273,7 @@ if [ -d "$MAGICNET_BACKUP_DIR" ]; then
       cp -a "${MAGICNET_BACKUP_DIR}/${_item}" "${MODPATH}/${_item}" || abort "! failed to restore MagicNet migration data: $_item"
     fi
   done
-  rm -rf "$MAGICNET_BACKUP_DIR" || abort "! failed to remove the MagicNet migration backup"
+  magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
   unset _item
 fi
 

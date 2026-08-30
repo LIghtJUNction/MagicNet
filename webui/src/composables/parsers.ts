@@ -98,7 +98,7 @@ export const runtimeDefaults: RuntimeState = {
   singBoxState: "unknown",
   singBox: "unknown",
   fswatch: "unknown",
-  transparentMode: "tun",
+  transparentMode: "unknown",
   transparentEffectiveMode: "unknown",
   transparentCapability: "unknown",
   transparentLocalCgroup: "unknown",
@@ -304,11 +304,22 @@ function normalizeRuntimeStatus(value: string): string {
   return status;
 }
 
-export function parseRuntime(text: string, previous: RuntimeState): RuntimeState {
-  const next = {
-    ...runtimeDefaults,
-    transparentMode: previous.transparentMode
+export function invalidateTransparentRuntime(previous: RuntimeState): RuntimeState {
+  return {
+    ...previous,
+    transparentMode: "unknown",
+    transparentEffectiveMode: "unknown",
+    transparentCapability: "unknown",
+    transparentLocalCgroup: "unknown",
+    transparentSharedTc: "unknown",
+    transparentSharedInterfaces: [],
+    transparentRecentError: "",
+    transparentTransition: "unknown",
   };
+}
+
+export function parseRuntime(text: string, _previous: RuntimeState): RuntimeState {
+  const next = { ...runtimeDefaults };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (line.startsWith("sing-box:")) next.singBox = normalizeRuntimeStatus(line.slice(9));

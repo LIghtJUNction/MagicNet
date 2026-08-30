@@ -36,7 +36,7 @@ export type RuntimeState = {
   singBoxState: "sing-box" | "stopped" | "unknown";
   singBox: string;
   fswatch: string;
-  transparentMode: TransparentMode;
+  transparentMode: TransparentMode | "unknown";
   transparentEffectiveMode: TransparentEffectiveMode;
   transparentCapability: "ok" | "failed" | "not-required" | "unknown";
   transparentLocalCgroup: "attached" | "missing" | "configured" | "inactive" | "unknown";

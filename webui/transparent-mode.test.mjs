@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
+  invalidateTransparentRuntime,
   normalizeTransparentMode,
   parseRuntime,
   runtimeDefaults,
@@ -9,6 +10,12 @@ import {
 import { setTransparentModeAction } from "./src/components/pages/controlDangerActions.ts";
 
 const controlSource = readFileSync(new URL("./src/components/pages/ControlPage.vue", import.meta.url), "utf8");
+const appSource = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
+const runtimeSource = readFileSync(new URL("./src/composables/useMagicNet.ts", import.meta.url), "utf8");
+const runtimeInsightSource = readFileSync(
+  new URL("./src/components/pages/controlRuntimeInsight.ts", import.meta.url),
+  "utf8",
+);
 
 test("transparent mode parser accepts only explicit tun or ebpf", () => {
   assert.equal(normalizeTransparentMode("tun"), "tun");
@@ -47,6 +54,17 @@ transition=idle
   );
 });
 
+test("runtime parser invalidates missing or malformed transparent status", () => {
+  const previous = parseRuntime("mode=ebpf\neffective_mode=local\nlocal_cgroup=attached\n", runtimeDefaults);
+  assert.equal(parseRuntime("mode=proxy\n", previous).transparentMode, "unknown");
+
+  const invalidated = invalidateTransparentRuntime(previous);
+  assert.equal(invalidated.transparentMode, "unknown");
+  assert.equal(invalidated.transparentEffectiveMode, "unknown");
+  assert.equal(invalidated.transparentLocalCgroup, "unknown");
+  assert.deepEqual(invalidated.transparentSharedInterfaces, []);
+});
+
 test("runtime parser exposes local pending and rollback without guessing attachment", () => {
   const runtime = parseRuntime(`
 mode=ebpf
@@ -83,5 +101,10 @@ test("control page reuses confirmation and renders non-optimistic state facts", 
   assert.match(controlSource, /state\.runtime\.transparentEffectiveMode/);
   assert.match(controlSource, /state\.runtime\.transparentSharedTc/);
   assert.match(controlSource, /role="alert"/);
+  assert.match(controlSource, /无法读取透明代理状态/);
+  assert.match(runtimeSource, /transparentFailed/);
+  assert.match(runtimeSource, /invalidateTransparentRuntime/);
+  assert.match(appSource, /STATUS UNAVAILABLE/);
+  assert.match(runtimeInsightSource, /透明代理状态不可用/);
   assert.doesNotMatch(controlSource, /transparent set auto/);
 });
