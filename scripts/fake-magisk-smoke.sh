@@ -1587,9 +1587,14 @@ run "$MODDIR/cli" transparent status >"$TMP/ebpf-transparent-status.log"
 rg -qx 'mode=ebpf' "$TMP/ebpf-transparent-status.log"
 rg -q '(^effective_mode=local$)|(effective=mode:local)' "$TMP/ebpf-transparent-status.log"
 # The host mock's long-lived process is `sleep`, so Rust ownership cannot bind
-# it to the packaged sing-box executable. Status must stay conservative instead
-# of turning a capability/active-program report into a false attachment claim.
-rg -q '^local_cgroup=(attached|configured)$' "$TMP/ebpf-transparent-status.log"
+# it to the packaged sing-box executable. Status and health must fail closed
+# instead of turning a capability/active-program report into attachment proof.
+rg -qx 'local_cgroup=missing' "$TMP/ebpf-transparent-status.log"
+if rg -qx 'local_cgroup=attached' "$TMP/ebpf-transparent-status.log"; then
+    echo "eBPF transparent status trusted attachment evidence from the wrong process" >&2
+    cat "$TMP/ebpf-transparent-status.log" >&2
+    exit 1
+fi
 rg -qx 'shared_tc=inactive' "$TMP/ebpf-transparent-status.log"
 if rg -q 'required[^[:alnum:]]+magicnet0|magicnet0[^[:alnum:]]+(missing|required)' "$TMP/ebpf-transparent-status.log"; then
     echo "eBPF transparent status incorrectly required magicnet0" >&2
@@ -1597,9 +1602,16 @@ if rg -q 'required[^[:alnum:]]+magicnet0|magicnet0[^[:alnum:]]+(missing|required
     exit 1
 fi
 run "$MODDIR/cli" health >"$TMP/ebpf-health.log"
+if rg -q '^\[ok\] Dataplane:' "$TMP/ebpf-health.log"; then
+    echo "eBPF health accepted a capability report without current-process attachment evidence" >&2
+    cat "$TMP/ebpf-health.log" >&2
+    exit 1
+fi
+rg -q '^\[warn\] Dataplane:' "$TMP/ebpf-health.log"
 rg -q 'configured=mode:ebpf' "$TMP/ebpf-health.log"
 rg -q 'effective=mode:local' "$TMP/ebpf-health.log"
 rg -q 'probe=capability:' "$TMP/ebpf-health.log"
+rg -q 'attachment=' "$TMP/ebpf-health.log"
 if rg -q 'required[^[:alnum:]]+magicnet0|magicnet0[^[:alnum:]]+(missing|required)' "$TMP/ebpf-health.log"; then
     echo "eBPF health incorrectly required magicnet0" >&2
     cat "$TMP/ebpf-health.log" >&2

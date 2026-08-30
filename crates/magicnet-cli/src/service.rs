@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use crate::{
-    cmdline_has_command, cmdline_has_script, diagnostics::supervisor_pid, owned_singbox_pids,
-    read_proc_argv, run_magicnet_function, singbox_pid_summary, stop_owned_singbox,
-    write_text_file, App,
+    cmdline_has_command, cmdline_has_script, diagnostics::supervisor_pid,
+    ebpf_runtime::inspect_ebpf_attachments, owned_singbox_pids, read_proc_argv,
+    run_magicnet_function, singbox_pid_summary, stop_owned_singbox, write_text_file, App,
 };
 
 const START_SUPERVISORS_COMMAND: &str = "magicnet_supervisors_start_detached";
@@ -902,7 +902,7 @@ fn transparent_status(app: &App) -> Result<(), String> {
         .and_then(|value| value.get("mode"))
         .and_then(Value::as_str)
         .unwrap_or("local");
-    let shared_interfaces = inbound
+    let shared_interface_values = inbound
         .and_then(|value| value.get("shared"))
         .and_then(|value| value.get("interface"))
         .and_then(Value::as_array)
@@ -917,11 +917,38 @@ fn transparent_status(app: &App) -> Result<(), String> {
                                 || matches!(byte, b'_' | b'-' | b'.' | b':')
                         })
                 })
+                .map(str::to_string)
                 .collect::<Vec<_>>()
-                .join(",")
         })
-        .filter(|interfaces| !interfaces.is_empty())
-        .unwrap_or_else(|| "none".to_string());
+        .unwrap_or_default();
+    let shared_interfaces = if shared_interface_values.is_empty() {
+        "none".to_string()
+    } else {
+        shared_interface_values.join(",")
+    };
+    let cgroup_path = inbound
+        .and_then(|value| value.get("local"))
+        .and_then(|value| value.get("cgroup_path"))
+        .and_then(Value::as_str)
+        .filter(|path| Path::new(path).is_absolute())
+        .unwrap_or("/sys/fs/cgroup");
+    let network = match inbound.and_then(|value| value.get("network")) {
+        Some(Value::String(value)) if matches!(value.as_str(), "tcp" | "udp") => {
+            vec![value.clone()]
+        }
+        Some(Value::Array(values)) => values
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|value| matches!(*value, "tcp" | "udp"))
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    let network = if network.is_empty() {
+        vec!["tcp".to_string(), "udp".to_string()]
+    } else {
+        network
+    };
     let capability = if effective == "tun" {
         "not-required".to_string()
     } else {
@@ -938,53 +965,78 @@ fn transparent_status(app: &App) -> Result<(), String> {
         .then(|| fs::read_to_string(app.moddir.join(TRANSPARENT_PROBE_REPORT)).ok())
         .flatten()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok());
-    let active_programs = probe_report
-        .as_ref()
-        .and_then(|report| report.get("active_programs"))
-        .and_then(Value::as_array);
-    let local_program_active = active_programs.is_some_and(|programs| {
-        programs.iter().any(|program| {
-            program
-                .get("name")
-                .and_then(Value::as_str)
-                .is_some_and(|name| name.starts_with("sb_ebpf_"))
+    let local_expected = matches!(ebpf_mode, "local" | "hybrid");
+    let shared_expected = matches!(ebpf_mode, "shared" | "hybrid");
+    let attachments = (effective == "ebpf" && running)
+        .then(|| {
+            probe_report.as_ref().map(|report| {
+                inspect_ebpf_attachments(
+                    app,
+                    report,
+                    local_expected,
+                    cgroup_path,
+                    &network,
+                    &shared_interface_values,
+                )
+            })
         })
-    });
-    let shared_program_active = active_programs.is_some_and(|programs| {
-        programs.iter().any(|program| {
-            program
-                .get("name")
-                .and_then(Value::as_str)
-                .is_some_and(|name| name.starts_with("sb_share_"))
-        })
-    });
-    let local_cgroup = if effective != "ebpf" {
+        .flatten();
+    let local_cgroup = if effective != "ebpf" || !local_expected {
         "inactive"
     } else if !running {
         "configured"
-    } else if local_program_active {
+    } else if attachments
+        .as_ref()
+        .is_some_and(|evidence| evidence.local_attached)
+    {
         "attached"
-    } else if active_programs.is_some() {
+    } else if attachments.is_some() {
         "missing"
     } else {
         "unknown"
     };
     let shared_tc = if effective != "ebpf" {
         "inactive"
-    } else if ebpf_mode != "hybrid" {
+    } else if !shared_expected {
         if app.moddir.join(TRANSPARENT_SHARED_PENDING).is_file() {
             "pending"
         } else {
             "inactive"
         }
+    } else if shared_interface_values.is_empty() {
+        "missing"
     } else if !running {
         "configured"
-    } else if shared_program_active {
+    } else if attachments
+        .as_ref()
+        .is_some_and(|evidence| evidence.shared_attached)
+    {
         "attached"
-    } else if active_programs.is_some() {
+    } else if attachments.is_some() {
         "missing"
     } else {
         "unknown"
+    };
+    let shared_tc_interfaces = if shared_interface_values.is_empty() {
+        "none".to_string()
+    } else if let Some(evidence) = &attachments {
+        evidence
+            .shared_interfaces
+            .iter()
+            .map(|(interface, attached)| {
+                format!(
+                    "{interface}:{}",
+                    if *attached { "attached" } else { "missing" }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    } else {
+        shared_interface_values
+            .iter()
+            .map(|interface| format!("{interface}:unknown"))
+            .collect::<Vec<_>>()
+            .join(",")
     };
     let recent_error = fs::read_to_string(app.moddir.join(TRANSPARENT_RECENT_ERROR))
         .ok()
@@ -1018,6 +1070,14 @@ fn transparent_status(app: &App) -> Result<(), String> {
     println!("local_cgroup={local_cgroup}");
     println!("shared_tc={shared_tc}");
     println!("shared_interfaces={shared_interfaces}");
+    println!("shared_tc_interfaces={shared_tc_interfaces}");
+    println!(
+        "attachment_detail={}",
+        attachments
+            .as_ref()
+            .map(|evidence| evidence.detail.as_str())
+            .unwrap_or("not-inspected")
+    );
     println!("recent_error={recent_error}");
     println!("transition={transition}");
     Ok(())

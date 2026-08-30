@@ -13,9 +13,9 @@ use serde_json::Value;
 use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
 use crate::{
-    clean_module_lines, cmdline_has_command, cmdline_has_script, command_text_timeout, mcp,
-    pid_summary, read_proc_argv, read_proc_text_bounded, singbox_pid_summary, App,
-    MAX_PROC_STAT_BYTES,
+    clean_module_lines, cmdline_has_command, cmdline_has_script, command_text_timeout,
+    ebpf_runtime::inspect_ebpf_attachments, mcp, pid_summary, read_proc_argv,
+    read_proc_text_bounded, run_magicnet_function, singbox_pid_summary, App, MAX_PROC_STAT_BYTES,
 };
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
@@ -1225,18 +1225,45 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
         })
         .collect::<Vec<_>>()
         .join(",");
+    let cgroup_path = if effective.local_cgroup_path.is_empty() {
+        "/sys/fs/cgroup"
+    } else {
+        effective.local_cgroup_path.as_str()
+    };
+    let attachment = probe_ok
+        .then(|| {
+            run_magicnet_function(app, "magicnet_ebpf_refresh_active_report")
+                .map_err(|_| "refresh-failed".to_string())?;
+            let text = fs::read_to_string(app.moddir.join(".state/transparent-ebpf/probe.json"))
+                .map_err(|_| "report-unreadable".to_string())?;
+            let report =
+                serde_json::from_str::<Value>(&text).map_err(|_| "report-invalid".to_string())?;
+            Ok::<_, String>(inspect_ebpf_attachments(
+                app,
+                &report,
+                local_effective,
+                cgroup_path,
+                &effective.network,
+                &effective.shared_interfaces,
+            ))
+        })
+        .transpose();
+    let (attachment_ok, attachment_detail) = match attachment {
+        Ok(Some(evidence)) => (
+            (!local_effective || evidence.local_attached)
+                && (!shared_effective || evidence.shared_attached),
+            evidence.detail,
+        ),
+        Ok(None) => (false, "skipped".to_string()),
+        Err(reason) => (false, reason),
+    };
     (
-        probe_ok,
+        probe_ok && attachment_ok,
         format!(
-            "configured=mode:ebpf source:{} inbound:ebpf requested_mode:{configured_mode} requested_network:{configured_network} effective=mode:{} network:{effective_network} local={} local.cgroup:{} local.dns:{} local.ipv6:{} shared={shared_state} shared.interface:{} shared.dns:{} shared.ipv6:{} probe=capability:{probe_detail}",
+            "configured=mode:ebpf source:{} inbound:ebpf requested_mode:{configured_mode} requested_network:{configured_network} effective=mode:{} network:{effective_network} local={} local.cgroup:{cgroup_path} local.dns:{} local.ipv6:{} shared={shared_state} shared.interface:{} shared.dns:{} shared.ipv6:{} probe=capability:{probe_detail} attachment={attachment_detail}",
             source.as_str(),
             effective.mode.as_str(),
             if local_effective { "enabled" } else { "disabled" },
-            if effective.local_cgroup_path.is_empty() {
-                "/sys/fs/cgroup"
-            } else {
-                effective.local_cgroup_path.as_str()
-            },
             effective.local_dns_mode,
             effective.local_ipv6 as u8,
             if effective.shared_interfaces.is_empty() {
@@ -2275,8 +2302,10 @@ mod mode_aware_tests {
         let app = App::for_test(root.clone());
         let result = dataplane_check(&app, &transparent_mode(&app));
 
-        assert!(result.0, "{}", result.1);
+        assert!(!result.0, "{}", result.1);
         assert!(result.1.contains("shared=pending"), "{}", result.1);
+        assert!(result.1.contains("attachment="), "{}", result.1);
+        assert!(!result.1.contains("magicnet0"), "{}", result.1);
         fs::remove_dir_all(root)?;
         Ok(())
     }
