@@ -1,10 +1,10 @@
 <template>
   <details
-    class="mn-chrome mt-5 rounded-[1.25rem] p-1.5 text-sm text-[var(--mn-ink-muted)]"
+    class="mn-chrome mt-5 rounded-[var(--mn-radius-md)] p-1.5 text-sm text-[var(--mn-ink-muted)]"
     aria-label="MagicNet 开源支持说明"
   >
     <summary
-      class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[0.95rem] bg-[color-mix(in_srgb,var(--mn-ink)_3%,transparent)] px-4 py-3 text-left text-[var(--mn-ink)] transition-[background-color,transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.99]"
+      class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[var(--mn-radius-md)] bg-[color-mix(in_srgb,var(--mn-ink)_3%,transparent)] px-4 py-3 text-left text-[var(--mn-ink)] transition-[background-color,transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--mn-cactus)_70%,var(--mn-ink))] active:scale-[0.99]"
     >
       <span class="min-w-0">
         <span class="mn-eyebrow mn-eyebrow-faint block tracking-[0.18em]">可选</span>
@@ -17,7 +17,7 @@
       </span>
     </summary>
 
-    <div class="rounded-[0.95rem] bg-[var(--mn-carrier)] px-4 py-4 sm:px-5">
+    <div class="rounded-[var(--mn-radius-md)] bg-[var(--mn-carrier)] px-4 py-4 sm:px-5">
       <div class="max-w-3xl space-y-3">
         <p class="leading-6">
           如果你对 MagicNet 感兴趣，也许会想知道：这个项目一直由我个人持续维护。我是一名大学生，长期用自己的时间和精力处理真机兼容、TUN 链路、文档整理、用户反馈和问题排查。

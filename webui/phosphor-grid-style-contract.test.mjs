@@ -25,9 +25,12 @@ for (const [token, value] of [
 assert.match(styles, /html\[data-theme="dark"\][\s\S]*--mn-cactus:\s*#b7f34a/i);
 assert.match(
   styles,
-  /Noto Sans Mono CJK SC/,
-  "terminal typography must keep a Chinese-capable fallback",
+  /--font-sans:[^;]*Noto Sans CJK SC/,
+  "body typography must keep a Chinese-capable sans fallback",
 );
+assert.match(styles, /--font-mono:[^;]*ui-monospace/);
+assert.match(styles, /body\s*\{[\s\S]*font-family:\s*var\(--font-sans\)/);
+assert.match(styles, /code,[\s\S]*font-family:\s*var\(--font-mono\)/);
 assert.match(
   app,
   /class="mn-route-stack"/,

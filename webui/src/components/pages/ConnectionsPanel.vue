@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { Copy, RefreshCw, Search, Unplug } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -9,6 +9,7 @@ import { statusToneClasses } from "@/lib/statusTone";
 import { connectionBuckets, connectionFlowSummary, connectionMatchesQuery, parseConnectionSnapshot, type ConnectionTarget } from "@/composables/parsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { useVisibilityTask } from "@/composables/useVisibilityTask";
 import { copyText, execFailed, shellQuote } from "@/utils";
 import { buildConnectionClosePlan, connectionClosePlanTone, formatConnectionCloseDetail } from "./connectionClosePlan";
 import { buildConnectionInsights, formatConnectionBytes } from "./connectionInsights";
@@ -179,13 +180,12 @@ function selectQuery(value: string): void {
   pendingAction.value = null;
 }
 
-onMounted(() => {
-  void refreshConnections();
-});
+const { target: visibilityTarget } = useVisibilityTask(refreshConnections);
 </script>
 
 <template>
-  <Card class="grid gap-3">
+  <div ref="visibilityTarget" class="mn-deferred-region">
+    <Card class="grid gap-3">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Unplug :size="17" /> 活动连接</h3>
@@ -337,5 +337,6 @@ onMounted(() => {
     <p v-else class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm text-[var(--mn-ink-muted)]">
       {{ snapshot ? "没有匹配的活动连接。" : "还没有连接数据。" }}
     </p>
-  </Card>
+    </Card>
+  </div>
 </template>

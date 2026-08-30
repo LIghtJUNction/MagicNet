@@ -206,7 +206,7 @@ onMounted(() => {
         <Badge tone="neutral">{{ status.mode === "auto" ? "自动出口" : "手动出口" }}</Badge>
       </CardHeading>
 
-      <label class="flex cursor-pointer items-start gap-3 rounded-[1.15rem] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-4">
+      <label class="flex cursor-pointer items-start gap-3 rounded-[var(--mn-radius-md)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-4">
         <input
           v-model="draft.enabled"
           type="checkbox"
@@ -254,7 +254,7 @@ onMounted(() => {
           </span>
           <select
             v-model="draft.upstream"
-            class="h-12 min-w-0 rounded-[0.85rem] border border-[var(--mn-border)] bg-[var(--mn-material-heavy)] px-3 text-sm text-[var(--mn-ink)] shadow-[inset_0_1px_0_var(--mn-material-edge)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)]"
+            class="h-12 min-w-0 rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-material-heavy)] px-3 text-sm text-[var(--mn-ink)] shadow-[inset_0_1px_0_var(--mn-material-edge)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)]"
             :disabled="!loaded || isRunning('proxy-chain-apply')"
           >
             <option value="">未选择中转节点</option>
@@ -276,7 +276,7 @@ onMounted(() => {
           </span>
           <select
             v-model="draft.exit"
-            class="h-12 min-w-0 rounded-[0.85rem] border border-[var(--mn-border)] bg-[var(--mn-material-heavy)] px-3 text-sm text-[var(--mn-ink)] shadow-[inset_0_1px_0_var(--mn-material-edge)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)]"
+            class="h-12 min-w-0 rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-material-heavy)] px-3 text-sm text-[var(--mn-ink)] shadow-[inset_0_1px_0_var(--mn-material-edge)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)]"
             :disabled="!loaded || isRunning('proxy-chain-apply')"
           >
             <option value="">未选择落地节点</option>
@@ -305,13 +305,13 @@ onMounted(() => {
             <span class="mt-1 block text-xs leading-5">{{ mode === 'manual' ? '固定使用 chain-exit 当前选择' : '使用 chain-auto URLTest 选择' }}</span>
           </button>
         </div>
-        <p class="rounded-[1.05rem] bg-[var(--mn-ivory)] px-4 py-3 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ modeHint }}</p>
+        <p class="rounded-[var(--mn-radius-md)] bg-[var(--mn-ivory)] px-4 py-3 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ modeHint }}</p>
       </div>
 
-      <div v-if="validationErrors.length" class="grid gap-1 rounded-[1.05rem] bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] px-4 py-3 text-sm text-[var(--mn-warning)]" role="alert">
+      <div v-if="validationErrors.length" class="grid gap-1 rounded-[var(--mn-radius-md)] bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] px-4 py-3 text-sm text-[var(--mn-warning)]" role="alert">
         <p v-for="error in validationErrors" :key="error">{{ error }}</p>
       </div>
-      <div v-else-if="dirty" class="flex items-center gap-2 rounded-[1.05rem] bg-[color-mix(in_srgb,var(--mn-cactus)_12%,transparent)] px-4 py-3 text-sm text-[var(--mn-success)]">
+      <div v-else-if="dirty" class="flex items-center gap-2 rounded-[var(--mn-radius-md)] bg-[color-mix(in_srgb,var(--mn-cactus)_12%,transparent)] px-4 py-3 text-sm text-[var(--mn-success)]">
         <ShieldCheck :size="16" />配置已修改，点击保存后才会写入设备。
       </div>
 
@@ -329,7 +329,7 @@ onMounted(() => {
         title="确认配置变更"
         description="每次保存会按顺序执行 CLI 配置操作；如果中途失败，页面会重新读取已落盘状态。"
       />
-      <div v-if="pendingPlan" class="grid gap-3 rounded-[1.15rem] bg-[color-mix(in_srgb,var(--mn-oat)_45%,var(--mn-carrier))] p-4" role="alert">
+      <div v-if="pendingPlan" class="grid gap-3 rounded-[var(--mn-radius-md)] bg-[color-mix(in_srgb,var(--mn-oat)_45%,var(--mn-carrier))] p-4" role="alert">
         <div class="flex items-start gap-3">
           <ShieldCheck class="mt-0.5 shrink-0 text-[var(--mn-warning)]" :size="18" />
           <div class="min-w-0">
@@ -344,7 +344,7 @@ onMounted(() => {
           <Button variant="outline" :disabled="isRunning('proxy-chain-apply')" @click="cancelApply">取消</Button>
         </div>
       </div>
-      <p v-else class="rounded-[1.15rem] bg-[var(--mn-ivory)] px-4 py-3 text-sm text-[var(--mn-ink-muted)]">{{ dirty ? "保存按钮会在这里生成操作预览。" : "当前没有待应用的链式代理变更。" }}</p>
+      <p v-else class="rounded-[var(--mn-radius-md)] bg-[var(--mn-ivory)] px-4 py-3 text-sm text-[var(--mn-ink-muted)]">{{ dirty ? "保存按钮会在这里生成操作预览。" : "当前没有待应用的链式代理变更。" }}</p>
     </Card>
 
     <Card class="grid gap-3 !p-4 md:!p-6">

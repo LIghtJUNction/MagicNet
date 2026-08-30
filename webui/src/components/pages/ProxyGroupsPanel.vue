@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { Copy, RefreshCw, Route } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -10,6 +10,7 @@ import { buildNodeDelayStats, nodeDelayQualityLabel, parseNodeTestAll, sanitizeN
 import { parseProxyGroupsSnapshot, sanitizeProxyName, type ProxyGroupSummary } from "@/composables/proxyGroupParsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { useVisibilityTask } from "@/composables/useVisibilityTask";
 import { copyText, execFailed, shellQuote } from "@/utils";
 import { buildProxySelectionPlan, formatProxySelectionPlanReport, type ProxySelectionPlan } from "./proxySelectionPlan";
 
@@ -164,13 +165,12 @@ async function copyReport(): Promise<void> {
   state.output = copied.value ? "代理组报告已复制。" : "剪贴板不可用，代理组报告未复制。";
 }
 
-onMounted(() => {
-  void refreshGroups();
-});
+const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
 </script>
 
 <template>
-  <Card class="grid gap-3">
+  <div ref="visibilityTarget" class="mn-deferred-region">
+    <Card class="grid gap-3">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Route :size="17" /> 代理组</h3>
@@ -264,5 +264,6 @@ onMounted(() => {
       </div>
     </div>
     <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ rawOutput }}</pre>
-  </Card>
+    </Card>
+  </div>
 </template>

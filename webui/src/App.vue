@@ -142,8 +142,6 @@ const {
 const { preference: themePreference, label: themeLabel, cycleTheme } = useTheme();
 
 const activeTab = ref<TabKey>("control");
-/** Keep the complete page surface warm so unfinished forms survive workspace switches. */
-const visitedTabs = ref<TabKey[]>(["control"]);
 const lastTabByWorkspace = ref<Record<WorkspaceKey, TabKey>>({
   run: "control",
   route: "apps",
@@ -224,13 +222,12 @@ const statusDotTone = computed(() => {
 });
 
 function setTab(tab: TabKey): void {
-  activeTab.value = tab;
-  const definition = tabs.find((item) => item.key === tab);
-  if (definition) lastTabByWorkspace.value[definition.workspace] = tab;
-  if (!visitedTabs.value.includes(tab)) {
-    visitedTabs.value = [...visitedTabs.value, tab];
+  if (tab !== activeTab.value) {
+    activeTab.value = tab;
+    const definition = tabs.find((item) => item.key === tab);
+    if (definition) lastTabByWorkspace.value[definition.workspace] = tab;
+    warmActiveTab(tab);
   }
-  warmActiveTab(tab);
   void nextTick(() => {
     const target = Array.from(
       document.querySelectorAll<HTMLElement>(`[data-tab="${tab}"]`),
@@ -364,6 +361,10 @@ function handleEscape(event: KeyboardEvent): void {
     return;
   }
   closeEasterEgg();
+}
+
+function prefetchTab(tab: TabKey): void {
+  void pageLoaders[tab]();
 }
 
 function warmActiveTab(tab: TabKey): void {
@@ -593,6 +594,8 @@ onUnmounted(() => {
               :class="activeTab === item.key ? 'is-active' : undefined"
               type="button"
               :aria-current="activeTab === item.key ? 'page' : undefined"
+              @pointerenter="prefetchTab(item.key)"
+              @focus="prefetchTab(item.key)"
               @click="setTab(item.key)"
             >
               <code>{{ item.code }}</code>

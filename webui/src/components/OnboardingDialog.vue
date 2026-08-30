@@ -180,7 +180,7 @@ onUnmounted(() => {
             </div>
 
             <div class="mt-4 flex items-start gap-3">
-              <div class="grid size-11 shrink-0 place-items-center rounded-[0.85rem] bg-[color-mix(in_srgb,var(--mn-cactus)_18%,var(--mn-carrier))] text-[var(--mn-cactus-deep)]">
+              <div class="grid size-11 shrink-0 place-items-center rounded-[var(--mn-radius-md)] bg-[color-mix(in_srgb,var(--mn-cactus)_18%,var(--mn-carrier))] text-[var(--mn-cactus-deep)]">
                 <DownloadCloud v-if="activeStep.target === 'subs'" :size="20" />
                 <Gauge v-else-if="activeStep.target === 'control'" :size="20" />
                 <Stethoscope v-else-if="activeStep.target === 'health'" :size="20" />
@@ -196,7 +196,7 @@ onUnmounted(() => {
               <li
                 v-for="detail in activeStep.details"
                 :key="detail"
-                class="rounded-[0.85rem] bg-[var(--mn-ivory)] px-3 py-2.5"
+                class="rounded-[var(--mn-radius-md)] bg-[var(--mn-ivory)] px-3 py-2.5"
               >
                 {{ detail }}
               </li>

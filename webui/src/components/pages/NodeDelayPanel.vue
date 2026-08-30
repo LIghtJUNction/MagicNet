@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { Copy, Gauge, RefreshCw, Zap } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -8,6 +8,7 @@ import StatTile from "@/components/ui/StatTile.vue";
 import { buildNodeDelayStats, formatNodeDelayReport, nodeDelayHealthText, nodeDelayQualityLabel, parseCurrentNode, parseNodeTestAll, sanitizeNodeText, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { useVisibilityTask } from "@/composables/useVisibilityTask";
 import { copyText, execFailed, shellQuote } from "@/utils";
 import { buildNodeSwitchPlan, formatNodeSwitchPlanReport, nodeSwitchPlanTone } from "./nodeSwitchPlan";
 
@@ -122,13 +123,12 @@ function delayLabel(value: number | null): string {
   return value === null ? "无" : `${value}ms`;
 }
 
-onMounted(() => {
-  void refreshCurrentNode();
-});
+const { target: visibilityTarget } = useVisibilityTask(refreshCurrentNode);
 </script>
 
 <template>
-  <Card class="grid gap-3">
+  <div ref="visibilityTarget" class="mn-deferred-region">
+    <Card class="grid gap-3">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Gauge :size="17" /> 节点延迟批测</h3>
@@ -222,5 +222,6 @@ onMounted(() => {
       </div>
     </div>
     <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ rawOutput }}</pre>
-  </Card>
+    </Card>
+  </div>
 </template>

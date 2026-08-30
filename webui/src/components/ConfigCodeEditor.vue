@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 
 type JsonSyntaxError = {
   message: string;
@@ -11,6 +11,7 @@ type JsonSyntaxError = {
 type JsonSyntaxState = {
   valid: boolean;
   error: JsonSyntaxError | null;
+  checking: boolean;
 };
 
 type JsonToken = {
@@ -23,22 +24,55 @@ const emit = defineEmits<{
   syntaxState: [state: JsonSyntaxState];
 }>();
 
+const ANALYSIS_DELAY_MS = 180;
+const MAX_HIGHLIGHT_CHARACTERS = 120_000;
+const MAX_GUTTER_LINES = 20_000;
+const JSON_NUMBER_PATTERN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+const JSON_WORD_PATTERN = /(?:true|false|null)\b/y;
+
 const textarea = ref<HTMLTextAreaElement | null>(null);
 const scrollTop = ref(0);
 const scrollLeft = ref(0);
+const deferredText = ref(model.value);
+const checking = ref(false);
+let analysisTimer: ReturnType<typeof setTimeout> | undefined;
 
-const syntaxState = computed<JsonSyntaxState>(() => validateJson(model.value));
-const lineCount = computed(() => Math.max(1, model.value.split("\n").length));
-const highlightedTokens = computed(() => tokenizeJson(model.value || " "));
+const syntaxState = computed<JsonSyntaxState>(() => checking.value
+  ? { valid: false, error: null, checking: true }
+  : validateJson(deferredText.value));
+const lineCount = computed(() => countLines(deferredText.value));
+const lineNumbers = computed(() => lineCount.value <= MAX_GUTTER_LINES
+  ? Array.from({ length: lineCount.value }, (_, index) => index + 1).join("\n")
+  : "");
+const highlightedTokens = computed(() => {
+  const text = deferredText.value || " ";
+  return text.length > MAX_HIGHLIGHT_CHARACTERS ? [{ value: text }] : tokenizeJson(text);
+});
 const editorStatus = computed(() => {
-  if (!model.value.trim()) return "Waiting for JSON";
-  if (syntaxState.value.valid) return `${lineCount.value} lines · JSON syntax OK`;
+  if (checking.value) return "正在检查 JSON…";
+  if (!deferredText.value.trim()) return "等待 JSON";
+  if (syntaxState.value.valid) {
+    const highlightMode = deferredText.value.length > MAX_HIGHLIGHT_CHARACTERS ? " · 大文件纯文本显示" : "";
+    return `${lineCount.value} 行 · JSON 语法正常${highlightMode}`;
+  }
   const error = syntaxState.value.error;
-  if (!error) return "JSON syntax error";
-  return `Line ${error.line}, column ${error.column}: ${error.message}`;
+  if (!error) return "JSON 语法错误";
+  return `第 ${error.line} 行，第 ${error.column} 列：${error.message}`;
 });
 
+watch(model, (text) => {
+  checking.value = true;
+  if (analysisTimer !== undefined) window.clearTimeout(analysisTimer);
+  analysisTimer = window.setTimeout(() => {
+    deferredText.value = text;
+    checking.value = false;
+    analysisTimer = undefined;
+  }, ANALYSIS_DELAY_MS);
+});
 watch(syntaxState, (state) => emit("syntaxState", state), { immediate: true });
+onBeforeUnmount(() => {
+  if (analysisTimer !== undefined) window.clearTimeout(analysisTimer);
+});
 
 function syncScroll(event: Event): void {
   const target = event.target as HTMLTextAreaElement;
@@ -58,16 +92,25 @@ async function insertTab(event: KeyboardEvent): Promise<void> {
 }
 
 function validateJson(text: string): JsonSyntaxState {
-  if (!text.trim()) return { valid: true, error: null };
+  if (!text.trim()) return { valid: true, error: null, checking: false };
   try {
     JSON.parse(text);
-    return { valid: true, error: null };
+    return { valid: true, error: null, checking: false };
   } catch (error) {
     return {
       valid: false,
-      error: parseJsonError(error, text)
+      error: parseJsonError(error, text),
+      checking: false,
     };
   }
+}
+
+function countLines(text: string): number {
+  let count = 1;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "\n") count += 1;
+  }
+  return count;
 }
 
 function parseJsonError(error: unknown, text: string): JsonSyntaxError {
@@ -139,20 +182,22 @@ function tokenizeJson(text: string): JsonToken[] {
       continue;
     }
 
-    const numberMatch = text.slice(index).match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+    JSON_NUMBER_PATTERN.lastIndex = index;
+    const numberMatch = JSON_NUMBER_PATTERN.exec(text);
     if (numberMatch) {
       output.push({ value: numberMatch[0], className: "json-token-number" });
-      index += numberMatch[0].length;
+      index = JSON_NUMBER_PATTERN.lastIndex;
       continue;
     }
 
-    const wordMatch = text.slice(index).match(/^(true|false|null)\b/);
+    JSON_WORD_PATTERN.lastIndex = index;
+    const wordMatch = JSON_WORD_PATTERN.exec(text);
     if (wordMatch) {
       output.push({
         value: wordMatch[0],
         className: wordMatch[0] === "null" ? "json-token-null" : "json-token-boolean",
       });
-      index += wordMatch[0].length;
+      index = JSON_WORD_PATTERN.lastIndex;
       continue;
     }
 
@@ -199,19 +244,21 @@ function isObjectKey(text: string, end: number): boolean {
 </script>
 
 <template>
-  <div class="json-editor" :class="{ 'json-editor--invalid': !syntaxState.valid }">
+  <div
+    class="json-editor"
+    :class="{
+      'json-editor--invalid': !checking && !syntaxState.valid,
+      'json-editor--checking': checking,
+    }"
+  >
     <div class="json-editor__body">
       <div class="json-editor__gutter" aria-hidden="true">
-        <div
+        <pre
+          v-if="lineNumbers"
           class="json-editor__gutter-lines"
           :style="{ transform: `translateY(${-scrollTop}px)` }"
-        >
-          <span
-            v-for="line in lineCount"
-            :key="line"
-            :class="{ 'json-editor__line--error': syntaxState.error?.line === line }"
-          >{{ line }}</span>
-        </div>
+        >{{ lineNumbers }}</pre>
+        <span v-else class="json-editor__gutter-summary">{{ lineCount }} lines</span>
       </div>
       <div class="json-editor__stage">
         <pre
@@ -238,7 +285,7 @@ function isObjectKey(text: string, end: number): boolean {
         />
       </div>
     </div>
-    <div class="json-editor__status" :class="{ 'json-editor__status--error': !syntaxState.valid }">
+    <div class="json-editor__status" :class="{ 'json-editor__status--error': !checking && !syntaxState.valid }">
       {{ editorStatus }}
     </div>
   </div>
@@ -271,26 +318,28 @@ function isObjectKey(text: string, end: number): boolean {
   border-right: 1px solid var(--mn-border);
   background: var(--mn-surface-sunken);
   color: var(--mn-ink-faint);
-  font-family: inherit;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.5rem;
   user-select: none;
 }
 
 .json-editor__gutter-lines {
+  margin: 0;
   padding: 0.75rem 0.75rem 0.75rem 0.5rem;
+  font: inherit;
+  line-height: inherit;
   text-align: right;
+  white-space: pre;
   will-change: transform;
 }
 
-.json-editor__gutter-lines span {
+.json-editor__gutter-summary {
   display: block;
-  height: 1.5rem;
-}
-
-.json-editor__line--error {
-  color: var(--mn-danger);
-  font-weight: 700;
+  padding: 0.75rem 0.35rem;
+  font-size: 0.65rem;
+  text-align: center;
+  writing-mode: vertical-rl;
 }
 
 .json-editor__stage {
@@ -323,6 +372,10 @@ function isObjectKey(text: string, end: number): boolean {
   will-change: transform;
 }
 
+.json-editor--checking .json-editor__highlight {
+  opacity: 0;
+}
+
 .json-editor__textarea {
   resize: vertical;
   overflow: auto;
@@ -330,6 +383,10 @@ function isObjectKey(text: string, end: number): boolean {
   background: transparent;
   color: transparent;
   caret-color: var(--mn-cactus);
+}
+
+.json-editor--checking .json-editor__textarea {
+  color: var(--mn-ink-soft);
 }
 
 .json-editor__textarea::selection {

@@ -535,7 +535,7 @@ onMounted(() => {
       >
         <label
           :class="[
-            'flex flex-col gap-4 rounded-[1.35rem] p-1 sm:flex-row sm:items-center sm:justify-between',
+            'flex flex-col gap-4 rounded-[var(--mn-radius-md)] p-1 sm:flex-row sm:items-center sm:justify-between',
             hotspotPolicyPhase === 'ready' ? 'cursor-pointer' : 'cursor-default',
           ]"
         >
@@ -651,6 +651,7 @@ onMounted(() => {
             <div class="flex gap-2">
               <Input
                 v-model="wifiSsidInput"
+                aria-label="Wi-Fi SSID"
                 placeholder="输入完整 SSID，例如 Home WiFi"
                 @keyup.enter="addWifiEntry('ssid')"
               />
@@ -677,6 +678,7 @@ onMounted(() => {
             <div class="flex gap-2">
               <Input
                 v-model="wifiBssidInput"
+                aria-label="Wi-Fi BSSID"
                 placeholder="输入 BSSID，例如 aa:bb:cc:dd:ee:ff"
                 @keyup.enter="addWifiEntry('bssid')"
               />

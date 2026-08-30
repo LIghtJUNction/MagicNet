@@ -20,11 +20,13 @@ const pendingConfigAction = ref<PendingToolAction | null>(null);
 const configFileInput = ref<HTMLInputElement | null>(null);
 const localJsonStatus = ref("");
 const configSyntaxValid = ref(true);
+const configAnalysisPending = ref(false);
+const analyzedConfigText = ref("");
 const sanitizedCopied = ref(false);
 const auditCopied = ref(false);
 const issueBaseline = ref("");
 const configStats = computed(() => {
-  const text = state.config.text;
+  const text = analyzedConfigText.value;
   const lines = text ? text.split(/\r?\n/).length : 0;
   return {
     lines,
@@ -32,9 +34,8 @@ const configStats = computed(() => {
     sizeKiB: (new TextEncoder().encode(text).length / 1024).toFixed(1)
   };
 });
-const sanitizedConfig = computed(() => sanitizeConfigText(state.config.text));
-const configOutline = computed(() => buildConfigOutline(state.config.text));
-const configAudit = computed(() => buildConfigAudit(state.config.text));
+const configOutline = computed(() => buildConfigOutline(analyzedConfigText.value));
+const configAudit = computed(() => buildConfigAudit(analyzedConfigText.value));
 
 function requestConfigAction(action: PendingToolAction): void {
   pendingConfigAction.value = action;
@@ -73,8 +74,10 @@ function requestSaveConfig(): void {
   });
 }
 
-function updateConfigSyntaxState(state: { valid: boolean }): void {
-  configSyntaxValid.value = state.valid;
+function updateConfigSyntaxState(syntax: { valid: boolean; checking: boolean }): void {
+  configSyntaxValid.value = syntax.valid;
+  configAnalysisPending.value = syntax.checking;
+  if (!syntax.checking) analyzedConfigText.value = state.config.text;
 }
 
 async function loadConfigForEditing(): Promise<void> {
@@ -137,8 +140,9 @@ async function importLocalConfig(event: Event): Promise<void> {
 }
 
 async function copySanitizedConfig(): Promise<void> {
-  if (!sanitizedConfig.value) return;
-  sanitizedCopied.value = await copyText(sanitizedConfig.value);
+  const sanitizedConfig = sanitizeConfigText(state.config.text);
+  if (!sanitizedConfig) return;
+  sanitizedCopied.value = await copyText(sanitizedConfig);
   state.output = sanitizedCopied.value ? "脱敏配置片段已复制。" : "剪贴板不可用，脱敏配置未复制。";
 }
 
@@ -249,7 +253,9 @@ async function openConfigIssue(): Promise<void> {
         <span>{{ configStats.lines }} 行</span>
         <span>{{ configStats.chars }} 字符</span>
         <span>{{ configStats.sizeKiB }} KiB</span>
-        <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">{{ localJsonStatus || "尚未导入或格式化本地 JSON" }}</span>
+        <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">
+          {{ configAnalysisPending ? "结构分析中…" : localJsonStatus || "尚未导入或格式化本地 JSON" }}
+        </span>
       </div>
       <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm text-[var(--mn-ink-muted)]">
         <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -293,7 +299,7 @@ async function openConfigIssue(): Promise<void> {
             </span>
             <span class="min-w-0 break-words text-xs text-[var(--mn-ink-muted)]">{{ configAudit.summary }}</span>
           </div>
-          <Button variant="outline" :disabled="!configAudit.items.length" @click="copyConfigAudit"><Copy :size="16" />{{ auditCopied ? '已复制审计' : '复制审计' }}</Button>
+          <Button variant="outline" :disabled="configAnalysisPending || !configAudit.items.length" @click="copyConfigAudit"><Copy :size="16" />{{ auditCopied ? '已复制审计' : '复制审计' }}</Button>
         </div>
         <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <InsightChip
