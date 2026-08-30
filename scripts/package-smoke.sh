@@ -21,7 +21,7 @@ require_entry() {
     grep -Fx "$entry" "$entries_file" >/dev/null || fail "missing zip entry: $entry"
 }
 
-for tool in file grep jq python3 readelf sed unzip zipinfo; do
+for tool in file go grep jq python3 readelf sed unzip zipinfo; do
     command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
 
@@ -47,6 +47,7 @@ require_entry cli
 require_entry bin/magicnet-cli
 require_entry bin/magicnet-mcp-server
 require_entry bin/sing-box
+require_entry singbox.version
 require_entry bin/ecapture
 require_entry bin/jq
 require_entry lib/kamfw/watchdog.sh
@@ -62,8 +63,8 @@ done
 
 require_executable_entry() {
     local entry="$1"
-    zipinfo -l "$ZIP_PATH" "$entry" 2>/dev/null | grep -E '^-rwx' >/dev/null \
-        || fail "$entry is not executable in zip"
+    zipinfo -l "$ZIP_PATH" "$entry" 2>/dev/null | grep -E '^-rwx' >/dev/null ||
+        fail "$entry is not executable in zip"
 }
 
 require_android_arm64_elf() {
@@ -71,16 +72,16 @@ require_android_arm64_elf() {
     local output
     unzip -oq "$ZIP_PATH" "$entry" -d "$elf_tmp"
     output="$(LC_ALL=C file -L "$elf_tmp/$entry")"
-    grep -F 'ELF 64-bit' <<<"$output" >/dev/null \
-        || fail "$entry is not an ELF64 binary: $output"
-    grep -F 'ARM aarch64' <<<"$output" >/dev/null \
-        || fail "$entry is not AArch64: $output"
-    if ! grep -F 'interpreter /system/bin/linker64' <<<"$output" >/dev/null \
-        && ! grep -F 'statically linked' <<<"$output" >/dev/null; then
+    grep -F 'ELF 64-bit' <<<"$output" >/dev/null ||
+        fail "$entry is not an ELF64 binary: $output"
+    grep -F 'ARM aarch64' <<<"$output" >/dev/null ||
+        fail "$entry is not AArch64: $output"
+    if ! grep -F 'interpreter /system/bin/linker64' <<<"$output" >/dev/null &&
+        ! grep -F 'statically linked' <<<"$output" >/dev/null; then
         fail "$entry is neither linked for Android linker64 nor static: $output"
     fi
-    LC_ALL=C readelf -h "$elf_tmp/$entry" | grep -F 'Machine:                           AArch64' >/dev/null \
-        || fail "$entry ELF machine is not AArch64"
+    LC_ALL=C readelf -h "$elf_tmp/$entry" | grep -F 'Machine:                           AArch64' >/dev/null ||
+        fail "$entry ELF machine is not AArch64"
 }
 
 for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/sing-box bin/ecapture bin/jq; do
@@ -90,6 +91,23 @@ done
 for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/sing-box bin/ecapture bin/jq; do
     require_android_arm64_elf "$entry"
 done
+
+singbox_build_info="$(go version -m "$elf_tmp/bin/sing-box" 2>&1)" ||
+    fail "could not read packaged sing-box Go build metadata: $singbox_build_info"
+singbox_build_tags="$(
+    sed -n 's/^[[:space:]]*build[[:space:]][[:space:]]*-tags=//p' <<<"$singbox_build_info" |
+        tr -d '\r\n'
+)"
+[[ ",$singbox_build_tags," == *,with_ebpf,* ]] ||
+    fail "packaged sing-box Go build metadata does not contain with_ebpf"
+
+singbox_source_ref="$(unzip -p "$ZIP_PATH" singbox.version | tr -d '\r\n')"
+[[ "$singbox_source_ref" =~ ^LIghtJUNction/sing-box@[0-9a-f]{40}$ ]] ||
+    fail "singbox.version does not identify a pinned LIghtJUNction fork revision"
+expected_singbox_revision="$(git -C "$ROOT/sing-box" rev-parse HEAD 2>/dev/null)" ||
+    fail "sing-box source submodule is not initialized"
+[[ "$singbox_source_ref" = "LIghtJUNction/sing-box@$expected_singbox_revision" ]] ||
+    fail "packaged sing-box revision differs from the source submodule"
 
 if grep -E '(^|/)\.git($|/)' "$entries_file" >/dev/null; then
     fail "zip contains .git metadata"
@@ -215,8 +233,8 @@ jq -e '
     and ([.outbounds[] | select(.type == "direct") | has("bind_interface")] | all(. == false))
     and ([.outbounds[] | select(.type == "selector") | .interrupt_exist_connections] | all(. == true))
     and ([.outbounds[] | select(.type == "urltest") | .interrupt_exist_connections] == [false])
-' "$route_fixture_dir/config.json" >/dev/null \
-    || fail "sing-box route preparation did not delegate interface changes to Android"
+' "$route_fixture_dir/config.json" >/dev/null ||
+    fail "sing-box route preparation did not delegate interface changes to Android"
 
 route_no_jq_dir="$elf_tmp/route-config-no-jq"
 route_no_jq_bin="$route_no_jq_dir/bin"
@@ -272,8 +290,8 @@ jq -e '
     and ([.outbounds[] | select(.type == "direct") | has("bind_interface")] | all(. == false))
     and ([.outbounds[] | select(.type == "selector") | .interrupt_exist_connections] == [true])
     and ([.outbounds[] | select(.type == "urltest") | .interrupt_exist_connections] == [false])
-' "$route_no_jq_dir/config.json" >/dev/null \
-    || fail "sing-box no-jq route preparation changed URLTest interruption semantics"
+' "$route_no_jq_dir/config.json" >/dev/null ||
+    fail "sing-box no-jq route preparation changed URLTest interruption semantics"
 
 python3 - "$ZIP_PATH" <<'PY'
 import functools
@@ -2012,8 +2030,8 @@ PY
 routing_package_root="$elf_tmp/routing-package"
 routing_config_dir="$routing_package_root/.config/sing-box"
 case "$routing_config_dir" in
-    "$elf_tmp"/*) ;;
-    *) fail "extracted routing config escaped the package scratch directory" ;;
+"$elf_tmp"/*) ;;
+*) fail "extracted routing config escaped the package scratch directory" ;;
 esac
 mkdir -p "$routing_package_root"
 unzip -oq "$ZIP_PATH" \
@@ -2028,15 +2046,15 @@ MAGICNET_ROUTING_CONFIG_DIR="$routing_config_dir" \
 watchdog_text="$(unzip -p "$ZIP_PATH" lib/kamfw/watchdog.sh)"
 fswatch_text="$(unzip -p "$ZIP_PATH" lib/kamfw/fswatch.sh)"
 # shellcheck disable=SC2016
-grep -F 'nohup sh "$_wd_script_file"' <<<"$watchdog_text" >/dev/null \
-    || fail "watchdog does not launch detached loop script"
-grep -F 'KAM_MODULES' <<<"$watchdog_text" >/dev/null \
-    || fail "watchdog loop does not reset KAM_MODULES"
+grep -F 'nohup sh "$_wd_script_file"' <<<"$watchdog_text" >/dev/null ||
+    fail "watchdog does not launch detached loop script"
+grep -F 'KAM_MODULES' <<<"$watchdog_text" >/dev/null ||
+    fail "watchdog loop does not reset KAM_MODULES"
 # shellcheck disable=SC2016
-grep -F 'nohup sh "$_fw_script_file"' <<<"$fswatch_text" >/dev/null \
-    || fail "fswatch does not launch detached loop script"
+grep -F 'nohup sh "$_fw_script_file"' <<<"$fswatch_text" >/dev/null ||
+    fail "fswatch does not launch detached loop script"
 # shellcheck disable=SC2016
-grep -F '_fw_tmp_dir="${TMPDIR:-}"' <<<"$fswatch_text" >/dev/null \
-    || fail "fswatch does not guard invalid TMPDIR"
+grep -F '_fw_tmp_dir="${TMPDIR:-}"' <<<"$fswatch_text" >/dev/null ||
+    fail "fswatch does not guard invalid TMPDIR"
 
 printf 'package smoke passed: %s\n' "$ZIP_PATH"

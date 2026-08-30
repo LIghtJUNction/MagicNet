@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
@@ -23,6 +24,12 @@ const REPAIR_COMMAND: &str =
     "magicnet_apply_runtime_config; MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_ensure_kernel";
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
 const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
+const TRANSPARENT_CONFIG: &str = ".config/sing-box/config.json";
+const TRANSPARENT_TRANSACTION: &str = ".state/transparent-transaction";
+const TRANSPARENT_RECENT_ERROR: &str = ".state/transparent-recent-error";
+const TRANSPARENT_CAPABILITY: &str = ".state/transparent-ebpf/capability";
+const TRANSPARENT_PROBE_REPORT: &str = ".state/transparent-ebpf/probe.json";
+const TRANSPARENT_SHARED_PENDING: &str = ".state/transparent-ebpf/shared.pending";
 const CONFIG_APPLY_LOCK: &str = ".state/config-apply.lock";
 const LIFECYCLE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CONFIG_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -261,10 +268,7 @@ pub(crate) fn apply_config(app: &App) -> Result<(), String> {
 
 pub(crate) fn transparent_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
-        "status" => {
-            println!("mode={}", transparent_mode(app));
-            Ok(())
-        }
+        "status" => transparent_status(app),
         "set" => transparent_set(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "apply" => {
             run_magicnet_function(app, "magicnet_transparent_apply")?;
@@ -602,11 +606,60 @@ fn select_core(app: &App, core: &str) -> Result<(), String> {
 fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
     let mode = normalize_transparent_mode(mode)?;
     let _config_apply_guard = config_apply_lock(app)?;
-    write_transparent_mode(app, mode)?;
-    stop_all_direct(app, false)?;
-    run_magicnet_function(app, "magicnet_transparent_apply")?;
-    run_magicnet_function(app, "magicnet_start_kernel")?;
-    start_supervisors(app)?;
+    run_magicnet_function(app, "magicnet_recover_interrupted_transparent_transaction")?;
+    let old_mode = read_transparent_mode(app)?;
+    prepare_transparent_transaction(app, &old_mode, mode)?;
+
+    let mut old_stop_started = false;
+    let transition = (|| -> Result<(), String> {
+        write_transparent_mode(app, mode)?;
+        set_transparent_phase(app, "target-written")?;
+        set_transparent_phase(app, "preflight")?;
+        run_magicnet_function(app, "magicnet_prepare_singbox_candidate_unlocked")?;
+        set_transparent_phase(app, "candidate-prepared")?;
+        old_stop_started = true;
+        set_transparent_phase(app, "stopping-old")?;
+        stop_all_direct(app, false)?;
+        set_transparent_phase(app, "old-stopped")?;
+        set_transparent_phase(app, "candidate-starting")?;
+        run_magicnet_function(
+            app,
+            "MAGICNET_TRANSPARENT_TRANSACTION_ACTIVE=1 MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel",
+        )?;
+        run_magicnet_function(app, "magicnet_transparent_verify_running")?;
+        set_transparent_phase(app, "verified")?;
+        start_supervisors(app)?;
+        Ok(())
+    })();
+
+    if let Err(error) = transition {
+        let phase = transparent_transition_phase(app).unwrap_or_else(|| "unknown".to_string());
+        let recent = format!("transition to {mode} failed at {phase}");
+        let _ = write_text_file(
+            app,
+            Path::new(TRANSPARENT_RECENT_ERROR),
+            &format!("{recent}\n"),
+        );
+        let rollback = if old_stop_started {
+            rollback_transparent_transaction(app, &old_mode)
+        } else {
+            rollback_transparent_preflight(app, &old_mode)
+        };
+        return match rollback {
+            Ok(()) => Err(format!("{recent}; previous mode restored: {error}")),
+            Err(rollback_error) => Err(format!(
+                "{recent}; rollback is pending recovery: {error}; {rollback_error}"
+            )),
+        };
+    }
+
+    fs::remove_dir_all(app.moddir.join(TRANSPARENT_TRANSACTION))
+        .map_err(|error| format!("commit transparent transaction: {error}"))?;
+    match fs::remove_file(app.moddir.join(TRANSPARENT_RECENT_ERROR)) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("clear transparent transition error: {error}")),
+    }
     println!("[info] Transparent mode set to {mode}");
     Ok(())
 }
@@ -614,7 +667,8 @@ fn transparent_set(app: &App, mode: &str) -> Result<(), String> {
 fn normalize_transparent_mode(mode: &str) -> Result<&'static str, String> {
     match mode {
         "tun" => Ok("tun"),
-        _ => Err("Usage: cli transparent set tun".to_string()),
+        "ebpf" => Ok("ebpf"),
+        _ => Err("Usage: cli transparent set {tun|ebpf}".to_string()),
     }
 }
 
@@ -630,28 +684,353 @@ fn write_transparent_mode(app: &App, mode: &str) -> Result<(), String> {
     )
 }
 
-fn transparent_mode(app: &App) -> String {
-    // Status/read path only. `transparent set` already rejects non-tun values;
-    // legacy conf leftovers (proxy/hybrid/external*) are remapped to tun so
-    // callers never see deleted dataplanes, without rewriting the file here.
-    fs::read_to_string(app.moddir.join(TRANSPARENT_MODE_CONF))
+struct TransparentModeState {
+    mode: String,
+    file_present: bool,
+}
+
+fn read_transparent_mode(app: &App) -> Result<TransparentModeState, String> {
+    let path = app.moddir.join(TRANSPARENT_MODE_CONF);
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(TransparentModeState {
+                mode: "tun".to_string(),
+                file_present: false,
+            });
+        }
+        Err(error) => return Err(format!("read transparent mode: {error}")),
+    };
+    let mut value = None;
+    for raw_line in text.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let candidate = line
+            .strip_prefix("MAGICNET_TRANSPARENT_MODE=")
+            .ok_or_else(|| {
+                "transparent mode configuration contains an unknown assignment".to_string()
+            })?;
+        if value.replace(candidate).is_some() {
+            return Err("transparent mode configuration contains duplicate values".to_string());
+        }
+    }
+    let value = value.ok_or_else(|| {
+        "transparent mode configuration must contain exactly one value".to_string()
+    })?;
+    let mode = normalize_transparent_mode(value)?;
+    Ok(TransparentModeState {
+        mode: mode.to_string(),
+        file_present: true,
+    })
+}
+
+fn prepare_transparent_transaction(
+    app: &App,
+    old_mode: &TransparentModeState,
+    target_mode: &str,
+) -> Result<(), String> {
+    let journal = app.moddir.join(TRANSPARENT_TRANSACTION);
+    if journal.exists() {
+        return Err("transparent transaction recovery did not clear the journal".to_string());
+    }
+    let staging = app.moddir.join(format!(
+        "{}.new.{}",
+        TRANSPARENT_TRANSACTION,
+        std::process::id()
+    ));
+    if staging.exists() {
+        fs::remove_dir_all(&staging)
+            .map_err(|error| format!("clear transparent journal staging: {error}"))?;
+    }
+    fs::create_dir_all(&staging).map_err(|error| format!("create transparent journal: {error}"))?;
+    fs::set_permissions(&staging, fs::Permissions::from_mode(0o700))
+        .map_err(|error| format!("protect transparent journal: {error}"))?;
+    write_private_file(
+        &staging.join("old-mode"),
+        format!("{}\n", old_mode.mode).as_bytes(),
+    )?;
+    write_private_file(
+        &staging.join("old-mode-present"),
+        if old_mode.file_present {
+            b"1\n"
+        } else {
+            b"0\n"
+        },
+    )?;
+    write_private_file(
+        &staging.join("target-mode"),
+        format!("{target_mode}\n").as_bytes(),
+    )?;
+    write_private_file(&staging.join("phase"), b"prepared\n")?;
+    let config = app.moddir.join(TRANSPARENT_CONFIG);
+    if config.is_file() {
+        let bytes =
+            fs::read(&config).map_err(|error| format!("snapshot transparent config: {error}"))?;
+        write_private_file(&staging.join("old-config.json"), &bytes)?;
+        write_private_file(&staging.join("old-config-present"), b"1\n")?;
+    } else {
+        write_private_file(&staging.join("old-config-present"), b"0\n")?;
+    }
+    fs::rename(&staging, &journal)
+        .map_err(|error| format!("publish transparent journal: {error}"))?;
+    Ok(())
+}
+
+fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    fs::write(path, bytes).map_err(|error| format!("write {}: {error}", path.display()))?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+        .map_err(|error| format!("protect {}: {error}", path.display()))
+}
+
+fn set_transparent_phase(app: &App, phase: &str) -> Result<(), String> {
+    write_text_file(
+        app,
+        Path::new(".state/transparent-transaction/phase"),
+        &format!("{phase}\n"),
+    )
+}
+
+fn transparent_transition_phase(app: &App) -> Option<String> {
+    let phase = fs::read_to_string(app.moddir.join(TRANSPARENT_TRANSACTION).join("phase"))
+        .ok()?
+        .trim()
+        .to_string();
+    if !phase.is_empty()
+        && phase
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    {
+        Some(phase)
+    } else {
+        None
+    }
+}
+
+fn restore_transaction_snapshot(app: &App, old_mode: &TransparentModeState) -> Result<(), String> {
+    if old_mode.file_present {
+        write_transparent_mode(app, &old_mode.mode)?;
+    } else {
+        match fs::remove_file(app.moddir.join(TRANSPARENT_MODE_CONF)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("restore absent transparent mode: {error}")),
+        }
+    }
+    let journal = app.moddir.join(TRANSPARENT_TRANSACTION);
+    let config_present = fs::read_to_string(journal.join("old-config-present"))
+        .map_err(|error| format!("read transparent config snapshot marker: {error}"))?;
+    let config = app.moddir.join(TRANSPARENT_CONFIG);
+    match config_present.trim() {
+        "1" => {
+            let bytes = fs::read(journal.join("old-config.json"))
+                .map_err(|error| format!("read transparent config snapshot: {error}"))?;
+            let temporary = config.with_extension(format!("json.tmp.{}", std::process::id()));
+            write_private_file(&temporary, &bytes)?;
+            fs::rename(&temporary, &config)
+                .map_err(|error| format!("restore transparent config: {error}"))?;
+        }
+        "0" => match fs::remove_file(&config) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("restore absent transparent config: {error}")),
+        },
+        _ => return Err("invalid transparent config snapshot marker".to_string()),
+    }
+    Ok(())
+}
+
+fn rollback_transparent_preflight(
+    app: &App,
+    old_mode: &TransparentModeState,
+) -> Result<(), String> {
+    set_transparent_phase(app, "rolling-back")?;
+    restore_transaction_snapshot(app, old_mode)?;
+    fs::remove_dir_all(app.moddir.join(TRANSPARENT_TRANSACTION))
+        .map_err(|error| format!("finish transparent preflight rollback: {error}"))
+}
+
+fn rollback_transparent_transaction(
+    app: &App,
+    old_mode: &TransparentModeState,
+) -> Result<(), String> {
+    set_transparent_phase(app, "rolling-back")?;
+    stop_all_direct(app, false)?;
+    restore_transaction_snapshot(app, old_mode)?;
+    set_transparent_phase(app, "old-restored")?;
+    run_magicnet_function(
+        app,
+        "unset MAGICNET_FAKE_SINGBOX_START_FAIL MAGICNET_FAKE_EBPF_PROBE_FAIL MAGICNET_FAKE_SINGBOX_CHECK_FAIL; MAGICNET_TRANSPARENT_TRANSACTION_ACTIVE=1 MAGICNET_TRANSPARENT_RESTORED_CONFIG=1 MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel",
+    )?;
+    run_magicnet_function(app, "magicnet_transparent_verify_running")?;
+    start_supervisors(app)?;
+    fs::remove_dir_all(app.moddir.join(TRANSPARENT_TRANSACTION))
+        .map_err(|error| format!("finish transparent rollback: {error}"))
+}
+
+fn transparent_status(app: &App) -> Result<(), String> {
+    let configured = read_transparent_mode(app)?.mode;
+    let config = fs::read_to_string(app.moddir.join(TRANSPARENT_CONFIG))
         .ok()
-        .and_then(|text| {
-            text.lines().find_map(|line| {
-                let (_, value) = line.split_once('=')?;
-                match value.trim().trim_matches('"').trim_matches('\'') {
-                    "proxy" | "external" | "external-tun" | "hybrid" | "tun" => {
-                        Some("tun".to_string())
-                    }
-                    _ => None,
-                }
-            })
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    let inbound = config
+        .as_ref()
+        .and_then(|value| value.get("inbounds"))
+        .and_then(Value::as_array)
+        .and_then(|inbounds| {
+            inbounds
+                .iter()
+                .find(|inbound| inbound.get("tag").and_then(Value::as_str) == Some("tun-in"))
+        });
+    let effective = match inbound
+        .and_then(|value| value.get("type"))
+        .and_then(Value::as_str)
+    {
+        Some("tun") => "tun",
+        Some("ebpf") => "ebpf",
+        _ => configured.as_str(),
+    };
+    let pids = owned_singbox_pids(app)?;
+    let running = !pids.is_empty();
+    let pid = if running {
+        pids.join(",")
+    } else {
+        "none".to_string()
+    };
+    let ebpf_mode = inbound
+        .and_then(|value| value.get("mode"))
+        .and_then(Value::as_str)
+        .unwrap_or("local");
+    let shared_interfaces = inbound
+        .and_then(|value| value.get("shared"))
+        .and_then(|value| value.get("interface"))
+        .and_then(Value::as_array)
+        .map(|interfaces| {
+            interfaces
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|interface| {
+                    !interface.is_empty()
+                        && interface.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric()
+                                || matches!(byte, b'_' | b'-' | b'.' | b':')
+                        })
+                })
+                .collect::<Vec<_>>()
+                .join(",")
         })
-        .unwrap_or_else(|| "tun".to_string())
+        .filter(|interfaces| !interfaces.is_empty())
+        .unwrap_or_else(|| "none".to_string());
+    let capability = if effective == "tun" {
+        "not-required".to_string()
+    } else {
+        fs::read_to_string(app.moddir.join(TRANSPARENT_CAPABILITY))
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| matches!(value.as_str(), "ok" | "failed"))
+            .unwrap_or_else(|| "unknown".to_string())
+    };
+    let probe_fresh = effective != "ebpf"
+        || !running
+        || run_magicnet_function(app, "magicnet_ebpf_refresh_active_report").is_ok();
+    let probe_report = probe_fresh
+        .then(|| fs::read_to_string(app.moddir.join(TRANSPARENT_PROBE_REPORT)).ok())
+        .flatten()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    let active_programs = probe_report
+        .as_ref()
+        .and_then(|report| report.get("active_programs"))
+        .and_then(Value::as_array);
+    let local_program_active = active_programs.is_some_and(|programs| {
+        programs.iter().any(|program| {
+            program
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.starts_with("sb_ebpf_"))
+        })
+    });
+    let shared_program_active = active_programs.is_some_and(|programs| {
+        programs.iter().any(|program| {
+            program
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.starts_with("sb_share_"))
+        })
+    });
+    let local_cgroup = if effective != "ebpf" {
+        "inactive"
+    } else if !running {
+        "configured"
+    } else if local_program_active {
+        "attached"
+    } else if active_programs.is_some() {
+        "missing"
+    } else {
+        "unknown"
+    };
+    let shared_tc = if effective != "ebpf" {
+        "inactive"
+    } else if ebpf_mode != "hybrid" {
+        if app.moddir.join(TRANSPARENT_SHARED_PENDING).is_file() {
+            "pending"
+        } else {
+            "inactive"
+        }
+    } else if !running {
+        "configured"
+    } else if shared_program_active {
+        "attached"
+    } else if active_programs.is_some() {
+        "missing"
+    } else {
+        "unknown"
+    };
+    let recent_error = fs::read_to_string(app.moddir.join(TRANSPARENT_RECENT_ERROR))
+        .ok()
+        .and_then(|value| {
+            let value = value.trim();
+            if value.starts_with("transition to ")
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b' ' | b'-'))
+            {
+                Some(value.to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "none".to_string());
+    let transition = transparent_transition_phase(app).unwrap_or_else(|| "idle".to_string());
+
+    println!("mode={effective}");
+    println!("configured_mode={configured}");
+    println!(
+        "effective_mode={}",
+        if effective == "ebpf" {
+            ebpf_mode
+        } else {
+            effective
+        }
+    );
+    println!("pid={pid}");
+    println!("capability={capability}");
+    println!("local_cgroup={local_cgroup}");
+    println!("shared_tc={shared_tc}");
+    println!("shared_interfaces={shared_interfaces}");
+    println!("recent_error={recent_error}");
+    println!("transition={transition}");
+    Ok(())
+}
+
+fn transparent_mode(app: &App) -> String {
+    read_transparent_mode(app)
+        .map(|state| state.mode)
+        .unwrap_or_else(|_| "invalid".to_string())
 }
 
 fn transparent_usage() -> String {
-    "Usage: cli transparent {status|set tun|apply}".to_string()
+    "Usage: cli transparent {status|set {tun|ebpf}|apply}".to_string()
 }
 
 fn core_status(app: &App) {

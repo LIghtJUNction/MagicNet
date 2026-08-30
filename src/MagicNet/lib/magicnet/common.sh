@@ -55,14 +55,46 @@ magicnet_transparent_conf() {
 }
 
 magicnet_transparent_mode() {
-    # Runtime dataplane is TUN-only (magicnet0). Keep this constant so shell
-    # callers never revive proxy/hybrid/external paths from stale conf.
-    printf '%s\n' "tun"
+    _mode_file="$(magicnet_transparent_conf)" || return 1
+    if [ ! -e "$_mode_file" ]; then
+        printf '%s\n' "tun"
+        unset _mode_file
+        return 0
+    fi
+    _mode="$(
+        awk '
+            {
+                line = $0
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+            }
+            line == "" || line ~ /^#/ { next }
+            line == "MAGICNET_TRANSPARENT_MODE=tun" {
+                value = "tun"
+                count++
+                next
+            }
+            line == "MAGICNET_TRANSPARENT_MODE=ebpf" {
+                value = "ebpf"
+                count++
+                next
+            }
+            { invalid = 1 }
+            END {
+                if (!invalid && count == 1) print value
+                else exit 1
+            }
+        ' "$_mode_file"
+    )" || {
+        unset _mode_file _mode
+        return 1
+    }
+    printf '%s\n' "$_mode"
+    unset _mode_file _mode
 }
 
 magicnet_transparent_set_mode() {
-    case "${1:-tun}" in
-    tun) _mode="tun" ;;
+    case "${1:-}" in
+    tun | ebpf) _mode="$1" ;;
     *) return 1 ;;
     esac
     mkdir -p "${MODDIR}/.config/magicnet" || return 1

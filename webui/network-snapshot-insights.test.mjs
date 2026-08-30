@@ -28,9 +28,10 @@ try {
   const insights = await import(pathToFileURL(join(dir, "networkSnapshotInsights.mjs")).href);
   const tunInsight = (text) => insights
     .buildNetworkSnapshotInsights(text)
-    .find((item) => item.label === "TUN");
+    .find((item) => item.label === "TUN 接口");
 
   assert.equal(tunInsight("2: Meta: <POINTOPOINT,UP> state UNKNOWN")?.value, "not detected");
+  assert.equal(tunInsight("2: Meta: <POINTOPOINT,UP> state UNKNOWN")?.tone, "info");
   assert.equal(tunInsight("8: magicnet0: <POINTOPOINT,UP> state UNKNOWN")?.value, "detected");
   assert.equal(tunInsight("TUN interface is ready, but no device name")?.value, "not detected");
   console.log("network snapshot interface tests passed");

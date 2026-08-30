@@ -170,17 +170,12 @@ magicnet_dns_capture_bypass_uids() {
         unset _dns_bypass_uid_file
         return 0
     }
-    # UID 0 matrix (keep in sync with transparent.sh TUN exclude_uid):
-    # - TUN always excludes UID 0 from magicnet0.
-    # - DNS capture usually intercepts UID 0 (Android netd).
-    # - Android netd can emit a Bypass TUN app's DNS request as UID 0. Once
-    #   netd proxies the lookup, xt_owner cannot recover the originating app;
-    #   keep UID 0 outside capture whenever a real bypass UID is configured so
-    #   the app and its DNS stay on the same non-MagicNet path.
+    # Android netd commonly emits application DNS as UID 0.  Exempting UID 0
+    # whenever any app bypass exists leaks unrelated applications' DNS through
+    # the physical resolver.  Keep only the concrete non-root bypass UIDs here;
+    # netd-mediated DNS remains captured even when its originating app bypasses
+    # the transparent dataplane.
     _dns_bypass_uids="$(awk '/^[0-9]+$/ && ($0 + 0) != 0 && !seen[$0]++ { print }' "$_dns_bypass_uid_file" 2>/dev/null)"
-    if [ -n "$_dns_bypass_uids" ]; then
-        printf '%s\n' 0
-    fi
     printf '%s\n' "$_dns_bypass_uids"
     unset _dns_bypass_uid_file _dns_bypass_uids
 }
@@ -202,6 +197,20 @@ magicnet_dns_capture_singbox_udp_marked() {
 }
 
 magicnet_enable_dns_capture() {
+    _dns_capture_mode="$(magicnet_transparent_mode)" || {
+        magicnet_warn "transparent mode configuration is invalid; DNS capture rejected"
+        magicnet_disable_dns_capture >/dev/null 2>&1 || true
+        return 1
+    }
+    if [ "$_dns_capture_mode" = ebpf ]; then
+        # The eBPF inbound owns port 53 interception (local is always hijack).
+        # Keep the legacy OUTPUT REDIRECT path detached to avoid double capture.
+        magicnet_disable_dns_capture
+        _dns_capture_mode_rc=$?
+        unset _dns_capture_mode
+        return "$_dns_capture_mode_rc"
+    fi
+    unset _dns_capture_mode
     if ! magicnet_dns_capture_enabled; then
         if magicnet_disable_dns_capture; then
             return 0
@@ -247,11 +256,6 @@ magicnet_enable_dns_capture() {
     if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
         magicnet_iptables_ensure -t nat magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
     fi
-    case " $_dns_capture_bypass_uids " in
-    *" 0 "*)
-        magicnet_log "DNS capture keeps UID 0 outside interception while Bypass TUN UIDs are configured"
-        ;;
-    esac
     for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
         magicnet_iptables_ensure -t nat magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
     done
@@ -352,29 +356,35 @@ magicnet_dns_capture_delete_jump() (
 magicnet_disable_dns_capture() {
     _dns_capture_cleanup_rc=0
     if magicnet_xtables_available iptables; then
-        # A failed/repeated enable can leave duplicate jumps in OUTPUT.  A
-        # single `-D` only removes the first one, so keep deleting until the
-        # chain is no longer referenced before flushing/removing it.
-        magicnet_dns_capture_delete_jump magicnet_iptables_cmd -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
         _dns_capture_chain_rc=0
         magicnet_iptables_cmd -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_chain_rc=$?
-        if [ "$_dns_capture_chain_rc" -eq 0 ]; then
+        case "$_dns_capture_chain_rc" in
+        0)
+            # A failed/repeated enable can leave duplicate jumps in OUTPUT.  A
+            # single `-D` only removes the first one, so keep deleting until the
+            # chain is no longer referenced before flushing/removing it.
+            magicnet_dns_capture_delete_jump magicnet_iptables_cmd -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
             magicnet_iptables_cmd -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
             magicnet_iptables_cmd -t nat -X magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
-        elif [ "$_dns_capture_chain_rc" -ne 1 ]; then
-            _dns_capture_cleanup_rc=1
-        fi
+            ;;
+        # Android iptables variants disagree on whether an absent custom chain
+        # is rc=1 or rc=2.  Both mean cleanup is already complete here.
+        1 | 2) ;;
+        *) _dns_capture_cleanup_rc=1 ;;
+        esac
     fi
     if magicnet_xtables_available ip6tables && magicnet_ip6tables_cmd -t nat -L >/dev/null 2>&1; then
-        magicnet_dns_capture_delete_jump magicnet_ip6tables_cmd -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
         _dns_capture_chain_rc=0
         magicnet_ip6tables_cmd -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_chain_rc=$?
-        if [ "$_dns_capture_chain_rc" -eq 0 ]; then
+        case "$_dns_capture_chain_rc" in
+        0)
+            magicnet_dns_capture_delete_jump magicnet_ip6tables_cmd -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
             magicnet_ip6tables_cmd -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
             magicnet_ip6tables_cmd -t nat -X magicnet-dns-output >/dev/null 2>&1 || _dns_capture_cleanup_rc=1
-        elif [ "$_dns_capture_chain_rc" -ne 1 ]; then
-            _dns_capture_cleanup_rc=1
-        fi
+            ;;
+        1 | 2) ;;
+        *) _dns_capture_cleanup_rc=1 ;;
+        esac
     fi
     if [ "$_dns_capture_cleanup_rc" -ne 0 ]; then
         unset _dns_capture_cleanup_rc _dns_capture_chain_rc
@@ -659,9 +669,8 @@ magicnet_after_kernel_start_deferred_unlocked() {
         _deferred_failures="${_deferred_failures}${_deferred_failures:+,}$1"
     }
 
-    # Android inserts a higher-priority tethering rule after the hotspot
-    # interface appears. Install MagicNet's per-interface rule after the TUN
-    # table exists so forwarded clients reach magicnet0 before that rule.
+    # TUN installs table 2022 rules; eBPF only removes stale TUN rules because
+    # shared-network TC is attached by sing-box itself.
     magicnet_hotspot_reconcile ||
         magicnet_warn "Hotspot TUN policy is not ready; the interface watcher will retry it."
 

@@ -5,9 +5,10 @@ invariants described in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Development setup
 
-Install Rust with `rustfmt` and `clippy`, Node.js/npm or Bun, ShellCheck, `jq`,
-Python 3, and [Kam](https://github.com/MemDeco-WG/Kam). Detailed build and local
-simulation instructions are in [`docs/build.md`](docs/build.md) and
+Install Go 1.26.7 or newer, Rust with `rustfmt` and `clippy`, Node.js/npm or
+Bun, ShellCheck, `jq`, Python 3, and
+[Kam](https://github.com/MemDeco-WG/Kam). Detailed build and local simulation
+instructions are in [`docs/build.md`](docs/build.md) and
 [`docs/local-simulation.md`](docs/local-simulation.md).
 
 ## Before opening a pull request
@@ -38,8 +39,10 @@ request description.
   module.
 - Reuse the CLI for WebUI and MCP operations. Do not add a second privileged
   execution path.
-- Keep the transparent implementation on sing-box `magicnet0` TUN. Do not
-  restore removed TProxy, eBPF, or automatic transport promotion paths.
+- Keep transparent mode explicit and limited to sing-box `tun|ebpf`; `tun`
+  remains the default. Do not add `auto` or restore TProxy, Redirect, or netd
+  `ALLOW_MULTI`. TUN checks use `magicnet0`; eBPF checks use capability,
+  cgroup, and TC attachment state without guessing downstream interfaces.
 - Treat the module directory, subscription inputs, secrets, and backup data as
   trust boundaries. Validate before writing or executing.
 - Add a regression test for every fixed bug and for failure/rollback paths in

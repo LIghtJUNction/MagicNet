@@ -10,8 +10,8 @@ export function buildNetworkSnapshotInsights(text: string): NetworkSnapshotInsig
   const lower = text.toLowerCase();
   const interfaces = collectInterfaceNames(text);
   const egress = interfaces.filter((name) => /^(wlan|wlp|enp|rmnet|ccmni|eth|usb|rndis|pdp|ap|swlan|wwan|cell|p2p|ppp)/i.test(name));
-  // The current MagicNet architecture owns only sing-box's magicnet0 TUN.
-  // A stale mihomo/Meta/utun interface must not make a snapshot look healthy.
+  // magicnet0 is authoritative only when configured_mode=tun. In eBPF mode
+  // cgroup/TC attachment facts come from `cli transparent status`, not links.
   const hasTun = interfaces.some((name) => name.toLowerCase() === "magicnet0")
     || /\bmagicnet0\b/i.test(text);
   const hasPolicyRule = hasSnapshotLine(text, /\bip rule:|from all fwmark\b|lookup \d+\b|lookup main\b/i);
@@ -19,10 +19,10 @@ export function buildNetworkSnapshotInsights(text: string): NetworkSnapshotInsig
   const hasDnsRedirect = hasSnapshotLine(text, /\b(dpt:53|--dport 53|udp dpt:domain|tcp dpt:domain|redirect\b.*:53|to-ports (?:53|1053))\b/i);
   return [
     {
-      label: "TUN",
+      label: "TUN 接口",
       value: hasTun ? "detected" : "not detected",
-      detail: hasTun ? "快照中发现 magicnet0 TUN。" : "未发现 magicnet0 TUN，透明代理可能未生效或快照不完整。",
-      tone: hasTun ? "ok" : "warn"
+      detail: hasTun ? "快照中发现 magicnet0 TUN。" : "未发现 magicnet0；eBPF 模式下这是正常现象，请结合 transparent status。",
+      tone: hasTun ? "ok" : "info"
     },
     {
       label: "出口接口",
@@ -34,7 +34,7 @@ export function buildNetworkSnapshotInsights(text: string): NetworkSnapshotInsig
       label: "策略路由",
       value: hasPolicyRule ? "detected" : "not detected",
       detail: hasPolicyRule ? "快照文本包含 policy routing 线索。" : "未看到明显 ip rule/policy route 线索。",
-      tone: hasPolicyRule ? "ok" : "warn"
+      tone: hasPolicyRule ? "ok" : "info"
     },
     {
       label: "NAT",

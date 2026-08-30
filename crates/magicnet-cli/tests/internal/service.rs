@@ -2,8 +2,9 @@
 
 use super::{
     api_host_port, config_apply_lock, config_apply_lock_bounded, normalize_transparent_mode,
-    restart_command, safe_log_name, service_log_path, stop_runtime_cleanup_command,
-    supervisor_cmdline_matches, REPAIR_COMMAND, START_KERNEL_COMMAND,
+    read_transparent_mode, restart_command, safe_log_name, service_log_path,
+    stop_runtime_cleanup_command, supervisor_cmdline_matches, REPAIR_COMMAND, START_KERNEL_COMMAND,
+    TRANSPARENT_MODE_CONF,
 };
 use crate::App;
 use std::fs;
@@ -23,13 +24,50 @@ fn fixture_app(name: &str) -> (App, PathBuf) {
 }
 
 #[test]
-fn transparent_mode_only_accepts_tun() {
+fn transparent_mode_only_accepts_tun_or_ebpf() {
     assert_eq!(normalize_transparent_mode("tun").unwrap(), "tun");
+    assert_eq!(normalize_transparent_mode("ebpf").unwrap(), "ebpf");
     assert!(normalize_transparent_mode("proxy").is_err());
     assert!(normalize_transparent_mode("external").is_err());
     assert!(normalize_transparent_mode("external-tun").is_err());
     assert!(normalize_transparent_mode("hybrid").is_err());
     assert!(normalize_transparent_mode("tproxy").is_err());
+}
+
+#[test]
+fn transparent_mode_file_is_strict_and_missing_defaults_to_tun() {
+    let (app, root) = fixture_app("transparent-mode");
+    let mode_path = root.join(TRANSPARENT_MODE_CONF);
+    fs::create_dir_all(mode_path.parent().unwrap()).unwrap();
+
+    let missing = read_transparent_mode(&app).unwrap();
+    assert_eq!(missing.mode, "tun");
+    assert!(!missing.file_present);
+
+    fs::write(
+        &mode_path,
+        "# explicit selection\nMAGICNET_TRANSPARENT_MODE=ebpf\n",
+    )
+    .unwrap();
+    let ebpf = read_transparent_mode(&app).unwrap();
+    assert_eq!(ebpf.mode, "ebpf");
+    assert!(ebpf.file_present);
+
+    fs::write(
+        &mode_path,
+        "MAGICNET_TRANSPARENT_MODE=tun\nMAGICNET_UNEXPECTED_ASSIGNMENT=1\n",
+    )
+    .unwrap();
+    assert!(read_transparent_mode(&app).is_err());
+
+    fs::write(
+        &mode_path,
+        "MAGICNET_TRANSPARENT_MODE=tun\nMAGICNET_TRANSPARENT_MODE=ebpf\n",
+    )
+    .unwrap();
+    assert!(read_transparent_mode(&app).is_err());
+
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

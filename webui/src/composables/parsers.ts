@@ -10,6 +10,7 @@ import type {
   RouteRuleSummary,
   RuntimeState,
   SubscriptionState,
+  TransparentEffectiveMode,
   TransparentMode,
   WarpState,
   WifiPolicyState,
@@ -98,6 +99,13 @@ export const runtimeDefaults: RuntimeState = {
   singBox: "unknown",
   fswatch: "unknown",
   transparentMode: "tun",
+  transparentEffectiveMode: "unknown",
+  transparentCapability: "unknown",
+  transparentLocalCgroup: "unknown",
+  transparentSharedTc: "unknown",
+  transparentSharedInterfaces: [],
+  transparentRecentError: "",
+  transparentTransition: "unknown",
   api: "http://127.0.0.1:9090",
   webui: SING_BOX_UI,
   subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`
@@ -257,8 +265,33 @@ export function parseWifiPolicy(text: string): WifiPolicyState {
 
 export function normalizeTransparentMode(value: string): TransparentMode | null {
   const mode = value.trim().toLowerCase();
-  if (["proxy", "external", "external-tun", "hybrid", "tun"].includes(mode)) return "tun";
-  return null;
+  return mode === "tun" || mode === "ebpf" ? mode : null;
+}
+
+function normalizeTransparentEffectiveMode(value: string): TransparentEffectiveMode | null {
+  const mode = value.trim().toLowerCase();
+  return ["tun", "local", "hybrid", "unknown"].includes(mode)
+    ? (mode as TransparentEffectiveMode)
+    : null;
+}
+
+function normalizeTransparentTransition(value: string): RuntimeState["transparentTransition"] {
+  const transition = value.trim().toLowerCase();
+  if (transition === "idle" || transition === "stable") return "stable";
+  if (["rolling-back", "old-restored", "rollback"].includes(transition)) return "rollback";
+  if (
+    [
+      "target-written",
+      "preflight",
+      "candidate-prepared",
+      "stopping-old",
+      "old-stopped",
+      "candidate-starting",
+      "verified",
+      "pending",
+    ].includes(transition)
+  ) return "pending";
+  return "unknown";
 }
 
 function normalizeRuntimeStatus(value: string): string {
@@ -285,6 +318,44 @@ export function parseRuntime(text: string, previous: RuntimeState): RuntimeState
     }
     if (line.startsWith("mode=")) {
       next.transparentMode = normalizeTransparentMode(line.slice(5)) || next.transparentMode;
+    }
+    if (line.startsWith("configured_mode=")) {
+      next.transparentMode = normalizeTransparentMode(line.slice(16)) || next.transparentMode;
+    }
+    if (line.startsWith("effective_mode=")) {
+      next.transparentEffectiveMode =
+        normalizeTransparentEffectiveMode(line.slice(15)) || next.transparentEffectiveMode;
+    }
+    if (line.startsWith("capability=")) {
+      const capability = line.slice(11).trim();
+      if (["ok", "failed", "not-required", "unknown"].includes(capability)) {
+        next.transparentCapability = capability as RuntimeState["transparentCapability"];
+      }
+    }
+    if (line.startsWith("local_cgroup=")) {
+      const localCgroup = line.slice(13).trim();
+      if (["attached", "missing", "configured", "inactive", "unknown"].includes(localCgroup)) {
+        next.transparentLocalCgroup = localCgroup as RuntimeState["transparentLocalCgroup"];
+      }
+    }
+    if (line.startsWith("shared_tc=")) {
+      const sharedTc = line.slice(10).trim();
+      if (["attached", "missing", "configured", "pending", "inactive", "unknown"].includes(sharedTc)) {
+        next.transparentSharedTc = sharedTc as RuntimeState["transparentSharedTc"];
+      }
+    }
+    if (line.startsWith("shared_interfaces=")) {
+      const interfaces = line.slice(18).trim();
+      next.transparentSharedInterfaces = interfaces === "none" || !interfaces
+        ? []
+        : interfaces.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+    if (line.startsWith("recent_error=")) {
+      const recentError = line.slice(13).trim();
+      next.transparentRecentError = recentError === "none" ? "" : recentError;
+    }
+    if (line.startsWith("transition=")) {
+      next.transparentTransition = normalizeTransparentTransition(line.slice(11));
     }
     if (line.startsWith("API:")) next.api = line.slice(4).trim() || next.api;
     if (line.startsWith("WebUI:")) next.webui = line.slice(6).trim() || next.webui;

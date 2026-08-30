@@ -4,7 +4,7 @@ use std::io::Read;
 use std::net::IpAddr;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -28,18 +28,25 @@ pub(crate) fn health(app: &App) -> Result<(), String> {
 fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     let singbox = singbox_pid_summary(app);
     let mode = transparent_mode(app);
-    let (tun_ok, tun_detail) = tun_check(app, &mode);
+    let mode_label = mode
+        .as_ref()
+        .map(|selection| selection.mode.as_str())
+        .unwrap_or("invalid");
+    let (dataplane_ok, dataplane_detail) = dataplane_check(app, &mode);
     let (network_ok, network_detail) = network_policy_check(app);
     let ecapture = app.moddir.join("bin/ecapture");
-    let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
+    let (dns_config_ok, dns_config_detail) = dns_leak_check(app, &singbox, mode_label);
+    let (dns_capture_ok, dns_capture_detail) = dns_capture_runtime_check(app, &mode);
+    let dns_ok = dns_config_ok && dns_capture_ok;
+    let dns_detail = format!("{dns_config_detail}, capture={dns_capture_detail}");
     let (routing_ok, routing_detail) = routing_policy_check(app);
-    let (tailscale_ok, tailscale_detail) = tailscale_check(app);
+    let (tailscale_ok, tailscale_detail) = tailscale_check(app, &mode);
     let (loop_guard_ok, loop_guard_detail) = traffic_loop_guard_check(app);
     let (api_ok, api_detail) = api_probe(&app.api);
     let (_, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
     vec![
         ("Core", running(&singbox), format!("sing-box={singbox}")),
-        ("TUN", tun_ok, tun_detail),
+        ("Dataplane", dataplane_ok, dataplane_detail),
         ("UDP/IPv6", network_ok, network_detail),
         (
             "eCapture",
@@ -81,7 +88,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     ]
 }
 
-fn tailscale_check(app: &App) -> (bool, String) {
+fn tailscale_check(app: &App, mode: &Result<TransparentModeSelection, String>) -> (bool, String) {
     const TAILNETS: [&str; 2] = ["100.64.0.0/10", "fd7a:115c:a1e0::/48"];
     let config_dir = app.moddir.join(".config/sing-box");
     let Ok(text) = fs::read_to_string(config_dir.join("config.json")) else {
@@ -127,22 +134,22 @@ fn tailscale_check(app: &App) -> (bool, String) {
         })
         .unwrap_or_else(|| app.moddir.join(".state/sing-box/tailscale"));
     let state_created = state.exists();
-    let tun_ingress = config
-        .get("inbounds")
-        .and_then(Value::as_array)
-        .and_then(|items| {
-            items.iter().find(|item| {
-                item.get("type").and_then(Value::as_str) == Some("tun")
-                    && item.get("tag").and_then(Value::as_str) == Some("tun-in")
-            })
+    let managed_ingress = mode.as_ref().is_ok_and(|selection| {
+        managed_inbound(&config).is_ok_and(|inbound| match selection.mode {
+            TransparentMode::Tun => {
+                inbound.get("type").and_then(Value::as_str) == Some("tun")
+                    && inbound
+                        .get("route_exclude_address")
+                        .and_then(Value::as_array)
+                        .is_some_and(|excluded| {
+                            TAILNETS.iter().all(|cidr| {
+                                !excluded.iter().any(|value| value.as_str() == Some(cidr))
+                            })
+                        })
+            }
+            TransparentMode::Ebpf => inbound.get("type").and_then(Value::as_str) == Some("ebpf"),
         })
-        .and_then(|tun| tun.get("route_exclude_address"))
-        .and_then(Value::as_array)
-        .is_some_and(|excluded| {
-            TAILNETS
-                .iter()
-                .all(|cidr| !excluded.iter().any(|value| value.as_str() == Some(cidr)))
-        });
+    });
     let route_linked = config
         .get("route")
         .and_then(|route| route.get("rules"))
@@ -161,10 +168,10 @@ fn tailscale_check(app: &App) -> (bool, String) {
             })
         });
     (
-        state_created && tun_ingress && route_linked,
+        state_created && managed_ingress && route_linked,
         format!(
-            "configured=true tag={tag} state_created={} tun_ingress={} route_linked={}",
-            state_created as u8, tun_ingress as u8, route_linked as u8
+            "configured=true tag={tag} state_created={} managed_ingress={} route_linked={}",
+            state_created as u8, managed_ingress as u8, route_linked as u8
         ),
     )
 }
@@ -232,6 +239,10 @@ pub(crate) fn support(app: &App, args: &[String]) -> Result<(), String> {
 fn support_bundle(app: &App) -> String {
     let singbox = singbox_pid_summary(app);
     let mode = transparent_mode(app);
+    let mode_label = mode
+        .as_ref()
+        .map(|selection| selection.mode.as_str())
+        .unwrap_or("invalid");
     let mut output = String::from("MagicNet canonical support bundle\n");
     append_support_section(
         &mut output,
@@ -242,7 +253,7 @@ fn support_bundle(app: &App) -> String {
         &mut output,
         "service status",
         &format!(
-            "module_enabled={}\ncore={}\nfswatch={}\ntransparent_mode={mode}",
+            "module_enabled={}\ncore={}\nfswatch={}\ntransparent_mode={mode_label}",
             !app.moddir.join("disable").exists(),
             singbox,
             pid_summary("fswatch")
@@ -279,7 +290,7 @@ fn support_bundle(app: &App) -> String {
         "proxy selector and connection chains",
         &proxy_chain_evidence(app),
     );
-    let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, &mode);
+    let (dns_ok, dns_detail) = dns_leak_check(app, &singbox, mode_label);
     let (api_ok, api_detail) = api_probe(&app.api);
     let (mcp_enabled, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
     append_support_section(
@@ -491,7 +502,21 @@ fn read_only_command(program: &str, args: &[&str]) -> String {
     read_only_command_with_timeout(program, args, Duration::from_secs(3))
 }
 
+#[derive(Debug)]
+struct ReadOnlyCommandResult {
+    success: bool,
+    text: String,
+}
+
 fn read_only_command_with_timeout(program: &str, args: &[&str], timeout: Duration) -> String {
+    read_only_command_result_with_timeout(program, args, timeout).text
+}
+
+fn read_only_command_result_with_timeout(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> ReadOnlyCommandResult {
     let mut child = match Command::new(program)
         .args(args)
         .process_group(0)
@@ -501,7 +526,12 @@ fn read_only_command_with_timeout(program: &str, args: &[&str], timeout: Duratio
         .spawn()
     {
         Ok(child) => child,
-        Err(err) => return format!("{program}=unavailable reason={err}"),
+        Err(err) => {
+            return ReadOnlyCommandResult {
+                success: false,
+                text: format!("{program}=unavailable reason={err}"),
+            };
+        }
     };
 
     let stdout_reader = child.stdout.take().map(|stdout| {
@@ -520,9 +550,9 @@ fn read_only_command_with_timeout(program: &str, args: &[&str], timeout: Duratio
     });
 
     let started = Instant::now();
-    let command_error = loop {
+    let command_status: Result<ExitStatus, String> = loop {
         match child.try_wait() {
-            Ok(Some(_)) => {
+            Ok(Some(status)) => {
                 if stdout_reader
                     .as_ref()
                     .is_some_and(|reader| !reader.is_finished())
@@ -532,16 +562,16 @@ fn read_only_command_with_timeout(program: &str, args: &[&str], timeout: Duratio
                 {
                     terminate_read_only_process_group(&mut child);
                 }
-                break None;
+                break Ok(status);
             }
             Ok(None) if started.elapsed() >= timeout => {
                 terminate_read_only_process_group(&mut child);
-                break Some(format!("{program}=timeout after {}ms", timeout.as_millis()));
+                break Err(format!("{program}=timeout after {}ms", timeout.as_millis()));
             }
             Ok(None) => thread::sleep(Duration::from_millis(10)),
             Err(err) => {
                 terminate_read_only_process_group(&mut child);
-                break Some(format!("{program}=unavailable reason={err}"));
+                break Err(format!("{program}=unavailable reason={err}"));
             }
         }
     };
@@ -552,9 +582,15 @@ fn read_only_command_with_timeout(program: &str, args: &[&str], timeout: Duratio
     let stderr = stderr_reader
         .and_then(|reader| reader.join().ok())
         .unwrap_or_default();
-    if let Some(error) = command_error {
-        return error;
-    }
+    let status = match command_status {
+        Ok(status) => status,
+        Err(text) => {
+            return ReadOnlyCommandResult {
+                success: false,
+                text,
+            };
+        }
+    };
 
     let mut text = String::from_utf8_lossy(&stdout).to_string();
     if !stderr.is_empty() {
@@ -570,7 +606,13 @@ fn read_only_command_with_timeout(program: &str, args: &[&str], timeout: Duratio
         text = text.chars().take(600).collect();
         text.push_str("\n[truncated]");
     }
-    text
+    if text.is_empty() && !status.success() {
+        text = format!("{program}=exit status={status}");
+    }
+    ReadOnlyCommandResult {
+        success: status.success(),
+        text,
+    }
 }
 
 fn terminate_read_only_process_group(child: &mut Child) {
@@ -728,110 +770,766 @@ fn running(core: &str) -> bool {
     core != "stopped"
 }
 
-fn transparent_mode(app: &App) -> String {
-    fs::read_to_string(app.moddir.join(".config/magicnet/transparent-mode.conf"))
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TransparentMode {
+    Tun,
+    Ebpf,
+}
+
+impl TransparentMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Tun => "tun",
+            Self::Ebpf => "ebpf",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TransparentModeSource {
+    Default,
+    File,
+}
+
+impl TransparentModeSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::File => "file",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TransparentModeSelection {
+    mode: TransparentMode,
+    source: TransparentModeSource,
+}
+
+fn transparent_mode(app: &App) -> Result<TransparentModeSelection, String> {
+    let path = app.moddir.join(".config/magicnet/transparent-mode.conf");
+    match fs::read_to_string(&path) {
+        Ok(text) => parse_transparent_mode(&text),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(TransparentModeSelection {
+            mode: TransparentMode::Tun,
+            source: TransparentModeSource::Default,
+        }),
+        Err(err) => Err(format!("mode config unreadable: {err}")),
+    }
+}
+
+fn parse_transparent_mode(text: &str) -> Result<TransparentModeSelection, String> {
+    const KEY: &str = "MAGICNET_TRANSPARENT_MODE";
+    let mut parsed = None;
+    for (index, raw_line) in text.lines().enumerate() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(format!("invalid mode config line {}", index + 1));
+        };
+        if key.trim() != KEY {
+            return Err(format!("unknown mode assignment at line {}", index + 1));
+        }
+        if parsed.is_some() {
+            return Err(format!("duplicate mode assignment at line {}", index + 1));
+        }
+        let mode = match value.trim() {
+            "tun" => TransparentMode::Tun,
+            "ebpf" => TransparentMode::Ebpf,
+            value => return Err(format!("unknown transparent mode {value:?}")),
+        };
+        parsed = Some(mode);
+    }
+    parsed
+        .map(|mode| TransparentModeSelection {
+            mode,
+            source: TransparentModeSource::File,
+        })
+        .ok_or_else(|| "mode assignment missing".to_string())
+}
+
+fn dns_capture_runtime_check(
+    app: &App,
+    mode: &Result<TransparentModeSelection, String>,
+) -> (bool, String) {
+    let selection = match mode {
+        Ok(selection) => *selection,
+        Err(_) => return (false, "unknown-mode".to_string()),
+    };
+    if selection.mode == TransparentMode::Ebpf {
+        let effective = read_singbox_config(app)
+            .and_then(|config| managed_inbound(&config).cloned())
+            .and_then(|inbound| effective_ebpf_config(&inbound));
+        return match effective {
+            Ok(effective)
+                if !matches!(effective.mode, EbpfMode::Local | EbpfMode::Hybrid)
+                    || effective.local_dns_mode == "hijack" =>
+            {
+                (true, "ebpf-inbound".to_string())
+            }
+            Ok(_) => (false, "ebpf-local-dns-not-hijacked".to_string()),
+            Err(_) => (false, "ebpf-inbound-invalid".to_string()),
+        };
+    }
+
+    if dns_capture_profile_is_direct_udp(app) {
+        return (true, "profile-direct-udp".to_string());
+    }
+
+    let ipv4 = dns_capture_family_rules("iptables");
+    let (ipv4_ok, ipv4_detail) = match ipv4 {
+        Some(rules) => dns_capture_rule_summary(rules.0, rules.1, rules.2, rules.3),
+        None => (false, "iptables-unavailable"),
+    };
+    let ipv6 = dns_capture_family_rules("ip6tables");
+    let (ipv6_ok, ipv6_detail) = match ipv6 {
+        Some(rules) => dns_capture_rule_summary(rules.0, rules.1, rules.2, rules.3),
+        None => (true, "unavailable"),
+    };
+    (
+        ipv4_ok && ipv6_ok,
+        format!("ipv4:{ipv4_detail},ipv6:{ipv6_detail}"),
+    )
+}
+
+fn dns_capture_profile_is_direct_udp(app: &App) -> bool {
+    fs::read_to_string(app.moddir.join(".config/magicnet/dns.conf"))
         .ok()
         .and_then(|text| {
-            text.lines().find_map(|line| {
-                let (_, value) = line.split_once('=')?;
-                match value.trim() {
-                    "proxy" | "external" | "external-tun" | "hybrid" => Some("tun".to_string()),
-                    "tun" => Some("tun".to_string()),
-                    _ => None,
-                }
+            text.lines().find_map(|raw| {
+                let line = raw.trim();
+                let (key, value) = line.split_once('=')?;
+                (key.trim() == "MAGICNET_DNS_PROFILE").then(|| value.trim().to_string())
             })
         })
-        .unwrap_or_else(|| "tun".to_string())
+        .is_some_and(|profile| matches!(profile.as_str(), "cloudflare-udp" | "udp" | "1.1.1.1"))
+}
+
+fn dns_capture_family_rules(program: &str) -> Option<(bool, bool, bool, bool)> {
+    let program = if Path::new(&format!("/system/bin/{program}")).is_file() {
+        format!("/system/bin/{program}")
+    } else {
+        program.to_string()
+    };
+    let rule_exists = |args: &[&str]| {
+        read_only_command_result_with_timeout(&program, args, Duration::from_secs(2)).success
+    };
+    if !rule_exists(&["-t", "nat", "-L"]) {
+        return None;
+    }
+    let uid0_bypass = rule_exists(&[
+        "-t",
+        "nat",
+        "-C",
+        "magicnet-dns-output",
+        "-m",
+        "owner",
+        "--uid-owner",
+        "0",
+        "-j",
+        "RETURN",
+    ]);
+    let output_jump = rule_exists(&["-t", "nat", "-C", "OUTPUT", "-j", "magicnet-dns-output"]);
+    let udp_redirect = rule_exists(&[
+        "-t",
+        "nat",
+        "-C",
+        "magicnet-dns-output",
+        "-p",
+        "udp",
+        "--dport",
+        "53",
+        "-j",
+        "REDIRECT",
+        "--to-ports",
+        "1053",
+    ]);
+    let tcp_redirect = rule_exists(&[
+        "-t",
+        "nat",
+        "-C",
+        "magicnet-dns-output",
+        "-p",
+        "tcp",
+        "--dport",
+        "53",
+        "-j",
+        "REDIRECT",
+        "--to-ports",
+        "1053",
+    ]);
+    Some((uid0_bypass, output_jump, udp_redirect, tcp_redirect))
+}
+
+fn dns_capture_rule_summary(
+    uid0_bypass: bool,
+    output_jump: bool,
+    udp_redirect: bool,
+    tcp_redirect: bool,
+) -> (bool, &'static str) {
+    if uid0_bypass {
+        return (false, "uid0-bypass-leak");
+    }
+    if !output_jump {
+        return (false, "output-jump-missing");
+    }
+    match (udp_redirect, tcp_redirect) {
+        (true, true) => (true, "redirected"),
+        (false, true) => (false, "udp-redirect-missing"),
+        (true, false) => (false, "tcp-redirect-missing"),
+        (false, false) => (false, "redirects-missing"),
+    }
 }
 
 fn iface_detail(name: &str) -> String {
     command_text_timeout("ip", &["addr", "show", name], crate::SHORT_TIMEOUT)
 }
 
-fn tun_check(app: &App, _mode: &str) -> (bool, String) {
-    // MagicNet owns one transparent interface.  Accepting foreign TUN names
-    // here can report a stale mihomo/Meta/utun interface as a healthy
-    // MagicNet runtime even when magicnet0 is missing.
+fn dataplane_check(app: &App, mode: &Result<TransparentModeSelection, String>) -> (bool, String) {
+    let selection = match mode {
+        Ok(selection) => *selection,
+        Err(reason) => {
+            return (
+                false,
+                format!("configured=invalid effective=none probe=skipped reason={reason}"),
+            );
+        }
+    };
+    match selection.mode {
+        TransparentMode::Tun => tun_dataplane_check(app, selection.source),
+        TransparentMode::Ebpf => ebpf_dataplane_check(app, selection.source),
+    }
+}
+
+fn tun_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, String) {
     let expected = "magicnet0";
-    let configured = configured_tun_names(app);
-    let configured_ok = configured_tun_is_canonical(&configured);
-    if configured_ok && PathBuf::from(format!("/sys/class/net/{expected}")).exists() {
-        return (true, format!("{expected}: {}", iface_detail(expected)));
+    let config = match read_singbox_config(app) {
+        Ok(config) => config,
+        Err(reason) => {
+            return (
+                false,
+                format!(
+                    "configured=mode:tun source:{} inbound:invalid effective=interface:{expected} probe=skipped reason={reason}",
+                    source.as_str()
+                ),
+            );
+        }
+    };
+    let inbound = match managed_inbound(&config) {
+        Ok(inbound) => inbound,
+        Err(reason) => {
+            return (
+                false,
+                format!(
+                    "configured=mode:tun source:{} inbound:invalid effective=interface:{expected} probe=skipped reason={reason}",
+                    source.as_str()
+                ),
+            );
+        }
+    };
+    let configured = inbound
+        .get("interface_name")
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    let configured_ok = inbound.get("type").and_then(Value::as_str) == Some("tun")
+        && configured_tun_is_canonical(&[configured.to_string()]);
+    let present = PathBuf::from(format!("/sys/class/net/{expected}")).exists();
+    if configured_ok && present {
+        return (
+            true,
+            format!(
+                "configured=mode:tun source:{} inbound:tun interface:{configured} effective=interface:{expected} probe=present detail={}",
+                source.as_str(),
+                iface_detail(expected)
+            ),
+        );
     }
     (
         false,
         format!(
-            "No canonical MagicNet TUN interface found. checked={expected} configured={}",
-            if configured.is_empty() {
-                "none".to_string()
-            } else {
-                configured.join(",")
-            }
+            "configured=mode:tun source:{} inbound:{} interface:{configured} effective=interface:{expected} probe={}",
+            source.as_str(),
+            inbound
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("invalid"),
+            if present { "present" } else { "missing" }
         ),
     )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EbpfMode {
+    Local,
+    Shared,
+    Hybrid,
+}
+
+impl EbpfMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Shared => "shared",
+            Self::Hybrid => "hybrid",
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct EbpfEffectiveConfig {
+    mode: EbpfMode,
+    mode_configured: bool,
+    network: Vec<String>,
+    network_configured: bool,
+    udp_timeout: String,
+    local_dns_mode: String,
+    local_cgroup_path: String,
+    local_ipv6: bool,
+    shared_dns_mode: String,
+    shared_interfaces: Vec<String>,
+    shared_ipv6: bool,
+}
+
+fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, String) {
+    let config = match read_singbox_config(app) {
+        Ok(config) => config,
+        Err(reason) => {
+            return (
+                false,
+                format!(
+                    "configured=mode:ebpf source:{} inbound:invalid effective=none probe=skipped reason={reason}",
+                    source.as_str()
+                ),
+            );
+        }
+    };
+    let inbound = match managed_inbound(&config) {
+        Ok(inbound) if inbound.get("type").and_then(Value::as_str) == Some("ebpf") => inbound,
+        Ok(inbound) => {
+            return (
+                false,
+                format!(
+                    "configured=mode:ebpf source:{} inbound:{} effective=none probe=skipped reason=managed tun-in is not ebpf",
+                    source.as_str(),
+                    inbound
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("invalid")
+                ),
+            );
+        }
+        Err(reason) => {
+            return (
+                false,
+                format!(
+                    "configured=mode:ebpf source:{} inbound:invalid effective=none probe=skipped reason={reason}",
+                    source.as_str()
+                ),
+            );
+        }
+    };
+    let effective = match effective_ebpf_config(inbound) {
+        Ok(effective) => effective,
+        Err(reason) => {
+            return (
+                false,
+                format!(
+                    "configured=mode:ebpf source:{} inbound:ebpf effective=invalid probe=skipped reason={reason}",
+                    source.as_str()
+                ),
+            );
+        }
+    };
+    let configured_mode = if effective.mode_configured {
+        effective.mode.as_str()
+    } else {
+        "default"
+    };
+    let configured_network = if effective.network_configured {
+        effective.network.join(",")
+    } else {
+        "default".to_string()
+    };
+    let effective_network = effective.network.join(",");
+    let local_effective = matches!(effective.mode, EbpfMode::Local | EbpfMode::Hybrid);
+    let shared_effective = matches!(effective.mode, EbpfMode::Shared | EbpfMode::Hybrid);
+    let shared_state = if !shared_effective {
+        "pending".to_string()
+    } else if effective.shared_interfaces.is_empty() {
+        "missing".to_string()
+    } else {
+        effective.shared_interfaces.join(",")
+    };
+    if local_effective && effective.local_dns_mode != "hijack" {
+        return (
+            false,
+            format!(
+                "configured=mode:ebpf source:{} inbound:ebpf effective=mode:{} local=enabled local.dns:{} probe=skipped reason=managed local DNS must use hijack",
+                source.as_str(),
+                effective.mode.as_str(),
+                effective.local_dns_mode
+            ),
+        );
+    }
+    if shared_effective && effective.shared_interfaces.is_empty() {
+        return (
+            false,
+            format!(
+                "configured=mode:ebpf source:{} inbound:ebpf requested_mode:{configured_mode} requested_network:{configured_network} effective=mode:{} network:{effective_network} local={} shared=missing probe=skipped reason=shared.interface is required",
+                source.as_str(),
+                effective.mode.as_str(),
+                if local_effective { "enabled" } else { "disabled" }
+            ),
+        );
+    }
+
+    let program = app.moddir.join("bin/sing-box");
+    let program = program.to_string_lossy();
+    let mut probes = Vec::new();
+    let cgroup =
+        (!effective.local_cgroup_path.is_empty()).then_some(effective.local_cgroup_path.as_str());
+    match effective.mode {
+        EbpfMode::Local => probes.push(ebpf_capability_probe(&program, "local", cgroup, None)),
+        EbpfMode::Shared => {
+            for interface in &effective.shared_interfaces {
+                probes.push(ebpf_capability_probe(
+                    &program,
+                    "shared-network",
+                    None,
+                    Some(interface),
+                ));
+            }
+        }
+        EbpfMode::Hybrid => {
+            for interface in &effective.shared_interfaces {
+                probes.push(ebpf_capability_probe(
+                    &program,
+                    "all",
+                    cgroup,
+                    Some(interface),
+                ));
+            }
+        }
+    }
+    let probe_ok = probes.iter().all(|probe| probe.success);
+    let probe_detail = probes
+        .iter()
+        .map(|probe| {
+            if probe.success {
+                "ok".to_string()
+            } else {
+                format!("failed({})", probe.text)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    (
+        probe_ok,
+        format!(
+            "configured=mode:ebpf source:{} inbound:ebpf requested_mode:{configured_mode} requested_network:{configured_network} effective=mode:{} network:{effective_network} local={} local.cgroup:{} local.dns:{} local.ipv6:{} shared={shared_state} shared.interface:{} shared.dns:{} shared.ipv6:{} probe=capability:{probe_detail}",
+            source.as_str(),
+            effective.mode.as_str(),
+            if local_effective { "enabled" } else { "disabled" },
+            if effective.local_cgroup_path.is_empty() {
+                "/sys/fs/cgroup"
+            } else {
+                effective.local_cgroup_path.as_str()
+            },
+            effective.local_dns_mode,
+            effective.local_ipv6 as u8,
+            if effective.shared_interfaces.is_empty() {
+                "none".to_string()
+            } else {
+                effective.shared_interfaces.join(",")
+            },
+            effective.shared_dns_mode,
+            effective.shared_ipv6 as u8
+        ),
+    )
+}
+
+fn read_singbox_config(app: &App) -> Result<Value, String> {
+    let path = app.moddir.join(".config/sing-box/config.json");
+    let text = fs::read_to_string(&path).map_err(|err| format!("config unreadable: {err}"))?;
+    serde_json::from_str(&text).map_err(|err| format!("config invalid: {err}"))
+}
+
+fn managed_inbound(config: &Value) -> Result<&Value, String> {
+    let Some(inbounds) = config.get("inbounds").and_then(Value::as_array) else {
+        return Err("inbounds missing or invalid".to_string());
+    };
+    let mut matches = inbounds
+        .iter()
+        .filter(|inbound| inbound.get("tag").and_then(Value::as_str) == Some("tun-in"));
+    let Some(inbound) = matches.next() else {
+        return Err("managed inbound tun-in missing".to_string());
+    };
+    if matches.next().is_some() {
+        return Err("managed inbound tun-in duplicated".to_string());
+    }
+    Ok(inbound)
+}
+
+fn effective_ebpf_config(inbound: &Value) -> Result<EbpfEffectiveConfig, String> {
+    let mode_value = inbound.get("mode");
+    let mode = match mode_value {
+        None => EbpfMode::Local,
+        Some(Value::String(value)) if value == "local" => EbpfMode::Local,
+        Some(Value::String(value)) if value == "shared" => EbpfMode::Shared,
+        Some(Value::String(value)) if value == "hybrid" => EbpfMode::Hybrid,
+        _ => return Err("ebpf mode must be local, shared, or hybrid".to_string()),
+    };
+    let network_value = inbound.get("network");
+    let network = strict_ebpf_network(network_value)?;
+    let udp_timeout = strict_optional_string(inbound.get("udp_timeout"), "udp_timeout")?
+        .unwrap_or_else(|| "5m".to_string());
+    let local = strict_optional_object(inbound.get("local"), "local")?;
+    let shared = strict_optional_object(inbound.get("shared"), "shared")?;
+    let local_dns_mode = strict_dns_mode(local.and_then(|value| value.get("dns_mode")))?;
+    let local_cgroup_path = strict_optional_string(
+        local.and_then(|value| value.get("cgroup_path")),
+        "local.cgroup_path",
+    )?
+    .unwrap_or_default();
+    if !local_cgroup_path.is_empty() && !Path::new(&local_cgroup_path).is_absolute() {
+        return Err("local.cgroup_path must be absolute or empty".to_string());
+    }
+    let local_ipv6 = strict_optional_bool(local.and_then(|value| value.get("ipv6")), "local.ipv6")?
+        .unwrap_or(true);
+    let shared_dns_mode = strict_dns_mode(shared.and_then(|value| value.get("dns_mode")))?;
+    let shared_interfaces =
+        strict_shared_interfaces(shared.and_then(|value| value.get("interface")))?;
+    let shared_ipv6 =
+        strict_optional_bool(shared.and_then(|value| value.get("ipv6")), "shared.ipv6")?
+            .unwrap_or(true);
+    Ok(EbpfEffectiveConfig {
+        mode,
+        mode_configured: mode_value.is_some(),
+        network,
+        network_configured: network_value.is_some(),
+        udp_timeout,
+        local_dns_mode,
+        local_cgroup_path,
+        local_ipv6,
+        shared_dns_mode,
+        shared_interfaces,
+        shared_ipv6,
+    })
+}
+
+fn strict_optional_object<'a>(
+    value: Option<&'a Value>,
+    field: &str,
+) -> Result<Option<&'a serde_json::Map<String, Value>>, String> {
+    match value {
+        None => Ok(None),
+        Some(Value::Object(value)) => Ok(Some(value)),
+        Some(_) => Err(format!("{field} must be an object")),
+    }
+}
+
+fn strict_ebpf_network(value: Option<&Value>) -> Result<Vec<String>, String> {
+    let values = match value {
+        None => return Ok(vec!["tcp".to_string(), "udp".to_string()]),
+        Some(Value::String(value)) => vec![value.as_str()],
+        Some(Value::Array(values)) if !values.is_empty() => values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| "ebpf network entries must be strings".to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => return Err("ebpf network must be a non-empty string or array".to_string()),
+    };
+    let mut result = Vec::new();
+    for value in values {
+        if !matches!(value, "tcp" | "udp") {
+            return Err(format!("unknown ebpf network {value:?}"));
+        }
+        if result.iter().any(|existing| existing == value) {
+            return Err(format!("duplicate ebpf network {value:?}"));
+        }
+        result.push(value.to_string());
+    }
+    Ok(result)
+}
+
+fn strict_dns_mode(value: Option<&Value>) -> Result<String, String> {
+    match value {
+        None => Ok("respect_policy".to_string()),
+        Some(Value::String(value))
+            if matches!(value.as_str(), "hijack" | "respect_policy" | "off") =>
+        {
+            Ok(value.clone())
+        }
+        _ => Err("ebpf dns_mode must be hijack, respect_policy, or off".to_string()),
+    }
+}
+
+fn strict_optional_string(value: Option<&Value>, field: &str) -> Result<Option<String>, String> {
+    match value {
+        None => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(_) => Err(format!("{field} must be a string")),
+    }
+}
+
+fn strict_optional_bool(value: Option<&Value>, field: &str) -> Result<Option<bool>, String> {
+    match value {
+        None => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(format!("{field} must be a boolean")),
+    }
+}
+
+fn strict_shared_interfaces(value: Option<&Value>) -> Result<Vec<String>, String> {
+    let values = match value {
+        None => return Ok(Vec::new()),
+        Some(Value::String(value)) => vec![value.as_str()],
+        Some(Value::Array(values)) => values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| "shared.interface entries must be strings".to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => return Err("shared.interface must be a string or array".to_string()),
+    };
+    let mut interfaces = Vec::new();
+    for interface in values {
+        if !valid_interface_name(interface) {
+            return Err(format!("invalid shared.interface {interface:?}"));
+        }
+        if interfaces.iter().any(|existing| existing == interface) {
+            return Err(format!("duplicate shared.interface {interface:?}"));
+        }
+        interfaces.push(interface.to_string());
+    }
+    Ok(interfaces)
+}
+
+fn valid_interface_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 15
+        && !matches!(value, "." | "..")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
 }
 
 fn configured_tun_is_canonical(names: &[String]) -> bool {
     !names.is_empty() && names.iter().all(|name| name == "magicnet0")
 }
 
-fn configured_tun_names(app: &App) -> Vec<String> {
-    let Ok(text) = fs::read_to_string(app.moddir.join(".config/sing-box/config.json")) else {
-        return Vec::new();
-    };
-    let Ok(config) = serde_json::from_str::<Value>(&text) else {
-        return Vec::new();
-    };
-    let mut names = Vec::new();
-    for inbound in config
-        .get("inbounds")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|inbound| inbound.get("type").and_then(Value::as_str) == Some("tun"))
-    {
-        if let Some(name) = inbound.get("interface_name").and_then(Value::as_str) {
-            push_unique(&mut names, name.to_string());
-        }
+fn ebpf_capability_probe(
+    program: &str,
+    mode: &str,
+    cgroup: Option<&str>,
+    interface: Option<&str>,
+) -> ReadOnlyCommandResult {
+    let args = ebpf_probe_args(mode, cgroup, interface);
+    read_only_command_result_with_timeout(program, &args, Duration::from_secs(3))
+}
+
+fn ebpf_probe_args<'a>(
+    mode: &'a str,
+    cgroup: Option<&'a str>,
+    interface: Option<&'a str>,
+) -> Vec<&'a str> {
+    let mut args = vec![
+        "tools",
+        "ebpf",
+        "status",
+        "--mode",
+        mode,
+        "--network",
+        "tcp,udp",
+    ];
+    if let Some(cgroup) = cgroup {
+        args.extend(["--cgroup", cgroup]);
     }
-    names
+    if let Some(interface) = interface {
+        args.extend(["--interface", interface]);
+    }
+    args.push("--json");
+    args
 }
 
 fn traffic_loop_guard_check(app: &App) -> (bool, String) {
-    let path = app.moddir.join(".config/sing-box/config.json");
-    let Ok(text) = fs::read_to_string(&path) else {
-        return (false, format!("config missing: {}", path.display()));
+    let selection = match transparent_mode(app) {
+        Ok(selection) => selection,
+        Err(reason) => return (false, format!("mode=invalid reason={reason}")),
     };
-    let Ok(config) = serde_json::from_str::<Value>(&text) else {
-        return (false, "sing-box config is not valid JSON".to_string());
+    let config = match read_singbox_config(app) {
+        Ok(config) => config,
+        Err(reason) => return (false, reason),
     };
-    let tun = config
-        .get("inbounds")
-        .and_then(Value::as_array)
-        .and_then(|items| {
-            items
+    let loopback_servers = loopback_proxy_servers(&config);
+    match selection.mode {
+        TransparentMode::Tun => {
+            let tun = config
+                .get("inbounds")
+                .and_then(Value::as_array)
+                .and_then(|items| {
+                    items
+                        .iter()
+                        .find(|item| item.get("type").and_then(Value::as_str) == Some("tun"))
+                });
+            let Some(tun) = tun else {
+                return (false, "mode=tun TUN inbound missing".to_string());
+            };
+            let root_excluded = tun
+                .get("exclude_uid")
+                .and_then(Value::as_array)
+                .is_some_and(|items| items.iter().any(|value| value.as_u64() == Some(0)));
+            let excluded_routes = tun
+                .get("route_exclude_address")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let excludes_ipv4_loopback = excluded_routes
                 .iter()
-                .find(|item| item.get("type").and_then(Value::as_str) == Some("tun"))
-        });
-    let Some(tun) = tun else {
-        return (false, "TUN inbound missing".to_string());
-    };
-    let root_excluded = tun
-        .get("exclude_uid")
-        .and_then(Value::as_array)
-        .is_some_and(|items| items.iter().any(|value| value.as_u64() == Some(0)));
-    let excluded_routes = tun
-        .get("route_exclude_address")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let excludes_ipv4_loopback = excluded_routes
-        .iter()
-        .any(|value| value.as_str() == Some("127.0.0.0/8"));
-    let excludes_ipv6_loopback = excluded_routes
-        .iter()
-        .any(|value| value.as_str() == Some("::1/128"));
-    let loopback_servers = config
+                .any(|value| value.as_str() == Some("127.0.0.0/8"));
+            let excludes_ipv6_loopback = excluded_routes
+                .iter()
+                .any(|value| value.as_str() == Some("::1/128"));
+            let ok = root_excluded
+                && excludes_ipv4_loopback
+                && excludes_ipv6_loopback
+                && loopback_servers.is_empty();
+            (
+                ok,
+                format!(
+                    "mode=tun exclude_uid_0={} ipv4_loopback_excluded={} ipv6_loopback_excluded={} loopback_proxy_servers={}",
+                    root_excluded as u8,
+                    excludes_ipv4_loopback as u8,
+                    excludes_ipv6_loopback as u8,
+                    display_list(&loopback_servers)
+                ),
+            )
+        }
+        TransparentMode::Ebpf => {
+            let managed_ok = managed_inbound(&config)
+                .is_ok_and(|inbound| inbound.get("type").and_then(Value::as_str) == Some("ebpf"));
+            let ok = managed_ok && loopback_servers.is_empty();
+            (
+                ok,
+                format!(
+                    "mode=ebpf managed_inbound={} self_protection=socket_cookie loopback_proxy_servers={}",
+                    if managed_ok { "ebpf" } else { "invalid" },
+                    display_list(&loopback_servers)
+                ),
+            )
+        }
+    }
+}
+
+fn loopback_proxy_servers(config: &Value) -> Vec<String> {
+    config
         .get("outbounds")
         .and_then(Value::as_array)
         .into_iter()
@@ -864,40 +1562,59 @@ fn traffic_loop_guard_check(app: &App) -> (bool, String) {
                     .to_string()
             })
         })
-        .collect::<Vec<_>>();
-    let ok = root_excluded
-        && excludes_ipv4_loopback
-        && excludes_ipv6_loopback
-        && loopback_servers.is_empty();
-    (
-        ok,
-        format!(
-            "exclude_uid_0={} ipv4_loopback_excluded={} ipv6_loopback_excluded={} loopback_proxy_servers={}",
-            root_excluded as u8,
-            excludes_ipv4_loopback as u8,
-            excludes_ipv6_loopback as u8,
-            if loopback_servers.is_empty() {
-                "none".to_string()
-            } else {
-                loopback_servers.join(",")
-            }
-        ),
-    )
+        .collect()
+}
+
+fn display_list(values: &[String]) -> String {
+    if values.is_empty() {
+        "none".to_string()
+    } else {
+        values.join(",")
+    }
 }
 
 fn network_policy_check(app: &App) -> (bool, String) {
-    let path = app.moddir.join(".config/sing-box/config.json");
-    let Ok(text) = fs::read_to_string(&path) else {
-        return (false, format!("config missing: {}", path.display()));
+    let selection = match transparent_mode(app) {
+        Ok(selection) => selection,
+        Err(reason) => return (false, format!("mode=invalid reason={reason}")),
     };
-    let Ok(config) = serde_json::from_str::<Value>(&text) else {
-        return (false, "sing-box config is not valid JSON".to_string());
+    let config = match read_singbox_config(app) {
+        Ok(config) => config,
+        Err(reason) => return (false, reason),
     };
     let strategy = config
         .get("dns")
         .and_then(|dns| dns.get("strategy"))
         .and_then(Value::as_str)
         .unwrap_or("unset");
+    let ipv6_guard = config
+        .get("route")
+        .and_then(|route| route.get("rules"))
+        .and_then(Value::as_array)
+        .is_some_and(|rules| rules.iter().any(is_managed_ipv6_guard));
+    let strategy_ok = matches!(strategy, "ipv4_only" | "prefer_ipv4" | "prefer_ipv6");
+    let guard_ok = if strategy == "ipv4_only" {
+        ipv6_guard
+    } else {
+        !ipv6_guard
+    };
+    match selection.mode {
+        TransparentMode::Tun => {
+            tun_network_policy(&config, strategy, strategy_ok, guard_ok, ipv6_guard)
+        }
+        TransparentMode::Ebpf => {
+            ebpf_network_policy(&config, strategy, strategy_ok, guard_ok, ipv6_guard)
+        }
+    }
+}
+
+fn tun_network_policy(
+    config: &Value,
+    strategy: &str,
+    strategy_ok: bool,
+    guard_ok: bool,
+    ipv6_guard: bool,
+) -> (bool, String) {
     let tun = config
         .get("inbounds")
         .and_then(Value::as_array)
@@ -927,31 +1644,72 @@ fn network_policy_check(app: &App) -> (bool, String) {
                 .filter_map(Value::as_str)
                 .any(|address| address.contains(':'))
         });
-    let ipv6_guard = config
-        .get("route")
-        .and_then(|route| route.get("rules"))
-        .and_then(Value::as_array)
-        .is_some_and(|rules| rules.iter().any(is_managed_ipv6_guard));
-    let strategy_ok = matches!(strategy, "ipv4_only" | "prefer_ipv4" | "prefer_ipv6");
-    let guard_ok = if strategy == "ipv4_only" {
-        ipv6_guard
-    } else {
-        !ipv6_guard
-    };
     let address_ok = strategy == "ipv4_only" || ipv6_address;
     let ok = strategy_ok
         && stack == "mixed"
         && (1280..=1500).contains(&mtu)
-        && matches!(udp_timeout, "1m" | "3m" | "5m" | "10m" | "15m" | "30m")
+        && valid_udp_timeout(udp_timeout)
         && guard_ok
         && address_ok;
     (
         ok,
         format!(
-            "strategy={strategy} stack={stack} mtu={mtu} udp_timeout={udp_timeout} ipv6_address={} ipv6_guard={}",
+            "mode=tun strategy={strategy} stack={stack} mtu={mtu} udp_timeout={udp_timeout} ipv6_address={} ipv6_guard={}",
             ipv6_address as u8, ipv6_guard as u8
         ),
     )
+}
+
+fn ebpf_network_policy(
+    config: &Value,
+    strategy: &str,
+    strategy_ok: bool,
+    guard_ok: bool,
+    ipv6_guard: bool,
+) -> (bool, String) {
+    let effective = managed_inbound(config).and_then(|inbound| {
+        if inbound.get("type").and_then(Value::as_str) != Some("ebpf") {
+            return Err("managed tun-in is not ebpf".to_string());
+        }
+        effective_ebpf_config(inbound)
+    });
+    let Ok(effective) = effective else {
+        return (
+            false,
+            format!(
+                "mode=ebpf strategy={strategy} managed_inbound=invalid ipv6_guard={} reason={}",
+                ipv6_guard as u8,
+                effective.unwrap_err()
+            ),
+        );
+    };
+    let active_ipv6 = match effective.mode {
+        EbpfMode::Local => effective.local_ipv6,
+        EbpfMode::Shared => effective.shared_ipv6,
+        EbpfMode::Hybrid => effective.local_ipv6 && effective.shared_ipv6,
+    };
+    let ipv6_ok = if strategy == "ipv4_only" {
+        !active_ipv6
+    } else {
+        active_ipv6
+    };
+    let ok = strategy_ok && guard_ok && valid_udp_timeout(&effective.udp_timeout) && ipv6_ok;
+    (
+        ok,
+        format!(
+            "mode=ebpf strategy={strategy} ebpf_mode={} network={} udp_timeout={} local_ipv6={} shared_ipv6={} ipv6_guard={}",
+            effective.mode.as_str(),
+            effective.network.join(","),
+            effective.udp_timeout,
+            effective.local_ipv6 as u8,
+            effective.shared_ipv6 as u8,
+            ipv6_guard as u8
+        ),
+    )
+}
+
+fn valid_udp_timeout(value: &str) -> bool {
+    matches!(value, "1m" | "3m" | "5m" | "10m" | "15m" | "30m")
 }
 
 fn is_managed_ipv6_guard(rule: &Value) -> bool {
@@ -968,12 +1726,6 @@ fn is_managed_ipv6_guard(rule: &Value) -> bool {
             && rule.get("ip_version").and_then(Value::as_u64) == Some(6)
             && rule.get("action").and_then(Value::as_str) == Some("reject")
             && rule.get("no_drop").and_then(Value::as_bool) == Some(true))
-}
-
-fn push_unique(values: &mut Vec<String>, value: String) {
-    if !value.is_empty() && !values.iter().any(|item| item == &value) {
-        values.push(value);
-    }
 }
 
 fn api_probe(api: &str) -> (bool, String) {
@@ -1363,6 +2115,272 @@ fn looks_like_hostname(value: &str) -> bool {
         && clean
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+}
+
+#[cfg(test)]
+mod mode_aware_tests {
+    use super::{
+        dataplane_check, dns_capture_rule_summary, ebpf_probe_args, effective_ebpf_config,
+        network_policy_check, parse_transparent_mode, read_only_command_result_with_timeout,
+        traffic_loop_guard_check, transparent_mode, TransparentMode, TransparentModeSource,
+    };
+    use crate::App;
+    use serde_json::json;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    fn test_root(label: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let root = std::env::temp_dir().join(format!("magicnet-{label}-{stamp}"));
+        fs::create_dir_all(root.join(".config/magicnet"))?;
+        fs::create_dir_all(root.join(".config/sing-box"))?;
+        Ok(root)
+    }
+
+    #[test]
+    fn missing_mode_file_defaults_to_tun() -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("mode-default")?;
+        let selection = transparent_mode(&App::for_test(root.clone()))?;
+
+        assert_eq!(
+            (selection.mode, selection.source),
+            (TransparentMode::Tun, TransparentModeSource::Default)
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_ebpf_mode_is_accepted() -> Result<(), Box<dyn std::error::Error>> {
+        let selection = parse_transparent_mode("MAGICNET_TRANSPARENT_MODE=ebpf\n")?;
+
+        assert_eq!(selection.mode, TransparentMode::Ebpf);
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_mode_assignment_is_rejected() {
+        let error = parse_transparent_mode("OTHER_MODE=tun\n").unwrap_err();
+
+        assert!(error.contains("unknown mode assignment"));
+    }
+
+    #[test]
+    fn duplicate_mode_assignment_is_rejected() {
+        let error = parse_transparent_mode(
+            "MAGICNET_TRANSPARENT_MODE=tun\nMAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )
+        .unwrap_err();
+
+        assert!(error.contains("duplicate mode assignment"));
+    }
+
+    #[test]
+    fn unknown_mode_value_is_rejected() {
+        let error = parse_transparent_mode("MAGICNET_TRANSPARENT_MODE=auto\n").unwrap_err();
+
+        assert!(error.contains("unknown transparent mode"));
+    }
+
+    #[test]
+    fn local_probe_uses_required_non_destructive_arguments() {
+        assert_eq!(
+            ebpf_probe_args("local", None, None),
+            [
+                "tools",
+                "ebpf",
+                "status",
+                "--mode",
+                "local",
+                "--network",
+                "tcp,udp",
+                "--json"
+            ]
+        );
+    }
+
+    #[test]
+    fn hybrid_probe_validates_each_interface_with_all_mode() {
+        assert_eq!(
+            ebpf_probe_args("all", None, Some("wlan0")),
+            [
+                "tools",
+                "ebpf",
+                "status",
+                "--mode",
+                "all",
+                "--network",
+                "tcp,udp",
+                "--interface",
+                "wlan0",
+                "--json"
+            ]
+        );
+    }
+
+    #[test]
+    fn shared_interface_accepts_listable_string() -> Result<(), String> {
+        let effective = effective_ebpf_config(&json!({
+            "type": "ebpf",
+            "mode": "shared",
+            "shared": {"interface": "wlan0"}
+        }))?;
+
+        assert_eq!(effective.shared_interfaces, ["wlan0"]);
+        Ok(())
+    }
+
+    #[test]
+    fn shared_interface_rejects_command_like_name() {
+        let error = effective_ebpf_config(&json!({
+            "type": "ebpf",
+            "mode": "shared",
+            "shared": {"interface": ["wlan0;id"]}
+        }))
+        .unwrap_err();
+
+        assert!(error.contains("invalid shared.interface"));
+    }
+
+    #[test]
+    fn nonzero_probe_exit_is_not_capability_success() {
+        let result = read_only_command_result_with_timeout(
+            "/bin/sh",
+            &["-c", "exit 7"],
+            Duration::from_secs(1),
+        );
+
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn ebpf_dataplane_does_not_require_magicnet0() -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("ebpf-dataplane")?;
+        fs::create_dir_all(root.join("bin"))?;
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )?;
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{"inbounds":[{"type":"ebpf","tag":"tun-in","mode":"local","local":{"dns_mode":"hijack"}}]}"#,
+        )?;
+        let binary = root.join("bin/sing-box");
+        fs::write(&binary, "#!/bin/sh\nexit 0\n")?;
+        let mut permissions = fs::metadata(&binary)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&binary, permissions)?;
+        let app = App::for_test(root.clone());
+        let result = dataplane_check(&app, &transparent_mode(&app));
+
+        assert!(result.0, "{}", result.1);
+        assert!(result.1.contains("shared=pending"), "{}", result.1);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn ebpf_dataplane_rejects_non_hijacked_local_dns() -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("ebpf-dns-mode")?;
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )?;
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{"inbounds":[{"type":"ebpf","tag":"tun-in","mode":"local","local":{"dns_mode":"respect_policy"}}]}"#,
+        )?;
+        let app = App::for_test(root.clone());
+        let result = dataplane_check(&app, &transparent_mode(&app));
+
+        assert!(!result.0, "{}", result.1);
+        assert!(
+            result.1.contains("local DNS must use hijack"),
+            "{}",
+            result.1
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn ebpf_loop_guard_uses_managed_inbound_self_protection(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("ebpf-loop")?;
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )?;
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{
+              "inbounds":[{"type":"ebpf","tag":"tun-in","mode":"local"}],
+              "outbounds":[{"type":"vless","tag":"node","server":"example.com"}]
+            }"#,
+        )?;
+        let result = traffic_loop_guard_check(&App::for_test(root.clone()));
+
+        assert!(result.0, "{}", result.1);
+        assert!(result.1.contains("self_protection=socket_cookie"));
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn ebpf_network_policy_does_not_require_tun_fields() -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("ebpf-network")?;
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )?;
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{
+              "dns":{"strategy":"prefer_ipv4"},
+              "inbounds":[{"type":"ebpf","tag":"tun-in","mode":"local"}],
+              "route":{"rules":[]}
+            }"#,
+        )?;
+        let result = network_policy_check(&App::for_test(root.clone()));
+
+        assert!(result.0, "{}", result.1);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn dns_capture_runtime_rejects_uid0_bypass() {
+        assert_eq!(
+            dns_capture_rule_summary(true, true, true, true),
+            (false, "uid0-bypass-leak")
+        );
+    }
+
+    #[test]
+    fn dns_capture_runtime_requires_udp_and_tcp_redirects() {
+        assert_eq!(
+            dns_capture_rule_summary(false, true, true, true),
+            (true, "redirected")
+        );
+        assert_eq!(
+            dns_capture_rule_summary(false, false, true, true),
+            (false, "output-jump-missing")
+        );
+        assert_eq!(
+            dns_capture_rule_summary(false, true, false, true),
+            (false, "udp-redirect-missing")
+        );
+        assert_eq!(
+            dns_capture_rule_summary(false, true, true, false),
+            (false, "tcp-redirect-missing")
+        );
+        assert_eq!(
+            dns_capture_rule_summary(false, true, false, false),
+            (false, "redirects-missing")
+        );
+    }
 }
 
 #[cfg(test)]

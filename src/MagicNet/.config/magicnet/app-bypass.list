@@ -1,5 +1,6 @@
-# Packages that bypass MagicNet TUN and DNS capture when MAGICNET_APP_MODE=blacklist.
-# One package name per line.
+# Packages that bypass the active MagicNet dataplane in blacklist mode.
+# App-owned DNS sockets follow that UID bypass. Android netd UID 0 DNS remains captured so one
+# opted-out app cannot cause device-wide DNS leakage. One package name per line.
 #
 # Architecture note:
 # - Domestic vs foreign traffic is decided mainly by geodata (geosite/geoip → cn-direct / proxy).

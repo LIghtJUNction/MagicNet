@@ -1,12 +1,12 @@
 # MagicNet 用户指南
 
-MagicNet 的目标是让 Android root 设备通过一条可观察、可回滚的 `sing-box` TUN 路径完成代理、直连、应用分流和网络诊断。透明数据面固定为 `magicnet0`；模块不占用 Android 系统 VPN slot，也不提供 TProxy 或 eBPF 模式。
+MagicNet 的目标是让 Android root 设备通过可观察、可回滚的 `sing-box` 透明数据面完成代理、直连、应用分流和网络诊断。默认 `tun` 使用 `magicnet0`；显式 `ebpf` 使用 local cgroup，并在确认真实下游接口后使用 shared TC。模块不占用 Android 系统 VPN slot，也不提供 `auto`、TProxy、Redirect 或 netd `ALLOW_MULTI`。
 
 ## 第一次使用：跟着新手引导完成
 
 WebUI 首次打开会自动弹出“新手引导”，后续也可以从页面里的“新手引导”入口重新打开。引导只讲当前主线支持的流程，不会提供订阅 URL、节点、token、password 或示例密钥。
 
-- 确认设备前提：模块已安装、Root 可用、Private DNS 已关闭，MagicNet 只走 `sing-box` + `magicnet0` TUN。
+- 确认设备前提：模块已安装、Root 可用、Private DNS 已关闭；MagicNet 只允许显式 `sing-box` `tun|ebpf`，默认 TUN。
 - 添加来源：在“订阅”里填写你自己的订阅 URL，或者导入本地配置/订阅文件。MagicNet 不提供订阅服务，也不生成节点。
 - 交给 MagicNet 校验并应用：保存后由 MagicNet 拉取、解析、校验并生成运行配置；节点选择通过现有控制流程完成，不要手工改运行中的 `sing-box` 配置文件。
 - 验证链路后再做进阶策略：优先看“运行状态”和“诊断”，确认基础链路已经可用，再考虑应用、Wi‑Fi、热点等策略；异常细节继续看“输出”。
@@ -27,10 +27,10 @@ WebUI 首次打开会自动弹出“新手引导”，后续也可以从页面�
 ```bash
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli transparent status
-su -c 'ip link show magicnet0'
+# 仅 TUN 模式要求：su -c 'ip link show magicnet0'
 ```
 
-三项分别确认整体健康、透明路径和 TUN 接口。只看到进程运行不代表设备流量已经进入 TUN。
+前两项确认整体健康与 configured/effective 数据面；TUN 再确认 `magicnet0`，eBPF 则确认 local cgroup 与 shared attached/pending。只看到进程运行不代表流量已经进入当前数据面。
 
 ## URL 与本地订阅
 
@@ -70,9 +70,9 @@ WebUI 可查看延迟、手动选择节点或切回自动组。选择结果会�
 
 三种策略的边界不同：
 
-- `Proxy`：应用进入 `magicnet0`，并强制使用代理规则。
-- `Direct`：应用仍进入 TUN，但使用 `direct` 出站；验证“不要走 MagicNet 代理”通常选它。
-- `Bypass TUN`：应用完全离开 MagicNet。模块按所有 Android 用户解析包 UID，并让这些 UID 同时绕过 TUN 与 DNS 捕获，适合外部 VPN 或明确的共存需求。部分设备的 `netd` 会以 UID 0 代发系统 DNS；存在 Bypass UID 时，DNS 捕获链会保守保留 UID 0 直通，以维持这项边界。
+- `Proxy`：应用进入当前透明数据面，并强制使用代理规则。
+- `Direct`：应用仍被接管，但使用 sing-box `direct` 出站；验证“不要走 MagicNet 代理”通常选它。
+- `Bypass`：应用完全离开 MagicNet。模块按所有 Android 用户解析包 UID，并让这些 UID 同时绕过当前数据面与 DNS 捕获，适合外部 VPN 或明确的共存需求。部分设备的 `netd` 会以 UID 0 代发系统 DNS；存在 Bypass UID 时，DNS 捕获会保守保留 UID 0 直通，以维持这项边界。
 
 ```bash
 su -c '/data/adb/modules/MagicNet/cli app add com.example.app proxy'
@@ -102,7 +102,7 @@ su -c /data/adb/modules/MagicNet/cli wifi status
 
 ## 热点
 
-MagicNet 不创建热点，也不替代 Android 的 DHCP/NAT。启用热点 Proxy 后，MagicNet 会把当前 tether 接口的 IPv4 入站策略路由到 `magicnet0`，再通过 `hotspot` selector 选择 Direct 或 Proxy：
+MagicNet 不创建热点，也不替代 Android 的 DHCP/NAT。启用热点 Proxy 后，TUN 会把当前 tether 接口的 IPv4 入站策略路由到 `magicnet0`；eBPF 会对 MagicNet 已确认的真实下游接口启用 hybrid/shared TC。两者都通过 `hotspot` selector 选择 Direct 或 Proxy：
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli hotspot status
@@ -110,13 +110,13 @@ su -c /data/adb/modules/MagicNet/cli hotspot enable
 su -c /data/adb/modules/MagicNet/cli hotspot disable
 ```
 
-Proxy 会暂时关闭 Android tether 硬件卸载，避免厂商/BPF 快速路径绕过 TUN；disable 和模块卸载会恢复此前系统值。热点仍异常时，应区分客户端 DHCP/NAT 问题、厂商转发未进入 TUN和代理节点问题。
+Proxy 会暂时关闭 Android tether 硬件卸载，避免厂商快速路径绕过 MagicNet；disable 和模块卸载会恢复此前系统值。热点仍异常时，应区分客户端 DHCP/NAT、TUN 路由或 eBPF TC attachment、以及代理节点问题。
 
 ## LAN 与 Tailscale 边界
 
 私有网段默认由 `lan` 规则直连，MagicNet 不接管路由器、局域网服务或外部 VPN overlay 的控制面。若 LAN 服务需要代理，使用明确的域名/路由规则，不要把整个私网误设为远端代理。
 
-userspace Tailscale endpoint 是 sing-box 配置的一部分，需要显式添加；MagicNet 会协调 endpoint CIDR 与 `magicnet0` 路由并保护一次性 auth key。安装系统级 Tailscale App 并不等同于配置该 endpoint。配置和验收见 [Tailscale 说明](tailscale.md)。
+userspace Tailscale endpoint 是 sing-box 配置的一部分，需要显式添加；MagicNet 会协调 endpoint CIDR 与当前透明数据面并保护一次性 auth key。安装系统级 Tailscale App 并不等同于配置该 endpoint。配置和验收见 [Tailscale 说明](tailscale.md)。
 
 ## 网络兼容与恢复
 
@@ -127,7 +127,7 @@ su -c /data/adb/modules/MagicNet/cli network status
 su -c '/data/adb/modules/MagicNet/cli network set ipv4_only 1400 5m'
 ```
 
-网络切换后断流，使用当前 TUN 路径恢复，不要选择不存在的模式：
+网络切换后断流，先查看 `transparent status` 的 rollback/pending，再恢复当前显式模式：
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli repair
@@ -135,7 +135,7 @@ su -c /data/adb/modules/MagicNet/cli transparent apply
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
 ```
 
-`repair` 修复模块管理的配置/运行状态；`config apply` 会物化全部运行时配置，仅在有效的 sing-box 配置或本地规则集发生变化时重启核心，避免无关文件变化切断邮件和消息应用的后台长连接。`transparent apply` 会重应用 TUN 与 DNS 捕获并重启核心。需要完整恢复时再执行 `service restart sing-box`。
+`repair` 修复模块管理的配置/运行状态；`config apply` 会物化全部运行时配置，仅在有效的 sing-box 配置或本地规则集发生变化时重启核心，避免无关文件变化切断邮件和消息应用的后台长连接。`transparent apply` 会重应用当前 TUN 或 eBPF 数据面并重启核心。需要完整恢复时再执行 `service restart sing-box`。
 
 ## 健康检查与支持
 
@@ -152,7 +152,7 @@ su -c /data/adb/modules/MagicNet/cli support bundle
 - 域名失败但 IP 可达：检查 Private DNS、`cli dns status` 和 DNS 相关诊断。
 - TCP 正常、UDP/QUIC 异常：检查网络策略、MTU、节点 UDP 能力和 `ipv4_only` 对照结果。
 - 某应用策略无效：检查包名、Android 用户、`cli app list`，再执行 `cli app apply`。
-- 热点设备异常而手机正常：检查 `cli hotspot status`，确认 `route_status=ready`、`downstream_interfaces` 和 `policy_rule`，再确认 tether offload 已关闭且客户端流量进入 `magicnet0`。
+- 热点设备异常而手机正常：检查 `cli hotspot status` 与 `cli transparent status`。TUN 确认 `route_status=ready`、`policy_rule` 和 `magicnet0`；eBPF 确认 downstream interface 是真实当前接口且 shared TC attached/pending 准确。
 - 更新订阅失败：保留原配置，查看 `cli sub status` 和支持包中的失败阶段，不要删除回滚现场。
 
 支持包和 WebUI Issue 草稿会做脱敏，但提交前仍应人工检查。不要公开订阅 URL、token、MCP secret、password、完整节点地址、设备序列号或未经检查的完整日志。

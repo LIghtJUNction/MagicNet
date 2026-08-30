@@ -306,9 +306,12 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(
   controlPage,
-  /external-tun|Hybrid|modeActionKey/,
-  "control page must expose only TUN mode",
+  /external-tun|modeActionKey|transparent set auto|transparent set tproxy|transparent set redirect/,
+  "control page must expose only explicit tun or ebpf mode actions",
 );
+assert.match(controlPage, /setTransparentModeAction/);
+assert.match(controlPage, /requestTransparentMode\('tun'/);
+assert.match(controlPage, /requestTransparentMode\('ebpf'/);
 assert.match(controlPage, /const singBoxStatus = computed/);
 assert.match(controlPage, /tone: "neutral"/);
 assert.match(

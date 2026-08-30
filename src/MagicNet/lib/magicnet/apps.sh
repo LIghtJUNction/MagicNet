@@ -6,8 +6,8 @@ magicnet_app_policy_mode() {
     _app_mode="$(magicnet_conf_value "$(magicnet_app_policy_dir)/app-mode.conf" MAGICNET_APP_MODE 2>/dev/null || true)"
     [ -n "$_app_mode" ] || _app_mode="${MAGICNET_APP_MODE:-}"
     case "$_app_mode" in
-        whitelist) printf '%s\n' "whitelist" ;;
-        *) printf '%s\n' "blacklist" ;;
+    whitelist) printf '%s\n' "whitelist" ;;
+    *) printf '%s\n' "blacklist" ;;
     esac
     unset _app_mode
 }
@@ -148,17 +148,20 @@ magicnet_singbox_apply_app_policy() {
             rm -f "${_include_uids_tmp}.new" 2>/dev/null || true
             return 1
         fi
-        : >"$_exclude_uids_tmp"
     else
-        magicnet_package_uids "$_bypass_file" >"$_exclude_uids_tmp"
-        awk 'BEGIN { print 0 } /^[0-9]+$/ && !seen[$0]++ { print }' \
-            "$_exclude_uids_tmp" >"${_exclude_uids_tmp}.new"
-        if ! mv -f "${_exclude_uids_tmp}.new" "$_exclude_uids_tmp"; then
-            rm -f "${_exclude_uids_tmp}.new" 2>/dev/null || true
-            return 1
-        fi
         rm -f "$_include_packages_tmp" 2>/dev/null || true
         : >"$_include_uids_tmp"
+    fi
+    # Resolve explicit bypass packages in both app modes. Their concrete UIDs
+    # may bypass the local dataplane, but Android netd commonly emits DNS as
+    # UID 0; local DNS must stay hijacked or one bypass app would leak DNS for
+    # every application on the device.
+    magicnet_package_uids "$_bypass_file" >"$_exclude_uids_tmp"
+    awk 'BEGIN { print 0 } /^[0-9]+$/ && !seen[$0]++ { print }' \
+        "$_exclude_uids_tmp" >"${_exclude_uids_tmp}.new"
+    if ! mv -f "${_exclude_uids_tmp}.new" "$_exclude_uids_tmp"; then
+        rm -f "${_exclude_uids_tmp}.new" 2>/dev/null || true
+        return 1
     fi
 
     _tmp="${_config}.app-policy.new"
@@ -169,14 +172,16 @@ magicnet_singbox_apply_app_policy() {
     [ -f "$_bypass_file" ] || : >"$_bypass_file"
     [ -f "$_include_uids_tmp" ] || : >"$_include_uids_tmp"
     [ -f "$_exclude_uids_tmp" ] || : >"$_exclude_uids_tmp"
-    if (umask 077; "$_jq" --arg mode "$_mode" --argjson uid_sentinel "$MAGICNET_APP_UID_SENTINEL" \
-        --rawfile proxy "$_proxy_file" \
-        --rawfile direct "$_direct_file" \
-        --rawfile bypass "$_bypass_file" \
-        --rawfile include_uids "$_include_uids_tmp" \
-        --rawfile exclude_uids "$_exclude_uids_tmp" \
-        --rawfile old_include_uids "$_old_include_uids" \
-        --rawfile old_exclude_uids "$_old_exclude_uids" '
+    if (
+        umask 077
+        "$_jq" --arg mode "$_mode" --argjson uid_sentinel "$MAGICNET_APP_UID_SENTINEL" \
+            --rawfile proxy "$_proxy_file" \
+            --rawfile direct "$_direct_file" \
+            --rawfile bypass "$_bypass_file" \
+            --rawfile include_uids "$_include_uids_tmp" \
+            --rawfile exclude_uids "$_exclude_uids_tmp" \
+            --rawfile old_include_uids "$_old_include_uids" \
+            --rawfile old_exclude_uids "$_old_exclude_uids" '
         def packages($text):
           $text
           | split("\n")
@@ -198,21 +203,29 @@ magicnet_singbox_apply_app_policy() {
         | (uids($old_include_uids)) as $old_include_uid_values
         | (uids($old_exclude_uids)) as $old_exclude_uid_values
         | (if ($include_uid_values | length) == 0 then [$uid_sentinel] else $include_uid_values end) as $managed_include_uid_values
-        | .inbounds = (
+        | def apply_uid_policy:
+            ((.include_uid // []) | without($old_include_uid_values)) as $base_include_uids
+            | ((.exclude_uid // []) | without($old_exclude_uid_values)) as $base_exclude_uids
+            | del(.include_package, .exclude_package, .include_uid, .exclude_uid)
+            | if $mode == "whitelist" then
+                .include_uid = (($base_include_uids + $managed_include_uid_values) | unique)
+                | .exclude_uid = (([0] + $base_exclude_uids) | unique)
+              else
+                .include_uid = ($base_include_uids | unique)
+                | .exclude_uid = (([0] + $base_exclude_uids + $exclude_uid_values) | unique)
+              end
+            | if ((.include_uid // []) | length) == 0 then del(.include_uid) else . end
+            | if ((.exclude_uid // []) | length) == 0 then del(.exclude_uid) else . end;
+          .inbounds = (
             (.inbounds // []) | map(
               if (.type // "") == "tun" then
-                ((.include_uid // []) | without($old_include_uid_values)) as $base_include_uids
-                | ((.exclude_uid // []) | without($old_exclude_uid_values)) as $base_exclude_uids
-                | del(.include_package, .exclude_package, .include_uid, .exclude_uid)
-                | if $mode == "whitelist" then
-                    .include_uid = (($base_include_uids + $managed_include_uid_values) | unique)
-                    | .exclude_uid = (([0] + $base_exclude_uids) | unique)
-                  else
-                    .include_uid = ($base_include_uids | unique)
-                    | .exclude_uid = (([0] + $base_exclude_uids + $exclude_uid_values) | unique)
-                  end
-                | if ((.include_uid // []) | length) == 0 then del(.include_uid) else . end
-                | if ((.exclude_uid // []) | length) == 0 then del(.exclude_uid) else . end
+                apply_uid_policy
+              elif (.type // "") == "ebpf" and ((.mode // "local") == "local" or .mode == "hybrid") then
+                .local = (
+                  (.local // {})
+                  | apply_uid_policy
+                  | .dns_mode = "hijack"
+                )
               else
                 .
               end
@@ -247,7 +260,8 @@ magicnet_singbox_apply_app_policy() {
             (.dns // {})
             | .rules = ((.rules // []) | map(select(has("package_name") | not)))
           )
-    ' "$_config" >"$_tmp") && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config" &&
+    ' "$_config" >"$_tmp"
+    ) && chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config" &&
         magicnet_app_uid_state_commit "$_uid_state_dir" "$_include_uids_tmp" "$_exclude_uids_tmp"; then
         rm -f "$_include_packages_tmp" "$_include_uids_tmp" "$_exclude_uids_tmp" 2>/dev/null || true
         unset _config _dir _mode _proxy_file _direct_file _bypass_file

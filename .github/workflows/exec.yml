@@ -46,15 +46,46 @@ jobs:
       KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
       MAGICNET_SIGN_ENABLED: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
       MAGICNET_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
-      KAM_CHANGELOG_ENABLED: '0'
+      KAM_CHANGELOG_ENABLED: "0"
       GH_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          submodules: recursive
+          persist-credentials: false
+          submodules: true
           fetch-depth: 0
+
+      - name: Setup Go for forked sing-box
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26.7"
+          cache: true
+          cache-dependency-path: sing-box/go.sum
+
+      - name: Test forked sing-box eBPF support
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_root="$(mktemp -d "$PWD/.sing-box-ebpf-tests.XXXXXX")"
+          cleanup() {
+            rm -rf "$test_root"
+          }
+          trap cleanup EXIT
+          (
+            cd sing-box
+            CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=off \
+              go test -count=1 -mod=readonly -tags with_ebpf \
+              ./common/ebpf ./protocol/ebpf ./include ./option
+            package_index=0
+            for package in ./common/ebpf ./protocol/ebpf ./include ./option; do
+              package_index=$((package_index + 1))
+              CGO_ENABLED=0 GOOS=android GOARCH=arm64 GOTOOLCHAIN=local GOWORK=off \
+                go test -c -mod=readonly -tags with_ebpf \
+                -o "$test_root/package-${package_index}.test" "$package"
+            done
+          )
 
       - name: Resolve release request
         shell: bash
@@ -72,7 +103,7 @@ jobs:
           echo "MAGICNET_SIGN_REQUIRED=1" >> "$GITHUB_ENV"
 
       - name: Cache Cargo
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry
@@ -82,20 +113,22 @@ jobs:
             ${{ runner.os }}-rust-
 
       - name: Setup kam
-        uses: MemDeco-WG/setup-kam@v3
+        uses: MemDeco-WG/setup-kam@1d6ad8a9f58446a4519fda12a52f0c71fb667d8b # v3
         with:
           github-token: ${{ github.token }}
-          enable-cache: 'true'
+          enable-cache: "true"
           cache-targets: cargo,kam
-          install-commitizen: 'false'
+          install-commitizen: "false"
           private-key: ${{ secrets.KAM_PRIVATE_KEY }}
 
       - name: Bump module version
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' }}
         shell: bash
+        env:
+          BUMP_KIND: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          kam version "${{ inputs.bump }}"
+          kam version "$BUMP_KIND"
           kam export prop
           kam export update
 
@@ -111,31 +144,18 @@ jobs:
       - name: Install artifact tools
         run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip
 
-      - name: Install host sing-box
+      - name: Build host sing-box from fork
         shell: bash
         run: |
           set -euo pipefail
-          tag="$(gh api repos/SagerNet/sing-box/releases/latest --jq '.tag_name')"
-          version="${tag#v}"
-          asset="sing-box-${version}-linux-amd64.tar.gz"
           install_dir="${RUNNER_TEMP}/sing-box-host"
           mkdir -p "$install_dir"
-          gh release download "$tag" \
-            --repo SagerNet/sing-box \
-            --pattern "$asset" \
-            --dir "$install_dir"
-          expected_digest="$(
-            gh api "repos/SagerNet/sing-box/releases/tags/${tag}" \
-              --jq ".assets[] | select(.name == \"${asset}\") | .digest"
-          )"
-          test -n "$expected_digest"
-          actual_digest="sha256:$(sha256sum "${install_dir}/${asset}" | awk '{print $1}')"
-          test "$actual_digest" = "$expected_digest"
-          tar -xzf "${install_dir}/${asset}" -C "$install_dir"
-          host_binary="$(find "$install_dir" -type f -name sing-box -print -quit)"
-          test -n "$host_binary"
-          sudo install -m 0755 "$host_binary" /usr/local/bin/sing-box
-          sing-box version
+          scripts/build-sing-box.sh linux amd64 "$install_dir/sing-box" >/dev/null
+          sudo install -m 0755 "$install_dir/sing-box" /usr/local/bin/sing-box
+          expected_revision="$(git -C sing-box rev-parse HEAD)"
+          version_output="$(sing-box version)"
+          grep -F "LIghtJUNction.${expected_revision:0:12}" <<<"$version_output"
+          printf '%s\n' "$version_output"
 
       - name: Install Android Rust targets
         shell: bash
@@ -181,7 +201,10 @@ jobs:
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-cli'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-mcp-server'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/sing-box'
-          ! unzip -Z1 "dist/${module_id}.zip" | grep -E '(^|/)\.git($|/)'
+          if unzip -Z1 "dist/${module_id}.zip" | grep -Eq '(^|/)\.git($|/)'; then
+            echo "::error::Module archive contains Git metadata"
+            exit 1
+          fi
           scripts/package-smoke.sh "dist/${module_id}.zip"
           scripts/package-install-smoke.sh "dist/${module_id}.zip"
           scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
@@ -206,22 +229,25 @@ jobs:
           fi
           git add -- kam.toml src/MagicNet/module.prop update.json
           git commit -m "chore: bump module version"
+          gh auth setup-git
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Create GitHub release
         if: ${{ inputs.release == true || env.RELEASE_REQUESTED == '1' }}
         shell: bash
+        env:
+          PRERELEASE_REQUESTED: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
           args=(--all-assets)
-          if [ "${{ inputs.prerelease }}" = "true" ]; then
+          if [ "$PRERELEASE_REQUESTED" = "true" ]; then
             args+=(--prerelease)
           fi
           kam publish "${args[@]}"
 
       - name: Upload build artifact
         if: always() && hashFiles('dist/*') != ''
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: kam-module-artifact
           path: dist/*

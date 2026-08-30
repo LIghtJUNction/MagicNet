@@ -215,89 +215,30 @@ build_and_push_x86_control_plane() {
     adb_su "$serial" 'chmod 0755 /data/adb/modules/MagicNet/bin/magicnet-cli /data/adb/modules/MagicNet/bin/magicnet-mcp-server'
 }
 
-download_release_asset() {
-    local repo="$1"
-    local pattern="$2"
-    local output="$3"
-    local api="https://api.github.com/repos/${repo}/releases/latest"
-    local meta
-    local name
-    local url
-    local digest
-    local expected
-
-    need curl
-    need jq
-    need sha256sum
-    meta="$(curl -fsSL "$api" | jq -r --arg pattern "$pattern" '
-        .assets[]
-        | select(.name | test($pattern))
-        | [.name, .browser_download_url, (.digest // "")]
-        | @tsv
-    ' | head -n1)"
-    [[ -n "$meta" ]] || fail "release asset not found: $repo $pattern"
-    IFS=$'\t' read -r name url digest <<<"$meta"
-    [[ "$digest" == sha256:* ]] || fail "release asset missing sha256 digest: $name"
-    expected="${digest#sha256:}"
-
-    if [[ -f "$output" ]] && printf '%s  %s\n' "$expected" "$output" | sha256sum -c >/dev/null 2>&1; then
-        log "cached $name matches release digest"
-        return 0
-    fi
-
-    log "downloading $name"
-    mkdir -p "$(dirname "$output")"
-    if command -v aria2c >/dev/null 2>&1; then
-        aria2c \
-            --allow-overwrite=true \
-            --auto-file-renaming=false \
-            --continue=true \
-            --connect-timeout=30 \
-            --dir="$(dirname "$output")" \
-            --file-allocation=none \
-            --max-connection-per-server=8 \
-            --max-tries=10 \
-            --min-split-size=1M \
-            --out="$(basename "$output")" \
-            --retry-wait=2 \
-            --split=8 \
-            "$url"
-    else
-        curl -fL -C - \
-            --retry 10 \
-            --retry-all-errors \
-            --connect-timeout 30 \
-            --speed-limit 1024 \
-            --speed-time 120 \
-            --max-time 0 \
-            "$url" -o "$output"
-    fi
-    printf '%s  %s\n' "$expected" "$output" | sha256sum -c >/dev/null
-}
-
 push_x86_core_binaries() {
     local serial="$1"
     local cache="${MAGICNET_AVD_CORE_CACHE:-$HOME/.cache/magicnet-tools/avd-cores}"
-    local singbox_archive="$cache/sing-box-android-amd64.tar.gz"
-    local work
+    local source_revision
     local singbox_bin
 
-    need tar
-    download_release_asset "SagerNet/sing-box" "android-amd64[.]tar[.]gz$" "$singbox_archive"
+    need go
+    source_revision="$(git -C "$ROOT/sing-box" rev-parse HEAD 2>/dev/null)" ||
+        fail "sing-box source submodule is not initialized"
+    singbox_bin="$cache/sing-box-${source_revision}-android-amd64"
 
-    work="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-avd-cores.XXXXXX")"
-    tar -xzf "$singbox_archive" -C "$work"
-    singbox_bin="$(find "$work" -type f -name sing-box -perm -u+x -print -quit)"
-    [ -n "$singbox_bin" ] || fail "sing-box binary not found in archive"
-    cp "$singbox_bin" "$work/sing-box"
-    chmod 0755 "$work/sing-box"
+    if [[ ! -x "$singbox_bin" ]]; then
+        log "building forked sing-box for the x86_64 AVD"
+        mkdir -p "$cache"
+        "$ROOT/scripts/build-sing-box.sh" android amd64 "$singbox_bin" >/dev/null
+    else
+        log "using cached forked sing-box for revision $source_revision"
+    fi
 
     adb_su "$serial" 'mkdir -p /sdcard/Download/MagicNet'
-    "$ADB" -s "$serial" push "$work/sing-box" /sdcard/Download/MagicNet/sing-box >/dev/null
+    "$ADB" -s "$serial" push "$singbox_bin" /sdcard/Download/MagicNet/sing-box >/dev/null
     adb_su "$serial" 'cp /sdcard/Download/MagicNet/sing-box /data/adb/modules/MagicNet/bin/sing-box'
     adb_su "$serial" 'chmod 0755 /data/adb/modules/MagicNet/bin/sing-box'
     adb_su "$serial" 'rm -f /sdcard/Download/MagicNet/sing-box' || true
-    rm -rf "$work"
 }
 
 prepare_avd_node_fixtures() {
@@ -336,11 +277,11 @@ verify_avd_install() {
     adb_su "$serial" 'test ! -e /data/adb/modules/MagicNet/.local/bin && echo legacy_local_bin_absent'
 
     case "$abi" in
-        x86|x86_64)
-            log "official package binaries are arm64; using x86_64 CLI/MCP hot replacement for management checks only"
-            build_and_push_x86_control_plane "$serial"
-            push_x86_core_binaries "$serial"
-            ;;
+    x86 | x86_64)
+        log "module package binaries are arm64; using x86_64 hot replacements for AVD checks"
+        build_and_push_x86_control_plane "$serial"
+        push_x86_core_binaries "$serial"
+        ;;
     esac
 
     adb_su "$serial" '/data/adb/modules/MagicNet/cli help >/dev/null && echo cli_ok'
@@ -414,33 +355,33 @@ EOF
 main() {
     cd "$ROOT"
     case "$MODE" in
-        quick)
-            run_quick "$@"
-            ;;
-        package)
-            run_package "$@"
-            ;;
-        fake-magisk)
-            run_fake_magisk "$@"
-            ;;
-        local)
-            run_quick "$@"
-            run_package "$@"
-            run_fake_magisk "$@"
-            ;;
-        avd)
-            run_avd "$@"
-            ;;
-        rootavd-setup)
-            run_rootavd_setup "$@"
-            ;;
-        help|--help|-h)
-            usage
-            ;;
-        *)
-            usage >&2
-            fail "unknown mode: $MODE"
-            ;;
+    quick)
+        run_quick "$@"
+        ;;
+    package)
+        run_package "$@"
+        ;;
+    fake-magisk)
+        run_fake_magisk "$@"
+        ;;
+    local)
+        run_quick "$@"
+        run_package "$@"
+        run_fake_magisk "$@"
+        ;;
+    avd)
+        run_avd "$@"
+        ;;
+    rootavd-setup)
+        run_rootavd_setup "$@"
+        ;;
+    help | --help | -h)
+        usage
+        ;;
+    *)
+        usage >&2
+        fail "unknown mode: $MODE"
+        ;;
     esac
 }
 

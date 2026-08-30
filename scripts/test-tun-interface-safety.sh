@@ -12,6 +12,6 @@ if grep -Eq 'ip[[:space:]]+link[[:space:]]+delete[[:space:]]+tun0([[:space:]]|$)
     exit 1
 fi
 grep -Eq 'ip[[:space:]]+link[[:space:]]+delete[[:space:]]+magicnet0([[:space:]]|$)' "$CONFIG"
-grep -Fq '"interface_name": "magicnet0"' "$TRANSPARENT"
+grep -Eq '"interface_name"[[:space:]]*:[[:space:]]*"magicnet0"' "$TRANSPARENT"
 
 printf '%s\n' 'TUN interface safety test passed'

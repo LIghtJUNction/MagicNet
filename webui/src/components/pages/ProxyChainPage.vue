@@ -364,7 +364,7 @@ onMounted(() => {
         />
       </div>
       <p class="text-xs leading-5 text-[var(--mn-ink-muted)]">
-        这里显示的是设备当前 sing-box API 选择器状态；策略已启用但 API 不可用时，需要先检查 sing-box 和 <code>magicnet0</code>。
+        这里显示的是设备当前 sing-box API 选择器状态；策略已启用但 API 不可用时，需要先检查 sing-box、<code>cli transparent status</code> 与当前数据面。
       </p>
     </Card>
   </div>

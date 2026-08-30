@@ -28,17 +28,18 @@ try {
   await writeFile(modulePath, output, "utf8");
   const { normalizeTransparentMode, parseRuntime, runtimeDefaults } = await import(`file://${modulePath}`);
 
-  assert.equal(normalizeTransparentMode("proxy"), "tun");
-  assert.equal(normalizeTransparentMode("external"), "tun");
-  assert.equal(normalizeTransparentMode("external-tun"), "tun");
-  assert.equal(normalizeTransparentMode("HYBRID"), "tun");
   assert.equal(normalizeTransparentMode("tun"), "tun");
-  assert.equal(normalizeTransparentMode("tproxy"), null);
+  assert.equal(normalizeTransparentMode(" eBPF "), "ebpf");
+  for (const legacy of ["proxy", "external", "external-tun", "hybrid", "auto", "tproxy"]) {
+    assert.equal(normalizeTransparentMode(legacy), null);
+  }
 
-  assert.equal(parseRuntime("Transparent: proxy\n", runtimeDefaults).transparentMode, "tun");
-  assert.equal(parseRuntime("mode=external\n", runtimeDefaults).transparentMode, "tun");
-  assert.equal(parseRuntime("mode=hybrid\n", runtimeDefaults).transparentMode, "tun");
-  assert.equal(parseRuntime("Transparent: invalid\n", runtimeDefaults).transparentMode, "tun");
+  const previous = { ...runtimeDefaults, transparentMode: "ebpf" };
+  for (const legacy of ["proxy", "external", "hybrid", "invalid"]) {
+    assert.equal(parseRuntime(`mode=${legacy}\n`, previous).transparentMode, "ebpf");
+  }
+  assert.equal(parseRuntime("mode=tun\n", previous).transparentMode, "tun");
+  assert.equal(parseRuntime("mode=ebpf\n", runtimeDefaults).transparentMode, "ebpf");
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

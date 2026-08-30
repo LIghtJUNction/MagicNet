@@ -57,29 +57,29 @@ magicnet_hotspot_source_cidrs_json() {
 magicnet_hotspot_interface_allowed() {
     _hotspot_allowed_iface="$1"
     case "$_hotspot_allowed_iface" in
-        "" | *[!A-Za-z0-9_.-]*)
-            unset _hotspot_allowed_iface
-            return 1
-            ;;
+    "" | *[!A-Za-z0-9_.-]*)
+        unset _hotspot_allowed_iface
+        return 1
+        ;;
     esac
     case "$_hotspot_allowed_iface" in
-        wlan[0-9]* | softap[0-9]* | ap_br_wlan[0-9]* | ap_br_softap[0-9]* | \
+    wlan[0-9]* | softap[0-9]* | ap_br_wlan[0-9]* | ap_br_softap[0-9]* | \
         swlan[0-9]* | rndis[0-9]* | usb[0-9]* | bt-pan | bt-pan[0-9]* | \
         p2p[0-9]* | p2p-*)
-            unset _hotspot_allowed_iface
-            return 0
-            ;;
-        *)
-            unset _hotspot_allowed_iface
-            return 1
-            ;;
+        unset _hotspot_allowed_iface
+        return 0
+        ;;
+    *)
+        unset _hotspot_allowed_iface
+        return 1
+        ;;
     esac
 }
 
 magicnet_hotspot_dumpsys_tethering() {
     _hotspot_dumpsys_timeout="${MAGICNET_HOTSPOT_DUMPSYS_TIMEOUT:-2}"
     case "$_hotspot_dumpsys_timeout" in
-        '' | *[!0-9]* | 0) _hotspot_dumpsys_timeout=2 ;;
+    '' | *[!0-9]* | 0) _hotspot_dumpsys_timeout=2 ;;
     esac
     [ "$_hotspot_dumpsys_timeout" -le 5 ] || _hotspot_dumpsys_timeout=5
     if [ -x "${MODDIR}/bin/busybox" ]; then
@@ -178,7 +178,10 @@ magicnet_hotspot_startup_snapshot_prepare() {
     _hotspot_snapshot="${_hotspot_snapshot_dir}/startup-networks.$$"
     _hotspot_snapshot_tmp="${_hotspot_snapshot}.tmp"
     mkdir -p "$_hotspot_snapshot_dir" || return 1
-    if (umask 077; magicnet_hotspot_active_networks_uncached >"$_hotspot_snapshot_tmp") &&
+    if (
+        umask 077
+        magicnet_hotspot_active_networks_uncached >"$_hotspot_snapshot_tmp"
+    ) &&
         mv -f "$_hotspot_snapshot_tmp" "$_hotspot_snapshot"; then
         MAGICNET_HOTSPOT_STARTUP_SNAPSHOT="$_hotspot_snapshot"
         export MAGICNET_HOTSPOT_STARTUP_SNAPSHOT
@@ -192,9 +195,9 @@ magicnet_hotspot_startup_snapshot_prepare() {
 
 magicnet_hotspot_startup_snapshot_clear() {
     case "${MAGICNET_HOTSPOT_STARTUP_SNAPSHOT:-}" in
-        "${MODDIR}/.state/hotspot/startup-networks."*)
-            rm -f "$MAGICNET_HOTSPOT_STARTUP_SNAPSHOT" 2>/dev/null || true
-            ;;
+    "${MODDIR}/.state/hotspot/startup-networks."*)
+        rm -f "$MAGICNET_HOTSPOT_STARTUP_SNAPSHOT" 2>/dev/null || true
+        ;;
     esac
     unset MAGICNET_HOTSPOT_STARTUP_SNAPSHOT
 }
@@ -245,10 +248,10 @@ magicnet_hotspot_route_cleanup() {
     if [ -f "$_hotspot_state_file" ]; then
         while IFS='|' read -r _hotspot_priority _hotspot_iface; do
             case "$_hotspot_priority" in
-                "" | *[!0-9]*)
-                    _hotspot_cleanup_rc=1
-                    continue
-                    ;;
+            "" | *[!0-9]*)
+                _hotspot_cleanup_rc=1
+                continue
+                ;;
             esac
             magicnet_hotspot_interface_allowed "$_hotspot_iface" || {
                 _hotspot_cleanup_rc=1
@@ -284,7 +287,7 @@ magicnet_hotspot_choose_rule_priority() {
     _hotspot_iface="$1"
     _hotspot_upper="$(magicnet_hotspot_android_tether_priority "$_hotspot_iface" 2>/dev/null || true)"
     case "$_hotspot_upper" in
-        '' | *[!0-9]*) _hotspot_upper=8999 ;;
+    '' | *[!0-9]*) _hotspot_upper=8999 ;;
     esac
     _hotspot_candidate="$_hotspot_upper"
     _hotspot_rules="$(ip rule show 2>/dev/null || true)"
@@ -314,6 +317,16 @@ magicnet_hotspot_reconcile() {
         magicnet_hotspot_route_cleanup
         return $?
     fi
+    _hotspot_transparent_mode="$(magicnet_transparent_mode)" || return 1
+    if [ "$_hotspot_transparent_mode" = ebpf ]; then
+        # Shared-network TC owns downstream interception in eBPF mode. Never
+        # retain the TUN-only table 2022 policy rules across a mode switch.
+        magicnet_hotspot_route_cleanup
+        _hotspot_ebpf_reconcile_rc=$?
+        unset _hotspot_transparent_mode
+        return "$_hotspot_ebpf_reconcile_rc"
+    fi
+    unset _hotspot_transparent_mode
 
     # The selector can be enabled before sing-box has created magicnet0. That
     # is a valid pending state; the post-start pass and the watcher will retry
@@ -407,7 +420,7 @@ magicnet_hotspot_route_status() {
     if [ -f "$_hotspot_state_file" ]; then
         while IFS='|' read -r _hotspot_priority _hotspot_iface; do
             case "$_hotspot_priority" in
-                '' | *[!0-9]*) continue ;;
+            '' | *[!0-9]*) continue ;;
             esac
             magicnet_hotspot_interface_allowed "$_hotspot_iface" || continue
             printf 'policy_rule=%s iif=%s table=2022\n' "$_hotspot_priority" "$_hotspot_iface"
@@ -458,13 +471,13 @@ magicnet_hotspot_offload_enable() {
             return 1
         }
         case "$_hotspot_previous" in
-            "" | null) _hotspot_saved="unset" ;;
-            0 | 1) _hotspot_saved="value=$_hotspot_previous" ;;
-            *)
-                magicnet_warn "Unexpected tether_offload_disabled value; refusing to overwrite it"
-                unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved
-                return 1
-                ;;
+        "" | null) _hotspot_saved="unset" ;;
+        0 | 1) _hotspot_saved="value=$_hotspot_previous" ;;
+        *)
+            magicnet_warn "Unexpected tether_offload_disabled value; refusing to overwrite it"
+            unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved
+            return 1
+            ;;
         esac
         if ! mkdir -p "${_hotspot_state%/*}"; then
             unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved
@@ -501,15 +514,15 @@ magicnet_hotspot_offload_restore() {
     }
     _hotspot_previous="$(sed -n '1p' "$_hotspot_state" 2>/dev/null)"
     case "$_hotspot_previous" in
-        unset) settings delete global tether_offload_disabled >/dev/null 2>&1 ;;
-        value=0 | value=1)
-            settings put global tether_offload_disabled "${_hotspot_previous#value=}" >/dev/null 2>&1
-            ;;
-        *)
-            magicnet_warn "Invalid saved tether offload state; refusing to restore it"
-            unset _hotspot_state _hotspot_previous
-            return 1
-            ;;
+    unset) settings delete global tether_offload_disabled >/dev/null 2>&1 ;;
+    value=0 | value=1)
+        settings put global tether_offload_disabled "${_hotspot_previous#value=}" >/dev/null 2>&1
+        ;;
+    *)
+        magicnet_warn "Invalid saved tether offload state; refusing to restore it"
+        unset _hotspot_state _hotspot_previous
+        return 1
+        ;;
     esac
     _hotspot_rc=$?
     if [ "$_hotspot_rc" -eq 0 ]; then
@@ -523,8 +536,8 @@ magicnet_hotspot_offload_restore() {
 magicnet_hotspot_offload_status() {
     _hotspot_value="$(magicnet_hotspot_offload_value 2>/dev/null || true)"
     case "$_hotspot_value" in
-        1) printf 'offload_disabled=1\n' ;;
-        *) printf 'offload_disabled=0\n' ;;
+    1) printf 'offload_disabled=1\n' ;;
+    *) printf 'offload_disabled=0\n' ;;
     esac
     if [ -f "$(magicnet_hotspot_offload_state_file)" ]; then
         printf 'offload_owned=1\n'
@@ -551,7 +564,9 @@ magicnet_singbox_render_hotspot_policy() {
     # when entering the TUN. Match only those discovered subnets: matching all
     # RFC1918 space also catches the phone's own Wi-Fi traffic whenever process
     # attribution or domain sniffing is unavailable.
-    if (umask 077; "$_jq" --argjson hotspot_sources "$_hotspot_sources_json" '
+    if (
+        umask 077
+        "$_jq" --argjson hotspot_sources "$_hotspot_sources_json" '
         def hotspot_selector:
           {
             "type": "selector",
@@ -600,7 +615,8 @@ magicnet_singbox_render_hotspot_policy() {
             else $rules
             end
           )
-    ' "$_hotspot_render_source" >"$_hotspot_render_target") && chmod 600 "$_hotspot_render_target"; then
+    ' "$_hotspot_render_source" >"$_hotspot_render_target"
+    ) && chmod 600 "$_hotspot_render_target"; then
         _hotspot_render_rc=0
     else
         rm -f "$_hotspot_render_target" 2>/dev/null || true
@@ -627,7 +643,8 @@ magicnet_singbox_hotspot_policy_current() {
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
     _tmp="${_config}.hotspot-policy.check.$$"
-    if magicnet_singbox_render_hotspot_policy "$_config" "$_tmp" && cmp -s "$_config" "$_tmp"; then
+    if magicnet_singbox_render_hotspot_policy "$_config" "$_tmp" && cmp -s "$_config" "$_tmp" &&
+        magicnet_ebpf_hotspot_config_current; then
         _hotspot_policy_rc=0
     else
         _hotspot_policy_rc=1
@@ -640,10 +657,10 @@ magicnet_singbox_hotspot_policy_current() {
 magicnet_route_singbox_rules() {
     for _target in proxy direct block warp; do
         case "$_target" in
-            proxy) _outbound="proxy-rule" ;;
-            direct) _outbound="direct" ;;
-            block) _outbound="block" ;;
-            warp) _outbound="warp" ;;
+        proxy) _outbound="proxy-rule" ;;
+        direct) _outbound="direct" ;;
+        block) _outbound="block" ;;
+        warp) _outbound="warp" ;;
         esac
         _domains="$(magicnet_route_list_values "$(magicnet_route_list_file "$_target")")"
         [ -n "$_domains" ] || continue

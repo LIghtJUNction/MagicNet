@@ -32,12 +32,12 @@ let previousBodyOverflow = "";
 const steps: Step[] = [
   {
     eyebrow: "步骤 1",
-    title: "先确认 TUN 能运行",
-    summary: "MagicNet 只走 sing-box 的 magicnet0 TUN。装好 Root 模块后，在控制页查看运行状态。",
+    title: "先确认透明代理能运行",
+    summary: "MagicNet 默认使用 sing-box magicnet0 TUN，也允许显式切换 eBPF。装好 Root 模块后，先在控制页查看 configured 与 effective 状态。",
     details: [
       "请关闭 Private DNS，否则 DNS 请求可能绕过 MagicNet。",
-      "MagicNet 不使用其他透明代理模式，也不占用系统 VPN slot。",
-      "你可以在控制页确认 sing-box 和 TUN 是否已启动。",
+      "MagicNet 只允许 tun|ebpf，不提供 auto，也不占用系统 VPN slot。",
+      "控制页会分别显示 TUN 的 magicnet0，或 eBPF 的 cgroup/shared TC 状态。",
     ],
     target: "control",
     targetLabel: "去控制页",
@@ -73,8 +73,8 @@ const steps: Step[] = [
     title: "链路正常后，再设置分流",
     summary: "先看运行状态和诊断。链路正常后，再调整应用、Wi‑Fi 或热点策略。",
     details: [
-      "确认 sing-box 已运行，magicnet0 存在，诊断没有报错。",
-      "应用、Wi‑Fi 和热点策略都依赖 magicnet0。",
+      "确认 sing-box 已运行，configured/effective 数据面一致或明确显示 pending。",
+      "TUN 以 magicnet0 为准；eBPF 以 local cgroup 和 shared TC attachment 为准。",
       "还有报错就去输出页查看原因，不要手改运行文件。",
     ],
     target: "health",
@@ -142,7 +142,7 @@ onUnmounted(() => {
               <CheckCircle2 :size="18" aria-hidden="true" />第一次使用 MagicNet
             </h2>
             <p id="onboarding-description" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-              先确认 TUN 能运行，再添加配置。配置生效后去 zashboard 选节点，最后跑一次诊断。
+              先确认当前透明数据面能运行，再添加配置。配置生效后去 zashboard 选节点，最后跑一次诊断。
             </p>
           </div>
           <Button data-dialog-initial-focus variant="ghost" size="icon" aria-label="关闭新手引导" @click="emit('dismiss')">

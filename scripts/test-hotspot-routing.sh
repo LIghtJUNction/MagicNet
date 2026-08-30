@@ -37,8 +37,8 @@ EOF
 
 magicnet_cmd_exists() {
   case "$1" in
-    dumpsys | ip) return 0 ;;
-    *) return 1 ;;
+  dumpsys | ip) return 0 ;;
+  *) return 1 ;;
   esac
 }
 
@@ -65,9 +65,9 @@ dumpsys() {
 
 settings() {
   case "${1:-} ${2:-} ${3:-}" in
-    'put global tether_offload_disabled') printf '%s\n' "${4:-}" >"$WORK/offload" ;;
-    'delete global tether_offload_disabled') rm -f "$WORK/offload" ;;
-    *) return 0 ;;
+  'put global tether_offload_disabled') printf '%s\n' "${4:-}" >"$WORK/offload" ;;
+  'delete global tether_offload_disabled') rm -f "$WORK/offload" ;;
+  *) return 0 ;;
   esac
 }
 
@@ -111,12 +111,26 @@ ip() {
   return 1
 }
 
+import() { :; }
+# shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
 # shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/transparent.sh"
+# shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/routes.sh"
+
+# common.sh supplies the production default; restore the deterministic command
+# availability fixture after all production files have been sourced.
+magicnet_cmd_exists() {
+  case "$1" in
+  dumpsys | ip) return 0 ;;
+  *) return 1 ;;
+  esac
+}
 
 magicnet_singbox_apply_hotspot_policy
 jq -e '
@@ -199,5 +213,30 @@ jq -e '
   )] | length == 1
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 magicnet_singbox_hotspot_policy_current
+
+# The hotspot route reconciler is TUN-only. In explicit eBPF mode the shared
+# path owns downstream interception, so no table-2022 rule may be installed and
+# no conventional wlan0 name may be guessed.
+assert_ebpf_skips_tun_hotspot_routes() (
+  mkdir -p "$MODDIR/.config/magicnet"
+  printf '%s\n' 'MAGICNET_TRANSPARENT_MODE=ebpf' >"$MODDIR/.config/magicnet/transparent-mode.conf"
+  chmod 600 "$MODDIR/.config/magicnet/transparent-mode.conf"
+  command_log="$WORK/ebpf-route-commands.log"
+  : >"$command_log"
+  magicnet_hotspot_proxy_enabled() { return 0; }
+  magicnet_hotspot_route_cleanup() { printf '%s\n' cleanup >>"$command_log"; }
+  ip() {
+    printf 'ip %s\n' "$*" >>"$command_log"
+    return 0
+  }
+  magicnet_hotspot_reconcile
+  if grep -Eq 'table[[:space:]]+2022|lookup[[:space:]]+2022|(^|[[:space:]])wlan0($|[[:space:]])' "$command_log"; then
+    printf '%s\n' 'eBPF hotspot reconciliation installed or guessed TUN state' >&2
+    cat "$command_log" >&2
+    exit 1
+  fi
+)
+
+assert_ebpf_skips_tun_hotspot_routes
 
 printf '%s\n' 'hotspot routing test passed'

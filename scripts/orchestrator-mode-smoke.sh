@@ -361,18 +361,26 @@ export MAGICNET_IPV6_MODE="$MAGICNET_TEST_DNS_STRATEGY"
 export MAGICNET_TUN_MTU="$MAGICNET_TEST_TUN_MTU"
 export MAGICNET_UDP_TIMEOUT="$MAGICNET_TEST_UDP_TIMEOUT"
 
-for legacy_mode in proxy external external-tun hybrid; do
-    printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$legacy_mode" >"$MODDIR/.config/magicnet/transparent-mode.conf"
-    normalized_mode=$(
+for invalid_mode in proxy external external-tun hybrid unknown auto; do
+    printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$invalid_mode" >"$MODDIR/.config/magicnet/transparent-mode.conf"
+    invalid_before="$(sha256sum "$MODDIR/.config/magicnet/transparent-mode.conf")"
+    if (
+        # Called indirectly by the sourced production file.
+        # shellcheck disable=SC2329
         import() { :; }
+        # shellcheck disable=SC2329
         info() { :; }
+        # shellcheck disable=SC2329
         warn() { :; }
-        # shellcheck disable=SC1090
+        # shellcheck disable=SC1090,SC1091
         . "$ROOT_DIR/src/MagicNet/lib/magicnet/common.sh"
         magicnet_transparent_mode
-    )
-    [ "$normalized_mode" = "tun" ] || {
-        echo "orchestrator smoke failed: legacy mode $legacy_mode did not normalize to tun" >&2
+    ) >/dev/null 2>&1; then
+        echo "orchestrator smoke failed: invalid mode $invalid_mode was accepted" >&2
+        exit 1
+    fi
+    [ "$(sha256sum "$MODDIR/.config/magicnet/transparent-mode.conf")" = "$invalid_before" ] || {
+        echo "orchestrator smoke failed: rejected mode $invalid_mode mutated its file" >&2
         exit 1
     }
 done

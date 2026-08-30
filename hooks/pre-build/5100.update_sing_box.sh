@@ -1,59 +1,61 @@
 #!/bin/bash
 # shellcheck source=hooks/lib/utils.sh
-# shellcheck source=hooks/lib/release_utils.sh
-# shellcheck source=hooks/lib/release_locks.sh
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
-. "$KAM_HOOKS_ROOT/lib/release_utils.sh"
-. "$KAM_HOOKS_ROOT/lib/release_locks.sh"
 
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
+PROJECT_ROOT="${KAM_PROJECT_ROOT:-$(cd "$KAM_HOOKS_ROOT/.." && pwd)}"
+SOURCE_DIR="${PROJECT_ROOT}/sing-box"
+BUILD_SCRIPT="${PROJECT_ROOT}/scripts/build-sing-box.sh"
 VERSION_FILE="${KAM_MODULE_ROOT}/singbox.version"
 TARGET_DIR="${KAM_MODULE_ROOT}/bin"
 TARGET_BIN="${TARGET_DIR}/sing-box"
-STATE_DIR="${KAM_MODULE_ROOT}/.local/state"
-CACHE_FILE="${STATE_DIR}/sing-box.archive"
 
 if [ "$MAGIC_SINGBOX" -eq 0 ]; then
     rm -f "$VERSION_FILE" "$TARGET_BIN"
     exit 0
 fi
 
-require_command curl "curl not found!"
-require_command tar "tar not found!"
-mkdir -p "$TARGET_DIR" "$STATE_DIR"
-
-if ! release_lock_lookup sing-box || ! release_lock_is_valid; then
-    log_error "sing-box: invalid repository release lock"
+if [ ! -x "$BUILD_SCRIPT" ]; then
+    log_error "sing-box: build helper is missing or not executable: $BUILD_SCRIPT"
+    exit 1
+fi
+if [ ! -f "$SOURCE_DIR/go.mod" ]; then
+    log_error "sing-box: source submodule is not initialized; run git submodule update --init sing-box"
     exit 1
 fi
 
-TMP_DIR=$(hook_make_temp_dir)
+SOURCE_REVISION=$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null) || {
+    log_error "sing-box: failed to resolve the fork source revision"
+    exit 1
+}
+case "$SOURCE_REVISION" in
+*[!0-9a-f]* | '')
+    log_error "sing-box: invalid fork source revision"
+    exit 1
+    ;;
+esac
+SOURCE_REF="LIghtJUNction/sing-box@${SOURCE_REVISION}"
+
+mkdir -p "$TARGET_DIR"
+TARGET_NEW="${TARGET_BIN}.new.$$"
+VERSION_NEW="${VERSION_FILE}.new.$$"
 cleanup() {
-    rm -rf "$TMP_DIR"
+    rm -f "$TARGET_NEW" "$VERSION_NEW"
 }
 trap cleanup EXIT
 
-if hook_locked_cache_is_valid "$CACHE_FILE" "$VERSION_FILE" "$RELEASE_LOCK_TAG" "$RELEASE_LOCK_SHA256"; then
-    log_info "sing-box: using verified locked cache ($RELEASE_LOCK_TAG)"
-else
-    DOWNLOAD_PATH="$TMP_DIR/$RELEASE_LOCK_ASSET"
-    if ! hook_download_locked_asset "$RELEASE_LOCK_REPO" "$RELEASE_LOCK_TAG" "$RELEASE_LOCK_ASSET" "$TMP_DIR" >/dev/null \
-        || ! hook_verify_sha256 "$DOWNLOAD_PATH" "$RELEASE_LOCK_SHA256"; then
-        log_error "sing-box: locked download or verification failed; existing target was not changed"
-        exit 1
-    fi
-    mv -f "$DOWNLOAD_PATH" "$CACHE_FILE"
+if ! MAGICNET_SINGBOX_SOURCE_DIR="$SOURCE_DIR" \
+    "$BUILD_SCRIPT" android arm64 "$TARGET_NEW" >/dev/null; then
+    log_error "sing-box: fork source build failed; existing target was not changed"
+    exit 1
 fi
 
-hook_extract_binary "$CACHE_FILE" "$TMP_DIR/extract" "sing-box" "*sing*box*" || {
-    log_error "sing-box: release archive did not contain a safe executable"
+printf '%s\n' "$SOURCE_REF" >"$VERSION_NEW" || {
+    log_error "sing-box: failed to stage source provenance"
     exit 1
 }
+chmod 0755 "$TARGET_NEW"
+mv -f "$TARGET_NEW" "$TARGET_BIN"
+mv -f "$VERSION_NEW" "$VERSION_FILE"
 
-cp "$HOOK_EXTRACTED_BINARY" "$TARGET_BIN.new"
-chmod 0755 "$TARGET_BIN.new"
-mv -f "$TARGET_BIN.new" "$TARGET_BIN"
-printf '%s\n' "$RELEASE_LOCK_TAG" >"$VERSION_FILE.new"
-mv -f "$VERSION_FILE.new" "$VERSION_FILE"
-
-log_success "sing-box installed: $RELEASE_LOCK_TAG -> $TARGET_BIN"
+log_success "sing-box built from $SOURCE_REF -> $TARGET_BIN"

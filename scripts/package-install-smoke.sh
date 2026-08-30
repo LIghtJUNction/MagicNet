@@ -118,8 +118,11 @@ export MODDIR="$MODPATH"
 export BOOTMODE=true
 export MAGICNET_NONINTERACTIVE=1
 export MAGICNET_PREV_DIR="$PREV_MOD"
-export TMPDIR="$TMP/tmp"
-mkdir -p "$TMPDIR" "$POISONED_CALLER_PATH"
+# A real KernelSU metamodule can expose an unusable TMPDIR. Migration data must
+# stay in a manager-owned sibling path instead of being silently discarded.
+export TMPDIR="$TMP/not-a-directory"
+: >"$TMPDIR"
+mkdir -p "$POISONED_CALLER_PATH"
 
 if ! "$HOST_ENV" -u LD_LIBRARY_PATH -u MAGICNET_NONINTERACTIVE -u MAGICNET_PREV_DIR \
     ZIPFILE="$ZIP_PATH" \

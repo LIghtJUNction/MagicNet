@@ -16,6 +16,8 @@ state plane. The detailed runtime design and its invariants live in
   path.
 - `src/MagicNet/lib/magicnet`: device runtime shell modules. These implement
   lifecycle, subscription, routing, DNS, and supervisor behavior.
+- `sing-box`: pinned `LIghtJUNction/sing-box` source submodule. Build hooks
+  compile this fork into the Android arm64 data-plane binary.
 - `webui`: Vue user interface. It communicates through the CLI API contract.
 - `hooks`: reproducible build and release hooks.
 - `scripts`: policy, lifecycle, packaging, and regression tests.
@@ -32,7 +34,8 @@ WebUI / MCP / module entry scripts
    module-owned shell/runtime state
                |
                v
-       sing-box magicnet0 TUN
+ sing-box transparent dataplane
+ (tun/magicnet0 or ebpf/cgroup+TC)
 ```
 
 The CLI is the shared control boundary. New integrations should reuse it and
@@ -40,7 +43,13 @@ must not execute a parallel set of privileged shell operations.
 
 ## Stable invariants
 
-- The transparent data plane is sing-box `magicnet0` TUN only.
+- The transparent data plane is an explicit sing-box `tun|ebpf` choice. `tun`
+  remains the default and owns `magicnet0`; `ebpf` owns local cgroup programs and,
+  only for confirmed downstream interfaces, shared TC programs. Release builds
+  include `with_ebpf`; `auto`, TProxy, Redirect, and netd `ALLOW_MULTI` remain excluded.
+- Mode changes are serialized and transactional: validate/probe the candidate,
+  stop the previous owned process, start and verify the target, then commit; any
+  failure restores the byte-exact previous mode/config and records rollback state.
 - Configuration candidates are validated before activation and updates are
   transactional.
 - Module-managed files and processes are identified by exact owned paths.

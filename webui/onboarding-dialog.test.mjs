@@ -17,7 +17,7 @@ const guide = readFileSync(
 
 for (const copy of [
   "第一次使用 MagicNet",
-  "MagicNet 只走 sing-box 的 magicnet0 TUN",
+  "MagicNet 默认使用 sing-box magicnet0 TUN，也允许显式切换 eBPF",
   "MagicNet 不提供节点和账号",
   "校验没通过时，MagicNet 继续使用上一次可用的配置",
   "MagicNet 检查并应用配置后",
@@ -101,7 +101,7 @@ for (const target of ["subs", "control", "health", "output"]) {
 
 for (const required of [
   "## 第一次使用：跟着新手引导完成",
-  "MagicNet 只走 `sing-box` + `magicnet0` TUN",
+  "MagicNet 只允许显式 `sing-box` `tun|ebpf`，默认 TUN",
   "MagicNet 不提供订阅服务，也不生成节点",
   "不要手工改运行中的 `sing-box` 配置文件",
   "异常细节继续看“输出”",
@@ -112,9 +112,11 @@ for (const required of [
   );
 }
 
+assert.match(dialog, /eBPF/);
+assert.match(dialog, /tun\|ebpf/);
+
 for (const forbidden of [
   /TProxy/,
-  /eBPF/,
   /ALLOW_MULTI/,
   /subscription url/i,
   /secret/i,
@@ -123,8 +125,10 @@ for (const forbidden of [
   assert.doesNotMatch(dialog, forbidden);
 }
 
+assert.match(guide, /ALLOW_MULTI/);
+assert.match(guide, /eBPF/);
+
 for (const forbidden of [
-  /ALLOW_MULTI/,
   /token[:：]\s*\S+/i,
   /password[:：]\s*\S+/i,
 ]) {

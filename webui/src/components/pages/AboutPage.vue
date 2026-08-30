@@ -12,7 +12,7 @@ import StatusDot from "@/components/ui/StatusDot.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import {
-  DATAPLANE_IFACE,
+  DATAPLANE_LABEL,
   dataPlaneFacts,
   firstRunSteps,
   formatAboutOverview,
@@ -33,13 +33,13 @@ const checks = successChecks();
 const pathNodes = pathFlowNodes();
 const overview = computed(() => formatAboutOverview(facts, steps, checks));
 
-const tunLabel = computed(() => {
+const dataplaneLabel = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "sing-box 运行中";
   if (state.runtime.singBoxState === "stopped") return "已停止";
   return "状态未知";
 });
 
-const tunTone = computed(() => {
+const dataplaneTone = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "success" as const;
   if (state.runtime.singBoxState === "stopped") return "warning" as const;
   return "neutral" as const;
@@ -70,26 +70,26 @@ async function copyOverview(): Promise<void> {
     <PageHeader
       overline="Data Plane"
       title="路径速览"
-      description="一眼看清 MagicNet 当前只走 sing-box magicnet0 TUN，以及怎样用健康检查证明接管成功。"
+      description="一眼看清 MagicNet 当前选择的 sing-box TUN 或 eBPF 数据面，以及怎样用健康检查证明接管成功。"
     >
       <template #actions>
         <Button variant="outline" @click="copyOverview">
           <Copy :size="17" aria-hidden="true" />{{ copied ? "已复制说明" : "复制说明" }}
         </Button>
-        <Badge :tone="tunTone" class="gap-2">
+        <Badge :tone="dataplaneTone" class="gap-2">
           <StatusDot :tone="statusDotTone" />
-          {{ tunLabel }}
+          {{ dataplaneLabel }}
         </Badge>
       </template>
     </PageHeader>
 
     <div class="grid gap-3 sm:grid-cols-3">
-      <StatTile label="数据面" :value="DATAPLANE_IFACE" hint="唯一透明接口" mono />
-      <StatTile label="核心" value="sing-box TUN" hint="不占用系统 VPN slot" />
+      <StatTile label="数据面" :value="DATAPLANE_LABEL" hint="显式选择，不使用 auto" mono />
+      <StatTile label="核心" value="sing-box" hint="不占用系统 VPN slot" />
       <StatTile
         label="验收"
-        value="health + TUN"
-        hint="以 cli 与 magicnet0 为准"
+        value="health + dataplane"
+        hint="以 cli transparent status 与 cli health 为准"
       />
     </div>
 
@@ -97,13 +97,13 @@ async function copyOverview(): Promise<void> {
       <div class="mn-path-board__head">
         <CardHeading
           overline="LIVE PATH"
-          title="Android root → magicnet0 → sing-box"
-          description="这是模块 WebUI 要先证明的真实路径。节点选择仍由 sing-box 面板负责。"
+          title="Android root → transparent dataplane → sing-box"
+          description="TUN 以 magicnet0 为准；eBPF 以 cgroup 与 shared TC 状态为准。节点选择仍由 sing-box 面板负责。"
         >
           <Radio :size="18" aria-hidden="true" />
         </CardHeading>
       </div>
-      <ol class="mn-path-flow" :data-state="pathState" aria-label="MagicNet TUN 数据面路径">
+      <ol class="mn-path-flow" :data-state="pathState" aria-label="MagicNet 透明代理数据面路径">
         <li
           v-for="(node, index) in pathNodes"
           :key="node.code"
@@ -128,8 +128,8 @@ async function copyOverview(): Promise<void> {
     <Card class="grid gap-4 !p-4 md:!p-6">
       <CardHeading
         overline="PATH"
-        title="为什么只保留这条路径"
-        description="主线刻意收敛，避免旁路模式把状态判断搞乱。"
+        title="为什么只保留这两种模式"
+        description="TUN 与 eBPF 共用一套控制面；主线仍不恢复 TProxy、Redirect 或 auto。"
       />
       <div class="mn-path-facts">
         <article
@@ -149,7 +149,7 @@ async function copyOverview(): Promise<void> {
         <CardHeading
           overline="START"
           title="首次成功运行"
-          description="三步就能确认设备已经被 TUN 接管。"
+          description="三步确认设备已经被当前显式数据面接管。"
         />
         <ol class="mn-path-steps">
           <li
@@ -178,7 +178,7 @@ async function copyOverview(): Promise<void> {
         <CardHeading
           overline="ACCEPT"
           title="成功判据"
-          description="不要寻找已删除的旁路。主线只支持 sing-box magicnet0 TUN。"
+          description="主线只允许显式 tun|ebpf；不提供 auto，也不恢复 TProxy、Redirect 或 netd ALLOW_MULTI。"
         />
         <ul class="mn-path-checks">
           <li

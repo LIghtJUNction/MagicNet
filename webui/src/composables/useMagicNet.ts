@@ -630,19 +630,30 @@ function markQuietFailure(
 }
 
 async function refreshStatus(foregroundToken?: number): Promise<boolean> {
-  const command = startForegroundCommand(
+  const serviceCommand = startForegroundCommand(
     "service status",
-    "刷新状态",
+    "刷新服务状态",
     true,
     "",
     foregroundToken,
   );
-  const uiToken = command.token;
+  const transparentCommand = startForegroundCommand(
+    "transparent status",
+    "刷新透明代理状态",
+    true,
+    "",
+    foregroundToken,
+  );
+  const uiToken = serviceCommand.token;
   const allowBusy = foregroundToken !== undefined;
-  const text = await command.promise;
-  if (markQuietFailure("刷新状态", text, uiToken, allowBusy)) return false;
+  const [serviceText, transparentText] = await Promise.all([
+    serviceCommand.promise,
+    transparentCommand.promise,
+  ]);
+  const failure = [serviceText, transparentText].find(execFailed);
+  if (failure && markQuietFailure("刷新状态", failure, uiToken, allowBusy)) return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.runtime = parseRuntime(text, state.runtime);
+    state.runtime = parseRuntime(`${serviceText}\n${transparentText}`, state.runtime);
   }
   return true;
 }

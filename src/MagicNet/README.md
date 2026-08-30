@@ -1,8 +1,8 @@
 # MagicNet
 
-MagicNet 是 Android root 设备上的 sing-box TUN 网络模块。它通过 root 管理的 `magicnet0` 接管设备流量，提供订阅导入、节点选择、应用/Wi-Fi/热点策略、DNS 防泄露、WebUI、CLI 和 MCP。
+MagicNet 是 Android root 设备上的 sing-box 透明网络模块。默认 `tun` 通过 root 管理的 `magicnet0` 接管流量；显式 `ebpf` 使用 local cgroup，并在确认真实下游接口后使用 shared TC。两种模式都提供订阅导入、节点选择、应用/Wi-Fi/热点策略、DNS 防泄露、WebUI、CLI 和 MCP。
 
-当前模块只维护 `sing-box` + `magicnet0` TUN，不包含 TProxy、eBPF 或其他透明路径，也不会调用应用侧 `VpnService.establish()` 占用系统 VPN slot。
+当前模块只允许 `tun|ebpf`，不包含 `auto`、TProxy、Redirect 或 netd `ALLOW_MULTI` 路径，也不会调用应用侧 `VpnService.establish()` 占用系统 VPN slot。
 
 ## 安装后必做
 
@@ -14,7 +14,7 @@ MagicNet 是 Android root 设备上的 sing-box TUN 网络模块。它通过 roo
 ```bash
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli transparent status
-su -c 'ip link show magicnet0'
+# 仅 TUN 模式要求：su -c 'ip link show magicnet0'
 ```
 
 MagicNet 不提供节点、订阅或外部出口。请只配置你有权使用的资源。
@@ -42,7 +42,7 @@ su -c /data/adb/modules/MagicNet/cli node current
 ## 应用、Wi-Fi 与热点
 
 ```bash
-# Proxy 强制代理；Direct 仍进 TUN 但直连；Bypass 完全离开 TUN 与 MagicNet DNS
+# Proxy 强制代理；Direct 在当前数据面内直连；Bypass 完全离开 MagicNet 数据面与 DNS
 su -c '/data/adb/modules/MagicNet/cli app add com.example.app proxy'
 su -c '/data/adb/modules/MagicNet/cli app add com.example.browser direct'
 su -c '/data/adb/modules/MagicNet/cli app add com.example.vpn bypass'
@@ -57,9 +57,9 @@ su -c /data/adb/modules/MagicNet/cli hotspot enable
 su -c /data/adb/modules/MagicNet/cli hotspot status
 ```
 
-应用策略按 Android 多用户解析 UID。Bypass UID 同时绕过 TUN 与 DNS 捕获，主要用于外部 VPN 共存；普通“不走代理”优先选择 Direct。
+应用策略按 Android 多用户解析 UID。Bypass UID 同时绕过当前透明数据面与 DNS 捕获，主要用于外部 VPN 共存；普通“不走代理”优先选择 Direct。
 
-热点由 Android/OEM 创建 DHCP 和 NAT。启用 Proxy 后，MagicNet 会发现当前 tether 接口和私网网段，写入指向 `table 2022` 的临时 `ip rule`，把下游 IPv4 流量置于 Android tethering 规则之前送入 `magicnet0`；同时临时关闭 tether 硬件卸载，disable、停止或卸载时清理规则并恢复原值。接口变化由 watcher 自动重算。
+热点由 Android/OEM 创建 DHCP 和 NAT。启用 Proxy 后，MagicNet 只使用已确认的 tether 接口和私网网段：TUN 写入 `table 2022` 规则并送入 `magicnet0`；eBPF hybrid 在实际下游接口附加 shared TC。接口变化由 watcher 原子重生成，disable、停止或卸载时清理受管状态并恢复 tether 硬件卸载原值。
 
 ## 网络与恢复
 
@@ -71,7 +71,7 @@ su -c /data/adb/modules/MagicNet/cli transparent apply
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
 ```
 
-断网时保留现场，不要切换到不存在的透明模式。验收以 `cli health`、`cli transparent status` 和 `magicnet0` 为准。
+断网时保留现场，不要反复切换模式。验收统一使用 `cli health` 与 `cli transparent status`：TUN 以 `magicnet0` 为准；eBPF 以 capability、local cgroup 与 shared TC/interface 状态为准。
 
 ## MCP
 
@@ -122,7 +122,7 @@ MagicNet 新安装默认按节点名过滤 `免费`、`free`、`HK`、`香港`�
 
 ## 两跳链式代理
 
-MagicNet 支持基于 sing-box detour 的本地两跳链路。它保持单进程、单 magicnet0 TUN，默认关闭；第一版按 TCP 链路设计，链路失败时不会静默回落到直连。
+MagicNet 支持基于 sing-box detour 的本地两跳链路。它保持单进程、单透明数据面，默认关闭；第一版按 TCP 链路设计，链路失败时不会静默回落到直连。
 
 先从当前订阅节点中指定中转和落地节点：
 
@@ -141,14 +141,14 @@ Zashboard 可以直接连接 MagicNet 的 Clash API 或 sing-box 原生 API，�
 
 ## 透明代理边界
 
-MagicNet 目前只支持 `tun` 透明模式，使用 `sing-box` `magicnet0` TUN 接管透明流量。旧配置中的 `proxy`、`external-tun`、`hybrid` 会安全归一为 `tun`，CLI 不再接受这些模式。
+MagicNet 只支持显式 `tun|ebpf`，默认 `tun`。CLI 拒绝未知值，不提供 `auto`；切换会先校验候选配置和 eBPF capability，失败时恢复旧模式与旧配置。
 
-- 分应用策略分为三类：`Proxy` 强制走代理；`Direct` 仍进入 TUN，但强制走 `direct` 出站；`Bypass TUN` 则让应用完全离开 MagicNet。
-- WebUI 的“全局接管”对应黑名单语义：默认应用进入 TUN，`Bypass TUN` 名单走系统网络；“仅名单接管”对应白名单语义：只有 `Proxy` 和 `Direct` 名单进入 TUN。
-- Root 命令行模式会把包名解析为 Android UID，再通过 TUN 的 `include_uid` / `exclude_uid` 执行边界，避免包名过滤在重启后失效。共享同一 UID 的应用会一起生效。
+- `tun` 使用 `sing-box` `magicnet0`；`ebpf` 使用 local cgroup，热点 Proxy 且存在已确认下游接口时进入 hybrid/shared TC，否则显示 shared pending。
+- 分应用策略分为三类：`Proxy` 强制走代理；`Direct` 是已接管后的 sing-box `direct` 出站；`Bypass` 让应用完全离开 MagicNet 数据面。Direct 不会被错误转换成 eBPF bypass。
+- WebUI 的“全局接管”对应黑名单语义；“仅名单接管”对应白名单语义。Root 命令行会把包名解析为 Android UID，再写入 TUN 或 eBPF local UID 边界；共享同一 UID 的应用会一起生效。
 - Android `netd` 在部分设备上会把 Bypass 应用的系统 DNS 请求统一以 UID 0 发出；存在 Bypass UID 时，DNS 捕获链会保守保留 UID 0 的 `RETURN`，避免无法归属的请求重新进入 MagicNet。
-- `Bypass TUN` 不等于断网或阻止访问。应用离开 MagicNet 后会使用系统上游网络；如果上游网络或另一个 VPN 能访问 Google，加入 Bypass 后的 Chrome 仍然可以访问。
-- 要验证 Chrome 没有使用 MagicNet 代理，请在 WebUI“应用策略”中选择 `Direct`，或执行 `cli app add com.android.chrome direct`。只有多 VPN 共存或明确需要完全避开 MagicNet 时才选择 `Bypass TUN`。
+- `Bypass` 不等于断网或阻止访问。应用离开 MagicNet 后会使用系统上游网络；如果上游网络或另一个 VPN 能访问 Google，加入 Bypass 后的 Chrome 仍然可以访问。
+- 要验证 Chrome 没有使用 MagicNet 代理，请在 WebUI“应用策略”中选择 `Direct`，或执行 `cli app add com.android.chrome direct`。只有多 VPN 共存或明确需要完全避开 MagicNet 时才选择 `Bypass`。
 - 默认网络策略是双栈、DNS 优先 IPv4、`mixed` TUN 栈、MTU `1400` 和 UDP 会话超时 `5m`。
 - 可在 WebUI 的“UDP / IPv6”卡片切换，或执行 `cli network set <ipv4_only|prefer_ipv4|prefer_ipv6> <1280-1500> <1m|3m|5m|10m|15m|30m>`。
 - `ipv4_only` 是网络或代理节点不支持 IPv6 时的兼容回退；切回双栈会自动移除 MagicNet 管理的 IPv6 拦截规则。

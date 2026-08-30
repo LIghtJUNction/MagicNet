@@ -1,3 +1,5 @@
+import type { TransparentMode } from "@/types";
+
 export type ControlDangerAction = {
   key: string;
   args: string;
@@ -55,6 +57,21 @@ export function stopAllServicesAction(): ControlDangerAction {
     label: "停止全部服务",
     message: "确认停止全部服务？流量可能无法继续通过 MagicNet。",
     background: true
+  };
+}
+
+export function setTransparentModeAction(
+  mode: TransparentMode,
+  currentMode: TransparentMode,
+): ControlDangerAction {
+  const targetLabel = mode === "ebpf" ? "eBPF" : "TUN";
+  const currentLabel = currentMode === "ebpf" ? "eBPF" : "TUN";
+  return {
+    key: `transparent-set-${mode}`,
+    args: `transparent set ${mode}`,
+    label: `切换为 ${targetLabel}`,
+    message: `确认从 ${currentLabel} 切换为 ${targetLabel}？MagicNet 会停止当前数据面，验证并启动目标模式；失败时将尝试恢复 ${currentLabel}。`,
+    background: false,
   };
 }
 

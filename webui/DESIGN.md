@@ -67,7 +67,7 @@ MagicNet 是 Android root 设备上的实时网络控制台，不是普通 VPN �
 
 ## Signature Mechanism: Live Route Stack
 
-首屏出现一条可读的运行路径：Android root 入口 → `magicnet0` → sing-box 核心 → 策略/出口。它显示结构与当前运行状态，但不虚构未验证的接口、节点或出口事实。状态变化在同一位置更新，并带最近任务或更新时间；失败直接提供下一步操作。
+首屏出现一条可读的运行路径：Android root 入口 → 当前透明数据面 → sing-box 核心 → 策略/出口。`tun` 数据面显示 `magicnet0`；`ebpf` 数据面显示本机 cgroup backend，以及仅在 MagicNet 已确认真实下游接口后出现的 shared TC 路径。界面同时区分 configured/effective mode、attached/pending/rollback，不虚构接口、attachment、节点或出口事实。状态变化在同一位置更新，并带最近任务或更新时间；失败直接提供下一步操作。
 
 ## Component Stylings
 
@@ -100,19 +100,20 @@ MagicNet 是 Android root 设备上的实时网络控制台，不是普通 VPN �
 - 玻璃拟态、紫蓝渐变、发光边框、漂浮卡片墙、大面积圆角胶囊。
 - 用 ASCII 图案遮挡正文、用终端噱头替代清晰按钮、假装存在命令行输入能力。
 - 六等分或十等分移动端底栏、小于 44px 的触控目标、10px 导航标签。
-- 改写后端事实、泄露订阅或设备隐私、恢复非 TUN 路径。
+- 改写后端事实、泄露订阅或设备隐私、把 capability probe 冒充 attachment 状态。
+- 恢复 TProxy、Redirect 或 netd `ALLOW_MULTI` 路径，或增加自动猜测模式/接口的 `auto`。
 
 ## Source Evidence & Confidence
 
-- [observed] path: `PRODUCT.md`
-  sha256: `c22912c4e72a4b5f9579b5bb5561f2cb1e39c767abbcc013273a510681bfb140`
+- [observed] path: `src/styles.css`
+  sha256: `194186af3c433ffa59288f4a7d0fd3c96cab1abf50895d949ecbd7b4bf9b938a`
   confidence: high
-- [observed] path: `.scratch/frontend-redesign-20260823/spec.md`
-  sha256: `7ecb87443567793d332ca986192b1a95ca7c6baba346d5a75acfeeae045571ba`
+- [observed] path: `src/components/ui/Button.vue`
+  sha256: `8329fbc49615521018f335c57075d52d98170b799cdf938e07cffcb774d8552f`
   confidence: high
 
 ## Known Gaps & Exceptions
 
-- The runtime implementation still reflects the superseded visual world until this run completes Fill and verification.
+- 本次只在现有控制面内增加显式 `tun|ebpf` 选择与状态，不重做导航或视觉系统。
 - Full English copy is outside this run; layout and component contracts must remain translation-ready.
-- Rendered mobile evidence is required before treating contrast, long-text behavior, and safe-area behavior as verified.
+- Rendered mobile evidence is required before treating mode switching, long-text behavior, and safe-area behavior as verified.

@@ -28,10 +28,18 @@ import rich
 import this
 
 MAGICNET_PREV_DIR="${MAGICNET_PREV_DIR:-/data/adb/modules/MagicNet}"
-MAGICNET_BACKUP_DIR="${MAGICNET_BACKUP_DIR:-${TMPDIR:-/dev/tmp}/magicnet-install-backup}"
-if [ -d "$MAGICNET_PREV_DIR" ] && [ "$MAGICNET_PREV_DIR" != "$MODPATH" ]; then
-  rm -rf "$MAGICNET_BACKUP_DIR" 2>/dev/null || true
-  mkdir -p "$MAGICNET_BACKUP_DIR"
+# Keep migration data beside the manager-owned update directory. Some rooted
+# Android builds make TMPDIR (notably /data/local/tmp) unavailable to module
+# installers; silently using it would discard subscriptions and user policy.
+MAGICNET_BACKUP_DIR="${MAGICNET_BACKUP_DIR:-${MODPATH}.install-backup}"
+case "$MAGICNET_BACKUP_DIR" in
+"" | / | "$MODPATH" | "$MAGICNET_PREV_DIR")
+  abort "! unsafe MagicNet migration backup path: $MAGICNET_BACKUP_DIR"
+  ;;
+esac
+if [ -d "$MAGICNET_PREV_DIR" ]; then
+  rm -rf "$MAGICNET_BACKUP_DIR" || abort "! failed to reset the MagicNet migration backup"
+  mkdir -p "$MAGICNET_BACKUP_DIR" || abort "! failed to create the MagicNet migration backup"
   for _item in \
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.local" \
@@ -41,9 +49,12 @@ if [ -d "$MAGICNET_PREV_DIR" ] && [ "$MAGICNET_PREV_DIR" != "$MODPATH" ]; then
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \
     ".config/magicnet"; do
+    if [ -L "${MAGICNET_PREV_DIR}/${_item}" ]; then
+      abort "! refusing unsafe symlink in MagicNet migration data: $_item"
+    fi
     if [ -e "${MAGICNET_PREV_DIR}/${_item}" ]; then
-      mkdir -p "${MAGICNET_BACKUP_DIR}/${_item%/*}"
-      cp -a "${MAGICNET_PREV_DIR}/${_item}" "${MAGICNET_BACKUP_DIR}/${_item}" 2>/dev/null || true
+      mkdir -p "${MAGICNET_BACKUP_DIR}/${_item%/*}" || abort "! failed to prepare MagicNet migration data: $_item"
+      cp -a "${MAGICNET_PREV_DIR}/${_item}" "${MAGICNET_BACKUP_DIR}/${_item}" || abort "! failed to back up MagicNet migration data: $_item"
     fi
   done
   unset _item
@@ -57,10 +68,10 @@ set_i18n "INSTALL_TITLE" \
   "ko" "MagicNet 설치"
 
 set_i18n "INSTALL_PROFILE" \
-  "zh" "系统级戒网瘾模块，内置 sing-box、域名封锁、TUN 透明治理与 WebUI 控制面。" \
-  "en" "System-level digital detox module with sing-box, domain blocking, TUN transparent routing, and WebUI control surfaces." \
-  "ja" "sing-box、ドメインブロック、TUN 透過制御、WebUI 制御面を備えたシステム級デジタルデトックスモジュールです。" \
-  "ko" "sing-box, 도메인 차단, TUN 투명 제어, WebUI 제어면을 포함한 시스템 수준 디지털 디톡스 모듈입니다."
+  "zh" "系统级戒网瘾模块，内置 sing-box、域名封锁、TUN/eBPF 透明治理与 WebUI 控制面。" \
+  "en" "System-level digital detox module with sing-box, domain blocking, explicit TUN/eBPF transparent routing, and WebUI control surfaces." \
+  "ja" "sing-box、ドメインブロック、TUN/eBPF 透過制御、WebUI 制御面を備えたシステム級デジタルデトックスモジュールです。" \
+  "ko" "sing-box, 도메인 차단, TUN/eBPF 투명 제어, WebUI 제어면을 포함한 시스템 수준 디지털 디톡스 모듈입니다."
 
 set_i18n "INSTALL_ROW_PROFILE" \
   "zh" "模块定位" \
@@ -69,10 +80,10 @@ set_i18n "INSTALL_ROW_PROFILE" \
   "ko" "개요"
 
 set_i18n "INSTALL_DEFAULTS" \
-  "zh" "默认启用：sing-box、TUN 自动路由、戒网瘾封锁列表、WebUI 与 CLI 控制面。" \
-  "en" "Enabled by default: sing-box, TUN auto-route, detox blocklist, WebUI and CLI control surfaces." \
-  "ja" "既定で有効: sing-box、TUN 自動ルート、デジタルデトックスブロックリスト、WebUI と CLI 制御面。" \
-  "ko" "기본 활성화: sing-box, TUN 자동 라우팅, 디지털 디톡스 차단 목록, WebUI 및 CLI 제어면."
+  "zh" "默认启用：sing-box、TUN 自动路由、戒网瘾封锁列表、WebUI 与 CLI 控制面；可显式切换 eBPF。" \
+  "en" "Enabled by default: sing-box, TUN auto-route, detox blocklist, WebUI and CLI control surfaces; eBPF is an explicit opt-in." \
+  "ja" "既定で有効: sing-box、TUN 自動ルート、デジタルデトックスブロックリスト、WebUI と CLI 制御面。eBPF は明示的に切り替えます。" \
+  "ko" "기본 활성화: sing-box, TUN 자동 라우팅, 디지털 디톡스 차단 목록, WebUI 및 CLI 제어면. eBPF는 명시적으로 전환합니다."
 
 set_i18n "INSTALL_ROW_DEFAULTS" \
   "zh" "默认行为" \
@@ -217,12 +228,12 @@ if [ -d "$MAGICNET_BACKUP_DIR" ]; then
     ".state/sing-box/selector-selections.json" \
     ".config/magicnet"; do
     if [ -e "${MAGICNET_BACKUP_DIR}/${_item}" ]; then
-      mkdir -p "${MODPATH}/${_item%/*}"
-      rm -rf "${MODPATH:?}/${_item}" 2>/dev/null || true
-      cp -a "${MAGICNET_BACKUP_DIR}/${_item}" "${MODPATH}/${_item}" 2>/dev/null || true
+      mkdir -p "${MODPATH}/${_item%/*}" || abort "! failed to prepare restored MagicNet migration data: $_item"
+      rm -rf "${MODPATH:?}/${_item}" || abort "! failed to replace MagicNet migration data: $_item"
+      cp -a "${MAGICNET_BACKUP_DIR}/${_item}" "${MODPATH}/${_item}" || abort "! failed to restore MagicNet migration data: $_item"
     fi
   done
-  rm -rf "$MAGICNET_BACKUP_DIR" 2>/dev/null || true
+  rm -rf "$MAGICNET_BACKUP_DIR" || abort "! failed to remove the MagicNet migration backup"
   unset _item
 fi
 

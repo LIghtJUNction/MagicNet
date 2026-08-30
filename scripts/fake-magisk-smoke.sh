@@ -366,8 +366,30 @@ exit 0
 write_mock sing-box '
 case "${1:-}" in
     version) echo "sing-box fake 0.0.0"; exit 0 ;;
-    check) exit 0 ;;
+    check)
+        [[ "${MAGICNET_FAKE_SINGBOX_CHECK_FAIL:-0}" != 1 ]]
+        exit 0
+        ;;
+    tools)
+        if [[ "${2:-}" == "ebpf" && "${3:-}" == "status" ]]; then
+            [[ "${MAGICNET_FAKE_EBPF_PROBE_FAIL:-0}" != 1 ]] || exit 1
+            programs="[]"
+            if [[ -s "${MODDIR:?}/.state/fake-sing-box.pid" ]] \
+                && kill -0 "$(cat "$MODDIR/.state/fake-sing-box.pid")" 2>/dev/null; then
+                programs="[{\"name\":\"sb_ebpf_conn4_\",\"type\":\"cgroup_sock_addr\"}]"
+                if grep -Eq "\"mode\"[[:space:]]*:[[:space:]]*\"hybrid\"" "$MODDIR/.config/sing-box/config.json"; then
+                    programs="[{\"name\":\"sb_ebpf_conn4_\",\"type\":\"cgroup_sock_addr\"},{\"name\":\"sb_share_ingres\",\"type\":\"sched_cls\"}]"
+                fi
+            fi
+            printf "%s\n" "{\"available\":true,\"local\":{\"available\":true},\"shared_network\":{\"available\":true},\"active_programs\":${programs}}"
+        fi
+        exit 0
+        ;;
     run)
+        if [[ "${MAGICNET_FAKE_SINGBOX_START_FAIL:-0}" == 1 ]] \
+            && grep -Eq "\"type\"[[:space:]]*:[[:space:]]*\"ebpf\"" "${3:-/dev/null}"; then
+            exit 1
+        fi
         mkdir -p "${MODDIR:?}/.state"
         echo "$$" >"$MODDIR/.state/fake-sing-box.pid"
         printf "%s" "sing-box" >/proc/$$/comm 2>/dev/null || true
@@ -1482,6 +1504,124 @@ PY
 }
 
 assert_transparent_mode tun
+
+config_digest() {
+    sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}'
+}
+
+mode_digest() {
+    sha256sum "$MODDIR/.config/magicnet/transparent-mode.conf" | awk '{print $1}'
+}
+
+assert_no_transparent_journal() {
+    if find "$MODDIR/.state" -maxdepth 3 -type d \
+        \( -iname '*transparent*transaction*' -o -iname '*transparent*journal*' \) \
+        -print -quit | grep -q .; then
+        echo "transparent mode journal was not cleaned" >&2
+        find "$MODDIR/.state" -maxdepth 3 -type d -print >&2
+        exit 1
+    fi
+}
+
+# A failed capability probe is a preflight failure: it must not stop the old
+# generation or publish either the mode file or candidate JSON.
+tun_config_digest="$(config_digest)"
+tun_mode_digest="$(mode_digest)"
+probe_log_start="$(wc -l <"$MOCK_LOG")"
+if run env MAGICNET_FAKE_EBPF_PROBE_FAIL=1 "$MODDIR/cli" transparent set ebpf; then
+    echo "transparent set ebpf ignored a failed capability probe" >&2
+    exit 1
+fi
+[[ "$(config_digest)" == "$tun_config_digest" ]]
+[[ "$(mode_digest)" == "$tun_mode_digest" ]]
+tail -n "+$((probe_log_start + 1))" "$MOCK_LOG" >"$TMP/ebpf-probe-failure.log"
+rg -q '^sing-box tools ebpf status ' "$TMP/ebpf-probe-failure.log"
+if rg -q '^killall .*sing-box|^sing-box run ' "$TMP/ebpf-probe-failure.log"; then
+    echo "failed eBPF preflight disturbed the running TUN generation" >&2
+    exit 1
+fi
+assert_no_transparent_journal
+
+# If the candidate core cannot start after the old generation is stopped, the
+# transaction restores both exact old files and starts the old TUN generation.
+start_failure_log_start="$(wc -l <"$MOCK_LOG")"
+if run env MAGICNET_FAKE_SINGBOX_START_FAIL=1 "$MODDIR/cli" transparent set ebpf; then
+    echo "transparent set ebpf ignored candidate start failure" >&2
+    exit 1
+fi
+[[ "$(config_digest)" == "$tun_config_digest" ]]
+[[ "$(mode_digest)" == "$tun_mode_digest" ]]
+tail -n "+$((start_failure_log_start + 1))" "$MOCK_LOG" >"$TMP/ebpf-start-failure.log"
+rg -q '^sing-box tools ebpf status ' "$TMP/ebpf-start-failure.log"
+rg -q '^sing-box run ' "$TMP/ebpf-start-failure.log"
+pidof sing-box >/dev/null
+assert_no_transparent_journal
+
+# Recreate the durable on-disk state left by an uncatchable interruption after
+# target publication. The next lifecycle entrypoint must restore the exact TUN
+# files before doing any new work.
+fault_config_digest="$(config_digest)"
+fault_mode_digest="$(mode_digest)"
+fault_journal="$MODDIR/.state/transparent-transaction"
+mkdir -m 700 "$fault_journal"
+printf '%s\n' tun >"$fault_journal/old-mode"
+printf '%s\n' 1 >"$fault_journal/old-mode-present"
+printf '%s\n' ebpf >"$fault_journal/target-mode"
+printf '%s\n' target-written >"$fault_journal/phase"
+printf '%s\n' 1 >"$fault_journal/old-config-present"
+cp "$MODDIR/.config/sing-box/config.json" "$fault_journal/old-config.json"
+chmod 600 "$fault_journal"/*
+printf '%s\n' 'MAGICNET_TRANSPARENT_MODE=ebpf' >"$MODDIR/.config/magicnet/transparent-mode.conf"
+printf '%s\n' '{"inbounds":[]}' >"$MODDIR/.config/sing-box/config.json"
+run "$MODDIR/cli" service start sing-box
+[[ "$(config_digest)" == "$fault_config_digest" ]]
+[[ "$(mode_digest)" == "$fault_mode_digest" ]]
+pidof sing-box >/dev/null
+assert_no_transparent_journal
+
+# Successful switch and repeated apply are deterministic. CLI status and
+# health must use eBPF capability/cgroup/TC evidence and must not demand
+# magicnet0 when the effective mode is local.
+run "$MODDIR/cli" transparent set ebpf
+run "$MODDIR/cli" transparent status >"$TMP/ebpf-transparent-status.log"
+rg -qx 'mode=ebpf' "$TMP/ebpf-transparent-status.log"
+rg -q '(^effective_mode=local$)|(effective=mode:local)' "$TMP/ebpf-transparent-status.log"
+# The host mock's long-lived process is `sleep`, so Rust ownership cannot bind
+# it to the packaged sing-box executable. Status must stay conservative instead
+# of turning a capability/active-program report into a false attachment claim.
+rg -q '^local_cgroup=(attached|configured)$' "$TMP/ebpf-transparent-status.log"
+rg -qx 'shared_tc=inactive' "$TMP/ebpf-transparent-status.log"
+if rg -q 'required[^[:alnum:]]+magicnet0|magicnet0[^[:alnum:]]+(missing|required)' "$TMP/ebpf-transparent-status.log"; then
+    echo "eBPF transparent status incorrectly required magicnet0" >&2
+    cat "$TMP/ebpf-transparent-status.log" >&2
+    exit 1
+fi
+run "$MODDIR/cli" health >"$TMP/ebpf-health.log"
+rg -q 'configured=mode:ebpf' "$TMP/ebpf-health.log"
+rg -q 'effective=mode:local' "$TMP/ebpf-health.log"
+rg -q 'probe=capability:' "$TMP/ebpf-health.log"
+if rg -q 'required[^[:alnum:]]+magicnet0|magicnet0[^[:alnum:]]+(missing|required)' "$TMP/ebpf-health.log"; then
+    echo "eBPF health incorrectly required magicnet0" >&2
+    cat "$TMP/ebpf-health.log" >&2
+    exit 1
+fi
+
+ebpf_config_digest="$(config_digest)"
+run "$MODDIR/cli" transparent apply
+[[ "$(config_digest)" == "$ebpf_config_digest" ]]
+run "$MODDIR/cli" transparent apply
+[[ "$(config_digest)" == "$ebpf_config_digest" ]]
+assert_no_transparent_journal
+
+# Exercise the reverse transition as well; an already-selected target is a
+# successful no-op at the file/config level.
+run "$MODDIR/cli" transparent set tun
+restored_tun_config_digest="$(config_digest)"
+restored_tun_mode_digest="$(mode_digest)"
+run "$MODDIR/cli" transparent set tun
+[[ "$(config_digest)" == "$restored_tun_config_digest" ]]
+[[ "$(mode_digest)" == "$restored_tun_mode_digest" ]]
+assert_no_transparent_journal
 
 for legacy_mode in proxy external external-tun hybrid; do
     # shellcheck disable=SC2016

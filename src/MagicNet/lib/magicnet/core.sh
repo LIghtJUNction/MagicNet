@@ -26,6 +26,23 @@ magicnet_refresh_status() {
     config set override.description "[MagicNet]: No kernel running" 2>/dev/null || true
 }
 
+magicnet_prepare_singbox_candidate_unlocked() {
+    magicnet_module_disabled && return 1
+    [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
+    magicnet_cmd_exists sing-box || return 1
+    magicnet_prepare_singbox_nodes_unlocked || return 1
+    magicnet_singbox_chain_apply || return 1
+    magicnet_singbox_apply_transparent_mode || return 1
+    magicnet_singbox_apply_hotspot_policy || return 1
+    magicnet_dns_apply_unlocked || return 1
+    magicnet_tailscale_apply_unlocked || return 1
+    magicnet_app_policy_apply_unlocked || return 1
+    magicnet_warp_apply_unlocked || return 1
+    magicnet_singbox_apply_zashboard ||
+        magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
+    magicnet_validate_singbox_transparent_config
+}
+
 magicnet_start_singbox_unlocked() {
     magicnet_module_disabled && return 1
     [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
@@ -44,32 +61,41 @@ magicnet_start_singbox_unlocked() {
         return 2
         ;;
     esac
-    magicnet_prepare_singbox_nodes_unlocked || return 1
-    magicnet_singbox_chain_apply || return 1
-    magicnet_singbox_apply_transparent_mode || return 1
-    magicnet_singbox_apply_hotspot_policy || return 1
-    # sing-box snapshots DNS servers and WARP endpoints when the process
-    # starts.  Applying these only in the post-start rewrite made a fresh
-    # start report success while the running core still held the old config.
-    magicnet_dns_apply_unlocked || return 1
-    magicnet_tailscale_apply_unlocked || return 1
-    # The preceding normalizers rebuild the managed TUN inbound.  Materialize
-    # per-app UID boundaries after all of them and before sing-box starts; a
-    # deferred rewrite cannot change the already-running core's in-memory routes.
-    magicnet_app_policy_apply_unlocked || return 1
-    magicnet_warp_apply_unlocked || return 1
-    # The running core snapshots clash_api.external_ui at process start.  A
-    # post-start rewrite only dirties config.json and cannot affect that core.
-    magicnet_singbox_apply_zashboard ||
-        magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
-    magicnet_tailscale_inject_auth_key || return 1
+    if [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" != 1 ]; then
+        magicnet_prepare_singbox_nodes_unlocked || return 1
+        magicnet_singbox_chain_apply || return 1
+        magicnet_singbox_apply_transparent_mode || return 1
+        magicnet_singbox_apply_hotspot_policy || return 1
+        # sing-box snapshots DNS servers and WARP endpoints when the process
+        # starts. Applying these only in the post-start rewrite made a fresh
+        # start report success while the running core still held the old config.
+        magicnet_dns_apply_unlocked || return 1
+        magicnet_tailscale_apply_unlocked || return 1
+        # The preceding normalizers rebuild the managed transparent inbound.
+        # Materialize per-app UID boundaries before sing-box snapshots it.
+        magicnet_app_policy_apply_unlocked || return 1
+        magicnet_warp_apply_unlocked || return 1
+        magicnet_singbox_apply_zashboard ||
+            magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
+        magicnet_tailscale_inject_auth_key || return 1
+    fi
+    # A rollback/recovery starts the byte-exact snapshot without rewriting it.
+    # The snapshot was already validated while its previous generation ran.
+    magicnet_validate_singbox_transparent_config || {
+        [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
+            magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
+        return 1
+    }
     import __singbox__
     if ! singbox_start; then
-        magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
+        [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
+            magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
         return 1
     fi
-    magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 ||
-        magicnet_warn "Failed to scrub the transient Tailscale auth key from config.json."
+    if [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" != 1 ]; then
+        magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 ||
+            magicnet_warn "Failed to scrub the transient Tailscale auth key from config.json."
+    fi
     if ! magicnet_singbox_running_has_nodes; then
         magicnet_warn "sing-box started but no proxy nodes were detected; stopping sing-box."
         singbox_stop >/dev/null 2>&1 || true
@@ -139,6 +165,26 @@ magicnet_kernel_start_preamble() {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         return 1
     }
+    if [ "${MAGICNET_TRANSPARENT_TRANSACTION_ACTIVE:-0}" != 1 ] &&
+        [ -d "$(magicnet_transparent_transaction_dir)" ]; then
+        # The interrupted target may already be running even though its journal
+        # was never committed. Stop it before restoring the previous files so
+        # the loaded dataplane cannot disagree with configured_mode.
+        if magicnet_cmd_exists sing-box; then
+            import __singbox__
+            singbox_stop >/dev/null 2>&1 || return 1
+        fi
+        magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true
+        magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
+        magicnet_disable_dns_capture >/dev/null 2>&1 || true
+        magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
+        if ! magicnet_recover_interrupted_transparent_transaction; then
+            magicnet_warn "Interrupted transparent mode transaction recovery failed"
+            return 1
+        fi
+        MAGICNET_TRANSPARENT_RESTORED_CONFIG=1
+        export MAGICNET_TRANSPARENT_RESTORED_CONFIG
+    fi
     if magicnet_live_kernel_fast_path; then
         _preamble_live_rc=0
     else

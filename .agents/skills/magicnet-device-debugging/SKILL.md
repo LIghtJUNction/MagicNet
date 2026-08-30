@@ -1,6 +1,6 @@
 ---
 name: magicnet-device-debugging
-description: Debug and verify MagicNet on a real Android root device. Use when working on MagicNet MCP usage, adb/root validation, TUN status, DNS leak diagnosis, sing-box behavior, certificate-less packet capture, eCapture/tcpdump checks, support bundles, device logs, or module runtime issues under /data/adb/modules/MagicNet.
+description: Debug and verify MagicNet on a real Android root device. Use when working on MagicNet MCP usage, adb/root validation, TUN/eBPF transparent status, DNS leak diagnosis, sing-box behavior, certificate-less packet capture, eCapture/tcpdump checks, support bundles, device logs, or module runtime issues under /data/adb/modules/MagicNet.
 ---
 
 # MagicNet Device Debugging
@@ -25,7 +25,7 @@ Determine the environment before collecting evidence: `uname -a`, `getprop ro.bu
 - Keep packet capture diagnostic-only. Do not restore the removed proxy MITM/TProxy capture path, `cli capture`, capture config files, or `lib/magicnet/capture_*`.
 - Do not reintroduce Android CA injection. `system/etc/security/cacerts`, `cli cert`, and generated MagicNet local CA support were removed; use tcpdump or eCapture for no-certificate diagnostics.
 - Do not add module-level `post-fs-data.sh` or placeholder `uninstall.sh` just for compatibility. MagicNet uses `service.sh` and `boot-completed.sh`; uninstall hooks belong in kamfw only when real cleanup exists.
-- Current MagicNet mainline is TUN-only. Do not reintroduce eBPF redirect, TProxy, `auto`, or netd `ALLOW_MULTI` promotion; use `cli transparent status` and `cli health`, not `cli ebpf status`.
+- Current MagicNet mainline explicitly supports sing-box `tun|ebpf`, with `tun` as the default. Do not add `auto` or restore TProxy, Redirect, or netd `ALLOW_MULTI`; use `cli transparent status` and `cli health`, not `cli ebpf status`.
 
 ## Baseline Snapshot
 
@@ -73,22 +73,25 @@ unset MCP_SECRET
 
 If the local MCP client reads `.mcp.json`, verify it points at `http://127.0.0.1:8766/mcp` unless `cli mcp status` reports a different port. If calls fail, inspect `/data/adb/modules/MagicNet/.log/mcp-server.log` with redaction.
 
-## TUN Status
+## Transparent Dataplane Status
 
-Use `cli transparent status` and `cli health` as the first-line status view. Current MagicNet deliberately has no eBPF redirect or netd status surface.
+Use `cli transparent status` and `cli health` as the first-line status view. Never infer effective mode from `magicnet0` alone and never treat the capability probe as attachment proof.
 
 ```sh
 adb shell 'su -M -c "/data/adb/modules/MagicNet/cli transparent status"'
 adb shell 'su -M -c "/data/adb/modules/MagicNet/cli health"'
 adb shell 'su -M -c "ip -o link show magicnet0 2>/dev/null || true"'
-adb shell 'su -M -c "ip rule; ip route"'
+adb shell 'su -M -c "test -f /sys/fs/cgroup/cgroup.controllers && cat /sys/fs/cgroup/cgroup.controllers || true"'
+adb shell 'su -M -c "ip rule; ip route; tc qdisc show 2>/dev/null || true"'
 ```
 
 Interpret status conservatively:
 
-- `mode=tun`, a healthy TUN check, and a present `magicnet0` interface are the expected runtime state; still verify traffic at the physical interface when the task requires it.
-- A missing interface or health warning can be a startup, routing, kernel, or vendor-network issue; collect the surrounding health and route evidence before changing anything.
-- `cli ebpf status` is intentionally unavailable on this TUN-only mainline. Do not report its absence as a device fault or add an eBPF/netd fallback path.
+- Configured/effective `tun`, a healthy Dataplane check, and a present `magicnet0` are the expected TUN state.
+- Configured `ebpf` must not require `magicnet0`. Verify local cgroup backend state; for hybrid, verify that every reported shared interface is an actual current downstream interface and that TC attachment is reported. `shared=pending` is valid when no confirmed downstream interface exists.
+- Capability/probe success means the kernel can load the requested programs; it does not prove the current sing-box process owns active cgroup/TC attachments. Preserve that distinction in reports.
+- A mode mismatch, rollback/pending state, missing expected attachment, or health warning can be a startup, routing, kernel, or vendor-network issue; collect surrounding health, process, cgroup, TC, and route evidence before changing anything.
+- `cli ebpf status` remains intentionally unavailable. Do not report its absence as a device fault or add an eBPF/netd fallback path. The internal `sing-box tools ebpf status` command is a non-destructive capability probe only.
 
 ## AI Website Routing Acceptance
 
@@ -195,7 +198,7 @@ adb shell 'rm -f /sdcard/Download/MagicNet/ecapture.pcapng'
 Report only concise evidence:
 
 - Device model, Android version, and root availability.
-- MagicNet service, health, TUN, MCP, and capture status.
+- MagicNet service, health, configured/effective transparent dataplane, MCP, and capture status.
 - Whether tcpdump or eCapture captured packets.
 - Whether HTTPS plaintext was expected, observed, or unavailable.
 - Any DNS leak evidence by interface and port, without exposing private domains beyond what the user asked to test.

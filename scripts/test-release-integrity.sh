@@ -60,7 +60,7 @@ printf 'partial asset\n' >"$output_path"
 printf 'curl: (56) TLS unexpected EOF\n' >&2
 exit 56
 SH
-cat >"$bin_dir/sleep" <<'SH'
+    cat >"$bin_dir/sleep" <<'SH'
 #!/bin/sh
 set -eu
 
@@ -129,13 +129,48 @@ assert_lock() {
 
 assert_lock yq v4.53.3 yq_linux_arm64 578648e463a11c1b6db6010cbf41eafed6bee79466fcffa1bb446672cf7945ea
 assert_lock jq jq-1.8.2 jq-linux-arm64 8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309
-assert_lock sing-box v1.13.14 sing-box-1.13.14-android-arm64.tar.gz 59a4d18a4108e2f2a1bd49ca547829112712123975092d4a4bf1f443b6f3d747
 assert_lock ecapture v2.5.2 ecapture-v2.5.2-android-arm64.tar.gz 3531f47f60a45c02662188fb151fa8bbf9c40e5c245ff293e5a50477b99df2d1
 assert_lock zashboard v3.16.0 dist-no-fonts.zip 1d8c7aca69e6ddead5e4fe6e92ceda23a499105f675d053362f7c9b53a9730f9
 
+singbox_url="$(git -C "$ROOT" config --file .gitmodules --get submodule.sing-box.url)"
+singbox_branch="$(git -C "$ROOT" config --file .gitmodules --get submodule.sing-box.branch)"
+[[ "$singbox_url" = "https://github.com/LIghtJUNction/sing-box.git" ]] ||
+    fail "sing-box source submodule does not use the LIghtJUNction fork"
+[[ "$singbox_branch" = "testing" ]] ||
+    fail "sing-box source submodule does not track the testing branch"
+singbox_base_version="$(tr -d '\r\n' <"$ROOT/sing-box.version")"
+[[ "$singbox_base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
+    fail "sing-box base version lock is invalid"
+
+read -r singbox_mode singbox_index_revision _ < <(
+    git -C "$ROOT" ls-files --stage -- sing-box
+)
+[[ "$singbox_mode" = "160000" ]] || fail "sing-box source is not recorded as a gitlink"
+singbox_worktree_revision="$(git -C "$ROOT/sing-box" rev-parse HEAD 2>/dev/null)" ||
+    fail "sing-box source submodule is not initialized"
+[[ "$singbox_worktree_revision" = "$singbox_index_revision" ]] ||
+    fail "sing-box source checkout differs from the recorded gitlink"
+[[ -x "$ROOT/scripts/build-sing-box.sh" ]] || fail "sing-box source build helper is not executable"
+singbox_default_tags="$(tr -d '\r\n' <"$ROOT/sing-box/release/DEFAULT_BUILD_TAGS_OTHERS")"
+[[ ",$singbox_default_tags," == *,with_ebpf,* ]] ||
+    fail "MagicNet release builds must enable the eBPF inbound"
+[[ ! -e "$ROOT/src/MagicNet/bin/magicnet-ebpf" ]] ||
+    fail "MagicNet release source still contains the removed standalone eBPF binary"
+grep -Fq "\"\$BUILD_SCRIPT\" android arm64" "$ROOT/hooks/pre-build/5100.update_sing_box.sh" ||
+    fail "module build hook does not compile the fork for Android arm64"
+for file in \
+    hooks/pre-build/5100.update_sing_box.sh \
+    hooks/lib/release_locks.sh \
+    scripts/kam-test.sh \
+    .github/workflows/exec.yml; do
+    if grep -Fq 'SagerNet/sing-box' "$ROOT/$file"; then
+        fail "$file still downloads an upstream sing-box binary"
+    fi
+done
+
 printf 'test' >"$TEST_ROOT/artifact"
-hook_verify_sha256 "$TEST_ROOT/artifact" 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 \
-    || fail "known artifact hash was rejected"
+hook_verify_sha256 "$TEST_ROOT/artifact" 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 ||
+    fail "known artifact hash was rejected"
 assert_failure hook_verify_sha256 "$TEST_ROOT/artifact" 0000000000000000000000000000000000000000000000000000000000000000
 assert_failure hook_validate_archive_member_path ../outside
 assert_failure hook_validate_archive_member_path '..\\outside'

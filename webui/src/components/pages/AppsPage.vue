@@ -306,8 +306,8 @@ function requestSetMode(mode: "blacklist" | "whitelist"): void {
     key: `mode-${mode}`,
     command: `app mode ${mode}`,
     message: mode === "blacklist"
-      ? "确认切换到全局接管？未列出应用会进入 TUN，只有 Bypass TUN 名单走系统网络。"
-      : "确认切换到仅名单接管？只有 Proxy 和 Direct 名单进入 TUN，未列出应用走系统网络。",
+      ? "确认切换到全局接管？未列出应用会进入当前透明数据面，只有 Bypass 名单走系统网络。"
+      : "确认切换到仅名单接管？只有 Proxy 和 Direct 名单进入当前透明数据面，未列出应用走系统网络。",
     plan: actionPlan({ type: "mode", mode }),
     run: () => setMode(mode)
   };
@@ -492,16 +492,16 @@ onMounted(() => {
         </div>
         <span class="text-sm text-[var(--mn-ink-muted)]">
           {{ state.appPolicy.mode === 'whitelist'
-            ? '仅 Proxy 和 Direct 名单中的应用进入 TUN；未列出应用直接走系统网络。'
-            : '默认所有应用进入 TUN；Bypass TUN 名单中的应用走系统网络。' }}
+            ? '仅 Proxy 和 Direct 名单中的应用进入当前透明数据面；未列出应用直接走系统网络。'
+            : '默认所有应用进入当前透明数据面；Bypass 名单中的应用走系统网络。' }}
         </span>
       </div>
-      <p class="text-xs leading-5 text-[var(--mn-ink-faint)]">Proxy 强制代理，Direct 在 TUN 内直连。应用名单会解析成 Android UID；共享同一 UID 的应用会一起生效。</p>
+      <p class="text-xs leading-5 text-[var(--mn-ink-faint)]">Proxy 强制代理，Direct 在当前透明数据面内直连。应用名单会解析成 Android UID；共享同一 UID 的应用会一起生效。</p>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
         <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
         <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />{{ isRunning('add-proxy') ? '保存中' : 'Proxy' }}</Button>
         <Button variant="secondary" :loading="isRunning('add-direct')" @click="addApp('direct')"><Plus :size="16" />{{ isRunning('add-direct') ? '保存中' : 'Direct' }}</Button>
-        <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : 'Bypass TUN' }}</Button>
+        <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : 'Bypass' }}</Button>
       </div>
     </Card>
 

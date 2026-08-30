@@ -22,18 +22,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          submodules: recursive
+          persist-credentials: false
+          submodules: true
 
       - name: Setup kam
-        uses: MemDeco-WG/setup-kam@v3
+        uses: MemDeco-WG/setup-kam@1d6ad8a9f58446a4519fda12a52f0c71fb667d8b # v3
         with:
           github-token: ${{ github.token }}
-          enable-cache: 'true'
+          enable-cache: "true"
           cache-targets: cargo,kam
-          install-commitizen: 'false'
-          warn-private-key: 'false'
+          install-commitizen: "false"
+          warn-private-key: "false"
 
       - name: Install lint dependencies
         run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml

@@ -13,7 +13,9 @@ export type AppPolicy = {
   bypass: string[];
 };
 
-export type TransparentMode = "tun";
+export type TransparentMode = "tun" | "ebpf";
+
+export type TransparentEffectiveMode = "tun" | "local" | "hybrid" | "unknown";
 
 export type WifiPolicyState = {
   enabled: boolean;
@@ -35,6 +37,13 @@ export type RuntimeState = {
   singBox: string;
   fswatch: string;
   transparentMode: TransparentMode;
+  transparentEffectiveMode: TransparentEffectiveMode;
+  transparentCapability: "ok" | "failed" | "not-required" | "unknown";
+  transparentLocalCgroup: "attached" | "missing" | "configured" | "inactive" | "unknown";
+  transparentSharedTc: "attached" | "missing" | "configured" | "pending" | "inactive" | "unknown";
+  transparentSharedInterfaces: string[];
+  transparentRecentError: string;
+  transparentTransition: "stable" | "pending" | "rollback" | "unknown";
   api: string;
   webui: string;
   subPath: string;

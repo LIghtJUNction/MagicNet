@@ -375,10 +375,7 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
             )
         }
         (".config/magicnet/transparent-mode.conf", "MAGICNET_TRANSPARENT_MODE") => {
-            matches!(
-                value,
-                "tun" | "proxy" | "external" | "external-tun" | "hybrid"
-            )
+            matches!(value, "tun" | "ebpf")
         }
         (".config/magicnet/network-policy.conf", "MAGICNET_IPV6_MODE") => {
             matches!(value, "ipv4_only" | "prefer_ipv4" | "prefer_ipv6")
@@ -585,6 +582,22 @@ mod tests {
             block,
             "not a kv line\n"
         ));
+
+        let transparent = ".config/magicnet/transparent-mode.conf";
+        assert!(sourced_conf_content_matches_schema(
+            transparent,
+            "MAGICNET_TRANSPARENT_MODE=tun\n"
+        ));
+        assert!(sourced_conf_content_matches_schema(
+            transparent,
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n"
+        ));
+        for invalid in ["auto", "proxy", "external", "external-tun", "hybrid"] {
+            assert!(!sourced_conf_content_matches_schema(
+                transparent,
+                &format!("MAGICNET_TRANSPARENT_MODE={invalid}\n")
+            ));
+        }
 
         let network = ".config/magicnet/network-policy.conf";
         assert!(sourced_conf_content_matches_schema(

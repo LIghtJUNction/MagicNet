@@ -1,0 +1,20 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public sing-box documentation examples and deterministic protocol test vectors"
+regexTarget = "secret"
+regexes = [
+  '''^31aIhAPwktDGpH4JDhA8GNvjFXEf/a6\+UaQRyOAiyfM=$''',
+  '''^896880ff30866f386ebed14ab81ce1ad3710cfc4$''',
+  '''^8JCsPssfgS8tiRwiMlhARg==$''',
+  '''^9d1c250a-e61b-44d9-88ed-5944d1962f5e$''',
+  '''^FzcLbKs2dY9mhL$''',
+  '''^Gn1JUS14bLUHgv1cWDDp4A==$''',
+  '''^PCD2Z4o12bKUoFa3cC97Hw==$''',
+  '''^UuMBgl7MXTPx9inmQp2UC7Jcnwc6XYbwDNebonM-FCc$''',
+  '''^YNXtAzepDqRv9H52osJVDQnznT5AM11eCK3ESpwSt04=$''',
+  '''^gHWUGzTh5YCEV6k8dneVP537XhVtoQJPIlFNs2zsxlE=$''',
+  '''^qtls\.HKDFLabelKeyV1$''',
+  '''^qtls\.HKDFLabelKeyV2$''',
+]

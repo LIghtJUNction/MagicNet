@@ -5,10 +5,10 @@
 <h1 align="center">MagicNet</h1>
 
 <p align="center">
-  Android root 设备上的 sing-box TUN 网络工作台
+  Android root 设备上的 sing-box 透明网络工作台
 </p>
 
-MagicNet 用 root 管理的 `sing-box` `magicnet0` TUN 接管、分流和代理 Android 设备流量。它不调用应用侧 `VpnService.establish()`，不会占用系统 VPN slot；当前主线只有 TUN，不包含 TProxy 或 eBPF 透明路径。
+MagicNet 用 root 管理的 `sing-box` 接管、分流和代理 Android 设备流量。默认 `tun` 使用 `magicnet0`；显式 `ebpf` 使用本机 cgroup backend，并在 MagicNet 确认真实下游接口后启用 shared TC。两种模式都不调用应用侧 `VpnService.establish()`，不会占用系统 VPN slot；主线不包含 `auto`、TProxy、Redirect 或 netd `ALLOW_MULTI` 路径。
 
 ## 支持开源开发
 
@@ -19,7 +19,7 @@ MagicNet 的网络接管、分流和代理功能不依赖任何 LLM API。项目
 1. 从 [Releases](https://github.com/LIghtJUNction/MagicNet/releases) 下载模块 ZIP，在 Magisk、KernelSU 或 APatch 的模块页面安装并重启。
 2. 在系统设置中关闭“私人 DNS / 私密 DNS / Private DNS”，不要保留为“自动”。
 3. 打开 root 管理器提供的模块 WebUI，在“订阅”中保存合法的 URL，或导入本地 Clash YAML、base64、分享链接、JSON 或文本订阅。
-4. 等待“保存并启用”完成，在 WebUI 健康页确认 sing-box 已运行且 `magicnet0` 已建立。
+4. 等待“保存并启用”完成，在 WebUI 健康页确认 sing-box 与当前数据面正常。默认 TUN 应建立 `magicnet0`；eBPF 应显示 local cgroup 状态及 shared attached/pending 状态。
 
 也可以在 root shell 中完成 URL 配置和验收：
 
@@ -29,16 +29,16 @@ su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli transparent status
 ```
 
-成功状态应同时满足：`cli health` 没有核心/TUN 阻塞项，`cli transparent status` 显示 TUN 路径，系统存在 `magicnet0`。MagicNet 不提供节点、订阅或外部出口，请只使用你有权使用且符合当地法律与服务条款的资源。
+成功状态应同时满足：`cli health` 没有核心/Dataplane 阻塞项，`cli transparent status` 的 configured/effective 状态准确。TUN 以 `magicnet0` 为准；eBPF 不能要求 `magicnet0`，而应报告 capability、local cgroup 与 shared TC/interface。MagicNet 不提供节点、订阅或外部出口，请只使用你有权使用且符合当地法律与服务条款的资源。
 
 ## 用户能做什么
 
 - URL 与本地文件使用同一套校验、原子激活和失败回滚流程；切换来源不会留下半写入配置。
 - 原生导入 Clash YAML、base64 和常见分享链接，包括 VLESS、VMess、Trojan、Shadowsocks、SOCKS、Hysteria2、AnyTLS 与 TUIC；可选转换器可覆盖更多格式。
 - 在 `proxy`、自动测速组和服务专用组之间测试、选择与持久化节点。
-- 按应用设置 `Proxy`、`Direct` 或 `Bypass TUN`。MagicNet 会按 Android 多用户动态解析 UID；Bypass 同时离开 TUN 与 MagicNet DNS 捕获。
+- 按应用设置 `Proxy`、`Direct` 或 `Bypass`。MagicNet 会按 Android 多用户动态解析 UID；Direct 是已接管流量的 sing-box 直连，Bypass 则离开当前透明数据面及其 DNS 捕获。
 - 按 Wi-Fi SSID/BSSID 使用黑名单或白名单，在 `rule` 与 `direct` 间自动切换。
-- 为已经进入 TUN 的热点转发流量选择 Direct 或 Proxy；Proxy 期间暂时关闭 Android tether 硬件卸载，禁用或卸载时恢复原值。
+- 为热点转发流量选择 Direct 或 Proxy；TUN 使用受管路由送入 `magicnet0`，eBPF hybrid 使用已确认接口上的 shared TC；禁用或卸载时恢复 Android tether 状态。
 - 在 CLI、WebUI、MagicBox 或 MCP 中管理配置，并用健康检查、脱敏支持包和 Issue 草稿排障。
 
 完整操作见 [用户指南](docs/user-guide.md)。
@@ -49,6 +49,8 @@ su -c /data/adb/modules/MagicNet/cli transparent status
 # 状态与恢复
 su -c /data/adb/modules/MagicNet/cli health
 su -c /data/adb/modules/MagicNet/cli transparent status
+su -c /data/adb/modules/MagicNet/cli transparent set tun
+su -c /data/adb/modules/MagicNet/cli transparent set ebpf
 su -c /data/adb/modules/MagicNet/cli repair
 su -c /data/adb/modules/MagicNet/cli service restart sing-box
 
@@ -80,7 +82,7 @@ MagicNet 会拦截物理出口上的直连 DNS/DoT（53/853），但浏览器内
 
 MagicNet 不创建热点，不替代厂商 tethering/NAT，也不自动接管外部 VPN overlay。局域网默认走 `lan`/Direct；userspace Tailscale endpoint 需要显式配置，边界与验收见 [Tailscale 说明](docs/tailscale.md)。
 
-断网时不要切换到不存在的透明模式。保留当前现场，依次查看：
+断网时不要反复切换模式。保留当前现场，依次查看 configured/effective、rollback/pending 与健康状态：
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli health
@@ -108,7 +110,7 @@ kam install LIghtJUNction/MagicNet
 ```bash
 git clone https://github.com/LIghtJUNction/MagicNet.git
 cd MagicNet
-git submodule update --init --recursive
+git submodule update --init
 kam build
 ```
 

@@ -520,8 +520,10 @@ onUnmounted(() => {
           </li>
           <li>
             <span class="mn-route-index">02</span>
-            <span class="mn-route-node">magicnet0</span>
-            <code>TUN</code>
+          <span class="mn-route-node">
+            {{ state.runtime.transparentMode === "tun" ? "magicnet0" : "cgroup + TC" }}
+          </span>
+          <code>{{ state.runtime.transparentMode.toUpperCase() }}</code>
           </li>
           <li>
             <span class="mn-route-index">03</span>
@@ -575,8 +577,14 @@ onUnmounted(() => {
           </button>
         </nav>
         <div class="mn-rail-foot">
-          <span>MODE::TUN</span>
-          <span>IFACE::magicnet0</span>
+      <span>MODE::{{ state.runtime.transparentMode.toUpperCase() }}</span>
+      <span>
+        DATA::{{
+          state.runtime.transparentMode === "tun"
+            ? "magicnet0"
+            : state.runtime.transparentEffectiveMode
+        }}
+      </span>
         </div>
       </aside>
 

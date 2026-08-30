@@ -31,12 +31,14 @@ import {
   type ControlDangerAction,
   repairAction,
   restartSingBoxAction,
+  setTransparentModeAction,
   singBoxToggleAction,
   stopAllServicesAction,
 } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { restoreFocusAfterUpdate } from "@/lib/focus";
+import type { TransparentMode } from "@/types";
 import { copyText, execFailed } from "@/utils";
 import {
   buildControlRuntimeInsight,
@@ -120,6 +122,44 @@ const missingNodeCache = computed(() =>
   ),
 );
 
+const transparentModeLabel = computed(() =>
+  state.runtime.transparentMode === "ebpf" ? "eBPF" : "TUN",
+);
+const transparentEffectiveLabel = computed(() => {
+  const effective = state.runtime.transparentEffectiveMode;
+  if (effective === "tun") return "TUN · magicnet0";
+  if (effective === "local") return "eBPF local";
+  if (effective === "hybrid") return "eBPF hybrid";
+  return "状态未知";
+});
+const transparentDescription = computed(() => {
+  if (state.runtime.transparentMode === "tun") {
+    return "sing-box TUN 通过 magicnet0 接管本机流量。";
+  }
+  if (state.runtime.transparentEffectiveMode === "hybrid") {
+    return "eBPF local 已接管本机流量，shared TC 使用已确认的下游接口。";
+  }
+  if (state.runtime.transparentSharedTc === "pending") {
+    return "eBPF local 已配置；尚无已确认下游接口，shared TC 保持 pending。";
+  }
+  return "eBPF 使用 cgroup 接管本机流量；shared 状态以运行时报告为准。";
+});
+const transparentTransitionTone = computed<"neutral" | "success" | "warning" | "danger">(() => {
+  if (state.runtime.transparentTransition === "rollback") return "danger";
+  if (state.runtime.transparentTransition === "pending") return "warning";
+  if (state.runtime.transparentTransition === "stable") return "success";
+  return "neutral";
+});
+const transparentSwitchBusy = computed(() =>
+  runtimeBusy.value ||
+  isRunning("transparent-set-tun") ||
+  isRunning("transparent-set-ebpf") ||
+  isRunning("transparent-apply"),
+);
+const sharedInterfacesLabel = computed(() =>
+  state.runtime.transparentSharedInterfaces.join(", ") || "none",
+);
+
 const wifiPolicyModes = ["blacklist", "whitelist"] as const;
 
 async function toggleSingBox(event: MouseEvent): Promise<void> {
@@ -140,10 +180,21 @@ async function runAction(
       window.setTimeout(() => void refreshStatus(), 1200);
     } else {
       const output = await runCli(args, label);
-      if (execFailed(output)) return;
+      if (execFailed(output)) {
+        if (args.startsWith("transparent set ")) await refreshStatus();
+        return;
+      }
       await refreshAll();
     }
   });
+}
+
+function requestTransparentMode(mode: TransparentMode, event: MouseEvent): void {
+  if (mode === state.runtime.transparentMode || transparentSwitchBusy.value) return;
+  requestDangerAction(
+    setTransparentModeAction(mode, state.runtime.transparentMode),
+    event.currentTarget,
+  );
 }
 
 async function rebuildNodeCache(): Promise<void> {
@@ -327,6 +378,12 @@ async function copyControlSnapshot(): Promise<void> {
     `sing_box=${state.runtime.singBox}`,
     `fswatch=${state.runtime.fswatch}`,
     `transparent_mode=${state.runtime.transparentMode}`,
+    `transparent_effective_mode=${state.runtime.transparentEffectiveMode}`,
+    `transparent_capability=${state.runtime.transparentCapability}`,
+    `transparent_local_cgroup=${state.runtime.transparentLocalCgroup}`,
+    `transparent_shared_tc=${state.runtime.transparentSharedTc}`,
+    `transparent_shared_interfaces=${sharedInterfacesLabel.value}`,
+    `transparent_transition=${state.runtime.transparentTransition}`,
     `insight_status=${runtimeInsight.value.status}`,
     `insight_title=${runtimeInsight.value.title}`,
     `recommended_actions=${runtimeInsight.value.actions.join(",") || "none"}`,
@@ -509,18 +566,90 @@ onMounted(() => {
       <Card class="grid gap-4 !p-4 md:col-span-8 md:gap-5 md:!p-6">
         <CardHeading
           overline="透明代理模式"
-          title="TUN"
-          description="MagicNet 统一使用 sing-box TUN 透明代理路径。"
+          :title="transparentModeLabel"
+          :description="transparentDescription"
         >
-          <Badge tone="neutral">TUN</Badge>
+          <Badge :tone="transparentTransitionTone">
+            {{ state.runtime.transparentTransition }}
+          </Badge>
         </CardHeading>
+
+        <div
+          role="group"
+          aria-label="选择透明代理模式"
+          class="grid grid-cols-2 gap-2"
+        >
+          <Button
+            :variant="state.runtime.transparentMode === 'tun' ? 'default' : 'outline'"
+            :disabled="transparentSwitchBusy || state.runtime.transparentMode === 'tun'"
+            :loading="isRunning('transparent-set-tun')"
+            :aria-pressed="state.runtime.transparentMode === 'tun'"
+            :class="state.runtime.transparentMode === 'tun' ? 'disabled:cursor-default disabled:opacity-100' : ''"
+            @click="requestTransparentMode('tun', $event)"
+          >
+            使用 TUN
+          </Button>
+          <Button
+            :variant="state.runtime.transparentMode === 'ebpf' ? 'default' : 'outline'"
+            :disabled="transparentSwitchBusy || state.runtime.transparentMode === 'ebpf'"
+            :loading="isRunning('transparent-set-ebpf')"
+            :aria-pressed="state.runtime.transparentMode === 'ebpf'"
+            :class="state.runtime.transparentMode === 'ebpf' ? 'disabled:cursor-default disabled:opacity-100' : ''"
+            @click="requestTransparentMode('ebpf', $event)"
+          >
+            使用 eBPF
+          </Button>
+        </div>
+
+        <dl
+          aria-live="polite"
+          class="grid gap-x-4 gap-y-2 rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-sunken)] p-3 text-xs sm:grid-cols-2"
+        >
+          <div class="min-w-0">
+            <dt class="text-[var(--mn-ink-muted)]">configured</dt>
+            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentMode }}</dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-[var(--mn-ink-muted)]">effective</dt>
+            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ transparentEffectiveLabel }}</dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-[var(--mn-ink-muted)]">local cgroup</dt>
+            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentLocalCgroup }}</dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-[var(--mn-ink-muted)]">shared TC</dt>
+            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentSharedTc }}</dd>
+          </div>
+          <div class="min-w-0 sm:col-span-2">
+            <dt class="text-[var(--mn-ink-muted)]">shared interfaces</dt>
+            <dd class="break-all font-mono text-[var(--mn-ink)]">{{ sharedInterfacesLabel }}</dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-[var(--mn-ink-muted)]">capability</dt>
+            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentCapability }}</dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-[var(--mn-ink-muted)]">transition</dt>
+            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentTransition }}</dd>
+          </div>
+        </dl>
+
+        <p
+          v-if="state.runtime.transparentRecentError"
+          role="alert"
+          class="break-words border-l-2 border-[var(--mn-danger)] pl-3 text-xs leading-5 text-[var(--mn-danger)]"
+        >
+          {{ state.runtime.transparentRecentError }}
+        </p>
+
         <Button
           variant="secondary"
-          :disabled="runtimeBusy"
+          :disabled="transparentSwitchBusy"
           :loading="isRunning('transparent-apply')"
           @click="requestDangerAction(applyTransparentModeAction(), $event.currentTarget)"
         >
-          <Radar :size="17" />重新应用模式
+          <Radar :size="17" />重新应用当前模式
         </Button>
       </Card>
 

@@ -34,25 +34,23 @@ try {
   const pathNodes = overview.pathFlowNodes();
   const report = overview.formatAboutOverview();
 
-  assert.equal(overview.DATAPLANE_IFACE, "magicnet0");
+  assert.equal(overview.DATAPLANE_LABEL, "tun | ebpf");
   assert.equal(facts.length, 3);
   assert.equal(steps.length, 3);
   assert.equal(checks.length, 3);
   assert.equal(pathNodes.length, 4);
-  assert.equal(pathNodes.map((item) => item.code).join("|"), "ROOT|TUN|CORE|OUT");
+  assert.equal(pathNodes.map((item) => item.code).join("|"), "ROOT|DATA|CORE|OUT");
   assert.ok(facts.every((item) => item.code && item.title && item.detail));
-  assert.match(report, /dataplane=sing-box TUN/);
-  assert.match(report, /iface=magicnet0/);
+  assert.match(report, /dataplane=sing-box tun\|ebpf/);
+  assert.match(report, /dataplane_label=tun \| ebpf/);
   assert.match(report, /cli health/);
   assert.match(report, /cli transparent status/);
-  assert.doesNotMatch(report, /\bTProxy\b/);
-  assert.doesNotMatch(report, /\beBPF\b/);
-  assert.doesNotMatch(report, /ALLOW_MULTI/);
+  assert.match(report, /eBPF/);
   assert.doesNotMatch(report, /cli ebpf status/);
   assert.doesNotMatch(report, /\bauto\b/);
   assert.equal(
     checks.map((item) => item.command).join(" | "),
-    "cli health | cli transparent status | magicnet0",
+    "cli health | cli transparent status | tun | ebpf",
   );
 } finally {
   await rm(dir, { recursive: true, force: true });
@@ -60,10 +58,13 @@ try {
 
 assert.match(aboutPage, /路径速览/);
 assert.match(aboutPage, /goto-tab/);
-assert.match(aboutPage, /DATAPLANE_IFACE/);
+assert.match(aboutPage, /DATAPLANE_LABEL/);
 assert.match(aboutPage, /mn-path-flow/);
 assert.match(aboutPage, /InsightChip/);
-assert.doesNotMatch(aboutPage, /TProxy|eBPF|ALLOW_MULTI|cli ebpf status/);
+assert.match(aboutPage, /TProxy/);
+assert.match(aboutPage, /eBPF/);
+assert.match(aboutPage, /ALLOW_MULTI/);
+assert.doesNotMatch(aboutPage, /cli ebpf status/);
 
 assert.match(app, /type TabKey =[\s\S]*"about"/);
 assert.match(app, /import\("@\/components\/pages\/AboutPage\.vue"\)/);

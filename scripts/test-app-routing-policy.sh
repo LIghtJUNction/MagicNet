@@ -19,6 +19,8 @@ import() { :; }
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/apps.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/dns.sh"
+# transparent.sh owns eBPF validation consumed by core.sh and routes.sh.
+. "$ROOT/src/MagicNet/lib/magicnet/transparent.sh"
 # network.sh reconciles the hotspot policy provided by routes.sh.
 . "$ROOT/src/MagicNet/lib/magicnet/routes.sh"
 # core.sh materializes the optional proxy chain during config startup.
@@ -28,6 +30,7 @@ import() { :; }
 . "$ROOT/src/MagicNet/lib/magicnet/runtime_config.sh"
 
 magicnet_warn() { :; }
+singbox_prepare_route_config() { :; }
 
 REAL_MV=$(command -v mv)
 FAIL_MV_BIN="$WORK/fail-mv-bin"
@@ -348,10 +351,14 @@ EOF
 
   for family in iptables ip6tables; do
     mark_line=$(grep -nF "$family -t nat -A magicnet-dns-output -m mark --mark 1073741824/1073741824 -j RETURN" "$dns_capture_log" | cut -d: -f1 | head -n 1)
-    root_line=$(grep -nF "$family -t nat -A magicnet-dns-output -m owner --uid-owner 0 -j RETURN" "$dns_capture_log" | cut -d: -f1 | head -n 1)
     redirect_line=$(sed -n "/$family -t nat -A magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports 1053/=" "$dns_capture_log")
-    if [ -z "$mark_line" ] || [ -z "$root_line" ] || [ -z "$redirect_line" ] || [ "$mark_line" -ge "$redirect_line" ] || [ "$root_line" -ge "$redirect_line" ]; then
-      printf '%s\n' "$family DNS bypass rules must return before DNS capture redirect" >&2
+    if [ -z "$mark_line" ] || [ -z "$redirect_line" ] || [ "$mark_line" -ge "$redirect_line" ]; then
+      printf '%s\n' "$family marked DNS bypass must return before DNS capture redirect" >&2
+      cat "$dns_capture_log" >&2
+      exit 1
+    fi
+    if grep -Fq "$family -t nat -A magicnet-dns-output -m owner --uid-owner 0 -j RETURN" "$dns_capture_log"; then
+      printf '%s\n' "$family must keep Android netd UID 0 inside DNS capture" >&2
       cat "$dns_capture_log" >&2
       exit 1
     fi
@@ -365,8 +372,8 @@ EOF
     done
   done
 
-  if [ "$(grep -c -- '-A magicnet-dns-output -m owner --uid-owner 0 -j RETURN' "$dns_capture_log")" -ne 2 ]; then
-    printf '%s\n' 'root UID must bypass DNS capture when Bypass TUN UIDs are configured' >&2
+  if grep -q -- '-A magicnet-dns-output -m owner --uid-owner 0 -j RETURN' "$dns_capture_log"; then
+    printf '%s\n' 'root UID must remain captured when Bypass TUN UIDs are configured' >&2
     cat "$dns_capture_log" >&2
     exit 1
   fi
@@ -476,6 +483,35 @@ assert_dns_capture_disable_removes_duplicate_output_jumps() (
 )
 
 assert_dns_capture_disable_removes_duplicate_output_jumps
+
+assert_dns_capture_disable_accepts_absent_chain_rc_two() (
+  MODDIR="$WORK/dns-capture-absent-chain/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  dns_capture_log="$WORK/dns-capture-absent-chain.log"
+  : >"$dns_capture_log"
+
+  iptables() {
+    printf '%s\n' "iptables $*" >>"$dns_capture_log"
+    case " $* " in
+    *' -t nat -L magicnet-dns-output '*) return 2 ;;
+    *' -D OUTPUT -j magicnet-dns-output '*) return 99 ;;
+    *) return 0 ;;
+    esac
+  }
+  ip6tables() { return 1; }
+  magicnet_cmd_exists() {
+    [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
+  }
+
+  magicnet_disable_dns_capture
+  if grep -q -- '-D OUTPUT -j magicnet-dns-output' "$dns_capture_log"; then
+    printf '%s\n' 'DNS capture cleanup must not delete a jump to an absent rc=2 chain' >&2
+    exit 1
+  fi
+)
+
+assert_dns_capture_disable_accepts_absent_chain_rc_two
 
 assert_dns_capture_disable_retries_transient_delete_failure() (
   MODDIR="$WORK/dns-capture-transient-delete/module"
@@ -981,8 +1017,10 @@ assert_startup_policy_order() {
   magicnet_singbox_apply_zashboard() { printf '%s\n' zashboard >>"$startup_events"; }
   magicnet_tailscale_inject_auth_key() { printf '%s\n' tailscale-auth >>"$startup_events"; }
   magicnet_tailscale_scrub_auth_key() { return 0; }
+  magicnet_validate_singbox_transparent_config() { return 0; }
   singbox_start() { printf '%s\n' singbox-start >>"$startup_events"; }
   magicnet_singbox_running_has_nodes() { return 0; }
+  magicnet_transparent_verify_running() { return 0; }
 
   MAGIC_SINGBOX=1 magicnet_start_singbox_unlocked
   if ! diff -u - "$startup_events" <<'EOF'; then
@@ -1141,5 +1179,78 @@ assert_runtime_config_failure_is_visible() (
 )
 
 assert_runtime_config_failure_is_visible
+
+assert_ebpf_app_policy_contract() (
+  MODDIR="$WORK/ebpf-policy/module"
+  export MODDIR
+  mkdir -p "$MODDIR/.config/magicnet" "$MODDIR/.config/sing-box" "$MODDIR/bin"
+  ln -sf "$JQ_BIN" "$MODDIR/bin/jq"
+  cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{
+  "inbounds": [{
+    "type": "ebpf",
+    "tag": "tun-in",
+    "mode": "local",
+    "network": ["tcp", "udp"],
+    "bypass_rule_set": ["private-net"],
+    "local": {"exclude_uid": [88]}
+  }],
+  "route": {"rules": [
+    {"inbound": ["tun-in"], "action": "sniff"},
+    {"protocol": "dns", "action": "hijack-dns"},
+    {"domain_suffix": ["example.org"], "outbound": "direct"}
+  ]}
+}
+EOF
+  printf '%s\n' 'com.example.proxy' >"$MODDIR/.config/magicnet/app-proxy.list"
+  printf '%s\n' 'com.example.directforce' >"$MODDIR/.config/magicnet/app-direct.list"
+  printf '%s\n' 'com.example.bypass' >"$MODDIR/.config/magicnet/app-bypass.list"
+
+  printf '%s\n' 'MAGICNET_APP_MODE=blacklist' >"$MODDIR/.config/magicnet/app-mode.conf"
+  apply_policy ebpf-blacklist
+  apply_policy ebpf-blacklist
+  "$JQ_BIN" -e '
+    ([.inbounds[] | select(.tag == "tun-in" and .type == "ebpf")] | length) == 1
+    and (.inbounds[] | select(.tag == "tun-in")
+      | .mode == "local"
+        and ((.local.exclude_uid // []) | sort) == [0, 88, 11001, 1011001]
+        and .local.dns_mode == "hijack"
+        and (.local | has("include_uid") | not)
+        and .bypass_rule_set == ["private-net"]
+        and ((.bypass_rule_set | tostring)
+          | contains("com.example.directforce") | not)
+        and ((.bypass_rule_set | tostring)
+          | contains("com.example.proxy") | not))
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  "$JQ_BIN" -e '
+    ([.route.rules[]
+      | select((.package_name // []) == ["__magicnet_app_direct__", "com.example.directforce"])
+      | select(.outbound == "direct")] | length) == 1
+    and ([.route.rules[]
+      | select((.package_name // []) == ["__magicnet_app_proxy__", "com.example.proxy"])
+      | select(.outbound == "proxy")] | length) == 1
+    and ([.route.rules[]
+      | select(.domain_suffix == ["example.org"] and .outbound == "direct")] | length) == 1
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+
+  printf '%s\n' 'MAGICNET_APP_MODE=whitelist' >"$MODDIR/.config/magicnet/app-mode.conf"
+  apply_policy ebpf-whitelist
+  apply_policy ebpf-whitelist
+  "$JQ_BIN" -e '
+    (.inbounds[] | select(.tag == "tun-in" and .type == "ebpf")
+      | ((.local.include_uid // []) | sort) == [11002, 11003]
+        and ((.local.exclude_uid // []) | sort) == [0, 88]
+        and .local.dns_mode == "hijack"
+        and .bypass_rule_set == ["private-net"])
+    and ([.route.rules[]
+      | select((.package_name // []) | index("__magicnet_app_direct__"))
+      | select(.outbound == "direct")] | length) == 1
+    and ([.route.rules[]
+      | select((.package_name // []) | index("__magicnet_app_proxy__"))
+      | select(.outbound == "proxy")] | length) == 1
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+)
+
+assert_ebpf_app_policy_contract
 
 printf '%s\n' 'app routing policy regression tests passed'

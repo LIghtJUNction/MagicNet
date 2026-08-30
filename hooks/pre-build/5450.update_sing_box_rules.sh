@@ -21,18 +21,36 @@ branch_hash() {
     local attempt
     local output
     local ref
+    local slug
 
     for attempt in 1 2 3; do
         output=""
         if output=$(git ls-remote "$repo" "refs/heads/$branch"); then
             ref=$(printf '%s\n' "$output" | awk 'NR == 1 { print $1; exit }')
-            if [ -n "$ref" ]; then
+            if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
                 printf '%s\n' "$ref"
                 return 0
             fi
         fi
         [ "$attempt" -eq 3 ] || sleep 1
     done
+
+    # Some Android build hosts can reach GitHub HTTPS while git's TLS
+    # transport is broken.  All repositories and branch names come from the
+    # closed rule_source table above, so resolve the same ref through GitHub's
+    # API and still require an immutable 40-hex object ID.
+    case "$repo" in
+        https://github.com/*.git)
+            slug=${repo#https://github.com/}
+            slug=${slug%.git}
+            output=$(curl -fsSL --retry 3 --retry-delay 1 \
+                "https://api.github.com/repos/${slug}/git/ref/heads/${branch}") || return 1
+            ref=$(printf '%s\n' "$output" | jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))') || return 1
+            log_warn "git ls-remote failed for $slug; resolved $branch through the GitHub API" >&2
+            printf '%s\n' "$ref"
+            return 0
+            ;;
+    esac
 
     return 1
 }

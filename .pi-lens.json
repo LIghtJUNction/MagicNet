@@ -1,0 +1,11 @@
+{
+  "serverOverrides": {
+    "go": {
+      "initializationOptions": {
+        "buildFlags": [
+          "-tags=with_ebpf"
+        ]
+      }
+    }
+  }
+}

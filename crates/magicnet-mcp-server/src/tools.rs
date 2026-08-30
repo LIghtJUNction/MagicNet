@@ -8,7 +8,7 @@ pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_config_validate","description":"Validate sing-box config.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box","all"]}}}},
 {"name":"magicnet_config_sync_template","description":"Sync sing-box config from the bundled upstream template.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box"]}},"required":["target"]}},
 {"name":"magicnet_config_save_base64","description":"Validate and save sing-box config from base64 text.","inputSchema":{"type":"object","properties":{"target":{"type":"string","enum":["sing-box"]},"content_base64":{"type":"string"}},"required":["target","content_base64"]}},
-{"name":"magicnet_transparent_set","description":"Set MagicNet TUN capture mode.","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["tun"]}},"required":["mode"]}},
+{"name":"magicnet_transparent_set","description":"Explicitly switch MagicNet transparent capture between tun (default, magicnet0) and ebpf (local cgroup plus shared TC when a confirmed downstream interface exists). The operation is atomic and rolls back on failure; auto is not supported.","inputSchema":{"type":"object","properties":{"mode":{"type":"string","enum":["tun","ebpf"]}},"required":["mode"]}},
 {"name":"magicnet_transparent_apply","description":"Re-apply transparent proxy rules.","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_health","description":"Run MagicNet health diagnostics","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_block_list","description":"Show MagicNet community and manual blocklist state","inputSchema":{"type":"object","properties":{}}},
@@ -162,6 +162,32 @@ mod tests {
             tool.pointer("/inputSchema/properties/core/enum"),
             Some(&json!(["sing-box"]))
         );
+    }
+
+    #[test]
+    fn transparent_set_exposes_only_explicit_tun_or_ebpf() {
+        let document: Value = serde_json::from_str(TOOLS_JSON).expect("TOOLS_JSON must be valid");
+        let tool = document
+            .get("tools")
+            .and_then(Value::as_array)
+            .and_then(|tools| {
+                tools.iter().find(|tool| {
+                    tool.get("name").and_then(Value::as_str) == Some("magicnet_transparent_set")
+                })
+            })
+            .expect("transparent set tool must exist");
+
+        assert_eq!(
+            tool.pointer("/inputSchema/properties/mode/enum"),
+            Some(&json!(["tun", "ebpf"]))
+        );
+        let description = tool
+            .get("description")
+            .and_then(Value::as_str)
+            .expect("transparent set description must be a string");
+        assert!(description.contains("atomic"));
+        assert!(description.contains("rolls back"));
+        assert!(description.contains("auto is not supported"));
     }
 
     #[test]
