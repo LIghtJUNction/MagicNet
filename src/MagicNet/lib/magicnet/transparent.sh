@@ -426,6 +426,51 @@ magicnet_transparent_transaction_dir() {
     printf '%s\n' "${MODDIR}/.state/transparent-transaction"
 }
 
+magicnet_restore_transparent_state_file() {
+    _restore_state_transaction="$1"
+    _restore_state_name="$2"
+    _restore_state_destination="$3"
+    _restore_state_present="$(cat "${_restore_state_transaction}/old-ebpf-${_restore_state_name}-present" 2>/dev/null)" || return 1
+    case "$_restore_state_present" in
+    1)
+        _restore_state_source="${_restore_state_transaction}/old-ebpf-${_restore_state_name}"
+        [ -f "$_restore_state_source" ] || return 1
+        mkdir -p "${_restore_state_destination%/*}" || return 1
+        _restore_state_tmp="${_restore_state_destination}.transaction-restore.$$"
+        if ! (
+            umask 077
+            cp "$_restore_state_source" "$_restore_state_tmp"
+        ) || ! chmod 600 "$_restore_state_tmp" ||
+            ! mv -f "$_restore_state_tmp" "$_restore_state_destination"; then
+            rm -f "$_restore_state_tmp" 2>/dev/null || true
+            return 1
+        fi
+        ;;
+    0) rm -f "$_restore_state_destination" || return 1 ;;
+    *) return 1 ;;
+    esac
+    unset _restore_state_transaction _restore_state_name _restore_state_destination
+    unset _restore_state_present _restore_state_source _restore_state_tmp
+}
+
+magicnet_restore_transparent_state_snapshot() {
+    _restore_snapshot_transaction="$1"
+    _restore_snapshot_version_file="${_restore_snapshot_transaction}/old-ebpf-state-version"
+    # Journals published before runtime-state snapshots were introduced remain
+    # recoverable; their restored core startup will republish current evidence.
+    [ -e "$_restore_snapshot_version_file" ] || {
+        unset _restore_snapshot_transaction _restore_snapshot_version_file
+        return 0
+    }
+    [ "$(cat "$_restore_snapshot_version_file" 2>/dev/null)" = 1 ] || return 1
+    _restore_snapshot_dir="$(magicnet_ebpf_state_dir)"
+    magicnet_restore_transparent_state_file "$_restore_snapshot_transaction" capability "${_restore_snapshot_dir}/capability" || return 1
+    magicnet_restore_transparent_state_file "$_restore_snapshot_transaction" probe "${_restore_snapshot_dir}/probe.json" || return 1
+    magicnet_restore_transparent_state_file "$_restore_snapshot_transaction" shared-pending "${_restore_snapshot_dir}/shared.pending" || return 1
+    magicnet_restore_transparent_state_file "$_restore_snapshot_transaction" shared-interfaces "${_restore_snapshot_dir}/shared-interfaces.list" || return 1
+    unset _restore_snapshot_transaction _restore_snapshot_version_file _restore_snapshot_dir
+}
+
 magicnet_recover_interrupted_transparent_transaction() {
     _transaction_dir="$(magicnet_transparent_transaction_dir)"
     [ -d "$_transaction_dir" ] || return 0
@@ -463,6 +508,7 @@ magicnet_recover_interrupted_transparent_transaction() {
     else
         rm -f "$_restore_config" || return 1
     fi
+    magicnet_restore_transparent_state_snapshot "$_transaction_dir" || return 1
     rm -rf "$_transaction_dir" || return 1
     magicnet_warn "Recovered an interrupted transparent mode transition to $_old_mode"
     unset _transaction_dir _old_mode_present _old_config_present _old_mode _restore_config _restore_tmp

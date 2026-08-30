@@ -30,6 +30,14 @@ const TRANSPARENT_RECENT_ERROR: &str = ".state/transparent-recent-error";
 const TRANSPARENT_CAPABILITY: &str = ".state/transparent-ebpf/capability";
 const TRANSPARENT_PROBE_REPORT: &str = ".state/transparent-ebpf/probe.json";
 const TRANSPARENT_SHARED_PENDING: &str = ".state/transparent-ebpf/shared.pending";
+const TRANSPARENT_SHARED_INTERFACES: &str = ".state/transparent-ebpf/shared-interfaces.list";
+const TRANSPARENT_EBPF_STATE_VERSION: &str = "old-ebpf-state-version";
+const TRANSPARENT_EBPF_STATE_FILES: &[(&str, &str)] = &[
+    (TRANSPARENT_CAPABILITY, "capability"),
+    (TRANSPARENT_PROBE_REPORT, "probe"),
+    (TRANSPARENT_SHARED_PENDING, "shared-pending"),
+    (TRANSPARENT_SHARED_INTERFACES, "shared-interfaces"),
+];
 const CONFIG_APPLY_LOCK: &str = ".state/config-apply.lock";
 const LIFECYCLE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CONFIG_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -773,9 +781,41 @@ fn prepare_transparent_transaction(
     } else {
         write_private_file(&staging.join("old-config-present"), b"0\n")?;
     }
+    // Candidate rendering publishes eBPF evidence before the old core stops.
+    // Keep rollback byte-consistent when a later preflight check rejects it.
+    for (path, name) in TRANSPARENT_EBPF_STATE_FILES {
+        snapshot_optional_transparent_file(app, &staging, path, name)?;
+    }
+    write_private_file(&staging.join(TRANSPARENT_EBPF_STATE_VERSION), b"1\n")?;
     fs::rename(&staging, &journal)
         .map_err(|error| format!("publish transparent journal: {error}"))?;
     Ok(())
+}
+
+fn snapshot_optional_transparent_file(
+    app: &App,
+    staging: &Path,
+    relative_path: &str,
+    snapshot_name: &str,
+) -> Result<(), String> {
+    let source = app.moddir.join(relative_path);
+    match fs::read(&source) {
+        Ok(bytes) => {
+            write_private_file(&staging.join(format!("old-ebpf-{snapshot_name}")), &bytes)?;
+            write_private_file(
+                &staging.join(format!("old-ebpf-{snapshot_name}-present")),
+                b"1\n",
+            )
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => write_private_file(
+            &staging.join(format!("old-ebpf-{snapshot_name}-present")),
+            b"0\n",
+        ),
+        Err(error) => Err(format!(
+            "snapshot transparent state {}: {error}",
+            source.display()
+        )),
+    }
 }
 
 fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -838,7 +878,66 @@ fn restore_transaction_snapshot(app: &App, old_mode: &TransparentModeState) -> R
         },
         _ => return Err("invalid transparent config snapshot marker".to_string()),
     }
+    restore_transparent_state_snapshot(app, &journal)?;
     Ok(())
+}
+
+fn restore_transparent_state_snapshot(app: &App, journal: &Path) -> Result<(), String> {
+    let version = match fs::read_to_string(journal.join(TRANSPARENT_EBPF_STATE_VERSION)) {
+        Ok(version) => version,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("read transparent state snapshot version: {error}")),
+    };
+    if version.trim() != "1" {
+        return Err("invalid transparent state snapshot version".to_string());
+    }
+    for (path, name) in TRANSPARENT_EBPF_STATE_FILES {
+        restore_optional_transparent_file(app, journal, path, name)?;
+    }
+    Ok(())
+}
+
+fn restore_optional_transparent_file(
+    app: &App,
+    journal: &Path,
+    relative_path: &str,
+    snapshot_name: &str,
+) -> Result<(), String> {
+    let marker = fs::read_to_string(journal.join(format!("old-ebpf-{snapshot_name}-present")))
+        .map_err(|error| format!("read transparent state {snapshot_name} marker: {error}"))?;
+    let destination = app.moddir.join(relative_path);
+    match marker.trim() {
+        "1" => {
+            let bytes = fs::read(journal.join(format!("old-ebpf-{snapshot_name}")))
+                .map_err(|error| format!("read transparent state {snapshot_name}: {error}"))?;
+            let parent = destination
+                .parent()
+                .ok_or_else(|| format!("transparent state path has no parent: {relative_path}"))?;
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("create transparent state directory: {error}"))?;
+            let temporary = destination.with_file_name(format!(
+                ".{}.transaction-restore.{}",
+                destination
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .ok_or_else(|| format!("invalid transparent state path: {relative_path}"))?,
+                std::process::id()
+            ));
+            write_private_file(&temporary, &bytes)?;
+            fs::rename(&temporary, &destination)
+                .map_err(|error| format!("restore transparent state {snapshot_name}: {error}"))
+        }
+        "0" => match fs::remove_file(&destination) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!(
+                "restore absent transparent state {snapshot_name}: {error}"
+            )),
+        },
+        _ => Err(format!(
+            "invalid transparent state {snapshot_name} snapshot marker"
+        )),
+    }
 }
 
 fn rollback_transparent_preflight(
