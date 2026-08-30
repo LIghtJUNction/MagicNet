@@ -99,6 +99,7 @@ fn main() {
     }
 
     let app = App::from_env();
+    app::install_trusted_runtime_path(&app.moddir);
     let code = match dispatch(&app, &args) {
         Ok(()) => 0,
         Err(err) => {

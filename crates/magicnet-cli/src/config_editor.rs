@@ -750,10 +750,14 @@ fn prepare_template(target: &str, template: &str, current: &str) -> Result<Strin
 fn preserve_singbox_subscription_config(template: &str, current: &str) -> Result<String, String> {
     let mut template_json: JsonValue = serde_json::from_str(template)
         .map_err(|err| format!("upstream sing-box template is invalid JSON: {err}"))?;
-    let Ok(current_json) = serde_json::from_str::<JsonValue>(current) else {
+    if current.trim().is_empty() {
         return serde_json::to_string_pretty(&template_json)
+            .map(|text| format!("{text}\n"))
             .map_err(|err| format!("serialize sing-box template: {err}"));
-    };
+    }
+    let current_json: JsonValue = serde_json::from_str(current).map_err(|err| {
+        format!("current sing-box config is invalid JSON; refusing to drop outbounds: {err}")
+    })?;
     if let Some(outbounds) = current_json.get("outbounds").cloned() {
         let Some(object) = template_json.as_object_mut() else {
             return Err("upstream sing-box template is not a JSON object".to_string());
@@ -1004,6 +1008,40 @@ mod tests {
         assert!(merged.contains("\"inbounds\": []"));
         assert!(merged.contains("\"route\": {}"));
         Ok(())
+    }
+
+    #[test]
+    fn missing_current_config_uses_the_upstream_template() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let template = r#"{
+  "inbounds": [],
+  "outbounds": [
+    { "type": "direct", "tag": "direct" }
+  ]
+}
+"#;
+        let merged = preserve_singbox_subscription_config(template, "  \n")
+            .map_err(std::io::Error::other)?;
+        assert!(merged.contains("\"tag\": \"direct\""));
+        assert!(!merged.contains("selector"));
+        Ok(())
+    }
+
+    #[test]
+    fn corrupt_current_config_does_not_drop_subscription_outbounds() {
+        let template = r#"{
+  "inbounds": [],
+  "outbounds": [
+    { "type": "direct", "tag": "direct" }
+  ]
+}
+"#;
+        let error = preserve_singbox_subscription_config(template, "{not-json")
+            .expect_err("corrupt current config must fail closed");
+        assert!(
+            error.contains("refusing to drop outbounds"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

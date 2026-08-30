@@ -9,9 +9,11 @@ use chacha20poly1305::{
 };
 
 use crate::subscriptions::{
-    normalize_subscription_filter_text, validate_subscription_url, validate_subscription_user_agent,
+    normalize_subscription_filter_text, validate_restored_subscription_urls,
+    validate_subscription_url, validate_subscription_user_agent,
 };
 use crate::utils::replace_module_text_files_transactionally;
+use crate::warp::validate_warp_endpoint_json;
 use crate::{decode_base64, run_magicnet_function, shell_inert_conf_value, App};
 
 const MAX_BACKUP_BYTES: usize = 32 * 1024 * 1024;
@@ -291,6 +293,14 @@ fn validate_restore_section(rel: &str, text: &str) -> Result<(), String> {
             "refusing to restore {rel}: file is shell-sourced and violates its allowlisted schema"
         ));
     }
+    if rel == ".config/sing-box/subscription.url" {
+        validate_restored_subscription_urls(text)
+            .map_err(|err| format!("refusing to restore {rel}: {err}"))?;
+    }
+    if rel == ".config/magicnet/warp-endpoint.json" {
+        validate_warp_endpoint_json(text)
+            .map_err(|err| format!("refusing to restore {rel}: {err}"))?;
+    }
     if rel == ".config/sing-box/subscription.user-agent" {
         let value = text.strip_suffix('\n').unwrap_or(text);
         if value.contains('\r')
@@ -375,10 +385,7 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
             )
         }
         (".config/magicnet/transparent-mode.conf", "MAGICNET_TRANSPARENT_MODE") => {
-            matches!(
-                value,
-                "tun" | "proxy" | "external" | "external-tun" | "hybrid"
-            )
+            matches!(value, "tun")
         }
         (".config/magicnet/network-policy.conf", "MAGICNET_IPV6_MODE") => {
             matches!(value, "ipv4_only" | "prefer_ipv4" | "prefer_ipv6")
@@ -599,6 +606,19 @@ mod tests {
         ] {
             assert!(!sourced_conf_content_matches_schema(network, invalid));
         }
+
+        let transparent = ".config/magicnet/transparent-mode.conf";
+        assert!(sourced_conf_content_matches_schema(
+            transparent,
+            "MAGICNET_TRANSPARENT_MODE=tun\n"
+        ));
+        for invalid in [
+            "MAGICNET_TRANSPARENT_MODE=proxy\n",
+            "MAGICNET_TRANSPARENT_MODE=external\n",
+            "MAGICNET_TRANSPARENT_MODE=hybrid\n",
+        ] {
+            assert!(!sourced_conf_content_matches_schema(transparent, invalid));
+        }
     }
 
     #[test]
@@ -612,7 +632,7 @@ mod tests {
             "https://example.com/subscription\n",
             "\n",
             "--- .config/magicnet/warp-endpoint.json\n",
-            "{\"private_key\":\"fixture\"}\n",
+            "{\"type\":\"wireguard\",\"tag\":\"warp\",\"address\":[\"172.16.0.2/32\"],\"private_key\":\"fixture\",\"peers\":[{\"address\":\"engage.example\",\"port\":2408,\"public_key\":\"public\"}]}\n",
         );
 
         restore_backup(&app, text).expect("restore secret-bearing files");
@@ -628,6 +648,94 @@ mod tests {
                 & 0o777;
             assert_eq!(mode, 0o600, "unexpected mode for {rel}");
         }
+    }
+
+    #[test]
+    fn restore_rejects_disallowed_subscription_urls_without_writing() {
+        let app = temp_app();
+        let subscription = app.moddir.join(".config/sing-box/subscription.url");
+        fs::create_dir_all(subscription.parent().expect("subscription parent")).unwrap();
+        fs::write(&subscription, "https://example.com/old\n").unwrap();
+
+        for payload in [
+            "https://user:secret@example.com/sub\n",
+            "http://example.com/sub\n",
+            "https://127.0.0.1/sub\n",
+        ] {
+            let text =
+                format!("MagicNet backup v2\n--- .config/sing-box/subscription.url\n{payload}");
+            let err = restore_backup(&app, &text).expect_err("invalid subscription URL");
+            assert!(
+                err.contains("subscription.url"),
+                "unexpected error for {payload:?}: {err}"
+            );
+            assert_eq!(
+                fs::read_to_string(&subscription).unwrap(),
+                "https://example.com/old\n"
+            );
+        }
+    }
+
+    #[test]
+    fn restore_rejects_non_wireguard_warp_endpoint_without_writing() {
+        let app = temp_app();
+        let endpoint = app.moddir.join(".config/magicnet/warp-endpoint.json");
+        fs::create_dir_all(endpoint.parent().expect("warp parent")).unwrap();
+        fs::write(&endpoint, "{\"type\":\"wireguard\",\"tag\":\"warp\"}\n").unwrap();
+
+        let text = concat!(
+            "MagicNet backup v2\n",
+            "--- .config/magicnet/warp-endpoint.json\n",
+            "{\"type\":\"socks\",\"tag\":\"warp\",\"server\":\"127.0.0.1\",\"server_port\":1080}\n",
+        );
+        let err = restore_backup(&app, text).expect_err("non-wireguard endpoint");
+        assert!(err.contains("warp-endpoint.json"), "{err}");
+        assert_eq!(
+            fs::read_to_string(&endpoint).unwrap(),
+            "{\"type\":\"wireguard\",\"tag\":\"warp\"}\n"
+        );
+    }
+
+    #[test]
+    fn restore_rejects_legacy_transparent_modes_without_writing() {
+        let app = temp_app();
+        let mode = app.moddir.join(".config/magicnet/transparent-mode.conf");
+        fs::create_dir_all(mode.parent().expect("mode parent")).unwrap();
+        fs::write(&mode, "MAGICNET_TRANSPARENT_MODE=tun\n").unwrap();
+
+        for payload in [
+            "MAGICNET_TRANSPARENT_MODE=proxy\n",
+            "MAGICNET_TRANSPARENT_MODE=external\n",
+            "MAGICNET_TRANSPARENT_MODE=external-tun\n",
+            "MAGICNET_TRANSPARENT_MODE=hybrid\n",
+        ] {
+            let text = format!(
+                "MagicNet backup v2\n--- .config/magicnet/transparent-mode.conf\n{payload}"
+            );
+            let err = restore_backup(&app, &text).expect_err("legacy transparent mode");
+            assert!(
+                err.contains("transparent-mode.conf"),
+                "unexpected error for {payload:?}: {err}"
+            );
+            assert_eq!(
+                fs::read_to_string(&mode).unwrap(),
+                "MAGICNET_TRANSPARENT_MODE=tun\n"
+            );
+        }
+    }
+
+    #[test]
+    fn restore_accepts_empty_local_only_subscription_url() {
+        let app = temp_app();
+        let text = concat!(
+            "MagicNet backup v2\n",
+            "--- .config/sing-box/subscription.url\n",
+        );
+        restore_backup(&app, text).expect("empty subscription.url is local-only");
+        assert_eq!(
+            fs::read_to_string(app.moddir.join(".config/sing-box/subscription.url")).unwrap(),
+            ""
+        );
     }
 
     #[test]

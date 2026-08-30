@@ -11,6 +11,7 @@ use std::time::Duration;
 #[cfg(test)]
 use std::time::UNIX_EPOCH;
 
+use crate::app::trusted_runtime_path;
 use crate::{read_proc_argv, read_proc_text_bounded, write_text_file, App, MAX_PROC_COMM_BYTES};
 
 const DEFAULT_BIND: &str = "127.0.0.1";
@@ -336,19 +337,6 @@ fn start(app: &App) -> Result<(), String> {
             log_path.display()
         ))
     }
-}
-
-fn trusted_runtime_path(moddir: &Path) -> String {
-    let system_path = if cfg!(target_os = "android") {
-        "/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
-    } else {
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-    };
-    format!(
-        "{}:{}:{system_path}",
-        moddir.join("bin").display(),
-        moddir.join("system/bin").display()
-    )
 }
 
 fn validate_mcp_binary(path: &Path) -> Result<(), String> {

@@ -63,6 +63,21 @@ fn subscription_url_validation_requires_public_https_without_credentials() {
 }
 
 #[test]
+fn restored_subscription_urls_allow_empty_and_reject_policy_violations() {
+    validate_restored_subscription_urls("").unwrap();
+    validate_restored_subscription_urls("\n  \n").unwrap();
+    validate_restored_subscription_urls("https://example.com/sub\nhttps://example.org/sub\n")
+        .unwrap();
+    assert!(validate_restored_subscription_urls("https://user:secret@example.com/sub\n").is_err());
+    assert!(validate_restored_subscription_urls("https://127.0.0.1/sub\n").is_err());
+    let too_many = (0..=5)
+        .map(|idx| format!("https://example.com/{idx}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(validate_restored_subscription_urls(&too_many).is_err());
+}
+
+#[test]
 fn subscription_host_validation_accepts_public_ip_literals_only() {
     for host in ["1.1.1.1", "2606:4700:4700::1111", "example.com"] {
         validate_subscription_host(host).unwrap();

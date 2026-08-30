@@ -102,9 +102,30 @@ fn infer_moddir_from_exe(exe: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Module-owned binaries first, then a fixed OS search path. Android never
+/// inherits a caller PATH, so `curl`/`unzip`/`pkill` cannot be redirected.
+pub(crate) fn trusted_runtime_path(moddir: &Path) -> String {
+    let system_path = if cfg!(target_os = "android") {
+        "/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
+    } else {
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    };
+    format!(
+        "{}:{}:{system_path}",
+        moddir.join("bin").display(),
+        moddir.join("system/bin").display()
+    )
+}
+
+pub(crate) fn install_trusted_runtime_path(moddir: &Path) {
+    if cfg!(target_os = "android") {
+        env::set_var("PATH", trusted_runtime_path(moddir));
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{infer_moddir_from_exe, is_loopback_http_api};
+    use super::{infer_moddir_from_exe, is_loopback_http_api, trusted_runtime_path};
     use std::env;
     use std::fs;
     use std::path::Path;
@@ -137,6 +158,19 @@ mod tests {
         assert_infers(&root, "cli");
         assert_infers(&root, "bin/magicnet-cli");
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn trusted_runtime_path_prefers_module_binaries() {
+        let path = trusted_runtime_path(Path::new("/data/adb/modules/MagicNet"));
+        assert!(path.starts_with("/data/adb/modules/MagicNet/bin:"));
+        assert!(path.contains("/data/adb/modules/MagicNet/system/bin:"));
+        assert!(!path.contains("::"));
+        if cfg!(target_os = "android") {
+            assert!(path.ends_with("/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"));
+        } else {
+            assert!(path.ends_with("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"));
+        }
     }
 
     #[test]
