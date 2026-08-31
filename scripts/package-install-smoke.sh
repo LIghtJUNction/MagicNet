@@ -26,6 +26,7 @@ cleanup() {
         echo "keeping package install smoke directory: $TMP" >&2
         return
     fi
+    chmod -R u+w "$TMP" 2>/dev/null || true
     rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -57,12 +58,17 @@ unzip -oq "$ZIP_PATH" -d "$MODPATH"
 unzip -oq "$ZIP_PATH" -d "$MANAGER_MODPATH"
 
 mkdir -p \
-    "$PREV_MOD/.state/sing-box/subscription-work" \
+    "$PREV_MOD/.state/sing-box/subscription-work/readonly/nested" \
     "$PREV_MOD/.config/sing-box" \
     "$PREV_MOD/.config/magicnet"
 printf '%s\n' 'https://old.example/sing-box' >"$PREV_MOD/.config/sing-box/subscription.url"
 : >"$PREV_MOD/.config/sing-box/subscription-filter.list"
 printf '%s\n' 'old-sing-box-work' >"$PREV_MOD/.state/sing-box/subscription-work/marker.txt"
+printf '%s\n' 'readonly-work-preserved' >"$PREV_MOD/.state/sing-box/subscription-work/readonly/nested/value.txt"
+chmod 0444 "$PREV_MOD/.state/sing-box/subscription-work/readonly/nested/value.txt"
+chmod 0555 \
+    "$PREV_MOD/.state/sing-box/subscription-work/readonly" \
+    "$PREV_MOD/.state/sing-box/subscription-work/readonly/nested"
 printf '%s\n' 'MAGICNET_DEFAULT_CORE=sing-box' >"$PREV_MOD/.config/magicnet/current-core.conf"
 printf '%s\n' 'MAGICNET_MCP_ENABLED=1' 'MAGICNET_MCP_BIND=127.0.0.1' 'MAGICNET_MCP_PORT=18766' \
     >"$PREV_MOD/.config/magicnet/mcp.conf"
@@ -188,6 +194,8 @@ grep -qx 'https://old.example/sing-box' "$MODPATH/.config/sing-box/subscription.
     fail "explicit empty subscription filter list was not preserved from previous install"
 grep -qx 'old-sing-box-work' "$MODPATH/.state/sing-box/subscription-work/marker.txt" ||
     fail "sing-box subscription workdir was not preserved from previous install"
+grep -qx 'readonly-work-preserved' "$MODPATH/.state/sing-box/subscription-work/readonly/nested/value.txt" ||
+    fail "read-only nested migration data was not preserved from previous install"
 legacy_core_dir="$MODPATH/.config/mi""homo"
 if [[ -e "$legacy_core_dir" ]]; then
     fail "legacy core config directory should not be restored"

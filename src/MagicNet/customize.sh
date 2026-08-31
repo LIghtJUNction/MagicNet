@@ -42,6 +42,15 @@ magicnet_cleanup_install_backup() {
     [ -f "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
     [ ! -L "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
     [ "$(cat "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
+    # cp -a preserves directory modes. Make only this validated, active backup's
+    # directories traversable/removable; find's default physical walk does not
+    # follow symlinks, and regular files do not need permission changes for rm.
+    find "$MAGICNET_BACKUP_DIR" -type d -exec chmod u+rwx '{}' \; || return 1
+    # Revalidate after the permission walk before deleting the sibling path.
+    [ -d "$MAGICNET_BACKUP_DIR" ] && [ ! -L "$MAGICNET_BACKUP_DIR" ] &&
+      [ -f "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
+      [ ! -L "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
+      [ "$(cat "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ] || return 1
     rm -rf "$MAGICNET_BACKUP_DIR" || return 1
   else
     return 1
