@@ -203,8 +203,8 @@ set_i18n "SET_MODULE_ENTRY_PERMS" \
 
 magicnet_set_default_core() {
   case "$1" in
-    sing-box) ;;
-    *) return 1 ;;
+  sing-box) ;;
+  *) return 1 ;;
   esac
   mkdir -p "${MODPATH}/.config/magicnet" || return 1
   printf 'MAGICNET_DEFAULT_CORE=%s\n' "$1" >"${MODPATH}/.config/magicnet/current-core.conf"

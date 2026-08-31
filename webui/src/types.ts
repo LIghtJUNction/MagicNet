@@ -39,8 +39,19 @@ export type RuntimeState = {
   transparentMode: TransparentMode | "unknown";
   transparentEffectiveMode: TransparentEffectiveMode;
   transparentCapability: "ok" | "failed" | "not-required" | "unknown";
-  transparentLocalCgroup: "attached" | "missing" | "configured" | "inactive" | "unknown";
-  transparentSharedTc: "attached" | "missing" | "configured" | "pending" | "inactive" | "unknown";
+  transparentLocalCgroup:
+    | "attached"
+    | "missing"
+    | "configured"
+    | "inactive"
+    | "unknown";
+  transparentSharedTc:
+    | "attached"
+    | "missing"
+    | "configured"
+    | "pending"
+    | "inactive"
+    | "unknown";
   transparentSharedInterfaces: string[];
   transparentRecentError: string;
   transparentTransition: "stable" | "pending" | "rollback" | "unknown";

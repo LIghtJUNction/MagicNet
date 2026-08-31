@@ -16,7 +16,7 @@ export function singBoxToggleAction(running: boolean): ControlDangerAction {
     message: running
       ? "确认停止 sing-box？停止后流量可能无法继续通过 MagicNet。"
       : "确认启动 sing-box？该操作不会主动停止一个已运行的内核。",
-    background: true
+    background: true,
   };
 }
 
@@ -26,7 +26,7 @@ export function restartSingBoxAction(): ControlDangerAction {
     args: "service restart sing-box",
     label: "重启 sing-box",
     message: "确认重启 sing-box？当前连接可能会短暂中断。",
-    background: true
+    background: true,
   };
 }
 
@@ -35,8 +35,9 @@ export function applyConfigAction(): ControlDangerAction {
     key: "apply-config",
     args: "config apply",
     label: "应用全部配置",
-    message: "确认应用配置？运行中的 sing-box 会重启以读取最新配置，当前连接可能会短暂中断。",
-    background: false
+    message:
+      "确认应用配置？运行中的 sing-box 会重启以读取最新配置，当前连接可能会短暂中断。",
+    background: false,
   };
 }
 
@@ -46,7 +47,7 @@ export function repairAction(): ControlDangerAction {
     args: "repair",
     label: "一键自修复",
     message: "确认执行一键自修复？它可能会改写配置并调整运行状态。",
-    background: false
+    background: false,
   };
 }
 
@@ -56,7 +57,7 @@ export function stopAllServicesAction(): ControlDangerAction {
     args: "service stop",
     label: "停止全部服务",
     message: "确认停止全部服务？流量可能无法继续通过 MagicNet。",
-    background: true
+    background: true,
   };
 }
 
@@ -81,6 +82,6 @@ export function applyTransparentModeAction(): ControlDangerAction {
     args: "transparent apply",
     label: "应用编排模式",
     message: "确认重新应用编排模式并重启 sing-box？当前连接可能会短暂中断。",
-    background: false
+    background: false,
   };
 }

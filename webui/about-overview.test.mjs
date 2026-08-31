@@ -16,7 +16,10 @@ function transpile(source) {
   }).outputText;
 }
 
-const aboutPage = readFileSync(new URL("./src/components/pages/AboutPage.vue", import.meta.url), "utf8");
+const aboutPage = readFileSync(
+  new URL("./src/components/pages/AboutPage.vue", import.meta.url),
+  "utf8",
+);
 const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
 const overviewSource = readFileSync(
   new URL("./src/components/pages/aboutOverview.ts", import.meta.url),
@@ -25,8 +28,14 @@ const overviewSource = readFileSync(
 
 const dir = await mkdtemp(join(tmpdir(), "magicnet-about-overview-"));
 try {
-  await writeFile(join(dir, "aboutOverview.mjs"), transpile(overviewSource), "utf8");
-  const overview = await import(pathToFileURL(join(dir, "aboutOverview.mjs")).href);
+  await writeFile(
+    join(dir, "aboutOverview.mjs"),
+    transpile(overviewSource),
+    "utf8",
+  );
+  const overview = await import(
+    pathToFileURL(join(dir, "aboutOverview.mjs")).href
+  );
 
   const facts = overview.dataPlaneFacts();
   const steps = overview.firstRunSteps();
@@ -39,7 +48,10 @@ try {
   assert.equal(steps.length, 3);
   assert.equal(checks.length, 3);
   assert.equal(pathNodes.length, 4);
-  assert.equal(pathNodes.map((item) => item.code).join("|"), "ROOT|DATA|CORE|OUT");
+  assert.equal(
+    pathNodes.map((item) => item.code).join("|"),
+    "ROOT|DATA|CORE|OUT",
+  );
   assert.ok(facts.every((item) => item.code && item.title && item.detail));
   assert.match(report, /dataplane=sing-box tun\|ebpf/);
   assert.match(report, /dataplane_label=tun \| ebpf/);

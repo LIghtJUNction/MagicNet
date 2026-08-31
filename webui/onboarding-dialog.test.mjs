@@ -128,10 +128,7 @@ for (const forbidden of [
 assert.match(guide, /ALLOW_MULTI/);
 assert.match(guide, /eBPF/);
 
-for (const forbidden of [
-  /token[:：]\s*\S+/i,
-  /password[:：]\s*\S+/i,
-]) {
+for (const forbidden of [/token[:：]\s*\S+/i, /password[:：]\s*\S+/i]) {
   assert.doesNotMatch(guide, forbidden);
 }
 

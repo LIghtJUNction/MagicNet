@@ -40,16 +40,16 @@ branch_hash() {
     # closed rule_source table above, so resolve the same ref through GitHub's
     # API and still require an immutable 40-hex object ID.
     case "$repo" in
-        https://github.com/*.git)
-            slug=${repo#https://github.com/}
-            slug=${slug%.git}
-            output=$(curl -fsSL --retry 3 --retry-delay 1 \
-                "https://api.github.com/repos/${slug}/git/ref/heads/${branch}") || return 1
-            ref=$(printf '%s\n' "$output" | jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))') || return 1
-            log_warn "git ls-remote failed for $slug; resolved $branch through the GitHub API" >&2
-            printf '%s\n' "$ref"
-            return 0
-            ;;
+    https://github.com/*.git)
+        slug=${repo#https://github.com/}
+        slug=${slug%.git}
+        output=$(curl -fsSL --retry 3 --retry-delay 1 \
+            "https://api.github.com/repos/${slug}/git/ref/heads/${branch}") || return 1
+        ref=$(printf '%s\n' "$output" | jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))') || return 1
+        log_warn "git ls-remote failed for $slug; resolved $branch through the GitHub API" >&2
+        printf '%s\n' "$ref"
+        return 0
+        ;;
     esac
 
     return 1
@@ -73,32 +73,32 @@ rule_source() {
     local file="$1"
 
     case "$file" in
-        metacubex-geosite-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geosite/cn.srs" ;;
-        metacubex-geoip-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geoip/cn.srs" ;;
-        metacubex-geosite-geolocation-not-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geosite/geolocation-!cn.srs" ;;
-        yuu-geosite-pcdn-cn.srs) printf '%s|%s|%s\n' "https://github.com/Yuu518/sing-box-rules.git" "rule_set" "rule_set_site/pcdn-cn.srs" ;;
-        yuu-geosite-stream-global.srs) printf '%s|%s|%s\n' "https://github.com/Yuu518/sing-box-rules.git" "rule_set" "rule_set_site/stream-global.srs" ;;
-        yuu-geosite-ai.srs) printf '%s|%s|%s\n' "https://github.com/Yuu518/sing-box-rules.git" "rule_set" "rule_set_site/category-ai-!cn.srs" ;;
-        ddch-direct.srs) printf '%s|%s|%s\n' "https://github.com/DDCHlsq/sing-ruleset.git" "ruleset" "direct.srs" ;;
-        ddch-proxy.srs) printf '%s|%s|%s\n' "https://github.com/DDCHlsq/sing-ruleset.git" "ruleset" "proxy.srs" ;;
-        ddch-gfw.srs) printf '%s|%s|%s\n' "https://github.com/DDCHlsq/sing-ruleset.git" "ruleset" "gfw.srs" ;;
-        hagezi-light.srs) printf '%s|%s|%s\n' "https://github.com/razaxq/dns-blocklists-sing-box.git" "rule-set" "hagezi-light.srs" ;;
-        hagezi-normal.srs) printf '%s|%s|%s\n' "https://github.com/razaxq/dns-blocklists-sing-box.git" "rule-set" "hagezi-normal.srs" ;;
-        hagezi-anti-piracy.srs) printf '%s|%s|%s\n' "https://github.com/razaxq/dns-blocklists-sing-box.git" "rule-set" "hagezi-anti-piracy.srs" ;;
-        karing-acl4ssr-ai.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/AI.srs" ;;
-        karing-acl4ssr-wechat.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/Wechat.srs" ;;
-        karing-acl4ssr-proxy-lite.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ProxyLite.srs" ;;
-        karing-acl4ssr-proxy-gfwlist.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ProxyGFWlist.srs" ;;
-        karing-acl4ssr-banad.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/BanAD.srs" ;;
-        karing-acl4ssr-china-domain.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ChinaDomain.srs" ;;
-        karing-acl4ssr-china-ip.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ChinaIp.srs" ;;
-        karing-acl4ssr-proxy-media.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ProxyMedia.srs" ;;
-        geoip-*.srs) printf '%s|%s|%s\n' "https://github.com/lyc8503/sing-box-rules.git" "rule-set-geoip" "$file" ;;
-        geosite-*.srs) printf '%s|%s|%s\n' "https://github.com/lyc8503/sing-box-rules.git" "rule-set-geosite" "$file" ;;
-        *)
-            log_error "Unsupported sing-box rule-set file: $file"
-            return 1
-            ;;
+    metacubex-geosite-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geosite/cn.srs" ;;
+    metacubex-geoip-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geoip/cn.srs" ;;
+    metacubex-geosite-geolocation-not-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geosite/geolocation-!cn.srs" ;;
+    yuu-geosite-pcdn-cn.srs) printf '%s|%s|%s\n' "https://github.com/Yuu518/sing-box-rules.git" "rule_set" "rule_set_site/pcdn-cn.srs" ;;
+    yuu-geosite-stream-global.srs) printf '%s|%s|%s\n' "https://github.com/Yuu518/sing-box-rules.git" "rule_set" "rule_set_site/stream-global.srs" ;;
+    yuu-geosite-ai.srs) printf '%s|%s|%s\n' "https://github.com/Yuu518/sing-box-rules.git" "rule_set" "rule_set_site/category-ai-!cn.srs" ;;
+    ddch-direct.srs) printf '%s|%s|%s\n' "https://github.com/DDCHlsq/sing-ruleset.git" "ruleset" "direct.srs" ;;
+    ddch-proxy.srs) printf '%s|%s|%s\n' "https://github.com/DDCHlsq/sing-ruleset.git" "ruleset" "proxy.srs" ;;
+    ddch-gfw.srs) printf '%s|%s|%s\n' "https://github.com/DDCHlsq/sing-ruleset.git" "ruleset" "gfw.srs" ;;
+    hagezi-light.srs) printf '%s|%s|%s\n' "https://github.com/razaxq/dns-blocklists-sing-box.git" "rule-set" "hagezi-light.srs" ;;
+    hagezi-normal.srs) printf '%s|%s|%s\n' "https://github.com/razaxq/dns-blocklists-sing-box.git" "rule-set" "hagezi-normal.srs" ;;
+    hagezi-anti-piracy.srs) printf '%s|%s|%s\n' "https://github.com/razaxq/dns-blocklists-sing-box.git" "rule-set" "hagezi-anti-piracy.srs" ;;
+    karing-acl4ssr-ai.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/AI.srs" ;;
+    karing-acl4ssr-wechat.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/Wechat.srs" ;;
+    karing-acl4ssr-proxy-lite.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ProxyLite.srs" ;;
+    karing-acl4ssr-proxy-gfwlist.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ProxyGFWlist.srs" ;;
+    karing-acl4ssr-banad.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/BanAD.srs" ;;
+    karing-acl4ssr-china-domain.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ChinaDomain.srs" ;;
+    karing-acl4ssr-china-ip.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ChinaIp.srs" ;;
+    karing-acl4ssr-proxy-media.srs) printf '%s|%s|%s\n' "https://github.com/KaringX/karing-ruleset.git" "sing" "ACL4SSR/ProxyMedia.srs" ;;
+    geoip-*.srs) printf '%s|%s|%s\n' "https://github.com/lyc8503/sing-box-rules.git" "rule-set-geoip" "$file" ;;
+    geosite-*.srs) printf '%s|%s|%s\n' "https://github.com/lyc8503/sing-box-rules.git" "rule-set-geosite" "$file" ;;
+    *)
+        log_error "Unsupported sing-box rule-set file: $file"
+        return 1
+        ;;
     esac
 }
 

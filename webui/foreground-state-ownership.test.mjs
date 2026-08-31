@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const source = readFileSync(new URL("./src/composables/useMagicNet.ts", import.meta.url), "utf8");
+const source = readFileSync(
+  new URL("./src/composables/useMagicNet.ts", import.meta.url),
+  "utf8",
+);
 
 assert.match(source, /function startForegroundCommand\(/);
-assert.match(source, /token: after !== before \? after : inheritedToken \?\? before/);
+assert.match(
+  source,
+  /token:\s*after\s*!==\s*before\s*\?\s*after\s*:\s*\(\s*inheritedToken\s*\?\?\s*before\s*\)/,
+);
 
 function functionSource(name) {
   const start = source.indexOf(`async function ${name}`);
@@ -31,8 +37,16 @@ for (const name of [
   "syncConfigTemplate",
 ]) {
   const segment = functionSource(name);
-  assert.match(segment, /startForegroundCommand\(/, `${name} must capture command ownership`);
-  assert.match(segment, /foregroundUiGate\.owns|canUpdateRefreshUi/, `${name} must guard stale completion`);
+  assert.match(
+    segment,
+    /startForegroundCommand\(/,
+    `${name} must capture command ownership`,
+  );
+  assert.match(
+    segment,
+    /foregroundUiGate\.owns|canUpdateRefreshUi/,
+    `${name} must guard stale completion`,
+  );
 }
 
 const saveConfig = functionSource("saveConfig");

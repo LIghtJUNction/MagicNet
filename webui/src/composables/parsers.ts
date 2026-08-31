@@ -16,7 +16,12 @@ import type {
   WifiPolicyState,
 } from "../types.ts";
 
-export type { SubscriptionState, McpState, ConfigValidationState, RouteRuleSummary };
+export type {
+  SubscriptionState,
+  McpState,
+  ConfigValidationState,
+  RouteRuleSummary,
+};
 
 export const subscriptionDefaults: SubscriptionState = {
   singBox: "",
@@ -108,7 +113,7 @@ export const runtimeDefaults: RuntimeState = {
   transparentTransition: "unknown",
   api: "http://127.0.0.1:9090",
   webui: SING_BOX_UI,
-  subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`
+  subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`,
 };
 
 export const blockDefaults: BlocklistState = {
@@ -119,7 +124,7 @@ export const blockDefaults: BlocklistState = {
   communityRules: [],
   communityDomains: [],
   allowRules: [],
-  newDomain: ""
+  newDomain: "",
 };
 
 export const mcpDefaults: McpState = {
@@ -129,14 +134,17 @@ export const mcpDefaults: McpState = {
   pid: "stopped",
   url: "http://127.0.0.1:8766/mcp",
   secretSet: false,
-  portOwner: ""
+  portOwner: "",
 };
 
 function isMcpIpv4Literal(value: string): boolean {
   const octets = value.split(".");
-  return octets.length === 4 && octets.every((octet) => (
-    /^(0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255
-  ));
+  return (
+    octets.length === 4 &&
+    octets.every(
+      (octet) => /^(0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255,
+    )
+  );
 }
 
 function isMcpIpv6Literal(value: string): boolean {
@@ -157,14 +165,21 @@ export function isMcpIpLiteral(value: string): boolean {
 export function isValidMcpPort(value: string): boolean {
   const port = value.trim();
   const portNumber = Number(port);
-  return /^\d+$/.test(port) && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
+  return (
+    /^\d+$/.test(port) &&
+    Number.isInteger(portNumber) &&
+    portNumber >= 1 &&
+    portNumber <= 65535
+  );
 }
 
 /** Render a device endpoint without producing an ambiguous IPv6 host:port. */
 export function formatMcpHostPort(bind: string, port: string): string {
   const host = bind.trim();
   const normalizedPort = port.trim();
-  return isMcpIpv6Literal(host) ? `[${host}]:${normalizedPort}` : `${host}:${normalizedPort}`;
+  return isMcpIpv6Literal(host)
+    ? `[${host}]:${normalizedPort}`
+    : `${host}:${normalizedPort}`;
 }
 
 export function formatMcpUrl(bind: string, port: string): string {
@@ -175,7 +190,7 @@ export const dnsDefaults: DnsState = {
   profile: "default",
   primary: "bootstrap-local-dns",
   secondary: "",
-  transport: "default"
+  transport: "default",
 };
 
 export const warpDefaults: WarpState = {
@@ -186,7 +201,7 @@ export const warpDefaults: WarpState = {
   addresses: 0,
   allowedIps: 0,
   importText: "",
-  routeDomain: ""
+  routeDomain: "",
 };
 
 export const wifiPolicyDefaults: WifiPolicyState = {
@@ -263,22 +278,29 @@ export function parseWifiPolicy(text: string): WifiPolicyState {
   return policy;
 }
 
-export function normalizeTransparentMode(value: string): TransparentMode | null {
+export function normalizeTransparentMode(
+  value: string,
+): TransparentMode | null {
   const mode = value.trim().toLowerCase();
   return mode === "tun" || mode === "ebpf" ? mode : null;
 }
 
-function normalizeTransparentEffectiveMode(value: string): TransparentEffectiveMode | null {
+function normalizeTransparentEffectiveMode(
+  value: string,
+): TransparentEffectiveMode | null {
   const mode = value.trim().toLowerCase();
   return ["tun", "local", "hybrid", "unknown"].includes(mode)
     ? (mode as TransparentEffectiveMode)
     : null;
 }
 
-function normalizeTransparentTransition(value: string): RuntimeState["transparentTransition"] {
+function normalizeTransparentTransition(
+  value: string,
+): RuntimeState["transparentTransition"] {
   const transition = value.trim().toLowerCase();
   if (transition === "idle" || transition === "stable") return "stable";
-  if (["rolling-back", "old-restored", "rollback"].includes(transition)) return "rollback";
+  if (["rolling-back", "old-restored", "rollback"].includes(transition))
+    return "rollback";
   if (
     [
       "target-written",
@@ -290,7 +312,8 @@ function normalizeTransparentTransition(value: string): RuntimeState["transparen
       "verified",
       "pending",
     ].includes(transition)
-  ) return "pending";
+  )
+    return "pending";
   return "unknown";
 }
 
@@ -298,13 +321,31 @@ function normalizeRuntimeStatus(value: string): string {
   const status = value.trim();
   const compact = status.toLowerCase();
   if (!status) return "stopped";
-  if (["stopped", "stop", "not installed", "not running", "not found", "missing"].includes(compact)) return "stopped";
-  if (status.includes("已停止") || status.includes("未运行") || status.includes("未安装")) return "stopped";
-  if (["running", "run"].includes(compact) || status.includes("正在运行")) return "running";
+  if (
+    [
+      "stopped",
+      "stop",
+      "not installed",
+      "not running",
+      "not found",
+      "missing",
+    ].includes(compact)
+  )
+    return "stopped";
+  if (
+    status.includes("已停止") ||
+    status.includes("未运行") ||
+    status.includes("未安装")
+  )
+    return "stopped";
+  if (["running", "run"].includes(compact) || status.includes("正在运行"))
+    return "running";
   return status;
 }
 
-export function invalidateTransparentRuntime(previous: RuntimeState): RuntimeState {
+export function invalidateTransparentRuntime(
+  previous: RuntimeState,
+): RuntimeState {
   return {
     ...previous,
     transparentMode: "unknown",
@@ -318,80 +359,129 @@ export function invalidateTransparentRuntime(previous: RuntimeState): RuntimeSta
   };
 }
 
-export function parseRuntime(text: string, _previous: RuntimeState): RuntimeState {
+export function parseRuntime(
+  text: string,
+  _previous: RuntimeState,
+): RuntimeState {
   const next = { ...runtimeDefaults };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
-    if (line.startsWith("sing-box:")) next.singBox = normalizeRuntimeStatus(line.slice(9));
-    if (line.startsWith("fswatch:")) next.fswatch = normalizeRuntimeStatus(line.slice(8));
+    if (line.startsWith("sing-box:"))
+      next.singBox = normalizeRuntimeStatus(line.slice(9));
+    if (line.startsWith("fswatch:"))
+      next.fswatch = normalizeRuntimeStatus(line.slice(8));
     if (line.startsWith("Transparent:")) {
-      next.transparentMode = normalizeTransparentMode(line.slice(12)) || next.transparentMode;
+      next.transparentMode =
+        normalizeTransparentMode(line.slice(12)) || next.transparentMode;
     }
     if (line.startsWith("mode=")) {
-      next.transparentMode = normalizeTransparentMode(line.slice(5)) || next.transparentMode;
+      next.transparentMode =
+        normalizeTransparentMode(line.slice(5)) || next.transparentMode;
     }
     if (line.startsWith("configured_mode=")) {
-      next.transparentMode = normalizeTransparentMode(line.slice(16)) || next.transparentMode;
+      next.transparentMode =
+        normalizeTransparentMode(line.slice(16)) || next.transparentMode;
     }
     if (line.startsWith("effective_mode=")) {
       next.transparentEffectiveMode =
-        normalizeTransparentEffectiveMode(line.slice(15)) || next.transparentEffectiveMode;
+        normalizeTransparentEffectiveMode(line.slice(15)) ||
+        next.transparentEffectiveMode;
     }
     if (line.startsWith("capability=")) {
       const capability = line.slice(11).trim();
       if (["ok", "failed", "not-required", "unknown"].includes(capability)) {
-        next.transparentCapability = capability as RuntimeState["transparentCapability"];
+        next.transparentCapability =
+          capability as RuntimeState["transparentCapability"];
       }
     }
     if (line.startsWith("local_cgroup=")) {
       const localCgroup = line.slice(13).trim();
-      if (["attached", "missing", "configured", "inactive", "unknown"].includes(localCgroup)) {
-        next.transparentLocalCgroup = localCgroup as RuntimeState["transparentLocalCgroup"];
+      if (
+        ["attached", "missing", "configured", "inactive", "unknown"].includes(
+          localCgroup,
+        )
+      ) {
+        next.transparentLocalCgroup =
+          localCgroup as RuntimeState["transparentLocalCgroup"];
       }
     }
     if (line.startsWith("shared_tc=")) {
       const sharedTc = line.slice(10).trim();
-      if (["attached", "missing", "configured", "pending", "inactive", "unknown"].includes(sharedTc)) {
-        next.transparentSharedTc = sharedTc as RuntimeState["transparentSharedTc"];
+      if (
+        [
+          "attached",
+          "missing",
+          "configured",
+          "pending",
+          "inactive",
+          "unknown",
+        ].includes(sharedTc)
+      ) {
+        next.transparentSharedTc =
+          sharedTc as RuntimeState["transparentSharedTc"];
       }
     }
     if (line.startsWith("shared_interfaces=")) {
       const interfaces = line.slice(18).trim();
-      next.transparentSharedInterfaces = interfaces === "none" || !interfaces
-        ? []
-        : interfaces.split(",").map((item) => item.trim()).filter(Boolean);
+      next.transparentSharedInterfaces =
+        interfaces === "none" || !interfaces
+          ? []
+          : interfaces
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean);
     }
     if (line.startsWith("recent_error=")) {
       const recentError = line.slice(13).trim();
       next.transparentRecentError = recentError === "none" ? "" : recentError;
     }
     if (line.startsWith("transition=")) {
-      next.transparentTransition = normalizeTransparentTransition(line.slice(11));
+      next.transparentTransition = normalizeTransparentTransition(
+        line.slice(11),
+      );
     }
     if (line.startsWith("API:")) next.api = line.slice(4).trim() || next.api;
-    if (line.startsWith("WebUI:")) next.webui = line.slice(6).trim() || next.webui;
-    if (line.startsWith("Sub URL:")) next.subPath = line.slice(8).trim() || next.subPath;
+    if (line.startsWith("WebUI:"))
+      next.webui = line.slice(6).trim() || next.webui;
+    if (line.startsWith("Sub URL:"))
+      next.subPath = line.slice(8).trim() || next.subPath;
   });
-  if (next.singBox !== "stopped" && next.singBox !== "unknown") next.singBoxState = "sing-box";
+  if (next.singBox !== "stopped" && next.singBox !== "unknown")
+    next.singBoxState = "sing-box";
   else if (next.singBox === "stopped") next.singBoxState = "stopped";
   return next;
 }
 
 export function parseHealth(text: string): HealthItem[] {
-  return text.split(/\r?\n/).map((line) => {
-    const match = line.trim().match(/^\[(ok|warn|fail|info)\]\s+([^:]+):?\s*(.*)$/i);
-    if (!match) return null;
-    return { status: match[1].toLowerCase() as HealthItem["status"], key: match[2].trim(), detail: match[3].trim() };
-  }).filter((item): item is HealthItem => Boolean(item));
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line
+        .trim()
+        .match(/^\[(ok|warn|fail|info)\]\s+([^:]+):?\s*(.*)$/i);
+      if (!match) return null;
+      return {
+        status: match[1].toLowerCase() as HealthItem["status"],
+        key: match[2].trim(),
+        detail: match[3].trim(),
+      };
+    })
+    .filter((item): item is HealthItem => Boolean(item));
 }
 
 export function parseApps(text: string): AppPolicy {
-  const policy: AppPolicy = { mode: "blacklist", proxy: [], direct: [], bypass: [] };
+  const policy: AppPolicy = {
+    mode: "blacklist",
+    proxy: [],
+    direct: [],
+    bypass: [],
+  };
   let section: "proxy" | "direct" | "bypass" | null = null;
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (!line) return;
-    if (line.startsWith("mode=")) policy.mode = line.includes("whitelist") ? "whitelist" : "blacklist";
+    if (line.startsWith("mode="))
+      policy.mode = line.includes("whitelist") ? "whitelist" : "blacklist";
     else if (line === "proxy apps:") section = "proxy";
     else if (line === "direct apps:") section = "direct";
     else if (line === "bypass apps:") section = "bypass";
@@ -401,39 +491,56 @@ export function parseApps(text: string): AppPolicy {
 }
 
 export function parsePackages(text: string): PackageInfo[] {
-  return text.split(/\r?\n/)
+  return text
+    .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)+$/.test(line))
+    .filter((line) =>
+      /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)+$/.test(line),
+    )
     .map((packageName) => ({
       packageName,
       versionName: "",
       versionCode: 0,
       appLabel: packageName,
       isSystem: false,
-      uid: 0
+      uid: 0,
     }));
 }
 
-export function parseNetworkSnapshotSummary(text: string): NetworkSnapshotSummary {
+export function parseNetworkSnapshotSummary(
+  text: string,
+): NetworkSnapshotSummary {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
   return {
     interfaces: countSectionLines(lines, "[interfaces]", "[routes]"),
     ipRules: countSectionLines(lines, "ip rule:", "ip route:"),
     routes: countSectionLines(lines, "ip route:", "[forwarding]"),
-    natRules: countSectionLines(lines, "[forwarding]", undefined)
+    natRules: countSectionLines(lines, "[forwarding]", undefined),
   };
 }
 
-export function parseConfigValidation(text: string): Pick<ConfigValidationState, "status" | "summary"> {
+export function parseConfigValidation(
+  text: string,
+): Pick<ConfigValidationState, "status" | "summary"> {
   const trimmed = text.trim();
   if (!trimmed) return { status: "error", summary: "命令没有返回校验结果。" };
   if (/\[info\]\s+Saved and validated/i.test(trimmed)) {
-    return { status: "ok", summary: firstUsefulLine(trimmed) || "配置已通过校验并保存。" };
+    return {
+      status: "ok",
+      summary: firstUsefulLine(trimmed) || "配置已通过校验并保存。",
+    };
   }
-  if (/config validation failed|validator missing|config target must/i.test(trimmed)) {
+  if (
+    /config validation failed|validator missing|config target must/i.test(
+      trimmed,
+    )
+  ) {
     return { status: "error", summary: configValidationFailureDetail(trimmed) };
   }
-  return { status: trimmed.includes("[error]") ? "error" : "ok", summary: firstUsefulLine(trimmed) || trimmed.slice(0, 160) };
+  return {
+    status: trimmed.includes("[error]") ? "error" : "ok",
+    summary: firstUsefulLine(trimmed) || trimmed.slice(0, 160),
+  };
 }
 
 function configValidationFailureDetail(text: string): string {
@@ -441,14 +548,25 @@ function configValidationFailureDetail(text: string): string {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("command:"));
-  return lines.find((line) =>
-    /(?:fatal|no such file|not found|permission denied|timed out|validator missing)/i.test(line)
-    && !/^config validation failed$/i.test(line),
-  ) || lines.find((line) => !/^config validation failed$/i.test(line)) || "配置校验失败。";
+  return (
+    lines.find(
+      (line) =>
+        /(?:fatal|no such file|not found|permission denied|timed out|validator missing)/i.test(
+          line,
+        ) && !/^config validation failed$/i.test(line),
+    ) ||
+    lines.find((line) => !/^config validation failed$/i.test(line)) ||
+    "配置校验失败。"
+  );
 }
 
 export function parseRouteRuleSummary(text: string): RouteRuleSummary {
-  const summary: RouteRuleSummary = { proxy: [], direct: [], block: [], warp: [] };
+  const summary: RouteRuleSummary = {
+    proxy: [],
+    direct: [],
+    block: [],
+    warp: [],
+  };
   let current: keyof RouteRuleSummary | null = null;
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
@@ -463,29 +581,42 @@ export function parseRouteRuleSummary(text: string): RouteRuleSummary {
   return summary;
 }
 
-export function parseConnectionSnapshot(text: string): ConnectionSnapshot | null {
+export function parseConnectionSnapshot(
+  text: string,
+): ConnectionSnapshot | null {
   try {
     const root = JSON.parse(text) as Record<string, unknown>;
-    const rawConnections = Array.isArray(root.connections) ? root.connections : null;
+    const rawConnections = Array.isArray(root.connections)
+      ? root.connections
+      : null;
     if (!rawConnections) return null;
     const connections = rawConnections
       .map(parseConnectionTarget)
       .filter((item): item is ConnectionTarget => Boolean(item))
-      .filter((item, index, items) => items.findIndex((other) => other.id === item.id) === index)
+      .filter(
+        (item, index, items) =>
+          items.findIndex((other) => other.id === item.id) === index,
+      )
       .sort((left, right) => right.totalBytes - left.totalBytes);
     return {
       count: rawConnections.length,
       uploadTotal: safeNumber(root.uploadTotal),
       downloadTotal: safeNumber(root.downloadTotal),
-      connections
+      connections,
     };
   } catch {
     return null;
   }
 }
 
-export function connectionMatchesQuery(target: ConnectionTarget, query: string): boolean {
-  const terms = query.split(/\s+/).map((item) => item.trim().toLowerCase()).filter(Boolean);
+export function connectionMatchesQuery(
+  target: ConnectionTarget,
+  query: string,
+): boolean {
+  const terms = query
+    .split(/\s+/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
   if (!terms.length) return true;
   const haystack = [
     target.label,
@@ -496,47 +627,88 @@ export function connectionMatchesQuery(target: ConnectionTarget, query: string):
     target.rule,
     target.rulePayload,
     target.chain,
-    target.detail
-  ].join(" ").toLowerCase();
+    target.detail,
+  ]
+    .join(" ")
+    .toLowerCase();
   return terms.every((term) => haystack.includes(term));
 }
 
-export function connectionBuckets(connections: ConnectionTarget[], kind: "rule" | "chain" | "process"): ConnectionBucket[] {
+export function connectionBuckets(
+  connections: ConnectionTarget[],
+  kind: "rule" | "chain" | "process",
+): ConnectionBucket[] {
   const seeds = connections
     .map((target) => {
       const name = bucketName(target, kind);
       if (!name) return null;
-      return { name, query: kind === "chain" ? name.replace(/ > /g, " ") : name, bytes: target.totalBytes };
+      return {
+        name,
+        query: kind === "chain" ? name.replace(/ > /g, " ") : name,
+        bytes: target.totalBytes,
+      };
     })
-    .filter((item): item is { name: string; query: string; bytes: number } => Boolean(item));
+    .filter((item): item is { name: string; query: string; bytes: number } =>
+      Boolean(item),
+    );
   return Object.values(
     seeds.reduce<Record<string, ConnectionBucket>>((acc, seed) => {
-      acc[seed.name] ||= { name: seed.name, query: seed.query, count: 0, bytes: 0 };
+      acc[seed.name] ||= {
+        name: seed.name,
+        query: seed.query,
+        count: 0,
+        bytes: 0,
+      };
       acc[seed.name].count += 1;
       acc[seed.name].bytes += seed.bytes;
       return acc;
-    }, {})
-  ).sort((left, right) => right.bytes - left.bytes || right.count - left.count).slice(0, 4);
+    }, {}),
+  )
+    .sort((left, right) => right.bytes - left.bytes || right.count - left.count)
+    .slice(0, 4);
 }
 
-export function connectionFlowSummary(connections: ConnectionTarget[]): ConnectionFlowSummary {
-  return connections.reduce<ConnectionFlowSummary>((acc, target) => {
-    const flow = connectionFlow(target);
-    acc[flow] += 1;
-    return acc;
-  }, { proxied: 0, direct: 0, blocked: 0, unknown: 0 });
+export function connectionFlowSummary(
+  connections: ConnectionTarget[],
+): ConnectionFlowSummary {
+  return connections.reduce<ConnectionFlowSummary>(
+    (acc, target) => {
+      const flow = connectionFlow(target);
+      acc[flow] += 1;
+      return acc;
+    },
+    { proxied: 0, direct: 0, blocked: 0, unknown: 0 },
+  );
 }
 
 function connectionFlow(target: ConnectionTarget): keyof ConnectionFlowSummary {
-  const text = [target.chain, target.rule, target.rulePayload, target.inbound, target.detail].join(" ").toLowerCase();
+  const text = [
+    target.chain,
+    target.rule,
+    target.rulePayload,
+    target.inbound,
+    target.detail,
+  ]
+    .join(" ")
+    .toLowerCase();
   if (/\b(block|reject)\b/.test(text)) return "blocked";
   if (/\b(direct|bypass)\b/.test(text)) return "direct";
-  if (target.chain || /\b(proxy|select|warp|wireguard|trojan|vmess|vless|shadowsocks|hysteria)\b/.test(text)) return "proxied";
+  if (
+    target.chain ||
+    /\b(proxy|select|warp|wireguard|trojan|vmess|vless|shadowsocks|hysteria)\b/.test(
+      text,
+    )
+  )
+    return "proxied";
   return "unknown";
 }
 
-function bucketName(target: ConnectionTarget, kind: "rule" | "chain" | "process"): string {
-  if (kind === "rule") return [target.rule, target.rulePayload].filter(Boolean).join(" ");
+function bucketName(
+  target: ConnectionTarget,
+  kind: "rule" | "chain" | "process",
+): string {
+  if (kind === "rule")
+    return [target.rule, target.rulePayload].filter(Boolean).join(" ");
   if (kind === "process") return target.process || target.inbound;
   return target.chain || target.network;
 }
@@ -544,7 +716,9 @@ function bucketName(target: ConnectionTarget, kind: "rule" | "chain" | "process"
 function parseConnectionTarget(value: unknown): ConnectionTarget | null {
   if (!value || typeof value !== "object") return null;
   const item = value as Record<string, unknown>;
-  const metadata = (item.metadata && typeof item.metadata === "object" ? item.metadata : {}) as Record<string, unknown>;
+  const metadata = (
+    item.metadata && typeof item.metadata === "object" ? item.metadata : {}
+  ) as Record<string, unknown>;
   const id = stringValue(item.id);
   const host = stringValue(metadata.host);
   const destination = stringValue(metadata.destinationIP);
@@ -552,10 +726,15 @@ function parseConnectionTarget(value: unknown): ConnectionTarget | null {
   const target = host || destination;
   if (!id || !target) return null;
   const label = !port || port === "0" ? target : `${target}:${port}`;
-  const chain = Array.isArray(item.chains) ? item.chains.map(stringValue).filter(Boolean).join(" > ") : "";
+  const chain = Array.isArray(item.chains)
+    ? item.chains.map(stringValue).filter(Boolean).join(" > ")
+    : "";
   const network = stringValue(metadata.network);
   const source = sourceLabel(metadata);
-  const inbound = stringValue(item.inbound) || stringValue(metadata.inbound) || stringValue(metadata.type);
+  const inbound =
+    stringValue(item.inbound) ||
+    stringValue(metadata.inbound) ||
+    stringValue(metadata.type);
   const rule = stringValue(item.rule);
   const rulePayload = stringValue(item.rulePayload);
   const process = processLabel(metadata);
@@ -571,10 +750,13 @@ function parseConnectionTarget(value: unknown): ConnectionTarget | null {
     rulePayload,
     chain,
     process,
-    detail: [process, source, inbound, network, rule, rulePayload, chain].filter(Boolean).join(" · ") || "direct",
+    detail:
+      [process, source, inbound, network, rule, rulePayload, chain]
+        .filter(Boolean)
+        .join(" · ") || "direct",
     upload,
     download,
-    totalBytes: upload + download
+    totalBytes: upload + download,
   };
 }
 
@@ -599,50 +781,95 @@ function stringValue(value: unknown): string {
 }
 
 function safeNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, value)
+    : 0;
 }
 
 function firstUsefulLine(text: string): string {
-  return text.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("command:")) || "";
+  return (
+    text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith("command:")) || ""
+  );
 }
 
-function countSectionLines(lines: string[], start: string, end: string | undefined): number {
-  const startIndex = lines.findIndex((line) => line.toLowerCase() === start.toLowerCase());
+function countSectionLines(
+  lines: string[],
+  start: string,
+  end: string | undefined,
+): number {
+  const startIndex = lines.findIndex(
+    (line) => line.toLowerCase() === start.toLowerCase(),
+  );
   if (startIndex < 0) return 0;
   const relativeEnd = end
-    ? lines.slice(startIndex + 1).findIndex((line) => line.toLowerCase() === end.toLowerCase())
+    ? lines
+        .slice(startIndex + 1)
+        .findIndex((line) => line.toLowerCase() === end.toLowerCase())
     : -1;
-  const endIndex = relativeEnd >= 0 ? startIndex + 1 + relativeEnd : lines.length;
+  const endIndex =
+    relativeEnd >= 0 ? startIndex + 1 + relativeEnd : lines.length;
   return lines
     .slice(startIndex + 1, endIndex)
-    .filter((line) => line && !line.startsWith("[") && line !== "ip rule:" && line !== "ip route:")
-    .length;
+    .filter(
+      (line) =>
+        line &&
+        !line.startsWith("[") &&
+        line !== "ip rule:" &&
+        line !== "ip route:",
+    ).length;
 }
 
-export function parseBlock(text: string, previous: BlocklistState): BlocklistState {
-  const next: BlocklistState = { ...previous, manual: [], communityRules: [], communityDomains: [], allowRules: [] };
-  let section: keyof Pick<BlocklistState, "manual" | "communityRules" | "communityDomains" | "allowRules"> | null = null;
+export function parseBlock(
+  text: string,
+  previous: BlocklistState,
+): BlocklistState {
+  const next: BlocklistState = {
+    ...previous,
+    manual: [],
+    communityRules: [],
+    communityDomains: [],
+    allowRules: [],
+  };
+  let section:
+    | keyof Pick<
+        BlocklistState,
+        "manual" | "communityRules" | "communityDomains" | "allowRules"
+      >
+    | null = null;
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (!line) return;
     if (line.startsWith("enabled=")) next.enabled = line.slice(8) !== "0";
-    else if (line.startsWith("community=")) next.community = line.slice(10) !== "0";
+    else if (line.startsWith("community="))
+      next.community = line.slice(10) !== "0";
     else if (line.startsWith("url=")) next.url = line.slice(4);
     else if (line === "manual domain suffixes:") section = "manual";
     else if (line === "community rules:") section = "communityRules";
-    else if (line === "community domain suffixes:") section = "communityDomains";
+    else if (line === "community domain suffixes:")
+      section = "communityDomains";
     else if (line === "local allow rules:") section = "allowRules";
     else if (section) next[section].push(line);
   });
   return next;
 }
 
-function statusNumber(values: Map<string, string>, key: string, fallback: number): number {
+function statusNumber(
+  values: Map<string, string>,
+  key: string,
+  fallback: number,
+): number {
   const parsed = Number.parseInt(values.get(key) || "", 10);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
 }
 
-function statusBoolean(values: Map<string, string>, key: string, fallback: boolean): boolean {
+function statusBoolean(
+  values: Map<string, string>,
+  key: string,
+  fallback: boolean,
+): boolean {
   const value = values.get(key);
   return value === undefined ? fallback : value !== "0";
 }
@@ -655,18 +882,25 @@ export function parseSubs(
   const next: SubscriptionState = { ...previous, singBoxUrls: [], filters: [] };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
-    if (/^sing-box\.\d+=/.test(line)) next.singBoxUrls.push(line.replace(/^sing-box\.\d+=/, ""));
+    if (/^sing-box\.\d+=/.test(line))
+      next.singBoxUrls.push(line.replace(/^sing-box\.\d+=/, ""));
     else if (line.startsWith("sing-box=")) next.singBox = line.slice(9);
     else if (line.startsWith("user-agent=")) next.userAgent = line.slice(11);
-    else if (/^filter\.\d+=/.test(line)) next.filters.push(line.replace(/^filter\.\d+=/, ""));
+    else if (/^filter\.\d+=/.test(line))
+      next.filters.push(line.replace(/^filter\.\d+=/, ""));
   });
-  if (!next.singBoxUrls.length && next.singBox) next.singBoxUrls = [next.singBox];
+  if (!next.singBoxUrls.length && next.singBox)
+    next.singBoxUrls = [next.singBox];
   const values = new Map<string, string>();
   statusText.split(/\r?\n/).forEach((raw) => {
     const match = raw.trim().match(/^([a-z0-9_]+)=(.*)$/i);
     if (match) values.set(match[1], match[2].trim());
   });
-  next.configuredCount = statusNumber(values, "configured_count", next.singBoxUrls.length);
+  next.configuredCount = statusNumber(
+    values,
+    "configured_count",
+    next.singBoxUrls.length,
+  );
   next.sourceMode = values.get("source_mode") === "local" ? "local" : "url";
   next.updateRunning = statusBoolean(values, "update_running", false);
   next.updateLockOwner = values.get("update_lock_owner") || "none";
@@ -685,19 +919,28 @@ export function parseSubs(
   next.cacheSource = values.get("cache_source") || "unknown";
   const interval = values.get("schedule_interval_hours");
   next.scheduleIntervalHours = ["12", "24", "48", "72"].includes(interval || "")
-    ? interval as SubscriptionState["scheduleIntervalHours"]
+    ? (interval as SubscriptionState["scheduleIntervalHours"])
     : "off";
   next.scheduleEnabled = statusBoolean(values, "schedule_enabled", false);
   next.scheduleRunning = statusBoolean(values, "schedule_running", false);
   next.scheduleOwner = values.get("schedule_owner") || "none";
   const reportedOwnerValid = values.get("schedule_owner_valid");
-  next.scheduleOwnerValid = reportedOwnerValid === undefined
-    ? next.scheduleEnabled
-      ? next.scheduleRunning && next.scheduleOwner === "active"
-      : !next.scheduleRunning && next.scheduleOwner === "none"
-    : reportedOwnerValid !== "0";
-  next.refreshEventCount = statusNumber(values, "subscription_refresh_event_count", 0);
-  next.refreshErrorCount = statusNumber(values, "subscription_refresh_error_count", 0);
+  next.scheduleOwnerValid =
+    reportedOwnerValid === undefined
+      ? next.scheduleEnabled
+        ? next.scheduleRunning && next.scheduleOwner === "active"
+        : !next.scheduleRunning && next.scheduleOwner === "none"
+      : reportedOwnerValid !== "0";
+  next.refreshEventCount = statusNumber(
+    values,
+    "subscription_refresh_event_count",
+    0,
+  );
+  next.refreshErrorCount = statusNumber(
+    values,
+    "subscription_refresh_error_count",
+    0,
+  );
   return next;
 }
 
@@ -709,7 +952,8 @@ export function parseMcp(text: string, previous: McpState): McpState {
     else if (line.startsWith("bind=")) next.bind = line.slice(5);
     else if (line.startsWith("port=")) next.port = line.slice(5);
     else if (line.startsWith("pid=")) next.pid = line.slice(4);
-    else if (line.startsWith("secret_set=")) next.secretSet = line.slice(11) === "1";
+    else if (line.startsWith("secret_set="))
+      next.secretSet = line.slice(11) === "1";
     else if (line.startsWith("port_owner=")) next.portOwner = line.slice(11);
   });
   next.url = formatMcpUrl(next.bind, next.port);
@@ -722,7 +966,14 @@ export function parseDns(text: string, previous: DnsState): DnsState {
     const line = raw.trim();
     if (line.startsWith("profile=")) {
       const profile = line.slice(8);
-      if (["default", "cloudflare-doh", "cloudflare-dot", "cloudflare-udp"].includes(profile)) {
+      if (
+        [
+          "default",
+          "cloudflare-doh",
+          "cloudflare-dot",
+          "cloudflare-udp",
+        ].includes(profile)
+      ) {
         next.profile = profile as DnsState["profile"];
       }
     } else if (line.startsWith("primary=")) next.primary = line.slice(8);
@@ -737,11 +988,14 @@ export function parseWarp(text: string, previous: WarpState): WarpState {
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (line.startsWith("enabled=")) next.enabled = line.slice(8) === "1";
-    else if (line.startsWith("configured=")) next.configured = line.slice(11) === "1";
+    else if (line.startsWith("configured="))
+      next.configured = line.slice(11) === "1";
     else if (line.startsWith("tag=")) next.tag = line.slice(4) || "warp";
     else if (line.startsWith("endpoint=")) next.endpoint = line.slice(9);
-    else if (line.startsWith("addresses=")) next.addresses = Number(line.slice(10)) || 0;
-    else if (line.startsWith("allowed_ips=")) next.allowedIps = Number(line.slice(12)) || 0;
+    else if (line.startsWith("addresses="))
+      next.addresses = Number(line.slice(10)) || 0;
+    else if (line.startsWith("allowed_ips="))
+      next.allowedIps = Number(line.slice(12)) || 0;
   });
   return next;
 }

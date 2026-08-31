@@ -65,12 +65,14 @@ export function firstRunSteps(): AboutStep[] {
     {
       id: "sub",
       title: "保存订阅或导入本地文件",
-      detail: "在订阅页保存合法 URL，或导入 Clash YAML、分享链接、JSON 或文本订阅。",
+      detail:
+        "在订阅页保存合法 URL，或导入 Clash YAML、分享链接、JSON 或文本订阅。",
     },
     {
       id: "health",
       title: "确认健康与透明数据面",
-      detail: "健康检查没有核心/数据面阻塞项，transparent status 的 configured 与 effective 状态一致或明确标注 pending。",
+      detail:
+        "健康检查没有核心/数据面阻塞项，transparent status 的 configured 与 effective 状态一致或明确标注 pending。",
     },
   ];
 }
@@ -106,7 +108,9 @@ export function formatAboutOverview(
     ...facts.map((item) => `${item.code}\t${item.title}\t${item.detail}`),
     "",
     "first-run",
-    ...steps.map((item, index) => `${index + 1}. ${item.title}: ${item.detail}`),
+    ...steps.map(
+      (item, index) => `${index + 1}. ${item.title}: ${item.detail}`,
+    ),
     "",
     "success",
     ...checks.map((item) => `${item.command}\t${item.expect}`),

@@ -46,7 +46,7 @@ assert.match(
 );
 assert.match(
   useMagicNetSource,
-  /const ownsForegroundUi = \(\): boolean => foregroundUiGate\.owns\(foregroundToken\);[\s\S]*?if \(!ownsForegroundUi\(\)\)[\s\S]*?followBackgroundLogs/,
+  /const\s+ownsForegroundUi\s*=\s*\(\):\s*boolean\s*=>\s*foregroundUiGate\.owns\(\s*foregroundToken\s*\);[\s\S]*?if\s*\(\s*!ownsForegroundUi\(\)\s*\)[\s\S]*?followBackgroundLogs\(/,
 );
 assert.match(
   useMagicNetSource,

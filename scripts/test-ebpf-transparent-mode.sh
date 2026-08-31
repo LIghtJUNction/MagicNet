@@ -7,10 +7,10 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-ebpf-mode.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 need() {
-    command -v "$1" >/dev/null 2>&1 || {
-        printf 'missing required command: %s\n' "$1" >&2
-        exit 127
-    }
+  command -v "$1" >/dev/null 2>&1 || {
+    printf 'missing required command: %s\n' "$1" >&2
+    exit 127
+  }
 }
 need jq
 need sha256sum
@@ -64,16 +64,16 @@ magicnet_singbox_dns_strategy_for_mode() { printf '%s\n' "${MAGICNET_TEST_IPV6_M
 magicnet_hotspot_proxy_enabled() { [ "${MAGICNET_TEST_HOTSPOT_PROXY:-0}" = 1 ]; }
 magicnet_hotspot_active_networks() { printf '%s' "${MAGICNET_TEST_HOTSPOT_NETWORKS:-}"; }
 magicnet_iface_exists() {
-    case "$1" in
-    wlan2) [[ "${MAGICNET_TEST_HOTSPOT_NETWORKS:-}" == *'wlan2|'* ]] ;;
-    usb0) [[ "${MAGICNET_TEST_HOTSPOT_NETWORKS:-}" == *'usb0|'* ]] ;;
-    magicnet0) return 1 ;;
-    *) return 1 ;;
-    esac
+  case "$1" in
+  wlan2) [[ "${MAGICNET_TEST_HOTSPOT_NETWORKS:-}" == *'wlan2|'* ]] ;;
+  usb0) [[ "${MAGICNET_TEST_HOTSPOT_NETWORKS:-}" == *'usb0|'* ]] ;;
+  magicnet0) return 1 ;;
+  *) return 1 ;;
+  esac
 }
 
 write_base_config() {
-    cat >"$MODDIR/.config/sing-box/config.json" <<'JSON'
+  cat >"$MODDIR/.config/sing-box/config.json" <<'JSON'
 {
   "log": {"level": "warn"},
   "inbounds": [
@@ -88,34 +88,34 @@ write_base_config() {
   ]}
 }
 JSON
-    chmod 600 "$MODDIR/.config/sing-box/config.json"
+  chmod 600 "$MODDIR/.config/sing-box/config.json"
 }
 
 set_mode_file() {
-    printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$1" >"$MODDIR/.config/magicnet/transparent-mode.conf"
-    chmod 600 "$MODDIR/.config/magicnet/transparent-mode.conf"
+  printf 'MAGICNET_TRANSPARENT_MODE=%s\n' "$1" >"$MODDIR/.config/magicnet/transparent-mode.conf"
+  chmod 600 "$MODDIR/.config/magicnet/transparent-mode.conf"
 }
 
 apply_transparent() {
-    magicnet_singbox_apply_transparent_mode
+  magicnet_singbox_apply_transparent_mode
 }
 
 validate_transparent() {
-    magicnet_validate_singbox_transparent_config
+  magicnet_validate_singbox_transparent_config
 }
 
 assert_managed_ebpf() {
-    local expected_mode="$1"
-    local expected_interface="${2:-}"
-    local expected_cidr="${3:-}"
-    local expected_ipv6="$4"
-    # The jq program is intentionally single-quoted; all shell values enter as args.
-    # shellcheck disable=SC2016
-    "$HOST_JQ" -e \
-        --arg mode "$expected_mode" \
-        --arg iface "$expected_interface" \
-        --arg cidr "$expected_cidr" \
-        --argjson ipv6 "$expected_ipv6" '
+  local expected_mode="$1"
+  local expected_interface="${2:-}"
+  local expected_cidr="${3:-}"
+  local expected_ipv6="$4"
+  # The jq program is intentionally single-quoted; all shell values enter as args.
+  # shellcheck disable=SC2016
+  "$HOST_JQ" -e \
+    --arg mode "$expected_mode" \
+    --arg iface "$expected_interface" \
+    --arg cidr "$expected_cidr" \
+    --argjson ipv6 "$expected_ipv6" '
       ([.inbounds[] | select(.tag == "tun-in")] | length) == 1
       and ([.inbounds[] | select(.type == "ebpf")] | length) == 1
       and (.inbounds[] | select(.tag == "tun-in")
@@ -167,8 +167,8 @@ export MAGICNET_TEST_HOTSPOT_NETWORKS=$'wlan2|192.168.43.0/24\n'
 apply_transparent
 assert_managed_ebpf hybrid wlan2 192.168.43.0/24 true
 if rg -q 'wlan0' "$MODDIR/.config/sing-box/config.json" "$MOCK_LOG"; then
-    printf '%s\n' 'eBPF hotspot mode guessed wlan0' >&2
-    exit 1
+  printf '%s\n' 'eBPF hotspot mode guessed wlan0' >&2
+  exit 1
 fi
 
 # Interface loss degrades to local while preserving the explicit ebpf choice.
@@ -188,8 +188,8 @@ assert_managed_ebpf hybrid usb0 192.168.44.0/24 true
 [[ "$(<"$MODDIR/.state/transparent-ebpf/shared-interfaces.list")" == usb0 ]]
 [[ ! -e "$MODDIR/.state/transparent-ebpf/shared.pending" ]]
 if rg -q 'wlan2|192\.168\.43\.0/24|wlan0' "$MODDIR/.config/sing-box/config.json"; then
-    printf '%s\n' 'hybrid recovery retained a stale or guessed interface' >&2
-    exit 1
+  printf '%s\n' 'hybrid recovery retained a stale or guessed interface' >&2
+  exit 1
 fi
 
 # IPv4-only applies equally to both eBPF paths.
@@ -202,14 +202,14 @@ assert_managed_ebpf hybrid usb0 192.168.44.0/24 false
 # fake-magisk-smoke.sh, where the old generation is available to restart.
 export MAGICNET_TEST_EBPF_PROBE_FAIL=1
 if validate_transparent; then
-    printf '%s\n' 'eBPF validation ignored a failed tools ebpf status probe' >&2
-    exit 1
+  printf '%s\n' 'eBPF validation ignored a failed tools ebpf status probe' >&2
+  exit 1
 fi
 unset MAGICNET_TEST_EBPF_PROBE_FAIL
 export MAGICNET_TEST_SINGBOX_CHECK_FAIL=1
 if validate_transparent; then
-    printf '%s\n' 'eBPF validation ignored sing-box check failure' >&2
-    exit 1
+  printf '%s\n' 'eBPF validation ignored sing-box check failure' >&2
+  exit 1
 fi
 unset MAGICNET_TEST_SINGBOX_CHECK_FAIL
 
@@ -224,8 +224,8 @@ magicnet_ebpf_refresh_active_report
 ' "$MODDIR/.state/transparent-ebpf/probe.json" >/dev/null
 export MAGICNET_TEST_EBPF_PROBE_FAIL=1
 if magicnet_ebpf_refresh_active_report; then
-    printf '%s\n' 'eBPF active attachment refresh ignored a failed bounded probe' >&2
-    exit 1
+  printf '%s\n' 'eBPF active attachment refresh ignored a failed bounded probe' >&2
+  exit 1
 fi
 [[ ! -e "$MODDIR/.state/transparent-ebpf/probe.json" ]]
 unset MAGICNET_TEST_EBPF_PROBE_FAIL
@@ -235,29 +235,29 @@ unset MAGICNET_TEST_EBPF_PROBE_FAIL
 POST_LOG="$WORK/post-start.log"
 : >"$POST_LOG"
 ip() {
-    printf 'ip %s\n' "$*" >>"$POST_LOG"
-    return 0
+  printf 'ip %s\n' "$*" >>"$POST_LOG"
+  return 0
 }
 iptables() {
-    printf 'iptables %s\n' "$*" >>"$POST_LOG"
-    case " $* " in *' -C '* | *' -L '*) return 1 ;; *) return 0 ;; esac
+  printf 'iptables %s\n' "$*" >>"$POST_LOG"
+  case " $* " in *' -C '* | *' -L '*) return 1 ;; *) return 0 ;; esac
 }
 ip6tables() {
-    printf 'ip6tables %s\n' "$*" >>"$POST_LOG"
-    case " $* " in *' -C '* | *' -L '*) return 1 ;; *) return 0 ;; esac
+  printf 'ip6tables %s\n' "$*" >>"$POST_LOG"
+  case " $* " in *' -C '* | *' -L '*) return 1 ;; *) return 0 ;; esac
 }
 magicnet_cmd_exists() {
-    case "$1" in ip | iptables | ip6tables | sing-box | jq) return 0 ;; *) return 1 ;; esac
+  case "$1" in ip | iptables | ip6tables | sing-box | jq) return 0 ;; *) return 1 ;; esac
 }
 magicnet_singbox_update_status() { :; }
 if ! magicnet_after_kernel_start_unlocked; then
-    printf '%s\n' 'eBPF post-start incorrectly required magicnet0/TUN controls' >&2
-    exit 1
+  printf '%s\n' 'eBPF post-start incorrectly required magicnet0/TUN controls' >&2
+  exit 1
 fi
 if grep -Eq '^ip .* (route|rule) add .*2022|^iptables .* (-A|-I) .*REDIRECT|^ip6tables .* (-A|-I) .*REDIRECT' "$POST_LOG"; then
-    printf '%s\n' 'eBPF post-start installed TUN-only kernel controls' >&2
-    cat "$POST_LOG" >&2
-    exit 1
+  printf '%s\n' 'eBPF post-start installed TUN-only kernel controls' >&2
+  cat "$POST_LOG" >&2
+  exit 1
 fi
 
 printf '%s\n' 'eBPF transparent mode contract passed'

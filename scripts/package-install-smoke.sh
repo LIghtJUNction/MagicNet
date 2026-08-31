@@ -104,8 +104,8 @@ remove_host_tool_fixtures() {
 assert_fixture_path() {
     fixture_module="$1"
     resolved_tool="$("$HOST_ENV" PATH="$fixture_module/bin:$POISONED_CALLER_PATH" "$fixture_module/bin/sh" -c 'command -v unzip')"
-    [[ "$resolved_tool" == "$fixture_module/bin/unzip" ]] \
-        || fail "customize fixture PATH resolved unzip outside module bin"
+    [[ "$resolved_tool" == "$fixture_module/bin/unzip" ]] ||
+        fail "customize fixture PATH resolved unzip outside module bin"
 }
 
 install_host_tool_fixtures "$MODPATH"
@@ -154,8 +154,8 @@ fi
 remove_host_tool_fixtures "$MODPATH"
 remove_host_tool_fixtures "$MANAGER_MODPATH"
 
-[[ -f "$POISONED_BACKUP_PATH/sentinel" ]] \
-    || fail "caller-selected MAGICNET_BACKUP_DIR was deleted or reused"
+[[ -f "$POISONED_BACKUP_PATH/sentinel" ]] ||
+    fail "caller-selected MAGICNET_BACKUP_DIR was deleted or reused"
 if find "$TMP" -maxdepth 1 -type d -name '*.install-backup.*' -print -quit | grep -q .; then
     fail "successful install left a migration backup behind"
 fi
@@ -168,43 +168,43 @@ fi
 
 expected_default_filters="$(printf '%s\n' '免费' 'free' 'HK' '香港' 'TW' '台湾')"
 actual_default_filters="$(cat "$MANAGER_MODPATH/.config/sing-box/subscription-filter.list")"
-[[ "$actual_default_filters" == "$expected_default_filters" ]] \
-    || fail "fresh install did not initialize the default subscription filters"
+[[ "$actual_default_filters" == "$expected_default_filters" ]] ||
+    fail "fresh install did not initialize the default subscription filters"
 unset expected_default_filters actual_default_filters
 
 for entry in action.sh service.sh boot-completed.sh; do
     [[ -x "$MODPATH/$entry" ]] || fail "$entry is not executable"
 done
 
-PATH="$MODPATH/bin:$PATH" command -v magicnet-mcp-server >/dev/null \
-    || fail "PATH cannot find magicnet-mcp-server through bin"
-PATH="$MODPATH/bin:$PATH" command -v ecapture >/dev/null \
-    || fail "PATH cannot find ecapture through bin"
+PATH="$MODPATH/bin:$PATH" command -v magicnet-mcp-server >/dev/null ||
+    fail "PATH cannot find magicnet-mcp-server through bin"
+PATH="$MODPATH/bin:$PATH" command -v ecapture >/dev/null ||
+    fail "PATH cannot find ecapture through bin"
 
-grep -qx 'https://old.example/sing-box' "$MODPATH/.config/sing-box/subscription.url" \
-    || fail "sing-box subscription was not preserved from previous install"
-[[ -f "$MODPATH/.config/sing-box/subscription-filter.list" ]] \
-    && [[ ! -s "$MODPATH/.config/sing-box/subscription-filter.list" ]] \
-    || fail "explicit empty subscription filter list was not preserved from previous install"
-grep -qx 'old-sing-box-work' "$MODPATH/.state/sing-box/subscription-work/marker.txt" \
-    || fail "sing-box subscription workdir was not preserved from previous install"
+grep -qx 'https://old.example/sing-box' "$MODPATH/.config/sing-box/subscription.url" ||
+    fail "sing-box subscription was not preserved from previous install"
+[[ -f "$MODPATH/.config/sing-box/subscription-filter.list" ]] &&
+    [[ ! -s "$MODPATH/.config/sing-box/subscription-filter.list" ]] ||
+    fail "explicit empty subscription filter list was not preserved from previous install"
+grep -qx 'old-sing-box-work' "$MODPATH/.state/sing-box/subscription-work/marker.txt" ||
+    fail "sing-box subscription workdir was not preserved from previous install"
 legacy_core_dir="$MODPATH/.config/mi""homo"
 if [[ -e "$legacy_core_dir" ]]; then
     fail "legacy core config directory should not be restored"
 fi
-grep -qx 'MAGICNET_DEFAULT_CORE=sing-box' "$MODPATH/.config/magicnet/current-core.conf" \
-    || fail "magicnet core config was not preserved from previous install"
-grep -qx 'MAGICNET_MCP_PORT=18766' "$MODPATH/.config/magicnet/mcp.conf" \
-    || fail "MCP config was not preserved from previous install"
-[[ ! -e "$MODPATH/.config/magicnet/capture.conf" ]] \
-    || fail "legacy capture config should not be restored"
-grep -qx 'com.example.vpn' "$MODPATH/.config/magicnet/app-bypass.list" \
-    || fail "VPN app bypass was not preserved during migration"
+grep -qx 'MAGICNET_DEFAULT_CORE=sing-box' "$MODPATH/.config/magicnet/current-core.conf" ||
+    fail "magicnet core config was not preserved from previous install"
+grep -qx 'MAGICNET_MCP_PORT=18766' "$MODPATH/.config/magicnet/mcp.conf" ||
+    fail "MCP config was not preserved from previous install"
+[[ ! -e "$MODPATH/.config/magicnet/capture.conf" ]] ||
+    fail "legacy capture config should not be restored"
+grep -qx 'com.example.vpn' "$MODPATH/.config/magicnet/app-bypass.list" ||
+    fail "VPN app bypass was not preserved during migration"
 if grep -qx 'com.example.domestic' "$MODPATH/.config/magicnet/app-bypass.list"; then
     fail "legacy non-VPN app bypass was restored during migration"
 fi
-[[ -f "$MODPATH/.config/magicnet/app-policy-migration-vpn-only" ]] \
-    || fail "app bypass migration marker was not written"
+[[ -f "$MODPATH/.config/magicnet/app-policy-migration-vpn-only" ]] ||
+    fail "app bypass migration marker was not written"
 
 cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
 cp "$ROOT/target/debug/magicnet-cli" "$MODPATH/bin/magicnet-cli"
@@ -264,7 +264,7 @@ fi
 if find "$TMP" -maxdepth 1 -type d -name 'failure-module.install-backup.*' -print -quit | grep -q .; then
     fail "failed install left current or stale migration secrets behind"
 fi
-[[ -f "$POISONED_BACKUP_PATH/sentinel" ]] \
-    || fail "failed install touched caller-selected MAGICNET_BACKUP_DIR"
+[[ -f "$POISONED_BACKUP_PATH/sentinel" ]] ||
+    fail "failed install touched caller-selected MAGICNET_BACKUP_DIR"
 
 printf 'package install smoke passed: %s\n' "$ZIP_PATH"
