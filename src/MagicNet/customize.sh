@@ -33,28 +33,40 @@ MAGICNET_PREV_DIR="${MAGICNET_PREV_DIR:-/data/adb/modules/MagicNet}"
 # trust boundary, and this directory temporarily contains subscription secrets.
 MAGICNET_BACKUP_DIR="${MODPATH}.install-backup.$$"
 MAGICNET_BACKUP_MARKER=".magicnet-install-backup-v1"
+MAGICNET_BACKUP_MARKER_VALUE="magicnet-install-backup-v1"
 MAGICNET_BACKUP_ACTIVE=0
 MAGICNET_BACKUP_READY=0
 
+magicnet_install_backup_marker_is_exact() (
+  _magicnet_marker_dir="$1"
+  _magicnet_marker_file="$_magicnet_marker_dir/$MAGICNET_BACKUP_MARKER"
+  [ -d "$_magicnet_marker_dir" ] && [ ! -L "$_magicnet_marker_dir" ] &&
+    [ -f "$_magicnet_marker_file" ] && [ ! -L "$_magicnet_marker_file" ] || exit 1
+  exec 3<"$_magicnet_marker_file" || exit 1
+  _magicnet_marker_first=
+  IFS= read -r _magicnet_marker_first <&3 || exit 1
+  [ "$_magicnet_marker_first" = "$MAGICNET_BACKUP_MARKER_VALUE" ] || exit 1
+  _magicnet_marker_extra=
+  if IFS= read -r _magicnet_marker_extra <&3; then
+    exit 1
+  fi
+  [ -z "$_magicnet_marker_extra" ]
+)
+
+magicnet_prepare_install_backup_removal() {
+  magicnet_install_backup_marker_is_exact "$1" || return 1
+  # cp -a preserves directory modes. Make only this validated backup's
+  # directories traversable/removable; find's default physical walk does not
+  # follow symlinks, and regular files do not need permission changes for rm.
+  find "$1" -type d -exec chmod u+rwx '{}' \; || return 1
+  # Revalidate after the permission walk before deleting the sibling path.
+  magicnet_install_backup_marker_is_exact "$1"
+}
+
 magicnet_cleanup_install_backup() {
   [ "${MAGICNET_BACKUP_ACTIVE:-0}" = 1 ] || return 0
-  if [ -d "$MAGICNET_BACKUP_DIR" ] && [ ! -L "$MAGICNET_BACKUP_DIR" ] &&
-    [ -f "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-    [ ! -L "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-    [ "$(cat "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
-    # cp -a preserves directory modes. Make only this validated, active backup's
-    # directories traversable/removable; find's default physical walk does not
-    # follow symlinks, and regular files do not need permission changes for rm.
-    find "$MAGICNET_BACKUP_DIR" -type d -exec chmod u+rwx '{}' \; || return 1
-    # Revalidate after the permission walk before deleting the sibling path.
-    [ -d "$MAGICNET_BACKUP_DIR" ] && [ ! -L "$MAGICNET_BACKUP_DIR" ] &&
-      [ -f "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-      [ ! -L "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-      [ "$(cat "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ] || return 1
-    rm -rf "$MAGICNET_BACKUP_DIR" || return 1
-  else
-    return 1
-  fi
+  magicnet_prepare_install_backup_removal "$MAGICNET_BACKUP_DIR" || return 1
+  rm -rf "$MAGICNET_BACKUP_DIR" || return 1
   MAGICNET_BACKUP_ACTIVE=0
   MAGICNET_BACKUP_READY=0
 }
@@ -66,10 +78,9 @@ for _stale_backup in "${MODPATH}.install-backup."*; do
   case "$_stale_backup" in
   "${MODPATH}.install-backup."*[!0-9]*) continue ;;
   esac
-  if [ -d "$_stale_backup" ] && [ ! -L "$_stale_backup" ] &&
-    [ -f "$_stale_backup/$MAGICNET_BACKUP_MARKER" ] &&
-    [ ! -L "$_stale_backup/$MAGICNET_BACKUP_MARKER" ] &&
-    [ "$(cat "$_stale_backup/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
+  if magicnet_install_backup_marker_is_exact "$_stale_backup"; then
+    magicnet_prepare_install_backup_removal "$_stale_backup" ||
+      abort "! failed to prepare stale MagicNet migration data for removal"
     rm -rf "$_stale_backup" || abort "! failed to remove stale MagicNet migration data"
   fi
 done
@@ -85,7 +96,7 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
   (
     umask 077
     mkdir "$MAGICNET_BACKUP_DIR" &&
-      printf '%s\n' 'magicnet-install-backup-v1' >"$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER"
+      printf '%s\n' "$MAGICNET_BACKUP_MARKER_VALUE" >"$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER"
   ) || abort "! failed to create the MagicNet migration backup"
   MAGICNET_BACKUP_ACTIVE=1
   for _item in \

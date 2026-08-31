@@ -253,9 +253,37 @@ install_host_tool_fixtures "$FAIL_MOD"
 printf '%s\n' 'https://old.example/must-not-remain' >"$FAIL_PREV/.config/sing-box/subscription.url"
 ln -s "$FAIL_TARGET" "$FAIL_PREV/.config/magicnet"
 stale_backup="${FAIL_MOD}.install-backup.999999"
-mkdir -p "$stale_backup"
+mkdir -p "$stale_backup/readonly/nested"
 printf '%s\n' 'magicnet-install-backup-v1' >"$stale_backup/.magicnet-install-backup-v1"
-printf '%s\n' 'stale-secret-must-be-removed' >"$stale_backup/secret"
+printf '%s\n' 'stale-secret-must-be-removed' >"$stale_backup/readonly/nested/secret"
+chmod 0444 "$stale_backup/readonly/nested/secret"
+chmod 0555 "$stale_backup/readonly" "$stale_backup/readonly/nested"
+untrusted_extra_backup="${FAIL_MOD}.install-backup.888888"
+mkdir -p "$untrusted_extra_backup"
+printf '%s\n' 'magicnet-install-backup-v1' 'unexpected-extra-marker-data' \
+    >"$untrusted_extra_backup/.magicnet-install-backup-v1"
+printf '%s\n' 'must-not-be-deleted' >"$untrusted_extra_backup/sentinel"
+untrusted_trailing_backup="${FAIL_MOD}.install-backup.777777"
+mkdir -p "$untrusted_trailing_backup"
+printf '%s\n%s' 'magicnet-install-backup-v1' 'unexpected-trailing-data' \
+    >"$untrusted_trailing_backup/.magicnet-install-backup-v1"
+printf '%s\n' 'must-not-be-deleted' >"$untrusted_trailing_backup/sentinel"
+untrusted_no_lf_backup="${FAIL_MOD}.install-backup.666666"
+mkdir -p "$untrusted_no_lf_backup"
+printf '%s' 'magicnet-install-backup-v1' \
+    >"$untrusted_no_lf_backup/.magicnet-install-backup-v1"
+printf '%s\n' 'must-not-be-deleted' >"$untrusted_no_lf_backup/sentinel"
+untrusted_marker_link_backup="${FAIL_MOD}.install-backup.555555"
+mkdir -p "$untrusted_marker_link_backup"
+printf '%s\n' 'magicnet-install-backup-v1' >"$TMP/untrusted-marker-target"
+ln -s "$TMP/untrusted-marker-target" \
+    "$untrusted_marker_link_backup/.magicnet-install-backup-v1"
+printf '%s\n' 'must-not-be-deleted' >"$untrusted_marker_link_backup/sentinel"
+untrusted_dir_target="$TMP/untrusted-backup-target"
+untrusted_dir_link="${FAIL_MOD}.install-backup.444444"
+mkdir -p "$untrusted_dir_target"
+printf '%s\n' 'must-not-be-deleted' >"$untrusted_dir_target/sentinel"
+ln -s "$untrusted_dir_target" "$untrusted_dir_link"
 if "$HOST_ENV" -u LD_LIBRARY_PATH \
     ZIPFILE="$ZIP_PATH" \
     MODPATH="$FAIL_MOD" \
@@ -269,9 +297,26 @@ if "$HOST_ENV" -u LD_LIBRARY_PATH \
     "$FAIL_MOD/bin/sh" "$FAIL_MOD/customize.sh" >"$FAIL_LOG" 2>&1; then
     fail "unsafe previous-config symlink unexpectedly passed installer migration"
 fi
-if find "$TMP" -maxdepth 1 -type d -name 'failure-module.install-backup.*' -print -quit | grep -q .; then
+if find "$TMP" -maxdepth 1 -type d -name 'failure-module.install-backup.*' \
+    ! -path "$untrusted_extra_backup" \
+    ! -path "$untrusted_trailing_backup" \
+    ! -path "$untrusted_no_lf_backup" \
+    ! -path "$untrusted_marker_link_backup" \
+    -print -quit | grep -q .; then
     fail "failed install left current or stale migration secrets behind"
 fi
+for protected_backup in \
+    "$untrusted_extra_backup" \
+    "$untrusted_trailing_backup" \
+    "$untrusted_no_lf_backup" \
+    "$untrusted_marker_link_backup"; do
+    [[ -f "$protected_backup/sentinel" ]] ||
+        fail "invalid stale backup marker authorized deletion: $protected_backup"
+done
+[[ -L "$untrusted_marker_link_backup/.magicnet-install-backup-v1" ]] ||
+    fail "stale marker symlink was unexpectedly replaced or removed"
+[[ -L "$untrusted_dir_link" && -f "$untrusted_dir_target/sentinel" ]] ||
+    fail "stale backup directory symlink authorized deletion"
 [[ -f "$POISONED_BACKUP_PATH/sentinel" ]] ||
     fail "failed install touched caller-selected MAGICNET_BACKUP_DIR"
 
