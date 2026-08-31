@@ -230,6 +230,31 @@ fi
 [[ ! -e "$MODDIR/.state/transparent-ebpf/probe.json" ]]
 unset MAGICNET_TEST_EBPF_PROBE_FAIL
 
+# Interrupted/preflight rollback restores the eBPF runtime evidence together
+# with mode/config. Target TUN rendering clears these files before the old core
+# is stopped, so omitting them from the journal makes a failed switch appear
+# degraded even though the old eBPF generation is still running.
+STATE_DIR="$MODDIR/.state/transparent-ebpf"
+JOURNAL="$MODDIR/.state/transparent-state-test-journal"
+mkdir -p "$STATE_DIR" "$JOURNAL"
+printf '%s\n' 1 >"$JOURNAL/old-ebpf-state-version"
+printf '%s\n' ok >"$JOURNAL/old-ebpf-capability"
+printf '%s\n' 1 >"$JOURNAL/old-ebpf-capability-present"
+printf '%s\n' '{"active_programs":[{"name":"sb_ebpf_conn4"}]}' >"$JOURNAL/old-ebpf-probe"
+printf '%s\n' 1 >"$JOURNAL/old-ebpf-probe-present"
+printf '%s\n' pending >"$JOURNAL/old-ebpf-shared-pending"
+printf '%s\n' 1 >"$JOURNAL/old-ebpf-shared-pending-present"
+printf '%s\n' wlan2 >"$JOURNAL/old-ebpf-shared-interfaces"
+printf '%s\n' 1 >"$JOURNAL/old-ebpf-shared-interfaces-present"
+rm -f "$STATE_DIR/capability" "$STATE_DIR/probe.json" "$STATE_DIR/shared.pending"
+: >"$STATE_DIR/shared-interfaces.list"
+magicnet_restore_transparent_state_snapshot "$JOURNAL"
+[[ "$(<"$STATE_DIR/capability")" == ok ]]
+"$HOST_JQ" -e '.active_programs[0].name == "sb_ebpf_conn4"' "$STATE_DIR/probe.json" >/dev/null
+[[ "$(<"$STATE_DIR/shared.pending")" == pending ]]
+[[ "$(<"$STATE_DIR/shared-interfaces.list")" == wlan2 ]]
+rm -rf "$JOURNAL"
+
 # eBPF post-start does not depend on magicnet0 and must not add the TUN-only
 # table-2022 or DNS REDIRECT controls. Cleanup/deletion commands remain allowed.
 POST_LOG="$WORK/post-start.log"

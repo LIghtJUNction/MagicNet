@@ -2,9 +2,11 @@
 
 use super::{
     api_host_port, config_apply_lock, config_apply_lock_bounded, normalize_transparent_mode,
-    read_transparent_mode, restart_command, safe_log_name, service_log_path,
-    stop_runtime_cleanup_command, supervisor_cmdline_matches, REPAIR_COMMAND, START_KERNEL_COMMAND,
-    TRANSPARENT_MODE_CONF,
+    prepare_transparent_transaction, read_transparent_mode, restart_command,
+    rollback_transparent_preflight, safe_log_name, service_log_path, stop_runtime_cleanup_command,
+    supervisor_cmdline_matches, REPAIR_COMMAND, START_KERNEL_COMMAND, TRANSPARENT_CAPABILITY,
+    TRANSPARENT_CONFIG, TRANSPARENT_MODE_CONF, TRANSPARENT_PROBE_REPORT,
+    TRANSPARENT_SHARED_INTERFACES, TRANSPARENT_SHARED_PENDING, TRANSPARENT_TRANSACTION,
 };
 use crate::App;
 use std::fs;
@@ -67,6 +69,55 @@ fn transparent_mode_file_is_strict_and_missing_defaults_to_tun() {
     .unwrap();
     assert!(read_transparent_mode(&app).is_err());
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn transparent_preflight_rollback_restores_ebpf_runtime_state() {
+    let (app, root) = fixture_app("transparent-state-rollback");
+    let mode_path = root.join(TRANSPARENT_MODE_CONF);
+    let config_path = root.join(TRANSPARENT_CONFIG);
+    fs::create_dir_all(mode_path.parent().unwrap()).unwrap();
+    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    fs::write(&mode_path, "MAGICNET_TRANSPARENT_MODE=ebpf\n").unwrap();
+    fs::write(&config_path, b"old-ebpf-config\n").unwrap();
+
+    let old_state = [
+        (TRANSPARENT_CAPABILITY, b"ok\n".as_slice()),
+        (
+            TRANSPARENT_PROBE_REPORT,
+            br#"{"active_programs":[{"name":"sb_ebpf_conn4"}]}"#.as_slice(),
+        ),
+        (TRANSPARENT_SHARED_INTERFACES, b"wlan2\n".as_slice()),
+    ];
+    for (path, contents) in old_state {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+
+    let old_mode = read_transparent_mode(&app).unwrap();
+    prepare_transparent_transaction(&app, &old_mode, "tun").unwrap();
+
+    fs::write(&mode_path, "MAGICNET_TRANSPARENT_MODE=tun\n").unwrap();
+    fs::write(&config_path, b"candidate-tun-config\n").unwrap();
+    fs::remove_file(root.join(TRANSPARENT_CAPABILITY)).unwrap();
+    fs::remove_file(root.join(TRANSPARENT_PROBE_REPORT)).unwrap();
+    fs::write(root.join(TRANSPARENT_SHARED_PENDING), b"candidate\n").unwrap();
+    fs::write(root.join(TRANSPARENT_SHARED_INTERFACES), b"").unwrap();
+
+    rollback_transparent_preflight(&app, &old_mode).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(&mode_path).unwrap(),
+        "MAGICNET_TRANSPARENT_MODE=ebpf\n"
+    );
+    assert_eq!(fs::read(&config_path).unwrap(), b"old-ebpf-config\n");
+    for (path, contents) in old_state {
+        assert_eq!(fs::read(root.join(path)).unwrap(), contents);
+    }
+    assert!(!root.join(TRANSPARENT_SHARED_PENDING).exists());
+    assert!(!root.join(TRANSPARENT_TRANSACTION).exists());
     fs::remove_dir_all(root).unwrap();
 }
 
