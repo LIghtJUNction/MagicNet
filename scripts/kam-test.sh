@@ -74,6 +74,8 @@ run_quick() {
     (cd "$ROOT" && cargo check -p magicnet-mcp-server)
     log "checking default configs"
     jq empty "$ROOT/src/MagicNet/.config/sing-box/config.json"
+    log "checking install backup marker and library path safety"
+    bash "$ROOT/scripts/test-install-backup-marker.sh"
 }
 
 run_package() {

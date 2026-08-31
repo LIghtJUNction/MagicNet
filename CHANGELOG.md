@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Validate install migration-backup markers with the shell `read` builtin so
+  restricted installer PATH environments that omit `cat` can still clean up
+  owned backups, and ignore extra marker lines.
+- Prefer the module-owned `lib/magicnet` tree over inherited `MAGICNET_LIB_DIR`
+  and strip that override from privileged CLI shell invocations.
 - Route maintained WeChat destination IPs through `cn-direct` so push long
   connections do not fall through to the proxy after domain information is lost.
 - Fix #121 by clearing the zero-node bootstrap selector cache after the first successful subscription import so populated proxy groups cannot remain pinned to `block`.

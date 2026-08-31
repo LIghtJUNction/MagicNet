@@ -406,11 +406,13 @@ fn signal_pid(pid: &str, force: bool) {
     let _ = command.arg(pid).status();
 }
 
-// These variables are implementation details of the subscription transaction.
-// A privileged CLI process must not let a caller-provided environment replace
-// the module-owned URL/configuration files, candidate descriptor, or test-only
-// transaction controls before the shell entrypoint runs.
+// These variables are implementation details of the subscription transaction
+// or host-only library overrides. A privileged CLI process must not let a
+// caller-provided environment replace module-owned URL/configuration files,
+// candidate descriptors, test-only transaction controls, or the runtime
+// library directory before the shell entrypoint runs.
 const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
+    "MAGICNET_LIB_DIR",
     "MAGICNET_SUB_CANDIDATE_URL_FILE",
     "MAGICNET_SUB_CANDIDATE_SOURCE_FILE",
     "MAGICNET_SUB_CONFIG_FILE",

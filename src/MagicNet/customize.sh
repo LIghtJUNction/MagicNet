@@ -36,12 +36,44 @@ MAGICNET_BACKUP_MARKER=".magicnet-install-backup-v1"
 MAGICNET_BACKUP_ACTIVE=0
 MAGICNET_BACKUP_READY=0
 
+# Restricted installer PATH may omit external cat. Read the marker with the
+# shell builtin and require an exact first line with no extra content.
+magicnet_install_backup_marker_valid() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 1
+  _magicnet_backup_marker=
+  _magicnet_backup_extra=
+  _magicnet_backup_rc=1
+  {
+    if IFS= read -r _magicnet_backup_marker || [ -n "$_magicnet_backup_marker" ]; then
+      if [ "$_magicnet_backup_marker" = "magicnet-install-backup-v1" ]; then
+        if IFS= read -r _magicnet_backup_extra; then
+          :
+        else
+          _magicnet_backup_rc=0
+        fi
+      fi
+    fi
+  } <"$1"
+  unset _magicnet_backup_marker _magicnet_backup_extra
+  return "$_magicnet_backup_rc"
+}
+
+magicnet_install_migration_items() {
+  printf '%s\n' \
+    ".config/sing-box/subscription.url" \
+    ".config/sing-box/subscription.local" \
+    ".config/sing-box/subscription.user-agent" \
+    ".config/sing-box/subscription-filter.list" \
+    ".config/sing-box/subscription-1.yaml" \
+    ".state/sing-box/subscription-work" \
+    ".state/sing-box/selector-selections.json" \
+    ".config/magicnet"
+}
+
 magicnet_cleanup_install_backup() {
   [ "${MAGICNET_BACKUP_ACTIVE:-0}" = 1 ] || return 0
   if [ -d "$MAGICNET_BACKUP_DIR" ] && [ ! -L "$MAGICNET_BACKUP_DIR" ] &&
-    [ -f "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-    [ ! -L "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-    [ "$(cat "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
+    magicnet_install_backup_marker_valid "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER"; then
     rm -rf "$MAGICNET_BACKUP_DIR" || return 1
   else
     return 1
@@ -58,9 +90,7 @@ for _stale_backup in "${MODPATH}.install-backup."*; do
   "${MODPATH}.install-backup."*[!0-9]*) continue ;;
   esac
   if [ -d "$_stale_backup" ] && [ ! -L "$_stale_backup" ] &&
-    [ -f "$_stale_backup/$MAGICNET_BACKUP_MARKER" ] &&
-    [ ! -L "$_stale_backup/$MAGICNET_BACKUP_MARKER" ] &&
-    [ "$(cat "$_stale_backup/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
+    magicnet_install_backup_marker_valid "$_stale_backup/$MAGICNET_BACKUP_MARKER"; then
     rm -rf "$_stale_backup" || abort "! failed to remove stale MagicNet migration data"
   fi
 done
@@ -79,15 +109,8 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
       printf '%s\n' 'magicnet-install-backup-v1' >"$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER"
   ) || abort "! failed to create the MagicNet migration backup"
   MAGICNET_BACKUP_ACTIVE=1
-  for _item in \
-    ".config/sing-box/subscription.url" \
-    ".config/sing-box/subscription.local" \
-    ".config/sing-box/subscription.user-agent" \
-    ".config/sing-box/subscription-filter.list" \
-    ".config/sing-box/subscription-1.yaml" \
-    ".state/sing-box/subscription-work" \
-    ".state/sing-box/selector-selections.json" \
-    ".config/magicnet"; do
+  while IFS= read -r _item || [ -n "$_item" ]; do
+    [ -n "$_item" ] || continue
     if [ -L "${MAGICNET_PREV_DIR}/${_item}" ]; then
       abort "! refusing unsafe symlink in MagicNet migration data: $_item"
     fi
@@ -95,7 +118,9 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
       mkdir -p "${MAGICNET_BACKUP_DIR}/${_item%/*}" || abort "! failed to prepare MagicNet migration data: $_item"
       cp -a "${MAGICNET_PREV_DIR}/${_item}" "${MAGICNET_BACKUP_DIR}/${_item}" || abort "! failed to back up MagicNet migration data: $_item"
     fi
-  done
+  done <<EOF
+$(magicnet_install_migration_items)
+EOF
   MAGICNET_BACKUP_READY=1
   unset _item
 fi
@@ -210,17 +235,6 @@ magicnet_set_default_core() {
   printf 'MAGICNET_DEFAULT_CORE=%s\n' "$1" >"${MODPATH}/.config/magicnet/current-core.conf"
 }
 
-magicnet_ask_default_core() {
-  magicnet_set_default_core sing-box
-}
-
-magicnet_install_selected_core() {
-  if [ "$MAGIC_SINGBOX" != "0" ] &&
-    { [ -x "${MODPATH}/bin/sing-box" ] || [ -x "${MODPATH}/system/bin/sing-box" ]; }; then
-    printf '%s\n' sing-box
-  fi
-}
-
 magicnet_print_install_summary() {
   panel "$(i18n "INSTALL_TITLE")"
   panel_row "$(i18n "INSTALL_ROW_PROFILE")" "$(i18n "INSTALL_PROFILE")"
@@ -238,8 +252,6 @@ magicnet_print_install_summary() {
 
 magicnet_print_install_summary
 
-MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
-
 magicnet_seed_subscription_filters() {
   _magicnet_filter_file="${MODPATH}/.config/sing-box/subscription-filter.list"
   [ -e "$_magicnet_filter_file" ] || {
@@ -251,28 +263,17 @@ magicnet_seed_subscription_filters() {
 
 magicnet_seed_subscription_filters || abort "! failed to initialize subscription filters"
 
-if ! magicnet_install_is_interactive; then
-  :
-else
-  magicnet_ask_default_core
-fi
-
 if [ "$MAGICNET_BACKUP_READY" = 1 ]; then
-  for _item in \
-    ".config/sing-box/subscription.url" \
-    ".config/sing-box/subscription.local" \
-    ".config/sing-box/subscription.user-agent" \
-    ".config/sing-box/subscription-filter.list" \
-    ".config/sing-box/subscription-1.yaml" \
-    ".state/sing-box/subscription-work" \
-    ".state/sing-box/selector-selections.json" \
-    ".config/magicnet"; do
+  while IFS= read -r _item || [ -n "$_item" ]; do
+    [ -n "$_item" ] || continue
     if [ -e "${MAGICNET_BACKUP_DIR}/${_item}" ]; then
       mkdir -p "${MODPATH}/${_item%/*}" || abort "! failed to prepare restored MagicNet migration data: $_item"
       rm -rf "${MODPATH:?}/${_item}" || abort "! failed to replace MagicNet migration data: $_item"
       cp -a "${MAGICNET_BACKUP_DIR}/${_item}" "${MODPATH}/${_item}" || abort "! failed to restore MagicNet migration data: $_item"
     fi
-  done
+  done <<EOF
+$(magicnet_install_migration_items)
+EOF
   magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
   unset _item
 fi

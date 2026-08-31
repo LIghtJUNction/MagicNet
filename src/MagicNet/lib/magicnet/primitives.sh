@@ -10,10 +10,12 @@ magicnet_dns_capture_singbox_mark() {
 }
 
 magicnet_lib_dir() {
-    if [ -n "${MAGICNET_LIB_DIR:-}" ]; then
-        printf '%s\n' "$MAGICNET_LIB_DIR"
-    elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
+    # Prefer the module-owned tree when it is present. MAGICNET_LIB_DIR is a
+    # host-test fallback only; a caller must not redirect a live module.
+    if [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
         printf '%s\n' "${MODDIR}/lib/magicnet"
+    elif [ -n "${MAGICNET_LIB_DIR:-}" ]; then
+        printf '%s\n' "$MAGICNET_LIB_DIR"
     elif [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
         # BASH_SOURCE is guarded by the Bash-only branch above.
         # shellcheck disable=SC3054
