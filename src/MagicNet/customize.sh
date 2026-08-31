@@ -36,21 +36,30 @@ MAGICNET_BACKUP_MARKER=".magicnet-install-backup-v1"
 MAGICNET_BACKUP_ACTIVE=0
 MAGICNET_BACKUP_READY=0
 
+magicnet_install_backup_marker_valid() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 1
+  _magicnet_backup_marker=""
+  _magicnet_backup_extra=""
+  {
+    IFS= read -r _magicnet_backup_marker || return 1
+    if IFS= read -r _magicnet_backup_extra || [ -n "$_magicnet_backup_extra" ]; then
+      return 1
+    fi
+  } <"$1"
+  [ "$_magicnet_backup_marker" = "magicnet-install-backup-v1" ]
+}
+
 magicnet_cleanup_install_backup() {
   [ "${MAGICNET_BACKUP_ACTIVE:-0}" = 1 ] || return 0
   if [ -d "$MAGICNET_BACKUP_DIR" ] && [ ! -L "$MAGICNET_BACKUP_DIR" ] &&
-    [ -f "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-    [ ! -L "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-    [ "$(cat "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
+    magicnet_install_backup_marker_valid "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER"; then
     # cp -a preserves directory modes. Make only this validated, active backup's
     # directories traversable/removable; find's default physical walk does not
     # follow symlinks, and regular files do not need permission changes for rm.
     find "$MAGICNET_BACKUP_DIR" -type d -exec chmod u+rwx '{}' \; || return 1
     # Revalidate after the permission walk before deleting the sibling path.
     [ -d "$MAGICNET_BACKUP_DIR" ] && [ ! -L "$MAGICNET_BACKUP_DIR" ] &&
-      [ -f "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-      [ ! -L "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" ] &&
-      [ "$(cat "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ] || return 1
+      magicnet_install_backup_marker_valid "$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER" || return 1
     rm -rf "$MAGICNET_BACKUP_DIR" || return 1
   else
     return 1
@@ -67,9 +76,7 @@ for _stale_backup in "${MODPATH}.install-backup."*; do
   "${MODPATH}.install-backup."*[!0-9]*) continue ;;
   esac
   if [ -d "$_stale_backup" ] && [ ! -L "$_stale_backup" ] &&
-    [ -f "$_stale_backup/$MAGICNET_BACKUP_MARKER" ] &&
-    [ ! -L "$_stale_backup/$MAGICNET_BACKUP_MARKER" ] &&
-    [ "$(cat "$_stale_backup/$MAGICNET_BACKUP_MARKER" 2>/dev/null)" = "magicnet-install-backup-v1" ]; then
+    magicnet_install_backup_marker_valid "$_stale_backup/$MAGICNET_BACKUP_MARKER"; then
     rm -rf "$_stale_backup" || abort "! failed to remove stale MagicNet migration data"
   fi
 done

@@ -256,6 +256,11 @@ stale_backup="${FAIL_MOD}.install-backup.999999"
 mkdir -p "$stale_backup"
 printf '%s\n' 'magicnet-install-backup-v1' >"$stale_backup/.magicnet-install-backup-v1"
 printf '%s\n' 'stale-secret-must-be-removed' >"$stale_backup/secret"
+untrusted_backup="${FAIL_MOD}.install-backup.999998"
+mkdir -p "$untrusted_backup"
+printf '%s\n%s\n' 'magicnet-install-backup-v1' 'unexpected-content' \
+    >"$untrusted_backup/.magicnet-install-backup-v1"
+printf '%s\n' 'must-not-be-removed' >"$untrusted_backup/sentinel"
 if "$HOST_ENV" -u LD_LIBRARY_PATH \
     ZIPFILE="$ZIP_PATH" \
     MODPATH="$FAIL_MOD" \
@@ -269,6 +274,10 @@ if "$HOST_ENV" -u LD_LIBRARY_PATH \
     "$FAIL_MOD/bin/sh" "$FAIL_MOD/customize.sh" >"$FAIL_LOG" 2>&1; then
     fail "unsafe previous-config symlink unexpectedly passed installer migration"
 fi
+[[ ! -e "$stale_backup" ]] || fail "failed install kept a valid stale migration backup"
+[[ -f "$untrusted_backup/sentinel" ]] \
+    || fail "installer removed a stale backup with a non-exact marker"
+rm -rf "$untrusted_backup"
 if find "$TMP" -maxdepth 1 -type d -name 'failure-module.install-backup.*' -print -quit | grep -q .; then
     fail "failed install left current or stale migration secrets behind"
 fi
