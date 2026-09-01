@@ -15,11 +15,10 @@ WebUI 首次打开会自动弹出“新手引导”，后续也可以从页面�
 
 从 [MagicNet Releases](https://github.com/LIghtJUNction/MagicNet/releases) 下载 ZIP，在 Magisk、KernelSU 或 APatch 中安装并重启。系统“私人 DNS / 私密 DNS / Private DNS”应关闭，避免 DoT 绕过模块的 DNS 路径。
 
-安装后有四个控制入口：
+安装后有三个控制入口：
 
 - 模块 WebUI：普通用户的主要入口，负责首次订阅、节点、应用、Wi-Fi、热点、网络参数和诊断。
 - CLI：`/data/adb/modules/MagicNet/cli`，适合终端和恢复操作。
-- MagicBox：独立 Android 控制壳，通过 root 调用同一 CLI；它不包含代理核心。
 - MCP：默认关闭的工作站自动化入口，必须经过 secret 认证。
 
 首次配置完成后检查：

@@ -7,6 +7,6 @@
 # - Do NOT try to list “all domestic apps” here; that does not scale and fights the rule-set model.
 # - This file is only for explicit user opt-outs. It intentionally ships empty.
 #
-# MagicBox and WebUI discover installed Android VpnService implementations at runtime and can
-# offer them as candidates. A recommendation must never silently become policy: only packages
+# WebUI discovers installed Android VpnService implementations at runtime and can offer them as
+# candidates. A recommendation must never silently become policy: only packages
 # explicitly selected by the user are written here.

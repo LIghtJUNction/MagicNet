@@ -29,7 +29,7 @@ MagicNet 用 root 管理的 [sing-box fork](sing-box) 接管、分流和代理 A
 - **应用、Wi-Fi 与热点策略**：应用可设为 Proxy、Direct 或 Bypass；Wi-Fi 可按 SSID/BSSID 切换策略；热点可选择 Direct 或 Proxy。
 - **配置模板仓库**：默认使用固定 commit 和 SHA-256 的 `MagicSingBox` 配置，也可改为自己的 GitHub/GitLab fork，在仓库中维护规则后原子同步。
 - **DNS 与故障边界可见**：拦截物理出口上的明文 DNS/DoT，`cli health` 和 `cli transparent status` 分别按 TUN 接口或 eBPF capability/cgroup/TC 报告真实状态。
-- **WebUI、CLI、MagicBox 与 MCP**：同一套受控命令覆盖日常配置、节点测试、诊断、备份和自动化；私密 payload 使用临时文件传递，支持包默认脱敏。
+- **WebUI、CLI 与 MCP**：同一套受控命令覆盖日常配置、节点测试、诊断、备份和自动化；私密 payload 使用临时文件传递，支持包默认脱敏。
 
 ## 安装与首次成功运行
 
@@ -101,7 +101,6 @@ su -c /data/adb/modules/MagicNet/cli support bundle
 ## 控制界面
 
 - 模块 WebUI：安装模块后由 Magisk、KernelSU 或 APatch 的模块页面打开，覆盖首次配置、应用/Wi-Fi/热点策略、节点与诊断。
-- [MagicBox](MagicBox)：适用于 Android 系统的控制外壳；它需要已安装的 MagicNet，通过 root 调用 MagicNet CLI，不内置代理核心。
 - [MCP](docs/mcp.md)：适合从工作站自动化控制真机，默认关闭且要求 secret 认证。
 
 ## 开发安装
@@ -132,7 +131,6 @@ kam build
 - [架构概览](ARCHITECTURE.md)：仓库模块、依赖方向和稳定边界；详细运行架构见 [当前架构](docs/next-gen-architecture.md)。
 - [贡献指南](CONTRIBUTING.md)：开发环境、质量检查和改动边界。
 - [安全策略](SECURITY.md)：私密漏洞报告方式和需要保持的安全属性。
-- [MagicBox](MagicBox)：适用于 Android 系统的控制外壳；独立 APK 与源码位于子模块仓库。
 - [kamfw 本地文档](src/MagicNet/lib/kamfw/README.md)：模块内嵌运行时；上游项目见 [MemDeco-WG/kamfw](https://github.com/MemDeco-WG/kamfw)。
 
 ## 社区与支持

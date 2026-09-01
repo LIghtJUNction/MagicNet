@@ -28,7 +28,7 @@ Android 应用 / 已进入内核转发的热点流量
 
 ## 控制面
 
-CLI 是稳定的设备控制合同，WebUI、MagicBox 和 MCP 都复用相同能力：
+CLI 是稳定的设备控制合同，WebUI 和 MCP 都复用相同能力：
 
 - 订阅与配置：构造候选内容，执行解析和 `sing-box check`，原子激活。
 - 节点与 selector：读取 sing-box API，保存选择并在更新后重放。

@@ -7,8 +7,6 @@ BYPASS="$ROOT/src/MagicNet/.config/magicnet/app-bypass.list"
 APPS_SH="$ROOT/src/MagicNet/lib/magicnet/apps.sh"
 CONFIG="$ROOT/src/MagicNet/.config/sing-box/config.json"
 CLI_RULES="$ROOT/crates/magicnet-cli/src/rules.rs"
-MAGICBOX_CONFIG="$ROOT/MagicBox/app/src/Config.kt"
-MAGICBOX_APPS="$ROOT/MagicBox/app/src/AppsPage.kt"
 WEBUI_INSIGHTS="$ROOT/webui/src/components/pages/appPolicyInsights.ts"
 WEBUI_APPS="$ROOT/webui/src/components/pages/AppsPage.vue"
 
@@ -65,18 +63,13 @@ jq -e '
 # UI clients must not maintain separate package-name catalogs.
 grep -Fq 'android.net.VpnService' "$CLI_RULES" \
     || fail "CLI recommendations must query Android VpnService declarations"
-grep -Fq 'app recommendations' "$MAGICBOX_APPS" \
-    || fail "MagicBox must load dynamic app recommendations from the CLI"
 grep -Fq 'app recommendations' "$WEBUI_APPS" \
     || fail "WebUI must load dynamic app recommendations from the CLI"
-if grep -Fq 'RECOMMENDED_BYPASS_PACKAGES' "$MAGICBOX_CONFIG" "$MAGICBOX_APPS"; then
-    fail "MagicBox must not hardcode a recommended bypass package catalog"
-fi
 if grep -Eq 'export const recommendedBypass[[:space:]]*=[[:space:]]*\[' "$WEBUI_INSIGHTS"; then
     fail "WebUI must not hardcode a recommended bypass package catalog"
 fi
 if grep -Ehq "^[[:space:]]*['\"][A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){2,}['\"],?[[:space:]]*$" \
-    "$MAGICBOX_CONFIG" "$MAGICBOX_APPS" "$WEBUI_INSIGHTS" "$WEBUI_APPS"; then
+    "$WEBUI_INSIGHTS" "$WEBUI_APPS"; then
     fail "app-policy UI sources must not contain hardcoded Android package catalogs"
 fi
 

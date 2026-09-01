@@ -1,5 +1,7 @@
 # Unreleased
 
+- Remove the in-repository MagicBox Android app, its submodule integration,
+  App-only documentation, and policy-test coupling.
 - Keep eBPF in hybrid mode by default, preserving local cgroup interception while shared TC waits for a confirmed downstream interface.
 - Fix Android supervisor discovery on OEM processes with malformed `/proc` cmdlines, bound all PID lookups by one deadline, and reclaim dead refresh metadata safely.
 - Preserve explicit TUN/eBPF managed inbound settings across mode switches and recover interrupted transparent journals before fswatch applies a config.
@@ -34,8 +36,8 @@
 - Import `socks://` and `socks5://` nodes natively with validated optional
   authentication, and preserve independent VMess WebSocket path, Host, server,
   and SNI fields through sing-box outbound generation.
-- Refresh release, onboarding, user, MCP, simulation, architecture, MagicBox,
-  and embedded kamfw documentation around the current TUN-only workflow.
+- Refresh release, onboarding, user, MCP, simulation, architecture, and
+  embedded kamfw documentation around the current TUN-only workflow.
 - Delegate sing-box outbound interface changes to Android instead of relying on
   default-interface auto-detection that can fail on Android 16 policy routes.
 - Disable Android tether offload while hotspot Proxy is enabled, then restore
@@ -193,7 +195,7 @@
   preview tools.
 - Recover routing after interface changes, and improve CLI backup and help
   flows plus default node handling.
-- Update the bundled MagicBox and Zashboard revisions.
+- Update the bundled Zashboard revision.
 - Preserve AnyTLS and TUIC nodes during subscription imports, with packaged
   regression coverage.
 - Remove tracked local runtime state from the repository.
@@ -236,7 +238,6 @@
 - Remove eBPF, TProxy, and non-TUN transparent mode support from the runtime,
   CLI, WebUI, MCP schema, build pipeline, and smoke tests.
 - Keep MagicNet on the single stable `sing-box` + `magicnet0` TUN path.
-- Add MagicBox as a submodule and limit its transparent controls to TUN mode.
 
 ## v1.1.7 (2026-06-21)
 

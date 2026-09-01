@@ -13,10 +13,6 @@
 	path = .kam/bases/workflows
 	url = https://github.com/MemDeco-WG/KamModuleX.git
 	branch = main
-[submodule "MagicBox"]
-	path = MagicBox
-	url = https://github.com/LIghtJUNction/MagicBox.git
-	branch = main
 [submodule "sing-box"]
 	path = sing-box
 	url = https://github.com/LIghtJUNction/sing-box.git
