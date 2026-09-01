@@ -155,17 +155,15 @@ magicnet_singbox_apply_transparent_mode() {
           });
         def ebpf_in:
           ($saved_inbound * {
-            "type":"ebpf","tag":"tun-in",
-            "mode":(if ($shared_interfaces | length) > 0 then "hybrid" else "local" end),
+            "type":"ebpf","tag":"tun-in","mode":"hybrid",
             "network":["tcp","udp"],"udp_timeout":$udp_timeout,
             "local":{
               "dns_mode":"hijack",
               "ipv6":($dns_strategy != "ipv4_only"),
               "bypass_private_address":true,
               "exclude_uid":[0]
-            }
-          } | if ($shared_interfaces | length) > 0 then
-            .shared = {
+            },
+            "shared":{
               "dns_mode":"respect_policy",
               "interface":$shared_interfaces,
               "ipv6":($dns_strategy != "ipv4_only"),
@@ -173,7 +171,7 @@ magicnet_singbox_apply_transparent_mode() {
               "include_source_cidr":$shared_sources,
               "advanced":{"tc_priority":1}
             }
-          else del(.shared) end);
+          });
         def managed_inbound:
           ((.type // "") as $type | ($type == "tun" or $type == "ebpf" or $type == "tproxy" or $type == "redirect"))
           or ((.tag // "") == "mixed-in")
@@ -298,18 +296,24 @@ magicnet_probe_ebpf_config() {
         ;;
     hybrid)
         _probe_interfaces="$("$_probe_jq" -r '.inbounds[]? | select(.tag == "tun-in" and .type == "ebpf") | .shared.interface[]?' "$_probe_config")" || return 1
-        [ -n "$_probe_interfaces" ] || return 1
-        set -- tools ebpf status --mode all --network tcp,udp --json
-        while IFS= read -r _probe_iface; do
-            case "$_probe_iface" in
-            *[!A-Za-z0-9_.:-]* | '') return 1 ;;
-            esac
-            magicnet_hotspot_interface_allowed "$_probe_iface" || return 1
-            magicnet_iface_exists "$_probe_iface" || return 1
-            set -- "$@" --interface "$_probe_iface"
-        done <<EOF
+        if [ -n "$_probe_interfaces" ]; then
+            set -- tools ebpf status --mode all --network tcp,udp --json
+            while IFS= read -r _probe_iface; do
+                case "$_probe_iface" in
+                *[!A-Za-z0-9_.:-]* | '') return 1 ;;
+                esac
+                magicnet_hotspot_interface_allowed "$_probe_iface" || return 1
+                magicnet_iface_exists "$_probe_iface" || return 1
+                set -- "$@" --interface "$_probe_iface"
+            done <<EOF
 $_probe_interfaces
 EOF
+        else
+            # Hybrid remains usable through its local cgroup path while no
+            # confirmed downstream interface exists. The hotspot watcher will
+            # regenerate the shared interface list when Android exposes one.
+            set -- tools ebpf status --mode local --network tcp,udp --json
+        fi
         ;;
     *) return 1 ;;
     esac
@@ -434,9 +438,9 @@ magicnet_ebpf_hotspot_config_current() {
       first(.inbounds[]? | select(.tag == "tun-in" and .type == "ebpf")) as $inbound
       | (($inbound.shared.interface // []) | map(.) | unique) as $interfaces
       | (($inbound.shared.include_source_cidr // []) | map(.) | unique) as $cidrs
-      | if ($enabled | not) then ($inbound.mode == "local" and ($interfaces | length) == 0)
-        elif ($active | length) == 0 then true
-        elif $inbound.mode == "local" then false
+      | if $inbound.mode != "hybrid" then false
+        elif ($enabled | not) then (($interfaces | length) == 0 and ($cidrs | length) == 0)
+        elif ($active | length) == 0 then (($interfaces | length) == 0 and ($cidrs | length) == 0)
         else all($active[]; (.interface as $iface | .cidr as $cidr |
           (($interfaces | index($iface)) != null and ($cidrs | index($cidr)) != null)))
         end

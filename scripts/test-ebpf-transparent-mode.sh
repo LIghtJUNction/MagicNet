@@ -125,15 +125,11 @@ assert_managed_ebpf() {
           and .udp_timeout == "7m"
           and .local.dns_mode == "hijack"
           and .local.ipv6 == $ipv6
-          and (if $mode == "hybrid" then
-              .shared.dns_mode == "respect_policy"
-              and .shared.interface == [$iface]
-              and .shared.include_source_cidr == [$cidr]
-              and .shared.ipv6 == $ipv6
-              and .shared.advanced.tc_priority == 1
-            else
-              (has("shared") | not)
-            end))
+          and .shared.dns_mode == "respect_policy"
+          and .shared.interface == (if $iface == "" then [] else [$iface] end)
+          and .shared.include_source_cidr == (if $cidr == "" then [] else [$cidr] end)
+          and .shared.ipv6 == $ipv6
+          and .shared.advanced.tc_priority == 1)
       and ([.route.rules[] | select(
         .inbound == ["tun-in"] and .port == 53 and .action == "hijack-dns"
       )] | length) == 1
@@ -148,7 +144,7 @@ export MAGICNET_TEST_HOTSPOT_PROXY=0
 export MAGICNET_TEST_HOTSPOT_NETWORKS=''
 : >"$MOCK_LOG"
 apply_transparent
-assert_managed_ebpf local '' '' true
+assert_managed_ebpf hybrid '' '' true
 validate_transparent
 rg -q '^sing-box tools ebpf status ' "$MOCK_LOG"
 rg -q '^sing-box check ' "$MOCK_LOG"
@@ -171,10 +167,11 @@ apply_transparent
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 set_mode_file ebpf
 apply_transparent
-assert_managed_ebpf local '' '' true
+assert_managed_ebpf hybrid '' '' true
 
-# A real hotspot tuple enables hybrid. The interface and source CIDR must come
-# from the same fixture; wlan0 is deliberately absent and must never be guessed.
+# A real hotspot tuple populates the default hybrid shared path. The interface
+# and source CIDR must come from the same fixture; wlan0 is deliberately absent
+# and must never be guessed.
 export MAGICNET_TEST_HOTSPOT_PROXY=1
 export MAGICNET_TEST_HOTSPOT_NETWORKS=$'wlan2|192.168.43.0/24\n'
 apply_transparent
@@ -184,12 +181,12 @@ if rg -q 'wlan0' "$MODDIR/.config/sing-box/config.json" "$MOCK_LOG"; then
   exit 1
 fi
 
-# Interface loss degrades to local while preserving the explicit ebpf choice.
-# The durable pending marker prevents status from claiming that shared TC is
-# already active.
+# Interface loss keeps hybrid/local cgroup active while clearing the shared
+# selection. The durable pending marker prevents status from claiming that
+# shared TC is already active.
 export MAGICNET_TEST_HOTSPOT_NETWORKS=''
 apply_transparent
-assert_managed_ebpf local '' '' true
+assert_managed_ebpf hybrid '' '' true
 [[ "$(<"$MODDIR/.state/transparent-ebpf/shared.pending")" == pending ]]
 [[ ! -s "$MODDIR/.state/transparent-ebpf/shared-interfaces.list" ]]
 

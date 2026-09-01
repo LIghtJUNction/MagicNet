@@ -1,5 +1,6 @@
 # Unreleased
 
+- Keep eBPF in hybrid mode by default, preserving local cgroup interception while shared TC waits for a confirmed downstream interface.
 - Fix Android supervisor discovery on OEM processes with malformed `/proc` cmdlines, bound all PID lookups by one deadline, and reclaim dead refresh metadata safely.
 - Preserve explicit TUN/eBPF managed inbound settings across mode switches and recover interrupted transparent journals before fswatch applies a config.
 - Add a configurable HTTPS Git repository for the sing-box config template, defaulting to a pinned `LIghtJUNction/MagicSingBox` commit and digest with atomic validation and rollback.

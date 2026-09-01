@@ -1109,7 +1109,7 @@ fn transparent_status(app: &App) -> Result<(), String> {
             "inactive"
         }
     } else if shared_interface_values.is_empty() {
-        "missing"
+        "pending"
     } else if !running {
         "configured"
     } else if attachments

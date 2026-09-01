@@ -1,6 +1,6 @@
 # MagicNet
 
-MagicNet 是 Android root 设备上的 sing-box 透明网络模块。默认 `tun` 通过 root 管理的 `magicnet0` 接管流量；显式 `ebpf` 使用 local cgroup，并在确认真实下游接口后使用 shared TC。两种模式都提供订阅导入、节点选择、应用/Wi-Fi/热点策略、DNS 防泄露、WebUI、CLI 和 MCP。
+MagicNet 是 Android root 设备上的 sing-box 透明网络模块。默认 `tun` 通过 root 管理的 `magicnet0` 接管流量；显式 `ebpf` 默认使用 hybrid，同时启用 local cgroup，并在确认真实下游接口后使用 shared TC。两种模式都提供订阅导入、节点选择、应用/Wi-Fi/热点策略、DNS 防泄露、WebUI、CLI 和 MCP。
 
 当前模块只允许 `tun|ebpf`，不包含 `auto`、TProxy、Redirect 或 netd `ALLOW_MULTI` 路径，也不会调用应用侧 `VpnService.establish()` 占用系统 VPN slot。
 
@@ -154,7 +154,7 @@ Zashboard 可以直接连接 MagicNet 的 Clash API 或 sing-box 原生 API，�
 
 MagicNet 只支持显式 `tun|ebpf`，默认 `tun`。CLI 拒绝未知值，不提供 `auto`；切换会先校验候选配置和 eBPF capability，失败时恢复旧模式与旧配置。
 
-- `tun` 使用 `sing-box` `magicnet0`；`ebpf` 使用 local cgroup，热点 Proxy 且存在已确认下游接口时进入 hybrid/shared TC，否则显示 shared pending。
+- `tun` 使用 `sing-box` `magicnet0`；`ebpf` 默认使用 hybrid，local cgroup 始终启用，热点 Proxy 且存在已确认下游接口时附加 shared TC，否则显示 shared pending。
 - 分应用策略分为三类：`Proxy` 强制走代理；`Direct` 是已接管后的 sing-box `direct` 出站；`Bypass` 让应用完全离开 MagicNet 数据面。Direct 不会被错误转换成 eBPF bypass。
 - WebUI 的“全局接管”对应黑名单语义；“仅名单接管”对应白名单语义。Root 命令行会把包名解析为 Android UID，再写入 TUN 或 eBPF local UID 边界；共享同一 UID 的应用会一起生效。
 - Android `netd` 在部分设备上会把 Bypass 应用的系统 DNS 请求统一以 UID 0 发出；存在 Bypass UID 时，DNS 捕获链会保守保留 UID 0 的 `RETURN`，避免无法归属的请求重新进入 MagicNet。
