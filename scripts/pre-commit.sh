@@ -66,6 +66,7 @@ bash scripts/test-supervisor-orphan-prefilter.sh
 # gate focused on MagicNet's supervisor policy and process-identity boundary.
 bash scripts/test-supervisor-start-policy.sh
 bash scripts/test-tun-interface-safety.sh
+bash scripts/test-singbox-dataplane-preflight.sh
 bash scripts/test-transparent-mode-config-safety.sh
 bash scripts/test-ebpf-transparent-mode.sh
 bash scripts/test-config-permissions.sh

@@ -1,5 +1,10 @@
-## Unreleased
+# Unreleased
 
+- Keep eBPF in hybrid mode by default, preserving local cgroup interception while shared TC waits for a confirmed downstream interface.
+- Fix Android supervisor discovery on OEM processes with malformed `/proc` cmdlines, bound all PID lookups by one deadline, and reclaim dead refresh metadata safely.
+- Preserve explicit TUN/eBPF managed inbound settings across mode switches and recover interrupted transparent journals before fswatch applies a config.
+- Add a configurable HTTPS Git repository for the sing-box config template, defaulting to a pinned `LIghtJUNction/MagicSingBox` commit and digest with atomic validation and rollback.
+- Replace the verbose first-run guide with a single subscription input accepting one source per line without persisting the raw draft.
 - Route maintained WeChat destination IPs through `cn-direct` so push long
   connections do not fall through to the proxy after domain information is lost.
 - Fix #121 by clearing the zero-node bootstrap selector cache after the first successful subscription import so populated proxy groups cannot remain pinned to `block`.

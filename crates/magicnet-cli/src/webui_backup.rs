@@ -8,6 +8,7 @@ use chacha20poly1305::{
     Key, XChaCha20Poly1305, XNonce,
 };
 
+use crate::config_editor::validate_repository_config_text;
 use crate::subscriptions::{
     normalize_subscription_filter_text, validate_subscription_url, validate_subscription_user_agent,
 };
@@ -261,6 +262,12 @@ fn restore_backup(app: &App, text: &str) -> Result<(), String> {
                 "refusing to restore duplicate config section: {rel}"
             ));
         }
+        // The export format includes empty sections for known files. An
+        // absent repository settings file means “use the pinned default”; do
+        // not replace that default with an invalid empty file on restore.
+        if rel == ".config/magicnet/singbox-config-repo.conf" && text.trim().is_empty() {
+            continue;
+        }
         validate_restore_section(&rel, &text)?;
         replacements.push((PathBuf::from(rel), text));
     }
@@ -325,6 +332,9 @@ fn validate_restore_section(rel: &str, text: &str) -> Result<(), String> {
 /// file-specific key and value allowlist. Empty lines and comments are kept so
 /// existing user-facing config formatting survives a backup round trip.
 fn sourced_conf_content_matches_schema(rel: &str, text: &str) -> bool {
+    if rel == ".config/magicnet/singbox-config-repo.conf" {
+        return text.trim().is_empty() || validate_repository_config_text(text);
+    }
     text.lines()
         .all(|line| sourced_conf_line_matches_schema(rel, line))
 }
@@ -421,6 +431,7 @@ fn backup_files() -> &'static [&'static str] {
         ".config/magicnet/dns.conf",
         ".config/magicnet/warp.conf",
         ".config/magicnet/warp-endpoint.json",
+        ".config/magicnet/singbox-config-repo.conf",
         ".config/magicnet/transparent-mode.conf",
         ".config/magicnet/network-policy.conf",
         ".config/magicnet/wifi-policy.conf",
@@ -581,6 +592,16 @@ mod tests {
         assert!(!sourced_conf_content_matches_schema(
             block,
             "not a kv line\n"
+        ));
+
+        let repository = ".config/magicnet/singbox-config-repo.conf";
+        assert!(sourced_conf_content_matches_schema(
+            repository,
+            "MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/example/repo.git\nMAGICNET_SINGBOX_CONFIG_REPO_REF=main\nMAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json\n"
+        ));
+        assert!(!sourced_conf_content_matches_schema(
+            repository,
+            "MAGICNET_SINGBOX_CONFIG_REPO_URL=http://github.com/example/repo\n"
         ));
 
         let transparent = ".config/magicnet/transparent-mode.conf";

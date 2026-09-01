@@ -8,11 +8,28 @@
   Android root 设备上的 sing-box 透明网络工作台
 </p>
 
-MagicNet 用 root 管理的 `sing-box` 接管、分流和代理 Android 设备流量。默认 `tun` 使用 `magicnet0`；显式 `ebpf` 使用本机 cgroup backend，并在 MagicNet 确认真实下游接口后启用 shared TC。两种模式都不调用应用侧 `VpnService.establish()`，不会占用系统 VPN slot；主线不包含 `auto`、TProxy、Redirect 或 netd `ALLOW_MULTI` 路径。
+<p align="center">
+  <a href="https://github.com/LIghtJUNction/MagicNet/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/LIghtJUNction/MagicNet?display_name=tag&sort=semver&style=flat-square" /></a>
+  <a href="https://github.com/LIghtJUNction/MagicNet/actions/workflows/quality.yml"><img alt="Code Quality" src="https://github.com/LIghtJUNction/MagicNet/actions/workflows/quality.yml/badge.svg?branch=main" /></a>
+  <a href="https://github.com/LIghtJUNction/MagicNet/actions/workflows/init.yml"><img alt="Build" src="https://github.com/LIghtJUNction/MagicNet/actions/workflows/init.yml/badge.svg?branch=main" /></a>
+  <a href="./sing-box"><img alt="sing-box fork" src="https://img.shields.io/badge/core-sing--box%20fork-17181C?style=flat-square" /></a>
+  <img alt="TUN and eBPF" src="https://img.shields.io/badge/dataplane-TUN%20%7C%20eBPF-6E56CF?style=flat-square" />
+  <a href="./LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/LIghtJUNction/MagicNet?style=flat-square" /></a>
+</p>
 
-## 支持开源开发
+MagicNet 用 root 管理的 [sing-box fork](sing-box) 接管、分流和代理 Android 设备流量，不占用系统 VPN slot。默认使用 `tun`；需要时可显式切换到 `ebpf`。主线只支持这两种模式，不包含 `auto`、TProxy、Redirect 或 netd `ALLOW_MULTI` 路径。
 
-MagicNet 的网络接管、分流和代理功能不依赖任何 LLM API。项目开发中的自动化测试、MCP 调试与 AI 协作会持续消耗模型额度；如果你也需要 OpenAI 兼容的多模型接口，可以使用作者维护的 [LMM API Gateway](https://api.lmm.best)。通过 LMM 购买 API 额度会帮助承担这些开发成本；有价值的 Issue、PR 和测试反馈也可能获得 API 额度奖励。
+## 核心特色
+
+- **订阅内容不限定为 sing-box 格式**：支持一行一个公网 HTTPS 订阅链接，最多五个来源。下载内容可识别 Clash/Mihomo YAML、base64、常见分享链接集合、sing-box JSON 和纯文本。
+- **直接兼容 Clash/Mihomo 订阅**：无需先找“sing-box 专用订阅”。把同一个合法 Clash/Mihomo 订阅 URL 交给 MagicNet，模块会解析节点并生成受控的 sing-box 配置。
+- **覆盖常见节点协议**：原生导入 VLESS、VMess、Trojan、Shadowsocks、SOCKS、Hysteria2、AnyTLS 与 TUIC；可选转换器可处理额外格式。
+- **自带 sing-box fork 内核**：仓库固定内核子模块和 Android arm64 构建，包含 MagicNet 使用的 eBPF inbound、Android 兼容修复与回归测试，不调用系统中来源不明的 sing-box。
+- **TUN 与 eBPF 两套透明数据面**：TUN 创建 `magicnet0`；eBPF 默认使用 hybrid，同时启用 local cgroup，并在确认下游接口后通过 shared TC 接管热点流量；没有下游接口时 shared 保持 pending。两种模式显式、互斥、原子切换，失败会回滚。
+- **应用、Wi-Fi 与热点策略**：应用可设为 Proxy、Direct 或 Bypass；Wi-Fi 可按 SSID/BSSID 切换策略；热点可选择 Direct 或 Proxy。
+- **配置模板仓库**：默认使用固定 commit 和 SHA-256 的 `MagicSingBox` 配置，也可改为自己的 GitHub/GitLab fork，在仓库中维护规则后原子同步。
+- **DNS 与故障边界可见**：拦截物理出口上的明文 DNS/DoT，`cli health` 和 `cli transparent status` 分别按 TUN 接口或 eBPF capability/cgroup/TC 报告真实状态。
+- **WebUI、CLI、MagicBox 与 MCP**：同一套受控命令覆盖日常配置、节点测试、诊断、备份和自动化；私密 payload 使用临时文件传递，支持包默认脱敏。
 
 ## 安装与首次成功运行
 
@@ -31,17 +48,7 @@ su -c /data/adb/modules/MagicNet/cli transparent status
 
 成功状态应同时满足：`cli health` 没有核心/Dataplane 阻塞项，`cli transparent status` 的 configured/effective 状态准确。TUN 以 `magicnet0` 为准；eBPF 不能要求 `magicnet0`，而应报告 capability、local cgroup 与 shared TC/interface。MagicNet 不提供节点、订阅或外部出口，请只使用你有权使用且符合当地法律与服务条款的资源。
 
-## 用户能做什么
-
-- URL 与本地文件使用同一套校验、原子激活和失败回滚流程；切换来源不会留下半写入配置。
-- 原生导入 Clash YAML、base64 和常见分享链接，包括 VLESS、VMess、Trojan、Shadowsocks、SOCKS、Hysteria2、AnyTLS 与 TUIC；可选转换器可覆盖更多格式。
-- 在 `proxy`、自动测速组和服务专用组之间测试、选择与持久化节点。
-- 按应用设置 `Proxy`、`Direct` 或 `Bypass`。MagicNet 会按 Android 多用户动态解析 UID；Direct 是已接管流量的 sing-box 直连，Bypass 则离开当前透明数据面及其 DNS 捕获。
-- 按 Wi-Fi SSID/BSSID 使用黑名单或白名单，在 `rule` 与 `direct` 间自动切换。
-- 为热点转发流量选择 Direct 或 Proxy；TUN 使用受管路由送入 `magicnet0`，eBPF hybrid 使用已确认接口上的 shared TC；禁用或卸载时恢复 Android tether 状态。
-- 在 CLI、WebUI、MagicBox 或 MCP 中管理配置，并用健康检查、脱敏支持包和 Issue 草稿排障。
-
-完整操作见 [用户指南](docs/user-guide.md)。
+详细格式、协议和操作说明见 [用户指南](docs/user-guide.md)。
 
 ## 常用命令
 
@@ -132,6 +139,7 @@ kam build
 
 - Discord：[加入官方群聊](https://discord.gg/asRwgK9FpA)
 - GitHub Issue：建议附上 `cli health`、`cli transparent status` 和 `cli support bundle` 的脱敏结果。
+- 开发支持：MagicNet 的网络功能不依赖 LLM API；如需 OpenAI 兼容的多模型接口，可以使用作者维护的 [LMM API Gateway](https://api.lmm.best)。
 
 WebUI 的“反馈问题 / 创建 Issue”会先选择问题类型，再按类型生成脱敏上下文。提交前仍应检查正文，不要公开订阅 URL、token、secret、password、完整节点地址或设备标识。
 

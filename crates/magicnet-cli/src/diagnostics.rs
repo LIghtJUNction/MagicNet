@@ -1155,10 +1155,8 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
     let effective_network = effective.network.join(",");
     let local_effective = matches!(effective.mode, EbpfMode::Local | EbpfMode::Hybrid);
     let shared_effective = matches!(effective.mode, EbpfMode::Shared | EbpfMode::Hybrid);
-    let shared_state = if !shared_effective {
+    let shared_state = if effective.shared_interfaces.is_empty() {
         "pending".to_string()
-    } else if effective.shared_interfaces.is_empty() {
-        "missing".to_string()
     } else {
         effective.shared_interfaces.join(",")
     };
@@ -1173,7 +1171,7 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
             ),
         );
     }
-    if shared_effective && effective.shared_interfaces.is_empty() {
+    if effective.mode == EbpfMode::Shared && effective.shared_interfaces.is_empty() {
         return (
             false,
             format!(
@@ -1203,13 +1201,17 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
             }
         }
         EbpfMode::Hybrid => {
-            for interface in &effective.shared_interfaces {
-                probes.push(ebpf_capability_probe(
-                    &program,
-                    "all",
-                    cgroup,
-                    Some(interface),
-                ));
+            if effective.shared_interfaces.is_empty() {
+                probes.push(ebpf_capability_probe(&program, "local", cgroup, None));
+            } else {
+                for interface in &effective.shared_interfaces {
+                    probes.push(ebpf_capability_probe(
+                        &program,
+                        "all",
+                        cgroup,
+                        Some(interface),
+                    ));
+                }
             }
         }
     }
@@ -1251,7 +1253,9 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
     let (attachment_ok, attachment_detail) = match attachment {
         Ok(Some(evidence)) => (
             (!local_effective || evidence.local_attached)
-                && (!shared_effective || evidence.shared_attached),
+                && (!shared_effective
+                    || effective.shared_interfaces.is_empty()
+                    || evidence.shared_attached),
             evidence.detail,
         ),
         Ok(None) => (false, "skipped".to_string()),
@@ -2292,7 +2296,7 @@ mod mode_aware_tests {
         )?;
         fs::write(
             root.join(".config/sing-box/config.json"),
-            r#"{"inbounds":[{"type":"ebpf","tag":"tun-in","mode":"local","local":{"dns_mode":"hijack"}}]}"#,
+            r#"{"inbounds":[{"type":"ebpf","tag":"tun-in","mode":"hybrid","local":{"dns_mode":"hijack"},"shared":{"interface":[]}}]}"#,
         )?;
         let binary = root.join("bin/sing-box");
         fs::write(&binary, "#!/bin/sh\nexit 0\n")?;
@@ -2304,6 +2308,7 @@ mod mode_aware_tests {
 
         assert!(!result.0, "{}", result.1);
         assert!(result.1.contains("shared=pending"), "{}", result.1);
+        assert!(result.1.contains("probe=capability:ok"), "{}", result.1);
         assert!(result.1.contains("attachment="), "{}", result.1);
         assert!(!result.1.contains("magicnet0"), "{}", result.1);
         fs::remove_dir_all(root)?;

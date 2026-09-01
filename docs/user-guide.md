@@ -102,7 +102,7 @@ su -c /data/adb/modules/MagicNet/cli wifi status
 
 ## 热点
 
-MagicNet 不创建热点，也不替代 Android 的 DHCP/NAT。启用热点 Proxy 后，TUN 会把当前 tether 接口的 IPv4 入站策略路由到 `magicnet0`；eBPF 会对 MagicNet 已确认的真实下游接口启用 hybrid/shared TC。两者都通过 `hotspot` selector 选择 Direct 或 Proxy：
+MagicNet 不创建热点，也不替代 Android 的 DHCP/NAT。启用热点 Proxy 后，TUN 会把当前 tether 接口的 IPv4 入站策略路由到 `magicnet0`；eBPF 默认保持 hybrid，在 MagicNet 确认真实下游接口后附加 shared TC，否则 local cgroup 继续工作且 shared 显示 pending。两者都通过 `hotspot` selector 选择 Direct 或 Proxy：
 
 ```bash
 su -c /data/adb/modules/MagicNet/cli hotspot status

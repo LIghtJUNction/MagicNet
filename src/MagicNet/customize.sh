@@ -103,10 +103,12 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.local" \
     ".config/sing-box/subscription.user-agent" \
+    ".config/sing-box/standalone-config" \
     ".config/sing-box/subscription-filter.list" \
     ".config/sing-box/subscription-1.yaml" \
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \
+    ".state/transparent-mode" \
     ".config/magicnet"; do
     if [ -L "${MAGICNET_PREV_DIR}/${_item}" ]; then
       abort "! refusing unsafe symlink in MagicNet migration data: $_item"
@@ -282,10 +284,12 @@ if [ "$MAGICNET_BACKUP_READY" = 1 ]; then
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.local" \
     ".config/sing-box/subscription.user-agent" \
+    ".config/sing-box/standalone-config" \
     ".config/sing-box/subscription-filter.list" \
     ".config/sing-box/subscription-1.yaml" \
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \
+    ".state/transparent-mode" \
     ".config/magicnet"; do
     if [ -e "${MAGICNET_BACKUP_DIR}/${_item}" ]; then
       mkdir -p "${MODPATH}/${_item%/*}" || abort "! failed to prepare restored MagicNet migration data: $_item"
@@ -296,6 +300,45 @@ if [ "$MAGICNET_BACKUP_READY" = 1 ]; then
   magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
   unset _item
 fi
+
+# The repository selector is a new managed setting. Seed it after migration so
+# restoring an older .config/magicnet directory cannot remove the default.
+magicnet_seed_config_repository() {
+  _repository_file="${MODPATH}/.config/magicnet/singbox-config-repo.conf"
+  _repository_parent="${_repository_file%/*}"
+  if [ -L "${MODPATH}/.config" ] || [ -L "$_repository_parent" ] || [ -L "$_repository_file" ]; then
+    unset _repository_file _repository_parent
+    return 1
+  fi
+  if [ -e "$_repository_file" ]; then
+    [ -f "$_repository_file" ] || {
+      unset _repository_file _repository_parent
+      return 1
+    }
+    unset _repository_file _repository_parent
+    return 0
+  fi
+  mkdir -p "$_repository_parent" || {
+    unset _repository_file _repository_parent
+    return 1
+  }
+  printf '%s\n' \
+    '# Managed by MagicNet; edit through the config repository controls.' \
+    'MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/LIghtJUNction/MagicSingBox.git' \
+    'MAGICNET_SINGBOX_CONFIG_REPO_REF=63780ca3a96ee65af18b17aa87e11b536bbc5a73' \
+    'MAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json' \
+    'MAGICNET_SINGBOX_CONFIG_REPO_SHA256=ba0f9057b2b6ac896a8783a5691388325306be066e81c4098d9f62d79ac7ee50' >"$_repository_file" || {
+    unset _repository_file _repository_parent
+    return 1
+  }
+  chmod 600 "$_repository_file" || {
+    unset _repository_file _repository_parent
+    return 1
+  }
+  unset _repository_file _repository_parent
+}
+
+magicnet_seed_config_repository || abort "! failed to initialize the sing-box config repository"
 
 # Older releases shipped a domestic-app bypass catalog.  Keep only packages that
 # are still Android VPN services during the one-time migration; ordinary app

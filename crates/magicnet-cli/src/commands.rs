@@ -94,12 +94,12 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         name: "config-editor",
-        usage: "cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path]",
+        usage: "cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path] | repo {get|get-json|set|set-file|reset} [base64-json|webui-payload-path]",
         handler: config_editor,
     },
     Command {
         name: "transparent",
-        usage: "cli transparent {status|set tun|apply}",
+        usage: "cli transparent {status|set tun|set ebpf|apply}",
         handler: transparent_cmd,
     },
     Command {
@@ -184,7 +184,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         name: "app",
-        usage: "cli app {list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}",
+        usage: "cli app {list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}; proxy=sing-box proxy outbound, direct=sing-box direct outbound, bypass=outside MagicNet",
         handler: app_cmd,
     },
     Command {

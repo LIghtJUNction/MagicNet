@@ -341,7 +341,10 @@ magicnet_config_lock_owner_matches() {
     }
     _owner_check_state=${_owner_check_identity%% *}
     _owner_check_live_start=${_owner_check_identity#* }
-    if [ "$_owner_check_state" = Z ]; then
+    if [ "$_owner_check_state" = Z ] || [ "$_owner_check_state" = T ] || [ "$_owner_check_state" = t ]; then
+        # A stopped orphan is the expected result of PR_SET_PDEATHSIG(SIGSTOP)
+        # when a detached updater loses its launcher. It cannot make progress
+        # or release this marker, so it is reclaimable like a zombie.
         _owner_check_rc=1
     elif [ -n "$_owner_check_start" ] &&
         [ "$_owner_check_live_start" != "$_owner_check_start" ]; then

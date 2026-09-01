@@ -1324,6 +1324,22 @@ if ! env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$
         sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; printf "current: "; magicnet_singbox_runtime_fingerprint' >&2 || true
     exit 1
 fi
+# A killed transparent transition leaves a valid journal after its process lock
+# disappears. Config apply must recover it instead of silently skipping forever.
+_transparent_journal="$MODDIR/.state/transparent-transaction"
+mkdir -p "$_transparent_journal"
+printf 'tun\n' >"$_transparent_journal/old-mode"
+printf '1\n' >"$_transparent_journal/old-mode-present"
+printf '1\n' >"$_transparent_journal/old-config-present"
+printf 'stopping-old\n' >"$_transparent_journal/phase"
+cp "$MODDIR/.config/sing-box/config.json" "$_transparent_journal/old-config.json"
+_transparent_runs_before="$(count_singbox_runs)"
+run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    "$MODDIR/cli" config apply
+_transparent_runs_after="$(count_singbox_runs)"
+test ! -d "$_transparent_journal"
+test "$_transparent_runs_after" -gt "$_transparent_runs_before"
+unset _transparent_journal _transparent_runs_before _transparent_runs_after
 # shellcheck disable=SC2016
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
     sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; magicnet_apply_runtime_config'
@@ -1581,11 +1597,11 @@ assert_no_transparent_journal
 
 # Successful switch and repeated apply are deterministic. CLI status and
 # health must use eBPF capability/cgroup/TC evidence and must not demand
-# magicnet0 when the effective mode is local.
+# magicnet0 when hybrid is waiting for a confirmed shared interface.
 run "$MODDIR/cli" transparent set ebpf
 run "$MODDIR/cli" transparent status >"$TMP/ebpf-transparent-status.log"
 rg -qx 'mode=ebpf' "$TMP/ebpf-transparent-status.log"
-rg -q '(^effective_mode=local$)|(effective=mode:local)' "$TMP/ebpf-transparent-status.log"
+rg -q '(^effective_mode=hybrid$)|(effective=mode:hybrid)' "$TMP/ebpf-transparent-status.log"
 # The host mock's long-lived process is `sleep`, so Rust ownership cannot bind
 # it to the packaged sing-box executable. Status and health must fail closed
 # instead of turning a capability/active-program report into attachment proof.
@@ -1595,7 +1611,7 @@ if rg -qx 'local_cgroup=attached' "$TMP/ebpf-transparent-status.log"; then
     cat "$TMP/ebpf-transparent-status.log" >&2
     exit 1
 fi
-rg -qx 'shared_tc=inactive' "$TMP/ebpf-transparent-status.log"
+rg -qx 'shared_tc=pending' "$TMP/ebpf-transparent-status.log"
 if rg -q 'required[^[:alnum:]]+magicnet0|magicnet0[^[:alnum:]]+(missing|required)' "$TMP/ebpf-transparent-status.log"; then
     echo "eBPF transparent status incorrectly required magicnet0" >&2
     cat "$TMP/ebpf-transparent-status.log" >&2
@@ -1609,7 +1625,8 @@ if rg -q '^\[ok\] Dataplane:' "$TMP/ebpf-health.log"; then
 fi
 rg -q '^\[warn\] Dataplane:' "$TMP/ebpf-health.log"
 rg -q 'configured=mode:ebpf' "$TMP/ebpf-health.log"
-rg -q 'effective=mode:local' "$TMP/ebpf-health.log"
+rg -q 'effective=mode:hybrid' "$TMP/ebpf-health.log"
+rg -q 'shared=pending' "$TMP/ebpf-health.log"
 rg -q 'probe=capability:' "$TMP/ebpf-health.log"
 rg -q 'attachment=' "$TMP/ebpf-health.log"
 if rg -q 'required[^[:alnum:]]+magicnet0|magicnet0[^[:alnum:]]+(missing|required)' "$TMP/ebpf-health.log"; then

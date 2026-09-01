@@ -12,6 +12,14 @@ use std::time::Duration;
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SingboxRepository {
+    url: String,
+    reference: String,
+    path: String,
+    sha256: Option<String>,
+}
+
 use crate::service::apply_config;
 use crate::webui_payload::MAX_WEBUI_PAYLOAD_BYTES;
 use crate::{cstring_from_os_str, decode_base64, write_secret_file, write_text_file, App};
@@ -20,15 +28,22 @@ const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 const TEMPLATE_MAX_BYTES: usize = 1024 * 1024;
 const VALIDATOR_OUTPUT_LIMIT: usize = 256 * 1024;
-const MAGIC_SINGBOX_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/63780ca3a96ee65af18b17aa87e11b536bbc5a73/config.json";
-const MAGIC_SINGBOX_TEMPLATE_SHA256: &str =
+const CONFIG_REPOSITORY_MAX_BYTES: usize = 16 * 1024;
+const MAGIC_SINGBOX_REPOSITORY: &str = "https://github.com/LIghtJUNction/MagicSingBox.git";
+const MAGIC_SINGBOX_REPOSITORY_REF: &str = "63780ca3a96ee65af18b17aa87e11b536bbc5a73";
+const MAGIC_SINGBOX_REPOSITORY_PATH: &str = "config.json";
+const MAGIC_SINGBOX_REPOSITORY_SHA256: &str =
     "ba0f9057b2b6ac896a8783a5691388325306be066e81c4098d9f62d79ac7ee50";
+const SINGBOX_REPOSITORY_CONFIG: &str = ".config/magicnet/singbox-config-repo.conf";
 const STANDALONE_CONFIG_MARKER: &str = ".config/sing-box/standalone-config";
 const TAILSCALE_AUTH_PATH: &str = ".config/sing-box/tailscale-auth.json";
 static CONFIG_EDITOR_STAGE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 pub(crate) fn config_editor(app: &App, args: &[String]) -> Result<(), String> {
     let action = args.first().map(String::as_str).unwrap_or_default();
+    if action == "repo" || action == "repository" {
+        return config_repository(app, &args[1..]);
+    }
     let target = args.get(1).map(String::as_str).unwrap_or_default();
     match action {
         "path" => {
@@ -57,7 +72,7 @@ pub(crate) fn config_editor(app: &App, args: &[String]) -> Result<(), String> {
         }
         "sync-template" | "sync" => sync_template(app, target),
         _ => Err(
-            "Usage: cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path]"
+            "Usage: cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path] | repo {get|set|set-file|reset} [base64-json|webui-payload-path]"
                 .to_string(),
         ),
     }
@@ -645,6 +660,352 @@ fn backup_name(name: &OsStr) -> OsString {
     backup
 }
 
+fn config_repository(app: &App, args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str).unwrap_or_default() {
+        "get" => {
+            let (repository, configured) = read_repository_config(app)?;
+            let (host, path) = repository_identity(&repository.url)?;
+            println!("source={}", if configured { "custom" } else { "default" });
+            println!("host={host}");
+            println!("repository={path}");
+            println!("ref={}", repository.reference);
+            println!("file={}", repository.path);
+            println!(
+                "sha256={}",
+                if repository.sha256.is_some() {
+                    "pinned"
+                } else {
+                    "none"
+                }
+            );
+            Ok(())
+        }
+        "get-json" => {
+            let (repository, _configured) = read_repository_config(app)?;
+            let mut object = serde_json::Map::new();
+            object.insert("url".to_string(), JsonValue::String(repository.url));
+            object.insert(
+                "reference".to_string(),
+                JsonValue::String(repository.reference),
+            );
+            object.insert("path".to_string(), JsonValue::String(repository.path));
+            if let Some(sha256) = repository.sha256 {
+                object.insert("sha256".to_string(), JsonValue::String(sha256));
+            }
+            println!("{}", JsonValue::Object(object));
+            Ok(())
+        }
+        "set" => {
+            let payload = args.get(1).map(String::as_str).unwrap_or_default();
+            if payload.is_empty() {
+                return Err("Usage: cli config-editor repo set <base64-json>".to_string());
+            }
+            let bytes = decode_base64(payload)?;
+            let text = String::from_utf8(bytes)
+                .map_err(|err| format!("config repository payload is not UTF-8: {err}"))?;
+            let repository = parse_repository_json(&text)?;
+            write_repository_config(app, &repository)?;
+            println!("[info] Config repository saved");
+            Ok(())
+        }
+        "set-file" => {
+            let path = args.get(1).map(PathBuf::from).unwrap_or_default();
+            if path.as_os_str().is_empty() {
+                return Err("Usage: cli config-editor repo set-file <webui-payload-path>".to_string());
+            }
+            let (source, _tmp_directory) = open_webui_payload_source(app, &path)?;
+            let mut bytes = Vec::new();
+            source
+                .take((CONFIG_REPOSITORY_MAX_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)
+                .map_err(|err| format!("read config repository payload: {err}"))?;
+            if bytes.len() > CONFIG_REPOSITORY_MAX_BYTES {
+                return Err(format!(
+                    "config repository payload exceeds the {CONFIG_REPOSITORY_MAX_BYTES} byte limit"
+                ));
+            }
+            let text = String::from_utf8(bytes)
+                .map_err(|err| format!("config repository payload is not UTF-8: {err}"))?;
+            let repository = parse_repository_json(&text)?;
+            write_repository_config(app, &repository)?;
+            println!("[info] Config repository saved");
+            Ok(())
+        }
+        "reset" => {
+            write_repository_config(app, &default_repository())?;
+            println!("[info] Config repository reset to default");
+            Ok(())
+        }
+        _ => Err(
+            "Usage: cli config-editor repo {get|get-json|set|set-file|reset} [base64-json|webui-payload-path]"
+                .to_string(),
+        ),
+    }
+}
+
+fn default_repository() -> SingboxRepository {
+    SingboxRepository {
+        url: MAGIC_SINGBOX_REPOSITORY.to_string(),
+        reference: MAGIC_SINGBOX_REPOSITORY_REF.to_string(),
+        path: MAGIC_SINGBOX_REPOSITORY_PATH.to_string(),
+        sha256: Some(MAGIC_SINGBOX_REPOSITORY_SHA256.to_string()),
+    }
+}
+
+fn repository_config_path(app: &App) -> PathBuf {
+    app.moddir.join(SINGBOX_REPOSITORY_CONFIG)
+}
+
+fn read_repository_config(app: &App) -> Result<(SingboxRepository, bool), String> {
+    let path = repository_config_path(app);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            return Ok((default_repository(), false));
+        }
+        Err(err) => return Err(format!("inspect config repository settings: {err}")),
+    };
+    if !metadata.file_type().is_file() {
+        return Err("config repository settings must be a regular file".to_string());
+    }
+    let bytes = fs::read(&path).map_err(|err| format!("read config repository settings: {err}"))?;
+    if bytes.len() > CONFIG_REPOSITORY_MAX_BYTES {
+        return Err(format!(
+            "config repository settings exceed the {CONFIG_REPOSITORY_MAX_BYTES} byte limit"
+        ));
+    }
+    let text = String::from_utf8(bytes)
+        .map_err(|err| format!("config repository settings are not UTF-8: {err}"))?;
+    Ok((parse_repository_conf(&text)?, true))
+}
+
+pub(crate) fn validate_repository_config_text(text: &str) -> bool {
+    parse_repository_conf(text).is_ok()
+}
+
+fn parse_repository_conf(text: &str) -> Result<SingboxRepository, String> {
+    let mut values = std::collections::BTreeMap::<&str, &str>::new();
+    for (index, raw_line) in text.lines().enumerate() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let (key, value) = line
+            .split_once('=')
+            .ok_or_else(|| format!("invalid config repository setting at line {}", index + 1))?;
+        let key = key.trim();
+        let value = value.trim();
+        if !matches!(
+            key,
+            "MAGICNET_SINGBOX_CONFIG_REPO_URL"
+                | "MAGICNET_SINGBOX_CONFIG_REPO_REF"
+                | "MAGICNET_SINGBOX_CONFIG_REPO_PATH"
+                | "MAGICNET_SINGBOX_CONFIG_REPO_SHA256"
+        ) {
+            return Err(format!(
+                "unknown config repository setting at line {}",
+                index + 1
+            ));
+        }
+        if values.insert(key, value).is_some() {
+            return Err(format!(
+                "duplicate config repository setting at line {}",
+                index + 1
+            ));
+        }
+    }
+    let defaults = default_repository();
+    repository_from_values(
+        values
+            .get("MAGICNET_SINGBOX_CONFIG_REPO_URL")
+            .copied()
+            .unwrap_or(&defaults.url),
+        values
+            .get("MAGICNET_SINGBOX_CONFIG_REPO_REF")
+            .copied()
+            .unwrap_or(&defaults.reference),
+        values
+            .get("MAGICNET_SINGBOX_CONFIG_REPO_PATH")
+            .copied()
+            .unwrap_or(&defaults.path),
+        values
+            .get("MAGICNET_SINGBOX_CONFIG_REPO_SHA256")
+            .copied()
+            .filter(|value| !value.is_empty()),
+    )
+}
+
+fn parse_repository_json(text: &str) -> Result<SingboxRepository, String> {
+    let value: JsonValue = serde_json::from_str(text)
+        .map_err(|err| format!("config repository payload is invalid JSON: {err}"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| "config repository payload must be a JSON object".to_string())?;
+    let string_value = |key: &str| -> Result<Option<&str>, String> {
+        match object.get(key) {
+            None => Ok(None),
+            Some(value) => value
+                .as_str()
+                .map(Some)
+                .ok_or_else(|| format!("config repository field {key} must be a string")),
+        }
+    };
+    let defaults = default_repository();
+    let reference = string_value("ref")?;
+    let reference_alias = string_value("reference")?;
+    let reference = match (reference, reference_alias) {
+        (Some(reference), Some(reference_alias)) if reference != reference_alias => {
+            return Err("config repository ref and reference fields disagree".to_string());
+        }
+        (Some(reference), _) | (_, Some(reference)) => reference,
+        (None, None) => &defaults.reference,
+    };
+    repository_from_values(
+        string_value("url")?.unwrap_or(&defaults.url),
+        reference,
+        string_value("path")?.unwrap_or(&defaults.path),
+        string_value("sha256")?.filter(|value| !value.is_empty()),
+    )
+}
+
+fn repository_from_values(
+    url: &str,
+    reference: &str,
+    path: &str,
+    sha256: Option<&str>,
+) -> Result<SingboxRepository, String> {
+    let url = normalize_repository_url(url)?;
+    let reference = validate_repository_component(reference, "ref", true)?;
+    let path = validate_repository_component(path, "file", true)?;
+    let mut sha256 = sha256
+        .map(|value| {
+            if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                Err("config repository sha256 must be 64 hexadecimal characters".to_string())
+            } else {
+                Ok(value.to_ascii_lowercase())
+            }
+        })
+        .transpose()?;
+    // The bundled repository is a trust anchor. Keep compatibility with the
+    // pre-pin `main` setting by upgrading that exact legacy value, but never
+    // allow the default source to remain mutable without an explicit digest.
+    let mut reference = reference;
+    if url == MAGIC_SINGBOX_REPOSITORY && sha256.is_none() {
+        if path == MAGIC_SINGBOX_REPOSITORY_PATH && reference == "main" {
+            reference = MAGIC_SINGBOX_REPOSITORY_REF.to_string();
+            sha256 = Some(MAGIC_SINGBOX_REPOSITORY_SHA256.to_string());
+        } else {
+            return Err("default config repository requires a sha256 pin".to_string());
+        }
+    }
+    Ok(SingboxRepository {
+        url,
+        reference,
+        path,
+        sha256,
+    })
+}
+
+fn normalize_repository_url(value: &str) -> Result<String, String> {
+    let rest = value
+        .strip_prefix("https://")
+        .ok_or_else(|| "config repository must use HTTPS".to_string())?;
+    if rest.is_empty()
+        || rest.contains(['?', '#', '@', ':', '\\', '\r', '\n'])
+        || rest.ends_with('/')
+    {
+        return Err("config repository URL is invalid".to_string());
+    }
+    let (host, path) = rest
+        .split_once('/')
+        .ok_or_else(|| "config repository URL must include a repository path".to_string())?;
+    if host != "github.com" && host != "gitlab.com" {
+        return Err("config repository host must be github.com or gitlab.com".to_string());
+    }
+    let path = path.trim_end_matches(".git");
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.ends_with('/')
+        || path.split('/').any(|part| {
+            part.is_empty()
+                || part == "."
+                || part == ".."
+                || !part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+        })
+    {
+        return Err("config repository path is invalid".to_string());
+    }
+    if host == "github.com" && path.split('/').count() != 2 {
+        return Err("GitHub repository URL must be https://github.com/<owner>/<repo>".to_string());
+    }
+    Ok(format!("https://{host}/{path}.git"))
+}
+
+fn validate_repository_component(
+    value: &str,
+    label: &str,
+    allow_slash: bool,
+) -> Result<String, String> {
+    if value.is_empty()
+        || value.len() > 256
+        || value
+            .bytes()
+            .any(|byte| byte.is_ascii_control() || byte == b'\\')
+        || value.starts_with('/')
+        || value.ends_with('/')
+        || value
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+        || (!allow_slash && value.contains('/'))
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/'))
+    {
+        return Err(format!("config repository {label} is invalid"));
+    }
+    Ok(value.to_string())
+}
+
+fn repository_identity(url: &str) -> Result<(&str, &str), String> {
+    let rest = url
+        .strip_prefix("https://")
+        .ok_or_else(|| "config repository must use HTTPS".to_string())?;
+    let (host, path) = rest
+        .split_once('/')
+        .ok_or_else(|| "config repository URL is invalid".to_string())?;
+    Ok((host, path.trim_end_matches(".git")))
+}
+
+fn repository_file_url(repository: &SingboxRepository) -> Result<String, String> {
+    let (host, repository_path) = repository_identity(&repository.url)?;
+    let repository_path = repository_path.trim_end_matches('/');
+    let path = &repository.path;
+    match host {
+        "github.com" => Ok(format!(
+            "https://raw.githubusercontent.com/{repository_path}/{}/{path}",
+            repository.reference
+        )),
+        "gitlab.com" => Ok(format!(
+            "https://gitlab.com/{repository_path}/-/raw/{}/{path}",
+            repository.reference
+        )),
+        _ => Err("config repository host is unsupported".to_string()),
+    }
+}
+
+fn write_repository_config(app: &App, repository: &SingboxRepository) -> Result<(), String> {
+    let mut text = format!(
+        "MAGICNET_SINGBOX_CONFIG_REPO_URL={}\nMAGICNET_SINGBOX_CONFIG_REPO_REF={}\nMAGICNET_SINGBOX_CONFIG_REPO_PATH={}\n",
+        repository.url, repository.reference, repository.path
+    );
+    if let Some(sha256) = &repository.sha256 {
+        text.push_str(&format!("MAGICNET_SINGBOX_CONFIG_REPO_SHA256={sha256}\n"));
+    }
+    write_secret_file(app, Path::new(SINGBOX_REPOSITORY_CONFIG), &text)
+}
+
 fn sync_template(app: &App, target: &str) -> Result<(), String> {
     match target {
         "all" => {
@@ -658,14 +1019,15 @@ fn sync_template(app: &App, target: &str) -> Result<(), String> {
 
 fn sync_template_one(app: &App, target: &str) -> Result<(), String> {
     let path = config_path(app, target)?;
-    let url = upstream_template_url(target)?;
-    let template = fetch_template(&url)?;
+    let repository = read_repository_config(app)?.0;
+    let url = repository_file_url(&repository)?;
+    let template = fetch_template(&url, repository.sha256.as_deref())?;
     let current = read_current_config(app, target)?.unwrap_or_default();
     let merged = prepare_template(target, &template, &current)?;
     commit_config_text(app, target, &path, merged.as_bytes(), "template", None)?;
     apply_config(app)?;
     println!(
-        "[info] Synced {target} template from {url}\n[info] Preserved subscription-facing config and re-applied runtime rules."
+        "[info] Synced {target} template from configured Git repository\n[info] Preserved subscription-facing config and re-applied runtime rules."
     );
     Ok(())
 }
@@ -685,15 +1047,24 @@ fn read_current_config(app: &App, target: &str) -> Result<Option<String>, String
     Ok(Some(text))
 }
 
-fn upstream_template_url(target: &str) -> Result<String, String> {
-    match target {
-        "sing-box" => Ok(MAGIC_SINGBOX_TEMPLATE_URL.to_string()),
-        _ => Err("config target must be sing-box".to_string()),
-    }
+fn fetch_template(url: &str, expected_sha256: Option<&str>) -> Result<String, String> {
+    fetch_template_with_curl(
+        Path::new("curl"),
+        url,
+        expected_sha256,
+        TEMPLATE_FETCH_TIMEOUT,
+        TEMPLATE_FETCH_TIMEOUT + Duration::from_secs(5),
+    )
 }
 
-fn fetch_template(url: &str) -> Result<String, String> {
-    let mut command = Command::new("curl");
+fn fetch_template_with_curl(
+    curl_program: &Path,
+    url: &str,
+    expected_sha256: Option<&str>,
+    fetch_timeout: Duration,
+    command_timeout: Duration,
+) -> Result<String, String> {
+    let mut command = Command::new(curl_program);
     command
         .arg("-fsSL")
         .arg("--proto")
@@ -703,32 +1074,32 @@ fn fetch_template(url: &str) -> Result<String, String> {
         .arg("--max-filesize")
         .arg(TEMPLATE_MAX_BYTES.to_string())
         .arg("--max-time")
-        .arg(TEMPLATE_FETCH_TIMEOUT.as_secs().to_string())
+        .arg(fetch_timeout.as_secs().max(1).to_string())
         .arg(url);
-    let output = run_with_timeout(command, TEMPLATE_FETCH_TIMEOUT + Duration::from_secs(5))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            "fetch template failed: curl command failed".to_string()
-        } else {
-            format!("fetch template failed: {stderr}")
-        });
+    let output = crate::run_bounded_command(command, command_timeout, TEMPLATE_MAX_BYTES + 1)
+        .map_err(|_| "fetch template failed: repository request did not complete".to_string())?;
+    if output.timed_out {
+        return Err("fetch template failed: repository request timed out".to_string());
     }
-    if output.stdout.len() > TEMPLATE_MAX_BYTES {
+    if output.truncated || output.stdout.len() > TEMPLATE_MAX_BYTES {
         return Err(format!(
             "fetch template failed: response exceeds {TEMPLATE_MAX_BYTES} byte limit"
         ));
     }
-    verify_template_hash(&output.stdout)?;
+    let status = output.status.ok_or_else(|| {
+        "fetch template failed: repository request had no exit status".to_string()
+    })?;
+    if !status.success() {
+        return Err("fetch template failed: repository is unavailable".to_string());
+    }
+    if let Some(expected_sha256) = expected_sha256 {
+        verify_expected_sha256(
+            &output.stdout,
+            expected_sha256,
+            "configured sing-box template",
+        )?;
+    }
     String::from_utf8(output.stdout).map_err(|err| format!("template is not UTF-8: {err}"))
-}
-
-fn verify_template_hash(template: &[u8]) -> Result<(), String> {
-    verify_expected_sha256(
-        template,
-        MAGIC_SINGBOX_TEMPLATE_SHA256,
-        "upstream sing-box template",
-    )
 }
 
 fn verify_expected_sha256(bytes: &[u8], expected: &str, subject: &str) -> Result<(), String> {
@@ -920,7 +1291,7 @@ fn run_with_timeout(command: Command, timeout: Duration) -> Result<std::process:
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::os::unix::fs::symlink;
+    use std::os::unix::fs::{symlink, PermissionsExt};
 
     use super::*;
     use crate::test_support::temp_app;
@@ -942,6 +1313,71 @@ mod tests {
         );
         assert!(output.stdout.ends_with(b"[output truncated]"));
         Ok(())
+    }
+
+    #[test]
+    fn template_fetch_checks_the_configured_hash() {
+        let fixture = temp_app();
+        let curl = fixture.moddir.join("curl");
+        fs::write(
+            &curl,
+            "#!/bin/sh\nprintf '%s' '{\"inbounds\":[],\"outbounds\":[]}'\n",
+        )
+        .expect("curl fixture");
+        fs::set_permissions(&curl, fs::Permissions::from_mode(0o755)).expect("curl executable");
+        let expected = format!("{:x}", Sha256::digest(br#"{"inbounds":[],"outbounds":[]}"#));
+        let template = fetch_template_with_curl(
+            &curl,
+            "https://github.com/example/repository/config.json",
+            Some(&expected),
+            Duration::from_secs(2),
+            Duration::from_secs(3),
+        )
+        .expect("fetch fixture");
+        assert!(template.contains("inbounds"));
+    }
+
+    #[test]
+    fn template_fetch_rejects_timeout_and_nonzero_exit_without_partial_config() {
+        let fixture = temp_app();
+        let curl = fixture.moddir.join("curl");
+        fs::write(&curl, "#!/bin/sh\nsleep 5\n").expect("slow curl fixture");
+        fs::set_permissions(&curl, fs::Permissions::from_mode(0o755)).expect("curl executable");
+        let timeout = fetch_template_with_curl(
+            &curl,
+            "https://github.com/example/repository/config.json",
+            None,
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+        )
+        .expect_err("slow fetch must time out");
+        assert!(timeout.contains("timed out"));
+
+        fs::write(&curl, "#!/bin/sh\nexit 22\n").expect("failing curl fixture");
+        let unavailable = fetch_template_with_curl(
+            &curl,
+            "https://github.com/example/repository/config.json",
+            None,
+            Duration::from_secs(2),
+            Duration::from_secs(3),
+        )
+        .expect_err("nonzero fetch must fail");
+        assert!(unavailable.contains("unavailable"));
+
+        fs::write(
+            &curl,
+            "#!/bin/sh\nchunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 131072 ]; do printf %s \"$chunk\"; i=$((i + 1)); done\n",
+        )
+        .expect("oversized curl fixture");
+        let oversized = fetch_template_with_curl(
+            &curl,
+            "https://github.com/example/repository/config.json",
+            None,
+            Duration::from_secs(2),
+            Duration::from_secs(3),
+        )
+        .expect_err("oversized fetch must fail");
+        assert!(oversized.contains("exceeds"));
     }
 
     #[test]
@@ -1012,6 +1448,104 @@ mod tests {
         let expected = format!("{:x}", Sha256::digest(fixture));
         assert!(verify_expected_sha256(fixture, &expected, "fixture").is_ok());
         assert!(verify_expected_sha256(b"tampered", &expected, "fixture").is_err());
+    }
+
+    #[test]
+    fn repository_defaults_to_magic_singbox_and_builds_a_raw_url() {
+        let repository = default_repository();
+        assert_eq!(repository.url, MAGIC_SINGBOX_REPOSITORY);
+        assert_eq!(
+            repository_file_url(&repository).expect("default repository URL"),
+            "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/63780ca3a96ee65af18b17aa87e11b536bbc5a73/config.json"
+        );
+        assert_eq!(
+            repository.sha256.as_deref(),
+            Some(MAGIC_SINGBOX_REPOSITORY_SHA256)
+        );
+    }
+
+    #[test]
+    fn repository_settings_accept_custom_github_and_gitlab_repositories() {
+        let github = parse_repository_json(
+            r#"{"url":"https://github.com/example/magic-config.git","ref":"feature/v2","path":"configs/sing-box.json"}"#,
+        )
+        .expect("custom GitHub repository");
+        assert_eq!(
+            repository_file_url(&github).expect("custom GitHub raw URL"),
+            "https://raw.githubusercontent.com/example/magic-config/feature/v2/configs/sing-box.json"
+        );
+
+        let gitlab = parse_repository_json(
+            r#"{"url":"https://gitlab.com/example/team/magic-config","ref":"stable","path":"config.json"}"#,
+        )
+        .expect("custom GitLab repository");
+        assert_eq!(
+            repository_file_url(&gitlab).expect("custom GitLab raw URL"),
+            "https://gitlab.com/example/team/magic-config/-/raw/stable/config.json"
+        );
+
+        let exported = parse_repository_json(
+            r#"{"url":"https://github.com/example/magic-config.git","reference":"feature/v2","path":"configs/sing-box.json"}"#,
+        )
+        .expect("get-json output must be accepted again");
+        assert_eq!(exported.reference, "feature/v2");
+    }
+
+    #[test]
+    fn repository_settings_reject_downgrade_credentials_and_path_escape() {
+        assert!(parse_repository_json(r#"{"url":"http://github.com/example/repo"}"#).is_err());
+        assert!(
+            parse_repository_json(r#"{"url":"https://user:pass@github.com/example/repo"}"#)
+                .is_err()
+        );
+        assert!(parse_repository_json(
+            r#"{"url":"https://github.com/example/repo","path":"../config.json"}"#
+        )
+        .is_err());
+        assert!(parse_repository_json(r#"{"url":"https://example.invalid/repo"}"#).is_err());
+        assert!(parse_repository_json(
+            r#"{"url":"https://github.com/example/repo","ref":"main","reference":"stable"}"#
+        )
+        .is_err());
+        let legacy_default = parse_repository_json(
+            r#"{"url":"https://github.com/LIghtJUNction/MagicSingBox.git","ref":"main","path":"config.json"}"#,
+        )
+        .expect("legacy default must be upgraded to its pin");
+        assert_eq!(legacy_default.reference, MAGIC_SINGBOX_REPOSITORY_REF);
+        assert_eq!(
+            legacy_default.sha256.as_deref(),
+            Some(MAGIC_SINGBOX_REPOSITORY_SHA256)
+        );
+        assert!(parse_repository_json(
+            r#"{"url":"https://github.com/LIghtJUNction/MagicSingBox.git","ref":"stable","path":"config.json"}"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn repository_settings_are_read_without_printing_the_repository_url() {
+        let text = "MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/example/repo.git\nMAGICNET_SINGBOX_CONFIG_REPO_REF=main\nMAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json\n";
+        let parsed = parse_repository_conf(text).expect("repository settings");
+        assert_eq!(parsed.reference, "main");
+        assert_eq!(parsed.path, "config.json");
+        assert_eq!(repository_identity(&parsed.url).unwrap().0, "github.com");
+    }
+
+    #[test]
+    fn repository_settings_reject_a_symlink_without_reading_its_target() {
+        let fixture = temp_app();
+        let path = repository_config_path(&fixture);
+        fs::create_dir_all(path.parent().expect("repository parent"))
+            .expect("repository directory");
+        let target = fixture.moddir.join("repository-target.conf");
+        fs::write(
+            &target,
+            "MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/example/repo.git\nMAGICNET_SINGBOX_CONFIG_REPO_REF=main\nMAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json\n",
+        )
+        .expect("repository target");
+        symlink(&target, &path).expect("repository symlink");
+        let error = read_repository_config(&fixture).expect_err("symlink must be rejected");
+        assert!(error.contains("regular file"));
     }
 
     #[test]

@@ -134,23 +134,10 @@ pub(crate) fn service_status(app: &App) {
 }
 
 pub(crate) fn singbox_webui(app: &App) -> String {
-    let ui = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|config| {
-            config
-                .pointer("/experimental/clash_api/external_ui")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned)
-        })
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "ui".to_string());
+    // `external_ui` is a filesystem directory, not the HTTP route. The Clash
+    // API serves whichever dashboard directory is configured at `/ui/`.
     let (hostname, port) = api_host_port(&app.api);
-    format!(
-        "{}/{}/#/setup?hostname={hostname}&port={port}",
-        app.api,
-        ui.trim_matches('/')
-    )
+    format!("{}/ui/#/setup?hostname={hostname}&port={port}", app.api)
 }
 
 fn api_host_port(api: &str) -> (String, String) {
@@ -251,20 +238,35 @@ pub(crate) fn config_cmd(app: &App, args: &[String]) -> Result<(), String> {
 
 pub(crate) fn apply_config(app: &App) -> Result<(), String> {
     // Runtime materialization and the following core restart are one logical
-    // operation.  The shell config lock only covers the writers themselves;
+    // operation. The shell config lock only covers the writers themselves;
     // without this process-level guard two fswatch/WebUI invocations can both
     // pass that lock and then interleave stop/start, leaving DNS/TUN rules
     // attached to different core generations.
     let _config_apply_guard = config_apply_lock(app)?;
+
+    // A killed transparent-mode transition leaves a journal that must be
+    // recovered before fswatch can apply another config. A live transition
+    // still owns this process lock, so reaching this branch means the journal
+    // is safe to reconcile and the recovered core should be started again.
+    let recovered_transparent_transaction = if transparent_transaction_active(app) {
+        run_magicnet_function(app, "magicnet_recover_interrupted_transparent_transaction")?;
+        true
+    } else {
+        false
+    };
+
     run_magicnet_function(app, ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; if magicnet_singbox_update_lock_active; then echo '[error] subscription update in progress' >&2; false; else magicnet_apply_runtime_config; fi")?;
 
-    // sing-box snapshots config.json and local rule sets at startup.  Restart
-    // only when those effective inputs changed.  Fswatch may invoke this for
+    // sing-box snapshots config.json and local rule sets at startup. Restart
+    // only when those effective inputs changed. Fswatch may invoke this for
     // unrelated files under .config; an unconditional restart tears down
     // background mail/message sockets even when the running policy is already
-    // current.  A missing or unreadable fingerprint remains fail-safe and
-    // takes the restart path.
-    if singbox_pid_summary(app) != "stopped" {
+    // current. A missing or unreadable fingerprint remains fail-safe and
+    // takes the restart path. Recovery always stops the old core, so it must
+    // be restarted even when the fingerprint itself is unchanged.
+    if recovered_transparent_transaction {
+        restart_current_core_preserving_config_apply(app)?;
+    } else if singbox_pid_summary(app) != "stopped" {
         let runtime_unchanged =
             run_magicnet_function(app, "magicnet_singbox_runtime_fingerprint_matches").is_ok();
         if !runtime_unchanged {
@@ -524,6 +526,10 @@ fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String>
     }
     run_magicnet_function(app, stop_runtime_cleanup_command())?;
     Ok(())
+}
+
+fn transparent_transaction_active(app: &App) -> bool {
+    app.moddir.join(TRANSPARENT_TRANSACTION).is_dir()
 }
 
 fn stop_runtime_cleanup_command() -> &'static str {
@@ -1103,7 +1109,7 @@ fn transparent_status(app: &App) -> Result<(), String> {
             "inactive"
         }
     } else if shared_interface_values.is_empty() {
-        "missing"
+        "pending"
     } else if !running {
         "configured"
     } else if attachments

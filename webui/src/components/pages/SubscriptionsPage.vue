@@ -41,6 +41,7 @@ import SubscriptionUserAgentCard from "./subscriptions/SubscriptionUserAgentCard
 import SubscriptionScheduleCard from "./subscriptions/SubscriptionScheduleCard.vue";
 import SubscriptionLifecycleStrip from "./subscriptions/SubscriptionLifecycleStrip.vue";
 import SubscriptionLifecycleRecord from "./subscriptions/SubscriptionLifecycleRecord.vue";
+import { pendingSubscriptionDraft, takePendingSubscriptionDraft } from "./subscriptionDraft";
 
 // 默认节点过滤词与提示（清空并保存即可关闭过滤）：
 const filterPresets = ["免费", "free", "HK", "香港", "TW", "台湾"] as const;
@@ -63,6 +64,19 @@ const pendingApply = shallowRef<PendingSubscriptionApply | null>(null);
 const summaryCopied = ref(false);
 const subscriptionFileInput = ref<HTMLInputElement | null>(null);
 const userAgentCardRef = ref<InstanceType<typeof SubscriptionUserAgentCard> | null>(null);
+
+function acceptOnboardingDraft(value: string | null): void {
+  if (value === null) return;
+  singBoxText.value = value;
+  dirty.value = true;
+  loadedOnce.value = true;
+}
+
+acceptOnboardingDraft(takePendingSubscriptionDraft());
+watch(pendingSubscriptionDraft, (value) => {
+  if (value === null) return;
+  acceptOnboardingDraft(takePendingSubscriptionDraft());
+});
 
 const inputSummary = computed(() => summarizeSubscriptionInput(singBoxText.value));
 const subscriptionPreview = computed<SubscriptionPreview[]>(() => buildSubscriptionPreview(singBoxText.value).slice(0, 8));

@@ -1,6 +1,7 @@
+use crate::utils::{read_proc_file_bounded_with_timeout, MAX_PROC_CMDLINE_BYTES};
 use crate::{
-    cmdline_has_script, read_proc_argv, read_proc_text_bounded, run_bounded_command, subscriptions,
-    App, MAX_PROC_COMM_BYTES, MAX_PROC_STAT_BYTES,
+    read_proc_argv, read_proc_text_bounded, run_bounded_command, subscriptions, App,
+    MAX_PROC_COMM_BYTES, MAX_PROC_STAT_BYTES,
 };
 use std::env;
 use std::fs;
@@ -25,6 +26,16 @@ fn command_timeout_secs(value: Option<&str>) -> u64 {
         .unwrap_or(DEFAULT_COMMAND_TIMEOUT_SECS)
 }
 pub(crate) fn named_process_candidates(name: &str) -> Result<Vec<String>, String> {
+    named_process_candidates_with_timeout(name, PROC_SCAN_TIMEOUT)
+}
+
+fn named_process_candidates_with_timeout(
+    name: &str,
+    timeout: Duration,
+) -> Result<Vec<String>, String> {
+    if timeout.is_zero() {
+        return Err(format!("pid lookup deadline exceeded for {name}"));
+    }
     let pidof = if Path::new("/system/bin/getprop").is_file() {
         ["/system/bin/pidof", "/system/xbin/pidof"]
             .into_iter()
@@ -38,7 +49,7 @@ pub(crate) fn named_process_candidates(name: &str) -> Result<Vec<String>, String
     };
     let mut command = Command::new(pidof);
     command.arg(name);
-    let output = run_bounded_command(command, Duration::from_millis(750), 16 * 1024)?;
+    let output = run_bounded_command(command, timeout, 16 * 1024)?;
     if output.timed_out {
         return Err(format!("pid lookup timed out for {name}"));
     }
@@ -125,32 +136,82 @@ pub(crate) fn proc_script_pids_command(args: &[String]) -> Result<(), String> {
     }
     crate::utils::arm_parent_death_signal()?;
     let deadline = Instant::now() + PROC_SCAN_TIMEOUT;
-    let entries = fs::read_dir(proc_root)
-        .map_err(|err| format!("read proc scan root {}: {err}", proc_root.display()))?;
+    let pids = if proc_root == Path::new("/proc") {
+        // `pidof` is the trusted Android process index and reduces the scan
+        // from every process on the device to the handful of shell wrappers.
+        // The temporary-root fixtures below intentionally keep the directory
+        // walk so the command remains testable without Android tooling.
+        let mut pids = Vec::new();
+        for shell in ["sh", "ash", "dash", "bash", "ksh", "mksh"] {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err("proc script scan deadline exceeded".to_string());
+            }
+            pids.extend(named_process_candidates_with_timeout(shell, remaining)?);
+        }
+        pids.sort_unstable();
+        pids.dedup();
+        pids
+    } else {
+        let entries = fs::read_dir(proc_root)
+            .map_err(|err| format!("read proc scan root {}: {err}", proc_root.display()))?;
+        let mut pids = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|err| format!("read proc scan entry: {err}"))?;
+            let name = entry.file_name();
+            let Some(pid) = name
+                .to_str()
+                .filter(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
+            else {
+                continue;
+            };
+            pids.push(pid.to_owned());
+            if pids.len() > PROC_SCAN_MAX_CANDIDATES {
+                return Err(format!(
+                    "proc script scan exceeded {PROC_SCAN_MAX_CANDIDATES} candidates"
+                ));
+            }
+        }
+        pids
+    };
     let mut candidates = Vec::new();
-    let mut inspected = 0_usize;
-    for entry in entries {
+    for pid in pids {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             return Err("proc script scan deadline exceeded".to_string());
         }
-        let entry = entry.map_err(|err| format!("read proc scan entry: {err}"))?;
-        let name = entry.file_name();
-        let Some(pid) = name
-            .to_str()
-            .filter(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
-        else {
-            continue;
-        };
-        inspected += 1;
-        if inspected > PROC_SCAN_MAX_CANDIDATES {
-            return Err(format!(
-                "proc script scan exceeded {PROC_SCAN_MAX_CANDIDATES} candidates"
-            ));
+        let proc_dir = proc_root.join(&pid);
+        if proc_dir.join("stat").exists() {
+            match proc_pid_is_live(&proc_dir) {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(_) if !proc_dir.exists() => continue,
+                Err(err) => {
+                    return Err(format!("indeterminate proc script candidate {pid}: {err}"))
+                }
+            }
         }
-        let proc_dir = proc_root.join(pid);
-        match crate::utils::read_proc_argv_with_timeout(&proc_dir.join("cmdline"), remaining) {
-            Ok(argv) if cmdline_has_script(&argv, &args[1]) => candidates.push(pid.to_string()),
+        // Read the cheap process name first. Android devices can expose
+        // hundreds of unrelated processes, and opening every cmdline both
+        // makes this scan slow and lets malformed OEM cmdlines poison it.
+        // Test fixtures without a comm file fall back to cmdline below.
+        if let Ok(Some(comm)) = read_live_proc_text(&proc_dir, "comm", MAX_PROC_COMM_BYTES) {
+            if !proc_comm_is_shell(&comm) {
+                continue;
+            }
+        }
+        match read_proc_file_bounded_with_timeout(
+            &proc_dir.join("cmdline"),
+            MAX_PROC_CMDLINE_BYTES,
+            remaining,
+        ) {
+            Ok(bytes) if proc_cmdline_has_script_bytes(&bytes, args[1].as_bytes()) => {
+                candidates.push(pid)
+            }
+            // OEM processes can expose non-argv bytes (for example a newline
+            // after argv[0]). Such a process cannot match our exact shell
+            // wrapper, so treat it as a definite non-match instead of making
+            // every supervisor status/start operation indeterminate.
             Ok(_) => {}
             Err(_) if !proc_dir.exists() => {}
             Err(err) => {
@@ -166,6 +227,36 @@ pub(crate) fn proc_script_pids_command(args: &[String]) -> Result<(), String> {
     let stdout = io::stdout();
     write_named_process_candidates(&mut stdout.lock(), &candidates)
         .map_err(|err| format!("write framed proc script scan: {err}"))
+}
+
+fn proc_comm_is_shell(comm: &str) -> bool {
+    matches!(comm.trim(), "sh" | "ash" | "dash" | "bash" | "ksh" | "mksh")
+}
+
+fn proc_cmdline_transient_error(error: &str) -> bool {
+    error.contains("proc cmdline is empty or unterminated")
+        || error.contains("proc cmdline contains an invalid argument")
+}
+
+fn proc_cmdline_has_script_bytes(bytes: &[u8], script: &[u8]) -> bool {
+    if bytes.is_empty() || bytes.last() != Some(&0) {
+        return false;
+    }
+    let Some(logical_end) = bytes.iter().rposition(|byte| *byte != 0) else {
+        return false;
+    };
+    let mut arguments = bytes[..=logical_end].split(|byte| *byte == 0);
+    let Some(argv0) = arguments.next() else {
+        return false;
+    };
+    let Some(argv1) = arguments.next() else {
+        return false;
+    };
+    if arguments.next().is_some() {
+        return false;
+    }
+    let shell = argv0.rsplit(|byte| *byte == b'/').next().unwrap_or(argv0);
+    matches!(shell, b"sh" | b"ash" | b"dash" | b"bash" | b"ksh" | b"mksh") && argv1 == script
 }
 
 pub(crate) fn pid_summary(name: &str) -> String {
@@ -235,7 +326,10 @@ pub(crate) fn owned_singbox_pids(app: &App) -> Result<Vec<String>, String> {
         }
         let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
             Ok(argv) => argv,
-            Err(_) if !proc_dir.exists() => continue,
+            // A process can become a zombie between the stat and cmdline
+            // reads. It cannot be an owned live core anymore, so ignore the
+            // transient malformed cmdline instead of failing every stop.
+            Err(err) if !proc_dir.exists() || proc_cmdline_transient_error(&err) => continue,
             Err(err) => return Err(format!("read sing-box candidate {pid} cmdline: {err}")),
         };
         if !singbox_commandline_owned(&argv, &expected_binary, &expected_config, &expected_workdir)
