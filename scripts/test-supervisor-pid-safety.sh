@@ -60,6 +60,7 @@ if MAGICNET_SUB_REFRESH_PROC_ROOT="$refresh_proc_root" magicnet_subscription_ref
   printf '%s\n' 'disappeared subscription refresh stat must not be treated as a live owner' >&2
   exit 1
 fi
+rm -rf "$refresh_proc_root/4242"
 
 # A stale pidfile must never kill a reused, unrelated PID.
 sleep 60 &
@@ -305,5 +306,23 @@ kill "$kernel_pid" 2>/dev/null || true
 wait "$kernel_pid" 2>/dev/null || true
 kernel_pid=''
 rm -f "$(magicnet_wifi_policy_pid_file)"
+
+# A standalone config must not start a subscription refresher, and stale
+# metadata left by a killed owner must be reclaimed only after the exact scan
+# proves that no loop is alive.
+mkdir -p "$MODDIR/.config/sing-box"
+printf '%s\n' '{"inbounds":[],"outbounds":[]}' >"$MODDIR/.config/sing-box/config.json"
+printf '%s\n' 'standalone' >"$MODDIR/.config/sing-box/standalone-config"
+printf '%s\n' '12' >"$MODDIR/.config/magicnet/subscription-refresh-hours"
+printf '%s\n' '999999:1:subscription-refresh-v1' >"$(magicnet_subscription_refresh_owner_file)"
+printf '%s\n' '999999' >"$(magicnet_subscription_refresh_pid_file)"
+printf '%s\n' '# stale loop' >"$(magicnet_subscription_refresh_loop_file)"
+# Keep this last cleanup assertion on the isolated proc fixture; the fake CLI
+# above is intentionally not a proc scanner.
+magicnet_proc_script_pids_test_hook() { return 1; }
+MAGICNET_SUB_REFRESH_PROC_ROOT="$refresh_proc_root" magicnet_subscription_refresh_start
+test ! -e "$(magicnet_subscription_refresh_owner_file)"
+test ! -e "$(magicnet_subscription_refresh_pid_file)"
+test ! -e "$(magicnet_subscription_refresh_loop_file)"
 
 printf '%s\n' 'supervisor pid safety test passed'

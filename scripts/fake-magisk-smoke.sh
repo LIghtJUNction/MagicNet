@@ -1324,6 +1324,22 @@ if ! env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$
         sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; printf "current: "; magicnet_singbox_runtime_fingerprint' >&2 || true
     exit 1
 fi
+# A killed transparent transition leaves a valid journal after its process lock
+# disappears. Config apply must recover it instead of silently skipping forever.
+_transparent_journal="$MODDIR/.state/transparent-transaction"
+mkdir -p "$_transparent_journal"
+printf 'tun\n' >"$_transparent_journal/old-mode"
+printf '1\n' >"$_transparent_journal/old-mode-present"
+printf '1\n' >"$_transparent_journal/old-config-present"
+printf 'stopping-old\n' >"$_transparent_journal/phase"
+cp "$MODDIR/.config/sing-box/config.json" "$_transparent_journal/old-config.json"
+_transparent_runs_before="$(count_singbox_runs)"
+run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
+    "$MODDIR/cli" config apply
+_transparent_runs_after="$(count_singbox_runs)"
+test ! -d "$_transparent_journal"
+test "$_transparent_runs_after" -gt "$_transparent_runs_before"
+unset _transparent_journal _transparent_runs_before _transparent_runs_after
 # shellcheck disable=SC2016
 run env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" \
     sh -c '. "$MODDIR/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODDIR/lib/magicnet.sh"; magicnet_apply_runtime_config'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Braces, Copy, DownloadCloud, FileUp, Github, ListTree, RefreshCw, Save } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import InsightChip from "@/components/ui/InsightChip.vue";
@@ -14,8 +14,11 @@ import type { PendingToolAction } from "./toolActions";
 import { buildConfigAudit, buildConfigOutline, buildUnifiedConfigDiff, MAX_CONFIG_ISSUE_DIFF_BYTES, sanitizeConfigText } from "./configEditorInsights";
 import { MAX_LOCAL_CONFIG_BYTES, parseLocalConfigFile } from "./configFileImport";
 
-const { state, loadConfig, saveConfig, syncConfigTemplate, openExternal, REPO } = useMagicNet();
+const { state, loadConfig, saveConfig, syncConfigTemplate, loadConfigRepository, saveConfigRepository, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+const DEFAULT_CONFIG_REPO_URL = "https://github.com/LIghtJUNction/MagicSingBox.git";
+const DEFAULT_CONFIG_REPO_REF = "63780ca3a96ee65af18b17aa87e11b536bbc5a73";
+const DEFAULT_CONFIG_REPO_SHA256 = "ba0f9057b2b6ac896a8783a5691388325306be066e81c4098d9f62d79ac7ee50";
 const pendingConfigAction = ref<PendingToolAction | null>(null);
 const configFileInput = ref<HTMLInputElement | null>(null);
 const localJsonStatus = ref("");
@@ -24,6 +27,12 @@ const configAnalysisPending = ref(false);
 const analyzedConfigText = ref("");
 const sanitizedCopied = ref(false);
 const auditCopied = ref(false);
+const repositoryUrl = ref(DEFAULT_CONFIG_REPO_URL);
+const repositoryRef = ref(DEFAULT_CONFIG_REPO_REF);
+const repositoryPath = ref("config.json");
+const repositorySha256 = ref(DEFAULT_CONFIG_REPO_SHA256);
+const repositoryStatus = ref("");
+const repositoryEdited = ref(false);
 const issueBaseline = ref("");
 const configStats = computed(() => {
   const text = analyzedConfigText.value;
@@ -36,6 +45,15 @@ const configStats = computed(() => {
 });
 const configOutline = computed(() => buildConfigOutline(analyzedConfigText.value));
 const configAudit = computed(() => buildConfigAudit(analyzedConfigText.value));
+
+onMounted(async () => {
+  const repository = await loadConfigRepository();
+  if (!repository || repositoryEdited.value) return;
+  repositoryUrl.value = repository.url;
+  repositoryRef.value = repository.reference;
+  repositoryPath.value = repository.path;
+  repositorySha256.value = repository.sha256 || "";
+});
 
 function requestConfigAction(action: PendingToolAction): void {
   pendingConfigAction.value = action;
@@ -85,11 +103,31 @@ async function loadConfigForEditing(): Promise<void> {
   if (!state.config.dirty && state.config.text) issueBaseline.value = state.config.text;
 }
 
+async function saveRepository(): Promise<void> {
+  repositoryStatus.value = "";
+  const saved = await withAction("save-config-repository", () => saveConfigRepository({
+    url: repositoryUrl.value.trim(),
+    ref: repositoryRef.value.trim(),
+    path: repositoryPath.value.trim(),
+    ...(repositorySha256.value.trim() ? { sha256: repositorySha256.value.trim() } : {}),
+  }));
+  repositoryStatus.value = saved ? "已保存" : "保存失败";
+}
+
+async function resetRepository(): Promise<void> {
+  repositoryEdited.value = true;
+  repositoryUrl.value = DEFAULT_CONFIG_REPO_URL;
+  repositoryRef.value = DEFAULT_CONFIG_REPO_REF;
+  repositoryPath.value = "config.json";
+  repositorySha256.value = DEFAULT_CONFIG_REPO_SHA256;
+  await saveRepository();
+}
+
 function requestSyncTemplate(): void {
   requestConfigAction({
     key: "sync-template",
-    title: "同步上游配置模板",
-    detail: "会用上游模板更新当前目标配置，并重新加载编辑器内容。",
+    title: "同步配置仓库模板",
+    detail: "用配置仓库模板更新当前目标配置。",
     command: `config-editor sync-template ${state.config.target}`,
     run: () => withAction("sync-template", () => syncConfigTemplate()),
   });
@@ -204,13 +242,30 @@ async function openConfigIssue(): Promise<void> {
         <input ref="configFileInput" class="hidden" type="file" accept=".json,application/json" @change="importLocalConfig">
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', loadConfigForEditing)"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
         <Button variant="outline" @click="chooseLocalConfig"><FileUp :size="17" />导入本地 JSON</Button>
-        <Button variant="outline" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步上游模板' }}</Button>
+        <Button variant="outline" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步配置模板' }}</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化 JSON</Button>
         <Button variant="outline" :disabled="!state.config.text" @click="copySanitizedConfig"><Copy :size="17" />{{ sanitizedCopied ? '已复制脱敏' : '复制脱敏' }}</Button>
         <Button :disabled="!configSyntaxValid" :loading="isRunning('save-config')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
         <Button variant="outline" @click="openConfigIssue"><Github :size="17" />创建 Diff Issue</Button>
       </div>
     </PageHeader>
+
+    <Card class="grid gap-2">
+      <div class="flex items-center justify-between gap-2">
+        <span class="font-medium text-[var(--mn-ink-soft)]">配置仓库</span>
+        <span v-if="repositoryStatus" class="text-xs text-[var(--mn-ink-muted)]">{{ repositoryStatus }}</span>
+      </div>
+      <div class="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto]">
+        <input v-model="repositoryUrl" @input="repositoryEdited = true" class="h-9 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-xs text-[var(--mn-ink-soft)]" aria-label="配置仓库 URL" placeholder="https://github.com/owner/repo.git" autocomplete="off" spellcheck="false">
+        <input v-model="repositoryRef" @input="repositoryEdited = true" class="h-9 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-xs text-[var(--mn-ink-soft)]" aria-label="配置仓库分支" placeholder="main" autocomplete="off" spellcheck="false">
+        <input v-model="repositoryPath" @input="repositoryEdited = true" class="h-9 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-xs text-[var(--mn-ink-soft)]" aria-label="配置文件路径" placeholder="config.json" autocomplete="off" spellcheck="false">
+        <div class="flex gap-2">
+          <Button variant="outline" :loading="isRunning('save-config-repository')" @click="saveRepository">保存</Button>
+          <Button variant="ghost" @click="resetRepository">默认</Button>
+        </div>
+      </div>
+      <input v-model="repositorySha256" @input="repositoryEdited = true" class="h-8 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-[11px] text-[var(--mn-ink-soft)]" aria-label="可选 SHA-256" placeholder="SHA-256（可选）" autocomplete="off" spellcheck="false">
+    </Card>
 
     <ToolActionConfirmCard
       v-if="pendingConfigAction"
@@ -226,9 +281,6 @@ async function openConfigIssue(): Promise<void> {
         <input class="h-9 min-w-0 flex-1 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier)] px-3 text-xs text-[var(--mn-ink-soft)]" readonly :value="state.config.path">
         <span class="shrink-0">{{ state.config.status }}</span>
         <span v-if="state.config.dirty" class="shrink-0 rounded bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] px-2 py-1 text-xs text-[var(--mn-warning)]">未保存</span>
-      </div>
-      <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm leading-6 text-[var(--mn-ink-muted)]">
-        <p>sing-box 配置文件是 JSON。没有订阅 URL 时可选择自己的本地配置文件；导入只会替换编辑器草稿，点击“校验并保存”并通过 sing-box check 后才会覆盖运行配置。</p>
       </div>
       <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
         <div>

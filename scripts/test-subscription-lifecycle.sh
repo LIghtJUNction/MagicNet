@@ -78,9 +78,9 @@ magicnet_proc_script_pids_test_hook() {
       count=$((count + 1))
       printf '%s\n' "$count" >"$SCAN_GREP_COUNT_FILE"
       case "${SCAN_GREP_MODE:-}" in
-        persistent) return 2 ;;
-        transient) test "$count" -ne 1 || return 2 ;;
-        two-transient) test "$count" -gt 2 || return 2 ;;
+      persistent) return 2 ;;
+      transient) test "$count" -ne 1 || return 2 ;;
+      two-transient) test "$count" -gt 2 || return 2 ;;
       esac
     fi
   fi
@@ -396,6 +396,8 @@ run_fault_recovery_case after-url-commit
 # `service start/ensure` must preserve a live connection when recovery would
 # be disruptive. Explicit repair opts in and is still allowed to reconcile.
 (
+  # shellcheck disable=SC1090
+  . "$ROOT/src/MagicNet/lib/magicnet/transparent.sh"
   # shellcheck disable=SC1090
   . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
   live_recovery_count=0

@@ -6,28 +6,32 @@ const dialog = readFileSync(
   new URL("./src/components/OnboardingDialog.vue", import.meta.url),
   "utf8",
 );
+const draft = readFileSync(
+  new URL("./src/components/pages/subscriptionDraft.ts", import.meta.url),
+  "utf8",
+);
 const focus = readFileSync(
   new URL("./src/lib/focus.ts", import.meta.url),
   "utf8",
 );
-const guide = readFileSync(
-  new URL("../docs/user-guide.md", import.meta.url),
-  "utf8",
-);
 
-for (const copy of [
-  "第一次使用 MagicNet",
-  "MagicNet 默认使用 sing-box magicnet0 TUN，也允许显式切换 eBPF",
-  "MagicNet 不提供节点和账号",
-  "校验没通过时，MagicNet 继续使用上一次可用的配置",
-  "MagicNet 检查并应用配置后",
-  "你可以从控制页打开 zashboard 选节点",
-  "你在 zashboard 里切换节点和代理组",
-  "去控制页",
-  "链路正常后，再设置分流",
-  "MagicNet 不提供订阅 URL、节点、token、password 或账号",
+for (const required of [
+  "订阅链接",
+  "HTTPS 订阅链接",
+  'placeholder="每行一个 HTTPS 订阅链接"',
+  'emit("submit", trimmed)',
+  '@submit="handleOnboardingSubmit"',
+  "setPendingSubscriptionDraft(value)",
+  "打开订阅",
+  'setTab("subs")',
+  "takePendingSubscriptionDraft",
 ]) {
-  assert.match(dialog, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.ok(
+    dialog.includes(required) ||
+      app.includes(required) ||
+      draft.includes(required),
+    `missing onboarding invariant: ${required}`,
+  );
 }
 
 assert.match(
@@ -42,29 +46,23 @@ assert.match(
 assert.match(app, /if \(!readOnboardingPreference\(\)\)/);
 assert.match(app, /<OnboardingDialog/);
 assert.match(app, /@dismiss="closeOnboarding\(\)"/);
-assert.match(app, /@complete="completeOnboarding"/);
-assert.match(app, /@navigate="handleOnboardingNavigate"/);
+assert.match(app, /@submit="handleOnboardingSubmit"/);
 assert.match(app, /closeUtilityMenu\(false\)/);
 assert.match(app, /launchOnboarding\(utilityMenuTrigger\.value\)/);
 assert.match(app, /restoreFocusAfterUpdate\(trigger\)/);
-assert.match(app, /<ScrollText :size="16"[^>]*\/>引导/);
 assert.match(app, /<ScrollText :size="18"[^>]*\/>新手引导/);
 
 for (const invariant of [
   'role="dialog"',
   'aria-modal="true"',
   'aria-labelledby="onboarding-title"',
-  'aria-describedby="onboarding-description"',
   "data-dialog-initial-focus",
   "@keydown.esc.prevent.stop",
   'document.body.style.overflow = "hidden"',
   "document.body.style.overflow = previousBodyOverflow",
   "trapFocusWithin(event, dialog.value)",
-  "emit('navigate', activeStep.target)",
-  "emit('complete')",
+  'emit("submit", trimmed)',
   "emit('dismiss')",
-  "稍后再看",
-  "完成引导",
 ]) {
   assert.ok(
     dialog.includes(invariant),
@@ -72,14 +70,28 @@ for (const invariant of [
   );
 }
 
-assert.match(
-  dialog,
-  /type GuideTarget = "subs" \| "control" \| "health" \| "output"/,
-);
-assert.match(
-  dialog,
-  /第 \{\{ currentStep \+ 1 \}\} \/ \{\{ steps\.length \}\} 步|const progressLabel = computed/,
-);
+for (const forbidden of [
+  "步骤 1",
+  "步骤 2",
+  "步骤 3",
+  "步骤 4",
+  "MagicNet 默认使用 sing-box",
+  "校验没通过时",
+  "稍后再看",
+  "完成引导",
+  "保存并打开订阅",
+  "<ol",
+  /TProxy/,
+  /ALLOW_MULTI/,
+]) {
+  assert.doesNotMatch(
+    dialog,
+    typeof forbidden === "string"
+      ? new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      : forbidden,
+  );
+}
+
 assert.match(
   focus,
   /if \(event\.shiftKey && \(active === first \|\| !root\.contains\(active\)\)\)/,
@@ -91,45 +103,8 @@ assert.match(
 assert.match(focus, /restoreFocusAfterUpdate/);
 assert.match(focus, /element\.isConnected/);
 
-for (const target of ["subs", "control", "health", "output"]) {
-  assert.match(
-    dialog,
-    new RegExp(`"${target}"`),
-    `missing onboarding navigation target ${target}`,
-  );
-}
-
-for (const required of [
-  "## 第一次使用：跟着新手引导完成",
-  "MagicNet 只允许显式 `sing-box` `tun|ebpf`，默认 TUN",
-  "MagicNet 不提供订阅服务，也不生成节点",
-  "不要手工改运行中的 `sing-box` 配置文件",
-  "异常细节继续看“输出”",
-]) {
-  assert.match(
-    guide,
-    new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-  );
-}
-
-assert.match(dialog, /eBPF/);
-assert.match(dialog, /tun\|ebpf/);
-
-for (const forbidden of [
-  /TProxy/,
-  /ALLOW_MULTI/,
-  /subscription url/i,
-  /secret/i,
-  /https?:\/\/example\.com/,
-]) {
-  assert.doesNotMatch(dialog, forbidden);
-}
-
-assert.match(guide, /ALLOW_MULTI/);
-assert.match(guide, /eBPF/);
-
-for (const forbidden of [/token[:：]\s*\S+/i, /password[:：]\s*\S+/i]) {
-  assert.doesNotMatch(guide, forbidden);
-}
+assert.match(draft, /pendingSubscriptionDraft/);
+assert.match(draft, /setPendingSubscriptionDraft/);
+assert.match(draft, /takePendingSubscriptionDraft/);
 
 console.log("onboarding dialog tests passed");

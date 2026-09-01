@@ -3,10 +3,11 @@
 use super::{
     api_host_port, config_apply_lock, config_apply_lock_bounded, normalize_transparent_mode,
     prepare_transparent_transaction, read_transparent_mode, restart_command,
-    rollback_transparent_preflight, safe_log_name, service_log_path, stop_runtime_cleanup_command,
-    supervisor_cmdline_matches, REPAIR_COMMAND, START_KERNEL_COMMAND, TRANSPARENT_CAPABILITY,
-    TRANSPARENT_CONFIG, TRANSPARENT_MODE_CONF, TRANSPARENT_PROBE_REPORT,
-    TRANSPARENT_SHARED_INTERFACES, TRANSPARENT_SHARED_PENDING, TRANSPARENT_TRANSACTION,
+    rollback_transparent_preflight, safe_log_name, service_log_path, singbox_webui,
+    stop_runtime_cleanup_command, supervisor_cmdline_matches, transparent_transaction_active,
+    REPAIR_COMMAND, START_KERNEL_COMMAND, TRANSPARENT_CAPABILITY, TRANSPARENT_CONFIG,
+    TRANSPARENT_MODE_CONF, TRANSPARENT_PROBE_REPORT, TRANSPARENT_SHARED_INTERFACES,
+    TRANSPARENT_SHARED_PENDING, TRANSPARENT_TRANSACTION,
 };
 use crate::App;
 use std::fs;
@@ -136,6 +137,16 @@ fn lifecycle_commands_detach_optional_supervisors_after_core_start() {
 }
 
 #[test]
+fn config_apply_detects_a_journaled_transparent_transition() {
+    let (app, root) = fixture_app("transparent-apply-gate");
+    fs::create_dir_all(root.join(TRANSPARENT_TRANSACTION)).unwrap();
+    assert!(transparent_transaction_active(&app));
+    fs::remove_dir_all(root.join(TRANSPARENT_TRANSACTION)).unwrap();
+    assert!(!transparent_transaction_active(&app));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn stop_runtime_cleanup_disables_dns_capture_before_leak_guard() {
     assert_eq!(
             stop_runtime_cleanup_command(),
@@ -242,6 +253,14 @@ fn webui_setup_uses_the_configured_api_endpoint() {
         api_host_port("invalid"),
         ("127.0.0.1".to_string(), "9090".to_string())
     );
+
+    let (mut app, root) = fixture_app("webui-route");
+    app.api = "http://127.0.0.1:19090".to_string();
+    assert_eq!(
+        singbox_webui(&app),
+        "http://127.0.0.1:19090/ui/#/setup?hostname=127.0.0.1&port=19090"
+    );
+    let _ = fs::remove_dir_all(root);
 }
 
 fn argv(values: &[&str]) -> Vec<String> {

@@ -84,6 +84,30 @@ magicnet_singbox_apply_transparent_mode() {
         magicnet_warn "packaged jq is unavailable; transparent config apply rejected"
         return 1
     }
+    # Keep the managed inbound for each explicit mode separately. Switching
+    # modes must not erase user tuning (for example a TUN mtu or extra fields),
+    # while the canonical fields below still enforce MagicNet's dataplane
+    # contract when the snapshot is restored.
+    _mode_state_dir="${MODDIR}/.state/transparent-mode"
+    _current_inbound="$($_jq -c '
+      first((.inbounds // [])[]? | select((.tag // "") == "tun-in" and ((.type // "") == "tun" or (.type // "") == "ebpf"))) // {}
+    ' "$_config")" || return 1
+    _current_type="$(printf '%s\n' "$_current_inbound" | "$_jq" -r 'if type == "object" then (.type // "") else "" end')" || return 1
+    if [ "$_current_type" = tun ] || [ "$_current_type" = ebpf ]; then
+        mkdir -p "$_mode_state_dir" || return 1
+        _mode_state_tmp="${_mode_state_dir}/${_current_type}.json.tmp.$$"
+        if ! printf '%s\n' "$_current_inbound" >"$_mode_state_tmp" ||
+            ! chmod 600 "$_mode_state_tmp" ||
+            ! mv -f "$_mode_state_tmp" "${_mode_state_dir}/${_current_type}.json"; then
+            rm -f "$_mode_state_tmp" 2>/dev/null || true
+            return 1
+        fi
+    fi
+    _saved_inbound='{}'
+    _saved_file="${_mode_state_dir}/${_mode}.json"
+    if [ -f "$_saved_file" ] && [ ! -L "$_saved_file" ]; then
+        _saved_inbound="$($_jq -c 'if type == "object" then . else {} end' "$_saved_file")" || return 1
+    fi
     _pairs="${_config}.ebpf-networks.$$"
     : >"$_pairs" || return 1
     if [ "$_mode" = ebpf ]; then
@@ -110,13 +134,14 @@ magicnet_singbox_apply_transparent_mode() {
             --argjson tun_mtu "$_tun_mtu" \
             --arg udp_timeout "$_udp_timeout" \
             --argjson shared_interfaces "$_interfaces_json" \
-            --argjson shared_sources "$_sources_json" '
+            --argjson shared_sources "$_sources_json" \
+            --argjson saved_inbound "$_saved_inbound" '
         def mixed_in:
           {"type":"mixed","tag":"mixed-in","listen":"127.0.0.1","listen_port":7892};
         def dns_in:
           {"type":"direct","tag":"magicnet-dns-in","listen":"127.0.0.1","listen_port":1053};
         def tun_in:
-          {
+          ($saved_inbound * {
             "type":"tun","tag":"tun-in","interface_name":"magicnet0",
             "address":(if $dns_strategy == "ipv4_only" then ["172.19.0.1/30"] else ["172.19.0.1/30","fdfe:dcba:9876::1/126"] end),
             "auto_route":true,"auto_redirect":true,"strict_route":true,
@@ -127,9 +152,9 @@ magicnet_singbox_apply_transparent_mode() {
               "fc00::/7","fe80::/10","ff00::/8","fd7a:115c:a1e0::/48"
             ],
             "stack":"mixed","mtu":$tun_mtu,"udp_timeout":$udp_timeout
-          };
+          });
         def ebpf_in:
-          ({
+          ($saved_inbound * {
             "type":"ebpf","tag":"tun-in",
             "mode":(if ($shared_interfaces | length) > 0 then "hybrid" else "local" end),
             "network":["tcp","udp"],"udp_timeout":$udp_timeout,
@@ -148,7 +173,7 @@ magicnet_singbox_apply_transparent_mode() {
               "include_source_cidr":$shared_sources,
               "advanced":{"tc_priority":1}
             }
-          else . end);
+          else del(.shared) end);
         def managed_inbound:
           ((.type // "") as $type | ($type == "tun" or $type == "ebpf" or $type == "tproxy" or $type == "redirect"))
           or ((.tag // "") == "mixed-in")
@@ -199,13 +224,13 @@ magicnet_singbox_apply_transparent_mode() {
         }
     else
         rm -f "$_tmp" "$_pairs" 2>/dev/null || true
-        unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json
+        unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
         return 1
     fi
     rm -f "$_pairs" 2>/dev/null || true
     import __singbox__
     singbox_prepare_route_config "$_config" || true
-    unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json
+    unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
 }
 
 magicnet_transparent_capability_file() {

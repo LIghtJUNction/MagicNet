@@ -370,20 +370,6 @@ pub(crate) fn read_proc_argv(path: &Path) -> Result<Vec<String>, String> {
     parse_proc_argv(path, &bytes)
 }
 
-pub(crate) fn read_proc_argv_with_timeout(
-    path: &Path,
-    timeout: Duration,
-) -> Result<Vec<String>, String> {
-    let bytes = read_proc_file_bounded_with_timeout(path, MAX_PROC_CMDLINE_BYTES, timeout)?;
-    // Kernel threads legitimately expose an empty cmdline and cannot match a
-    // userspace script. The bounded all-/proc scanner treats that as a
-    // definite non-match; exact ownership reads remain strict.
-    if bytes.is_empty() {
-        return Ok(Vec::new());
-    }
-    parse_proc_argv(path, &bytes)
-}
-
 fn parse_proc_argv(path: &Path, bytes: &[u8]) -> Result<Vec<String>, String> {
     if bytes.is_empty() || bytes.last() != Some(&0) {
         return Err(format!(

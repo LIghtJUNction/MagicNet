@@ -75,6 +75,12 @@ import {
 } from "@/utils";
 
 type Phase = "idle" | "accepted" | "queued" | "running" | "done" | "error";
+export type ConfigRepository = {
+  url: string;
+  reference: string;
+  path: string;
+  sha256?: string;
+};
 
 function hasKsuExec(): boolean {
   return (
@@ -1200,21 +1206,77 @@ async function syncConfigTemplate(): Promise<void> {
   const target = state.config.target;
   const command = startForegroundCommand(
     `config-editor sync-template ${target}`,
-    `同步 ${target} 上游模板`,
+    `同步 ${target} 配置仓库模板`,
   );
   const text = await command.promise;
   if (!foregroundUiGate.owns(command.token)) return;
   const failed = execFailed(text);
   const validation = parseConfigValidation(text);
-  state.config.status = failed ? "同步失败" : "已同步上游模板";
+  state.config.status = failed ? "同步失败" : "已同步配置仓库模板";
   state.config.validation = {
     status: failed ? "error" : "ok",
-    summary: failed ? validation.summary : "上游模板已同步并通过校验。",
+    summary: failed ? validation.summary : "配置仓库模板已同步并通过校验。",
     checkedAt: new Date().toLocaleTimeString(),
   };
   if (!failed) {
     state.config.dirty = false;
     await loadConfig();
+  }
+}
+
+async function loadConfigRepository(): Promise<ConfigRepository | null> {
+  const outcome = await runPrivateCli(
+    "config-editor repo get-json",
+    "读取配置仓库",
+    "config-editor repo get-json [private-output]",
+  );
+  if (!outcome.ok) return null;
+  try {
+    const parsed = JSON.parse(outcome.stdout) as Partial<ConfigRepository>;
+    if (
+      typeof parsed.url !== "string" ||
+      typeof parsed.reference !== "string" ||
+      typeof parsed.path !== "string"
+    ) {
+      return null;
+    }
+    return {
+      url: parsed.url,
+      reference: parsed.reference,
+      path: parsed.path,
+      ...(typeof parsed.sha256 === "string" ? { sha256: parsed.sha256 } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function saveConfigRepository(repository: {
+  url: string;
+  ref: string;
+  path: string;
+  sha256?: string;
+}): Promise<boolean> {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const basename = `config-repository-${stamp}.json`;
+  const staged = await stagePrivatePayload(
+    "tmp",
+    basename,
+    `${JSON.stringify(repository)}\n`,
+    "配置仓库私有载荷",
+  );
+  if (!staged) return false;
+  try {
+    const outcome = await runPrivateCli(
+      `config-editor repo set-file ${shellQuote(staged.path)}`,
+      "保存配置仓库",
+      "config-editor repo set-file [private-payload]",
+    );
+    if (!outcome.ok) return false;
+    state.notice = "配置仓库已保存";
+    return true;
+  } finally {
+    await removePrivatePayload("tmp", staged.basename, "配置仓库私有载荷");
   }
 }
 
@@ -1257,6 +1319,8 @@ export function useMagicNet() {
     loadConfig,
     saveConfig,
     syncConfigTemplate,
+    loadConfigRepository,
+    saveConfigRepository,
     openExternal,
     openSingBoxUi,
     shellQuote,

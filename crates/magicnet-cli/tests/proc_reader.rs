@@ -164,6 +164,29 @@ fn script_scan_is_framed_and_fifo_failure_is_indeterminate() {
         b"MAGICNET_PROC_PIDS_V1\nMAGICNET_PROC_PIDS_END 0\n"
     );
 
+    // Several OEM daemons expose a newline or other non-argv byte in
+    // /proc/<pid>/cmdline. They are unrelated to our managed shell, so one
+    // malformed process must not poison the whole supervisor scan.
+    fs::write(root.join("123/cmdline"), b"/vendor/bin/xtra-daemon\0\n\0")
+        .expect("write malformed unrelated cmdline");
+    let output = Command::new(cli)
+        .args(["__proc-script-pids", root.to_str().unwrap(), script])
+        .output()
+        .expect("scan malformed unrelated cmdline");
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        output.stdout,
+        b"MAGICNET_PROC_PIDS_V1\nMAGICNET_PROC_PIDS_END 0\n"
+    );
+
+    fs::write(root.join("123/cmdline"), b"/vendor/bin/daemon\0\xff\0")
+        .expect("write non-UTF8 unrelated cmdline");
+    let output = Command::new(cli)
+        .args(["__proc-script-pids", root.to_str().unwrap(), script])
+        .output()
+        .expect("scan non-UTF8 unrelated cmdline");
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+
     fs::remove_file(root.join("123/cmdline")).expect("remove regular cmdline");
     make_fifo(&root.join("123/cmdline"));
     let started = Instant::now();
@@ -195,6 +218,25 @@ fn oversized_pidof_output_is_indeterminate_and_never_framed() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     fs::remove_dir_all(root).expect("remove pidof fixture");
+}
+
+#[test]
+fn script_scan_applies_one_deadline_across_pid_lookups() {
+    let root = fixture("pidof-deadline");
+    let pidof = root.join("pidof");
+    fs::write(&pidof, "#!/bin/sh\nsleep 5\n").expect("write slow pidof fixture");
+    fs::set_permissions(&pidof, fs::Permissions::from_mode(0o755)).expect("chmod pidof fixture");
+    let started = Instant::now();
+    let root_arg = root.to_str().expect("deadline fixture path is UTF-8");
+    let output = Command::new(env!("CARGO_BIN_EXE_magicnet-cli"))
+        .args(["__proc-script-pids", root_arg, "/module/worker.sh"])
+        .env("PATH", &root)
+        .output()
+        .expect("run deadline-bounded script scan");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(started.elapsed() < Duration::from_secs(2));
+    fs::remove_dir_all(root).expect("remove pidof deadline fixture");
 }
 
 #[test]

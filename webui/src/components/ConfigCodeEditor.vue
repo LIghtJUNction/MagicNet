@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { shouldHighlightJson } from "./configEditorRendering";
 
 type JsonSyntaxError = {
   message: string;
@@ -25,14 +26,13 @@ const emit = defineEmits<{
 }>();
 
 const ANALYSIS_DELAY_MS = 180;
-const MAX_HIGHLIGHT_CHARACTERS = 120_000;
 const MAX_GUTTER_LINES = 20_000;
 const JSON_NUMBER_PATTERN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 const JSON_WORD_PATTERN = /(?:true|false|null)\b/y;
 
 const textarea = ref<HTMLTextAreaElement | null>(null);
-const scrollTop = ref(0);
-const scrollLeft = ref(0);
+const gutter = ref<HTMLDivElement | null>(null);
+const highlight = ref<HTMLPreElement | null>(null);
 const deferredText = ref(model.value);
 const checking = ref(false);
 let analysisTimer: ReturnType<typeof setTimeout> | undefined;
@@ -44,15 +44,15 @@ const lineCount = computed(() => countLines(deferredText.value));
 const lineNumbers = computed(() => lineCount.value <= MAX_GUTTER_LINES
   ? Array.from({ length: lineCount.value }, (_, index) => index + 1).join("\n")
   : "");
-const highlightedTokens = computed(() => {
-  const text = deferredText.value || " ";
-  return text.length > MAX_HIGHLIGHT_CHARACTERS ? [{ value: text }] : tokenizeJson(text);
-});
+const highlightEnabled = computed(() => shouldHighlightJson(deferredText.value));
+const highlightedTokens = computed(() => highlightEnabled.value
+  ? tokenizeJson(deferredText.value || " ")
+  : []);
 const editorStatus = computed(() => {
   if (checking.value) return "正在检查 JSON…";
   if (!deferredText.value.trim()) return "等待 JSON";
   if (syntaxState.value.valid) {
-    const highlightMode = deferredText.value.length > MAX_HIGHLIGHT_CHARACTERS ? " · 大文件纯文本显示" : "";
+    const highlightMode = highlightEnabled.value ? "" : " · 大文件纯文本显示";
     return `${lineCount.value} 行 · JSON 语法正常${highlightMode}`;
   }
   const error = syntaxState.value.error;
@@ -76,8 +76,11 @@ onBeforeUnmount(() => {
 
 function syncScroll(event: Event): void {
   const target = event.target as HTMLTextAreaElement;
-  scrollTop.value = target.scrollTop;
-  scrollLeft.value = target.scrollLeft;
+  if (gutter.value) gutter.value.scrollTop = target.scrollTop;
+  if (highlight.value) {
+    highlight.value.scrollTop = target.scrollTop;
+    highlight.value.scrollLeft = target.scrollLeft;
+  }
 }
 
 async function insertTab(event: KeyboardEvent): Promise<void> {
@@ -249,22 +252,23 @@ function isObjectKey(text: string, end: number): boolean {
     :class="{
       'json-editor--invalid': !checking && !syntaxState.valid,
       'json-editor--checking': checking,
+      'json-editor--plain': !highlightEnabled,
     }"
   >
     <div class="json-editor__body">
-      <div class="json-editor__gutter" aria-hidden="true">
+      <div ref="gutter" class="json-editor__gutter" aria-hidden="true">
         <pre
           v-if="lineNumbers"
           class="json-editor__gutter-lines"
-          :style="{ transform: `translateY(${-scrollTop}px)` }"
         >{{ lineNumbers }}</pre>
         <span v-else class="json-editor__gutter-summary">{{ lineCount }} lines</span>
       </div>
       <div class="json-editor__stage">
         <pre
+          v-if="highlightEnabled"
+          ref="highlight"
           class="json-editor__highlight"
           aria-hidden="true"
-          :style="{ transform: `translate(${-scrollLeft}px, ${-scrollTop}px)` }"
         ><code><span
             v-for="(token, index) in highlightedTokens"
             :key="index"
@@ -331,7 +335,6 @@ function isObjectKey(text: string, end: number): boolean {
   line-height: inherit;
   text-align: right;
   white-space: pre;
-  will-change: transform;
 }
 
 .json-editor__gutter-summary {
@@ -348,6 +351,7 @@ function isObjectKey(text: string, end: number): boolean {
   min-height: 58vh;
   max-height: 72vh;
   overflow: hidden;
+  contain: paint;
 }
 
 .json-editor__highlight,
@@ -363,13 +367,14 @@ function isObjectKey(text: string, end: number): boolean {
   font-size: 0.875rem;
   line-height: 1.5rem;
   tab-size: 2;
+  box-sizing: border-box;
   white-space: pre;
 }
 
 .json-editor__highlight {
+  overflow: hidden;
   pointer-events: none;
   color: var(--mn-ink-soft);
-  will-change: transform;
 }
 
 .json-editor--checking .json-editor__highlight {
@@ -385,7 +390,8 @@ function isObjectKey(text: string, end: number): boolean {
   caret-color: var(--mn-cactus);
 }
 
-.json-editor--checking .json-editor__textarea {
+.json-editor--checking .json-editor__textarea,
+.json-editor--plain .json-editor__textarea {
   color: var(--mn-ink-soft);
 }
 

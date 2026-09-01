@@ -22,6 +22,20 @@ printf '%s:%s\n' "$$" "$start" >"$MODDIR/.state/config.lock/pid"
 magicnet_config_lock_release
 test ! -e "$MODDIR/.state/config.lock"
 
+# A detached launcher can leave its child stopped by PR_SET_PDEATHSIG. A
+# stopped owner cannot continue writing, so reclaim it by PID/start identity.
+sleep 30 &
+stopped_pid=$!
+kill -STOP "$stopped_pid"
+stopped_start="$(awk '{print $22}' "/proc/$stopped_pid/stat")"
+mkdir -p "$MODDIR/.state/config.lock"
+printf '%s:%s\n' "$stopped_pid" "$stopped_start" >"$MODDIR/.state/config.lock/pid"
+MAGICNET_CONFIG_LOCK_TIMEOUT=2 magicnet_config_lock_acquire
+kill -KILL "$stopped_pid" 2>/dev/null || true
+wait "$stopped_pid" 2>/dev/null || true
+magicnet_config_lock_release
+test ! -e "$MODDIR/.state/config.lock"
+
 # Locking must not replace a caller's transaction/signal cleanup handlers.
 # The subscription updater relies on its TERM trap to roll back its journal.
 trap 'exit 143' TERM

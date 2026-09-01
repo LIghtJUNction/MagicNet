@@ -25,12 +25,12 @@ import Button from "@/components/ui/Button.vue";
 import Eyebrow from "@/components/ui/Eyebrow.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
+import { setPendingSubscriptionDraft } from "@/components/pages/subscriptionDraft";
 import { useTheme } from "@/composables/useTheme";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
 type TabKey = "control" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
 type WorkspaceKey = "run" | "route" | "configure" | "diagnose";
-type OnboardingTarget = Extract<TabKey, "control" | "subs" | "health" | "output">;
 type OnboardingPreference = "dismissed" | "completed";
 
 type TabDefinition = {
@@ -299,13 +299,10 @@ function closeOnboarding(preference: OnboardingPreference = "dismissed"): void {
   restoreOnboardingTriggerFocus();
 }
 
-function completeOnboarding(): void {
+function handleOnboardingSubmit(value: string): void {
+  setPendingSubscriptionDraft(value);
   closeOnboarding("completed");
-}
-
-function handleOnboardingNavigate(target: OnboardingTarget): void {
-  closeOnboarding("dismissed");
-  setTab(target);
+  setTab("subs");
 }
 
 async function requestIssue(): Promise<void> {
@@ -693,8 +690,7 @@ onUnmounted(() => {
     <OnboardingDialog
       v-if="showOnboarding"
       @dismiss="closeOnboarding()"
-      @complete="completeOnboarding"
-      @navigate="handleOnboardingNavigate"
+      @submit="handleOnboardingSubmit"
     />
 
     <IssueReporterDialog

@@ -7,6 +7,7 @@ const read = (relativePath) =>
 const app = read("./src/App.vue");
 const button = read("./src/components/ui/Button.vue");
 const editor = read("./src/components/ConfigCodeEditor.vue");
+const editorRendering = read("./src/components/configEditorRendering.ts");
 const configPage = read("./src/components/pages/ConfigPage.vue");
 const controlPage = read("./src/components/pages/ControlPage.vue");
 const visibilityTask = read("./src/composables/useVisibilityTask.ts");
@@ -30,7 +31,9 @@ assert.match(button, /absolute inset-0 grid place-items-center/);
 assert.match(button, /loading \? 'opacity-0' : 'opacity-100'/);
 
 assert.match(editor, /ANALYSIS_DELAY_MS = 180/);
-assert.match(editor, /MAX_HIGHLIGHT_CHARACTERS/);
+assert.match(editorRendering, /MAX_HIGHLIGHT_CHARACTERS/);
+assert.match(editorRendering, /MAX_HIGHLIGHT_LINES/);
+assert.match(editor, /shouldHighlightJson/);
 assert.match(editor, /JSON_NUMBER_PATTERN\.lastIndex = index/);
 assert.match(editor, /JSON_WORD_PATTERN\.lastIndex = index/);
 assert.doesNotMatch(editor, /text\.slice\(index\)\.match/);

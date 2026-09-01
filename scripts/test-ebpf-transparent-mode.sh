@@ -78,7 +78,7 @@ write_base_config() {
   "log": {"level": "warn"},
   "inbounds": [
     {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 7892},
-    {"type": "tun", "tag": "tun-in", "interface_name": "magicnet0", "address": ["172.19.0.1/30"], "auto_route": true},
+    {"type": "tun", "tag": "tun-in", "interface_name": "magicnet0", "address": ["172.19.0.1/30"], "auto_route": true, "gso": true},
     {"type": "direct", "tag": "magicnet-dns-in", "listen": "127.0.0.1", "listen_port": 1053}
   ],
   "route": {"rules": [
@@ -159,6 +159,19 @@ first_sum="$(sha256sum "$MODDIR/.config/sing-box/config.json")"
 apply_transparent
 second_sum="$(sha256sum "$MODDIR/.config/sing-box/config.json")"
 [[ "$first_sum" == "$second_sum" ]]
+
+# Switching back restores the previous TUN-specific inbound instead of
+# replacing it with a newly generated object. Canonical fields remain owned by
+# MagicNet while supported user tuning survives the round trip.
+set_mode_file tun
+apply_transparent
+"$HOST_JQ" -e '
+  .inbounds[] | select(.tag == "tun-in")
+  | .type == "tun" and .interface_name == "magicnet0" and .gso == true
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
+set_mode_file ebpf
+apply_transparent
+assert_managed_ebpf local '' '' true
 
 # A real hotspot tuple enables hybrid. The interface and source CIDR must come
 # from the same fixture; wlan0 is deliberately absent and must never be guessed.

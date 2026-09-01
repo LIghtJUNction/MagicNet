@@ -600,10 +600,9 @@ magicnet_subscription_refresh_proc_command_matches() {
         function is_shell(value) { return value ~ /(^|\/)(sh|ash|dash|bash|ksh|mksh)$/ }
         { argv[++count] = $0 }
         END { exit (count == 2 && is_shell(argv[1]) && argv[2] == expected) ? 0 : 1 }
-    ' <<EOF
+    ' <<EOF; then
 $_refresh_proc_argv
 EOF
-    then
         _refresh_proc_rc=0
     else
         _refresh_proc_rc=1
@@ -660,6 +659,38 @@ magicnet_subscription_refresh_owner_parse() {
     case "$_refresh_owner_pid" in '' | *[!0-9]*) return 1 ;; esac
     case "$_refresh_owner_start" in '' | *[!0-9]*) return 1 ;; esac
     [ "$_refresh_owner_identity" = "subscription-refresh-v1" ]
+}
+
+magicnet_subscription_refresh_owner_pid_state() {
+    _refresh_pid_state_pid="$1"
+    case "$_refresh_pid_state_pid" in
+    1 | 0 | '' | *[!0-9]*)
+        unset _refresh_pid_state_pid
+        return 2
+        ;;
+    esac
+    if kill -0 "$_refresh_pid_state_pid" 2>/dev/null; then
+        _refresh_pid_state_rc=0
+    elif [ -d "${MAGICNET_SUB_REFRESH_PROC_ROOT:-/proc}/$_refresh_pid_state_pid" ]; then
+        _refresh_pid_state_rc=2
+    else
+        _refresh_pid_state_rc=1
+    fi
+    unset _refresh_pid_state_pid
+    case "$_refresh_pid_state_rc" in
+    0)
+        unset _refresh_pid_state_rc
+        return 0
+        ;;
+    1)
+        unset _refresh_pid_state_rc
+        return 1
+        ;;
+    *)
+        unset _refresh_pid_state_rc
+        return 2
+        ;;
+    esac
 }
 
 magicnet_subscription_refresh_owner_matches() {
@@ -946,7 +977,18 @@ magicnet_subscription_refresh_stop() {
         _refresh_stop_match_rc=$?
     fi
     [ "$_refresh_stop_match_rc" -ne 2 ] || return 2
-    [ "$_refresh_stop_match_rc" -eq 0 ] || return 1
+    if [ "$_refresh_stop_match_rc" -ne 0 ]; then
+        # A PID-reused or command-mismatched owner is still live and must not
+        # be mistaken for a stopped refresher. Only dead metadata may be
+        # reclaimed, and only after the exact loop scan proves no loop lives.
+        if magicnet_subscription_refresh_owner_pid_state "$_refresh_owner_pid"; then
+            return 1
+        fi
+        _refresh_stop_pid_state_rc=$?
+        [ "$_refresh_stop_pid_state_rc" -ne 2 ] || return 2
+        magicnet_subscription_refresh_reap_state && return 0
+        return 1
+    fi
     if [ "$_refresh_stop_match_rc" -eq 0 ]; then
         kill "$_refresh_owner_pid" 2>/dev/null || true
         _refresh_stop_deadline=$(($(date +%s) + ${MAGICNET_SUB_REFRESH_STOP_TIMEOUT:-3}))
@@ -970,6 +1012,53 @@ magicnet_subscription_refresh_stop() {
     return 0
 }
 
+magicnet_subscription_refresh_reap_state() {
+    _refresh_reap_owner=$(magicnet_subscription_refresh_owner_file)
+    if [ -f "$_refresh_reap_owner" ]; then
+        _refresh_reap_record=$(sed -n '1p' "$_refresh_reap_owner" 2>/dev/null)
+        if ! magicnet_subscription_refresh_owner_parse "$_refresh_reap_record"; then
+            unset _refresh_reap_owner _refresh_reap_record
+            unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest
+            unset _refresh_owner_start _refresh_owner_identity
+            return 1
+        fi
+        magicnet_subscription_refresh_owner_pid_state "$_refresh_owner_pid"
+        _refresh_reap_owner_pid_rc=$?
+        unset _refresh_reap_owner _refresh_reap_record
+        unset _refresh_owner_record _refresh_owner_pid _refresh_owner_rest
+        unset _refresh_owner_start _refresh_owner_identity
+        if [ "$_refresh_reap_owner_pid_rc" -eq 0 ]; then
+            unset _refresh_reap_owner_pid_rc
+            return 1
+        fi
+        if [ "$_refresh_reap_owner_pid_rc" -eq 2 ]; then
+            unset _refresh_reap_owner_pid_rc
+            return 2
+        fi
+        unset _refresh_reap_owner_pid_rc
+    else
+        unset _refresh_reap_owner
+    fi
+    _refresh_reap_pids=$(magicnet_subscription_refresh_loop_pids 2>/dev/null)
+    _refresh_reap_rc=$?
+    [ "$_refresh_reap_rc" -eq 2 ] && {
+        unset _refresh_reap_pids _refresh_reap_rc
+        return 2
+    }
+    [ -z "$_refresh_reap_pids" ] || {
+        unset _refresh_reap_pids _refresh_reap_rc
+        return 1
+    }
+    rm -f "$(magicnet_subscription_refresh_owner_file)" \
+        "$(magicnet_subscription_refresh_pid_file)" \
+        "$(magicnet_subscription_refresh_loop_file)" 2>/dev/null || {
+        unset _refresh_reap_pids _refresh_reap_rc
+        return 1
+    }
+    unset _refresh_reap_pids _refresh_reap_rc
+    return 0
+}
+
 magicnet_subscription_refresh_start() {
     _refresh_hours=$(magicnet_subscription_schedule_interval)
     if [ "$_refresh_hours" = "off" ]; then
@@ -986,6 +1075,13 @@ magicnet_subscription_refresh_start() {
         unset _refresh_hours
         return 0
     }
+    # A standalone config has no remote subscription to refresh. Reclaim only
+    # dead metadata so an old loop cannot make every core start fail.
+    if magicnet_singbox_standalone_config_ready; then
+        magicnet_subscription_refresh_reap_state >/dev/null 2>&1 || true
+        unset _refresh_hours
+        return 0
+    fi
     if _refresh_owner_state=$(magicnet_subscription_refresh_owner_state 2>/dev/null); then
         _refresh_owner_state_rc=0
     else
@@ -997,8 +1093,12 @@ magicnet_subscription_refresh_start() {
     elif [ "$_refresh_owner_state" = active ]; then
         return 0
     elif [ "$_refresh_owner_state" = stale ] || [ "$_refresh_owner_state" = orphan ]; then
-        warn "Subscription refresh owner is ${_refresh_owner_state}; refusing to start a duplicate or terminate an unowned loop"
-        return 1
+        if magicnet_subscription_refresh_reap_state; then
+            _refresh_owner_state=none
+        else
+            warn "Subscription refresh owner is ${_refresh_owner_state}; refusing to start a duplicate or terminate an unowned loop"
+            return 1
+        fi
     fi
 
     _refresh_seconds=$((_refresh_hours * 3600))

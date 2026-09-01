@@ -39,6 +39,17 @@ su -c /data/adb/modules/MagicNet/cli node current
 
 节点进入 `proxy` 与自动测速组；服务专用组没有合格节点时保持 fail-closed。
 
+## 配置模板仓库
+
+WebUI“配置”页可保存 GitHub/GitLab 仓库、分支和 JSON 路径，默认使用 `LIghtJUNction/MagicSingBox`；可 fork 后改为自己的仓库。CLI 入口：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli config-editor repo get
+su -c /data/adb/modules/MagicNet/cli config-editor sync-template sing-box
+```
+
+模板下载只接受 HTTPS、固定仓库主机和安全路径；订阅 URL 不会写入配置仓库设置或构建产物。
+
 ## 应用、Wi-Fi 与热点
 
 ```bash
