@@ -960,13 +960,13 @@ run "$MODDIR/cli" core select sing-box
 run "$MODDIR/cli" core status
 grep -qx 'MAGICNET_DEFAULT_CORE=sing-box' "$MODDIR/.config/magicnet/current-core.conf"
 # shellcheck disable=SC2016
-env MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" sh -c '
+env MAGICNET_DEFAULT_CORE=sing-box MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH" sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"
     import __runtime__
     . "$MODDIR/lib/magicnet.sh"
     printf "%s\n" "sing-box"
-' >"$TMP/strict-core.log"
-grep -qx 'sing-box' "$TMP/strict-core.log"
+' >"$TMP/default-core.log"
+grep -qx 'sing-box' "$TMP/default-core.log"
 
 mkdir -p "$MODDIR/.state/sing-box/subscription-work"
 # shellcheck disable=SC2016

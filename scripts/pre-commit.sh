@@ -67,6 +67,7 @@ bash scripts/test-supervisor-orphan-prefilter.sh
 bash scripts/test-supervisor-start-policy.sh
 bash scripts/test-tun-interface-safety.sh
 bash scripts/test-transparent-mode-config-safety.sh
+bash scripts/test-lib-dir-safety.sh
 bash scripts/test-ebpf-transparent-mode.sh
 bash scripts/test-config-permissions.sh
 bash scripts/test-config-lock-safety.sh

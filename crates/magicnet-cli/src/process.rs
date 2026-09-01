@@ -430,8 +430,8 @@ const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
 ];
 
 // Privileged shell entrypoints must not inherit caller-controlled library,
-// proc, or dynamic-linker paths. Host-side fixture tests may still opt in
-// through MAGICNET_LIB_DIR when the CLI is not the Android production build.
+// proc, or dynamic-linker paths. Host fixture scripts may still source
+// primitives.sh with MAGICNET_LIB_DIR set; the CLI never forwards it.
 const UNSAFE_INHERITED_ENV: &[&str] = &[
     "MAGICNET_LIB_DIR",
     "MAGICNET_PROC_ROOT",
@@ -1364,8 +1364,11 @@ mod process_group_tests {
     }
 
     #[test]
-    fn function_runner_does_not_inherit_subscription_file_overrides(
+    fn function_runner_does_not_inherit_privileged_environment_overrides(
     ) -> Result<(), Box<dyn std::error::Error>> {
+        assert!(UNSAFE_INHERITED_ENV.contains(&"MAGICNET_LIB_DIR"));
+        assert!(UNSAFE_INHERITED_ENV.contains(&"MAGICNET_PROC_ROOT"));
+        assert!(UNSAFE_INHERITED_ENV.contains(&"LD_PRELOAD"));
         let mut command = Command::new("sh");
         command.args(["-c", "env"]);
         for key in UNSAFE_SUBSCRIPTION_ENV
