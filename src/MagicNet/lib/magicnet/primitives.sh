@@ -10,7 +10,9 @@ magicnet_dns_capture_singbox_mark() {
 }
 
 magicnet_lib_dir() {
-    if [ -n "${MAGICNET_LIB_DIR:-}" ]; then
+    # Host-side fixture tests may opt into a workspace library tree. Production
+    # Android must never source module helpers from a caller-provided redirect.
+    if [ -n "${MAGICNET_LIB_DIR:-}" ] && ! [ -x /system/bin/getprop ]; then
         printf '%s\n' "$MAGICNET_LIB_DIR"
     elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
         printf '%s\n' "${MODDIR}/lib/magicnet"

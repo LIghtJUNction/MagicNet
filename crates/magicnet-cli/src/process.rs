@@ -429,8 +429,24 @@ const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
     "MAGICNET_SUB_PRESERVE_REFRESH",
 ];
 
-fn clear_unsafe_subscription_environment(command: &mut Command) {
-    for key in UNSAFE_SUBSCRIPTION_ENV {
+// Privileged shell entrypoints must not inherit caller-controlled library,
+// proc, or dynamic-linker paths. Host-side fixture tests may still opt in
+// through MAGICNET_LIB_DIR when the CLI is not the Android production build.
+const UNSAFE_INHERITED_ENV: &[&str] = &[
+    "MAGICNET_LIB_DIR",
+    "MAGICNET_PROC_ROOT",
+    "MAGICNET_PROC_QUERY_DIR",
+    "MAGICNET_SINGBOX_PROC_ROOT",
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+    "LD_AUDIT",
+];
+
+fn clear_unsafe_privileged_environment(command: &mut Command) {
+    for key in UNSAFE_SUBSCRIPTION_ENV
+        .iter()
+        .chain(UNSAFE_INHERITED_ENV.iter())
+    {
         command.env_remove(key);
     }
 }
@@ -523,7 +539,7 @@ fn run_magicnet_function_inner(
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
         .stdin(Stdio::null());
-    clear_unsafe_subscription_environment(&mut command);
+    clear_unsafe_privileged_environment(&mut command);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
     }
@@ -1204,9 +1220,10 @@ mod path_tests {
 #[cfg(test)]
 mod process_group_tests {
     use super::{
-        clear_unsafe_subscription_environment, command_timeout_secs, run_magicnet_function,
+        clear_unsafe_privileged_environment, command_timeout_secs, run_magicnet_function,
         run_process_group, terminate_timed_out_child, trusted_shell, App, TimedChildWait,
-        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
+        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_INHERITED_ENV,
+        UNSAFE_SUBSCRIPTION_ENV,
     };
     use std::fs;
     use std::process::Command;
@@ -1351,19 +1368,25 @@ mod process_group_tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut command = Command::new("sh");
         command.args(["-c", "env"]);
-        for key in UNSAFE_SUBSCRIPTION_ENV {
+        for key in UNSAFE_SUBSCRIPTION_ENV
+            .iter()
+            .chain(UNSAFE_INHERITED_ENV.iter())
+        {
             command.env(key, "attacker-controlled");
         }
-        clear_unsafe_subscription_environment(&mut command);
+        clear_unsafe_privileged_environment(&mut command);
         let output = command.output()?;
         assert!(output.status.success());
         let stdout = String::from_utf8(output.stdout)?;
-        for key in UNSAFE_SUBSCRIPTION_ENV {
+        for key in UNSAFE_SUBSCRIPTION_ENV
+            .iter()
+            .chain(UNSAFE_INHERITED_ENV.iter())
+        {
             assert!(
                 !stdout
                     .lines()
                     .any(|line| line.starts_with(&format!("{key}="))),
-                "unsafe subscription variable leaked: {key}"
+                "unsafe privileged variable leaked: {key}"
             );
         }
         Ok(())
