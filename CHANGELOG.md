@@ -1,5 +1,11 @@
 # Unreleased
 
+- Ignore `MAGICNET_LIB_DIR`, `MAGICNET_*_PROC_ROOT`, cgroup-root, linker, and
+  shell-startup environment overrides on Android, and strip the same variables
+  from privileged CLI workers so inherited Magisk/WebUI environments cannot
+  redirect module libraries or `/proc` inspection.
+- Remove unused installer core selection, `subscription.yaml` path helpers, and
+  the inert `MAGICNET_STRICT_CORE` restart flag.
 - Remove the in-repository MagicBox Android app, its submodule integration,
   App-only documentation, and policy-test coupling.
 - Keep eBPF in hybrid mode by default, preserving local cgroup interception while shared TC waits for a confirmed downstream interface.

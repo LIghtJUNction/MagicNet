@@ -61,6 +61,7 @@ bash scripts/test-singbox-tristate-safety.sh
 bash scripts/test-singbox-readiness.sh
 bash scripts/test-supervisor-pid-safety.sh
 bash scripts/test-process-cgroup-detach.sh
+bash scripts/test-runtime-env-override-safety.sh
 bash scripts/test-supervisor-orphan-prefilter.sh
 # Generic KAM fswatch internals are tested in the KAM repository; keep this
 # gate focused on MagicNet's supervisor policy and process-identity boundary.

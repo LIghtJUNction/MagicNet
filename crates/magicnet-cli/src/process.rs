@@ -500,10 +500,10 @@ fn signal_pid(pid: &str, force: bool) {
     let _ = command.arg(pid).status();
 }
 
-// These variables are implementation details of the subscription transaction.
-// A privileged CLI process must not let a caller-provided environment replace
-// the module-owned URL/configuration files, candidate descriptor, or test-only
-// transaction controls before the shell entrypoint runs.
+// These variables are implementation details of the subscription transaction
+// or privileged runtime path resolution. A CLI process must not let a
+// caller-provided environment replace module-owned files, redirect /proc
+// inspection, or inject a linker/shell startup file before the entrypoint runs.
 const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
     "MAGICNET_SUB_CANDIDATE_URL_FILE",
     "MAGICNET_SUB_CANDIDATE_SOURCE_FILE",
@@ -523,8 +523,28 @@ const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
     "MAGICNET_SUB_PRESERVE_REFRESH",
 ];
 
+const UNSAFE_RUNTIME_ENV: &[&str] = &[
+    "MAGICNET_LIB_DIR",
+    "MAGICNET_PROC_ROOT",
+    "MAGICNET_SINGBOX_PROC_ROOT",
+    "MAGICNET_PROCESS_CGROUP_ROOTS",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "LD_PROFILE",
+    "LD_DYNAMIC_WEAK",
+    "LD_SHOW_AUXV",
+    "LD_USE_LOAD_BIAS",
+    "ENV",
+    "BASH_ENV",
+    "SHELLOPTS",
+    "CDPATH",
+    "IFS",
+];
+
 fn clear_unsafe_subscription_environment(command: &mut Command) {
-    for key in UNSAFE_SUBSCRIPTION_ENV {
+    for key in UNSAFE_SUBSCRIPTION_ENV.iter().chain(UNSAFE_RUNTIME_ENV) {
         command.env_remove(key);
     }
 }
@@ -1300,7 +1320,8 @@ mod process_group_tests {
     use super::{
         clear_unsafe_subscription_environment, command_timeout_secs, run_magicnet_function,
         run_process_group, terminate_timed_out_child, trusted_shell, App, TimedChildWait,
-        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
+        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_RUNTIME_ENV,
+        UNSAFE_SUBSCRIPTION_ENV,
     };
     use std::fs;
     use std::process::Command;
@@ -1445,19 +1466,19 @@ mod process_group_tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut command = Command::new("sh");
         command.args(["-c", "env"]);
-        for key in UNSAFE_SUBSCRIPTION_ENV {
+        for key in UNSAFE_SUBSCRIPTION_ENV.iter().chain(UNSAFE_RUNTIME_ENV) {
             command.env(key, "attacker-controlled");
         }
         clear_unsafe_subscription_environment(&mut command);
         let output = command.output()?;
         assert!(output.status.success());
         let stdout = String::from_utf8(output.stdout)?;
-        for key in UNSAFE_SUBSCRIPTION_ENV {
+        for key in UNSAFE_SUBSCRIPTION_ENV.iter().chain(UNSAFE_RUNTIME_ENV) {
             assert!(
                 !stdout
                     .lines()
                     .any(|line| line.starts_with(&format!("{key}="))),
-                "unsafe subscription variable leaked: {key}"
+                "unsafe runtime variable leaked: {key}"
             );
         }
         Ok(())
