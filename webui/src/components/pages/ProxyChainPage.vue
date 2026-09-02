@@ -178,7 +178,7 @@ onMounted(() => {
     <PageHeader
       overline="Proxy Chain"
       title="链式代理"
-      description="配置单进程 sing-box 的两跳链路：先经过中转节点，再到落地节点。"
+      description="选择中转和落地节点，组成两跳代理。"
     >
       <template #actions>
         <Button

@@ -182,7 +182,7 @@ async function askAi(url: string, name: string): Promise<void> {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Diagnostics" title="诊断" description="运行健康检查、连通性测试，并复制脱敏上下文给 AI。">
+    <PageHeader overline="诊断" title="诊断" description="检查服务、网络和接口，把问题定位到可处理的步骤。">
       <template #actions>
         <Button :loading="isRunning('health')" @click="withAction('health', refreshDiagnostics)"><RefreshCw :size="17" />健康检查</Button>
         <Button variant="outline" :loading="isRunning('ping')" @click="withAction('ping', () => refreshPing())"><RadioTower :size="17" />连通性测试</Button>
@@ -201,8 +201,8 @@ async function askAi(url: string, name: string): Promise<void> {
       </div>
       <div class="flex flex-col gap-3">
         <div>
-          <h3 class="text-base font-semibold">询问 AI</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">先复制脱敏上下文，再用系统浏览器打开。</p>
+          <h3 class="text-base font-semibold">带着诊断信息提问</h3>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">打开前会先复制不含敏感信息的诊断报告。</p>
         </div>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Button v-for="[name, url] in assistants" :key="name" variant="secondary" size="sm" :loading="isRunning(`ask-${name}`)" @click="askAi(url, name)">
@@ -215,14 +215,12 @@ async function askAi(url: string, name: string): Promise<void> {
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><TimerReset :size="17" /> API 端点预检</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-            真实调用 <code>api groups</code> / <code>api stats</code> / <code>api conns</code>，记录成功率、耗时和输出大小。
-          </p>
+          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><TimerReset :size="17" /> 检查 API</h3>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">检查节点组、流量统计和连接接口是否可用。</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" :loading="isRunning('api-probe')" @click="runApiProbe">
-            <RefreshCw :size="15" />预检
+            <RefreshCw :size="15" />开始检查
           </Button>
           <Button size="sm" variant="secondary" :disabled="!apiProbes.length" @click="copyApiProbeReport">
             <Copy :size="15" />{{ apiProbeCopied ? "已复制" : "复制" }}
@@ -252,10 +250,8 @@ async function askAi(url: string, name: string): Promise<void> {
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileText :size="17" /> 支持包预览</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-            真实调用 <code>support bundle</code>，在本页只展示脱敏后的诊断上下文。
-          </p>
+          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileText :size="17" /> 诊断报告</h3>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">生成可安全分享的设备诊断信息。</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" :loading="isRunning('support-bundle')" @click="refreshSupportBundle">
@@ -284,9 +280,9 @@ async function askAi(url: string, name: string): Promise<void> {
         </div>
       </div>
       <div v-if="supportTriage.totalIssues" class="rounded-md mn-panel-warn p-3 text-sm leading-6 text-[var(--mn-warning)]/85">
-        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-warning)]">问题摘要</p>
+          <p class="text-xs font-semibold text-[var(--mn-warning)]">发现问题</p>
         <p class="mt-2 text-xs leading-5 text-[var(--mn-warning)]">
-          已发现 {{ supportTriage.totalIssues }} 条问题线索，分布在 {{ supportTriage.sections }} 个支持包段落；复制操作只导出聚合计数。
+          共 {{ supportTriage.totalIssues }} 条，分布在 {{ supportTriage.sections }} 个检查项目中。复制摘要不会包含原始内容。
         </p>
       </div>
       <pre class="max-h-72 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ supportPreview }}</pre>
@@ -300,10 +296,8 @@ async function askAi(url: string, name: string): Promise<void> {
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><ShieldCheck :size="17" /> 健康检查总览</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-            基于真实 <code>health</code> 输出聚合状态，不复制 detail 原文。
-          </p>
+          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><ShieldCheck :size="17" /> 健康检查</h3>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">汇总服务、网络和配置状态；复制时不包含原始详情。</p>
         </div>
         <Button size="sm" variant="outline" :disabled="!state.health.length" @click="copyHealthSummary">
           <Copy :size="15" />{{ healthSummaryCopied ? "已复制" : "复制总览" }}

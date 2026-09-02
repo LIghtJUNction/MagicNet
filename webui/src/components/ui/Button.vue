@@ -25,7 +25,7 @@ const props = withDefaults(
 );
 
 const buttonVariants = cva(
-  "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-nowrap rounded-[2px] border text-[13px] font-semibold tracking-[0.01em] transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0",
+  "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-nowrap rounded-[var(--mn-radius-md)] border text-[13px] font-semibold transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
   {
     variants: {
       variant: {
@@ -66,14 +66,9 @@ const classes = computed(() =>
     :disabled="loading || disabled"
     :aria-busy="loading ? 'true' : undefined"
   >
-    <span
-      class="inline-flex min-w-0 items-center justify-center gap-2 transition-opacity duration-100"
-      :class="loading ? 'opacity-0' : 'opacity-100'"
-    >
+    <span class="inline-flex min-w-0 items-center justify-center gap-2">
+      <Loader2 v-if="loading" class="shrink-0 motion-safe:animate-spin" :size="size === 'sm' ? 14 : 16" aria-hidden="true" />
       <slot />
-    </span>
-    <span v-if="loading" class="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden="true">
-      <Loader2 class="motion-safe:animate-spin" :size="size === 'sm' ? 14 : 16" />
     </span>
   </button>
 </template>

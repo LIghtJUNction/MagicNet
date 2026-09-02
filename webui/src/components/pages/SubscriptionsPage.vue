@@ -266,7 +266,7 @@ async function copySummary(): Promise<void> {
     <PageHeader
       overline="Subscription lifecycle"
       title="订阅生命周期"
-      description="URL 或本地文件验证成功后原子切换；提交使用可清理的私有临时载荷。"
+      description="添加订阅链接或本地文件。验证失败不会替换现有配置。"
     />
 
     <section class="lifecycle-strip hidden min-w-0 gap-px rounded-md bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] p-px ring-1 ring-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)] lg:grid lg:grid-cols-4" aria-label="订阅生命周期概览">

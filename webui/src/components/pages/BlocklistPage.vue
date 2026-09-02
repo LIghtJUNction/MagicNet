@@ -328,7 +328,7 @@ async function confirmBlockAction(): Promise<void> {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Community Banlist" title="联 ban 黑名单" description="广告放行白名单优先于所有广告阻断规则；ad-allow 默认继承主策略，也可手动选择 Direct 或 Proxy。">
+    <PageHeader overline="规则" title="拦截规则" description="管理社区规则、手动规则和放行项。">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('refresh-block')" @click="withAction('refresh-block', () => refreshBlock())"><RefreshCw :size="17" />读取</Button>
         <Button :loading="isRunning('update-block')" @click="requestUpdateCommunityBlocklist"><DownloadCloud :size="17" />更新社区库</Button>
@@ -339,12 +339,12 @@ async function confirmBlockAction(): Promise<void> {
 
     <ConfirmPanel
       v-if="pendingBlockAction"
-      title="Confirm blocklist"
+      title="确认拦截规则"
       :detail="pendingBlockAction.message"
       :command="pendingBlockAction.command"
       :loading="isRunning(pendingBlockAction.key)"
-      confirm-label="确认"
-      confirm-variant="secondary"
+      confirm-label="应用更改"
+      confirm-variant="default"
       @cancel="cancelBlockAction"
       @confirm="confirmBlockAction"
     />

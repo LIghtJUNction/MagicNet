@@ -10,7 +10,7 @@ assert.match(app, /type WorkspaceKey = "run" \| "route" \| "configure" \| "diagn
 assert.match(styles, /\.mobile-nav\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,/);
 assert.match(styles, /\.mobile-nav button span\s*\{[\s\S]*overflow-wrap:\s*anywhere[\s\S]*white-space:\s*normal/);
 assert.match(styles, /\.mn-section-tabs\s*\{[\s\S]*overflow-x:\s*auto/);
-assert.match(styles, /\.desktop-rail nav button\s*\{[\s\S]*grid-template-columns:\s*auto minmax\(0, 1fr\) auto/);
+assert.match(styles, /\.desktop-rail nav button\s*\{[\s\S]*grid-template-columns:\s*auto minmax\(0, 1fr\)/);
 assert.match(styles, /\.mn-shell\s*\{[\s\S]*padding:[^;]*env\(safe-area-inset-bottom\)/);
 assert.match(button, /text-\[13px\]/, "shared buttons must own their text size after font inheritance");
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*全局接管/);

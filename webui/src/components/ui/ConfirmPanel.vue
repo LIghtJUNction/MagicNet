@@ -12,7 +12,7 @@ const props = withDefaults(
     confirmLabel?: string;
     cancelLabel?: string;
     autoFocus?: boolean;
-    confirmVariant?: "default" | "secondary";
+    confirmVariant?: "default" | "secondary" | "destructive";
   }>(),
   {
     loading: false,

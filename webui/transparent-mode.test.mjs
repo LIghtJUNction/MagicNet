@@ -140,7 +140,7 @@ test("control page reuses confirmation and renders non-optimistic state facts", 
   assert.match(controlSource, /无法读取透明代理状态/);
   assert.match(runtimeSource, /transparentFailed/);
   assert.match(runtimeSource, /invalidateTransparentRuntime/);
-  assert.match(appSource, /STATUS UNAVAILABLE/);
+  assert.match(appSource, /transparentRouteData/);
   assert.match(runtimeInsightSource, /透明代理状态不可用/);
   assert.doesNotMatch(controlSource, /transparent set auto/);
 });

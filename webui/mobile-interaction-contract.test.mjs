@@ -28,8 +28,8 @@ assert.match(
 );
 assert.match(
   card,
-  /rounded-\[2px\]/,
-  "shared sections must use the small terminal radius",
+  /rounded-\[var\(--mn-radius-lg\)\]/,
+  "shared sections must use the approved quiet-console radius",
 );
 
 assert.match(

@@ -432,10 +432,10 @@ onMounted(() => {
     <PageHeader
       overline="Control Center"
       title="模块控制"
-      description="管理模块生命周期和常用入口；节点、测速与代理组继续由 sing-box WebUI 负责。"
+      description="查看运行状态，启动、停止或切换透明代理模式。"
     >
       <template #actions>
-        <Button variant="outline" @click="emit('goto-tab', 'about')">路径速览</Button>
+        <Button variant="outline" @click="emit('goto-tab', 'about')">流量路径</Button>
         <Button variant="outline" @click="copyControlSnapshot"
           ><Copy :size="17" />{{
             snapshotCopied ? "已复制快照" : "复制快照"
@@ -841,12 +841,12 @@ onMounted(() => {
 
     <div v-if="pendingDangerAction" ref="dangerConfirmCard" tabindex="-1">
       <ConfirmPanel
-        title="确认操作"
+        title="确认高风险操作"
         :detail="pendingDangerMessage"
         :command="pendingDangerAction.args"
         :loading="isRunning(pendingDangerAction.key)"
-        confirm-label="确认"
-        confirm-variant="secondary"
+        confirm-label="继续执行"
+        confirm-variant="destructive"
         :auto-focus="false"
       >
         <template #actions>
@@ -857,11 +857,11 @@ onMounted(() => {
             >取消</Button
           >
           <Button
-            variant="secondary"
+            variant="destructive"
             :disabled="runtimeBusy"
             :loading="isRunning(pendingDangerAction.key)"
             @click="confirmDangerAction"
-            >确认</Button
+            >继续执行</Button
           >
         </template>
       </ConfirmPanel>

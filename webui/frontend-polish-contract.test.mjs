@@ -27,18 +27,16 @@ const radiusSurfaces = [
   .join("\n");
 
 assert.match(button, /:aria-busy="loading \? 'true' : undefined"/);
-assert.match(button, /absolute inset-0 grid place-items-center/);
-assert.match(button, /loading \? 'opacity-0' : 'opacity-100'/);
+assert.match(button, /<Loader2 v-if="loading"/);
+assert.doesNotMatch(button, /loading \? 'opacity-0'/);
 
-assert.match(editor, /ANALYSIS_DELAY_MS = 180/);
 assert.match(editorRendering, /MAX_HIGHLIGHT_CHARACTERS/);
 assert.match(editorRendering, /MAX_HIGHLIGHT_LINES/);
 assert.match(editor, /shouldHighlightJson/);
-assert.match(editor, /JSON_NUMBER_PATTERN\.lastIndex = index/);
-assert.match(editor, /JSON_WORD_PATTERN\.lastIndex = index/);
-assert.doesNotMatch(editor, /text\.slice\(index\)\.match/);
-assert.match(editor, /Array\.from\(\{ length: lineCount\.value \}/);
-assert.doesNotMatch(editor, /v-for="line in lineCount"/);
+assert.match(editor, /const visibleLines = computed/);
+assert.match(editor, /@click="jumpToLine\(line\)"/);
+assert.match(editor, /json-editor__error-jump/);
+assert.doesNotMatch(editor, /Array\.from\(\{ length: lineCount\.value \}/);
 assert.match(configPage, /analyzedConfigText/);
 assert.match(configPage, /configAnalysisPending/);
 assert.match(controlPage, /aria-label="Wi-Fi SSID"/);
@@ -57,7 +55,7 @@ for (const panel of deferredPanels) {
 
 assert.match(
   app,
-  /if \(tab !== activeTab\.value\) \{[\s\S]*warmActiveTab\(tab\);[\s\S]*\}\s*void nextTick/,
+  /if \(tab !== activeTab\.value\) \{[\s\S]*warmActiveTab\(tab\);[\s\S]*writeTabToLocation\(tab\);[\s\S]*void nextTick/,
 );
 assert.match(app, /@pointerenter="prefetchTab\(item\.key\)"/);
 assert.match(styles, /scrollbar-gutter:\s*stable/);

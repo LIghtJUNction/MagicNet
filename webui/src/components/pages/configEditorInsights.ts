@@ -39,28 +39,39 @@ const SENSITIVE_KEY_SOURCE = [
   "refresh[_-]?token",
   "client[_-]?secret",
   "subscription(?:[_-]?url)?",
-  "security(?:[_ -]?code)?"
+  "security(?:[_ -]?code)?",
 ].join("|");
 const SENSITIVE_KEY_PATTERN = new RegExp(`^(?:${SENSITIVE_KEY_SOURCE})$`, "i");
 const SENSITIVE_QUOTED_FIELD_PATTERN = new RegExp(
   `(["']?(${SENSITIVE_KEY_SOURCE})["']?\\s*[:=]\\s*)(["'])(.*?)\\3`,
-  "gi"
+  "gi",
 );
 const SENSITIVE_BARE_FIELD_PATTERN = new RegExp(
   `(["']?(${SENSITIVE_KEY_SOURCE})["']?\\s*[:=]\\s*)[^"',\\s;}\\]]+`,
-  "gi"
+  "gi",
 );
 
 export function sanitizeConfigText(text: string): string {
   return text
     .replace(SENSITIVE_URL_PATTERN, "[filtered-url]")
-    .replace(SENSITIVE_QUOTED_FIELD_PATTERN, (_match, prefix: string, _key: string, quote: string) => `${prefix}${quote}[filtered]${quote}`)
-    .replace(SENSITIVE_BARE_FIELD_PATTERN, (_match, prefix: string) => `${prefix}[filtered]`);
+    .replace(
+      SENSITIVE_QUOTED_FIELD_PATTERN,
+      (_match, prefix: string, _key: string, quote: string) =>
+        `${prefix}${quote}[filtered]${quote}`,
+    )
+    .replace(
+      SENSITIVE_BARE_FIELD_PATTERN,
+      (_match, prefix: string) => `${prefix}[filtered]`,
+    );
 }
 
 const SAFE_INBOUND_TYPES = new Set(["tun", "mixed", "direct"]);
 const SAFE_TUN_STACKS = new Set(["system", "gvisor", "mixed"]);
-const SAFE_BOOLEAN_KEYS = ["auto_route", "auto_redirect", "strict_route"] as const;
+const SAFE_BOOLEAN_KEYS = [
+  "auto_route",
+  "auto_redirect",
+  "strict_route",
+] as const;
 const ISSUE_DIFF_CONTEXT = 3;
 export const MAX_CONFIG_ISSUE_DIFF_BYTES = 24 * 1024;
 
@@ -71,13 +82,15 @@ export function sanitizeConfigForIssue(text: string): string {
     const type = stringValue(inbound.type);
     const safe: Record<string, unknown> = {
       id: `inbound-${index + 1}`,
-      type: SAFE_INBOUND_TYPES.has(type) ? type : "other"
+      type: SAFE_INBOUND_TYPES.has(type) ? type : "other",
     };
     if (type === "tun") {
       const stack = stringValue(inbound.stack);
       if (SAFE_TUN_STACKS.has(stack)) safe.stack = stack;
-      if (typeof inbound.mtu === "number" && Number.isSafeInteger(inbound.mtu)) safe.mtu = inbound.mtu;
-      for (const key of SAFE_BOOLEAN_KEYS) if (typeof inbound[key] === "boolean") safe[key] = inbound[key];
+      if (typeof inbound.mtu === "number" && Number.isSafeInteger(inbound.mtu))
+        safe.mtu = inbound.mtu;
+      for (const key of SAFE_BOOLEAN_KEYS)
+        if (typeof inbound[key] === "boolean") safe[key] = inbound[key];
     }
     return safe;
   });
@@ -85,11 +98,19 @@ export function sanitizeConfigForIssue(text: string): string {
     format: "magicnet-config-diff-v1",
     structure: {
       inbound_count: inbounds.length,
-      outbound_count: Array.isArray(parsed.outbounds) ? parsed.outbounds.length : 0,
-      route_rule_count: isRecord(parsed.route) && Array.isArray(parsed.route.rules) ? parsed.route.rules.length : 0,
-      dns_server_count: isRecord(parsed.dns) && Array.isArray(parsed.dns.servers) ? parsed.dns.servers.length : 0
+      outbound_count: Array.isArray(parsed.outbounds)
+        ? parsed.outbounds.length
+        : 0,
+      route_rule_count:
+        isRecord(parsed.route) && Array.isArray(parsed.route.rules)
+          ? parsed.route.rules.length
+          : 0,
+      dns_server_count:
+        isRecord(parsed.dns) && Array.isArray(parsed.dns.servers)
+          ? parsed.dns.servers.length
+          : 0,
     },
-    inbounds
+    inbounds,
   };
   return `${JSON.stringify(safe, null, 2)}\n`;
 }
@@ -97,33 +118,75 @@ export function sanitizeConfigForIssue(text: string): string {
 export function buildUnifiedConfigDiff(before: string, after: string): string {
   const beforeRaw = parseIssueConfig(before);
   const afterRaw = parseIssueConfig(after);
-  const beforeSafe = JSON.parse(sanitizeConfigForIssue(before)) as Record<string, unknown>;
-  const afterSafe = JSON.parse(sanitizeConfigForIssue(after)) as Record<string, unknown>;
-  const changedSections = (["inbounds", "outbounds", "route", "dns"] as const)
-    .filter((key) => JSON.stringify(beforeRaw[key]) !== JSON.stringify(afterRaw[key]));
+  const beforeSafe = JSON.parse(sanitizeConfigForIssue(before)) as Record<
+    string,
+    unknown
+  >;
+  const afterSafe = JSON.parse(sanitizeConfigForIssue(after)) as Record<
+    string,
+    unknown
+  >;
+  const changedSections = (
+    ["inbounds", "outbounds", "route", "dns"] as const
+  ).filter(
+    (key) => JSON.stringify(beforeRaw[key]) !== JSON.stringify(afterRaw[key]),
+  );
   if (changedSections.length) {
-    beforeSafe.change_markers = Object.fromEntries(changedSections.map((key) => [key, "before"]));
-    afterSafe.change_markers = Object.fromEntries(changedSections.map((key) => [key, "after"]));
+    beforeSafe.change_markers = Object.fromEntries(
+      changedSections.map((key) => [key, "before"]),
+    );
+    afterSafe.change_markers = Object.fromEntries(
+      changedSections.map((key) => [key, "after"]),
+    );
   }
   const oldLines = JSON.stringify(beforeSafe, null, 2).split("\n");
   const newLines = JSON.stringify(afterSafe, null, 2).split("\n");
   let prefix = 0;
-  while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++;
+  while (
+    prefix < oldLines.length &&
+    prefix < newLines.length &&
+    oldLines[prefix] === newLines[prefix]
+  )
+    prefix++;
   if (prefix === oldLines.length && prefix === newLines.length) return "";
   let suffix = 0;
-  while (suffix < oldLines.length - prefix && suffix < newLines.length - prefix && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]) suffix++;
+  while (
+    suffix < oldLines.length - prefix &&
+    suffix < newLines.length - prefix &&
+    oldLines[oldLines.length - 1 - suffix] ===
+      newLines[newLines.length - 1 - suffix]
+  )
+    suffix++;
   const oldStart = Math.max(0, prefix - ISSUE_DIFF_CONTEXT);
   const newStart = Math.max(0, prefix - ISSUE_DIFF_CONTEXT);
-  const oldEnd = Math.min(oldLines.length, oldLines.length - suffix + ISSUE_DIFF_CONTEXT);
-  const newEnd = Math.min(newLines.length, newLines.length - suffix + ISSUE_DIFF_CONTEXT);
-  const contextBefore = oldLines.slice(oldStart, prefix).map((line) => ` ${line}`);
-  const removed = oldLines.slice(prefix, oldLines.length - suffix).map((line) => `-${line}`);
-  const added = newLines.slice(prefix, newLines.length - suffix).map((line) => `+${line}`);
-  const contextAfter = oldLines.slice(oldLines.length - suffix, oldEnd).map((line) => ` ${line}`);
+  const oldEnd = Math.min(
+    oldLines.length,
+    oldLines.length - suffix + ISSUE_DIFF_CONTEXT,
+  );
+  const newEnd = Math.min(
+    newLines.length,
+    newLines.length - suffix + ISSUE_DIFF_CONTEXT,
+  );
+  const contextBefore = oldLines
+    .slice(oldStart, prefix)
+    .map((line) => ` ${line}`);
+  const removed = oldLines
+    .slice(prefix, oldLines.length - suffix)
+    .map((line) => `-${line}`);
+  const added = newLines
+    .slice(prefix, newLines.length - suffix)
+    .map((line) => `+${line}`);
+  const contextAfter = oldLines
+    .slice(oldLines.length - suffix, oldEnd)
+    .map((line) => ` ${line}`);
   return [
-    "--- config.before.json", "+++ config.after.json",
+    "--- config.before.json",
+    "+++ config.after.json",
     `@@ -${oldStart + 1},${oldEnd - oldStart} +${newStart + 1},${newEnd - newStart} @@`,
-    ...contextBefore, ...removed, ...added, ...contextAfter
+    ...contextBefore,
+    ...removed,
+    ...added,
+    ...contextAfter,
   ].join("\n");
 }
 
@@ -140,7 +203,7 @@ export function buildConfigOutline(text: string): ConfigOutline {
       status: "idle",
       summary: "尚未加载配置",
       keys: [],
-      counts: outlineCounts({})
+      counts: outlineCounts({}),
     };
   }
 
@@ -151,7 +214,7 @@ export function buildConfigOutline(text: string): ConfigOutline {
         status: "error",
         summary: "配置根节点不是 JSON object",
         keys: [],
-        counts: outlineCounts({})
+        counts: outlineCounts({}),
       };
     }
     const keys = Object.keys(parsed);
@@ -159,25 +222,36 @@ export function buildConfigOutline(text: string): ConfigOutline {
       status: "ok",
       summary: `${keys.length} 个顶层键`,
       keys: keys.slice(0, 12),
-      counts: outlineCounts(parsed)
+      counts: outlineCounts(parsed),
     };
-  } catch (error) {
+  } catch {
     return {
       status: "error",
-      summary: error instanceof Error ? error.message : "JSON 解析失败",
+      summary: "JSON 语法错误",
       keys: [],
-      counts: outlineCounts({})
+      counts: outlineCounts({}),
     };
   }
 }
 
 export function buildConfigAudit(text: string): ConfigAudit {
   const trimmed = text.trim();
-  if (!trimmed) return { status: "idle", summary: "加载配置后显示运行关键项。", items: [], outboundTags: [] };
+  if (!trimmed)
+    return {
+      status: "idle",
+      summary: "加载配置后显示运行关键项。",
+      items: [],
+      outboundTags: [],
+    };
 
   const parsed = parseConfigRoot(trimmed);
   if (parsed.error || !parsed.root) {
-    return { status: "error", summary: parsed.error || "JSON 解析失败。", items: [], outboundTags: [] };
+    return {
+      status: "error",
+      summary: parsed.error || "JSON 解析失败。",
+      items: [],
+      outboundTags: [],
+    };
   }
 
   const root = parsed.root;
@@ -186,59 +260,112 @@ export function buildConfigAudit(text: string): ConfigAudit {
   const route = isRecord(root.route) ? root.route : {};
   const dns = isRecord(root.dns) ? root.dns : {};
   const experimental = isRecord(root.experimental) ? root.experimental : {};
-  const clashApi = isRecord(experimental.clash_api) ? experimental.clash_api : {};
-  const inboundTypes = uniqueStrings(inbounds.map((item) => stringValue(item.type)));
-  const outboundTags = uniqueStrings(outbounds.map((item) => stringValue(item.tag)));
-  const selectorCount = outbounds.filter((item) => ["selector", "urltest"].includes(stringValue(item.type))).length;
+  const clashApi = isRecord(experimental.clash_api)
+    ? experimental.clash_api
+    : {};
+  const inboundTypes = uniqueStrings(
+    inbounds.map((item) => stringValue(item.type)),
+  );
+  const outboundTags = uniqueStrings(
+    outbounds.map((item) => stringValue(item.tag)),
+  );
+  const selectorCount = outbounds.filter((item) =>
+    ["selector", "urltest"].includes(stringValue(item.type)),
+  ).length;
   const externalController = stringValue(clashApi.external_controller);
   const routeFinal = stringValue(route.final);
   const dnsFinal = stringValue(dns.final);
   const preferredProxyTag = findPreferredProxyTag(outbounds);
-  const missingRuleOutbounds = findMissingRuleOutbounds(route.rules, outboundTags);
+  const missingRuleOutbounds = findMissingRuleOutbounds(
+    route.rules,
+    outboundTags,
+  );
   const missingDnsDetours = findMissingDnsDetours(dns.servers, outboundTags);
   const sensitiveFindings = detectSensitiveFindings(text);
 
   const items: ConfigAuditItem[] = [
-    auditItem("TUN 入站", inboundTypes.includes("tun") ? "存在" : "缺失", inboundTypes.includes("tun") ? "success" : "warning"),
-    auditItem("Mixed 入站", inboundTypes.includes("mixed") ? "存在" : "可选", inboundTypes.includes("mixed") ? "success" : "neutral"),
-    auditItem("WebUI API", externalController || "未配置", externalController ? "success" : "warning"),
-    auditItem("route.final", finalAuditValue(routeFinal, outboundTags), finalAuditTone(routeFinal, outboundTags, true)),
-    auditItem("dns.final", finalAuditValue(dnsFinal, outboundTags), finalAuditTone(dnsFinal, outboundTags, false)),
-    auditItem("主代理候选", preferredProxyTag || "未识别", preferredProxyTag ? "success" : "warning"),
-    auditItem("选择器", `${selectorCount} 个`, selectorCount ? "success" : "neutral"),
+    auditItem(
+      "TUN 入站",
+      inboundTypes.includes("tun") ? "存在" : "缺失",
+      inboundTypes.includes("tun") ? "success" : "warning",
+    ),
+    auditItem(
+      "Mixed 入站",
+      inboundTypes.includes("mixed") ? "存在" : "可选",
+      inboundTypes.includes("mixed") ? "success" : "neutral",
+    ),
+    auditItem(
+      "WebUI API",
+      externalController || "未配置",
+      externalController ? "success" : "warning",
+    ),
+    auditItem(
+      "route.final",
+      finalAuditValue(routeFinal, outboundTags),
+      finalAuditTone(routeFinal, outboundTags, true),
+    ),
+    auditItem(
+      "dns.final",
+      finalAuditValue(dnsFinal, outboundTags),
+      finalAuditTone(dnsFinal, outboundTags, false),
+    ),
+    auditItem(
+      "主代理候选",
+      preferredProxyTag || "未识别",
+      preferredProxyTag ? "success" : "warning",
+    ),
+    auditItem(
+      "选择器",
+      `${selectorCount} 个`,
+      selectorCount ? "success" : "neutral",
+    ),
     auditItem(
       "route.rules 出站引用",
-      missingRuleOutbounds.length ? `缺少 ${missingRuleOutbounds.length} 个引用` : "全部存在",
-      missingRuleOutbounds.length ? "warning" : "success"
+      missingRuleOutbounds.length
+        ? `缺少 ${missingRuleOutbounds.length} 个引用`
+        : "全部存在",
+      missingRuleOutbounds.length ? "warning" : "success",
     ),
     auditItem(
       "DNS detour 出站引用",
-      missingDnsDetours.length ? `缺少 ${missingDnsDetours.length} 个引用` : "全部存在",
-      missingDnsDetours.length ? "warning" : "success"
-    )
+      missingDnsDetours.length
+        ? `缺少 ${missingDnsDetours.length} 个引用`
+        : "全部存在",
+      missingDnsDetours.length ? "warning" : "success",
+    ),
   ];
 
   if (sensitiveFindings.length) {
-    items.push(auditItem("敏感信息", summarizeSensitiveFindings(sensitiveFindings), "warning"));
+    items.push(
+      auditItem(
+        "敏感信息",
+        summarizeSensitiveFindings(sensitiveFindings),
+        "warning",
+      ),
+    );
   }
 
   const warningCount = items.filter((item) => item.tone === "warning").length;
   return {
     status: warningCount ? "warning" : "ok",
-    summary: warningCount ? `${warningCount} 个关键项需要确认` : "关键运行项齐全",
+    summary: warningCount
+      ? `${warningCount} 个关键项需要确认`
+      : "关键运行项齐全",
     items,
-    outboundTags: outboundTags.slice(0, 16)
+    outboundTags: outboundTags.slice(0, 16),
   };
 }
 
-export function outlineCounts(root: Record<string, unknown>): Array<{ label: string; value: string }> {
+export function outlineCounts(
+  root: Record<string, unknown>,
+): Array<{ label: string; value: string }> {
   const route = isRecord(root.route) ? root.route : {};
   const dns = isRecord(root.dns) ? root.dns : {};
   return [
     { label: "inbounds", value: arrayCount(root.inbounds) },
     { label: "outbounds", value: arrayCount(root.outbounds) },
     { label: "route.rules", value: arrayCount(route.rules) },
-    { label: "dns.servers", value: arrayCount(dns.servers) }
+    { label: "dns.servers", value: arrayCount(dns.servers) },
   ];
 }
 
@@ -246,14 +373,17 @@ function arrayCount(value: unknown): string {
   return Array.isArray(value) ? String(value.length) : "-";
 }
 
-export function parseConfigRoot(text: string): { root: Record<string, unknown> | null; error: string } {
+export function parseConfigRoot(text: string): {
+  root: Record<string, unknown> | null;
+  error: string;
+} {
   try {
     const parsed = JSON.parse(text);
     return isRecord(parsed)
       ? { root: parsed, error: "" }
       : { root: null, error: "配置根节点不是 JSON object。" };
-  } catch (error) {
-    return { root: null, error: error instanceof Error ? error.message : "JSON 解析失败。" };
+  } catch {
+    return { root: null, error: "JSON 语法错误。" };
   }
 }
 
@@ -274,21 +404,34 @@ export function finalAuditValue(tag: string, outboundTags: string[]): string {
   return outboundTags.includes(tag) ? `${tag} 已存在` : `${tag} 未匹配出站`;
 }
 
-export function finalAuditTone(tag: string, outboundTags: string[], required: boolean): ConfigAuditItem["tone"] {
+export function finalAuditTone(
+  tag: string,
+  outboundTags: string[],
+  required: boolean,
+): ConfigAuditItem["tone"] {
   if (!tag) return required ? "warning" : "neutral";
   return outboundTags.includes(tag) ? "success" : "warning";
 }
 
-export function findPreferredProxyTag(outbounds: Array<Record<string, unknown>>): string {
+export function findPreferredProxyTag(
+  outbounds: Array<Record<string, unknown>>,
+): string {
   const candidates = ["proxy", "auto", "urltest", "select"];
   for (const candidate of candidates) {
-    if (outbounds.some((item) => stringValue(item.tag) === candidate)) return candidate;
+    if (outbounds.some((item) => stringValue(item.tag) === candidate))
+      return candidate;
   }
-  const selector = outbounds.find((item) => ["selector", "urltest"].includes(stringValue(item.type)));
+  const selector = outbounds.find((item) =>
+    ["selector", "urltest"].includes(stringValue(item.type)),
+  );
   return selector ? stringValue(selector.tag) : "";
 }
 
-export function auditItem(label: string, value: string, tone: ConfigAuditItem["tone"]): ConfigAuditItem {
+export function auditItem(
+  label: string,
+  value: string,
+  tone: ConfigAuditItem["tone"],
+): ConfigAuditItem {
   return { label, value, tone };
 }
 
@@ -296,21 +439,27 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function findMissingRuleOutbounds(rules: unknown, outboundTags: string[]): string[] {
+function findMissingRuleOutbounds(
+  rules: unknown,
+  outboundTags: string[],
+): string[] {
   const known = new Set(outboundTags);
   return uniqueStrings(
     arrayRecords(rules)
       .map((rule) => stringValue(rule.outbound))
-      .filter((tag) => tag && !known.has(tag))
+      .filter((tag) => tag && !known.has(tag)),
   );
 }
 
-function findMissingDnsDetours(servers: unknown, outboundTags: string[]): string[] {
+function findMissingDnsDetours(
+  servers: unknown,
+  outboundTags: string[],
+): string[] {
   const known = new Set(outboundTags);
   return uniqueStrings(
     arrayRecords(servers)
       .map((server) => stringValue(server.detour))
-      .filter((tag) => tag && !known.has(tag))
+      .filter((tag) => tag && !known.has(tag)),
   );
 }
 
@@ -330,7 +479,11 @@ function detectSensitiveFindings(text: string): SensitiveFinding[] {
   return findings;
 }
 
-function countSensitiveFields(text: string, pattern: RegExp, counts: Map<string, number>): void {
+function countSensitiveFields(
+  text: string,
+  pattern: RegExp,
+  counts: Map<string, number>,
+): void {
   for (const match of text.matchAll(pattern)) {
     const key = normalizeSensitiveKey(match[2]);
     counts.set(key, (counts.get(key) || 0) + 1);

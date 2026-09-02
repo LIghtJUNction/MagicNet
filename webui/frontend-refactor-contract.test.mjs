@@ -1,5 +1,5 @@
 /**
- * Structural contract for the mobile-first Phosphor Grid refactor + lag fixes.
+ * Structural contract for the mobile-first Quiet Console refactor + lag fixes.
  * Drives the shipped source entry points (App shell, styles, public asset,
  * page/tone sources) rather than re-implementing loaders or hard-coding
  * expected class strings alone.
@@ -120,9 +120,9 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
   }
 }
 
-// --- Phosphor Grid tokens on the real styles entry ---
+// --- Quiet Console tokens on the real styles entry ---
 const styles = read(stylesPath);
-for (const token of ["#B7F34A", "#050706", "#E6F7C8", "#F2F5EB", "#121711"]) {
+for (const token of ["#60A5FA", "#0B0D12", "#F2F4F7", "#F6F7F9", "#172033"]) {
   assert.match(
     styles,
     new RegExp(token, "i"),
@@ -229,7 +229,7 @@ assert.match(
 );
 assert.match(
   app,
-  /路径速览|应用|黑名单|链式代理|订阅|工具|面板|输出/,
+  /流量路径|应用|拦截规则|链式代理|订阅|工具|面板|输出/,
   "all local page labels must remain reachable",
 );
 assert.match(
@@ -360,18 +360,18 @@ assert.match(
 );
 assert.match(
   styles,
-  /--mn-page-actions-desktop-top:\s*1rem/,
-  "desktop page actions must align to the flat workspace surface",
-);
-assert.match(
-  styles,
   /\.mn-page-actions\s*\{[^}]*position:\s*static/,
   "page actions must stay in normal flow on compact screens",
 );
 assert.match(
   styles,
-  /@media \(min-width: 1024px\)[\s\S]*?\.mn-page-actions\s*\{[^}]*position:\s*sticky;[^}]*top:\s*var\(--mn-page-actions-desktop-top\)[\s\S]*?\.page-surface\s*\{[^}]*overflow:\s*visible/,
-  "desktop page actions must stick without clipping the page surface",
+  /@media \(min-width: 1024px\)[\s\S]*?\.mn-page-actions\s*\{[^}]*justify-content:\s*flex-end[^}]*margin-top:\s*0[\s\S]*?\.page-surface\s*\{[^}]*overflow:\s*visible/,
+  "desktop page actions must align without covering page content",
+);
+assert.doesNotMatch(
+  styles,
+  /\.mn-page-actions\s*\{[^}]*position:\s*sticky/,
+  "page actions must never cover the editor while scrolling",
 );
 const mainTs = read(join(src, "main.ts"));
 assert.match(

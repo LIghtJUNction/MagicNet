@@ -320,7 +320,7 @@ function selectWarpGlobal(enabled: boolean): void {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Tools" title="工具" description="eCapture、MCP、拓扑和路由快照集中在这里。">
+    <PageHeader overline="工具" title="工具" description="运行 DNS、网络、备份和抓包工具。">
       <Button variant="outline" :loading="toolsRefreshing" @click="refreshTools">
         <RefreshCw :size="17" />刷新工具状态
       </Button>

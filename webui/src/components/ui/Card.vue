@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 const props = defineProps<{ class?: string }>();
 const classes = computed(() =>
   cn(
-    "magic-card min-w-0 rounded-[2px] p-4 text-[var(--mn-ink)] md:p-5",
+    "magic-card min-w-0 rounded-[var(--mn-radius-lg)] p-4 text-[var(--mn-ink)] md:p-5",
     props.class,
   ),
 );

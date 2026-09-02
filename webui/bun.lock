@@ -8,6 +8,8 @@
         "@vitejs/plugin-vue": "^6.0.7",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
+        "highlight.js": "^11.11.1",
+        "jsonc-parser": "^3.3.1",
         "kernelsu": "^3.0.2",
         "lucide-vue-next": "^1.0.0",
         "tailwind-merge": "^3.6.0",
@@ -158,7 +160,11 @@
 
     "graceful-fs": ["graceful-fs@4.2.11", "", {}, "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="],
 
+    "highlight.js": ["highlight.js@11.12.0", "", {}, "sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg=="],
+
     "jiti": ["jiti@2.7.0", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ=="],
+
+    "jsonc-parser": ["jsonc-parser@3.3.1", "", {}, "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ=="],
 
     "kernelsu": ["kernelsu@3.0.2", "", {}, "sha512-3MTGgIbl3TWCzqnJP6Fun9tHv6VULR3O188U3raeGRSMzK+G3pldL9ySwaZWhsHCtI2BTvlQuu/3p10s4a5c3w=="],
 

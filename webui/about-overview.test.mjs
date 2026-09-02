@@ -68,19 +68,17 @@ try {
   await rm(dir, { recursive: true, force: true });
 }
 
-assert.match(aboutPage, /路径速览/);
+assert.match(aboutPage, /流量路径/);
 assert.match(aboutPage, /goto-tab/);
 assert.match(aboutPage, /DATAPLANE_LABEL/);
 assert.match(aboutPage, /mn-path-flow/);
 assert.match(aboutPage, /InsightChip/);
-assert.match(aboutPage, /TProxy/);
 assert.match(aboutPage, /eBPF/);
-assert.match(aboutPage, /ALLOW_MULTI/);
 assert.doesNotMatch(aboutPage, /cli ebpf status/);
 
 assert.match(app, /type TabKey =[\s\S]*"about"/);
 assert.match(app, /import\("@\/components\/pages\/AboutPage\.vue"\)/);
-assert.match(app, /key: "about", label: "路径速览"/);
+assert.match(app, /key: "about", label: "流量路径"/);
 assert.match(app, /@goto-tab="setTab"/);
 assert.match(app, /<KeepAlive :max="11">/);
 
@@ -89,6 +87,6 @@ const controlPage = readFileSync(
   "utf8",
 );
 assert.match(controlPage, /goto-tab',\s*'about'|goto-tab",\s*"about"/);
-assert.match(controlPage, /路径速览/);
+assert.match(controlPage, /流量路径/);
 
 console.log("about overview tests passed");

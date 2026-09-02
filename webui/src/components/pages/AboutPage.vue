@@ -60,17 +60,17 @@ const statusDotTone = computed(() => {
 async function copyOverview(): Promise<void> {
   copied.value = await copyText(overview.value);
   state.notice = copied.value
-    ? "路径速览已复制。"
-    : "剪贴板不可用，路径速览未复制。";
+    ? "流量路径已复制。"
+    : "剪贴板不可用，未能复制流量路径。";
 }
 </script>
 
 <template>
   <div class="mn-path-page grid gap-4 md:gap-5">
     <PageHeader
-      overline="Data Plane"
-      title="路径速览"
-      description="一眼看清 MagicNet 当前选择的 sing-box TUN 或 eBPF 数据面，以及怎样用健康检查证明接管成功。"
+      overline="流量路径"
+      title="流量路径"
+      description="查看当前流量路径和关键运行信息。"
     >
       <template #actions>
         <Button variant="outline" @click="copyOverview">
@@ -96,9 +96,9 @@ async function copyOverview(): Promise<void> {
     <Card class="mn-path-board !p-0">
       <div class="mn-path-board__head">
         <CardHeading
-          overline="LIVE PATH"
-          title="Android root → transparent dataplane → sing-box"
-          description="TUN 以 magicnet0 为准；eBPF 以 cgroup 与 shared TC 状态为准。节点选择仍由 sing-box 面板负责。"
+          overline="当前路径"
+          title="当前流量经过这些环节"
+          description="TUN 使用 magicnet0；eBPF 使用 cgroup 和 shared TC。"
         >
           <Radio :size="18" aria-hidden="true" />
         </CardHeading>
@@ -113,7 +113,6 @@ async function copyOverview(): Promise<void> {
           <span class="mn-path-flow__index" aria-hidden="true">{{ node.index }}</span>
           <div class="mn-path-flow__body">
             <strong>{{ node.label }}</strong>
-            <code>{{ node.code }}</code>
           </div>
           <ArrowRight
             v-if="index < pathNodes.length - 1"
@@ -127,9 +126,9 @@ async function copyOverview(): Promise<void> {
 
     <Card class="grid gap-4 !p-4 md:!p-6">
       <CardHeading
-        overline="PATH"
-        title="为什么只保留这两种模式"
-        description="TUN 与 eBPF 共用一套控制面；主线仍不恢复 TProxy、Redirect 或 auto。"
+        overline="模式"
+        title="可用的透明模式"
+        description="MagicNet 支持 TUN 和 eBPF；切换失败会恢复原来的配置。"
       />
       <div class="mn-path-facts">
         <article
@@ -137,7 +136,6 @@ async function copyOverview(): Promise<void> {
           :key="fact.code"
           class="mn-path-fact"
         >
-          <code>{{ fact.code }}</code>
           <h3>{{ fact.title }}</h3>
           <p>{{ fact.detail }}</p>
         </article>
@@ -147,9 +145,9 @@ async function copyOverview(): Promise<void> {
     <div class="grid gap-4 lg:grid-cols-2">
       <Card class="grid gap-4 !p-4 md:!p-6">
         <CardHeading
-          overline="START"
-          title="首次成功运行"
-          description="三步确认设备已经被当前显式数据面接管。"
+          overline="启动"
+          title="确认运行正常"
+          description="检查服务、透明代理和 DNS。"
         />
         <ol class="mn-path-steps">
           <li
@@ -176,9 +174,9 @@ async function copyOverview(): Promise<void> {
 
       <Card class="grid gap-4 !p-4 md:!p-6">
         <CardHeading
-          overline="ACCEPT"
-          title="成功判据"
-          description="主线只允许显式 tun|ebpf；不提供 auto，也不恢复 TProxy、Redirect 或 netd ALLOW_MULTI。"
+          overline="验收"
+          title="验收结果"
+          description="以透明模式状态和健康检查结果为准。"
         />
         <ul class="mn-path-checks">
           <li

@@ -13,7 +13,6 @@ import {
   Settings,
   Stethoscope,
   Sun,
-  Terminal,
   X,
 } from "lucide-vue-next";
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
@@ -22,7 +21,6 @@ import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import OnboardingDialog from "@/components/OnboardingDialog.vue";
 import OpenSourceSupportNote from "@/components/OpenSourceSupportNote.vue";
 import Button from "@/components/ui/Button.vue";
-import Eyebrow from "@/components/ui/Eyebrow.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { setPendingSubscriptionDraft } from "@/components/pages/subscriptionDraft";
@@ -36,14 +34,12 @@ type OnboardingPreference = "dismissed" | "completed";
 type TabDefinition = {
   key: TabKey;
   label: string;
-  code: string;
   workspace: WorkspaceKey;
 };
 
 type WorkspaceDefinition = {
   key: WorkspaceKey;
   label: string;
-  code: string;
   description: string;
   icon: Component;
 };
@@ -77,46 +73,42 @@ const asyncPages = Object.fromEntries(
 ) as Record<TabKey, Component>;
 
 const tabs: readonly TabDefinition[] = [
-  { key: "control", label: "运行总览", code: "STATUS", workspace: "run" },
-  { key: "about", label: "路径速览", code: "PATH", workspace: "run" },
-  { key: "apps", label: "应用策略", code: "APPS", workspace: "route" },
-  { key: "block", label: "规则黑名单", code: "BLOCK", workspace: "route" },
-  { key: "chain", label: "链式代理", code: "CHAIN", workspace: "route" },
-  { key: "subs", label: "订阅", code: "SUBS", workspace: "configure" },
-  { key: "config", label: "配置文件", code: "CONFIG", workspace: "configure" },
-  { key: "webui", label: "面板入口", code: "WEBUI", workspace: "configure" },
-  { key: "health", label: "健康检查", code: "HEALTH", workspace: "diagnose" },
-  { key: "tools", label: "工具箱", code: "TOOLS", workspace: "diagnose" },
-  { key: "output", label: "命令输出", code: "OUTPUT", workspace: "diagnose" },
+  { key: "control", label: "运行状态", workspace: "run" },
+  { key: "about", label: "流量路径", workspace: "run" },
+  { key: "apps", label: "应用", workspace: "route" },
+  { key: "block", label: "拦截规则", workspace: "route" },
+  { key: "chain", label: "链式代理", workspace: "route" },
+  { key: "subs", label: "订阅", workspace: "configure" },
+  { key: "config", label: "配置文件", workspace: "configure" },
+  { key: "webui", label: "管理面板", workspace: "configure" },
+  { key: "health", label: "健康检查", workspace: "diagnose" },
+  { key: "tools", label: "工具", workspace: "diagnose" },
+  { key: "output", label: "最近输出", workspace: "diagnose" },
 ];
 
 const workspaces: readonly WorkspaceDefinition[] = [
   {
     key: "run",
     label: "运行",
-    code: "RUN",
-    description: "确认核心状态、路径速览并执行设备级高频控制。",
+    description: "查看状态并控制服务。",
     icon: Gauge,
   },
   {
     key: "route",
     label: "路由",
-    code: "ROUTE",
-    description: "决定应用、规则与两跳链路如何处理流量。",
+    description: "设置应用、规则和链式代理。",
     icon: GitBranch,
   },
   {
     key: "configure",
     label: "配置",
-    code: "CONFIG",
-    description: "管理订阅、配置文件与 sing-box 面板入口。",
+    description: "管理订阅、配置文件和面板。",
     icon: Settings,
   },
   {
     key: "diagnose",
     label: "诊断",
-    code: "DIAG",
-    description: "运行检查、工具命令并查看脱敏输出。",
+    description: "检查问题并运行维护工具。",
     icon: Stethoscope,
   },
 ];
@@ -141,7 +133,21 @@ const {
 } = useMagicNet();
 const { preference: themePreference, label: themeLabel, cycleTheme } = useTheme();
 
-const activeTab = ref<TabKey>("control");
+function readTabFromLocation(): TabKey | null {
+  if (typeof window === "undefined") return null;
+  const key = window.location.hash.replace(/^#\/?/, "");
+  return tabs.some((item) => item.key === key) ? key as TabKey : null;
+}
+
+function writeTabToLocation(tab: TabKey, replace = false): void {
+  if (typeof window === "undefined") return;
+  const hash = `#/${tab}`;
+  if (window.location.hash === hash) return;
+  const method = replace ? "replaceState" : "pushState";
+  window.history[method]({ tab }, "", hash);
+}
+
+const activeTab = ref<TabKey>(readTabFromLocation() ?? "control");
 const lastTabByWorkspace = ref<Record<WorkspaceKey, TabKey>>({
   run: "control",
   route: "apps",
@@ -199,26 +205,16 @@ const activeSectionTabs = computed(() =>
 );
 const activeComponent = computed(() => asyncPages[activeTab.value]);
 
-const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice || "等待操作"));
+const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice || "准备就绪"));
 const runtimeStateLabel = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "sing-box 运行中";
   if (state.runtime.singBoxState === "stopped") return "已停止";
   return "状态未知";
 });
-const runtimeStateCode = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "ONLINE";
-  if (state.runtime.singBoxState === "stopped") return "STOPPED";
-  return "UNKNOWN";
-});
 const routeStackState = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "active";
   if (state.runtime.singBoxState === "stopped") return "stopped";
   return "unknown";
-});
-const transparentRouteNode = computed(() => {
-  if (state.runtime.transparentMode === "tun") return "magicnet0";
-  if (state.runtime.transparentMode === "ebpf") return "cgroup + TC";
-  return "STATUS UNAVAILABLE";
 });
 const transparentRouteData = computed(() => {
   if (state.runtime.transparentMode === "tun") return "magicnet0";
@@ -231,13 +227,14 @@ const statusDotTone = computed(() => {
   return "unknown" as const;
 });
 
-function setTab(tab: TabKey): void {
+function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
   if (tab !== activeTab.value) {
     activeTab.value = tab;
     const definition = tabs.find((item) => item.key === tab);
     if (definition) lastTabByWorkspace.value[definition.workspace] = tab;
     warmActiveTab(tab);
   }
+  if (options.updateLocation !== false) writeTabToLocation(tab);
   void nextTick(() => {
     const target = Array.from(
       document.querySelectorAll<HTMLElement>(`[data-tab="${tab}"]`),
@@ -248,6 +245,11 @@ function setTab(tab: TabKey): void {
 
 function setWorkspace(workspace: WorkspaceKey): void {
   setTab(lastTabByWorkspace.value[workspace]);
+}
+
+function syncTabFromLocation(): void {
+  const tab = readTabFromLocation();
+  if (tab) setTab(tab, { updateLocation: false });
 }
 
 function readOnboardingPreference(): OnboardingPreference | null {
@@ -392,7 +394,10 @@ function warmActiveTab(tab: TabKey): void {
 onMounted(() => {
   void refreshStatus();
   document.addEventListener("keydown", handleEscape);
-  void pageLoaders.control();
+  window.addEventListener("popstate", syncTabFromLocation);
+  window.addEventListener("hashchange", syncTabFromLocation);
+  writeTabToLocation(activeTab.value, true);
+  void pageLoaders[activeTab.value]();
   if (!readOnboardingPreference()) {
     void nextTick(() => {
       if (!showOnboarding.value) launchOnboarding();
@@ -409,6 +414,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener("keydown", handleEscape);
+  window.removeEventListener("popstate", syncTabFromLocation);
+  window.removeEventListener("hashchange", syncTabFromLocation);
   if (easterEggTimer !== undefined) window.clearTimeout(easterEggTimer);
   if (showUtilityMenu.value) document.body.style.overflow = bodyOverflowBeforeDialog;
 });
@@ -434,8 +441,8 @@ onUnmounted(() => {
           />
         </button>
         <div class="mn-brand-copy">
-          <p aria-hidden="true">ROOT://MAGICNET</p>
           <h1>MagicNet</h1>
+          <p>网络控制</p>
         </div>
       </div>
 
@@ -503,76 +510,38 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section class="runtime-cockpit" aria-labelledby="runtime-cockpit-title">
-      <div class="mn-status-line" :data-state="routeStackState" role="status" aria-live="polite" aria-atomic="true">
-        <span class="mn-prompt" aria-hidden="true">root@magicnet:~$</span>
-        <div class="mn-runtime-state">
-          <StatusDot :tone="statusDotTone" />
-          <strong id="runtime-cockpit-title">{{ runtimeStateLabel }}</strong>
-          <code class="mn-state-code">[{{ runtimeStateCode }}]</code>
-        </div>
-        <p :title="statusMessage">{{ statusMessage }}</p>
+    <section
+      class="mn-runtime-brief"
+      :data-state="routeStackState"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-label="MagicNet 运行状态"
+    >
+      <div class="mn-runtime-state">
+        <StatusDot :tone="statusDotTone" />
+        <strong>{{ runtimeStateLabel }}</strong>
       </div>
-
-      <div class="mn-route-stack" :data-state="routeStackState" aria-label="MagicNet 透明代理运行路径">
-        <div class="mn-route-caption">
-          <span>ROUTE_STACK</span>
-          <span>[READ_ONLY]</span>
-        </div>
-        <ol>
-          <li>
-            <span class="mn-route-index">01</span>
-            <span class="mn-route-node">ANDROID ROOT</span>
-            <code>ENTRY</code>
-          </li>
-          <li>
-            <span class="mn-route-index">02</span>
-          <span class="mn-route-node">
-            {{ state.runtime.transparentMode === "tun" ? "magicnet0" : transparentRouteNode }}
-          </span>
-          <code>{{ state.runtime.transparentMode.toUpperCase() }}</code>
-          </li>
-          <li>
-            <span class="mn-route-index">03</span>
-            <span class="mn-route-node">sing-box</span>
-            <code>{{ state.runtime.singBox || "UNKNOWN" }}</code>
-          </li>
-          <li>
-            <span class="mn-route-index">04</span>
-            <span class="mn-route-node">POLICY / OUTBOUND</span>
-            <code>ROUTE</code>
-          </li>
-        </ol>
-      </div>
-
-      <div class="mn-runtime-readout">
-        <div>
-          <Eyebrow tone="faint">MODE</Eyebrow>
-          <code>{{ state.runtime.transparentMode.toUpperCase() }}</code>
-        </div>
-        <div>
-          <Eyebrow tone="faint">CORE</Eyebrow>
-          <code>{{ state.runtime.singBox }}</code>
-        </div>
-        <Button
-          v-if="state.backgroundTask.log"
-          variant="outline"
-          size="sm"
-          aria-label="查看后台日志"
-          @click="setTab('output')"
-        >
-          <Terminal :size="15" aria-hidden="true" />后台输出
-        </Button>
-      </div>
+      <span class="mn-runtime-mode">{{ state.runtime.transparentMode.toUpperCase() }}</span>
+      <p :title="statusMessage">{{ statusMessage }}</p>
+      <Button
+        v-if="state.backgroundTask.log"
+        variant="ghost"
+        size="sm"
+        @click="setTab('output')"
+      >
+        查看输出
+      </Button>
     </section>
 
     <div class="mn-workspace-frame">
       <aside class="desktop-rail" aria-label="MagicNet 工作区">
-        <div class="mn-rail-label">WORKSPACES</div>
+        <div class="mn-rail-label">导航</div>
         <nav>
           <button
             v-for="workspace in workspaces"
             :key="workspace.key"
+            :data-workspace="workspace.key"
             :class="activeWorkspace.key === workspace.key ? 'mn-nav-active' : 'mn-nav-idle'"
             type="button"
             :aria-current="activeWorkspace.key === workspace.key ? 'page' : undefined"
@@ -580,14 +549,11 @@ onUnmounted(() => {
           >
             <component :is="workspace.icon" :size="18" aria-hidden="true" />
             <span>{{ workspace.label }}</span>
-            <code>{{ workspace.code }}</code>
           </button>
         </nav>
         <div class="mn-rail-foot">
-      <span>MODE::{{ state.runtime.transparentMode.toUpperCase() }}</span>
-      <span>
-        DATA::{{ transparentRouteData }}
-      </span>
+          <span>透明模式 {{ state.runtime.transparentMode.toUpperCase() }}</span>
+          <span>数据面 {{ transparentRouteData }}</span>
         </div>
       </aside>
 
@@ -609,7 +575,6 @@ onUnmounted(() => {
               @focus="prefetchTab(item.key)"
               @click="setTab(item.key)"
             >
-              <code>{{ item.code }}</code>
               <span>{{ item.label }}</span>
             </button>
           </nav>
@@ -626,7 +591,7 @@ onUnmounted(() => {
               />
             </KeepAlive>
             <template #fallback>
-              <div class="mn-loading-panel" role="status">[LOAD] 正在加载工作区…</div>
+              <div class="mn-loading-panel" role="status">正在加载…</div>
             </template>
           </Suspense>
         </section>
@@ -639,6 +604,7 @@ onUnmounted(() => {
       <button
         v-for="workspace in workspaces"
         :key="workspace.key"
+        :data-workspace="workspace.key"
         :class="activeWorkspace.key === workspace.key ? 'mn-nav-active' : 'mn-nav-idle'"
         type="button"
         :aria-current="activeWorkspace.key === workspace.key ? 'page' : undefined"
@@ -646,7 +612,6 @@ onUnmounted(() => {
       >
         <component :is="workspace.icon" :size="19" aria-hidden="true" />
         <span>{{ workspace.label }}</span>
-        <code aria-hidden="true">{{ workspace.code }}</code>
       </button>
     </nav>
 
@@ -709,7 +674,7 @@ onUnmounted(() => {
           <strong>{{ easterEggPayload.title }}</strong>
           <p>{{ easterEggPayload.body }}</p>
           <p class="mn-visitor-line">
-            <span>VISITORS::</span>
+            <span>来访</span>
             <template v-for="(visitor, index) in easterEggVisitors" :key="visitor.name">
               <span aria-hidden="true">/</span>
               <span :class="index === easterEggShownIndex ? 'is-current' : undefined">{{ visitor.name }}</span>

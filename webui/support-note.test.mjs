@@ -8,25 +8,21 @@ const note = readFileSync(
 );
 
 for (const copy of [
-  "关于 MagicNet 的维护与支持",
-  "这个项目一直由我个人持续维护",
-  "我是一名大学生",
-  "AI 辅助开发、持续调用、服务器开销和排障本身都会消耗真实的 Token、时间和资源",
-  "我不太想把它做成一段单纯的捐赠请求",
-  "如果你刚好有实际使用需求，可以在那里购买 AI 使用额度",
-  "支持 MagicNet 继续做开源维护",
-  "它是一个独立的外部服务，是否使用完全自愿，不使用也不会影响 MagicNet 的任何功能",
-  "一部分收入也会尽量继续投入到 MagicNet 这样的开源维护里",
-  "提交 Issue、Pull Request、建议，或者帮忙测试新版本",
-  "合适的时候我也会尽量提供一些使用额度回馈",
-  "访问中转站",
+  "支持项目",
+  "MagicNet 由个人维护",
+  "提交 Issue、Pull Request、建议或测试结果",
+  "提供独立的 AI API 服务",
+  "是否使用完全自愿",
+  "不使用不会影响 MagicNet 的任何功能",
+  "服务收入会用于项目维护",
+  "了解外部服务",
 ]) {
   assert.match(note, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 }
 
 assert.match(note, /<details[\s\S]*aria-label="MagicNet 开源支持说明"/);
 assert.doesNotMatch(note, /<details[^>]*\sopen(?:\s|=|>)/);
-assert.match(note, /<summary[\s\S]*关于 MagicNet 的维护与支持/);
+assert.match(note, /<summary[\s\S]*支持项目/);
 assert.match(note, /href="https:\/\/api\.lmm\.best\/"/);
 assert.match(note, /target="_blank"/);
 assert.match(note, /rel="noopener noreferrer"/);

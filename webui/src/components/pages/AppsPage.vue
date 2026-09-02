@@ -431,7 +431,7 @@ onMounted(() => {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="Per App Policy" title="应用名单" description="Proxy 强制代理；Direct 在 TUN 内强制直连；Bypass TUN 让应用完全离开 MagicNet。">
+    <PageHeader overline="应用策略" title="应用名单" description="选择应用走代理、在 MagicNet 内直连，或完全绕过 MagicNet。">
       <div class="flex flex-wrap gap-2">
         <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取名单</Button>
         <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />重新读取应用</Button>
@@ -457,11 +457,12 @@ onMounted(() => {
             aria-labelledby="app-policy-confirm-title"
           >
             <ConfirmPanel
-              title="Confirm app policy"
+              title="确认应用策略"
               :detail="pendingAppAction.message"
               :command="pendingAppAction.command"
               :loading="isRunning(pendingAppAction.key)"
-              confirm-variant="secondary"
+              confirm-label="应用更改"
+              confirm-variant="default"
               @cancel="cancelAppAction"
               @confirm="confirmAppAction"
             >
@@ -492,16 +493,16 @@ onMounted(() => {
         </div>
         <span class="text-sm text-[var(--mn-ink-muted)]">
           {{ state.appPolicy.mode === 'whitelist'
-            ? '仅 Proxy 和 Direct 名单中的应用进入当前透明数据面；未列出应用直接走系统网络。'
-            : '默认所有应用进入当前透明数据面；Bypass 名单中的应用走系统网络。' }}
+            ? '只有名单中的应用进入 MagicNet；其他应用使用系统网络。'
+            : '默认接管所有应用；绕过名单使用系统网络。' }}
         </span>
       </div>
-      <p class="text-xs leading-5 text-[var(--mn-ink-faint)]">Proxy 强制代理，Direct 在当前透明数据面内直连。应用名单会解析成 Android UID；共享同一 UID 的应用会一起生效。</p>
+      <p class="text-xs leading-5 text-[var(--mn-ink-faint)]">同一 Android UID 的应用会一起生效。</p>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
         <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
-        <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />{{ isRunning('add-proxy') ? '保存中' : 'Proxy' }}</Button>
-        <Button variant="secondary" :loading="isRunning('add-direct')" @click="addApp('direct')"><Plus :size="16" />{{ isRunning('add-direct') ? '保存中' : 'Direct' }}</Button>
-        <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : 'Bypass' }}</Button>
+        <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />{{ isRunning('add-proxy') ? '保存中' : '走代理' }}</Button>
+        <Button variant="secondary" :loading="isRunning('add-direct')" @click="addApp('direct')"><Plus :size="16" />{{ isRunning('add-direct') ? '保存中' : 'MagicNet 内直连' }}</Button>
+        <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : '完全绕过' }}</Button>
       </div>
     </Card>
 
