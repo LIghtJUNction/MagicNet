@@ -523,9 +523,43 @@ const UNSAFE_SUBSCRIPTION_ENV: &[&str] = &[
     "MAGICNET_SUB_PRESERVE_REFRESH",
 ];
 
+const UNSAFE_RUNTIME_PATH_ENV: &[&str] = &[
+    "MAGICNET_LIB_DIR",
+    "MAGICNET_PROC_ROOT",
+    "MAGICNET_PROC_QUERY_DIR",
+    "MAGICNET_SINGBOX_PROC_ROOT",
+    "MAGICNET_PROCESS_CGROUP_ROOTS",
+];
+
+const UNSAFE_SHELL_HIJACK_ENV: &[&str] = &[
+    "ENV",
+    "BASH_ENV",
+    "SHELLOPTS",
+    "CDPATH",
+    "IFS",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "LD_DYNAMIC_WEAK",
+    "LD_ORIGIN_PATH",
+    "LD_PROFILE",
+    "LD_SHOW_AUXV",
+    "LD_USE_LOAD_BIAS",
+];
+
 fn clear_unsafe_subscription_environment(command: &mut Command) {
-    for key in UNSAFE_SUBSCRIPTION_ENV {
+    for key in UNSAFE_SUBSCRIPTION_ENV
+        .iter()
+        .chain(UNSAFE_RUNTIME_PATH_ENV)
+        .chain(UNSAFE_SHELL_HIJACK_ENV)
+    {
         command.env_remove(key);
+    }
+    for (key, _) in env::vars() {
+        if key.starts_with("LD_") {
+            command.env_remove(&key);
+        }
     }
 }
 
@@ -1300,7 +1334,8 @@ mod process_group_tests {
     use super::{
         clear_unsafe_subscription_environment, command_timeout_secs, run_magicnet_function,
         run_process_group, terminate_timed_out_child, trusted_shell, App, TimedChildWait,
-        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_SUBSCRIPTION_ENV,
+        DEFAULT_COMMAND_TIMEOUT_SECS, MAX_COMMAND_TIMEOUT_SECS, UNSAFE_RUNTIME_PATH_ENV,
+        UNSAFE_SHELL_HIJACK_ENV, UNSAFE_SUBSCRIPTION_ENV,
     };
     use std::fs;
     use std::process::Command;
@@ -1445,19 +1480,27 @@ mod process_group_tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut command = Command::new("sh");
         command.args(["-c", "env"]);
-        for key in UNSAFE_SUBSCRIPTION_ENV {
-            command.env(key, "attacker-controlled");
+        for key in UNSAFE_SUBSCRIPTION_ENV
+            .iter()
+            .chain(UNSAFE_RUNTIME_PATH_ENV)
+            .chain(UNSAFE_SHELL_HIJACK_ENV)
+        {
+            command.env(*key, "attacker-controlled");
         }
         clear_unsafe_subscription_environment(&mut command);
         let output = command.output()?;
         assert!(output.status.success());
         let stdout = String::from_utf8(output.stdout)?;
-        for key in UNSAFE_SUBSCRIPTION_ENV {
+        for key in UNSAFE_SUBSCRIPTION_ENV
+            .iter()
+            .chain(UNSAFE_RUNTIME_PATH_ENV)
+            .chain(UNSAFE_SHELL_HIJACK_ENV)
+        {
             assert!(
                 !stdout
                     .lines()
                     .any(|line| line.starts_with(&format!("{key}="))),
-                "unsafe subscription variable leaked: {key}"
+                "unsafe command variable leaked: {key}"
             );
         }
         Ok(())

@@ -9,8 +9,30 @@ magicnet_dns_capture_singbox_mark() {
     printf '%s\n' 1073741824
 }
 
+# Host tests may inject fixture trees through MAGICNET_* path overrides.
+# Android always uses module-owned roots and real /proc.
+magicnet_env_override_allowed() {
+    if type magicnet_env_override_allowed_test_hook >/dev/null 2>&1; then
+        magicnet_env_override_allowed_test_hook
+        return $?
+    fi
+    [ ! -x /system/bin/getprop ]
+}
+
+magicnet_resolved_proc_root() {
+    if magicnet_env_override_allowed; then
+        if [ -n "${1:-}" ]; then
+            printf '%s\n' "$1"
+        else
+            printf '%s\n' "${MAGICNET_PROC_ROOT:-/proc}"
+        fi
+        return 0
+    fi
+    printf '%s\n' /proc
+}
+
 magicnet_lib_dir() {
-    if [ -n "${MAGICNET_LIB_DIR:-}" ]; then
+    if [ -n "${MAGICNET_LIB_DIR:-}" ] && magicnet_env_override_allowed; then
         printf '%s\n' "$MAGICNET_LIB_DIR"
     elif [ -f "${MODDIR}/lib/magicnet/primitives.sh" ]; then
         printf '%s\n' "${MODDIR}/lib/magicnet"
@@ -97,7 +119,11 @@ magicnet_host_proc_reader() (
 # pathname with command substitution, but process presence is always conveyed
 # by the tri-state return code of the *_to_file APIs below.
 magicnet_proc_query_temp_create() (
-    _query_dir="${MAGICNET_PROC_QUERY_DIR:-${MODDIR}/.state/sing-box}"
+    if magicnet_env_override_allowed && [ -n "${MAGICNET_PROC_QUERY_DIR:-}" ]; then
+        _query_dir="$MAGICNET_PROC_QUERY_DIR"
+    else
+        _query_dir="${MODDIR}/.state/sing-box"
+    fi
     case "$_query_dir" in /*) ;; *) return 1 ;; esac
     if [ ! -d "$_query_dir" ]; then
         mkdir -p "$_query_dir" || return 1
@@ -272,7 +298,8 @@ magicnet_proc_named_pids_to_file() (
 # malformed entries, and kills its reader worker if this shell disappears.
 magicnet_proc_cmdline_lines() (
     _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_root="${2:-}"
+    [ -n "$_proc_root" ] || _proc_root="$(magicnet_resolved_proc_root "")"
     case "$_proc_pid" in
     '' | *[!0-9]* | 0) return 1 ;;
     esac
@@ -298,7 +325,8 @@ magicnet_proc_cmdline_lines() (
 
 magicnet_proc_comm() (
     _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_root="${2:-}"
+    [ -n "$_proc_root" ] || _proc_root="$(magicnet_resolved_proc_root "")"
     case "$_proc_pid" in
     '' | *[!0-9]* | 0) return 1 ;;
     esac
@@ -324,7 +352,8 @@ magicnet_proc_comm() (
 
 magicnet_proc_stat_identity() (
     _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_root="${2:-}"
+    [ -n "$_proc_root" ] || _proc_root="$(magicnet_resolved_proc_root "")"
     case "$_proc_pid" in
     '' | *[!0-9]* | 0) return 1 ;;
     esac
@@ -349,10 +378,11 @@ magicnet_proc_stat_identity() (
 )
 
 # Read /proc/<pid>/stat starttime. Optional second argument overrides the proc
-# root (tests inject a fixture tree via MAGICNET_SUB_REFRESH_PROC_ROOT).
+# root (host tests inject a fixture tree via MAGICNET_SUB_REFRESH_PROC_ROOT).
 magicnet_proc_start() {
     _proc_pid="$1"
-    _proc_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_root="${2:-}"
+    [ -n "$_proc_root" ] || _proc_root="$(magicnet_resolved_proc_root "")"
     case "$_proc_pid" in
     '' | *[!0-9]*)
         unset _proc_pid _proc_root _proc_identity _proc_state _proc_start _proc_read_rc
@@ -396,7 +426,8 @@ magicnet_proc_start() {
 
 magicnet_proc_state() {
     _proc_state_pid="$1"
-    _proc_state_root="${2:-${MAGICNET_PROC_ROOT:-/proc}}"
+    _proc_state_root="${2:-}"
+    [ -n "$_proc_state_root" ] || _proc_state_root="$(magicnet_resolved_proc_root "")"
     if _proc_state_identity="$(magicnet_proc_stat_identity "$_proc_state_pid" "$_proc_state_root")"; then
         _proc_state_read_rc=0
     else
@@ -439,7 +470,7 @@ magicnet_singbox_proc_start() {
 # the bridge exits, so its persistent children are not reclaimed with the app.
 magicnet_detach_pid_from_app_cgroup() (
     _detach_pid="$1"
-    _detach_proc_root="${MAGICNET_PROC_ROOT:-/proc}"
+    _detach_proc_root="$(magicnet_resolved_proc_root "")"
     case "$_detach_pid" in
     '' | *[!0-9]* | 0 | 1) return 1 ;;
     esac
@@ -451,9 +482,13 @@ magicnet_detach_pid_from_app_cgroup() (
     [ "$_detach_app_lines" -gt 0 ] || return 0
 
     _detach_default_roots='/sys/fs/cgroup:/dev/memcg/apps:/dev/cpuset:/dev/cpuctl:/dev/blkio:/dev/freezer'
-    _detach_roots="${MAGICNET_PROCESS_CGROUP_ROOTS:-$_detach_default_roots}"
-    _detach_custom=0
-    [ -z "${MAGICNET_PROCESS_CGROUP_ROOTS:-}" ] || _detach_custom=1
+    if magicnet_env_override_allowed && [ -n "${MAGICNET_PROCESS_CGROUP_ROOTS:-}" ]; then
+        _detach_roots="$MAGICNET_PROCESS_CGROUP_ROOTS"
+        _detach_custom=1
+    else
+        _detach_roots="$_detach_default_roots"
+        _detach_custom=0
+    fi
     _detach_required=0
     _detach_moved=0
     _detach_failed=0

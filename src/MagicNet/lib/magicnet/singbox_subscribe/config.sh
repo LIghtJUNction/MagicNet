@@ -570,7 +570,7 @@ magicnet_singbox_pid_live() (
     case "$_live_pid" in
     '' | *[!0-9]* | 0) return 1 ;;
     esac
-    _live_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    _live_proc_root="$(magicnet_resolved_proc_root "${MAGICNET_SINGBOX_PROC_ROOT:-}")"
     _live_proc_dir="$_live_proc_root/$_live_pid"
     [ -d "$_live_proc_dir" ] || {
         unset _live_pid _live_proc_root _live_proc_dir
@@ -596,7 +596,7 @@ magicnet_singbox_pids_to_file() (
     [ -f "$_singbox_output" ] && [ ! -L "$_singbox_output" ] || return 2
     chmod 600 "$_singbox_output" 2>/dev/null || return 2
     : >"$_singbox_output" || return 2
-    _singbox_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    _singbox_proc_root="$(magicnet_resolved_proc_root "${MAGICNET_SINGBOX_PROC_ROOT:-}")"
     _singbox_candidates=$(magicnet_proc_query_temp_create) || return 2
     _singbox_found=0
 
@@ -704,7 +704,7 @@ magicnet_singbox_pid_owned() (
     [ "$_owned_live_rc" -eq 0 ] || return 1
     [ -x "${MODDIR}/bin/sing-box" ] || return 2
     _owned_expected=$(readlink -f "${MODDIR}/bin/sing-box" 2>/dev/null) || return 2
-    _owned_proc_root="${MAGICNET_SINGBOX_PROC_ROOT:-/proc}"
+    _owned_proc_root="$(magicnet_resolved_proc_root "${MAGICNET_SINGBOX_PROC_ROOT:-}")"
     _owned_proc_dir="$_owned_proc_root/$_owned_pid"
     _owned_comm="$(magicnet_proc_comm "$_owned_pid" "$_owned_proc_root")" || {
         [ -d "$_owned_proc_dir" ] && return 2
