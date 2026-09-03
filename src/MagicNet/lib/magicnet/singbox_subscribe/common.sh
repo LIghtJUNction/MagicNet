@@ -413,14 +413,6 @@ magicnet_singbox_subscription_user_agent_file() {
     printf '%s\n' "${MAGICNET_SUB_USER_AGENT_FILE:-${MODDIR}/.config/sing-box/subscription.user-agent}"
 }
 
-magicnet_singbox_subscription_source_file() {
-    printf '%s\n' "${MODDIR}/.config/sing-box/subscription.yaml"
-}
-
-magicnet_singbox_subscription_source_dir() {
-    printf '%s\n' "${MODDIR}/.config/sing-box"
-}
-
 magicnet_singbox_subscription_cache_dir() {
     printf '%s\n' "${MODDIR}/.state/sing-box/subscription-cache"
 }

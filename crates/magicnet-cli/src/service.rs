@@ -458,7 +458,7 @@ fn restart_with_options_unlocked(
 fn restart_command(target: &str) -> &'static str {
     match target {
         "sing-box" | "singbox" => {
-            "MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached"
+            "MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached"
         }
         _ => unreachable!("restart validates the target before building the command"),
     }
