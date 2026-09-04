@@ -291,3 +291,11 @@
 }
 .page-surface[data-page="control"] .mn-page-header p,
 .page-surface[data-page="control"] .mn-page-actions > span { display: none; }
+
+/* Intrinsic form widths must not force a wider page when text is enlarged. */
+.page-surface :where(.grid, .flex) > * { min-width: 0; }
+.page-surface :where(input, select, textarea) { max-width: 100%; }
+.page-surface :where(p, code, dd) { overflow-wrap: anywhere; }
+.page-surface .mn-segmented { flex-wrap: wrap; }
+.page-surface[data-page="health"] .magic-card > .flex > .flex,
+.page-surface[data-page="tools"] .magic-card > .flex { flex-wrap: wrap; }
