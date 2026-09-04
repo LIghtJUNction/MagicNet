@@ -31,6 +31,27 @@ magicnet_resolved_proc_root() {
     printf '%s\n' /proc
 }
 
+# Drop inherited hijack/path redirects. Host tests keep MAGICNET_* fixtures;
+# Android entrypoints clear them so later in-process subscription code cannot
+# read a caller-supplied URL, filter, or config path. The module may still
+# export those variables itself after this runs.
+magicnet_clear_untrusted_inherited_env() {
+    unset ENV BASH_ENV SHELLOPTS CDPATH
+    unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG LD_DYNAMIC_WEAK \
+        LD_ORIGIN_PATH LD_PROFILE LD_SHOW_AUXV LD_USE_LOAD_BIAS
+    unset MAGICNET_SUB_PROXY
+    magicnet_env_override_allowed && return 0
+    unset MAGICNET_LIB_DIR MAGICNET_PROC_ROOT MAGICNET_PROC_QUERY_DIR \
+        MAGICNET_SINGBOX_PROC_ROOT MAGICNET_PROCESS_CGROUP_ROOTS
+    unset MAGICNET_SUB_CANDIDATE_URL_FILE MAGICNET_SUB_CANDIDATE_SOURCE_FILE \
+        MAGICNET_SUB_CONFIG_FILE MAGICNET_SUB_FILTER_FILE MAGICNET_SUB_SOURCE_FILE \
+        MAGICNET_SUB_URL_FILE MAGICNET_SUB_USER_AGENT_FILE \
+        MAGICNET_SUB_FAULT MAGICNET_SUB_FAULT_EXIT137 MAGICNET_SUB_FAULT_TERM \
+        MAGICNET_SUB_REFRESH_OWNER_WRITE_FAIL MAGICNET_SUB_REFRESH_PROC_ROOT \
+        MAGICNET_SUB_DEFER_FSWATCH_RESTORE MAGICNET_SUB_FSWATCH_RESTORE_PENDING \
+        MAGICNET_SUB_FSWATCH_WAS_ACTIVE MAGICNET_SUB_PRESERVE_REFRESH
+}
+
 magicnet_lib_dir() {
     if [ -n "${MAGICNET_LIB_DIR:-}" ] && magicnet_env_override_allowed; then
         printf '%s\n' "$MAGICNET_LIB_DIR"

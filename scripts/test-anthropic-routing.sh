@@ -11,14 +11,6 @@ write_outbounds_config() {
 # shellcheck disable=SC2034
 MODDIR="$MODULE_ROOT"
 . "$MODULE_ROOT/lib/magicnet_singbox_subscribe.sh"
-selector_tags_json=$(magicnet_selector_tags_json \
-  "$(printf '%s\n%s\n%s\n' 'node "one"' direct 'node "one"')" 'fallback\path')
-[[ "$selector_tags_json" == '["node \"one\"", "direct", "fallback\\path", "block"]' ]] ||
-  fail "selector tag ordering, uniqueness, or JSON escaping mismatch: $selector_tags_json"
-normalized_selector_tags_json=$(magicnet_selector_tags_json \
-  "$(printf '%s\n%s\n' $'node\tspace' 'node space')" $'node\tspace')
-[[ "$normalized_selector_tags_json" == '["node space", "direct", "block"]' ]] ||
-  fail "selector tag final-value deduplication mismatch: $normalized_selector_tags_json"
 cat >"$tmp_dir/nodes.json" <<'JSON'
 [
  {"type":"vless","tag":"Germany edge","server":"de.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000030"},

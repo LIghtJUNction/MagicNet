@@ -160,18 +160,51 @@ fn parse_pcap_args(args: &[String]) -> Result<PcapArgs, String> {
             .get(1)
             .map(String::as_str)
             .filter(|value| !value.trim().is_empty())
-            .ok_or(usage)?;
+            .ok_or_else(|| usage.clone())?;
         return Ok(PcapArgs {
             seconds: seconds.clamp(1, MAX_CAPTURE_SECONDS),
-            ifname: ifname.to_string(),
-            filter: args.iter().skip(2).cloned().collect(),
+            ifname: validated_pcap_ifname(ifname)?,
+            filter: validated_pcap_filter(args.iter().skip(2))?,
         });
     }
     Ok(PcapArgs {
         seconds: DEFAULT_CAPTURE_SECONDS,
-        ifname: first.to_string(),
-        filter: args.iter().skip(1).cloned().collect(),
+        ifname: validated_pcap_ifname(first)?,
+        filter: validated_pcap_filter(args.iter().skip(1))?,
     })
+}
+
+fn validated_pcap_ifname(value: &str) -> Result<String, String> {
+    if valid_pcap_ifname(value) {
+        Ok(value.to_string())
+    } else {
+        Err(format!("invalid pcap interface name: {value}"))
+    }
+}
+
+fn valid_pcap_ifname(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 15
+        && !value.starts_with('-')
+        && !matches!(value, "." | "..")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b':'))
+}
+
+fn validated_pcap_filter<'a, I>(tokens: I) -> Result<Vec<String>, String>
+where
+    I: Iterator<Item = &'a String>,
+{
+    tokens
+        .map(|token| {
+            if token.is_empty() || token.starts_with('-') || token.len() > 128 {
+                Err(format!("invalid pcap filter token: {token}"))
+            } else {
+                Ok(token.clone())
+            }
+        })
+        .collect()
 }
 
 fn finish_capture(outcome: RunOutcome) -> Result<(), String> {
@@ -235,6 +268,20 @@ mod tests {
     fn pcap_requires_interface_after_explicit_duration() {
         let err = parse_pcap_args(&strings(&["30"])).unwrap_err();
         assert!(err.contains("Usage: cli ecapture pcap"));
+    }
+
+    #[test]
+    fn pcap_rejects_flag_like_interface_names() {
+        let err = parse_pcap_args(&strings(&["--help"])).unwrap_err();
+        assert!(err.contains("invalid pcap interface name"));
+        let err = parse_pcap_args(&strings(&["30", "-i"])).unwrap_err();
+        assert!(err.contains("invalid pcap interface name"));
+    }
+
+    #[test]
+    fn pcap_rejects_flag_like_filter_tokens() {
+        let err = parse_pcap_args(&strings(&["wlan0", "-w", "/tmp/evil.pcap"])).unwrap_err();
+        assert!(err.contains("invalid pcap filter token"));
     }
 }
 

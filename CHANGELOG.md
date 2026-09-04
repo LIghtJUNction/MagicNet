@@ -3,7 +3,11 @@
 - Ignore Android `MAGICNET_LIB_DIR`, proc-root, query-dir, and cgroup-root
   overrides, and strip those plus `LD_*` / `ENV` / `BASH_ENV` / `SHELLOPTS` /
   `CDPATH` / `IFS` from privileged CLI shells.
-- Remove unused install-core, `subscription.yaml`, and `MAGICNET_STRICT_CORE` helpers.
+- Clear inherited subscription-path, proxy, and shell-hijack variables at
+  Android module entry so `action.sh` / `service.sh` cannot honor caller env.
+- Reject flag-like `ecapture pcap` interface names and filter tokens.
+- Remove unused install-core, `subscription.yaml`, `MAGICNET_STRICT_CORE`,
+  selector-tags JSON, and `first_clean_line` helpers.
 - Remove the in-repository MagicBox Android app, its submodule integration,
   App-only documentation, and policy-test coupling.
 - Keep eBPF in hybrid mode by default, preserving local cgroup interception while shared TC waits for a confirmed downstream interface.

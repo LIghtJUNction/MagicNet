@@ -773,13 +773,6 @@ pub(crate) fn clean_module_lines(app: &App, relative: &Path) -> Result<Vec<Strin
     Ok(filter_clean_lines(&text))
 }
 
-/// Soft reader for non-module paths. Prefer [`clean_module_lines`] /
-/// [`first_clean_module_line`] for anything under the module root.
-#[allow(dead_code)]
-pub(crate) fn first_clean_line(path: PathBuf) -> String {
-    clean_lines(path).into_iter().next().unwrap_or_default()
-}
-
 pub(crate) fn first_clean_module_line(app: &App, relative: &Path) -> String {
     clean_module_lines(app, relative)
         .unwrap_or_default()

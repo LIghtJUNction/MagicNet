@@ -61,6 +61,21 @@ if ! grep -qx '123' "$WORK/cgroup-v2/cgroup.procs"; then
 fi
 : >"$WORK/cgroup-v2/cgroup.procs"
 
+MAGICNET_SUB_URL_FILE="$WORK/evil/subscription.url"
+MAGICNET_SUB_PROXY="http://127.0.0.1:9"
+ENV="$WORK/evil/profile"
+export MAGICNET_SUB_URL_FILE MAGICNET_SUB_PROXY ENV
+magicnet_clear_untrusted_inherited_env
+if [ "${MAGICNET_SUB_URL_FILE:-}" != "$WORK/evil/subscription.url" ]; then
+    printf 'host runtime must keep MAGICNET_SUB_URL_FILE fixtures\n' >&2
+    exit 1
+fi
+if [ -n "${MAGICNET_SUB_PROXY+x}" ] || [ -n "${ENV+x}" ]; then
+    printf 'host runtime must still drop inherited proxy and ENV hijacks\n' >&2
+    exit 1
+fi
+unset MAGICNET_SUB_URL_FILE
+
 magicnet_env_override_allowed_test_hook() {
     return 1
 }
@@ -99,6 +114,25 @@ rm -f "$android_query_file"
 magicnet_detach_pid_from_app_cgroup 123 || true
 if [ -s "$WORK/cgroup-v2/cgroup.procs" ]; then
     printf 'Android runtime wrote into a caller-supplied cgroup root\n' >&2
+    exit 1
+fi
+
+MAGICNET_SUB_URL_FILE="$WORK/evil/subscription.url"
+MAGICNET_SUB_FILTER_FILE="$WORK/evil/filter.list"
+MAGICNET_SUB_CONFIG_FILE="$WORK/evil/config.json"
+MAGICNET_SUB_PROXY="http://127.0.0.1:9"
+ENV="$WORK/evil/profile"
+BASH_ENV="$WORK/evil/profile"
+export MAGICNET_SUB_URL_FILE MAGICNET_SUB_FILTER_FILE MAGICNET_SUB_CONFIG_FILE
+export MAGICNET_SUB_PROXY ENV BASH_ENV
+magicnet_clear_untrusted_inherited_env
+if [ -n "${MAGICNET_SUB_URL_FILE+x}" ] || [ -n "${MAGICNET_SUB_FILTER_FILE+x}" ] ||
+    [ -n "${MAGICNET_SUB_CONFIG_FILE+x}" ]; then
+    printf 'Android entry must drop inherited subscription path overrides\n' >&2
+    exit 1
+fi
+if [ -n "${MAGICNET_SUB_PROXY+x}" ] || [ -n "${ENV+x}" ] || [ -n "${BASH_ENV+x}" ]; then
+    printf 'Android entry must drop inherited shell hijack variables\n' >&2
     exit 1
 fi
 

@@ -14,3 +14,4 @@ fi
 
 import __runtime__
 . "${MODDIR}/lib/magicnet.sh"
+magicnet_clear_untrusted_inherited_env

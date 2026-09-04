@@ -198,36 +198,6 @@ magicnet_json_array_csv() (
     printf ']'
 )
 
-magicnet_selector_tags_json() {
-    _selector_tags="$1"
-    _selector_fallback="$2"
-    _selector_items=$(
-        {
-            while IFS= read -r _selector_raw_tag; do
-                magicnet_json_escape "$_selector_raw_tag"
-                printf '\n'
-            done <<EOF
-$_selector_tags
-$_selector_fallback
-direct
-block
-EOF
-        } | awk 'NF && !seen[$0]++'
-    )
-    _selector_first=1
-    printf '['
-    while IFS= read -r _selector_tag; do
-        [ -n "$_selector_tag" ] || continue
-        [ "$_selector_first" -eq 1 ] || printf ', '
-        printf '"%s"' "$_selector_tag"
-        _selector_first=0
-    done <<EOF
-$_selector_items
-EOF
-    printf ']'
-    unset _selector_tags _selector_fallback _selector_items _selector_first _selector_tag _selector_raw_tag
-}
-
 magicnet_uri_query_value() {
     _key="$1"
     _query="$2"
