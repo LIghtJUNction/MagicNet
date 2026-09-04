@@ -1,0 +1,164 @@
+/* Quiet Console chrome: keep the page task, not its container, prominent. */
+.mn-page-header {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 8px;
+}
+
+.mn-page-header > div:first-child {
+  flex: 1 1 24rem;
+  overflow-wrap: anywhere;
+}
+
+.mn-page-header > .mn-page-actions {
+  flex: 0 1 auto;
+  align-self: center;
+  margin: 0;
+}
+
+.page-surface > .grid > * {
+  min-width: 0;
+}
+
+.mn-workspace-header {
+  margin-bottom: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--mn-ivory);
+  box-shadow: none;
+  contain: none;
+}
+
+.mn-workspace-header > div:first-child {
+  display: none;
+}
+
+.mn-section-tabs {
+  width: 100%;
+  gap: 20px;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.mn-section-tabs button {
+  min-height: 44px;
+  padding: 8px 2px;
+}
+
+.mn-runtime-brief,
+.magic-card {
+  box-shadow: none;
+}
+
+/* Preserve the observed status color without filling the whole workspace. */
+.magic-card.mn-tone-ok,
+.magic-card.mn-tone-warn,
+.magic-card.mn-tone-danger,
+.magic-card.mn-tone-info {
+  border-color: var(--mn-border);
+  border-inline-start: 3px solid var(--mn-current-tone-ink);
+  background: var(--mn-surface-raised);
+}
+
+.magic-card[class*="mn-tone-"] > p {
+  color: var(--mn-ink-soft);
+}
+
+.mn-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.mn-button svg {
+  flex-shrink: 0;
+}
+
+.mobile-nav {
+  gap: 8px;
+  padding-inline: 12px;
+}
+
+@media (min-width: 900px) {
+  .mn-shell {
+    padding: 24px 32px 32px;
+  }
+
+  .mn-command-bar {
+    padding: 0 0 20px;
+    border: 0;
+    border-bottom: 1px solid var(--mn-border);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .mn-runtime-brief {
+    margin-block: 16px 24px;
+  }
+
+  .mn-workspace-frame {
+    gap: 28px;
+    margin-top: 0;
+  }
+
+  .desktop-rail {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .desktop-rail nav button {
+    min-height: 48px;
+    padding: 12px;
+  }
+
+  .mn-rail-foot {
+    margin-top: 24px;
+  }
+}
+
+@media (max-width: 639px) {
+  .mn-shell {
+    padding-inline: 16px;
+  }
+
+  .mn-command-bar {
+    margin-inline: -16px;
+    padding-inline: 16px;
+  }
+
+  .mn-page-header {
+    gap: 12px;
+    padding-block: 0 4px;
+  }
+
+  .mn-runtime-brief {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    column-gap: 8px;
+  }
+
+  .mn-runtime-brief > p {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (forced-colors: active) {
+  .mn-section-tabs button.is-active {
+    border-bottom-color: Highlight;
+  }
+
+  .magic-card[class*="mn-tone-"] {
+    border-inline-start-color: CanvasText;
+  }
+}
