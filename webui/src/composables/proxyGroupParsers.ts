@@ -5,6 +5,8 @@ export type ProxyGroupSummary = {
   proxies: string[];
 };
 
+export { sanitizeNodeText as sanitizeProxyName } from "./nodeDelayParsers.ts";
+
 export type ProxyGroupsSnapshot = {
   groups: ProxyGroupSummary[];
 };
@@ -24,12 +26,6 @@ export function parseProxyGroupsSnapshot(text: string): ProxyGroupsSnapshot | nu
   } catch {
     return null;
   }
-}
-
-export function sanitizeProxyName(value: string): string {
-  return value
-    .replace(/\b(?:https?|socks?|ss|ssr|vmess|vless|trojan|hysteria2?|tuic|anytls):\/\/[^\s"'<>]+/gi, "[filtered-url]")
-    .replace(/\b(private_?key|password|passwd|token|secret|uuid|api[_-]?key)(\s*[:=]\s*)[^\s,;}\]]+/gi, "$1$2[filtered]");
 }
 
 function parseProxyGroupObject(source: Record<string, unknown> | null): ProxyGroupSummary[] {
