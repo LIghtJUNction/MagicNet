@@ -1,4 +1,11 @@
-import type { AppPolicyMode } from "./appPolicyInsights";
+import type { AppPolicyMode } from "./appPolicyInsights.ts";
+import {
+  appRouteDns,
+  appRouteLabel,
+  appRouteTraffic,
+  defaultAppRoute,
+  type AppRouteKind,
+} from "./appPolicyRouteModel.ts";
 
 export type AppPolicyChangeInput = {
   mode: AppPolicyMode;
@@ -11,12 +18,23 @@ export type AppPolicyChangeInput = {
 export type AppPolicyChangeOperation =
   | { type: "mode"; mode: AppPolicyMode }
   | { type: "add"; target: "proxy" | "direct" | "bypass"; packages: string[] }
-  | { type: "remove"; target: "proxy" | "direct" | "bypass"; packages: string[] };
+  | { type: "remove"; target: "proxy" | "direct" | "bypass"; packages: string[] }
+  | { type: "reapply" };
+
+export type AppPolicyRoutePreview = {
+  subject: string;
+  before: string;
+  after: string;
+  traffic: string;
+  dns: string;
+  activation: string;
+};
 
 export type AppPolicyChangePlan = {
   title: string;
   items: Array<{ label: string; value: string; tone: "success" | "warning" | "danger" | "neutral" }>;
   warnings: string[];
+  routePreview: AppPolicyRoutePreview;
 };
 
 export function buildAppPolicyChangePlan(input: AppPolicyChangeInput, operation: AppPolicyChangeOperation): AppPolicyChangePlan {
@@ -29,7 +47,11 @@ export function buildAppPolicyChangePlan(input: AppPolicyChangeInput, operation:
     ...after.direct.filter((pkg) => after.bypass.includes(pkg))
   ]);
   const title = operationTitle(operation);
-  const items = [
+  const items = operation.type === "reapply" ? [
+    item("名单", "保持不变", "neutral"),
+    item("包名映射", "重新解析", "warning"),
+    item("核心", "重新启动", "warning"),
+  ] : [
     item("模式", `${before.mode} -> ${after.mode}`, before.mode === after.mode ? "neutral" : "warning"),
     item("Proxy", `${before.proxy.length} -> ${after.proxy.length}`, after.proxy.length >= before.proxy.length ? "success" : "warning"),
     item("Direct", `${before.direct.length} -> ${after.direct.length}`, after.direct.length >= before.direct.length ? "success" : "warning"),
@@ -37,13 +59,15 @@ export function buildAppPolicyChangePlan(input: AppPolicyChangeInput, operation:
     item("名单变化", `${listChanged.length} 个`, listChanged.length ? "warning" : "neutral"),
     item("路由变化", routingChanged === null ? "未读取应用" : `${routingChanged} 个`, routingChanged === null ? "warning" : routingChanged ? "warning" : "neutral")
   ];
-  const warnings = [
+  const warnings = operation.type === "reapply" ? [
+    "仅在应用重装、新增工作资料／Android 用户或 UID 改变后需要手动执行。",
+  ] : [
     ...(routingChanged === null ? ["未读取已安装应用，只能预览名单变化，无法计算实际路由影响。"] : []),
     ...modeWarnings(before.mode, after),
     ...movedPackageWarnings(before, after),
     ...(conflicts.length ? [`操作后仍有 ${conflicts.length} 个包同时存在于多个应用策略名单。`] : [])
   ];
-  return { title, items, warnings };
+  return { title, items, warnings, routePreview: buildRoutePreview(before, after, operation) };
 }
 
 function normalizeState(mode: AppPolicyMode, proxy: string[], direct: string[], bypass: string[]) {
@@ -54,6 +78,7 @@ function applyOperation(
   state: { mode: AppPolicyMode; proxy: string[]; direct: string[]; bypass: string[] },
   operation: AppPolicyChangeOperation
 ): { mode: AppPolicyMode; proxy: string[]; direct: string[]; bypass: string[] } {
+  if (operation.type === "reapply") return state;
   if (operation.type === "mode") return { ...state, mode: operation.mode };
   const proxy = [...state.proxy];
   const direct = [...state.direct];
@@ -113,11 +138,11 @@ function effectiveRoutingChanges(
   return Array.from(installedPackages).filter((pkg) => effectiveRoute(before, pkg) !== effectiveRoute(after, pkg)).length;
 }
 
-function effectiveRoute(state: { mode: AppPolicyMode; proxy: string[]; direct: string[]; bypass: string[] }, pkg: string): "proxy" | "direct" | "tun" | "bypass" {
+function effectiveRoute(state: { mode: AppPolicyMode; proxy: string[]; direct: string[]; bypass: string[] }, pkg: string): AppRouteKind {
   if (state.proxy.includes(pkg)) return "proxy";
   if (state.direct.includes(pkg)) return "direct";
   if (state.bypass.includes(pkg) || state.mode === "whitelist") return "bypass";
-  return "tun";
+  return "managed";
 }
 
 function movedPackageWarnings(before: { proxy: string[]; direct: string[]; bypass: string[] }, after: { proxy: string[]; direct: string[]; bypass: string[] }): string[] {
@@ -132,9 +157,71 @@ function movedPackageWarnings(before: { proxy: string[]; direct: string[]; bypas
 }
 
 function operationTitle(operation: AppPolicyChangeOperation): string {
+  if (operation.type === "reapply") return "重新解析 App UID";
   if (operation.type === "mode") return `切换到 ${operation.mode}`;
   const count = unique(operation.packages).length;
   return operation.type === "add" ? `加入 ${operation.target}：${count} 个包` : `移除 ${operation.target}：${count} 个包`;
+}
+
+function buildRoutePreview(
+  before: { mode: AppPolicyMode; proxy: string[]; direct: string[]; bypass: string[] },
+  after: { mode: AppPolicyMode; proxy: string[]; direct: string[]; bypass: string[] },
+  operation: AppPolicyChangeOperation,
+): AppPolicyRoutePreview {
+  const activation = "确认后自动解析 UID、套用配置并重启当前核心；现有连接可能短暂中断。";
+  if (operation.type === "reapply") {
+    return {
+      subject: "当前应用策略",
+      before: "已保存的名单与 UID 映射",
+      after: "相同名单，重新绑定当前 UID",
+      traffic: "策略选择保持不变，只刷新包名对应的 Android UID。",
+      dns: "Bypass 的数据面与 DNS 绕过边界会按当前 UID 重建。",
+      activation,
+    };
+  }
+
+  if (operation.type === "mode") {
+    const beforeRoute = defaultAppRoute(before.mode);
+    const afterRoute = defaultAppRoute(after.mode);
+    return routePreview("未列出的应用", [beforeRoute], [afterRoute], activation);
+  }
+
+  const packages = unique(operation.packages);
+  const beforeRoutes = packages.map((pkg) => effectiveRoute(before, pkg));
+  const afterRoutes = packages.map((pkg) => effectiveRoute(after, pkg));
+  return routePreview(packages.length === 1 ? packages[0] : `${packages.length} 个应用`, beforeRoutes, afterRoutes, activation);
+}
+
+function routePreview(
+  subject: string,
+  beforeRoutes: AppRouteKind[],
+  afterRoutes: AppRouteKind[],
+  activation: string,
+): AppPolicyRoutePreview {
+  const normalizedAfter = uniqueRoutes(afterRoutes);
+  return {
+    subject,
+    before: routeSetLabel(beforeRoutes),
+    after: routeSetLabel(afterRoutes),
+    traffic: normalizedAfter.length === 1
+      ? appRouteTraffic(normalizedAfter[0])
+      : "所选应用会按各自修改后的策略进入不同流量路径。",
+    dns: normalizedAfter.length === 1
+      ? appRouteDns(normalizedAfter[0])
+      : "DNS 边界取决于每个应用修改后的有效路径。",
+    activation,
+  };
+}
+
+function routeSetLabel(routes: AppRouteKind[]): string {
+  const normalized = uniqueRoutes(routes);
+  if (!normalized.length) return "没有可计算的应用";
+  if (normalized.length === 1) return appRouteLabel(normalized[0]);
+  return normalized.map(appRouteLabel).join("；");
+}
+
+function uniqueRoutes(routes: AppRouteKind[]): AppRouteKind[] {
+  return Array.from(new Set(routes));
 }
 
 function addUnique(values: string[], value: string): void {

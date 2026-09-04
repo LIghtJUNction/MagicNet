@@ -1,5 +1,8 @@
 # Unreleased
 
+- Visualize Proxy, Direct, and Bypass app traffic paths in the WebUI, including
+  DNS boundaries, before/after confirmation details, automatic activation, and
+  an advanced action to re-resolve Android UIDs after package or user changes.
 - Remove the in-repository MagicBox Android app, its submodule integration,
   App-only documentation, and policy-test coupling.
 - Keep eBPF in hybrid mode by default, preserving local cgroup interception while shared TC waits for a confirmed downstream interface.

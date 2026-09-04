@@ -47,11 +47,11 @@ export function buildAppPolicySummary(
   const installedDirect = installedPackages.size ? direct.filter((pkg) => installedPackages.has(pkg)) : [];
   const installedBypass = installedPackages.size ? bypass.filter((pkg) => installedPackages.has(pkg)) : [];
   const installedKnown = installedPackages.size > 0;
-  const unlisted = mode === "whitelist" ? "绕过 TUN" : "进入 TUN";
+  const unlisted = mode === "whitelist" ? "绕过当前数据面" : "进入当前数据面";
   return {
     summary: mode === "whitelist"
-      ? "Proxy 强制代理；Direct 在 TUN 内强制直连；未列出应用绕过 TUN。"
-      : "Proxy 强制代理；Direct 在 TUN 内强制直连；Bypass 完全绕过 TUN。",
+      ? "Proxy 强制代理；Direct 在 MagicNet 内强制直连；未列出应用绕过当前数据面。"
+      : "Proxy 强制代理；Direct 在 MagicNet 内强制直连；Bypass 完全绕过当前数据面。",
     conflicts,
     installedProxy,
     installedDirect,
