@@ -295,9 +295,15 @@ assert.doesNotMatch(
 const pageHeader = read(join(src, "components", "ui", "PageHeader.vue"));
 assert.match(
   pageHeader,
-  /<div class="contents">/,
-  "PageHeader actions must participate in the owning page grid",
+  /<div class="mn-page-header">/,
+  "PageHeader must keep its title and actions in one normal-flow header",
 );
+assert.match(
+  read(join(src, "console.css")),
+  /\.mn-page-header\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/,
+  "PageHeader must wrap actions rather than overlap the owning page",
+);
+assert.match(pageHeader, /<slot name="actions">\s*<slot \/>/);
 const controlPage = read(join(pagesDir, "ControlPage.vue"));
 assert.doesNotMatch(
   controlPage,
