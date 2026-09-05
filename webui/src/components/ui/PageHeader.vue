@@ -7,8 +7,8 @@ defineProps<{
 </script>
 
 <template>
-  <div class="contents">
-    <div class="max-w-3xl">
+  <div class="mn-page-header">
+    <div class="min-w-0 max-w-3xl">
       <h2 class="text-[clamp(1.5rem,5vw,2rem)] font-semibold leading-tight tracking-[-0.025em] text-[var(--mn-ink)]">{{ title }}</h2>
       <p v-if="description" class="mt-2 max-w-[62ch] text-sm leading-6 text-[var(--mn-ink-muted)]">{{ description }}</p>
     </div>

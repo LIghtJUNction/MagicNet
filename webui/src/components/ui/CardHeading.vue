@@ -44,7 +44,7 @@ const titleClass = computed(() =>
         <slot name="description">{{ description }}</slot>
       </p>
     </div>
-    <div v-if="$slots.default" class="flex shrink-0 flex-wrap items-center gap-2">
+    <div v-if="$slots.default" class="flex max-w-full shrink-0 flex-wrap items-center gap-2">
       <slot />
     </div>
   </div>

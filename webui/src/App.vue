@@ -162,6 +162,11 @@ const onboardingTrigger = ref<HTMLElement | null>(null);
 
 const easterEggVisitors = [
   {
+    name: "GPT-6",
+    title: "GPT-6 到此一游",
+    body: "少画几个框，多留一点位置给内容。",
+  },
+  {
     name: "SOL",
     title: "准备好你的太阳镜 😎",
     body: "SOL 到此一游 · 光太亮，别直视内核。",
@@ -581,7 +586,7 @@ onUnmounted(() => {
         </header>
 
         <!-- KeepAlive preserves form state across all four workspaces. -->
-        <section class="page-surface">
+        <section class="page-surface" :data-page="activeTab">
           <Suspense>
             <KeepAlive :max="11">
               <component
