@@ -92,7 +92,6 @@ defineExpose({
     <div class="flex items-start gap-3">
       <ShieldCheck :size="18" class="mt-0.5 shrink-0 text-[var(--mn-ink-muted)]" />
       <div class="min-w-0">
-        <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Request identity</span>
         <h3 class="mt-1 text-base font-semibold text-[var(--mn-ink)]">订阅 User-Agent</h3>
       </div>
     </div>
@@ -104,9 +103,9 @@ defineExpose({
         type="button"
         :aria-pressed="normalizedUserAgent === preset.value"
         :class="[
-          'min-h-8 rounded-sm px-2.5 text-xs ring-1 transition-colors',
+          'min-h-11 rounded-sm px-3 text-sm ring-1 transition-colors',
           normalizedUserAgent === preset.value
-            ? 'bg-[color-mix(in_srgb,var(--mn-cactus)_28%,var(--mn-carrier))] text-[var(--mn-success)] ring-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]'
+            ? 'bg-[var(--mn-ink)] text-[var(--mn-surface-raised)] ring-[var(--mn-ink)]'
             : 'bg-[var(--mn-ivory)] text-[var(--mn-ink-muted)] ring-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)]',
         ]"
         @click="selectUserAgent(preset.value)"

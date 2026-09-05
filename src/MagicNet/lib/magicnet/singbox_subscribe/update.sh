@@ -181,6 +181,31 @@ magicnet_singbox_status_reconcile() {
     magicnet_singbox_status_mark_interrupted
 }
 
+magicnet_singbox_persist_subscription_cache() (
+    _persist_source="$1"
+    _persist_cache="$2"
+    _persist_identity="$3"
+    _persist_fingerprint="$4"
+    # Withdraw optional metadata before changing either cache component. A
+    # failed write or interrupted process can then only leave usage unknown,
+    # never attach an old response timestamp/quota to a different body.
+    rm -f "${_persist_cache}.usage.json" || return 1
+    if ! cp -f "$_persist_source" "${_persist_cache}.tmp.$$" ||
+        ! printf '%s\n' "$_persist_fingerprint" >"${_persist_identity}.tmp.$$" ||
+        ! mv -f "${_persist_cache}.tmp.$$" "$_persist_cache" ||
+        ! mv -f "${_persist_identity}.tmp.$$" "$_persist_identity"; then
+        rm -f "${_persist_cache}.tmp.$$" "${_persist_identity}.tmp.$$" 2>/dev/null || true
+        return 1
+    fi
+    if [ -s "${_persist_source}.usage.json" ]; then
+        if ! cp -f "${_persist_source}.usage.json" "${_persist_cache}.usage.json.tmp.$$" ||
+            ! mv -f "${_persist_cache}.usage.json.tmp.$$" "${_persist_cache}.usage.json"; then
+            rm -f "${_persist_cache}.usage.json.tmp.$$" 2>/dev/null || true
+            return 1
+        fi
+    fi
+)
+
 magicnet_singbox_prune_subscription_cache() {
     _prune_cache_map="$1"
     _prune_cache_dir=$(magicnet_singbox_subscription_cache_dir)
@@ -203,16 +228,20 @@ magicnet_singbox_prune_subscription_cache() {
         _prune_fingerprint=${_prune_name%.yaml}
         printf '%s' "$_prune_fingerprint" | grep -Eq '^[0-9a-f]{64}$' || continue
         grep -F -x "$_prune_fingerprint" "$_prune_expected" >/dev/null 2>&1 ||
-            rm -f "$_prune_file" "${_prune_file}.identity" 2>/dev/null || true
+            rm -f "$_prune_file" "${_prune_file}.identity" "${_prune_file}.usage.json" 2>/dev/null || true
     done
     for _prune_identity in "$_prune_cache_dir"/*.yaml.identity; do
         [ -f "$_prune_identity" ] || continue
         _prune_file=${_prune_identity%.identity}
         [ -f "$_prune_file" ] || rm -f "$_prune_identity" 2>/dev/null || true
     done
+    for _prune_usage in "$_prune_cache_dir"/*.yaml.usage.json; do
+        [ -f "$_prune_usage" ] || continue
+        [ -f "${_prune_usage%.usage.json}" ] || rm -f "$_prune_usage" 2>/dev/null || true
+    done
     rm -f "$_prune_expected" 2>/dev/null || true
     unset _prune_cache_map _prune_cache_dir _prune_expected _prune_name _prune_file
-    unset _prune_identity _prune_fingerprint _prune_extra
+    unset _prune_identity _prune_fingerprint _prune_extra _prune_usage
 }
 
 magicnet_singbox_transaction_dir() {
@@ -521,6 +550,57 @@ magicnet_singbox_fault() {
     return 1
 }
 
+# The hostname and usage come from one active-source snapshot. Never expose the
+# URL, or assign persisted usage by list position when sources have changed.
+magicnet_singbox_source_usage_report() (
+    _usage_urls="${MODDIR}/.config/sing-box/subscription.url"
+    if [ -s "${MODDIR}/.config/sing-box/subscription.local" ] || [ ! -s "$_usage_urls" ] ||
+        ! command -v jq >/dev/null 2>&1 ||
+        ! command -v magicnet_singbox_subscription_parse_authority >/dev/null 2>&1; then
+        printf '%s\n' 'source_usage_json=[]'
+        return 0
+    fi
+    _usage_force_cached=false
+    case "${1:-$(magicnet_singbox_status_value result never)}" in
+        failed|interrupted) _usage_force_cached=true ;;
+    esac
+    _usage_index=0
+    _usage_json=$(
+        while IFS= read -r _usage_url || [ -n "$_usage_url" ]; do
+            _usage_url=$(printf '%s' "$_usage_url" | sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+            [ -n "$_usage_url" ] || continue
+            _usage_index=$((_usage_index + 1))
+            _usage_hostname=
+            if magicnet_singbox_subscription_parse_authority "$_usage_url"; then
+                _usage_hostname=$_subscription_host
+                case "$_usage_hostname" in *:*) _usage_hostname="[$_usage_hostname]" ;; esac
+            fi
+            _usage_id=$(magicnet_singbox_subscription_fingerprint "$_usage_url" 2>/dev/null) || _usage_id=
+            printf '%s' "$_usage_id" | grep -Eq '^[0-9a-f]{64}$' || _usage_id=
+            _usage_input='{}'
+            _usage_file="${MODDIR}/.state/sing-box/subscription-work/sources/${_usage_id}.yaml.usage.json"
+            # A generation in the middle of activation has not committed yet.
+            if [ -n "$_usage_id" ] && [ ! -d "$(magicnet_singbox_transaction_dir)" ] &&
+                [ -s "${_usage_file%.usage.json}" ] && [ -s "$_usage_file" ]; then
+                _usage_input=$(head -c 2048 "$_usage_file")
+            fi
+            printf '%s\n' "$_usage_input" | jq -c --slurp \
+                --arg id "$_usage_id" --arg hostname "$_usage_hostname" \
+                --argjson index "$_usage_index" --argjson stale "$_usage_force_cached" '
+                def number: if type == "number" and . >= 0 and . <= 9007199254740991 and floor == . then . else null end;
+                (if length == 1 and (.[0] | type) == "object" then .[0] else {} end) as $u |
+                {id: (if $id == "" then null else $id end), index: $index, hostname: $hostname,
+                 state: (if $u.state == "cached" or ($u.state == "fresh" and $stale) then "cached" elif $u.state == "fresh" then "fresh" else "unknown" end),
+                 upload_bytes: ($u.upload_bytes | number), download_bytes: ($u.download_bytes | number),
+                 total_bytes: ($u.total_bytes | number), expire_epoch: ($u.expire_epoch | number | if . == 0 then null else . end),
+                 updated_epoch: ($u.updated_epoch | number | if . == 0 then null else . end)}' 2>/dev/null ||
+                jq -cn --arg id "$_usage_id" --arg hostname "$_usage_hostname" --argjson index "$_usage_index" \
+                    '{id: (if $id == "" then null else $id end), index: $index, hostname: $hostname, state: "unknown", upload_bytes: null, download_bytes: null, total_bytes: null, expire_epoch: null, updated_epoch: null}'
+        done <"$_usage_urls" | jq -sc '.'
+    ) || _usage_json='[]'
+    printf 'source_usage_json=%s\n' "$_usage_json"
+)
+
 magicnet_singbox_status() {
     _status_tx_dir=$(magicnet_singbox_transaction_dir)
     _status_tx_pending=0
@@ -596,6 +676,7 @@ magicnet_singbox_status() {
     printf 'cache_count=%s\n' "${_status_cache_count:-0}"
     printf 'cache_provenance_count=%s\n' "${_status_cache_provenance_count:-0}"
     printf 'cache_source=%s\n' "$_status_cache_source"
+    magicnet_singbox_source_usage_report "$_status_last_result"
     if command -v magicnet_subscription_schedule_report >/dev/null 2>&1; then
         magicnet_subscription_schedule_report
     else
@@ -978,13 +1059,8 @@ magicnet_singbox_update_subscription_unlocked() {
             [ "$_sub_cache_file" = "$(magicnet_singbox_subscription_cache_dir)/${_sub_fingerprint}.yaml" ] || continue
             [ "$_sub_identity_file" = "${_sub_cache_file}.identity" ] || continue
             _sub_cache_source="${_work_dir}/sources/${_sub_cache_name}"
-            _sub_cache_tmp="${_sub_cache_file}.tmp.$$"
-            _sub_identity_tmp="${_sub_identity_file}.tmp.$$"
-            if ! cp -f "$_sub_cache_source" "$_sub_cache_tmp" ||
-                ! printf '%s\n' "$_sub_fingerprint" >"$_sub_identity_tmp" ||
-                ! mv -f "$_sub_cache_tmp" "$_sub_cache_file" ||
-                ! mv -f "$_sub_identity_tmp" "$_sub_identity_file"; then
-                rm -f "$_sub_cache_tmp" "$_sub_identity_tmp" 2>/dev/null || true
+            if ! magicnet_singbox_persist_subscription_cache \
+                "$_sub_cache_source" "$_sub_cache_file" "$_sub_identity_file" "$_sub_fingerprint"; then
                 warn "Subscription cache persistence failed for one source"
             fi
         done <"$_sub_cache_map"

@@ -1,4 +1,5 @@
 import { MODULE_DIR, SING_BOX_UI } from "../constants.ts";
+import { parseSubscriptionSourceUsage } from "./subscriptionUsage.ts";
 import type {
   AppPolicy,
   BlocklistState,
@@ -26,6 +27,7 @@ export type {
 export const subscriptionDefaults: SubscriptionState = {
   singBox: "",
   singBoxUrls: [],
+  sourceUsage: [],
   userAgent: "",
   filters: [],
   configuredCount: 0,
@@ -879,7 +881,7 @@ export function parseSubs(
   statusText: string,
   previous: SubscriptionState,
 ): SubscriptionState {
-  const next: SubscriptionState = { ...previous, singBoxUrls: [], filters: [] };
+  const next: SubscriptionState = { ...previous, singBoxUrls: [], sourceUsage: [], filters: [] };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (/^sing-box\.\d+=/.test(line))
@@ -902,6 +904,9 @@ export function parseSubs(
     next.singBoxUrls.length,
   );
   next.sourceMode = values.get("source_mode") === "local" ? "local" : "url";
+  if (next.sourceMode === "url") {
+    next.sourceUsage = parseSubscriptionSourceUsage(values.get("source_usage_json"));
+  }
   next.updateRunning = statusBoolean(values, "update_running", false);
   next.updateLockOwner = values.get("update_lock_owner") || "none";
   next.lastPhase = values.get("last_phase") || "never";

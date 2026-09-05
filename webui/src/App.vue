@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  Activity,
   Bug,
   Gauge,
   GitBranch,
@@ -9,6 +8,7 @@ import {
   Monitor,
   Moon,
   MoreHorizontal,
+  RefreshCw,
   ScrollText,
   Settings,
   Stethoscope,
@@ -40,7 +40,7 @@ type TabDefinition = {
 type WorkspaceDefinition = {
   key: WorkspaceKey;
   label: string;
-  description: string;
+  mobileLabel?: string;
   icon: Component;
 };
 
@@ -90,25 +90,22 @@ const workspaces: readonly WorkspaceDefinition[] = [
   {
     key: "run",
     label: "运行",
-    description: "查看状态并控制服务。",
     icon: Gauge,
   },
   {
     key: "route",
     label: "路由",
-    description: "设置应用、规则和链式代理。",
     icon: GitBranch,
   },
   {
     key: "configure",
     label: "配置",
-    description: "管理订阅、配置文件和面板。",
+    mobileLabel: "订阅",
     icon: Settings,
   },
   {
     key: "diagnose",
     label: "诊断",
-    description: "检查问题并运行维护工具。",
     icon: Stethoscope,
   },
 ];
@@ -210,7 +207,7 @@ const activeSectionTabs = computed(() =>
 );
 const activeComponent = computed(() => asyncPages[activeTab.value]);
 
-const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice || "准备就绪"));
+const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice || ""));
 const runtimeStateLabel = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "sing-box 运行中";
   if (state.runtime.singBoxState === "stopped") return "已停止";
@@ -249,7 +246,7 @@ function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
 }
 
 function setWorkspace(workspace: WorkspaceKey): void {
-  setTab(lastTabByWorkspace.value[workspace]);
+  setTab(workspace === "configure" ? "subs" : lastTabByWorkspace.value[workspace]);
 }
 
 function syncTabFromLocation(): void {
@@ -447,7 +444,6 @@ onUnmounted(() => {
         </button>
         <div class="mn-brand-copy">
           <h1>MagicNet</h1>
-          <p>网络控制</p>
         </div>
       </div>
 
@@ -471,7 +467,7 @@ onUnmounted(() => {
           title="刷新面板"
           @click="refreshAll"
         >
-          <Activity :size="17" aria-hidden="true" />
+          <RefreshCw :size="17" aria-hidden="true" />
         </Button>
         <Button
           class="mn-desktop-action"
@@ -527,8 +523,8 @@ onUnmounted(() => {
         <StatusDot :tone="statusDotTone" />
         <strong>{{ runtimeStateLabel }}</strong>
       </div>
-      <span class="mn-runtime-mode">{{ state.runtime.transparentMode.toUpperCase() }}</span>
-      <p :title="statusMessage">{{ statusMessage }}</p>
+      <span class="mn-runtime-mode" :title="`数据面：${transparentRouteData}`">{{ state.runtime.transparentMode.toUpperCase() }}</span>
+      <p v-if="statusMessage">{{ statusMessage }}</p>
       <Button
         v-if="state.backgroundTask.log"
         variant="ghost"
@@ -541,33 +537,31 @@ onUnmounted(() => {
 
     <div class="mn-workspace-frame">
       <aside class="desktop-rail" aria-label="MagicNet 工作区">
-        <div class="mn-rail-label">导航</div>
-        <nav>
-          <button
-            v-for="workspace in workspaces"
-            :key="workspace.key"
-            :data-workspace="workspace.key"
-            :class="activeWorkspace.key === workspace.key ? 'mn-nav-active' : 'mn-nav-idle'"
-            type="button"
-            :aria-current="activeWorkspace.key === workspace.key ? 'page' : undefined"
-            @click="setWorkspace(workspace.key)"
-          >
-            <component :is="workspace.icon" :size="18" aria-hidden="true" />
-            <span>{{ workspace.label }}</span>
-          </button>
+        <nav aria-label="全部页面">
+          <div v-for="workspace in workspaces" :key="workspace.key" class="mn-nav-group">
+            <div class="mn-rail-label">
+              <component :is="workspace.icon" :size="15" aria-hidden="true" />
+              <span>{{ workspace.label }}</span>
+            </div>
+            <button
+              v-for="item in tabs.filter((tab) => tab.workspace === workspace.key)"
+              :key="item.key"
+              :data-tab="item.key"
+              :class="activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle'"
+              type="button"
+              :aria-current="activeTab === item.key ? 'page' : undefined"
+              @pointerenter="prefetchTab(item.key)"
+              @focus="prefetchTab(item.key)"
+              @click="setTab(item.key)"
+            >
+              <span>{{ item.label }}</span>
+            </button>
+          </div>
         </nav>
-        <div class="mn-rail-foot">
-          <span>透明模式 {{ state.runtime.transparentMode.toUpperCase() }}</span>
-          <span>数据面 {{ transparentRouteData }}</span>
-        </div>
       </aside>
 
       <main class="mn-workspace-main">
         <header class="mn-workspace-header">
-          <div>
-            <h2>{{ activeWorkspace.label }}</h2>
-            <p>{{ activeWorkspace.description }}</p>
-          </div>
           <nav class="mn-section-tabs" :aria-label="`${activeWorkspace.label}分区`">
             <button
               v-for="item in activeSectionTabs"
@@ -616,7 +610,7 @@ onUnmounted(() => {
         @click="setWorkspace(workspace.key)"
       >
         <component :is="workspace.icon" :size="19" aria-hidden="true" />
-        <span>{{ workspace.label }}</span>
+        <span>{{ workspace.mobileLabel ?? workspace.label }}</span>
       </button>
     </nav>
 

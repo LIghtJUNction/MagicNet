@@ -26,11 +26,9 @@ assert.match(
   /min-h-11/,
   "button targets must remain at least 44px tall",
 );
-assert.match(
-  card,
-  /rounded-\[var\(--mn-radius-lg\)\]/,
-  "shared sections must use the approved quiet-console radius",
-);
+assert.match(card, /magic-card/, "shared sections retain their semantic surface class");
+assert.match(styles, /\.magic-card\s*\{[^}]*border-top: 1px solid var\(--mn-border\);[^}]*border-radius: 0;/,
+  "top-level sections use a continuous layout with a visible divider");
 
 assert.match(
   app,

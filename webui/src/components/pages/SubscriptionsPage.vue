@@ -5,16 +5,19 @@ import {
   RefreshCw,
   Save,
   ShieldCheck,
+  ChevronDown,
+  Plus,
+  Settings2,
 } from "lucide-vue-next";
-import { computed, ref, shallowRef, watch } from "vue";
+import { computed, nextTick, ref, shallowRef, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
-import Card from "@/components/ui/Card.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import {
   isSubscriptionBackgroundArgs,
+  subscriptionLifecycleRunning,
 } from "@/composables/backgroundTasks";
 import {
   copyText,
@@ -39,7 +42,8 @@ import {
 import SubscriptionFilterCard from "./subscriptions/SubscriptionFilterCard.vue";
 import SubscriptionUserAgentCard from "./subscriptions/SubscriptionUserAgentCard.vue";
 import SubscriptionScheduleCard from "./subscriptions/SubscriptionScheduleCard.vue";
-import SubscriptionLifecycleStrip from "./subscriptions/SubscriptionLifecycleStrip.vue";
+import SubscriptionUsageList from "./subscriptions/SubscriptionUsageList.vue";
+import { buildSubscriptionUsageOverview } from "@/composables/subscriptionUsage";
 import SubscriptionLifecycleRecord from "./subscriptions/SubscriptionLifecycleRecord.vue";
 import { pendingSubscriptionDraft, takePendingSubscriptionDraft } from "./subscriptionDraft";
 
@@ -49,12 +53,17 @@ const filterPresets = ["免费", "free", "HK", "香港", "TW", "台湾"] as cons
 const {
   state,
   startPrivateBackgroundCli,
+  startBackgroundCli,
   stagePrivatePayload,
   removePrivatePayload,
   refreshSubs,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
+const editorOpen = ref(false);
+const editorPanel = ref<HTMLElement | null>(null);
+const manageSourcesButton = ref<InstanceType<typeof Button> | null>(null);
+const actionMessage = ref("");
 const lastLoadedSnapshot = ref("");
 const dirty = ref(false);
 const loadedOnce = ref(false);
@@ -68,6 +77,7 @@ const userAgentCardRef = ref<InstanceType<typeof SubscriptionUserAgentCard> | nu
 function acceptOnboardingDraft(value: string | null): void {
   if (value === null) return;
   singBoxText.value = value;
+  editorOpen.value = true;
   dirty.value = true;
   loadedOnce.value = true;
 }
@@ -91,10 +101,53 @@ const canApply = computed(() => {
     : loadedPlan.lines.join("\n");
   return !configured.value || canonicalDraft.value !== loadedCanonical;
 });
-const applyLabel = computed(() => configured.value ? "保存并应用" : "保存并首次启用");
+const applyLabel = computed(() => configured.value ? "保存并应用" : "添加并启用");
+const usageRows = computed(() => buildSubscriptionUsageOverview(state.subscriptions));
+const lifecycleRunning = computed(() => subscriptionLifecycleRunning(state.backgroundTask, state.subscriptions.updateRunning));
+const sourceCount = computed(() => state.subscriptions.sourceMode === "local" ? 1 : usageRows.value.length);
+const lifecycleMessage = computed(() => {
+  if (lifecycleRunning.value) return "正在更新订阅，完成后用量与节点会自动刷新。";
+  if (state.backgroundTask.status === "timeout" && isSubscriptionBackgroundArgs(state.backgroundTask.args)) {
+    return "更新仍可能在后台进行，可重新读取状态确认。";
+  }
+  if (["failed", "interrupted"].includes(state.subscriptions.lastResult)) return "最近一次更新未完成，当前仍保留原有配置。";
+  return "";
+});
+
+async function openEditor(): Promise<void> {
+  actionMessage.value = "";
+  editorOpen.value = true;
+  await nextTick();
+  editorPanel.value?.scrollIntoView({ block: "nearest" });
+  editorPanel.value?.querySelector("textarea")?.focus({ preventScroll: true });
+}
+
+async function closeEditor(): Promise<void> {
+  const restoreFocus = editorPanel.value?.contains(document.activeElement);
+  editorOpen.value = false;
+  await nextTick();
+  if (restoreFocus) manageSourcesButton.value?.$el.focus({ preventScroll: true });
+}
+
+function cancelEditing(): void {
+  singBoxText.value = lastLoadedSnapshot.value;
+  actionMessage.value = "";
+  void closeEditor();
+}
+
+function showActionMessage(message: string): void {
+  actionMessage.value = message;
+  state.output = message;
+}
+
+async function updateSubscriptions(): Promise<void> {
+  if (!configured.value || lifecycleRunning.value) return;
+  await withAction("update-all", () => startBackgroundCli("sub update-all", "更新订阅", "", "sub update-all"));
+}
 
 watch(() => state.subscriptions.singBoxUrls, (urls) => {
   const snapshot = urls.join("\n");
+  const hadPending = pendingApply.value !== null;
   const next = reconcileSubscriptionEditor({
     draft: singBoxText.value,
     lastLoadedSnapshot: lastLoadedSnapshot.value,
@@ -113,6 +166,7 @@ watch(() => state.subscriptions.singBoxUrls, (urls) => {
   dirty.value = next.dirty;
   loadedOnce.value = next.loadedOnce;
   pendingApply.value = next.pendingApply;
+  if (hadPending && next.pendingApply === null && !next.dirty) void closeEditor();
 }, { immediate: true, deep: true });
 
 watch(singBoxText, (value) => {
@@ -129,12 +183,6 @@ watch(() => state.backgroundTask.status, async (status) => {
   if (status === "error") pendingApply.value = null;
 });
 
-function previewTone(status: SubscriptionPreview["status"]): string {
-  if (status === "ok") return "bg-[color-mix(in_srgb,var(--mn-cactus)_30%,var(--mn-carrier))] text-[var(--mn-success)] ring-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]";
-  if (status === "duplicate") return "bg-[color-mix(in_srgb,var(--mn-oat)_40%,var(--mn-carrier))] text-[var(--mn-warning)] ring-[color-mix(in_srgb,var(--mn-oat)_50%,transparent)]";
-  return "bg-[color-mix(in_srgb,var(--mn-coral)_45%,var(--mn-carrier))] text-[var(--mn-danger)] ring-[color-mix(in_srgb,var(--mn-coral)_50%,transparent)]";
-}
-
 async function stageSubscriptionPayload(snapshot: string) {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const staged = await stagePrivatePayload(
@@ -144,7 +192,7 @@ async function stageSubscriptionPayload(snapshot: string) {
     "订阅私有载荷",
   );
   if (!staged) {
-    state.output = "订阅私有载荷准备失败，订阅没有提交。";
+    showActionMessage("订阅准备失败，请重试。当前配置没有改变。");
     return null;
   }
   return staged;
@@ -153,7 +201,11 @@ async function stageSubscriptionPayload(snapshot: string) {
 async function applySubscriptions(): Promise<void> {
   if (!canApply.value) return;
   await withAction("apply-subscriptions", async () => {
-    if (userAgentCardRef.value?.userAgentChanged && !(await userAgentCardRef.value.persistUserAgent())) return;
+    actionMessage.value = "";
+    if (userAgentCardRef.value?.userAgentChanged && !(await userAgentCardRef.value.persistUserAgent())) {
+      showActionMessage("请求标识保存失败，请在订阅设置中检查后重试。");
+      return;
+    }
     const snapshot = canonicalDraft.value;
     if (singBoxText.value !== snapshot) {
       syncingEditor.value = true;
@@ -177,11 +229,11 @@ async function applySubscriptions(): Promise<void> {
     );
     if (execFailed(result)) {
       const cleaned = await removePrivatePayload("subscription", staged.basename, "订阅私有载荷");
-      if (!cleaned) state.output = "订阅未投递，且私有临时数据清理未确认。";
+      showActionMessage(cleaned ? "订阅未能提交，请重试。" : "订阅未投递，且私有临时数据清理未确认。");
       if (pendingApply.value === attempt) pendingApply.value = null;
       return;
     }
-    state.output = "订阅已投递到后台。成功后 URL 会保存在设备本地订阅配置；设备侧私有载荷只用于本次提交，并由受控命令清理。";
+    showActionMessage("已提交订阅。验证通过后生效，可在更新记录中查看结果。");
   });
 }
 
@@ -189,11 +241,11 @@ async function pasteSubscriptions(): Promise<void> {
   await withAction("paste-subscriptions", async () => {
     const text = (await readClipboardText()).trim();
     if (!text) {
-      state.output = "剪贴板为空或不可读取。";
+      showActionMessage("剪贴板为空或不可读取，可以长按输入框粘贴。");
       return;
     }
     singBoxText.value = text;
-    state.output = `已读取 ${text.split(/\r?\n/).filter((line) => line.trim()).length} 行；界面不会回显剪贴板原文到输出日志。`;
+    showActionMessage(`已粘贴 ${text.split(/\r?\n/).filter((line) => line.trim()).length} 行，请检查后保存。`);
   });
 }
 
@@ -208,6 +260,7 @@ async function importLocalSubscriptions(event: Event): Promise<void> {
   if (!file) return;
 
   await withAction("apply-local-subscription", async () => {
+    actionMessage.value = "";
     try {
       if (file.size > MAX_LOCAL_SUBSCRIPTION_BYTES) throw new Error("文件超过 8 MiB 限制。");
       const imported = parseLocalSubscriptionFile(
@@ -223,7 +276,7 @@ async function importLocalSubscriptions(event: Event): Promise<void> {
         16 * 1024,
       );
       if (!staged) {
-        state.output = "本地订阅源准备失败，当前配置没有改变。";
+        showActionMessage("文件准备失败，请重试。当前配置没有改变。");
         return;
       }
       const launch = buildLocalSubscriptionApplyLaunch(staged.basename);
@@ -236,142 +289,160 @@ async function importLocalSubscriptions(event: Event): Promise<void> {
       );
       if (execFailed(result)) {
         await removePrivatePayload("subscription", staged.basename, "本地订阅源");
+        showActionMessage("文件未能提交，请重试。");
         return;
       }
       state.notice = "本地订阅源已投递";
-      state.output = `已安全投递 ${imported.format} 格式本地订阅源；验证成功后会切换到本地模式。`;
+      showActionMessage(`已提交 ${imported.format} 文件，验证成功后会切换到本地模式。`);
     } catch (error) {
-      state.output = `导入错误：${error instanceof Error ? error.message : String(error)}`;
+      showActionMessage(`导入错误：${error instanceof Error ? error.message : String(error)}`);
     }
   });
 }
 
 function normalizeSubscriptions(): void {
   if (savePlan.value.status === "idle" || savePlan.value.status === "error") {
-    state.output = savePlan.value.message;
+    showActionMessage(savePlan.value.message);
     return;
   }
   singBoxText.value = canonicalDraft.value;
-  state.output = `已规范化：保留 ${savePlan.value.lines.length} 个唯一订阅来源。`;
+  showActionMessage(`已整理为 ${savePlan.value.lines.length} 个订阅来源。`);
 }
 
 async function copySummary(): Promise<void> {
   summaryCopied.value = await copyText(formatSubscriptionSummary(singBoxText.value, subscriptionPreview.value));
-  state.output = summaryCopied.value ? "订阅脱敏摘要已复制。" : "剪贴板不可用，脱敏摘要未复制。";
+  showActionMessage(summaryCopied.value ? "来源摘要已复制。" : "剪贴板不可用，来源摘要未复制。");
 }
 </script>
 
 <template>
-  <div class="grid min-w-0 gap-4">
-    <PageHeader
-      overline="Subscription lifecycle"
-      title="订阅生命周期"
-      description="添加订阅链接或本地文件。验证失败不会替换现有配置。"
-    />
+  <div class="subscriptions-page">
+    <PageHeader title="订阅">
+      <template #actions>
+        <Button v-if="configured" ref="manageSourcesButton" variant="outline" :aria-expanded="editorOpen" aria-controls="subscription-editor" @click="openEditor">
+          <Plus :size="16" />管理来源
+        </Button>
+        <Button v-if="configured" :loading="lifecycleRunning || isRunning('update-all')" :disabled="state.busy" @click="updateSubscriptions">
+          <RefreshCw :size="16" />更新订阅
+        </Button>
+      </template>
+    </PageHeader>
 
-    <section class="lifecycle-strip hidden min-w-0 gap-px rounded-md bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] p-px ring-1 ring-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)] lg:grid lg:grid-cols-4" aria-label="订阅生命周期概览">
-      <SubscriptionLifecycleStrip :configured="configured" />
+    <div v-if="configured" class="subscription-summary">
+      <span>{{ sourceCount }} 个来源<span v-if="state.subscriptions.lastImportedCount > 0"> · {{ state.subscriptions.lastImportedCount }} 个节点</span></span>
+      <span v-if="dirty" class="unsaved-note">有未保存的更改</span>
+      <Button variant="ghost" size="icon" :loading="isRunning('refresh-subs')" aria-label="重新读取订阅状态" @click="withAction('refresh-subs', () => refreshSubs())">
+        <RefreshCw :size="15" />
+      </Button>
+    </div>
+
+    <p v-if="lifecycleMessage" class="subscription-feedback" role="status" :data-error="!lifecycleRunning">
+      {{ lifecycleMessage }}
+    </p>
+    <p v-if="actionMessage" class="subscription-feedback" role="status">{{ actionMessage }}</p>
+
+    <SubscriptionUsageList v-if="configured" :rows="usageRows" :local="state.subscriptions.sourceMode === 'local'" />
+    <p v-if="configured && state.subscriptions.sourceMode !== 'local'" class="usage-footnote">用量与到期时间由服务商提供，更新订阅时同步。</p>
+
+    <section v-if="editorOpen || !configured" id="subscription-editor" ref="editorPanel" class="source-editor" aria-label="编辑订阅来源">
+      <div class="editor-heading">
+        <div>
+          <h3>{{ configured ? '管理订阅来源' : '添加第一个订阅' }}</h3>
+          <p>粘贴订阅链接，每行一个，最多 5 个。也可导入本地文件。</p>
+        </div>
+      </div>
+      <Textarea
+        v-model="singBoxText"
+        class="source-textarea"
+        spellcheck="false"
+        autocomplete="off"
+        placeholder="https://example.com/subscription"
+        aria-label="sing-box 订阅 URL，每行一个"
+        aria-describedby="subscription-validation"
+      />
+      <div id="subscription-validation" class="editor-validation" role="status" :data-error="savePlan.status === 'error'">
+        <span>{{ savePlan.status === 'idle' ? '支持 HTTPS 订阅链接' : savePlan.message }}</span>
+        <span v-if="inputSummary.duplicate || inputSummary.overLimit">有效 {{ inputSummary.valid }} · 重复 {{ inputSummary.duplicate }} · 超限 {{ inputSummary.overLimit }}</span>
+      </div>
+      <div class="editor-actions">
+        <input ref="subscriptionFileInput" class="hidden" type="file" accept=".yaml,.yml,.txt,.list,.conf,application/yaml,text/yaml,text/plain" @change="importLocalSubscriptions">
+        <div class="source-import-actions">
+          <Button variant="outline" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions"><ClipboardPaste :size="16" />粘贴链接</Button>
+          <Button variant="outline" :loading="isRunning('apply-local-subscription')" :disabled="lifecycleRunning" @click="chooseLocalSubscriptions"><FileUp :size="16" />导入文件</Button>
+        </div>
+        <div class="source-save-actions">
+          <Button v-if="configured" variant="ghost" :disabled="lifecycleRunning" @click="cancelEditing">取消</Button>
+          <Button :disabled="!canApply || lifecycleRunning" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions"><Save :size="16" />{{ applyLabel }}</Button>
+        </div>
+      </div>
+      <details v-if="subscriptionPreview.length" class="source-preview">
+        <summary>检查来源 <ChevronDown :size="15" /></summary>
+        <ul>
+          <li v-for="item in subscriptionPreview" :key="item.key" :data-invalid="item.status === 'invalid' || item.status === 'over-limit'">
+            <span>{{ item.index }}.</span><strong>{{ item.label }}</strong>
+            <span>{{ item.status === 'ok' ? '有效' : item.status === 'duplicate' ? '重复' : item.status === 'over-limit' ? '超出数量限制' : '请检查链接' }}</span>
+          </li>
+        </ul>
+        <div class="preview-actions">
+          <Button variant="ghost" :disabled="!singBoxText.trim()" @click="normalizeSubscriptions">去重并整理</Button>
+          <Button variant="ghost" @click="copySummary"><ShieldCheck :size="15" />{{ summaryCopied ? '已复制' : '复制来源摘要' }}</Button>
+        </div>
+      </details>
     </section>
 
-    <div class="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start">
-      <Card class="min-w-0">
-        <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Secure source editor</span>
-            <h3 class="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--mn-ink)]">sing-box 订阅来源</h3>
-            <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">URL 最多 5 个，一行一个；也可直接导入 Clash YAML、base64 或分享链接文件。失败时保留当前有效配置。</p>
-          </div>
-          <div class="flex items-center gap-2 self-start">
-            <span class="inline-flex min-h-7 items-center rounded-sm bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] px-2 text-xs ring-1 ring-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)]" :class="dirty ? 'text-[var(--mn-warning)]' : 'text-[var(--mn-ink-muted)]'">
-              {{ dirty ? '有未保存更改' : '已与设备同步' }}
-            </span>
-            <Button variant="outline" size="icon" :loading="isRunning('refresh-subs')" aria-label="读取订阅状态" @click="withAction('refresh-subs', () => refreshSubs())">
-              <RefreshCw :size="15" />
-            </Button>
-          </div>
-        </div>
-
-        <div v-if="!configured" class="mt-3 grid grid-cols-3 gap-1 rounded-md bg-[color-mix(in_srgb,var(--mn-oat)_35%,var(--mn-carrier))] p-1 ring-1 ring-[color-mix(in_srgb,var(--mn-oat)_45%,transparent)]" aria-label="首次启用步骤">
-          <div v-for="(step, index) in ['粘贴 URL', '看脱敏预览', '保存并启用']" :key="step" class="min-w-0 rounded-[5px] bg-[var(--mn-ivory)] px-2 py-2 text-center">
-            <span class="block text-[10px] font-semibold text-[var(--mn-warning)]">0{{ index + 1 }}</span>
-            <span class="mt-0.5 block text-[10px] leading-4 text-[var(--mn-ink-muted)] sm:text-xs">{{ step }}</span>
-          </div>
-        </div>
-
-        <Textarea
-          v-model="singBoxText"
-          class="mt-4 min-h-44"
-          spellcheck="false"
-          autocomplete="off"
-          placeholder="https://example.com/subscription"
-          aria-label="sing-box 订阅 URL，每行一个"
-        />
-
-        <Button class="mt-3 w-full lg:hidden" :disabled="!canApply" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions">
-          <Save :size="16" />{{ applyLabel }}
-        </Button>
-
-        <div class="mt-2 grid grid-cols-2 gap-px rounded-md bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] p-px text-xs sm:grid-cols-4">
-          <span class="rounded-[5px] bg-[var(--mn-ivory)] px-3 py-2 text-[var(--mn-ink-muted)]">输入 <strong class="text-[var(--mn-ink-soft)]">{{ inputSummary.raw }}</strong></span>
-          <span class="rounded-[5px] bg-[var(--mn-ivory)] px-3 py-2 text-[var(--mn-ink-muted)]">有效 <strong class="text-[var(--mn-success)]">{{ inputSummary.valid }}</strong></span>
-          <span class="rounded-[5px] bg-[var(--mn-ivory)] px-3 py-2 text-[var(--mn-ink-muted)]">重复 <strong class="text-[var(--mn-warning)]">{{ inputSummary.duplicate }}</strong></span>
-          <span class="rounded-[5px] bg-[var(--mn-ivory)] px-3 py-2 text-[var(--mn-ink-muted)]">超限 <strong class="text-[var(--mn-danger)]">{{ inputSummary.overLimit }}</strong></span>
-        </div>
-
-        <div class="mt-3 rounded-md bg-[var(--mn-ivory)] p-1 ring-1 ring-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)]">
-          <div class="flex items-start gap-2 rounded-[5px] bg-[color-mix(in_srgb,var(--mn-ink)_3%,transparent)] px-3 py-2.5">
-            <ShieldCheck :size="16" class="mt-0.5 shrink-0 text-[var(--mn-info)]" />
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-[var(--mn-ink-soft)]">脱敏预览</p>
-              <p class="mt-0.5 text-xs leading-5 text-[var(--mn-ink-faint)]">仅显示 protocol + hostname；path、query、hash 始终隐藏。</p>
-            </div>
-          </div>
-          <div v-if="subscriptionPreview.length" class="mt-1 grid gap-1 sm:grid-cols-2">
-            <div v-for="item in subscriptionPreview" :key="item.key" :class="['min-w-0 rounded-[5px] p-3 ring-1', previewTone(item.status)]">
-              <div class="flex min-w-0 items-center gap-2 text-xs">
-                <span class="shrink-0 text-[var(--mn-ink-faint)]">#{{ item.index }}</span>
-                <strong class="min-w-0 truncate">{{ item.label }}</strong>
-              </div>
-              <p class="mt-1 text-[11px] leading-4 opacity-65">{{ item.notes.join(' · ') }}</p>
-            </div>
-          </div>
-          <p v-else class="px-3 py-4 text-xs text-[var(--mn-ink-faint)]">输入后将在这里显示不含敏感路径的来源摘要。</p>
-        </div>
-
-        <div class="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <input
-            ref="subscriptionFileInput"
-            class="hidden"
-            type="file"
-            accept=".yaml,.yml,.txt,.list,.conf,application/yaml,text/yaml,text/plain"
-            @change="importLocalSubscriptions"
-          >
-          <Button class="hidden w-full sm:w-auto lg:inline-flex" :disabled="!canApply" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions">
-            <Save :size="16" />{{ applyLabel }}
-          </Button>
-          <Button variant="secondary" class="w-full sm:w-auto" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions">
-            <ClipboardPaste :size="16" />粘贴
-          </Button>
-          <Button variant="secondary" class="w-full sm:w-auto" :loading="isRunning('apply-local-subscription')" @click="chooseLocalSubscriptions">
-            <FileUp :size="16" />导入本地文件
-          </Button>
-          <Button variant="outline" class="w-full sm:w-auto" :disabled="!singBoxText.trim()" @click="normalizeSubscriptions">规范化</Button>
-          <Button variant="outline" class="w-full sm:w-auto" :disabled="!subscriptionPreview.length" @click="copySummary">
-            <ShieldCheck :size="16" />{{ summaryCopied ? '摘要已复制' : '复制脱敏摘要' }}
-          </Button>
-        </div>
-      </Card>
-
-      <section class="lifecycle-strip grid min-w-0 gap-px rounded-md bg-[color-mix(in_srgb,var(--mn-ink)_6%,transparent)] p-px ring-1 ring-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)] sm:grid-cols-2 lg:hidden" aria-label="订阅生命周期概览">
-        <SubscriptionLifecycleStrip :configured="configured" />
-      </section>
-
-      <aside class="grid min-w-0 gap-4">
+    <div class="subscription-settings">
+      <details class="settings-section">
+        <summary><span><RefreshCw :size="17" />更新记录</span><ChevronDown :size="17" /></summary>
         <SubscriptionLifecycleRecord :configured="configured" />
-        <SubscriptionFilterCard :configured="configured" />
-        <SubscriptionUserAgentCard ref="userAgentCardRef" :configured="configured" />
-        <SubscriptionScheduleCard />
-      </aside>
+      </details>
+      <details class="settings-section">
+        <summary><span><Settings2 :size="17" />订阅设置</span><ChevronDown :size="17" /></summary>
+        <div class="subscription-settings-content">
+          <SubscriptionScheduleCard />
+          <SubscriptionFilterCard :configured="configured" />
+          <SubscriptionUserAgentCard ref="userAgentCardRef" :configured="configured" />
+        </div>
+      </details>
     </div>
   </div>
 </template>
+
+<style scoped>
+.subscriptions-page { width: 100%; max-width: 880px; min-width: 0; margin: 0 auto; }
+.subscription-summary { display: flex; align-items: center; gap: 12px; margin: 8px 0 14px; color: var(--mn-ink-muted); font-size: .875rem; }
+.subscription-summary > :last-child { margin-left: auto; }
+.unsaved-note { color: var(--mn-warning); }
+.subscription-feedback { margin: 16px 0; border-left: 2px solid var(--mn-info); padding: 10px 14px; color: var(--mn-ink-soft); background: var(--mn-surface-sunken); font-size: .875rem; line-height: 1.65; }
+.subscription-feedback[data-error="true"] { border-left-color: var(--mn-warning); }
+.usage-footnote { margin: 0 0 28px; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.6; }
+.source-editor { margin: 24px 0; padding: 24px; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-md); background: var(--mn-surface-raised); scroll-margin-top: 120px; }
+.editor-heading h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+.editor-heading p { margin: 8px 0 0; color: var(--mn-ink-muted); font-size: .875rem; line-height: 1.65; }
+.source-textarea { margin-top: 20px; min-height: 144px; font-size: .875rem; line-height: 1.7; overflow-wrap: anywhere; }
+.editor-validation { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 0 18px; color: var(--mn-ink-muted); font-size: .8125rem; }
+.editor-validation[data-error="true"] { color: var(--mn-danger); }
+.editor-actions, .source-import-actions, .source-save-actions, .preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.editor-actions { justify-content: space-between; }
+.source-preview { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--mn-border); }
+.source-preview summary, .settings-section > summary { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none; font-size: .875rem; color: var(--mn-ink-soft); }
+summary::-webkit-details-marker { display: none; }
+summary:focus-visible { outline: 2px solid var(--mn-focus); outline-offset: 4px; border-radius: 2px; }
+details[open] > summary > svg:last-child { transform: rotate(180deg); }
+.source-preview ul { margin: 10px 0; padding: 0; list-style: none; }
+.source-preview li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 8px 0; color: var(--mn-ink-muted); font-size: .8125rem; }
+.source-preview li strong { font-weight: 500; color: var(--mn-ink-soft); overflow-wrap: anywhere; }
+.source-preview li[data-invalid="true"] { color: var(--mn-danger); }
+.subscription-settings { margin-top: 28px; }
+.settings-section { border-top: 1px solid var(--mn-border); }
+.settings-section > summary { min-height: 62px; font-size: .9375rem; font-weight: 500; }
+.settings-section > summary > span { display: inline-flex; align-items: center; gap: 12px; }
+.settings-section > summary > svg { color: var(--mn-ink-muted); }
+.subscription-settings-content { display: grid; gap: 16px; padding-bottom: 20px; }
+@media (max-width: 600px) {
+  .source-editor { padding: 18px 14px; }
+  .editor-actions { align-items: stretch; gap: 16px; }
+  .source-import-actions, .source-save-actions { width: 100%; }
+  .source-import-actions > *, .source-save-actions > :last-child { flex: 1; }
+  .subscription-summary { flex-wrap: wrap; gap: 6px; }
+}
+</style>

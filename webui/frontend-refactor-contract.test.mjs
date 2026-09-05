@@ -122,7 +122,7 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
 
 // --- Quiet Console tokens on the real styles entry ---
 const styles = read(stylesPath);
-for (const token of ["#60A5FA", "#0B0D12", "#F2F4F7", "#F6F7F9", "#172033"]) {
+for (const token of ["#E8E8E8", "#171717", "#F3F3F3", "#FFFFFF", "#242424"]) {
   assert.match(
     styles,
     new RegExp(token, "i"),
@@ -299,7 +299,7 @@ assert.match(
   "PageHeader must keep its title and actions in one normal-flow header",
 );
 assert.match(
-  read(join(src, "console.css")),
+  styles,
   /\.mn-page-header\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/,
   "PageHeader must wrap actions rather than overlap the owning page",
 );
