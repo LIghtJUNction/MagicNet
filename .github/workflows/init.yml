@@ -47,3 +47,4 @@ jobs:
           kam check
           python3 scripts/test-release-workflow.py
           bash scripts/test-subscription-usage.sh
+          bash scripts/test-artifact-signature.sh

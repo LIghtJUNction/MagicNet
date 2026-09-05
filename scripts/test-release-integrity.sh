@@ -206,4 +206,5 @@ assert_failure hook_preflight_archive "$TEST_ROOT/link.zip"
 printf 'not an archive\n' >"$TEST_ROOT/invalid.archive"
 assert_failure hook_preflight_archive "$TEST_ROOT/invalid.archive"
 
+bash "$ROOT/scripts/test-artifact-signature.sh"
 printf 'release integrity test passed\n'

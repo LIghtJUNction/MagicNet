@@ -121,6 +121,8 @@ def prepare():
         print(f"Validated {version}; build only")
         return
     require_main_checkout()
+    if os.environ.get("KAM_PRIVATE_KEY_AVAILABLE") != "1":
+        raise ValueError("Publishing requires the KAM_PRIVATE_KEY signing secret")
     require_new_tag(version)
     with open(os.environ["GITHUB_ENV"], "a") as output:
         output.write(f"RELEASE_REQUESTED=1\nRELEASE_VERSION={version}\n")

@@ -69,6 +69,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         env = dict(os.environ, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
                    GITHUB_SHA=self.git("rev-parse", "HEAD"), PUSH_BEFORE=self.before,
                    RELEASE_INPUT="false", PRERELEASE_INPUT="false",
+                   KAM_PRIVATE_KEY_AVAILABLE="1",
                    GITHUB_ENV=str(self.output), GITHUB_OUTPUT=str(self.step_output))
         env.update(overrides)
         command = [sys.executable, str(SCRIPT)]
@@ -282,6 +283,23 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assert_build_only(self.run_workflow(GITHUB_EVENT_NAME="workflow_dispatch"))
         self.assert_release(self.run_workflow(
             GITHUB_EVENT_NAME="workflow_dispatch", RELEASE_INPUT="true"))
+
+    def test_releases_require_a_signing_key_before_exporting_release_state(self):
+        self.commit(RELEASE_MARKER, "v1.2.3\n")
+        for event in ("push", "workflow_dispatch"):
+            with self.subTest(event=event):
+                self.assert_rejected(self.run_workflow(
+                    GITHUB_EVENT_NAME=event, RELEASE_INPUT="true",
+                    KAM_PRIVATE_KEY_AVAILABLE="0"), "KAM_PRIVATE_KEY")
+
+    def test_builds_without_release_do_not_require_a_signing_key(self):
+        self.commit(RELEASE_MARKER, "v1.2.3\n")
+        for event, ref in (("workflow_dispatch", "refs/heads/main"),
+                           ("pull_request", "refs/pull/42/merge")):
+            with self.subTest(event=event):
+                self.assert_build_only(self.run_workflow(
+                    GITHUB_EVENT_NAME=event, GITHUB_REF=ref,
+                    KAM_PRIVATE_KEY_AVAILABLE="0"))
 
     def test_manual_release_from_another_branch_is_rejected(self):
         self.git("checkout", "-b", "feature")
