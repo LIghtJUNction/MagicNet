@@ -182,9 +182,16 @@ fn redact_text(text: &str) -> String {
     text.lines()
         .map(|line| {
             let lower = line.to_ascii_lowercase();
-            let secret_header = ["authorization:", "x-magicnet-mcp-secret:"]
+            let secret_header = ["authorization", "x-magicnet-mcp-secret"]
                 .iter()
-                .filter_map(|header| lower.find(header))
+                .filter_map(|header| {
+                    lower.match_indices(header).find_map(|(index, _)| {
+                        lower[index + header.len()..]
+                            .trim_start()
+                            .starts_with(':')
+                            .then_some(index)
+                    })
+                })
                 .min();
             let prefix = secret_header.map_or(line, |index| &line[..index]);
             let mut tokens = prefix
@@ -251,6 +258,28 @@ mod tests {
                 "请求 failed <redacted-secret>\nnext diagnostic"
             );
         }
+    }
+
+    #[test]
+    fn redacts_header_credentials_with_whitespace_before_the_colon() {
+        for headers in [
+            "Authorization : Bearer example-token",
+            "X-MagicNet-MCP-Secret\t: example-secret",
+            "AUTHORIZATION \t: Bearer example-token X-MagicNet-MCP-Secret : example-secret",
+            "x-magicnet-mcp-secret\u{2003}: example-secret Authorization : Bearer example-token",
+        ] {
+            assert_eq!(
+                redact_text(&format!(
+                    "请求 12:34:56 request: {headers}\nnext diagnostic"
+                )),
+                "请求 12:34:56 request: <redacted-secret>\nnext diagnostic"
+            );
+        }
+        assert_eq!(
+            redact_text("authorization rejected; Authorization : Bearer example-token"),
+            "authorization rejected; <redacted-secret>"
+        );
+        assert_eq!(redact_text("authorization failed"), "authorization failed");
     }
 
     #[test]
