@@ -24,22 +24,44 @@ top-level `kam.sh` when they exist.
 `exec.yml` builds the module. It runs on `push`, `pull_request`, and manual
 `workflow_dispatch`.
 
-Prepare a new version in a pull request: update `kam.toml`,
-`src/MagicNet/module.prop`, and `update.json` together, including `version` and
-`versionCode`. The workflow builds the committed
-version and never commits or pushes version changes to the protected branch.
+Dispatch on `main` with `bump=patch`, `minor`, or `major` to prepare a version PR.
+For example, `v1.3.9` becomes `v1.3.10`, `v1.4.0`, or `v2.0.0`, respectively.
+All three metadata files (`kam.toml`, `src/MagicNet/module.prop`, `update.json`)
+are updated together and `versionCode` increases by one. This run creates the PR
+without building the module. With `bump=none`, the workflow builds the existing
+committed version and can publish it when `release=true`.
+
+With a bump, `release=true` adds a release request so merging the PR builds and
+publishes it. `prerelease=true` is preserved in that request and requires
+`release=true`. A version-only PR builds without publishing after merge.
+
+Each target version uses a dedicated `automation/release-vX.Y.Z` branch. Repeated
+requests update the same PR; do not edit that generated branch manually. Reruns
+whose original commit is no longer the head of main fail and require a new
+dispatch. Version updates never push directly to the protected branch.
+
+PR creation uses `GITHUB_TOKEN` with job-scoped `contents: write` and
+`pull-requests: write`. The repository must allow Actions to create pull requests.
+On failure, inspect the original action error and Settings → Actions → General →
+Allow GitHub Actions to create and approve pull requests. The run summary offers
+a recovery link; repository settings are never changed automatically. Bot-created
+PR workflow runs may await approval by someone with write access. Approve pending
+runs on the PR page, review, and merge normally; this workflow does not approve
+or merge its own PRs.
 
 There are two ways to publish after review:
 
 - Include `.github/release-request` in the version PR, with the exact version
-  on one line, for example `v1.3.9`. Merging it into `main` requests a release
+  on the first line, for example `v1.3.9`. Merging it into `main` requests a release
   only when that file changed in the triggering push's `before..sha` range.
   The file remains in the repository; later pushes that leave it unchanged
   do not request another release. Update it to the next exact version for
-  the next release. The previous `patch` marker is no longer supported.
+  the next release. An optional second line, `prerelease=true`, requests a
+  prerelease. Single-line version markers remain supported; the previous `patch`
+  marker is no longer supported.
 - Merge the version PR, then dispatch `exec.yml` on `main` with `release=true`.
   Set `prerelease=true` to mark a manually requested release as a prerelease.
-  The `bump` input has been removed.
+  Keep `bump=none`; the committed version tag must not already exist.
 
 Pull requests and ordinary pushes build and upload workflow artifacts without
 publishing a release. When `KAM_PRIVATE_KEY` is available, the uploaded artifact

@@ -3,8 +3,18 @@ name: Build Kam Module
 on:
   workflow_dispatch:
     inputs:
+      bump:
+        description: Prepare a version PR (merge it before publishing)
+        required: false
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+        default: none
       release:
-        description: Create GitHub release and upload artifacts
+        description: Publish after the version PR merges, or publish current version with bump=none
         required: false
         type: boolean
         default: false
@@ -30,7 +40,72 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  version-pr:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: magicnet-version-pr
+      cancel-in-progress: false
+    steps:
+      - name: Checkout release base
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Prepare version metadata
+        id: version
+        env:
+          BUMP_KIND: ${{ inputs.bump }}
+          RELEASE_INPUT: ${{ inputs.release }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
+        run: |
+          # Keep the original main checkout as the PR base. A detached checkout
+          # makes the PR action rebase with "theirs" onto a newer remote main.
+          git checkout -B main "$GITHUB_SHA"
+          python3 scripts/prepare-release.py --bump "$BUMP_KIND"
+
+      - name: Create version pull request
+        id: pr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          base: main
+          branch: automation/release-${{ steps.version.outputs.version }}
+          add-paths: |
+            kam.toml
+            src/MagicNet/module.prop
+            update.json
+            .github/release-request
+          commit-message: "chore(release): prepare ${{ steps.version.outputs.version }}"
+          title: "chore(release): prepare ${{ steps.version.outputs.version }}"
+          body: |
+            Prepares ${{ steps.version.outputs.version }} with synchronized module metadata.
+
+            Publish after merge: `${{ inputs.release }}`. Prerelease: `${{ inputs.prerelease }}`.
+            Review and merge this PR into main. Approve any pending workflow runs on the PR page.
+            This automation branch is regenerated when the same version is requested again; avoid editing it directly.
+
+      - name: Report version PR
+        if: ${{ always() && steps.version.outcome == 'success' }}
+        env:
+          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
+          PR_OUTCOME: ${{ steps.pr.outcome }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "$PR_OUTCOME" = success ] && [ -n "$PR_URL" ]; then
+            printf 'Version PR: %s\n\nApprove pending PR workflow runs, then review and merge.\n' "$PR_URL" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '::error::Version PR was not created. Check the action error and Settings > Actions > General > Allow GitHub Actions to create and approve pull requests, then rerun. Repository settings were not changed.'
+            printf 'Version PR creation failed. Recovery: %s/compare/main...automation/release-%s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
   build:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '' }}
     runs-on: ubuntu-latest
     env:
       KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
@@ -50,6 +125,7 @@ jobs:
       - name: Validate release request
         env:
           RELEASE_INPUT: ${{ inputs.release }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: python3 scripts/prepare-release.py
 
@@ -174,7 +250,7 @@ jobs:
         if: ${{ env.RELEASE_REQUESTED == '1' }}
         shell: bash
         env:
-          PRERELEASE_REQUESTED: ${{ inputs.prerelease }}
+          PRERELEASE_REQUESTED: ${{ env.RELEASE_PRERELEASE }}
         run: |
           set -euo pipefail
           git diff --exit-code HEAD -- kam.toml src/MagicNet/module.prop update.json
