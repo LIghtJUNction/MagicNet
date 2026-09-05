@@ -129,6 +129,14 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
         run: python3 scripts/prepare-release.py
 
+      - name: Prepare signing verification key
+        if: ${{ env.MAGICNET_SIGN_ENABLED == '1' }}
+        env:
+          SIGNING_KEY_PEM: ${{ secrets.KAM_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$SIGNING_KEY_PEM" | openssl pkey -pubout \
+            -out "$RUNNER_TEMP/magicnet-signing-public.pem"
+
       - name: Setup Go for forked sing-box
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -231,7 +239,8 @@ jobs:
           test -n "$module_id"
           test -f "dist/${module_id}.zip"
           if [ "${MAGICNET_SIGN_ENABLED}" = "1" ]; then
-            test -f "dist/${module_id}.zip.sig"
+            scripts/verify-artifact-signature.sh "dist/${module_id}.zip" \
+              "$RUNNER_TEMP/magicnet-signing-public.pem"
           fi
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'cli'
