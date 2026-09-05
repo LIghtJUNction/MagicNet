@@ -22,19 +22,28 @@ kam check
 `exec.yml` 用于构建模块。触发方式包括 `push`、`pull_request` 和手动
 `workflow_dispatch`。
 
-手动运行支持以下输入：
+新版本通过 PR 准备：同步更新 `kam.toml`、`src/MagicNet/module.prop` 和
+`update.json` 中的 `version`、`versionCode` 及对应版本的下载链接。
+工作流构建已提交的版本，不会自行提交或向受保护分支推送版本变更。
 
-- `bump`：构建前按需提升模块版本，可选 `none`、`patch`、`minor` 和
-  `major`。成功提升版本后会同时刷新 `versionCode`、`module.prop` 和
-  `update.json`，并将这些元数据提交回启动工作流时选择的分支。
-- `release`：通过 `kam publish` 创建或更新 GitHub Release。
-- `prerelease`：将该 Release 标记为 prerelease。
+审查后可通过两种方式发布：
 
-只有手动运行并选择版本提升时，工作流才会向仓库提交。普通 push、PR 和未选择
-版本提升的手动构建都不会提交。
+- 在版本 PR 中同时添加或更新 `.github/release-request`，内容为单行精确版本号，
+  例如 `v1.3.9`。合并到 `main` 后，仅当该文件在本次 push 的 `before..sha`
+  范围内发生变更时，才请求发布。文件会保留在仓库中；后续未修改它的 push
+  不会重复请求发布。发布下一版时，将它更新为下一版的精确版本号。
+  旧的 `patch` 标记不再支持。
+- 合并版本 PR 后，在 `main` 上手动运行 `exec.yml`，选择 `release=true`。
+  手动发布时可选择 `prerelease=true`，将 Release 标记为预发布。
+  `bump` 输入已移除。
 
-普通 push 和 pull request 会构建并上传 workflow artifact；如果存在
+普通 push 和 pull request 只构建并上传 workflow artifact；如果存在
 `KAM_PRIVATE_KEY`，上传内容也会包含模块签名旁路文件。
+
+发布前会检查已提交的版本元数据及下载链接是否一致；使用发布请求文件时，
+其中的版本号也必须一致。目标 tag 和 Release 必须尚不存在。
+发布要求签名成功，并通过产物内容及安装检查。Release 的 tag 指向实际构建的
+`GITHUB_SHA`。已有 tag 或 Release 会被拒绝，发布资产不会被覆盖。
 
 ## quality.yml
 
