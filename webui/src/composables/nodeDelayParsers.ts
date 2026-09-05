@@ -91,10 +91,7 @@ export function buildNodeDelayStats(entries: NodeDelayEntry[]): NodeDelayStats {
 export function nodeDelayHealthText(stats: NodeDelayStats): string {
   if (!stats.tested) return "还没有测速结果。";
   if (!stats.usable) return "全部节点测速失败，先检查订阅、网络或 sing-box 运行状态。";
-  if (stats.usablePercent < 50) return `解析可用率 ${stats.usablePercent}%，节点池不稳定，不建议只按最快节点切换。`;
-  if (stats.medianMillis !== null && stats.medianMillis <= FAST_MAX_MS) return `中位延迟 ${stats.medianMillis}ms，解析可用率 ${stats.usablePercent}%，节点池状态良好。`;
-  if (stats.medianMillis !== null && stats.medianMillis <= NORMAL_MAX_MS) return `中位延迟 ${stats.medianMillis}ms，解析可用率 ${stats.usablePercent}%，可优先使用最快节点。`;
-  return `中位延迟 ${stats.medianMillis ?? "未知"}ms，解析可用率 ${stats.usablePercent}%，建议继续筛选更低延迟节点。`;
+  return `${stats.usable}/${stats.tested} 个节点返回延迟，中位 ${stats.medianMillis ?? "未知"}ms。测速未验证 HTTP 状态码或登录结果，低延迟不代表目标网站允许访问。`;
 }
 
 export function nodeDelayQualityLabel(quality: NodeDelayQuality): string {

@@ -204,19 +204,8 @@ function requestTransparentMode(mode: TransparentMode, event: MouseEvent): void 
 
 async function rebuildNodeCache(): Promise<void> {
   await withAction("rebuild-node-cache", async () => {
-    const launch = await startBackgroundCli("sub update sing-box", "重建 sing-box 节点缓存");
-    if (execFailed(launch)) return;
-    const operationId = state.backgroundTask.id;
-    const refreshWhenComplete = (): void => {
-      if (state.backgroundTask.id !== operationId) return;
-      if (state.backgroundTask.status === "done") {
-        void refreshAll();
-        return;
-      }
-      if (state.backgroundTask.status === "error" || state.backgroundTask.status === "timeout") return;
-      window.setTimeout(refreshWhenComplete, 500);
-    };
-    window.setTimeout(refreshWhenComplete, 1600);
+    // The background follower refreshes subscriptions and service status.
+    await startBackgroundCli("sub update sing-box", "重建 sing-box 节点缓存");
   });
 }
 
