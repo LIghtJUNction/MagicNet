@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {
+  ArrowUpRight,
+  ChevronDown,
   Copy,
   DownloadCloud,
   ExternalLink,
@@ -17,11 +19,9 @@ import {
 import { computed, nextTick, onMounted, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
-import Card from "@/components/ui/Card.vue";
 import CardHeading from "@/components/ui/CardHeading.vue";
 import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import Input from "@/components/ui/Input.vue";
-import PageHeader from "@/components/ui/PageHeader.vue";
 import RemovableTag from "@/components/ui/RemovableTag.vue";
 import StatTile from "@/components/ui/StatTile.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
@@ -428,415 +428,356 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="grid gap-4 md:gap-5">
-    <PageHeader
-      overline="Control Center"
-      title="模块控制"
-      description="查看运行状态，启动、停止或切换透明代理模式。"
-    >
-      <template #actions>
-        <Button variant="outline" @click="emit('goto-tab', 'about')">流量路径</Button>
-        <Button variant="outline" @click="copyControlSnapshot"
-          ><Copy :size="17" />{{
-            snapshotCopied ? "已复制快照" : "复制快照"
-          }}</Button
-        >
-        <Badge :tone="singBoxStatus.tone">{{ singBoxStatus.label }}</Badge>
-      </template>
-    </PageHeader>
+  <div class="mn-control-page">
+    <div class="mn-control-layout">
+      <section class="mn-control-overview" aria-labelledby="mn-runtime-title">
+        <div class="mn-runtime-heading">
+          <div>
+            <p class="mn-control-eyebrow"><StatusDot :tone="state.runtime.singBoxState === 'sing-box' ? 'ok' : state.runtime.singBoxState === 'stopped' ? 'stop' : 'unknown'" />sing-box · 核心状态</p>
+            <h2 id="mn-runtime-title">{{ singBoxStatus.label }}</h2>
+          </div>
+          <Button variant="ghost" size="icon" :aria-label="snapshotCopied ? '已复制快照' : '复制状态快照'" @click="copyControlSnapshot">
+            <Copy :size="18" />
+          </Button>
+        </div>
 
-    <div class="grid grid-cols-1 gap-3 md:grid-cols-12 md:gap-4">
-      <Card
-        class="grid gap-4 !p-4 md:col-span-7 md:row-span-2 md:min-h-[22rem] md:!p-6"
-        :class="controlInsightTone(runtimeInsight.status)"
-      >
-        <div class="flex items-start justify-between gap-3">
-          <h3 class="max-w-xl break-words text-2xl font-semibold tracking-[-0.025em] md:text-3xl">
-            {{ runtimeInsight.title }}
-          </h3>
-          <StatusDot tone="current" />
-        </div>
-        <p class="my-auto max-w-xl break-words text-sm leading-7 md:text-[15px]">
-          {{ runtimeInsight.detail }}
-        </p>
-        <div class="flex flex-wrap items-start gap-2">
-          <Badge
-            v-for="item in runtimeInsight.actions"
-            :key="item"
-            tone="neutral"
-            >{{ item }}</Badge
-          >
-        </div>
-        <div v-if="missingNodeCache" class="grid gap-2">
-          <Button
-            variant="secondary"
-            :loading="isRunning('rebuild-node-cache')"
-            @click="rebuildNodeCache"
-            ><DownloadCloud :size="17" />更新订阅并重建节点</Button
-          >
-          <p class="text-xs leading-5">
-            会执行 <code>sub update sing-box</code>，成功后再启动 sing-box。
-          </p>
-        </div>
-      </Card>
+        <details class="mn-control-insight" :class="controlInsightTone(runtimeInsight.status)" :open="state.hasKsu && (runtimeInsight.status === 'danger' || state.phase === 'error')">
+          <summary><span>{{ runtimeInsight.title }}</span><ChevronDown :size="15" aria-hidden="true" /></summary>
+          <p>{{ runtimeInsight.detail }}</p>
+          <ul v-if="runtimeInsight.actions.length" class="mn-insight-actions">
+            <li v-for="item in runtimeInsight.actions" :key="item">{{ item }}</li>
+          </ul>
+          <div v-if="missingNodeCache" class="grid gap-2">
+            <Button variant="secondary" :loading="isRunning('rebuild-node-cache')" @click="rebuildNodeCache">
+              <DownloadCloud :size="17" />更新订阅并重建节点
+            </Button>
+            <p class="text-xs leading-5">会执行 <code>sub update sing-box</code>，成功后再启动 sing-box。</p>
+          </div>
+        </details>
 
-      <Card class="grid gap-3 !p-4 md:col-span-5 md:!p-6">
-        <CardHeading overline="sing-box" :title="singBoxStatus.label">
-          <span :class="['mt-1 size-3 rounded-full', singBoxStatus.dotClass]" />
-        </CardHeading>
-        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">
-          MagicNet 当前只运行 sing-box 核心。
-        </p>
-        <Button
-          :disabled="runtimeBusy"
-          :loading="isRunning('toggle-sing-box')"
-          class="w-full"
-          @click="toggleSingBox"
-        >
-          <Power :size="18" />
-          {{
-            state.runtime.singBoxState === "sing-box"
-              ? "停止 sing-box"
-              : "启动 sing-box"
-          }}
+        <Button class="mn-service-toggle" :disabled="runtimeBusy" :loading="isRunning('toggle-sing-box')" @click="toggleSingBox">
+          <Power :size="22" />
+          <span>{{ state.runtime.singBoxState === "sing-box" ? "停止 sing-box" : "启动 sing-box" }}</span>
+          <ArrowUpRight :size="19" aria-hidden="true" />
         </Button>
-      </Card>
 
-      <Card class="!p-4 md:col-span-5 md:!p-6">
-        <h3 class="text-lg font-semibold text-[var(--mn-ink)]">快捷操作</h3>
-        <div class="mt-3 grid grid-cols-2 gap-2 md:mt-4 md:grid-cols-1 xl:grid-cols-2">
-          <Button
-            variant="secondary"
-            :disabled="runtimeBusy"
-            :loading="isRunning('restart-sing-box')"
-            @click="requestDangerAction(restartSingBoxAction(), $event.currentTarget)"
-          >
-            <RotateCcw :size="17" />重启 sing-box
+        <div class="mn-service-actions" role="group" aria-label="服务操作">
+          <Button variant="ghost" :disabled="runtimeBusy" :loading="isRunning('restart-sing-box')" aria-label="重启 sing-box" @click="requestDangerAction(restartSingBoxAction(), $event.currentTarget)">
+            <RotateCcw :size="19" /><span>重启</span>
           </Button>
-          <Button
-            variant="secondary"
-            :disabled="runtimeBusy"
-            :loading="isRunning('apply-config')"
-            @click="requestDangerAction(applyConfigAction(), $event.currentTarget)"
-          >
-            <Save :size="17" />应用配置
+          <Button variant="ghost" :disabled="runtimeBusy" :loading="isRunning('apply-config')" @click="requestDangerAction(applyConfigAction(), $event.currentTarget)">
+            <Save :size="19" /><span>应用配置</span>
           </Button>
-          <Button
-            variant="secondary"
-            :disabled="runtimeBusy"
-            :loading="isRunning('repair')"
-            @click="requestDangerAction(repairAction(), $event.currentTarget)"
-          >
-            <Zap :size="17" />一键自修复
+          <Button variant="ghost" :disabled="runtimeBusy" :loading="isRunning('repair')" aria-label="一键自修复" @click="requestDangerAction(repairAction(), $event.currentTarget)">
+            <Zap :size="19" /><span>修复</span>
           </Button>
-          <Button
-            variant="secondary"
-            :disabled="runtimeBusy"
-            :loading="isRunning('stop-all')"
-            @click="requestDangerAction(stopAllServicesAction(), $event.currentTarget)"
-          >
-            <Unplug :size="17" />停止全部
-          </Button>
-        </div>
-      </Card>
-
-      <Card class="!p-4 md:col-span-4 md:!p-6">
-        <CardHeading
-          overline="sing-box WebUI"
-          title="核心控制入口"
-          description="进入 zashboard 管理节点与代理组，或直接检查 API 连通性。"
-        />
-        <div class="mt-5 grid gap-2">
-          <Button
-            variant="outline"
-            :loading="isRunning('open-zashboard')"
-            @click="
-              withAction('open-zashboard', () => openSingBoxUi('zashboard'))
-            "
-            ><ExternalLink :size="17" />zashboard</Button
-          >
-          <Button
-            variant="outline"
-            :loading="isRunning('api-groups')"
-            @click="
-              withAction('api-groups', () =>
-                runCli('api groups', '检查 sing-box API'),
-              )
-            "
-            ><ShieldCheck :size="17" />检查 API</Button
-          >
-        </div>
-      </Card>
-
-      <Card class="grid gap-4 !p-4 md:col-span-8 md:gap-5 md:!p-6">
-        <CardHeading
-          overline="透明代理模式"
-          :title="transparentModeLabel"
-          :description="transparentDescription"
-        >
-          <Badge :tone="transparentTransitionTone">
-            {{ state.runtime.transparentTransition }}
-          </Badge>
-        </CardHeading>
-
-        <div
-          role="group"
-          aria-label="选择透明代理模式"
-          class="grid grid-cols-2 gap-2"
-        >
-          <Button
-            :variant="state.runtime.transparentMode === 'tun' ? 'default' : 'outline'"
-            :disabled="transparentSwitchBusy || state.runtime.transparentMode === 'tun'"
-            :loading="isRunning('transparent-set-tun')"
-            :aria-pressed="state.runtime.transparentMode === 'tun'"
-            :class="state.runtime.transparentMode === 'tun' ? 'disabled:cursor-default disabled:opacity-100' : ''"
-            @click="requestTransparentMode('tun', $event)"
-          >
-            使用 TUN
-          </Button>
-          <Button
-            :variant="state.runtime.transparentMode === 'ebpf' ? 'default' : 'outline'"
-            :disabled="transparentSwitchBusy || state.runtime.transparentMode === 'ebpf'"
-            :loading="isRunning('transparent-set-ebpf')"
-            :aria-pressed="state.runtime.transparentMode === 'ebpf'"
-            :class="state.runtime.transparentMode === 'ebpf' ? 'disabled:cursor-default disabled:opacity-100' : ''"
-            @click="requestTransparentMode('ebpf', $event)"
-          >
-            使用 eBPF
+          <Button variant="ghost" :disabled="runtimeBusy" :loading="isRunning('stop-all')" @click="requestDangerAction(stopAllServicesAction(), $event.currentTarget)">
+            <Unplug :size="19" /><span>停止全部</span>
           </Button>
         </div>
 
-        <dl
-          aria-live="polite"
-          class="grid gap-x-4 gap-y-2 rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-sunken)] p-3 text-xs sm:grid-cols-2"
-        >
-          <div class="min-w-0">
-            <dt class="text-[var(--mn-ink-muted)]">configured</dt>
-            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentMode }}</dd>
-          </div>
-          <div class="min-w-0">
-            <dt class="text-[var(--mn-ink-muted)]">effective</dt>
-            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ transparentEffectiveLabel }}</dd>
-          </div>
-          <div class="min-w-0">
-            <dt class="text-[var(--mn-ink-muted)]">local cgroup</dt>
-            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentLocalCgroup }}</dd>
-          </div>
-          <div class="min-w-0">
-            <dt class="text-[var(--mn-ink-muted)]">shared TC</dt>
-            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentSharedTc }}</dd>
-          </div>
-          <div class="min-w-0 sm:col-span-2">
-            <dt class="text-[var(--mn-ink-muted)]">shared interfaces</dt>
-            <dd class="break-all font-mono text-[var(--mn-ink)]">{{ sharedInterfacesLabel }}</dd>
-          </div>
-          <div class="min-w-0">
-            <dt class="text-[var(--mn-ink-muted)]">capability</dt>
-            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentCapability }}</dd>
-          </div>
-          <div class="min-w-0">
-            <dt class="text-[var(--mn-ink-muted)]">transition</dt>
-            <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentTransition }}</dd>
-          </div>
-        </dl>
+      </section>
 
-        <p
-          v-if="state.runtime.transparentRecentError"
-          role="alert"
-          class="break-words border-l-2 border-[var(--mn-danger)] pl-3 text-xs leading-5 text-[var(--mn-danger)]"
-        >
-          {{ state.runtime.transparentRecentError }}
-        </p>
+      <section class="mn-control-settings" aria-labelledby="mn-network-settings-title">
+        <div class="mn-settings-heading">
+          <h3 id="mn-network-settings-title">网络设置</h3>
+          <Button variant="ghost" @click="emit('goto-tab', 'about')">流量路径<ArrowUpRight :size="15" /></Button>
+        </div>
 
-        <Button
-          variant="secondary"
-          :disabled="transparentSwitchBusy"
-          :loading="isRunning('transparent-apply')"
-          @click="requestDangerAction(applyTransparentModeAction(), $event.currentTarget)"
-        >
-          <Radar :size="17" />重新应用当前模式
-        </Button>
-      </Card>
+        <details class="mn-setting" data-setting="transparent">
+          <summary>
+            <Radar :size="21" aria-hidden="true" />
+            <span><strong>透明代理</strong><small>{{ state.runtime.transparentMode === "unknown" ? "等待设备读取" : `${transparentModeLabel} · ${state.runtime.transparentTransition}` }}</small></span>
+            <ChevronDown :size="17" class="mn-disclosure-arrow" aria-hidden="true" />
+          </summary>
+          <div class="mn-setting-body">
+            <CardHeading
+              overline="透明代理模式"
+              :title="transparentModeLabel"
+              :description="transparentDescription"
+            >
+              <Badge :tone="transparentTransitionTone">
+                {{ state.runtime.transparentTransition }}
+              </Badge>
+            </CardHeading>
 
-      <Card
-        class="grid gap-4 !p-4 md:col-span-12 md:!p-6"
-        :class="
-          hotspotProxyEnabled
-            ? 'border-[color-mix(in_srgb,var(--mn-cactus)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_10%,var(--mn-ivory))]'
-            : ''
-        "
-        :aria-busy="hotspotPolicyPhase === 'loading'"
-      >
-        <label
-          :class="[
-            'flex flex-col gap-4 rounded-[var(--mn-radius-md)] p-1 sm:flex-row sm:items-center sm:justify-between',
-            hotspotPolicyPhase === 'ready' ? 'cursor-pointer' : 'cursor-default',
-          ]"
-        >
-          <span class="flex min-w-0 items-start gap-4">
-            <input
-              type="checkbox"
-              class="mt-1 size-7 shrink-0 accent-[var(--mn-cactus)]"
-              :checked="hotspotProxyEnabled"
-              :disabled="
-                hotspotPolicyPhase !== 'ready' ||
-                runtimeBusy ||
-                isRunning('hotspot-proxy')
-              "
-              aria-describedby="hotspot-proxy-description hotspot-proxy-status"
-              @change="toggleHotspotProxy"
-            />
-            <span class="min-w-0">
-              <span class="flex items-center gap-2 text-xl font-semibold tracking-[-0.03em]">
-                <Share2 :size="21" />允许热点使用代理
+            <div
+              role="group"
+              aria-label="选择透明代理模式"
+              class="grid grid-cols-2 gap-2"
+            >
+              <Button
+                :variant="state.runtime.transparentMode === 'tun' ? 'default' : 'outline'"
+                :disabled="transparentSwitchBusy || state.runtime.transparentMode === 'tun'"
+                :loading="isRunning('transparent-set-tun')"
+                :aria-pressed="state.runtime.transparentMode === 'tun'"
+                :class="state.runtime.transparentMode === 'tun' ? 'disabled:cursor-default disabled:opacity-100' : ''"
+                @click="requestTransparentMode('tun', $event)"
+              >
+                使用 TUN
+              </Button>
+              <Button
+                :variant="state.runtime.transparentMode === 'ebpf' ? 'default' : 'outline'"
+                :disabled="transparentSwitchBusy || state.runtime.transparentMode === 'ebpf'"
+                :loading="isRunning('transparent-set-ebpf')"
+                :aria-pressed="state.runtime.transparentMode === 'ebpf'"
+                :class="state.runtime.transparentMode === 'ebpf' ? 'disabled:cursor-default disabled:opacity-100' : ''"
+                @click="requestTransparentMode('ebpf', $event)"
+              >
+                使用 eBPF
+              </Button>
+            </div>
+
+            <dl
+              aria-live="polite"
+              class="grid gap-x-4 gap-y-2 rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-sunken)] p-3 text-xs sm:grid-cols-2"
+            >
+              <div class="min-w-0">
+                <dt class="text-[var(--mn-ink-muted)]">configured</dt>
+                <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentMode }}</dd>
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[var(--mn-ink-muted)]">effective</dt>
+                <dd class="break-words font-mono text-[var(--mn-ink)]">{{ transparentEffectiveLabel }}</dd>
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[var(--mn-ink-muted)]">local cgroup</dt>
+                <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentLocalCgroup }}</dd>
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[var(--mn-ink-muted)]">shared TC</dt>
+                <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentSharedTc }}</dd>
+              </div>
+              <div class="min-w-0 sm:col-span-2">
+                <dt class="text-[var(--mn-ink-muted)]">shared interfaces</dt>
+                <dd class="break-all font-mono text-[var(--mn-ink)]">{{ sharedInterfacesLabel }}</dd>
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[var(--mn-ink-muted)]">capability</dt>
+                <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentCapability }}</dd>
+              </div>
+              <div class="min-w-0">
+                <dt class="text-[var(--mn-ink-muted)]">transition</dt>
+                <dd class="break-words font-mono text-[var(--mn-ink)]">{{ state.runtime.transparentTransition }}</dd>
+              </div>
+            </dl>
+
+            <p
+              v-if="state.runtime.transparentRecentError"
+              role="alert"
+              class="break-words border-l-2 border-[var(--mn-danger)] pl-3 text-xs leading-5 text-[var(--mn-danger)]"
+            >
+              {{ state.runtime.transparentRecentError }}
+            </p>
+
+            <Button
+              variant="secondary"
+              :disabled="transparentSwitchBusy"
+              :loading="isRunning('transparent-apply')"
+              @click="requestDangerAction(applyTransparentModeAction(), $event.currentTarget)"
+            >
+              <Radar :size="17" />重新应用当前模式
+            </Button>
+
+          </div>
+        </details>
+        <p v-if="state.runtime.transparentRecentError" class="mn-setting-error" role="alert">{{ state.runtime.transparentRecentError }}</p>
+
+        <details class="mn-setting" data-setting="wifi">
+          <summary>
+            <Wifi :size="21" aria-hidden="true" />
+            <span><strong>Wi-Fi 策略</strong><small>{{ !state.hasKsu ? "等待设备读取" : state.wifiPolicy.enabled ? "已启用自动切换" : "自动切换已停用" }}</small></span>
+            <ChevronDown :size="17" class="mn-disclosure-arrow" aria-hidden="true" />
+          </summary>
+          <div class="mn-setting-body">
+            <CardHeading
+              overline="Wi-Fi 模式策略"
+              overline-tone="faint"
+              description="黑名单命中 SSID 或 BSSID 时切换为 Direct，离开 Wi-Fi 后自动恢复 Rule。白名单模式会让名单内 Wi-Fi 使用 Rule，其他 Wi-Fi 使用 Direct。"
+            >
+              <template #title>
+                <span class="inline-flex items-center gap-2"><Wifi :size="22" />按 Wi-Fi 自动切换</span>
+              </template>
+              <Badge :tone="state.wifiPolicy.connected ? 'success' : 'neutral'">
+                {{ state.wifiPolicy.connected ? state.wifiPolicy.ssid || "Wi-Fi 已连接" : "未连接 Wi-Fi" }}
+              </Badge>
+              <Badge :tone="state.wifiPolicy.enabled ? 'success' : 'warning'">
+                {{ state.wifiPolicy.enabled ? "已启用" : "已停用" }}
+              </Badge>
+              <Button
+                :loading="isRunning('wifi-toggle')"
+                :disabled="runtimeBusy"
+                @click="toggleWifiPolicy"
+              >
+                <Power :size="17" />{{ state.wifiPolicy.enabled ? "停用" : "启用" }}
+              </Button>
+            </CardHeading>
+
+            <div class="grid gap-3 md:grid-cols-2">
+              <button
+                v-for="mode in wifiPolicyModes"
+                :key="mode"
+                type="button"
+                :aria-pressed="state.wifiPolicy.policyMode === mode"
+                :disabled="runtimeBusy || state.wifiPolicy.policyMode === mode"
+                :class="[
+                  'rounded-[2px] border border-transparent px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] disabled:cursor-default',
+                  state.wifiPolicy.policyMode === mode
+                    ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]'
+                    : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
+                ]"
+                @click="setWifiPolicyMode(mode)"
+              >
+                <span class="font-semibold">{{ mode === "blacklist" ? "黑名单" : "白名单" }}</span>
+                <span class="mt-1 block text-xs">
+                  {{ mode === "blacklist" ? "名单命中 → Direct" : "名单命中 → Rule" }}
+                </span>
+              </button>
+            </div>
+
+            <div class="grid gap-3 md:grid-cols-3">
+              <StatTile label="当前 BSSID" :value="state.wifiPolicy.bssid || '—'" />
+              <StatTile label="匹配结果" :value="state.wifiPolicy.matched ? '已命中名单' : '未命中'" />
+              <StatTile label="代理模式" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
+            </div>
+
+            <div class="grid gap-5 lg:grid-cols-2">
+              <div class="grid gap-3">
+                <div class="flex gap-2">
+                  <Input
+                    v-model="wifiSsidInput"
+                    aria-label="Wi-Fi SSID"
+                    placeholder="输入完整 SSID，例如 Home WiFi"
+                    @keyup.enter="addWifiEntry('ssid')"
+                  />
+                  <Button
+                    variant="secondary"
+                    :loading="isRunning('wifi-add-ssid')"
+                    @click="addWifiEntry('ssid')"
+                  ><Plus :size="17" />SSID</Button>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span v-if="!state.wifiPolicy.ssids.length" class="mn-empty text-xs">还没有 SSID 条目</span>
+                  <RemovableTag
+                    v-for="ssid in state.wifiPolicy.ssids"
+                    :key="ssid"
+                    variant="soft"
+                    remove-variant="ghost"
+                    :remove-label="`移除 SSID ${ssid}`"
+                    @remove="removeWifiEntry('ssid', ssid)"
+                  >{{ ssid }}</RemovableTag>
+                </div>
+              </div>
+
+              <div class="grid gap-3">
+                <div class="flex gap-2">
+                  <Input
+                    v-model="wifiBssidInput"
+                    aria-label="Wi-Fi BSSID"
+                    placeholder="输入 BSSID，例如 aa:bb:cc:dd:ee:ff"
+                    @keyup.enter="addWifiEntry('bssid')"
+                  />
+                  <Button
+                    variant="secondary"
+                    :loading="isRunning('wifi-add-bssid')"
+                    @click="addWifiEntry('bssid')"
+                  ><Plus :size="17" />BSSID</Button>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span v-if="!state.wifiPolicy.bssids.length" class="mn-empty text-xs">还没有 BSSID 条目</span>
+                  <RemovableTag
+                    v-for="bssid in state.wifiPolicy.bssids"
+                    :key="bssid"
+                    class="font-mono"
+                    variant="soft"
+                    remove-variant="ghost"
+                    :remove-label="`移除 BSSID ${bssid}`"
+                    @remove="removeWifiEntry('bssid', bssid)"
+                  >{{ bssid }}</RemovableTag>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </details>
+
+        <details class="mn-setting" data-setting="hotspot" :aria-busy="hotspotPolicyPhase === 'loading'">
+          <summary>
+            <Share2 :size="21" aria-hidden="true" />
+            <span><strong>热点策略</strong><small>{{ hotspotPolicyPhase === "loading" ? "正在读取" : hotspotPolicyPhase === "error" ? "读取失败 · 展开查看" : hotspotProxyEnabled ? "使用 Proxy 代理组" : "使用 Direct 直连" }}</small></span>
+            <ChevronDown :size="17" class="mn-disclosure-arrow" aria-hidden="true" />
+          </summary>
+          <div class="mn-setting-body">
+            <label
+              :class="[
+                'flex flex-col gap-4 rounded-[var(--mn-radius-md)] p-1 sm:flex-row sm:items-center sm:justify-between',
+                hotspotPolicyPhase === 'ready' ? 'cursor-pointer' : 'cursor-default',
+              ]"
+            >
+              <span class="flex min-w-0 items-start gap-4">
+                <input
+                  type="checkbox"
+                  class="mt-1 size-7 shrink-0 accent-[var(--mn-cactus)]"
+                  :checked="hotspotProxyEnabled"
+                  :disabled="
+                    hotspotPolicyPhase !== 'ready' ||
+                    runtimeBusy ||
+                    isRunning('hotspot-proxy')
+                  "
+                  aria-describedby="hotspot-proxy-description hotspot-proxy-status"
+                  @change="toggleHotspotProxy"
+                />
+                <span class="min-w-0">
+                  <span class="flex items-center gap-2 text-xl font-semibold tracking-[-0.03em]">
+                    <Share2 :size="21" />允许热点使用代理
+                  </span>
+                  <span
+                    id="hotspot-proxy-description"
+                    class="mt-2 block max-w-3xl text-sm leading-6 text-[var(--mn-ink-muted)]"
+                  >
+                    勾选后，连接本机热点的设备统一走 <code>proxy</code> 代理组；不勾选时统一走
+                    <code>direct</code>。Proxy 会关闭 Android 热点硬件加速以确保流量进入 TUN；关闭后恢复原设置。
+                  </span>
+                </span>
               </span>
               <span
-                id="hotspot-proxy-description"
-                class="mt-2 block max-w-3xl text-sm leading-6 text-[var(--mn-ink-muted)]"
+                id="hotspot-proxy-status"
+                class="flex shrink-0 items-center gap-2 pl-11 sm:pl-0"
               >
-                勾选后，连接本机热点的设备统一走 <code>proxy</code> 代理组；不勾选时统一走
-                <code>direct</code>。Proxy 会关闭 Android 热点硬件加速以确保流量进入 TUN；关闭后恢复原设置。
+                <Badge v-if="hotspotPolicyPhase === 'loading'" tone="neutral">读取中</Badge>
+                <Badge v-else-if="hotspotPolicyPhase === 'error'" tone="warning">读取失败</Badge>
+                <Badge v-else :tone="hotspotProxyEnabled ? 'success' : 'neutral'">
+                  {{ hotspotProxyEnabled ? "Proxy" : "Direct" }}
+                </Badge>
               </span>
-            </span>
-          </span>
-          <span
-            id="hotspot-proxy-status"
-            class="flex shrink-0 items-center gap-2 pl-11 sm:pl-0"
-          >
-            <Badge v-if="hotspotPolicyPhase === 'loading'" tone="neutral">读取中</Badge>
-            <Badge v-else-if="hotspotPolicyPhase === 'error'" tone="warning">读取失败</Badge>
-            <Badge v-else :tone="hotspotProxyEnabled ? 'success' : 'neutral'">
-              {{ hotspotProxyEnabled ? "Proxy" : "Direct" }}
-            </Badge>
-          </span>
-        </label>
-        <div
-          v-if="hotspotPolicyPhase === 'error'"
-          class="flex flex-col gap-3 rounded-[var(--mn-radius-md)] bg-[var(--mn-tone-warn-bg)] p-4 text-[var(--mn-warning)] shadow-[inset_0_0_0_1px_var(--mn-tone-warn-border)] sm:flex-row sm:items-center sm:justify-between"
-          role="alert"
-        >
-          <p class="text-sm leading-6">{{ hotspotPolicyError }}</p>
-          <Button
-            class="shrink-0"
-            variant="outline"
-            size="sm"
-            :loading="isRunning('hotspot-policy-refresh')"
-            @click="retryHotspotPolicy"
-          >
-            <RotateCcw :size="16" />重新读取
-          </Button>
-        </div>
-      </Card>
-
-      <Card class="grid gap-4 !p-4 md:col-span-12 md:gap-5 md:!p-6">
-        <CardHeading
-          overline="Wi-Fi 模式策略"
-          overline-tone="faint"
-          description="黑名单命中 SSID 或 BSSID 时切换为 Direct，离开 Wi-Fi 后自动恢复 Rule。白名单模式会让名单内 Wi-Fi 使用 Rule，其他 Wi-Fi 使用 Direct。"
-        >
-          <template #title>
-            <span class="inline-flex items-center gap-2"><Wifi :size="22" />按 Wi-Fi 自动切换</span>
-          </template>
-          <Badge :tone="state.wifiPolicy.connected ? 'success' : 'neutral'">
-            {{ state.wifiPolicy.connected ? state.wifiPolicy.ssid || "Wi-Fi 已连接" : "未连接 Wi-Fi" }}
-          </Badge>
-          <Badge :tone="state.wifiPolicy.enabled ? 'success' : 'warning'">
-            {{ state.wifiPolicy.enabled ? "已启用" : "已停用" }}
-          </Badge>
-          <Button
-            :loading="isRunning('wifi-toggle')"
-            :disabled="runtimeBusy"
-            @click="toggleWifiPolicy"
-          >
-            <Power :size="17" />{{ state.wifiPolicy.enabled ? "停用" : "启用" }}
-          </Button>
-        </CardHeading>
-
-        <div class="grid gap-3 md:grid-cols-2">
-          <button
-            v-for="mode in wifiPolicyModes"
-            :key="mode"
-            type="button"
-            :aria-pressed="state.wifiPolicy.policyMode === mode"
-            :disabled="runtimeBusy || state.wifiPolicy.policyMode === mode"
-            :class="[
-              'rounded-[2px] border border-transparent px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] disabled:cursor-default',
-              state.wifiPolicy.policyMode === mode
-                ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]'
-                : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
-            ]"
-            @click="setWifiPolicyMode(mode)"
-          >
-            <span class="font-semibold">{{ mode === "blacklist" ? "黑名单" : "白名单" }}</span>
-            <span class="mt-1 block text-xs">
-              {{ mode === "blacklist" ? "名单命中 → Direct" : "名单命中 → Rule" }}
-            </span>
-          </button>
-        </div>
-
-        <div class="grid gap-3 md:grid-cols-3">
-          <StatTile label="当前 BSSID" :value="state.wifiPolicy.bssid || '—'" />
-          <StatTile label="匹配结果" :value="state.wifiPolicy.matched ? '已命中名单' : '未命中'" />
-          <StatTile label="代理模式" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
-        </div>
-
-        <div class="grid gap-5 lg:grid-cols-2">
-          <div class="grid gap-3">
-            <div class="flex gap-2">
-              <Input
-                v-model="wifiSsidInput"
-                aria-label="Wi-Fi SSID"
-                placeholder="输入完整 SSID，例如 Home WiFi"
-                @keyup.enter="addWifiEntry('ssid')"
-              />
+            </label>
+            <div
+              v-if="hotspotPolicyPhase === 'error'"
+              class="flex flex-col gap-3 rounded-[var(--mn-radius-md)] bg-[var(--mn-tone-warn-bg)] p-4 text-[var(--mn-warning)] shadow-[inset_0_0_0_1px_var(--mn-tone-warn-border)] sm:flex-row sm:items-center sm:justify-between"
+              role="alert"
+            >
+              <p class="text-sm leading-6">{{ hotspotPolicyError }}</p>
               <Button
-                variant="secondary"
-                :loading="isRunning('wifi-add-ssid')"
-                @click="addWifiEntry('ssid')"
-              ><Plus :size="17" />SSID</Button>
+                class="shrink-0"
+                variant="outline"
+                size="sm"
+                :loading="isRunning('hotspot-policy-refresh')"
+                @click="retryHotspotPolicy"
+              >
+                <RotateCcw :size="16" />重新读取
+              </Button>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <span v-if="!state.wifiPolicy.ssids.length" class="mn-empty text-xs">还没有 SSID 条目</span>
-              <RemovableTag
-                v-for="ssid in state.wifiPolicy.ssids"
-                :key="ssid"
-                variant="soft"
-                remove-variant="ghost"
-                :remove-label="`移除 SSID ${ssid}`"
-                @remove="removeWifiEntry('ssid', ssid)"
-              >{{ ssid }}</RemovableTag>
-            </div>
-          </div>
 
-          <div class="grid gap-3">
-            <div class="flex gap-2">
-              <Input
-                v-model="wifiBssidInput"
-                aria-label="Wi-Fi BSSID"
-                placeholder="输入 BSSID，例如 aa:bb:cc:dd:ee:ff"
-                @keyup.enter="addWifiEntry('bssid')"
-              />
-              <Button
-                variant="secondary"
-                :loading="isRunning('wifi-add-bssid')"
-                @click="addWifiEntry('bssid')"
-              ><Plus :size="17" />BSSID</Button>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <span v-if="!state.wifiPolicy.bssids.length" class="mn-empty text-xs">还没有 BSSID 条目</span>
-              <RemovableTag
-                v-for="bssid in state.wifiPolicy.bssids"
-                :key="bssid"
-                class="font-mono"
-                variant="soft"
-                remove-variant="ghost"
-                :remove-label="`移除 BSSID ${bssid}`"
-                @remove="removeWifiEntry('bssid', bssid)"
-              >{{ bssid }}</RemovableTag>
-            </div>
           </div>
+        </details>
+
+        <div class="mn-panel-entry">
+          <Button variant="ghost" class="mn-panel-entry-link" :loading="isRunning('open-zashboard')" @click="withAction('open-zashboard', () => openSingBoxUi('zashboard'))">
+            <span><strong>节点与代理组</strong><small>在 zashboard 中管理</small></span><ExternalLink :size="19" />
+          </Button>
+          <Button variant="ghost" :loading="isRunning('api-groups')" @click="withAction('api-groups', () => runCli('api groups', '检查 sing-box API'))"><ShieldCheck :size="16" />检查 API</Button>
         </div>
-      </Card>
+      </section>
     </div>
 
     <div v-if="pendingDangerAction" ref="dangerConfirmCard" tabindex="-1">
