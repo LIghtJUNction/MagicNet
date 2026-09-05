@@ -24,21 +24,32 @@ top-level `kam.sh` when they exist.
 `exec.yml` builds the module. It runs on `push`, `pull_request`, and manual
 `workflow_dispatch`.
 
-Manual dispatch supports these inputs:
+Prepare a new version in a pull request: update `kam.toml`,
+`src/MagicNet/module.prop`, and `update.json` together, including `version` and
+`versionCode`. The workflow builds the committed
+version and never commits or pushes version changes to the protected branch.
 
-- `bump`: optionally bump the module version before building. The choices are
-  `none`, `patch`, `minor`, and `major`. A successful bump also refreshes
-  `versionCode`, `module.prop`, and `update.json`, then commits the metadata
-  back to the branch used to dispatch the workflow.
-- `release`: create/update a GitHub Release through `kam publish`.
-- `prerelease`: mark that release as a prerelease.
+There are two ways to publish after review:
 
-The workflow only commits back to the repository when a manual run selects a
-version bump. Normal push, pull request, and non-bump manual runs never commit.
+- Include `.github/release-request` in the version PR, with the exact version
+  on one line, for example `v1.3.9`. Merging it into `main` requests a release
+  only when that file changed in the triggering push's `before..sha` range.
+  The file remains in the repository; later pushes that leave it unchanged
+  do not request another release. Update it to the next exact version for
+  the next release. The previous `patch` marker is no longer supported.
+- Merge the version PR, then dispatch `exec.yml` on `main` with `release=true`.
+  Set `prerelease=true` to mark a manually requested release as a prerelease.
+  The `bump` input has been removed.
 
-Normal push and pull request runs build and upload workflow artifacts. When
-`KAM_PRIVATE_KEY` is available, the uploaded artifact also includes the module
-signature sidecar.
+Pull requests and ordinary pushes build and upload workflow artifacts without
+publishing a release. When `KAM_PRIVATE_KEY` is available, the uploaded artifact
+also includes the module signature sidecar.
+
+Release checks require matching committed version metadata,
+a matching release-request version when used, and a new tag and release.
+Publishing requires signing and successful artifact and installation checks.
+The release tag targets the exact `GITHUB_SHA` that was built. Existing tags
+or releases are rejected; release assets are never overwritten.
 
 ## quality.yml
 

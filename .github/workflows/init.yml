@@ -45,3 +45,4 @@ jobs:
           set -euo pipefail
           kam validate
           kam check
+          python3 scripts/test-release-workflow.py
