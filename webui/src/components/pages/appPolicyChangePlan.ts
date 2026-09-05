@@ -141,8 +141,8 @@ function effectiveRoutingChanges(
 function effectiveRoute(state: { mode: AppPolicyMode; proxy: string[]; direct: string[]; bypass: string[] }, pkg: string): AppRouteKind {
   if (state.proxy.includes(pkg)) return "proxy";
   if (state.direct.includes(pkg)) return "direct";
-  if (state.bypass.includes(pkg) || state.mode === "whitelist") return "bypass";
-  return "managed";
+  if (state.bypass.includes(pkg)) return "bypass";
+  return defaultAppRoute(state.mode);
 }
 
 function movedPackageWarnings(before: { proxy: string[]; direct: string[]; bypass: string[] }, after: { proxy: string[]; direct: string[]; bypass: string[] }): string[] {
