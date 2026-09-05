@@ -4,7 +4,7 @@ import test from "node:test";
 import postcss from "postcss";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
-const css = read("./src/console.css");
+const css = read("./src/styles.css");
 const header = read("./src/components/ui/PageHeader.vue");
 
 test("page heading and both action slots share a wrapping header", () => {
@@ -13,27 +13,27 @@ test("page heading and both action slots share a wrapping header", () => {
   assert.match(css, /\.mn-page-header\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/);
 });
 
-test("console refinements load after the existing theme with narrowly scoped overrides", () => {
-  assert.match(read("./src/main.ts"), /import "\.\/styles\.css";\s*import "\.\/console\.css";/);
-  assert.doesNotMatch(css, /@import|url\(/);
+test("the shared theme has one entry and scoped utility priority", () => {
+  const main = read("./src/main.ts");
+  assert.match(main, /import "\.\/styles\.css";/);
+  assert.doesNotMatch(main, /console\.css/);
   const important = [];
   postcss.parse(css).walkDecls((decl) => {
     if (!decl.important) return;
     important.push(`${decl.parent.selector}: ${decl.prop}`);
   });
-  // Existing nav rules and Tailwind !p-* utilities require these exact overrides.
-  // Other pages and properties must not accumulate priority escapes.
+  // Only explicit control-page padding and reduced-motion guarantees need priority.
   assert.deepEqual(important, [
-    ".mobile-nav button.mn-nav-active: border-color",
-    ".mobile-nav button.mn-nav-active: border-top-color",
-    ".mobile-nav button.mn-nav-active: background",
-    ".mobile-nav button.mn-nav-active: border-top-color",
     '.page-surface[data-page="control"] > .grid > .grid > .magic-card: padding',
+    "*,\n  *::before,\n  *::after: scroll-behavior",
+    "*,\n  *::before,\n  *::after: animation-duration",
+    "*,\n  *::before,\n  *::after: animation-iteration-count",
+    "*,\n  *::before,\n  *::after: transition-duration",
   ]);
 });
 
 test("mobile status details wrap and high-contrast tabs retain selection", () => {
-  assert.match(css, /\.mn-runtime-brief > p\s*\{[^}]*grid-row: 2;[^}]*white-space: normal;/);
+  assert.match(css, /\.mn-runtime-brief > p\s*\{[^}]*overflow-wrap: anywhere;[^}]*white-space: normal;/);
   assert.match(css, /@media \(forced-colors: active\)[\s\S]*border-bottom-color: Highlight;/);
 });
 

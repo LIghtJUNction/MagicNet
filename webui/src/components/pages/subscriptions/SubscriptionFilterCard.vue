@@ -97,7 +97,6 @@ async function saveFilters(): Promise<void> {
     <div class="flex items-start gap-3">
       <Filter :size="18" class="mt-0.5 shrink-0 text-[var(--mn-ink-muted)]" />
       <div class="min-w-0">
-        <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Node filter</span>
         <h3 class="mt-1 text-base font-semibold text-[var(--mn-ink)]">节点关键词过滤</h3>
         <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">新安装默认过滤免费、香港和台湾节点；清空并保存即可关闭过滤。英文匹配忽略大小写。</p>
       </div>
@@ -110,9 +109,9 @@ async function saveFilters(): Promise<void> {
         type="button"
         :aria-pressed="hasFilter(preset)"
         :class="[
-          'min-h-8 rounded-sm px-2.5 text-xs ring-1 transition-colors',
+          'min-h-11 rounded-sm px-3 text-sm ring-1 transition-colors',
           hasFilter(preset)
-            ? 'bg-[color-mix(in_srgb,var(--mn-cactus)_28%,var(--mn-carrier))] text-[var(--mn-success)] ring-[color-mix(in_srgb,var(--mn-cactus)_45%,transparent)]'
+            ? 'bg-[var(--mn-ink)] text-[var(--mn-surface-raised)] ring-[var(--mn-ink)]'
             : 'bg-[var(--mn-ivory)] text-[var(--mn-ink-muted)] ring-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)]',
         ]"
         @click="toggleFilter(preset)"
@@ -139,11 +138,11 @@ async function saveFilters(): Promise<void> {
         v-for="keyword in normalizedFilters"
         :key="keyword"
         type="button"
-        class="inline-flex min-h-8 items-center gap-1 rounded-sm bg-[color-mix(in_srgb,var(--mn-heather)_28%,var(--mn-carrier))] px-2.5 text-xs text-[var(--mn-ink-soft)] ring-1 ring-[color-mix(in_srgb,var(--mn-heather)_42%,transparent)]"
+        class="inline-flex min-h-11 max-w-full items-center gap-2 rounded-sm bg-[color-mix(in_srgb,var(--mn-heather)_28%,var(--mn-carrier))] px-3 text-sm text-[var(--mn-ink-soft)] ring-1 ring-[color-mix(in_srgb,var(--mn-heather)_42%,transparent)]"
         :aria-label="`移除过滤词 ${keyword}`"
         @click="toggleFilter(keyword)"
       >
-        {{ keyword }}<X :size="13" />
+        <span class="min-w-0 break-all text-left">{{ keyword }}</span><X class="shrink-0" :size="13" />
       </button>
     </div>
     <p class="mt-3 text-xs leading-5" :class="filterError ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">

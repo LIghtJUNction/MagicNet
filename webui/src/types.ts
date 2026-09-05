@@ -110,9 +110,22 @@ export type ConfigEditorTarget = "sing-box";
 
 export type SubscriptionScheduleInterval = "off" | "12" | "24" | "48" | "72";
 
+export type SubscriptionSourceUsage = {
+  id: string;
+  index: number;
+  hostname: string;
+  state: "fresh" | "cached" | "unknown";
+  uploadBytes: number | null;
+  downloadBytes: number | null;
+  totalBytes: number | null;
+  expireEpoch: number | null;
+  updatedEpoch: number | null;
+};
+
 export type SubscriptionState = {
   singBox: string;
   singBoxUrls: string[];
+  sourceUsage: SubscriptionSourceUsage[];
   userAgent: string;
   filters: string[];
   configuredCount: number;

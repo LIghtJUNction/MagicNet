@@ -1,3 +1,47 @@
+# Only this numeric allowlist survives the response. Raw headers can contain
+# cookies or credentials and must never be saved in the generation or logs.
+magicnet_singbox_parse_subscription_usage() {
+    LC_ALL=C awk -v updated="$(date +%s)" '
+      function reset() { for (key in values) delete values[key]; for (key in seen) delete seen[key] }
+      function number(key) { return seen[key] == 1 && values[key] ~ /^[0-9]+$/ && length(values[key]) <= 16 && values[key] + 0 <= 9007199254740991 ? sprintf("%.0f", values[key] + 0) : "null" }
+      {
+        bytes += length($0) + 1
+        sub(/\r$/, "")
+        if ($0 ~ /^HTTP\/[0-9.]+ [0-9][0-9][0-9]/) { reset(); status = $2; ended = 0; next }
+        if ($0 == "") { ended = 1; next }
+        if (ended || tolower($0) !~ /^subscription-userinfo[ \t]*:/) next
+        sub(/^[^:]*:[ \t]*/, "")
+        count = split($0, fields, ";")
+        for (i = 1; i <= count; i++) {
+          if (split(fields[i], pair, "=") != 2) continue
+          key = tolower(pair[1]); gsub(/^[ \t]+|[ \t]+$/, "", key)
+          if (key !~ /^(upload|download|total|expire)$/) continue
+          value = pair[2]; gsub(/^[ \t]+|[ \t]+$/, "", value)
+          seen[key]++; values[key] = value
+        }
+      }
+      END {
+        if (bytes > 65536 || status !~ /^2[0-9][0-9]$/ || !ended) reset()
+        expiry = number("expire"); if (expiry == "0") expiry = "null"
+        printf "{\"state\":\"fresh\",\"upload_bytes\":%s,\"download_bytes\":%s,\"total_bytes\":%s,\"expire_epoch\":%s,\"updated_epoch\":%.0f}\n", number("upload"), number("download"), number("total"), expiry, updated
+      }'
+}
+
+magicnet_singbox_cache_subscription_usage() (
+    _usage_source="$1"
+    _usage_target="$2"
+    if [ -s "$_usage_source" ]; then
+        jq -ce '.state = "cached"' "$_usage_source" >"${_usage_target}.tmp" 2>/dev/null ||
+            printf '%s\n' '{"state":"cached"}' >"${_usage_target}.tmp"
+    else
+        printf '%s\n' '{"state":"cached"}' >"${_usage_target}.tmp"
+    fi
+    if ! mv -f "${_usage_target}.tmp" "$_usage_target"; then
+        rm -f "${_usage_target}.tmp" "$_usage_target" 2>/dev/null || true
+        return 1
+    fi
+)
+
 magicnet_singbox_use_cached_subscription() {
     _source_file="$1"
     _cache_file="$2"
@@ -9,6 +53,7 @@ magicnet_singbox_use_cached_subscription() {
     fi
     if [ -s "$_source_file" ]; then
         warn "Using staged subscription source"
+        magicnet_singbox_cache_subscription_usage "${_source_file}.usage.json" "${_source_file}.usage.json" || return 1
         return 0
     fi
     if [ -n "$_cache_file" ] && [ -s "$_cache_file" ] &&
@@ -20,6 +65,7 @@ magicnet_singbox_use_cached_subscription() {
             rm -f "$_source_file" 2>/dev/null || true
             return 1
         fi
+        magicnet_singbox_cache_subscription_usage "${_cache_file}.usage.json" "${_source_file}.usage.json" || return 1
         return 0
     fi
     return 1
@@ -320,15 +366,16 @@ magicnet_singbox_subscription_resolve_public() {
         done
 }
 
-magicnet_singbox_try_fetch_subscription() {
+magicnet_singbox_try_fetch_subscription() (
     _url="$1"
     _download_file="$2"
     _connect_timeout="$3"
     _max_time="$4"
     _resolve_file="${_download_file}.resolve"
     _stream_fifo="${_download_file}.stream"
+    _headers_fifo="${_download_file}.headers"
     command -v curl >/dev/null 2>&1 || return 127
-    rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
+    rm -f "$_download_file" "${_download_file}.usage.json" "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
     magicnet_singbox_subscription_resolve_public "$_url" >"$_resolve_file" || {
         rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
         return 1
@@ -341,15 +388,24 @@ magicnet_singbox_try_fetch_subscription() {
         rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
         return 1
     }
+    mkfifo "$_headers_fifo" || {
+        rm -f "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
+        return 1
+    }
+    # Keep one writer open until curl finishes, including failures before curl
+    # opens its header output. Close it in both children so the reader sees EOF.
+    exec 9<>"$_headers_fifo"
+    (exec 9>&-; head -c 65537 <"$_headers_fifo" | magicnet_singbox_parse_subscription_usage) >"${_download_file}.usage.json" &
+    _headers_pid=$!
     set -- -fsS --noproxy '*' --max-redirs 0 --proto '=https' --proto-redir '=https' \
-        --max-filesize "$MAGICNET_SUB_MAX_RESPONSE_BYTES"
+        --max-filesize "$MAGICNET_SUB_MAX_RESPONSE_BYTES" --dump-header "$_headers_fifo"
     [ -z "${MAGICNET_SUB_USER_AGENT:-}" ] || set -- "$@" --user-agent "$MAGICNET_SUB_USER_AGENT"
     while IFS='|' read -r _resolved_host _resolved_port _resolved_address; do
         set -- "$@" --resolve "${_resolved_host}:${_resolved_port}:${_resolved_address}"
     done <"$_resolve_file"
     set -- "$@" --connect-timeout "$_connect_timeout" --max-time "$_max_time" -o - "$_url"
     env -u http_proxy -u https_proxy -u all_proxy -u no_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
-        timeout "$_max_time" curl "$@" >"$_stream_fifo" &
+        timeout "$_max_time" curl "$@" >"$_stream_fifo" 9>&- &
     _curl_pid=$!
     # Consume the FIFO exactly once. `head -c` keeps reading short pipe reads
     # until it reaches the budget plus one byte or EOF, so unknown-length and
@@ -362,14 +418,16 @@ magicnet_singbox_try_fetch_subscription() {
     fi
     wait "$_curl_pid"
     _fetch_result=$?
-    rm -f "$_resolve_file" "$_stream_fifo"
+    exec 9>&-
+    wait "$_headers_pid" || true
+    rm -f "$_resolve_file" "$_stream_fifo" "$_headers_fifo"
     if [ "$_stream_result" -ne 0 ] || [ "$_fetch_result" -ne 0 ] ||
         [ ! -s "$_download_file" ] ||
         [ "$(wc -c <"$_download_file")" -gt "$MAGICNET_SUB_MAX_RESPONSE_BYTES" ]; then
-        rm -f "$_download_file" "$_resolve_file" "$_stream_fifo"
+        rm -f "$_download_file" "${_download_file}.usage.json" "$_resolve_file" "$_stream_fifo"
         return 1
     fi
-}
+)
 
 magicnet_singbox_normalize_subscription_file() {
     _source_file="$1"
@@ -440,12 +498,17 @@ magicnet_singbox_fetch_one_subscription() {
     }
 
     if ! mv -f "$_download_file" "$_source_file"; then
-        rm -f "$_download_file" 2>/dev/null || true
+        rm -f "$_download_file" "${_download_file}.usage.json" 2>/dev/null || true
         return 1
     fi
     if ! magicnet_singbox_normalize_subscription_file "$_source_file"; then
-        rm -f "$_source_file" "${_source_file}.normalized" 2>/dev/null || true
+        rm -f "$_source_file" "${_source_file}.normalized" "${_source_file}.usage.json" "${_download_file}.usage.json" 2>/dev/null || true
         return 1
+    fi
+    if [ -f "${_download_file}.usage.json" ]; then
+        mv -f "${_download_file}.usage.json" "${_source_file}.usage.json" || return 1
+    else
+        rm -f "${_source_file}.usage.json"
     fi
     unset _fetch_rc
 }

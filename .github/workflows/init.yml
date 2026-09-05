@@ -46,3 +46,4 @@ jobs:
           kam validate
           kam check
           python3 scripts/test-release-workflow.py
+          bash scripts/test-subscription-usage.sh

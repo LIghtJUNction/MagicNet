@@ -12,7 +12,7 @@ assert.match(styles, /\.mobile-nav button span\s*\{[\s\S]*overflow-wrap:\s*anywh
 assert.match(styles, /\.mn-section-tabs\s*\{[\s\S]*overflow-x:\s*auto/);
 assert.match(styles, /\.desktop-rail nav button\s*\{[\s\S]*grid-template-columns:\s*auto minmax\(0, 1fr\)/);
 assert.match(styles, /\.mn-shell\s*\{[\s\S]*padding:[^;]*env\(safe-area-inset-bottom\)/);
-assert.match(button, /text-\[13px\]/, "shared buttons must own their text size after font inheritance");
+assert.match(button, /text-\[0\.8125rem\]/, "shared buttons must own their text size after font inheritance");
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*全局接管/);
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*仅名单接管/);
 

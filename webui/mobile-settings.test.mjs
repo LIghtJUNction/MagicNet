@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
-const css = readFileSync(new URL("./src/console.css", import.meta.url), "utf8");
+const css = readFileSync(new URL("./src/styles.css", import.meta.url), "utf8");
 
 test("five clicks reveal GPT-6, retain previous visitors, and wrap the rotation", () => {
   const visitors = runInNewContext(app.match(/const easterEggVisitors = ([\s\S]*?) as const;/)[1]);
@@ -30,4 +30,17 @@ test("run-page layout is scoped and short viewports retain scrolling menus", () 
   assert.match(app, /class="page-surface" :data-page="activeTab"/);
   assert.match(css, /\.page-surface\[data-page="control"\]/);
   assert.match(css, /\.mn-utility-sheet\s*\{[^}]*max-height:[^}]*100dvh[^}]*overflow-y: auto/s);
+});
+
+
+test("subscription navigation always opens subscriptions while other groups retain their last page", () => {
+  const selected = [];
+  const scope = { setTab: (tab) => selected.push(tab), lastTabByWorkspace: { value: {
+    configure: "config", run: "about", route: "chain", diagnose: "output",
+  } } };
+  const source = app.match(/function setWorkspace\(workspace: WorkspaceKey\): void \{[\s\S]*?\n\}/)[0]
+    .replace(": WorkspaceKey", "").replace(": void", "");
+  runInNewContext(source, scope);
+  for (const workspace of ["configure", "run", "route", "diagnose"]) scope.setWorkspace(workspace);
+  assert.deepEqual(selected, ["subs", "about", "chain", "output"]);
 });

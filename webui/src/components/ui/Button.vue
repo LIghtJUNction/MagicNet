@@ -25,16 +25,16 @@ const props = withDefaults(
 );
 
 const buttonVariants = cva(
-  "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-nowrap rounded-[var(--mn-radius-md)] border text-[13px] font-semibold transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
+  "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-normal rounded-[var(--mn-radius-md)] border text-[0.8125rem] font-semibold transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
   {
     variants: {
       variant: {
         default:
-          "border-[var(--mn-cactus)] bg-[var(--mn-cactus)] text-[var(--mn-on-accent)] hover:border-[var(--mn-cactus-deep)] hover:bg-[var(--mn-cactus-deep)]",
+          "border-[var(--mn-primary)] bg-[var(--mn-primary)] text-[var(--mn-on-accent)] hover:border-[var(--mn-primary-strong)] hover:bg-[var(--mn-primary-strong)]",
         secondary:
-          "border-[var(--mn-border-strong)] bg-[var(--mn-surface-sunken)] text-[var(--mn-ink)] hover:border-[var(--mn-cactus)] hover:text-[var(--mn-cactus-deep)]",
+          "border-[var(--mn-border-strong)] bg-[var(--mn-surface-sunken)] text-[var(--mn-ink)] hover:border-[var(--mn-primary)] hover:text-[var(--mn-primary-strong)]",
         outline:
-          "border-[var(--mn-border-strong)] bg-transparent text-[var(--mn-ink)] hover:border-[var(--mn-cactus)] hover:bg-[color-mix(in_srgb,var(--mn-cactus)_9%,transparent)]",
+          "border-[var(--mn-border-strong)] bg-transparent text-[var(--mn-ink)] hover:border-[var(--mn-primary)] hover:bg-[color-mix(in_srgb,var(--mn-primary)_9%,transparent)]",
         ghost:
           "border-transparent bg-transparent text-[var(--mn-ink-muted)] hover:border-[var(--mn-border)] hover:bg-[var(--mn-surface-sunken)] hover:text-[var(--mn-ink)]",
         destructive:

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertTriangle, Check, Clock3, Database } from "lucide-vue-next";
+import { AlertTriangle, Check, Clock3 } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -18,10 +18,10 @@ const scheduleDirty = ref(false);
 const scheduleChanged = computed(() => scheduleValue.value !== state.subscriptions.scheduleIntervalHours);
 
 const scheduleMeaning = computed(() => {
-  if (!state.subscriptions.scheduleEnabled) return "自动刷新关闭。首次启用订阅不会改动此设置。";
-  if (!state.subscriptions.scheduleOwnerValid) return "计划已保存，但后台 owner 状态不一致；请重新保存计划或检查输出。";
-  if (state.subscriptions.scheduleRunning) return `后台刷新守护已就绪；每轮完成后按 ${state.subscriptions.scheduleIntervalHours} 小时间隔再次等待。`;
-  return "计划已开启，但后台守护尚未就绪。";
+  if (!state.subscriptions.scheduleEnabled) return "按需手动更新订阅。";
+  if (!state.subscriptions.scheduleOwnerValid) return "自动更新暂未正常启动，请重新保存设置。";
+  if (state.subscriptions.scheduleRunning) return `每次更新完成后，间隔 ${state.subscriptions.scheduleIntervalHours} 小时再次更新。`;
+  return "已开启，等待后台启动。";
 });
 
 watch(() => state.subscriptions.scheduleIntervalHours, (value) => {
@@ -34,7 +34,7 @@ watch(() => state.subscriptions.scheduleIntervalHours, (value) => {
 async function saveSchedule(): Promise<void> {
   if (!scheduleChanged.value) return;
   await withAction("save-schedule", async () => {
-    const result = await runCli(`sub schedule set ${scheduleValue.value}`, "保存自动刷新计划");
+    const result = await runCli(`sub schedule set ${scheduleValue.value}`, "保存自动更新");
     if (execFailed(result)) return;
     await refreshSubs(true);
     scheduleDirty.value = false;
@@ -47,12 +47,11 @@ async function saveSchedule(): Promise<void> {
     <div class="flex items-start gap-3">
       <Clock3 :size="18" class="mt-0.5 shrink-0 text-[var(--mn-ink-muted)]" />
       <div class="min-w-0">
-        <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">Automatic refresh</span>
-        <h3 class="mt-1 text-base font-semibold text-[var(--mn-ink)]">自动刷新计划</h3>
+        <h3 class="mt-1 text-base font-semibold text-[var(--mn-ink)]">自动更新</h3>
       </div>
     </div>
 
-    <label class="mt-4 block text-xs font-medium text-[var(--mn-ink-muted)]" for="subscription-schedule">刷新间隔</label>
+    <label class="mt-4 block text-xs font-medium text-[var(--mn-ink-muted)]" for="subscription-schedule">更新频率</label>
     <select
       id="subscription-schedule"
       v-model="scheduleValue"
@@ -71,19 +70,16 @@ async function saveSchedule(): Promise<void> {
         <Check v-if="state.subscriptions.scheduleOwnerValid" :size="15" class="text-[var(--mn-success)]" />
         <AlertTriangle v-else :size="15" class="text-[var(--mn-warning)]" />
         <span :class="state.subscriptions.scheduleOwnerValid ? 'text-[var(--mn-ink-soft)]' : 'text-[var(--mn-warning)]'">
-          enabled={{ state.subscriptions.scheduleEnabled ? 1 : 0 }} · running={{ state.subscriptions.scheduleRunning ? 1 : 0 }} · owner={{ state.subscriptions.scheduleOwner }}
+          {{ !state.subscriptions.scheduleEnabled ? '手动更新' : state.subscriptions.scheduleRunning && state.subscriptions.scheduleOwnerValid ? '自动更新已开启' : '自动更新待确认' }}
         </span>
       </div>
       <p class="mt-2 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ scheduleMeaning }}</p>
     </div>
 
     <Button class="mt-4 w-full" :disabled="!scheduleChanged" :loading="isRunning('save-schedule')" @click="saveSchedule">
-      <Clock3 :size="16" />保存自动刷新设置
+      <Clock3 :size="16" />保存更新设置
     </Button>
   </Card>
 
-  <div class="flex items-start gap-3 rounded-md bg-[color-mix(in_srgb,var(--mn-heather)_35%,var(--mn-carrier))] p-3 text-xs leading-5 text-[var(--mn-ink-muted)] ring-1 ring-[color-mix(in_srgb,var(--mn-heather)_40%,transparent)]">
-    <Database :size="16" class="mt-0.5 shrink-0 text-[var(--mn-info)]" />
-    <p>计划只表示刷新节奏，不承诺精确“下次时间”；系统休眠、重启或正在运行的任务都会影响实际触发时刻。</p>
-  </div>
+  <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">系统休眠、重启或正在执行的任务可能推迟自动更新。</p>
 </template>
