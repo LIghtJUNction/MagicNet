@@ -206,43 +206,39 @@ magicnet_singbox_persist_subscription_cache() (
     fi
 )
 
-magicnet_singbox_prune_subscription_cache() {
+magicnet_singbox_prune_subscription_cache() (
     _prune_cache_map="$1"
     _prune_cache_dir=$(magicnet_singbox_subscription_cache_dir)
-    [ -d "$_prune_cache_dir" ] || {
-        unset _prune_cache_map _prune_cache_dir
-        return 0
-    }
-    _prune_expected="${_prune_cache_dir}/.active-fingerprints.$$"
-    : >"$_prune_expected" || return 1
-    if [ -f "$_prune_cache_map" ]; then
-        while IFS='|' read -r _prune_name _prune_file _prune_identity _prune_fingerprint _prune_extra; do
-            [ -z "$_prune_extra" ] || continue
-            printf '%s' "$_prune_fingerprint" | grep -Eq '^[0-9a-f]{64}$' || continue
-            printf '%s\n' "$_prune_fingerprint" >>"$_prune_expected"
-        done <"$_prune_cache_map"
-    fi
+    [ -d "$_prune_cache_dir" ] || return 0
+    _prune_expected=$(mktemp "${_prune_cache_dir}/.active-fingerprints.XXXXXX") || return 1
+    trap 'rm -f "$_prune_expected" 2>/dev/null || true' EXIT
+    # Complete the keep set before deleting anything. Missing/unreadable maps
+    # and disk-full writes must not be mistaken for an empty subscription set.
+    awk -F '|' 'NF == 4 && length($4) == 64 && $4 !~ /[^0-9a-f]/ { print $4 }' \
+        "$_prune_cache_map" >"$_prune_expected" || return 1
     for _prune_file in "$_prune_cache_dir"/*.yaml; do
         [ -f "$_prune_file" ] || continue
         _prune_name=${_prune_file##*/}
         _prune_fingerprint=${_prune_name%.yaml}
         printf '%s' "$_prune_fingerprint" | grep -Eq '^[0-9a-f]{64}$' || continue
-        grep -F -x "$_prune_fingerprint" "$_prune_expected" >/dev/null 2>&1 ||
-            rm -f "$_prune_file" "${_prune_file}.identity" "${_prune_file}.usage.json" 2>/dev/null || true
+        if grep -F -x "$_prune_fingerprint" "$_prune_expected" >/dev/null 2>&1; then
+            continue
+        else
+            # grep returns 1 for a confirmed miss and 2 for a read failure.
+            [ "$?" -eq 1 ] || return 1
+        fi
+        rm -f "$_prune_file" "${_prune_file}.identity" "${_prune_file}.usage.json" || return 1
     done
     for _prune_identity in "$_prune_cache_dir"/*.yaml.identity; do
         [ -f "$_prune_identity" ] || continue
         _prune_file=${_prune_identity%.identity}
-        [ -f "$_prune_file" ] || rm -f "$_prune_identity" 2>/dev/null || true
+        [ -f "$_prune_file" ] || rm -f "$_prune_identity" || return 1
     done
     for _prune_usage in "$_prune_cache_dir"/*.yaml.usage.json; do
         [ -f "$_prune_usage" ] || continue
-        [ -f "${_prune_usage%.usage.json}" ] || rm -f "$_prune_usage" 2>/dev/null || true
+        [ -f "${_prune_usage%.usage.json}" ] || rm -f "$_prune_usage" || return 1
     done
-    rm -f "$_prune_expected" 2>/dev/null || true
-    unset _prune_cache_map _prune_cache_dir _prune_expected _prune_name _prune_file
-    unset _prune_identity _prune_fingerprint _prune_extra _prune_usage
-}
+)
 
 magicnet_singbox_transaction_dir() {
     printf '%s\n' "${MODDIR}/.state/sing-box/subscription-transaction"
@@ -571,6 +567,7 @@ magicnet_singbox_source_usage_report() (
             [ -n "$_usage_url" ] || continue
             _usage_index=$((_usage_index + 1))
             _usage_hostname=
+            _subscription_host=
             if magicnet_singbox_subscription_parse_authority "$_usage_url"; then
                 _usage_hostname=$_subscription_host
                 case "$_usage_hostname" in *:*) _usage_hostname="[$_usage_hostname]" ;; esac

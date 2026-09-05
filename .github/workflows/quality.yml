@@ -64,30 +64,5 @@ jobs:
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
-      - name: Lint Bash tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(
-            find hooks/pre-build hooks/post-build hooks/lib -type f -name '*.sh' -print
-            find scripts -maxdepth 1 -type f -name '*.sh' -print
-            printf '%s\n' kam.sh
-          )
-          # These exclusions match known baseline patterns in the existing
-          # fixture-heavy shell suite; all other findings remain blocking.
-          shellcheck -s bash \
-            -e SC1091,SC2015,SC2034,SC2059,SC2218,SC2317,SC2329 \
-            "${files[@]}"
-
-      - name: Lint device shell
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(
-            find src/MagicNet -maxdepth 1 -type f -name '*.sh' -print
-            find src/MagicNet/system/bin -type f -print 2>/dev/null || true
-            printf '%s\n' src/MagicNet/lib/magicnet.sh
-          )
-          shellcheck -s sh \
-            -e SC1090,SC1091,SC2015,SC2034,SC2059,SC2218,SC2329 \
-            "${files[@]}"
+      - name: Lint host tools and all device shell fragments
+        run: bash scripts/lint-shell.sh

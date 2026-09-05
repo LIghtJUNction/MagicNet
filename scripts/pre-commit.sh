@@ -19,20 +19,7 @@ need cargo
 
 kam validate
 
-mapfile -t bash_shell_files < <(
-    find hooks/pre-build hooks/post-build hooks/lib -type f -name '*.sh' -print
-    find scripts -maxdepth 1 -type f -name '*.sh' -print
-    printf '%s\n' kam.sh
-)
-shellcheck -s bash -e SC1091,SC2317,SC2329,SC2059 "${bash_shell_files[@]}"
-
-mapfile -t posix_shell_files < <(
-    find src/MagicNet -type f \( -name '*.sh' -o -path '*/system/bin/*' \) \
-        -not -path '*/lib/kamfw/*' -print | sort
-)
-# Every first-party runtime fragment is sourced into a privileged Android shell;
-# lint the fragments themselves instead of relying on analysis of the entrypoint.
-shellcheck -s sh -e SC1091,SC1090,SC2016,SC2329,SC2059 "${posix_shell_files[@]}"
+bash scripts/lint-shell.sh
 
 jq empty src/MagicNet/.config/sing-box/config.json
 bash scripts/test-repository-hygiene.sh
@@ -55,6 +42,7 @@ bash scripts/test-chatgpt-voice-rules.sh
 bash scripts/test-rule-hash-retry.sh
 bash scripts/singbox-subscription-protocol-smoke.sh
 bash scripts/test-subscription-fetch-policy.sh
+bash scripts/test-subscription-usage.sh
 bash scripts/test-singbox-pid-discovery.sh
 bash scripts/test-singbox-ownership.sh
 bash scripts/test-singbox-tristate-safety.sh
@@ -79,6 +67,7 @@ bash scripts/test-subscription-update-lock-safety.sh
 bash scripts/test-subscription-transaction-journal-safety.sh
 bash scripts/test-subscription-lifecycle.sh
 bash scripts/test-release-integrity.sh
+python3 scripts/test-release-workflow.py
 
 KAM_HOOKS_ROOT=hooks KAM_MODULE_ROOT=src/MagicNet bash hooks/pre-build/6000.check_config.sh
 MODPATH="$ROOT/src/MagicNet" sh -c '. "$MODPATH/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODPATH/lib/magicnet.sh"; kamfw run post-mount -- smoke'
@@ -87,12 +76,11 @@ if command -v bun >/dev/null 2>&1; then
     (cd webui && bun install --frozen-lockfile && bun run typecheck && bun run build && bun run test)
 else
     need npm
-    (cd webui && npm install && npm run typecheck && npm run build && npm run test)
+    (cd webui && npm ci && npm run check)
 fi
-cargo check -p magicnet-cli
-cargo check -p magicnet-mcp-server
-cargo test -p magicnet-cli --test process_lifecycle
-cargo test -p magicnet-cli --test broken_pipe
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 if compgen -G "dist/*.zip" >/dev/null; then
     package_zip="$(compgen -G "dist/*.zip" | head -n1)"
     scripts/package-smoke.sh "$package_zip"
