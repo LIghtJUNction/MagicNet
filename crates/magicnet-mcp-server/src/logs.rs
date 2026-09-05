@@ -77,12 +77,16 @@ pub(crate) fn log_read(server: &Server, source: &str, lines: usize, redact: bool
 }
 
 fn read_bounded_tail(path: &PathBuf) -> std::io::Result<String> {
-    let mut file = File::open(path)?;
+    let file = File::open(path)?;
     let len = file.metadata()?.len();
+    read_log_snapshot(file, len)
+}
+
+fn read_log_snapshot(mut file: impl Read + Seek, len: u64) -> std::io::Result<String> {
     let start = len.saturating_sub(MAX_LOG_READ_BYTES);
     file.seek(SeekFrom::Start(start))?;
     let mut bytes = Vec::with_capacity((len - start) as usize);
-    file.read_to_end(&mut bytes)?;
+    file.take(len - start).read_to_end(&mut bytes)?;
     if start > 0 {
         if let Some(index) = bytes.iter().position(|byte| *byte == b'\n') {
             bytes.drain(..=index);
@@ -177,10 +181,28 @@ fn command_text(program: &str, args: &[&str]) -> String {
 fn redact_text(text: &str) -> String {
     text.lines()
         .map(|line| {
-            line.split_whitespace()
+            let lower = line.to_ascii_lowercase();
+            let secret_header = ["authorization", "x-magicnet-mcp-secret"]
+                .iter()
+                .filter_map(|header| {
+                    lower.match_indices(header).find_map(|(index, _)| {
+                        lower[index + header.len()..]
+                            .trim_start()
+                            .starts_with(':')
+                            .then_some(index)
+                    })
+                })
+                .min();
+            let prefix = secret_header.map_or(line, |index| &line[..index]);
+            let mut tokens = prefix
+                .split_whitespace()
                 .map(redact_token)
-                .collect::<Vec<_>>()
-                .join(" ")
+                .collect::<Vec<_>>();
+            // Header credentials may span several words; discard the rest of this line.
+            if secret_header.is_some() {
+                tokens.push("<redacted-secret>".to_string());
+            }
+            tokens.join(" ")
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -188,14 +210,13 @@ fn redact_text(text: &str) -> String {
 
 fn redact_token(token: &str) -> String {
     let lower = token.to_ascii_lowercase();
-    if lower.starts_with("http://") || lower.starts_with("https://") {
+    if lower.contains("http://") || lower.contains("https://") {
         return "<redacted-url>".to_string();
     }
     if lower.contains("token=")
         || lower.contains("secret=")
         || lower.contains("password=")
         || lower.contains("passwd=")
-        || lower.contains("authorization:")
     {
         return "<redacted-secret>".to_string();
     }
@@ -209,6 +230,75 @@ mod tests {
     use std::os::unix::fs::symlink;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn redacts_authorization_credentials_across_whitespace() {
+        for header in [
+            "Authorization: Bearer example-access-token",
+            "authorization:\tBasic ZXhhbXBsZTpleGFtcGxl",
+            "AUTHORIZATION: custom example-secret",
+        ] {
+            assert_eq!(
+                redact_text(&format!("request failed {header}\nnext diagnostic")),
+                "request failed <redacted-secret>\nnext diagnostic"
+            );
+        }
+    }
+
+    #[test]
+    fn redacts_mcp_secret_from_the_first_sensitive_header() {
+        for headers in [
+            "X-MagicNet-MCP-Secret: example-mcp-secret",
+            "x-magicnet-mcp-secret:\texample-mcp-secret",
+            "X-MAGICNET-MCP-SECRET: example-mcp-secret Authorization: Bearer example-token",
+            "Authorization: Bearer example-token X-MagicNet-MCP-Secret: example-mcp-secret",
+        ] {
+            assert_eq!(
+                redact_text(&format!("请求 failed {headers}\nnext diagnostic")),
+                "请求 failed <redacted-secret>\nnext diagnostic"
+            );
+        }
+    }
+
+    #[test]
+    fn redacts_header_credentials_with_whitespace_before_the_colon() {
+        for headers in [
+            "Authorization : Bearer example-token",
+            "X-MagicNet-MCP-Secret\t: example-secret",
+            "AUTHORIZATION \t: Bearer example-token X-MagicNet-MCP-Secret : example-secret",
+            "x-magicnet-mcp-secret\u{2003}: example-secret Authorization : Bearer example-token",
+        ] {
+            assert_eq!(
+                redact_text(&format!(
+                    "请求 12:34:56 request: {headers}\nnext diagnostic"
+                )),
+                "请求 12:34:56 request: <redacted-secret>\nnext diagnostic"
+            );
+        }
+        assert_eq!(
+            redact_text("authorization rejected; Authorization : Bearer example-token"),
+            "authorization rejected; <redacted-secret>"
+        );
+        assert_eq!(redact_text("authorization failed"), "authorization failed");
+    }
+
+    #[test]
+    fn redacts_urls_embedded_in_fields() {
+        assert_eq!(
+            redact_text("fetch failed source=https://example.invalid/private-value result=timeout"),
+            "fetch failed <redacted-url> result=timeout"
+        );
+        assert_eq!(
+            redact_text(r#"request {"url":"HTTP://example.invalid/private-value"}"#),
+            "request <redacted-url>"
+        );
+    }
+
+    #[test]
+    fn bounded_log_tail_ignores_appends_after_metadata_snapshot() {
+        let file = std::io::Cursor::new(b"old\nappended-after-stat\n");
+        assert_eq!(read_log_snapshot(file, 4).unwrap(), "old\n");
+    }
 
     #[test]
     fn bounded_log_tail_does_not_load_an_unbounded_prefix() {

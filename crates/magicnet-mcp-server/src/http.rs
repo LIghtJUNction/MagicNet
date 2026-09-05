@@ -1,6 +1,6 @@
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::rpc::handle_jsonrpc;
 use crate::Server;
@@ -19,14 +19,17 @@ enum RequestError {
     MethodNotAllowed,
     NotFound,
     PayloadTooLarge(&'static str),
+    RequestTimeout,
 }
 
 pub(crate) fn handle_connection(mut stream: TcpStream, server: &Server) -> io::Result<()> {
-    set_read_timeout(&stream, READ_TIMEOUT)?;
+    // Headers and body share one budget; successful partial reads must not
+    // let a slow sender reserve a connection worker indefinitely.
+    let deadline = Instant::now() + READ_TIMEOUT;
     stream.set_write_timeout(Some(READ_TIMEOUT))?;
 
     let mut buffer = Vec::with_capacity(4096);
-    let header_end = match read_headers(&mut stream, &mut buffer) {
+    let header_end = match read_headers(&mut stream, &mut buffer, deadline) {
         Ok(header_end) => header_end,
         Err(error) => return write_request_error(&mut stream, error),
     };
@@ -52,7 +55,9 @@ pub(crate) fn handle_connection(mut stream: TcpStream, server: &Server) -> io::R
         Ok(body) => body,
         Err(error) => return write_request_error(&mut stream, error),
     };
-    read_remaining_body(&mut stream, &mut body, content_length)?;
+    if let Err(error) = read_remaining_body(&mut stream, &mut body, content_length, deadline) {
+        return write_request_error(&mut stream, error);
+    }
     let payload = match String::from_utf8(body) {
         Ok(payload) => payload,
         Err(_) => {
@@ -66,11 +71,29 @@ pub(crate) fn handle_connection(mut stream: TcpStream, server: &Server) -> io::R
     write_json(&mut stream, &response)
 }
 
-fn set_read_timeout(stream: &TcpStream, timeout: Duration) -> io::Result<()> {
-    stream.set_read_timeout(Some(timeout))
+fn read_request_chunk(
+    stream: &mut TcpStream,
+    buffer: &mut [u8],
+    deadline: Instant,
+) -> Result<usize, RequestError> {
+    let remaining = deadline
+        .checked_duration_since(Instant::now())
+        .filter(|timeout| !timeout.is_zero())
+        .ok_or(RequestError::RequestTimeout)?;
+    stream
+        .set_read_timeout(Some(remaining))
+        .and_then(|()| stream.read(buffer))
+        .map_err(|error| match error.kind() {
+            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => RequestError::RequestTimeout,
+            _ => RequestError::BadRequest("failed to read request"),
+        })
 }
 
-fn read_headers(stream: &mut TcpStream, buffer: &mut Vec<u8>) -> Result<usize, RequestError> {
+fn read_headers(
+    stream: &mut TcpStream,
+    buffer: &mut Vec<u8>,
+    deadline: Instant,
+) -> Result<usize, RequestError> {
     let mut temp = [0_u8; 4096];
     loop {
         if let Some(header_end) = header_end_or_error(buffer)? {
@@ -86,9 +109,7 @@ fn read_headers(stream: &mut TcpStream, buffer: &mut Vec<u8>) -> Result<usize, R
             return Err(RequestError::PayloadTooLarge("headers too large"));
         }
         let chunk_len = remaining.min(temp.len());
-        let read = stream
-            .read(&mut temp[..chunk_len])
-            .map_err(|_| RequestError::BadRequest("failed to read request headers"))?;
+        let read = read_request_chunk(stream, &mut temp[..chunk_len], deadline)?;
         if read == 0 {
             return Err(RequestError::BadRequest("incomplete request headers"));
         }
@@ -209,17 +230,15 @@ fn read_remaining_body(
     stream: &mut TcpStream,
     body: &mut Vec<u8>,
     content_length: usize,
-) -> io::Result<()> {
+    deadline: Instant,
+) -> Result<(), RequestError> {
     let mut temp = [0_u8; 4096];
     while body.len() < content_length {
         let remaining = content_length - body.len();
         let chunk_len = remaining.min(temp.len());
-        let read = stream.read(&mut temp[..chunk_len])?;
+        let read = read_request_chunk(stream, &mut temp[..chunk_len], deadline)?;
         if read == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "incomplete request body",
-            ));
+            return Err(RequestError::BadRequest("incomplete request body"));
         }
         body.extend_from_slice(&temp[..read]);
     }
@@ -281,6 +300,11 @@ fn write_request_error(stream: &mut TcpStream, error: RequestError) -> io::Resul
         RequestError::PayloadTooLarge(body) => {
             write_http_error(stream, "413 Payload Too Large", body)
         }
+        RequestError::RequestTimeout => write_http_error(
+            stream,
+            "408 Request Timeout",
+            "request read deadline exceeded",
+        ),
     }
 }
 
@@ -361,7 +385,9 @@ mod tests {
     #[test]
     fn slow_peer_reads_use_a_timeout() {
         let (mut client, mut server) = tcp_pair();
-        set_read_timeout(&server, Duration::from_millis(50)).unwrap();
+        server
+            .set_read_timeout(Some(Duration::from_millis(50)))
+            .unwrap();
 
         let mut byte = [0_u8; 1];
         let error = server.read(&mut byte).unwrap_err();
@@ -370,6 +396,54 @@ mod tests {
             ErrorKind::TimedOut | ErrorKind::WouldBlock
         ));
         let _ = client.write_all(b"x");
+    }
+
+    #[test]
+    fn dripping_headers_cannot_extend_the_request_deadline() {
+        let (client, mut server) = tcp_pair();
+        let sender = drip_bytes(client);
+        let started = std::time::Instant::now();
+        assert_eq!(
+            read_headers(
+                &mut server,
+                &mut Vec::new(),
+                started + Duration::from_millis(80)
+            ),
+            Err(RequestError::RequestTimeout)
+        );
+        assert!(started.elapsed() < Duration::from_millis(300));
+        drop(server);
+        sender.join().unwrap();
+    }
+
+    #[test]
+    fn dripping_body_cannot_extend_the_request_deadline() {
+        let (client, mut server) = tcp_pair();
+        let sender = drip_bytes(client);
+        let started = std::time::Instant::now();
+        assert_eq!(
+            read_remaining_body(
+                &mut server,
+                &mut Vec::new(),
+                100,
+                started + Duration::from_millis(80)
+            ),
+            Err(RequestError::RequestTimeout)
+        );
+        assert!(started.elapsed() < Duration::from_millis(300));
+        drop(server);
+        sender.join().unwrap();
+    }
+
+    fn drip_bytes(mut stream: TcpStream) -> thread::JoinHandle<()> {
+        thread::spawn(move || {
+            for _ in 0..25 {
+                if stream.write_all(b"x").is_err() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+        })
     }
 
     fn tcp_pair() -> (TcpStream, TcpStream) {
