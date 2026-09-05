@@ -163,7 +163,7 @@ const { target: visibilityTarget } = useVisibilityTask(refreshCurrentNode);
     />
 
     <div v-if="entries.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-heather)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,var(--mn-carrier))] p-3">
-      <p class="text-sm font-semibold text-[var(--mn-info)]">测速健康摘要</p>
+      <p class="text-sm font-semibold text-[var(--mn-info)]">测速结果</p>
       <p class="mt-1 text-sm leading-6 text-[var(--mn-info)]">{{ healthText }}</p>
     </div>
 
@@ -177,10 +177,10 @@ const { target: visibilityTarget } = useVisibilityTask(refreshCurrentNode);
 
     <div class="grid gap-2 sm:grid-cols-5">
       <StatTile label="已测" :value="stats.tested" />
-      <StatTile label="可用" :value="stats.usable" />
+      <StatTile label="有响应" :value="stats.usable" />
       <StatTile label="失败" :value="stats.failed" />
       <StatTile label="平均" :value="delayLabel(stats.averageMillis)" />
-      <StatTile label="中位/解析可用率" :value="`${delayLabel(stats.medianMillis)} · ${stats.usablePercent}%`" />
+      <StatTile label="中位/响应率" :value="`${delayLabel(stats.medianMillis)} · ${stats.usablePercent}%`" />
     </div>
 
     <div v-if="stats.fastest || stats.slowest" class="grid gap-2 sm:grid-cols-2">

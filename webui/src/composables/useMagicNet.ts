@@ -522,13 +522,11 @@ async function startBackgroundCli(
     true,
     previewOverride,
   );
-  if (!ownsForegroundUi()) {
-    return outcome.text;
-  }
+  if (state.backgroundTask.id !== operationId) return outcome.text;
   const accepted =
     outcome.ok && backgroundAccepted(outcome.stdout, operationId);
   if (accepted || outcome.timedOut) {
-    if (outcome.timedOut) {
+    if (outcome.timedOut && ownsForegroundUi()) {
       const output = redactOutput
         ? `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪安全状态。`
         : `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。`;
@@ -556,12 +554,14 @@ async function startBackgroundCli(
     const output = redactOutput
       ? `${label} 未投递到后台；私有命令详情已隐藏。请检查设备状态后重试。`
       : `${label} 未投递到后台。\n\n${outcome.text || "[error] accepted marker missing"}`;
-    publishTrackedOperation(
-      operationSequence,
-      "error",
-      `投递失败：${label}`,
-      output,
-    );
+    if (ownsForegroundUi()) {
+      publishTrackedOperation(
+        operationSequence,
+        "error",
+        `投递失败：${label}`,
+        output,
+      );
+    }
   }
   if (outcome.timedOut) {
     return `[warning] background launch confirmation timed out; reconciliation continues in ${log}`;
@@ -608,7 +608,7 @@ function followBackgroundLogs(
   backgroundLogTimer = window.setTimeout(
     async () => {
       const subscriptionTask = isSubscriptionBackgroundArgs(args)
-        ? refreshSubs(true)
+        ? refreshSubs(true, undefined, false)
         : Promise.resolve(true);
       const [logs, status] = await Promise.all([
         runShell(
@@ -619,12 +619,9 @@ function followBackgroundLogs(
         runCli("service status", "刷新状态", true),
         subscriptionTask,
       ]);
-      if (
-        state.backgroundTask.id !== operationId ||
-        !foregroundUiGate.owns(foregroundToken)
-      )
-        return;
-      if (!execFailed(status)) {
+      if (state.backgroundTask.id !== operationId) return;
+      const ownsForegroundUi = foregroundUiGate.owns(foregroundToken);
+      if (ownsForegroundUi && !execFailed(status)) {
         state.runtime = parseRuntime(status, state.runtime);
       }
       const logCompletion = parseBackgroundCompletion(logs, operationId);
@@ -647,8 +644,10 @@ function followBackgroundLogs(
         ? "私有后台日志已隐藏。"
         : logs || "等待日志输出...";
       const output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${visibleLogs}`;
-      if (
-        !publishTrackedOperation(
+      // Foreground ownership controls output only. The background operation
+      // must still finish and release its launch lock after another UI action.
+      if (ownsForegroundUi) {
+        publishTrackedOperation(
           operationSequence,
           done ? "done" : failed ? "error" : "running",
           done
@@ -657,9 +656,8 @@ function followBackgroundLogs(
               ? `失败：${label}`
               : `正在执行：${label}`,
           output,
-        )
-      )
-        return;
+        );
+      }
       state.backgroundTask.status = done
         ? "done"
         : failed
@@ -689,12 +687,14 @@ function followBackgroundLogs(
             (redactOutput
               ? "\n\n[warn] 安全状态跟踪已超时，但这不代表任务失败。请刷新订阅状态完成对账。"
               : "\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。");
-          publishTrackedOperation(
-            operationSequence,
-            "running",
-            `${label} 仍在后台运行或等待对账`,
-            timeoutOutput,
-          );
+          if (ownsForegroundUi) {
+            publishTrackedOperation(
+              operationSequence,
+              "running",
+              `${label} 仍在后台运行或等待对账`,
+              timeoutOutput,
+            );
+          }
         }
       }
     },
@@ -919,6 +919,7 @@ async function refreshBlock(
 async function refreshSubs(
   quiet = false,
   foregroundToken?: number,
+  reportFailure = true,
 ): Promise<boolean> {
   const listCommand = startForegroundCommand(
     "sub list",
@@ -945,7 +946,7 @@ async function refreshSubs(
     execFailed(statusText) ? "订阅状态" : "",
   ].filter(Boolean);
   if (failed.length) {
-    if (canUpdateRefreshUi(uiToken, allowBusy)) {
+    if (reportFailure && canUpdateRefreshUi(uiToken, allowBusy)) {
       state.phase = "error";
       state.notice = "订阅刷新不完整";
       state.output = `读取${failed.join("和")}失败，旧数据已保留。\n\n${[listText, statusText].filter(execFailed).join("\n")}`;
@@ -1092,8 +1093,15 @@ async function refreshSysroute(): Promise<void> {
   if (foregroundUiGate.owns(command.token)) state.sysroute = text;
 }
 
+function configDraftMatches(
+  snapshot: { target: ConfigEditorTarget; text: string },
+): boolean {
+  return state.config.target === snapshot.target && state.config.text === snapshot.text;
+}
+
 async function loadConfig(): Promise<void> {
-  const target = state.config.target;
+  const snapshot = { target: state.config.target, text: state.config.text };
+  const { target } = snapshot;
   const command = startForegroundCommand(
     `config-editor get ${target}`,
     `加载 ${target} 配置`,
@@ -1106,6 +1114,10 @@ async function loadConfig(): Promise<void> {
   }
   const text = await command.promise;
   if (!foregroundUiGate.owns(command.token)) return;
+  if (!configDraftMatches(snapshot)) {
+    state.config.status = "已保留加载期间的修改";
+    return;
+  }
   if (execFailed(text)) {
     state.config.status = "加载失败";
     state.notice = `${target} 配置加载失败`;
@@ -1128,12 +1140,14 @@ async function loadConfig(): Promise<void> {
 }
 
 async function saveConfig(): Promise<void> {
+  const snapshot = { target: state.config.target, text: state.config.text };
+  const { target } = snapshot;
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const basename = `config-editor-${state.config.target}-${stamp}.tmp`;
+  const basename = `config-editor-${target}-${stamp}.tmp`;
   const stagePromise = stagePrivatePayload(
     "tmp",
     basename,
-    state.config.text,
+    snapshot.text,
     "配置私有载荷",
   );
   const stageToken = foregroundUiGate.current();
@@ -1159,29 +1173,34 @@ async function saveConfig(): Promise<void> {
   let uiToken = stageToken;
   try {
     const commandPromise = runPrivateCli(
-      `config-editor save-file ${state.config.target} ${shellQuote(staged.path)}`,
-      `校验并保存 ${state.config.target}`,
+      `config-editor save-file ${target} ${shellQuote(staged.path)}`,
+      `校验并保存 ${target}`,
       redactedCliPreview(
-        `config-editor save-file ${state.config.target} [private-payload]`,
+        `config-editor save-file ${target} [private-payload]`,
       ),
     );
     uiToken = foregroundUiGate.current();
     const outcome = await commandPromise;
     if (!foregroundUiGate.owns(uiToken)) return;
+    if (state.config.target !== target) return;
     const saved =
       outcome.ok && /\[info\]\s+Saved and validated/i.test(outcome.stdout);
+    const currentDraft = configDraftMatches(snapshot);
     state.config.validation = {
-      status: saved ? "ok" : "error",
-      summary: saved ? "配置已通过校验并保存。" : "配置校验失败，未保存。",
+      status: currentDraft ? (saved ? "ok" : "error") : "idle",
+      summary: !currentDraft
+        ? "当前修改尚未校验。"
+        : saved ? "配置已通过校验并保存。" : "配置校验失败，未保存。",
       checkedAt: new Date().toLocaleTimeString(),
     };
     state.config.status = saved ? "校验通过，已保存" : "校验失败，未保存";
+    if (!currentDraft) state.config.status += "；当前修改未保存";
     state.phase = saved ? "done" : "error";
     state.notice = saved
       ? `${state.config.target} 配置已保存`
       : `${state.config.target} 配置未保存`;
     state.output = state.config.status;
-    if (saved) state.config.dirty = false;
+    if (saved && currentDraft) state.config.dirty = false;
   } finally {
     const cleaned = await removePrivatePayload(
       "tmp",
@@ -1203,13 +1222,15 @@ async function saveConfig(): Promise<void> {
 }
 
 async function syncConfigTemplate(): Promise<void> {
-  const target = state.config.target;
+  const snapshot = { target: state.config.target, text: state.config.text };
+  const { target } = snapshot;
   const command = startForegroundCommand(
     `config-editor sync-template ${target}`,
     `同步 ${target} 配置仓库模板`,
   );
   const text = await command.promise;
   if (!foregroundUiGate.owns(command.token)) return;
+  if (state.config.target !== target) return;
   const failed = execFailed(text);
   const validation = parseConfigValidation(text);
   state.config.status = failed ? "同步失败" : "已同步配置仓库模板";
@@ -1219,7 +1240,13 @@ async function syncConfigTemplate(): Promise<void> {
     checkedAt: new Date().toLocaleTimeString(),
   };
   if (!failed) {
-    state.config.dirty = false;
+    if (!configDraftMatches(snapshot)) {
+      state.config.status = "已同步模板；当前修改已保留";
+      state.config.validation = {
+        status: "idle", summary: "当前修改尚未校验。", checkedAt: "",
+      };
+      return;
+    }
     await loadConfig();
   }
 }

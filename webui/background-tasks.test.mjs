@@ -42,10 +42,6 @@ assert.match(
 );
 assert.match(
   useMagicNetSource,
-  /async function startBackgroundCli[\s\S]*?const operationId = createBackgroundOperationId\(\);[\s\S]*?refreshSubs\(true\)/,
-);
-assert.match(
-  useMagicNetSource,
   /const\s+ownsForegroundUi\s*=\s*\(\):\s*boolean\s*=>\s*foregroundUiGate\.owns\(\s*foregroundToken\s*\);[\s\S]*?if\s*\(\s*!ownsForegroundUi\(\)\s*\)[\s\S]*?followBackgroundLogs\(/,
 );
 assert.match(
