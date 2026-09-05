@@ -21,14 +21,12 @@ test("console refinements load after the existing theme with narrowly scoped ove
     if (!decl.important) return;
     important.push(`${decl.parent.selector}: ${decl.prop}`);
   });
-  // Existing nav rules and Tailwind !p-* utilities require these exact overrides.
-  // Other pages and properties must not accumulate priority escapes.
+  // The base navigation state is the only inherited important declaration.
+  // New components and layout rules must not add priority escapes.
   assert.deepEqual(important, [
     ".mobile-nav button.mn-nav-active: border-color",
-    ".mobile-nav button.mn-nav-active: border-top-color",
     ".mobile-nav button.mn-nav-active: background",
-    ".mobile-nav button.mn-nav-active: border-top-color",
-    '.page-surface[data-page="control"] > .grid > .grid > .magic-card: padding',
+    ".mobile-nav button.mn-nav-active: color",
   ]);
 });
 

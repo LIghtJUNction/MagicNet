@@ -164,7 +164,7 @@ const easterEggVisitors = [
   {
     name: "GPT-6",
     title: "GPT-6 到此一游",
-    body: "少画几个框，多留一点位置给内容。",
+    body: "GPT-6 · 留个签名，继续上网。",
   },
   {
     name: "SOL",
@@ -427,7 +427,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mn-shell">
+  <div class="mn-shell" :data-active-tab="activeTab">
     <header class="mn-command-bar">
       <div class="mn-brand-lockup">
         <button
@@ -515,8 +515,11 @@ onUnmounted(() => {
       </div>
     </header>
 
+
     <section
+      v-if="activeTab !== 'control' || state.task || (state.hasKsu && state.phase === 'error') || state.backgroundTask.log"
       class="mn-runtime-brief"
+      :data-busy="!!state.task"
       :data-state="routeStackState"
       role="status"
       aria-live="polite"
@@ -563,7 +566,7 @@ onUnmounted(() => {
       </aside>
 
       <main class="mn-workspace-main">
-        <header class="mn-workspace-header">
+        <header v-if="activeTab !== 'control'" class="mn-workspace-header">
           <div>
             <h2>{{ activeWorkspace.label }}</h2>
             <p>{{ activeWorkspace.description }}</p>
