@@ -23,7 +23,7 @@ kam check
 `workflow_dispatch`。
 
 新版本通过 PR 准备：同步更新 `kam.toml`、`src/MagicNet/module.prop` 和
-`update.json` 中的 `version`、`versionCode` 及对应版本的下载链接。
+`update.json` 中的 `version` 和 `versionCode`。
 工作流构建已提交的版本，不会自行提交或向受保护分支推送版本变更。
 
 审查后可通过两种方式发布：
@@ -40,7 +40,7 @@ kam check
 普通 push 和 pull request 只构建并上传 workflow artifact；如果存在
 `KAM_PRIVATE_KEY`，上传内容也会包含模块签名旁路文件。
 
-发布前会检查已提交的版本元数据及下载链接是否一致；使用发布请求文件时，
+发布前会检查已提交的版本元数据是否一致；使用发布请求文件时，
 其中的版本号也必须一致。目标 tag 和 Release 必须尚不存在。
 发布要求签名成功，并通过产物内容及安装检查。Release 的 tag 指向实际构建的
 `GITHUB_SHA`。已有 tag 或 Release 会被拒绝，发布资产不会被覆盖。

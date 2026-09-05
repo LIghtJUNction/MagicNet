@@ -25,8 +25,8 @@ top-level `kam.sh` when they exist.
 `workflow_dispatch`.
 
 Prepare a new version in a pull request: update `kam.toml`,
-`src/MagicNet/module.prop`, and `update.json` together, including `version`,
-`versionCode`, and the versioned download URL. The workflow builds the committed
+`src/MagicNet/module.prop`, and `update.json` together, including `version` and
+`versionCode`. The workflow builds the committed
 version and never commits or pushes version changes to the protected branch.
 
 There are two ways to publish after review:
@@ -45,7 +45,7 @@ Pull requests and ordinary pushes build and upload workflow artifacts without
 publishing a release. When `KAM_PRIVATE_KEY` is available, the uploaded artifact
 also includes the module signature sidecar.
 
-Release checks require matching committed version metadata and download URL,
+Release checks require matching committed version metadata,
 a matching release-request version when used, and a new tag and release.
 Publishing requires signing and successful artifact and installation checks.
 The release tag targets the exact `GITHUB_SHA` that was built. Existing tags
