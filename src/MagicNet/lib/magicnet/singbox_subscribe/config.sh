@@ -1237,7 +1237,7 @@ magicnet_singbox_google_works() {
 }
 
 magicnet_singbox_verify_subscription_ready() {
-    if magicnet_singbox_is_running; then
+    if magicnet_singbox_is_running "$(magicnet_singbox_subscription_config_file)"; then
         _verify_running_rc=0
     else
         _verify_running_rc=$?
