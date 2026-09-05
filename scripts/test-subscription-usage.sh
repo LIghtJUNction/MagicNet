@@ -12,9 +12,15 @@ error() { :; }
 mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.state/sing-box/subscription-work/sources" "$tmp/bin"
 
 parse() { printf '%b' "$1" | magicnet_singbox_parse_subscription_usage; }
+assert_private_fields_absent() {
+  if grep -Eq 'SECRET|token|https://' "$1"; then
+    printf '%s\n' 'private response fields leaked into usage output' >&2
+    exit 1
+  fi
+}
 parse 'HTTP/2 200\r\nSuBsCrIpTiOn-UsErInFo: upload=10; download=20; total=100; expire=1900000000\r\nSet-Cookie: SECRET\r\n\r\n' >"$tmp/usage.json"
 jq -e '.state == "fresh" and .upload_bytes == 10 and .download_bytes == 20 and .total_bytes == 100 and .expire_epoch == 1900000000 and .updated_epoch > 0' "$tmp/usage.json" >/dev/null
-! grep -q SECRET "$tmp/usage.json"
+assert_private_fields_absent "$tmp/usage.json"
 parse 'HTTP/1.1 200 OK\r\nSubscription-Userinfo: upload=0; download=0; total=0; expire=0\r\n\r\n' |
   jq -e '.upload_bytes == 0 and .download_bytes == 0 and .total_bytes == 0 and .expire_epoch == null' >/dev/null
 parse 'HTTP/2 200\r\nSubscription-Userinfo: upload=-1; download=NaN; total=9007199254740992; expire=1e9\r\n\r\n' |
@@ -54,7 +60,7 @@ magicnet_singbox_source_usage_report >"$tmp/status"
 sed -n 's/^source_usage_json=//p' "$tmp/status" | jq -e --arg id "$fingerprint" '
   length == 2 and .[0].hostname == "beta.example.invalid" and .[0].state == "unknown" and .[0].total_bytes == null and
   .[1].index == 2 and .[1].id == $id and .[1].hostname == "alpha.example.invalid" and .[1].state == "cached" and .[1].total_bytes == 100' >/dev/null
-! grep -Eq 'SECRET|token|https://' "$tmp/status"
+assert_private_fields_absent "$tmp/status"
 # Fresh metadata from an uncommitted generation remains hidden.
 mkdir -p "$MODDIR/.state/sing-box/subscription-transaction"
 magicnet_singbox_source_usage_report | sed -n 's/^source_usage_json=//p' |
@@ -68,7 +74,7 @@ magicnet_singbox_source_usage_report | sed -n 's/^source_usage_json=//p' |
 printf '%s\n' '{"state":"fresh","total_bytes":-1,"upload_bytes":"10","cookie":"SECRET"}' >"$source.usage.json"
 magicnet_singbox_source_usage_report >"$tmp/status"
 sed -n 's/^source_usage_json=//p' "$tmp/status" | jq -e '.[1].total_bytes == null and .[1].upload_bytes == null' >/dev/null
-! grep -q SECRET "$tmp/status"
+assert_private_fields_absent "$tmp/status"
 
 # Body/identity and optional metadata can never cross download generations.
 new_source="$tmp/new-cache-source.yaml"
@@ -145,7 +151,7 @@ PATH="$tmp/bin:$PATH" magicnet_singbox_fetch_one_subscription "$url" "$tmp/fetch
 test "$(cat "$tmp/fetched.yaml")" = node-data
 jq -e '.total_bytes == 100 and .state == "fresh"' "$tmp/fetched.yaml.usage.json" >/dev/null
 test ! -e "$tmp/fetched.yaml.download.headers"
-! grep -q SECRET "$tmp/fetched.yaml.usage.json"
+assert_private_fields_absent "$tmp/fetched.yaml.usage.json"
 # Failing before opening the header FIFO must terminate, with no stale header file.
 if USAGE_TEST_FAIL=1 PATH="$tmp/bin:$PATH" magicnet_singbox_try_fetch_subscription "$url" "$tmp/failed" 2 3; then
   printf '%s\n' 'failed download was accepted' >&2; exit 1
