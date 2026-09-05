@@ -480,10 +480,17 @@ async function startBackgroundCli(
   const redactOutput = Boolean(previewOverride);
   const subscriptionTask = isSubscriptionBackgroundArgs(lifecycleArgs);
   const subscriptionBaselineKnown = subscriptionTask
-    ? await refreshSubs(true)
+    ? await refreshSubs(true, foregroundToken, false)
     : false;
   if (!ownsForegroundUi()) {
     return `[warning] ${label} superseded by a newer foreground operation`;
+  }
+  if (subscriptionTask && !subscriptionBaselineKnown) {
+    const text = "[error] unavailable: 读取订阅基线失败，任务未启动。请确认设备连接后重试。";
+    state.phase = "error";
+    state.notice = `未执行：${label}`;
+    state.output = text;
+    return text;
   }
   const operationId = createBackgroundOperationId();
   const log = backgroundLogPath(label, operationId);
@@ -610,20 +617,15 @@ function followBackgroundLogs(
       const subscriptionTask = isSubscriptionBackgroundArgs(args)
         ? refreshSubs(true, undefined, false)
         : Promise.resolve(true);
-      const [logs, status] = await Promise.all([
+      const [logs] = await Promise.all([
         runShell(
           backgroundLogCommand(log, args, operationId),
           `跟踪 ${label}`,
           true,
         ),
-        runCli("service status", "刷新状态", true),
         subscriptionTask,
       ]);
       if (state.backgroundTask.id !== operationId) return;
-      const ownsForegroundUi = foregroundUiGate.owns(foregroundToken);
-      if (ownsForegroundUi && !execFailed(status)) {
-        state.runtime = parseRuntime(status, state.runtime);
-      }
       const logCompletion = parseBackgroundCompletion(logs, operationId);
       const subscriptionCompletion = isSubscriptionBackgroundArgs(args)
         ? reconcileSubscriptionCompletion(
@@ -639,6 +641,11 @@ function followBackgroundLogs(
             : "running";
       const done = completion === "done";
       const failed = completion === "error";
+      if (done || failed) {
+        await refreshStatus(foregroundUiGate.current(), false);
+        if (state.backgroundTask.id !== operationId) return;
+      }
+      const ownsForegroundUi = foregroundUiGate.owns(foregroundToken);
       const now = Date.now();
       const visibleLogs = redactOutput
         ? "私有后台日志已隐藏。"
@@ -725,7 +732,10 @@ function markQuietFailure(
   return true;
 }
 
-async function refreshStatus(foregroundToken?: number): Promise<boolean> {
+async function refreshStatus(
+  foregroundToken?: number,
+  reportFailure = true,
+): Promise<boolean> {
   const serviceCommand = startForegroundCommand(
     "service status",
     "刷新服务状态",
@@ -766,7 +776,7 @@ async function refreshStatus(foregroundToken?: number): Promise<boolean> {
     }
   }
   if (failure) {
-    markQuietFailure("刷新状态", failure, uiToken, allowBusy);
+    if (reportFailure) markQuietFailure("刷新状态", failure, uiToken, allowBusy);
     return false;
   }
   return true;

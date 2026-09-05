@@ -4,7 +4,7 @@ import { test } from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import * as background from "./src/composables/backgroundTasks.ts";
-import { parseSubs, subscriptionDefaults } from "./src/composables/parsers.ts";
+import { invalidateTransparentRuntime, parseRuntime, parseSubs, runtimeDefaults, subscriptionDefaults } from "./src/composables/parsers.ts";
 import { execFailed } from "./src/utils.ts";
 
 // Execute the production functions with deferred device I/O and manual timers.
@@ -18,10 +18,21 @@ const names = [
   "configDraftMatches", "loadConfig", "saveConfig", "syncConfigTemplate",
   "startBackgroundCli", "followBackgroundLogs",
   "refreshSubs", "canUpdateRefreshUi", "startForegroundCommand",
+  "refreshAll",
+  "refreshStatus", "markQuietFailure",
 ];
+const controlSource = ts.createSourceFile(
+  "ControlPage.ts",
+  readFileSync(new URL("./src/components/pages/ControlPage.vue", import.meta.url), "utf8")
+    .split('<script setup lang="ts">')[1].split("</script>")[0],
+  ts.ScriptTarget.Latest,
+  true,
+);
 const functions = source.statements
   .filter((node) => ts.isFunctionDeclaration(node) && names.includes(node.name?.text))
-  .map((node) => node.getText(source)).join("\n");
+  .map((node) => node.getText(source)).join("\n") + "\n" + controlSource.statements
+  .find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "rebuildNodeCache")
+  .getText(controlSource);
 const code = ts.transpileModule(functions, {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -51,7 +62,7 @@ function backgroundFixture() {
   const timers = [];
   const state = {
     backgroundTask: { id: "operation", status: "running" },
-    subscriptions: { ...subscriptionDefaults }, runtime: {},
+    subscriptions: { ...subscriptionDefaults }, runtime: { ...runtimeDefaults },
     output: "new foreground output", notice: "new notice", phase: "done",
   };
   const context = vm.createContext({
@@ -63,8 +74,13 @@ function backgroundFixture() {
     redactedCliPreview: (value) => value,
     runShellOutcome: () => pending,
     runShell: async () => "[launch] id=operation label=restart\n[exit] id=operation status=0",
-    runCli: async () => "status", parseSubs, execFailed,
-    parseRuntime: (_, runtime) => runtime,
+    runCli: async () => "status", parseSubs, execFailed, parseRuntime, invalidateTransparentRuntime,
+    withAction: async (_, action) => action(),
+    refreshApps: async () => true,
+    refreshBlock: async () => true, refreshDns: async () => true,
+    refreshWarp: async () => true, refreshWifiPolicy: async () => true,
+    refreshMcp: async () => true, refreshHealth: async () => true,
+    refreshAllNotice: (completed, notice) => completed ? "panel refreshed" : notice,
     publishTrackedOperation: (_, phase, notice, output) => { Object.assign(state, { phase, notice, output }); return true; },
   });
   vm.runInContext(code, context);
@@ -201,4 +217,125 @@ test("subscription launch waits for its lifecycle baseline before changing the d
   assert.equal(state.backgroundTask.subscriptionBaselineKnown, true);
   assert.equal(state.backgroundTask.subscriptionBaselineAttemptEpoch, 1);
   assert.equal(state.backgroundTask.subscriptionBaselineGenerationId, "old");
+});
+
+for (const failedRead of ["sub list", "sub status"]) {
+  test(`failed ${failedRead} baseline stops the launch and permits a retry`, async () => {
+    const { context, state } = backgroundFixture();
+    state.backgroundTask.status = "idle";
+    let launches = 0;
+    context.runCli = async (args) => args === failedRead ? "[error] errno=1 read failed" : "";
+    context.runShellOutcome = async () => {
+      launches += 1;
+      return { ok: true, stdout: "[accepted] id=operation", text: "accepted" };
+    };
+    const result = await context.startBackgroundCli("sub update-all", "更新订阅");
+    assert.equal(launches, 0);
+    assert.equal(execFailed(result), true);
+    assert.equal(state.backgroundTask.status, "idle");
+    assert.equal(background.backgroundTaskBlocksLaunch(state.backgroundTask), false);
+    assert.equal(state.phase, "error");
+    assert.match(state.notice, /未执行/);
+    assert.match(state.output, /重试/);
+
+    context.runCli = async () => "last_attempt_epoch=1\nlast_generation_id=old\nlast_result=success";
+    await context.startBackgroundCli("sub update-all", "更新订阅");
+    assert.equal(launches, 1);
+    assert.equal(state.backgroundTask.subscriptionBaselineKnown, true);
+  });
+}
+
+test("a superseded baseline failure leaves the newer foreground feedback untouched", async () => {
+  const { context, state, supersede } = backgroundFixture();
+  state.backgroundTask.status = "idle";
+  let resolveRead;
+  const pendingRead = new Promise((resolve) => { resolveRead = resolve; });
+  context.runCli = () => pendingRead;
+  context.runShellOutcome = () => assert.fail("a failed baseline must never launch");
+  const launching = context.startBackgroundCli("sub update-all");
+  supersede();
+  resolveRead("[error] errno=1 read failed");
+  await launching;
+  assert.equal(state.output, "new foreground output");
+  assert.equal(state.notice, "new notice");
+  assert.equal(state.phase, "done");
+});
+
+test("ControlPage completion does not begin a foreground refresh over a newer action", async () => {
+  const { context, state, timers, supersede } = backgroundFixture();
+  state.backgroundTask.status = "idle";
+  let attempt = 1;
+  context.runCli = async (args) => args === "sub status"
+    ? `last_attempt_epoch=${attempt}\nlast_generation_id=generation-${attempt}\nlast_result=success`
+    : "";
+  context.runShellOutcome = async () => ({ ok: true, stdout: "[accepted] id=operation", text: "accepted" });
+  await context.rebuildNodeCache();
+  const foregroundToken = supersede();
+  attempt = 2;
+  while (timers.length) await timers.shift()();
+  assert.equal(state.backgroundTask.status, "done");
+  assert.equal(state.subscriptions.lastAttemptEpoch, 2);
+  assert.equal(context.foregroundUiGate.current(), foregroundToken);
+  assert.equal(state.output, "new foreground output");
+  assert.equal(state.notice, "new notice");
+});
+
+const serviceSnapshot = "sing-box: running\nfswatch: running";
+const transparentSnapshot = "mode=ebpf\neffective_mode=hybrid\ncapability=ok\nlocal_cgroup=attached\nshared_tc=attached\nshared_interfaces=wlan2\ntransition=idle";
+
+test("completed background tasks quietly refresh complete runtime after foreground ownership changes", async () => {
+  const { context, state, timers, supersede } = backgroundFixture();
+  state.runtime.singBoxState = "stopped";
+  state.busy = true;
+  context.runCli = async (args) => args === "service status" ? serviceSnapshot : transparentSnapshot;
+  context.followBackgroundLogs("/task.log", "restart", "service restart", "operation", 1, 1);
+  supersede();
+  await timers.shift()();
+  assert.equal(state.backgroundTask.status, "done");
+  assert.equal(state.runtime.singBoxState, "sing-box");
+  assert.equal(state.runtime.transparentMode, "ebpf");
+  assert.equal(state.runtime.transparentEffectiveMode, "hybrid");
+  assert.equal(state.runtime.transparentLocalCgroup, "attached");
+  assert.equal(state.runtime.transparentSharedTc, "attached");
+  assert.deepEqual(state.runtime.transparentSharedInterfaces, ["wlan2"]);
+  assert.equal(state.output, "new foreground output");
+  assert.equal(state.notice, "new notice");
+  assert.equal(state.phase, "done");
+  assert.equal(state.busy, true);
+});
+
+test("completion refresh discards a runtime snapshot superseded while its reads were pending", async () => {
+  const { context, state, timers, supersede } = backgroundFixture();
+  let resolveRead, startRead;
+  const pending = new Promise((resolve) => { resolveRead = resolve; });
+  const started = new Promise((resolve) => { startRead = resolve; });
+  context.runCli = async (args) => {
+    startRead();
+    await pending;
+    return args === "service status" ? serviceSnapshot : transparentSnapshot;
+  };
+  context.followBackgroundLogs("/task.log", "restart", "service restart", "operation", 1, 1);
+  const polling = timers.shift()();
+  await started;
+  supersede();
+  const newerRuntime = parseRuntime("sing-box: stopped\nmode=tun\neffective_mode=tun", runtimeDefaults);
+  state.runtime = newerRuntime;
+  resolveRead();
+  await polling;
+  assert.equal(state.backgroundTask.status, "done");
+  assert.equal(state.runtime, newerRuntime);
+  assert.equal(state.output, "new foreground output");
+  assert.equal(state.notice, "new notice");
+});
+
+test("failed completion status reads preserve newer foreground feedback", async () => {
+  const { context, state, timers, supersede } = backgroundFixture();
+  context.runCli = async () => "[error] errno=1 status read failed";
+  context.followBackgroundLogs("/task.log", "restart", "service restart", "operation", 1, 1);
+  supersede();
+  await timers.shift()();
+  assert.equal(state.backgroundTask.status, "done");
+  assert.equal(state.output, "new foreground output");
+  assert.equal(state.notice, "new notice");
+  assert.equal(state.phase, "done");
 });
