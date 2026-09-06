@@ -1580,3 +1580,48 @@ a {
   .desktop-rail nav button.mn-nav-active { border-inline-start-color: Highlight; }
   .magic-card[class*="mn-tone-"] { border-inline-start-color: CanvasText; }
 }
+
+.mn-language-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  color: var(--mn-ink-muted);
+}
+.mn-language-select select {
+  min-height: 44px;
+  max-width: 7.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--mn-ink);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.mn-language-select select:focus-visible {
+  outline: 2px solid var(--mn-ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.mn-language-select option {
+  color: var(--mn-ink);
+  background: var(--mn-surface-raised);
+}
+@media (max-width: 380px) {
+  .mn-language-select { gap: 0; }
+  .mn-language-select > svg { display: none; }
+  .mn-language-select select { max-width: 6.25rem; }
+}
+
+.mn-language-header { display: none; }
+.mn-language-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+@media (min-width: 900px) {
+  .mn-language-header { display: inline-flex; }
+}

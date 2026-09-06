@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import hljs from "highlight.js/lib/core";
 import json from "highlight.js/lib/languages/json";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -165,13 +166,13 @@ onBeforeUnmount(() => {
   <div class="json-editor" :class="{ 'json-editor--plain': !highlightEnabled }">
     <div class="json-editor__toolbar">
       <span>JSON</span>
-      <span v-if="checking" role="status">正在检查</span>
-      <span v-else-if="syntaxState.error" class="json-editor__status--error" role="status">发现语法错误</span>
-      <span v-else class="json-editor__status--valid" role="status">语法正确</span>
+      <span v-if="checking" role="status">{{ t("正在检查") }}</span>
+      <span v-else-if="syntaxState.error" class="json-editor__status--error" role="status">{{ t("发现语法错误") }}</span>
+      <span v-else class="json-editor__status--valid" role="status">{{ t("语法正确") }}</span>
     </div>
 
     <div class="json-editor__shell" :style="{ minHeight }">
-      <nav class="json-editor__gutter" aria-label="行号。点击可跳转到对应行">
+      <nav class="json-editor__gutter" :aria-label="t('行号。点击可跳转到对应行')">
         <button
           v-for="line in visibleLines"
           :key="line"
@@ -181,7 +182,7 @@ onBeforeUnmount(() => {
             'is-current': line === currentLine,
             'is-error': line === errorLine,
           }"
-          :aria-label="`跳到第 ${line} 行`"
+          :aria-label="t('跳到第 {value} 行', { value: line })"
           :aria-current="line === currentLine ? 'location' : undefined"
           @click="jumpToLine(line)"
         >
@@ -202,10 +203,10 @@ onBeforeUnmount(() => {
           ref="editor"
           v-model="model"
           class="json-editor__textarea"
-          :aria-label="label"
+          :aria-label="t(label)"
           :aria-invalid="syntaxState.error ? 'true' : 'false'"
           :aria-describedby="syntaxState.error ? 'json-editor-error' : 'json-editor-position'"
-          :placeholder="placeholder"
+          :placeholder="t(placeholder)"
           autocomplete="off"
           autocapitalize="off"
           spellcheck="false"
@@ -226,11 +227,9 @@ onBeforeUnmount(() => {
         type="button"
         class="json-editor__error-jump"
         @click="jumpToLine(syntaxState.error.line, syntaxState.error.column)"
-      >
-        跳到第 {{ syntaxState.error.line }} 行，第 {{ syntaxState.error.column }} 列
-      </button>
-      <span v-else id="json-editor-position">第 {{ currentLine }} 行，第 {{ currentColumn }} 列</span>
-      <span v-if="!highlightEnabled">大文件模式</span>
+      > {{ t("跳到第 {value} 行，第 {value2} 列", { value: syntaxState.error.line, value2: syntaxState.error.column }) }} </button>
+      <span v-else id="json-editor-position">{{ t("第 {value} 行，第 {value2} 列", { value: currentLine, value2: currentColumn }) }}</span>
+      <span v-if="!highlightEnabled">{{ t("大文件模式") }}</span>
     </div>
   </div>
 </template>

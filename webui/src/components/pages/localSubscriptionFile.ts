@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import {
   buildPrivateSubscriptionSourceApplyCommand,
   redactedCliPreview,
@@ -17,21 +18,21 @@ export function parseLocalSubscriptionFile(
   bytes: Uint8Array,
 ): LocalSubscriptionImport {
   if (!bytes.byteLength) {
-    throw new Error("文件为空。");
+    throw new Error(t("文件为空。"));
   }
   if (bytes.byteLength > MAX_LOCAL_SUBSCRIPTION_BYTES) {
-    throw new Error("文件超过 8 MiB 限制。");
+    throw new Error(t("文件超过 8 MiB 限制。"));
   }
 
   let source: string;
   try {
     source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    throw new Error("文件不是有效的 UTF-8 文本。");
+    throw new Error(t("文件不是有效的 UTF-8 文本。"));
   }
 
-  if (!source.trim()) throw new Error("文件为空。");
-  if (source.includes("\0")) throw new Error("文件包含 NUL 字节。");
+  if (!source.trim()) throw new Error(t("文件为空。"));
+  if (source.includes("\0")) throw new Error(t("文件包含 NUL 字节。"));
   const text = source.endsWith("\n") ? source : `${source}\n`;
   const format = /^\s*proxies\s*:/m.test(source)
     ? "clash"

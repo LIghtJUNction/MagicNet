@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type AppPolicyMode = "blacklist" | "whitelist";
 export type AppRouteKind = "proxy" | "direct" | "managed" | "bypass" | "whitelist-fallback";
 
@@ -47,26 +48,26 @@ export function defaultAppRoute(mode: AppPolicyMode): AppRouteKind {
 
 export function appPolicyModeSummary(mode: AppPolicyMode): string {
   return mode === "whitelist"
-    ? "仅名单接管：未列出应用绕过 MagicNet 数据面，使用系统网络；TUN 模式下 DNS 仍可能被捕获。"
-    : "全局接管：未列出应用进入 MagicNet，并按一般路由规则处理。";
+    ? t('仅名单接管：未列出应用绕过 MagicNet 数据面，使用系统网络；TUN 模式下 DNS 仍可能被捕获。')
+    : t('全局接管：未列出应用进入 MagicNet，并按一般路由规则处理。');
 }
 
 export function appRouteLabel(route: AppRouteKind): string {
-  if (route === "proxy") return "Proxy：MagicNet → 代理";
-  if (route === "direct") return "Direct：MagicNet → 直连";
-  if (route === "bypass") return "Bypass：系统网络／外部 VPN";
-  if (route === "whitelist-fallback") return "白名单未列入：系统网络／外部 VPN";
-  return "MagicNet 一般路由规则";
+  if (route === "proxy") return t('Proxy：MagicNet → 代理');
+  if (route === "direct") return t('Direct：MagicNet → 直连');
+  if (route === "bypass") return t('Bypass：系统网络／外部 VPN');
+  if (route === "whitelist-fallback") return t('白名单未列入：系统网络／外部 VPN');
+  return t('MagicNet 一般路由规则');
 }
 
 export function appRouteTraffic(route: AppRouteKind): string {
-  if (route === "managed") return "进入当前 MagicNet 数据面，并按一般路由规则决定出口。";
-  if (route === "whitelist-fallback") return "未列入白名单，绕过当前 MagicNet 数据面，交给系统网络或外部 VPN。";
-  return appPolicyRouteDefinitions.find((item) => item.id === route)?.traffic ?? "路由状态未知。";
+  if (route === "managed") return t('进入当前 MagicNet 数据面，并按一般路由规则决定出口。');
+  if (route === "whitelist-fallback") return t('未列入白名单，绕过当前 MagicNet 数据面，交给系统网络或外部 VPN。');
+  return t(appPolicyRouteDefinitions.find((item) => item.id === route)?.traffic ?? '路由状态未知。');
 }
 
 export function appRouteDns(route: AppRouteKind): string {
-  if (route === "managed") return "由 MagicNet 的 DNS 与目的地路由策略处理。";
-  if (route === "whitelist-fallback") return "未列入白名单不等于显式 Bypass；TUN 模式下 DNS 仍可能被 MagicNet 捕获。";
-  return appPolicyRouteDefinitions.find((item) => item.id === route)?.dns ?? "DNS 边界未知。";
+  if (route === "managed") return t('由 MagicNet 的 DNS 与目的地路由策略处理。');
+  if (route === "whitelist-fallback") return t('未列入白名单不等于显式 Bypass；TUN 模式下 DNS 仍可能被 MagicNet 捕获。');
+  return t(appPolicyRouteDefinitions.find((item) => item.id === route)?.dns ?? 'DNS 边界未知。');
 }

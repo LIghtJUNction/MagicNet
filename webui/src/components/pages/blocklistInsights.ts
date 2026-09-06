@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { BlocklistState } from "@/types";
 
 export type BlocklistInsight = {
@@ -25,8 +26,8 @@ export function buildCommunityEntries(blocklist: BlocklistState): string[] {
 export function buildBlocklistSummary(blocklist: BlocklistState): BlocklistSummary {
   const communityEntries = buildCommunityEntries(blocklist);
   const activeSources = [
-    blocklist.manual.length ? "本地阻断" : "",
-    blocklist.community && communityEntries.length ? "社区库" : ""
+    blocklist.manual.length ? t('本地阻断') : "",
+    blocklist.community && communityEntries.length ? t('社区库') : ""
   ].filter(Boolean);
   const status = !blocklist.enabled
     ? "disabled"
@@ -38,15 +39,15 @@ export function buildBlocklistSummary(blocklist: BlocklistState): BlocklistSumma
   return {
     status,
     summary: blocklist.enabled
-      ? `${activeSources.join(" + ") || "无规则"} 生效`
-      : "黑名单已关闭，所有阻断规则暂不生效",
+      ? t('{value} 生效', { value: activeSources.join(" + ") || t('无规则') })
+      : t('黑名单已关闭，所有阻断规则暂不生效'),
     communityEntries,
     insights: [
-      insight("总开关", blocklist.enabled ? "启用" : "关闭", blocklist.enabled ? "success" : "warning"),
-      insight("社区库", blocklist.community ? "启用" : "关闭", blocklist.community ? "success" : "neutral"),
-      insight("本地阻断", `${blocklist.manual.length} 条`, blocklist.manual.length ? "success" : "neutral"),
-      insight("社区有效", `${communityEntries.length} 条`, communityEntries.length ? "success" : "warning"),
-      insight("广告放行", `${blocklist.allowRules.length} 条`, blocklist.allowRules.length ? "warning" : "neutral")
+      insight(t('总开关'), blocklist.enabled ? t('启用') : t('关闭'), blocklist.enabled ? "success" : "warning"),
+      insight(t('社区库'), blocklist.community ? t('启用') : t('关闭'), blocklist.community ? "success" : "neutral"),
+      insight(t('本地阻断'), t('{count} 条', { count: blocklist.manual.length }), blocklist.manual.length ? "success" : "neutral"),
+      insight(t('社区有效'), t('{count} 条', { count: communityEntries.length }), communityEntries.length ? "success" : "warning"),
+      insight(t('广告放行'), t('{count} 条', { count: blocklist.allowRules.length }), blocklist.allowRules.length ? "warning" : "neutral")
     ]
   };
 }

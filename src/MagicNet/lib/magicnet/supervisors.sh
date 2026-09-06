@@ -98,10 +98,12 @@ magicnet_supervisor_kill_orphans() (
 
 set_i18n "MAGICNET_FSWATCH_START_FAILED" \
     "zh" "fswatch 启动失败 (rc=\$_1)；请查看 \$_2" \
-    "en" "fswatch failed to start (rc=\$_1); see \$_2"
+    "en" "fswatch failed to start (rc=\$_1); see \$_2" \
+    "ru" "Не удалось запустить fswatch (rc=\$_1); см. \$_2"
 set_i18n "MAGICNET_FSWATCH_FLOCK_INCOMPATIBLE" \
     "zh" "fswatch 找到的 flock 不兼容: \$_1；请使用 APatch/KSU/Magisk BusyBox" \
-    "en" "fswatch found an incompatible flock: \$_1; use the APatch/KSU/Magisk BusyBox"
+    "en" "fswatch found an incompatible flock: \$_1; use the APatch/KSU/Magisk BusyBox" \
+    "ru" "fswatch обнаружил несовместимый flock: \$_1; используйте BusyBox из APatch/KSU/Magisk"
 
 magicnet_supervisor_status_with_orphans() {
     _msswo_pid="$1"

@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { statusToneClasses } from "@/lib/statusTone";
 export type NetworkSnapshotInsight = {
   label: string;
@@ -35,49 +36,49 @@ export function buildNetworkSnapshotInsights(
   );
   return [
     {
-      label: "TUN 接口",
-      value: hasTun ? "detected" : "not detected",
+      label: t("TUN 接口"),
+      value: hasTun ? t("detected") : t("not detected"),
       detail: hasTun
-        ? "快照中发现 magicnet0 TUN。"
-        : "未发现 magicnet0；eBPF 模式下这是正常现象，请结合 transparent status。",
+        ? t("快照中发现 magicnet0 TUN。")
+        : t("未发现 magicnet0；eBPF 模式下这是正常现象，请结合 transparent status。"),
       tone: hasTun ? "ok" : "info",
     },
     {
-      label: "出口接口",
-      value: egress.length ? egress.slice(0, 4).join(", ") : "unknown",
+      label: t("出口接口"),
+      value: egress.length ? egress.slice(0, 4).join(", ") : t("unknown"),
       detail: egress.length
-        ? "检测到常见出口接口命名线索。"
-        : "未识别常见出口接口命名线索。",
+        ? t("检测到常见出口接口命名线索。")
+        : t("未识别常见出口接口命名线索。"),
       tone: egress.length ? "info" : "warn",
     },
     {
-      label: "策略路由",
-      value: hasPolicyRule ? "detected" : "not detected",
+      label: t("策略路由"),
+      value: hasPolicyRule ? t("detected") : t("not detected"),
       detail: hasPolicyRule
-        ? "快照文本包含 policy routing 线索。"
-        : "未看到明显 ip rule/policy route 线索。",
+        ? t("快照文本包含 policy routing 线索。")
+        : t("未看到明显 ip rule/policy route 线索。"),
       tone: hasPolicyRule ? "ok" : "info",
     },
     {
       label: "NAT",
-      value: hasNat ? "detected" : "not detected",
+      value: hasNat ? t("detected") : t("not detected"),
       detail: hasNat
-        ? "快照文本包含 NAT/MASQUERADE 线索。"
-        : "未看到 NAT 线索，热点转发或共享网络需继续确认。",
+        ? t("快照文本包含 NAT/MASQUERADE 线索。")
+        : t("未看到 NAT 线索，热点转发或共享网络需继续确认。"),
       tone: hasNat ? "ok" : "info",
     },
     {
-      label: "DNS 捕获",
-      value: hasDnsRedirect ? "detected" : "not detected",
+      label: t("DNS 捕获"),
+      value: hasDnsRedirect ? t("detected") : t("not detected"),
       detail: hasDnsRedirect
-        ? "快照文本包含 53 端口 redirect 线索。"
-        : "未看到 DNS redirect 线索，可结合 DNS 工具继续测试。",
+        ? t("快照文本包含 53 端口 redirect 线索。")
+        : t("未看到 DNS redirect 线索，可结合 DNS 工具继续测试。"),
       tone: hasDnsRedirect ? "ok" : "info",
     },
     {
-      label: "规模",
-      value: `${interfaces.length} interfaces`,
-      detail: `${text.split(/\r?\n/).filter((line) => line.trim()).length} 行有效快照文本。`,
+      label: t("规模"),
+      value: t("{count} interfaces", { count: interfaces.length }),
+      detail: t("{value1} 行有效快照文本。", { value1: text.split(/\r?\n/).filter((line) => line.trim()).length }),
       tone:
         lower.includes("error") || lower.includes("failed") ? "warn" : "info",
     },

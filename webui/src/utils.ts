@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { OUTPUT_RENDER_LIMIT } from "./constants.ts";
 import type { ExecResult } from "./types.ts";
 
@@ -93,7 +94,7 @@ export function compactOutput(value: string, limit = OUTPUT_RENDER_LIMIT): strin
   if (value.length <= limit) return value;
   const head = value.slice(0, Math.floor(limit * 0.58));
   const tail = value.slice(value.length - Math.floor(limit * 0.32));
-  return `${head}\n\n... 输出过长，已折叠中间 ${value.length - head.length - tail.length} 个字符 ...\n\n${tail}`;
+  return t("{p0}\n\n... 输出过长，已折叠中间 {p1} 个字符 ...\n\n{p2}", { p0: head, p1: value.length - head.length - tail.length, p2: tail });
 }
 
 export function compactCommand(value: string, limit = 420): string {
@@ -212,7 +213,7 @@ export async function stagePrivatePayload(
   try {
     created = await runPrivate(
       buildPrivatePayloadCommand("create", namespace, basename),
-      "准备" + label,
+      t("准备 {label}", { label: t(label) }),
       privatePayloadPreview("create", namespace),
     );
   } catch {
@@ -232,7 +233,7 @@ export async function stagePrivatePayload(
       const base64Chunk = bytesToBase64(encoder.encode(textChunk));
       const appended = await runPrivate(
         buildPrivatePayloadCommand("append", namespace, basename, base64Chunk),
-        "写入" + label,
+        t("写入 {label}", { label: t(label) }),
         privatePayloadPreview("append", namespace),
       );
       if (!appended.ok) {
@@ -257,7 +258,7 @@ export async function removePrivatePayload(
   try {
     const outcome = await runPrivate(
       buildPrivatePayloadCommand("remove", namespace, basename),
-      "清理" + label,
+      t("清理 {label}", { label: t(label) }),
       privatePayloadPreview("remove", namespace),
     );
     return outcome.ok;
@@ -336,7 +337,7 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
   let timer = 0;
   const timeout = new Promise<never>((_, reject) => {
     timer = window.setTimeout(() => {
-      reject(new ExecTimeoutError(`${label} 超过 ${Math.round(ms / 1000)} 秒仍未返回，请到“输出”页查看日志或稍后重试。`));
+      reject(new ExecTimeoutError(t("{p0} 超过 {p1} 秒仍未返回，请到“输出”页查看日志或稍后重试。", { p0: t(label), p1: Math.round(ms / 1000) })));
     }, ms);
   });
   return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));

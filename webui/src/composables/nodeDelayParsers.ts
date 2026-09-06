@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type NodeDelayQuality = "fast" | "normal" | "slow" | "failed";
 
 export type NodeDelayEntry = {
@@ -89,16 +90,16 @@ export function buildNodeDelayStats(entries: NodeDelayEntry[]): NodeDelayStats {
 }
 
 export function nodeDelayHealthText(stats: NodeDelayStats): string {
-  if (!stats.tested) return "还没有测速结果。";
-  if (!stats.usable) return "全部节点测速失败，先检查订阅、网络或 sing-box 运行状态。";
-  return `${stats.usable}/${stats.tested} 个节点返回延迟，中位 ${stats.medianMillis ?? "未知"}ms。测速未验证 HTTP 状态码或登录结果，低延迟不代表目标网站允许访问。`;
+  if (!stats.tested) return t("还没有测速结果。");
+  if (!stats.usable) return t("全部节点测速失败，先检查订阅、网络或 sing-box 运行状态。");
+  return t("{usable}/{tested} 个节点返回延迟，中位 {medianMillis}ms。测速未验证 HTTP 状态码或登录结果，低延迟不代表目标网站允许访问。", { usable: stats.usable, tested: stats.tested, medianMillis: stats.medianMillis ?? t("未知") });
 }
 
 export function nodeDelayQualityLabel(quality: NodeDelayQuality): string {
-  if (quality === "fast") return "快";
-  if (quality === "normal") return "正常";
-  if (quality === "slow") return "慢";
-  return "失败";
+  if (quality === "fast") return t("快");
+  if (quality === "normal") return t("正常");
+  if (quality === "slow") return t("慢");
+  return t("失败");
 }
 
 export function formatNodeDelayReport(entries: NodeDelayEntry[]): string {

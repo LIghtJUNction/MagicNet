@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import {
   Copy,
   DownloadCloud,
@@ -84,20 +85,20 @@ const singBoxStatus = computed<SingBoxStatusPresentation>(() => {
   const rawState = state.runtime.singBoxState;
   if (rawState === "sing-box") {
     return {
-      label: "运行中",
+      label: t("运行中"),
       tone: "success",
       dotClass: "bg-[var(--mn-cactus)]",
     };
   }
   if (rawState === "stopped") {
     return {
-      label: "已停止",
+      label: t("已停止"),
       tone: "warning",
       dotClass: "bg-[var(--mn-oat)]",
     };
   }
   return {
-    label: !rawState || rawState === "unknown" ? "状态未知" : rawState,
+    label: !rawState || rawState === "unknown" ? t("状态未知") : rawState,
     tone: "neutral",
     dotClass: "bg-[var(--mn-ink-faint)]",
   };
@@ -127,38 +128,38 @@ const showRuntimeNotice = computed(() => state.hasKsu && (
 ));
 
 const controlTitle = computed(() => {
-  if (!state.hasKsu) return "未连接设备";
-  if (state.runtime.singBoxState === "sing-box") return "运行中";
-  if (state.runtime.singBoxState === "stopped") return "已停止";
-  return "状态未知";
+  if (!state.hasKsu) return t("未连接设备");
+  if (state.runtime.singBoxState === "sing-box") return t("运行中");
+  if (state.runtime.singBoxState === "stopped") return t("已停止");
+  return t("状态未知");
 });
 
 const transparentModeLabel = computed(() => {
   if (state.runtime.transparentMode === "tun") return "TUN";
   if (state.runtime.transparentMode === "ebpf") return "eBPF";
-  return "状态未知";
+  return t("状态未知");
 });
 const transparentEffectiveLabel = computed(() => {
   const effective = state.runtime.transparentEffectiveMode;
   if (effective === "tun") return "TUN · magicnet0";
   if (effective === "local") return "eBPF local";
   if (effective === "hybrid") return "eBPF hybrid";
-  return "状态未知";
+  return t("状态未知");
 });
 const transparentDescription = computed(() => {
   if (state.runtime.transparentMode === "unknown") {
-    return "无法读取透明代理状态；当前模式不会按 TUN 或 eBPF 猜测。";
+    return t("无法读取透明代理状态；当前模式不会按 TUN 或 eBPF 猜测。");
   }
   if (state.runtime.transparentMode === "tun") {
-    return "sing-box TUN 通过 magicnet0 接管本机流量。";
+    return t("sing-box TUN 通过 magicnet0 接管本机流量。");
   }
   if (state.runtime.transparentEffectiveMode === "hybrid") {
-    return "eBPF local 已接管本机流量，shared TC 使用已确认的下游接口。";
+    return t("eBPF local 已接管本机流量，shared TC 使用已确认的下游接口。");
   }
   if (state.runtime.transparentSharedTc === "pending") {
-    return "eBPF local 已配置；尚无已确认下游接口，shared TC 保持 pending。";
+    return t("eBPF local 已配置；尚无已确认下游接口，shared TC 保持 pending。");
   }
-  return "eBPF 使用 cgroup 接管本机流量；shared 状态以运行时报告为准。";
+  return t("eBPF 使用 cgroup 接管本机流量；shared 状态以运行时报告为准。");
 });
 const transparentTransitionTone = computed<"neutral" | "success" | "warning" | "danger">(() => {
   if (state.runtime.transparentTransition === "rollback") return "danger";
@@ -216,7 +217,7 @@ function requestTransparentMode(mode: TransparentMode, event: MouseEvent): void 
 async function rebuildNodeCache(): Promise<void> {
   await withAction("rebuild-node-cache", async () => {
     // The background follower refreshes subscriptions and service status.
-    await startBackgroundCli("sub update sing-box", "重建 sing-box 节点缓存");
+    await startBackgroundCli("sub update sing-box", t("重建 sing-box 节点缓存"));
   });
 }
 
@@ -276,7 +277,7 @@ async function confirmDangerAction(): Promise<void> {
   const action = pendingDangerAction.value;
   if (!action) return;
   if (runtimeBusy.value) {
-    state.output = "后台任务未结束，已拒绝执行新的控制操作。";
+    state.output = t("后台任务未结束，已拒绝执行新的控制操作。");
     return;
   }
   pendingDangerAction.value = null;
@@ -301,27 +302,27 @@ async function toggleWifiPolicy(): Promise<void> {
   await runWifiAction(
     "wifi-toggle",
     `wifi ${enable ? "enable" : "disable"}`,
-    `${enable ? "启用" : "停用"} Wi-Fi 自动模式`,
+    enable ? t("启用 Wi-Fi 自动模式") : t("停用 Wi-Fi 自动模式"),
   );
 }
 
 async function refreshHotspotPolicy(): Promise<boolean> {
   hotspotPolicyPhase.value = "loading";
   hotspotPolicyError.value = "";
-  const output = await runCli("hotspot status", "读取热点代理策略", true);
+  const output = await runCli("hotspot status", t("读取热点代理策略"), true);
   if (execFailed(output)) {
     hotspotPolicyPhase.value = "error";
     hotspotPolicyError.value =
-      "MagicNet 没读到当前热点设置。设备设置没变，请重新读取。";
-    state.output = `读取热点代理策略失败：\n${output}`;
+      t("MagicNet 没读到当前热点设置。设备设置没变，请重新读取。");
+    state.output = t("读取热点代理策略失败：\n{output}", { output: output });
     return false;
   }
   const matched = output.match(/^enabled=([01])$/m);
   if (!matched) {
     hotspotPolicyPhase.value = "error";
     hotspotPolicyError.value =
-      "MagicNet 没认出设备返回的热点状态。设备设置没变，请重新读取。";
-    state.output = "读取热点代理策略失败：设备返回了无法解析的状态。";
+      t("MagicNet 没认出设备返回的热点状态。设备设置没变，请重新读取。");
+    state.output = t("读取热点代理策略失败：设备返回了无法解析的状态。");
     return false;
   }
   hotspotProxyEnabled.value = matched[1] === "1";
@@ -347,7 +348,7 @@ async function toggleHotspotProxy(event: Event): Promise<void> {
   await withAction("hotspot-proxy", async () => {
     const output = await runCli(
       `hotspot ${enabled ? "enable" : "disable"}`,
-      `${enabled ? "启用" : "停用"}热点代理`,
+      enabled ? t("启用热点代理") : t("停用热点代理"),
     );
     if (execFailed(output)) {
       hotspotProxyEnabled.value = previous;
@@ -364,7 +365,7 @@ async function setWifiPolicyMode(mode: "blacklist" | "whitelist"): Promise<void>
   await runWifiAction(
     `wifi-mode-${mode}`,
     `wifi mode ${mode}`,
-    `切换 Wi-Fi ${mode}`,
+    t("切换 Wi-Fi {mode}", { mode: mode }),
   );
 }
 
@@ -372,13 +373,13 @@ async function addWifiEntry(kind: "ssid" | "bssid"): Promise<void> {
   const input = kind === "ssid" ? wifiSsidInput : wifiBssidInput;
   const value = input.value.trim();
   if (!value) {
-    state.output = kind === "ssid" ? "请输入 SSID。" : "请输入 BSSID。";
+    state.output = kind === "ssid" ? t("请输入 SSID。") : t("请输入 BSSID。");
     return;
   }
   await runWifiAction(
     `wifi-add-${kind}`,
     `wifi add-${kind} ${shellQuote(value)}`,
-    `添加 Wi-Fi ${kind.toUpperCase()}`,
+    t("添加 Wi-Fi {kind}", { kind: kind.toUpperCase() }),
   );
   input.value = "";
 }
@@ -390,7 +391,7 @@ async function removeWifiEntry(
   await runWifiAction(
     `wifi-remove-${kind}-${value}`,
     `wifi remove-${kind} ${shellQuote(value)}`,
-    `移除 Wi-Fi ${kind.toUpperCase()}`,
+    t("移除 Wi-Fi {kind}", { kind: kind.toUpperCase() }),
   );
 }
 
@@ -418,8 +419,8 @@ async function copyControlSnapshot(): Promise<void> {
   ].join("\n");
   snapshotCopied.value = await copyText(sanitizeControlSnapshot(report));
   state.output = snapshotCopied.value
-    ? "控制状态快照已复制。"
-    : "剪贴板不可用，控制状态快照未复制。";
+    ? t("控制状态快照已复制。")
+    : t("剪贴板不可用，控制状态快照未复制。");
 }
 
 function sanitizeControlSnapshot(text: string): string {
@@ -451,13 +452,13 @@ onMounted(() => {
 
 <template>
   <div class="mn-control">
-    <section class="mn-control-hero" aria-label="服务概览">
+    <section class="mn-control-hero" :aria-label="t('服务概览')">
       <div class="mn-control-status" role="status" aria-live="polite">
         <p class="mn-control-caption">{{ state.hasKsu ? 'sing-box' : 'MagicNet' }}</p>
         <h2>{{ controlTitle }}</h2>
         <p class="mn-control-subtitle">
           <span v-if="state.hasKsu" :class="['mn-control-dot', singBoxStatus.dotClass]" />
-          {{ state.hasKsu ? transparentModeLabel : '请在模块管理器中打开' }}
+          {{ state.hasKsu ? transparentModeLabel : t("请在模块管理器中打开") }}
         </p>
       </div>
 
@@ -468,15 +469,13 @@ onMounted(() => {
         @click="toggleSingBox"
       >
         <Power :size="18" />
-        {{ state.runtime.singBoxState === 'sing-box' ? '停止服务' : '启动服务' }}
+        {{ state.runtime.singBoxState === 'sing-box' ? t("停止服务") : t("启动服务") }}
       </Button>
       <div class="mn-control-shortcuts">
         <Button variant="ghost" :disabled="!state.hasKsu" :loading="isRunning('open-zashboard')" @click="withAction('open-zashboard', () => openSingBoxUi('zashboard'))">
-          <ExternalLink :size="16" />节点面板
-        </Button>
+          <ExternalLink :size="16" />{{ t("节点面板") }} </Button>
         <Button variant="ghost" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('restart-sing-box')" @click="requestDangerAction(restartSingBoxAction(), $event.currentTarget)">
-          <RotateCcw :size="16" />重启服务
-        </Button>
+          <RotateCcw :size="16" />{{ t("重启服务") }} </Button>
       </div>
 
       <details
@@ -488,21 +487,20 @@ onMounted(() => {
         <summary><StatusDot tone="current" />{{ runtimeInsight.title }}</summary>
         <p>{{ runtimeInsight.detail }}</p>
         <Button v-if="missingNodeCache" variant="outline" :loading="isRunning('rebuild-node-cache')" @click="rebuildNodeCache">
-          <DownloadCloud :size="17" />更新订阅并重建节点
-        </Button>
-        <Button v-else variant="outline" @click="emit('goto-tab', 'output')">查看输出</Button>
+          <DownloadCloud :size="17" />{{ t("更新订阅并重建节点") }} </Button>
+        <Button v-else variant="outline" @click="emit('goto-tab', 'output')">{{ t("查看输出") }}</Button>
       </details>
     </section>
 
     <div class="mn-control-settings">
       <Card class="grid gap-5">
-        <CardHeading title="代理模式">
-          <Badge v-if="state.runtime.transparentMode === 'unknown'" tone="neutral">未确认</Badge>
+        <CardHeading :title="t('代理模式')">
+          <Badge v-if="state.runtime.transparentMode === 'unknown'" tone="neutral">{{ t("未确认") }}</Badge>
         </CardHeading>
 
         <div
           role="group"
-          aria-label="选择透明代理模式"
+          :aria-label="t('选择透明代理模式')"
           class="grid grid-cols-2 gap-2"
         >
           <Button
@@ -528,7 +526,7 @@ onMounted(() => {
         </div>
 
         <details class="mn-control-details">
-          <summary>运行详情</summary>
+          <summary>{{ t("运行详情") }}</summary>
           <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ transparentDescription }}</p>
           <Badge :tone="transparentTransitionTone">{{ state.runtime.transparentTransition }}</Badge>
         <dl
@@ -571,8 +569,7 @@ onMounted(() => {
           :loading="isRunning('transparent-apply')"
           @click="requestDangerAction(applyTransparentModeAction(), $event.currentTarget)"
         >
-          <Radar :size="17" />重新应用当前模式
-        </Button>
+          <Radar :size="17" />{{ t("重新应用当前模式") }} </Button>
         </details>
         <p v-if="state.runtime.transparentRecentError" role="alert" class="text-sm leading-6 text-[var(--mn-danger)]">
           {{ state.runtime.transparentRecentError }}
@@ -587,49 +584,45 @@ onMounted(() => {
             class="mn-hotspot-input"
             :checked="hotspotProxyEnabled"
             :disabled="!state.hasKsu || hotspotPolicyPhase !== 'ready' || runtimeBusy || isRunning('hotspot-proxy')"
-            aria-label="允许热点使用代理"
+            :aria-label="t('允许热点使用代理')"
             aria-describedby="hotspot-proxy-description hotspot-proxy-status"
             @change="toggleHotspotProxy"
           />
           <span class="min-w-0">
-            <span class="mn-hotspot-label"><Share2 :size="17" />热点代理</span>
+            <span class="mn-hotspot-label"><Share2 :size="17" />{{ t("热点代理") }}</span>
             <span id="hotspot-proxy-status" class="mn-hotspot-state">
-              {{ !state.hasKsu ? '未连接设备' : hotspotPolicyPhase === 'loading' ? '读取中' : hotspotPolicyPhase === 'error' ? '读取失败' : hotspotProxyEnabled ? '已开启' : '已关闭' }}
+              {{ !state.hasKsu ? t("未连接设备") : hotspotPolicyPhase === 'loading' ? t("读取中") : hotspotPolicyPhase === 'error' ? t("读取失败") : hotspotProxyEnabled ? t("已开启") : t("已关闭") }}
             </span>
           </span>
           <span class="mn-hotspot-track" aria-hidden="true" />
         </label>
         <details class="mn-control-details">
-          <summary>共享设置</summary>
-          <p id="hotspot-proxy-description" class="text-sm leading-6 text-[var(--mn-ink-muted)]">
-            热点设备使用 <code>proxy</code> 代理组；不勾选时统一走 <code>direct</code>。
-            TUN 模式会关闭 Android 热点硬件加速，关闭代理后恢复原设置；eBPF 模式使用共享 TC。
-          </p>
+          <summary>{{ t("共享设置") }}</summary>
+          <p id="hotspot-proxy-description" class="text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("热点设备使用 proxy 代理组；不勾选时统一走 direct。TUN 模式会关闭 Android 热点硬件加速，关闭代理后恢复原设置；eBPF 模式使用共享 TC。") }} </p>
         </details>
         <div v-if="state.hasKsu && hotspotPolicyPhase === 'error'" class="mn-control-notice mn-tone-warn" role="alert">
           <p>{{ hotspotPolicyError }}</p>
           <Button variant="outline" :loading="isRunning('hotspot-policy-refresh')" @click="retryHotspotPolicy">
-            <RotateCcw :size="16" />重新读取
-          </Button>
+            <RotateCcw :size="16" />{{ t("重新读取") }} </Button>
         </div>
       </Card>
 
       <details class="mn-disclosure">
-        <summary><Wifi :size="18" />Wi-Fi 自动切换<span>{{ state.wifiPolicy.enabled ? '已开启' : '已关闭' }}</span></summary>
+        <summary><Wifi :size="18" />{{ t("Wi-Fi 自动切换") }}<span>{{ state.wifiPolicy.enabled ? t("已开启") : t("已关闭") }}</span></summary>
       <Card class="grid gap-5">
-        <CardHeading title="Wi-Fi 策略">
+        <CardHeading :title="t('Wi-Fi 策略')">
           <Badge :tone="state.wifiPolicy.connected ? 'success' : 'neutral'">
-            {{ state.wifiPolicy.connected ? state.wifiPolicy.ssid || "Wi-Fi 已连接" : "未连接 Wi-Fi" }}
+            {{ state.wifiPolicy.connected ? state.wifiPolicy.ssid || t("Wi-Fi 已连接") : t("未连接 Wi-Fi") }}
           </Badge>
           <Badge :tone="state.wifiPolicy.enabled ? 'success' : 'warning'">
-            {{ state.wifiPolicy.enabled ? "已启用" : "已停用" }}
+            {{ state.wifiPolicy.enabled ? t("已启用") : t("已停用") }}
           </Badge>
           <Button
             :loading="isRunning('wifi-toggle')"
             :disabled="runtimeBusy || !state.hasKsu"
             @click="toggleWifiPolicy"
           >
-            <Power :size="17" />{{ state.wifiPolicy.enabled ? "停用" : "启用" }}
+            <Power :size="17" />{{ state.wifiPolicy.enabled ? t("停用") : t("启用") }}
           </Button>
         </CardHeading>
 
@@ -648,17 +641,17 @@ onMounted(() => {
             ]"
             @click="setWifiPolicyMode(mode)"
           >
-            <span class="font-semibold">{{ mode === "blacklist" ? "黑名单" : "白名单" }}</span>
+            <span class="font-semibold">{{ mode === "blacklist" ? t("黑名单") : t("白名单") }}</span>
             <span class="mt-1 block text-xs">
-              {{ mode === "blacklist" ? "名单命中 → Direct" : "名单命中 → Rule" }}
+              {{ mode === "blacklist" ? t("名单命中 → Direct") : t("名单命中 → Rule") }}
             </span>
           </button>
         </div>
 
         <div class="grid gap-3 md:grid-cols-3">
-          <StatTile label="当前 BSSID" :value="state.wifiPolicy.bssid || '—'" />
-          <StatTile label="匹配结果" :value="state.wifiPolicy.matched ? '已命中名单' : '未命中'" />
-          <StatTile label="代理模式" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
+          <StatTile :label="t('当前 BSSID')" :value="state.wifiPolicy.bssid || '—'" />
+          <StatTile :label="t('匹配结果')" :value="state.wifiPolicy.matched ? t('已命中名单') : t('未命中')" />
+          <StatTile :label="t('代理模式')" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
         </div>
 
         <div class="grid gap-5 lg:grid-cols-2">
@@ -667,7 +660,7 @@ onMounted(() => {
               <Input
                 v-model="wifiSsidInput"
                 aria-label="Wi-Fi SSID"
-                placeholder="Wi-Fi 名称（SSID）"
+                :placeholder="t('Wi-Fi 名称（SSID）')"
                 @keyup.enter="addWifiEntry('ssid')"
               />
               <Button
@@ -677,13 +670,13 @@ onMounted(() => {
               ><Plus :size="17" />SSID</Button>
             </div>
             <div class="flex flex-wrap gap-2">
-              <span v-if="!state.wifiPolicy.ssids.length" class="mn-empty text-xs">还没有 SSID 条目</span>
+              <span v-if="!state.wifiPolicy.ssids.length" class="mn-empty text-xs">{{ t("还没有 SSID 条目") }}</span>
               <RemovableTag
                 v-for="ssid in state.wifiPolicy.ssids"
                 :key="ssid"
                 variant="soft"
                 remove-variant="ghost"
-                :remove-label="`移除 SSID ${ssid}`"
+                :remove-label="t('移除 SSID {ssid}', { ssid: ssid })"
                 @remove="removeWifiEntry('ssid', ssid)"
               >{{ ssid }}</RemovableTag>
             </div>
@@ -694,7 +687,7 @@ onMounted(() => {
               <Input
                 v-model="wifiBssidInput"
                 aria-label="Wi-Fi BSSID"
-                placeholder="BSSID 地址"
+                :placeholder="t('BSSID 地址')"
                 @keyup.enter="addWifiEntry('bssid')"
               />
               <Button
@@ -704,14 +697,14 @@ onMounted(() => {
               ><Plus :size="17" />BSSID</Button>
             </div>
             <div class="flex flex-wrap gap-2">
-              <span v-if="!state.wifiPolicy.bssids.length" class="mn-empty text-xs">还没有 BSSID 条目</span>
+              <span v-if="!state.wifiPolicy.bssids.length" class="mn-empty text-xs">{{ t("还没有 BSSID 条目") }}</span>
               <RemovableTag
                 v-for="bssid in state.wifiPolicy.bssids"
                 :key="bssid"
                 class="font-mono"
                 variant="soft"
                 remove-variant="ghost"
-                :remove-label="`移除 BSSID ${bssid}`"
+                :remove-label="t('移除 BSSID {bssid}', { bssid: bssid })"
                 @remove="removeWifiEntry('bssid', bssid)"
               >{{ bssid }}</RemovableTag>
             </div>
@@ -721,23 +714,19 @@ onMounted(() => {
       </details>
 
       <details class="mn-disclosure">
-        <summary>服务管理</summary>
+        <summary>{{ t("服务管理") }}</summary>
         <div class="mn-disclosure__body">
           <div class="grid grid-cols-2 gap-3">
             <Button variant="secondary" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('apply-config')" @click="requestDangerAction(applyConfigAction(), $event.currentTarget)">
-              <Save :size="17" />应用配置
-            </Button>
+              <Save :size="17" />{{ t("应用配置") }} </Button>
             <Button variant="secondary" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('repair')" @click="requestDangerAction(repairAction(), $event.currentTarget)">
-              <Zap :size="17" />自修复
-            </Button>
-            <Button variant="outline" :disabled="!state.hasKsu" :loading="isRunning('api-groups')" @click="withAction('api-groups', () => runCli('api groups', '检查 sing-box API'))">
-              <ShieldCheck :size="17" />检查 API
-            </Button>
-            <Button variant="outline" @click="copyControlSnapshot"><Copy :size="17" />{{ snapshotCopied ? '已复制' : '复制快照' }}</Button>
-            <Button variant="outline" @click="emit('goto-tab', 'about')">流量路径</Button>
+              <Zap :size="17" />{{ t("自修复") }} </Button>
+            <Button variant="outline" :disabled="!state.hasKsu" :loading="isRunning('api-groups')" @click="withAction('api-groups', () => runCli('api groups', t('检查 sing-box API')))">
+              <ShieldCheck :size="17" />{{ t("检查 API") }} </Button>
+            <Button variant="outline" @click="copyControlSnapshot"><Copy :size="17" />{{ snapshotCopied ? t("已复制") : t("复制快照") }}</Button>
+            <Button variant="outline" @click="emit('goto-tab', 'about')">{{ t("流量路径") }}</Button>
             <Button variant="outline" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('stop-all')" @click="requestDangerAction(stopAllServicesAction(), $event.currentTarget)">
-              <Unplug :size="17" />停止全部
-            </Button>
+              <Unplug :size="17" />{{ t("停止全部") }} </Button>
           </div>
         </div>
       </details>
@@ -746,20 +735,20 @@ onMounted(() => {
     <Teleport to="body">
       <Transition name="sheet">
         <div v-if="pendingDangerAction" class="mn-sheet-layer">
-          <button class="mn-overlay" type="button" aria-label="取消控制操作" @click="cancelDangerAction" />
-          <div ref="dangerConfirmCard" class="mn-utility-sheet mn-control-confirm" role="alertdialog" aria-modal="true" aria-label="确认控制操作" tabindex="-1" @keydown="handleDangerKeydown">
+          <button class="mn-overlay" type="button" :aria-label="t('取消控制操作')" @click="cancelDangerAction" />
+          <div ref="dangerConfirmCard" class="mn-utility-sheet mn-control-confirm" role="alertdialog" aria-modal="true" :aria-label="t('确认控制操作')" tabindex="-1" @keydown="handleDangerKeydown">
             <ConfirmPanel
-              title="确认操作"
+              :title="t('确认操作')"
               :detail="pendingDangerMessage"
               :command="pendingDangerAction.args"
               :loading="isRunning(pendingDangerAction.key)"
-              confirm-label="继续执行"
+              :confirm-label="t('继续执行')"
               confirm-variant="destructive"
               :auto-focus="false"
             >
               <template #actions>
-                <Button data-danger-cancel variant="outline" @click="cancelDangerAction">取消</Button>
-                <Button variant="destructive" :disabled="runtimeBusy" :loading="isRunning(pendingDangerAction.key)" @click="confirmDangerAction">继续执行</Button>
+                <Button data-danger-cancel variant="outline" @click="cancelDangerAction">{{ t("取消") }}</Button>
+                <Button variant="destructive" :disabled="runtimeBusy" :loading="isRunning(pendingDangerAction.key)" @click="confirmDangerAction">{{ t("继续执行") }}</Button>
               </template>
             </ConfirmPanel>
           </div>

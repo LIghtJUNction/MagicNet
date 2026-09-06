@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type RefreshToolsStep = {
   label: string;
   ok: boolean;
@@ -22,14 +23,14 @@ export function summarizeRefreshTools(
   if (!failed.length) {
     return {
       completed: true,
-      notice: "工具状态已刷新。",
-      output: "工具状态已刷新。",
+      notice: t("工具状态已刷新。"),
+      output: t("工具状态已刷新。"),
     };
   }
-  const detail = `以下步骤失败：${failed.join("、")}。请查看输出并重试。`;
+  const detail = t("以下步骤失败：{steps}。请查看输出并重试。", { steps: failed.join("、") });
   return {
     completed: false,
-    notice: "工具刷新不完整",
+    notice: t("工具刷新不完整"),
     output: [detail, currentOutput.trim()].filter(Boolean).join("\n\n"),
   };
 }

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "test": "node --experimental-strip-types --test *.test.mjs",
+    "test": "node --experimental-strip-types --import ./test-register.mjs --test *.test.mjs",
     "test:ui": "playwright test",
     "typecheck": "vue-tsc --noEmit",
     "build": "vite build",

@@ -100,6 +100,12 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
       },
     );
   }
+  // The shared translation runtime stays real, including its reactive locale.
+  // Resolve this one alias explicitly; continue rejecting any unhandled aliases.
+  source = source.replace(
+    /from\s+["']@\/i18n["']/g,
+    `from "${pathToFileURL(join(src, "i18n", "index.ts")).href}"`,
+  );
   // Other @/ paths must be rewritten explicitly by callers; fail loudly otherwise.
   assert.doesNotMatch(
     source,
@@ -329,7 +335,7 @@ assert.match(controlPage, /const singBoxStatus = computed/);
 assert.match(controlPage, /tone: "neutral"/);
 assert.match(
   controlPage,
-  /label: !rawState \|\| rawState === "unknown" \? "状态未知" : rawState/,
+  /label: !rawState \|\| rawState === "unknown" \? t\("状态未知"\) : rawState/,
 );
 assert.doesNotMatch(
   controlPage,

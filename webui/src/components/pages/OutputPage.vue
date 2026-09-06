@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { computed, ref, watch } from "vue";
 import { Copy, Search, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
@@ -42,7 +43,7 @@ const outputDiagnostic = computed(() => buildOutputDiagnostic({
 const issueSummary = computed(() => latestRuntimeLogIssueLines(
   outputLines.value.map((line) => line.trim()).filter(Boolean),
 ).join("\n"));
-const visibleOutput = computed(() => compactOutput(filteredOutput.value || "没有匹配的输出行。", 7000));
+const visibleOutput = computed(() => compactOutput(filteredOutput.value || t("没有匹配的输出行。"), 7000));
 
 watch(outputQuery, () => {
   copied.value = false;
@@ -55,18 +56,18 @@ watch(() => state.output, () => {
 
 async function copyOutput(): Promise<void> {
   copied.value = await copyText(sanitizeOutputText(filteredOutput.value || state.output));
-  state.notice = copied.value ? "脱敏输出已复制。" : "剪贴板不可用，输出未复制。";
+  state.notice = copied.value ? t("脱敏输出已复制。") : t("剪贴板不可用，输出未复制。");
 }
 
 async function copyIssueSummary(): Promise<void> {
   if (!issueSummary.value) return;
   issueCopied.value = await copyText(sanitizeOutputText(issueSummary.value));
-  state.notice = issueCopied.value ? "输出问题摘要已复制。" : "剪贴板不可用，问题摘要未复制。";
+  state.notice = issueCopied.value ? t("输出问题摘要已复制。") : t("剪贴板不可用，问题摘要未复制。");
 }
 
 async function copyBackgroundLogPath(): Promise<void> {
   if (!state.backgroundTask.log) return;
-  state.notice = await copyText(state.backgroundTask.log) ? "后台日志路径已复制。" : "剪贴板不可用，日志路径未复制。";
+  state.notice = await copyText(state.backgroundTask.log) ? t("后台日志路径已复制。") : t("剪贴板不可用，日志路径未复制。");
 }
 
 async function refreshBackgroundLog(): Promise<void> {
@@ -74,12 +75,12 @@ async function refreshBackgroundLog(): Promise<void> {
   if (!log) return;
   const text = await runShell(
     backgroundLogCommand(log, args),
-    `刷新后台日志 ${label}`,
+    t("刷新后台日志 {value1}", { value1: label }),
     true,
     redactedCliPreview("refresh background log [private-output]"),
   );
   state.backgroundTask.updatedAt = Date.now();
-  state.output = `后台日志已刷新：${label}\n\n${text || "日志为空。"}`;
+  state.output = t("后台日志已刷新：{value1}\n\n{value2}", { value1: label, value2: text || t("日志为空。") });
   copied.value = false;
   issueCopied.value = false;
 }
@@ -91,28 +92,28 @@ function clearOutputFilter(): void {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="输出" title="最近输出">
+    <PageHeader :overline="t('输出')" :title="t('最近输出')">
       <template #actions>
-        <Button variant="outline" @click="copyOutput"><Copy :size="17" />{{ copied ? "已复制脱敏" : "复制脱敏输出" }}</Button>
-        <Button variant="outline" :disabled="!issueSummary" @click="copyIssueSummary"><Copy :size="17" />{{ issueCopied ? "已复制问题" : "复制问题" }}</Button>
+        <Button variant="outline" @click="copyOutput"><Copy :size="17" />{{ copied ? t("已复制脱敏") : t("复制脱敏输出") }}</Button>
+        <Button variant="outline" :disabled="!issueSummary" @click="copyIssueSummary"><Copy :size="17" />{{ issueCopied ? t("已复制问题") : t("复制问题") }}</Button>
       </template>
     </PageHeader>
     <RuntimeLogsPanel />
     <Card v-if="state.backgroundTask.log" class="grid gap-3">
       <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div class="min-w-0">
-          <p class="text-sm font-semibold">最近后台任务</p>
+          <p class="text-sm font-semibold">{{ t("最近后台任务") }}</p>
           <p class="mt-1 text-sm text-[var(--mn-ink-muted)]">{{ state.backgroundTask.label }} · {{ state.backgroundTask.status }}</p>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" @click="refreshBackgroundLog">刷新日志</Button>
-          <Button variant="outline" size="sm" @click="copyBackgroundLogPath"><Copy :size="15" />复制路径</Button>
+          <Button variant="secondary" size="sm" @click="refreshBackgroundLog">{{ t("刷新日志") }}</Button>
+          <Button variant="outline" size="sm" @click="copyBackgroundLogPath"><Copy :size="15" />{{ t("复制路径") }}</Button>
         </div>
       </div>
       <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-3">
-        <span>开始 {{ formatBackgroundTime(state.backgroundTask.startedAt) }}</span>
-        <span>更新 {{ formatBackgroundTime(state.backgroundTask.updatedAt) }}</span>
-        <span>耗时 {{ formatBackgroundDuration(state.backgroundTask) }}</span>
+        <span>{{ t("开始 {value1}", { value1: formatBackgroundTime(state.backgroundTask.startedAt) }) }}</span>
+        <span>{{ t("更新 {value1}", { value1: formatBackgroundTime(state.backgroundTask.updatedAt) }) }}</span>
+        <span>{{ t("耗时 {value1}", { value1: formatBackgroundDuration(state.backgroundTask) }) }}</span>
       </div>
       <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)]">
         <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-[var(--mn-ink-soft)]">{{ state.backgroundTask.log }}</code>
@@ -121,10 +122,10 @@ function clearOutputFilter(): void {
     </Card>
     <Card class="grid gap-3">
       <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
-        <span>阶段 {{ state.phase }}</span>
-        <span>{{ outputStats.lines }} 行</span>
-        <span>{{ outputStats.chars }} 字符</span>
-        <span>{{ outputStats.issueLines }} 条问题线索</span>
+        <span>{{ t("阶段 {value1}", { value1: state.phase }) }}</span>
+        <span>{{ t("{value1} 行", { value1: outputStats.lines }) }}</span>
+        <span>{{ t("{value1} 字符", { value1: outputStats.chars }) }}</span>
+        <span>{{ t("{value1} 条问题线索", { value1: outputStats.issueLines }) }}</span>
       </div>
       <div class="rounded-md border p-3" :class="outputDiagnosticTone(outputDiagnostic.status)">
         <p class="text-sm font-semibold">{{ outputDiagnostic.title }}</p>
@@ -133,16 +134,16 @@ function clearOutputFilter(): void {
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <label class="relative block">
           <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mn-ink-muted)]" :size="15" />
-          <Input v-model="outputQuery" class="pl-9" placeholder="过滤当前输出，例如 error、timeout、api stats" spellcheck="false" />
+          <Input v-model="outputQuery" class="pl-9" :placeholder="t('过滤当前输出，例如 error、timeout、api stats')" spellcheck="false" />
         </label>
-        <Button variant="ghost" :disabled="!outputQuery" @click="clearOutputFilter"><X :size="16" />清除过滤</Button>
+        <Button variant="ghost" :disabled="!outputQuery" @click="clearOutputFilter"><X :size="16" />{{ t("清除过滤") }}</Button>
       </div>
       <div v-if="issueSummary" class="rounded-md mn-panel-warn p-3">
-        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-warning)]">问题线索</p>
+        <p class="text-xs font-semibold uppercase tracking-wide text-[var(--mn-warning)]">{{ t("问题线索") }}</p>
         <pre class="mt-2 max-h-32 overflow-auto text-xs leading-5 text-[var(--mn-warning)] whitespace-pre-wrap">{{ issueSummary }}</pre>
       </div>
       <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm text-[var(--mn-ink-muted)]">
-        <code class="min-w-0 truncate text-[var(--mn-ink-soft)]">{{ state.lastCommand || "等待执行" }}</code>
+        <code class="min-w-0 truncate text-[var(--mn-ink-soft)]">{{ state.lastCommand || t("等待执行") }}</code>
       </div>
       <pre class="max-h-[58vh] overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ visibleOutput }}</pre>
     </Card>

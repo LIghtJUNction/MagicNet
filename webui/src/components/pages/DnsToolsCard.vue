@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { computed, ref } from "vue";
 import { Cloud, Copy, RadioTower, RefreshCw } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
@@ -8,7 +9,7 @@ import InsightChip from "@/components/ui/InsightChip.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed } from "@/utils";
-import { buildDnsProfilePlan, formatDnsProfilePlanReport, type DnsProfilePlan } from "./dnsProfilePlan";
+import { buildDnsProfilePlan, formatDnsProfilePlanReport } from "./dnsProfilePlan";
 import { dnsStatusTone, formatDnsTestReport, parseDnsTestSummary } from "./dnsTestSummary";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
@@ -21,35 +22,37 @@ const dnsCopied = ref(false);
 const testedDomain = ref("");
 const runningDomain = ref("");
 const pendingDnsAction = ref<PendingToolAction | null>(null);
-const pendingDnsPlan = ref<DnsProfilePlan | null>(null);
+const pendingDnsCurrentProfile = ref("");
 const pendingDnsProfile = ref("");
+const pendingDnsPlan = computed(() => pendingDnsProfile.value
+  ? buildDnsProfilePlan(pendingDnsCurrentProfile.value, pendingDnsProfile.value)
+  : null);
 const dnsPlanCopied = ref(false);
 const quickDomains = ["www.gstatic.com", "cloudflare.com", "dns.google", "www.baidu.com"] as const;
 const dnsSummary = computed(() => parseDnsTestSummary(dnsTestOutput.value, testedDomain.value));
 
 async function runSetDnsProfile(profile: string): Promise<void> {
   await withAction(`dns-${profile}`, async () => {
-    const text = await runCli(`dns set ${shellQuote(profile)}`, `切换 DNS ${profile}`);
+    const text = await runCli(`dns set ${shellQuote(profile)}`, t("切换 DNS {profile}", { profile }));
     if (!execFailed(text)) await refreshDns(true);
   });
 }
 
 async function refreshDnsState(): Promise<void> {
   pendingDnsAction.value = null;
-  pendingDnsPlan.value = null;
   pendingDnsProfile.value = "";
   dnsPlanCopied.value = false;
   await refreshDns();
 }
 
 function setDnsProfile(profile: string): void {
+  pendingDnsCurrentProfile.value = state.dns.profile;
   pendingDnsProfile.value = profile;
-  pendingDnsPlan.value = buildDnsProfilePlan(state.dns.profile, profile);
   dnsPlanCopied.value = false;
   pendingDnsAction.value = {
     key: `dns-${profile}`,
-    title: `切换 DNS 到 ${profile}`,
-    detail: "会应用 MagicNet DNS profile，并重启当前 sing-box 配置。",
+    get title() { return t("切换 DNS 到 {profile}", { profile }); },
+    get detail() { return t("会应用 MagicNet DNS profile，并重启当前 sing-box 配置。"); },
     command: `dns set ${profile}`,
     run: () => runSetDnsProfile(profile)
   };
@@ -58,13 +61,13 @@ function setDnsProfile(profile: string): void {
 async function testDns(): Promise<void> {
   const domain = normalizeDomain(testDomain.value);
   if (!domain) {
-    state.output = "DNS 测试域名必须是普通域名，例如 www.gstatic.com。";
+    state.output = t("DNS 测试域名必须是普通域名，例如 www.gstatic.com。");
     return;
   }
   await withAction("dns-test", async () => {
     runningDomain.value = domain;
     try {
-      dnsTestOutput.value = await runCli(`dns test ${shellQuote(domain)}`, `DNS 测试 ${domain}`);
+      dnsTestOutput.value = await runCli(`dns test ${shellQuote(domain)}`, t("DNS 测试 {domain}", { domain }));
       testedDomain.value = domain;
       dnsCopied.value = false;
     } finally {
@@ -81,12 +84,11 @@ async function testQuickDomain(domain: string): Promise<void> {
 async function copyDnsReport(): Promise<void> {
   const report = formatDnsTestReport(dnsSummary.value, state.dns.profile, state.dns.primary, state.dns.secondary, state.dns.transport, dnsTestOutput.value);
   dnsCopied.value = await copyText(report);
-  state.output = dnsCopied.value ? "DNS 测试报告已复制。" : "剪贴板不可用，DNS 测试报告未复制。";
+  state.output = dnsCopied.value ? t("DNS 测试报告已复制。") : t("剪贴板不可用，DNS 测试报告未复制。");
 }
 
 function cancelDnsAction(): void {
   pendingDnsAction.value = null;
-  pendingDnsPlan.value = null;
   pendingDnsProfile.value = "";
   dnsPlanCopied.value = false;
 }
@@ -98,7 +100,6 @@ async function confirmDnsAction(): Promise<void> {
     await action.run();
   } finally {
     pendingDnsAction.value = null;
-    pendingDnsPlan.value = null;
     pendingDnsProfile.value = "";
     dnsPlanCopied.value = false;
   }
@@ -107,7 +108,7 @@ async function confirmDnsAction(): Promise<void> {
 async function copyDnsProfilePlan(): Promise<void> {
   if (!pendingDnsPlan.value) return;
   dnsPlanCopied.value = await copyText(formatDnsProfilePlanReport(pendingDnsPlan.value));
-  state.output = dnsPlanCopied.value ? "DNS 切换计划已复制。" : "剪贴板不可用，DNS 切换计划未复制。";
+  state.output = dnsPlanCopied.value ? t("DNS 切换计划已复制。") : t("剪贴板不可用，DNS 切换计划未复制。");
 }
 
 function normalizeDomain(value: string): string {
@@ -127,7 +128,7 @@ function normalizeDomain(value: string): string {
 <template>
   <Card class="grid gap-3">
     <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Cloud :size="17" /> 1.1.1.1 DNS</h3>
-    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">切换 MagicNet 内置 DNS profile；保存后会应用配置并重启当前 sing-box。</p>
+    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("切换 MagicNet 内置 DNS profile；保存后会应用配置并重启当前 sing-box。") }}</p>
 
     <ToolActionConfirmCard
       v-if="pendingDnsAction"
@@ -150,7 +151,7 @@ function normalizeDomain(value: string): string {
         {{ pendingDnsPlan.warnings.join("；") }}
       </p>
       <Button size="sm" variant="outline" class="w-fit" @click="copyDnsProfilePlan">
-        <Copy :size="15" />{{ dnsPlanCopied ? "已复制计划" : "复制切换计划" }}
+        <Copy :size="15" />{{ dnsPlanCopied ? t("已复制计划") : t("复制切换计划") }}
       </Button>
     </div>
 
@@ -160,20 +161,20 @@ function normalizeDomain(value: string): string {
         :value="pendingDnsProfile || state.dns.profile"
         @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
       >
-        <option value="default">默认 DNS</option>
+        <option value="default">{{ t("默认 DNS") }}</option>
         <option value="cloudflare-doh">Cloudflare DoH</option>
         <option value="cloudflare-dot">Cloudflare DoT</option>
         <option value="cloudflare-udp">Cloudflare UDP</option>
       </select>
       <Button variant="secondary" :loading="isRunning('dns-refresh')" @click="withAction('dns-refresh', refreshDnsState)">
-        <RefreshCw :size="16" />刷新
+        <RefreshCw :size="16" />{{ t("刷新") }}
       </Button>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
       <Input v-model="testDomain" placeholder="www.gstatic.com" spellcheck="false" />
       <Button variant="outline" :loading="isRunning('dns-test')" @click="testDns">
-        <RadioTower :size="16" />测试解析
+        <RadioTower :size="16" />{{ t("测试解析") }}
       </Button>
     </div>
     <div class="flex flex-wrap gap-2">
@@ -189,7 +190,7 @@ function normalizeDomain(value: string): string {
         {{ domain }}
       </Button>
       <Button size="sm" variant="outline" :disabled="!dnsTestOutput" @click="copyDnsReport">
-        <Copy :size="15" />{{ dnsCopied ? "已复制报告" : "复制报告" }}
+        <Copy :size="15" />{{ dnsCopied ? t("已复制报告") : t("复制报告") }}
       </Button>
     </div>
 
@@ -200,12 +201,12 @@ transport={{ state.dns.transport }}</pre>
 
     <div v-if="dnsTestOutput" class="grid gap-2">
       <div class="rounded-md border p-3" :class="dnsStatusTone(dnsSummary.status)">
-        <p class="text-sm font-semibold">DNS 测试摘要</p>
+        <p class="text-sm font-semibold">{{ t("DNS 测试摘要") }}</p>
         <p class="mt-1 text-sm leading-6 opacity-80">{{ dnsSummary.summary }}</p>
       </div>
       <div class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4 xl:grid-cols-7">
-        <span>{{ dnsSummary.lineCount }} 行输出</span>
-        <span>{{ dnsSummary.issueCount }} 条问题线索</span>
+        <span>{{ t("输出行数：{count}", { count: dnsSummary.lineCount }) }}</span>
+        <span>{{ t("问题线索：{count}", { count: dnsSummary.issueCount }) }}</span>
         <span>probe_path={{ dnsSummary.probePath || "legacy-direct" }}</span>
         <span>http_code={{ dnsSummary.httpStatus ?? "none" }}</span>
         <span>proxy_ip={{ dnsSummary.proxyIp || "none" }}</span>

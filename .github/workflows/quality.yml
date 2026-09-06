@@ -62,7 +62,7 @@ jobs:
           submodules: true
 
       - name: Install host check dependencies
-        run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml ripgrep
 
       - name: Lint all first-party shell code
         run: bash scripts/lint-shell.sh
