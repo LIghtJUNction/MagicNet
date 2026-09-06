@@ -123,6 +123,20 @@ def report_pr():
         output.write(summary)
 
 
+def verify_build():
+    read_metadata()
+    require_main_checkout()
+    git("diff", "--exit-code", "HEAD", "--", "kam.toml", "src/MagicNet/module.prop")
+    # Kam serializes update.json again, including removing its final newline.
+    # Compare every JSON field while allowing serialization-only differences.
+    def canonical(text):
+        return json.dumps(json.loads(text), sort_keys=True, allow_nan=False)
+
+    if canonical(Path("update.json").read_text()) != canonical(git("show", "HEAD:update.json")):
+        raise ValueError("Build changed update.json metadata")
+    print("Build metadata matches the release commit")
+
+
 def prepare():
     version, code = read_metadata()
 
@@ -161,10 +175,13 @@ if __name__ == "__main__":
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--bump", choices=("patch", "minor", "major"))
     mode.add_argument("--report-pr", action="store_true")
+    mode.add_argument("--verify-build", action="store_true")
     args = parser.parse_args()
     try:
         if args.report_pr:
             report_pr()
+        elif args.verify_build:
+            verify_build()
         else:
             bump(args.bump) if args.bump else prepare()
     except (KeyError, ValueError, OSError, subprocess.CalledProcessError) as error:

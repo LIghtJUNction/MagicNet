@@ -63,7 +63,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.git("commit", "-m", "Fixture commit")
         return self.git("rev-parse", "HEAD")
 
-    def run_workflow(self, bump=None, report=False, **overrides):
+    def run_workflow(self, bump=None, report=False, verify=False, **overrides):
         self.output.unlink(missing_ok=True)
         self.step_output.unlink(missing_ok=True)
         env = dict(os.environ, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
@@ -75,6 +75,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
         command = [sys.executable, str(SCRIPT)]
         if report:
             command.append("--report-pr")
+        if verify:
+            command.append("--verify-build")
         if bump is not None:
             command.extend(["--bump", bump])
         return subprocess.run(
@@ -281,6 +283,11 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.commit("README.md", "Ordinary change after the release.\n")
         self.assert_build_only(self.run_workflow())
 
+    def test_resubmitted_marker_retries_an_unpublished_version(self):
+        self.before = self.commit(RELEASE_MARKER, "v1.2.3\n")
+        self.commit(RELEASE_MARKER, "v1.2.3")
+        self.assert_release(self.run_workflow())
+
     def test_manual_main_release_requires_true_input(self):
         self.assert_build_only(self.run_workflow(GITHUB_EVENT_NAME="workflow_dispatch"))
         self.assert_release(self.run_workflow(
@@ -374,6 +381,37 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("::warning::", result.stdout)
         self.assertIn("/pull/1", (self.root / "summary").read_text())
+
+    def test_build_allows_json_reserialization_without_metadata_changes(self):
+        update = self.metadata()[2]
+        self.before = self.commit("update.json", json.dumps(update, indent=2) + "\n")
+        for content in (json.dumps(update, indent=2), json.dumps(dict(reversed(list(update.items()))))):
+            with self.subTest(content=content):
+                self.write("update.json", content)
+                result = self.run_workflow(verify=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("matches the release commit", result.stdout)
+                self.assertFalse(self.output.exists())
+
+    def test_build_rejects_changed_json_fields(self):
+        for key, value in (("zipUrl", "https://example.invalid/other.zip"),
+                           ("versionCode", 124), ("extra", True)):
+            with self.subTest(key=key):
+                update = self.metadata()[2]
+                update[key] = value
+                self.write("update.json", json.dumps(update))
+                self.assert_rejected(self.run_workflow(verify=True))
+                self.git("restore", "update.json")
+
+    def test_build_rejects_other_metadata_edits(self):
+        for name in ("kam.toml", "src/MagicNet/module.prop"):
+            with self.subTest(file=name):
+                self.write(name, (self.repo / name).read_text() + "# Unexpected build edit\n")
+                self.assert_rejected(self.run_workflow(verify=True))
+                self.git("restore", name)
+
+    def test_build_verification_requires_the_release_checkout(self):
+        self.assert_rejected(self.run_workflow(verify=True, GITHUB_SHA="0" * 40), "Checkout differs")
 
 
 if __name__ == "__main__":

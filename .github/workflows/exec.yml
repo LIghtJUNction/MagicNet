@@ -259,8 +259,7 @@ jobs:
           PRERELEASE_REQUESTED: ${{ env.RELEASE_PRERELEASE }}
         run: |
           set -euo pipefail
-          git diff --exit-code HEAD -- kam.toml src/MagicNet/module.prop update.json
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/prepare-release.py --verify-build
           args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
                 --title "MagicNet-${RELEASE_VERSION_CODE}-${RELEASE_VERSION}" --generate-notes)
           if [ "$PRERELEASE_REQUESTED" = "true" ]; then
