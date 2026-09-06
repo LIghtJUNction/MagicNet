@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type ApiEndpointProbe = {
   key: string;
   label: string;
@@ -23,8 +24,8 @@ export function summarizeApiEndpointProbes(probes: ApiEndpointProbe[]): ApiEndpo
   if (!probes.length) {
     return {
       level: "idle",
-      label: "尚未预检 API",
-      detail: "运行后会真实调用 sing-box API helpers 并记录耗时。",
+      label: t("尚未预检 API"),
+      detail: t("运行后会真实调用 sing-box API helpers 并记录耗时。"),
       totalMillis: 0,
       slowest: null,
       failed: []
@@ -39,8 +40,8 @@ export function summarizeApiEndpointProbes(probes: ApiEndpointProbe[]): ApiEndpo
   if (failed.length) {
     return {
       level: "danger",
-      label: `${failed.length} 个 API 端点失败`,
-      detail: failed.map((probe) => probe.label).join("、"),
+      label: t("{length} 个 API 端点失败", { length: failed.length }),
+      detail: failed.map((probe) => t(probe.label)).join("、"),
       totalMillis,
       slowest,
       failed
@@ -49,8 +50,8 @@ export function summarizeApiEndpointProbes(probes: ApiEndpointProbe[]): ApiEndpo
   if (slowest && slowest.durationMillis >= 1800) {
     return {
       level: "warning",
-      label: "API 响应偏慢",
-      detail: `${slowest.label} 耗时 ${slowest.durationMillis}ms。`,
+      label: t("API 响应偏慢"),
+      detail: t("{label} 耗时 {durationMillis}ms。", { label: t(slowest.label), durationMillis: slowest.durationMillis }),
       totalMillis,
       slowest,
       failed
@@ -58,8 +59,8 @@ export function summarizeApiEndpointProbes(probes: ApiEndpointProbe[]): ApiEndpo
   }
   return {
     level: "ok",
-    label: "API 端点响应正常",
-    detail: `${probes.length} 个端点均返回成功。`,
+    label: t("API 端点响应正常"),
+    detail: t("{length} 个端点均返回成功。", { length: probes.length }),
     totalMillis,
     slowest,
     failed
@@ -77,7 +78,7 @@ export function formatApiEndpointProbeReport(probes: ApiEndpointProbe[], summary
     "key,label,ok,duration_millis,output_bytes,summary",
     ...probes.map((probe) => [
       probe.key,
-      probe.label,
+      t(probe.label),
       probe.ok ? "1" : "0",
       Math.round(probe.durationMillis),
       probe.outputBytes,
@@ -102,7 +103,7 @@ export function validateApiProbeOutput(key: ApiProbeKey, text: string): boolean 
 
 export function summarizeApiProbeOutput(text: string): string {
   const trimmed = text.trim();
-  if (!trimmed) return "无输出";
+  if (!trimmed) return t("无输出");
   try {
     const json = JSON.parse(trimmed);
     if (Array.isArray(json)) return `JSON array items=${json.length}`;

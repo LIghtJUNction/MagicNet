@@ -4,7 +4,7 @@
 # -----------------------------------------------------------------------------------
 
 export SKIPUNZIP=1
-if unzip -o "$ZIPFILE" "lib/kamfw/*" -d "$MODPATH" >&2 && [ -f "$MODPATH/lib/kamfw/.kamfwrc" ]; then
+if unzip -o "$ZIPFILE" "lib/kamfw/*" "lib/magicnet/i18n.sh" -d "$MODPATH" >&2 && [ -f "$MODPATH/lib/kamfw/.kamfwrc" ]; then
   . "$MODPATH/lib/kamfw/.kamfwrc"
 else
   abort "! .kamfwrc missing"
@@ -14,16 +14,16 @@ import __customize__
 
 import i18n
 import lang
+. "$MODPATH/lib/magicnet/i18n.sh"
+import rich
 
 magicnet_install_is_interactive() {
   [ "${MAGICNET_NONINTERACTIVE:-0}" != "1" ] && [ "${IS_TTY:-false}" = "true" ]
 }
 
 if magicnet_install_is_interactive; then
-  select_lang
+  magicnet_select_lang
 fi
-
-import rich
 
 import this
 
@@ -126,36 +126,42 @@ fi
 set_i18n "INSTALL_TITLE" \
   "zh" "MagicNet 安装向导" \
   "en" "MagicNet Setup" \
+  "ru" "Установка MagicNet" \
   "ja" "MagicNet セットアップ" \
   "ko" "MagicNet 설치"
 
 set_i18n "INSTALL_PROFILE" \
   "zh" "系统级戒网瘾模块，内置 sing-box、域名封锁、TUN/eBPF 透明治理与 WebUI 控制面。" \
   "en" "System-level digital detox module with sing-box, domain blocking, explicit TUN/eBPF transparent routing, and WebUI control surfaces." \
+  "ru" "Системный модуль с sing-box, блокировкой отвлекающих сайтов, прозрачной маршрутизацией TUN/eBPF и управлением через WebUI." \
   "ja" "sing-box、ドメインブロック、TUN/eBPF 透過制御、WebUI 制御面を備えたシステム級デジタルデトックスモジュールです。" \
   "ko" "sing-box, 도메인 차단, TUN/eBPF 투명 제어, WebUI 제어면을 포함한 시스템 수준 디지털 디톡스 모듈입니다."
 
 set_i18n "INSTALL_ROW_PROFILE" \
   "zh" "模块定位" \
   "en" "Profile" \
+  "ru" "О модуле" \
   "ja" "概要" \
   "ko" "개요"
 
 set_i18n "INSTALL_DEFAULTS" \
   "zh" "默认启用：sing-box、TUN 自动路由、戒网瘾封锁列表、WebUI 与 CLI 控制面；可显式切换 eBPF。" \
   "en" "Enabled by default: sing-box, TUN auto-route, detox blocklist, WebUI and CLI control surfaces; eBPF is an explicit opt-in." \
+  "ru" "По умолчанию включены sing-box, автоматическая маршрутизация TUN, список блокировки, WebUI и CLI. Режим eBPF включается отдельно." \
   "ja" "既定で有効: sing-box、TUN 自動ルート、デジタルデトックスブロックリスト、WebUI と CLI 制御面。eBPF は明示的に切り替えます。" \
   "ko" "기본 활성화: sing-box, TUN 자동 라우팅, 디지털 디톡스 차단 목록, WebUI 및 CLI 제어면. eBPF는 명시적으로 전환합니다."
 
 set_i18n "INSTALL_ROW_DEFAULTS" \
   "zh" "默认行为" \
   "en" "Defaults" \
+  "ru" "По умолчанию" \
   "ja" "既定動作" \
   "ko" "기본 동작"
 
 set_i18n "INSTALL_CONFIG_TITLE" \
   "zh" "配置与下一步" \
   "en" "Configuration and Next Steps" \
+  "ru" "Настройка и дальнейшие действия" \
   "ja" "設定と次の手順" \
   "ko" "설정 및 다음 단계"
 
@@ -163,6 +169,8 @@ set_i18n "INSTALL_CONFIG_PATHS" \
   "zh" "配置文件：
 sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
   "en" "Configuration files:
+sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
+  "ru" "Файлы конфигурации:
 sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
   "ja" "設定ファイル:
 sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
@@ -182,6 +190,12 @@ sing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" 
 3. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.
 4. Point distracting sites, groups, or domains to REJECT / block.
 sing-box default: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
+  "ru" "После установки:
+1. Выполните cli setup <URL-подписки> для настройки подписки sing-box.
+2. Перезагрузите устройство или запустите ядро из меню действий модуля.
+3. Откройте панель ядра в WebUI модуля или выполните cli api ui, чтобы узнать адрес панели.
+4. Назначьте отвлекающим сайтам, группам правил или доменам REJECT / block.
+Адрес sing-box по умолчанию: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "ja" "インストール後:
 1. cli setup <合法な購読 URL> を実行して sing-box 購読を初期化します。
 2. 再起動するか、モジュール操作画面からコアを起動します。
@@ -200,6 +214,8 @@ set_i18n "INSTALL_FLAGS" \
 MAGIC_SINGBOX=0 禁用 sing-box 内核" \
   "en" "Optional switches:
 MAGIC_SINGBOX=0 disables the sing-box core" \
+  "ru" "Дополнительные параметры:
+MAGIC_SINGBOX=0 отключает ядро sing-box" \
   "ja" "任意スイッチ:
 MAGIC_SINGBOX=0 で sing-box コアを無効化" \
   "ko" "선택 스위치:
@@ -208,18 +224,21 @@ MAGIC_SINGBOX=0 sing-box 코어 비활성화"
 set_i18n "TERM_INSTALL_MSG" \
   "zh" "当前为终端安装：会显示完整交互菜单和状态信息。" \
   "en" "Terminal install detected: full interactive menus and status output are available." \
+  "ru" "Установка из терминала: доступны интерактивные меню и сведения о состоянии." \
   "ja" "端末インストールを検出しました。完全な対話メニューと状態表示を利用できます。" \
   "ko" "터미널 설치가 감지되었습니다. 전체 대화형 메뉴와 상태 출력을 사용할 수 있습니다."
 
 set_i18n "GUI_INSTALL_MSG" \
   "zh" "当前为管理器安装：若交互显示异常，可改用终端安装同一个 zip。" \
   "en" "Manager install detected: if interaction looks broken, install the same zip from a terminal." \
+  "ru" "Установка через менеджер модулей: при проблемах с интерфейсом установите тот же ZIP из терминала." \
   "ja" "管理アプリでのインストールを検出しました。表示が崩れる場合は同じ zip を端末からインストールしてください。" \
   "ko" "관리자 설치가 감지되었습니다. 상호작용 표시가 이상하면 같은 zip을 터미널에서 설치하세요."
 
 set_i18n "SET_MODULE_ENTRY_PERMS" \
   "zh" "设置模块入口脚本权限" \
   "en" "Setting permissions for module entry scripts" \
+  "ru" "Настройка прав доступа для скриптов запуска модуля" \
   "ja" "モジュール入口スクリプトの権限を設定しています" \
   "ko" "모듈 진입 스크립트 권한 설정 중"
 

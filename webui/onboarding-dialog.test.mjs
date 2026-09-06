@@ -18,7 +18,7 @@ const focus = readFileSync(
 for (const required of [
   "订阅链接",
   "HTTPS 订阅链接",
-  'placeholder="每行一个 HTTPS 订阅链接"',
+  `:placeholder="t('每行一个 HTTPS 订阅链接')"`,
   'emit("submit", trimmed)',
   '@submit="handleOnboardingSubmit"',
   "setPendingSubscriptionDraft(value)",
@@ -54,7 +54,7 @@ assert.match(app, /@submit="handleOnboardingSubmit"/);
 assert.match(app, /closeUtilityMenu\(false\)/);
 assert.match(app, /launchOnboarding\(utilityMenuTrigger\.value\)/);
 assert.match(app, /restoreFocusAfterUpdate\(trigger\)/);
-assert.match(app, /<ScrollText :size="18"[^>]*\/>新手引导/);
+assert.match(app, /<ScrollText :size="18"[^>]*\/>\{\{ t\('新手引导'\) \}\}/);
 
 for (const invariant of [
   'role="dialog"',

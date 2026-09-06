@@ -55,7 +55,7 @@ void test("editor exposes functional line and error navigation", async () => {
   );
   assert.match(
     source,
-    /class="json-editor__gutter" aria-label="行号。点击可跳转到对应行"/,
+    /class="json-editor__gutter" :aria-label="t\('行号。点击可跳转到对应行'\)"/,
   );
   assert.match(
     source,

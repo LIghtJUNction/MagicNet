@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type SupportIssueSeverity = "fatal" | "error" | "warning" | "fail";
 
 export type SupportIssueBucket = {
@@ -45,7 +46,7 @@ export function triageSupportBundle(text: string): SupportBundleTriage {
 
 export function hideSupportIssueLines(text: string): string {
   return text.split(/\r?\n/).map((raw) => {
-    return issueSeverity(raw) ? "[issue-line hidden: see issue distribution]" : raw;
+    return issueSeverity(raw) ? t("[issue-line hidden: see issue distribution]") : raw;
   }).join("\n");
 }
 

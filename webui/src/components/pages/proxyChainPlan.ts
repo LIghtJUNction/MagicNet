@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type ProxyChainMode = "manual" | "auto";
 
 export type ProxyChainStatus = {
@@ -102,11 +103,11 @@ export function validateProxyChainDraft(draft: ProxyChainDraft, nodes: string[] 
   const upstream = draft.upstream.trim();
   const exit = draft.exit.trim();
 
-  if (draft.enabled && !upstream) errors.push("启用链式代理前请选择中转节点。");
-  if (draft.enabled && !exit) errors.push("启用链式代理前请选择落地节点。");
-  if (draft.enabled && upstream && exit && upstream === exit) errors.push("中转节点和落地节点不能是同一个节点。");
-  if (draft.enabled && nodes.length && upstream && !nodes.includes(upstream)) errors.push("当前中转节点已不在可用节点列表中，请重新选择。");
-  if (draft.enabled && nodes.length && exit && !nodes.includes(exit)) errors.push("当前落地节点已不在可用节点列表中，请重新选择。");
+  if (draft.enabled && !upstream) errors.push(t('启用链式代理前请选择中转节点。'));
+  if (draft.enabled && !exit) errors.push(t('启用链式代理前请选择落地节点。'));
+  if (draft.enabled && upstream && exit && upstream === exit) errors.push(t('中转节点和落地节点不能是同一个节点。'));
+  if (draft.enabled && nodes.length && upstream && !nodes.includes(upstream)) errors.push(t('当前中转节点已不在可用节点列表中，请重新选择。'));
+  if (draft.enabled && nodes.length && exit && !nodes.includes(exit)) errors.push(t('当前落地节点已不在可用节点列表中，请重新选择。'));
   return errors;
 }
 
@@ -119,27 +120,27 @@ export function buildProxyChainPlan(current: ProxyChainStatus, draft: ProxyChain
 
   // Disable first when the user is changing a live chain into a disabled or
   // cleared state. The CLI intentionally rejects clearing roles while enabled.
-  if (current.enabled && !draft.enabled) actions.push({ kind: "disable", label: "停用链式代理" });
+  if (current.enabled && !draft.enabled) actions.push({ kind: "disable", label: t('停用链式代理') });
 
   if (currentUpstream !== upstream) {
     actions.push(upstream
-      ? { kind: "set-upstream", value: upstream, label: "设置中转节点" }
-      : { kind: "clear-upstream", label: "清除中转节点" });
+      ? { kind: "set-upstream", value: upstream, label: t('设置中转节点') }
+      : { kind: "clear-upstream", label: t('清除中转节点') });
   }
   if (currentExit !== exit) {
     actions.push(exit
-      ? { kind: "set-exit", value: exit, label: "设置落地节点" }
-      : { kind: "clear-exit", label: "清除落地节点" });
+      ? { kind: "set-exit", value: exit, label: t('设置落地节点') }
+      : { kind: "clear-exit", label: t('清除落地节点') });
   }
   if (current.mode !== draft.mode) {
-    actions.push({ kind: "mode", value: draft.mode, label: `切换为${draft.mode === "auto" ? "自动" : "手动"}模式` });
+    actions.push({ kind: "mode", value: draft.mode, label: t('切换为{value}模式', { value: draft.mode === "auto" ? t('自动') : t('手动') }) });
   }
 
-  if (!current.enabled && draft.enabled) actions.push({ kind: "enable", label: "启用链式代理" });
+  if (!current.enabled && draft.enabled) actions.push({ kind: "enable", label: t('启用链式代理') });
 
   return {
     changed: actions.length > 0,
     actions,
-    summary: actions.length ? `将按顺序执行 ${actions.length} 项配置操作。` : "当前配置没有变化。",
+    summary: actions.length ? t('将按顺序执行 {count} 项配置操作。', { count: actions.length }) : t('当前配置没有变化。'),
   };
 }

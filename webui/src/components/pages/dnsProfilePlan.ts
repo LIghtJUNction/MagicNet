@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type DnsProfilePlan = {
   profile: string;
   transport: string;
@@ -28,16 +29,16 @@ export function buildDnsProfilePlan(currentProfile: string, targetProfile: strin
     secondary: servers.secondary,
     restart: true,
     items: [
-      item("Profile", `${label(current)} -> ${label(target)}`, same ? "neutral" : "warning"),
-      item("Transport", transport, transport === "udp" ? "warning" : "success"),
-      item("Primary", servers.primary, "neutral"),
-      item("Backup", servers.secondary || "none", servers.secondary ? "success" : "neutral"),
-      item("Apply", same ? "重新应用并重启" : "写入配置并重启", "warning")
+      item(t("DNS 配置"), `${label(current)} -> ${label(target)}`, same ? "neutral" : "warning"),
+      item(t("传输协议"), transport, transport === "udp" ? "warning" : "success"),
+      item(t("主 DNS"), servers.primary, "neutral"),
+      item(t("备用 DNS"), servers.secondary || t("无"), servers.secondary ? "success" : "neutral"),
+      item(t("应用方式"), same ? t("重新应用并重启") : t("写入配置并重启"), "warning")
     ],
     warnings: [
-      ...(same ? ["当前已经是该 DNS profile，确认执行通常只会重新应用配置。"] : []),
-      ...(target === "cloudflare-udp" ? ["UDP 方式更容易受网络环境影响；如解析不稳定，优先改用 DoH/DoT。"] : []),
-      ...(target !== "default" ? ["Cloudflare profile 会保留直连 bootstrap-local-dns，并把默认 DNS fallback 切到代理 detour 的 Cloudflare server。"] : [])
+      ...(same ? [t("当前已经是该 DNS profile，确认执行通常只会重新应用配置。")] : []),
+      ...(target === "cloudflare-udp" ? [t("UDP 方式更容易受网络环境影响；如解析不稳定，优先改用 DoH/DoT。")] : []),
+      ...(target !== "default" ? [t("Cloudflare profile 会保留直连 bootstrap-local-dns，并把默认 DNS fallback 切到代理 detour 的 Cloudflare server。")] : [])
     ]
   };
 }
@@ -77,7 +78,7 @@ function dnsServers(profile: string): { primary: string; secondary: string } {
 }
 
 function label(profile: string): string {
-  return PROFILE_LABELS[profile] || profile;
+  return t(PROFILE_LABELS[profile] || profile);
 }
 
 function item(labelText: string, value: string, tone: DnsProfilePlan["items"][number]["tone"]): DnsProfilePlan["items"][number] {

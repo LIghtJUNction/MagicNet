@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import * as kernelsu from "kernelsu";
 import { nextTick, reactive } from "vue";
 import {
@@ -96,12 +97,12 @@ const state = reactive({
   phase: "idle" as Phase,
   busy: false,
   task: "",
-  notice: "面板已加载，所有耗时命令都会异步执行。",
+  notice: t("面板已加载，所有耗时命令都会异步执行。"),
   queueDepth: 0,
   lastCommand: "",
   output: hasKsu
-    ? "正在读取 MagicNet 状态..."
-    : "本地预览模式：真机 WebUI 才会执行 root 命令。",
+    ? t("正在读取 MagicNet 状态...")
+    : t("本地预览模式：真机 WebUI 才会执行 root 命令。"),
   operationCapture: emptyOperationCapture(),
   backgroundTask: { ...backgroundTaskDefaults },
   issueReporter: {
@@ -155,7 +156,7 @@ const execQueue = new SerialExecQueue((depth) => {
 const foregroundUiGate = new ForegroundUiGate();
 
 function trackRedactedOperation(commandPreview: string, label = ""): number {
-  const output = `$ ${commandPreview}\n执行中；私密输出已隐藏。`;
+  const output = t("$ {p0}\n执行中；私密输出已隐藏。", { p0: commandPreview });
   const sequence = beginOperationCapture(
     state.operationCapture,
     commandPreview,
@@ -164,7 +165,7 @@ function trackRedactedOperation(commandPreview: string, label = ""): number {
   state.lastCommand = commandPreview;
   state.phase = "accepted";
   state.output = output;
-  if (label) state.notice = `已接收：${label}`;
+  if (label) state.notice = t("已接收：{p0}", { p0: t(label) });
   return sequence;
 }
 
@@ -201,20 +202,20 @@ async function runShellOutcome(
     : beginOperationCapture(
         state.operationCapture,
         commandPreview,
-        `$ ${commandPreview}\n执行中...`,
+        t("$ {p0}\n执行中...", { p0: commandPreview }),
       );
   if (trackCommand && (!quiet || previewOverride))
     state.lastCommand = commandPreview;
   if (ownsForegroundUi()) {
     state.task = label;
-    state.notice = `已接收：${label}`;
+    state.notice = t("已接收：{p0}", { p0: t(label) });
     const wasBusy = state.busy;
     state.busy = true;
     state.phase = wasBusy ? "queued" : "accepted";
     updateOperationCapture(state.operationCapture, captureSequence, {
       phase: state.phase,
     });
-    state.output = `$ ${commandPreview}\n执行中...`;
+    state.output = t("$ {p0}\n执行中...", { p0: commandPreview });
   }
   await nextTick();
   await nextFrame();
@@ -222,7 +223,7 @@ async function runShellOutcome(
   state.hasKsu = hasKsuExec();
   if (!state.hasKsu) {
     const outcome = unavailableExecOutcome(commandPreview);
-    const output = `当前没有 KernelSU 执行通道，命令未执行。\n\n${outcome.text}`;
+    const output = t("当前没有 KernelSU 执行通道，命令未执行。\n\n{p0}", { p0: outcome.text });
     if (
       ownsForegroundUi() &&
       updateOperationCapture(state.operationCapture, captureSequence, {
@@ -232,7 +233,7 @@ async function runShellOutcome(
     ) {
       state.output = output;
       state.phase = "error";
-      state.notice = `未执行：${label}`;
+      state.notice = t("未执行：{p0}", { p0: t(label) });
       state.busy = false;
       state.task = "";
     }
@@ -253,7 +254,7 @@ async function runShellOutcome(
           })
         ) {
           state.phase = "running";
-          state.notice = `正在执行：${label}`;
+          state.notice = t("正在执行：{p0}", { p0: t(label) });
           await nextTick();
           await nextFrame();
           await nextFrame();
@@ -265,7 +266,7 @@ async function runShellOutcome(
     );
     const outcome = normalizeExecOutcome(result);
     const text = outcome.text;
-    const output = `$ ${commandPreview}\n${text || "完成"}`;
+    const output = `$ ${commandPreview}\n${text || t("完成")}`;
     if (
       ownsForegroundUi() &&
       updateOperationCapture(state.operationCapture, captureSequence, {
@@ -274,7 +275,7 @@ async function runShellOutcome(
       })
     ) {
       state.phase = outcome.ok ? "done" : "error";
-      state.notice = outcome.ok ? `完成：${label}` : `失败：${label}`;
+      state.notice = outcome.ok ? t("完成：{p0}", { p0: t(label) }) : t("失败：{p0}", { p0: t(label) });
       state.output = output;
     }
     return outcome;
@@ -291,7 +292,7 @@ async function runShellOutcome(
       })
     ) {
       state.phase = "error";
-      state.notice = timedOut ? `等待超时：${label}` : `失败：${label}`;
+      state.notice = timedOut ? t("等待超时：{p0}", { p0: t(label) }) : t("失败：{p0}", { p0: t(label) });
       state.output = output;
     }
     return {
@@ -334,7 +335,7 @@ async function runTrackedQuietShellOutcome(
     publishTrackedOperation(
       operationSequence,
       phase,
-      outcome.ok ? `完成：${label}` : `失败：${label}`,
+      outcome.ok ? t("完成：{p0}", { p0: t(label) }) : t("失败：{p0}", { p0: t(label) }),
       `$ ${redactedPreview}\n${result}`,
     );
   }
@@ -437,7 +438,7 @@ async function stagePrivatePayload(
     publishTrackedOperation(
       operationSequence,
       staged ? "done" : "error",
-      staged ? `完成：${label}` : `失败：${label}`,
+      staged ? t("完成：{p0}", { p0: t(label) }) : t("失败：{p0}", { p0: t(label) }),
       staged
         ? `$ ${state.lastCommand}\n[info] completed; private output hidden`
         : `$ ${state.lastCommand}\n[error] private payload staging failed; private output hidden`,
@@ -468,9 +469,9 @@ async function startBackgroundCli(
   lifecycleArgs = displayArgs,
 ): Promise<string> {
   if (backgroundTaskBlocksLaunch(state.backgroundTask)) {
-    const activeLabel = state.backgroundTask.label || "上一个后台任务";
-    const text = `[error] unavailable: ${activeLabel} 仍在后台运行或等待对账，请到“输出”页确认完成后再试。`;
-    state.notice = `未执行：${label}`;
+    const activeLabel = state.backgroundTask.label || t("上一个后台任务");
+    const text = t("[error] unavailable: {p0} 仍在后台运行或等待对账，请到“输出”页确认完成后再试。", { p0: t(activeLabel) });
+    state.notice = t("未执行：{p0}", { p0: t(label) });
     state.output = text;
     return text;
   }
@@ -486,9 +487,9 @@ async function startBackgroundCli(
     return `[warning] ${label} superseded by a newer foreground operation`;
   }
   if (subscriptionTask && !subscriptionBaselineKnown) {
-    const text = "[error] unavailable: 读取订阅基线失败，任务未启动。请确认设备连接后重试。";
+    const text = t("[error] unavailable: 读取订阅基线失败，任务未启动。请确认设备连接后重试。");
     state.phase = "error";
-    state.notice = `未执行：${label}`;
+    state.notice = t("未执行：{p0}", { p0: t(label) });
     state.output = text;
     return text;
   }
@@ -525,7 +526,7 @@ async function startBackgroundCli(
   );
   const outcome = await runShellOutcome(
     command,
-    `投递 ${label}`,
+    t("投递 {p0}", { p0: t(label) }),
     true,
     previewOverride,
   );
@@ -535,12 +536,12 @@ async function startBackgroundCli(
   if (accepted || outcome.timedOut) {
     if (outcome.timedOut && ownsForegroundUi()) {
       const output = redactOutput
-        ? `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪安全状态。`
-        : `${label} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。`;
+        ? t("{p0} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪安全状态。", { p0: t(label) })
+        : t("{p0} 的投递确认超时；这不代表设备侧任务失败。正在继续跟踪后台日志。", { p0: t(label) });
       publishTrackedOperation(
         operationSequence,
         "running",
-        `投递确认超时，继续对账：${label}`,
+        t("投递确认超时，继续对账：{p0}", { p0: t(label) }),
         output,
       );
     }
@@ -559,13 +560,13 @@ async function startBackgroundCli(
     state.backgroundTask.updatedAt = Date.now();
     state.backgroundTask.finishedAt = state.backgroundTask.updatedAt;
     const output = redactOutput
-      ? `${label} 未投递到后台；私有命令详情已隐藏。请检查设备状态后重试。`
-      : `${label} 未投递到后台。\n\n${outcome.text || "[error] accepted marker missing"}`;
+      ? t("{p0} 未投递到后台；私有命令详情已隐藏。请检查设备状态后重试。", { p0: t(label) })
+      : t("{p0} 未投递到后台。\n\n{p1}", { p0: t(label), p1: outcome.text || "[error] accepted marker missing" });
     if (ownsForegroundUi()) {
       publishTrackedOperation(
         operationSequence,
         "error",
-        `投递失败：${label}`,
+        t("投递失败：{p0}", { p0: t(label) }),
         output,
       );
     }
@@ -620,7 +621,7 @@ function followBackgroundLogs(
       const [logs] = await Promise.all([
         runShell(
           backgroundLogCommand(log, args, operationId),
-          `跟踪 ${label}`,
+          t("跟踪 {p0}", { p0: t(label) }),
           true,
         ),
         subscriptionTask,
@@ -648,9 +649,9 @@ function followBackgroundLogs(
       const ownsForegroundUi = foregroundUiGate.owns(foregroundToken);
       const now = Date.now();
       const visibleLogs = redactOutput
-        ? "私有后台日志已隐藏。"
-        : logs || "等待日志输出...";
-      const output = `${done ? "后台任务完成" : failed ? "后台任务失败" : "后台任务运行中"}：${label}\n\n${visibleLogs}`;
+        ? t("私有后台日志已隐藏。")
+        : logs || t("等待日志输出...");
+      const output = `${done ? t("后台任务完成") : failed ? t("后台任务失败") : t("后台任务运行中")}：${t(label)}\n\n${visibleLogs}`;
       // Foreground ownership controls output only. The background operation
       // must still finish and release its launch lock after another UI action.
       if (ownsForegroundUi) {
@@ -658,10 +659,10 @@ function followBackgroundLogs(
           operationSequence,
           done ? "done" : failed ? "error" : "running",
           done
-            ? `完成：${label}`
+            ? t("完成：{p0}", { p0: t(label) })
             : failed
-              ? `失败：${label}`
-              : `正在执行：${label}`,
+              ? t("失败：{p0}", { p0: t(label) })
+              : t("正在执行：{p0}", { p0: t(label) }),
           output,
         );
       }
@@ -692,13 +693,13 @@ function followBackgroundLogs(
           const timeoutOutput =
             state.output +
             (redactOutput
-              ? "\n\n[warn] 安全状态跟踪已超时，但这不代表任务失败。请刷新订阅状态完成对账。"
-              : "\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。");
+              ? t("\n\n[warn] 安全状态跟踪已超时，但这不代表任务失败。请刷新订阅状态完成对账。")
+              : t("\n\n[warn] 日志跟踪已超时，但这不代表任务失败。请刷新订阅状态或查看完整日志以完成对账。"));
           if (ownsForegroundUi) {
             publishTrackedOperation(
               operationSequence,
               "running",
-              `${label} 仍在后台运行或等待对账`,
+              t("{p0} 仍在后台运行或等待对账", { p0: t(label) }),
               timeoutOutput,
             );
           }
@@ -726,8 +727,8 @@ function markQuietFailure(
   if (!execFailed(text)) return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.phase = "error";
-    state.notice = `${label}失败`;
-    state.output = `${label} 失败：\n${text}`;
+    state.notice = t("{p0}失败", { p0: t(label) });
+    state.output = t("{p0} 失败：\n{p1}", { p0: t(label), p1: text });
   }
   return true;
 }
@@ -776,7 +777,7 @@ async function refreshStatus(
     }
   }
   if (failure) {
-    if (reportFailure) markQuietFailure("刷新状态", failure, uiToken, allowBusy);
+    if (reportFailure) markQuietFailure(t("刷新状态"), failure, uiToken, allowBusy);
     return false;
   }
   return true;
@@ -789,21 +790,21 @@ async function refreshAll(): Promise<void> {
   if (ownsForegroundUi()) {
     state.busy = true;
     state.task = "刷新面板";
-    state.notice = "正在刷新面板数据";
+    state.notice = t("正在刷新面板数据");
   }
   let completed = false;
   try {
     const failed: string[] = [];
-    if (!(await refreshStatus(foregroundToken))) failed.push("刷新状态");
+    if (!(await refreshStatus(foregroundToken))) failed.push(t("刷新状态"));
     const steps: Array<[string, () => Promise<boolean>]> = [
-      ["读取应用规则", () => refreshApps(true, foregroundToken)],
-      ["读取黑名单", () => refreshBlock(true, foregroundToken)],
-      ["读取订阅", () => refreshSubs(true, foregroundToken)],
-      ["读取 DNS", () => refreshDns(true, foregroundToken)],
-      ["读取 WARP", () => refreshWarp(true, foregroundToken)],
-      ["读取 Wi-Fi 策略", () => refreshWifiPolicy(true, foregroundToken)],
-      ["读取 MCP 信息", () => refreshMcp(true, foregroundToken)],
-      ["运行诊断", () => refreshHealth(true, foregroundToken)],
+      [t("读取应用规则"), () => refreshApps(true, foregroundToken)],
+      [t("读取黑名单"), () => refreshBlock(true, foregroundToken)],
+      [t("读取订阅"), () => refreshSubs(true, foregroundToken)],
+      [t("读取 DNS"), () => refreshDns(true, foregroundToken)],
+      [t("读取 WARP"), () => refreshWarp(true, foregroundToken)],
+      [t("读取 Wi-Fi 策略"), () => refreshWifiPolicy(true, foregroundToken)],
+      [t("读取 MCP 信息"), () => refreshMcp(true, foregroundToken)],
+      [t("运行诊断"), () => refreshHealth(true, foregroundToken)],
     ];
     for (const [label, step] of steps) {
       if (ownsForegroundUi()) {
@@ -816,12 +817,12 @@ async function refreshAll(): Promise<void> {
     }
     if (failed.length && ownsForegroundUi()) {
       state.phase = "error";
-      state.notice = "面板刷新不完整";
-      state.output = `以下步骤失败：${failed.join("、")}。请查看输出并重试。\n\n${state.output}`;
+      state.notice = t("面板刷新不完整");
+      state.output = t("以下步骤失败：{p0}。请查看输出并重试。\n\n{p1}", { p0: failed.join("、"), p1: state.output });
       return;
     }
     if (ownsForegroundUi()) {
-      state.output = "面板数据已刷新。";
+      state.output = t("面板数据已刷新。");
       state.phase = "done";
     }
     completed = true;
@@ -848,7 +849,7 @@ async function refreshHealth(
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
-  if (markQuietFailure("运行诊断", text, uiToken, allowBusy)) return false;
+  if (markQuietFailure(t("运行诊断"), text, uiToken, allowBusy)) return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.health = parseHealth(text);
   }
@@ -875,7 +876,7 @@ async function refreshApps(
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
-  if (markQuietFailure("读取应用规则", text, uiToken, allowBusy)) return false;
+  if (markQuietFailure(t("读取应用规则"), text, uiToken, allowBusy)) return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.appPolicy = parseApps(text);
   }
@@ -889,7 +890,7 @@ async function refreshPackages(
   const query = state.packageQuery.trim();
   const command = startForegroundCommand(
     `app packages ${shellQuote(query)}`,
-    query ? `搜索应用 ${query}` : "读取已安装应用",
+    query ? t("搜索应用 {p0}", { p0: query }) : "读取已安装应用",
     quiet,
     "",
     foregroundToken,
@@ -897,7 +898,7 @@ async function refreshPackages(
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
-  if (markQuietFailure("读取已安装应用", text, uiToken, allowBusy))
+  if (markQuietFailure(t("读取已安装应用"), text, uiToken, allowBusy))
     return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.packages = parsePackages(text);
@@ -919,7 +920,7 @@ async function refreshBlock(
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
-  if (markQuietFailure("读取黑名单", text, uiToken, allowBusy)) return false;
+  if (markQuietFailure(t("读取黑名单"), text, uiToken, allowBusy)) return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.blocklist = parseBlock(text, state.blocklist);
   }
@@ -952,14 +953,14 @@ async function refreshSubs(
     statusCommand.promise,
   ]);
   const failed = [
-    execFailed(listText) ? "订阅列表" : "",
-    execFailed(statusText) ? "订阅状态" : "",
+    execFailed(listText) ? t("订阅列表") : "",
+    execFailed(statusText) ? t("订阅状态") : "",
   ].filter(Boolean);
   if (failed.length) {
     if (reportFailure && canUpdateRefreshUi(uiToken, allowBusy)) {
       state.phase = "error";
-      state.notice = "订阅刷新不完整";
-      state.output = `读取${failed.join("和")}失败，旧数据已保留。\n\n${[listText, statusText].filter(execFailed).join("\n")}`;
+      state.notice = t("订阅刷新不完整");
+      state.output = t("读取{p0}失败，旧数据已保留。\n\n{p1}", { p0: failed.join(t("和")), p1: [listText, statusText].filter(execFailed).join("\n") });
     }
     return false;
   }
@@ -983,7 +984,7 @@ async function refreshMcp(
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
-  if (markQuietFailure("读取 MCP", text, uiToken, allowBusy)) return false;
+  if (markQuietFailure(t("读取 MCP"), text, uiToken, allowBusy)) return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.mcp = parseMcp(text, state.mcp);
   }
@@ -1012,7 +1013,7 @@ async function refreshDns(
   const uiToken = command.token;
   const allowBusy = foregroundTokenOrPreview !== undefined;
   const text = await command.promise;
-  if (markQuietFailure("读取 DNS", text, uiToken, allowBusy)) return false;
+  if (markQuietFailure(t("读取 DNS"), text, uiToken, allowBusy)) return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.dns = parseDns(text, state.dns);
   }
@@ -1033,7 +1034,7 @@ async function refreshWarp(
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
-  if (markQuietFailure("读取 WARP", text, uiToken, allowBusy)) return false;
+  if (markQuietFailure(t("读取 WARP"), text, uiToken, allowBusy)) return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.warp = parseWarp(text, state.warp);
   }
@@ -1054,7 +1055,7 @@ async function refreshWifiPolicy(
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
-  if (markQuietFailure("读取 Wi-Fi 策略", text, uiToken, allowBusy))
+  if (markQuietFailure(t("读取 Wi-Fi 策略"), text, uiToken, allowBusy))
     return false;
   if (canUpdateRefreshUi(uiToken, allowBusy)) {
     state.wifiPolicy = parseWifiPolicy(text);
@@ -1114,39 +1115,39 @@ async function loadConfig(): Promise<void> {
   const { target } = snapshot;
   const command = startForegroundCommand(
     `config-editor get ${target}`,
-    `加载 ${target} 配置`,
+    t("加载 {p0} 配置", { p0: target }),
     true,
     redactedCliPreview(`config-editor get ${target} [private-output]`),
   );
   if (foregroundUiGate.owns(command.token)) {
-    state.config.status = "加载中";
-    state.notice = `正在加载 ${target} 配置`;
+    state.config.status = t("加载中");
+    state.notice = t("正在加载 {p0} 配置", { p0: target });
   }
   const text = await command.promise;
   if (!foregroundUiGate.owns(command.token)) return;
   if (!configDraftMatches(snapshot)) {
-    state.config.status = "已保留加载期间的修改";
+    state.config.status = t("已保留加载期间的修改");
     return;
   }
   if (execFailed(text)) {
-    state.config.status = "加载失败";
-    state.notice = `${target} 配置加载失败`;
-    state.output = "加载失败：配置读取命令未成功，私密输出未显示。";
+    state.config.status = t("加载失败");
+    state.notice = t("{p0} 配置加载失败", { p0: target });
+    state.output = t("加载失败：配置读取命令未成功，私密输出未显示。");
     state.phase = "error";
     return;
   }
   state.config.text = text;
   state.config.dirty = false;
-  state.config.status = `已加载 ${text.length} 字符`;
+  state.config.status = t("已加载 {p0} 字符", { p0: text.length });
   state.config.validation = {
     status: "idle",
-    summary: "配置已加载，尚未执行本次校验。",
+    summary: t("配置已加载，尚未执行本次校验。"),
     checkedAt: "",
   };
   state.config.path = `${MODULE_DIR}/.config/sing-box/config.json`;
-  state.notice = `${target} 配置已加载`;
+  state.notice = t("{p0} 配置已加载", { p0: target });
   state.phase = "done";
-  state.output = `${target} 配置已加载到编辑器，未在输出页展开显示。`;
+  state.output = t("{p0} 配置已加载到编辑器，未在输出页展开显示。", { p0: target });
 }
 
 async function saveConfig(): Promise<void> {
@@ -1158,25 +1159,25 @@ async function saveConfig(): Promise<void> {
     "tmp",
     basename,
     snapshot.text,
-    "配置私有载荷",
+    t("配置私有载荷"),
   );
   const stageToken = foregroundUiGate.current();
   const staged = await stagePromise;
   if (!staged) {
     if (!foregroundUiGate.owns(stageToken)) return;
-    state.config.status = "安全临时数据写入失败，未保存";
+    state.config.status = t("安全临时数据写入失败，未保存");
     state.config.validation = {
       status: "error",
-      summary: "安全临时数据写入失败，未运行配置校验。",
+      summary: t("安全临时数据写入失败，未运行配置校验。"),
       checkedAt: new Date().toLocaleTimeString(),
     };
     state.phase = "error";
-    state.notice = `${state.config.target} 配置未保存`;
+    state.notice = t("{p0} 配置未保存", { p0: state.config.target });
     state.output = state.config.status;
     return;
   }
   if (!foregroundUiGate.owns(stageToken)) {
-    await removePrivatePayload("tmp", staged.basename, "配置私有载荷");
+    await removePrivatePayload("tmp", staged.basename, t("配置私有载荷"));
     return;
   }
 
@@ -1184,7 +1185,7 @@ async function saveConfig(): Promise<void> {
   try {
     const commandPromise = runPrivateCli(
       `config-editor save-file ${target} ${shellQuote(staged.path)}`,
-      `校验并保存 ${target}`,
+      t("校验并保存 {p0}", { p0: target }),
       redactedCliPreview(
         `config-editor save-file ${target} [private-payload]`,
       ),
@@ -1199,30 +1200,30 @@ async function saveConfig(): Promise<void> {
     state.config.validation = {
       status: currentDraft ? (saved ? "ok" : "error") : "idle",
       summary: !currentDraft
-        ? "当前修改尚未校验。"
-        : saved ? "配置已通过校验并保存。" : "配置校验失败，未保存。",
+        ? t("当前修改尚未校验。")
+        : saved ? t("配置已通过校验并保存。") : t("配置校验失败，未保存。"),
       checkedAt: new Date().toLocaleTimeString(),
     };
-    state.config.status = saved ? "校验通过，已保存" : "校验失败，未保存";
-    if (!currentDraft) state.config.status += "；当前修改未保存";
+    state.config.status = saved ? t("校验通过，已保存") : t("校验失败，未保存");
+    if (!currentDraft) state.config.status += t("；当前修改未保存");
     state.phase = saved ? "done" : "error";
     state.notice = saved
-      ? `${state.config.target} 配置已保存`
-      : `${state.config.target} 配置未保存`;
+      ? t("{p0} 配置已保存", { p0: state.config.target })
+      : t("{p0} 配置未保存", { p0: state.config.target });
     state.output = state.config.status;
     if (saved && currentDraft) state.config.dirty = false;
   } finally {
     const cleaned = await removePrivatePayload(
       "tmp",
       staged.basename,
-      "配置私有载荷",
+      t("配置私有载荷"),
     );
     if (!foregroundUiGate.owns(uiToken)) return;
     if (!cleaned) {
-      state.config.status = `${state.config.status}；私有临时数据清理未确认`;
+      state.config.status = t("{p0}；私有临时数据清理未确认", { p0: state.config.status });
       state.config.validation = {
         status: "error",
-        summary: "私有临时数据清理未确认，请检查设备状态。",
+        summary: t("私有临时数据清理未确认，请检查设备状态。"),
         checkedAt: new Date().toLocaleTimeString(),
       };
       state.phase = "error";
@@ -1236,24 +1237,24 @@ async function syncConfigTemplate(): Promise<void> {
   const { target } = snapshot;
   const command = startForegroundCommand(
     `config-editor sync-template ${target}`,
-    `同步 ${target} 配置仓库模板`,
+    t("同步 {p0} 配置仓库模板", { p0: target }),
   );
   const text = await command.promise;
   if (!foregroundUiGate.owns(command.token)) return;
   if (state.config.target !== target) return;
   const failed = execFailed(text);
   const validation = parseConfigValidation(text);
-  state.config.status = failed ? "同步失败" : "已同步配置仓库模板";
+  state.config.status = failed ? t("同步失败") : t("已同步配置仓库模板");
   state.config.validation = {
     status: failed ? "error" : "ok",
-    summary: failed ? validation.summary : "配置仓库模板已同步并通过校验。",
+    summary: failed ? validation.summary : t("配置仓库模板已同步并通过校验。"),
     checkedAt: new Date().toLocaleTimeString(),
   };
   if (!failed) {
     if (!configDraftMatches(snapshot)) {
-      state.config.status = "已同步模板；当前修改已保留";
+      state.config.status = t("已同步模板；当前修改已保留");
       state.config.validation = {
-        status: "idle", summary: "当前修改尚未校验。", checkedAt: "",
+        status: "idle", summary: t("当前修改尚未校验。"), checkedAt: "",
       };
       return;
     }
@@ -1264,7 +1265,7 @@ async function syncConfigTemplate(): Promise<void> {
 async function loadConfigRepository(): Promise<ConfigRepository | null> {
   const outcome = await runPrivateCli(
     "config-editor repo get-json",
-    "读取配置仓库",
+    t("读取配置仓库"),
     "config-editor repo get-json [private-output]",
   );
   if (!outcome.ok) return null;
@@ -1300,20 +1301,20 @@ async function saveConfigRepository(repository: {
     "tmp",
     basename,
     `${JSON.stringify(repository)}\n`,
-    "配置仓库私有载荷",
+    t("配置仓库私有载荷"),
   );
   if (!staged) return false;
   try {
     const outcome = await runPrivateCli(
       `config-editor repo set-file ${shellQuote(staged.path)}`,
-      "保存配置仓库",
+      t("保存配置仓库"),
       "config-editor repo set-file [private-payload]",
     );
     if (!outcome.ok) return false;
-    state.notice = "配置仓库已保存";
+    state.notice = t("配置仓库已保存");
     return true;
   } finally {
-    await removePrivatePayload("tmp", staged.basename, "配置仓库私有载荷");
+    await removePrivatePayload("tmp", staged.basename, t("配置仓库私有载荷"));
   }
 }
 

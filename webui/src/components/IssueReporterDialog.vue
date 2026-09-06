@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Bug, ShieldCheck, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
@@ -64,7 +65,7 @@ onUnmounted(() => {
     <button
       class="mn-overlay absolute inset-0 size-full"
       type="button"
-      aria-label="取消创建 Issue"
+      :aria-label="t('取消创建 Issue')"
       @click="emit('cancel')"
     />
     <section
@@ -82,19 +83,16 @@ onUnmounted(() => {
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
             <h2 id="issue-reporter-title" class="flex items-center gap-2 text-xl font-semibold tracking-[-0.025em] text-[var(--mn-ink)]">
-              <Bug :size="18" aria-hidden="true" />你遇到了哪类问题？
-            </h2>
-            <p id="issue-reporter-description" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-              选择一项后，MagicNet 只收集与该问题最相关的诊断上下文，并在打开 GitHub 前完成脱敏。
-            </p>
+              <Bug :size="18" aria-hidden="true" />{{ t("你遇到了哪类问题？") }}</h2>
+            <p id="issue-reporter-description" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("选择一项后，MagicNet 只收集与该问题最相关的诊断上下文，并在打开 GitHub 前完成脱敏。") }}</p>
           </div>
-          <Button variant="ghost" size="icon" aria-label="取消创建 Issue" @click="emit('cancel')">
+          <Button variant="ghost" size="icon" :aria-label="t('取消创建 Issue')" @click="emit('cancel')">
             <X :size="18" />
           </Button>
         </div>
 
         <fieldset class="mt-4 grid gap-2">
-          <legend class="sr-only">问题类型</legend>
+          <legend class="sr-only">{{ t("问题类型") }}</legend>
           <label
             v-for="option in ISSUE_KIND_OPTIONS"
             :key="option.value"
@@ -113,10 +111,9 @@ onUnmounted(() => {
               :value="option.value"
             />
             <span class="min-w-0">
-              <strong class="block text-sm font-semibold text-[var(--mn-ink)]">{{ option.label }}</strong>
-              <span class="mt-0.5 block text-xs leading-5 text-[var(--mn-ink-muted)]">{{ option.description }}</span>
-              <span class="mt-1.5 block text-xs leading-5 text-[var(--mn-ink-soft)]">
-                将收集：{{ option.context }}
+              <strong class="block text-sm font-semibold text-[var(--mn-ink)]">{{ t(option.label) }}</strong>
+              <span class="mt-0.5 block text-xs leading-5 text-[var(--mn-ink-muted)]">{{ t(option.description) }}</span>
+              <span class="mt-1.5 block text-xs leading-5 text-[var(--mn-ink-soft)]">{{ t("将收集：{value1}", { value1: t(option.context) }) }}
               </span>
             </span>
           </label>
@@ -124,8 +121,8 @@ onUnmounted(() => {
 
         <div class="mt-4 grid gap-3 border-t border-[var(--mn-border)] pt-4">
           <Field
-            label="问题概述"
-            hint="用一句话说明看到的现象；这是必填项。"
+            :label="t('问题概述')"
+            :hint="t('用一句话说明看到的现象；这是必填项。')"
             hint-id="issue-summary-hint"
             required
             for-id="issue-summary"
@@ -135,44 +132,44 @@ onUnmounted(() => {
               v-model="summary"
               class="min-h-20"
               maxlength="240"
-              placeholder="例如：更新订阅后节点数量变成 0，sing-box 没有启动"
+              :placeholder="t('例如：更新订阅后节点数量变成 0，sing-box 没有启动')"
               aria-describedby="issue-summary-hint"
               @keydown.ctrl.enter="confirm"
             />
           </Field>
 
           <div class="grid gap-3 sm:grid-cols-2">
-            <Field label="复现步骤">
+            <Field :label="t('复现步骤')">
               <Textarea
                 v-model="reproduction"
                 maxlength="1200"
-                placeholder="1. 做了什么操作？&#10;2. 何时开始异常？&#10;3. 是否每次都能复现？"
+                :placeholder="t('1. 做了什么操作？\n2. 何时开始异常？\n3. 是否每次都能复现？')"
               />
             </Field>
-            <Field label="期望结果">
+            <Field :label="t('期望结果')">
               <Textarea
                 v-model="expected"
                 maxlength="600"
-                placeholder="例如：订阅应导入节点并启动 sing-box。"
+                :placeholder="t('例如：订阅应导入节点并启动 sing-box。')"
               />
             </Field>
           </div>
 
           <div class="grid gap-3 sm:grid-cols-2">
-            <Field label="实际结果">
+            <Field :label="t('实际结果')">
               <Textarea
                 v-model="actual"
                 class="min-h-24"
                 maxlength="800"
-                placeholder="例如：报告 last_reason=no_supported_nodes，核心 stopped。"
+                :placeholder="t('例如：报告 last_reason=no_supported_nodes，核心 stopped。')"
               />
             </Field>
-            <Field label="发生频率 / 影响范围">
+            <Field :label="t('发生频率 / 影响范围')">
               <Textarea
                 v-model="frequency"
                 class="min-h-24"
                 maxlength="400"
-                placeholder="例如：仅 Android 15、只影响某个订阅、每次更新都会发生。"
+                :placeholder="t('例如：仅 Android 15、只影响某个订阅、每次更新都会发生。')"
               />
             </Field>
           </div>
@@ -180,12 +177,10 @@ onUnmounted(() => {
 
         <div class="mt-4 flex flex-col gap-3 border-t border-[var(--mn-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p class="inline-flex items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)]">
-            <ShieldCheck :size="16" class="shrink-0 text-[var(--mn-cactus-deep)]" />
-            描述和诊断都会脱敏；请勿直接粘贴订阅地址、token、IP、目标域名或本地路径。
-          </p>
+            <ShieldCheck :size="16" class="shrink-0 text-[var(--mn-cactus-deep)]" />{{ t("描述和诊断都会脱敏；请勿直接粘贴订阅地址、token、IP、目标域名或本地路径。") }}</p>
           <div class="flex gap-2 sm:shrink-0">
-            <Button class="flex-1 sm:flex-none" variant="outline" @click="emit('cancel')">取消</Button>
-            <Button class="flex-1 sm:flex-none" :loading="loading" :disabled="!canConfirm" @click="confirm">收集并创建</Button>
+            <Button class="flex-1 sm:flex-none" variant="outline" @click="emit('cancel')">{{ t("取消") }}</Button>
+            <Button class="flex-1 sm:flex-none" :loading="loading" :disabled="!canConfirm" @click="confirm">{{ t("收集并创建") }}</Button>
           </div>
         </div>
       </div>

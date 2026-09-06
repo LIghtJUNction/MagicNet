@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 
 export type EditorPosition = {
@@ -74,7 +75,7 @@ export function parseJsonSyntaxError(text: string): JsonSyntaxError | null {
   const { line, column } = positionToLineColumn(text, position);
   const code = printParseErrorCode(error.error);
   return {
-    message: JSON_ERROR_COPY[code] ?? "JSON 语法错误",
+    message: t(JSON_ERROR_COPY[code] ?? "JSON 语法错误"),
     line,
     column,
     position,

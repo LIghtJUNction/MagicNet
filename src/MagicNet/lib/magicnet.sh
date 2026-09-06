@@ -7,6 +7,7 @@ export PATH="${MODDIR}/bin:${PATH}"
 _magicnet_lib_dir="${MODDIR}/lib/magicnet"
 . "${_magicnet_lib_dir}/primitives.sh"
 for _magicnet_lib in \
+    i18n \
     common \
     ipset_lkm \
     network \

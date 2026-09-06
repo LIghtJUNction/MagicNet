@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { ConnectionTarget } from "@/composables/parsers";
 
 export type ConnectionInsight = {
@@ -15,31 +16,31 @@ export function buildConnectionInsights(
   const totalBytes = sumBytes(allConnections);
   const visibleBytes = sumBytes(visibleConnections);
   const largest = allConnections[0];
-  const topProcess = topBy(allConnections, (item) => item.process || item.inbound || "unknown");
-  const topRule = topBy(allConnections, (item) => [item.rule, item.rulePayload].filter(Boolean).join(" ") || "unknown");
+  const topProcess = topBy(allConnections, (item) => item.process || item.inbound || t("unknown"));
+  const topRule = topBy(allConnections, (item) => [item.rule, item.rulePayload].filter(Boolean).join(" ") || t("unknown"));
   return [
     insight(
-      "最大流量连接",
+      t("最大流量连接"),
       largest ? formatConnectionBytes(largest.totalBytes) : "-",
-      largest ? largest.label : "暂无连接",
+      largest ? largest.label : t("暂无连接"),
       largest && totalBytes && largest.totalBytes / totalBytes > 0.5 ? "warning" : "neutral"
     ),
     insight(
-      query.trim() ? "过滤命中流量" : "当前显示流量",
+      query.trim() ? t("过滤命中流量") : t("当前显示流量"),
       totalBytes ? `${Math.round((visibleBytes / totalBytes) * 100)}%` : "-",
       `${formatConnectionBytes(visibleBytes)} / ${formatConnectionBytes(totalBytes)}`,
       query.trim() && visibleConnections.length ? "success" : "neutral"
     ),
     insight(
-      "Top 流量应用",
+      t("Top 流量应用"),
       topProcess ? formatConnectionBytes(topProcess.bytes) : "-",
-      topProcess ? `${topProcess.name} · ${topProcess.count} 条` : "暂无应用信息",
+      topProcess ? t("{value1} · {value2} 条", { value1: topProcess.name, value2: topProcess.count }) : t("暂无应用信息"),
       topProcess && totalBytes && topProcess.bytes / totalBytes > 0.6 ? "warning" : "neutral"
     ),
     insight(
-      "Top 流量规则",
+      t("Top 流量规则"),
       topRule ? formatConnectionBytes(topRule.bytes) : "-",
-      topRule ? `${topRule.name} · ${topRule.count} 条` : "暂无规则信息",
+      topRule ? t("{value1} · {value2} 条", { value1: topRule.name, value2: topRule.count }) : t("暂无规则信息"),
       topRule && totalBytes && topRule.bytes / totalBytes > 0.6 ? "warning" : "neutral"
     )
   ];

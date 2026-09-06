@@ -24,7 +24,7 @@ assert.match(dialog, /期望结果/);
 assert.match(dialog, /实际结果/);
 assert.match(dialog, /发生频率 \/ 影响范围/);
 assert.match(dialog, /:disabled="!canConfirm"/);
-assert.match(dialog, /将收集：\{\{ option\.context \}\}/);
+assert.match(dialog, /t\("将收集：\{value1\}", \{ value1: t\(option\.context\) \}\)/);
 assert.match(dialog, /请勿直接粘贴订阅地址、token、IP、目标域名或本地路径/);
 assert.match(dialog, /role="dialog"/);
 assert.match(dialog, /aria-modal="true"/);

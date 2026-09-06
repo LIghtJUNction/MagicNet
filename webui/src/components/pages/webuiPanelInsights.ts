@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { statusToneClasses } from "@/lib/statusTone";
 export type WebuiVerifyCheck = {
   name: string;
@@ -18,8 +19,8 @@ export function buildWebuiPanelInsight(checks: WebuiVerifyCheck[], verifyOutput:
   if (!verifyOutput.trim()) {
     return {
       status: "idle",
-      title: "尚未校验",
-      detail: "运行 webui verify 后会显示模块 WebUI 与 sing-box 面板是否可用。",
+      title: t("尚未校验"),
+      detail: t("运行 webui verify 后会显示模块 WebUI 与 sing-box 面板是否可用。"),
       missing: []
     };
   }
@@ -29,23 +30,23 @@ export function buildWebuiPanelInsight(checks: WebuiVerifyCheck[], verifyOutput:
   if (missing.length || notReported.length) {
     return {
       status: "missing",
-      title: "面板文件不完整",
-      detail: `缺失 ${[...missing, ...notReported].join(", ")}，本地面板可能无法打开。`,
+      title: t("面板文件不完整"),
+      detail: t("缺失 {value}，本地面板可能无法打开。", { value: [...missing, ...notReported].join(", ") }),
       missing: [...missing, ...notReported]
     };
   }
   if (!checks.length) {
     return {
       status: "warning",
-      title: "未识别校验结果",
-      detail: "webui verify 有输出，但未解析到标准检查项。",
+      title: t("未识别校验结果"),
+      detail: t("webui verify 有输出，但未解析到标准检查项。"),
       missing: []
     };
   }
   return {
     status: "ok",
-    title: "面板校验通过",
-    detail: "模块 WebUI 与 sing-box zashboard 都包含 index.html。",
+    title: t("面板校验通过"),
+    detail: t("模块 WebUI 与 sing-box zashboard 都包含 index.html。"),
     missing: []
   };
 }

@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { RuntimeState } from "@/types";
 import { statusToneClasses } from "@/lib/statusTone";
 
@@ -41,18 +42,18 @@ export function buildControlRuntimeInsight(
   if (!input.hasKsu) {
     return {
       status: "warning",
-      title: "缺少设备执行通道",
+      title: t("缺少设备执行通道"),
       detail:
-        "当前环境不能直接执行 root/KernelSU 操作，控制按钮只适合在真机 WebUI 使用。",
-      actions: ["切到真机 WebUI", "确认 KernelSU 授权"],
+        t("当前环境不能直接执行 root/KernelSU 操作，控制按钮只适合在真机 WebUI 使用。"),
+      actions: [t("切到真机 WebUI"), t("确认 KernelSU 授权")],
     };
   }
   if (busy) {
     return {
       status: "info",
-      title: "后台任务进行中",
-      detail: `phase=${input.phase} queue=${input.queueDepth}，建议等待任务结束后再切换模式或重启。`,
-      actions: ["查看最近输出", "等待队列清空"],
+      title: t("后台任务进行中"),
+      detail: t("phase={phase} queue={queueDepth}，建议等待任务结束后再切换模式或重启。", { phase: input.phase, queueDepth: input.queueDepth }),
+      actions: [t("查看最近输出"), t("等待队列清空")],
     };
   }
   if (input.phase === "error") {
@@ -63,26 +64,26 @@ export function buildControlRuntimeInsight(
     ) {
       return {
         status: "warning",
-        title: "缺少节点缓存",
+        title: t("缺少节点缓存"),
         detail:
-          "sing-box 启动前没有找到可用节点缓存。先更新订阅并重建节点，然后再启动 sing-box。",
-        actions: ["更新订阅并重建节点", "再启动 sing-box"],
+          t("sing-box 启动前没有找到可用节点缓存。先更新订阅并重建节点，然后再启动 sing-box。"),
+        actions: [t("更新订阅并重建节点"), t("再启动 sing-box")],
       };
     }
     return {
       status: "warning",
-      title: "上次操作失败",
+      title: t("上次操作失败"),
       detail:
-        "最近命令进入 error 状态，建议先查看最近输出再继续切换模式或重启。",
-      actions: ["查看最近输出", "复制控制快照"],
+        t("最近命令进入 error 状态，建议先查看最近输出再继续切换模式或重启。"),
+      actions: [t("查看最近输出"), t("复制控制快照")],
     };
   }
   if (!running) {
     return {
       status: "danger",
-      title: "sing-box 未运行",
-      detail: "代理核心未处于运行状态，优先启动或执行一键自修复。",
-      actions: ["启动 sing-box", "一键自修复"],
+      title: t("sing-box 未运行"),
+      detail: t("代理核心未处于运行状态，优先启动或执行一键自修复。"),
+      actions: [t("启动 sing-box"), t("一键自修复")],
     };
   }
   if (
@@ -91,25 +92,25 @@ export function buildControlRuntimeInsight(
   ) {
     return {
       status: "warning",
-      title: "透明代理状态不可用",
+      title: t("透明代理状态不可用"),
       detail:
-        "无法确认 configured/effective 模式；不会按 TUN 或 eBPF 猜测当前数据面。",
-      actions: ["刷新状态", "查看最近输出"],
+        t("无法确认 configured/effective 模式；不会按 TUN 或 eBPF 猜测当前数据面。"),
+      actions: [t("刷新状态"), t("查看最近输出")],
     };
   }
   if (input.runtime.fswatch === "stopped") {
     return {
       status: "warning",
-      title: "文件监听未运行",
-      detail: "sing-box 正在运行，但 fswatch 停止，配置变更可能不会自动应用。",
-      actions: ["重启 sing-box", "应用配置"],
+      title: t("文件监听未运行"),
+      detail: t("sing-box 正在运行，但 fswatch 停止，配置变更可能不会自动应用。"),
+      actions: [t("重启 sing-box"), t("应用配置")],
     };
   }
   return {
     status: "ok",
-    title: "控制面板就绪",
-    detail: `sing-box 正在运行，当前透明模式为 ${input.runtime.transparentMode}。`,
-    actions: ["打开 zashboard", "按需切换模式"],
+    title: t("控制面板就绪"),
+    detail: t("sing-box 正在运行，当前透明模式为 {transparentMode}。", { transparentMode: input.runtime.transparentMode }),
+    actions: [t("打开 zashboard"), t("按需切换模式")],
   };
 }
 

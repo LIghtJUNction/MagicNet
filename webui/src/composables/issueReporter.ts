@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { MODULE_DIR, REPO } from "@/constants";
 import {
   buildIssueBody,
@@ -135,7 +136,7 @@ export async function createMagicNetIssue(
     backgroundStatus: state.backgroundTask.status,
   };
   state.task = "创建 GitHub issue";
-  state.notice = "正在收集 issue 诊断信息";
+  state.notice = t("正在收集 issue 诊断信息");
   state.busy = true;
   state.phase = "running";
   try {
@@ -160,12 +161,12 @@ export async function createMagicNetIssue(
     const copied = await copyText(body);
     const issueUrl = buildIssueUrl(REPO, title, body);
     state.output = [
-      copied ? "隐私处理后的 issue 正文已复制。" : "剪贴板不可用。",
-      `剪贴板与 GitHub URL 使用同一份正文，共 ${body.length} 字符。`,
+      copied ? t("隐私处理后的 issue 正文已复制。") : t("剪贴板不可用。"),
+      t("剪贴板与 GitHub URL 使用同一份正文，共 {p0} 字符。", { p0: body.length }),
       "",
       issueUrl
     ].join("\n");
-    state.notice = "正在打开 GitHub issue";
+    state.notice = t("正在打开 GitHub issue");
     if (!state.hasKsu) {
       window.open(issueUrl, "_blank", "noopener,noreferrer");
     } else {
@@ -176,12 +177,12 @@ export async function createMagicNetIssue(
       );
     }
     state.phase = "done";
-    state.notice = "GitHub issue 已打开";
+    state.notice = t("GitHub issue 已打开");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     state.phase = "error";
-    state.notice = "创建 issue 失败";
-    state.output = `创建 GitHub issue 失败：\n${message}`;
+    state.notice = t("创建 issue 失败");
+    state.output = t("创建 GitHub issue 失败：\n{p0}", { p0: message });
   } finally {
     state.busy = false;
     state.task = "";

@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { fnv32Hex } from "@/lib/fnv32";
 
 export type AppPolicyMode = "blacklist" | "whitelist";
@@ -47,23 +48,23 @@ export function buildAppPolicySummary(
   const installedDirect = installedPackages.size ? direct.filter((pkg) => installedPackages.has(pkg)) : [];
   const installedBypass = installedPackages.size ? bypass.filter((pkg) => installedPackages.has(pkg)) : [];
   const installedKnown = installedPackages.size > 0;
-  const unlisted = mode === "whitelist" ? "绕过当前数据面" : "进入当前数据面";
+  const unlisted = mode === "whitelist" ? t('绕过当前数据面') : t('进入当前数据面');
   return {
     summary: mode === "whitelist"
-      ? "Proxy 强制代理；Direct 在 MagicNet 内强制直连；未列出应用绕过当前数据面。"
-      : "Proxy 强制代理；Direct 在 MagicNet 内强制直连；Bypass 完全绕过当前数据面。",
+      ? t('Proxy 强制代理；Direct 在 MagicNet 内强制直连；未列出应用绕过当前数据面。')
+      : t('Proxy 强制代理；Direct 在 MagicNet 内强制直连；Bypass 完全绕过当前数据面。'),
     conflicts,
     installedProxy,
     installedDirect,
     installedBypass,
     items: [
-      insight("Proxy 强制", `${proxy.length} 个`, proxy.length ? "success" : "neutral"),
-      insight("Direct 直连", `${direct.length} 个`, direct.length ? "success" : "neutral"),
-      insight("Bypass TUN", `${bypass.length} 个`, bypass.length ? "warning" : "neutral"),
-      insight("未列出应用", unlisted, mode === "blacklist" ? "success" : "neutral"),
-      insight("名单冲突", conflicts.length ? `${conflicts.length} 个` : "无", conflicts.length ? "danger" : "success"),
-      insight("当前列表命中", installedKnown ? `P ${installedProxy.length} / D ${installedDirect.length} / B ${installedBypass.length}` : "未读取应用", installedKnown ? "success" : "warning"),
-      insight("可应用推荐", `${availableRecommendedCount} 个`, availableRecommendedCount ? "neutral" : "success")
+      insight(t('Proxy 强制'), t('{count} 个', { count: proxy.length }), proxy.length ? "success" : "neutral"),
+      insight(t('Direct 直连'), t('{count} 个', { count: direct.length }), direct.length ? "success" : "neutral"),
+      insight("Bypass TUN", t('{count} 个', { count: bypass.length }), bypass.length ? "warning" : "neutral"),
+      insight(t('未列出应用'), unlisted, mode === "blacklist" ? "success" : "neutral"),
+      insight(t('名单冲突'), conflicts.length ? t('{count} 个', { count: conflicts.length }) : t('无'), conflicts.length ? "danger" : "success"),
+      insight(t('当前列表命中'), installedKnown ? `P ${installedProxy.length} / D ${installedDirect.length} / B ${installedBypass.length}` : t('未读取应用'), installedKnown ? "success" : "warning"),
+      insight(t('可应用推荐'), t('{availableRecommendedCount} 个', { availableRecommendedCount: availableRecommendedCount }), availableRecommendedCount ? "neutral" : "success")
     ]
   };
 }

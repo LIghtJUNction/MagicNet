@@ -5,6 +5,10 @@
 <h1 align="center">MagicNet</h1>
 
 <p align="center">
+  <a href="./README.md">简体中文</a> · <a href="./README.en.md">English</a> · <a href="./README.ru.md">Русский</a>
+</p>
+
+<p align="center">
   Android root 设备上的 sing-box 透明网络工作台
 </p>
 
@@ -101,7 +105,16 @@ su -c /data/adb/modules/MagicNet/cli support bundle
 ## 控制界面
 
 - 模块 WebUI：安装模块后由 Magisk、KernelSU 或 APatch 的模块页面打开，覆盖首次配置、应用/Wi-Fi/热点策略、节点与诊断。
+- 界面语言：WebUI 支持简体中文、English 和 Русский，可手动切换并记住选择。安装向导及模块操作菜单支持英文、俄语，保留已有中文、日语和韩语。安装器默认跟随 Android 系统语言，也可在交互安装时选择。
 - [MCP](docs/mcp.md)：适合从工作站自动化控制真机，默认关闭且要求 secret 认证。
+
+终端操作菜单可用 `KAM_UI_LANGUAGE=ru` 或 `KAM_UI_LANGUAGE=en` 临时指定语言，例如：
+
+```bash
+su -c 'KAM_UI_LANGUAGE=ru sh /data/adb/modules/MagicNet/action.sh'
+```
+
+CLI 命令、状态字段、配置值和原始日志保持原样，方便脚本及诊断工具读取；内置第三方内核面板使用其自身的语言设置。
 
 ## 开发安装
 

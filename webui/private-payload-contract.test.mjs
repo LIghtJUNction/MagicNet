@@ -275,7 +275,7 @@ assert.match(
   /buildWebuiInstallPlan\(\s*panel\.value\.url,\s*panel\.value\.sha256,\s*redactSensitiveText\(panel\.value\.name\.trim\(\) \|\| "custom"\),\s*\)/,
 );
 assert.match(webuiSource, /const displayName = redactSensitiveText\(name\);/);
-assert.match(webuiSource, /会下载 \$\{displayName\} 面板压缩包/);
+assert.match(webuiSource, /detail: t\("会下载 \{value\} 面板压缩包[^"\n]*", \{ value: displayName,/);
 assert.match(
   webuiSource,
   /const issueName = redactSensitiveText\(panel\.value\.name\.trim\(\) \|\| "custom"\);/,
@@ -286,7 +286,7 @@ assert.match(
 );
 assert.match(webuiSource, /`Name: \$\{issueName\}`,/);
 assert.match(webuiSource, /\n    issueMetadata,\n/);
-assert.match(webuiSource, /title: `申请适配 WebUI 面板：\$\{issueName\}`/);
+assert.match(webuiSource, /title: t\("申请适配 WebUI 面板：\{value\}", \{ value: issueName \}\)/);
 assert.match(subscriptionsSource, /startPrivateBackgroundCli/);
 assert.match(installPlanSource, /isSensitiveExternalUrl\(url\)/);
 assert.match(
@@ -304,7 +304,7 @@ assert.match(
 );
 assert.match(
   useMagicNetSource,
-  /function trackRedactedOperation[\s\S]*?const output = `\$ \$\{commandPreview\}\\n执行中；私密输出已隐藏。`[\s\S]*?state\.output = output/,
+  /function trackRedactedOperation[\s\S]*?const output = t\("\$ \{p0\}\\n执行中；私密输出已隐藏。", \{ p0: commandPreview \}\);[\s\S]*?state\.output = output/,
 );
 assert.match(
   useMagicNetSource,

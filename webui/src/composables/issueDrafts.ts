@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 const MAX_ISSUE_BODY_CHARS = 5200;
 
 export type IssueKind =
@@ -58,7 +59,7 @@ export type IssueReportInput = IssueReport & {
 };
 
 export function issueKindLabel(kind: IssueKind): string {
-  return ISSUE_KIND_OPTIONS.find((option) => option.value === kind)?.label || "其他问题";
+  return t(ISSUE_KIND_OPTIONS.find((option) => option.value === kind)?.label || "其他问题");
 }
 
 function fenced(text: string): string {
@@ -284,14 +285,14 @@ export function commandFailureContext(operation: IssueOperationContext): string 
 function issueReportText(report: Partial<IssueReport> = {}): string {
   const field = (label: string, value: string | undefined, limit: number): string => {
     const sanitized = deterministicSlice(sanitizeDiagnosticText(value || ""), limit);
-    return `${label}：\n${sanitized || "未填写"}`;
+    return `${label}：\n${sanitized || t("未填写")}`;
   };
   return [
-    field("问题概述", report.summary, 360),
-    field("复现步骤", report.reproduction, 520),
-    field("期望结果", report.expected, 260),
-    field("实际结果", report.actual, 360),
-    field("发生频率 / 影响范围", report.frequency, 220),
+    field(t("问题概述"), report.summary, 360),
+    field(t("复现步骤"), report.reproduction, 520),
+    field(t("期望结果"), report.expected, 260),
+    field(t("实际结果"), report.actual, 360),
+    field(t("发生频率 / 影响范围"), report.frequency, 220),
   ].join("\n\n");
 }
 
@@ -309,7 +310,7 @@ export function buildIssueBody(parts: {
     "",
     issueReportText(parts.report),
     "",
-    `问题类型：${issueKindLabel(parts.kind)}`,
+    t("问题类型：{p0}", { p0: issueKindLabel(parts.kind) }),
     "",
     "## Generated Context",
     "",

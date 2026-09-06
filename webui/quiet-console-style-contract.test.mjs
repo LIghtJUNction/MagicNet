@@ -30,7 +30,7 @@ void test("mobile paper uses quiet surfaces and restrained action emphasis", () 
 void test("shell is outcome-led rather than terminal-themed", () => {
   assert.match(app, /class="mn-runtime-brief"/);
   assert.doesNotMatch(app, /activeWorkspace\.description|>网络控制</);
-  assert.match(app, /aria-label="全部页面"/);
+  assert.match(app, /:aria-label="t\('全部页面'\)"/);
   assert.match(app, /mobileLabel: "订阅"/);
   assert.match(app, /useMobileKeyboard/);
   assert.match(app, /v-show="!keyboardOpen" class="mobile-nav"/);

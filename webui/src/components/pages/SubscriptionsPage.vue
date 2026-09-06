@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import {
   ClipboardPaste,
   FileUp,
@@ -101,16 +102,16 @@ const canApply = computed(() => {
     : loadedPlan.lines.join("\n");
   return !configured.value || canonicalDraft.value !== loadedCanonical;
 });
-const applyLabel = computed(() => configured.value ? "保存并应用" : "添加并启用");
+const applyLabel = computed(() => configured.value ? t("保存并应用") : t("添加并启用"));
 const usageRows = computed(() => buildSubscriptionUsageOverview(state.subscriptions));
 const lifecycleRunning = computed(() => subscriptionLifecycleRunning(state.backgroundTask, state.subscriptions.updateRunning));
 const sourceCount = computed(() => state.subscriptions.sourceMode === "local" ? 1 : usageRows.value.length);
 const lifecycleMessage = computed(() => {
-  if (lifecycleRunning.value) return "正在更新订阅，完成后用量与节点会自动刷新。";
+  if (lifecycleRunning.value) return t("正在更新订阅，完成后用量与节点会自动刷新。");
   if (state.backgroundTask.status === "timeout" && isSubscriptionBackgroundArgs(state.backgroundTask.args)) {
-    return "更新仍可能在后台进行，可重新读取状态确认。";
+    return t("更新仍可能在后台进行，可重新读取状态确认。");
   }
-  if (["failed", "interrupted"].includes(state.subscriptions.lastResult)) return "最近一次更新未完成，当前仍保留原有配置。";
+  if (["failed", "interrupted"].includes(state.subscriptions.lastResult)) return t("最近一次更新未完成，当前仍保留原有配置。");
   return "";
 });
 
@@ -142,7 +143,7 @@ function showActionMessage(message: string): void {
 
 async function updateSubscriptions(): Promise<void> {
   if (!configured.value || lifecycleRunning.value) return;
-  await withAction("update-all", () => startBackgroundCli("sub update-all", "更新订阅", "", "sub update-all"));
+  await withAction("update-all", () => startBackgroundCli("sub update-all", t("更新订阅"), "", "sub update-all"));
 }
 
 watch(() => state.subscriptions.singBoxUrls, (urls) => {
@@ -189,10 +190,10 @@ async function stageSubscriptionPayload(snapshot: string) {
     "subscription",
     `magicnet-webui-${stamp}.b64`,
     `${snapshot}\n`,
-    "订阅私有载荷",
+    t("订阅私有载荷"),
   );
   if (!staged) {
-    showActionMessage("订阅准备失败，请重试。当前配置没有改变。");
+    showActionMessage(t("订阅准备失败，请重试。当前配置没有改变。"));
     return null;
   }
   return staged;
@@ -203,7 +204,7 @@ async function applySubscriptions(): Promise<void> {
   await withAction("apply-subscriptions", async () => {
     actionMessage.value = "";
     if (userAgentCardRef.value?.userAgentChanged && !(await userAgentCardRef.value.persistUserAgent())) {
-      showActionMessage("请求标识保存失败，请在订阅设置中检查后重试。");
+      showActionMessage(t("请求标识保存失败，请在订阅设置中检查后重试。"));
       return;
     }
     const snapshot = canonicalDraft.value;
@@ -222,18 +223,18 @@ async function applySubscriptions(): Promise<void> {
     const launch = buildSubscriptionApplyLaunch(staged.basename);
     const result = await startPrivateBackgroundCli(
       launch.args,
-      configured.value ? "应用订阅配置" : "首次启用订阅",
+      configured.value ? t("应用订阅配置") : t("首次启用订阅"),
       launch.preview,
       launch.displayArgs,
       launch.lifecycleArgs,
     );
     if (execFailed(result)) {
-      const cleaned = await removePrivatePayload("subscription", staged.basename, "订阅私有载荷");
-      showActionMessage(cleaned ? "订阅未能提交，请重试。" : "订阅未投递，且私有临时数据清理未确认。");
+      const cleaned = await removePrivatePayload("subscription", staged.basename, t("订阅私有载荷"));
+      showActionMessage(cleaned ? t("订阅未能提交，请重试。") : t("订阅未投递，且私有临时数据清理未确认。"));
       if (pendingApply.value === attempt) pendingApply.value = null;
       return;
     }
-    showActionMessage("已提交订阅。验证通过后生效，可在更新记录中查看结果。");
+    showActionMessage(t("已提交订阅。验证通过后生效，可在更新记录中查看结果。"));
   });
 }
 
@@ -241,11 +242,11 @@ async function pasteSubscriptions(): Promise<void> {
   await withAction("paste-subscriptions", async () => {
     const text = (await readClipboardText()).trim();
     if (!text) {
-      showActionMessage("剪贴板为空或不可读取，可以长按输入框粘贴。");
+      showActionMessage(t("剪贴板为空或不可读取，可以长按输入框粘贴。"));
       return;
     }
     singBoxText.value = text;
-    showActionMessage(`已粘贴 ${text.split(/\r?\n/).filter((line) => line.trim()).length} 行，请检查后保存。`);
+    showActionMessage(t("已粘贴 {value} 行，请检查后保存。", { value: text.split(/\r?\n/).filter((line) => line.trim()).length }));
   });
 }
 
@@ -262,7 +263,7 @@ async function importLocalSubscriptions(event: Event): Promise<void> {
   await withAction("apply-local-subscription", async () => {
     actionMessage.value = "";
     try {
-      if (file.size > MAX_LOCAL_SUBSCRIPTION_BYTES) throw new Error("文件超过 8 MiB 限制。");
+      if (file.size > MAX_LOCAL_SUBSCRIPTION_BYTES) throw new Error(t("文件超过 8 MiB 限制。"));
       const imported = parseLocalSubscriptionFile(
         file.name,
         new Uint8Array(await file.arrayBuffer()),
@@ -272,30 +273,30 @@ async function importLocalSubscriptions(event: Event): Promise<void> {
         "subscription",
         `magicnet-local-${stamp}.txt`,
         imported.text,
-        "本地订阅源",
+        t("本地订阅源"),
         16 * 1024,
       );
       if (!staged) {
-        showActionMessage("文件准备失败，请重试。当前配置没有改变。");
+        showActionMessage(t("文件准备失败，请重试。当前配置没有改变。"));
         return;
       }
       const launch = buildLocalSubscriptionApplyLaunch(staged.basename);
       const result = await startPrivateBackgroundCli(
         launch.args,
-        "应用本地订阅源",
+        t("应用本地订阅源"),
         launch.preview,
         launch.displayArgs,
         launch.lifecycleArgs,
       );
       if (execFailed(result)) {
-        await removePrivatePayload("subscription", staged.basename, "本地订阅源");
-        showActionMessage("文件未能提交，请重试。");
+        await removePrivatePayload("subscription", staged.basename, t("本地订阅源"));
+        showActionMessage(t("文件未能提交，请重试。"));
         return;
       }
-      state.notice = "本地订阅源已投递";
-      showActionMessage(`已提交 ${imported.format} 文件，验证成功后会切换到本地模式。`);
+      state.notice = t("本地订阅源已投递");
+      showActionMessage(t("已提交 {value} 文件，验证成功后会切换到本地模式。", { value: imported.format }));
     } catch (error) {
-      showActionMessage(`导入错误：${error instanceof Error ? error.message : String(error)}`);
+      showActionMessage(t("导入错误：{value}", { value: error instanceof Error ? error.message : String(error) }));
     }
   });
 }
@@ -306,32 +307,30 @@ function normalizeSubscriptions(): void {
     return;
   }
   singBoxText.value = canonicalDraft.value;
-  showActionMessage(`已整理为 ${savePlan.value.lines.length} 个订阅来源。`);
+  showActionMessage(t("已整理为 {value} 个订阅来源。", { value: savePlan.value.lines.length }));
 }
 
 async function copySummary(): Promise<void> {
   summaryCopied.value = await copyText(formatSubscriptionSummary(singBoxText.value, subscriptionPreview.value));
-  showActionMessage(summaryCopied.value ? "来源摘要已复制。" : "剪贴板不可用，来源摘要未复制。");
+  showActionMessage(summaryCopied.value ? t("来源摘要已复制。") : t("剪贴板不可用，来源摘要未复制。"));
 }
 </script>
 
 <template>
   <div class="subscriptions-page">
-    <PageHeader title="订阅">
+    <PageHeader :title="t('订阅')">
       <template #actions>
         <Button v-if="configured" ref="manageSourcesButton" variant="outline" :aria-expanded="editorOpen" aria-controls="subscription-editor" @click="openEditor">
-          <Plus :size="16" />管理来源
-        </Button>
+          <Plus :size="16" />{{ t("管理来源") }} </Button>
         <Button v-if="configured" :loading="lifecycleRunning || isRunning('update-all')" :disabled="state.busy" @click="updateSubscriptions">
-          <RefreshCw :size="16" />更新订阅
-        </Button>
+          <RefreshCw :size="16" />{{ t("更新订阅") }} </Button>
       </template>
     </PageHeader>
 
     <div v-if="configured" class="subscription-summary">
-      <span>{{ sourceCount }} 个来源<span v-if="state.subscriptions.lastImportedCount > 0"> · {{ state.subscriptions.lastImportedCount }} 个节点</span></span>
-      <span v-if="dirty" class="unsaved-note">有未保存的更改</span>
-      <Button variant="ghost" size="icon" :loading="isRunning('refresh-subs')" aria-label="重新读取订阅状态" @click="withAction('refresh-subs', () => refreshSubs())">
+      <span>{{ t("{value} 个来源", { value: sourceCount }) }}<span v-if="state.subscriptions.lastImportedCount > 0"> {{ t("· {value} 个节点", { value: state.subscriptions.lastImportedCount }) }}</span></span>
+      <span v-if="dirty" class="unsaved-note">{{ t("有未保存的更改") }}</span>
+      <Button variant="ghost" size="icon" :loading="isRunning('refresh-subs')" :aria-label="t('重新读取订阅状态')" @click="withAction('refresh-subs', () => refreshSubs())">
         <RefreshCw :size="15" />
       </Button>
     </div>
@@ -342,13 +341,13 @@ async function copySummary(): Promise<void> {
     <p v-if="actionMessage" class="subscription-feedback" role="status">{{ actionMessage }}</p>
 
     <SubscriptionUsageList v-if="configured" :rows="usageRows" :local="state.subscriptions.sourceMode === 'local'" />
-    <p v-if="configured && state.subscriptions.sourceMode !== 'local'" class="usage-footnote">用量与到期时间由服务商提供，更新订阅时同步。</p>
+    <p v-if="configured && state.subscriptions.sourceMode !== 'local'" class="usage-footnote">{{ t("用量与到期时间由服务商提供，更新订阅时同步。") }}</p>
 
-    <section v-if="editorOpen || !configured" id="subscription-editor" ref="editorPanel" class="source-editor" aria-label="编辑订阅来源">
+    <section v-if="editorOpen || !configured" id="subscription-editor" ref="editorPanel" class="source-editor" :aria-label="t('编辑订阅来源')">
       <div class="editor-heading">
         <div>
-          <h3>{{ configured ? '管理订阅来源' : '添加第一个订阅' }}</h3>
-          <p>粘贴订阅链接，每行一个，最多 5 个。也可导入本地文件。</p>
+          <h3>{{ configured ? t("管理订阅来源") : t("添加第一个订阅") }}</h3>
+          <p>{{ t("粘贴订阅链接，每行一个，最多 5 个。也可导入本地文件。") }}</p>
         </div>
       </div>
       <Textarea
@@ -360,46 +359,46 @@ async function copySummary(): Promise<void> {
         autocorrect="off"
         inputmode="url"
         placeholder="https://example.com/subscription"
-        aria-label="sing-box 订阅 URL，每行一个"
+        :aria-label="t('sing-box 订阅 URL，每行一个')"
         aria-describedby="subscription-validation"
       />
       <div id="subscription-validation" class="editor-validation" role="status" :data-error="savePlan.status === 'error'">
-        <span>{{ savePlan.status === 'idle' ? '支持 HTTPS 订阅链接' : savePlan.message }}</span>
-        <span v-if="inputSummary.duplicate || inputSummary.overLimit">有效 {{ inputSummary.valid }} · 重复 {{ inputSummary.duplicate }} · 超限 {{ inputSummary.overLimit }}</span>
+        <span>{{ savePlan.status === 'idle' ? t("支持 HTTPS 订阅链接") : savePlan.message }}</span>
+        <span v-if="inputSummary.duplicate || inputSummary.overLimit">{{ t("有效 {value} · 重复 {value2} · 超限 {value3}", { value: inputSummary.valid, value2: inputSummary.duplicate, value3: inputSummary.overLimit }) }}</span>
       </div>
       <div class="editor-actions">
         <input ref="subscriptionFileInput" class="hidden" type="file" accept=".yaml,.yml,.txt,.list,.conf,application/yaml,text/yaml,text/plain" @change="importLocalSubscriptions">
         <div class="source-import-actions">
-          <Button variant="outline" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions"><ClipboardPaste :size="16" />粘贴链接</Button>
-          <Button variant="outline" :loading="isRunning('apply-local-subscription')" :disabled="lifecycleRunning" @click="chooseLocalSubscriptions"><FileUp :size="16" />导入文件</Button>
+          <Button variant="outline" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions"><ClipboardPaste :size="16" />{{ t("粘贴链接") }}</Button>
+          <Button variant="outline" :loading="isRunning('apply-local-subscription')" :disabled="lifecycleRunning" @click="chooseLocalSubscriptions"><FileUp :size="16" />{{ t("导入文件") }}</Button>
         </div>
         <div class="source-save-actions">
-          <Button v-if="configured" variant="ghost" :disabled="lifecycleRunning" @click="cancelEditing">取消</Button>
+          <Button v-if="configured" variant="ghost" :disabled="lifecycleRunning" @click="cancelEditing">{{ t("取消") }}</Button>
           <Button :disabled="!canApply || lifecycleRunning" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions"><Save :size="16" />{{ applyLabel }}</Button>
         </div>
       </div>
       <details v-if="subscriptionPreview.length" class="source-preview">
-        <summary>检查来源 <ChevronDown :size="15" /></summary>
+        <summary>{{ t("检查来源") }} <ChevronDown :size="15" /></summary>
         <ul>
           <li v-for="item in subscriptionPreview" :key="item.key" :data-invalid="item.status === 'invalid' || item.status === 'over-limit'">
             <span>{{ item.index }}.</span><strong>{{ item.label }}</strong>
-            <span>{{ item.status === 'ok' ? '有效' : item.status === 'duplicate' ? '重复' : item.status === 'over-limit' ? '超出数量限制' : '请检查链接' }}</span>
+            <span>{{ item.status === 'ok' ? t("有效") : item.status === 'duplicate' ? t("重复") : item.status === 'over-limit' ? t("超出数量限制") : t("请检查链接") }}</span>
           </li>
         </ul>
         <div class="preview-actions">
-          <Button variant="ghost" :disabled="!singBoxText.trim()" @click="normalizeSubscriptions">去重并整理</Button>
-          <Button variant="ghost" @click="copySummary"><ShieldCheck :size="15" />{{ summaryCopied ? '已复制' : '复制来源摘要' }}</Button>
+          <Button variant="ghost" :disabled="!singBoxText.trim()" @click="normalizeSubscriptions">{{ t("去重并整理") }}</Button>
+          <Button variant="ghost" @click="copySummary"><ShieldCheck :size="15" />{{ summaryCopied ? t("已复制") : t("复制来源摘要") }}</Button>
         </div>
       </details>
     </section>
 
     <div class="subscription-settings">
       <details class="settings-section">
-        <summary><span><RefreshCw :size="17" />更新记录</span><ChevronDown :size="17" /></summary>
+        <summary><span><RefreshCw :size="17" />{{ t("更新记录") }}</span><ChevronDown :size="17" /></summary>
         <SubscriptionLifecycleRecord :configured="configured" />
       </details>
       <details class="settings-section">
-        <summary><span><Settings2 :size="17" />订阅设置</span><ChevronDown :size="17" /></summary>
+        <summary><span><Settings2 :size="17" />{{ t("订阅设置") }}</span><ChevronDown :size="17" /></summary>
         <div class="subscription-settings-content">
           <SubscriptionScheduleCard />
           <SubscriptionFilterCard :configured="configured" />
