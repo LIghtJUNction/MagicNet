@@ -11,6 +11,7 @@ use crate::connection_control::{
     print_close_all_summary,
 };
 use crate::node_delay::encode_path_segment;
+use crate::process::run_magicnet_function_status;
 use crate::selector_store;
 use crate::service::{apply_config, singbox_webui};
 use crate::subscriptions::{download_pinned_https_url, validate_subscription_url};
@@ -75,10 +76,15 @@ fn sync_persisted_hotspot_offload(app: &App) {
 }
 
 fn refresh_hotspot_policy_if_stale(app: &App) -> Result<(), String> {
-    if run_magicnet_function(app, "magicnet_singbox_hotspot_policy_current").is_err() {
-        apply_config(app)?;
+    // Only a confirmed topology change should restart the core. Discovery
+    // failures are retried by the watcher without interrupting live sockets.
+    match run_magicnet_function_status(app, "magicnet_singbox_hotspot_policy_current")?.code() {
+        Some(0) => Ok(()),
+        Some(1) => apply_config(app),
+        status => Err(format!(
+            "hotspot discovery failed with status {status:?}; retaining the current configuration"
+        )),
     }
-    Ok(())
 }
 
 fn rollback_hotspot_enable(app: &App) {
@@ -694,6 +700,38 @@ mod tests {
 
     use super::*;
     use crate::test_support::temp_app;
+
+    #[test]
+    fn hotspot_probe_failure_does_not_apply_config() {
+        let app = temp_app();
+        fs::create_dir_all(app.moddir.join("lib/kamfw")).unwrap();
+        fs::write(app.moddir.join("lib/kamfw/.kamfwrc"), "import() { :; }\n").unwrap();
+        fs::write(
+            app.moddir.join("lib/magicnet_singbox_subscribe.sh"),
+            "magicnet_singbox_update_lock_active() { return 1; }\n",
+        )
+        .unwrap();
+        for status in [1, 0, 2, 124] {
+            fs::write(
+                app.moddir.join("lib/magicnet.sh"),
+                format!(
+                    "magicnet_singbox_hotspot_policy_current() {{ return {status}; }}\n\
+                     magicnet_apply_runtime_config() {{ touch \"$MODDIR/applied\"; return 42; }}\n"
+                ),
+            )
+            .unwrap();
+            assert_eq!(refresh_hotspot_policy_if_stale(&app).is_ok(), status == 0);
+            assert_eq!(app.moddir.join("applied").exists(), status == 1);
+            assert_eq!(
+                app.moddir.join(".state/config-apply.lock").exists(),
+                status == 1
+            );
+            if status == 1 {
+                fs::remove_file(app.moddir.join("applied")).unwrap();
+                fs::remove_file(app.moddir.join(".state/config-apply.lock")).unwrap();
+            }
+        }
+    }
 
     #[test]
     fn contains_index_searches_nested_panel_directories() {

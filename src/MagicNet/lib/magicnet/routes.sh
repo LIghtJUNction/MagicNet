@@ -33,26 +33,25 @@ magicnet_hotspot_proxy_enabled() {
     [ -f "$(magicnet_hotspot_offload_state_file)" ]
 }
 
-magicnet_hotspot_source_cidrs() {
+magicnet_hotspot_source_cidrs() (
     magicnet_hotspot_proxy_enabled || return 0
-    magicnet_hotspot_active_networks |
+    _hotspot_networks="$(magicnet_hotspot_active_networks)" || return 2
+    printf '%s\n' "$_hotspot_networks" |
         awk -F'|' 'NF == 2 { print $2 }' |
         LC_ALL=C sort -u
-}
+)
 
 magicnet_hotspot_jq() {
     magicnet_jq
 }
 
-magicnet_hotspot_source_cidrs_json() {
+magicnet_hotspot_source_cidrs_json() (
     _hotspot_json_jq="$1"
-    magicnet_hotspot_source_cidrs | "$_hotspot_json_jq" -Rsc '
+    _hotspot_cidrs="$(magicnet_hotspot_source_cidrs)" || return 2
+    printf '%s\n' "$_hotspot_cidrs" | "$_hotspot_json_jq" -Rsc '
         split("\n") | map(select(length > 0))
     '
-    _hotspot_json_rc=$?
-    unset _hotspot_json_jq
-    return "$_hotspot_json_rc"
-}
+)
 
 magicnet_hotspot_interface_allowed() {
     _hotspot_allowed_iface="$1"
@@ -101,7 +100,7 @@ magicnet_hotspot_dumpsys_tethering() {
 # interface names only when dumpsys returns no active interface. OEM dumpsys
 # implementations are bounded because this discovery sits on the core startup
 # path and `ip link` remains a safe fallback.
-magicnet_hotspot_discover_interfaces() {
+magicnet_hotspot_discover_interfaces() (
     _hotspot_tethered=
     if magicnet_cmd_exists dumpsys; then
         _hotspot_tethered="$(magicnet_hotspot_dumpsys_tethering 2>/dev/null | awk '
@@ -115,11 +114,11 @@ magicnet_hotspot_discover_interfaces() {
             magicnet_hotspot_interface_allowed "$_hotspot_iface" &&
                 printf '%s\n' "$_hotspot_iface"
         done
-        unset _hotspot_tethered _hotspot_iface
         return 0
     fi
     if magicnet_cmd_exists ip; then
-        ip -o link show 2>/dev/null | awk -F': ' '
+        _hotspot_links="$(ip -o link show 2>/dev/null)" || return 2
+        printf '%s\n' "$_hotspot_links" | awk -F': ' '
             {
                 name = $2
                 sub(/@.*/, "", name)
@@ -128,17 +127,20 @@ magicnet_hotspot_discover_interfaces() {
                 }
             }
         '
+        return $?
     fi
-    unset _hotspot_tethered _hotspot_iface
-}
+    return 2
+)
 
-magicnet_hotspot_active_networks_uncached() {
-    _hotspot_iface=
-    _hotspot_routes=
-    for _hotspot_iface in $(magicnet_hotspot_discover_interfaces); do
+magicnet_hotspot_active_networks_uncached() (
+    _hotspot_interfaces="$(magicnet_hotspot_discover_interfaces)" || return 2
+    for _hotspot_iface in $_hotspot_interfaces; do
         magicnet_hotspot_interface_allowed "$_hotspot_iface" || continue
-        magicnet_iface_exists "$_hotspot_iface" || continue
-        _hotspot_routes="$(ip route show dev "$_hotspot_iface" scope link 2>/dev/null | awk '
+        magicnet_iface_exists "$_hotspot_iface" || return 2
+        # A failed query says nothing about whether the hotspot disappeared.
+        # Keep this status outside pipelines so callers retain the live config.
+        _hotspot_route_output="$(ip route show dev "$_hotspot_iface" scope link 2>/dev/null)" || return 2
+        _hotspot_routes="$(printf '%s\n' "$_hotspot_route_output" | awk '
             function valid_octet(value) {
                 return value ~ /^[0-9]+$/ && length(value) <= 3 &&
                     (length(value) == 1 || substr(value, 1, 1) != "0") &&
@@ -159,14 +161,14 @@ magicnet_hotspot_active_networks_uncached() {
             printf '%s|%s\n' "$_hotspot_iface" "$_hotspot_cidr"
         done
     done
-    unset _hotspot_iface _hotspot_routes _hotspot_cidr
-}
+    return 0
+)
 
 magicnet_hotspot_active_networks() {
     if [ -n "${MAGICNET_HOTSPOT_STARTUP_SNAPSHOT:-}" ] &&
         [ -f "$MAGICNET_HOTSPOT_STARTUP_SNAPSHOT" ]; then
         cat "$MAGICNET_HOTSPOT_STARTUP_SNAPSHOT"
-        return 0
+        return $?
     fi
     magicnet_hotspot_active_networks_uncached
 }
@@ -339,7 +341,8 @@ magicnet_hotspot_reconcile() {
         return 1
     fi
 
-    _hotspot_pairs="$(magicnet_hotspot_active_networks | awk -F'|' '!seen[$1]++')"
+    _hotspot_pairs="$(magicnet_hotspot_active_networks)" || return 2
+    _hotspot_pairs="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF == 2 && !seen[$1]++')"
     magicnet_hotspot_route_cleanup || {
         unset _hotspot_pairs
         return 1
@@ -639,20 +642,23 @@ magicnet_singbox_apply_hotspot_policy() {
     unset _config _tmp
 }
 
-magicnet_singbox_hotspot_policy_current() {
+# Predicate status: 0=current, 1=confirmed change, 2=indeterminate.
+magicnet_singbox_hotspot_policy_current() (
     _config="${MODDIR}/.config/sing-box/config.json"
     [ -f "$_config" ] || return 0
     _tmp="${_config}.hotspot-policy.check.$$"
-    if magicnet_singbox_render_hotspot_policy "$_config" "$_tmp" && cmp -s "$_config" "$_tmp" &&
-        magicnet_ebpf_hotspot_config_current; then
+    if magicnet_singbox_render_hotspot_policy "$_config" "$_tmp"; then
         _hotspot_policy_rc=0
+        magicnet_ebpf_hotspot_config_current || _hotspot_policy_rc=$?
+        if [ "$_hotspot_policy_rc" -eq 0 ]; then
+            cmp -s "$_config" "$_tmp" || _hotspot_policy_rc=$?
+        fi
     else
-        _hotspot_policy_rc=1
+        _hotspot_policy_rc=2
     fi
     rm -f "$_tmp" 2>/dev/null || true
-    unset _config _tmp
     return "$_hotspot_policy_rc"
-}
+)
 
 magicnet_route_singbox_rules() {
     for _target in proxy direct block warp; do

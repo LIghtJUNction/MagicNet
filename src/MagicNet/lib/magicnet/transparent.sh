@@ -1,15 +1,18 @@
 # shellcheck shell=ash
 
-magicnet_ebpf_active_networks() {
+magicnet_ebpf_active_networks() (
     magicnet_hotspot_proxy_enabled || return 0
-    magicnet_hotspot_active_networks |
+    _ebpf_networks="$(magicnet_hotspot_active_networks)" || return 2
+    _ebpf_filtered="$(printf '%s\n' "$_ebpf_networks" |
         while IFS='|' read -r _ebpf_iface _ebpf_cidr _ebpf_extra; do
             [ -n "$_ebpf_iface" ] && [ -n "$_ebpf_cidr" ] && [ -z "$_ebpf_extra" ] || continue
             case "$_ebpf_iface" in
             *[!A-Za-z0-9_.:-]* | '') continue ;;
             esac
             magicnet_hotspot_interface_allowed "$_ebpf_iface" || continue
-            magicnet_iface_exists "$_ebpf_iface" || continue
+            # Discovery already verified this link. If it vanished mid-pass,
+            # retry a fresh snapshot instead of publishing a partial topology.
+            magicnet_iface_exists "$_ebpf_iface" || exit 2
             if printf '%s\n' "$_ebpf_cidr" | awk '
                 function octet(value) {
                     return value ~ /^[0-9]+$/ && length(value) <= 3 &&
@@ -24,8 +27,9 @@ magicnet_ebpf_active_networks() {
             '; then
                 printf '%s|%s\n' "$_ebpf_iface" "$_ebpf_cidr"
             fi
-        done | LC_ALL=C sort -u
-}
+        done)" || return 2
+    [ -z "$_ebpf_filtered" ] || printf '%s\n' "$_ebpf_filtered" | LC_ALL=C sort -u
+)
 
 magicnet_ebpf_state_dir() {
     printf '%s\n' "${MODDIR}/.state/transparent-ebpf"
@@ -422,16 +426,19 @@ magicnet_ebpf_hotspot_config_current() {
     # The production loader always provides the parser; absent it, there is no
     # configured eBPF mode to compare.
     command -v magicnet_transparent_mode >/dev/null 2>&1 || return 0
-    _current_mode="$(magicnet_transparent_mode)" || return 1
+    _current_mode="$(magicnet_transparent_mode)" || return 2
     [ "$_current_mode" = ebpf ] || return 0
     _current_config="${MODDIR}/.config/sing-box/config.json"
     _current_jq="${MODDIR}/bin/jq"
-    [ -f "$_current_config" ] && [ -x "$_current_jq" ] || return 1
+    [ -f "$_current_config" ] && [ -x "$_current_jq" ] || return 2
     _current_pairs="${_current_config}.ebpf-current.$$"
-    magicnet_ebpf_active_networks >"$_current_pairs" || return 1
+    magicnet_ebpf_active_networks >"$_current_pairs" || {
+        rm -f "$_current_pairs" 2>/dev/null || true
+        return 2
+    }
     _current_pairs_json="$("$_current_jq" -Rsc 'split("\n") | map(select(length > 0) | split("|") | {interface:.[0], cidr:.[1]})' "$_current_pairs")" || {
         rm -f "$_current_pairs" 2>/dev/null || true
-        return 1
+        return 2
     }
     if magicnet_hotspot_proxy_enabled; then _current_enabled=true; else _current_enabled=false; fi
     "$_current_jq" -e --argjson active "$_current_pairs_json" --argjson enabled "$_current_enabled" '

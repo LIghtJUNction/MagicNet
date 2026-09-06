@@ -15,6 +15,10 @@ printf '%s\n' 'value=0' >"$MODDIR/.state/hotspot/tether-offload.previous"
 HOTSPOT_CIDR=10.199.43.0/24
 HOTSPOT_SECONDARY_CIDR=
 HOTSPOT_INTERFACE_ORDER=primary-first
+HOTSPOT_ROUTE_QUERY_FAIL=0
+HOTSPOT_LINK_QUERY_FAIL=0
+HOTSPOT_DUMPSYS_FAIL=0
+HOTSPOT_IFACE_MISSING=0
 cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
 {
   "outbounds": [
@@ -43,6 +47,7 @@ magicnet_cmd_exists() {
 }
 
 magicnet_iface_exists() {
+  [ "$1" != wlan2 ] || [ "$HOTSPOT_IFACE_MISSING" -eq 0 ] || return 1
   [ "$1" = magicnet0 ] || [ "$1" = wlan2 ] || [ "$1" = usb0 ]
 }
 
@@ -52,6 +57,7 @@ magicnet_warn() {
 
 dumpsys() {
   [ "${1:-}" = tethering ] || return 1
+  [ "$HOTSPOT_DUMPSYS_FAIL" -eq 0 ] || return 2
   if [ -n "$HOTSPOT_SECONDARY_CIDR" ] && [ "$HOTSPOT_INTERFACE_ORDER" = secondary-first ]; then
     printf '%s\n' \
       'usb0 - TetheredState - lastError = 0' \
@@ -72,6 +78,11 @@ settings() {
 }
 
 ip() {
+  if [ "${1:-} ${2:-} ${3:-}" = '-o link show' ]; then
+    [ "$HOTSPOT_LINK_QUERY_FAIL" -eq 0 ] || return 2
+    printf '%s\n' '5: wlan2: <BROADCAST,MULTICAST,UP>'
+    return 0
+  fi
   if [ "${1:-}" = route ] && [ "${2:-}" = show ] &&
     [ "${3:-}" = table ] && [ "${4:-}" = 2022 ]; then
     printf '%s\n' '0.0.0.0/5 dev magicnet0'
@@ -80,6 +91,7 @@ ip() {
   if [ "${1:-}" = route ] && [ "${2:-}" = show ] &&
     [ "${3:-}" = dev ] && [ "${4:-}" = wlan2 ] &&
     [ "${5:-}" = scope ] && [ "${6:-}" = link ]; then
+    [ "$HOTSPOT_ROUTE_QUERY_FAIL" -eq 0 ] || return 2
     printf '%s proto kernel scope link src 10.199.43.11\n' "$HOTSPOT_CIDR"
     return 0
   fi
@@ -238,5 +250,69 @@ assert_ebpf_skips_tun_hotspot_routes() (
 )
 
 assert_ebpf_skips_tun_hotspot_routes
+
+assert_hotspot_probe_errors_preserve_config() (
+  magicnet_transparent_mode() { printf '%s\n' ebpf; }
+  magicnet_hotspot_proxy_enabled() { return 0; }
+  config="$MODDIR/.config/sing-box/config.json"
+  jq '.inbounds = [{"type":"ebpf","tag":"tun-in","mode":"hybrid",
+    "shared":{"interface":["wlan2"],"include_source_cidr":["192.168.52.0/24"]}}]' \
+    "$config" >"$config.new"
+  mv "$config.new" "$config"
+  magicnet_singbox_apply_hotspot_policy
+  magicnet_singbox_hotspot_policy_current
+  cp "$config" "$WORK/last-good-hotspot.json"
+
+  assert_status() {
+    expected="$1"
+    shift
+    if "$@" >/dev/null; then actual=0; else actual=$?; fi
+    [ "$actual" -eq "$expected" ] || {
+      printf '%s returned %s, expected %s\n' "$1" "$actual" "$expected" >&2
+      exit 1
+    }
+  }
+
+  # A route-query failure must survive every pipeline and must never publish
+  # an empty hotspot policy, which would cause a full sing-box restart.
+  HOTSPOT_ROUTE_QUERY_FAIL=1
+  assert_status 2 magicnet_hotspot_active_networks
+  assert_status 2 magicnet_hotspot_source_cidrs_json "$JQ_BIN"
+  assert_status 2 magicnet_ebpf_hotspot_config_current
+  assert_status 2 magicnet_singbox_hotspot_policy_current
+  assert_status 1 magicnet_singbox_apply_hotspot_policy
+  cmp -s "$config" "$WORK/last-good-hotspot.json"
+  HOTSPOT_ROUTE_QUERY_FAIL=0
+  magicnet_singbox_hotspot_policy_current
+  HOTSPOT_IFACE_MISSING=1
+  assert_status 2 magicnet_singbox_hotspot_policy_current
+  HOTSPOT_IFACE_MISSING=0
+  magicnet_singbox_hotspot_policy_current
+
+  # Keep OEM fallback discovery, but do not turn failure of both discovery
+  # methods into a successful empty topology.
+  HOTSPOT_DUMPSYS_FAIL=1
+  magicnet_singbox_hotspot_policy_current
+  HOTSPOT_LINK_QUERY_FAIL=1
+  assert_status 2 magicnet_singbox_hotspot_policy_current
+  cmp -s "$config" "$WORK/last-good-hotspot.json"
+  HOTSPOT_DUMPSYS_FAIL=0
+  HOTSPOT_LINK_QUERY_FAIL=0
+  magicnet_singbox_hotspot_policy_current
+
+  # A successful empty route query is a real disappearance and must still
+  # remove the managed source policy. Recovery is a confirmed change again.
+  HOTSPOT_CIDR=
+  assert_status 1 magicnet_singbox_hotspot_policy_current
+  magicnet_singbox_apply_hotspot_policy
+  jq -e '[.route.rules[] | select(.outbound == "hotspot" and (has("network") | not))] == []' "$config" >/dev/null
+  HOTSPOT_CIDR=192.168.52.0/24
+  assert_status 1 magicnet_singbox_hotspot_policy_current
+  magicnet_singbox_apply_hotspot_policy
+  magicnet_singbox_hotspot_policy_current
+  cmp -s "$config" "$WORK/last-good-hotspot.json"
+)
+
+assert_hotspot_probe_errors_preserve_config
 
 printf '%s\n' 'hotspot routing test passed'

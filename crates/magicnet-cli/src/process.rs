@@ -552,6 +552,13 @@ pub(crate) fn run_magicnet_function(app: &App, function_name: &str) -> Result<()
     run_magicnet_function_inner(app, function_name, None)
 }
 
+pub(crate) fn run_magicnet_function_status(
+    app: &App,
+    function_name: &str,
+) -> Result<std::process::ExitStatus, String> {
+    run_magicnet_shell(app, function_name, None)
+}
+
 /// Run the fixed subscription-update entrypoint with a private, already-open
 /// candidate descriptor. The only injected environment value is derived from
 /// that descriptor; callers cannot supply arbitrary command environment.
@@ -597,6 +604,27 @@ fn run_magicnet_function_inner(
     function_name: &str,
     subscription_candidate: Option<(&'static str, RawFd)>,
 ) -> Result<(), String> {
+    let status = run_magicnet_shell(app, function_name, subscription_candidate)?;
+    if status.success() {
+        Ok(())
+    } else {
+        if should_report_startup_error(function_name) {
+            if let Some(err) = startup_error(app) {
+                return Err(err);
+            }
+        }
+        Err(format!(
+            "{function_name} failed with status {}",
+            status.code().unwrap_or(1)
+        ))
+    }
+}
+
+fn run_magicnet_shell(
+    app: &App,
+    function_name: &str,
+    subscription_candidate: Option<(&'static str, RawFd)>,
+) -> Result<std::process::ExitStatus, String> {
     // Keep the module path in the environment and quote it at every shell
     // use.  MODDIR can be inherited from an untrusted launcher; interpolating
     // its display form into a single-quoted script would turn a path quote
@@ -621,27 +649,14 @@ fn run_magicnet_function_inner(
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
         command.env(candidate_env, format!("/proc/self/fd/{candidate_fd}"));
     }
-    let status = match run_process_group(&mut command, timeout) {
-        Ok(status) => status,
+    match run_process_group(&mut command, timeout) {
+        Ok(status) => Ok(status),
         Err(err) => {
             if function_name.contains("magicnet_singbox_update_subscription") {
                 subscriptions::cleanup_stale_update_lock(app);
             }
-            return Err(format!("{function_name}: {err}"));
+            Err(format!("{function_name}: {err}"))
         }
-    };
-    if status.success() {
-        Ok(())
-    } else {
-        if should_report_startup_error(function_name) {
-            if let Some(err) = startup_error(app) {
-                return Err(err);
-            }
-        }
-        Err(format!(
-            "{function_name} failed with status {}",
-            status.code().unwrap_or(1)
-        ))
     }
 }
 
