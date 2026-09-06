@@ -42,8 +42,10 @@ kam check
 
 自动创建 PR 使用内置 `GITHUB_TOKEN`，需要 `contents: write`、
 `pull-requests: write`（工作流已声明），以及仓库允许 Actions 创建 PR。
-若创建失败，检查原始错误与 `Settings → Actions → General → Allow GitHub Actions
-to create and approve pull requests`；工作流摘要提供恢复链接，不会自动修改设置。
+若创建失败，工作流会核对已推送版本分支的完整内容和基准提交。核对通过后，
+摘要提供手动创建 PR 的链接并显示警告；分支缺失、内容或基准不符时仍会失败。
+仓库禁止 Actions 创建 PR 时，可直接用该链接创建 PR，无需修改仓库权限设置。
+此时只准备好了版本分支，合并 PR 后才会按发布请求构建和发布。
 机器人创建的 PR 检查可能等待批准，请由有写权限的成员在 PR 页面批准并正常合并。
 工作流不会自动批准或合并 PR。
 

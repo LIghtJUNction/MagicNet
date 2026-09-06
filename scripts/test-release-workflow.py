@@ -63,7 +63,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.git("commit", "-m", "Fixture commit")
         return self.git("rev-parse", "HEAD")
 
-    def run_workflow(self, bump=None, **overrides):
+    def run_workflow(self, bump=None, report=False, **overrides):
         self.output.unlink(missing_ok=True)
         self.step_output.unlink(missing_ok=True)
         env = dict(os.environ, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
@@ -73,6 +73,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
                    GITHUB_ENV=str(self.output), GITHUB_OUTPUT=str(self.step_output))
         env.update(overrides)
         command = [sys.executable, str(SCRIPT)]
+        if report:
+            command.append("--report-pr")
         if bump is not None:
             command.extend(["--bump", bump])
         return subprocess.run(
@@ -330,6 +332,48 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assert_rejected(self.run_workflow(
             GITHUB_EVENT_NAME="workflow_dispatch", RELEASE_INPUT="true",
             GITHUB_SHA=self.before), "Checkout differs")
+
+    def report_version_pr(self, **overrides):
+        return self.run_workflow(report=True, **{
+            "PR_OUTCOME": "failure", "PR_URL": "", "VERSION": "v1.2.4",
+            "EXPECTED_TREE": self.git("rev-parse", "HEAD^{tree}"),
+            "GITHUB_SHA": self.before, "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_REPOSITORY": "example/repo",
+            "GITHUB_STEP_SUMMARY": str(self.root / "summary"), **overrides,
+        })
+
+    def push_version_branch(self):
+        self.assert_bump(self.run_bump(RELEASE_INPUT="true"), "v1.2.4")
+        self.commit()
+        self.git("push", "origin", "HEAD:refs/heads/automation/release-v1.2.4")
+
+    def test_pr_policy_failure_recovers_verified_branch_without_publishing(self):
+        self.push_version_branch()
+        result = self.report_version_pr()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("::warning::", result.stdout)
+        self.assertIn("/compare/main...automation/release-v1.2.4?expand=1",
+                      (self.root / "summary").read_text())
+        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], self.before)
+        self.assertFalse(self.output.exists())
+
+    def test_pr_failure_without_pushed_branch_still_fails(self):
+        self.assert_rejected(self.report_version_pr())
+
+    def test_pr_fallback_rejects_changed_branch_content_or_parent(self):
+        self.push_version_branch()
+        for overrides, message in (
+            ({"EXPECTED_TREE": self.git("rev-parse", f"{self.before}^{{tree}}")}, "prepared content"),
+            ({"GITHUB_SHA": "0" * 40}, "different release base"),
+        ):
+            with self.subTest(**overrides):
+                self.assert_rejected(self.report_version_pr(**overrides), message)
+
+    def test_existing_pr_reports_success_without_needing_fallback(self):
+        result = self.report_version_pr(PR_OUTCOME="success", PR_URL="https://github.com/example/repo/pull/1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("::warning::", result.stdout)
+        self.assertIn("/pull/1", (self.root / "summary").read_text())
 
 
 if __name__ == "__main__":

@@ -42,9 +42,11 @@ dispatch. Version updates never push directly to the protected branch.
 
 PR creation uses `GITHUB_TOKEN` with job-scoped `contents: write` and
 `pull-requests: write`. The repository must allow Actions to create pull requests.
-On failure, inspect the original action error and Settings → Actions → General →
-Allow GitHub Actions to create and approve pull requests. The run summary offers
-a recovery link; repository settings are never changed automatically. Bot-created
+On failure, the workflow verifies the pushed branch's complete tree and base commit.
+A matching branch produces a warning and a summary link to create the PR manually;
+a missing or mismatched branch still fails. This supports repositories that disable
+Actions PR creation without changing their permissions. The version branch is only
+prepared at this point; publishing still requires merging its release request. Bot-created
 PR workflow runs may await approval by someone with write access. Approve pending
 runs on the PR page, review, and merge normally; this workflow does not approve
 or merge its own PRs.
