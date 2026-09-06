@@ -12,6 +12,7 @@ import SearchField from "@/components/ui/SearchField.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed, redactedCliPreview } from "@/utils";
+import AppPolicyRouteGuide from "./AppPolicyRouteGuide.vue";
 import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName } from "./appPolicyInsights";
 import { buildAppPolicyChangePlan, type AppPolicyChangeOperation, type AppPolicyChangePlan } from "./appPolicyChangePlan";
 
@@ -221,7 +222,7 @@ function requestAddPackage(pkg: string, target: AppTarget, key = `add-${target}`
     message: target === "proxy"
       ? `确认把 ${pkg} 加入 Proxy？该应用将强制走 MagicNet proxy。`
       : target === "direct"
-        ? `确认把 ${pkg} 加入 Direct？该应用保留在 MagicNet TUN 内并强制直连。`
+        ? `确认把 ${pkg} 加入 Direct？该应用保留在当前 MagicNet 数据面内并强制直连。`
         : `确认把 ${pkg} 加入 Bypass TUN？该应用将完全离开 MagicNet，其他 VPN 或上游网络仍可能提供访问能力。`,
     plan: actionPlan({ type: "add", target, packages: [pkg] }),
     run: () => addPackage(pkg, target, key)
@@ -299,6 +300,24 @@ async function setMode(mode: "blacklist" | "whitelist"): Promise<void> {
     if (commandFailed(text)) return;
     await refreshApps(true);
   });
+}
+
+async function reapplyAppPolicy(): Promise<void> {
+  await withAction("reapply-app-policy", async () => {
+    const text = await runCli("app apply", "重新解析 App UID 并套用策略");
+    if (commandFailed(text)) return;
+    await refreshApps(true);
+  });
+}
+
+function requestReapplyAppPolicy(): void {
+  pendingAppAction.value = {
+    key: "reapply-app-policy",
+    command: "app apply",
+    message: "确认按当前已安装应用重新解析 UID 并套用现有策略？名单不会改变，但当前核心会重启。",
+    plan: actionPlan({ type: "reapply" }),
+    run: reapplyAppPolicy,
+  };
 }
 
 function requestSetMode(mode: "blacklist" | "whitelist"): void {
@@ -479,6 +498,21 @@ onMounted(() => {
               <p v-if="pendingAppAction.plan.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
                 {{ pendingAppAction.plan.warnings.join("；") }}
               </p>
+              <div class="mt-3 grid gap-2 rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-raised)] p-3 text-xs leading-5">
+                <p class="font-semibold text-[var(--mn-ink)]">{{ pendingAppAction.plan.routePreview.subject }}</p>
+                <dl class="grid gap-1 text-[var(--mn-ink-muted)] sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-3">
+                  <dt class="font-semibold text-[var(--mn-ink-soft)]">修改前</dt>
+                  <dd>{{ pendingAppAction.plan.routePreview.before }}</dd>
+                  <dt class="font-semibold text-[var(--mn-ink-soft)]">修改后</dt>
+                  <dd>{{ pendingAppAction.plan.routePreview.after }}</dd>
+                  <dt class="font-semibold text-[var(--mn-ink-soft)]">数据</dt>
+                  <dd>{{ pendingAppAction.plan.routePreview.traffic }}</dd>
+                  <dt class="font-semibold text-[var(--mn-ink-soft)]">DNS</dt>
+                  <dd>{{ pendingAppAction.plan.routePreview.dns }}</dd>
+                  <dt class="font-semibold text-[var(--mn-ink-soft)]">生效</dt>
+                  <dd>{{ pendingAppAction.plan.routePreview.activation }}</dd>
+                </dl>
+              </div>
             </ConfirmPanel>
           </div>
         </div>
@@ -498,6 +532,11 @@ onMounted(() => {
         </span>
       </div>
       <p class="text-xs leading-5 text-[var(--mn-ink-faint)]">同一 Android UID 的应用会一起生效。</p>
+      <AppPolicyRouteGuide
+        :mode="state.appPolicy.mode"
+        :reapply-loading="isRunning('reapply-app-policy')"
+        @reapply="requestReapplyAppPolicy"
+      />
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
         <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
         <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />{{ isRunning('add-proxy') ? '保存中' : '走代理' }}</Button>
@@ -599,7 +638,7 @@ onMounted(() => {
         </div>
       </Card>
       <Card>
-        <h3 class="mb-2 text-base font-semibold">Direct（TUN 内直连）</h3>
+        <h3 class="mb-2 text-base font-semibold">Direct（MagicNet 内直连）</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <RemovableTag
             v-for="pkg in state.appPolicy.direct"
