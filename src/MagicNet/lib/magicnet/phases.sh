@@ -1,9 +1,11 @@
 set_i18n "MAGICNET_MCP_CLI_NOT_EXECUTABLE" \
     "zh" "MCP 已启用，但 cli 入口不可执行" \
-    "en" "MCP is enabled, but the cli entry is not executable"
+    "en" "MCP is enabled, but the cli entry is not executable" \
+    "ru" "MCP включён, но файл cli недоступен для выполнения"
 set_i18n "MAGICNET_MCP_START_FAILED" \
     "zh" "MCP 服务器启动失败；请查看 \$_1" \
-    "en" "MCP server failed to start; see \$_1"
+    "en" "MCP server failed to start; see \$_1" \
+    "ru" "Не удалось запустить сервер MCP; см. \$_1"
 
 kamfw_phase_boot_completed() {
     magicnet_detach_pid_from_app_cgroup "$$" ||

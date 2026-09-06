@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { ExecResult } from "../types.ts";
 
 type SpawnBridge = {
@@ -20,7 +21,7 @@ export function execAsync(command: string): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
     const bridge = spawnBridge();
     if (!bridge) {
-      reject(new Error("当前管理器缺少 KernelSU 异步执行接口，请更新管理器后重试。"));
+      reject(new Error(t("当前管理器缺少 KernelSU 异步执行接口，请更新管理器后重试。")));
       return;
     }
 
@@ -48,7 +49,7 @@ export function execAsync(command: string): Promise<ExecResult> {
       } },
       emit: (event: string, value: unknown) => {
         if (event === "exit") finish(undefined, Number(value));
-        else if (event === "error") finish(value ?? new Error("KernelSU 启动命令失败。"));
+        else if (event === "error") finish(value ?? new Error(t("KernelSU 启动命令失败。")));
       },
     };
     try {

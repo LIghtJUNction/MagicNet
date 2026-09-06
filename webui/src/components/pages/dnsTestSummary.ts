@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { statusToneClasses } from "@/lib/statusTone";
 export type DnsTestSummary = {
   lineCount: number;
@@ -103,25 +104,25 @@ function dnsStatus(lineCount: number, issueCount: number, probePath: string, htt
 }
 
 function dnsSummary(status: DnsTestSummary["status"], domain: string, probePath: string, httpStatus: number | null, proxyIp: string, remoteIp: string, timeTotalMillis: number | null, issueCount: number): string {
-  if (status === "idle") return "尚未运行 DNS 测试。";
+  if (status === "idle") return t("尚未运行 DNS 测试。");
   if (status === "fail") {
-    if (issueCount) return `发现 ${issueCount} 条 DNS/连接问题线索。`;
+    if (issueCount) return t("发现 {issueCount} 条 DNS/连接问题线索。", { issueCount });
     return probePath === "magicnet-mixed"
-      ? "未取得有效的 MagicNet 混合入口与 HTTP 结果，DNS 或 HTTPS 连通性需要检查。"
-      : "未解析到 remote_ip，DNS 或 HTTPS 连通性需要检查。";
+      ? t("未取得有效的 MagicNet 混合入口与 HTTP 结果，DNS 或 HTTPS 连通性需要检查。")
+      : t("未解析到 remote_ip，DNS 或 HTTPS 连通性需要检查。");
   }
   if (probePath === "magicnet-mixed") {
     if (httpStatus !== null && httpStatus >= 400) {
-      return `${domain || "目标域名"} 已通过 MagicNet 混合入口（${proxyIp}）完成 DNS/HTTPS 连接，但目标返回 HTTP ${httpStatus}；链路可达。`;
+      return t("{domain} 已通过 MagicNet 混合入口（{proxyIp}）完成 DNS/HTTPS 连接，但目标返回 HTTP {httpStatus}；链路可达。", { domain: domain || t("目标域名"), proxyIp, httpStatus });
     }
     if (status === "warn") {
-      return `${domain || "目标域名"} 已通过 MagicNet 混合入口（${proxyIp}）完成 DNS/HTTPS 探测，但总耗时 ${timeTotalMillis}ms 偏高。`;
+      return t("{domain} 已通过 MagicNet 混合入口（{proxyIp}）完成 DNS/HTTPS 探测，但总耗时 {timeTotalMillis}ms 偏高。", { domain: domain || t("目标域名"), proxyIp, timeTotalMillis });
     }
-    return `${domain || "目标域名"} 已通过 MagicNet 混合入口（${proxyIp}）完成 DNS/HTTPS 探测，总耗时 ${timeTotalMillis ?? "未知"}ms。`;
+    return t("{domain} 已通过 MagicNet 混合入口（{proxyIp}）完成 DNS/HTTPS 探测，总耗时 {duration}ms。", { domain: domain || t("目标域名"), proxyIp, duration: timeTotalMillis ?? t("未知") });
   }
   if (httpStatus !== null && httpStatus >= 400) {
-    return `${domain || "目标域名"} 已解析到 ${remoteIp}，但 HTTPS 返回 HTTP ${httpStatus}；DNS/网络链路可达。`;
+    return t("{domain} 已解析到 {remoteIp}，但 HTTPS 返回 HTTP {httpStatus}；DNS/网络链路可达。", { domain: domain || t("目标域名"), remoteIp, httpStatus });
   }
-  if (status === "warn") return `${domain || "目标域名"} 解析到 ${remoteIp}，但总耗时 ${timeTotalMillis}ms 偏高。`;
-  return `${domain || "目标域名"} 解析到 ${remoteIp}，总耗时 ${timeTotalMillis ?? "未知"}ms。`;
+  if (status === "warn") return t("{domain} 解析到 {remoteIp}，但总耗时 {timeTotalMillis}ms 偏高。", { domain: domain || t("目标域名"), remoteIp, timeTotalMillis });
+  return t("{domain} 解析到 {remoteIp}，总耗时 {duration}ms。", { domain: domain || t("目标域名"), remoteIp, duration: timeTotalMillis ?? t("未知") });
 }

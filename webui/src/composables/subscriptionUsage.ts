@@ -1,3 +1,4 @@
+import { locale, t } from "@/i18n";
 import type { SubscriptionSourceUsage, SubscriptionState } from "../types.ts";
 
 export type SubscriptionUsageRow = {
@@ -75,14 +76,14 @@ export function parseSubscriptionSourceUsage(text: string | undefined): Subscrip
 }
 
 export function formatSubscriptionBytes(bytes: number | null): string {
-  if (bytes === null || safeInteger(bytes) === null) return "未提供";
+  if (bytes === null || safeInteger(bytes) === null) return t("未提供");
   const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
   const index = bytes > 0 ? Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1) : 0;
-  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: index ? 2 : 0 }).format(bytes / 1024 ** index)} ${units[index]}`;
+  return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: index ? 2 : 0 }).format(bytes / 1024 ** index)} ${units[index]}`;
 }
 
 function formatDate(epoch: number, includeTime = false): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale.value, {
     year: "numeric", month: "2-digit", day: "2-digit",
     ...(includeTime ? { hour: "2-digit", minute: "2-digit", hour12: false } as const : {}),
   }).format(new Date(epoch * 1000));
@@ -98,27 +99,27 @@ function usageRow(source: SubscriptionSourceUsage, nowEpoch: number): Subscripti
   const hasExpiry = source.expireEpoch !== null && source.expireEpoch > 0;
   const expired = hasExpiry && source.expireEpoch! <= nowEpoch;
   const daysRemaining = hasExpiry ? Math.max(0, Math.ceil((source.expireEpoch! - nowEpoch) / 86400)) : null;
-  const expiryHint = !hasExpiry ? "服务商未提供到期信息"
-    : expired ? "已到期"
-    : daysRemaining === 1 ? "24 小时内到期"
-    : `剩余 ${daysRemaining} 天`;
+  const expiryHint = !hasExpiry ? t("服务商未提供到期信息")
+    : expired ? t("已到期")
+    : daysRemaining === 1 ? t("24 小时内到期")
+    : t("剩余 {value} 天", { value: daysRemaining });
   return {
     id: source.id,
     index: source.index,
-    name: `订阅 ${source.index}`,
+    name: t("订阅 {value}", { value: source.index }),
     hostname: source.hostname,
     state: source.state,
-    stateLabel: source.state === "fresh" ? "已同步" : source.state === "cached" ? "上次用量" : "未提供用量",
+    stateLabel: source.state === "fresh" ? t("已同步") : source.state === "cached" ? t("上次用量") : t("未提供用量"),
     usedBytes,
     totalBytes: source.totalBytes,
     remainingBytes,
     progressPercent,
     usedLabel: formatSubscriptionBytes(usedBytes),
-    totalLabel: hasQuota ? formatSubscriptionBytes(source.totalBytes) : "未提供额度",
-    remainingLabel: remainingBytes === null ? "未提供" : formatSubscriptionBytes(remainingBytes),
-    expiryLabel: hasExpiry ? formatDate(source.expireEpoch!) : "未提供到期时间",
+    totalLabel: hasQuota ? formatSubscriptionBytes(source.totalBytes) : t("未提供额度"),
+    remainingLabel: remainingBytes === null ? t("未提供") : formatSubscriptionBytes(remainingBytes),
+    expiryLabel: hasExpiry ? formatDate(source.expireEpoch!) : t("未提供到期时间"),
     expiryHint,
-    updatedLabel: source.updatedEpoch ? formatDate(source.updatedEpoch, true) : "尚未获取",
+    updatedLabel: source.updatedEpoch ? formatDate(source.updatedEpoch, true) : t("尚未获取"),
     tone: expired || progressPercent === 100 ? "danger"
       : (progressPercent !== null && progressPercent >= 90) || (daysRemaining !== null && daysRemaining <= 3) ? "warning"
       : "neutral",

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { computed, ref, watch } from "vue";
 import { Copy, Link2, Power, PowerOff, Save, Server } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
@@ -31,10 +32,10 @@ const mcpPlan = computed(() => buildMcpConnectionPlan({
 }));
 
 const mcpInsight = computed(() => {
-  if (!state.mcp.enabled) return { tone: "warning", title: "MCP 未启用", detail: "启用后可通过 adb forward 连接电脑侧工具。" };
-  if (state.mcp.pid === "stopped") return { tone: "warning", title: "MCP 已启用但未运行", detail: "可直接启动 MCP，或保存配置后重启。" };
-  if (!state.mcp.secretSet) return { tone: "warning", title: "MCP secret 未设置", detail: "连接前需要在设备侧读取 secret。" };
-  return { tone: "success", title: "MCP 可连接", detail: `${formatMcpHostPort(state.mcp.bind, state.mcp.port)} 正在运行，电脑侧需要 adb forward。` };
+  if (!state.mcp.enabled) return { tone: "warning", get title() { return t("MCP 未启用"); }, get detail() { return t("启用后可通过 adb forward 连接电脑侧工具。"); } };
+  if (state.mcp.pid === "stopped") return { tone: "warning", get title() { return t("MCP 已启用但未运行"); }, get detail() { return t("可直接启动 MCP，或保存配置后重启。"); } };
+  if (!state.mcp.secretSet) return { tone: "warning", get title() { return t("MCP secret 未设置"); }, get detail() { return t("连接前需要在设备侧读取 secret。"); } };
+  return { tone: "success", get title() { return t("MCP 可连接"); }, get detail() { return t("{endpoint} 正在运行，电脑侧需要 adb forward。", { endpoint: formatMcpHostPort(state.mcp.bind, state.mcp.port) }); } };
 });
 
 watch(() => state.mcp.bind, (value) => { mcpBind.value = value; });
@@ -46,11 +47,11 @@ function validateMcpEndpoint(): { bind: string; port: string } | null {
   const bind = mcpBind.value.trim();
   const port = mcpPort.value.trim();
   if (!isMcpIpLiteral(bind)) {
-    state.output = "MCP host 必须是 IPv4 或 IPv6 字面量，例如 127.0.0.1、0.0.0.0 或 ::1；不支持 hostname/localhost。";
+    state.output = t("MCP host 必须是 IPv4 或 IPv6 字面量，例如 127.0.0.1、0.0.0.0 或 ::1；不支持 hostname/localhost。");
     return null;
   }
   if (!isValidMcpPort(port)) {
-    state.output = "MCP port 必须是 1-65535 的数字。";
+    state.output = t("MCP port 必须是 1-65535 的数字。");
     return null;
   }
   return { bind, port };
@@ -58,10 +59,10 @@ function validateMcpEndpoint(): { bind: string; port: string } | null {
 
 async function runSaveMcpEndpoint(endpoint: { bind: string; port: string }): Promise<void> {
   await withAction("save-mcp", async () => {
-    const saved = await runCli(`mcp set ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, "保存 MCP 地址");
+    const saved = await runCli(`mcp set ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, t("保存 MCP 地址"));
     if (execFailed(saved)) return;
     if (state.mcp.pid !== "stopped") {
-      const restarted = await runCli("mcp restart", "重启 MCP");
+      const restarted = await runCli("mcp restart", t("重启 MCP"));
       if (execFailed(restarted)) return;
     }
     await refreshMcp(true);
@@ -73,8 +74,8 @@ function saveMcpEndpoint(): void {
   if (!endpoint) return;
   requestMcpAction({
     key: "save-mcp",
-    title: "保存并重启 MCP",
-    detail: "会写入 MCP 监听地址；如果 MCP 正在运行，还会重启服务。",
+    get title() { return t("保存并重启 MCP"); },
+    get detail() { return t("会写入 MCP 监听地址；如果 MCP 正在运行，还会重启服务。"); },
     command: `mcp set ${endpoint.bind} ${endpoint.port}${state.mcp.pid !== "stopped" ? " && mcp restart" : ""}`,
     run: () => runSaveMcpEndpoint(endpoint),
   });
@@ -82,7 +83,7 @@ function saveMcpEndpoint(): void {
 
 async function runStartMcp(endpoint: { bind: string; port: string }): Promise<void> {
   await withAction("start-mcp", async () => {
-    const started = await runCli(`mcp enable ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, "启动 MCP");
+    const started = await runCli(`mcp enable ${shellQuote(endpoint.bind)} ${shellQuote(endpoint.port)}`, t("启动 MCP"));
     if (execFailed(started)) return;
     await refreshMcp(true);
   });
@@ -93,8 +94,8 @@ function startMcp(): void {
   if (!endpoint) return;
   requestMcpAction({
     key: "start-mcp",
-    title: "启动 MCP 服务",
-    detail: "会启用设备侧 MCP，并按当前 host/port 写入监听配置。",
+    get title() { return t("启动 MCP 服务"); },
+    get detail() { return t("会启用设备侧 MCP，并按当前 host/port 写入监听配置。"); },
     command: `mcp enable ${endpoint.bind} ${endpoint.port}`,
     run: () => runStartMcp(endpoint),
   });
@@ -102,7 +103,7 @@ function startMcp(): void {
 
 async function runStopMcp(): Promise<void> {
   await withAction("stop-mcp", async () => {
-    const stopped = await runCli("mcp stop", "停止 MCP");
+    const stopped = await runCli("mcp stop", t("停止 MCP"));
     if (execFailed(stopped)) return;
     await refreshMcp(true);
   });
@@ -111,8 +112,8 @@ async function runStopMcp(): Promise<void> {
 function stopMcp(): void {
   requestMcpAction({
     key: "stop-mcp",
-    title: "停止 MCP 进程",
-    detail: "会停止当前 MCP 进程，但保留启用配置。",
+    get title() { return t("停止 MCP 进程"); },
+    get detail() { return t("会停止当前 MCP 进程，但保留启用配置。"); },
     command: "mcp stop",
     run: runStopMcp,
   });
@@ -120,7 +121,7 @@ function stopMcp(): void {
 
 async function runDisableMcp(): Promise<void> {
   await withAction("disable-mcp", async () => {
-    const disabled = await runCli("mcp disable", "禁用 MCP");
+    const disabled = await runCli("mcp disable", t("禁用 MCP"));
     if (execFailed(disabled)) return;
     await refreshMcp(true);
   });
@@ -129,8 +130,8 @@ async function runDisableMcp(): Promise<void> {
 function disableMcp(): void {
   requestMcpAction({
     key: "disable-mcp",
-    title: "禁用并停止 MCP",
-    detail: "会关闭 MCP 自启动并停止当前进程。",
+    get title() { return t("禁用并停止 MCP"); },
+    get detail() { return t("会关闭 MCP 自启动并停止当前进程。"); },
     command: "mcp disable",
     run: runDisableMcp,
   });
@@ -152,14 +153,14 @@ async function confirmMcpAction(): Promise<void> {
 
 async function copyMcp(): Promise<void> {
   copied.value = await copyText(mcpPlan.value.copyText);
-  state.output = copied.value ? "已复制 MCP 连接预检和 adb forward 命令。" : "剪贴板不可用，MCP 连接未复制。";
+  state.output = copied.value ? t("已复制 MCP 连接预检和 adb forward 命令。") : t("剪贴板不可用，MCP 连接未复制。");
 }
 </script>
 
 <template>
   <Card>
-    <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Server :size="17" /> MCP 服务器</h3>
-    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">用于电脑侧通过 adb forward 控制模块。保存地址会写入模块配置；服务运行中保存会自动重启 MCP。</p>
+    <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Server :size="17" /> {{ t("MCP 服务器") }}</h3>
+    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("用于电脑侧通过 adb forward 控制模块。保存地址会写入模块配置；服务运行中保存会自动重启 MCP。") }}</p>
 
     <ToolActionConfirmCard
       v-if="pendingMcpAction"
@@ -194,18 +195,18 @@ async function copyMcp(): Promise<void> {
     </div>
     <div class="grid gap-2 sm:grid-cols-2">
       <Button :loading="isRunning('save-mcp')" @click="saveMcpEndpoint">
-        <Save :size="16" />保存并重启
+        <Save :size="16" />{{ t("保存并重启") }}
       </Button>
       <Button variant="secondary" :loading="isRunning('start-mcp')" @click="startMcp">
-        <Power :size="16" />启动
+        <Power :size="16" />{{ t("启动") }}
       </Button>
       <Button variant="outline" :disabled="state.mcp.pid === 'stopped'" :loading="isRunning('stop-mcp')" @click="stopMcp">
-        <PowerOff :size="16" />停止进程
+        <PowerOff :size="16" />{{ t("停止进程") }}
       </Button>
       <Button variant="outline" :loading="isRunning('disable-mcp')" @click="disableMcp">
-        <PowerOff :size="16" />禁用并停止
+        <PowerOff :size="16" />{{ t("禁用并停止") }}
       </Button>
-      <Button variant="outline" @click="copyMcp"><Copy :size="16" />{{ copied ? "已复制预检" : "复制预检" }}</Button>
+      <Button variant="outline" @click="copyMcp"><Copy :size="16" />{{ copied ? t("已复制预检") : t("复制预检") }}</Button>
     </div>
     <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">pid={{ state.mcp.pid }}
 enabled={{ state.mcp.enabled ? "1" : "0" }}

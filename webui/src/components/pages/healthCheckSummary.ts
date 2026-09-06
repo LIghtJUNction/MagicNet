@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { HealthItem } from "@/types";
 
 export type HealthCheckSummary = {
@@ -19,8 +20,8 @@ export function summarizeHealthChecks(items: HealthItem[]): HealthCheckSummary {
   if (!items.length) {
     return {
       level: "idle",
-      label: "尚未运行健康检查",
-      detail: "运行 health 后会按真实检查结果生成总览。",
+      label: t("尚未运行健康检查"),
+      detail: t("运行 health 后会按真实检查结果生成总览。"),
       counts,
       attention
     };
@@ -28,8 +29,8 @@ export function summarizeHealthChecks(items: HealthItem[]): HealthCheckSummary {
   if (counts.fail) {
     return {
       level: "danger",
-      label: `${counts.fail} 项失败`,
-      detail: `${attention.map((item) => item.key).join("、") || "健康检查"} 需要优先处理。`,
+      label: t("{value1} 项失败", { value1: counts.fail }),
+      detail: t("{value1} 需要优先处理。", { value1: attention.map((item) => item.key).join("、") || t("健康检查") }),
       counts,
       attention
     };
@@ -37,16 +38,16 @@ export function summarizeHealthChecks(items: HealthItem[]): HealthCheckSummary {
   if (counts.warn) {
     return {
       level: "warning",
-      label: `${counts.warn} 项警告`,
-      detail: `${attention.map((item) => item.key).join("、") || "健康检查"} 建议检查。`,
+      label: t("{value1} 项警告", { value1: counts.warn }),
+      detail: t("{value1} 建议检查。", { value1: attention.map((item) => item.key).join("、") || t("健康检查") }),
       counts,
       attention
     };
   }
   return {
     level: "ok",
-    label: "健康检查通过",
-    detail: `${items.length} 项真实检查没有失败或警告。`,
+    label: t("健康检查通过"),
+    detail: t("{value1} 项真实检查没有失败或警告。", { value1: items.length }),
     counts,
     attention
   };

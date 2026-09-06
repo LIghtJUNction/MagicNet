@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { computed, onActivated, onDeactivated, onUnmounted, ref } from "vue";
 import { Copy, FileText, Pause, Play, RefreshCw } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
@@ -60,11 +61,11 @@ const quickFilters = [
 async function refreshLogs(): Promise<void> {
   const command = commandPreview.value;
   const label = {
-    webui: "读取 WebUI 后台任务日志",
-    "sing-box": "读取 sing-box 日志",
-    mcp: "读取 MCP 日志",
-    fswatch: "读取 fswatch 日志",
-    supervisors: "读取监督器日志",
+    webui: t("读取 WebUI 后台任务日志"),
+    "sing-box": t("读取 sing-box 日志"),
+    mcp: t("读取 MCP 日志"),
+    fswatch: t("读取 fswatch 日志"),
+    supervisors: t("读取监督器日志"),
   }[target.value];
   await withAction("runtime-logs", async () => {
     output.value = await runCli(command, label);
@@ -94,7 +95,7 @@ function toggleAutoRefresh(): void {
 
 async function copyLogs(): Promise<void> {
   copied.value = await copyText(sanitizeOutputText(visibleOutput.value || output.value));
-  state.output = copied.value ? "脱敏运行日志已复制。" : "剪贴板不可用，运行日志未复制。";
+  state.output = copied.value ? t("脱敏运行日志已复制。") : t("剪贴板不可用，运行日志未复制。");
 }
 
 async function copyIssueSummary(): Promise<void> {
@@ -107,7 +108,7 @@ async function copyIssueSummary(): Promise<void> {
     errorCount: errorCount.value,
     otherIssueCount: logAnalysis.value.otherIssueCount
   }));
-  state.output = issueCopied.value ? "日志问题摘要已复制。" : "剪贴板不可用，日志问题摘要未复制。";
+  state.output = issueCopied.value ? t("日志问题摘要已复制。") : t("剪贴板不可用，日志问题摘要未复制。");
 }
 
 function normalizedLines(): number {
@@ -147,55 +148,52 @@ onUnmounted(stopTimer);
   <Card class="grid gap-3">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
-        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileText :size="17" /> 运行日志</h3>
-        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-          真实读取设备侧日志尾部，用于排查 sing-box 和 MCP。
-        </p>
+        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileText :size="17" />{{ t("运行日志") }}</h3>
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("真实读取设备侧日志尾部，用于排查 sing-box 和 MCP。") }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" :loading="isRunning('runtime-logs')" @click="refreshLogs">
-          <RefreshCw :size="15" />刷新
-        </Button>
+          <RefreshCw :size="15" />{{ t("刷新") }}</Button>
         <Button size="sm" variant="secondary" @click="toggleAutoRefresh">
           <Pause v-if="autoRefresh" :size="15" />
-          <Play v-else :size="15" />{{ autoRefresh ? "暂停" : "自动" }}
+          <Play v-else :size="15" />{{ autoRefresh ? t("暂停") : t("自动") }}
         </Button>
       </div>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
       <select v-model="target" class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]">
-        <option value="webui">WebUI 后台任务</option>
+        <option value="webui">{{ t("WebUI 后台任务") }}</option>
         <option value="sing-box">sing-box</option>
         <option value="fswatch">fswatch</option>
-        <option value="supervisors">监督器</option>
+        <option value="supervisors">{{ t("监督器") }}</option>
         <option value="mcp">MCP</option>
       </select>
       <Input v-model="lines" inputmode="numeric" placeholder="120" />
       <Button variant="secondary" :disabled="!output" @click="copyLogs">
-        <Copy :size="15" />{{ copied ? "已复制" : "复制" }}
+        <Copy :size="15" />{{ copied ? t("已复制") : t("复制") }}
       </Button>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
-      <Input v-model="query" placeholder="过滤关键字，例如 error / dns / selector" spellcheck="false" />
+      <Input v-model="query" :placeholder="t('过滤关键字，例如 error / dns / selector')" spellcheck="false" />
       <select v-model="level" class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]">
-        <option value="all">全部</option>
-        <option value="warn">警告</option>
-        <option value="error">错误</option>
+        <option value="all">{{ t("全部") }}</option>
+        <option value="warn">{{ t("警告") }}</option>
+        <option value="error">{{ t("错误") }}</option>
       </select>
     </div>
 
     <div v-if="output" class="grid gap-2 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
-      <span>日志 {{ logLines.length }} 行</span>
-      <span>命中 {{ filteredLines.length }} 行</span>
-      <span class="text-[var(--mn-warning)]">警告 {{ warningCount }}</span>
-      <span class="text-[var(--mn-danger)]">问题 {{ issueLines.length }}</span>
+      <span>{{ t("日志 {value1} 行", { value1: logLines.length }) }}</span>
+      <span>{{ t("命中 {value1} 行", { value1: filteredLines.length }) }}</span>
+      <span class="text-[var(--mn-warning)]">{{ t("警告 {value1}", { value1: warningCount }) }}</span>
+      <span class="text-[var(--mn-danger)]">{{ t("问题 {value1}", { value1: issueLines.length }) }}</span>
     </div>
     <div v-if="output" class="rounded-md border p-3 text-sm leading-6" :class="runtimeLogInsightTone(logInsight.status)">
       <p class="font-medium">{{ logInsight.label }}</p>
       <p class="mt-1 text-xs opacity-80">{{ logInsight.detail }}</p>
-      <p v-if="logInsight.lastIssue" class="mt-2 truncate text-xs opacity-90">最近问题：{{ logInsight.lastIssue }}</p>
+      <p v-if="logInsight.lastIssue" class="mt-2 truncate text-xs opacity-90">{{ t("最近问题：{value1}", { value1: logInsight.lastIssue }) }}</p>
     </div>
     <div v-if="output" class="flex flex-wrap gap-2">
       <Button
@@ -205,15 +203,15 @@ onUnmounted(stopTimer);
         :variant="quickFilterActive(filter) ? 'secondary' : 'ghost'"
         @click="applyQuickFilter(filter)"
       >
-        {{ filter.label }}
+        {{ t(filter.label) }}
       </Button>
-      <Button size="sm" variant="ghost" :disabled="!query && level === 'all'" @click="query = ''; level = 'all'">全部</Button>
+      <Button size="sm" variant="ghost" :disabled="!query && level === 'all'" @click="query = ''; level = 'all'">{{ t("全部") }}</Button>
     </div>
     <Button v-if="issueLines.length" size="sm" variant="outline" @click="copyIssueSummary">
-      <Copy :size="15" />{{ issueCopied ? "已复制摘要" : "复制问题摘要" }}
+      <Copy :size="15" />{{ issueCopied ? t("已复制摘要") : t("复制问题摘要") }}
     </Button>
 
-    <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs text-[var(--mn-ink-muted)]">{{ commandPreview }}{{ autoRefresh ? " · auto 5s" : "" }}</code>
-    <pre class="max-h-72 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ output ? compactOutput(visibleOutput || "没有匹配的日志行。", 9000) : `${lastLabel || "选择目标后点击刷新。"} ` }}</pre>
+    <code class="break-all rounded-md bg-[var(--mn-carrier-deep)] px-3 py-2 text-xs text-[var(--mn-ink-muted)]">{{ commandPreview }}{{ autoRefresh ? t(" · 每 5 秒刷新") : "" }}</code>
+    <pre class="max-h-72 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ output ? compactOutput(visibleOutput || t("没有匹配的日志行。"), 9000) : `${lastLabel || t("选择目标后点击刷新。")} ` }}</pre>
   </Card>
 </template>

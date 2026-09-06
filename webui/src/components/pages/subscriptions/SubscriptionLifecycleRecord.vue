@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { locale, t } from "@/i18n";
 import { computed } from "vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import {
@@ -21,8 +22,8 @@ const lifecycleStatus = computed(() => {
 });
 
 function formatEpoch(epoch: number): string {
-  if (!epoch) return "尚无记录";
-  return new Date(epoch * 1000).toLocaleString([], {
+  if (!epoch) return t("尚无记录");
+  return new Date(epoch * 1000).toLocaleString(locale.value, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -31,20 +32,20 @@ function formatEpoch(epoch: number): string {
 }
 
 const resultLabel = computed(() => ({
-  running: "更新中", done: "更新成功", error: "更新未完成", timeout: "等待确认", idle: "尚未更新", empty: "尚未添加订阅",
+  running: t("更新中"), done: t("更新成功"), error: t("更新未完成"), timeout: t("等待确认"), idle: t("尚未更新"), empty: t("尚未添加订阅"),
 }[lifecycleStatus.value]));
 </script>
 
 <template>
   <div class="update-record">
     <dl>
-      <div><dt>更新结果</dt><dd>{{ resultLabel }}</dd></div>
-      <div><dt>最近尝试</dt><dd>{{ formatEpoch(state.subscriptions.lastAttemptEpoch) }}</dd></div>
-      <div><dt>最近成功</dt><dd>{{ formatEpoch(state.subscriptions.lastSuccessEpoch) }}</dd></div>
-      <div><dt>导入节点</dt><dd>{{ state.subscriptions.lastImportedCount }} 个<span v-if="state.subscriptions.lastSkippedCount"> · 跳过 {{ state.subscriptions.lastSkippedCount }} 个</span></dd></div>
+      <div><dt>{{ t("更新结果") }}</dt><dd>{{ resultLabel }}</dd></div>
+      <div><dt>{{ t("最近尝试") }}</dt><dd>{{ formatEpoch(state.subscriptions.lastAttemptEpoch) }}</dd></div>
+      <div><dt>{{ t("最近成功") }}</dt><dd>{{ formatEpoch(state.subscriptions.lastSuccessEpoch) }}</dd></div>
+      <div><dt>{{ t("导入节点") }}</dt><dd>{{ t("{value} 个", { value: state.subscriptions.lastImportedCount }) }}<span v-if="state.subscriptions.lastSkippedCount"> {{ t("· 跳过 {value} 个", { value: state.subscriptions.lastSkippedCount }) }}</span></dd></div>
     </dl>
-    <p v-if="lifecycleStatus === 'timeout'" role="status">日志跟踪已结束，后台任务仍可能运行。重新读取状态可确认结果。</p>
-    <p v-if="lifecycleStatus === 'error'" role="status">{{ state.subscriptions.lastReason === 'none' ? '请重试更新，或到诊断页查看原因。' : state.subscriptions.lastReason }}</p>
+    <p v-if="lifecycleStatus === 'timeout'" role="status">{{ t("日志跟踪已结束，后台任务仍可能运行。重新读取状态可确认结果。") }}</p>
+    <p v-if="lifecycleStatus === 'error'" role="status">{{ state.subscriptions.lastReason === 'none' ? t("请重试更新，或到诊断页查看原因。") : state.subscriptions.lastReason }}</p>
   </div>
 </template>
 

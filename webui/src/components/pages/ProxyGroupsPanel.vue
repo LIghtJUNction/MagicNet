@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { computed, ref } from "vue";
 import { Copy, RefreshCw, Route } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
@@ -54,13 +55,13 @@ async function refreshGroups(): Promise<void> {
     pendingAction.value = null;
     selectionPlanCopied.value = false;
     groupDelays.value = {};
-    rawOutput.value = await runCli("api proxies", "读取代理组");
+    rawOutput.value = await runCli("api proxies", t("读取代理组"));
   });
 }
 
 function requestSelect(group: ProxyGroupSummary, node: string): void {
   if (!validProxyChoice(group.name, node)) {
-    state.output = "代理组或节点名称为空/过长，已拒绝执行。";
+    state.output = t("代理组或节点名称为空/过长，已拒绝执行。");
     return;
   }
   pendingAction.value = {
@@ -79,7 +80,7 @@ async function testGroup(group: ProxyGroupSummary): Promise<void> {
   const nodes = group.proxies.slice(0, 16);
   if (!nodes.length) return;
   await withAction(`proxy-group-test-${group.name}`, async () => {
-    const output = await runCli(`node test-all ${nodes.map(shellQuote).join(" ")}`, `测速 ${group.name}`);
+    const output = await runCli(`node test-all ${nodes.map(shellQuote).join(" ")}`, t("测速 {name}", { name: group.name }));
     const requested = new Set(nodes);
     const entries = parseNodeTestAll(output).filter((entry) => requested.has(entry.node));
     groupDelays.value = { ...groupDelays.value, [group.name]: entries };
@@ -89,7 +90,7 @@ async function testGroup(group: ProxyGroupSummary): Promise<void> {
 function requestUseFastest(group: ProxyGroupSummary): void {
   const fastest = groupDelayStats(group).fastest;
   if (!fastest) {
-    state.output = "请先测速本组，且至少需要一个可用节点。";
+    state.output = t("请先测速本组，且至少需要一个可用节点。");
     return;
   }
   requestSelect(group, fastest.node);
@@ -112,12 +113,12 @@ function visibleGroupNodes(group: ProxyGroupSummary): string[] {
 
 async function selectNode(group: string, node: string): Promise<void> {
   await withAction("proxy-groups-select", async () => {
-    const text = await runCli(`api select ${shellQuote(group)} ${shellQuote(node)}`, "切换代理节点");
+    const text = await runCli(`api select ${shellQuote(group)} ${shellQuote(node)}`, t("切换代理节点"));
     if (execFailed(text)) return;
     state.output = text;
-    const refreshed = await runCli("api proxies", "刷新代理组", true);
+    const refreshed = await runCli("api proxies", t("刷新代理组"), true);
     if (execFailed(refreshed)) {
-      state.output = `代理节点切换已执行，但代理组刷新未确认：\n${refreshed}`;
+      state.output = t("代理节点切换已执行，但代理组刷新未确认：\n{refreshed}", { refreshed: refreshed });
       return;
     }
     rawOutput.value = refreshed;
@@ -145,7 +146,7 @@ async function copySelectionPlan(): Promise<void> {
   const plan = pendingPlan.value;
   if (!action || !plan) return;
   selectionPlanCopied.value = await copyText(formatProxySelectionPlanReport(plan));
-  state.output = selectionPlanCopied.value ? "代理切换计划摘要已复制。" : "剪贴板不可用，代理切换计划未复制。";
+  state.output = selectionPlanCopied.value ? t("代理切换计划摘要已复制。") : t("剪贴板不可用，代理切换计划未复制。");
 }
 
 async function copyReport(): Promise<void> {
@@ -162,7 +163,7 @@ async function copyReport(): Promise<void> {
     ];
   }).join("\n");
   copied.value = await copyText(report);
-  state.output = copied.value ? "代理组报告已复制。" : "剪贴板不可用，代理组报告未复制。";
+  state.output = copied.value ? t("代理组报告已复制。") : t("剪贴板不可用，代理组报告未复制。");
 }
 
 const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
@@ -173,35 +174,32 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
     <Card class="grid gap-3">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
-        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Route :size="17" /> 代理组</h3>
-        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-          真实调用 <code>api proxies</code> 读取 selector/provider，并可确认后执行 <code>api select</code>。
+        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Route :size="17" /> {{ t("代理组") }}</h3>
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("调用 api proxies 读取 selector/provider，并可确认后执行 api select。") }}
         </p>
       </div>
       <div class="flex gap-2">
         <Button size="sm" variant="outline" :loading="isRunning('proxy-groups-refresh')" @click="refreshGroups">
-          <RefreshCw :size="15" />刷新
-        </Button>
+          <RefreshCw :size="15" />{{ t("刷新") }} </Button>
         <Button size="sm" variant="secondary" :disabled="!visibleGroups.length" @click="copyReport">
-          <Copy :size="15" />{{ copied ? "已复制" : "复制" }}
+          <Copy :size="15" />{{ copied ? t("已复制") : t("复制") }}
         </Button>
       </div>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <SearchField v-model="groupQuery" placeholder="搜索代理组或节点" />
+      <SearchField v-model="groupQuery" :placeholder="t('搜索代理组或节点')" />
       <span class="text-sm text-[var(--mn-ink-muted)]">
-        {{ filteredGroups.length }} / {{ snapshot?.groups.length || 0 }} 组
-      </span>
+        {{ t("{visible} / {total} 组", { visible: filteredGroups.length, total: snapshot?.groups.length || 0 }) }} </span>
     </div>
 
     <ConfirmPanel
       v-if="pendingAction"
-      title="切换代理节点"
+      :title="t('切换代理节点')"
       :detail="`${sanitizeProxyName(pendingAction.group.name)}：${sanitizeProxyName(pendingPlan?.summary || '')}`"
       command="api select <group> <node>"
       :loading="isRunning('proxy-groups-select')"
-      confirm-label="确认切换"
+      :confirm-label="t('确认切换')"
       confirm-variant="secondary"
       @cancel="cancelAction"
       @confirm="confirmAction"
@@ -210,18 +208,18 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
         <InsightChip
           v-for="item in pendingPlan?.items || []"
           :key="item.label"
-          :label="item.label"
+          :label="t(item.label)"
           :value="sanitizeProxyName(item.value)"
           :tone="item.tone"
         />
       </div>
       <p v-if="pendingPlan?.warnings.length" class="mt-2 text-xs leading-5 text-[var(--mn-warning)]/80">
-        {{ pendingPlan.warnings.join("；") }}
+        {{ pendingPlan.warnings.join("; ") }}
       </p>
       <template #actions>
-        <Button size="sm" variant="outline" @click="cancelAction">取消</Button>
-        <Button size="sm" variant="outline" @click="copySelectionPlan">{{ selectionPlanCopied ? "已复制计划" : "复制计划" }}</Button>
-        <Button size="sm" variant="secondary" :loading="isRunning('proxy-groups-select')" @click="confirmAction">确认切换</Button>
+        <Button size="sm" variant="outline" @click="cancelAction">{{ t("取消") }}</Button>
+        <Button size="sm" variant="outline" @click="copySelectionPlan">{{ selectionPlanCopied ? t("已复制计划") : t("复制计划") }}</Button>
+        <Button size="sm" variant="secondary" :loading="isRunning('proxy-groups-select')" @click="confirmAction">{{ t("确认切换") }}</Button>
       </template>
     </ConfirmPanel>
 
@@ -230,19 +228,18 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
         <div class="mb-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <div class="min-w-0">
             <p class="truncate text-sm font-semibold text-[var(--mn-ink)]">{{ sanitizeProxyName(group.name) }}</p>
-            <p class="text-xs text-[var(--mn-ink-muted)]">{{ group.type }} · {{ group.proxies.length }} nodes</p>
+            <p class="text-xs text-[var(--mn-ink-muted)]">{{ group.type }} · {{ t("{count} 个节点", { count: group.proxies.length }) }}</p>
           </div>
-          <span class="truncate rounded border border-[color-mix(in_srgb,var(--mn-ink)_14%,transparent)] px-2 py-1 text-xs text-[var(--mn-ink-soft)]">{{ sanitizeProxyName(group.now || "未选择") }}</span>
+          <span class="truncate rounded border border-[color-mix(in_srgb,var(--mn-ink)_14%,transparent)] px-2 py-1 text-xs text-[var(--mn-ink-soft)]">{{ sanitizeProxyName(group.now || t("未选择")) }}</span>
         </div>
         <div class="mb-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
           <p class="text-xs text-[var(--mn-ink-muted)]">
-            <template v-if="groupDelayStats(group).tested">
-              已测 {{ groupDelayStats(group).tested }} · 可用 {{ groupDelayStats(group).usable }} · 最快 {{ groupDelayStats(group).fastest?.summary || "无" }}
+            <template v-if="groupDelayStats(group).tested"> {{ t("已测 {tested} · 可用 {usable} · 最快 {fastest}", { tested: groupDelayStats(group).tested, usable: groupDelayStats(group).usable, fastest: groupDelayStats(group).fastest?.summary || t("无") }) }}
             </template>
-            <template v-else>可测速本组前 16 个节点。</template>
+            <template v-else>{{ t("可测速本组前 16 个节点。") }}</template>
           </p>
-          <Button size="sm" variant="outline" :loading="isRunning(`proxy-group-test-${group.name}`)" @click="testGroup(group)">测速本组</Button>
-          <Button size="sm" variant="secondary" :disabled="!groupDelayStats(group).fastest" @click="requestUseFastest(group)">使用最快</Button>
+          <Button size="sm" variant="outline" :loading="isRunning(`proxy-group-test-${group.name}`)" @click="testGroup(group)">{{ t("测速本组") }}</Button>
+          <Button size="sm" variant="secondary" :disabled="!groupDelayStats(group).fastest" @click="requestUseFastest(group)">{{ t("使用最快") }}</Button>
         </div>
         <div class="grid gap-2 md:grid-cols-3">
           <button

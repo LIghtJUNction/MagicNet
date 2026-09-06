@@ -277,14 +277,14 @@ magicnet_show_dashboard() {
         _singbox_state="Not installed"
     fi
 
-    panel_row "sing-box" "$_singbox_state"
+    panel_row "sing-box" "$(magicnet_display_status "$_singbox_state")"
     _fswatch_pid=$(magicnet_fswatch_status)
-    panel_row "fswatch" "${_fswatch_pid:-Stopped}"
+    panel_row "fswatch" "$(magicnet_display_status "${_fswatch_pid:-Stopped}")"
     panel_row "WebUI" "http://127.0.0.1:9090/ui/"
     if [ -s "${MODDIR}/.config/sing-box/subscription.local" ]; then
-        panel_row "sing-box subscription" "local file"
+        panel_row "$(i18n MAGICNET_SUBSCRIPTION)" "$(i18n MAGICNET_LOCAL_FILE)"
     else
-        panel_row "sing-box subscription" "${MODDIR}/.config/sing-box/subscription.url"
+        panel_row "$(i18n MAGICNET_SUBSCRIPTION)" "${MODDIR}/.config/sing-box/subscription.url"
     fi
     panel_end
 }

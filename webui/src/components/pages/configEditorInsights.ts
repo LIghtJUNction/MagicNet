@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type ConfigOutline = {
   status: "idle" | "ok" | "error";
   summary: string;
@@ -77,7 +78,7 @@ export const MAX_CONFIG_ISSUE_DIFF_BYTES = 24 * 1024;
 
 export function sanitizeConfigForIssue(text: string): string {
   const parsed = JSON.parse(text) as unknown;
-  if (!isRecord(parsed)) throw new Error("配置根节点不是 JSON object。");
+  if (!isRecord(parsed)) throw new Error(t("配置根节点不是 JSON object。"));
   const inbounds = arrayRecords(parsed.inbounds).map((inbound, index) => {
     const type = stringValue(inbound.type);
     const safe: Record<string, unknown> = {
@@ -192,7 +193,7 @@ export function buildUnifiedConfigDiff(before: string, after: string): string {
 
 function parseIssueConfig(text: string): Record<string, unknown> {
   const parsed = JSON.parse(text) as unknown;
-  if (!isRecord(parsed)) throw new Error("配置根节点不是 JSON object。");
+  if (!isRecord(parsed)) throw new Error(t("配置根节点不是 JSON object。"));
   return parsed;
 }
 
@@ -201,7 +202,7 @@ export function buildConfigOutline(text: string): ConfigOutline {
   if (!trimmed) {
     return {
       status: "idle",
-      summary: "尚未加载配置",
+      summary: t("尚未加载配置"),
       keys: [],
       counts: outlineCounts({}),
     };
@@ -212,7 +213,7 @@ export function buildConfigOutline(text: string): ConfigOutline {
     if (!isRecord(parsed)) {
       return {
         status: "error",
-        summary: "配置根节点不是 JSON object",
+        summary: t("配置根节点不是 JSON object"),
         keys: [],
         counts: outlineCounts({}),
       };
@@ -220,14 +221,14 @@ export function buildConfigOutline(text: string): ConfigOutline {
     const keys = Object.keys(parsed);
     return {
       status: "ok",
-      summary: `${keys.length} 个顶层键`,
+      summary: t("{value} 个顶层键", { value: keys.length }),
       keys: keys.slice(0, 12),
       counts: outlineCounts(parsed),
     };
   } catch {
     return {
       status: "error",
-      summary: "JSON 语法错误",
+      summary: t("JSON 语法错误"),
       keys: [],
       counts: outlineCounts({}),
     };
@@ -239,7 +240,7 @@ export function buildConfigAudit(text: string): ConfigAudit {
   if (!trimmed)
     return {
       status: "idle",
-      summary: "加载配置后显示运行关键项。",
+      summary: t("加载配置后显示运行关键项。"),
       items: [],
       outboundTags: [],
     };
@@ -248,7 +249,7 @@ export function buildConfigAudit(text: string): ConfigAudit {
   if (parsed.error || !parsed.root) {
     return {
       status: "error",
-      summary: parsed.error || "JSON 解析失败。",
+      summary: parsed.error || t("JSON 解析失败。"),
       items: [],
       outboundTags: [],
     };
@@ -285,18 +286,18 @@ export function buildConfigAudit(text: string): ConfigAudit {
 
   const items: ConfigAuditItem[] = [
     auditItem(
-      "TUN 入站",
-      inboundTypes.includes("tun") ? "存在" : "缺失",
+      t("TUN 入站"),
+      inboundTypes.includes("tun") ? t("存在") : t("缺失"),
       inboundTypes.includes("tun") ? "success" : "warning",
     ),
     auditItem(
-      "Mixed 入站",
-      inboundTypes.includes("mixed") ? "存在" : "可选",
+      t("Mixed 入站"),
+      inboundTypes.includes("mixed") ? t("存在") : t("可选"),
       inboundTypes.includes("mixed") ? "success" : "neutral",
     ),
     auditItem(
       "WebUI API",
-      externalController || "未配置",
+      externalController || t("未配置"),
       externalController ? "success" : "warning",
     ),
     auditItem(
@@ -310,27 +311,27 @@ export function buildConfigAudit(text: string): ConfigAudit {
       finalAuditTone(dnsFinal, outboundTags, false),
     ),
     auditItem(
-      "主代理候选",
-      preferredProxyTag || "未识别",
+      t("主代理候选"),
+      preferredProxyTag || t("未识别"),
       preferredProxyTag ? "success" : "warning",
     ),
     auditItem(
-      "选择器",
-      `${selectorCount} 个`,
+      t("选择器"),
+      t("{value} 个", { value: selectorCount }),
       selectorCount ? "success" : "neutral",
     ),
     auditItem(
-      "route.rules 出站引用",
+      t("route.rules 出站引用"),
       missingRuleOutbounds.length
-        ? `缺少 ${missingRuleOutbounds.length} 个引用`
-        : "全部存在",
+        ? t("缺少 {value} 个引用", { value: missingRuleOutbounds.length })
+        : t("全部存在"),
       missingRuleOutbounds.length ? "warning" : "success",
     ),
     auditItem(
-      "DNS detour 出站引用",
+      t("DNS detour 出站引用"),
       missingDnsDetours.length
-        ? `缺少 ${missingDnsDetours.length} 个引用`
-        : "全部存在",
+        ? t("缺少 {value} 个引用", { value: missingDnsDetours.length })
+        : t("全部存在"),
       missingDnsDetours.length ? "warning" : "success",
     ),
   ];
@@ -338,7 +339,7 @@ export function buildConfigAudit(text: string): ConfigAudit {
   if (sensitiveFindings.length) {
     items.push(
       auditItem(
-        "敏感信息",
+        t("敏感信息"),
         summarizeSensitiveFindings(sensitiveFindings),
         "warning",
       ),
@@ -349,8 +350,8 @@ export function buildConfigAudit(text: string): ConfigAudit {
   return {
     status: warningCount ? "warning" : "ok",
     summary: warningCount
-      ? `${warningCount} 个关键项需要确认`
-      : "关键运行项齐全",
+      ? t("{value} 个关键项需要确认", { value: warningCount })
+      : t("关键运行项齐全"),
     items,
     outboundTags: outboundTags.slice(0, 16),
   };
@@ -381,9 +382,9 @@ export function parseConfigRoot(text: string): {
     const parsed = JSON.parse(text);
     return isRecord(parsed)
       ? { root: parsed, error: "" }
-      : { root: null, error: "配置根节点不是 JSON object。" };
+      : { root: null, error: t("配置根节点不是 JSON object。") };
   } catch {
-    return { root: null, error: "JSON 语法错误。" };
+    return { root: null, error: t("JSON 语法错误。") };
   }
 }
 
@@ -400,8 +401,8 @@ export function uniqueStrings(values: string[]): string[] {
 }
 
 export function finalAuditValue(tag: string, outboundTags: string[]): string {
-  if (!tag) return "未配置";
-  return outboundTags.includes(tag) ? `${tag} 已存在` : `${tag} 未匹配出站`;
+  if (!tag) return t("未配置");
+  return outboundTags.includes(tag) ? t("{value} 已存在", { value: tag }) : t("{value} 未匹配出站", { value: tag });
 }
 
 export function finalAuditTone(
@@ -498,8 +499,8 @@ function normalizeSensitiveKey(value: unknown): string {
 function summarizeSensitiveFindings(findings: SensitiveFinding[]): string {
   return findings
     .map((finding) => {
-      if (finding.kind === "url") return `${finding.count} 个 URL`;
-      return `${finding.count} 个 ${finding.key} 字段`;
+      if (finding.kind === "url") return t("{value} 个 URL", { value: finding.count });
+      return t("{value} 个 {value2} 字段", { value: finding.count, value2: finding.key });
     })
     .join("，");
 }

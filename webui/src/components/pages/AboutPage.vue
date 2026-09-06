@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { Activity, ArrowRight, CheckCircle2, Copy, Radio, Stethoscope } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Badge from "@/components/ui/Badge.vue";
@@ -27,16 +28,16 @@ const emit = defineEmits<{
 const { state } = useMagicNet();
 const copied = ref(false);
 
-const facts = dataPlaneFacts();
-const steps = firstRunSteps();
-const checks = successChecks();
-const pathNodes = pathFlowNodes();
-const overview = computed(() => formatAboutOverview(facts, steps, checks));
+const facts = computed(dataPlaneFacts);
+const steps = computed(firstRunSteps);
+const checks = computed(successChecks);
+const pathNodes = computed(pathFlowNodes);
+const overview = computed(() => formatAboutOverview(facts.value, steps.value, checks.value));
 
 const dataplaneLabel = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "sing-box 运行中";
-  if (state.runtime.singBoxState === "stopped") return "已停止";
-  return "状态未知";
+  if (state.runtime.singBoxState === "sing-box") return t("sing-box 运行中");
+  if (state.runtime.singBoxState === "stopped") return t("已停止");
+  return t("状态未知");
 });
 
 const dataplaneTone = computed(() => {
@@ -60,20 +61,20 @@ const statusDotTone = computed(() => {
 async function copyOverview(): Promise<void> {
   copied.value = await copyText(overview.value);
   state.notice = copied.value
-    ? "流量路径已复制。"
-    : "剪贴板不可用，未能复制流量路径。";
+    ? t("流量路径已复制。")
+    : t("剪贴板不可用，未能复制流量路径。");
 }
 </script>
 
 <template>
   <div class="mn-path-page grid gap-4 md:gap-5">
     <PageHeader
-      overline="流量路径"
-      title="流量路径"
+      :overline="t('流量路径')"
+      :title="t('流量路径')"
     >
       <template #actions>
         <Button variant="outline" @click="copyOverview">
-          <Copy :size="17" aria-hidden="true" />{{ copied ? "已复制说明" : "复制说明" }}
+          <Copy :size="17" aria-hidden="true" />{{ copied ? t("已复制说明") : t("复制说明") }}
         </Button>
         <Badge :tone="dataplaneTone" class="gap-2">
           <StatusDot :tone="statusDotTone" />
@@ -83,26 +84,26 @@ async function copyOverview(): Promise<void> {
     </PageHeader>
 
     <div class="grid gap-3 sm:grid-cols-3">
-      <StatTile label="数据面" :value="DATAPLANE_LABEL" hint="显式选择，不使用 auto" mono />
-      <StatTile label="核心" value="sing-box" hint="不占用系统 VPN slot" />
+      <StatTile :label="t('数据面')" :value="DATAPLANE_LABEL" :hint="t('显式选择，不使用 auto')" mono />
+      <StatTile :label="t('核心')" value="sing-box" :hint="t('不占用系统 VPN slot')" />
       <StatTile
-        label="验收"
+        :label="t('验收')"
         value="health + dataplane"
-        hint="以 cli transparent status 与 cli health 为准"
+        :hint="t('以 cli transparent status 与 cli health 为准')"
       />
     </div>
 
     <Card class="mn-path-board !p-0">
       <div class="mn-path-board__head">
         <CardHeading
-          overline="当前路径"
-          title="当前流量经过这些环节"
-          description="TUN 使用 magicnet0；eBPF 使用 cgroup 和 shared TC。"
+          :overline="t('当前路径')"
+          :title="t('当前流量经过这些环节')"
+          :description="t('TUN 使用 magicnet0；eBPF 使用 cgroup 和 shared TC。')"
         >
           <Radio :size="18" aria-hidden="true" />
         </CardHeading>
       </div>
-      <ol class="mn-path-flow" :data-state="pathState" aria-label="MagicNet 透明代理数据面路径">
+      <ol class="mn-path-flow" :data-state="pathState" :aria-label="t('MagicNet 透明代理数据面路径')">
         <li
           v-for="(node, index) in pathNodes"
           :key="node.code"
@@ -125,9 +126,9 @@ async function copyOverview(): Promise<void> {
 
     <Card class="grid gap-4 !p-4 md:!p-6">
       <CardHeading
-        overline="模式"
-        title="可用的透明模式"
-        description="MagicNet 支持 TUN 和 eBPF；切换失败会恢复原来的配置。"
+        :overline="t('模式')"
+        :title="t('可用的透明模式')"
+        :description="t('MagicNet 支持 TUN 和 eBPF；切换失败会恢复原来的配置。')"
       />
       <div class="mn-path-facts">
         <article
@@ -144,9 +145,9 @@ async function copyOverview(): Promise<void> {
     <div class="grid gap-4 lg:grid-cols-2">
       <Card class="grid gap-4 !p-4 md:!p-6">
         <CardHeading
-          overline="启动"
-          title="确认运行正常"
-          description="检查服务、透明代理和 DNS。"
+          :overline="t('启动')"
+          :title="t('确认运行正常')"
+          :description="t('检查服务、透明代理和 DNS。')"
         />
         <ol class="mn-path-steps">
           <li
@@ -163,19 +164,17 @@ async function copyOverview(): Promise<void> {
         </ol>
         <div class="flex flex-wrap gap-2">
           <Button variant="secondary" @click="emit('goto-tab', 'subs')">
-            <Activity :size="17" aria-hidden="true" />去订阅
-          </Button>
+            <Activity :size="17" aria-hidden="true" />{{ t("去订阅") }} </Button>
           <Button variant="secondary" @click="emit('goto-tab', 'health')">
-            <Stethoscope :size="17" aria-hidden="true" />去健康检查
-          </Button>
+            <Stethoscope :size="17" aria-hidden="true" />{{ t("去健康检查") }} </Button>
         </div>
       </Card>
 
       <Card class="grid gap-4 !p-4 md:!p-6">
         <CardHeading
-          overline="验收"
-          title="验收结果"
-          description="以透明模式状态和健康检查结果为准。"
+          :overline="t('验收')"
+          :title="t('验收结果')"
+          :description="t('以透明模式状态和健康检查结果为准。')"
         />
         <ul class="mn-path-checks">
           <li
@@ -186,14 +185,12 @@ async function copyOverview(): Promise<void> {
             <div class="mn-path-check__title">
               <CheckCircle2 :size="16" aria-hidden="true" />
               <code>{{ check.command }}</code>
-              <InsightChip tone="ok" label="required" />
+              <InsightChip tone="ok" :label="t('必需')" />
             </div>
             <p>{{ check.expect }}</p>
           </li>
         </ul>
-        <Button variant="outline" @click="emit('goto-tab', 'control')">
-          返回运行总览
-        </Button>
+        <Button variant="outline" @click="emit('goto-tab', 'control')"> {{ t("返回运行总览") }} </Button>
       </Card>
     </div>
   </div>

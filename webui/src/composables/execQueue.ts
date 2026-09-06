@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { ExecTimeoutError } from "../utils.ts";
 
 export type QueueDepthListener = (depth: number) => void;
@@ -43,7 +44,7 @@ export class SerialExecQueue {
         expire: () => {
           window.clearTimeout(timer);
           if (this.waiting.delete(job)) this.onDepthChange(this.depth);
-          reject(new ExecTimeoutError(`${label} 超过 ${Math.round(timeoutMs / 1000)} 秒仍未返回，请到“输出”页查看日志或稍后重试。`));
+          reject(new ExecTimeoutError(t("{p0} 超过 {p1} 秒仍未返回，请到“输出”页查看日志或稍后重试。", { p0: t(label), p1: Math.round(timeoutMs / 1000) })));
         },
       };
       const timer = window.setTimeout(job.expire, timeoutMs);

@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
 export type ThemePreference = "light" | "dark" | "system";
@@ -43,9 +44,9 @@ export function useTheme() {
   });
 
   const label = computed(() => {
-    if (preference.value === "light") return "亮色";
-    if (preference.value === "dark") return "暗色";
-    return "跟随系统";
+    if (preference.value === "light") return t("亮色");
+    if (preference.value === "dark") return t("暗色");
+    return t("跟随系统");
   });
 
   function setPreference(next: ThemePreference): void {

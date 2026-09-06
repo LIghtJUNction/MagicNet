@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { SingBoxUiTarget } from "@/types";
 import {
   copyText,
@@ -28,7 +29,7 @@ export function useExternalLinks(
 ) {
   async function openExternal(
     url: string,
-    label = "链接",
+    label = t("链接"),
     options: { preferBrowser?: boolean } = {}
   ): Promise<void> {
     // Only ever hand http(s) to the browser/intent — guards every current and
@@ -42,16 +43,16 @@ export function useExternalLinks(
     const sensitive = isSensitiveExternalUrl(url);
     if (!safeProtocol) {
       state.output = sensitive
-        ? "已拒绝打开非 http(s) 链接；敏感链接未显示。"
-        : `已拒绝打开非 http(s) 链接：\n${url}`;
+        ? t("已拒绝打开非 http(s) 链接；敏感链接未显示。")
+        : t("已拒绝打开非 http(s) 链接：\n{p0}", { p0: url });
       state.phase = "error";
       return;
     }
     if (sensitive) {
-      state.output = `正在打开 ${label}；敏感链接不会被复制或显示。`;
+      state.output = t("正在打开 {p0}；敏感链接不会被复制或显示。", { p0: t(label) });
     } else {
       await copyText(url);
-      state.output = `已复制 ${label}，正在打开系统浏览器：\n${url}`;
+      state.output = t("已复制 {p0}，正在打开系统浏览器：\n{p1}", { p0: t(label), p1: url });
     }
     if (!state.hasKsu) {
       window.open(url, "_blank", "noopener,noreferrer");
@@ -62,31 +63,31 @@ export function useExternalLinks(
     const browserFlag = options.preferBrowser === false ? "" : "-p com.android.chrome ";
     const command = `am start -a android.intent.action.VIEW -c android.intent.category.BROWSABLE ${browserFlag}-d ${escaped} >/dev/null 2>&1 || am start -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d ${escaped}`;
     if (!sensitive) {
-      await runShell(command, `打开 ${label}`);
+      await runShell(command, t("打开 {p0}", { p0: t(label) }));
       return;
     }
     const result = await runShell(
       command,
-      `打开 ${label}`,
+      t("打开 {p0}", { p0: t(label) }),
       true,
       redactedCliPreview("open external [filtered-url]"),
     );
     if (execFailed(result)) {
       state.phase = "error";
-      state.notice = `打开失败：${label}`;
-      state.output = `打开 ${label} 失败；敏感链接未显示。`;
+      state.notice = t("打开失败：{p0}", { p0: t(label) });
+      state.output = t("打开 {p0} 失败；敏感链接未显示。", { p0: t(label) });
       return;
     }
     state.phase = "done";
-    state.notice = `已打开：${label}`;
-    state.output = `已打开 ${label}；敏感链接未复制或显示。`;
+    state.notice = t("已打开：{p0}", { p0: t(label) });
+    state.output = t("已打开 {p0}；敏感链接未复制或显示。", { p0: t(label) });
   }
 
   async function openSingBoxUi(target: SingBoxUiTarget): Promise<void> {
-    state.notice = `正在打开 ${target}`;
+    state.notice = t("正在打开 {p0}", { p0: target });
     const ok = await runCli("api groups", "检查 sing-box WebUI", true);
     if (!ok || probeFailed(ok)) {
-      state.output = `sing-box API 未就绪，暂不跳转。\n\n${ok}`;
+      state.output = t("sing-box API 未就绪，暂不跳转。\n\n{p0}", { p0: ok });
       state.phase = "error";
       return;
     }

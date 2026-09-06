@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import {
   buildPrivateSubscriptionApplyCommand,
   redactedCliPreview,
@@ -118,7 +119,7 @@ export function buildSubscriptionPreview(text: string, limit = 5): SubscriptionP
 
 export function buildSubscriptionSavePlan(text: string, limit = 5): SubscriptionSavePlan {
   const raw = subscriptionLines(text);
-  if (!raw.length) return plan("idle", "请至少填写一个 sing-box 订阅 URL。", [], raw, limit);
+  if (!raw.length) return plan("idle", t("请至少填写一个 sing-box 订阅 URL。"), [], raw, limit);
   const parsed = raw.map(parseSubscriptionLine);
   const validUrls = parsed.filter((item): item is URL => item instanceof URL);
   const uniqueUrls = uniqueNonEmpty(validUrls.map((url) => url.toString()));
@@ -129,7 +130,7 @@ export function buildSubscriptionSavePlan(text: string, limit = 5): Subscription
   const http = raw.filter((line) => /^http:\/\/\S+$/i.test(line)).length;
   if (invalid) {
     return {
-      ...plan("error", `${invalid} 行不是 HTTPS 订阅 URL，或包含凭据；修正后才能保存。`, lines, raw, limit),
+      ...plan("error", t("{value} 行不是 HTTPS 订阅 URL，或包含凭据；修正后才能保存。", { value: invalid }), lines, raw, limit),
       valid: validUrls.length,
       invalid,
       duplicate,
@@ -137,15 +138,15 @@ export function buildSubscriptionSavePlan(text: string, limit = 5): Subscription
       http,
     };
   }
-  if (!lines.length) return plan("error", "没有可保存的订阅 URL。", lines, raw, limit);
+  if (!lines.length) return plan("error", t("没有可保存的订阅 URL。"), lines, raw, limit);
   if (overLimit || duplicate) {
     const notes = [
-      duplicate ? `去重 ${duplicate} 个` : "",
-      overLimit ? `只保存前 ${limit} 个唯一 URL` : "",
+      duplicate ? t("去重 {value} 个", { value: duplicate }) : "",
+      overLimit ? t("只保存前 {value} 个唯一 URL", { value: limit }) : "",
     ].filter(Boolean).join("，");
     return { ...plan("warning", notes, lines, raw, limit), duplicate, overLimit, http };
   }
-  return plan("ok", `将保存 ${lines.length} 个订阅 URL。`, lines, raw, limit);
+  return plan("ok", t("将保存 {value} 个订阅 URL。", { value: lines.length }), lines, raw, limit);
 }
 
 export function formatSubscriptionSummary(text: string, previews: SubscriptionPreview[]): string {
@@ -182,14 +183,14 @@ function previewSubscriptionLine(line: string, index: number, seen: Set<string>,
     seen.add(normalized);
     const protocolOk = url.protocol === "https:";
     const notes = [
-      url.search || url.hash ? "含参数，界面已隐藏" : "无 query/hash",
-      url.pathname.length > 1 ? "含路径，界面已隐藏" : "无路径",
-      url.protocol === "http:" ? "设备侧仅支持 HTTPS" : ""
+      url.search || url.hash ? t("含参数，界面已隐藏") : t("无 query/hash"),
+      url.pathname.length > 1 ? t("含路径，界面已隐藏") : t("无路径"),
+      url.protocol === "http:" ? t("设备侧仅支持 HTTPS") : ""
     ].filter(Boolean);
     return {
       key: `${index}-${url.hostname}`,
       index: index + 1,
-      label: protocolOk ? `${url.protocol}//${url.hostname}` : "协议不支持",
+      label: protocolOk ? `${url.protocol}//${url.hostname}` : t("协议不支持"),
       status: !protocolOk ? "invalid" : uniqueCount > limit ? "over-limit" : duplicate ? "duplicate" : "ok",
       notes
     };
@@ -197,9 +198,9 @@ function previewSubscriptionLine(line: string, index: number, seen: Set<string>,
     return {
       key: `${index}-invalid`,
       index: index + 1,
-      label: "无法解析 URL",
+      label: t("无法解析 URL"),
       status: "invalid",
-      notes: ["必须是一行一个 HTTPS URL，且不能包含凭据"]
+      notes: [t("必须是一行一个 HTTPS URL，且不能包含凭据")]
     };
   }
 }

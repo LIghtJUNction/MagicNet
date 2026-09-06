@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { FileText, Globe2 } from "lucide-vue-next";
 import type { SubscriptionUsageRow } from "@/composables/subscriptionUsage";
 
@@ -9,12 +10,12 @@ defineProps<{
 </script>
 
 <template>
-  <section class="subscription-usage" aria-label="订阅用量">
+  <section class="subscription-usage" :aria-label="t('订阅用量')">
     <div v-if="local" class="local-source">
       <FileText :size="22" aria-hidden="true" />
       <div>
-        <h3>本地订阅文件</h3>
-        <p>已从文件导入。流量额度与到期时间需向服务商查询。</p>
+        <h3>{{ t("本地订阅文件") }}</h3>
+        <p>{{ t("已从文件导入。流量额度与到期时间需向服务商查询。") }}</p>
       </div>
     </div>
     <article v-for="row in rows" v-else :key="row.id" class="usage-source" :data-tone="row.tone">
@@ -31,12 +32,12 @@ defineProps<{
 
       <div class="quota-heading">
         <div class="remaining-quota">
-          <span class="usage-label">剩余流量</span>
+          <span class="usage-label">{{ t("剩余流量") }}</span>
           <strong>{{ row.remainingLabel }}</strong>
         </div>
         <div class="used-quota">
-          <span>已用 <strong>{{ row.usedLabel }}</strong></span>
-          <span>总额度 <strong>{{ row.totalLabel }}</strong></span>
+          <span>{{ t("已用") }} <strong>{{ row.usedLabel }}</strong></span>
+          <span>{{ t("总额度") }} <strong>{{ row.totalLabel }}</strong></span>
         </div>
       </div>
       <progress
@@ -44,20 +45,20 @@ defineProps<{
         class="quota-progress"
         max="100"
         :value="row.progressPercent"
-        :aria-label="`${row.hostname || row.name} 已用流量比例`"
+        :aria-label="t('{value} 已用流量比例', { value: row.hostname || row.name })"
       />
-      <p v-else class="quota-unavailable">服务商未提供完整的流量额度信息</p>
+      <p v-else class="quota-unavailable">{{ t("服务商未提供完整的流量额度信息") }}</p>
 
       <footer class="usage-dates">
         <div>
-          <span class="usage-label">到期时间</span>
+          <span class="usage-label">{{ t("到期时间") }}</span>
           <span class="expiry-value">{{ row.expiryLabel }}</span>
           <span v-if="row.daysRemaining !== null && row.expiryHint" class="expiry-hint">{{ row.expiryHint }}</span>
         </div>
         <div class="last-sync">
-          <span class="usage-label">最近同步</span>
+          <span class="usage-label">{{ t("最近同步") }}</span>
           <span>{{ row.updatedLabel }}</span>
-          <span v-if="row.state === 'cached'" class="cached-note">上次成功获取的数据</span>
+          <span v-if="row.state === 'cached'" class="cached-note">{{ t("上次成功获取的数据") }}</span>
         </div>
       </footer>
     </article>

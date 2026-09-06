@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-vue-next";
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
+import { t } from "@/i18n";
+import LanguageSelect from "@/components/LanguageSelect.vue";
 import { MAGICNET_LOGO_URL } from "@/branding";
 import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
 import OnboardingDialog from "@/components/OnboardingDialog.vue";
@@ -209,11 +211,11 @@ const activeSectionTabs = computed(() =>
 );
 const activeComponent = computed(() => asyncPages[activeTab.value]);
 
-const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice));
+const statusMessage = computed(() => (state.task ? t("正在执行：{task}", { task: t(state.task) }) : t(state.notice)));
 const runtimeStateLabel = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "sing-box 运行中";
-  if (state.runtime.singBoxState === "stopped") return "已停止";
-  return "状态未知";
+  if (state.runtime.singBoxState === "sing-box") return t("sing-box 运行中");
+  if (state.runtime.singBoxState === "stopped") return t("已停止");
+  return t("状态未知");
 });
 const routeStackState = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "active";
@@ -448,7 +450,7 @@ onUnmounted(() => {
         <button
           class="mn-brand-mark brand-mark"
           type="button"
-          aria-label="MagicNet 品牌标记"
+          :aria-label="t('MagicNet 品牌标记')"
           title="MagicNet"
           @click="handleBrandMarkClick"
         >
@@ -466,11 +468,12 @@ onUnmounted(() => {
       </div>
 
       <div class="mn-global-actions">
+        <LanguageSelect class="mn-language-header" />
         <Button
           variant="ghost"
           size="icon"
-          :aria-label="`外观主题：${themeLabel}，点击切换`"
-          :title="`外观：${themeLabel}（亮色 → 暗色 → 跟随系统）`"
+          :aria-label="t('外观主题：{theme}，点击切换', { theme: themeLabel })"
+          :title="t('外观：{theme}（亮色 → 暗色 → 跟随系统）', { theme: themeLabel })"
           @click="cycleTheme"
         >
           <Sun v-if="themePreference === 'light'" :size="17" aria-hidden="true" />
@@ -481,8 +484,8 @@ onUnmounted(() => {
           variant="ghost"
           size="icon"
           :loading="state.task === '刷新面板'"
-          aria-label="刷新面板"
-          title="刷新面板"
+          :aria-label="t('刷新面板')"
+          :title="t('刷新面板')"
           @click="refreshAll"
         >
           <RefreshCw :size="17" aria-hidden="true" />
@@ -491,26 +494,26 @@ onUnmounted(() => {
           class="mn-desktop-action"
           variant="outline"
           size="sm"
-          aria-label="打开新手引导"
+          :aria-label="t('打开新手引导')"
           @click="requestOnboarding"
         >
-          <ScrollText :size="16" aria-hidden="true" />引导
+          <ScrollText :size="16" aria-hidden="true" />{{ t('引导') }}
         </Button>
         <Button
           class="mn-desktop-action"
           variant="outline"
           size="sm"
           :loading="state.task === '创建 GitHub issue'"
-          aria-label="创建 GitHub Issue"
+          :aria-label="t('创建 GitHub Issue')"
           @click="createIssue"
         >
-          <Bug :size="16" aria-hidden="true" />反馈
+          <Bug :size="16" aria-hidden="true" />{{ t('反馈') }}
         </Button>
         <Button
           class="mn-desktop-action"
           variant="outline"
           size="sm"
-          aria-label="打开 GitHub"
+          :aria-label="t('打开 GitHub')"
           @click="openExternal(REPO, 'GitHub')"
         >
           <Github :size="16" aria-hidden="true" />GitHub
@@ -519,7 +522,7 @@ onUnmounted(() => {
           class="mn-more-action"
           variant="ghost"
           size="icon"
-          aria-label="打开系统工具"
+          :aria-label="t('打开系统工具')"
           aria-haspopup="dialog"
           :aria-expanded="showUtilityMenu"
           @click="openUtilityMenu"
@@ -536,13 +539,13 @@ onUnmounted(() => {
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      aria-label="MagicNet 运行状态"
+      :aria-label="t('MagicNet 运行状态')"
     >
       <div class="mn-runtime-state">
         <StatusDot :tone="statusDotTone" />
         <strong>{{ runtimeStateLabel }}</strong>
       </div>
-      <span class="mn-runtime-mode" :title="`数据面：${transparentRouteData}`">{{ state.runtime.transparentMode === 'unknown' ? '模式未知' : state.runtime.transparentMode === 'ebpf' ? 'eBPF' : 'TUN' }}</span>
+      <span class="mn-runtime-mode" :title="t('数据面：{mode}', { mode: transparentRouteData })">{{ state.runtime.transparentMode === 'unknown' ? t('模式未知') : state.runtime.transparentMode === 'ebpf' ? 'eBPF' : 'TUN' }}</span>
       <p v-if="statusMessage">{{ statusMessage }}</p>
       <Button
         v-if="state.backgroundTask.log"
@@ -550,17 +553,17 @@ onUnmounted(() => {
         size="sm"
         @click="setTab('output')"
       >
-        查看输出
+        {{ t('查看输出') }}
       </Button>
     </section>
 
     <div class="mn-workspace-frame">
-      <aside class="desktop-rail" aria-label="MagicNet 工作区">
-        <nav aria-label="全部页面">
+      <aside class="desktop-rail" :aria-label="t('MagicNet 工作区')">
+        <nav :aria-label="t('全部页面')">
           <div v-for="workspace in workspaces" :key="workspace.key" class="mn-nav-group">
             <div class="mn-rail-label">
               <component :is="workspace.icon" :size="15" aria-hidden="true" />
-              <span>{{ workspace.label }}</span>
+              <span>{{ t(workspace.label) }}</span>
             </div>
             <button
               v-for="item in tabs.filter((tab) => tab.workspace === workspace.key)"
@@ -573,7 +576,7 @@ onUnmounted(() => {
               @focus="prefetchTab(item.key)"
               @click="setTab(item.key)"
             >
-              <span>{{ item.label }}</span>
+              <span>{{ t(item.label) }}</span>
             </button>
           </div>
         </nav>
@@ -581,7 +584,7 @@ onUnmounted(() => {
 
       <main class="mn-workspace-main">
         <header class="mn-workspace-header">
-          <nav class="mn-section-tabs" :aria-label="`${activeWorkspace.label}分区`">
+          <nav class="mn-section-tabs" :aria-label="t('{workspace}分区', { workspace: t(activeWorkspace.label) })">
             <button
               v-for="item in activeSectionTabs"
               :key="item.key"
@@ -593,7 +596,7 @@ onUnmounted(() => {
               @focus="prefetchTab(item.key)"
               @click="setTab(item.key)"
             >
-              <span>{{ item.label }}</span>
+              <span>{{ t(item.label) }}</span>
             </button>
           </nav>
         </header>
@@ -609,14 +612,14 @@ onUnmounted(() => {
               />
             </KeepAlive>
             <template #fallback>
-              <div class="mn-loading-panel" role="status">正在加载…</div>
+              <div class="mn-loading-panel" role="status">{{ t('正在加载…') }}</div>
             </template>
           </Suspense>
         </section>
       </main>
     </div>
 
-    <nav v-show="!keyboardOpen" class="mobile-nav" aria-label="MagicNet 移动导航">
+    <nav v-show="!keyboardOpen" class="mobile-nav" :aria-label="t('MagicNet 移动导航')">
       <button
         v-for="workspace in workspaces"
         :key="workspace.key"
@@ -627,38 +630,42 @@ onUnmounted(() => {
         @click="setWorkspace(workspace.key)"
       >
         <component :is="workspace.icon" :size="19" aria-hidden="true" />
-        <span>{{ workspace.mobileLabel ?? workspace.label }}</span>
+        <span>{{ t(workspace.mobileLabel ?? workspace.label) }}</span>
       </button>
     </nav>
 
     <Transition name="sheet">
       <div v-if="showUtilityMenu" class="mn-sheet-layer">
-        <button class="mn-overlay" type="button" aria-label="关闭系统工具" @click="closeUtilityMenu()" />
+        <button class="mn-overlay" type="button" :aria-label="t('关闭系统工具')" @click="closeUtilityMenu()" />
         <div
           ref="utilityDialog"
           class="mn-utility-sheet"
           role="dialog"
           aria-modal="true"
-          aria-label="系统工具"
+          :aria-label="t('系统工具')"
           tabindex="-1"
         >
           <div class="mn-sheet-header">
             <div>
-              <h2>系统工具</h2>
+              <h2>{{ t('系统工具') }}</h2>
             </div>
-            <Button data-dialog-initial-focus variant="ghost" size="icon" aria-label="关闭系统工具" @click="closeUtilityMenu()">
+            <Button data-dialog-initial-focus variant="ghost" size="icon" :aria-label="t('关闭系统工具')" @click="closeUtilityMenu()">
               <X :size="18" aria-hidden="true" />
             </Button>
           </div>
+          <div class="mn-language-setting">
+            <span>{{ t('语言') }}</span>
+            <LanguageSelect />
+          </div>
           <div class="mn-utility-grid">
             <Button variant="outline" @click="requestOnboarding">
-              <ScrollText :size="18" aria-hidden="true" />新手引导
+              <ScrollText :size="18" aria-hidden="true" />{{ t('新手引导') }}
             </Button>
             <Button variant="outline" :loading="state.task === '创建 GitHub issue'" @click="requestIssue">
-              <Bug :size="18" aria-hidden="true" />反馈问题
+              <Bug :size="18" aria-hidden="true" />{{ t('反馈问题') }}
             </Button>
             <Button variant="outline" @click="openExternal(AUTHOR_WHISPER_URL, '悄悄话')">
-              <MessageCircle :size="18" aria-hidden="true" />悄悄话
+              <MessageCircle :size="18" aria-hidden="true" />{{ t('悄悄话') }}
             </Button>
             <Button variant="outline" @click="openExternal(REPO, 'GitHub')">
               <Github :size="18" aria-hidden="true" />GitHub
@@ -688,17 +695,17 @@ onUnmounted(() => {
           <img :src="MAGICNET_LOGO_URL" alt="" width="38" height="38" decoding="async" />
         </div>
         <div class="mn-easter-copy">
-          <strong>{{ easterEggPayload.title }}</strong>
-          <p>{{ easterEggPayload.body }}</p>
+          <strong>{{ t(easterEggPayload.title) }}</strong>
+          <p>{{ t(easterEggPayload.body) }}</p>
           <p class="mn-visitor-line">
-            <span>来访</span>
+            <span>{{ t('来访') }}</span>
             <template v-for="(visitor, index) in easterEggVisitors" :key="visitor.name">
               <span aria-hidden="true">/</span>
               <span :class="index === easterEggShownIndex ? 'is-current' : undefined">{{ visitor.name }}</span>
             </template>
           </p>
         </div>
-        <button type="button" aria-label="关闭彩蛋" @click="closeEasterEgg">
+        <button type="button" :aria-label="t('关闭彩蛋')" @click="closeEasterEgg">
           <X :size="16" aria-hidden="true" />
         </button>
       </aside>

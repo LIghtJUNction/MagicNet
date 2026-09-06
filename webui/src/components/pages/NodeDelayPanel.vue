@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { computed, ref } from "vue";
 import { Copy, Gauge, RefreshCw, Zap } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
@@ -31,7 +32,7 @@ const switchPlan = computed(() => buildNodeSwitchPlan(currentNode.value, entries
 
 async function refreshCurrentNode(): Promise<void> {
   await withAction("node-current", async () => {
-    const text = await runCli("node current", "读取当前节点", true);
+    const text = await runCli("node current", t("读取当前节点"), true);
     if (execFailed(text)) {
       state.output = text;
       return;
@@ -44,7 +45,7 @@ async function testNodes(): Promise<void> {
   await withAction("node-delay-test-all", async () => {
     copied.value = false;
     pendingAction.value = null;
-    rawOutput.value = await runCli("node test-all", "节点延迟批测");
+    rawOutput.value = await runCli("node test-all", t("节点延迟批测"));
   });
 }
 
@@ -52,10 +53,10 @@ async function testAndPrepareFastest(): Promise<void> {
   await withAction("node-test-use-fastest", async () => {
     copied.value = false;
     pendingAction.value = null;
-    const text = await runCli("node test-all", "测速并选择最快节点");
+    const text = await runCli("node test-all", t("测速并选择最快节点"));
     if (execFailed(text)) return;
     rawOutput.value = text;
-    const currentText = await runCli("node current", "读取当前节点", true);
+    const currentText = await runCli("node current", t("读取当前节点"), true);
     if (execFailed(currentText)) {
       state.output = currentText;
       return;
@@ -66,7 +67,7 @@ async function testAndPrepareFastest(): Promise<void> {
     const plan = buildNodeSwitchPlan(latestCurrent, parsedEntries);
     const fastest = buildNodeDelayStats(parsedEntries).fastest;
     if (!fastest || !plan.recommended) {
-      state.output = `测速完成：${plan.detail}`;
+      state.output = t("测速完成：{detail}", { detail: plan.detail });
       return;
     }
     pendingAction.value = {
@@ -79,7 +80,7 @@ async function testAndPrepareFastest(): Promise<void> {
 async function copyReport(): Promise<void> {
   const report = `${formatNodeDelayReport(entries.value)}\n\n${formatNodeSwitchPlanReport(switchPlan.value)}`;
   copied.value = await copyText(report);
-  state.output = copied.value ? "节点测速摘要已复制。" : "剪贴板不可用，节点测速摘要未复制。";
+  state.output = copied.value ? t("节点测速摘要已复制。") : t("剪贴板不可用，节点测速摘要未复制。");
 }
 
 function requestUseFastest(): void {
@@ -93,12 +94,12 @@ function requestUseFastest(): void {
 
 async function useNode(node: string): Promise<void> {
   await withAction("node-use-fastest", async () => {
-    const text = await runCli(`node use ${shellQuote(node)}`, "切换到最快节点");
+    const text = await runCli(`node use ${shellQuote(node)}`, t("切换到最快节点"));
     if (execFailed(text)) return;
     state.output = text;
-    const currentText = await runCli("node current", "读取当前节点", true);
+    const currentText = await runCli("node current", t("读取当前节点"), true);
     if (execFailed(currentText)) {
-      state.output = `节点已切换，但当前节点读取未确认：\n${currentText}`;
+      state.output = t("节点已切换，但当前节点读取未确认：\n{currentText}", { currentText: currentText });
       return;
     }
     currentNode.value = parseCurrentNode(currentText);
@@ -120,7 +121,7 @@ async function confirmAction(): Promise<void> {
 }
 
 function delayLabel(value: number | null): string {
-  return value === null ? "无" : `${value}ms`;
+  return value === null ? t("无") : `${value}ms`;
 }
 
 const { target: visibilityTarget } = useVisibilityTask(refreshCurrentNode);
@@ -131,62 +132,57 @@ const { target: visibilityTarget } = useVisibilityTask(refreshCurrentNode);
     <Card class="grid gap-3">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
-        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Gauge :size="17" /> 节点延迟批测</h3>
-        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">
-          真实调用 <code>node test-all</code>，默认测试当前解析到的前 16 个节点。
-        </p>
-        <p class="mt-1 truncate text-xs text-[var(--mn-ink-muted)]">当前：{{ currentNode ? sanitizeNodeText(currentNode) : "未读取" }}</p>
+        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Gauge :size="17" /> {{ t("节点延迟批测") }}</h3>
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("调用 node test-all，默认测试当前解析到的前 16 个节点。") }} </p>
+        <p class="mt-1 truncate text-xs text-[var(--mn-ink-muted)]">{{ t("当前：") }}{{ currentNode ? sanitizeNodeText(currentNode) : t("未读取") }}</p>
       </div>
       <div class="flex gap-2">
         <Button size="sm" :loading="isRunning('node-delay-test-all')" @click="testNodes">
-          <RefreshCw :size="15" />开始测速
-        </Button>
+          <RefreshCw :size="15" />{{ t("开始测速") }} </Button>
         <Button size="sm" variant="secondary" :loading="isRunning('node-test-use-fastest')" @click="testAndPrepareFastest">
-          <Zap :size="15" />测速选最快
-        </Button>
+          <Zap :size="15" />{{ t("测速选最快") }} </Button>
         <Button size="sm" variant="secondary" :disabled="!entries.length" @click="copyReport">
-          <Copy :size="15" />{{ copied ? "已复制" : "复制" }}
+          <Copy :size="15" />{{ copied ? t("已复制") : t("复制") }}
         </Button>
       </div>
     </div>
 
     <ConfirmPanel
       v-if="pendingAction"
-      title="切换到最快节点"
-      :detail="`将把 proxy selector 切换到 ${sanitizeNodeText(pendingAction.node.node)}，当前连接可能重新选择出站。`"
+      :title="t('切换到最快节点')"
+      :detail="t('将把 proxy selector 切换到 {node}，当前连接可能重新选择出站。', { node: sanitizeNodeText(pendingAction.node.node) })"
       command="node use <fastest-node>"
       :loading="isRunning('node-use-fastest')"
-      confirm-label="确认切换"
+      :confirm-label="t('确认切换')"
       confirm-variant="secondary"
       @cancel="cancelAction"
       @confirm="confirmAction"
     />
 
     <div v-if="entries.length" class="rounded-md border border-[color-mix(in_srgb,var(--mn-heather)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-heather)_40%,var(--mn-carrier))] p-3">
-      <p class="text-sm font-semibold text-[var(--mn-info)]">测速结果</p>
+      <p class="text-sm font-semibold text-[var(--mn-info)]">{{ t("测速结果") }}</p>
       <p class="mt-1 text-sm leading-6 text-[var(--mn-info)]">{{ healthText }}</p>
     </div>
 
     <div v-if="entries.length" class="rounded-md border p-3 text-sm leading-6" :class="nodeSwitchPlanTone(switchPlan.status)">
       <p class="font-semibold">{{ switchPlan.title }}</p>
       <p class="mt-1 text-xs opacity-80">{{ switchPlan.detail }}</p>
-      <p class="mt-2 truncate text-xs opacity-80">
-        当前 {{ switchPlan.currentNode ? sanitizeNodeText(switchPlan.currentNode) : '未读取' }} · 目标 {{ switchPlan.targetNode ? sanitizeNodeText(switchPlan.targetNode) : '无' }}
+      <p class="mt-2 truncate text-xs opacity-80"> {{ t("当前 {current} · 目标 {target}", { current: switchPlan.currentNode ? sanitizeNodeText(switchPlan.currentNode) : t("未读取"), target: switchPlan.targetNode ? sanitizeNodeText(switchPlan.targetNode) : t("无") }) }}
       </p>
     </div>
 
     <div class="grid gap-2 sm:grid-cols-5">
-      <StatTile label="已测" :value="stats.tested" />
-      <StatTile label="有响应" :value="stats.usable" />
-      <StatTile label="失败" :value="stats.failed" />
-      <StatTile label="平均" :value="delayLabel(stats.averageMillis)" />
-      <StatTile label="中位/响应率" :value="`${delayLabel(stats.medianMillis)} · ${stats.usablePercent}%`" />
+      <StatTile :label="t('已测')" :value="stats.tested" />
+      <StatTile :label="t('有响应')" :value="stats.usable" />
+      <StatTile :label="t('失败')" :value="stats.failed" />
+      <StatTile :label="t('平均')" :value="delayLabel(stats.averageMillis)" />
+      <StatTile :label="t('中位/响应率')" :value="`${delayLabel(stats.medianMillis)} · ${stats.usablePercent}%`" />
     </div>
 
     <div v-if="stats.fastest || stats.slowest" class="grid gap-2 sm:grid-cols-2">
       <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">最快</p>
-        <p class="mt-1 truncate text-sm text-[var(--mn-ink)]">{{ stats.fastest ? sanitizeNodeText(stats.fastest.node) : "无" }}</p>
+        <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("最快") }}</p>
+        <p class="mt-1 truncate text-sm text-[var(--mn-ink)]">{{ stats.fastest ? sanitizeNodeText(stats.fastest.node) : t("无") }}</p>
         <p class="text-xs text-[var(--mn-success)]">{{ stats.fastest?.summary || "" }}</p>
         <Button
           v-if="stats.fastest"
@@ -196,12 +192,12 @@ const { target: visibilityTarget } = useVisibilityTask(refreshCurrentNode);
           :disabled="!switchPlan.recommended"
           @click="requestUseFastest"
         >
-          <Zap :size="15" />{{ switchPlan.recommended ? "使用最快" : "不必切换" }}
+          <Zap :size="15" />{{ switchPlan.recommended ? t("使用最快") : t("不必切换") }}
         </Button>
       </div>
       <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">最慢</p>
-        <p class="mt-1 truncate text-sm text-[var(--mn-ink)]">{{ stats.slowest ? sanitizeNodeText(stats.slowest.node) : "无" }}</p>
+        <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("最慢") }}</p>
+        <p class="mt-1 truncate text-sm text-[var(--mn-ink)]">{{ stats.slowest ? sanitizeNodeText(stats.slowest.node) : t("无") }}</p>
         <p class="text-xs text-[var(--mn-warning)]">{{ stats.slowest?.summary || "" }}</p>
       </div>
     </div>
