@@ -1,16 +1,21 @@
-import { withTimeout } from "../utils.ts";
+import { ExecTimeoutError } from "../utils.ts";
 
 export type QueueDepthListener = (depth: number) => void;
 
+type QueuedTask = {
+  deadline: number;
+  run: () => void;
+  expire: () => void;
+};
+
 /**
- * Serialize device commands by the lifetime of the underlying KernelSU
- * promise, while still surfacing a timeout to the caller promptly. A plain
- * Promise.race would release the queue when the timeout wins even though the
- * root command is still mutating device state.
+ * Bound each caller's total wait, including time spent in the queue. A timed-out
+ * command still occupies the execution slot until its underlying promise settles;
+ * expired waiting commands are removed so they can never mutate the device later.
  */
 export class SerialExecQueue {
-  private tail: Promise<void> = Promise.resolve();
-  private pending = 0;
+  private active = false;
+  private readonly waiting = new Set<QueuedTask>();
   private readonly onDepthChange: QueueDepthListener;
 
   public constructor(onDepthChange: QueueDepthListener = () => {}) {
@@ -18,44 +23,49 @@ export class SerialExecQueue {
   }
 
   public get depth(): number {
-    return this.pending;
+    return this.waiting.size + Number(this.active);
   }
 
   public enqueue<T>(task: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
-    this.pending += 1;
-    this.onDepthChange(this.pending);
-
-    let resolveVisible!: (value: T | PromiseLike<T>) => void;
-    let rejectVisible!: (reason?: unknown) => void;
-    const visible = new Promise<T>((resolve, reject) => {
-      resolveVisible = resolve;
-      rejectVisible = reject;
+    return new Promise<T>((resolve, reject) => {
+      const job: QueuedTask = {
+        deadline: Date.now() + timeoutMs,
+        run: () => {
+          // Resolve synchronous throws and asynchronous failures through the same
+          // path, releasing the slot only when the actual operation settles.
+          void Promise.resolve().then(task).then(resolve, reject).finally(() => {
+            window.clearTimeout(timer);
+            this.active = false;
+            this.onDepthChange(this.depth);
+            this.startNext();
+          });
+        },
+        expire: () => {
+          window.clearTimeout(timer);
+          if (this.waiting.delete(job)) this.onDepthChange(this.depth);
+          reject(new ExecTimeoutError(`${label} 超过 ${Math.round(timeoutMs / 1000)} 秒仍未返回，请到“输出”页查看日志或稍后重试。`));
+        },
+      };
+      const timer = window.setTimeout(job.expire, timeoutMs);
+      this.waiting.add(job);
+      this.onDepthChange(this.depth);
+      this.startNext();
     });
+  }
 
-    const run = this.tail.then(async () => {
-      let operation: Promise<T>;
-      try {
-        operation = Promise.resolve(task());
-      } catch (error) {
-        rejectVisible(error);
-        return;
+  private startNext(): void {
+    if (this.active) return;
+    for (const job of this.waiting) {
+      // Timers can be delayed while the event loop is busy. Check the deadline
+      // before starting a queued command even if its timer has not fired yet.
+      if (Date.now() >= job.deadline) {
+        job.expire();
+        continue;
       }
-
-      // Surface timeout/error as soon as it is known to the caller, but keep
-      // `tail` occupied until the real command has settled.
-      void withTimeout(operation, timeoutMs, label).then(resolveVisible, rejectVisible);
-      try {
-        await operation;
-      } catch {
-        // The visible promise receives the same rejection above.
-      }
-    });
-    this.tail = run
-      .catch(() => undefined)
-      .finally(() => {
-        this.pending = Math.max(0, this.pending - 1);
-        this.onDepthChange(this.pending);
-      });
-    return visible;
+      this.waiting.delete(job);
+      this.active = true;
+      job.run();
+      return;
+    }
   }
 }
