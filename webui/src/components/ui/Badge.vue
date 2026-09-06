@@ -17,7 +17,7 @@ const toneClass = computed(() => ({
   info: "mn-fill-info",
 }[props.tone]));
 
-const classes = computed(() => cn("inline-flex min-h-7 items-center rounded-[var(--mn-radius-sm)] border px-2.5 text-xs font-semibold", toneClass.value, props.class));
+const classes = computed(() => cn("inline-flex min-h-7 items-center rounded-[var(--mn-radius-sm)] border px-2 text-xs font-medium", toneClass.value, props.class));
 </script>
 
 <template>

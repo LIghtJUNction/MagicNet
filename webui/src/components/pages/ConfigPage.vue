@@ -237,16 +237,16 @@ async function openConfigIssue(): Promise<void> {
 
 <template>
   <div class="config-page grid gap-4">
-    <PageHeader overline="编辑器" title="配置文件" description="加载、检查并保存 sing-box JSON。语法错误可直接跳到对应行。">
+    <PageHeader overline="编辑器" title="配置文件">
       <div class="flex flex-wrap items-center gap-2">
         <input ref="configFileInput" class="hidden" type="file" accept=".json,application/json" @change="importLocalConfig">
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', loadConfigForEditing)"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
-        <Button variant="outline" @click="chooseLocalConfig"><FileUp :size="17" />导入 JSON</Button>
-        <Button variant="outline" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化</Button>
-        <Button :disabled="!configSyntaxValid" :loading="isRunning('save-config')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '校验并保存' }}</Button>
+        <Button :disabled="!state.hasKsu || !state.config.text.trim() || !configSyntaxValid" :loading="isRunning('save-config')" aria-label="校验并保存配置" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '保存' }}</Button>
         <details class="config-action-menu">
           <summary aria-label="更多配置操作"><MoreHorizontal :size="18" aria-hidden="true" />更多</summary>
           <div>
+            <Button variant="ghost" @click="chooseLocalConfig"><FileUp :size="17" />导入 JSON</Button>
+            <Button variant="ghost" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化</Button>
             <Button variant="ghost" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步模板' }}</Button>
             <Button variant="ghost" :disabled="!state.config.text" @click="copySanitizedConfig"><Copy :size="17" />{{ sanitizedCopied ? '已复制' : '复制脱敏配置' }}</Button>
             <Button variant="ghost" @click="openConfigIssue"><Github :size="17" />创建 Diff Issue</Button>
@@ -254,23 +254,6 @@ async function openConfigIssue(): Promise<void> {
         </details>
       </div>
     </PageHeader>
-
-    <Card class="config-repo-panel grid gap-3">
-      <div class="flex items-center justify-between gap-2">
-        <span class="font-medium text-[var(--mn-ink-soft)]">模板仓库</span>
-        <span v-if="repositoryStatus" class="text-xs text-[var(--mn-ink-muted)]">{{ repositoryStatus }}</span>
-      </div>
-      <div class="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto]">
-        <input v-model="repositoryUrl" @input="repositoryEdited = true" class="mn-field h-11 min-w-0 px-3 text-xs" aria-label="配置仓库 URL" placeholder="https://github.com/owner/repo.git" autocomplete="off" spellcheck="false">
-        <input v-model="repositoryRef" @input="repositoryEdited = true" class="mn-field h-11 min-w-0 px-3 text-xs" aria-label="配置仓库分支" placeholder="main" autocomplete="off" spellcheck="false">
-        <input v-model="repositoryPath" @input="repositoryEdited = true" class="mn-field h-11 min-w-0 px-3 text-xs" aria-label="配置文件路径" placeholder="config.json" autocomplete="off" spellcheck="false">
-        <div class="flex gap-2">
-          <Button variant="outline" :loading="isRunning('save-config-repository')" @click="saveRepository">保存</Button>
-          <Button variant="ghost" @click="resetRepository">默认</Button>
-        </div>
-      </div>
-      <input v-model="repositorySha256" @input="repositoryEdited = true" class="mn-field h-11 min-w-0 px-3 text-xs" aria-label="可选 SHA-256" placeholder="SHA-256（可选）" autocomplete="off" spellcheck="false">
-    </Card>
 
     <ToolActionConfirmCard
       v-if="pendingConfigAction"
@@ -282,18 +265,20 @@ async function openConfigIssue(): Promise<void> {
 
     <Card class="config-editor-workspace grid gap-3">
       <div class="config-file-bar flex min-w-0 flex-wrap items-center gap-2 text-sm text-[var(--mn-ink-muted)]">
-        <span class="h-9 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 text-sm text-[var(--mn-ink)]">sing-box</span>
-        <input class="mn-field h-11 min-w-0 flex-1 px-3 text-xs" readonly :value="state.config.path" aria-label="当前配置路径">
+        <span class="mr-auto font-medium text-[var(--mn-ink)]" :title="state.config.path">sing-box</span>
         <span class="shrink-0">{{ state.config.status }}</span>
         <span v-if="state.config.dirty" class="shrink-0 rounded bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] px-2 py-1 text-xs text-[var(--mn-warning)]">未保存</span>
       </div>
+      <details class="mn-disclosure" :open="state.config.validation.status === 'error' || configOutline.status === 'error'">
+        <summary>校验与结构<span>{{ configAnalysisPending ? '分析中' : state.config.validation.status === 'error' ? '检查失败' : state.config.validation.status === 'ok' ? '通过' : '未校验' }}</span></summary>
+        <input class="mn-field mb-3 w-full px-3" readonly :value="state.config.path" aria-label="当前配置路径">
       <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
         <div>
           <p class="text-xs text-[var(--mn-ink-muted)]">校验状态</p>
           <p
             class="mt-1 inline-flex rounded px-2 py-1 text-xs"
             :class="{
-              'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]': state.config.validation.status === 'ok',
+              'mn-tone-ok': state.config.validation.status === 'ok',
               'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': state.config.validation.status === 'error',
               'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': state.config.validation.status === 'idle',
             }"
@@ -321,7 +306,7 @@ async function openConfigIssue(): Promise<void> {
           <span
             class="rounded px-2 py-1 text-xs"
             :class="{
-              'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]': configOutline.status === 'ok',
+              'mn-tone-ok': configOutline.status === 'ok',
               'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': configOutline.status === 'error',
               'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': configOutline.status === 'idle',
             }"
@@ -346,7 +331,7 @@ async function openConfigIssue(): Promise<void> {
             <span
               class="rounded px-2 py-1 text-xs"
               :class="{
-                'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]': configAudit.status === 'ok',
+                'mn-tone-ok': configAudit.status === 'ok',
                 'bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] text-[var(--mn-warning)]': configAudit.status === 'warning',
                 'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': configAudit.status === 'error',
                 'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': configAudit.status === 'idle',
@@ -371,11 +356,29 @@ async function openConfigIssue(): Promise<void> {
           出站 tag：{{ configAudit.outboundTags.length ? configAudit.outboundTags.join(", ") : "无" }}
         </p>
       </div>
+      </details>
       <ConfigCodeEditor
         v-model="state.config.text"
         @syntax-state="updateConfigSyntaxState"
         @update:model-value="state.config.dirty = true"
       />
     </Card>
+
+    <details class="config-repo-panel mn-disclosure">
+      <summary>从配置仓库获取</summary>
+      <Card class="grid gap-3">
+        <p v-if="repositoryStatus" class="text-sm text-[var(--mn-ink-muted)]">{{ repositoryStatus }}</p>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <input v-model="repositoryUrl" @input="repositoryEdited = true" class="mn-field min-w-0 px-3 sm:col-span-2" aria-label="配置仓库 URL" placeholder="https://github.com/owner/repo.git" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <input v-model="repositoryRef" @input="repositoryEdited = true" class="mn-field min-w-0 px-3" aria-label="配置仓库分支" placeholder="main" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <input v-model="repositoryPath" @input="repositoryEdited = true" class="mn-field min-w-0 px-3" aria-label="配置文件路径" placeholder="config.json" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <input v-model="repositorySha256" @input="repositoryEdited = true" class="mn-field min-w-0 px-3 sm:col-span-2" aria-label="可选 SHA-256" placeholder="SHA-256（可选）" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="flex gap-3">
+          <Button variant="outline" :loading="isRunning('save-config-repository')" @click="saveRepository">保存</Button>
+          <Button variant="ghost" @click="resetRepository">默认</Button>
+        </div>
+      </Card>
+    </details>
   </div>
 </template>

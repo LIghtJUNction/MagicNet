@@ -25,14 +25,14 @@ const props = withDefaults(
 );
 
 const buttonVariants = cva(
-  "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-normal rounded-[var(--mn-radius-md)] border text-[0.8125rem] font-semibold transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
+  "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-normal rounded-[var(--mn-radius-md)] border text-sm font-medium transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
   {
     variants: {
       variant: {
         default:
           "border-[var(--mn-primary)] bg-[var(--mn-primary)] text-[var(--mn-on-accent)] hover:border-[var(--mn-primary-strong)] hover:bg-[var(--mn-primary-strong)]",
         secondary:
-          "border-[var(--mn-border-strong)] bg-[var(--mn-surface-sunken)] text-[var(--mn-ink)] hover:border-[var(--mn-primary)] hover:text-[var(--mn-primary-strong)]",
+          "border-transparent bg-[var(--mn-surface-sunken)] text-[var(--mn-ink)] hover:border-[var(--mn-primary)] hover:text-[var(--mn-primary-strong)]",
         outline:
           "border-[var(--mn-border-strong)] bg-transparent text-[var(--mn-ink)] hover:border-[var(--mn-primary)] hover:bg-[color-mix(in_srgb,var(--mn-primary)_9%,transparent)]",
         ghost:
@@ -41,9 +41,9 @@ const buttonVariants = cva(
           "border-[var(--mn-danger)] bg-[var(--mn-danger)] text-[var(--mn-on-danger)] hover:brightness-110",
       },
       size: {
-        sm: "min-h-11 px-3.5",
-        md: "min-h-11 px-4",
-        icon: "size-11 shrink-0 p-0",
+        sm: "min-h-12 px-3.5",
+        md: "min-h-12 px-4",
+        icon: "size-12 shrink-0 p-0",
       },
     },
     defaultVariants: {

@@ -10,12 +10,17 @@ const button = read("./src/components/ui/Button.vue");
 const pageHeader = read("./src/components/ui/PageHeader.vue");
 const design = read("./DESIGN.md");
 
-void test("quiet console uses neutral surfaces and graphite action emphasis", () => {
-  assert.match(styles, /--mn-ivory:\s*#171717/i);
-  assert.match(styles, /--mn-surface-raised:\s*#1d1d1d/i);
-  assert.match(styles, /--mn-primary:\s*#e8e8e8/i);
-  assert.match(styles, /--mn-radius-lg:\s*10px/i);
+void test("mobile paper uses quiet surfaces and restrained action emphasis", () => {
+  assert.match(styles, /--mn-ivory:\s*#fafaf7/i);
+  assert.match(styles, /--mn-surface-raised:\s*#252823/i);
+  assert.match(styles, /--mn-primary:\s*#30382f/i);
+  assert.match(styles, /--mn-primary:\s*#dee3d4/i);
+  assert.match(styles, /--mn-radius-lg:\s*16px/i);
   assert.match(styles, /--mn-shadow-card:\s*none/i);
+  assert.match(
+    styles,
+    /\.magic-card\s*\{[^}]*border-radius:\s*0[^}]*background:\s*transparent/,
+  );
   assert.doesNotMatch(
     styles,
     /linear-gradient|radial-gradient|backdrop-filter:\s*blur/i,
@@ -27,6 +32,12 @@ void test("shell is outcome-led rather than terminal-themed", () => {
   assert.doesNotMatch(app, /activeWorkspace\.description|>网络控制</);
   assert.match(app, /aria-label="全部页面"/);
   assert.match(app, /mobileLabel: "订阅"/);
+  assert.match(app, /useMobileKeyboard/);
+  assert.match(app, /v-show="!keyboardOpen" class="mobile-nav"/);
+  assert.doesNotMatch(
+    app,
+    />网络控制<|查看状态并控制服务。|检查问题并运行维护工具。/,
+  );
   assert.doesNotMatch(
     app,
     /ROOT:\/\/MAGICNET|ROUTE_STACK|WORKSPACES|root@magicnet/,
@@ -47,9 +58,10 @@ void test("shared primitives preserve labels and reduce decorative copy", () => 
   assert.match(pageHeader, /v-if="description"/);
 });
 
-void test("durable design baseline records the current neutral direction", () => {
-  assert.match(design, /name:\s*"MagicNet Quiet Console"/);
-  assert.match(design, /primary:\s*"#E8E8E8"/i);
+void test("design baseline records the implemented mobile brief", () => {
+  assert.match(design, /name:\s*"MagicNet Paper"/);
+  assert.match(design, /primary:\s*"#30382F"/i);
+  assert.match(design, /移动端优先/);
   assert.match(design, /Signature Mechanism:\s*Precision Editor Rail/);
   assert.doesNotMatch(design, /Phosphor Grid|Live Route Stack/);
 });

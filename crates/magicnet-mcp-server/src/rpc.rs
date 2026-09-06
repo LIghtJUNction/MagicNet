@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use crate::files::{file_list, file_read};
 use crate::logs::{debug_snapshot, log_list, log_read};
-use crate::tools::TOOLS_JSON;
+use crate::tools::{tool_catalog, validate_tool_arguments};
 use crate::Server;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
@@ -34,17 +34,20 @@ pub(crate) fn handle_jsonrpc(payload: &str, server: &Server) -> String {
             &id,
             json!({"protocolVersion":"2025-03-26","serverInfo":{"name":"magicnet","version":"1.0.0"},"capabilities":{"tools":{}}}),
         ),
-        "tools/list" => rpc_result(
-            &id,
-            serde_json::from_str(TOOLS_JSON).unwrap_or_else(|_| json!({"tools": []})),
-        ),
+        "tools/list" => match tool_catalog() {
+            Ok(catalog) => rpc_result(&id, catalog.clone()),
+            Err(error) => rpc_error(&id, -32603, error),
+        },
         "tools/call" => {
             let tool = request
                 .pointer("/params/name")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             let args = request.pointer("/params/arguments").unwrap_or(&Value::Null);
-            let result = call_tool(tool, args, server);
+            let result = match validate_tool_arguments(tool, args) {
+                Ok(()) => call_tool(tool, args, server),
+                Err(error) => format!("{error}\nrc=-1"),
+            };
             rpc_result(&id, text_content(&result))
         }
         "notifications/initialized" => rpc_result(&id, json!({})),
@@ -97,7 +100,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
             vec![
                 "transparent".into(),
                 "set".into(),
-                arg(args, "mode").unwrap_or_else(|| "tun".to_string()),
+                arg(args, "mode").unwrap_or_default(),
             ],
         ),
         "magicnet_transparent_apply" => run_cli(server, &["transparent", "apply"]),
@@ -229,7 +232,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_debug_snapshot" => {
             debug_snapshot(server, arg_usize(args, "lines").unwrap_or(120))
         }
-        "magicnet_file_list" => file_list(server, arg(args, "path").as_deref().unwrap_or(".")),
+        "magicnet_file_list" => file_list(server, arg(args, "path").as_deref().unwrap_or("")),
         "magicnet_file_read" => file_read(server, arg(args, "path").as_deref().unwrap_or("")),
         _ => "unknown tool\nrc=-1".to_string(),
     }
@@ -591,6 +594,73 @@ mod tests {
             Some("speedtest\n\nrc=0")
         );
         assert_eq!(response.pointer("/result/isError"), None);
+    }
+
+    fn call_echo_tool(tool: &str, arguments: Value) -> Value {
+        let server = Server {
+            moddir: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+            cli: PathBuf::from("/bin/echo"),
+            secret: String::new(),
+        };
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments}
+        });
+        serde_json::from_str(&handle_jsonrpc(&payload.to_string(), &server)).unwrap()
+    }
+
+    #[test]
+    fn required_arguments_never_fall_back_to_mutating_defaults() {
+        for (tool, arguments) in [
+            ("magicnet_transparent_set", json!({})),
+            ("magicnet_transparent_set", json!({"mode": false})),
+            ("magicnet_transparent_set", Value::Null),
+            ("magicnet_transparent_set", json!({"mode": null})),
+            ("magicnet_block_set_enabled", json!({})),
+            ("magicnet_block_set_community", json!({"enabled": "false"})),
+            ("magicnet_app_mode", json!({})),
+            (
+                "magicnet_app_add_many",
+                json!({"target": "bypass", "packages": [1]}),
+            ),
+        ] {
+            let response = call_echo_tool(tool, arguments);
+            assert_eq!(response["result"]["isError"], true, "{tool}: {response}");
+            let text = response["result"]["content"][0]["text"].as_str().unwrap();
+            assert!(text.ends_with("rc=-1"), "{tool}: {text}");
+            assert!(
+                !text.contains("\n\nrc=0"),
+                "CLI must not be invoked: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_modes_and_false_booleans_keep_their_cli_arguments() {
+        for mode in ["tun", "ebpf"] {
+            let response = call_echo_tool("magicnet_transparent_set", json!({"mode": mode}));
+            assert_eq!(
+                response["result"]["content"][0]["text"],
+                format!("transparent set {mode}\n\nrc=0")
+            );
+            assert!(response["result"].get("isError").is_none());
+        }
+        let response = call_echo_tool("magicnet_block_set_enabled", json!({"enabled": false}));
+        assert_eq!(
+            response["result"]["content"][0]["text"],
+            "block disable\n\nrc=0"
+        );
+    }
+
+    #[test]
+    fn omitted_file_list_path_lists_the_module_root() {
+        let default = call_echo_tool("magicnet_file_list", json!({}));
+        let explicit = call_echo_tool("magicnet_file_list", json!({"path": ""}));
+        assert_eq!(default, explicit);
+        let text = default["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.lines().any(|line| line == "Cargo.toml"), "{text}");
     }
 
     #[test]

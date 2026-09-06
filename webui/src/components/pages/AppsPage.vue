@@ -429,12 +429,9 @@ function cancelAppAction(): void {
 async function confirmAppAction(): Promise<void> {
   const action = pendingAppAction.value;
   if (!action) return;
+  // Consume only this confirmation; a new one may be opened while it runs.
   pendingAppAction.value = null;
-  try {
-    await action.run();
-  } finally {
-    if (pendingAppAction.value?.key === action.key) pendingAppAction.value = null;
-  }
+  await action.run();
 }
 
 onMounted(() => {
@@ -450,13 +447,18 @@ onMounted(() => {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="应用策略" title="应用名单" description="选择应用走代理、在 MagicNet 内直连，或完全绕过 MagicNet。">
+    <PageHeader overline="应用策略" title="应用名单">
       <div class="flex flex-wrap gap-2">
         <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />读取名单</Button>
-        <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />重新读取应用</Button>
+        <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />刷新应用</Button>
+        <details class="config-action-menu">
+          <summary>更多</summary>
+          <div>
         <Button variant="outline" :loading="isRunning('copy-app-policy-report')" @click="withAction('copy-app-policy-report', copyAppPolicyReport)"><Copy :size="17" />{{ appReportCopied ? '已复制快照' : '复制完整快照' }}</Button>
         <Button variant="outline" :loading="isRunning('copy-app-policy-safe-report')" @click="withAction('copy-app-policy-safe-report', copyAppPolicySafeReport)"><Copy :size="17" />{{ safeReportCopied ? '已复制摘要' : '复制隐私摘要' }}</Button>
         <Button :loading="isRunning('apply-recommended-bypass')" :disabled="availableRecommendedBypass.length === 0" @click="requestRecommendedBypass"><ShieldCheck :size="17" />应用推荐名单</Button>
+          </div>
+        </details>
       </div>
     </PageHeader>
 
@@ -527,8 +529,8 @@ onMounted(() => {
         </div>
         <span class="text-sm text-[var(--mn-ink-muted)]">
           {{ state.appPolicy.mode === 'whitelist'
-            ? '只有名单中的应用进入 MagicNet；其他应用使用系统网络。'
-            : '默认接管所有应用；绕过名单使用系统网络。' }}
+            ? '仅接管名单中的应用。'
+            : '接管全部应用，绕过名单除外。' }}
         </span>
       </div>
       <p class="text-xs leading-5 text-[var(--mn-ink-faint)]">同一 Android UID 的应用会一起生效。</p>
@@ -537,38 +539,8 @@ onMounted(() => {
         :reapply-loading="isRunning('reapply-app-policy')"
         @reapply="requestReapplyAppPolicy"
       />
-      <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-        <Input v-model="state.packageInput" placeholder="com.android.chrome" spellcheck="false" />
-        <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />{{ isRunning('add-proxy') ? '保存中' : '走代理' }}</Button>
-        <Button variant="secondary" :loading="isRunning('add-direct')" @click="addApp('direct')"><Plus :size="16" />{{ isRunning('add-direct') ? '保存中' : 'MagicNet 内直连' }}</Button>
-        <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')"><Plus :size="16" />{{ isRunning('add-bypass') ? '保存中' : '完全绕过' }}</Button>
-      </div>
-    </Card>
-
-    <Card class="grid gap-3">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 class="text-base font-semibold">策略影响摘要</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ policySummary.summary }}</p>
-        </div>
-        <span
-          class="rounded px-2 py-1 text-xs font-medium"
-          :class="policySummary.conflicts.length ? 'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]' : 'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]'"
-        >
-          {{ policySummary.conflicts.length ? `${policySummary.conflicts.length} 个冲突` : '无冲突' }}
-        </span>
-      </div>
-      <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-        <InsightChip
-          v-for="item in policySummary.items"
-          :key="item.label"
-          :label="item.label"
-          :value="item.value"
-          :tone="item.tone"
-        />
-      </div>
-      <p v-if="policySummary.conflicts.length" class="break-all text-xs text-[var(--mn-danger)]">
-        冲突包名：{{ policySummary.conflicts.join(", ") }}
+      <p v-if="policySummary.conflicts.length" role="alert" class="text-sm text-[var(--mn-danger)]">
+        {{ policySummary.conflicts.length }} 个名单冲突，请检查下方分流概览。
       </p>
     </Card>
 
@@ -578,19 +550,19 @@ onMounted(() => {
           <SearchField v-model="state.packageQuery" placeholder="搜索已安装应用包名" @keyup.enter="searchPackages" />
           <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">重新读取</Button>
         </div>
-        <div class="flex min-w-0 flex-wrap items-center gap-2">
+        <div v-if="selectedPackages.length" class="flex min-w-0 flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" :disabled="!visiblePackageNames.length" @click="selectVisiblePackages">
             <CheckCheck :size="15" />{{ allVisibleSelected ? '取消可见项' : '选择可见项' }}
           </Button>
           <span class="mr-auto text-xs text-[var(--mn-ink-muted)]">已选 {{ selectedPackages.length }} 个</span>
-          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-proxy')" @click="requestBatchAdd('proxy')">Proxy</Button>
-          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-direct')" @click="requestBatchAdd('direct')">Direct</Button>
-          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-bypass')" @click="requestBatchAdd('bypass')">Bypass TUN</Button>
+          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-proxy')" @click="requestBatchAdd('proxy')">代理</Button>
+          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-direct')" @click="requestBatchAdd('direct')">直连</Button>
+          <Button size="sm" variant="secondary" :disabled="!selectedPackages.length" :loading="isRunning('batch-bypass')" @click="requestBatchAdd('bypass')">绕过</Button>
           <Button v-if="selectedPackages.length" size="icon" variant="outline" aria-label="清除已选应用" title="清除已选应用" @click="selectedPackages = []"><X :size="15" /></Button>
         </div>
-        <div class="grid max-h-72 gap-2 overflow-auto">
-          <div v-for="app in filteredPackages" :key="app.packageName" class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center">
-            <label class="flex min-w-0 cursor-pointer items-center gap-2">
+        <div class="grid gap-2 sm:max-h-[32rem] sm:overflow-auto">
+          <div v-for="app in filteredPackages" :key="app.packageName" class="grid grid-cols-3 gap-2 border-b border-[var(--mn-border)] py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center">
+            <label class="col-span-3 flex min-h-12 min-w-0 cursor-pointer items-center gap-2 sm:col-span-1">
               <input
                 type="checkbox"
                 class="size-4 shrink-0 accent-[var(--mn-cactus)]"
@@ -600,19 +572,21 @@ onMounted(() => {
               >
               <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ app.packageName }}</span>
             </label>
-            <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'proxy', `pick-proxy-${app.packageName}`)">Proxy</Button>
-            <Button size="sm" variant="outline" :loading="isRunning(`pick-direct-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'direct', `pick-direct-${app.packageName}`)">Direct</Button>
-            <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'bypass', `pick-bypass-${app.packageName}`)">Bypass TUN</Button>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'proxy', `pick-proxy-${app.packageName}`)">代理</Button>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-direct-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'direct', `pick-direct-${app.packageName}`)">直连</Button>
+            <Button size="sm" variant="outline" :loading="isRunning(`pick-bypass-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'bypass', `pick-bypass-${app.packageName}`)">绕过</Button>
           </div>
-          <em v-if="!filteredPackages.length" class="mn-empty">暂无结果，点“列出应用”或输入关键字过滤。</em>
+          <em v-if="!filteredPackages.length" class="mn-empty">{{ state.packageQuery.trim() ? '没有匹配的应用。' : '暂无应用，点“刷新应用”读取。' }}</em>
         </div>
       </Card>
 
+      <details class="mn-disclosure">
+        <summary>推荐绕过</summary>
       <Card class="grid gap-3">
         <div class="flex items-start justify-between gap-3">
           <div>
-            <h3 class="text-base font-semibold">推荐 Bypass TUN</h3>
-            <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">支付、银行、运营商、常用国内服务优先绕过，减少验证码、风控和国内服务误伤。</p>
+            <h3 class="text-base font-medium">推荐绕过</h3>
+            <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">这些应用建议使用系统网络。</p>
           </div>
           <CheckCircle2 class="shrink-0 text-[var(--mn-ink-muted)]" :size="18" />
         </div>
@@ -621,11 +595,38 @@ onMounted(() => {
           <em v-if="!availableRecommendedBypass.length" class="mn-empty">推荐项已在名单中，或当前设备未读取到匹配应用。</em>
         </div>
       </Card>
+      </details>
     </div>
+
+    <details class="mn-disclosure">
+      <summary>按包名添加</summary>
+      <div class="mn-disclosure__body">
+        <Input v-model="state.packageInput" aria-label="应用包名" placeholder="com.android.chrome" spellcheck="false" autocapitalize="none" autocomplete="off" />
+        <p class="text-xs leading-5 text-[var(--mn-ink-muted)]">直连仍经过 MagicNet，绕过使用系统网络。</p>
+        <div class="grid grid-cols-3 gap-2">
+          <Button variant="secondary" :loading="isRunning('add-proxy')" @click="addApp('proxy')"><Plus :size="16" />代理</Button>
+          <Button variant="secondary" :loading="isRunning('add-direct')" @click="addApp('direct')">直连</Button>
+          <Button variant="secondary" :loading="isRunning('add-bypass')" @click="addApp('bypass')">绕过</Button>
+        </div>
+      </div>
+    </details>
+
+    <details class="mn-disclosure" :open="policySummary.conflicts.length > 0">
+      <summary>分流概览<span v-if="policySummary.conflicts.length">需要检查</span></summary>
+      <Card class="grid gap-3">
+        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ policySummary.summary }}</p>
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+          <InsightChip v-for="item in policySummary.items" :key="item.label" :label="item.label" :value="item.value" :tone="item.tone" />
+        </div>
+        <p v-if="policySummary.conflicts.length" class="break-all text-xs text-[var(--mn-danger)]">
+          冲突包名：{{ policySummary.conflicts.join(", ") }}
+        </p>
+      </Card>
+    </details>
 
     <div class="grid gap-3 md:grid-cols-3">
       <Card>
-        <h3 class="mb-2 text-base font-semibold">Proxy</h3>
+        <h3 class="mb-2 text-base font-medium">代理名单</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <RemovableTag
             v-for="pkg in state.appPolicy.proxy"
@@ -638,7 +639,7 @@ onMounted(() => {
         </div>
       </Card>
       <Card>
-        <h3 class="mb-2 text-base font-semibold">Direct（MagicNet 内直连）</h3>
+        <h3 class="mb-2 text-base font-medium">MagicNet 内直连</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <RemovableTag
             v-for="pkg in state.appPolicy.direct"
@@ -651,7 +652,7 @@ onMounted(() => {
         </div>
       </Card>
       <Card>
-        <h3 class="mb-2 text-base font-semibold">Bypass TUN</h3>
+        <h3 class="mb-2 text-base font-medium">绕过名单</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <RemovableTag
             v-for="pkg in state.appPolicy.bypass"

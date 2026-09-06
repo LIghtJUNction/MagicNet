@@ -47,10 +47,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Lint Rust workspace
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: Test Rust workspace
-        run: cargo test --workspace
+        run: cargo test --workspace --all-targets --all-features --locked
 
   shell:
     runs-on: ubuntu-latest
@@ -61,8 +61,46 @@ jobs:
           persist-credentials: false
           submodules: true
 
-      - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Install host check dependencies
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml
 
-      - name: Lint host tools and all device shell fragments
+      - name: Lint all first-party shell code
         run: bash scripts/lint-shell.sh
+
+      - name: Run fixture-based host regressions
+        timeout-minutes: 10
+        run: bash scripts/test-host.sh
+
+  webui:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+
+      - name: Install locked WebUI dependencies
+        working-directory: webui
+        run: npm ci
+
+      - name: Test, typecheck Vue components, and build
+        working-directory: webui
+        run: npm run check
+
+      - name: Install browser test dependencies
+        working-directory: webui
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Verify mobile layouts and interactions
+        working-directory: webui
+        timeout-minutes: 10
+        run: npm run test:ui

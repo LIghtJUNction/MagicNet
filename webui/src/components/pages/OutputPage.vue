@@ -91,7 +91,7 @@ function clearOutputFilter(): void {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="输出" title="最近输出" description="查看最近一次命令的结果和失败原因。">
+    <PageHeader overline="输出" title="最近输出">
       <template #actions>
         <Button variant="outline" @click="copyOutput"><Copy :size="17" />{{ copied ? "已复制脱敏" : "复制脱敏输出" }}</Button>
         <Button variant="outline" :disabled="!issueSummary" @click="copyIssueSummary"><Copy :size="17" />{{ issueCopied ? "已复制问题" : "复制问题" }}</Button>

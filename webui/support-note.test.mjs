@@ -51,15 +51,19 @@ assert.match(
   /import OpenSourceSupportNote from "@\/components\/OpenSourceSupportNote\.vue";/,
 );
 const mainEnd = app.lastIndexOf("</main>");
-const supportIndex = app.indexOf("<OpenSourceSupportNote />", mainEnd);
-const mobileNavIndex = app.indexOf('<nav class="mobile-nav"', supportIndex);
+const utilityIndex = app.indexOf('ref="utilityDialog"', mainEnd);
+const supportIndex = app.indexOf("<OpenSourceSupportNote />", utilityIndex);
+const utilityEnd = app.indexOf("</Transition>", utilityIndex);
 assert.ok(
-  mainEnd >= 0 && supportIndex > mainEnd,
-  "support note must follow the main workspace",
+  mainEnd >= 0 &&
+    utilityIndex > mainEnd &&
+    supportIndex > utilityIndex &&
+    supportIndex < utilityEnd,
+  "support note must remain reachable in More without occupying the main task surface",
 );
-assert.ok(
-  mobileNavIndex > supportIndex,
-  "support note must remain before mobile navigation",
+assert.equal(
+  app.slice(0, mainEnd).includes("<OpenSourceSupportNote />"),
+  false,
 );
 assert.doesNotMatch(
   app,

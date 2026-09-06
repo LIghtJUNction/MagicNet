@@ -63,7 +63,7 @@ export function stopAllServicesAction(): ControlDangerAction {
 
 export function setTransparentModeAction(
   mode: TransparentMode,
-  currentMode: TransparentMode,
+  currentMode: TransparentMode | "unknown",
 ): ControlDangerAction {
   const targetLabel = mode === "ebpf" ? "eBPF" : "TUN";
   const currentLabel = currentMode === "ebpf" ? "eBPF" : "TUN";
@@ -71,7 +71,10 @@ export function setTransparentModeAction(
     key: `transparent-set-${mode}`,
     args: `transparent set ${mode}`,
     label: `切换为 ${targetLabel}`,
-    message: `确认从 ${currentLabel} 切换为 ${targetLabel}？MagicNet 会停止当前数据面，验证并启动目标模式；失败时将尝试恢复 ${currentLabel}。`,
+    message:
+      currentMode === "unknown"
+        ? `当前透明代理状态未知。确认切换为 ${targetLabel}？MagicNet 会验证并启动目标模式；失败时将尝试恢复原配置。`
+        : `确认从 ${currentLabel} 切换为 ${targetLabel}？MagicNet 会停止当前数据面，验证并启动目标模式；失败时将尝试恢复 ${currentLabel}。`,
     background: false,
   };
 }

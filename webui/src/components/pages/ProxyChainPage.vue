@@ -178,7 +178,6 @@ onMounted(() => {
     <PageHeader
       overline="Proxy Chain"
       title="链式代理"
-      description="选择中转和落地节点，组成两跳代理。"
     >
       <template #actions>
         <Button
@@ -197,7 +196,7 @@ onMounted(() => {
     <Card class="grid gap-4 !p-4 md:!p-6">
       <CardHeading
         overline="当前配置"
-        description="页面只保存节点 tag；节点凭据继续由 sing-box 订阅配置管理。链路默认关闭，保存后会重新应用运行配置。"
+        description="保存后重新应用配置；节点凭据仍由订阅管理。"
       >
         <template #title>
           <span class="inline-flex items-center gap-2"><GitBranch :size="23" />两跳链路</span>

@@ -22,8 +22,8 @@ const titleClass = computed(() =>
   cn(
     "mn-card-title break-words text-[var(--mn-ink)]",
     props.size === "lg"
-      ? "text-xl leading-tight md:text-[1.35rem]"
-      : "text-lg leading-tight tracking-[-0.01em]",
+      ? "text-lg leading-snug md:text-xl"
+      : "text-base leading-snug",
   ),
 );
 </script>
@@ -44,7 +44,7 @@ const titleClass = computed(() =>
         <slot name="description">{{ description }}</slot>
       </p>
     </div>
-    <div v-if="$slots.default" class="flex max-w-full shrink-0 flex-wrap items-center gap-2">
+    <div v-if="$slots.default" class="flex max-w-full shrink-0 flex-wrap min-w-0 items-center gap-2">
       <slot />
     </div>
   </div>

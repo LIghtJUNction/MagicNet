@@ -70,7 +70,6 @@ async function copyOverview(): Promise<void> {
     <PageHeader
       overline="流量路径"
       title="流量路径"
-      description="查看当前流量路径和关键运行信息。"
     >
       <template #actions>
         <Button variant="outline" @click="copyOverview">

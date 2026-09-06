@@ -1,62 +1,78 @@
 ---
-name: "MagicNet Quiet Console"
+name: "MagicNet Paper"
 version: "3.0.0"
 status: "implemented"
-direction: "简洁、中性、以操作与真实状态为中心"
+user_brief: "移动端优先，简洁、高级、留白、非科技感，少解释，重实用"
 colors:
-  background: "#171717"
-  surface: "#1D1D1D"
-  text: "#F3F3F3"
-  primary: "#E8E8E8"
+  background: "#FAFAF7"
+  surface: "#FFFFFF"
+  text: "#272824"
+  primary: "#30382F"
 ---
 
-# MagicNet Quiet Console
+# MagicNet Paper
 
-MagicNet is a compact Android network tool. The interface gives room to subscriptions, configuration, and observed runtime state. Shared styles live in `src/styles.css`; a second stylesheet must not override the same shell and components.
+面向 Android root 管理器 WebView。用留白和排版划分内容，不靠发光、渐变、卡片堆叠或装饰性技术术语。
 
-## Visual language
+## 配色与字体
 
-| Role | Light | Dark |
+| 用途 | 浅色 | 深色 |
 | --- | --- | --- |
-| Canvas | `#FFFFFF` | `#171717` |
-| Contained surface | `#FFFFFF` | `#1D1D1D` |
-| Secondary surface | `#F6F6F6` | `#222222` |
-| Main action | `#292929` | `#E8E8E8` |
-| Text | `#242424` | `#F3F3F3` |
-| Secondary text | `#737373` | `#AAAAAA` |
-| Divider | `#E7E7E7` | `#353535` |
-| Control border | `#C4C4C4` | `#575757` |
+| 背景 | `#FAFAF7` | `#1C1E1B` |
+| 浮层 / 输入 | `#FFFFFF` | `#252823` |
+| 主文字 | `#272824` | `#EFEFE7` |
+| 次要文字 | `#707269` | `#AFB3A7` |
+| 主操作 | `#30382F` | `#DEE3D4` |
+| 分隔线 | `#E4E4DC` | `#363A32` |
+| 成功 | `#4E7056` | `#A6C29E` |
+| 警告 | `#986C28` | `#D6BD88` |
+| 错误 | `#A64138` | `#E7A297` |
 
-The palette is neutral. Green, amber, and red communicate observed status. No gradients, glass blur, decoration-only English, or colored dashboard backgrounds. Monospace is for code and values that users need to copy.
+- 中文使用系统无衬线字体；品牌字标使用系统衬线字体。不下载外部字体。
+- 概览状态 40–56px；页面标题 28–36px；正文 14–16px；输入框至少 16px。
+- 常规字重 400–500。等宽字体只用于代码、路径和需准确复制的值。
+- 绿色、黄色和红色表达真实状态。状态底色使用语义 token，不能混合主操作色充当成功色。
 
-Page titles are 22–26px at the default text size. Shared navigation and buttons use relative units so system text enlargement works. Dividers and spacing define sections; small radii are for controls and contained subpanels. Floating sheets alone receive shadows.
+## 空间与组件
 
-## Navigation and hierarchy
+- 手机两侧留白 24px，内容单列；段落之间 24–32px。
+- `Card` 是开放式分区：顶部细线，无投影、无嵌套卡片底色。
+- 输入、按钮和浮层圆角使用 8 / 12 / 16px；阴影只用于浮层。
+- `PageHeader` 通常只保留标题。不要给每个标题配一段重复说明。
+- 按钮最小触控高度 48px，概览主操作 56px；加载中保留名称。
+- 高级配置用原生 `details` 展开；阻断错误仍须可见或自动展开。
 
-- On phones, the bottom bar provides `运行`, `路由`, `订阅`, and `诊断`. The subscription entry always opens subscriptions; other workspaces remember their last page. Local tabs expose related pages and remain visible while scrolling.
-- On desktop, the left rail exposes every page in four groups. Users can open subscriptions, configuration, or logs with one click; there is no second desktop tab bar.
-- A compact header holds the brand and global actions. Theme and refresh remain visible on phones. Help, feedback, GitHub, and the author link remain in the utility sheet.
-- Global service state appears once. A task or notice appears when there is something to report; idle placeholder text is omitted.
-- Each page has one title, an optional useful description, and visible primary actions. Actions wrap in normal flow.
+## 手机导航
 
-## Components
+- 顶部只放品牌、主题、刷新和更多；页面标签沿水平方向滚动。
+- 底部四项导航：运行、路由、订阅、诊断；订阅入口直接打开订阅页，其他工作区记住最后访问的页面。处理系统安全区。
+- 桌面侧栏按四个工作区展示全部页面，单击直达；不重复显示顶部页面标签。
+- 键盘展开时让出底部操作空间，保持输入可见；收起后恢复导航。
+- 横屏缩短导航高度，不缩小触控目标。页面内容不能横向溢出。
+- 保留地址栏路由、返回历史、延迟加载和 KeepAlive 草稿。
 
-- `Card` is a semantic section with a thin top divider. Nested subpanels may use a quiet secondary surface. Explicitly colored state sections retain a side rule and readable content.
-- `Button` retains its label while loading. The main action uses graphite in light mode and light ink in dark mode. Secondary actions remain distinguishable. Destructive actions retain red.
-- `PageHeader` supports both action slots, keeps the heading and actions in normal flow, and ignores legacy decoration-only overlines.
-- Status badges and dots reflect actual state. Missing data has an explicit unavailable label.
-- Subscription metadata must come from provider responses. Usage, quota, and dates must remain distinguishable from device traffic and locally recorded update times.
+## 页面层级
+
+1. 概览：真实服务状态、启动/停止、节点面板、重启。
+2. 代理模式：显式 TUN / eBPF 选择；运行细节按需展开。
+3. 热点开关；Wi-Fi 策略和维护操作收进展开项。
+4. 订阅：已配置时展示来源和供应商用量，管理入口展开地址编辑；首次配置时地址和保存优先。敏感信息脱敏，记录、过滤、标识和自动更新次之。
+   用量、配额和到期时间必须来自供应商响应，不能冒充设备流量或本地更新记录。
+5. 应用：名单与搜索优先；保留策略路径预览、修改前后对比及重新解析 UID。包名添加、报告和影响分析次之。
+6. 配置：编辑区优先；仓库与结构分析可展开。错误行和未保存状态保持可见。
 
 ## Signature Mechanism: Precision Editor Rail
 
-The configuration editor retains native editing, undo, and selection, an aligned virtualized line rail, direct error-location jumps, and readable syntax colors for each theme. Large files must not force full-file highlight work on every keystroke.
+保留原生 textarea 的输入、撤销、选择和键盘行为。行号、错误定位和虚拟化高亮必须对齐，不把编辑器做成装饰性终端。
 
-## Accessibility and operational behavior
+## 安全与可访问性
 
-- Primary touch targets are at least 44px; bottom navigation targets are at least 56px tall.
-- At 360px and 200% text, content and actions wrap without covering one another. Menus scroll in short viewports and respect safe areas.
-- Focus is always visible. Selected navigation has a border and label weight in addition to color. Forced colors retains selection boundaries.
-- Reduced motion disables nonessential motion. Short press feedback remains available otherwise.
-- Navigation preserves form state and browser history. Page loading stays asynchronous.
-- Confirmations preserve existing consequence-specific safeguards. UI copy must not claim backend capability that has not been observed.
-- Brand tapping retains all existing visitors, including GPT-6, without putting easter-egg text in routine tasks.
+- `tun|ebpf` 必须显式选择，不能用视觉状态提前宣布切换成功；eBPF 不要求 `magicnet0`。
+- 不把服务运行等同于互联网连通，不把未知数据画成成功。
+- 高风险操作需要说明后果并确认；弹层限制焦点、支持 Escape，取消后恢复触发点焦点。
+- 保留失败原因、恢复操作、隐私提示和草稿；删除重复教程与实现自述。
+- 选中、错误和运行状态同时有文字或形状，不仅依赖颜色。
+- 支持浅/深主题、放大文字、强制颜色及减少动效。
+
+实现入口：`src/styles.css`、`src/App.vue`、`src/components/ui/`、`src/components/pages/`。
+验证入口：`npm run check`、`npm run test:ui`。浏览器 fixture 不代表真机网络验证。

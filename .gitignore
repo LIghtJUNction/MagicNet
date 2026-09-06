@@ -10,6 +10,8 @@ logs/
 webui/dist/
 webui/node_modules/
 webui/node_modules/.vite/
+webui/test-results/
+webui/playwright-report/
 src/MagicNet/webroot/assets/
 src/MagicNet/webroot/index.html
 src/MagicNet/.local/

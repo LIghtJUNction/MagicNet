@@ -43,7 +43,11 @@ assert.match(
   app,
   /window\.localStorage\.setItem\(ONBOARDING_STORAGE_KEY, value\)/,
 );
-assert.match(app, /if \(!readOnboardingPreference\(\)\)/);
+assert.match(
+  app,
+  /if \(state\.hasKsu && !readOnboardingPreference\(\)\)/,
+  "automatic setup is only useful in a device WebView; browser previews keep manual help",
+);
 assert.match(app, /<OnboardingDialog/);
 assert.match(app, /@dismiss="closeOnboarding\(\)"/);
 assert.match(app, /@submit="handleOnboardingSubmit"/);

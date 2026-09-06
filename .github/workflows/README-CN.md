@@ -71,9 +71,15 @@ kam check
 
 ## quality.yml
 
-`quality.yml` 将代码质量检查与打包流程分离。它会检查 Rust 格式、以警告即错误
-运行 Clippy、执行完整 Rust workspace 测试，并分别检查主机 Bash 工具和设备端
-POSIX shell。
+`quality.yml` 将代码质量检查与打包流程分离：
+
+- Rust：格式检查、警告即错误的 Clippy、完整 workspace 测试；使用锁定依赖并覆盖所有 targets/features。
+- Shell：通过 `bash scripts/lint-shell.sh` 检查主机工具和一方设备脚本，包括被 source 的运行时片段；通过 `bash scripts/test-host.sh` 执行 fixture 回归测试。
+- WebUI：通过 `npm ci` 安装锁定依赖，再执行测试、`vue-tsc` 组件类型检查和构建；安装 Chromium 后，通过 `npm run test:ui` 检查手机、横屏和桌面布局，以及弹层焦点、键盘避让和草稿保留。浏览器测试使用 fixture，不访问真机。
+
+本地 `scripts/pre-commit.sh` 复用这些入口，并用 `--with-routing-assets` 加跑需要
+宿主机 sing-box 和预备规则集的路由/DNS 集成测试。CI 的 fixture 套件不包含这两项；
+真机、打包和安装验证仍需单独执行。
 
 ## 本地自定义
 

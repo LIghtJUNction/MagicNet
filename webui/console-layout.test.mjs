@@ -22,9 +22,8 @@ test("the shared theme has one entry and scoped utility priority", () => {
     if (!decl.important) return;
     important.push(`${decl.parent.selector}: ${decl.prop}`);
   });
-  // Only explicit control-page padding and reduced-motion guarantees need priority.
+  // Normal-flow sections need no utility override; only reduced-motion guarantees do.
   assert.deepEqual(important, [
-    '.page-surface[data-page="control"] > .grid > .grid > .magic-card: padding',
     "*,\n  *::before,\n  *::after: scroll-behavior",
     "*,\n  *::before,\n  *::after: animation-duration",
     "*,\n  *::before,\n  *::after: animation-iteration-count",

@@ -356,6 +356,9 @@ async function copySummary(): Promise<void> {
         class="source-textarea"
         spellcheck="false"
         autocomplete="off"
+        autocapitalize="none"
+        autocorrect="off"
+        inputmode="url"
         placeholder="https://example.com/subscription"
         aria-label="sing-box 订阅 URL，每行一个"
         aria-describedby="subscription-validation"
@@ -415,10 +418,10 @@ async function copySummary(): Promise<void> {
 .subscription-feedback { margin: 16px 0; border-left: 2px solid var(--mn-info); padding: 10px 14px; color: var(--mn-ink-soft); background: var(--mn-surface-sunken); font-size: .875rem; line-height: 1.65; }
 .subscription-feedback[data-error="true"] { border-left-color: var(--mn-warning); }
 .usage-footnote { margin: 0 0 28px; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.6; }
-.source-editor { margin: 24px 0; padding: 24px; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-md); background: var(--mn-surface-raised); scroll-margin-top: 120px; }
+.source-editor { margin: 24px 0; padding: 24px 0; border-top: 1px solid var(--mn-border); scroll-margin-top: 120px; }
 .editor-heading h3 { margin: 0; font-size: 1rem; font-weight: 600; }
 .editor-heading p { margin: 8px 0 0; color: var(--mn-ink-muted); font-size: .875rem; line-height: 1.65; }
-.source-textarea { margin-top: 20px; min-height: 144px; font-size: .875rem; line-height: 1.7; overflow-wrap: anywhere; }
+.source-textarea { margin-top: 20px; min-height: 144px; font-size: max(16px, .875rem); line-height: 1.7; overflow-wrap: anywhere; }
 .editor-validation { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 0 18px; color: var(--mn-ink-muted); font-size: .8125rem; }
 .editor-validation[data-error="true"] { color: var(--mn-danger); }
 .editor-actions, .source-import-actions, .source-save-actions, .preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -439,7 +442,8 @@ details[open] > summary > svg:last-child { transform: rotate(180deg); }
 .settings-section > summary > svg { color: var(--mn-ink-muted); }
 .subscription-settings-content { display: grid; gap: 16px; padding-bottom: 20px; }
 @media (max-width: 600px) {
-  .source-editor { padding: 18px 14px; }
+  .source-editor { padding: 24px 0; }
+  .source-save-actions { order: -1; }
   .editor-actions { align-items: stretch; gap: 16px; }
   .source-import-actions, .source-save-actions { width: 100%; }
   .source-import-actions > *, .source-save-actions > :last-child { flex: 1; }

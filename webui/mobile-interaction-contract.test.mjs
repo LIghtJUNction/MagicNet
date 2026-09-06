@@ -23,8 +23,8 @@ assert.match(
 assert.match(button, /duration-150/, "button feedback must stay short");
 assert.match(
   button,
-  /min-h-11/,
-  "button targets must remain at least 44px tall",
+  /min-h-12/,
+  "button targets must remain at least 48px tall",
 );
 assert.match(card, /magic-card/, "shared sections retain their semantic surface class");
 assert.match(styles, /\.magic-card\s*\{[^}]*border-top: 1px solid var\(--mn-border\);[^}]*border-radius: 0;/,
@@ -51,6 +51,10 @@ assert.match(
 );
 assert.match(styles, /\.mobile-nav button\s*\{[\s\S]*min-height:\s*56px/);
 assert.match(styles, /env\(safe-area-inset-bottom\)/);
+assert.match(styles, /env\(safe-area-inset-top\)/);
+assert.match(styles, /env\(safe-area-inset-left\)/);
+assert.match(styles, /env\(safe-area-inset-right\)/);
+assert.match(app, /v-show="!keyboardOpen" class="mobile-nav"/);
 assert.match(
   styles,
   /\.mobile-nav button span\s*\{[\s\S]*white-space:\s*normal/,

@@ -243,7 +243,7 @@ watch(() => [panel.value.name, panel.value.url, panel.value.sha256], () => {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="面板" title="面板配置" description="安装、校验或打开 sing-box 管理面板。">
+    <PageHeader overline="面板" title="面板配置">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('webui-status')" @click="refreshWebui"><RefreshCw :size="17" />读取</Button>
         <Button variant="outline" :loading="isRunning('webui-verify')" @click="verifyWebui"><CheckCircle2 :size="17" />校验面板</Button>

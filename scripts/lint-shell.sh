@@ -3,6 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+if ! command -v shellcheck >/dev/null 2>&1; then
+    printf 'missing required command: shellcheck\n' >&2
+    exit 127
+fi
+
 # Use tracked files so submodule code is checked by its own project. NUL
 # delimiters also keep paths with whitespace intact.
 mapfile -d '' -t bash_files < <(git ls-files -z -- 'hooks/*.sh' 'scripts/*.sh' kam.sh)

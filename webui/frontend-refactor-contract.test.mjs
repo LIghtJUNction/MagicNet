@@ -1,5 +1,5 @@
 /**
- * Structural contract for the mobile-first Quiet Console refactor + lag fixes.
+ * Structural contract for the mobile-first Paper refactor + lag fixes.
  * Drives the shipped source entry points (App shell, styles, public asset,
  * page/tone sources) rather than re-implementing loaders or hard-coding
  * expected class strings alone.
@@ -120,9 +120,16 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
   }
 }
 
-// --- Quiet Console tokens on the real styles entry ---
+// --- Mobile paper tokens on the real styles entry ---
 const styles = read(stylesPath);
-for (const token of ["#E8E8E8", "#171717", "#F3F3F3", "#FFFFFF", "#242424"]) {
+for (const token of [
+  "#DEE3D4",
+  "#1C1E1B",
+  "#EFEFE7",
+  "#FAFAF7",
+  "#272824",
+  "#30382F",
+]) {
   assert.match(
     styles,
     new RegExp(token, "i"),
@@ -366,7 +373,7 @@ assert.match(
 );
 assert.match(
   styles,
-  /\.mn-page-actions\s*\{[^}]*position:\s*static/,
+  /\.mn-page-actions\s*\{[^}]*position:\s*(?:static|relative)/,
   "page actions must stay in normal flow on compact screens",
 );
 assert.match(

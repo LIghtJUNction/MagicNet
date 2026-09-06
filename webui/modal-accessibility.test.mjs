@@ -37,7 +37,7 @@ for (const invariant of [
 
 assert.match(
   source,
-  /<Button[\s\S]{0,500}?class="mn-mobile-action"[\s\S]{0,500}?aria-haspopup="dialog"[\s\S]{0,400}?@click="openUtilityMenu"/,
+  /<Button[\s\S]{0,500}?aria-label="打开系统工具"[\s\S]{0,200}?aria-haspopup="dialog"[\s\S]{0,400}?@click="openUtilityMenu"/,
   "the mobile utility trigger must advertise and open the dialog",
 );
 assert.match(

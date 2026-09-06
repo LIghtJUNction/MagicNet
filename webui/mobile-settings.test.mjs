@@ -28,7 +28,8 @@ test("five clicks reveal GPT-6, retain previous visitors, and wrap the rotation"
 
 test("run-page layout is scoped and short viewports retain scrolling menus", () => {
   assert.match(app, /class="page-surface" :data-page="activeTab"/);
-  assert.match(css, /\.page-surface\[data-page="control"\]/);
+  const control = readFileSync(new URL("./src/components/pages/ControlPage.vue", import.meta.url), "utf8");
+  assert.match(control, /<style scoped>[\s\S]*\.mn-control/, "run-page styling stays local to its component");
   assert.match(css, /\.mn-utility-sheet\s*\{[^}]*max-height:[^}]*100dvh[^}]*overflow-y: auto/s);
 });
 

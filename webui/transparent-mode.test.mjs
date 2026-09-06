@@ -129,6 +129,16 @@ test("mode actions invoke only the strict backend command", () => {
   );
 });
 
+test("mode confirmation does not guess TUN when the current mode is unknown", () => {
+  for (const target of ["tun", "ebpf"]) {
+    const action = setTransparentModeAction(target, "unknown");
+    assert.equal(action.args, `transparent set ${target}`);
+    assert.match(action.message, /当前透明代理状态未知/);
+    assert.match(action.message, /恢复原配置/);
+    assert.doesNotMatch(action.message, /确认从 TUN|恢复 TUN/);
+  }
+});
+
 test("control page reuses confirmation and renders non-optimistic state facts", () => {
   assert.match(
     controlSource,

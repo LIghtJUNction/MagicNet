@@ -77,9 +77,16 @@ or releases are rejected; release assets are never overwritten.
 
 ## quality.yml
 
-`quality.yml` keeps code-level checks independent from packaging. It requires
-Rust formatting, Clippy with warnings denied, the complete Rust workspace test
-suite, and ShellCheck for both host Bash tooling and device-side POSIX shell.
+`quality.yml` keeps code-level checks independent from packaging:
+
+- Rust: formatting, Clippy with warnings denied, and workspace tests using locked dependencies and all targets/features.
+- Shell: `bash scripts/lint-shell.sh` checks host tooling and first-party device scripts, including sourced runtime fragments. `bash scripts/test-host.sh` runs fixture-based regressions.
+- WebUI: `npm ci` installs locked dependencies; `npm run check` runs tests, Vue component type checking with `vue-tsc`, and the build. After Chromium installation, `npm run test:ui` covers phone, landscape and desktop layouts, modal focus, keyboard clearance and draft retention. Browser fixtures do not access a device.
+
+Local `scripts/pre-commit.sh` reuses these entrypoints and passes
+`--with-routing-assets` to include the routing/DNS integration tests that require
+a host sing-box binary and prepared rule sets. The CI fixture suite excludes
+those two checks. Device, packaging, and installation checks remain separate.
 
 ## Local Customization
 

@@ -178,19 +178,59 @@ async function askAi(url: string, name: string): Promise<void> {
     await openExternal(url, name);
   });
 }
+const healthLabels: Record<string, string> = { fail: "失败", warn: "注意", info: "提示", ok: "正常" };
 </script>
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="诊断" title="诊断" description="检查服务、网络和接口，把问题定位到可处理的步骤。">
+    <PageHeader overline="诊断" title="诊断">
       <template #actions>
         <Button :loading="isRunning('health')" @click="withAction('health', refreshDiagnostics)"><RefreshCw :size="17" />健康检查</Button>
         <Button variant="outline" :loading="isRunning('ping')" @click="withAction('ping', () => refreshPing())"><RadioTower :size="17" />连通性测试</Button>
-        <Button variant="outline" :loading="isRunning('create-issue')" @click="withAction('create-issue', createIssue)"><Bug :size="17" />创建 Issue</Button>
-        <Button variant="outline" :loading="isRunning('copy-context')" @click="copyContext"><Copy :size="17" />复制上下文</Button>
+        <details class="config-action-menu">
+          <summary>更多</summary>
+          <div>
+            <Button variant="ghost" :loading="isRunning('create-issue')" @click="withAction('create-issue', createIssue)"><Bug :size="17" />创建 Issue</Button>
+            <Button variant="ghost" :loading="isRunning('copy-context')" @click="copyContext"><Copy :size="17" />复制上下文</Button>
+          </div>
+        </details>
       </template>
     </PageHeader>
 
+    <Card class="grid gap-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h3 class="inline-flex items-center gap-2 text-base font-medium"><ShieldCheck :size="17" />检查结果</h3>
+        <Button size="sm" variant="outline" :disabled="!state.health.length" @click="copyHealthSummary"><Copy :size="15" />{{ healthSummaryCopied ? '已复制' : '复制摘要' }}</Button>
+      </div>
+      <div class="rounded-md p-4" :class="statusToneClasses(healthSummary.level)" role="status">
+        <p class="font-medium">{{ healthSummary.label }}</p>
+        <p v-if="state.health.length" class="mt-2 text-sm leading-6">{{ healthSummary.detail }}</p>
+      </div>
+      <div class="grid grid-cols-4 gap-3">
+        <div v-for="status in ['fail', 'warn', 'info', 'ok']" :key="status">
+          <p class="text-xs text-[var(--mn-ink-muted)]">{{ healthLabels[status] }}</p>
+          <p class="mt-2 text-2xl font-medium tabular-nums">{{ healthSummary.counts[status] }}</p>
+        </div>
+      </div>
+    </Card>
+
+    <div v-if="state.health.length" class="grid">
+      <details v-for="item in state.health" :key="item.key" class="mn-disclosure" :open="item.status === 'fail' || item.status === 'warn'">
+        <summary>
+          <span class="min-w-0 break-words">{{ item.key }}</span>
+          <Badge :tone="item.status === 'ok' ? 'success' : item.status === 'fail' ? 'danger' : 'warning'">{{ healthLabels[item.status] || item.status }}</Badge>
+        </summary>
+        <p class="break-words pb-6 text-sm leading-6 text-[var(--mn-ink-soft)]">{{ item.detail }}</p>
+      </details>
+    </div>
+
+    <Card v-if="state.pingtest">
+      <h3 class="text-base font-medium">连通性输出</h3>
+      <pre class="mt-3 max-h-[58vh] overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ state.pingtest }}</pre>
+    </Card>
+
+    <details class="mn-disclosure">
+      <summary>协助排查</summary>
     <Card>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
         <div class="min-w-0">
@@ -201,8 +241,8 @@ async function askAi(url: string, name: string): Promise<void> {
       </div>
       <div class="flex flex-col gap-3">
         <div>
-          <h3 class="text-base font-semibold">带着诊断信息提问</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">打开前会先复制不含敏感信息的诊断报告。</p>
+          <h3 class="text-base font-medium">咨询 AI</h3>
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">先复制脱敏报告，再打开助手。</p>
         </div>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Button v-for="[name, url] in assistants" :key="name" variant="secondary" size="sm" :loading="isRunning(`ask-${name}`)" @click="askAi(url, name)">
@@ -212,10 +252,13 @@ async function askAi(url: string, name: string): Promise<void> {
       </div>
     </Card>
 
+    </details>
+    <details class="mn-disclosure" :open="apiProbes.some((probe) => !probe.ok)">
+      <summary>API 连通性</summary>
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><TimerReset :size="17" /> 检查 API</h3>
+          <h3 class="inline-flex items-center gap-2 text-base font-medium"><TimerReset :size="17" /> 检查 API</h3>
           <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">检查节点组、流量统计和连接接口是否可用。</p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -247,10 +290,13 @@ async function askAi(url: string, name: string): Promise<void> {
       </div>
     </Card>
 
+    </details>
+    <details class="mn-disclosure" :open="supportTriage.totalIssues > 0">
+      <summary>诊断报告</summary>
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileText :size="17" /> 诊断报告</h3>
+          <h3 class="inline-flex items-center gap-2 text-base font-medium"><FileText :size="17" /> 诊断报告</h3>
           <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">生成可安全分享的设备诊断信息。</p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -288,57 +334,12 @@ async function askAi(url: string, name: string): Promise<void> {
       <pre class="max-h-72 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ supportPreview }}</pre>
     </Card>
 
-    <TrafficStatsPanel />
-    <ConnectionsPanel />
-    <ProxyGroupsPanel />
-    <NodeDelayPanel />
+    </details>
 
-    <Card class="grid gap-3">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="min-w-0">
-          <h3 class="inline-flex items-center gap-2 text-base font-semibold"><ShieldCheck :size="17" /> 健康检查</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">汇总服务、网络和配置状态；复制时不包含原始详情。</p>
-        </div>
-        <Button size="sm" variant="outline" :disabled="!state.health.length" @click="copyHealthSummary">
-          <Copy :size="15" />{{ healthSummaryCopied ? "已复制" : "复制总览" }}
-        </Button>
-      </div>
-      <div class="rounded-md border p-3 text-sm leading-6" :class="{
-        'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] text-[var(--mn-ink-soft)]': healthSummary.level === 'idle',
-        'mn-tone-ok': healthSummary.level === 'ok',
-        'mn-tone-warn': healthSummary.level === 'warning',
-        'border-[color-mix(in_srgb,var(--mn-coral)_70%,transparent)] bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': healthSummary.level === 'danger',
-      }">
-        <p class="font-semibold">{{ healthSummary.label }}</p>
-        <p class="mt-1 text-xs opacity-80">{{ healthSummary.detail }}</p>
-      </div>
-      <div class="grid gap-2 sm:grid-cols-4">
-        <div v-for="status in ['fail', 'warn', 'info', 'ok']" :key="status" class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3">
-          <p class="text-xs uppercase text-[var(--mn-ink-muted)]">{{ status }}</p>
-          <p class="mt-1 text-lg font-semibold text-[var(--mn-ink)]">{{ healthSummary.counts[status] }}</p>
-        </div>
-      </div>
-      <div v-if="healthSummary.attention.length" class="flex flex-wrap gap-2">
-        <Badge v-for="item in healthSummary.attention" :key="item.key" :tone="item.status === 'fail' ? 'danger' : 'warning'">{{ item.status }} · {{ item.key }}</Badge>
-      </div>
-    </Card>
+    <details class="mn-disclosure"><summary>实时流量</summary><TrafficStatsPanel /></details>
+    <details class="mn-disclosure"><summary>当前连接</summary><ConnectionsPanel /></details>
+    <details class="mn-disclosure"><summary>节点与代理组</summary><ProxyGroupsPanel /></details>
+    <details class="mn-disclosure"><summary>节点测速</summary><NodeDelayPanel /></details>
 
-    <div class="grid gap-3 sm:grid-cols-2">
-      <Card v-for="item in state.health" :key="item.key">
-        <div class="flex items-start justify-between gap-3">
-          <h3 class="min-w-0 break-words text-base font-semibold">{{ item.key }}</h3>
-          <Badge :tone="item.status === 'ok' ? 'success' : item.status === 'fail' ? 'danger' : 'warning'">{{ item.status }}</Badge>
-        </div>
-        <p class="mt-2 break-words text-sm leading-6 text-[var(--mn-ink-soft)]">{{ item.detail }}</p>
-      </Card>
-      <Card v-if="!state.health.length">
-        <p class="text-sm text-[var(--mn-ink-muted)]">还没有诊断结果。</p>
-      </Card>
-    </div>
-
-    <Card v-if="state.pingtest">
-      <h3 class="text-base font-semibold">连通性输出</h3>
-      <pre class="mt-2 max-h-[58vh] overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ state.pingtest }}</pre>
-    </Card>
   </div>
 </template>

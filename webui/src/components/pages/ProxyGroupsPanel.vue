@@ -248,8 +248,9 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
           <button
             v-for="node in visibleGroupNodes(group)"
             :key="`${group.name}-${node}`"
-            class="grid rounded-md border px-3 py-2 text-left text-sm"
-            :class="node === group.now ? 'border-[color-mix(in_srgb,var(--mn-cactus)_55%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]' : 'border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-carrier-deep)]/30 text-[var(--mn-ink-soft)]'"
+            class="grid min-h-12 rounded-md border px-3 py-3 text-left text-sm"
+            :aria-pressed="node === group.now"
+            :class="node === group.now ? 'mn-tone-ok' : 'border-[var(--mn-border)] text-[var(--mn-ink-soft)]'"
             type="button"
             :disabled="node === group.now || isRunning('proxy-groups-select')"
             @click="requestSelect(group, node)"

@@ -964,8 +964,11 @@ magicnet_subscription_refresh_status() {
 magicnet_subscription_refresh_stop() {
     _refresh_stop_owner=$(magicnet_subscription_refresh_owner_file)
     if [ ! -f "$_refresh_stop_owner" ]; then
-        if magicnet_subscription_refresh_loop_pids >/dev/null 2>&1; then return 2; fi
-        _refresh_stop_scan_rc=$?
+        if magicnet_subscription_refresh_loop_pids >/dev/null 2>&1; then
+            return 2
+        else
+            _refresh_stop_scan_rc=$?
+        fi
         [ "$_refresh_stop_scan_rc" -ne 2 ] || return 2
         return 0
     fi
@@ -983,11 +986,15 @@ magicnet_subscription_refresh_stop() {
         # reclaimed, and only after the exact loop scan proves no loop lives.
         if magicnet_subscription_refresh_owner_pid_state "$_refresh_owner_pid"; then
             return 1
+        else
+            _refresh_stop_pid_state_rc=$?
         fi
-        _refresh_stop_pid_state_rc=$?
         [ "$_refresh_stop_pid_state_rc" -ne 2 ] || return 2
-        magicnet_subscription_refresh_reap_state && return 0
-        return 1
+        if magicnet_subscription_refresh_reap_state; then
+            return 0
+        else
+            return "$?"
+        fi
     fi
     if [ "$_refresh_stop_match_rc" -eq 0 ]; then
         kill "$_refresh_owner_pid" 2>/dev/null || true

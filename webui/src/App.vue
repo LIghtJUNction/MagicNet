@@ -25,6 +25,7 @@ import StatusDot from "@/components/ui/StatusDot.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { setPendingSubscriptionDraft } from "@/components/pages/subscriptionDraft";
 import { useTheme } from "@/composables/useTheme";
+import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
 type TabKey = "control" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
@@ -73,7 +74,7 @@ const asyncPages = Object.fromEntries(
 ) as Record<TabKey, Component>;
 
 const tabs: readonly TabDefinition[] = [
-  { key: "control", label: "运行状态", workspace: "run" },
+  { key: "control", label: "概览", workspace: "run" },
   { key: "about", label: "流量路径", workspace: "run" },
   { key: "apps", label: "应用", workspace: "route" },
   { key: "block", label: "拦截规则", workspace: "route" },
@@ -129,6 +130,7 @@ const {
   AUTHOR_WHISPER_URL,
 } = useMagicNet();
 const { preference: themePreference, label: themeLabel, cycleTheme } = useTheme();
+const { keyboardOpen } = useMobileKeyboard();
 
 function readTabFromLocation(): TabKey | null {
   if (typeof window === "undefined") return null;
@@ -207,7 +209,7 @@ const activeSectionTabs = computed(() =>
 );
 const activeComponent = computed(() => asyncPages[activeTab.value]);
 
-const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice || ""));
+const statusMessage = computed(() => (state.task ? `正在执行：${state.task}` : state.notice));
 const runtimeStateLabel = computed(() => {
   if (state.runtime.singBoxState === "sing-box") return "sing-box 运行中";
   if (state.runtime.singBoxState === "stopped") return "已停止";
@@ -360,6 +362,13 @@ function handleBrandMarkClick(): void {
   easterEggTimer = window.setTimeout(closeEasterEgg, 5200);
 }
 
+function dismissActionMenus(event: PointerEvent): void {
+  if (!(event.target instanceof Node)) return;
+  for (const menu of document.querySelectorAll<HTMLDetailsElement>(".config-action-menu[open]")) {
+    if (!menu.contains(event.target)) menu.open = false;
+  }
+}
+
 function handleEscape(event: KeyboardEvent): void {
   if (event.key === "Tab") {
     trapUtilityMenuFocus(event);
@@ -369,6 +378,13 @@ function handleEscape(event: KeyboardEvent): void {
   if (showUtilityMenu.value) {
     event.preventDefault();
     closeUtilityMenu();
+    return;
+  }
+  const menu = document.querySelector<HTMLDetailsElement>(".config-action-menu[open]");
+  if (menu) {
+    event.preventDefault();
+    menu.open = false;
+    menu.querySelector("summary")?.focus();
     return;
   }
   closeEasterEgg();
@@ -396,11 +412,12 @@ function warmActiveTab(tab: TabKey): void {
 onMounted(() => {
   void refreshStatus();
   document.addEventListener("keydown", handleEscape);
+  document.addEventListener("pointerdown", dismissActionMenus);
   window.addEventListener("popstate", syncTabFromLocation);
   window.addEventListener("hashchange", syncTabFromLocation);
   writeTabToLocation(activeTab.value, true);
   void pageLoaders[activeTab.value]();
-  if (!readOnboardingPreference()) {
+  if (state.hasKsu && !readOnboardingPreference()) {
     void nextTick(() => {
       if (!showOnboarding.value) launchOnboarding();
     });
@@ -416,6 +433,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener("keydown", handleEscape);
+  document.removeEventListener("pointerdown", dismissActionMenus);
   window.removeEventListener("popstate", syncTabFromLocation);
   window.removeEventListener("hashchange", syncTabFromLocation);
   if (easterEggTimer !== undefined) window.clearTimeout(easterEggTimer);
@@ -424,7 +442,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mn-shell">
+  <div class="mn-shell" :class="{ 'mn-keyboard-open': keyboardOpen }">
     <header class="mn-command-bar">
       <div class="mn-brand-lockup">
         <button
@@ -449,7 +467,7 @@ onUnmounted(() => {
 
       <div class="mn-global-actions">
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
           :aria-label="`外观主题：${themeLabel}，点击切换`"
           :title="`外观：${themeLabel}（亮色 → 暗色 → 跟随系统）`"
@@ -498,8 +516,8 @@ onUnmounted(() => {
           <Github :size="16" aria-hidden="true" />GitHub
         </Button>
         <Button
-          class="mn-mobile-action"
-          variant="outline"
+          class="mn-more-action"
+          variant="ghost"
           size="icon"
           aria-label="打开系统工具"
           aria-haspopup="dialog"
@@ -512,6 +530,7 @@ onUnmounted(() => {
     </header>
 
     <section
+      v-if="state.hasKsu && (activeTab !== 'control' || state.task || state.backgroundTask.status === 'running')"
       class="mn-runtime-brief"
       :data-state="routeStackState"
       role="status"
@@ -523,7 +542,7 @@ onUnmounted(() => {
         <StatusDot :tone="statusDotTone" />
         <strong>{{ runtimeStateLabel }}</strong>
       </div>
-      <span class="mn-runtime-mode" :title="`数据面：${transparentRouteData}`">{{ state.runtime.transparentMode.toUpperCase() }}</span>
+      <span class="mn-runtime-mode" :title="`数据面：${transparentRouteData}`">{{ state.runtime.transparentMode === 'unknown' ? '模式未知' : state.runtime.transparentMode === 'ebpf' ? 'eBPF' : 'TUN' }}</span>
       <p v-if="statusMessage">{{ statusMessage }}</p>
       <Button
         v-if="state.backgroundTask.log"
@@ -597,9 +616,7 @@ onUnmounted(() => {
       </main>
     </div>
 
-    <OpenSourceSupportNote />
-
-    <nav class="mobile-nav" aria-label="MagicNet 移动导航">
+    <nav v-show="!keyboardOpen" class="mobile-nav" aria-label="MagicNet 移动导航">
       <button
         v-for="workspace in workspaces"
         :key="workspace.key"
@@ -647,6 +664,7 @@ onUnmounted(() => {
               <Github :size="18" aria-hidden="true" />GitHub
             </Button>
           </div>
+          <OpenSourceSupportNote />
         </div>
       </div>
     </Transition>

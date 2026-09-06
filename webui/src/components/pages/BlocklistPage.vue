@@ -328,7 +328,7 @@ async function confirmBlockAction(): Promise<void> {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="规则" title="拦截规则" description="管理社区规则、手动规则和放行项。">
+    <PageHeader overline="规则" title="拦截规则">
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :loading="isRunning('refresh-block')" @click="withAction('refresh-block', () => refreshBlock())"><RefreshCw :size="17" />读取</Button>
         <Button :loading="isRunning('update-block')" @click="requestUpdateCommunityBlocklist"><DownloadCloud :size="17" />更新社区库</Button>
@@ -358,7 +358,7 @@ async function confirmBlockAction(): Promise<void> {
         <span
           class="rounded px-2 py-1 text-xs font-medium"
           :class="{
-            'bg-[color-mix(in_srgb,var(--mn-cactus)_40%,var(--mn-carrier))] text-[var(--mn-success)]': blockSummary.status === 'active',
+            'mn-tone-ok': blockSummary.status === 'active',
             'bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] text-[var(--mn-warning)]': blockSummary.status === 'partial',
             'bg-[color-mix(in_srgb,var(--mn-coral)_55%,var(--mn-carrier))] text-[var(--mn-danger)]': blockSummary.status === 'empty',
             'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': blockSummary.status === 'disabled',

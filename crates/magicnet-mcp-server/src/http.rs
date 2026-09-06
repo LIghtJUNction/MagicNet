@@ -18,14 +18,21 @@ enum RequestError {
     BadRequest(&'static str),
     MethodNotAllowed,
     NotFound,
-    PayloadTooLarge(&'static str),
     RequestTimeout,
+    PayloadTooLarge(&'static str),
 }
 
-pub(crate) fn handle_connection(mut stream: TcpStream, server: &Server) -> io::Result<()> {
-    // Headers and body share one budget; successful partial reads must not
-    // let a slow sender reserve a connection worker indefinitely.
-    let deadline = Instant::now() + READ_TIMEOUT;
+pub(crate) fn handle_connection(stream: TcpStream, server: &Server) -> io::Result<()> {
+    handle_connection_with_timeout(stream, server, READ_TIMEOUT)
+}
+
+fn handle_connection_with_timeout(
+    mut stream: TcpStream,
+    server: &Server,
+    timeout: Duration,
+) -> io::Result<()> {
+    // One budget covers headers and body; receiving a byte must not renew it.
+    let deadline = Instant::now() + timeout;
     stream.set_write_timeout(Some(READ_TIMEOUT))?;
 
     let mut buffer = Vec::with_capacity(4096);
@@ -76,17 +83,27 @@ fn read_request_chunk(
     buffer: &mut [u8],
     deadline: Instant,
 ) -> Result<usize, RequestError> {
-    let remaining = deadline
-        .checked_duration_since(Instant::now())
-        .filter(|timeout| !timeout.is_zero())
-        .ok_or(RequestError::RequestTimeout)?;
-    stream
-        .set_read_timeout(Some(remaining))
-        .and_then(|()| stream.read(buffer))
-        .map_err(|error| match error.kind() {
-            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => RequestError::RequestTimeout,
-            _ => RequestError::BadRequest("failed to read request"),
-        })
+    loop {
+        // Interrupted reads consume the same budget as successful partial reads.
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|timeout| !timeout.is_zero())
+            .ok_or(RequestError::RequestTimeout)?;
+        match stream
+            .set_read_timeout(Some(remaining))
+            .and_then(|()| stream.read(buffer))
+        {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            result => {
+                return result.map_err(|error| match error.kind() {
+                    io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => {
+                        RequestError::RequestTimeout
+                    }
+                    _ => RequestError::BadRequest("failed to read request"),
+                });
+            }
+        }
+    }
 }
 
 fn read_headers(
@@ -297,14 +314,12 @@ fn write_request_error(stream: &mut TcpStream, error: RequestError) -> io::Resul
         RequestError::NotFound => {
             write_http_error(stream, "404 Not Found", "MCP endpoint not found")
         }
+        RequestError::RequestTimeout => {
+            write_http_error(stream, "408 Request Timeout", "request read timed out")
+        }
         RequestError::PayloadTooLarge(body) => {
             write_http_error(stream, "413 Payload Too Large", body)
         }
-        RequestError::RequestTimeout => write_http_error(
-            stream,
-            "408 Request Timeout",
-            "request read deadline exceeded",
-        ),
     }
 }
 
@@ -328,7 +343,7 @@ fn write_http_error(stream: &mut TcpStream, status: &str, body: &str) -> io::Res
 
 #[cfg(test)]
 mod tests {
-    use std::io::{ErrorKind, Read, Write};
+    use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::thread;
     use std::time::Duration;
@@ -385,16 +400,13 @@ mod tests {
     #[test]
     fn slow_peer_reads_use_a_timeout() {
         let (mut client, mut server) = tcp_pair();
-        server
-            .set_read_timeout(Some(Duration::from_millis(50)))
-            .unwrap();
+        let deadline = Instant::now() + Duration::from_millis(50);
 
         let mut byte = [0_u8; 1];
-        let error = server.read(&mut byte).unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::TimedOut | ErrorKind::WouldBlock
-        ));
+        assert_eq!(
+            read_request_chunk(&mut server, &mut byte, deadline),
+            Err(RequestError::RequestTimeout)
+        );
         let _ = client.write_all(b"x");
     }
 
@@ -444,6 +456,91 @@ mod tests {
                 thread::sleep(Duration::from_millis(20));
             }
         })
+    }
+
+    #[test]
+    fn expired_deadline_rejects_even_ready_bytes() {
+        let (mut client, mut server) = tcp_pair();
+        client.write_all(b"x").unwrap();
+        assert_eq!(
+            read_request_chunk(&mut server, &mut [0_u8; 1], Instant::now()),
+            Err(RequestError::RequestTimeout)
+        );
+    }
+
+    #[test]
+    fn trickling_headers_cannot_renew_the_request_deadline() {
+        assert_trickling_request_times_out(b"POST /mcp HTTP/1.1\r\nX-Slow: ");
+    }
+
+    #[test]
+    fn trickling_body_cannot_renew_the_request_deadline() {
+        assert_trickling_request_times_out(
+            b"POST /mcp HTTP/1.1\r\nAuthorization: Bearer test-secret\r\nContent-Length: 1024\r\n\r\n",
+        );
+    }
+
+    fn assert_trickling_request_times_out(prefix: &[u8]) {
+        let (mut client, server_stream) = tcp_pair();
+        client
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        client.write_all(prefix).unwrap();
+        let server = Server {
+            moddir: std::path::PathBuf::from("/unused"),
+            cli: std::path::PathBuf::from("/unused/cli"),
+            secret: "test-secret".into(),
+        };
+        let handler = thread::spawn(move || {
+            let started = Instant::now();
+            handle_connection_with_timeout(server_stream, &server, Duration::from_millis(300))
+                .unwrap();
+            started.elapsed()
+        });
+        let mut sender = client.try_clone().unwrap();
+        let producer = thread::spawn(move || {
+            for _ in 0..200 {
+                if sender.write_all(b"x").is_err() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        let elapsed = handler.join().unwrap();
+        producer.join().unwrap();
+        assert!(
+            response.starts_with("HTTP/1.1 408 Request Timeout\r\n"),
+            "{response}"
+        );
+        assert!(
+            elapsed < Duration::from_millis(1500),
+            "read budget was renewed: {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn complete_authorized_request_still_reaches_jsonrpc() {
+        let (mut client, server_stream) = tcp_pair();
+        let payload = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+        write!(client, "POST /mcp HTTP/1.1\r\nAuthorization: Bearer test-secret\r\nContent-Length: {}\r\n\r\n{payload}", payload.len()).unwrap();
+        let server = Server {
+            moddir: std::path::PathBuf::from("/unused"),
+            cli: std::path::PathBuf::from("/unused/cli"),
+            secret: "test-secret".into(),
+        };
+        let handler = thread::spawn(move || handle_connection(server_stream, &server).unwrap());
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        handler.join().unwrap();
+        let (head, body) = response.split_once("\r\n\r\n").unwrap();
+        assert!(head.starts_with("HTTP/1.1 200 OK\r\n"));
+        let response: serde_json::Value = serde_json::from_str(body).unwrap();
+        assert_eq!(response["id"], 1);
+        assert!(response["result"]["tools"]
+            .as_array()
+            .is_some_and(|tools| !tools.is_empty()));
     }
 
     fn tcp_pair() -> (TcpStream, TcpStream) {

@@ -1,3 +1,6 @@
+use serde_json::Value;
+use std::sync::OnceLock;
+
 pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_status","description":"Show MagicNet service status","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_cli","description":"Run a MagicNet CLI command with explicit argv. This is restricted to the MagicNet CLI binary, not a shell.","inputSchema":{"type":"object","properties":{"args":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":24}},"required":["args"]}},
@@ -56,6 +59,60 @@ pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_file_list","description":"List files under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},
 {"name":"magicnet_file_read","description":"Read a text file under the MagicNet module directory","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}}
 ]}"#;
+
+pub(crate) fn tool_catalog() -> Result<&'static Value, &'static str> {
+    static CATALOG: OnceLock<Result<Value, serde_json::Error>> = OnceLock::new();
+    CATALOG
+        .get_or_init(|| serde_json::from_str(TOOLS_JSON))
+        .as_ref()
+        .map_err(|_| "invalid MCP tool catalog")
+}
+
+/// Enforce required fields and JSON types before defaults or side effects.
+/// Domain-specific value validation remains owned by the CLI.
+pub(crate) fn validate_tool_arguments(tool: &str, args: &Value) -> Result<(), String> {
+    let catalog = tool_catalog()?;
+    let schema = catalog["tools"]
+        .as_array()
+        .and_then(|tools| tools.iter().find(|entry| entry["name"] == tool))
+        .map(|entry| &entry["inputSchema"])
+        .ok_or("unknown tool")?;
+    // Omitted arguments are compatible with the existing no-argument tools.
+    if !args.is_null() && !args.is_object() {
+        return Err("arguments must be an object".into());
+    }
+    if let Some(required) = schema["required"].as_array() {
+        for key in required.iter().filter_map(Value::as_str) {
+            if args.get(key).is_none() {
+                return Err(format!("missing required argument: {key}"));
+            }
+        }
+    }
+    if let Some(properties) = schema["properties"].as_object() {
+        for (key, property) in properties {
+            if let Some(value) = args.get(key) {
+                if !argument_type_matches(value, property) {
+                    return Err(format!("invalid argument type: {key}"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn argument_type_matches(value: &Value, schema: &Value) -> bool {
+    match schema["type"].as_str() {
+        Some("string") => value.is_string(),
+        Some("boolean") => value.is_boolean(),
+        Some("integer") => value.is_i64() || value.is_u64(),
+        Some("array") => value.as_array().is_some_and(|items| {
+            items
+                .iter()
+                .all(|item| argument_type_matches(item, &schema["items"]))
+        }),
+        _ => false,
+    }
+}
 
 #[cfg(test)]
 mod tests {

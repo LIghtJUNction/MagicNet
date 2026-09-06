@@ -320,9 +320,9 @@ function selectWarpGlobal(enabled: boolean): void {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="工具" title="工具" description="运行 DNS、网络、备份和抓包工具。">
+    <PageHeader overline="工具" title="工具">
       <Button variant="outline" :loading="toolsRefreshing" @click="refreshTools">
-        <RefreshCw :size="17" />刷新工具状态
+        <RefreshCw :size="17" />刷新
       </Button>
     </PageHeader>
 
@@ -341,7 +341,7 @@ function selectWarpGlobal(enabled: boolean): void {
 
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> WARP 出站</h3>
-        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">导入自己的 WARP/WireGuard 配置后，MagicNet 会生成 sing-box wireguard endpoint；可全局在 sing-box 选择器里选择 warp，也可给指定域名添加 warp 路由。</p>
+        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">导入 WireGuard 配置后，可全局使用 WARP，或仅用于指定域名。</p>
         <Textarea v-model="state.warp.importText" class="min-h-32 font-mono text-xs" spellcheck="false" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = ...:2408" />
         <div class="rounded-md border p-3 text-sm leading-6" :class="warpImportTone(warpImportSummary.status)">
           <p class="font-medium">{{ warpImportSummary.status === 'ok' ? '可导入' : warpImportSummary.status === 'warning' ? '可导入但需确认' : warpImportSummary.status === 'error' ? '不能导入' : '等待配置' }}</p>
@@ -402,7 +402,7 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
 
       <Card>
         <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> 拓扑 / 路由</h3>
-        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">只读展示网络链路和路由快照，设备 CLI 没有拓扑命令时自动回退到路由快照。</p>
+        <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">只读网络与路由快照。</p>
         <div class="grid gap-2">
           <Button variant="secondary" :loading="isRunning('refresh-topology')" @click="withAction('refresh-topology', () => refreshTopology())">刷新拓扑/路由</Button>
           <Button variant="secondary" :loading="isRunning('refresh-sysroute')" @click="withAction('refresh-sysroute', () => refreshSysroute())">刷新路由</Button>

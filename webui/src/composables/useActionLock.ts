@@ -1,21 +1,22 @@
 import { ref } from "vue";
 
 export function useActionLock() {
-  const running = ref<Record<string, boolean>>({});
+  const running = ref(new Set<string>());
 
   function isRunning(key: string): boolean {
-    return Boolean(running.value[key]);
+    return running.value.has(key);
   }
 
-  async function withAction<T>(key: string, task: () => Promise<T>): Promise<T | undefined> {
-    if (running.value[key]) return undefined;
-    running.value = { ...running.value, [key]: true };
+  async function withAction<T>(
+    key: string,
+    task: () => Promise<T>,
+  ): Promise<T | undefined> {
+    if (isRunning(key)) return undefined;
+    running.value.add(key);
     try {
       return await task();
     } finally {
-      const next = { ...running.value };
-      delete next[key];
-      running.value = next;
+      running.value.delete(key);
     }
   }
 
