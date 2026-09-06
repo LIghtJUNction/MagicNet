@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 export type TrafficSample = {
   up: number;
   down: number;
@@ -81,7 +82,7 @@ export function evaluateTrafficAlert(samples: TrafficSample[], thresholdMiBPerSe
   if (!thresholdBytesPerSecond) {
     return {
       level: "idle",
-      message: "未设置告警阈值。",
+      message: t("未设置告警阈值。"),
       latestTotal,
       thresholdBytesPerSecond,
       sustainedSamples: 0
@@ -90,7 +91,7 @@ export function evaluateTrafficAlert(samples: TrafficSample[], thresholdMiBPerSe
   if (!latest) {
     return {
       level: "idle",
-      message: "等待真实流量样本。",
+      message: t("等待真实流量样本。"),
       latestTotal,
       thresholdBytesPerSecond,
       sustainedSamples: 0
@@ -101,7 +102,7 @@ export function evaluateTrafficAlert(samples: TrafficSample[], thresholdMiBPerSe
   if (consecutive >= 3) {
     return {
       level: "danger",
-      message: `连续 ${consecutive} 个样本超过阈值。`,
+      message: t("连续 {consecutive} 个样本超过阈值。", { consecutive: consecutive }),
       latestTotal,
       thresholdBytesPerSecond,
       sustainedSamples: consecutive
@@ -110,7 +111,7 @@ export function evaluateTrafficAlert(samples: TrafficSample[], thresholdMiBPerSe
   if (latestTotal >= thresholdBytesPerSecond) {
     return {
       level: "warning",
-      message: "最近一个样本超过阈值。",
+      message: t("最近一个样本超过阈值。"),
       latestTotal,
       thresholdBytesPerSecond,
       sustainedSamples: consecutive
@@ -118,7 +119,7 @@ export function evaluateTrafficAlert(samples: TrafficSample[], thresholdMiBPerSe
   }
   return {
     level: "ok",
-    message: "当前流量低于阈值。",
+    message: t("当前流量低于阈值。"),
     latestTotal,
     thresholdBytesPerSecond,
     sustainedSamples: 0

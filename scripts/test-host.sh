@@ -43,6 +43,7 @@ jq empty src/MagicNet/.config/sing-box/config.json
 bash scripts/test-repository-hygiene.sh
 bash scripts/test-config-template-pin.sh
 sh scripts/test-kamfw-i18n.sh
+sh scripts/test-magicnet-i18n.sh
 if [ "$with_routing_assets" -eq 1 ]; then
     bash scripts/test-default-routing-policy.sh
 fi

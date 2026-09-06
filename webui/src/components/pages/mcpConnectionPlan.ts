@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import {
   formatMcpHostPort,
   isMcpIpLiteral,
@@ -52,39 +53,39 @@ export function buildMcpConnectionPlan(input: McpConnectionPlanInput): McpConnec
 
   const invalidBind = !isMcpIpLiteral(bind);
   const invalidPort = !isValidMcpPort(port);
-  if (invalidBind) checks.push("监听地址无效：MCP CLI 只接受 IPv4 或 IPv6 字面量。");
-  if (invalidPort) checks.push("端口无效：MCP CLI 只接受 1-65535。");
-  if (!input.enabled) checks.push("服务未启用：启动前会写入 MCP 配置并生成 secret。");
-  if (input.pid === "stopped") checks.push("服务未运行：需要先启动，或保存配置后重启。");
-  if (!input.secretSet) checks.push("secret 未设置：连接前先用 cli mcp secret 生成/读取。");
-  else checks.push("请求必须携带 Bearer secret 或 X-MagicNet-MCP-Secret。");
-  if (activePortOwner) checks.push(`端口已被占用：${activePortOwner}`);
-  else if (!savedEndpoint) checks.push("端口占用状态来自已保存配置；保存新地址后再刷新确认。");
-  if (invalidBind) checks.push("请先保存有效 IP 字面量后再复制或启动连接计划。");
-  else if (isWildcardBind(bind)) checks.push("监听所有地址：同一网络内设备侧端口可能被其他主机访问。");
-  else if (isLocalBind(bind)) checks.push("仅本机监听：适合 adb forward 连接。");
-  else checks.push(`自定义监听地址：确认设备侧 ${deviceEndpoint} 可绑定。`);
+  if (invalidBind) checks.push(t("监听地址无效：MCP CLI 只接受 IPv4 或 IPv6 字面量。"));
+  if (invalidPort) checks.push(t("端口无效：MCP CLI 只接受 1-65535。"));
+  if (!input.enabled) checks.push(t("服务未启用：启动前会写入 MCP 配置并生成 secret。"));
+  if (input.pid === "stopped") checks.push(t("服务未运行：需要先启动，或保存配置后重启。"));
+  if (!input.secretSet) checks.push(t("secret 未设置：连接前先用 cli mcp secret 生成/读取。"));
+  else checks.push(t("请求必须携带 Bearer secret 或 X-MagicNet-MCP-Secret。"));
+  if (activePortOwner) checks.push(t("端口已被占用：{activePortOwner}", { activePortOwner }));
+  else if (!savedEndpoint) checks.push(t("端口占用状态来自已保存配置；保存新地址后再刷新确认。"));
+  if (invalidBind) checks.push(t("请先保存有效 IP 字面量后再复制或启动连接计划。"));
+  else if (isWildcardBind(bind)) checks.push(t("监听所有地址：同一网络内设备侧端口可能被其他主机访问。"));
+  else if (isLocalBind(bind)) checks.push(t("仅本机监听：适合 adb forward 连接。"));
+  else checks.push(t("自定义监听地址：确认设备侧 {deviceEndpoint} 可绑定。", { deviceEndpoint }));
 
   const running = input.enabled && input.pid !== "stopped";
   const blocked = Boolean(activePortOwner && input.pid === "stopped");
   const title = invalidBind
-    ? "MCP 监听地址格式错误"
+    ? t("MCP 监听地址格式错误")
     : invalidPort
-      ? "MCP 端口格式错误"
+      ? t("MCP 端口格式错误")
       : blocked
-        ? "MCP 端口需要处理"
+        ? t("MCP 端口需要处理")
         : running
-          ? "MCP 鉴权连接计划"
-          : "MCP 连接前需要启动";
+          ? t("MCP 鉴权连接计划")
+          : t("MCP 连接前需要启动");
   const summary = invalidBind
-    ? "先改为有效的 IPv4 或 IPv6 字面量后再保存或复制连接命令。"
+    ? t("先改为有效的 IPv4 或 IPv6 字面量后再保存或复制连接命令。")
     : invalidPort
-    ? "先修正端口后再保存或复制连接命令。"
+    ? t("先修正端口后再保存或复制连接命令。")
     : blocked
-    ? "当前端口被其他进程监听，直接启动可能失败。"
+    ? t("当前端口被其他进程监听，直接启动可能失败。")
     : running
-      ? `电脑侧执行 adb forward 后，用 secret 鉴权访问 ${localUrl}。`
-      : "启动 MCP 后读取 secret，再执行 adb forward 和鉴权请求。";
+      ? t("电脑侧执行 adb forward 后，用 secret 鉴权访问 {localUrl}。", { localUrl })
+      : t("启动 MCP 后读取 secret，再执行 adb forward 和鉴权请求。");
 
   const copyText = [
     `MCP local URL: ${localUrl}`,

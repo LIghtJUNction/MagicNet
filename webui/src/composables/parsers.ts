@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { MODULE_DIR, SING_BOX_UI } from "../constants.ts";
 import { parseSubscriptionSourceUsage } from "./subscriptionUsage.ts";
 import type {
@@ -525,11 +526,11 @@ export function parseConfigValidation(
   text: string,
 ): Pick<ConfigValidationState, "status" | "summary"> {
   const trimmed = text.trim();
-  if (!trimmed) return { status: "error", summary: "命令没有返回校验结果。" };
+  if (!trimmed) return { status: "error", summary: t("命令没有返回校验结果。") };
   if (/\[info\]\s+Saved and validated/i.test(trimmed)) {
     return {
       status: "ok",
-      summary: firstUsefulLine(trimmed) || "配置已通过校验并保存。",
+      summary: firstUsefulLine(trimmed) || t("配置已通过校验并保存。"),
     };
   }
   if (
@@ -558,7 +559,7 @@ function configValidationFailureDetail(text: string): string {
         ) && !/^config validation failed$/i.test(line),
     ) ||
     lines.find((line) => !/^config validation failed$/i.test(line)) ||
-    "配置校验失败。"
+    t("配置校验失败。")
   );
 }
 

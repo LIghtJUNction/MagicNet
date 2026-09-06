@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { nextTick, onMounted, onUnmounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
@@ -37,7 +38,7 @@ onUnmounted(() => {
 
 <template>
   <div class="fixed inset-0 z-[70] grid place-items-center p-3 sm:p-6">
-    <button class="mn-overlay absolute inset-0 size-full" type="button" aria-label="关闭" @click="emit('dismiss')" />
+    <button class="mn-overlay absolute inset-0 size-full" type="button" :aria-label="t('关闭')" @click="emit('dismiss')" />
     <section
       ref="dialog"
       class="mn-chrome relative z-10 w-full max-w-xl rounded-md p-1.5"
@@ -50,22 +51,22 @@ onUnmounted(() => {
     >
       <div class="rounded-[5px] bg-[var(--mn-ivory)] p-4 sm:p-5">
         <div class="flex items-center justify-between gap-3">
-          <h2 id="onboarding-title" class="text-lg font-semibold text-[var(--mn-ink)]">订阅链接</h2>
-          <Button data-dialog-initial-focus variant="ghost" size="icon" aria-label="关闭" @click="emit('dismiss')">×</Button>
+          <h2 id="onboarding-title" class="text-lg font-semibold text-[var(--mn-ink)]">{{ t("订阅链接") }}</h2>
+          <Button data-dialog-initial-focus variant="ghost" size="icon" :aria-label="t('关闭')" @click="emit('dismiss')">×</Button>
         </div>
         <Textarea
           v-model="value"
           class="mt-4 min-h-44"
           spellcheck="false"
           autocomplete="off"
-          placeholder="每行一个 HTTPS 订阅链接"
-          aria-label="订阅链接"
+          :placeholder="t('每行一个 HTTPS 订阅链接')"
+          :aria-label="t('订阅链接')"
           @keydown.ctrl.enter.prevent="submit"
           @keydown.meta.enter.prevent="submit"
         />
         <div class="mt-3 flex justify-end gap-2">
-          <Button variant="ghost" @click="emit('dismiss')">取消</Button>
-          <Button :disabled="!value.trim()" @click="submit">打开订阅</Button>
+          <Button variant="ghost" @click="emit('dismiss')">{{ t("取消") }}</Button>
+          <Button :disabled="!value.trim()" @click="submit">{{ t("打开订阅") }}</Button>
         </div>
       </div>
     </section>

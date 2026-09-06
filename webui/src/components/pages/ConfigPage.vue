@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { Braces, Copy, DownloadCloud, FileUp, Github, ListTree, MoreHorizontal, RefreshCw, Save } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
@@ -22,6 +23,7 @@ const DEFAULT_CONFIG_REPO_SHA256 = "ba0f9057b2b6ac896a8783a5691388325306be066e81
 const pendingConfigAction = ref<PendingToolAction | null>(null);
 const configFileInput = ref<HTMLInputElement | null>(null);
 const localJsonStatus = ref("");
+const localJsonError = ref(false);
 const configSyntaxValid = ref(true);
 const configAnalysisPending = ref(false);
 const analyzedConfigText = ref("");
@@ -68,7 +70,7 @@ async function confirmConfigAction(): Promise<void> {
   if (!action) return;
   if (action.key === "save-config" && !configSyntaxValid.value) {
     pendingConfigAction.value = null;
-    state.output = "请先修正编辑器中标出的 JSON 语法错误。";
+    state.output = t("请先修正编辑器中标出的 JSON 语法错误。");
     return;
   }
   try {
@@ -80,13 +82,13 @@ async function confirmConfigAction(): Promise<void> {
 
 function requestSaveConfig(): void {
   if (!configSyntaxValid.value) {
-    state.output = "请先修正编辑器中标出的 JSON 语法错误。";
+    state.output = t("请先修正编辑器中标出的 JSON 语法错误。");
     return;
   }
   requestConfigAction({
     key: "save-config",
-    title: "校验并保存配置",
-    detail: `会把当前编辑器内容写入 ${state.config.path || "sing-box config.json"}，通过 sing-box check 后覆盖运行配置。`,
+    title: t("校验并保存配置"),
+    detail: t("会把当前编辑器内容写入 {value}，通过 sing-box check 后覆盖运行配置。", { value: state.config.path || "sing-box config.json" }),
     command: `config-editor save-file ${state.config.target} <editor-temp-file>`,
     run: () => withAction("save-config", () => saveConfig()),
   });
@@ -111,7 +113,7 @@ async function saveRepository(): Promise<void> {
     path: repositoryPath.value.trim(),
     ...(repositorySha256.value.trim() ? { sha256: repositorySha256.value.trim() } : {}),
   }));
-  repositoryStatus.value = saved ? "已保存" : "保存失败";
+  repositoryStatus.value = saved ? t("已保存") : t("保存失败");
 }
 
 async function resetRepository(): Promise<void> {
@@ -126,21 +128,23 @@ async function resetRepository(): Promise<void> {
 function requestSyncTemplate(): void {
   requestConfigAction({
     key: "sync-template",
-    title: "同步配置仓库模板",
-    detail: "用配置仓库模板更新当前目标配置。",
+    title: t("同步配置仓库模板"),
+    detail: t("用配置仓库模板更新当前目标配置。"),
     command: `config-editor sync-template ${state.config.target}`,
     run: () => withAction("sync-template", () => syncConfigTemplate()),
   });
 }
 
 function formatConfigJson(): void {
+  localJsonError.value = false;
   try {
     const parsed = JSON.parse(state.config.text);
     state.config.text = `${JSON.stringify(parsed, null, 2)}\n`;
     state.config.dirty = true;
-    localJsonStatus.value = "本地 JSON 格式化完成；保存前仍会执行 sing-box check。";
+    localJsonStatus.value = t("本地 JSON 格式化完成；保存前仍会执行 sing-box check。");
   } catch {
-    localJsonStatus.value = "JSON 格式不正确，编辑器已标出位置。";
+    localJsonError.value = true;
+    localJsonStatus.value = t("JSON 格式不正确，编辑器已标出位置。");
   }
 }
 
@@ -154,25 +158,27 @@ async function importLocalConfig(event: Event): Promise<void> {
   input.value = "";
   if (!file) return;
 
+  localJsonError.value = false;
   try {
     if (file.size > MAX_LOCAL_CONFIG_BYTES) {
-      throw new Error("文件超过 4 MiB 限制。");
+      throw new Error(t("文件超过 4 MiB 限制。"));
     }
     const imported = parseLocalConfigFile(file.name, new Uint8Array(await file.arrayBuffer()));
     state.config.text = imported.text;
     state.config.dirty = true;
-    state.config.status = `已导入 ${imported.fileName}，尚未保存`;
+    state.config.status = t("已导入 {value}，尚未保存", { value: imported.fileName });
     state.config.validation = {
       status: "idle",
-      summary: "本地 JSON 已导入编辑器，点击“校验并保存”后才会写入运行配置。",
+      summary: t("本地 JSON 已导入编辑器，点击“校验并保存”后才会写入运行配置。"),
       checkedAt: "",
     };
     configSyntaxValid.value = true;
-    localJsonStatus.value = `${imported.fileName} 已导入（${(imported.sizeBytes / 1024).toFixed(1)} KiB），尚未保存。`;
-    state.notice = "本地 JSON 已导入编辑器";
-    state.output = "导入完成，运行配置没有被修改；请检查内容后点击“校验并保存”。";
+    localJsonStatus.value = t("{value} 已导入（{value2} KiB），尚未保存。", { value: imported.fileName, value2: (imported.sizeBytes / 1024).toFixed(1) });
+    state.notice = t("本地 JSON 已导入编辑器");
+    state.output = t("导入完成，运行配置没有被修改；请检查内容后点击“校验并保存”。");
   } catch (error) {
-    localJsonStatus.value = `导入错误：${error instanceof Error ? error.message : String(error)}`;
+    localJsonError.value = true;
+    localJsonStatus.value = t("导入错误：{value}", { value: error instanceof Error ? error.message : String(error) });
     state.output = localJsonStatus.value;
   }
 }
@@ -181,7 +187,7 @@ async function copySanitizedConfig(): Promise<void> {
   const sanitizedConfig = sanitizeConfigText(state.config.text);
   if (!sanitizedConfig) return;
   sanitizedCopied.value = await copyText(sanitizedConfig);
-  state.output = sanitizedCopied.value ? "脱敏配置片段已复制。" : "剪贴板不可用，脱敏配置未复制。";
+  state.output = sanitizedCopied.value ? t("脱敏配置片段已复制。") : t("剪贴板不可用，脱敏配置未复制。");
 }
 
 async function copyConfigAudit(): Promise<void> {
@@ -198,58 +204,58 @@ async function copyConfigAudit(): Promise<void> {
     `[outbound_tags] ${sanitizeConfigText(configAudit.value.outboundTags.join(", ")) || "none"}`
   ].join("\n");
   auditCopied.value = await copyText(report);
-  state.output = auditCopied.value ? "配置审计摘要已复制。" : "剪贴板不可用，配置审计摘要未复制。";
+  state.output = auditCopied.value ? t("配置审计摘要已复制。") : t("剪贴板不可用，配置审计摘要未复制。");
 }
 
 async function openConfigIssue(): Promise<void> {
   if (!issueBaseline.value) {
-    state.output = "请先加载配置，再生成 Diff Issue。";
+    state.output = t("请先加载配置，再生成 Diff Issue。");
     return;
   }
   let diff: string;
   try {
     diff = buildUnifiedConfigDiff(issueBaseline.value, state.config.text);
   } catch (error) {
-    state.output = `无法生成安全 Diff：${error instanceof Error ? error.message : String(error)}`;
+    state.output = t("无法生成安全 Diff：{value}", { value: error instanceof Error ? error.message : String(error) });
     return;
   }
   if (!diff) {
-    state.output = "配置没有可提交的变更。";
+    state.output = t("配置没有可提交的变更。");
     return;
   }
   if (new TextEncoder().encode(diff).length > MAX_CONFIG_ISSUE_DIFF_BYTES) {
-    state.output = "安全 Diff 超过 24 KiB，未复制或打开 Issue；请缩小单次配置变更。";
+    state.output = t("安全 Diff 超过 24 KiB，未复制或打开 Issue；请缩小单次配置变更。");
     return;
   }
   const copied = await copyText(`\`\`\`diff\n${diff}\n\`\`\``);
   const body = [
     "## Proposed Change",
     "",
-    copied ? "脱敏 unified diff 已复制到剪贴板，请粘贴到此处。" : "剪贴板不可用，请返回 MagicNet 重新复制脱敏 diff。",
+    copied ? t("脱敏 unified diff 已复制到剪贴板，请粘贴到此处。") : t("剪贴板不可用，请返回 MagicNet 重新复制脱敏 diff。"),
     "",
     `Target: ${state.config.target}`,
     "",
-    "创建前仍需人工检查，避免提交私有订阅、密钥或节点信息。"
+    t("创建前仍需人工检查，避免提交私有订阅、密钥或节点信息。")
   ].join("\n");
-  openExternal(`${REPO}/issues/new?${new URLSearchParams({ title: `配置变更建议：${state.config.target}`, body }).toString()}`, "配置 Diff Issue");
+  openExternal(`${REPO}/issues/new?${new URLSearchParams({ title: t("配置变更建议：{value}", { value: state.config.target }), body }).toString()}`, t("配置 Diff Issue"));
 }
 </script>
 
 <template>
   <div class="config-page grid gap-4">
-    <PageHeader overline="编辑器" title="配置文件">
+    <PageHeader :overline="t('编辑器')" :title="t('配置文件')">
       <div class="flex flex-wrap items-center gap-2">
         <input ref="configFileInput" class="hidden" type="file" accept=".json,application/json" @change="importLocalConfig">
-        <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', loadConfigForEditing)"><RefreshCw :size="17" />{{ isRunning('load-config') ? '加载中' : '加载配置' }}</Button>
-        <Button :disabled="!state.hasKsu || !state.config.text.trim() || !configSyntaxValid" :loading="isRunning('save-config')" aria-label="校验并保存配置" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? '校验中' : '保存' }}</Button>
+        <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', loadConfigForEditing)"><RefreshCw :size="17" />{{ isRunning('load-config') ? t("加载中") : t("加载配置") }}</Button>
+        <Button :disabled="!state.hasKsu || !state.config.text.trim() || !configSyntaxValid" :loading="isRunning('save-config')" :aria-label="t('校验并保存配置')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? t("校验中") : t("保存") }}</Button>
         <details class="config-action-menu">
-          <summary aria-label="更多配置操作"><MoreHorizontal :size="18" aria-hidden="true" />更多</summary>
+          <summary :aria-label="t('更多配置操作')"><MoreHorizontal :size="18" aria-hidden="true" />{{ t("更多") }}</summary>
           <div>
-            <Button variant="ghost" @click="chooseLocalConfig"><FileUp :size="17" />导入 JSON</Button>
-            <Button variant="ghost" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />格式化</Button>
-            <Button variant="ghost" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? '同步中' : '同步模板' }}</Button>
-            <Button variant="ghost" :disabled="!state.config.text" @click="copySanitizedConfig"><Copy :size="17" />{{ sanitizedCopied ? '已复制' : '复制脱敏配置' }}</Button>
-            <Button variant="ghost" @click="openConfigIssue"><Github :size="17" />创建 Diff Issue</Button>
+            <Button variant="ghost" @click="chooseLocalConfig"><FileUp :size="17" />{{ t("导入 JSON") }}</Button>
+            <Button variant="ghost" :disabled="!state.config.text" @click="formatConfigJson"><Braces :size="17" />{{ t("格式化") }}</Button>
+            <Button variant="ghost" :loading="isRunning('sync-template')" @click="requestSyncTemplate"><DownloadCloud :size="17" />{{ isRunning('sync-template') ? t("同步中") : t("同步模板") }}</Button>
+            <Button variant="ghost" :disabled="!state.config.text" @click="copySanitizedConfig"><Copy :size="17" />{{ sanitizedCopied ? t("已复制") : t("复制脱敏配置") }}</Button>
+            <Button variant="ghost" @click="openConfigIssue"><Github :size="17" />{{ t("创建 Diff Issue") }}</Button>
           </div>
         </details>
       </div>
@@ -266,15 +272,15 @@ async function openConfigIssue(): Promise<void> {
     <Card class="config-editor-workspace grid gap-3">
       <div class="config-file-bar flex min-w-0 flex-wrap items-center gap-2 text-sm text-[var(--mn-ink-muted)]">
         <span class="mr-auto font-medium text-[var(--mn-ink)]" :title="state.config.path">sing-box</span>
-        <span class="shrink-0">{{ state.config.status }}</span>
-        <span v-if="state.config.dirty" class="shrink-0 rounded bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] px-2 py-1 text-xs text-[var(--mn-warning)]">未保存</span>
+        <span class="shrink-0">{{ t(state.config.status) }}</span>
+        <span v-if="state.config.dirty" class="shrink-0 rounded bg-[color-mix(in_srgb,var(--mn-oat)_55%,var(--mn-carrier))] px-2 py-1 text-xs text-[var(--mn-warning)]">{{ t("未保存") }}</span>
       </div>
       <details class="mn-disclosure" :open="state.config.validation.status === 'error' || configOutline.status === 'error'">
-        <summary>校验与结构<span>{{ configAnalysisPending ? '分析中' : state.config.validation.status === 'error' ? '检查失败' : state.config.validation.status === 'ok' ? '通过' : '未校验' }}</span></summary>
-        <input class="mn-field mb-3 w-full px-3" readonly :value="state.config.path" aria-label="当前配置路径">
+        <summary>{{ t("校验与结构") }}<span>{{ configAnalysisPending ? t("分析中") : state.config.validation.status === 'error' ? t("检查失败") : state.config.validation.status === 'ok' ? t("通过") : t("未校验") }}</span></summary>
+        <input class="mn-field mb-3 w-full px-3" readonly :value="state.config.path" :aria-label="t('当前配置路径')">
       <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
         <div>
-          <p class="text-xs text-[var(--mn-ink-muted)]">校验状态</p>
+          <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("校验状态") }}</p>
           <p
             class="mt-1 inline-flex rounded px-2 py-1 text-xs"
             :class="{
@@ -283,26 +289,26 @@ async function openConfigIssue(): Promise<void> {
               'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': state.config.validation.status === 'idle',
             }"
           >
-            {{ state.config.validation.status === 'ok' ? '通过' : state.config.validation.status === 'error' ? '失败' : '未校验' }}
+            {{ state.config.validation.status === 'ok' ? t("通过") : state.config.validation.status === 'error' ? t("失败") : t("未校验") }}
           </p>
         </div>
         <div class="min-w-0">
-          <p class="text-xs text-[var(--mn-ink-muted)]">最近校验 {{ state.config.validation.checkedAt || "—" }}</p>
-          <p class="mt-1 break-words text-sm text-[var(--mn-ink-soft)]">{{ state.config.validation.summary }}</p>
+          <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("最近校验 {value}", { value: state.config.validation.checkedAt || "—" }) }}</p>
+          <p class="mt-1 break-words text-sm text-[var(--mn-ink-soft)]">{{ t(state.config.validation.summary) }}</p>
         </div>
       </div>
       <div class="grid gap-2 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-xs text-[var(--mn-ink-muted)] sm:grid-cols-4">
-        <span>{{ configStats.lines }} 行</span>
-        <span>{{ configStats.chars }} 字符</span>
+        <span>{{ t("{value} 行", { value: configStats.lines }) }}</span>
+        <span>{{ t("{value} 字符", { value: configStats.chars }) }}</span>
         <span>{{ configStats.sizeKiB }} KiB</span>
-        <span class="break-words" :class="localJsonStatus.includes('错误') ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">
-          {{ configAnalysisPending ? "正在分析" : localJsonStatus || "等待编辑" }}
+        <span class="break-words" :class="localJsonError ? 'text-[var(--mn-danger)]' : 'text-[var(--mn-ink-muted)]'">
+          {{ configAnalysisPending ? t("正在分析") : localJsonStatus || t("等待编辑") }}
         </span>
       </div>
       <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm text-[var(--mn-ink-muted)]">
         <div class="flex min-w-0 flex-wrap items-center gap-2">
           <ListTree :size="16" class="text-[var(--mn-ink-muted)]" />
-          <span class="font-medium text-[var(--mn-ink-soft)]">配置结构</span>
+          <span class="font-medium text-[var(--mn-ink-soft)]">{{ t("配置结构") }}</span>
           <span
             class="rounded px-2 py-1 text-xs"
             :class="{
@@ -311,7 +317,7 @@ async function openConfigIssue(): Promise<void> {
               'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': configOutline.status === 'idle',
             }"
           >
-            {{ configOutline.status === 'ok' ? '可解析' : configOutline.status === 'error' ? '需修正' : '待加载' }}
+            {{ configOutline.status === 'ok' ? t("可解析") : configOutline.status === 'error' ? t("需修正") : t("待加载") }}
           </span>
           <span class="min-w-0 break-words text-xs text-[var(--mn-ink-muted)]">{{ configOutline.summary }}</span>
         </div>
@@ -320,14 +326,13 @@ async function openConfigIssue(): Promise<void> {
             {{ item.label }}: <b class="font-medium text-[var(--mn-ink-soft)]">{{ item.value }}</b>
           </span>
         </div>
-        <p class="break-words text-xs text-[var(--mn-ink-muted)]">
-          顶层键：{{ configOutline.keys.length ? configOutline.keys.join(", ") : "无" }}
+        <p class="break-words text-xs text-[var(--mn-ink-muted)]"> {{ t("顶层键：{value}", { value: configOutline.keys.length ? configOutline.keys.join(", ") : t("无") }) }}
         </p>
       </div>
       <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] p-3 text-sm text-[var(--mn-ink-muted)]">
         <div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <div class="flex min-w-0 flex-wrap items-center gap-2">
-            <span class="font-medium text-[var(--mn-ink-soft)]">关键项</span>
+            <span class="font-medium text-[var(--mn-ink-soft)]">{{ t("关键项") }}</span>
             <span
               class="rounded px-2 py-1 text-xs"
               :class="{
@@ -337,11 +342,11 @@ async function openConfigIssue(): Promise<void> {
                 'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': configAudit.status === 'idle',
               }"
             >
-              {{ configAudit.status === 'ok' ? '齐全' : configAudit.status === 'warning' ? '需确认' : configAudit.status === 'error' ? '不可解析' : '待加载' }}
+              {{ configAudit.status === 'ok' ? t("齐全") : configAudit.status === 'warning' ? t("需确认") : configAudit.status === 'error' ? t("不可解析") : t("待加载") }}
             </span>
             <span class="min-w-0 break-words text-xs text-[var(--mn-ink-muted)]">{{ configAudit.summary }}</span>
           </div>
-          <Button variant="outline" :disabled="configAnalysisPending || !configAudit.items.length" @click="copyConfigAudit"><Copy :size="16" />{{ auditCopied ? '已复制审计' : '复制审计' }}</Button>
+          <Button variant="outline" :disabled="configAnalysisPending || !configAudit.items.length" @click="copyConfigAudit"><Copy :size="16" />{{ auditCopied ? t("已复制审计") : t("复制审计") }}</Button>
         </div>
         <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <InsightChip
@@ -352,8 +357,7 @@ async function openConfigIssue(): Promise<void> {
             :tone="item.tone"
           />
         </div>
-        <p class="break-words text-xs text-[var(--mn-ink-muted)]">
-          出站 tag：{{ configAudit.outboundTags.length ? configAudit.outboundTags.join(", ") : "无" }}
+        <p class="break-words text-xs text-[var(--mn-ink-muted)]"> {{ t("出站 tag：{value}", { value: configAudit.outboundTags.length ? configAudit.outboundTags.join(", ") : t("无") }) }}
         </p>
       </div>
       </details>
@@ -365,18 +369,18 @@ async function openConfigIssue(): Promise<void> {
     </Card>
 
     <details class="config-repo-panel mn-disclosure">
-      <summary>从配置仓库获取</summary>
+      <summary>{{ t("从配置仓库获取") }}</summary>
       <Card class="grid gap-3">
         <p v-if="repositoryStatus" class="text-sm text-[var(--mn-ink-muted)]">{{ repositoryStatus }}</p>
         <div class="grid gap-3 sm:grid-cols-2">
-          <input v-model="repositoryUrl" @input="repositoryEdited = true" class="mn-field min-w-0 px-3 sm:col-span-2" aria-label="配置仓库 URL" placeholder="https://github.com/owner/repo.git" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false">
-          <input v-model="repositoryRef" @input="repositoryEdited = true" class="mn-field min-w-0 px-3" aria-label="配置仓库分支" placeholder="main" autocomplete="off" autocapitalize="none" spellcheck="false">
-          <input v-model="repositoryPath" @input="repositoryEdited = true" class="mn-field min-w-0 px-3" aria-label="配置文件路径" placeholder="config.json" autocomplete="off" autocapitalize="none" spellcheck="false">
-          <input v-model="repositorySha256" @input="repositoryEdited = true" class="mn-field min-w-0 px-3 sm:col-span-2" aria-label="可选 SHA-256" placeholder="SHA-256（可选）" autocomplete="off" spellcheck="false">
+          <input v-model="repositoryUrl" @input="repositoryEdited = true" class="mn-field min-w-0 px-3 sm:col-span-2" :aria-label="t('配置仓库 URL')" placeholder="https://github.com/owner/repo.git" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <input v-model="repositoryRef" @input="repositoryEdited = true" class="mn-field min-w-0 px-3" :aria-label="t('配置仓库分支')" placeholder="main" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <input v-model="repositoryPath" @input="repositoryEdited = true" class="mn-field min-w-0 px-3" :aria-label="t('配置文件路径')" placeholder="config.json" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <input v-model="repositorySha256" @input="repositoryEdited = true" class="mn-field min-w-0 px-3 sm:col-span-2" :aria-label="t('可选 SHA-256')" :placeholder="t('SHA-256（可选）')" autocomplete="off" spellcheck="false">
         </div>
         <div class="flex gap-3">
-          <Button variant="outline" :loading="isRunning('save-config-repository')" @click="saveRepository">保存</Button>
-          <Button variant="ghost" @click="resetRepository">默认</Button>
+          <Button variant="outline" :loading="isRunning('save-config-repository')" @click="saveRepository">{{ t("保存") }}</Button>
+          <Button variant="ghost" @click="resetRepository">{{ t("默认") }}</Button>
         </div>
       </Card>
     </details>

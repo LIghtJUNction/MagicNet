@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { sanitizeDiagnosticText, stripTerminalControlSequences } from "@/composables/issueDrafts";
 import { statusToneClasses } from "@/lib/statusTone";
 
@@ -57,8 +58,8 @@ export function buildRuntimeLogInsight(lines: string[], warningCount: number, er
   if (!lines.length) {
     return {
       status: "idle",
-      label: "等待日志",
-      detail: "刷新后会基于真实日志尾部判断错误和警告。",
+      label: t("等待日志"),
+      detail: t("刷新后会基于真实日志尾部判断错误和警告。"),
       lastIssue: ""
     };
   }
@@ -66,31 +67,31 @@ export function buildRuntimeLogInsight(lines: string[], warningCount: number, er
   if (errorCount) {
     return {
       status: "error",
-      label: "发现错误",
-      detail: `${errorCount} 行错误，${warningCount} 行警告。建议复制问题摘要排查。`,
+      label: t("发现错误"),
+      detail: t("{value1} 行错误，{value2} 行警告。建议复制问题摘要排查。", { value1: errorCount, value2: warningCount }),
       lastIssue
     };
   }
   if (warningCount) {
     return {
       status: "warning",
-      label: "发现警告",
-      detail: `${warningCount} 行警告，暂未匹配 fatal/error。`,
+      label: t("发现警告"),
+      detail: t("{value1} 行警告，暂未匹配 fatal/error。", { value1: warningCount }),
       lastIssue
     };
   }
   if (issueCount) {
     return {
       status: "warning",
-      label: "发现异常线索",
-      detail: `${issueCount} 行匹配 timeout/denied/not found 等异常关键词。`,
+      label: t("发现异常线索"),
+      detail: t("{value1} 行匹配 timeout/denied/not found 等异常关键词。", { value1: issueCount }),
       lastIssue
     };
   }
   return {
     status: "ok",
-    label: "日志正常",
-    detail: `${lines.length} 行日志未匹配常见错误关键词。`,
+    label: t("日志正常"),
+    detail: t("{value1} 行日志未匹配常见错误关键词。", { value1: lines.length }),
     lastIssue: ""
   };
 }

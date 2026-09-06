@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { Copy, DownloadCloud, Github, ListFilter, Plus, RefreshCw } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
@@ -37,11 +38,11 @@ const visibleAllowRules = computed(() => filterBlocklistEntries(state.blocklist.
 
 function validateBlockDomain(domain: string): boolean {
   if (!/^[A-Za-z0-9*_.-]+\.[A-Za-z0-9*_.-]+$/.test(domain)) {
-    state.output = "域名后缀格式不对。示例：malware.example.com";
+    state.output = t('域名后缀格式不对。示例：malware.example.com');
     return false;
   }
   if (state.blocklist.manual.includes(domain)) {
-    state.output = `${domain} 已存在，已自动去重。`;
+    state.output = t('{domain} 已存在，已自动去重。', { domain: domain });
     state.blocklist.newDomain = "";
     return false;
   }
@@ -55,7 +56,7 @@ async function addDomain(domain: string): Promise<void> {
     state.blocklist.newDomain = "";
     const text = await runCli(
       `block add-domain ${shellQuote(domain)}`,
-      `添加黑名单 ${domain}`,
+      t('添加黑名单 {domain}', { domain: domain }),
       true,
       redactedCliPreview("block add-domain [domain]"),
     );
@@ -68,7 +69,7 @@ async function addDomain(domain: string): Promise<void> {
       state.blocklist.manual = previousManual;
       return;
     }
-    state.output = `已添加黑名单：${domain}`;
+    state.output = t('已添加黑名单：{domain}', { domain: domain });
   });
 }
 
@@ -78,7 +79,7 @@ function requestAddDomain(): void {
   pendingBlockAction.value = {
     key: `add-domain-${domain}`,
     command: `block add-domain ${domain}`,
-    message: `确认添加本地阻断域名 ${domain}？匹配流量会被黑名单规则阻断。`,
+    message: t('确认添加本地阻断域名 {domain}？匹配流量会被黑名单规则阻断。', { domain: domain }),
     run: () => addDomain(domain)
   };
 }
@@ -86,10 +87,10 @@ function requestAddDomain(): void {
 async function removeDomain(domain: string): Promise<void> {
   await withAction(`remove-domain-${domain}`, async () => {
     state.blocklist.manual = state.blocklist.manual.filter((item) => item !== domain);
-    state.output = `正在移除阻断：${domain}`;
+    state.output = t('正在移除阻断：{domain}', { domain: domain });
     const text = await runCli(
       `block remove-domain ${shellQuote(domain)}`,
-      `移除阻断 ${domain}`,
+      t('移除阻断 {domain}', { domain: domain }),
       true,
       redactedCliPreview("block remove-domain [domain]"),
     );
@@ -98,7 +99,7 @@ async function removeDomain(domain: string): Promise<void> {
       state.blocklist.manual.unshift(domain);
       return;
     }
-    state.output = `已移除阻断：${domain}`;
+    state.output = t('已移除阻断：{domain}', { domain: domain });
   });
 }
 
@@ -106,7 +107,7 @@ function requestRemoveDomain(domain: string): void {
   pendingBlockAction.value = {
     key: `remove-domain-${domain}`,
     command: `block remove-domain ${domain}`,
-    message: `确认移除本地阻断域名 ${domain}？`,
+    message: t('确认移除本地阻断域名 {domain}？', { domain: domain }),
     run: () => removeDomain(domain)
   };
 }
@@ -117,10 +118,10 @@ async function allowRule(rule: string): Promise<void> {
     const suffix = rule.replace(/^DOMAIN-SUFFIX,/, "");
     if (suffix !== rule) state.blocklist.communityDomains = state.blocklist.communityDomains.filter((item) => item !== suffix);
     if (!state.blocklist.allowRules.includes(rule)) state.blocklist.allowRules.push(rule);
-    state.output = `正在加入广告放行白名单：${rule}`;
+    state.output = t('正在加入广告放行白名单：{rule}', { rule: rule });
     const text = await runCli(
       `block allow-rule ${shellQuote(rule)}`,
-      `广告放行 ${rule}`,
+      t('广告放行 {rule}', { rule: rule }),
       true,
       redactedCliPreview("block allow-rule [rule]"),
     );
@@ -133,7 +134,7 @@ async function allowRule(rule: string): Promise<void> {
       return;
     }
     allowRuleInput.value = "";
-    state.output = `已加入广告放行白名单：${rule}`;
+    state.output = t('已加入广告放行白名单：{rule}', { rule: rule });
   });
 }
 
@@ -143,42 +144,42 @@ function normalizeAllowRule(input: string): string | null {
   const kind = (match?.[1] ?? "DOMAIN-SUFFIX").trim().toUpperCase();
   const value = (match?.[2] ?? raw).trim();
   if (!(["DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD"] as string[]).includes(kind) || !value) {
-    state.output = "白名单格式不对。支持 example.com、http(s) URL、DOMAIN,example.com、DOMAIN-SUFFIX,example.com 或 DOMAIN-KEYWORD,example。";
+    state.output = t('白名单格式不对。支持 example.com、http(s) URL、DOMAIN,example.com、DOMAIN-SUFFIX,example.com 或 DOMAIN-KEYWORD,example。');
     return null;
   }
 
   let normalizedValue = value.toLowerCase();
   if (kind === "DOMAIN-KEYWORD") {
     if (/\s/.test(value)) {
-      state.output = "白名单格式不对：DOMAIN-KEYWORD 需要非空且不含空格的关键词。";
+      state.output = t('白名单格式不对：DOMAIN-KEYWORD 需要非空且不含空格的关键词。');
       return null;
     }
   } else {
     const scheme = value.match(/^([a-z][a-z0-9+.-]*):\/\//i);
     if (scheme && !/^https?$/i.test(scheme[1])) {
-      state.output = `白名单格式不对：DOMAIN 和 DOMAIN-SUFFIX 仅支持 http/https URL，不能使用 ${scheme[1]}。`;
+      state.output = t('白名单格式不对：DOMAIN 和 DOMAIN-SUFFIX 仅支持 http/https URL，不能使用 {value}。', { value: scheme[1] });
       return null;
     }
     if (scheme && !value.slice(scheme[0].length).split(/[/?#]/, 1)[0]) {
-      state.output = "白名单格式不对：URL 缺少有效主机名。示例：https://forum.mobilism.org";
+      state.output = t('白名单格式不对：URL 缺少有效主机名。示例：https://forum.mobilism.org');
       return null;
     }
     try {
       const url = new URL(scheme ? value : `http://${value}`);
       normalizedValue = url.hostname.toLowerCase().replace(/\.+$/, "");
     } catch {
-      state.output = "白名单格式不对：DOMAIN 和 DOMAIN-SUFFIX 需要有效域名或 http/https URL。示例：https://forum.mobilism.org";
+      state.output = t('白名单格式不对：DOMAIN 和 DOMAIN-SUFFIX 需要有效域名或 http/https URL。示例：https://forum.mobilism.org');
       return null;
     }
     if (!normalizedValue) {
-      state.output = "白名单格式不对：URL 缺少有效主机名。示例：https://forum.mobilism.org";
+      state.output = t('白名单格式不对：URL 缺少有效主机名。示例：https://forum.mobilism.org');
       return null;
     }
   }
 
   const rule = `${kind},${normalizedValue}`;
   if (state.blocklist.allowRules.includes(rule)) {
-    state.output = `${rule} 已在广告放行白名单中。`;
+    state.output = t('{rule} 已在广告放行白名单中。', { rule: rule });
     return null;
   }
   return rule;
@@ -190,7 +191,7 @@ function requestAddAllowRule(): void {
   pendingBlockAction.value = {
     key: `allow-${rule}`,
     command: `block allow-rule ${rule}`,
-    message: `确认把 ${rule} 加入广告放行白名单？它会优先于所有广告阻断规则，并默认继承主策略；也可在 ad-allow 组手动选择 Direct 或 Proxy。`,
+    message: t('确认把 {rule} 加入广告放行白名单？它会优先于所有广告阻断规则，并默认继承主策略；也可在 ad-allow 组手动选择 Direct 或 Proxy。', { rule: rule }),
     run: () => allowRule(rule)
   };
 }
@@ -199,7 +200,7 @@ function requestAllowRule(rule: string): void {
   pendingBlockAction.value = {
     key: `allow-${rule}`,
     command: `block allow-rule ${rule}`,
-    message: `确认把社区规则 ${rule} 加入广告放行白名单？流量默认继承主策略，也可在 ad-allow 组手动选择 Direct 或 Proxy。`,
+    message: t('确认把社区规则 {rule} 加入广告放行白名单？流量默认继承主策略，也可在 ad-allow 组手动选择 Direct 或 Proxy。', { rule: rule }),
     run: () => allowRule(rule)
   };
 }
@@ -207,10 +208,10 @@ function requestAllowRule(rule: string): void {
 async function removeAllowRule(rule: string): Promise<void> {
   await withAction(`unallow-${rule}`, async () => {
     state.blocklist.allowRules = state.blocklist.allowRules.filter((item) => item !== rule);
-    state.output = `正在从广告放行白名单删除：${rule}`;
+    state.output = t('正在从广告放行白名单删除：{rule}', { rule: rule });
     const text = await runCli(
       `block unallow-rule ${shellQuote(rule)}`,
-      `从广告放行白名单删除 ${rule}`,
+      t('从广告放行白名单删除 {rule}', { rule: rule }),
       true,
       redactedCliPreview("block unallow-rule [rule]"),
     );
@@ -219,7 +220,7 @@ async function removeAllowRule(rule: string): Promise<void> {
       if (!state.blocklist.allowRules.includes(rule)) state.blocklist.allowRules.push(rule);
       return;
     }
-    if (await refreshBlock(true)) state.output = `已从广告放行白名单删除：${rule}`;
+    if (await refreshBlock(true)) state.output = t('已从广告放行白名单删除：{rule}', { rule: rule });
   });
 }
 
@@ -227,7 +228,7 @@ function requestRemoveAllowRule(rule: string): void {
   pendingBlockAction.value = {
     key: `unallow-${rule}`,
     command: `block unallow-rule ${rule}`,
-    message: `确认从广告放行白名单删除 ${rule}？若规则来自社区库，删除后会回到社区库并恢复阻断；手工添加项则会从白名单消失。`,
+    message: t('确认从广告放行白名单删除 {rule}？若规则来自社区库，删除后会回到社区库并恢复阻断；手工添加项则会从白名单消失。', { rule: rule }),
     run: () => removeAllowRule(rule)
   };
 }
@@ -242,7 +243,7 @@ function issueUrl(): string {
     "### Local allow",
     ...state.blocklist.allowRules.map((item) => `- ${item}`)
   ].join("\n");
-  return `${REPO}/issues/new?${new URLSearchParams({ title: "MagicNet 黑名单变更建议", body }).toString()}`;
+  return `${REPO}/issues/new?${new URLSearchParams({ title: t("MagicNet 黑名单变更建议"), body }).toString()}`;
 }
 
 async function copyBlocklistSnapshot(): Promise<void> {
@@ -266,18 +267,18 @@ async function copyBlocklistSnapshot(): Promise<void> {
     ...communityEntries.value.slice(0, COMMUNITY_SNAPSHOT_LIMIT)
   ].join("\n").trim();
   snapshotCopied.value = await copyText(report);
-  state.output = snapshotCopied.value ? "黑名单快照已复制。" : "剪贴板不可用，黑名单快照未复制。";
+  state.output = snapshotCopied.value ? t('黑名单快照已复制。') : t('剪贴板不可用，黑名单快照未复制。');
 }
 
 async function updateCommunityBlocklist(): Promise<void> {
-  await startBackgroundCli("block update", "更新社区库");
+  await startBackgroundCli("block update", t('更新社区库'));
 }
 
 function requestUpdateCommunityBlocklist(): void {
   pendingBlockAction.value = {
     key: "update-block",
     command: "block update",
-    message: "确认更新社区黑名单？更新会改写社区规则缓存。",
+    message: t('确认更新社区黑名单？更新会改写社区规则缓存。'),
     run: updateCommunityBlocklist
   };
 }
@@ -287,10 +288,10 @@ function requestToggleBlocklist(): void {
   pendingBlockAction.value = {
     key: "toggle-block",
     command,
-    message: state.blocklist.enabled ? "确认关闭黑名单？阻断规则将不再生效。" : "确认启用黑名单？阻断规则会立即生效。",
+    message: state.blocklist.enabled ? t('确认关闭黑名单？阻断规则将不再生效。') : t('确认启用黑名单？阻断规则会立即生效。'),
     run: async () => {
       await withAction("toggle-block", async () => {
-        const text = await runCli(command, "切换黑名单");
+        const text = await runCli(command, t('切换黑名单'));
         if (execFailed(text)) return;
         await refreshBlock(true);
       });
@@ -303,10 +304,10 @@ function requestToggleCommunity(): void {
   pendingBlockAction.value = {
     key: "toggle-community",
     command,
-    message: state.blocklist.community ? "确认关闭社区库？社区阻断规则将不再生效。" : "确认启用社区库？社区阻断规则会立即生效。",
+    message: state.blocklist.community ? t('确认关闭社区库？社区阻断规则将不再生效。') : t('确认启用社区库？社区阻断规则会立即生效。'),
     run: async () => {
       await withAction("toggle-community", async () => {
-        const text = await runCli(command, "切换社区库");
+        const text = await runCli(command, t('切换社区库'));
         if (execFailed(text)) return;
         await refreshBlock(true);
       });
@@ -328,22 +329,22 @@ async function confirmBlockAction(): Promise<void> {
 
 <template>
   <div class="grid gap-4">
-    <PageHeader overline="规则" title="拦截规则">
+    <PageHeader :overline="t('规则')" :title="t('拦截规则')">
       <div class="flex flex-wrap items-center gap-2">
-        <Button variant="outline" :loading="isRunning('refresh-block')" @click="withAction('refresh-block', () => refreshBlock())"><RefreshCw :size="17" />读取</Button>
-        <Button :loading="isRunning('update-block')" @click="requestUpdateCommunityBlocklist"><DownloadCloud :size="17" />更新社区库</Button>
-        <Button variant="outline" :loading="isRunning('copy-blocklist-snapshot')" @click="withAction('copy-blocklist-snapshot', copyBlocklistSnapshot)"><Copy :size="17" />{{ snapshotCopied ? '已复制快照' : '复制快照' }}</Button>
-        <Button variant="outline" @click="openExternal(issueUrl(), '黑名单变更 Issue')"><Github :size="17" />创建 Issue</Button>
+        <Button variant="outline" :loading="isRunning('refresh-block')" @click="withAction('refresh-block', () => refreshBlock())"><RefreshCw :size="17" />{{ t('读取') }}</Button>
+        <Button :loading="isRunning('update-block')" @click="requestUpdateCommunityBlocklist"><DownloadCloud :size="17" />{{ t('更新社区库') }}</Button>
+        <Button variant="outline" :loading="isRunning('copy-blocklist-snapshot')" @click="withAction('copy-blocklist-snapshot', copyBlocklistSnapshot)"><Copy :size="17" />{{ snapshotCopied ? t('已复制快照') : t('复制快照') }}</Button>
+        <Button variant="outline" @click="openExternal(issueUrl(), t('黑名单变更 Issue'))"><Github :size="17" />{{ t('创建 Issue') }}</Button>
       </div>
     </PageHeader>
 
     <ConfirmPanel
       v-if="pendingBlockAction"
-      title="确认拦截规则"
+      :title="t('确认拦截规则')"
       :detail="pendingBlockAction.message"
       :command="pendingBlockAction.command"
       :loading="isRunning(pendingBlockAction.key)"
-      confirm-label="应用更改"
+      :confirm-label="t('应用更改')"
       confirm-variant="default"
       @cancel="cancelBlockAction"
       @confirm="confirmBlockAction"
@@ -352,7 +353,7 @@ async function confirmBlockAction(): Promise<void> {
     <Card class="grid gap-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 class="text-base font-semibold">策略</h3>
+          <h3 class="text-base font-semibold">{{ t('策略') }}</h3>
           <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ blockSummary.summary }}</p>
         </div>
         <span
@@ -364,7 +365,7 @@ async function confirmBlockAction(): Promise<void> {
             'bg-[var(--mn-carrier-deep)] text-[var(--mn-ink-soft)]': blockSummary.status === 'disabled',
           }"
         >
-          {{ blockSummary.status === 'active' ? '完整启用' : blockSummary.status === 'partial' ? '部分启用' : blockSummary.status === 'empty' ? '无有效规则' : '已关闭' }}
+          {{ blockSummary.status === 'active' ? t('完整启用') : blockSummary.status === 'partial' ? t('部分启用') : blockSummary.status === 'empty' ? t('无有效规则') : t('已关闭') }}
         </span>
       </div>
       <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
@@ -378,54 +379,54 @@ async function confirmBlockAction(): Promise<void> {
       </div>
       <div class="grid gap-2 sm:grid-cols-2">
         <Button :variant="state.blocklist.enabled ? 'default' : 'outline'" :loading="isRunning('toggle-block')" @click="requestToggleBlocklist">
-          {{ isRunning('toggle-block') ? '切换中' : state.blocklist.enabled ? "黑名单已启用" : "黑名单已关闭" }}
+          {{ isRunning('toggle-block') ? t('切换中') : state.blocklist.enabled ? t('黑名单已启用') : t('黑名单已关闭') }}
         </Button>
         <Button :variant="state.blocklist.community ? 'default' : 'outline'" :loading="isRunning('toggle-community')" @click="requestToggleCommunity">
-          {{ isRunning('toggle-community') ? '切换中' : state.blocklist.community ? "社区库已启用" : "社区库已关闭" }}
+          {{ isRunning('toggle-community') ? t('切换中') : state.blocklist.community ? t('社区库已启用') : t('社区库已关闭') }}
         </Button>
       </div>
       <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
         <Input v-model="state.blocklist.newDomain" placeholder="malware.example.com" spellcheck="false" />
-        <Button variant="secondary" :loading="isRunning(`add-domain-${state.blocklist.newDomain.trim()}`)" @click="requestAddDomain"><Plus :size="16" />添加</Button>
+        <Button variant="secondary" :loading="isRunning(`add-domain-${state.blocklist.newDomain.trim()}`)" @click="requestAddDomain"><Plus :size="16" />{{ t('添加') }}</Button>
       </div>
-      <SearchField v-model="blockQuery" placeholder="过滤本地阻断、社区规则和广告放行白名单" />
+      <SearchField v-model="blockQuery" :placeholder="t('过滤本地阻断、社区规则和广告放行白名单')" />
     </Card>
 
     <div class="grid gap-3 md:grid-cols-2">
       <Card>
-        <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><ListFilter :size="16" />阻断</h3>
+        <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><ListFilter :size="16" />{{ t('阻断') }}</h3>
         <div class="flex max-h-80 flex-wrap gap-2 overflow-auto">
           <RemovableTag
             v-for="domain in visibleManualDomains"
             :key="domain"
             :disabled="isRunning(`remove-domain-${domain}`)"
-            :remove-label="`移除 ${domain}`"
+            :remove-label="t('移除 {domain}', { domain: domain })"
             @remove="requestRemoveDomain(domain)"
           >{{ domain }}</RemovableTag>
-          <em v-if="!visibleManualDomains.length" class="mn-empty">{{ state.blocklist.manual.length ? '没有匹配项' : '暂无域名' }}</em>
+          <em v-if="!visibleManualDomains.length" class="mn-empty">{{ state.blocklist.manual.length ? t('没有匹配项') : t('暂无域名') }}</em>
         </div>
       </Card>
 
       <Card>
-        <h3 class="mb-2 text-base font-semibold">社区库缓存</h3>
+        <h3 class="mb-2 text-base font-semibold">{{ t('社区库缓存') }}</h3>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
           <RemovableTag
             v-for="rule in visibleCommunityEntries.slice(0, 120)"
             :key="rule"
             :disabled="isRunning(`allow-${rule}`)"
-            title="排除这条社区规则"
+            :title="t('排除这条社区规则')"
             @remove="requestAllowRule(rule)"
           >{{ rule }}</RemovableTag>
-          <em v-if="!visibleCommunityEntries.length" class="mn-empty">{{ communityEntries.length ? '没有匹配项' : '未读取到社区规则' }}</em>
+          <em v-if="!visibleCommunityEntries.length" class="mn-empty">{{ communityEntries.length ? t('没有匹配项') : t('未读取到社区规则') }}</em>
         </div>
       </Card>
 
       <Card>
-        <h3 class="mb-1 text-base font-semibold">广告放行白名单</h3>
-        <p class="mb-3 text-sm leading-6 text-[var(--mn-ink-muted)]">优先于内置、规则集和社区广告规则；ad-allow 默认继承主策略，也可手动选择 Direct 或 Proxy。</p>
+        <h3 class="mb-1 text-base font-semibold">{{ t('广告放行白名单') }}</h3>
+        <p class="mb-3 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t('优先于内置、规则集和社区广告规则；ad-allow 默认继承主策略，也可手动选择 Direct 或 Proxy。') }}</p>
         <div class="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <Input v-model="allowRuleInput" placeholder="example.com 或 DOMAIN-SUFFIX,example.com" spellcheck="false" @keyup.enter="requestAddAllowRule" />
-          <Button variant="secondary" :loading="isRunning(`allow-${allowRuleInput.trim()}`)" @click="requestAddAllowRule"><Plus :size="16" />加入白名单</Button>
+          <Input v-model="allowRuleInput" :placeholder="t('example.com 或 DOMAIN-SUFFIX,example.com')" spellcheck="false" @keyup.enter="requestAddAllowRule" />
+          <Button variant="secondary" :loading="isRunning(`allow-${allowRuleInput.trim()}`)" @click="requestAddAllowRule"><Plus :size="16" />{{ t('加入白名单') }}</Button>
         </div>
         <div class="flex max-h-[26rem] flex-wrap gap-2 overflow-auto">
           <RemovableTag
@@ -433,11 +434,11 @@ async function confirmBlockAction(): Promise<void> {
             :key="rule"
             remove-variant="danger"
             :disabled="isRunning(`unallow-${rule}`)"
-            :title="`从广告放行白名单删除 ${rule}`"
-            :remove-label="`从广告放行白名单删除 ${rule}`"
+            :title="t('从广告放行白名单删除 {rule}', { rule: rule })"
+            :remove-label="t('从广告放行白名单删除 {rule}', { rule: rule })"
             @remove="requestRemoveAllowRule(rule)"
           >{{ rule }}</RemovableTag>
-          <em v-if="!visibleAllowRules.length" class="mn-empty">{{ state.blocklist.allowRules.length ? '没有匹配项' : '暂无白名单规则' }}</em>
+          <em v-if="!visibleAllowRules.length" class="mn-empty">{{ state.blocklist.allowRules.length ? t('没有匹配项') : t('暂无白名单规则') }}</em>
         </div>
       </Card>
     </div>

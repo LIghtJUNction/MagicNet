@@ -20,7 +20,7 @@ for (const copy of [
   assert.match(note, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 }
 
-assert.match(note, /<details[\s\S]*aria-label="MagicNet 开源支持说明"/);
+assert.match(note, /<details[\s\S]*:aria-label="t\('MagicNet 开源支持说明'\)"/);
 assert.doesNotMatch(note, /<details[^>]*\sopen(?:\s|=|>)/);
 assert.match(note, /<summary[\s\S]*支持项目/);
 assert.match(note, /href="https:\/\/api\.lmm\.best\/"/);

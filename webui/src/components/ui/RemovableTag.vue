@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { X } from "lucide-vue-next";
 import { computed } from "vue";
 import { cn } from "@/lib/utils";
@@ -50,8 +51,8 @@ const removeClass = computed(() =>
     <button
       :class="removeClass"
       :disabled="disabled"
-      :title="title"
-      :aria-label="removeLabel || title || '移除'"
+      :title="title ? t(title) : undefined"
+      :aria-label="t(removeLabel || title || '移除')"
       type="button"
       @click="emit('remove', $event)"
     >

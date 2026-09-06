@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
+import { t } from "./src/i18n/index.ts";
 import ts from "typescript";
 import * as background from "./src/composables/backgroundTasks.ts";
 import { invalidateTransparentRuntime, parseRuntime, parseSubs, runtimeDefaults, subscriptionDefaults } from "./src/composables/parsers.ts";
@@ -42,6 +43,7 @@ function fixture() {
   const pending = new Promise((done) => { resolve = done; });
   const state = { config: { target: "sing-box", text: "original draft", dirty: true, status: "", validation: {} } };
   const context = vm.createContext({
+    t,
     state, Date, Math,
     MODULE_DIR: "/module", shellQuote: (value) => `'${value}'`, redactedCliPreview: (value) => value,
     foregroundUiGate: { current: () => 1, owns: () => true },
@@ -66,6 +68,7 @@ function backgroundFixture() {
     output: "new foreground output", notice: "new notice", phase: "done",
   };
   const context = vm.createContext({
+    t,
     ...background, state, Date, backgroundLogTimer: 0,
     window: { setTimeout: (callback) => { timers.push(callback); return timers.length; } },
     foregroundUiGate: { begin: () => ++token, current: () => token, owns: (value) => value === token },

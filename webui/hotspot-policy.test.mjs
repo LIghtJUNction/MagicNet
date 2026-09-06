@@ -21,8 +21,8 @@ const webuiApi = readFileSync(
 assert.match(control, /type="checkbox"/);
 assert.match(control, /允许热点使用代理/);
 assert.match(control, /hotspot \$\{enabled \? "enable" : "disable"\}/);
-assert.match(control, /proxy<\/code> 代理组/);
-assert.match(control, /不勾选时统一走\s*<code>direct<\/code>/);
+assert.match(control, /t\(["']热点设备使用 proxy 代理组；不勾选时统一走 direct。/);
+assert.match(control, /不勾选时统一走 direct。TUN 模式/);
 assert.match(control, /type HotspotPolicyPhase = "loading" \| "ready" \| "error"/);
 assert.match(control, /hotspotPolicyPhase\.value = "loading"/);
 assert.match(control, /hotspotPolicyPhase\.value = "error"/);

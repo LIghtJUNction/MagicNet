@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "@/i18n";
 import { computed, ref, watch } from "vue";
 import { Copy, FileLock } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
@@ -32,22 +33,22 @@ async function copyNetworkReport(): Promise<void> {
 <template>
   <Card v-if="snapshotText">
     <div class="mb-2 flex flex-wrap items-start justify-between gap-2">
-      <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileLock :size="17" /> 当前网络快照</h3>
+      <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileLock :size="17" />{{ t("当前网络快照") }}</h3>
       <Button size="sm" variant="outline" @click="copyNetworkReport">
-        <Copy :size="15" />{{ copied ? "已复制报告" : "复制报告" }}
+        <Copy :size="15" />{{ copied ? t("已复制报告") : t("复制报告") }}
       </Button>
     </div>
     <div class="grid gap-2 sm:grid-cols-4">
       <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">接口</p>
+        <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("接口") }}</p>
         <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.interfaces }}</p>
       </div>
       <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">规则</p>
+        <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("规则") }}</p>
         <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.ipRules }}</p>
       </div>
       <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">
-        <p class="text-xs text-[var(--mn-ink-muted)]">路由</p>
+        <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("路由") }}</p>
         <p class="text-lg font-semibold text-[var(--mn-ink)]">{{ summary.routes }}</p>
       </div>
       <div class="rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] p-3">

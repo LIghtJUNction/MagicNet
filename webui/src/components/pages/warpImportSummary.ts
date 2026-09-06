@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { statusToneClasses } from "@/lib/statusTone";
 export type WarpImportSummary = {
   status: "idle" | "ok" | "warning" | "error";
@@ -22,7 +23,7 @@ type SectionName = "interface" | "peer" | "";
 
 export function summarizeWarpImport(text: string): WarpImportSummary {
   const trimmed = text.trim();
-  if (!trimmed) return summary("idle", "等待粘贴 WireGuard/WARP 配置。", 0, {}, {});
+  if (!trimmed) return summary("idle", t("等待粘贴 WireGuard/WARP 配置。"), 0, {}, {});
   const parsed = parseWireGuard(trimmed);
   const endpoint = splitEndpoint(parsed.peer.endpoint || "");
   const missing = [
@@ -34,18 +35,18 @@ export function summarizeWarpImport(text: string): WarpImportSummary {
     parsed.peer.endpoint ? "" : "Endpoint"
   ].filter(Boolean);
   if (missing.length) {
-    return summary("error", `缺少 ${missing.join(", ")}，CLI 会拒绝导入。`, parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
+    return summary("error", t("缺少 {fields}，CLI 会拒绝导入。", { fields: missing.join(", ") }), parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
   }
   if (!endpoint.host || !endpoint.port) {
-    return summary("error", "Endpoint 需要包含 host:port。", parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
+    return summary("error", t("Endpoint 需要包含 host:port。"), parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
   }
   if (!validPort(endpoint.port)) {
-    return summary("error", "Endpoint 端口必须是 0-65535 的数字。", parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
+    return summary("error", t("Endpoint 端口必须是 0-65535 的数字。"), parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
   }
   if (!parsed.peer.allowedips) {
-    return summary("warning", "AllowedIPs 未填写，CLI 会使用 0.0.0.0/0 和 ::/0 默认值。", parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
+    return summary("warning", t("AllowedIPs 未填写，CLI 会使用 0.0.0.0/0 和 ::/0 默认值。"), parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
   }
-  return summary("ok", "配置字段齐全，可交给 CLI 导入。", parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
+  return summary("ok", t("配置字段齐全，可交给 CLI 导入。"), parsed.lines, parsed.interface, parsed.peer, parsed.hasInterface, parsed.hasPeer);
 }
 
 export function formatWarpImportSummaryReport(summary: WarpImportSummary): string {
