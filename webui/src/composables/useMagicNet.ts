@@ -1,5 +1,4 @@
 import { t } from "@/i18n";
-import * as kernelsu from "kernelsu";
 import { nextTick, reactive } from "vue";
 import {
   AUTHOR_WHISPER_URL,
@@ -27,6 +26,7 @@ import {
   reconcileSubscriptionCompletion,
 } from "@/composables/backgroundTasks";
 import { SerialExecQueue } from "@/composables/execQueue";
+import { execAsync, hasAsyncExec } from "@/composables/deviceExec";
 import { ForegroundUiGate } from "@/composables/foregroundUiGate";
 import {
   beginOperationCapture,
@@ -83,13 +83,7 @@ export type ConfigRepository = {
   sha256?: string;
 };
 
-function hasKsuExec(): boolean {
-  return (
-    typeof (globalThis as { ksu?: { exec?: unknown } }).ksu?.exec === "function"
-  );
-}
-
-const hasKsu = hasKsuExec();
+const hasKsu = hasAsyncExec();
 let backgroundLogTimer = 0;
 
 const state = reactive({
@@ -220,10 +214,10 @@ async function runShellOutcome(
   await nextTick();
   await nextFrame();
 
-  state.hasKsu = hasKsuExec();
+  state.hasKsu = hasAsyncExec();
   if (!state.hasKsu) {
     const outcome = unavailableExecOutcome(commandPreview);
-    const output = t("当前没有 KernelSU 执行通道，命令未执行。\n\n{p0}", { p0: outcome.text });
+    const output = t("当前没有 KernelSU 异步执行通道，命令未执行。请使用支持 spawn 的新版管理器。\n\n{p0}", { p0: outcome.text });
     if (
       ownsForegroundUi() &&
       updateOperationCapture(state.operationCapture, captureSequence, {
@@ -242,11 +236,7 @@ async function runShellOutcome(
 
   try {
     const result = await execQueue.enqueue(
-      async () => {
-        if (quiet) {
-          await nextTick();
-          await nextFrame();
-        }
+      () => {
         if (
           ownsForegroundUi() &&
           updateOperationCapture(state.operationCapture, captureSequence, {
@@ -255,11 +245,8 @@ async function runShellOutcome(
         ) {
           state.phase = "running";
           state.notice = t("正在执行：{p0}", { p0: t(label) });
-          await nextTick();
-          await nextFrame();
-          await nextFrame();
         }
-        return kernelsu.exec(command);
+        return execAsync(command);
       },
       CLI_TIMEOUT_MS,
       label,

@@ -310,7 +310,17 @@ export function probeFailed(text: string): boolean {
 }
 
 export function nextFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  return new Promise((resolve) => {
+    // Android WebViews pause animation frames while hidden. Rendering must
+    // never prevent a queued command from reaching its execution deadline.
+    const finish = () => {
+      window.clearTimeout(timer);
+      cancelAnimationFrame(frame);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, 100);
+    const frame = requestAnimationFrame(finish);
+  });
 }
 
 export async function copyText(text: string): Promise<boolean> {
@@ -331,16 +341,6 @@ export class ExecTimeoutError extends Error {
     super(message);
     this.name = "ExecTimeoutError";
   }
-}
-
-export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer = 0;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = window.setTimeout(() => {
-      reject(new ExecTimeoutError(t("{p0} 超过 {p1} 秒仍未返回，请到“输出”页查看日志或稍后重试。", { p0: t(label), p1: Math.round(ms / 1000) })));
-    }, ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
