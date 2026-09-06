@@ -68,9 +68,12 @@ jobs:
           # makes the PR action rebase with "theirs" onto a newer remote main.
           git checkout -B main "$GITHUB_SHA"
           python3 scripts/prepare-release.py --bump "$BUMP_KIND"
+          git add -- kam.toml src/MagicNet/module.prop update.json .github/release-request
+          printf 'tree=%s\n' "$(git write-tree)" >> "$GITHUB_OUTPUT"
 
       - name: Create version pull request
         id: pr
+        continue-on-error: true
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           base: main
@@ -95,14 +98,8 @@ jobs:
           PR_URL: ${{ steps.pr.outputs.pull-request-url }}
           PR_OUTCOME: ${{ steps.pr.outcome }}
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if [ "$PR_OUTCOME" = success ] && [ -n "$PR_URL" ]; then
-            printf 'Version PR: %s\n\nApprove pending PR workflow runs, then review and merge.\n' "$PR_URL" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo '::error::Version PR was not created. Check the action error and Settings > Actions > General > Allow GitHub Actions to create and approve pull requests, then rerun. Repository settings were not changed.'
-            printf 'Version PR creation failed. Recovery: %s/compare/main...automation/release-%s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+          EXPECTED_TREE: ${{ steps.version.outputs.tree }}
+        run: python3 scripts/prepare-release.py --report-pr
 
   build:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '' }}
