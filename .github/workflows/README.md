@@ -21,59 +21,72 @@ top-level `kam.sh` when they exist.
 
 ## exec.yml
 
-`exec.yml` builds the module. It runs on `push`, `pull_request`, and manual
+`exec.yml` builds the module on `push`, `pull_request`, and manual
 `workflow_dispatch`.
 
-Dispatch on `main` with `bump=patch`, `minor`, or `major` to prepare a version PR.
+Dispatch on `main` with `bump=patch`, `minor`, or `major` to update all three
+metadata files (`kam.toml`, `src/MagicNet/module.prop`, `update.json`) and increase
+`versionCode` by one. The workflow commits directly to `main`, then builds that
+exact commit in the same job. It does not create a version branch or PR.
 For example, `v1.3.9` becomes `v1.3.10`, `v1.4.0`, or `v2.0.0`, respectively.
-All three metadata files (`kam.toml`, `src/MagicNet/module.prop`, `update.json`)
-are updated together and `versionCode` increases by one. This run creates the PR
-without building the module. With `bump=none`, the workflow builds the existing
-committed version and can publish it when `release=true`.
+With `bump=none`, the workflow builds the existing committed version.
 
-With a bump, `release=true` adds a release request so merging the PR builds and
-publishes it. `prerelease=true` is preserved in that request and requires
-`release=true`. A version-only PR builds without publishing after merge.
+Select `release=true` to publish after the same run passes its signing, artifact,
+and installation checks. `prerelease=true` requires `release=true`. Leave release
+unchecked to bump and build without publishing. A failed build does not roll back
+a committed version: after fixing the failure, use `bump=none` to retry that
+unpublished version instead of incrementing it again.
 
-Each target version uses a dedicated `automation/release-vX.Y.Z` branch. Repeated
-requests update the same PR; do not edit that generated branch manually. Reruns
-whose original commit is no longer the head of main fail and require a new
-dispatch. Version updates never push directly to the protected branch.
+### Direct-push permissions
 
-PR creation uses `GITHUB_TOKEN` with job-scoped `contents: write` and
-`pull-requests: write`. The repository must allow Actions to create pull requests.
-On failure, the workflow verifies the pushed branch's complete tree and base commit.
-A matching branch produces a warning and a summary link to create the PR manually;
-a missing or mismatched branch still fails. This supports repositories that disable
-Actions PR creation without changing their permissions. The version branch is only
-prepared at this point; publishing still requires merging its release request. Bot-created
-PR workflow runs may await approval by someone with write access. Approve pending
-runs on the PR page, review, and merge normally; this workflow does not approve
-or merge its own PRs.
+The bump step uses `RELEASE_TOKEN` when configured, otherwise `GITHUB_TOKEN`.
+MagicNet's current main ruleset requires a PR and allows repository administrators
+to bypass that rule. The ordinary `GITHUB_TOKEN` cannot bypass it. For this ruleset,
+configure the `RELEASE_TOKEN` Actions secret with a repository-scoped token owned
+by an authorized administrator and with Contents read/write permission. Never put
+the token in workflow source. This workflow does not weaken branch protection.
 
-There are two ways to publish after review:
+The push is fast-forward only. A stale checkout, a concurrent update of `main`,
+or a rejected push fails before compilation; there is no force push, automatic
+rebase, or fallback PR. Version commits include `[skip ci]` to avoid a duplicate
+push build when using `RELEASE_TOKEN`; the dispatch job continues with the new
+`RELEASE_COMMIT_SHA`. Tags and metadata verification use that SHA, not the
+original dispatch SHA. Existing tags/releases are rejected and never overwritten.
+Publishing requires the `KAM_PRIVATE_KEY` signing secret; a bump with release
+enabled checks its presence before changing metadata.
 
-- Include `.github/release-request` in the version PR, with the exact version
-  on the first line, for example `v1.3.9`. Merging it into `main` requests a release
-  only when that file changed in the triggering push's `before..sha` range.
-  The file remains in the repository; later pushes that leave it unchanged
-  do not request another release. Update it to the next exact version for
-  the next release. An optional second line, `prerelease=true`, requests a
-  prerelease. Single-line version markers remain supported; the previous `patch`
-  marker is no longer supported.
-- Merge the version PR, then dispatch `exec.yml` on `main` with `release=true`.
-  Set `prerelease=true` to mark a manually requested release as a prerelease.
-  Keep `bump=none`; the committed version tag must not already exist.
+For compatibility, a changed `.github/release-request` in a main push can still
+request publication. Its first line must equal the committed `vX.Y.Z`, with an
+optional second line `prerelease=true`. An unchanged marker never republishes.
+The direct bump preserves this marker convention when release is requested, but
+publication no longer depends on a separate push run or a PR merge.
 
-Pull requests and ordinary pushes build and upload workflow artifacts without
-publishing a release. When `KAM_PRIVATE_KEY` is available, the uploaded artifact
-also includes the module signature sidecar.
+Ordinary pushes and pull requests build and upload artifacts without publishing.
+When `KAM_PRIVATE_KEY` is available, artifacts include the signature sidecar.
 
-Release checks require matching committed version metadata,
-a matching release-request version when used, and a new tag and release.
-Publishing requires signing and successful artifact and installation checks.
-The release tag targets the exact `GITHUB_SHA` that was built. Existing tags
-or releases are rejected; release assets are never overwritten.
+### Build caches
+
+Go module downloads and compiled packages are cached with keys covering the Go
+version, NDK, module lockfiles, fork revision, and build-script inputs. A new fork
+revision restores compatible previous entries and saves an updated cache after a
+successful job, avoiding a permanently frozen cache keyed only by `go.sum`.
+
+Rust caches include registry/git dependencies and `target/`. Module and quality
+jobs have separate namespaces; keys include the compiler, lockfile/configuration,
+and workspace sources, plus the NDK for Android builds. Restore prefixes retain
+compatible dependency outputs across source and lockfile changes. Cargo still
+checks fingerprints; the workflow never skips compilation based only on a cache hit.
+
+`cargo-ndk` is pinned and cached in its own install directory; exact hits skip
+`cargo install`. Node/npm and Bun download caches cover either WebUI package
+manager. Tests, type checks, packaging, signatures, and smoke tests still run.
+No final release ZIP or signing key is included in these new caches.
+
+Only Kam's own cache is enabled in setup-kam. Its whole-`~/.rustup` cache is
+disabled so it cannot overwrite a freshly installed Rust toolchain. Android
+standard libraries are installed normally without deleting toolchain directories;
+only the module's required `aarch64-linux-android` Rust target is installed.
+The first run populates the new namespaces; real speedups depend on later hits.
 
 ## quality.yml
 

@@ -4,14 +4,18 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
 import tomllib
 import unittest
 
+import yaml
+
 
 SCRIPT = Path(__file__).with_name("prepare-release.py").resolve()
+WORKFLOWS = SCRIPT.parent.parent / ".github/workflows"
 VERSION_FILES = ("kam.toml", "src/MagicNet/module.prop", "update.json")
 RELEASE_MARKER = ".github/release-request"
 
@@ -63,22 +67,40 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.git("commit", "-m", "Fixture commit")
         return self.git("rev-parse", "HEAD")
 
-    def run_workflow(self, bump=None, report=False, verify=False, **overrides):
+    def run_workflow(self, bump=None, direct=False, verify=False, **overrides):
         self.output.unlink(missing_ok=True)
         self.step_output.unlink(missing_ok=True)
         env = dict(os.environ, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
                    GITHUB_SHA=self.git("rev-parse", "HEAD"), PUSH_BEFORE=self.before,
-                   RELEASE_INPUT="false", PRERELEASE_INPUT="false",
+                   RELEASE_COMMIT_SHA="", RELEASE_INPUT="false", PRERELEASE_INPUT="false",
                    KAM_PRIVATE_KEY_AVAILABLE="1",
-                   GITHUB_ENV=str(self.output), GITHUB_OUTPUT=str(self.step_output))
+                   GITHUB_ENV=str(self.output), GITHUB_OUTPUT=str(self.step_output),
+                   GITHUB_STEP_SUMMARY=str(self.root / "summary"))
         env.update(overrides)
         command = [sys.executable, str(SCRIPT)]
-        if report:
-            command.append("--report-pr")
         if verify:
             command.append("--verify-build")
         if bump is not None:
             command.extend(["--bump", bump])
+        if direct:
+            # Execute the actual workflow's shell against a local bare remote.
+            # Only GitHub authentication is stubbed; commits and pushes are real.
+            workflow = yaml.safe_load((WORKFLOWS / "exec.yml").read_text())
+            step = next(step for step in workflow["jobs"]["build"]["steps"]
+                        if step["name"] == "Bump and commit version")
+            stub_dir = self.root / "bin"
+            stub_dir.mkdir(exist_ok=True)
+            gh = stub_dir / "gh"
+            gh.write_text('#!/bin/sh\nset -eu\n[ "$*" = "auth setup-git" ]\n'
+                          'if [ -n "${RACE_SHA:-}" ]; then\n'
+                          '  git --git-dir="$RACE_REMOTE" update-ref refs/heads/main "$RACE_SHA"\n'
+                          'fi\n')
+            gh.chmod(0o755)
+            env.update(BUMP_KIND=bump or "patch", GITHUB_EVENT_NAME="workflow_dispatch",
+                       PATH=f"{stub_dir}:{env['PATH']}")
+            script = step["run"].replace("python3 scripts/prepare-release.py",
+                                        f"{shlex.quote(sys.executable)} {shlex.quote(str(SCRIPT))}")
+            command = ["bash", "-euo", "pipefail", "-c", script]
         return subprocess.run(
             command, cwd=self.repo, env=env,
             text=True, capture_output=True, check=False,
@@ -110,7 +132,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             self.assertEqual(metadata["version"], version)
             self.assertEqual(str(metadata["versionCode"]), "124")
         self.assertEqual(self.step_output.read_text().splitlines(), [f"version={version}"])
-        self.assertFalse(self.output.exists(), "A bump must wait for the version PR to merge")
+        self.assertFalse(self.output.exists(), "Metadata preparation must not publish before commit")
 
     def assert_bump_rejected(self, **overrides):
         before = self.snapshot()
@@ -218,7 +240,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
     def test_prerelease_bump_requires_release(self):
         self.assert_bump_rejected(PRERELEASE_INPUT="true")
 
-    def test_bump_release_runs_only_after_merge_and_preserves_prerelease(self):
+    def test_legacy_marker_release_after_merge_preserves_prerelease(self):
         for prerelease in (False, True):
             with self.subTest(prerelease=prerelease):
                 self.git("reset", "--hard", self.before)
@@ -340,47 +362,61 @@ class ReleaseWorkflowTest(unittest.TestCase):
             GITHUB_EVENT_NAME="workflow_dispatch", RELEASE_INPUT="true",
             GITHUB_SHA=self.before), "Checkout differs")
 
-    def report_version_pr(self, **overrides):
-        return self.run_workflow(report=True, **{
-            "PR_OUTCOME": "failure", "PR_URL": "", "VERSION": "v1.2.4",
-            "EXPECTED_TREE": self.git("rev-parse", "HEAD^{tree}"),
-            "GITHUB_SHA": self.before, "GITHUB_SERVER_URL": "https://github.com",
-            "GITHUB_REPOSITORY": "example/repo",
-            "GITHUB_STEP_SUMMARY": str(self.root / "summary"), **overrides,
-        })
-
-    def push_version_branch(self):
-        self.assert_bump(self.run_bump(RELEASE_INPUT="true"), "v1.2.4")
-        self.commit()
-        self.git("push", "origin", "HEAD:refs/heads/automation/release-v1.2.4")
-
-    def test_pr_policy_failure_recovers_verified_branch_without_publishing(self):
-        self.push_version_branch()
-        result = self.report_version_pr()
+    def test_direct_bump_pushes_only_version_metadata(self):
+        self.git("checkout", "--detach", self.before)
+        result = self.run_workflow(direct=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("::warning::", result.stdout)
-        self.assertIn("/compare/main...automation/release-v1.2.4?expand=1",
-                      (self.root / "summary").read_text())
+        head = self.git("rev-parse", "HEAD")
+        self.assertNotEqual(head, self.before)
+        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], head)
+        self.assertEqual(set(self.git("diff", "--name-only", self.before, head).splitlines()),
+                         set(VERSION_FILES))
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertEqual(self.output.read_text(), f"RELEASE_COMMIT_SHA={head}\n")
+        self.assertIn("[skip ci]", self.git("log", "-1", "--format=%s"))
+        self.assertEqual(len(self.git("ls-remote", "--heads", "origin").splitlines()), 1)
+        self.assert_build_only(self.run_workflow(GITHUB_EVENT_NAME="workflow_dispatch"))
+
+    def test_direct_release_and_verification_use_new_commit(self):
+        result = self.run_workflow(direct=True, RELEASE_INPUT="true", PRERELEASE_INPUT="true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        head = self.git("rev-parse", "HEAD")
+        self.assertEqual(self.output.read_text(), f"RELEASE_COMMIT_SHA={head}\n")
+        self.assert_release(self.run_workflow(
+            GITHUB_EVENT_NAME="workflow_dispatch", GITHUB_SHA=self.before,
+            RELEASE_COMMIT_SHA=head, RELEASE_INPUT="true", PRERELEASE_INPUT="true"),
+            "v1.2.4", 124, True)
+        result = self.run_workflow(verify=True, GITHUB_SHA=self.before, RELEASE_COMMIT_SHA=head)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_rejected(self.run_workflow(verify=True, GITHUB_SHA=self.before), "Checkout differs")
+
+    def test_direct_bump_refuses_rejected_push_without_export(self):
+        hook = self.root / "origin.git/hooks/pre-receive"
+        hook.write_text("#!/bin/sh\necho 'Push rejected by repository policy' >&2\nexit 1\n")
+        hook.chmod(0o755)
+        result = self.run_workflow(direct=True)
+        self.assert_rejected(result)
+        self.assertIn("Direct push rejected", result.stdout)
         self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], self.before)
-        self.assertFalse(self.output.exists())
+        self.assertFalse((self.root / "summary").exists())
 
-    def test_pr_failure_without_pushed_branch_still_fails(self):
-        self.assert_rejected(self.report_version_pr())
+    def test_direct_bump_push_race_preserves_remote_changes(self):
+        race = self.commit("README.md", "Concurrent main update.\n")
+        self.git("push", "origin", "HEAD:refs/heads/fixture-race")
+        self.git("reset", "--hard", self.before)
+        result = self.run_workflow(direct=True, RACE_SHA=race,
+                                   RACE_REMOTE=str(self.root / "origin.git"))
+        self.assert_rejected(result)
+        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], race)
+        self.assertFalse((self.root / "summary").exists())
 
-    def test_pr_fallback_rejects_changed_branch_content_or_parent(self):
-        self.push_version_branch()
-        for overrides, message in (
-            ({"EXPECTED_TREE": self.git("rev-parse", f"{self.before}^{{tree}}")}, "prepared content"),
-            ({"GITHUB_SHA": "0" * 40}, "different release base"),
-        ):
-            with self.subTest(**overrides):
-                self.assert_rejected(self.report_version_pr(**overrides), message)
+    def test_bump_release_requires_signing_key_before_edits(self):
+        self.assert_bump_rejected(RELEASE_INPUT="true", KAM_PRIVATE_KEY_AVAILABLE="0")
 
-    def test_existing_pr_reports_success_without_needing_fallback(self):
-        result = self.report_version_pr(PR_OUTCOME="success", PR_URL="https://github.com/example/repo/pull/1")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn("::warning::", result.stdout)
-        self.assertIn("/pull/1", (self.root / "summary").read_text())
+    def test_manual_prerelease_without_release_is_rejected(self):
+        self.assert_rejected(self.run_workflow(
+            GITHUB_EVENT_NAME="workflow_dispatch", PRERELEASE_INPUT="true"),
+            "prerelease requires release=true")
 
     def test_build_allows_json_reserialization_without_metadata_changes(self):
         update = self.metadata()[2]
@@ -412,6 +448,56 @@ class ReleaseWorkflowTest(unittest.TestCase):
 
     def test_build_verification_requires_the_release_checkout(self):
         self.assert_rejected(self.run_workflow(verify=True, GITHUB_SHA="0" * 40), "Checkout differs")
+
+
+class WorkflowStructureTest(unittest.TestCase):
+    def test_build_and_release_share_one_job_and_exact_checkout(self):
+        text = (WORKFLOWS / "exec.yml").read_text()
+        workflow = yaml.safe_load(text)
+        self.assertEqual(set(workflow["jobs"]), {"build"})
+        self.assertNotIn("pull-requests:", text)
+        self.assertNotIn("create-pull-request", text)
+        steps = workflow["jobs"]["build"]["steps"]
+        self.assertEqual(steps[0]["with"]["ref"], "${{ github.sha }}")
+        bump = next(step for step in steps if step["name"] == "Bump and commit version")
+        self.assertIn("workflow_dispatch", bump["if"])
+        self.assertIn("RELEASE_TOKEN", bump["env"]["GH_TOKEN"])
+        self.assertNotIn("--force", bump["run"])
+        release = next(step for step in steps if step["name"] == "Create GitHub release")
+        self.assertIn('--target "$RELEASE_COMMIT_SHA"', release["run"])
+        self.assertIn("--verify-build", release["run"])
+
+    def test_caches_include_toolchain_and_source_and_exclude_rustup(self):
+        for name in ("exec.yml", "quality.yml"):
+            workflow = yaml.safe_load((WORKFLOWS / name).read_text())
+            steps = workflow["jobs"]["build" if name == "exec.yml" else "rust"]["steps"]
+            caches = [step["with"] for step in steps if "actions/cache@" in step.get("uses", "")]
+            rust = next(cache for cache in caches if "target" in cache["path"].splitlines())
+            self.assertIn("steps.toolchain.outputs.rust", rust["key"])
+            self.assertIn("crates/**", rust["key"])
+            self.assertIn("restore-keys", rust)
+            self.assertNotIn("~/.rustup", rust["path"])
+        steps = yaml.safe_load((WORKFLOWS / "exec.yml").read_text())["jobs"]["build"]["steps"]
+        kam = next(step for step in steps if step["name"] == "Setup kam")
+        self.assertEqual(kam["with"]["cache-targets"], "kam")
+        ndk = next(step for step in steps if step["name"] == "Install Android cargo build tool")
+        self.assertIn("cache-hit != 'true'", ndk["if"])
+        go_cache = next(step["with"] for step in steps
+                        if step["name"] == "Cache Go dependencies and build outputs")
+        self.assertIn("steps.toolchain.outputs.singbox", go_cache["key"])
+        self.assertIn("steps.go.outputs.go-version", go_cache["key"])
+        self.assertIn("~/.cache/go-build", go_cache["path"])
+
+    def test_workflow_shell_syntax(self):
+        for path in WORKFLOWS.glob("*.yml"):
+            workflow = yaml.safe_load(path.read_text())
+            for job in workflow["jobs"].values():
+                for step in job.get("steps", []):
+                    if "run" in step:
+                        with self.subTest(workflow=path.name, step=step.get("name")):
+                            result = subprocess.run(["bash", "-n"], input=step["run"],
+                                                    text=True, capture_output=True, check=False)
+                            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

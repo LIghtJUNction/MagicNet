@@ -32,6 +32,12 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Fingerprint Rust toolchain
+        id: toolchain
+        run: |
+          rust_hash="$(rustc -vV | sha256sum | cut -d' ' -f1)"
+          printf 'rust=%s\n' "$rust_hash" >> "$GITHUB_OUTPUT"
+
       - name: Cache Cargo
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -39,9 +45,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-quality-rust-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-quality-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-${{ hashFiles('Cargo.toml', 'crates/**') }}
           restore-keys: |
-            ${{ runner.os }}-quality-rust-
+            ${{ runner.os }}-${{ runner.arch }}-quality-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-
+            ${{ runner.os }}-${{ runner.arch }}-quality-rust-v2-${{ steps.toolchain.outputs.rust }}-
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Prepare a version PR (merge it before publishing)
+        description: Commit a version bump directly to main before building
         required: false
         type: choice
         options:
@@ -14,7 +14,7 @@ on:
           - major
         default: none
       release:
-        description: Publish after the version PR merges, or publish current version with bump=none
+        description: Publish the built version in this run
         required: false
         type: boolean
         default: false
@@ -40,69 +40,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  version-pr:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    concurrency:
-      group: magicnet-version-pr
-      cancel-in-progress: false
-    steps:
-      - name: Checkout release base
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Prepare version metadata
-        id: version
-        env:
-          BUMP_KIND: ${{ inputs.bump }}
-          RELEASE_INPUT: ${{ inputs.release }}
-          PRERELEASE_INPUT: ${{ inputs.prerelease }}
-        run: |
-          # Keep the original main checkout as the PR base. A detached checkout
-          # makes the PR action rebase with "theirs" onto a newer remote main.
-          git checkout -B main "$GITHUB_SHA"
-          python3 scripts/prepare-release.py --bump "$BUMP_KIND"
-          git add -- kam.toml src/MagicNet/module.prop update.json .github/release-request
-          printf 'tree=%s\n' "$(git write-tree)" >> "$GITHUB_OUTPUT"
-
-      - name: Create version pull request
-        id: pr
-        continue-on-error: true
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          base: main
-          branch: automation/release-${{ steps.version.outputs.version }}
-          add-paths: |
-            kam.toml
-            src/MagicNet/module.prop
-            update.json
-            .github/release-request
-          commit-message: "chore(release): prepare ${{ steps.version.outputs.version }}"
-          title: "chore(release): prepare ${{ steps.version.outputs.version }}"
-          body: |
-            Prepares ${{ steps.version.outputs.version }} with synchronized module metadata.
-
-            Publish after merge: `${{ inputs.release }}`. Prerelease: `${{ inputs.prerelease }}`.
-            Review and merge this PR into main. Approve any pending workflow runs on the PR page.
-            This automation branch is regenerated when the same version is requested again; avoid editing it directly.
-
-      - name: Report version PR
-        if: ${{ always() && steps.version.outcome == 'success' }}
-        env:
-          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
-          PR_OUTCOME: ${{ steps.pr.outcome }}
-          VERSION: ${{ steps.version.outputs.version }}
-          EXPECTED_TREE: ${{ steps.version.outputs.tree }}
-        run: python3 scripts/prepare-release.py --report-pr
-
   build:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '' }}
     runs-on: ubuntu-latest
     env:
       KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
@@ -110,14 +48,45 @@ jobs:
       MAGICNET_SIGN_REQUIRED: ${{ inputs.release == true && '1' || '0' }}
       KAM_CHANGELOG_ENABLED: "0"
       GH_TOKEN: ${{ github.token }}
+      RELEASE_COMMIT_SHA: ${{ github.sha }}
+      CARGO_NDK_VERSION: "4.1.2"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
           submodules: true
           fetch-depth: 0
+
+      - name: Bump and commit version
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
+        env:
+          BUMP_KIND: ${{ inputs.bump }}
+          RELEASE_INPUT: ${{ inputs.release }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
+          # Protected main requires a token whose owner may bypass its PR rule.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare-release.py --bump "$BUMP_KIND"
+          git add -- kam.toml src/MagicNet/module.prop update.json
+          if [ -f .github/release-request ]; then
+            git add -- .github/release-request
+          fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "chore(release): bump module version [skip ci]"
+          gh auth setup-git
+          # Never force-push or rebase a version onto unbuilt concurrent changes.
+          if ! git push origin HEAD:refs/heads/main; then
+            echo "::error::Direct push rejected. Check RELEASE_TOKEN/main rules, or start a new run if main advanced. No PR was created."
+            exit 1
+          fi
+          sha="$(git rev-parse HEAD)"
+          printf 'RELEASE_COMMIT_SHA=%s\n' "$sha" >> "$GITHUB_ENV"
+          printf 'Version metadata committed to main: `%s`.\n' "$sha" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate release request
         env:
@@ -135,11 +104,94 @@ jobs:
             -out "$RUNNER_TEMP/magicnet-signing-public.pem"
 
       - name: Setup Go for forked sing-box
+        id: go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "1.26.7"
-          cache: true
-          cache-dependency-path: sing-box/go.sum
+          cache: false
+
+      - name: Setup kam
+        uses: MemDeco-WG/setup-kam@1d6ad8a9f58446a4519fda12a52f0c71fb667d8b # v3
+        with:
+          github-token: ${{ github.token }}
+          enable-cache: "true"
+          # Do not restore ~/.rustup over the freshly installed Rust toolchain.
+          cache-targets: kam
+          install-commitizen: "false"
+          private-key: ${{ secrets.KAM_PRIVATE_KEY }}
+
+      - name: Fingerprint build toolchains
+        id: toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          ndk="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
+          if [ -z "$ndk" ] && [ -d "${ANDROID_HOME:-}/ndk" ]; then
+            ndk="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          fi
+          ndk="${ndk:-/opt/android-ndk}"
+          rust_hash="$(rustc -vV | sha256sum | cut -d' ' -f1)"
+          ndk_hash="$(sha256sum "$ndk/source.properties" | cut -d' ' -f1)"
+          printf 'rust=%s\nndk=%s\n' "$rust_hash" "$ndk_hash" >> "$GITHUB_OUTPUT"
+          printf 'singbox=%s\n' "$(git -C sing-box rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Go dependencies and build outputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-${{ runner.arch }}-singbox-go-v2-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('sing-box/go.mod', 'sing-box/go.sum') }}-${{ steps.toolchain.outputs.singbox }}-${{ hashFiles('scripts/build-sing-box.sh', 'sing-box.version') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-singbox-go-v2-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('sing-box/go.mod', 'sing-box/go.sum') }}-
+            ${{ runner.os }}-${{ runner.arch }}-singbox-go-v2-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.ndk }}-
+
+      - name: Cache Rust dependencies and Android build outputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-${{ hashFiles('Cargo.toml', 'crates/**', 'hooks/pre-build/3000.BUILD_CRATES.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-
+            ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-
+
+      - name: Setup Node.js and npm cache
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+
+      - name: Cache Bun package downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-v1-${{ hashFiles('webui/bun.lock', 'webui/bun.lockb', 'webui/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-bun-v1-
+
+      - name: Cache cargo-ndk executable
+        id: cargo-ndk
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/magicnet/cargo-ndk
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-ndk-${{ env.CARGO_NDK_VERSION }}-${{ steps.toolchain.outputs.rust }}
+
+      - name: Install Android Rust target
+        run: rustup target add aarch64-linux-android
+
+      - name: Install Android cargo build tool
+        if: ${{ steps.cargo-ndk.outputs.cache-hit != 'true' }}
+        run: cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked --root "$HOME/.cache/magicnet/cargo-ndk"
+
+      - name: Add Android cargo build tool to PATH
+        run: echo "$HOME/.cache/magicnet/cargo-ndk/bin" >> "$GITHUB_PATH"
+
+      - name: Install artifact tools
+        run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip
 
       - name: Test forked sing-box eBPF support
         shell: bash
@@ -164,28 +216,6 @@ jobs:
             done
           )
 
-      - name: Cache Cargo
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-rust-
-
-      - name: Setup kam
-        uses: MemDeco-WG/setup-kam@1d6ad8a9f58446a4519fda12a52f0c71fb667d8b # v3
-        with:
-          github-token: ${{ github.token }}
-          enable-cache: "true"
-          cache-targets: cargo,kam
-          install-commitizen: "false"
-          private-key: ${{ secrets.KAM_PRIVATE_KEY }}
-
-      - name: Install artifact tools
-        run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip
-
       - name: Build host sing-box from fork
         shell: bash
         run: |
@@ -198,19 +228,6 @@ jobs:
           version_output="$(sing-box version)"
           grep -F "LIghtJUNction.${expected_revision:0:12}" <<<"$version_output"
           printf '%s\n' "$version_output"
-
-      - name: Install Android Rust targets
-        shell: bash
-        run: |
-          set -euo pipefail
-          sysroot="$(rustc --print sysroot)"
-          rm -rf \
-            "${sysroot}/lib/rustlib/aarch64-linux-android" \
-            "${sysroot}/lib/rustlib/x86_64-linux-android"
-          rustup target add aarch64-linux-android x86_64-linux-android
-
-      - name: Install Android cargo build tool
-        run: cargo install cargo-ndk --locked
 
       - name: Verify tools
         shell: bash
@@ -260,7 +277,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/prepare-release.py --verify-build
-          args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
+          args=(--repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT_SHA"
                 --title "MagicNet-${RELEASE_VERSION_CODE}-${RELEASE_VERSION}" --generate-notes)
           if [ "$PRERELEASE_REQUESTED" = "true" ]; then
             args+=(--prerelease)
