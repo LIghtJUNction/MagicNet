@@ -183,3 +183,19 @@ export function subscriptionLifecycleRunning(
 ): boolean {
   return isActiveSubscriptionBackgroundTask(task) || deviceUpdateRunning;
 }
+
+type SubscriptionLifecycleState = {
+  backgroundTask: Pick<BackgroundTaskState, "status" | "args">;
+  subscriptions: { updateRunning: boolean; lastResult: string };
+};
+
+export function subscriptionLifecycleStatus(
+  state: SubscriptionLifecycleState,
+  configured: boolean,
+): BackgroundTaskStatus | "empty" {
+  if (subscriptionLifecycleRunning(state.backgroundTask, state.subscriptions.updateRunning)) return "running";
+  if (state.backgroundTask.status === "timeout" && isSubscriptionBackgroundArgs(state.backgroundTask.args)) return "timeout";
+  if (state.subscriptions.lastResult === "success") return "done";
+  if (["failed", "interrupted"].includes(state.subscriptions.lastResult)) return "error";
+  return configured ? "idle" : "empty";
+}
