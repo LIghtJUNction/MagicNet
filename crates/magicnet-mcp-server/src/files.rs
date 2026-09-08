@@ -1,5 +1,6 @@
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path};
 
 use crate::Server;
@@ -42,7 +43,7 @@ pub(crate) fn file_read(server: &Server, rel: &str) -> String {
         Ok(path) => path,
         Err(err) => return err,
     };
-    let file = match fs::File::open(&path) {
+    let file = match open_regular_file(&path) {
         Ok(file) => file,
         Err(err) => return format!("not a file: {rel}: {err}"),
     };
@@ -58,6 +59,23 @@ pub(crate) fn file_read(server: &Server, rel: &str) -> String {
         .take(240)
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+pub(crate) fn open_regular_file(path: &Path) -> io::Result<fs::File> {
+    let invalid_type = || io::Error::new(io::ErrorKind::InvalidInput, "not a regular file");
+    if !fs::symlink_metadata(path)?.is_file() {
+        return Err(invalid_type());
+    }
+    // A FIFO substituted after the metadata check must not block a worker in open().
+    // Both callers have already resolved in-module symlinks to their target paths.
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+        .open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(invalid_type());
+    }
+    Ok(file)
 }
 
 fn module_path(server: &Server, rel: &str) -> Result<std::path::PathBuf, String> {
@@ -84,9 +102,14 @@ fn module_path(server: &Server, rel: &str) -> Result<std::path::PathBuf, String>
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CString;
     use std::fs;
-    use std::os::unix::fs::symlink;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::{symlink, OpenOptionsExt};
     use std::path::PathBuf;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
 
     use super::*;
 
@@ -135,5 +158,55 @@ mod tests {
         assert!(result.starts_with("file too large: large"));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    fn assert_fifo_rejected(name: &str, read: fn(&Server) -> String) {
+        let (server, root) = test_server(name);
+        fs::create_dir_all(root.join(".log")).unwrap();
+        let fifo = root.join(".log/pipe.log");
+        let fifo_name = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo_name.as_ptr(), 0o600) }, 0);
+        let (sender, receiver) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let _ = sender.send(read(&server));
+        });
+        let result = receiver.recv_timeout(Duration::from_secs(2));
+        if result.is_err() {
+            // Unblock the old blocking open/read so a regression cannot hang the suite.
+            let _ = fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&fifo);
+        }
+        fs::remove_dir_all(root).unwrap();
+        let result = result.expect("FIFO reads must finish without a writer");
+        worker.join().unwrap();
+        assert!(result.contains("not a regular file"), "{result}");
+    }
+
+    #[test]
+    fn file_read_rejects_fifo_without_waiting_for_a_writer() {
+        assert_fifo_rejected("file-fifo", |server| file_read(server, ".log/pipe.log"));
+    }
+
+    #[test]
+    fn log_read_rejects_fifo_without_waiting_for_a_writer() {
+        assert_fifo_rejected("log-fifo", |server| {
+            crate::logs::log_read(server, "pipe", 10, false)
+        });
+    }
+
+    #[test]
+    fn file_and_log_reads_preserve_regular_file_contents() {
+        let (server, root) = test_server("regular");
+        fs::create_dir_all(root.join(".log")).unwrap();
+        fs::write(root.join(".log/example.log"), "first\nsecond\nthird\n").unwrap();
+        symlink(root.join(".log/example.log"), root.join("internal-link")).unwrap();
+        assert_eq!(file_read(&server, "internal-link"), "first\nsecond\nthird");
+        assert_eq!(
+            crate::logs::log_read(&server, "example", 2, false),
+            "second\nthird"
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }
