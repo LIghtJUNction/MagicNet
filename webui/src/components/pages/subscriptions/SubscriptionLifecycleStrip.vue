@@ -2,10 +2,7 @@
 import { t } from "@/i18n";
 import { computed } from "vue";
 import { useMagicNet } from "@/composables/useMagicNet";
-import {
-  isSubscriptionBackgroundArgs,
-  subscriptionLifecycleRunning,
-} from "@/composables/backgroundTasks";
+import { subscriptionLifecycleStatus } from "@/composables/backgroundTasks";
 
 const props = defineProps<{
   configured: boolean;
@@ -13,13 +10,7 @@ const props = defineProps<{
 
 const { state } = useMagicNet();
 
-const lifecycleStatus = computed(() => {
-  if (subscriptionLifecycleRunning(state.backgroundTask, state.subscriptions.updateRunning)) return "running";
-  if (state.backgroundTask.status === "timeout" && isSubscriptionBackgroundArgs(state.backgroundTask.args)) return "timeout";
-  if (state.subscriptions.lastResult === "success") return "done";
-  if (["failed", "interrupted"].includes(state.subscriptions.lastResult)) return "error";
-  return props.configured ? "idle" : "empty";
-});
+const lifecycleStatus = computed(() => subscriptionLifecycleStatus(state, props.configured));
 
 const lifecycleLabel = computed(() => ({
   empty: t("等待首次配置"),
