@@ -1,8 +1,9 @@
-use std::fs::{self, File};
+use std::fs;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::files::open_regular_file;
 use crate::{run_cli, Server};
 
 const MAX_LOG_READ_BYTES: u64 = 1024 * 1024;
@@ -76,8 +77,8 @@ pub(crate) fn log_read(server: &Server, source: &str, lines: usize, redact: bool
     }
 }
 
-fn read_bounded_tail(path: &PathBuf) -> std::io::Result<String> {
-    let file = File::open(path)?;
+fn read_bounded_tail(path: &Path) -> std::io::Result<String> {
+    let file = open_regular_file(path)?;
     let len = file.metadata()?.len();
     read_log_snapshot(file, len)
 }
@@ -226,6 +227,7 @@ fn redact_token(token: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
     use std::io::Write;
     use std::os::unix::fs::symlink;
     use std::path::PathBuf;
