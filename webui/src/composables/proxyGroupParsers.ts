@@ -13,7 +13,8 @@ export type ProxyGroupsSnapshot = {
 
 export function parseProxyGroupsSnapshot(text: string): ProxyGroupsSnapshot | null {
   try {
-    const root = JSON.parse(text) as Record<string, unknown>;
+    const root = objectValue(JSON.parse(text));
+    if (!root) return null;
     const groups = [
       ...parseProxyGroupObject(objectValue(root.proxies)),
       ...parseProxyGroupObject(objectValue(root.providers))
@@ -37,8 +38,10 @@ function parseProxyGroupObject(source: Record<string, unknown> | null): ProxyGro
 
 function parseProxyGroup(key: string, item: Record<string, unknown> | null): ProxyGroupSummary | null {
   if (!item) return null;
-  const proxies = Array.isArray(item.proxies)
-    ? item.proxies.map(proxyName).filter((name): name is string => Boolean(name))
+  // /proxies selectors use `all`; provider responses use `proxies`.
+  const members = Array.isArray(item.all) ? item.all : item.proxies;
+  const proxies = Array.isArray(members)
+    ? members.map(proxyName).filter((name): name is string => Boolean(name))
     : [];
   if (!proxies.length && !stringValue(item.now)) return null;
   return {
