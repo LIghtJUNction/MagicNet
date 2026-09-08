@@ -153,25 +153,31 @@ magicnet_singbox_runtime_fingerprint() (
     command -v find >/dev/null 2>&1 || return 1
     command -v sort >/dev/null 2>&1 || return 1
 
-    {
+    # Check each producer before hashing its output: Android sh does not
+    # guarantee pipefail, so a trailing checksum can hide a failed reader.
+    _runtime_input=$(
         # Runtime materializers may emit equivalent JSON with a different key
         # order or whitespace.  sing-box sees the same configuration in that
         # case, so hash a stable representation instead of the file bytes.
-        "$_runtime_jq" -e . "$_runtime_config" >/dev/null || exit 1
-        "$_runtime_jq" -S -c . "$_runtime_config" | cksum || exit 1
-        if [ -f "${_runtime_root}/tailscale-auth.json" ]; then
-            "$_runtime_jq" -e . "${_runtime_root}/tailscale-auth.json" >/dev/null || exit 1
-            "$_runtime_jq" -S -c . "${_runtime_root}/tailscale-auth.json" | cksum || exit 1
-        fi
+        for _runtime_json_file in "$_runtime_config" "${_runtime_root}/tailscale-auth.json"; do
+            [ "$_runtime_json_file" = "$_runtime_config" ] || [ -f "$_runtime_json_file" ] || continue
+            _runtime_json=$("$_runtime_jq" -e -S -c . "$_runtime_json_file") || exit 1
+            [ -n "$_runtime_json" ] || exit 1
+            printf '%s\n' "$_runtime_json" | cksum || exit 1
+        done
         if [ -d "${_runtime_root}/rules" ]; then
-            find "${_runtime_root}/rules" -type f -name '*.srs' -print 2>/dev/null |
-                sort |
-                while IFS= read -r _runtime_rule || [ -n "$_runtime_rule" ]; do
-                    [ -n "$_runtime_rule" ] || continue
-                    cksum "$_runtime_rule" || exit 1
-                done
+            _runtime_rules=$(find "${_runtime_root}/rules" -type f -name '*.srs' -print 2>/dev/null) || exit 1
+            _runtime_rules=$(printf '%s\n' "$_runtime_rules" | sort) || exit 1
+            while IFS= read -r _runtime_rule || [ -n "$_runtime_rule" ]; do
+                [ -n "$_runtime_rule" ] || continue
+                cksum "$_runtime_rule" || exit 1
+            done <<EOF
+$_runtime_rules
+EOF
         fi
-    } | cksum | awk '{ print $1 ":" $2 }'
+    ) || return 1
+    _runtime_checksum=$(printf '%s\n' "$_runtime_input" | cksum) || return 1
+    printf '%s\n' "$_runtime_checksum" | awk '{ print $1 ":" $2 }'
 )
 
 magicnet_singbox_record_runtime_fingerprint() {

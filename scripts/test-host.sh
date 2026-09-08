@@ -78,6 +78,7 @@ bash scripts/test-transparent-mode-config-safety.sh
 bash scripts/test-ebpf-transparent-mode.sh
 bash scripts/test-config-permissions.sh
 bash scripts/test-config-lock-safety.sh
+sh scripts/test-runtime-fingerprint-safety.sh
 if [ "$with_routing_assets" -eq 1 ]; then
     bash scripts/test-dns-profile-safety.sh
 fi
