@@ -13,6 +13,7 @@ on:
       - 'scripts/test-onboarding-browser.py'
       - 'scripts/onboarding-browser-fixture.py'
       - 'webui/scripts/test-install-setup.mjs'
+      - 'webui/scripts/test-onboarding-design.mjs'
       - 'webui/package*.json'
       - '.github/workflows/install-onboarding.yml'
   push:
@@ -27,6 +28,7 @@ on:
       - 'scripts/test-onboarding-browser.py'
       - 'scripts/onboarding-browser-fixture.py'
       - 'webui/scripts/test-install-setup.mjs'
+      - 'webui/scripts/test-onboarding-design.mjs'
       - 'webui/package*.json'
       - '.github/workflows/install-onboarding.yml'
 
@@ -82,4 +84,6 @@ jobs:
       - name: Test production page against real BusyBox HTTP and CGI
         working-directory: webui
         timeout-minutes: 5
-        run: node scripts/test-install-setup.mjs
+        run: |
+          node scripts/test-install-setup.mjs
+          node scripts/test-onboarding-design.mjs

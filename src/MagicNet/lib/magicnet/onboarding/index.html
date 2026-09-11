@@ -5,51 +5,63 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light dark">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <title>MagicNet · Setup</title>
+  <link rel="icon" href="artwork.png">
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
 <body>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9Z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-out" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-5 6-2 2a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 2 2-2a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 0)"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-language" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2M6 5c0 6 3 9 7 11M12 5c0 6-3 9-8 12m11-7 4 11m-8 0 4-11m-2.5 7h5"/></symbol>
+    <symbol id="i-telegram" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M21.2 3.5 2.7 10.6c-1.3.5-1.3 1.2-.2 1.6l4.7 1.5 1.8 5.5c.2.6.1.9.8.9.5 0 .8-.2 1-.5l2.3-2.2 4.8 3.5c.9.5 1.6.2 1.8-.8L22.8 5c.3-1.2-.5-1.9-1.6-1.5ZM8.8 13.3 18.9 7c.5-.3 1-.1.6.3l-8.4 7.6-.3 3.4-2-5Z"/></symbol>
+    <symbol id="i-discord" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M19.7 5.2a18 18 0 0 0-4.5-1.4l-.6 1.2a17 17 0 0 0-5.2 0l-.6-1.2a18 18 0 0 0-4.5 1.4C1.5 9.3.7 13.3 1.1 17.2a18 18 0 0 0 5.5 2.8l1.1-1.8-1.8-.9.5-.4c3.5 1.6 7.7 1.6 11.2 0l.5.4-1.8.9 1.1 1.8a18 18 0 0 0 5.5-2.8c.5-4.5-.9-8.5-3.2-12ZM8.4 14.9c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm7.2 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5v15m0-15C9 3 5 3 3 4v14c3-1 6-1 9 2 3-3 6-3 9-2V4c-2-1-6-1-9 1Z"/></symbol>
+    <symbol id="i-release" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5"/></symbol>
+    <symbol id="i-feedback" viewBox="0 0 24 24"><path d="M4 4h16v13H9l-5 4V4Zm8 4v4m0 2v.1"/></symbol>
+    <symbol id="i-author" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+  </svg>
   <div class="shell">
     <header>
-      <a class="brand" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer" aria-label="MagicNet on GitHub">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>MagicNet</span>
-      </a>
-      <label class="language"><span aria-hidden="true">文 / A</span><span class="sr-only" data-i18n="language">Language</span>
-        <select id="language"><option value="zh">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option></select>
-      </label>
+      <a class="brand" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><svg aria-hidden="true"><use href="#i-star"/></svg>MagicNet</a>
+      <div class="header-actions">
+        <a class="star-link" data-i18n-label="star" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer" aria-label="GitHub Star"><svg aria-hidden="true"><use href="#i-star"/></svg><span>Star</span></a>
+        <label class="language"><svg aria-hidden="true"><use href="#i-language"/></svg><span class="sr-only" data-i18n="language">Language</span><select id="language"><option value="zh">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option></select></label>
+      </div>
     </header>
     <main>
+      <figure class="visual" aria-hidden="true"><div class="artwork orbit-d"><img src="artwork.png" width="512" height="512" alt="" decoding="async"></div></figure>
       <section class="intro" aria-labelledby="title">
-        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span><span data-i18n="eyebrow">A NEW CONNECTION</span><span class="edition">01 / SETUP</span></p>
-        <h1 id="title"><span data-i18n="title">Your network.</span><em data-i18n="accent">Your rules.</em></h1>
-        <p class="subtitle" data-i18n="subtitle">Add a subscription. Make yourself at home.</p>
+        <h1 id="title" data-i18n="title">Add a subscription</h1>
         <form id="setup-form" novalidate>
-          <label for="subscription" data-i18n="label">Subscription URL</label>
-          <div class="input-wrap"><input id="subscription" name="subscription" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://…" maxlength="8192" required aria-describedby="status"><span class="input-badge" aria-hidden="true">HTTPS</span></div>
-          <div class="actions"><button id="save" class="primary" type="submit"><span data-i18n="save">Save & continue</span><span aria-hidden="true">↗</span></button><button id="skip" type="button" class="quiet" data-i18n="skip">Set up later</button></div>
+          <label class="sr-only" for="subscription" data-i18n="label">Subscription URL</label>
+          <div class="input-wrap"><svg aria-hidden="true"><use href="#i-link"/></svg><input id="subscription" name="subscription" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://…" maxlength="8192" required aria-describedby="status"></div>
+          <button id="save" class="primary" type="submit"><span data-i18n="save">Save & continue</span><svg class="next-arrow" aria-hidden="true"><use href="#i-arrow"/></svg><span class="spinner" aria-hidden="true"></span></button>
+          <button id="skip" class="quiet" type="button" data-i18n="skip">Later</button>
         </form>
         <div id="status" role="status" aria-live="polite"></div>
-        <section id="completion" hidden aria-label="Setup result"><div class="complete-mark" aria-hidden="true">✓</div><h2 id="completion-title"></h2><p id="completion-note"></p><a class="primary star-success" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">☆</span><span data-i18n="star">Star on GitHub</span><span aria-hidden="true">↗</span></a></section>
-        <p class="privacy"><span aria-hidden="true">◈</span><span data-i18n="privacy">Stored on your device. Loaded on the next start.</span></p>
+        <section id="completion" hidden aria-labelledby="completion-title"><div class="complete-mark" aria-hidden="true"><svg><use href="#i-check"/></svg></div><h2 id="completion-title" tabindex="-1"></h2><p id="completion-note"></p><a class="primary star-success" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><svg aria-hidden="true"><use href="#i-star"/></svg><span data-i18n="star">GitHub Star</span><svg aria-hidden="true"><use href="#i-out"/></svg></a></section>
       </section>
-      <div class="visual" aria-hidden="true"><div class="orbital"><div class="disc"></div><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="orbit orbit-c"></div><div class="orbit orbit-d"></div><span class="satellite satellite-a"></span><span class="satellite satellite-b"></span><div class="monogram"><i></i><i></i><i></i></div><span class="orbit-caption">LESS NOISE.<br>MORE POSSIBILITY.</span><span class="coordinate">M / N — 01</span></div></div>
     </main>
     <footer>
-      <div class="footer-label"><span class="footer-line" aria-hidden="true"></span><span data-i18n="explore">Keep exploring</span></div>
-      <nav aria-label="MagicNet links">
-        <a class="star-link" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">☆</span><span data-i18n="star">Star on GitHub</span><span aria-hidden="true">↗</span></a>
-        <a href="https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md" target="_blank" rel="noopener noreferrer"><span data-i18n="docs">Guide</span><span aria-hidden="true">↗</span></a>
-        <a href="https://discord.gg/asRwgK9FpA" target="_blank" rel="noopener noreferrer"><span data-i18n="community">Community</span><span aria-hidden="true">↗</span></a>
-        <a href="https://github.com/LIghtJUNction/MagicNet/releases" target="_blank" rel="noopener noreferrer"><span data-i18n="releases">Releases</span><span aria-hidden="true">↗</span></a>
-        <a href="https://github.com/LIghtJUNction/MagicNet/issues/new/choose" target="_blank" rel="noopener noreferrer"><span data-i18n="feedback">Report an issue</span><span aria-hidden="true">↗</span></a>
-        <a href="https://github.com/LIghtJUNction" target="_blank" rel="noopener noreferrer"><span data-i18n="author">Meet the author</span><span aria-hidden="true">↗</span></a>
-        <a href="https://api.lmm.best" target="_blank" rel="noopener noreferrer"><span>LMM API</span><span aria-hidden="true">↗</span></a>
+      <nav class="communities" data-i18n-label="links" aria-label="Project links">
+        <a class="community telegram" id="telegram" data-i18n-label="telegram" href="https://t.me/magicnet_group" target="_blank" rel="noopener noreferrer" aria-label="Join Telegram"><svg aria-hidden="true"><use href="#i-telegram"/></svg><span>Telegram</span><svg class="out" aria-hidden="true"><use href="#i-out"/></svg></a>
+        <a class="community discord" id="discord" data-i18n-label="discord" href="https://discord.gg/asRwgK9FpA" target="_blank" rel="noopener noreferrer" aria-label="Join Discord"><svg aria-hidden="true"><use href="#i-discord"/></svg><span>Discord</span><svg class="out" aria-hidden="true"><use href="#i-out"/></svg></a>
       </nav>
-      <p class="signature"><span>MAGICNET — OPEN SOURCE</span><span data-i18n="local">PRIVATE, BY DESIGN</span></p>
+      <nav class="utilities" data-i18n-label="links" aria-label="Project links">
+        <a data-i18n-label="docs" aria-label="Guide" href="https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md" target="_blank" rel="noopener noreferrer"><svg aria-hidden="true"><use href="#i-book"/></svg></a>
+        <a data-i18n-label="releases" aria-label="Releases" href="https://github.com/LIghtJUNction/MagicNet/releases" target="_blank" rel="noopener noreferrer"><svg aria-hidden="true"><use href="#i-release"/></svg></a>
+        <a data-i18n-label="feedback" aria-label="Report an issue" href="https://github.com/LIghtJUNction/MagicNet/issues/new/choose" target="_blank" rel="noopener noreferrer"><svg aria-hidden="true"><use href="#i-feedback"/></svg></a>
+        <a data-i18n-label="author" aria-label="Meet the author" href="https://github.com/LIghtJUNction" target="_blank" rel="noopener noreferrer"><svg aria-hidden="true"><use href="#i-author"/></svg></a>
+        <a class="lmm" href="https://api.lmm.best" target="_blank" rel="noopener noreferrer">LMM API<svg aria-hidden="true"><use href="#i-out"/></svg></a>
+      </nav>
     </footer>
-    <noscript>Enable JavaScript to use this local setup page. / 请启用 JavaScript，或安装后通过模块 WebUI 配置。</noscript>
+    <noscript>JavaScript required / 请启用 JavaScript</noscript>
   </div>
 </body>
 </html>
