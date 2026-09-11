@@ -57,7 +57,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          submodules: false
+          submodules: recursive
           fetch-depth: 0
 
       - name: Bump and commit version
@@ -96,7 +96,11 @@ jobs:
         run: python3 scripts/prepare-release.py
 
       - name: Refresh build submodules
-        run: bash scripts/update-build-submodules.sh "$RUNNER_TEMP/build-submodules.txt"
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/update-submodules.sh
+          git submodule status --recursive > "$RUNNER_TEMP/build-submodules.txt"
 
       - name: Prepare signing verification key
         if: ${{ env.MAGICNET_SIGN_ENABLED == '1' }}
@@ -246,9 +250,9 @@ jobs:
           set -euo pipefail
           find hooks src -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
           rm -rf dist
-          git submodule foreach --quiet --recursive 'printf "%s %s\n" "$(git rev-parse HEAD)" "$displaypath"' | diff "$RUNNER_TEMP/build-submodules.txt" -
           kam build
-          git submodule foreach --quiet --recursive 'printf "%s %s\n" "$(git rev-parse HEAD)" "$displaypath"' | diff "$RUNNER_TEMP/build-submodules.txt" -
+          git submodule status --recursive > "$RUNNER_TEMP/built-submodules.txt"
+          diff -u "$RUNNER_TEMP/build-submodules.txt" "$RUNNER_TEMP/built-submodules.txt"
           cp "$RUNNER_TEMP/build-submodules.txt" dist/build-submodules.txt
 
       - name: Verify artifact contents

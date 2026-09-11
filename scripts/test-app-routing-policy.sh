@@ -32,6 +32,11 @@ import() { :; }
 magicnet_warn() { :; }
 singbox_prepare_route_config() { :; }
 
+mock_missing_ipv6_tables() {
+  printf '%s\n' 'cannot initialize nat: Table does not exist' >&2
+  return 3
+}
+
 REAL_MV=$(command -v mv)
 FAIL_MV_BIN="$WORK/fail-mv-bin"
 mkdir -p "$FAIL_MV_BIN"
@@ -470,7 +475,7 @@ assert_dns_capture_disable_removes_duplicate_output_jumps() (
       ;;
     esac
   }
-  ip6tables() { return 1; }
+  ip6tables() { mock_missing_ipv6_tables; }
   magicnet_cmd_exists() {
     [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
   }
@@ -499,7 +504,7 @@ assert_dns_capture_disable_accepts_absent_chain_rc_two() (
     *) return 0 ;;
     esac
   }
-  ip6tables() { return 1; }
+  ip6tables() { mock_missing_ipv6_tables; }
   magicnet_cmd_exists() {
     [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
   }
@@ -544,7 +549,7 @@ assert_dns_capture_disable_retries_transient_delete_failure() (
       ;;
     esac
   }
-  ip6tables() { return 1; }
+  ip6tables() { mock_missing_ipv6_tables; }
   magicnet_cmd_exists() {
     [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
   }
@@ -859,6 +864,10 @@ assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure() (
 
   iptables() {
     case " $* " in
+    *' -S OUTPUT '*)
+      printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'
+      return 0
+      ;;
     *' -D OUTPUT '*) return 1 ;;
     *' -C OUTPUT '*) return 2 ;;
     *' -I OUTPUT '*)
@@ -897,6 +906,12 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
 
   iptables() {
     case " $* " in
+    *' -S OUTPUT '*)
+      if [ "$(cat "$stale_guard_count_file")" -gt 0 ]; then
+        printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'
+      fi
+      return 0
+      ;;
     *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
       stale_guard_rule_count="$(cat "$stale_guard_count_file")"
       if [ "$stale_guard_rule_count" -gt 0 ]; then
@@ -942,7 +957,7 @@ assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat() (
   }
   ip6tables() {
     printf '%s\n' "ip6tables $*" >>"$dns_capture_log"
-    return 1
+    mock_missing_ipv6_tables
   }
   magicnet_cmd_exists() { return 0; }
   magicnet_dns_profile() { printf '%s\n' default; }
