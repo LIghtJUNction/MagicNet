@@ -34,10 +34,23 @@ if ! grep -Fxq 'module github.com/sagernet/sing-box' "$SOURCE_DIR/go.mod"; then
     exit 1
 fi
 
-if [[ -n "$(git -C "$SOURCE_DIR" status --porcelain --untracked-files=normal)" ]]; then
+# --remote advances nested gitlinks without editing source files. Ignore those
+# worktree pointer differences, but reject staged changes and inspect the actual
+# contents of every initialized repository, including nested client submodules.
+SOURCE_STATUS="$(git -C "$SOURCE_DIR" status --porcelain --untracked-files=normal --ignore-submodules=all)"
+if [[ -n "$SOURCE_STATUS" ]] || ! git -C "$SOURCE_DIR" diff --cached --quiet --ignore-submodules=none; then
     printf 'sing-box build: source submodule has uncommitted changes: %s\n' "$SOURCE_DIR" >&2
     exit 1
 fi
+# The callback is evaluated inside each submodule, not by this shell.
+# shellcheck disable=SC2016
+git -C "$SOURCE_DIR" submodule foreach --quiet --recursive '
+    status=$(git status --porcelain --untracked-files=normal --ignore-submodules=all) || exit
+    if [ -n "$status" ] || ! git diff --cached --quiet --ignore-submodules=none; then
+        printf "sing-box build: source submodule has uncommitted changes: %s\n" "$PWD" >&2
+        exit 1
+    fi
+'
 
 command -v go >/dev/null 2>&1 || {
     printf 'sing-box build: Go is required\n' >&2
