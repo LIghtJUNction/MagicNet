@@ -40,7 +40,12 @@ const browser = await chromium.launch({
 const domFixture = process.env.MAGICNET_SETUP_DOM_FIXTURE === '1';
 let fixtureNetworkFailure = false;
 async function load(page, url = `${origin}/#${token}`) {
-  if (!domFixture) return page.goto(url);
+  if (!domFixture) {
+    // Revisiting an identical fragment URL may retain the completed document.
+    // Each scenario needs a fresh page, not the preceding success state.
+    await page.goto('about:blank');
+    return page.goto(url);
+  }
   const css = await fs.readFile(path.join(assets, 'style.css'), 'utf8');
   const js = await fs.readFile(path.join(assets, 'app.js'), 'utf8');
   let html = await fs.readFile(path.join(assets, 'index.html'), 'utf8');
