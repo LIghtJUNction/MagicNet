@@ -91,8 +91,8 @@ magicnet_xtables_available() {
         return 0
     fi
     case "$_xtables_family" in
-    iptables) magicnet_iptables_cmd -L >/dev/null 2>&1 ;;
-    ip6tables) magicnet_ip6tables_cmd -L >/dev/null 2>&1 ;;
+    iptables) magicnet_iptables_cmd -L -n >/dev/null 2>&1 ;;
+    ip6tables) magicnet_ip6tables_cmd -L -n >/dev/null 2>&1 ;;
     esac
     _xtables_rc=$?
     unset _xtables_family
@@ -226,6 +226,14 @@ magicnet_dns_capture_singbox_udp_marked() {
     return "$_dns_marked_rc"
 }
 
+# Only new connections traverse nat. Keep ordinary TCP/UDP connections from
+# scanning every app-bypass UID; RETURN resumes the caller's remaining rules,
+# not ACCEPT. DNS still reaches the existing mark/owner checks and redirect.
+magicnet_dns_capture_fast_path() {
+    magicnet_xtables_ensure_rule "$1" -A nat magicnet-dns-output -p tcp ! --dport 53 -j RETURN &&
+        magicnet_xtables_ensure_rule "$1" -A nat magicnet-dns-output -p udp ! --dport 53 -j RETURN
+}
+
 magicnet_enable_dns_capture() {
     _dns_capture_mode="$(magicnet_transparent_mode)" || {
         magicnet_warn "transparent mode configuration is invalid; DNS capture rejected"
@@ -278,9 +286,10 @@ magicnet_enable_dns_capture() {
     _dns_capture_rc=0
     _dns_capture_ipv6_unavailable=0
     if ! magicnet_iptables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
-        magicnet_xtables_require magicnet_iptables_cmd -t nat -L magicnet-dns-output || _dns_capture_rc=1
+        magicnet_xtables_require magicnet_iptables_cmd -t nat -L magicnet-dns-output -n || _dns_capture_rc=1
     fi
     magicnet_xtables_require magicnet_iptables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
+    magicnet_dns_capture_fast_path magicnet_iptables_cmd || _dns_capture_rc=1
     magicnet_xtables_ensure_rule magicnet_iptables_cmd -I nat OUTPUT -j magicnet-dns-output || _dns_capture_rc=1
     # Direct UDP DNS servers are marked in the sing-box config. Keep those
     # resolver packets out of this chain without exempting all UID-0 traffic.
@@ -310,9 +319,10 @@ magicnet_enable_dns_capture() {
             fi
         else
             if ! magicnet_ip6tables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
-                magicnet_xtables_require magicnet_ip6tables_cmd -t nat -L magicnet-dns-output || _dns_capture_rc=1
+                magicnet_xtables_require magicnet_ip6tables_cmd -t nat -L magicnet-dns-output -n || _dns_capture_rc=1
             fi
             magicnet_xtables_require magicnet_ip6tables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
+            magicnet_dns_capture_fast_path magicnet_ip6tables_cmd || _dns_capture_rc=1
             magicnet_xtables_ensure_rule magicnet_ip6tables_cmd -I nat OUTPUT -j magicnet-dns-output || _dns_capture_rc=1
             if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
                 magicnet_ip6tables_nat_ensure magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
@@ -404,7 +414,7 @@ magicnet_disable_dns_capture() (
         esac
         _dns_capture_cmd="magicnet_${_dns_capture_family}_cmd"
         _dns_capture_chain_rc=0
-        "$_dns_capture_cmd" -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_chain_rc=$?
+        "$_dns_capture_cmd" -t nat -L magicnet-dns-output -n >/dev/null 2>&1 || _dns_capture_chain_rc=$?
         case "$_dns_capture_chain_rc" in
         0)
             # Remove every duplicate jump before flushing/deleting our chain.
@@ -536,7 +546,7 @@ magicnet_enable_dns_leak_guard() {
         # devices commonly expose filter support while omitting an IPv6 nat
         # table; probing nat here would silently disable IPv6 leak protection
         # on exactly those devices.
-        if magicnet_cmd_exists ip6tables && magicnet_ip6tables_cmd -L >/dev/null 2>&1; then
+        if magicnet_cmd_exists ip6tables && magicnet_ip6tables_cmd -L -n >/dev/null 2>&1; then
             _dns_guard_ipv6_available=1
         elif [ "$_dns_guard_ipv6_mode" = prefer_ipv6 ]; then
             _dns_guard_rc=1
@@ -564,7 +574,7 @@ magicnet_enable_dns_leak_guard() {
 
     # Keep the interface set that actually received rules.  Android can
     # switch from Wi-Fi to cellular between enable and cleanup; discovering
-    # only the current interface would otherwise leave the old REJECT rules
+    # only the current interface would otherwise leave the REJECT rules
     # behind and make later DNS behavior depend on the previous network.
     _dns_guard_state_file="$(magicnet_dns_leak_guard_state_file)"
     _dns_guard_state_tmp="${_dns_guard_state_file}.new.$$"

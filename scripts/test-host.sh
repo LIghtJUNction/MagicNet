@@ -83,6 +83,7 @@ if [ "$with_routing_assets" -eq 1 ]; then
     bash scripts/test-dns-profile-safety.sh
 fi
 bash scripts/test-dns-leak-guard-timeout.sh
+python3 scripts/test-dns-capture-fast-path.py
 sh scripts/test-startup-network-safety.sh
 bash scripts/test-submodule-updates.sh
 bash scripts/test-subscription-activation-order.sh
