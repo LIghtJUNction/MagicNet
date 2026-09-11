@@ -855,14 +855,20 @@ assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure() (
   export MODDIR
   mkdir -p "$MODDIR/.state"
   printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
-  new_rule_attempts=0
+  # Rule commands run in subshells; use a file so attempted inserts stay visible.
+  new_rule_attempts="$WORK/dns-leak-guard-reapply-failure.inserts"
+  : >"$new_rule_attempts"
 
   iptables() {
     case " $* " in
+    *' -S OUTPUT '*)
+      printf '%s\n' '-A OUTPUT -o wlan0 -p udp -m udp --dport 53 -j REJECT'
+      return 0
+      ;;
     *' -D OUTPUT '*) return 1 ;;
     *' -C OUTPUT '*) return 2 ;;
     *' -I OUTPUT '*)
-      new_rule_attempts=$((new_rule_attempts + 1))
+      printf '%s\n' "$*" >>"$new_rule_attempts"
       return 0
       ;;
     *) return 0 ;;
@@ -878,7 +884,7 @@ assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure() (
     printf '%s\n' 'DNS leak guard must fail when old rules cannot be removed' >&2
     exit 1
   fi
-  if [ "$new_rule_attempts" -ne 0 ]; then
+  if [ -s "$new_rule_attempts" ]; then
     printf '%s\n' 'DNS leak guard must not install new rules after cleanup failure' >&2
     exit 1
   fi
@@ -897,6 +903,13 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
 
   iptables() {
     case " $* " in
+    *' -S OUTPUT '*)
+      printf '%s\n' '-P OUTPUT ACCEPT'
+      if [ "$(cat "$stale_guard_count_file")" -gt 0 ]; then
+        printf '%s\n' '-A OUTPUT -o wlan0 -p udp -m udp --dport 53 -j REJECT'
+      fi
+      return 0
+      ;;
     *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
       stale_guard_rule_count="$(cat "$stale_guard_count_file")"
       if [ "$stale_guard_rule_count" -gt 0 ]; then
