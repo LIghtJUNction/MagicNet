@@ -137,7 +137,7 @@ magicnet_onboarding_collect() (
     [ "${#MN_SETUP_TOKEN}" = 48 ] || exit 1
     export MN_SETUP_BB MN_SETUP_RUN MN_SETUP_ROOT MN_SETUP_TOKEN
     "$_bb" mkdir -p "$MN_SETUP_RUN/www/cgi-bin" || exit 1
-    for _asset in index.html style.css app.js; do
+    for _asset in index.html style.css app.js artwork.png; do
         "$_bb" cp "$MODPATH/lib/magicnet/onboarding/$_asset" "$MN_SETUP_RUN/www/$_asset" || exit 1
     done
     "$_bb" cp "$MODPATH/lib/magicnet/onboarding/handler.sh" "$MN_SETUP_RUN/handler.sh" || exit 1

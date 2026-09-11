@@ -1,91 +1,12 @@
 (function () {
   'use strict';
   const translations = {
-    en: {
-      language: 'Language', eyebrow: 'A NEW CONNECTION', title: 'Your network.', accent: 'Your rules.',
-      subtitle: 'Add a subscription. Make yourself at home.', label: 'Subscription URL', save: 'Save & continue', skip: 'Set up later',
-      privacy: 'Stored on your device. Loaded on the next start.', explore: 'Keep exploring', star: 'Star on GitHub', docs: 'Guide', community: 'Community', local: 'PRIVATE, BY DESIGN',
-      releases: 'Releases', feedback: 'Report an issue', author: 'Meet the author',
-      submitting: 'Saving…', checking: 'Connecting to the installer…', invalid: 'Use a complete HTTPS URL without spaces, a fragment or credentials.',
-      too_long: 'The URL must be no longer than 8192 bytes.', forbidden: 'This setup link is invalid. Open the complete link from the installer.',
-      missing_token: 'Open the complete setup link from the installer, including the part after #.',
-      network: 'Could not confirm the result. Return to the installer to check; this temporary page may have closed.',
-      busy: 'Another request is being processed. Please try again.', existing: 'A subscription is already configured. It has not been overwritten.',
-      finished: 'This setup session has ended. Return to the installer.', unsafe_path: 'The configuration path is unsafe. Use the module WebUI after installation.',
-      save_failed: 'Could not save. Return to the installer; no success has been confirmed.', format: 'Unsupported request format.', method: 'Unsupported request method.', missing: 'Setup endpoint not found.',
-      saved_title: 'You’re all set.', saved_note: 'The link is saved. Return to the installer and finish installing. MagicNet will load the subscription on its next start.',
-      skipped_title: 'At your own pace.', skipped_note: 'Return to the installer. You can add a subscription in the module WebUI later.'
-    },
-    zh: {
-      language: '语言', eyebrow: '新的连接，从这里开始', title: '你的网络。', accent: '由你定义。',
-      subtitle: '添加订阅，开始使用 MagicNet。', label: '订阅链接', save: '保存并继续', skip: '稍后设置',
-      privacy: '保存在本机，下次启动时加载。', explore: '不止于此', star: '在 GitHub 点亮 Star', docs: '使用指南', community: '加入社区', local: '留在本机，保持私密',
-      releases: '版本更新', feedback: '问题反馈', author: '认识作者',
-      submitting: '正在保存…', checking: '正在连接安装器…', invalid: '请填写完整的 HTTPS 链接，不含空格、# 片段或账号密码。',
-      too_long: '链接不能超过 8192 字节。', forbidden: '本次入口无效，请打开安装器显示的完整地址。',
-      missing_token: '请打开安装器显示的完整地址，包括 # 后面的部分。',
-      network: '无法确认结果，请返回安装器查看；临时页面可能已关闭。',
-      busy: '另一个请求正在处理，请重试。', existing: '已有订阅配置，没有覆盖。', finished: '本次配置已经结束，请返回安装器。',
-      unsafe_path: '配置路径不安全，请安装后通过模块 WebUI 设置。', save_failed: '未能确认保存成功，请返回安装器查看。', format: '请求格式不支持。', method: '请求方式不支持。', missing: '配置接口不存在。',
-      saved_title: '链接已收好。', saved_note: '返回安装器完成安装。MagicNet 下次启动时会加载订阅。',
-      skipped_title: '稍后再出发。', skipped_note: '返回安装器继续安装，之后可在模块 WebUI 添加订阅。'
-    },
-    'zh-TW': {
-      language: '語言', eyebrow: '新的連線，從這裡開始', title: '你的網路。', accent: '由你定義。',
-      subtitle: '新增訂閱，開始使用 MagicNet。', label: '訂閱連結', save: '儲存並繼續', skip: '稍後設定',
-      privacy: '儲存在本機，下次啟動時載入。', explore: '不止於此', star: '在 GitHub 點亮 Star', docs: '使用指南', community: '加入社群', local: '留在本機，保持私密',
-      releases: '版本更新', feedback: '問題回報', author: '認識作者',
-      submitting: '正在儲存…', checking: '正在連線至安裝程式…', invalid: '請填寫完整的 HTTPS 連結，不含空白、# 片段或帳號密碼。',
-      too_long: '連結不能超過 8192 位元組。', forbidden: '本次入口無效，請開啟安裝程式顯示的完整位址。',
-      missing_token: '請開啟安裝程式顯示的完整位址，包括 # 後面的部分。',
-      network: '無法確認結果，請返回安裝程式查看；臨時頁面可能已關閉。',
-      busy: '另一個請求正在處理，請重試。', existing: '已有訂閱設定，未覆寫。', finished: '本次設定已經結束，請返回安裝程式。',
-      unsafe_path: '設定路徑不安全，請安裝後透過模組 WebUI 設定。', save_failed: '未能確認儲存成功，請返回安裝程式查看。', format: '不支援此請求格式。', method: '不支援此請求方式。', missing: '設定介面不存在。',
-      saved_title: '連結已收好。', saved_note: '返回安裝程式完成安裝。MagicNet 下次啟動時會載入訂閱。',
-      skipped_title: '稍後再出發。', skipped_note: '返回安裝程式繼續安裝，之後可在模組 WebUI 新增訂閱。'
-    },
-    ru: {
-      language: 'Язык', eyebrow: 'НОВОЕ ПОДКЛЮЧЕНИЕ', title: 'Ваша сеть.', accent: 'Ваши правила.',
-      subtitle: 'Добавьте подписку и начните пользоваться MagicNet.', label: 'Ссылка на подписку', save: 'Сохранить', skip: 'Настроить позже',
-      privacy: 'Хранится на устройстве. Загрузится при следующем запуске.', explore: 'Узнать больше', star: 'Звезда на GitHub', docs: 'Руководство', community: 'Сообщество', local: 'ПРИВАТНО ПО УМОЛЧАНИЮ',
-      releases: 'Новые версии', feedback: 'Сообщить об ошибке', author: 'Об авторе',
-      submitting: 'Сохранение…', checking: 'Подключение к установщику…', invalid: 'Введите полный HTTPS URL без пробелов, фрагмента # и учётных данных.',
-      too_long: 'Ссылка не должна превышать 8192 байта.', forbidden: 'Ссылка настройки недействительна. Откройте полную ссылку из установщика.',
-      missing_token: 'Откройте полную ссылку из установщика, включая часть после #.',
-      network: 'Результат не подтверждён. Проверьте установщик; временная страница могла закрыться.',
-      busy: 'Другой запрос обрабатывается. Повторите попытку.', existing: 'Подписка уже настроена и не была перезаписана.', finished: 'Сеанс завершён. Вернитесь в установщик.',
-      unsafe_path: 'Небезопасный путь конфигурации. Используйте WebUI после установки.', save_failed: 'Сохранение не подтверждено. Проверьте установщик.', format: 'Неподдерживаемый формат.', method: 'Неподдерживаемый метод.', missing: 'Интерфейс настройки не найден.',
-      saved_title: 'Ссылка сохранена.', saved_note: 'Вернитесь в установщик и завершите установку. MagicNet загрузит подписку при следующем запуске.',
-      skipped_title: 'Можно и позже.', skipped_note: 'Вернитесь в установщик. Подписку можно добавить в WebUI модуля позже.'
-    },
-    ja: {
-      language: '言語', eyebrow: '新しいつながり', title: 'あなたのネット。', accent: 'あなたのルール。',
-      subtitle: '購読を追加して、MagicNet を始めましょう。', label: '購読 URL', save: '保存して続ける', skip: '後で設定',
-      privacy: '端末内に保存し、次回起動時に読み込みます。', explore: 'さらに詳しく', star: 'GitHub で Star', docs: 'ガイド', community: 'コミュニティ', local: 'プライバシーを大切に',
-      releases: 'リリース', feedback: '問題を報告', author: '作者について',
-      submitting: '保存しています…', checking: 'インストーラーに接続しています…', invalid: '空白、# フラグメント、認証情報を含まない完全な HTTPS URL を入力してください。',
-      too_long: 'URL は8192バイト以内にしてください。', forbidden: '無効な設定リンクです。インストーラーのリンク全体を開いてください。',
-      missing_token: 'インストーラーのリンクを、# 以降も含めて開いてください。',
-      network: '結果を確認できません。インストーラーに戻って確認してください。一時ページが閉じた可能性があります。',
-      busy: '別のリクエストを処理中です。再試行してください。', existing: '購読は既に設定されています。上書きしていません。', finished: '設定を終了しました。インストーラーに戻ってください。',
-      unsafe_path: '安全でない設定パスです。インストール後に WebUI を使用してください。', save_failed: '保存を確認できません。インストーラーを確認してください。', format: '未対応の形式です。', method: '未対応のメソッドです。', missing: '設定インターフェースが見つかりません。',
-      saved_title: 'リンクを保存しました。', saved_note: 'インストーラーに戻ってインストールを完了してください。次回起動時に購読を読み込みます。',
-      skipped_title: 'また後で。', skipped_note: 'インストーラーに戻ってください。購読は後から WebUI で追加できます。'
-    },
-    ko: {
-      language: '언어', eyebrow: '새로운 연결', title: '당신의 네트워크.', accent: '당신의 규칙.',
-      subtitle: '구독을 추가하고 MagicNet을 시작하세요.', label: '구독 링크', save: '저장하고 계속', skip: '나중에 설정',
-      privacy: '기기에 저장하고 다음 시작 때 불러옵니다.', explore: '더 알아보기', star: 'GitHub에 Star', docs: '사용 안내', community: '커뮤니티', local: '개인정보를 소중하게',
-      releases: '새 버전', feedback: '문제 신고', author: '개발자 소개',
-      submitting: '저장 중…', checking: '설치 프로그램에 연결 중…', invalid: '공백, # 조각, 인증 정보가 없는 완전한 HTTPS 링크를 입력하세요.',
-      too_long: '링크는 8192바이트 이하여야 합니다.', forbidden: '유효하지 않은 설정 링크입니다. 설치 프로그램의 전체 링크를 여세요.',
-      missing_token: '설치 프로그램의 링크를 # 뒤의 부분까지 모두 여세요.',
-      network: '결과를 확인하지 못했습니다. 설치 프로그램으로 돌아가 확인하세요. 임시 페이지가 닫혔을 수 있습니다.',
-      busy: '다른 요청을 처리 중입니다. 다시 시도하세요.', existing: '이미 구독이 설정되어 있습니다. 덮어쓰지 않았습니다.', finished: '설정이 종료되었습니다. 설치 프로그램으로 돌아가세요.',
-      unsafe_path: '설정 경로가 안전하지 않습니다. 설치 후 WebUI를 사용하세요.', save_failed: '저장을 확인하지 못했습니다. 설치 프로그램을 확인하세요.', format: '지원하지 않는 형식입니다.', method: '지원하지 않는 방식입니다.', missing: '설정 인터페이스를 찾을 수 없습니다.',
-      saved_title: '링크를 저장했어요.', saved_note: '설치 프로그램으로 돌아가 설치를 완료하세요. 다음 시작 때 구독을 불러옵니다.',
-      skipped_title: '나중에 해도 돼요.', skipped_note: '설치 프로그램으로 돌아가세요. 나중에 모듈 WebUI에서 구독을 추가할 수 있습니다.'
-    }
+    "en": {"language": "Language", "title": "Add a subscription", "label": "Subscription URL", "save": "Save & continue", "skip": "Later", "star": "GitHub Star", "docs": "Guide", "releases": "Releases", "feedback": "Report an issue", "author": "Meet the author", "submitting": "Saving…", "checking": "Connecting…", "invalid": "Enter a valid HTTPS subscription URL.", "too_long": "URL exceeds 8192 bytes.", "forbidden": "Link expired. Reopen it from the installer.", "missing_token": "Open the complete installer link, including #.", "network": "Result unconfirmed. Check the installer.", "busy": "Please try again.", "existing": "Already configured. Nothing overwritten.", "finished": "Session ended. Return to the installer.", "unsafe_path": "Unsafe path. Use WebUI after installation.", "save_failed": "Save unconfirmed. Check the installer.", "format": "Unsupported format.", "method": "Unsupported request.", "missing": "Setup unavailable.", "saved_title": "You’re all set.", "saved_note": "Return to the installer.", "skipped_title": "Set up later", "skipped_note": "Return to the installer.", "telegram": "Join Telegram", "discord": "Join Discord", "links": "Project links"},
+    "zh": {"language": "语言", "title": "添加订阅", "label": "订阅链接", "save": "保存并继续", "skip": "稍后", "star": "GitHub Star", "docs": "使用指南", "releases": "版本更新", "feedback": "问题反馈", "author": "认识作者", "submitting": "保存中…", "checking": "连接中…", "invalid": "请输入有效的 HTTPS 订阅链接。", "too_long": "链接不能超过 8192 字节。", "forbidden": "入口已失效，请从安装器重新打开。", "missing_token": "请打开安装器中的完整链接，包括 #。", "network": "无法确认结果，请返回安装器查看。", "busy": "请稍后重试。", "existing": "已有订阅，未覆盖。", "finished": "设置已结束，请返回安装器。", "unsafe_path": "路径异常，请安装后通过 WebUI 设置。", "save_failed": "保存未确认，请返回安装器查看。", "format": "格式不支持。", "method": "请求不支持。", "missing": "设置入口不可用。", "saved_title": "链接已收好。", "saved_note": "返回安装器继续。", "skipped_title": "稍后设置", "skipped_note": "返回安装器继续。", "telegram": "加入 Telegram 群", "discord": "加入 Discord 群", "links": "项目入口"},
+    "zh-TW": {"language": "語言", "title": "新增訂閱", "label": "訂閱連結", "save": "儲存並繼續", "skip": "稍後", "star": "GitHub Star", "docs": "使用指南", "releases": "版本更新", "feedback": "問題回報", "author": "認識作者", "submitting": "儲存中…", "checking": "連線中…", "invalid": "請輸入有效的 HTTPS 訂閱連結。", "too_long": "連結不能超過 8192 位元組。", "forbidden": "入口已失效，請從安裝程式重新開啟。", "missing_token": "請開啟安裝程式中的完整連結，包括 #。", "network": "無法確認結果，請返回安裝程式查看。", "busy": "請稍後重試。", "existing": "已有訂閱，未覆寫。", "finished": "設定已結束，請返回安裝程式。", "unsafe_path": "路徑異常，請安裝後透過 WebUI 設定。", "save_failed": "儲存未確認，請返回安裝程式查看。", "format": "不支援此格式。", "method": "不支援此請求。", "missing": "設定入口無法使用。", "saved_title": "連結已收好。", "saved_note": "返回安裝程式繼續。", "skipped_title": "稍後設定", "skipped_note": "返回安裝程式繼續。", "telegram": "加入 Telegram 群組", "discord": "加入 Discord 群組", "links": "專案入口"},
+    "ru": {"language": "Язык", "title": "Добавить подписку", "label": "Ссылка на подписку", "save": "Сохранить", "skip": "Позже", "star": "GitHub Star", "docs": "Руководство", "releases": "Новые версии", "feedback": "Сообщить об ошибке", "author": "Об авторе", "submitting": "Сохранение…", "checking": "Подключение…", "invalid": "Введите корректную HTTPS-ссылку подписки.", "too_long": "Ссылка превышает 8192 байта.", "forbidden": "Ссылка истекла. Откройте её из установщика.", "missing_token": "Откройте полную ссылку установщика, включая #.", "network": "Результат не подтверждён. Проверьте установщик.", "busy": "Повторите попытку.", "existing": "Уже настроено. Ничего не перезаписано.", "finished": "Сеанс завершён. Вернитесь в установщик.", "unsafe_path": "Небезопасный путь. Настройте позже в WebUI.", "save_failed": "Сохранение не подтверждено. Проверьте установщик.", "format": "Формат не поддерживается.", "method": "Запрос не поддерживается.", "missing": "Настройка недоступна.", "saved_title": "Ссылка сохранена.", "saved_note": "Вернитесь в установщик.", "skipped_title": "Настроить позже", "skipped_note": "Вернитесь в установщик.", "telegram": "Вступить в Telegram", "discord": "Вступить в Discord", "links": "Ссылки проекта"},
+    "ja": {"language": "言語", "title": "購読を追加", "label": "購読 URL", "save": "保存して続ける", "skip": "後で", "star": "GitHub Star", "docs": "ガイド", "releases": "リリース", "feedback": "問題を報告", "author": "作者について", "submitting": "保存中…", "checking": "接続中…", "invalid": "有効な HTTPS 購読 URL を入力してください。", "too_long": "URL は8192バイト以内にしてください。", "forbidden": "期限切れです。インストーラーから開き直してください。", "missing_token": "インストーラーのリンクを # 以降も含めて開いてください。", "network": "結果を確認できません。インストーラーを確認してください。", "busy": "もう一度お試しください。", "existing": "設定済みです。上書きしていません。", "finished": "設定終了。インストーラーに戻ってください。", "unsafe_path": "安全でないパスです。後で WebUI から設定してください。", "save_failed": "保存未確認。インストーラーを確認してください。", "format": "未対応の形式です。", "method": "未対応のリクエストです。", "missing": "設定を利用できません。", "saved_title": "リンクを保存しました。", "saved_note": "インストーラーに戻ってください。", "skipped_title": "後で設定", "skipped_note": "インストーラーに戻ってください。", "telegram": "Telegram に参加", "discord": "Discord に参加", "links": "プロジェクトのリンク"},
+    "ko": {"language": "언어", "title": "구독 추가", "label": "구독 링크", "save": "저장하고 계속", "skip": "나중에", "star": "GitHub Star", "docs": "사용 안내", "releases": "새 버전", "feedback": "문제 신고", "author": "개발자 소개", "submitting": "저장 중…", "checking": "연결 중…", "invalid": "올바른 HTTPS 구독 링크를 입력하세요.", "too_long": "링크는 8192바이트 이하여야 합니다.", "forbidden": "만료된 링크입니다. 설치 프로그램에서 다시 여세요.", "missing_token": "설치 프로그램의 전체 링크를 # 뒤까지 여세요.", "network": "결과를 확인하지 못했습니다. 설치 프로그램을 확인하세요.", "busy": "다시 시도하세요.", "existing": "이미 설정되어 있습니다. 덮어쓰지 않았습니다.", "finished": "설정이 끝났습니다. 설치 프로그램으로 돌아가세요.", "unsafe_path": "안전하지 않은 경로입니다. 나중에 WebUI에서 설정하세요.", "save_failed": "저장을 확인하지 못했습니다. 설치 프로그램을 확인하세요.", "format": "지원하지 않는 형식입니다.", "method": "지원하지 않는 요청입니다.", "missing": "설정을 사용할 수 없습니다.", "saved_title": "링크를 저장했어요.", "saved_note": "설치 프로그램으로 돌아가세요.", "skipped_title": "나중에 설정", "skipped_note": "설치 프로그램으로 돌아가세요.", "telegram": "Telegram 참여", "discord": "Discord 참여", "links": "프로젝트 링크"}
   };
   const byId = (id) => document.getElementById(id);
   const input = byId('subscription');
@@ -104,6 +25,7 @@
   let message = '';
   let error = false;
   let result = '';
+  let pending = false;
   function render() {
     const t = translations[language];
     document.documentElement.lang = language;
@@ -111,6 +33,11 @@
     select.value = language;
     document.querySelectorAll('[data-i18n]').forEach((element) => {
       element.textContent = t[element.dataset.i18n];
+    });
+    document.querySelectorAll('[data-i18n-label]').forEach((element) => {
+      const label = t[element.dataset.i18nLabel];
+      element.setAttribute('aria-label', label);
+      element.setAttribute('title', label);
     });
     status.textContent = message ? t[message] || t.network : '';
     status.dataset.error = String(error);
@@ -127,11 +54,16 @@
     token = '';
     history.replaceState(null, '', location.pathname + location.search);
     byId('setup-form').hidden = true;
+    byId('title').hidden = true;
     byId('completion').hidden = false;
     lock(true);
     show('', false);
+    byId('completion-title').focus();
   }
   function request(action, value) {
+    if (pending || result) return;
+    pending = true;
+    document.body.dataset.pending = 'true';
     lock(true);
     show(action === 'health' ? 'checking' : 'submitting', false);
     const xhr = new XMLHttpRequest();
@@ -139,7 +71,9 @@
     xhr.timeout = 10000;
     xhr.setRequestHeader('X-Setup-Token', token);
     if (action !== 'health') xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
+    function settled() { pending = false; document.body.dataset.pending = 'false'; }
     xhr.onload = function () {
+      settled();
       let code = 'network';
       try { code = JSON.parse(xhr.responseText).code; } catch (_) { /* Never report unconfirmed success. */ }
       if (xhr.status === 200 && action === 'health' && code === 'ready') { lock(false); show('', false); return; }
@@ -147,7 +81,7 @@
       lock(['forbidden', 'finished', 'existing', 'unsafe_path'].includes(code));
       show(Object.prototype.hasOwnProperty.call(translations[language], code) ? code : 'network', true);
     };
-    xhr.onerror = xhr.ontimeout = function () { lock(false); show('network', true); };
+    xhr.onerror = xhr.ontimeout = function () { settled(); lock(false); show('network', true); };
     xhr.send(action === 'health' ? null : value);
   }
   select.addEventListener('change', function () { language = supported(select.value) ? select.value : 'en'; render(); });
