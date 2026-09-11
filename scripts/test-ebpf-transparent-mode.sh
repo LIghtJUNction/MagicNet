@@ -273,22 +273,53 @@ ip() {
   printf 'ip %s\n' "$*" >>"$POST_LOG"
   return 0
 }
-iptables() {
-  printf 'iptables %s\n' "$*" >>"$POST_LOG"
-  case " $* " in *' -C '* | *' -L '*) return 1 ;; *) return 0 ;; esac
+# A missing custom chain is different from an unreadable NAT table. Model
+# those separately so stricter cleanup probes cannot be bypassed by fixtures.
+mock_post_xtables() {
+  local family="$1"
+  shift
+  printf '%s %s\n' "$family" "$*" >>"$POST_LOG"
+  case "$*" in
+  '-t nat -L -n')
+    if [ "${MAGICNET_TEST_NAT_PROBE_ERROR:-0}" -ne 0 ]; then
+      printf 'fixture NAT probe failure\n' >&2
+      return "$MAGICNET_TEST_NAT_PROBE_ERROR"
+    fi
+    if [ "$family" = ip6tables ] && [ "${MAGICNET_TEST_IPV6_NAT:-0}" = 0 ]; then
+      printf 'Table does not exist\n' >&2
+      return 3
+    fi
+    ;;
+  '-t nat -L magicnet-dns-output') return 1 ;;
+  '-S OUTPUT') printf '%s\n' '-P OUTPUT ACCEPT' ;;
+  *) case " $* " in *' -C '*) return 1 ;; esac ;;
+  esac
+  return 0
 }
-ip6tables() {
-  printf 'ip6tables %s\n' "$*" >>"$POST_LOG"
-  case " $* " in *' -C '* | *' -L '*) return 1 ;; *) return 0 ;; esac
-}
+iptables() { mock_post_xtables iptables "$@"; }
+ip6tables() { mock_post_xtables ip6tables "$@"; }
+magicnet_warn() { printf '%s\n' "$*" >>"$WORK/post-start-warnings.log"; }
 magicnet_cmd_exists() {
   case "$1" in ip | iptables | ip6tables | sing-box | jq) return 0 ;; *) return 1 ;; esac
 }
 magicnet_singbox_update_status() { :; }
-if ! magicnet_after_kernel_start_unlocked; then
-  printf '%s\n' 'eBPF post-start incorrectly required magicnet0/TUN controls' >&2
-  exit 1
-fi
+# Both an absent IPv6 NAT table and an available empty table allow cleanup.
+# No TUN interface exists in either case.
+for MAGICNET_TEST_IPV6_NAT in 0 1; do
+  if ! magicnet_after_kernel_start_unlocked; then
+    printf '%s\n' 'eBPF post-start incorrectly required magicnet0/TUN controls' >&2
+    cat "$WORK/post-start-warnings.log" "$POST_LOG" >&2
+    exit 1
+  fi
+done
+# Permission and timeout failures must still reject startup, including eBPF.
+for MAGICNET_TEST_NAT_PROBE_ERROR in 4 124; do
+  if magicnet_after_kernel_start_unlocked; then
+    printf '%s\n' 'eBPF post-start ignored a genuine NAT cleanup failure' >&2
+    exit 1
+  fi
+done
+unset MAGICNET_TEST_NAT_PROBE_ERROR MAGICNET_TEST_IPV6_NAT
 if grep -Eq '^ip .* (route|rule) add .*2022|^iptables .* (-A|-I) .*REDIRECT|^ip6tables .* (-A|-I) .*REDIRECT' "$POST_LOG"; then
   printf '%s\n' 'eBPF post-start installed TUN-only kernel controls' >&2
   cat "$POST_LOG" >&2

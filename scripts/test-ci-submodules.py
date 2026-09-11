@@ -84,7 +84,7 @@ class SubmoduleUpdateTests(unittest.TestCase):
             self.assertEqual(git(runner / "vendor/default", "rev-parse", "HEAD"), expected_default)
             # Updated parent configuration must select its child's new branch.
             git(parent, "config", "-f", ".gitmodules", "submodule.nested.branch", "main")
-            commit(parent, "change nested tracking branch")
+            commit(parent, "parent config update")
             result = update()
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(git(runner / "vendor/parent/nested", "rev-parse", "HEAD"), expected_default)
@@ -132,12 +132,14 @@ class SubmoduleUpdateTests(unittest.TestCase):
             (work / "sing-box.version").write_text("1.14.0")
             (work / "bin").mkdir()
             compiler = work / "bin/go"
+            compiler_called = work / "compiler-called"
             compiler.write_text(
-                '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do\n'
+                '#!/bin/sh\n: >"$FAKE_GO_CALLED"\nwhile [ "$#" -gt 0 ]; do\n'
                 '  if [ "$1" = -o ]; then printf fixture >"$2"; exit 0; fi\n'
                 '  shift\ndone\nexit 1\n')
             compiler.chmod(0o755)
             env.update(MAGICNET_SINGBOX_SOURCE_DIR=str(source),
+                       FAKE_GO_CALLED=str(compiler_called),
                        PATH=f"{work / 'bin'}:{env['PATH']}")
 
             def build():
@@ -149,14 +151,34 @@ class SubmoduleUpdateTests(unittest.TestCase):
             result = build()
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((work / "output").read_text(), "fixture")
-            for repo in (source, nested):
-                (repo / "version").write_text("uncommitted edit")
+            def assert_rejected():
+                compiler_called.unlink(missing_ok=True)
                 result = build()
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("uncommitted changes", result.stderr)
-                git(repo, "checkout", "--", "version")
-            (nested / "untracked").write_text("untracked edit")
-            self.assertIn("uncommitted changes", build().stderr)
+                self.assertFalse(compiler_called.exists(), "dirty source reached the compiler")
+                self.assertEqual((work / "output").read_text(), "fixture")
+
+            # Ignore settings must not conceal actual edits in nested repositories.
+            git(source, "config", "submodule.nested.ignore", "all")
+            for repo in (source, nested):
+                with self.subTest(repository=repo.name):
+                    (repo / "version").write_text("uncommitted edit")
+                    assert_rejected()
+                    git(repo, "add", "version")
+                    assert_rejected()
+                    git(repo, "restore", "--source=HEAD", "--staged", "--worktree", "--", "version")
+                    (repo / "untracked").write_text("untracked edit")
+                    assert_rejected()
+                    (repo / "untracked").unlink()
+
+            # A checked-out dependency update is allowed; an index edit is not.
+            git(source, "add", "nested")
+            assert_rejected()
+            git(source, "restore", "--source=HEAD", "--staged", "--", "nested")
+            result = build()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((nested / "version").read_text(), "updated dependency")
 
     def test_workflows_refresh_before_build_inputs(self):
         # PyYAML is already required by the host regression suite.

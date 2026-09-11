@@ -272,6 +272,18 @@ write_mock() {
     {
         printf '#!/usr/bin/env bash\n'
         printf 'set -euo pipefail\n'
+        if [[ "$name" == iptables || "$name" == ip6tables ]]; then
+            # Keep raw lock options as evidence, then parse them independently
+            # of the operation just as xtables does. Semantic log assertions
+            # must still see every insert/delete, including forbidden ones.
+            cat <<'SH'
+printf '%s\n' "$*" >>"${MAGICNET_FAKE_LOG:?}.xtables-raw"
+if [[ "${1:-}" == -w || "${1:-}" == --wait ]]; then
+    [[ "${2:-}" =~ ^[0-9]+$ ]] || exit 2
+    shift 2
+fi
+SH
+        fi
         # shellcheck disable=SC2016
         printf 'printf '\''%%s\\n'\'' "%s $*" >>"${MAGICNET_FAKE_LOG:?}"\n' "$name"
         printf '%s\n' "$body"
@@ -323,6 +335,24 @@ done
 exit 0
 '
 cp "$MOCK_BIN/iptables" "$MOCK_BIN/ip6tables"
+
+# Verify both generated executables before running the module lifecycle. A
+# malformed wait must fail; adding a wait must not hide a rule or mutation.
+for xtables_mock in iptables ip6tables; do
+    fixture_log="$TMP/${xtables_mock}-fixture.log"
+    fixture_rule="$(MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -S OUTPUT)"
+    [[ "$fixture_rule" == '-A OUTPUT -o lo -p udp --dport 53 -j REJECT' ]]
+    MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -I OUTPUT -o lo -p udp --dport 53 -j REJECT
+    grep -q -- ' -I OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$fixture_log"
+    if MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -C OUTPUT -j REJECT; then
+        echo 'xtables fixture accepted an absent rule' >&2
+        exit 1
+    fi
+    fixture_rc=0
+    MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w invalid -S OUTPUT || fixture_rc=$?
+    [[ "$fixture_rc" -eq 2 ]]
+done
+unset xtables_mock fixture_log fixture_rule fixture_rc
 
 # shellcheck disable=SC2016
 write_mock getprop '

@@ -34,15 +34,22 @@ if ! grep -Fxq 'module github.com/sagernet/sing-box' "$SOURCE_DIR/go.mod"; then
     exit 1
 fi
 
-# CI deliberately advances nested gitlinks. Check each repository's own files
-# instead, so new dependency revisions are allowed but local edits still fail.
+# --remote --recursive advances nested gitlinks without editing source files.
+# Check each working tree separately so those revisions are accepted while
+# real edits (including staged gitlinks) remain failures at every depth.
 # shellcheck disable=SC2016
-if [[ -n "$(git -C "$SOURCE_DIR" status --porcelain --untracked-files=normal --ignore-submodules=all)" ]] ||
-    ! git -C "$SOURCE_DIR" submodule foreach --quiet --recursive \
-        'changes=$(git status --porcelain --untracked-files=normal --ignore-submodules=all) && test -z "$changes"'; then
-    printf 'sing-box build: source submodule has uncommitted changes: %s\n' "$SOURCE_DIR" >&2
-    exit 1
-fi
+SOURCE_CHECK='
+    changes=$(git status --porcelain --untracked-files=normal --ignore-submodules=all) || exit 1
+    if [ -n "$changes" ] || ! git diff --cached --quiet --ignore-submodules=none; then
+        printf "sing-box build: source submodule has uncommitted changes: %s\n%s\n" "$PWD" "$changes" >&2
+        exit 1
+    fi
+'
+(
+    cd "$SOURCE_DIR"
+    sh -c "$SOURCE_CHECK"
+    git submodule foreach --quiet --recursive "$SOURCE_CHECK"
+)
 
 command -v go >/dev/null 2>&1 || {
     printf 'sing-box build: Go is required\n' >&2
