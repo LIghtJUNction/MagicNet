@@ -21,12 +21,14 @@ git submodule foreach '
     # Shallow checkout can otherwise fetch only the default branch, leaving
     # a configured non-default branch such as sing-box/testing unresolved.
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-    git fetch --prune origin
+    git fetch --no-recurse-submodules --prune origin
     git remote set-head origin --auto
 '
 # Every child was just fetched; resolve .gitmodules branches or remote HEAD.
 # A fetch failure above aborts the run rather than building a stale revision.
 git submodule update --remote --no-fetch --checkout
+# Expand the exported path inside each child shell, preserving spaces.
+# shellcheck disable=SC2016
 git submodule foreach --quiet 'bash "$MAGICNET_SUBMODULE_UPDATE_SCRIPT" --nested'
 
 if [[ $# -eq 0 ]]; then
