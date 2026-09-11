@@ -346,6 +346,7 @@ magicnet_xtables_delete_rule() (
     _delete_table="$2"
     shift 2
     _delete_attempt=0
+    _delete_transient_retries=0
     while [ "$_delete_attempt" -lt 64 ]; do
         _delete_rc=0
         if [ -n "$_delete_table" ]; then
@@ -364,6 +365,12 @@ magicnet_xtables_delete_rule() (
         case "$_delete_rc" in
         0)
             if [ "$_delete_write_rc" -ne 0 ]; then
+                # Rule replacement can race a delete/check pair. Retry one
+                # generic rc=1 failure, but never spin on permission/lock errors.
+                if [ "$_delete_write_rc" -eq 1 ] && [ "$_delete_transient_retries" -eq 0 ]; then
+                    _delete_transient_retries=1
+                    continue
+                fi
                 magicnet_warn "$_delete_cmd delete failed (exit=$_delete_write_rc): $_delete_error"
                 return 1
             fi
