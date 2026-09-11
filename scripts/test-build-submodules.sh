@@ -22,11 +22,11 @@ for repo in leaf dependency parent; do
     commit_file "$WORK/$repo" initial
 done
 # The nested dependency has no branch override and follows remote HEAD.
-git -C "$WORK/dependency" submodule add -q "$WORK/leaf" nested
+git -C "$WORK/dependency" submodule add -q "file://$WORK/leaf" nested
 git -C "$WORK/dependency" commit -qam 'pin nested dependency'
 git -C "$WORK/dependency" switch -qc testing
 commit_file "$WORK/dependency" testing-initial
-git -C "$WORK/parent" submodule add -q -b testing "$WORK/dependency" dependency
+git -C "$WORK/parent" submodule add -q -b testing "file://$WORK/dependency" dependency
 git -C "$WORK/parent" config -f .gitmodules submodule.dependency.shallow true
 git -C "$WORK/parent" commit -qam 'pin dependency'
 pinned="$(git -C "$WORK/parent" rev-parse HEAD:dependency)"
@@ -36,7 +36,10 @@ cd "$WORK/checkout"
 
 for generation in newer newest; do
     commit_file "$WORK/leaf" "$generation"
+    git -C "$WORK/dependency" switch -q testing
     commit_file "$WORK/dependency" "$generation"
+    # The remote default differs from the configured shallow tracking branch.
+    git -C "$WORK/dependency" switch -q main
     bash "$ROOT/scripts/update-build-submodules.sh" "$WORK/revisions" >"$WORK/update.log" 2>&1 || {
         cat "$WORK/update.log" >&2
         exit 1
