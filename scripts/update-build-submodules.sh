@@ -12,7 +12,9 @@ manifest="$1"
 # back to the remote HEAD when no branch is configured. Never reuse stale
 # revisions after a failed fetch. --checkout also ignores merge/rebase modes.
 git submodule sync --recursive
-git submodule update --init --recursive --remote --checkout
+# Do not let shallow recommendations clone only the remote default branch:
+# the configured tracking branch may differ (for example main vs testing).
+git submodule update --init --recursive --remote --checkout --no-recommend-shallow
 # shellcheck disable=SC2016
 git submodule foreach --quiet --recursive \
     'printf "%s %s\n" "$(git rev-parse HEAD)" "$displaypath"' | tee "$manifest"
