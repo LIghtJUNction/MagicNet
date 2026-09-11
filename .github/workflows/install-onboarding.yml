@@ -1,0 +1,48 @@
+name: Install Onboarding
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/MagicNet/customize.sh'
+      - 'src/MagicNet/lib/magicnet/install_onboarding.sh'
+      - 'src/MagicNet/lib/magicnet/onboarding/**'
+      - 'src/MagicNet/lib/kamfw'
+      - 'scripts/install-onboarding-test.py'
+      - '.github/workflows/install-onboarding.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/MagicNet/customize.sh'
+      - 'src/MagicNet/lib/magicnet/install_onboarding.sh'
+      - 'src/MagicNet/lib/magicnet/onboarding/**'
+      - 'src/MagicNet/lib/kamfw'
+      - 'scripts/install-onboarding-test.py'
+      - '.github/workflows/install-onboarding.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-onboarding-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Initialize pinned kamfw only
+        run: git submodule update --init --depth 1 src/MagicNet/lib/kamfw
+      - name: Install host dependencies
+        run: sudo apt-get update && sudo apt-get install -y busybox-static shellcheck
+      - name: Lint install-only shell
+        run: >-
+          shellcheck -s sh -e SC1090,SC1091,SC2015,SC2016,SC2034,SC2059,SC2218,SC2329
+          src/MagicNet/lib/magicnet/install_onboarding.sh
+          src/MagicNet/lib/magicnet/onboarding/*.sh
+      - name: Test real BusyBox HTTP, CGI and kamfw launcher contracts
+        timeout-minutes: 3
+        run: python3 scripts/install-onboarding-test.py

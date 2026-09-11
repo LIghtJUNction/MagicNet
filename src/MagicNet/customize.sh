@@ -181,31 +181,31 @@ sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json"
 
 set_i18n "INSTALL_NEXT_STEPS" \
   "zh" "安装后操作：
-1. 首次安装执行 cli setup <合法订阅链接>；升级自动保留订阅并更新完整配置模板。
+1. 首次安装在自动打开的网页填写订阅，也可稍后通过 WebUI 配置；升级自动保留订阅并更新完整配置模板。
 2. 重启设备，或在模块操作页启动内核。
 3. 打开模块 WebUI 的内核面板，或在终端执行 cli api ui 查看当前核心入口。
 4. 把想戒掉的网站、规则组或域名指向 REJECT / block。
 sing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "en" "After installation:
-1. First install: run cli setup <legal-subscription-url>. Upgrades preserve subscriptions and replace the full config template.
+1. First install: add a subscription in the browser, or use WebUI later. Upgrades preserve subscriptions and replace the full config template.
 2. Reboot, or start the core from the module action page.
 3. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.
 4. Point distracting sites, groups, or domains to REJECT / block.
 sing-box default: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "ru" "После установки:
-1. Выполните cli setup <URL-подписки> для настройки подписки sing-box.
+1. Добавьте подписку на открывшейся странице или позже в WebUI. При обновлении подписка сохраняется.
 2. Перезагрузите устройство или запустите ядро из меню действий модуля.
 3. Откройте панель ядра в WebUI модуля или выполните cli api ui, чтобы узнать адрес панели.
 4. Назначьте отвлекающим сайтам, группам правил или доменам REJECT / block.
 Адрес sing-box по умолчанию: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "ja" "インストール後:
-1. cli setup <合法な購読 URL> を実行して sing-box 購読を初期化します。
+1. 開いたページで購読を追加するか、後で WebUI から設定します。更新時は既存の購読を保持します。
 2. 再起動するか、モジュール操作画面からコアを起動します。
 3. モジュール WebUI の Kernel Panel を開くか、cli api ui で現在のコア入口を確認します。
 4. 見たくないサイト、グループ、ドメインを REJECT / block に向けます。
 sing-box 既定: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "ko" "설치 후:
-1. cli setup <합법 구독 URL>로 sing-box 구독을 초기화하세요.
+1. 열린 페이지에서 구독을 추가하거나 나중에 WebUI에서 설정하세요. 업데이트 시 기존 구독은 유지됩니다.
 2. 재부팅하거나 모듈 작업 화면에서 코어를 시작하세요.
 3. 모듈 WebUI의 Kernel Panel을 열거나 cli api ui로 현재 코어 진입점을 확인하세요.
 4. 끊고 싶은 사이트, 그룹, 도메인을 REJECT / block으로 지정하세요.
@@ -491,5 +491,8 @@ unset _magicnet_entry
 
 magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
 
-import launcher
-launch url "https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md"
+# Offer browser input only after migration and all permission/template writes.
+# Otherwise upgrades would prompt again, or chmod/template installation could
+# overwrite the just-collected private state. This does not require a TTY.
+. "$MODPATH/lib/magicnet/install_onboarding.sh" || abort "! subscription setup helper missing"
+magicnet_install_onboarding || warn "! subscription setup interrupted; configure it later in WebUI"
