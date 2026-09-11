@@ -42,6 +42,7 @@ done
 jq empty src/MagicNet/.config/sing-box/config.json
 bash scripts/test-repository-hygiene.sh
 bash scripts/test-config-template-pin.sh
+bash scripts/test-install-config-template.sh
 bash scripts/test-install-config-refresh.sh
 sh scripts/test-kamfw-i18n.sh
 sh scripts/test-magicnet-i18n.sh
@@ -84,6 +85,7 @@ if [ "$with_routing_assets" -eq 1 ]; then
     bash scripts/test-dns-profile-safety.sh
 fi
 bash scripts/test-dns-leak-guard-timeout.sh
+python3 scripts/test-dns-capture-fast-path.py
 sh scripts/test-startup-network-safety.sh
 bash scripts/test-submodule-updates.sh
 bash scripts/test-subscription-activation-order.sh

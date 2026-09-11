@@ -61,14 +61,22 @@ for item in subscription.url subscription.local subscription.user-agent subscrip
 done
 printf '%s\n' '{"old":true,"dns":{"tag":"old"},"outbounds":[{"type":"trojan","tag":"US saved","server":"node.example","server_port":443,"password":"fixture-secret"}]}' >"$PREVIOUS"
 printf '%s\n' '[{"type":"trojan","tag":"US cached","server":"node.example","server_port":443,"password":"fixture-secret"},{"type":"trojan","tag":"HK filtered","server":"hk.example","server_port":443,"password":"fixture-secret"},{"type":"selector","tag":"proxy","default":"old-policy"}]' >"$CACHE"
+printf 'stale template\n' >"$CONFIG.update"
 run_refresh
+[[ ! -e "$CONFIG.update" ]]
 jq -e '.dns.tag == "new" and .inbounds[0].type == "tun" and .route.final == "proxy" and (has("old") | not) and any(.outbounds[]; .tag == "US cached" and .password == "fixture-secret") and any(.outbounds[]; .tag == "proxy" and .default == "new-policy") and all(.outbounds[]; .tag != "HK filtered")' "$CONFIG" >/dev/null
 cmp "$PREVIOUS" "$CONFIG.pre-upgrade"
 [[ "$(stat -c %a "$CONFIG.pre-upgrade")" == 600 ]]
 for item in subscription.url subscription.local subscription.user-agent subscription-filter.list; do
     [[ "$(cat "$MODPATH/.config/sing-box/$item")" == "saved-$item" ]]
 done
-! grep -q 'fixture-secret' "$TMP/log"
+if grep -q 'fixture-secret' "$TMP/log"; then
+    printf '%s\n' 'migration leaked subscription credentials into the log' >&2
+    exit 1
+else
+    grep_status=$?
+    [[ "$grep_status" -eq 1 ]] || exit "$grep_status"
+fi
 no_temporary_files
 # Corrupt/missing caches fall back to nodes from the previous full config.
 printf 'broken cache\n' >"$CACHE"
@@ -85,11 +93,13 @@ jq -e 'any(.outbounds[]; .tag == "US legacy")' "$CONFIG" >/dev/null
 # Failed validation leaves both the existing file and standalone marker intact.
 cp "$CONFIG" "$TMP/before"
 : >"$MARKER"
+printf 'pending update\n' >"$CONFIG.update"
 export REJECT_CONFIG=1
 expect_failure
 unset REJECT_CONFIG
 cmp "$CONFIG" "$TMP/before"
 [[ -f "$MARKER" ]]
+[[ "$(cat "$CONFIG.update")" == "pending update" ]]
 no_temporary_files
 # A broken ZIP or unsafe backup path must never overwrite the active config.
 SAVED_ZIP="$ZIPFILE"; export ZIPFILE="$TMP/missing.zip"

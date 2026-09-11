@@ -63,12 +63,41 @@ const classes = computed(() =>
     v-bind="$attrs"
     :type="type"
     :class="classes"
+    :data-size="size"
     :disabled="loading || disabled"
     :aria-busy="loading ? 'true' : undefined"
   >
-    <span class="inline-flex min-w-0 items-center justify-center gap-2">
-      <Loader2 v-if="loading" class="shrink-0 motion-safe:animate-spin" :size="size === 'sm' ? 14 : 16" aria-hidden="true" />
+    <Loader2 v-if="loading" v-show="size === 'icon'" class="mn-button__spinner motion-safe:animate-spin" :size="18" aria-hidden="true" />
+    <span class="mn-button__content inline-flex min-w-0 items-center justify-center gap-2">
       <slot />
     </span>
   </button>
 </template>
+
+<style scoped>
+/* Loading never adds intrinsic width or replaces a text button's label. */
+.mn-button[aria-busy="true"] { opacity: 1; }
+.mn-button__spinner { position: absolute; inset: 0; margin: auto; }
+.mn-button[aria-busy="true"][data-size="icon"] .mn-button__content { opacity: 0; }
+.mn-button[aria-busy="true"]:not([data-size="icon"])::after {
+  content: "";
+  position: absolute;
+  inset-inline: calc(50% - 12px);
+  bottom: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  pointer-events: none;
+  animation: mn-button-working 900ms ease-in-out infinite alternate;
+}
+@keyframes mn-button-working {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mn-button[aria-busy="true"]:not([data-size="icon"])::after { animation: none; }
+}
+@media (forced-colors: active) {
+  .mn-button[aria-busy="true"]:not([data-size="icon"])::after { background: ButtonText; }
+}
+</style>

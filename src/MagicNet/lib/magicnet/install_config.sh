@@ -73,7 +73,8 @@ magicnet_refresh_install_config() (
     chmod 600 "$_refresh_candidate" &&
         mv -f "$_refresh_candidate" "$_refresh_config" || return 1
     # The full file now belongs to the new managed template, not a stale import.
-    rm -f "${MODDIR}/.config/sing-box/standalone-config" || return 1
+    rm -f "${MODDIR}/.config/sing-box/standalone-config" \
+        "${_refresh_config}.update" || return 1
     if [ "$_refresh_restored" = 1 ]; then
         info "Rebuilt the complete sing-box config from the new template with saved subscription nodes."
     else

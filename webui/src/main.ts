@@ -4,6 +4,7 @@ import { installMagicNetFavicon } from "@/branding";
 import { bootstrapTheme } from "@/composables/useTheme";
 import { bootstrapLocale } from "@/i18n";
 import "./styles.css";
+import "./interaction.css";
 
 installMagicNetFavicon();
 bootstrapTheme();
