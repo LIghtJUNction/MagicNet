@@ -586,7 +586,7 @@ magicnet_enable_dns_leak_guard() {
 
     magicnet_log "DNS leak guard blocked direct 53/853 on: $_dns_guard_ifaces"
     unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
-    unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_tmp
+    unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_state_tmp
 }
 
 magicnet_disable_dns_leak_guard() (
