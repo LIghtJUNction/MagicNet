@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>MagicNet · Connect</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer" aria-label="MagicNet on GitHub"><span class="mark" aria-hidden="true">M</span>MagicNet<span class="edition">/ SETUP</span></a>
+    <label class="language"><span class="sr-only" data-i18n="language">Language</span><select id="language" aria-label="Language"><option value="zh">简体中文</option><option value="en">English</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option></select></label>
+  </header>
+  <main>
+    <div class="art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div><div class="point"></div><span class="coordinate">01 — CONNECT</span></div>
+    <section class="workspace" aria-labelledby="title">
+      <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span><span data-i18n="eyebrow">YOUR DEVICE. YOUR CONNECTION.</span></p>
+      <h1 id="title" data-i18n="title">A quieter way<br>to connect.</h1>
+      <p class="intro" id="intro" data-i18n="intro">One subscription link. You’re ready.</p>
+      <form id="form" novalidate>
+        <label for="url" data-i18n="label">Subscription link</label>
+        <div class="input-wrap"><input id="url" type="url" inputmode="url" placeholder="https://…" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="8192" aria-describedby="status" required><span class="input-arrow" aria-hidden="true">↙</span></div>
+        <button id="save" type="submit"><span data-i18n="save">Save & continue</span><span aria-hidden="true">↗</span></button>
+        <button id="skip" class="text-button" type="button" data-i18n="skip">Set up later</button>
+      </form>
+      <div id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div id="finish" hidden>
+        <a class="star-link" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">☆</span><span data-i18n="star">Star on GitHub</span><span aria-hidden="true">↗</span></a>
+        <p class="finish-note" data-i18n="star_note">A small star. A little more momentum.</p>
+      </div>
+      <p class="privacy" data-i18n="privacy">Saved on this device. Imported after reboot.</p>
+      <noscript>JavaScript is required. / 请启用 JavaScript。</noscript>
+    </section>
+  </main>
+  <footer>
+    <div class="footer-title"><span>OPEN SOURCE. OPEN POSSIBILITIES.</span><a href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">☆</span> <span data-i18n="star">Star on GitHub</span> ↗</a></div>
+    <nav aria-label="Project links" id="links">
+      <a href="https://github.com/LIghtJUNction/MagicNet/blob/main/docs/user-guide.md" target="_blank" rel="noopener noreferrer" data-i18n="docs">Guide</a>
+      <a href="https://github.com/LIghtJUNction/MagicNet/releases" target="_blank" rel="noopener noreferrer" data-i18n="releases">Releases</a>
+      <a href="https://github.com/LIghtJUNction/MagicNet/issues" target="_blank" rel="noopener noreferrer" data-i18n="feedback">Feedback</a>
+      <a href="https://lightjunction.github.io/lightjunction/" target="_blank" rel="noopener noreferrer" data-i18n="author">Meet the maker</a>
+      <a class="service-link" href="https://api.lmm.best/" target="_blank" rel="noopener noreferrer"><span>AI API</span><span class="service-note" data-i18n="optional">Optional service ↗</span></a>
+    </nav>
+  </footer>
+</body>
+</html>
