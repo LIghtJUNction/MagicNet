@@ -61,6 +61,8 @@ magicnet_onboarding_open() (
     # launcher does not forward --user or the am exit status, so adapt only this
     # subshell; do not change am or the dispatcher's behavior elsewhere.
     import launcher || exit 1
+    # Called indirectly by the imported kamfw launcher; covered by host tests.
+    # shellcheck disable=SC2317
     am() {
         unset LD_LIBRARY_PATH LD_PRELOAD
         magicnet_onboarding_android_am "$@" >"$MN_SETUP_RUN/browser.log" 2>&1
@@ -92,6 +94,8 @@ magicnet_onboarding_collect() (
     _pid=''
     _notice=0
     _tag="MagicNet_setup_$$"
+    # EXIT/signal callback, not a direct call in this subshell.
+    # shellcheck disable=SC2317
     cleanup() {
         trap - 0 1 2 3 15
         if [ -n "$_pid" ]; then

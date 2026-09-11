@@ -9,6 +9,8 @@ root=$MN_SETUP_ROOT
 body=''
 stage=''
 locked=0
+# EXIT/signal callback is exercised by request and interruption tests.
+# shellcheck disable=SC2317
 cleanup() {
     [ -z "$body" ] || "$bb" rm -f "$body"
     [ -z "$stage" ] || "$bb" rm -f "$stage"
@@ -49,7 +51,7 @@ bad=$("$bb" tr -cd '\000-\040\177' <"$body" | "$bb" wc -c | "$bb" tr -d ' ')
 value=$("$bb" cat "$body")
 # Match the runtime's HTTPS-only policy; never eval/source the received value.
 case "$value" in https://?*) ;; *) reply '400 Bad Request' invalid ;; esac
-case "$value" in *'@'* | *'#'* | *'\'*) reply '400 Bad Request' invalid ;; esac
+case "$value" in *'@'* | *'#'* | *\\*) reply '400 Bad Request' invalid ;; esac
 authority=${value#https://}
 authority=${authority%%[/?]*}
 printf '%s\n' "$authority" | "$bb" grep -Eq '^([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])(:[0-9]{1,5})?$' || reply '400 Bad Request' invalid
