@@ -1,0 +1,27 @@
+name: Browser Setup
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-input:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install host test tools
+        run: sudo apt-get update && sudo apt-get install -y busybox-static
+      - name: Test framework HTTP input and Android launcher contract
+        run: python3 scripts/test-kamfw-web-input.py
+      - name: Test first-install and upgrade behavior
+        run: python3 scripts/test-install-web.py
+      - name: Check setup JavaScript syntax
+        run: node --check src/MagicNet/setup/setup.js

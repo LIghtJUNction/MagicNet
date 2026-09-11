@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>Connect · MagicNet</title>
+  <link rel="stylesheet" href="setup.css">
+  <script src="setup.js" defer></script>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="shell">
+    <header>
+      <a class="brand" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer" aria-label="MagicNet on GitHub"><span class="mark" aria-hidden="true">M<span> /</span></span><span>MagicNet</span></a>
+      <label class="language"><span class="language-icon" aria-hidden="true">文 / A</span><select id="language" aria-label="Language"><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option></select></label>
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="heading">
+        <div class="eyebrow"><span class="dot"></span><span data-i18n="eyebrow">YOUR NETWORK. YOUR SPACE.</span></div>
+        <h1 id="heading" data-i18n="heading">A little link.<br>A new beginning.</h1>
+        <p class="lede" data-i18n="lede">Your subscription. The rest is MagicNet.</p>
+        <div class="sculpture" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div><div class="core"></div><span class="coordinate">M / 01</span><span class="spark"></span></div>
+      </section>
+      <section class="entry" aria-labelledby="form-title">
+        <div class="step"><span>01 / <span data-i18n="setup">SETUP</span></span><span class="private"><span class="dot"></span><span data-i18n="local">ON THIS DEVICE</span></span></div>
+        <h2 id="form-title" data-i18n="form_title">Make the connection.</h2>
+        <form id="form" novalidate>
+          <label for="subscription" data-i18n="label">Subscription link</label>
+          <input id="subscription" name="subscription" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="8192" placeholder="https://example.com/subscription" aria-describedby="status" required>
+          <button id="save" type="submit"><span data-i18n="save">Save & continue</span><span aria-hidden="true">↗</span></button>
+          <button id="skip" class="skip" type="button" data-i18n="skip">Set up later</button>
+        </form>
+        <div id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+        <p class="local-note"><span data-i18n="note">Stored locally. No account needed.</span><span id="timer" aria-hidden="true"></span></p>
+        <noscript>Enable JavaScript to configure MagicNet, or return to the installer and configure it later.</noscript>
+      </section>
+    </main>
+    <footer>
+      <a class="star" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">☆</span><span data-i18n="star">Star on GitHub</span><span class="external" aria-hidden="true">↗</span></a>
+      <nav aria-label="Community and projects" id="links">
+        <a href="https://discord.gg/asRwgK9FpA" target="_blank" rel="noopener noreferrer" data-i18n="community">Community</a>
+        <a href="https://github.com/LIghtJUNction/MagicNet/blob/main/docs/user-guide.md" target="_blank" rel="noopener noreferrer" data-i18n="guide">Guide</a>
+        <a href="https://github.com/LIghtJUNction/MagicNet/issues" target="_blank" rel="noopener noreferrer" data-i18n="feedback">Feedback</a>
+        <a href="https://api.lmm.best" target="_blank" rel="noopener noreferrer" class="project"><span data-i18n="api">Creator’s AI service</span><span aria-hidden="true"> ↗</span></a>
+      </nav>
+      <span class="credit">by <a href="https://github.com/LIghtJUNction" target="_blank" rel="noopener noreferrer">LIghtJUNction</a></span>
+    </footer>
+  </div>
+</body>
+</html>
