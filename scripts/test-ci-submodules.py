@@ -96,6 +96,68 @@ class SubmoduleUpdateTests(unittest.TestCase):
             git(runner, "config", "-f", ".gitmodules", "submodule.vendor/parent.branch", "missing-branch")
             self.assertNotEqual(update().returncode, 0, "stale submodule silently reused")
 
+    def test_build_allows_updated_gitlinks_but_rejects_file_edits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            env = dict(os.environ, GIT_ALLOW_PROTOCOL="file",
+                       GIT_AUTHOR_NAME="Test", GIT_COMMITTER_NAME="Test",
+                       GIT_AUTHOR_EMAIL="test@example.invalid",
+                       GIT_COMMITTER_EMAIL="test@example.invalid")
+
+            def git(repo, *args):
+                subprocess.run(["git", "-C", str(repo), *args], env=env,
+                               check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            child, source = work / "child", work / "source"
+            for repo in (child, source):
+                repo.mkdir()
+                git(repo, "init", "-b", "main")
+                (repo / "version").write_text("initial")
+                git(repo, "add", ".")
+                git(repo, "commit", "-m", "initial")
+            git(source, "submodule", "add", child.as_uri(), "nested")
+            (source / "go.mod").write_text("module github.com/sagernet/sing-box\n")
+            (source / "release").mkdir()
+            (source / "release/DEFAULT_BUILD_TAGS_OTHERS").write_text("with_ebpf")
+            (source / "release/LDFLAGS").write_text("-s")
+            git(source, "add", ".")
+            git(source, "commit", "-m", "source")
+            nested = source / "nested"
+            (nested / "version").write_text("updated dependency")
+            git(nested, "add", ".")
+            git(nested, "commit", "-m", "advance nested gitlink")
+
+            (work / "scripts").mkdir()
+            shutil.copyfile(ROOT / "scripts/build-sing-box.sh", work / "scripts/build-sing-box.sh")
+            (work / "sing-box.version").write_text("1.14.0")
+            (work / "bin").mkdir()
+            compiler = work / "bin/go"
+            compiler.write_text(
+                '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do\n'
+                '  if [ "$1" = -o ]; then printf fixture >"$2"; exit 0; fi\n'
+                '  shift\ndone\nexit 1\n')
+            compiler.chmod(0o755)
+            env.update(MAGICNET_SINGBOX_SOURCE_DIR=str(source),
+                       PATH=f"{work / 'bin'}:{env['PATH']}")
+
+            def build():
+                return subprocess.run(
+                    ["bash", str(work / "scripts/build-sing-box.sh"),
+                     "linux", "amd64", str(work / "output")], env=env,
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            result = build()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((work / "output").read_text(), "fixture")
+            for repo in (source, nested):
+                (repo / "version").write_text("uncommitted edit")
+                result = build()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("uncommitted changes", result.stderr)
+                git(repo, "checkout", "--", "version")
+            (nested / "untracked").write_text("untracked edit")
+            self.assertIn("uncommitted changes", build().stderr)
+
     def test_workflows_refresh_before_build_inputs(self):
         # PyYAML is already required by the host regression suite.
         import yaml
