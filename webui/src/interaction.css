@@ -1,0 +1,65 @@
+/* Shared interaction details; keep the Paper palette and open page sections. */
+.mn-section-tabs button,
+.mobile-nav button,
+.desktop-rail nav button {
+  transition: color 160ms ease-out, background-color 160ms ease-out,
+    border-color 160ms ease-out, transform var(--mn-motion-press) ease-out;
+}
+
+.mn-page-title {
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+/* Keep the focus ring inside the horizontally clipped tab strip. */
+.mn-section-tabs button:focus-visible {
+  outline-offset: -4px;
+  border-radius: var(--mn-radius-sm);
+}
+
+.mobile-nav button.mn-nav-active {
+  border-color: var(--mn-border);
+  background: var(--mn-surface-raised);
+}
+.mobile-nav button.mn-nav-active svg { stroke-width: 2; }
+.desktop-rail nav button.mn-nav-active {
+  background: var(--mn-surface-sunken);
+  color: var(--mn-primary-strong);
+}
+
+.mn-field {
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
+}
+.mn-field[aria-invalid="true"] { border-color: var(--mn-danger); }
+.mn-field[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mn-danger) 16%, transparent);
+}
+
+.mn-disclosure > summary { border-radius: var(--mn-radius-sm); }
+.mn-disclosure > summary:focus-visible,
+.config-action-menu > summary:focus-visible {
+  outline: 2px solid var(--mn-focus);
+  outline-offset: 4px;
+}
+.mn-disclosure > summary::after,
+.mn-disclosure[open] > summary::after {
+  margin: 0 4px 0 auto;
+  transition: transform 160ms var(--mn-motion-spring);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-disclosure > summary:hover { color: var(--mn-primary-strong); }
+  .mn-brand-mark:hover { background: var(--mn-surface-sunken); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mn-disclosure > summary::after { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .mobile-nav button.mn-nav-active { border-color: Highlight; }
+  .mn-field[aria-invalid="true"] { border-style: dashed; }
+  .mn-disclosure > summary:focus-visible,
+  .config-action-menu > summary:focus-visible { outline-color: Highlight; }
+}
