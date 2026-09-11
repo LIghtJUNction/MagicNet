@@ -83,6 +83,7 @@ if [ "$with_routing_assets" -eq 1 ]; then
     bash scripts/test-dns-profile-safety.sh
 fi
 bash scripts/test-dns-leak-guard-timeout.sh
+sh scripts/test-startup-network-safety.sh
 bash scripts/test-subscription-activation-order.sh
 bash scripts/test-subscription-transaction-atomicity.sh
 bash scripts/test-subscription-update-lock-safety.sh
@@ -91,5 +92,6 @@ bash scripts/test-subscription-lifecycle.sh
 bash scripts/test-subscription-stop-safety.sh
 bash scripts/test-release-integrity.sh
 python3 scripts/test-release-workflow.py
+python3 scripts/test-ci-submodules.py
 
 printf 'host regression suite passed\n'
