@@ -131,7 +131,8 @@ SH
 
     install_customize_fixtures() {
         local tool host_tool
-        for tool in bash chmod cp cut date find grep ln mkdir rm sed sh tr unzip; do
+        # Atomic template publication needs mv even with a module-only PATH.
+        for tool in bash chmod cp cut date find grep ln mkdir mv rm sed sh tr unzip; do
             host_tool="$(command -v "$tool")" || {
                 echo "missing host tool fixture: $tool" >&2
                 exit 127
@@ -156,7 +157,7 @@ SH
     }
 
     remove_customize_fixtures() {
-        rm -f "$MODDIR/bin"/{am,bash,chcon,chmod,chown,cmd,cp,cut,date,find,getevent,grep,ln,mkdir,restorecon,rm,sed,settings,sh,tr,unzip}
+        rm -f "$MODDIR/bin"/{am,bash,chcon,chmod,chown,cmd,cp,cut,date,find,getevent,grep,ln,mkdir,mv,restorecon,rm,sed,settings,sh,tr,unzip}
     }
 
     install_customize_fixtures
@@ -177,6 +178,7 @@ SH
         PATH="$MODDIR/bin:$POISONED_CALLER_PATH" \
         "$MODDIR/bin/sh" "$MODDIR/customize.sh" >"$TMP/customize.log" 2>&1; then
         echo "customize.sh failed during fake Magisk zip smoke" >&2
+        tail -n 120 "$TMP/customize.log" >&2 || true
         exit 1
     fi
     remove_customize_fixtures
@@ -257,7 +259,7 @@ setup_toybox_layer() {
     done
 
     if [[ "$installed" -eq 0 ]]; then
-        echo "toybox layer disabled: no matching applets from $toybox_bin"
+        echo "toybox layer disabled: no matching applets from $toybox_bin" >&2
         return 0
     fi
 
