@@ -8,6 +8,8 @@ RUN=$KAM_FORM_RUN
 . "$RUN/library.sh"
 TMP=''
 LOCKED=0
+# Invoked by the EXIT trap, including request rejection and timeout paths.
+# shellcheck disable=SC2317
 finish() {
     [ -z "$TMP" ] || "$BB" rm -f "$TMP"
     if [ "$LOCKED" = 1 ]; then "$BB" rmdir "$RUN/submit.lock" 2>/dev/null || :; fi
@@ -38,7 +40,8 @@ fi
 case "${CONTENT_TYPE:-}" in text/plain|text/plain\;*) ;; *) reply '415 Unsupported Media Type' format ;; esac
 LEN=${CONTENT_LENGTH:-}
 case "$LEN" in ''|*[!0-9]*|0*) reply '400 Bad Request' invalid ;; esac
-[ "${#LEN}" -le 4 ] && [ "$LEN" -le 8192 ] || reply '413 Content Too Large' too_long
+[ "${#LEN}" -le 4 ] || reply '413 Content Too Large' too_long
+[ "$LEN" -le 8192 ] || reply '413 Content Too Large' too_long
 TMP=$("$BB" mktemp "$RUN/request.XXXXXX")
 "$BB" dd bs=1 count="$LEN" of="$TMP" 2>/dev/null || reply '400 Bad Request' invalid
 [ "$("$BB" wc -c <"$TMP" | "$BB" tr -d ' ')" = "$LEN" ] || reply '400 Bad Request' invalid

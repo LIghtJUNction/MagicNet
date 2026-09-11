@@ -65,6 +65,8 @@ web_form_collect_url() (
     RUN=''
     SERVER_PID=''
     NOTICE_SENT=0
+    # Invoked by the EXIT trap; exercised by lifecycle regression tests.
+    # shellcheck disable=SC2317
     cleanup() {
         trap - 0 1 2 15
         if [ -n "$SERVER_PID" ]; then

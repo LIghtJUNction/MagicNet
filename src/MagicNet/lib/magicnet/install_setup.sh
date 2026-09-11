@@ -59,6 +59,8 @@ magicnet_install_setup() (
         info "$(i18n INSTALL_SETUP_LATER)"
         return 0
     fi
+    # Called indirectly by the imported form helper after its health probe.
+    # shellcheck disable=SC2317
     web_form_ready() {
         info "$(i18n INSTALL_SETUP_WAIT | t "$2")"
         # print is console-only; do not put this temporary capability in kam.log.
