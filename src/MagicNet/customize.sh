@@ -179,13 +179,13 @@ sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json"
 
 set_i18n "INSTALL_NEXT_STEPS" \
   "zh" "安装后操作：
-1. 执行 cli setup <合法订阅链接> 初始化 sing-box 订阅。
+1. 首次安装执行 cli setup <合法订阅链接>；升级自动保留订阅并更新完整配置模板。
 2. 重启设备，或在模块操作页启动内核。
 3. 打开模块 WebUI 的内核面板，或在终端执行 cli api ui 查看当前核心入口。
 4. 把想戒掉的网站、规则组或域名指向 REJECT / block。
 sing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "en" "After installation:
-1. Run cli setup <legal-subscription-url> to initialize the sing-box subscription.
+1. First install: run cli setup <legal-subscription-url>. Upgrades preserve subscriptions and replace the full config template.
 2. Reboot, or start the core from the module action page.
 3. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.
 4. Point distracting sites, groups, or domains to REJECT / block.
@@ -445,12 +445,33 @@ rm -f "${MODPATH}/kam.log" "${MODPATH}/cli.legacy.sh" "${MODPATH}/mcp-server.sh"
 [ -d "${MODPATH}/bin" ] && set_perm_recursive "${MODPATH}/bin" 0 0 0755 0755 u:object_r:system_file:s0
 [ -d "${MODPATH}/webroot" ] && set_perm_recursive "${MODPATH}/webroot" 0 0 0755 0644 u:object_r:system_file:s0
 
-# sing-box configs contain subscription credentials and node secrets.  Atomic
-# runtime writers enforce this too, but set the permission before the first
-# boot so a packaged or restored config never starts world-readable.
-if [ -f "${MODPATH}/.config/sing-box/config.json" ]; then
-  chmod 600 "${MODPATH}/.config/sing-box/config.json" || abort "! failed to protect sing-box config"
-fi
+# Subscription inputs/cache were restored above; the generated config is not
+# user state. Always take the whole template from this release, even when the
+# manager pre-extracted the ZIP over an existing directory. Startup replays the
+# cached nodes (or fetches the saved subscription) using the normal validator.
+# Do not run the core or require a network connection inside the installer.
+magicnet_install_config_template() (
+  _config_dir="${MODPATH}/.config/sing-box"
+  for _path in "${MODPATH}/.config" "$_config_dir" "$_config_dir/config.json"; do
+    [ ! -L "$_path" ] || return 1
+  done
+  mkdir -p "$_config_dir" || return 1
+  _stage="$_config_dir/.install-template.$$"
+  (umask 077; mkdir "$_stage") || return 1
+  trap 'rm -rf "$_stage"' 0
+  trap 'exit 1' 1 2 3 15
+  unzip -p "$ZIPFILE" '.config/sing-box/config.json' >"$_stage/config.json" || return 1
+  [ -s "$_stage/config.json" ] && chmod 600 "$_stage/config.json" || return 1
+  [ ! -e "$_config_dir/config.json" ] || [ -f "$_config_dir/config.json" ] || return 1
+  mv -f "$_stage/config.json" "$_config_dir/config.json" || return 1
+  # A stale standalone marker would bypass subscription/cache replay entirely.
+  if [ -s "$_config_dir/subscription.url" ] || [ -s "$_config_dir/subscription.local" ]; then
+    rm -f "$_config_dir/standalone-config" || return 1
+  fi
+  rm -f "$_config_dir/config.json.update"
+)
+
+magicnet_install_config_template || abort "! failed to install the new sing-box config template"
 
 rm -f "${MODPATH}/cli" 2>/dev/null || true
 ln -s "bin/magicnet-cli" "${MODPATH}/cli" 2>/dev/null || true
@@ -461,10 +482,6 @@ for _magicnet_entry in action.sh service.sh boot-completed.sh; do
   set_perm "${MODPATH}/${_magicnet_entry}" 0 0 0755 u:object_r:system_file:s0
 done
 unset _magicnet_entry
-
-if magicnet_install_is_interactive; then
-  [ -f "${MODPATH}/.config/sing-box/config.json" ] && confirm_update_file ".config/sing-box/config.json"
-fi
 
 import launcher
 launch url "https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md"
