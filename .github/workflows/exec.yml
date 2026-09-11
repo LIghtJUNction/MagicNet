@@ -57,7 +57,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          submodules: true
+          submodules: false
           fetch-depth: 0
 
       - name: Bump and commit version
@@ -94,6 +94,9 @@ jobs:
           PRERELEASE_INPUT: ${{ inputs.prerelease }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: python3 scripts/prepare-release.py
+
+      - name: Refresh build submodules
+        run: bash scripts/update-build-submodules.sh "$RUNNER_TEMP/build-submodules.txt"
 
       - name: Prepare signing verification key
         if: ${{ env.MAGICNET_SIGN_ENABLED == '1' }}
@@ -243,7 +246,10 @@ jobs:
           set -euo pipefail
           find hooks src -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
           rm -rf dist
+          git submodule foreach --quiet --recursive 'printf "%s %s\n" "$(git rev-parse HEAD)" "$displaypath"' | diff "$RUNNER_TEMP/build-submodules.txt" -
           kam build
+          git submodule foreach --quiet --recursive 'printf "%s %s\n" "$(git rev-parse HEAD)" "$displaypath"' | diff "$RUNNER_TEMP/build-submodules.txt" -
+          cp "$RUNNER_TEMP/build-submodules.txt" dist/build-submodules.txt
 
       - name: Verify artifact contents
         shell: bash
@@ -282,7 +288,7 @@ jobs:
           if [ "$PRERELEASE_REQUESTED" = "true" ]; then
             args+=(--prerelease)
           fi
-          gh release create "$RELEASE_VERSION" dist/MagicNet.zip dist/MagicNet.zip.sig "${args[@]}"
+          gh release create "$RELEASE_VERSION" dist/MagicNet.zip dist/MagicNet.zip.sig dist/build-submodules.txt "${args[@]}"
 
       - name: Upload build artifact
         if: always() && hashFiles('dist/*') != ''
