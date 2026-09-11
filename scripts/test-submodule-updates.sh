@@ -37,8 +37,15 @@ expected_dependency=$(git -C "$WORK/dependency" rev-parse HEAD)
 git -C "$WORK/dependency" checkout -q main
 git clone -q --no-recurse-submodules "$WORK/project" "$WORK/checkout"
 mkdir -p "$WORK/checkout/scripts"
-cp "$ROOT/scripts/update-submodules.sh" "$WORK/checkout/scripts/"
+cp "$ROOT/scripts/update-submodules.sh" "$ROOT/scripts/verify-submodule-revisions.sh" "$WORK/checkout/scripts/"
 export GITHUB_STEP_SUMMARY="$WORK/summary"
+verify() { bash "$WORK/checkout/scripts/verify-submodule-revisions.sh"; }
+reject_snapshot() {
+    if verify >>"$WORK/verify.log" 2>&1; then
+        printf 'submodule integrity accepted %s\n' "$1" >&2
+        exit 1
+    fi
+}
 check_snapshot() {
     local expected_leaf
     expected_leaf=$(git -C "$WORK/leaf" rev-parse HEAD)
@@ -49,6 +56,7 @@ check_snapshot() {
     done
     [ "$(git -C "$WORK/checkout" rev-parse HEAD)" = "$parent" ]
     git -C "$WORK/checkout" diff --cached --exit-code
+    verify >>"$WORK/verify.log"
 }
 bash "$WORK/checkout/scripts/update-submodules.sh" >"$WORK/update.log" 2>&1
 check_snapshot
@@ -56,6 +64,30 @@ commit_file "$WORK/leaf" next-build-leaf
 bash "$WORK/checkout/scripts/update-submodules.sh" >>"$WORK/update.log" 2>&1
 check_snapshot
 grep -Fq "$expected_dependency dependency" "$WORK/summary"
+
+# Integrity follows the resolved snapshot, including nested modules, not old pins.
+expected_leaf=$(git -C "$WORK/leaf" rev-parse HEAD)
+git -C "$WORK/checkout/dependency/nested" checkout -q HEAD^
+reject_snapshot 'nested checkout drift'
+git -C "$WORK/checkout/dependency/nested" checkout -q "$expected_leaf"
+cp "$WORK/checkout/submodule-revisions.txt" "$WORK/snapshot"
+: >"$WORK/checkout/submodule-revisions.txt"
+reject_snapshot 'an empty snapshot'
+rm "$WORK/checkout/submodule-revisions.txt"
+reject_snapshot 'unrecorded remote updates'
+cp "$WORK/snapshot" "$WORK/checkout/submodule-revisions.txt"
+verify >>"$WORK/verify.log"
+git -C "$WORK/checkout" submodule deinit -q -f default-branch
+reject_snapshot 'an uninitialized module'
+bash "$WORK/checkout/scripts/update-submodules.sh" >>"$WORK/update.log" 2>&1
+check_snapshot
+
+# A normal pinned checkout is still valid without a remote-update manifest.
+git clone -q --recurse-submodules "$WORK/project" "$WORK/pinned" >"$WORK/pinned.log" 2>&1
+mkdir -p "$WORK/pinned/scripts"
+cp "$ROOT/scripts/verify-submodule-revisions.sh" "$WORK/pinned/scripts/"
+bash "$WORK/pinned/scripts/verify-submodule-revisions.sh" >>"$WORK/verify.log"
+
 # A failed fetch must never be treated as a successful build using old sources.
 git -C "$WORK/checkout" config -f .gitmodules submodule.default-branch.url "$WORK/missing"
 if bash "$WORK/checkout/scripts/update-submodules.sh" >>"$WORK/update.log" 2>&1; then
