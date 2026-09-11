@@ -333,6 +333,7 @@ magicnet_xtables_delete_rule() (
     _delete_table="$2"
     shift 2
     _delete_attempt=0
+    _delete_failures=0
     while [ "$_delete_attempt" -lt 64 ]; do
         _delete_rc=0
         if [ -n "$_delete_table" ]; then
@@ -351,9 +352,17 @@ magicnet_xtables_delete_rule() (
         case "$_delete_rc" in
         0)
             if [ "$_delete_write_rc" -ne 0 ]; then
+                # An OUTPUT rule may change between delete/check under netd.
+                # Retry generic transient failures, but never spin on a
+                # permission/parameter error or an indefinitely busy writer.
+                _delete_failures=$((_delete_failures + 1))
+                if [ "$_delete_write_rc" -eq 1 ] && [ "$_delete_failures" -lt 3 ]; then
+                    continue
+                fi
                 magicnet_warn "Rule deletion failed (exit=$_delete_write_rc): $_delete_cmd table=${_delete_table:-filter} $*; $_delete_output" >&2
                 return 1
             fi
+            _delete_failures=0
             _delete_attempt=$((_delete_attempt + 1))
             continue
             ;;
@@ -577,7 +586,7 @@ magicnet_enable_dns_leak_guard() {
 
     magicnet_log "DNS leak guard blocked direct 53/853 on: $_dns_guard_ifaces"
     unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
-    unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_state_tmp
+    unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_tmp
 }
 
 magicnet_disable_dns_leak_guard() (
