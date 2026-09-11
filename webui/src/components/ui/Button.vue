@@ -95,9 +95,9 @@ const classes = computed(() =>
   to { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .mn-button[aria-busy="true"]::after { animation: none; }
+  .mn-button[aria-busy="true"]:not([data-size="icon"])::after { animation: none; }
 }
 @media (forced-colors: active) {
-  .mn-button[aria-busy="true"]::after { background: ButtonText; }
+  .mn-button[aria-busy="true"]:not([data-size="icon"])::after { background: ButtonText; }
 }
 </style>
