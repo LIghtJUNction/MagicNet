@@ -23,6 +23,7 @@ magicnet_onboarding_android_ready() {
 magicnet_onboarding_allowed() {
     [ "${MAGICNET_NONINTERACTIVE:-0}" != 1 ] &&
         [ "${MAGICNET_INSTALL_ONBOARDING:-1}" != 0 ] &&
+        [ "${MAGICNET_SETUP:-1}" != 0 ] &&
         [ "${MAGIC_SINGBOX:-1}" != 0 ] || return 1
     case "${BOOTMODE:-}" in false | 0) return 1 ;; esac
     magicnet_install_has_subscription "$MODPATH" && return 1
@@ -56,15 +57,32 @@ magicnet_onboarding_android_am() {
         -c android.intent.category.BROWSABLE
 }
 
+magicnet_onboarding_android_command() {
+    case "$1" in am | cmd) ;; *) return 127 ;; esac
+    _android_tool=$1
+    shift
+    "$MN_SETUP_BB" timeout 5 "/system/bin/$_android_tool" "$@"
+}
+
 magicnet_onboarding_open() (
-    # Use kamfw's URL dispatcher, not a hard-coded browser package. Its pinned
-    # launcher does not forward --user or the am exit status, so adapt only this
-    # subshell; do not change am or the dispatcher's behavior elsewhere.
+    unset LD_LIBRARY_PATH LD_PRELOAD
+    # Keep the upstream framework untouched. The browser extension from #186 is
+    # loaded only in this subshell; all other module launch callers keep their API.
     import launcher || exit 1
-    # Called indirectly by the imported kamfw launcher; covered by host tests.
+    if [ -n "${MODPATH:-}" ] && [ -f "$MODPATH/lib/kamfw-web/launcher.sh" ]; then
+        . "$MODPATH/lib/kamfw-web/launcher.sh" || exit 1
+        PATH="/system/bin:${PATH:-}"
+        export PATH
+        # Called indirectly by the extension's launch browser dispatcher.
+        # shellcheck disable=SC2317
+        _launch_run() { magicnet_onboarding_android_command "$@"; }
+        launch browser "$1" >"$MN_SETUP_RUN/browser.log" 2>&1
+        exit "$?"
+    fi
+    # Backward-compatible fallback for older packages without the extension.
+    # Called indirectly by the pinned kamfw launcher; covered by host tests.
     # shellcheck disable=SC2317
     am() {
-        unset LD_LIBRARY_PATH LD_PRELOAD
         magicnet_onboarding_android_am "$@" >"$MN_SETUP_RUN/browser.log" 2>&1
         exit "$?"
     }
@@ -73,6 +91,7 @@ magicnet_onboarding_open() (
 
 magicnet_onboarding_collect() (
     # Isolation preserves the installer's kamfw at_exit migration cleanup.
+    set +x
     set -eu
     umask 077
     export LC_ALL=C
@@ -136,7 +155,7 @@ magicnet_onboarding_collect() (
         _port=$((20000 + _random % 30000))
         MN_SETUP_ORIGIN="http://127.0.0.1:$_port"
         export MN_SETUP_ORIGIN
-        # A hard lifetime also bounds HTTP children if the installer is killed.
+        # Limit the listener lifetime even if the installer is killed.
         "$_bb" setsid "$_bb" timeout "$((_wait + 30))" "$_bb" httpd -f \
             -p "127.0.0.1:$_port" -h "$MN_SETUP_RUN/www" -c "$MN_SETUP_RUN/httpd.conf" \
             >"$MN_SETUP_RUN/server.log" 2>&1 &
@@ -154,12 +173,21 @@ magicnet_onboarding_collect() (
     [ "$_health" = '{"code":"ready"}' ] || exit 1
     _page=$("$_bb" timeout 6 "$_bb" wget -Y off -q -O - "$MN_SETUP_ORIGIN/" 2>/dev/null) || exit 1
     case "$_page" in *'id="setup-form"'*) ;; *) exit 1 ;; esac
-    _lang=${KAM_UI_LANGUAGE:-${KAM_LANG:-$(getprop persist.sys.locale 2>/dev/null || :)}}
-    case "$_lang" in zh*) _lang=zh ;; ru*) _lang=ru ;; ja*) _lang=ja ;; ko*) _lang=ko ;; *) _lang=en ;; esac
+    _lang=${KAM_UI_LANGUAGE:-${KAM_LANG:-}}
+    case "$_lang" in '' | auto) _lang=$(getprop persist.sys.locale 2>/dev/null || :) ;; esac
+    _lang=$(printf '%s' "$_lang" | "$_bb" tr 'A-Z_' 'a-z-')
+    case "$_lang" in
+        zh-tw* | zh-hk* | zh-mo* | zh-hant*) _lang=zh-TW ;;
+        zh*) _lang=zh ;;
+        ru*) _lang=ru ;;
+        ja*) _lang=ja ;;
+        ko*) _lang=ko ;;
+        en*) _lang=en ;;
+        *) _lang=auto ;;
+    esac
     _url="$MN_SETUP_ORIGIN/?lang=$_lang#$MN_SETUP_TOKEN"
     print "$(i18n MN_SETUP_WAIT)"
-    # A short-lived local capability, never the subscription itself. Do not
-    # include this link in diagnostics, support bundles or permanent logs.
+    # A short-lived local capability, never the subscription itself.
     print "$_url"
     if [ -x /system/bin/cmd ]; then
         "$_bb" timeout 4 /system/bin/cmd notification post -t MagicNet \
@@ -189,7 +217,6 @@ magicnet_onboarding_collect() (
 magicnet_install_onboarding() {
     magicnet_onboarding_allowed || return 0
     . "$MODPATH/lib/magicnet/onboarding/messages.sh" || return 1
-    # Declining or timing out must not break module installation.
     if magicnet_onboarding_collect; then
         return 0
     else
