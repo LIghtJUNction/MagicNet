@@ -25,9 +25,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-
-      - name: Update submodules to latest remote commits
-        run: bash scripts/update-submodules.sh
+          submodules: true
 
       - name: Setup kam
         uses: MemDeco-WG/setup-kam@1d6ad8a9f58446a4519fda12a52f0c71fb667d8b # v3

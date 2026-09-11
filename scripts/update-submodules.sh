@@ -2,20 +2,45 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+case "${1:-}" in
+"")
+    cd "$ROOT"
+    MAGICNET_SUBMODULE_UPDATE_SCRIPT="$ROOT/scripts/update-submodules.sh"
+    export MAGICNET_SUBMODULE_UPDATE_SCRIPT
+    # A failed refresh must not leave a prior build's snapshot looking current.
+    rm -f "$ROOT/submodule-revisions.txt"
+    ;;
+--nested) ;;
+*) printf 'usage: bash scripts/update-submodules.sh\n' >&2; exit 64 ;;
+esac
 
-# Resolve every configured tracking branch once, before tests/cache keys/builds.
-# Ignore shallow recommendations so non-default tracking branches are fetched.
-# Failed fetches abort the build instead of silently reusing an old gitlink.
-git submodule sync --recursive
-git submodule update --init --remote --recursive --checkout --no-recommend-shallow
+# Update one level at a time: a parent's new .gitmodules may change child
+# URLs/branches. Initialize children only after checking out that parent.
+git submodule sync
+git submodule update --init --checkout --no-single-branch
+git submodule foreach '
+    set -eu
+    # Shallow checkout can otherwise fetch only the default branch, leaving
+    # a configured non-default branch such as sing-box/testing unresolved.
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    git fetch --no-recurse-submodules --prune origin
+    git remote set-head origin --auto
+'
+# Every child was just fetched; resolve .gitmodules branches or remote HEAD.
+# A fetch failure above aborts the run rather than building a stale revision.
+git submodule update --remote --no-fetch --checkout
+# Expand the exported path inside each child shell, preserving spaces.
+# shellcheck disable=SC2016
+git submodule foreach --quiet 'bash "$MAGICNET_SUBMODULE_UPDATE_SCRIPT" --nested'
 
-git submodule status --recursive >submodule-revisions.txt
-cat submodule-revisions.txt
-if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-    {
-        printf '### Submodule revisions used by this build\n\n```text\n'
-        cat submodule-revisions.txt
-        printf '```\n'
-    } >>"$GITHUB_STEP_SUMMARY"
+if [[ $# -eq 0 ]]; then
+    git submodule status --recursive >"$ROOT/submodule-revisions.txt"
+    cat "$ROOT/submodule-revisions.txt"
+    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+        {
+            printf '\n### Build submodule revisions\n\n```text\n'
+            cat "$ROOT/submodule-revisions.txt"
+            printf '```\n'
+        } >>"$GITHUB_STEP_SUMMARY"
+    fi
 fi

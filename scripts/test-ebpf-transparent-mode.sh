@@ -275,11 +275,29 @@ ip() {
 }
 iptables() {
   printf 'iptables %s\n' "$*" >>"$POST_LOG"
-  case " $* " in *' -C '* | *' -L '*) return 1 ;; *) return 0 ;; esac
+  case " $* " in
+  *' -t nat -L -n '*)
+    # A readable NAT table and an absent MagicNet chain are distinct states.
+    if [ "${MAGICNET_TEST_NAT_PROBE_FAIL:-0}" = 1 ]; then
+      printf '%s\n' 'Permission denied' >&2
+      return 4
+    fi
+    return 0
+    ;;
+  *' -C '* | *' -L '*) return 1 ;;
+  *) return 0 ;;
+  esac
 }
 ip6tables() {
   printf 'ip6tables %s\n' "$*" >>"$POST_LOG"
-  case " $* " in *' -C '* | *' -L '*) return 1 ;; *) return 0 ;; esac
+  case " $* " in
+  *' -t nat -L -n '*)
+    printf '%s\n' 'Table does not exist (do you need to insmod?)' >&2
+    return 3
+    ;;
+  *' -C '* | *' -L '*) return 1 ;;
+  *) return 0 ;;
+  esac
 }
 magicnet_cmd_exists() {
   case "$1" in ip | iptables | ip6tables | sing-box | jq) return 0 ;; *) return 1 ;; esac
@@ -294,5 +312,13 @@ if grep -Eq '^ip .* (route|rule) add .*2022|^iptables .* (-A|-I) .*REDIRECT|^ip6
   cat "$POST_LOG" >&2
   exit 1
 fi
+
+# A real inspection failure must not be mistaken for an absent stale chain.
+MAGICNET_TEST_NAT_PROBE_FAIL=1
+if magicnet_after_kernel_start_unlocked; then
+  printf '%s\n' 'eBPF post-start ignored a DNS cleanup permission failure' >&2
+  exit 1
+fi
+unset MAGICNET_TEST_NAT_PROBE_FAIL
 
 printf '%s\n' 'eBPF transparent mode contract passed'

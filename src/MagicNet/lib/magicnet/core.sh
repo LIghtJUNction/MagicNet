@@ -45,14 +45,8 @@ magicnet_prepare_singbox_candidate_unlocked() {
 
 magicnet_start_singbox_unlocked() {
     magicnet_module_disabled && return 1
-    [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || {
-        magicnet_warn "sing-box startup is disabled by MAGIC_SINGBOX."
-        return 1
-    }
-    magicnet_cmd_exists sing-box || {
-        magicnet_warn "sing-box executable was not found."
-        return 1
-    }
+    [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
+    magicnet_cmd_exists sing-box || return 1
     import __singbox__
     if is_singbox_running >/dev/null 2>&1; then
         _start_running_rc=0
@@ -116,7 +110,7 @@ magicnet_start_singbox() {
 }
 
 magicnet_start_singbox_ready_unlocked() {
-    magicnet_start_singbox_unlocked || return $?
+    magicnet_start_singbox_unlocked || return 1
     # Keep core materialization, process readiness, and the kernel controls
     # that target this exact generation under one lock acquisition.  Releasing
     # and reacquiring here let fswatch win the gap and made manual startup wait
@@ -250,14 +244,18 @@ magicnet_start_kernel() {
         "${MODDIR}/cli" api replay-startup >/dev/null 2>&1 || true
         magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
         return 0
-    else
-        _kernel_start_rc=$?
     fi
 
     command -v magicnet_hotspot_startup_snapshot_clear >/dev/null 2>&1 &&
         magicnet_hotspot_startup_snapshot_clear
-    magicnet_warn "sing-box startup failed (exit $_kernel_start_rc); see the preceding configuration or network-control error."
-    return "$_kernel_start_rc"
+    if ! magicnet_cmd_exists sing-box; then
+        magicnet_warn "sing-box executable was not found."
+    elif [ "${MAGIC_SINGBOX:-1}" -eq 0 ]; then
+        magicnet_warn "sing-box startup is disabled by configuration."
+    else
+        magicnet_warn "sing-box startup failed; see the preceding core or network error."
+    fi
+    return 1
 }
 
 magicnet_ensure_kernel() {

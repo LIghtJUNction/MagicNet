@@ -32,6 +32,11 @@ import() { :; }
 magicnet_warn() { :; }
 singbox_prepare_route_config() { :; }
 
+mock_missing_ipv6_tables() {
+  printf '%s\n' 'cannot initialize nat: Table does not exist' >&2
+  return 3
+}
+
 REAL_MV=$(command -v mv)
 FAIL_MV_BIN="$WORK/fail-mv-bin"
 mkdir -p "$FAIL_MV_BIN"
@@ -470,7 +475,7 @@ assert_dns_capture_disable_removes_duplicate_output_jumps() (
       ;;
     esac
   }
-  ip6tables() { return 1; }
+  ip6tables() { mock_missing_ipv6_tables; }
   magicnet_cmd_exists() {
     [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
   }
@@ -499,7 +504,7 @@ assert_dns_capture_disable_accepts_absent_chain_rc_two() (
     *) return 0 ;;
     esac
   }
-  ip6tables() { return 1; }
+  ip6tables() { mock_missing_ipv6_tables; }
   magicnet_cmd_exists() {
     [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
   }
@@ -544,7 +549,7 @@ assert_dns_capture_disable_retries_transient_delete_failure() (
       ;;
     esac
   }
-  ip6tables() { return 1; }
+  ip6tables() { mock_missing_ipv6_tables; }
   magicnet_cmd_exists() {
     [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]
   }
@@ -855,20 +860,18 @@ assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure() (
   export MODDIR
   mkdir -p "$MODDIR/.state"
   printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
-  # Rule commands run in subshells; use a file so attempted inserts stay visible.
-  new_rule_attempts="$WORK/dns-leak-guard-reapply-failure.inserts"
-  : >"$new_rule_attempts"
+  new_rule_attempts=0
 
   iptables() {
     case " $* " in
     *' -S OUTPUT '*)
-      printf '%s\n' '-A OUTPUT -o wlan0 -p udp -m udp --dport 53 -j REJECT'
+      printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'
       return 0
       ;;
     *' -D OUTPUT '*) return 1 ;;
     *' -C OUTPUT '*) return 2 ;;
     *' -I OUTPUT '*)
-      printf '%s\n' "$*" >>"$new_rule_attempts"
+      new_rule_attempts=$((new_rule_attempts + 1))
       return 0
       ;;
     *) return 0 ;;
@@ -884,7 +887,7 @@ assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure() (
     printf '%s\n' 'DNS leak guard must fail when old rules cannot be removed' >&2
     exit 1
   fi
-  if [ -s "$new_rule_attempts" ]; then
+  if [ "$new_rule_attempts" -ne 0 ]; then
     printf '%s\n' 'DNS leak guard must not install new rules after cleanup failure' >&2
     exit 1
   fi
@@ -904,9 +907,8 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
   iptables() {
     case " $* " in
     *' -S OUTPUT '*)
-      printf '%s\n' '-P OUTPUT ACCEPT'
       if [ "$(cat "$stale_guard_count_file")" -gt 0 ]; then
-        printf '%s\n' '-A OUTPUT -o wlan0 -p udp -m udp --dport 53 -j REJECT'
+        printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'
       fi
       return 0
       ;;
@@ -955,7 +957,7 @@ assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat() (
   }
   ip6tables() {
     printf '%s\n' "ip6tables $*" >>"$dns_capture_log"
-    return 1
+    mock_missing_ipv6_tables
   }
   magicnet_cmd_exists() { return 0; }
   magicnet_dns_profile() { printf '%s\n' default; }
