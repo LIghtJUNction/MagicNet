@@ -99,7 +99,9 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
       printf '%s\n' "$MAGICNET_BACKUP_MARKER_VALUE" >"$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER"
   ) || abort "! failed to create the MagicNet migration backup"
   MAGICNET_BACKUP_ACTIVE=1
+  # Snapshot the old full file for node recovery and a private rollback copy.
   for _item in \
+    ".config/sing-box/config.json" \
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.local" \
     ".config/sing-box/subscription.user-agent" \
@@ -316,7 +318,6 @@ if [ "$MAGICNET_BACKUP_READY" = 1 ]; then
       cp -a "${MAGICNET_BACKUP_DIR}/${_item}" "${MODPATH}/${_item}" || abort "! failed to restore MagicNet migration data: $_item"
     fi
   done
-  magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
   unset _item
 fi
 
@@ -462,9 +463,11 @@ for _magicnet_entry in action.sh service.sh boot-completed.sh; do
 done
 unset _magicnet_entry
 
-if magicnet_install_is_interactive; then
-  [ -f "${MODPATH}/.config/sing-box/config.json" ] && confirm_update_file ".config/sing-box/config.json"
-fi
+# Upgrade automatically in both manager and terminal installs. Never let the
+# old full config override the new package template.
+. "${MODPATH}/lib/magicnet/install_config.sh"
+magicnet_refresh_install_config || abort "! failed to rebuild the sing-box config; upgrade aborted"
+magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
 
 import launcher
 launch url "https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md"
