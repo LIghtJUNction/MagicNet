@@ -5,6 +5,7 @@
       language: 'Language', eyebrow: 'A NEW CONNECTION', title: 'Your network.', accent: 'Your rules.',
       subtitle: 'Add a subscription. Make yourself at home.', label: 'Subscription URL', save: 'Save & continue', skip: 'Set up later',
       privacy: 'Stored on your device. Loaded on the next start.', explore: 'Keep exploring', star: 'Star on GitHub', docs: 'Guide', community: 'Community', local: 'PRIVATE, BY DESIGN',
+      releases: 'Releases', feedback: 'Report an issue', author: 'Meet the author',
       submitting: 'Saving…', checking: 'Connecting to the installer…', invalid: 'Use a complete HTTPS URL without spaces, a fragment or credentials.',
       too_long: 'The URL must be no longer than 8192 bytes.', forbidden: 'This setup link is invalid. Open the complete link from the installer.',
       missing_token: 'Open the complete setup link from the installer, including the part after #.',
@@ -19,6 +20,7 @@
       language: '语言', eyebrow: '新的连接，从这里开始', title: '你的网络。', accent: '由你定义。',
       subtitle: '添加订阅，开始使用 MagicNet。', label: '订阅链接', save: '保存并继续', skip: '稍后设置',
       privacy: '保存在本机，下次启动时加载。', explore: '不止于此', star: '在 GitHub 点亮 Star', docs: '使用指南', community: '加入社区', local: '留在本机，保持私密',
+      releases: '版本更新', feedback: '问题反馈', author: '认识作者',
       submitting: '正在保存…', checking: '正在连接安装器…', invalid: '请填写完整的 HTTPS 链接，不含空格、# 片段或账号密码。',
       too_long: '链接不能超过 8192 字节。', forbidden: '本次入口无效，请打开安装器显示的完整地址。',
       missing_token: '请打开安装器显示的完整地址，包括 # 后面的部分。',
@@ -28,10 +30,25 @@
       saved_title: '链接已收好。', saved_note: '返回安装器完成安装。MagicNet 下次启动时会加载订阅。',
       skipped_title: '稍后再出发。', skipped_note: '返回安装器继续安装，之后可在模块 WebUI 添加订阅。'
     },
+    'zh-TW': {
+      language: '語言', eyebrow: '新的連線，從這裡開始', title: '你的網路。', accent: '由你定義。',
+      subtitle: '新增訂閱，開始使用 MagicNet。', label: '訂閱連結', save: '儲存並繼續', skip: '稍後設定',
+      privacy: '儲存在本機，下次啟動時載入。', explore: '不止於此', star: '在 GitHub 點亮 Star', docs: '使用指南', community: '加入社群', local: '留在本機，保持私密',
+      releases: '版本更新', feedback: '問題回報', author: '認識作者',
+      submitting: '正在儲存…', checking: '正在連線至安裝程式…', invalid: '請填寫完整的 HTTPS 連結，不含空白、# 片段或帳號密碼。',
+      too_long: '連結不能超過 8192 位元組。', forbidden: '本次入口無效，請開啟安裝程式顯示的完整位址。',
+      missing_token: '請開啟安裝程式顯示的完整位址，包括 # 後面的部分。',
+      network: '無法確認結果，請返回安裝程式查看；臨時頁面可能已關閉。',
+      busy: '另一個請求正在處理，請重試。', existing: '已有訂閱設定，未覆寫。', finished: '本次設定已經結束，請返回安裝程式。',
+      unsafe_path: '設定路徑不安全，請安裝後透過模組 WebUI 設定。', save_failed: '未能確認儲存成功，請返回安裝程式查看。', format: '不支援此請求格式。', method: '不支援此請求方式。', missing: '設定介面不存在。',
+      saved_title: '連結已收好。', saved_note: '返回安裝程式完成安裝。MagicNet 下次啟動時會載入訂閱。',
+      skipped_title: '稍後再出發。', skipped_note: '返回安裝程式繼續安裝，之後可在模組 WebUI 新增訂閱。'
+    },
     ru: {
       language: 'Язык', eyebrow: 'НОВОЕ ПОДКЛЮЧЕНИЕ', title: 'Ваша сеть.', accent: 'Ваши правила.',
       subtitle: 'Добавьте подписку и начните пользоваться MagicNet.', label: 'Ссылка на подписку', save: 'Сохранить', skip: 'Настроить позже',
       privacy: 'Хранится на устройстве. Загрузится при следующем запуске.', explore: 'Узнать больше', star: 'Звезда на GitHub', docs: 'Руководство', community: 'Сообщество', local: 'ПРИВАТНО ПО УМОЛЧАНИЮ',
+      releases: 'Новые версии', feedback: 'Сообщить об ошибке', author: 'Об авторе',
       submitting: 'Сохранение…', checking: 'Подключение к установщику…', invalid: 'Введите полный HTTPS URL без пробелов, фрагмента # и учётных данных.',
       too_long: 'Ссылка не должна превышать 8192 байта.', forbidden: 'Ссылка настройки недействительна. Откройте полную ссылку из установщика.',
       missing_token: 'Откройте полную ссылку из установщика, включая часть после #.',
@@ -45,6 +62,7 @@
       language: '言語', eyebrow: '新しいつながり', title: 'あなたのネット。', accent: 'あなたのルール。',
       subtitle: '購読を追加して、MagicNet を始めましょう。', label: '購読 URL', save: '保存して続ける', skip: '後で設定',
       privacy: '端末内に保存し、次回起動時に読み込みます。', explore: 'さらに詳しく', star: 'GitHub で Star', docs: 'ガイド', community: 'コミュニティ', local: 'プライバシーを大切に',
+      releases: 'リリース', feedback: '問題を報告', author: '作者について',
       submitting: '保存しています…', checking: 'インストーラーに接続しています…', invalid: '空白、# フラグメント、認証情報を含まない完全な HTTPS URL を入力してください。',
       too_long: 'URL は8192バイト以内にしてください。', forbidden: '無効な設定リンクです。インストーラーのリンク全体を開いてください。',
       missing_token: 'インストーラーのリンクを、# 以降も含めて開いてください。',
@@ -58,6 +76,7 @@
       language: '언어', eyebrow: '새로운 연결', title: '당신의 네트워크.', accent: '당신의 규칙.',
       subtitle: '구독을 추가하고 MagicNet을 시작하세요.', label: '구독 링크', save: '저장하고 계속', skip: '나중에 설정',
       privacy: '기기에 저장하고 다음 시작 때 불러옵니다.', explore: '더 알아보기', star: 'GitHub에 Star', docs: '사용 안내', community: '커뮤니티', local: '개인정보를 소중하게',
+      releases: '새 버전', feedback: '문제 신고', author: '개발자 소개',
       submitting: '저장 중…', checking: '설치 프로그램에 연결 중…', invalid: '공백, # 조각, 인증 정보가 없는 완전한 HTTPS 링크를 입력하세요.',
       too_long: '링크는 8192바이트 이하여야 합니다.', forbidden: '유효하지 않은 설정 링크입니다. 설치 프로그램의 전체 링크를 여세요.',
       missing_token: '설치 프로그램의 링크를 # 뒤의 부분까지 모두 여세요.',
@@ -73,7 +92,11 @@
   const status = byId('status');
   const select = byId('language');
   const supported = (value) => Object.prototype.hasOwnProperty.call(translations, value);
-  const normalize = (value) => String(value || '').toLowerCase().split(/[-_]/)[0];
+  const normalize = (value) => {
+    const locale = String(value || '').toLowerCase().replace(/_/g, '-');
+    if (/^zh-(hant|tw|hk|mo)(-|$)/.test(locale)) return 'zh-TW';
+    return locale.split('-')[0];
+  };
   const requested = normalize(new URLSearchParams(location.search).get('lang'));
   const candidates = (navigator.languages || [navigator.language]).map(normalize);
   let language = supported(requested) ? requested : candidates.find(supported) || 'en';
@@ -118,11 +141,11 @@
     if (action !== 'health') xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
     xhr.onload = function () {
       let code = 'network';
-      try { code = JSON.parse(xhr.responseText).code; } catch (_) { /* Report an unconfirmed result, not a false success. */ }
+      try { code = JSON.parse(xhr.responseText).code; } catch (_) { /* Never report unconfirmed success. */ }
       if (xhr.status === 200 && action === 'health' && code === 'ready') { lock(false); show('', false); return; }
       if (xhr.status === 200 && ((action === 'save' && code === 'saved') || (action === 'skip' && code === 'skipped'))) { done(code); return; }
       lock(['forbidden', 'finished', 'existing', 'unsafe_path'].includes(code));
-      show(supported(language) && Object.prototype.hasOwnProperty.call(translations[language], code) ? code : 'network', true);
+      show(Object.prototype.hasOwnProperty.call(translations[language], code) ? code : 'network', true);
     };
     xhr.onerror = xhr.ontimeout = function () { lock(false); show('network', true); };
     xhr.send(action === 'health' ? null : value);
