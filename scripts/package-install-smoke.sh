@@ -46,11 +46,12 @@ fail() {
     exit 1
 }
 
-for tool in bash cargo chmod cp env find grep ln mkdir python3 readlink rm sed sh timeout unzip; do
+for tool in bash cargo chmod cp env find grep ln mkdir mv python3 readlink rm sed sh timeout unzip; do
     command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
 HOST_ENV="$(command -v env)"
 
+bash "$ROOT/scripts/test-install-config-template.sh"
 "$ROOT/scripts/package-smoke.sh" "$ZIP_PATH"
 
 mkdir -p "$MODPATH" "$MANAGER_MODPATH" "$MOCK_BIN"
@@ -90,7 +91,7 @@ done
 
 install_host_tool_fixtures() {
     fixture_module="$1"
-    for tool in bash chown chmod cp cut date find grep ln mkdir rm sed sh timeout tr unzip; do
+    for tool in bash chown chmod cp cut date find grep ln mkdir mv rm sed sh timeout tr unzip; do
         host_tool="$(command -v "$tool")" || fail "missing host tool fixture: $tool"
         [[ -x "$host_tool" ]] || fail "host tool fixture is not executable: $tool"
         [[ ! -e "$fixture_module/bin/$tool" ]] || fail "host tool fixture collides with package binary: $tool"
@@ -104,7 +105,7 @@ install_host_tool_fixtures() {
 
 remove_host_tool_fixtures() {
     fixture_module="$1"
-    rm -f "$fixture_module/bin"/{bash,chcon,chmod,chown,cmd,cp,cut,date,find,getevent,grep,ln,mkdir,restorecon,rm,sed,settings,sh,timeout,tr,unzip}
+    rm -f "$fixture_module/bin"/{bash,chcon,chmod,chown,cmd,cp,cut,date,find,getevent,grep,ln,mkdir,mv,restorecon,rm,sed,settings,sh,timeout,tr,unzip}
 }
 
 assert_fixture_path() {
