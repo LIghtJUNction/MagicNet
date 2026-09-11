@@ -34,7 +34,12 @@ if ! grep -Fxq 'module github.com/sagernet/sing-box' "$SOURCE_DIR/go.mod"; then
     exit 1
 fi
 
-if [[ -n "$(git -C "$SOURCE_DIR" status --porcelain --untracked-files=normal)" ]]; then
+# CI deliberately advances nested gitlinks. Check each repository's own files
+# instead, so new dependency revisions are allowed but local edits still fail.
+# shellcheck disable=SC2016
+if [[ -n "$(git -C "$SOURCE_DIR" status --porcelain --untracked-files=normal --ignore-submodules=all)" ]] ||
+    ! git -C "$SOURCE_DIR" submodule foreach --quiet --recursive \
+        'changes=$(git status --porcelain --untracked-files=normal --ignore-submodules=all) && test -z "$changes"'; then
     printf 'sing-box build: source submodule has uncommitted changes: %s\n' "$SOURCE_DIR" >&2
     exit 1
 fi
