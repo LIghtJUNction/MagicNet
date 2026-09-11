@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>MagicNet · Setup</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <a class="brand" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer" aria-label="MagicNet on GitHub">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>MagicNet</span>
+      </a>
+      <label class="language"><span aria-hidden="true">文 / A</span><span class="sr-only" data-i18n="language">Language</span>
+        <select id="language"><option value="zh">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option></select>
+      </label>
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="title">
+        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span><span data-i18n="eyebrow">A NEW CONNECTION</span><span class="edition">01 / SETUP</span></p>
+        <h1 id="title"><span data-i18n="title">Your network.</span><em data-i18n="accent">Your rules.</em></h1>
+        <p class="subtitle" data-i18n="subtitle">Add a subscription. Make yourself at home.</p>
+        <form id="setup-form" novalidate>
+          <label for="subscription" data-i18n="label">Subscription URL</label>
+          <div class="input-wrap"><input id="subscription" name="subscription" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://…" maxlength="8192" required aria-describedby="status"><span class="input-badge" aria-hidden="true">HTTPS</span></div>
+          <div class="actions"><button id="save" class="primary" type="submit"><span data-i18n="save">Save & continue</span><span aria-hidden="true">↗</span></button><button id="skip" type="button" class="quiet" data-i18n="skip">Set up later</button></div>
+        </form>
+        <div id="status" role="status" aria-live="polite"></div>
+        <section id="completion" hidden aria-label="Setup result"><div class="complete-mark" aria-hidden="true">✓</div><h2 id="completion-title"></h2><p id="completion-note"></p><a class="primary star-success" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">☆</span><span data-i18n="star">Star on GitHub</span><span aria-hidden="true">↗</span></a></section>
+        <p class="privacy"><span aria-hidden="true">◈</span><span data-i18n="privacy">Stored on your device. Loaded on the next start.</span></p>
+      </section>
+      <div class="visual" aria-hidden="true"><div class="orbital"><div class="disc"></div><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="orbit orbit-c"></div><div class="orbit orbit-d"></div><span class="satellite satellite-a"></span><span class="satellite satellite-b"></span><div class="monogram"><i></i><i></i><i></i></div><span class="orbit-caption">LESS NOISE.<br>MORE POSSIBILITY.</span><span class="coordinate">M / N — 01</span></div></div>
+    </main>
+    <footer>
+      <div class="footer-label"><span class="footer-line" aria-hidden="true"></span><span data-i18n="explore">Keep exploring</span></div>
+      <nav aria-label="MagicNet links">
+        <a class="star-link" href="https://github.com/LIghtJUNction/MagicNet" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">☆</span><span data-i18n="star">Star on GitHub</span><span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md" target="_blank" rel="noopener noreferrer"><span data-i18n="docs">Guide</span><span aria-hidden="true">↗</span></a>
+        <a href="https://discord.gg/asRwgK9FpA" target="_blank" rel="noopener noreferrer"><span data-i18n="community">Community</span><span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/LIghtJUNction/MagicNet/releases" target="_blank" rel="noopener noreferrer"><span data-i18n="releases">Releases</span><span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/LIghtJUNction/MagicNet/issues/new/choose" target="_blank" rel="noopener noreferrer"><span data-i18n="feedback">Report an issue</span><span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/LIghtJUNction" target="_blank" rel="noopener noreferrer"><span data-i18n="author">Meet the author</span><span aria-hidden="true">↗</span></a>
+        <a href="https://api.lmm.best" target="_blank" rel="noopener noreferrer"><span>LMM API</span><span aria-hidden="true">↗</span></a>
+      </nav>
+      <p class="signature"><span>MAGICNET — OPEN SOURCE</span><span data-i18n="local">PRIVATE, BY DESIGN</span></p>
+    </footer>
+    <noscript>Enable JavaScript to use this local setup page. / 请启用 JavaScript，或安装后通过模块 WebUI 配置。</noscript>
+  </div>
+</body>
+</html>

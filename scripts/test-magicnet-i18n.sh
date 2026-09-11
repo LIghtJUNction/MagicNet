@@ -95,6 +95,18 @@ for key in INSTALL_TITLE INSTALL_PROFILE INSTALL_ROW_PROFILE INSTALL_DEFAULTS IN
     [ -n "$russian" ] && [ -n "$english" ] || fail "English or Russian translation missing: $key"
     [ "$(KAM_UI_LANGUAGE=ru i18n "$key")" = "$russian" ] || fail "Russian lookup failed: $key"
 done
+# First install now uses the browser, with WebUI as the fallback. The remaining
+# CLI command, routing action and panel URL are still unlocalized protocol data.
 next_steps=$(KAM_UI_LANGUAGE=ru i18n INSTALL_NEXT_STEPS)
-case "$next_steps" in *'cli setup '*'cli api ui'*'REJECT / block'*'hostname=127.0.0.1&port=9090') ;; *) fail 'installer translated command or URL values' ;; esac
-printf 'ok - MagicNet English/Russian locales, picker, fallback, installer and protocol safety\n'
+case "$next_steps" in *'WebUI'*'cli api ui'*'REJECT / block'*'hostname=127.0.0.1&port=9090') ;; *) fail 'installer translated command or URL values' ;; esac
+
+. "$ROOT/src/MagicNet/lib/magicnet/onboarding/messages.sh"
+for key in MN_SETUP_WAIT MN_SETUP_OPEN MN_SETUP_MANUAL MN_SETUP_SAVED MN_SETUP_CLOSED MN_SETUP_UNAVAILABLE; do
+    for locale in zh en ru ja ko; do
+        # Both names come from the fixed lists above, never from user input.
+        eval "translated=\${_I18N_${key}_${locale}:-}"
+        [ -n "$translated" ] || fail "onboarding translation missing: $key/$locale"
+        [ "$(KAM_UI_LANGUAGE="$locale" i18n "$key")" = "$translated" ] || fail "onboarding lookup failed: $key/$locale"
+    done
+done
+printf 'ok - MagicNet locales, picker, fallback, installer, onboarding and protocol safety\n'
