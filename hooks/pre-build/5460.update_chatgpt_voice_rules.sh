@@ -66,20 +66,25 @@ PY
 }
 
 jq --slurpfile voice "$VOICE_RESPONSE" '
+  def canonical_voice($network; $port):
+    .network == $network and .port == $port and .outbound == "ai-chatgpt"
+    and (.ip_cidr | type) == "array"
+    and (keys == ["ip_cidr", "network", "outbound", "port"]);
   ($voice[0].prefixes
     | map(.ipv4Prefix // .ipv6Prefix)
     | reduce .[] as $prefix ([]; if index($prefix) == null then . + [$prefix] else . end)
   ) as $prefixes
-  | ([.route.rules | to_entries[]
-      | select(
-          .value.network == "udp"
-          and .value.port == 3478
-          and .value.outbound == "ai-chatgpt"
-          and (.value.ip_cidr | type) == "array"
-        )]) as $voice_rules
-  | if ($voice_rules | length) != 1
-    then error("expected exactly one canonical ChatGPT Voice route")
-    else .route.rules[$voice_rules[0].key].ip_cidr = $prefixes
+  | ([.route.rules[] | select(canonical_voice("udp"; 3478))]) as $udp
+  | ([.route.rules[] | select(canonical_voice("tcp"; 443))]) as $tcp
+  | if ($udp | length) != 1 or ($tcp | length) > 1
+    then error("expected one canonical UDP voice route and at most one TCP fallback")
+    else .route.rules |= map(
+      if canonical_voice("udp"; 3478) then
+        .ip_cidr = $prefixes,
+        (.ip_cidr = $prefixes | .network = "tcp" | .port = 443)
+      elif canonical_voice("tcp"; 443) then empty
+      else . end
+    )
     end
 ' "$CONFIG_FILE" >"$CONFIG_CANDIDATE" || {
     log_error "Canonical ChatGPT Voice route is missing or ambiguous"
