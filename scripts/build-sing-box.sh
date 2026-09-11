@@ -144,6 +144,5 @@ printf 'sing-box build: %s @ %s for %s/%s (CGO=%s)\n' \
     exit 1
 }
 chmod 0755 "$TMP_OUTPUT"
-mv -f "$TMP_OUTPUT" "$TMP_OUTPUT" 2>/dev/null || true
 mv -f "$TMP_OUTPUT" "$OUTPUT_PATH"
 printf '%s\n' "LIghtJUNction/sing-box@$SOURCE_REVISION"
