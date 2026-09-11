@@ -248,7 +248,7 @@ magicnet_start_kernel() {
 
     command -v magicnet_hotspot_startup_snapshot_clear >/dev/null 2>&1 &&
         magicnet_hotspot_startup_snapshot_clear
-    magicnet_warn "No supported sing-box core found or starting is disabled."
+    magicnet_warn "sing-box startup failed; see the preceding errors for the failed stage."
     return 1
 }
 
