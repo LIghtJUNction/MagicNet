@@ -47,7 +47,7 @@ magicnet_iptables_cmd() {
         return $?
     fi
     if magicnet_cmd_exists timeout; then
-        timeout "$(magicnet_xtables_timeout)" iptables "$@"
+        timeout "$(magicnet_xtables_timeout)" iptables -w 1 "$@"
     else
         # All supported Android builds ship toybox timeout.  Keep a bounded
         # xtables wait even on a minimal test/runtime image without it.
@@ -61,7 +61,7 @@ magicnet_ip6tables_cmd() {
         return $?
     fi
     if magicnet_cmd_exists timeout; then
-        timeout "$(magicnet_xtables_timeout)" ip6tables "$@"
+        timeout "$(magicnet_xtables_timeout)" ip6tables -w 1 "$@"
     else
         ip6tables -w 1 "$@"
     fi
@@ -99,6 +99,18 @@ magicnet_xtables_available() {
     return "$_xtables_rc"
 }
 
+# Preserve the command, status, and kernel error in the launch log.  Expected
+# misses from -C/-N are handled separately and must not generate warnings.
+magicnet_xtables_checked() (
+    if _checked_output=$("$@" 2>&1); then
+        return 0
+    else
+        _checked_rc=$?
+    fi
+    magicnet_warn "$* failed (exit $_checked_rc): $_checked_output"
+    return "$_checked_rc"
+)
+
 magicnet_xtables_ensure_rule() (
     _ensure_cmd="$1"
     _ensure_add="$2"
@@ -106,21 +118,24 @@ magicnet_xtables_ensure_rule() (
     shift 3
     _ensure_rc=0
     if [ -n "$_ensure_table" ]; then
-        "$_ensure_cmd" -t "$_ensure_table" -C "$@" >/dev/null 2>&1 || _ensure_rc=$?
+        _ensure_error=$("$_ensure_cmd" -t "$_ensure_table" -C "$@" 2>&1) || _ensure_rc=$?
     else
-        "$_ensure_cmd" -C "$@" >/dev/null 2>&1 || _ensure_rc=$?
+        _ensure_error=$("$_ensure_cmd" -C "$@" 2>&1) || _ensure_rc=$?
     fi
     case "$_ensure_rc" in
     0) return 0 ;;
     1)
         if [ -n "$_ensure_table" ]; then
-            "$_ensure_cmd" -t "$_ensure_table" "$_ensure_add" "$@" >/dev/null 2>&1
+            magicnet_xtables_checked "$_ensure_cmd" -t "$_ensure_table" "$_ensure_add" "$@"
         else
-            "$_ensure_cmd" "$_ensure_add" "$@" >/dev/null 2>&1
+            magicnet_xtables_checked "$_ensure_cmd" "$_ensure_add" "$@"
         fi
         ;;
     124 | 137 | 143) return 124 ;;
-    *) return "$_ensure_rc" ;;
+    *)
+        magicnet_warn "$_ensure_cmd rule check failed (exit $_ensure_rc): $_ensure_error"
+        return "$_ensure_rc"
+        ;;
     esac
 )
 
@@ -241,14 +256,14 @@ magicnet_enable_dns_capture() {
     _dns_capture_rc=0
     _dns_capture_ipv6_unavailable=0
     if ! magicnet_iptables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
-        magicnet_iptables_cmd -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+        magicnet_xtables_checked magicnet_iptables_cmd -t nat -L magicnet-dns-output || _dns_capture_rc=1
     fi
-    magicnet_iptables_cmd -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+    magicnet_xtables_checked magicnet_iptables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
     _dns_capture_check_rc=0
     magicnet_iptables_cmd -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_check_rc=$?
     case "$_dns_capture_check_rc" in
     0) ;;
-    1) magicnet_iptables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
+    1) magicnet_xtables_checked magicnet_iptables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output || _dns_capture_rc=1 ;;
     *) _dns_capture_rc=1 ;;
     esac
     # Direct UDP DNS servers are marked in the sing-box config. Keep those
@@ -277,14 +292,14 @@ magicnet_enable_dns_capture() {
             fi
         else
             if ! magicnet_ip6tables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
-                magicnet_ip6tables_cmd -t nat -L magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+                magicnet_xtables_checked magicnet_ip6tables_cmd -t nat -L magicnet-dns-output || _dns_capture_rc=1
             fi
-            magicnet_ip6tables_cmd -t nat -F magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1
+            magicnet_xtables_checked magicnet_ip6tables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
             _dns_capture_check_rc=0
             magicnet_ip6tables_cmd -t nat -C OUTPUT -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_check_rc=$?
             case "$_dns_capture_check_rc" in
             0) ;;
-            1) magicnet_ip6tables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output >/dev/null 2>&1 || _dns_capture_rc=1 ;;
+            1) magicnet_xtables_checked magicnet_ip6tables_cmd -t nat -I OUTPUT 1 -j magicnet-dns-output || _dns_capture_rc=1 ;;
             *) _dns_capture_rc=1 ;;
             esac
             if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
@@ -586,7 +601,9 @@ magicnet_disable_dns_leak_guard() (
     # Listing OUTPUT once is much cheaper than issuing four delete/check pairs
     # for every physical interface when the guard is disabled (the default).
     # Keep the saved state as a fallback and discover all current interfaces
-    # only when the ruleset cannot be inspected.
+    # only when the ruleset cannot be inspected.  A successful empty listing
+    # is authoritative: stale saved interfaces must not trigger -D/-C probes
+    # for missing REJECT extensions, especially in the other address family.
     _cleanup_ipv4_scan_failed=0
     _cleanup_ipv4_scan_rc=0
     _cleanup_ipv4_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_iptables_cmd)" ||
@@ -596,10 +613,9 @@ magicnet_disable_dns_leak_guard() (
     0) ;;
     *) _cleanup_ipv4_scan_failed=1 ;;
     esac
-    _cleanup_ipv4_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$_cleanup_ipv4_rules" |
-        awk 'NF && !seen[$0]++')
+    _cleanup_ipv4_ifaces="$_cleanup_ipv4_rules"
     if [ "$_cleanup_ipv4_scan_failed" -ne 0 ]; then
-        _cleanup_ipv4_ifaces=$(printf '%s\n%s\n' "$_cleanup_ipv4_ifaces" "$(magicnet_collect_physical_egress_ifaces)" |
+        _cleanup_ipv4_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$(magicnet_collect_physical_egress_ifaces)" |
             awk 'NF && !seen[$0]++')
     fi
 
@@ -623,10 +639,9 @@ magicnet_disable_dns_leak_guard() (
         0) ;;
         *) _cleanup_ipv6_scan_failed=1 ;;
         esac
-        _cleanup_ipv6_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$_cleanup_ipv6_rules" |
-            awk 'NF && !seen[$0]++')
+        _cleanup_ipv6_ifaces="$_cleanup_ipv6_rules"
         if [ "$_cleanup_ipv6_scan_failed" -ne 0 ]; then
-            _cleanup_ipv6_ifaces=$(printf '%s\n%s\n' "$_cleanup_ipv6_ifaces" "$(magicnet_collect_physical_egress_ifaces)" |
+            _cleanup_ipv6_ifaces=$(printf '%s\n%s\n' "$_cleanup_saved" "$(magicnet_collect_physical_egress_ifaces)" |
                 awk 'NF && !seen[$0]++')
         fi
         _cleanup_rc=0
