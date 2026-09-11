@@ -71,9 +71,13 @@ mock_xtables() {
             return 2
         fi
         if [ "$command" = -D ]; then
+            if [ -e "$WORK/transient-delete" ]; then
+                rm -f "$WORK/transient-delete"
+                return 1
+            fi
             if [ "${TEST_DELETE_FAIL:-0}" = 1 ]; then
                 printf 'permission denied deleting rule\n' >&2
-                return 4
+                return "${TEST_DELETE_RC:-4}"
             fi
             awk -v rule="$*" '$0 == rule && !removed { removed=1; next } { print }' "$rules" >"$rules.new"
             mv "$rules.new" "$rules"
@@ -136,11 +140,20 @@ if magicnet_iptables_ensure OUTPUT -j REJECT 2>"$WORK/timeout.log"; then fail 't
 unset TEST_CHECK_ERROR TEST_CHECK_RC
 
 printf '%s\n' 'OUTPUT -j REJECT' >>"$WORK/iptables-filter.rules"
+touch "$WORK/transient-delete"
+magicnet_xtables_delete_rule magicnet_iptables_cmd '' OUTPUT -j REJECT || fail 'transient deletion was not retried'
+if grep -Fxq 'OUTPUT -j REJECT' "$WORK/iptables-filter.rules"; then fail 'transient deletion left a rule'; fi
+
+printf '%s\n' 'OUTPUT -j REJECT' >>"$WORK/iptables-filter.rules"
 TEST_DELETE_FAIL=1
 before="$(wc -l <"$CALLS")"
 if magicnet_xtables_delete_rule magicnet_iptables_cmd '' OUTPUT -j REJECT 2>"$WORK/delete.log"; then fail 'failed deletion accepted'; fi
 [ "$(( $(wc -l <"$CALLS") - before ))" = 2 ] || fail 'failed deletion retried indefinitely'
 grep -Fq 'permission denied deleting rule' "$WORK/delete.log" || fail 'delete error was discarded'
 grep -Fxq 'OUTPUT -j REJECT' "$WORK/iptables-filter.rules" || fail 'failed deletion changed rule'
-unset TEST_DELETE_FAIL
+TEST_DELETE_RC=1
+before="$(wc -l <"$CALLS")"
+if magicnet_xtables_delete_rule magicnet_iptables_cmd '' OUTPUT -j REJECT 2>"$WORK/retry.log"; then fail 'persistent generic deletion error accepted'; fi
+[ "$(( $(wc -l <"$CALLS") - before ))" = 6 ] || fail 'transient deletion retries are not bounded'
+unset TEST_DELETE_FAIL TEST_DELETE_RC
 printf 'Android xtables startup regression tests passed\n'
