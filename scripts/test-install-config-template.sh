@@ -38,10 +38,11 @@ class InstallTemplate(unittest.TestCase):
             if content is not None:
                 archive.writestr('.config/sing-box/config.json', content)
 
-    def run_helper(self, shell, success=True, prefix=''):
+    def run_helper(self, shell, success=True, prefix='', extra_env=None):
         result = subprocess.run(
             shell + ['-c', helper + '\n' + prefix + '\nmagicnet_install_config_template'],
-            env={**os.environ, 'MODPATH': str(self.mod), 'ZIPFILE': str(self.archive)},
+            env={**os.environ, 'MODPATH': str(self.mod), 'ZIPFILE': str(self.archive),
+                 'MAGICNET_BACKUP_READY': '0', **(extra_env or {})},
             capture_output=True, timeout=10,
         )
         self.assertEqual(result.returncode == 0, success, result.stderr.decode())
@@ -71,6 +72,40 @@ class InstallTemplate(unittest.TestCase):
                 self.assertFalse((self.config / 'config.json.update').exists())
                 for path, content in preserved.items():
                     self.assertEqual(path.read_bytes(), content)
+
+    def test_manager_path_has_required_file_tools(self):
+        tools = self.root / 'manager-bin'
+        tools.mkdir()
+        for name in ('sh', 'bash', 'busybox', 'chmod', 'mkdir', 'mv', 'rm', 'unzip'):
+            path = shutil.which(name)
+            if path:
+                (tools / name).symlink_to(path)
+        for shell in shells:
+            with self.subTest(shell=shell):
+                self.run_helper(shell, extra_env={'PATH': str(tools)})
+                self.assertEqual(self.active.read_bytes(), template)
+
+    def test_upgrade_dispatch_does_not_overwrite_regenerated_config(self):
+        library = self.mod / 'lib/magicnet/install_config.sh'
+        library.parent.mkdir(parents=True)
+        library.write_text(
+            'magicnet_refresh_install_config() {\n'
+            '  printf \'%s\\n\' \'{"restored_nodes":true}\' >"$MODPATH/.config/sing-box/config.json"\n'
+            '}\n'
+        )
+        for shell in shells:
+            with self.subTest(shell=shell):
+                self.run_helper(shell, extra_env={'MAGICNET_BACKUP_READY': '1'})
+                self.assertEqual(self.active.read_bytes(), b'{"restored_nodes":true}\n')
+
+    def test_failed_upgrade_does_not_install_bare_template(self):
+        library = self.mod / 'lib/magicnet/install_config.sh'
+        library.parent.mkdir(parents=True)
+        library.write_text('magicnet_refresh_install_config() { return 1; }\n')
+        for shell in shells:
+            with self.subTest(shell=shell):
+                self.run_helper(shell, success=False, extra_env={'MAGICNET_BACKUP_READY': '1'})
+                self.assertEqual(self.active.read_bytes(), b'{"old_template":true}\n')
 
     def test_fresh_install(self):
         for shell in shells:

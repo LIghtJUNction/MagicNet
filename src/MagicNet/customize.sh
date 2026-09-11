@@ -99,7 +99,9 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
       printf '%s\n' "$MAGICNET_BACKUP_MARKER_VALUE" >"$MAGICNET_BACKUP_DIR/$MAGICNET_BACKUP_MARKER"
   ) || abort "! failed to create the MagicNet migration backup"
   MAGICNET_BACKUP_ACTIVE=1
+  # Snapshot the old full file for node recovery and a private rollback copy.
   for _item in \
+    ".config/sing-box/config.json" \
     ".config/sing-box/subscription.url" \
     ".config/sing-box/subscription.local" \
     ".config/sing-box/subscription.user-agent" \
@@ -316,7 +318,6 @@ if [ "$MAGICNET_BACKUP_READY" = 1 ]; then
       cp -a "${MAGICNET_BACKUP_DIR}/${_item}" "${MODPATH}/${_item}" || abort "! failed to restore MagicNet migration data: $_item"
     fi
   done
-  magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
   unset _item
 fi
 
@@ -447,10 +448,15 @@ rm -f "${MODPATH}/kam.log" "${MODPATH}/cli.legacy.sh" "${MODPATH}/mcp-server.sh"
 
 # Subscription inputs/cache were restored above; the generated config is not
 # user state. Always take the whole template from this release, even when the
-# manager pre-extracted the ZIP over an existing directory. Startup replays the
-# cached nodes (or fetches the saved subscription) using the normal validator.
-# Do not run the core or require a network connection inside the installer.
+# manager pre-extracted the ZIP over an existing directory. Upgrades rebuild
+# saved nodes before replacing the active file; fresh installs use the template.
+# Neither path fetches subscriptions or starts the core inside the installer.
 magicnet_install_config_template() (
+  if [ "${MAGICNET_BACKUP_READY:-0}" = 1 ]; then
+    . "${MODPATH}/lib/magicnet/install_config.sh" || return 1
+    magicnet_refresh_install_config || return 1
+    return 0
+  fi
   _config_dir="${MODPATH}/.config/sing-box"
   for _path in "${MODPATH}/.config" "$_config_dir" "$_config_dir/config.json"; do
     [ ! -L "$_path" ] || return 1
@@ -482,6 +488,8 @@ for _magicnet_entry in action.sh service.sh boot-completed.sh; do
   set_perm "${MODPATH}/${_magicnet_entry}" 0 0 0755 u:object_r:system_file:s0
 done
 unset _magicnet_entry
+
+magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
 
 import launcher
 launch url "https://github.com/LIghtJUNction/MagicNet/blob/main/src/MagicNet/README.md"
