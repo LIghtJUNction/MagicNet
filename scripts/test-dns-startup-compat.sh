@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-# shellcheck disable=SC1091
+# shellcheck source=src/MagicNet/lib/magicnet/network.sh
 . "${NETWORK_SOURCE:-$ROOT/src/MagicNet/lib/magicnet/network.sh}"
 magicnet_warn() { printf '%s\n' "$*"; }
 magicnet_log() { :; }
