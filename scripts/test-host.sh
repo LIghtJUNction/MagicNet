@@ -85,6 +85,7 @@ fi
 bash scripts/test-dns-leak-guard-timeout.sh
 bash scripts/test-dns-startup-compat.sh
 bash scripts/test-submodule-updates.sh
+bash scripts/test-build-sing-box-source.sh
 bash scripts/test-subscription-activation-order.sh
 bash scripts/test-subscription-transaction-atomicity.sh
 bash scripts/test-subscription-update-lock-safety.sh
