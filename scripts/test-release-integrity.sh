@@ -142,14 +142,14 @@ singbox_base_version="$(tr -d '\r\n' <"$ROOT/sing-box.version")"
 [[ "$singbox_base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
     fail "sing-box base version lock is invalid"
 
-read -r singbox_mode singbox_index_revision _ < <(
+read -r singbox_mode _ < <(
     git -C "$ROOT" ls-files --stage -- sing-box
 )
 [[ "$singbox_mode" = "160000" ]] || fail "sing-box source is not recorded as a gitlink"
-singbox_worktree_revision="$(git -C "$ROOT/sing-box" rev-parse HEAD 2>/dev/null)" ||
-    fail "sing-box source submodule is not initialized"
-[[ "$singbox_worktree_revision" = "$singbox_index_revision" ]] ||
-    fail "sing-box source checkout differs from the recorded gitlink"
+# Remote-update builds are checked against their recorded recursive snapshot.
+# Without a snapshot, the verifier still requires the original pinned gitlinks.
+bash "$ROOT/scripts/verify-submodule-revisions.sh" ||
+    fail "submodule revision integrity failed"
 [[ -x "$ROOT/scripts/build-sing-box.sh" ]] || fail "sing-box source build helper is not executable"
 singbox_default_tags="$(tr -d '\r\n' <"$ROOT/sing-box/release/DEFAULT_BUILD_TAGS_OTHERS")"
 [[ ",$singbox_default_tags," == *,with_ebpf,* ]] ||
