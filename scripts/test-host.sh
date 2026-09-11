@@ -84,6 +84,7 @@ if [ "$with_routing_assets" -eq 1 ]; then
 fi
 bash scripts/test-dns-leak-guard-timeout.sh
 sh scripts/test-startup-network-safety.sh
+bash scripts/test-submodule-updates.sh
 bash scripts/test-subscription-activation-order.sh
 bash scripts/test-subscription-transaction-atomicity.sh
 bash scripts/test-subscription-update-lock-safety.sh

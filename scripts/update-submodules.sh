@@ -7,6 +7,8 @@ case "${1:-}" in
     cd "$ROOT"
     MAGICNET_SUBMODULE_UPDATE_SCRIPT="$ROOT/scripts/update-submodules.sh"
     export MAGICNET_SUBMODULE_UPDATE_SCRIPT
+    # A failed refresh must not leave a prior build's snapshot looking current.
+    rm -f "$ROOT/submodule-revisions.txt"
     ;;
 --nested) ;;
 *) printf 'usage: bash scripts/update-submodules.sh\n' >&2; exit 64 ;;
@@ -32,11 +34,12 @@ git submodule update --remote --no-fetch --checkout
 git submodule foreach --quiet 'bash "$MAGICNET_SUBMODULE_UPDATE_SCRIPT" --nested'
 
 if [[ $# -eq 0 ]]; then
-    git submodule status --recursive
+    git submodule status --recursive >"$ROOT/submodule-revisions.txt"
+    cat "$ROOT/submodule-revisions.txt"
     if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
         {
             printf '\n### Build submodule revisions\n\n```text\n'
-            git submodule status --recursive
+            cat "$ROOT/submodule-revisions.txt"
             printf '```\n'
         } >>"$GITHUB_STEP_SUMMARY"
     fi
