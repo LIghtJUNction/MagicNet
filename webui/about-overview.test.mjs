@@ -80,7 +80,7 @@ assert.match(app, /type TabKey =[\s\S]*"about"/);
 assert.match(app, /import\("@\/components\/pages\/AboutPage\.vue"\)/);
 assert.match(app, /key: "about", label: "流量路径"/);
 assert.match(app, /@goto-tab="setTab"/);
-assert.match(app, /<KeepAlive :max="11">/);
+assert.match(app, /<KeepAlive :max="12">/);
 
 const controlPage = readFileSync(
   new URL("./src/components/pages/ControlPage.vue", import.meta.url),

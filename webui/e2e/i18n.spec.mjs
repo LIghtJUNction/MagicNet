@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const tabs = ['control', 'about', 'apps', 'block', 'chain', 'subs', 'config', 'webui', 'health', 'tools', 'output'];
+const tabs = ['control', 'about', 'apps', 'block', 'chain', 'subs', 'tailscale', 'config', 'webui', 'health', 'tools', 'output'];
 async function changeLanguage(page, language) {
   const header = page.locator('.mn-language-header select');
   if (await header.isVisible()) {
