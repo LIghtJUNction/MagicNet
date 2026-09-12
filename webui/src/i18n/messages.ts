@@ -5,6 +5,8 @@ import control from "./catalogs/control.ts";
 import tools from "./catalogs/tools.ts";
 import diagnostics from "./catalogs/diagnostics.ts";
 
+import tailscale from "./catalogs/tailscale.ts";
+
 export const messages: Record<string, readonly string[]> = {
   ...shell,
   ...routing,
@@ -12,4 +14,5 @@ export const messages: Record<string, readonly string[]> = {
   ...control,
   ...tools,
   ...diagnostics,
+  ...tailscale,
 };
