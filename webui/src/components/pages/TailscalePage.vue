@@ -97,7 +97,7 @@ async function submit(): Promise<void> {
     }
     message.value = resultMessage(result);
     hasError.value = result.stage !== "done";
-    if (result.stage === "done" || result.stage === "restart") await refreshStatus(true);
+    if (result.stage === "done" || result.stage === "restart") await refreshStatus(undefined, false);
   } finally {
     draft.authKey = "";
     saving.value = false;
@@ -110,7 +110,7 @@ async function retryRestart(): Promise<void> {
     const outcome = await runPrivateCli("service restart sing-box", t("重启核心"), "service restart sing-box");
     message.value = resultMessage({ stage: outcome.ok ? "done" : "restart", saved: true });
     hasError.value = !outcome.ok;
-    await refreshStatus(true);
+    await refreshStatus(undefined, false);
   } finally { saving.value = false; }
 }
 function discardDraft(): void {
