@@ -8,6 +8,27 @@
     "ja": {"language": "言語", "title": "購読を追加", "label": "購読 URL", "save": "保存して続ける", "skip": "後で", "star": "GitHub Star", "docs": "ガイド", "releases": "リリース", "feedback": "問題を報告", "author": "作者について", "submitting": "保存中…", "checking": "接続中…", "invalid": "有効な HTTPS 購読 URL を入力してください。", "too_long": "URL は8192バイト以内にしてください。", "forbidden": "期限切れです。インストーラーから開き直してください。", "missing_token": "インストーラーのリンクを # 以降も含めて開いてください。", "network": "結果を確認できません。インストーラーを確認してください。", "busy": "もう一度お試しください。", "existing": "設定済みです。上書きしていません。", "finished": "設定終了。インストーラーに戻ってください。", "unsafe_path": "安全でないパスです。後で WebUI から設定してください。", "save_failed": "保存未確認。インストーラーを確認してください。", "format": "未対応の形式です。", "method": "未対応のリクエストです。", "missing": "設定を利用できません。", "saved_title": "リンクを保存しました。", "saved_note": "インストーラーに戻ってください。", "skipped_title": "後で設定", "skipped_note": "インストーラーに戻ってください。", "telegram": "Telegram に参加", "discord": "Discord に参加", "links": "プロジェクトのリンク"},
     "ko": {"language": "언어", "title": "구독 추가", "label": "구독 링크", "save": "저장하고 계속", "skip": "나중에", "star": "GitHub Star", "docs": "사용 안내", "releases": "새 버전", "feedback": "문제 신고", "author": "개발자 소개", "submitting": "저장 중…", "checking": "연결 중…", "invalid": "올바른 HTTPS 구독 링크를 입력하세요.", "too_long": "링크는 8192바이트 이하여야 합니다.", "forbidden": "만료된 링크입니다. 설치 프로그램에서 다시 여세요.", "missing_token": "설치 프로그램의 전체 링크를 # 뒤까지 여세요.", "network": "결과를 확인하지 못했습니다. 설치 프로그램을 확인하세요.", "busy": "다시 시도하세요.", "existing": "이미 설정되어 있습니다. 덮어쓰지 않았습니다.", "finished": "설정이 끝났습니다. 설치 프로그램으로 돌아가세요.", "unsafe_path": "안전하지 않은 경로입니다. 나중에 WebUI에서 설정하세요.", "save_failed": "저장을 확인하지 못했습니다. 설치 프로그램을 확인하세요.", "format": "지원하지 않는 형식입니다.", "method": "지원하지 않는 요청입니다.", "missing": "설정을 사용할 수 없습니다.", "saved_title": "링크를 저장했어요.", "saved_note": "설치 프로그램으로 돌아가세요.", "skipped_title": "나중에 설정", "skipped_note": "설치 프로그램으로 돌아가세요.", "telegram": "Telegram 참여", "discord": "Discord 참여", "links": "프로젝트 링크"}
   };
+  const help = {
+    en: 'Edit existing URLs or add one per line (up to 5). Later keeps your current settings.',
+    zh: '可替换已有链接，或换行新增；每行一个，最多 5 个。“稍后”保留原设置。',
+    'zh-TW': '可替換既有連結，或換行新增；每行一個，最多 5 個。「稍後」保留原設定。',
+    ru: 'Измените ссылки или добавьте по одной в строке (до 5). «Позже» сохранит настройки.',
+    ja: '既存の URL を編集するか、1行に1件追加できます（最大5件）。「後で」は設定を保持します。',
+    ko: '기존 링크를 수정하거나 한 줄에 하나씩 추가하세요(최대 5개). 나중에는 기존 설정을 유지합니다.'
+  };
+  const conflict = {
+    en: 'Subscriptions changed while this page was open. Reopen setup to review them.',
+    zh: '页面打开后订阅已被其他操作修改，请重新打开设置确认。',
+    'zh-TW': '頁面開啟後訂閱已被其他操作修改，請重新開啟設定確認。',
+    ru: 'Подписки изменились. Откройте настройку заново.',
+    ja: '購読が変更されました。設定を開き直してください。',
+    ko: '구독이 변경되었습니다. 설정을 다시 여세요.'
+  };
+  Object.keys(translations).forEach((key) => {
+    translations[key].help = help[key];
+    translations[key].existing = conflict[key];
+    translations[key].title = { en: 'Manage subscriptions', zh: '设置订阅', 'zh-TW': '設定訂閱', ru: 'Настройка подписок', ja: '購読の設定', ko: '구독 설정' }[key];
+  });
   const byId = (id) => document.getElementById(id);
   const input = byId('subscription');
   const status = byId('status');
@@ -65,35 +86,44 @@
     pending = true;
     document.body.dataset.pending = 'true';
     lock(true);
-    show(action === 'health' ? 'checking' : 'submitting', false);
+    const reading = action === 'health' || action === 'subscriptions';
+    show(reading ? 'checking' : 'submitting', false);
     const xhr = new XMLHttpRequest();
-    xhr.open(action === 'health' ? 'GET' : 'POST', '/cgi-bin/setup/' + action, true);
+    xhr.open(reading ? 'GET' : 'POST', '/cgi-bin/setup/' + action, true);
     xhr.timeout = 10000;
     xhr.setRequestHeader('X-Setup-Token', token);
-    if (action !== 'health') xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
+    if (!reading) xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
     function settled() { pending = false; document.body.dataset.pending = 'false'; }
     xhr.onload = function () {
       settled();
+      if (xhr.status === 200 && action === 'subscriptions') {
+        input.value = xhr.responseText.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#')).join('\n');
+        lock(false); show('', false); return;
+      }
       let code = 'network';
       try { code = JSON.parse(xhr.responseText).code; } catch (_) { /* Never report unconfirmed success. */ }
-      if (xhr.status === 200 && action === 'health' && code === 'ready') { lock(false); show('', false); return; }
+      if (xhr.status === 200 && action === 'health' && code === 'ready') { request('subscriptions', ''); return; }
       if (xhr.status === 200 && ((action === 'save' && code === 'saved') || (action === 'skip' && code === 'skipped'))) { done(code); return; }
-      lock(['forbidden', 'finished', 'existing', 'unsafe_path'].includes(code));
+      lock(reading || ['forbidden', 'finished', 'existing', 'unsafe_path'].includes(code));
       show(Object.prototype.hasOwnProperty.call(translations[language], code) ? code : 'network', true);
     };
-    xhr.onerror = xhr.ontimeout = function () { settled(); lock(false); show('network', true); };
-    xhr.send(action === 'health' ? null : value);
+    xhr.onerror = xhr.ontimeout = function () { settled(); lock(reading); show('network', true); };
+    xhr.send(reading ? null : value);
   }
   select.addEventListener('change', function () { language = supported(select.value) ? select.value : 'en'; render(); });
   byId('setup-form').addEventListener('submit', function (event) {
     event.preventDefault();
     const value = input.value.trim();
     try {
+      const values = value.split(/\r?\n/).map((line) => line.trim());
+      if (values.length > 5) throw new Error('invalid');
+      for (const value of values) {
       const parsed = new URL(value);
       if (!value.startsWith('https://') || parsed.protocol !== 'https:' || !parsed.hostname || /[\x00-\x20\x7f@#\\]/.test(value)) throw new Error('invalid');
+      }
       if (new TextEncoder().encode(value).length > 8192) { show('too_long', true); return; }
     } catch (_) { show('invalid', true); return; }
-    request('save', value);
+    request('save', value.split(/\r?\n/).map((line) => line.trim()).join('\n'));
   });
   byId('skip').addEventListener('click', function () { request('skip', ''); });
   render();

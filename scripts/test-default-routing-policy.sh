@@ -5,6 +5,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_DIR="${MAGICNET_ROUTING_CONFIG_DIR:-$ROOT/src/MagicNet/.config/sing-box}"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
+# Keep legacy configuration regression coverage; maintained templates are
+# checked by classifier/first-match contracts instead of embedded list equality.
+if jq -e 'any(.route.rule_set[]?; .tag == "meta-openai")' "$CONFIG_FILE" >/dev/null; then
+    exec python3 "$ROOT/scripts/test-maintained-routing.py" --assets
+fi
+
 fail() {
     printf 'default routing policy test failed: %s\n' "$*" >&2
     exit 1
@@ -938,8 +944,8 @@ def binary_rule_set_matches(tag, domain):
     if len(definitions) != 1:
         raise AssertionError(f"rule-set {tag} has {len(definitions)} definitions")
     definition = definitions[0]
-    if definition.get("type") != "local" or definition.get("format") != "binary":
-        raise AssertionError(f"rule-set {tag} is not a local binary rule-set")
+    if definition.get("type") != "local" or definition.get("format") not in ("binary", "source"):
+        raise AssertionError(f"rule-set {tag} is not a supported local rule-set")
     rule_set_path = definition.get("path")
     if not isinstance(rule_set_path, str) or not rule_set_path:
         raise AssertionError(f"rule-set {tag} has no valid path")
@@ -948,7 +954,7 @@ def binary_rule_set_matches(tag, domain):
     if not os.path.isfile(rule_set_path):
         raise AssertionError(f"rule-set binary does not exist: {rule_set_path}")
     result = subprocess.run(
-        ["sing-box", "rule-set", "match", "-f", "binary", rule_set_path, domain],
+        ["sing-box", "rule-set", "match", "-f", definition["format"], rule_set_path, domain],
         check=True,
         capture_output=True,
         text=True,
@@ -2119,7 +2125,7 @@ if generic_index != specialized_fallback_indexes[-1] + 1:
     )
 telegram_ip_routes = [
     index for index, rule in enumerate(rules)
-    if rule == {"ip_cidr": telegram_ip_cidrs, "outbound": "telegram-proxy"}
+    if rule == {"rule_set": ["lyc-geoip-telegram"], "outbound": "telegram-proxy"}
 ]
 final_keyword_routes = [
     index for index, rule in enumerate(rules)

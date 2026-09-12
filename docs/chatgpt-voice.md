@@ -3,14 +3,18 @@
 ## 本次修复的范围
 
 OpenAI 的[网络建议](https://help.openai.com/en/articles/9247338)列出 UDP 3478
-以及 UDP 不可用时的 TCP 443 回退。构建钩子会将官方语音 IP 地址同时写入这两条
-精确的协议/端口规则，TCP 规则紧邻 UDP 规则，均指向 `ai-chatgpt`。
+以及 UDP 不可用时的 TCP 443 回退。这两条规则共同引用 `sukka-chatgpt-voice`，
+TCP 规则紧邻 UDP 规则，均指向 `ai-chatgpt`，配置不再内嵌业务 IP 清单。
 不会代理所有 443 连接，也不会将 UDP 443 或 TCP 3478 当作这条语音规则。
-下载失败、非法地址或规范规则重复时保留原配置并使构建失败。
+构建从 [SukkaLab 的规则集](https://github.com/SukkaLab/ruleset.skk.moe/blob/master/sing-box/ip/ai.json)
+获取数据；[生成源码](https://github.com/SukkaW/Surge/blob/master/Build/build-ai-cidr.ts)
+从 OpenAI 官方清单更新。下载按不可变提交读取，校验后原子替换本地规则文件。
+下载失败、非法地址或空集合使构建失败，保留上次规则文件。
 
-这是构建时更新。普通订阅刷新不会下载新的语音 IP；保留旧配置的设备需要检查
-实际生效的 `route.rules`。同步配置仓库可能替换打包时生成的规则，因此同步后也需
-确认 UDP 3478 和 TCP 443 均有对应的官方语音 IP 规则。不要覆盖自定义规则来排障。
+这是构建时更新，规则随安装包分发，启动不依赖 GitHub 可达性。
+普通订阅刷新不会更新该文件；安装新构建获取新的上游规则。
+Telegram IP 分流复用已有的 `lyc-geoip-telegram` 规则集。
+内网及保留地址规则仍保留。不要覆盖自定义规则来排障。
 
 内核的连接链按连接协议读取 URLTest 选择，避免将 UDP 节点显示成 TCP 节点。
 该记录仍是路由时的选择快照；发生并发切组时不能用它证明最终发包路径。

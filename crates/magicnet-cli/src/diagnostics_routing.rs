@@ -15,6 +15,14 @@ const CANONICAL_CN_RULE_SETS: [&str; 7] = [
     "karing-acl4ssr-china-domain",
     "karing-acl4ssr-china-ip",
 ];
+const MAINTAINED_CN_RULE_SETS: [&str; 6] = [
+    "lyc-geosite-cn",
+    "metacubex-geosite-cn",
+    "karing-acl4ssr-china-domain",
+    "lyc-geoip-cn",
+    "metacubex-geoip-cn",
+    "karing-acl4ssr-china-ip",
+];
 const PROXY_POLICY_OUTBOUND_TAGS: [&str; 7] = [
     "ai-proxy",
     "dev-proxy",
@@ -106,6 +114,7 @@ struct RoutingPolicyStatus {
     final_resolution: Resolution,
     cn_direct_resolution: Resolution,
     cn_rule_sets: usize,
+    cn_rule_sets_required: usize,
     cn_priority: CnPriority,
     catchall_direct: usize,
     invalid_rules: usize,
@@ -118,6 +127,7 @@ impl RoutingPolicyStatus {
             final_resolution: Resolution::Invalid,
             cn_direct_resolution: Resolution::Invalid,
             cn_rule_sets: 0,
+            cn_rule_sets_required: CANONICAL_CN_RULE_SETS.len(),
             cn_priority: CnPriority::Invalid,
             catchall_direct: 0,
             invalid_rules: 0,
@@ -128,7 +138,7 @@ impl RoutingPolicyStatus {
         self.valid_json == JsonStatus::Ok
             && self.final_resolution == Resolution::Proxy
             && self.cn_direct_resolution == Resolution::Direct
-            && self.cn_rule_sets == CANONICAL_CN_RULE_SETS.len()
+            && self.cn_rule_sets == self.cn_rule_sets_required
             && self.cn_priority == CnPriority::Ok
             && self.catchall_direct == 0
             && self.invalid_rules == 0
@@ -192,6 +202,16 @@ fn analyze_config(config: &Value) -> RoutingPolicyStatus {
         }
         None => &[],
     };
+    let maintained = rules.iter().any(|rule| {
+        strict_listable_strings(rule.get("rule_set"))
+            .is_some_and(|tags| tags.contains(&"meta-openai"))
+    });
+    let required_cn: &[&str] = if maintained {
+        &MAINTAINED_CN_RULE_SETS
+    } else {
+        &CANONICAL_CN_RULE_SETS
+    };
+    let mut cn_ip_seen = false;
     for rule in rules {
         let Some(rule) = rule.as_object() else {
             invalid_rules += 1;
@@ -207,17 +227,43 @@ fn analyze_config(config: &Value) -> RoutingPolicyStatus {
         if outbound == Some("cn-direct") {
             if let Some(tags) = &rule_set_tags {
                 for tag in tags {
-                    if CANONICAL_CN_RULE_SETS.contains(tag) {
+                    if required_cn.contains(tag) {
                         cn_rule_sets.insert(*tag);
+                    }
+                    if [
+                        "lyc-geoip-cn",
+                        "metacubex-geoip-cn",
+                        "karing-acl4ssr-china-ip",
+                    ]
+                    .contains(tag)
+                    {
+                        cn_ip_seen = true;
                     }
                 }
             }
         }
-        if rule_set_tags.is_some()
+        if !maintained
+            && rule_set_tags.is_some()
             && outbound.is_some_and(|tag| PROXY_POLICY_OUTBOUND_TAGS.contains(&tag))
             && cn_rule_sets.len() < CANONICAL_CN_RULE_SETS.len()
         {
             cn_priority = CnPriority::Reordered;
+        }
+        if let Some(tags) = rule_set_tags.as_ref().filter(|_| maintained) {
+            // Domain-specific services must beat country IP ownership. Only
+            // the generic foreign fallback belongs after the country split.
+            let service = tags
+                .iter()
+                .any(|tag| tag.starts_with("meta-") || *tag == "sukka-chatgpt-voice");
+            let proxy_service = outbound.is_some_and(|tag| {
+                PROXY_POLICY_OUTBOUND_TAGS.contains(&tag) || tag.starts_with("ai-") || tag == "bing"
+            });
+            if (cn_ip_seen && service && proxy_service)
+                || (tags.contains(&"metacubex-geosite-geolocation-not-cn")
+                    && cn_rule_sets.len() < required_cn.len())
+            {
+                cn_priority = CnPriority::Reordered;
+            }
         }
         if condition == RuleCondition::Unconditional && catchall_target_is_direct(rule, &resolver) {
             catchall_direct += 1;
@@ -229,6 +275,7 @@ fn analyze_config(config: &Value) -> RoutingPolicyStatus {
         final_resolution,
         cn_direct_resolution,
         cn_rule_sets: cn_rule_sets.len(),
+        cn_rule_sets_required: required_cn.len(),
         cn_priority,
         catchall_direct,
         invalid_rules,
@@ -758,6 +805,46 @@ mod tests {
 
     fn status(config: Value) -> RoutingPolicyStatus {
         analyze_config(&config)
+    }
+
+    fn maintained_runtime_config() -> Value {
+        let mut config = runtime_config();
+        config["route"]["rules"] = json!([
+            {"rule_set": ["meta-openai"], "outbound": "proxy"},
+            {"rule_set": ["meta-category-dev"], "outbound": "dev-proxy"},
+            {"rule_set": super::MAINTAINED_CN_RULE_SETS, "outbound": "cn-direct"},
+            {"rule_set": ["metacubex-geosite-geolocation-not-cn"], "outbound": "proxy-rule"}
+        ]);
+        config
+    }
+
+    #[test]
+    fn maintained_services_before_country_ip_are_healthy() {
+        assert!(status(maintained_runtime_config()).ok());
+    }
+
+    #[test]
+    fn maintained_country_ip_before_services_is_rejected() {
+        let mut config = maintained_runtime_config();
+        config["route"]["rules"].as_array_mut().unwrap().swap(1, 2);
+        assert_eq!(status(config).cn_priority, CnPriority::Reordered);
+    }
+
+    #[test]
+    fn maintained_missing_country_classifier_is_not_healthy() {
+        let mut config = maintained_runtime_config();
+        config["route"]["rules"][2]["rule_set"]
+            .as_array_mut()
+            .unwrap()
+            .pop();
+        assert!(!status(config).ok());
+    }
+
+    #[test]
+    fn maintained_foreign_fallback_before_country_split_is_rejected() {
+        let mut config = maintained_runtime_config();
+        config["route"]["rules"].as_array_mut().unwrap().swap(2, 3);
+        assert_eq!(status(config).cn_priority, CnPriority::Reordered);
     }
 
     fn status_with_rule(rule: Value) -> RoutingPolicyStatus {
@@ -1935,7 +2022,8 @@ mod tests {
                 valid_json: JsonStatus::Ok,
                 final_resolution: Resolution::Block,
                 cn_direct_resolution: Resolution::Direct,
-                cn_rule_sets: 7,
+                cn_rule_sets: 6,
+                cn_rule_sets_required: 6,
                 cn_priority: CnPriority::Ok,
                 catchall_direct: 0,
                 invalid_rules: 0,

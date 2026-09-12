@@ -5,6 +5,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_DIR="${MAGICNET_ROUTING_CONFIG_DIR:-$ROOT/src/MagicNet/.config/sing-box}"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
+# Keep legacy configuration regression coverage; maintained templates are
+# checked by classifier/first-match contracts instead of embedded list equality.
+if jq -e 'any(.route.rule_set[]?; .tag == "meta-openai")' "$CONFIG_FILE" >/dev/null; then
+    exec python3 "$ROOT/scripts/test-maintained-routing.py"
+fi
+
 [[ -f "$CONFIG_FILE" ]] || {
     printf 'WeChat routing test failed: missing config: %s\n' "$CONFIG_FILE" >&2
     exit 1

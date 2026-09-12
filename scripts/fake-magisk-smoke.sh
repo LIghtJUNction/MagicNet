@@ -117,6 +117,13 @@ fi
 cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
 
 mkdir -p "$MOCK_BIN"
+# This host fixture uses util-linux flock. Do not accidentally select the
+# distro BusyBox as if it were the Android root manager's private toolset.
+cat >"$MOCK_BIN/busybox" <<'SH'
+#!/bin/sh
+exit 127
+SH
+chmod +x "$MOCK_BIN/busybox"
 if [[ -n "$ZIP_PATH" ]]; then
     "$ROOT/scripts/package-smoke.sh" "$ZIP_PATH" >/dev/null
     mkdir -p "$MODDIR"

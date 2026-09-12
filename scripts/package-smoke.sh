@@ -363,6 +363,10 @@ if any(rule in managed_ipv6_guards for rule in route_rules):
     raise SystemExit("packaged dual-stack config contains a managed IPv6 reject guard")
 outbound_tags = {outbound.get("tag") for outbound in config.get("outbounds", [])}
 outbounds = {outbound.get("tag"): outbound for outbound in config.get("outbounds", [])}
+if any(d.get("tag") == "meta-openai" for d in config.get("route", {}).get("rule_set", [])):
+    # The extracted maintained template is validated below against actual assets
+    # and ordered route/DNS cases; embedded-list equality applies only to legacy templates.
+    sys.exit(0)
 
 canonical_cloudflare_dns = {
     "type": "https",
@@ -2037,6 +2041,7 @@ mkdir -p "$routing_package_root"
 unzip -oq "$ZIP_PATH" \
     '.config/sing-box/config.json' \
     '.config/sing-box/rules/*.srs' \
+    '.config/sing-box/rules/*.json' \
     -d "$routing_package_root"
 [[ -f "$routing_config_dir/config.json" ]] || fail "extracted routing config is missing"
 printf 'running extracted package default routing policy test\n'

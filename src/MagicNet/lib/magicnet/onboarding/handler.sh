@@ -29,6 +29,14 @@ case "${HTTP_SEC_FETCH_SITE:-}" in '' | same-origin | none) ;; *) reply '403 For
 if [ "${REQUEST_METHOD:-}" = GET ] && [ "${PATH_INFO:-}" = /health ]; then
     reply '200 OK' ready
 fi
+if [ "${REQUEST_METHOD:-}" = GET ] && [ "${PATH_INFO:-}" = /subscriptions ]; then
+    [ ! -e "$run/result" ] || reply '409 Conflict' finished
+    printf 'Status: 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\r\n'
+    if [ -f "$run/baseline-subscription.url" ]; then
+        "$bb" cat "$run/baseline-subscription.url"
+    fi
+    exit 0
+fi
 [ "${REQUEST_METHOD:-}" = POST ] || reply '405 Method Not Allowed' method
 case "${PATH_INFO:-}" in /save | /skip) ;; *) reply '404 Not Found' missing ;; esac
 "$bb" mkdir "$run/submit.lock" 2>/dev/null || reply '409 Conflict' busy
@@ -46,24 +54,29 @@ case "$length" in '' | *[!0-9]* | 0*) reply '400 Bad Request' invalid ;; esac
 body=$("$bb" mktemp "$run/request.XXXXXX")
 "$bb" dd bs=1 count="$length" of="$body" 2>/dev/null || reply '400 Bad Request' invalid
 [ "$("$bb" wc -c <"$body" | "$bb" tr -d ' ')" = "$length" ] || reply '400 Bad Request' invalid
-bad=$("$bb" tr -cd '\000-\040\177' <"$body" | "$bb" wc -c | "$bb" tr -d ' ')
+bad=$("$bb" tr -cd '\000-\011\013-\040\177' <"$body" | "$bb" wc -c | "$bb" tr -d ' ')
 [ "$bad" = 0 ] || reply '400 Bad Request' invalid
-value=$("$bb" cat "$body")
-# Match the runtime's HTTPS-only policy; never eval/source the received value.
-case "$value" in https://?*) ;; *) reply '400 Bad Request' invalid ;; esac
-case "$value" in *'@'* | *'#'* | *\\*) reply '400 Bad Request' invalid ;; esac
-authority=${value#https://}
-authority=${authority%%[/?]*}
-printf '%s\n' "$authority" | "$bb" grep -Eq '^([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])(:[0-9]{1,5})?$' || reply '400 Bad Request' invalid
-case "$authority" in
-    \[*\]) ;;
-    *:*)
-        port=${authority##*:}
-        # Strip leading zeroes before arithmetic to avoid ash's octal rules.
-        while [ "${port#0}" != "$port" ]; do port=${port#0}; done
-        [ -n "$port" ] && [ "$port" -le 65535 ] || reply '400 Bad Request' invalid
-        ;;
-esac
+count=0
+while IFS= read -r value || [ -n "$value" ]; do
+    count=$((count + 1))
+    [ "$count" -le 5 ] || reply '400 Bad Request' invalid
+    # Match the runtime's HTTPS-only policy; never eval/source the received value.
+    case "$value" in https://?*) ;; *) reply '400 Bad Request' invalid ;; esac
+    case "$value" in *'@'* | *'#'* | *\\*) reply '400 Bad Request' invalid ;; esac
+    authority=${value#https://}
+    authority=${authority%%[/?]*}
+    printf '%s\n' "$authority" | "$bb" grep -Eq '^([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])(:[0-9]{1,5})?$' || reply '400 Bad Request' invalid
+    case "$authority" in
+        \[*\]) ;;
+        *:*)
+            port=${authority##*:}
+            # Strip leading zeroes before arithmetic to avoid ash's octal rules.
+            while [ "${port#0}" != "$port" ]; do port=${port#0}; done
+            [ -n "$port" ] && [ "$port" -le 65535 ] || reply '400 Bad Request' invalid
+            ;;
+    esac
+done <"$body"
+[ "$count" -gt 0 ] || reply '400 Bad Request' invalid
 for path in "$root" "$root/.config" "$root/.config/sing-box"; do
     [ -d "$path" ] && [ ! -L "$path" ] || reply '409 Conflict' unsafe_path
 done
@@ -72,18 +85,18 @@ for path in "$out" "$root/.config/sing-box/subscription.local" "$root/.config/si
     [ ! -L "$path" ] || reply '409 Conflict' unsafe_path
     [ ! -e "$path" ] || [ -f "$path" ] || reply '409 Conflict' unsafe_path
 done
-# Recheck immediately before publication: opening a form never authorizes
-# overwriting a subscription imported by another path while the form was open.
-for path in "$out" "$root/.config/sing-box/subscription.local"; do
-    if [ -f "$path" ] && "$bb" grep -qEv '^[[:space:]]*(#.*)?$' "$path"; then
+# Recheck the private baseline immediately before publication.
+for name in subscription.url subscription.local standalone-config; do
+    path="$root/.config/sing-box/$name"
+    if [ -f "$run/baseline-$name" ]; then
+        "$bb" cmp -s "$run/baseline-$name" "$path" || reply '409 Conflict' existing
+    elif [ -e "$path" ]; then
         reply '409 Conflict' existing
     fi
 done
-if [ -f "$root/.config/sing-box/standalone-config" ] && [ -s "$root/.config/sing-box/config.json" ]; then
-    reply '409 Conflict' existing
-fi
 stage=$("$bb" mktemp "$root/.config/sing-box/.install-subscription.XXXXXX")
-printf '%s\n' "$value" >"$stage" || reply '500 Internal Server Error' save_failed
+"$bb" cat "$body" >"$stage" || reply '500 Internal Server Error' save_failed
+printf '\n' >>"$stage" || reply '500 Internal Server Error' save_failed
 "$bb" chmod 600 "$stage" || reply '500 Internal Server Error' save_failed
 "$bb" rm -f "$root/.config/sing-box/standalone-config" || reply '500 Internal Server Error' save_failed
 "$bb" mv -f "$stage" "$out" || reply '500 Internal Server Error' save_failed

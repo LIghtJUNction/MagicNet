@@ -35,10 +35,10 @@ def close():
             session = None
 
 
-def start():
+def start(existing=None):
     global session
     close()
-    session = contracts.Session(timeout=180)
+    session = contracts.Session(timeout=180, existing=existing)
     return {'origin': f'http://127.0.0.1:{session.port}', 'token': session.token}
 
 
@@ -58,6 +58,8 @@ try:
         op = request['op']
         if op == 'reset':
             emit(start())
+        elif op == 'upgrade':
+            emit(start('https://existing.example.test/sub\n'))
         elif op == 'state':
             emit(state())
         elif op == 'wait':

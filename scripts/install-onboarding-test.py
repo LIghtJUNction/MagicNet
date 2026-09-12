@@ -29,9 +29,13 @@ URL = "https://feed.example.test/subscribe?token=a+b%2F%26&x=$(id)&quote='&semi=
 
 
 class Session:
-    def __init__(self, timeout: int = 30, am_status: int = 0):
+    def __init__(self, timeout: int = 30, am_status: int = 0, existing: str | None = None):
         self.temp = tempfile.TemporaryDirectory(prefix="magicnet-onboarding-")
         self.root = Path(self.temp.name)
+        if existing is not None:
+            config = self.root / '.config/sing-box'
+            config.mkdir(parents=True)
+            (config / 'subscription.url').write_text(existing)
         (self.root / "lib/magicnet").mkdir(parents=True)
         shutil.copytree(MODULE / "lib/magicnet/onboarding", self.root / "lib/magicnet/onboarding")
         self.log_path = self.root / "installer-output"
@@ -78,7 +82,9 @@ magicnet_onboarding_collect
         try:
             connection.request(method, "/cgi-bin/setup/" + action, body=body, headers=defaults)
             response = connection.getresponse()
-            return response.status, json.loads(response.read()), dict(response.getheaders())
+            data = response.read()
+            payload = data.decode() if action == 'subscriptions' and response.status == 200 else json.loads(data)
+            return response.status, payload, dict(response.getheaders())
         finally:
             connection.close()
 
@@ -193,7 +199,7 @@ class OnboardingTests(unittest.TestCase):
     def test_invalid_input_cannot_publish_state(self):
         invalid = ["", "http://feed.example.test/list", "file:///etc/passwd", "javascript:alert(1)",
                    "https:///no-host", "https://user:pass@feed.example.test/x", "https://feed.example.test/x#secret",
-                   "https://feed.example.test/with space", "https://feed.example.test/\n", "https://feed.example.test/\x00",
+                   "https://feed.example.test/with space", "https://feed.example.test/\n\ninvalid", "https://feed.example.test/\x00",
                    "https://feed.example.test/\x7f", "https://feed.example.test\\other/x", "https://feed.example.test:0/x",
                    "https://feed.example.test:65536/x", "https://feed.example.test:00000/x", "https://:443/x", "https://[::1]:99999/x"]
         with Session() as session:
@@ -217,6 +223,36 @@ class OnboardingTests(unittest.TestCase):
             out.write_text("https://existing.example.test/sub\n")
             self.assertEqual(session.request("save", URL)[:2], (409, {"code": "existing"}))
             self.assertEqual(out.read_text(), "https://existing.example.test/sub\n")
+
+    def test_upgrade_prefill_replace_and_add(self):
+        old = 'https://old.example.test/sub\n'
+        with Session(existing=old) as session:
+            status, payload, headers = session.request('subscriptions', method='GET')
+            self.assertEqual((status, payload), (200, old))
+            self.assertEqual(headers['Cache-Control'], 'no-store')
+            self.assertEqual(session.request('subscriptions', method='GET', headers={'X-Setup-Token': ''})[0], 403)
+            new = 'https://replacement.example.test/sub\nhttps://added.example.test/sub'
+            self.assertEqual(session.request('save', new)[0], 200)
+            self.assertEqual((session.root / '.config/sing-box/subscription.url').read_text(), new + '\n')
+            self.assertNotIn(old.strip(), session.log_path.read_text())
+            self.assertEqual(session.wait(), 0)
+
+    def test_upgrade_skip_and_conflict_preserve_input(self):
+        old = 'https://old.example.test/sub\n'
+        with Session(existing=old) as session:
+            out = session.root / '.config/sing-box/subscription.url'
+            newer = 'https://newer.example.test/sub\n'
+            out.write_text(newer)
+            self.assertEqual(session.request('save', URL)[0], 409)
+            self.assertEqual(session.request('skip', '')[0], 200)
+            self.assertEqual(session.wait(), 2)
+            self.assertEqual(out.read_text(), newer)
+
+    def test_multiple_subscription_limit(self):
+        with Session() as session:
+            self.assertEqual(session.request('save', '\n'.join([URL] * 6))[0], 400)
+            self.assertEqual(session.request('save', '\n'.join([URL] * 5))[0], 200)
+            self.assertEqual(session.wait(), 0)
 
     def test_symlink_target_is_refused(self):
         with Session() as session:
@@ -277,9 +313,9 @@ class OnboardingTests(unittest.TestCase):
                  ("optout", {"MAGICNET_INSTALL_ONBOARDING": "0"}, {}, False),
                  ("core-disabled", {"MAGIC_SINGBOX": "0"}, {}, False),
                  ("recovery", {"BOOTMODE": "false"}, {}, False),
-                 ("url", {}, {"subscription.url": "https://old.example.test/sub\n"}, False),
-                 ("local", {}, {"subscription.local": "/local/subscription.yaml\n"}, False),
-                 ("standalone", {}, {"standalone-config": "", "config.json": "{}"}, False),
+                 ("url", {}, {"subscription.url": "https://old.example.test/sub\n"}, True),
+                 ("local", {}, {"subscription.local": "/local/subscription.yaml\n"}, True),
+                 ("standalone", {}, {"standalone-config": "", "config.json": "{}"}, True),
                  ("comments", {}, {"subscription.url": " # configure later\n\n"}, True)]
         for name, variables, files, expected in cases:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:

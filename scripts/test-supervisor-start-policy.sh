@@ -84,6 +84,8 @@ cat >"$incompatible_bin/flock" <<'EOF'
 exit 64
 EOF
 chmod +x "$incompatible_bin/flock"
+# Do not let a host-installed BusyBox satisfy this incompatible-tool fixture.
+cp "$incompatible_bin/flock" "$incompatible_bin/busybox"
 incompatible_output="$fixture/incompatible-flock.output"
 magicnet_module_disabled() { return 1; }
 magicnet_trim_log_file() { :; }

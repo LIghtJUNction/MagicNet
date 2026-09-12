@@ -4,7 +4,7 @@ The installer sources `lib/magicnet/install_onboarding.sh` **after** restoring
 old configuration, installing the new template and applying permissions. It no
 longer opens the README on every install.
 
-On a booted Android device without a saved subscription, a temporary loopback
+On a booted Android device, both fresh installs and upgrades open a temporary loopback
 page opens through kamfw's `import launcher` / `launch url` dispatcher. The
 Android call uses `ACTION_VIEW`, `CATEGORY_BROWSABLE` and `--user current`, not a
 browser package. Android chooses the configured browser; without a default it
@@ -18,9 +18,10 @@ API links are optional navigation; no login, tracking or automatic starring.
 
 ## Configuration and fallback
 
-- Existing URL, local-subscription or standalone configuration is retained and
-  does not reopen setup. Even malformed non-comment user data is not replaced.
-- Saving stages one HTTPS URL in `.config/sing-box/subscription.url` with mode
+- Existing subscription URLs are prefilled through an authenticated, no-store
+  local endpoint. Users can replace URLs or add one per line, up to five URLs.
+  Local-subscription files remain unchanged. Skip or timeout retains all settings.
+- Saving stages the HTTPS URL list in `.config/sing-box/subscription.url` with mode
   `0600` and an atomic rename. It does not download a subscription, start a core,
   modify the generated config, change SELinux or touch firewall rules.
 - The normal startup pipeline validates the destination and loads the saved
@@ -44,12 +45,14 @@ The server binds only to `127.0.0.1` on a randomized port. A 192-bit random
 capability is delivered in the URL fragment and sent in a request header.
 Requests enforce Host, Origin (when present), Fetch Metadata (when present),
 method, content type and an 8192-byte limit. Subscription text stays out of the
-URL and responses. Never share the temporary setup URL or installer screenshots
+URL and static assets; only the authenticated prefill response contains them.
+Never share the temporary setup URL or installer screenshots
 containing its fragment.
 
 The CGI and state are outside the static document root. Input is treated as
 literal data, not shell code. Private temporary directories, a submission lock,
-symlink checks and a last-moment existing-data check protect publication.
+symlink checks and a last-moment comparison with the private session baseline
+protect publication from conflicting edits while the form is open.
 Normal completion, timeout and catchable signals close the HTTP process group
 and remove temporary state. A hard server deadline limits exposure after an
 uncatchable kill; like any shell trap, cleanup cannot run after SIGKILL or power

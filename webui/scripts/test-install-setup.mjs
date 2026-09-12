@@ -43,7 +43,7 @@ async function load(page, suffix = `/#${fixture.token}`, ready = true) {
 async function reset(page) { fixture = await rpc('reset'); await load(page); }
 try {
   fixture = await receive();
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   for (const [locale, expected] of [['zh-CN', 'zh'], ['zh-TW', 'zh-TW'], ['en-US', 'en'], ['ru-RU', 'ru'], ['ja-JP', 'ja'], ['ko-KR', 'ko']]) {
     for (const width of [320, 390, 1440]) {
       for (const colorScheme of ['light', 'dark']) {
@@ -93,7 +93,7 @@ try {
 
   const value = "https://feed.example.test/sub?token=a+b%2F&quote='&semi=;&x=$(id)";
   await page.locator('#subscription').fill(value);
-  await page.locator('#subscription').press('Enter');
+  await page.locator('#save').click();
   await page.locator('#completion').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#subscription').inputValue(), '');
   assert.equal(new URL(page.url()).hash, '');
@@ -112,6 +112,16 @@ try {
   const skipped = await rpc('wait');
   assert.equal(skipped.value, null);
   assert.equal(skipped.exit, 2);
+  checked++;
+
+  fixture = await rpc('upgrade');
+  await load(page);
+  assert.equal(await page.locator('#subscription').inputValue(), 'https://existing.example.test/sub');
+  const replacement = 'https://replacement.example.test/sub\nhttps://added.example.test/sub';
+  await page.locator('#subscription').fill(replacement);
+  await page.locator('#save').click();
+  await page.locator('#completion').waitFor({ state: 'visible' });
+  assert.equal((await rpc('wait')).value, replacement + '\n');
   checked++;
 
   fixture = await rpc('reset');

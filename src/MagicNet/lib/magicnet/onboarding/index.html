@@ -40,7 +40,8 @@
         <h1 id="title" data-i18n="title">Add a subscription</h1>
         <form id="setup-form" novalidate>
           <label class="sr-only" for="subscription" data-i18n="label">Subscription URL</label>
-          <div class="input-wrap"><svg aria-hidden="true"><use href="#i-link"/></svg><input id="subscription" name="subscription" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://…" maxlength="8192" required aria-describedby="status"></div>
+          <div class="input-wrap"><svg aria-hidden="true"><use href="#i-link"/></svg><textarea id="subscription" name="subscription" rows="3" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://…" maxlength="8192" required aria-describedby="subscription-help status"></textarea></div>
+          <p id="subscription-help" data-i18n="help"></p>
           <button id="save" class="primary" type="submit"><span data-i18n="save">Save & continue</span><svg class="next-arrow" aria-hidden="true"><use href="#i-arrow"/></svg><span class="spinner" aria-hidden="true"></span></button>
           <button id="skip" class="quiet" type="button" data-i18n="skip">Later</button>
         </form>

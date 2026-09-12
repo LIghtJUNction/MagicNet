@@ -187,7 +187,7 @@ set_i18n "INSTALL_NEXT_STEPS" \
 4. 把想戒掉的网站、规则组或域名指向 REJECT / block。
 sing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
   "en" "After installation:
-1. First install: add a subscription in the browser, or use WebUI later. Upgrades preserve subscriptions and replace the full config template.
+1. After installation, review subscriptions in the browser or use WebUI later. Upgrades prefill saved URLs for replacement or addition and replace the full config template.
 2. Reboot, or start the core from the module action page.
 3. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.
 4. Point distracting sites, groups, or domains to REJECT / block.
@@ -492,7 +492,7 @@ unset _magicnet_entry
 magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migration backup"
 
 # Offer browser input only after migration and all permission/template writes.
-# Otherwise upgrades would prompt again, or chmod/template installation could
+# Otherwise chmod/template installation could
 # overwrite the just-collected private state. This does not require a TTY.
 . "$MODPATH/lib/magicnet/install_onboarding.sh" || abort "! subscription setup helper missing"
 magicnet_install_onboarding || warn "! subscription setup interrupted; configure it later in WebUI"

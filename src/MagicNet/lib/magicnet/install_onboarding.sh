@@ -26,7 +26,6 @@ magicnet_onboarding_allowed() {
         [ "${MAGICNET_SETUP:-1}" != 0 ] &&
         [ "${MAGIC_SINGBOX:-1}" != 0 ] || return 1
     case "${BOOTMODE:-}" in false | 0) return 1 ;; esac
-    magicnet_install_has_subscription "$MODPATH" && return 1
     magicnet_onboarding_android_ready
 }
 
@@ -42,7 +41,7 @@ magicnet_onboarding_find_busybox() (
         _applets=$("$_bb" --list 2>/dev/null) || continue
         _ok=1
         for _applet in ash httpd wget timeout setsid od tr dd cat mkdir mktemp chmod cp \
-            mv rm rmdir wc grep sleep kill; do
+            mv rm rmdir wc grep sleep kill cmp; do
             printf '%s\n' "$_applets" | "$_bb" grep -qx "$_applet" || { _ok=0; break; }
         done
         [ "$_ok" = 1 ] || continue
@@ -132,6 +131,15 @@ magicnet_onboarding_collect() (
     trap 'exit 130' 2
     trap 'exit 143' 1 3 15
     MN_SETUP_RUN=$("$_bb" mktemp -d "$MODPATH/.state/install-onboarding.XXXXXX") || exit 1
+    # Keep a private baseline so an upgrade form cannot overwrite newer input.
+    for _file in subscription.url subscription.local standalone-config; do
+        _path="$MODPATH/.config/sing-box/$_file"
+        [ ! -L "$_path" ] || exit 1
+        if [ -e "$_path" ]; then
+            [ -f "$_path" ] || exit 1
+            "$_bb" cp "$_path" "$MN_SETUP_RUN/baseline-$_file" || exit 1
+        fi
+    done
     MN_SETUP_ROOT=$MODPATH
     MN_SETUP_TOKEN=$("$_bb" od -An -N24 -tx1 /dev/urandom | "$_bb" tr -d ' \n')
     [ "${#MN_SETUP_TOKEN}" = 48 ] || exit 1

@@ -20,7 +20,8 @@ need cargo
 kam validate
 
 bash scripts/lint-shell.sh
-bash scripts/test-host.sh --with-routing-assets
+# Temporary fixture repositories must use their own indexes, not Git's hook index.
+env -u GIT_INDEX_FILE bash scripts/test-host.sh --with-routing-assets
 
 KAM_HOOKS_ROOT=hooks KAM_MODULE_ROOT=src/MagicNet bash hooks/pre-build/6000.check_config.sh
 MODPATH="$ROOT/src/MagicNet" sh -c '. "$MODPATH/lib/kamfw/.kamfwrc"; import __runtime__; . "$MODPATH/lib/magicnet.sh"; kamfw run post-mount -- smoke'

@@ -1,101 +1,41 @@
 #!/bin/bash
 # shellcheck source=hooks/lib/utils.sh
-
 set -euo pipefail
-
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
-
 require_command curl "curl not found!"
 require_command jq "jq not found!"
 require_command python3 "python3 not found!"
 
-CONFIG_FILE="$KAM_MODULE_ROOT/.config/sing-box/config.json"
+RULE_DIR="$KAM_MODULE_ROOT/.config/sing-box/rules"
 STATE_DIR="$KAM_MODULE_ROOT/.local/state/chatgpt-voice"
-VOICE_URL="${MAGICNET_CHATGPT_VOICE_URL:-https://openai.com/chatgpt-voice.json}"
-
-[ -f "$CONFIG_FILE" ] || {
-    log_warn "sing-box config not found; ChatGPT Voice rule update skipped"
-    exit 0
-}
-
-mkdir -p "$STATE_DIR"
-VOICE_RESPONSE="$STATE_DIR/voice.json.tmp.$$"
-CONFIG_CANDIDATE="$STATE_DIR/config.json.tmp.$$"
-
-cleanup() {
-    rm -f "$VOICE_RESPONSE" "$CONFIG_CANDIDATE"
-}
-trap cleanup EXIT HUP INT TERM
-
-log_info "Refreshing ChatGPT Voice IP prefixes from OpenAI"
-curl -fsSL --connect-timeout 5 --max-time 20 --retry 3 --retry-delay 1 \
-    "$VOICE_URL" -o "$VOICE_RESPONSE" || {
-    log_error "ChatGPT Voice prefix download failed"
-    exit 1
-}
-
-jq -e '
-  type == "object"
-  and (.creationTime | type == "string" and length > 0)
-  and (.prefixes | type == "array" and length > 0)
-  and all(.prefixes[];
-    type == "object"
-    and ((has("ipv4Prefix") and (has("ipv6Prefix") | not))
-      or (has("ipv6Prefix") and (has("ipv4Prefix") | not)))
-    and ((.ipv4Prefix // .ipv6Prefix) | type == "string")
-    and ((.ipv4Prefix // .ipv6Prefix) | test("^[0-9A-Fa-f:.]+/[0-9]{1,3}$"))
-  )
-' "$VOICE_RESPONSE" >/dev/null || {
-    log_error "ChatGPT Voice prefix response is invalid or empty"
-    exit 1
-}
-
-python3 - "$VOICE_RESPONSE" <<'PY' || {
+mkdir -p "$RULE_DIR" "$STATE_DIR"
+CANDIDATE=$(mktemp "$RULE_DIR/.chatgpt-voice.XXXXXX")
+trap 'rm -f "$CANDIDATE"' EXIT
+# Resolve one immutable upstream revision per build; never rewrite config.json.
+REF=$(curl -fsSL --connect-timeout 5 --max-time 20 --retry 3 \
+    https://api.github.com/repos/SukkaLab/ruleset.skk.moe/git/ref/heads/master |
+    jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))')
+curl -fsSL --connect-timeout 5 --max-time 20 --retry 3 \
+    "https://raw.githubusercontent.com/SukkaLab/ruleset.skk.moe/$REF/sing-box/ip/ai.json" \
+    -o "$CANDIDATE"
+python3 - "$CANDIDATE" <<'PY'
 import ipaddress
 import json
 import sys
-
-with open(sys.argv[1], encoding="utf-8") as handle:
-    response = json.load(handle)
-
-for item in response["prefixes"]:
-    ipaddress.ip_network(item.get("ipv4Prefix") or item["ipv6Prefix"], strict=True)
+with open(sys.argv[1], encoding="utf-8") as source:
+    data = json.load(source)
+assert data.get("version") in (1, 2, 3), "unsupported rule-set version"
+rules = data.get("rules")
+assert isinstance(rules, list) and rules, "empty rules"
+for rule in rules:
+    assert set(rule) <= {"ip_cidr", "domain", "domain_suffix"}, "unexpected matching fields"
+    prefixes = rule.get("ip_cidr")
+    assert isinstance(prefixes, list) and prefixes, "missing voice prefixes"
+    for prefix in prefixes:
+        network = ipaddress.ip_network(prefix, strict=True)
+        assert network.prefixlen > 0, "catch-all prefix refused"
 PY
-    log_error "ChatGPT Voice response contains an invalid IP prefix"
-    exit 1
-}
-
-jq --slurpfile voice "$VOICE_RESPONSE" '
-  def canonical_voice($network; $port):
-    .network == $network and .port == $port and .outbound == "ai-chatgpt"
-    and (.ip_cidr | type) == "array"
-    and (keys == ["ip_cidr", "network", "outbound", "port"]);
-  ($voice[0].prefixes
-    | map(.ipv4Prefix // .ipv6Prefix)
-    | reduce .[] as $prefix ([]; if index($prefix) == null then . + [$prefix] else . end)
-  ) as $prefixes
-  | ([.route.rules[] | select(canonical_voice("udp"; 3478))]) as $udp
-  | ([.route.rules[] | select(canonical_voice("tcp"; 443))]) as $tcp
-  | if ($udp | length) != 1 or ($tcp | length) > 1
-    then error("expected one canonical UDP voice route and at most one TCP fallback")
-    else .route.rules |= map(
-      if canonical_voice("udp"; 3478) then
-        .ip_cidr = $prefixes,
-        (.ip_cidr = $prefixes | .network = "tcp" | .port = 443)
-      elif canonical_voice("tcp"; 443) then empty
-      else . end
-    )
-    end
-' "$CONFIG_FILE" >"$CONFIG_CANDIDATE" || {
-    log_error "Canonical ChatGPT Voice route is missing or ambiguous"
-    exit 1
-}
-
-jq empty "$CONFIG_CANDIDATE"
-if cmp -s "$CONFIG_FILE" "$CONFIG_CANDIDATE"; then
-    log_info "ChatGPT Voice prefixes are already current"
-else
-    mv -f "$CONFIG_CANDIDATE" "$CONFIG_FILE"
-    log_success "ChatGPT Voice prefixes updated"
-fi
-jq -r '.creationTime' "$VOICE_RESPONSE" >"$STATE_DIR/creation-time"
+chmod 644 "$CANDIDATE"
+mv -f "$CANDIDATE" "$RULE_DIR/sukka-chatgpt-voice.json"
+printf '%s\n' "$REF" >"$STATE_DIR/upstream-revision"
+log_success "ChatGPT Voice rule-set refreshed from SukkaLab@$REF"

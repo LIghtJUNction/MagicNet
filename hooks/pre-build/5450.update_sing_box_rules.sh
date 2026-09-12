@@ -73,6 +73,16 @@ rule_source() {
     local file="$1"
 
     case "$file" in
+    metacubex-service-*.srs)
+        local service=${file#metacubex-service-}
+        case "$service" in
+        category-entertainment.srs|category-communication.srs)
+            printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geosite/$service" ;;
+        tencent.srs|category-doh.srs|category-ip-geo-detect.srs|connectivity-check.srs|speedtest.srs|openai.srs|google-gemini.srs|xai.srs|anthropic.srs|bing@cn.srs|bing.srs|category-game-platforms-download.srs|win-update.srs|apple-update.srs|icloud.srs|apple.srs|microsoft.srs|category-scholar-!cn.srs|category-ai-!cn.srs|category-dev.srs|category-media.srs|category-games-!cn.srs|category-social-media-!cn.srs|telegram.srs|google.srs)
+            printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geosite/$service" ;;
+        *) log_error "Unsupported service rule-set: $file"; return 1 ;;
+        esac
+        ;;
     metacubex-geosite-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geosite/cn.srs" ;;
     metacubex-geoip-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geoip/cn.srs" ;;
     metacubex-geosite-geolocation-not-cn.srs) printf '%s|%s|%s\n' "https://github.com/MetaCubeX/meta-rules-dat.git" "sing" "geo/geosite/geolocation-!cn.srs" ;;

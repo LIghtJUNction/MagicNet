@@ -644,6 +644,10 @@ ai_domains = {
 }
 ai_rule_sets = {"lyc-geosite-ai", "yuu-geosite-ai", "karing-acl4ssr-ai"}
 generic_rule_sets = {"lyc-geosite-gfw", "ddch-gfw", "lyc-geosite-proxy", "metacubex-geosite-geolocation-not-cn", "ddch-proxy", "karing-acl4ssr-proxy-lite", "karing-acl4ssr-proxy-gfwlist"}
+maintained = any("meta-openai" in r.get("rule_set", []) for r in rules)
+if maintained:
+    ai_rule_sets = {"meta-category-ai-!cn"}
+    generic_rule_sets = {"metacubex-geosite-geolocation-not-cn"}
 def rule_sets(rule):
     value = rule.get("rule_set", [])
     return set(value if isinstance(value, list) else [value])
@@ -674,7 +678,8 @@ for group, expected_domains in ai_domains.items():
     domain_routes = [
         i for i, r in enumerate(rules)
         if r.get("outbound") == group
-        and set(r.get("domain_suffix", [])) == expected_domains
+        and (r.get("rule_set") == [{"ai-chatgpt":"meta-openai", "ai-gemini":"meta-google-gemini", "ai-grok":"meta-xai", "ai-claude":"meta-anthropic"}[group]]
+             if maintained else set(r.get("domain_suffix", [])) == expected_domains)
     ]
     assert len(domain_routes) == 1, (group, domain_routes)
 generic = next(i for i, r in enumerate(rules) if r.get("outbound") == "ai-proxy" and "rule_set" in r)

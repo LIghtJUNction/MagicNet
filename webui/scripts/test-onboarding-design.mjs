@@ -28,7 +28,7 @@ let browser;
 const errors = [];
 try {
   const fixture = await receive();
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   for (const [width, height] of [[320, 568], [390, 852], [768, 1024], [1440, 900]]) {
     for (const colorScheme of ['light', 'dark']) {
       const context = await browser.newContext({ locale: 'zh-CN', colorScheme, reducedMotion: 'reduce', viewport: { width, height } });
@@ -40,11 +40,12 @@ try {
       assert.equal(await page.locator('.artwork img').evaluate(image => image.complete && image.naturalWidth === 512), true, 'bundled illustration missing');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.equal(await page.locator('main h1:visible').count(), 1);
-      assert.equal(await page.locator('main p:visible').count(), 0, 'introductory copy must not return');
+      assert.equal(await page.locator('main p:visible').count(), 1, 'only the subscription editing hint is shown');
+      assert.ok((await page.locator('#subscription-help').textContent()).trim());
       assert.equal(await page.locator('#status').textContent(), '');
       assert.equal(await page.locator('#telegram').getAttribute('href'), 'https://t.me/magicnet_group');
       assert.equal(await page.locator('#discord').getAttribute('href'), 'https://discord.gg/asRwgK9FpA');
-      for (const element of await page.locator('a, button, input, select').all()) {
+      for (const element of await page.locator('a, button, textarea, select').all()) {
         if (!await element.isVisible()) continue;
         const box = await element.boundingBox();
         assert.ok(box.height >= 44, 'touch target smaller than 44px');
