@@ -60,7 +60,8 @@ magicnet_onboarding_collect
         self.port = 0
         self.token = ""
         for _ in range(350):
-            text = self.log_path.read_text()
+            args = self.root / "am-arguments"
+            text = args.read_text() if args.exists() else ""
             match = re.search(r"http://127\.0\.0\.1:(\d+)/\?lang=zh#([a-f0-9]{48})", text)
             if match:
                 self.port, self.token = int(match[1]), match[2]
@@ -161,12 +162,11 @@ class OnboardingTests(unittest.TestCase):
             os.killpg(session.proc.pid, signal.SIGTERM)
             self.assertNotEqual(session.wait(), 0)
 
-    def test_browser_failure_keeps_manual_page_usable(self):
+    def test_browser_failure_exits_without_manual_wait(self):
         with Session(am_status=7) as session:
-            time.sleep(0.1)
-            self.assertIn("MN_SETUP_MANUAL", session.log_path.read_text())
-            self.assertEqual(session.request("save", "https://feed.example.test/list")[0], 200)
-            self.assertEqual(session.wait(), 0)
+            self.assertEqual(session.wait(), 1)
+            self.assertNotIn(session.url, session.log_path.read_text())
+            self.assertNotIn("MN_SETUP_MANUAL", session.log_path.read_text())
 
     def test_kamfw_launcher_keeps_default_browser_current_user_and_exit_status(self):
         with tempfile.TemporaryDirectory() as tmp:

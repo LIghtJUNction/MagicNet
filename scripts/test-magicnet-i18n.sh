@@ -101,7 +101,7 @@ next_steps=$(KAM_UI_LANGUAGE=ru i18n INSTALL_NEXT_STEPS)
 case "$next_steps" in *'WebUI'*'cli api ui'*'REJECT / block'*'hostname=127.0.0.1&port=9090') ;; *) fail 'installer translated command or URL values' ;; esac
 
 . "$ROOT/src/MagicNet/lib/magicnet/onboarding/messages.sh"
-for key in MN_SETUP_WAIT MN_SETUP_OPEN MN_SETUP_MANUAL MN_SETUP_SAVED MN_SETUP_CLOSED MN_SETUP_UNAVAILABLE; do
+for key in MN_SETUP_WAIT MN_SETUP_OPEN MN_SETUP_SAVED MN_SETUP_CLOSED MN_SETUP_UNAVAILABLE; do
     for locale in zh en ru ja ko; do
         # Both names come from the fixed lists above, never from user input.
         eval "translated=\${_I18N_${key}_${locale}:-}"

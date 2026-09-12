@@ -23,7 +23,9 @@ case "$3 $4" in
     '/system/bin/cmd role')
         [ "${TEST_ROLE_FAIL:-0}" = 0 ] || exit 9
         printf '%s' "${TEST_ROLE-}" ;;
+    '/system/bin/cmd activity') exit "${TEST_CMD_RC:-7}" ;;
     '/system/bin/am start')
+        if [ "${TEST_ERROR_OUTPUT:-0}" = 1 ]; then echo 'Error: Activity not started'; exit 0; fi
         [ "${TEST_ALL_FAIL:-0}" = 0 ] || exit 7
         for arg in "$@"; do
             if [ "$arg" = -p ] && [ "${TEST_BOUND_FAIL:-0}" = 1 ]; then exit 8; fi
@@ -69,8 +71,8 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(calls[0][2:], ['/system/bin/am', 'get-current-user'])
         self.assertEqual(calls[1][2:], ['/system/bin/cmd', 'role', 'get-role-holders', '--user', '10', 'android.app.role.BROWSER'])
-        self.assertEqual(calls[2][2:10], ['/system/bin/am', 'start', '--user', 'current', '-a', 'android.intent.action.VIEW', '-c', 'android.intent.category.BROWSABLE'])
-        self.assertEqual(calls[2][10:12], ['-p', 'org.example.browser'])
+        self.assertEqual(calls[2][2:12], ['/system/bin/am', 'start', '--user', 'current', '-a', 'android.intent.action.VIEW', '-f', '0x10000000', '-c', 'android.intent.category.BROWSABLE'])
+        self.assertEqual(calls[2][12:14], ['-p', 'org.example.browser'])
 
     def test_no_browser_role_uses_action_view(self):
         rc, calls = self.launch(TEST_ROLE='')
@@ -97,6 +99,16 @@ class BrowserTests(unittest.TestCase):
     def test_launch_failure_is_not_reported_as_success(self):
         rc, _ = self.launch(TEST_ALL_FAIL='1')
         self.assertEqual(rc, 7)
+
+    def test_direct_activity_fallback(self):
+        rc, calls = self.launch(TEST_ALL_FAIL='1', TEST_CMD_RC='0')
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls[-1][2:5], ['/system/bin/cmd', 'activity', 'start-activity'])
+
+    def test_zero_exit_with_error_uses_fallback(self):
+        rc, calls = self.launch(TEST_ERROR_OUTPUT='1', TEST_CMD_RC='0')
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls[-1][3], 'activity')
 
     def test_invalid_user_does_not_reach_role_service(self):
         rc, calls = self.launch(TEST_USER='not-a-user')

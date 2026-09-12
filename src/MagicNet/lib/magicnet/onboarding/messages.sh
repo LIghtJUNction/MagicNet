@@ -1,20 +1,11 @@
 # shellcheck shell=ash
 # Registered through kamfw, using the installer's already selected language.
 set_i18n MN_SETUP_WAIT \
-    zh '请在浏览器填写订阅；默认等待 180 秒，也可稍后配置。临时地址请勿分享：' \
-    en 'Add a subscription in your browser, or skip. Default timeout: 180 seconds. Do not share this temporary link:' \
-    ru 'Добавьте подписку в браузере или пропустите. Ожидание по умолчанию: 180 секунд. Не передавайте эту временную ссылку:' \
-    ja 'ブラウザーで購読を入力するか、スキップしてください。既定の待機時間は180秒です。この一時リンクを共有しないでください:' \
-    ko '브라우저에서 구독을 입력하거나 건너뛰세요. 기본 대기 시간은 180초입니다. 임시 링크를 공유하지 마세요:'
+    zh '正在打开订阅配置页…' en 'Opening subscription setup…' \
+    ru 'Открываем настройку подписки…' ja '購読設定を開いています…' ko '구독 설정을 여는 중…'
 set_i18n MN_SETUP_OPEN \
     zh '点击填写订阅链接' en 'Tap to add your subscription' ru 'Нажмите, чтобы добавить подписку' \
     ja 'タップして購読を追加' ko '눌러서 구독 추가'
-set_i18n MN_SETUP_MANUAL \
-    zh '未能自动打开浏览器，请手动打开上面的完整地址。' \
-    en 'Could not open your browser. Open the complete link above manually.' \
-    ru 'Не удалось открыть браузер. Откройте полную ссылку выше вручную.' \
-    ja 'ブラウザーを開けませんでした。上のリンク全体を手動で開いてください。' \
-    ko '브라우저를 열지 못했습니다. 위의 전체 링크를 직접 열어 주세요.'
 set_i18n MN_SETUP_SAVED \
     zh '订阅链接已保存。完成安装并重启后，MagicNet 会按正常启动流程加载订阅。' \
     en 'Subscription saved. Finish installing and reboot; MagicNet will load it during normal startup.' \
