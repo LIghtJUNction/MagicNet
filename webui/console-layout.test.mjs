@@ -10,7 +10,10 @@ const header = read("./src/components/ui/PageHeader.vue");
 test("page heading and both action slots share a wrapping header", () => {
   assert.match(header, /<div class="mn-page-header">/);
   assert.match(header, /<slot name="actions">\s*<slot \/>/);
-  assert.match(css, /\.mn-page-header\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/);
+  assert.match(
+    css,
+    /\.mn-page-header\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/,
+  );
 });
 
 test("the shared theme has one entry and scoped utility priority", () => {
@@ -32,10 +35,19 @@ test("the shared theme has one entry and scoped utility priority", () => {
 });
 
 test("mobile status details wrap and high-contrast tabs retain selection", () => {
-  assert.match(css, /\.mn-runtime-brief > p\s*\{[^}]*overflow-wrap: anywhere;[^}]*white-space: normal;/);
-  assert.match(css, /@media \(forced-colors: active\)[\s\S]*border-bottom-color: Highlight;/);
+  assert.match(
+    css,
+    /\.mn-runtime-brief > p\s*\{[^}]*overflow-wrap: anywhere;[^}]*white-space: normal;/,
+  );
+  assert.match(
+    css,
+    /@media \(forced-colors: active\)[\s\S]*border-bottom-color: Highlight;/,
+  );
 });
 
 test("card actions stay inside their card when text is enlarged", () => {
-  assert.match(read("./src/components/ui/CardHeading.vue"), /flex max-w-full shrink-0 flex-wrap/);
+  assert.match(
+    read("./src/components/ui/CardHeading.vue"),
+    /flex max-w-full shrink-0 flex-wrap/,
+  );
 });
