@@ -1,5 +1,11 @@
 # shellcheck shell=ash
 # Registered through kamfw, using the installer's already selected language.
+set_i18n MN_SETUP_READY \
+    zh '一切就绪：订阅设置已确认，可以完成安装。' en 'All ready: subscription setup confirmed; installation can finish.' \
+    ru 'Всё готово: настройки подписки подтверждены.' ja '準備完了：購読設定を確認しました。' ko '준비 완료: 구독 설정을 확인했습니다.'
+set_i18n MN_SETUP_CANCELLED \
+    zh '用户已停止安装。' en 'Installation stopped by the user.' \
+    ru 'Установка остановлена пользователем.' ja 'インストールを中止しました。' ko '설치를 중단했습니다.'
 set_i18n MN_SETUP_WAIT \
     zh '正在打开订阅配置页…' en 'Opening subscription setup…' \
     ru 'Открываем настройку подписки…' ja '購読設定を開いています…' ko '구독 설정을 여는 중…'

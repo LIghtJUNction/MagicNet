@@ -495,4 +495,10 @@ magicnet_cleanup_install_backup || abort "! failed to remove the MagicNet migrat
 # Otherwise chmod/template installation could
 # overwrite the just-collected private state. This does not require a TTY.
 . "$MODPATH/lib/magicnet/install_onboarding.sh" || abort "! subscription setup helper missing"
-magicnet_install_onboarding || warn "! subscription setup interrupted; configure it later in WebUI"
+if magicnet_install_onboarding; then
+  :
+else
+  _setup_status=$?
+  [ "$_setup_status" -ne 4 ] || abort "! Installation cancelled: no subscription selected or user requested stop"
+  warn "! subscription setup interrupted; configure it later in WebUI"
+fi

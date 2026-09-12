@@ -154,6 +154,7 @@ assert.doesNotMatch(subscriptionLaunch.preview, /magicnet-webui-test\.b64/);
 const signedUrl =
   "https://downloads.example.test/panel.zip?token=short-lived-secret";
 assert.equal(isSensitiveExternalUrl(signedUrl), true);
+assert.equal(isSensitiveExternalUrl("https://login.tailscale.com/a/fixtureAuth"), true);
 assert.equal(
   isSensitiveExternalUrl("https://downloads.example.test/panel.zip"),
   false,

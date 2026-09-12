@@ -1,4 +1,9 @@
 export default {
+  "热点转发规则已就绪": ["Hotspot forwarding rules are ready", "Правила пересылки точки доступа готовы"],
+  "已启用，等待热点开启": ["Enabled; waiting for a hotspot", "Включено; ожидание точки доступа"],
+  "已启用，但转发规则异常": ["Enabled, but forwarding rules need attention", "Включено, но правила пересылки требуют проверки"],
+  "eBPF 共享转发待核实": ["eBPF shared forwarding needs verification", "Общая пересылка eBPF требует проверки"],
+  "已设置，转发状态未确认": ["Configured; forwarding is unconfirmed", "Настроено; пересылка не подтверждена"],
   "运行中": ["Running", "Работает"],
   "已停止": ["Stopped", "Остановлен"],
   "状态未知": ["Status unknown", "Состояние неизвестно"],

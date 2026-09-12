@@ -134,6 +134,18 @@ import() { :; }
 . "$ROOT/src/MagicNet/lib/magicnet/transparent.sh"
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/routes.sh"
+: >"$WORK/forward-rules"
+magicnet_iptables_cmd() {
+  action=$1
+  shift
+  case "$action" in
+    -C) grep -Fqx -- "$*" "$WORK/forward-rules" ;;
+    -I) printf '%s\n' "$*" >>"$WORK/forward-rules" ;;
+    -D) awk -v rule="$*" '$0 != rule' "$WORK/forward-rules" >"$WORK/forward-rules.new"; mv "$WORK/forward-rules.new" "$WORK/forward-rules" ;;
+    *) return 2 ;;
+  esac
+}
+magicnet_iptables_ensure() { magicnet_iptables_cmd -C "$@" || magicnet_iptables_cmd -I "$@"; }
 
 # common.sh supplies the production default; restore the deterministic command
 # availability fixture after all production files have been sourced.
@@ -203,8 +215,20 @@ grep -Fqx 'route_table_ready=1' "$WORK/status"
 grep -Fqx 'downstream_interfaces=wlan2' "$WORK/status"
 grep -Fqx 'downstream_networks=192.168.52.0/24' "$WORK/status"
 grep -Fqx 'route_status=ready' "$WORK/status"
+[ "$(wc -l <"$WORK/forward-rules" | tr -d ' ')" -eq 2 ]
+grep -Fq -- '-i wlan2 -o magicnet0' "$WORK/forward-rules"
+grep -Fq -- '-i magicnet0 -o wlan2 -m conntrack --ctstate ESTABLISHED,RELATED' "$WORK/forward-rules"
+HOTSPOT_SECONDARY_CIDR=10.88.0.0/24
+magicnet_hotspot_route_status >"$WORK/status"
+grep -Fqx 'route_status=degraded' "$WORK/status"
+HOTSPOT_SECONDARY_CIDR=
+HOTSPOT_ROUTE_QUERY_FAIL=1
+magicnet_hotspot_route_status >"$WORK/status"
+grep -Fqx 'route_status=degraded' "$WORK/status"
+HOTSPOT_ROUTE_QUERY_FAIL=0
 
 magicnet_hotspot_offload_restore
+[ ! -s "$WORK/forward-rules" ]
 [ ! -e "$MODDIR/.state/hotspot/tun-rules.list" ]
 if grep -q '^20999:' "$RULES"; then
   exit 1
@@ -314,5 +338,24 @@ assert_hotspot_probe_errors_preserve_config() (
 )
 
 assert_hotspot_probe_errors_preserve_config
+
+(
+  dumpsys() { printf '%s\n' 'ap0 - TetheredState - lastError = 0'; }
+  magicnet_iface_exists() { [ "$1" = ap0 ]; }
+  ip() {
+    case "$*" in
+      'route show dev ap0 scope link') return 0 ;;
+      'route show table all dev ap0 scope link') printf '%s\n' '192.168.44.0/24 dev ap0 table 1043 proto kernel scope link src 192.168.44.1' ;;
+      *) return 2 ;;
+    esac
+  }
+  [ "$(magicnet_hotspot_active_networks_uncached)" = 'ap0|192.168.44.0/24' ]
+)
+(
+  magicnet_transparent_mode() { printf '%s\n' ebpf; }
+  magicnet_hotspot_proxy_enabled() { return 0; }
+  magicnet_hotspot_tun_route_table_ready() { echo 'TUN probe is invalid for eBPF' >&2; exit 99; }
+  [ "$(magicnet_hotspot_route_status)" = 'route_status=shared-tc-unverified' ]
+)
 
 printf '%s\n' 'hotspot routing test passed'

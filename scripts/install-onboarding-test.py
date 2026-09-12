@@ -90,6 +90,15 @@ magicnet_onboarding_collect
             connection.close()
 
     def wait(self, timeout: int = 10):
+        deadline = time.monotonic() + timeout
+        while self.proc.poll() is None and time.monotonic() < deadline:
+            try:
+                _, payload, _ = self.request('status', method='GET')
+                if payload.get('code') in ('ready', 'cancelled'):
+                    break
+            except (OSError, http.client.HTTPException):
+                break
+            time.sleep(0.1)
         result = self.proc.wait(timeout=timeout)
         # A signal can reap the outer installer before its isolated collector
         # finishes EXIT cleanup. Bound that drain instead of racing the trap.
@@ -146,15 +155,42 @@ class OnboardingTests(unittest.TestCase):
             self.assertNotIn(URL, session.log_path.read_text())
             self.assertEqual(session.wait(), 0)
 
-    def test_skip_does_not_create_subscription(self):
+    def test_installer_receipt_follows_save_and_ready_message(self):
         with Session() as session:
-            self.assertEqual(session.request("skip", "")[:2], (200, {"code": "skipped"}))
-            self.assertEqual(session.wait(), 2)
+            self.assertEqual(session.request('status', method='GET')[1], {'code': 'pending'})
+            self.assertEqual(session.request('save', '')[0], 400)
+            self.assertEqual(session.request('status', method='GET')[1], {'code': 'pending'})
+            self.assertEqual(session.request('save', URL)[0], 200)
+            for _ in range(30):
+                payload = session.request('status', method='GET')[1]
+                if payload['code'] == 'ready':
+                    break
+                time.sleep(0.1)
+            self.assertEqual(payload, {'code': 'ready'})
+            self.assertIn('MN_SETUP_READY', session.log_path.read_text())
+            self.assertEqual(session.wait(), 0)
+
+    def test_empty_skip_requires_retry_or_cancel(self):
+        with Session() as session:
+            self.assertEqual(session.request("skip", "")[0], 400)
+            self.assertEqual(session.request("cancel", "")[:2], (200, {"code": "cancelled"}))
+            self.assertEqual(session.wait(), 4)
             self.assertFalse((session.root / ".config/sing-box/subscription.url").exists())
+
+    def test_cancel_status_propagates_to_installer(self):
+        script = '''. "$1"
+set_i18n() { :; }
+magicnet_onboarding_allowed() { return 0; }
+magicnet_onboarding_collect() { return 4; }
+magicnet_install_onboarding
+'''
+        result = subprocess.run([BUSYBOX, 'ash', '-c', script, 'test', str(HELPER)],
+                                env=dict(os.environ, MODPATH=str(MODULE)))
+        self.assertEqual(result.returncode, 4)
 
     def test_timeout_closes_server_and_cleans_private_state(self):
         with Session(timeout=5) as session:
-            self.assertEqual(session.wait(), 3)
+            self.assertEqual(session.wait(), 4)
             self.assertFalse((session.root / ".config/sing-box/subscription.url").exists())
 
     def test_signal_closes_server_and_cleans_private_state(self):
@@ -245,7 +281,7 @@ class OnboardingTests(unittest.TestCase):
             out.write_text(newer)
             self.assertEqual(session.request('save', URL)[0], 409)
             self.assertEqual(session.request('skip', '')[0], 200)
-            self.assertEqual(session.wait(), 2)
+            self.assertEqual(session.wait(), 0)
             self.assertEqual(out.read_text(), newer)
 
     def test_multiple_subscription_limit(self):
@@ -332,8 +368,9 @@ class OnboardingTests(unittest.TestCase):
 
     def test_installer_hook_order_and_no_unconditional_promotion(self):
         source = (MODULE / "customize.sh").read_text()
-        self.assertGreater(source.index('magicnet_install_onboarding ||'), source.index('magicnet_install_config_template ||'))
-        self.assertGreater(source.index('magicnet_install_onboarding ||'), source.index('set_perm "${MODPATH}/${_magicnet_entry}"'))
+        self.assertGreater(source.index('if magicnet_install_onboarding;'), source.index('magicnet_install_config_template ||'))
+        self.assertGreater(source.index('if magicnet_install_onboarding;'), source.index('set_perm "${MODPATH}/${_magicnet_entry}"'))
+        self.assertIn('[ "$_setup_status" -ne 4 ] || abort', source)
         self.assertNotIn('launch url "https://github.com', source)
         helper = HELPER.read_text()
         self.assertIn('import launcher', helper)

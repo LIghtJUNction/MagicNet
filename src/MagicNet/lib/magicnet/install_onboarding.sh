@@ -214,18 +214,32 @@ magicnet_onboarding_collect() (
     while [ "$_elapsed" -lt "$_wait" ]; do
         if [ -f "$MN_SETUP_RUN/result" ]; then
             _result=$("$_bb" cat "$MN_SETUP_RUN/result")
-            "$_bb" sleep 1 # Let the final HTTP response reach the browser.
             case "$_result" in
-                saved) print "$(i18n MN_SETUP_SAVED)"; exit 0 ;;
-                skipped) print "$(i18n MN_SETUP_CLOSED)"; exit 2 ;;
+                saved | skipped)
+                    print "$(i18n MN_SETUP_READY)"
+                    printf '%s\n' ready >"$MN_SETUP_RUN/receipt.new"
+                    _result_code=0 ;;
+                cancelled)
+                    print "$(i18n MN_SETUP_CANCELLED)"
+                    printf '%s\n' cancelled >"$MN_SETUP_RUN/receipt.new"
+                    _result_code=4 ;;
                 *) exit 1 ;;
             esac
+            "$_bb" mv "$MN_SETUP_RUN/receipt.new" "$MN_SETUP_RUN/receipt"
+            # Keep the listener alive until the page sees the installer's receipt.
+            for _drain in 1 2 3 4 5; do
+                [ ! -f "$MN_SETUP_RUN/receipt-seen" ] || break
+                "$_bb" sleep 1
+            done
+            "$_bb" sleep 1
+            exit "$_result_code"
         fi
         kill -0 "$_pid" 2>/dev/null || exit 1
         "$_bb" sleep 1
         _elapsed=$((_elapsed + 1))
     done
     print "$(i18n MN_SETUP_CLOSED)"
+    magicnet_install_has_subscription "$MODPATH" || exit 4
     exit 3
 )
 
@@ -236,6 +250,7 @@ magicnet_install_onboarding() {
         return 0
     else
         case "$?" in
+            4) return 4 ;;
             2 | 3) return 0 ;;
             130 | 143) return 1 ;;
             *) print "$(i18n MN_SETUP_UNAVAILABLE)"; return 0 ;;

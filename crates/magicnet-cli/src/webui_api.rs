@@ -1,7 +1,7 @@
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -25,6 +25,11 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "groups" => curl(app, "/providers/proxies"),
         "proxies" => curl(app, "/proxies"),
+        "tailscale-status" => {
+            let tag = args.get(1).filter(|tag| !tag.is_empty())
+                .ok_or("Usage: cli api tailscale-status <endpoint-tag>")?;
+            tailscale_status(app, tag)
+        }
         "select" => select_proxy(
             app,
             args.get(1).map(String::as_str).unwrap_or_default(),
@@ -47,6 +52,75 @@ pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 .to_string(),
         ),
     }
+}
+
+fn tailscale_status(app: &App, tag: &str) -> Result<(), String> {
+    let port = app
+        .api
+        .strip_prefix("http://127.0.0.1:")
+        .or_else(|| app.api.strip_prefix("http://[::1]:"))
+        .and_then(|value| value.trim_end_matches('/').parse::<u16>().ok());
+    if port.is_none_or(|port| port == 0) {
+        return Err("Tailscale login requires a local sing-box API".to_string());
+    }
+    let config: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
+            .map_err(|_| "cannot read private API configuration")?,
+    )
+    .map_err(|_| "invalid private API configuration")?;
+    let api = &config["experimental"]["clash_api"];
+    let secret = api["secret"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .or_else(|| api["tailscale_secret"].as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or("Tailscale API credential missing; configure browser login first")?;
+    if !secret
+        .bytes()
+        .all(|b| b.is_ascii_graphic() && b != b'"' && b != b'\\')
+    {
+        return Err("unsupported API credential format".to_string());
+    }
+    // Keep the credential out of process arguments and shell command previews.
+    let mut child = Command::new("curl")
+        .args([
+            "-q",
+            "--noproxy",
+            "*",
+            "-fsS",
+            "--max-time",
+            "4",
+            "--max-filesize",
+            "65536",
+            "--config",
+            "-",
+            &format!(
+                "{}/tailscale/{}",
+                app.api.trim_end_matches('/'),
+                encode_path_segment(tag)
+            ),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| "cannot query local Tailscale status")?;
+    let sent = child.stdin.take().is_some_and(|mut input| {
+        writeln!(input, "header = \"Authorization: Bearer {secret}\"").is_ok()
+    });
+    if !sent {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err("cannot send private API credential".to_string());
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|_| "Tailscale status query failed")?;
+    if !output.status.success() {
+        return Err("Tailscale status is unavailable".to_string());
+    }
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    Ok(())
 }
 
 fn sync_persisted_hotspot_offload(app: &App) {
@@ -700,6 +774,61 @@ mod tests {
 
     use super::*;
     use crate::test_support::temp_app;
+
+    #[test]
+    fn tailscale_credentials_are_only_sent_to_loopback() {
+        let fixture = temp_app();
+        let mut app = App::for_test(fixture.moddir.clone());
+        app.api = "https://example.com".to_string();
+        assert_eq!(
+            tailscale_status(&app, "tailnet").unwrap_err(),
+            "Tailscale login requires a local sing-box API"
+        );
+    }
+
+    #[test]
+    fn tailscale_status_sends_private_bearer_header() {
+        use std::net::TcpListener;
+        use std::time::Duration;
+        let fixture = temp_app();
+        let mut app = App::for_test(fixture.moddir.clone());
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        app.api = format!("http://{}", listener.local_addr().unwrap());
+        fs::create_dir_all(app.moddir.join(".config/sing-box")).unwrap();
+        fs::write(
+            app.moddir.join(".config/sing-box/config.json"),
+            r#"{"experimental":{"clash_api":{"tailscale_secret":"fixture-secret"}}}"#,
+        )
+        .unwrap();
+        let server = std::thread::spawn(move || {
+            let mut connection = None;
+            for _ in 0..500 {
+                if let Ok((stream, _)) = listener.accept() {
+                    connection = Some(stream);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let mut stream = connection.expect("curl did not reach local API");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            while !request.ends_with(b"\r\n\r\n") && request.len() < 16384 {
+                let read = stream.read(&mut buffer).unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&buffer[..read]);
+            }
+            let request = String::from_utf8(request).unwrap();
+            assert!(request.contains("Authorization: Bearer fixture-secret\r\n"));
+            assert!(request.starts_with("GET /tailscale/tail%2Fnet "));
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 19\r\nConnection: close\r\n\r\n{\"state\":\"Running\"}").unwrap();
+        });
+        assert!(tailscale_status(&app, "tail/net").is_ok());
+        server.join().unwrap();
+    }
 
     #[test]
     fn hotspot_probe_failure_does_not_apply_config() {

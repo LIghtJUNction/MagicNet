@@ -74,6 +74,16 @@ const snapshotCopied = ref(false);
 const wifiSsidInput = ref("");
 const wifiBssidInput = ref("");
 const hotspotProxyEnabled = ref(false);
+const hotspotRouteStatus = ref("");
+const hotspotForwardingLabel = computed(() => {
+  switch (hotspotRouteStatus.value) {
+    case "ready": return t("热点转发规则已就绪");
+    case "waiting-for-hotspot": return t("已启用，等待热点开启");
+    case "degraded": return t("已启用，但转发规则异常");
+    case "shared-tc-unverified": return t("eBPF 共享转发待核实");
+    default: return t("已设置，转发状态未确认");
+  }
+});
 const hotspotPolicyPhase = ref<HotspotPolicyPhase>("loading");
 const hotspotPolicyError = ref("");
 let dangerActionTrigger: HTMLElement | null = null;
@@ -326,6 +336,7 @@ async function refreshHotspotPolicy(): Promise<boolean> {
     return false;
   }
   hotspotProxyEnabled.value = matched[1] === "1";
+  hotspotRouteStatus.value = output.match(/^route_status=([a-z-]+)$/m)?.[1] ?? "";
   hotspotPolicyPhase.value = "ready";
   return true;
 }
@@ -591,7 +602,7 @@ onMounted(() => {
           <span class="min-w-0">
             <span class="mn-hotspot-label"><Share2 :size="17" />{{ t("热点代理") }}</span>
             <span id="hotspot-proxy-status" class="mn-hotspot-state">
-              {{ !state.hasKsu ? t("未连接设备") : hotspotPolicyPhase === 'loading' ? t("读取中") : hotspotPolicyPhase === 'error' ? t("读取失败") : hotspotProxyEnabled ? t("已开启") : t("已关闭") }}
+              {{ !state.hasKsu ? t("未连接设备") : hotspotPolicyPhase === 'loading' ? t("读取中") : hotspotPolicyPhase === 'error' ? t("读取失败") : hotspotProxyEnabled ? hotspotForwardingLabel : t("已关闭") }}
             </span>
           </span>
           <span class="mn-hotspot-track" aria-hidden="true" />
@@ -599,6 +610,7 @@ onMounted(() => {
         <details class="mn-control-details">
           <summary>{{ t("共享设置") }}</summary>
           <p id="hotspot-proxy-description" class="text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("热点设备使用 proxy 代理组；不勾选时统一走 direct。TUN 模式会关闭 Android 热点硬件加速，关闭代理后恢复原设置；eBPF 模式使用共享 TC。") }} </p>
+          <Button v-if="state.hasKsu && hotspotProxyEnabled" variant="ghost" :disabled="runtimeBusy" @click="retryHotspotPolicy">{{ t("重新读取") }}</Button>
         </details>
         <div v-if="state.hasKsu && hotspotPolicyPhase === 'error'" class="mn-control-notice mn-tone-warn" role="alert">
           <p>{{ hotspotPolicyError }}</p>

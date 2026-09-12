@@ -32,6 +32,7 @@ try {
   for (const [width, height] of [[320, 568], [390, 852], [768, 1024], [1440, 900]]) {
     for (const colorScheme of ['light', 'dark']) {
       const context = await browser.newContext({ locale: 'zh-CN', colorScheme, reducedMotion: 'reduce', viewport: { width, height } });
+      await context.route('https://api.github.com/repos/LIghtJUNction/MagicNet', route => route.fulfill({ json: { stargazers_count: 1234 } }));
       const page = await context.newPage();
       page.on('pageerror', error => errors.push(error.message));
       page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -58,6 +59,7 @@ try {
     }
   }
   const context = await browser.newContext({ locale: 'zh-CN' });
+  await context.route('https://api.github.com/repos/LIghtJUNction/MagicNet', route => route.fulfill({ json: { stargazers_count: 1234 } }));
   const page = await context.newPage();
   await page.goto(`${fixture.origin}/#${fixture.token}`);
   await page.waitForFunction(() => !document.getElementById('save').disabled);
@@ -87,7 +89,7 @@ try {
   assert.equal(saved.exit, 0);
   assert.equal(saved.value, value + '\n');
   assert.equal(await page.locator('#title').isVisible(), false);
-  assert.equal(await page.locator('#completion-note').textContent(), '返回安装器继续。');
+  assert.equal(await page.locator('#completion-note').textContent(), '安装器已确认：一切就绪。');
   assert.equal(await page.locator('#completion-title').evaluate(node => node === document.activeElement), true);
   assert.equal(await page.locator('#telegram').isVisible(), true);
   assert.equal(await page.locator('#discord').isVisible(), true);

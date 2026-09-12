@@ -29,10 +29,17 @@ let browser;
 let checked = 0;
 const errors = [];
 const remote = [];
-function observe(page) {
+const repositoryPrompts = [];
+async function observe(page) {
+  page.on('dialog', async dialog => { repositoryPrompts.push(dialog.message()); await dialog.dismiss(); });
+  await page.route('https://api.github.com/repos/LIghtJUNction/MagicNet', route => {
+    assert.equal(route.request().headers()['x-setup-token'], undefined);
+    assert.equal(route.request().headers().referer, undefined);
+    return route.fulfill({ json: { stargazers_count: 1234 } });
+  });
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => {
-    if (!request.url().startsWith(fixture.origin + '/')) remote.push(request.url());
+    if (!request.url().startsWith(fixture.origin + '/') && request.url() !== 'https://api.github.com/repos/LIghtJUNction/MagicNet') remote.push(request.url());
   });
 }
 async function load(page, suffix = `/#${fixture.token}`, ready = true) {
@@ -49,7 +56,7 @@ try {
       for (const colorScheme of ['light', 'dark']) {
         const context = await browser.newContext({ locale, colorScheme, reducedMotion: 'reduce', viewport: { width, height: 900 } });
         const page = await context.newPage();
-        observe(page);
+        await observe(page);
         await load(page);
         assert.equal(await page.locator('html').getAttribute('lang'), expected);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${locale}/${width}/${colorScheme} overflows`);
@@ -77,7 +84,7 @@ try {
   assert.deepEqual(remote, [], 'remote assets loaded without user navigation');
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 852 }, colorScheme: 'dark' });
   const page = await context.newPage();
-  observe(page);
+  await observe(page);
   await load(page, `/?lang=zh-TW#${fixture.token}`);
   assert.equal(await page.locator('html').getAttribute('lang'), 'zh-TW');
   await page.locator('#language').selectOption('en');
@@ -85,6 +92,13 @@ try {
   checked++;
 
   await load(page);
+  await page.waitForFunction(() => document.getElementById('star-count').textContent.replace(/\D/g, '') === '1234');
+  const starURL = 'https://api.github.com/repos/LIghtJUNction/MagicNet';
+  const failStars = route => route.abort();
+  await page.route(starURL, failStars);
+  await load(page);
+  assert.equal(await page.locator('#star-count').textContent(), '—');
+  await page.unroute(starURL, failStars);
   await page.locator('#subscription').fill('not-a-url');
   await page.locator('#save').click();
   assert.equal(await page.locator('#status').getAttribute('data-error'), 'true');
@@ -92,9 +106,23 @@ try {
   checked++;
 
   const value = "https://feed.example.test/sub?token=a+b%2F&quote='&semi=;&x=$(id)";
+  let releaseReceipt;
+  let receiptRequested;
+  const holdReceipt = new Promise(resolve => { releaseReceipt = resolve; });
+  const requestedReceipt = new Promise(resolve => { receiptRequested = resolve; });
+  await page.route('**/cgi-bin/setup/status', async route => {
+    receiptRequested();
+    await holdReceipt;
+    await route.continue();
+  });
   await page.locator('#subscription').fill(value);
   await page.locator('#save').click();
+  await Promise.race([requestedReceipt, new Promise((_, reject) => setTimeout(() => reject(new Error('installer receipt was not requested')), 3000))]);
+  assert.equal(await page.locator('#completion').isVisible(), false, 'a write acknowledgement is not installer readiness');
+  assert.equal(repositoryPrompts.length, 0);
+  releaseReceipt();
   await page.locator('#completion').waitFor({ state: 'visible' });
+  await page.unroute('**/cgi-bin/setup/status');
   assert.equal(await page.locator('#subscription').inputValue(), '');
   assert.equal(new URL(page.url()).hash, '');
   assert.equal(await page.locator('#completion-title').textContent(), '链接已收好。');
@@ -102,16 +130,22 @@ try {
   assert.equal(saved.value, value + '\n');
   assert.equal(saved.mode, 0o600);
   assert.equal(saved.exit, 0);
+  assert.ok(repositoryPrompts.includes('是否跳转至源代码仓库？'));
   await page.locator('#language').selectOption('zh-TW');
   assert.equal(await page.locator('#completion-title').textContent(), '連結已收好。');
   checked++;
 
   await reset(page);
   await page.locator('#skip').click();
+  await page.waitForFunction(() => document.getElementById('status').dataset.error === 'true');
+  assert.equal(await page.locator('#completion').isVisible(), false);
+  const promptCount = repositoryPrompts.length;
+  await page.locator('#cancel').click();
   await page.locator('#completion').waitFor({ state: 'visible' });
   const skipped = await rpc('wait');
   assert.equal(skipped.value, null);
-  assert.equal(skipped.exit, 2);
+  assert.equal(skipped.exit, 4);
+  assert.equal(repositoryPrompts.length, promptCount);
   checked++;
 
   fixture = await rpc('upgrade');

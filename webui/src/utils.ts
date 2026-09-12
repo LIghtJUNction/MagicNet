@@ -31,6 +31,7 @@ export function isSensitiveExternalUrl(value: string): boolean {
       || parsed.password
       || parsed.search
       || parsed.hash
+      || (parsed.hostname === "login.tailscale.com" && parsed.pathname.startsWith("/a/"))
       || SENSITIVE_URL_COMPONENT.test(value),
     );
   } catch {

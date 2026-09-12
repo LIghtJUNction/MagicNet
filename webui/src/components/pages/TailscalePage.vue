@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onDeactivated, onMounted, ref, watch } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
 import { ArrowUpRight, KeyRound, RefreshCw } from "lucide-vue-next";
 import { t } from "@/i18n";
 import Button from "@/components/ui/Button.vue";
@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import {
-  inspectTailscale, saveTailscale, TailscaleSetupError,
+  inspectTailscale, saveTailscale, parseTailscaleLogin, TailscaleSetupError,
   TAILSCALE_KEYS_URL, TAILSCALE_MACHINES_URL,
   type SaveResult, type SetupErrorCode, type TailscaleSnapshot,
 } from "./tailscaleSetup";
@@ -22,6 +22,44 @@ const edited = ref(false);
 const message = ref("");
 const hasError = ref(false);
 let attemptedRead = false;
+const loginMessage = ref("");
+const loginUrl = ref("");
+let loginTimer: ReturnType<typeof setTimeout> | undefined;
+let loginGeneration = 0;
+function stopLoginPolling(): void { loginGeneration++; clearTimeout(loginTimer); loginUrl.value = ""; }
+function startLoginPolling(autoOpen: boolean): void {
+  stopLoginPolling();
+  const generation = loginGeneration;
+  let attempts = 0;
+  let opened = false;
+  async function poll(): Promise<void> {
+    if (generation !== loginGeneration || !snapshot.value) return;
+    try {
+      const response = await runPrivateCli(`api tailscale-status ${shellQuote(snapshot.value.tag)}`, t("读取 Tailscale 配置"), "api tailscale-status [private-output]");
+      if (generation !== loginGeneration) return;
+      if (!response.ok) throw new Error('status');
+      const status = parseTailscaleLogin(response.stdout);
+      loginUrl.value = status.authUrl;
+      if (status.state === 'Running' && status.online) {
+        loginUrl.value = "";
+        loginMessage.value = t("Tailscale 已登录，正由 sing-box 连接。配置已自动生效。");
+        return;
+      }
+      loginMessage.value = status.state === 'Running'
+        ? t("Tailscale 已登录，正在等待网络上线。")
+        : t("等待 Tailscale 登录授权，请在浏览器完成后返回。");
+      if (autoOpen && !opened && status.authUrl) {
+        opened = true;
+        await openExternal(status.authUrl, 'Tailscale', { preferBrowser: false });
+      }
+    } catch {
+      if (generation !== loginGeneration) return;
+      loginMessage.value = t("暂时无法读取 Tailscale 登录状态，请稍后刷新。");
+    }
+    if (generation === loginGeneration && ++attempts < 60) loginTimer = setTimeout(poll, 2000);
+  }
+  void poll();
+}
 const locked = computed(() => loading.value || saving.value || state.busy || !state.hasKsu);
 const customControl = computed(() => Boolean(snapshot.value && snapshot.value.controlUrl.replace(/\/$/, "") !== "https://controlplane.tailscale.com"));
 const saveDisabled = computed(() => locked.value || !snapshot.value || state.config.dirty || customControl.value);
@@ -62,18 +100,20 @@ async function read(): Promise<void> {
     snapshot.value = current;
     hostname.value = current.hostname;
     message.value = "";
+    if (current.configured) startLoginPolling(false);
   } catch (cause) {
     snapshot.value = null;
     hasError.value = true;
     message.value = errorMessage(cause instanceof TailscaleSetupError ? cause.code : undefined);
   } finally { loading.value = false; }
 }
-async function submit(): Promise<void> {
+async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   if (saveDisabled.value || !snapshot.value) return;
   saving.value = true;
   hasError.value = false;
   message.value = t("正在校验并接入 Tailscale…");
-  const draft = { hostname: hostname.value, authKey: authKey.value };
+  stopLoginPolling();
+  const draft = { hostname: hostname.value, authKey: mode === "browser" ? "" : authKey.value, mode };
   authKey.value = "";
   try {
     const result = await saveTailscale({
@@ -98,6 +138,7 @@ async function submit(): Promise<void> {
     message.value = resultMessage(result);
     hasError.value = result.stage !== "done";
     if (result.stage === "done" || result.stage === "restart") await refreshStatus(undefined, false);
+    if (result.stage === "done") startLoginPolling(mode === "browser");
   } finally {
     draft.authKey = "";
     saving.value = false;
@@ -121,7 +162,8 @@ function discardDraft(): void {
 onMounted(() => { void read(); });
 watch(() => state.busy, (busy) => { if (!busy && !attemptedRead) void read(); });
 // KeepAlive retains the page, but never retains a password when leaving it.
-onDeactivated(() => { authKey.value = ""; });
+onDeactivated(() => { authKey.value = ""; stopLoginPolling(); });
+onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); });
 </script>
 
 <template>
@@ -138,7 +180,13 @@ onDeactivated(() => { authKey.value = ""; });
     </div>
     <p v-if="state.config.dirty" role="alert" class="text-sm text-[var(--mn-warning)]">{{ t("配置编辑器还有未保存的修改，请先处理后再接入。") }}</p>
     <p v-if="customControl" role="alert" class="text-sm text-[var(--mn-warning)]">{{ errorMessage("custom-control") }}</p>
-    <form class="max-w-xl space-y-7" @submit.prevent="submit" @input="edited = true" @change="edited = true">
+    <div class="flex flex-wrap gap-3">
+      <Button :disabled="saveDisabled" :loading="saving" @click="submit('browser')">{{ t("登录 Tailscale 并自动配置") }}</Button>
+      <Button v-if="loginUrl" variant="outline" :disabled="locked" @click="openExternal(loginUrl, 'Tailscale', { preferBrowser: false })">{{ t("继续 Tailscale 登录") }}</Button>
+      <Button v-if="snapshot?.configured" variant="ghost" :disabled="locked" @click="startLoginPolling(false)">{{ t("刷新登录状态") }}</Button>
+    </div>
+    <p v-if="loginMessage" role="status" class="text-sm">{{ loginMessage }}</p>
+    <form class="max-w-xl space-y-7" @submit.prevent="submit('key')" @input="edited = true" @change="edited = true">
       <fieldset :disabled="locked || !snapshot || customControl" class="min-w-0 space-y-7">
         <div class="space-y-2">
           <label for="tailscale-hostname" class="block text-sm font-medium">{{ t("设备名称") }}</label>

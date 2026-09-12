@@ -62,7 +62,7 @@ magicnet_hotspot_interface_allowed() {
         ;;
     esac
     case "$_hotspot_allowed_iface" in
-    wlan[0-9]* | softap[0-9]* | ap_br_wlan[0-9]* | ap_br_softap[0-9]* | \
+    wlan[0-9]* | ap[0-9]* | softap[0-9]* | ap_br_ap[0-9]* | ap_br_wlan[0-9]* | ap_br_softap[0-9]* | \
         swlan[0-9]* | rndis[0-9]* | usb[0-9]* | bt-pan | bt-pan[0-9]* | \
         p2p[0-9]* | p2p-*)
         unset _hotspot_allowed_iface
@@ -122,7 +122,7 @@ magicnet_hotspot_discover_interfaces() (
             {
                 name = $2
                 sub(/@.*/, "", name)
-                if (name ~ /^(wlan[1-9][0-9]*|softap[0-9]+|ap_br_(wlan|softap)[0-9]+|swlan[0-9]+|rndis[0-9]+|usb[0-9]+|bt-pan[0-9]*|p2p[0-9]+|p2p-.+)$/ && !seen[name]++) {
+                if (name ~ /^(wlan[1-9][0-9]*|ap[0-9]+|softap[0-9]+|ap_br_(ap|wlan|softap)[0-9]+|swlan[0-9]+|rndis[0-9]+|usb[0-9]+|bt-pan[0-9]*|p2p[0-9]+|p2p-.+)$/ && !seen[name]++) {
                     print name
                 }
             }
@@ -140,6 +140,10 @@ magicnet_hotspot_active_networks_uncached() (
         # A failed query says nothing about whether the hotspot disappeared.
         # Keep this status outside pipelines so callers retain the live config.
         _hotspot_route_output="$(ip route show dev "$_hotspot_iface" scope link 2>/dev/null)" || return 2
+        # Android also uses per-interface routing tables for tethered networks.
+        if [ -z "$_hotspot_route_output" ]; then
+            _hotspot_route_output="$(ip route show table all dev "$_hotspot_iface" scope link 2>/dev/null)" || return 2
+        fi
         _hotspot_routes="$(printf '%s\n' "$_hotspot_route_output" | awk '
             function valid_octet(value) {
                 return value ~ /^[0-9]+$/ && length(value) <= 3 &&
@@ -244,6 +248,36 @@ magicnet_hotspot_delete_rule() {
     return "$_hotspot_rule_rc"
 }
 
+magicnet_hotspot_forward_access() (
+    _mode=$1
+    _iface=$2
+    magicnet_hotspot_interface_allowed "$_iface" || return 1
+    for _direction in outbound return; do
+        if [ "$_direction" = outbound ]; then
+            set -- FORWARD -i "$_iface" -o magicnet0 -m comment --comment magicnet-hotspot -j ACCEPT
+        else
+            set -- FORWARD -i magicnet0 -o "$_iface" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment magicnet-hotspot -j ACCEPT
+        fi
+        case "$_mode" in
+        ensure)
+            magicnet_iptables_ensure "$@" || {
+                magicnet_hotspot_forward_access cleanup "$_iface" || true
+                return 1
+            } ;;
+        status) magicnet_iptables_cmd -C "$@" >/dev/null 2>&1 || return 1 ;;
+        cleanup)
+            _rc=0
+            magicnet_iptables_cmd -C "$@" >/dev/null 2>&1 || _rc=$?
+            case "$_rc" in
+                0) magicnet_iptables_cmd -D "$@" >/dev/null 2>&1 || return 1 ;;
+                1) : ;;
+                *) return 1 ;;
+            esac ;;
+        *) return 1 ;;
+        esac
+    done
+)
+
 magicnet_hotspot_route_cleanup() {
     _hotspot_state_file="$(magicnet_hotspot_route_state_file)"
     _hotspot_cleanup_rc=0
@@ -259,6 +293,7 @@ magicnet_hotspot_route_cleanup() {
                 _hotspot_cleanup_rc=1
                 continue
             }
+            magicnet_hotspot_forward_access cleanup "$_hotspot_iface" || _hotspot_cleanup_rc=1
             magicnet_hotspot_delete_rule "$_hotspot_priority" "$_hotspot_iface" ||
                 _hotspot_cleanup_rc=1
         done <"$_hotspot_state_file"
@@ -371,8 +406,13 @@ magicnet_hotspot_reconcile() {
     _hotspot_current_added=0
     while IFS='|' read -r _hotspot_iface _hotspot_cidr; do
         [ -n "$_hotspot_iface" ] || continue
+        if ! magicnet_hotspot_forward_access ensure "$_hotspot_iface"; then
+            _hotspot_add_rc=1
+            break
+        fi
         if ! ip rule add priority "$_hotspot_priority" iif "$_hotspot_iface" lookup 2022 \
             >/dev/null 2>&1; then
+            magicnet_hotspot_forward_access cleanup "$_hotspot_iface" || true
             _hotspot_add_rc=1
             break
         fi
@@ -389,10 +429,12 @@ EOF
         ! chmod 600 "$_hotspot_state_tmp" ||
         ! mv -f "$_hotspot_state_tmp" "$_hotspot_state_file"; then
         if [ "$_hotspot_current_added" -eq 1 ]; then
+            magicnet_hotspot_forward_access cleanup "$_hotspot_iface" || true
             magicnet_hotspot_delete_rule "$_hotspot_priority" "$_hotspot_iface" || true
         fi
         while IFS='|' read -r _hotspot_cleanup_priority _hotspot_cleanup_iface; do
             [ -n "$_hotspot_cleanup_priority" ] || continue
+            magicnet_hotspot_forward_access cleanup "$_hotspot_cleanup_iface" || true
             magicnet_hotspot_delete_rule "$_hotspot_cleanup_priority" "$_hotspot_cleanup_iface" || true
         done <"$_hotspot_state_tmp" 2>/dev/null || true
         rm -f "$_hotspot_state_tmp" 2>/dev/null || true
@@ -407,13 +449,20 @@ EOF
 }
 
 magicnet_hotspot_route_status() {
+    if [ "$(magicnet_transparent_mode 2>/dev/null)" = ebpf ]; then
+        # TUN state cannot prove TC attachment; transparent status verifies it.
+        if magicnet_hotspot_proxy_enabled; then printf 'route_status=shared-tc-unverified\n'; else printf 'route_status=disabled\n'; fi
+        return 0
+    fi
     _hotspot_state_file="$(magicnet_hotspot_route_state_file)"
     if magicnet_hotspot_tun_route_table_ready; then
         printf 'route_table_ready=1\n'
     else
         printf 'route_table_ready=0\n'
     fi
-    _hotspot_pairs="$(magicnet_hotspot_active_networks || true)"
+    _hotspot_discovery_error=0
+    _hotspot_pairs="$(magicnet_hotspot_active_networks)" || _hotspot_discovery_error=1
+    _hotspot_expected_rule_count="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF == 2 && !seen[$1]++ { n++ } END { print n+0 }')"
     _hotspot_interfaces="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF && !seen[$1]++ { print $1 }' | tr '\n' ',' | sed 's/,$//')"
     _hotspot_networks="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF && !seen[$2]++ { print $2 }' | tr '\n' ',' | sed 's/,$//')"
     printf 'downstream_interfaces=%s\n' "${_hotspot_interfaces:-none}"
@@ -427,8 +476,11 @@ magicnet_hotspot_route_status() {
             esac
             magicnet_hotspot_interface_allowed "$_hotspot_iface" || continue
             printf 'policy_rule=%s iif=%s table=2022\n' "$_hotspot_priority" "$_hotspot_iface"
-            if magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface"; then
-                _hotspot_rule_count=$((_hotspot_rule_count + 1))
+            if magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" &&
+                magicnet_hotspot_forward_access status "$_hotspot_iface"; then
+                if printf '%s\n' "$_hotspot_pairs" | awk -F'|' -v iface="$_hotspot_iface" '$1 == iface {found=1} END {exit !found}'; then
+                    _hotspot_rule_count=$((_hotspot_rule_count + 1))
+                fi
             else
                 _hotspot_missing_rule_count=$((_hotspot_missing_rule_count + 1))
             fi
@@ -438,9 +490,11 @@ magicnet_hotspot_route_status() {
     printf 'policy_rule_missing=%s\n' "$_hotspot_missing_rule_count"
     if ! magicnet_hotspot_proxy_enabled; then
         printf 'route_status=disabled\n'
+    elif [ "$_hotspot_discovery_error" -ne 0 ]; then
+        printf 'route_status=degraded\n'
     elif [ -z "$_hotspot_pairs" ]; then
         printf 'route_status=waiting-for-hotspot\n'
-    elif ! magicnet_hotspot_tun_route_table_ready || [ "$_hotspot_rule_count" -eq 0 ] ||
+    elif ! magicnet_hotspot_tun_route_table_ready || [ "$_hotspot_rule_count" -lt "$_hotspot_expected_rule_count" ] ||
         [ "$_hotspot_missing_rule_count" -ne 0 ]; then
         printf 'route_status=degraded\n'
     else
@@ -448,6 +502,7 @@ magicnet_hotspot_route_status() {
     fi
     unset _hotspot_state_file _hotspot_pairs _hotspot_interfaces _hotspot_networks
     unset _hotspot_rule_count _hotspot_missing_rule_count _hotspot_priority _hotspot_iface
+    unset _hotspot_discovery_error _hotspot_expected_rule_count
 }
 
 magicnet_hotspot_offload_value() {

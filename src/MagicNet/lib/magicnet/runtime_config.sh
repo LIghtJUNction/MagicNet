@@ -58,7 +58,15 @@ magicnet_tailscale_apply_unlocked() (
       else . end
       | ((.endpoints // []) | map(select(userspace_tailscale)) | first) as $endpoint
       | if $endpoint == null then . else
-          .inbounds = ((.inbounds // []) | map(
+          (([.dns.servers[]? | select(.type == "tailscale" and .endpoint == $endpoint.tag) | .tag] | first)
+            // ((.dns.servers // [] | map(.tag)) as $used
+              | [range(0; 100) | ($endpoint.tag + "-dns" + (if . == 0 then "" else "-" + tostring end)) | select(. as $tag | $used | index($tag) | not)] | first)) as $dns_tag
+          | if $dns_tag == null then error("no available Tailscale DNS tag") else . end
+          | .dns.servers = ((.dns.servers // [])
+              | if any(.[]; .tag == $dns_tag) then . else . + [{"type":"tailscale", "tag":$dns_tag, "endpoint":$endpoint.tag}] end)
+          | .dns.rules = ([{"domain_suffix":["ts.net"], "server":$dns_tag}]
+              + ((.dns.rules // []) | map(select((.server == $dns_tag and .domain_suffix == ["ts.net"] and (keys == ["domain_suffix", "server"])) | not))))
+          | .inbounds = ((.inbounds // []) | map(
             if .type == "tun" and (.tag // "") == "tun-in" then
               .route_exclude_address = ((.route_exclude_address // []) - tailnets)
             else . end
@@ -70,9 +78,10 @@ magicnet_tailscale_apply_unlocked() (
                   else . end
                 )
               | map(select((has("ip_cidr") and .ip_cidr == []) | not))
-              | map(select(managed_tailnet_rule | not))) as $rules
+              | map(select(managed_tailnet_rule | not))
+              | map(select((.outbound == $endpoint.tag and .domain_suffix == ["ts.net"]) | not))) as $rules
           | (([$rules | to_entries[] | select((.value.outbound // "") == "lan") | .key] | first) // ($rules | length)) as $at
-          | .route.rules = ($rules[:$at] + [{"ip_cidr": tailnets, "outbound": $endpoint.tag}] + $rules[$at:])
+          | .route.rules = ($rules[:$at] + [{"ip_cidr": tailnets, "outbound": $endpoint.tag}, {"domain_suffix":["ts.net"], "outbound":$endpoint.tag}] + $rules[$at:])
         end
     ' "$_config" >"$_tmp" || {
         rm -f "$_tmp" "$_new_auth" "$_merged_auth"

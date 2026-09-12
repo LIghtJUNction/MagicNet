@@ -118,10 +118,10 @@ class BrowserTests(unittest.TestCase):
 
     def test_only_one_installer_entry_is_registered(self):
         source = (MODULE / 'customize.sh').read_text()
-        self.assertEqual(source.count('magicnet_install_onboarding ||'), 1)
+        self.assertEqual(source.count('if magicnet_install_onboarding;'), 1)
         self.assertNotIn('magicnet_install_setup', source)
         self.assertNotIn('magicnet_install_web', source)
-        self.assertGreater(source.index('magicnet_install_onboarding ||'), source.index('magicnet_cleanup_install_backup ||'))
+        self.assertGreater(source.index('if magicnet_install_onboarding;'), source.index('magicnet_cleanup_install_backup ||'))
         self.assertFalse((MODULE / 'lib/magicnet/install_setup.sh').exists())
         self.assertFalse((MODULE / 'lib/magicnet/install_web.sh').exists())
         self.assertFalse((MODULE / 'lib/kamfw-overlay').exists())

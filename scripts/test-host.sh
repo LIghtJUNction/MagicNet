@@ -61,6 +61,7 @@ bash scripts/test-hotspot-routing.sh
 bash scripts/test-singbox-route-apply-safety.sh
 bash scripts/test-anthropic-routing.sh
 bash scripts/test-mcp-phase-config.sh
+bash scripts/test-tailscale-login.sh
 bash scripts/test-chatgpt-voice-rules.sh
 bash scripts/test-rule-hash-retry.sh
 bash scripts/singbox-subscription-protocol-smoke.sh

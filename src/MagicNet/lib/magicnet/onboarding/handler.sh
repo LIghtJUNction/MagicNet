@@ -29,6 +29,15 @@ case "${HTTP_SEC_FETCH_SITE:-}" in '' | same-origin | none) ;; *) reply '403 For
 if [ "${REQUEST_METHOD:-}" = GET ] && [ "${PATH_INFO:-}" = /health ]; then
     reply '200 OK' ready
 fi
+if [ "${REQUEST_METHOD:-}" = GET ] && [ "${PATH_INFO:-}" = /status ]; then
+    if [ -f "$run/receipt" ]; then
+        receipt=$("$bb" cat "$run/receipt")
+        case "$receipt" in ready | cancelled) ;; *) reply '500 Internal Server Error' save_failed ;; esac
+        : >"$run/receipt-seen"
+        reply '200 OK' "$receipt"
+    fi
+    reply '200 OK' pending
+fi
 if [ "${REQUEST_METHOD:-}" = GET ] && [ "${PATH_INFO:-}" = /subscriptions ]; then
     [ ! -e "$run/result" ] || reply '409 Conflict' finished
     printf 'Status: 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\r\n'
@@ -38,14 +47,24 @@ if [ "${REQUEST_METHOD:-}" = GET ] && [ "${PATH_INFO:-}" = /subscriptions ]; the
     exit 0
 fi
 [ "${REQUEST_METHOD:-}" = POST ] || reply '405 Method Not Allowed' method
-case "${PATH_INFO:-}" in /save | /skip) ;; *) reply '404 Not Found' missing ;; esac
+case "${PATH_INFO:-}" in /save | /skip | /cancel) ;; *) reply '404 Not Found' missing ;; esac
 "$bb" mkdir "$run/submit.lock" 2>/dev/null || reply '409 Conflict' busy
 locked=1
 [ ! -e "$run/result" ] || reply '409 Conflict' finished
 if [ "$PATH_INFO" = /skip ]; then
+    available=0
+    for name in subscription.url subscription.local; do
+        if [ -f "$run/baseline-$name" ] && "$bb" grep -qEv '^[[:space:]]*(#.*)?$' "$run/baseline-$name"; then available=1; fi
+    done
+    [ "$available" = 1 ] || reply '400 Bad Request' invalid
     printf '%s\n' skipped >"$run/result.new"
     "$bb" mv "$run/result.new" "$run/result"
     reply '200 OK' skipped
+fi
+if [ "$PATH_INFO" = /cancel ]; then
+    printf '%s\n' cancelled >"$run/result.new"
+    "$bb" mv "$run/result.new" "$run/result"
+    reply '200 OK' cancelled
 fi
 case "${CONTENT_TYPE:-}" in text/plain | text/plain\;*) ;; *) reply '415 Unsupported Media Type' format ;; esac
 length=${CONTENT_LENGTH:-}

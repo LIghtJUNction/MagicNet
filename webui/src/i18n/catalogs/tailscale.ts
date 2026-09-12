@@ -1,4 +1,11 @@
 export default {
+  "Tailscale 已登录，正在等待网络上线。": ["Tailscale is logged in; waiting for the network to come online.", "Вход в Tailscale выполнен; ожидание подключения к сети."],
+  "登录 Tailscale 并自动配置": ["Log in to Tailscale and configure automatically", "Войти в Tailscale и настроить автоматически"],
+  "继续 Tailscale 登录": ["Continue Tailscale login", "Продолжить вход в Tailscale"],
+  "刷新登录状态": ["Refresh login status", "Обновить статус входа"],
+  "Tailscale 已登录，正由 sing-box 连接。配置已自动生效。": ["Tailscale is logged in and connected through sing-box. Configuration is active.", "Вход в Tailscale выполнен, подключение через sing-box. Настройки применены."],
+  "等待 Tailscale 登录授权，请在浏览器完成后返回。": ["Complete Tailscale authorization in your browser, then return here.", "Завершите авторизацию Tailscale в браузере и вернитесь сюда."],
+  "暂时无法读取 Tailscale 登录状态，请稍后刷新。": ["Tailscale login status is temporarily unavailable. Refresh shortly.", "Статус входа Tailscale временно недоступен. Обновите его позже."],
   "Tailscale": [
     "Tailscale",
     "Tailscale"

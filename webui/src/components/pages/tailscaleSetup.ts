@@ -5,7 +5,7 @@ const CONTROL_URL = "https://controlplane.tailscale.com";
 const STATE_DIRECTORY = "/data/adb/modules/MagicNet/.state/sing-box/tailscale";
 type JsonObject = Record<string, unknown>;
 
-export type TailscaleDraft = { hostname: string; authKey: string };
+export type TailscaleDraft = { hostname: string; authKey: string; mode?: "key" | "browser" };
 export type TailscaleSnapshot = {
   configured: boolean;
   hostname: string;
@@ -91,7 +91,7 @@ export function buildTailscaleConfig(text: string, draft: TailscaleDraft, baseli
     throw new TailscaleSetupError("hostname");
   }
   const authKey = draft.authKey.trim();
-  if ((!endpoint && !authKey) || (authKey && !/^tskey-auth-[a-zA-Z0-9-]{1,240}$/.test(authKey))) {
+  if ((!endpoint && !authKey && draft.mode !== "browser") || (authKey && !/^tskey-auth-[a-zA-Z0-9-]{1,240}$/.test(authKey))) {
     throw new TailscaleSetupError("auth-key");
   }
   // This form issues official Tailscale keys; never send them to a preexisting
@@ -109,7 +109,29 @@ export function buildTailscaleConfig(text: string, draft: TailscaleDraft, baseli
   if (authKey) next.auth_key = authKey;
   const endpoints = (config.endpoints ?? []) as JsonObject[];
   config.endpoints = endpoint ? endpoints.map((item) => item === endpoint ? next : item) : [...endpoints, next];
+  if (draft.mode === "browser") {
+    if (config.experimental !== undefined && !object(config.experimental)) throw new TailscaleSetupError("config");
+    const experimental = (config.experimental ?? {}) as JsonObject;
+    if (experimental.clash_api !== undefined && !object(experimental.clash_api)) throw new TailscaleSetupError("config");
+    const api = (experimental.clash_api ?? {}) as JsonObject;
+    if (!api.tailscale_secret) api.tailscale_secret = api.secret || Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, "0")).join("");
+    if (!api.external_controller) api.external_controller = "127.0.0.1:9090";
+    experimental.clash_api = api;
+    config.experimental = experimental;
+  }
   return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+export function parseTailscaleLogin(text: string): { state: string; authUrl: string; online: boolean } {
+  const value: unknown = JSON.parse(text);
+  if (!object(value) || typeof value.state !== "string") throw new TailscaleSetupError("config");
+  let authUrl = "";
+  if (typeof value.auth_url === "string" && value.auth_url) {
+    const url = new URL(value.auth_url);
+    if (url.protocol !== "https:" || url.hostname !== "login.tailscale.com" || url.port || url.username || url.password || !/^\/a\/[a-zA-Z0-9]+$/.test(url.pathname) || url.search || url.hash) throw new TailscaleSetupError("config");
+    authUrl = url.href;
+  }
+  return { state: value.state, authUrl, online: value.online === true };
 }
 
 export type PrivateResult = { ok: boolean; stdout: string };

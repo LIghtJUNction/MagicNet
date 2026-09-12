@@ -5,7 +5,7 @@ async function mount(page, failure = "") {
   await page.addInitScript(({ failure, authKey }) => {
     localStorage.setItem("magicnet.webui.onboarding.v1", "dismissed");
     const config = { outbounds: [{ type: "direct", tag: "direct" }], route: { final: "direct" } };
-    window.__tailscale = { config, payload: "", saves: 0, restarts: 0, removals: 0, failure };
+    window.__tailscale = { config, payload: "", saves: 0, restarts: 0, removals: 0, failure, loginState: failure === "browser" ? "NeedsLogin" : "Running", loginOpened: false };
     window.ksu = {
       spawn(command, _args, _options, callbackName) {
         setTimeout(() => {
@@ -14,6 +14,8 @@ async function mount(page, failure = "") {
           let output = "";
           let errno = 0;
           if (command.includes("config-editor get sing-box")) output = JSON.stringify(fixture.config);
+          else if (command.includes("api tailscale-status")) output = JSON.stringify({state:fixture.loginState,online:fixture.loginState === "Running",auth_url:fixture.loginState === "Running" ? "" : "https://login.tailscale.com/a/fixtureAuth"});
+          else if (command.includes("am start") && command.includes("login.tailscale.com/a/fixtureAuth")) fixture.loginOpened = true;
           else if (command.includes("webui payload create tmp")) {
             const basename = command.match(/tailscale-[0-9]+-[a-z0-9]+\.json/)?.[0];
             fixture.payload = "";
@@ -72,6 +74,18 @@ test("connects without JSON editing, prevents duplicate submission and keeps sec
   await expectNoSecret(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false);
   expect(errors).toEqual([]);
+});
+
+test("browser login opens the core authorization URL and confirms Running without a key", async ({page}) => {
+  await mount(page, "browser");
+  await page.getByRole('button', {name:'登录 Tailscale 并自动配置',exact:true}).click();
+  await expect.poll(() => page.evaluate(() => window.__tailscale.loginOpened)).toBe(true);
+  expect(await page.evaluate(() => window.__tailscale.config.endpoints[0].auth_key)).toBeUndefined();
+  await expect(page.getByText('等待 Tailscale 登录授权，请在浏览器完成后返回。',{exact:true})).toBeVisible();
+  expect(await page.locator('body').innerText()).not.toContain('fixtureAuth');
+  await page.evaluate(() => { window.__tailscale.loginState = 'Running'; });
+  await expect(page.getByText('Tailscale 已登录，正由 sing-box 连接。配置已自动生效。',{exact:true})).toBeVisible();
+  expect(await page.evaluate(() => window.__tailscale.restarts)).toBe(1);
 });
 
 test("validation failure does not restart or expose validator output", async ({ page }) => {

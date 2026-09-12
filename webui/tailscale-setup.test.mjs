@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildTailscaleConfig, inspectTailscale, saveTailscale, TailscaleSetupError } from "./src/components/pages/tailscaleSetup.ts";
+import { buildTailscaleConfig, inspectTailscale, saveTailscale, parseTailscaleLogin, TailscaleSetupError } from "./src/components/pages/tailscaleSetup.ts";
 
 const key = ["tskey", "auth", "fixture-only-not-a-real-key"].join("-");
 const draft = () => ({ hostname: "my-phone", authKey: key });
@@ -12,6 +12,22 @@ const original = () => JSON.stringify({
   route: { final: "direct", rules: [{ domain: ["example.org"], outbound: "direct" }] },
 });
 const fixture = () => JSON.parse(buildTailscaleConfig(original(), draft(), inspectTailscale(original())));
+
+test("browser login provisions a persistent endpoint without an auth key", () => {
+  const result = JSON.parse(buildTailscaleConfig(original(), {hostname:"phone",authKey:"",mode:"browser"},inspectTailscale(original())));
+  assert.equal(result.endpoints[0].type,"tailscale");
+  assert.equal(result.endpoints[0].system_interface,false);
+  assert.equal(result.endpoints[0].auth_key,undefined);
+  assert.match(result.experimental.clash_api.tailscale_secret,/^[a-f0-9]{64}$/);
+  assert.equal(result.experimental.clash_api.secret, undefined);
+});
+test("login URL is restricted to the official Tailscale device authorization path", () => {
+  assert.equal(parseTailscaleLogin(JSON.stringify({state:"NeedsLogin",auth_url:"https://login.tailscale.com/a/fixture"})).authUrl,"https://login.tailscale.com/a/fixture");
+  assert.equal(parseTailscaleLogin('{"state":"Running","auth_url":""}').state,"Running");
+  for (const url of ["http://login.tailscale.com/a/x","https://evil.example/a/x","https://login.tailscale.com.evil.example/a/x","https://login.tailscale.com/a/x?redirect=evil","https://user@login.tailscale.com/a/x"]) {
+    assert.throws(() => parseTailscaleLogin(JSON.stringify({state:"NeedsLogin",auth_url:url})));
+  }
+});
 function code(fn, expected) {
   assert.throws(fn, (error) => error instanceof TailscaleSetupError && error.code === expected && !error.message.includes(key));
 }
