@@ -103,10 +103,6 @@ export default {
     "Use an auth key from your account, not an API access token.",
     "Используйте ключ авторизации своего аккаунта, а не токен доступа API."
   ],
-  "接受子网路由": [
-    "Accept subnet routes",
-    "Принимать маршруты подсетей"
-  ],
   "节点标识": [
     "Endpoint tag",
     "Метка узла"
@@ -134,5 +130,17 @@ export default {
   "重试重启核心": [
     "Retry core restart",
     "Повторить перезапуск ядра"
+  ],
+  "重启核心": [
+    "Restart core",
+    "Перезапустить ядро"
+  ],
+  "已配置": [
+    "Configured",
+    "Настроено"
+  ],
+  "高级选项": [
+    "Advanced",
+    "Дополнительно"
   ]
 } satisfies Record<string, readonly string[]>;
