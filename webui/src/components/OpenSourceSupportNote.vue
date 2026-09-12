@@ -24,6 +24,12 @@ import { t } from "@/i18n";
           target="_blank"
           rel="noopener noreferrer"
         >{{ t("了解外部服务") }}</a>
+        <a
+          class="ml-4 inline-flex min-h-11 items-center font-medium text-[var(--mn-primary-strong)] underline underline-offset-4"
+          href="https://github.com/TokenNotIncluded/api.lmm.best"
+          target="_blank"
+          rel="noopener noreferrer"
+        >TokenNotIncluded / api.lmm.best</a>
       </div>
     </div>
   </details>
