@@ -16,6 +16,14 @@ _launch_url() (
     _launch_run am start --user current -a android.intent.action.VIEW -d "$1" >/dev/null 2>&1
 )
 
+# Android can print an ActivityManager error while returning status zero.
+_launch_browser_start() (
+    _lbs_output=$(_launch_run "$@" 2>&1) || exit "$?"
+    case "$_lbs_output" in
+        *Error*|*Exception*|*'Permission Denial'*|*'Background activity'*|*'background activity'*) exit 1 ;;
+    esac
+)
+
 # Ask Android for its current user's browser, never assume Chrome is installed.
 # A browser-role lookup is optional: ACTION_VIEW remains the portable fallback.
 _launch_browser() (
@@ -31,11 +39,15 @@ _launch_browser() (
     fi
     case "$_lb_package" in ''|*[!A-Za-z0-9_.]*) _lb_package='' ;; esac
     if [ -n "$_lb_package" ]; then
-        _launch_run am start --user current -a android.intent.action.VIEW \
-            -c android.intent.category.BROWSABLE -p "$_lb_package" -d "$1" >/dev/null 2>&1 && exit 0
+        _launch_browser_start am start --user current -a android.intent.action.VIEW \
+            -f 0x10000000 -c android.intent.category.BROWSABLE -p "$_lb_package" -d "$1" >/dev/null 2>&1 && exit 0
     fi
-    _launch_run am start --user current -a android.intent.action.VIEW \
-        -c android.intent.category.BROWSABLE -d "$1" >/dev/null 2>&1
+    _launch_browser_start am start --user current -a android.intent.action.VIEW \
+        -f 0x10000000 -c android.intent.category.BROWSABLE -d "$1" && exit 0
+    # Direct Binder shell entry also works when the am wrapper fails in installers.
+    _launch_browser_start cmd activity start-activity --user current \
+        -a android.intent.action.VIEW -f 0x10000000 \
+        -c android.intent.category.BROWSABLE -d "$1"
 )
 
 _launch_app() (

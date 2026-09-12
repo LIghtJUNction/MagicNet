@@ -195,14 +195,21 @@ magicnet_onboarding_collect() (
     esac
     _url="$MN_SETUP_ORIGIN/?lang=$_lang#$MN_SETUP_TOKEN"
     print "$(i18n MN_SETUP_WAIT)"
-    # A short-lived local capability, never the subscription itself.
-    print "$_url"
     if [ -x /system/bin/cmd ]; then
         "$_bb" timeout 4 /system/bin/cmd notification post -t MagicNet \
             -c activity "$_url" "$_tag" "$(i18n MN_SETUP_OPEN)" \
             >/dev/null 2>&1 && _notice=1
     fi
-    magicnet_onboarding_open "$_url" || print "$(i18n MN_SETUP_MANUAL)"
+    _opened=0
+    for _retry in 1 2 3; do
+        if magicnet_onboarding_open "$_url"; then
+            _opened=1
+            break
+        fi
+        [ "$_retry" = 3 ] || "$_bb" sleep 1
+    done
+    # Never wait for an inaccessible installer link to be copied.
+    [ "$_opened" = 1 ] || exit 1
     _elapsed=0
     while [ "$_elapsed" -lt "$_wait" ]; do
         if [ -f "$MN_SETUP_RUN/result" ]; then
