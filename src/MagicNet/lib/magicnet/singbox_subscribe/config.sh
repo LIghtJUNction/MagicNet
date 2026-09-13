@@ -76,7 +76,7 @@ magicnet_singbox_build_outbounds_file_with_jq() (
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
-            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
+            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "download-direct",
             "final", "direct", "block", "warp"
           ]
         | index($tag) != null or ($tag | startswith("magicnet-chain-"));
@@ -200,7 +200,15 @@ magicnet_singbox_build_outbounds_file_with_jq() (
           selector("social-proxy"; ["proxy", "direct"]; "proxy"),
           selector("media-proxy"; ["proxy", "direct"]; "proxy"),
           selector("game-proxy"; ["proxy", "direct"]; "proxy"),
-          selector("telegram-proxy"; ["proxy", "direct"]; "proxy"),
+          selector("telegram-proxy"; (["proxy", "direct"] + $tags); "proxy"),
+          selector("google-proxy"; (["proxy", "direct"] + $tags); "proxy"),
+          selector("youtube-proxy"; (["proxy", "direct"] + $tags); "proxy"),
+          selector("github-proxy"; (["proxy", "direct"] + $tags); "proxy"),
+          selector("discord-proxy"; (["proxy", "direct"] + $tags); "proxy"),
+          selector("netflix-proxy"; (["proxy", "direct"] + $tags); "proxy"),
+          selector("spotify-proxy"; (["proxy", "direct"] + $tags); "proxy"),
+          selector("twitter-proxy"; (["proxy", "direct"] + $tags); "proxy"),
+          selector("whatsapp-proxy"; (["proxy", "direct"] + $tags); "proxy"),
           selector("download-direct"; ["direct", "proxy"]; "direct"),
           selector("final"; ["proxy", "direct", "block"]; "proxy")
         ] + $nodes + [
@@ -228,7 +236,7 @@ magicnet_singbox_count_valid_outbounds_nodes() {
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
-            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
+            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "download-direct",
             "final", "direct", "block", "warp"
           ]
         | index($tag) != null or ($tag | startswith("magicnet-chain-"));
@@ -291,7 +299,7 @@ magicnet_singbox_sanitize_generated_config() {
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
-            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
+            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "download-direct",
             "final", "direct", "block", "warp"
           ]
         | index($tag) != null or ($tag | startswith("magicnet-chain-"));

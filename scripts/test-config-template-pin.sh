@@ -15,11 +15,11 @@ fail() {
 [[ -f "$REPOSITORY_CONFIG" ]] || fail "config repository settings are missing"
 grep -Fqx 'MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/LIghtJUNction/MagicSingBox.git' "$REPOSITORY_CONFIG" ||
     fail "default config repository is not MagicSingBox"
-grep -Fqx 'MAGICNET_SINGBOX_CONFIG_REPO_REF=63780ca3a96ee65af18b17aa87e11b536bbc5a73' "$REPOSITORY_CONFIG" ||
+grep -Fqx 'MAGICNET_SINGBOX_CONFIG_REPO_REF=ba67cdbe771dff7e06c06bd754cc67699eeea8c0' "$REPOSITORY_CONFIG" ||
     fail "default config repository ref is not pinned"
 grep -Fqx 'MAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json' "$REPOSITORY_CONFIG" ||
     fail "default config repository file is not config.json"
-grep -Fqx 'MAGICNET_SINGBOX_CONFIG_REPO_SHA256=ba0f9057b2b6ac896a8783a5691388325306be066e81c4098d9f62d79ac7ee50' "$REPOSITORY_CONFIG" ||
+grep -Fqx 'MAGICNET_SINGBOX_CONFIG_REPO_SHA256=6faa2cfcc44c305e30bc64cec84202b95d0a1592f012ab1f8dd65eae6d489258' "$REPOSITORY_CONFIG" ||
     fail "default config repository digest is not pinned"
 
 packaged_sha256=$(sha256sum "$CONFIG_DIR/config.json" | awk '{print $1}')

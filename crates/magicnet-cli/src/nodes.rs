@@ -303,6 +303,14 @@ fn is_obvious_group(name: &str) -> bool {
             | "media-proxy"
             | "game-proxy"
             | "telegram-proxy"
+            | "google-proxy"
+            | "youtube-proxy"
+            | "github-proxy"
+            | "discord-proxy"
+            | "netflix-proxy"
+            | "spotify-proxy"
+            | "twitter-proxy"
+            | "whatsapp-proxy"
             | "final"
     ) || name.contains("选择")
         || name.contains("策略")

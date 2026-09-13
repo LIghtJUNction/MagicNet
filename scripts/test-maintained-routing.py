@@ -59,6 +59,12 @@ for rule in routes + dns:
     if rule.get("outbound"):
         assert rule["outbound"] in outbounds
 
+for service in ("google", "youtube", "github", "discord", "netflix", "spotify", "twitter", "whatsapp", "telegram"):
+    assert outbounds[service + "-proxy"]["default"] == "proxy"
+    assert index("meta-" + service) < index("lyc-geosite-cn")
+assert index("meta-google-gemini") < index("meta-google")
+assert index("meta-youtube") < index("meta-google")
+assert index("meta-discord") < index("meta-category-communication")
 assert index("meta-icloud") < index("meta-apple")
 assert index("meta-bing") < index("meta-microsoft")
 assert index("meta-category-game-platforms-download") < index("meta-category-games-!cn")
@@ -215,11 +221,17 @@ cases = [
     ("gemini.google.com", "ai-gemini", "doh-google"),
     ("grok.com", "ai-grok", "doh-google"),
     ("claude.ai", "ai-claude", "doh-google"),
-    ("github.com", "dev-proxy", "doh-google"),
-    ("youtube.com", "media-proxy", "doh-google"),
+    ("github.com", "github-proxy", "doh-google"),
+    ("youtube.com", "youtube-proxy", "doh-google"),
     ("steamcommunity.com", "game-proxy", "doh-google"),
     ("cache10-fra1.steamcontent.com", "download-direct", "bootstrap-local-dns"),
-    ("discord.com", "social-proxy", "doh-google"),
+    ("discord.com", "discord-proxy", "doh-google"),
+    ("www.google.com", "google-proxy", "doh-google"),
+    ("mail.google.com", "google-proxy", "doh-google"),
+    ("x.com", "twitter-proxy", "doh-google"),
+    ("web.whatsapp.com", "whatsapp-proxy", "doh-google"),
+    ("netflix.com", "netflix-proxy", "doh-google"),
+    ("spotify.com", "spotify-proxy", "doh-google"),
     ("t.me", "telegram-proxy", "doh-google"),
     ("www.speedtest.net", "network-test", "doh-google"),
 ]

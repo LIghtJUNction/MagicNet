@@ -65,6 +65,7 @@ bash scripts/test-tailscale-login.sh
 bash scripts/test-chatgpt-voice-rules.sh
 bash scripts/test-rule-hash-retry.sh
 bash scripts/singbox-subscription-protocol-smoke.sh
+bash scripts/test-service-selectors.sh
 bash scripts/test-subscription-fetch-policy.sh
 bash scripts/test-subscription-usage.sh
 bash scripts/test-singbox-pid-discovery.sh
