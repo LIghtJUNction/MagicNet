@@ -1,0 +1,31 @@
+name: Content-addressed test results
+description: Restore/save successful per-check results; the runner validates exact inputs.
+inputs:
+  mode:
+    description: restore before checks; save afterwards (including failed jobs)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Restore successful test results
+      if: inputs.mode == 'restore'
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          .cache/ci-test-results
+          webui/dist
+        key: tests-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.workflow }}-${{ github.job }}-${{ github.event_name == 'pull_request' && 'pr' || 'trusted' }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          tests-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.workflow }}-${{ github.job }}-${{ github.event_name == 'pull_request' && 'pr' || 'trusted' }}-
+    - name: Enable exact per-check validation
+      if: inputs.mode == 'restore'
+      shell: bash
+      run: echo 'CI_TEST_CACHE=1' >> "$GITHUB_ENV"
+    - name: Save only completed successful checks
+      if: inputs.mode == 'save'
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          .cache/ci-test-results
+          webui/dist
+        key: tests-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.workflow }}-${{ github.job }}-${{ github.event_name == 'pull_request' && 'pr' || 'trusted' }}-${{ github.run_id }}-${{ github.run_attempt }}

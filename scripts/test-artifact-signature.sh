@@ -1,5 +1,6 @@
 #!/bin/bash
-set -euo pipefail
+set -Eeuo pipefail
+trap 'status=$?; printf "signature test failed at line %s (exit %s)\n" "$LINENO" "$status" >&2; exit "$status"' ERR
 
 repo_root="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 test_root="$(mktemp -d)"
@@ -48,10 +49,10 @@ for entry in "${removed_entries[@]}" "${preserved_entries[@]}"; do
     mkdir -p "$(dirname "$test_root/source/$entry")"
     printf 'fixture: %s\n' "$entry" > "$test_root/source/$entry"
 done
-cat > "$KAM_HOOKS_ROOT/lib/utils.sh" <<'SH'
+cat > "$KAM_HOOKS_ROOT/lib/utils.sh" <<'FIXTURE'
 log_info() { :; }
 require_command() { command -v "$1" >/dev/null; }
-SH
+FIXTURE
 printf '#!/bin/bash\nexit 0\n' > "$KAM_PROJECT_ROOT/scripts/package-smoke.sh"
 chmod +x "$KAM_PROJECT_ROOT/scripts/package-smoke.sh"
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$test_root/key.pem" 2>/dev/null
@@ -70,7 +71,7 @@ sign_archive() {
     openssl base64 -A -in "$test_root/signature.der" -out "${artifact}.sig"
 }
 verify_archive() {
-    "$repo_root/scripts/verify-artifact-signature.sh" "$artifact" "$test_root/public.pem" >/dev/null 2>&1
+    "$repo_root/scripts/verify-artifact-signature.sh" "$artifact" "$test_root/public.pem"
 }
 
 # Reproduce the original failure: a valid signature becomes invalid after cleanup.
@@ -109,13 +110,11 @@ for entry in "${preserved_entries[@]}"; do
     unzip -p "$artifact" "$entry" > "$test_root/preserved-entry"
     cmp "$test_root/source/$entry" "$test_root/preserved-entry"
 done
-
 # A second pass must neither change the archive nor invalidate its signature.
 cp "$artifact" "$test_root/clean.zip"
 bash "$sanitize_hook"
 cmp "$artifact" "$test_root/clean.zip"
 verify_archive
-
 # The final artifact check must reject later mutation and a missing signature.
 printf 'changed\n' >> "$artifact"
 if verify_archive; then

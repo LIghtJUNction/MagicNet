@@ -28,6 +28,8 @@ if [ "$with_routing_assets" -eq 1 ]; then
         printf 'prepared routing checks require sing-box and rule-set assets\n' >&2
         exit 127
     }
+    # Prepared/untracked assets describe this machine, not a reusable fixture.
+    export CI_TEST_FORCE=1
 else
     printf 'Prepared routing/DNS asset checks excluded; use --with-routing-assets to include them.\n'
 fi
@@ -39,69 +41,74 @@ for tool in jq python3 curl openssl; do
     fi
 done
 
+check() {
+    local script="$2"
+    python3 "$ROOT/scripts/ci-test-cache.py" host "${script##*/}" -- "$@"
+}
+
 # Real loopback HTTPS/SOCKS tests; never substitute these for device acceptance.
-python3 scripts/test-website-probe.py
-jq empty src/MagicNet/.config/sing-box/config.json
-bash scripts/test-repository-hygiene.sh
-bash scripts/test-config-template-pin.sh
-bash scripts/test-install-config-template.sh
-bash scripts/test-install-config-refresh.sh
-sh scripts/test-kamfw-i18n.sh
-sh scripts/test-magicnet-i18n.sh
+check python3 scripts/test-website-probe.py
+python3 scripts/ci-test-cache.py host config-json -- jq empty src/MagicNet/.config/sing-box/config.json
+check bash scripts/test-repository-hygiene.sh
+check bash scripts/test-config-template-pin.sh
+check bash scripts/test-install-config-template.sh
+check bash scripts/test-install-config-refresh.sh
+check sh scripts/test-kamfw-i18n.sh
+check sh scripts/test-magicnet-i18n.sh
 if [ "$with_routing_assets" -eq 1 ]; then
-    bash scripts/test-default-routing-policy.sh
+    check bash scripts/test-default-routing-policy.sh
 fi
-bash scripts/test-policy-architecture.sh
-bash scripts/test-ad-routing.sh
-bash scripts/test-app-routing-policy.sh
-bash scripts/test-block-conf-safety.sh
-bash scripts/test-block-apply-safety.sh
-bash scripts/test-wechat-routing.sh
-bash scripts/test-action-routing.sh
-bash scripts/test-route-apply-safety.sh
-bash scripts/test-hotspot-routing.sh
-bash scripts/test-singbox-route-apply-safety.sh
-bash scripts/test-anthropic-routing.sh
-bash scripts/test-mcp-phase-config.sh
-bash scripts/test-tailscale-login.sh
-bash scripts/test-chatgpt-voice-rules.sh
-bash scripts/test-rule-hash-retry.sh
-bash scripts/singbox-subscription-protocol-smoke.sh
-bash scripts/test-service-selectors.sh
-bash scripts/test-subscription-fetch-policy.sh
-bash scripts/test-subscription-usage.sh
-bash scripts/test-singbox-pid-discovery.sh
-bash scripts/test-singbox-ownership.sh
-bash scripts/test-singbox-tristate-safety.sh
-bash scripts/test-singbox-readiness.sh
-bash scripts/test-supervisor-pid-safety.sh
-bash scripts/test-process-cgroup-detach.sh
-bash scripts/test-supervisor-orphan-prefilter.sh
-bash scripts/test-supervisor-start-policy.sh
-bash scripts/test-tun-interface-safety.sh
-bash scripts/test-singbox-dataplane-preflight.sh
-bash scripts/test-transparent-mode-config-safety.sh
-bash scripts/test-ebpf-transparent-mode.sh
-bash scripts/test-config-permissions.sh
-bash scripts/test-config-lock-safety.sh
-sh scripts/test-runtime-fingerprint-safety.sh
-sh scripts/test-runtime-temp-dirs.sh
+check bash scripts/test-policy-architecture.sh
+check bash scripts/test-ad-routing.sh
+check bash scripts/test-app-routing-policy.sh
+check bash scripts/test-block-conf-safety.sh
+check bash scripts/test-block-apply-safety.sh
+check bash scripts/test-wechat-routing.sh
+check bash scripts/test-action-routing.sh
+check bash scripts/test-route-apply-safety.sh
+check bash scripts/test-hotspot-routing.sh
+check bash scripts/test-singbox-route-apply-safety.sh
+check bash scripts/test-anthropic-routing.sh
+check bash scripts/test-mcp-phase-config.sh
+check bash scripts/test-tailscale-login.sh
+check bash scripts/test-chatgpt-voice-rules.sh
+check bash scripts/test-rule-hash-retry.sh
+check bash scripts/singbox-subscription-protocol-smoke.sh
+check bash scripts/test-service-selectors.sh
+check bash scripts/test-subscription-fetch-policy.sh
+check bash scripts/test-subscription-usage.sh
+check bash scripts/test-singbox-pid-discovery.sh
+check bash scripts/test-singbox-ownership.sh
+check bash scripts/test-singbox-tristate-safety.sh
+check bash scripts/test-singbox-readiness.sh
+check bash scripts/test-supervisor-pid-safety.sh
+check bash scripts/test-process-cgroup-detach.sh
+check bash scripts/test-supervisor-orphan-prefilter.sh
+check bash scripts/test-supervisor-start-policy.sh
+check bash scripts/test-tun-interface-safety.sh
+check bash scripts/test-singbox-dataplane-preflight.sh
+check bash scripts/test-transparent-mode-config-safety.sh
+check bash scripts/test-ebpf-transparent-mode.sh
+check bash scripts/test-config-permissions.sh
+check bash scripts/test-config-lock-safety.sh
+check sh scripts/test-runtime-fingerprint-safety.sh
+check sh scripts/test-runtime-temp-dirs.sh
 if [ "$with_routing_assets" -eq 1 ]; then
-    bash scripts/test-dns-profile-safety.sh
+    check bash scripts/test-dns-profile-safety.sh
 fi
-bash scripts/test-dns-leak-guard-timeout.sh
-python3 scripts/test-dns-capture-fast-path.py
-sh scripts/test-startup-network-safety.sh
-bash scripts/test-submodule-updates.sh
-bash scripts/test-subscription-activation-order.sh
-bash scripts/test-subscription-transaction-atomicity.sh
-bash scripts/test-subscription-update-lock-safety.sh
-bash scripts/test-subscription-transaction-journal-safety.sh
-bash scripts/test-subscription-lifecycle.sh
-bash scripts/test-subscription-stop-safety.sh
-bash scripts/test-release-integrity.sh
-python3 scripts/test-release-workflow.py
-python3 scripts/test-ci-submodules.py
-python3 scripts/test-network-check.py
+check bash scripts/test-dns-leak-guard-timeout.sh
+check python3 scripts/test-dns-capture-fast-path.py
+check sh scripts/test-startup-network-safety.sh
+check bash scripts/test-submodule-updates.sh
+check bash scripts/test-subscription-activation-order.sh
+check bash scripts/test-subscription-transaction-atomicity.sh
+check bash scripts/test-subscription-update-lock-safety.sh
+check bash scripts/test-subscription-transaction-journal-safety.sh
+check bash scripts/test-subscription-lifecycle.sh
+check bash scripts/test-subscription-stop-safety.sh
+check bash scripts/test-release-integrity.sh
+check python3 scripts/test-release-workflow.py
+check python3 scripts/test-ci-submodules.py
+check python3 scripts/test-network-check.py
 
 printf 'host regression suite passed\n'

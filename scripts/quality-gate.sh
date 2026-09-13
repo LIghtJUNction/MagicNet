@@ -6,31 +6,48 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+cached() {
+    local scope="$1" name="$2"
+    shift 2
+    # Keep the standalone gate usable in isolated command-stub regressions.
+    if [[ -f "$ROOT/scripts/ci-test-cache.py" ]]; then
+        python3 "$ROOT/scripts/ci-test-cache.py" "$scope" "$name" -- "$@"
+    else
+        "$@"
+    fi
+}
+
 check_group() {
     case "$1" in
     rust)
-        cargo fmt --all -- --check
-        cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-        cargo test --workspace --all-targets --all-features --locked
+        cached rust rust-fmt cargo fmt --all -- --check
+        cached rust rust-clippy cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+        cached rust rust-test cargo test --workspace --all-targets --all-features --locked
         ;;
     shell)
-        bash scripts/lint-shell.sh
+        cached host shell-lint bash scripts/lint-shell.sh
         bash scripts/test-host.sh
         ;;
     components)
-        [[ -z "$(gofmt -l installer/components/*.go)" ]]
-        GO111MODULE=off go vet ./installer/components
-        GO111MODULE=off go test -race ./installer/components
-        python3 scripts/test-components.py
-        python3 scripts/test-core-size.py
-        python3 scripts/test-release-gates.py
-        python3 scripts/test-component-archive-safety.py
+        cached components go-format bash -c '[[ -z "$(gofmt -l installer/components/*.go)" ]]'
+        cached components go-vet env GO111MODULE=off go vet ./installer/components
+        cached components go-test env GO111MODULE=off go test -race ./installer/components
+        cached components components python3 scripts/test-components.py
+        cached components core-size python3 scripts/test-core-size.py
+        cached components release-gates python3 scripts/test-release-gates.py
+        cached components component-archive-safety python3 scripts/test-component-archive-safety.py
+        cached components cache-engine python3 scripts/test-ci-test-cache.py
         ;;
     webui-check)
-        (cd webui && npm run check)
+        if [[ -f "$ROOT/scripts/ci-test-cache.py" ]]; then
+            python3 "$ROOT/scripts/ci-test-cache.py" --output webui/dist webui webui-check -- \
+                bash -c 'cd webui && npm run check'
+        else
+            (cd webui && npm run check)
+        fi
         ;;
     webui-browser)
-        (cd webui && npm run test:ui)
+        cached webui webui-browser bash -c 'cd webui && npm run test:ui'
         ;;
     *)
         printf 'unknown quality group: %s\n' "$1" >&2

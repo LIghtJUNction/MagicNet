@@ -3,6 +3,11 @@ name: Build Kam Module
 on:
   workflow_dispatch:
     inputs:
+      force_tests:
+        description: Ignore previous test results and run every check
+        required: false
+        type: boolean
+        default: false
       bump:
         description: Commit a version bump directly to main before building
         required: false
@@ -38,6 +43,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CI_TEST_FORCE: ${{ inputs.force_tests == true && '1' || '0' }}
 
 jobs:
   build:
@@ -59,6 +65,11 @@ jobs:
           persist-credentials: false
           submodules: recursive
           fetch-depth: 0
+
+      - name: Restore per-check test results
+        uses: ./.github/actions/test-cache
+        with:
+          mode: restore
 
       - name: Bump and commit version
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
@@ -202,26 +213,7 @@ jobs:
 
       - name: Test forked sing-box eBPF support
         shell: bash
-        run: |
-          set -euo pipefail
-          test_root="$(mktemp -d "$PWD/.sing-box-ebpf-tests.XXXXXX")"
-          cleanup() {
-            rm -rf "$test_root"
-          }
-          trap cleanup EXIT
-          (
-            cd sing-box
-            CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=off \
-              go test -count=1 -mod=readonly -tags with_ebpf \
-              ./common/ebpf ./protocol/ebpf ./include ./option
-            package_index=0
-            for package in ./common/ebpf ./protocol/ebpf ./include ./option; do
-              package_index=$((package_index + 1))
-              CGO_ENABLED=0 GOOS=android GOARCH=arm64 GOTOOLCHAIN=local GOWORK=off \
-                go test -c -mod=readonly -tags with_ebpf \
-                -o "$test_root/package-${package_index}.test" "$package"
-            done
-          )
+        run: python3 scripts/ci-test-cache.py singbox singbox-ebpf -- bash scripts/test-singbox-ebpf.sh
 
       - name: Build host sing-box from fork
         shell: bash
@@ -329,6 +321,13 @@ jobs:
       # A parallel standalone workflow is not a release dependency. Run the
       # SAME shared checks against THIS built checkout, including manual bumps
       # whose [skip ci] commit cannot have a separate quality workflow run.
+      - name: Cache release browser binaries
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('webui/package-lock.json') }}
+
       - name: Prepare release quality dependencies
         if: ${{ env.RELEASE_REQUESTED == '1' }}
         run: |
@@ -372,6 +371,12 @@ jobs:
           # A failed upload leaves a draft, never a public half-populated release.
           gh release create "$RELEASE_VERSION" dist/* "${args[@]}"
           gh release edit "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Save successful per-check results
+        if: ${{ always() && !cancelled() }}
+        uses: ./.github/actions/test-cache
+        with:
+          mode: save
 
       - name: Upload build artifact
         if: always() && hashFiles('dist/*') != ''
