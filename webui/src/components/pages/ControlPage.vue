@@ -465,12 +465,22 @@ onMounted(() => {
   <div class="mn-control">
     <section class="mn-control-hero" :aria-label="t('服务概览')">
       <div class="mn-control-status" role="status" aria-live="polite">
-        <p class="mn-control-caption">{{ state.hasKsu ? 'sing-box' : 'MagicNet' }}</p>
-        <h2>{{ controlTitle }}</h2>
-        <p class="mn-control-subtitle">
-          <span v-if="state.hasKsu" :class="['mn-control-dot', singBoxStatus.dotClass]" />
-          {{ state.hasKsu ? transparentModeLabel : t("请在模块管理器中打开") }}
-        </p>
+        <div class="mn-control-state-heading">
+          <h2>{{ controlTitle }}</h2>
+          <p class="mn-control-subtitle">
+            <span v-if="state.hasKsu" :class="['mn-control-dot', singBoxStatus.dotClass]" aria-hidden="true" />
+            <span>{{ state.hasKsu ? `sing-box · ${transparentModeLabel}` : t("请在模块管理器中打开") }}</span>
+          </p>
+        </div>
+        <dl v-if="state.hasKsu && state.runtime.singBoxState === 'sing-box'" class="mn-control-memory">
+          <dt>{{ t("内核内存（RSS）") }}</dt>
+          <dd :data-unavailable="state.runtime.singBoxRssKib == null">
+            <template v-if="state.runtime.singBoxRssKib != null">
+              {{ (state.runtime.singBoxRssKib / 1024).toFixed(1) }} <span>MiB</span>
+            </template>
+            <template v-else>{{ t("暂不可用") }}</template>
+          </dd>
+        </dl>
       </div>
 
       <Button
@@ -781,22 +791,39 @@ onMounted(() => {
 }
 
 .mn-control-status {
-  margin-bottom: 36px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 32px;
 }
 
-.mn-control-caption {
-  color: var(--mn-ink-muted);
-  font-size: 12px;
-  letter-spacing: 0.04em;
+.mn-control-state-heading { min-width: 0; }
+.mn-control-memory { margin: 0; min-width: 0; }
+.mn-control-memory dt { color: var(--mn-ink-muted); font-size: .8125rem; }
+.mn-control-memory dd {
+  margin: 8px 0 0;
+  color: var(--mn-ink);
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.mn-control-memory dd > span { font-size: .8125rem; font-weight: 400; color: var(--mn-ink-muted); }
+.mn-control-memory dd[data-unavailable="true"] { font-size: 1rem; color: var(--mn-ink-muted); }
+@media (max-width: 480px) {
+  .mn-control-memory { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; width: 100%; }
+  .mn-control-memory dd { margin: 0; font-size: 1.375rem; }
 }
 
 .mn-control-status h2 {
-  margin: 18px 0 14px;
+  margin: 0 0 14px;
   color: var(--mn-ink);
   font-size: clamp(40px, 11vw, 56px);
   font-weight: 450;
   line-height: 1.15;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.035em;
 }
 
 .mn-control-subtitle {
@@ -804,13 +831,16 @@ onMounted(() => {
   min-height: 24px;
   align-items: center;
   gap: 8px;
+  margin: 0;
   color: var(--mn-ink-muted);
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
 
 .mn-control-dot {
   width: 6px;
   height: 6px;
+  flex: 0 0 6px;
   border-radius: 50%;
 }
 

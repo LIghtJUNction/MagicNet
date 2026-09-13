@@ -24,14 +24,14 @@ defineProps<{
           <Globe2 :size="20" aria-hidden="true" />
           <div class="source-name">
             <h3>{{ row.hostname || row.name }}</h3>
-            <span>{{ row.name }}</span>
+            <span v-if="row.hostname && row.name !== row.hostname">{{ row.name }}</span>
           </div>
         </div>
         <span class="source-state" :data-state="row.state">{{ row.stateLabel }}</span>
       </header>
 
       <div class="quota-heading">
-        <div class="remaining-quota">
+        <div class="remaining-quota" :data-unavailable="row.progressPercent === null">
           <span class="usage-label">{{ t("剩余流量") }}</span>
           <strong>{{ row.remainingLabel }}</strong>
         </div>
@@ -76,9 +76,11 @@ defineProps<{
 .source-name { min-width: 0; }
 .source-name h3, .local-source h3 { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .source-name > span, .source-state { font-size: .8125rem; color: var(--mn-ink-muted); }
-.source-state { flex-shrink: 0; }
+.source-state { max-width: 45%; text-align: end; overflow-wrap: anywhere; }
 .source-state[data-state="cached"], .cached-note { color: var(--mn-warning); }
-.quota-heading { align-items: flex-end; margin-top: 24px; }
+.quota-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; margin-top: 24px; }
+.quota-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.remaining-quota[data-unavailable="true"] > strong { font-size: 1.125rem; line-height: 1.5; letter-spacing: normal; color: var(--mn-ink-muted); }
 .remaining-quota, .used-quota { display: grid; gap: 5px; }
 .usage-label { color: var(--mn-ink-muted); font-size: .8125rem; }
 .remaining-quota > strong { font-size: clamp(1.65rem, 6vw, 2.1rem); font-weight: 500; letter-spacing: -.035em; line-height: 1.2; font-variant-numeric: tabular-nums; }
@@ -93,7 +95,7 @@ defineProps<{
 [data-tone="warning"] .quota-progress::-moz-progress-bar { background: var(--mn-warning); }
 [data-tone="danger"] .quota-progress::-moz-progress-bar { background: var(--mn-danger); }
 .quota-unavailable { margin: 14px 0 0; font-size: .8125rem; color: var(--mn-ink-muted); }
-.usage-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; font-size: .875rem; color: var(--mn-ink-soft); }
+.usage-dates { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 18px; font-size: .875rem; color: var(--mn-ink-soft); }
 .usage-dates > div { display: flex; flex-wrap: wrap; align-content: start; gap: 3px 8px; min-width: 0; overflow-wrap: anywhere; }
 .usage-dates .usage-label { flex-basis: 100%; }
 .last-sync { justify-content: flex-end; text-align: right; }
@@ -106,9 +108,10 @@ defineProps<{
 .local-source p { margin: 8px 0 0; font-size: .875rem; line-height: 1.65; color: var(--mn-ink-muted); }
 @media (max-width: 400px) {
   .usage-heading { flex-wrap: wrap; gap: 6px 12px; }
-  .source-state { margin-left: 36px; }
-  .quota-heading { flex-wrap: wrap; align-items: flex-start; }
-  .used-quota { text-align: left; }
+  .source-state { margin-left: 36px; max-width: 100%; text-align: start; }
+  .quota-heading { gap: 12px; }
+  .used-quota > span { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 6px; }
+  .used-quota strong { margin-left: 0; }
 }
 @media (forced-colors: active) {
   .quota-progress { appearance: auto; border: 1px solid CanvasText; }

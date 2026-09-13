@@ -35,6 +35,7 @@ export type WifiPolicyState = {
 export type RuntimeState = {
   singBoxState: "sing-box" | "stopped" | "unknown";
   singBox: string;
+  singBoxRssKib: number | null;
   fswatch: string;
   transparentMode: TransparentMode | "unknown";
   transparentEffectiveMode: TransparentEffectiveMode;

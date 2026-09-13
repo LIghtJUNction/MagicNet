@@ -1,5 +1,24 @@
 // Unit tests included from the matching src module.
 
+#[test]
+fn rss_requires_valid_kib_field() {
+    assert_eq!(
+        super::parse_rss_kib("Name: sing-box\nVmRSS:\t131072 kB\n"),
+        Some(131072)
+    );
+    for input in [
+        "",
+        "VmSize: 100 kB",
+        "VmRSS: -1 kB",
+        "VmRSS: 20 MB",
+        "VmRSS: unknown kB",
+    ] {
+        assert_eq!(super::parse_rss_kib(input), None);
+    }
+    assert_eq!(super::singbox_rss_kib("stopped"), None);
+    assert_eq!(super::singbox_rss_kib("unknown"), None);
+}
+
 use super::{
     api_host_port, config_apply_lock, config_apply_lock_bounded, normalize_transparent_mode,
     prepare_transparent_transaction, read_transparent_mode, restart_command,

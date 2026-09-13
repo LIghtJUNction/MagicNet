@@ -101,10 +101,32 @@ fn config_apply_lock_bounded(app: &App, timeout: Duration) -> Result<ConfigApply
     }
 }
 
+fn parse_rss_kib(status: &str) -> Option<u64> {
+    let mut fields = status
+        .lines()
+        .find_map(|line| line.strip_prefix("VmRSS:"))?
+        .split_whitespace();
+    let value = fields.next()?.parse().ok()?;
+    (fields.next()? == "kB").then_some(value)
+}
+
+fn singbox_rss_kib(summary: &str) -> Option<u64> {
+    // The summary contains only module-owned PIDs; never measure another VPN.
+    summary.split(',').try_fold(0u64, |total, pid| {
+        let pid = pid.parse::<u32>().ok()?;
+        let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+        total.checked_add(parse_rss_kib(&status)?)
+    })
+}
+
 pub(crate) fn service_status(app: &App) {
     let singbox = singbox_pid_summary(app);
     println!("MagicNet");
     println!("  sing-box: {singbox}");
+    let memory = singbox_rss_kib(&singbox)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("  sing-box-rss-kib: {memory}");
     println!(
         "  fswatch:  {}",
         supervisor_pid(app, "fswatch", "magicnet-config")

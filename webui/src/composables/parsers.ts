@@ -105,6 +105,7 @@ export type ConnectionSnapshot = {
 export const runtimeDefaults: RuntimeState = {
   singBoxState: "unknown",
   singBox: "unknown",
+  singBoxRssKib: null,
   fswatch: "unknown",
   transparentMode: "unknown",
   transparentEffectiveMode: "unknown",
@@ -371,6 +372,12 @@ export function parseRuntime(
     const line = raw.trim();
     if (line.startsWith("sing-box:"))
       next.singBox = normalizeRuntimeStatus(line.slice(9));
+    if (line.startsWith("sing-box-rss-kib:")) {
+      const raw = line.slice("sing-box-rss-kib:".length).trim();
+      const value = Number(raw);
+      next.singBoxRssKib =
+        /^\d+$/.test(raw) && Number.isSafeInteger(value) ? value : null;
+    }
     if (line.startsWith("fswatch:"))
       next.fswatch = normalizeRuntimeStatus(line.slice(8));
     if (line.startsWith("Transparent:")) {
@@ -452,6 +459,7 @@ export function parseRuntime(
   if (next.singBox !== "stopped" && next.singBox !== "unknown")
     next.singBoxState = "sing-box";
   else if (next.singBox === "stopped") next.singBoxState = "stopped";
+  if (next.singBoxState !== "sing-box") next.singBoxRssKib = null;
   return next;
 }
 
@@ -526,7 +534,8 @@ export function parseConfigValidation(
   text: string,
 ): Pick<ConfigValidationState, "status" | "summary"> {
   const trimmed = text.trim();
-  if (!trimmed) return { status: "error", summary: t("命令没有返回校验结果。") };
+  if (!trimmed)
+    return { status: "error", summary: t("命令没有返回校验结果。") };
   if (/\[info\]\s+Saved and validated/i.test(trimmed)) {
     return {
       status: "ok",
@@ -882,7 +891,12 @@ export function parseSubs(
   statusText: string,
   previous: SubscriptionState,
 ): SubscriptionState {
-  const next: SubscriptionState = { ...previous, singBoxUrls: [], sourceUsage: [], filters: [] };
+  const next: SubscriptionState = {
+    ...previous,
+    singBoxUrls: [],
+    sourceUsage: [],
+    filters: [],
+  };
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (/^sing-box\.\d+=/.test(line))
@@ -906,7 +920,9 @@ export function parseSubs(
   );
   next.sourceMode = values.get("source_mode") === "local" ? "local" : "url";
   if (next.sourceMode === "url") {
-    next.sourceUsage = parseSubscriptionSourceUsage(values.get("source_usage_json"));
+    next.sourceUsage = parseSubscriptionSourceUsage(
+      values.get("source_usage_json"),
+    );
   }
   next.updateRunning = statusBoolean(values, "update_running", false);
   next.updateLockOwner = values.get("update_lock_owner") || "none";

@@ -394,7 +394,11 @@ async function copySummary(): Promise<void> {
 
     <div class="subscription-settings">
       <details class="settings-section">
-        <summary><span><RefreshCw :size="17" />{{ t("更新记录") }}</span><ChevronDown :size="17" /></summary>
+        <summary>
+          <span><RefreshCw :size="17" aria-hidden="true" />{{ t("更新记录") }}</span>
+          <SubscriptionLifecycleRecord :configured="configured" compact />
+          <ChevronDown :size="17" aria-hidden="true" />
+        </summary>
         <SubscriptionLifecycleRecord :configured="configured" />
       </details>
       <details class="settings-section">
@@ -414,8 +418,8 @@ async function copySummary(): Promise<void> {
 .subscription-summary { display: flex; align-items: center; gap: 12px; margin: 8px 0 14px; color: var(--mn-ink-muted); font-size: .875rem; }
 .subscription-summary > :last-child { margin-left: auto; }
 .unsaved-note { color: var(--mn-warning); }
-.subscription-feedback { margin: 16px 0; border-left: 2px solid var(--mn-info); padding: 10px 14px; color: var(--mn-ink-soft); background: var(--mn-surface-sunken); font-size: .875rem; line-height: 1.65; }
-.subscription-feedback[data-error="true"] { border-left-color: var(--mn-warning); }
+.subscription-feedback { margin: 16px 0; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 12px 16px; color: var(--mn-ink-soft); background: var(--mn-surface-sunken); font-size: .875rem; line-height: 1.65; overflow-wrap: anywhere; }
+.subscription-feedback[data-error="true"] { color: var(--mn-warning); }
 .usage-footnote { margin: 0 0 28px; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.6; }
 .source-editor { margin: 24px 0; padding: 24px 0; border-top: 1px solid var(--mn-border); scroll-margin-top: 120px; }
 .editor-heading h3 { margin: 0; font-size: 1rem; font-weight: 600; }
@@ -438,7 +442,10 @@ details[open] > summary > svg:last-child { transform: rotate(180deg); }
 .settings-section { border-top: 1px solid var(--mn-border); }
 .settings-section > summary { min-height: 62px; font-size: .9375rem; font-weight: 500; }
 .settings-section > summary > span { display: inline-flex; align-items: center; gap: 12px; }
-.settings-section > summary > svg { color: var(--mn-ink-muted); }
+.settings-section > summary > svg { flex: 0 0 auto; color: var(--mn-ink-muted); }
+.settings-section > summary > :deep(.update-outcome) { margin-inline-start: auto; }
+.settings-section > summary > span:first-child { min-width: 0; }
+.settings-section > summary > span:first-child > svg { flex: 0 0 auto; }
 .subscription-settings-content { display: grid; gap: 16px; padding-bottom: 20px; }
 @media (max-width: 600px) {
   .source-editor { padding: 24px 0; }

@@ -6,6 +6,7 @@ import { subscriptionLifecycleStatus } from "@/composables/backgroundTasks";
 
 const props = defineProps<{
   configured: boolean;
+  compact?: boolean;
 }>();
 
 const { state } = useMagicNet();
@@ -28,7 +29,8 @@ const resultLabel = computed(() => ({
 </script>
 
 <template>
-  <div class="update-record">
+  <span v-if="compact" class="update-outcome" :data-status="lifecycleStatus" role="status">{{ resultLabel }}</span>
+  <div v-else class="update-record">
     <dl>
       <div><dt>{{ t("更新结果") }}</dt><dd>{{ resultLabel }}</dd></div>
       <div><dt>{{ t("最近尝试") }}</dt><dd>{{ formatEpoch(state.subscriptions.lastAttemptEpoch) }}</dd></div>
@@ -41,6 +43,9 @@ const resultLabel = computed(() => ({
 </template>
 
 <style scoped>
+.update-outcome { color: var(--mn-ink-muted); font-size: .8125rem; font-weight: 400; text-align: end; overflow-wrap: anywhere; }
+.update-outcome[data-status="done"] { color: var(--mn-success); }
+.update-outcome[data-status="error"], .update-outcome[data-status="timeout"] { color: var(--mn-warning); }
 .update-record { padding: 0 0 20px; }
 dl { margin: 0; font-size: .875rem; }
 dl > div { display: flex; justify-content: space-between; gap: 24px; padding: 9px 0; }
