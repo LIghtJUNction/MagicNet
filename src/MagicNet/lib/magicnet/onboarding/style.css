@@ -105,7 +105,7 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
   .communities { width: 100%; gap: 12px; }
   .community { flex: 1; min-width: 0; padding: 12px 14px; font-size: 12px; gap: 9px; }
   .community .out { margin-left: auto; width: 12px; height: 12px; }
-  .utilities { width: 100%; justify-content: center; }
+  .utilities { width: 100%; justify-content: center; flex-wrap: wrap; }
   .utilities .lmm { margin-left: 14px; }
   #completion { padding: 0; }
   .complete-mark { margin: 0 auto 18px; }
