@@ -53,14 +53,8 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-quality-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-
             ${{ runner.os }}-${{ runner.arch }}-quality-rust-v2-${{ steps.toolchain.outputs.rust }}-
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Lint Rust workspace
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-
-      - name: Test Rust workspace
-        run: cargo test --workspace --all-targets --all-features --locked
+      - name: Check Rust workspace
+        run: bash scripts/quality-gate.sh rust
 
   shell:
     runs-on: ubuntu-latest
@@ -77,12 +71,26 @@ jobs:
       - name: Install host check dependencies
         run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml ripgrep
 
-      - name: Lint all first-party shell code
-        run: bash scripts/lint-shell.sh
-
-      - name: Run fixture-based host regressions
+      - name: Check shell code and host regressions
         timeout-minutes: 10
-        run: bash scripts/test-host.sh
+        run: bash scripts/quality-gate.sh shell
+
+  components:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26.7"
+          cache: false
+      - name: Install package test dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-yaml unzip
+      - name: Test component packaging and updates
+        run: bash scripts/quality-gate.sh components
 
   webui:
     runs-on: ubuntu-latest
@@ -104,8 +112,7 @@ jobs:
         run: npm ci
 
       - name: Test, typecheck Vue components, and build
-        working-directory: webui
-        run: npm run check
+        run: bash scripts/quality-gate.sh webui-check
 
       - name: Install browser test dependencies
         working-directory: webui
@@ -114,6 +121,5 @@ jobs:
           sudo apt-get install -y fonts-noto-cjk
 
       - name: Verify mobile layouts and interactions
-        working-directory: webui
         timeout-minutes: 10
-        run: npm run test:ui
+        run: bash scripts/quality-gate.sh webui-browser
