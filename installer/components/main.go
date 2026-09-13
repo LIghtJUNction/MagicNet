@@ -60,6 +60,8 @@ type manifest struct {
 type options struct {
 	Archive, ModuleDir, PreviousDir, CacheDir string
 	Offline                                   bool
+	ctx                                       context.Context
+	session                                   *downloadSession
 	// Injected only by Go tests; no arbitrary download-URL override in the CLI.
 	client  *http.Client
 	mirrors []string
@@ -321,6 +323,10 @@ func networkClient() *http.Client {
 }
 func (o options) printf(format string, args ...any) {
 	if o.log != nil {
+		if o.session != nil {
+			o.session.mu.Lock()
+			defer o.session.mu.Unlock()
+		}
 		fmt.Fprintf(o.log, format+"\n", args...)
 	}
 }
@@ -332,7 +338,11 @@ type route struct {
 
 func (o options) probe(rawURL, name string) route {
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	parent := o.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
@@ -392,68 +402,6 @@ func (p *progress) Write(b []byte) (int, error) {
 		p.last = time.Now()
 	}
 	return len(b), nil
-}
-func (o options) download(c component, direct, destination string) error {
-	candidates := o.routes(direct)
-	// Direct may pass a tiny probe but stall during the actual download. In that
-	// case, discover mirrors too rather than failing with no fallback.
-	attempted := map[string]bool{}
-	var last error
-	for i := 0; i < len(candidates); i++ {
-		candidate := candidates[i]
-		if attempted[candidate.url] {
-			continue
-		}
-		attempted[candidate.url] = true
-		req, err := http.NewRequest("GET", candidate.url, nil)
-		if err != nil {
-			return err
-		}
-		req.Header.Set("User-Agent", "MagicNet-components/1")
-		response, err := o.client.Do(req)
-		if err == nil {
-			if response.StatusCode != 200 {
-				err = fmt.Errorf("HTTP %d", response.StatusCode)
-			} else if response.ContentLength >= 0 && response.ContentLength != c.Size {
-				err = errors.New("download size mismatch")
-			} else {
-				tmp, createErr := os.CreateTemp(o.CacheDir, ".download-")
-				if createErr != nil {
-					response.Body.Close()
-					return createErr
-				}
-				h := sha256.New()
-				p := &progress{total: c.Size, o: o, id: c.ID}
-				n, copyErr := io.Copy(io.MultiWriter(tmp, h, p), io.LimitReader(response.Body, c.Size+1))
-				if copyErr == nil {
-					copyErr = tmp.Sync()
-				}
-				closeErr := tmp.Close()
-				if copyErr != nil {
-					err = copyErr
-				} else if closeErr != nil {
-					err = closeErr
-				} else if n != c.Size || hex.EncodeToString(h.Sum(nil)) != c.SHA256 {
-					err = errors.New("download checksum mismatch")
-				} else {
-					err = os.Rename(tmp.Name(), destination)
-				}
-				os.Remove(tmp.Name())
-			}
-			response.Body.Close()
-		}
-		if err == nil {
-			return nil
-		}
-		last = err
-		o.printf("[download] %s via %s failed: %v", c.ID, candidate.name, err)
-		if len(candidates) == 1 {
-			for _, prefix := range o.mirrors {
-				candidates = append(candidates, o.probe(prefix+direct, prefix))
-			}
-		}
-	}
-	return fmt.Errorf("%s: all download routes failed: %w", c.ID, last)
 }
 
 // All components are validated in a private staging directory before this
@@ -532,6 +480,12 @@ func promote(stage, root string, files []payloadFile, obsolete []string) (err er
 }
 
 func run(o options) error {
+	if o.ctx == nil {
+		o.ctx = context.Background()
+	}
+	if o.session == nil {
+		o.session = &downloadSession{}
+	}
 	if o.log == nil {
 		o.log = io.Discard
 	}
@@ -694,6 +648,22 @@ func run(o options) error {
 	return nil
 }
 func main() {
+	if len(os.Args) > 1 {
+		var err error
+		if os.Args[1] == "update" {
+			err = updaterCLI(os.Args[2:])
+		} else if os.Args[1] == "-config" || os.Args[1] == "--config" {
+			err = smartInstallerCLI(os.Args[1:])
+		} else {
+			goto bootstrap
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "[error]", err)
+			os.Exit(1)
+		}
+		return
+	}
+bootstrap:
 	o := options{log: os.Stdout}
 	flag.StringVar(&o.Archive, "archive", "", "trusted core/full module ZIP")
 	flag.StringVar(&o.ModuleDir, "module-dir", "", "module manager installation directory")

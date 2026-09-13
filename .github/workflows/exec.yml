@@ -292,6 +292,8 @@ jobs:
             --repository "$GITHUB_REPOSITORY"
           scripts/package-smoke.sh dist/MagicNet-full.zip
           cat dist/package-sizes.json >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/package-smart-installer.py --helper "$RUNNER_TEMP/magicnet-components" --output dist/magicnet_installer.zip
+          python3 scripts/test-downloader-installer.py dist/magicnet_installer.zip
 
       - name: Sign and verify final release assets
         if: ${{ env.MAGICNET_SIGN_ENABLED == '1' }}

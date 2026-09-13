@@ -18,6 +18,14 @@ kamfw_phase_boot_completed() {
     fi
     wait_boot
     sleep 3
+    # service and boot-completed may both run; the updater holds its own
+    # process lock. Network updates remain opt-in in the persistent settings.
+    if [ -x "${MODDIR}/bin/magicnet-components" ]; then
+        (
+            unset LD_PRELOAD LD_LIBRARY_PATH
+            "${MODDIR}/bin/magicnet-components" update daemon
+        ) </dev/null >/dev/null 2>&1 &
+    fi
     magicnet_mcp_start_if_enabled || true
     magicnet_start_kernel || true
     "${MODDIR}/cli" supervisor start all >/dev/null 2>&1 &

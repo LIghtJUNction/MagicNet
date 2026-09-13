@@ -33,6 +33,11 @@ struct Command {
 
 const COMMANDS: &[Command] = &[
     Command {
+        name: "update",
+        usage: "cli update {status|check|apply|configure <0|1> <hours:1-168> <wifi-only:0|1>}",
+        handler: crate::updates::update_cmd,
+    },
+    Command {
         name: "service",
         usage: "cli service {status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [webui|sing-box|mcp|fswatch|supervisors|filename] [lines]}",
         handler: service_command,

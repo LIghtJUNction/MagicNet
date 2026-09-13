@@ -53,6 +53,7 @@ mod service;
 mod subscriptions;
 #[cfg(test)]
 mod test_support;
+mod updates;
 mod utils;
 mod warp;
 mod webui_api;

@@ -30,7 +30,7 @@ import { useTheme } from "@/composables/useTheme";
 import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
-type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
+type TabKey = "updates" | "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
 type WorkspaceKey = "run" | "route" | "configure" | "diagnose";
 type OnboardingPreference = "dismissed" | "completed";
 
@@ -50,6 +50,7 @@ type WorkspaceDefinition = {
 const ONBOARDING_STORAGE_KEY = "magicnet.webui.onboarding.v1";
 
 const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
+  updates: () => import("@/components/pages/UpdatesPage.vue"),
   control: () => import("@/components/pages/ControlPage.vue"),
   about: () => import("@/components/pages/AboutPage.vue"),
   tailscale: () => import("@/components/pages/TailscalePage.vue"),
@@ -85,6 +86,7 @@ const tabs: readonly TabDefinition[] = [
   { key: "subs", label: "订阅", workspace: "configure" },
   { key: "tailscale", label: "Tailscale", workspace: "configure" },
   { key: "config", label: "配置文件", workspace: "configure" },
+  { key: "updates", label: "组件更新", workspace: "configure" },
   { key: "webui", label: "管理面板", workspace: "configure" },
   { key: "health", label: "健康检查", workspace: "diagnose" },
   { key: "tools", label: "工具", workspace: "diagnose" },

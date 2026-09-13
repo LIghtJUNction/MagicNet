@@ -1,3 +1,4 @@
+import updates from "./catalogs/updates.ts";
 import shell from "./catalogs/shell.ts";
 import routing from "./catalogs/routing.ts";
 import configuration from "./catalogs/configuration.ts";
@@ -15,4 +16,5 @@ export const messages: Record<string, readonly string[]> = {
   ...tools,
   ...diagnostics,
   ...tailscale,
+  ...updates,
 };

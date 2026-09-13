@@ -153,14 +153,14 @@ func TestOnlyChangedComponentDownloads(t *testing.T) {
 	if err := run(o); err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 2 {
-		t.Fatalf("expected one probe and one download, got %d", calls.Load())
+	if calls.Load() != 1 {
+		t.Fatalf("expected one small-component download without a probe, got %d", calls.Load())
 	}
 	// Reinstall from cached payloads/installed files must make zero further requests.
 	if err := run(o); err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 2 {
+	if calls.Load() != 1 {
 		t.Fatal("unchanged reinstall accessed network")
 	}
 }
@@ -319,8 +319,8 @@ func TestMirrorFallbackAfterDirectFailure(t *testing.T) {
 	if err := run(o); err != nil {
 		t.Fatal(err)
 	}
-	if mirrorCalls.Load() < 2 {
-		t.Fatal("mirror was not probed and used")
+	if mirrorCalls.Load() != 1 {
+		t.Fatal("small mirrored component should download once without a redundant probe")
 	}
 }
 

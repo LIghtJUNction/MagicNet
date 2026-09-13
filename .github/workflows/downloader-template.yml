@@ -1,4 +1,4 @@
-name: Publish Module Downloader
+name: Publish Reusable Downloader Template
 on:
   push:
     branches: [main]
@@ -6,7 +6,6 @@ on:
       - 'tmpl/downloader_template/**'
       - '.github/workflows/downloader-template.yml'
       - 'scripts/test-downloader-installer.py'
-      - 'installer/**'
   workflow_dispatch:
 permissions:
   contents: write
@@ -57,35 +56,10 @@ jobs:
           tar -xzf templates/downloader_template.tar.gz -C "$RUNNER_TEMP/local-template"
           tar -xzf "$RUNNER_TEMP/published-template/downloader_template.tar.gz" -C "$RUNNER_TEMP/remote-template"
           diff -r "$RUNNER_TEMP/local-template" "$RUNNER_TEMP/remote-template"
-      - name: Import the published template and initialize MagicNet installer
-        run: |
-          set -euo pipefail
-          kam tmpl import "$RUNNER_TEMP/published-template/downloader_template.tar.gz" --force
-          # Use the downloaded archive explicitly; a built-in name has higher priority than cache.
-          kam init "$RUNNER_TEMP/magicnet_installer" -t "$RUNNER_TEMP/published-template/downloader_template.tar.gz" \
-            --id magicnet_installer --project-name 'MagicNet Installer' --author LIghtJUNction \
-            --version "$DOWNLOADER_VERSION" --description 'Automatically download and install the latest verified MagicNet release'
-          kam validate "$RUNNER_TEMP/magicnet_installer"
-          kam build "$RUNNER_TEMP/magicnet_installer"
-          python3 scripts/test-downloader-installer.py "$RUNNER_TEMP/magicnet_installer/dist/magicnet_installer.zip"
-      - name: Publish the initialized installer
-        run: |
-          set -euo pipefail
-          tag="magicnet-installer-v${DOWNLOADER_VERSION}"
-          mkdir -p dist/downloader
-          cp "$RUNNER_TEMP/magicnet_installer/dist/magicnet_installer.zip" dist/downloader/
-          tar --exclude='./dist' --exclude='./.git' --exclude='./src/magicnet_installer/bin' \
-            -czf dist/downloader/magicnet_installer-source.tar.gz -C "$RUNNER_TEMP/magicnet_installer" .
-          (cd dist/downloader && sha256sum magicnet_installer.zip magicnet_installer-source.tar.gz > SHA256SUMS)
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" dist/downloader/* --target "$GITHUB_SHA" --latest=false \
-              --title "MagicNet Installer $DOWNLOADER_VERSION" \
-              --notes "Android arm64 downloader. Flash to download and install the latest stable MagicNet. Direct GitHub first, measured mirror fallback, GitHub SHA-256 and ZIP validation. Requires trusted GitHub API connectivity."
-          fi
+      # The branded magicnet_installer.zip is built and signed by exec.yml,
+      # alongside the module, and is published only after its quality gate.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: module-downloader
-          path: |
-            templates/downloader_template.tar.gz
-            dist/downloader/
+          name: module-downloader-template
+          path: templates/downloader_template.tar.gz

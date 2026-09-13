@@ -22,6 +22,7 @@ check_group() {
         GO111MODULE=off go vet ./installer/components
         GO111MODULE=off go test -race ./installer/components
         python3 scripts/test-components.py
+        python3 scripts/test-smart-updates.py
         python3 scripts/test-core-size.py
         python3 scripts/test-release-gates.py
         python3 scripts/test-component-archive-safety.py
