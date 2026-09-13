@@ -21,7 +21,7 @@ magicnet_singbox_tag_is_reserved() {
         apple-cn | microsoft-cn | google-cn | icloud | bing | dns-guard | network-test | \
         ai-proxy | ai-chatgpt | ai-chatgpt-auto | ai-gemini | ai-gemini-auto | \
         ai-grok | ai-grok-auto | ai-claude | ai-claude-auto | proxy-rule | dev-proxy | \
-        social-proxy | media-proxy | game-proxy | telegram-proxy | download-direct | \
+        social-proxy | media-proxy | game-proxy | telegram-proxy | google-proxy | youtube-proxy | github-proxy | discord-proxy | netflix-proxy | spotify-proxy | twitter-proxy | whatsapp-proxy | download-direct | \
         final | direct | block | warp)
         return 0
         ;;
@@ -52,7 +52,7 @@ magicnet_singbox_ai_selectors_canonical() (
             "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing", "dns-guard", "network-test",
             "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini", "ai-gemini-auto",
             "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule", "dev-proxy",
-            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "download-direct",
+            "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "download-direct",
             "final", "direct", "block", "warp"
           ]
         | index($tag) != null or ($tag | startswith("magicnet-chain-"));

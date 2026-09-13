@@ -44,3 +44,18 @@ ordering and DNS/route classifier parity without requiring downloads.
 files for TCP/UDP first-match cases, DNS ownership, explicit modes, LAN,
 advertising, voice ports, foreign-service/CN-IP overlap and keyword false positives.
 Legacy embedded-list tests remain available for legacy templates.
+
+## Independent service selectors
+
+Google, YouTube, GitHub, Discord, Netflix, Spotify, X/Twitter and WhatsApp
+use their own `<service>-proxy` selectors. Telegram retains `telegram-proxy`
+with both its domain and GeoIP classifiers. All default to `proxy`; subscription
+imports expose individual nodes in these groups, including Telegram.
+
+MetaCubeX supplies the named domain sets, including the newly referenced
+`twitter.srs` and `whatsapp.srs`. Gemini and YouTube precede Google; named
+services precede broad developer, media, social and domestic domain rules.
+Google Play/services and the X Android app use the corresponding new selectors.
+
+Run `bash scripts/test-service-selectors.sh` to check imported node choices
+and reserved service-name collisions.

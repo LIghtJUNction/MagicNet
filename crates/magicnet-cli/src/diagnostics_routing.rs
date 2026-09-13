@@ -30,6 +30,14 @@ const PROXY_POLICY_OUTBOUND_TAGS: [&str; 7] = [
     "game-proxy",
     "social-proxy",
     "telegram-proxy",
+    "google-proxy",
+    "youtube-proxy",
+    "github-proxy",
+    "discord-proxy",
+    "netflix-proxy",
+    "spotify-proxy",
+    "twitter-proxy",
+    "whatsapp-proxy",
     "proxy-rule",
 ];
 const MAX_MATCHER_DEPTH: usize = 16;
