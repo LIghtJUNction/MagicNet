@@ -25,7 +25,10 @@ Wikipedia、Telegram 和 Discord。它们是基本页面/基础设施探针，�
 最多 8 路并发、3 轮独立请求，默认 4 路/1 轮；每个请求默认最多 12 秒、响应体上限
 2 MiB。达到大小上限、缺少 curl 能力为 INCOMPLETE，不是 PASS。多轮中任一失败
 都会使整个测试失败。实际流量取决于页面大小，最多 24 × 3 × 2 MiB 的响应体预算
-（另有 TLS、请求头等开销；旧版 curl 对未知 Content-Length 的限制能力也可能不同）。
+（另有 TLS、请求头与传输缓冲等开销，不代表精确的线路流量上限）。
+脚本要求 curl 可执行文件及其链接的 libcurl 均至少为 8.4.0：更早版本无法可靠地
+限制未知 Content-Length 的响应，故在发出请求前直接报告 INCOMPLETE。
+回归测试包含真实分块传输及无 Content-Length 的 4 MiB 响应，验证限额会中断下载。
 
 输出为 TSV，可保留用于前后版本对比。只输出目标 ID、分类、路径、执行 UID、轮次、
 状态、curl 返回码、HTTP 状态和累计耗时，不输出订阅、账户、私有 URL、原始响应或
@@ -81,3 +84,6 @@ GET、证书校验、重定向、IPv4/IPv6、超时、截断响应与受限并�
 ChatGPT 官方网络说明将语音 UDP 3478 与 TCP 443 回退单独列出；本脚本不声称已完成
 WebRTC/STUN/TURN 或登录后的语音握手：
 https://help.openai.com/en/articles/9247338-network-recommendations-for-chatgpt-errors-on-web-and-apps
+
+下载限额的版本行为依据 curl 官方手册：
+https://curl.se/docs/manpage.html#--max-filesize

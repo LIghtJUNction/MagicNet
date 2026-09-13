@@ -30,6 +30,9 @@ MOCK = r'''#!/usr/bin/env python3
 import json, os, sys, time
 from pathlib import Path
 args = sys.argv[1:]
+if '--version' in args:
+    print(os.environ.get('FAKE_CURL_VERSION', 'curl 8.10.1 (test) libcurl/8.10.1'))
+    sys.exit(0)
 url = args[args.index('--url') + 1]
 scenario = url.rsplit('/', 1)[-1]
 Path(os.environ['CALLS'], str(os.getpid()) + '.json').write_text(json.dumps(args))
@@ -141,6 +144,21 @@ class ProbeTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("pass=0 fail=0 incomplete=1", result.stdout)
 
+    def test_curl_and_linked_library_must_enforce_unknown_length_budget(self):
+        for version in ("curl 7.88.1 (test) libcurl/7.88.1",
+                        "curl 8.3.0 (test) libcurl/8.3.0",
+                        "curl 8.10.1 (test) libcurl/8.3.0",
+                        "curl 8.10.1 (test)", "invalid version"):
+            with self.subTest(version=version):
+                env = dict(self.env, FAKE_CURL_VERSION=version)
+                result = self.run_probe(["one|test|https://example.invalid/200|200"], env=env)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("bounded downloads", result.stderr)
+                self.assertFalse(list(self.calls.glob("*.json")))
+        env = dict(self.env, FAKE_CURL_VERSION="curl 8.4.0 (test) libcurl/8.4.0")
+        result = self.run_probe(["one|test|https://example.invalid/200|200"], env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_empty_metadata_never_passes(self):
         self.assertNotEqual(self.one("empty").returncode, 0)
 
@@ -223,6 +241,22 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
             server.active += 1
             server.peak = max(server.peak, server.active)
         try:
+            if self.path in ("/chunked", "/unknown-length"):
+                chunked = self.path == "/chunked"
+                self.protocol_version = "HTTP/1.1" if chunked else "HTTP/1.0"
+                self.send_response(200)
+                self.send_header("Connection", "close")
+                if chunked:
+                    self.send_header("Transfer-Encoding", "chunked")
+                self.end_headers()
+                block = b"x" * 16384
+                with contextlib.suppress(BrokenPipeError, ssl.SSLError, ConnectionResetError):
+                    for _ in range(256):  # 4 MiB, deliberately no Content-Length.
+                        self.wfile.write((b"4000\r\n" + block + b"\r\n") if chunked else block)
+                    if chunked:
+                        self.wfile.write(b"0\r\n\r\n")
+                self.close_connection = True
+                return
             if self.path == "/slow":
                 time.sleep(2)
             if self.path == "/parallel":
@@ -334,6 +368,15 @@ class RealTlsTests(unittest.TestCase):
 
     def test_real_captive_portal_200_does_not_satisfy_204(self):
         self.assertEqual(self.real([("ok", 204)]).returncode, 1)
+
+    def test_real_unknown_length_and_chunked_bodies_hit_size_limit(self):
+        for path in ("chunked", "unknown-length"):
+            with self.subTest(path=path):
+                result = self.real([(path, 200)])
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                row = result_rows(result.stdout)[0]
+                self.assertEqual(row[6], "response_exceeds_2mib")
+                self.assertEqual(row[7], "63")
 
     def test_real_timeout_is_bounded(self):
         started = time.monotonic()
