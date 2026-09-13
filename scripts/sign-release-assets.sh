@@ -13,8 +13,10 @@ openssl pkey -in "$key_dir/private.pem" -pubout -out "$key_dir/public.pem" >/dev
     cd "$output"
     # Public checksums contain only the exact release deliverables, not signatures
     # or intermediate unsigned archives. GNU sort makes the list deterministic.
+    # Generate outside the asset directory before replacing the previous list.
     find . -maxdepth 1 -type f ! -name '*.sig' ! -name SHA256SUMS -printf '%f\n' |
-        LC_ALL=C sort | while IFS= read -r asset; do sha256sum "$asset"; done >SHA256SUMS
+        LC_ALL=C sort | while IFS= read -r asset; do sha256sum "$asset"; done >"$key_dir/checksums"
+    mv "$key_dir/checksums" SHA256SUMS
 )
 for asset in "$output"/*; do
     [[ -f "$asset" && "$asset" != *.sig ]] || continue
