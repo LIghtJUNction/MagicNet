@@ -39,3 +39,7 @@ downloader module or remove it after installation; it has no boot service.
 Proxy format: https://proxy.example/https://github.com/owner/repo/releases/download/...
 Candidates: ghfast.top, ghproxy.net, gh-proxy.com. Their availability is measured on
 installation, and each downloaded byte is checked against GitHub's independent digest.
+
+Progress output reports each probe and ranked route, then percentage, MiB transferred,
+average KiB/s and estimated time remaining once per second (including stalled reads).
+A 100% transfer is followed by separate SHA-256 and ZIP validation before installation.

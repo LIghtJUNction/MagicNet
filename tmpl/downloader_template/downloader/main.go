@@ -137,7 +137,7 @@ func latest(ctx context.Context, c *http.Client, cfg config) (asset, error) {
 			if a.Size <= 0 || a.Size > 512<<20 {
 				return asset{}, errors.New("invalid asset size")
 			}
-			fmt.Println("Latest:", rel.Tag)
+			fmt.Printf("Latest: %s | %s | %.2f MiB\n", rel.Tag, a.Name, float64(a.Size)/(1<<20))
 			return a, nil
 		}
 	}
@@ -147,16 +147,22 @@ func probe(ctx context.Context, c *http.Client, u string) route {
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
 	start := time.Now()
+	host, _ := url.Parse(u)
+	fmt.Printf("Speed test: %s (up to 6s)\n", host.Host)
 	r, e := request(ctx, c, u, true)
 	if e != nil {
+		fmt.Printf("Speed test: %s unavailable: %v; full download may still work\n", host.Host, e)
 		return route{URL: u}
 	}
 	defer r.Body.Close()
 	b, e := io.ReadAll(io.LimitReader(r.Body, probeSize))
 	if e != nil || len(b) < 4 || string(b[:4]) != "PK\x03\x04" {
+		fmt.Printf("Speed test: %s invalid or incomplete ZIP sample\n", host.Host)
 		return route{URL: u}
 	}
-	return route{u, float64(len(b)) / time.Since(start).Seconds()}
+	speed := float64(len(b)) / time.Since(start).Seconds()
+	fmt.Printf("Speed test: %s %.0f KiB/s (%.2fs)\n", host.Host, speed/1024, time.Since(start).Seconds())
+	return route{u, speed}
 }
 func mirrors(ctx context.Context, c *http.Client, a asset, cfg config, direct route) []route {
 	ch := make(chan route, len(cfg.Proxies))
@@ -176,6 +182,38 @@ func mirrors(ctx context.Context, c *http.Client, a asset, cfg config, direct ro
 	sort.SliceStable(routes, func(i, j int) bool { return routes[i].Speed > routes[j].Speed })
 	return routes
 }
+
+// Count streamed bytes without buffering the module in memory.
+type transferProgress struct {
+	bytes atomic.Int64
+	total int64
+	start time.Time
+}
+
+func (p *transferProgress) Write(b []byte) (int, error) {
+	p.bytes.Add(int64(len(b)))
+	return len(b), nil
+}
+func (p *transferProgress) line() string {
+	n := p.bytes.Load()
+	elapsed := time.Since(p.start).Seconds()
+	if elapsed < 0.001 {
+		elapsed = 0.001
+	}
+	speed := float64(n) / elapsed
+	percent := float64(n) * 100 / float64(p.total)
+	if percent > 100 {
+		percent = 100
+	}
+	eta := "--"
+	if speed > 0 && n < p.total {
+		eta = fmt.Sprintf("%.0fs", float64(p.total-n)/speed)
+	}
+	if n >= p.total {
+		eta = "0s"
+	}
+	return fmt.Sprintf("Download progress: %.1f%% | %.2f / %.2f MiB | %.0f KiB/s avg | ETA %s", percent, float64(n)/(1<<20), float64(p.total)/(1<<20), speed/1024, eta)
+}
 func download(ctx context.Context, c *http.Client, a asset, u, out string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
@@ -189,7 +227,26 @@ func download(ctx context.Context, c *http.Client, a asset, u, out string) error
 		return e
 	}
 	h := sha256.New()
-	n, e := io.Copy(io.MultiWriter(f, h), io.LimitReader(r.Body, a.Size+1))
+	progress := &transferProgress{total: a.Size, start: time.Now()}
+	stop, stopped := make(chan struct{}), make(chan struct{})
+	fmt.Println(progress.line())
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				fmt.Println(progress.line())
+			case <-stop:
+				return
+			}
+		}
+	}()
+	n, e := io.Copy(io.MultiWriter(f, h, progress), io.LimitReader(r.Body, a.Size+1))
+	close(stop)
+	<-stopped
+	fmt.Println(progress.line())
 	ce := f.Close()
 	if e != nil {
 		return e
@@ -200,6 +257,7 @@ func download(ctx context.Context, c *http.Client, a asset, u, out string) error
 	if n != a.Size {
 		return errors.New("incomplete or oversized download")
 	}
+	fmt.Println("Checking SHA-256...")
 	if "sha256:"+hex.EncodeToString(h.Sum(nil)) != a.Digest {
 		return errors.New("SHA-256 mismatch")
 	}
@@ -282,6 +340,7 @@ func runWithClient(cfg config, out string, c *http.Client) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
+	fmt.Println("Fetching latest stable release from GitHub API (up to 25s)...")
 	a, e := latest(ctx, c, cfg)
 	if e != nil {
 		return e
@@ -292,24 +351,35 @@ func runWithClient(cfg config, out string, c *http.Client) error {
 	attempt := func(r route) error {
 		attempted[r.URL] = true
 		u, _ := url.Parse(r.URL)
-		fmt.Printf("Download: %s (probe %.0f KiB/s)\n", u.Host, r.Speed/1024)
+		fmt.Printf("Download attempt %d: %s | connecting...\n", len(attempted), u.Host)
 		if e := download(ctx, c, a, r.URL, tmp); e != nil {
 			return e
 		}
+		fmt.Println("Checking ZIP entries, CRC and module identity...")
 		if e := checkZip(tmp, cfg.ModuleID); e != nil {
 			return e
 		}
-		return os.Rename(tmp, out)
+		if e := os.Rename(tmp, out); e != nil {
+			return e
+		}
+		fmt.Println("Download verified. Ready for module installation.")
+		return nil
 	}
 	direct := probe(ctx, c, a.URL)
 	if direct.Speed >= float64(cfg.DirectMinKiB*1024) {
+		fmt.Println("Direct GitHub is fast enough; skipping proxy tests.")
 		if e = attempt(direct); e == nil {
 			return nil
 		}
 		fmt.Println("Direct download failed:", e)
 		direct.Speed = 0
 	}
+	fmt.Println("Testing GitHub proxies concurrently; comparing with direct GitHub...")
 	routes := mirrors(ctx, c, a, cfg, direct)
+	for i, r := range routes {
+		u, _ := url.Parse(r.URL)
+		fmt.Printf("Route rank %d: %s %.0f KiB/s\n", i+1, u.Host, r.Speed/1024)
+	}
 	// A slow CDN handshake or rejected Range request is not proof that full GET fails.
 	routes = append(routes, route{URL: a.URL})
 	for _, p := range cfg.Proxies {

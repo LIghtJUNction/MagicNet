@@ -62,6 +62,7 @@ for rule in routes + dns:
 for service in ("google", "youtube", "github", "discord", "netflix", "spotify", "twitter", "whatsapp", "telegram"):
     assert outbounds[service + "-proxy"]["default"] == "proxy"
     assert index("meta-" + service) < index("lyc-geosite-cn")
+assert index("meta-google-play") < index("lyc-geosite-ads")
 assert index("meta-google-gemini") < index("meta-google")
 assert index("meta-youtube") < index("meta-google")
 assert index("meta-discord") < index("meta-category-communication")
@@ -207,6 +208,16 @@ def first(rules, field, fallback, **flow):
 
 
 cases = [
+    ("play.google.com", "google-proxy", "doh-google"),
+    ("play.googleapis.com", "google-proxy", "doh-google"),
+    ("play-fe.googleapis.com", "google-proxy", "doh-google"),
+    ("play-lh.googleusercontent.com", "google-proxy", "doh-google"),
+    ("redirector.c.play.google.com", "google-proxy", "doh-google"),
+    ("accounts.google.com", "google-proxy", "doh-google"),
+    ("android.clients.google.com", "google-proxy", "doh-google"),
+    ("oauth2.googleapis.com", "google-proxy", "doh-google"),
+    ("mtalk.google.com", "google-proxy", "doh-google"),
+
     ("router.lan", "lan", "bootstrap-local-dns"),
     ("host.ts.net", "lan", "bootstrap-local-dns"),
     ("mmbiz.qpic.cn", "cn-direct", "bootstrap-local-dns"),

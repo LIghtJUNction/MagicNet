@@ -153,3 +153,18 @@ func TestRangeFailureStillTriesFullDownload(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestTransferProgress(t *testing.T) {
+	p := &transferProgress{total: 2048, start: time.Now().Add(-time.Second)}
+	if !strings.Contains(p.line(), "0.0%") || !strings.Contains(p.line(), "ETA --") {
+		t.Fatal(p.line())
+	}
+	p.Write(make([]byte, 1024))
+	if !strings.Contains(p.line(), "50.0%") {
+		t.Fatal(p.line())
+	}
+	p.Write(make([]byte, 1024))
+	if !strings.Contains(p.line(), "100.0%") || !strings.Contains(p.line(), "ETA 0s") {
+		t.Fatal(p.line())
+	}
+}
