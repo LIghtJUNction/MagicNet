@@ -1,0 +1,57 @@
+diff --git a/src/cmds/build/package_module.rs b/src/cmds/build/package_module.rs
+index ec53385..e71225c 100644
+--- a/src/cmds/build/package_module.rs
++++ b/src/cmds/build/package_module.rs
+@@ -76,6 +76,7 @@ pub fn create_kam_module_zip(
+     }
+     add_mmrl_files(kam_toml, args, &mut zip, options, project_path)?;
+     zip.finish()?;
++    validate_module_zip(&module_output_file)?;
+ 
+     if !args.quiet {
+         println!();
+@@ -87,6 +88,17 @@ pub fn create_kam_module_zip(
+     Ok(module_output_file)
+ }
+ 
++// Read every local header and CRC before exposing an installable ZIP. A central
++// directory alone can look valid while KernelSU panics opening a local entry.
++fn validate_module_zip(path: &Path) -> Result<(), KamError> {
++    let mut archive = zip::ZipArchive::new(File::open(path)?)?;
++    for index in 0..archive.len() {
++        let mut entry = archive.by_index(index)?;
++        std::io::copy(&mut entry, &mut std::io::sink())?;
++    }
++    Ok(())
++}
++
+ fn module_prop_content(kam_toml: &KamToml) -> Result<String, KamError> {
+     let mut prop_content = String::new();
+     std::fmt::Write::write_fmt(
+diff --git a/src/cmds/build/package_module/tests.rs b/src/cmds/build/package_module/tests.rs
+index 2f48fef..5670aea 100644
+--- a/src/cmds/build/package_module/tests.rs
++++ b/src/cmds/build/package_module/tests.rs
+@@ -160,3 +160,22 @@ fn zip_text(path: &Path, name: &str) -> String {
+         .unwrap();
+     text
+ }
++
++#[test]
++fn rejects_invalid_local_header_before_publication() {
++    use std::io::{Seek, SeekFrom, Write};
++    let dir = tempfile::tempdir().unwrap();
++    let path = dir.path().join("bad.zip");
++    let file = std::fs::File::create(&path).unwrap();
++    let mut writer = zip::ZipWriter::new(file);
++    writer
++        .start_file("module.prop", zip::write::SimpleFileOptions::default())
++        .unwrap();
++    writer.write_all(b"id=test\n").unwrap();
++    writer.finish().unwrap();
++    super::validate_module_zip(&path).unwrap();
++    let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
++    file.seek(SeekFrom::Start(0)).unwrap();
++    file.write_all(b"FAIL").unwrap();
++    assert!(super::validate_module_zip(&path).is_err());
++}
