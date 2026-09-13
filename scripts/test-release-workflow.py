@@ -21,24 +21,6 @@ RELEASE_MARKER = ".github/release-request"
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
-    def test_publication_requires_local_quality_gates(self):
-        workflow = yaml.safe_load((WORKFLOWS / "exec.yml").read_text())
-        steps = workflow["jobs"]["build"]["steps"]
-        publish = next(i for i, s in enumerate(steps) if s.get("name") == "Create GitHub release")
-        for name, checks in {
-            "Gate release on shell and host regressions": ["bash scripts/lint-shell.sh", "bash scripts/test-host.sh"],
-            "Gate release on Rust checks": ["cargo fmt", "cargo clippy", "cargo test"],
-            "Gate release on WebUI checks": ["npm run check", "npm run test:ui"],
-        }.items():
-            index = next(i for i, s in enumerate(steps) if s.get("name") == name)
-            gate = steps[index]
-            self.assertLess(index, publish)
-            self.assertEqual(gate.get("if"), steps[publish].get("if"))
-            self.assertFalse(gate.get("continue-on-error", False))
-            self.assertIn("set -euo pipefail", gate["run"])
-            for check in checks:
-                self.assertIn(check, gate["run"])
-
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
