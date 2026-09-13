@@ -1,0 +1,59 @@
+name: Network regression
+
+on:
+  pull_request:
+    paths:
+      - 'src/MagicNet/network-check.sh'
+      - 'src/MagicNet/lib/magicnet/network-targets.tsv'
+      - 'scripts/test-network-check.py'
+      - 'scripts/test-host.sh'
+      - '.github/workflows/network-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-regressions:
+    name: Offline probe regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell and real TLS fixtures
+        run: |
+          shellcheck -s sh src/MagicNet/network-check.sh
+          python3 scripts/test-network-check.py
+
+  internet-observation:
+    name: Public endpoints (runner observation only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record public HTTPS outcomes without disguising failures
+        shell: bash
+        run: |
+          mkdir -p network-report
+          rc=0
+          sh src/MagicNet/network-check.sh --mode system --jobs 4 --timeout 12 \
+            > network-report/public-network.tsv || rc=$?
+          printf '%s\n' "$rc" > network-report/exit-code.txt
+          cat network-report/public-network.tsv
+          {
+            echo '## Public endpoint observation — NOT Android acceptance'
+            echo 'This is the GitHub runner OS path, not the module or user subscription.'
+            echo "Raw probe exit code: $rc (0=HTTPS pass, 1=failures, 2=incomplete)."
+            echo 'External failures remain in the report. This observation is not a release gate.'
+            echo '```text'
+            cat network-report/public-network.tsv
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$rc" in 0|1|2) ;; *) exit "$rc" ;; esac
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-network-observation
+          path: network-report/
+          if-no-files-found: error
+          retention-days: 14
