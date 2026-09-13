@@ -1,7 +1,0 @@
-{
-  "repository": "{{target_repository}}",
-  "asset": "{{target_asset}}",
-  "module_id": "{{target_module}}",
-  "proxies": ["https://ghfast.top/", "https://ghproxy.net/", "https://gh-proxy.com/"],
-  "direct_min_kib": 256
-}

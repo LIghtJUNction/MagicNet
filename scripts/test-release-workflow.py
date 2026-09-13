@@ -466,6 +466,10 @@ class WorkflowStructureTest(unittest.TestCase):
         release = next(step for step in steps if step["name"] == "Create GitHub release")
         self.assertIn('--target "$RELEASE_COMMIT_SHA"', release["run"])
         self.assertIn("--verify-build", release["run"])
+        installer = next(step for step in steps if step["name"] == "Build standalone module installer")
+        self.assertIn("kam installer", installer["run"])
+        self.assertIn("magicnet_installer.zip", installer["run"])
+        self.assertIn("magicnet_installer.zip", release["run"])
 
     def test_caches_include_toolchain_and_source_and_exclude_rustup(self):
         for name in ("exec.yml", "quality.yml"):

@@ -279,6 +279,20 @@ jobs:
           scripts/package-install-smoke.sh "dist/${module_id}.zip"
           scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
 
+      - name: Build standalone module installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer_root="$RUNNER_TEMP/magicnet_installer"
+          kam installer "$installer_root" --id magicnet_installer \
+            --project-name 'MagicNet Installer' --author LIghtJUNction \
+            --repository "$GITHUB_REPOSITORY" --asset MagicNet.zip --module-id MagicNet
+          kam validate "$installer_root"
+          kam build "$installer_root" --quiet
+          python3 scripts/test-downloader-installer.py \
+            "$installer_root/dist/magicnet_installer.zip"
+          cp "$installer_root/dist/magicnet_installer.zip" dist/magicnet_installer.zip
+
       - name: Package core, components and offline full module
         shell: bash
         run: |
@@ -337,7 +351,8 @@ jobs:
               "$RUNNER_TEMP/magicnet-signing-public.pem"
           done
           args=(--repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT_SHA"
-                --title "MagicNet-${RELEASE_VERSION_CODE}-${RELEASE_VERSION}" --generate-notes --draft)
+                --title "MagicNet-${RELEASE_VERSION_CODE}-${RELEASE_VERSION}" \
+                --generate-notes --notes "安装器下载：https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_VERSION}/magicnet_installer.zip" --draft)
           if [ "$PRERELEASE_REQUESTED" = "true" ]; then
             args+=(--prerelease)
           fi

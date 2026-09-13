@@ -1,4 +1,16 @@
-# Unreleased
+# v1.4.9 (2026-09-14)
+
+- Move the reusable downloader installer template into KAM 0.6.14 and publish
+  `magicnet_installer.zip` with each MagicNet release.
+- Installer downloads are verified against GitHub's release SHA-256, ZIP CRC,
+  and module ID, then cached under `/data/adb/cache/{module_id}` for incremental
+  updates.
+- Protect Google, Google Play, Gemini, YouTube, and Android API routes in the
+  maintained sing-box service configuration.
+
+Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/download/magicnet_installer.zip`
+
+## Unreleased
 
 - Visualize Proxy, Direct, and Bypass app traffic paths in the WebUI, including
   DNS boundaries, before/after confirmation details, automatic activation, and
