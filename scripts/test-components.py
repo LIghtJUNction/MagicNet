@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('packager', ROOT / 'scripts/package-components.py')
 packager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(packager)
+smoke_spec = importlib.util.spec_from_file_location('host_smoke', ROOT / 'scripts/prepare-component-host-smoke.py')
+host_smoke = importlib.util.module_from_spec(smoke_spec)
+smoke_spec.loader.exec_module(host_smoke)
 
 
 class PackagingTest(unittest.TestCase):
@@ -116,6 +119,26 @@ class PackagingTest(unittest.TestCase):
         self.entries['customize.sh'] = b'echo changed\n'
         with self.assertRaises(ValueError):
             self.build()
+
+    def test_host_smoke_repack_preserves_source_index_and_manifest(self):
+        self.build()
+        work = self.root / 'host-work'
+        work.mkdir()
+        # A different length shifts every later ZIP header and reproduces the
+        # source-index corruption when writestr receives the original ZipInfo.
+        binary = b'different-size-host-bootstrap'
+        (work / 'magicnet-components').write_bytes(binary)
+        original = self.archive.read_bytes()
+        host_smoke.prepare(self.archive, work)
+        self.assertEqual(self.archive.read_bytes(), original)
+        with zipfile.ZipFile(self.archive) as src, zipfile.ZipFile(work / 'host-smoke.zip') as dest:
+            self.assertIsNone(src.testzip())
+            self.assertIsNone(dest.testzip())
+            self.assertEqual(src.namelist(), dest.namelist())
+            for name in src.namelist():
+                expected = binary if name == 'bin/magicnet-components' else src.read(name)
+                self.assertEqual(dest.read(name), expected, name)
+            self.assertEqual((work / 'manifest.json').read_bytes(), src.read('.components/manifest.json'))
 
     def install(self, name, previous):
         archive = self.root / name

@@ -10,17 +10,7 @@ trap 'rm -rf "$work"' EXIT
   cd "$ROOT/tools/components"
   go build -trimpath -o "$work/magicnet-components" .
 )
-python3 - "$archive" "$work" <<'PY'
-from pathlib import Path
-import sys
-import zipfile
-source, work = Path(sys.argv[1]), Path(sys.argv[2])
-with zipfile.ZipFile(source) as src, zipfile.ZipFile(work/'host-smoke.zip', 'w') as out:
-    for info in src.infolist():
-        data = (work/'magicnet-components').read_bytes() if info.filename == 'bin/magicnet-components' else src.read(info)
-        out.writestr(info, data)
-    (work/'manifest.json').write_bytes(src.read('.components/manifest.json'))
-PY
+python3 "$ROOT/scripts/prepare-component-host-smoke.py" "$archive" "$work"
 # These are the existing full installer/configuration/runtime regressions, not
 # a replacement that only checks whether archive entries exist.
 bash "$ROOT/scripts/package-install-smoke.sh" "$work/host-smoke.zip"
