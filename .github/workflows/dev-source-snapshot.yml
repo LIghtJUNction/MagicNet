@@ -1,0 +1,21 @@
+name: Development source snapshot
+on:
+  push:
+    branches: [feat/smart-installer-component-updates]
+    paths: [.github/workflows/dev-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - run: git archive --format=zip --output "$RUNNER_TEMP/magicnet-source.zip" HEAD
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: magicnet-development-source
+          path: ${{ runner.temp }}/magicnet-source.zip
+          retention-days: 1
