@@ -33,7 +33,8 @@ jobs:
       - name: Build and verify Kam
         run: |
           git -C kam-tool apply "$GITHUB_WORKSPACE/installer/kam-zip-validation.patch"
-          cd kam-tool
+          cp -a kam-tool "$RUNNER_TEMP/kam-tool"
+          cd "$RUNNER_TEMP/kam-tool"
           cargo test --locked rejects_invalid_local_header_before_publication
           cargo build --locked
           echo "$PWD/target/debug" >> "$GITHUB_PATH"
