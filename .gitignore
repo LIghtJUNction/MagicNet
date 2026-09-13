@@ -27,5 +27,20 @@ src/MagicNet/ecapture.version
 !.kam/bases/
 !.kam/bases/**
 
-# Generated from installer/components when packaging the installer template.
+# Local Python test/coverage output and editor/OS metadata.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Generated shared smart-installer sources.
 tmpl/downloader_template/smart/

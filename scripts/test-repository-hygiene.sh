@@ -11,11 +11,33 @@ fail() {
 
 tracked_garbage="$(
     git ls-files | grep -E \
-        '(^|/)(target|dist|node_modules|__pycache__|\.pytest_cache|\.mypy_cache)(/|$)|(^|/)(\.DS_Store|Thumbs\.db)$|(\.log|\.tmp|\.swp|~)$' \
+        '(^|/)(target|dist|node_modules|__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|htmlcov)(/|$)|(^|/)(\.DS_Store|Thumbs\.db|\.coverage(\.[^/]*)?)$|(\.log|\.tmp|\.sw[op]|\.py[cod]|~)$' \
         || true
 )"
 [[ -z "$tracked_garbage" ]] || fail "tracked build/cache/editor artifacts found:
 $tracked_garbage"
+
+# Keep generated test/editor files out of future commits, not just this tree.
+ignored_artifacts=(
+    'scripts/__pycache__/test.cpython-313.pyc'
+    'scripts/test.pyc'
+    'scripts/test.pyo'
+    '.pytest_cache/state'
+    '.mypy_cache/state'
+    '.ruff_cache/state'
+    '.coverage'
+    '.coverage.worker'
+    'htmlcov/index.html'
+    '.DS_Store'
+    'webui/Thumbs.db'
+    'scripts/test.sh.swp'
+    'scripts/test.sh.swo'
+    'scripts/test.sh~'
+)
+for artifact in "${ignored_artifacts[@]}"; do
+    git check-ignore --no-index -q "$artifact" \
+        || fail "generated artifact is not ignored: $artifact"
+done
 
 for sensitive in .env .tokensave; do
     if git ls-files --error-unmatch "$sensitive" >/dev/null 2>&1; then

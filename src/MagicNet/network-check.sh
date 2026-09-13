@@ -79,6 +79,26 @@ awk -F '|' '
     END {exit (bad || count == 0 || count > 64)}
 ' "$TARGETS" || invalid 'invalid, duplicate, empty, or oversized target corpus'
 
+# Older libcurl ignores max-filesize for unknown/chunked lengths. Refuse to
+# probe instead of silently violating the response-body budget. Check the linked
+# library as well as the executable; distribution builds may use different ones.
+if ! curl --disable --version 2>/dev/null | awk '
+    function bounded(v, parts) {
+        if (v !~ /^[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$/) return 0
+        split(v, parts, ".")
+        return parts[1]+0 > 8 || (parts[1]+0 == 8 && parts[2]+0 >= 4)
+    }
+    NR == 1 && $1 == "curl" {
+        client = bounded($2)
+        for (i=3; i<=NF; i++)
+            if ($i ~ /^libcurl\//) library = bounded(substr($i, 9))
+    }
+    END {exit !(client && library)}
+'; then
+    printf 'INCOMPLETE: curl and libcurl >= 8.4.0 required for bounded downloads\n' >&2
+    exit 2
+fi
+
 # Use a private working directory; only aggregate after every worker has finished.
 WORK=$(mktemp -d "${TMPDIR:-$MODDIR}/.network-check.XXXXXX") || exit 2
 awk '/^[[:space:]]*#/ || /^[[:space:]]*$/ {next} {print}' "$TARGETS" > "$WORK/targets"
