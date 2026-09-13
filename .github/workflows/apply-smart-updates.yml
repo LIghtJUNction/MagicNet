@@ -44,7 +44,11 @@ jobs:
           def git(*args):
               return subprocess.check_output(['git', *args]).decode()
           def api(endpoint, value):
-              result = subprocess.run(['gh', 'api', '--method', 'POST', 'repos/' + os.environ['GITHUB_REPOSITORY'] + '/git/' + endpoint, '--input', '-'], input=json.dumps(value), text=True, check=True, capture_output=True)
+              result = subprocess.run(['gh', 'api', '--method', 'POST', 'repos/' + os.environ['GITHUB_REPOSITORY'] + '/git/' + endpoint, '--input', '-'], input=json.dumps(value), text=True, capture_output=True)
+              if result.returncode:
+                  print(result.stderr)
+                  print(result.stdout)
+                  raise SystemExit(result.returncode)
               return json.loads(result.stdout)
           elements = []
           for name in git('diff', '--cached', '--name-only', '-z').split('\0'):
