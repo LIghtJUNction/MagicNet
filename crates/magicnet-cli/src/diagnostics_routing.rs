@@ -23,7 +23,7 @@ const MAINTAINED_CN_RULE_SETS: [&str; 6] = [
     "metacubex-geoip-cn",
     "karing-acl4ssr-china-ip",
 ];
-const PROXY_POLICY_OUTBOUND_TAGS: [&str; 7] = [
+const PROXY_POLICY_OUTBOUND_TAGS: &[&str] = &[
     "ai-proxy",
     "dev-proxy",
     "media-proxy",
