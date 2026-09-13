@@ -65,6 +65,11 @@ class ProbeTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix="magicnet-check-")
         self.addCleanup(self.tmp.cleanup)
         self.work = Path(self.tmp.name)
+        # Release gates run after Android binaries have been staged in src/bin.
+        # Test the exact script in an isolated module, never execute those binaries.
+        self.script = self.work / "module" / "network-check.sh"
+        self.script.parent.mkdir()
+        shutil.copyfile(SCRIPT, self.script)
         self.bin = self.work / "bin"
         self.bin.mkdir()
         self.calls = self.work / "calls"
@@ -79,7 +84,7 @@ class ProbeTests(unittest.TestCase):
                   env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         targets = self.work / "targets"
         targets.write_text("\n".join(rows) + "\n")
-        return subprocess.run(["sh", str(SCRIPT), "--targets", str(targets), *options],
+        return subprocess.run(["sh", str(self.script), "--targets", str(targets), *options],
                               env=env or self.env, capture_output=True, text=True, timeout=20)
 
     def one(self, scenario: str, expected: int = 200, *options: str):

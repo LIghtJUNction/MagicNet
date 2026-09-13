@@ -59,7 +59,12 @@ case "$PROXY" in
     *) invalid 'proxy must be a loopback HTTP endpoint without credentials' ;;
 esac
 case "$PORT" in ''|*[!0-9]*) invalid 'invalid proxy port' ;; esac
-[ "${#PORT}" -le 5 ] && [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || invalid 'invalid proxy port'
+if [ "${#PORT}" -gt 5 ]; then
+    invalid 'invalid proxy port'
+fi
+if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+    invalid 'invalid proxy port'
+fi
 [ -r "$TARGETS" ] || invalid 'targets file is unreadable'
 command -v curl >/dev/null 2>&1 || { printf 'INCOMPLETE: curl unavailable\n' >&2; exit 2; }
 
