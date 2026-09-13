@@ -100,5 +100,6 @@ bash scripts/test-subscription-stop-safety.sh
 bash scripts/test-release-integrity.sh
 python3 scripts/test-release-workflow.py
 python3 scripts/test-ci-submodules.py
+python3 scripts/test-network-check.py
 
 printf 'host regression suite passed\n'

@@ -1,0 +1,26 @@
+# Public HTTPS smoke targets, not logged-in application acceptance.
+# id|category|url|expected final HTTP status
+baidu|domestic|https://www.baidu.com/|200
+bilibili|domestic|https://www.bilibili.com/|200
+qq|domestic|https://www.qq.com/|200
+weixin|domestic|https://weixin.qq.com/|200
+jd|domestic|https://www.jd.com/|200
+taobao|domestic|https://www.taobao.com/|200
+alipay|domestic|https://www.alipay.com/|200
+bing_cn|domestic|https://cn.bing.com/|200
+google|global|https://www.google.com/|200
+google_play|google|https://play.google.com/store/apps|200
+google_login|google|https://accounts.google.com/|200
+google_static|google|https://www.gstatic.com/generate_204|204
+android_connectivity|google|https://connectivitycheck.gstatic.com/generate_204|204
+google_download|google|https://dl.google.com/android/repository/addons_list-5.xml|200
+youtube|media|https://www.youtube.com/|200
+chatgpt|ai|https://chatgpt.com/|200
+claude|ai|https://claude.ai/|200
+github|developer|https://github.com/|200
+github_api|developer|https://api.github.com/|200
+microsoft|global|https://www.microsoft.com/|200
+apple|global|https://www.apple.com/|200
+wikipedia|global|https://www.wikipedia.org/|200
+telegram|social|https://telegram.org/|200
+discord|social|https://discord.com/|200
