@@ -32,13 +32,15 @@ else
     printf 'Prepared routing/DNS asset checks excluded; use --with-routing-assets to include them.\n'
 fi
 
-for tool in jq python3; do
+for tool in jq python3 curl openssl; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         printf 'missing required command: %s\n' "$tool" >&2
         exit 127
     fi
 done
 
+# Real loopback HTTPS/SOCKS tests; never substitute these for device acceptance.
+python3 scripts/test-website-probe.py
 jq empty src/MagicNet/.config/sing-box/config.json
 bash scripts/test-repository-hygiene.sh
 bash scripts/test-config-template-pin.sh

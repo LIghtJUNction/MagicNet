@@ -69,7 +69,7 @@ jobs:
         run: bash scripts/update-submodules.sh
 
       - name: Install host check dependencies
-        run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml ripgrep
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml ripgrep curl openssl
 
       - name: Check shell code and host regressions
         timeout-minutes: 10
