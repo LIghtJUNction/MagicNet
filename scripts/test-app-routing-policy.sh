@@ -101,6 +101,9 @@ write_base_config() {
         "inbound": ["tun-in"],
         "action": "sniff"
       },
+      {"clash_mode": "Direct", "outbound": "direct"},
+      {"clash_mode": "Global", "outbound": "select"},
+      {"ip_is_private": true, "outbound": "lan"},
       {
         "package_name": ["com.example.direct"],
         "outbound": "direct"
@@ -132,6 +135,12 @@ EOF
 }
 
 assert_proxy_rule_and_order() {
+  "$JQ_BIN" -e '
+    (.route.rules | to_entries) as $r
+    | ([$r[] | select(.value.package_name // [] | index("__magicnet_app_direct__")) | .key][0]) as $app
+    | all($r[] | select(.value.clash_mode != null or .value.outbound == "lan"); .key < $app)
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+
   # shellcheck disable=SC2016
   "$JQ_BIN" -e '
     ([.route.rules | to_entries[]
