@@ -11,6 +11,43 @@ mkdir -p "$KAM_PROJECT_ROOT/dist" "$KAM_PROJECT_ROOT/scripts" "$KAM_HOOKS_ROOT/l
 printf '[prop]\nid = "MagicNet"\n' > "$KAM_PROJECT_ROOT/kam.toml"
 printf 'fixture\n' > "$test_root/source/lib/kamfw/__singbox__.sh"
 printf '{}\n' > "$test_root/source/.config/sing-box/.dns-test.json"
+
+removed_entries=(
+    '.git/config'
+    '.gitignore'
+    '.gitattributes'
+    '.gitmodules'
+    '.github/workflows/development.yml'
+    '.DS_Store'
+    'Thumbs.db'
+    'lib/kamfw/.git'
+    'lib/kamfw/.gitignore'
+    '.config/sing-box/.github/workflows/update.yml'
+    '.config/sing-box/__pycache__/helper.cpython-313.pyc'
+    '.config/sing-box/helper.pyc'
+    '.config/sing-box/helper.pyo'
+    '.pytest_cache/state'
+    '.mypy_cache/state'
+    '.ruff_cache/state'
+)
+preserved_entries=(
+    '.envrc'
+    '.config/kamfw/.envrc'
+    'lib/kamfw/.envrc'
+    'lib/kamfw/.kamfwrc'
+    'lib/kamfw/__singbox__.sh'
+    'lib/kamfw/__runtime__.sh'
+    'LICENSE'
+    'lib/kamfw/LICENSE'
+    '.config/sing-box/config.json'
+    'customize.sh'
+    'service.sh'
+    'webroot/index.html'
+)
+for entry in "${removed_entries[@]}" "${preserved_entries[@]}"; do
+    mkdir -p "$(dirname "$test_root/source/$entry")"
+    printf 'fixture: %s\n' "$entry" > "$test_root/source/$entry"
+done
 cat > "$KAM_HOOKS_ROOT/lib/utils.sh" <<'SH'
 log_info() { :; }
 require_command() { command -v "$1" >/dev/null; }
@@ -60,6 +97,25 @@ if unzip -Z1 "$artifact" | grep -Fq '.dns-test.json'; then
     exit 1
 fi
 
+# Cleanup removes development data without changing runtime or license bytes.
+unzip -Z1 "$artifact" > "$test_root/archive-entries"
+for entry in "${removed_entries[@]}"; do
+    if grep -Fxq "$entry" "$test_root/archive-entries"; then
+        printf 'Development file survived archive cleanup: %s\n' "$entry" >&2
+        exit 1
+    fi
+done
+for entry in "${preserved_entries[@]}"; do
+    unzip -p "$artifact" "$entry" > "$test_root/preserved-entry"
+    cmp "$test_root/source/$entry" "$test_root/preserved-entry"
+done
+
+# A second pass must neither change the archive nor invalidate its signature.
+cp "$artifact" "$test_root/clean.zip"
+bash "$sanitize_hook"
+cmp "$artifact" "$test_root/clean.zip"
+verify_archive
+
 # The final artifact check must reject later mutation and a missing signature.
 printf 'changed\n' >> "$artifact"
 if verify_archive; then
@@ -71,4 +127,14 @@ if verify_archive; then
     echo 'Unsigned archive passed signature verification' >&2
     exit 1
 fi
-printf 'Artifact signing order and integrity checks passed\n'
+# Refuse to proceed to signing when zip cannot remove an unwanted entry.
+make_archive
+mkdir -p "$test_root/failing-bin"
+printf '#!/bin/sh\nexit 1\n' > "$test_root/failing-bin/zip"
+chmod +x "$test_root/failing-bin/zip"
+if PATH="$test_root/failing-bin:$PATH" bash "$sanitize_hook" > "$test_root/failure.log" 2>&1; then
+    echo 'Archive cleanup ignored a failed deletion' >&2
+    exit 1
+fi
+grep -Fq 'Failed to remove archive entry:' "$test_root/failure.log"
+printf 'Artifact cleanup, signing order and integrity checks passed\n'
