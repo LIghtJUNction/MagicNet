@@ -135,6 +135,8 @@ EOF
 }
 
 assert_proxy_rule_and_order() {
+  # jq variables are intentionally literal.
+  # shellcheck disable=SC2016
   "$JQ_BIN" -e '
     (.route.rules | to_entries) as $r
     | ([$r[] | select(.value.package_name // [] | index("__magicnet_app_direct__")) | .key][0]) as $app
