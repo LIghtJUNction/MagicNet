@@ -24,6 +24,7 @@ check_group() {
         python3 scripts/test-components.py
         python3 scripts/test-core-size.py
         python3 scripts/test-release-gates.py
+        python3 scripts/test-component-archive-safety.py
         ;;
     webui-check)
         (cd webui && npm run check)
