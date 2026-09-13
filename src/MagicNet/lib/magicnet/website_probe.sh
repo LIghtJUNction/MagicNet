@@ -97,6 +97,16 @@ if [ "$probe_path" = native ] && [ "$uid" = 0 ]; then
 fi
 printf 'id\tgroup\tround\tresult\thttp_code\tcurl_exit\tdns_s\tconnect_s\ttls_s\tttfb_s\ttotal_s\tbytes\tredirects\n'
 
+# Defined at top level so shell analysis can resolve this signal callback.
+# It is invoked only inside a background probe, where curl_pid is initialized.
+stop_probe() {
+    if [ -n "$curl_pid" ]; then
+        kill "$curl_pid" 2>/dev/null || :
+        wait "$curl_pid" 2>/dev/null || :
+    fi
+    exit 143
+}
+
 probe() {
     seq=$1; name=$2; group=$3; url=$4; expected=$5; body=$6; round=$7
     set -- --proxy '' --noproxy '*'
@@ -107,13 +117,6 @@ probe() {
     connect_timeout=4
     [ "$timeout" -ge 4 ] || connect_timeout=$timeout
     curl_pid=''
-    stop_probe() {
-        if [ -n "$curl_pid" ]; then
-            kill "$curl_pid" 2>/dev/null || :
-            wait "$curl_pid" 2>/dev/null || :
-        fi
-        exit 143
-    }
     trap stop_probe INT TERM
     "$curl_bin" -q "$@" --silent --show-error --globoff \
         --proto '=https' --proto-redir '=https' --location --max-redirs 5 \
