@@ -53,14 +53,8 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-quality-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-
             ${{ runner.os }}-${{ runner.arch }}-quality-rust-v2-${{ steps.toolchain.outputs.rust }}-
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Lint Rust workspace
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-
-      - name: Test Rust workspace
-        run: cargo test --workspace --all-targets --all-features --locked
+      - name: Check, lint and test Rust workspace
+        run: bash scripts/quality-check.sh rust
 
   shell:
     runs-on: ubuntu-latest
@@ -77,12 +71,9 @@ jobs:
       - name: Install host check dependencies
         run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml ripgrep
 
-      - name: Lint all first-party shell code
-        run: bash scripts/lint-shell.sh
-
-      - name: Run fixture-based host regressions
+      - name: Lint shell and run host regressions
         timeout-minutes: 10
-        run: bash scripts/test-host.sh
+        run: bash scripts/quality-check.sh shell
 
   webui:
     runs-on: ubuntu-latest
@@ -99,21 +90,23 @@ jobs:
           cache: npm
           cache-dependency-path: webui/package-lock.json
 
-      - name: Install locked WebUI dependencies
-        working-directory: webui
-        run: npm ci
+      - name: Test, typecheck, build and verify browser interactions
+        timeout-minutes: 20
+        run: bash scripts/quality-check.sh webui
 
-      - name: Test, typecheck Vue components, and build
-        working-directory: webui
-        run: npm run check
-
-      - name: Install browser test dependencies
-        working-directory: webui
-        run: |
-          npx playwright install --with-deps chromium
-          sudo apt-get install -y fonts-noto-cjk
-
-      - name: Verify mobile layouts and interactions
-        working-directory: webui
-        timeout-minutes: 10
-        run: npm run test:ui
+  components:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26.7"
+          cache: false
+      - run: sudo apt-get update && sudo apt-get install -y python3-yaml
+      - name: Test component packaging and incremental installation
+        run: bash scripts/quality-check.sh components
+      - name: Cross-compile Android bootstrap
+        working-directory: tools/components
+        run: CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -mod=readonly -trimpath -o "$RUNNER_TEMP/magicnet-components" .
