@@ -198,7 +198,7 @@ jobs:
         run: echo "$HOME/.cache/magicnet/cargo-ndk/bin" >> "$GITHUB_PATH"
 
       - name: Install artifact tools
-        run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip
+        run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip shellcheck python3-yaml
 
       - name: Test forked sing-box eBPF support
         shell: bash
@@ -278,6 +278,38 @@ jobs:
           scripts/package-smoke.sh "dist/${module_id}.zip"
           scripts/package-install-smoke.sh "dist/${module_id}.zip"
           scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
+
+      # Run checks in the publishing job: parallel workflows cannot gate a release.
+      # This also covers workflow_dispatch version bumps with a new commit SHA.
+      - name: Gate release on shell and host regressions
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          bash scripts/lint-shell.sh
+          bash scripts/test-host.sh
+
+      - name: Gate release on Rust checks
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          rustup component add rustfmt clippy
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-targets --all-features --locked
+
+      - name: Gate release on WebUI checks
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        working-directory: webui
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run check
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+          npm run test:ui
 
       - name: Create GitHub release
         if: ${{ env.RELEASE_REQUESTED == '1' }}
