@@ -25,8 +25,10 @@ from pathlib import Path
 mode = os.environ.get("VOICE_TEST", "valid")
 if mode == "failure": sys.exit(22)
 if "-o" not in sys.argv:
-    print(json.dumps({"object":{"sha":"a"*40}}))
+    assert any("gitlab.com/api/v4/projects/61399101/repository/branches/master" in arg for arg in sys.argv)
+    print(json.dumps({"commit":{"id":"a"*40}}))
 else:
+    assert any("gitlab.com/SukkaW/ruleset.skk.moe/-/raw/" in arg for arg in sys.argv)
     assert any("/" + "a"*40 + "/" in arg for arg in sys.argv)
     prefixes = ["203.0.113.8/32", "2001:db8::8/128"]
     if mode == "empty": prefixes = []

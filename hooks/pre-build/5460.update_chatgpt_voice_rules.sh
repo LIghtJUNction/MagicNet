@@ -13,10 +13,10 @@ CANDIDATE=$(mktemp "$RULE_DIR/.chatgpt-voice.XXXXXX")
 trap 'rm -f "$CANDIDATE"' EXIT
 # Resolve one immutable upstream revision per build; never rewrite config.json.
 REF=$(curl -fsSL --connect-timeout 5 --max-time 20 --retry 3 \
-    https://api.github.com/repos/SukkaLab/ruleset.skk.moe/git/ref/heads/master |
-    jq -er '.object.sha | select(test("^[0-9a-f]{40}$"))')
+    https://gitlab.com/api/v4/projects/61399101/repository/branches/master |
+    jq -er '.commit.id | select(test("^[0-9a-f]{40}$"))')
 curl -fsSL --connect-timeout 5 --max-time 20 --retry 3 \
-    "https://raw.githubusercontent.com/SukkaLab/ruleset.skk.moe/$REF/sing-box/ip/ai.json" \
+    "https://gitlab.com/SukkaW/ruleset.skk.moe/-/raw/$REF/sing-box/ip/ai.json" \
     -o "$CANDIDATE"
 python3 - "$CANDIDATE" <<'PY'
 import ipaddress
@@ -38,4 +38,4 @@ PY
 chmod 644 "$CANDIDATE"
 mv -f "$CANDIDATE" "$RULE_DIR/sukka-chatgpt-voice.json"
 printf '%s\n' "$REF" >"$STATE_DIR/upstream-revision"
-log_success "ChatGPT Voice rule-set refreshed from SukkaLab@$REF"
+log_success "ChatGPT Voice rule-set refreshed from SukkaW/ruleset.skk.moe@$REF"

@@ -7,12 +7,12 @@ in the MagicNet template:
 - [lyc8503/sing-box-rules](https://github.com/lyc8503/sing-box-rules): existing CN, advertising and Telegram GeoIP classifiers.
 - [KaringX/karing-ruleset](https://github.com/KaringX/karing-ruleset): existing WeChat and China domain/IP classifiers.
 - [HaGeZi via razaxq](https://github.com/razaxq/dns-blocklists-sing-box): light advertising/tracking classifier. Copyright/anti-piracy lists are not part of the default advertising policy.
-- [SukkaLab/ruleset.skk.moe](https://github.com/SukkaLab/ruleset.skk.moe/blob/master/sing-box/ip/ai.json): ChatGPT Voice IPs, generated from OpenAI's published feed.
+- [SukkaW/ruleset.skk.moe](https://gitlab.com/SukkaW/ruleset.skk.moe/-/blob/master/sing-box/ip/ai.json): ChatGPT Voice IPs, generated from OpenAI's published feed.
 
 Build hooks resolve immutable upstream revisions, download the referenced files,
 and package local rule sets. New upstream data arrives with a new build; ordinary
 subscription refresh does not update these classifiers. Startup works without
-fetching rules from GitHub. Build state records the resolved revisions.
+fetching rules from their upstream hosts. Build state records the resolved revisions.
 
 ## Policy that remains local
 

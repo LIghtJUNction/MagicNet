@@ -6,12 +6,12 @@ OpenAI 的[网络建议](https://help.openai.com/en/articles/9247338)列出 UDP 
 以及 UDP 不可用时的 TCP 443 回退。这两条规则共同引用 `sukka-chatgpt-voice`，
 TCP 规则紧邻 UDP 规则，均指向 `ai-chatgpt`，配置不再内嵌业务 IP 清单。
 不会代理所有 443 连接，也不会将 UDP 443 或 TCP 3478 当作这条语音规则。
-构建从 [SukkaLab 的规则集](https://github.com/SukkaLab/ruleset.skk.moe/blob/master/sing-box/ip/ai.json)
+构建从 [SukkaW 的规则集](https://gitlab.com/SukkaW/ruleset.skk.moe/-/blob/master/sing-box/ip/ai.json)
 获取数据；[生成源码](https://github.com/SukkaW/Surge/blob/master/Build/build-ai-cidr.ts)
 从 OpenAI 官方清单更新。下载按不可变提交读取，校验后原子替换本地规则文件。
 下载失败、非法地址或空集合使构建失败，保留上次规则文件。
 
-这是构建时更新，规则随安装包分发，启动不依赖 GitHub 可达性。
+这是构建时更新，规则随安装包分发，启动不依赖 GitLab 可达性。
 普通订阅刷新不会更新该文件；安装新构建获取新的上游规则。
 Telegram IP 分流复用已有的 `lyc-geoip-telegram` 规则集。
 内网及保留地址规则仍保留。不要覆盖自定义规则来排障。
