@@ -33,7 +33,7 @@ jobs:
           git add -- crates/magicnet-cli/src/updates.rs
           git rm -r -- .github/smart-patch .github/workflows/apply-smart-updates.yml
           git diff --cached --check
-      - name: Store the prepared commit without moving any branch
+      - name: Store content objects without creating a tree or moving a branch
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -43,28 +43,23 @@ jobs:
           import json, os, subprocess
           def git(*args):
               return subprocess.check_output(['git', *args]).decode()
-          def api(endpoint, value):
-              result = subprocess.run(['gh', 'api', '--method', 'POST', 'repos/' + os.environ['GITHUB_REPOSITORY'] + '/git/' + endpoint, '--input', '-'], input=json.dumps(value), text=True, capture_output=True)
-              if result.returncode:
-                  print(result.stderr)
-                  print(result.stdout)
-                  raise SystemExit(result.returncode)
-              return json.loads(result.stdout)
-          elements = []
+          entries = []
           for name in git('diff', '--cached', '--name-only', '-z').split('\0'):
               if not name:
                   continue
               indexed = git('ls-files', '--stage', '--', name).strip()
               if not indexed:
-                  elements.append({'path': name, 'mode': '100644', 'type': 'blob', 'sha': None})
-              else:
-                  mode = indexed.split()[0]
-                  assert mode in ('100644', '100755'), name
-                  elements.append({'path': name, 'mode': mode, 'type': 'blob', 'content': git('show', ':' + name)})
-          tree = api('trees', {'base_tree': git('rev-parse', 'HEAD^{tree}').strip(), 'tree': elements})
-          commit = api('commits', {'message': 'feat: shared smart installer, scheduled component updates and WebUI controls\n\nUse one verified component engine, resumable content-addressed downloads, conditional release metadata and pending-reboot staging. Bundle Installer 1.1.0 with the module release. Preserve user configuration and gate publication on all quality checks.', 'tree': tree['sha'], 'parents': [os.environ['GITHUB_SHA']]})
-          print('PREPARED_COMMIT=' + commit['sha'])
-          print('PREPARED_TREE=' + tree['sha'])
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-              out.write('Prepared commit `' + commit['sha'] + '`; no branch moved by this workflow.\n')
+                  entries.append({'path': name, 'mode': '100644', 'type': 'blob', 'sha': None})
+                  continue
+              mode = indexed.split()[0]
+              assert mode in ('100644', '100755'), name
+              value = {'encoding': 'utf-8', 'content': git('show', ':' + name)}
+              result = subprocess.run(['gh', 'api', '--method', 'POST', 'repos/' + os.environ['GITHUB_REPOSITORY'] + '/git/blobs', '--input', '-'], input=json.dumps(value), text=True, capture_output=True)
+              if result.returncode:
+                  print(result.stderr)
+                  print(result.stdout)
+                  raise SystemExit(result.returncode)
+              entries.append({'path': name, 'mode': mode, 'type': 'blob', 'sha': json.loads(result.stdout)['sha']})
+          print('PREPARED_ENTRIES=' + json.dumps(entries))
+          print('BASE_COMMIT=' + os.environ['GITHUB_SHA'])
           PY
