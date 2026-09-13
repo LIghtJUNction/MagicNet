@@ -241,9 +241,9 @@ magicnet_singbox_apply_app_policy() {
                 $rules
               else
                 ($rules
-                  | map(select(has("action") or (((.protocol // "") == "icmp") and ((.outbound // "") == "block"))))) as $protocol_guards
+                  | map(select(has("action") or has("clash_mode") or ((.outbound // "") == "lan") or (((.protocol // "") == "icmp") and ((.outbound // "") == "block")) or (((.outbound // "") == "block") and has("ip_cidr"))))) as $protocol_guards
                 | ($rules
-                  | map(select((has("action") or (((.protocol // "") == "icmp") and ((.outbound // "") == "block"))) | not))) as $business_rules
+                  | map(select((has("action") or has("clash_mode") or ((.outbound // "") == "lan") or (((.protocol // "") == "icmp") and ((.outbound // "") == "block")) or (((.outbound // "") == "block") and has("ip_cidr"))) | not))) as $business_rules
                 | $protocol_guards
                   + (if ($direct_packages | length) == 0 then [] else [{
                       "package_name": (["__magicnet_app_direct__"] + $direct_packages),
