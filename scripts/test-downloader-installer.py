@@ -24,7 +24,8 @@ with zipfile.ZipFile(archive) as z:
     binary = z.read('bin/module-downloader')
     assert binary[:4] == b'\x7fELF' and struct.unpack_from('<H', binary, 18)[0] == 183
     script = z.read('customize.sh')
-for failure in (False, True):
+for scenario in ("success", "install_failure", "download_failure"):
+    failure = scenario != "success"
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         module = root / 'installer'
@@ -40,6 +41,7 @@ unzip() {
  mkdir -p "$MODPATH/bin"
  cat > "$MODPATH/bin/module-downloader" <<'SH'
 #!/bin/sh
+[ "$FAIL_DOWNLOAD" = 0 ] || exit 23
 while [ "$#" -gt 0 ]; do
  if [ "$1" = -out ]; then shift; printf verified > "$1"; exit 0; fi
  shift
@@ -47,7 +49,24 @@ done
 exit 1
 SH
 }
+# Match KernelSU's print_title: the second argument is optional but read directly.
+print_title() {
+ local len line1len line2len bar
+ line1len=$(echo -n $1 | wc -c)
+ line2len=$(echo -n $2 | wc -c)
+ len=$line2len
+ [ $line1len -gt $line2len ] && len=$line1len
+ len=$((len + 2))
+ bar=$(printf "%${len}s" | tr ' ' '*')
+ ui_print "$bar"
+ ui_print " $1 "
+ [ "$2" ] && ui_print " $2 "
+ ui_print "$bar"
+}
 install_module() {
+ case $- in *u*|*e*) return 90;; esac
+ print_title "MagicNet" "by LIghtJUNction"
+ print_title "Powered by KernelSU"
  [ "$ZIPFILE" != "$ORIGINAL_ZIP" ]
  [ "$(cat "$ZIPFILE")" = verified ]
  [ "$TMPDIR" != "$ORIGINAL_TMP" ]
@@ -58,9 +77,11 @@ install_module() {
 [ "$ZIPFILE" = "$ORIGINAL_ZIP" ]
 [ "$TMPDIR" = "$ORIGINAL_TMP" ]
 '''
-        env = dict(os.environ, TEST_ROOT=tmp, MODPATH=str(module), BOOTMODE='true', ARCH='arm64', ZIPFILE='/original.zip', ORIGINAL_ZIP='/original.zip', TMPDIR='/original-tmp', ORIGINAL_TMP='/original-tmp', FAIL_INSTALL=str(int(failure)))
+        env = dict(os.environ, TEST_ROOT=tmp, MODPATH=str(module), BOOTMODE='true', ARCH='arm64', ZIPFILE='/original.zip', ORIGINAL_ZIP='/original.zip', TMPDIR='/original-tmp', ORIGINAL_TMP='/original-tmp', FAIL_INSTALL=str(int(scenario == "install_failure")), FAIL_DOWNLOAD=str(int(scenario == "download_failure")))
         r = subprocess.run(['sh', '-c', harness], env=env, capture_output=True, text=True)
         assert (r.returncode != 0) == failure, (r.stdout, r.stderr)
-        assert (root / 'called').exists()
+        assert (root / 'called').exists() == (scenario != 'download_failure')
+        assert 'parameter not set' not in r.stderr
+        assert (module / 'skip_mount').exists() == (scenario == 'success')
         assert not list(root.glob('installer.download.*'))
 print('ZIP/ELF verification, manager isolation, failure propagation and cleanup passed')
