@@ -26,3 +26,18 @@ src/MagicNet/ecapture.version
 !.kam/bases.toml
 !.kam/bases/
 !.kam/bases/**
+
+# Local Python test/coverage output and editor/OS metadata.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
