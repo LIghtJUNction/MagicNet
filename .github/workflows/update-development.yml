@@ -32,6 +32,13 @@ jobs:
           assert hashlib.sha256(patch).hexdigest() == '43b185952f36a1749812411b0066722551c412d51d1952096815bedfb0d5b682'
           subprocess.run(['git','apply','--check','-'], input=patch, check=True)
           subprocess.run(['git','apply','--index','-'], input=patch, check=True)
+          p = pathlib.Path('crates/magicnet-cli/src/commands.rs')
+          s = p.read_text()
+          split = s.rindex('\nfn update_command(')
+          function = s[split:]
+          s = s[:split]
+          s = s.replace('#[cfg(test)]', function.strip()+'\n\n#[cfg(test)]', 1)
+          p.write_text(s)
           PY
           cargo fmt --all
           git add crates/magicnet-cli/src/commands.rs
@@ -47,35 +54,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import base64, json, os, pathlib, subprocess, urllib.request
+          python3 -u - <<'PY'
+          import base64, json, os, pathlib, subprocess, time, urllib.request, urllib.error
           def git(*args):
               return subprocess.check_output(['git', *args])
-          def post(kind, body):
-              req = urllib.request.Request('https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/git/'+kind, data=json.dumps(body).encode(), headers={'Authorization': 'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'}, method='POST')
-              with urllib.request.urlopen(req, timeout=30) as response:
-                  return json.load(response)
-          entries = []
+          target = pathlib.Path(os.environ['RUNNER_TEMP'])
           paths = git('diff','--cached','--name-only','-z').decode().strip('\0').split('\0')
+          entries = []
           for path in paths:
               stage = git('ls-files','--stage','--',path).decode()
               if not stage:
                   entries.append({'path':path,'mode':'100644','type':'blob','sha':None})
-                  continue
-              mode, local_sha, _ = stage.split(None, 2)
-              data = git('show', ':'+path)
-              blob = post('blobs', {'content':base64.b64encode(data).decode(),'encoding':'base64'})
-              assert blob['sha'] == local_sha
-              entries.append({'path':path,'mode':mode,'type':'blob','sha':blob['sha']})
-          tree = post('trees', {'base_tree':git('rev-parse','HEAD^{tree}').decode().strip(),'tree':entries})
-          assert tree['sha'] == git('write-tree').decode().strip()
-          record = {'parent':git('rev-parse','HEAD').decode().strip(),'tree':tree['sha'],'paths':paths}
-          target = pathlib.Path(os.environ['RUNNER_TEMP'])
+              else:
+                  mode, local_sha, _ = stage.split(None, 2)
+                  entries.append({'path':path,'mode':mode,'type':'blob','sha':local_sha})
+          record = {'parent':git('rev-parse','HEAD').decode().strip(),'tree':git('write-tree').decode().strip(),'entries':entries}
           (target/'candidate.json').write_text(json.dumps(record, indent=2))
-          (target/'candidate-source.tar').write_bytes(git('archive','--format=tar',tree['sha']))
+          (target/'candidate-source.tar').write_bytes(git('archive','--format=tar',record['tree']))
           print(json.dumps(record, indent=2))
+          def post(kind, body):
+              req = urllib.request.Request('https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/git/'+kind, data=json.dumps(body).encode(), headers={'Authorization': 'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'}, method='POST')
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  print(error.code, error.read().decode()[:2000])
+                  raise
+          for entry in entries:
+              if entry['sha'] is None:
+                  continue
+              print('Importing:',entry['path'])
+              data = git('show', ':'+entry['path'])
+              blob = post('blobs', {'content':base64.b64encode(data).decode(),'encoding':'base64'})
+              assert blob['sha'] == entry['sha']
+              time.sleep(1)
+          tree = post('trees', {'base_tree':git('rev-parse','HEAD^{tree}').decode().strip(),'tree':entries})
+          assert tree['sha'] == record['tree']
+          print('REMOTE_CANDIDATE_TREE='+tree['sha'])
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
           name: smart-update-candidate
           path: |
