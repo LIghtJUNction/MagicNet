@@ -1,0 +1,27 @@
+# id	group	url	expected_http	body
+# Public HTTPS endpoints only. PASS certifies this request, not login/video/UDP.
+baidu	cn	https://www.baidu.com/robots.txt	200	nonempty
+bilibili	cn	https://www.bilibili.com/robots.txt	200	nonempty
+wechat	cn	https://weixin.qq.com/	200	nonempty
+qq	cn	https://www.qq.com/robots.txt	200	nonempty
+taobao	cn	https://www.taobao.com/robots.txt	200	nonempty
+jd	cn	https://www.jd.com/robots.txt	200	nonempty
+zhihu	cn	https://www.zhihu.com/robots.txt	200	nonempty
+google	global	https://www.google.com/robots.txt	200	nonempty
+google-204	connectivity	https://www.google.com/generate_204	204	empty
+gstatic-204	connectivity	https://www.gstatic.com/generate_204	204	empty
+google-play	google	https://play.google.com/store	200	nonempty
+google-login	google	https://accounts.google.com/	200	nonempty
+youtube	media	https://www.youtube.com/robots.txt	200	nonempty
+github	dev	https://github.com/robots.txt	200	nonempty
+github-api	dev	https://api.github.com/zen	200	nonempty
+npm	dev	https://registry.npmjs.org/-/ping	200	nonempty
+wikipedia	global	https://www.wikipedia.org/robots.txt	200	nonempty
+bing	global	https://www.bing.com/robots.txt	200	nonempty
+microsoft	global	https://www.microsoft.com/robots.txt	200	nonempty
+apple	global	https://www.apple.com/robots.txt	200	nonempty
+cloudflare	global	https://www.cloudflare.com/robots.txt	200	nonempty
+telegram	social	https://telegram.org/	200	nonempty
+discord	social	https://discord.com/robots.txt	200	nonempty
+chatgpt	ai	https://chatgpt.com/	200	nonempty
+claude	ai	https://claude.ai/	200	nonempty
