@@ -20,13 +20,18 @@ remove_zip_entries() {
     log_info "$message"
     while IFS= read -r entry; do
         [ -n "$entry" ] || continue
-        zip -q -d "$zip_path" "$entry" >/dev/null 2>&1 || true
+        if ! zip -q -d "$zip_path" "$entry" >/dev/null 2>&1; then
+            printf 'Failed to remove archive entry: %s\n' "$entry" >&2
+            exit 1
+        fi
     done <<EOF
 $entries
 EOF
 }
 
-remove_zip_entries '(^|/)\.git($|/)' "Removing git metadata from module artifact"
+# Remove development metadata only; runtime dotfiles and dependency licenses stay.
+remove_zip_entries '(^|/)(\.git|\.github|\.agents|\.codex|\.vscode|\.idea|__pycache__|\.pytest_cache)($|/)' "Removing development metadata from module artifact"
+remove_zip_entries '(^|/)(\.gitignore|\.gitattributes|\.gitmodules|\.DS_Store)$|\.py[co]$' "Removing development cache files from module artifact"
 remove_zip_entries '^\.local/subscriptions\.env$' "Removing local subscription memory from module artifact"
 remove_zip_entries '(^|/)(mihomo|__mihomo__)(\.sh)?($|/)' "Removing legacy mihomo helpers from module artifact"
 remove_zip_entries '^bin/magicnet-ebpf$' "Removing the retired eBPF runtime binary from module artifact"

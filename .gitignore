@@ -9,7 +9,6 @@ Kam
 logs/
 webui/dist/
 webui/node_modules/
-webui/node_modules/.vite/
 webui/test-results/
 webui/playwright-report/
 src/MagicNet/webroot/assets/
@@ -19,6 +18,15 @@ src/MagicNet/bin/
 src/MagicNet/mihomo.version
 src/MagicNet/singbox.version
 src/MagicNet/ecapture.version
+
+# Generated Python caches and local OS metadata.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+
+# Archives generated from tmpl/ by Kam; keep the template source versioned.
+/templates/
 
 # Kam managed bases are versioned; runtime state under .kam stays ignored.
 !.kam/
