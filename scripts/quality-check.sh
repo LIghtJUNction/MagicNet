@@ -29,6 +29,7 @@ case "${1:-all}" in
       go test -race -count=1 ./...
     )
     python3 scripts/test-components.py
+    python3 scripts/test-component-archive-safety.py
     python3 scripts/test-component-release-gate.py
     ;;
   all)

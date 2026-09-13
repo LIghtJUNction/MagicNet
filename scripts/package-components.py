@@ -10,11 +10,13 @@ import argparse
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
+import posixpath
 import re
 import stat
 import zipfile
 
 STAMP = (1980, 1, 1, 0, 0, 0)
+MAX_UNCOMPRESSED = 1 << 30
 BOOTSTRAP = '''
 # Resolve this release's locked components before any module-specific imports.
 for _component_path in "$MODPATH" "$MODPATH/bin" "$MODPATH/bin/magicnet-components" "$MODPATH/.components" "$MODPATH/.components/manifest.json"; do
@@ -37,6 +39,27 @@ def safe_name(name: str) -> bool:
     return (bool(name) and not name.startswith('/') and '\\' not in name
             and all(ord(c) >= 32 for c in name)
             and all(p not in ('', '.', '..') for p in name.split('/')))
+
+
+def validate_core_links(entries: dict[str, tuple[bytes, int]]) -> None:
+    links = set()
+    for name, (data, mode) in entries.items():
+        if not stat.S_ISLNK(mode):
+            continue
+        links.add(name)
+        try:
+            target = data.decode('utf-8')
+        except UnicodeDecodeError as error:
+            raise ValueError(f'invalid core symlink target: {name}') from error
+        resolved = posixpath.normpath(posixpath.join(posixpath.dirname(name), target))
+        if (not target or target.startswith('/') or '\\' in target
+                or any(ord(c) < 32 for c in target) or not safe_name(resolved)):
+            raise ValueError(f'unsafe core symlink target: {name}')
+    # Even an internal directory link must not redirect extraction of other
+    # archive entries. Keep leaf links such as cli -> bin/magicnet-cli.
+    for name in entries:
+        if any(str(parent) in links for parent in PurePosixPath(name).parents):
+            raise ValueError(f'archive member traverses a symlink: {name}')
 
 
 def component_for(name: str) -> str | None:
@@ -83,6 +106,10 @@ def package(path: Path, repository: str) -> dict:
         raise ValueError('invalid release repository')
     entries: dict[str, tuple[bytes, int]] = {}
     with zipfile.ZipFile(path) as archive:
+        # Check declared sizes before reading any payload into memory. Build
+        # caches are dropped below, but still count toward the input limit.
+        if sum(info.file_size for info in archive.infolist()) > MAX_UNCOMPRESSED:
+            raise ValueError('module archive exceeds uncompressed size limit')
         seen = set()
         for info in archive.infolist():
             name = info.filename.rstrip('/') if info.is_dir() else info.filename
@@ -97,6 +124,7 @@ def package(path: Path, repository: str) -> dict:
             if not (stat.S_ISREG(mode) or stat.S_ISLNK(mode)):
                 raise ValueError(f'unsupported ZIP entry type: {name}')
             entries[name] = (archive.read(info), mode)
+    validate_core_links(entries)
     for required in ('module.prop', 'customize.sh', 'bin/magicnet-components', 'bin/sing-box'):
         if required not in entries:
             raise ValueError(f'missing required module file: {required}')
