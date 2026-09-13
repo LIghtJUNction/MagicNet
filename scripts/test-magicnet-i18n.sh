@@ -45,6 +45,23 @@ rm -f "$KAM_LANG_FILE"
 [ "$(KAM_UI_LANGUAGE=ja-JP i18n LOCALE_TEST)" = '日本語' ] || fail 'Japanese lookup changed'
 [ "$(KAM_UI_LANGUAGE=ko-KR i18n LOCALE_TEST)" = '한국어' ] || fail 'Korean lookup changed'
 [ "$(KAM_UI_LANGUAGE=de-DE i18n LOCALE_TEST)" = English ] || fail 'unknown language did not fall back to English'
+
+# A startup error is more useful than the derived stopped-process state and
+# must remain visible in the manager description.
+status_dir="$TMP/status"
+mkdir -p "$status_dir/.state"
+MODDIR="$status_dir"
+export MODDIR
+status_description=''
+config() {
+    [ "$1" = set ] && [ "$2" = override.description ] && status_description="$3"
+}
+. "$ROOT/src/MagicNet/lib/kamfw/__singbox__.sh"
+printf '%s\n' 'No subscription source is configured' >"$MODDIR/.state/startup-error"
+status_description='preserve this error'
+singbox_set_status_description stopped
+[ "$status_description" = 'preserve this error' ] || fail 'stopped status overwrote startup error'
+rm -f "$MODDIR/.state/startup-error"
 set_i18n FALLBACK_TEST en 'English fallback'
 [ "$(KAM_UI_LANGUAGE=ru i18n FALLBACK_TEST)" = 'English fallback' ] || fail 'missing Russian translation did not fall back'
 [ "$(KAM_UI_LANGUAGE=ru i18n MISSING_KEY)" = MISSING_KEY ] || fail 'missing translation did not preserve its key'
