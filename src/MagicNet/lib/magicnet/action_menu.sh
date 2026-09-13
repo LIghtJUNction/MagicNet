@@ -14,33 +14,11 @@ magicnet_action_update_singbox_subscription() {
 }
 
 magicnet_action_toggle_singbox() {
-    import __singbox__
-    if is_singbox_running >/dev/null 2>&1; then
-        _running_status=0
-    else
-        _running_status=$?
-    fi
-    case "$_running_status" in
-    0)
-        if magicnet_prepare_network_for_core_stop; then
-            singbox_stop
-            _status=$?
-            if [ "$_status" -ne 0 ] && is_singbox_running >/dev/null 2>&1; then
-                magicnet_after_kernel_start_unlocked || true
-            fi
-        else
-            _status=$?
-        fi
-        ;;
-    1)
-        magicnet_start_kernel
-        _status=$?
-        ;;
-    *)
-        panel_error "$(i18n MAGICNET_PROCESS_UNKNOWN)"
-        _status=2
-        ;;
-    esac
+    # Keep Magisk action semantics identical to WebUI/CLI lifecycle handling.
+    # The Rust command owns supervisor quiescing, fail-open network cleanup,
+    # process discovery, rollback, and bounded startup retries.
+    "$MODDIR/cli" service toggle sing-box
+    _status=$?
     magicnet_refresh_status || true
     return "$_status"
 }

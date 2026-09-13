@@ -136,24 +136,28 @@ fi
 [ -s "$MOCK_RULES" ] && [ -e "$state" ] || fail 'failed stop cleanup discarded retry state'
 grep -q 'keeping sing-box running' "$WORK/log" || fail 'stop cleanup failure did not explain fail-open behavior'
 
-# The shell action path follows the same pre-cleanup contract as the Rust CLI.
+# The shell action path delegates to the Rust lifecycle owner instead of
+# duplicating stop/rollback semantics.
 (
     set_i18n() { :; }
     # shellcheck disable=SC1091
     . "$ROOT/src/MagicNet/lib/magicnet/action_menu.sh"
-    import() { :; }
-    is_singbox_running() { return 0; }
-    magicnet_prepare_network_for_core_stop() { return 1; }
-    singbox_stop() { : >"$WORK/action-stopped-core"; }
+    MODDIR="$WORK/action-module"
+    mkdir -p "$MODDIR"
+    cat >"$MODDIR/cli" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >"${MAGICNET_ACTION_LOG:?}"
+exit "${MAGICNET_ACTION_STATUS:-0}"
+SH
+    chmod +x "$MODDIR/cli"
+    MAGICNET_ACTION_LOG="$WORK/action-cli.log"
+    export MAGICNET_ACTION_LOG
     magicnet_refresh_status() { :; }
-    if magicnet_action_toggle_singbox; then fail 'action stop hid cleanup failure'; fi
-    [ ! -e "$WORK/action-stopped-core" ] || fail 'action stop killed core after cleanup failure'
-
-    magicnet_prepare_network_for_core_stop() { return 0; }
-    singbox_stop() { return 1; }
-    magicnet_after_kernel_start_unlocked() { : >"$WORK/action-restored-network"; }
-    if magicnet_action_toggle_singbox; then fail 'action stop hid core termination failure'; fi
-    [ -e "$WORK/action-restored-network" ] || fail 'action stop did not restore a surviving core network policy'
+    magicnet_action_toggle_singbox || fail 'action did not delegate a successful toggle'
+    grep -qx 'service toggle sing-box' "$MAGICNET_ACTION_LOG" || fail 'action delegated the wrong lifecycle command'
+    MAGICNET_ACTION_STATUS=7
+    export MAGICNET_ACTION_STATUS
+    if magicnet_action_toggle_singbox; then fail 'action hid delegated lifecycle failure'; fi
 )
 
 # One transient post-start network-control failure is absorbed by the same

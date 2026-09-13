@@ -449,10 +449,9 @@ magicnet_prepare_network_for_core_stop() (
     esac
     [ "$_stop_cleanup_delay" -le 5 ] || _stop_cleanup_delay=5
 
-    if ! magicnet_hotspot_watchdog_stop; then
-        magicnet_warn "Hotspot watchdog stop state is indeterminate; keeping sing-box running."
-        return 1
-    fi
+    # Lifecycle callers quiesce supervisors before entering this function.
+    # Re-scanning short-lived shell watcher processes here introduces a /proc
+    # TOCTOU and can falsely reject an otherwise safe cleanup.
     _stop_cleanup_attempt=1
     while [ "$_stop_cleanup_attempt" -le "$_stop_cleanup_attempts" ]; do
         _stop_cleanup_rc=0
