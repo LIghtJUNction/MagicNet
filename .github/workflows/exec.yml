@@ -198,7 +198,7 @@ jobs:
         run: echo "$HOME/.cache/magicnet/cargo-ndk/bin" >> "$GITHUB_PATH"
 
       - name: Install artifact tools
-        run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip
+        run: sudo apt-get update && sudo apt-get install -y binutils file jq ripgrep unzip zip python3-yaml shellcheck
 
       - name: Test forked sing-box eBPF support
         shell: bash
@@ -279,20 +279,71 @@ jobs:
           scripts/package-install-smoke.sh "dist/${module_id}.zip"
           scripts/fake-magisk-smoke.sh "dist/${module_id}.zip"
 
-      - name: Create GitHub release
+      - name: Package core, components and offline full module
+        shell: bash
+        run: |
+          set -euo pipefail
+          GO111MODULE=off CGO_ENABLED=0 GOOS=android GOARCH=arm64 \
+            go build -trimpath -ldflags='-s -w -buildid=' \
+              -o "$RUNNER_TEMP/magicnet-components" ./installer/components
+          bash scripts/quality-gate.sh components
+          python3 scripts/package-components.py dist/MagicNet.zip \
+            --helper "$RUNNER_TEMP/magicnet-components" --output dist \
+            --repository "$GITHUB_REPOSITORY"
+          scripts/package-smoke.sh dist/MagicNet-full.zip
+          cat dist/package-sizes.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign and verify final release assets
+        if: ${{ env.MAGICNET_SIGN_ENABLED == '1' }}
+        env:
+          SIGNING_KEY_PEM: ${{ secrets.KAM_PRIVATE_KEY }}
+        run: bash scripts/sign-release-assets.sh dist
+
+      # A parallel standalone workflow is not a release dependency. Run the
+      # SAME shared checks against THIS built checkout, including manual bumps
+      # whose [skip ci] commit cannot have a separate quality workflow run.
+      - name: Prepare release quality dependencies
         if: ${{ env.RELEASE_REQUESTED == '1' }}
+        run: |
+          rustup component add clippy rustfmt
+          cd webui
+          npm ci
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Release quality gate
+        id: release_quality
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          bash scripts/quality-gate.sh all
+          git submodule status --recursive > "$RUNNER_TEMP/quality-submodules.txt"
+          diff -u "$RUNNER_TEMP/build-submodules.txt" "$RUNNER_TEMP/quality-submodules.txt"
+          python3 scripts/prepare-release.py --verify-build
+
+      - name: Create GitHub release
+        if: ${{ env.RELEASE_REQUESTED == '1' && steps.release_quality.outcome == 'success' }}
         shell: bash
         env:
           PRERELEASE_REQUESTED: ${{ env.RELEASE_PRERELEASE }}
         run: |
           set -euo pipefail
           python3 scripts/prepare-release.py --verify-build
+          (cd dist && sha256sum -c SHA256SUMS)
+          for asset in dist/*; do
+            [[ "$asset" == *.sig ]] && continue
+            scripts/verify-artifact-signature.sh "$asset" \
+              "$RUNNER_TEMP/magicnet-signing-public.pem"
+          done
           args=(--repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT_SHA"
-                --title "MagicNet-${RELEASE_VERSION_CODE}-${RELEASE_VERSION}" --generate-notes)
+                --title "MagicNet-${RELEASE_VERSION_CODE}-${RELEASE_VERSION}" --generate-notes --draft)
           if [ "$PRERELEASE_REQUESTED" = "true" ]; then
             args+=(--prerelease)
           fi
-          gh release create "$RELEASE_VERSION" dist/MagicNet.zip dist/MagicNet.zip.sig dist/build-submodules.txt "${args[@]}"
+          # A failed upload leaves a draft, never a public half-populated release.
+          gh release create "$RELEASE_VERSION" dist/* "${args[@]}"
+          gh release edit "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
 
       - name: Upload build artifact
         if: always() && hashFiles('dist/*') != ''
