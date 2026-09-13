@@ -56,7 +56,12 @@ bash "$ROOT/scripts/test-install-config-template.sh"
 
 mkdir -p "$MODPATH" "$MANAGER_MODPATH" "$MOCK_BIN"
 unzip -oq "$ZIP_PATH" -d "$MODPATH"
-unzip -oq "$ZIP_PATH" -d "$MANAGER_MODPATH"
+# A real manager invokes customize.sh with SKIPUNZIP=1 and an empty
+# modules_update target. Keep only the installer entrypoint here so the test
+# proves customize.sh extracts its own install-time helpers before migration.
+cp "$MODPATH/customize.sh" "$MANAGER_MODPATH/customize.sh"
+chmod 0755 "$MANAGER_MODPATH/customize.sh"
+mkdir -p "$MANAGER_MODPATH/bin"
 
 mkdir -p \
     "$PREV_MOD/.state/sing-box/subscription-work/readonly/nested" \
@@ -139,6 +144,7 @@ if ! "$HOST_ENV" -u LD_LIBRARY_PATH -u MAGICNET_NONINTERACTIVE -u MAGICNET_PREV_
     MODPATH="$MANAGER_MODPATH" \
     MODDIR="$MANAGER_MODPATH" \
     BOOTMODE=true \
+    MAGICNET_CACHE_ROOT="$TMP/device-cache" \
     PATH="$MANAGER_MODPATH/bin:$POISONED_CALLER_PATH" \
     TMPDIR="$TMPDIR" \
     "$MANAGER_MODPATH/bin/timeout" 5 "$MANAGER_MODPATH/bin/sh" "$MANAGER_MODPATH/customize.sh" >"$MANAGER_LOG" 2>&1; then
@@ -152,6 +158,7 @@ if ! "$HOST_ENV" -u LD_LIBRARY_PATH \
     BOOTMODE=true \
     MAGICNET_NONINTERACTIVE=1 \
     MAGICNET_PREV_DIR="$PREV_MOD" \
+    MAGICNET_CACHE_ROOT="$TMP/device-cache" \
     PATH="$MODPATH/bin:$POISONED_CALLER_PATH" \
     TMPDIR="$TMPDIR" \
     "$MODPATH/bin/sh" "$MODPATH/customize.sh" >"$LOG" 2>&1; then
@@ -292,6 +299,7 @@ if "$HOST_ENV" -u LD_LIBRARY_PATH \
     BOOTMODE=true \
     MAGICNET_NONINTERACTIVE=1 \
     MAGICNET_PREV_DIR="$FAIL_PREV" \
+    MAGICNET_CACHE_ROOT="$TMP/device-cache" \
     MAGICNET_BACKUP_DIR="$POISONED_BACKUP_PATH" \
     PATH="$FAIL_MOD/bin:$POISONED_CALLER_PATH" \
     TMPDIR="$TMPDIR" \

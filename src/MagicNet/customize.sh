@@ -4,7 +4,29 @@
 # -----------------------------------------------------------------------------------
 
 export SKIPUNZIP=1
-if unzip -o "$ZIPFILE" "lib/kamfw/*" "lib/magicnet/i18n.sh" -d "$MODPATH" >&2 && [ -f "$MODPATH/lib/kamfw/.kamfwrc" ]; then
+# KernelSU/Magisk may point MODPATH at an empty `modules_update` directory
+# while SKIPUNZIP is set. Extract every install-time helper before migration;
+# the upgrade path sources install_config.sh and its subscription dependencies
+# before the manager has copied the rest of the payload.
+if unzip -o "$ZIPFILE" \
+  ".config/kamfw/.envrc" \
+  "lib/kamfw/*" "lib/kamfw-web/*" "lib/magicnet/*" \
+  "lib/magicnet_singbox_subscribe.sh" -d "$MODPATH" >&2 &&
+  [ -f "$MODPATH/lib/kamfw/.kamfwrc" ]; then
+  _magicnet_module_id=${MODPATH##*/}
+  case "$_magicnet_module_id" in
+  '' | *[!A-Za-z0-9._-]*) abort "! invalid module id in MODPATH" ;;
+  esac
+  MAGICNET_CACHE_ROOT=${MAGICNET_CACHE_ROOT:-/data/adb/cache}
+  case "$MAGICNET_CACHE_ROOT" in
+  /*) ;;
+  *) abort "! MAGICNET_CACHE_ROOT must be an absolute path" ;;
+  esac
+  MAGICNET_CACHE_DIR="${MAGICNET_CACHE_ROOT%/}/${_magicnet_module_id}"
+  KAM_LOGFILE="${MAGICNET_CACHE_DIR}/kam.log"
+  mkdir -p "$MAGICNET_CACHE_DIR" || abort "! failed to prepare MagicNet cache"
+  export MAGICNET_CACHE_DIR KAM_LOGFILE
+  unset _magicnet_module_id
   . "$MODPATH/lib/kamfw/.kamfwrc"
 else
   abort "! .kamfwrc missing"
