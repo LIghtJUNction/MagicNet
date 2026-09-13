@@ -1,0 +1,28 @@
+[prop]
+id = "downloader_template"
+name = "Module Downloader Template"
+version = "1.0.0"
+versionCode = 1
+author = "LIghtJUNction"
+description = "Verified latest-release module downloader with direct-first mirror selection"
+[kam]
+module_type = "template"
+[kam.build]
+target_dir = "../../templates"
+output_file = "downloader_template"
+hooks_dir = "hooks"
+[kam.tmpl.variables.target_repository]
+var_type = "string"
+required = true
+default = "LIghtJUNction/MagicNet"
+help = "GitHub owner/repository"
+[kam.tmpl.variables.target_asset]
+var_type = "string"
+required = true
+default = "MagicNet.zip"
+help = "Exact release ZIP asset name"
+[kam.tmpl.variables.target_module]
+var_type = "string"
+required = true
+default = "MagicNet"
+help = "Expected module.prop id"

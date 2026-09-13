@@ -1,0 +1,12 @@
+#!/sbin/sh
+# Magisk entry; KernelSU/APatch read module.prop and customize.sh directly.
+umask 022
+OUTFD=$2
+ZIPFILE=$3
+export OUTFD ZIPFILE
+if [ ! -f /data/adb/magisk/util_functions.sh ]; then
+  echo '! Magisk installer API unavailable'
+  exit 1
+fi
+. /data/adb/magisk/util_functions.sh
+install_module
