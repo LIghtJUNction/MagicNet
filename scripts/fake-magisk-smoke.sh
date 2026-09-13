@@ -339,7 +339,14 @@ if [[ "${1:-}" == "-S" && "${2:-}" == "OUTPUT" ]]; then
     exit 0
 fi
 for arg in "$@"; do
-    if [[ "$arg" == "-C" ]]; then exit 1; fi
+    if [[ "$arg" == "-D" && "${MAGICNET_FAKE_XTABLES_DELETE_FAIL:-0}" == 1 ]]; then
+        echo "fixture xtables delete failure" >&2
+        exit 4
+    fi
+    if [[ "$arg" == "-C" ]]; then
+        [[ "${MAGICNET_FAKE_XTABLES_DELETE_FAIL:-0}" == 1 ]] && exit 0
+        exit 1
+    fi
 done
 exit 0
 '
@@ -1082,6 +1089,15 @@ PY
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
 start_fake_core
 : >"$MOCK_LOG"
+if run env MAGICNET_FAKE_XTABLES_DELETE_FAIL=1 MAGIC_DNS_GUARD_IFACES=lo \
+    "$MODDIR/cli" service stop; then
+    echo "service stop hid persistent network cleanup failure" >&2
+    exit 1
+fi
+pidof sing-box >/dev/null || {
+    echo "service stop killed sing-box before network cleanup succeeded" >&2
+    exit 1
+}
 # shellcheck disable=SC2016
 run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
     . "$MODDIR/lib/kamfw/.kamfwrc"

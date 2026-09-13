@@ -410,7 +410,10 @@ magicnet_disable_dns_capture() (
         case "$_dns_capture_probe_rc" in
         0) ;;
         2) continue ;;
-        *) _dns_capture_cleanup_rc=1; continue ;;
+        *)
+            _dns_capture_cleanup_rc=1
+            continue
+            ;;
         esac
         _dns_capture_cmd="magicnet_${_dns_capture_family}_cmd"
         _dns_capture_chain_rc=0
@@ -428,6 +431,46 @@ magicnet_disable_dns_capture() (
         esac
     done
     return "$_dns_capture_cleanup_rc"
+)
+
+# Stop is fail-open for device connectivity: remove every MagicNet-owned route
+# and DNS rule while the core can still serve traffic. A transient xtables or
+# policy-routing lock is retried here instead of forcing the user to repeat the
+# lifecycle action. Persistent cleanup failure must abort the core stop.
+magicnet_prepare_network_for_core_stop() (
+    _stop_cleanup_attempts="${MAGICNET_STOP_CLEANUP_ATTEMPTS:-3}"
+    _stop_cleanup_delay="${MAGICNET_STOP_CLEANUP_DELAY:-1}"
+    case "$_stop_cleanup_attempts" in
+    '' | *[!0-9]* | 0) _stop_cleanup_attempts=3 ;;
+    esac
+    [ "$_stop_cleanup_attempts" -le 10 ] || _stop_cleanup_attempts=10
+    case "$_stop_cleanup_delay" in
+    '' | *[!0-9]*) _stop_cleanup_delay=1 ;;
+    esac
+    [ "$_stop_cleanup_delay" -le 5 ] || _stop_cleanup_delay=5
+
+    if ! magicnet_hotspot_watchdog_stop; then
+        magicnet_warn "Hotspot watchdog stop state is indeterminate; keeping sing-box running."
+        return 1
+    fi
+    _stop_cleanup_attempt=1
+    while [ "$_stop_cleanup_attempt" -le "$_stop_cleanup_attempts" ]; do
+        _stop_cleanup_rc=0
+        magicnet_hotspot_route_cleanup || _stop_cleanup_rc=1
+        magicnet_disable_dns_capture || _stop_cleanup_rc=1
+        magicnet_disable_dns_leak_guard || _stop_cleanup_rc=1
+        if [ "$_stop_cleanup_rc" -eq 0 ]; then
+            return 0
+        fi
+        if [ "$_stop_cleanup_attempt" -lt "$_stop_cleanup_attempts" ]; then
+            magicnet_warn "Network cleanup before core stop failed; retrying (${_stop_cleanup_attempt}/${_stop_cleanup_attempts})."
+            [ "$_stop_cleanup_delay" -eq 0 ] || sleep "$_stop_cleanup_delay"
+        fi
+        _stop_cleanup_attempt=$((_stop_cleanup_attempt + 1))
+    done
+
+    magicnet_warn "Network cleanup before core stop failed; keeping sing-box running to avoid breaking connectivity."
+    return 1
 )
 
 magicnet_collect_physical_egress_ifaces() {
@@ -698,30 +741,47 @@ magicnet_after_kernel_start() {
 }
 
 magicnet_after_kernel_start_deferred_unlocked() {
-    _deferred_failures=
-    _deferred_mark_failed() {
-        _deferred_failures="${_deferred_failures}${_deferred_failures:+,}$1"
-    }
-
     # TUN installs table 2022 rules; eBPF only removes stale TUN rules because
     # shared-network TC is attached by sing-box itself.
     magicnet_hotspot_reconcile ||
         magicnet_warn "Hotspot TUN policy is not ready; the interface watcher will retry it."
 
-    if ! magicnet_enable_dns_capture; then
-        _deferred_mark_failed dns-capture
-    fi
-    if ! magicnet_enable_dns_leak_guard; then
-        _deferred_mark_failed dns-leak-guard
-    fi
-    if [ -n "$_deferred_failures" ]; then
+    _deferred_attempts="${MAGICNET_START_NETWORK_ATTEMPTS:-3}"
+    _deferred_delay="${MAGICNET_START_NETWORK_DELAY:-1}"
+    case "$_deferred_attempts" in
+    '' | *[!0-9]* | 0) _deferred_attempts=3 ;;
+    esac
+    [ "$_deferred_attempts" -le 10 ] || _deferred_attempts=10
+    case "$_deferred_delay" in
+    '' | *[!0-9]*) _deferred_delay=1 ;;
+    esac
+    [ "$_deferred_delay" -le 5 ] || _deferred_delay=5
+
+    _deferred_attempt=1
+    while [ "$_deferred_attempt" -le "$_deferred_attempts" ]; do
+        _deferred_failures=
+        if ! magicnet_enable_dns_capture; then
+            _deferred_failures=dns-capture
+        fi
+        if ! magicnet_enable_dns_leak_guard; then
+            _deferred_failures="${_deferred_failures}${_deferred_failures:+,}dns-leak-guard"
+        fi
+        if [ -z "$_deferred_failures" ]; then
+            unset _deferred_attempts _deferred_delay _deferred_attempt _deferred_failures
+            return 0
+        fi
+
         _deferred_failure_names="$_deferred_failures"
-        magicnet_warn "Post-start network controls failed: $_deferred_failure_names"
         magicnet_disable_dns_capture || true
         magicnet_disable_dns_leak_guard || true
-        unset _deferred_failures _deferred_failure_names
-        return 1
-    fi
-    unset _deferred_failures _deferred_failure_names
-    return 0
+        if [ "$_deferred_attempt" -lt "$_deferred_attempts" ]; then
+            magicnet_warn "Post-start network controls failed (${_deferred_failure_names}); retrying (${_deferred_attempt}/${_deferred_attempts})."
+            [ "$_deferred_delay" -eq 0 ] || sleep "$_deferred_delay"
+        fi
+        _deferred_attempt=$((_deferred_attempt + 1))
+    done
+
+    magicnet_warn "Post-start network controls failed: $_deferred_failure_names"
+    unset _deferred_attempts _deferred_delay _deferred_attempt _deferred_failures _deferred_failure_names
+    return 1
 }

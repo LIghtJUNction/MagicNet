@@ -18,8 +18,8 @@ use crate::{
 const START_SUPERVISORS_COMMAND: &str = "magicnet_supervisors_start_detached";
 const START_KERNEL_COMMAND: &str =
     "MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached";
-const STOP_RUNTIME_CLEANUP_COMMAND: &str =
-    "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true";
+const PREPARE_NETWORK_FOR_STOP_COMMAND: &str = "magicnet_prepare_network_for_core_stop";
+const RESTORE_NETWORK_AFTER_FAILED_STOP_COMMAND: &str = "magicnet_after_kernel_start_unlocked";
 const REPAIR_COMMAND: &str =
     "magicnet_apply_runtime_config; MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_ensure_kernel";
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
@@ -538,15 +538,28 @@ fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String>
         app.moddir
             .join(".state/wifi-policy/magicnet-wifi-policy.pid"),
     );
+    // Remove MagicNet-owned DNS and route policy before the core disappears.
+    // If cleanup is indeterminate, keep the live core serving intercepted
+    // traffic instead of stranding the device behind stale interception.
+    if let Err(err) = run_magicnet_function(app, prepare_network_for_stop_command()) {
+        let _ = run_magicnet_function(app, START_SUPERVISORS_COMMAND);
+        return Err(format!("prepare network for core stop: {err}"));
+    }
+
     // Only stop the sing-box process launched from this module. A separate
     // VPN/core may legitimately use the same process name and must survive a
     // MagicNet stop/restart. If a stop-wait lookup becomes indeterminate,
-    // restore optional supervisors and preserve all network runtime state.
+    // restore optional supervisors; network interception remains fail-open.
     if let Err(err) = stop_owned_singbox(app, owned_singbox) {
+        // A successful follow-up discovery can prove that the old generation
+        // survived. Restore its runtime network policy in that case. If the
+        // state remains unknown or the core is gone, leave policy fail-open.
+        if owned_singbox_pids(app).is_ok_and(|pids| !pids.is_empty()) {
+            let _ = run_magicnet_function(app, restore_network_after_failed_stop_command());
+        }
         let _ = run_magicnet_function(app, START_SUPERVISORS_COMMAND);
         return Err(err);
     }
-    run_magicnet_function(app, stop_runtime_cleanup_command())?;
     Ok(())
 }
 
@@ -554,8 +567,12 @@ fn transparent_transaction_active(app: &App) -> bool {
     app.moddir.join(TRANSPARENT_TRANSACTION).is_dir()
 }
 
-fn stop_runtime_cleanup_command() -> &'static str {
-    STOP_RUNTIME_CLEANUP_COMMAND
+fn prepare_network_for_stop_command() -> &'static str {
+    PREPARE_NETWORK_FOR_STOP_COMMAND
+}
+
+fn restore_network_after_failed_stop_command() -> &'static str {
+    RESTORE_NETWORK_AFTER_FAILED_STOP_COMMAND
 }
 
 fn stop_supervisor_pidfile(app: &App, path: PathBuf) {

@@ -21,12 +21,12 @@ fn rss_requires_valid_kib_field() {
 
 use super::{
     api_host_port, config_apply_lock, config_apply_lock_bounded, normalize_transparent_mode,
-    prepare_transparent_transaction, read_transparent_mode, restart_command,
-    rollback_transparent_preflight, safe_log_name, service_log_path, singbox_webui,
-    stop_runtime_cleanup_command, supervisor_cmdline_matches, transparent_transaction_active,
-    REPAIR_COMMAND, START_KERNEL_COMMAND, TRANSPARENT_CAPABILITY, TRANSPARENT_CONFIG,
-    TRANSPARENT_MODE_CONF, TRANSPARENT_PROBE_REPORT, TRANSPARENT_SHARED_INTERFACES,
-    TRANSPARENT_SHARED_PENDING, TRANSPARENT_TRANSACTION,
+    prepare_network_for_stop_command, prepare_transparent_transaction, read_transparent_mode,
+    restart_command, restore_network_after_failed_stop_command, rollback_transparent_preflight,
+    safe_log_name, service_log_path, singbox_webui, supervisor_cmdline_matches,
+    transparent_transaction_active, REPAIR_COMMAND, START_KERNEL_COMMAND, TRANSPARENT_CAPABILITY,
+    TRANSPARENT_CONFIG, TRANSPARENT_MODE_CONF, TRANSPARENT_PROBE_REPORT,
+    TRANSPARENT_SHARED_INTERFACES, TRANSPARENT_SHARED_PENDING, TRANSPARENT_TRANSACTION,
 };
 use crate::App;
 use std::fs;
@@ -166,11 +166,15 @@ fn config_apply_detects_a_journaled_transparent_transition() {
 }
 
 #[test]
-fn stop_runtime_cleanup_disables_dns_capture_before_leak_guard() {
+fn stop_prepares_network_before_terminating_the_core() {
     assert_eq!(
-            stop_runtime_cleanup_command(),
-            "magicnet_hotspot_watchdog_stop >/dev/null 2>&1 || true; magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true; magicnet_disable_dns_capture || true; magicnet_disable_dns_leak_guard || true"
-        );
+        prepare_network_for_stop_command(),
+        "magicnet_prepare_network_for_core_stop"
+    );
+    assert_eq!(
+        restore_network_after_failed_stop_command(),
+        "magicnet_after_kernel_start_unlocked"
+    );
 }
 
 #[test]

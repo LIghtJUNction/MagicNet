@@ -39,6 +39,11 @@ case "$*" in
     exit "${MOCK_WRITE_RC:-0}" ;;
 '-t nat -C '*|'-t nat -D '*) exit 1 ;;
 '-D OUTPUT '*)
+    if [ -n "${MOCK_DELETE_FAIL_ONCE_FILE:-}" ] && [ ! -e "$MOCK_DELETE_FAIL_ONCE_FILE" ]; then
+        : >"$MOCK_DELETE_FAIL_ONCE_FILE"
+        echo 'fixture transient delete failure' >&2
+        exit 4
+    fi
     if [ "${MOCK_DELETE_RC:-0}" -ne 0 ]; then
         echo 'fixture delete permission denied' >&2
         exit "$MOCK_DELETE_RC"
@@ -65,8 +70,13 @@ magicnet_dns_profile() { echo google; }
 magicnet_dns_capture_singbox_mark() { echo 255; }
 magicnet_dns_capture_singbox_udp_marked() { return 1; }
 magicnet_hotspot_reconcile() { :; }
+magicnet_hotspot_watchdog_stop() { :; }
+magicnet_hotspot_route_cleanup() { :; }
 magicnet_collect_physical_egress_ifaces() { echo rmnet0; }
-fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+fail() {
+    printf 'FAIL: %s\n' "$*" >&2
+    exit 1
+}
 state="$MODDIR/.state/dns-leak-guard.ifaces"
 
 # No NAT table and an obsolete saved interface must not abort TUN startup.
@@ -105,6 +115,82 @@ magicnet_disable_dns_leak_guard || fail 'discovered rules were not cleaned'
 [ ! -s "$MOCK_RULES" ] && [ ! -e "$state" ] || fail 'successful cleanup incomplete'
 grep -q '^iptables -w 1 ' "$MOCK_CALLS" || fail 'IPv4 bounded lock wait missing'
 grep -q '^ip6tables -w 1 ' "$MOCK_CALLS" || fail 'IPv6 bounded lock wait missing'
+
+# A stop retries transient cleanup before terminating the core, but a
+# persistent failure remains visible so the caller can keep the core alive.
+printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
+printf '%s\n' rmnet0 >"$state"
+MOCK_DELETE_FAIL_ONCE_FILE="$WORK/delete-failed-once"
+export MOCK_DELETE_FAIL_ONCE_FILE
+MAGICNET_STOP_CLEANUP_ATTEMPTS=2 MAGICNET_STOP_CLEANUP_DELAY=0 \
+    magicnet_prepare_network_for_core_stop || fail 'transient stop cleanup was not retried'
+[ -e "$MOCK_DELETE_FAIL_ONCE_FILE" ] || fail 'transient stop cleanup fault was not exercised'
+[ ! -s "$MOCK_RULES" ] && [ ! -e "$state" ] || fail 'retried stop cleanup left DNS policy behind'
+unset MOCK_DELETE_FAIL_ONCE_FILE
+printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
+printf '%s\n' rmnet0 >"$state"
+if MOCK_DELETE_RC=4 MAGICNET_STOP_CLEANUP_ATTEMPTS=2 MAGICNET_STOP_CLEANUP_DELAY=0 \
+    magicnet_prepare_network_for_core_stop >"$WORK/log" 2>&1; then
+    fail 'persistent stop cleanup failure was hidden'
+fi
+[ -s "$MOCK_RULES" ] && [ -e "$state" ] || fail 'failed stop cleanup discarded retry state'
+grep -q 'keeping sing-box running' "$WORK/log" || fail 'stop cleanup failure did not explain fail-open behavior'
+
+# The shell action path follows the same pre-cleanup contract as the Rust CLI.
+(
+    set_i18n() { :; }
+    # shellcheck disable=SC1091
+    . "$ROOT/src/MagicNet/lib/magicnet/action_menu.sh"
+    import() { :; }
+    is_singbox_running() { return 0; }
+    magicnet_prepare_network_for_core_stop() { return 1; }
+    singbox_stop() { : >"$WORK/action-stopped-core"; }
+    magicnet_refresh_status() { :; }
+    if magicnet_action_toggle_singbox; then fail 'action stop hid cleanup failure'; fi
+    [ ! -e "$WORK/action-stopped-core" ] || fail 'action stop killed core after cleanup failure'
+
+    magicnet_prepare_network_for_core_stop() { return 0; }
+    singbox_stop() { return 1; }
+    magicnet_after_kernel_start_unlocked() { : >"$WORK/action-restored-network"; }
+    if magicnet_action_toggle_singbox; then fail 'action stop hid core termination failure'; fi
+    [ -e "$WORK/action-restored-network" ] || fail 'action stop did not restore a surviving core network policy'
+)
+
+# One transient post-start network-control failure is absorbed by the same
+# click instead of stopping the new core and making the user retry manually.
+(
+    attempt_file="$WORK/start-network-attempts"
+    printf '%s\n' 0 >"$attempt_file"
+    magicnet_hotspot_reconcile() { :; }
+    magicnet_enable_dns_capture() {
+        attempt=$(cat "$attempt_file")
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" >"$attempt_file"
+        [ "$attempt" -gt 1 ]
+    }
+    magicnet_enable_dns_leak_guard() { :; }
+    magicnet_disable_dns_capture() { :; }
+    magicnet_disable_dns_leak_guard() { :; }
+    MAGICNET_START_NETWORK_ATTEMPTS=2 MAGICNET_START_NETWORK_DELAY=0 \
+        magicnet_after_kernel_start_deferred_unlocked || fail 'transient post-start failure was not retried'
+    [ "$(cat "$attempt_file")" -eq 2 ] || fail 'post-start retry count was incorrect'
+)
+
+# Core launch retries absorb short TUN teardown or eBPF detachment windows in
+# one lifecycle action without making eBPF depend on a magicnet0 interface.
+(
+    # shellcheck disable=SC1091
+    . "$ROOT/src/MagicNet/lib/magicnet/core.sh"
+    magicnet_module_disabled() { return 1; }
+    magicnet_cmd_exists() { return 0; }
+    import() { :; }
+    is_singbox_running() { return 1; }
+    magicnet_validate_singbox_transparent_config() { :; }
+    singbox_start() { printf '%s\n' "$MAGICNET_SINGBOX_START_ATTEMPTS" >"$WORK/core-start-attempts"; }
+    magicnet_singbox_running_has_nodes() { return 0; }
+    MAGICNET_TRANSPARENT_RESTORED_CONFIG=1 magicnet_start_singbox_unlocked || fail 'core start retry wrapper failed'
+    [ "$(cat "$WORK/core-start-attempts")" -eq 3 ] || fail 'core start did not default to three bounded attempts'
+)
 
 # Startup errors must describe the failed phase, not falsely claim no binary.
 (

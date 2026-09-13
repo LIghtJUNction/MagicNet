@@ -22,11 +22,14 @@ magicnet_action_toggle_singbox() {
     fi
     case "$_running_status" in
     0)
-        singbox_stop
-        _status=$?
-        if [ "$_status" -eq 0 ]; then
-            magicnet_disable_dns_capture || true
-            magicnet_disable_dns_leak_guard || true
+        if magicnet_prepare_network_for_core_stop; then
+            singbox_stop
+            _status=$?
+            if [ "$_status" -ne 0 ] && is_singbox_running >/dev/null 2>&1; then
+                magicnet_after_kernel_start_unlocked || true
+            fi
+        else
+            _status=$?
         fi
         ;;
     1)

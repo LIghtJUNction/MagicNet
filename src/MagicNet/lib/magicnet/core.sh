@@ -87,7 +87,10 @@ magicnet_start_singbox_unlocked() {
         return 1
     }
     import __singbox__
-    if ! singbox_start; then
+    # Absorb short TUN teardown or eBPF detachment windows inside one user
+    # action. The shared launcher cleans a failed PID generation between
+    # attempts, and callers can still override the bounded attempt count.
+    if ! MAGICNET_SINGBOX_START_ATTEMPTS="${MAGICNET_SINGBOX_START_ATTEMPTS:-3}" singbox_start; then
         [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
             magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
         return 1
