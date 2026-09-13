@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -181,6 +182,17 @@ func (u updater) status() (updateStatus, error) {
 		return s, err
 	}
 	s.Settings, err = u.settings()
+	if err == nil && (s.Phase == "checking" || s.Phase == "downloading" || s.Phase == "installing") {
+		// A killed task must not leave the UI disabled forever. Only the task
+		// lock, not an old status file, proves an operation is still active.
+		unlock, lockErr := updateLock(u.state, "operation.lock")
+		if lockErr == nil {
+			unlock()
+			s.Phase = "error"
+			s.Error = "previous update was interrupted; check again before installing"
+			s.Plan = nil
+		}
+	}
 	return s, err
 }
 func moduleVersion(dir string) string {
@@ -640,8 +652,9 @@ func (u updater) perform(apply bool) error {
 	}
 	p, workErr := u.plan()
 	s.LastCheck = u.now().Unix()
-	s.Plan = &p
+	s.Plan = nil
 	if workErr == nil {
+		s.Plan = &p
 		switch {
 		case p.Pending:
 			s.Phase = "pending-reboot"
@@ -844,7 +857,7 @@ func (u updater) startDaemon() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(executable, "update", "daemon", "--module-dir", u.o.ModuleDir, "--state-dir", u.state, "--cache-dir", u.o.CacheDir, "--pending-dir", u.pending)
+	cmd := daemonCommand(runtime.GOOS, executable, u)
 	cmd.Env = []string{"PATH=/system/bin:/system/xbin", "HOME=/"}
 	cmd.Stdin = nil
 	cmd.Stdout = log
@@ -854,6 +867,21 @@ func (u updater) startDaemon() error {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+// Android may kill an entire app cgroup after WebUI closes. Reuse the module's
+// tested cgroup detachment before exec; setsid alone only detaches the terminal.
+func daemonCommand(goos, executable string, u updater) *exec.Cmd {
+	args := []string{"update", "daemon", "--module-dir", u.o.ModuleDir, "--state-dir", u.state, "--cache-dir", u.o.CacheDir, "--pending-dir", u.pending}
+	if goos != "android" {
+		return exec.Command(executable, args...)
+	}
+	script := `. "$1/lib/magicnet/primitives.sh" || exit 1
+magicnet_detach_pid_from_app_cgroup "$$" || exit 1
+shift
+exec "$@"`
+	wrapped := []string{"-c", script, "magicnet-update-daemon", u.o.ModuleDir, executable}
+	return exec.Command("/system/bin/sh", append(wrapped, args...)...)
 }
 
 // Compatibility entrypoint for the existing downloader customize.sh. The
