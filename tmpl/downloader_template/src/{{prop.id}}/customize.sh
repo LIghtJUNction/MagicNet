@@ -5,7 +5,7 @@ SKIPUNZIP=1
 command -v install_module >/dev/null 2>&1 || abort '! Manager install_module API unavailable'
 unzip -o "$ZIPFILE" module.prop download.json 'bin/*' -d "$MODPATH" >&2 || abort '! Cannot extract downloader'
 chmod 0755 "$MODPATH/bin/module-downloader" || abort '! Cannot set executable permission'
-ui_print '- Checking network and latest release...'
+ui_print '- Smart install: checking release, local components and verified cache...'
 (
   set -eu
   umask 077
@@ -15,7 +15,11 @@ ui_print '- Checking network and latest release...'
   trap 'exit 143' 1 15
   unset LD_LIBRARY_PATH LD_PRELOAD
   "$MODPATH/bin/module-downloader" -config "$MODPATH/download.json" -out "$work/module.zip" || exit $?
-  ui_print '- Verified. Installing target module...'
+  if [ -f "$work/module.zip.current" ]; then
+    ui_print '- Components are already current or staged. No module download needed.'
+    exit 0
+  fi
+  ui_print '- Verified. Installing target module; unchanged components will be reused...'
   (
     ZIPFILE="$work/module.zip"
     TMPDIR="$work/manager"

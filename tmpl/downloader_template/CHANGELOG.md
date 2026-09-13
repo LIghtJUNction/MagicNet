@@ -1,3 +1,10 @@
+# 1.1.0
+
+MagicNet uses the same smart updater as the core. Plan at component granularity,
+reuse installed files and verified cache, choose the cheaper core+components or
+full package, and avoid downloads when already current or pending reboot.
+Generic non-MagicNet target support remains unchanged.
+
 # 1.0.2
 
 Show direct/proxy probe results, measured route ranking, percentage, transferred

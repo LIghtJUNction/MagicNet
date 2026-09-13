@@ -26,3 +26,6 @@ src/MagicNet/ecapture.version
 !.kam/bases.toml
 !.kam/bases/
 !.kam/bases/**
+
+# Generated from installer/components when packaging the installer template.
+tmpl/downloader_template/smart/

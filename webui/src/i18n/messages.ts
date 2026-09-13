@@ -7,7 +7,10 @@ import diagnostics from "./catalogs/diagnostics.ts";
 
 import tailscale from "./catalogs/tailscale.ts";
 
+import updates from "./catalogs/updates.ts";
+
 export const messages: Record<string, readonly string[]> = {
+  ...updates,
   ...shell,
   ...routing,
   ...configuration,

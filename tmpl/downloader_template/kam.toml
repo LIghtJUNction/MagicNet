@@ -1,8 +1,8 @@
 [prop]
 id = "downloader_template"
 name = "Module Downloader Template"
-version = "1.0.2"
-versionCode = 3
+version = "1.1.0"
+versionCode = 4
 author = "LIghtJUNction"
 description = "Verified latest-release module downloader with direct-first mirror selection"
 [kam]

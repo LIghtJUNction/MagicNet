@@ -24,8 +24,8 @@ with zipfile.ZipFile(archive) as z:
     binary = z.read('bin/module-downloader')
     assert binary[:4] == b'\x7fELF' and struct.unpack_from('<H', binary, 18)[0] == 183
     script = z.read('customize.sh')
-for scenario in ("success", "install_failure", "download_failure"):
-    failure = scenario != "success"
+for scenario in ("success", "current", "install_failure", "download_failure"):
+    failure = scenario not in ("success", "current")
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         module = root / 'installer'
@@ -43,7 +43,7 @@ unzip() {
 #!/bin/sh
 [ "$FAIL_DOWNLOAD" = 0 ] || exit 23
 while [ "$#" -gt 0 ]; do
- if [ "$1" = -out ]; then shift; printf verified > "$1"; exit 0; fi
+ if [ "$1" = -out ]; then shift; if [ "$ALREADY_CURRENT" = 1 ]; then printf current > "$1.current"; else printf verified > "$1"; fi; exit 0; fi
  shift
 done
 exit 1
@@ -77,11 +77,11 @@ install_module() {
 [ "$ZIPFILE" = "$ORIGINAL_ZIP" ]
 [ "$TMPDIR" = "$ORIGINAL_TMP" ]
 '''
-        env = dict(os.environ, TEST_ROOT=tmp, MODPATH=str(module), BOOTMODE='true', ARCH='arm64', ZIPFILE='/original.zip', ORIGINAL_ZIP='/original.zip', TMPDIR='/original-tmp', ORIGINAL_TMP='/original-tmp', FAIL_INSTALL=str(int(scenario == "install_failure")), FAIL_DOWNLOAD=str(int(scenario == "download_failure")))
+        env = dict(os.environ, TEST_ROOT=tmp, MODPATH=str(module), BOOTMODE='true', ARCH='arm64', ZIPFILE='/original.zip', ORIGINAL_ZIP='/original.zip', TMPDIR='/original-tmp', ORIGINAL_TMP='/original-tmp', FAIL_INSTALL=str(int(scenario == "install_failure")), FAIL_DOWNLOAD=str(int(scenario == "download_failure")), ALREADY_CURRENT=str(int(scenario == "current")))
         r = subprocess.run(['sh', '-c', harness], env=env, capture_output=True, text=True)
         assert (r.returncode != 0) == failure, (r.stdout, r.stderr)
-        assert (root / 'called').exists() == (scenario != 'download_failure')
+        assert (root / 'called').exists() == (scenario not in ('download_failure', 'current'))
         assert 'parameter not set' not in r.stderr
-        assert (module / 'skip_mount').exists() == (scenario == 'success')
+        assert (module / 'skip_mount').exists() == (scenario in ('success', 'current'))
         assert not list(root.glob('installer.download.*'))
 print('ZIP/ELF verification, manager isolation, failure propagation and cleanup passed')

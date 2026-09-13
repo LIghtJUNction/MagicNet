@@ -7,6 +7,13 @@ on:
       - '.github/workflows/downloader-template.yml'
       - 'scripts/test-downloader-installer.py'
       - 'installer/**'
+  pull_request:
+    paths:
+      - 'tmpl/downloader_template/**'
+      - 'installer/components/**'
+      - 'scripts/*smart*'
+      - 'scripts/test-downloader-installer.py'
+      - '.github/workflows/downloader-template.yml'
   workflow_dispatch:
 permissions:
   contents: write
@@ -30,6 +37,11 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: '1.26.7'
+      - name: Verify shared smart updater
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-yaml unzip
+          bash scripts/quality-gate.sh components
+          bash scripts/prepare-smart-installer.sh
       - name: Build and verify Kam
         run: |
           git -C kam-tool apply "$GITHUB_WORKSPACE/installer/kam-zip-validation.patch"
@@ -38,7 +50,7 @@ jobs:
           cargo test --locked rejects_invalid_local_header_before_publication
           cargo build --locked
           echo "$PWD/target/debug" >> "$GITHUB_PATH"
-      - name: Package and publish reusable template
+      - name: Package tested reusable template
         run: |
           set -euo pipefail
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("tmpl/downloader_template/kam.toml", "rb"))["prop"]["version"])')
@@ -46,29 +58,18 @@ jobs:
           echo "DOWNLOADER_VERSION=$version" >> "$GITHUB_ENV"
           kam validate tmpl/downloader_template
           kam build tmpl/downloader_template --quiet
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" templates/downloader_template.tar.gz --target "$GITHUB_SHA" \
-              --title "Module Downloader Template $version" --notes-file tmpl/downloader_template/README.md --latest=false
-          fi
-          mkdir -p "$RUNNER_TEMP/published-template"
-          gh release download "$tag" --pattern downloader_template.tar.gz --dir "$RUNNER_TEMP/published-template"
-          # Never silently use an older immutable template for a changed version.
-          mkdir -p "$RUNNER_TEMP/local-template" "$RUNNER_TEMP/remote-template"
-          tar -xzf templates/downloader_template.tar.gz -C "$RUNNER_TEMP/local-template"
-          tar -xzf "$RUNNER_TEMP/published-template/downloader_template.tar.gz" -C "$RUNNER_TEMP/remote-template"
-          diff -r "$RUNNER_TEMP/local-template" "$RUNNER_TEMP/remote-template"
-      - name: Import the published template and initialize MagicNet installer
+      - name: Initialize and test the smart installer
         run: |
           set -euo pipefail
-          kam tmpl import "$RUNNER_TEMP/published-template/downloader_template.tar.gz" --force
+          kam tmpl import "$GITHUB_WORKSPACE/templates/downloader_template.tar.gz" --force
           # Use the downloaded archive explicitly; a built-in name has higher priority than cache.
-          kam init "$RUNNER_TEMP/magicnet_installer" -t "$RUNNER_TEMP/published-template/downloader_template.tar.gz" \
+          kam init "$RUNNER_TEMP/magicnet_installer" -t "$GITHUB_WORKSPACE/templates/downloader_template.tar.gz" \
             --id magicnet_installer --project-name 'MagicNet Installer' --author LIghtJUNction \
             --version "$DOWNLOADER_VERSION" --description 'Automatically download and install the latest verified MagicNet release'
           kam validate "$RUNNER_TEMP/magicnet_installer"
           kam build "$RUNNER_TEMP/magicnet_installer"
           python3 scripts/test-downloader-installer.py "$RUNNER_TEMP/magicnet_installer/dist/magicnet_installer.zip"
-      - name: Publish the initialized installer
+      - name: Prepare initialized installer artifacts
         run: |
           set -euo pipefail
           tag="magicnet-installer-v${DOWNLOADER_VERSION}"
@@ -77,10 +78,21 @@ jobs:
           tar --exclude='./dist' --exclude='./.git' --exclude='./src/magicnet_installer/bin' \
             -czf dist/downloader/magicnet_installer-source.tar.gz -C "$RUNNER_TEMP/magicnet_installer" .
           (cd dist/downloader && sha256sum magicnet_installer.zip magicnet_installer-source.tar.gz > SHA256SUMS)
+      - name: Publish template and smart installer after all tests
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          tag="downloader-template-v${DOWNLOADER_VERSION}"
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" dist/downloader/* --target "$GITHUB_SHA" --latest=false \
-              --title "MagicNet Installer $DOWNLOADER_VERSION" \
-              --notes "Android arm64 downloader. Flash to download and install the latest stable MagicNet. Direct GitHub first, measured mirror fallback, GitHub SHA-256 and ZIP validation. Requires trusted GitHub API connectivity."
+            gh release create "$tag" templates/downloader_template.tar.gz --target "$GITHUB_SHA" \
+              --title "Module Downloader Template $DOWNLOADER_VERSION" --notes-file tmpl/downloader_template/README.md --latest=false --draft
+            gh release edit "$tag" --draft=false --latest=false
+          fi
+          tag="magicnet-installer-v${DOWNLOADER_VERSION}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" dist/downloader/* --target "$GITHUB_SHA" --latest=false --draft \
+              --title "MagicNet Smart Installer $DOWNLOADER_VERSION" --notes-file tmpl/downloader_template/README.md
+            gh release edit "$tag" --draft=false --latest=false
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()

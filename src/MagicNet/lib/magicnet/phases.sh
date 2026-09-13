@@ -18,6 +18,11 @@ kamfw_phase_boot_completed() {
     fi
     wait_boot
     sleep 3
+    # The updater exits immediately when disabled. Its own lock prevents a
+    # second scheduler when both service and boot-completed phases run.
+    if [ -x "${MODDIR}/bin/magicnet-components" ]; then
+        "${MODDIR}/bin/magicnet-components" update start-daemon --module-dir "$MODDIR" >/dev/null 2>&1 || true
+    fi
     magicnet_mcp_start_if_enabled || true
     magicnet_start_kernel || true
     "${MODDIR}/cli" supervisor start all >/dev/null 2>&1 &

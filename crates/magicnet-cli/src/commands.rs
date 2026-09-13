@@ -33,6 +33,11 @@ struct Command {
 
 const COMMANDS: &[Command] = &[
     Command {
+        name: "update",
+        usage: "cli update {status|check|apply|configure --enabled=true --interval-hours=24 --wifi-only=true --auto-install=true}",
+        handler: update_command,
+    },
+    Command {
         name: "service",
         usage: "cli service {status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [webui|sing-box|mcp|fswatch|supervisors|filename] [lines]}",
         handler: service_command,
@@ -312,6 +317,44 @@ fn subscription_command(app: &App, args: &[String]) -> Result<(), String> {
             "usage: cli sub {list|get|set|set-file|apply-file|update|update-all|status|schedule|user-agent|filter|resolve-host|file}"
                 .to_string(),
         ),
+    }
+}
+
+fn update_command(app: &App, args: &[String]) -> Result<(), String> {
+    if !matches!(
+        args.first().map(String::as_str),
+        Some("status" | "check" | "apply" | "configure")
+    ) {
+        return Err("usage: cli update {status|check|apply|configure}".to_string());
+    }
+    // Never allow the WebUI/CLI to redirect privileged updater paths.
+    for arg in &args[1..] {
+        if ![
+            "--enabled=",
+            "--interval-hours=",
+            "--wifi-only=",
+            "--auto-install=",
+        ]
+        .iter()
+        .any(|prefix| arg.starts_with(prefix))
+        {
+            return Err("unsupported update option".to_string());
+        }
+    }
+    let status = std::process::Command::new(app.moddir.join("bin/magicnet-components"))
+        .arg("update")
+        .args(args)
+        .arg("--module-dir")
+        .arg(&app.moddir)
+        .env_clear()
+        .env("PATH", "/system/bin:/system/xbin")
+        .env("HOME", "/")
+        .status()
+        .map_err(|err| format!("launch component updater: {err}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("component updater failed: {status}"))
     }
 }
 

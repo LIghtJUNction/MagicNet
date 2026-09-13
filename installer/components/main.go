@@ -694,6 +694,20 @@ func run(o options) error {
 	return nil
 }
 func main() {
+	if filepath.Base(os.Args[0]) == "module-downloader" {
+		if err := smartInstallerMain(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "[error]", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		if err := updateMain(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "[error]", err)
+			os.Exit(1)
+		}
+		return
+	}
 	o := options{log: os.Stdout}
 	flag.StringVar(&o.Archive, "archive", "", "trusted core/full module ZIP")
 	flag.StringVar(&o.ModuleDir, "module-dir", "", "module manager installation directory")

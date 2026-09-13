@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ComponentUpdatesCard from "./ComponentUpdatesCard.vue";
 import { t } from "@/i18n";
 import { CheckCircle2, Copy, DownloadCloud, ExternalLink, Github, RefreshCw, Terminal } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
@@ -252,6 +253,8 @@ watch(() => [panel.value.name, panel.value.url, panel.value.sha256], () => {
         <Button variant="outline" @click="openExternal(issueUrl(), t('WebUI 适配 Issue'))"><Github :size="17" />{{ t("申请适配") }}</Button>
       </div>
     </PageHeader>
+
+    <ComponentUpdatesCard />
 
     <ToolActionConfirmCard
       v-if="pendingWebuiAction"

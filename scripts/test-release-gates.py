@@ -31,6 +31,22 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertIn('--draft', publish['run'])
         self.assertLess(publish['run'].index('gh release create'), publish['run'].index('gh release edit'))
 
+    def test_smart_installer_is_built_and_verified_before_final_signing(self):
+        build = yaml.safe_load((ROOT / '.github/workflows/exec.yml').read_text())['jobs']['build']
+        steps = build['steps']
+        package = next(i for i, s in enumerate(steps) if 'scripts/package-smart-installer.py' in s.get('run', ''))
+        sign = next(i for i, s in enumerate(steps) if s.get('name') == 'Sign and verify final release assets')
+        self.assertLess(package, sign)
+        self.assertIn('scripts/test-downloader-installer.py dist/magicnet_installer.zip', steps[package]['run'])
+        workflow = yaml.safe_load((ROOT / '.github/workflows/downloader-template.yml').read_text())
+        steps = workflow['jobs']['publish']['steps']
+        publish = next(i for i, s in enumerate(steps) if 'gh release create' in s.get('run', ''))
+        tests = next(i for i, s in enumerate(steps) if 'scripts/test-downloader-installer.py' in s.get('run', ''))
+        shared = next(i for i, s in enumerate(steps) if 'scripts/quality-gate.sh components' in s.get('run', ''))
+        self.assertLess(tests, publish)
+        self.assertLess(shared, publish)
+        self.assertIn("github.event_name != 'pull_request'", steps[publish]['if'])
+
     def test_shared_suite_preserves_all_original_checks(self):
         script = (ROOT / 'scripts/quality-gate.sh').read_text()
         for command in ('cargo fmt', 'cargo clippy', 'cargo test',
