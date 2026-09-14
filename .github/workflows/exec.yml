@@ -66,11 +66,6 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Restore per-check test results
-        uses: ./.github/actions/test-cache
-        with:
-          mode: restore
-
       - name: Bump and commit version
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
         env:
@@ -105,6 +100,13 @@ jobs:
           PRERELEASE_INPUT: ${{ inputs.prerelease }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: python3 scripts/prepare-release.py
+
+      # Version preparation must inspect the untouched checkout. Restore
+      # generated results only after any bump has been committed and validated.
+      - name: Restore per-check test results
+        uses: ./.github/actions/test-cache
+        with:
+          mode: restore
 
       - name: Refresh build submodules
         shell: bash
