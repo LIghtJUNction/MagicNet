@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Content-addressed, successful-only CI test results (not release approval).
 
-Unknown/host checks deliberately use conservative repository-wide inputs. Other
-families have declared source roots. Never infer safety from an Actions cache
-prefix hit, the commit SHA alone, or the presence of an output file.
+Known test families declare conservative source roots so unrelated Rust, WebUI,
+network, or host changes do not invalidate each other. Unknown scopes remain
+repository-wide. Never infer safety from an Actions cache prefix hit, the
+commit SHA alone, or the presence of an output file.
 """
 from __future__ import annotations
 
@@ -24,14 +25,35 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = 1
+SCHEMA = 2
 SCOPES = {
     "rust": ("Cargo.toml", "Cargo.lock", ".cargo", "crates", "rust-toolchain.toml"),
+    # Host regressions intentionally cover the module/build surface, but Rust
+    # crate-only and WebUI-only edits cannot affect these fixture-based checks.
+    "host": (
+        "src", "scripts", "hooks", "installer", ".github", "sing-box",
+        "sing-box.version", "README.md", "kam.toml", "update.json", ".gitmodules",
+    ),
+    # Network regression jobs use production network/DNS policy plus the exact
+    # test command operand. Keep UI, packaging, and unrelated Rust edits out.
+    "network": (
+        "src/MagicNet/network-check.sh",
+        "src/MagicNet/lib/magicnet",
+        "src/MagicNet/.config/magicnet",
+        "src/MagicNet/.config/sing-box",
+        "src/MagicNet/service.sh",
+        "src/MagicNet/post-fs-data.sh",
+    ),
     "components": ("installer", "src", "hooks", "scripts", ".github", "kam.toml", "update.json"),
     "webui": ("webui", "src", "scripts", "installer", ".github", "kam.toml"),
     "singbox": ("sing-box", "sing-box.version", "scripts/build-sing-box.sh", ".gitmodules"),
 }
-COMMON = ("scripts/ci-test-cache.py", "scripts/quality-gate.sh", ".github", ".gitmodules")
+COMMON = (
+    "scripts/ci-test-cache.py",
+    "scripts/quality-gate.sh",
+    ".github/actions/test-cache/action.yml",
+    ".gitmodules",
+)
 TOOLS = {
     "bash": ["--version"], "sh": [], "python3": ["--version"],
     "git": ["--version"], "jq": ["--version"], "curl": ["--version"],
@@ -39,6 +61,10 @@ TOOLS = {
     "tar": ["--version"], "shellcheck": ["--version"], "rg": ["--version"],
     "rustc": ["-vV"], "cargo": ["--version"], "go": ["version"],
     "node": ["--version"], "npm": ["--version"], "sing-box": ["version"],
+    # Deterministic network-namespace regressions are reusable only when the
+    # runner's networking toolchain is identical too.
+    "ip": ["-V"], "iptables": ["--version"], "ip6tables": ["--version"],
+    "unshare": ["--version"],
 }
 ENV_KEYS = ("CI", "ImageOS", "ImageVersion", "LANG", "LC_ALL", "TZ", "RUSTFLAGS",
             "CARGO_BUILD_TARGET", "GOFLAGS", "GOOS", "GOARCH", "CGO_ENABLED",
