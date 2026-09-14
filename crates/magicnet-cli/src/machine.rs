@@ -26,8 +26,8 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Option<Result<(), String>>
 
 fn print_service_status(app: &App) -> Result<(), String> {
     let value = service_status_value(app);
-    let encoded = serde_json::to_string(&value)
-        .map_err(|err| format!("serialize service status: {err}"))?;
+    let encoded =
+        serde_json::to_string(&value).map_err(|err| format!("serialize service status: {err}"))?;
     println!("{encoded}");
     Ok(())
 }
@@ -174,10 +174,7 @@ mod tests {
         assert_eq!(value["command"], "service.status");
         assert_eq!(value["data"]["core"]["selected"], "sing-box");
         assert_eq!(value["data"]["transparent"]["mode"], "ebpf");
-        assert_eq!(
-            value["data"]["subscription"]["source"],
-            "remote_url"
-        );
+        assert_eq!(value["data"]["subscription"]["source"], "remote_url");
         assert!(!value.to_string().contains("example.invalid"));
         assert!(!value.to_string().contains("secret"));
 
