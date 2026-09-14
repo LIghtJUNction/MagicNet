@@ -57,6 +57,19 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(self.run_check(), 0)
         self.assertEqual(self.count(), 1)
 
+    def test_lookup_only_never_executes_and_reports_exact_hit(self):
+        self.assertEqual(self.run_check('--lookup-only'), 1)
+        self.assertFalse((self.root / 'count').exists())
+        self.assertEqual(self.run_check(), 0)
+        self.assertEqual(self.run_check('--lookup-only'), 0)
+        self.assertEqual(self.count(), 1)
+        self.write('source', 'changed')
+        self.assertEqual(self.run_check('--lookup-only'), 1)
+        self.assertEqual(self.count(), 1)
+        with patch.dict(os.environ, CI_TEST_FORCE='1'):
+            self.assertEqual(self.run_check('--lookup-only'), 1)
+        self.assertEqual(self.count(), 1)
+
     def test_source_edit_add_delete_and_mode_invalidate(self):
         self.run_check()
         self.write('source', 'two')
@@ -68,6 +81,13 @@ class CacheTests(unittest.TestCase):
         (self.root / 'source').unlink()
         self.run_check()
         self.assertEqual(self.count(), 5)
+
+    def test_staged_regular_file_uses_index_blob(self):
+        self.run_check()
+        self.write('source', 'staged')
+        subprocess.run(['git', 'add', 'source'], cwd=self.root, check=True)
+        self.run_check()
+        self.assertEqual(self.count(), 2)
 
     def test_rust_does_not_depend_on_docs_but_does_on_sources(self):
         self.run_check(scope='rust')
