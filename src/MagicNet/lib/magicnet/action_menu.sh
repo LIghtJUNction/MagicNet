@@ -54,6 +54,7 @@ magicnet_diag_proxy_now() {
     _now=$(printf '%s' "$_api" | sed -n 's/.*"now":[[:space:]]*"\([^"]*\)".*/\1/p')
     [ -n "$_now" ] || _now="$(i18n MAGICNET_UNAVAILABLE)"
     panel_row "$_name" "$_now"
+    unset _name _api _now
 }
 
 magicnet_action_diagnose() {
@@ -82,6 +83,14 @@ magicnet_action_diagnose() {
             tail -n 20 || true
         panel_end
     fi
+}
+
+magicnet_action_network_acceptance() {
+    if [ ! -r "${MODDIR}/network-check.sh" ]; then
+        panel_error "network-check.sh: $(i18n MAGICNET_UNAVAILABLE)"
+        return 1
+    fi
+    sh "${MODDIR}/network-check.sh" --rounds 1 --jobs 4
 }
 
 set_i18n "MAGICNET_ACTION_MENU" \
@@ -114,6 +123,12 @@ set_i18n "MAGICNET_DIAGNOSE" \
     "ru" "Диагностика сети" \
     "ja" "ネットワーク状態を診断" \
     "ko" "네트워크 상태 진단"
+set_i18n "MAGICNET_NETWORK_ACCEPTANCE" \
+    "zh" "完整网络验收" \
+    "en" "Run full network acceptance" \
+    "ru" "Полная проверка сети" \
+    "ja" "完全なネットワーク検証" \
+    "ko" "전체 네트워크 검증"
 set_i18n "MAGICNET_EXIT" \
     "zh" "退出" \
     "en" "Exit" \
@@ -130,6 +145,8 @@ magicnet_action() {
         'magicnet_action_toggle_singbox' \
         "MAGICNET_DIAGNOSE" \
         'magicnet_action_diagnose' \
+        "MAGICNET_NETWORK_ACCEPTANCE" \
+        'magicnet_action_network_acceptance' \
         "MAGICNET_REFRESH_STATUS" \
         'magicnet_refresh_status' \
         "MAGICNET_EXIT" \
