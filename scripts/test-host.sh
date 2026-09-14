@@ -94,6 +94,8 @@ check bash scripts/test-config-lock-safety.sh
 check sh scripts/test-runtime-fingerprint-safety.sh
 check sh scripts/test-runtime-temp-dirs.sh
 if [ "$with_routing_assets" -eq 1 ]; then
+    check bash scripts/test-dns-profile-safety.sh --with-routing-assets
+else
     check bash scripts/test-dns-profile-safety.sh
 fi
 check bash scripts/test-dns-leak-guard-timeout.sh
