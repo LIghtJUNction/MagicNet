@@ -5,6 +5,23 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-dns-profile.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
+with_routing_assets=0
+case "${1:-}" in
+"") ;;
+--with-routing-assets)
+  with_routing_assets=1
+  shift
+  ;;
+*)
+  printf 'usage: bash scripts/test-dns-profile-safety.sh [--with-routing-assets]\n' >&2
+  exit 64
+  ;;
+esac
+[ "$#" -eq 0 ] || {
+  printf 'unexpected arguments\n' >&2
+  exit 64
+}
+
 MODDIR="$WORK/module"
 export MODDIR
 mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/bin"
@@ -98,12 +115,20 @@ jq -e '
   exit 1
 }
 
-FULL_MODDIR="$WORK/full-module"
-mkdir -p "$FULL_MODDIR/.config/sing-box" "$FULL_MODDIR/bin"
-ln -s "$(command -v jq)" "$FULL_MODDIR/bin/jq"
-cp "$ROOT/src/MagicNet/.config/sing-box/config.json" "$FULL_MODDIR/.config/sing-box/config.json"
-cp -R "$ROOT/src/MagicNet/.config/sing-box/rules" "$FULL_MODDIR/.config/sing-box/"
-MODDIR="$FULL_MODDIR" MAGICNET_DNS_PROFILE=cloudflare-udp magicnet_dns_apply_singbox
-(cd "$FULL_MODDIR/.config/sing-box" && sing-box check -c config.json -D "$FULL_MODDIR/.config/sing-box") >/dev/null
+if [ "$with_routing_assets" -eq 1 ]; then
+  command -v sing-box >/dev/null 2>&1 || {
+    printf 'prepared DNS checks require sing-box and rule-set assets\n' >&2
+    exit 127
+  }
+  FULL_MODDIR="$WORK/full-module"
+  mkdir -p "$FULL_MODDIR/.config/sing-box" "$FULL_MODDIR/bin"
+  ln -s "$(command -v jq)" "$FULL_MODDIR/bin/jq"
+  cp "$ROOT/src/MagicNet/.config/sing-box/config.json" "$FULL_MODDIR/.config/sing-box/config.json"
+  cp -R "$ROOT/src/MagicNet/.config/sing-box/rules" "$FULL_MODDIR/.config/sing-box/"
+  MODDIR="$FULL_MODDIR" MAGICNET_DNS_PROFILE=cloudflare-udp magicnet_dns_apply_singbox
+  (cd "$FULL_MODDIR/.config/sing-box" && sing-box check -c config.json -D "$FULL_MODDIR/.config/sing-box") >/dev/null
+else
+  printf 'Prepared sing-box DNS asset check excluded; use --with-routing-assets to include it.\n'
+fi
 
 printf 'DNS profile safety test passed\n'
