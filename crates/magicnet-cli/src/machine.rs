@@ -12,44 +12,85 @@ const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
 const DNS_CONF: &str = ".config/magicnet/dns.conf";
 const NETWORK_POLICY_CONF: &str = ".config/magicnet/network-policy.conf";
 const SINGBOX_CONFIG: &str = ".config/sing-box/config.json";
+const MACHINE_COMMANDS: &[&str] = &[
+    "service.status",
+    "core.status",
+    "supervisor.status",
+    "dns.status",
+    "network.status",
+    "machine.capabilities",
+];
 
-pub(crate) fn dispatch(app: &App, args: &[String]) -> Option<Result<(), String>> {
-    let command = normalized_machine_args(args)?;
-    let value = match command.as_slice() {
-        [command, action] if command == "service" && action == "status" => {
-            service_status_value(app)
-        }
-        [command, action] if command == "core" && action == "status" => core_status_value(app),
-        [command, action] if command == "supervisor" && action == "status" => {
-            supervisor_status_value(app)
-        }
-        [command, action] if command == "dns" && action == "status" => dns_status_value(app),
-        [command, action] if command == "network" && action == "status" => {
-            network_status_value(app)
-        }
-        _ => return None,
-    };
-    Some(print_machine_value(&value))
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MachineError {
+    code: &'static str,
+    message: &'static str,
 }
 
-fn normalized_machine_args(args: &[String]) -> Option<Vec<&str>> {
-    let mut normalized = Vec::with_capacity(args.len());
-    let mut json_flags = 0usize;
-    for arg in args {
-        if arg == "--json" {
-            json_flags += 1;
-        } else {
-            normalized.push(arg.as_str());
-        }
+pub(crate) fn dispatch(app: &App, args: &[String]) -> Option<Result<(), String>> {
+    let json_flags = args.iter().filter(|arg| arg.as_str() == "--json").count();
+    if json_flags == 0 {
+        return None;
     }
-    (json_flags == 1).then_some(normalized)
+    if json_flags != 1 {
+        return Some(print_machine_error(MachineError {
+            code: "machine.invalid_request",
+            message: "expected exactly one --json flag",
+        }));
+    }
+
+    let command = args
+        .iter()
+        .filter(|arg| arg.as_str() != "--json")
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    Some(match machine_value(app, &command) {
+        Ok(value) => print_machine_value(&value),
+        Err(error) => print_machine_error(error),
+    })
+}
+
+fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
+    match command {
+        [command] if *command == "capabilities" => Ok(capabilities_value()),
+        [command, action] if *command == "service" && *action == "status" => {
+            Ok(service_status_value(app))
+        }
+        [command, action] if *command == "core" && *action == "status" => {
+            Ok(core_status_value(app))
+        }
+        [command, action] if *command == "supervisor" && *action == "status" => {
+            Ok(supervisor_status_value(app))
+        }
+        [command, action] if *command == "dns" && *action == "status" => Ok(dns_status_value(app)),
+        [command, action] if *command == "network" && *action == "status" => {
+            Ok(network_status_value(app))
+        }
+        _ => Err(MachineError {
+            code: "machine.unsupported_command",
+            message: "unsupported machine command",
+        }),
+    }
 }
 
 fn print_machine_value(value: &Value) -> Result<(), String> {
     let encoded =
-        serde_json::to_string(value).map_err(|err| format!("serialize machine status: {err}"))?;
+        serde_json::to_string(value).map_err(|err| format!("serialize machine response: {err}"))?;
     println!("{encoded}");
     Ok(())
+}
+
+fn print_machine_error(error: MachineError) -> Result<(), String> {
+    print_machine_value(&json!({
+        "schema": MACHINE_SCHEMA,
+        "ok": false,
+        "command": "machine.error",
+        "error": {
+            "code": error.code,
+            "message": error.message,
+        }
+    }))?;
+    Err(error.code.to_string())
 }
 
 fn envelope(command: &str, data: Value) -> Value {
@@ -61,10 +102,37 @@ fn envelope(command: &str, data: Value) -> Value {
     })
 }
 
+fn capabilities_value() -> Value {
+    envelope(
+        "machine.capabilities",
+        json!({
+            "machine_schema": MACHINE_SCHEMA,
+            "commands": MACHINE_COMMANDS,
+            "features": [
+                "versioned_envelope",
+                "structured_errors",
+                "redacted_status",
+                "configured_effective_split"
+            ],
+            "json_flag_positions": ["prefix", "suffix"],
+            "read_only": true,
+        }),
+    )
+}
+
 fn service_status_value(app: &App) -> Value {
     let singbox = singbox_pid_summary(app);
-    let running = singbox != "stopped";
-    let rss_kib = singbox_rss_kib(&singbox);
+    let process_state = process_state(&singbox);
+    let running = match process_state {
+        "running" => Some(true),
+        "stopped" => Some(false),
+        _ => None,
+    };
+    let rss_kib = if process_state == "running" {
+        singbox_rss_kib(&singbox)
+    } else {
+        None
+    };
     let selected = selected_core(app);
     let transparent = transparent_mode(app);
     let subscription_source = if app
@@ -85,6 +153,7 @@ fn service_status_value(app: &App) -> Value {
             "core": {
                 "selected": selected,
                 "sing_box": {
+                    "process_state": process_state,
                     "running": running,
                     "pid_summary": singbox,
                     "rss_kib": rss_kib,
@@ -190,9 +259,7 @@ fn network_status_value(app: &App) -> Value {
         .and_then(|tun| tun.get("stack"))
         .and_then(Value::as_str)
         .unwrap_or("unavailable");
-    let effective_mtu = tun
-        .and_then(|tun| tun.get("mtu"))
-        .and_then(Value::as_u64);
+    let effective_mtu = tun.and_then(|tun| tun.get("mtu")).and_then(Value::as_u64);
     let effective_udp_timeout = tun
         .and_then(|tun| tun.get("udp_timeout"))
         .and_then(Value::as_str)
@@ -214,6 +281,21 @@ fn network_status_value(app: &App) -> Value {
             }
         }),
     )
+}
+
+fn process_state(summary: &str) -> &'static str {
+    if summary == "stopped" {
+        "stopped"
+    } else if summary == "unknown" {
+        "unknown"
+    } else if summary
+        .split(',')
+        .all(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        "running"
+    } else {
+        "unknown"
+    }
 }
 
 fn selected_core(app: &App) -> String {
@@ -306,8 +388,8 @@ fn parse_rss_kib(status: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        dns_status_value, network_status_value, normalized_machine_args, parse_rss_kib,
-        service_status_value,
+        capabilities_value, dns_status_value, machine_value, network_status_value, parse_rss_kib,
+        process_state, service_status_value,
     };
     use crate::App;
     use std::fs;
@@ -329,22 +411,25 @@ mod tests {
     }
 
     #[test]
-    fn machine_flag_accepts_prefix_or_suffix_and_rejects_duplicates() {
-        let prefix = vec!["--json", "dns", "status"]
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let suffix = vec!["dns", "status", "--json"]
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let duplicate = vec!["--json", "dns", "status", "--json"]
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        assert_eq!(normalized_machine_args(&prefix), Some(vec!["dns", "status"]));
-        assert_eq!(normalized_machine_args(&suffix), Some(vec!["dns", "status"]));
-        assert_eq!(normalized_machine_args(&duplicate), None);
+    fn unsupported_machine_commands_are_rejected_before_normal_dispatch() {
+        let (root, app) = fixture();
+        let error = machine_value(&app, &["service", "start"]).expect_err("must reject mutation");
+        assert_eq!(error.code, "machine.unsupported_command");
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn capabilities_advertise_schema_and_supported_commands() {
+        let value = capabilities_value();
+        assert_eq!(value["schema"], 1);
+        assert_eq!(value["command"], "machine.capabilities");
+        assert_eq!(value["data"]["machine_schema"], 1);
+        assert_eq!(value["data"]["read_only"], true);
+        let commands = value["data"]["commands"]
+            .as_array()
+            .expect("commands array");
+        assert!(commands.iter().any(|command| command == "service.status"));
+        assert!(commands.iter().any(|command| command == "dns.status"));
     }
 
     #[test]
@@ -435,6 +520,15 @@ mod tests {
         assert_eq!(value["data"]["effective"]["stack"], "mixed");
         assert_eq!(value["data"]["effective"]["udp_timeout"], "10m");
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn process_state_never_treats_unknown_or_malformed_pid_summary_as_running() {
+        assert_eq!(process_state("stopped"), "stopped");
+        assert_eq!(process_state("unknown"), "unknown");
+        assert_eq!(process_state("123,456"), "running");
+        assert_eq!(process_state("123,broken"), "unknown");
+        assert_eq!(process_state(""), "unknown");
     }
 
     #[test]
