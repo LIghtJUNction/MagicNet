@@ -29,20 +29,68 @@ make_fake_download_commands() {
 set -eu
 
 output_path=""
+url=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         -o)
             output_path="$2"
             shift 2
             ;;
+        http://*|https://*)
+            url="$1"
+            shift
+            ;;
         *) shift ;;
     esac
 done
 [ -n "$output_path" ] || exit 64
+[ -n "$url" ] || exit 64
 [ ! -e "$output_path" ] || {
     printf 'curl invoked with a stale output asset\n' >&2
     exit 65
 }
+
+case "$url" in
+    https://api.github.com/repos/*/releases/tags/*)
+        [ -n "${FAKE_API_METADATA_ATTEMPT_FILE:-}" ] || exit 64
+        attempt=0
+        if [ -f "$FAKE_API_METADATA_ATTEMPT_FILE" ]; then
+            attempt=$(cat "$FAKE_API_METADATA_ATTEMPT_FILE")
+        fi
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" >"$FAKE_API_METADATA_ATTEMPT_FILE"
+        if [ "${FAKE_API_METADATA_SUCCEED:-0}" = 1 ]; then
+            cat >"$output_path" <<'JSON'
+{
+  "assets": [
+    {
+      "url": "https://api.github.com/repos/example/release/releases/assets/123",
+      "name": "asset.tar.gz"
+    }
+  ]
+}
+JSON
+            exit 0
+        fi
+        printf 'partial metadata\n' >"$output_path"
+        exit 56
+        ;;
+    https://api.github.com/repos/*/releases/assets/*)
+        [ -n "${FAKE_API_ASSET_ATTEMPT_FILE:-}" ] || exit 64
+        attempt=0
+        if [ -f "$FAKE_API_ASSET_ATTEMPT_FILE" ]; then
+            attempt=$(cat "$FAKE_API_ASSET_ATTEMPT_FILE")
+        fi
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" >"$FAKE_API_ASSET_ATTEMPT_FILE"
+        printf 'partial asset\n' >"$output_path"
+        if [ "${FAKE_API_ASSET_SUCCEED:-0}" = 1 ]; then
+            printf 'complete asset\n' >"$output_path"
+            exit 0
+        fi
+        exit 56
+        ;;
+esac
 
 attempt=0
 if [ -f "$FAKE_CURL_ATTEMPT_FILE" ]; then
@@ -60,6 +108,44 @@ printf 'partial asset\n' >"$output_path"
 printf 'curl: (56) TLS unexpected EOF\n' >&2
 exit 56
 SH
+    cat >"$bin_dir/gh" <<'SH'
+#!/bin/sh
+set -eu
+
+output_dir=""
+asset=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dir)
+            output_dir="$2"
+            shift 2
+            ;;
+        --pattern)
+            asset="$2"
+            shift 2
+            ;;
+        *) shift ;;
+    esac
+done
+[ -n "$output_dir" ] || exit 64
+[ -n "$asset" ] || exit 64
+[ -n "${FAKE_GH_ATTEMPT_FILE:-}" ] || exit 64
+
+attempt=0
+if [ -f "$FAKE_GH_ATTEMPT_FILE" ]; then
+    attempt=$(cat "$FAKE_GH_ATTEMPT_FILE")
+fi
+attempt=$((attempt + 1))
+printf '%s\n' "$attempt" >"$FAKE_GH_ATTEMPT_FILE"
+
+output_path="$output_dir/$asset"
+printf 'partial asset\n' >"$output_path"
+if [ "${FAKE_GH_SUCCEED:-0}" = 1 ]; then
+    printf 'complete asset\n' >"$output_path"
+    exit 0
+fi
+exit 1
+SH
     cat >"$bin_dir/sleep" <<'SH'
 #!/bin/sh
 set -eu
@@ -72,7 +158,7 @@ count=$((count + 1))
 printf '%s\n' "$count" >"$FAKE_SLEEP_COUNT_FILE"
 exit 0
 SH
-    chmod +x "$bin_dir/curl" "$bin_dir/sleep"
+    chmod +x "$bin_dir/curl" "$bin_dir/gh" "$bin_dir/sleep"
 }
 
 assert_download_retries() {
@@ -81,26 +167,113 @@ assert_download_retries() {
     local output_dir="$case_dir/download"
     local output_path="$output_dir/asset.tar.gz"
     local attempt_file="$case_dir/attempts"
+    local api_metadata_attempt_file="$case_dir/api-metadata-attempts"
+    local api_asset_attempt_file="$case_dir/api-asset-attempts"
+    local gh_attempt_file="$case_dir/gh-attempts"
     local sleep_count_file="$case_dir/sleeps"
     local stdout_file="$case_dir/stdout"
     local fake_bin="$TEST_ROOT/fake-download-bin"
 
     mkdir -p "$case_dir"
     if PATH="$fake_bin:$PATH" \
+        GH_TOKEN=test-token \
         FAKE_CURL_ATTEMPT_FILE="$attempt_file" \
         FAKE_SLEEP_COUNT_FILE="$sleep_count_file" \
         FAKE_CURL_SUCCEED_ON="$succeed_on" \
+        FAKE_API_METADATA_ATTEMPT_FILE="$api_metadata_attempt_file" \
+        FAKE_API_ASSET_ATTEMPT_FILE="$api_asset_attempt_file" \
+        FAKE_API_METADATA_SUCCEED=0 \
+        FAKE_API_ASSET_SUCCEED=0 \
+        FAKE_GH_ATTEMPT_FILE="$gh_attempt_file" \
+        FAKE_GH_SUCCEED=0 \
         hook_download_locked_asset example/release v1.0.0 asset.tar.gz "$output_dir" >"$stdout_file" 2>/dev/null; then
         [ "$succeed_on" -le 3 ] || fail "download unexpectedly succeeded after persistent failures"
         [ "$(cat "$stdout_file")" = "$output_path" ] || fail "download returned the wrong output path"
         [ "$(cat "$output_path")" = "complete asset" ] || fail "download did not replace partial content"
+        [ ! -e "$api_metadata_attempt_file" ] || fail "REST fallback ran before direct retries succeeded"
+        [ ! -e "$gh_attempt_file" ] || fail "authenticated fallback ran before direct retries succeeded"
     else
         [ "$succeed_on" -gt 3 ] || fail "download unexpectedly failed before retry ceiling"
         [ ! -e "$output_path" ] || fail "persistent download failure left a partial asset"
         [ ! -s "$stdout_file" ] || fail "failed download returned an output path"
+        [ "$(cat "$api_metadata_attempt_file")" = 1 ] || fail "persistent failure did not try REST fallback exactly once"
+        [ ! -e "$api_asset_attempt_file" ] || fail "REST asset download ran after metadata lookup failed"
+        [ "$(cat "$gh_attempt_file")" = 1 ] || fail "persistent failure did not try authenticated fallback exactly once"
     fi
     [ "$(cat "$attempt_file")" = 3 ] || fail "download did not stop after exactly three attempts"
     [ "$(cat "$sleep_count_file")" = 2 ] || fail "download did not wait only between attempts"
+}
+
+assert_public_api_download_fallback() {
+    local case_dir="$1"
+    local output_dir="$case_dir/download"
+    local output_path="$output_dir/asset.tar.gz"
+    local curl_attempt_file="$case_dir/curl-attempts"
+    local api_metadata_attempt_file="$case_dir/api-metadata-attempts"
+    local api_asset_attempt_file="$case_dir/api-asset-attempts"
+    local gh_attempt_file="$case_dir/gh-attempts"
+    local sleep_count_file="$case_dir/sleeps"
+    local stdout_file="$case_dir/stdout"
+    local fake_bin="$TEST_ROOT/fake-download-bin"
+
+    mkdir -p "$case_dir"
+    PATH="$fake_bin:$PATH" \
+        GH_TOKEN=test-token \
+        FAKE_CURL_ATTEMPT_FILE="$curl_attempt_file" \
+        FAKE_SLEEP_COUNT_FILE="$sleep_count_file" \
+        FAKE_CURL_SUCCEED_ON=4 \
+        FAKE_API_METADATA_ATTEMPT_FILE="$api_metadata_attempt_file" \
+        FAKE_API_ASSET_ATTEMPT_FILE="$api_asset_attempt_file" \
+        FAKE_API_METADATA_SUCCEED=1 \
+        FAKE_API_ASSET_SUCCEED=1 \
+        FAKE_GH_ATTEMPT_FILE="$gh_attempt_file" \
+        FAKE_GH_SUCCEED=0 \
+        hook_download_locked_asset example/release v1.0.0 asset.tar.gz "$output_dir" >"$stdout_file" 2>/dev/null ||
+        fail "public GitHub REST fallback did not recover the download"
+
+    [ "$(cat "$curl_attempt_file")" = 3 ] || fail "REST fallback did not wait for all direct retries"
+    [ "$(cat "$sleep_count_file")" = 2 ] || fail "REST fallback changed direct retry backoff semantics"
+    [ "$(cat "$api_metadata_attempt_file")" = 1 ] || fail "REST fallback did not resolve release metadata exactly once"
+    [ "$(cat "$api_asset_attempt_file")" = 1 ] || fail "REST fallback did not download the resolved asset exactly once"
+    [ ! -e "$gh_attempt_file" ] || fail "authenticated fallback ran after REST fallback succeeded"
+    [ "$(cat "$stdout_file")" = "$output_path" ] || fail "REST fallback returned the wrong output path"
+    [ "$(cat "$output_path")" = "complete asset" ] || fail "REST fallback did not replace the failed partial asset"
+}
+
+assert_authenticated_download_fallback() {
+    local case_dir="$1"
+    local output_dir="$case_dir/download"
+    local output_path="$output_dir/asset.tar.gz"
+    local curl_attempt_file="$case_dir/curl-attempts"
+    local api_metadata_attempt_file="$case_dir/api-metadata-attempts"
+    local api_asset_attempt_file="$case_dir/api-asset-attempts"
+    local gh_attempt_file="$case_dir/gh-attempts"
+    local sleep_count_file="$case_dir/sleeps"
+    local stdout_file="$case_dir/stdout"
+    local fake_bin="$TEST_ROOT/fake-download-bin"
+
+    mkdir -p "$case_dir"
+    PATH="$fake_bin:$PATH" \
+        GH_TOKEN=test-token \
+        FAKE_CURL_ATTEMPT_FILE="$curl_attempt_file" \
+        FAKE_SLEEP_COUNT_FILE="$sleep_count_file" \
+        FAKE_CURL_SUCCEED_ON=4 \
+        FAKE_API_METADATA_ATTEMPT_FILE="$api_metadata_attempt_file" \
+        FAKE_API_ASSET_ATTEMPT_FILE="$api_asset_attempt_file" \
+        FAKE_API_METADATA_SUCCEED=0 \
+        FAKE_API_ASSET_SUCCEED=0 \
+        FAKE_GH_ATTEMPT_FILE="$gh_attempt_file" \
+        FAKE_GH_SUCCEED=1 \
+        hook_download_locked_asset example/release v1.0.0 asset.tar.gz "$output_dir" >"$stdout_file" 2>/dev/null ||
+        fail "authenticated GitHub fallback did not recover the download"
+
+    [ "$(cat "$curl_attempt_file")" = 3 ] || fail "authenticated fallback did not wait for all direct retries"
+    [ "$(cat "$sleep_count_file")" = 2 ] || fail "authenticated fallback changed direct retry backoff semantics"
+    [ "$(cat "$api_metadata_attempt_file")" = 1 ] || fail "authenticated fallback did not wait for the REST fallback"
+    [ ! -e "$api_asset_attempt_file" ] || fail "REST asset download ran after metadata lookup failed"
+    [ "$(cat "$gh_attempt_file")" = 1 ] || fail "authenticated fallback did not run exactly once"
+    [ "$(cat "$stdout_file")" = "$output_path" ] || fail "authenticated fallback returned the wrong output path"
+    [ "$(cat "$output_path")" = "complete asset" ] || fail "authenticated fallback did not replace the failed partial asset"
 }
 
 # shellcheck source=hooks/lib/utils.sh
@@ -113,6 +286,8 @@ assert_download_retries() {
 make_fake_download_commands "$TEST_ROOT/fake-download-bin"
 assert_download_retries "$TEST_ROOT/download-eventual-success" 3
 assert_download_retries "$TEST_ROOT/download-persistent-failure" 4
+assert_public_api_download_fallback "$TEST_ROOT/download-rest-fallback"
+assert_authenticated_download_fallback "$TEST_ROOT/download-gh-fallback"
 
 assert_lock() {
     local component="$1"
