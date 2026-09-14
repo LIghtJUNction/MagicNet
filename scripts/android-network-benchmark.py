@@ -37,60 +37,76 @@ def q(value: str) -> str:
     return shlex.quote(value)
 
 
-def now_ms_expr(bb: str) -> str:
-    return f"{bb} date +%s%3N"
+def elapsed_ms(start: str, end: str) -> int:
+    try:
+        return max(0, round((float(end) - float(start)) * 1000.0))
+    except ValueError:
+        return 0
 
 
 def fetch_probe(bb: str, url: str, timeout_s: int) -> dict[str, Any]:
     command = (
         "set +e; "
-        f"start=$({now_ms_expr(bb)}); "
+        f"start=$({bb} cut -d' ' -f1 /proc/uptime); "
         f"{bb} timeout {timeout_s} {bb} wget -q -T {timeout_s} -O /dev/null {q(url)}; "
         "rc=$?; "
-        f"end=$({now_ms_expr(bb)}); "
-        "elapsed=$((end-start)); "
-        "printf '%s|%s\\n' \"$rc\" \"$elapsed\"; exit 0"
+        f"end=$({bb} cut -d' ' -f1 /proc/uptime); "
+        "printf '%s|%s|%s\\n' \"$rc\" \"$start\" \"$end\"; exit 0"
     )
     cp = adb_shell(command, timeout=timeout_s + 15)
-    line = cp.stdout.strip().splitlines()[-1] if cp.stdout.strip() else "255|0"
+    line = cp.stdout.strip().splitlines()[-1] if cp.stdout.strip() else "255|0|0"
     try:
-        rc_s, elapsed_s = line.split("|", 1)
+        rc_s, start_s, end_s = line.split("|", 2)
         rc = int(rc_s)
-        elapsed_ms = max(0, int(elapsed_s))
+        duration_ms = elapsed_ms(start_s, end_s)
     except (ValueError, IndexError):
-        rc, elapsed_ms = 255, 0
-    return {"ok": rc == 0, "rc": rc, "elapsed_ms": elapsed_ms, "output": cp.stdout[-600:]}
+        rc, duration_ms = 255, 0
+    return {"ok": rc == 0, "rc": rc, "elapsed_ms": duration_ms, "output": cp.stdout[-600:]}
 
 
 def speed_probe(bb: str, name: str, url: str, bytes_target: int, timeout_s: int) -> dict[str, Any]:
-    # Stop after bytes_target even when the source object is larger. Pipeline
-    # status follows head, intentionally treating wget's SIGPIPE as expected.
-    inner = f"{bb} wget -q -T {timeout_s} -O - {q(url)} | {bb} head -c {bytes_target} > /dev/null"
+    # Do not trust the pipeline return code alone: wget can fail while the final
+    # consumer exits successfully. Write at most the requested amount and verify
+    # the actual byte count before calling the probe successful.
+    block_size = 64 * 1024
+    blocks = (bytes_target + block_size - 1) // block_size
+    tmp = "/data/local/tmp/magicnet-speed-probe.bin"
+    inner = (
+        f"{bb} wget -q -T {timeout_s} -O - {q(url)} | "
+        f"{bb} dd of={q(tmp)} bs={block_size} count={blocks} 2>/dev/null"
+    )
     command = (
         "set +e; "
-        f"start=$({now_ms_expr(bb)}); "
+        f"rm -f {q(tmp)}; "
+        f"start=$({bb} cut -d' ' -f1 /proc/uptime); "
         f"{bb} timeout {timeout_s} sh -c {q(inner)}; rc=$?; "
-        f"end=$({now_ms_expr(bb)}); elapsed=$((end-start)); "
-        "printf '%s|%s\\n' \"$rc\" \"$elapsed\"; exit 0"
+        f"end=$({bb} cut -d' ' -f1 /proc/uptime); "
+        f"received=$({bb} wc -c < {q(tmp)} 2>/dev/null || echo 0); "
+        f"rm -f {q(tmp)}; "
+        "printf '%s|%s|%s|%s\\n' \"$rc\" \"$start\" \"$end\" \"$received\"; exit 0"
     )
     cp = adb_shell(command, timeout=timeout_s + 15)
-    line = cp.stdout.strip().splitlines()[-1] if cp.stdout.strip() else "255|0"
+    line = cp.stdout.strip().splitlines()[-1] if cp.stdout.strip() else "255|0|0|0"
     try:
-        rc_s, elapsed_s = line.split("|", 1)
+        rc_s, start_s, end_s, received_s = line.split("|", 3)
         rc = int(rc_s)
-        elapsed_ms = max(0, int(elapsed_s))
+        duration_ms = elapsed_ms(start_s, end_s)
+        received = max(0, int(received_s.strip()))
     except (ValueError, IndexError):
-        rc, elapsed_ms = 255, 0
+        rc, duration_ms, received = 255, 0, 0
+
+    ok = received >= bytes_target
     mbps = None
-    if rc == 0 and elapsed_ms > 0:
-        mbps = round((bytes_target * 8.0) / (elapsed_ms / 1000.0) / 1_000_000.0, 3)
+    if ok and duration_ms > 0:
+        mbps = round((received * 8.0) / (duration_ms / 1000.0) / 1_000_000.0, 3)
     return {
         "name": name,
         "url": url,
-        "ok": rc == 0,
+        "ok": ok,
         "rc": rc,
-        "elapsed_ms": elapsed_ms,
-        "bytes": bytes_target,
+        "elapsed_ms": duration_ms,
+        "requested_bytes": bytes_target,
+        "received_bytes": received,
         "mbps": mbps,
     }
 
@@ -278,10 +294,11 @@ def main() -> int:
         latency = f"{row['median_latency_ms']} ms" if row["median_latency_ms"] is not None else "-"
         md.append(f"| {row['id']} | {row['category']} | {row['successes']}/{row['rounds']} | {latency} |")
     if speed_records:
-        md += ["", "## Throughput", "", "| Probe | Result | Throughput |", "|---|---:|---:|"]
+        md += ["", "## Throughput", "", "| Probe | Result | Received | Throughput |", "|---|---:|---:|---:|"]
         for row in speed_records:
             rate = f"{row['mbps']} Mbps" if row["mbps"] is not None else "-"
-            md.append(f"| {row['name']} | {'PASS' if row['ok'] else 'FAIL'} | {rate} |")
+            received_mib = round(row["received_bytes"] / 1024 / 1024, 2)
+            md.append(f"| {row['name']} | {'PASS' if row['ok'] else 'FAIL'} | {received_mib} MiB | {rate} |")
     md += [
         "",
         "> These are anonymous public endpoint tests. They do not log into third-party apps or send account credentials through free proxy nodes.",
