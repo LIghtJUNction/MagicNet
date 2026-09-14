@@ -76,7 +76,7 @@ test "$(magicnet_singbox_google_reliability_patch "$config")" = unchanged
 # An explicit operator pin must survive the reliability patch. Only the generated
 # default `proxy` is migrated to the Google-specific automatic health group.
 jq '(.outbounds[] | select(.tag=="google-proxy")).default="direct"' "$config" >"$fixture/explicit.json"
-test "$(magicnet_singbox_google_reliability_patch "$fixture/explicit.json")" = changed
+test "$(magicnet_singbox_google_reliability_patch "$fixture/explicit.json")" = unchanged
 jq -e '.outbounds[] | select(.tag=="google-proxy") | .default=="direct"' "$fixture/explicit.json" >/dev/null
 
 printf '%s\n' 'Google Play, Gmail/Google selector, Gemini auto routing and memory limit regression passed'
