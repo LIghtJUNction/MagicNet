@@ -141,9 +141,16 @@ adb shell 'ip link show magicnet0' | tee "$OUT/tun.txt"
 adb shell "$MODDIR/cli config-editor validate sing-box" | tee "$OUT/config-validate.txt"
 
 log 'running domestic/global app-service matrix, latency, throughput and memory probes'
+# Keep the shared 24-target corpus stable for its deterministic regressions while
+# extending the Android-only acceptance matrix with the two apps reported broken.
+android_targets="$OUT/android-network-targets.tsv"
+cp "$ROOT/src/MagicNet/lib/magicnet/network-targets.tsv" "$android_targets"
+printf '%s\n' \
+    'gmail|google|https://mail.google.com/mail/u/0/|200' \
+    'gemini|google|https://gemini.google.com/|200' >>"$android_targets"
 bench_args=(
     "$ROOT/scripts/android-network-benchmark.py"
-    --targets "$ROOT/src/MagicNet/lib/magicnet/network-targets.tsv"
+    --targets "$android_targets"
     --output "$OUT/benchmark"
     --rounds "$ROUNDS"
 )
