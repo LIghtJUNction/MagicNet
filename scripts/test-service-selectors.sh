@@ -10,6 +10,8 @@ magicnet_singbox_subscription_filter_file() { printf '%s\n' "$fixture/filters"; 
 printf '%s\n' '[{"type":"socks","tag":"US-test","server":"127.0.0.1","server_port":1080,"version":"5"},{"type":"socks","tag":"google-proxy","server":"127.0.0.1","server_port":1081,"version":"5"}]' > "$fixture/nodes"
 printf '%s\n' US-test google-proxy > "$fixture/tags"
 magicnet_singbox_build_outbounds_file_with_jq "$fixture/nodes" "$fixture/tags" "$fixture/outbounds"
+# A colliding subscription node must not replace the maintained selector.
+jq -e '[.[] | select(.tag == "google-proxy")] | length == 1 and .[0].type == "selector"' "$fixture/outbounds" >/dev/null
 for service in google youtube github discord netflix spotify twitter whatsapp telegram; do
     magicnet_singbox_tag_is_reserved "$service-proxy"
     jq -e --arg tag "$service-proxy" '
@@ -21,4 +23,10 @@ for service in google youtube github discord netflix spotify twitter whatsapp te
     ' "$fixture/outbounds" >/dev/null
 done
 jq -e '[.[].tag] | length == (unique | length)' "$fixture/outbounds" >/dev/null
-printf 'Service selectors: node choices, reserved collisions and defaults passed\n'
+# Every maintained selector must retain a usable proxy default after regeneration.
+for service in google youtube github discord netflix spotify twitter whatsapp telegram; do
+    jq -e --arg tag "$service-proxy" '
+      .[] | select(.tag == $tag) | .outbounds | index("US-test") != null
+    ' "$fixture/outbounds" >/dev/null
+done
+printf 'Service selectors: node choices, reserved collisions, defaults and preservation passed\n'

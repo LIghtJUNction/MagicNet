@@ -355,6 +355,9 @@ magicnet_singbox_sanitize_generated_config() {
         if ($tags | length) > 0 then [proxy_urltest($tags), proxy_selector($tags)]
         else [proxy_selector($tags)]
         end;
+      def maintained_service_selectors($tags):
+        ["google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "telegram-proxy"]
+        | map({type: "selector", tag: ., outbounds: (if ($tags | length) > 0 then ($tags + ["direct", "block"]) else ["block"] end), default: (if ($tags | length) > 0 then $tags[0] else "block" end)});
       def ai_proxy_selector($tags):
         if ($tags | length) > 0
         then {"type": "selector", "tag": "ai-proxy", "outbounds": $tags, "default": $tags[0]}
@@ -425,13 +428,15 @@ magicnet_singbox_sanitize_generated_config() {
               "proxy", "proxy-auto", "chain", "chain-hop1", "chain-exit", "chain-auto",
               "ai-proxy",
               "ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude",
-              "ai-chatgpt-auto", "ai-gemini-auto", "ai-grok-auto", "ai-claude-auto"
+              "ai-chatgpt-auto", "ai-gemini-auto", "ai-grok-auto", "ai-claude-auto",
+              "google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "telegram-proxy"
             ] | index($tag) == null))
           | (proxy_outbounds($node_tags) + .)
           | if any(.tag == "dns-guard") then .
             else . + [{"type": "selector", "tag": "dns-guard", "outbounds": ["proxy", "block", "direct"], "default": "proxy"}]
             end
           | . + [ai_proxy_selector($ai_tags)]
+          | . + maintained_service_selectors($node_tags)
           | . + ai_service_outbounds($ai_tags))
       | .route.rules = ((.route.rules // [])
         | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
