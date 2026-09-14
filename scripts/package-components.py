@@ -41,6 +41,28 @@ chmod 0755 "$MODPATH/bin/magicnet-components" || abort "! component bootstrap is
 # End component bootstrap.
 '''
 
+LEGACY_INSTALLER_CLEANUP = '''
+# Retire only the old downloader module, and only after all customization passed.
+# Use manager removal flags: never recursively delete another module here.
+case "$MODPATH" in
+  */modules/MagicNet|*/modules_update/MagicNet)
+    _legacy_adb=${MODPATH%/*/*}
+    for _legacy_parent in "$_legacy_adb/modules" "$_legacy_adb/modules_update"; do
+      _legacy_dir="$_legacy_parent/magicnet_installer"
+      [ ! -L "$_legacy_adb" ] && [ ! -L "$_legacy_parent" ] &&
+        [ -d "$_legacy_dir" ] && [ ! -L "$_legacy_dir" ] &&
+        [ -f "$_legacy_dir/module.prop" ] && [ ! -L "$_legacy_dir/module.prop" ] &&
+        [ ! -L "$_legacy_dir/remove" ] || continue
+      [ "$(sed -n 's/^id=//p' "$_legacy_dir/module.prop")" = magicnet_installer ] || continue
+      if ! touch "$_legacy_dir/remove"; then
+        ui_print "! Could not retire the old MagicNet installer; remove it in your manager."
+      fi
+    done
+    unset _legacy_adb _legacy_parent _legacy_dir
+    ;;
+esac
+'''
+
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -163,7 +185,8 @@ def split(source: Path, helper: Path, output: Path, repository: str, arch: str) 
     anchor = "import this\n"
     if text.count(anchor) != 1:
         raise ValueError("customize.sh bootstrap anchor changed; review integration")
-    scaffold["customize.sh"] = zip_entry("customize.sh", text.replace(anchor, anchor + BOOTSTRAP).encode(), 0o755)
+    scaffold["customize.sh"] = zip_entry("customize.sh", (text.replace(anchor, anchor + BOOTSTRAP).rstrip() +
+                                                     "\n" + LEGACY_INSTALLER_CLEANUP).encode(), 0o755)
     scaffold[HELPER] = zip_entry(HELPER, helper.read_bytes(), 0o755)
     manifest = {"schema": 1, "module": "MagicNet", "version": prop["version"],
                 "architecture": arch, "repository": repository, "components": []}
@@ -205,10 +228,15 @@ def split(source: Path, helper: Path, output: Path, repository: str, arch: str) 
         for entries in groups.values():
             complete.update(entries)
         write_zip(stage / "MagicNet-full.zip", complete)
-        # Preserve update.json and the generic downloader's existing asset name.
-        shutil.copyfile(stage / "MagicNet-core.zip", stage / "MagicNet.zip")
+        # The public installer IS the MagicNet core. Managers select MODID before
+        # customize.sh runs, so an outer magicnet_installer module cannot become
+        # MagicNet reliably by nesting install_module. Keep download names as
+        # aliases, not separate module identities or another downloaded ZIP.
+        for alias in ("MagicNet.zip", "magicnet_installer.zip"):
+            shutil.copyfile(stage / "MagicNet-core.zip", stage / alias)
         report = {"version": prop["version"], "removed_build_cache_bytes": removed_bytes,
-                  "core_bytes": core_bytes, "core_limit_bytes": MAX_CORE_BYTES,
+                  "core_bytes": core_bytes, "installer_bytes": core_bytes,
+                  "core_limit_bytes": MAX_CORE_BYTES,
                   "full_bytes": (stage / "MagicNet-full.zip").stat().st_size,
                   "components": [{"id": c["id"], "bytes": c["size"], "sha256": c["sha256"]}
                                  for c in manifest["components"]]}
