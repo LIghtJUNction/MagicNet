@@ -11,6 +11,8 @@ bing_cn|domestic|https://cn.bing.com/|200
 google|global|https://www.google.com/|200
 google_play|google|https://play.google.com/generate_204|204
 google_login|google|https://accounts.google.com/|200
+gmail|google|https://mail.google.com/mail/u/0/|200
+gemini|google|https://gemini.google.com/|200
 google_static|google|https://www.gstatic.com/generate_204|204
 android_connectivity|google|https://connectivitycheck.gstatic.com/generate_204|204
 google_download|google|https://dl.google.com/android/repository/addons_list-5.xml|200
