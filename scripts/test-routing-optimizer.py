@@ -52,11 +52,7 @@ class RoutingOptimizerTests(unittest.TestCase):
                     },
                     {"rule_set": ["lyc-geosite-ads"], "server": "doh-cloudflare"},
                     {
-                        "rule_set": ["meta-tencent"],
-                        "server": "bootstrap-local-dns",
-                    },
-                    {
-                        "rule_set": ["karing-acl4ssr-wechat"],
+                        "rule_set": ["meta-tencent", "karing-acl4ssr-wechat"],
                         "server": "bootstrap-local-dns",
                     },
                     {"rule_set": ["r1"], "server": "doh-google"},
@@ -76,14 +72,15 @@ class RoutingOptimizerTests(unittest.TestCase):
             domain_index(dns, "android.clients.google.com"),
             tag_index(dns, "meta-google-gemini"),
         )
-        self.assertLess(
-            tag_index(route, "karing-acl4ssr-wechat"),
-            tag_index(route, "lyc-geosite-ads"),
-        )
-        self.assertLess(
-            tag_index(dns, "karing-acl4ssr-wechat"),
-            tag_index(dns, "lyc-geosite-ads"),
-        )
+        for rules in (route, dns):
+            self.assertLess(
+                tag_index(rules, "karing-acl4ssr-wechat"),
+                tag_index(rules, "lyc-geosite-ads"),
+            )
+            self.assertLess(
+                tag_index(rules, "lyc-geosite-ads"),
+                tag_index(rules, "meta-tencent"),
+            )
 
     def test_priorities_deduplication_and_compaction(self):
         optimized = OPTIMIZER.optimize_config(self.fixture())
