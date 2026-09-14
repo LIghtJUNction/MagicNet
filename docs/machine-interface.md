@@ -50,6 +50,7 @@ Current schema-1 status commands:
 service.status
 core.status
 supervisor.status
+transparent.status
 dns.status
 network.status
 sub.status
@@ -61,11 +62,37 @@ Examples:
 
 ```sh
 /data/adb/modules/MagicNet/cli --json service status
+/data/adb/modules/MagicNet/cli --json transparent status
 /data/adb/modules/MagicNet/cli --json dns status
 /data/adb/modules/MagicNet/cli --json network status
 /data/adb/modules/MagicNet/cli --json sub status
 /data/adb/modules/MagicNet/cli --json wifi status
 ```
+
+## Readiness semantics
+
+A running process is not proof that the proxy is ready.
+
+`service.status` therefore reports three layers independently:
+
+- `core.sing_box.process_state`: whether the owned sing-box process can be proven running, stopped or unknown.
+- `api.ready`: whether the local sing-box control API is responding.
+- `readiness.dataplane`: whether the selected transparent dataplane is actually present.
+
+`readiness.overall` is true only when both the API and dataplane are ready. Unknown evidence stays `null`; it is never promoted to ready.
+
+The service lifecycle is derived from those signals:
+
+```text
+stopped
+unknown
+reconfiguring
+ready
+not_ready
+running_unknown
+```
+
+For TUN, dataplane readiness requires the configured TUN interface to exist in sysfs. For eBPF, MagicNet refreshes the active-program report and reuses the kernel attachment inspector to verify required cgroup/TC attachments. `transparent.status` exposes the normalized result without returning interface names or other unnecessary network identifiers.
 
 ## Privacy boundary
 
@@ -79,6 +106,7 @@ Examples already enforced in schema 1:
 - Wi-Fi status reports connection/match state and list counts; it does not expose SSID or BSSID text.
 - Network status separates `configured` policy from the values materialized in the effective sing-box configuration.
 - Service PID inspection distinguishes `running`, `stopped` and `unknown`; an inspection failure is not treated as a running service.
+- Transparent status reports attachment states and interface counts, not shared-interface names.
 
 ## Compatibility
 

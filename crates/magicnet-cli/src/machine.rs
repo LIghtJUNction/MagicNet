@@ -8,6 +8,8 @@ use crate::{
     singbox_pid_summary, webui_api::current_clash_mode, App,
 };
 
+mod transparent;
+
 const MACHINE_SCHEMA: u64 = 1;
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
 const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
@@ -29,6 +31,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "service.status",
     "core.status",
     "supervisor.status",
+    "transparent.status",
     "dns.status",
     "network.status",
     "sub.status",
@@ -76,6 +79,9 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         }
         [command, action] if *command == "supervisor" && *action == "status" => {
             Ok(supervisor_status_value(app))
+        }
+        [command, action] if *command == "transparent" && *action == "status" => {
+            Ok(transparent_status_value(app))
         }
         [command, action] if *command == "dns" && *action == "status" => Ok(dns_status_value(app)),
         [command, action] if *command == "network" && *action == "status" => {
@@ -132,7 +138,8 @@ fn capabilities_value() -> Value {
                 "structured_errors",
                 "redacted_status",
                 "configured_effective_split",
-                "privacy_safe_network_identifiers"
+                "privacy_safe_network_identifiers",
+                "readiness_signals"
             ],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": true,
@@ -154,12 +161,17 @@ fn service_status_value(app: &App) -> Value {
         None
     };
     let selected = selected_core(app);
-    let transparent = transparent_mode(app);
+    let configured_transparent = transparent_mode(app);
+    let transparent = transparent::snapshot(app, process_state, &configured_transparent);
+    let api_ready = api_readiness(app, process_state);
+    let overall_ready = combine_readiness(api_ready, transparent.dataplane_ready);
+    let lifecycle = service_lifecycle(process_state, &transparent.transition, overall_ready);
     let subscription_source = subscription_source_mode(app);
 
     envelope(
         "service.status",
         json!({
+            "lifecycle": lifecycle,
             "core": {
                 "selected": selected,
                 "sing_box": {
@@ -170,12 +182,15 @@ fn service_status_value(app: &App) -> Value {
                 }
             },
             "supervisors": supervisor_data(app),
-            "transparent": {
-                "mode": transparent,
-            },
+            "transparent": transparent.as_value(),
             "api": {
                 "url": app.api,
                 "webui": singbox_webui(app),
+                "ready": api_ready,
+            },
+            "readiness": {
+                "dataplane": transparent.dataplane_ready,
+                "overall": overall_ready,
             },
             "subscription": {
                 "source": subscription_source,
@@ -195,6 +210,14 @@ fn core_status_value(app: &App) -> Value {
 
 fn supervisor_status_value(app: &App) -> Value {
     envelope("supervisor.status", supervisor_data(app))
+}
+
+fn transparent_status_value(app: &App) -> Value {
+    let process = singbox_pid_summary(app);
+    let process_state = process_state(&process);
+    let configured = transparent_mode(app);
+    let status = transparent::snapshot(app, process_state, &configured);
+    envelope("transparent.status", status.as_value())
 }
 
 fn supervisor_data(app: &App) -> Value {
@@ -411,6 +434,40 @@ fn wifi_status_value_with_current(app: &App, current_mode: &str) -> Value {
     )
 }
 
+fn api_readiness(app: &App, process_state: &str) -> Option<bool> {
+    match process_state {
+        "running" => Some(current_clash_mode(app).is_ok()),
+        "stopped" => Some(false),
+        _ => None,
+    }
+}
+
+fn combine_readiness(api_ready: Option<bool>, dataplane_ready: Option<bool>) -> Option<bool> {
+    match (api_ready, dataplane_ready) {
+        (Some(false), _) | (_, Some(false)) => Some(false),
+        (Some(true), Some(true)) => Some(true),
+        _ => None,
+    }
+}
+
+fn service_lifecycle(
+    process_state: &str,
+    transition: &str,
+    overall_ready: Option<bool>,
+) -> &'static str {
+    match process_state {
+        "stopped" => "stopped",
+        "unknown" => "unknown",
+        "running" if transition != "idle" => "reconfiguring",
+        "running" => match overall_ready {
+            Some(true) => "ready",
+            Some(false) => "not_ready",
+            None => "running_unknown",
+        },
+        _ => "unknown",
+    }
+}
+
 fn subscription_source_mode(app: &App) -> &'static str {
     if clean_module_lines(app, Path::new(SUBSCRIPTION_LOCAL))
         .map(|lines| !lines.is_empty())
@@ -570,8 +627,10 @@ fn parse_rss_kib(status: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        capabilities_value, dns_status_value, machine_value, network_status_value, parse_rss_kib,
-        process_state, service_status_value, sub_status_value, wifi_status_value_with_current,
+        capabilities_value, combine_readiness, dns_status_value, machine_value,
+        network_status_value, parse_rss_kib, process_state, service_lifecycle,
+        service_status_value, sub_status_value, transparent_status_value,
+        wifi_status_value_with_current,
     };
     use crate::App;
     use std::fs;
@@ -615,6 +674,9 @@ mod tests {
             .any(|command| command.as_str() == Some("service.status")));
         assert!(commands
             .iter()
+            .any(|command| command.as_str() == Some("transparent.status")));
+        assert!(commands
+            .iter()
             .any(|command| command.as_str() == Some("sub.status")));
         assert!(commands
             .iter()
@@ -650,6 +712,28 @@ mod tests {
         assert!(!value.to_string().contains("example.invalid"));
         assert!(!value.to_string().contains("secret"));
 
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn transparent_machine_status_keeps_configured_and_effective_modes_distinct() {
+        let (root, app) = fixture();
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )
+        .expect("write transparent config");
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{"inbounds":[{"tag":"tun-in","type":"ebpf","mode":"hybrid","network":["tcp","udp"],"local":{"cgroup_path":"/sys/fs/cgroup"},"shared":{"interface":["wlan0"]}}]}"#,
+        )
+        .expect("write effective config");
+        let value = transparent_status_value(&app);
+        assert_eq!(value["command"], "transparent.status");
+        assert_eq!(value["data"]["configured_mode"], "ebpf");
+        assert_eq!(value["data"]["effective_type"], "ebpf");
+        assert_eq!(value["data"]["effective_mode"], "hybrid");
+        assert_eq!(value["data"]["shared_interface_count"], 1);
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
@@ -783,6 +867,30 @@ mod tests {
         assert!(!encoded.contains("SECRET-WIFI"));
         assert!(!encoded.contains("aa:bb:cc:dd:ee:ff"));
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn readiness_requires_both_control_plane_and_dataplane() {
+        assert_eq!(combine_readiness(Some(true), Some(true)), Some(true));
+        assert_eq!(combine_readiness(Some(true), Some(false)), Some(false));
+        assert_eq!(combine_readiness(Some(false), None), Some(false));
+        assert_eq!(combine_readiness(Some(true), None), None);
+    }
+
+    #[test]
+    fn lifecycle_never_calls_a_pid_only_service_ready() {
+        assert_eq!(service_lifecycle("stopped", "idle", Some(false)), "stopped");
+        assert_eq!(service_lifecycle("unknown", "idle", None), "unknown");
+        assert_eq!(
+            service_lifecycle("running", "switching", Some(false)),
+            "reconfiguring"
+        );
+        assert_eq!(
+            service_lifecycle("running", "idle", Some(false)),
+            "not_ready"
+        );
+        assert_eq!(service_lifecycle("running", "idle", None), "running_unknown");
+        assert_eq!(service_lifecycle("running", "idle", Some(true)), "ready");
     }
 
     #[test]
