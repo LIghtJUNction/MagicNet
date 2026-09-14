@@ -144,11 +144,143 @@ magicnet_tailscale_scrub_auth_key() {
     return "$_rc"
 }
 
+magicnet_cloudflared_auth_file() {
+    printf '%s\n' "${MODDIR}/.config/sing-box/cloudflared-auth.json"
+}
+
+# Cloudflared tunnel tokens are credentials. Keep them out of the editable
+# sing-box config at rest and materialize them only for validation/startup.
+# Tagged inbounds are keyed by tag; untagged ones use their stable array index
+# so manually-authored configurations are protected as well.
+magicnet_cloudflared_apply_unlocked() (
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+    _jq="${MODDIR}/bin/jq"
+    [ -x "$_jq" ] || return 1
+    _auth="$(magicnet_cloudflared_auth_file)"
+    _tmp="${_config}.cloudflared.new"
+    _new_auth="${_auth}.new"
+    _merged_auth="${_auth}.merged"
+    _old_umask="$(umask)"
+    umask 077
+    trap 'rm -f "$_tmp" "$_new_auth" "$_merged_auth"; umask "$_old_umask"' 0
+    mkdir -p "${_auth%/*}" || return 1
+    chmod 700 "${_auth%/*}" 2>/dev/null || true
+
+    "$_jq" '
+      reduce (((.inbounds // []) | to_entries[])
+        | select((.value.type // "") == "cloudflared"
+          and ((.value.token // "") | type) == "string"
+          and (.value.token // "") != "")) as $entry
+        ({};
+          ($entry.value.tag // "") as $tag
+          | (if $tag != "" then "tag:" + $tag else "index:" + ($entry.key | tostring) end) as $key
+          | .[$key] = $entry.value.token)
+    ' "$_config" >"$_new_auth" || return 1
+    if [ "$("$_jq" 'length' "$_new_auth" 2>/dev/null)" -gt 0 ]; then
+        if [ -s "$_auth" ]; then
+            "$_jq" -s '.[0] * .[1]' "$_auth" "$_new_auth" >"$_merged_auth" || return 1
+            mv -f "$_merged_auth" "$_auth" || return 1
+        else
+            mv -f "$_new_auth" "$_auth" || return 1
+        fi
+        chmod 600 "$_auth" || return 1
+    else
+        rm -f "$_new_auth"
+    fi
+
+    "$_jq" '
+      if has("inbounds") then
+        .inbounds = ((.inbounds // []) | map(
+          if (.type // "") == "cloudflared" then del(.token) else . end
+        ))
+      else . end
+    ' "$_config" >"$_tmp" || return 1
+    chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config" || return 1
+    umask "$_old_umask"
+    trap - 0
+    unset _config _jq _auth _tmp _new_auth _merged_auth _old_umask
+)
+
+magicnet_cloudflared_inject_token() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    _auth="$(magicnet_cloudflared_auth_file)"
+    [ -s "$_auth" ] || return 0
+    _jq="${MODDIR}/bin/jq"
+    [ -x "$_jq" ] || return 1
+    _tmp="${_config}.cloudflared-auth.new"
+    (
+        umask 077
+        "$_jq" --slurpfile auth "$_auth" '
+          ($auth[0] // {}) as $keys
+          | if has("inbounds") then
+              .inbounds = ((.inbounds // []) | to_entries | map(
+                .key as $index
+                | .value
+                | (.tag // "") as $tag
+                | (if $tag != "" then "tag:" + $tag else "index:" + ($index | tostring) end) as $key
+                | if (.type // "") == "cloudflared" and ($keys[$key] // "") != "" then
+                    .token = $keys[$key]
+                  else . end
+              ))
+            else . end
+        ' "$_config" >"$_tmp"
+    ) || {
+        rm -f "$_tmp"
+        return 1
+    }
+    chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
+    _rc=$?
+    [ "$_rc" -eq 0 ] || rm -f "$_tmp" 2>/dev/null || true
+    unset _config _auth _jq _tmp
+    return "$_rc"
+}
+
+magicnet_cloudflared_scrub_token() {
+    _config="${MODDIR}/.config/sing-box/config.json"
+    [ -f "$_config" ] || return 0
+    _jq="${MODDIR}/bin/jq"
+    [ -x "$_jq" ] || return 1
+    _tmp="${_config}.cloudflared-scrub.new"
+    (
+        umask 077
+        "$_jq" '
+          if has("inbounds") then
+            .inbounds = ((.inbounds // []) | map(
+              if (.type // "") == "cloudflared" then del(.token) else . end
+            ))
+          else . end
+        ' "$_config" >"$_tmp"
+    ) &&
+        chmod 600 "$_tmp" && mv -f "$_tmp" "$_config" && chmod 600 "$_config"
+    _rc=$?
+    [ "$_rc" -eq 0 ] || rm -f "$_tmp" 2>/dev/null || true
+    unset _config _jq _tmp
+    return "$_rc"
+}
+
+magicnet_singbox_inject_runtime_secrets() {
+    magicnet_tailscale_inject_auth_key || return 1
+    if ! magicnet_cloudflared_inject_token; then
+        magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
+        return 1
+    fi
+}
+
+magicnet_singbox_scrub_runtime_secrets() {
+    _secret_rc=0
+    magicnet_cloudflared_scrub_token || _secret_rc=1
+    magicnet_tailscale_scrub_auth_key || _secret_rc=1
+    set -- "$_secret_rc"
+    unset _secret_rc
+    return "$1"
+}
+
 magicnet_singbox_runtime_fingerprint_file() {
     printf '%s\n' "${MODDIR}/.state/sing-box/runtime-fingerprint"
 }
 
-# Record only inputs consumed by the running sing-box process.  User-facing
+# Record only inputs consumed by the running sing-box process. User-facing
 # policy files are materialized into config.json before this is called, while
 # UI assets, subscription caches and other mutable runtime files must not
 # force a core restart and disconnect every long-lived application socket.
@@ -166,9 +298,12 @@ magicnet_singbox_runtime_fingerprint() (
     # guarantee pipefail, so a trailing checksum can hide a failed reader.
     _runtime_input=$(
         # Runtime materializers may emit equivalent JSON with a different key
-        # order or whitespace.  sing-box sees the same configuration in that
+        # order or whitespace. sing-box sees the same configuration in that
         # case, so hash a stable representation instead of the file bytes.
-        for _runtime_json_file in "$_runtime_config" "${_runtime_root}/tailscale-auth.json"; do
+        for _runtime_json_file in \
+            "$_runtime_config" \
+            "${_runtime_root}/tailscale-auth.json" \
+            "${_runtime_root}/cloudflared-auth.json"; do
             [ "$_runtime_json_file" = "$_runtime_config" ] || [ -f "$_runtime_json_file" ] || continue
             _runtime_json=$("$_runtime_jq" -e -S -c . "$_runtime_json_file") || exit 1
             [ -n "$_runtime_json" ] || exit 1
@@ -248,6 +383,7 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_route_apply_unlocked || _runtime_rc=1
     magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_tailscale_apply_unlocked || _runtime_rc=1
+    magicnet_cloudflared_apply_unlocked || _runtime_rc=1
     # Runtime policy writers rebuild selector objects. Normalize route-level
     # sing-box fields afterwards so a no-op apply remains byte-equivalent to
     # the configuration used by the running core.
@@ -258,7 +394,7 @@ magicnet_apply_runtime_config_unlocked() {
         magicnet_enable_dns_capture || _runtime_rc=1
         magicnet_enable_dns_leak_guard || _runtime_rc=1
         if [ "$_runtime_rc" -ne 0 ]; then
-            # A partial DNS-control install is not a safe steady state.  Do
+            # A partial DNS-control install is not a safe steady state. Do
             # not leave capture or leak-guard rules enabled after any other
             # runtime materialization step reported failure.
             magicnet_disable_dns_capture || true
