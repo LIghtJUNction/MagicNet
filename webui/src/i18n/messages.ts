@@ -4,6 +4,7 @@ import configuration from "./catalogs/configuration.ts";
 import control from "./catalogs/control.ts";
 import tools from "./catalogs/tools.ts";
 import diagnostics from "./catalogs/diagnostics.ts";
+import machineStatus from "./catalogs/machine-status.ts";
 
 import tailscale from "./catalogs/tailscale.ts";
 
@@ -14,5 +15,6 @@ export const messages: Record<string, readonly string[]> = {
   ...control,
   ...tools,
   ...diagnostics,
+  ...machineStatus,
   ...tailscale,
 };

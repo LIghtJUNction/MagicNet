@@ -106,11 +106,7 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
         .filter(|value| matches!(value.as_str(), "ok" | "failed"))
         .unwrap_or_else(|| "unknown".to_string());
     let attachments = if process_state == "running"
-        && run_magicnet_function(
-            app,
-            "magicnet_ebpf_refresh_active_report >/dev/null 2>&1",
-        )
-        .is_ok()
+        && run_magicnet_function(app, "magicnet_ebpf_refresh_active_report >/dev/null 2>&1").is_ok()
     {
         read_regular_text(&app.moddir.join(PROBE_REPORT), 512 * 1024)
             .and_then(|text| serde_json::from_str::<Value>(&text).ok())
@@ -175,8 +171,8 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
         "stopped" => Some(false),
         "running" => attachments.as_ref().map(|evidence| {
             let local_ready = !local_expected || evidence.local_attached;
-            let shared_ready = !shared_expected
-                || (!shared_interfaces.is_empty() && evidence.shared_attached);
+            let shared_ready =
+                !shared_expected || (!shared_interfaces.is_empty() && evidence.shared_attached);
             capability == "ok" && local_ready && shared_ready
         }),
         _ => None,
