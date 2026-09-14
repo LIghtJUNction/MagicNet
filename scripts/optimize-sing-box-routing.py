@@ -104,6 +104,50 @@ def _move_before(
     return rules
 
 
+def _move_rule_set_tag_before(
+    rules: list[Any],
+    tag: str,
+    dispatch_key: str,
+    dispatch_value: str,
+    anchor: Callable[[dict[str, Any]], bool],
+) -> list[Any]:
+    """Move one pure rule-set tag without dragging merged sibling tags with it."""
+
+    source_index = next(
+        (
+            i
+            for i, rule in enumerate(rules)
+            if isinstance(rule, dict)
+            and set(rule) == {"rule_set", dispatch_key}
+            and rule.get(dispatch_key) == dispatch_value
+            and _contains(rule, "rule_set", tag)
+        ),
+        None,
+    )
+    anchor_index = next(
+        (i for i, rule in enumerate(rules) if isinstance(rule, dict) and anchor(rule)),
+        None,
+    )
+    if source_index is None or anchor_index is None or source_index < anchor_index:
+        return rules
+
+    source = rules[source_index]
+    tags = list(source["rule_set"])
+    remainder = [value for value in tags if value != tag]
+    if remainder:
+        source = copy.deepcopy(source)
+        source["rule_set"] = remainder
+        rules[source_index] = source
+    else:
+        rules.pop(source_index)
+
+    anchor_index = next(
+        i for i, candidate in enumerate(rules) if isinstance(candidate, dict) and anchor(candidate)
+    )
+    rules.insert(anchor_index, {"rule_set": [tag], dispatch_key: dispatch_value})
+    return rules
+
+
 def _compact_adjacent_rule_sets(rules: list[Any], dispatch_key: str) -> list[Any]:
     """Merge only adjacent `rule_set -> same target` rules.
 
@@ -151,12 +195,14 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
     )
 
     # WeChat is latency-sensitive and its dedicated classifier is narrower than
-    # either the generic Tencent set or the broad advertising lists. Prioritize
-    # it so ad-list churn cannot break message/image delivery.
-    rules = _move_before(
+    # either the generic Tencent set or the broad advertising lists. Generated
+    # DNS can already coalesce Tencent + WeChat, so split only the protected tag
+    # instead of moving the broader Tencent classifier across the ad boundary.
+    rules = _move_rule_set_tag_before(
         rules,
-        lambda rule: rule.get(dispatch_key) == wechat_target
-        and _contains(rule, "rule_set", "karing-acl4ssr-wechat"),
+        "karing-acl4ssr-wechat",
+        dispatch_key,
+        wechat_target,
         lambda rule: _contains(rule, "rule_set", "lyc-geosite-ads"),
     )
 
