@@ -320,7 +320,9 @@ mod tests {
                 command.name
             );
             assert!(
-                command.usage().starts_with(&format!("cli {}", command.name)),
+                command
+                    .usage()
+                    .starts_with(&format!("cli {}", command.name)),
                 "usage does not match command {}: {}",
                 command.name,
                 command.usage()
