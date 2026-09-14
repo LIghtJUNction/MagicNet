@@ -8,6 +8,46 @@ magicnet_status_text() {
     esac
 }
 
+# Keep sing-box's Go-managed working set bounded without trading normal
+# throughput for an aggressively low GOGC value. GOMEMLIMIT is a soft runtime
+# budget: the GC stays on its normal pacing until the process approaches it.
+# Operators can provide the standard GOMEMLIMIT environment variable to
+# override or disable (GOMEMLIMIT=off) auto sizing.
+magicnet_singbox_runtime_memory_limit() {
+    if [ -n "${GOMEMLIMIT:-}" ]; then
+        printf '%s\n' "$GOMEMLIMIT"
+        return 0
+    fi
+
+    _singbox_meminfo="${MAGICNET_MEMINFO_PATH:-/proc/meminfo}"
+    _singbox_mem_total_kib="$(
+        awk '/^MemTotal:/ { print $2; exit }' "$_singbox_meminfo" 2>/dev/null || true
+    )"
+    case "$_singbox_mem_total_kib" in
+    '' | *[!0-9]*)
+        # Android always exposes /proc/meminfo, but retain a conservative
+        # fallback for recovery shells and host-side tests.
+        _singbox_memory_limit_mib=384
+        ;;
+    *)
+        # Fixed tiers are intentionally less aggressive than a percentage-only
+        # budget on modern 8-16 GiB phones, while still capping runaway heaps.
+        if [ "$_singbox_mem_total_kib" -lt 3145728 ]; then
+            _singbox_memory_limit_mib=192
+        elif [ "$_singbox_mem_total_kib" -lt 6291456 ]; then
+            _singbox_memory_limit_mib=256
+        elif [ "$_singbox_mem_total_kib" -lt 12582912 ]; then
+            _singbox_memory_limit_mib=384
+        else
+            _singbox_memory_limit_mib=512
+        fi
+        ;;
+    esac
+
+    printf '%sMiB\n' "$_singbox_memory_limit_mib"
+    unset _singbox_meminfo _singbox_mem_total_kib _singbox_memory_limit_mib
+}
+
 magicnet_refresh_status() {
     if magicnet_cmd_exists sing-box; then
         import __singbox__
@@ -90,11 +130,16 @@ magicnet_start_singbox_unlocked() {
     # Absorb short TUN teardown or eBPF detachment windows inside one user
     # action. The shared launcher cleans a failed PID generation between
     # attempts, and callers can still override the bounded attempt count.
-    if ! MAGICNET_SINGBOX_START_ATTEMPTS="${MAGICNET_SINGBOX_START_ATTEMPTS:-3}" singbox_start; then
+    _singbox_gomemlimit="$(magicnet_singbox_runtime_memory_limit)"
+    if ! GOMEMLIMIT="$_singbox_gomemlimit" \
+        MAGICNET_SINGBOX_START_ATTEMPTS="${MAGICNET_SINGBOX_START_ATTEMPTS:-3}" \
+        singbox_start; then
+        unset _singbox_gomemlimit
         [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
             magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
         return 1
     fi
+    unset _singbox_gomemlimit
     if [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" != 1 ]; then
         magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 ||
             magicnet_warn "Failed to scrub the transient Tailscale auth key from config.json."
