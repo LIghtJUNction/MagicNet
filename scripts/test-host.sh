@@ -107,6 +107,7 @@ check bash scripts/test-subscription-update-lock-safety.sh
 check bash scripts/test-subscription-transaction-journal-safety.sh
 check bash scripts/test-subscription-lifecycle.sh
 check bash scripts/test-subscription-stop-safety.sh
+check bash scripts/test-webui-build-cache.sh
 check bash scripts/test-release-integrity.sh
 check python3 scripts/test-release-workflow.py
 check python3 scripts/test-release-cache.py
