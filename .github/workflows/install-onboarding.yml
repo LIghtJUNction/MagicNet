@@ -10,6 +10,7 @@ on:
       - 'src/MagicNet/lib/kamfw'
       - 'src/MagicNet/lib/kamfw-web/**'
       - 'scripts/install-onboarding-test.py'
+      - 'scripts/test-install-onboarding-fast-path.sh'
       - 'scripts/test-onboarding-browser.py'
       - 'scripts/onboarding-browser-fixture.py'
       - 'webui/scripts/test-install-setup.mjs'
@@ -25,6 +26,7 @@ on:
       - 'src/MagicNet/lib/kamfw'
       - 'src/MagicNet/lib/kamfw-web/**'
       - 'scripts/install-onboarding-test.py'
+      - 'scripts/test-install-onboarding-fast-path.sh'
       - 'scripts/test-onboarding-browser.py'
       - 'scripts/onboarding-browser-fixture.py'
       - 'webui/scripts/test-install-setup.mjs'
@@ -56,9 +58,12 @@ jobs:
           src/MagicNet/lib/magicnet/install_onboarding.sh
           src/MagicNet/lib/magicnet/onboarding/*.sh
           src/MagicNet/lib/kamfw-web/*.sh
+          scripts/test-install-onboarding-fast-path.sh
       - name: Test real BusyBox HTTP, CGI and legacy kamfw launcher contracts
         timeout-minutes: 3
         run: python3 scripts/install-onboarding-test.py
+      - name: Test fresh-install and routine-upgrade fast paths
+        run: busybox ash scripts/test-install-onboarding-fast-path.sh
       - name: Test default browser selection and a single installer entry
         run: python3 scripts/test-onboarding-browser.py
 
