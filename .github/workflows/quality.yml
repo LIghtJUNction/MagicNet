@@ -84,9 +84,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Host regressions walk recursive gitlinks as part of release-integrity
-      # validation, so initialize the exact commit-pinned tree recorded by the
-      # checkout. Remote-moving refreshes remain build/release-only.
+      # Release-integrity host regressions deliberately walk recursive gitlinks.
+      # Use the commit-pinned revisions, but do not remote-refresh moving branches.
       - name: Initialize shell test submodules
         run: git submodule update --init --recursive --depth 1
 
@@ -244,7 +243,7 @@ jobs:
         timeout-minutes: 10
         run: bash scripts/quality-gate.sh webui-browser
 
-      - name: Save successful per-check test results
+      - name: Save successful per-check results
         if: ${{ always() && !cancelled() }}
         uses: ./.github/actions/test-cache
         with:
