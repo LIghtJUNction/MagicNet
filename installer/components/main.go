@@ -65,6 +65,7 @@ type options struct {
 	mirrors []string
 	baseURL string
 	log     io.Writer
+	route   *routeHint
 }
 
 func safeName(name string) bool {
@@ -118,7 +119,6 @@ func (m manifest) validate() error {
 			if names[parent] {
 				return fmt.Errorf("overlapping component path: %s", name)
 			}
-		}
 	}
 	return nil
 }
@@ -325,30 +325,49 @@ func (o options) printf(format string, args ...any) {
 	}
 }
 
-type route struct {
-	url, name string
-	speed     float64
+type routeHint struct {
+	set          bool
+	prefix, name string
 }
 
-func (o options) probe(rawURL, name string) route {
+type route struct {
+	url, name, prefix string
+	speed             float64
+}
+
+func routeName(prefix string) string {
+	if prefix == "" {
+		return "GitHub"
+	}
+	name := strings.TrimPrefix(prefix, "https://")
+	if slash := strings.IndexByte(name, '/'); slash >= 0 {
+		name = name[:slash]
+	}
+	if name == "" {
+		return "mirror"
+	}
+	return name
+}
+
+func (o options) probe(rawURL, name, prefix string) route {
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
-		return route{url: rawURL, name: name}
+		return route{url: rawURL, name: name, prefix: prefix}
 	}
 	req.Header.Set("Range", "bytes=0-65535")
 	req.Header.Set("User-Agent", "MagicNet-components/1")
 	response, err := o.client.Do(req)
 	if err != nil {
 		o.printf("[route] %s: unavailable", name)
-		return route{url: rawURL, name: name}
+		return route{url: rawURL, name: name, prefix: prefix}
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 200 && response.StatusCode != 206 {
 		o.printf("[route] %s: HTTP %d", name, response.StatusCode)
-		return route{url: rawURL, name: name}
+		return route{url: rawURL, name: name, prefix: prefix}
 	}
 	n, err := io.Copy(io.Discard, io.LimitReader(response.Body, 65536))
 	speed := float64(n) / time.Since(start).Seconds()
@@ -356,19 +375,15 @@ func (o options) probe(rawURL, name string) route {
 		speed = 0
 	}
 	o.printf("[route] %s: %.0f KiB/s", name, speed/1024)
-	return route{url: rawURL, name: name, speed: speed}
+	return route{url: rawURL, name: name, prefix: prefix, speed: speed}
 }
-func (o options) routes(direct string) []route {
-	first := o.probe(direct, "GitHub")
-	// A healthy direct path avoids all mirror probes and their extra traffic.
-	if first.speed >= 256*1024 {
-		return []route{first}
-	}
-	results := []route{first}
+
+func (o options) mirrorRoutes(direct string) []route {
+	results := make([]route, 0, len(o.mirrors))
 	ch := make(chan route, len(o.mirrors))
 	for _, prefix := range o.mirrors {
 		go func(prefix string) {
-			ch <- o.probe(prefix+direct, strings.Split(strings.TrimPrefix(prefix, "https://"), "/")[0])
+			ch <- o.probe(prefix+direct, routeName(prefix), prefix)
 		}(prefix)
 	}
 	for range o.mirrors {
@@ -378,23 +393,61 @@ func (o options) routes(direct string) []route {
 	return results
 }
 
+func (o options) routes(direct string) []route {
+	first := o.probe(direct, "GitHub", "")
+	// A healthy direct path avoids all mirror probes and their extra traffic.
+	if first.speed >= 256*1024 {
+		return []route{first}
+	}
+	results := append([]route{first}, o.mirrorRoutes(direct)...)
+	sort.SliceStable(results, func(i, j int) bool { return results[i].speed > results[j].speed })
+	return results
+}
+
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
+}
+
 type progress struct {
 	current, total int64
-	last           time.Time
+	last, start    time.Time
 	o              options
 	id             string
 }
 
 func (p *progress) Write(b []byte) (int, error) {
+	if p.start.IsZero() {
+		p.start = time.Now()
+	}
 	p.current += int64(len(b))
 	if time.Since(p.last) > time.Second || p.current == p.total {
-		p.o.printf("[download] %s: %d%% (%d/%d KiB)", p.id, p.current*100/p.total, p.current/1024, p.total/1024)
+		elapsed := time.Since(p.start)
+		speed := float64(p.current) / elapsed.Seconds()
+		eta := time.Duration(0)
+		if speed > 0 && p.current < p.total {
+			eta = time.Duration(float64(time.Second) * float64(p.total-p.current) / speed).Round(time.Second)
+		}
+		p.o.printf("[download] %s: %d%% %s/%s %.0f KiB/s ETA %s", p.id,
+			p.current*100/p.total, humanBytes(p.current), humanBytes(p.total), speed/1024, eta)
 		p.last = time.Now()
 	}
 	return len(b), nil
 }
 func (o options) download(c component, direct, destination string) error {
-	candidates := o.routes(direct)
+	var candidates []route
+	if o.route != nil && o.route.set {
+		candidates = []route{{url: o.route.prefix + direct, name: o.route.name, prefix: o.route.prefix}}
+		o.printf("[route] %s: reusing verified route", o.route.name)
+	} else {
+		candidates = o.routes(direct)
+	}
 	// Direct may pass a tiny probe but stall during the actual download. In that
 	// case, discover mirrors too rather than failing with no fallback.
 	attempted := map[string]bool{}
@@ -423,7 +476,7 @@ func (o options) download(c component, direct, destination string) error {
 					return createErr
 				}
 				h := sha256.New()
-				p := &progress{total: c.Size, o: o, id: c.ID}
+				p := &progress{total: c.Size, o: o, id: c.ID, start: time.Now()}
 				n, copyErr := io.Copy(io.MultiWriter(tmp, h, p), io.LimitReader(response.Body, c.Size+1))
 				if copyErr == nil {
 					copyErr = tmp.Sync()
@@ -443,13 +496,30 @@ func (o options) download(c component, direct, destination string) error {
 			response.Body.Close()
 		}
 		if err == nil {
+			if o.route != nil {
+				o.route.set = true
+				o.route.prefix = candidate.prefix
+				o.route.name = candidate.name
+			}
+			o.printf("[download] %s: verified via %s", c.ID, candidate.name)
 			return nil
 		}
 		last = err
 		o.printf("[download] %s via %s failed: %v", c.ID, candidate.name, err)
+		if o.route != nil && o.route.set && candidate.prefix == o.route.prefix {
+			o.route.set = false
+		}
 		if len(candidates) == 1 {
-			for _, prefix := range o.mirrors {
-				candidates = append(candidates, o.probe(prefix+direct, prefix))
+			var fallbacks []route
+			if candidate.prefix == "" {
+				fallbacks = o.mirrorRoutes(direct)
+			} else {
+				fallbacks = o.routes(direct)
+			}
+			for _, fallback := range fallbacks {
+				if !attempted[fallback.url] {
+					candidates = append(candidates, fallback)
+				}
 			}
 		}
 	}
@@ -532,6 +602,7 @@ func promote(stage, root string, files []payloadFile, obsolete []string) (err er
 }
 
 func run(o options) error {
+	started := time.Now()
 	if o.log == nil {
 		o.log = io.Discard
 	}
@@ -540,6 +611,9 @@ func run(o options) error {
 	}
 	if o.mirrors == nil {
 		o.mirrors = []string{"https://gh-proxy.com/", "https://ghfast.top/", "https://ghproxy.net/"}
+	}
+	if o.route == nil {
+		o.route = &routeHint{}
 	}
 	if o.Archive == "" || o.ModuleDir == "" || o.CacheDir == "" {
 		return errors.New("archive, module directory and cache directory are required")
@@ -593,6 +667,7 @@ func run(o options) error {
 	if err = m.validate(); err != nil {
 		return err
 	}
+	o.printf("[install] MagicNet %s: checking %d components", m.Version, len(m.Components))
 	// Persist separately: module managers may overwrite components.json before
 	// customize runs, while this file records the last successfully installed set.
 	old := manifest{}
@@ -624,7 +699,7 @@ func run(o options) error {
 				return e
 			}
 			if ok {
-				o.printf("[reuse] %s: verified installed component", c.ID)
+				o.printf("[reuse] %s: installed files match", c.ID)
 				reused = true
 				break
 			}
@@ -651,6 +726,7 @@ func run(o options) error {
 			if base == "" {
 				base = "https://github.com/" + m.Repository + "/releases/download/" + url.PathEscape(m.Version) + "/"
 			}
+			o.printf("[download] %s: need %s", c.ID, humanBytes(c.Size))
 			if err = o.download(c, base+c.Asset, cached); err != nil {
 				return err
 			}
@@ -690,7 +766,7 @@ func run(o options) error {
 		keepRecovery = true
 		return fmt.Errorf("%w (staging: %s)", err, stage)
 	}
-	o.printf("[done] %d components verified; %s is ready", len(m.Components), m.Version)
+	o.printf("[done] MagicNet %s ready: %d components in %.1fs", m.Version, len(m.Components), time.Since(started).Seconds())
 	return nil
 }
 func main() {
