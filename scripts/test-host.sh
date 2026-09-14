@@ -52,6 +52,7 @@ python3 scripts/ci-test-cache.py host config-json -- jq empty src/MagicNet/.conf
 check bash scripts/test-repository-hygiene.sh
 check bash scripts/test-module-entrypoints.sh
 check bash scripts/test-config-template-pin.sh
+check bash scripts/test-config-repository-migration.sh
 check bash scripts/test-install-config-template.sh
 check bash scripts/test-install-config-refresh.sh
 check sh scripts/test-kamfw-i18n.sh
@@ -74,7 +75,6 @@ check bash scripts/test-anthropic-routing.sh
 check bash scripts/test-mcp-phase-config.sh
 check bash scripts/test-tailscale-login.sh
 check bash scripts/test-chatgpt-voice-rules.sh
-check bash scripts/test-rule-hash-retry.sh
 check bash scripts/singbox-subscription-protocol-smoke.sh
 check bash scripts/test-service-selectors.sh
 check bash scripts/test-subscription-fetch-policy.sh
