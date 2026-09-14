@@ -478,6 +478,8 @@ assert_dns_capture_disable_removes_duplicate_output_jumps() (
     *' -C OUTPUT -j magicnet-dns-output '*)
       [ "$dns_output_jump_count" -gt 0 ]
       ;;
+    # This fixture has no protocol-specific/temporary OUTPUT jumps.
+    *' -C OUTPUT '* | *' -D OUTPUT '*) return 1 ;;
     *' -L magicnet-dns-output '* | *' -F magicnet-dns-output '* | *' -X magicnet-dns-output '*)
       return 0
       ;;
@@ -555,6 +557,8 @@ assert_dns_capture_disable_retries_transient_delete_failure() (
     *' -C OUTPUT -j magicnet-dns-output '*)
       [ "$dns_output_jump_count" -gt 0 ]
       ;;
+    # This fixture has no protocol-specific/temporary OUTPUT jumps.
+    *' -C OUTPUT '* | *' -D OUTPUT '*) return 1 ;;
     *)
       return 0
       ;;
@@ -964,7 +968,11 @@ assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat() (
 
   iptables() {
     printf '%s\n' "iptables $*" >>"$dns_capture_log"
-    return 0
+    # No rules exist initially; -C/-D must report absence, not success.
+    case " $* " in
+    *' -C '* | *' -D '*) return 1 ;;
+    *) return 0 ;;
+    esac
   }
   ip6tables() {
     printf '%s\n' "ip6tables $*" >>"$dns_capture_log"
