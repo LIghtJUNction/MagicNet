@@ -119,6 +119,7 @@ func (m manifest) validate() error {
 			if names[parent] {
 				return fmt.Errorf("overlapping component path: %s", name)
 			}
+		}
 	}
 	return nil
 }
