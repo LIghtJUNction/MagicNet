@@ -164,6 +164,8 @@ magicnet_start_singbox_ready_unlocked() {
     # and reacquiring here let fswatch win the gap and made manual startup wait
     # behind a redundant config apply.
     if magicnet_after_kernel_start_unlocked; then
+        magicnet_singbox_save_last_good ||
+            magicnet_warn "Could not save the validated sing-box recovery checkpoint."
         return 0
     fi
     import __singbox__

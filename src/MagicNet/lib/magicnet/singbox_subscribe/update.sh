@@ -850,6 +850,9 @@ magicnet_singbox_update_subscription_unlocked() {
         return 2
         ;;
     esac
+    if magicnet_singbox_restore_last_good; then
+        info "Restored the last validated config before subscription generation."
+    fi
     if ! magicnet_singbox_transaction_begin; then
         rm -rf "$(magicnet_singbox_transaction_dir).new.$$" 2>/dev/null || true
         magicnet_singbox_update_status prepare failed journal_create_failed || true
@@ -1065,6 +1068,10 @@ magicnet_singbox_update_subscription_unlocked() {
     magicnet_singbox_prune_subscription_cache "$_sub_cache_map" ||
         warn "Subscription cache pruning failed"
 
+    if [ "$_sub_was_running" -eq 1 ]; then
+        magicnet_singbox_save_last_good ||
+            warn "Could not save the validated sing-box recovery checkpoint"
+    fi
     rm -rf "$(magicnet_singbox_transaction_dir)" 2>/dev/null || return 1
     _sub_success_epoch=$(date +%s)
     magicnet_singbox_update_status complete success none || true

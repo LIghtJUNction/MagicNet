@@ -1,3 +1,19 @@
+# v1.5.1
+
+- Reject empty, malformed and multi-document JSON before atomically replacing a
+  config; preserve the original on generator/sanitizer failures.
+- Keep a private, core-validated recovery checkpoint containing the configuration
+  and nodes. Recover a broken config even when the subscription URL and disposable
+  node cache are unavailable; reject mode-mismatched or invalid checkpoints.
+- Bound config-lock waits when a marker-less lock directory cannot be reclaimed;
+  never delete foreign entries to force acquisition (#254).
+- Keep Google and other maintained service selectors following `proxy` by default
+  instead of accidentally pinning them to the first subscription node. Preserve
+  explicit valid choices across refresh and never automatically fall back to direct.
+- Add fault-injection regressions and a mandatory real-core loopback routing check
+  in every module build. Google Play end-to-end behavior on the reported Android
+  device remains to be confirmed; #253 is not claimed fully resolved by host tests.
+
 # v1.4.9 (2026-09-14)
 
 - Move the reusable downloader installer template into KAM 0.6.14 and publish

@@ -108,3 +108,21 @@ unset -f printf
 }
 
 printf '%s\n' 'config lock safety test passed'
+
+# Reclaiming a marker-less directory may fail (foreign entry/permissions).
+# Regression: an unconditional continue here previously bypassed timeout
+# accounting and could hold a detached service start forever.
+mkdir -p "$MODDIR/.state/config.lock"
+printf 'do not delete\n' >"$MODDIR/.state/config.lock/foreign"
+set +e
+timeout 4 bash -s -- "$ROOT" <<'CHILD'
+  import() { :; }
+  . "$1/src/MagicNet/lib/magicnet/common.sh"
+  MAGICNET_CONFIG_LOCK_TIMEOUT=1 MAGICNET_CONFIG_LOCK_NO_PID_TIMEOUT=1 magicnet_config_lock_acquire
+CHILD
+foreign_rc=$?
+set -e
+test "$foreign_rc" -eq 1
+test "$(cat "$MODDIR/.state/config.lock/foreign")" = 'do not delete'
+test ! -e "$MODDIR/.state/config.lock/pid"
+printf 'Marker-less failed reclaim remains bounded and preserves foreign files\n'
