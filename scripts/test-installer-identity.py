@@ -109,20 +109,28 @@ abort() { printf '%s\n' "$*" >&2; exit 1; }
 import() { :; }
 install_module() { abort "nested manager installation is forbidden"; }
 # Managers choose the directory from the ORIGINAL archive, before customize.
+# With SKIPUNZIP=1, do NOT pre-seed MODPATH/module.prop here: the module's
+# customize path must preserve it for KernelSU post-customize bookkeeping.
 MODID=$(unzip -p "$ZIPFILE" module.prop | sed -n 's/^id=//p')
 MODPATH="$TEST_STAGED/$MODID"
 export MODPATH
 mkdir -p "$MODPATH"
-unzip -o "$ZIPFILE" module.prop -d "$MODPATH" >&2 || abort "metadata"
 unzip -p "$ZIPFILE" customize.sh > "$TEST_SCRIPT" || abort "script"
 . "$TEST_SCRIPT"
-# Simulate manager post-customize bookkeeping using the original identity.
 [ "$MODPATH" = "$TEST_STAGED/$MODID" ] || abort "manager path changed"
-unzip -p "$ZIPFILE" module.prop > "$MODPATH/module.prop" || abort "metadata restore"
+[ -f "$MODPATH/module.prop" ] || abort "KernelSU post-customize module.prop missing"
+[ ! -L "$MODPATH/module.prop" ] || abort "KernelSU post-customize module.prop is a symlink"
+# KernelSU copies this metadata back to the active module on upgrades. Exercise
+# that real failure point instead of restoring metadata from the ZIP in the test.
+if [ -d "$TEST_ACTIVE/$MODID" ]; then
+  cp -af "$MODPATH/module.prop" "$TEST_ACTIVE/$MODID/module.prop" ||
+    abort "KernelSU metadata bookkeeping failed"
+fi
 '''
         result = subprocess.run((shell or ["sh"]) + ["-c", harness],
                                 env=dict(os.environ, ZIPFILE=str(test_archive),
-                                         TEST_STAGED=str(self.staged), TEST_CACHE=str(self.cache),
+                                         TEST_STAGED=str(self.staged), TEST_ACTIVE=str(self.active),
+                                         TEST_CACHE=str(self.cache),
                                          TEST_SCRIPT=str(self.root / "customize.sh"),
                                          MAGICNET_PREV_DIR=str(self.active / "MagicNet")),
                                 text=True, capture_output=True, timeout=30)
