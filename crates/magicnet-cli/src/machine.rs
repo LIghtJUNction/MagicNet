@@ -889,7 +889,10 @@ mod tests {
             service_lifecycle("running", "idle", Some(false)),
             "not_ready"
         );
-        assert_eq!(service_lifecycle("running", "idle", None), "running_unknown");
+        assert_eq!(
+            service_lifecycle("running", "idle", None),
+            "running_unknown"
+        );
         assert_eq!(service_lifecycle("running", "idle", Some(true)), "ready");
     }
 
