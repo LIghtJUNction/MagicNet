@@ -245,6 +245,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", action="append", default=[])
     parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--lookup-only", action="store_true",
+                        help="return 0 for an exact reusable success and 1 for a miss without running")
     parser.add_argument("scope")
     parser.add_argument("name")
     parser.add_argument("command", nargs=argparse.REMAINDER)
@@ -260,7 +262,7 @@ def main() -> int:
         try:
             key = fingerprint(args.scope, command)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
-            print(f"[ci-test] cache unavailable; running {args.name}: {error}", flush=True)
+            print(f"[ci-test] cache unavailable; {'miss' if args.lookup_only else 'running ' + args.name}: {error}", flush=True)
     record = store / f"{key}.json"
     if key and not force:
         try:
@@ -271,6 +273,10 @@ def main() -> int:
                 return 0
         except (OSError, ValueError):
             pass
+    if args.lookup_only:
+        suffix = f" {key[:12]}" if key else ""
+        print(f"[ci-test] MISS {args.name}{suffix}", flush=True)
+        return 1
     if key:
         # An explicit recheck/failure must revoke an earlier pass for this key.
         try:
