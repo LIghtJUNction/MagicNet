@@ -21,10 +21,15 @@ check_group() {
     case "$1" in
     rust)
         cached rust rust-fmt cargo fmt --all -- --check
-        cached rust rust-clippy cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+        cached rust rust-clippy cargo clippy --workspace --all-targets --all-features --locked -- \
+            -D warnings \
+            -D clippy::dbg_macro \
+            -D clippy::todo \
+            -D clippy::unimplemented
         cached rust rust-test cargo test --workspace --all-targets --all-features --locked
         ;;
     shell)
+        cached host source-sanity python3 scripts/lint-source.py
         cached host shell-lint bash scripts/lint-shell.sh
         bash scripts/test-host.sh
         ;;
