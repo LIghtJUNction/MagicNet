@@ -32,6 +32,16 @@ set -e
 [[ "$output" == *'MagicNet: required framework file is missing:'* ]] || fail 'missing framework error is not actionable'
 [[ "$output" != *'abort: not found'* ]] || fail 'missing framework path still calls an undefined abort helper'
 
+# entry.sh is normally sourced, but direct execution must still fail cleanly
+# instead of falling through after an invalid top-level return.
+set +e
+output=$(MODDIR="$fixture" sh "$ENTRY" 2>&1)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || fail 'direct bootstrap execution unexpectedly succeeded without framework'
+[[ "$output" == *'MagicNet: required framework file is missing:'* ]] || fail 'direct bootstrap failure lost its diagnostic'
+[[ "$output" != *'return:'* ]] || fail 'direct bootstrap failure leaked a shell return error'
+
 # Module entry scripts source entry.sh. A bootstrap failure must stop them before
 # they attempt to call Kamfw, rather than turning one actionable error into a
 # second misleading "kamfw: not found" failure.

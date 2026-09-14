@@ -83,7 +83,18 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-          submodules: recursive
+
+      # Host regressions need only these pinned top-level inputs. In particular,
+      # do not recursively clone sing-box's Android/Apple/Desktop clients and
+      # dashboard tree: they are release/build inputs, not shell-test inputs.
+      - name: Initialize shell test submodules
+        run: |
+          git submodule update --init --depth 1 -- \
+            .kam/bases/hooks \
+            .kam/bases/workflows \
+            sing-box \
+            src/MagicNet/.config/sing-box \
+            src/MagicNet/lib/kamfw
 
       # Quality validates the gitlinks recorded by the commit. The build/release
       # workflow owns remote-tracking submodule refreshes, so CI does not fetch
@@ -181,10 +192,40 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: webui/package-lock.json
+
+      - name: Probe exact WebUI test results
+        id: webui_cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          if python3 scripts/ci-test-cache.py --lookup-only \
+              webui webui-check -- bash -c 'cd webui && npm run check'; then
+            echo 'check_hit=true' >> "$GITHUB_OUTPUT"
+          else
+            rc=$?
+            [ "$rc" -eq 1 ] || exit "$rc"
+            echo 'check_hit=false' >> "$GITHUB_OUTPUT"
+          fi
+          if python3 scripts/ci-test-cache.py --lookup-only \
+              webui webui-browser -- bash -c 'cd webui && npm run test:ui'; then
+            echo 'browser_hit=true' >> "$GITHUB_OUTPUT"
+          else
+            rc=$?
+            [ "$rc" -eq 1 ] || exit "$rc"
+            echo 'browser_hit=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache npm package downloads
+        if: ${{ steps.webui_cache.outputs.check_hit != 'true' || steps.webui_cache.outputs.browser_hit != 'true' }}
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-${{ runner.arch }}-quality-npm-v1-node24-${{ hashFiles('webui/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-quality-npm-v1-node24-
 
       - name: Install locked WebUI dependencies
+        if: ${{ steps.webui_cache.outputs.check_hit != 'true' || steps.webui_cache.outputs.browser_hit != 'true' }}
         working-directory: webui
         run: npm ci
 
@@ -192,12 +233,14 @@ jobs:
         run: bash scripts/quality-gate.sh webui-check
 
       - name: Cache Playwright browsers
+        if: ${{ steps.webui_cache.outputs.browser_hit != 'true' }}
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('webui/package-lock.json') }}
 
       - name: Install browser test dependencies
+        if: ${{ steps.webui_cache.outputs.browser_hit != 'true' }}
         working-directory: webui
         run: |
           npx playwright install --with-deps chromium

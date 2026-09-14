@@ -47,12 +47,10 @@ check_group() {
         cached components cache-engine python3 scripts/test-ci-test-cache.py
         ;;
     webui-check)
-        if [[ -f "$ROOT/scripts/ci-test-cache.py" ]]; then
-            python3 "$ROOT/scripts/ci-test-cache.py" --output webui/dist webui webui-check -- \
-                bash -c 'cd webui && npm run check'
-        else
-            (cd webui && npm run check)
-        fi
+        # Quality only consumes the pass/fail result. Release/build workflows
+        # rebuild their own artifacts, so tying this result to webui/dist makes
+        # every fresh runner miss even when the exact validation already passed.
+        cached webui webui-check bash -c 'cd webui && npm run check'
         ;;
     webui-browser)
         cached webui webui-browser bash -c 'cd webui && npm run test:ui'
