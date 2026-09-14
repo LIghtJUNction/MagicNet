@@ -50,7 +50,7 @@ permissions:
 
 concurrency:
   group: android-kernelsu-acceptance-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
