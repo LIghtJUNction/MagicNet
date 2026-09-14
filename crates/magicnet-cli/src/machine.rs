@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 
 use serde_json::{json, Value};
 
@@ -298,7 +299,9 @@ fn sub_status_value(app: &App) -> Value {
     let configured_count = if source_mode == "local_file" {
         1
     } else {
-        nonempty_line_count(&app.moddir.join(SUBSCRIPTION_URL))
+        clean_module_lines(app, Path::new(SUBSCRIPTION_URL))
+            .map(|lines| lines.len())
+            .unwrap_or(0)
     };
     let reason = values.get("reason").map(String::as_str).unwrap_or("none");
     let schedule_interval = fs::read_to_string(app.moddir.join(SUBSCRIPTION_REFRESH_HOURS))
@@ -306,6 +309,7 @@ fn sub_status_value(app: &App) -> Value {
         .map(|value| value.trim().to_string())
         .filter(|value| matches!(value.as_str(), "12" | "24" | "48" | "72"))
         .unwrap_or_else(|| "off".to_string());
+    let schedule_enabled = schedule_interval != "off";
 
     envelope(
         "sub.status",
@@ -343,13 +347,18 @@ fn sub_status_value(app: &App) -> Value {
             },
             "schedule": {
                 "interval_hours": schedule_interval,
-                "enabled": schedule_interval != "off",
+                "enabled": schedule_enabled,
             }
         }),
     )
 }
 
 fn wifi_status_value(app: &App) -> Value {
+    let current_mode = current_clash_mode(app).unwrap_or_else(|_| "unavailable".to_string());
+    wifi_status_value_with_current(app, &current_mode)
+}
+
+fn wifi_status_value_with_current(app: &App, current_mode: &str) -> Value {
     let config = read_kv(app.moddir.join(WIFI_POLICY_CONF));
     let last = read_kv(app.moddir.join(WIFI_LAST_STATE));
     let enabled = config
@@ -372,7 +381,6 @@ fn wifi_status_value(app: &App) -> Value {
     };
     let has_ssid = last.get("ssid").is_some_and(|value| !value.is_empty());
     let has_bssid = last.get("bssid").is_some_and(|value| !value.is_empty());
-    let current_mode = current_clash_mode(app).unwrap_or_else(|_| "unavailable".to_string());
 
     envelope(
         "wifi.status",
@@ -392,10 +400,10 @@ fn wifi_status_value(app: &App) -> Value {
             },
             "current_mode": current_mode,
             "entries": {
-                "ssid_count": clean_module_lines(app, std::path::Path::new(WIFI_SSID_LIST))
+                "ssid_count": clean_module_lines(app, Path::new(WIFI_SSID_LIST))
                     .map(|values| values.len())
                     .unwrap_or(0),
-                "bssid_count": clean_module_lines(app, std::path::Path::new(WIFI_BSSID_LIST))
+                "bssid_count": clean_module_lines(app, Path::new(WIFI_BSSID_LIST))
                     .map(|values| values.len())
                     .unwrap_or(0),
             }
@@ -404,11 +412,8 @@ fn wifi_status_value(app: &App) -> Value {
 }
 
 fn subscription_source_mode(app: &App) -> &'static str {
-    if app
-        .moddir
-        .join(SUBSCRIPTION_LOCAL)
-        .metadata()
-        .map(|metadata| metadata.len() > 0)
+    if clean_module_lines(app, Path::new(SUBSCRIPTION_LOCAL))
+        .map(|lines| !lines.is_empty())
         .unwrap_or(false)
     {
         "local_file"
@@ -445,19 +450,12 @@ fn status_token(
     }
 }
 
-fn nonempty_line_count(path: &std::path::Path) -> usize {
-    fs::read_to_string(path)
-        .ok()
-        .map(|text| {
-            text.lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty() && !line.starts_with('#'))
-                .count()
-        })
-        .unwrap_or(0)
-}
-
-fn directory_regular_file_count(path: &std::path::Path) -> usize {
+fn directory_regular_file_count(path: &Path) -> usize {
+    if !fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.file_type().is_dir())
+    {
+        return 0;
+    }
     fs::read_dir(path)
         .ok()
         .map(|entries| {
@@ -575,7 +573,7 @@ fn parse_rss_kib(status: &str) -> Option<u64> {
 mod tests {
     use super::{
         capabilities_value, dns_status_value, machine_value, network_status_value, parse_rss_kib,
-        process_state, service_status_value, sub_status_value, wifi_status_value,
+        process_state, service_status_value, sub_status_value, wifi_status_value_with_current,
     };
     use crate::App;
     use std::fs;
@@ -770,7 +768,7 @@ mod tests {
         )
         .expect("write wifi state");
 
-        let value = wifi_status_value(&app);
+        let value = wifi_status_value_with_current(&app, "rule");
         assert_eq!(value["command"], "wifi.status");
         assert_eq!(value["data"]["policy"]["enabled"], true);
         assert_eq!(value["data"]["policy"]["mode"], "whitelist");
