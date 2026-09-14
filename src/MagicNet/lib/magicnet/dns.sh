@@ -105,6 +105,22 @@ magicnet_dns_apply_singbox() {
       | if $profile == "default" then .dns.final = "bootstrap-local-dns"
         else .dns.final = "cloudflare-profile-dns"
         end
+      # sing-box 1.14 adds per-query timeout, optimistic DNS caching and DNS
+      # cache persistence. Apply conservative defaults only when the user has
+      # not made an explicit choice. A disabled cache remains disabled.
+      | if (.dns | has("timeout") | not) then .dns.timeout = "8s" else . end
+      | if ((.dns.disable_cache // false) == false) then
+          (if (.dns | has("cache_capacity") | not) then .dns.cache_capacity = 4096 else . end)
+          | (if ((.dns.disable_expire // false) == false and (.dns | has("optimistic") | not)) then
+               .dns.optimistic = {"enabled":true,"timeout":"30m"}
+             else . end)
+          | (if ((.experimental // null) | type) != "object" then .experimental = {} else . end)
+          | (if ((.experimental.cache_file // null) | type) != "object" then .experimental.cache_file = {} else . end)
+          | (if (.experimental.cache_file | has("enabled") | not) then .experimental.cache_file.enabled = true else . end)
+          | (if ((.experimental.cache_file.enabled // false) == true and (.experimental.cache_file | has("store_dns") | not)) then
+               .experimental.cache_file.store_dns = true
+             else . end)
+        else . end
     ' "$_config"
     _rc=$?
     unset _profile _bootstrap_server _config _jq _tmp
