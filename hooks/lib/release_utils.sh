@@ -61,6 +61,60 @@ hook_locked_cache_is_valid() {
         && hook_verify_sha256 "$artifact" "$expected_sha256"
 }
 
+hook_release_asset_api_url() {
+    local metadata_path="$1"
+    local asset="$2"
+    local parser=""
+
+    if command -v python3 >/dev/null 2>&1; then
+        parser=python3
+    elif command -v python >/dev/null 2>&1; then
+        parser=python
+    fi
+
+    if [ -n "$parser" ]; then
+        "$parser" - "$metadata_path" "$asset" <<'PY'
+import json
+import re
+import sys
+
+path, wanted = sys.argv[1:]
+try:
+    data = json.load(open(path, encoding="utf-8"))
+except (OSError, ValueError):
+    raise SystemExit(1)
+for item in data.get("assets", []):
+    if item.get("name") != wanted:
+        continue
+    url = item.get("url", "")
+    if re.fullmatch(r"https://api\.github\.com/repos/[^/]+/[^/]+/releases/assets/[0-9]+", url):
+        print(url)
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+        return
+    fi
+
+    # Minimal parser fallback for build hosts without Python. Only accept GitHub's
+    # canonical release-asset API URL and an exact asset-name match.
+    awk -v wanted="$asset" '
+        /"url": "https:\/\/api\.github\.com\/repos\/[^\"]+\/releases\/assets\/[0-9]+"/ {
+            candidate = $0
+            sub(/^.*"url": "/, "", candidate)
+            sub(/".*$/, "", candidate)
+        }
+        /"name": "/ {
+            name = $0
+            sub(/^.*"name": "/, "", name)
+            sub(/".*$/, "", name)
+            if (name == wanted && candidate != "") {
+                print candidate
+                exit
+            }
+        }
+    ' "$metadata_path"
+}
+
 hook_download_locked_asset() {
     local repo="$1"
     local tag="$2"
@@ -69,6 +123,8 @@ hook_download_locked_asset() {
     local output_path
     local url
     local attempt
+    local metadata_path
+    local asset_api_url
     local github_token
 
     case "$repo" in
@@ -97,13 +153,40 @@ hook_download_locked_asset() {
         [ "$attempt" -eq 3 ] || sleep 1
     done
 
-    # GitHub's browser-style release endpoint and the authenticated API path can
-    # traverse different edges. Actions occasionally sees persistent 5xx errors on
-    # the former even while the API remains healthy. Use gh only as an official
-    # GitHub fallback; callers still verify the immutable lock SHA256 afterwards.
+    # The browser-style release endpoint and GitHub's REST asset endpoint can
+    # traverse different edges. Resolve the exact asset through the public REST
+    # API, then request its binary stream. This remains an official GitHub path;
+    # callers still verify the immutable lock SHA256 before promoting the file.
+    metadata_path="$output_dir/.${asset}.release.json"
+    rm -f "$metadata_path" "$output_path"
+    if curl -fsSL \
+        -H 'Accept: application/vnd.github+json' \
+        -H 'X-GitHub-Api-Version: 2022-11-28' \
+        --connect-timeout 20 \
+        --max-time "${GITHUB_DOWNLOAD_TIMEOUT:-120}" \
+        -o "$metadata_path" \
+        "https://api.github.com/repos/$repo/releases/tags/$tag"; then
+        asset_api_url=$(hook_release_asset_api_url "$metadata_path" "$asset" 2>/dev/null || true)
+        rm -f "$metadata_path"
+        if [[ "$asset_api_url" =~ ^https://api\.github\.com/repos/[^/]+/[^/]+/releases/assets/[0-9]+$ ]] \
+            && curl -fL \
+                -H 'Accept: application/octet-stream' \
+                -H 'X-GitHub-Api-Version: 2022-11-28' \
+                --connect-timeout 20 \
+                --max-time "${GITHUB_DOWNLOAD_TIMEOUT:-120}" \
+                -o "$output_path" \
+                "$asset_api_url"; then
+            printf '%s\n' "$output_path"
+            return 0
+        fi
+    fi
+    rm -f "$metadata_path" "$output_path"
+
+    # Last resort for environments with a credential that can read the locked
+    # repository. A repository-scoped Actions token may not have cross-repo
+    # access, so this path is deliberately secondary to the public REST fallback.
     github_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
     if [ -n "$github_token" ] && command -v gh >/dev/null 2>&1; then
-        rm -f "$output_path"
         if GH_TOKEN="$github_token" gh release download "$tag" \
             --repo "$repo" \
             --pattern "$asset" \
