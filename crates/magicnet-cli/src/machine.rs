@@ -3,7 +3,8 @@ use std::fs;
 use serde_json::{json, Value};
 
 use crate::{
-    diagnostics::supervisor_pid, read_kv, service::singbox_webui, singbox_pid_summary, App,
+    clean_module_lines, diagnostics::supervisor_pid, read_kv, service::singbox_webui,
+    singbox_pid_summary, webui_api::current_clash_mode, App,
 };
 
 const MACHINE_SCHEMA: u64 = 1;
@@ -12,12 +13,25 @@ const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
 const DNS_CONF: &str = ".config/magicnet/dns.conf";
 const NETWORK_POLICY_CONF: &str = ".config/magicnet/network-policy.conf";
 const SINGBOX_CONFIG: &str = ".config/sing-box/config.json";
+const SUBSCRIPTION_URL: &str = ".config/sing-box/subscription.url";
+const SUBSCRIPTION_LOCAL: &str = ".config/sing-box/subscription.local";
+const SUBSCRIPTION_STATUS: &str = ".state/sing-box/subscription-status";
+const SUBSCRIPTION_TRANSACTION: &str = ".state/sing-box/subscription-transaction";
+const SUBSCRIPTION_UPDATE_LOCK: &str = ".state/sing-box/subscription-update.lock";
+const SUBSCRIPTION_CACHE: &str = ".state/sing-box/subscription-cache";
+const SUBSCRIPTION_REFRESH_HOURS: &str = ".config/magicnet/subscription-refresh-hours";
+const WIFI_POLICY_CONF: &str = ".config/magicnet/wifi-policy.conf";
+const WIFI_SSID_LIST: &str = ".config/magicnet/wifi-ssid.list";
+const WIFI_BSSID_LIST: &str = ".config/magicnet/wifi-bssid.list";
+const WIFI_LAST_STATE: &str = ".state/wifi-policy/last-state.conf";
 const MACHINE_COMMANDS: &[&str] = &[
     "service.status",
     "core.status",
     "supervisor.status",
     "dns.status",
     "network.status",
+    "sub.status",
+    "wifi.status",
     "machine.capabilities",
 ];
 
@@ -66,6 +80,10 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         [command, action] if *command == "network" && *action == "status" => {
             Ok(network_status_value(app))
         }
+        [command, action] if *command == "sub" && *action == "status" => Ok(sub_status_value(app)),
+        [command, action] if *command == "wifi" && *action == "status" => {
+            Ok(wifi_status_value(app))
+        }
         _ => Err(MachineError {
             code: "machine.unsupported_command",
             message: "unsupported machine command",
@@ -112,7 +130,8 @@ fn capabilities_value() -> Value {
                 "versioned_envelope",
                 "structured_errors",
                 "redacted_status",
-                "configured_effective_split"
+                "configured_effective_split",
+                "privacy_safe_network_identifiers"
             ],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": true,
@@ -135,17 +154,7 @@ fn service_status_value(app: &App) -> Value {
     };
     let selected = selected_core(app);
     let transparent = transparent_mode(app);
-    let subscription_source = if app
-        .moddir
-        .join(".config/sing-box/subscription.local")
-        .metadata()
-        .map(|metadata| metadata.len() > 0)
-        .unwrap_or(false)
-    {
-        "local_file"
-    } else {
-        "remote_url"
-    };
+    let subscription_source = subscription_source_mode(app);
 
     envelope(
         "service.status",
@@ -283,6 +292,183 @@ fn network_status_value(app: &App) -> Value {
     )
 }
 
+fn sub_status_value(app: &App) -> Value {
+    let values = read_kv(app.moddir.join(SUBSCRIPTION_STATUS));
+    let source_mode = subscription_source_mode(app);
+    let configured_count = if source_mode == "local_file" {
+        1
+    } else {
+        nonempty_line_count(&app.moddir.join(SUBSCRIPTION_URL))
+    };
+    let reason = values.get("reason").map(String::as_str).unwrap_or("none");
+    let schedule_interval = fs::read_to_string(app.moddir.join(SUBSCRIPTION_REFRESH_HOURS))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| matches!(value.as_str(), "12" | "24" | "48" | "72"))
+        .unwrap_or_else(|| "off".to_string());
+
+    envelope(
+        "sub.status",
+        json!({
+            "source": {
+                "mode": source_mode,
+                "configured_count": configured_count,
+            },
+            "update": {
+                "lock_present": app.moddir.join(SUBSCRIPTION_UPDATE_LOCK).is_dir(),
+                "transaction_pending": app.moddir.join(SUBSCRIPTION_TRANSACTION).is_dir(),
+            },
+            "last": {
+                "phase": status_token(&values, "phase", "never"),
+                "result": status_token(&values, "result", "never"),
+                "attempt_epoch": status_u64(&values, "attempt_epoch"),
+                "success_epoch": status_u64(&values, "success_epoch"),
+                "configured_count": status_u64(&values, "configured_count"),
+                "source_count": status_u64(&values, "source_count"),
+                "imported_count": status_u64(&values, "imported_count"),
+                "skipped_count": status_u64(&values, "skipped_count"),
+                "generation_id": status_token(&values, "generation_id", "none"),
+                "has_reason": !reason.is_empty() && reason != "none",
+                "source_mode": status_token(&values, "source_mode", "unknown"),
+                "native_parser": status_token(&values, "native_parser", "unknown"),
+                "native_node_count": status_u64(&values, "native_node_count"),
+                "converter_enabled": status_token(&values, "converter_enabled", "unknown"),
+                "converter_available": status_token(&values, "converter_available", "unknown"),
+                "converter_attempted": status_token(&values, "converter_attempted", "0"),
+                "converter_format": status_token(&values, "converter_format", "none"),
+                "converter_result": status_token(&values, "converter_result", "unknown"),
+            },
+            "cache": {
+                "entries": directory_regular_file_count(&app.moddir.join(SUBSCRIPTION_CACHE)),
+            },
+            "schedule": {
+                "interval_hours": schedule_interval,
+                "enabled": schedule_interval != "off",
+            }
+        }),
+    )
+}
+
+fn wifi_status_value(app: &App) -> Value {
+    let config = read_kv(app.moddir.join(WIFI_POLICY_CONF));
+    let last = read_kv(app.moddir.join(WIFI_LAST_STATE));
+    let enabled = config
+        .get("MAGICNET_WIFI_POLICY_ENABLED")
+        .is_some_and(|value| value == "1");
+    let policy_mode = match config.get("MAGICNET_WIFI_POLICY_MODE").map(String::as_str) {
+        Some("whitelist") => "whitelist",
+        _ => "blacklist",
+    };
+    let interval_seconds = config
+        .get("MAGICNET_WIFI_POLICY_INTERVAL")
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| (3..=300).contains(value))
+        .unwrap_or(5);
+    let connected = last.get("connected").is_some_and(|value| value == "1");
+    let matched = last.get("matched").is_some_and(|value| value == "1");
+    let desired_mode = match last.get("desired_mode").map(String::as_str) {
+        Some("direct") => "direct",
+        _ => "rule",
+    };
+    let has_ssid = last.get("ssid").is_some_and(|value| !value.is_empty());
+    let has_bssid = last.get("bssid").is_some_and(|value| !value.is_empty());
+    let current_mode = current_clash_mode(app).unwrap_or_else(|_| "unavailable".to_string());
+
+    envelope(
+        "wifi.status",
+        json!({
+            "policy": {
+                "enabled": enabled,
+                "mode": policy_mode,
+                "interval_seconds": interval_seconds,
+                "supervisor": supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy"),
+            },
+            "last_network": {
+                "connected": connected,
+                "matched": matched,
+                "desired_mode": desired_mode,
+                "has_ssid": has_ssid,
+                "has_bssid": has_bssid,
+            },
+            "current_mode": current_mode,
+            "entries": {
+                "ssid_count": clean_module_lines(app, std::path::Path::new(WIFI_SSID_LIST))
+                    .map(|values| values.len())
+                    .unwrap_or(0),
+                "bssid_count": clean_module_lines(app, std::path::Path::new(WIFI_BSSID_LIST))
+                    .map(|values| values.len())
+                    .unwrap_or(0),
+            }
+        }),
+    )
+}
+
+fn subscription_source_mode(app: &App) -> &'static str {
+    if app
+        .moddir
+        .join(SUBSCRIPTION_LOCAL)
+        .metadata()
+        .map(|metadata| metadata.len() > 0)
+        .unwrap_or(false)
+    {
+        "local_file"
+    } else {
+        "remote_url"
+    }
+}
+
+fn status_u64(values: &std::collections::HashMap<String, String>, key: &str) -> u64 {
+    values
+        .get(key)
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+fn status_token(
+    values: &std::collections::HashMap<String, String>,
+    key: &str,
+    fallback: &str,
+) -> String {
+    let Some(value) = values.get(key) else {
+        return fallback.to_string();
+    };
+    let value = value.trim();
+    if !value.is_empty()
+        && value.len() <= 80
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        value.to_string()
+    } else {
+        fallback.to_string()
+    }
+}
+
+fn nonempty_line_count(path: &std::path::Path) -> usize {
+    fs::read_to_string(path)
+        .ok()
+        .map(|text| {
+            text.lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn directory_regular_file_count(path: &std::path::Path) -> usize {
+    fs::read_dir(path)
+        .ok()
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 fn process_state(summary: &str) -> &'static str {
     if summary == "stopped" {
         "stopped"
@@ -389,7 +575,7 @@ fn parse_rss_kib(status: &str) -> Option<u64> {
 mod tests {
     use super::{
         capabilities_value, dns_status_value, machine_value, network_status_value, parse_rss_kib,
-        process_state, service_status_value,
+        process_state, service_status_value, sub_status_value, wifi_status_value,
     };
     use crate::App;
     use std::fs;
@@ -428,8 +614,15 @@ mod tests {
         let commands = value["data"]["commands"]
             .as_array()
             .expect("commands array");
-        assert!(commands.iter().any(|command| command == "service.status"));
-        assert!(commands.iter().any(|command| command == "dns.status"));
+        assert!(commands
+            .iter()
+            .any(|command| command.as_str() == Some("service.status")));
+        assert!(commands
+            .iter()
+            .any(|command| command.as_str() == Some("sub.status")));
+        assert!(commands
+            .iter()
+            .any(|command| command.as_str() == Some("wifi.status")));
     }
 
     #[test]
@@ -519,6 +712,74 @@ mod tests {
         assert_eq!(value["data"]["configured"]["mtu"], 1380);
         assert_eq!(value["data"]["effective"]["stack"], "mixed");
         assert_eq!(value["data"]["effective"]["udp_timeout"], "10m");
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn subscription_status_reports_lifecycle_without_leaking_urls_or_reason() {
+        let (root, app) = fixture();
+        fs::create_dir_all(root.join(".state/sing-box/subscription-cache"))
+            .expect("create subscription cache");
+        fs::write(
+            root.join(".config/sing-box/subscription.url"),
+            "https://user:TOP-SECRET@example.invalid/sub\nhttps://example.invalid/second\n",
+        )
+        .expect("write subscriptions");
+        fs::write(
+            root.join(".state/sing-box/subscription-status"),
+            "phase=activate\nresult=failed\nattempt_epoch=123\nsuccess_epoch=100\nconfigured_count=2\nsource_count=2\nimported_count=3\nskipped_count=1\ngeneration_id=123-456\nreason=TOP-SECRET\nsource_mode=url\nnative_parser=share-links\nnative_node_count=3\nconverter_enabled=1\nconverter_available=1\nconverter_attempted=0\nconverter_format=none\nconverter_result=unused\n",
+        )
+        .expect("write subscription status");
+        fs::write(root.join(".state/sing-box/subscription-cache/a.json"), "{}")
+            .expect("write cache");
+        fs::write(root.join(".config/magicnet/subscription-refresh-hours"), "24\n")
+            .expect("write schedule");
+
+        let value = sub_status_value(&app);
+        assert_eq!(value["command"], "sub.status");
+        assert_eq!(value["data"]["source"]["configured_count"], 2);
+        assert_eq!(value["data"]["last"]["result"], "failed");
+        assert_eq!(value["data"]["last"]["has_reason"], true);
+        assert_eq!(value["data"]["cache"]["entries"], 1);
+        assert_eq!(value["data"]["schedule"]["interval_hours"], "24");
+        let encoded = value.to_string();
+        assert!(!encoded.contains("TOP-SECRET"));
+        assert!(!encoded.contains("example.invalid"));
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn wifi_status_does_not_expose_ssid_or_bssid_values() {
+        let (root, app) = fixture();
+        fs::create_dir_all(root.join(".state/wifi-policy")).expect("create wifi state");
+        fs::write(
+            root.join(".config/magicnet/wifi-policy.conf"),
+            "MAGICNET_WIFI_POLICY_ENABLED=1\nMAGICNET_WIFI_POLICY_MODE=whitelist\nMAGICNET_WIFI_POLICY_INTERVAL=12\n",
+        )
+        .expect("write wifi policy");
+        fs::write(root.join(".config/magicnet/wifi-ssid.list"), "SECRET-WIFI\n")
+            .expect("write ssid list");
+        fs::write(
+            root.join(".config/magicnet/wifi-bssid.list"),
+            "aa:bb:cc:dd:ee:ff\n",
+        )
+        .expect("write bssid list");
+        fs::write(
+            root.join(".state/wifi-policy/last-state.conf"),
+            "connected=1\nssid=SECRET-WIFI\nbssid=aa:bb:cc:dd:ee:ff\nmatched=1\ndesired_mode=rule\n",
+        )
+        .expect("write wifi state");
+
+        let value = wifi_status_value(&app);
+        assert_eq!(value["command"], "wifi.status");
+        assert_eq!(value["data"]["policy"]["enabled"], true);
+        assert_eq!(value["data"]["policy"]["mode"], "whitelist");
+        assert_eq!(value["data"]["last_network"]["connected"], true);
+        assert_eq!(value["data"]["last_network"]["has_ssid"], true);
+        assert_eq!(value["data"]["entries"]["ssid_count"], 1);
+        let encoded = value.to_string();
+        assert!(!encoded.contains("SECRET-WIFI"));
+        assert!(!encoded.contains("aa:bb:cc:dd:ee:ff"));
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
