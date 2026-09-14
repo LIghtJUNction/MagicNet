@@ -70,10 +70,13 @@ webui_build_key() {
 
 webui_dist_digest() {
     [ -f "${WEBUI_DIST}/index.html" ] || return 1
-    find "$WEBUI_DIST" -type f ! -name '.magicnet-build-key' -print0 |
-        LC_ALL=C sort -z |
-        xargs -0 -r sha256sum |
-        sha256sum | cut -d' ' -f1
+    (
+        cd "$WEBUI_DIST" || exit 1
+        find . -type f ! -name '.magicnet-build-key' -print0 |
+            LC_ALL=C sort -z |
+            xargs -0 -r sha256sum |
+            sha256sum | cut -d' ' -f1
+    )
 }
 
 BUILD_KEY="$(webui_build_key)"
