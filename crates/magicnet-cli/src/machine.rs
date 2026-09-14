@@ -451,9 +451,7 @@ fn status_token(
 }
 
 fn directory_regular_file_count(path: &Path) -> usize {
-    if !fs::symlink_metadata(path)
-        .is_ok_and(|metadata| metadata.file_type().is_dir())
-    {
+    if !fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir()) {
         return 0;
     }
     fs::read_dir(path)
@@ -730,8 +728,11 @@ mod tests {
         .expect("write subscription status");
         fs::write(root.join(".state/sing-box/subscription-cache/a.json"), "{}")
             .expect("write cache");
-        fs::write(root.join(".config/magicnet/subscription-refresh-hours"), "24\n")
-            .expect("write schedule");
+        fs::write(
+            root.join(".config/magicnet/subscription-refresh-hours"),
+            "24\n",
+        )
+        .expect("write schedule");
 
         let value = sub_status_value(&app);
         assert_eq!(value["command"], "sub.status");
@@ -755,8 +756,11 @@ mod tests {
             "MAGICNET_WIFI_POLICY_ENABLED=1\nMAGICNET_WIFI_POLICY_MODE=whitelist\nMAGICNET_WIFI_POLICY_INTERVAL=12\n",
         )
         .expect("write wifi policy");
-        fs::write(root.join(".config/magicnet/wifi-ssid.list"), "SECRET-WIFI\n")
-            .expect("write ssid list");
+        fs::write(
+            root.join(".config/magicnet/wifi-ssid.list"),
+            "SECRET-WIFI\n",
+        )
+        .expect("write ssid list");
         fs::write(
             root.join(".config/magicnet/wifi-bssid.list"),
             "aa:bb:cc:dd:ee:ff\n",
