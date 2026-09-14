@@ -26,6 +26,7 @@ check_group() {
         ;;
     shell)
         cached host shell-lint bash scripts/lint-shell.sh
+        cached host webui-build-cache bash scripts/test-webui-build-cache.sh
         bash scripts/test-host.sh
         ;;
     components)
