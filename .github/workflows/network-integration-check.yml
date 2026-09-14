@@ -1,0 +1,48 @@
+name: Network Integration Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/singbox-network-20260914
+    paths:
+      - .github/workflows/network-integration-check.yml
+      - src/MagicNet/lib/magicnet/runtime_config.sh
+      - src/MagicNet/lib/magicnet/core.sh
+      - scripts/test-cloudflared-auth.sh
+      - scripts/test-app-routing-policy.sh
+      - scripts/test-runtime-fingerprint-safety.sh
+      - scripts/test-startup-network-safety.sh
+      - scripts/test-host.sh
+      - sing-box
+
+permissions:
+  contents: read
+
+concurrency:
+  group: network-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Install test tools
+        run: sudo apt-get update && sudo apt-get install -y jq shellcheck
+      - name: Check shell syntax
+        run: |
+          sh -n src/MagicNet/lib/magicnet/runtime_config.sh
+          sh -n src/MagicNet/lib/magicnet/core.sh
+          sh -n scripts/test-cloudflared-auth.sh
+      - name: Check Cloudflared credential lifecycle
+        run: sh scripts/test-cloudflared-auth.sh
+      - name: Check runtime fingerprint safety
+        run: sh scripts/test-runtime-fingerprint-safety.sh
+      - name: Check app routing startup integration
+        run: bash scripts/test-app-routing-policy.sh
+      - name: Check startup network safety
+        run: sh scripts/test-startup-network-safety.sh
