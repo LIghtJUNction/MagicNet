@@ -26,6 +26,10 @@ class CacheTests(unittest.TestCase):
         self.write('Cargo.toml', '[workspace]\n')
         self.write('crates/lib.rs', 'one')
         self.write('docs/note.md', 'one')
+        self.write('webui/src/app.js', 'one')
+        self.write('src/MagicNet/service.sh', 'one')
+        self.write('src/MagicNet/network-check.sh', 'one')
+        self.write('src/MagicNet/.config/sing-box/config.json', 'one')
         subprocess.run(['git', 'add', '.'], cwd=self.root, check=True)
         self.addCleanup(patch.stopall)
         patch.object(CACHE, 'ROOT', self.root).start()
@@ -40,7 +44,7 @@ class CacheTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
 
-    def run_check(self, *options, command=None, scope='host', name='test'):
+    def run_check(self, *options, command=None, scope='repo', name='test'):
         args = ['ci-test-cache.py', *options, scope, name, '--', *(command or self.command)]
         with patch.object(sys, 'argv', args):
             return CACHE.main()
@@ -72,6 +76,33 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(self.count(), 1)
         self.write('crates/lib.rs', 'changed')
         self.run_check(scope='rust')
+        self.assertEqual(self.count(), 2)
+        self.write('src/MagicNet/.config/sing-box/config.json', 'changed')
+        self.run_check(scope='rust')
+        self.assertEqual(self.count(), 3)
+
+    def test_host_scope_ignores_rust_webui_and_docs_but_tracks_module(self):
+        self.run_check(scope='host')
+        self.write('crates/lib.rs', 'changed')
+        self.run_check(scope='host')
+        self.write('webui/src/app.js', 'changed')
+        self.run_check(scope='host')
+        self.write('docs/note.md', 'changed')
+        self.run_check(scope='host')
+        self.assertEqual(self.count(), 1)
+        self.write('src/MagicNet/service.sh', 'changed')
+        self.run_check(scope='host')
+        self.assertEqual(self.count(), 2)
+
+    def test_network_scope_ignores_ui_and_rust_but_tracks_network_inputs(self):
+        self.run_check(scope='network')
+        self.write('crates/lib.rs', 'changed')
+        self.run_check(scope='network')
+        self.write('webui/src/app.js', 'changed')
+        self.run_check(scope='network')
+        self.assertEqual(self.count(), 1)
+        self.write('src/MagicNet/network-check.sh', 'changed')
+        self.run_check(scope='network')
         self.assertEqual(self.count(), 2)
 
     def test_toolchain_environment_and_command_invalidate(self):

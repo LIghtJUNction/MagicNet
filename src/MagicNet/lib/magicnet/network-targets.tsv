@@ -9,7 +9,7 @@ taobao|domestic|https://www.taobao.com/|200
 alipay|domestic|https://www.alipay.com/|200
 bing_cn|domestic|https://cn.bing.com/|200
 google|global|https://www.google.com/|200
-google_play|google|https://play.google.com/store/apps|200
+google_play|google|https://play.google.com/generate_204|204
 google_login|google|https://accounts.google.com/|200
 google_static|google|https://www.gstatic.com/generate_204|204
 android_connectivity|google|https://connectivitycheck.gstatic.com/generate_204|204

@@ -180,7 +180,7 @@ class SubmoduleUpdateTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((nested / "version").read_text(), "updated dependency")
 
-    def test_workflows_refresh_before_build_inputs(self):
+    def test_only_build_refreshes_remote_submodule_inputs(self):
         # PyYAML is already required by the host regression suite.
         import yaml
         build = yaml.safe_load((ROOT / ".github/workflows/exec.yml").read_text())
@@ -188,9 +188,18 @@ class SubmoduleUpdateTests(unittest.TestCase):
         refresh = next(i for i, step in enumerate(steps) if "bash scripts/update-submodules.sh" in step.get("run", ""))
         fingerprint = next(i for i, step in enumerate(steps) if step.get("id") == "toolchain")
         self.assertLess(refresh, fingerprint)
+
+        # Quality tests the exact commit inputs. Reaching out to remote moving
+        # branches here both duplicates the build fetch and makes validation
+        # depend on network/upstream state unrelated to the commit under test.
         quality = yaml.safe_load((ROOT / ".github/workflows/quality.yml").read_text())
         for job in ("rust", "shell"):
-            self.assertIn("update-submodules.sh", quality["jobs"][job]["steps"][1]["run"])
+            commands = "\n".join(step.get("run", "") for step in quality["jobs"][job]["steps"])
+            self.assertNotIn("update-submodules.sh", commands)
+        rust_checkout = quality["jobs"]["rust"]["steps"][0]
+        shell_checkout = quality["jobs"]["shell"]["steps"][0]
+        self.assertNotEqual(rust_checkout.get("with", {}).get("submodules"), "recursive")
+        self.assertEqual(shell_checkout.get("with", {}).get("submodules"), "recursive")
 
 
 if __name__ == "__main__":

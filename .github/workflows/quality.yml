@@ -32,10 +32,12 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-          submodules: recursive
 
-      - name: Refresh build submodules
-        run: bash scripts/update-submodules.sh
+      # One routing unit test validates the bundled MagicSingBox source config.
+      # Initialize only that pinned gitlink instead of downloading every build
+      # submodule (especially the much larger sing-box source repository).
+      - name: Initialize bundled routing config
+        run: git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
 
       - name: Restore per-check test results
         uses: ./.github/actions/test-cache
@@ -83,16 +85,31 @@ jobs:
           persist-credentials: false
           submodules: recursive
 
-      - name: Refresh build submodules
-        run: bash scripts/update-submodules.sh
-
+      # Quality validates the gitlinks recorded by the commit. The build/release
+      # workflow owns remote-tracking submodule refreshes, so CI does not fetch
+      # every upstream branch twice just to run fixture-based host tests.
       - name: Restore per-check test results
         uses: ./.github/actions/test-cache
         with:
           mode: restore
 
-      - name: Install host check dependencies
-        run: sudo apt-get update && sudo apt-get install -y shellcheck jq python3-yaml ripgrep curl openssl
+      - name: Install missing host check dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=()
+          command -v shellcheck >/dev/null 2>&1 || packages+=(shellcheck)
+          command -v jq >/dev/null 2>&1 || packages+=(jq)
+          command -v rg >/dev/null 2>&1 || packages+=(ripgrep)
+          command -v curl >/dev/null 2>&1 || packages+=(curl)
+          command -v openssl >/dev/null 2>&1 || packages+=(openssl)
+          command -v zip >/dev/null 2>&1 || packages+=(zip)
+          command -v unzip >/dev/null 2>&1 || packages+=(unzip)
+          python3 -c 'import yaml' >/dev/null 2>&1 || packages+=(python3-yaml)
+          if ((${#packages[@]})); then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${packages[@]}"
+          fi
 
       - name: Check shell code and host regressions
         timeout-minutes: 15
@@ -128,8 +145,17 @@ jobs:
           key: components-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('installer/components/**') }}
           restore-keys: |
             components-go-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
-      - name: Install package test dependencies
-        run: sudo apt-get update && sudo apt-get install -y python3-yaml unzip
+      - name: Install missing package test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=()
+          command -v unzip >/dev/null 2>&1 || packages+=(unzip)
+          python3 -c 'import yaml' >/dev/null 2>&1 || packages+=(python3-yaml)
+          if ((${#packages[@]})); then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${packages[@]}"
+          fi
       - name: Test component packaging and updates
         run: bash scripts/quality-gate.sh components
       - name: Save successful per-check results

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Content-addressed, successful-only CI test results (not release approval).
 
-Unknown/host checks deliberately use conservative repository-wide inputs. Other
-families have declared source roots. Never infer safety from an Actions cache
-prefix hit, the commit SHA alone, or the presence of an output file.
+Known test families declare conservative source roots so unrelated Rust, WebUI,
+network, or host changes do not invalidate each other. Unknown scopes remain
+repository-wide. Never infer safety from an Actions cache prefix hit, the
+commit SHA alone, or the presence of an output file.
 """
 from __future__ import annotations
 
@@ -24,14 +25,38 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = 1
+SCHEMA = 3
 SCOPES = {
-    "rust": ("Cargo.toml", "Cargo.lock", ".cargo", "crates", "rust-toolchain.toml"),
+    "rust": (
+        "Cargo.toml", "Cargo.lock", ".cargo", "crates", "rust-toolchain.toml",
+        "src/MagicNet/.config/sing-box",
+    ),
+    # Host regressions intentionally cover the module/build surface, but Rust
+    # crate-only and WebUI-only edits cannot affect these fixture-based checks.
+    "host": (
+        "src", "scripts", "hooks", "installer", ".github", "sing-box",
+        "sing-box.version", "README.md", "kam.toml", "update.json", ".gitmodules",
+    ),
+    # Network regression jobs use production network/DNS policy plus the exact
+    # test command operand. Keep UI, packaging, and unrelated Rust edits out.
+    "network": (
+        "src/MagicNet/network-check.sh",
+        "src/MagicNet/lib/magicnet",
+        "src/MagicNet/.config/magicnet",
+        "src/MagicNet/.config/sing-box",
+        "src/MagicNet/service.sh",
+        "src/MagicNet/post-fs-data.sh",
+    ),
     "components": ("installer", "src", "hooks", "scripts", ".github", "kam.toml", "update.json"),
     "webui": ("webui", "src", "scripts", "installer", ".github", "kam.toml"),
     "singbox": ("sing-box", "sing-box.version", "scripts/build-sing-box.sh", ".gitmodules"),
 }
-COMMON = ("scripts/ci-test-cache.py", "scripts/quality-gate.sh", ".github", ".gitmodules")
+COMMON = (
+    "scripts/ci-test-cache.py",
+    "scripts/quality-gate.sh",
+    ".github/actions/test-cache/action.yml",
+    ".gitmodules",
+)
 TOOLS = {
     "bash": ["--version"], "sh": [], "python3": ["--version"],
     "git": ["--version"], "jq": ["--version"], "curl": ["--version"],
@@ -39,6 +64,10 @@ TOOLS = {
     "tar": ["--version"], "shellcheck": ["--version"], "rg": ["--version"],
     "rustc": ["-vV"], "cargo": ["--version"], "go": ["version"],
     "node": ["--version"], "npm": ["--version"], "sing-box": ["version"],
+    # Deterministic network-namespace regressions are reusable only when the
+    # runner's networking toolchain is identical too.
+    "ip": ["-V"], "iptables": ["--version"], "ip6tables": ["--version"],
+    "unshare": ["--version"],
 }
 ENV_KEYS = ("CI", "ImageOS", "ImageVersion", "LANG", "LC_ALL", "TZ", "RUSTFLAGS",
             "CARGO_BUILD_TARGET", "GOFLAGS", "GOOS", "GOARCH", "CGO_ENABLED",
@@ -46,9 +75,21 @@ ENV_KEYS = ("CI", "ImageOS", "ImageVersion", "LANG", "LC_ALL", "TZ", "RUSTFLAGS"
 
 
 def git_files(root: Path):
-    """Hash checked-out bytes, modes, additions/deletions and recursive gitlinks."""
+    """Fingerprint Git inputs without rereading every clean file.
+
+    For clean tracked files, the index mode/blob SHA identifies the checked-out
+    bytes exactly. For clean submodules, the parent gitlink plus checked-out HEAD
+    identifies the full tracked tree, including nested gitlinks, so recursively
+    hashing a large dependency tree adds no information. Dirty paths fall back to
+    real worktree bytes, preserving mutation/untracked-file safety.
+    """
     result = subprocess.run(["git", "ls-files", "--stage", "-z"], cwd=root,
                             check=True, capture_output=True).stdout
+    dirty_output = subprocess.run(
+        ["git", "diff-files", "--name-only", "-z"], cwd=root,
+        check=True, capture_output=True,
+    ).stdout
+    dirty = {os.fsdecode(name) for name in dirty_output.split(b"\0") if name}
     seen = set()
     for entry in result.split(b"\0"):
         if not entry:
@@ -67,9 +108,24 @@ def git_files(root: Path):
                 continue
             actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=path).strip()
             yield path, b"gitlink:" + revision + b":" + actual
-            yield from git_files(path)
-        else:
+            # A clean commit already identifies every tracked byte and nested
+            # gitlink. Recurse only when the worktree has information not present
+            # in that commit (modified/staged/untracked or dirty nested modules).
+            status = subprocess.run(
+                ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all",
+                 "--ignore-submodules=none"], cwd=path, check=True,
+                capture_output=True,
+            ).stdout
+            if status:
+                yield from git_files(path)
+        elif mode == b"120000" or name in dirty:
+            # Symlinks deliberately include their resolved bytes; dirty regular
+            # paths include unstaged content/deletion/mode changes.
             yield path, file_digest(path)
+        else:
+            # Staged content is represented by the current index blob SHA, not
+            # HEAD, so staged edits invalidate results without reading the file.
+            yield path, b"index:" + mode + b":" + revision
     others = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=root)
     for raw_name in others.split(b"\0"):
         if raw_name and os.fsdecode(raw_name) not in seen:

@@ -1,19 +1,64 @@
 name: Network regression
 
 on:
+  workflow_dispatch:
+    inputs:
+      force_tests:
+        description: Ignore previous deterministic network test results
+        required: false
+        type: boolean
+        default: false
   pull_request:
     paths:
       - 'src/MagicNet/network-check.sh'
-      - 'src/MagicNet/lib/magicnet/network-targets.tsv'
-      - 'src/MagicNet/lib/magicnet/network.sh'
-      - 'scripts/test-dns-*.py'
+      - 'src/MagicNet/lib/magicnet/**'
+      - 'src/MagicNet/.config/magicnet/**'
+      - 'src/MagicNet/.config/sing-box/**'
+      - 'src/MagicNet/service.sh'
+      - 'src/MagicNet/post-fs-data.sh'
       - 'scripts/test-network-check.py'
-      - 'scripts/test-host.sh'
+      - 'scripts/test-website-probe.py'
+      - 'scripts/test-dns-*'
+      - 'scripts/test-startup-network-safety.sh'
+      - 'scripts/test-tun-interface-safety.sh'
+      - 'scripts/test-ebpf-transparent-mode.sh'
+      - 'scripts/test-singbox-dataplane-preflight.sh'
+      - 'scripts/test-*-routing*.sh'
+      - 'scripts/ci-test-cache.py'
+      - '.github/actions/test-cache/**'
       - '.github/workflows/network-regression.yml'
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/MagicNet/network-check.sh'
+      - 'src/MagicNet/lib/magicnet/**'
+      - 'src/MagicNet/.config/magicnet/**'
+      - 'src/MagicNet/.config/sing-box/**'
+      - 'src/MagicNet/service.sh'
+      - 'src/MagicNet/post-fs-data.sh'
+      - 'scripts/test-network-check.py'
+      - 'scripts/test-website-probe.py'
+      - 'scripts/test-dns-*'
+      - 'scripts/test-startup-network-safety.sh'
+      - 'scripts/test-tun-interface-safety.sh'
+      - 'scripts/test-ebpf-transparent-mode.sh'
+      - 'scripts/test-singbox-dataplane-preflight.sh'
+      - 'scripts/test-*-routing*.sh'
+      - 'scripts/ci-test-cache.py'
+      - '.github/actions/test-cache/**'
+      - '.github/workflows/network-regression.yml'
 
 permissions:
   contents: read
+
+concurrency:
+  group: network-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CI_TEST_FORCE: ${{ inputs.force_tests == true && '1' || '0' }}
 
 jobs:
   probe-regressions:
@@ -21,37 +66,100 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - name: Check shell and real TLS fixtures
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Restore deterministic network test results
+        uses: ./.github/actions/test-cache
+        with:
+          mode: restore
+
+      - name: Install missing probe dependencies
+        shell: bash
         run: |
-          shellcheck -s sh src/MagicNet/network-check.sh
-          python3 scripts/test-network-check.py
+          set -euo pipefail
+          packages=()
+          command -v shellcheck >/dev/null 2>&1 || packages+=(shellcheck)
+          command -v curl >/dev/null 2>&1 || packages+=(curl)
+          command -v openssl >/dev/null 2>&1 || packages+=(openssl)
+          if ((${#packages[@]})); then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${packages[@]}"
+          fi
+
+      - name: Check shell syntax and real TLS fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci-test-cache.py network network-check-shell -- \
+            shellcheck -s sh src/MagicNet/network-check.sh
+          python3 scripts/ci-test-cache.py --timeout 240 network network-check-fixtures -- \
+            python3 scripts/test-network-check.py
+
+      - name: Save successful deterministic network tests
+        if: ${{ always() && !cancelled() }}
+        uses: ./.github/actions/test-cache
+        with:
+          mode: save
 
   dns-kernel:
     name: Real DNS NAT regressions
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Install isolated networking test tools
-        run: sudo apt-get update && sudo apt-get install -y iproute2 iptables
+
+      - name: Restore deterministic network test results
+        uses: ./.github/actions/test-cache
+        with:
+          mode: restore
+
+      - name: Install missing isolated networking tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ip >/dev/null 2>&1 || \
+             ! command -v iptables >/dev/null 2>&1 || \
+             ! command -v ip6tables >/dev/null 2>&1 || \
+             ! command -v unshare >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends iproute2 iptables util-linux
+          fi
+
       - name: Exercise DNS packets through production rules
-        run: python3 scripts/test-dns-kernel.py --require
+        run: |
+          python3 scripts/ci-test-cache.py --timeout 150 network dns-kernel -- \
+            python3 scripts/test-dns-kernel.py --require
+
+      - name: Save successful deterministic network tests
+        if: ${{ always() && !cancelled() }}
+        uses: ./.github/actions/test-cache
+        with:
+          mode: save
 
   internet-observation:
     name: Public endpoints (runner observation only)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # Deliberately never cache this step: it observes current public endpoint
+      # reachability, while deterministic behavior is covered by the jobs above.
       - name: Record public HTTPS outcomes without disguising failures
         shell: bash
         run: |
           mkdir -p network-report
           rc=0
-          sh src/MagicNet/network-check.sh --mode system --jobs 4 --timeout 12 \
+          sh src/MagicNet/network-check.sh --mode system --jobs 8 --timeout 12 \
             > network-report/public-network.tsv || rc=$?
           printf '%s\n' "$rc" > network-report/exit-code.txt
           cat network-report/public-network.tsv
@@ -65,7 +173,9 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           case "$rc" in 0|1|2) ;; *) exit "$rc" ;; esac
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload public network observation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: public-network-observation
