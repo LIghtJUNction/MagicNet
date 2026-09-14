@@ -29,6 +29,7 @@ check_group() {
         cached rust rust-test cargo test --workspace --all-targets --all-features --locked
         ;;
     shell)
+        cached host source-sanity-tests python3 scripts/test-lint-source.py
         cached host source-sanity python3 scripts/lint-source.py
         cached host shell-lint bash scripts/lint-shell.sh
         bash scripts/test-host.sh
