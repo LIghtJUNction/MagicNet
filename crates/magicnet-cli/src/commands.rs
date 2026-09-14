@@ -183,9 +183,15 @@ mod tests {
     fn command_names_are_unique_and_usage_is_derived_from_the_registry_key() {
         let mut names = HashSet::new();
         for command in COMMANDS {
-            assert!(names.insert(command.name), "duplicate command {}", command.name);
             assert!(
-                command.usage().starts_with(&format!("cli {}", command.name)),
+                names.insert(command.name),
+                "duplicate command {}",
+                command.name
+            );
+            assert!(
+                command
+                    .usage()
+                    .starts_with(&format!("cli {}", command.name)),
                 "usage does not match command {}",
                 command.name
             );
