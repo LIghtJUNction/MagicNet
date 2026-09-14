@@ -29,7 +29,7 @@ check_group() {
         bash scripts/test-host.sh
         ;;
     components)
-        cached components go-format bash -c '[[ -z "$(gofmt -l installer/components/*.go)" ]]'
+        cached components go-format bash -o pipefail -c 'gofmt -l installer/components/*.go | (! grep -q .)'
         cached components go-vet env GO111MODULE=off go vet ./installer/components
         cached components go-test env GO111MODULE=off go test -race ./installer/components
         cached components components python3 scripts/test-components.py
