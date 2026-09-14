@@ -28,7 +28,6 @@ if [ "$with_routing_assets" -eq 1 ]; then
         printf 'prepared routing checks require sing-box and rule-set assets\n' >&2
         exit 127
     }
-    # Prepared/untracked assets describe this machine, not a reusable fixture.
     export CI_TEST_FORCE=1
 else
     printf 'Prepared routing/DNS asset checks excluded; use --with-routing-assets to include them.\n'
@@ -46,7 +45,6 @@ check() {
     python3 "$ROOT/scripts/ci-test-cache.py" host "${script##*/}" -- "$@"
 }
 
-# Real loopback HTTPS/SOCKS tests; never substitute these for device acceptance.
 check python3 scripts/test-website-probe.py
 python3 scripts/ci-test-cache.py host config-json -- jq empty src/MagicNet/.config/sing-box/config.json
 check bash scripts/test-repository-hygiene.sh
@@ -78,6 +76,7 @@ check bash scripts/test-chatgpt-voice-rules.sh
 check bash scripts/test-rule-hash-retry.sh
 check bash scripts/singbox-subscription-protocol-smoke.sh
 check bash scripts/test-service-selectors.sh
+check bash scripts/test-google-play-direct-fallback.sh
 check bash scripts/test-subscription-fetch-policy.sh
 check bash scripts/test-subscription-usage.sh
 check bash scripts/test-singbox-pid-discovery.sh
