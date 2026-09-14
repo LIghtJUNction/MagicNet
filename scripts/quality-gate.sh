@@ -34,6 +34,7 @@ check_group() {
         cached components go-test env GO111MODULE=off go test -race ./installer/components
         cached components components python3 scripts/test-components.py
         cached components installer-identity python3 scripts/test-installer-identity.py
+        cached components kernelsu-installer-lifecycle python3 scripts/test-kernelsu-installer-lifecycle.py
         cached components core-size python3 scripts/test-core-size.py
         cached components release-gates python3 scripts/test-release-gates.py
         cached components component-archive-safety python3 scripts/test-component-archive-safety.py
