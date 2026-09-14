@@ -36,11 +36,19 @@ magicnet_prepare_singbox_candidate_unlocked() {
     magicnet_singbox_apply_hotspot_policy || return 1
     magicnet_dns_apply_unlocked || return 1
     magicnet_tailscale_apply_unlocked || return 1
+    magicnet_cloudflared_apply_unlocked || return 1
     magicnet_app_policy_apply_unlocked || return 1
     magicnet_warp_apply_unlocked || return 1
     magicnet_singbox_apply_zashboard ||
         magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
+    magicnet_singbox_inject_runtime_secrets || return 1
     magicnet_validate_singbox_transparent_config
+    _candidate_rc=$?
+    magicnet_singbox_scrub_runtime_secrets >/dev/null 2>&1 ||
+        magicnet_warn "Failed to scrub transient sing-box credentials after candidate validation."
+    set -- "$_candidate_rc"
+    unset _candidate_rc
+    return "$1"
 }
 
 magicnet_start_singbox_unlocked() {
@@ -66,24 +74,24 @@ magicnet_start_singbox_unlocked() {
         magicnet_singbox_chain_apply || return 1
         magicnet_singbox_apply_transparent_mode || return 1
         magicnet_singbox_apply_hotspot_policy || return 1
-        # sing-box snapshots DNS servers and WARP endpoints when the process
-        # starts. Applying these only in the post-start rewrite made a fresh
-        # start report success while the running core still held the old config.
+        # sing-box snapshots DNS servers and endpoint/inbound credentials when
+        # the process starts. Materialize these before validation/startup.
         magicnet_dns_apply_unlocked || return 1
         magicnet_tailscale_apply_unlocked || return 1
+        magicnet_cloudflared_apply_unlocked || return 1
         # The preceding normalizers rebuild the managed transparent inbound.
         # Materialize per-app UID boundaries before sing-box snapshots it.
         magicnet_app_policy_apply_unlocked || return 1
         magicnet_warp_apply_unlocked || return 1
         magicnet_singbox_apply_zashboard ||
             magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
-        magicnet_tailscale_inject_auth_key || return 1
+        magicnet_singbox_inject_runtime_secrets || return 1
     fi
     # A rollback/recovery starts the byte-exact snapshot without rewriting it.
     # The snapshot was already validated while its previous generation ran.
     magicnet_validate_singbox_transparent_config || {
         [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
-            magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
+            magicnet_singbox_scrub_runtime_secrets >/dev/null 2>&1 || true
         return 1
     }
     import __singbox__
@@ -92,12 +100,12 @@ magicnet_start_singbox_unlocked() {
     # attempts, and callers can still override the bounded attempt count.
     if ! MAGICNET_SINGBOX_START_ATTEMPTS="${MAGICNET_SINGBOX_START_ATTEMPTS:-3}" singbox_start; then
         [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
-            magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
+            magicnet_singbox_scrub_runtime_secrets >/dev/null 2>&1 || true
         return 1
     fi
     if [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" != 1 ]; then
-        magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 ||
-            magicnet_warn "Failed to scrub the transient Tailscale auth key from config.json."
+        magicnet_singbox_scrub_runtime_secrets >/dev/null 2>&1 ||
+            magicnet_warn "Failed to scrub transient sing-box credentials from config.json."
     fi
     if ! magicnet_singbox_running_has_nodes; then
         magicnet_warn "sing-box started but no proxy nodes were detected; stopping sing-box."
@@ -115,7 +123,7 @@ magicnet_start_singbox() {
 magicnet_start_singbox_ready_unlocked() {
     magicnet_start_singbox_unlocked || return 1
     # Keep core materialization, process readiness, and the kernel controls
-    # that target this exact generation under one lock acquisition.  Releasing
+    # that target this exact generation under one lock acquisition. Releasing
     # and reacquiring here let fswatch win the gap and made manual startup wait
     # behind a redundant config apply.
     if magicnet_after_kernel_start_unlocked; then
