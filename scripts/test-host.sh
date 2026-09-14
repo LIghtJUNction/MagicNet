@@ -83,6 +83,7 @@ check bash scripts/test-singbox-pid-discovery.sh
 check bash scripts/test-singbox-ownership.sh
 check bash scripts/test-singbox-tristate-safety.sh
 check bash scripts/test-singbox-readiness.sh
+check sh scripts/test-singbox-runtime-memory.sh
 check bash scripts/test-supervisor-pid-safety.sh
 check bash scripts/test-process-cgroup-detach.sh
 check bash scripts/test-supervisor-orphan-prefilter.sh
