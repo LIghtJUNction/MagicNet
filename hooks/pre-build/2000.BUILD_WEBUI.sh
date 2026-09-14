@@ -54,7 +54,7 @@ webui_build_key() {
             done < <(git -C "$PROJECT_ROOT" ls-files -z -- webui)
         else
             while IFS= read -r -d '' _file; do
-                _relative="${_file#${PROJECT_ROOT}/}"
+                _relative="${_file#"${PROJECT_ROOT}"/}"
                 hash_input_file "$_relative"
             done < <(find "$WEBUI_ROOT" -type f \
                 ! -path "$WEBUI_DIST/*" ! -path "$WEBUI_ROOT/node_modules/*" \
