@@ -60,6 +60,44 @@ printf 'partial asset\n' >"$output_path"
 printf 'curl: (56) TLS unexpected EOF\n' >&2
 exit 56
 SH
+    cat >"$bin_dir/gh" <<'SH'
+#!/bin/sh
+set -eu
+
+output_dir=""
+asset=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dir)
+            output_dir="$2"
+            shift 2
+            ;;
+        --pattern)
+            asset="$2"
+            shift 2
+            ;;
+        *) shift ;;
+    esac
+done
+[ -n "$output_dir" ] || exit 64
+[ -n "$asset" ] || exit 64
+[ -n "${FAKE_GH_ATTEMPT_FILE:-}" ] || exit 64
+
+attempt=0
+if [ -f "$FAKE_GH_ATTEMPT_FILE" ]; then
+    attempt=$(cat "$FAKE_GH_ATTEMPT_FILE")
+fi
+attempt=$((attempt + 1))
+printf '%s\n' "$attempt" >"$FAKE_GH_ATTEMPT_FILE"
+
+output_path="$output_dir/$asset"
+printf 'partial asset\n' >"$output_path"
+if [ "${FAKE_GH_SUCCEED:-0}" = 1 ]; then
+    printf 'complete asset\n' >"$output_path"
+    exit 0
+fi
+exit 1
+SH
     cat >"$bin_dir/sleep" <<'SH'
 #!/bin/sh
 set -eu
@@ -72,7 +110,7 @@ count=$((count + 1))
 printf '%s\n' "$count" >"$FAKE_SLEEP_COUNT_FILE"
 exit 0
 SH
-    chmod +x "$bin_dir/curl" "$bin_dir/sleep"
+    chmod +x "$bin_dir/curl" "$bin_dir/gh" "$bin_dir/sleep"
 }
 
 assert_download_retries() {
@@ -81,26 +119,60 @@ assert_download_retries() {
     local output_dir="$case_dir/download"
     local output_path="$output_dir/asset.tar.gz"
     local attempt_file="$case_dir/attempts"
+    local gh_attempt_file="$case_dir/gh-attempts"
     local sleep_count_file="$case_dir/sleeps"
     local stdout_file="$case_dir/stdout"
     local fake_bin="$TEST_ROOT/fake-download-bin"
 
     mkdir -p "$case_dir"
     if PATH="$fake_bin:$PATH" \
+        GH_TOKEN=test-token \
         FAKE_CURL_ATTEMPT_FILE="$attempt_file" \
         FAKE_SLEEP_COUNT_FILE="$sleep_count_file" \
         FAKE_CURL_SUCCEED_ON="$succeed_on" \
+        FAKE_GH_ATTEMPT_FILE="$gh_attempt_file" \
+        FAKE_GH_SUCCEED=0 \
         hook_download_locked_asset example/release v1.0.0 asset.tar.gz "$output_dir" >"$stdout_file" 2>/dev/null; then
         [ "$succeed_on" -le 3 ] || fail "download unexpectedly succeeded after persistent failures"
         [ "$(cat "$stdout_file")" = "$output_path" ] || fail "download returned the wrong output path"
         [ "$(cat "$output_path")" = "complete asset" ] || fail "download did not replace partial content"
+        [ ! -e "$gh_attempt_file" ] || fail "authenticated fallback ran before direct retries succeeded"
     else
         [ "$succeed_on" -gt 3 ] || fail "download unexpectedly failed before retry ceiling"
         [ ! -e "$output_path" ] || fail "persistent download failure left a partial asset"
         [ ! -s "$stdout_file" ] || fail "failed download returned an output path"
+        [ "$(cat "$gh_attempt_file")" = 1 ] || fail "persistent failure did not try authenticated fallback exactly once"
     fi
     [ "$(cat "$attempt_file")" = 3 ] || fail "download did not stop after exactly three attempts"
     [ "$(cat "$sleep_count_file")" = 2 ] || fail "download did not wait only between attempts"
+}
+
+assert_authenticated_download_fallback() {
+    local case_dir="$1"
+    local output_dir="$case_dir/download"
+    local output_path="$output_dir/asset.tar.gz"
+    local curl_attempt_file="$case_dir/curl-attempts"
+    local gh_attempt_file="$case_dir/gh-attempts"
+    local sleep_count_file="$case_dir/sleeps"
+    local stdout_file="$case_dir/stdout"
+    local fake_bin="$TEST_ROOT/fake-download-bin"
+
+    mkdir -p "$case_dir"
+    PATH="$fake_bin:$PATH" \
+        GH_TOKEN=test-token \
+        FAKE_CURL_ATTEMPT_FILE="$curl_attempt_file" \
+        FAKE_SLEEP_COUNT_FILE="$sleep_count_file" \
+        FAKE_CURL_SUCCEED_ON=4 \
+        FAKE_GH_ATTEMPT_FILE="$gh_attempt_file" \
+        FAKE_GH_SUCCEED=1 \
+        hook_download_locked_asset example/release v1.0.0 asset.tar.gz "$output_dir" >"$stdout_file" 2>/dev/null ||
+        fail "authenticated GitHub fallback did not recover the download"
+
+    [ "$(cat "$curl_attempt_file")" = 3 ] || fail "fallback did not wait for all direct retries"
+    [ "$(cat "$sleep_count_file")" = 2 ] || fail "fallback changed direct retry backoff semantics"
+    [ "$(cat "$gh_attempt_file")" = 1 ] || fail "authenticated fallback did not run exactly once"
+    [ "$(cat "$stdout_file")" = "$output_path" ] || fail "fallback returned the wrong output path"
+    [ "$(cat "$output_path")" = "complete asset" ] || fail "fallback did not replace the failed partial asset"
 }
 
 # shellcheck source=hooks/lib/utils.sh
@@ -113,6 +185,7 @@ assert_download_retries() {
 make_fake_download_commands "$TEST_ROOT/fake-download-bin"
 assert_download_retries "$TEST_ROOT/download-eventual-success" 3
 assert_download_retries "$TEST_ROOT/download-persistent-failure" 4
+assert_authenticated_download_fallback "$TEST_ROOT/download-gh-fallback"
 
 assert_lock() {
     local component="$1"
