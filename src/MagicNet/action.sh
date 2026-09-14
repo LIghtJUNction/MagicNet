@@ -1,3 +1,4 @@
+#!/system/bin/sh
 # shellcheck shell=ash
 
 case "$0" in
