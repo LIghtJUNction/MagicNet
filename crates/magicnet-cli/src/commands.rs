@@ -25,186 +25,173 @@ use crate::{run_magicnet_function, App};
 
 type CommandHandler = fn(&App, &[String]) -> Result<(), String>;
 
-struct Command {
+struct CommandSpec {
     name: &'static str,
-    usage: &'static str,
+    syntax: &'static str,
     handler: CommandHandler,
 }
 
-const COMMANDS: &[Command] = &[
-    Command {
-        name: "service",
-        usage: "cli service {status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [webui|sing-box|mcp|fswatch|supervisors|filename] [lines]}",
-        handler: service_command,
-    },
-    Command {
-        name: "supervisor",
-        usage: "cli supervisor {status|start|stop|restart} [fswatch|wifi-policy|all]",
-        handler: supervisor_command,
-    },
-    Command {
-        name: "health",
-        usage: "cli health",
-        handler: health_command,
-    },
-    Command {
-        name: "pingtest",
-        usage: "cli pingtest",
-        handler: pingtest_command,
-    },
-    Command {
-        name: "speedtest",
-        usage: "cli speedtest",
-        handler: speedtest_command,
-    },
-    Command {
-        name: "topology",
-        usage: "cli topology",
-        handler: topology_command,
-    },
-    Command {
-        name: "ecapture",
-        usage: "cli ecapture {status|version|help [tls|gotls|nspr|pcap]|tls [seconds] [pid|all] [uid|all]|gotls [seconds] [pid|all] [uid|all]|nspr [seconds] [pid|all] [uid|all]|pcap [seconds] <ifname> [pcap-filter ...]}",
-        handler: ecapture_cmd,
-    },
-    Command {
-        name: "sysroute",
-        usage: "cli sysroute {list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}",
-        handler: sysroute_command,
-    },
-    Command {
-        name: "repair",
-        usage: "cli repair",
-        handler: repair_command,
-    },
-    Command {
-        name: "support",
-        usage: "cli support bundle",
-        handler: support,
-    },
-    Command {
-        name: "setup",
-        usage: "cli setup <subscription-url>",
-        handler: setup_command,
-    },
-    Command {
-        name: "config",
-        usage: "cli config apply",
-        handler: config_cmd,
-    },
-    Command {
-        name: "config-editor",
-        usage: "cli config-editor {get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path] | repo {get|get-json|set|set-file|reset} [base64-json|webui-payload-path]",
-        handler: config_editor,
-    },
-    Command {
-        name: "transparent",
-        usage: "cli transparent {status|set tun|set ebpf|apply}",
-        handler: transparent_cmd,
-    },
-    Command {
-        name: "network",
-        usage: "cli network {status|set <ipv4_only|prefer_ipv4|prefer_ipv6> <mtu:1280-1500> <udp-timeout:1m|3m|5m|10m|15m|30m>|apply}",
-        handler: network_cmd,
-    },
-    Command {
-        name: "core",
-        usage: "cli core {status|selected|select sing-box}",
-        handler: core_cmd,
-    },
-    Command {
-        name: "node",
-        usage: "cli node {list|current|use|test <name>|test-all [name ...]}",
-        handler: node_cmd,
-    },
-    Command {
-        name: "chain",
-        usage: "cli chain {status|enable|disable|set-upstream <tag>|set-exit <tag>|clear-upstream|clear-exit|mode <manual|auto>|select-upstream <tag>|select-exit <tag>}",
-        handler: chain_cmd,
-    },
-    Command {
-        name: "mode",
-        usage: "cli mode [rule|global|direct]",
-        handler: crate::webui_api::clash_mode_cmd,
-    },
-    Command {
-        name: "wifi",
-        usage: "cli wifi {status|enable|disable|mode <blacklist|whitelist>|interval <3-300>|add-ssid <ssid>|remove-ssid <ssid>|add-bssid <mac>|remove-bssid <mac>|check}",
-        handler: wifi_cmd,
-    },
-    Command {
-        name: "hotspot",
-        usage: "cli hotspot {status|enable|disable|reconcile}",
-        handler: hotspot_cmd,
-    },
-    Command {
-        name: "route",
-        usage: "cli route {list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|apply}",
-        handler: route_cmd,
-    },
-    Command {
-        name: "dns",
-        usage: "cli dns {status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|test [domain]|apply}",
-        handler: dns_cmd,
-    },
-    Command {
-        name: "warp",
-        usage: "cli warp {status|import-file <wireguard-conf-path>|enable|disable|global|rule|apply|test}",
-        handler: warp_cmd,
-    },
-    Command {
-        name: "sub",
-        usage: "cli sub {update <sing-box|all>|update-all|status|schedule {status|set <off|12|24|48|72>}|user-agent {get|set <base64-value>|clear}|filter {list|set <base64-lines>|clear}|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|apply-file sing-box <base64-lines>|file [sing-box]}",
-        handler: subscription_command,
-    },
-    Command {
-        name: "block",
-        usage: "cli block {list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}",
-        handler: block_cmd,
-    },
-    Command {
-        name: "mcp",
-        usage: "cli mcp {status|enable [bind] [port]|disable|set [bind] [port]|secret|rotate-secret|start|stop|restart|logs [lines]}",
-        handler: mcp,
-    },
-    Command {
-        name: "webui",
-        usage: "cli webui {status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}}",
-        handler: webui_cmd,
-    },
-    Command {
-        name: "backup",
-        usage: "cli backup {export [password]|restore [password|-] <base64>|restore-file [password|-] <path>}",
-        handler: backup_cmd,
-    },
-    Command {
-        name: "api",
-        usage: "cli api {ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}",
-        handler: api_cmd,
-    },
-    Command {
-        name: "app",
-        usage: "cli app {list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}; proxy=sing-box proxy outbound, direct=sing-box direct outbound, bypass=outside MagicNet",
-        handler: app_cmd,
-    },
-    Command {
-        name: "diagnose",
-        usage: "cli diagnose",
-        handler: diagnose_command,
-    },
+impl CommandSpec {
+    const fn new(name: &'static str, syntax: &'static str, handler: CommandHandler) -> Self {
+        Self {
+            name,
+            syntax,
+            handler,
+        }
+    }
+
+    fn usage(&self) -> String {
+        if self.syntax.is_empty() {
+            format!("cli {}", self.name)
+        } else {
+            format!("cli {} {}", self.name, self.syntax)
+        }
+    }
+
+    fn run(&self, app: &App, args: &[String]) -> Result<(), String> {
+        (self.handler)(app, args)
+    }
+}
+
+const COMMANDS: &[CommandSpec] = &[
+    CommandSpec::new(
+        "service",
+        "{status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [webui|sing-box|mcp|fswatch|supervisors|filename] [lines]}",
+        service_command,
+    ),
+    CommandSpec::new(
+        "supervisor",
+        "{status|start|stop|restart} [fswatch|wifi-policy|all]",
+        supervisor_cmd,
+    ),
+    CommandSpec::new("health", "", health_command),
+    CommandSpec::new("pingtest", "", pingtest_command),
+    CommandSpec::new("speedtest", "", speedtest_command),
+    CommandSpec::new("topology", "", topology_command),
+    CommandSpec::new(
+        "ecapture",
+        "{status|version|help [tls|gotls|nspr|pcap]|tls [seconds] [pid|all] [uid|all]|gotls [seconds] [pid|all] [uid|all]|nspr [seconds] [pid|all] [uid|all]|pcap [seconds] <ifname> [pcap-filter ...]}",
+        ecapture_cmd,
+    ),
+    CommandSpec::new(
+        "sysroute",
+        "{list|snapshot|add-rule <priority> <table>|del-rule <priority>|add-route <table> <dest|default> <dev> [via]|del-route <table> <dest|default>}",
+        sysroute_command,
+    ),
+    CommandSpec::new("repair", "", repair_command),
+    CommandSpec::new("support", "bundle", support),
+    CommandSpec::new("setup", "<subscription-url>", setup_command),
+    CommandSpec::new("config", "apply", config_cmd),
+    CommandSpec::new(
+        "config-editor",
+        "{get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path] | repo {get|get-json|set|set-file|reset} [base64-json|webui-payload-path]",
+        config_editor,
+    ),
+    CommandSpec::new(
+        "transparent",
+        "{status|set tun|set ebpf|apply}",
+        transparent_cmd,
+    ),
+    CommandSpec::new(
+        "network",
+        "{status|set <ipv4_only|prefer_ipv4|prefer_ipv6> <mtu:1280-1500> <udp-timeout:1m|3m|5m|10m|15m|30m>|apply}",
+        network_cmd,
+    ),
+    CommandSpec::new(
+        "core",
+        "{status|selected|select sing-box}",
+        core_cmd,
+    ),
+    CommandSpec::new(
+        "node",
+        "{list|current|use|test <name>|test-all [name ...]}",
+        node_cmd,
+    ),
+    CommandSpec::new(
+        "chain",
+        "{status|enable|disable|set-upstream <tag>|set-exit <tag>|clear-upstream|clear-exit|mode <manual|auto>|select-upstream <tag>|select-exit <tag>}",
+        chain_cmd,
+    ),
+    CommandSpec::new(
+        "mode",
+        "[rule|global|direct]",
+        crate::webui_api::clash_mode_cmd,
+    ),
+    CommandSpec::new(
+        "wifi",
+        "{status|enable|disable|mode <blacklist|whitelist>|interval <3-300>|add-ssid <ssid>|remove-ssid <ssid>|add-bssid <mac>|remove-bssid <mac>|check}",
+        wifi_cmd,
+    ),
+    CommandSpec::new(
+        "hotspot",
+        "{status|enable|disable|reconcile}",
+        hotspot_cmd,
+    ),
+    CommandSpec::new(
+        "route",
+        "{list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|apply}",
+        route_cmd,
+    ),
+    CommandSpec::new(
+        "dns",
+        "{status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|test [domain]|apply}",
+        dns_cmd,
+    ),
+    CommandSpec::new(
+        "warp",
+        "{status|import-file <wireguard-conf-path>|enable|disable|global|rule|apply|test}",
+        warp_cmd,
+    ),
+    CommandSpec::new(
+        "sub",
+        "{update <sing-box|all>|update-all|status|schedule {status|set <off|12|24|48|72>}|user-agent {get|set <base64-value>|clear}|filter {list|set <base64-lines>|clear}|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|apply-file sing-box <base64-lines>|file [sing-box]}",
+        subscription_command,
+    ),
+    CommandSpec::new(
+        "block",
+        "{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}",
+        block_cmd,
+    ),
+    CommandSpec::new(
+        "mcp",
+        "{status|enable [bind] [port]|disable|set [bind] [port]|secret|rotate-secret|start|stop|restart|logs [lines]}",
+        mcp,
+    ),
+    CommandSpec::new(
+        "webui",
+        "{status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}}",
+        webui_cmd,
+    ),
+    CommandSpec::new(
+        "backup",
+        "{export [password]|restore [password|-] <base64>|restore-file [password|-] <path>}",
+        backup_cmd,
+    ),
+    CommandSpec::new(
+        "api",
+        "{ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}",
+        api_cmd,
+    ),
+    CommandSpec::new(
+        "app",
+        "{list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}; proxy=sing-box proxy outbound, direct=sing-box direct outbound, bypass=outside MagicNet",
+        app_cmd,
+    ),
+    CommandSpec::new("diagnose", "", diagnose_command),
 ];
 
 pub(crate) fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
-    let name = args.first().map(String::as_str).unwrap_or("help");
+    let name = args.first().map_or("help", String::as_str);
     if matches!(name, "help" | "-h" | "--help") {
         print_help();
         return Ok(());
     }
+
     let command = COMMANDS
         .iter()
         .find(|command| command.name == name)
         .ok_or_else(|| unknown_command(args))?;
-    (command.handler)(app, &args[1..])
+    command.run(app, &args[1..])
 }
 
 fn unknown_command(args: &[String]) -> String {
@@ -222,7 +209,7 @@ fn unknown_command(args: &[String]) -> String {
 fn print_help() {
     println!("MagicNet CLI\n\nUsage:");
     for command in COMMANDS {
-        println!("  {}", command.usage);
+        println!("  {}", command.usage());
     }
 }
 
@@ -233,7 +220,7 @@ fn prefixed_args(command: &str, args: &[String]) -> Vec<String> {
 }
 
 fn service_command(app: &App, args: &[String]) -> Result<(), String> {
-    match args.first().map(String::as_str).unwrap_or("status") {
+    match args.first().map_or("status", String::as_str) {
         "status" => {
             service_status(app);
             Ok(())
@@ -241,10 +228,6 @@ fn service_command(app: &App, args: &[String]) -> Result<(), String> {
         "logs" => service_logs(app, &prefixed_args("service", args)),
         _ => service_cmd(app, args),
     }
-}
-
-fn supervisor_command(app: &App, args: &[String]) -> Result<(), String> {
-    supervisor_cmd(app, args)
 }
 
 fn health_command(app: &App, _args: &[String]) -> Result<(), String> {
@@ -272,7 +255,7 @@ fn repair_command(app: &App, _args: &[String]) -> Result<(), String> {
 }
 
 fn setup_command(app: &App, args: &[String]) -> Result<(), String> {
-    setup_subscription(app, args.first().map(String::as_str).unwrap_or_default())
+    setup_subscription(app, args.first().map_or("", String::as_str))
 }
 
 fn diagnose_command(app: &App, _args: &[String]) -> Result<(), String> {
@@ -287,7 +270,7 @@ fn subscription_command(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         Some("get") => {
-            sub_get(app, args.get(1).map(String::as_str).unwrap_or("sing-box"));
+            sub_get(app, args.get(1).map_or("sing-box", String::as_str));
             Ok(())
         }
         Some("set") => sub_set(app, &full_args),
@@ -303,8 +286,7 @@ fn subscription_command(app: &App, args: &[String]) -> Result<(), String> {
         Some("file" | "copy-path") => {
             println!(
                 "{}",
-                sub_target_file(app, args.get(1).map(String::as_str).unwrap_or("sing-box"))
-                    .display()
+                sub_target_file(app, args.get(1).map_or("sing-box", String::as_str)).display()
             );
             Ok(())
         }
@@ -320,16 +302,16 @@ mod tests {
     use super::{unknown_command, COMMANDS};
     use std::collections::HashSet;
 
-    fn usage_for(command: &str) -> &'static str {
+    fn usage_for(command: &str) -> String {
         COMMANDS
             .iter()
             .find(|item| item.name == command)
-            .map(|item| item.usage)
+            .map(|item| item.usage())
             .unwrap_or_else(|| panic!("missing help for {command}"))
     }
 
     #[test]
-    fn command_names_are_unique_and_usage_matches_the_registry_key() {
+    fn command_names_are_unique_and_usage_is_derived_from_the_registry_key() {
         let mut names = HashSet::new();
         for command in COMMANDS {
             assert!(
@@ -338,10 +320,17 @@ mod tests {
                 command.name
             );
             assert!(
-                command.usage.starts_with(&format!("cli {}", command.name)),
+                command
+                    .usage()
+                    .starts_with(&format!("cli {}", command.name)),
                 "usage does not match command {}: {}",
                 command.name,
-                command.usage
+                command.usage()
+            );
+            assert!(
+                !command.syntax.starts_with("cli "),
+                "syntax redundantly includes the command prefix for {}",
+                command.name
             );
         }
     }
