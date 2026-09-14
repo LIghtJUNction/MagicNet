@@ -245,6 +245,13 @@ magicnet_onboarding_collect() (
 
 magicnet_install_onboarding() {
     magicnet_onboarding_allowed || return 0
+    # Upgrades already restored the user's subscription before this point. Do
+    # not reopen a browser and wait for input on every routine update. First
+    # installs still open automatically; MAGICNET_SETUP=force intentionally
+    # reopens the editor for an upgrade when requested by an advanced caller.
+    if [ "${MAGICNET_SETUP:-1}" != force ] && magicnet_install_has_subscription "$MODPATH"; then
+        return 0
+    fi
     . "$MODPATH/lib/magicnet/onboarding/messages.sh" || return 1
     if magicnet_onboarding_collect; then
         return 0
