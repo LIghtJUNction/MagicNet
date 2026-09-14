@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde_json::{json, Value};
 
@@ -271,7 +271,7 @@ fn read_regular_text(path: &Path, max_bytes: u64) -> Option<String> {
     fs::read_to_string(path).ok()
 }
 
-fn regular_file_nonempty(path: &PathBuf) -> bool {
+fn regular_file_nonempty(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .is_ok_and(|metadata| metadata.file_type().is_file() && metadata.len() > 0)
 }
