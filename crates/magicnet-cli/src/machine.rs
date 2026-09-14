@@ -62,9 +62,7 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         [command, action] if *command == "supervisor" && *action == "status" => {
             Ok(supervisor_status_value(app))
         }
-        [command, action] if *command == "dns" && *action == "status" => {
-            Ok(dns_status_value(app))
-        }
+        [command, action] if *command == "dns" && *action == "status" => Ok(dns_status_value(app)),
         [command, action] if *command == "network" && *action == "status" => {
             Ok(network_status_value(app))
         }
@@ -261,9 +259,7 @@ fn network_status_value(app: &App) -> Value {
         .and_then(|tun| tun.get("stack"))
         .and_then(Value::as_str)
         .unwrap_or("unavailable");
-    let effective_mtu = tun
-        .and_then(|tun| tun.get("mtu"))
-        .and_then(Value::as_u64);
+    let effective_mtu = tun.and_then(|tun| tun.get("mtu")).and_then(Value::as_u64);
     let effective_udp_timeout = tun
         .and_then(|tun| tun.get("udp_timeout"))
         .and_then(Value::as_str)
