@@ -1,3 +1,4 @@
+# One-shot maintenance workflow: mark all published v1.4.x releases as deprecated.
 name: Deprecate v1.4 releases
 
 on:
