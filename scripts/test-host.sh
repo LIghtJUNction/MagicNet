@@ -75,6 +75,7 @@ check bash scripts/test-anthropic-routing.sh
 check bash scripts/test-mcp-phase-config.sh
 check bash scripts/test-tailscale-login.sh
 check bash scripts/test-chatgpt-voice-rules.sh
+check bash scripts/test-rule-hash-retry.sh
 check bash scripts/singbox-subscription-protocol-smoke.sh
 check bash scripts/test-service-selectors.sh
 check bash scripts/test-subscription-fetch-policy.sh
