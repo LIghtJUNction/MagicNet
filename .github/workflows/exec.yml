@@ -230,6 +230,11 @@ jobs:
           grep -F "LIghtJUNction.${expected_revision:0:12}" <<<"$version_output"
           printf '%s\n' "$version_output"
 
+      # Do not reuse the no-core host-fixture cache for this check. It must run
+      # against the exact fork binary that this build/release just compiled.
+      - name: Verify service selector routing with built core
+        run: bash scripts/test-service-selectors.sh
+
       - name: Verify tools
         shell: bash
         run: |
