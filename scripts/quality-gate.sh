@@ -27,6 +27,16 @@ check_group() {
     shell)
         cached host shell-lint bash scripts/lint-shell.sh
         bash scripts/test-host.sh
+        if [[ "${CI:-false}" == true ]]; then
+            # Real kernel DNS is a CI/release gate, not an Internet observation.
+            # Include backend and kernel versions in the cached success key.
+            local dns_kernel_key
+            dns_kernel_key="$(
+                { uname -r; iptables-legacy --version; ip6tables-legacy --version; iptables-nft --version; ip6tables-nft --version; } |
+                    sha256sum | cut -d' ' -f1
+            )"
+            cached host "dns-netns-${dns_kernel_key}" python3 scripts/test-dns-capture-netns.py
+        fi
         ;;
     components)
         cached components go-format bash -o pipefail -c 'gofmt -l installer/components/*.go | (! grep -q .)'

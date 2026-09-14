@@ -234,6 +234,99 @@ magicnet_dns_capture_fast_path() {
         magicnet_xtables_ensure_rule "$1" -A nat magicnet-dns-output -p udp ! --dport 53 -j RETURN
 }
 
+# A successful -C only proves membership, not precedence. sing-box rebuilds
+# its own OUTPUT jump on startup/network changes and may move it ahead of us.
+# Its DNS DNAT then terminates nat traversal before our loopback listener.
+# Inspect order without DNS lookups; mutate only our exact jump specifications.
+magicnet_dns_capture_attach_first() (
+    _capture_cmd="$1"
+    _capture_rules="$("$_capture_cmd" -t nat -S OUTPUT)" || return $?
+    if printf '%s\n' "$_capture_rules" | awk '
+        $1 == "-A" && $2 == "OUTPUT" {
+            rules++
+            if ($0 == "-A OUTPUT -j magicnet-dns-output") {
+                jumps++
+                if (rules == 1) first = 1
+            }
+        }
+        END { exit !(first && jumps == 1) }
+    '; then
+        return 0
+    fi
+    [ "${2:-}" != check ] || return 1
+    magicnet_dns_capture_detach_jumps "$_capture_cmd" || return $?
+    # -I without a rule number means position 1. Do not use the membership-only
+    # ensure helper here, and never flush OUTPUT or another module's chain.
+    magicnet_xtables_require "$_capture_cmd" -t nat -I OUTPUT -j magicnet-dns-output
+)
+
+magicnet_dns_capture_detach_jumps() (
+    _capture_detach_cmd="$1"
+    magicnet_xtables_delete_rule "$_capture_detach_cmd" nat OUTPUT -j magicnet-dns-output || return $?
+    # Also retire the port-scoped emergency workaround used by older installs.
+    # Leaving a reference behind makes -X fail and strands DNS across stop.
+    for _capture_proto in udp tcp; do
+        magicnet_xtables_delete_rule "$_capture_detach_cmd" nat OUTPUT \
+            -p "$_capture_proto" --dport 53 -j magicnet-dns-output || return $?
+    done
+)
+
+# Called by the existing core watchdog under the subscription/config lock.
+# Do not rewrite config, flush a healthy chain, restart the core, or add a new
+# polling process. Recheck liveness after acquiring the lock so stop cannot
+# race a late DNS reinstall. Disabled/eBPF/UDP-profile paths keep their owner.
+magicnet_reconcile_dns_capture_unlocked() (
+    magicnet_kernel_running || return $?
+    _capture_mode="$(magicnet_transparent_mode)" || return 1
+    [ "$_capture_mode" = tun ] || return 0
+    magicnet_dns_capture_enabled || return 0
+    [ "$(magicnet_dns_profile)" != cloudflare-udp ] || return 0
+    _capture_ipv6_mode="$(magicnet_ipv6_mode)" || return 1
+    _capture_port="$(magicnet_dns_capture_port)"
+    for _capture_family in iptables ip6tables; do
+        [ "$_capture_family" != ip6tables ] || [ "$_capture_ipv6_mode" != ipv4_only ] || continue
+        _capture_probe=0
+        magicnet_xtables_table_probe "$_capture_family" nat || _capture_probe=$?
+        case "$_capture_probe" in
+        0) ;;
+        2)
+            [ "$_capture_ipv6_mode" != prefer_ipv6 ] || return 1
+            continue
+            ;;
+        *) return 1 ;;
+        esac
+        _capture_cmd="magicnet_${_capture_family}_cmd"
+        for _capture_proto in udp tcp; do
+            _capture_check=0
+            "$_capture_cmd" -t nat -C magicnet-dns-output -p "$_capture_proto" \
+                --dport 53 -j REDIRECT --to-ports "$_capture_port" >/dev/null 2>&1 || _capture_check=$?
+            case "$_capture_check" in
+            0) ;;
+            # Missing rules/chain: rebuild using the normal validated installer.
+            1)
+                [ "${1:-}" != check ] || return 1
+                magicnet_enable_dns_capture
+                return $?
+                ;;
+            *) return "$_capture_check" ;;
+            esac
+        done
+        magicnet_dns_capture_attach_first "$_capture_cmd" "${1:-}" || return $?
+    done
+)
+
+magicnet_reconcile_dns_capture() (
+    # Healthy watchdog ticks remain read-only and do not wait for a config
+    # transaction. Only a missing/displaced rule needs the lifecycle lock.
+    _capture_current=0
+    magicnet_reconcile_dns_capture_unlocked check || _capture_current=$?
+    case "$_capture_current" in
+    0) return 0 ;;
+    1) magicnet_with_sub_config_lock magicnet_reconcile_dns_capture_unlocked ;;
+    *) return "$_capture_current" ;;
+    esac
+)
+
 magicnet_enable_dns_capture() {
     _dns_capture_mode="$(magicnet_transparent_mode)" || {
         magicnet_warn "transparent mode configuration is invalid; DNS capture rejected"
@@ -290,7 +383,6 @@ magicnet_enable_dns_capture() {
     fi
     magicnet_xtables_require magicnet_iptables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
     magicnet_dns_capture_fast_path magicnet_iptables_cmd || _dns_capture_rc=1
-    magicnet_xtables_ensure_rule magicnet_iptables_cmd -I nat OUTPUT -j magicnet-dns-output || _dns_capture_rc=1
     # Direct UDP DNS servers are marked in the sing-box config. Keep those
     # resolver packets out of this chain without exempting all UID-0 traffic.
     if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
@@ -323,7 +415,6 @@ magicnet_enable_dns_capture() {
             fi
             magicnet_xtables_require magicnet_ip6tables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
             magicnet_dns_capture_fast_path magicnet_ip6tables_cmd || _dns_capture_rc=1
-            magicnet_xtables_ensure_rule magicnet_ip6tables_cmd -I nat OUTPUT -j magicnet-dns-output || _dns_capture_rc=1
             if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
                 magicnet_ip6tables_nat_ensure magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
             fi
@@ -332,6 +423,15 @@ magicnet_enable_dns_capture() {
             done
             magicnet_ip6tables_nat_ensure magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
             magicnet_ip6tables_nat_ensure magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
+        fi
+    fi
+
+    # Populate both required families completely before publishing a new jump.
+    # On reapply, move stale/duplicate jumps to the head even when -C succeeds.
+    if [ "$_dns_capture_rc" -eq 0 ]; then
+        magicnet_dns_capture_attach_first magicnet_iptables_cmd || _dns_capture_rc=1
+        if [ "$_dns_capture_ipv6_mode" != ipv4_only ] && [ "$_dns_capture_ipv6_unavailable" -eq 0 ]; then
+            magicnet_dns_capture_attach_first magicnet_ip6tables_cmd || _dns_capture_rc=1
         fi
     fi
 
@@ -421,7 +521,7 @@ magicnet_disable_dns_capture() (
         case "$_dns_capture_chain_rc" in
         0)
             # Remove every duplicate jump before flushing/deleting our chain.
-            magicnet_dns_capture_delete_jump "$_dns_capture_cmd" -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
+            magicnet_dns_capture_detach_jumps "$_dns_capture_cmd" || _dns_capture_cleanup_rc=1
             magicnet_xtables_require "$_dns_capture_cmd" -t nat -F magicnet-dns-output || _dns_capture_cleanup_rc=1
             magicnet_xtables_require "$_dns_capture_cmd" -t nat -X magicnet-dns-output || _dns_capture_cleanup_rc=1
             ;;

@@ -269,7 +269,12 @@ magicnet_ensure_kernel() {
         _ensure_running_rc=$?
     fi
     case "$_ensure_running_rc" in
-    0) return 0 ;;
+    0)
+        # The core can be alive while auto_redirect has displaced our DNS
+        # jump. Repair kernel state under the lifecycle lock, without restart.
+        magicnet_reconcile_dns_capture
+        return $?
+        ;;
     1) ;;
     *) return 2 ;;
     esac

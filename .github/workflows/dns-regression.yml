@@ -1,0 +1,30 @@
+name: DNS regression
+
+on:
+  pull_request:
+    paths:
+      - 'src/MagicNet/lib/magicnet/**'
+      - 'scripts/test-dns-*.py'
+      - 'scripts/test-host.sh'
+      - 'scripts/quality-gate.sh'
+      - '.github/workflows/dns-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kernel-dns:
+    name: Stateful rules and real UDP/TCP DNS
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install isolated firewall test tools
+        run: sudo apt-get update && sudo apt-get install -y iptables iproute2 util-linux busybox-static
+      - name: Exercise rule order and lifecycle failures
+        run: python3 scripts/test-dns-capture-order.py -v
+      - name: Exercise legacy and nft with real DNS packets
+        run: python3 scripts/test-dns-capture-netns.py
