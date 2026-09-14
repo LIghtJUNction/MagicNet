@@ -115,11 +115,11 @@ printf '%s\n' 'config lock safety test passed'
 mkdir -p "$MODDIR/.state/config.lock"
 printf 'do not delete\n' >"$MODDIR/.state/config.lock/foreign"
 set +e
-timeout 4 bash -c '
+timeout 4 bash -s -- "$ROOT" <<'CHILD'
   import() { :; }
   . "$1/src/MagicNet/lib/magicnet/common.sh"
   MAGICNET_CONFIG_LOCK_TIMEOUT=1 MAGICNET_CONFIG_LOCK_NO_PID_TIMEOUT=1 magicnet_config_lock_acquire
-' _ "$ROOT"
+CHILD
 foreign_rc=$?
 set -e
 test "$foreign_rc" -eq 1
