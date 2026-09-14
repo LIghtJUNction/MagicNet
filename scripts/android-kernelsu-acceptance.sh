@@ -50,8 +50,8 @@ collect_debug() {
         adb shell dmesg >"$OUT/dmesg.txt" 2>&1 || true
         adb logcat -d >"$OUT/logcat.txt" 2>&1 || true
         adb shell "ls -lR /data/adb/ksu /data/adb/modules/MagicNet 2>/dev/null" >"$OUT/module-tree.txt" 2>&1 || true
-        adb shell "cat /data/adb/modules/MagicNet/logs/service.log 2>/dev/null || true" >"$OUT/magicnet-service.log" 2>&1 || true
-        adb shell "cat /data/adb/modules/MagicNet/logs/sing-box.log 2>/dev/null || true" >"$OUT/sing-box.log" 2>&1 || true
+        adb shell "cat /data/adb/modules/MagicNet/.log/service.log 2>/dev/null || true" >"$OUT/magicnet-service.log" 2>&1 || true
+        adb shell "cat /data/adb/modules/MagicNet/.log/sing-box.log 2>/dev/null || true" >"$OUT/sing-box.log" 2>&1 || true
         adb shell "/data/adb/ksu/bin/ksud debug version 2>&1 || /data/adb/ksud debug version 2>&1 || true" >"$OUT/kernelsu-version.txt" 2>&1 || true
     fi
 }
