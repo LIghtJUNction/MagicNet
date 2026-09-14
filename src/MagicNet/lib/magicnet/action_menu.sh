@@ -57,8 +57,27 @@ magicnet_diag_proxy_now() {
     unset _name _api _now
 }
 
+magicnet_diag_module_version() {
+    _version=$(sed -n 's/^version=//p' "${MODDIR}/module.prop" 2>/dev/null | head -n 1)
+    [ -n "$_version" ] || _version="$(i18n MAGICNET_UNAVAILABLE)"
+    printf '%s\n' "$_version"
+    unset _version
+}
+
+magicnet_diag_transparent_mode() {
+    if _mode=$(magicnet_transparent_mode 2>/dev/null); then
+        :
+    else
+        _mode="invalid"
+    fi
+    printf '%s\n' "$_mode"
+    unset _mode
+}
+
 magicnet_action_diagnose() {
     panel "$(i18n MAGICNET_DIAGNOSE_TITLE)"
+    panel_row "Version" "$(magicnet_diag_module_version)"
+    panel_row "Mode" "$(magicnet_diag_transparent_mode)"
     if magicnet_cmd_exists sing-box; then
         import __singbox__
         panel_row "sing-box" "$(magicnet_display_status "$(magicnet_status_text is_singbox_running)")"
