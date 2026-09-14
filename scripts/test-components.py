@@ -11,6 +11,7 @@ import platform
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 import warnings
@@ -49,6 +50,9 @@ class PackageTests(unittest.TestCase):
             "module.prop": b"id=MagicNet\nversion=v1.4.8\nversionCode=123\n",
             "customize.sh": b"# shellcheck shell=ash\nimport this\n",
             ".config/sing-box/config.json": b'{"inbounds": []}\n',
+            "service.sh": b"#!/system/bin/sh\n",
+            "action.sh": b"#!/system/bin/sh\n",
+            "boot-completed.sh": b"#!/system/bin/sh\n",
             "bin/sing-box": b"engine",
             "bin/magicnet-cli": b"cli",
             "bin/magicnet-mcp-server": b"mcp",
@@ -98,11 +102,141 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(json.loads(core.read("components.json")), m)
             self.assertEqual(core.read("customize.sh").count(b"# Component bootstrap:"), 1)
         self.assertEqual((output / "MagicNet.zip").read_bytes(), (output / "MagicNet-core.zip").read_bytes())
+        self.assertEqual((output / "magicnet_installer.zip").read_bytes(),
+                         (output / "MagicNet-core.zip").read_bytes())
         for component in m["components"]:
             blob = (output / component["asset"]).read_bytes()
             self.assertEqual(hashlib.sha256(blob).hexdigest(), component["sha256"])
             self.assertEqual(len(blob), component["size"])
         subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=output, check=True, stdout=subprocess.DEVNULL)
+
+    def check_installer(self, output, ok=True):
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/test-downloader-installer.py"),
+                                 str(output / "magicnet_installer.zip"), "--arch", self.arch],
+                                text=True, capture_output=True, check=False)
+        self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
+        return result
+
+    def test_public_installer_validates_final_identity_and_size(self):
+        output, _ = self.build()
+        self.check_installer(output)
+        report = json.loads((output / "package-sizes.json").read_text())
+        self.assertEqual(report["installer_bytes"], (output / "magicnet_installer.zip").stat().st_size)
+        with zipfile.ZipFile(output / "magicnet_installer.zip") as z:
+            entries = [(info, z.read(info)) for info in z.infolist()]
+        # Keep both aliases identical, so this tests the manager identity itself,
+        # rather than merely rejecting an alias mismatch.
+        for name in ("magicnet_installer.zip", "MagicNet-core.zip"):
+            with zipfile.ZipFile(output / name, "w") as z:
+                for info, data in entries:
+                    if info.filename == "module.prop":
+                        data = data.replace(b"id=MagicNet\n", b"id=magicnet_installer\n")
+                    z.writestr(info, data)
+        self.assertIn("Manager must install MagicNet", self.check_installer(output, ok=False).stderr)
+
+    def test_public_installer_rejects_recursive_manager_script(self):
+        output, _ = self.build()
+        with zipfile.ZipFile(output / "magicnet_installer.zip") as z:
+            entries = [(info, z.read(info)) for info in z.infolist()]
+        for name in ("magicnet_installer.zip", "MagicNet-core.zip"):
+            with zipfile.ZipFile(output / name, "w") as z:
+                for info, data in entries:
+                    if info.filename == "customize.sh":
+                        data += b"\ninstall_module\n"
+                    z.writestr(info, data)
+        self.assertIn("Recursive manager installation", self.check_installer(output, ok=False).stderr)
+
+    def test_installer_manager_stage_and_reboot_keep_only_magicnet(self):
+        # Model the manager's identity selection and final promotion, not just a
+        # successful nested-function return. Execute the real generated bootstrap
+        # and Go helper; only the surrounding framework/device operations are fake.
+        self.entries["customize.sh"] = b'''SKIPUNZIP=1
+import this
+unzip -o "$ZIPFILE" module.prop service.sh action.sh boot-completed.sh -d "$MODPATH" >&2 || abort "extract failed"
+'''
+        output, m = self.build()
+        self.check_installer(output)
+        adb = self.root / "adb"
+        staged = adb / "modules_update"
+        cache = staged / ".magicnet-components-cache"  # Host helper's default.
+        cache.mkdir(parents=True)
+        for c in m["components"]:
+            shutil.copyfile(output / c["asset"], cache / (c["sha256"] + ".zip"))
+        previous = adb / "modules/MagicNet"
+        harness = r'''
+set -e
+abort() { printf '%s\n' "$*" >&2; exit 1; }
+import() { :; }
+install_module() { abort 'nested manager installation must never run'; }
+MODID=$(unzip -p "$ZIPFILE" module.prop | sed -n 's/^id=//p')
+[ "$MODID" = MagicNet ] || abort 'wrong manager module identity'
+MODPATH="$NVBASE/modules_update/$MODID"
+rm -rf "$MODPATH"
+mkdir -p "$MODPATH"
+unzip -o "$ZIPFILE" customize.sh -d "$MODPATH" >&2
+. "$MODPATH/customize.sh"
+# Model KernelSU/Magisk's post-customize bookkeeping.
+mkdir -p "$NVBASE/modules/$MODID"
+touch "$NVBASE/modules/$MODID/update"
+cp "$MODPATH/module.prop" "$NVBASE/modules/$MODID/module.prop"
+rm -f "$MODPATH/customize.sh"
+'''
+        for attempt in range(3):  # Fresh, then two installs over the active module.
+            result = subprocess.run(["sh", "-c", harness],
+                                    env=dict(os.environ, NVBASE=str(adb),
+                                             MAGICNET_PREV_DIR=str(previous),
+                                             ZIPFILE=str(output / "magicnet_installer.zip")),
+                                    text=True, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("[download]", result.stdout)
+            self.assertEqual(result.stdout.count("[cache]" if attempt == 0 else "[reuse]"),
+                             len(m["components"]))
+            self.assertEqual([p.name for p in staged.iterdir() if (p / "module.prop").exists()],
+                             ["MagicNet"])
+            # Model reboot's modules_update -> modules promotion.
+            shutil.rmtree(previous)
+            shutil.move(str(staged / "MagicNet"), str(previous))
+            self.assertEqual([p.name for p in (adb / "modules").iterdir()], ["MagicNet"])
+            self.assertEqual((previous / "module.prop").read_bytes(), self.entries["module.prop"])
+            self.assertEqual((previous / "bin/sing-box").read_bytes(), b"engine")
+            self.assertTrue((previous / "service.sh").exists())
+            self.assertFalse((previous / "bin/module-downloader").exists())
+            self.assertEqual(json.loads((previous / "components.installed.json").read_text()), m)
+
+    def test_installer_version_only_upgrade_needs_no_payload_download(self):
+        first, _ = self.build("first")
+        old, _ = self.invoke(first, "MagicNet-full.zip", module=self.root / "old")
+        self.entries["module.prop"] = b"id=MagicNet\nversion=v1.4.9\nversionCode=124\n"
+        output, m = self.build("next")
+        _, result = self.invoke(output, "magicnet_installer.zip", previous=old)
+        self.assertEqual(result.stdout.count("[reuse]"), len(m["components"]))
+        self.assertNotIn("[download]", result.stdout)
+        self.assertNotIn("[cache]", result.stdout)
+
+    def test_installer_fetches_only_changed_component_from_cache(self):
+        first, _ = self.build("first")
+        old, _ = self.invoke(first, "MagicNet-full.zip", module=self.root / "old")
+        self.entries["webroot/index.html"] = b"new webui"
+        output, m = self.build("next")
+        cache = self.root / "changed-cache"
+        cache.mkdir()
+        changed = next(c for c in m["components"] if c["id"] == "webui")
+        shutil.copyfile(output / changed["asset"], cache / (changed["sha256"] + ".zip"))
+        module, result = self.invoke(output, "magicnet_installer.zip", previous=old, cache=cache)
+        self.assertEqual(result.stdout.count("[reuse]"), len(m["components"]) - 1)
+        self.assertEqual(result.stdout.count("[cache]"), 1)
+        self.assertIn("[cache] webui:", result.stdout)
+        self.assertNotIn("[download]", result.stdout)
+        self.assertEqual((module / "webroot/index.html").read_bytes(), b"new webui")
+
+    def test_incomplete_installer_fails_without_modifying_previous_module(self):
+        output, _ = self.build()
+        old, _ = self.invoke(output, "MagicNet-full.zip", module=self.root / "old")
+        (old / "bin/sing-box").write_bytes(b"corrupt")
+        before = {p.relative_to(old): p.read_bytes() for p in old.rglob("*") if p.is_file()}
+        module, _ = self.invoke(output, "magicnet_installer.zip", previous=old, ok=False)
+        self.assertFalse((module / "components.installed.json").exists())
+        self.assertEqual(before, {p.relative_to(old): p.read_bytes() for p in old.rglob("*") if p.is_file()})
 
     def test_unchanged_components_stable_across_module_versions(self):
         first, a = self.build("first")

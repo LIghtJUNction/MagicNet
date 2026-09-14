@@ -1,87 +1,78 @@
 #!/usr/bin/env python3
-"""Check ZIP local headers, CRC and nested manager installation without Android."""
+"""Validate the final public installer, not an intermediate downloader template."""
+from __future__ import annotations
+
+import argparse
 import json
-import os
 from pathlib import Path
+import re
 import struct
-import subprocess
-import sys
-import tempfile
 import zipfile
 
-archive = Path(sys.argv[1]).resolve()
-with zipfile.ZipFile(archive) as z:
-    assert z.testzip() is None
-    assert len(z.namelist()) == len(set(z.namelist()))
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def verify(archive: Path, core: Path, architecture: str = "arm64") -> None:
     raw = archive.read_bytes()
-    for info in z.infolist():
-        assert raw[info.header_offset:info.header_offset + 4] == b'PK\x03\x04'
-        name_len = struct.unpack_from('<H', raw, info.header_offset + 26)[0]
-        assert raw[info.header_offset + 30:info.header_offset + 30 + name_len].decode() == info.filename
-    assert b'id=magicnet_installer\n' in z.read('module.prop')
-    config = json.loads(z.read('download.json'))
-    assert config['module_id'] == 'MagicNet'
-    binary = z.read('bin/module-downloader')
-    assert binary[:4] == b'\x7fELF' and struct.unpack_from('<H', binary, 18)[0] == 183
-    script = z.read('customize.sh')
-for scenario in ("success", "install_failure", "download_failure"):
-    failure = scenario != "success"
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        module = root / 'installer'
-        module.mkdir()
-        customize = root / 'customize.sh'
-        customize.write_bytes(script)
-        # Mock only the downloader and manager; execute the real customize script.
-        harness = r'''
-set -eu
-ui_print() { printf '%s\n' "$*"; }
-abort() { printf '%s\n' "$*" >&2; exit 1; }
-unzip() {
- mkdir -p "$MODPATH/bin"
- cat > "$MODPATH/bin/module-downloader" <<'SH'
-#!/bin/sh
-[ "$FAIL_DOWNLOAD" = 0 ] || exit 23
-while [ "$#" -gt 0 ]; do
- if [ "$1" = -out ]; then shift; printf verified > "$1"; exit 0; fi
- shift
-done
-exit 1
-SH
-}
-# Match KernelSU's print_title: the second argument is optional but read directly.
-print_title() {
- local len line1len line2len bar
- line1len=$(echo -n $1 | wc -c)
- line2len=$(echo -n $2 | wc -c)
- len=$line2len
- [ $line1len -gt $line2len ] && len=$line1len
- len=$((len + 2))
- bar=$(printf "%${len}s" | tr ' ' '*')
- ui_print "$bar"
- ui_print " $1 "
- [ "$2" ] && ui_print " $2 "
- ui_print "$bar"
-}
-install_module() {
- case $- in *u*|*e*) return 90;; esac
- print_title "MagicNet" "by LIghtJUNction"
- print_title "Powered by KernelSU"
- [ "$ZIPFILE" != "$ORIGINAL_ZIP" ]
- [ "$(cat "$ZIPFILE")" = verified ]
- [ "$TMPDIR" != "$ORIGINAL_TMP" ]
- printf invoked > "$TEST_ROOT/called"
- [ "$FAIL_INSTALL" = 0 ]
-}
-. "$TEST_ROOT/customize.sh"
-[ "$ZIPFILE" = "$ORIGINAL_ZIP" ]
-[ "$TMPDIR" = "$ORIGINAL_TMP" ]
-'''
-        env = dict(os.environ, TEST_ROOT=tmp, MODPATH=str(module), BOOTMODE='true', ARCH='arm64', ZIPFILE='/original.zip', ORIGINAL_ZIP='/original.zip', TMPDIR='/original-tmp', ORIGINAL_TMP='/original-tmp', FAIL_INSTALL=str(int(scenario == "install_failure")), FAIL_DOWNLOAD=str(int(scenario == "download_failure")))
-        r = subprocess.run(['sh', '-c', harness], env=env, capture_output=True, text=True)
-        assert (r.returncode != 0) == failure, (r.stdout, r.stderr)
-        assert (root / 'called').exists() == (scenario != 'download_failure')
-        assert 'parameter not set' not in r.stderr
-        assert (module / 'skip_mount').exists() == (scenario == 'success')
-        assert not list(root.glob('installer.download.*'))
-print('ZIP/ELF verification, manager isolation, failure propagation and cleanup passed')
+    require(raw == core.read_bytes(), "Public installer must be the exact release-pinned core ZIP")
+    require(len(raw) <= 12 * 1024 * 1024, "Installer exceeds the core download budget")
+    with zipfile.ZipFile(archive) as z:
+        require(z.testzip() is None, "Installer ZIP CRC mismatch")
+        names = z.namelist()
+        require(len(names) == len(set(names)), "Duplicate installer ZIP members")
+        for info in z.infolist():
+            offset = info.header_offset
+            require(raw[offset:offset + 4] == b"PK\x03\x04", "Invalid ZIP local header")
+            name_len = struct.unpack_from("<H", raw, offset + 26)[0]
+            encoding = "utf-8" if info.flag_bits & 0x800 else "cp437"
+            require(raw[offset + 30:offset + 30 + name_len].decode(encoding) == info.filename,
+                    "ZIP local and central filenames differ")
+        for name in ("module.prop", "customize.sh", "components.json", "bin/magicnet-components",
+                     "service.sh", "action.sh", "boot-completed.sh", ".config/sing-box/config.json"):
+            require(name in names, f"Missing installed-module entry: {name}")
+        for name in ("download.json", "bin/module-downloader"):
+            require(name not in names, f"Obsolete recursive downloader remains: {name}")
+        props = dict(line.split("=", 1) for line in z.read("module.prop").decode().splitlines()
+                     if "=" in line and not line.startswith("#"))
+        require(props.get("id") == "MagicNet", "Manager must install MagicNet, not magicnet_installer")
+        require(re.fullmatch(r"v\d+\.\d+\.\d+", props.get("version", "")) is not None,
+                "Invalid module version")
+        require(props.get("versionCode", "").isdigit(), "Missing numeric versionCode")
+        manifest = json.loads(z.read("components.json"))
+        require(manifest.get("module") == "MagicNet" and manifest.get("schema") == 1,
+                "Unexpected component manifest identity")
+        require(manifest.get("version") == props["version"], "Core and components must pin the same release")
+        require(manifest.get("architecture") == architecture, "Unexpected component architecture")
+        components = manifest.get("components", [])
+        require(bool(components), "Installer has no component manifest")
+        for component in components:
+            for payload in component["files"]:
+                require(payload["path"] not in names, "Installer redundantly bundles a separate component")
+        script = z.read("customize.sh")
+        require(script.count(b"# Component bootstrap:") == 1, "Missing/duplicate component bootstrap")
+        require(b"--previous-dir" in script, "Installer must reuse verified previous components")
+        require(re.search(rb"\binstall_module\b", script) is None, "Recursive manager installation is forbidden")
+        binary = z.read("bin/magicnet-components")
+        machine = {"arm64": 183, "amd64": 62}[architecture]
+        require(len(binary) >= 20 and binary[:6] == b"\x7fELF\x02\x01" and
+                struct.unpack_from("<H", binary, 18)[0] == machine,
+                "Component helper is not a matching 64-bit ELF")
+        require(bool((z.getinfo("bin/magicnet-components").external_attr >> 16) & 0o111),
+                "Component helper is not executable")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("archive", type=Path)
+    parser.add_argument("--core", type=Path)
+    parser.add_argument("--arch", choices=("arm64", "amd64"), default="arm64")
+    args = parser.parse_args()
+    verify(args.archive, args.core or args.archive.with_name("MagicNet-core.zip"), args.arch)
+    print("Final installer ZIP/ELF, MagicNet identity, release pinning and core-only payload passed")
+
+
+if __name__ == "__main__":
+    main()

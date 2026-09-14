@@ -205,10 +205,15 @@ def split(source: Path, helper: Path, output: Path, repository: str, arch: str) 
         for entries in groups.values():
             complete.update(entries)
         write_zip(stage / "MagicNet-full.zip", complete)
-        # Preserve update.json and the generic downloader's existing asset name.
-        shutil.copyfile(stage / "MagicNet-core.zip", stage / "MagicNet.zip")
+        # The public installer IS the core module, not a second installed module.
+        # Keep its stable filename/update URL while presenting id=MagicNet to
+        # the manager before it chooses MODPATH. This also avoids downloading
+        # another core ZIP (and a second Go bootstrap) during installation.
+        for alias in ("MagicNet.zip", "magicnet_installer.zip"):
+            shutil.copyfile(stage / "MagicNet-core.zip", stage / alias)
         report = {"version": prop["version"], "removed_build_cache_bytes": removed_bytes,
                   "core_bytes": core_bytes, "core_limit_bytes": MAX_CORE_BYTES,
+                  "installer_bytes": core_bytes,
                   "full_bytes": (stage / "MagicNet-full.zip").stat().st_size,
                   "components": [{"id": c["id"], "bytes": c["size"], "sha256": c["sha256"]}
                                  for c in manifest["components"]]}
