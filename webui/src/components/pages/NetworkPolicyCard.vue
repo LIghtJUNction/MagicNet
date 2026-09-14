@@ -4,6 +4,10 @@ import { computed, onMounted, ref } from "vue";
 import { Network, RefreshCw, Save } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
+import {
+  decodeMachineData,
+  machineInterfaceUnavailable,
+} from "@/composables/machineStatus";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { execFailed } from "@/utils";
@@ -18,13 +22,72 @@ const effectiveStack = ref("unavailable");
 const effectiveMtu = ref("unavailable");
 const effectiveUdpTimeout = ref("unavailable");
 
+const ipv6Modes = ["ipv4_only", "prefer_ipv4", "prefer_ipv6"] as const;
+const udpTimeouts = ["1m", "3m", "5m", "10m", "15m", "30m"] as const;
+
 const modeHint = computed(() => {
   if (ipv6Mode.value === "ipv4_only") return t("兼容模式：屏蔽 IPv6，适合不支持 IPv6 的网络或代理节点。");
   if (ipv6Mode.value === "prefer_ipv6") return t("双栈模式：DNS 优先返回 IPv6，IPv4 仍可回退。");
   return t("推荐模式：保留完整双栈，DNS 优先返回 IPv4。");
 });
 
-function parseStatus(text: string): void {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function parseMachineStatus(text: string): boolean {
+  const data = decodeMachineData<Record<string, unknown>>(
+    text,
+    "network.status",
+  );
+  if (!data) return false;
+  const configured = asRecord(data.configured);
+  const effective = asRecord(data.effective);
+  if (!configured || !effective) return false;
+
+  const configuredMode = configured.ipv6_mode;
+  const configuredMtu = configured.mtu;
+  const configuredUdpTimeout = configured.udp_timeout;
+  const effectiveIpv6Mode = effective.ipv6_mode;
+  const effectiveStackValue = effective.stack;
+  const effectiveMtuValue = effective.mtu;
+  const effectiveUdpTimeoutValue = effective.udp_timeout;
+
+  if (
+    typeof configuredMode !== "string" ||
+    !ipv6Modes.includes(configuredMode as (typeof ipv6Modes)[number]) ||
+    typeof configuredMtu !== "number" ||
+    !Number.isInteger(configuredMtu) ||
+    configuredMtu < 1280 ||
+    configuredMtu > 1500 ||
+    typeof configuredUdpTimeout !== "string" ||
+    !udpTimeouts.includes(
+      configuredUdpTimeout as (typeof udpTimeouts)[number],
+    ) ||
+    typeof effectiveIpv6Mode !== "string" ||
+    typeof effectiveStackValue !== "string" ||
+    (effectiveMtuValue !== null &&
+      (typeof effectiveMtuValue !== "number" ||
+        !Number.isInteger(effectiveMtuValue))) ||
+    typeof effectiveUdpTimeoutValue !== "string"
+  ) {
+    return false;
+  }
+
+  ipv6Mode.value = configuredMode;
+  mtu.value = String(configuredMtu);
+  udpTimeout.value = configuredUdpTimeout;
+  effectiveMode.value = effectiveIpv6Mode;
+  effectiveStack.value = effectiveStackValue;
+  effectiveMtu.value =
+    effectiveMtuValue === null ? "unavailable" : String(effectiveMtuValue);
+  effectiveUdpTimeout.value = effectiveUdpTimeoutValue;
+  return true;
+}
+
+function parseLegacyStatus(text: string): void {
   const values = new Map<string, string>();
   for (const line of text.split(/\r?\n/)) {
     const separator = line.indexOf("=");
@@ -39,15 +102,34 @@ function parseStatus(text: string): void {
   effectiveUdpTimeout.value = values.get("effective_udp_timeout") || "unavailable";
 }
 
+function reportStatusFailure(output: string, protocol = false): void {
+  state.phase = "error";
+  state.notice = protocol
+    ? t("读取 UDP / IPv6 策略返回了无效状态")
+    : t("读取 UDP / IPv6 策略失败");
+  state.output = output;
+}
+
 async function refreshStatus(silent = false): Promise<void> {
-  const output = await runCli("network status", t("读取 UDP / IPv6 策略"), silent);
-  if (execFailed(output)) {
-    state.phase = "error";
-    state.notice = t("读取 UDP / IPv6 策略失败");
-    state.output = output;
+  const label = t("读取 UDP / IPv6 策略");
+  const machineOutput = await runCli("--json network status", label, true);
+  if (!execFailed(machineOutput)) {
+    if (parseMachineStatus(machineOutput)) return;
+    reportStatusFailure(machineOutput, true);
     return;
   }
-  parseStatus(output);
+
+  if (!machineInterfaceUnavailable(machineOutput)) {
+    reportStatusFailure(machineOutput);
+    return;
+  }
+
+  const legacyOutput = await runCli("network status", label, silent);
+  if (execFailed(legacyOutput)) {
+    reportStatusFailure(legacyOutput);
+    return;
+  }
+  parseLegacyStatus(legacyOutput);
 }
 
 async function applyPolicy(): Promise<void> {
