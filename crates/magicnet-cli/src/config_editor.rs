@@ -30,10 +30,10 @@ const TEMPLATE_MAX_BYTES: usize = 1024 * 1024;
 const VALIDATOR_OUTPUT_LIMIT: usize = 256 * 1024;
 const CONFIG_REPOSITORY_MAX_BYTES: usize = 16 * 1024;
 const MAGIC_SINGBOX_REPOSITORY: &str = "https://github.com/LIghtJUNction/MagicSingBox.git";
-const MAGIC_SINGBOX_REPOSITORY_REF: &str = "ba67cdbe771dff7e06c06bd754cc67699eeea8c0";
+const MAGIC_SINGBOX_REPOSITORY_REF: &str = "a12e472c8152e9a40af48cfa1e2d4c4242f33d50";
 const MAGIC_SINGBOX_REPOSITORY_PATH: &str = "config.json";
 const MAGIC_SINGBOX_REPOSITORY_SHA256: &str =
-    "6faa2cfcc44c305e30bc64cec84202b95d0a1592f012ab1f8dd65eae6d489258";
+    "35d54f908ccc9cc615fabf06b1037bbfc1f6d1d9712c86ba6c9b5252cc98ae03";
 const SINGBOX_REPOSITORY_CONFIG: &str = ".config/magicnet/singbox-config-repo.conf";
 const STANDALONE_CONFIG_MARKER: &str = ".config/sing-box/standalone-config";
 const TAILSCALE_AUTH_PATH: &str = ".config/sing-box/tailscale-auth.json";
@@ -1456,7 +1456,7 @@ mod tests {
         assert_eq!(repository.url, MAGIC_SINGBOX_REPOSITORY);
         assert_eq!(
             repository_file_url(&repository).expect("default repository URL"),
-            "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/ba67cdbe771dff7e06c06bd754cc67699eeea8c0/config.json"
+            "https://raw.githubusercontent.com/LIghtJUNction/MagicSingBox/a12e472c8152e9a40af48cfa1e2d4c4242f33d50/config.json"
         );
         assert_eq!(
             repository.sha256.as_deref(),
