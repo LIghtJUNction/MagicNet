@@ -28,7 +28,7 @@ hash_input_file() {
     if [ -L "${PROJECT_ROOT}/${_input}" ]; then
         printf 'link:%s\0' "$(readlink "${PROJECT_ROOT}/${_input}")"
     elif [ -f "${PROJECT_ROOT}/${_input}" ]; then
-        sha256sum "${PROJECT_ROOT}/${_input}"
+        sha256sum "${PROJECT_ROOT}/${_input}" | cut -d' ' -f1
     else
         printf 'missing\n'
     fi
@@ -62,9 +62,9 @@ webui_build_key() {
         fi
 
         printf 'hook='
-        sha256sum "$KAM_HOOKS_ROOT/pre-build/2000.BUILD_WEBUI.sh"
+        sha256sum "$KAM_HOOKS_ROOT/pre-build/2000.BUILD_WEBUI.sh" | cut -d' ' -f1
         printf 'vite-env='
-        env | LC_ALL=C sort | grep '^VITE_' | sha256sum
+        env | LC_ALL=C sort | grep '^VITE_' | sha256sum | cut -d' ' -f1
     ) | sha256sum | cut -d' ' -f1
 }
 
