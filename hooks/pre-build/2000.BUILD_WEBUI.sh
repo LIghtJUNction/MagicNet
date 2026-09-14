@@ -64,7 +64,7 @@ webui_build_key() {
         printf 'hook='
         sha256sum "$KAM_HOOKS_ROOT/pre-build/2000.BUILD_WEBUI.sh" | cut -d' ' -f1
         printf 'vite-env='
-        env | LC_ALL=C sort | grep '^VITE_' | sha256sum | cut -d' ' -f1
+        env | LC_ALL=C sort | awk '/^VITE_/' | sha256sum | cut -d' ' -f1
     ) | sha256sum | cut -d' ' -f1
 }
 
