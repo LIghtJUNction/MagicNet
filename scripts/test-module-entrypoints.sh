@@ -32,6 +32,22 @@ set -e
 [[ "$output" == *'MagicNet: required framework file is missing:'* ]] || fail 'missing framework error is not actionable'
 [[ "$output" != *'abort: not found'* ]] || fail 'missing framework path still calls an undefined abort helper'
 
+# Module entry scripts source entry.sh. A bootstrap failure must stop them before
+# they attempt to call Kamfw, rather than turning one actionable error into a
+# second misleading "kamfw: not found" failure.
+mkdir -p "$fixture/lib/magicnet"
+cp "$ENTRY" "$fixture/lib/magicnet/entry.sh"
+for script in service.sh action.sh boot-completed.sh; do
+    cp "$ROOT/src/MagicNet/$script" "$fixture/$script"
+    set +e
+    output=$(sh "$fixture/$script" 2>&1)
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || fail "$script unexpectedly continued after bootstrap failure"
+    [[ "$output" == *'MagicNet: required framework file is missing:'* ]] || fail "$script hid the bootstrap error"
+    [[ "$output" != *'kamfw: not found'* ]] || fail "$script continued into Kamfw after bootstrap failure"
+done
+
 # The action menu is sourced by Kamfw after i18n is available. Stub only that
 # registration hook here so the diagnostic helpers can be exercised directly.
 set_i18n() { :; }
