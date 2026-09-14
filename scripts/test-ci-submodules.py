@@ -151,6 +151,7 @@ class SubmoduleUpdateTests(unittest.TestCase):
             result = build()
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((work / "output").read_text(), "fixture")
+
             def assert_rejected():
                 compiler_called.unlink(missing_ok=True)
                 result = build()
@@ -199,7 +200,21 @@ class SubmoduleUpdateTests(unittest.TestCase):
         rust_checkout = quality["jobs"]["rust"]["steps"][0]
         shell_checkout = quality["jobs"]["shell"]["steps"][0]
         self.assertNotEqual(rust_checkout.get("with", {}).get("submodules"), "recursive")
-        self.assertEqual(shell_checkout.get("with", {}).get("submodules"), "recursive")
+        self.assertNotEqual(shell_checkout.get("with", {}).get("submodules"), "recursive")
+
+        shell_init = next(step for step in quality["jobs"]["shell"]["steps"]
+                          if step.get("name") == "Initialize shell test submodules")
+        command = shell_init.get("run", "")
+        self.assertIn("git submodule update --init --depth 1 --", command)
+        self.assertNotIn("--recursive", command)
+        for path in (
+            ".kam/bases/hooks",
+            ".kam/bases/workflows",
+            "sing-box",
+            "src/MagicNet/.config/sing-box",
+            "src/MagicNet/lib/kamfw",
+        ):
+            self.assertIn(path, command)
 
 
 if __name__ == "__main__":
