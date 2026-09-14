@@ -23,8 +23,6 @@ jobs:
           python3 - <<'PY'
           import base64, gzip, hashlib, pathlib, subprocess
           encoded = pathlib.Path('.github/issue-recovery.patch.b64').read_bytes()
-          # Repair the single transport transcription at this exact position;
-          # the decoded patch must still match the locally reviewed SHA-256.
           encoded = encoded.replace(b'YvfTt7T/eevr63a', b'YvfTt7+evr63a')
           patch = gzip.decompress(base64.b64decode(encoded))
           expected = 'c2c911fc91450012de0a61fbb8bab60a5fdf02cd3bf728f1b363c22602fc7809'
@@ -33,13 +31,24 @@ jobs:
           subprocess.run(['git', 'apply', '--check', '--index', '-'], input=patch, check=True)
           subprocess.run(['git', 'apply', '--index', '-'], input=patch, check=True)
           PY
-          git rm .github/issue-recovery.patch.b64 .github/workflows/issue-recovery-validation.yml
+          # Workflow changes require the separately authorized connector.
+          # Export its verified content as an artifact; this job never pushes it.
+          mkdir -p "$RUNNER_TEMP/reviewed-workflow"
+          cp .github/workflows/exec.yml "$RUNNER_TEMP/reviewed-workflow/exec.yml"
+          git restore --source=HEAD --staged --worktree .github/workflows/exec.yml
+          git rm .github/issue-recovery.patch.b64
           git diff --cached --check
           git diff --cached --stat
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'fix: protect config activation and service selector policy' -m 'Refs #253, #254. Add fault regressions and real-core selector validation; prepare v1.5.1 with the existing release quality gate.'
-      - name: Push the isolated fix branch
+      - name: Preserve reviewed workflow for authorized submission
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-release-workflow
+          path: ${{ runner.temp }}/reviewed-workflow/exec.yml
+          retention-days: 1
+      - name: Push source changes to the isolated fix branch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
