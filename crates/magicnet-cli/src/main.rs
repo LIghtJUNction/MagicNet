@@ -41,6 +41,7 @@ mod diagnostics_routing;
 mod dns;
 mod ebpf_runtime;
 mod ecapture;
+mod machine;
 mod mcp;
 mod network;
 mod node_delay;
@@ -100,7 +101,8 @@ fn main() {
     }
 
     let app = App::from_env();
-    let code = match dispatch(&app, &args) {
+    let result = machine::dispatch(&app, &args).unwrap_or_else(|| dispatch(&app, &args));
+    let code = match result {
         Ok(()) => 0,
         Err(err) => {
             eprintln!("[error] {err}");
