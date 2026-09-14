@@ -84,17 +84,10 @@ jobs:
         with:
           persist-credentials: false
 
-      # Host regressions need only these pinned top-level inputs. In particular,
-      # do not recursively clone sing-box's Android/Apple/Desktop clients and
-      # dashboard tree: they are release/build inputs, not shell-test inputs.
+      # Release-integrity host regressions deliberately walk recursive gitlinks.
+      # Use the commit-pinned revisions, but do not remote-refresh moving branches.
       - name: Initialize shell test submodules
-        run: |
-          git submodule update --init --depth 1 -- \
-            .kam/bases/hooks \
-            .kam/bases/workflows \
-            sing-box \
-            src/MagicNet/.config/sing-box \
-            src/MagicNet/lib/kamfw
+        run: git submodule update --init --recursive --depth 1
 
       # Quality validates the gitlinks recorded by the commit. The build/release
       # workflow owns remote-tracking submodule refreshes, so CI does not fetch
