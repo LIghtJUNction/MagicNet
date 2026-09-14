@@ -117,12 +117,23 @@ class DNSCaptureFastPath(unittest.TestCase):
                 for cleanup_family in ("iptables", "ip6tables"):
                     self.assertIn([cleanup_family, "-t", "nat", "-X", "magicnet-dns-output"], calls)
 
-    def test_ebpf_disabled_and_udp_profile_do_not_install_capture(self):
+    def test_ebpf_and_disabled_mode_do_not_install_capture(self):
         for shell, options in itertools.product(SHELLS, (
-                {"MODE": "ebpf"}, {"MAGIC_DNS_CAPTURE": "0"}, {"PROFILE": "cloudflare-udp"})):
+                {"MODE": "ebpf"}, {"MAGIC_DNS_CAPTURE": "0"})):
             result, calls = self.run_installer(shell, **options)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse(any("-A" in call or "-I" in call for call in calls))
+
+    def test_cloudflare_udp_profile_still_captures_android_netd_dns(self):
+        for shell in SHELLS:
+            result, calls = self.run_installer(shell, PROFILE="cloudflare-udp", MARKED="0")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for family in ("iptables", "ip6tables"):
+                rules = [c[5:] for c in calls if c[:5] ==
+                         [family, "-t", "nat", "-A", "magicnet-dns-output"]]
+                self.assertEqual(evaluate(rules, "udp", 53, 0, 0)[0], "REDIRECT:1053")
+                self.assertEqual(evaluate(rules, "tcp", 53, 0, 0)[0], "REDIRECT:1053")
+                self.assertIn([family, "-t", "nat", "-I", "OUTPUT", "-j", "magicnet-dns-output"], calls)
 
     def test_ipv4_only_does_not_install_ipv6_capture(self):
         for shell in SHELLS:

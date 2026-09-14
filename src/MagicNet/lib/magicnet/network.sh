@@ -247,7 +247,6 @@ magicnet_dns_capture_remove_output_jumps() (
             -p "$_dns_jump_proto" --dport 53 -j magicnet-dns-output || return $?
     done
 )
-
 magicnet_dns_capture_prepend_jump() (
     _dns_prepend_cmd="$1"
     magicnet_dns_capture_remove_output_jumps "$_dns_prepend_cmd" || return $?
@@ -278,15 +277,10 @@ magicnet_enable_dns_capture() {
         return 1
     fi
 
-    if [ "$(magicnet_dns_profile)" = "cloudflare-udp" ]; then
-        magicnet_warn "DNS capture skipped for cloudflare-udp profile to avoid redirect loops"
-        if magicnet_disable_dns_capture; then
-            return 0
-        fi
-        magicnet_warn "Failed to remove stale DNS capture rules for cloudflare-udp profile"
-        return 1
-    fi
-
+    # All TUN DNS profiles need the local port-53 capture path. In particular,
+    # Android netd commonly emits application DNS as UID 0 while tun-in excludes
+    # UID 0. cloudflare-udp is proxy-detoured by dns.sh, so its upstream packets
+    # do not need a profile-wide capture bypass and cannot recurse through 1053.
     _dns_capture_probe_rc=0
     magicnet_xtables_table_probe iptables nat || _dns_capture_probe_rc=$?
     case "$_dns_capture_probe_rc" in

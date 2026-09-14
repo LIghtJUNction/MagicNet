@@ -203,6 +203,21 @@ class DNSOutputOrder(unittest.TestCase):
             self.assertEqual(state["iptables"], again["iptables"])
             self.assertEqual(state["ip6tables"], again["ip6tables"])
 
+    def test_cloudflare_udp_profile_repairs_core_reordering(self):
+        for shell in SHELLS:
+            result, state = self.run_installer(initial(), shell, PROFILE="cloudflare-udp", MARKED="0")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assert_captured(state)
+            for family in ("iptables", "ip6tables"):
+                state[family]["OUTPUT"].remove(["-j", "sing-box-output"])
+                state[family]["OUTPUT"].insert(0, ["-j", "sing-box-output"])
+                self.assertEqual(packet(state[family]), "DNAT:172.19.0.2")
+            result, state = self.run_installer(
+                state, shell, ACTION="post-start", PROFILE="cloudflare-udp", MARKED="0"
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assert_captured(state)
+
     def test_temporary_jumps_migrate_and_stop_removes_all_owned_rules(self):
         for shell in SHELLS:
             result, state = self.run_installer(initial(duplicates=3, temporary=True), shell)
@@ -229,7 +244,7 @@ class DNSOutputOrder(unittest.TestCase):
 
     def test_disabled_modes_clean_existing_and_temporary_jumps(self):
         for shell, options in itertools.product(SHELLS, (
-                {"MODE": "ebpf"}, {"MAGIC_DNS_CAPTURE": "0"}, {"PROFILE": "cloudflare-udp"})):
+                {"MODE": "ebpf"}, {"MAGIC_DNS_CAPTURE": "0"})):
             result, state = self.run_installer(initial(temporary=True), shell, **options)
             self.assertEqual(result.returncode, 0, result.stderr)
             for family in ("iptables", "ip6tables"):
