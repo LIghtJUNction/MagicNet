@@ -5,6 +5,23 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/magicnet-dns-profile.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
+with_routing_assets=0
+case "${1:-}" in
+"") ;;
+--with-routing-assets)
+  with_routing_assets=1
+  shift
+  ;;
+*)
+  printf 'usage: bash scripts/test-dns-profile-safety.sh [--with-routing-assets]\n' >&2
+  exit 64
+  ;;
+esac
+[ "$#" -eq 0 ] || {
+  printf 'unexpected arguments\n' >&2
+  exit 64
+}
+
 MODDIR="$WORK/module"
 export MODDIR
 mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/bin"
@@ -58,17 +75,60 @@ jq -e '
   .dns.final == "bootstrap-local-dns"
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
     and ([.dns.servers[] | select(.tag == "retained-udp") | .routing_mark] == [1073741824])
+    and .dns.timeout == "8s"
+    and .dns.cache_capacity == 4096
+    and .dns.optimistic == {"enabled": true, "timeout": "30m"}
+    and .experimental.cache_file.enabled == true
+    and .experimental.cache_file.store_dns == true
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
-  printf 'default DNS profile must restore direct bootstrap final and remove managed profile servers\n' >&2
+  printf 'default DNS profile must restore direct bootstrap and conservative sing-box 1.14 cache defaults\n' >&2
   exit 1
 }
 
-FULL_MODDIR="$WORK/full-module"
-mkdir -p "$FULL_MODDIR/.config/sing-box" "$FULL_MODDIR/bin"
-ln -s "$(command -v jq)" "$FULL_MODDIR/bin/jq"
-cp "$ROOT/src/MagicNet/.config/sing-box/config.json" "$FULL_MODDIR/.config/sing-box/config.json"
-cp -R "$ROOT/src/MagicNet/.config/sing-box/rules" "$FULL_MODDIR/.config/sing-box/"
-MODDIR="$FULL_MODDIR" MAGICNET_DNS_PROFILE=cloudflare-udp magicnet_dns_apply_singbox
-(cd "$FULL_MODDIR/.config/sing-box" && sing-box check -c config.json -D "$FULL_MODDIR/.config/sing-box") >/dev/null
+cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{
+  "dns": {
+    "servers": [
+      {"type": "https", "tag": "bootstrap-local-dns", "server": "223.5.5.5"},
+      {"type": "udp", "tag": "retained-udp", "server": "9.9.9.9"}
+    ],
+    "timeout": "12s",
+    "cache_capacity": 2048,
+    "optimistic": false
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": false
+    }
+  }
+}
+EOF
+MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+jq -e '
+  .dns.timeout == "12s"
+    and .dns.cache_capacity == 2048
+    and .dns.optimistic == false
+    and .experimental.cache_file.enabled == false
+    and (.experimental.cache_file | has("store_dns") | not)
+' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+  printf 'explicit DNS cache and timeout preferences must be preserved\n' >&2
+  exit 1
+}
+
+if [ "$with_routing_assets" -eq 1 ]; then
+  command -v sing-box >/dev/null 2>&1 || {
+    printf 'prepared DNS checks require sing-box and rule-set assets\n' >&2
+    exit 127
+  }
+  FULL_MODDIR="$WORK/full-module"
+  mkdir -p "$FULL_MODDIR/.config/sing-box" "$FULL_MODDIR/bin"
+  ln -s "$(command -v jq)" "$FULL_MODDIR/bin/jq"
+  cp "$ROOT/src/MagicNet/.config/sing-box/config.json" "$FULL_MODDIR/.config/sing-box/config.json"
+  cp -R "$ROOT/src/MagicNet/.config/sing-box/rules" "$FULL_MODDIR/.config/sing-box/"
+  MODDIR="$FULL_MODDIR" MAGICNET_DNS_PROFILE=cloudflare-udp magicnet_dns_apply_singbox
+  (cd "$FULL_MODDIR/.config/sing-box" && sing-box check -c config.json -D "$FULL_MODDIR/.config/sing-box") >/dev/null
+else
+  printf 'Prepared sing-box DNS asset check excluded; use --with-routing-assets to include it.\n'
+fi
 
 printf 'DNS profile safety test passed\n'
