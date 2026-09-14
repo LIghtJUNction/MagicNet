@@ -191,6 +191,15 @@ magicnet_clear_startup_error() {
 }
 
 magicnet_require_subscription_or_stop() {
+    # The source gate runs before node preparation. A durable checkpoint must
+    # be recoverable here too, otherwise no URL + empty active config would
+    # reject startup before the recovery path could ever run.
+    if ! magicnet_any_subscription_ready &&
+        ! magicnet_module_disabled &&
+        [ -s "${MODDIR}/.state/sing-box/last-good-config.json" ] &&
+        magicnet_with_sub_config_lock magicnet_singbox_restore_last_good; then
+        magicnet_log "Recovered the validated local config before checking subscription availability."
+    fi
     if magicnet_any_subscription_ready; then
         magicnet_clear_startup_error
         return 0
@@ -220,6 +229,9 @@ magicnet_prepare_singbox_nodes_unlocked() {
             return 2
             ;;
         esac
+    fi
+    if magicnet_singbox_restore_last_good; then
+        magicnet_log "Restored the last validated sing-box config and its embedded nodes."
     fi
     if magicnet_singbox_standalone_config_ready; then
         magicnet_log "Using validated standalone sing-box config; subscription refresh skipped."
@@ -415,9 +427,11 @@ magicnet_config_lock_acquire() {
         if [ -z "$_lock_pid" ]; then
             _lock_no_pid_wait=$((_lock_no_pid_wait + 1))
             if [ "$_lock_no_pid_wait" -ge "$_lock_no_pid_timeout" ]; then
-                magicnet_config_lock_reclaim "$_lock_pid" || true
                 _lock_no_pid_wait=0
-                continue
+                # A foreign file/permission error can make rmdir fail. Only a
+                # successful reclaim may retry immediately; otherwise account
+                # for the wait so an orphan cannot defeat the overall timeout.
+                magicnet_config_lock_reclaim "$_lock_pid" && continue
             fi
         else
             _lock_no_pid_wait=0

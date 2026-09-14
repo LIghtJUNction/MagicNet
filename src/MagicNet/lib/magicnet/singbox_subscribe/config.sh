@@ -281,6 +281,7 @@ magicnet_singbox_sanitize_generated_config() {
     _sanitize_filter_file=$(magicnet_singbox_subscription_filter_file)
     [ -f "$_sanitize_filter_file" ] || _sanitize_filter_file=/dev/null
     [ -n "$_sanitize_jq" ] || return 1
+    magicnet_json_object_valid "$_sanitize_config_file" "$_sanitize_jq" || return 1
 
     _sanitize_tmp_file="${_sanitize_config_file}.sanitized"
     _sanitize_ai_lib="$(magicnet_jq_ai_tags_lib)"
@@ -355,9 +356,19 @@ magicnet_singbox_sanitize_generated_config() {
         if ($tags | length) > 0 then [proxy_urltest($tags), proxy_selector($tags)]
         else [proxy_selector($tags)]
         end;
-      def maintained_service_selectors($tags):
+      def maintained_service_selectors($tags; $previous):
         ["google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "telegram-proxy"]
-        | map({type: "selector", tag: ., outbounds: (if ($tags | length) > 0 then ($tags + ["direct", "block"]) else ["block"] end), default: (if ($tags | length) > 0 then $tags[0] else "block" end)});
+        | map(. as $service
+          | (if ($tags | length) > 0 then (["proxy"] + $tags + ["direct", "block"]) else ["block"] end) as $choices
+          | ([$previous[] | select(.tag == $service and .type == "selector")
+              # Legacy generated groups lacked `proxy` and were accidentally
+              # pinned to the first node. Migrate those to follow `proxy`;
+              # explicit direct/block choices and canonical pins survive.
+              | select(((.outbounds // []) | index("proxy")) != null
+                  or .default == "direct" or .default == "block")
+              | .default | select(. as $choice | $choices | index($choice))][0]) as $saved
+          | {type: "selector", tag: $service, outbounds: $choices,
+             default: ($saved // $choices[0])});
       def ai_proxy_selector($tags):
         if ($tags | length) > 0
         then {"type": "selector", "tag": "ai-proxy", "outbounds": $tags, "default": $tags[0]}
@@ -436,12 +447,13 @@ magicnet_singbox_sanitize_generated_config() {
             else . + [{"type": "selector", "tag": "dns-guard", "outbounds": ["proxy", "block", "direct"], "default": "proxy"}]
             end
           | . + [ai_proxy_selector($ai_tags)]
-          | . + maintained_service_selectors($node_tags)
+          | . + maintained_service_selectors($node_tags; $outbounds)
           | . + ai_service_outbounds($ai_tags))
       | .route.rules = ((.route.rules // [])
         | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
     ' "$_sanitize_config_file" >"$_sanitize_tmp_file"
     ) &&
+        magicnet_json_object_valid "$_sanitize_tmp_file" "$_sanitize_jq" &&
         chmod 600 "$_sanitize_tmp_file" &&
         mv -f "$_sanitize_tmp_file" "$_sanitize_config_file" &&
         chmod 600 "$_sanitize_config_file"
@@ -463,6 +475,10 @@ magicnet_singbox_update_config_with_nodes() (
 
     _update_jq="$(command -v jq 2>/dev/null || true)"
     [ -n "$_update_jq" ] || return 1
+    magicnet_json_object_valid "$_config_file" "$_update_jq" || {
+        error "Active sing-box config is not one JSON object; generation aborted"
+        return 1
+    }
     (
         umask 077
         "$_update_jq" --rawfile generated_outbounds "$_outbounds_file" '
@@ -473,9 +489,20 @@ magicnet_singbox_update_config_with_nodes() (
           | ("{" + . + "}")
           | fromjson
           | .outbounds);
-      (decoded_outbounds) as $generated
+      . as $base
+      | ["google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "telegram-proxy"] as $services
+      | [.outbounds[]? | select(.type == "selector")
+          | select(.tag as $tag | $services | index($tag))
+          | select(((.outbounds // []) | index("proxy")) != null
+              or .default == "direct" or .default == "block")
+          | {key: .tag, value: .default}] | from_entries as $saved
+      | (decoded_outbounds) as $generated
       | if ($generated | type) == "array" then
-          .outbounds = $generated
+          $generated | map(. as $group
+            | if .type == "selector" and ($saved[.tag] != null)
+                and ((.outbounds // []) | index($saved[$group.tag])) != null
+              then .default = $saved[.tag] else . end) as $next
+          | $base | .outbounds = $next
         else
           error("generated outbounds must be a JSON array")
         end
@@ -489,6 +516,11 @@ magicnet_singbox_update_config_with_nodes() (
 
     magicnet_singbox_chain_apply "$_tmp_file" || {
         error "Generated sing-box config failed proxy chain materialization"
+        return 1
+    }
+
+    magicnet_json_object_valid "$_tmp_file" "$_update_jq" || {
+        error "Generated sing-box config is not one JSON object"
         return 1
     }
 
