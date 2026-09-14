@@ -205,16 +205,7 @@ class SubmoduleUpdateTests(unittest.TestCase):
         shell_init = next(step for step in quality["jobs"]["shell"]["steps"]
                           if step.get("name") == "Initialize shell test submodules")
         command = shell_init.get("run", "")
-        self.assertIn("git submodule update --init --depth 1 --", command)
-        self.assertNotIn("--recursive", command)
-        for path in (
-            ".kam/bases/hooks",
-            ".kam/bases/workflows",
-            "sing-box",
-            "src/MagicNet/.config/sing-box",
-            "src/MagicNet/lib/kamfw",
-        ):
-            self.assertIn(path, command)
+        self.assertIn("git submodule update --init --recursive --depth 1", command)
 
 
 if __name__ == "__main__":
