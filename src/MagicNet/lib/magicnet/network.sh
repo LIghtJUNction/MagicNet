@@ -234,6 +234,27 @@ magicnet_dns_capture_fast_path() {
         magicnet_xtables_ensure_rule "$1" -A nat magicnet-dns-output -p udp ! --dport 53 -j RETURN
 }
 
+# A successful -C only proves membership, not priority. sing-box can prepend
+# its own DNS DNAT jump when the core restarts; leaving our old jump in place
+# then sends netd/application DNS to the TUN address before local capture.
+# Remove only our known jump forms (including the temporary port-53 repair),
+# using the bounded deletion helper. Never flush OUTPUT or another owner's rules.
+magicnet_dns_capture_remove_output_jumps() (
+    _dns_jump_cmd="$1"
+    magicnet_xtables_delete_rule "$_dns_jump_cmd" nat OUTPUT -j magicnet-dns-output || return $?
+    for _dns_jump_proto in udp tcp; do
+        magicnet_xtables_delete_rule "$_dns_jump_cmd" nat OUTPUT \
+            -p "$_dns_jump_proto" --dport 53 -j magicnet-dns-output || return $?
+    done
+)
+
+magicnet_dns_capture_prepend_jump() (
+    _dns_prepend_cmd="$1"
+    magicnet_dns_capture_remove_output_jumps "$_dns_prepend_cmd" || return $?
+    # -I without a rule number inserts at position one, even on Android xtables.
+    magicnet_xtables_require "$_dns_prepend_cmd" -t nat -I OUTPUT -j magicnet-dns-output
+)
+
 magicnet_enable_dns_capture() {
     _dns_capture_mode="$(magicnet_transparent_mode)" || {
         magicnet_warn "transparent mode configuration is invalid; DNS capture rejected"
@@ -290,7 +311,6 @@ magicnet_enable_dns_capture() {
     fi
     magicnet_xtables_require magicnet_iptables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
     magicnet_dns_capture_fast_path magicnet_iptables_cmd || _dns_capture_rc=1
-    magicnet_xtables_ensure_rule magicnet_iptables_cmd -I nat OUTPUT -j magicnet-dns-output || _dns_capture_rc=1
     # Direct UDP DNS servers are marked in the sing-box config. Keep those
     # resolver packets out of this chain without exempting all UID-0 traffic.
     if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
@@ -301,6 +321,10 @@ magicnet_enable_dns_capture() {
     done
     magicnet_iptables_ensure -t nat magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
     magicnet_iptables_ensure -t nat magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
+    # Publish the jump only after both DNS transports and bypass rules exist.
+    if [ "$_dns_capture_rc" -eq 0 ]; then
+        magicnet_dns_capture_prepend_jump magicnet_iptables_cmd || _dns_capture_rc=1
+    fi
 
     _dns_capture_ipv6_mode="$(magicnet_ipv6_mode 2>/dev/null || printf '%s\n' prefer_ipv4)"
     if [ "$_dns_capture_ipv6_mode" != ipv4_only ]; then
@@ -323,7 +347,6 @@ magicnet_enable_dns_capture() {
             fi
             magicnet_xtables_require magicnet_ip6tables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
             magicnet_dns_capture_fast_path magicnet_ip6tables_cmd || _dns_capture_rc=1
-            magicnet_xtables_ensure_rule magicnet_ip6tables_cmd -I nat OUTPUT -j magicnet-dns-output || _dns_capture_rc=1
             if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
                 magicnet_ip6tables_nat_ensure magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
             fi
@@ -332,6 +355,10 @@ magicnet_enable_dns_capture() {
             done
             magicnet_ip6tables_nat_ensure magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
             magicnet_ip6tables_nat_ensure magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
+            # Publish the jump only after both DNS transports and bypass rules exist.
+            if [ "$_dns_capture_rc" -eq 0 ]; then
+                magicnet_dns_capture_prepend_jump magicnet_ip6tables_cmd || _dns_capture_rc=1
+            fi
         fi
     fi
 
@@ -421,7 +448,7 @@ magicnet_disable_dns_capture() (
         case "$_dns_capture_chain_rc" in
         0)
             # Remove every duplicate jump before flushing/deleting our chain.
-            magicnet_dns_capture_delete_jump "$_dns_capture_cmd" -t nat OUTPUT -j magicnet-dns-output || _dns_capture_cleanup_rc=1
+            magicnet_dns_capture_remove_output_jumps "$_dns_capture_cmd" || _dns_capture_cleanup_rc=1
             magicnet_xtables_require "$_dns_capture_cmd" -t nat -F magicnet-dns-output || _dns_capture_cleanup_rc=1
             magicnet_xtables_require "$_dns_capture_cmd" -t nat -X magicnet-dns-output || _dns_capture_cleanup_rc=1
             ;;

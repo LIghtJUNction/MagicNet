@@ -5,6 +5,8 @@ on:
     paths:
       - 'src/MagicNet/network-check.sh'
       - 'src/MagicNet/lib/magicnet/network-targets.tsv'
+      - 'src/MagicNet/lib/magicnet/network.sh'
+      - 'scripts/test-dns-*.py'
       - 'scripts/test-network-check.py'
       - 'scripts/test-host.sh'
       - '.github/workflows/network-regression.yml'
@@ -24,6 +26,19 @@ jobs:
         run: |
           shellcheck -s sh src/MagicNet/network-check.sh
           python3 scripts/test-network-check.py
+
+  dns-kernel:
+    name: Real DNS NAT regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install isolated networking test tools
+        run: sudo apt-get update && sudo apt-get install -y iproute2 iptables
+      - name: Exercise DNS packets through production rules
+        run: python3 scripts/test-dns-kernel.py --require
 
   internet-observation:
     name: Public endpoints (runner observation only)
