@@ -116,7 +116,9 @@ def component_for(name: str) -> str | None:
 def zip_entry(name: str, data: bytes, mode: int = 0o644, symlink: bool = False):
     info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
     info.create_system = 3
-    info.compress_type = zipfile.ZIP_DEFLATED
+    # Android module managers commonly use BusyBox unzip. BusyBox rejects
+    # compressed symbolic-link entries, so store symlink payloads verbatim.
+    info.compress_type = zipfile.ZIP_STORED if symlink else zipfile.ZIP_DEFLATED
     info.external_attr = ((stat.S_IFLNK if symlink else stat.S_IFREG) | mode) << 16
     return info, data
 
