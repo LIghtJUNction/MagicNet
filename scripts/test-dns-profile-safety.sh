@@ -58,8 +58,43 @@ jq -e '
   .dns.final == "bootstrap-local-dns"
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
     and ([.dns.servers[] | select(.tag == "retained-udp") | .routing_mark] == [1073741824])
+    and .dns.timeout == "8s"
+    and .dns.cache_capacity == 4096
+    and .dns.optimistic == {"enabled": true, "timeout": "30m"}
+    and .experimental.cache_file.enabled == true
+    and .experimental.cache_file.store_dns == true
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
-  printf 'default DNS profile must restore direct bootstrap final and remove managed profile servers\n' >&2
+  printf 'default DNS profile must restore direct bootstrap and conservative sing-box 1.14 cache defaults\n' >&2
+  exit 1
+}
+
+cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{
+  "dns": {
+    "servers": [
+      {"type": "https", "tag": "bootstrap-local-dns", "server": "223.5.5.5"},
+      {"type": "udp", "tag": "retained-udp", "server": "9.9.9.9"}
+    ],
+    "timeout": "12s",
+    "cache_capacity": 2048,
+    "optimistic": false
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": false
+    }
+  }
+}
+EOF
+MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+jq -e '
+  .dns.timeout == "12s"
+    and .dns.cache_capacity == 2048
+    and .dns.optimistic == false
+    and .experimental.cache_file.enabled == false
+    and (.experimental.cache_file | has("store_dns") | not)
+' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+  printf 'explicit DNS cache and timeout preferences must be preserved\n' >&2
   exit 1
 }
 
