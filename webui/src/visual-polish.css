@@ -1,0 +1,390 @@
+/*
+ * Final visual pass for MagicNet Paper.
+ * Keep this layer structural and token-driven so page components can stay focused on behavior.
+ */
+
+:root {
+  --mn-polish-header-height: 72px;
+  --mn-polish-control-height: 48px;
+}
+
+/* Global rhythm */
+.mn-shell {
+  max-width: 1240px;
+}
+
+.mn-command-bar {
+  min-height: var(--mn-polish-header-height);
+  padding-block: 10px;
+}
+
+.mn-brand-lockup {
+  gap: 6px;
+}
+
+.mn-brand-mark {
+  width: var(--mn-polish-control-height);
+  height: var(--mn-polish-control-height);
+  flex-basis: var(--mn-polish-control-height);
+  border-radius: 10px;
+}
+
+.mn-brand-mark img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.mn-brand-copy h1 {
+  font-size: 22px;
+  letter-spacing: -0.045em;
+}
+
+.mn-global-actions {
+  gap: 2px;
+}
+
+.mn-global-actions > button:not(.mn-desktop-action) {
+  width: var(--mn-polish-control-height);
+  height: var(--mn-polish-control-height);
+  min-width: var(--mn-polish-control-height);
+  min-height: var(--mn-polish-control-height);
+  flex-basis: var(--mn-polish-control-height);
+}
+
+.mn-runtime-brief {
+  margin-bottom: 18px;
+  padding: 7px 0 12px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+/* Navigation: selected state is quiet but unmistakable. */
+.mn-workspace-header {
+  margin-inline: -24px;
+  margin-bottom: 28px;
+  padding-inline: 24px;
+}
+
+.mn-section-tabs {
+  gap: 20px;
+  border-bottom-color: var(--mn-border);
+}
+
+.mn-section-tabs button {
+  position: relative;
+  min-height: 50px;
+  padding: 11px 0 12px;
+  border-bottom: 0;
+  color: var(--mn-ink-muted);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+}
+
+.mn-section-tabs button::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 999px 999px 0 0;
+  background: transparent;
+  content: "";
+  transform: scaleX(0.5);
+  transform-origin: center;
+  transition: background-color 160ms ease-out, transform 180ms var(--mn-motion-spring);
+}
+
+.mn-section-tabs button.is-active {
+  border-bottom-color: transparent;
+  color: var(--mn-ink);
+  font-weight: 650;
+}
+
+.mn-section-tabs button.is-active::after {
+  background: var(--mn-primary);
+  transform: scaleX(1);
+}
+
+.mn-page-header {
+  gap: 10px 20px;
+  padding: 0 0 14px;
+}
+
+.mn-page-title {
+  font-size: clamp(1.55rem, 5.5vw, 2rem);
+  font-weight: 560;
+  letter-spacing: -0.04em;
+}
+
+.mn-page-description {
+  margin-top: 5px;
+  line-height: 1.65;
+}
+
+/* Base controls */
+.mn-button {
+  border-radius: 10px;
+  letter-spacing: -0.01em;
+}
+
+.mn-field {
+  border-color: var(--mn-border);
+  border-radius: 10px;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease-out;
+}
+
+.mn-field:hover {
+  border-color: var(--mn-border-strong);
+}
+
+.mn-field:focus {
+  border-color: var(--mn-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mn-focus) 12%, transparent);
+}
+
+.mn-choice,
+.mn-segmented,
+.mn-editorial-field,
+.mn-editorial-carrier,
+.mn-inset,
+.mn-inset-soft {
+  border-radius: 10px;
+}
+
+/* Open-section layout: fewer visible boxes, stronger spacing. */
+.magic-card {
+  padding-block: 30px;
+}
+
+.magic-card .magic-card {
+  padding-block: 20px;
+}
+
+.mn-card-title {
+  font-weight: 560;
+}
+
+.mn-stat-tile {
+  padding-block: 14px;
+}
+
+.mn-disclosure > summary {
+  min-height: 68px;
+  padding-block: 18px;
+}
+
+.mn-disclosure__body {
+  gap: 18px;
+  padding-bottom: 30px;
+}
+
+.mn-pill,
+.mn-page-kicker {
+  min-height: 26px;
+  padding: 2px 8px;
+  border-color: transparent;
+  background: var(--mn-surface-sunken);
+  font-weight: 600;
+}
+
+.mn-insight-chip {
+  min-height: 30px;
+  border-color: var(--mn-border);
+  border-radius: 9px;
+}
+
+/* Bottom navigation: preserve the 56px touch target while reducing the boxed look. */
+.mobile-nav {
+  gap: 6px;
+  padding-top: 7px;
+  padding-bottom: calc(7px + env(safe-area-inset-bottom));
+  background: var(--mn-surface-raised);
+}
+
+.mobile-nav button {
+  min-height: 56px;
+  gap: 4px;
+  border-color: transparent;
+  border-radius: 12px;
+}
+
+.mobile-nav button.mn-nav-active {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--mn-primary) 7%, var(--mn-surface-raised));
+  color: var(--mn-primary-strong);
+}
+
+.mobile-nav button.mn-nav-active svg {
+  stroke-width: 2;
+}
+
+.mobile-nav button span {
+  font-size: 11px;
+  letter-spacing: 0.005em;
+}
+
+/* Sheets should feel like native mobile surfaces, not modal cards. */
+.mn-utility-sheet {
+  padding: 18px 24px calc(24px + env(safe-area-inset-bottom));
+  border-radius: 22px 22px 0 0;
+}
+
+.mn-utility-sheet::before {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: -7px auto 12px;
+  border-radius: 999px;
+  background: var(--mn-border-strong);
+  content: "";
+  opacity: 0.72;
+}
+
+.mn-sheet-header {
+  align-items: center;
+  padding-bottom: 10px;
+}
+
+.mn-utility-grid > .mn-button {
+  min-height: 50px;
+  padding-inline: 4px;
+}
+
+@media (min-width: 640px) and (max-width: 899px) {
+  .mn-workspace-header {
+    margin-inline: -40px;
+    padding-inline: 40px;
+  }
+}
+
+/* Desktop: remove toolbar clutter and make the rail read as navigation, not a stack of cards. */
+@media (min-width: 900px) {
+  .mn-shell {
+    padding-top: 18px;
+    padding-inline: 44px;
+  }
+
+  .mn-command-bar {
+    min-height: 64px;
+    padding-block: 6px 14px;
+  }
+
+  .mn-desktop-action {
+    border-color: transparent;
+    background: transparent;
+    color: var(--mn-ink-muted);
+  }
+
+  .mn-desktop-action:hover {
+    border-color: var(--mn-border);
+    background: var(--mn-surface-sunken);
+    color: var(--mn-ink);
+  }
+
+  .mn-workspace-frame {
+    grid-template-columns: 172px minmax(0, 1fr);
+    gap: 52px;
+    margin-top: 34px;
+  }
+
+  .desktop-rail {
+    top: 18px;
+    padding-block: 4px;
+  }
+
+  .desktop-rail nav {
+    gap: 20px;
+  }
+
+  .mn-nav-group {
+    gap: 1px;
+  }
+
+  .mn-rail-label {
+    padding: 4px 10px 7px;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+  }
+
+  .desktop-rail nav button {
+    min-height: 48px;
+    padding: 10px 11px;
+    border-inline-start-width: 2px;
+    border-radius: 0 9px 9px 0;
+  }
+
+  .desktop-rail nav button.mn-nav-active {
+    background: color-mix(in srgb, var(--mn-primary) 6%, var(--mn-surface));
+  }
+
+  .page-surface {
+    padding-bottom: 32px;
+  }
+}
+
+@media (min-width: 1120px) {
+  .mn-shell {
+    padding-inline: 56px;
+  }
+
+  .mn-workspace-frame {
+    gap: 64px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-section-tabs button:hover::after {
+    background: var(--mn-border-strong);
+    transform: scaleX(0.72);
+  }
+
+  .mn-section-tabs button.is-active:hover::after {
+    background: var(--mn-primary);
+    transform: scaleX(1);
+  }
+
+  .mobile-nav button:not(.mn-nav-active):hover {
+    border-color: transparent;
+    background: var(--mn-surface-sunken);
+  }
+}
+
+@media (max-width: 380px) {
+  .mn-shell {
+    padding-inline: max(18px, env(safe-area-inset-left)) max(18px, env(safe-area-inset-right));
+  }
+
+  .mn-workspace-header {
+    margin-inline: -18px;
+    padding-inline: 18px;
+  }
+
+  .mn-brand-copy h1 {
+    font-size: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mn-section-tabs button::after {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .mn-section-tabs button.is-active::after {
+    background: Highlight;
+  }
+
+  .mobile-nav button.mn-nav-active,
+  .desktop-rail nav button.mn-nav-active {
+    outline: 2px solid Highlight;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .mn-utility-sheet::before {
+    background: CanvasText;
+  }
+}
