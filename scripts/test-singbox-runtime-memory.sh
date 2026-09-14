@@ -49,7 +49,7 @@ assert_limit 512MiB 16777216
 # Keep the launcher integration from regressing into a computed-but-unused
 # budget. The assignment is scoped to singbox_start, so it cannot leak to the
 # Rust CLI or other module helpers.
-grep -F 'GOMEMLIMIT="$_singbox_gomemlimit"' "$ROOT/src/MagicNet/lib/magicnet/core.sh" >/dev/null ||
+grep -F "GOMEMLIMIT=\"\$_singbox_gomemlimit\"" "$ROOT/src/MagicNet/lib/magicnet/core.sh" >/dev/null ||
     fail 'sing-box launcher does not receive the runtime memory budget'
 
 printf '%s\n' 'sing-box runtime memory tests passed'
