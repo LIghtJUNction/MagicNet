@@ -1,5 +1,8 @@
 dist
 target/
+
+# Generated successful-check records restored by the CI cache action.
+/.cache/ci-test-results/
 .env
 .tokensave/
 .playwright-mcp/
