@@ -34,9 +34,12 @@ class ReleaseGateTests(unittest.TestCase):
     def test_shared_suite_preserves_all_original_checks(self):
         script = (ROOT / 'scripts/quality-gate.sh').read_text()
         for command in ('cargo fmt', 'cargo clippy', 'cargo test',
+                        'python3 scripts/test-lint-source.py', 'python3 scripts/lint-source.py',
                         'bash scripts/lint-shell.sh', 'bash scripts/test-host.sh',
                         'go vet', 'go test -race', 'npm run check', 'npm run test:ui'):
             self.assertIn(command, script)
+        for lint in ('-D clippy::dbg_macro', '-D clippy::todo', '-D clippy::unimplemented'):
+            self.assertIn(lint, script)
         self.assertIn('for group in rust shell components webui-check webui-browser', script)
         quality = yaml.safe_load((ROOT / '.github/workflows/quality.yml').read_text())
         commands = '\n'.join(s.get('run', '') for job in quality['jobs'].values()
@@ -58,8 +61,9 @@ class ReleaseGateTests(unittest.TestCase):
             for name in ('lint-shell.sh', 'test-host.sh'):
                 (work / 'scripts' / name).write_text('[ "${0##*/}" != "$FAIL_CHECK" ] || exit 27\n')
             checks = ('cargo fmt --all -- --check',
-                      'cargo clippy --workspace --all-targets --all-features --locked -- -D warnings',
+                      'cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::dbg_macro -D clippy::todo -D clippy::unimplemented',
                       'cargo test --workspace --all-targets --all-features --locked',
+                      'python3 scripts/test-lint-source.py', 'python3 scripts/lint-source.py',
                       'lint-shell.sh', 'test-host.sh',
                       'go vet ./installer/components', 'go test -race ./installer/components',
                       'python3 scripts/test-components.py', 'npm run check', 'npm run test:ui')

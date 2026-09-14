@@ -19,6 +19,8 @@ need cargo
 
 kam validate
 
+# Fail quickly on syntax/config accidents before running the heavier suites.
+python3 scripts/lint-source.py
 bash scripts/lint-shell.sh
 # Temporary fixture repositories must use their own indexes, not Git's hook index.
 env -u GIT_INDEX_FILE bash scripts/test-host.sh --with-routing-assets
@@ -33,7 +35,11 @@ else
     (cd webui && npm ci && npm run check)
 fi
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked -- \
+    -D warnings \
+    -D clippy::dbg_macro \
+    -D clippy::todo \
+    -D clippy::unimplemented
 cargo test --workspace --all-targets --all-features --locked
 if compgen -G "dist/*.zip" >/dev/null; then
     package_zip="$(compgen -G "dist/*.zip" | head -n1)"
