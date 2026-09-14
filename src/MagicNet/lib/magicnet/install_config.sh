@@ -1,11 +1,48 @@
 # shellcheck shell=ash
 # Rebuild from this ZIP, importing subscription nodes rather than old policy.
+
+# Upgrade only the exact repository pin shipped by the previous managed
+# default. A custom repository, custom ref, custom digest, or extra setting is
+# left untouched.
+magicnet_migrate_install_config_repository() (
+    _repo="${MODPATH}/.config/magicnet/singbox-config-repo.conf"
+    [ -e "$_repo" ] || return 0
+    [ -f "$_repo" ] && [ ! -L "$_repo" ] || return 1
+
+    _old_url='MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/LIghtJUNction/MagicSingBox.git'
+    _old_ref='MAGICNET_SINGBOX_CONFIG_REPO_REF=ba67cdbe771dff7e06c06bd754cc67699eeea8c0'
+    _old_path='MAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json'
+    _old_sha='MAGICNET_SINGBOX_CONFIG_REPO_SHA256=6faa2cfcc44c305e30bc64cec84202b95d0a1592f012ab1f8dd65eae6d489258'
+
+    grep -Fqx "$_old_url" "$_repo" &&
+        grep -Fqx "$_old_ref" "$_repo" &&
+        grep -Fqx "$_old_path" "$_repo" &&
+        grep -Fqx "$_old_sha" "$_repo" || return 0
+    _setting_count="$(grep -Ec '^MAGICNET_SINGBOX_CONFIG_REPO_[A-Z0-9_]+=' "$_repo" 2>/dev/null || true)"
+    [ "$_setting_count" = 4 ] || return 0
+
+    _tmp="${_repo}.migrate.$$"
+    trap 'rm -f "$_tmp"' 0
+    (
+        umask 077
+        printf '%s\n' \
+            '# Managed by MagicNet; edit through the config repository controls.' \
+            'MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/LIghtJUNction/MagicSingBox.git' \
+            'MAGICNET_SINGBOX_CONFIG_REPO_REF=a12e472c8152e9a40af48cfa1e2d4c4242f33d50' \
+            'MAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json' \
+            'MAGICNET_SINGBOX_CONFIG_REPO_SHA256=35d54f908ccc9cc615fabf06b1037bbfc1f6d1d9712c86ba6c9b5252cc98ae03' >"$_tmp"
+    ) || return 1
+    chmod 600 "$_tmp" || return 1
+    mv -f "$_tmp" "$_repo" || return 1
+)
+
 # Runs in a subshell so installer paths, traps and runtime helpers stay isolated.
 magicnet_refresh_install_config() (
     umask 077
     MODDIR="$MODPATH"
     PATH="${MODDIR}/bin:${MODDIR}/system/bin:${PATH:-}"
     export MODDIR PATH
+    magicnet_migrate_install_config_repository || return 1
     _refresh_config="${MODDIR}/.config/sing-box/config.json"
     _refresh_previous="${MAGICNET_BACKUP_DIR}/.config/sing-box/config.json"
     _refresh_backup="${_refresh_config}.pre-upgrade"
