@@ -1,6 +1,14 @@
 name: Android KernelSU Acceptance
 
 on:
+  pull_request:
+    paths:
+      - "src/MagicNet/**"
+      - "scripts/android-kernelsu-acceptance.sh"
+      - "scripts/android-network-benchmark.py"
+      - "scripts/build-sing-box.sh"
+      - "sing-box"
+      - ".github/workflows/android-kernelsu-acceptance.yml"
   workflow_dispatch:
     inputs:
       proxy_region:
