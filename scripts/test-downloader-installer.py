@@ -47,14 +47,25 @@ def verify(archive: Path, *, arch: str = "arm64", core: Path | None = None) -> N
         assert "download.json" not in names and "bin/module-downloader" not in names
         for name in ("service.sh", "cli", ".config/sing-box/config.json"):
             assert name in names, f"Missing MagicNet runtime scaffold: {name}"
+        cli = z.getinfo("cli")
+        assert stat.S_ISLNK(cli.external_attr >> 16), "cli alias must remain a symbolic link"
+        assert cli.compress_type == zipfile.ZIP_STORED, (
+            "BusyBox unzip cannot extract compressed symbolic links"
+        )
         binary = z.read("bin/magicnet-components")
         assert binary[:6] == b"\x7fELF\x02\x01", "Expected a 64-bit little-endian ELF helper"
         assert struct.unpack_from("<H", binary, 18)[0] == {"arm64": 183, "amd64": 62}[arch]
         assert (z.getinfo("bin/magicnet-components").external_attr >> 16) & stat.S_IXUSR
         script = z.read("customize.sh")
         assert script.count(b"# Component bootstrap:") == 1
+        assert b'"module.prop" "components.json" "bin/magicnet-components"' in script, (
+            "SKIPUNZIP installer must extract module.prop into MODPATH for manager bookkeeping"
+        )
+        assert b'[ -f "$MODPATH/module.prop" ]' in script, (
+            "Installer must fail before reporting success if module.prop is missing from MODPATH"
+        )
         assert not re.search(rb"(?m)^\s*install_module(?:[\s;]|$)", script), "Nested manager installation"
-    print("Final installer: MagicNet identity, core alias, ELF, CRC and component-only payloads verified")
+    print("Final installer: MagicNet identity, core alias, stored symlink, ELF, CRC, manager metadata and component-only payloads verified")
 
 
 def main() -> None:
