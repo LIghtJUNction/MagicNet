@@ -1,0 +1,325 @@
+name: Android KernelSU Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      proxy_region:
+        description: Public free-node shard used for the acceptance run
+        required: true
+        type: choice
+        options:
+          - global
+          - US
+          - JP
+        default: global
+      rounds:
+        description: Connectivity/latency rounds per service target
+        required: true
+        type: choice
+        options:
+          - "1"
+          - "3"
+          - "5"
+        default: "3"
+      run_speed:
+        description: Run 8 MiB domestic/global throughput probes
+        required: true
+        type: boolean
+        default: true
+      strict_external:
+        description: Fail when less than 80% of public endpoint probes succeed
+        required: true
+        type: boolean
+        default: false
+      fresh_avd:
+        description: Ignore the cached pristine Android virtual device for this run
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-kernelsu-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  AVD_NAME: MagicNet_API_35
+  SYSTEM_IMAGE: system-images;android-35;google_apis;x86_64
+  KSU_CACHE: ${{ github.workspace }}/.cache/kernelsu-avd
+  KSU_RELEASE: v3.2.0
+  KSU_AVD_ARCHIVE: dist-A15-API35-6.6-x86_64-11987101-v320.zip
+  KSU_AVD_SHA256: ab52c00733ff08ee20a5822db68891a6bd0b43e5ee675dd4ffd8fe640ad1ccef
+  KSUD_SHA256: db96b07ef42f6b9a84b5914d19c2f01608b1e10816fc28c0e84f07417d9bc062
+  CARGO_NDK_VERSION: "4.1.2"
+
+jobs:
+  android-kernelsu:
+    name: Android 15 / KernelSU / x86_64
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Validate acceptance harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/android-kernelsu-acceptance.sh
+          python3 -m py_compile scripts/android-network-benchmark.py
+          python3 scripts/test-kernelsu-installer-lifecycle.py
+
+      - name: Setup Go
+        id: go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26.7"
+          cache: false
+
+      - name: Setup kam and Rust
+        uses: MemDeco-WG/setup-kam@1d6ad8a9f58446a4519fda12a52f0c71fb667d8b # v3
+        with:
+          github-token: ${{ github.token }}
+          enable-cache: "true"
+          cache-targets: kam
+          install-commitizen: "false"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+
+      - name: Fingerprint toolchains
+        id: toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          ndk="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
+          if [ -z "$ndk" ] && [ -d "$ANDROID_HOME/ndk" ]; then
+            ndk="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          fi
+          ndk="${ndk:-/opt/android-ndk}"
+          printf 'rust=%s\n' "$(rustc -vV | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          printf 'ndk=%s\n' "$(sha256sum "$ndk/source.properties" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          printf 'singbox=%s\n' "$(git -C sing-box rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Go and Rust build outputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: android-ksu-build-v1-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**', 'sing-box/go.mod', 'sing-box/go.sum', 'scripts/build-sing-box.sh') }}
+          restore-keys: |
+            android-ksu-build-v1-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-
+
+      - name: Cache cargo-ndk
+        id: cargo-ndk
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.cache/magicnet/cargo-ndk
+          key: ${{ runner.os }}-cargo-ndk-${{ env.CARGO_NDK_VERSION }}-${{ steps.toolchain.outputs.rust }}
+
+      - name: Install Android Rust targets and cargo-ndk
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-linux-android x86_64-linux-android
+          if [ "${{ steps.cargo-ndk.outputs.cache-hit }}" != "true" ]; then
+            cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked --root "$HOME/.cache/magicnet/cargo-ndk"
+          fi
+          echo "$HOME/.cache/magicnet/cargo-ndk/bin" >> "$GITHUB_PATH"
+
+      - name: Install host build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends binutils file jq ripgrep unzip zip python3-yaml shellcheck
+
+      - name: Build current MagicNet module
+        env:
+          MAGICNET_SIGN_ENABLED: "0"
+          KAM_CHANGELOG_ENABLED: "0"
+        shell: bash
+        run: |
+          set -euo pipefail
+          find hooks src -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+          rm -rf dist
+          kam build
+          scripts/package-smoke.sh dist/MagicNet.zip
+          scripts/package-install-smoke.sh dist/MagicNet.zip
+
+      - name: Build x86_64 AVD runtime payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo ndk -t x86_64 build --release -p magicnet-cli -p magicnet-mcp-server
+          mkdir -p "$RUNNER_TEMP/magicnet-x86"
+          scripts/build-sing-box.sh android amd64 "$RUNNER_TEMP/magicnet-x86/sing-box"
+          install -m 0755 target/x86_64-linux-android/release/magicnet-cli "$RUNNER_TEMP/magicnet-x86/magicnet-cli"
+          install -m 0755 target/x86_64-linux-android/release/magicnet-mcp-server "$RUNNER_TEMP/magicnet-x86/magicnet-mcp-server"
+          file "$RUNNER_TEMP/magicnet-x86/"* | tee "$RUNNER_TEMP/x86-payloads.txt"
+
+      - name: Restore KernelSU AVD assets
+        id: ksu-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.KSU_CACHE }}
+          key: kernelsu-avd-v1-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}
+
+      - name: Download and verify KernelSU AVD assets
+        if: steps.ksu-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$KSU_CACHE"
+          mkdir -p "$KSU_CACHE/kernel"
+          curl --fail --location --retry 4 --retry-all-errors \
+            "https://github.com/leemikepop/avd-kernelsu-x86_64/releases/download/KernelSU-v3.2.0/$KSU_AVD_ARCHIVE" \
+            -o "$RUNNER_TEMP/$KSU_AVD_ARCHIVE"
+          printf '%s  %s\n' "$KSU_AVD_SHA256" "$RUNNER_TEMP/$KSU_AVD_ARCHIVE" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/$KSU_AVD_ARCHIVE" -d "$KSU_CACHE/kernel"
+
+          curl --fail --location --retry 4 --retry-all-errors \
+            "https://github.com/tiann/KernelSU/releases/download/$KSU_RELEASE/ksud-x86_64-linux-android" \
+            -o "$KSU_CACHE/ksud-x86_64-linux-android"
+          printf '%s  %s\n' "$KSUD_SHA256" "$KSU_CACHE/ksud-x86_64-linux-android" | sha256sum --check --strict
+          chmod 0755 "$KSU_CACHE/ksud-x86_64-linux-android"
+
+          kernel="$(find "$KSU_CACHE/kernel" -type f \( -name bzImage -o -name Image \) -print -quit)"
+          [ -n "$kernel" ] || { echo 'KernelSU AVD archive contains no kernel image' >&2; exit 1; }
+          printf 'kernel=%s\n' "$kernel" > "$KSU_CACHE/manifest.env"
+
+      - name: Save KernelSU AVD assets
+        if: steps.ksu-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.KSU_CACHE }}
+          key: kernelsu-avd-v1-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}
+
+      - name: Verify cached KernelSU assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$KSU_CACHE/manifest.env"
+          test -x "$KSU_CACHE/ksud-x86_64-linux-android"
+          source "$KSU_CACHE/manifest.env"
+          test -s "$kernel"
+          printf 'KSU_KERNEL=%s\n' "$kernel" >> "$GITHUB_ENV"
+
+      - name: Restore pristine Android AVD
+        if: inputs.fresh_avd != true
+        id: avd-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.android/avd/MagicNet_API_35.avd
+            ~/.android/avd/MagicNet_API_35.ini
+            /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
+          key: android-avd-v2-api35-google-apis-x86_64
+
+      - name: Create pristine Android 15 AVD
+        if: inputs.fresh_avd == true || steps.avd-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "emulator" "$SYSTEM_IMAGE"
+          rm -rf "$HOME/.android/avd/${AVD_NAME}.avd" "$HOME/.android/avd/${AVD_NAME}.ini"
+          echo no | avdmanager create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE"
+          cat >>"$HOME/.android/avd/${AVD_NAME}.avd/config.ini" <<'EOF'
+          hw.cpu.ncore=4
+          hw.ramSize=4096
+          disk.dataPartition.size=6G
+          hw.keyboard=yes
+          showDeviceFrame=no
+          EOF
+
+      - name: Save pristine Android AVD
+        if: inputs.fresh_avd != true && steps.avd-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.android/avd/MagicNet_API_35.avd
+            ~/.android/avd/MagicNet_API_35.ini
+            /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
+          key: android-avd-v2-api35-google-apis-x86_64
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -e /dev/kvm ]; then
+            sudo chmod 0666 /dev/kvm
+          else
+            echo '::error::/dev/kvm is unavailable on this runner'
+            exit 1
+          fi
+
+      - name: Boot Android with KernelSU kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/android-kernelsu
+          nohup emulator "@$AVD_NAME" \
+            -kernel "$KSU_KERNEL" \
+            -accel on \
+            -no-window \
+            -noaudio \
+            -no-boot-anim \
+            -no-snapshot \
+            -no-snapshot-save \
+            -gpu swiftshader_indirect \
+            -memory 4096 \
+            -show-kernel \
+            >artifacts/android-kernelsu/emulator.log 2>&1 &
+          echo $! >artifacts/android-kernelsu/emulator.pid
+
+      - name: Install and benchmark MagicNet in KernelSU AVD
+        env:
+          MAGICNET_KSUD_HOST: ${{ env.KSU_CACHE }}/ksud-x86_64-linux-android
+          MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
+          MAGICNET_X86_MCP: ${{ runner.temp }}/magicnet-x86/magicnet-mcp-server
+          MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box
+          MAGICNET_PROXY_REGION: ${{ inputs.proxy_region }}
+          MAGICNET_BENCHMARK_ROUNDS: ${{ inputs.rounds }}
+          MAGICNET_RUN_SPEED: ${{ inputs.run_speed == true && '1' || '0' }}
+          MAGICNET_STRICT_EXTERNAL: ${{ inputs.strict_external == true && '1' || '0' }}
+        shell: bash
+        run: scripts/android-kernelsu-acceptance.sh
+
+      - name: Stop emulator
+        if: always()
+        shell: bash
+        run: |
+          adb emu kill >/dev/null 2>&1 || true
+          if [ -f artifacts/android-kernelsu/emulator.pid ]; then
+            kill "$(cat artifacts/android-kernelsu/emulator.pid)" >/dev/null 2>&1 || true
+          fi
+
+      - name: Upload Android acceptance report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-kernelsu-acceptance-${{ github.run_id }}
+          path: |
+            artifacts/android-kernelsu/**
+            ${{ runner.temp }}/x86-payloads.txt
+          if-no-files-found: warn
+          retention-days: 14
