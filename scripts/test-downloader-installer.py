@@ -53,8 +53,14 @@ def verify(archive: Path, *, arch: str = "arm64", core: Path | None = None) -> N
         assert (z.getinfo("bin/magicnet-components").external_attr >> 16) & stat.S_IXUSR
         script = z.read("customize.sh")
         assert script.count(b"# Component bootstrap:") == 1
+        assert b'"module.prop" "components.json" "bin/magicnet-components"' in script, (
+            "SKIPUNZIP installer must extract module.prop into MODPATH for manager bookkeeping"
+        )
+        assert b'[ -f "$MODPATH/module.prop" ]' in script, (
+            "Installer must fail before reporting success if module.prop is missing from MODPATH"
+        )
         assert not re.search(rb"(?m)^\s*install_module(?:[\s;]|$)", script), "Nested manager installation"
-    print("Final installer: MagicNet identity, core alias, ELF, CRC and component-only payloads verified")
+    print("Final installer: MagicNet identity, core alias, ELF, CRC, manager metadata and component-only payloads verified")
 
 
 def main() -> None:
