@@ -83,7 +83,18 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-          submodules: recursive
+
+      # Host regressions need only these pinned top-level inputs. In particular,
+      # do not recursively clone sing-box's Android/Apple/Desktop clients and
+      # dashboard tree: they are release/build inputs, not shell-test inputs.
+      - name: Initialize shell test submodules
+        run: |
+          git submodule update --init --depth 1 -- \
+            .kam/bases/hooks \
+            .kam/bases/workflows \
+            sing-box \
+            src/MagicNet/.config/sing-box \
+            src/MagicNet/lib/kamfw
 
       # Quality validates the gitlinks recorded by the commit. The build/release
       # workflow owns remote-tracking submodule refreshes, so CI does not fetch
