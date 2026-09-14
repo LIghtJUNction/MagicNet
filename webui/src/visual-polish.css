@@ -5,7 +5,7 @@
 
 :root {
   --mn-polish-header-height: 72px;
-  --mn-polish-control-height: 44px;
+  --mn-polish-control-height: 48px;
 }
 
 /* Global rhythm */
@@ -125,10 +125,6 @@
 .mn-button {
   border-radius: 10px;
   letter-spacing: -0.01em;
-}
-
-.mn-button[data-size="sm"] {
-  min-height: 44px;
 }
 
 .mn-field {
@@ -254,6 +250,13 @@
   padding-inline: 4px;
 }
 
+@media (min-width: 640px) and (max-width: 899px) {
+  .mn-workspace-header {
+    margin-inline: -40px;
+    padding-inline: 40px;
+  }
+}
+
 /* Desktop: remove toolbar clutter and make the rail read as navigation, not a stack of cards. */
 @media (min-width: 900px) {
   .mn-shell {
@@ -267,15 +270,15 @@
   }
 
   .mn-desktop-action {
-    border-color: transparent !important;
-    background: transparent !important;
-    color: var(--mn-ink-muted) !important;
+    border-color: transparent;
+    background: transparent;
+    color: var(--mn-ink-muted);
   }
 
   .mn-desktop-action:hover {
-    border-color: var(--mn-border) !important;
-    background: var(--mn-surface-sunken) !important;
-    color: var(--mn-ink) !important;
+    border-color: var(--mn-border);
+    background: var(--mn-surface-sunken);
+    color: var(--mn-ink);
   }
 
   .mn-workspace-frame {
@@ -306,8 +309,8 @@
   }
 
   .desktop-rail nav button {
-    min-height: 42px;
-    padding: 9px 11px;
+    min-height: 48px;
+    padding: 10px 11px;
     border-inline-start-width: 2px;
     border-radius: 0 9px 9px 0;
   }
