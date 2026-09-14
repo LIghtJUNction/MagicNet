@@ -71,6 +71,7 @@ check bash scripts/test-singbox-route-apply-safety.sh
 check bash scripts/test-anthropic-routing.sh
 check bash scripts/test-mcp-phase-config.sh
 check bash scripts/test-tailscale-login.sh
+check sh scripts/test-cloudflared-auth.sh
 check bash scripts/test-chatgpt-voice-rules.sh
 check bash scripts/test-rule-hash-retry.sh
 check bash scripts/singbox-subscription-protocol-smoke.sh
