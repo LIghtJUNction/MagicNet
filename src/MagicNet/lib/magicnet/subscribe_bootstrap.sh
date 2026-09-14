@@ -73,7 +73,7 @@ magicnet_jq_install_config() (
     shift 2
     # Never let a bad caller or leftover symlink truncate the active file.
     [ "$_config" != "$_tmp" ] && [ ! -L "$_tmp" ] || return 1
-    _install_jq="$(magicnet_require_jq)" || return 1
+    _install_jq="$(magicnet_require_jq 'packaged jq is unavailable; config publication rejected')" || return 1
     trap 'rm -f "$_tmp"' 0
     trap 'exit 1' 1 2 3 15
     umask 077
