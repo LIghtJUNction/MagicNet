@@ -190,60 +190,25 @@ set_i18n "INSTALL_CONFIG_TITLE" \
   "ko" "설정 및 다음 단계"
 
 set_i18n "INSTALL_CONFIG_PATHS" \
-  "zh" "配置文件：
-sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
-  "en" "Configuration files:
-sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
-  "ru" "Файлы конфигурации:
-sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
-  "ja" "設定ファイル:
-sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
-  "ko" "설정 파일:
-sing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json"
+  "zh" "配置文件：\nsing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
+  "en" "Configuration files:\nsing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
+  "ru" "Файлы конфигурации:\nsing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
+  "ja" "設定ファイル:\nsing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json" \
+  "ko" "설정 파일:\nsing-box: /data/adb/modules/MagicNet/.config/sing-box/config.json"
 
 set_i18n "INSTALL_NEXT_STEPS" \
-  "zh" "安装后操作：
-1. 首次安装在自动打开的网页填写订阅，也可稍后通过 WebUI 配置；升级自动保留订阅并更新完整配置模板。
-2. 重启设备，或在模块操作页启动内核。
-3. 打开模块 WebUI 的内核面板，或在终端执行 cli api ui 查看当前核心入口。
-4. 把想戒掉的网站、规则组或域名指向 REJECT / block。
-sing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
-  "en" "After installation:
-1. After installation, review subscriptions in the browser or use WebUI later. Upgrades prefill saved URLs for replacement or addition and replace the full config template.
-2. Reboot, or start the core from the module action page.
-3. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.
-4. Point distracting sites, groups, or domains to REJECT / block.
-sing-box default: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
-  "ru" "После установки:
-1. Добавьте подписку на открывшейся странице или позже в WebUI. При обновлении подписка сохраняется.
-2. Перезагрузите устройство или запустите ядро из меню действий модуля.
-3. Откройте панель ядра в WebUI модуля или выполните cli api ui, чтобы узнать адрес панели.
-4. Назначьте отвлекающим сайтам, группам правил или доменам REJECT / block.
-Адрес sing-box по умолчанию: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
-  "ja" "インストール後:
-1. 開いたページで購読を追加するか、後で WebUI から設定します。更新時は既存の購読を保持します。
-2. 再起動するか、モジュール操作画面からコアを起動します。
-3. モジュール WebUI の Kernel Panel を開くか、cli api ui で現在のコア入口を確認します。
-4. 見たくないサイト、グループ、ドメインを REJECT / block に向けます。
-sing-box 既定: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
-  "ko" "설치 후:
-1. 열린 페이지에서 구독을 추가하거나 나중에 WebUI에서 설정하세요. 업데이트 시 기존 구독은 유지됩니다.
-2. 재부팅하거나 모듈 작업 화면에서 코어를 시작하세요.
-3. 모듈 WebUI의 Kernel Panel을 열거나 cli api ui로 현재 코어 진입점을 확인하세요.
-4. 끊고 싶은 사이트, 그룹, 도메인을 REJECT / block으로 지정하세요.
-sing-box 기본값: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090"
+  "zh" "安装后操作：\n1. 首次安装在自动打开的网页填写订阅，也可稍后通过 WebUI 配置；升级自动保留订阅并更新完整配置模板。\n2. 重启设备，或在模块操作页启动内核。\n3. 打开模块 WebUI 的内核面板，或在终端执行 cli api ui 查看当前核心入口。\n4. 把想戒掉的网站、规则组或域名指向 REJECT / block。\nsing-box 默认: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
+  "en" "After installation:\n1. After installation, review subscriptions in the browser or use WebUI later. Upgrades prefill saved URLs for replacement or addition and replace the full config template.\n2. Reboot, or start the core from the module action page.\n3. Open Kernel Panel in the module WebUI, or run cli api ui to print the current core entry.\n4. Point distracting sites, groups, or domains to REJECT / block.\nsing-box default: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
+  "ru" "После установки:\n1. Добавьте подписку на открывшейся странице или позже в WebUI. При обновлении подписка сохраняется.\n2. Перезагрузите устройство или запустите ядро из меню действий модуля.\n3. Откройте панель ядра в WebUI модуля или выполните cli api ui, чтобы узнать адрес панели.\n4. Назначьте отвлекающим сайтам, группам правил или доменам REJECT / block.\nАдрес sing-box по умолчанию: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
+  "ja" "インストール後:\n1. 開いたページで購読を追加するか、後で WebUI から設定します。更新時は既存の購読を保持します。\n2. 再起動するか、モジュール操作画面からコアを起動します。\n3. モジュール WebUI の Kernel Panel を開くか、cli api ui で現在のコア入口を確認します。\n4. 見たくないサイト、グループ、ドメインを REJECT / block に向けます。\nsing-box 既定: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090" \
+  "ko" "설치 후:\n1. 열린 페이지에서 구독을 추가하거나 나중에 WebUI에서 설정하세요. 업데이트 시 기존 구독은 유지됩니다.\n2. 재부팅하거나 모듈 작업 화면에서 코어를 시작하세요.\n3. 모듈 WebUI의 Kernel Panel을 열거나 cli api ui로 현재 코어 진입점을 확인하세요.\n4. 끊고 싶은 사이트, 그룹, 도메인을 REJECT / block으로 지정하세요.\nsing-box 기본값: http://127.0.0.1:9090/ui/#/setup?hostname=127.0.0.1&port=9090"
 
 set_i18n "INSTALL_FLAGS" \
-  "zh" "可选开关：
-MAGIC_SINGBOX=0 禁用 sing-box 内核" \
-  "en" "Optional switches:
-MAGIC_SINGBOX=0 disables the sing-box core" \
-  "ru" "Дополнительные параметры:
-MAGIC_SINGBOX=0 отключает ядро sing-box" \
-  "ja" "任意スイッチ:
-MAGIC_SINGBOX=0 で sing-box コアを無効化" \
-  "ko" "선택 스위치:
-MAGIC_SINGBOX=0 sing-box 코어 비활성화"
+  "zh" "可选开关：\nMAGIC_SINGBOX=0 禁用 sing-box 内核" \
+  "en" "Optional switches:\nMAGIC_SINGBOX=0 disables the sing-box core" \
+  "ru" "Дополнительные параметры:\nMAGIC_SINGBOX=0 отключает ядро sing-box" \
+  "ja" "任意スイッチ:\nMAGIC_SINGBOX=0 で sing-box コアを無効化" \
+  "ko" "선택 스위치:\nMAGIC_SINGBOX=0 sing-box 코어 비활성화"
 
 set_i18n "TERM_INSTALL_MSG" \
   "zh" "当前为终端安装：会显示完整交互菜单和状态信息。" \
@@ -367,9 +332,9 @@ magicnet_seed_config_repository() {
   printf '%s\n' \
     '# Managed by MagicNet; edit through the config repository controls.' \
     'MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/LIghtJUNction/MagicSingBox.git' \
-    'MAGICNET_SINGBOX_CONFIG_REPO_REF=ba67cdbe771dff7e06c06bd754cc67699eeea8c0' \
+    'MAGICNET_SINGBOX_CONFIG_REPO_REF=a12e472c8152e9a40af48cfa1e2d4c4242f33d50' \
     'MAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json' \
-    'MAGICNET_SINGBOX_CONFIG_REPO_SHA256=6faa2cfcc44c305e30bc64cec84202b95d0a1592f012ab1f8dd65eae6d489258' >"$_repository_file" || {
+    'MAGICNET_SINGBOX_CONFIG_REPO_SHA256=35d54f908ccc9cc615fabf06b1037bbfc1f6d1d9712c86ba6c9b5252cc98ae03' >"$_repository_file" || {
     unset _repository_file _repository_parent
     return 1
   }
@@ -382,7 +347,7 @@ magicnet_seed_config_repository() {
 
 magicnet_seed_config_repository || abort "! failed to initialize the sing-box config repository"
 
-# Older releases shipped a domestic-app bypass catalog.  Keep only packages that
+# Older releases shipped a domestic-app bypass catalog. Keep only packages that
 # are still Android VPN services during the one-time migration; ordinary app
 # opt-outs can be added again explicitly after the migration completes.
 magicnet_migrate_legacy_app_bypass() {
