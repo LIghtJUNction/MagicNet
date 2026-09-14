@@ -60,6 +60,7 @@ if [ "$with_routing_assets" -eq 1 ]; then
     check bash scripts/test-default-routing-policy.sh
 fi
 check bash scripts/test-policy-architecture.sh
+check python3 scripts/test-routing-optimizer.py
 check bash scripts/test-ad-routing.sh
 check bash scripts/test-app-routing-policy.sh
 check bash scripts/test-block-conf-safety.sh
