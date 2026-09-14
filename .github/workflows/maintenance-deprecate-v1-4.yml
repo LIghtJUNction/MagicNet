@@ -1,4 +1,3 @@
-# One-shot maintenance workflow: mark all published v1.4.x releases as deprecated.
 name: Deprecate v1.4 releases
 
 on:
@@ -23,8 +22,8 @@ jobs:
           set -euo pipefail
 
           mapfile -t releases < <(
-            gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-              | jq -c 'add[] | select(.tag_name | startswith("v1.4."))'
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name | startswith("v1.4.")) | @base64'
           )
 
           if (( ${#releases[@]} == 0 )); then
@@ -32,7 +31,8 @@ jobs:
             exit 1
           fi
 
-          for release in "${releases[@]}"; do
+          for encoded in "${releases[@]}"; do
+            release="$(printf '%s' "$encoded" | base64 --decode)"
             id="$(jq -r '.id' <<<"$release")"
             tag="$(jq -r '.tag_name' <<<"$release")"
             old_name="$(jq -r '.name // .tag_name' <<<"$release")"
@@ -48,19 +48,17 @@ jobs:
             if grep -Fq "$marker" <<<"$old_body"; then
               new_body="$old_body"
             else
-              new_body="$(cat <<EOF
-> [!CAUTION]
-> **已弃用 / DEPRECATED**
->
-> 此 1.4.x 版本已确认存在问题，**请勿下载、安装或继续使用**。发布资产仅保留用于追溯和调试。
->
-> This v1.4.x release is deprecated and known to be problematic. **Do not install or use it.** Assets are retained for traceability/debugging.
-
----
-
-$old_body
-EOF
-)"
+              printf -v warning '%s\n' \
+                '> [!CAUTION]' \
+                '> **已弃用 / DEPRECATED**' \
+                '>' \
+                '> 此 1.4.x 版本已确认存在问题，**请勿下载、安装或继续使用**。发布资产仅保留用于追溯和调试。' \
+                '>' \
+                '> This v1.4.x release is deprecated and known to be problematic. **Do not install or use it.** Assets are retained for traceability/debugging.' \
+                '' \
+                '---' \
+                ''
+              new_body="${warning}${old_body}"
             fi
 
             jq -n \
