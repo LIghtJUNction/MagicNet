@@ -27,7 +27,10 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = 2
 SCOPES = {
-    "rust": ("Cargo.toml", "Cargo.lock", ".cargo", "crates", "rust-toolchain.toml"),
+    "rust": (
+        "Cargo.toml", "Cargo.lock", ".cargo", "crates", "rust-toolchain.toml",
+        "src/MagicNet/.config/sing-box",
+    ),
     # Host regressions intentionally cover the module/build surface, but Rust
     # crate-only and WebUI-only edits cannot affect these fixture-based checks.
     "host": (
