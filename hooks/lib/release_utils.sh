@@ -69,6 +69,7 @@ hook_download_locked_asset() {
     local output_path
     local url
     local attempt
+    local github_token
 
     case "$repo" in
         */*) ;;
@@ -95,6 +96,24 @@ hook_download_locked_asset() {
         rm -f "$output_path"
         [ "$attempt" -eq 3 ] || sleep 1
     done
+
+    # GitHub's browser-style release endpoint and the authenticated API path can
+    # traverse different edges. Actions occasionally sees persistent 5xx errors on
+    # the former even while the API remains healthy. Use gh only as an official
+    # GitHub fallback; callers still verify the immutable lock SHA256 afterwards.
+    github_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    if [ -n "$github_token" ] && command -v gh >/dev/null 2>&1; then
+        rm -f "$output_path"
+        if GH_TOKEN="$github_token" gh release download "$tag" \
+            --repo "$repo" \
+            --pattern "$asset" \
+            --dir "$output_dir" >/dev/null 2>&1 \
+            && [ -f "$output_path" ]; then
+            printf '%s\n' "$output_path"
+            return 0
+        fi
+        rm -f "$output_path"
+    fi
 
     return 1
 }
