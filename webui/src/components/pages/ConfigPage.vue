@@ -18,8 +18,8 @@ import { MAX_LOCAL_CONFIG_BYTES, parseLocalConfigFile } from "./configFileImport
 const { state, loadConfig, saveConfig, syncConfigTemplate, loadConfigRepository, saveConfigRepository, openExternal, REPO } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const DEFAULT_CONFIG_REPO_URL = "https://github.com/LIghtJUNction/MagicSingBox.git";
-const DEFAULT_CONFIG_REPO_REF = "ba67cdbe771dff7e06c06bd754cc67699eeea8c0";
-const DEFAULT_CONFIG_REPO_SHA256 = "6faa2cfcc44c305e30bc64cec84202b95d0a1592f012ab1f8dd65eae6d489258";
+const DEFAULT_CONFIG_REPO_REF = "a12e472c8152e9a40af48cfa1e2d4c4242f33d50";
+const DEFAULT_CONFIG_REPO_SHA256 = "35d54f908ccc9cc615fabf06b1037bbfc1f6d1d9712c86ba6c9b5252cc98ae03";
 const pendingConfigAction = ref<PendingToolAction | null>(null);
 const configFileInput = ref<HTMLInputElement | null>(null);
 const localJsonStatus = ref("");
