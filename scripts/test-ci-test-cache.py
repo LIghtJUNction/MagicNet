@@ -29,6 +29,7 @@ class CacheTests(unittest.TestCase):
         self.write('webui/src/app.js', 'one')
         self.write('src/MagicNet/service.sh', 'one')
         self.write('src/MagicNet/network-check.sh', 'one')
+        self.write('src/MagicNet/.config/sing-box/config.json', 'one')
         subprocess.run(['git', 'add', '.'], cwd=self.root, check=True)
         self.addCleanup(patch.stopall)
         patch.object(CACHE, 'ROOT', self.root).start()
@@ -76,6 +77,9 @@ class CacheTests(unittest.TestCase):
         self.write('crates/lib.rs', 'changed')
         self.run_check(scope='rust')
         self.assertEqual(self.count(), 2)
+        self.write('src/MagicNet/.config/sing-box/config.json', 'changed')
+        self.run_check(scope='rust')
+        self.assertEqual(self.count(), 3)
 
     def test_host_scope_ignores_rust_webui_and_docs_but_tracks_module(self):
         self.run_check(scope='host')
