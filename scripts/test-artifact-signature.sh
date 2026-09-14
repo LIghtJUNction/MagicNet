@@ -1,6 +1,12 @@
 #!/bin/bash
 set -Eeuo pipefail
-trap 'status=$?; printf "signature test failed at line %s (exit %s)\n" "$LINENO" "$status" >&2; exit "$status"' ERR
+handle_error() {
+    local status="$1"
+    local line="$2"
+    printf 'signature test failed at line %s (exit %s)\n' "$line" "$status" >&2
+    exit "$status"
+}
+trap 'handle_error "$?" "$LINENO"' ERR
 
 repo_root="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 test_root="$(mktemp -d)"
