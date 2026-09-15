@@ -45,15 +45,15 @@ A state domain must have exactly one canonical `.state` file. Do not encode logi
 - duplicated Rust/WebUI enums that independently guess device state;
 - human-oriented CLI output parsed back into a machine state.
 
-A canonical file may contain several fields because configured state, observed state, transition phase, ownership, and readiness are different facts. The file is the atomic observation unit.
+A canonical domain file may contain several fields because configured state, observed state, transition phase, ownership, and readiness are different facts. A reader that needs one domain gets those facts from one file instead of reconstructing them from unrelated markers.
 
-## Atomic generations
+## Transactional publication
 
-`magicnet-cli` reconciles all canonical machine files as one multi-file transaction. It calculates a complete snapshot first, compares it with the previous files, and writes only changed records. The existing module transaction primitive performs staged, synced, rollback-capable replacement.
+`magicnet-cli` reconciles all canonical machine records from one observation pass. It calculates the complete snapshot first, compares it with the previous files, and sends all changed records through the existing multi-file transaction primitive. The transaction stages and syncs replacements and rolls already-published files back if a later replacement fails.
 
-This gives readers a settled generation instead of a mix of partially updated state files.
+This is a recoverable multi-file commit, not a claim that every file rename is simultaneously visible to lock-free readers. A reader that needs a cross-domain point-in-time snapshot should use the versioned machine interface rather than independently racing several `.state` files.
 
-The CLI reconciles before and after every normal command. Internal bounded `/proc` reader subcommands bypass reconciliation so process discovery cannot recurse into another state reconciliation.
+Normal control/human CLI commands reconcile before dispatch and again after dispatch so mutations leave a settled canonical snapshot. Internal bounded `/proc` reader subcommands bypass reconciliation so process discovery cannot recurse into another state reconciliation. `--json` machine requests also remain read-only and do not create or rewrite state files.
 
 ## Legacy files are compatibility inputs
 
@@ -124,7 +124,7 @@ Background operations that outlive WebUI must have device-side evidence (journal
 1. Do not add new ad-hoc files under `.state` for a new lifecycle state.
 2. Extend the appropriate canonical domain file instead.
 3. Keep values bounded and privacy-safe.
-4. Write state atomically; never truncate the current state and then rebuild it in place.
+4. Publish each domain file atomically; for related multi-file changes use the recoverable module transaction instead of truncating files in place.
 5. Persist a transaction phase before performing an irreversible/externally visible next step.
 6. On recovery, reconcile journal + external truth and publish one canonical settled state.
 7. Add regression tests for interrupted transitions, stale owners, unknown process state, and redaction.
