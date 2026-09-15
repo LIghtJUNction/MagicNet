@@ -222,7 +222,7 @@ fi
 [[ -f "$MODPATH/.config/magicnet/app-policy-migration-vpn-only" ]] ||
     fail "app bypass migration marker was not written"
 
-cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
+cargo build -p magicnet-cli >/dev/null
 cp "$ROOT/target/debug/magicnet-cli" "$MODPATH/bin/magicnet-cli"
 cp "$ROOT/target/debug/magicnet-mcp-server" "$MODPATH/bin/magicnet-mcp-server"
 chmod 0755 "$MODPATH/bin/magicnet-cli" "$MODPATH/bin/magicnet-mcp-server"
