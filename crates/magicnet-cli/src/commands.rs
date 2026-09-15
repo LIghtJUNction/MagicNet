@@ -281,29 +281,73 @@ mod tests {
     #[test]
     fn observations_and_explicit_publishers_do_not_get_implicit_state_writes() {
         for text in [
-            "", "help", "--help", "missing", "service", "service status", "service logs",
-            "health", "core selected", "network status", "wifi status", "dns status",
-            "transparent status", "node current", "api groups", "sub get sing-box",
-            "sub schedule status", "sub user-agent get", "sub filter list",
-            "config-editor repo get-json", "state", "state reconcile", "mcp serve",
-            "--json capabilities", "service start --json",
+            "",
+            "help",
+            "--help",
+            "missing",
+            "service",
+            "service status",
+            "service logs",
+            "health",
+            "core selected",
+            "network status",
+            "wifi status",
+            "dns status",
+            "transparent status",
+            "node current",
+            "api groups",
+            "sub get sing-box",
+            "sub schedule status",
+            "sub user-agent get",
+            "sub filter list",
+            "config-editor repo get-json",
+            "state",
+            "state reconcile",
+            "mcp serve",
+            "--json capabilities",
+            "service start --json",
         ] {
-            let args = text.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+            let args = text
+                .split_whitespace()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
             assert!(!needs_state_reconcile(&args), "unexpected publication: {text}");
         }
     }
 
     #[test]
-    fn_mutations_keep_post_command_reconciliation() {
+    fn mutations_keep_post_command_reconciliation() {
         for text in [
-            "service start", "service ensure", "service stop", "service restart",
-            "config apply", "config-editor save-file", "config-editor repo reset",
-            "network set", "dns apply", "wifi check", "hotspot reconcile", "node use",
-            "sub update-all", "sub schedule set 24", "sub user-agent clear", "sub filter set",
-            "mcp start", "mcp secret", "mcp rotate-secret", "mode global", "api select",
-            "app apply", "backup restore-file", "repair", "webui payload create",
+            "service start",
+            "service ensure",
+            "service stop",
+            "service restart",
+            "config apply",
+            "config-editor save-file",
+            "config-editor repo reset",
+            "network set",
+            "dns apply",
+            "wifi check",
+            "hotspot reconcile",
+            "node use",
+            "sub update-all",
+            "sub schedule set 24",
+            "sub user-agent clear",
+            "sub filter set",
+            "mcp start",
+            "mcp secret",
+            "mcp rotate-secret",
+            "mode global",
+            "api select",
+            "app apply",
+            "backup restore-file",
+            "repair",
+            "webui payload create",
         ] {
-            let args = text.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+            let args = text
+                .split_whitespace()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
             assert!(needs_state_reconcile(&args), "missing publication: {text}");
         }
     }
