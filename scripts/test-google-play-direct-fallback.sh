@@ -51,15 +51,11 @@ jq -e '
     elif ((.package_name? // null)|type)=="string" then [.package_name]
     else [] end;
   def has($p): (packages | index($p)) != null;
-  ([.outbounds[] | select(.tag=="magicnet-google-auto")] | length) == 1
-  and (.outbounds[] | select(.tag=="magicnet-google-auto")
-       | .type=="urltest"
-         and .url=="https://www.google.com/generate_204"
-         and (.outbounds | index("node")) != null
-         and (.outbounds | index("direct")) != null)
+  ([.outbounds[] | select(.tag=="magicnet-google-auto")] | length) == 0
   and (.outbounds[] | select(.tag=="google-proxy")
-       | .default=="magicnet-google-auto"
-         and (.outbounds | index("magicnet-google-auto")) != null)
+       | .default=="proxy"
+         and (.outbounds | index("proxy")) != null
+         and (.outbounds | index("direct")) != null)
   and (.outbounds[] | select(.tag=="ai-gemini-auto")
        | .outbounds == ["node"])
   and ([.outbounds[] | select(.tag=="magicnet-gemini-auto")] | length) == 1
@@ -79,10 +75,11 @@ jq -e '
 
 test "$(magicnet_singbox_google_reliability_patch "$config")" = unchanged
 
-# An explicit operator pin must survive the reliability patch. Only the generated
-# default `proxy` is migrated to the Google-specific automatic health group.
+# Explicit Google selector choices are operator policy and must survive the
+# reliability patch. Play/GMS/GSF reliability is enforced by earlier package
+# rules instead of silently replacing the selector default.
 jq '(.outbounds[] | select(.tag=="google-proxy")).default="direct"' "$config" >"$fixture/explicit.json"
 test "$(magicnet_singbox_google_reliability_patch "$fixture/explicit.json")" = unchanged
 jq -e '.outbounds[] | select(.tag=="google-proxy") | .default=="direct"' "$fixture/explicit.json" >/dev/null
 
-printf '%s\n' 'Google Play, Gmail/Google selector, Gemini auto routing and memory limit regression passed'
+printf '%s\n' 'Google Play direct fallback, Google selector preservation, Gemini auto routing and memory limit regression passed'
