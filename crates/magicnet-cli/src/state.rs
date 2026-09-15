@@ -127,7 +127,10 @@ pub(crate) fn reconcile(app: &App) -> Result<(), String> {
         (Domain::Service, service_record(app)),
         (Domain::Transparent, transparent_record(app)),
         (Domain::Subscription, subscription_record(app)),
-        (Domain::SubscriptionRefresh, subscription_refresh_record(app)),
+        (
+            Domain::SubscriptionRefresh,
+            subscription_refresh_record(app),
+        ),
         (Domain::Supervisors, supervisors_record(app)),
         (Domain::Wifi, wifi_record(app)),
         (Domain::Hotspot, hotspot_record(app)),
@@ -211,7 +214,8 @@ fn transparent_record(app: &App) -> StateRecord {
             _ => "invalid".to_string(),
         })
         .unwrap_or_else(|| "tun".to_string());
-    let (effective_type, effective_mode, shared_interfaces) = effective_transparent(app, &configured);
+    let (effective_type, effective_mode, shared_interfaces) =
+        effective_transparent(app, &configured);
     let phase = transparent_phase(app);
     let transaction = app.moddir.join(TRANSPARENT_TRANSACTION).is_dir();
     let capability = if effective_type == "ebpf" {
@@ -220,7 +224,14 @@ fn transparent_record(app: &App) -> StateRecord {
         "not_required".to_string()
     };
     StateRecord::new(Domain::Transparent)
-        .field("state", if transaction { "transitioning" } else { "stable" })
+        .field(
+            "state",
+            if transaction {
+                "transitioning"
+            } else {
+                "stable"
+            },
+        )
         .field("configured", configured)
         .field("effective_type", effective_type)
         .field("effective_mode", effective_mode)
@@ -316,10 +327,7 @@ fn subscription_record(app: &App) -> StateRecord {
         .field("result", result)
         .field("source", if local { "local" } else { "url" })
         .field("configured_count", configured_count.to_string())
-        .field(
-            "generation",
-            map_value(&values, "generation_id", "none"),
-        )
+        .field("generation", map_value(&values, "generation_id", "none"))
         .bool("update_lock", lock_present)
         .bool("transaction_pending", transaction_pending)
 }
@@ -399,7 +407,10 @@ fn supervisors_record(app: &App) -> StateRecord {
         )
         .field(
             "hotspot_watchdog",
-            pidfile_state(&app.moddir.join(".state/watchdog/magicnet-hotspot-route.pid")),
+            pidfile_state(
+                &app.moddir
+                    .join(".state/watchdog/magicnet-hotspot-route.pid"),
+            ),
         )
 }
 
@@ -435,11 +446,8 @@ fn wifi_record(app: &App) -> StateRecord {
     let enabled = config
         .get("MAGICNET_WIFI_POLICY_ENABLED")
         .is_some_and(|value| value == "1");
-    let supervisor = normalize_supervisor_state(&supervisor_pid(
-        app,
-        "wifi-policy",
-        "magicnet-wifi-policy",
-    ));
+    let supervisor =
+        normalize_supervisor_state(&supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy"));
     let state = if !enabled {
         "disabled"
     } else if supervisor == "running" {
@@ -464,11 +472,13 @@ fn wifi_record(app: &App) -> StateRecord {
         .field("current_mode", map_value(&last, "current_mode", "unknown"))
         .bool(
             "has_ssid",
-            last.get("ssid").is_some_and(|value| !value.is_empty() && value != "-"),
+            last.get("ssid")
+                .is_some_and(|value| !value.is_empty() && value != "-"),
         )
         .bool(
             "has_bssid",
-            last.get("bssid").is_some_and(|value| !value.is_empty() && value != "-"),
+            last.get("bssid")
+                .is_some_and(|value| !value.is_empty() && value != "-"),
         )
 }
 
@@ -502,7 +512,9 @@ fn dns_record(app: &App) -> StateRecord {
 
 fn mcp_record(app: &App) -> StateRecord {
     let config = read_kv(app.moddir.join(MCP_CONF));
-    let enabled = config.get("MAGICNET_MCP_ENABLED").is_some_and(|value| value == "1");
+    let enabled = config
+        .get("MAGICNET_MCP_ENABLED")
+        .is_some_and(|value| value == "1");
     let process = pidfile_state(&app.moddir.join(MCP_PID));
     let state = if !enabled {
         "disabled"
@@ -529,7 +541,9 @@ fn tailscale_record(app: &App) -> StateRecord {
         .map(|endpoints| {
             endpoints
                 .iter()
-                .filter(|endpoint| endpoint.get("type").and_then(Value::as_str) == Some("tailscale"))
+                .filter(|endpoint| {
+                    endpoint.get("type").and_then(Value::as_str) == Some("tailscale")
+                })
                 .count()
         })
         .unwrap_or(0);
@@ -541,7 +555,10 @@ fn tailscale_record(app: &App) -> StateRecord {
     StateRecord::new(Domain::Tailscale)
         .field("state", state)
         .field("endpoint_count", count.to_string())
-        .bool("auth_material", regular_nonempty(&app.moddir.join(TAILSCALE_AUTH)))
+        .bool(
+            "auth_material",
+            regular_nonempty(&app.moddir.join(TAILSCALE_AUTH)),
+        )
 }
 
 fn transactions_record(app: &App) -> StateRecord {
