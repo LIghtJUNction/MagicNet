@@ -44,7 +44,8 @@ branch_hash() {
 }
 
 state_key() {
-    sed 's/[^A-Za-z0-9_.-]/_/g' <<<"$1"
+    local value="$1"
+    printf '%s\n' "${value//[!A-Za-z0-9_.-]/_}"
 }
 
 raw_url() {
