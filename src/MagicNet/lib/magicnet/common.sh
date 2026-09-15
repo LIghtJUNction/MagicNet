@@ -146,15 +146,25 @@ magicnet_singbox_has_subscription() {
 
 magicnet_singbox_api_has_nodes() {
     magicnet_cmd_exists curl || return 1
-    _api=$(curl -sS --max-time 5 http://127.0.0.1:9090/proxies 2>/dev/null ||
-        curl -sS --max-time 5 http://127.0.0.1:9090/providers/proxies 2>/dev/null || true)
+    if command -v magicnet_singbox_api_endpoint >/dev/null 2>&1; then
+        _api_endpoint="$(magicnet_singbox_api_endpoint)" || return 1
+    else
+        [ -x "${MODDIR}/cli" ] || return 1
+        _api_endpoint="$("${MODDIR}/cli" api endpoint 2>/dev/null)" || return 1
+    fi
+    [ -n "$_api_endpoint" ] || {
+        unset _api_endpoint
+        return 1
+    }
+    _api=$(curl -sS --max-time 5 "${_api_endpoint}/proxies" 2>/dev/null ||
+        curl -sS --max-time 5 "${_api_endpoint}/providers/proxies" 2>/dev/null || true)
     [ -n "$_api" ] || {
-        unset _api
+        unset _api_endpoint _api
         return 1
     }
     printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Socks|SOCKS|Selector|WireGuard)"'
     _rc=$?
-    unset _api
+    unset _api_endpoint _api
     return "$_rc"
 }
 

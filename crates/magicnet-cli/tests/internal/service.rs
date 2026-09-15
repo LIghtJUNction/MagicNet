@@ -266,16 +266,20 @@ fn service_log_path_reports_missing_webui_task_log() {
 fn webui_setup_uses_the_configured_api_endpoint() {
     assert_eq!(
         api_host_port("http://127.0.0.1:19090"),
-        ("127.0.0.1".to_string(), "19090".to_string())
+        Some(("127.0.0.1".to_string(), "19090".to_string()))
     );
     assert_eq!(
         api_host_port("http://[::1]:19090"),
-        ("::1".to_string(), "19090".to_string())
+        Some(("::1".to_string(), "19090".to_string()))
     );
-    assert_eq!(
-        api_host_port("invalid"),
-        ("127.0.0.1".to_string(), "9090".to_string())
-    );
+    for invalid in [
+        "invalid",
+        "http://127.0.0.1:0",
+        "http://192.0.2.1:1234",
+        "http://[::1]:bad",
+    ] {
+        assert_eq!(api_host_port(invalid), None);
+    }
 
     let (mut app, root) = fixture_app("webui-route");
     app.api = "http://127.0.0.1:19090".to_string();
@@ -283,6 +287,8 @@ fn webui_setup_uses_the_configured_api_endpoint() {
         singbox_webui(&app),
         "http://127.0.0.1:19090/ui/#/setup?hostname=127.0.0.1&port=19090"
     );
+    app.api = "invalid".to_string();
+    assert!(singbox_webui(&app).is_empty());
     let _ = fs::remove_dir_all(root);
 }
 
