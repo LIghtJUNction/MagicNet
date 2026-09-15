@@ -35,7 +35,6 @@ build_crate() {
 }
 
 build_crate magicnet-cli magicnet-cli
-build_crate magicnet-mcp-server magicnet-mcp-server
 
 rm -f "${KAM_MODULE_ROOT}/cli"
 ln -s "bin/magicnet-cli" "${KAM_MODULE_ROOT}/cli"
@@ -45,9 +44,9 @@ if [ ! -x "${KAM_MODULE_ROOT}/cli" ]; then
     exit 1
 fi
 
-if [ ! -x "${KAM_MODULE_ROOT}/bin/magicnet-mcp-server" ]; then
-    log_error "bin/magicnet-mcp-server is not executable"
+if [ -e "${KAM_MODULE_ROOT}/bin/magicnet-mcp-server" ] || [ -L "${KAM_MODULE_ROOT}/bin/magicnet-mcp-server" ]; then
+    log_error "retired standalone MCP binary is present"
     exit 1
 fi
 
-log_success "MagicNet Rust tools installed"
+log_success "MagicNet Rust control plane installed"

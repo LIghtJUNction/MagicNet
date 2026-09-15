@@ -41,7 +41,6 @@ class KernelSUInstallerLifecycleTest(unittest.TestCase):
                 ".config/sing-box/config.json": b"{}\n",
                 "bin/sing-box": b"sing-box",
                 "bin/magicnet-cli": b"cli",
-                "bin/magicnet-mcp-server": b"mcp",
             }
             PACKAGE.write_zip(
                 source,

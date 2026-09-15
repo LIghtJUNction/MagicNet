@@ -1,9 +1,0 @@
-[package]
-name = "magicnet-mcp-server"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-base64 = "0.22"
-libc = "0.2"
-serde_json = "1"

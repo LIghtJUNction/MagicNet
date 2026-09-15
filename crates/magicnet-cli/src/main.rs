@@ -43,6 +43,7 @@ mod ebpf_runtime;
 mod ecapture;
 mod machine;
 mod mcp;
+mod mcp_server;
 mod network;
 mod node_delay;
 mod nodes;
@@ -67,6 +68,7 @@ use std::env;
 pub(crate) use app::App;
 pub(crate) use base64::{decode_base64, encode_base64};
 use commands::dispatch;
+pub(crate) use mcp_server::{files, logs, rpc, run_cli, tools, Server};
 pub(crate) use process::{
     owned_singbox_pids, pid_summary, run_magicnet_function,
     run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,

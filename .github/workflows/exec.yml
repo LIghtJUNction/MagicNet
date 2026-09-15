@@ -281,7 +281,6 @@ jobs:
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'cli'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-cli'
-          unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-mcp-server'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/sing-box'
           if unzip -Z1 "dist/${module_id}.zip" | grep -Eq '(^|/)\.git($|/)'; then
             echo "::error::Module archive contains Git metadata"
