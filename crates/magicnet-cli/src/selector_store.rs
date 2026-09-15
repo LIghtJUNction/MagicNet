@@ -108,7 +108,10 @@ fn cleanup_matching_legacy_store(app: &App, committed: &BTreeMap<String, String>
     let Ok(values) = serde_json::from_slice::<BTreeMap<String, String>>(&bytes) else {
         return;
     };
-    if &values == committed {
+    let fully_migrated = values
+        .iter()
+        .all(|(group, member)| committed.get(group) == Some(member));
+    if fully_migrated {
         let _ = fs::remove_file(legacy);
     }
 }
@@ -263,10 +266,26 @@ mod tests {
         .unwrap();
         assert_eq!(selected(&app, "proxy").as_deref(), Some("old-node"));
         save(&app, "ai-gemini", "ai-proxy").unwrap();
-        let values: BTreeMap<String, String> = serde_json::from_slice(&fs::read(path(&app)).unwrap()).unwrap();
+        let values: BTreeMap<String, String> =
+            serde_json::from_slice(&fs::read(path(&app)).unwrap()).unwrap();
         assert_eq!(values.get("proxy").map(String::as_str), Some("old-node"));
-        assert_eq!(values.get("ai-gemini").map(String::as_str), Some("ai-proxy"));
+        assert_eq!(
+            values.get("ai-gemini").map(String::as_str),
+            Some("ai-proxy")
+        );
         assert!(!legacy_path(&app).exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_store_is_kept_if_an_unmigrated_value_appears() {
+        let (app, root) = app();
+        fs::create_dir_all(root.join(".state/sing-box")).unwrap();
+        let mut committed = BTreeMap::new();
+        committed.insert("proxy".to_string(), "new-node".to_string());
+        fs::write(legacy_path(&app), br#"{"proxy":"old-node","late":"node"}"#).unwrap();
+        cleanup_matching_legacy_store(&app, &committed);
+        assert!(legacy_path(&app).exists());
         fs::remove_dir_all(root).unwrap();
     }
 
