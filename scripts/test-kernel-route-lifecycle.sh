@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
@@ -51,6 +51,15 @@ magicnet_hotspot_delete_rule() {
     ' "$RULE4" >"$RULE4.new"
     mv "$RULE4.new" "$RULE4"
     printf 'hotspot-rule-del:%s:%s\n' "$priority" "$iface" >>"$EVENTS"
+}
+
+assert_absent() {
+    _needle="$1"
+    _file="$2"
+    if grep -Fq "$_needle" "$_file"; then
+        printf 'unexpected line remained: %s\n' "$_needle" >&2
+        exit 1
+    fi
 }
 
 ip() {
@@ -154,14 +163,14 @@ magicnet_lifecycle_after_stop
 [ ! -s "$ROUTE4" ]
 [ ! -s "$ROUTE6" ]
 [ ! -e "$STATE" ]
-! grep -Fq '8999:' "$RULE4"
-! grep -Fq '9000: from all fwmark 0x200000 lookup 2022' "$RULE4"
-! grep -Fq '9001: from all lookup 2022' "$RULE4"
-! grep -Fq '32768: from all lookup 2022' "$RULE4"
+assert_absent '8999:' "$RULE4"
+assert_absent '9000: from all fwmark 0x200000 lookup 2022' "$RULE4"
+assert_absent '9001: from all lookup 2022' "$RULE4"
+assert_absent '32768: from all lookup 2022' "$RULE4"
 grep -Fq '9100: from all lookup 2022' "$RULE4"
 grep -Fq '9000: from all lookup 777' "$RULE4"
-! grep -Fq '9000: from all lookup 2022' "$RULE6"
-! grep -Fq '32768: from all lookup 2022' "$RULE6"
+assert_absent '9000: from all lookup 2022' "$RULE6"
+assert_absent '32768: from all lookup 2022' "$RULE6"
 grep -Fq '9100: from all lookup 2022' "$RULE6"
 grep -Fqx 'description:stopped' "$EVENTS"
 grep -Fqx 'hotspot-rule-del:8999:wlan2' "$EVENTS"
