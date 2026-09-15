@@ -38,7 +38,8 @@ require_command() {
     local message="${2:-}"
 
     has_command "$command_name" && return 0
-    log_error "${message:-Command '$command_name' is required but not found.}"
+    [[ -n "$message" ]] || message="Command '$command_name' is required but not found."
+    log_error "$message"
     exit 1
 }
 
