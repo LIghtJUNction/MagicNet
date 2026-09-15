@@ -28,7 +28,6 @@ if [ "$with_routing_assets" -eq 1 ]; then
         printf 'prepared routing checks require sing-box and rule-set assets\n' >&2
         exit 127
     }
-    # Prepared/untracked assets describe this machine, not a reusable fixture.
     export CI_TEST_FORCE=1
 else
     printf 'Prepared routing/DNS asset checks excluded; use --with-routing-assets to include them.\n'
@@ -46,7 +45,6 @@ check() {
     python3 "$ROOT/scripts/ci-test-cache.py" host "${script##*/}" -- "$@"
 }
 
-# Real loopback HTTPS/SOCKS tests; never substitute these for device acceptance.
 check python3 scripts/test-website-probe.py
 python3 scripts/ci-test-cache.py host config-json -- jq empty src/MagicNet/.config/sing-box/config.json
 check bash scripts/test-repository-hygiene.sh
@@ -94,6 +92,7 @@ check bash scripts/test-singbox-dataplane-preflight.sh
 check bash scripts/test-transparent-mode-config-safety.sh
 check bash scripts/test-ebpf-transparent-mode.sh
 check bash scripts/test-config-permissions.sh
+check bash scripts/test-config-empty-recovery.sh
 check bash scripts/test-config-lock-safety.sh
 check sh scripts/test-runtime-fingerprint-safety.sh
 check sh scripts/test-runtime-temp-dirs.sh
@@ -106,6 +105,7 @@ check bash scripts/test-dns-leak-guard-timeout.sh
 check python3 scripts/test-dns-capture-fast-path.py
 check python3 scripts/test-dns-output-order.py
 check sh scripts/test-startup-network-safety.sh
+check sh scripts/test-kernel-route-lifecycle.sh
 check bash scripts/test-submodule-updates.sh
 check bash scripts/test-subscription-activation-order.sh
 check bash scripts/test-subscription-transaction-atomicity.sh

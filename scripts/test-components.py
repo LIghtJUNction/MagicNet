@@ -47,7 +47,7 @@ class PackageTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.entries = {
             "module.prop": b"id=MagicNet\nversion=v1.4.8\nversionCode=123\n",
-            "customize.sh": b"# shellcheck shell=ash\nimport this\n",
+            "customize.sh": b"# shellcheck shell=ash\nimport rich\n",
             ".config/sing-box/config.json": b'{"inbounds": []}\n',
             "bin/sing-box": b"engine",
             "bin/magicnet-cli": b"cli",

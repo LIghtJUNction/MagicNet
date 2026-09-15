@@ -28,9 +28,11 @@ magicnet_onboarding_collect() {
     return 0
 }
 
+# Upgrades are a product entry point too: an existing subscription must be
+# prefilled by the browser flow, never used as a reason to skip onboarding.
 printf '%s\n' 'https://existing.example.test/sub' >"$MODPATH/.config/sing-box/subscription.url"
-magicnet_install_onboarding || fail 'routine upgrade fast path failed'
-[ ! -e "$TMP/collected" ] || fail 'routine upgrade unexpectedly opened onboarding'
+magicnet_install_onboarding || fail 'upgrade onboarding failed'
+[ -f "$TMP/collected" ] || fail 'upgrade did not open onboarding'
 
 rm -f "$MODPATH/.config/sing-box/subscription.url" "$TMP/collected"
 magicnet_install_onboarding || fail 'fresh install onboarding failed'
@@ -43,4 +45,4 @@ export MAGICNET_SETUP
 magicnet_install_onboarding || fail 'forced upgrade onboarding failed'
 [ -f "$TMP/collected" ] || fail 'forced upgrade did not open onboarding'
 
-printf '%s\n' 'ok - install onboarding fast paths'
+printf '%s\n' 'ok - install onboarding decision paths'

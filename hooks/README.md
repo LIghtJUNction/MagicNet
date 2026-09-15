@@ -1,28 +1,59 @@
 # Kam Build Hooks
 
-MagicNet hooks are intentionally small and idempotent. They download generated
-runtime executables into `bin/`, generated configuration into `.config/`, and
-hook state into `.local/state/`. Packaged runtime binaries must not live under
-`.local/bin`; the package smoke test rejects that legacy layout.
+MagicNet build hooks are intentionally small and idempotent. Hooks should only
+orchestrate build-time work; reusable download, verification, archive, logging,
+and atomic-file helpers belong in `hooks/lib/`.
+
+Pre-build hooks are ordered by their four-digit numeric prefix. Prefixes must be
+unique so ordering never depends on filename sorting inside the same slot.
+
+Generated runtime executables go to `bin/`, generated configuration goes to
+`.config/`, and persistent hook state goes to `.local/state/`. Packaged runtime
+binaries must not live under `.local/bin`; the package smoke test rejects that
+legacy layout.
+
+## Layout
+
+- `lib/utils.sh`: generic logging and host/build-environment helpers.
+- `lib/release_locks.sh`: reviewed upstream repository, tag, asset, and SHA-256
+  locks for external release artifacts.
+- `lib/release_utils.sh`: locked download/cache handling, integrity checks, safe
+  archive extraction, and atomic promotion helpers.
+- `pre-build/`: ordered build/update/config-validation hooks.
+- `post-build/`: final archive sanitation before signing.
 
 ## Important hooks
 
-- `pre-build/2000.BUILD_WEBUI.sh` builds `webui/` and copies the generated
-  static files into `src/MagicNet/webroot` so `kam build` packages the WebUI.
-- `pre-build/4900.update_tools.sh` downloads `yq` and `jq` arm64 release
-  binaries into `bin/` for on-device YAML / JSON maintenance helpers.
-- `pre-build/5100.update_sing_box.sh` selects the best sing-box Android arm64
-  release asset, verifies the digest when available, and installs only the
-  binary into `bin/`.
-- `pre-build/5150.update_ecapture.sh` selects the latest eCapture Android
-  arm64 release asset, verifies the digest when available, and installs the
-  `ecapture` network analysis binary into `bin/`.
-- `pre-build/3000.BUILD_CRATES.sh` builds Rust module tools, installs
-  `magicnet-cli` and `magicnet-mcp-server` into `bin/`, and refreshes the
-  `cli -> bin/magicnet-cli` compatibility symlink.
+- `pre-build/2000.BUILD_WEBUI.sh` builds `webui/` and copies generated static
+  files into `src/MagicNet/webroot` so `kam build` packages the WebUI.
+- `pre-build/3000.BUILD_CRATES.sh` builds the Rust module tools and installs
+  their runtime executables into `bin/`.
+- `pre-build/4900.update_tools.sh` installs the reviewed, SHA-256-locked arm64
+  releases of `yq` and `jq`.
+- `pre-build/5100.update_sing_box.sh` builds the checked-out
+  `LIghtJUNction/sing-box` source snapshot for Android arm64 and records its
+  source revision.
+- `pre-build/5150.update_ecapture.sh` installs the reviewed, SHA-256-locked
+  eCapture Android arm64 release.
+- `pre-build/5200.update_zashboard.sh` installs the reviewed, SHA-256-locked
+  zashboard release into the sing-box configuration tree.
+- `pre-build/5450.update_sing_box_rules.sh` refreshes configured rule-set assets
+  from immutable upstream revisions.
+- `pre-build/5460.update_chatgpt_voice_rules.sh` refreshes the validated
+  ChatGPT Voice rule-set.
+- `pre-build/5470.optimize_sing_box_routing.sh` normalizes routing after rule
+  assets are ready.
 - `pre-build/6000.check_config.sh` parses sing-box JSON and runs
   `sing-box check` when the validator is installed. Set
   `MAGIC_CONFIG_CHECK_STRICT=1` to fail when the validator is missing.
+
+## Release policy
+
+External release artifacts must be declared in `lib/release_locks.sh`. A hook
+must not query "latest" and install it directly. The shared release helpers
+verify the immutable SHA-256 before replacing an existing cache or runtime
+file. Failed downloads, validation, or extraction must leave the previous
+installation intact.
 
 ## 2026 config policy
 

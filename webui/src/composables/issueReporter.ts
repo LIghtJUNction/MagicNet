@@ -7,7 +7,9 @@ import {
   issueKindLabel,
   propValue,
   sanitizeConnectionLog,
+  sanitizeRoutingFeedbackLog,
   summarizeConnectionsForIssue,
+  summarizeRoutingFeedback,
   type IssueKind,
   type IssueOperationContext,
   type IssueReportInput,
@@ -48,6 +50,27 @@ async function collectFocusedContext(
   runCli: IssueReporterDeps["runCli"],
 ): Promise<string> {
   if (kind === "command-error") return commandFailureContext(operation);
+  if (kind === "route-feedback") {
+    const [connections, network, logs] = await Promise.all([
+      runCli("api conns", "读取路由反馈连接", true),
+      runCli("network status", "读取路由反馈网络策略", true),
+      runCli("service logs sing-box 240", "读取路由反馈错误日志", true),
+    ]);
+    return [
+      "[route feedback samples]",
+      summarizeRoutingFeedback(connections),
+      "",
+      "[network policy]",
+      network,
+      "",
+      "[routing/error log tail]",
+      sanitizeRoutingFeedbackLog(relevantLogTail(
+        logs,
+        /\b(route|rule|outbound|selector|dns|connect|connection|reject|block|timeout|error|warn|fail|denied)\b/i,
+        60,
+      )),
+    ].join("\n");
+  }
   if (kind === "app-connectivity") {
     const [connections, logs] = await Promise.all([
       runCli("api conns", "读取近期活动连接", true),
@@ -135,8 +158,13 @@ export async function createMagicNetIssue(
     backgroundArgs: state.backgroundTask.args,
     backgroundStatus: state.backgroundTask.status,
   };
+  const normalizedReport = report.kind === "route-feedback" && !report.summary.trim()
+    ? { ...report, summary: "自动路由反馈：最近应用 / 网站路由样本" }
+    : report;
   state.task = "创建 GitHub issue";
-  state.notice = t("正在收集 issue 诊断信息");
+  state.notice = report.kind === "route-feedback"
+    ? t("正在收集路由反馈")
+    : t("正在收集 issue 诊断信息");
   state.busy = true;
   state.phase = "running";
   try {
@@ -156,7 +184,7 @@ export async function createMagicNetIssue(
       support,
       focusedContext,
       operation,
-      report,
+      report: normalizedReport,
     });
     const copied = await copyText(body);
     const issueUrl = buildIssueUrl(REPO, title, body);

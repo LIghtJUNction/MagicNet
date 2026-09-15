@@ -47,8 +47,6 @@ if magicnet_install_is_interactive; then
   magicnet_select_lang
 fi
 
-import this
-
 MAGICNET_PREV_DIR="${MAGICNET_PREV_DIR:-/data/adb/modules/MagicNet}"
 # Keep migration data in a private, per-installer sibling directory. Never
 # accept a caller-selected deletion path: module-manager environments are not a
@@ -287,18 +285,10 @@ magicnet_install_selected_core() {
 }
 
 magicnet_print_install_summary() {
-  panel "$(i18n "INSTALL_TITLE")"
-  panel_row "$(i18n "INSTALL_ROW_PROFILE")" "$(i18n "INSTALL_PROFILE")"
-  panel_row "$(i18n "INSTALL_ROW_DEFAULTS")" "$(i18n "INSTALL_DEFAULTS")"
-  panel_end
-
-  panel "$(i18n "INSTALL_CONFIG_TITLE")"
-  panel_note "$(i18n "INSTALL_CONFIG_PATHS")"
-  panel_note "$(i18n "INSTALL_NEXT_STEPS")"
-  panel_note "$(i18n "INSTALL_FLAGS")"
-  tprint "$(i18n "TERM_INSTALL_MSG")"
-  gprint "$(i18n "GUI_INSTALL_MSG")"
-  panel_end
+  newline
+  print "MagicNet"
+  print "sing-box · TUN · WebUI"
+  newline
 }
 
 magicnet_print_install_summary

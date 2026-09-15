@@ -24,6 +24,7 @@ for _magicnet_lib in \
     runtime_config \
     supervisors \
     core \
+    lifecycle \
     action_menu \
     phases; do
     # transparent_dns.sh = IPv6/MTU/UDP policy; DNS capture remains in network.sh.

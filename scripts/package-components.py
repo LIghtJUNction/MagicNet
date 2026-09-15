@@ -189,7 +189,7 @@ def split(source: Path, helper: Path, output: Path, repository: str, arch: str) 
     if prop.get("id") != "MagicNet" or not re.fullmatch(r"v\d+\.\d+\.\d+", prop.get("version", "")):
         raise ValueError("Invalid module identity/version")
     text = scaffold["customize.sh"][1].decode("utf-8")
-    anchor = "import this\n"
+    anchor = "import rich\n"
     if text.count(anchor) != 1:
         raise ValueError("customize.sh bootstrap anchor changed; review integration")
     scaffold["customize.sh"] = zip_entry("customize.sh", (text.replace(anchor, anchor + BOOTSTRAP).rstrip() +

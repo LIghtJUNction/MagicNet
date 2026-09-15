@@ -49,6 +49,7 @@ macro_rules! commands {
 const COMMANDS: &[CommandSpec] = commands! {
     "service" => service_command, "{status|start|ensure|stop|restart [current|sing-box]|toggle sing-box|logs [webui|sing-box|mcp|fswatch|supervisors|filename] [lines]}";
     "supervisor" => supervisor_cmd, "{status|start|stop|restart} [fswatch|wifi-policy|all]";
+    "state" => state_command, "reconcile";
     "health" => |app, _| health(app), "";
     "pingtest" => |_, _| pingtest(), "";
     "speedtest" => |_, _| speedtest(), "";
@@ -120,6 +121,17 @@ fn prefixed_args(command: &str, args: &[String]) -> Vec<String> {
         .collect()
 }
 
+fn state_command(app: &App, args: &[String]) -> Result<(), String> {
+    match args.first().map_or("reconcile", String::as_str) {
+        "reconcile" if args.len() <= 1 => crate::state::reconcile(app),
+        _ => Err("Usage: cli state reconcile".to_string()),
+    }
+}
+
+fn sync_service_lifecycle(app: &App) -> Result<(), String> {
+    run_magicnet_function(app, "magicnet_lifecycle_sync")
+}
+
 fn service_command(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map_or("status", String::as_str) {
         "status" => {
@@ -127,7 +139,10 @@ fn service_command(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "logs" => service_logs(app, &prefixed_args("service", args)),
-        _ => service_cmd(app, args),
+        _ => {
+            service_cmd(app, args)?;
+            sync_service_lifecycle(app)
+        }
     }
 }
 

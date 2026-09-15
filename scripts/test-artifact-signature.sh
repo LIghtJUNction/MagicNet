@@ -16,7 +16,6 @@ export KAM_HOOKS_ROOT="$test_root/hooks"
 mkdir -p "$KAM_PROJECT_ROOT/dist" "$KAM_PROJECT_ROOT/scripts" "$KAM_HOOKS_ROOT/lib" \
     "$test_root/source/lib/kamfw" "$test_root/source/.config/sing-box"
 printf '[prop]\nid = "MagicNet"\n' > "$KAM_PROJECT_ROOT/kam.toml"
-printf 'fixture\n' > "$test_root/source/lib/kamfw/__singbox__.sh"
 printf '{}\n' > "$test_root/source/.config/sing-box/.dns-test.json"
 
 removed_entries=(
@@ -55,6 +54,17 @@ for entry in "${removed_entries[@]}" "${preserved_entries[@]}"; do
     mkdir -p "$(dirname "$test_root/source/$entry")"
     printf 'fixture: %s\n' "$entry" > "$test_root/source/$entry"
 done
+# This exact shape used to trigger an archive-time kamfw source rewrite. The
+# sanitizer may remove unwanted entries, but must never patch dependency code.
+cat > "$test_root/source/lib/kamfw/__singbox__.sh" <<'FIXTURE'
+awk '
+    {
+            if (current ~ /^[[:space:]]*"interrupt_exist_connections"[[:space:]]*:/) {
+                sub(/:[[:space:]]*(true|false)/, ": true", current)
+            }
+    }
+'
+FIXTURE
 cat > "$KAM_HOOKS_ROOT/lib/utils.sh" <<'FIXTURE'
 log_info() { :; }
 require_command() { command -v "$1" >/dev/null; }
@@ -104,7 +114,7 @@ if unzip -Z1 "$artifact" | grep -Fq '.dns-test.json'; then
     exit 1
 fi
 
-# Cleanup removes development data without changing runtime or license bytes.
+# Cleanup removes development data without changing runtime, dependency, or license bytes.
 unzip -Z1 "$artifact" > "$test_root/archive-entries"
 for entry in "${removed_entries[@]}"; do
     if grep -Fxq "$entry" "$test_root/archive-entries"; then
