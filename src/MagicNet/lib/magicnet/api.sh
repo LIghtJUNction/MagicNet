@@ -35,6 +35,14 @@ magicnet_singbox_api_port() {
     unset _magicnet_api_endpoint _magicnet_api_port
 }
 
+magicnet_singbox_api_listener_exists() {
+    _listener_port="$(magicnet_singbox_api_port)" || return 1
+    ss -lnt 2>/dev/null | grep -E -q ":${_listener_port}[[:space:]]"
+    _listener_rc=$?
+    unset _listener_port
+    return "$_listener_rc"
+}
+
 # Subscription readiness used to assume one fixed controller address. Match
 # the configured controller port and the expected process instead, which also
 # works for IPv6 loopback and wildcard controller binds.
