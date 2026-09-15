@@ -1,0 +1,52 @@
+name: Temporary MCP package selector patch
+
+on:
+  push:
+    branches:
+      - refactor/collapse-mcp-crate-20260916
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Patch retired Cargo package selector
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/fake-magisk-smoke.sh")
+          text = path.read_text()
+          retired = "cargo build -p magicnet-cli " + "-p magicnet-mcp-server >/dev/null"
+          replacement = "cargo build -p magicnet-cli >/dev/null"
+          if text.count(retired) != 1:
+              raise SystemExit(f"expected exactly one retired selector, found {text.count(retired)}")
+          path.write_text(text.replace(retired, replacement))
+          PY
+
+          if rg --fixed-strings -- '-p magicnet-mcp-server' scripts .github/workflows \
+              --glob '!temp-collapse-mcp-patch.yml'; then
+            echo 'retired MCP Cargo package selector remains' >&2
+            exit 1
+          fi
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/fake-magisk-smoke.sh
+          git diff --cached --check
+          git commit -m 'test: remove retired MCP package selector from fake smoke'
+          git push origin HEAD:${GITHUB_REF_NAME}
