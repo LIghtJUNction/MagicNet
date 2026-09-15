@@ -69,9 +69,8 @@ run_quick() {
     need python3
     log "validating kam.toml"
     (cd "$ROOT" && "$KAM_BIN" validate)
-    log "checking Rust crates"
+    log "checking Rust workspace"
     (cd "$ROOT" && cargo check -p magicnet-cli)
-    (cd "$ROOT" && cargo check -p magicnet-mcp-server)
     log "checking default configs"
     jq empty "$ROOT/src/MagicNet/.config/sing-box/config.json"
 }
@@ -206,12 +205,11 @@ build_and_push_x86_control_plane() {
         log "cargo-ndk not found; skipping x86_64 CLI/MCP hot replacement"
         return 0
     fi
-    log "building x86_64 CLI/MCP for AVD control-plane checks"
-    (cd "$ROOT" && cargo ndk -t x86_64 build --release -p magicnet-cli -p magicnet-mcp-server)
+    log "building x86_64 CLI with embedded MCP server for AVD control-plane checks"
+    (cd "$ROOT" && cargo ndk -t x86_64 build --release -p magicnet-cli)
     "$ADB" -s "$serial" push "$ROOT/target/x86_64-linux-android/release/magicnet-cli" /sdcard/Download/magicnet-cli >/dev/null
-    "$ADB" -s "$serial" push "$ROOT/target/x86_64-linux-android/release/magicnet-mcp-server" /sdcard/Download/magicnet-mcp-server >/dev/null
     adb_su "$serial" 'cp /sdcard/Download/magicnet-cli /data/adb/modules/MagicNet/bin/magicnet-cli'
-    adb_su "$serial" 'cp /sdcard/Download/magicnet-mcp-server /data/adb/modules/MagicNet/bin/magicnet-mcp-server'
+    adb_su "$serial" 'cp /sdcard/Download/magicnet-cli /data/adb/modules/MagicNet/bin/magicnet-mcp-server'
     adb_su "$serial" 'chmod 0755 /data/adb/modules/MagicNet/bin/magicnet-cli /data/adb/modules/MagicNet/bin/magicnet-mcp-server'
 }
 
