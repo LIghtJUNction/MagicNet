@@ -120,6 +120,10 @@ fn prefixed_args(command: &str, args: &[String]) -> Vec<String> {
         .collect()
 }
 
+fn sync_service_lifecycle(app: &App) -> Result<(), String> {
+    run_magicnet_function(app, "magicnet_lifecycle_sync")
+}
+
 fn service_command(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map_or("status", String::as_str) {
         "status" => {
@@ -127,7 +131,10 @@ fn service_command(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "logs" => service_logs(app, &prefixed_args("service", args)),
-        _ => service_cmd(app, args),
+        _ => {
+            service_cmd(app, args)?;
+            sync_service_lifecycle(app)
+        }
     }
 }
 

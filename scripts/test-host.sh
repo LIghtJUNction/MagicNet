@@ -105,6 +105,7 @@ check bash scripts/test-dns-leak-guard-timeout.sh
 check python3 scripts/test-dns-capture-fast-path.py
 check python3 scripts/test-dns-output-order.py
 check sh scripts/test-startup-network-safety.sh
+check sh scripts/test-kernel-route-lifecycle.sh
 check bash scripts/test-submodule-updates.sh
 check bash scripts/test-subscription-activation-order.sh
 check bash scripts/test-subscription-transaction-atomicity.sh
