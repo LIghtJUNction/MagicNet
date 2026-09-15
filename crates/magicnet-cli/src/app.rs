@@ -42,7 +42,7 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn for_test(moddir: PathBuf) -> Self {
-        let api = local_api_from_config(&moddir).unwrap_or_else(|| DEFAULT_API.to_string());
+        let api = DEFAULT_API.to_string();
         Self {
             log_dir: moddir.join(".log"),
             moddir,
@@ -129,7 +129,9 @@ fn infer_moddir_from_exe(exe: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{api_from_controller, infer_moddir_from_exe, is_loopback_http_api, local_api_from_config};
+    use super::{
+        api_from_controller, infer_moddir_from_exe, is_loopback_http_api, local_api_from_config,
+    };
     use std::env;
     use std::fs;
     use std::path::Path;
