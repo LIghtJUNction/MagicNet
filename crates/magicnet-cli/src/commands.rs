@@ -96,6 +96,44 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
     (command.handler)(app, &args[1..])
 }
 
+/// Opt out only known observations and commands that own publication themselves.
+/// Other registered operations still publish after failure as well as success.
+pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
+    let name = args.first().map_or("help", String::as_str);
+    if args.iter().any(|arg| arg == "--json")
+        || !COMMANDS.iter().any(|command| command.name == name)
+    {
+        return false;
+    }
+    let sub = args.get(1).map_or("", String::as_str);
+    let action = args.get(2).map_or("", String::as_str);
+    match (name, sub) {
+        ("state", _) => false,
+        ("health" | "topology" | "pingtest" | "speedtest", _) => false,
+        ("service", "" | "status" | "logs") => false,
+        (
+            "supervisor" | "transparent" | "network" | "core" | "chain" | "wifi" | "hotspot"
+            | "dns" | "warp",
+            "" | "status",
+        ) => false,
+        ("core", "selected") => false,
+        ("ecapture", "" | "status" | "version" | "help") => false,
+        ("mcp", "" | "status" | "logs" | "serve") => false,
+        ("mode", "") => false,
+        ("node", "list" | "current") => false,
+        ("route" | "block", "list") => false,
+        ("app", "list" | "packages" | "recommendations") => false,
+        ("api", "endpoint" | "groups" | "proxies" | "conns" | "stats") => false,
+        ("config-editor", "get" | "path") => false,
+        ("config-editor", "repo") => !matches!(action, "get" | "get-json"),
+        ("sub", "list" | "get" | "status" | "file" | "copy-path" | "resolve-host") => false,
+        ("sub", "schedule") => !matches!(action, "" | "status"),
+        ("sub", "user-agent") => !matches!(action, "" | "get"),
+        ("sub", "filter") => !matches!(action, "" | "list"),
+        _ => true,
+    }
+}
+
 fn unknown_command(args: &[String]) -> String {
     format!(
         "unknown command: {}\nKnown commands: {}\nRun `cli help` for usage.",
@@ -183,7 +221,7 @@ fn subscription_command(app: &App, args: &[String]) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{unknown_command, COMMANDS};
+    use super::{needs_state_reconcile, unknown_command, COMMANDS};
     use std::collections::HashSet;
 
     fn usage_for(command: &str) -> String {
@@ -238,5 +276,35 @@ mod tests {
     #[test]
     fn speedtest_help_has_explicit_usage() {
         assert_eq!(usage_for("speedtest"), "cli speedtest");
+    }
+
+    #[test]
+    fn observations_and_explicit_publishers_do_not_get_implicit_state_writes() {
+        for text in [
+            "", "help", "--help", "missing", "service", "service status", "service logs",
+            "health", "core selected", "network status", "wifi status", "dns status",
+            "transparent status", "node current", "api groups", "sub get sing-box",
+            "sub schedule status", "sub user-agent get", "sub filter list",
+            "config-editor repo get-json", "state", "state reconcile", "mcp serve",
+            "--json capabilities", "service start --json",
+        ] {
+            let args = text.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+            assert!(!needs_state_reconcile(&args), "unexpected publication: {text}");
+        }
+    }
+
+    #[test]
+    fn_mutations_keep_post_command_reconciliation() {
+        for text in [
+            "service start", "service ensure", "service stop", "service restart",
+            "config apply", "config-editor save-file", "config-editor repo reset",
+            "network set", "dns apply", "wifi check", "hotspot reconcile", "node use",
+            "sub update-all", "sub schedule set 24", "sub user-agent clear", "sub filter set",
+            "mcp start", "mcp secret", "mcp rotate-secret", "mode global", "api select",
+            "app apply", "backup restore-file", "repair", "webui payload create",
+        ] {
+            let args = text.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+            assert!(needs_state_reconcile(&args), "missing publication: {text}");
+        }
     }
 }
