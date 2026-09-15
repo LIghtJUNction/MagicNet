@@ -2,6 +2,7 @@ import { t } from "@/i18n";
 const MAX_ISSUE_BODY_CHARS = 5200;
 
 export type IssueKind =
+  | "route-feedback"
   | "app-connectivity"
   | "command-error"
   | "subscription-node"
@@ -14,6 +15,12 @@ export const ISSUE_KIND_OPTIONS: ReadonlyArray<{
   description: string;
   context: string;
 }> = [
+  {
+    value: "route-feedback",
+    label: "路由反馈",
+    description: "推荐：提交最近应用和网站实际命中的路由，帮助持续改进规则。",
+    context: "附带近期应用包名、目标域名、命中规则、路由链和相关错误；IP、节点名、凭据和 URL 路径会被过滤。",
+  },
   {
     value: "app-connectivity",
     label: "某个 App 无法联网",
@@ -180,6 +187,20 @@ function connectionProcess(metadata: Record<string, unknown>): string {
   return processPath.split("/").filter(Boolean).at(-1) || "";
 }
 
+function routingFeedbackHost(metadata: Record<string, unknown>): string {
+  const host = safeString(metadata.host).replace(/\.$/, "").toLowerCase();
+  if (!host || host.length > 253 || /[\s/@\\]/.test(host)) return "";
+  if (/^\[?[0-9a-f:.]+\]?$/i.test(host)) return "";
+  const labels = host.split(".");
+  if (labels.length < 2) return "";
+  if (labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))) return "";
+  return host;
+}
+
+function compactFeedbackValue(value: string, limit = 160): string {
+  return deterministicSlice(sanitizeDiagnosticText(value), limit).replace(/\s+/g, " ").trim();
+}
+
 const SAFE_ROUTE_TAGS = new Set([
   "proxy",
   "select",
@@ -264,10 +285,88 @@ export function summarizeConnectionsForIssue(text: string): string {
   }
 }
 
+/**
+ * Explicit opt-in route feedback. Unlike the normal connectivity report this
+ * keeps app package names and DNS hostnames because those are the signals used
+ * to improve maintained routing rules. IPs, connection IDs, byte counters,
+ * credentials and subscription node names are still excluded.
+ */
+export function summarizeRoutingFeedback(text: string): string {
+  try {
+    const root = JSON.parse(text) as Record<string, unknown>;
+    const raw = Array.isArray(root.connections) ? root.connections : null;
+    if (!raw) return "active_connections=unavailable";
+
+    const samples: Array<{ signature: string; line: string; count: number }> = [];
+    const seen = new Map<string, number>();
+    for (const value of raw.slice(-80).reverse()) {
+      if (!value || typeof value !== "object") continue;
+      const item = value as Record<string, unknown>;
+      const metadata = item.metadata && typeof item.metadata === "object"
+        ? item.metadata as Record<string, unknown>
+        : {};
+      const process = compactFeedbackValue(connectionProcess(metadata), 120);
+      const domain = routingFeedbackHost(metadata);
+      const network = compactFeedbackValue(safeString(metadata.network), 24);
+      const inbound = compactFeedbackValue(
+        safeString(item.inbound) || safeString(metadata.inbound) || safeString(metadata.type),
+        48,
+      );
+      const rule = compactFeedbackValue(safeString(item.rule), 96);
+      const rulePayload = compactFeedbackValue(safeString(item.rulePayload), 120);
+      const chain = Array.isArray(item.chains)
+        ? item.chains.map(safeRouteHop).filter(Boolean).slice(0, 8).join(" -> ")
+        : "";
+      if (!process && !domain) continue;
+      const signature = [process, domain, network, inbound, rule, rulePayload, chain].join("\u0000");
+      const existing = seen.get(signature);
+      if (existing !== undefined) {
+        samples[existing].count += 1;
+        continue;
+      }
+      seen.set(signature, samples.length);
+      samples.push({
+        signature,
+        count: 1,
+        line: [
+          process ? `app=${process}` : "",
+          domain ? `domain=${domain}` : "domain=[ip-only-or-unavailable]",
+          network ? `network=${network}` : "",
+          inbound ? `inbound=${inbound}` : "",
+          rule ? `rule=${rule}` : "",
+          rulePayload ? `payload=${rulePayload}` : "",
+          chain ? `chain=${chain}` : "",
+        ].filter(Boolean).join(" "),
+      });
+      if (samples.length >= 24) break;
+    }
+
+    return [
+      "privacy_note=explicit route feedback; app package names and destination domains are included",
+      "filtered=source/destination IPs, connection IDs, byte counters, credentials, URL paths, subscription node names",
+      `active_connection_count=${raw.length}`,
+      `included_unique_routes=${samples.length}`,
+      ...samples.map((sample, index) => `route.${index + 1} seen=${sample.count} ${sample.line}`),
+    ].join("\n");
+  } catch {
+    return "active_connections=unavailable\nparse_error=invalid response";
+  }
+}
+
 export function sanitizeConnectionLog(text: string): string {
   return sanitizeDiagnosticText(text)
     .replace(/\b(to|from)\s+[^\s,;]+/gi, "$1 [filtered-endpoint]")
     .replace(/\b(destination|host|domain|source)(\s*[:=]\s*)[^\s,;]+/gi, "$1$2[filtered-endpoint]")
+    .replace(/\b(outbound|selector)(\s*[:=]\s*)([^\s,;]+)/gi, (_match, key, separator, value) => (
+      `${key}${separator}${SAFE_ROUTE_TAGS.has(value) ? value : "[selected-node]"}`
+    ))
+    .replace(/\b(selected\s+node|node)(\s+(?:to|is)\s+|\s*[:=]\s*)[^\s,;]+/gi, "$1$2[selected-node]");
+}
+
+/** Preserve bare destination domains for opt-in routing feedback while still
+ * removing credentials, URLs/paths, IPs and subscription node names. */
+export function sanitizeRoutingFeedbackLog(text: string): string {
+  return sanitizeDiagnosticText(text)
     .replace(/\b(outbound|selector)(\s*[:=]\s*)([^\s,;]+)/gi, (_match, key, separator, value) => (
       `${key}${separator}${SAFE_ROUTE_TAGS.has(value) ? value : "[selected-node]"}`
     ))
@@ -313,17 +412,21 @@ export function buildIssueBody(parts: {
   operation: IssueOperationContext;
   report?: Partial<IssueReport>;
 }): string {
+  const routeFeedback = parts.kind === "route-feedback";
   const sections = [
     "## Problem",
     "",
     issueReportText(parts.report),
     "",
     t("问题类型：{p0}", { p0: issueKindLabel(parts.kind) }),
+    routeFeedback
+      ? "\nPrivacy: this route-feedback report intentionally contains recent app package names and destination domains; IPs, URL paths, credentials and subscription node names are filtered."
+      : "",
     "",
     "## Generated Context",
     "",
-    issueSection("Focused Context", deterministicSlice(sanitizeDiagnosticText(parts.focusedContext), 1800)),
-    issueSection("Support Summary", deterministicSlice(sanitizeDiagnosticText(parts.support), 900)),
+    issueSection("Focused Context", deterministicSlice(sanitizeDiagnosticText(parts.focusedContext), routeFeedback ? 3000 : 1800)),
+    issueSection("Support Summary", deterministicSlice(sanitizeDiagnosticText(parts.support), routeFeedback ? 650 : 900)),
     issueSection("Module", deterministicSlice(sanitizeDiagnosticText(parts.moduleProp), 220)),
     issueSection("Device", deterministicSlice(sanitizeDiagnosticText(parts.device), 220)),
     issueSection("UI Operation", deterministicSlice(sanitizeDiagnosticText(operationText(parts.operation)), 350)),
