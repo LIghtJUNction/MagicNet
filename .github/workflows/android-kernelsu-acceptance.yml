@@ -15,19 +15,13 @@ on:
         description: Public free-node shard used for the acceptance run
         required: true
         type: choice
-        options:
-          - global
-          - US
-          - JP
+        options: [global, US, JP]
         default: global
       rounds:
         description: Connectivity/latency rounds per service target
         required: true
         type: choice
-        options:
-          - "1"
-          - "3"
-          - "5"
+        options: ["1", "3", "5"]
         default: "3"
       run_speed:
         description: Run 8 MiB domestic/global throughput probes
@@ -56,18 +50,20 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   ANDROID_HOME: /usr/local/lib/android/sdk
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  AVD_NAME: MagicNet_API_35
-  SYSTEM_IMAGE: system-images;android-35;google_apis;x86_64
+  AVD_NAME: MagicNet_Play_API_35
+  SYSTEM_IMAGE: system-images;android-35;google_apis_playstore;x86_64
   KSU_CACHE: ${{ github.workspace }}/.cache/kernelsu-avd
   KSU_RELEASE: v3.2.0
   KSU_AVD_ARCHIVE: dist-A15-API35-6.6-x86_64-11987101-v320.zip
   KSU_AVD_SHA256: ab52c00733ff08ee20a5822db68891a6bd0b43e5ee675dd4ffd8fe640ad1ccef
   KSUD_SHA256: db96b07ef42f6b9a84b5914d19c2f01608b1e10816fc28c0e84f07417d9bc062
+  KSU_PATCHER_RELEASE: v3.3.0
+  KSU_PATCHER_SHA256: 36c4f9350501e5aef3ef582a2bc581c1f48e2fea40c830d34319f0160a4bd790
   CARGO_NDK_VERSION: "4.1.2"
 
 jobs:
   android-kernelsu:
-    name: Android 15 / KernelSU / x86_64
+    name: Android 15 / Play Store / KernelSU / x86_64
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -132,9 +128,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: android-ksu-build-v1-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**', 'sing-box/go.mod', 'sing-box/go.sum', 'scripts/build-sing-box.sh') }}
+          key: android-ksu-build-v2-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**', 'sing-box/go.mod', 'sing-box/go.sum', 'scripts/build-sing-box.sh') }}
           restore-keys: |
-            android-ksu-build-v1-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-
+            android-ksu-build-v2-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-
 
       - name: Cache cargo-ndk
         id: cargo-ndk
@@ -202,7 +198,7 @@ jobs:
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ${{ env.KSU_CACHE }}
-          key: kernelsu-avd-v1-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}
+          key: kernelsu-play-avd-v2-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}-${{ env.KSU_PATCHER_SHA256 }}
 
       - name: Download and verify KernelSU AVD assets
         if: steps.ksu-cache.outputs.cache-hit != 'true'
@@ -223,6 +219,12 @@ jobs:
           printf '%s  %s\n' "$KSUD_SHA256" "$KSU_CACHE/ksud-x86_64-linux-android" | sha256sum --check --strict
           chmod 0755 "$KSU_CACHE/ksud-x86_64-linux-android"
 
+          curl --fail --location --retry 4 --retry-all-errors \
+            "https://github.com/tiann/KernelSU/releases/download/$KSU_PATCHER_RELEASE/ksud-x86_64-unknown-linux-musl" \
+            -o "$KSU_CACHE/ksud-host"
+          printf '%s  %s\n' "$KSU_PATCHER_SHA256" "$KSU_CACHE/ksud-host" | sha256sum --check --strict
+          chmod 0755 "$KSU_CACHE/ksud-host"
+
           kernel="$(find "$KSU_CACHE/kernel" -type f \( -name bzImage -o -name Image \) -print -quit)"
           [ -n "$kernel" ] || { echo 'KernelSU AVD archive contains no kernel image' >&2; exit 1; }
           printf 'kernel=%s\n' "$kernel" > "$KSU_CACHE/manifest.env"
@@ -232,7 +234,7 @@ jobs:
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ${{ env.KSU_CACHE }}
-          key: kernelsu-avd-v1-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}
+          key: kernelsu-play-avd-v2-api35-v320-${{ env.KSU_AVD_SHA256 }}-${{ env.KSUD_SHA256 }}-${{ env.KSU_PATCHER_SHA256 }}
 
       - name: Verify cached KernelSU assets
         shell: bash
@@ -240,30 +242,41 @@ jobs:
           set -euo pipefail
           test -s "$KSU_CACHE/manifest.env"
           test -x "$KSU_CACHE/ksud-x86_64-linux-android"
+          test -x "$KSU_CACHE/ksud-host"
           source "$KSU_CACHE/manifest.env"
           test -s "$kernel"
           printf 'KSU_KERNEL=%s\n' "$kernel" >> "$GITHUB_ENV"
 
-      - name: Restore pristine Android AVD
+      - name: Locate Android SDK tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' -perm -u+x | sort -V | tail -n1)"
+          avdmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/avdmanager' -perm -u+x | sort -V | tail -n1)"
+          test -x "$sdkmanager"
+          test -x "$avdmanager"
+          printf 'SDKMANAGER=%s\nAVDMANAGER=%s\n' "$sdkmanager" "$avdmanager" >> "$GITHUB_ENV"
+
+      - name: Restore pristine Play Store Android AVD
         if: inputs.fresh_avd != true
         id: avd-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
-            ~/.android/avd/MagicNet_API_35.avd
-            ~/.android/avd/MagicNet_API_35.ini
-            /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v2-api35-google-apis-x86_64
+            ~/.android/avd/MagicNet_Play_API_35.avd
+            ~/.android/avd/MagicNet_Play_API_35.ini
+            /usr/local/lib/android/sdk/system-images/android-35/google_apis_playstore/x86_64
+          key: android-avd-v1-api35-google-apis-playstore-x86_64
 
-      - name: Create pristine Android 15 AVD
+      - name: Create pristine Android 15 Play Store AVD
         if: inputs.fresh_avd == true || steps.avd-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platform-tools" "emulator" "$SYSTEM_IMAGE"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "emulator" "$SYSTEM_IMAGE"
           rm -rf "$HOME/.android/avd/${AVD_NAME}.avd" "$HOME/.android/avd/${AVD_NAME}.ini"
-          echo no | avdmanager create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE"
+          echo no | "$AVDMANAGER" create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE"
           cat >>"$HOME/.android/avd/${AVD_NAME}.avd/config.ini" <<'EOF'
           hw.cpu.ncore=4
           hw.ramSize=4096
@@ -272,15 +285,35 @@ jobs:
           showDeviceFrame=no
           EOF
 
-      - name: Save pristine Android AVD
+      - name: Save pristine Play Store Android AVD
         if: inputs.fresh_avd != true && steps.avd-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
-            ~/.android/avd/MagicNet_API_35.avd
-            ~/.android/avd/MagicNet_API_35.ini
-            /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v2-api35-google-apis-x86_64
+            ~/.android/avd/MagicNet_Play_API_35.avd
+            ~/.android/avd/MagicNet_Play_API_35.ini
+            /usr/local/lib/android/sdk/system-images/android-35/google_apis_playstore/x86_64
+          key: android-avd-v1-api35-google-apis-playstore-x86_64
+
+      - name: Patch Play Store AVD ramdisk for root acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          stock_ramdisk="$ANDROID_HOME/system-images/android-35/google_apis_playstore/x86_64/ramdisk.img"
+          test -s "$stock_ramdisk"
+          mkdir -p "$RUNNER_TEMP/ksu-ramdisk"
+          "$KSU_CACHE/ksud-host" boot-patch \
+            --boot "$stock_ramdisk" \
+            --ramdisk \
+            --no-install \
+            --allow-shell \
+            --enable-adbd \
+            --kmi android15-6.6 \
+            --arch x86_64 \
+            --out "$RUNNER_TEMP/ksu-ramdisk" \
+            --out-name ramdisk.img
+          test -s "$RUNNER_TEMP/ksu-ramdisk/ramdisk.img"
+          printf 'KSU_RAMDISK=%s\n' "$RUNNER_TEMP/ksu-ramdisk/ramdisk.img" >> "$GITHUB_ENV"
 
       - name: Enable KVM
         shell: bash
@@ -293,13 +326,14 @@ jobs:
             exit 1
           fi
 
-      - name: Boot Android with KernelSU kernel
+      - name: Boot Android Play Store image with KernelSU kernel
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/android-kernelsu
-          nohup emulator "@$AVD_NAME" \
+          nohup "$ANDROID_HOME/emulator/emulator" "@$AVD_NAME" \
             -kernel "$KSU_KERNEL" \
+            -ramdisk "$KSU_RAMDISK" \
             -accel on \
             -no-window \
             -noaudio \
@@ -312,7 +346,7 @@ jobs:
             >artifacts/android-kernelsu/emulator.log 2>&1 &
           echo $! >artifacts/android-kernelsu/emulator.pid
 
-      - name: Install and benchmark MagicNet in KernelSU AVD
+      - name: Install, exercise Play Store, and benchmark MagicNet
         env:
           MAGICNET_KSUD_HOST: ${{ env.KSU_CACHE }}/ksud-x86_64-linux-android
           MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
@@ -322,6 +356,7 @@ jobs:
           MAGICNET_BENCHMARK_ROUNDS: ${{ inputs.rounds }}
           MAGICNET_RUN_SPEED: ${{ inputs.run_speed == true && '1' || '0' }}
           MAGICNET_STRICT_EXTERNAL: ${{ inputs.strict_external == true && '1' || '0' }}
+          MAGICNET_REQUIRE_PLAY_STORE: "1"
         shell: bash
         run: scripts/android-kernelsu-acceptance.sh
 
@@ -329,18 +364,16 @@ jobs:
         if: always()
         shell: bash
         run: |
-          adb emu kill >/dev/null 2>&1 || true
+          "$ANDROID_HOME/platform-tools/adb" emu kill >/dev/null 2>&1 || true
           if [ -f artifacts/android-kernelsu/emulator.pid ]; then
             kill "$(cat artifacts/android-kernelsu/emulator.pid)" >/dev/null 2>&1 || true
           fi
 
       - name: Upload Android acceptance report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
-          name: android-kernelsu-acceptance-${{ github.run_id }}
-          path: |
-            artifacts/android-kernelsu/**
-            ${{ runner.temp }}/x86-payloads.txt
+          name: android-kernelsu-playstore-acceptance
+          path: artifacts/android-kernelsu
           if-no-files-found: warn
           retention-days: 14
