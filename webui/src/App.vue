@@ -30,7 +30,7 @@ import { useTheme } from "@/composables/useTheme";
 import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
-type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "webui" | "output";
+type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "terminal" | "webui" | "output";
 type WorkspaceKey = "run" | "route" | "configure" | "diagnose";
 type OnboardingPreference = "dismissed" | "completed";
 
@@ -61,6 +61,7 @@ const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   tools: () => import("@/components/pages/ToolsPage.vue"),
   webui: () => import("@/components/pages/WebuiPage.vue"),
   health: () => import("@/components/pages/DiagnosticsPage.vue"),
+  terminal: () => import("@/components/pages/TerminalPage.vue"),
   output: () => import("@/components/pages/OutputPage.vue"),
 };
 
@@ -87,6 +88,7 @@ const tabs: readonly TabDefinition[] = [
   { key: "config", label: "配置文件", workspace: "configure" },
   { key: "webui", label: "管理面板", workspace: "configure" },
   { key: "health", label: "健康检查", workspace: "diagnose" },
+  { key: "terminal", label: "终端", workspace: "diagnose" },
   { key: "tools", label: "工具", workspace: "diagnose" },
   { key: "output", label: "最近输出", workspace: "diagnose" },
 ];

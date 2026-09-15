@@ -725,6 +725,8 @@ count_exact_script_processes() {
     local expected="$1"
     local cmdline arg count=0
     local -a argv
+    local -A script_pids=()
+    local pid ppid
     for cmdline in /proc/[0-9]*/cmdline; do
         [[ -r "$cmdline" ]] || continue
         argv=()
@@ -732,6 +734,13 @@ count_exact_script_processes() {
             argv+=("$arg")
         done <"$cmdline"
         if [[ "${#argv[@]}" -eq 2 && "${argv[0]##*/}" == "sh" && "${argv[1]}" == "$expected" ]]; then
+            pid="$(basename "$(dirname "$cmdline")")"
+            script_pids["$pid"]=1
+        fi
+    done
+    for pid in "${!script_pids[@]}"; do
+        ppid="$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || true)"
+        if [[ -z "${script_pids[$ppid]:-}" ]]; then
             count=$((count + 1))
         fi
     done

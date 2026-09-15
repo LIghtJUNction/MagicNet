@@ -8,6 +8,7 @@ import routeFeedback from "./catalogs/route-feedback.ts";
 import machineStatus from "./catalogs/machine-status.ts";
 
 import tailscale from "./catalogs/tailscale.ts";
+import terminal from "./catalogs/terminal.ts";
 
 export const messages: Record<string, readonly string[]> = {
   ...shell,
@@ -19,4 +20,5 @@ export const messages: Record<string, readonly string[]> = {
   ...routeFeedback,
   ...machineStatus,
   ...tailscale,
+  ...terminal,
 };

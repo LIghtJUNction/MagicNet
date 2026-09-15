@@ -146,8 +146,76 @@ export default {
     "Configured",
     "Настроено"
   ],
+  "未配置": [
+    "Not configured",
+    "Не настроено"
+  ],
   "高级选项": [
     "Advanced",
     "Дополнительно"
+  ],
+  "网页授权登录（推荐）": [
+    "Web authorization login (Recommended)",
+    "Авторизация через веб (Рекомендуется)"
+  ],
+  "Auth Key 密钥接入": [
+    "Auth key connection",
+    "Подключение по Auth key"
+  ],
+  "使用手机或其他设备扫码即可完成授权": [
+    "Scan the QR code with your phone or another device to authorize",
+    "Отсканируйте QR-код телефоном или другим устройством для авторизации"
+  ],
+  "复制授权链接": [
+    "Copy auth link",
+    "Скопировать ссылку авторизации"
+  ],
+  "已复制授权链接": [
+    "Auth link copied",
+    "Ссылка авторизации скопирована"
+  ],
+  "取消授权": [
+    "Cancel authorization",
+    "Отменить авторизацию"
+  ],
+  "已取消登录等待。": [
+    "Login authorization cancelled.",
+    "Ожидание авторизации отменено."
+  ],
+  "断开并移除节点": [
+    "Disconnect and remove endpoint",
+    "Отключить и удалить узел"
+  ],
+  "正在移除 Tailscale 节点并重启核心…": [
+    "Removing Tailscale endpoint and restarting core…",
+    "Удаление узла Tailscale и перезапуск ядра…"
+  ],
+  "Tailscale 节点已移除，核心已重启。": [
+    "Tailscale endpoint removed and core restarted.",
+    "Узел Tailscale удалён, ядро перезапущено."
+  ],
+  "移除 Tailscale": [
+    "Remove Tailscale",
+    "Удалить Tailscale"
+  ],
+  "节点状态": [
+    "Node status",
+    "Статус узла"
+  ],
+  "已连接并在线": [
+    "Connected and online",
+    "Подключено и в сети"
+  ],
+  "等待网页授权": [
+    "Waiting for web authorization",
+    "Ожидание веб-авторизации"
+  ],
+  "支持一键网页登录或使用其他设备扫码快速授权上线。": [
+    "Supports one-click browser login or QR code scanning from another device.",
+    "Поддержка входа через браузер в один клик или сканирования QR-кода."
+  ],
+  "也可以直接填入从 Tailscale 控制台生成的预授权 Auth key。": [
+    "Or provide a pre-authenticated Auth key from your Tailscale console.",
+    "Или укажите ключ Auth key из панели управления Tailscale."
   ]
 } satisfies Record<string, readonly string[]>;

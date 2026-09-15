@@ -122,6 +122,13 @@ export function buildTailscaleConfig(text: string, draft: TailscaleDraft, baseli
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
+export function removeTailscaleEndpoint(text: string): string {
+  const config = parseConfig(text);
+  const endpoints = (config.endpoints ?? []) as JsonObject[];
+  config.endpoints = endpoints.filter((item) => item.type !== "tailscale");
+  return `${JSON.stringify(config, null, 2)}\n`;
+}
+
 export function parseTailscaleLogin(text: string): { state: string; authUrl: string; online: boolean } {
   const value: unknown = JSON.parse(text);
   if (!object(value) || typeof value.state !== "string") throw new TailscaleSetupError("config");
@@ -188,5 +195,43 @@ export async function saveTailscale(
     return { stage: result.ok ? "done" : "restart", saved, snapshot };
   } catch {
     return { stage: "restart", saved, snapshot };
+  }
+}
+
+export async function removeTailscale(client: TailscaleClient): Promise<SaveResult> {
+  let payload: { path: string; basename: string } | null = null;
+  let stage: SaveStage = "read";
+  let saved = false;
+  let error: SetupErrorCode | undefined;
+  try {
+    if (!client.canSave()) return { stage: "conflict", saved };
+    const current = await client.run("config-editor get sing-box");
+    if (!current.ok) return { stage, saved };
+    const candidate = removeTailscaleEndpoint(current.stdout);
+    stage = "stage";
+    payload = await client.stage(candidate);
+    if (!payload) return { stage, saved: false };
+    stage = "conflict";
+    const latest = await client.run("config-editor get sing-box");
+    if (latest.ok && latest.stdout === current.stdout && client.canSave()) {
+      stage = "validate";
+      const result = await client.run(`config-editor save-file sing-box ${client.quote(payload.path)}`);
+      saved = result.ok && /\[info\]\s+Saved and validated\b/i.test(result.stdout);
+    }
+  } catch (cause) {
+    if (cause instanceof TailscaleSetupError) error = cause.code;
+  } finally {
+    if (payload) {
+      let cleaned = false;
+      try { cleaned = await client.remove(payload.basename); } catch { /* ignore */ }
+      if (!cleaned) stage = "cleanup";
+    }
+  }
+  if (!saved || stage === "cleanup") return { stage, saved, error };
+  try {
+    const result = await client.run("service restart sing-box");
+    return { stage: result.ok ? "done" : "restart", saved };
+  } catch {
+    return { stage: "restart", saved };
   }
 }
