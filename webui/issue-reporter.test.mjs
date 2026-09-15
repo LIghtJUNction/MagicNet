@@ -7,7 +7,9 @@ import {
   commandFailureContext,
   sanitizeConnectionLog,
   sanitizeDiagnosticText,
+  sanitizeRoutingFeedbackLog,
   summarizeConnectionsForIssue,
+  summarizeRoutingFeedback,
 } from "./src/composables/issueDrafts.ts";
 import { redactedCliPreview } from "./src/utils.ts";
 
@@ -154,7 +156,7 @@ for (const sensitive of Object.values(deviceCanaries)) {
 
 assert.deepEqual(
   ISSUE_KIND_OPTIONS.map(({ value }) => value),
-  ["app-connectivity", "command-error", "subscription-node", "dns-routing", "other"],
+  ["route-feedback", "app-connectivity", "command-error", "subscription-node", "dns-routing", "other"],
 );
 assert.ok(ISSUE_KIND_OPTIONS.every(({ context }) => context.startsWith("附带")));
 
@@ -188,6 +190,34 @@ for (const sensitive of ["private-connection-id", "private.example.invalid", "19
   assert.equal(connectionSummary.includes(sensitive), false, `connection summary leaked ${sensitive}`);
 }
 
+const routeFeedback = summarizeRoutingFeedback(connections);
+assert.match(routeFeedback, /explicit route feedback/);
+assert.match(routeFeedback, /app=com\.example\.browser/);
+assert.match(routeFeedback, /domain=private\.example\.invalid/);
+assert.match(routeFeedback, /rule=RuleSet/);
+assert.match(routeFeedback, /payload=private\.example\.invalid/);
+assert.match(routeFeedback, /chain=ai-proxy -> \[selected-node\]/);
+for (const sensitive of ["private-connection-id", "192.0.2.44", "10.0.0.9", "US-Private-Node", "1234", "5678"]) {
+  assert.equal(routeFeedback.includes(sensitive), false, `route feedback leaked ${sensitive}`);
+}
+
+const routeFeedbackBody = buildIssueBody({
+  ...parts,
+  kind: "route-feedback",
+  focusedContext: routeFeedback,
+  report: {
+    summary: "自动路由反馈",
+    reproduction: "",
+    expected: "",
+    actual: "",
+    frequency: "",
+  },
+});
+assert.match(routeFeedbackBody, /问题类型：路由反馈/);
+assert.match(routeFeedbackBody, /destination domains/);
+assert.match(routeFeedbackBody, /domain=private\.example\.invalid/);
+assert.doesNotMatch(routeFeedbackBody, /192\.0\.2\.44|10\.0\.0\.9|US-Private-Node/);
+
 const sanitizedLog = sanitizeConnectionLog(
   "INFO inbound/tun connection from 10.0.0.9:41234 to private.example.invalid:443 outbound=ai-proxy",
 );
@@ -198,6 +228,13 @@ const selectedNodeLog = sanitizeConnectionLog("INFO selector=US-Private-Node sel
 assert.match(selectedNodeLog, /selector=\[selected-node\]/);
 assert.match(selectedNodeLog, /selected node is \[selected-node\]/);
 assert.doesNotMatch(selectedNodeLog, /US-Private-Node|JP-Secret/);
+
+const routingLog = sanitizeRoutingFeedbackLog(
+  "WARN route connection from 10.0.0.9:41234 to private.example.invalid:443 selector=US-Private-Node token=TOKEN-CANARY",
+);
+assert.match(routingLog, /private\.example\.invalid:443/);
+assert.match(routingLog, /selector=\[selected-node\]/);
+assert.doesNotMatch(routingLog, /10\.0\.0\.9|US-Private-Node|TOKEN-CANARY/);
 
 const commandContext = commandFailureContext(parts.operation);
 assert.match(commandContext, /captured_command=command=sub\.apply-file arguments=filtered/);
