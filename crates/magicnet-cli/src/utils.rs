@@ -946,7 +946,7 @@ pub(crate) fn write_secret_file(app: &App, relative: &Path, text: &str) -> Resul
 fn module_relative_components(relative: &Path) -> Result<Vec<&OsStr>, String> {
     let components = normal_module_components(relative)?;
     if components.is_empty() {
-        Err("module path must contain only normal relative components".to_string())
+        Err("module file path must be a nonempty normal relative path".to_string())
     } else {
         Ok(components)
     }
