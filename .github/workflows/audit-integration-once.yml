@@ -1,0 +1,75 @@
+name: Audit PR integration
+
+on:
+  push:
+    branches: [audit/pr-integration-20260916]
+    paths: [.github/workflows/audit-integration-once.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Inspect merge conflicts without changing any branch
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import subprocess
+
+          def run(*args, cwd=None, check=True):
+              return subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=check)
+
+          base = '80a329ed071e498569e317372352ea07ac0acf95'
+          start = 'aa0b8079ccb81c48f14311342c35097700a5789f'
+          targets = {
+              263: 'refactor/dynamic-singbox-controller',
+              266: 'refactor/clean-lib-layout',
+              282: 'fix/magicsingbox-routing-test',
+              284: 'fix/cli-state-observation-boundary-20260916',
+          }
+          run('git', 'config', 'user.name', 'github-actions[bot]')
+          run('git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
+          print('=== MAIN-LINE AUDIT WINDOW ===', flush=True)
+          print(run('git', 'log', '--first-parent', '--format=%h %s', f'{start}..{base}').stdout, flush=True)
+          for number, branch in targets.items():
+              print(f'=== PR {number}: {branch} ===', flush=True)
+              run('git', 'fetch', '--no-tags', 'origin', f'refs/heads/{branch}')
+              head = run('git', 'rev-parse', 'FETCH_HEAD').stdout.strip()
+              print(f'head={head}; main={base}', flush=True)
+              worktree = Path(os.environ['RUNNER_TEMP']) / f'audit-pr-{number}'
+              run('git', 'worktree', 'add', '--detach', str(worktree), head)
+              try:
+                  result = run('git', 'merge', '--no-commit', '--no-ff', base, cwd=worktree, check=False)
+                  print(result.stdout, flush=True)
+                  conflicts = run('git', 'diff', '--name-only', '--diff-filter=U', cwd=worktree).stdout.splitlines()
+                  print(f'conflicts={conflicts}', flush=True)
+                  for name in conflicts:
+                      path = worktree / name
+                      if not path.is_file() or name == '.env':
+                          continue
+                      lines = path.read_text(errors='replace').splitlines()
+                      keep = set()
+                      inside = False
+                      for index, line in enumerate(lines):
+                          if line.startswith('<<<<<<<'):
+                              inside = True
+                              keep.update(range(max(0, index-3), index))
+                          if inside:
+                              keep.add(index)
+                          if line.startswith('>>>>>>>'):
+                              inside = False
+                              keep.update(range(index+1, min(len(lines), index+4)))
+                      print(f'--- conflict context: {name} ---', flush=True)
+                      for index in sorted(keep)[:220]:
+                          print(f'{index+1}: {lines[index]}', flush=True)
+              finally:
+                  run('git', 'merge', '--abort', cwd=worktree, check=False)
+                  run('git', 'worktree', 'remove', '--force', str(worktree), check=False)
