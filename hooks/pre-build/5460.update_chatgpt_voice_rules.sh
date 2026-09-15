@@ -2,16 +2,14 @@
 # shellcheck source=hooks/lib/utils.sh
 set -euo pipefail
 . "$KAM_HOOKS_ROOT/lib/utils.sh"
-require_command curl "curl not found!"
-require_command jq "jq not found!"
-require_command python3 "python3 not found!"
+require_commands curl jq python3
 
 RULE_DIR="$KAM_MODULE_ROOT/.config/sing-box/rules"
 STATE_DIR="$KAM_MODULE_ROOT/.local/state/chatgpt-voice"
 mkdir -p "$RULE_DIR" "$STATE_DIR"
 CANDIDATE=$(mktemp "$RULE_DIR/.chatgpt-voice.XXXXXX")
 trap 'rm -f "$CANDIDATE"' EXIT
-# Resolve one immutable upstream revision per build; never rewrite config.json.
+
 REF=$(curl -fsSL --connect-timeout 5 --max-time 20 --retry 3 \
     https://gitlab.com/api/v4/projects/61399101/repository/branches/master |
     jq -er '.commit.id | select(test("^[0-9a-f]{40}$"))')
