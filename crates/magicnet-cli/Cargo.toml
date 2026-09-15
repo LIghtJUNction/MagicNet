@@ -3,6 +3,14 @@ name = "magicnet-cli"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "magicnet-cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "magicnet-mcp-server"
+path = "src/mcp_server/main.rs"
+
 [dependencies]
 argon2 = "0.5"
 base64 = "0.22"
