@@ -51,7 +51,6 @@ class PackageTests(unittest.TestCase):
             ".config/sing-box/config.json": b'{"inbounds": []}\n',
             "bin/sing-box": b"engine",
             "bin/magicnet-cli": b"cli",
-            "bin/magicnet-mcp-server": b"mcp",
             "bin/yq": b"yq",
             "webroot/index.html": b"<html>webui</html>",
             ".config/sing-box/zashboard/index.html": b"dashboard",
@@ -91,6 +90,7 @@ class PackageTests(unittest.TestCase):
         output, m = self.build()
         with zipfile.ZipFile(output / "MagicNet-core.zip") as core, zipfile.ZipFile(output / "MagicNet-full.zip") as full:
             self.assertNotIn("bin/sing-box", core.namelist())
+            self.assertNotIn("bin/magicnet-mcp-server", full.namelist())
             self.assertIn("bin/magicnet-components", core.namelist())
             self.assertIn("components.json", core.namelist())
             self.assertEqual(full.read("bin/sing-box"), b"engine")
@@ -136,11 +136,15 @@ class PackageTests(unittest.TestCase):
                 entries = dict(self.entries, **{bad: b"bad"})
                 with self.assertRaises(ValueError):
                     self.build(entries=entries)
-        for required in ("customize.sh", "bin/sing-box", "module.prop"):
+        for required in ("customize.sh", "bin/sing-box", "bin/magicnet-cli", "module.prop"):
             entries = dict(self.entries)
             del entries[required]
             with self.assertRaises(ValueError):
                 self.build(entries=entries)
+        retired = dict(self.entries)
+        retired["bin/magicnet-mcp-server"] = b"retired"
+        with self.assertRaisesRegex(ValueError, "Retired standalone MCP component"):
+            self.build(entries=retired)
 
     def test_rejects_duplicate_entries_and_double_split(self):
         output, _ = self.build()

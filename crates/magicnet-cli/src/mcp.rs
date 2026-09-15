@@ -143,6 +143,17 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
             }
         }
         "start" => start(app),
+        "serve" => {
+            let config = load_checked(app)?;
+            if !config.enabled {
+                return Err("MCP server is disabled".to_string());
+            }
+            if config.secret.is_empty() {
+                return Err("MCP secret is missing".to_string());
+            }
+            let address = config.address();
+            crate::mcp_server::serve(app, address, config.secret)
+        }
         "stop" => stop(app),
         "restart" => {
             let _ = stop(app);
@@ -155,7 +166,7 @@ pub(crate) fn mcp(app: &App, args: &[String]) -> Result<(), String> {
                 .unwrap_or(120);
             print_log_tail(app, "mcp-server.log", lines)
         }
-        _ => Err("Usage: cli mcp {status|enable [bind] [port]|disable|set [bind] [port]|secret|rotate-secret|start|stop|restart|logs [lines]}".to_string()),
+        _ => Err("Usage: cli mcp {status|enable [bind] [port]|disable|set [bind] [port]|secret|rotate-secret|start|serve|stop|restart|logs [lines]}".to_string()),
     }
 }
 
@@ -283,8 +294,8 @@ fn start(app: &App) -> Result<(), String> {
         let owner = port_owner(address).unwrap_or_else(|| "unknown owner".to_string());
         return Err(format!("MCP port unavailable: {address}: {err}; {owner}",));
     }
-    let target = app.moddir.join("bin/magicnet-mcp-server");
-    validate_mcp_binary(&target)?;
+    let target = app.moddir.join("bin/magicnet-cli");
+    validate_cli_binary(&target)?;
     fs::create_dir_all(app.log_dir.clone()).map_err(|err| format!("mkdir log dir: {err}"))?;
     if let Some(parent) = pid_path(app).parent() {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir state dir: {err}"))?;
@@ -296,17 +307,13 @@ fn start(app: &App) -> Result<(), String> {
     let log_err = log
         .try_clone()
         .map_err(|err| format!("clone mcp log: {err}"))?;
-    let cli = app.moddir.join("bin/magicnet-cli");
     let mut child = Command::new(&target)
-        // The MCP process is a privileged long-lived child. Do not let an
-        // inherited PATH or MAGICNET_CLI redirect its command execution.
+        .args(["mcp", "serve"])
+        // The MCP process is a privileged long-lived child. Keep its runtime
+        // environment minimal; endpoint and secret are read from private mcp.conf.
         .env_clear()
         .env("PATH", trusted_runtime_path(&app.moddir))
         .env("MODDIR", &app.moddir)
-        .env("MAGICNET_CLI", &cli)
-        .env("MAGICNET_MCP_BIND", config.bind.to_string())
-        .env("MAGICNET_MCP_PORT", config.port.to_string())
-        .env("MAGICNET_MCP_SECRET", &config.secret)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(log_err))
@@ -351,16 +358,16 @@ fn trusted_runtime_path(moddir: &Path) -> String {
     )
 }
 
-fn validate_mcp_binary(path: &Path) -> Result<(), String> {
+fn validate_cli_binary(path: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path)
-        .map_err(|err| format!("MCP server missing {}: {err}", path.display()))?;
+        .map_err(|err| format!("MagicNet CLI missing {}: {err}", path.display()))?;
     if metadata.file_type().is_symlink()
         || !metadata.file_type().is_file()
         || metadata.nlink() != 1
         || metadata.permissions().mode() & 0o111 == 0
     {
         return Err(format!(
-            "MCP server is not a private executable: {}",
+            "MagicNet CLI is not a private executable: {}",
             path.display()
         ));
     }
@@ -512,6 +519,13 @@ fn signal_mcp_pid(pid: i32, force: bool) {
     }
 }
 
+fn mcp_server_argv_owned(argv: &[String], target: &str) -> bool {
+    argv.len() == 3
+        && argv.first().map(String::as_str) == Some(target)
+        && argv.get(1).map(String::as_str) == Some("mcp")
+        && argv.get(2).map(String::as_str) == Some("serve")
+}
+
 fn live_pid(app: &App) -> Option<i32> {
     let text = fs::read_to_string(pid_path(app)).ok()?;
     let pid = text.trim().parse::<i32>().ok()?;
@@ -522,7 +536,7 @@ fn live_pid(app: &App) -> Option<i32> {
     if !proc_dir.exists() {
         return None;
     }
-    let target = app.moddir.join("bin/magicnet-mcp-server");
+    let target = app.moddir.join("bin/magicnet-cli");
     let expected = fs::canonicalize(&target).ok()?;
     let expected_name = target.file_name()?.to_string_lossy();
     let comm = read_proc_text_bounded(&proc_dir.join("comm"), MAX_PROC_COMM_BYTES).ok()?;
@@ -536,9 +550,10 @@ fn live_pid(app: &App) -> Option<i32> {
         return None;
     }
     let argv = read_proc_argv(&proc_dir.join("cmdline")).ok()?;
-    let argv0 = argv.first()?;
     let target_text = target.to_string_lossy();
-    let argv_owned = argv0 == target_text.as_ref();
+    if !mcp_server_argv_owned(&argv, target_text.as_ref()) {
+        return None;
+    }
     let executable_owned = fs::read_link(proc_dir.join("exe"))
         .ok()
         .and_then(|path| fs::canonicalize(path).ok())
@@ -546,7 +561,7 @@ fn live_pid(app: &App) -> Option<i32> {
     if executable_owned == Some(false) {
         return None;
     }
-    if executable_owned == Some(true) || (executable_owned.is_none() && argv_owned) {
+    if executable_owned == Some(true) || executable_owned.is_none() {
         Some(pid)
     } else {
         None
@@ -722,5 +737,27 @@ mod tests {
             "must remain untouched\n"
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn mcp_server_identity_requires_cli_serve_subcommand() {
+        let target = "/module/bin/magicnet-cli";
+        assert!(mcp_server_argv_owned(
+            &[target.to_string(), "mcp".to_string(), "serve".to_string(),],
+            target,
+        ));
+        assert!(!mcp_server_argv_owned(
+            &[target.to_string(), "mcp".to_string(), "status".to_string()],
+            target,
+        ));
+        assert!(!mcp_server_argv_owned(
+            &[
+                target.to_string(),
+                "mcp".to_string(),
+                "serve".to_string(),
+                "extra".to_string(),
+            ],
+            target,
+        ));
     }
 }
