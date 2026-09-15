@@ -664,6 +664,13 @@ fn run_process_group(
     command: &mut Command,
     timeout: Duration,
 ) -> Result<std::process::ExitStatus, String> {
+    if timeout.is_zero() {
+        return Err("command deadline expired before spawn".to_string());
+    }
+    // Reserve for both children before either fork/spawn. Deferred children
+    // remain in the shared budget after these active permits are released.
+    let _child_budget = crate::utils::reserve_child_probe()?;
+    let _watchdog_budget = crate::utils::reserve_child_probe()?;
     let mut watchdog = ParentDeathWatchdog::arm(timeout)?;
     #[cfg(any(target_os = "android", target_os = "linux"))]
     let watchdog_worker_fd = watchdog.worker_pid_fd();
@@ -723,12 +730,17 @@ fn run_process_group(
             return Ok(status);
         }
         if Instant::now() >= deadline {
-            if !terminate_timed_out_child(
+            terminate_timed_out_child(
                 &mut child,
                 Duration::from_millis(100),
                 Duration::from_millis(100),
-            ) {
-                defer_child_reap(child);
+            );
+            // All group signals precede the final reap. A D-state child is
+            // transferred to the same reaper as captured commands/proc reads.
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                Err(err) if err.raw_os_error() == Some(libc::ECHILD) => {}
+                _ => defer_child_reap(child),
             }
             return Err(format!("timed out after {}ms", timeout.as_millis()));
         }
@@ -738,7 +750,7 @@ fn run_process_group(
 
 trait TimedChildWait {
     fn signal_group(&mut self, signal: libc::c_int);
-    fn try_reap(&mut self) -> Result<bool, io::Error>;
+    fn exit_ready(&mut self) -> Result<bool, io::Error>;
 }
 
 impl TimedChildWait for std::process::Child {
@@ -748,8 +760,8 @@ impl TimedChildWait for std::process::Child {
         }
     }
 
-    fn try_reap(&mut self) -> Result<bool, io::Error> {
-        self.try_wait().map(|status| status.is_some())
+    fn exit_ready(&mut self) -> Result<bool, io::Error> {
+        crate::utils::peek_child_status(self.id() as libc::pid_t).map(|status| status.is_some())
     }
 }
 
@@ -761,36 +773,32 @@ fn terminate_timed_out_child<W: TimedChildWait>(
     child.signal_group(libc::SIGTERM);
     let term_deadline = Instant::now() + term_grace;
     loop {
-        match child.try_reap() {
+        match child.exit_ready() {
             Ok(true) => {
                 child.signal_group(libc::SIGKILL);
                 return true;
             }
-            Err(_) => return true,
-            Ok(false) if Instant::now() >= term_deadline => break,
-            Ok(false) => thread::sleep(Duration::from_millis(10)),
+            Err(err) if err.kind() != io::ErrorKind::Interrupted => return true,
+            _ if Instant::now() >= term_deadline => break,
+            _ => thread::sleep(Duration::from_millis(10)),
         }
     }
     child.signal_group(libc::SIGKILL);
     let kill_deadline = Instant::now() + kill_grace;
     loop {
-        match child.try_reap() {
-            Ok(true) | Err(_) => return true,
-            Ok(false) if Instant::now() >= kill_deadline => return false,
-            Ok(false) => thread::sleep(Duration::from_millis(10)),
+        match child.exit_ready() {
+            Ok(true) => return true,
+            Err(err) if err.kind() != io::ErrorKind::Interrupted => return true,
+            _ if Instant::now() >= kill_deadline => return false,
+            _ => thread::sleep(Duration::from_millis(10)),
         }
     }
 }
 
-fn defer_child_reap(mut child: std::process::Child) {
-    let _ = thread::Builder::new()
-        .name("magicnet-process-reaper".to_string())
-        .spawn(move || loop {
-            match child.try_wait() {
-                Ok(Some(_)) | Err(_) => break,
-                Ok(None) => thread::sleep(Duration::from_millis(250)),
-            }
-        });
+fn defer_child_reap(child: std::process::Child) {
+    // Child has no automatic reaping Drop. Explicitly transfer its wait
+    // ownership; never create one persistent thread per lifecycle failure.
+    crate::utils::defer_reap(child.id() as libc::pid_t);
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -1359,7 +1367,7 @@ mod process_group_tests {
             self.signals.push(signal);
         }
 
-        fn try_reap(&mut self) -> Result<bool, std::io::Error> {
+        fn exit_ready(&mut self) -> Result<bool, std::io::Error> {
             Ok(false)
         }
     }
@@ -1481,5 +1489,107 @@ mod process_group_tests {
     #[test]
     fn function_runner_uses_an_absolute_shell_path() {
         assert!(trusted_shell().starts_with('/'));
+    }
+}
+
+#[cfg(test)]
+mod resource_review_tests {
+    use super::*;
+
+    // The deferred reaper owns these children. They terminate independently
+    // after two seconds even if a regression fails the assertion below.
+    #[test]
+    #[allow(clippy::zombie_processes)]
+    fn lifecycle_deferred_children_use_one_reaper() {
+        const NAME: &str =
+            "process::resource_review_tests::lifecycle_deferred_children_use_one_reaper";
+        if std::env::var("MAGICNET_LIFECYCLE_RESOURCE_CHILD").as_deref() != Ok(NAME) {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command
+                .args(["--exact", NAME, "--nocapture"])
+                .env("MAGICNET_LIFECYCLE_RESOURCE_CHILD", NAME);
+            let result = run_bounded_command(command, Duration::from_secs(10), 8192).unwrap();
+            assert!(!result.timed_out);
+            assert!(
+                result.status.unwrap().success(),
+                "{}{}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+            return;
+        }
+        let before = fs::read_dir("/proc/self/task").unwrap().count();
+        let mut pids = Vec::new();
+        for _ in 0..8 {
+            let child = Command::new("sleep").arg("2").spawn().unwrap();
+            pids.push(child.id() as libc::pid_t);
+            super::defer_child_reap(child);
+        }
+        let after = fs::read_dir("/proc/self/task").unwrap().count();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while pids
+            .iter()
+            .any(|pid| Path::new(&format!("/proc/{pid}")).exists())
+        {
+            assert!(
+                Instant::now() < deadline,
+                "deferred children were not reaped"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            after <= before + 1,
+            "deferred cleanup created {} threads",
+            after - before
+        );
+    }
+}
+
+#[cfg(test)]
+mod admission_review_tests {
+    use super::*;
+
+    #[test]
+    fn lifecycle_admission_is_bounded_before_watchdog_fork() {
+        const NAME: &str =
+            "process::admission_review_tests::lifecycle_admission_is_bounded_before_watchdog_fork";
+        if std::env::var("MAGICNET_LIFECYCLE_ADMISSION_CHILD").as_deref() != Ok(NAME) {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command
+                .args(["--exact", NAME, "--nocapture"])
+                .env("MAGICNET_LIFECYCLE_ADMISSION_CHILD", NAME);
+            let result = run_bounded_command(command, Duration::from_secs(10), 8192).unwrap();
+            assert!(!result.timed_out);
+            assert!(
+                result.status.unwrap().success(),
+                "{}{}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+            return;
+        }
+        let mut command = Command::new("sh");
+        command.args(["-c", "exit 0"]);
+        assert!(run_process_group(&mut command, Duration::ZERO)
+            .unwrap_err()
+            .contains("before spawn"));
+        let mut permits = Vec::new();
+        while let Ok(permit) = crate::utils::reserve_child_probe() {
+            permits.push(permit);
+        }
+        assert!(!permits.is_empty());
+        let fds = fs::read_dir("/proc/self/fd").unwrap().count();
+        let error = run_process_group(&mut command, Duration::from_secs(1)).unwrap_err();
+        assert!(error.contains("budget exhausted"));
+        // One free slot is insufficient: the runner needs a worker and a watchdog.
+        permits.pop();
+        assert!(run_process_group(&mut command, Duration::from_secs(1))
+            .unwrap_err()
+            .contains("budget exhausted"));
+        assert_eq!(fs::read_dir("/proc/self/fd").unwrap().count(), fds);
+        drop(permits);
+        assert!(run_process_group(&mut command, Duration::from_secs(1))
+            .unwrap()
+            .success());
     }
 }
