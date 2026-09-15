@@ -16,9 +16,7 @@ if [ "$MAGIC_SINGBOX" -eq 0 ]; then
     exit 0
 fi
 
-require_command curl "curl not found!"
-require_command unzip "unzip not found!"
-require_command zipinfo "zipinfo not found!"
+require_commands curl unzip zipinfo
 mkdir -p "$(dirname "$TARGET_DIR")"
 
 TMP_DIR=$(hook_make_temp_dir) || exit 1
