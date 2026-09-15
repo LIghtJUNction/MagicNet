@@ -160,6 +160,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends binutils file jq ripgrep unzip zip python3-yaml shellcheck
 
+      - name: Build host sing-box from fork
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="${RUNNER_TEMP}/sing-box-host"
+          mkdir -p "$install_dir"
+          scripts/build-sing-box.sh linux amd64 "$install_dir/sing-box" >/dev/null
+          sudo install -m 0755 "$install_dir/sing-box" /usr/local/bin/sing-box
+          expected_revision="$(git -C sing-box rev-parse HEAD)"
+          version_output="$(sing-box version)"
+          grep -F "LIghtJUNction.${expected_revision:0:12}" <<<"$version_output"
+          printf '%s\n' "$version_output"
+
       - name: Build current MagicNet module
         env:
           MAGICNET_SIGN_ENABLED: "0"
