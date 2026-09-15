@@ -68,7 +68,7 @@ A persistent user choice must not be hidden in `.state`. Selector choices theref
 
 This is a recoverable multi-file commit, not a claim that every file rename is simultaneously visible to lock-free readers. A reader that needs a cross-domain point-in-time snapshot should use the versioned machine interface rather than independently racing several `.state` files.
 
-Normal control/human CLI commands reconcile before dispatch and again after dispatch so mutations leave a settled canonical snapshot. Internal bounded `/proc` reader subcommands bypass reconciliation so process discovery cannot recurse into another state reconciliation. `--json` machine requests also remain read-only and do not create or rewrite state files.
+At the CLI boundary, known read-only queries, help, and rejected top-level commands do not trigger state publication. Control commands reconcile after dispatch, including failure paths that may have rolled back. There is no unconditional pre-dispatch scan. The explicit `cli state reconcile` command owns its publication and is not wrapped in two additional reconciliations. Internal bounded `/proc` readers bypass reconciliation so discovery cannot recurse. `--json` machine requests remain read-only and do not create or rewrite state files.
 
 Long-running producers must publish when their internal observed state changes rather than waiting for process exit. The Wi-Fi watcher does this after each confirmed/reconciled policy application. Other maintenance loops already invoke ordinary CLI commands for each mutation and therefore pass through normal reconciliation.
 
@@ -83,7 +83,7 @@ The repository's durable runtime files fall into three groups.
 | `.state/startup-error` | `service.state` | startup error presence only; raw error text is not copied |
 | sing-box process discovery + selected core config | `service.state` | process/lifecycle/core state |
 | `.state/transparent-transaction/`, eBPF capability/pending evidence, active sing-box config | `transparent.state` | configured/effective mode and transition phase |
-| `.state/sing-box/subscription-status`, update lock, subscription transaction | `subscription.state` | update phase/result/recovery status |
+| subscription status, update lock, subscription transaction | `subscription.state` | update phase/result/recovery status |
 | subscription refresh schedule + owner/process identity | `subscription-refresh.state` | active/stale/unknown refresh owner |
 | `.config/magicnet/selector-selections.json` with legacy `.state` fallback | `selectors.state` | selector store validity/count without node names |
 | app mode + `.state/app-policy/*uids.list` | `app-policy.state` | policy mode and resolved UID counts |
