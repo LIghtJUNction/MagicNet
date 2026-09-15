@@ -92,4 +92,24 @@ fi
 grep -Fq '先选择问题类型' README.md \
     || fail "README must document category-aware Issue context collection"
 
+# Keep specialized implementation out of lib/magicnet's root where moving it
+# does not change path semantics. Stable legacy callers may keep a tiny shim.
+lib_root="src/MagicNet/lib/magicnet"
+[[ -f "$lib_root/README.md" ]] || fail "lib/magicnet layout contract is missing"
+shim="$lib_root/subscribe_bootstrap.sh"
+canonical="$lib_root/singbox_subscribe/bootstrap.sh"
+[[ -f "$shim" ]] || fail "subscription bootstrap compatibility shim is missing"
+[[ -f "$canonical" ]] || fail "canonical subscription bootstrap is missing"
+grep -Fq 'singbox_subscribe/bootstrap.sh' "$shim" \
+    || fail "subscription bootstrap shim does not delegate to the canonical implementation"
+lines=$(wc -l <"$shim")
+[[ "$lines" -le 8 ]] || fail "subscription bootstrap shim grew implementation logic ($lines lines)"
+
+unexpected_install_helpers="$(
+    find "$lib_root" -maxdepth 1 -type f -name 'install_*.sh' \
+        ! -name 'install_config.sh' ! -name 'install_onboarding.sh' -print
+)"
+[[ -z "$unexpected_install_helpers" ]] \
+    || fail "new install-only helpers belong in a dedicated install subdirectory:\n$unexpected_install_helpers"
+
 printf 'repository hygiene tests passed\n'
