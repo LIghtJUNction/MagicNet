@@ -9,6 +9,7 @@ _magicnet_lib_dir="${MODDIR}/lib/magicnet"
 for _magicnet_lib in \
     i18n \
     common \
+    api \
     ipset_lkm \
     network \
     apps \
