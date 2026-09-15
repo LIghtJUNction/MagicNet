@@ -4,7 +4,6 @@
 import json
 import os
 from pathlib import Path
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -75,7 +74,7 @@ class ReleaseCacheTest(unittest.TestCase):
         self.assertTrue(files, "cache restore contract is empty")
         return files
 
-    def workflow(self, direct=False, bump=True, **overrides):
+    def workflow(self, bump=True, **overrides):
         self.output.unlink(missing_ok=True)
         self.env_file.unlink(missing_ok=True)
         sha = self.git("rev-parse", "HEAD")
@@ -86,19 +85,6 @@ class ReleaseCacheTest(unittest.TestCase):
                    GITHUB_STEP_SUMMARY=str(self.root / "summary"))
         env.update(overrides)
         command = [sys.executable, str(SCRIPT)] + (["--bump", "patch"] if bump else [])
-        if direct:
-            steps = yaml.safe_load(WORKFLOW.read_text())["jobs"]["build"]["steps"]
-            step = next(step for step in steps if step["name"] == "Bump and commit version")
-            stub = self.root / "bin"
-            stub.mkdir(exist_ok=True)
-            gh = stub / "gh"
-            gh.write_text('#!/bin/sh\nset -eu\n[ "$*" = "auth setup-git" ]\n')
-            gh.chmod(0o755)
-            env["PATH"] = f"{stub}:{env['PATH']}"
-            shell = step["run"].replace("python3 scripts/prepare-release.py",
-                                        f"{shlex.quote(sys.executable)} {shlex.quote(str(SCRIPT))}")
-            # Only authentication is stubbed. Commit, push, and metadata checks are real.
-            command = ["bash", "-euo", "pipefail", "-c", shell]
         return subprocess.run(command, cwd=self.repo, env=env, text=True,
                               capture_output=True, timeout=20, check=False)
 
@@ -121,29 +107,26 @@ class ReleaseCacheTest(unittest.TestCase):
             self.assertEqual(self.git("check-ignore", name), name)
             self.assertEqual((self.repo / name).read_text(), content)
 
-    def test_cached_manual_bump_commits_only_release_metadata(self):
+    def test_cached_manual_bump_prepares_only_release_metadata(self):
         files = self.restore_cache()
         before = self.git("rev-parse", "HEAD")
-        result = self.workflow(direct=True)
+        result = self.workflow()
         self.assertEqual(result.returncode, 0, result.stderr)
-        after = self.git("rev-parse", "HEAD")
-        self.assertNotEqual(before, after)
-        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], after)
-        self.assertEqual(set(self.git("diff", "--name-only", before, after).splitlines()),
-                         {*VERSION_FILES, MARKER})
+        self.assertEqual(self.git("rev-parse", "HEAD"), before)
+        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], before)
+        self.assertEqual(set(self.git("diff", "--name-only").splitlines()), set(VERSION_FILES))
         self.assertEqual(self.output.read_text(), "version=v1.2.4\n")
         self.assertEqual((self.repo / MARKER).read_text(), "v1.2.4\n")
-        self.assertIn(f"RELEASE_COMMIT_SHA={after}", self.env_file.read_text())
-        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertFalse(self.env_file.exists())
         for name, content in files.items():
             self.assertEqual((self.repo / name).read_text(), content)
             self.assertEqual(self.git("ls-files", "--", name), "")
 
     def test_cache_miss_manual_bump_still_works(self):
-        result = self.workflow(direct=True)
+        result = self.workflow()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.output.read_text(), "version=v1.2.4\n")
-        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertTrue(self.git("status", "--porcelain"))
 
     def test_cached_build_only_does_not_bump_or_request_release(self):
         self.restore_cache()
@@ -165,7 +148,7 @@ class ReleaseCacheTest(unittest.TestCase):
                 self.write(name, "Uncommitted source must not be released.\n")
                 if kind == "staged":
                     self.git("add", name)
-                self.assert_rejected_without_changes(direct=True)
+                self.assert_rejected_without_changes()
                 for cached, content in files.items():
                     self.assertEqual((self.repo / cached).read_text(), content)
                 if kind == "untracked":
@@ -184,20 +167,24 @@ class ReleaseCacheTest(unittest.TestCase):
         self.write(name, '{"changed":true}\n')
         self.assert_rejected_without_changes()
 
-    def test_bump_precedes_cache_restore_and_submodule_mutation(self):
-        steps = yaml.safe_load(WORKFLOW.read_text())["jobs"]["build"]["steps"]
+    def test_version_preparation_is_separate_from_cached_build(self):
+        jobs = yaml.safe_load(WORKFLOW.read_text())["jobs"]
+        version_steps = jobs["version-pr"]["steps"]
+        self.assertEqual(version_steps[0]["name"], "Checkout release base")
+        self.assertEqual(version_steps[1]["name"], "Prepare version metadata")
+        self.assertFalse(any("cache" in step.get("uses", "").lower()
+                             for step in version_steps))
+
+        steps = jobs["build"]["steps"]
         names = [step["name"] for step in steps]
         restore = [i for i, step in enumerate(steps)
                    if step.get("uses") == "./.github/actions/test-cache"
                    and step.get("with", {}).get("mode") == "restore"]
         self.assertEqual(len(restore), 1)
-        bump = names.index("Bump and commit version")
         validate = names.index("Validate release request")
-        self.assertLess(names.index("Checkout repository"), bump)
-        self.assertLess(bump, validate)
+        self.assertLess(names.index("Checkout repository"), validate)
         self.assertLess(validate, restore[0])
-        self.assertLess(restore[0], names.index("Refresh build submodules"))
-        self.assertFalse(any("cache" in step.get("uses", "").lower() for step in steps[:bump]))
+        self.assertLess(restore[0], names.index("Verify pinned build submodules"))
 
 
 if __name__ == "__main__":

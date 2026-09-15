@@ -45,7 +45,6 @@ require_entry module.prop
 require_entry customize.sh
 require_entry cli
 require_entry bin/magicnet-cli
-require_entry bin/magicnet-mcp-server
 require_entry bin/sing-box
 require_entry singbox.version
 require_entry bin/ecapture
@@ -84,11 +83,11 @@ require_android_arm64_elf() {
         fail "$entry ELF machine is not AArch64"
 }
 
-for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/sing-box bin/ecapture bin/jq; do
+for entry in cli bin/magicnet-cli bin/sing-box bin/ecapture bin/jq; do
     require_executable_entry "$entry"
 done
 
-for entry in cli bin/magicnet-cli bin/magicnet-mcp-server bin/sing-box bin/ecapture bin/jq; do
+for entry in cli bin/magicnet-cli bin/sing-box bin/ecapture bin/jq; do
     require_android_arm64_elf "$entry"
 done
 
@@ -140,6 +139,10 @@ fi
 
 if grep -Fx 'bin/magicnet-ebpf' "$entries_file" >/dev/null; then
     fail "zip contains the removed eBPF runtime binary"
+fi
+
+if grep -Fx 'bin/magicnet-mcp-server' "$entries_file" >/dev/null; then
+    fail "zip contains the retired standalone MCP binary"
 fi
 
 if grep -E '^\.config/sing-box/\.dns-.*\.json$' "$entries_file" >/dev/null; then
@@ -605,7 +608,7 @@ foreign_priority_domains = [
     "sagepub.com",
     "scopus.com",
     "siam.org",
-    "spiedigitallibrary.org",
+    "spiedigitallibrary.com",
     "springerlink.com",
     "tandfonline.com",
     "udacity.com",

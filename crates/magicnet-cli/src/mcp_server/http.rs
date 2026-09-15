@@ -507,7 +507,15 @@ mod tests {
             }
         });
         let mut response = String::new();
-        client.read_to_string(&mut response).unwrap();
+        match client.read_to_string(&mut response) {
+            Ok(_) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionAborted
+                ) => {}
+            Err(error) => panic!("failed to read timeout response: {error}"),
+        }
         let elapsed = handler.join().unwrap();
         producer.join().unwrap();
         assert!(

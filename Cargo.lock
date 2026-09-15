@@ -182,15 +182,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "magicnet-mcp-server"
-version = "0.1.0"
-dependencies = [
- "base64",
- "libc",
- "serde_json",
-]
-
-[[package]]
 name = "md5"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

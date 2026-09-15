@@ -943,16 +943,6 @@ magicnet_singbox_is_running() (
     return "$_running_rc"
 )
 
-magicnet_singbox_listener_owned() {
-    _listener_pid="$1"
-    _listener_port="$(magicnet_singbox_api_port)" || return 1
-    ss -lntp 2>/dev/null |
-        grep -E ":${_listener_port}[[:space:]]" |
-        grep -Fq "pid=${_listener_pid},"
-    _listener_rc=$?
-    unset _listener_pid _listener_port
-    return "$_listener_rc"
-}
 
 magicnet_singbox_owned_ready() {
     _ready_owned_config="$1"

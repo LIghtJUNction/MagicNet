@@ -130,7 +130,9 @@ def median(values: list[int]) -> float | None:
 
 
 def collect_processes(bb: str) -> dict[str, Any]:
-    names = ["sing-box", "magicnet-cli", "magicnet-mcp-server"]
+    # MCP is served by `magicnet-cli mcp serve`, so all Rust control-plane
+    # processes intentionally share the magicnet-cli executable name.
+    names = ["sing-box", "magicnet-cli"]
     result: dict[str, Any] = {}
     for name in names:
         pids_cp = adb_shell(f"{bb} pidof {q(name)} 2>/dev/null || true")

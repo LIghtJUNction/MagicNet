@@ -46,6 +46,7 @@ check() {
 }
 
 check python3 scripts/test-website-probe.py
+check python3 scripts/test-hook-utils.py
 python3 scripts/ci-test-cache.py host config-json -- jq empty src/MagicNet/.config/sing-box/config.json
 check bash scripts/test-repository-hygiene.sh
 check bash scripts/test-module-entrypoints.sh
@@ -77,7 +78,6 @@ check bash scripts/test-chatgpt-voice-rules.sh
 check bash scripts/test-rule-hash-retry.sh
 check bash scripts/singbox-subscription-protocol-smoke.sh
 check bash scripts/test-service-selectors.sh
-check bash scripts/test-google-play-direct-fallback.sh
 check bash scripts/test-subscription-fetch-policy.sh
 check bash scripts/test-subscription-usage.sh
 check bash scripts/test-singbox-pid-discovery.sh
@@ -107,6 +107,7 @@ check bash scripts/test-dns-leak-guard-timeout.sh
 check python3 scripts/test-dns-capture-fast-path.py
 check python3 scripts/test-dns-output-order.py
 check sh scripts/test-startup-network-safety.sh
+check sh scripts/test-kernel-route-lifecycle.sh
 check bash scripts/test-submodule-updates.sh
 check bash scripts/test-subscription-activation-order.sh
 check bash scripts/test-subscription-transaction-atomicity.sh

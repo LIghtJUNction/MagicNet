@@ -37,14 +37,17 @@ def verify(archive: Path, *, arch: str = "arm64", core: Path | None = None) -> N
         assert manifest["version"] == prop["version"]
         assert manifest["architecture"] == arch
         assert manifest["components"], "Missing runtime components"
-        required = {"bin-sing-box", "bin-magicnet-cli", "bin-magicnet-mcp-server"}
-        assert required <= {c["id"] for c in manifest["components"]}
+        component_ids = {c["id"] for c in manifest["components"]}
+        required = {"bin-sing-box", "bin-magicnet-cli"}
+        assert required <= component_ids
+        assert "bin-magicnet-mcp-server" not in component_ids, "Retired MCP binary component returned"
         for component in manifest["components"]:
             assert component["files"], "Empty component"
             assert component["asset"] not in names, "Nested component archive wastes download bytes"
             for entry in component["files"]:
                 assert entry["path"] not in names, f"Duplicated component payload: {entry['path']}"
         assert "download.json" not in names and "bin/module-downloader" not in names
+        assert "bin/magicnet-mcp-server" not in names, "Retired standalone MCP binary returned"
         for name in ("service.sh", "cli", ".config/sing-box/config.json"):
             assert name in names, f"Missing MagicNet runtime scaffold: {name}"
         cli = z.getinfo("cli")
@@ -65,7 +68,7 @@ def verify(archive: Path, *, arch: str = "arm64", core: Path | None = None) -> N
             "Installer must fail before reporting success if module.prop is missing from MODPATH"
         )
         assert not re.search(rb"(?m)^\s*install_module(?:[\s;]|$)", script), "Nested manager installation"
-    print("Final installer: MagicNet identity, core alias, stored symlink, ELF, CRC, manager metadata and component-only payloads verified")
+    print("Final installer: MagicNet identity, core alias, stored symlink, ELF, CRC, manager metadata and unified control-plane components verified")
 
 
 def main() -> None:

@@ -9,8 +9,7 @@
 MAGIC_SINGBOX=${MAGIC_SINGBOX:-1}
 VERSION_FILE="${KAM_MODULE_ROOT}/zashboard.version"
 TARGET_DIR="${KAM_MODULE_ROOT}/.config/sing-box/zashboard"
-STATE_DIR="${KAM_MODULE_ROOT}/.local/state"
-CACHE_FILE="${STATE_DIR}/zashboard.archive"
+CACHE_FILE="${KAM_MODULE_ROOT}/.local/state/zashboard.archive"
 
 if [ "$MAGIC_SINGBOX" -eq 0 ]; then
     rm -rf "$VERSION_FILE" "$TARGET_DIR"
@@ -20,14 +19,9 @@ fi
 require_command curl "curl not found!"
 require_command unzip "unzip not found!"
 require_command zipinfo "zipinfo not found!"
-mkdir -p "$STATE_DIR" "$(dirname "$TARGET_DIR")"
+mkdir -p "$(dirname "$TARGET_DIR")"
 
-if ! release_lock_lookup zashboard || ! release_lock_is_valid; then
-    log_error "zashboard: invalid repository release lock"
-    exit 1
-fi
-
-TMP_DIR=$(hook_make_temp_dir)
+TMP_DIR=$(hook_make_temp_dir) || exit 1
 PROMOTE_DIR=""
 BACKUP_DIR=""
 cleanup() {
@@ -38,18 +32,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if hook_locked_cache_is_valid "$CACHE_FILE" "$VERSION_FILE" "$RELEASE_LOCK_TAG" "$RELEASE_LOCK_SHA256"; then
-    log_info "zashboard: using verified locked cache ($RELEASE_LOCK_TAG)"
-else
-    DOWNLOAD_PATH="$TMP_DIR/$RELEASE_LOCK_ASSET"
-    if ! hook_download_locked_asset "$RELEASE_LOCK_REPO" "$RELEASE_LOCK_TAG" "$RELEASE_LOCK_ASSET" "$TMP_DIR" >/dev/null \
-        || ! hook_verify_sha256 "$DOWNLOAD_PATH" "$RELEASE_LOCK_SHA256"; then
-        log_error "zashboard: locked download or verification failed; existing installation was not changed"
-        exit 1
-    fi
-    mv -f "$DOWNLOAD_PATH" "$CACHE_FILE"
-fi
-
+hook_prepare_locked_asset zashboard "$CACHE_FILE" "$VERSION_FILE" || exit 1
 hook_extract_archive "$CACHE_FILE" "$TMP_DIR/extract" || {
     log_error "zashboard: unsafe or invalid release archive; existing installation was not changed"
     exit 1
@@ -86,6 +69,8 @@ if [ -n "$BACKUP_DIR" ]; then
     BACKUP_DIR=""
 fi
 
-printf '%s\n' "$RELEASE_LOCK_TAG" >"$VERSION_FILE.new"
-mv -f "$VERSION_FILE.new" "$VERSION_FILE"
+if ! hook_atomic_write "$VERSION_FILE" "$RELEASE_LOCK_TAG"; then
+    log_error "zashboard: failed to update installed version state"
+    exit 1
+fi
 log_success "zashboard installed: $RELEASE_LOCK_TAG -> $TARGET_DIR"

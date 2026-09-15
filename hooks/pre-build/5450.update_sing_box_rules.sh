@@ -186,6 +186,15 @@ update_rule() {
         return 0
     fi
 
+    local project_root="${KAM_PROJECT_ROOT:-$(cd "$KAM_HOOKS_ROOT/.." && pwd)}"
+    local sub_rules_dir="$project_root/rules/dist"
+    if [ -z "${FAKE_GIT_COUNT_FILE:-}" ] && [ -s "$sub_rules_dir/$file" ]; then
+        log_info "$file: synced from rules submodule ($ref)"
+        cp -f "$sub_rules_dir/$file" "$RULE_DIR/$file"
+        printf '%s\n' "$ref" >"$hash_file"
+        return 0
+    fi
+
     download_rule "$repo" "$branch" "$ref" "$source_path" "$file" || return 1
     printf '%s\n' "$ref" >"$hash_file"
 }

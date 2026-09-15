@@ -181,7 +181,9 @@ def split(source: Path, helper: Path, output: Path, repository: str, arch: str) 
     for required in ("module.prop", "customize.sh", ".config/sing-box/config.json"):
         if required not in scaffold:
             raise ValueError(f"Missing core entry: {required}")
-    for required in ("bin-sing-box", "bin-magicnet-cli", "bin-magicnet-mcp-server"):
+    if "bin-magicnet-mcp-server" in groups:
+        raise ValueError("Retired standalone MCP component is present")
+    for required in ("bin-sing-box", "bin-magicnet-cli"):
         if required not in groups:
             raise ValueError(f"Missing runtime component: {required}")
     prop = dict(line.split("=", 1) for line in scaffold["module.prop"][1].decode().splitlines()

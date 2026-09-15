@@ -13,7 +13,7 @@ _magicnet_subscribe_lib_dir="${MODDIR}/lib/magicnet/singbox_subscribe"
 # harmless because they contain deterministic function definitions.
 [ -f "${MODDIR}/lib/magicnet/chain.sh" ] && . "${MODDIR}/lib/magicnet/chain.sh"
 [ -f "${MODDIR}/lib/magicnet/api.sh" ] && . "${MODDIR}/lib/magicnet/api.sh"
-for _magicnet_subscribe_lib in common fetch parse config proxylink update hardening; do
+for _magicnet_subscribe_lib in common fetch parse config proxylink update; do
     . "${_magicnet_subscribe_lib_dir}/${_magicnet_subscribe_lib}.sh"
 done
 unset _magicnet_subscribe_lib _magicnet_subscribe_lib_dir

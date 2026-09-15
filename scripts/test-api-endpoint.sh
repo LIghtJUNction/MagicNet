@@ -25,6 +25,9 @@ ss() {
 
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/api.sh"
+# Match the production load order: subscription code must not override the API helper.
+# shellcheck disable=SC1091
+. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"
 
 endpoint="$(magicnet_singbox_api_endpoint)"
 [ "$endpoint" = 'http://127.0.0.1:19090' ] || {

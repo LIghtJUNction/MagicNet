@@ -30,7 +30,6 @@ class ArchiveSafetyTest(unittest.TestCase):
             'customize.sh': b'#!/bin/sh\nimport rich\n',
             '.config/sing-box/config.json': b'{}',
             'bin/magicnet-cli': b'cli-fixture',
-            'bin/magicnet-mcp-server': b'mcp-fixture',
             'bin/sing-box': b'core-fixture',
         }.items()}
 
