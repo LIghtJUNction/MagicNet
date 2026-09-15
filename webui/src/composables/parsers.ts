@@ -115,7 +115,7 @@ export const runtimeDefaults: RuntimeState = {
   transparentSharedInterfaces: [],
   transparentRecentError: "",
   transparentTransition: "unknown",
-  api: "http://127.0.0.1:9090",
+  api: "",
   webui: SING_BOX_UI,
   subPath: `${MODULE_DIR}/.config/sing-box/subscription.url`,
 };

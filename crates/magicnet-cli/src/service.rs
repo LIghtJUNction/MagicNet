@@ -173,7 +173,7 @@ fn api_host_port(api: &str) -> (String, String) {
             return (host.to_string(), port.to_string());
         }
     }
-    ("127.0.0.1".to_string(), "9090".to_string())
+    panic!("invalid validated local API endpoint: {api}")
 }
 
 pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
