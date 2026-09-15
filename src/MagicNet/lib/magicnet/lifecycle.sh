@@ -72,6 +72,13 @@ magicnet_kernel_route_state_capture() (
     fi
     [ "$_route_kernel_rc" -eq 0 ] || return "$_route_kernel_rc"
 
+    # Do not claim table ownership merely because the process is alive. The
+    # table must be materialized by this generation and point at magicnet0.
+    if ! magicnet_hotspot_tun_route_table_ready; then
+        rm -f "$_route_state" 2>/dev/null || true
+        return 1
+    fi
+
     _route_state_dir="${_route_state%/*}"
     _route_state_tmp="${_route_state}.new.$$"
     mkdir -p "$_route_state_dir" || return 1
@@ -120,8 +127,8 @@ magicnet_kernel_route_delete_rule_priority() {
     while [ "$_route_attempt" -lt 8 ] &&
         magicnet_kernel_route_rule_present "$_route_family" "$_route_priority" "$_route_table"; do
         case "$_route_family" in
-        4) ip rule del priority "$_route_priority" >/dev/null 2>&1 || break ;;
-        6) ip -6 rule del priority "$_route_priority" >/dev/null 2>&1 || break ;;
+        4) ip rule del priority "$_route_priority" lookup "$_route_table" >/dev/null 2>&1 || break ;;
+        6) ip -6 rule del priority "$_route_priority" lookup "$_route_table" >/dev/null 2>&1 || break ;;
         esac
         _route_attempt=$((_route_attempt + 1))
     done
