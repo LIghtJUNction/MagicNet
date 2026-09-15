@@ -45,6 +45,20 @@ for sensitive in .env .tokensave; do
     fi
 done
 
+# These files were temporary merge/integration notes or scaffolding and have
+# canonical replacements elsewhere. Keep the retired paths out of the tree so
+# they cannot quietly become competing documentation again.
+retired_files=(
+    "crates/README.md"
+    "docs/component-packages.md"
+    "docs/install-onboarding-integration.md"
+)
+for retired in "${retired_files[@]}"; do
+    if git ls-files --error-unmatch "$retired" >/dev/null 2>&1; then
+        fail "retired repository file is tracked: $retired"
+    fi
+done
+
 allowed_empty_files=(
     "src/MagicNet/.config/magicnet/route-block-domain-suffix.list"
     "src/MagicNet/.config/magicnet/route-direct-domain-suffix.list"
