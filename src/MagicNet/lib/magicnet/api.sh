@@ -47,8 +47,17 @@ magicnet_singbox_api_listener_exists() {
 # the configured controller port and the expected process instead, which also
 # works for IPv6 loopback and wildcard controller binds.
 magicnet_singbox_listener_owned() {
-    _listener_pid="$1"
-    _listener_port="$(magicnet_singbox_api_port)" || return 1
+    _listener_pid="${1:-}"
+    case "$_listener_pid" in
+    '' | *[!0-9]*)
+        unset _listener_pid
+        return 1
+        ;;
+    esac
+    _listener_port="$(magicnet_singbox_api_port)" || {
+        unset _listener_pid
+        return 1
+    }
     ss -lntp 2>/dev/null |
         grep -E ":${_listener_port}[[:space:]]" |
         grep -Fq "pid=${_listener_pid},"
