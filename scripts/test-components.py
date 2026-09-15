@@ -184,7 +184,7 @@ class PackageTests(unittest.TestCase):
         self.assertNotIn("[download]", result.stdout)
 
     def test_incomplete_offline_core_does_not_install(self):
-        output, _ = self.invoke if False else self.build()
+        output, _ = self.build()
         module, _ = self.invoke(output, "MagicNet-core.zip", ok=False)
         self.assertFalse((module / "components.installed.json").exists())
         self.assertFalse((module / "bin/sing-box").exists())
