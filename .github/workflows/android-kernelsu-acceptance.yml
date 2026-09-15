@@ -257,8 +257,12 @@ jobs:
           test -x "$avdmanager"
           avd_home="$HOME/.android/avd"
           mkdir -p "$avd_home"
-          device_id="$("$avdmanager" list device -c | awk 'NF { print; exit }')"
-          test -n "$device_id"
+          device_id="$("$avdmanager" list device -c | awk '/^pixel_[0-9]/ { print; exit }')"
+          if [ -z "$device_id" ]; then
+            echo '::error::No Pixel phone hardware profile is available in avdmanager'
+            "$avdmanager" list device -c
+            exit 1
+          fi
           printf 'SDKMANAGER=%s\nAVDMANAGER=%s\nANDROID_AVD_HOME=%s\nAVD_DEVICE_ID=%s\n' \
             "$sdkmanager" "$avdmanager" "$avd_home" "$device_id" >> "$GITHUB_ENV"
 
@@ -271,7 +275,7 @@ jobs:
             ~/.android/avd/MagicNet_Play_API_35.avd
             ~/.android/avd/MagicNet_Play_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis_playstore/x86_64
-          key: android-avd-v1-api35-google-apis-playstore-x86_64
+          key: android-avd-v2-phone-api35-google-apis-playstore-x86_64
 
       - name: Create pristine Android 15 Play Store AVD
         if: inputs.fresh_avd == true || steps.avd-cache.outputs.cache-hit != 'true'
@@ -305,7 +309,7 @@ jobs:
             ~/.android/avd/MagicNet_Play_API_35.avd
             ~/.android/avd/MagicNet_Play_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis_playstore/x86_64
-          key: android-avd-v1-api35-google-apis-playstore-x86_64
+          key: android-avd-v2-phone-api35-google-apis-playstore-x86_64
 
       - name: Patch Play Store AVD ramdisk for root acceptance
         shell: bash
