@@ -9,67 +9,105 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  repair-reviewed-endpoint:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Inspect merge conflicts without changing any branch
+      - name: Repair only the reviewed endpoint branch
         shell: python
         run: |
-          import os
           from pathlib import Path
+          import re
           import subprocess
 
-          def run(*args, cwd=None, check=True):
-              return subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=check)
+          def run(*args, check=True):
+              return subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=check)
 
-          base = '80a329ed071e498569e317372352ea07ac0acf95'
-          start = 'aa0b8079ccb81c48f14311342c35097700a5789f'
-          targets = {
-              263: 'refactor/dynamic-singbox-controller',
-              266: 'refactor/clean-lib-layout',
-              282: 'fix/magicsingbox-routing-test',
-              284: 'fix/cli-state-observation-boundary-20260916',
-          }
+          branch = 'refactor/dynamic-singbox-controller'
+          expected = '7aeced3a57d35f924d15894c55316bbcda4ff0f8'
+          base = '2199f92c216ba036ecd1bde9f763812cfc8f2f7d'
+          run('git', 'fetch', '--no-tags', 'origin', f'refs/heads/{branch}')
+          assert run('git', 'rev-parse', 'FETCH_HEAD').stdout.strip() == expected, 'Endpoint branch changed; review again'
+          run('git', 'checkout', '--detach', expected)
           run('git', 'config', 'user.name', 'github-actions[bot]')
           run('git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
-          print('=== MAIN-LINE AUDIT WINDOW ===', flush=True)
-          print(run('git', 'log', '--first-parent', '--format=%h %s', f'{start}..{base}').stdout, flush=True)
-          for number, branch in targets.items():
-              print(f'=== PR {number}: {branch} ===', flush=True)
-              run('git', 'fetch', '--no-tags', 'origin', f'refs/heads/{branch}')
-              head = run('git', 'rev-parse', 'FETCH_HEAD').stdout.strip()
-              print(f'head={head}; main={base}', flush=True)
-              worktree = Path(os.environ['RUNNER_TEMP']) / f'audit-pr-{number}'
-              run('git', 'worktree', 'add', '--detach', str(worktree), head)
-              try:
-                  result = run('git', 'merge', '--no-commit', '--no-ff', base, cwd=worktree, check=False)
-                  print(result.stdout, flush=True)
-                  conflicts = run('git', 'diff', '--name-only', '--diff-filter=U', cwd=worktree).stdout.splitlines()
-                  print(f'conflicts={conflicts}', flush=True)
-                  for name in conflicts:
-                      path = worktree / name
-                      if not path.is_file() or name == '.env':
-                          continue
-                      lines = path.read_text(errors='replace').splitlines()
-                      keep = set()
-                      inside = False
-                      for index, line in enumerate(lines):
-                          if line.startswith('<<<<<<<'):
-                              inside = True
-                              keep.update(range(max(0, index-3), index))
-                          if inside:
-                              keep.add(index)
-                          if line.startswith('>>>>>>>'):
-                              inside = False
-                              keep.update(range(index+1, min(len(lines), index+4)))
-                      print(f'--- conflict context: {name} ---', flush=True)
-                      for index in sorted(keep)[:220]:
-                          print(f'{index+1}: {lines[index]}', flush=True)
-              finally:
-                  run('git', 'merge', '--abort', cwd=worktree, check=False)
-                  run('git', 'worktree', 'remove', '--force', str(worktree), check=False)
+          result = run('git', 'merge', '--no-commit', '--no-ff', base, check=False)
+          print(result.stdout)
+          conflict = 'src/MagicNet/lib/magicnet_singbox_subscribe.sh'
+          actual = run('git', 'diff', '--name-only', '--diff-filter=U').stdout.splitlines()
+          assert actual == [conflict], f'Unexpected conflicts: {actual}'
+          path = Path(conflict)
+          text = path.read_text()
+          pattern = r'<<<<<<< HEAD\n.*?=======\n.*?>>>>>>> [^\n]+\n'
+          replacement = '[ -f "${MODDIR}/lib/magicnet/api.sh" ] && . "${MODDIR}/lib/magicnet/api.sh"\nfor _magicnet_subscribe_lib in common fetch parse config proxylink update; do\n'
+          text, count = re.subn(pattern, lambda _: replacement, text, flags=re.S)
+          assert count == 1
+          path.write_text(text)
+          run('git', 'add', '--', conflict)
+
+          def replace(path, old, new):
+              path = Path(path)
+              text = path.read_text()
+              assert text.count(old) == 1, f'Unexpected edit anchor in {path}'
+              path.write_text(text.replace(old, new))
+
+          service = 'crates/magicnet-cli/src/service.rs'
+          replace(service, '    let (hostname, port) = api_host_port(&app.api);', '    let Some((hostname, port)) = api_host_port(&app.api) else {\n        return String::new();\n    };')
+          path = Path(service)
+          text = path.read_text()
+          start = text.index('fn api_host_port(api: &str) -> (String, String) {')
+          end = text.index('\npub(crate) fn service_cmd(', start)
+          text = text[:start] + '''fn api_host_port(api: &str) -> Option<(String, String)> {
+              let address = api.strip_prefix("http://")?.parse::<std::net::SocketAddr>().ok()?;
+              (address.ip().is_loopback() && address.port() != 0)
+                  .then(|| (address.ip().to_string(), address.port().to_string()))
+          }
+          ''' + text[end:]
+          path.write_text(text)
+
+          tests = 'crates/magicnet-cli/tests/internal/service.rs'
+          replace(tests, '("127.0.0.1".to_string(), "19090".to_string())', 'Some(("127.0.0.1".to_string(), "19090".to_string()))')
+          replace(tests, '("::1".to_string(), "19090".to_string())', 'Some(("::1".to_string(), "19090".to_string()))')
+          replace(tests, '    assert!(std::panic::catch_unwind(|| api_host_port("invalid")).is_err());', '''    for invalid in ["invalid", "http://127.0.0.1:0", "http://192.0.2.1:1234", "http://[::1]:bad"] {
+                  assert_eq!(api_host_port(invalid), None);
+              }''')
+          replace(tests, '        "http://127.0.0.1:19090/ui/#/setup?hostname=127.0.0.1&port=19090"\n    );', '        "http://127.0.0.1:19090/ui/#/setup?hostname=127.0.0.1&port=19090"\n    );\n    app.api = "invalid".to_string();\n    assert!(singbox_webui(&app).is_empty());')
+
+          config = Path('src/MagicNet/lib/magicnet/singbox_subscribe/config.sh')
+          text, count = re.subn(r'\nmagicnet_singbox_listener_owned\(\) \{\n.*?\n\}\n', '\n', config.read_text(), flags=re.S)
+          assert count == 1, 'Expected one obsolete listener implementation'
+          config.write_text(text)
+          replace('scripts/test-api-endpoint.sh', '. "$ROOT/src/MagicNet/lib/magicnet/api.sh"\n', '. "$ROOT/src/MagicNet/lib/magicnet/api.sh"\n# Match the production load order: subscription code must not override the API helper.\n# shellcheck disable=SC1091\n. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"\n')
+          print(run('git', 'diff', '--stat').stdout)
+      - name: Prepare the pinned routing fixture
+        run: git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
+      - name: Test endpoint behavior and Rust consumers
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          bash scripts/test-api-endpoint.sh
+          bash scripts/test-singbox-readiness.sh
+          cargo test --locked -p magicnet-cli
+          git diff --check
+      - name: Commit and fast-forward only the reviewed PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git add -- \
+            crates/magicnet-cli/src/service.rs \
+            crates/magicnet-cli/tests/internal/service.rs \
+            src/MagicNet/lib/magicnet/singbox_subscribe/config.sh \
+            scripts/test-api-endpoint.sh
+          test -z "$(git diff --name-only)" || { git diff --name-only; exit 1; }
+          git commit -m 'fix(api): integrate current lifecycle and handle unavailable endpoints safely'
+          gh auth setup-git
+          git push origin HEAD:refs/heads/refactor/dynamic-singbox-controller
+          git rev-parse HEAD
