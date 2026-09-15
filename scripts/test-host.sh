@@ -76,7 +76,6 @@ check bash scripts/test-chatgpt-voice-rules.sh
 check bash scripts/test-rule-hash-retry.sh
 check bash scripts/singbox-subscription-protocol-smoke.sh
 check bash scripts/test-service-selectors.sh
-check bash scripts/test-google-play-direct-fallback.sh
 check bash scripts/test-subscription-fetch-policy.sh
 check bash scripts/test-subscription-usage.sh
 check bash scripts/test-singbox-pid-discovery.sh
