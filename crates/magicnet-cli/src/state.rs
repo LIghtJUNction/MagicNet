@@ -22,7 +22,8 @@ const SUBSCRIPTION_TRANSACTION: &str = ".state/sing-box/subscription-transaction
 const SUBSCRIPTION_UPDATE_LOCK: &str = ".state/sing-box/subscription-update.lock";
 const SUBSCRIPTION_REFRESH_OWNER: &str = ".state/watchdog/magicnet-subscription-refresh.owner";
 const SUBSCRIPTION_REFRESH_LOOP: &str = ".state/watchdog/magicnet-subscription-refresh.loop.sh";
-const SELECTOR_SELECTIONS: &str = ".state/sing-box/selector-selections.json";
+const SELECTOR_SELECTIONS: &str = ".config/magicnet/selector-selections.json";
+const LEGACY_SELECTOR_SELECTIONS: &str = ".state/sing-box/selector-selections.json";
 const APP_MODE_CONF: &str = ".config/magicnet/app-mode.conf";
 const APP_INCLUDE_UIDS: &str = ".state/app-policy/include-uids.list";
 const APP_EXCLUDE_UIDS: &str = ".state/app-policy/exclude-uids.list";
@@ -407,8 +408,10 @@ fn refresh_owner_state(app: &App) -> &'static str {
 }
 
 fn selectors_record(app: &App) -> StateRecord {
-    let path = app.moddir.join(SELECTOR_SELECTIONS);
-    let (state, count) = match read_json(&path, 256 * 1024) {
+    let primary = app.moddir.join(SELECTOR_SELECTIONS);
+    let legacy = app.moddir.join(LEGACY_SELECTOR_SELECTIONS);
+    let path = if primary.is_file() { &primary } else { &legacy };
+    let (state, count) = match read_json(path, 256 * 1024) {
         Some(Value::Object(values)) if values.is_empty() => ("empty", 0),
         Some(Value::Object(values)) => ("ready", values.len()),
         Some(_) => ("invalid", 0),
@@ -743,7 +746,7 @@ mod tests {
     fn selector_state_exposes_only_count() {
         let (root, app) = fixture();
         fs::write(
-            root.join(".state/sing-box/selector-selections.json"),
+            root.join(".config/magicnet/selector-selections.json"),
             r#"{"private-group":"private-node","another-group":"another-node"}"#,
         )
         .expect("write selector state");
