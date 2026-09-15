@@ -255,7 +255,12 @@ jobs:
           avdmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/avdmanager' -perm -u+x | sort -V | tail -n1)"
           test -x "$sdkmanager"
           test -x "$avdmanager"
-          printf 'SDKMANAGER=%s\nAVDMANAGER=%s\n' "$sdkmanager" "$avdmanager" >> "$GITHUB_ENV"
+          avd_home="$HOME/.android/avd"
+          mkdir -p "$avd_home"
+          device_id="$("$avdmanager" list device -c | awk 'NF { print; exit }')"
+          test -n "$device_id"
+          printf 'SDKMANAGER=%s\nAVDMANAGER=%s\nANDROID_AVD_HOME=%s\nAVD_DEVICE_ID=%s\n' \
+            "$sdkmanager" "$avdmanager" "$avd_home" "$device_id" >> "$GITHUB_ENV"
 
       - name: Restore pristine Play Store Android AVD
         if: inputs.fresh_avd != true
@@ -275,9 +280,16 @@ jobs:
           set -euo pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "platform-tools" "emulator" "$SYSTEM_IMAGE"
-          rm -rf "$HOME/.android/avd/${AVD_NAME}.avd" "$HOME/.android/avd/${AVD_NAME}.ini"
-          echo no | "$AVDMANAGER" create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE"
-          cat >>"$HOME/.android/avd/${AVD_NAME}.avd/config.ini" <<'EOF'
+          rm -rf "$ANDROID_AVD_HOME/${AVD_NAME}.avd" "$ANDROID_AVD_HOME/${AVD_NAME}.ini"
+          set +o pipefail
+          yes no | "$AVDMANAGER" create avd --force --name "$AVD_NAME" \
+            --package "$SYSTEM_IMAGE" --device "$AVD_DEVICE_ID" >/dev/null
+          avd_status="${PIPESTATUS[1]}"
+          set -o pipefail
+          test "$avd_status" -eq 0
+          avd_config="$ANDROID_AVD_HOME/${AVD_NAME}.avd/config.ini"
+          test -f "$avd_config"
+          cat >>"$avd_config" <<'EOF'
           hw.cpu.ncore=4
           hw.ramSize=4096
           disk.dataPartition.size=6G
