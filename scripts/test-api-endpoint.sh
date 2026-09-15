@@ -47,11 +47,17 @@ if magicnet_singbox_listener_owned 9999; then
     exit 1
 fi
 
+# A literal 9090 is valid in templates, tests, docs and the bootstrap fallback,
+# but runtime consumers must resolve the active controller instead of guessing.
 for runtime_file in \
     "$ROOT/src/MagicNet/lib/magicnet/common.sh" \
     "$ROOT/src/MagicNet/lib/magicnet/core.sh" \
     "$ROOT/src/MagicNet/lib/magicnet/action_menu.sh" \
-    "$ROOT/src/MagicNet/lib/magicnet/api.sh"; do
+    "$ROOT/src/MagicNet/lib/magicnet/api.sh" \
+    "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/config.sh" \
+    "$ROOT/crates/magicnet-cli/src/service.rs" \
+    "$ROOT/webui/src/constants.ts" \
+    "$ROOT/webui/src/composables/parsers.ts"; do
     if grep -Fq '127.0.0.1:9090' "$runtime_file"; then
         printf 'runtime source still hard-codes the default controller: %s\n' "$runtime_file" >&2
         exit 1
