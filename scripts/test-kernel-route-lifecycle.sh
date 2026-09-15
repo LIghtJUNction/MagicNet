@@ -72,13 +72,15 @@ ip() {
         shift 2
         [ "${1:-}" = priority ] || return 64
         priority="$2"
+        [ "${3:-}" = lookup ] || return 64
+        [ "${4:-}" = 2022 ] || return 64
         awk -v expected="${priority}:" '
             BEGIN { removed = 0 }
             $1 == expected && index($0, "lookup 2022") > 0 && removed == 0 { removed = 1; next }
             { print }
         ' "$rules" >"$rules.new"
         mv "$rules.new" "$rules"
-        printf 'rule-del:%s:%s\n' "$family" "$priority" >>"$EVENTS"
+        printf 'rule-del:%s:%s:2022\n' "$family" "$priority" >>"$EVENTS"
         ;;
     route:show)
         cat "$routes"
@@ -110,10 +112,20 @@ fi
 kernel_state=running
 magicnet_hotspot_tun_route_table_ready
 
-# Start commit records route ownership and updates the module description only
-# after the core is known to be live.
-magicnet_lifecycle_after_start
+# A live process without a materialized MagicNet TUN table is not enough to
+# claim table ownership.
 STATE="$MODDIR/.state/network/kernel-route-table.state"
+: >"$ROUTE4"
+if magicnet_kernel_route_state_capture; then
+    printf 'route ownership recorded before table materialization\n' >&2
+    exit 1
+fi
+[ ! -e "$STATE" ]
+printf 'default dev magicnet0 scope link\n' >"$ROUTE4"
+
+# Start commit records route ownership and updates the module description only
+# after the core and its route table are known to be live.
+magicnet_lifecycle_after_start
 [ -f "$STATE" ]
 grep -Fqx 'table=2022' "$STATE"
 grep -Fqx 'interface=magicnet0' "$STATE"
@@ -153,6 +165,8 @@ grep -Fq '9000: from all lookup 777' "$RULE4"
 grep -Fq '9100: from all lookup 2022' "$RULE6"
 grep -Fqx 'description:stopped' "$EVENTS"
 grep -Fqx 'hotspot-rule-del:8999:wlan2' "$EVENTS"
+grep -Fq 'rule-del:4:9000:2022' "$EVENTS"
+grep -Fq 'rule-del:6:9000:2022' "$EVENTS"
 grep -Fq 'route-flush:4:' "$EVENTS"
 grep -Fq 'route-flush:6:' "$EVENTS"
 
