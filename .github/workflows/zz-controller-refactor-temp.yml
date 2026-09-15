@@ -28,111 +28,40 @@ jobs:
 
           replacements = [
               (
-                  '''magicnet_singbox_listener_owned() {
-              _listener_pid="$1"
-              ss -lntp 2>/dev/null | grep -E '127\\.0\\.0\\.1:9090[[:space:]]' | grep -q "pid=${_listener_pid},"
-          }''',
-                  '''magicnet_singbox_listener_owned() {
-              _listener_pid="$1"
-              _listener_port="$(magicnet_singbox_api_port)" || return 1
+                  r'''    ss -lntp 2>/dev/null | grep -E '127\.0\.0\.1:9090[[:space:]]' | grep -q "pid=${_listener_pid},"''',
+                  '''    _listener_port="$(magicnet_singbox_api_port)" || return 1
               ss -lntp 2>/dev/null |
                   grep -E ":${_listener_port}[[:space:]]" |
                   grep -Fq "pid=${_listener_pid},"
               _listener_rc=$?
               unset _listener_pid _listener_port
-              return "$_listener_rc"
-          }''',
+              return "$_listener_rc"''',
+                  1,
               ),
               (
-                  '''    magicnet_singbox_config_has_clash_api "$_ready_owned_config" && _ready_api_expected=1''',
-                  '''    if magicnet_singbox_config_has_clash_api "$_ready_owned_config"; then
-                  _ready_api_expected=1
-                  _ready_api_endpoint="$(magicnet_singbox_api_endpoint)" || {
-                      rm -f "$_ready_owned_pids"
-                      return 1
-                  }
-              else
-                  _ready_api_endpoint=''
-              fi''',
+                  'curl -fsS --max-time 1 http://127.0.0.1:9090/version',
+                  'curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version"',
+                  2,
               ),
               (
-                  '''            magicnet_singbox_listener_owned "$_ready_owned_pid" &&
-                          curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |''',
-                  '''            magicnet_singbox_listener_owned "$_ready_owned_pid" &&
-                          curl -fsS --max-time 1 "${_ready_api_endpoint}/version" 2>/dev/null |''',
+                  r'''    ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]' && return 1''',
+                  '    magicnet_singbox_api_listener_exists && return 1',
+                  1,
               ),
               (
-                  '''    unset _ready_owned_config _ready_api_expected _ready_owned_pid _ready_found''',
-                  '''    unset _ready_owned_config _ready_api_expected _ready_api_endpoint _ready_owned_pid _ready_found''',
-              ),
-              (
-                  '''    _api_expected=0
-              if magicnet_singbox_config_has_clash_api "$_owned_config"; then
-                  _api_expected=1
-              fi
-              [ -x "$_owned_binary" ] || return 1
-              ss -lnt 2>/dev/null | grep -q '127\\.0\\.0\\.1:9090[[:space:]]' && return 1''',
-                  '''    _api_expected=0
-              _ready_api_endpoint=''
-              _ready_api_port=''
-              if magicnet_singbox_config_has_clash_api "$_owned_config"; then
-                  _api_expected=1
-                  _ready_api_endpoint="$(magicnet_singbox_api_endpoint)" || return 1
-                  _ready_api_port="$(magicnet_singbox_api_port)" || return 1
-              fi
-              [ -x "$_owned_binary" ] || return 1
-              if [ "$_api_expected" -eq 1 ] &&
-                  ss -lnt 2>/dev/null | grep -E -q ":${_ready_api_port}[[:space:]]"; then
-                  return 1
-              fi''',
-              ),
-              (
-                  '''                    magicnet_singbox_listener_owned "$_new_pid" &&
-                                  curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |''',
-                  '''                    magicnet_singbox_listener_owned "$_new_pid" &&
-                                  curl -fsS --max-time 1 "${_ready_api_endpoint}/version" 2>/dev/null |''',
-              ),
-              (
-                  '''            unset _api_expected
-              return 0''',
-                  '''            unset _api_expected _ready_api_endpoint _ready_api_port
-              return 0''',
-              ),
-              (
-                  '''    unset _api_expected
-              return 1
-          }''',
-                  '''    unset _api_expected _ready_api_endpoint _ready_api_port
-              return 1
-          }''',
-              ),
-              (
-                  '''    # A listener with no authoritatively owned process is not safe to replace.
-              if ss -lnt 2>/dev/null | grep -q '127\\.0\\.0\\.1:9090[[:space:]]'; then
-                  warn "sing-box API listener ownership is unknown; restart aborted"
-                  return 2
-              fi''',
-                  '''    # A listener with no authoritatively owned process is not safe to replace.
-              if magicnet_singbox_config_has_clash_api "$_owned_config"; then
-                  _restart_api_port="$(magicnet_singbox_api_port)" || {
-                      warn "sing-box API endpoint could not be resolved; restart aborted"
-                      return 2
-                  }
-                  if ss -lnt 2>/dev/null | grep -E -q ":${_restart_api_port}[[:space:]]"; then
-                      warn "sing-box API listener ownership is unknown; restart aborted"
-                      unset _restart_api_port
-                      return 2
-                  fi
-                  unset _restart_api_port
-              fi''',
+                  r'''    if ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]'; then''',
+                  '    if magicnet_singbox_api_listener_exists; then',
+                  1,
               ),
           ]
 
-          for old, new in replacements:
+          for old, new, expected in replacements:
               count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"expected exactly one match, got {count}: {old[:80]!r}")
-              text = text.replace(old, new, 1)
+              if count != expected:
+                  raise SystemExit(
+                      f"expected {expected} matches, got {count}: {old[:100]!r}"
+                  )
+              text = text.replace(old, new)
 
           if "9090" in text:
               raise SystemExit("config.sh still contains a hard-coded 9090")
