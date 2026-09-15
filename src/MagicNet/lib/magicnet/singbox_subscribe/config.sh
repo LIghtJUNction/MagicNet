@@ -936,7 +936,13 @@ magicnet_singbox_is_running() (
 
 magicnet_singbox_listener_owned() {
     _listener_pid="$1"
-    ss -lntp 2>/dev/null | grep -E '127\.0\.0\.1:9090[[:space:]]' | grep -q "pid=${_listener_pid},"
+    _listener_port="$(magicnet_singbox_api_port)" || return 1
+    ss -lntp 2>/dev/null |
+        grep -E ":${_listener_port}[[:space:]]" |
+        grep -Fq "pid=${_listener_pid},"
+    _listener_rc=$?
+    unset _listener_pid _listener_port
+    return "$_listener_rc"
 }
 
 magicnet_singbox_owned_ready() {
@@ -964,7 +970,7 @@ magicnet_singbox_owned_ready() {
     while IFS= read -r _ready_owned_pid; do
         if [ "$_ready_api_expected" -eq 0 ] || {
             magicnet_singbox_listener_owned "$_ready_owned_pid" &&
-                curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |
+                curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version" 2>/dev/null |
                 grep -q '"version"'
         }; then
             _ready_found=1
@@ -1016,7 +1022,7 @@ magicnet_singbox_ensure_start_owned() {
         _api_expected=1
     fi
     [ -x "$_owned_binary" ] || return 1
-    ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]' && return 1
+    magicnet_singbox_api_listener_exists && return 1
     mkdir -p "${MODDIR}/.log"
     nohup "$_owned_binary" run -c "$_owned_config" -D "$_owned_work" >"$_owned_log" 2>&1 </dev/null &
     _new_pid=$!
@@ -1027,7 +1033,7 @@ magicnet_singbox_ensure_start_owned() {
             [ "$_api_expected" -eq 0 ] ||
                 {
                     magicnet_singbox_listener_owned "$_new_pid" &&
-                        curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |
+                        curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version" 2>/dev/null |
                         grep -q '"version"'
                 }
         }; then
@@ -1216,7 +1222,7 @@ magicnet_singbox_restart_owned() {
     rm -f "$_owned_pids"
 
     # A listener with no authoritatively owned process is not safe to replace.
-    if ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]'; then
+    if magicnet_singbox_api_listener_exists; then
         warn "sing-box API listener ownership is unknown; restart aborted"
         return 2
     fi
