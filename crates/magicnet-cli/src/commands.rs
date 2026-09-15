@@ -118,7 +118,7 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
         ) => false,
         ("core", "selected") => false,
         ("ecapture", "" | "status" | "version" | "help") => false,
-        ("mcp", "" | "status" | "logs" | "serve") => false,
+        ("mcp", "" | "status" | "logs") => false,
         ("mode", "") => false,
         ("node", "list" | "current") => false,
         ("route" | "block", "list") => false,
@@ -303,7 +303,6 @@ mod tests {
             "config-editor repo get-json",
             "state",
             "state reconcile",
-            "mcp serve",
             "--json capabilities",
             "service start --json",
         ] {
@@ -311,7 +310,10 @@ mod tests {
                 .split_whitespace()
                 .map(str::to_string)
                 .collect::<Vec<_>>();
-            assert!(!needs_state_reconcile(&args), "unexpected publication: {text}");
+            assert!(
+                !needs_state_reconcile(&args),
+                "unexpected publication: {text}"
+            );
         }
     }
 
@@ -335,6 +337,7 @@ mod tests {
             "sub user-agent clear",
             "sub filter set",
             "mcp start",
+            "mcp serve",
             "mcp secret",
             "mcp rotate-secret",
             "mode global",
