@@ -33,36 +33,44 @@ magicnet_singbox_google_reliability_patch() {
           ([]; if index($item) then . else . + [$item] end);
 
       ([.outbounds[]? | select(.tag == "proxy-auto" and .type == "urltest")][0] // null) as $proxy_auto
+      | ([.outbounds[]? | select(.tag == "ai-gemini-auto" and .type == "urltest")][0] // null) as $gemini_auto
+      | .outbounds = ((.outbounds // []) | map(
+          select(.tag != "magicnet-google-auto" and .tag != "magicnet-gemini-auto")))
       | if $proxy_auto != null then
-          .outbounds = (
-            ((.outbounds // []) | map(select(.tag != "magicnet-google-auto")))
-            + [{
-                "type": "urltest",
-                "tag": "magicnet-google-auto",
-                "outbounds": append_once(($proxy_auto.outbounds // []); "direct"),
-                "url": "https://www.google.com/generate_204",
-                "interval": "2m",
-                "tolerance": 50,
-                "idle_timeout": "10m",
-                "interrupt_exist_connections": true
-              }]
-          )
+          .outbounds += [{
+            "type": "urltest",
+            "tag": "magicnet-google-auto",
+            "outbounds": append_once(($proxy_auto.outbounds // []); "direct"),
+            "url": "https://www.google.com/generate_204",
+            "interval": "2m",
+            "tolerance": 50,
+            "idle_timeout": "10m",
+            "interrupt_exist_connections": true
+          }]
           | .outbounds = (.outbounds | map(
               if (.tag? == "google-proxy" and .type? == "selector") then
                 .outbounds = append_once(.outbounds; "magicnet-google-auto")
                 | if .default? == "proxy" then .default = "magicnet-google-auto" else . end
               else . end))
         else . end
-      | .outbounds = ((.outbounds // []) | map(
-          if (.tag? == "ai-gemini-auto" and .type? == "urltest") then
-            .outbounds = append_once(.outbounds; "direct")
-          else . end))
+      | if $gemini_auto != null then
+          .outbounds += [{
+            "type": "urltest",
+            "tag": "magicnet-gemini-auto",
+            "outbounds": append_once(($gemini_auto.outbounds // []); "direct"),
+            "url": ($gemini_auto.url // "https://gemini.google.com/"),
+            "interval": ($gemini_auto.interval // "10m"),
+            "tolerance": ($gemini_auto.tolerance // 30),
+            "idle_timeout": ($gemini_auto.idle_timeout // "10m"),
+            "interrupt_exist_connections": ($gemini_auto.interrupt_exist_connections // false)
+          }]
+        else . end
       | .route.rules = ((.route.rules // []) | map(
           if (is_google_play_service
               and ((.outbound? == "google-proxy") or (.outbound? == "proxy"))) then
             .outbound = "direct"
-          elif (is_gemini_rule and .outbound? == "ai-gemini") then
-            .outbound = "ai-gemini-auto"
+          elif (is_gemini_rule and .outbound? == "ai-gemini" and $gemini_auto != null) then
+            .outbound = "magicnet-gemini-auto"
           else . end))
     ' "$_google_config" >"$_google_tmp"; then
         rm -f "$_google_tmp" 2>/dev/null || true
@@ -75,11 +83,22 @@ magicnet_singbox_google_reliability_patch() {
         return 1
     }
 
-    if cmp -s "$_google_config" "$_google_tmp" 2>/dev/null; then
+    _google_before="$(cksum <"$_google_config" 2>/dev/null)" || {
         rm -f "$_google_tmp" 2>/dev/null || true
+        return 1
+    }
+    _google_after="$(cksum <"$_google_tmp" 2>/dev/null)" || {
+        rm -f "$_google_tmp" 2>/dev/null || true
+        unset _google_before
+        return 1
+    }
+    if [ "$_google_before" = "$_google_after" ]; then
+        rm -f "$_google_tmp" 2>/dev/null || true
+        unset _google_before _google_after
         printf '%s\n' unchanged
         return 0
     fi
+    unset _google_before _google_after
 
     mv -f "$_google_tmp" "$_google_config" || {
         rm -f "$_google_tmp" 2>/dev/null || true
