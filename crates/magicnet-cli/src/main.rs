@@ -108,13 +108,19 @@ fn main() {
     }
 
     let app = App::from_env();
-    // The filesystem is the canonical device state plane. Reconcile once before
-    // dispatch so a freshly booted module has a complete snapshot, then again
-    // after the command so mutations publish one settled generation. Internal
-    // proc-reader helpers above intentionally bypass this path to avoid recursion.
-    reconcile_state(&app, "pre-command");
+    let machine_request = args.iter().any(|arg| arg == "--json");
+    // Normal control/human CLI commands reconcile the filesystem state plane
+    // before dispatch and publish one settled generation afterwards. `--json`
+    // is contractually read-only, so machine requests never create or rewrite
+    // state files. Internal proc-reader helpers above also bypass reconciliation
+    // to keep process discovery recursion-free.
+    if !machine_request {
+        reconcile_state(&app, "pre-command");
+    }
     let result = machine::dispatch(&app, &args).unwrap_or_else(|| dispatch(&app, &args));
-    reconcile_state(&app, "post-command");
+    if !machine_request {
+        reconcile_state(&app, "post-command");
+    }
     let code = match result {
         Ok(()) => 0,
         Err(err) => {
