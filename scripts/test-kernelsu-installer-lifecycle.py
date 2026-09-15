@@ -37,7 +37,7 @@ class KernelSUInstallerLifecycleTest(unittest.TestCase):
 
             entries = {
                 "module.prop": b"id=MagicNet\nname=MagicNet\nversion=v1.4.13\nversionCode=143\n",
-                "customize.sh": b"export SKIPUNZIP=1\nimport this\n",
+                "customize.sh": b"export SKIPUNZIP=1\nimport rich\n",
                 ".config/sing-box/config.json": b"{}\n",
                 "bin/sing-box": b"sing-box",
                 "bin/magicnet-cli": b"cli",

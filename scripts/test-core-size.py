@@ -32,7 +32,7 @@ class CoreSizeTests(unittest.TestCase):
     def build_source(self, cli=None, symlink=False):
         entries = {
             "module.prop": b"id=MagicNet\nversion=v1.4.8\nversionCode=123\n",
-            "customize.sh": b"import this\n",
+            "customize.sh": b"import rich\n",
             ".config/sing-box/config.json": b"{}\n",
             "bin/sing-box": b"engine",
             "bin/magicnet-cli": self.cli,
