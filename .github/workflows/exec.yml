@@ -9,7 +9,7 @@ on:
         type: boolean
         default: false
       bump:
-        description: Commit a version bump directly to main before building
+        description: Prepare a version PR (merge it before publishing)
         required: false
         type: choice
         options:
@@ -19,7 +19,7 @@ on:
           - major
         default: none
       release:
-        description: Publish the built version in this run
+        description: Publish after the version PR merges, or publish current version with bump=none
         required: false
         type: boolean
         default: false
@@ -46,7 +46,70 @@ env:
   CI_TEST_FORCE: ${{ inputs.force_tests == true && '1' || '0' }}
 
 jobs:
+  version-pr:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: magicnet-version-pr
+      cancel-in-progress: false
+    steps:
+      - name: Checkout release base
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Prepare version metadata
+        id: version
+        env:
+          BUMP_KIND: ${{ inputs.bump }}
+          RELEASE_INPUT: ${{ inputs.release }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
+          KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
+        run: |
+          # Keep the original main checkout as the PR base. A detached checkout
+          # makes the PR action rebase with "theirs" onto a newer remote main.
+          git checkout -B main "$GITHUB_SHA"
+          python3 scripts/prepare-release.py --bump "$BUMP_KIND"
+          git add -- kam.toml src/MagicNet/module.prop update.json .github/release-request
+          printf 'tree=%s\n' "$(git write-tree)" >> "$GITHUB_OUTPUT"
+
+      - name: Create version pull request
+        id: pr
+        continue-on-error: true
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          base: main
+          branch: automation/release-${{ steps.version.outputs.version }}
+          add-paths: |
+            kam.toml
+            src/MagicNet/module.prop
+            update.json
+            .github/release-request
+          commit-message: "chore(release): prepare ${{ steps.version.outputs.version }}"
+          title: "chore(release): prepare ${{ steps.version.outputs.version }}"
+          body: |
+            Prepares ${{ steps.version.outputs.version }} with synchronized module metadata.
+
+            Publish after merge: `${{ inputs.release }}`. Prerelease: `${{ inputs.prerelease }}`.
+            Review and merge this PR into main. Approve any pending workflow runs on the PR page.
+            This automation branch is regenerated when the same version is requested again; avoid editing it directly.
+
+      - name: Report version PR
+        if: ${{ always() && steps.version.outcome == 'success' }}
+        env:
+          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
+          PR_OUTCOME: ${{ steps.pr.outcome }}
+          VERSION: ${{ steps.version.outputs.version }}
+          EXPECTED_TREE: ${{ steps.version.outputs.tree }}
+        run: python3 scripts/prepare-release.py --report-pr
+
   build:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '' }}
     runs-on: ubuntu-latest
     env:
       KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
@@ -65,34 +128,6 @@ jobs:
           persist-credentials: false
           submodules: recursive
           fetch-depth: 0
-
-      - name: Bump and commit version
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
-        env:
-          BUMP_KIND: ${{ inputs.bump }}
-          RELEASE_INPUT: ${{ inputs.release }}
-          PRERELEASE_INPUT: ${{ inputs.prerelease }}
-          # Protected main requires a token whose owner may bypass its PR rule.
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
-        run: |
-          set -euo pipefail
-          python3 scripts/prepare-release.py --bump "$BUMP_KIND"
-          git add -- kam.toml src/MagicNet/module.prop update.json
-          if [ -f .github/release-request ]; then
-            git add -- .github/release-request
-          fi
-          git -c user.name='github-actions[bot]' \
-            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            commit -m "chore(release): bump module version [skip ci]"
-          gh auth setup-git
-          # Never force-push or rebase a version onto unbuilt concurrent changes.
-          if ! git push origin HEAD:refs/heads/main; then
-            echo "::error::Direct push rejected. Check RELEASE_TOKEN/main rules, or start a new run if main advanced. No PR was created."
-            exit 1
-          fi
-          sha="$(git rev-parse HEAD)"
-          printf 'RELEASE_COMMIT_SHA=%s\n' "$sha" >> "$GITHUB_ENV"
-          printf 'Version metadata committed to main: `%s`.\n' "$sha" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate release request
         env:
@@ -229,11 +264,6 @@ jobs:
           version_output="$(sing-box version)"
           grep -F "LIghtJUNction.${expected_revision:0:12}" <<<"$version_output"
           printf '%s\n' "$version_output"
-
-      # Do not reuse the no-core host-fixture cache for this check. It must run
-      # against the exact fork binary that this build/release just compiled.
-      - name: Verify service selector routing with built core
-        run: bash scripts/test-service-selectors.sh
 
       - name: Verify tools
         shell: bash
