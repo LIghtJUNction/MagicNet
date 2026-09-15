@@ -16,8 +16,7 @@ if [ "$MAGIC_ECAPTURE" -eq 0 ]; then
     exit 0
 fi
 
-require_command curl "curl not found!"
-require_command tar "tar not found!"
+require_commands curl tar
 
 TMP_DIR=$(hook_make_temp_dir) || exit 1
 cleanup() {
