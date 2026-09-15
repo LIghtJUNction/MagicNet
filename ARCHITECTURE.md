@@ -6,14 +6,12 @@ state plane. The detailed runtime design and its invariants live in
 
 ## Repository map
 
-- `crates/magicnet-cli`: privileged control-plane entrypoint used by the WebUI,
-  module scripts, and MCP server. `main.rs` only starts the app and dispatches
+- `crates/magicnet-cli`: the single privileged Rust control-plane binary used by
+  the WebUI, module scripts, and MCP. `main.rs` only starts the app and dispatches
   arguments; `app.rs` resolves trusted runtime configuration, `commands.rs`
-  owns top-level registration, and `process.rs` owns process lifecycle safety.
+  owns top-level registration, `process.rs` owns process lifecycle safety, and
+  `mcp_server` owns the authenticated HTTP/MCP adapter used by `cli mcp serve`.
   Feature modules own their subcommands.
-- `crates/magicnet-mcp-server`: optional authenticated HTTP/MCP adapter. It
-  delegates device operations to the CLI instead of creating another control
-  path.
 - `src/MagicNet/lib/magicnet`: device runtime shell modules. These implement
   lifecycle, subscription, routing, DNS, and supervisor behavior.
 - `sing-box`: pinned `LIghtJUNction/sing-box` source submodule. Build hooks
@@ -38,8 +36,9 @@ WebUI / MCP / module entry scripts
  (tun/magicnet0 or ebpf/cgroup+TC)
 ```
 
-The CLI is the shared control boundary. New integrations should reuse it and
-must not execute a parallel set of privileged shell operations.
+The CLI is the shared control boundary. MCP is a server mode of that same
+binary, not a second privileged executable. New integrations should reuse the
+CLI contract and must not execute a parallel set of privileged shell operations.
 
 ## Stable invariants
 
@@ -57,7 +56,9 @@ must not execute a parallel set of privileged shell operations.
   code fails closed instead of rewriting JSON with AWK or regular expressions.
 - Subscription generation passes complete JSON arrays between stages and merges
   them structurally; legacy cached fragments are accepted only at the migration boundary.
-- MCP is disabled by default and requires an independent secret.
+- MCP is disabled by default and requires an independent secret. The server
+  process is `bin/magicnet-cli mcp serve`; endpoint and secret are read from the
+  validated private MCP configuration instead of being passed on argv.
 - Runtime state belongs under `.config`, `.state`, and `.log`; callers must not
   redirect privileged Android execution through untrusted environment paths.
 
