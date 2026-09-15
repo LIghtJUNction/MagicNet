@@ -184,7 +184,7 @@ class ReleaseCacheTest(unittest.TestCase):
         validate = names.index("Validate release request")
         self.assertLess(names.index("Checkout repository"), validate)
         self.assertLess(validate, restore[0])
-        self.assertLess(restore[0], names.index("Refresh build submodules"))
+        self.assertLess(restore[0], names.index("Verify pinned build submodules"))
 
 
 if __name__ == "__main__":
