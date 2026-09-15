@@ -18,6 +18,23 @@ magicnet_singbox_api_endpoint() {
     unset _magicnet_api_endpoint
 }
 
+magicnet_singbox_api_port() {
+    _magicnet_api_endpoint="$(magicnet_singbox_api_endpoint)" || return 1
+    _magicnet_api_port="${_magicnet_api_endpoint##*:}"
+    case "$_magicnet_api_port" in
+    '' | 0 | *[!0-9]*)
+        unset _magicnet_api_endpoint _magicnet_api_port
+        return 1
+        ;;
+    esac
+    [ "$_magicnet_api_port" -le 65535 ] 2>/dev/null || {
+        unset _magicnet_api_endpoint _magicnet_api_port
+        return 1
+    }
+    printf '%s\n' "$_magicnet_api_port"
+    unset _magicnet_api_endpoint _magicnet_api_port
+}
+
 # Override the legacy probe from common.sh. Runtime health must follow the
 # configured external_controller rather than assuming the bootstrap default.
 magicnet_singbox_api_has_nodes() {
@@ -33,4 +50,18 @@ magicnet_singbox_api_has_nodes() {
     _rc=$?
     unset _api_endpoint _api
     return "$_rc"
+}
+
+# Subscription readiness previously assumed 127.0.0.1:9090. Match the
+# configured controller port and the expected process instead, which also
+# works for IPv6 loopback and wildcard controller binds.
+magicnet_singbox_listener_owned() {
+    _listener_pid="$1"
+    _listener_port="$(magicnet_singbox_api_port)" || return 1
+    ss -lntp 2>/dev/null |
+        grep -E ":${_listener_port}[[:space:]]" |
+        grep -Fq "pid=${_listener_pid},"
+    _listener_rc=$?
+    unset _listener_pid _listener_port
+    return "$_listener_rc"
 }
