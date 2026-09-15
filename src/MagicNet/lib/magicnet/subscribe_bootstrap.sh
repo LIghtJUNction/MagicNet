@@ -1,6 +1,6 @@
 # shellcheck shell=ash
 # Compatibility shim. The implementation lives with the subscription pipeline.
-# primitives.sh must be loaded first so host tests and the installed module use
-# the same library-root resolution instead of assuming MODDIR is the source tree.
+_magicnet_lib_root="$(if type magicnet_lib_dir >/dev/null 2>&1; then magicnet_lib_dir; else printf '%s\n' "${MODDIR}/lib/magicnet"; fi)"
 # shellcheck disable=SC1090
-. "$(magicnet_lib_dir)/singbox_subscribe/bootstrap.sh"
+. "${_magicnet_lib_root}/singbox_subscribe/bootstrap.sh"
+unset _magicnet_lib_root
