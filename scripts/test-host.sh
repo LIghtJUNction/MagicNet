@@ -50,6 +50,7 @@ python3 scripts/ci-test-cache.py host config-json -- jq empty src/MagicNet/.conf
 check bash scripts/test-repository-hygiene.sh
 check bash scripts/test-module-entrypoints.sh
 check bash scripts/test-config-template-pin.sh
+check python3 src/MagicNet/.config/sing-box/tests/test_config_routing.py
 check bash scripts/test-config-repository-migration.sh
 check bash scripts/test-install-config-template.sh
 check bash scripts/test-install-config-refresh.sh
