@@ -232,7 +232,8 @@ assert.doesNotMatch(selectedNodeLog, /US-Private-Node|JP-Secret/);
 const routingLog = sanitizeRoutingFeedbackLog(
   "WARN route connection from 10.0.0.9:41234 to private.example.invalid:443 selector=US-Private-Node token=TOKEN-CANARY",
 );
-assert.match(routingLog, /private\.example\.invalid:443/);
+assert.match(routingLog, /private\.example\.invalid/);
+assert.doesNotMatch(routingLog, /private\.example\.invalid:443/);
 assert.match(routingLog, /selector=\[selected-node\]/);
 assert.doesNotMatch(routingLog, /10\.0\.0\.9|US-Private-Node|TOKEN-CANARY/);
 
