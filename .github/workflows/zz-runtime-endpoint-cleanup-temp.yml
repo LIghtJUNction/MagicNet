@@ -1,0 +1,83 @@
+name: Temporary runtime endpoint cleanup
+
+on:
+  push:
+    branches:
+      - refactor/dynamic-singbox-controller
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/dynamic-singbox-controller
+          fetch-depth: 0
+      - name: Remove remaining runtime endpoint assumptions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path("crates/magicnet-cli/src/service.rs"): [
+                  (
+                      '    ("127.0.0.1".to_string(), "9090".to_string())',
+                      '    panic!("invalid validated local API endpoint: {api}")',
+                      1,
+                  ),
+              ],
+              Path("webui/src/constants.ts"): [
+                  (
+                      'export const SING_BOX_UI = "http://127.0.0.1:9090/ui/";',
+                      'export const SING_BOX_UI = "";',
+                      1,
+                  ),
+              ],
+              Path("webui/src/composables/parsers.ts"): [
+                  (
+                      '  api: "http://127.0.0.1:9090",',
+                      '  api: "",',
+                      1,
+                  ),
+              ],
+          }
+
+          for path, changes in replacements.items():
+              text = path.read_text()
+              for old, new, expected in changes:
+                  count = text.count(old)
+                  if count != expected:
+                      raise SystemExit(
+                          f"{path}: expected {expected} matches, got {count}: {old!r}"
+                      )
+                  text = text.replace(old, new)
+              path.write_text(text)
+
+          forbidden = [
+              Path("crates/magicnet-cli/src/service.rs"),
+              Path("webui/src/constants.ts"),
+              Path("webui/src/composables/parsers.ts"),
+              Path("src/MagicNet/lib/magicnet/common.sh"),
+              Path("src/MagicNet/lib/magicnet/core.sh"),
+              Path("src/MagicNet/lib/magicnet/action_menu.sh"),
+              Path("src/MagicNet/lib/magicnet/api.sh"),
+              Path("src/MagicNet/lib/magicnet/singbox_subscribe/config.sh"),
+          ]
+          for path in forbidden:
+              if "127.0.0.1:9090" in path.read_text():
+                  raise SystemExit(f"runtime source still hard-codes 127.0.0.1:9090: {path}")
+          PY
+      - name: Commit cleanup and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/zz-runtime-endpoint-cleanup-temp.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add crates/magicnet-cli/src/service.rs webui/src/constants.ts webui/src/composables/parsers.ts .github/workflows/zz-runtime-endpoint-cleanup-temp.yml
+          git commit -m "refactor(runtime): stop guessing the sing-box endpoint"
+          git push origin HEAD:refactor/dynamic-singbox-controller
