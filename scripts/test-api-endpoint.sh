@@ -46,6 +46,12 @@ if magicnet_singbox_listener_owned 9999; then
     printf 'listener ownership ignored the expected sing-box pid\n' >&2
     exit 1
 fi
+for invalid_pid in '' abc '4321,fd=8'; do
+    if magicnet_singbox_listener_owned "$invalid_pid"; then
+        printf 'listener ownership accepted invalid pid: %s\n' "$invalid_pid" >&2
+        exit 1
+    fi
+done
 
 # A literal 9090 is valid in templates, tests, docs and the bootstrap fallback,
 # but runtime consumers must resolve the active controller instead of guessing.
