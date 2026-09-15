@@ -1,0 +1,690 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use serde_json::Value;
+
+use crate::diagnostics::supervisor_pid;
+use crate::{
+    clean_module_lines, cmdline_has_script, proc_start_time, read_kv, read_proc_argv,
+    read_proc_text_bounded, replace_module_text_files_transactionally, singbox_pid_summary, App,
+    MAX_PROC_STAT_BYTES,
+};
+
+const STATE_ROOT: &str = ".state/machines";
+const TRANSPARENT_TRANSACTION: &str = ".state/transparent-transaction";
+const TRANSPARENT_RECENT_ERROR: &str = ".state/transparent-recent-error";
+const TRANSPARENT_CAPABILITY: &str = ".state/transparent-ebpf/capability";
+const TRANSPARENT_SHARED_PENDING: &str = ".state/transparent-ebpf/shared.pending";
+const SUBSCRIPTION_STATUS: &str = ".state/sing-box/subscription-status";
+const SUBSCRIPTION_TRANSACTION: &str = ".state/sing-box/subscription-transaction";
+const SUBSCRIPTION_UPDATE_LOCK: &str = ".state/sing-box/subscription-update.lock";
+const SUBSCRIPTION_REFRESH_OWNER: &str = ".state/watchdog/magicnet-subscription-refresh.owner";
+const SUBSCRIPTION_REFRESH_LOOP: &str = ".state/watchdog/magicnet-subscription-refresh.loop.sh";
+const WIFI_POLICY_CONF: &str = ".config/magicnet/wifi-policy.conf";
+const WIFI_LAST_STATE: &str = ".state/wifi-policy/last-state.conf";
+const HOTSPOT_OFFLOAD_OWNER: &str = ".state/hotspot/tether-offload.previous";
+const HOTSPOT_TUN_RULES: &str = ".state/hotspot/tun-rules.list";
+const DNS_GUARD_INTERFACES: &str = ".state/dns-leak-guard.ifaces";
+const MCP_CONF: &str = ".config/magicnet/mcp.conf";
+const MCP_PID: &str = ".state/magicnet-mcp.pid";
+const TAILSCALE_AUTH: &str = ".config/sing-box/tailscale-auth.json";
+const SINGBOX_CONFIG: &str = ".config/sing-box/config.json";
+const TRANSPARENT_MODE_CONF: &str = ".config/magicnet/transparent-mode.conf";
+const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
+const SUBSCRIPTION_URL: &str = ".config/sing-box/subscription.url";
+const SUBSCRIPTION_LOCAL: &str = ".config/sing-box/subscription.local";
+const SUBSCRIPTION_REFRESH_HOURS: &str = ".config/magicnet/subscription-refresh-hours";
+const MODULE_TRANSACTION_STAGE: &str = ".tmp/magicnet-app-transaction";
+
+#[derive(Clone, Copy)]
+enum Domain {
+    Service,
+    Transparent,
+    Subscription,
+    SubscriptionRefresh,
+    Supervisors,
+    Wifi,
+    Hotspot,
+    Dns,
+    Mcp,
+    Tailscale,
+    Transactions,
+}
+
+impl Domain {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Service => "service",
+            Self::Transparent => "transparent",
+            Self::Subscription => "subscription",
+            Self::SubscriptionRefresh => "subscription-refresh",
+            Self::Supervisors => "supervisors",
+            Self::Wifi => "wifi",
+            Self::Hotspot => "hotspot",
+            Self::Dns => "dns",
+            Self::Mcp => "mcp",
+            Self::Tailscale => "tailscale",
+            Self::Transactions => "transactions",
+        }
+    }
+
+    fn path(self) -> PathBuf {
+        Path::new(STATE_ROOT).join(format!("{}.state", self.name()))
+    }
+}
+
+struct StateRecord {
+    domain: &'static str,
+    fields: BTreeMap<&'static str, String>,
+}
+
+impl StateRecord {
+    fn new(domain: Domain) -> Self {
+        Self {
+            domain: domain.name(),
+            fields: BTreeMap::new(),
+        }
+    }
+
+    fn field(mut self, key: &'static str, value: impl Into<String>) -> Self {
+        self.fields.insert(key, sanitize_token(value.into()));
+        self
+    }
+
+    fn bool(self, key: &'static str, value: bool) -> Self {
+        self.field(key, if value { "1" } else { "0" })
+    }
+
+    fn encode(&self) -> String {
+        let mut output = format!("schema=1\ndomain={}\n", self.domain);
+        for (key, value) in &self.fields {
+            output.push_str(key);
+            output.push('=');
+            output.push_str(value);
+            output.push('\n');
+        }
+        output
+    }
+}
+
+fn sanitize_token(value: String) -> String {
+    let value = value.trim();
+    if !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b':' | b',')
+        })
+    {
+        value.to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+pub(crate) fn reconcile(app: &App) -> Result<(), String> {
+    let records = [
+        (Domain::Service, service_record(app)),
+        (Domain::Transparent, transparent_record(app)),
+        (Domain::Subscription, subscription_record(app)),
+        (Domain::SubscriptionRefresh, subscription_refresh_record(app)),
+        (Domain::Supervisors, supervisors_record(app)),
+        (Domain::Wifi, wifi_record(app)),
+        (Domain::Hotspot, hotspot_record(app)),
+        (Domain::Dns, dns_record(app)),
+        (Domain::Mcp, mcp_record(app)),
+        (Domain::Tailscale, tailscale_record(app)),
+        (Domain::Transactions, transactions_record(app)),
+    ];
+
+    let mut changed = Vec::new();
+    for (domain, record) in records {
+        let relative = domain.path();
+        let encoded = record.encode();
+        let current = fs::read_to_string(app.moddir.join(&relative)).ok();
+        if current.as_deref() != Some(encoded.as_str()) {
+            changed.push((relative, encoded));
+        }
+    }
+    if changed.is_empty() {
+        return Ok(());
+    }
+    let replacements = changed
+        .iter()
+        .map(|(path, text)| (path.as_path(), text.as_str()))
+        .collect::<Vec<_>>();
+    replace_module_text_files_transactionally(app, &replacements)
+        .map_err(|error| format!("reconcile canonical state plane: {error}"))
+}
+
+fn service_record(app: &App) -> StateRecord {
+    let summary = singbox_pid_summary(app);
+    let process_state = process_state(&summary);
+    let transparent_phase = transparent_phase(app);
+    let lifecycle = match process_state {
+        "stopped" => "stopped",
+        "unknown" => "unknown",
+        "running" if transparent_phase != "idle" => "reconfiguring",
+        "running" => "running",
+        _ => "unknown",
+    };
+    let selected = read_kv(app.moddir.join(SELECTED_CORE_CONF))
+        .remove("MAGICNET_DEFAULT_CORE")
+        .map(|value| match value.as_str() {
+            "sing-box" | "singbox" => "sing-box".to_string(),
+            _ => "invalid".to_string(),
+        })
+        .unwrap_or_else(|| "sing-box".to_string());
+    let pid_count = if process_state == "running" {
+        summary.split(',').count()
+    } else {
+        0
+    };
+    StateRecord::new(Domain::Service)
+        .field("state", process_state)
+        .field("lifecycle", lifecycle)
+        .field("selected_core", selected)
+        .field("process_count", pid_count.to_string())
+        .field("transparent_phase", transparent_phase)
+}
+
+fn process_state(summary: &str) -> &'static str {
+    if summary == "stopped" {
+        "stopped"
+    } else if summary == "unknown" {
+        "unknown"
+    } else if summary
+        .split(',')
+        .all(|pid| !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        "running"
+    } else {
+        "unknown"
+    }
+}
+
+fn transparent_record(app: &App) -> StateRecord {
+    let configured = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
+        .remove("MAGICNET_TRANSPARENT_MODE")
+        .map(|mode| match mode.as_str() {
+            "tun" | "ebpf" => mode,
+            _ => "invalid".to_string(),
+        })
+        .unwrap_or_else(|| "tun".to_string());
+    let (effective_type, effective_mode, shared_interfaces) = effective_transparent(app, &configured);
+    let phase = transparent_phase(app);
+    let transaction = app.moddir.join(TRANSPARENT_TRANSACTION).is_dir();
+    let capability = if effective_type == "ebpf" {
+        read_token(app.moddir.join(TRANSPARENT_CAPABILITY), "unknown")
+    } else {
+        "not_required".to_string()
+    };
+    StateRecord::new(Domain::Transparent)
+        .field("state", if transaction { "transitioning" } else { "stable" })
+        .field("configured", configured)
+        .field("effective_type", effective_type)
+        .field("effective_mode", effective_mode)
+        .field("phase", phase)
+        .field("capability", capability)
+        .bool("transaction_active", transaction)
+        .bool(
+            "shared_pending",
+            regular_nonempty(&app.moddir.join(TRANSPARENT_SHARED_PENDING)),
+        )
+        .field("shared_interface_count", shared_interfaces.to_string())
+        .bool(
+            "recent_error",
+            regular_nonempty(&app.moddir.join(TRANSPARENT_RECENT_ERROR)),
+        )
+}
+
+fn effective_transparent(app: &App, configured: &str) -> (String, String, usize) {
+    let Some(config) = read_json(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024) else {
+        return (configured.to_string(), configured.to_string(), 0);
+    };
+    let inbound = config
+        .get("inbounds")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item.get("tag").and_then(Value::as_str) == Some("tun-in"))
+        });
+    let effective_type = inbound
+        .and_then(|item| item.get("type"))
+        .and_then(Value::as_str)
+        .filter(|value| matches!(*value, "tun" | "ebpf"))
+        .unwrap_or(configured)
+        .to_string();
+    let effective_mode = if effective_type == "ebpf" {
+        inbound
+            .and_then(|item| item.get("mode"))
+            .and_then(Value::as_str)
+            .filter(|value| matches!(*value, "local" | "shared" | "hybrid"))
+            .unwrap_or("local")
+            .to_string()
+    } else {
+        "tun".to_string()
+    };
+    let shared_interfaces = inbound
+        .and_then(|item| item.get("shared"))
+        .and_then(|value| value.get("interface"))
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).count())
+        .unwrap_or(0);
+    (effective_type, effective_mode, shared_interfaces)
+}
+
+fn transparent_phase(app: &App) -> String {
+    let journal = app.moddir.join(TRANSPARENT_TRANSACTION);
+    if !journal.is_dir() {
+        return "idle".to_string();
+    }
+    read_token(journal.join("phase"), "unknown")
+}
+
+fn subscription_record(app: &App) -> StateRecord {
+    let values = read_kv(app.moddir.join(SUBSCRIPTION_STATUS));
+    let result = map_value(&values, "result", "never");
+    let phase = map_value(&values, "phase", "never");
+    let lock_present = app.moddir.join(SUBSCRIPTION_UPDATE_LOCK).is_dir();
+    let transaction_pending = app.moddir.join(SUBSCRIPTION_TRANSACTION).is_dir();
+    let state = if lock_present || result == "running" {
+        "running"
+    } else if transaction_pending {
+        "recovery_pending"
+    } else {
+        match result.as_str() {
+            "success" => "success",
+            "failed" => "failed",
+            "interrupted" => "interrupted",
+            "never" => "idle",
+            _ => "unknown",
+        }
+    };
+    let local = regular_nonempty(&app.moddir.join(SUBSCRIPTION_LOCAL));
+    let configured_count = if local {
+        1
+    } else {
+        clean_module_lines(app, Path::new(SUBSCRIPTION_URL))
+            .map(|items| items.len())
+            .unwrap_or(0)
+    };
+    StateRecord::new(Domain::Subscription)
+        .field("state", state)
+        .field("phase", phase)
+        .field("result", result)
+        .field("source", if local { "local" } else { "url" })
+        .field("configured_count", configured_count.to_string())
+        .field(
+            "generation",
+            map_value(&values, "generation_id", "none"),
+        )
+        .bool("update_lock", lock_present)
+        .bool("transaction_pending", transaction_pending)
+}
+
+fn subscription_refresh_record(app: &App) -> StateRecord {
+    let schedule = read_token(app.moddir.join(SUBSCRIPTION_REFRESH_HOURS), "off");
+    let schedule = if matches!(schedule.as_str(), "12" | "24" | "48" | "72") {
+        schedule
+    } else {
+        "off".to_string()
+    };
+    let owner = refresh_owner_state(app);
+    StateRecord::new(Domain::SubscriptionRefresh)
+        .field("state", owner)
+        .field("schedule_hours", schedule.clone())
+        .bool("enabled", schedule != "off")
+}
+
+fn refresh_owner_state(app: &App) -> &'static str {
+    let owner_path = app.moddir.join(SUBSCRIPTION_REFRESH_OWNER);
+    let Ok(owner) = fs::read_to_string(&owner_path) else {
+        return "none";
+    };
+    let owner = owner.trim();
+    let mut fields = owner.split(':');
+    let Some(pid) = fields.next().and_then(|value| value.parse::<u32>().ok()) else {
+        return "stale";
+    };
+    let Some(expected_start) = fields.next() else {
+        return "stale";
+    };
+    if fields.next() != Some("subscription-refresh-v1") || fields.next().is_some() {
+        return "stale";
+    }
+    if !expected_start.bytes().all(|byte| byte.is_ascii_digit()) {
+        return "stale";
+    }
+    let proc_dir = PathBuf::from(format!("/proc/{pid}"));
+    if !proc_dir.is_dir() {
+        return "stale";
+    }
+    let stat_path = proc_dir.join("stat");
+    let stat = match read_proc_text_bounded(&stat_path, MAX_PROC_STAT_BYTES) {
+        Ok(value) => value,
+        Err(_) if !proc_dir.is_dir() => return "stale",
+        Err(_) => return "unknown",
+    };
+    if proc_start_time(&stat).as_deref() != Some(expected_start) {
+        return "stale";
+    }
+    let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
+        Ok(value) => value,
+        Err(_) if !proc_dir.is_dir() => return "stale",
+        Err(_) => return "unknown",
+    };
+    let expected_script = app.moddir.join(SUBSCRIPTION_REFRESH_LOOP);
+    if cmdline_has_script(&argv, &expected_script.to_string_lossy()) {
+        "active"
+    } else {
+        "stale"
+    }
+}
+
+fn supervisors_record(app: &App) -> StateRecord {
+    StateRecord::new(Domain::Supervisors)
+        .field(
+            "fswatch",
+            normalize_supervisor_state(&supervisor_pid(app, "fswatch", "magicnet-config")),
+        )
+        .field(
+            "wifi_policy",
+            normalize_supervisor_state(&supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy")),
+        )
+        .field(
+            "kernel_watchdog",
+            pidfile_state(&app.moddir.join(".state/watchdog/magicnet-kernel.pid")),
+        )
+        .field(
+            "hotspot_watchdog",
+            pidfile_state(&app.moddir.join(".state/watchdog/magicnet-hotspot-route.pid")),
+        )
+}
+
+fn normalize_supervisor_state(value: &str) -> &'static str {
+    if value.bytes().all(|byte| byte.is_ascii_digit()) && !value.is_empty() {
+        "running"
+    } else if value.starts_with("orphan:") {
+        "orphan"
+    } else if value.eq_ignore_ascii_case("stopped") {
+        "stopped"
+    } else {
+        "unknown"
+    }
+}
+
+fn pidfile_state(path: &Path) -> &'static str {
+    let Ok(value) = fs::read_to_string(path) else {
+        return "stopped";
+    };
+    let Some(pid) = value.trim().parse::<u32>().ok().filter(|pid| *pid > 0) else {
+        return "unknown";
+    };
+    if Path::new(&format!("/proc/{pid}")).is_dir() {
+        "running"
+    } else {
+        "stale"
+    }
+}
+
+fn wifi_record(app: &App) -> StateRecord {
+    let config = read_kv(app.moddir.join(WIFI_POLICY_CONF));
+    let last = read_kv(app.moddir.join(WIFI_LAST_STATE));
+    let enabled = config
+        .get("MAGICNET_WIFI_POLICY_ENABLED")
+        .is_some_and(|value| value == "1");
+    let supervisor = normalize_supervisor_state(&supervisor_pid(
+        app,
+        "wifi-policy",
+        "magicnet-wifi-policy",
+    ));
+    let state = if !enabled {
+        "disabled"
+    } else if supervisor == "running" {
+        "active"
+    } else {
+        "waiting"
+    };
+    StateRecord::new(Domain::Wifi)
+        .field("state", state)
+        .bool("enabled", enabled)
+        .field(
+            "policy",
+            match config.get("MAGICNET_WIFI_POLICY_MODE").map(String::as_str) {
+                Some("whitelist") => "whitelist",
+                _ => "blacklist",
+            },
+        )
+        .field("supervisor", supervisor)
+        .field("connected", map_value(&last, "connected", "0"))
+        .field("matched", map_value(&last, "matched", "0"))
+        .field("desired_mode", map_value(&last, "desired_mode", "rule"))
+        .field("current_mode", map_value(&last, "current_mode", "unknown"))
+        .bool(
+            "has_ssid",
+            last.get("ssid").is_some_and(|value| !value.is_empty() && value != "-"),
+        )
+        .bool(
+            "has_bssid",
+            last.get("bssid").is_some_and(|value| !value.is_empty() && value != "-"),
+        )
+}
+
+fn hotspot_record(app: &App) -> StateRecord {
+    let owned = app.moddir.join(HOTSPOT_OFFLOAD_OWNER).is_file();
+    let rule_count = clean_line_count(&app.moddir.join(HOTSPOT_TUN_RULES));
+    let configured_mode = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
+        .remove("MAGICNET_TRANSPARENT_MODE")
+        .unwrap_or_else(|| "tun".to_string());
+    let state = if !owned {
+        "disabled"
+    } else if configured_mode == "ebpf" {
+        "shared"
+    } else if rule_count > 0 {
+        "active"
+    } else {
+        "waiting"
+    };
+    StateRecord::new(Domain::Hotspot)
+        .field("state", state)
+        .bool("offload_owned", owned)
+        .field("tun_rule_count", rule_count.to_string())
+}
+
+fn dns_record(app: &App) -> StateRecord {
+    let interface_count = clean_line_count(&app.moddir.join(DNS_GUARD_INTERFACES));
+    StateRecord::new(Domain::Dns)
+        .field("state", if interface_count > 0 { "owned" } else { "idle" })
+        .field("guard_interface_count", interface_count.to_string())
+}
+
+fn mcp_record(app: &App) -> StateRecord {
+    let config = read_kv(app.moddir.join(MCP_CONF));
+    let enabled = config.get("MAGICNET_MCP_ENABLED").is_some_and(|value| value == "1");
+    let process = pidfile_state(&app.moddir.join(MCP_PID));
+    let state = if !enabled {
+        "disabled"
+    } else if process == "running" {
+        "running"
+    } else {
+        "stopped"
+    };
+    StateRecord::new(Domain::Mcp)
+        .field("state", state)
+        .bool("enabled", enabled)
+        .field("process", process)
+        .bool(
+            "secret_set",
+            config
+                .get("MAGICNET_MCP_SECRET")
+                .is_some_and(|value| !value.is_empty()),
+        )
+}
+
+fn tailscale_record(app: &App) -> StateRecord {
+    let count = read_json(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024)
+        .and_then(|config| config.get("endpoints").and_then(Value::as_array).cloned())
+        .map(|endpoints| {
+            endpoints
+                .iter()
+                .filter(|endpoint| endpoint.get("type").and_then(Value::as_str) == Some("tailscale"))
+                .count()
+        })
+        .unwrap_or(0);
+    let state = match count {
+        0 => "absent",
+        1 => "configured",
+        _ => "multiple",
+    };
+    StateRecord::new(Domain::Tailscale)
+        .field("state", state)
+        .field("endpoint_count", count.to_string())
+        .bool("auth_material", regular_nonempty(&app.moddir.join(TAILSCALE_AUTH)))
+}
+
+fn transactions_record(app: &App) -> StateRecord {
+    let transparent = app.moddir.join(TRANSPARENT_TRANSACTION).is_dir();
+    let subscription = app.moddir.join(SUBSCRIPTION_TRANSACTION).is_dir();
+    let module = directory_has_entries(&app.moddir.join(MODULE_TRANSACTION_STAGE));
+    StateRecord::new(Domain::Transactions)
+        .field(
+            "state",
+            if transparent || subscription || module {
+                "active"
+            } else {
+                "idle"
+            },
+        )
+        .bool("transparent", transparent)
+        .bool("subscription", subscription)
+        .bool("module_files", module)
+}
+
+fn map_value(
+    values: &std::collections::HashMap<String, String>,
+    key: &str,
+    fallback: &str,
+) -> String {
+    values
+        .get(key)
+        .map(|value| sanitize_token(value.clone()))
+        .filter(|value| value != "unknown")
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn read_token(path: PathBuf, fallback: &str) -> String {
+    fs::read_to_string(path)
+        .ok()
+        .map(sanitize_token)
+        .filter(|value| value != "unknown")
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn read_json(path: &Path, max_bytes: u64) -> Option<Value> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.file_type().is_file() || metadata.len() > max_bytes {
+        return None;
+    }
+    serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
+fn regular_nonempty(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.file_type().is_file() && metadata.len() > 0)
+}
+
+fn clean_line_count(path: &Path) -> usize {
+    fs::read_to_string(path)
+        .ok()
+        .map(|text| {
+            text.lines()
+                .filter(|line| {
+                    let line = line.trim();
+                    !line.is_empty() && !line.starts_with('#')
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn directory_has_entries(path: &Path) -> bool {
+    fs::read_dir(path)
+        .ok()
+        .and_then(|mut entries| entries.next())
+        .is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{subscription_record, wifi_record, Domain, StateRecord};
+    use crate::App;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn fixture() -> (std::path::PathBuf, App) {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "magicnet-state-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join(".config/magicnet")).expect("create config");
+        fs::create_dir_all(root.join(".config/sing-box")).expect("create sing-box config");
+        fs::create_dir_all(root.join(".state/wifi-policy")).expect("create wifi state");
+        fs::create_dir_all(root.join(".state/sing-box")).expect("create subscription state");
+        let app = App::for_test(root.clone());
+        (root, app)
+    }
+
+    #[test]
+    fn state_record_is_a_bounded_token_file() {
+        let text = StateRecord::new(Domain::Service)
+            .field("state", "running\nsecret=value")
+            .encode();
+        assert!(text.contains("schema=1\n"));
+        assert!(text.contains("domain=service\n"));
+        assert!(text.contains("state=unknown\n"));
+        assert!(!text.contains("secret=value"));
+    }
+
+    #[test]
+    fn wifi_state_never_persists_network_identity() {
+        let (root, app) = fixture();
+        fs::write(
+            root.join(".config/magicnet/wifi-policy.conf"),
+            "MAGICNET_WIFI_POLICY_ENABLED=0\nMAGICNET_WIFI_POLICY_MODE=blacklist\n",
+        )
+        .expect("write wifi config");
+        fs::write(
+            root.join(".state/wifi-policy/last-state.conf"),
+            "connected=1\nssid=private-network-name\nbssid=aa:bb:cc:dd:ee:ff\nmatched=1\ndesired_mode=direct\ncurrent_mode=direct\n",
+        )
+        .expect("write wifi state");
+        let text = wifi_record(&app).encode();
+        assert!(text.contains("has_ssid=1"));
+        assert!(text.contains("has_bssid=1"));
+        assert!(!text.contains("private-network-name"));
+        assert!(!text.contains("aa:bb:cc:dd:ee:ff"));
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn subscription_journal_without_owner_is_recovery_pending() {
+        let (root, app) = fixture();
+        fs::write(
+            root.join(".state/sing-box/subscription-status"),
+            "phase=commit\nresult=success\ngeneration_id=123-456\n",
+        )
+        .expect("write subscription status");
+        fs::create_dir_all(root.join(".state/sing-box/subscription-transaction"))
+            .expect("create transaction");
+        let text = subscription_record(&app).encode();
+        assert!(text.contains("state=recovery_pending"));
+        assert!(text.contains("transaction_pending=1"));
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+}
