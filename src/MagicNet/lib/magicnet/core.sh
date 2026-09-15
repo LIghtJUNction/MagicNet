@@ -336,7 +336,13 @@ magicnet_show_dashboard() {
     panel_row "sing-box" "$(magicnet_display_status "$_singbox_state")"
     _fswatch_pid=$(magicnet_fswatch_status)
     panel_row "fswatch" "$(magicnet_display_status "${_fswatch_pid:-Stopped}")"
-    panel_row "WebUI" "http://127.0.0.1:9090/ui/"
+    _webui_api="$(magicnet_singbox_api_endpoint 2>/dev/null || true)"
+    if [ -n "$_webui_api" ]; then
+        panel_row "WebUI" "${_webui_api}/ui/"
+    else
+        panel_row "WebUI" "$(i18n MAGICNET_UNAVAILABLE)"
+    fi
+    unset _webui_api
     if [ -s "${MODDIR}/.config/sing-box/subscription.local" ]; then
         panel_row "$(i18n MAGICNET_SUBSCRIPTION)" "$(i18n MAGICNET_LOCAL_FILE)"
     else
