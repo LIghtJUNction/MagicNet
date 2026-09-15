@@ -169,7 +169,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo ndk -t x86_64 build --release -p magicnet-cli -p magicnet-mcp-server
+          cargo ndk -t x86_64 build --release -p magicnet-cli
           mkdir -p "$RUNNER_TEMP/magicnet-x86"
           scripts/build-sing-box.sh android amd64 "$RUNNER_TEMP/magicnet-x86/sing-box"
           install -m 0755 target/x86_64-linux-android/release/magicnet-cli "$RUNNER_TEMP/magicnet-x86/magicnet-cli"
