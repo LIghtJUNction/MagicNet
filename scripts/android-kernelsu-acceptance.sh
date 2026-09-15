@@ -21,6 +21,16 @@ mkdir -p "$OUT"
 log() { printf '[android-ksu] %s\n' "$*"; }
 fail() { printf '[android-ksu] ERROR: %s\n' "$*" >&2; exit 1; }
 
+if ! command -v adb >/dev/null 2>&1; then
+    for sdk_root in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"; do
+        if [[ -n "$sdk_root" && -x "$sdk_root/platform-tools/adb" ]]; then
+            export PATH="$sdk_root/platform-tools:$PATH"
+            break
+        fi
+    done
+fi
+command -v adb >/dev/null 2>&1 || fail 'adb not found in PATH or Android SDK platform-tools'
+
 wait_boot() {
     adb wait-for-device
     local deadline=$((SECONDS + 300))
