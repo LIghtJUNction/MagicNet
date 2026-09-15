@@ -63,7 +63,7 @@ class InstallerTests(unittest.TestCase):
         self.cache.mkdir()
         self.entries = {
             "module.prop": b"id=MagicNet\nname=MagicNet\nversion=v1.4.11\nversionCode=123\n",
-            "customize.sh": b'export SKIPUNZIP=1\nimport this\n'
+            "customize.sh": b'export SKIPUNZIP=1\nimport rich\n'
                             b'unzip -o "$ZIPFILE" "service.sh" -d "$MODPATH" >&2 || abort "scaffold"\n',
             "service.sh": b"#!/system/bin/sh\n# MagicNet runtime fixture\n",
             "cli": b"cli",
