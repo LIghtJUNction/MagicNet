@@ -53,6 +53,18 @@ jobs:
       - name: Apply scoped repairs and format
         run: |
           python3 "$RUNNER_TEMP/pr286_review_patch.py" fix
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('crates/magicnet-cli/src/utils.rs')
+          text, count = re.subn(
+              r'if err\.raw_os_error\(\) != Some\(libc::ECHILD\) \{\s+if worker_status\.is_none\(\) \{\s+kill_and_reap\(worker_pid\);\s+\}\s+\}',
+              'if err.raw_os_error() != Some(libc::ECHILD) && worker_status.is_none() {\n                        kill_and_reap(worker_pid);\n                    }',
+              path.read_text(),
+          )
+          assert count == 1, count
+          path.write_text(text)
+          PY
           cargo fmt --all
           cargo fmt --all -- --check
           git diff --check
