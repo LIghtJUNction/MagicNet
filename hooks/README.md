@@ -14,7 +14,7 @@ legacy layout.
 
 ## Layout
 
-- `lib/utils.sh`: generic logging and host/build-environment helpers.
+- `lib/utils.sh`: logging and required-command checks shared by build hooks.
 - `lib/release_locks.sh`: reviewed upstream repository, tag, asset, and SHA-256
   locks for external release artifacts.
 - `lib/release_utils.sh`: locked download/cache handling, integrity checks, safe
