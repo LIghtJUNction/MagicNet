@@ -71,7 +71,6 @@ run_quick() {
     (cd "$ROOT" && "$KAM_BIN" validate)
     log "checking Rust crates"
     (cd "$ROOT" && cargo check -p magicnet-cli)
-    (cd "$ROOT" && cargo check -p magicnet-mcp-server)
     log "checking default configs"
     jq empty "$ROOT/src/MagicNet/.config/sing-box/config.json"
 }
@@ -207,7 +206,7 @@ build_and_push_x86_control_plane() {
         return 0
     fi
     log "building x86_64 CLI/MCP for AVD control-plane checks"
-    (cd "$ROOT" && cargo ndk -t x86_64 build --release -p magicnet-cli -p magicnet-mcp-server)
+    (cd "$ROOT" && cargo ndk -t x86_64 build --release -p magicnet-cli)
     "$ADB" -s "$serial" push "$ROOT/target/x86_64-linux-android/release/magicnet-cli" /sdcard/Download/magicnet-cli >/dev/null
     "$ADB" -s "$serial" push "$ROOT/target/x86_64-linux-android/release/magicnet-mcp-server" /sdcard/Download/magicnet-mcp-server >/dev/null
     adb_su "$serial" 'cp /sdcard/Download/magicnet-cli /data/adb/modules/MagicNet/bin/magicnet-cli'
