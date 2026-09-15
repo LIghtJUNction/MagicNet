@@ -104,6 +104,31 @@ def bump(kind):
     print(f"Prepared {version} (versionCode={code}); release requested: {release}")
 
 
+def report_pr():
+    url = os.environ.get("PR_URL", "")
+    if os.environ.get("PR_OUTCOME") == "success" and url:
+        summary = f"Version PR: {url}\n\nReview and merge after its checks pass.\n"
+    else:
+        version = os.environ["VERSION"]
+        if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", version):
+            raise ValueError("Invalid version branch")
+        branch = f"automation/release-{version}"
+        git("fetch", "--no-tags", "origin", f"refs/heads/{branch}")
+        if git("rev-parse", "FETCH_HEAD^{tree}") != os.environ["EXPECTED_TREE"]:
+            raise ValueError("Remote version branch differs from the prepared content")
+        if git("show", "-s", "--format=%P", "FETCH_HEAD") != os.environ["GITHUB_SHA"]:
+            raise ValueError("Remote version branch has a different release base")
+        url = (f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
+               f"/compare/main...{branch}?expand=1")
+        print("::warning::Automatic PR creation did not complete. The version branch "
+              "was verified; use the summary link to open its PR manually.")
+        summary = (f"Prepared {version}; manual PR creation required.\n\n"
+                   f"[Create the version PR]({url}), then review and merge after checks pass.\n\n"
+                   "No release has been published. See the PR action log for the original error.\n")
+    with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+        output.write(summary)
+
+
 def verify_build():
     read_metadata()
     require_main_checkout()
@@ -157,10 +182,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--bump", choices=("patch", "minor", "major"))
+    mode.add_argument("--report-pr", action="store_true")
     mode.add_argument("--verify-build", action="store_true")
     args = parser.parse_args()
     try:
-        if args.verify_build:
+        if args.report_pr:
+            report_pr()
+        elif args.verify_build:
             verify_build()
         else:
             bump(args.bump) if args.bump else prepare()
