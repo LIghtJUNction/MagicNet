@@ -1,6 +1,6 @@
 # shellcheck shell=ash
 #
-# Device-validated Google Play fallback plus resilient Google/Gemini routing.
+# Device-validated Google Play fallback plus resilient Gemini routing.
 #
 # Keep the Go runtime on a bounded heap by default. GOMEMLIMIT is a soft runtime
 # memory target rather than an RLIMIT, so sing-box can still allocate what it
@@ -32,27 +32,9 @@ magicnet_singbox_google_reliability_patch() {
         reduce (($items // []) + [$value])[] as $item
           ([]; if index($item) then . else . + [$item] end);
 
-      ([.outbounds[]? | select(.tag == "proxy-auto" and .type == "urltest")][0] // null) as $proxy_auto
-      | ([.outbounds[]? | select(.tag == "ai-gemini-auto" and .type == "urltest")][0] // null) as $gemini_auto
+      ([.outbounds[]? | select(.tag == "ai-gemini-auto" and .type == "urltest")][0] // null) as $gemini_auto
       | .outbounds = ((.outbounds // []) | map(
-          select(.tag != "magicnet-google-auto" and .tag != "magicnet-gemini-auto")))
-      | if $proxy_auto != null then
-          .outbounds += [{
-            "type": "urltest",
-            "tag": "magicnet-google-auto",
-            "outbounds": append_once(($proxy_auto.outbounds // []); "direct"),
-            "url": "https://www.google.com/generate_204",
-            "interval": "2m",
-            "tolerance": 50,
-            "idle_timeout": "10m",
-            "interrupt_exist_connections": true
-          }]
-          | .outbounds = (.outbounds | map(
-              if (.tag? == "google-proxy" and .type? == "selector") then
-                .outbounds = append_once(.outbounds; "magicnet-google-auto")
-                | if .default? == "proxy" then .default = "magicnet-google-auto" else . end
-              else . end))
-        else . end
+          select(.tag != "magicnet-gemini-auto")))
       | if $gemini_auto != null then
           .outbounds += [{
             "type": "urltest",
@@ -154,7 +136,7 @@ magicnet_singbox_verify_subscription_ready() {
         return 1
     }
     if [ "$_verify_google_patch" = changed ]; then
-        warn "Google service reliability policy updated (Play direct fallback; Google/Gemini auto routing)"
+        warn "Google service reliability policy updated (Play direct fallback; Gemini auto routing)"
     fi
     unset _verify_config _verify_google_patch
     _magicnet_singbox_verify_subscription_ready_base
