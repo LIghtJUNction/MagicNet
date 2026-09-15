@@ -181,18 +181,22 @@ class SubmoduleUpdateTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((nested / "version").read_text(), "updated dependency")
 
-    def test_only_build_refreshes_remote_submodule_inputs(self):
+    def test_build_uses_reviewed_submodule_gitlinks(self):
         # PyYAML is already required by the host regression suite.
         import yaml
         build = yaml.safe_load((ROOT / ".github/workflows/exec.yml").read_text())
         steps = build["jobs"]["build"]["steps"]
-        refresh = next(i for i, step in enumerate(steps) if "bash scripts/update-submodules.sh" in step.get("run", ""))
+        verification = next(i for i, step in enumerate(steps)
+                            if "bash scripts/verify-submodule-revisions.sh" in step.get("run", ""))
         fingerprint = next(i for i, step in enumerate(steps) if step.get("id") == "toolchain")
-        self.assertLess(refresh, fingerprint)
+        self.assertLess(verification, fingerprint)
+        commands = "\n".join(step.get("run", "") for step in steps)
+        self.assertNotIn("update-submodules.sh", commands)
+        checkout = steps[0]
+        self.assertEqual(checkout.get("with", {}).get("submodules"), "recursive")
 
-        # Quality tests the exact commit inputs. Reaching out to remote moving
-        # branches here both duplicates the build fetch and makes validation
-        # depend on network/upstream state unrelated to the commit under test.
+        # Quality also tests the exact commit inputs. Reaching out to remote
+        # moving branches would make validation depend on unreviewed code.
         quality = yaml.safe_load((ROOT / ".github/workflows/quality.yml").read_text())
         for job in ("rust", "shell"):
             commands = "\n".join(step.get("run", "") for step in quality["jobs"][job]["steps"])
