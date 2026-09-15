@@ -143,11 +143,11 @@ jobs:
         with:
           mode: restore
 
-      - name: Refresh build submodules
+      - name: Verify pinned build submodules
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/update-submodules.sh
+          bash scripts/verify-submodule-revisions.sh
           git submodule status --recursive > "$RUNNER_TEMP/build-submodules.txt"
 
       - name: Prepare signing verification key
