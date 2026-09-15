@@ -25,11 +25,14 @@ new_repo "$WORK/project"
 commit_file "$WORK/project" project
 git -C "$WORK/project" submodule add -q "$WORK/dependency" dependency
 git -C "$WORK/project" submodule add -q "$WORK/leaf" default-branch
+git -C "$WORK/project" submodule add -q "$WORK/leaf" pinned
 git -C "$WORK/project" config -f .gitmodules submodule.dependency.branch testing
 git -C "$WORK/project" config -f .gitmodules submodule.dependency.shallow true
+git -C "$WORK/project" config -f .gitmodules submodule.pinned.magicnet-pinned true
 git -C "$WORK/project" add .
 git -C "$WORK/project" commit -qm submodules
 parent=$(git -C "$WORK/project" rev-parse HEAD)
+expected_pinned=$(git -C "$WORK/project/pinned" rev-parse HEAD)
 commit_file "$WORK/dependency" latest-testing
 commit_file "$WORK/leaf" latest-leaf
 expected_dependency=$(git -C "$WORK/dependency" rev-parse HEAD)
@@ -54,6 +57,8 @@ check_snapshot() {
         [ "$(git -C "$WORK/checkout/$path" rev-parse HEAD)" = "$expected_leaf" ]
         grep -Fq "$expected_leaf $path" "$WORK/checkout/submodule-revisions.txt"
     done
+    [ "$(git -C "$WORK/checkout/pinned" rev-parse HEAD)" = "$expected_pinned" ]
+    grep -Fq "$expected_pinned pinned" "$WORK/checkout/submodule-revisions.txt"
     [ "$(git -C "$WORK/checkout" rev-parse HEAD)" = "$parent" ]
     git -C "$WORK/checkout" diff --cached --exit-code
     verify >>"$WORK/verify.log"
@@ -64,6 +69,7 @@ commit_file "$WORK/leaf" next-build-leaf
 bash "$WORK/checkout/scripts/update-submodules.sh" >>"$WORK/update.log" 2>&1
 check_snapshot
 grep -Fq "$expected_dependency dependency" "$WORK/summary"
+grep -Fq 'Keeping pinned submodule pinned at recorded gitlink' "$WORK/update.log"
 
 # Integrity follows the resolved snapshot, including nested modules, not old pins.
 expected_leaf=$(git -C "$WORK/leaf" rev-parse HEAD)

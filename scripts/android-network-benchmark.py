@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Benchmark MagicNet inside an Android AVD through adb.
 
-The script intentionally uses KernelSU's bundled BusyBox on the device so the
-measurement traverses the Android network stack and MagicNet's transparent TUN.
-It does not use host networking for acceptance results.
+Network probes deliberately run as Android's non-root shell UID. MagicNet's TUN
+excludes UID 0, so running wget from a root adbd would bypass the dataplane and
+produce a false-positive acceptance result. Root is used only for installation
+and process accounting; probe traffic itself must traverse MagicNet.
 """
 
 from __future__ import annotations
@@ -31,6 +32,27 @@ def adb_shell(command: str, timeout: int = 60, check: bool = False) -> subproces
     if check and cp.returncode != 0:
         raise RuntimeError(f"adb shell failed ({cp.returncode}): {command}\n{cp.stdout}")
     return cp
+
+
+def adb_mode(root: bool) -> None:
+    action = "root" if root else "unroot"
+    cp = subprocess.run(
+        ["adb", action],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=30,
+    )
+    # `adb root`/`unroot` may report that adbd already has the requested mode.
+    if cp.returncode != 0:
+        raise RuntimeError(f"adb {action} failed: {cp.stdout}")
+    subprocess.run(["adb", "wait-for-device"], check=True, timeout=60)
+    time.sleep(1)
+    uid = adb_shell("id -u", check=True).stdout.strip()
+    if root and uid != "0":
+        raise RuntimeError(f"adb root did not produce uid 0 (got {uid!r})")
+    if not root and uid == "0":
+        raise RuntimeError("network acceptance would run as excluded uid 0")
 
 
 def q(value: str) -> str:
@@ -65,9 +87,6 @@ def fetch_probe(bb: str, url: str, timeout_s: int) -> dict[str, Any]:
 
 
 def speed_probe(bb: str, name: str, url: str, bytes_target: int, timeout_s: int) -> dict[str, Any]:
-    # Do not trust the pipeline return code alone: wget can fail while the final
-    # consumer exits successfully. Write at most the requested amount and verify
-    # the actual byte count before calling the probe successful.
     block_size = 64 * 1024
     blocks = (bytes_target + block_size - 1) // block_size
     tmp = "/data/local/tmp/magicnet-speed-probe.bin"
@@ -170,6 +189,14 @@ def process_rss_kb(snapshot: dict[str, Any], name: str) -> int:
     return total
 
 
+def prepare_probe_busybox(root_bb: str, probe_bb: str) -> None:
+    adb_shell(
+        f"cp {q(root_bb)} {q(probe_bb)} && chmod 0755 {q(probe_bb)} && "
+        f"test -x {q(probe_bb)}",
+        check=True,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--targets", required=True, type=Path)
@@ -178,54 +205,68 @@ def main() -> int:
     parser.add_argument("--strict-external", action="store_true")
     parser.add_argument("--speed", action="store_true")
     parser.add_argument("--timeout", type=int, default=20)
+    parser.add_argument("--max-sing-box-rss-kb", type=int, default=120 * 1024)
     args = parser.parse_args()
 
     if args.rounds < 1 or args.rounds > 10:
         parser.error("--rounds must be 1..10")
+    if args.max_sing_box_rss_kb < 1:
+        parser.error("--max-sing-box-rss-kb must be positive")
 
     args.output.mkdir(parents=True, exist_ok=True)
-    bb = "/data/adb/ksu/bin/busybox"
-    if adb_shell(f"test -x {bb}").returncode != 0:
+    root_bb = "/data/adb/ksu/bin/busybox"
+    probe_bb = "/data/local/tmp/magicnet-probe-busybox"
+    if adb_shell(f"test -x {root_bb}").returncode != 0:
         print("KernelSU BusyBox is missing", file=sys.stderr)
         return 2
 
     targets = parse_targets(args.targets)
-    before = collect_processes(bb)
+    prepare_probe_busybox(root_bb, probe_bb)
+    before = collect_processes(root_bb)
     records: list[dict[str, Any]] = []
-
-    for target in targets:
-        for round_no in range(1, args.rounds + 1):
-            probe = fetch_probe(bb, target["url"], args.timeout)
-            record = {**target, "round": round_no, **probe}
-            records.append(record)
-            print(
-                f"[{target['category']}] {target['id']} round={round_no} "
-                f"ok={probe['ok']} elapsed_ms={probe['elapsed_ms']}"
-            )
-            time.sleep(0.15)
-
     speed_records: list[dict[str, Any]] = []
-    if args.speed:
-        speed_records.append(
-            speed_probe(
-                bb,
-                "global-cloudflare-8MiB",
-                "https://speed.cloudflare.com/__down?bytes=8388608",
-                8 * 1024 * 1024,
-                45,
-            )
-        )
-        speed_records.append(
-            speed_probe(
-                bb,
-                "domestic-tuna-8MiB",
-                "https://mirrors.tuna.tsinghua.edu.cn/iina/IINA.v1.4.4.dmg",
-                8 * 1024 * 1024,
-                45,
-            )
-        )
 
-    after = collect_processes(bb)
+    # This transition is the key acceptance invariant: UID 0 is excluded from the
+    # TUN, so every public-network request below must originate as shell (uid 2000
+    # on AOSP) or another non-root uid.
+    adb_mode(False)
+    probe_uid = adb_shell("id -u", check=True).stdout.strip()
+    try:
+        for target in targets:
+            for round_no in range(1, args.rounds + 1):
+                probe = fetch_probe(probe_bb, target["url"], args.timeout)
+                record = {**target, "round": round_no, "probe_uid": probe_uid, **probe}
+                records.append(record)
+                print(
+                    f"[{target['category']}] {target['id']} round={round_no} "
+                    f"uid={probe_uid} ok={probe['ok']} elapsed_ms={probe['elapsed_ms']}"
+                )
+                time.sleep(0.15)
+
+        if args.speed:
+            speed_records.append(
+                speed_probe(
+                    probe_bb,
+                    "global-cloudflare-8MiB",
+                    "https://speed.cloudflare.com/__down?bytes=8388608",
+                    8 * 1024 * 1024,
+                    45,
+                )
+            )
+            speed_records.append(
+                speed_probe(
+                    probe_bb,
+                    "domestic-tuna-8MiB",
+                    "https://mirrors.tuna.tsinghua.edu.cn/iina/IINA.v1.4.4.dmg",
+                    8 * 1024 * 1024,
+                    45,
+                )
+            )
+    finally:
+        adb_mode(True)
+
+    after = collect_processes(root_bb)
+    adb_shell(f"rm -f {q(probe_bb)} /data/local/tmp/magicnet-speed-probe.bin || true")
 
     per_target: list[dict[str, Any]] = []
     for target in targets:
@@ -245,23 +286,37 @@ def main() -> int:
 
     domestic = [r for r in per_target if r["category"] == "domestic"]
     globalish = [r for r in per_target if r["category"] != "domestic"]
+    google = [r for r in per_target if r["category"] == "google"]
     domestic_any = any(r["successes"] > 0 for r in domestic)
     global_any = any(r["successes"] > 0 for r in globalish)
+    google_failures = [r["id"] for r in google if r["successes"] == 0]
+    google_all = bool(google) and not google_failures
     total_success = sum(r["successes"] for r in per_target)
     total_rounds = sum(r["rounds"] for r in per_target)
     success_ratio = total_success / total_rounds if total_rounds else 0.0
 
+    sing_before = process_rss_kb(before, "sing-box")
+    sing_after = process_rss_kb(after, "sing-box")
+    sing_peak_observed = max(sing_before, sing_after)
+    memory_ok = 0 < sing_peak_observed <= args.max_sing_box_rss_kb
+
     summary = {
         "rounds": args.rounds,
         "strict_external": args.strict_external,
+        "probe_uid": probe_uid,
         "target_count": len(targets),
         "probe_count": total_rounds,
         "success_count": total_success,
         "success_ratio": round(success_ratio, 4),
         "domestic_any": domestic_any,
         "global_any": global_any,
-        "sing_box_rss_kb_before": process_rss_kb(before, "sing-box"),
-        "sing_box_rss_kb_after": process_rss_kb(after, "sing-box"),
+        "google_all": google_all,
+        "google_failures": google_failures,
+        "sing_box_rss_kb_before": sing_before,
+        "sing_box_rss_kb_after": sing_after,
+        "sing_box_rss_kb_observed_max": sing_peak_observed,
+        "sing_box_rss_limit_kb": args.max_sing_box_rss_kb,
+        "memory_ok": memory_ok,
         "speed": speed_records,
         "targets": per_target,
     }
@@ -273,7 +328,7 @@ def main() -> int:
     with (args.output / "probes.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=["id", "category", "url", "expected", "round", "ok", "rc", "elapsed_ms"],
+            fieldnames=["id", "category", "url", "expected", "round", "probe_uid", "ok", "rc", "elapsed_ms"],
         )
         writer.writeheader()
         for record in records:
@@ -282,10 +337,12 @@ def main() -> int:
     md = [
         "# Android KernelSU network acceptance",
         "",
+        f"- Probe UID: **{probe_uid}** (must be non-root; UID 0 is excluded from MagicNet TUN)",
         f"- Targets: **{len(targets)}**; probes: **{total_rounds}**; successful: **{total_success}** ({success_ratio:.1%})",
         f"- Domestic reachability: **{'PASS' if domestic_any else 'FAIL'}**",
         f"- Global/proxied reachability: **{'PASS' if global_any else 'FAIL'}**",
-        f"- sing-box RSS: **{summary['sing_box_rss_kb_before']} KiB → {summary['sing_box_rss_kb_after']} KiB**",
+        f"- Required Google matrix: **{'PASS' if google_all else 'FAIL'}**",
+        f"- sing-box RSS: **{sing_before} KiB → {sing_after} KiB**, gate **≤ {args.max_sing_box_rss_kb} KiB**: **{'PASS' if memory_ok else 'FAIL'}**",
         "",
         "| Target | Class | Success | Median latency |",
         "|---|---:|---:|---:|",
@@ -293,6 +350,8 @@ def main() -> int:
     for row in per_target:
         latency = f"{row['median_latency_ms']} ms" if row["median_latency_ms"] is not None else "-"
         md.append(f"| {row['id']} | {row['category']} | {row['successes']}/{row['rounds']} | {latency} |")
+    if google_failures:
+        md += ["", f"Required Google failures: **{', '.join(google_failures)}**"]
     if speed_records:
         md += ["", "## Throughput", "", "| Probe | Result | Received | Throughput |", "|---|---:|---:|---:|"]
         for row in speed_records:
@@ -301,13 +360,15 @@ def main() -> int:
             md.append(f"| {row['name']} | {'PASS' if row['ok'] else 'FAIL'} | {received_mib} MiB | {rate} |")
     md += [
         "",
-        "> These are anonymous public endpoint tests. They do not log into third-party apps or send account credentials through free proxy nodes.",
+        "> These are anonymous public endpoint tests from a non-root Android UID through the transparent dataplane. They do not log into third-party apps or send account credentials through free proxy nodes.",
         "",
     ]
     (args.output / "summary.md").write_text("\n".join(md), encoding="utf-8")
 
-    # Public endpoints and free nodes fluctuate. Individual misses are observations,
-    # but losing an entire routing side means the acceptance environment is unusable.
+    if not memory_ok:
+        return 5
+    if not google_all:
+        return 6
     if not domestic_any or not global_any:
         return 3
     if args.strict_external and success_ratio < 0.80:

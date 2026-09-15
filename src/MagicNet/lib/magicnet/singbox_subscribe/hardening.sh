@@ -1,63 +1,99 @@
 # shellcheck shell=ash
 #
-# Device-validated Google Play package fallback.
-# Ordinary Google/YouTube domain routing continues to use maintained selectors.
+# Device-validated Google Play fallback plus resilient Gemini routing.
+#
+# Keep the Go runtime on a bounded heap by default. GOMEMLIMIT is a soft runtime
+# memory target rather than an RLIMIT, so sing-box can still allocate what it
+# needs under pressure while avoiding an unnecessarily large steady-state heap.
+: "${MAGICNET_SINGBOX_GOMEMLIMIT:=96MiB}"
+export GOMEMLIMIT="$MAGICNET_SINGBOX_GOMEMLIMIT"
 
-magicnet_singbox_google_play_direct_fallback_patch() {
-    _play_config="$1"
-    _play_jq="$(magicnet_jq)" || return 1
-    _play_tmp="${_play_config}.google-play-direct.$$"
-    rm -f "$_play_tmp" 2>/dev/null || true
+magicnet_singbox_google_reliability_patch() {
+    _google_config="$1"
+    _google_jq="$(magicnet_jq)" || return 1
+    _google_tmp="${_google_config}.google-reliability.$$"
+    rm -f "$_google_tmp" 2>/dev/null || true
 
-    if ! "$_play_jq" -e '
+    if ! "$_google_jq" '
       def packages:
         if ((.package_name? // null) | type) == "array" then .package_name
         elif ((.package_name? // null) | type) == "string" then [.package_name]
         else [] end;
+      def has_package($name): (packages | index($name)) != null;
       def is_google_play_service:
-        packages as $packages
-        | (($packages | index("com.android.vending")) != null
-          or ($packages | index("com.google.android.gms")) != null
-          or ($packages | index("com.google.android.gsf")) != null);
-      any(.route.rules[]?;
-        is_google_play_service
-        and ((.outbound? == "google-proxy") or (.outbound? == "proxy")))
-    ' "$_play_config" >/dev/null 2>&1; then
+        has_package("com.android.vending")
+          or has_package("com.google.android.gms")
+          or has_package("com.google.android.gsf");
+      def is_gemini_rule:
+        has_package("com.google.android.apps.bard")
+          or (((.rule_set? // []) | if type == "array" then . else [.] end)
+              | index("meta-google-gemini")) != null;
+      def append_once($items; $value):
+        reduce (($items // []) + [$value])[] as $item
+          ([]; if index($item) then . else . + [$item] end);
+
+      ([.outbounds[]? | select(.tag == "ai-gemini-auto" and .type == "urltest")][0] // null) as $gemini_auto
+      | .outbounds = ((.outbounds // []) | map(
+          select(.tag != "magicnet-gemini-auto")))
+      | if $gemini_auto != null then
+          .outbounds += [{
+            "type": "urltest",
+            "tag": "magicnet-gemini-auto",
+            "outbounds": append_once(($gemini_auto.outbounds // []); "direct"),
+            "url": ($gemini_auto.url // "https://gemini.google.com/"),
+            "interval": ($gemini_auto.interval // "10m"),
+            "tolerance": ($gemini_auto.tolerance // 30),
+            "idle_timeout": ($gemini_auto.idle_timeout // "10m"),
+            "interrupt_exist_connections": ($gemini_auto.interrupt_exist_connections // false)
+          }]
+        else . end
+      | .route.rules = ((.route.rules // []) | map(
+          if (is_google_play_service
+              and ((.outbound? == "google-proxy") or (.outbound? == "proxy"))) then
+            .outbound = "direct"
+          elif (is_gemini_rule and .outbound? == "ai-gemini" and $gemini_auto != null) then
+            .outbound = "magicnet-gemini-auto"
+          else . end))
+    ' "$_google_config" >"$_google_tmp"; then
+        rm -f "$_google_tmp" 2>/dev/null || true
+        return 1
+    fi
+
+    chmod 600 "$_google_tmp" 2>/dev/null || true
+    magicnet_singbox_recovery_config_valid "$_google_tmp" || {
+        rm -f "$_google_tmp" 2>/dev/null || true
+        return 1
+    }
+
+    _google_before="$(cksum <"$_google_config" 2>/dev/null)" || {
+        rm -f "$_google_tmp" 2>/dev/null || true
+        return 1
+    }
+    _google_after="$(cksum <"$_google_tmp" 2>/dev/null)" || {
+        rm -f "$_google_tmp" 2>/dev/null || true
+        unset _google_before
+        return 1
+    }
+    if [ "$_google_before" = "$_google_after" ]; then
+        rm -f "$_google_tmp" 2>/dev/null || true
+        unset _google_before _google_after
         printf '%s\n' unchanged
         return 0
     fi
+    unset _google_before _google_after
 
-    if ! "$_play_jq" '
-      def packages:
-        if ((.package_name? // null) | type) == "array" then .package_name
-        elif ((.package_name? // null) | type) == "string" then [.package_name]
-        else [] end;
-      def is_google_play_service:
-        packages as $packages
-        | (($packages | index("com.android.vending")) != null
-          or ($packages | index("com.google.android.gms")) != null
-          or ($packages | index("com.google.android.gsf")) != null);
-      .route.rules = ((.route.rules // []) | map(
-        if (is_google_play_service
-            and ((.outbound? == "google-proxy") or (.outbound? == "proxy")))
-        then .outbound = "direct"
-        else . end))
-    ' "$_play_config" >"$_play_tmp"; then
-        rm -f "$_play_tmp" 2>/dev/null || true
-        return 1
-    fi
-
-    chmod 600 "$_play_tmp" 2>/dev/null || true
-    magicnet_singbox_recovery_config_valid "$_play_tmp" || {
-        rm -f "$_play_tmp" 2>/dev/null || true
+    mv -f "$_google_tmp" "$_google_config" || {
+        rm -f "$_google_tmp" 2>/dev/null || true
         return 1
     }
-    mv -f "$_play_tmp" "$_play_config" || {
-        rm -f "$_play_tmp" 2>/dev/null || true
-        return 1
-    }
-    chmod 600 "$_play_config" 2>/dev/null || true
+    chmod 600 "$_google_config" 2>/dev/null || true
     printf '%s\n' changed
+}
+
+# Compatibility name used by the v1.5.1 regression and older callers. The
+# implementation now covers the whole Google reliability policy, not only Play.
+magicnet_singbox_google_play_direct_fallback_patch() {
+    magicnet_singbox_google_reliability_patch "$@"
 }
 
 # Wrap the existing activation check rather than replacing its process-state
@@ -94,14 +130,14 @@ _magicnet_singbox_verify_subscription_ready_base() {
 
 magicnet_singbox_verify_subscription_ready() {
     _verify_config="$(magicnet_singbox_subscription_config_file)"
-    _verify_fallback="$(magicnet_singbox_google_play_direct_fallback_patch "$_verify_config")" || {
-        error "Failed to apply the Google Play direct fallback safely"
-        unset _verify_config _verify_fallback
+    _verify_google_patch="$(magicnet_singbox_google_reliability_patch "$_verify_config")" || {
+        error "Failed to apply the Google service reliability policy safely"
+        unset _verify_config _verify_google_patch
         return 1
     }
-    if [ "$_verify_fallback" = changed ]; then
-        warn "Google Play/GMS package traffic is using the verified direct fallback"
+    if [ "$_verify_google_patch" = changed ]; then
+        warn "Google service reliability policy updated (Play direct fallback; Gemini auto routing)"
     fi
-    unset _verify_config _verify_fallback
+    unset _verify_config _verify_google_patch
     _magicnet_singbox_verify_subscription_ready_base
 }

@@ -26,9 +26,19 @@ git submodule foreach '
     git fetch --no-recurse-submodules --prune origin
     git remote set-head origin --auto
 '
-# Every child was just fetched; resolve .gitmodules branches or remote HEAD.
-# A fetch failure above aborts the run rather than building a stale revision.
-git submodule update --remote --no-fetch --checkout
+# Every child was just fetched. Remote-tracking submodules move to their
+# configured branch (or remote HEAD), while explicitly pinned submodules stay
+# at the superproject gitlink so immutable config/template pins cannot drift.
+while read -r key path; do
+    name="${key#submodule.}"
+    name="${name%.path}"
+    pinned="$(git config -f .gitmodules --bool --get "submodule.$name.magicnet-pinned" 2>/dev/null || true)"
+    if [[ "$pinned" == "true" ]]; then
+        printf 'Keeping pinned submodule %s at recorded gitlink\n' "$path"
+        continue
+    fi
+    git submodule update --remote --no-fetch --checkout -- "$path"
+done < <(git config -f .gitmodules --get-regexp '^submodule\..*\.path$')
 # Expand the exported path inside each child shell, preserving spaces.
 # shellcheck disable=SC2016
 git submodule foreach --quiet 'bash "$MAGICNET_SUBMODULE_UPDATE_SCRIPT" --nested'
