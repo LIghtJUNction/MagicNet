@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -13,9 +14,15 @@ use crate::webui_api::{curl_get_json, curl_put_selection};
 use crate::App;
 
 static LOCK_NONCE: AtomicU64 = AtomicU64::new(0);
+const STORE_PATH: &str = ".config/magicnet/selector-selections.json";
+const LEGACY_STORE_PATH: &str = ".state/sing-box/selector-selections.json";
 
 fn path(app: &App) -> std::path::PathBuf {
-    app.moddir.join(".state/sing-box/selector-selections.json")
+    app.moddir.join(STORE_PATH)
+}
+
+fn legacy_path(app: &App) -> std::path::PathBuf {
+    app.moddir.join(LEGACY_STORE_PATH)
 }
 
 fn now() -> u64 {
@@ -25,20 +32,30 @@ fn now() -> u64 {
         .as_secs()
 }
 
-fn load(app: &App) -> BTreeMap<String, String> {
-    let target = path(app);
-    let Ok(bytes) = fs::read(&target) else {
-        return BTreeMap::new();
+fn load_path(target: &Path) -> Option<BTreeMap<String, String>> {
+    let bytes = match fs::read(target) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(err) => {
+            eprintln!("[warn] selector store could not be read: {err}");
+            return Some(BTreeMap::new());
+        }
     };
     match serde_json::from_slice(&bytes) {
-        Ok(values) => values,
+        Ok(values) => Some(values),
         Err(err) => {
             let quarantine = target.with_extension(format!("json.corrupt.{}", now()));
-            let _ = fs::rename(&target, quarantine);
+            let _ = fs::rename(target, quarantine);
             eprintln!("[warn] selector store was corrupt and has been quarantined: {err}");
-            BTreeMap::new()
+            Some(BTreeMap::new())
         }
     }
+}
+
+fn load(app: &App) -> BTreeMap<String, String> {
+    load_path(&path(app))
+        .or_else(|| load_path(&legacy_path(app)))
+        .unwrap_or_default()
 }
 
 pub(crate) fn selected(app: &App, group: &str) -> Option<String> {
@@ -58,6 +75,8 @@ impl Drop for StoreLock {
 
 fn lock(app: &App) -> Result<StoreLock, String> {
     let lock_path = path(app).with_extension("json.lock");
+    let parent = lock_path.parent().ok_or("selector store lock has no parent")?;
+    fs::create_dir_all(parent).map_err(|err| format!("create selector store directory: {err}"))?;
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -79,6 +98,19 @@ fn lock(app: &App) -> Result<StoreLock, String> {
         thread::sleep(Duration::from_millis(25));
     }
     Err("selector store is busy".to_string())
+}
+
+fn cleanup_matching_legacy_store(app: &App, committed: &BTreeMap<String, String>) {
+    let legacy = legacy_path(app);
+    let Ok(bytes) = fs::read(&legacy) else {
+        return;
+    };
+    let Ok(values) = serde_json::from_slice::<BTreeMap<String, String>>(&bytes) else {
+        return;
+    };
+    if &values == committed {
+        let _ = fs::remove_file(legacy);
+    }
 }
 
 pub(crate) fn save(app: &App, group: &str, member: &str) -> Result<(), String> {
@@ -117,6 +149,8 @@ pub(crate) fn save(app: &App, group: &str, member: &str) -> Result<(), String> {
     let result = fs::rename(&tmp, &target).map_err(|err| format!("commit selector store: {err}"));
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
+    } else {
+        cleanup_matching_legacy_store(app, &values);
     }
     result
 }
@@ -203,10 +237,10 @@ mod tests {
     #[test]
     fn corrupted_store_is_empty() {
         let (app, root) = app();
-        fs::create_dir_all(root.join(".state/sing-box")).unwrap();
+        fs::create_dir_all(root.join(".config/magicnet")).unwrap();
         fs::write(path(&app), b"not-json").unwrap();
         assert!(load(&app).is_empty());
-        assert!(fs::read_dir(root.join(".state/sing-box"))
+        assert!(fs::read_dir(root.join(".config/magicnet"))
             .unwrap()
             .any(|entry| {
                 entry
@@ -215,6 +249,24 @@ mod tests {
                     .to_string_lossy()
                     .starts_with("selector-selections.json.corrupt.")
             }));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_state_store_is_read_and_migrated_on_save() {
+        let (app, root) = app();
+        fs::create_dir_all(root.join(".state/sing-box")).unwrap();
+        fs::write(
+            legacy_path(&app),
+            br#"{"ai-chatgpt":"ai-proxy","proxy":"old-node"}"#,
+        )
+        .unwrap();
+        assert_eq!(selected(&app, "proxy").as_deref(), Some("old-node"));
+        save(&app, "ai-gemini", "ai-proxy").unwrap();
+        let values: BTreeMap<String, String> = serde_json::from_slice(&fs::read(path(&app)).unwrap()).unwrap();
+        assert_eq!(values.get("proxy").map(String::as_str), Some("old-node"));
+        assert_eq!(values.get("ai-gemini").map(String::as_str), Some("ai-proxy"));
+        assert!(!legacy_path(&app).exists());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -241,7 +293,6 @@ mod tests {
     fn flock_serializes_concurrent_updates_without_lost_writes() {
         for _ in 0..20 {
             let (_, root) = app();
-            fs::create_dir_all(root.join(".state/sing-box")).unwrap();
             let root_a = root.clone();
             let a = std::thread::spawn(move || {
                 let app = App {
@@ -262,12 +313,10 @@ mod tests {
             });
             a.join().unwrap();
             b.join().unwrap();
-            let values: BTreeMap<String, String> = serde_json::from_slice(
-                &fs::read(root.join(".state/sing-box/selector-selections.json")).unwrap(),
-            )
-            .unwrap();
+            let values: BTreeMap<String, String> =
+                serde_json::from_slice(&fs::read(root.join(STORE_PATH)).unwrap()).unwrap();
             assert_eq!(values.len(), 2);
-            assert!(!fs::read_dir(root.join(".state/sing-box"))
+            assert!(!fs::read_dir(root.join(".config/magicnet"))
                 .unwrap()
                 .any(|entry| entry
                     .unwrap()
@@ -281,7 +330,6 @@ mod tests {
     #[test]
     fn dropped_flock_can_be_reacquired() {
         let (app, root) = app();
-        fs::create_dir_all(root.join(".state/sing-box")).unwrap();
         drop(lock(&app).unwrap());
         drop(lock(&app).unwrap());
         fs::remove_dir_all(root).unwrap();
