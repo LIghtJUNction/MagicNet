@@ -16,3 +16,8 @@ for _magicnet_subscribe_lib in common fetch parse config proxylink update harden
     . "${_magicnet_subscribe_lib_dir}/${_magicnet_subscribe_lib}.sh"
 done
 unset _magicnet_subscribe_lib _magicnet_subscribe_lib_dir
+
+# config.sh contains the low-level ownership checks used by isolated
+# subscription runs. Re-apply the shared runtime API helpers after loading it
+# so those checks use the configured controller port as well.
+[ -f "${MODDIR}/lib/magicnet/api.sh" ] && . "${MODDIR}/lib/magicnet/api.sh"
