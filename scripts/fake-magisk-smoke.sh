@@ -114,7 +114,7 @@ if [[ -n "$ZIP_PATH" && "$ZIP_PATH" != /* ]]; then
     ZIP_PATH="$ROOT/$ZIP_PATH"
 fi
 
-cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
+cargo build -p magicnet-cli >/dev/null
 
 mkdir -p "$MOCK_BIN"
 # This host fixture uses util-linux flock. Do not accidentally select the
