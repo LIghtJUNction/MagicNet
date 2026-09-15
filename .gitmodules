@@ -18,3 +18,7 @@
 	url = https://github.com/LIghtJUNction/sing-box.git
 	branch = testing
 	shallow = true
+[submodule "rules"]
+	path = rules
+	url = https://github.com/LIghtJUNction/MagicNetRules.git
+	branch = main
