@@ -17,16 +17,18 @@ jobs:
         with:
           persist-credentials: true
           fetch-depth: 0
+          submodules: recursive
 
-      - name: Remove dead readers
+      - name: Remove dead compatibility leftovers
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          path = Path("crates/magicnet-cli/src/utils.rs")
-          text = path.read_text()
+          utils = Path("crates/magicnet-cli/src/utils.rs")
+          text = utils.read_text()
 
           clean_lines = '''/// Soft reader that follows symlinks. Prefer [`clean_module_lines`] for
           /// module-owned state so symlink swaps cannot redirect privileged reads.
@@ -60,20 +62,62 @@ jobs:
           if text.count(old_comment) != 1:
               raise SystemExit("expected exactly one clean_lines documentation reference")
           text = text.replace(old_comment, new_comment)
-          path.write_text(text)
+          if re.search(r"\b(clean_lines|first_clean_line)\b|#\[allow\(dead_code\)\]", text):
+              raise SystemExit("dead soft-reader compatibility code remains")
+          utils.write_text(text)
+
+          workflow = Path(".github/workflows/android-kernelsu-acceptance.yml")
+          text = workflow.read_text()
+          retired = "magicnet-mcp" + "-server"
+          replacements = {
+              f"cargo ndk -t x86_64 build --release -p magicnet-cli -p {retired}":
+                  "cargo ndk -t x86_64 build --release -p magicnet-cli",
+              f'''          install -m 0755 target/x86_64-linux-android/release/{retired} "$RUNNER_TEMP/magicnet-x86/{retired}"\n''':
+                  "",
+              f'''          MAGICNET_X86_MCP: ${{{{ runner.temp }}}}/magicnet-x86/{retired}\n''':
+                  "",
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one stale Android MCP fragment: {old!r}; found {text.count(old)}")
+              text = text.replace(old, new)
+          if retired in text or "MAGICNET_X86_MCP" in text:
+              raise SystemExit("stale standalone MCP binary contract remains in Android acceptance")
+          workflow.write_text(text)
+
+          hygiene = Path("scripts/test-repository-hygiene.sh")
+          text = hygiene.read_text()
+          anchor = '''for retired in "${retired_files[@]}"; do
+              if git ls-files --error-unmatch "$retired" >/dev/null 2>&1; then
+                  fail "retired repository file is tracked: $retired"
+              fi
+          done
+
+          '''
+          guard = '''for retired in "${retired_files[@]}"; do
+              if git ls-files --error-unmatch "$retired" >/dev/null 2>&1; then
+                  fail "retired repository file is tracked: $retired"
+              fi
+          done
+
+          retired_mcp_name="$(printf '%s%s' 'magicnet-mcp' '-server')"
+          retired_mcp_refs="$(git grep -nF -- "$retired_mcp_name" || true)"
+          [[ -z "$retired_mcp_refs" ]] || fail "retired standalone MCP binary/package references found:
+          $retired_mcp_refs"
+
+          '''
+          if text.count(anchor) != 1:
+              raise SystemExit(f"expected one repository hygiene insertion point, found {text.count(anchor)}")
+          hygiene.write_text(text.replace(anchor, guard))
           PY
 
-          if rg -n '\b(clean_lines|first_clean_line)\b|allow\(dead_code\)' crates/magicnet-cli/src; then
-            echo 'dead reader compatibility code remains' >&2
-            exit 1
-          fi
-
-      - name: Validate Rust cleanup
+      - name: Validate cleanup
         shell: bash
         run: |
           set -euo pipefail
           cargo check -p magicnet-cli
           cargo test -p magicnet-cli
+          bash scripts/test-repository-hygiene.sh
 
       - name: Commit cleanup
         shell: bash
@@ -81,7 +125,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add crates/magicnet-cli/src/utils.rs
+          git add crates/magicnet-cli/src/utils.rs .github/workflows/android-kernelsu-acceptance.yml scripts/test-repository-hygiene.sh
           git diff --cached --check
-          git commit -m 'refactor: remove unused soft file readers'
+          git commit -m 'chore: remove stale MCP and Rust compatibility leftovers'
           git push origin HEAD:${GITHUB_REF_NAME}
