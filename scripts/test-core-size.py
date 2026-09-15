@@ -36,7 +36,6 @@ class CoreSizeTests(unittest.TestCase):
             ".config/sing-box/config.json": b"{}\n",
             "bin/sing-box": b"engine",
             "bin/magicnet-cli": self.cli,
-            "bin/magicnet-mcp-server": b"mcp",
             "cli": self.cli if cli is None else cli,
         }
         with zipfile.ZipFile(self.source, "w") as archive:
@@ -55,10 +54,12 @@ class CoreSizeTests(unittest.TestCase):
             self.assertTrue(stat.S_ISLNK(entry.external_attr >> 16))
             self.assertEqual(core.read("cli"), b"bin/magicnet-cli")
             self.assertNotIn("bin/magicnet-cli", core.namelist())
+            self.assertNotIn("bin/magicnet-mcp-server", core.namelist())
         # The full package must still satisfy the existing Android ELF checker.
         with zipfile.ZipFile(self.output / "MagicNet-full.zip") as full:
             self.assertTrue(stat.S_ISREG(full.getinfo("cli").external_attr >> 16))
             self.assertEqual(full.read("cli"), self.cli)
+            self.assertNotIn("bin/magicnet-mcp-server", full.namelist())
         component = next(c for c in manifest["components"] if c["id"] == "bin-magicnet-cli")
         with zipfile.ZipFile(self.output / component["asset"]) as payload:
             self.assertEqual(payload.read("bin/magicnet-cli"), self.cli)
