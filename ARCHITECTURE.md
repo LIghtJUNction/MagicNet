@@ -46,10 +46,13 @@ must not execute a parallel set of privileged shell operations.
 ## State plane
 
 Device lifecycle state is projected into one canonical file per domain below
-`.state/machines/`. A CLI invocation reconciles the complete snapshot before
-and after dispatch and publishes changed domain files with the existing
-multi-file transaction primitive, so readers do not observe a half-updated
-state generation.
+`.state/machines/`. Normal control/human CLI invocations reconcile a complete
+snapshot before and after dispatch. Each domain file is atomically replaced;
+related changed files use the existing recoverable multi-file transaction so a
+later replacement failure rolls earlier replacements back. Lock-free readers
+that require a cross-domain point-in-time snapshot should use the versioned
+machine interface instead of racing several files. `--json` remains read-only
+and never rewrites the state plane.
 
 Legacy journals, PID/owner files, caches and probe reports remain recovery or
 observation inputs during migration. They are not new public state contracts.
@@ -71,9 +74,9 @@ memory; any operation that outlives WebUI must have device-side file evidence.
 - Configuration candidates are validated before activation and updates are
   transactional.
 - Canonical runtime state is file-backed under `.state/machines`, privacy-safe,
-  bounded, atomically published, and explicit about configured/effective/phase
-  distinctions. Unknown external evidence stays `unknown` rather than being
-  guessed into a successful state.
+  bounded, atomically replaced per domain, and explicit about
+  configured/effective/phase distinctions. Unknown external evidence stays
+  `unknown` rather than being guessed into a successful state.
 - Module-managed files and processes are identified by exact owned paths.
 - Packaged `bin/jq` is mandatory for JSON policy mutation; privileged runtime
   code fails closed instead of rewriting JSON with AWK or regular expressions.
