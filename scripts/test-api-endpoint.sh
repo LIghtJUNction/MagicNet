@@ -30,12 +30,22 @@ curl() {
     printf '%s\n' '{"proxies":{"proxy":{"type":"Selector"}}}'
 }
 
+ss() {
+    printf '%s\n' 'LISTEN 0 4096 127.0.0.1:19090 0.0.0.0:* users:(("sing-box",pid=4321,fd=8))'
+}
+
 # shellcheck disable=SC1091
 . "$ROOT/src/MagicNet/lib/magicnet/api.sh"
 
 endpoint="$(magicnet_singbox_api_endpoint)"
 [ "$endpoint" = 'http://127.0.0.1:19090' ] || {
     printf 'unexpected resolved endpoint: %s\n' "$endpoint" >&2
+    exit 1
+}
+
+port="$(magicnet_singbox_api_port)"
+[ "$port" = '19090' ] || {
+    printf 'unexpected resolved API port: %s\n' "$port" >&2
     exit 1
 }
 
@@ -53,6 +63,15 @@ grep -Fq 'http://127.0.0.1:19090/proxies' "$TRACE" || {
 if grep -Fq '9090' "$TRACE"; then
     printf 'node probe regressed to a hard-coded 9090 endpoint\n' >&2
     cat "$TRACE" >&2
+    exit 1
+fi
+
+magicnet_singbox_listener_owned 4321 || {
+    printf 'listener ownership did not follow configured API port\n' >&2
+    exit 1
+}
+if magicnet_singbox_listener_owned 9999; then
+    printf 'listener ownership ignored the expected sing-box pid\n' >&2
     exit 1
 fi
 
