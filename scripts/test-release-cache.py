@@ -184,7 +184,7 @@ class ReleaseCacheTest(unittest.TestCase):
         self.write(name, '{"changed":true}\n')
         self.assert_rejected_without_changes()
 
-    def test_bump_precedes_cache_restore_and_submodule_mutation(self):
+    def test_bump_precedes_cache_restore_and_submodule_verification(self):
         steps = yaml.safe_load(WORKFLOW.read_text())["jobs"]["build"]["steps"]
         names = [step["name"] for step in steps]
         restore = [i for i, step in enumerate(steps)
@@ -196,7 +196,7 @@ class ReleaseCacheTest(unittest.TestCase):
         self.assertLess(names.index("Checkout repository"), bump)
         self.assertLess(bump, validate)
         self.assertLess(validate, restore[0])
-        self.assertLess(restore[0], names.index("Refresh build submodules"))
+        self.assertLess(restore[0], names.index("Verify pinned build submodules"))
         self.assertFalse(any("cache" in step.get("uses", "").lower() for step in steps[:bump]))
 
 
