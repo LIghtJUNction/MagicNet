@@ -66,8 +66,8 @@ use std::env;
 
 pub(crate) use app::App;
 pub(crate) use base64::{decode_base64, encode_base64};
-pub(crate) use mcp_server::{files, logs, rpc, run_cli, tools, Server};
 use commands::dispatch;
+pub(crate) use mcp_server::{files, logs, rpc, run_cli, tools, Server};
 pub(crate) use process::{
     owned_singbox_pids, pid_summary, run_magicnet_function,
     run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,
