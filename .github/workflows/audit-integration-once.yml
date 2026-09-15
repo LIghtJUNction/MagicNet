@@ -7,45 +7,35 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  repair-subscription-fixture:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
-    permissions:
-      contents: write
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 0f79854d8d67e9bfa81bdcabe58c783680cdcd7d
           fetch-depth: 0
           persist-credentials: false
-      - name: Preserve the foreign-listener safety assertion on the actual port
-        shell: python
-        run: |
-          from pathlib import Path
-          path = Path('scripts/test-subscription-fetch-policy.sh')
-          text = path.read_text()
-          old = 'LISTEN 0 4096 127.0.0.1:9090 0.0.0.0:* users:'
-          assert text.count(old) == 1
-          path.write_text(text.replace(old, old.replace(':9090', ':19090')))
-      - name: Run the subscription policy behavior tests
-        run: |
-          set -euo pipefail
-          bash scripts/test-subscription-fetch-policy.sh
-          bash scripts/test-api-endpoint.sh
-          bash scripts/test-singbox-readiness.sh
-          git diff --check
-      - name: Commit only the fixture correction
+      - name: Show only the terminal failure context
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: python
         run: |
-          set -euo pipefail
-          git add -- scripts/test-subscription-fetch-policy.sh
-          test -z "$(git diff --name-only)"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test(subscription): detect foreign listeners on the resolved controller port'
-          gh auth setup-git
-          git push origin HEAD:refs/heads/refactor/dynamic-singbox-controller
-          git rev-parse HEAD
+          import subprocess
+          result = subprocess.run(['gh', 'run', 'view', '35022627728', '--repo', 'LIghtJUNction/MagicNet', '--log-failed'], capture_output=True, text=True, timeout=90)
+          print('log_fetch_exit=', result.returncode)
+          print('\n'.join(result.stdout.splitlines()[-110:]))
+          print(result.stderr)
+      - name: Compare overlapping runtime changes against current main
+        shell: python
+        run: |
+          import subprocess
+          def run(*args):
+              return subprocess.check_output(args, text=True).strip()
+          for number in (285, 286):
+              run('git', 'fetch', '--no-tags', 'origin', f'refs/pull/{number}/head')
+              head = run('git', 'rev-parse', 'FETCH_HEAD')
+              print(f'PR {number} HEAD {head}', flush=True)
+              print(run('git', 'diff', '--stat', f'origin/main...{head}'), flush=True)
