@@ -1,23 +1,22 @@
-mod files;
+pub(crate) mod files;
 mod http;
-mod logs;
-mod rpc;
+pub(crate) mod logs;
+pub(crate) mod rpc;
 mod server;
-mod tools;
+pub(crate) mod tools;
 
 use std::env;
 use std::fmt;
 use std::io;
 use std::net::{IpAddr, SocketAddr, TcpListener};
 use std::path::PathBuf;
-use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use http::handle_connection;
-pub(crate) use rpc::run_cli;
-pub(crate) use server::Server;
+use self::http::handle_connection;
+pub(crate) use self::rpc::run_cli;
+pub(crate) use self::server::Server;
 
 const MAX_CONCURRENT_CONNECTIONS: usize = 32;
 const MODULE_DIR: &str = "/data/adb/modules/MagicNet";
@@ -84,15 +83,8 @@ impl std::error::Error for StartupError {
     }
 }
 
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("[error] {error}");
-            eprintln!("[hint] {}", error.recovery());
-            ExitCode::FAILURE
-        }
-    }
+pub(crate) fn serve() -> Result<(), String> {
+    run().map_err(|error| format!("{error}; hint: {}", error.recovery()))
 }
 
 fn run() -> Result<(), StartupError> {

@@ -43,6 +43,7 @@ mod ebpf_runtime;
 mod ecapture;
 mod machine;
 mod mcp;
+mod mcp_server;
 mod network;
 mod node_delay;
 mod nodes;
@@ -66,6 +67,7 @@ use std::env;
 pub(crate) use app::App;
 pub(crate) use base64::{decode_base64, encode_base64};
 use commands::dispatch;
+pub(crate) use mcp_server::{files, logs, rpc, run_cli, tools, Server};
 pub(crate) use process::{
     owned_singbox_pids, pid_summary, run_magicnet_function,
     run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,
@@ -80,7 +82,32 @@ pub(crate) use utils::{
 };
 
 fn main() {
+    let invoked_as_legacy_mcp_server = env::args_os()
+        .next()
+        .and_then(|arg0| {
+            std::path::Path::new(&arg0)
+                .file_name()
+                .map(|name| name.to_string_lossy() == "magicnet-mcp-server")
+        })
+        .unwrap_or(false);
     let args: Vec<String> = env::args().skip(1).collect();
+
+    let serve_mcp = invoked_as_legacy_mcp_server
+        || matches!(
+            args.as_slice(),
+            [command, subcommand] if command == "mcp" && subcommand == "serve"
+        );
+    if serve_mcp {
+        let code = match mcp_server::serve() {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("[error] {err}");
+                1
+            }
+        };
+        std::process::exit(code);
+    }
+
     let internal = match args.first().map(String::as_str) {
         Some("__proc-cmdline") => Some(utils::proc_cmdline_command(&args[1..])),
         Some("__proc-comm") => Some(utils::proc_comm_command(&args[1..])),

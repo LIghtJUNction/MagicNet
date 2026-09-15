@@ -35,7 +35,14 @@ build_crate() {
 }
 
 build_crate magicnet-cli magicnet-cli
-build_crate magicnet-mcp-server magicnet-mcp-server
+
+# Keep the historical executable path as a tiny compatibility launcher while
+# the actual MCP server implementation lives in `magicnet-cli mcp serve`.
+cat >"${TARGET_DIR}/magicnet-mcp-server" <<'EOF'
+#!/system/bin/sh
+exec "${0%/*}/magicnet-cli" mcp serve "$@"
+EOF
+chmod 0755 "${TARGET_DIR}/magicnet-mcp-server"
 
 rm -f "${KAM_MODULE_ROOT}/cli"
 ln -s "bin/magicnet-cli" "${KAM_MODULE_ROOT}/cli"
@@ -46,7 +53,7 @@ if [ ! -x "${KAM_MODULE_ROOT}/cli" ]; then
 fi
 
 if [ ! -x "${KAM_MODULE_ROOT}/bin/magicnet-mcp-server" ]; then
-    log_error "bin/magicnet-mcp-server is not executable"
+    log_error "bin/magicnet-mcp-server compatibility launcher is not executable"
     exit 1
 fi
 
