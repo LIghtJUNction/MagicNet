@@ -2,7 +2,8 @@
 
 MagicNet separates its device runtime into a data plane, control plane, and
 state plane. The detailed runtime design and its invariants live in
-[`docs/next-gen-architecture.md`](docs/next-gen-architecture.md).
+[`docs/next-gen-architecture.md`](docs/next-gen-architecture.md). The canonical
+file-backed state contract lives in [`docs/state-plane.md`](docs/state-plane.md).
 
 ## Repository map
 
@@ -10,7 +11,8 @@ state plane. The detailed runtime design and its invariants live in
   module scripts, and MCP server. `main.rs` only starts the app and dispatches
   arguments; `app.rs` resolves trusted runtime configuration, `commands.rs`
   owns top-level registration, and `process.rs` owns process lifecycle safety.
-  Feature modules own their subcommands.
+  Feature modules own their subcommands. `state.rs` reconciles legacy runtime
+  evidence and external process/kernel facts into the canonical state plane.
 - `crates/magicnet-mcp-server`: optional authenticated HTTP/MCP adapter. It
   delegates device operations to the CLI instead of creating another control
   path.
@@ -41,6 +43,22 @@ WebUI / MCP / module entry scripts
 The CLI is the shared control boundary. New integrations should reuse it and
 must not execute a parallel set of privileged shell operations.
 
+## State plane
+
+Device lifecycle state is projected into one canonical file per domain below
+`.state/machines/`. A CLI invocation reconciles the complete snapshot before
+and after dispatch and publishes changed domain files with the existing
+multi-file transaction primitive, so readers do not observe a half-updated
+state generation.
+
+Legacy journals, PID/owner files, caches and probe reports remain recovery or
+observation inputs during migration. They are not new public state contracts.
+New code must consume the canonical files or the versioned machine interface,
+and old state paths should be deleted once their recovery users are migrated.
+
+Presentation-only WebUI state that may safely disappear on reload stays in
+memory; any operation that outlives WebUI must have device-side file evidence.
+
 ## Stable invariants
 
 - The transparent data plane is an explicit sing-box `tun|ebpf` choice. `tun`
@@ -52,6 +70,10 @@ must not execute a parallel set of privileged shell operations.
   failure restores the byte-exact previous mode/config and records rollback state.
 - Configuration candidates are validated before activation and updates are
   transactional.
+- Canonical runtime state is file-backed under `.state/machines`, privacy-safe,
+  bounded, atomically published, and explicit about configured/effective/phase
+  distinctions. Unknown external evidence stays `unknown` rather than being
+  guessed into a successful state.
 - Module-managed files and processes are identified by exact owned paths.
 - Packaged `bin/jq` is mandatory for JSON policy mutation; privileged runtime
   code fails closed instead of rewriting JSON with AWK or regular expressions.
