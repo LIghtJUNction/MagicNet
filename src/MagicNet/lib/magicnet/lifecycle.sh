@@ -32,18 +32,13 @@ magicnet_kernel_route_state_file() {
 # Override routes.sh's readiness probe with an explicit core-liveness gate.
 # A stale magicnet0 interface/table after a crash must never be enough to make
 # `hotspot reconcile` install new policy rules while the kernel is stopped.
-magicnet_hotspot_tun_route_table_ready() {
+magicnet_hotspot_tun_route_table_ready() (
     if magicnet_kernel_running; then
         _route_kernel_rc=0
     else
         _route_kernel_rc=$?
     fi
-    [ "$_route_kernel_rc" -eq 0 ] || {
-        _route_result="$_route_kernel_rc"
-        unset _route_kernel_rc
-        return "$_route_result"
-    }
-    unset _route_kernel_rc
+    [ "$_route_kernel_rc" -eq 0 ] || return "$_route_kernel_rc"
 
     magicnet_iface_exists magicnet0 || return 1
     _route_table="$(magicnet_kernel_route_table)"
@@ -51,10 +46,7 @@ magicnet_hotspot_tun_route_table_ready() {
         index($0, "dev magicnet0") > 0 { found = 1 }
         END { exit found ? 0 : 1 }
     '
-    _route_result=$?
-    unset _route_table
-    return "$_route_result"
-}
+)
 
 magicnet_kernel_route_state_capture() (
     _route_mode="$(magicnet_transparent_mode 2>/dev/null || true)"
@@ -135,7 +127,7 @@ magicnet_kernel_route_delete_rule_priority() (
     return 0
 )
 
-magicnet_kernel_route_cleanup_rule_family() {
+magicnet_kernel_route_cleanup_rule_family() (
     _route_family="$1"
     _route_table="$2"
     _route_start="$(magicnet_kernel_route_rule_start)"
@@ -176,12 +168,8 @@ magicnet_kernel_route_cleanup_rule_family() {
     done <<EOF
 $_route_priorities
 EOF
-
-    _route_result="$_route_cleanup_rc"
-    unset _route_family _route_table _route_start _route_end _route_fallback
-    unset _route_rules _route_priorities _route_priority _route_cleanup_rc
-    return "$_route_result"
-}
+    return "$_route_cleanup_rc"
+)
 
 magicnet_kernel_route_cleanup_orphan_hotspot_rules() (
     _route_table="$1"
@@ -204,7 +192,7 @@ magicnet_kernel_route_cleanup_orphan_hotspot_rules() (
     done
 )
 
-magicnet_kernel_route_flush_family() {
+magicnet_kernel_route_flush_family() (
     _route_family="$1"
     _route_table="$2"
     case "$_route_family" in
@@ -218,7 +206,7 @@ magicnet_kernel_route_flush_family() {
         ;;
     *) return 1 ;;
     esac
-}
+)
 
 magicnet_kernel_route_cleanup_after_stop() (
     if magicnet_kernel_running; then
