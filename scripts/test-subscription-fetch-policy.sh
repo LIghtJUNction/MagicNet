@@ -386,7 +386,7 @@ test "$(tr '\n' ' ' <"$order_log")" = 'stop start '
   magicnet_supervisors_stop() { :; }
   magicnet_fswatch_status() { return 0; }
   magicnet_fswatch_start() { :; }
-  ss() { printf 'LISTEN 0 4096 127.0.0.1:9090 0.0.0.0:* users:(("foreign",pid=%s,fd=1))\n' "$foreign"; }
+  ss() { printf 'LISTEN 0 4096 127.0.0.1:19090 0.0.0.0:* users:(("foreign",pid=%s,fd=1))\n' "$foreign"; }
   magicnet_singbox_restart_owned "$tmp/config.json" && exit 1 || true
   kill -0 "$foreign"
   kill "$foreign"
