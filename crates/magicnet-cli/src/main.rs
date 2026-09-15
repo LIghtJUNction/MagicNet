@@ -110,17 +110,13 @@ fn main() {
     }
 
     let app = App::from_env();
-    let machine_request = args.iter().any(|arg| arg == "--json");
-    // Normal control/human CLI commands reconcile the filesystem state plane
-    // before dispatch and publish one settled generation afterwards. `--json`
-    // is contractually read-only, so machine requests never create or rewrite
-    // state files. Internal proc-reader helpers above also bypass reconciliation
-    // to keep process discovery recursion-free.
-    if !machine_request {
-        reconcile_state(&app, "pre-command");
-    }
+    // Observations must not become filesystem writers. Publish once after a
+    // control command, including failed commands that may have rolled back.
+    // Explicit state reconciliation and long-lived producers own publication;
+    // machine requests remain read-only and internal proc readers bypass this.
+    let publish_state = commands::needs_state_reconcile(&args);
     let result = machine::dispatch(&app, &args).unwrap_or_else(|| dispatch(&app, &args));
-    if !machine_request {
+    if publish_state {
         reconcile_state(&app, "post-command");
     }
     let code = match result {
