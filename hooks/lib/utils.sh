@@ -38,6 +38,9 @@ require_command() {
     if has_command "$command_name"; then
         return 0
     fi
-    log_error "${message:-Command '$command_name' is required but not found.}"
+    if [ -z "$message" ]; then
+        message="Command '$command_name' is required but not found."
+    fi
+    log_error "$message"
     exit 1
 }
