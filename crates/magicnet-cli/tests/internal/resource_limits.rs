@@ -208,19 +208,17 @@ fn repeated_timeouts_do_not_leave_threads_or_fds() {
     let threads = proc_entries("/proc/self/task");
     let fds = proc_entries("/proc/self/fd");
     for _ in 0..12 {
-        let output = run_bounded_command(
-            shell("exec sleep 30"),
-            Duration::from_millis(20),
-            128,
-        )
-        .unwrap();
+        let output =
+            run_bounded_command(shell("exec sleep 30"), Duration::from_millis(20), 128).unwrap();
         assert!(output.timed_out);
     }
     assert!(proc_entries("/proc/self/task") <= threads + 1);
     assert_eq!(proc_entries("/proc/self/fd"), fds);
 }
 
+// The shared reaper, not Child::wait, owns this test child's exit status.
 #[test]
+#[allow(clippy::zombie_processes)]
 fn deferred_children_share_one_reaper_without_stealing_other_statuses() {
     if isolated("deferred_children_share_one_reaper_without_stealing_other_statuses") {
         return;
@@ -251,6 +249,7 @@ fn deferred_children_share_one_reaper_without_stealing_other_statuses() {
 // This subprocess fixture intentionally leaves a short-lived, session-detached
 // child holding both inherited output pipes. Ordinary tests never enter it.
 #[test]
+#[allow(clippy::zombie_processes)] // Deliberate orphan; bounded lifetime and outer cleanup.
 fn escaped_pipe_holder_fixture() {
     use std::os::unix::process::CommandExt;
 
@@ -346,8 +345,8 @@ fn exhausted_probe_budget_rejects_work_before_spawn() {
         .err()
         .unwrap();
     assert!(error.contains("budget exhausted"));
-    let error = read_proc_file_bounded(std::path::Path::new("/proc/self/status"), 4096)
-        .unwrap_err();
+    let error =
+        read_proc_file_bounded(std::path::Path::new("/proc/self/status"), 4096).unwrap_err();
     assert!(error.contains("budget exhausted"));
     drop(permits);
     let output = run_bounded_command(shell("exit 0"), Duration::from_secs(1), 128).unwrap();
