@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  consolidate-runtime:
+  repair-package-fixture:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -17,124 +17,60 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: fe49562993ac7310295e6daa683f53a1b4c2f013
+          ref: 9d1c50bfa7e325298c50a93ea6e9bcb9d614a999
           fetch-depth: 0
           persist-credentials: false
-      - name: Integrate reviewed proc deadline corrections without a second reaper
+      - name: Include the packaged endpoint dependency in the extracted fixture
         shell: python
         run: |
           from pathlib import Path
-          import subprocess
-
-          path = Path('crates/magicnet-cli/src/utils.rs')
+          path = Path('scripts/package-smoke.sh')
           text = path.read_text()
-          def replace(old, new):
-              global text
-              assert text.count(old) == 1, f'Unexpected source anchor: {old[:100]}'
-              text = text.replace(old, new)
-          replace('''            if err.kind() == ErrorKind::Interrupted {
-                          continue;
-                      }
-                      if err.kind() == ErrorKind::WouldBlock {
-                          break;
-                      }''', '''            if matches!(err.kind(), ErrorKind::Interrupted | ErrorKind::WouldBlock) {
-                          break;
-                      }''')
-          replace('''                if err.kind() == ErrorKind::Interrupted {
-                              continue;
-                          }
-                          close_raw_fd(pipe_fds[0]);
-                          return Err(format!(
-                              "reap bounded proc reader for {}: {err}",
-                              path.display()
-                          ));''', '''                if err.kind() != ErrorKind::Interrupted {
-                              close_raw_fd(pipe_fds[0]);
-                              if err.raw_os_error() != Some(libc::ECHILD) {
-                                  kill_and_reap(worker_pid, reservation);
-                              }
-                              return Err(format!(
-                                  "reap bounded proc reader for {}: {err}",
-                                  path.display()
-                              ));
-                          }''')
-          replace('''        let wait_ms = remaining.as_millis().clamp(1, 25) as i32;
-                  let mut poll_fd = libc::pollfd {
-                      fd: pipe_fds[0],''', '''        let poll_max_ms = if pipe_eof { 1 } else { 25 };
-                  let wait_ms = remaining.as_millis().clamp(1, poll_max_ms) as i32;
-                  let mut poll_fd = libc::pollfd {
-                      // POLLHUP remains ready after EOF; do not spin while the child exits.
-                      fd: if pipe_eof { -1 } else { pipe_fds[0] },''')
-          replace(''') -> Result<BoundedCommandOutput, String> {
-              let reservation = reserve_child()?;''', ''') -> Result<BoundedCommandOutput, String> {
-              if timeout.is_zero() {
-                  return Err("command deadline expired before spawn".to_string());
-              }
-              let reservation = reserve_child()?;''')
-          replace('''                Ok(exit) => status = exit,
-                          Err(err) => {''', '''                Ok(exit) => status = exit,
-                          Err(err) if err.kind() == ErrorKind::Interrupted => {},
-                          Err(err) => {''')
+          anchor = 'require_entry lib/magicnet/chain.sh\n'
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, anchor + 'require_entry lib/magicnet/api.sh\n')
+          anchor = "    'lib/magicnet/chain.sh' \\\n"
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, anchor + "    'lib/magicnet/api.sh' \\\n")
           path.write_text(text)
-
-          # Keep independent behavioral coverage from #286 rather than its competing reaper.
-          source = subprocess.check_output([
-              'git', 'show', 'eeebef566c9ea968d5bf2da42709c603ad1e80d1:crates/magicnet-cli/tests/internal/resource_limits.rs'
-          ], text=True)
-          tests = Path('crates/magicnet-cli/tests/internal/runtime_resources.rs')
-          text = tests.read_text()
-          text += '\nfn shell(script: &str) -> Command {\n    let mut command = Command::new("sh");\n    command.args(["-c", script]);\n    command\n}\n'
-          for name in (
-              'command_timeout_preserves_partial_output',
-              'output_overflow_is_drained_without_killing_successful_command',
-              'continuous_output_cannot_starve_command_deadline',
-              'zero_command_timeout_does_not_spawn',
-          ):
-              start = source.index('#[test]\nfn ' + name + '(')
-              end = source.index('\n}\n', start) + 3
-              text += '\n' + source[start:end]
-          text += '''
-          #[test]
-          fn interrupted_capture_yields_to_the_deadline() {
-              struct Interrupted(std::os::unix::net::UnixStream, usize);
-              impl std::os::fd::AsRawFd for Interrupted {
-                  fn as_raw_fd(&self) -> std::os::fd::RawFd {
-                      std::os::fd::AsRawFd::as_raw_fd(&self.0)
-                  }
-              }
-              impl std::io::Read for Interrupted {
-                  fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
-                      self.1 += 1;
-                      Err(std::io::ErrorKind::Interrupted.into())
-                  }
-              }
-              let (reader, _writer) = UnixStream::pair().unwrap();
-              let mut capture = PipeCapture::new(Interrupted(reader, 0), 32).unwrap();
-              capture.drain().unwrap();
-              assert_eq!(capture.reader.1, 1);
-              assert!(capture.bytes.is_empty());
-              assert!(!capture.eof);
-          }
-          '''
-          tests.write_text(text)
-      - name: Initialize the pinned configuration fixture
-        run: git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
-      - name: Verify the consolidated Rust implementation
+      - name: Prepare pinned host fixtures and required search tool
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ripgrep
+          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box src/MagicNet/lib/kamfw
+      - name: Run the complete host suite with bounded failure output
+        shell: python
+        run: |
+          import subprocess
+          result = subprocess.run(['bash', 'scripts/test-host.sh'], text=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  timeout=480, check=False)
+          print('\n'.join(result.stdout.splitlines()[-130:]))
+          raise SystemExit(result.returncode)
+      - name: Verify the exact packaged subscription fixture
         run: |
           set -euo pipefail
-          cargo fmt --all
-          cargo test --locked -p magicnet-cli
-          cargo clippy --locked -p magicnet-cli --all-targets -- -D warnings
+          temp=$(mktemp -d)
+          trap 'rm -rf "$temp"' EXIT
+          mkdir -p "$temp/lib/magicnet"
+          cp src/MagicNet/lib/magicnet_singbox_subscribe.sh "$temp/lib/"
+          for helper in primitives subscribe_bootstrap chain api; do
+            cp "src/MagicNet/lib/magicnet/$helper.sh" "$temp/lib/magicnet/"
+          done
+          cp -r src/MagicNet/lib/magicnet/jq src/MagicNet/lib/magicnet/singbox_subscribe "$temp/lib/magicnet/"
+          bash scripts/singbox-subscription-protocol-smoke.sh "$temp"
+          shellcheck -x -P SCRIPTDIR scripts/package-smoke.sh
           git diff --check
-      - name: Publish only the verified runtime integration
+      - name: Commit only after host and fixture verification
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git add -- crates/magicnet-cli/src/utils.rs crates/magicnet-cli/tests/internal/runtime_resources.rs
+          git add -- scripts/package-smoke.sh
           test -z "$(git diff --name-only)"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(runtime): consolidate signal-safe deadlines and output regressions'
+          git commit -m 'test(package): include the canonical endpoint helper in subscription smoke'
           gh auth setup-git
-          git push origin HEAD:refs/heads/fix/runtime-resource-bounds-20260916
+          git push origin HEAD:refs/heads/refactor/dynamic-singbox-controller
           git rev-parse HEAD
