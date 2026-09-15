@@ -14,6 +14,9 @@ kamfw_phase_boot_completed() {
         magicnet_supervisors_stop >/dev/null 2>&1 || true
         magicnet_disable_dns_capture >/dev/null 2>&1 || true
         magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
+        if [ -x "${MODDIR}/cli" ]; then
+            "${MODDIR}/cli" state reconcile >/dev/null 2>&1 || true
+        fi
         return 0
     fi
     wait_boot
