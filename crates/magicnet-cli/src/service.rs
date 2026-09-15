@@ -69,14 +69,7 @@ fn open_config_apply_lock(app: &App) -> Result<File, String> {
 }
 
 fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
-    let file = open_config_apply_lock(app)?;
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-        return Err(format!(
-            "lock config apply: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    Ok(ConfigApplyGuard(file))
+    config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)
 }
 
 fn config_apply_lock_bounded(app: &App, timeout: Duration) -> Result<ConfigApplyGuard, String> {
@@ -437,7 +430,8 @@ fn read_bounded_log_tail(path: &Path) -> std::io::Result<String> {
     let start = length.saturating_sub(MAX_SERVICE_LOG_READ_BYTES);
     file.seek(SeekFrom::Start(start))?;
     let mut bytes = Vec::with_capacity((length - start) as usize);
-    file.read_to_end(&mut bytes)?;
+    file.take(MAX_SERVICE_LOG_READ_BYTES)
+        .read_to_end(&mut bytes)?;
     if start > 0 {
         if let Some(index) = bytes.iter().position(|byte| *byte == b'\n') {
             bytes.drain(..=index);

@@ -7,11 +7,13 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::App;
+
+mod child_reaper;
+pub(crate) use child_reaper::{reserve_child, ChildReservation};
 
 const MAX_COMMAND_STREAM_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_PROC_CMDLINE_BYTES: usize = 64 * 1024;
@@ -58,27 +60,23 @@ impl KillAndWait for LibcKillAndWait {
             libc::kill(self.pid, libc::SIGKILL);
         }
     }
-
     fn try_reap(&mut self) -> Result<bool, io::Error> {
-        loop {
-            let mut status = 0;
-            let result = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
-            if result == self.pid {
-                return Ok(true);
-            }
-            if result == 0 {
-                return Ok(false);
-            }
-            let err = io::Error::last_os_error();
-            if err.kind() == ErrorKind::Interrupted {
-                continue;
-            }
-            // ECHILD means another reaper already collected it.
-            return if err.raw_os_error() == Some(libc::ECHILD) {
-                Ok(true)
-            } else {
-                Err(err)
-            };
+        let mut status = 0;
+        let result = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
+        if result == self.pid {
+            return Ok(true);
+        }
+        if result == 0 {
+            return Ok(false);
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() == ErrorKind::Interrupted {
+            return Ok(false);
+        }
+        if err.raw_os_error() == Some(libc::ECHILD) {
+            Ok(true)
+        } else {
+            Err(err)
         }
     }
 }
@@ -96,27 +94,10 @@ fn kill_and_reap_with<W: KillAndWait>(waiter: &mut W, grace: Duration) -> bool {
     }
 }
 
-fn defer_reap(pid: libc::pid_t) {
-    // Never put an unbounded wait on a deadline-bearing API path. A single
-    // detached poller eventually collects the child if a kernel-side D state
-    // clears; process exit safely reparents it otherwise.
-    let _ = thread::Builder::new()
-        .name("magicnet-child-reaper".to_string())
-        .spawn(move || {
-            let mut waiter = LibcKillAndWait { pid };
-            loop {
-                match waiter.try_reap() {
-                    Ok(true) | Err(_) => break,
-                    Ok(false) => thread::sleep(Duration::from_millis(250)),
-                }
-            }
-        });
-}
-
-pub(crate) fn kill_and_reap(pid: libc::pid_t) {
+pub(crate) fn kill_and_reap(pid: libc::pid_t, reservation: ChildReservation) {
     let mut waiter = LibcKillAndWait { pid };
     if !kill_and_reap_with(&mut waiter, PROCESS_REAP_GRACE) {
-        defer_reap(pid);
+        reservation.defer(pid);
     }
 }
 
@@ -129,9 +110,9 @@ fn child_exit_code(status: i32) -> Option<i32> {
 }
 
 /// Read a proc-style pseudo-file with both a byte ceiling and a monotonic
-/// deadline. The actual open/read runs in a short-lived child so a wedged OEM
-/// proc handler can always be killed and reaped. PR_SET_PDEATHSIG prevents the
-/// worker from surviving if its caller is interrupted.
+/// deadline. The open/read runs in a short-lived child. Kernel-side stalls
+/// retain a bounded reaper reservation until waitpid can collect the child;
+/// SIGKILL cannot force immediate exit from uninterruptible kernel sleep.
 pub(crate) fn read_proc_file_bounded(path: &Path, max_bytes: usize) -> Result<Vec<u8>, String> {
     read_proc_file_bounded_with_timeout(path, max_bytes, PROC_FILE_READ_TIMEOUT)
 }
@@ -149,6 +130,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
     if timeout.is_zero() {
         return Err(format!("proc read deadline expired: {}", path.display()));
     }
+    let reservation = reserve_child()?;
     let path_c = cstring_from_os_str(path.as_os_str(), "proc path")?;
     let mut pipe_fds = [-1; 2];
     if unsafe { libc::pipe2(pipe_fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
@@ -244,7 +226,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
     {
         let err = io::Error::last_os_error();
         close_raw_fd(pipe_fds[0]);
-        kill_and_reap(worker_pid);
+        kill_and_reap(worker_pid, reservation);
         return Err(format!(
             "configure bounded proc reader for {}: {err}",
             path.display()
@@ -264,7 +246,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 output.extend_from_slice(&chunk[..read_count as usize]);
                 if output.len() > max_bytes {
                     close_raw_fd(pipe_fds[0]);
-                    kill_and_reap(worker_pid);
+                    kill_and_reap(worker_pid, reservation);
                     return Err(format!(
                         "proc file exceeds {max_bytes} bytes: {}",
                         path.display()
@@ -284,7 +266,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 break;
             }
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            kill_and_reap(worker_pid, reservation);
             return Err(format!(
                 "read bounded proc result for {}: {err}",
                 path.display()
@@ -313,7 +295,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
         }
         if Instant::now() >= deadline {
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            kill_and_reap(worker_pid, reservation);
             return Err(format!(
                 "proc read timed out after {}ms: {}",
                 timeout.as_millis(),
@@ -332,7 +314,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
         if polled < 0 && io::Error::last_os_error().kind() != ErrorKind::Interrupted {
             let err = io::Error::last_os_error();
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            kill_and_reap(worker_pid, reservation);
             return Err(format!(
                 "poll bounded proc reader for {}: {err}",
                 path.display()
@@ -518,6 +500,9 @@ pub(crate) fn run_bounded_command(
     timeout: Duration,
     stream_limit: usize,
 ) -> Result<BoundedCommandOutput, String> {
+    let reservation = reserve_child()?;
+    let mut reservation = Some(reservation);
+    let deadline = Instant::now() + timeout;
     // Isolate the command so timeout cleanup also reaches shell helpers and
     // grandchildren that inherited the captured pipes. The direct child also
     // dies with this CLI if an outer app/su timeout interrupts its parent.
@@ -545,44 +530,70 @@ pub(crate) fn run_bounded_command(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|err| err.to_string())?;
-    let stdout = child
-        .stdout
-        .take()
-        .map(|stream| spawn_output_reader(stream, stream_limit));
-    let stderr = child
-        .stderr
-        .take()
-        .map(|stream| spawn_output_reader(stream, stream_limit));
-    let deadline = Instant::now() + timeout;
-    let mut timed_out = false;
+    let captures = (|| -> io::Result<_> {
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("missing stdout pipe"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| io::Error::other("missing stderr pipe"))?;
+        Ok((
+            PipeCapture::new(stdout, stream_limit)?,
+            PipeCapture::new(stderr, stream_limit)?,
+        ))
+    })();
+    let (mut stdout, mut stderr) = match captures {
+        Ok(captures) => captures,
+        Err(err) => {
+            terminate_command_group(&mut child, &mut reservation);
+            return Err(format!("configure command output: {err}"));
+        }
+    };
     let mut status = None;
-    let mut stdout_result = None;
-    let mut stderr_result = None;
+    let mut timed_out = false;
     loop {
         if status.is_none() {
             match child.try_wait() {
-                Ok(Some(exit)) => status = Some(exit),
-                Ok(None) => {}
+                Ok(exit) => status = exit,
                 Err(err) => {
-                    let _ = terminate_command_group(&mut child);
+                    terminate_command_group(&mut child, &mut reservation);
                     return Err(format!("wait failed: {err}"));
                 }
             }
         }
-        try_receive_output(&stdout, &mut stdout_result);
-        try_receive_output(&stderr, &mut stderr_result);
-        if status.is_some() && stdout_result.is_some() && stderr_result.is_some() {
+        if let Err(err) = stdout.drain().and_then(|()| stderr.drain()) {
+            terminate_command_group(&mut child, &mut reservation);
+            return Err(format!("read command output: {err}"));
+        }
+        if status.is_some() && stdout.eof && stderr.eof {
             break;
         }
         if Instant::now() >= deadline {
             timed_out = true;
-            status = terminate_command_group(&mut child).or(status);
+            status = terminate_command_group(&mut child, &mut reservation).or(status);
+            // Preserve available output, but never wait for escaped
+            // descendants that still hold a pipe open.
+            let _ = stdout.drain();
+            let _ = stderr.drain();
             break;
         }
-        thread::sleep(Duration::from_millis(10));
+        let mut fds = [stdout.poll_fd(), stderr.poll_fd()];
+        let wait_ms = deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .clamp(1, 10) as i32;
+        if unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as _, wait_ms) } < 0 {
+            let err = io::Error::last_os_error();
+            if err.kind() != ErrorKind::Interrupted {
+                terminate_command_group(&mut child, &mut reservation);
+                return Err(format!("poll command output: {err}"));
+            }
+        }
     }
-    let stdout = finish_output(stdout, stdout_result, "stdout");
-    let stderr = finish_output(stderr, stderr_result, "stderr");
+    let stdout = stdout.finish();
+    let stderr = stderr.finish();
     Ok(BoundedCommandOutput {
         status,
         stdout: stdout.bytes,
@@ -647,12 +658,17 @@ fn terminate_command_group_with<W: CommandGroupWait>(
     }
 }
 
-fn terminate_command_group(child: &mut Child) -> Option<ExitStatus> {
+fn terminate_command_group(
+    child: &mut Child,
+    reservation: &mut Option<ChildReservation>,
+) -> Option<ExitStatus> {
     let pid = child.pid();
     let status =
         terminate_command_group_with(child, Duration::from_millis(250), PROCESS_REAP_GRACE);
     if status.is_none() {
-        defer_reap(pid);
+        if let Some(reservation) = reservation.take() {
+            reservation.defer(pid);
+        }
     }
     status
 }
@@ -662,80 +678,79 @@ struct OutputCapture {
     truncated: bool,
 }
 
-type OutputReader = Receiver<io::Result<OutputCapture>>;
+// The caller owns both pipes. Dropping a timed-out capture closes its fd;
+// no detached reader can retain a buffer, stack, or descriptor forever.
+struct PipeCapture<R> {
+    reader: R,
+    bytes: Vec<u8>,
+    limit: usize,
+    truncated: bool,
+    eof: bool,
+}
 
-fn spawn_output_reader<R>(mut reader: R, limit: usize) -> OutputReader
-where
-    R: Read + Send + 'static,
-{
-    let (sender, receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let result = (|| {
-            let mut output = Vec::new();
-            let mut buffer = [0_u8; 8192];
-            let mut truncated = false;
-            loop {
-                let read = reader.read(&mut buffer)?;
-                if read == 0 {
+impl<R: Read + AsRawFd> PipeCapture<R> {
+    fn new(reader: R, limit: usize) -> io::Result<Self> {
+        let fd = reader.as_raw_fd();
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Self {
+            reader,
+            bytes: Vec::new(),
+            limit,
+            truncated: false,
+            eof: false,
+        })
+    }
+    fn drain(&mut self) -> io::Result<()> {
+        if self.eof {
+            return Ok(());
+        }
+        let mut buffer = [0_u8; 8192];
+        // Bound work per stream/pass, even when a child floods stdout.
+        // The other stream and monotonic deadline must still progress.
+        for _ in 0..32 {
+            match self.reader.read(&mut buffer) {
+                Ok(0) => {
+                    self.eof = true;
                     break;
                 }
-                let available = limit.saturating_sub(output.len());
-                let keep = read.min(available);
-                output.extend_from_slice(&buffer[..keep]);
-                truncated |= keep < read;
+                Ok(read) => {
+                    let keep = read.min(self.limit.saturating_sub(self.bytes.len()));
+                    self.bytes.extend_from_slice(&buffer[..keep]);
+                    self.truncated |= keep < read;
+                }
+                Err(err)
+                    if matches!(err.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted) =>
+                {
+                    break
+                }
+                Err(err) => return Err(err),
             }
-            if truncated {
-                output.extend_from_slice(b"\n[output truncated]");
-            }
-            Ok(OutputCapture {
-                bytes: output,
-                truncated,
-            })
-        })();
-        let _ = sender.send(result);
-    });
-    receiver
-}
-
-fn try_receive_output(
-    reader: &Option<OutputReader>,
-    result: &mut Option<io::Result<OutputCapture>>,
-) {
-    if result.is_some() {
-        return;
+        }
+        Ok(())
     }
-    let Some(reader) = reader else {
-        return;
-    };
-    match reader.try_recv() {
-        Ok(output) => *result = Some(output),
-        Err(TryRecvError::Empty) => {}
-        Err(TryRecvError::Disconnected) => {
-            *result = Some(Err(io::Error::new(
-                ErrorKind::BrokenPipe,
-                "output reader disconnected",
-            )));
+    fn poll_fd(&self) -> libc::pollfd {
+        libc::pollfd {
+            fd: if self.eof {
+                -1
+            } else {
+                self.reader.as_raw_fd()
+            },
+            events: libc::POLLIN | libc::POLLHUP,
+            revents: 0,
         }
     }
-}
-
-fn finish_output(
-    reader: Option<OutputReader>,
-    result: Option<io::Result<OutputCapture>>,
-    name: &str,
-) -> OutputCapture {
-    let result = result
-        .or_else(|| reader.and_then(|reader| reader.recv_timeout(Duration::from_millis(100)).ok()));
-    match result {
-        Some(Ok(output)) => output,
-        Some(Err(err)) => OutputCapture {
-            bytes: format!("[{name} read failed: {err}]").into_bytes(),
-            truncated: true,
-        },
-        None => OutputCapture {
-            bytes: format!("[{name} unavailable]").into_bytes(),
-            truncated: true,
-        },
+    fn finish(mut self) -> OutputCapture {
+        self.truncated |= !self.eof;
+        if self.truncated {
+            self.bytes.extend_from_slice(b"\n[output truncated]");
+        }
+        OutputCapture {
+            bytes: self.bytes,
+            truncated: self.truncated,
+        }
     }
 }
 
@@ -1769,3 +1784,7 @@ fn compact_command_output(output: &str) -> String {
 #[cfg(test)]
 #[path = "../tests/internal/utils.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/internal/runtime_resources.rs"]
+mod runtime_resources_tests;
