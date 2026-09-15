@@ -9,248 +9,33 @@ permissions:
   contents: read
 
 jobs:
-  repair-rule-bundles:
+  diagnose-subscription:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    permissions:
-      contents: write
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          fetch-depth: 0
+          ref: 0f79854d8d67e9bfa81bdcabe58c783680cdcd7d
           persist-credentials: false
-      - name: Correct the reviewed rule synchronization path
+      - name: Trace the isolated fixture failure
+        shell: python
+        run: |
+          import subprocess
+          result = subprocess.run(['bash', '-x', 'scripts/test-subscription-fetch-policy.sh'],
+                                  text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  timeout=90, check=False)
+          print('exit_code=', result.returncode)
+          print('\n'.join(result.stdout.splitlines()[-170:]))
+      - name: Inventory machine-status WebUI callers
         shell: python
         run: |
           from pathlib import Path
-          import subprocess
-
-          base = 'c892a9c6f99bb3939811428216bf075905f802a1'
-          branch = 'fix/rule-bundle-integrity-20260916'
-          result = subprocess.run(['git', 'ls-remote', '--exit-code', '--heads', 'origin', branch], capture_output=True, text=True)
-          assert result.returncode == 2, 'Repair branch already exists or remote lookup failed'
-          subprocess.run(['git', 'checkout', '--detach', base], check=True)
-
-          path = Path('hooks/pre-build/5450.update_sing_box_rules.sh')
-          text = path.read_text()
-          old = '''    local project_root="${KAM_PROJECT_ROOT:-$(cd "$KAM_HOOKS_ROOT/.." && pwd)}"
-              local sub_rules_dir="$project_root/rules/dist"
-              if [ -z "${FAKE_GIT_COUNT_FILE:-}" ] && [ -s "$sub_rules_dir/$file" ]; then
-                  log_info "$file: synced from rules submodule ($ref)"
-                  cp -f "$sub_rules_dir/$file" "$RULE_DIR/$file"
-                  printf '%s\\n' "$ref" >"$hash_file"
-                  return 0
-              fi
-          '''
-          assert text.count(old) == 1, 'Rule shortcut changed; review again'
-          text = text.replace(old, '')
-          helper = r'''# A bundled artifact is identified by its manifest digest, not a remote HEAD.
-          # Stage and validate before replacement; publication failure is retryable.
-          update_bundled_rule() (
-              local file="$1" source="$2" manifest="$3" hash_file="$4"
-              local digest staged state_tmp="" actual identity old_ref=""
-              digest=$(jq -er --arg name "${file%.srs}" '
-                  select(.version == 1) | .rulesets[$name].sha256_srs
-                  | select(type == "string" and test("^[0-9a-f]{64}$"))
-              ' "$manifest") || {
-                  log_error "$file: missing or invalid bundled digest"
-                  return 1
-              }
-              staged=$(mktemp "$RULE_DIR/.${file}.XXXXXX") || return 1
-              trap 'rm -f -- "$staged" "$state_tmp"' EXIT
-              cp -- "$source" "$staged" || return 1
-              actual=$(sha256sum "$staged") || return 1
-              if [ "${actual%% *}" != "$digest" ]; then
-                  log_error "$file: bundled digest mismatch; previous rule preserved"
-                  return 1
-              fi
-              identity="bundled:sha256:$digest"
-              [ ! -f "$hash_file" ] || old_ref=$(cat "$hash_file") || return 1
-              if [ "$old_ref" = "$identity" ] && cmp -s -- "$staged" "$RULE_DIR/$file"; then
-                  return 0
-              fi
-              if ! cmp -s -- "$staged" "$RULE_DIR/$file"; then
-                  mv -f -- "$staged" "$RULE_DIR/$file" || return 1
-              fi
-              state_tmp=$(mktemp "${hash_file}.XXXXXX") || return 1
-              printf '%s\n' "$identity" >"$state_tmp" || return 1
-              mv -f -- "$state_tmp" "$hash_file" || return 1
-              log_success "$file: verified bundled artifact ($digest)"
-          )
-
-          '''
-          assert text.count('update_rule() {') == 1
-          text = text.replace('update_rule() {', helper + 'update_rule() {')
-          anchor = '    local ref\n\n    [ -f "$CONFIG_FILE" ]'
-          assert text.count(anchor) == 1
-          text = text.replace(anchor, '    local ref\n    local hash_file\n    local project_root="${KAM_PROJECT_ROOT:-$(cd "$KAM_HOOKS_ROOT/.." && pwd)}"\n    local bundle_dir="$project_root/rules/dist"\n\n    [ -f "$CONFIG_FILE" ]')
-          anchor = '        source_path=${source#*|}\n'
-          assert text.count(anchor) == 1
-          text = text.replace(anchor, anchor + '''        if [ -e "$bundle_dir/$file" ]; then
-                      hash_file="$STATE_DIR/$(state_key "${repo}|${branch}|${source_path}|${file}").hash"
-                      update_bundled_rule "$file" "$bundle_dir/$file" "$bundle_dir/manifest.json" "$hash_file" || return 1
-                      continue
-                  fi
-          ''')
-          text = text.replace('require_command jq "jq not found!"\n', 'require_command jq "jq not found!"\nrequire_command sha256sum\nrequire_command mktemp\nrequire_command cmp\n')
-          assert 'FAKE_' not in text
-          path.write_text(text)
-
-          path = Path('scripts/test-rule-hash-retry.sh')
-          text = path.read_text()
-          anchor = '        KAM_MODULE_ROOT="$module_root" \\\n'
-          assert text.count(anchor) == 1
-          text = text.replace(anchor, anchor + '        KAM_PROJECT_ROOT="$TEST_ROOT/isolated-project" \\\n')
-          path.write_text(text)
-
-          tests = r'''#!/usr/bin/env python3
-          """Exercise the real rule hook with isolated bundles and forbidden networking."""
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import subprocess
-          import tempfile
-          import unittest
-
-          ROOT = Path(__file__).resolve().parents[1]
-          HOOK = ROOT / "hooks/pre-build/5450.update_sing_box_rules.sh"
-          FILE = "ddch-direct.srs"
-
-
-          class BundledRuleTests(unittest.TestCase):
-              def setUp(self):
-                  self.temp = tempfile.TemporaryDirectory(prefix="magicnet bundle ")
-                  self.addCleanup(self.temp.cleanup)
-                  self.root = Path(self.temp.name)
-                  self.module = self.root / "module"
-                  self.project = self.root / "project"
-                  self.bundle = self.project / "rules/dist"
-                  self.bin = self.root / "bin"
-                  for path in (self.module / ".config/sing-box", self.bundle, self.bin):
-                      path.mkdir(parents=True)
-                  (self.module / ".config/sing-box/config.json").write_text(json.dumps({
-                      "route": {"rule_set": [{"type": "local", "path": "rules/" + FILE}]}
-                  }))
-                  for name in ("git", "curl"):
-                      executable = self.bin / name
-                      executable.write_text("#!/bin/sh\necho forbidden-network >&2\nexit 91\n")
-                      executable.chmod(0o755)
-                  self.output = self.module / ".config/sing-box/rules" / FILE
-                  self.write_bundle(b"compiled fixture one\n")
-
-              def write_bundle(self, content):
-                  (self.bundle / FILE).write_bytes(content)
-                  self.digest = hashlib.sha256(content).hexdigest()
-                  (self.bundle / "manifest.json").write_text(json.dumps({
-                      "version": 1,
-                      "rulesets": {FILE[:-4]: {"sha256_srs": self.digest}},
-                  }))
-
-              def invoke(self, **overrides):
-                  env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
-                             KAM_MODULE_ROOT=str(self.module), KAM_PROJECT_ROOT=str(self.project),
-                             KAM_HOOKS_ROOT=str(ROOT / "hooks"))
-                  env.update(overrides)
-                  return subprocess.run(["bash", str(HOOK)], env=env, text=True,
-                                        capture_output=True, timeout=10, check=False)
-
-              def assert_success(self, **overrides):
-                  result = self.invoke(**overrides)
-                  self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                  self.assertNotIn("forbidden-network", result.stderr)
-
-              def state(self):
-                  files = list((self.module / ".local/state/sing-box-rules").glob("*.hash"))
-                  self.assertEqual(len(files), 1)
-                  return files[0].read_text()
-
-              def test_offline_bundle_has_its_own_digest_identity(self):
-                  self.assert_success()
-                  self.assertEqual(self.output.read_bytes(), (self.bundle / FILE).read_bytes())
-                  self.assertEqual(self.state(), f"bundled:sha256:{self.digest}\n")
-
-              def test_test_environment_does_not_switch_production_paths(self):
-                  self.assert_success(FAKE_GIT_COUNT_FILE=str(self.root / "unused"))
-                  self.assertFalse((self.root / "unused").exists())
-
-              def test_corrupt_bundle_preserves_previous_file_and_marker(self):
-                  self.assert_success()
-                  previous, state = self.output.read_bytes(), self.state()
-                  (self.bundle / FILE).write_bytes(b"corruption")
-                  self.assertNotEqual(self.invoke().returncode, 0)
-                  self.assertEqual(self.output.read_bytes(), previous)
-                  self.assertEqual(self.state(), state)
-                  self.assertEqual(list(self.output.parent.glob(".*.??????")), [])
-
-              def test_missing_manifest_does_not_silently_fall_back(self):
-                  self.assert_success()
-                  previous = self.output.read_bytes()
-                  (self.bundle / "manifest.json").unlink()
-                  result = self.invoke()
-                  self.assertNotEqual(result.returncode, 0)
-                  self.assertNotIn("forbidden-network", result.stderr)
-                  self.assertEqual(self.output.read_bytes(), previous)
-
-              def test_unchanged_content_is_not_replaced(self):
-                  self.assert_success()
-                  before = self.output.stat().st_mtime_ns
-                  self.assert_success()
-                  self.assertEqual(self.output.stat().st_mtime_ns, before)
-
-              def test_changed_bundle_updates_without_a_remote_ref_change(self):
-                  self.assert_success()
-                  self.write_bundle(b"compiled fixture two\n")
-                  self.assert_success()
-                  self.assertEqual(self.output.read_bytes(), b"compiled fixture two\n")
-                  self.assertEqual(self.state(), f"bundled:sha256:{self.digest}\n")
-
-              def test_corrupt_destination_is_repaired_despite_matching_marker(self):
-                  self.assert_success()
-                  self.output.write_bytes(b"broken destination")
-                  self.assert_success()
-                  self.assertEqual(self.output.read_bytes(), (self.bundle / FILE).read_bytes())
-
-              def test_partial_copy_failure_preserves_old_output_and_state(self):
-                  self.assert_success()
-                  previous, state = self.output.read_bytes(), self.state()
-                  self.write_bundle(b"next candidate\n")
-                  copy = self.bin / "cp"
-                  copy.write_text('#!/bin/sh\nprintf partial >"$3"\nexit 1\n')
-                  copy.chmod(0o755)
-                  self.assertNotEqual(self.invoke().returncode, 0)
-                  self.assertEqual(self.output.read_bytes(), previous)
-                  self.assertEqual(self.state(), state)
-
-
-          if __name__ == "__main__":
-              unittest.main()
-          '''
-          Path('scripts/test-bundled-rules.py').write_text(tests)
-          path = Path('scripts/test-host.sh')
-          text = path.read_text()
-          anchor = 'check bash scripts/test-rule-hash-retry.sh\n'
-          assert text.count(anchor) == 1
-          path.write_text(text.replace(anchor, anchor + 'check python3 scripts/test-bundled-rules.py\n'))
-      - name: Run bundle and remote-source regressions
-        run: |
-          set -euo pipefail
-          bash -n hooks/pre-build/5450.update_sing_box_rules.sh
-          shellcheck -x -P SCRIPTDIR hooks/pre-build/5450.update_sing_box_rules.sh
-          python3 scripts/test-bundled-rules.py
-          bash scripts/test-rule-hash-retry.sh
-          git diff --check
-      - name: Commit only the audited rule repair
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git add -- hooks/pre-build/5450.update_sing_box_rules.sh \
-            scripts/test-rule-hash-retry.sh scripts/test-bundled-rules.py scripts/test-host.sh
-          test -z "$(git diff --name-only)"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(rules): verify bundled artifacts without test-only production paths'
-          gh auth setup-git
-          git push origin HEAD:refs/heads/fix/rule-bundle-integrity-20260916
-          git rev-parse HEAD
+          import re
+          pattern = re.compile(r'machineInterfaceUnavailable|parse(?:Dns|Network|Wifi|Transparent|Sub)|(?:dns|network|wifi|transparent|sub) status')
+          for path in Path('webui').rglob('*'):
+              if path.is_file() and path.suffix in ('.ts', '.vue', '.mjs'):
+                  hits = [(n, line) for n, line in enumerate(path.read_text().splitlines(), 1) if pattern.search(line)]
+                  if hits:
+                      print(path)
+                      for n, line in hits[:12]:
+                          print(f'  {n}: {line[:220]}')
