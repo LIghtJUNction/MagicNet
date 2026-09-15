@@ -296,8 +296,7 @@ fn start(app: &App) -> Result<(), String> {
     }
     let target = app.moddir.join("bin/magicnet-cli");
     validate_cli_binary(&target)?;
-    fs::create_dir_all(app.log_dir.clone())
-        .map_err(|err| format!("mkdir log dir: {err}"))?;
+    fs::create_dir_all(app.log_dir.clone()).map_err(|err| format!("mkdir log dir: {err}"))?;
     if let Some(parent) = pid_path(app).parent() {
         fs::create_dir_all(parent).map_err(|err| format!("mkdir state dir: {err}"))?;
     }
@@ -320,8 +319,8 @@ fn start(app: &App) -> Result<(), String> {
         .stderr(Stdio::from(log_err))
         .spawn()
         .map_err(|err| format!("start MCP server: {err}"))?;
-    let pid = i32::try_from(child.id())
-        .map_err(|_| "MCP server PID is out of range".to_string())?;
+    let pid =
+        i32::try_from(child.id()).map_err(|_| "MCP server PID is out of range".to_string())?;
     if let Err(err) = write_text_file(
         app,
         Path::new(".state/magicnet-mcp.pid"),
@@ -744,19 +743,11 @@ mod tests {
     fn mcp_server_identity_requires_cli_serve_subcommand() {
         let target = "/module/bin/magicnet-cli";
         assert!(mcp_server_argv_owned(
-            &[
-                target.to_string(),
-                "mcp".to_string(),
-                "serve".to_string(),
-            ],
+            &[target.to_string(), "mcp".to_string(), "serve".to_string(),],
             target,
         ));
         assert!(!mcp_server_argv_owned(
-            &[
-                target.to_string(),
-                "mcp".to_string(),
-                "status".to_string()
-            ],
+            &[target.to_string(), "mcp".to_string(), "status".to_string()],
             target,
         ));
         assert!(!mcp_server_argv_owned(
