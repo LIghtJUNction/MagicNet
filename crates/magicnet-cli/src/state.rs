@@ -200,7 +200,10 @@ fn service_record(app: &App) -> StateRecord {
         .field("selected_core", selected)
         .field("process_count", pid_count.to_string())
         .field("transparent_phase", transparent_phase)
-        .bool("startup_error", regular_nonempty(&app.moddir.join(STARTUP_ERROR)))
+        .bool(
+            "startup_error",
+            regular_nonempty(&app.moddir.join(STARTUP_ERROR)),
+        )
 }
 
 fn process_state(summary: &str) -> &'static str {
@@ -427,8 +430,8 @@ fn app_policy_record(app: &App) -> StateRecord {
         .unwrap_or_else(|| "blacklist".to_string());
     let include_count = clean_line_count(&app.moddir.join(APP_INCLUDE_UIDS));
     let exclude_count = clean_line_count(&app.moddir.join(APP_EXCLUDE_UIDS));
-    let resolved = app.moddir.join(APP_INCLUDE_UIDS).is_file()
-        || app.moddir.join(APP_EXCLUDE_UIDS).is_file();
+    let resolved =
+        app.moddir.join(APP_INCLUDE_UIDS).is_file() || app.moddir.join(APP_EXCLUDE_UIDS).is_file();
     StateRecord::new(Domain::AppPolicy)
         .field("state", if resolved { "resolved" } else { "unresolved" })
         .field("mode", mode)
@@ -680,7 +683,9 @@ fn directory_has_entries(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{app_policy_record, selectors_record, subscription_record, wifi_record, Domain, StateRecord};
+    use super::{
+        app_policy_record, selectors_record, subscription_record, wifi_record, Domain, StateRecord,
+    };
     use crate::App;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -754,10 +759,16 @@ mod tests {
     fn app_policy_state_exposes_only_uid_counts() {
         let (root, app) = fixture();
         fs::create_dir_all(root.join(".state/app-policy")).expect("create app policy state");
-        fs::write(root.join(".state/app-policy/include-uids.list"), "10001\n10002\n")
-            .expect("write include uids");
-        fs::write(root.join(".state/app-policy/exclude-uids.list"), "0\n10003\n")
-            .expect("write exclude uids");
+        fs::write(
+            root.join(".state/app-policy/include-uids.list"),
+            "10001\n10002\n",
+        )
+        .expect("write include uids");
+        fs::write(
+            root.join(".state/app-policy/exclude-uids.list"),
+            "0\n10003\n",
+        )
+        .expect("write exclude uids");
         let text = app_policy_record(&app).encode();
         assert!(text.contains("include_uid_count=2"));
         assert!(text.contains("exclude_uid_count=2"));
