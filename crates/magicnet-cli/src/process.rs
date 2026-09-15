@@ -664,6 +664,7 @@ fn run_process_group(
     command: &mut Command,
     timeout: Duration,
 ) -> Result<std::process::ExitStatus, String> {
+    let reservation = crate::utils::reserve_child()?;
     let mut watchdog = ParentDeathWatchdog::arm(timeout)?;
     #[cfg(any(target_os = "android", target_os = "linux"))]
     let watchdog_worker_fd = watchdog.worker_pid_fd();
@@ -728,7 +729,7 @@ fn run_process_group(
                 Duration::from_millis(100),
                 Duration::from_millis(100),
             ) {
-                defer_child_reap(child);
+                defer_child_reap(child, reservation);
             }
             return Err(format!("timed out after {}ms", timeout.as_millis()));
         }
@@ -782,15 +783,8 @@ fn terminate_timed_out_child<W: TimedChildWait>(
     }
 }
 
-fn defer_child_reap(mut child: std::process::Child) {
-    let _ = thread::Builder::new()
-        .name("magicnet-process-reaper".to_string())
-        .spawn(move || loop {
-            match child.try_wait() {
-                Ok(Some(_)) | Err(_) => break,
-                Ok(None) => thread::sleep(Duration::from_millis(250)),
-            }
-        });
+fn defer_child_reap(child: std::process::Child, reservation: crate::utils::ChildReservation) {
+    reservation.defer(child.id() as libc::pid_t);
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -1022,6 +1016,7 @@ unsafe fn watchdog_kill_bound_group(
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 struct ParentDeathWatchdog {
+    reservation: Option<crate::utils::ChildReservation>,
     pid: libc::pid_t,
     control_fd: libc::c_int,
     worker_pid_fd: libc::c_int,
@@ -1030,6 +1025,7 @@ struct ParentDeathWatchdog {
 #[cfg(any(target_os = "android", target_os = "linux"))]
 impl ParentDeathWatchdog {
     fn arm(timeout: Duration) -> Result<Self, String> {
+        let reservation = crate::utils::reserve_child()?;
         let mut control = [-1; 2];
         if unsafe { libc::pipe2(control.as_mut_ptr(), libc::O_CLOEXEC) } == -1 {
             return Err(format!(
@@ -1146,6 +1142,7 @@ impl ParentDeathWatchdog {
             libc::close(worker_pid_pipe[0]);
         }
         Ok(Self {
+            reservation: Some(reservation),
             pid: watchdog_pid,
             control_fd: control[1],
             worker_pid_fd: worker_pid_pipe[1],
@@ -1170,7 +1167,9 @@ impl Drop for ParentDeathWatchdog {
         // A normal CLI path disarms the watcher before closing the pipe. If
         // the CLI is killed, Drop cannot run and pipe EOF triggers cleanup.
         unsafe {
-            crate::utils::kill_and_reap(self.pid);
+            if let Some(reservation) = self.reservation.take() {
+                crate::utils::kill_and_reap(self.pid, reservation);
+            }
             libc::close(self.control_fd);
             if self.worker_pid_fd != -1 {
                 libc::close(self.worker_pid_fd);
