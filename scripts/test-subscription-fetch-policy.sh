@@ -30,7 +30,7 @@ cat >"$tmp/bin/curl" <<'SH'
 printf 'env=%s/%s/%s/%s\n' "${http_proxy-}" "${HTTP_PROXY-}" "${all_proxy-}" "${ALL_PROXY-}" >>"$MAGICNET_FETCH_TEST_LOG"
 printf 'curl %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
 case " $* " in
-  *' http://127.0.0.1:9090/version '*)
+  *' http://127.0.0.1:19090/version '*)
     printf '%s\n' '{"version":"test"}'
     exit 0
     ;;
@@ -47,7 +47,11 @@ SH
 cat >"$MODDIR/cli" <<'SH'
 #!/bin/sh
 printf 'resolver %s\n' "$*" >>"$MAGICNET_FETCH_TEST_LOG"
-[ "$1" = sub ] && [ "$2" = resolve-host ] || exit 2
+if [ "${1:-}" = api ] && [ "${2:-}" = endpoint ]; then
+  printf '%s\n' 'http://127.0.0.1:19090'
+  exit 0
+fi
+[ "${1:-}" = sub ] && [ "${2:-}" = resolve-host ] || exit 2
 case "${MAGICNET_RESOLVE_RESULT:-public}" in
   public) printf '%s\n' "1.1.1.1" "2606:4700:4700::1111" ;;
   private) printf '%s\n' "127.0.0.1" ;;

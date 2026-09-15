@@ -1,3 +1,12 @@
+# Isolated subscription tests and recovery paths may load this file without
+# the normal module entrypoint. Reuse the canonical endpoint helpers whenever
+# they have not already been loaded.
+if ! command -v magicnet_singbox_api_endpoint >/dev/null 2>&1 &&
+    command -v magicnet_lib_dir >/dev/null 2>&1; then
+    # shellcheck disable=SC1090
+    . "$(magicnet_lib_dir)/api.sh"
+fi
+
 magicnet_singbox_emitted_node_port_valid() {
     _emitted_port=$(printf '%s' "$1" |
         sed -n 's/.*"server_port":\([0-9][0-9]*\)[,}].*/\1/p')
