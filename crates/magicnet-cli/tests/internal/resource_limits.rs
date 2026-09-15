@@ -352,3 +352,134 @@ fn exhausted_probe_budget_rejects_work_before_spawn() {
     let output = run_bounded_command(shell("exit 0"), Duration::from_secs(1), 128).unwrap();
     assert!(output.status.unwrap().success());
 }
+
+#[test]
+fn command_retains_leader_until_pipe_cleanup() {
+    let output = run_bounded_command(
+        shell("leader=$$; (sleep 0.1; if [ -r /proc/$leader/stat ]; then printf retained; else printf reaped; fi) & exit 7"),
+        Duration::from_secs(5),
+        128,
+    )
+    .unwrap();
+    assert!(!output.timed_out);
+    assert_eq!(output.status.unwrap().code(), Some(7));
+    assert_eq!(output.stdout, b"retained");
+}
+
+#[test]
+fn peek_child_status_does_not_reap_or_steal_exit_status() {
+    let mut child = shell("exit 7").spawn().unwrap();
+    let pid = child.id() as libc::pid_t;
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while super::peek_child_status(pid).unwrap().is_none() {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        super::peek_child_status(pid).unwrap().unwrap().code(),
+        Some(7)
+    );
+    assert_eq!(child.wait().unwrap().code(), Some(7));
+    assert_eq!(
+        super::peek_child_status(pid).unwrap_err().raw_os_error(),
+        Some(libc::ECHILD)
+    );
+    assert!(super::terminate_command_group(&mut child).is_none());
+    assert_eq!(child.try_wait().unwrap().unwrap().code(), Some(7));
+    for invalid in [0, -1] {
+        assert_eq!(
+            super::peek_child_status(invalid).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
+}
+
+#[test]
+fn command_group_retains_leader_through_final_signal() {
+    use super::CommandGroupWait;
+    use std::os::unix::process::CommandExt;
+
+    struct CheckedGroup {
+        child: std::process::Child,
+        signals: Vec<libc::c_int>,
+    }
+    impl CommandGroupWait for CheckedGroup {
+        fn signal_group(&mut self, signal: libc::c_int) {
+            assert!(
+                super::peek_child_status(self.child.id() as libc::pid_t).is_ok(),
+                "leader was reaped before the final group signal"
+            );
+            self.signals.push(signal);
+            self.child.signal_group(signal);
+        }
+        fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+            <std::process::Child as CommandGroupWait>::try_wait(&mut self.child)
+        }
+        fn pid(&self) -> libc::pid_t {
+            self.child.id() as libc::pid_t
+        }
+    }
+    let mut command = shell("exit 9");
+    command.process_group(0);
+    let mut group = CheckedGroup {
+        child: command.spawn().unwrap(),
+        signals: Vec::new(),
+    };
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while super::peek_child_status(group.pid()).unwrap().is_none() {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    let observed = super::terminate_command_group_with(
+        &mut group,
+        Duration::from_millis(50),
+        Duration::from_millis(50),
+    );
+    assert_eq!(observed.unwrap().code(), Some(9));
+    assert_eq!(group.signals, vec![libc::SIGTERM, libc::SIGKILL]);
+    assert_eq!(group.child.wait().unwrap().code(), Some(9));
+}
+
+#[test]
+fn peek_child_status_preserves_signal_exit() {
+    let mut child = shell("exec sleep 30").spawn().unwrap();
+    let pid = child.id() as libc::pid_t;
+    child.kill().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while super::peek_child_status(pid).unwrap().is_none() {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    let observed = super::peek_child_status(pid).unwrap().unwrap();
+    assert_eq!(observed, child.wait().unwrap());
+}
+
+#[test]
+fn interrupted_group_cleanup_still_kills_within_deadline() {
+    struct Interrupted {
+        signals: Vec<libc::c_int>,
+    }
+    impl super::CommandGroupWait for Interrupted {
+        fn signal_group(&mut self, signal: libc::c_int) {
+            self.signals.push(signal);
+        }
+        fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+            Err(io::Error::from(io::ErrorKind::Interrupted))
+        }
+        fn pid(&self) -> libc::pid_t {
+            42
+        }
+    }
+    let mut child = Interrupted {
+        signals: Vec::new(),
+    };
+    let started = Instant::now();
+    assert!(super::terminate_command_group_with(
+        &mut child,
+        Duration::from_millis(20),
+        Duration::from_millis(20)
+    )
+    .is_none());
+    assert!(started.elapsed() < Duration::from_secs(1));
+    assert_eq!(child.signals, vec![libc::SIGTERM, libc::SIGKILL]);
+}

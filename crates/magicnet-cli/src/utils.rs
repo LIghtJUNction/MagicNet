@@ -4,7 +4,7 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::os::unix::process::CommandExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Condvar, Mutex};
@@ -129,7 +129,7 @@ static CHILD_REAPER: Mutex<DeferredReaper> = Mutex::new(DeferredReaper {
 });
 static CHILD_REAPER_WAKE: Condvar = Condvar::new();
 
-struct ChildProbeBudget;
+pub(crate) struct ChildProbeBudget;
 
 impl Drop for ChildProbeBudget {
     fn drop(&mut self) {
@@ -138,7 +138,7 @@ impl Drop for ChildProbeBudget {
     }
 }
 
-fn reserve_child_probe() -> Result<ChildProbeBudget, String> {
+pub(crate) fn reserve_child_probe() -> Result<ChildProbeBudget, String> {
     let mut state = CHILD_REAPER.lock().unwrap_or_else(|err| err.into_inner());
     // Retry a failed reaper thread launch before admitting more work.
     if !state.pending.is_empty() {
@@ -183,7 +183,7 @@ fn reap_deferred_children() {
     }
 }
 
-fn defer_reap(pid: libc::pid_t) {
+pub(crate) fn defer_reap(pid: libc::pid_t) {
     let mut state = CHILD_REAPER.lock().unwrap_or_else(|err| err.into_inner());
     state.defer(pid);
     // Probe admission bounds repeated failures. Also accept the existing
@@ -196,10 +196,52 @@ fn defer_reap(pid: libc::pid_t) {
 }
 
 pub(crate) fn kill_and_reap(pid: libc::pid_t) {
+    if pid <= 0 {
+        return;
+    }
     let mut waiter = LibcKillAndWait { pid };
     if !kill_and_reap_with(&mut waiter, PROCESS_REAP_GRACE) {
         defer_reap(pid);
     }
+}
+
+/// Observe a direct child without releasing its PID. Group cleanup must keep
+/// this ownership until the final signal; Child::try_wait reaps on Unix and
+/// permits the numeric process-group ID to be reused.
+pub(crate) fn peek_child_status(pid: libc::pid_t) -> io::Result<Option<ExitStatus>> {
+    if pid <= 0 {
+        return Err(io::Error::new(ErrorKind::InvalidInput, "invalid child PID"));
+    }
+    // SAFETY: zero is a valid initial siginfo_t. waitid fills the SIGCHLD
+    // fields on an exit, or leaves si_pid zero when WNOHANG finds no exit.
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    let result = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            pid as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        )
+    };
+    if result < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if unsafe { info.si_pid() } == 0 {
+        return Ok(None);
+    }
+    let status = unsafe { info.si_status() };
+    let raw = match info.si_code {
+        libc::CLD_EXITED => status << 8,
+        libc::CLD_KILLED => status,
+        libc::CLD_DUMPED => status | 0x80,
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "unexpected child wait status",
+            ))
+        }
+    };
+    Ok(Some(ExitStatus::from_raw(raw)))
 }
 
 fn child_exit_code(status: i32) -> Option<i32> {
@@ -347,7 +389,9 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 output.extend_from_slice(&chunk[..read_count as usize]);
                 if output.len() > max_bytes {
                     close_raw_fd(pipe_fds[0]);
-                    kill_and_reap(worker_pid);
+                    if worker_status.is_none() {
+                        kill_and_reap(worker_pid);
+                    }
                     return Err(format!(
                         "proc file exceeds {max_bytes} bytes: {}",
                         path.display()
@@ -364,7 +408,9 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 break;
             }
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            if worker_status.is_none() {
+                kill_and_reap(worker_pid);
+            }
             return Err(format!(
                 "read bounded proc result for {}: {err}",
                 path.display()
@@ -380,7 +426,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 let err = io::Error::last_os_error();
                 if err.kind() != ErrorKind::Interrupted {
                     close_raw_fd(pipe_fds[0]);
-                    if err.raw_os_error() != Some(libc::ECHILD) {
+                    if err.raw_os_error() != Some(libc::ECHILD) && worker_status.is_none() {
                         kill_and_reap(worker_pid);
                     }
                     return Err(format!(
@@ -395,7 +441,9 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
         }
         if Instant::now() >= deadline {
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            if worker_status.is_none() {
+                kill_and_reap(worker_pid);
+            }
             return Err(format!(
                 "proc read timed out after {}ms: {}",
                 timeout.as_millis(),
@@ -417,7 +465,9 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
         if polled < 0 && io::Error::last_os_error().kind() != ErrorKind::Interrupted {
             let err = io::Error::last_os_error();
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            if worker_status.is_none() {
+                kill_and_reap(worker_pid);
+            }
             return Err(format!(
                 "poll bounded proc reader for {}: {err}",
                 path.display()
@@ -658,7 +708,7 @@ pub(crate) fn run_bounded_command(
         stdout.drain_ready(deadline);
         stderr.drain_ready(deadline);
         if status.is_none() {
-            match child.try_wait() {
+            match peek_child_status(child.id() as libc::pid_t) {
                 Ok(exit) => status = exit,
                 Err(err) if err.kind() == ErrorKind::Interrupted => {}
                 Err(err) => {
@@ -668,7 +718,21 @@ pub(crate) fn run_bounded_command(
             }
         }
         if status.is_some() && stdout.closed() && stderr.closed() {
-            break;
+            // No more group signals can follow this final reap.
+            match child.try_wait() {
+                Ok(Some(exit)) => {
+                    status = Some(exit);
+                    break;
+                }
+                Ok(None) => {}
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => {
+                    if err.raw_os_error() != Some(libc::ECHILD) {
+                        let _ = terminate_command_group(&mut child);
+                    }
+                    return Err(format!("reap command: {err}"));
+                }
+            }
         }
         if Instant::now() >= deadline {
             timed_out = true;
@@ -707,6 +771,7 @@ pub(crate) fn run_bounded_command(
 
 trait CommandGroupWait {
     fn signal_group(&mut self, signal: libc::c_int);
+    // Implementations observe status without reaping until group signalling finishes.
     fn try_wait(&mut self) -> Result<Option<ExitStatus>, io::Error>;
     fn pid(&self) -> libc::pid_t;
 }
@@ -719,7 +784,7 @@ impl CommandGroupWait for Child {
     }
 
     fn try_wait(&mut self) -> Result<Option<ExitStatus>, io::Error> {
-        Child::try_wait(self)
+        peek_child_status(self.id() as libc::pid_t)
     }
 
     fn pid(&self) -> libc::pid_t {
@@ -742,9 +807,9 @@ fn terminate_command_group_with<W: CommandGroupWait>(
                 child.signal_group(libc::SIGKILL);
                 return Some(status);
             }
-            Err(_) => return None,
-            Ok(None) if Instant::now() >= term_deadline => break,
-            Ok(None) => thread::sleep(PROCESS_REAP_POLL),
+            Err(err) if err.kind() != ErrorKind::Interrupted => return None,
+            _ if Instant::now() >= term_deadline => break,
+            _ => thread::sleep(PROCESS_REAP_POLL),
         }
     }
 
@@ -753,21 +818,30 @@ fn terminate_command_group_with<W: CommandGroupWait>(
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return Some(status),
-            Err(_) => return None,
-            Ok(None) if Instant::now() >= reap_deadline => return None,
-            Ok(None) => thread::sleep(PROCESS_REAP_POLL),
+            Err(err) if err.kind() != ErrorKind::Interrupted => return None,
+            _ if Instant::now() >= reap_deadline => return None,
+            _ => thread::sleep(PROCESS_REAP_POLL),
         }
     }
 }
 
 fn terminate_command_group(child: &mut Child) -> Option<ExitStatus> {
     let pid = child.pid();
-    let status =
-        terminate_command_group_with(child, Duration::from_millis(250), PROCESS_REAP_GRACE);
-    if status.is_none() {
-        defer_reap(pid);
+    // A caller that has already reaped the leader no longer owns this group
+    // number. Never turn its cached Child::try_wait result into a signal.
+    if peek_child_status(pid).is_err_and(|err| err.raw_os_error() == Some(libc::ECHILD)) {
+        return None;
     }
-    status
+    let observed =
+        terminate_command_group_with(child, Duration::from_millis(250), PROCESS_REAP_GRACE);
+    match Child::try_wait(child) {
+        Ok(Some(status)) => Some(status),
+        Err(err) if err.raw_os_error() == Some(libc::ECHILD) => observed,
+        _ => {
+            defer_reap(pid);
+            observed
+        }
+    }
 }
 
 struct OutputCapture {
