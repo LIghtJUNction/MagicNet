@@ -272,10 +272,7 @@ fn webui_setup_uses_the_configured_api_endpoint() {
         api_host_port("http://[::1]:19090"),
         ("::1".to_string(), "19090".to_string())
     );
-    assert_eq!(
-        api_host_port("invalid"),
-        ("127.0.0.1".to_string(), "9090".to_string())
-    );
+    assert!(std::panic::catch_unwind(|| api_host_port("invalid")).is_err());
 
     let (mut app, root) = fixture_app("webui-route");
     app.api = "http://127.0.0.1:19090".to_string();
