@@ -69,18 +69,22 @@ jobs:
           workflow = Path(".github/workflows/android-kernelsu-acceptance.yml")
           text = workflow.read_text()
           retired = "magicnet-mcp" + "-server"
-          replacements = {
-              f"cargo ndk -t x86_64 build --release -p magicnet-cli -p {retired}":
-                  "cargo ndk -t x86_64 build --release -p magicnet-cli",
-              f'''          install -m 0755 target/x86_64-linux-android/release/{retired} "$RUNNER_TEMP/magicnet-x86/{retired}"\n''':
-                  "",
-              f'''          MAGICNET_X86_MCP: ${{{{ runner.temp }}}}/magicnet-x86/{retired}\n''':
-                  "",
-          }
-          for old, new in replacements.items():
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected exactly one stale Android MCP fragment: {old!r}; found {text.count(old)}")
-              text = text.replace(old, new)
+
+          old_build = f"cargo ndk -t x86_64 build --release -p magicnet-cli -p {retired}"
+          if text.count(old_build) != 1:
+              raise SystemExit(f"expected one stale MCP Cargo selector, found {text.count(old_build)}")
+          text = text.replace(old_build, "cargo ndk -t x86_64 build --release -p magicnet-cli")
+
+          old_install = f'''          install -m 0755 target/x86_64-linux-android/release/{retired} "$RUNNER_TEMP/magicnet-x86/{retired}"\n'''
+          if text.count(old_install) != 1:
+              raise SystemExit(f"expected one stale MCP install line, found {text.count(old_install)}")
+          text = text.replace(old_install, "")
+
+          mcp_env_lines = [line for line in text.splitlines(keepends=True) if "MAGICNET_X86_MCP:" in line]
+          if len(mcp_env_lines) != 1:
+              raise SystemExit(f"expected one stale MCP environment line, found {len(mcp_env_lines)}")
+          text = text.replace(mcp_env_lines[0], "")
+
           if retired in text or "MAGICNET_X86_MCP" in text:
               raise SystemExit("stale standalone MCP binary contract remains in Android acceptance")
           workflow.write_text(text)
