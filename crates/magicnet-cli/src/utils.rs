@@ -259,10 +259,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 break;
             }
             let err = io::Error::last_os_error();
-            if err.kind() == ErrorKind::Interrupted {
-                continue;
-            }
-            if err.kind() == ErrorKind::WouldBlock {
+            if matches!(err.kind(), ErrorKind::Interrupted | ErrorKind::WouldBlock) {
                 break;
             }
             close_raw_fd(pipe_fds[0]);
@@ -280,14 +277,16 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 worker_status = Some(status);
             } else if waited < 0 {
                 let err = io::Error::last_os_error();
-                if err.kind() == ErrorKind::Interrupted {
-                    continue;
+                if err.kind() != ErrorKind::Interrupted {
+                    close_raw_fd(pipe_fds[0]);
+                    if err.raw_os_error() != Some(libc::ECHILD) {
+                        kill_and_reap(worker_pid, reservation);
+                    }
+                    return Err(format!(
+                        "reap bounded proc reader for {}: {err}",
+                        path.display()
+                    ));
                 }
-                close_raw_fd(pipe_fds[0]);
-                return Err(format!(
-                    "reap bounded proc reader for {}: {err}",
-                    path.display()
-                ));
             }
         }
         if pipe_eof && worker_status.is_some() {
@@ -304,9 +303,11 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
         }
 
         let remaining = deadline.saturating_duration_since(Instant::now());
-        let wait_ms = remaining.as_millis().clamp(1, 25) as i32;
+        let poll_max_ms = if pipe_eof { 1 } else { 25 };
+        let wait_ms = remaining.as_millis().clamp(1, poll_max_ms) as i32;
         let mut poll_fd = libc::pollfd {
-            fd: pipe_fds[0],
+            // POLLHUP remains ready after EOF; do not spin while the child exits.
+            fd: if pipe_eof { -1 } else { pipe_fds[0] },
             events: libc::POLLIN | libc::POLLHUP,
             revents: 0,
         };
@@ -500,6 +501,9 @@ pub(crate) fn run_bounded_command(
     timeout: Duration,
     stream_limit: usize,
 ) -> Result<BoundedCommandOutput, String> {
+    if timeout.is_zero() {
+        return Err("command deadline expired before spawn".to_string());
+    }
     let reservation = reserve_child()?;
     let mut reservation = Some(reservation);
     let deadline = Instant::now() + timeout;
@@ -557,6 +561,7 @@ pub(crate) fn run_bounded_command(
         if status.is_none() {
             match child.try_wait() {
                 Ok(exit) => status = exit,
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
                 Err(err) => {
                     terminate_command_group(&mut child, &mut reservation);
                     return Err(format!("wait failed: {err}"));
