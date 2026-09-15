@@ -61,12 +61,18 @@ jq -e '
        | .default=="magicnet-google-auto"
          and (.outbounds | index("magicnet-google-auto")) != null)
   and (.outbounds[] | select(.tag=="ai-gemini-auto")
-       | (.outbounds | index("direct")) != null)
+       | .outbounds == ["node"])
+  and ([.outbounds[] | select(.tag=="magicnet-gemini-auto")] | length) == 1
+  and (.outbounds[] | select(.tag=="magicnet-gemini-auto")
+       | .type=="urltest"
+         and .url=="https://gemini.google.com/"
+         and (.outbounds | index("node")) != null
+         and (.outbounds | index("direct")) != null)
   and ([.route.rules[] | select(has("com.android.vending"))][0].outbound == "direct")
   and ([.route.rules[] | select(has("com.google.android.gms"))][0].outbound == "direct")
   and ([.route.rules[] | select(has("com.google.android.gsf"))][0].outbound == "direct")
-  and ([.route.rules[] | select(has("com.google.android.apps.bard"))][0].outbound == "ai-gemini-auto")
-  and ([.route.rules[] | select((.rule_set? // []) | index("meta-google-gemini"))][0].outbound == "ai-gemini-auto")
+  and ([.route.rules[] | select(has("com.google.android.apps.bard"))][0].outbound == "magicnet-gemini-auto")
+  and ([.route.rules[] | select((.rule_set? // []) | index("meta-google-gemini"))][0].outbound == "magicnet-gemini-auto")
   and ([.route.rules[] | select(.domain_suffix? == ["google.com"])][0].outbound == "google-proxy")
   and ([.route.rules[] | select(.package_name? == ["com.example.other"])][0].outbound == "proxy")
 ' "$config" >/dev/null
