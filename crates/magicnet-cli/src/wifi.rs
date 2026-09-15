@@ -312,7 +312,14 @@ fn apply_network(
     if changed {
         set_clash_mode(app, decision.desired_mode)?;
     }
-    write_last_state(app, network, &decision)?;
+    let current_mode = if changed {
+        decision.desired_mode
+    } else {
+        current.as_str()
+    };
+    write_last_state(app, network, &decision, current_mode)?;
+    crate::state::reconcile(app)
+        .map_err(|err| format!("publish Wi-Fi canonical state: {err}"))?;
     if verbose || changed {
         println!(
             "[info] Wi-Fi policy: connected={} ssid={} bssid={} matched={} mode={}{}",
@@ -565,6 +572,7 @@ fn write_last_state(
     app: &App,
     network: &WifiNetwork,
     decision: &PolicyDecision,
+    current_mode: &str,
 ) -> Result<(), String> {
     let values = [
         (
@@ -578,6 +586,7 @@ fn write_last_state(
             if decision.matched { "1" } else { "0" }.to_string(),
         ),
         ("desired_mode", decision.desired_mode.to_string()),
+        ("current_mode", current_mode.to_string()),
     ];
     let expected = values
         .iter()
