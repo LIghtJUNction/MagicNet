@@ -95,7 +95,7 @@ magicnet_kernel_route_state_capture() (
     fi
 )
 
-magicnet_kernel_route_rule_present() {
+magicnet_kernel_route_rule_present() (
     _route_family="$1"
     _route_priority="$2"
     _route_table="$3"
@@ -114,12 +114,9 @@ magicnet_kernel_route_rule_present() {
         }
         END { exit found ? 0 : 1 }
     '
-    _route_rc=$?
-    unset _route_family _route_priority _route_table _route_rules
-    return "$_route_rc"
-}
+)
 
-magicnet_kernel_route_delete_rule_priority() {
+magicnet_kernel_route_delete_rule_priority() (
     _route_family="$1"
     _route_priority="$2"
     _route_table="$3"
@@ -133,13 +130,10 @@ magicnet_kernel_route_delete_rule_priority() {
         _route_attempt=$((_route_attempt + 1))
     done
     if magicnet_kernel_route_rule_present "$_route_family" "$_route_priority" "$_route_table"; then
-        _route_delete_rc=1
-    else
-        _route_delete_rc=0
+        return 1
     fi
-    unset _route_family _route_priority _route_table _route_attempt
-    return "$_route_delete_rc"
-}
+    return 0
+)
 
 magicnet_kernel_route_cleanup_rule_family() {
     _route_family="$1"
