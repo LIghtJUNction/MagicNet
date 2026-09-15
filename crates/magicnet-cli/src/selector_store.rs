@@ -75,7 +75,9 @@ impl Drop for StoreLock {
 
 fn lock(app: &App) -> Result<StoreLock, String> {
     let lock_path = path(app).with_extension("json.lock");
-    let parent = lock_path.parent().ok_or("selector store lock has no parent")?;
+    let parent = lock_path
+        .parent()
+        .ok_or("selector store lock has no parent")?;
     fs::create_dir_all(parent).map_err(|err| format!("create selector store directory: {err}"))?;
     let file = fs::OpenOptions::new()
         .read(true)
