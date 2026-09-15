@@ -9,33 +9,43 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-subscription:
+  repair-subscription-fixture:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: 0f79854d8d67e9bfa81bdcabe58c783680cdcd7d
+          fetch-depth: 0
           persist-credentials: false
-      - name: Trace the isolated fixture failure
-        shell: python
-        run: |
-          import subprocess
-          result = subprocess.run(['bash', '-x', 'scripts/test-subscription-fetch-policy.sh'],
-                                  text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                  timeout=90, check=False)
-          print('exit_code=', result.returncode)
-          print('\n'.join(result.stdout.splitlines()[-170:]))
-      - name: Inventory machine-status WebUI callers
+      - name: Preserve the foreign-listener safety assertion on the actual port
         shell: python
         run: |
           from pathlib import Path
-          import re
-          pattern = re.compile(r'machineInterfaceUnavailable|parse(?:Dns|Network|Wifi|Transparent|Sub)|(?:dns|network|wifi|transparent|sub) status')
-          for path in Path('webui').rglob('*'):
-              if path.is_file() and path.suffix in ('.ts', '.vue', '.mjs'):
-                  hits = [(n, line) for n, line in enumerate(path.read_text().splitlines(), 1) if pattern.search(line)]
-                  if hits:
-                      print(path)
-                      for n, line in hits[:12]:
-                          print(f'  {n}: {line[:220]}')
+          path = Path('scripts/test-subscription-fetch-policy.sh')
+          text = path.read_text()
+          old = 'LISTEN 0 4096 127.0.0.1:9090 0.0.0.0:* users:'
+          assert text.count(old) == 1
+          path.write_text(text.replace(old, old.replace(':9090', ':19090')))
+      - name: Run the subscription policy behavior tests
+        run: |
+          set -euo pipefail
+          bash scripts/test-subscription-fetch-policy.sh
+          bash scripts/test-api-endpoint.sh
+          bash scripts/test-singbox-readiness.sh
+          git diff --check
+      - name: Commit only the fixture correction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add -- scripts/test-subscription-fetch-policy.sh
+          test -z "$(git diff --name-only)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test(subscription): detect foreign listeners on the resolved controller port'
+          gh auth setup-git
+          git push origin HEAD:refs/heads/refactor/dynamic-singbox-controller
+          git rev-parse HEAD
