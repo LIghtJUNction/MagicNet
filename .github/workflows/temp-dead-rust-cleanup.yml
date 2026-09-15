@@ -104,10 +104,15 @@ jobs:
               fi
           done
 
-          retired_mcp_name="$(printf '%s%s' 'magicnet-mcp' '-server')"
-          retired_mcp_refs="$(git grep -nF -- "$retired_mcp_name" || true)"
-          [[ -z "$retired_mcp_refs" ]] || fail "retired standalone MCP binary/package references found:
-          $retired_mcp_refs"
+          retired_mcp_package="$(printf '%s%s' 'magicnet-mcp' '-server')"
+          retired_mcp_selectors="$(git grep -nF -- "-p $retired_mcp_package" -- .github hooks scripts Cargo.toml || true)"
+          [[ -z "$retired_mcp_selectors" ]] || fail "retired standalone MCP Cargo package selector found:
+          $retired_mcp_selectors"
+
+          retired_mcp_env="$(printf '%s%s' 'MAGICNET_X86_' 'MCP')"
+          retired_mcp_env_refs="$(git grep -nF -- "$retired_mcp_env" -- .github hooks scripts || true)"
+          [[ -z "$retired_mcp_env_refs" ]] || fail "retired standalone MCP build environment found:
+          $retired_mcp_env_refs"
 
           '''
           if text.count(anchor) != 1:
