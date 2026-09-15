@@ -99,6 +99,7 @@ run_hook() {
         PATH="$TEST_ROOT/bin:$PATH" \
         KAM_HOOKS_ROOT="$ROOT/hooks" \
         KAM_MODULE_ROOT="$module_root" \
+        KAM_PROJECT_ROOT="$TEST_ROOT/isolated-project" \
         FAKE_GIT_COUNT_FILE="$count_file" \
         FAKE_GIT_SUCCEED_ON="$succeed_on" \
         bash "$HOOK" >"$stdout_file" 2>"$stderr_file"

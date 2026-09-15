@@ -6,6 +6,9 @@
 require_command curl "curl not found!"
 require_command git "git not found!"
 require_command jq "jq not found!"
+require_command sha256sum
+require_command mktemp
+require_command cmp
 
 CONFIG_FILE="$KAM_MODULE_ROOT/.config/sing-box/config.json"
 RULE_DIR="$KAM_MODULE_ROOT/.config/sing-box/rules"
@@ -165,6 +168,40 @@ download_rule() {
     mv "$tmp" "$output"
 }
 
+# A bundled artifact is identified by its manifest digest, not a remote HEAD.
+# Stage and validate before replacement; publication failure is retryable.
+update_bundled_rule() (
+    local file="$1" source="$2" manifest="$3" hash_file="$4"
+    local digest staged state_tmp="" actual identity old_ref=""
+    digest=$(jq -er --arg name "${file%.srs}" '
+        select(.version == 1) | .rulesets[$name].sha256_srs
+        | select(type == "string" and test("^[0-9a-f]{64}$"))
+    ' "$manifest") || {
+        log_error "$file: missing or invalid bundled digest"
+        return 1
+    }
+    staged=$(mktemp "$RULE_DIR/.${file}.XXXXXX") || return 1
+    trap 'rm -f -- "$staged" "$state_tmp"' EXIT
+    cp -- "$source" "$staged" || return 1
+    actual=$(sha256sum "$staged") || return 1
+    if [ "${actual%% *}" != "$digest" ]; then
+        log_error "$file: bundled digest mismatch; previous rule preserved"
+        return 1
+    fi
+    identity="bundled:sha256:$digest"
+    [ ! -f "$hash_file" ] || old_ref=$(cat "$hash_file") || return 1
+    if [ "$old_ref" = "$identity" ] && cmp -s -- "$staged" "$RULE_DIR/$file"; then
+        return 0
+    fi
+    if ! cmp -s -- "$staged" "$RULE_DIR/$file"; then
+        mv -f -- "$staged" "$RULE_DIR/$file" || return 1
+    fi
+    state_tmp=$(mktemp "${hash_file}.XXXXXX") || return 1
+    printf '%s\n' "$identity" >"$state_tmp" || return 1
+    mv -f -- "$state_tmp" "$hash_file" || return 1
+    log_success "$file: verified bundled artifact ($digest)"
+)
+
 update_rule() {
     local repo="$1"
     local branch="$2"
@@ -186,14 +223,6 @@ update_rule() {
         return 0
     fi
 
-    local project_root="${KAM_PROJECT_ROOT:-$(cd "$KAM_HOOKS_ROOT/.." && pwd)}"
-    local sub_rules_dir="$project_root/rules/dist"
-    if [ -z "${FAKE_GIT_COUNT_FILE:-}" ] && [ -s "$sub_rules_dir/$file" ]; then
-        log_info "$file: synced from rules submodule ($ref)"
-        cp -f "$sub_rules_dir/$file" "$RULE_DIR/$file"
-        printf '%s\n' "$ref" >"$hash_file"
-        return 0
-    fi
 
     download_rule "$repo" "$branch" "$ref" "$source_path" "$file" || return 1
     printf '%s\n' "$ref" >"$hash_file"
@@ -206,6 +235,9 @@ main() {
     local branch
     local source_path
     local ref
+    local hash_file
+    local project_root="${KAM_PROJECT_ROOT:-$(cd "$KAM_HOOKS_ROOT/.." && pwd)}"
+    local bundle_dir="$project_root/rules/dist"
 
     [ -f "$CONFIG_FILE" ] || {
         log_warn "sing-box config not found; rule-set update skipped"
@@ -219,6 +251,11 @@ main() {
         source=${source#*|}
         branch=${source%%|*}
         source_path=${source#*|}
+        if [ -e "$bundle_dir/$file" ]; then
+            hash_file="$STATE_DIR/$(state_key "${repo}|${branch}|${source_path}|${file}").hash"
+            update_bundled_rule "$file" "$bundle_dir/$file" "$bundle_dir/manifest.json" "$hash_file" || return 1
+            continue
+        fi
         source_ref "$repo" "$branch" || {
             log_error "Failed to resolve $repo $branch hash"
             return 1
