@@ -10,7 +10,6 @@ TOYBOX_APPLET_BIN="$TMP/toybox-bin"
 POISONED_CALLER_PATH="$TMP/poisoned-caller-path"
 MOCK_LOG="$TMP/mock-commands.log"
 CLI_BIN="$ROOT/target/debug/magicnet-cli"
-MCP_BIN="$ROOT/target/debug/magicnet-mcp-server"
 
 sanitize_host_path() {
     local raw="${1:-}"
@@ -114,7 +113,7 @@ if [[ -n "$ZIP_PATH" && "$ZIP_PATH" != /* ]]; then
     ZIP_PATH="$ROOT/$ZIP_PATH"
 fi
 
-cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
+cargo build -p magicnet-cli >/dev/null
 
 mkdir -p "$MOCK_BIN"
 # This host fixture uses util-linux flock. Do not accidentally select the
@@ -222,11 +221,12 @@ SH
 chmod +x "$MOCK_BIN/settings"
 mkdir -p "$MODDIR/bin"
 cp "$CLI_BIN" "$MODDIR/bin/magicnet-cli"
-cp "$MCP_BIN" "$MODDIR/bin/magicnet-mcp-server"
+rm -f "$MODDIR/bin/magicnet-mcp-server"
 cp "$HOST_JQ" "$MODDIR/bin/jq"
 rm -f "$MODDIR/cli"
 ln -s "bin/magicnet-cli" "$MODDIR/cli"
-chmod +x "$MODDIR/bin/magicnet-cli" "$MODDIR/bin/magicnet-mcp-server" "$MODDIR/bin/jq"
+chmod +x "$MODDIR/bin/magicnet-cli" "$MODDIR/bin/jq"
+test ! -e "$MODDIR/bin/magicnet-mcp-server"
 
 cat >>"$MODDIR/lib/kamfw/__singbox__.sh" <<'SH'
 
@@ -917,7 +917,8 @@ env MODDIR="$MODDIR" MODPATH="$MODDIR" PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$ORIGI
     command -v sing-box
 ' >"$TMP/runtime-path.log"
 rg -q "^$MODDIR/bin/sing-box$" "$TMP/runtime-path.log"
-test -x "$MODDIR/bin/magicnet-mcp-server"
+test ! -e "$MODDIR/bin/magicnet-mcp-server"
+test ! -L "$MODDIR/bin/magicnet-mcp-server"
 test -x "$MODDIR/bin/ecapture"
 
 MCP_TEST_PORT="$(
