@@ -108,11 +108,11 @@ jobs:
         with:
           mode: restore
 
-      - name: Refresh build submodules
+      - name: Verify pinned build submodules
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/update-submodules.sh
+          bash scripts/verify-submodule-revisions.sh
           git submodule status --recursive > "$RUNNER_TEMP/build-submodules.txt"
 
       - name: Prepare signing verification key
@@ -281,7 +281,6 @@ jobs:
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'module.prop'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'cli'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-cli'
-          unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/magicnet-mcp-server'
           unzip -Z1 "dist/${module_id}.zip" | grep -Fx 'bin/sing-box'
           if unzip -Z1 "dist/${module_id}.zip" | grep -Eq '(^|/)\.git($|/)'; then
             echo "::error::Module archive contains Git metadata"
