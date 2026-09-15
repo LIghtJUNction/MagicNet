@@ -35,25 +35,8 @@ magicnet_singbox_api_port() {
     unset _magicnet_api_endpoint _magicnet_api_port
 }
 
-# Override the legacy probe from common.sh. Runtime health must follow the
-# configured external_controller rather than assuming the bootstrap default.
-magicnet_singbox_api_has_nodes() {
-    magicnet_cmd_exists curl || return 1
-    _api_endpoint="$(magicnet_singbox_api_endpoint)" || return 1
-    _api=$(curl -sS --max-time 5 "${_api_endpoint}/proxies" 2>/dev/null ||
-        curl -sS --max-time 5 "${_api_endpoint}/providers/proxies" 2>/dev/null || true)
-    [ -n "$_api" ] || {
-        unset _api_endpoint _api
-        return 1
-    }
-    printf '%s' "$_api" | grep -Eq '"type":"(VLESS|Hysteria2|Trojan|VMess|Shadowsocks|AnyTLS|TUIC|Socks|SOCKS|Selector|WireGuard)"'
-    _rc=$?
-    unset _api_endpoint _api
-    return "$_rc"
-}
-
-# Subscription readiness previously assumed 127.0.0.1:9090. Match the
-# configured controller port and the expected process instead, which also
+# Subscription readiness used to assume one fixed controller address. Match
+# the configured controller port and the expected process instead, which also
 # works for IPv6 loopback and wildcard controller binds.
 magicnet_singbox_listener_owned() {
     _listener_pid="$1"
