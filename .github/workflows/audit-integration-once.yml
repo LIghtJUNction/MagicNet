@@ -7,35 +7,68 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  inspect:
+  repair-package-fixture:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: 9d1c50bfa7e325298c50a93ea6e9bcb9d614a999
           fetch-depth: 0
           persist-credentials: false
-      - name: Show only the terminal failure context
+      - name: Include the packaged endpoint dependency in the extracted fixture
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('scripts/package-smoke.sh')
+          text = path.read_text()
+          anchor = 'require_entry lib/magicnet/chain.sh\n'
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, anchor + 'require_entry lib/magicnet/api.sh\n')
+          anchor = "    'lib/magicnet/chain.sh' \\\n"
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, anchor + "    'lib/magicnet/api.sh' \\\n")
+          path.write_text(text)
+      - name: Prepare pinned host fixtures
+        run: |
+          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box src/MagicNet/lib/kamfw
+      - name: Run the complete host suite with bounded failure output
+        shell: python
+        run: |
+          import subprocess
+          result = subprocess.run(['bash', 'scripts/test-host.sh'], text=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  timeout=480, check=False)
+          print('\n'.join(result.stdout.splitlines()[-130:]))
+          raise SystemExit(result.returncode)
+      - name: Verify the exact packaged subscription fixture
+        run: |
+          set -euo pipefail
+          temp=$(mktemp -d)
+          trap 'rm -rf "$temp"' EXIT
+          mkdir -p "$temp/lib/magicnet"
+          cp src/MagicNet/lib/magicnet_singbox_subscribe.sh "$temp/lib/"
+          for helper in primitives subscribe_bootstrap chain api; do
+            cp "src/MagicNet/lib/magicnet/$helper.sh" "$temp/lib/magicnet/"
+          done
+          cp -r src/MagicNet/lib/magicnet/jq src/MagicNet/lib/magicnet/singbox_subscribe "$temp/lib/magicnet/"
+          bash scripts/singbox-subscription-protocol-smoke.sh "$temp"
+          shellcheck -x -P SCRIPTDIR scripts/package-smoke.sh
+          git diff --check
+      - name: Commit only after host and fixture verification
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: python
         run: |
-          import subprocess
-          result = subprocess.run(['gh', 'run', 'view', '35022627728', '--repo', 'LIghtJUNction/MagicNet', '--log-failed'], capture_output=True, text=True, timeout=90)
-          print('log_fetch_exit=', result.returncode)
-          print('\n'.join(result.stdout.splitlines()[-110:]))
-          print(result.stderr)
-      - name: Compare overlapping runtime changes against current main
-        shell: python
-        run: |
-          import subprocess
-          def run(*args):
-              return subprocess.check_output(args, text=True).strip()
-          for number in (285, 286):
-              run('git', 'fetch', '--no-tags', 'origin', f'refs/pull/{number}/head')
-              head = run('git', 'rev-parse', 'FETCH_HEAD')
-              print(f'PR {number} HEAD {head}', flush=True)
-              print(run('git', 'diff', '--stat', f'origin/main...{head}'), flush=True)
+          set -euo pipefail
+          git add -- scripts/package-smoke.sh
+          test -z "$(git diff --name-only)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test(package): include the canonical endpoint helper in subscription smoke'
+          gh auth setup-git
+          git push origin HEAD:refs/heads/refactor/dynamic-singbox-controller
+          git rev-parse HEAD
