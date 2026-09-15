@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
-import { Bug, ShieldCheck, X } from "lucide-vue-next";
+import { Bug, Route, ShieldCheck, Sparkles, X } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Field from "@/components/ui/Field.vue";
 import Textarea from "@/components/ui/Textarea.vue";
@@ -22,13 +22,14 @@ const emit = defineEmits<{
 }>();
 
 const dialog = ref<HTMLElement | null>(null);
-const selected = ref<IssueKind>("app-connectivity");
+const selected = ref<IssueKind>("route-feedback");
 const summary = ref("");
 const reproduction = ref("");
 const expected = ref("");
 const actual = ref("");
 const frequency = ref("");
-const canConfirm = computed(() => summary.value.trim().length >= 3);
+const isRouteFeedback = computed(() => selected.value === "route-feedback");
+const canConfirm = computed(() => isRouteFeedback.value || summary.value.trim().length >= 3);
 let previousBodyOverflow = "";
 
 function confirm(): void {
@@ -111,7 +112,15 @@ onUnmounted(() => {
               :value="option.value"
             />
             <span class="min-w-0">
-              <strong class="block text-sm font-semibold text-[var(--mn-ink)]">{{ t(option.label) }}</strong>
+              <span class="flex flex-wrap items-center gap-2">
+                <strong class="block text-sm font-semibold text-[var(--mn-ink)]">{{ t(option.label) }}</strong>
+                <span
+                  v-if="option.value === 'route-feedback'"
+                  class="inline-flex items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mn-cactus)_28%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_10%,transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--mn-cactus-deep)]"
+                >
+                  <Sparkles :size="12" aria-hidden="true" />{{ t("推荐") }}
+                </span>
+              </span>
               <span class="mt-0.5 block text-xs leading-5 text-[var(--mn-ink-muted)]">{{ t(option.description) }}</span>
               <span class="mt-1.5 block text-xs leading-5 text-[var(--mn-ink-soft)]">{{ t("将收集：{value1}", { value1: t(option.context) }) }}
               </span>
@@ -119,68 +128,103 @@ onUnmounted(() => {
           </label>
         </fieldset>
 
+        <div
+          v-if="isRouteFeedback"
+          class="mt-4 flex gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-cactus)_22%,transparent)] bg-[color-mix(in_srgb,var(--mn-cactus)_7%,transparent)] p-3 text-xs leading-5 text-[var(--mn-ink-muted)]"
+        >
+          <Route :size="17" class="mt-0.5 shrink-0 text-[var(--mn-cactus-deep)]" aria-hidden="true" />
+          <p>{{ t("路由反馈会公开包含最近活动连接中的应用包名和目标域名，以及命中规则、路由链和相关错误；不会上传 IP、连接 ID、流量大小、订阅节点名、凭据或 URL 路径。") }}</p>
+        </div>
+
         <div class="mt-4 grid gap-3 border-t border-[var(--mn-border)] pt-4">
-          <Field
-            :label="t('问题概述')"
-            :hint="t('用一句话说明看到的现象；这是必填项。')"
-            hint-id="issue-summary-hint"
-            required
-            for-id="issue-summary"
-          >
-            <Textarea
-              id="issue-summary"
-              v-model="summary"
-              class="min-h-20"
-              maxlength="240"
-              :placeholder="t('例如：更新订阅后节点数量变成 0，sing-box 没有启动')"
-              aria-describedby="issue-summary-hint"
-              @keydown.ctrl.enter="confirm"
-            />
-          </Field>
+          <template v-if="isRouteFeedback">
+            <Field
+              :label="t('补充说明（可选）')"
+              :hint="t('不填写也可以直接提交；MagicNet 会自动采集最近的路由样本和错误上下文。')"
+              hint-id="route-feedback-summary-hint"
+              for-id="issue-summary"
+            >
+              <Textarea
+                id="issue-summary"
+                v-model="summary"
+                class="min-h-20"
+                maxlength="240"
+                :placeholder="t('例如：Gmail 打不开，但浏览器访问 Google 正常。')"
+                aria-describedby="route-feedback-summary-hint"
+                @keydown.ctrl.enter="confirm"
+              />
+            </Field>
+          </template>
 
-          <div class="grid gap-3 sm:grid-cols-2">
-            <Field :label="t('复现步骤')">
+          <template v-else>
+            <Field
+              :label="t('问题概述')"
+              :hint="t('用一句话说明看到的现象；这是必填项。')"
+              hint-id="issue-summary-hint"
+              required
+              for-id="issue-summary"
+            >
               <Textarea
-                v-model="reproduction"
-                maxlength="1200"
-                :placeholder="t('1. 做了什么操作？\n2. 何时开始异常？\n3. 是否每次都能复现？')"
+                id="issue-summary"
+                v-model="summary"
+                class="min-h-20"
+                maxlength="240"
+                :placeholder="t('例如：更新订阅后节点数量变成 0，sing-box 没有启动')"
+                aria-describedby="issue-summary-hint"
+                @keydown.ctrl.enter="confirm"
               />
             </Field>
-            <Field :label="t('期望结果')">
-              <Textarea
-                v-model="expected"
-                maxlength="600"
-                :placeholder="t('例如：订阅应导入节点并启动 sing-box。')"
-              />
-            </Field>
-          </div>
 
-          <div class="grid gap-3 sm:grid-cols-2">
-            <Field :label="t('实际结果')">
-              <Textarea
-                v-model="actual"
-                class="min-h-24"
-                maxlength="800"
-                :placeholder="t('例如：报告 last_reason=no_supported_nodes，核心 stopped。')"
-              />
-            </Field>
-            <Field :label="t('发生频率 / 影响范围')">
-              <Textarea
-                v-model="frequency"
-                class="min-h-24"
-                maxlength="400"
-                :placeholder="t('例如：仅 Android 15、只影响某个订阅、每次更新都会发生。')"
-              />
-            </Field>
-          </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <Field :label="t('复现步骤')">
+                <Textarea
+                  v-model="reproduction"
+                  maxlength="1200"
+                  :placeholder="t('1. 做了什么操作？\n2. 何时开始异常？\n3. 是否每次都能复现？')"
+                />
+              </Field>
+              <Field :label="t('期望结果')">
+                <Textarea
+                  v-model="expected"
+                  maxlength="600"
+                  :placeholder="t('例如：订阅应导入节点并启动 sing-box。')"
+                />
+              </Field>
+            </div>
+
+            <div class="grid gap-3 sm:grid-cols-2">
+              <Field :label="t('实际结果')">
+                <Textarea
+                  v-model="actual"
+                  class="min-h-24"
+                  maxlength="800"
+                  :placeholder="t('例如：报告 last_reason=no_supported_nodes，核心 stopped。')"
+                />
+              </Field>
+              <Field :label="t('发生频率 / 影响范围')">
+                <Textarea
+                  v-model="frequency"
+                  class="min-h-24"
+                  maxlength="400"
+                  :placeholder="t('例如：仅 Android 15、只影响某个订阅、每次更新都会发生。')"
+                />
+              </Field>
+            </div>
+          </template>
         </div>
 
         <div class="mt-4 flex flex-col gap-3 border-t border-[var(--mn-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p class="inline-flex items-center gap-2 text-xs leading-5 text-[var(--mn-ink-muted)]">
-            <ShieldCheck :size="16" class="shrink-0 text-[var(--mn-cactus-deep)]" />{{ t("描述和诊断都会脱敏；请勿直接粘贴订阅地址、token、IP、目标域名或本地路径。") }}</p>
+            <ShieldCheck :size="16" class="shrink-0 text-[var(--mn-cactus-deep)]" />
+            {{ isRouteFeedback
+              ? t("路由反馈仅保留规则迭代需要的应用包名和域名；其余敏感字段继续脱敏。")
+              : t("描述和诊断都会脱敏；请勿直接粘贴订阅地址、token、IP、目标域名或本地路径。") }}
+          </p>
           <div class="flex gap-2 sm:shrink-0">
             <Button class="flex-1 sm:flex-none" variant="outline" @click="emit('cancel')">{{ t("取消") }}</Button>
-            <Button class="flex-1 sm:flex-none" :loading="loading" :disabled="!canConfirm" @click="confirm">{{ t("收集并创建") }}</Button>
+            <Button class="flex-1 sm:flex-none" :loading="loading" :disabled="!canConfirm" @click="confirm">
+              {{ isRouteFeedback ? t("收集路由并创建") : t("收集并创建") }}
+            </Button>
           </div>
         </div>
       </div>

@@ -27,7 +27,7 @@ class ArchiveSafetyTest(unittest.TestCase):
         self.helper.write_bytes(b'bootstrap fixture, not executed')
         self.entries = {name: packager.zip_entry(name, data, 0o755) for name, data in {
             'module.prop': b'id=MagicNet\nversion=v1.4.8\nversionCode=148\n',
-            'customize.sh': b'#!/bin/sh\nimport this\n',
+            'customize.sh': b'#!/bin/sh\nimport rich\n',
             '.config/sing-box/config.json': b'{}',
             'bin/magicnet-cli': b'cli-fixture',
             'bin/magicnet-mcp-server': b'mcp-fixture',
