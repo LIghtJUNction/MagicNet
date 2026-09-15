@@ -12,6 +12,7 @@ use crate::{
 };
 
 const STATE_ROOT: &str = ".state/machines";
+const STARTUP_ERROR: &str = ".state/startup-error";
 const TRANSPARENT_TRANSACTION: &str = ".state/transparent-transaction";
 const TRANSPARENT_RECENT_ERROR: &str = ".state/transparent-recent-error";
 const TRANSPARENT_CAPABILITY: &str = ".state/transparent-ebpf/capability";
@@ -21,6 +22,10 @@ const SUBSCRIPTION_TRANSACTION: &str = ".state/sing-box/subscription-transaction
 const SUBSCRIPTION_UPDATE_LOCK: &str = ".state/sing-box/subscription-update.lock";
 const SUBSCRIPTION_REFRESH_OWNER: &str = ".state/watchdog/magicnet-subscription-refresh.owner";
 const SUBSCRIPTION_REFRESH_LOOP: &str = ".state/watchdog/magicnet-subscription-refresh.loop.sh";
+const SELECTOR_SELECTIONS: &str = ".state/sing-box/selector-selections.json";
+const APP_MODE_CONF: &str = ".config/magicnet/app-mode.conf";
+const APP_INCLUDE_UIDS: &str = ".state/app-policy/include-uids.list";
+const APP_EXCLUDE_UIDS: &str = ".state/app-policy/exclude-uids.list";
 const WIFI_POLICY_CONF: &str = ".config/magicnet/wifi-policy.conf";
 const WIFI_LAST_STATE: &str = ".state/wifi-policy/last-state.conf";
 const HOTSPOT_OFFLOAD_OWNER: &str = ".state/hotspot/tether-offload.previous";
@@ -43,6 +48,8 @@ enum Domain {
     Transparent,
     Subscription,
     SubscriptionRefresh,
+    Selectors,
+    AppPolicy,
     Supervisors,
     Wifi,
     Hotspot,
@@ -59,6 +66,8 @@ impl Domain {
             Self::Transparent => "transparent",
             Self::Subscription => "subscription",
             Self::SubscriptionRefresh => "subscription-refresh",
+            Self::Selectors => "selectors",
+            Self::AppPolicy => "app-policy",
             Self::Supervisors => "supervisors",
             Self::Wifi => "wifi",
             Self::Hotspot => "hotspot",
@@ -131,6 +140,8 @@ pub(crate) fn reconcile(app: &App) -> Result<(), String> {
             Domain::SubscriptionRefresh,
             subscription_refresh_record(app),
         ),
+        (Domain::Selectors, selectors_record(app)),
+        (Domain::AppPolicy, app_policy_record(app)),
         (Domain::Supervisors, supervisors_record(app)),
         (Domain::Wifi, wifi_record(app)),
         (Domain::Hotspot, hotspot_record(app)),
@@ -189,6 +200,7 @@ fn service_record(app: &App) -> StateRecord {
         .field("selected_core", selected)
         .field("process_count", pid_count.to_string())
         .field("transparent_phase", transparent_phase)
+        .bool("startup_error", regular_nonempty(&app.moddir.join(STARTUP_ERROR)))
 }
 
 fn process_state(summary: &str) -> &'static str {
@@ -389,6 +401,39 @@ fn refresh_owner_state(app: &App) -> &'static str {
     } else {
         "stale"
     }
+}
+
+fn selectors_record(app: &App) -> StateRecord {
+    let path = app.moddir.join(SELECTOR_SELECTIONS);
+    let (state, count) = match read_json(&path, 256 * 1024) {
+        Some(Value::Object(values)) if values.is_empty() => ("empty", 0),
+        Some(Value::Object(values)) => ("ready", values.len()),
+        Some(_) => ("invalid", 0),
+        None if path.is_file() => ("invalid", 0),
+        None => ("empty", 0),
+    };
+    StateRecord::new(Domain::Selectors)
+        .field("state", state)
+        .field("selection_count", count.to_string())
+}
+
+fn app_policy_record(app: &App) -> StateRecord {
+    let mode = read_kv(app.moddir.join(APP_MODE_CONF))
+        .remove("MAGICNET_APP_MODE")
+        .map(|value| match value.as_str() {
+            "whitelist" => "whitelist".to_string(),
+            _ => "blacklist".to_string(),
+        })
+        .unwrap_or_else(|| "blacklist".to_string());
+    let include_count = clean_line_count(&app.moddir.join(APP_INCLUDE_UIDS));
+    let exclude_count = clean_line_count(&app.moddir.join(APP_EXCLUDE_UIDS));
+    let resolved = app.moddir.join(APP_INCLUDE_UIDS).is_file()
+        || app.moddir.join(APP_EXCLUDE_UIDS).is_file();
+    StateRecord::new(Domain::AppPolicy)
+        .field("state", if resolved { "resolved" } else { "unresolved" })
+        .field("mode", mode)
+        .field("include_uid_count", include_count.to_string())
+        .field("exclude_uid_count", exclude_count.to_string())
 }
 
 fn supervisors_record(app: &App) -> StateRecord {
@@ -635,7 +680,7 @@ fn directory_has_entries(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{subscription_record, wifi_record, Domain, StateRecord};
+    use super::{app_policy_record, selectors_record, subscription_record, wifi_record, Domain, StateRecord};
     use crate::App;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -686,6 +731,38 @@ mod tests {
         assert!(text.contains("has_bssid=1"));
         assert!(!text.contains("private-network-name"));
         assert!(!text.contains("aa:bb:cc:dd:ee:ff"));
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn selector_state_exposes_only_count() {
+        let (root, app) = fixture();
+        fs::write(
+            root.join(".state/sing-box/selector-selections.json"),
+            r#"{"private-group":"private-node","another-group":"another-node"}"#,
+        )
+        .expect("write selector state");
+        let text = selectors_record(&app).encode();
+        assert!(text.contains("state=ready"));
+        assert!(text.contains("selection_count=2"));
+        assert!(!text.contains("private-group"));
+        assert!(!text.contains("private-node"));
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn app_policy_state_exposes_only_uid_counts() {
+        let (root, app) = fixture();
+        fs::create_dir_all(root.join(".state/app-policy")).expect("create app policy state");
+        fs::write(root.join(".state/app-policy/include-uids.list"), "10001\n10002\n")
+            .expect("write include uids");
+        fs::write(root.join(".state/app-policy/exclude-uids.list"), "0\n10003\n")
+            .expect("write exclude uids");
+        let text = app_policy_record(&app).encode();
+        assert!(text.contains("include_uid_count=2"));
+        assert!(text.contains("exclude_uid_count=2"));
+        assert!(!text.contains("10001"));
+        assert!(!text.contains("10003"));
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
