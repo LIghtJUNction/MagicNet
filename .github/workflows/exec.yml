@@ -211,7 +211,7 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-${{ hashFiles('Cargo.toml', 'crates/**', 'hooks/pre-build/3000.BUILD_CRATES.sh') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-${{ hashFiles('Cargo.lock', '.cargo/**') }}-
-            ${{ runner.os }}-${{ runner.arch }}-singbox-go-v2-${{ steps.go.outputs.go-version }}-${{ steps.toolchain.outputs.ndk }}-
+            ${{ runner.os }}-${{ runner.arch }}-module-rust-v2-${{ steps.toolchain.outputs.rust }}-${{ steps.toolchain.outputs.ndk }}-
 
       - name: Setup Node.js and npm cache
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
