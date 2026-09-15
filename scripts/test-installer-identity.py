@@ -70,7 +70,6 @@ class InstallerTests(unittest.TestCase):
             ".config/sing-box/config.json": b'{"inbounds": []}\n',
             "bin/sing-box": b"engine",
             "bin/magicnet-cli": b"cli",
-            "bin/magicnet-mcp-server": b"mcp",
             "webroot/index.html": b"webui",
             ".config/sing-box/rules/test.srs": b"rules",
         }
@@ -162,6 +161,7 @@ fi
         self.assertTrue((module / "service.sh").is_file())
         self.assertFalse((module / "remove").exists())
         self.assertFalse((module / "bin/module-downloader").exists())
+        self.assertFalse((module / "bin/magicnet-mcp-server").exists())
         self.assertFalse((module / "download.json").exists())
         state = json.loads((module / "components.installed.json").read_text())
         for component in state["components"]:

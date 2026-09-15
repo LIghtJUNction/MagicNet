@@ -6,14 +6,14 @@ OUT="${MAGICNET_ANDROID_REPORT_DIR:-$ROOT/artifacts/android-kernelsu}"
 MODULE_ZIP="${MAGICNET_MODULE_ZIP:-$ROOT/dist/MagicNet.zip}"
 KSUD_HOST="${MAGICNET_KSUD_HOST:?MAGICNET_KSUD_HOST is required}"
 X86_CLI="${MAGICNET_X86_CLI:?MAGICNET_X86_CLI is required}"
-X86_MCP="${MAGICNET_X86_MCP:?MAGICNET_X86_MCP is required}"
 X86_SINGBOX="${MAGICNET_X86_SINGBOX:?MAGICNET_X86_SINGBOX is required}"
 PROXY_REGION="${MAGICNET_PROXY_REGION:-global}"
 ROUNDS="${MAGICNET_BENCHMARK_ROUNDS:-3}"
 STRICT_EXTERNAL="${MAGICNET_STRICT_EXTERNAL:-0}"
 RUN_SPEED="${MAGICNET_RUN_SPEED:-1}"
 MODDIR=/data/adb/modules/MagicNet
-REMOTE_ZIP=/data/local/tmp/MagicNet.zip
+REMOTE_DIR=/sdcard/Download/MagicNet
+REMOTE_ZIP=$REMOTE_DIR/MagicNet.zip
 
 mkdir -p "$OUT"
 
@@ -58,7 +58,7 @@ collect_debug() {
 trap collect_debug EXIT
 
 [[ -s "$MODULE_ZIP" ]] || fail "module archive missing: $MODULE_ZIP"
-for f in "$KSUD_HOST" "$X86_CLI" "$X86_MCP" "$X86_SINGBOX"; do
+for f in "$KSUD_HOST" "$X86_CLI" "$X86_SINGBOX"; do
     [[ -s "$f" ]] || fail "required host artifact missing: $f"
 done
 
@@ -70,10 +70,12 @@ arch="$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
 [[ "$arch" == x86_64 ]] || fail "expected x86_64 AVD, got $arch"
 
 log 'installing matching KernelSU userspace'
-adb push "$KSUD_HOST" /data/local/tmp/ksud >/dev/null
-adb shell 'chmod 0755 /data/local/tmp/ksud && /data/local/tmp/ksud debug version' | tee "$OUT/kernelsu-kernel.txt"
-adb shell '/data/local/tmp/ksud install'
+adb shell "mkdir -p '$REMOTE_DIR'"
+adb push "$KSUD_HOST" "$REMOTE_DIR/ksud" >/dev/null
+adb shell "chmod 0755 '$REMOTE_DIR/ksud' && '$REMOTE_DIR/ksud' debug version" | tee "$OUT/kernelsu-kernel.txt"
+adb shell "'$REMOTE_DIR/ksud' install"
 adb shell 'test -x /data/adb/ksud && test -x /data/adb/ksu/bin/busybox' || fail 'KernelSU userspace install incomplete'
+adb shell "rm -f '$REMOTE_DIR/ksud'" || true
 
 log 'rebooting once so KernelSU init lifecycle owns /data/adb'
 adb reboot >/dev/null
@@ -87,8 +89,10 @@ fi
 adb shell "$KSU_BIN debug version" | tee -a "$OUT/kernelsu-kernel.txt"
 
 log 'installing current MagicNet archive through the real KernelSU module installer'
+adb shell "mkdir -p '$REMOTE_DIR'"
 adb push "$MODULE_ZIP" "$REMOTE_ZIP" >/dev/null
-adb shell "MAGICNET_NONINTERACTIVE=1 $KSU_BIN module install $REMOTE_ZIP" | tee "$OUT/module-install.txt"
+adb shell "MAGICNET_NONINTERACTIVE=1 $KSU_BIN module install '$REMOTE_ZIP'" | tee "$OUT/module-install.txt"
+adb shell "rm -f '$REMOTE_ZIP'" || true
 
 log 'rebooting to execute KernelSU post-fs-data/service lifecycle'
 adb reboot >/dev/null
@@ -101,9 +105,9 @@ adb shell "test -f $MODDIR/module.prop" || fail 'MagicNet module was not activat
 # real module installer/lifecycle has been exercised.
 log 'injecting x86_64 test binaries into the installed module'
 adb push "$X86_CLI" "$MODDIR/bin/magicnet-cli" >/dev/null
-adb push "$X86_MCP" "$MODDIR/bin/magicnet-mcp-server" >/dev/null
 adb push "$X86_SINGBOX" "$MODDIR/bin/sing-box" >/dev/null
-adb shell "chmod 0755 $MODDIR/bin/magicnet-cli $MODDIR/bin/magicnet-mcp-server $MODDIR/bin/sing-box; rm -f $MODDIR/cli; ln -s bin/magicnet-cli $MODDIR/cli"
+adb shell "chmod 0755 $MODDIR/bin/magicnet-cli $MODDIR/bin/sing-box; rm -f $MODDIR/bin/magicnet-mcp-server; rm -f $MODDIR/cli; ln -s bin/magicnet-cli $MODDIR/cli"
+adb shell "test ! -e $MODDIR/bin/magicnet-mcp-server" || fail 'standalone MCP binary survived install'
 
 case "$PROXY_REGION" in
     global)

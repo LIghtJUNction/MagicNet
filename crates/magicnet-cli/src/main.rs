@@ -43,6 +43,7 @@ mod ebpf_runtime;
 mod ecapture;
 mod machine;
 mod mcp;
+mod mcp_server;
 mod network;
 mod node_delay;
 mod nodes;
@@ -51,6 +52,7 @@ mod process;
 mod rules;
 mod selector_store;
 mod service;
+mod state;
 mod subscriptions;
 #[cfg(test)]
 mod test_support;
@@ -66,6 +68,7 @@ use std::env;
 pub(crate) use app::App;
 pub(crate) use base64::{decode_base64, encode_base64};
 use commands::dispatch;
+pub(crate) use mcp_server::{files, logs, rpc, run_cli, tools, Server};
 pub(crate) use process::{
     owned_singbox_pids, pid_summary, run_magicnet_function,
     run_subscription_source_update_from_inherited_fd, run_subscription_update_from_inherited_fd,
@@ -78,6 +81,12 @@ pub(crate) use utils::{
     run_bounded_command, shell_inert_conf_value, write_kv, write_secret_file, write_text_file,
     MAX_PROC_COMM_BYTES, MAX_PROC_STAT_BYTES,
 };
+
+fn reconcile_state(app: &App, phase: &str) {
+    if let Err(err) = state::reconcile(app) {
+        eprintln!("[warning] canonical state {phase} reconciliation failed: {err}");
+    }
+}
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -101,7 +110,19 @@ fn main() {
     }
 
     let app = App::from_env();
+    let machine_request = args.iter().any(|arg| arg == "--json");
+    // Normal control/human CLI commands reconcile the filesystem state plane
+    // before dispatch and publish one settled generation afterwards. `--json`
+    // is contractually read-only, so machine requests never create or rewrite
+    // state files. Internal proc-reader helpers above also bypass reconciliation
+    // to keep process discovery recursion-free.
+    if !machine_request {
+        reconcile_state(&app, "pre-command");
+    }
     let result = machine::dispatch(&app, &args).unwrap_or_else(|| dispatch(&app, &args));
+    if !machine_request {
+        reconcile_state(&app, "post-command");
+    }
     let code = match result {
         Ok(()) => 0,
         Err(err) => {

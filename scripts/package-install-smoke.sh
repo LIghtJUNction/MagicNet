@@ -174,7 +174,9 @@ if find "$TMP" -maxdepth 1 -type d -name '*.install-backup.*' -print -quit | gre
     fail "successful install left a migration backup behind"
 fi
 
-[[ -x "$MODPATH/bin/magicnet-mcp-server" ]] || fail "bin/magicnet-mcp-server is not executable"
+[[ -x "$MODPATH/bin/magicnet-cli" ]] || fail "bin/magicnet-cli is not executable"
+[[ ! -e "$MODPATH/bin/magicnet-mcp-server" && ! -L "$MODPATH/bin/magicnet-mcp-server" ]] ||
+    fail "retired bin/magicnet-mcp-server is present"
 [[ -x "$MODPATH/bin/ecapture" ]] || fail "bin/ecapture is not executable"
 [[ -L "$MODPATH/cli" ]] || fail "cli is not a symlink"
 [[ "$(readlink "$MODPATH/cli")" == "bin/magicnet-cli" ]] || fail "cli does not point to bin/magicnet-cli"
@@ -190,8 +192,9 @@ for entry in action.sh service.sh boot-completed.sh; do
     [[ -x "$MODPATH/$entry" ]] || fail "$entry is not executable"
 done
 
-PATH="$MODPATH/bin:$PATH" command -v magicnet-mcp-server >/dev/null ||
-    fail "PATH cannot find magicnet-mcp-server through bin"
+if PATH="$MODPATH/bin:$PATH" command -v magicnet-mcp-server >/dev/null 2>&1; then
+    fail "PATH still exposes retired magicnet-mcp-server"
+fi
 PATH="$MODPATH/bin:$PATH" command -v ecapture >/dev/null ||
     fail "PATH cannot find ecapture through bin"
 
@@ -222,10 +225,9 @@ fi
 [[ -f "$MODPATH/.config/magicnet/app-policy-migration-vpn-only" ]] ||
     fail "app bypass migration marker was not written"
 
-cargo build -p magicnet-cli -p magicnet-mcp-server >/dev/null
+cargo build -p magicnet-cli >/dev/null
 cp "$ROOT/target/debug/magicnet-cli" "$MODPATH/bin/magicnet-cli"
-cp "$ROOT/target/debug/magicnet-mcp-server" "$MODPATH/bin/magicnet-mcp-server"
-chmod 0755 "$MODPATH/bin/magicnet-cli" "$MODPATH/bin/magicnet-mcp-server"
+chmod 0755 "$MODPATH/bin/magicnet-cli"
 
 MODDIR="$MODPATH" "$MODPATH/cli" mcp status >"$TMP/mcp-status.log"
 grep -qx 'enabled=1' "$TMP/mcp-status.log" || fail "unexpected MCP preserved enabled state"
