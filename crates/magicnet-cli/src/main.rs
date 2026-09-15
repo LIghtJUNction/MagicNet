@@ -51,6 +51,7 @@ mod process;
 mod rules;
 mod selector_store;
 mod service;
+mod state;
 mod subscriptions;
 #[cfg(test)]
 mod test_support;
@@ -79,6 +80,12 @@ pub(crate) use utils::{
     MAX_PROC_COMM_BYTES, MAX_PROC_STAT_BYTES,
 };
 
+fn reconcile_state(app: &App, phase: &str) {
+    if let Err(err) = state::reconcile(app) {
+        eprintln!("[warning] canonical state {phase} reconciliation failed: {err}");
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let internal = match args.first().map(String::as_str) {
@@ -101,7 +108,13 @@ fn main() {
     }
 
     let app = App::from_env();
+    // The filesystem is the canonical device state plane. Reconcile once before
+    // dispatch so a freshly booted module has a complete snapshot, then again
+    // after the command so mutations publish one settled generation. Internal
+    // proc-reader helpers above intentionally bypass this path to avoid recursion.
+    reconcile_state(&app, "pre-command");
     let result = machine::dispatch(&app, &args).unwrap_or_else(|| dispatch(&app, &args));
+    reconcile_state(&app, "post-command");
     let code = match result {
         Ok(()) => 0,
         Err(err) => {
