@@ -1,10 +1,14 @@
 use std::env;
+use std::fs;
 use std::io;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
+
+use serde_json::Value;
 
 const MODULE_DIR: &str = "/data/adb/modules/MagicNet";
 const DEFAULT_API: &str = "http://127.0.0.1:9090";
+const SINGBOX_CONFIG: &str = ".config/sing-box/config.json";
 
 #[derive(Clone)]
 pub(crate) struct App {
@@ -28,7 +32,7 @@ impl App {
                 .or_else(|_| current_exe_moddir())
                 .unwrap_or_else(|_| PathBuf::from(MODULE_DIR))
         };
-        let api = local_api_from_env();
+        let api = local_api(&moddir);
         Self {
             log_dir: moddir.join(".log"),
             moddir,
@@ -38,7 +42,7 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn for_test(moddir: PathBuf) -> Self {
-        let api = DEFAULT_API.to_string();
+        let api = local_api_from_config(&moddir).unwrap_or_else(|| DEFAULT_API.to_string());
         Self {
             log_dir: moddir.join(".log"),
             moddir,
@@ -47,12 +51,47 @@ impl App {
     }
 }
 
-fn local_api_from_env() -> String {
+fn local_api(moddir: &Path) -> String {
     env::var("MAGICNET_API")
         .ok()
         .map(|value| value.trim_end_matches('/').to_string())
         .filter(|value| is_loopback_http_api(value))
+        .or_else(|| local_api_from_config(moddir))
         .unwrap_or_else(|| DEFAULT_API.to_string())
+}
+
+fn local_api_from_config(moddir: &Path) -> Option<String> {
+    let config = fs::read(moddir.join(SINGBOX_CONFIG)).ok()?;
+    let config: Value = serde_json::from_slice(&config).ok()?;
+    let controller = config
+        .pointer("/experimental/clash_api/external_controller")?
+        .as_str()?;
+    api_from_controller(controller)
+}
+
+fn api_from_controller(value: &str) -> Option<String> {
+    let address = value.trim().parse::<SocketAddr>().ok()?;
+    if address.port() == 0 {
+        return None;
+    }
+
+    // A wildcard controller is still reached locally through loopback. Keep
+    // root-side CLI traffic local instead of trying to request 0.0.0.0/::.
+    let ip = if address.ip().is_loopback() {
+        address.ip()
+    } else if address.ip().is_unspecified() {
+        match address.ip() {
+            IpAddr::V4(_) => IpAddr::V4(Ipv4Addr::LOCALHOST),
+            IpAddr::V6(_) => IpAddr::V6(Ipv6Addr::LOCALHOST),
+        }
+    } else {
+        return None;
+    };
+
+    Some(match ip {
+        IpAddr::V4(ip) => format!("http://{ip}:{}", address.port()),
+        IpAddr::V6(ip) => format!("http://[{ip}]:{}", address.port()),
+    })
 }
 
 fn is_loopback_http_api(value: &str) -> bool {
@@ -67,24 +106,10 @@ fn is_loopback_http_api(value: &str) -> bool {
     {
         return false;
     }
-    let (host, port) = if let Some(rest) = authority.strip_prefix('[') {
-        let Some((host, port)) = rest.split_once("]:") else {
-            return false;
-        };
-        (host, port)
-    } else {
-        let Some((host, port)) = authority.rsplit_once(':') else {
-            return false;
-        };
-        if host.contains(':') {
-            return false;
-        }
-        (host, port)
-    };
-    let Ok(address) = host.parse::<IpAddr>() else {
-        return false;
-    };
-    address.is_loopback() && port.parse::<u16>().ok().is_some_and(|port| port != 0)
+    authority
+        .parse::<SocketAddr>()
+        .ok()
+        .is_some_and(|address| address.ip().is_loopback() && address.port() != 0)
 }
 
 fn current_exe_moddir() -> io::Result<PathBuf> {
@@ -104,7 +129,7 @@ fn infer_moddir_from_exe(exe: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{infer_moddir_from_exe, is_loopback_http_api};
+    use super::{api_from_controller, infer_moddir_from_exe, is_loopback_http_api, local_api_from_config};
     use std::env;
     use std::fs;
     use std::path::Path;
@@ -147,5 +172,51 @@ mod tests {
         assert!(!is_loopback_http_api("http://localhost:9090"));
         assert!(!is_loopback_http_api("http://127.0.0.1:9090@evil.example"));
         assert!(!is_loopback_http_api("http://127.0.0.1:0"));
+    }
+
+    #[test]
+    fn controller_address_keeps_configured_port() {
+        assert_eq!(
+            api_from_controller("127.0.0.1:19090").as_deref(),
+            Some("http://127.0.0.1:19090")
+        );
+        assert_eq!(
+            api_from_controller("[::1]:29090").as_deref(),
+            Some("http://[::1]:29090")
+        );
+    }
+
+    #[test]
+    fn wildcard_controller_uses_local_loopback_with_same_port() {
+        assert_eq!(
+            api_from_controller("0.0.0.0:19090").as_deref(),
+            Some("http://127.0.0.1:19090")
+        );
+        assert_eq!(
+            api_from_controller("[::]:29090").as_deref(),
+            Some("http://[::1]:29090")
+        );
+    }
+
+    #[test]
+    fn remote_controller_is_not_used_by_root_cli() {
+        assert_eq!(api_from_controller("192.0.2.10:19090"), None);
+    }
+
+    #[test]
+    fn reads_controller_from_singbox_config() {
+        let root = fixture_root();
+        let module = root.join("module");
+        fs::create_dir_all(module.join(".config/sing-box")).expect("create sing-box config dir");
+        fs::write(
+            module.join(".config/sing-box/config.json"),
+            r#"{"experimental":{"clash_api":{"external_controller":"127.0.0.1:19090"}}}"#,
+        )
+        .expect("write sing-box config");
+        assert_eq!(
+            local_api_from_config(&module).as_deref(),
+            Some("http://127.0.0.1:19090")
+        );
+        fs::remove_dir_all(root).expect("remove fixture");
     }
 }
