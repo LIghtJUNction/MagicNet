@@ -16,9 +16,8 @@ magicnet_kernel_route_rule_start() {
 }
 
 magicnet_kernel_route_rule_end() {
-    # Keep the cleanup range deliberately bounded around sing-box's configured
-    # rule start. Hotspot rules are tracked separately and are never swept by
-    # this range.
+    # sing-box allocates its auto-route rules from 9000. Keep cleanup bounded
+    # to MagicNet's reserved window; hotspot rules are tracked separately.
     printf '%s\n' 9099
 }
 
@@ -28,6 +27,33 @@ magicnet_kernel_route_fallback_rule() {
 
 magicnet_kernel_route_state_file() {
     printf '%s\n' "${MODDIR}/.state/network/kernel-route-table.state"
+}
+
+# Override routes.sh's readiness probe with an explicit core-liveness gate.
+# A stale magicnet0 interface/table after a crash must never be enough to make
+# `hotspot reconcile` install new policy rules while the kernel is stopped.
+magicnet_hotspot_tun_route_table_ready() {
+    if magicnet_kernel_running; then
+        _route_kernel_rc=0
+    else
+        _route_kernel_rc=$?
+    fi
+    [ "$_route_kernel_rc" -eq 0 ] || {
+        _route_result="$_route_kernel_rc"
+        unset _route_kernel_rc
+        return "$_route_result"
+    }
+    unset _route_kernel_rc
+
+    magicnet_iface_exists magicnet0 || return 1
+    _route_table="$(magicnet_kernel_route_table)"
+    ip route show table "$_route_table" 2>/dev/null | awk '
+        index($0, "dev magicnet0") > 0 { found = 1 }
+        END { exit found ? 0 : 1 }
+    '
+    _route_result=$?
+    unset _route_table
+    return "$_route_result"
 }
 
 magicnet_kernel_route_state_capture() (
@@ -116,24 +142,43 @@ magicnet_kernel_route_cleanup_rule_family() {
     _route_fallback="$(magicnet_kernel_route_fallback_rule)"
 
     case "$_route_family" in
-    4) ip rule show >/dev/null 2>&1 || return 0 ;;
-    6) ip -6 rule show >/dev/null 2>&1 || return 0 ;;
+    4) _route_rules="$(ip rule show 2>/dev/null)" || return 0 ;;
+    6) _route_rules="$(ip -6 rule show 2>/dev/null)" || return 0 ;;
     *) return 1 ;;
     esac
 
-    _route_priority="$_route_start"
+    _route_priorities="$(printf '%s\n' "$_route_rules" | awk \
+        -v expected_table="$_route_table" \
+        -v range_start="$_route_start" \
+        -v range_end="$_route_end" \
+        -v fallback="$_route_fallback" '
+        $1 ~ /^[0-9]+:$/ {
+            priority = $1
+            sub(/:$/, "", priority)
+            table = ""
+            for (i = 2; i <= NF; i++) {
+                if ($i == "lookup" && i < NF) table = $(i + 1)
+            }
+            if (table == expected_table &&
+                ((priority + 0 >= range_start + 0 && priority + 0 <= range_end + 0) ||
+                 priority + 0 == fallback + 0) && !seen[priority]++) {
+                print priority
+            }
+        }
+    ')"
+
     _route_cleanup_rc=0
-    while [ "$_route_priority" -le "$_route_end" ]; do
+    while IFS= read -r _route_priority; do
+        [ -n "$_route_priority" ] || continue
         magicnet_kernel_route_delete_rule_priority \
             "$_route_family" "$_route_priority" "$_route_table" || _route_cleanup_rc=1
-        _route_priority=$((_route_priority + 1))
-    done
-    magicnet_kernel_route_delete_rule_priority \
-        "$_route_family" "$_route_fallback" "$_route_table" || _route_cleanup_rc=1
+    done <<EOF
+$_route_priorities
+EOF
 
     _route_result="$_route_cleanup_rc"
     unset _route_family _route_table _route_start _route_end _route_fallback
-    unset _route_priority _route_cleanup_rc
+    unset _route_rules _route_priorities _route_priority _route_cleanup_rc
     return "$_route_result"
 }
 
@@ -243,4 +288,27 @@ magicnet_lifecycle_after_stop() {
     _lifecycle_result="$_lifecycle_stop_rc"
     unset _lifecycle_stop_rc
     return "$_lifecycle_result"
+}
+
+magicnet_lifecycle_sync() {
+    if magicnet_kernel_running; then
+        _lifecycle_kernel_rc=0
+    else
+        _lifecycle_kernel_rc=$?
+    fi
+    case "$_lifecycle_kernel_rc" in
+    0)
+        unset _lifecycle_kernel_rc
+        magicnet_lifecycle_after_start
+        ;;
+    1)
+        unset _lifecycle_kernel_rc
+        magicnet_lifecycle_after_stop
+        ;;
+    *)
+        _lifecycle_result="$_lifecycle_kernel_rc"
+        unset _lifecycle_kernel_rc
+        return "$_lifecycle_result"
+        ;;
+    esac
 }
