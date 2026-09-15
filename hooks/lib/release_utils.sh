@@ -61,6 +61,83 @@ hook_locked_cache_is_valid() {
         && hook_verify_sha256 "$artifact" "$expected_sha256"
 }
 
+# Resolve the reviewed lock for COMPONENT and ensure CACHE_FILE contains the
+# verified immutable asset. VERSION_FILE tracks the successfully promoted
+# component version, so a failed install never makes an unpromoted cache look
+# current. The resolved RELEASE_LOCK_* variables remain available to callers.
+hook_prepare_locked_asset() {
+    local component="$1"
+    local cache_file="$2"
+    local version_file="$3"
+    local tmp_dir
+    local download_path
+
+    if ! type release_lock_lookup >/dev/null 2>&1 || ! type release_lock_is_valid >/dev/null 2>&1; then
+        log_error "$component: release lock helpers are not loaded"
+        return 1
+    fi
+    if ! release_lock_lookup "$component" || ! release_lock_is_valid; then
+        log_error "$component: invalid repository release lock"
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$cache_file")" || return 1
+    if hook_locked_cache_is_valid "$cache_file" "$version_file" "$RELEASE_LOCK_TAG" "$RELEASE_LOCK_SHA256"; then
+        log_info "$component: using verified locked cache ($RELEASE_LOCK_TAG)"
+        return 0
+    fi
+
+    tmp_dir=$(hook_make_temp_dir) || {
+        log_error "$component: failed to create release staging directory"
+        return 1
+    }
+    download_path="$tmp_dir/$RELEASE_LOCK_ASSET"
+
+    if ! hook_download_locked_asset "$RELEASE_LOCK_REPO" "$RELEASE_LOCK_TAG" "$RELEASE_LOCK_ASSET" "$tmp_dir" >/dev/null \
+        || ! hook_verify_sha256 "$download_path" "$RELEASE_LOCK_SHA256"; then
+        rm -rf "$tmp_dir"
+        log_error "$component: locked download or verification failed; existing installation was not changed"
+        return 1
+    fi
+
+    if ! mv -f "$download_path" "$cache_file"; then
+        rm -rf "$tmp_dir"
+        log_error "$component: failed to promote verified release cache"
+        return 1
+    fi
+    rm -rf "$tmp_dir"
+}
+
+hook_atomic_install_file() {
+    local source="$1"
+    local target="$2"
+    local mode="${3:-0644}"
+    local staged="${target}.new.$$"
+
+    mkdir -p "$(dirname "$target")" || return 1
+    rm -f "$staged"
+    if ! cp "$source" "$staged" \
+        || ! chmod "$mode" "$staged" \
+        || ! mv -f "$staged" "$target"; then
+        rm -f "$staged"
+        return 1
+    fi
+}
+
+hook_atomic_write() {
+    local target="$1"
+    local value="$2"
+    local staged="${target}.new.$$"
+
+    mkdir -p "$(dirname "$target")" || return 1
+    rm -f "$staged"
+    if ! printf '%s\n' "$value" >"$staged" \
+        || ! mv -f "$staged" "$target"; then
+        rm -f "$staged"
+        return 1
+    fi
+}
+
 hook_release_asset_api_url() {
     local metadata_path="$1"
     local asset="$2"
