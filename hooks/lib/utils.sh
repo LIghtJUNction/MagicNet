@@ -1,535 +1,283 @@
 #!/bin/bash
-# Common utility functions for Kam hooks
 
-# Colors
 RED=$(printf '\033[0;31m')
 GREEN=$(printf '\033[0;32m')
 YELLOW=$(printf '\033[1;33m')
 BLUE=$(printf '\033[0;34m')
-NC=$(printf '\033[0m') # No Color
+NC=$(printf '\033[0m')
 
-log_info() {
-    printf "${BLUE}[INFO]${NC} %s\n" "$1"
-}
+log_info() { printf '%s[INFO]%s %s\n' "$BLUE" "$NC" "$1"; }
+log_success() { printf '%s[SUCCESS]%s %s\n' "$GREEN" "$NC" "$1"; }
+log_warn() { printf '%s[WARN]%s %s\n' "$YELLOW" "$NC" "$1"; }
+log_error() { printf '%s[ERROR]%s %s\n' "$RED" "$NC" "$1"; }
 
-log_success() {
-    printf "${GREEN}[SUCCESS]${NC} %s\n" "$1"
-}
-
-log_warn() {
-    printf "${YELLOW}[WARN]${NC} %s\n" "$1"
-}
-
-log_error() {
-    printf "${RED}[ERROR]${NC} %s\n" "$1"
-}
-
-# exit_if_sudo [<message>] [--return]
-# If --return (or -r) is passed as second arg, the function returns 1 instead of exiting.
-# This implementation is Bash-only and relies on $EUID (no POSIX fallbacks).
 exit_if_sudo() {
-    _exit_if_sudo_message="${1:-Do not run this script as root or via sudo. Please run as a normal user.}"
-    _exit_if_sudo_do_return=0
+    local message="${1:-Do not run this script as root or via sudo. Please run as a normal user.}"
+    local mode="${2:-}"
 
-    case "$2" in
-        --return|-r) _exit_if_sudo_do_return=1 ;;
-    esac
-
-    # Running as root or invoked via sudo (Bash-only).
-    if (( EUID == 0 )) || [[ -n "${SUDO_USER:-}" ]] || [[ -n "${SUDO_UID:-}" ]] || [[ -n "${SUDO_COMMAND:-}" ]]; then
-        if declare -F log_error >/dev/null 2>&1; then
-            log_error "$_exit_if_sudo_message"
-        else
-            printf '%s\n' "$_exit_if_sudo_message" >&2
-        fi
-
-        # Explicit request to return instead of exit
-        if (( _exit_if_sudo_do_return != 0 )); then
-            return 1
-        fi
-
-        # If this function was invoked from a sourced script (rather than a top-level
-        # invoked script), prefer returning so we don't terminate the caller's shell.
-        # BASH_SOURCE[1] is the caller; $0 is the top-level invocation.
-        if [[ "${BASH_SOURCE[1]:-}" != "${0}" ]]; then
-            return 1
-        fi
-
-        exit 1
+    if (( EUID != 0 )) && [[ -z "${SUDO_USER:-}${SUDO_UID:-}${SUDO_COMMAND:-}" ]]; then
+        return 0
     fi
+
+    log_error "$message"
+    [[ "$mode" == --return || "$mode" == -r || "${BASH_SOURCE[1]:-}" != "$0" ]] && return 1
+    exit 1
 }
 
-# Check if a command exists
 has_command() {
-    _has_command_cmd="$1"
-
-    if [ -z "$_has_command_cmd" ]; then
-        log_error "has_command: command name is required"
-        return 1  # Changed to return 1 instead of exit to avoid terminating the script
-    fi
-
-    if command -v "$_has_command_cmd" >/dev/null 2>&1; then
-        return 0
-    else
+    local command_name="${1:-}"
+    [[ -n "$command_name" ]] || {
+        log_error 'has_command: command name is required'
         return 1
-    fi
+    }
+    command -v "$command_name" >/dev/null 2>&1
 }
 
-# Usage: require_command <command> [<error message>]
-# If the command is not available and a custom message is provided, it will be printed;
-# otherwise a default error message is shown.
 require_command() {
-    _require_command_cmd="$1"
-    _require_command_msg="$2"
+    local command_name="${1:-}"
+    local message="${2:-}"
 
-    if has_command "$_require_command_cmd"; then
-        return 0
-    else
-        if [ -n "$_require_command_msg" ]; then
-            log_error "$_require_command_msg"
-        else
-            log_error "Command '$_require_command_cmd' is required but not found."
-        fi
-        exit 1
-    fi
+    has_command "$command_name" && return 0
+    log_error "${message:-Command '$command_name' is required but not found.}"
+    exit 1
 }
 
-# Check if a variable is set
+require_commands() {
+    local command_name
+    for command_name in "$@"; do
+        require_command "$command_name"
+    done
+}
+
 require_env() {
-    _require_env_var_name="$1"
-    # Use indirect expansion to avoid eval and improve safety
-    _require_env_value="${!_require_env_var_name}"
-    if [ -z "$_require_env_value" ]; then
-        log_error "Environment variable '$_require_env_var_name' is not set."
-        exit 1
-    fi
-}
+    local name="${1:-}"
+    local value
 
-# Magisk-like utility functions
+    [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+        log_error 'require_env: valid variable name required'
+        exit 1
+    }
+    value="${!name-}"
+    [[ -n "$value" ]] || {
+        log_error "Environment variable '$name' is not set."
+        exit 1
+    }
+}
 
 is_github_actions() {
-    # GitHub Actions sets GITHUB_ACTIONS to a truthy value. Treat common truthy forms as true.
     case "${GITHUB_ACTIONS:-}" in
-        true|TRUE|1|yes|YES)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
+        true|TRUE|1|yes|YES) return 0 ;;
+        *) return 1 ;;
     esac
 }
 
 is_ci() {
-    # Generic CI detection: prefer the generic CI variable and some common CI-specific ones.
-    if [ -n "${CI:-}" ] && [ "${CI:-}" != "false" ]; then
-        return 0
-    fi
-
-    if is_github_actions; then
-        return 0
-    fi
-
-    if [ -n "${GITLAB_CI:-}" ] || [ -n "${TRAVIS:-}" ] || [ -n "${CIRCLECI:-}" ] || [ -n "${BUILDKITE:-}" ]; then
-        return 0
-    fi
-
-    if [ -n "${JENKINS_URL:-}" ] || [ -n "${BUILD_NUMBER:-}" ] || [ -n "${TEAMCITY_VERSION:-}" ]; then
-        return 0
-    fi
-
-    return 1
+    [[ -n "${CI:-}" && "${CI:-}" != false ]] \
+        || is_github_actions \
+        || [[ -n "${GITLAB_CI:-}${TRAVIS:-}${CIRCLECI:-}${BUILDKITE:-}${JENKINS_URL:-}${BUILD_NUMBER:-}${TEAMCITY_VERSION:-}" ]]
 }
 
 is_termux() {
-    # Detect Termux environment.
-    # Termux typically sets TERMUX_VERSION and uses paths under /data/data/com.termux.
-    # This function returns 0 (true) when it is likely running under Termux, otherwise 1 (false).
-
-    # Fast env-var check
-    if [ -n "${TERMUX_VERSION:-}" ]; then
-        return 0
-    fi
-
-    # Check common environment variables for Termux paths
-    case "${PREFIX:-}" in
-        */data/data/com.termux*) return 0 ;;
+    [[ -n "${TERMUX_VERSION:-}" ]] && return 0
+    case "${PREFIX:-}:${HOME:-}" in
+        *'/data/data/com.termux'*) return 0 ;;
     esac
-
-    case "${HOME:-}" in
-        */data/data/com.termux*) return 0 ;;
-    esac
-
-    # Check for Termux-specific files/directories
-    if [ -d "/data/data/com.termux" ] || [ -d "/data/data/com.termux/files/usr" ]; then
-        return 0
-    fi
-
-    if [ -f "/data/data/com.termux/files/usr/etc/termux/termux.env" ] || [ -x "/data/data/com.termux/files/usr/bin/termux-change-repo" ]; then
-        return 0
-    fi
-
-    return 1
+    [[ -d /data/data/com.termux || -d /data/data/com.termux/files/usr \
+        || -f /data/data/com.termux/files/usr/etc/termux/termux.env \
+        || -x /data/data/com.termux/files/usr/bin/termux-change-repo ]]
 }
 
 run_as_root() {
-    # Run a command as root
-    if [ "$(id -u)" -eq 0 ]; then
-        "$@"
-        return $?
-    fi
-
-    log_error "run_as_root: not running as root"
-    return 1
+    (( EUID == 0 )) || {
+        log_error 'run_as_root: not running as root'
+        return 1
+    }
+    "$@"
 }
 
 ci_install() {
-    # Usage: ci_install <pkg1> [pkg2 ...]
-    # Try multiple package managers in CI (apt-get, apk, pacman, dnf, yum, zypper, pkg, brew).
-    if ! is_ci; then
-        log_warn "ci_install: not running in a recognized CI environment; skipping installation: ${_ci_install_pkgs[*]}"
+    local -a packages=("$@")
+    local manager
+
+    ((${#packages[@]})) || {
+        log_error 'ci_install: at least one package name is required'
         return 1
-    fi
-
-    if [ $# -eq 0 ]; then
-        log_error "ci_install: at least one package name is required"
+    }
+    is_ci || {
+        log_warn "ci_install: not running in CI; skipping: ${packages[*]}"
         return 1
-    fi
+    }
 
-    _ci_install_pkgs=( "$@" )
+    for manager in apt-get apk pacman dnf yum zypper pkg brew; do
+        has_command "$manager" || continue
+        log_info "ci_install: trying $manager for ${packages[*]}"
+        case "$manager" in
+            apt-get)
+                run_as_root apt-get update || true
+                run_as_root apt-get install -y "${packages[@]}" && return 0
+                ;;
+            apk) run_as_root apk add --no-cache "${packages[@]}" && return 0 ;;
+            pacman) run_as_root pacman -S --noconfirm "${packages[@]}" && return 0 ;;
+            dnf) run_as_root dnf install -y "${packages[@]}" && return 0 ;;
+            yum) run_as_root yum install -y "${packages[@]}" && return 0 ;;
+            zypper) run_as_root zypper --non-interactive install "${packages[@]}" && return 0 ;;
+            pkg) run_as_root pkg install -y "${packages[@]}" && return 0 ;;
+            brew) brew install "${packages[@]}" && return 0 ;;
+        esac
+        log_warn "ci_install: $manager failed"
+    done
 
-    # Debian/Ubuntu: apt-get
-    if command -v apt-get >/dev/null 2>&1; then
-        log_info "ci_install: attempting apt-get install: ${_ci_install_pkgs[*]}"
-        # update - ignore failures
-        run_as_root apt-get update || true
-        if run_as_root apt-get install -y "${_ci_install_pkgs[@]}"; then
-            log_success "ci_install: installed ${_ci_install_pkgs[*]} via apt-get"
-            return 0
-        fi
-        log_warn "ci_install: apt-get install failed"
-    fi
-
-    # Alpine: apk
-    if command -v apk >/dev/null 2>&1; then
-        log_info "ci_install: attempting apk add: ${_ci_install_pkgs[*]}"
-        if run_as_root apk add --no-cache "${_ci_install_pkgs[@]}"; then
-            log_success "ci_install: installed ${_ci_install_pkgs[*]} via apk"
-            return 0
-        fi
-        log_warn "ci_install: apk add failed"
-    fi
-
-    # Arch: pacman
-    if command -v pacman >/dev/null 2>&1; then
-        log_info "ci_install: attempting pacman -S: ${_ci_install_pkgs[*]}"
-        if run_as_root pacman -S --noconfirm "${_ci_install_pkgs[@]}"; then
-            log_success "ci_install: installed ${_ci_install_pkgs[*]} via pacman"
-            return 0
-        fi
-        log_warn "ci_install: pacman install failed"
-    fi
-
-    # Fedora/RHEL (dnf)
-    if command -v dnf >/dev/null 2>&1; then
-        log_info "ci_install: attempting dnf install: ${_ci_install_pkgs[*]}"
-        if run_as_root dnf install -y "${_ci_install_pkgs[@]}"; then
-            log_success "ci_install: installed ${_ci_install_pkgs[*]} via dnf"
-            return 0
-        fi
-        log_warn "ci_install: dnf install failed"
-    fi
-
-    # RHEL/CentOS (yum)
-    if command -v yum >/dev/null 2>&1; then
-        log_info "ci_install: attempting yum install: ${_ci_install_pkgs[*]}"
-        if run_as_root yum install -y "${_ci_install_pkgs[@]}"; then
-            log_success "ci_install: installed ${_ci_install_pkgs[*]} via yum"
-            return 0
-        fi
-        log_warn "ci_install: yum install failed"
-    fi
-
-    # openSUSE (zypper)
-    if command -v zypper >/dev/null 2>&1; then
-        log_info "ci_install: attempting zypper install: ${_ci_install_pkgs[*]}"
-        if run_as_root zypper --non-interactive install "${_ci_install_pkgs[@]}"; then
-            log_success "ci_install: installed ${_ci_install_pkgs[*]} via zypper"
-            return 0
-        fi
-        log_warn "ci_install: zypper install failed"
-    fi
-
-    # FreeBSD pkg
-    if command -v pkg >/dev/null 2>&1; then
-        log_info "ci_install: attempting pkg install: ${_ci_install_pkgs[*]}"
-        if run_as_root pkg install -y "${_ci_install_pkgs[@]}"; then
-            log_success "ci_install: installed ${_ci_install_pkgs[*]} via pkg"
-            return 0
-        fi
-        log_warn "ci_install: pkg install failed"
-    fi
-
-    # Homebrew (macOS)
-    if command -v brew >/dev/null 2>&1; then
-        log_info "ci_install: attempting brew install: ${_ci_install_pkgs[*]}"
-        if brew install "${_ci_install_pkgs[@]}"; then
-            log_success "ci_install: installed ${_ci_install_pkgs[*]} via brew"
-            return 0
-        fi
-        log_warn "ci_install: brew install failed"
-    fi
-
-    log_error "ci_install: failed to install packages: ${_ci_install_pkgs[*]} using supported package managers"
+    log_error "ci_install: failed to install: ${packages[*]}"
     return 1
 }
 
 require_command_or_ci_install() {
-    cmd="$1"
-    msg="$2"
+    local command_name="${1:-}"
+    local message="${2:-}"
 
-    # If the command already exists, we are done
-    if has_command "$cmd"; then
+    has_command "$command_name" && return 0
+    if is_ci && ci_install "$command_name"; then
         return 0
     fi
-
-    # If running in CI, attempt to install using the available package manager(s).
-    if is_ci; then
-        log_info "$cmd not found — attempting CI install"
-        if ci_install "$cmd"; then
-            log_success "$cmd installed in CI"
-            return 0
-        fi
-        log_warn "ci_install failed for $cmd"
-    fi
-
-    require_command "$cmd" "$msg"
+    require_command "$command_name" "$message"
 }
 
-ui_print() {
-    printf "  ${NC}• %s${NC}\n" "$1"
-}
-
-abort() {
-    printf "  ${RED}! %s${NC}\n" "$1"
-    exit 1
-}
+ui_print() { printf '  %s• %s%s\n' "$NC" "$1" "$NC"; }
+abort() { printf '  %s! %s%s\n' "$RED" "$1" "$NC"; exit 1; }
 
 set_perm() {
-    target="$1"
-    owner="$2"
-    group="$3"
-    permission="$4"
-    context="$5"
+    local target="$1" owner="$2" group="$3" permission="$4"
+    local context="${5:-u:object_r:system_file:s0}"
 
-    if [ -z "$context" ]; then
-        context="u:object_r:system_file:s0"
-    fi
-
-    # Attempt chown/chcon but ignore failures on host build environments
     chown "$owner.$group" "$target" >/dev/null 2>&1 || true
     chmod "$permission" "$target"
     chcon "$context" "$target" >/dev/null 2>&1 || true
 }
 
 set_perm_recursive() {
-    target="$1"
-    owner="$2"
-    group="$3"
-    dpermission="$4"
-    fpermission="$5"
-    context="$6"
+    local target="$1" owner="$2" group="$3" dir_mode="$4" file_mode="$5"
+    local context="${6:-u:object_r:system_file:s0}"
+    local path
 
-    if [ -z "$context" ]; then
-        context="u:object_r:system_file:s0"
-    fi
-
-    find "$target" -type d | while read -r dir; do
-        set_perm "$dir" "$owner" "$group" "$dpermission" "$context"
-    done
-
-    find "$target" -type f | while read -r file; do
-        set_perm "$file" "$owner" "$group" "$fpermission" "$context"
-    done
+    while IFS= read -r path; do
+        set_perm "$path" "$owner" "$group" "$dir_mode" "$context"
+    done < <(find "$target" -type d)
+    while IFS= read -r path; do
+        set_perm "$path" "$owner" "$group" "$file_mode" "$context"
+    done < <(find "$target" -type f)
 }
 
-# Interactive helper utilities
-# `prompt` - Request user input and assign to a shell variable
-# Usage:
-#   prompt VAR "Prompt message" [DEFAULT] [--hide]
-# Example:
-#   prompt MY_VAR "Enter value" "default"
-#   echo "Value is: $MY_VAR"
 prompt() {
-    target_var="$1"
-    prompt_msg="$2"
-    default="$3"
-    # optional fourth parameter could be --hide to not echo input (password)
-    hide="$4"
+    local target="${1:-}" message="${2:-}" default="${3:-}" hide="${4:-}"
+    local input
 
-    if [ -z "$target_var" ] || [ -z "$prompt_msg" ]; then
-        log_error "Usage: prompt VAR \"Prompt message\" [DEFAULT] [--hide]"
+    [[ -n "$target" && -n "$message" ]] || {
+        log_error 'Usage: prompt VAR "Prompt message" [DEFAULT] [--hide]'
         return 1
-    fi
+    }
 
-    # Non-interactive mode - prefer defaults or fail
-    if [ "${KAM_NONINTERACTIVE:-}" = "1" ] || [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then
-        if [ -n "$default" ]; then
-            # Use printf -v to safely assign into the caller's environment (bash only)
-            printf -v "$target_var" "%s" "$default"
-            return 0
-        else
-            log_error "Non-interactive environment and no default for prompt: $prompt_msg"
+    if [[ "${KAM_NONINTERACTIVE:-}" == 1 || -n "${CI:-}${GITHUB_ACTIONS:-}" ]]; then
+        [[ -n "$default" ]] || {
+            log_error "Non-interactive environment and no default for prompt: $message"
             return 1
-        fi
-    fi
-
-    while :; do
-        # Show prompt text and optional default
-        if [ -n "$default" ]; then
-            printf "%s [%s]: " "$prompt_msg" "$default"
-        else
-            printf "%s: " "$prompt_msg"
-        fi
-
-        if [ "$hide" = "--hide" ] || [ "$hide" = "true" ]; then
-            if command -v stty >/dev/null 2>&1; then
-                stty -echo
-                IFS= read -r value || true  # Use IFS= to preserve leading/trailing spaces
-                stty echo
-                printf "\n"
-            else
-                # Fallback if stty not available
-                IFS= read -r value || true
-            fi
-        else
-            IFS= read -r value || true  # Preserve spaces
-        fi
-
-        if [ -z "$value" ]; then
-            if [ -n "$default" ]; then
-                value="$default"
-            fi
-        fi
-
-        if [ -n "$value" ]; then
-            # assign to the requested variable name in the calling shell
-            printf -v "$target_var" "%s" "$value"
-            return 0
-        fi
-
-        log_warn "Value cannot be empty."
-    done
-}
-
-# `choice` - Present a list of choices to the user and set the selection
-# Usage:
-#   choice VAR "Prompt message" DEFAULT CHOICE1 [CHOICE2 CHOICE3...]
-# DEFAULT may be the exact choice string or the 1-based index of the default choice
-choice() {
-    target_var="$1"
-    prompt_msg="$2"
-    default="$3"
-    shift 3
-
-    # If the provided default is not a numeric index and is not present
-    # in the provided options, automatically prepend it so it appears
-    # in the choice list. This makes it less error-prone when callers
-    # pass the default but forget to include it as an option.
-    if ! echo "$default" | grep -qE '^[0-9]+$' 2>/dev/null && [ -n "$default" ]; then
-        found_default=0
-        for opt in "$@"; do
-            if [ "$opt" = "$default" ]; then
-                found_default=1
-                break
-            fi
-        done
-        if [ "$found_default" -eq 0 ]; then
-            set -- "$default" "$@"
-        fi
-    fi
-
-    if [ -z "$target_var" ] || [ -z "$prompt_msg" ]; then
-        log_error "Usage: choice VAR \"Prompt message\" DEFAULT CHOICE1 [CHOICE2 ...]"
-        return 1
-    fi
-
-    if [ $# -lt 1 ]; then
-        log_error "choice requires at least one option"
-        return 1
-    fi
-
-    # Build array-like ordering by using $@; determine default value
-    default_val=""
-    index=1
-    for opt in "$@"; do
-        if [ "$default" = "$index" ] || [ "$default" = "$opt" ]; then
-            default_val="$opt"
-            break
-        fi
-        index=$((index + 1))
-    done
-    # If default not found, fall back to the first option
-    if [ -z "$default_val" ]; then
-        default_val="$1"
-    fi
-
-    # Non-interactive mode - choose the default automatically
-    if [ "${KAM_NONINTERACTIVE:-}" = "1" ] || [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then
-        printf -v "$target_var" "%s" "$default_val"
+        }
+        printf -v "$target" '%s' "$default"
         return 0
     fi
 
     while :; do
-        printf "%s\n" "$prompt_msg"
-        idx=1
-        for opt in "$@"; do
-            if [ "$opt" = "$default_val" ]; then
-                printf "  %d) %s (default)\n" "$idx" "$opt"
-            else
-                printf "  %d) %s\n" "$idx" "$opt"
-            fi
-            idx=$((idx + 1))
-        done
-
-        max=$((idx - 1))
-
-        printf "Choose [default: %s]: " "$default_val"
-        IFS= read -r ans || true  # Preserve spaces
-
-        if [ -z "$ans" ]; then
-            ans="$default_val"
+        if [[ -n "$default" ]]; then
+            printf '%s [%s]: ' "$message" "$default"
+        else
+            printf '%s: ' "$message"
         fi
 
-        # If numeric index provided:
-        if echo "$ans" | grep -qE '^[0-9]+$'; then
-            if [ "$ans" -ge 1 ] 2>/dev/null && [ "$ans" -le "$max" ] 2>/dev/null; then
-                sel_idx="$ans"
-                cur=1
-                for opt in "$@"; do
-                    if [ "$cur" -eq "$sel_idx" ]; then
-                        printf -v "$target_var" "%s" "$opt"
-                        return 0
-                    fi
-                    cur=$((cur + 1))
-                done
-            fi
+        if [[ "$hide" == --hide || "$hide" == true ]] && has_command stty; then
+            stty -echo
+            IFS= read -r input || true
+            stty echo
+            printf '\n'
         else
-            # If text matches an option exactly:
-            cur=1
-            for opt in "$@"; do
-                if [ "$opt" = "$ans" ]; then
-                    printf -v "$target_var" "%s" "$opt"
+            IFS= read -r input || true
+        fi
+
+        input="${input:-$default}"
+        if [[ -n "$input" ]]; then
+            printf -v "$target" '%s' "$input"
+            return 0
+        fi
+        log_warn 'Value cannot be empty.'
+    done
+}
+
+choice() {
+    local target="${1:-}" message="${2:-}" default="${3:-}"
+    local option selected answer index
+    shift 3 || true
+
+    [[ -n "$target" && -n "$message" && $# -gt 0 ]] || {
+        log_error 'Usage: choice VAR "Prompt message" DEFAULT CHOICE1 [CHOICE2 ...]'
+        return 1
+    }
+
+    selected=''
+    if [[ "$default" =~ ^[0-9]+$ ]]; then
+        index=1
+        for option in "$@"; do
+            [[ "$index" == "$default" ]] && selected="$option" && break
+            ((index++))
+        done
+    else
+        for option in "$@"; do
+            [[ "$option" == "$default" ]] && selected="$option" && break
+        done
+        if [[ -z "$selected" && -n "$default" ]]; then
+            set -- "$default" "$@"
+            selected="$default"
+        fi
+    fi
+    [[ -n "$selected" ]] || selected="$1"
+
+    if [[ "${KAM_NONINTERACTIVE:-}" == 1 || -n "${CI:-}${GITHUB_ACTIONS:-}" ]]; then
+        printf -v "$target" '%s' "$selected"
+        return 0
+    fi
+
+    while :; do
+        printf '%s\n' "$message"
+        index=1
+        for option in "$@"; do
+            if [[ "$option" == "$selected" ]]; then
+                printf '  %d) %s (default)\n' "$index" "$option"
+            else
+                printf '  %d) %s\n' "$index" "$option"
+            fi
+            ((index++))
+        done
+        printf 'Choose [default: %s]: ' "$selected"
+        IFS= read -r answer || true
+        answer="${answer:-$selected}"
+
+        if [[ "$answer" =~ ^[0-9]+$ && "$answer" -ge 1 && "$answer" -lt "$index" ]]; then
+            local current=1
+            for option in "$@"; do
+                if [[ "$current" == "$answer" ]]; then
+                    printf -v "$target" '%s' "$option"
                     return 0
                 fi
-                cur=$((cur + 1))
+                ((current++))
+            done
+        else
+            for option in "$@"; do
+                if [[ "$option" == "$answer" ]]; then
+                    printf -v "$target" '%s' "$option"
+                    return 0
+                fi
             done
         fi
-
-        log_warn "Invalid choice: $ans"
+        log_warn "Invalid choice: $answer"
     done
 }
 
 # shellcheck source=/etc/os-release
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-fi
+[[ ! -f /etc/os-release ]] || . /etc/os-release
