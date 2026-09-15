@@ -7,15 +7,15 @@ file-backed state contract lives in [`docs/state-plane.md`](docs/state-plane.md)
 
 ## Repository map
 
-- `crates/magicnet-cli`: privileged control-plane entrypoint used by the WebUI,
-  module scripts, and MCP server. `main.rs` only starts the app and dispatches
+- `crates/magicnet-cli`: privileged control-plane package used by the WebUI,
+  module scripts, and MCP integration. `main.rs` starts the CLI and dispatches
   arguments; `app.rs` resolves trusted runtime configuration, `commands.rs`
   owns top-level registration, and `process.rs` owns process lifecycle safety.
   Feature modules own their subcommands. `state.rs` reconciles legacy runtime
   evidence and external process/kernel facts into the canonical state plane.
-- `crates/magicnet-mcp-server`: optional authenticated HTTP/MCP adapter. It
-  delegates device operations to the CLI instead of creating another control
-  path.
+  The authenticated HTTP/MCP adapter lives under `src/mcp_server/` in the same
+  package and currently also builds the `magicnet-mcp-server` compatibility
+  binary used by existing module packaging.
 - `src/MagicNet/lib/magicnet`: device runtime shell modules. These implement
   lifecycle, subscription, routing, DNS, and supervisor behavior.
 - `sing-box`: pinned `LIghtJUNction/sing-box` source submodule. Build hooks
