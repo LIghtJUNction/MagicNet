@@ -11,7 +11,7 @@ permissions:
 jobs:
   repair-package-fixture:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -33,11 +33,11 @@ jobs:
           assert text.count(anchor) == 1
           text = text.replace(anchor, anchor + "    'lib/magicnet/api.sh' \\\n")
           path.write_text(text)
-      - name: Prepare pinned host fixtures and required search tool
+      - name: Prepare all pinned host fixtures and required search tool
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ripgrep
-          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box src/MagicNet/lib/kamfw
+          git submodule update --init --recursive --depth 1
       - name: Run the complete host suite with bounded failure output
         shell: python
         run: |
