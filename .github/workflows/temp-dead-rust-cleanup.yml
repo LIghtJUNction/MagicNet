@@ -1,0 +1,87 @@
+name: Temporary dead Rust cleanup
+
+on:
+  push:
+    branches:
+      - chore/remove-dead-rust-readers-20260916
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Remove dead readers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/magicnet-cli/src/utils.rs")
+          text = path.read_text()
+
+          clean_lines = '''/// Soft reader that follows symlinks. Prefer [`clean_module_lines`] for
+          /// module-owned state so symlink swaps cannot redirect privileged reads.
+          #[allow(dead_code)]
+          pub(crate) fn clean_lines(path: PathBuf) -> Vec<String> {
+              fs::read_to_string(path)
+                  .map(|text| filter_clean_lines(&text))
+                  .unwrap_or_default()
+          }
+
+          '''
+          first_clean_line = '''/// Soft reader for non-module paths. Prefer [`clean_module_lines`] /
+          /// [`first_clean_module_line`] for anything under the module root.
+          #[allow(dead_code)]
+          pub(crate) fn first_clean_line(path: PathBuf) -> String {
+              clean_lines(path).into_iter().next().unwrap_or_default()
+          }
+
+          '''
+          old_comment = '''/// writers. Missing or malformed ordinary list files retain `clean_lines`'
+          /// empty-list semantics, while symlinks, nonregular files, and hard links are
+          '''
+          new_comment = '''/// writers. Missing or malformed ordinary list files retain empty-list
+          /// semantics, while symlinks, nonregular files, and hard links are
+          '''
+
+          for label, block in (("clean_lines", clean_lines), ("first_clean_line", first_clean_line)):
+              if text.count(block) != 1:
+                  raise SystemExit(f"expected exactly one {label} block, found {text.count(block)}")
+              text = text.replace(block, "")
+          if text.count(old_comment) != 1:
+              raise SystemExit("expected exactly one clean_lines documentation reference")
+          text = text.replace(old_comment, new_comment)
+          path.write_text(text)
+          PY
+
+          if rg -n '\b(clean_lines|first_clean_line)\b|allow\(dead_code\)' crates/magicnet-cli/src; then
+            echo 'dead reader compatibility code remains' >&2
+            exit 1
+          fi
+
+      - name: Validate Rust cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check -p magicnet-cli
+          cargo test -p magicnet-cli
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/magicnet-cli/src/utils.rs
+          git diff --cached --check
+          git commit -m 'refactor: remove unused soft file readers'
+          git push origin HEAD:${GITHUB_REF_NAME}
