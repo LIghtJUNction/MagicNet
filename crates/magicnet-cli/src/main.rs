@@ -52,6 +52,7 @@ mod process;
 mod rules;
 mod selector_store;
 mod service;
+mod state;
 mod subscriptions;
 #[cfg(test)]
 mod test_support;
@@ -81,6 +82,12 @@ pub(crate) use utils::{
     MAX_PROC_COMM_BYTES, MAX_PROC_STAT_BYTES,
 };
 
+fn reconcile_state(app: &App, phase: &str) {
+    if let Err(err) = state::reconcile(app) {
+        eprintln!("[warning] canonical state {phase} reconciliation failed: {err}");
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let internal = match args.first().map(String::as_str) {
@@ -103,7 +110,19 @@ fn main() {
     }
 
     let app = App::from_env();
+    let machine_request = args.iter().any(|arg| arg == "--json");
+    // Normal control/human CLI commands reconcile the filesystem state plane
+    // before dispatch and publish one settled generation afterwards. `--json`
+    // is contractually read-only, so machine requests never create or rewrite
+    // state files. Internal proc-reader helpers above also bypass reconciliation
+    // to keep process discovery recursion-free.
+    if !machine_request {
+        reconcile_state(&app, "pre-command");
+    }
     let result = machine::dispatch(&app, &args).unwrap_or_else(|| dispatch(&app, &args));
+    if !machine_request {
+        reconcile_state(&app, "post-command");
+    }
     let code = match result {
         Ok(()) => 0,
         Err(err) => {
