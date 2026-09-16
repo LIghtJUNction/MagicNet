@@ -1,0 +1,52 @@
+name: Validate SDK path fix
+on:
+  push:
+    branches: [release/v1.5.5-20260916]
+    paths: [.github/workflows/retry-sdk-bootstrap.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Regenerate the reviewed patch with correct YAML indentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess, yaml
+          spec = yaml.safe_load(Path('.github/workflows/verify-avd-sdk-path.yml').read_text())
+          steps = spec['jobs']['verify']['steps']
+          source = steps[1]['run']
+          old = "bootstrap = lines[0] + ''.join(line[8:] if line.startswith('        ') else line for line in lines[1:])"
+          assert source.count(old) == 1
+          source = source.replace(old, "bootstrap = ''.join(lines)")
+          subprocess.run(['bash', '-euo', 'pipefail', '-c', source], check=True)
+          subprocess.run(['bash', '-euo', 'pipefail', '-c', steps[2]['run']], check=True)
+          PY
+      - name: Confirm tool paths in a fresh workflow step and save tested objects
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess, yaml
+          spec = yaml.safe_load(Path('.github/workflows/verify-avd-sdk-path.yml').read_text())
+          steps = spec['jobs']['verify']['steps']
+          for step in steps[3:5]:
+              subprocess.run(['bash', '-euo', 'pipefail', '-c', step['run']], check=True)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: android-sdk-path-validation
+          path: ${{ runner.temp }}/sdk-path-validation/
+          retention-days: 7
+          if-no-files-found: error
