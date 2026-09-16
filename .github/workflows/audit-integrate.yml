@@ -1,0 +1,100 @@
+name: Reviewed runtime integration
+on:
+  push:
+    branches: [audit/magicnet-72h-20260916]
+    paths: [.github/workflows/audit-integrate.yml, .audit/refine_runtime.py]
+permissions:
+  contents: read
+concurrency:
+  group: magicnet-reviewed-runtime-integration
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Apply only reviewed changes
+        id: prepare
+        shell: bash
+        env:
+          AUDIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          main=ff3b5f07a53da92696eb8c33e833de9b1dca5434
+          git show "$AUDIT_SHA":.audit/refine_runtime.py > /tmp/refine-runtime.py
+          python3 -m py_compile /tmp/refine-runtime.py
+          git checkout -b refactor/72h-runtime-20260916 "$main"
+          for sha in 9d1c50bfa7e325298c50a93ea6e9bcb9d614a999 b1dfe6cbc2d739151b9d50bf28c0acc348376383 ea4add937ec9ec9acdacddb10911d98a4889d8d6; do
+            git fetch origin "$sha"
+            base=$(git merge-base "$main" "$sha")
+            git diff "$base" "$sha" > /tmp/"$sha".diff
+          done
+          git apply --exclude=scripts/test-host.sh /tmp/9d1c50bfa7e325298c50a93ea6e9bcb9d614a999.diff
+          git apply /tmp/b1dfe6cbc2d739151b9d50bf28c0acc348376383.diff
+          git apply --include='crates/magicnet-cli/src/service.rs' --include='crates/magicnet-cli/src/state.rs' --include='crates/magicnet-cli/src/wifi.rs' --include='crates/magicnet-cli/tests/runtime_resource_bounds.rs' --include='docs/runtime-resource-bounds.md' /tmp/ea4add937ec9ec9acdacddb10911d98a4889d8d6.diff
+          python3 /tmp/refine-runtime.py
+          cargo fmt --all
+          git diff --check
+          bash -n scripts/package-smoke.sh
+          git add crates scripts src webui docs
+          test -z "$(git diff --cached --name-only -- .github .audit)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'refactor(runtime): reconcile bounded resource and dynamic endpoint fixes'
+          git push origin HEAD:refs/heads/refactor/72h-runtime-20260916
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  validate:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Regression checks
+        shell: bash
+        env:
+          CI_TEST_FORCE: '1'
+        run: |
+          set +e
+          mkdir -p /tmp/reviewed-results
+          status=0
+          for check in 'cargo fmt --all -- --check' 'cargo test --workspace --all-targets --all-features --locked' 'cargo clippy --workspace --all-targets --all-features --locked -- -D warnings' 'cargo check --workspace --locked --target aarch64-linux-android' 'bash scripts/test-host.sh' 'cd webui && npm ci && npm run check'; do
+            echo "::group::$check"
+            bash -o pipefail -c "$check" > /tmp/reviewed-results/check-$status-$(ls /tmp/reviewed-results | wc -l).log 2>&1
+            rc=$?
+            echo "RESULT=$rc COMMAND=$check" | tee -a /tmp/reviewed-results/summary.txt
+            if [ "$rc" -ne 0 ]; then status=1; fi
+            echo '::endgroup::'
+          done
+          git archive --format=tar.gz HEAD > /tmp/reviewed-results/source.tar.gz
+          tar -czf /tmp/reviewed-results/webui-dependencies.tar.gz webui/node_modules
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reviewed-runtime-results
+          path: /tmp/reviewed-results/
+          retention-days: 7
