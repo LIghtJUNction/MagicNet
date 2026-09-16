@@ -150,6 +150,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends binutils file jq ripgrep unzip zip python3-yaml shellcheck
 
+      - name: Build host core for package routing checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/magicnet-host"
+          mkdir -p "$install_dir"
+          scripts/build-sing-box.sh linux amd64 "$install_dir/sing-box"
+          "$install_dir/sing-box" version
+          python3 scripts/test-android-tun-proof.py --check-core "$install_dir/sing-box"
+          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+
       - name: Build current MagicNet module
         env:
           MAGICNET_SIGN_ENABLED: "0"
