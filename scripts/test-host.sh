@@ -73,13 +73,15 @@ check bash scripts/test-hotspot-routing.sh
 check bash scripts/test-singbox-route-apply-safety.sh
 check bash scripts/test-anthropic-routing.sh
 check bash scripts/test-mcp-phase-config.sh
+
+# Workspace manifests are outside the host cache scope; always recheck this contract.
+CI_TEST_FORCE=1 check python3 scripts/test-android-acceptance-contract.py
 check bash scripts/test-tailscale-login.sh
 check bash scripts/test-chatgpt-voice-rules.sh
 check bash scripts/test-rule-hash-retry.sh
 check python3 scripts/test-bundled-rules.py
 check bash scripts/singbox-subscription-protocol-smoke.sh
 check bash scripts/test-service-selectors.sh
-check bash scripts/test-google-play-direct-fallback.sh
 check bash scripts/test-subscription-fetch-policy.sh
 check bash scripts/test-subscription-usage.sh
 check bash scripts/test-singbox-pid-discovery.sh
