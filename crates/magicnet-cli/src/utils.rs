@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -24,6 +24,28 @@ const PROC_READER_IO_EXIT: i32 = 66;
 const PROC_READER_PARENT_EXIT: i32 = 67;
 const PROCESS_REAP_GRACE: Duration = Duration::from_millis(100);
 const PROCESS_REAP_POLL: Duration = Duration::from_millis(10);
+
+/// Read a regular JSON file with a limit enforced on the descriptor, not a
+/// racy path stat. Never follow symlinks or block opening a FIFO as config.
+pub(crate) fn read_json_file_bounded(path: &Path, max_bytes: u64) -> Option<serde_json::Value> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    file.take(max_bytes.checked_add(1)?)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() as u64 > max_bytes {
+        return None;
+    }
+    serde_json::from_slice(&bytes).ok()
+}
 
 // Called only in fork children that will not exec. CLOEXEC alone cannot
 // release inherited pipe writers, executable write handles or file locks.

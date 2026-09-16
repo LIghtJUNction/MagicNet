@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Read;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
 use crate::diagnostics::supervisor_pid;
+use crate::utils::read_json_file_bounded as read_json;
 use crate::{
     clean_module_lines, cmdline_has_script, proc_start_time, read_kv, read_proc_argv,
     read_proc_text_bounded, replace_module_text_files_transactionally, singbox_pid_summary, App,
@@ -672,26 +671,6 @@ fn read_token(path: PathBuf, fallback: &str) -> String {
         .map(sanitize_token)
         .filter(|value| value != "unknown")
         .unwrap_or_else(|| fallback.to_string())
-}
-
-fn read_json(path: &Path, max_bytes: u64) -> Option<Value> {
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
-        .ok()?;
-    let metadata = file.metadata().ok()?;
-    if !metadata.is_file() || metadata.len() > max_bytes {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    file.take(max_bytes.checked_add(1)?)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    if bytes.len() as u64 > max_bytes {
-        return None;
-    }
-    serde_json::from_slice(&bytes).ok()
 }
 
 fn regular_nonempty(path: &Path) -> bool {

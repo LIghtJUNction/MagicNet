@@ -34,13 +34,13 @@ import {
   updateOperationCapture,
 } from "@/composables/operationCapture";
 import { refreshAllNotice } from "@/composables/refreshAllState";
+import { machineFailureText, parseMachineDns, parseMachineNetwork, type NetworkPolicyStatus } from "@/composables/machineStatus";
 import {
   blockDefaults,
   dnsDefaults,
   mcpDefaults,
   parseApps,
   parseBlock,
-  parseDns,
   parseHealth,
   parseMcp,
   invalidateTransparentRuntime,
@@ -991,7 +991,7 @@ async function refreshDns(
       ? foregroundTokenOrPreview
       : "";
   const command = startForegroundCommand(
-    "dns status",
+    "--json dns status",
     "读取 DNS",
     quiet,
     previewOverride,
@@ -1001,10 +1001,26 @@ async function refreshDns(
   const allowBusy = foregroundTokenOrPreview !== undefined;
   const text = await command.promise;
   if (markQuietFailure(t("读取 DNS"), text, uiToken, allowBusy)) return false;
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.dns = parseDns(text, state.dns);
+  const dns = parseMachineDns(text);
+  if (!dns) {
+    markQuietFailure(t("读取 DNS"), machineFailureText(text), uiToken, allowBusy);
+    return false;
   }
+  if (canUpdateRefreshUi(uiToken, allowBusy)) state.dns = dns;
   return true;
+}
+
+async function refreshNetwork(quiet = false): Promise<NetworkPolicyStatus | null> {
+  const label = t("读取 UDP / IPv6 策略");
+  const command = startForegroundCommand("--json network status", label, quiet);
+  const text = await command.promise;
+  if (markQuietFailure(label, text, command.token)) return null;
+  const network = parseMachineNetwork(text);
+  if (!network) {
+    markQuietFailure(label, machineFailureText(text), command.token);
+    return null;
+  }
+  return canUpdateRefreshUi(command.token) ? network : null;
 }
 
 async function refreshWarp(
@@ -1334,6 +1350,7 @@ export function useMagicNet() {
     refreshSubs,
     refreshMcp,
     refreshDns,
+    refreshNetwork,
     refreshWarp,
     refreshWifiPolicy,
     createIssue,
