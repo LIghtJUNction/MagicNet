@@ -255,6 +255,11 @@ magicnet_singbox_transaction_reconcile() {
     _tx_active_work="${MODDIR}/.state/sing-box/subscription-work"
     _tx_active_url="${MODDIR}/.config/sing-box/subscription.url"
     _tx_active_local="${MODDIR}/.config/sing-box/subscription.local"
+    # A damaged legacy journal must not overwrite a usable active generation.
+    if [ -f "$_tx_dir/had-config" ] &&
+        ! magicnet_singbox_recovery_config_valid "$_tx_dir/old-config"; then
+        return 1
+    fi
     _tx_generation=$(sed -n '1p' "$_tx_dir/generation-id" 2>/dev/null || true)
     _tx_restart_required=0
     if [ -f "$_tx_dir/was-running" ]; then
@@ -387,6 +392,20 @@ magicnet_singbox_transaction_begin() {
         magicnet_singbox_transaction_begin_abort
         return 1
     }
+    # Validate the source and the rollback baseline before creating a journal
+    # or touching a live generation. A failed recovery is not a valid baseline.
+    if [ ! -s "$_sub_input_source" ] || [ ! -f "$_sub_input_source" ] ||
+        [ -L "$_sub_input_source" ]; then
+        magicnet_singbox_transaction_begin_abort
+        return 1
+    fi
+    if ! magicnet_singbox_recovery_config_valid "$_tx_active_config"; then
+        if ! magicnet_singbox_restore_last_good ||
+            ! magicnet_singbox_recovery_config_valid "$_tx_active_config"; then
+            magicnet_singbox_transaction_begin_abort
+            return 1
+        fi
+    fi
     mkdir -p "$_tx_tmp" || {
         magicnet_singbox_transaction_begin_abort
         return 1
@@ -399,7 +418,8 @@ magicnet_singbox_transaction_begin() {
         }
         (
             umask 077
-            cp -f "$_tx_active_config" "$_tx_tmp/old-config"
+            cp -f "$_tx_active_config" "$_tx_tmp/old-config" &&
+                magicnet_singbox_recovery_config_valid "$_tx_tmp/old-config"
         ) || {
             magicnet_singbox_transaction_begin_abort
             return 1
@@ -850,9 +870,6 @@ magicnet_singbox_update_subscription_unlocked() {
         return 2
         ;;
     esac
-    if magicnet_singbox_restore_last_good; then
-        info "Restored the last validated config before subscription generation."
-    fi
     if ! magicnet_singbox_transaction_begin; then
         rm -rf "$(magicnet_singbox_transaction_dir).new.$$" 2>/dev/null || true
         magicnet_singbox_update_status prepare failed journal_create_failed || true
@@ -1068,11 +1085,13 @@ magicnet_singbox_update_subscription_unlocked() {
     magicnet_singbox_prune_subscription_cache "$_sub_cache_map" ||
         warn "Subscription cache pruning failed"
 
+    # Removing the journal commits config/work/source as one recoverable
+    # generation. Never advance the independent checkpoint before this point.
+    rm -rf "$(magicnet_singbox_transaction_dir)" 2>/dev/null || return 1
     if [ "$_sub_was_running" -eq 1 ]; then
         magicnet_singbox_save_last_good ||
             warn "Could not save the validated sing-box recovery checkpoint"
     fi
-    rm -rf "$(magicnet_singbox_transaction_dir)" 2>/dev/null || return 1
     _sub_success_epoch=$(date +%s)
     magicnet_singbox_update_status complete success none || true
     success "sing-box nodes updated: imported ${_imported}, skipped ${_skipped}"
