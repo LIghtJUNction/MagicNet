@@ -73,7 +73,9 @@ check bash scripts/test-hotspot-routing.sh
 check bash scripts/test-singbox-route-apply-safety.sh
 check bash scripts/test-anthropic-routing.sh
 check bash scripts/test-mcp-phase-config.sh
-check python3 scripts/test-android-acceptance-contract.py
+
+# Workspace manifests are outside the host cache scope; always recheck this contract.
+CI_TEST_FORCE=1 check python3 scripts/test-android-acceptance-contract.py
 check bash scripts/test-tailscale-login.sh
 check bash scripts/test-chatgpt-voice-rules.sh
 check bash scripts/test-rule-hash-retry.sh
