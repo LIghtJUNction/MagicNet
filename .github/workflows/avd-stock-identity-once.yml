@@ -1,0 +1,59 @@
+name: AVD Stock Kernel Identity
+on:
+  push:
+    branches: [audit/play-patch-acceptance]
+permissions:
+  contents: read
+jobs:
+  stock-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+    steps:
+      - name: Prepare disposable stock AVD
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$ANDROID_SDK_ROOT"
+          tools="$sdk/cmdline-tools/latest/bin"
+          timeout 900 "$tools/sdkmanager" --sdk_root="$sdk" 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64'
+          avd_home="$RUNNER_TEMP/stock-avd"
+          mkdir -p "$avd_home" "$RUNNER_TEMP/stock-evidence"
+          ANDROID_AVD_HOME="$avd_home" timeout 120 "$tools/avdmanager" create avd --force --name MagicNetStockControl --package 'system-images;android-35;google_apis;x86_64' --path "$avd_home/MagicNetStockControl.avd" <<<no
+          test -s "$avd_home/MagicNetStockControl.avd/config.ini"
+          printf 'ANDROID_AVD_HOME=%s\n' "$avd_home" >> "$GITHUB_ENV"
+          printf '%s\n' "$sdk/platform-tools" "$sdk/emulator" >> "$GITHUB_PATH"
+          cp "$sdk/system-images/android-35/google_apis/x86_64/source.properties" "$RUNNER_TEMP/stock-evidence/image-source.properties"
+      - name: Boot unmodified stock kernel as a diagnostic control
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          sudo chmod 0666 /dev/kvm
+          nohup emulator @MagicNetStockControl -accel on -no-window -noaudio -no-boot-anim -no-snapshot -no-snapshot-save -no-metrics -gpu swiftshader_indirect -memory 3072 -show-kernel > "$RUNNER_TEMP/stock-evidence/emulator.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/stock-evidence/pid"
+          timeout --kill-after=2s 240s adb wait-for-device
+          deadline=$((SECONDS+240))
+          until [[ "$(timeout 5 adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]; do
+            ((SECONDS<deadline)) || exit 1
+            sleep 3
+          done
+          timeout 10 adb shell uname -a > "$RUNNER_TEMP/stock-evidence/stock-kernel.txt"
+          timeout 10 adb shell 'getprop ro.build.fingerprint; getprop ro.build.id; getprop ro.build.version.incremental; getprop ro.bootimage.build.fingerprint; cat /proc/version' > "$RUNNER_TEMP/stock-evidence/stock-build.txt"
+          printf '%s\n' 'scope=stock_AVD_kernel_identity_only' 'MagicNet_installed=false' 'KernelSU_tested=false' 'Play_GMS_tested=false' > "$RUNNER_TEMP/stock-evidence/scope.txt"
+          cat "$RUNNER_TEMP/stock-evidence/stock-kernel.txt" "$RUNNER_TEMP/stock-evidence/image-source.properties"
+      - name: Always stop the disposable emulator
+        if: always()
+        shell: bash
+        run: |
+          timeout --kill-after=2s 10s adb emu kill >/dev/null 2>&1 || true
+          if [[ -s "$RUNNER_TEMP/stock-evidence/pid" ]]; then kill "$(cat "$RUNNER_TEMP/stock-evidence/pid")" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: avd-stock-kernel-evidence
+          path: ${{ runner.temp }}/stock-evidence
+          if-no-files-found: error
+          retention-days: 7
