@@ -86,6 +86,12 @@ def xtables(args):
         del chains[name]
     else:
         rule = rest[1:]
+        # Real nft xtables validates a jump target even for a missing rule.
+        # An absent custom target is rc=2, not the ordinary no-match rc=1.
+        if action in ("-C", "-D") and "-j" in rule:
+            target = rule[rule.index("-j") + 1]
+            if target == CHAIN and target not in chains:
+                return 2
         if action == "-C":
             return 0 if rule in chains[name] else 1
         if action == "-D":
@@ -186,6 +192,28 @@ class DNSOutputOrder(unittest.TestCase):
                 result, state = self.run_installer(state, shell)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assert_captured(state)
+
+    def test_ipv4_only_removes_old_ipv6_capture_without_rewriting_ipv4(self):
+        result, state = self.run_installer(initial(), ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state["calls"] = []
+        result, final = self.run_installer(state, ["sh"], IPV6_MODE="ipv4_only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(CHAIN, final["ip6tables"])
+        for call in final["calls"]:
+            if call[0] == "iptables":
+                self.assertNotIn(call[3], ("-A", "-D", "-I", "-N", "-F", "-X"), call)
+        self.assert_captured(final, families=("iptables",))
+
+    def test_unchanged_recipe_makes_no_firewall_writes(self):
+        result, state = self.run_installer(initial(), ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state["calls"] = []
+        result, final = self.run_installer(state, ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for call in final["calls"]:
+            self.assertNotIn(call[3], ("-A", "-D", "-I", "-N", "-F", "-X"), call)
+        self.assert_captured(final)
 
     def test_reapply_repairs_core_reordering_without_duplicates(self):
         for shell in SHELLS:

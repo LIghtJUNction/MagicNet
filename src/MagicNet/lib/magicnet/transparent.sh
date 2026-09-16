@@ -144,6 +144,8 @@ magicnet_singbox_apply_transparent_mode() {
           {"type":"mixed","tag":"mixed-in","listen":"127.0.0.1","listen_port":7892};
         def dns_in:
           {"type":"direct","tag":"magicnet-dns-in","listen":"127.0.0.1","listen_port":1053};
+        def dns6_in:
+          {"type":"direct","tag":"magicnet-dns6-in","listen":"::1","listen_port":1053};
         def tun_in:
           ($saved_inbound * {
             "type":"tun","tag":"tun-in","interface_name":"magicnet0",
@@ -185,7 +187,7 @@ magicnet_singbox_apply_transparent_mode() {
           | (if ($inbound | type) == "array" then $inbound else [$inbound] end)
           | map(select(type == "string" and startswith("magicnet-")))
           | length > 0;
-        def dns_hijack_rule: {"inbound":["magicnet-dns-in"],"action":"hijack-dns"};
+        def dns_hijack_rule: {"inbound":(["magicnet-dns-in"] + (if $dns_strategy == "ipv4_only" then [] else ["magicnet-dns6-in"] end)),"action":"hijack-dns"};
         def ebpf_dns_hijack_rule: {"inbound":["tun-in"],"port":53,"action":"hijack-dns"};
         def is_ebpf_dns_hijack_rule:
           (.action // "") == "hijack-dns" and (.port // null) == 53 and
@@ -199,7 +201,7 @@ magicnet_singbox_apply_transparent_mode() {
         def is_sniff_rule: (.action // "") == "sniff";
         def normalize_sniff_rule: if (.action // "") == "sniff" then .inbound = ["mixed-in","tun-in"] else . end;
         def sniff_rule: {"inbound":["mixed-in","tun-in"],"action":"sniff"};
-        .inbounds = (((.inbounds // []) | map(select(managed_inbound | not))) + [mixed_in,dns_in,(if $mode == "ebpf" then ebpf_in else tun_in end)])
+        .inbounds = (((.inbounds // []) | map(select(managed_inbound | not))) + [mixed_in,dns_in,(if $mode == "ebpf" then ebpf_in else tun_in end)] + (if $dns_strategy == "ipv4_only" then [] else [dns6_in] end))
         | .route.rules = (
           ((.route.rules // [])
             | map(select(references_managed_inbound | not))

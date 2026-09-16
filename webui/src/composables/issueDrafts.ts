@@ -1,4 +1,5 @@
 import { t } from "@/i18n";
+import { redactFeedbackSecrets } from "@/composables/feedbackSecrets";
 import { ROUTE_TAGS, safeRouteHop, safeRouteText, isGoogleEvidence, boundedLines, compactSupport } from "@/composables/networkEvidence";
 const MAX_ISSUE_BODY_CHARS = 5200;
 
@@ -101,7 +102,7 @@ export function stripTerminalControlSequences(text: string): string {
 }
 
 export function sanitizeDiagnosticText(text: string): string {
-  return stripTerminalControlSequences(text)
+  return redactFeedbackSecrets(stripTerminalControlSequences(text))
     .replace(/\b(?:https?|socks?|ss|ssr|vmess|vless|trojan|hysteria2?|tuic):\/\/[^\s"'<>]+/gi, "[filtered-url]")
     .replace(/\b(?:token|secret|password|passwd|node|query|path)[=:._-][A-Za-z0-9._~+/-]{4,}\b/gi, "[filtered-value]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[filtered-email]")

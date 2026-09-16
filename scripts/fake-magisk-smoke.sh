@@ -1546,11 +1546,14 @@ if not dns_inbound:
     raise SystemExit(f"magicnet DNS inbound missing in {mode} mode")
 if dns_inbound.get("type") != "direct" or dns_inbound.get("listen") != "127.0.0.1" or dns_inbound.get("listen_port") != 1053:
     raise SystemExit(f"magicnet DNS inbound mismatch in {mode} mode: {dns_inbound!r}")
+dns6 = [i for i in singbox.get("inbounds", []) if i.get("tag") == "magicnet-dns6-in"]
+if len(dns6) != 1 or dns6[0].get("listen") != "::1" or dns6[0].get("listen_port") != 1053:
+    raise SystemExit("IPv6 DNS capture needs exactly one loopback IPv6 listener")
 dns_hijack = next(
     (
         rule for rule in singbox.get("route", {}).get("rules", [])
         if rule.get("action") == "hijack-dns"
-        and rule.get("inbound") == ["magicnet-dns-in"]
+        and rule.get("inbound") == ["magicnet-dns-in", "magicnet-dns6-in"]
         and "protocol" not in rule
     ),
     None,
@@ -1571,7 +1574,7 @@ if tun_inbound.get("address") != ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]:
 expected_sniff_inbounds = ["mixed-in", "tun-in"]
 if any(kind in inbound_types for kind in ("tproxy", "redirect")):
     raise SystemExit(f"legacy transparent inbound still present in {mode} mode: {inbound_types!r}")
-if any((inbound.get("tag") or "").startswith("magicnet-") and inbound.get("tag") != "magicnet-dns-in" for inbound in singbox.get("inbounds", [])):
+if any((inbound.get("tag") or "").startswith("magicnet-") and inbound.get("tag") not in ("magicnet-dns-in", "magicnet-dns6-in") for inbound in singbox.get("inbounds", [])):
     raise SystemExit(f"managed transparent inbound still present in {mode} mode")
 if not sniff_rule:
     raise SystemExit(f"sing-box sniff rule missing in {mode} mode")

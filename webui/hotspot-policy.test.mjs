@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 
 const control = readFileSync(
   new URL("./src/components/pages/ControlPage.vue", import.meta.url),
@@ -15,6 +18,10 @@ const core = readFileSync(
 );
 const webuiApi = readFileSync(
   new URL("../crates/magicnet-cli/src/webui_api.rs", import.meta.url),
+  "utf8",
+);
+const uninstall = readFileSync(
+  new URL("../src/MagicNet/uninstall.sh", import.meta.url),
   "utf8",
 );
 
@@ -52,7 +59,30 @@ assert.match(routes, /magicnet_hotspot_discover_interfaces/);
 assert.match(routes, /magicnet_hotspot_route_cleanup/);
 assert.match(routes, /settings put global tether_offload_disabled 1/);
 assert.match(routes, /magicnet_hotspot_offload_restore/);
-assert.match(routes, /register_uninstall_cmd/);
+assert.doesNotMatch(routes, /register_uninstall_cmd/);
+assert.doesNotMatch(core, /register_uninstall_cmd/);
+
+// Execute the shipped hook with an isolated lifecycle fixture. Neither success
+// nor failure may fall through to legacy appended, unowned cleanup commands.
+for (const status of [0, 23]) {
+  const root = mkdtempSync(join(tmpdir(), "magicnet-uninstall-contract-"));
+  try {
+    mkdirSync(join(root, "lib/magicnet"), { recursive: true });
+    writeFileSync(join(root, "lib/magicnet/uninstall.sh"),
+      `magicnet_uninstall_main() { printf 'lifecycle\\n' > "$MODDIR/calls"; return ${status}; }\n`);
+    writeFileSync(join(root, "uninstall.sh"), uninstall +
+      '\nprintf "unsafe-fallback\\n" >> "$MODDIR/calls"\nexit 0\n');
+    const result = spawnSync("sh", [join(root, "uninstall.sh")], {
+      encoding: "utf8", timeout: 5000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, status, result.stderr);
+    assert.equal(readFileSync(join(root, "calls"), "utf8"), "lifecycle\n");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 assert.match(control, /关闭 Android 热点硬件加速/);
 assert.match(webuiApi, /"replay"[\s\S]*sync_persisted_hotspot_offload/);
 assert.match(webuiApi, /"reconcile"[\s\S]*refresh_hotspot_policy_if_stale/);
