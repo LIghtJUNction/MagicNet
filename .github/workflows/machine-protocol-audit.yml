@@ -1,4 +1,4 @@
-name: WebUI audit
+name: Proc descriptor audit
 on:
   push:
     branches: [audit/machine-protocol-20260916]
@@ -16,67 +16,95 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Apply exact reviewed terminal patch
-        env:
-          PATCH: H4sIAAAAAAAC/7U8a3Mb13Xf+Suud9RoYWIXAEnREviQZYqOWIuSQ9LTZkhWXCwuiDUXu/Dugo9QmHHsOnEmsp2ZTtJ4mkynmbbxtNM4zUSNU9nxXyB/Q03Z/pS/0HPuY+/dxS4JKonHIwL3ce65533OvRdtr9MhlrXrJcSpHdDWwKvFkVtzw14/DGiQxLW+s0vj2gaNel7g+K/CN3t/QEnrMqMnvKBNDwmljanZVsu2r9PGdGvWIY16fXZmZsKyrMutPjE5OXlJDF58kViN6gtkslG9Tl58cYLMx27k9RMS02TQJ74T7C4YSWwsTlgewIoSckwQ6iCh7SoJ6GGy4bl7VRIGq+EgYI0R7VTJgZO4XTIknSjsEQNWMuYmJi+A8BLthBF9LeghJGy4TR038fYdNnKcFUi6wlKXItClsH9UJa/6Dvy7FiYAack9qBJJBvgUOXF3KgXjD1yvTS2AZiFmGZBJOurFmte4HozsCJBdCns9JwAUxff7gwQ2WiX0kLovO55P2xqQQeL5sbbES4MkCYO0W2MesJN32tl9IhvvUKdNo5JZakBu5jrQYhDfDpOSiWm/mMfkZIYJyjX4F77KrU9onwhx+n0atCV973hxEkZHVexxfepEIx0WIX7ojE6YJGT11t8+2FheW125d+vug+V7G2sry+sASdLPriXZSbi7CZIc9SlZBnKjfC0HSXREFgA1xH9qFvGfeoHjXzIQME28Hm2SOIm8YBdgDhGu5YZBjIyOBsGS71Xx73qX+iBCMf751iBMKOC2QAYxXXV2PfceTcwKiEjZxKLBgD8f7gUgNkKYYBgIvGkYOIB3d/mOec88x3Rze9Hc3K5wVk3PVmfJ5PQL1Ru4VT6Jsr3CSAGw4/gxVTCpIMVdgC0AZ6iTwhfj3bDv0fYt2EghON690s7gSB6SYOD7iyb+q4jDRAO67+jbSgFOZva8hGOFKuXG+RTNVhx7YbBG9z38C0PqebKu0Y5A6s7G6t0VbFr2aQ8kP4+emCXl7KWwfZSdXDKPKUsdiT/ZaDSqU4wJnUEAxgxQYrtddyNKA7PSJPuh10a5GyKaTnwUuGpoF9jvU7ZlQRuc8SrIvxfTeZy5CFNBh5wDx0sKVcyU8oYUIsTrEDNHbnvf8cFzPXyoJIQ3VWCfySAK2MTiSQskiQaUDYgouIx1Tn6TL8bJFyle5LjDBqHiHeMHOZ6txLg79q74vtRCCyNLVQrkJ93Dc2JJBgvsCy7kK6xKds7kjk+ZmIT/JyZTvmVpkfIYhublc3KBNDhjNI1PlzAM1teOnE7CBDXTA7h1czhtbuvNKxhepH0WX0jX88w8xjCh0wWblAqddqGws55zKKum12rkFUr7UsZg604bpJgRwQ/dPWA4eHfPJw70+BH4rCM0lQFaDVcYQiBq4tPYFsqSU5MNp6XRmungjUa1MQ0mH3xWYyajhHzKK/TodngQmGDu4WMrdKL28j4o9AVqiaaco3Tbi6ibmG6vLR1GgX4KtctpFypcoWgptSMlYgHLsU6uH/Gg1fPkGOZFinDOjRrFMtU/2Eavx/RvdHEbO3ENi+/pOTn4AutxwdhxaIEIghDdYYxDkXH81DITMAV9CIKEoMQTwiKkWwGDYLAFDFwq1xwbFRkh1GerDbDaU9MgONdQYJ6BikTnH7LCYoivUTeM2lJZsDGvvJydhRGUieOJRLzKv2Xmi7Y0LOFfVWzCGipSFW+lutcbAMtblOA+u1EYhIO4SSKnD9IPbp9GtcTpx8R1ggBixThxINBLDkJyEHkJamJqUBQvNZ8wlgMYIUMhAeTWs8Mr55s7Um47lbwLodkI1wYBQ54tVK59ON0q3zZS3Y1C398IXwohZu+JwE4ux2i4ASEmzLgNCYkdhAemCBqmpuvVKTRY1yBqeDb5YwEsc6lMFEOWgGxALpMKGA9EWRQQ3Ip24yrZcX2PXDlOW4Y7XMNhJwPXBZahj1SQbC9w/UGbxqaxSaMojLZBgb7xjdIhQCgLY2ro3jakw9Ygq+TIVBA4Z4cgeZjmmWydityVmiwczOhe2QRgIJA7cGnYIcus4SbvsHswHXIj0oRMCK2OWEAsqiIAouKS9iByEi7Gim/EUgwVNBt1sHZ/EHfNY94NUgXOYodiTP3gyrECNYRvq07StSPgLYqNnYQCuenZih37nkvNqSqZrQx3qhKWEN5mRorTXk6Rpk4ZNH+mcfarR0/f/ZFRSUfKza2C9svPCsxeU5I8beNJEv7LcRQdw4pgxqh6CFZxuRrRENbMnK4sCZid0B3ETHXHj/JEzFYW5ti2PdpRVbP+TMxJoens0eoDps6tijZeMixTPjBL2adPLeaggqzzMG0d5aLoGm6LPVlFabjkRxEjRcdFrBwK74gOkpm+axCjTWF6fr2azZc6YdRzJCkSgKiFWiKtZHrKvS7BEXZE+74D2Ne2Dhutrc3NunVjbvv5Xm23SngezfxyWlIyQZEXRCrFEC+oSaiUw066kLqZOIa21cRRT8ZHMNkechFXdGAyj62TCosslTL1L1NPKXhvplyW7wc/wApkpi7uVSL3Wcg5xoYbU1gkmW5M8SrJBUD4f/O8OKUagIoQyzlBsmDsdsM4MfSu2PsOXTDiniFNCf7XbHux0wIXsGBIKvo02E26TM3rhhLZzFhV0xiNIDOLvgguzt0D4CMZtTZsUZ8xL0qDTY5vY8YguCer67XbNFgw0NsbpLbI6y31Biu4TDW48I5Btvla29sXK85rhTpo4pud78OOnDiGpUCkrcOYiba1CaQ1LasXWF6wZ/UQfmXbWDw+Zobh/e+dffCbL56888XnP//yxx+e/eyjs8/+4ewH7339L4+//vkv/vjpoy///cnZp2+e/ej9p5+88/WH//rHT//pi0/eO/se/P/h2Tv/9vQn3//iyf88ffcnTx9/8NUv3z378KOz//rp2Vsf/d+bb4GLHw7na/3FFLl9y+uk3NKSP4OAYAHFHJ9GiVG4B8i1rWv1usT66T/+kiP+1a9+ffbZj5/+7D/AwJ2985HE8dFXH//u6++/99XHP84iIoj3nGWRbw2AvUSY15gsdT2IWi1L0hdILRHp+PSQ4D/WAYS5BMLYXmy5FGNdsuv0rSnSb1kNIvA1UpmYj/tOkNlNIScY6FGoDVD9ILEgsPQGPYMLzUzjBurazMxldC3Voj6YIher3LAl9KzG6BhnkIToSXyaAD/CTqdsDIT7ieMzOQ/CgGY0s1znMkr57KopFHSPHrUhF5cqKlLzkZG1xWyLUCNGzylOz2uXp+c55iprsnIdQhy61gukfwiiw+TiOxD8WjP1OumG+zRqsraDLojECF01cj2XyTV4mp3JlEeofZnJ4/CAm0gbOvuwVz3RyA1dzM+cxwOW1FBOlxnK9piHarm6vp3E5x9qjY4XB2svdJxrM51Z23auda5Pt2bHPlgrgHjh0VrBHH641pi6jsdrM+gYJqza88+DFDyfHkGlxS1Z04cvAC+y2ahXaRRDezwyKgnJTq3tJE7NabdqvbA98AEHeZZQsyFl6Xi7KVIPpFNNDpMdBhmB7VEKVpKVUtahF/MhL2CVAMg7sRDH06cEQ3e/5YBw4NSaduy1ev/2a3eXH9xeWVPnMnYN/mcpE0yNgQ6ZgzKV7OVOTvTZ7GSMz4QwjR6yuTwLS0PROyvrG/fXvv3g5ZW7y5iVPyM1ELlaTXkOF408mGrHY9k2Pw3FMPS1tbsxgQzSBecFbPfA5tq8pBnQg5QvYeAfMYAwPYFGgsJxNSY92oPuOWijxKe7jnvE6I6QgdIRxZOgNonBcULa2ToCMvVBG2X1256YHIsIO5CkpBwZni8FQNrzYeK/t765/OCV5W8jfXtIzYAmtoRmp+Fuw8gDw6RBwrm7fO+bG3cAxHS9PpfbiD5u6f7q6q17t9X4mfqN2aIJ+WwEhl6r65KSK5oUBfNoiWVAf7NJ9ApulfhOi/rq6xsDjyYwqBWGWCFhHkTWXfiYRch+tWJMeiDHEwOOOVMz/YTLad/VNC8934Eds6PJNXlOuPAnYzfHi5CsCJtmMTJpEWmTjh7PWCYs/MNrSZYqg3RAd5dAQfDcSyspMaCmdHA7INrkynGhnA7J1GKtTfdreICgKhnGVx8/OfvgJ18+effL//xYDwcNVXOI0jqnrBgI2noBZdUghZucY8egSBBjbgVGJW3rOX3I32ASoxZ+EE5TDQFQIOj5USInWSR1RIAPRrIyBPReklZ7wBas0ghM6yDw3oC0kOMK8YBPSR+ztmgfHXQYQeyvqjqiMNmCwViJvxVFzpGNJtJEa7NOExNrGTrTqgQbEPh2RRYkVLxhjWpkSlZJS8KrukVSKVFRQ4XYyA7RPmSSI4p2ggS151P/gW6LV+5j4W/AmyhZKxZF1ik0WzthK1EfqRib23x9dgwA+hR2yAFEBeEBr/oPIEDoIOKGPGJgZ2BFAh85MEdMtnVnae/SZAUCffM80ykpxpXPOcgvJ1fpO1HMWP3X6/fv2eybicO16VwIvJj9NfmEiiZpAjDvYDLOizqVVJjBjjBZhr9C4HMSfQ4Pvd0gBD/FoIvqaso8ktlUIcNKRUt4kSZjKbrPlIHqFO4yfMwzsYhxsWCcpNx5DEzVhDGG4+Z1Urz1MllWvyqVjK0qpegbEAA5eYrqNMy5s/IDorTaGKuSrDuIIjCHdySVJXGrf34PSNhWKAKDxrRKh4NThEq85GReXIo3md/gyO6KZEizB+mRlLpAk4VwDjelEvE0zGQlYrY39knTIzwKybTNL5wT57CKKy+a549f3Uw+N3LmmlqS7BaEXwK3czsMruKxBUaSDsTYbJYHn4A+Tvt1B8sTchEJPEeO7K6ynZvFYy3S2Ga6maKZDTTy2BacDouPavVzwkQYLjXRSUyrUcmvPamt3ZWLktTncKJjoVrFZuhas2hWJcTtcySEcajUzmlLyNiBHWfIMA/oy9QnpZdmwySaNHadPpMNNlQeiiqvXBKOQUDW22t7EbH65OI8CVHpg84kHXL1r+KtreAqhHJi6SFZXCwN7FQwh+EcC970cM7QurVQTgUgOROpG0mMHnajEMw9C/KEfYDAwvMHEEQJwymdVyac0AgvLipxVwVM7l6Ku/zQoNgoF15S+osmGentEqbpBI/n0fphioo1vR7kli47xGxTrP8RB1PMCFLR0E/LCDa5FeRSTQbPScA79rHuEoL+iXwVZ9CYFQ4iijTA5DbCRFiyAXxt0g0HIKduN8SgFkVN5a7jkEwjl0yAtD0L4ohLNXjfT10WS0/fRyOF5/KRgqj/aefkxXFCBFn7Ph0nxiMXyC9WTWTJUGKsn10PpUkiWbOQw/VCNY96xOqcp6CTuj0Bfg78ojRucgSgqtWYhbDZuWdaETR46b4wmSNZG0BSGyAWlXelxJUAjiPEuSWE+5NprkxCeg0QWkuKlXjxuwYrOn64q2p++RJl6ShRmHTdF2ZaN+q2Pe2611xaLytMlsPJlyPLR/Ii5AyWIBtT7Iq/UEdQBwe5z3TpL3ly1CSbnBGGdLFx4hyBIdJKZMysMPpjbkwDchQOQMGdfTpHgAUwCg0cOldI7jGNRC/A6nGtKDwAwyYzStsQMm6c/PT0u6dvnfzh9M2TT04/IKfvwIdfn3wGX96CDmiAvpMnp49O/vfkDwTaf01O32Ntvyc4MR39vZPH5OQTAoC+D99+AK2PBYSTzxE2OX379B2Y9tuTx3Pk5HfQ/zmM++7pI3PkLyG3L69/D997DMDxGGwuHkCYMFkP8bm07fhomP8ROu8xag9OT0fVjvMeJls9L/NtvXJc/KFOnXw15aeZTRrxsOwBcgYVtUCr9NXoUPkOKBToCDUNT8OSALaP4W8H8COLL9fY4UBBT/wAj26PR9NQKp/IgREnb3JpDofcKoIhnyvk1O/hmm/yZteQupgRA/P/0hkuD07XTjiAC3JWxH3MRI1yFNinHyC0bCT4G6nyEORpESS9Ww0loojRO797pS4NIRQnnrDXf2Bp227bbrdm40CpW3HIauuOWjuNJOX+day1/miBK6E4O0y2cbQdimTd5SwyjBTTLFdgwIXgZFWUfHO9TndPSHJ7is3onf8ZJb+rCj7JWGVfrgwzrnwccF2bZ64DHmOYvBwmlE2jQ4OjxKQZRj7Y6oND5OBzIgoyriEe3qB3eKvdDdW4LIKRb3ojMdWlVWTJc1FeGA0tn80hf2aiUcLLyoq3Fgr41KmsYZXer4SXcrYCVBl6KVTAbxVmDMZRIocf9wOKcnMF7gsUhMuvKimreOP0eKS47dprS//MbA8U0Bpko2BTZAJiOLj7Fdyaw86LfxgspY91eZeBEf2mQuIBdUxFvL3mA1Y0bdnasQggyv7shrrEXIC0zORb6q47CdARTumYp5MZhL03R5tUxjWS4vupoCuwqcrGi591hZN/o1Hqy0FUHbNE3Zn5WqkhLPTlXKKKqjIrLxKpmuKBOz39Ptxn5Psz4QEvEujMX5MVrGNqmDqiq5/9rGq69tPFhbvnd7ee3B3ZXVlQ2SNwPZ80SWpuCF3bjr9TEllmlFzJIQEkD6s09rMjhYqd0n4k4YPjoM5fsk4vi7IQQV3R7eZc7UhtbDQeRScVIjjSirvr+2dte8hHWqCjNr9yhkQ4PIr4AQDpLOdUM9bsLJz7Zg/kXnWMvh+SroHTszAZK6sGIi1seFTSM9gK2ei402rHTRKq6wzvi/4US7NLHvOmirqyz+z+N0dM/pMbQ2DZUDMD1O8w/8lrkfqTXICwvbGbDxEirIgtq2jdaAPd2KZVkvQH2Ar178spCk29T1HX6P0gzYBWcdRWUTAjuAhps23a7boVdTHx70QUXmM3Eiv265Aw81Mq9eKNPWoo5VGhqGWEd1zSi4UElcS3Mho9x4i0wtidJVHh3gW0y+2cZQQl284IPNuzUh5x2He17BHz1cpmY1ueCM7X+KhFo7JZ3x6XVriYktHsNRnYUP5pEGvTrmbi94I7iEpelR1bYGs9o6imaJbJKSyYMfXpuqmdVyB4i/ZekwsKGuPICeI+8GWV1RLNnSvHqcINt4Irx5pose9qmQJZwRUzAgFTdv2w5fgbINeyWnfXA5KThYI7BnNEGy1cbNHobAk5M4sV7vU5+csGcztV8dwbdh3dZ3dD4iY+D2dS0xwRo+X1qfoUvjAfVmx1kXsu816w4x1CaEfNsC9Zfzys6OcVIrlVYam4PKM3uL6nh63a8xt8siruJC8S81h8HuqPNPHKC384sd8TSrfEm0xRQr/AX1fZo4gqwUvyImdM8CAI5ShyenJPeBak3c4+NrcOJitbQ7yYbT6okj02gs/Y3NsmN29CkwCn33FryifRqcXjLZvbqoU9B+LNVgOa1UsgNZtDTq/JNbUHxdXMEwINfO4eXWaOfMcqnlFm4ckXlLyVvRWuFjyezE7KvXBokrpYJH9/G8hbzdwvZw3yBn6TdAKtpAwsiEN/n5riMnsnfYWQeZ3MJJ1JgV32bJQMxUReP0VN0EuoTfW2Qp6WI9SkC4EZuzjFnuWYRnr7DZ+jiYoERh7gFNIV8PXsJUH0+f05moOj1XX36BFC0xWMZ27YMceSNqGVthiDXILweWT9Ng287ELD9JOsrDZl1mjbNpgHHoUfa7rM12ZducVxyAauef7aIknMTFvjZV5QJsgddZyWfK+Zx0WakQwmOah8KrmZa1CQmiOCZoR7ijTC9ICpgYkrgbQ06FeqUuIq+mFNKoe63atmuKYZQEiN8UG2cNg+XuXTDKB2wSJ3pM+fFCo/16YdGvG6sagSsDMHsaU5eXOD7xRfRANDxL7NNkTpfIoYDv3YNoebV9sSndUUynCOoT8xyesZUqghUdReaFbFfUKLnXVjItnCozHAVJ7A9AYQNuARjAd5GLOchrr8nFr9lKxN4uapqfmXIbtaxV2U7jRU0SHNuHXHE3CH4trFyauB7/hakBO3STdJ+nGzVqOHDt5WZ3Ww2s0k3KPBAmTc+AIG0tyqXJDjoNL27MWYgMc34xQ3tjOQeCCE08VRMqYd42NoZICpZZkAmmVUyCzHUa9ymZUbUQTtDFjhSbsMhgKJsRnwLxseTZJrdVA25lT5YeKO22tfOQ7Y2878nktZBBINZMd1K2lcmF3pmTZtHBoYBECUAUMygdokQTpIPleKWa6WyYos/jxJwRjNYGxmOd4OaXwvTFbZQ4Fc6lTT3diWbQr39VD4oMrDrZbrJFuth7wk9HBxsYawmWmT2ps9Wh37WFUUL+QdOXnIPVKynMQHZRExuXTI4DHskE10/alTYw6ryfIYwtuVU2gS+YYXbyAF4ULDKB6TecSrDeEuSULfrmR/y+MZDIzYhjwPzMip+EEQu/Do2LXTQ1OIUFuvQ/ZlgxOPU4iZF2U5+KUidf695+1CNDV3LpWmccFAyEBZEirOW6+Of5H76s4YoKe2VR7Lf69EF1N80J+WKfkbcxZ0xuw3OkCywJXJimWLvTpk99g7XgQsZjwpEk3hHUH9+W8OSW+acSFZAZEevFQ4jlXUwjMFDt1OvaeAbRe/3JfFYFAm9ksGMcy1WuGhoRtZtit0WyM/rDEGZHw9kwMrhbYIXNYKy8hLE5q8nc49q9a5OpbhkwTLhWUcR7b1Iu8wsqr4zaXicZmn7xkFyEgdnu6iZKAosYKPOP4VGQ+7PCLMIupyTHyUTvGejV0pFbHOIMAfkEFQML/gZOdPk8U/q/xdIprQM3jxOzjlQlnw40s51mTeJqdcqV+Kh/VCyKNb5Y+s8+Pyv8QhnmKPIW2ajAtdGvkFnnLVHkGkQMsKNUMGnvwCitISwY1yzMtoN65WaYB7LDJRBU4ISzLPwrcy7763KjW1SuHUzJvxgsllsVEGTMHZ4mjow2MYdUEPFRn8y24QxonnWn4YMo0VP0kAEab47QPMzTFhawNgL3CTi4IePgljnpFApqpim0Hg7AMm+FyySVqR196lvFsPa8AqOG18QYFdDvHDXfkSLCYSkMNfMBvnBTolFkPfhkB7KF13mcEQecrcuU5kDDGEGAASpapY12YqEv8N2E+Tb9SopJHBM+6ooCDD7bYoiVxkGsfa6dj7PNc/FWlcRnb7+Bsj9EAG5SgBkFoLnnWdfXwm2aZoMPAsF5+91lxUKJ6Fx+UO6JI01dKkRh3/q0gqMg3AWoTHfuEQ/swDybTi9SSZgtbJSSWmxXTf4XQnV46No+xileHO+cwYXs4A6ujlE/jCiXSfQlRP+S9zymv2QoDVzfqio+P0Ar68QS+Hk5mpeuVy7vH8jK7sIiwKzkEY7YnTaMz6jtLARqw1npicEwpflMZlXWbRb0meQ4mRX/OTbjg/vvB324p82UW50YV+Z/Q3QrayPxJSY5e04Z//BwmeiLu/WQAA
+      - name: Install exact regression on unchanged production code
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/terminal-evidence"
-          python3 - <<'PY'
-          import base64, gzip, hashlib, os, pathlib
-          encoded = os.environ['PATCH'].replace('7pI3PkLyG', '7pI3LyG').replace('juAhps23a7bo', 'juAhps23vOoVFjdnQEL8HwAL22a6bo')
-          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
-          assert hashlib.sha256(patch).hexdigest() == 'a1b5490572665ac6ff11d9069b70d71d900054ca1b7a4f863b1116420d6a7e30'
-          pathlib.Path(os.environ['RUNNER_TEMP'], 'terminal-evidence/change.patch').write_bytes(patch)
-          PY
-          git checkout --detach e1bb6da9342945cb13db53a7bb9853fccd7ab0d9
-          git apply --check "$RUNNER_TEMP/terminal-evidence/change.patch"
-          git apply "$RUNNER_TEMP/terminal-evidence/change.patch"
-          git add -- webui
-          git diff --cached --check
-          git diff --cached --stat
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+          mkdir -p "$RUNNER_TEMP/proc-evidence"
+          cp .audit/proc_fd_inheritance.rs "$RUNNER_TEMP/proc-evidence/regression.rs"
+          git checkout --detach 3d1bb234e945af7665c58a1392b6170f97ddac54
+          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
+          cp "$RUNNER_TEMP/proc-evidence/regression.rs" crates/magicnet-cli/tests/internal/proc_fd_inheritance.rs
+          printf '\n#[cfg(test)]\n#[path = "../tests/internal/proc_fd_inheritance.rs"]\nmod proc_fd_inheritance_tests;\n' >> crates/magicnet-cli/src/utils.rs
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: webui/package-lock.json
-      - run: npm ci
-        working-directory: webui
-      - name: Full tests, typecheck and build
-        working-directory: webui
+          toolchain: '1.98.1'
+          components: rustfmt, clippy
+          targets: aarch64-linux-android
+      - name: Prove the old implementation fails for the observed ownership defect
         run: |
           set -euo pipefail
-          npm run check 2>&1 | tee "$RUNNER_TEMP/terminal-evidence/webui-check.log"
-      - run: npx playwright install --with-deps chromium
-        working-directory: webui
-      - name: Full browser suite
-        working-directory: webui
+          set +e
+          cargo test --locked --bin magicnet-cli utils::proc_fd_inheritance_tests::blocked_proc_worker_releases_unrelated_descriptors -- --exact --nocapture 2>&1 | tee "$RUNNER_TEMP/proc-evidence/before.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          [ "$result" -ne 0 ]
+          grep -F 'proc worker retained an executable writer' "$RUNNER_TEMP/proc-evidence/before.log"
+      - name: Share existing child descriptor cleanup with the proc reader
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('crates/magicnet-cli/src/process.rs')
+          u=Path('crates/magicnet-cli/src/utils.rs')
+          s=p.read_text()
+          a=s.index('#[cfg(any(target_os = "android", target_os = "linux"))]\nunsafe fn watchdog_close_inherited_fds')
+          b=s.index('#[cfg(any(target_os = "android", target_os = "linux"))]\nunsafe fn watchdog_pidfd_open',a)
+          helper=s[a:b].replace('unsafe fn watchdog_close_inherited_fds','pub(crate) unsafe fn close_inherited_fds_except')
+          helper=helper.replace('let closed = close_range(0, low.saturating_sub(1) as libc::c_uint) == 0', 'let closed = (low == 0 || close_range(0, (low - 1) as libc::c_uint) == 0)')
+          s=s[:a]+s[b:]
+          assert s.count('watchdog_close_inherited_fds(control[0], worker_pid_pipe[0]);') == 1
+          p.write_text(s.replace('watchdog_close_inherited_fds(control[0], worker_pid_pipe[0]);','crate::utils::close_inherited_fds_except(control[0], worker_pid_pipe[0]);'))
+          s=u.read_text()
+          needle='fn close_raw_fd(fd: RawFd) {'
+          assert s.count(needle)==1
+          s=s.replace(needle,'// Called only in fork children that will not exec. CLOEXEC alone cannot\n// release inherited pipe writers, executable write handles or file locks.\n'+helper+needle)
+          needle='    if worker_pid == 0 {\n        close_raw_fd(pipe_fds[0]);'
+          assert s.count(needle)==1
+          s=s.replace(needle,'    if worker_pid == 0 {\n        // Keep only this worker\'s result pipe before opening a potentially\n        // blocking source. No unrelated parent descriptor belongs here.\n        unsafe { close_inherited_fds_except(pipe_fds[1], pipe_fds[1]) };')
+          u.write_text(s)
+          PY
+          cargo fmt --all
+          git add -- crates/magicnet-cli/src/process.rs crates/magicnet-cli/src/utils.rs crates/magicnet-cli/tests/internal/proc_fd_inheritance.rs
+          git diff --cached --check
+          git diff --cached --binary > "$RUNNER_TEMP/proc-evidence/final.patch"
+      - name: Verify exact regression and existing executable probe repeatedly
         run: |
           set -euo pipefail
-          npm run test:ui 2>&1 | tee "$RUNNER_TEMP/terminal-evidence/browser.log"
-      - name: Prepare tested product commit without moving refs
+          cargo test --locked --bin magicnet-cli utils::proc_fd_inheritance_tests::blocked_proc_worker_releases_unrelated_descriptors -- --exact --nocapture 2>&1 | tee "$RUNNER_TEMP/proc-evidence/after.log"
+          for round in $(seq 1 10); do
+            cargo test --locked --bin magicnet-cli diagnostics::mode_aware_tests::ebpf_dataplane_does_not_require_magicnet0 -- --exact
+          done 2>&1 | tee "$RUNNER_TEMP/proc-evidence/probe-repeat.log"
+      - name: Full Rust suite, Clippy and Android cross-check
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo test --locked --workspace --all-targets --all-features 2>&1 | tee "$RUNNER_TEMP/proc-evidence/rust-test.log"
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings 2>&1 | tee "$RUNNER_TEMP/proc-evidence/clippy.log"
+          cargo check --locked --workspace --all-targets --all-features --target aarch64-linux-android 2>&1 | tee "$RUNNER_TEMP/proc-evidence/android-check.log"
+      - name: Prepare only tested product files without moving refs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
           import json, os, pathlib, subprocess
-          expected = {'webui/src/components/pages/TerminalPage.vue':'8e13b6a575633a1b8c8f5b828106c8fb84677861','webui/src/components/pages/terminalHistory.ts':'a5f83b6be76bb895a2f696ae7255a02219e836c4','webui/src/i18n/catalogs/terminal.ts':'3cc5ce0f9656a937884261b6a568993cc4a79702','webui/terminal-history.test.mjs':'dccf91024715cf28bd964ec4ea0a496e0451da4c'}
-          files = subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
-          assert set(files) == set(expected), files
-          for path in files:
-              assert subprocess.check_output(['git','hash-object',path],text=True).strip() == expected[path], path
-          def post(endpoint, body):
-              return json.loads(subprocess.check_output(['gh','api','--method','POST',f'repos/LIghtJUNction/MagicNet/git/{endpoint}','--input','-'],input=json.dumps(body),text=True))
-          tree = post('trees', {'base_tree':'0da396284bcb8d7f24aff8f7c7401636dc02fe69','tree':[{'path':p,'mode':'100644','type':'blob','content':pathlib.Path(p).read_text()} for p in files]})
-          commit = post('commits', {'message':'fix(webui): keep terminal history private and serialize command admission','tree':tree['sha'],'parents':['e1bb6da9342945cb13db53a7bb9853fccd7ab0d9']})
-          result = {'sha':commit['sha'],'tree':tree['sha'],'parent':'e1bb6da9342945cb13db53a7bb9853fccd7ab0d9','files':files}
-          pathlib.Path(os.environ['RUNNER_TEMP'],'terminal-evidence/prepared-commit.json').write_text(json.dumps(result,indent=2))
+          parent='3d1bb234e945af7665c58a1392b6170f97ddac54'
+          expected={'crates/magicnet-cli/src/process.rs','crates/magicnet-cli/src/utils.rs','crates/magicnet-cli/tests/internal/proc_fd_inheritance.rs'}
+          files=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert set(files)==expected, files
+          def api(endpoint, body=None):
+              args=['gh','api',f'repos/LIghtJUNction/MagicNet/git/{endpoint}']
+              if body is None: return json.loads(subprocess.check_output(args,text=True))
+              return json.loads(subprocess.check_output(args+['--method','POST','--input','-'],input=json.dumps(body),text=True))
+          base=api('commits/'+parent)
+          tree=api('trees',{'base_tree':base['tree']['sha'],'tree':[{'path':p,'mode':'100644','type':'blob','content':pathlib.Path(p).read_text()} for p in files]})
+          commit=api('commits',{'message':'fix(runtime): release unrelated descriptors in forked proc workers','tree':tree['sha'],'parents':[parent]})
+          result={'sha':commit['sha'],'tree':tree['sha'],'parent':parent,'files':files}
+          pathlib.Path(os.environ['RUNNER_TEMP'],'proc-evidence/prepared-commit.json').write_text(json.dumps(result,indent=2))
           print(json.dumps(result,indent=2))
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: terminal-privacy-evidence
-          path: ${{ runner.temp }}/terminal-evidence/
+          name: proc-descriptor-evidence
+          path: ${{ runner.temp }}/proc-evidence/
           if-no-files-found: error
           retention-days: 7
