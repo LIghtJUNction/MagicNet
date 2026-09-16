@@ -297,7 +297,7 @@ magicnet_singbox_sanitize_generated_config() {
     # shellcheck disable=SC2016
     (
         umask 077
-        "$_sanitize_jq" -L "$_sanitize_ai_lib" --rawfile configured_filters "$_sanitize_filter_file" -e 'include "ai-node-tags";
+        "$_sanitize_jq" -L "$_sanitize_ai_lib" --rawfile configured_filters "$_sanitize_filter_file" -e 'include "ai-node-tags"; include "google-play-policy";
       def proxy_node_type:
         .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
           or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks";
@@ -460,6 +460,7 @@ magicnet_singbox_sanitize_generated_config() {
           | . + ai_service_outbounds($ai_tags))
       | .route.rules = ((.route.rules // [])
         | map(select(((has("outbound") and (has_match(.) | not) and (has("action") | not)) | not))))
+      | google_play_direct_fallback
     ' "$_sanitize_config_file" >"$_sanitize_tmp_file"
     ) &&
         magicnet_json_object_valid "$_sanitize_tmp_file" "$_sanitize_jq" &&
