@@ -1,0 +1,36 @@
+name: Isolated candidate snapshot
+on:
+  push:
+    branches: [audit/magicnet-72h-20260916]
+    paths: [.github/workflows/audit-pr-sources.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Capture candidates and removal history
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/candidates
+          for pr in 259 263 285 286; do
+            git fetch origin refs/pull/$pr/head:refs/remotes/origin/audit-pr-$pr
+            ref=refs/remotes/origin/audit-pr-$pr
+            git rev-parse "$ref" > /tmp/candidates/pr-$pr.sha
+            git archive --format=tar.gz "$ref" > /tmp/candidates/pr-$pr.tar.gz
+            base=$(git merge-base ff3b5f07a53da92696eb8c33e833de9b1dca5434 "$ref")
+            git diff "$base" "$ref" > /tmp/candidates/pr-$pr.diff
+          done
+          git show 2bdc30618290ee6afbc04eed67db96b79bd90091 > /tmp/candidates/hardening-removal.diff
+          git log --first-parent --since=2026-09-13T05:33:45Z -p ff3b5f07a53da92696eb8c33e833de9b1dca5434 > /tmp/candidates/first-parent.diff
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magicnet-audit-candidates
+          path: /tmp/candidates/
+          retention-days: 7
