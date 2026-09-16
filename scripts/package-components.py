@@ -128,7 +128,7 @@ def write_zip(path: Path, entries: dict[str, tuple[zipfile.ZipInfo, bytes]]) -> 
         for name in sorted(entries):
             info, data = entries[name]
             # writestr mutates offsets/sizes; keep shared/source ZIP metadata intact.
-            out.writestr(copy.copy(info), data)
+            out.writestr(copy.copy(info), data, compresslevel=9)
 
 
 def split(source: Path, helper: Path, output: Path, repository: str, arch: str) -> dict:

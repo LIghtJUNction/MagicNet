@@ -148,8 +148,9 @@ test("control page reuses confirmation and renders non-optimistic state facts", 
   assert.match(controlSource, /state\.runtime\.transparentSharedTc/);
   assert.match(controlSource, /role="alert"/);
   assert.match(controlSource, /无法读取透明代理状态/);
-  assert.match(runtimeSource, /transparentFailed/);
-  assert.match(runtimeSource, /invalidateTransparentRuntime/);
+  assert.match(runtimeSource, /--json service status/);
+  assert.match(runtimeSource, /state\.runtime = snapshot \?\? \{ \.\.\.runtimeDefaults \}/);
+  assert.doesNotMatch(runtimeSource, /"transparent status"/);
   assert.match(appSource, /transparentRouteData/);
   assert.match(runtimeInsightSource, /透明代理状态不可用/);
   assert.doesNotMatch(controlSource, /transparent set auto/);

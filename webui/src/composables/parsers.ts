@@ -106,6 +106,7 @@ export const runtimeDefaults: RuntimeState = {
   singBoxState: "unknown",
   singBox: "unknown",
   singBoxRssKib: null,
+  serviceReady: null,
   fswatch: "unknown",
   transparentMode: "unknown",
   transparentEffectiveMode: "unknown",
@@ -113,6 +114,7 @@ export const runtimeDefaults: RuntimeState = {
   transparentLocalCgroup: "unknown",
   transparentSharedTc: "unknown",
   transparentSharedInterfaces: [],
+  transparentSharedInterfaceCount: null,
   transparentRecentError: "",
   transparentTransition: "unknown",
   api: "",
@@ -293,7 +295,7 @@ function normalizeTransparentEffectiveMode(
   value: string,
 ): TransparentEffectiveMode | null {
   const mode = value.trim().toLowerCase();
-  return ["tun", "local", "hybrid", "unknown"].includes(mode)
+  return ["tun", "local", "shared", "hybrid", "unknown"].includes(mode)
     ? (mode as TransparentEffectiveMode)
     : null;
 }
@@ -358,6 +360,7 @@ export function invalidateTransparentRuntime(
     transparentLocalCgroup: "unknown",
     transparentSharedTc: "unknown",
     transparentSharedInterfaces: [],
+    transparentSharedInterfaceCount: null,
     transparentRecentError: "",
     transparentTransition: "unknown",
   };

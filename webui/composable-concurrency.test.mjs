@@ -6,6 +6,7 @@ import { t } from "./src/i18n/index.ts";
 import ts from "typescript";
 import * as background from "./src/composables/backgroundTasks.ts";
 import { invalidateTransparentRuntime, parseRuntime, parseSubs, runtimeDefaults, subscriptionDefaults } from "./src/composables/parsers.ts";
+import { parseMachineRuntime, machineFailureText } from "./src/composables/machineStatus.ts";
 import { execFailed } from "./src/utils.ts";
 
 // Execute the production functions with deferred device I/O and manual timers.
@@ -77,7 +78,7 @@ function backgroundFixture() {
     redactedCliPreview: (value) => value,
     runShellOutcome: () => pending,
     runShell: async () => "[launch] id=operation label=restart\n[exit] id=operation status=0",
-    runCli: async () => "status", parseSubs, execFailed, parseRuntime, invalidateTransparentRuntime,
+    runCli: async () => "status", parseSubs, execFailed, parseRuntime, invalidateTransparentRuntime, parseMachineRuntime, machineFailureText, runtimeDefaults,
     withAction: async (_, action) => action(),
     refreshApps: async () => true,
     refreshBlock: async () => true, refreshDns: async () => true,
@@ -283,14 +284,19 @@ test("ControlPage completion does not begin a foreground refresh over a newer ac
   assert.equal(state.notice, "new notice");
 });
 
-const serviceSnapshot = "sing-box: running\nfswatch: running";
+const serviceSnapshot = JSON.stringify({schema:1,ok:true,command:"service.status",data:{
+  core:{sing_box:{process_state:"running",running:true,pid_summary:"123",rss_kib:1024}},
+  supervisors:{fswatch:"234"},api:{url:"http://127.0.0.1:9090",webui:""},readiness:{overall:true},
+  transparent:{configured_mode:"ebpf",effective_type:"ebpf",effective_mode:"hybrid",capability:"ok",
+    local_cgroup:"attached",shared_tc:"attached",shared_interface_count:1,transition:"idle",has_recent_error:false,dataplane_ready:true}
+}});
 const transparentSnapshot = "mode=ebpf\neffective_mode=hybrid\ncapability=ok\nlocal_cgroup=attached\nshared_tc=attached\nshared_interfaces=wlan2\ntransition=idle";
 
 test("completed background tasks quietly refresh complete runtime after foreground ownership changes", async () => {
   const { context, state, timers, supersede } = backgroundFixture();
   state.runtime.singBoxState = "stopped";
   state.busy = true;
-  context.runCli = async (args) => args === "service status" ? serviceSnapshot : transparentSnapshot;
+  context.runCli = async (args) => args === "--json service status" ? serviceSnapshot : transparentSnapshot;
   context.followBackgroundLogs("/task.log", "restart", "service restart", "operation", 1, 1);
   supersede();
   await timers.shift()();
@@ -300,7 +306,8 @@ test("completed background tasks quietly refresh complete runtime after foregrou
   assert.equal(state.runtime.transparentEffectiveMode, "hybrid");
   assert.equal(state.runtime.transparentLocalCgroup, "attached");
   assert.equal(state.runtime.transparentSharedTc, "attached");
-  assert.deepEqual(state.runtime.transparentSharedInterfaces, ["wlan2"]);
+  assert.equal(state.runtime.transparentSharedInterfaceCount, 1);
+  assert.equal(state.runtime.transparentSharedInterfaces.length, 0);
   assert.equal(state.output, "new foreground output");
   assert.equal(state.notice, "new notice");
   assert.equal(state.phase, "done");
@@ -315,7 +322,7 @@ test("completion refresh discards a runtime snapshot superseded while its reads 
   context.runCli = async (args) => {
     startRead();
     await pending;
-    return args === "service status" ? serviceSnapshot : transparentSnapshot;
+    return args === "--json service status" ? serviceSnapshot : transparentSnapshot;
   };
   context.followBackgroundLogs("/task.log", "restart", "service restart", "operation", 1, 1);
   const polling = timers.shift()();
@@ -341,4 +348,17 @@ test("failed completion status reads preserve newer foreground feedback", async 
   assert.equal(state.output, "new foreground output");
   assert.equal(state.notice, "new notice");
   assert.equal(state.phase, "done");
+});
+
+
+test("malformed service refresh clears stale running state without a human fallback", async () => {
+  const { context, state } = backgroundFixture();
+  state.runtime.singBoxState = "sing-box";
+  state.runtime.singBoxRssKib = 999999;
+  const calls=[];
+  context.runCli=async (command) => { calls.push(command); return "sing-box: running"; };
+  assert.equal(await context.refreshStatus(undefined,false),false);
+  assert.deepEqual(calls,["--json service status"]);
+  assert.equal(state.runtime.singBoxState,"unknown");
+  assert.equal(state.runtime.singBoxRssKib,null);
 });

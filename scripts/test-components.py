@@ -14,6 +14,8 @@ import subprocess
 import tempfile
 import unittest
 import warnings
+import random
+import zlib
 import zipfile
 
 import yaml
@@ -22,6 +24,23 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("package_components", ROOT / "scripts/package-components.py")
 package = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(package)
+
+
+class CompressionTests(unittest.TestCase):
+    def test_prebuilt_zipinfo_still_uses_maximum_compression(self):
+        rng = random.Random(41)
+        payload = "".join(rng.choices("ab", k=100000)).encode()
+        compressor = zlib.compressobj(9, wbits=-15)
+        expected = compressor.compress(payload) + compressor.flush()
+        default = zlib.compressobj(6, wbits=-15)
+        default_bytes = default.compress(payload) + default.flush()
+        self.assertLess(len(expected), len(default_bytes))
+        with tempfile.TemporaryDirectory() as temporary:
+            archive = Path(temporary) / "package.zip"
+            package.write_zip(archive, {"payload": package.zip_entry("payload", payload)})
+            with zipfile.ZipFile(archive) as output:
+                self.assertEqual(output.read("payload"), payload)
+                self.assertEqual(output.getinfo("payload").compress_size, len(expected))
 
 
 class PackageTests(unittest.TestCase):
