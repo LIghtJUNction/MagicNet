@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the real rule hook with isolated bundles and forbidden networking."""
+"""Exercise the real Release hook with isolated bundles and forbidden upstream networking."""
 import hashlib
 import json
 import os
@@ -24,7 +24,8 @@ class BundledRuleTests(unittest.TestCase):
         self.bin = self.root / "bin"
         for path in (self.module / ".config/sing-box", self.bundle, self.bin):
             path.mkdir(parents=True)
-        (self.module / ".config/sing-box/config.json").write_text(json.dumps({
+        self.config = self.module / ".config/sing-box/config.json"
+        self.config.write_text(json.dumps({
             "route": {"rule_set": [{"type": "local", "path": "rules/" + FILE}]}
         }))
         for name in ("git", "curl"):
@@ -32,20 +33,20 @@ class BundledRuleTests(unittest.TestCase):
             executable.write_text("#!/bin/sh\necho forbidden-network >&2\nexit 91\n")
             executable.chmod(0o755)
         self.output = self.module / ".config/sing-box/rules" / FILE
-        self.write_bundle(b"compiled fixture one\n")
+        self.write_bundle(b"SRS\x02compiled fixture one\n")
 
     def write_bundle(self, content):
         (self.bundle / FILE).write_bytes(content)
         self.digest = hashlib.sha256(content).hexdigest()
         (self.bundle / "manifest.json").write_text(json.dumps({
             "version": 1,
-            "rulesets": {FILE[:-4]: {"sha256_srs": self.digest}},
+            "rulesets": {FILE[:-4]: {"sha256_srs": self.digest, "srs_size": len(content)}},
         }))
 
     def invoke(self, **overrides):
         env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
                    KAM_MODULE_ROOT=str(self.module), KAM_PROJECT_ROOT=str(self.project),
-                   KAM_HOOKS_ROOT=str(ROOT / "hooks"))
+                   KAM_HOOKS_ROOT=str(ROOT / "hooks"), MAGICNET_RULES_DIR=str(self.bundle))
         env.update(overrides)
         return subprocess.run(["bash", str(HOOK)], env=env, text=True,
                               capture_output=True, timeout=10, check=False)
@@ -59,6 +60,11 @@ class BundledRuleTests(unittest.TestCase):
         files = list((self.module / ".local/state/sing-box-rules").glob("*.hash"))
         self.assertEqual(len(files), 1)
         return files[0].read_text()
+
+    def write_downloader(self, script):
+        folder = self.project / "rules/scripts"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "download_release.py").write_text(script)
 
     def test_offline_bundle_has_its_own_digest_identity(self):
         self.assert_success()
@@ -95,9 +101,9 @@ class BundledRuleTests(unittest.TestCase):
 
     def test_changed_bundle_updates_without_a_remote_ref_change(self):
         self.assert_success()
-        self.write_bundle(b"compiled fixture two\n")
+        self.write_bundle(b"SRS\x02compiled fixture two\n")
         self.assert_success()
-        self.assertEqual(self.output.read_bytes(), b"compiled fixture two\n")
+        self.assertEqual(self.output.read_bytes(), b"SRS\x02compiled fixture two\n")
         self.assertEqual(self.state(), f"bundled:sha256:{self.digest}\n")
 
     def test_corrupt_destination_is_repaired_despite_matching_marker(self):
@@ -109,13 +115,72 @@ class BundledRuleTests(unittest.TestCase):
     def test_partial_copy_failure_preserves_old_output_and_state(self):
         self.assert_success()
         previous, state = self.output.read_bytes(), self.state()
-        self.write_bundle(b"next candidate\n")
+        self.write_bundle(b"SRS\x02next candidate\n")
         copy = self.bin / "cp"
         copy.write_text('#!/bin/sh\nprintf partial >"$3"\nexit 1\n')
         copy.chmod(0o755)
         self.assertNotEqual(self.invoke().returncode, 0)
         self.assertEqual(self.output.read_bytes(), previous)
         self.assertEqual(self.state(), state)
+
+    def test_missing_required_rule_does_not_fetch_upstream(self):
+        (self.bundle / FILE).unlink()
+        result = self.invoke()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("forbidden-network", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_all_selected_files_are_validated_before_any_replacement(self):
+        self.assert_success()
+        previous, state = self.output.read_bytes(), self.state()
+        self.write_bundle(b"SRS\x02new candidate\n")
+        config = json.loads(self.config.read_text())
+        config["route"]["rule_set"].append({"type": "local", "path": "rules/missing.srs"})
+        self.config.write_text(json.dumps(config))
+        self.assertNotEqual(self.invoke().returncode, 0)
+        self.assertEqual(self.output.read_bytes(), previous)
+        self.assertEqual(self.state(), state)
+
+    def test_unsafe_rule_path_is_rejected(self):
+        self.config.write_text(json.dumps({"route": {"rule_set": [
+            {"type": "local", "path": "rules/../../escape.srs"}]}}))
+        self.assertNotEqual(self.invoke().returncode, 0)
+        self.assertFalse((self.module / "escape.srs").exists())
+
+    def test_invalid_config_does_not_succeed_with_empty_inventory(self):
+        self.config.write_text("not json")
+        self.assertNotEqual(self.invoke().returncode, 0)
+
+    def test_default_requires_submodule_even_if_stale_dist_exists(self):
+        result = self.invoke(MAGICNET_RULES_DIR="")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("submodule is missing", result.stdout)
+        self.assertFalse(self.output.exists())
+
+    def test_release_download_failure_preserves_previous_file_and_marker(self):
+        self.assert_success()
+        previous, state = self.output.read_bytes(), self.state()
+        self.write_downloader("raise SystemExit(23)\n")
+        result = self.invoke(MAGICNET_RULES_DIR="")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("forbidden-network", result.stderr)
+        self.assertEqual(self.output.read_bytes(), previous)
+        self.assertEqual(self.state(), state)
+
+    def test_release_download_is_retried_on_next_build(self):
+        self.write_downloader("from pathlib import Path\nimport sys\n"
+            "flag = Path(__file__).parent / 'attempted'\n"
+            "if not flag.exists():\n    flag.touch()\n    raise SystemExit(23)\n"
+            "assert sys.argv[1] == '--output'\n"
+            "assert Path(sys.argv[2]).name == 'dist'\n")
+        self.assertNotEqual(self.invoke(MAGICNET_RULES_DIR="").returncode, 0)
+        self.assertFalse(self.output.exists())
+        self.assert_success(MAGICNET_RULES_DIR="")
+        self.assertEqual(self.output.read_bytes(), (self.bundle / FILE).read_bytes())
+
+    def test_release_tag_is_passed_to_the_consumer(self):
+        self.write_downloader("import os\nassert os.environ['MAGICNET_RULES_TAG'] == 'rules-test'\n")
+        self.assert_success(MAGICNET_RULES_DIR="", MAGICNET_RULES_TAG="rules-test")
 
 
 if __name__ == "__main__":
