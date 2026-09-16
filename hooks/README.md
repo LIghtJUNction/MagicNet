@@ -2,7 +2,7 @@
 
 MagicNet build hooks are intentionally small and idempotent. Hooks should only
 orchestrate build-time work; reusable download, verification, archive, logging,
-and atomic-file helpers belong in `hooks/lib/`.
+and atomic-file helpers belong in `hooks/lib/` or the maintained source submodule.
 
 Pre-build hooks are ordered by their four-digit numeric prefix. Prefixes must be
 unique so ordering never depends on filename sorting inside the same slot.
@@ -38,8 +38,10 @@ legacy layout.
   eCapture Android arm64 release.
 - `pre-build/5200.update_zashboard.sh` installs the reviewed, SHA-256-locked
   zashboard release into the sing-box configuration tree.
-- `pre-build/5450.update_sing_box_rules.sh` refreshes configured rule-set assets
-  from immutable upstream revisions.
+- `pre-build/5450.update_sing_box_rules.sh` downloads a verified MagicNetRules
+  Release bundle and installs configured SRS files; it does not fetch individual
+  upstream rule branches. See `docs/rules-release-distribution.md` for tag pinning
+  and explicit offline builds.
 - `pre-build/5460.update_chatgpt_voice_rules.sh` refreshes the validated
   ChatGPT Voice rule-set.
 - `pre-build/5470.optimize_sing_box_routing.sh` normalizes routing after rule
@@ -50,11 +52,16 @@ legacy layout.
 
 ## Release policy
 
-External release artifacts must be declared in `lib/release_locks.sh`. A hook
-must not query "latest" and install it directly. The shared release helpers
-verify the immutable SHA-256 before replacing an existing cache or runtime
-file. Failed downloads, validation, or extraction must leave the previous
-installation intact.
+External executable release artifacts must be declared in `lib/release_locks.sh`.
+A hook must not query "latest" and install an executable directly. The shared
+release helpers verify the immutable SHA-256 before replacing an existing cache
+or runtime file. Failed downloads, validation, or extraction must leave the
+previous installation intact.
+
+First-party rule data is distributed by MagicNetRules' scheduled Release workflow.
+Its consumer resolves a concrete Release tag before downloading and checks both
+archive and per-file digests. Set `MAGICNET_RULES_TAG` when a build must use an
+explicitly pinned rules snapshot. Generated rule data is never committed.
 
 ## 2026 config policy
 

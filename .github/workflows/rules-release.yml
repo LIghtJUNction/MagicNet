@@ -1,0 +1,67 @@
+name: Rules Release Integration
+on:
+  push:
+    branches: [main]
+    paths:
+      - rules
+      - hooks/pre-build/5450.update_sing_box_rules.sh
+      - scripts/test-bundled-rules.py
+      - scripts/test-rule-hash-retry.sh
+      - .github/workflows/rules-release.yml
+  pull_request:
+    paths:
+      - rules
+      - hooks/pre-build/5450.update_sing_box_rules.sh
+      - scripts/test-bundled-rules.py
+      - scripts/test-rule-hash-retry.sh
+      - .github/workflows/rules-release.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rules-release-integration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  rules-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Initialize rewritten source-only rules submodule
+        run: |
+          set -euo pipefail
+          git submodule update --init -- rules
+          git -C rules rev-list --objects --all | awk '
+            $2 ~ /^(dist|sources|sources_binary)(\/|$)/ { bad=1; print }
+            END { exit bad }
+          '
+          git -C rules count-objects -vH
+      - name: Regression tests
+        run: |
+          set -euo pipefail
+          python3 scripts/test-bundled-rules.py -v
+          bash scripts/test-rule-hash-retry.sh
+      - name: Download a real Release and install configured rules
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAM_PROJECT_ROOT: ${{ github.workspace }}
+          KAM_HOOKS_ROOT: ${{ github.workspace }}/hooks
+          KAM_MODULE_ROOT: ${{ runner.temp }}/rules-release-module
+        run: |
+          set -euo pipefail
+          mkdir -p "$KAM_MODULE_ROOT/.config/sing-box"
+          cat > "$KAM_MODULE_ROOT/.config/sing-box/config.json" <<'JSON'
+          {"route":{"rule_set":[
+            {"type":"local","path":"rules/ddch-direct.srs"},
+            {"type":"local","path":"rules/magicnet-cn-domain.srs"},
+            {"type":"local","path":"rules/service-google-play.srs"},
+            {"type":"local","path":"rules/hagezi-light.srs"}
+          ]}}
+          JSON
+          bash hooks/pre-build/5450.update_sing_box_rules.sh
+          test "$(find "$KAM_MODULE_ROOT/.config/sing-box/rules" -name '*.srs' | wc -l)" -eq 4
+          test "$(find "$KAM_MODULE_ROOT/.local/state/sing-box-rules" -name '*.hash' | wc -l)" -eq 4
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
