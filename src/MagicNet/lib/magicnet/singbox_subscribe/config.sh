@@ -1,3 +1,12 @@
+# Isolated subscription tests and recovery paths may load this file without
+# the normal module entrypoint. Reuse the canonical endpoint helpers whenever
+# they have not already been loaded.
+if ! command -v magicnet_singbox_api_endpoint >/dev/null 2>&1 &&
+    command -v magicnet_lib_dir >/dev/null 2>&1; then
+    # shellcheck disable=SC1090
+    . "$(magicnet_lib_dir)/api.sh"
+fi
+
 magicnet_singbox_emitted_node_port_valid() {
     _emitted_port=$(printf '%s' "$1" |
         sed -n 's/.*"server_port":\([0-9][0-9]*\)[,}].*/\1/p')
@@ -934,10 +943,6 @@ magicnet_singbox_is_running() (
     return "$_running_rc"
 )
 
-magicnet_singbox_listener_owned() {
-    _listener_pid="$1"
-    ss -lntp 2>/dev/null | grep -E '127\.0\.0\.1:9090[[:space:]]' | grep -q "pid=${_listener_pid},"
-}
 
 magicnet_singbox_owned_ready() {
     _ready_owned_config="$1"
@@ -964,7 +969,7 @@ magicnet_singbox_owned_ready() {
     while IFS= read -r _ready_owned_pid; do
         if [ "$_ready_api_expected" -eq 0 ] || {
             magicnet_singbox_listener_owned "$_ready_owned_pid" &&
-                curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |
+                curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version" 2>/dev/null |
                 grep -q '"version"'
         }; then
             _ready_found=1
@@ -1016,7 +1021,7 @@ magicnet_singbox_ensure_start_owned() {
         _api_expected=1
     fi
     [ -x "$_owned_binary" ] || return 1
-    ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]' && return 1
+    magicnet_singbox_api_listener_exists && return 1
     mkdir -p "${MODDIR}/.log"
     nohup "$_owned_binary" run -c "$_owned_config" -D "$_owned_work" >"$_owned_log" 2>&1 </dev/null &
     _new_pid=$!
@@ -1027,7 +1032,7 @@ magicnet_singbox_ensure_start_owned() {
             [ "$_api_expected" -eq 0 ] ||
                 {
                     magicnet_singbox_listener_owned "$_new_pid" &&
-                        curl -fsS --max-time 1 http://127.0.0.1:9090/version 2>/dev/null |
+                        curl -fsS --max-time 1 "$(magicnet_singbox_api_endpoint)/version" 2>/dev/null |
                         grep -q '"version"'
                 }
         }; then
@@ -1216,7 +1221,7 @@ magicnet_singbox_restart_owned() {
     rm -f "$_owned_pids"
 
     # A listener with no authoritatively owned process is not safe to replace.
-    if ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:9090[[:space:]]'; then
+    if magicnet_singbox_api_listener_exists; then
         warn "sing-box API listener ownership is unknown; restart aborted"
         return 2
     fi

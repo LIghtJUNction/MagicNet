@@ -77,7 +77,7 @@ const COMMANDS: &[CommandSpec] = commands! {
     "mcp" => mcp, "{status|enable [bind] [port]|disable|set [bind] [port]|secret|rotate-secret|start|stop|restart|logs [lines]}";
     "webui" => webui_cmd, "{status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}}";
     "backup" => backup_cmd, "{export [password]|restore [password|-] <base64>|restore-file [password|-] <path>}";
-    "api" => api_cmd, "{ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}";
+    "api" => api_command, "{endpoint|ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}";
     "app" => app_cmd, "{list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}; proxy=sing-box proxy outbound, direct=sing-box direct outbound, bypass=outside MagicNet";
     "diagnose" => |app, _| run_magicnet_function(app, "magicnet_action_diagnose"), "";
 };
@@ -182,6 +182,14 @@ fn service_command(app: &App, args: &[String]) -> Result<(), String> {
             sync_service_lifecycle(app)
         }
     }
+}
+
+fn api_command(app: &App, args: &[String]) -> Result<(), String> {
+    if matches!(args.first().map(String::as_str), Some("endpoint")) {
+        println!("{}", app.api);
+        return Ok(());
+    }
+    api_cmd(app, args)
 }
 
 fn subscription_command(app: &App, args: &[String]) -> Result<(), String> {

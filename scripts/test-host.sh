@@ -84,6 +84,7 @@ check bash scripts/test-subscription-usage.sh
 check bash scripts/test-singbox-pid-discovery.sh
 check bash scripts/test-singbox-ownership.sh
 check bash scripts/test-singbox-tristate-safety.sh
+check bash scripts/test-api-endpoint.sh
 check bash scripts/test-singbox-readiness.sh
 check sh scripts/test-singbox-runtime-memory.sh
 check bash scripts/test-supervisor-pid-safety.sh

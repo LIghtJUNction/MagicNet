@@ -11,7 +11,7 @@ import { generateQrSvgPath } from "@/lib/qrcode";
 import {
   inspectTailscale, saveTailscale, removeTailscale, parseTailscaleLogin, TailscaleSetupError,
   TAILSCALE_KEYS_URL, TAILSCALE_MACHINES_URL,
-  type SaveResult, type SetupErrorCode, type TailscaleSnapshot,
+  type SaveResult, type SetupErrorCode, type TailscaleSnapshot, type TailscaleClient,
 } from "./tailscaleSetup";
 
 const { state, runPrivateCli, stagePrivatePayload, removePrivatePayload, shellQuote, openExternal, refreshStatus } = useMagicNet();
@@ -44,6 +44,8 @@ function stopLoginPolling(): void {
   loginGeneration++;
   clearTimeout(loginTimer);
   loginUrl.value = "";
+  loginMessage.value = "";
+  isOnline.value = false;
 }
 
 function cancelLogin(): void {
@@ -147,6 +149,29 @@ async function read(): Promise<void> {
   } finally { loading.value = false; }
 }
 
+function privateClient(label: string): TailscaleClient {
+  return {
+    run: (args) => runPrivateCli(args, label, args.startsWith("config-editor save-file")
+      ? "config-editor save-file sing-box [private-payload]" : `${args} [private-output]`),
+    stage: (text) => stagePrivatePayload("tmp", `tailscale-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`, text, t("Tailscale 私密配置")),
+    remove: (name) => removePrivatePayload("tmp", name, t("Tailscale 私密配置")),
+    quote: shellQuote,
+    canSave: () => !state.config.dirty,
+  };
+}
+
+function applySavedSnapshot(result: SaveResult): void {
+  if (!result.saved || !result.snapshot) return;
+  snapshot.value = result.snapshot;
+  hostname.value = result.snapshot.hostname;
+  edited.value = false;
+  if (!state.config.dirty) {
+    state.config.text = "";
+    state.config.status = t("Tailscale 已更新，请重新加载配置。");
+    state.config.validation = { status: "idle", summary: state.config.status, checkedAt: "" };
+  }
+}
+
 async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   if (saveDisabled.value || !snapshot.value) return;
   saving.value = true;
@@ -156,23 +181,8 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   const draft = { hostname: hostname.value, authKey: mode === "browser" ? "" : authKey.value, mode };
   authKey.value = "";
   try {
-    const result = await saveTailscale({
-      run: (args) => runPrivateCli(args, t("配置 Tailscale"), args.startsWith("config-editor save-file")
-        ? "config-editor save-file sing-box [private-payload]" : `${args} [private-output]`),
-      stage: (text) => stagePrivatePayload("tmp", `tailscale-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`, text, t("Tailscale 私密配置")),
-      remove: (name) => removePrivatePayload("tmp", name, t("Tailscale 私密配置")),
-      quote: shellQuote,
-      canSave: () => !state.config.dirty,
-    }, draft, snapshot.value);
-    if (result.saved && result.snapshot) {
-      snapshot.value = result.snapshot;
-      edited.value = false;
-      if (!state.config.dirty) {
-        state.config.text = "";
-        state.config.status = t("Tailscale 已更新，请重新加载配置。");
-        state.config.validation = { status: "idle", summary: state.config.status, checkedAt: "" };
-      }
-    }
+    const result = await saveTailscale(privateClient(t("配置 Tailscale")), draft, snapshot.value);
+    applySavedSnapshot(result);
     message.value = resultMessage(result);
     hasError.value = result.stage !== "done";
     if (result.stage === "done" || result.stage === "restart") await refreshStatus(undefined, false);
@@ -184,31 +194,22 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
 }
 
 async function disconnectTailscale(): Promise<void> {
-  if (locked.value) return;
+  if (saveDisabled.value || !snapshot.value?.configured) return;
   saving.value = true;
   hasError.value = false;
   message.value = t("正在移除 Tailscale 节点并重启核心…");
+  authKey.value = "";
   stopLoginPolling();
   try {
-    const result = await removeTailscale({
-      run: (args) => runPrivateCli(args, t("移除 Tailscale"), args.startsWith("config-editor save-file")
-        ? "config-editor save-file sing-box [private-payload]" : `${args} [private-output]`),
-      stage: (text) => stagePrivatePayload("tmp", `tailscale-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`, text, t("Tailscale 私密配置")),
-      remove: (name) => removePrivatePayload("tmp", name, t("Tailscale 私密配置")),
-      quote: shellQuote,
-      canSave: () => !state.config.dirty,
-    });
-    if (result.saved) {
-      await read();
-      message.value = t("Tailscale 节点已移除，核心已重启。");
-    } else {
-      message.value = resultMessage(result);
-      hasError.value = true;
-    }
-    await refreshStatus(undefined, false);
-  } finally {
-    saving.value = false;
-  }
+    const result = await removeTailscale(privateClient(t("移除 Tailscale")), snapshot.value);
+    // Reading here would be skipped by the saving lock. The transaction's
+    // confirmed snapshot is authoritative even when the restart fails.
+    applySavedSnapshot(result);
+    message.value = result.stage === "done"
+      ? t("Tailscale 节点已移除，核心已重启。") : resultMessage(result);
+    hasError.value = result.stage !== "done";
+    if (result.stage === "done" || result.stage === "restart") await refreshStatus(undefined, false);
+  } finally { saving.value = false; }
 }
 
 async function retryRestart(): Promise<void> {
@@ -275,7 +276,7 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
             variant="ghost"
             size="sm"
             class="text-[var(--mn-danger)] hover:bg-[var(--mn-danger-bg,rgba(239,68,68,0.1))]"
-            :disabled="locked"
+            :disabled="saveDisabled"
             @click="disconnectTailscale"
           >
             <Trash2 :size="14" aria-hidden="true" />{{ t("断开并移除节点") }}
@@ -340,7 +341,7 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
         <div v-if="qrInfo" class="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-lg bg-[var(--mn-surface)] border border-[var(--mn-border)]">
           <div class="p-2 rounded bg-white shadow-sm flex-shrink-0">
             <svg
-              :viewBox="`0 0 ${qrInfo.size} ${qrInfo.size}`"
+              :viewBox="`-4 -4 ${qrInfo.size + 8} ${qrInfo.size + 8}`"
               class="w-36 h-36 block"
               role="img"
               aria-label="Tailscale Auth QR Code"

@@ -4,10 +4,10 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::os::unix::process::CommandExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -60,25 +60,23 @@ impl KillAndWait for LibcKillAndWait {
     }
 
     fn try_reap(&mut self) -> Result<bool, io::Error> {
-        loop {
-            let mut status = 0;
-            let result = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
-            if result == self.pid {
-                return Ok(true);
-            }
-            if result == 0 {
-                return Ok(false);
-            }
-            let err = io::Error::last_os_error();
-            if err.kind() == ErrorKind::Interrupted {
-                continue;
-            }
-            // ECHILD means another reaper already collected it.
-            return if err.raw_os_error() == Some(libc::ECHILD) {
-                Ok(true)
-            } else {
-                Err(err)
-            };
+        let mut status = 0;
+        let result = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
+        if result == self.pid {
+            return Ok(true);
+        }
+        if result == 0 {
+            return Ok(false);
+        }
+        let err = io::Error::last_os_error();
+        // Retry on the outer, deadline-bearing loop, never in an unbounded
+        // EINTR loop. ECHILD means another owner already collected the child.
+        if err.kind() == ErrorKind::Interrupted {
+            Ok(false)
+        } else if err.raw_os_error() == Some(libc::ECHILD) {
+            Ok(true)
+        } else {
+            Err(err)
         }
     }
 }
@@ -96,28 +94,154 @@ fn kill_and_reap_with<W: KillAndWait>(waiter: &mut W, grace: Duration) -> bool {
     }
 }
 
-fn defer_reap(pid: libc::pid_t) {
-    // Never put an unbounded wait on a deadline-bearing API path. A single
-    // detached poller eventually collects the child if a kernel-side D state
-    // clears; process exit safely reparents it otherwise.
-    let _ = thread::Builder::new()
-        .name("magicnet-child-reaper".to_string())
-        .spawn(move || {
-            let mut waiter = LibcKillAndWait { pid };
-            loop {
-                match waiter.try_reap() {
-                    Ok(true) | Err(_) => break,
-                    Ok(false) => thread::sleep(Duration::from_millis(250)),
-                }
-            }
+const MAX_CHILD_PROBES: usize = 64;
+const REAPER_INTERVAL: Duration = Duration::from_millis(250);
+
+#[derive(Default)]
+struct DeferredReaper {
+    pending: Vec<libc::pid_t>,
+    active_probes: usize,
+    worker_started: bool,
+}
+
+impl DeferredReaper {
+    fn reserve(&mut self) -> Result<(), String> {
+        if self.active_probes + self.pending.len() >= MAX_CHILD_PROBES {
+            return Err(
+                "child probe budget exhausted; waiting for existing children to exit".to_string(),
+            );
+        }
+        self.active_probes += 1;
+        Ok(())
+    }
+
+    fn defer(&mut self, pid: libc::pid_t) {
+        if pid > 0 && !self.pending.contains(&pid) {
+            self.pending.push(pid);
+        }
+    }
+}
+
+static CHILD_REAPER: Mutex<DeferredReaper> = Mutex::new(DeferredReaper {
+    pending: Vec::new(),
+    active_probes: 0,
+    worker_started: false,
+});
+static CHILD_REAPER_WAKE: Condvar = Condvar::new();
+
+pub(crate) struct ChildProbeBudget;
+
+impl Drop for ChildProbeBudget {
+    fn drop(&mut self) {
+        let mut state = CHILD_REAPER.lock().unwrap_or_else(|err| err.into_inner());
+        state.active_probes -= 1;
+    }
+}
+
+pub(crate) fn reserve_child_probe() -> Result<ChildProbeBudget, String> {
+    let mut state = CHILD_REAPER.lock().unwrap_or_else(|err| err.into_inner());
+    // Retry a failed reaper thread launch before admitting more work.
+    if !state.pending.is_empty() {
+        start_child_reaper(&mut state)?;
+    }
+    state.reserve()?;
+    Ok(ChildProbeBudget)
+}
+
+fn start_child_reaper(state: &mut DeferredReaper) -> Result<(), String> {
+    if !state.worker_started {
+        thread::Builder::new()
+            .name("magicnet-child-reaper".to_string())
+            .stack_size(64 * 1024)
+            .spawn(reap_deferred_children)
+            .map_err(|err| format!("start child reaper: {err}"))?;
+        state.worker_started = true;
+    }
+    Ok(())
+}
+
+fn reap_deferred_children() {
+    let mut state = CHILD_REAPER.lock().unwrap_or_else(|err| err.into_inner());
+    loop {
+        while state.pending.is_empty() {
+            state = CHILD_REAPER_WAKE
+                .wait(state)
+                .unwrap_or_else(|err| err.into_inner());
+        }
+        // Only collect explicitly transferred PIDs. waitpid(-1) would steal
+        // exit statuses from commands that still have an active Child owner.
+        state.pending.retain(|pid| {
+            let mut waiter = LibcKillAndWait { pid: *pid };
+            !matches!(waiter.try_reap(), Ok(true))
         });
+        if !state.pending.is_empty() {
+            let (next, _) = CHILD_REAPER_WAKE
+                .wait_timeout(state, REAPER_INTERVAL)
+                .unwrap_or_else(|err| err.into_inner());
+            state = next;
+        }
+    }
+}
+
+pub(crate) fn defer_reap(pid: libc::pid_t) {
+    let mut state = CHILD_REAPER.lock().unwrap_or_else(|err| err.into_inner());
+    state.defer(pid);
+    // Probe admission bounds repeated failures. Also accept the existing
+    // lifecycle watchdog's already-owned child: never discard a PID merely
+    // because the probe budget is full. There is one reaper, not one per PID.
+    if let Err(err) = start_child_reaper(&mut state) {
+        eprintln!("[warning] {err}; child remains queued for the next probe");
+    }
+    CHILD_REAPER_WAKE.notify_one();
 }
 
 pub(crate) fn kill_and_reap(pid: libc::pid_t) {
+    if pid <= 0 {
+        return;
+    }
     let mut waiter = LibcKillAndWait { pid };
     if !kill_and_reap_with(&mut waiter, PROCESS_REAP_GRACE) {
         defer_reap(pid);
     }
+}
+
+/// Observe a direct child without releasing its PID. Group cleanup must keep
+/// this ownership until the final signal; Child::try_wait reaps on Unix and
+/// permits the numeric process-group ID to be reused.
+pub(crate) fn peek_child_status(pid: libc::pid_t) -> io::Result<Option<ExitStatus>> {
+    if pid <= 0 {
+        return Err(io::Error::new(ErrorKind::InvalidInput, "invalid child PID"));
+    }
+    // SAFETY: zero is a valid initial siginfo_t. waitid fills the SIGCHLD
+    // fields on an exit, or leaves si_pid zero when WNOHANG finds no exit.
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    let result = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            pid as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        )
+    };
+    if result < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if unsafe { info.si_pid() } == 0 {
+        return Ok(None);
+    }
+    let status = unsafe { info.si_status() };
+    let raw = match info.si_code {
+        libc::CLD_EXITED => status << 8,
+        libc::CLD_KILLED => status,
+        libc::CLD_DUMPED => status | 0x80,
+        _ => {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "unexpected child wait status",
+            ))
+        }
+    };
+    Ok(Some(ExitStatus::from_raw(raw)))
 }
 
 fn child_exit_code(status: i32) -> Option<i32> {
@@ -149,6 +273,7 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
     if timeout.is_zero() {
         return Err(format!("proc read deadline expired: {}", path.display()));
     }
+    let _child_budget = reserve_child_probe()?;
     let path_c = cstring_from_os_str(path.as_os_str(), "proc path")?;
     let mut pipe_fds = [-1; 2];
     if unsafe { libc::pipe2(pipe_fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
@@ -264,7 +389,9 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 output.extend_from_slice(&chunk[..read_count as usize]);
                 if output.len() > max_bytes {
                     close_raw_fd(pipe_fds[0]);
-                    kill_and_reap(worker_pid);
+                    if worker_status.is_none() {
+                        kill_and_reap(worker_pid);
+                    }
                     return Err(format!(
                         "proc file exceeds {max_bytes} bytes: {}",
                         path.display()
@@ -277,14 +404,13 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 break;
             }
             let err = io::Error::last_os_error();
-            if err.kind() == ErrorKind::Interrupted {
-                continue;
-            }
-            if err.kind() == ErrorKind::WouldBlock {
+            if matches!(err.kind(), ErrorKind::Interrupted | ErrorKind::WouldBlock) {
                 break;
             }
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            if worker_status.is_none() {
+                kill_and_reap(worker_pid);
+            }
             return Err(format!(
                 "read bounded proc result for {}: {err}",
                 path.display()
@@ -298,14 +424,16 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
                 worker_status = Some(status);
             } else if waited < 0 {
                 let err = io::Error::last_os_error();
-                if err.kind() == ErrorKind::Interrupted {
-                    continue;
+                if err.kind() != ErrorKind::Interrupted {
+                    close_raw_fd(pipe_fds[0]);
+                    if err.raw_os_error() != Some(libc::ECHILD) && worker_status.is_none() {
+                        kill_and_reap(worker_pid);
+                    }
+                    return Err(format!(
+                        "reap bounded proc reader for {}: {err}",
+                        path.display()
+                    ));
                 }
-                close_raw_fd(pipe_fds[0]);
-                return Err(format!(
-                    "reap bounded proc reader for {}: {err}",
-                    path.display()
-                ));
             }
         }
         if pipe_eof && worker_status.is_some() {
@@ -313,7 +441,9 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
         }
         if Instant::now() >= deadline {
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            if worker_status.is_none() {
+                kill_and_reap(worker_pid);
+            }
             return Err(format!(
                 "proc read timed out after {}ms: {}",
                 timeout.as_millis(),
@@ -322,9 +452,12 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
         }
 
         let remaining = deadline.saturating_duration_since(Instant::now());
-        let wait_ms = remaining.as_millis().clamp(1, 25) as i32;
+        // POLLHUP stays ready after EOF. Ignore the closed pipe while waiting
+        // for _exit, rather than busy-spinning on a permanently ready fd.
+        let poll_max_ms = if pipe_eof { 1 } else { 25 };
+        let wait_ms = remaining.as_millis().clamp(1, poll_max_ms) as i32;
         let mut poll_fd = libc::pollfd {
-            fd: pipe_fds[0],
+            fd: if pipe_eof { -1 } else { pipe_fds[0] },
             events: libc::POLLIN | libc::POLLHUP,
             revents: 0,
         };
@@ -332,7 +465,9 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
         if polled < 0 && io::Error::last_os_error().kind() != ErrorKind::Interrupted {
             let err = io::Error::last_os_error();
             close_raw_fd(pipe_fds[0]);
-            kill_and_reap(worker_pid);
+            if worker_status.is_none() {
+                kill_and_reap(worker_pid);
+            }
             return Err(format!(
                 "poll bounded proc reader for {}: {err}",
                 path.display()
@@ -518,6 +653,11 @@ pub(crate) fn run_bounded_command(
     timeout: Duration,
     stream_limit: usize,
 ) -> Result<BoundedCommandOutput, String> {
+    if timeout.is_zero() {
+        return Err("command deadline expired before spawn".to_string());
+    }
+    let _child_budget = reserve_child_probe()?;
+    let deadline = Instant::now() + timeout;
     // Isolate the command so timeout cleanup also reaches shell helpers and
     // grandchildren that inherited the captured pipes. The direct child also
     // dies with this CLI if an outer app/su timeout interrupts its parent.
@@ -545,44 +685,81 @@ pub(crate) fn run_bounded_command(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|err| err.to_string())?;
-    let stdout = child
-        .stdout
-        .take()
-        .map(|stream| spawn_output_reader(stream, stream_limit));
-    let stderr = child
-        .stderr
-        .take()
-        .map(|stream| spawn_output_reader(stream, stream_limit));
-    let deadline = Instant::now() + timeout;
+    let captures = (|| {
+        let stdout = child.stdout.take().ok_or("missing command stdout")?;
+        let stderr = child.stderr.take().ok_or("missing command stderr")?;
+        Ok::<_, String>((
+            CommandPipe::new(stdout, stream_limit).map_err(|err| err.to_string())?,
+            CommandPipe::new(stderr, stream_limit).map_err(|err| err.to_string())?,
+        ))
+    })();
+    let (mut stdout, mut stderr) = match captures {
+        Ok(captures) => captures,
+        Err(err) => {
+            let _ = terminate_command_group(&mut child);
+            return Err(format!("configure command output: {err}"));
+        }
+    };
     let mut timed_out = false;
     let mut status = None;
-    let mut stdout_result = None;
-    let mut stderr_result = None;
     loop {
+        // Each stream gets a finite read budget so continuous stdout cannot
+        // starve stderr, process reaping, or the monotonic deadline.
+        stdout.drain_ready(deadline);
+        stderr.drain_ready(deadline);
         if status.is_none() {
-            match child.try_wait() {
-                Ok(Some(exit)) => status = Some(exit),
-                Ok(None) => {}
+            match peek_child_status(child.id() as libc::pid_t) {
+                Ok(exit) => status = exit,
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
                 Err(err) => {
                     let _ = terminate_command_group(&mut child);
                     return Err(format!("wait failed: {err}"));
                 }
             }
         }
-        try_receive_output(&stdout, &mut stdout_result);
-        try_receive_output(&stderr, &mut stderr_result);
-        if status.is_some() && stdout_result.is_some() && stderr_result.is_some() {
-            break;
+        if status.is_some() && stdout.closed() && stderr.closed() {
+            // No more group signals can follow this final reap.
+            match child.try_wait() {
+                Ok(Some(exit)) => {
+                    status = Some(exit);
+                    break;
+                }
+                Ok(None) => {}
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => {
+                    if err.raw_os_error() != Some(libc::ECHILD) {
+                        let _ = terminate_command_group(&mut child);
+                    }
+                    return Err(format!("reap command: {err}"));
+                }
+            }
         }
         if Instant::now() >= deadline {
             timed_out = true;
             status = terminate_command_group(&mut child).or(status);
+            // Drain only a bounded cleanup window. An escaped descendant may
+            // hold a pipe forever; dropping the capture closes it without
+            // leaving a blocked reader thread or losing collected output.
+            let cleanup_deadline = Instant::now() + PROCESS_REAP_GRACE;
+            loop {
+                stdout.drain_ready(cleanup_deadline);
+                stderr.drain_ready(cleanup_deadline);
+                if (stdout.closed() && stderr.closed()) || Instant::now() >= cleanup_deadline {
+                    break;
+                }
+                if poll_command_pipes(stdout.fd(), stderr.fd(), cleanup_deadline).is_err() {
+                    break;
+                }
+            }
             break;
         }
-        thread::sleep(Duration::from_millis(10));
+        if let Err(err) = poll_command_pipes(stdout.fd(), stderr.fd(), deadline) {
+            let _ = terminate_command_group(&mut child);
+            return Err(format!("poll command output: {err}"));
+        }
     }
-    let stdout = finish_output(stdout, stdout_result, "stdout");
-    let stderr = finish_output(stderr, stderr_result, "stderr");
+    let stdout = stdout.finish("stdout");
+    let stderr = stderr.finish("stderr");
     Ok(BoundedCommandOutput {
         status,
         stdout: stdout.bytes,
@@ -594,6 +771,7 @@ pub(crate) fn run_bounded_command(
 
 trait CommandGroupWait {
     fn signal_group(&mut self, signal: libc::c_int);
+    // Implementations observe status without reaping until group signalling finishes.
     fn try_wait(&mut self) -> Result<Option<ExitStatus>, io::Error>;
     fn pid(&self) -> libc::pid_t;
 }
@@ -606,7 +784,7 @@ impl CommandGroupWait for Child {
     }
 
     fn try_wait(&mut self) -> Result<Option<ExitStatus>, io::Error> {
-        Child::try_wait(self)
+        peek_child_status(self.id() as libc::pid_t)
     }
 
     fn pid(&self) -> libc::pid_t {
@@ -629,9 +807,9 @@ fn terminate_command_group_with<W: CommandGroupWait>(
                 child.signal_group(libc::SIGKILL);
                 return Some(status);
             }
-            Err(_) => return None,
-            Ok(None) if Instant::now() >= term_deadline => break,
-            Ok(None) => thread::sleep(PROCESS_REAP_POLL),
+            Err(err) if err.kind() != ErrorKind::Interrupted => return None,
+            _ if Instant::now() >= term_deadline => break,
+            _ => thread::sleep(PROCESS_REAP_POLL),
         }
     }
 
@@ -640,21 +818,30 @@ fn terminate_command_group_with<W: CommandGroupWait>(
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return Some(status),
-            Err(_) => return None,
-            Ok(None) if Instant::now() >= reap_deadline => return None,
-            Ok(None) => thread::sleep(PROCESS_REAP_POLL),
+            Err(err) if err.kind() != ErrorKind::Interrupted => return None,
+            _ if Instant::now() >= reap_deadline => return None,
+            _ => thread::sleep(PROCESS_REAP_POLL),
         }
     }
 }
 
 fn terminate_command_group(child: &mut Child) -> Option<ExitStatus> {
     let pid = child.pid();
-    let status =
-        terminate_command_group_with(child, Duration::from_millis(250), PROCESS_REAP_GRACE);
-    if status.is_none() {
-        defer_reap(pid);
+    // A caller that has already reaped the leader no longer owns this group
+    // number. Never turn its cached Child::try_wait result into a signal.
+    if peek_child_status(pid).is_err_and(|err| err.raw_os_error() == Some(libc::ECHILD)) {
+        return None;
     }
-    status
+    let observed =
+        terminate_command_group_with(child, Duration::from_millis(250), PROCESS_REAP_GRACE);
+    match Child::try_wait(child) {
+        Ok(Some(status)) => Some(status),
+        Err(err) if err.raw_os_error() == Some(libc::ECHILD) => observed,
+        _ => {
+            defer_reap(pid);
+            observed
+        }
+    }
 }
 
 struct OutputCapture {
@@ -662,81 +849,108 @@ struct OutputCapture {
     truncated: bool,
 }
 
-type OutputReader = Receiver<io::Result<OutputCapture>>;
-
-fn spawn_output_reader<R>(mut reader: R, limit: usize) -> OutputReader
-where
-    R: Read + Send + 'static,
-{
-    let (sender, receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let result = (|| {
-            let mut output = Vec::new();
-            let mut buffer = [0_u8; 8192];
-            let mut truncated = false;
-            loop {
-                let read = reader.read(&mut buffer)?;
-                if read == 0 {
-                    break;
-                }
-                let available = limit.saturating_sub(output.len());
-                let keep = read.min(available);
-                output.extend_from_slice(&buffer[..keep]);
-                truncated |= keep < read;
-            }
-            if truncated {
-                output.extend_from_slice(b"\n[output truncated]");
-            }
-            Ok(OutputCapture {
-                bytes: output,
-                truncated,
-            })
-        })();
-        let _ = sender.send(result);
-    });
-    receiver
+// Captured child pipes are owned by the caller, not detached reader threads.
+struct CommandPipe<R> {
+    reader: Option<R>,
+    bytes: Vec<u8>,
+    limit: usize,
+    truncated: bool,
+    error: Option<io::Error>,
 }
 
-fn try_receive_output(
-    reader: &Option<OutputReader>,
-    result: &mut Option<io::Result<OutputCapture>>,
-) {
-    if result.is_some() {
-        return;
+impl<R: Read + AsRawFd> CommandPipe<R> {
+    fn new(reader: R, limit: usize) -> io::Result<Self> {
+        let fd = reader.as_raw_fd();
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Self {
+            reader: Some(reader),
+            bytes: Vec::new(),
+            limit,
+            truncated: false,
+            error: None,
+        })
     }
-    let Some(reader) = reader else {
-        return;
-    };
-    match reader.try_recv() {
-        Ok(output) => *result = Some(output),
-        Err(TryRecvError::Empty) => {}
-        Err(TryRecvError::Disconnected) => {
-            *result = Some(Err(io::Error::new(
-                ErrorKind::BrokenPipe,
-                "output reader disconnected",
-            )));
+
+    fn closed(&self) -> bool {
+        self.reader.is_none()
+    }
+
+    fn fd(&self) -> RawFd {
+        self.reader.as_ref().map_or(-1, AsRawFd::as_raw_fd)
+    }
+
+    fn drain_ready(&mut self, deadline: Instant) {
+        let mut buffer = [0_u8; 8192];
+        for _ in 0..16 {
+            if Instant::now() >= deadline {
+                break;
+            }
+            let Some(reader) = self.reader.as_mut() else {
+                break;
+            };
+            match reader.read(&mut buffer) {
+                Ok(0) => {
+                    self.reader = None;
+                    break;
+                }
+                Ok(read) => {
+                    let keep = read.min(self.limit.saturating_sub(self.bytes.len()));
+                    self.bytes.extend_from_slice(&buffer[..keep]);
+                    self.truncated |= keep < read;
+                }
+                Err(err) if err.kind() == ErrorKind::WouldBlock => break,
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => {
+                    self.error = Some(err);
+                    self.reader = None;
+                    break;
+                }
+            }
+        }
+    }
+
+    fn finish(mut self, name: &str) -> OutputCapture {
+        if let Some(err) = self.error.take() {
+            self.bytes
+                .extend_from_slice(format!("\n[{name} read failed: {err}]").as_bytes());
+            self.truncated = true;
+        } else if !self.closed() {
+            self.bytes
+                .extend_from_slice(format!("\n[{name} incomplete]").as_bytes());
+            self.truncated = true;
+        }
+        if self.truncated {
+            self.bytes.extend_from_slice(b"\n[output truncated]");
+        }
+        OutputCapture {
+            bytes: self.bytes,
+            truncated: self.truncated,
         }
     }
 }
 
-fn finish_output(
-    reader: Option<OutputReader>,
-    result: Option<io::Result<OutputCapture>>,
-    name: &str,
-) -> OutputCapture {
-    let result = result
-        .or_else(|| reader.and_then(|reader| reader.recv_timeout(Duration::from_millis(100)).ok()));
-    match result {
-        Some(Ok(output)) => output,
-        Some(Err(err)) => OutputCapture {
-            bytes: format!("[{name} read failed: {err}]").into_bytes(),
-            truncated: true,
-        },
-        None => OutputCapture {
-            bytes: format!("[{name} unavailable]").into_bytes(),
-            truncated: true,
-        },
+fn poll_command_pipes(stdout: RawFd, stderr: RawFd, deadline: Instant) -> io::Result<()> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let wait_ms = remaining.as_millis().min(10) as i32;
+    if remaining.is_zero() {
+        return Ok(());
     }
+    let mut fds = [stdout, stderr].map(|fd| libc::pollfd {
+        fd,
+        events: libc::POLLIN | libc::POLLHUP,
+        revents: 0,
+    });
+    let result = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, wait_ms.max(1)) };
+    if result < 0 {
+        let err = io::Error::last_os_error();
+        if err.kind() != ErrorKind::Interrupted {
+            return Err(err);
+        }
+    }
+    Ok(())
 }
 
 /// Soft reader that follows symlinks. Prefer [`clean_module_lines`] for
@@ -1769,3 +1983,7 @@ fn compact_command_output(output: &str) -> String {
 #[cfg(test)]
 #[path = "../tests/internal/utils.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/internal/resource_limits.rs"]
+mod resource_tests;

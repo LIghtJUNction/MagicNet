@@ -122,10 +122,12 @@ export function buildTailscaleConfig(text: string, draft: TailscaleDraft, baseli
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-export function removeTailscaleEndpoint(text: string): string {
+export function removeTailscaleEndpoint(text: string, baseline: TailscaleSnapshot): string {
   const config = parseConfig(text);
+  const endpoint = endpointOf(config);
+  if (!endpoint || revision(endpoint) !== baseline.endpointRevision) throw new TailscaleSetupError("conflict");
   const endpoints = (config.endpoints ?? []) as JsonObject[];
-  config.endpoints = endpoints.filter((item) => item.type !== "tailscale");
+  config.endpoints = endpoints.filter((item) => item !== endpoint);
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
@@ -152,10 +154,9 @@ export type TailscaleClient = {
 export type SaveStage = "read" | "stage" | "conflict" | "validate" | "cleanup" | "restart" | "done";
 export type SaveResult = { stage: SaveStage; saved: boolean; snapshot?: TailscaleSnapshot; error?: SetupErrorCode };
 
-export async function saveTailscale(
+async function updateTailscale(
   client: TailscaleClient,
-  draft: TailscaleDraft,
-  baseline: TailscaleSnapshot,
+  transform: (text: string) => string,
 ): Promise<SaveResult> {
   let payload: { path: string; basename: string } | null = null;
   let stage: SaveStage = "read";
@@ -166,7 +167,7 @@ export async function saveTailscale(
     if (!client.canSave()) return { stage: "conflict", saved };
     const current = await client.run("config-editor get sing-box");
     if (!current.ok) return { stage, saved };
-    const candidate = buildTailscaleConfig(current.stdout, draft, baseline);
+    const candidate = transform(current.stdout);
     snapshot = inspectTailscale(candidate);
     stage = "stage";
     payload = await client.stage(candidate);
@@ -198,40 +199,10 @@ export async function saveTailscale(
   }
 }
 
-export async function removeTailscale(client: TailscaleClient): Promise<SaveResult> {
-  let payload: { path: string; basename: string } | null = null;
-  let stage: SaveStage = "read";
-  let saved = false;
-  let error: SetupErrorCode | undefined;
-  try {
-    if (!client.canSave()) return { stage: "conflict", saved };
-    const current = await client.run("config-editor get sing-box");
-    if (!current.ok) return { stage, saved };
-    const candidate = removeTailscaleEndpoint(current.stdout);
-    stage = "stage";
-    payload = await client.stage(candidate);
-    if (!payload) return { stage, saved: false };
-    stage = "conflict";
-    const latest = await client.run("config-editor get sing-box");
-    if (latest.ok && latest.stdout === current.stdout && client.canSave()) {
-      stage = "validate";
-      const result = await client.run(`config-editor save-file sing-box ${client.quote(payload.path)}`);
-      saved = result.ok && /\[info\]\s+Saved and validated\b/i.test(result.stdout);
-    }
-  } catch (cause) {
-    if (cause instanceof TailscaleSetupError) error = cause.code;
-  } finally {
-    if (payload) {
-      let cleaned = false;
-      try { cleaned = await client.remove(payload.basename); } catch { /* ignore */ }
-      if (!cleaned) stage = "cleanup";
-    }
-  }
-  if (!saved || stage === "cleanup") return { stage, saved, error };
-  try {
-    const result = await client.run("service restart sing-box");
-    return { stage: result.ok ? "done" : "restart", saved };
-  } catch {
-    return { stage: "restart", saved };
-  }
+export function saveTailscale(client: TailscaleClient, draft: TailscaleDraft, baseline: TailscaleSnapshot): Promise<SaveResult> {
+  return updateTailscale(client, (text) => buildTailscaleConfig(text, draft, baseline));
+}
+
+export function removeTailscale(client: TailscaleClient, baseline: TailscaleSnapshot): Promise<SaveResult> {
+  return updateTailscale(client, (text) => removeTailscaleEndpoint(text, baseline));
 }
