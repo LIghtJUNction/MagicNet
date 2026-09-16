@@ -100,7 +100,7 @@ fn dns_rules(text: &str, port: u64) -> Result<(bool, bool, bool, bool), &'static
         if rule.len() == 6
             && rule[..3] == ["-m", "mark", "--mark"]
             && rule[4..] == ["-j", "RETURN"]
-            && matches!(rule[3], "0x80/0x80" | "128/128")
+            && matches!(rule[3], "0x40000000/0x40000000" | "1073741824/1073741824")
         {
             continue;
         }
@@ -216,6 +216,31 @@ mod tests {
             1053
         )
         .is_err());
+    }
+    #[test]
+    fn resolver_mark_matches_the_reserved_runtime_bit_in_both_xtables_formats() {
+        // primitives.sh reserves this high bit for direct core UDP DNS, not
+        // Android netd's low network-selection bits. Unknown masks stay errors.
+        for mark in ["1073741824/1073741824", "0x40000000/0x40000000"] {
+            let rules = capture().replace(
+                "-A magicnet-dns-output -p udp -m udp --dport 53",
+                &format!("-A magicnet-dns-output -m mark --mark {mark} -j RETURN\n-A magicnet-dns-output -p udp -m udp --dport 53"),
+            );
+            assert_eq!(dns_rules(&rules, 1053), Ok((false, true, true, true)));
+        }
+        for mark in [
+            "0x80/0x80",
+            "128/128",
+            "0x40000000/0x0",
+            "0x40000000",
+            "1/1",
+        ] {
+            let rules = format!(
+                "{}-A magicnet-dns-output -m mark --mark {mark} -j RETURN\n",
+                capture()
+            );
+            assert!(dns_rules(&rules, 1053).is_err());
+        }
     }
     #[test]
     fn root_bypass_is_observed_not_silently_exempted() {
