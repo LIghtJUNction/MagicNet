@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           cd webui
-          npx playwright test e2e/overview-refinement.spec.mjs --project=mobile-390 --reporter=list
+          npx playwright test e2e/overview-refinement.spec.mjs --project=phone-390 --reporter=list
       - name: Obtain release-verified offline rules compiler
         shell: bash
         env:
