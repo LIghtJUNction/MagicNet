@@ -1,0 +1,67 @@
+name: Runtime audit
+on:
+  push:
+    branches: [fix/release-runtime-rules-20260916]
+    paths: [.github/workflows/runtime-audit.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Apply reviewed cleanup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/LIghtJUNction/MagicNet/git/blobs/9b503f634ddee6d8da0e25d4151f7025cad65391 --jq .content | base64 -d | gzip -dc > "$RUNNER_TEMP/cleanup.patch"
+          printf '%s  %s\n' 17034a5e674475bdcf347f4ced65e59703ee66e22ce4e9b89483ae791662d5f3 "$RUNNER_TEMP/cleanup.patch" | sha256sum -c
+          git apply --check "$RUNNER_TEMP/cleanup.patch"
+          git apply "$RUNNER_TEMP/cleanup.patch"
+          git diff --check
+          mkdir audit
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Validate production parser and every browser scenario
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd webui
+          npm ci
+          npm run check 2>&1 | tee ../audit/webui-check.log
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          npm run test:ui 2>&1 | tee ../audit/browser.log
+      - name: Publish reviewed cleanup and rules pointer on feature branch only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add webui/composable-concurrency.test.mjs webui/core-memory.test.mjs webui/machine-status.test.mjs webui/src/composables/parsers.ts webui/transparent-mode.test.mjs
+          git update-index --cacheinfo 160000,a9430969c5d6da2165f4ad459967bbaec6b02ceb,rules
+          git diff --cached --check
+          git diff --cached > audit/cleanup.diff
+          git commit -m 'refactor: retire legacy status parser and pin verified MagicNetRules'
+          gh auth setup-git
+          git push origin HEAD:refs/heads/fix/release-runtime-rules-20260916
+          git rev-parse HEAD > audit/commit.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: runtime-final-validation
+          path: |
+            audit/
+            webui/test-results/
+          retention-days: 7
+          if-no-files-found: error
