@@ -1,31 +1,31 @@
-name: Review Complementary PR Source
+name: Trace Isolated DNS Regression
 on:
   push:
     branches: [audit/play-tools-20260916]
 permissions:
   contents: read
 jobs:
-  review:
+  trace:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ae250e4d2d8987914209121d1f813405329e2718
+          ref: 1593c79e4e0f14d706bcdaf9652790c29167405b
           persist-credentials: false
-          fetch-depth: 1
-      - name: Export exact PR source for integration review
+      - name: Trace only the isolated synthetic fixture
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/pr306"
-          git archive HEAD | gzip > "$RUNNER_TEMP/pr306/source.tar.gz"
-          git rev-parse HEAD > "$RUNNER_TEMP/pr306/head.txt"
-          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/pr306/tree.txt"
-          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
-          git -C src/MagicNet/.config/sing-box archive --prefix=src/MagicNet/.config/sing-box/ HEAD | gzip > "$RUNNER_TEMP/pr306/config.tar.gz"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: pr306-reviewed-source
-          path: ${{ runner.temp }}/pr306
-          retention-days: 1
-          if-no-files-found: error
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/test-dns-kernel.py')
+          s=p.read_text().replace('set -eu\n', 'set -eux\n', 1)
+          s=s.replace('return subprocess.run(args, check=True, text=True, capture_output=True, timeout=15, **kwargs)', '''result = subprocess.run(args, check=False, text=True, capture_output=True, timeout=15, **kwargs)
+              if result.returncode:
+                  print(result.stdout[-20000:], file=sys.stderr)
+                  print(result.stderr[-20000:], file=sys.stderr)
+                  result.check_returncode()
+              return result''')
+          p.write_text(s)
+          PY
+          python3 scripts/test-dns-kernel.py --require
