@@ -100,10 +100,7 @@ fn dns_rules(text: &str, port: u64) -> Result<(bool, bool, bool, bool), &'static
         if rule.len() == 6
             && rule[..3] == ["-m", "mark", "--mark"]
             && rule[4..] == ["-j", "RETURN"]
-            && matches!(
-                rule[3],
-                "0x40000000/0x40000000" | "1073741824/1073741824"
-            )
+            && matches!(rule[3], "0x40000000/0x40000000" | "1073741824/1073741824")
         {
             continue;
         }
@@ -231,7 +228,13 @@ mod tests {
             );
             assert_eq!(dns_rules(&rules, 1053), Ok((false, true, true, true)));
         }
-        for mark in ["0x80/0x80", "128/128", "0x40000000/0x0", "0x40000000", "1/1"] {
+        for mark in [
+            "0x80/0x80",
+            "128/128",
+            "0x40000000/0x0",
+            "0x40000000",
+            "1/1",
+        ] {
             let rules = format!(
                 "{}-A magicnet-dns-output -m mark --mark {mark} -j RETURN\n",
                 capture()
