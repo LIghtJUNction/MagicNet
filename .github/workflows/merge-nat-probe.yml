@@ -1,0 +1,57 @@
+name: Validate Final NAT Probe Integration
+on:
+  push:
+    branches: [audit/owned-integration-20260916]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 8830c4d02902c287c2760a6d422b319e169561de
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Merge reviewed no-autoload patch without conflict shortcuts
+        run: |
+          set -euo pipefail
+          git config user.name LIghtJUNction
+          git config user.email lightjunction.me@gmail.com
+          git fetch --no-tags origin 35af1fa43dcf8e2ae4ed143407e9cb6071207502
+          git merge --no-commit --no-ff 35af1fa43dcf8e2ae4ed143407e9cb6071207502
+          python3 - <<'PY'
+          import subprocess
+          expected = {'src/MagicNet/lib/magicnet/network.sh', 'scripts/test-host.sh',
+                      'scripts/test-dns-output-order.py', 'scripts/test-xtables-registration.py'}
+          changed = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines())
+          assert changed == expected, changed
+          assert not subprocess.check_output(['git', 'diff', '--name-only'], text=True).strip()
+          PY
+          git diff --cached --check
+      - name: Verify no-autoload and existing ownership contracts
+        run: |
+          set -euo pipefail
+          python3 scripts/test-xtables-registration.py
+          python3 scripts/test-dns-output-order.py
+          python3 scripts/test-dns-capture-fast-path.py
+          bash scripts/test-dns-leak-guard-timeout.sh
+          bash scripts/test-kernel-route-lifecycle.sh
+          bash scripts/test-hotspot-routing.sh
+          bash scripts/test-app-routing-policy.sh
+          sh scripts/test-startup-network-safety.sh
+          python3 scripts/test-uninstall.py
+          node webui/hotspot-policy.test.mjs
+      - name: Push only the verified integration to the unchanged PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = LIghtJUNction/MagicNet
+          branch=fix/owned-network-state-20260916
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq .object.sha)" = 8830c4d02902c287c2760a6d422b319e169561de
+          git commit -m 'Merge verified non-loading IPv6 NAT probes into network ownership fix'
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$branch"
+          git rev-parse HEAD
