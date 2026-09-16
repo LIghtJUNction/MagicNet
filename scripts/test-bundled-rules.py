@@ -65,6 +65,13 @@ class BundledRuleTests(unittest.TestCase):
         folder = self.project / "rules/scripts"
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "download_release.py").write_text(script)
+        self.write_pin()
+
+    def write_pin(self):
+        (self.project / "rules-release.json").write_text(json.dumps({
+            "schema": 1, "tag": "rules-test",
+            "manifest_sha256": hashlib.sha256((self.bundle / "manifest.json").read_bytes()).hexdigest(),
+        }))
 
     def test_offline_bundle_has_its_own_digest_identity(self):
         self.assert_success()
@@ -181,6 +188,43 @@ class BundledRuleTests(unittest.TestCase):
     def test_release_tag_is_passed_to_the_consumer(self):
         self.write_downloader("import os\nassert os.environ['MAGICNET_RULES_TAG'] == 'rules-test'\n")
         self.assert_success(MAGICNET_RULES_DIR="", MAGICNET_RULES_TAG="rules-test")
+
+    def test_default_download_uses_reviewed_pin_without_environment_override(self):
+        self.write_downloader("import os\nassert os.environ['MAGICNET_RULES_TAG'] == 'rules-test'\n")
+        self.assert_success(MAGICNET_RULES_DIR="", MAGICNET_RULES_TAG="")
+
+    def test_conflicting_tag_never_downloads_or_replaces_module(self):
+        self.assert_success()
+        previous, state = self.output.read_bytes(), self.state()
+        self.write_downloader("raise AssertionError('unreviewed download must not run')\n")
+        result = self.invoke(MAGICNET_RULES_DIR="", MAGICNET_RULES_TAG="rules-other")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("conflicts", result.stdout)
+        self.assertEqual(self.output.read_bytes(), previous)
+        self.assertEqual(self.state(), state)
+
+    def test_changed_release_manifest_preserves_module_and_marker(self):
+        self.assert_success()
+        previous, state = self.output.read_bytes(), self.state()
+        self.write_downloader("pass\n")
+        self.write_bundle(b"SRS\x02unreviewed new release\n")
+        result = self.invoke(MAGICNET_RULES_DIR="")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("differs from reviewed pin", result.stdout)
+        self.assertEqual(self.output.read_bytes(), previous)
+        self.assertEqual(self.state(), state)
+
+    def test_missing_or_invalid_pin_never_publishes_rules(self):
+        self.write_downloader("raise AssertionError('invalid pin must not download')\n")
+        path = self.project / "rules-release.json"
+        for data in (None, "not json", '{"schema":2}', '{"schema":1,"tag":"../main"}'):
+            with self.subTest(data=data):
+                if data is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_text(data)
+                self.assertNotEqual(self.invoke(MAGICNET_RULES_DIR="").returncode, 0)
+                self.assertFalse(self.output.exists())
 
 
 if __name__ == "__main__":

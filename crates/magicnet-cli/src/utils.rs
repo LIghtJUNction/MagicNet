@@ -1016,6 +1016,28 @@ pub(crate) fn clean_module_lines(app: &App, relative: &Path) -> Result<Vec<Strin
     Ok(filter_clean_lines(&text))
 }
 
+/// Bounded, descriptor-verified reader for interactive machine configuration.
+/// Unlike the compatibility reader, a malformed/oversized file fails explicitly.
+pub(crate) fn clean_module_lines_bounded(
+    app: &App,
+    relative: &Path,
+    max_bytes: u64,
+) -> Result<Vec<String>, String> {
+    let target = split_module_relative_file(relative)?;
+    let directory = open_module_directory(app, &target.directory)?;
+    let Some(file) = open_existing_private_module_file(&directory, &target.name)? else {
+        return Ok(Vec::new());
+    };
+    let mut text = String::new();
+    file.take(max_bytes.saturating_add(1))
+        .read_to_string(&mut text)
+        .map_err(|_| "configuration is not valid UTF-8".to_string())?;
+    if text.len() as u64 > max_bytes {
+        return Err("configuration exceeds the read limit".to_string());
+    }
+    Ok(filter_clean_lines(&text))
+}
+
 /// Soft reader for non-module paths. Prefer [`clean_module_lines`] /
 /// [`first_clean_module_line`] for anything under the module root.
 #[allow(dead_code)]

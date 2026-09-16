@@ -26,11 +26,6 @@ on:
         required: true
         type: boolean
         default: true
-      strict_external:
-        description: Fail when less than 80% of public endpoint probes succeed
-        required: true
-        type: boolean
-        default: false
       fresh_avd:
         description: Ignore the cached pristine Android virtual device for this run
         required: true
@@ -76,7 +71,10 @@ jobs:
         run: |
           set -euo pipefail
           bash -n scripts/android-kernelsu-acceptance.sh
-          python3 -m py_compile scripts/android-network-benchmark.py
+          python3 scripts/test-android-network-benchmark.py
+          python3 scripts/test-android-tun-proof.py
+          python3 scripts/test-android-adb.py
+          python3 scripts/test-android-probe.py
           python3 scripts/test-kernelsu-installer-lifecycle.py
 
       - name: Setup Go
@@ -174,6 +172,34 @@ jobs:
           scripts/build-sing-box.sh android amd64 "$RUNNER_TEMP/magicnet-x86/sing-box"
           install -m 0755 target/x86_64-linux-android/release/magicnet-cli "$RUNNER_TEMP/magicnet-x86/magicnet-cli"
           file "$RUNNER_TEMP/magicnet-x86/"* | tee "$RUNNER_TEMP/x86-payloads.txt"
+
+      - name: Prepare x86_64 fixture utilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/magicnet-x86-tools"
+          curl --fail --location --retry 3 --max-time 90 \
+            https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64 \
+            -o "$RUNNER_TEMP/magicnet-x86-tools/jq"
+          printf '%s  %s\n' b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f \
+            "$RUNNER_TEMP/magicnet-x86-tools/jq" | sha256sum --check --strict
+          GOBIN="$RUNNER_TEMP/magicnet-x86-tools" CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go install github.com/mikefarah/yq/v4@v4.53.3
+          chmod 0755 "$RUNNER_TEMP/magicnet-x86-tools/"*
+          for tool in jq yq; do
+            file "$RUNNER_TEMP/magicnet-x86-tools/$tool" | grep -q 'x86-64'
+            if readelf -l "$RUNNER_TEMP/magicnet-x86-tools/$tool" | grep -q INTERP; then
+              echo "::error::$tool must not depend on a host-only ELF interpreter"
+              exit 1
+            fi
+          done
+
+      - name: Build application-UID network probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          scripts/build-android-network-probe.sh "$RUNNER_TEMP/magicnet-network-probe.apk"
 
       - name: Restore KernelSU AVD assets
         id: ksu-cache
@@ -295,10 +321,11 @@ jobs:
           MAGICNET_KSUD_HOST: ${{ env.KSU_CACHE }}/ksud-x86_64-linux-android
           MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
           MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box
+          MAGICNET_X86_TOOLS: ${{ runner.temp }}/magicnet-x86-tools
+          MAGICNET_NETWORK_PROBE_APK: ${{ runner.temp }}/magicnet-network-probe.apk
           MAGICNET_PROXY_REGION: ${{ inputs.proxy_region }}
           MAGICNET_BENCHMARK_ROUNDS: ${{ inputs.rounds }}
           MAGICNET_RUN_SPEED: ${{ inputs.run_speed == true && '1' || '0' }}
-          MAGICNET_STRICT_EXTERNAL: ${{ inputs.strict_external == true && '1' || '0' }}
         shell: bash
         run: scripts/android-kernelsu-acceptance.sh
 
@@ -306,7 +333,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          adb emu kill >/dev/null 2>&1 || true
+          timeout --kill-after=2s 10s adb emu kill >/dev/null 2>&1 || true
           if [ -f artifacts/android-kernelsu/emulator.pid ]; then
             kill "$(cat artifacts/android-kernelsu/emulator.pid)" >/dev/null 2>&1 || true
           fi

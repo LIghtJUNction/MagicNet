@@ -13,6 +13,7 @@ const { state } = useMagicNet();
 const lifecycleStatus = computed(() => subscriptionLifecycleStatus(state, props.configured));
 
 const lifecycleLabel = computed(() => ({
+  unknown: t("状态未知"),
   empty: t("等待首次配置"),
   idle: t("订阅已配置"),
   running: t("正在应用或刷新"),
@@ -56,7 +57,7 @@ const lifecycleDotClass = computed(() => ({
   <div class="min-w-0 rounded-[5px] bg-[var(--mn-ivory)] px-4 py-3.5">
     <span class="text-[10px] uppercase tracking-[0.17em] text-[var(--mn-ink-faint)]">{{ t("自动刷新") }}</span>
     <p class="mt-2 text-sm" :class="state.subscriptions.scheduleOwnerValid ? 'text-[var(--mn-ink-soft)]' : 'text-[var(--mn-warning)]'">
-      {{ state.subscriptions.scheduleEnabled ? t("{value} 小时", { value: state.subscriptions.scheduleIntervalHours }) : t("关闭") }} · {{ state.subscriptions.scheduleRunning ? t("运行中") : t("已停止") }}
+      {{ state.subscriptions.scheduleEnabled ? t("{value} 小时", { value: state.subscriptions.scheduleIntervalHours }) : t("关闭") }} · {{ state.subscriptions.scheduleOwner === "unknown" ? t("状态未知") : state.subscriptions.scheduleRunning ? t("运行中") : t("已停止") }}
     </p>
   </div>
 </template>

@@ -7,7 +7,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -21,9 +21,45 @@ jobs:
           git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/network-audit/source.tar.gz"
           git rev-parse HEAD > "$RUNNER_TEMP/network-audit/source-sha.txt"
           git ls-tree HEAD > "$RUNNER_TEMP/network-audit/tree.txt"
+      - name: Execute network regression contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/test-android-network-benchmark.py
+          python3 scripts/test-android-tun-proof.py
+          python3 scripts/test-android-adb.py
+          python3 scripts/test-android-probe.py
+          python3 scripts/test-android-acceptance-contract.py
+          python3 scripts/test-ci-quality.py
+      - name: Compile real test-only APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          scripts/build-android-network-probe.sh "$RUNNER_TEMP/network-audit/magicnet-network-probe.apk"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
           name: network-acceptance-source
           path: ${{ runner.temp }}/network-audit
           if-no-files-found: error
           retention-days: 1
+  android:
+    needs: audit
+    if: contains(github.event.head_commit.message, '[avd]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Run existing manual Android acceptance on this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = fix/network-acceptance-20260916
+          gh workflow run android-kernelsu-acceptance.yml --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME" -f proxy_region=US -f rounds=1 \
+            -F run_speed=false -F fresh_avd=true

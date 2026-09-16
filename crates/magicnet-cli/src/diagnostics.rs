@@ -12,7 +12,7 @@ use crate::diagnostics_routing::routing_policy_check;
 use crate::{
     clean_module_lines, cmdline_has_command, cmdline_has_script, command_text_timeout,
     ebpf_runtime::inspect_ebpf_attachments, mcp, pid_summary, read_proc_argv,
-    read_proc_text_bounded, run_magicnet_function, singbox_pid_summary, App, MAX_PROC_STAT_BYTES,
+    run_magicnet_function, singbox_pid_summary, App,
 };
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
@@ -602,11 +602,7 @@ fn subscription_evidence(app: &App) -> String {
     } else {
         "url"
     };
-    let update_owner = process_owner_state(
-        &app.moddir
-            .join(".state/sing-box/subscription-update.lock/owner"),
-        None,
-    );
+    let update_owner = crate::state::subscription_update_owner_state(app);
     let mut lines = vec![
         format!(
             "configured_count={}",
@@ -663,49 +659,9 @@ fn subscription_evidence(app: &App) -> String {
     lines.push(format!("schedule_interval_hours={interval}"));
     lines.push(format!(
         "schedule_owner={}",
-        subscription_schedule_owner_state(app)
+        crate::state::refresh_owner_state(app)
     ));
     lines.join("\n")
-}
-
-fn subscription_schedule_owner_state(app: &App) -> &'static str {
-    let state_dir = app.moddir.join(".state/watchdog");
-    let owner = state_dir.join("magicnet-subscription-refresh.owner");
-    let loop_file = state_dir.join("magicnet-subscription-refresh.loop.sh");
-    process_owner_state(&owner, Some(&loop_file))
-}
-
-fn process_owner_state(
-    owner: &std::path::Path,
-    exact_script: Option<&std::path::Path>,
-) -> &'static str {
-    let Ok(record) = fs::read_to_string(owner) else {
-        return "none";
-    };
-    let mut fields = record.trim().split(':');
-    let Some(pid) = fields.next().and_then(|value| value.parse::<u32>().ok()) else {
-        return "stale";
-    };
-    let Some(expected_start) = fields.next() else {
-        return "stale";
-    };
-    let stat_path = PathBuf::from(format!("/proc/{pid}/stat"));
-    let live_start = read_proc_text_bounded(&stat_path, MAX_PROC_STAT_BYTES)
-        .ok()
-        .and_then(|stat| crate::proc_start_time(&stat));
-    if live_start.as_deref() != Some(expected_start) {
-        return "stale";
-    }
-    if let Some(script) = exact_script {
-        let cmdline_path = PathBuf::from(format!("/proc/{pid}/cmdline"));
-        let Ok(argv) = read_proc_argv(&cmdline_path) else {
-            return "stale";
-        };
-        if argv.get(1).map(Path::new) != Some(script) {
-            return "stale";
-        }
-    }
-    "active"
 }
 
 fn print_check(key: &str, ok: &bool, detail: String) {
@@ -1826,9 +1782,14 @@ fn normalize_default(value: &str) -> &str {
 }
 
 fn subscription_refresh_log_counts(path: PathBuf) -> String {
-    let text = fs::read_to_string(path).unwrap_or_default();
-    let mut events = 0usize;
-    let mut errors = 0usize;
+    let (events, errors) = subscription_refresh_counts(&path);
+    format!("subscription_refresh_event_count={events}\nsubscription_refresh_error_count={errors}")
+}
+
+pub(crate) fn subscription_refresh_counts(path: &Path) -> (usize, usize) {
+    let text = crate::logs::read_bounded_tail(path).unwrap_or_default();
+    let mut events = 0;
+    let mut errors = 0;
     for line in text.lines().rev().take(200) {
         if line.trim().is_empty() {
             continue;
@@ -1836,13 +1797,12 @@ fn subscription_refresh_log_counts(path: PathBuf) -> String {
         events += 1;
         let lower = line.to_ascii_lowercase();
         errors += usize::from(
-            lower.contains("error")
-                || lower.contains("failed")
-                || lower.contains("fatal")
-                || lower.contains("panic"),
+            ["error", "failed", "fatal", "panic"]
+                .iter()
+                .any(|word| lower.contains(*word)),
         );
     }
-    format!("subscription_refresh_event_count={events}\nsubscription_refresh_error_count={errors}")
+    (events, errors)
 }
 
 pub(crate) fn redact(text: &str) -> String {

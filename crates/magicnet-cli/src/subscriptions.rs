@@ -723,6 +723,17 @@ fn parse_subscription_authority(url: &str) -> Result<SubscriptionAuthority<'_>, 
     Ok(SubscriptionAuthority { host, port })
 }
 
+/// Only the authority needed by the explicit private subscription inspector.
+/// Generic status responses must not call this or reveal provider identities.
+pub(crate) fn subscription_display_hostname(url: &str) -> Option<String> {
+    let authority = parse_subscription_authority(url).ok()?;
+    Some(if authority.host.contains(':') {
+        format!("[{}]", authority.host.to_ascii_lowercase())
+    } else {
+        authority.host.to_ascii_lowercase()
+    })
+}
+
 /// Download an HTTPS URL with the same public-address and redirect policy as
 /// subscription fetches: resolve first, reject private targets, pin curl with
 /// `--resolve`, and refuse redirects that could re-target the request.

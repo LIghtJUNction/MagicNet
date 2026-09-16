@@ -77,7 +77,7 @@ pub(crate) fn log_read(server: &Server, source: &str, lines: usize, redact: bool
     }
 }
 
-fn read_bounded_tail(path: &Path) -> std::io::Result<String> {
+pub(crate) fn read_bounded_tail(path: &Path) -> std::io::Result<String> {
     let file = open_regular_file(path)?;
     let len = file.metadata()?.len();
     read_log_snapshot(file, len)

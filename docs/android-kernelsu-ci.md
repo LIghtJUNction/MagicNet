@@ -1,46 +1,71 @@
-# Android KernelSU acceptance workflow
+# Android KernelSU network checks
 
-`Android KernelSU Acceptance` is a manual-only GitHub Actions workflow for testing a real MagicNet module installation inside an Android virtual device. It is intentionally separate from normal push/PR CI because an emulator, KernelSU lifecycle reboots, live proxy nodes, and throughput probes are comparatively expensive and externally variable.
+The manual **Android KernelSU Acceptance** workflow installs the module into a
+disposable Android 15/API 35 `google_apis` x86_64 emulator with the pinned KernelSU
+kernel. It is not a physical-phone or authenticated Google Play test.
 
-## What it exercises
+## What changed after the false-positive audit
 
-The workflow uses an Android 15 / API 35 `google_apis` x86_64 AVD and boots it with a pinned KernelSU v3.2.0-compatible GKI kernel. It then:
+The old benchmark ran BusyBox wget as the root adbd user. Production TUN excludes
+UID 0, so those requests did not establish app/TUN capture. It also ignored the
+corpus's expected status, allowed one domestic and one global success to hide
+other failed services, and counted a timed-out download by its byte count alone.
 
-1. installs the matching `ksud` userspace and verifies the KernelSU kernel interface;
-2. installs `dist/MagicNet.zip` with `ksud module install`;
-3. reboots through the real KernelSU post-fs-data/service lifecycle;
-4. replaces only the packaged arm64 executables with x86_64 test builds so the hardware-accelerated AVD can run the same module tree;
-5. imports a fresh public free-node Clash subscription;
-6. validates MagicNet health, transparent routing, sing-box state, config validity, and the `magicnet0` interface;
-7. probes the maintained `network-targets.tsv` domestic/global service matrix;
-8. records reachability, repeated request latency, optional throughput, sing-box/CLI/MCP RSS, high-water RSS, thread and file-descriptor counts, Android memory information, `top`, logs, dmesg, and module state.
+Requests now originate in a separate, test-only Android APK, without root,
+shared UID, account cookies or storage permissions. The APK uses Android's normal
+TLS and hostname verification. The host rejects a missing or malformed result,
+root identity, a nonzero ADB exit, a wrong HTTP status, redirected/body-bearing
+204, partial response, exceeded byte budget, or any failed target/round. The old
+80%/"any endpoint" gate is gone. Requested throughput failures also fail the run.
+The retained `--strict-external` CLI flag cannot weaken this policy.
 
-All reports are uploaded as the `android-kernelsu-acceptance-*` Actions artifact and the network summary is also written to the workflow step summary.
+The actual Java request engine is executed against local HTTPS fixtures in PR and
+release checks: trusted/untrusted certificates, error status, redirected 204,
+HTTPS downgrade, premature EOF, known/unknown-length bodies, bounded throughput
+and stalls. Test successes are not reused from the old host cache scope. CI also
+builds and verifies the real test APK; the exact compiled fork checks both sentinel
+route configurations.
 
-## Triggering it
+## TUN path proof
 
-Open **Actions → Android KernelSU Acceptance → Run workflow**. Inputs control the public proxy shard (`global`, `US`, or `JP`), the number of latency rounds, throughput probes, stricter external-network gating, and whether the pristine AVD cache should be bypassed.
+Before public probes, the disposable AVD runs a positive/reject/positive control.
+A host loopback server emits a fresh random marker. An adb reverse maps it to
+**device loopback only**. The test application connects to `198.18.0.42`, not that
+loopback address. A temporary rule must match the installed TUN inbound, the exact
+destination/port **and the test app UID**, then override the destination to the
+loopback fixture. Success requires the exact marker and one fixture connection.
+The reject control must refuse the connection without reaching the fixture; the
+second positive must recover. Root remains excluded throughout.
 
-The default policy treats individual public endpoint failures as observations because free nodes and third-party sites fluctuate. Losing all domestic reachability or all global/proxied reachability still fails the run. `strict_external=true` additionally requires at least 80% of all endpoint rounds to succeed.
+Configuration is saved through the existing private CLI payload/validated editor
+and restarted through the normal module lifecycle. The original active config
+must be restored and compared before a proof can pass. The helper refuses physical
+phones and non-x86 emulator identities. A failed/interrupted restoration is a
+failed test: discard the AVD, never publish/cache its mutated disk.
 
-## Caches
+This proves **one test UID's TCP capture**, not every app's UID, UDP/QUIC, provider
+compatibility, DNS privacy, IPv6, sleep/wake or network handover. A sentinel pass
+cannot close the real-device Play/GMS issue.
 
-The workflow keeps three independent cache classes:
+## Installation, deadlines and reports
 
-- normal Go/Rust/KAM build outputs;
-- the checksum-pinned KernelSU AVD kernel and matching `ksud` binary;
-- a pristine Android 15 AVD plus its system image.
+The full arm64 module is installed through KernelSU first; the AVD then receives
+x86_64 CLI, core, jq and yq payloads. Each replacement utility is executed to detect
+ABI/interpreter mistakes. The production arm64 artifacts are not modified by this
+fixture. `ksud` is staged under `/sdcard/Download/MagicNet`, then copied to its
+actual executable userspace destination; `/sdcard` is not used as executable storage.
 
-The pristine AVD is saved before any KernelSU/MagicNet mutation. A test run therefore never writes the installed module or subscription back into the AVD cache.
+All ADB calls, including `wait-for-device`, have deadlines. Exit diagnostics have
+an overall budget and preserve the original test exit code. Process memory that
+could not be read is `null`, not an invented zero. No custom corpus URL, config,
+subscription token or account login is emitted by the benchmark report.
 
-## Public proxy feed
+Reports contain the individual failures, the TUN controls/restoration result,
+source commit, scope and explicit `not_tested` fields. The public subscription is
+only an anonymous fixture. Public sites and free nodes may fail or reject CI;
+that is reported as **FAIL/INCOMPLETE**, not converted into a successful acceptance.
 
-The acceptance test uses `Au1rxx/free-vpn-subscriptions`. Its published Clash feed is refreshed hourly and its project performs real sing-box HTTP-over-proxy verification before publishing nodes. The workflow always fetches the live subscription during the test instead of caching it as authoritative state.
-
-Free proxy operators can observe traffic metadata and possibly plaintext traffic. For that reason this workflow only accesses anonymous public test endpoints. Do not put private subscription URLs, cookies, account tokens, application logins, or other credentials into this test.
-
-## Scope
-
-The service matrix represents network behavior needed by common domestic and international apps (WeChat/Tencent, Bilibili, Taobao, Alipay, Google/Play connectivity, YouTube, ChatGPT, Claude, GitHub, Telegram, Discord, etc.). It deliberately does not automate login flows in proprietary apps. Those flows require redistributable APKs/test accounts and should be a separate opt-in device-farm layer if added later.
-
-GitHub-hosted runners are not mainland-China mobile networks. The domestic results verify MagicNet routing and service reachability from the AVD runner, not carrier-specific behavior on China Telecom/Unicom/Mobile. Real-device acceptance remains necessary for carrier, OEM, battery, and long-lived mobile-session behavior.
+The pristine AVD cache is saved before installation and never after mutation.
+The workflow always stops/discards the emulator. Google Play search, images,
+actual downloads, GMS and Wi-Fi/mobile transitions still require the affected
+physical device and a known-working proxy path.

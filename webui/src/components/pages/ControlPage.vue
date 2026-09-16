@@ -636,8 +636,8 @@ onMounted(() => {
         <summary><Wifi :size="18" />{{ t("Wi-Fi 自动切换") }}<span>{{ state.wifiPolicy.enabled ? t("已开启") : t("已关闭") }}</span></summary>
       <Card class="grid gap-5">
         <CardHeading :title="t('Wi-Fi 策略')">
-          <Badge :tone="state.wifiPolicy.connected ? 'success' : 'neutral'">
-            {{ state.wifiPolicy.connected ? state.wifiPolicy.ssid || t("Wi-Fi 已连接") : t("未连接 Wi-Fi") }}
+          <Badge :tone="state.wifiPolicy.observed && state.wifiPolicy.connected ? 'success' : 'neutral'">
+            {{ !state.wifiPolicy.observed ? t("状态未知") : state.wifiPolicy.connected ? state.wifiPolicy.ssid || t("Wi-Fi 已连接") : t("未连接 Wi-Fi") }}
           </Badge>
           <Badge :tone="state.wifiPolicy.enabled ? 'success' : 'warning'">
             {{ state.wifiPolicy.enabled ? t("已启用") : t("已停用") }}
@@ -675,7 +675,7 @@ onMounted(() => {
 
         <div class="grid gap-3 md:grid-cols-3">
           <StatTile :label="t('当前 BSSID')" :value="state.wifiPolicy.bssid || '—'" />
-          <StatTile :label="t('匹配结果')" :value="state.wifiPolicy.matched ? t('已命中名单') : t('未命中')" />
+          <StatTile :label="t('匹配结果')" :value="!state.wifiPolicy.observed ? t('状态未知') : state.wifiPolicy.matched ? t('已命中名单') : t('未命中')" />
           <StatTile :label="t('代理模式')" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
         </div>
 

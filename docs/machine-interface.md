@@ -135,10 +135,47 @@ separate from readiness, and interface counts respect the machine privacy
 boundary. This command-level snapshot is not an atomic observation of every
 underlying operating-system probe.
 
-The remaining subscription and Wi-Fi status migration is tracked in #273. Do
-not discard private editor fields or lifecycle reconciliation evidence just to
-remove the old reads: machine status intentionally does not expose the same data
-as manual diagnostics.
+The bundled subscription and Wi-Fi pages now use explicit schema-1 inspectors,
+not the human `sub list` / `sub status` / `wifi status` parsers. The existing
+`sub.status` and `wifi.status` commands remain redacted for diagnostics and MCP
+status resources. Their privacy boundary has not been relaxed.
+
+### Explicit private inspectors
+
+`cli --json sub inspect` and `cli --json wifi inspect` are read-only local
+configuration inspections, advertised separately in `capabilities.private_commands`.
+They are **not** safe diagnostic payloads. `sub.inspect` includes the configured
+subscription URLs, user agent, filters and provider quota metadata. `wifi.inspect`
+includes configured SSID/BSSID lists and current network identifiers needed by
+the Wi-Fi editor. An authenticated generic MCP CLI call may explicitly request
+these just as it could request the existing private human configuration commands;
+no automatic MCP status resource calls them.
+
+The WebUI always reads inspectors quietly without command capture or reactive
+stdout, validates the complete envelope, and only then updates editor/state
+models. Errors show a sanitized machine error code, never raw inspector output.
+Generic issue reports continue to request redacted `sub.status`.
+
+`sub.inspect` shares the exact lifecycle projection used by `sub.status`; it
+adds `configuration` and `source_usage` only for this explicit request. Provider
+usage is selected by SHA-256 of the configured URL, not list position. Pending
+transactions suppress uncommitted usage; detected generation or URL changes
+reject the snapshot. This is change detection, not an OS-wide atomic snapshot.
+The cache includes separate source/provenance counts; refresh counters summarize
+at most the last 200 lines of the bounded refresh-log tail, not lifetime totals.
+
+Update and schedule ownership are independently verified with PID start time
+(and the exact script/owner marker for the scheduler). An empty newly-created
+update lock is pending during its five-second initialization grace, not running.
+Stale locks and stored `result=running` without a live owner report interrupted
+or recovery-pending. Failed process inspection reports unknown. No read deletes
+locks or recovers transactions.
+
+`wifi.inspect` uses the same bounded live detection and decision primitives as
+the policy watcher. Failure to detect a network is an error, not a confirmed
+disconnect. Detected policy/list edits during probing reject the observation.
+On failed refresh the WebUI retains editable configuration, clears live identity
+and quota displays, and reports unknown rather than keeping an old green state.
 
 ## Mutation safety
 
