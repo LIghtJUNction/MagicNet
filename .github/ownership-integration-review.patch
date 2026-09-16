@@ -1,0 +1,328 @@
+diff --git a/crates/magicnet-cli/src/state.rs b/crates/magicnet-cli/src/state.rs
+index df7c014..ad01f72 100644
+--- a/crates/magicnet-cli/src/state.rs
++++ b/crates/magicnet-cli/src/state.rs
+@@ -675,19 +675,23 @@ fn hotspot_record(app: &App) -> StateRecord {
+     let configured_mode = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
+         .remove("MAGICNET_TRANSPARENT_MODE")
+         .unwrap_or_else(|| "tun".to_string());
+-    // A write-ahead record is recovery intent, not proof of installed rules.
++    // A pending write-ahead record is recovery intent, not installed state.
+     let pending = app
+         .moddir
+         .join(format!("{HOTSPOT_TUN_RULES}.pending"))
+         .exists();
+     let state = if pending {
+         "pending"
++    } else if rule_count > 0 {
++        if owned && configured_mode == "tun" {
++            crate::network_observation::hotspot_state(&app.moddir.join(HOTSPOT_TUN_RULES))
++        } else {
++            "pending"
++        }
+     } else if !owned {
+         "disabled"
+     } else if configured_mode == "ebpf" {
+         "shared"
+-    } else if rule_count > 0 {
+-        "active"
+     } else {
+         "waiting"
+     };
+@@ -1092,9 +1096,16 @@ mod tests {
+         assert!(!record.contains("wlan2"));
+         assert!(!record.contains("usb0"));
+         fs::remove_file(pending).unwrap();
++        // An inventory without an owned runtime still cannot prove liveness.
++        fs::remove_file(root.join(super::HOTSPOT_OFFLOAD_OWNER)).unwrap();
+         assert!(super::hotspot_record(&app)
+             .encode()
+-            .contains("state=active\n"));
++            .contains("state=pending\n"));
++        fs::remove_file(rules).unwrap();
++        assert!(super::hotspot_record(&app)
++            .encode()
++            .contains("state=disabled\n"));
+         fs::remove_dir_all(root).unwrap();
+     }
+ }
+diff --git a/scripts/test-app-routing-policy.sh b/scripts/test-app-routing-policy.sh
+index 0fab124..67f39df 100755
+--- a/scripts/test-app-routing-policy.sh
++++ b/scripts/test-app-routing-policy.sh
+@@ -638,7 +638,8 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
+       ;;
+     esac
+   }
+-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
++  ip6tables() { mock_missing_ipv6_tables; }
++  magicnet_cmd_exists() { [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]; }
+   magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
+ 
+   magicnet_disable_dns_leak_guard
+@@ -699,6 +700,8 @@ assert_dns_leak_guard_disable_cleans_previous_interfaces() (
+     *' -S OUTPUT '*)
+       if [ "$(cat "$stale_guard_count_file")" -gt 0 ]; then printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'; fi
+       return 0 ;;
++    *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
++      [ "$(cat "$stale_guard_count_file")" -gt 0 ]; return $? ;;
+     *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+       stale_guard_rule_count="$(cat "$stale_guard_count_file")"
+       if [ "$stale_guard_rule_count" -gt 0 ]; then
+@@ -712,7 +715,8 @@ assert_dns_leak_guard_disable_cleans_previous_interfaces() (
+       ;;
+     esac
+   }
+-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
++  ip6tables() { mock_missing_ipv6_tables; }
++  magicnet_cmd_exists() { [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]; }
+   magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
+ 
+   magicnet_disable_dns_leak_guard
+@@ -841,7 +845,8 @@ assert_dns_leak_guard_preserves_state_after_cleanup_failure() (
+     *) return 1 ;;
+     esac
+   }
+-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
++  ip6tables() { mock_missing_ipv6_tables; }
++  magicnet_cmd_exists() { [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]; }
+   magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
+ 
+   if magicnet_disable_dns_leak_guard; then
+@@ -901,7 +906,8 @@ assert_dns_leak_guard_reapply_fails_closed_after_cleanup_failure() (
+     *) return 0 ;;
+     esac
+   }
+-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
++  ip6tables() { mock_missing_ipv6_tables; }
++  magicnet_cmd_exists() { [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]; }
+   magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
+   magicnet_ipv6_mode() { printf '%s\n' ipv4_only; }
+   magicnet_log() { :; }
+@@ -936,6 +942,8 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
+       fi
+       return 0
+       ;;
++    *' -C OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
++      [ "$(cat "$stale_guard_count_file")" -gt 0 ]; return $? ;;
+     *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
+       stale_guard_rule_count="$(cat "$stale_guard_count_file")"
+       if [ "$stale_guard_rule_count" -gt 0 ]; then
+@@ -948,7 +956,8 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
+     *) return 0 ;;
+     esac
+   }
+-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
++  ip6tables() { mock_missing_ipv6_tables; }
++  magicnet_cmd_exists() { [ "${1:-}" = iptables ] || [ "${1:-}" = ip6tables ]; }
+   magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
+   magicnet_ipv6_mode() { printf '%s\n' ipv4_only; }
+   magicnet_log() { :; }
+diff --git a/scripts/test-route-ownership.py b/scripts/test-route-ownership.py
+index e7eb6c7..91cfaed 100644
+--- a/scripts/test-route-ownership.py
++++ b/scripts/test-route-ownership.py
+@@ -114,6 +114,7 @@ magicnet_refresh_status() {{ :; }}
+ . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/routes.sh'))}
+ . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/lifecycle.sh'))}
+ magicnet_iptables_cmd() {{ fixture iptables "$@"; }}
++magicnet_ip6tables_cmd() {{ echo "Address family not supported" >&2; return 3; }}
+ magicnet_iptables_ensure() {{ fixture iptables -I "$@"; }}
+ magicnet_hotspot_active_networks() {{ fixture pairs; }}
+ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
+@@ -147,6 +148,19 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
+         self.assertIn('phase=active', self.state.read_text())
+         self.assertNotIn('from 192.0.2.0', self.state.read_text())
+ 
++    def test_missing_or_unverified_journal_never_authorizes_route_flush(self):
++        self.change(route4=['default dev magicnet0 scope link'])
++        for record in (None, 'table=2022\ninterface=magicnet0\n',
++                       'schema=2\nphase=prepared\nboot=unknown\ntable=2022\ninterface=magicnet0\n'):
++            with self.subTest(record=record):
++                self.state.unlink(missing_ok=True)
++                if record is not None:
++                    self.state.write_text(record)
++                self.run_helper('magicnet_lifecycle_after_stop', 2)
++                self.assertEqual(self.read()['route4'], ['default dev magicnet0 scope link'])
++                self.assertFalse(self.read()['writes'])
++                self.assertEqual(self.error.read_text().strip(), 'network-route-ownership')
++
+     def test_baseline_without_kernel_changes_is_read_only(self):
+         self.run_helper('magicnet_kernel_route_state_begin')
+         self.assertIn('phase=prepared', self.state.read_text())
+@@ -337,9 +351,10 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
+     def guard_code(self, helper):
+         return f"""
+ . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/network.sh'))}
+-magicnet_cmd_exists() {{ [ "$1" = iptables ]; }}
++magicnet_cmd_exists() {{ [ "$1" = iptables ] || [ "$1" = ip6tables ]; }}
+ magicnet_xtables_available() {{ [ "$1" = iptables ]; }}
+ magicnet_iptables_cmd() {{ fixture iptables "$@"; }}
++magicnet_ip6tables_cmd() {{ echo "Address family not supported" >&2; return 3; }}
+ magicnet_iptables_ensure() {{ fixture iptables -I "$@"; }}
+ magicnet_log() {{ :; }}
+ magicnet_ipv6_mode() {{ printf 'ipv4_only\\n'; }}
+@@ -359,7 +374,7 @@ magicnet_collect_physical_egress_ifaces() {{ printf 'wlan0\\n'; }}
+ 
+     def test_new_guard_journal_never_authorizes_untagged_rule_deletion(self):
+         journal = self.mod / '.state/dns-leak-guard.ifaces'
+-        journal.write_text('wlan0\n# tagged=1\n')
++        journal.write_text('wlan0\n# magicnet-owned-v2\n# families=4\n')
+         vendor = 'OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'
+         self.change(forward=[vendor])
+         self.run_helper(self.guard_code('magicnet_disable_dns_leak_guard'))
+@@ -384,6 +399,17 @@ magicnet_collect_physical_egress_ifaces() {{ printf 'wlan0\\n'; }}
+         self.assertTrue(journal.exists())
+         self.assertFalse(self.read()['writes'])
+ 
++    def test_unknown_ipv6_guard_scan_prevents_ipv4_mutation(self):
++        journal = self.mod / '.state/dns-leak-guard.ifaces'
++        journal.write_text('wlan0\n# magicnet-owned-v2\n# families=4,6\n')
++        own = 'OUTPUT -o wlan0 -p tcp --dport 853 -m comment --comment magicnet-dns-guard -j REJECT'
++        self.change(forward=[own])
++        code = self.guard_code('magicnet_ip6tables_cmd() { return 4; }; magicnet_disable_dns_leak_guard')
++        self.run_helper(code, 1)
++        self.assertFalse(self.read()['writes'])
++        self.assertEqual(self.read()['forward'], [own])
++        self.assertTrue(journal.exists())
++
+     def test_guard_failed_rollback_preserves_write_ahead_journal(self):
+         self.change(fail_forward_delete=True)
+         # Trigger one partial apply failure after the first insertion.
+@@ -398,7 +424,8 @@ magicnet_enable_dns_leak_guard
+ """)
+         self.run_helper(code, 1)
+         journal = self.mod / '.state/dns-leak-guard.ifaces'
+-        self.assertIn('# tagged=1', journal.read_text())
++        self.assertIn('# magicnet-owned-v2', journal.read_text())
++        self.assertIn('# families=4', journal.read_text())
+         self.assertTrue(self.read()['forward'])
+         self.change(fail_forward_delete=False)
+         self.run_helper(self.guard_code('magicnet_disable_dns_leak_guard'))
+diff --git a/src/MagicNet/lib/magicnet/lifecycle.sh b/src/MagicNet/lib/magicnet/lifecycle.sh
+index 9f06de7..0cc613e 100644
+--- a/src/MagicNet/lib/magicnet/lifecycle.sh
++++ b/src/MagicNet/lib/magicnet/lifecycle.sh
+@@ -254,10 +254,16 @@ magicnet_kernel_route_cleanup_after_stop() (
+     # query is not an empty table, even if a previous stop left a marker behind.
+     for _family in 4 6; do
+         magicnet_kernel_route_rules "$_family" >/dev/null || return 2
+-        magicnet_kernel_route_table_snapshot "$_family" >/dev/null || return 2
++        _routes="$(magicnet_kernel_route_table_snapshot "$_family")" || return 2
++        if printf '%s\n' "$_routes" | grep -Eq '(^| )dev magicnet0( |$)'; then
++            [ -f "$_state" ] && [ ! -L "$_state" ] || return 2
++            _boot="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)" || return 2
++            grep -Fqx 'schema=2' "$_state" && grep -Fqx 'phase=active' "$_state" &&
++                grep -Fqx "boot=$_boot" "$_state" || return 2
++        fi
+     done
+     magicnet_hotspot_route_cleanup || return 1
+-    if [ -e "$_state" ]; then
++    if [ -e "$_state" ] || [ -L "$_state" ]; then
+         [ -f "$_state" ] && [ ! -L "$_state" ] || return 2
+         grep -Fqx 'table=2022' "$_state" && grep -Fqx 'interface=magicnet0' "$_state" || return 2
+         magicnet_kernel_route_cleanup_rule_family 4 2022 || return 2
+diff --git a/src/MagicNet/lib/magicnet/network.sh b/src/MagicNet/lib/magicnet/network.sh
+index 8b54553..7521c69 100644
+--- a/src/MagicNet/lib/magicnet/network.sh
++++ b/src/MagicNet/lib/magicnet/network.sh
+@@ -625,7 +625,16 @@ magicnet_dns_leak_guard_state_file() {
+ magicnet_dns_leak_guard_delete_rule() (
+     _dns_guard_delete_cmd="$1"
+     shift
+-    magicnet_xtables_delete_rule "$_dns_guard_delete_cmd" "" "$@"
++    # A family scan identifies interfaces, not every protocol/port tuple.
++    # Never issue speculative deletes for an absent rule.
++    _dns_guard_check_rc=0
++    "$_dns_guard_delete_cmd" -C "$@" >/dev/null 2>&1 || _dns_guard_check_rc=$?
++    case "$_dns_guard_check_rc" in
++    0) magicnet_xtables_delete_rule "$_dns_guard_delete_cmd" "" "$@" ;;
++    1) return 0 ;;
++    124 | 137 | 143) return 124 ;;
++    *) return 1 ;;
++    esac
+ )
+ 
+ magicnet_dns_leak_guard_delete_family() (
+@@ -664,6 +673,7 @@ magicnet_dns_leak_guard_rule_ifaces() (
+     _dns_guard_scan_rc=0
+     _dns_guard_scan_rules="$(LC_ALL=C "$_dns_guard_scan_cmd" -S OUTPUT 2>&1)" || _dns_guard_scan_rc=$?
+     if [ "$_dns_guard_scan_rc" -ne 0 ]; then
++        case "$_dns_guard_scan_rc" in 124 | 137 | 143) return "$_dns_guard_scan_rc" ;; esac
+         case "$_dns_guard_scan_rules" in
+         *"Table does not exist"* | *"Address family not supported"*) return 76 ;;
+         esac
+@@ -781,8 +791,8 @@ magicnet_disable_dns_leak_guard() (
+     _cleanup_state="$(magicnet_dns_leak_guard_state_file)"
+     _cleanup_saved=
+     MAGICNET_DNS_GUARD_LEGACY_IFACES=
+-    if [ -e "$_cleanup_state" ]; then
+-        [ -f "$_cleanup_state" ] && [ -r "$_cleanup_state" ] || return 1
++    if [ -e "$_cleanup_state" ] || [ -L "$_cleanup_state" ]; then
++        [ -f "$_cleanup_state" ] && [ -r "$_cleanup_state" ] && [ ! -L "$_cleanup_state" ] || return 1
+         _cleanup_saved="$(awk '/^[[:alnum:]_.-]+$/ { print }' "$_cleanup_state")" || return 1
+         if ! grep -Fqx '# magicnet-owned-v2' "$_cleanup_state"; then
+             MAGICNET_DNS_GUARD_LEGACY_IFACES="$(printf '%s\n' "$_cleanup_saved" | tr '\n' ' ')"
+@@ -793,17 +803,16 @@ magicnet_disable_dns_leak_guard() (
+     _cleanup_families=unknown
+     if [ -f "$_cleanup_state" ]; then
+         _cleanup_families="$(sed -n 's/^# families=//p' "$_cleanup_state")" || return 1
+-        # Missing, duplicated or invalid family evidence is not a proof of absence.
+         case "$_cleanup_families" in 4 | 4,6) ;; *) _cleanup_families=unknown ;; esac
+     fi
++    _cleanup_ipv4=
++    _cleanup_ipv6=
++    # Finish both family observations BEFORE the first mutation. A denied
++    # scan is not an instruction to delete rules from an old interface list.
+     for _cleanup_family in iptables ip6tables; do
+         if ! magicnet_cmd_exists "$_cleanup_family"; then
+-            if [ -e "$_cleanup_state" ]; then
+-                # A newly journaled IPv4-only guard never installed IPv6 rules.
+-                # Older journals do not encode families and must be retained.
+-                if [ "$_cleanup_family:$_cleanup_families" != ip6tables:4 ]; then
+-                    _cleanup_result=1
+-                fi
++            if [ -e "$_cleanup_state" ] && [ "$_cleanup_family:$_cleanup_families" != ip6tables:4 ]; then
++                return 1
+             fi
+             continue
+         fi
+@@ -811,15 +820,20 @@ magicnet_disable_dns_leak_guard() (
+         _cleanup_ifaces="$(magicnet_dns_leak_guard_rule_ifaces "magicnet_${_cleanup_family}_cmd")" || _cleanup_scan_rc=$?
+         case "$_cleanup_scan_rc" in
+         0) ;;
+-        76) continue ;; # Explicit absent-filter/family result, not raw exit 3.
+-        124 | 137 | 143) return 1 ;;
+-        *)
+-            # A failed read cannot prove absence. Known ownership may be used
+-            # for a bounded cleanup, but never guessed physical interfaces.
+-            [ -n "$_cleanup_saved" ] || return 1
+-            _cleanup_ifaces="$_cleanup_saved"
+-            ;;
++        76) continue ;; # Explicit absent filter/family, never a timeout.
++        *) return 1 ;;
++        esac
++        case "$_cleanup_family" in
++        iptables) _cleanup_ipv4="$_cleanup_ifaces" ;;
++        ip6tables) _cleanup_ipv6="$_cleanup_ifaces" ;;
++        esac
++    done
++    for _cleanup_family in iptables ip6tables; do
++        case "$_cleanup_family" in
++        iptables) _cleanup_ifaces="$_cleanup_ipv4" ;;
++        ip6tables) _cleanup_ifaces="$_cleanup_ipv6" ;;
+         esac
++        [ -n "$_cleanup_ifaces" ] || continue
+         _cleanup_rc=0
+         magicnet_dns_leak_guard_delete_family "magicnet_${_cleanup_family}_cmd" "$_cleanup_ifaces" || _cleanup_rc=$?
+         case "$_cleanup_rc" in
+@@ -827,9 +841,6 @@ magicnet_disable_dns_leak_guard() (
+         0) ;;
+         *) _cleanup_result=1 ;;
+         esac
+-        # If the listing was unreadable, retain the journal for reconciliation
+-        # even when individual -C checks suggest the known rules disappeared.
+-        [ "$_cleanup_scan_rc" -eq 0 ] || _cleanup_result=1
+     done
+     [ "$_cleanup_result" -eq 0 ] || return 1
+     rm -f "$_cleanup_state" 2>/dev/null
