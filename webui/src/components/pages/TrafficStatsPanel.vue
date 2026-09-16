@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
 import { buildTrafficStatsSummary, evaluateTrafficAlert, formatTrafficStatsReport, parseTrafficSample, type TrafficSample } from "@/composables/trafficStatsParsers";
+import { createVisibilityInterval } from "@/composables/visibilityInterval";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
@@ -24,8 +25,12 @@ const thresholdMiB = ref("10");
 const budgetGiB = ref("");
 const budgetHorizonMinutes = ref("60");
 const nowMillis = ref(Date.now());
-let timer = 0;
-let clockTimer = 0;
+const poller = createVisibilityInterval(() => {
+  if (!isRunning("traffic-stats-sample")) void sampleNow(true);
+}, 5000);
+const clock = createVisibilityInterval(() => {
+  nowMillis.value = Date.now();
+}, 15000);
 
 const summary = computed(() => buildTrafficStatsSummary(samples.value));
 const alert = computed(() => evaluateTrafficAlert(samples.value, Number(thresholdMiB.value) || 0));
@@ -95,10 +100,7 @@ async function sampleNow(quiet = false): Promise<void> {
 }
 
 function startTimer(): void {
-  stopTimer();
-  timer = window.setInterval(() => {
-    if (!isRunning("traffic-stats-sample")) void sampleNow(true);
-  }, 5000);
+  poller.start();
 }
 
 function toggleAutoSampling(): void {
@@ -130,9 +132,7 @@ async function copyReport(): Promise<void> {
 }
 
 function stopTimer(): void {
-  if (!timer) return;
-  window.clearInterval(timer);
-  timer = 0;
+  poller.stop();
 }
 
 function formatRate(value: number): string {
@@ -211,16 +211,11 @@ function formatDuration(seconds: number | null): string {
 function startClock(): void {
   // Idempotent: under <KeepAlive> both onMounted and onActivated fire on the
   // first mount, and an overwritten handle would leak an unclearable interval.
-  stopClock();
-  clockTimer = window.setInterval(() => {
-    nowMillis.value = Date.now();
-  }, 15000);
+  clock.start();
 }
 
 function stopClock(): void {
-  if (!clockTimer) return;
-  window.clearInterval(clockTimer);
-  clockTimer = 0;
+  clock.stop();
 }
 
 onMounted(startClock);

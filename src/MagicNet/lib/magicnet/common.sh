@@ -421,6 +421,19 @@ magicnet_config_lock_acquire() {
     _lock_timeout="${MAGICNET_CONFIG_LOCK_TIMEOUT:-20}"
     _lock_no_pid_wait=0
     _lock_no_pid_timeout="${MAGICNET_CONFIG_LOCK_NO_PID_TIMEOUT:-3}"
+    for _lock_budget in "$_lock_timeout" "$_lock_no_pid_timeout"; do
+        case "$_lock_budget" in
+        '' | *[!0-9]*)
+            magicnet_warn "Config lock timeout must be an integer between 0 and 900 seconds"
+            return 1
+            ;;
+        esac
+        if [ "${#_lock_budget}" -gt 3 ] || [ "$_lock_budget" -gt 900 ]; then
+            magicnet_warn "Config lock timeout must be an integer between 0 and 900 seconds"
+            return 1
+        fi
+    done
+    unset _lock_budget
     mkdir -p "$_lock_parent"
     while ! mkdir "$_lock_dir" 2>/dev/null; do
         _lock_pid="$(sed -n '1p' "$_lock_dir/pid" 2>/dev/null || true)"

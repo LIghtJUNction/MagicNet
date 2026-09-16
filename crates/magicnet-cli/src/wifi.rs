@@ -1,11 +1,12 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::diagnostics::supervisor_pid;
-use crate::utils::{clean_module_lines, command_text_full_timeout};
+use crate::utils::clean_module_lines;
 use crate::webui_api::{current_clash_mode, set_clash_mode};
 use crate::{read_kv, run_magicnet_function, write_kv, write_text_file, App};
 
@@ -74,10 +75,7 @@ struct PolicyDecision {
 
 pub(crate) fn wifi_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
-        "status" | "list" => {
-            print_status(app);
-            Ok(())
-        }
+        "status" | "list" => print_status(app),
         "enable" => set_enabled(app, true),
         "disable" => set_enabled(app, false),
         "mode" => set_policy_mode(app, args.get(1).map(String::as_str).unwrap_or_default()),
@@ -290,7 +288,7 @@ fn apply_once(app: &App, verbose: bool) -> Result<bool, String> {
         }
         return Ok(false);
     }
-    let network = detect_wifi();
+    let network = detect_wifi()?;
     apply_network(app, &config, &network, verbose)
 }
 
@@ -340,6 +338,7 @@ fn watch(app: &App) -> Result<(), String> {
     let mut pending_network: Option<WifiNetwork> = None;
     let mut pending_confirmations = 0_u8;
     let mut last_reconcile = Instant::now();
+    let mut detector = WifiDetector::default();
     loop {
         let config = read_policy_config(app);
         if !config.enabled
@@ -348,7 +347,21 @@ fn watch(app: &App) -> Result<(), String> {
         {
             break;
         }
-        let network = detect_wifi();
+        let network = match detector.detect() {
+            Ok(network) => network,
+            Err(error) => {
+                // Unknown is not a disconnect and breaks consecutive-change
+                // confirmation. Keep the last applied mode until a real sample.
+                pending_network = None;
+                pending_confirmations = 0;
+                if last_error != error {
+                    eprintln!("[warn] Wi-Fi policy check failed: {error}");
+                    last_error = error;
+                }
+                thread::sleep(Duration::from_secs(config.interval_seconds));
+                continue;
+            }
+        };
         let network_changed = applied_network
             .as_ref()
             .is_some_and(|last| last != &network);
@@ -419,26 +432,62 @@ fn decide(
     }
 }
 
-fn detect_wifi() -> WifiNetwork {
-    let output = command_text_full_timeout("cmd", &["wifi", "status"], Duration::from_secs(3));
-    if command_output_available(&output, "cmd") {
-        let network = parse_wifi_status(&output);
-        if network.connected || explicitly_disconnected(&output) {
-            return network;
+const WIFI_PROBES: [(&str, &[&str]); 3] = [
+    ("cmd", &["wifi", "status"]),
+    ("dumpsys", &["wifi"]),
+    ("iw", &["dev", "wlan0", "link"]),
+];
+
+#[derive(Default)]
+struct WifiDetector {
+    preferred: Option<usize>,
+}
+
+impl WifiDetector {
+    fn detect(&mut self) -> Result<WifiNetwork, String> {
+        self.detect_with(|index| {
+            let (program, args) = WIFI_PROBES[index];
+            let mut command = Command::new(program);
+            command.args(args);
+            let output =
+                crate::run_bounded_command(command, Duration::from_secs(3), 1024 * 1024).ok()?;
+            if output.timed_out
+                || output.truncated
+                || !output.status.is_some_and(|status| status.success())
+            {
+                return None;
+            }
+            let text = String::from_utf8(output.stdout).ok()?;
+            if !command_output_available(&text, program) {
+                return None;
+            }
+            let network = parse_wifi_status(&text);
+            (network.connected || explicitly_disconnected(&text)).then_some(network)
+        })
+    }
+
+    fn detect_with(
+        &mut self,
+        mut probe: impl FnMut(usize) -> Option<WifiNetwork>,
+    ) -> Result<WifiNetwork, String> {
+        let preferred = self.preferred;
+        let order = preferred
+            .into_iter()
+            .chain((0..WIFI_PROBES.len()).filter(|index| Some(*index) != preferred));
+        for index in order {
+            if let Some(network) = probe(index) {
+                self.preferred = Some(index);
+                return Ok(network);
+            }
         }
+        // Drop a failed preference so a recovered primary backend gets a turn.
+        self.preferred = None;
+        Err("Wi-Fi state is unknown; preserving the current policy".to_string())
     }
-    let output = command_text_full_timeout("dumpsys", &["wifi"], Duration::from_secs(3));
-    if command_output_available(&output, "dumpsys") {
-        let network = parse_wifi_status(&output);
-        if network.connected || explicitly_disconnected(&output) {
-            return network;
-        }
-    }
-    let output = command_text_full_timeout("iw", &["dev", "wlan0", "link"], Duration::from_secs(3));
-    if command_output_available(&output, "iw") {
-        return parse_wifi_status(&output);
-    }
-    WifiNetwork::default()
+}
+
+fn detect_wifi() -> Result<WifiNetwork, String> {
+    WifiDetector::default().detect()
 }
 
 fn explicitly_disconnected(output: &str) -> bool {
@@ -604,9 +653,9 @@ fn write_last_state(
     write_kv(app, Path::new(WIFI_LAST_STATE), &values)
 }
 
-fn print_status(app: &App) {
+fn print_status(app: &App) -> Result<(), String> {
     let config = read_policy_config(app);
-    let network = detect_wifi();
+    let network = detect_wifi()?;
     let ssids = clean_module_lines(app, Path::new(WIFI_SSID_LIST)).unwrap_or_default();
     let bssids = clean_module_lines(app, Path::new(WIFI_BSSID_LIST))
         .unwrap_or_default()
@@ -634,6 +683,7 @@ fn print_status(app: &App) {
     for value in bssids {
         println!("{value}");
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -755,5 +805,74 @@ mod tests {
             .desired_mode,
             "rule"
         );
+    }
+}
+
+#[cfg(test)]
+mod detector_tests {
+    use super::{WifiDetector, WifiNetwork};
+
+    fn connected() -> WifiNetwork {
+        WifiNetwork {
+            connected: true,
+            ssid: Some("fixture".to_string()),
+            bssid: None,
+        }
+    }
+
+    #[test]
+    fn failed_detection_is_not_a_disconnect() {
+        let mut detector = WifiDetector::default();
+        assert!(detector.detect_with(|_| None).is_err());
+        assert_eq!(detector.preferred, None);
+    }
+
+    #[test]
+    fn successful_backend_is_reused_without_repeating_failed_probes() {
+        let mut detector = WifiDetector::default();
+        let mut calls = Vec::new();
+        assert!(detector
+            .detect_with(|index| {
+                calls.push(index);
+                (index == 1).then(connected)
+            })
+            .is_ok());
+        assert_eq!(calls, [0, 1]);
+        calls.clear();
+        assert!(detector
+            .detect_with(|index| {
+                calls.push(index);
+                (index == 1).then(connected)
+            })
+            .is_ok());
+        assert_eq!(calls, [1]);
+    }
+
+    #[test]
+    fn failed_preferred_backend_falls_back_once_per_candidate() {
+        let mut detector = WifiDetector { preferred: Some(1) };
+        let mut calls = Vec::new();
+        assert!(detector
+            .detect_with(|index| {
+                calls.push(index);
+                (index == 2).then(connected)
+            })
+            .is_ok());
+        assert_eq!(calls, [1, 0, 2]);
+        assert_eq!(detector.preferred, Some(2));
+    }
+
+    #[test]
+    fn explicit_disconnect_is_authoritative_without_expensive_fallback() {
+        let mut detector = WifiDetector::default();
+        let mut calls = Vec::new();
+        let network = detector
+            .detect_with(|index| {
+                calls.push(index);
+                Some(WifiNetwork::default())
+            })
+            .unwrap();
+        assert!(!network.connected);
+        assert_eq!(calls, [0]);
     }
 }

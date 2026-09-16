@@ -1,10 +1,6 @@
 use serde_json::{json, Value};
-use std::io::{self, Read};
-use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::mpsc::{self, Receiver};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
 use crate::files::{file_list, file_read};
 use crate::logs::{debug_snapshot, log_list, log_read};
@@ -14,8 +10,6 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 const CLI_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_CLI_STREAM_BYTES: usize = 1024 * 1024;
-type CliStreamResult = io::Result<(Vec<u8>, bool)>;
-type CliStreamReceiver = Receiver<CliStreamResult>;
 
 pub(crate) fn handle_jsonrpc(payload: &str, server: &Server) -> String {
     let request: Value = match serde_json::from_str(payload) {
@@ -244,114 +238,23 @@ pub(crate) fn run_cli(server: &Server, args: &[&str]) -> String {
 
 fn run_cli_with_timeout(server: &Server, args: &[&str], timeout: Duration) -> String {
     let mut command = Command::new(&server.cli);
-    command
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    unsafe {
-        command.pre_exec(|| {
-            if libc::setpgid(0, 0) == 0 {
-                Ok(())
-            } else {
-                Err(io::Error::last_os_error())
-            }
-        });
-    }
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(err) => return format!("failed to run cli: {err}\nrc=-1"),
+    command.args(args);
+    let output = match crate::run_bounded_command(command, timeout, MAX_CLI_STREAM_BYTES) {
+        Ok(output) => output,
+        Err(error) => return format!("failed to run cli: {error}\nrc=-1"),
     };
-    let stdout = child.stdout.take().map(spawn_cli_reader);
-    let stderr = child.stderr.take().map(spawn_cli_reader);
-    let started = Instant::now();
-    let (status, timed_out, wait_error) = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break (Some(status), false, None),
-            Ok(None) if started.elapsed() < timeout => thread::sleep(Duration::from_millis(25)),
-            Ok(None) => break (terminate_cli_group(&mut child), true, None),
-            Err(err) => {
-                let _ = terminate_cli_group(&mut child);
-                break (None, false, Some(err));
-            }
-        }
-    };
-
-    let mut text = String::new();
-    append_cli_stream(&mut text, "stdout", stdout);
-    append_cli_stream(&mut text, "stderr", stderr);
-    if timed_out {
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    if output.timed_out {
         text.push_str("\ncli timed out");
     }
-    if let Some(error) = wait_error {
-        text.push_str(&format!("\nwait for cli failed: {error}"));
-    }
-    let code = if timed_out {
+    let code = if output.timed_out {
         124
     } else {
-        status.and_then(|value| value.code()).unwrap_or(-1)
+        output.status.and_then(|status| status.code()).unwrap_or(-1)
     };
     text.push_str(&format!("\nrc={code}"));
     text
-}
-
-fn terminate_cli_group(child: &mut Child) -> Option<ExitStatus> {
-    let group = -(child.id() as libc::pid_t);
-    unsafe {
-        libc::kill(group, libc::SIGTERM);
-    }
-    let deadline = Instant::now() + Duration::from_millis(250);
-    while Instant::now() < deadline {
-        if let Ok(Some(status)) = child.try_wait() {
-            unsafe {
-                libc::kill(group, libc::SIGKILL);
-            }
-            return Some(status);
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-    unsafe {
-        libc::kill(group, libc::SIGKILL);
-    }
-    child.wait().ok()
-}
-
-fn drain_cli_stream(mut pipe: impl Read) -> CliStreamResult {
-    let mut retained = Vec::new();
-    let mut buffer = [0_u8; 8192];
-    let mut truncated = false;
-    loop {
-        let read = pipe.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        let available = MAX_CLI_STREAM_BYTES.saturating_sub(retained.len());
-        let keep = read.min(available);
-        retained.extend_from_slice(&buffer[..keep]);
-        truncated |= keep < read;
-    }
-    Ok((retained, truncated))
-}
-
-fn spawn_cli_reader(pipe: impl Read + Send + 'static) -> CliStreamReceiver {
-    let (sender, receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let _ = sender.send(drain_cli_stream(pipe));
-    });
-    receiver
-}
-
-fn append_cli_stream(text: &mut String, name: &str, reader: Option<CliStreamReceiver>) {
-    match reader.and_then(|reader| reader.recv_timeout(Duration::from_secs(2)).ok()) {
-        Some(Ok((bytes, truncated))) => {
-            text.push_str(&String::from_utf8_lossy(&bytes));
-            if truncated {
-                text.push_str(&format!("\n[{name} truncated]"));
-            }
-        }
-        Some(Err(err)) => text.push_str(&format!("\n[{name} read failed: {err}]")),
-        None => text.push_str(&format!("\n[{name} unavailable]")),
-    }
 }
 
 fn subscription_set(server: &Server, args: &Value) -> String {
@@ -803,3 +706,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../../tests/internal/audit_mcp.rs"]
+mod audit_regressions;
