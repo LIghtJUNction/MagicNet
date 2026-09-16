@@ -65,9 +65,14 @@ for (const theme of ["light", "dark"]) {
       fullPage: true,
     });
     await page.evaluate(async () => {
-      const { state } = (
-        await import("/src/composables/useMagicNet.ts")
-      ).useMagicNet();
+      const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
+      state.runtime.serviceReady = false;
+    });
+    await expect(page.locator(".mn-control-status h2")).toContainText("服务未就绪");
+    await page.screenshot({path:info.outputPath(`${theme}-service-not-ready.png`),fullPage:true});
+    await page.evaluate(async () => {
+      const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
+      state.runtime.serviceReady = null;
       state.runtime.singBoxRssKib = null;
     });
     await expect(page.locator(".mn-control-memory")).toContainText("暂不可用");

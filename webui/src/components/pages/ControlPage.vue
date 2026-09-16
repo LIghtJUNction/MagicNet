@@ -95,8 +95,8 @@ const singBoxStatus = computed<SingBoxStatusPresentation>(() => {
   const rawState = state.runtime.singBoxState;
   if (rawState === "sing-box") {
     return {
-      label: t("运行中"),
-      tone: "success",
+      label: state.runtime.serviceReady === false ? t("服务未就绪") : t("运行中"),
+      tone: state.runtime.serviceReady === false ? "warning" : "success",
       dotClass: "bg-[var(--mn-cactus)]",
     };
   }
@@ -139,7 +139,8 @@ const showRuntimeNotice = computed(() => state.hasKsu && (
 
 const controlTitle = computed(() => {
   if (!state.hasKsu) return t("未连接设备");
-  if (state.runtime.singBoxState === "sing-box") return t("运行中");
+  if (state.runtime.singBoxState === "sing-box")
+    return state.runtime.serviceReady === false ? t("服务未就绪") : t("运行中");
   if (state.runtime.singBoxState === "stopped") return t("已停止");
   return t("状态未知");
 });
@@ -184,7 +185,9 @@ const transparentSwitchBusy = computed(() =>
   isRunning("transparent-apply"),
 );
 const sharedInterfacesLabel = computed(() =>
-  state.runtime.transparentSharedInterfaces.join(", ") || "none",
+  state.runtime.transparentSharedInterfaces.join(", ") ||
+    (state.runtime.transparentSharedInterfaceCount === null ? t("状态未知")
+      : String(state.runtime.transparentSharedInterfaceCount)),
 );
 
 const wifiPolicyModes = ["blacklist", "whitelist"] as const;

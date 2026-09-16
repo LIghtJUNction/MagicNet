@@ -34,7 +34,7 @@ import {
   updateOperationCapture,
 } from "@/composables/operationCapture";
 import { refreshAllNotice } from "@/composables/refreshAllState";
-import { machineFailureText, parseMachineDns, parseMachineNetwork, type NetworkPolicyStatus } from "@/composables/machineStatus";
+import { machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineRuntime, type NetworkPolicyStatus } from "@/composables/machineStatus";
 import {
   blockDefaults,
   dnsDefaults,
@@ -43,10 +43,8 @@ import {
   parseBlock,
   parseHealth,
   parseMcp,
-  invalidateTransparentRuntime,
   parsePackages,
   parseConfigValidation,
-  parseRuntime,
   parseSubs,
   parseWifiPolicy,
   parseWarp,
@@ -724,47 +722,17 @@ async function refreshStatus(
   foregroundToken?: number,
   reportFailure = true,
 ): Promise<boolean> {
-  const serviceCommand = startForegroundCommand(
-    "service status",
-    "刷新服务状态",
-    true,
-    "",
-    foregroundToken,
+  const command = startForegroundCommand(
+    "--json service status", "刷新服务状态", true, "", foregroundToken,
   );
-  const transparentCommand = startForegroundCommand(
-    "transparent status",
-    "刷新透明代理状态",
-    true,
-    "",
-    foregroundToken,
-  );
-  const uiToken = serviceCommand.token;
   const allowBusy = foregroundToken !== undefined;
-  const [serviceText, transparentText] = await Promise.all([
-    serviceCommand.promise,
-    transparentCommand.promise,
-  ]);
-  const serviceFailed = execFailed(serviceText);
-  const transparentFailed = execFailed(transparentText);
-  const failure = serviceFailed
-    ? serviceText
-    : transparentFailed
-      ? transparentText
-      : "";
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    const validText = [
-      serviceFailed ? "" : serviceText,
-      transparentFailed ? "" : transparentText,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    state.runtime = parseRuntime(validText, state.runtime);
-    if (transparentFailed) {
-      state.runtime = invalidateTransparentRuntime(state.runtime);
-    }
+  const text = await command.promise;
+  const snapshot = execFailed(text) ? null : parseMachineRuntime(text);
+  if (canUpdateRefreshUi(command.token, allowBusy)) {
+    state.runtime = snapshot ?? { ...runtimeDefaults };
   }
-  if (failure) {
-    if (reportFailure) markQuietFailure(t("刷新状态"), failure, uiToken, allowBusy);
+  if (!snapshot) {
+    if (reportFailure) markQuietFailure(t("刷新状态"), machineFailureText(text), command.token, allowBusy);
     return false;
   }
   return true;

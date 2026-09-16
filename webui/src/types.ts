@@ -15,7 +15,7 @@ export type AppPolicy = {
 
 export type TransparentMode = "tun" | "ebpf";
 
-export type TransparentEffectiveMode = "tun" | "local" | "hybrid" | "unknown";
+export type TransparentEffectiveMode = "tun" | "local" | "shared" | "hybrid" | "unknown";
 
 export type WifiPolicyState = {
   enabled: boolean;
@@ -36,6 +36,7 @@ export type RuntimeState = {
   singBoxState: "sing-box" | "stopped" | "unknown";
   singBox: string;
   singBoxRssKib: number | null;
+  serviceReady: boolean | null;
   fswatch: string;
   transparentMode: TransparentMode | "unknown";
   transparentEffectiveMode: TransparentEffectiveMode;
@@ -54,6 +55,7 @@ export type RuntimeState = {
     | "inactive"
     | "unknown";
   transparentSharedInterfaces: string[];
+  transparentSharedInterfaceCount: number | null;
   transparentRecentError: string;
   transparentTransition: "stable" | "pending" | "rollback" | "unknown";
   api: string;

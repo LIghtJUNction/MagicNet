@@ -27,3 +27,5 @@ python3 scripts/test-downloader-installer.py dist/magicnet_installer.zip \
 发布时先完成上述变换及检查，再签名最终附件。`MagicNet-full.zip` 仍是完整离线安装包。Android arm64 的 Magisk、KernelSU、APatch 管理器沿用同一 MagicNet 安装入口。
 
 `python3 scripts/test-installer-identity.py` 使用真实组件程序和生成的安装脚本，在主机上模拟管理器选择模块 ID、安装暂存及重启晋升；覆盖首次安装、升级复用、损坏组件、旧安装器清理与最终发布包检查。这不是 Android 真机刷写验证。
+
+Component downloads cancel a response body after 20 seconds without received bytes and try another route. Continued progress resets this idle deadline; the existing overall request timeout remains. Each failed attempt removes its partial file, and no alternate route bypasses the release-pinned size/SHA-256 checks. ZIP compression is explicitly level 9 even for prebuilt entry metadata.

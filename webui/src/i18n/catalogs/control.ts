@@ -816,4 +816,5 @@ export default {
     "Current traffic is below the threshold.",
     "Текущий трафик ниже порога.",
   ],
+  "服务未就绪": ["Service not ready", "Сервис не готов"],
 };

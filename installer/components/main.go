@@ -61,11 +61,12 @@ type options struct {
 	Archive, ModuleDir, PreviousDir, CacheDir string
 	Offline                                   bool
 	// Injected only by Go tests; no arbitrary download-URL override in the CLI.
-	client  *http.Client
-	mirrors []string
-	baseURL string
-	log     io.Writer
-	route   *routeHint
+	client          *http.Client
+	mirrors         []string
+	baseURL         string
+	log             io.Writer
+	route           *routeHint
+	bodyIdleTimeout time.Duration
 }
 
 func safeName(name string) bool {
@@ -441,6 +442,74 @@ func (p *progress) Write(b []byte) (int, error) {
 	}
 	return len(b), nil
 }
+
+// activityReader measures network progress, not total transfer duration. Slow
+// mobile links can complete large components; a stalled body must not consume
+// the entire ten-minute request budget before another verified route is tried.
+type activityReader struct {
+	io.Reader
+	timer *time.Timer
+	idle  time.Duration
+}
+
+func (r activityReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if n > 0 {
+		r.timer.Reset(r.idle)
+	}
+	return n, err
+}
+
+func (o options) downloadAttempt(c component, source, destination string) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", source, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "MagicNet-components/1")
+	response, err := o.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", response.StatusCode)
+	}
+	if response.ContentLength >= 0 && response.ContentLength != c.Size {
+		return errors.New("download size mismatch")
+	}
+	tmp, err := os.CreateTemp(o.CacheDir, ".download-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	idle := o.bodyIdleTimeout
+	if idle <= 0 {
+		idle = 20 * time.Second
+	}
+	timer := time.AfterFunc(idle, cancel)
+	defer timer.Stop()
+	h := sha256.New()
+	p := &progress{total: c.Size, o: o, id: c.ID, start: time.Now()}
+	n, err := io.Copy(io.MultiWriter(tmp, h, p), io.LimitReader(activityReader{response.Body, timer, idle}, c.Size+1))
+	timer.Stop()
+	if err != nil {
+		return err
+	}
+	if n != c.Size || hex.EncodeToString(h.Sum(nil)) != c.SHA256 {
+		return errors.New("download checksum mismatch")
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), destination)
+}
+
 func (o options) download(c component, direct, destination string) error {
 	var candidates []route
 	if o.route != nil && o.route.set {
@@ -459,43 +528,7 @@ func (o options) download(c component, direct, destination string) error {
 			continue
 		}
 		attempted[candidate.url] = true
-		req, err := http.NewRequest("GET", candidate.url, nil)
-		if err != nil {
-			return err
-		}
-		req.Header.Set("User-Agent", "MagicNet-components/1")
-		response, err := o.client.Do(req)
-		if err == nil {
-			if response.StatusCode != 200 {
-				err = fmt.Errorf("HTTP %d", response.StatusCode)
-			} else if response.ContentLength >= 0 && response.ContentLength != c.Size {
-				err = errors.New("download size mismatch")
-			} else {
-				tmp, createErr := os.CreateTemp(o.CacheDir, ".download-")
-				if createErr != nil {
-					response.Body.Close()
-					return createErr
-				}
-				h := sha256.New()
-				p := &progress{total: c.Size, o: o, id: c.ID, start: time.Now()}
-				n, copyErr := io.Copy(io.MultiWriter(tmp, h, p), io.LimitReader(response.Body, c.Size+1))
-				if copyErr == nil {
-					copyErr = tmp.Sync()
-				}
-				closeErr := tmp.Close()
-				if copyErr != nil {
-					err = copyErr
-				} else if closeErr != nil {
-					err = closeErr
-				} else if n != c.Size || hex.EncodeToString(h.Sum(nil)) != c.SHA256 {
-					err = errors.New("download checksum mismatch")
-				} else {
-					err = os.Rename(tmp.Name(), destination)
-				}
-				os.Remove(tmp.Name())
-			}
-			response.Body.Close()
-		}
+		err := o.downloadAttempt(c, candidate.url, destination)
 		if err == nil {
 			if o.route != nil {
 				o.route.set = true

@@ -12,7 +12,6 @@ import type {
   RouteRuleSummary,
   RuntimeState,
   SubscriptionState,
-  TransparentEffectiveMode,
   TransparentMode,
   WarpState,
   WifiPolicyState,
@@ -106,6 +105,7 @@ export const runtimeDefaults: RuntimeState = {
   singBoxState: "unknown",
   singBox: "unknown",
   singBoxRssKib: null,
+  serviceReady: null,
   fswatch: "unknown",
   transparentMode: "unknown",
   transparentEffectiveMode: "unknown",
@@ -113,6 +113,7 @@ export const runtimeDefaults: RuntimeState = {
   transparentLocalCgroup: "unknown",
   transparentSharedTc: "unknown",
   transparentSharedInterfaces: [],
+  transparentSharedInterfaceCount: null,
   transparentRecentError: "",
   transparentTransition: "unknown",
   api: "",
@@ -287,180 +288,6 @@ export function normalizeTransparentMode(
 ): TransparentMode | null {
   const mode = value.trim().toLowerCase();
   return mode === "tun" || mode === "ebpf" ? mode : null;
-}
-
-function normalizeTransparentEffectiveMode(
-  value: string,
-): TransparentEffectiveMode | null {
-  const mode = value.trim().toLowerCase();
-  return ["tun", "local", "hybrid", "unknown"].includes(mode)
-    ? (mode as TransparentEffectiveMode)
-    : null;
-}
-
-function normalizeTransparentTransition(
-  value: string,
-): RuntimeState["transparentTransition"] {
-  const transition = value.trim().toLowerCase();
-  if (transition === "idle" || transition === "stable") return "stable";
-  if (["rolling-back", "old-restored", "rollback"].includes(transition))
-    return "rollback";
-  if (
-    [
-      "target-written",
-      "preflight",
-      "candidate-prepared",
-      "stopping-old",
-      "old-stopped",
-      "candidate-starting",
-      "verified",
-      "pending",
-    ].includes(transition)
-  )
-    return "pending";
-  return "unknown";
-}
-
-function normalizeRuntimeStatus(value: string): string {
-  const status = value.trim();
-  const compact = status.toLowerCase();
-  if (!status) return "stopped";
-  if (
-    [
-      "stopped",
-      "stop",
-      "not installed",
-      "not running",
-      "not found",
-      "missing",
-    ].includes(compact)
-  )
-    return "stopped";
-  if (
-    status.includes("已停止") ||
-    status.includes("未运行") ||
-    status.includes("未安装")
-  )
-    return "stopped";
-  if (["running", "run"].includes(compact) || status.includes("正在运行"))
-    return "running";
-  return status;
-}
-
-export function invalidateTransparentRuntime(
-  previous: RuntimeState,
-): RuntimeState {
-  return {
-    ...previous,
-    transparentMode: "unknown",
-    transparentEffectiveMode: "unknown",
-    transparentCapability: "unknown",
-    transparentLocalCgroup: "unknown",
-    transparentSharedTc: "unknown",
-    transparentSharedInterfaces: [],
-    transparentRecentError: "",
-    transparentTransition: "unknown",
-  };
-}
-
-export function parseRuntime(
-  text: string,
-  _previous: RuntimeState,
-): RuntimeState {
-  const next = { ...runtimeDefaults };
-  text.split(/\r?\n/).forEach((raw) => {
-    const line = raw.trim();
-    if (line.startsWith("sing-box:"))
-      next.singBox = normalizeRuntimeStatus(line.slice(9));
-    if (line.startsWith("sing-box-rss-kib:")) {
-      const raw = line.slice("sing-box-rss-kib:".length).trim();
-      const value = Number(raw);
-      next.singBoxRssKib =
-        /^\d+$/.test(raw) && Number.isSafeInteger(value) ? value : null;
-    }
-    if (line.startsWith("fswatch:"))
-      next.fswatch = normalizeRuntimeStatus(line.slice(8));
-    if (line.startsWith("Transparent:")) {
-      next.transparentMode =
-        normalizeTransparentMode(line.slice(12)) || next.transparentMode;
-    }
-    if (line.startsWith("mode=")) {
-      next.transparentMode =
-        normalizeTransparentMode(line.slice(5)) || next.transparentMode;
-    }
-    if (line.startsWith("configured_mode=")) {
-      next.transparentMode =
-        normalizeTransparentMode(line.slice(16)) || next.transparentMode;
-    }
-    if (line.startsWith("effective_mode=")) {
-      next.transparentEffectiveMode =
-        normalizeTransparentEffectiveMode(line.slice(15)) ||
-        next.transparentEffectiveMode;
-    }
-    if (line.startsWith("capability=")) {
-      const capability = line.slice(11).trim();
-      if (["ok", "failed", "not-required", "unknown"].includes(capability)) {
-        next.transparentCapability =
-          capability as RuntimeState["transparentCapability"];
-      }
-    }
-    if (line.startsWith("local_cgroup=")) {
-      const localCgroup = line.slice(13).trim();
-      if (
-        ["attached", "missing", "configured", "inactive", "unknown"].includes(
-          localCgroup,
-        )
-      ) {
-        next.transparentLocalCgroup =
-          localCgroup as RuntimeState["transparentLocalCgroup"];
-      }
-    }
-    if (line.startsWith("shared_tc=")) {
-      const sharedTc = line.slice(10).trim();
-      if (
-        [
-          "attached",
-          "missing",
-          "configured",
-          "pending",
-          "inactive",
-          "unknown",
-        ].includes(sharedTc)
-      ) {
-        next.transparentSharedTc =
-          sharedTc as RuntimeState["transparentSharedTc"];
-      }
-    }
-    if (line.startsWith("shared_interfaces=")) {
-      const interfaces = line.slice(18).trim();
-      next.transparentSharedInterfaces =
-        interfaces === "none" || !interfaces
-          ? []
-          : interfaces
-              .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean);
-    }
-    if (line.startsWith("recent_error=")) {
-      const recentError = line.slice(13).trim();
-      next.transparentRecentError = recentError === "none" ? "" : recentError;
-    }
-    if (line.startsWith("transition=")) {
-      next.transparentTransition = normalizeTransparentTransition(
-        line.slice(11),
-      );
-    }
-    if (line.startsWith("API:")) next.api = line.slice(4).trim() || next.api;
-    if (line.startsWith("WebUI:"))
-      next.webui = line.slice(6).trim() || next.webui;
-    if (line.startsWith("Sub URL:"))
-      next.subPath = line.slice(8).trim() || next.subPath;
-  });
-  if (next.singBox !== "stopped" && next.singBox !== "unknown")
-    next.singBoxState = "sing-box";
-  else if (next.singBox === "stopped") next.singBoxState = "stopped";
-  if (next.singBoxState !== "sing-box") next.singBoxRssKib = null;
-  return next;
 }
 
 export function parseHealth(text: string): HealthItem[] {
