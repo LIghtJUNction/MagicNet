@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 
@@ -174,6 +173,17 @@ class WorkflowContractTests(unittest.TestCase):
                 if action.startswith('actions/checkout@'):
                     self.assertEqual(step['with']['persist-credentials'], 'false')
 
+    def test_run_steps_remain_compatible_with_release_shell_checks(self):
+        for name, job in self.jobs.items():
+            for step in job.get('steps', []):
+                if 'run' not in step:
+                    continue
+                with self.subTest(job=name, step=step.get('name')):
+                    self.assertIn(step.get('shell', 'bash'), ('bash', 'sh'))
+                    result = subprocess.run(['bash', '-n'], input=step['run'],
+                                            capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_browser_failures_retain_diagnostics(self):
         steps = self.jobs['webui']['steps']
         upload = next(step for step in steps if step.get('uses', '').startswith('actions/upload-artifact@'))
@@ -195,7 +205,7 @@ class AggregateExecutionTests(unittest.TestCase):
         env.pop('GITHUB_STEP_SUMMARY', None)
         if summary is not None:
             env['GITHUB_STEP_SUMMARY'] = str(summary)
-        return subprocess.run([sys.executable, '-c', self.script], env=env,
+        return subprocess.run(['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', self.script], env=env,
                               capture_output=True, text=True, timeout=10)
 
     def test_all_success_passes(self):
