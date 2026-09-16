@@ -23,6 +23,7 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual(publish['if'], "${{ env.RELEASE_REQUESTED == '1' && steps.release_quality.outcome == 'success' }}")
         self.assertFalse(build.get('continue-on-error', False))
         self.assertFalse(gate.get('continue-on-error', False))
+        self.assertEqual(gate.get('env', {}).get('CI_TEST_FORCE'), '1')
         self.assertGreater(gate['timeout-minutes'], 0)
         for command in ('set -euo pipefail', 'bash scripts/quality-gate.sh all',
                         'git submodule status --recursive', 'prepare-release.py --verify-build'):

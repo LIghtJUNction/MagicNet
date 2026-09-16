@@ -1,3 +1,21 @@
+# v1.5.5 (2026-09-16)
+
+- Recover stalled installer component downloads and enforce the intended
+  per-entry ZIP compression level without weakening integrity checks.
+- Bound runtime probes, suspend inactive WebUI polling, and distinguish
+  observed process state from actual service readiness.
+- Complete bundled WebUI machine-status migration for service,
+  subscription and Wi-Fi; reject stale owners and late refresh results.
+- Include MagicNetRules `rules-20260916-c802d68ca104e3ce`, locked to recipe
+  `756b843a46e2c2c21f0d5f3013a5384b3b3ca2de` and verified manifest contents.
+- Force every shared release quality check to run on the release checkout;
+  dependency/build caches remain available, but previous passing test
+  records cannot substitute for this release's tests.
+
+Known limits: this patch does not claim physical-device Google Play/GMS,
+carrier handover, RSS/latency or the staged new TUN stack migration have
+been accepted. Issues #253, #254, #261 and #281 remain separately tracked.
+
 # v1.5.1
 
 - Reject empty, malformed and multi-document JSON before atomically replacing a
