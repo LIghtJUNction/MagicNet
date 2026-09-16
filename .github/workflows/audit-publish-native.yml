@@ -1,0 +1,44 @@
+name: Publish non-overlapping audit delta
+on:
+  push:
+    branches: [audit/magicnet-72h-20260916]
+    paths: [.github/workflows/audit-publish-native.yml]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          show-progress: false
+      - name: Preserve concurrent main and drop duplicate UI implementation
+        env:
+          AUDIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git show "$AUDIT_SHA":.audit/google-native.patch > /tmp/google-native.patch
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b audit/native-only-result-20260916 373a02a46309e1513018a577ce4f82432c8c2906
+          git merge --no-edit d91a01f8a74af555fe8e687fb12918fa767cb62b
+          git apply /tmp/google-native.patch
+          git diff --check
+          bash -n scripts/test-google-play-direct-fallback.sh
+          git add scripts/test-google-play-direct-fallback.sh scripts/test-host.sh src/MagicNet/lib/magicnet/jq/google-play-policy.jq src/MagicNet/lib/magicnet/singbox_subscribe/config.sh
+          test -z "$(git diff --cached --name-only -- .audit .github webui)"
+          git commit -m 'fix(subscription): restore Google Play policy in the native sanitizer'
+          git push origin HEAD:refs/heads/audit/native-only-result-20260916
+          mkdir -p /tmp/native-candidate
+          git rev-parse HEAD > /tmp/native-candidate/sha.txt
+          git diff d91a01f8a74af555fe8e687fb12918fa767cb62b HEAD > /tmp/native-candidate/reviewed.patch
+          git archive --format=tar.gz HEAD > /tmp/native-candidate/source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: non-overlapping-audit-candidate
+          path: /tmp/native-candidate/
+          retention-days: 7
