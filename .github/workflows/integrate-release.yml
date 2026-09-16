@@ -1,0 +1,91 @@
+name: Verify release integration
+on:
+  push:
+    branches: [release/v1.5.5-20260916]
+    paths: [.github/workflows/integrate-release.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Integrate main without updating any remote ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = d82d8826d9d8b5fecfcdbb98f5a8ad3803d38648
+          if ! git merge --no-commit origin/main; then
+            test "$(git diff --name-only --diff-filter=U)" = .github/workflows/exec.yml
+          fi
+          git show origin/main:.github/workflows/exec.yml > .github/workflows/exec.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/exec.yml')
+          source = p.read_text()
+          assert source.count('        id: release_quality\n') == 1
+          assert 'Compile release acceptance test APK' in source and '--prepare-sdk' in source
+          p.write_text(source.replace('        id: release_quality\n', '        id: release_quality\n        env:\n          CI_TEST_FORCE: "1"\n'))
+          PY
+          git add .github/workflows/exec.yml
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git diff --check
+          mkdir -p "$RUNNER_TEMP/integration"
+      - name: Verify merged release and network contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends python3-yaml
+          fi
+          for suite in test-release-workflow test-release-cache test-release-gates test-ci-test-cache test-ci-quality test-android-acceptance-contract; do
+            python3 "scripts/$suite.py" 2>&1 | tee "$RUNNER_TEMP/integration/$suite.log"
+          done
+          python3 scripts/lint-source.py
+      - name: Store reviewed Git objects only, without pushing or publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          root = pathlib.Path.cwd()
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'integration'
+          base = subprocess.check_output(['git','rev-parse','origin/main^{tree}'],text=True).strip()
+          changed = set(subprocess.check_output(['git','diff','--name-only','origin/main'],text=True).splitlines())
+          changed.discard('.github/workflows/integrate-release.yml')
+          expected = {'.github/workflows/exec.yml','scripts/test-release-gates.py','kam.toml','src/MagicNet/module.prop','update.json','.github/release-request','CHANGELOG.md'}
+          assert changed == expected, changed
+          def api(endpoint, payload):
+              result = subprocess.run(['gh','api','--method','POST',endpoint,'--input','-'],input=json.dumps(payload),text=True,capture_output=True,check=True)
+              return json.loads(result.stdout)
+          elements = []
+          for path in sorted(changed):
+              data = (root/path).read_text()
+              blob = api('repos/LIghtJUNction/MagicNet/git/blobs', {'content':data,'encoding':'utf-8'})
+              expected_sha = subprocess.check_output(['git','hash-object',path],text=True).strip()
+              assert blob['sha'] == expected_sha
+              mode = subprocess.check_output(['git','ls-files','-s','--',path],text=True).split()[0]
+              elements.append({'path':path,'mode':mode,'type':'blob','sha':blob['sha']})
+          tree = api('repos/LIghtJUNction/MagicNet/git/trees', {'base_tree':base,'tree':elements})
+          record = {'main_commit':'d82d8826d9d8b5fecfcdbb98f5a8ad3803d38648','head':os.environ['GITHUB_SHA'],'tree_sha':tree['sha'],'elements':elements}
+          (out/'integration.json').write_text(json.dumps(record,indent=2))
+          (out/'integration.diff').write_text(subprocess.check_output(['git','diff','origin/main','--',*sorted(changed)],text=True))
+          print(json.dumps(record,indent=2))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
+        with:
+          name: verified-release-integration
+          path: ${{ runner.temp }}/integration/
+          retention-days: 7
+          if-no-files-found: error
