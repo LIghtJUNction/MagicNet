@@ -393,8 +393,8 @@ EOF
     cat "$dns_capture_log" >&2
     exit 1
   fi
-  if [ "$(grep -c -- '--uid-owner 11001 -j RETURN' "$dns_capture_log")" -ne 4 ]; then
-    printf '%s\n' 'duplicate app-bypass UIDs must produce one check and one append per address family only' >&2
+  if [ "$(grep -c -- '-A magicnet-dns-output -m owner --uid-owner 11001 -j RETURN' "$dns_capture_log")" -ne 2 ]; then
+    printf '%s\n' 'duplicate app-bypass UIDs must produce exactly one append per address family' >&2
     cat "$dns_capture_log" >&2
     exit 1
   fi
@@ -612,7 +612,6 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
   printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
   dns_guard_count_file="$WORK/dns-leak-guard-duplicate-rules.count"
   printf '%s\n' 2 >"$dns_guard_count_file"
-
   iptables() {
     case " $* " in
     *' -S OUTPUT '*)
@@ -641,7 +640,10 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
       ;;
     esac
   }
-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  # Legacy journal has no address-family record. Both families must be
+  # readable to establish absence; a missing ip6tables is not proof of that.
+  ip6tables() { case " $* " in *' -C '* | *' -D '*) return 1 ;; *) return 0 ;; esac; }
+  magicnet_cmd_exists() { case "$1" in iptables | ip6tables) return 0 ;; *) return 1 ;; esac; }
   magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
 
   magicnet_disable_dns_leak_guard
@@ -719,7 +721,10 @@ assert_dns_leak_guard_disable_cleans_previous_interfaces() (
       ;;
     esac
   }
-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  # Legacy journal has no address-family record. Both families must be
+  # readable to establish absence; a missing ip6tables is not proof of that.
+  ip6tables() { case " $* " in *' -C '* | *' -D '*) return 1 ;; *) return 0 ;; esac; }
+  magicnet_cmd_exists() { case "$1" in iptables | ip6tables) return 0 ;; *) return 1 ;; esac; }
   magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
 
   magicnet_disable_dns_leak_guard
@@ -766,6 +771,7 @@ assert_dns_leak_guard_unknown_filter_is_not_missing_nat() (
 
   iptables() {
     case " $* " in
+    *' -S OUTPUT '*) return 0 ;;
     *' -D '* | *' -C '*) return 1 ;;
     *' -I '*) return 0 ;;
     *)
@@ -774,7 +780,7 @@ assert_dns_leak_guard_unknown_filter_is_not_missing_nat() (
       ;;
     esac
   }
-  ip6tables() { return 1; }
+  ip6tables() { echo 'Permission denied' >&2; return 4; }
   magicnet_cmd_exists() { return 0; }
   magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
   magicnet_ipv6_mode() { printf '%s\n' prefer_ipv4; }
@@ -958,7 +964,8 @@ assert_dns_leak_guard_reapply_cleans_old_interfaces() (
     *) return 0 ;;
     esac
   }
-  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  ip6tables() { case " $* " in *' -C '* | *' -D '*) return 1 ;; *) return 0 ;; esac; }
+  magicnet_cmd_exists() { case "$1" in iptables | ip6tables) return 0 ;; *) return 1 ;; esac; }
   magicnet_collect_physical_egress_ifaces() { printf '%s\n' rmnet0; }
   magicnet_ipv6_mode() { printf '%s\n' ipv4_only; }
   magicnet_log() { :; }
@@ -1005,7 +1012,7 @@ assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat() (
   magicnet_disable_dns_capture() { :; }
 
   magicnet_enable_dns_capture
-  grep -q 'IPv6 NAT unsupported; IPv4-first DNS capture remains available' "$dns_capture_log"
+  grep -q 'IPv6 nat unsupported; IPv6 kernel DNS capture not installed' "$dns_capture_log"
 )
 
 assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat

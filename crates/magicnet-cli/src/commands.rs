@@ -123,7 +123,11 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
         ("node", "list" | "current") => false,
         ("route" | "block", "list") => false,
         ("app", "list" | "packages" | "recommendations") => false,
-        ("api", "endpoint" | "groups" | "proxies" | "conns" | "stats") => false,
+        ("api", "endpoint" | "groups" | "proxies" | "conns" | "stats" | "tailscale-status") => {
+            false
+        }
+        ("support", "bundle") => false,
+        ("sysroute", "list" | "snapshot") => false,
         ("config-editor", "get" | "path") => false,
         ("config-editor", "repo") => !matches!(action, "get" | "get-json"),
         ("sub", "list" | "get" | "status" | "file" | "copy-path" | "resolve-host") => false,
@@ -304,6 +308,10 @@ mod tests {
             "transparent status",
             "node current",
             "api groups",
+            "api tailscale-status tailscale",
+            "support bundle",
+            "sysroute list",
+            "sysroute snapshot",
             "sub get sing-box",
             "sub schedule status",
             "sub user-agent get",

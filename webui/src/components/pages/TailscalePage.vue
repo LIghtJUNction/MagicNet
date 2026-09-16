@@ -80,7 +80,10 @@ function startLoginPolling(autoOpen: boolean): void {
     if (document.hidden) { loginTimer = setTimeout(poll, 2000); return; }
     try {
       const response = await runPrivateCli(`api tailscale-status ${shellQuote(snapshot.value.tag)}`, t("读取 Tailscale 配置"), "api tailscale-status [private-output]");
-      if (generation !== loginGeneration) return;
+      if (generation !== loginGeneration || !active) return;
+      // A response begun while visible must not publish or launch a browser
+      // after the WebView moves to the background. Resume by reading afresh.
+      if (document.hidden) { loginTimer = setTimeout(poll, 2000); return; }
       if (!response.ok) throw new Error("status");
       const status = parseTailscaleLogin(response.stdout);
       loginUrl.value = status.authUrl;
@@ -98,7 +101,10 @@ function startLoginPolling(autoOpen: boolean): void {
         await openExternal(status.authUrl, "Tailscale", { preferBrowser: false });
       }
     } catch {
-      if (generation !== loginGeneration) return;
+      if (generation !== loginGeneration || !active) return;
+      if (document.hidden) { loginTimer = setTimeout(poll, 2000); return; }
+      loginUrl.value = "";
+      isOnline.value = false;
       loginMessage.value = t("暂时无法读取 Tailscale 登录状态，请稍后刷新。");
     }
     if (generation !== loginGeneration) return;
@@ -140,7 +146,7 @@ function resultMessage(result: SaveResult): string {
 }
 
 async function read(): Promise<void> {
-  if (locked.value || edited.value) return;
+  if (!active || locked.value || edited.value) return;
   attemptedRead = true;
   const generation = ++readGeneration;
   loading.value = true;
@@ -163,14 +169,29 @@ async function read(): Promise<void> {
 }
 
 function privateClient(label: string): TailscaleClient {
+  const generation = readGeneration;
   return {
     run: (args) => runPrivateCli(args, label, args.startsWith("config-editor save-file")
       ? "config-editor save-file sing-box [private-payload]" : `${args} [private-output]`),
     stage: (text) => stagePrivatePayload("tmp", `tailscale-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`, text, t("Tailscale 私密配置")),
     remove: (name) => removePrivatePayload("tmp", name, t("Tailscale 私密配置")),
     quote: shellQuote,
-    canSave: () => active && !state.config.dirty,
+    canSave: () => active && generation === readGeneration && !state.config.dirty,
   };
+}
+
+function acceptTransactionResult(result: SaveResult, generation: number): boolean {
+  if (active && generation === readGeneration) return true;
+  if (result.saved) {
+    snapshot.value = null;
+    needsRestart.value = result.stage === "restart";
+    if (!state.config.dirty) {
+      state.config.text = "";
+      state.config.status = t("Tailscale 已更新，请重新加载配置。");
+      state.config.validation = { status: "idle", summary: state.config.status, checkedAt: "" };
+    }
+  }
+  return false;
 }
 
 function applySavedSnapshot(result: SaveResult): void {
@@ -188,10 +209,11 @@ function applySavedSnapshot(result: SaveResult): void {
 async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   if (saveDisabled.value || !snapshot.value) return;
   // A configured login can be resumed without interrupting every application.
-  if (mode === "browser" && snapshot.value.configured && snapshot.value.statusConfigured && !edited.value) {
+  if (mode === "browser" && snapshot.value.configured && snapshot.value.statusConfigured && !edited.value && !needsRestart.value) {
     startLoginPolling(true);
     return;
   }
+  const generation = readGeneration;
   confirmRemove.value = false;
   saving.value = true;
   hasError.value = false;
@@ -201,12 +223,13 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   authKey.value = "";
   try {
     const result = await saveTailscale(privateClient(t("配置 Tailscale")), draft, snapshot.value);
+    if (!acceptTransactionResult(result, generation)) return;
     applySavedSnapshot(result);
     message.value = resultMessage(result);
     hasError.value = result.stage !== "done";
     needsRestart.value = result.stage === "restart";
     if (result.stage === "done" || result.stage === "restart") await refreshStatus(undefined, false);
-    if (result.stage === "done") startLoginPolling(mode === "browser");
+    if (result.stage === "done" && active && generation === readGeneration && !document.hidden) startLoginPolling(mode === "browser");
   } finally {
     draft.authKey = "";
     saving.value = false;
@@ -215,6 +238,7 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
 
 async function disconnectTailscale(): Promise<void> {
   if (saveDisabled.value || !snapshot.value?.configured || !confirmRemove.value) return;
+  const generation = readGeneration;
   confirmRemove.value = false;
   saving.value = true;
   hasError.value = false;
@@ -223,6 +247,7 @@ async function disconnectTailscale(): Promise<void> {
   stopLoginPolling();
   try {
     const result = await removeTailscale(privateClient(t("移除 Tailscale")), snapshot.value);
+    if (!acceptTransactionResult(result, generation)) return;
     // Reading here would be skipped by the saving lock. The transaction's
     // confirmed snapshot is authoritative even when the restart fails.
     applySavedSnapshot(result);
@@ -235,10 +260,12 @@ async function disconnectTailscale(): Promise<void> {
 }
 
 async function retryRestart(): Promise<void> {
-  if (locked.value || !needsRestart.value) return;
+  if (!active || locked.value || !needsRestart.value) return;
+  const generation = readGeneration;
   saving.value = true;
   try {
     const outcome = await runPrivateCli("service restart sing-box", t("重启核心"), "service restart sing-box");
+    if (!acceptTransactionResult({ stage: outcome.ok ? "done" : "restart", saved: true }, generation)) return;
     message.value = resultMessage({ stage: outcome.ok ? "done" : "restart", saved: true });
     hasError.value = !outcome.ok;
     needsRestart.value = !outcome.ok;
@@ -253,7 +280,8 @@ function discardDraft(): void {
 }
 
 onMounted(() => { void read(); });
-watch(() => state.busy, (busy) => { if (!busy && !attemptedRead) void read(); });
+watch(() => state.busy, (busy) => { if (!busy && active && !attemptedRead) void read(); });
+watch(saving, (busy) => { if (!busy && active && !snapshot.value && !edited.value) void read(); });
 onDeactivated(() => { authKey.value = "";
   active = false; readGeneration++; loading.value = false;
   confirmRemove.value = false; stopLoginPolling();

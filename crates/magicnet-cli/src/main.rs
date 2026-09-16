@@ -45,6 +45,7 @@ mod machine;
 mod mcp;
 mod mcp_server;
 mod network;
+mod network_observation;
 mod node_delay;
 mod nodes;
 mod ping;

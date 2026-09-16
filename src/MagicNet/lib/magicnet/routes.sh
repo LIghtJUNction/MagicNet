@@ -553,15 +553,6 @@ magicnet_hotspot_offload_value() {
     settings get global tether_offload_disabled 2>/dev/null | tr -d '\r' | sed -n '1p'
 }
 
-magicnet_hotspot_register_offload_rollback() {
-    import prop
-    _hotspot_route_rollback_cmd='_mn_rules="${0%/*}/.state/hotspot/tun-rules.list"; if [ -f "$_mn_rules" ] && command -v ip >/dev/null 2>&1; then while IFS="|" read -r _mn_priority _mn_iface; do case "$_mn_priority" in ""|*[!0-9]*) continue;; esac; case "$_mn_iface" in wlan[0-9]*|softap[0-9]*|ap_br_wlan[0-9]*|ap_br_softap[0-9]*|swlan[0-9]*|rndis[0-9]*|usb[0-9]*|bt-pan|bt-pan[0-9]*|p2p[0-9]*|p2p-*) ;; *) continue;; esac; _mn_attempt=0; while [ "$_mn_attempt" -lt 8 ]; do ip rule del priority "$_mn_priority" iif "$_mn_iface" lookup 2022 >/dev/null 2>&1 || break; _mn_attempt=$((_mn_attempt+1)); done; done <"$_mn_rules"; fi; rm -f "$_mn_rules" 2>/dev/null || true'
-    register_uninstall_cmd "$_hotspot_route_rollback_cmd" "$MODDIR" >/dev/null 2>&1 || true
-    _hotspot_rollback_cmd='_mn_state="${0%/*}/.state/hotspot/tether-offload.previous"; if [ -f "$_mn_state" ]; then _mn_previous="$(sed -n "1p" "$_mn_state" 2>/dev/null)"; if [ "$_mn_previous" = unset ]; then settings delete global tether_offload_disabled >/dev/null 2>&1 || true; else settings put global tether_offload_disabled "${_mn_previous#value=}" >/dev/null 2>&1 || true; fi; rm -f "$_mn_state" 2>/dev/null || true; fi'
-    register_uninstall_cmd "$_hotspot_rollback_cmd" "$MODDIR" >/dev/null 2>&1 || true
-    unset _hotspot_route_rollback_cmd _hotspot_rollback_cmd
-}
-
 magicnet_hotspot_offload_enable() {
     _hotspot_state="$(magicnet_hotspot_offload_state_file)"
     _hotspot_state_created=0
@@ -585,14 +576,19 @@ magicnet_hotspot_offload_enable() {
             return 1
         fi
         _hotspot_tmp="${_hotspot_state}.new.$$"
-        if ! printf '%s\n' "$_hotspot_saved" >"$_hotspot_tmp" ||
+        if ! (umask 077; printf '%s\n' "$_hotspot_saved" >"$_hotspot_tmp") ||
             ! mv -f "$_hotspot_tmp" "$_hotspot_state"; then
             rm -f "$_hotspot_tmp" 2>/dev/null || true
             unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
             return 1
         fi
         _hotspot_state_created=1
-        magicnet_hotspot_register_offload_rollback
+        # The shipped uninstall hook uses the same locked lifecycle cleanup.
+        # Never append a second, unverified rule deleter to uninstall.sh.
+    fi
+    if [ "$(magicnet_hotspot_offload_value)" = 1 ]; then
+        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
+        return 0
     fi
     if ! settings put global tether_offload_disabled 1 >/dev/null 2>&1 ||
         [ "$(magicnet_hotspot_offload_value)" != 1 ]; then
@@ -606,33 +602,43 @@ magicnet_hotspot_offload_enable() {
     unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
 }
 
-magicnet_hotspot_offload_restore() {
+magicnet_hotspot_offload_restore() (
     _hotspot_state="$(magicnet_hotspot_offload_state_file)"
-    [ -f "$_hotspot_state" ] || {
-        unset _hotspot_state
+    [ ! -L "$_hotspot_state" ] || return 1
+    [ -e "$_hotspot_state" ] || {
         magicnet_hotspot_route_cleanup
         return $?
     }
-    _hotspot_previous="$(sed -n '1p' "$_hotspot_state" 2>/dev/null)"
+    [ -f "$_hotspot_state" ] && [ -r "$_hotspot_state" ] || return 1
+    [ "$(wc -c <"$_hotspot_state")" -le 32 ] || return 1
+    _hotspot_previous="$(cat "$_hotspot_state")" || return 1
     case "$_hotspot_previous" in
-    unset) settings delete global tether_offload_disabled >/dev/null 2>&1 ;;
-    value=0 | value=1)
-        settings put global tether_offload_disabled "${_hotspot_previous#value=}" >/dev/null 2>&1
-        ;;
+    unset) _hotspot_expected=null ;;
+    value=0 | value=1) _hotspot_expected="${_hotspot_previous#value=}" ;;
     *)
         magicnet_warn "Invalid saved tether offload state; refusing to restore it"
-        unset _hotspot_state _hotspot_previous
-        return 1
-        ;;
+        return 1 ;;
     esac
-    _hotspot_rc=$?
-    if [ "$_hotspot_rc" -eq 0 ]; then
-        magicnet_hotspot_route_cleanup || return 1
-        rm -f "$_hotspot_state" 2>/dev/null || return 1
+    _hotspot_current="$(magicnet_hotspot_offload_value)" || return 1
+    [ -n "$_hotspot_current" ] || _hotspot_current=null
+    # An external writer may have changed the setting while MagicNet ran.
+    # Restore only our installed value, or recognize an already-restored value.
+    if [ "$_hotspot_current" != "$_hotspot_expected" ] && [ "$_hotspot_current" != 1 ]; then
+        magicnet_warn "Tether offload ownership changed; rollback state retained."
+        return 1
     fi
-    unset _hotspot_state _hotspot_previous
-    return "$_hotspot_rc"
-}
+    magicnet_hotspot_route_cleanup || return 1
+    if [ "$_hotspot_current" != "$_hotspot_expected" ]; then
+        case "$_hotspot_previous" in
+        unset) settings delete global tether_offload_disabled >/dev/null 2>&1 || return 1 ;;
+        *) settings put global tether_offload_disabled "$_hotspot_expected" >/dev/null 2>&1 || return 1 ;;
+        esac
+    fi
+    _hotspot_current="$(magicnet_hotspot_offload_value)" || return 1
+    [ -n "$_hotspot_current" ] || _hotspot_current=null
+    [ "$_hotspot_current" = "$_hotspot_expected" ] || return 1
+    rm -f "$_hotspot_state"
+)
 
 magicnet_hotspot_offload_status() {
     _hotspot_value="$(magicnet_hotspot_offload_value 2>/dev/null || true)"

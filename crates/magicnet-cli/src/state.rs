@@ -675,19 +675,24 @@ fn hotspot_record(app: &App) -> StateRecord {
     let configured_mode = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
         .remove("MAGICNET_TRANSPARENT_MODE")
         .unwrap_or_else(|| "tun".to_string());
-    // A write-ahead record is recovery intent, not proof of installed rules.
+    // A pending write-ahead record takes precedence over both intent and the
+    // active inventory. With no pending transaction, inspect the actual rules.
     let pending = app
         .moddir
         .join(format!("{HOTSPOT_TUN_RULES}.pending"))
         .exists();
     let state = if pending {
         "pending"
+    } else if rule_count > 0 {
+        if owned && configured_mode == "tun" {
+            crate::network_observation::hotspot_state(&app.moddir.join(HOTSPOT_TUN_RULES))
+        } else {
+            "pending"
+        }
     } else if !owned {
         "disabled"
     } else if configured_mode == "ebpf" {
         "shared"
-    } else if rule_count > 0 {
-        "active"
     } else {
         "waiting"
     };
@@ -1096,9 +1101,10 @@ mod tests {
         assert!(!record.contains("wlan2"));
         assert!(!record.contains("usb0"));
         fs::remove_file(pending).unwrap();
-        assert!(super::hotspot_record(&app)
-            .encode()
-            .contains("state=active\n"));
+        assert!(super::hotspot_record(&app).encode().contains(&format!(
+            "state={}\n",
+            crate::network_observation::hotspot_state(&rules)
+        )));
         fs::remove_dir_all(root).unwrap();
     }
 }

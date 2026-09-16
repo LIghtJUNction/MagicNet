@@ -337,7 +337,8 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
     def guard_code(self, helper):
         return f"""
 . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/network.sh'))}
-magicnet_cmd_exists() {{ [ "$1" = iptables ]; }}
+magicnet_cmd_exists() {{ case "$1" in iptables|ip6tables) return 0 ;; *) return 1 ;; esac; }}
+magicnet_ip6tables_cmd() {{ case "$1" in -C) return 1 ;; *) return 0 ;; esac; }}
 magicnet_xtables_available() {{ [ "$1" = iptables ]; }}
 magicnet_iptables_cmd() {{ fixture iptables "$@"; }}
 magicnet_iptables_ensure() {{ fixture iptables -I "$@"; }}
@@ -359,7 +360,7 @@ magicnet_collect_physical_egress_ifaces() {{ printf 'wlan0\\n'; }}
 
     def test_new_guard_journal_never_authorizes_untagged_rule_deletion(self):
         journal = self.mod / '.state/dns-leak-guard.ifaces'
-        journal.write_text('wlan0\n# tagged=1\n')
+        journal.write_text('wlan0\n# magicnet-owned-v2\n# families=4\n')
         vendor = 'OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'
         self.change(forward=[vendor])
         self.run_helper(self.guard_code('magicnet_disable_dns_leak_guard'))
@@ -398,12 +399,61 @@ magicnet_enable_dns_leak_guard
 """)
         self.run_helper(code, 1)
         journal = self.mod / '.state/dns-leak-guard.ifaces'
-        self.assertIn('# tagged=1', journal.read_text())
+        self.assertIn('# magicnet-owned-v2', journal.read_text())
         self.assertTrue(self.read()['forward'])
         self.change(fail_forward_delete=False)
         self.run_helper(self.guard_code('magicnet_disable_dns_leak_guard'))
         self.assertFalse(journal.exists())
         self.assertFalse(self.read()['forward'])
+
+    def test_offload_restore_verifies_write_and_retains_failed_journal(self):
+        owner = self.mod / '.state/hotspot/tether-offload.previous'
+        owner.write_text('value=0\n')
+        code = '''
+magicnet_hotspot_offload_value() { cat "$MODDIR/current-offload"; }
+settings() { printf '%s\n' "$*" >>"$MODDIR/settings-writes"; :; }
+printf '1\n' >"$MODDIR/current-offload"
+magicnet_hotspot_offload_restore
+'''
+        self.run_helper(code, 1)
+        self.assertTrue(owner.exists())
+        self.assertEqual((self.mod / 'settings-writes').read_text().strip(),
+                         'put global tether_offload_disabled 0')
+        (self.mod / 'settings-writes').unlink()
+        self.run_helper('''
+magicnet_hotspot_offload_value() { printf '0\n'; }
+settings() { printf '%s\n' "$*" >>"$MODDIR/settings-writes"; }
+magicnet_hotspot_offload_restore
+''')
+        self.assertFalse(owner.exists())
+        self.assertFalse((self.mod / 'settings-writes').exists())
+
+    def test_offload_conflict_never_overwrites_external_setting(self):
+        owner = self.mod / '.state/hotspot/tether-offload.previous'
+        owner.write_text('unset\n')
+        self.run_helper('''
+magicnet_hotspot_offload_value() { printf '0\n'; }
+settings() { printf '%s\n' "$*" >>"$MODDIR/settings-writes"; }
+magicnet_hotspot_offload_restore
+''', 1)
+        self.assertTrue(owner.exists())
+        self.assertFalse((self.mod / 'settings-writes').exists())
+        self.assertFalse(self.read()['writes'])
+
+    def test_hotspot_enable_does_not_rewrite_active_setting_or_uninstall_script(self):
+        owner = self.mod / '.state/hotspot/tether-offload.previous'
+        uninstall = self.mod / 'uninstall.sh'
+        uninstall.write_text('# fixture hook\n')
+        self.run_helper('''
+magicnet_hotspot_offload_value() { printf '1\n'; }
+settings() { printf '%s\n' "$*" >>"$MODDIR/settings-writes"; }
+magicnet_hotspot_offload_enable
+magicnet_hotspot_offload_enable
+''')
+        self.assertEqual(owner.read_text(), 'value=1\n')
+        self.assertEqual(owner.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(uninstall.read_text(), '# fixture hook\n')
+        self.assertFalse((self.mod / 'settings-writes').exists())
 
 
 if __name__ == '__main__':

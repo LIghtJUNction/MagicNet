@@ -139,7 +139,14 @@ class DNSCaptureFastPath(unittest.TestCase):
         for shell in SHELLS:
             result, calls = self.run_installer(shell, IPV6_MODE="ipv4_only")
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertFalse(any(call[0] == "ip6tables" for call in calls))
+            ipv6 = [call for call in calls if call[0] == "ip6tables"]
+            self.assertTrue(ipv6, "old IPv6 capture needs a bounded cleanup check")
+            self.assertFalse(any(op in call for call in ipv6 for op in ("-N", "-A", "-I")))
+            # Read/delete/flush of the owned chain is allowed when switching
+            # address-family policy; all writes must remain scoped to that chain.
+            for call in ipv6:
+                if any(op in call for op in ("-D", "-F", "-X")):
+                    self.assertIn("magicnet-dns-output", call)
 
     def test_existing_chains_are_inspected_numerically(self):
         for shell in SHELLS:

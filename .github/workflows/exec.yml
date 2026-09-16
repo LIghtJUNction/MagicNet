@@ -265,6 +265,7 @@ jobs:
           grep -F "LIghtJUNction.${expected_revision:0:12}" <<<"$version_output"
           printf '%s\n' "$version_output"
           python3 scripts/test-android-tun-proof.py --check-core "$(command -v sing-box)"
+          python3 scripts/test-dns-loopback-listeners.py --core "$(command -v sing-box)"
 
       - name: Verify tools
         shell: bash

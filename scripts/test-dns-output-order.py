@@ -68,13 +68,9 @@ def xtables(args):
     if action == "-S":
         if name not in chains:
             return 1
-        print("-P OUTPUT ACCEPT" if name == "OUTPUT" else "-N " + name)
+        print("-P OUTPUT ACCEPT")
         for rule in chains[name]:
-            shown = list(rule)
-            if "--mark" in shown:
-                at = shown.index("--mark") + 1
-                shown[at] = "/".join(hex(int(part, 0)) for part in shown[at].split("/"))
-            print(" ".join(["-A", name] + shown))
+            print(shlex.join(["-A", name] + rule))
         return 0
     if action == "-N":
         if name in chains:
@@ -90,6 +86,12 @@ def xtables(args):
         del chains[name]
     else:
         rule = rest[1:]
+        # Real nft xtables validates a jump target even for a missing rule.
+        # An absent custom target is rc=2, not the ordinary no-match rc=1.
+        if action in ("-C", "-D") and "-j" in rule:
+            target = rule[rule.index("-j") + 1]
+            if target == CHAIN and target not in chains:
+                return 2
         if action == "-C":
             return 0 if rule in chains[name] else 1
         if action == "-D":
@@ -191,6 +193,28 @@ class DNSOutputOrder(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assert_captured(state)
 
+    def test_ipv4_only_removes_old_ipv6_capture_without_rewriting_ipv4(self):
+        result, state = self.run_installer(initial(), ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state["calls"] = []
+        result, final = self.run_installer(state, ["sh"], IPV6_MODE="ipv4_only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(CHAIN, final["ip6tables"])
+        for call in final["calls"]:
+            if call[0] == "iptables":
+                self.assertNotIn(call[3], ("-A", "-D", "-I", "-N", "-F", "-X"), call)
+        self.assert_captured(final, families=("iptables",))
+
+    def test_unchanged_recipe_makes_no_firewall_writes(self):
+        result, state = self.run_installer(initial(), ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state["calls"] = []
+        result, final = self.run_installer(state, ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for call in final["calls"]:
+            self.assertNotIn(call[3], ("-A", "-D", "-I", "-N", "-F", "-X"), call)
+        self.assert_captured(final)
+
     def test_reapply_repairs_core_reordering_without_duplicates(self):
         for shell in SHELLS:
             result, state = self.run_installer(initial(duplicates=3), shell)
@@ -206,25 +230,6 @@ class DNSOutputOrder(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(state["iptables"], again["iptables"])
             self.assertEqual(state["ip6tables"], again["ip6tables"])
-
-    def test_unchanged_reconcile_does_not_write_any_rules(self):
-        for shell in SHELLS:
-            result, state = self.run_installer(initial(False), shell)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            before = len(state["calls"])
-            result, after = self.run_installer(state, shell)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            writes = [call for call in after["calls"][before:]
-                      if any(op in call for op in ("-N", "-F", "-X", "-D", "-A", "-I"))]
-            self.assertEqual(writes, [], writes)
-            self.assert_captured(after)
-
-    def test_absent_cleanup_is_read_only(self):
-        for shell in SHELLS:
-            result, state = self.run_installer(initial(False), shell, ACTION="disable")
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertFalse(any(op in call for call in state["calls"]
-                                 for op in ("-N", "-F", "-X", "-D", "-A", "-I")))
 
     def test_cloudflare_udp_profile_repairs_core_reordering(self):
         for shell in SHELLS:

@@ -106,12 +106,20 @@ magicnet_xtables_table_probe() (
     _probe_family="$1"
     _probe_table="$2"
     magicnet_cmd_exists "$_probe_family" || return 2
+    # A readable legacy table registry gives a non-mutating answer. In
+    # particular do not ask ip6tables to autoload an absent optional NAT table.
+    if [ "$_probe_family:$_probe_table" = ip6tables:nat ] &&
+        ! magicnet_xtables_function_defined ip6tables &&
+        [ -r /proc/net/ip6_tables_names ] &&
+        ! grep -Fqx nat /proc/net/ip6_tables_names; then
+        # The proc registry belongs to legacy xtables, not the nft backend.
+        # Version inspection does not create or autoload a kernel table.
+        _probe_version="$(magicnet_ip6tables_cmd --version 2>/dev/null)" || return 1
+        case "$_probe_version" in *"(legacy)"*) return 2 ;; esac
+    fi
     _probe_rc=0
     _probe_error="$(LC_ALL=C LANG=C "magicnet_${_probe_family}_cmd" -t "$_probe_table" -L -n 2>&1 >/dev/null)" || _probe_rc=$?
     [ "$_probe_rc" -ne 0 ] || return 0
-    # Absence is a capability result, not an operation failure. In particular,
-    # cleanup must not log an expected missing IPv6 NAT table as a broken core.
-    # Classify deadlines first: partial stderr never turns a timeout into absence.
     case "$_probe_rc" in
     124 | 137 | 143) ;;
     *)
@@ -120,6 +128,7 @@ magicnet_xtables_table_probe() (
         esac
         ;;
     esac
+    # Absence is a capability result; permission/timeout is an actual failure.
     magicnet_warn "$_probe_family -t $_probe_table -L failed (exit=$_probe_rc): $_probe_error"
     return 1
 )
@@ -261,45 +270,91 @@ magicnet_dns_capture_prepend_jump() (
     magicnet_xtables_require "$_dns_prepend_cmd" -t nat -I OUTPUT -j magicnet-dns-output
 )
 
-# Compare the actual ordered rules, not a marker or a successful -C alone.
-# xtables may insert an implicit protocol match in -S output; normalize only
-# that spelling, retaining order, bypasses and the exact redirect destination.
+# Canonical comparison of our complete chain, not a cached success marker.
+# Ignore only iptables redundant transport modules and numeric mark spelling.
+magicnet_dns_capture_normalize_rules() {
+    awk '
+        function number(v, n,i,c) {
+            if (v !~ /^0x/) return v + 0
+            n=0; for(i=3;i<=length(v);i++) { c=index("0123456789abcdef",tolower(substr(v,i,1)))-1; if(c<0) return v; n=n*16+c }
+            return n
+        }
+        $1 == "-A" {
+            out=""
+            for(i=1;i<=NF;i++) {
+                if ($i == "-m" && ($(i+1)=="tcp" || $(i+1)=="udp")) { i++; continue }
+                value=$i
+                if ($(i-1)=="--mark") { split(value,m,"/"); value=number(m[1]) "/" number(m[2]) }
+                if (value == "\047!\047") value="!"
+                out=out (out=="" ? "" : " ") value
+            }
+            print out
+        }
+    '
+}
+
+magicnet_dns_capture_expected_rules() (
+    for _expected_proto in tcp udp; do
+        printf '%s\n' "-A magicnet-dns-output -p $_expected_proto ! --dport 53 -j RETURN"
+    done
+    if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
+        printf '%s\n' "-A magicnet-dns-output -m mark --mark $_dns_capture_singbox_mark/$_dns_capture_singbox_mark -j RETURN"
+    fi
+    for _expected_uid in $_dns_capture_bypass_uids; do
+        printf '%s\n' "-A magicnet-dns-output -m owner --uid-owner $_expected_uid -j RETURN"
+    done
+    for _expected_proto in udp tcp; do
+        printf '%s\n' "-A magicnet-dns-output -p $_expected_proto --dport 53 -j REDIRECT --to-ports $_dns_capture_port"
+    done
+)
+
 magicnet_dns_capture_family_current() (
     _current_cmd="$1"
-    _current_port="$2"
-    _current_uids="$3"
-    _current_marked="$4"
-    _current_mark="$5"
     _current_rc=0
-    _current_rules="$("$_current_cmd" -t nat -S magicnet-dns-output 2>/dev/null)" || _current_rc=$?
+    _current_chain="$("$_current_cmd" -t nat -S magicnet-dns-output 2>/dev/null)" || _current_rc=$?
     case "$_current_rc" in 0) ;; 1) return 1 ;; *) return 2 ;; esac
     _current_output="$("$_current_cmd" -t nat -S OUTPUT 2>/dev/null)" || return 2
-    _current_rules="$(printf '%s\n' "$_current_rules" | sed -e '/^-N /d' -e 's/ -m tcp / /g' -e 's/ -m udp / /g')"
-    _current_expected="$(
-        for _current_proto in tcp udp; do
-            printf '%s\n' "-A magicnet-dns-output -p $_current_proto ! --dport 53 -j RETURN"
-        done
-        if [ "$_current_marked" = 1 ]; then
-            # -S represents marks in hexadecimal, including their mask.
-            _current_hex="$(printf '0x%x' "$_current_mark")"
-            printf '%s\n' "-A magicnet-dns-output -m mark --mark $_current_hex/$_current_hex -j RETURN"
-        fi
-        for _current_uid in $_current_uids; do
-            printf '%s\n' "-A magicnet-dns-output -m owner --uid-owner $_current_uid -j RETURN"
-        done
-        for _current_proto in udp tcp; do
-            printf '%s\n' "-A magicnet-dns-output -p $_current_proto --dport 53 -j REDIRECT --to-ports $_current_port"
-        done
-    )"
-    [ "$_current_rules" = "$_current_expected" ] || return 1
+    _current_chain="$(printf '%s\n' "$_current_chain" | magicnet_dns_capture_normalize_rules)"
+    _expected_chain="$(magicnet_dns_capture_expected_rules | magicnet_dns_capture_normalize_rules)"
+    [ "$_current_chain" = "$_expected_chain" ] || return 1
+    # A core restart may have prepended its own DNAT. Membership is not order.
     printf '%s\n' "$_current_output" | awk '
-        $1 == "-A" {
-            n++
-            if (n == 1 && $0 == "-A OUTPUT -j magicnet-dns-output") first = 1
-            for (i = 3; i <= NF; i++) if ($i == "magicnet-dns-output") jumps++
-        }
-        END { exit !(first && jumps == 1) }
+        $1=="-A" { n++; if(n==1 && $0=="-A OUTPUT -j magicnet-dns-output") first=1 }
+        /-j magicnet-dns-output( |$)/ { jumps++ }
+        END { exit first && jumps==1 ? 0 : 1 }
     '
+)
+
+magicnet_dns_capture_install_family() (
+    _install_cmd="$1"
+    _install_current=0
+    magicnet_dns_capture_family_current "$_install_cmd" || _install_current=$?
+    case "$_install_current" in
+    0) return 0 ;;
+    1) ;;
+    *) magicnet_warn "DNS capture inspection failed; refusing speculative firewall rewrite"; return 1 ;;
+    esac
+    # Detach only our jump before rebuilding; never expose a partially built
+    # hooked chain or flush a system chain. Reattach after the recipe succeeds.
+    # nft xtables returns rc=2 for -C/-D referencing an absent target chain.
+    # Create the unhooked empty chain first on fresh installs; existing chains
+    # remain untouched until their jumps have been successfully detached.
+    if ! "$_install_cmd" -t nat -N magicnet-dns-output >/dev/null 2>&1; then
+        magicnet_xtables_require "$_install_cmd" -t nat -L magicnet-dns-output -n || return 1
+    fi
+    magicnet_dns_capture_remove_output_jumps "$_install_cmd" || return 1
+    magicnet_xtables_require "$_install_cmd" -t nat -F magicnet-dns-output || return 1
+    _install_recipe="$(magicnet_dns_capture_expected_rules)" || return 1
+    while IFS= read -r _install_rule; do
+        # Every token is generated above from validated numeric configuration.
+        set -f
+        # shellcheck disable=SC2086
+        set -- $_install_rule
+        magicnet_xtables_require "$_install_cmd" -t nat "$@" || return 1
+    done <<EOF
+$_install_recipe
+EOF
+    magicnet_dns_capture_prepend_jump "$_install_cmd"
 )
 
 magicnet_enable_dns_capture() {
@@ -348,31 +403,7 @@ magicnet_enable_dns_capture() {
     magicnet_dns_capture_singbox_udp_marked && _dns_capture_singbox_marked=1
     _dns_capture_rc=0
     _dns_capture_ipv6_unavailable=0
-    _dns_current_rc=0
-    magicnet_dns_capture_family_current magicnet_iptables_cmd "$_dns_capture_port" \
-        "$_dns_capture_bypass_uids" "$_dns_capture_singbox_marked" "$_dns_capture_singbox_mark" || _dns_current_rc=$?
-    [ "$_dns_current_rc" -ne 2 ] || return 1
-    if [ "$_dns_current_rc" -ne 0 ]; then
-        if ! magicnet_iptables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
-            magicnet_xtables_require magicnet_iptables_cmd -t nat -L magicnet-dns-output -n || _dns_capture_rc=1
-        fi
-        magicnet_xtables_require magicnet_iptables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
-        magicnet_dns_capture_fast_path magicnet_iptables_cmd || _dns_capture_rc=1
-        # Direct UDP DNS servers are marked in the sing-box config. Keep those
-        # resolver packets out of this chain without exempting all UID-0 traffic.
-        if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
-            magicnet_iptables_ensure -t nat magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
-        fi
-        for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
-            magicnet_iptables_ensure -t nat magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
-        done
-        magicnet_iptables_ensure -t nat magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
-        magicnet_iptables_ensure -t nat magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
-        # Publish the jump only after both DNS transports and bypass rules exist.
-        if [ "$_dns_capture_rc" -eq 0 ]; then
-            magicnet_dns_capture_prepend_jump magicnet_iptables_cmd || _dns_capture_rc=1
-        fi
-    fi
+    magicnet_dns_capture_install_family magicnet_iptables_cmd || _dns_capture_rc=1
 
     _dns_capture_ipv6_mode="$(magicnet_ipv6_mode 2>/dev/null || printf '%s\n' prefer_ipv4)"
     if [ "$_dns_capture_ipv6_mode" != ipv4_only ]; then
@@ -387,33 +418,13 @@ magicnet_enable_dns_capture() {
                 # IPv4 capture path; do not turn that platform limitation into
                 # a false global startup failure.
                 _dns_capture_ipv6_unavailable=1
-                magicnet_log "IPv6 NAT unsupported; IPv4-first DNS capture remains available (IPv6 capture not installed)"
+                magicnet_log "IPv6 nat unsupported; IPv6 kernel DNS capture not installed (IPv4-first policy)"
             fi
         else
-            _dns_current_rc=0
-            magicnet_dns_capture_family_current magicnet_ip6tables_cmd "$_dns_capture_port" \
-                "$_dns_capture_bypass_uids" "$_dns_capture_singbox_marked" "$_dns_capture_singbox_mark" || _dns_current_rc=$?
-            [ "$_dns_current_rc" -ne 2 ] || return 1
-            if [ "$_dns_current_rc" -ne 0 ]; then
-                if ! magicnet_ip6tables_cmd -t nat -N magicnet-dns-output >/dev/null 2>&1; then
-                    magicnet_xtables_require magicnet_ip6tables_cmd -t nat -L magicnet-dns-output -n || _dns_capture_rc=1
-                fi
-                magicnet_xtables_require magicnet_ip6tables_cmd -t nat -F magicnet-dns-output || _dns_capture_rc=1
-                magicnet_dns_capture_fast_path magicnet_ip6tables_cmd || _dns_capture_rc=1
-                if [ "$_dns_capture_singbox_marked" -eq 1 ]; then
-                    magicnet_ip6tables_nat_ensure magicnet-dns-output -m mark --mark "$_dns_capture_singbox_mark/$_dns_capture_singbox_mark" -j RETURN || _dns_capture_rc=1
-                fi
-                for _dns_capture_bypass_uid in $_dns_capture_bypass_uids; do
-                    magicnet_ip6tables_nat_ensure magicnet-dns-output -m owner --uid-owner "$_dns_capture_bypass_uid" -j RETURN || _dns_capture_rc=1
-                done
-                magicnet_ip6tables_nat_ensure magicnet-dns-output -p udp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
-                magicnet_ip6tables_nat_ensure magicnet-dns-output -p tcp --dport 53 -j REDIRECT --to-ports "$_dns_capture_port" || _dns_capture_rc=1
-                # Publish the jump only after both DNS transports and bypass rules exist.
-                if [ "$_dns_capture_rc" -eq 0 ]; then
-                    magicnet_dns_capture_prepend_jump magicnet_ip6tables_cmd || _dns_capture_rc=1
-                fi
-            fi
+            magicnet_dns_capture_install_family magicnet_ip6tables_cmd || _dns_capture_rc=1
         fi
+    else
+        magicnet_dns_capture_cleanup_family ip6tables || _dns_capture_rc=1
     fi
 
     if [ "$_dns_capture_rc" -ne 0 ]; then
@@ -495,33 +506,31 @@ magicnet_dns_capture_delete_jump() (
     magicnet_xtables_delete_rule "$_dns_capture_delete_cmd" "$_dns_capture_delete_table" "$@"
 )
 
+magicnet_dns_capture_cleanup_family() (
+    _dns_capture_family="$1"
+    _dns_capture_probe_rc=0
+    magicnet_xtables_table_probe "$_dns_capture_family" nat || _dns_capture_probe_rc=$?
+    case "$_dns_capture_probe_rc" in 0) ;; 2) return 0 ;; *) return 1 ;; esac
+    _dns_capture_cmd="magicnet_${_dns_capture_family}_cmd"
+    _dns_capture_chain_rc=0
+    "$_dns_capture_cmd" -t nat -L magicnet-dns-output -n >/dev/null 2>&1 || _dns_capture_chain_rc=$?
+    case "$_dns_capture_chain_rc" in
+    0)
+        # Never flush a chain while a failed detach may still send traffic into it.
+        magicnet_dns_capture_remove_output_jumps "$_dns_capture_cmd" || return 1
+        magicnet_xtables_require "$_dns_capture_cmd" -t nat -F magicnet-dns-output || return 1
+        magicnet_xtables_require "$_dns_capture_cmd" -t nat -X magicnet-dns-output
+        ;;
+    # The table was readable; Android variants use 1 or 2 for no chain.
+    1 | 2) return 0 ;;
+    *) return 1 ;;
+    esac
+)
+
 magicnet_disable_dns_capture() (
     _dns_capture_cleanup_rc=0
     for _dns_capture_family in iptables ip6tables; do
-        _dns_capture_probe_rc=0
-        magicnet_xtables_table_probe "$_dns_capture_family" nat || _dns_capture_probe_rc=$?
-        case "$_dns_capture_probe_rc" in
-        0) ;;
-        2) continue ;;
-        *)
-            _dns_capture_cleanup_rc=1
-            continue
-            ;;
-        esac
-        _dns_capture_cmd="magicnet_${_dns_capture_family}_cmd"
-        _dns_capture_chain_rc=0
-        "$_dns_capture_cmd" -t nat -L magicnet-dns-output -n >/dev/null 2>&1 || _dns_capture_chain_rc=$?
-        case "$_dns_capture_chain_rc" in
-        0)
-            # Remove every duplicate jump before flushing/deleting our chain.
-            magicnet_dns_capture_remove_output_jumps "$_dns_capture_cmd" || _dns_capture_cleanup_rc=1
-            magicnet_xtables_require "$_dns_capture_cmd" -t nat -F magicnet-dns-output || _dns_capture_cleanup_rc=1
-            magicnet_xtables_require "$_dns_capture_cmd" -t nat -X magicnet-dns-output || _dns_capture_cleanup_rc=1
-            ;;
-        # The table was readable; Android variants use 1 or 2 for no chain.
-        1 | 2) ;;
-        *) _dns_capture_cleanup_rc=1 ;;
-        esac
+        magicnet_dns_capture_cleanup_family "$_dns_capture_family" || _dns_capture_cleanup_rc=1
     done
     return "$_dns_capture_cleanup_rc"
 )
@@ -598,36 +607,31 @@ magicnet_dns_leak_guard_delete_rule() (
     magicnet_xtables_delete_rule "$_dns_guard_delete_cmd" "" "$@"
 )
 
-magicnet_dns_leak_guard_legacy_iface() (
-    _legacy_state="$(magicnet_dns_leak_guard_state_file)"
-    [ -f "$_legacy_state" ] || return 1
-    # New rules carry an owner comment; their journal never authorizes removing
-    # an untagged rule from Android, a VPN or another module.
-    grep -Fqx '# tagged=1' "$_legacy_state" && return 1
-    grep -Fqx -- "$1" "$_legacy_state"
-)
-
 magicnet_dns_leak_guard_delete_family() (
     _delete_family_cmd="$1"
+    shift
     _delete_family_result=0
-    for _delete_family_iface in $2; do
+    for _delete_family_iface in $1; do
         for _delete_family_port in 53 853; do
             for _delete_family_proto in udp tcp; do
-                _delete_family_rc=0
-                magicnet_dns_leak_guard_delete_rule "$_delete_family_cmd" OUTPUT \
-                    -o "$_delete_family_iface" -p "$_delete_family_proto" \
-                    --dport "$_delete_family_port" -m comment --comment magicnet-dns-guard -j REJECT ||
-                    _delete_family_rc=$?
-                if [ "$_delete_family_rc" -eq 0 ] && magicnet_dns_leak_guard_legacy_iface "$_delete_family_iface"; then
-                    magicnet_dns_leak_guard_delete_rule "$_delete_family_cmd" OUTPUT \
-                        -o "$_delete_family_iface" -p "$_delete_family_proto" \
-                        --dport "$_delete_family_port" -j REJECT || _delete_family_rc=$?
-                fi
-                case "$_delete_family_rc" in
-                0) ;;
-                124) return 124 ;;
-                *) _delete_family_result=1 ;;
-                esac
+                for _delete_family_style in tagged legacy; do
+                    set -- OUTPUT -o "$_delete_family_iface" -p "$_delete_family_proto" --dport "$_delete_family_port"
+                    if [ "$_delete_family_style" = tagged ]; then
+                        set -- "$@" -m comment --comment magicnet-dns-guard
+                    else
+                        case " ${MAGICNET_DNS_GUARD_LEGACY_IFACES:-} " in
+                        *" $_delete_family_iface "*) ;;
+                        *) continue ;;
+                        esac
+                    fi
+                    _delete_family_rc=0
+                    magicnet_dns_leak_guard_delete_rule "$_delete_family_cmd" "$@" -j REJECT || _delete_family_rc=$?
+                    case "$_delete_family_rc" in
+                    0) ;;
+                    124) return 124 ;;
+                    *) _delete_family_result=1 ;;
+                    esac
+                done
             done
         done
     done
@@ -635,34 +639,34 @@ magicnet_dns_leak_guard_delete_family() (
 )
 
 magicnet_dns_leak_guard_rule_ifaces() (
-    _scan_cmd="$1"
-    _scan_rules="$("$_scan_cmd" -S OUTPUT)" || return $?
-    _legacy_ifaces=
-    _scan_state="$(magicnet_dns_leak_guard_state_file)"
-    if [ -f "$_scan_state" ] && ! grep -Fqx '# tagged=1' "$_scan_state"; then
-        _legacy_ifaces="$(awk '/^[[:alnum:]_.-]+$/ {print}' "$_scan_state")" || return 2
+    _dns_guard_scan_cmd="$1"
+    _dns_guard_scan_rc=0
+    _dns_guard_scan_rules="$(LC_ALL=C "$_dns_guard_scan_cmd" -S OUTPUT 2>&1)" || _dns_guard_scan_rc=$?
+    if [ "$_dns_guard_scan_rc" -ne 0 ]; then
+        case "$_dns_guard_scan_rules" in
+        *"Table does not exist"* | *"Address family not supported"*) return 76 ;;
+        esac
+        return "$_dns_guard_scan_rc"
     fi
-    printf '%s\n' "$_scan_rules" | awk -v legacy="$_legacy_ifaces" '
-        BEGIN { n = split(legacy, names, "\n"); for (i = 1; i <= n; i++) saved[names[i]] = 1 }
+    # New rules have an explicit owner. Legacy unlabelled rules may be removed
+    # only on interfaces in the pre-upgrade ownership journal, never on an
+    # interface inferred from a current physical link or another owner's rule.
+    printf '%s\n' "$_dns_guard_scan_rules" | awk -v legacy="${MAGICNET_DNS_GUARD_LEGACY_IFACES:-}" '
+        BEGIN { n = split(legacy, names, /[[:space:]]+/); for (i=1; i<=n; i++) owned[names[i]]=1 }
         $1 == "-A" && $2 == "OUTPUT" {
-            iface = proto = port = target = owner = ""; valid = 1
-            for (i = 3; i <= NF; i += 2) {
-                value = $(i + 1)
-                if (i == NF) { valid = 0; break }
-                if ($i == "-o") iface = value
-                else if ($i == "-p") proto = value
-                else if ($i == "--dport") port = value
-                else if ($i == "-j") target = value
-                else if ($i == "--comment") { owner = value; gsub(/^"|"$/, "", owner) }
-                else if ($i == "-m") { if (value != "tcp" && value != "udp" && value != "comment") valid = 0 }
-                else if ($i == "--reject-with") { if (value != "icmp-port-unreachable" && value != "icmp6-port-unreachable") valid = 0 }
-                else valid = 0
+            iface = proto = port = target = owner = ""
+            for (i=3; i<=NF; i++) {
+                if ($i == "-o" && i<NF) iface=$(i+1)
+                if ($i == "-p" && i<NF) proto=$(i+1)
+                if ($i == "--dport" && i<NF) port=$(i+1)
+                if ($i == "-j" && i<NF) target=$(i+1)
+                if ($i == "--comment" && i<NF) { owner=$(i+1); gsub(/"/, "", owner) }
             }
-            if (valid && iface ~ /^[[:alnum:]_.-]+$/ && target == "REJECT" &&
+            if (iface ~ /^[[:alnum:]_.-]+$/ && target == "REJECT" &&
                 (proto == "udp" || proto == "tcp") && (port == "53" || port == "853") &&
-                (owner == "magicnet-dns-guard" || (owner == "" && saved[iface]))) print iface
+                (owner == "magicnet-dns-guard" || (owner == "" && owned[iface])) && !seen[iface]++) print iface
         }
-    ' | awk '!seen[$0]++'
+    '
 )
 
 magicnet_enable_dns_leak_guard() {
@@ -712,25 +716,19 @@ magicnet_enable_dns_leak_guard() {
             magicnet_warn "IPv6 DNS leak guard unavailable; continuing with IPv4-first guard"
         fi
     fi
-    # Journal potential owned resources BEFORE any insertion. If the process
-    # dies mid-apply, cleanup still knows the old interfaces and owner tag.
-    # This file is recovery evidence, not an assertion that capture is active.
+    # Record ownership before the first write, so partial failures remain
+    # recoverable. This is private recovery evidence, not canonical success.
+    _dns_guard_families=4
+    [ "$_dns_guard_ipv6_available" -ne 1 ] || _dns_guard_families=4,6
     _dns_guard_state_file="$(magicnet_dns_leak_guard_state_file)"
     _dns_guard_state_tmp="${_dns_guard_state_file}.new.$$"
     if ! mkdir -p "${_dns_guard_state_file%/*}" ||
-        ! (
-            umask 077
-            { printf '%s\n' "$_dns_guard_ifaces"; printf '# tagged=1\n'; } >"$_dns_guard_state_tmp"
-        ) ||
+        ! (umask 077; printf '%s\n' "$_dns_guard_ifaces" '# magicnet-owned-v2' "# families=$_dns_guard_families" >"$_dns_guard_state_tmp") ||
         ! mv -f "$_dns_guard_state_tmp" "$_dns_guard_state_file"; then
-        magicnet_warn "Failed to persist DNS leak guard interface state"
         rm -f "$_dns_guard_state_tmp" 2>/dev/null || true
-        unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
-        unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_state_tmp
+        magicnet_warn "DNS guard ownership could not be staged; no rules installed"
         return 1
     fi
-
-
     for _dns_guard_iface in $_dns_guard_ifaces; do
         for _dns_guard_port in 53 853; do
             magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" -m comment --comment magicnet-dns-guard -j REJECT || _dns_guard_rc=1
@@ -759,69 +757,58 @@ magicnet_disable_dns_leak_guard() (
     case "$MAGICNET_XTABLES_TIMEOUT" in
     '' | *[!0-9]* | 0) MAGICNET_XTABLES_TIMEOUT=1 ;;
     esac
-
-    _cleanup_probe=0
-    magicnet_xtables_available iptables || _cleanup_probe=$?
-    case "$_cleanup_probe" in
-    124 | 137 | 143) return 1 ;;
-    0) ;;
-    *)
-        # Missing userspace is not proof that previously owned rules vanished.
-        magicnet_cmd_exists iptables && return 1
-        [ ! -e "$(magicnet_dns_leak_guard_state_file)" ] || return 1
-        return 0
-        ;;
-    esac
-
     _cleanup_state="$(magicnet_dns_leak_guard_state_file)"
+    _cleanup_saved=
+    MAGICNET_DNS_GUARD_LEGACY_IFACES=
+    if [ -e "$_cleanup_state" ]; then
+        [ -f "$_cleanup_state" ] && [ -r "$_cleanup_state" ] || return 1
+        _cleanup_saved="$(awk '/^[[:alnum:]_.-]+$/ { print }' "$_cleanup_state")" || return 1
+        if ! grep -Fqx '# magicnet-owned-v2' "$_cleanup_state"; then
+            MAGICNET_DNS_GUARD_LEGACY_IFACES="$(printf '%s\n' "$_cleanup_saved" | tr '\n' ' ')"
+        fi
+    fi
+    export MAGICNET_DNS_GUARD_LEGACY_IFACES
     _cleanup_result=0
-
-    # Listing OUTPUT once is much cheaper than issuing four delete/check pairs
-    # for every physical interface when the guard is disabled (the default).
-    # An unreadable ruleset is unknown. Retain the recovery journal and stop;
-    # do not guess ownership from currently visible physical interfaces.
-    _cleanup_ipv4_scan_rc=0
-    _cleanup_ipv4_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_iptables_cmd)" ||
-        _cleanup_ipv4_scan_rc=$?
-    case "$_cleanup_ipv4_scan_rc" in
-    124 | 137 | 143) return 1 ;;
-    0) ;;
-    *) return 1 ;;
-    esac
-    _cleanup_ipv4_ifaces="$_cleanup_ipv4_rules"
-
-    _cleanup_rc=0
-    magicnet_dns_leak_guard_delete_family magicnet_iptables_cmd "$_cleanup_ipv4_ifaces" || _cleanup_rc=$?
-    case "$_cleanup_rc" in
-    124) return 1 ;;
-    0) ;;
-    *) _cleanup_result=1 ;;
-    esac
-
-    _cleanup_probe=0
-    magicnet_xtables_available ip6tables || _cleanup_probe=$?
-    if [ "$_cleanup_probe" -eq 0 ]; then
-        _cleanup_ipv6_scan_rc=0
-        _cleanup_ipv6_rules="$(magicnet_dns_leak_guard_rule_ifaces magicnet_ip6tables_cmd)" ||
-            _cleanup_ipv6_scan_rc=$?
-        case "$_cleanup_ipv6_scan_rc" in
-        124 | 137 | 143) return 1 ;;
+    _cleanup_families=unknown
+    if [ -f "$_cleanup_state" ]; then
+        _cleanup_families="$(sed -n 's/^# families=//p' "$_cleanup_state")" || return 1
+        # Missing, duplicated or invalid family evidence is not a proof of absence.
+        case "$_cleanup_families" in 4 | 4,6) ;; *) _cleanup_families=unknown ;; esac
+    fi
+    for _cleanup_family in iptables ip6tables; do
+        if ! magicnet_cmd_exists "$_cleanup_family"; then
+            if [ -e "$_cleanup_state" ]; then
+                # A newly journaled IPv4-only guard never installed IPv6 rules.
+                # Older journals do not encode families and must be retained.
+                if [ "$_cleanup_family:$_cleanup_families" != ip6tables:4 ]; then
+                    _cleanup_result=1
+                fi
+            fi
+            continue
+        fi
+        _cleanup_scan_rc=0
+        _cleanup_ifaces="$(magicnet_dns_leak_guard_rule_ifaces "magicnet_${_cleanup_family}_cmd")" || _cleanup_scan_rc=$?
+        case "$_cleanup_scan_rc" in
         0) ;;
-        *) return 1 ;;
+        76) continue ;; # Explicit absent-filter/family result, not raw exit 3.
+        124 | 137 | 143) return 1 ;;
+        *)
+            # A failed whole-chain inspection is not permission to mutate a
+            # partially observed firewall. Keep the journal and retry later.
+            return 1
+            ;;
         esac
-        _cleanup_ipv6_ifaces="$_cleanup_ipv6_rules"
         _cleanup_rc=0
-        magicnet_dns_leak_guard_delete_family magicnet_ip6tables_cmd "$_cleanup_ipv6_ifaces" || _cleanup_rc=$?
+        magicnet_dns_leak_guard_delete_family "magicnet_${_cleanup_family}_cmd" "$_cleanup_ifaces" || _cleanup_rc=$?
         case "$_cleanup_rc" in
         124) return 1 ;;
         0) ;;
         *) _cleanup_result=1 ;;
         esac
-    else
-        case "$_cleanup_probe" in 124 | 137 | 143) return 1 ;; esac
-        magicnet_cmd_exists ip6tables && return 1
-    fi
-
+        # If the listing was unreadable, retain the journal for reconciliation
+        # even when individual -C checks suggest the known rules disappeared.
+        [ "$_cleanup_scan_rc" -eq 0 ] || _cleanup_result=1
+    done
     [ "$_cleanup_result" -eq 0 ] || return 1
     rm -f "$_cleanup_state" 2>/dev/null
 )
