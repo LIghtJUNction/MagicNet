@@ -120,18 +120,25 @@ For components that can be updated independently, the migration pattern is:
 4. Fall back to the old human command only when supporting an older installed MagicNet version is a product requirement.
 5. Keep the fallback covered by a regression test, then remove it when the minimum supported module version includes the machine command.
 
-The bundled WebUI and CLI are released together. DNS and network policy reads
-therefore use the shared schema-1 decoder without human-text fallback. They
-validate the payload before changing UI state; malformed, unsupported or
-conflicting responses remain visible failures. Native bridge diagnostics may
-surround a single response, but multiple JSON objects or a failed execution
-cannot be promoted to success. Refreshes retain foreground ownership checks so
-late results cannot overwrite a newer operation.
+The bundled WebUI and CLI are released together. DNS, network policy and service
+status reads therefore use the shared schema-1 decoder without human-text
+fallback. They validate the payload before changing UI state; malformed,
+unsupported or conflicting responses remain visible failures. Native bridge
+diagnostics may surround a single response, but multiple JSON objects or a
+failed execution cannot be promoted to success. Refreshes retain foreground
+ownership checks so late results cannot overwrite a newer operation.
 
-The remaining subscription, Wi-Fi and service status migration is tracked in
-#273. Do not discard private editor fields or lifecycle reconciliation evidence
-just to remove the old reads: machine status intentionally does not expose the
-same data as manual diagnostics.
+The overview reads service and transparent state from one `service.status`
+response instead of combining separately timed commands. A failed or malformed
+refresh clears previous live state to unknown. Process existence remains
+separate from readiness, and interface counts respect the machine privacy
+boundary. This command-level snapshot is not an atomic observation of every
+underlying operating-system probe.
+
+The remaining subscription and Wi-Fi status migration is tracked in #273. Do
+not discard private editor fields or lifecycle reconciliation evidence just to
+remove the old reads: machine status intentionally does not expose the same data
+as manual diagnostics.
 
 ## Mutation safety
 
