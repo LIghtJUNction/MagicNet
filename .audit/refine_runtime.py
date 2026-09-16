@@ -49,5 +49,6 @@ p=root/'crates/magicnet-cli/src/machine.rs';s=p.read_text();s=s.replace('''    l
         &app.moddir.join(SINGBOX_CONFIG),
         4 * 1024 * 1024,
     );''');p.write_text(s)
-p=root/'scripts/package-smoke.sh';s=p.read_text().replace("    'lib/magicnet/primitives.sh' \\\n", "    'lib/magicnet/primitives.sh' \\\n    'lib/magicnet/api.sh' \\\n");p.write_text(s)
-p=root/'scripts/test-host.sh';s=p.read_text().replace('check bash scripts/test-module-entrypoints.sh\n','check bash scripts/test-module-entrypoints.sh\ncheck bash scripts/test-api-endpoint.sh\n');p.write_text(s)"}
+p=root/'scripts/package-smoke.sh';s=p.read_text().replace("    'lib/magicnet/primitives.sh' \\\n", "    'lib/magicnet/primitives.sh' \\\
+    'lib/magicnet/api.sh' \\\n");p.write_text(s)
+p=root/'scripts/test-host.sh';s=p.read_text().replace('check bash scripts/test-module-entrypoints.sh\n','check bash scripts/test-module-entrypoints.sh\ncheck bash scripts/test-api-endpoint.sh\n');p.write_text(s)
