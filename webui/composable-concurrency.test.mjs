@@ -5,7 +5,7 @@ import vm from "node:vm";
 import { t } from "./src/i18n/index.ts";
 import ts from "typescript";
 import * as background from "./src/composables/backgroundTasks.ts";
-import { invalidateTransparentRuntime, parseRuntime, parseSubs, runtimeDefaults, subscriptionDefaults } from "./src/composables/parsers.ts";
+import { parseSubs, runtimeDefaults, subscriptionDefaults } from "./src/composables/parsers.ts";
 import { parseMachineRuntime, machineFailureText } from "./src/composables/machineStatus.ts";
 import { execFailed } from "./src/utils.ts";
 
@@ -78,7 +78,7 @@ function backgroundFixture() {
     redactedCliPreview: (value) => value,
     runShellOutcome: () => pending,
     runShell: async () => "[launch] id=operation label=restart\n[exit] id=operation status=0",
-    runCli: async () => "status", parseSubs, execFailed, parseRuntime, invalidateTransparentRuntime, parseMachineRuntime, machineFailureText, runtimeDefaults,
+    runCli: async () => "status", parseSubs, execFailed, parseMachineRuntime, machineFailureText, runtimeDefaults,
     withAction: async (_, action) => action(),
     refreshApps: async () => true,
     refreshBlock: async () => true, refreshDns: async () => true,
@@ -328,7 +328,7 @@ test("completion refresh discards a runtime snapshot superseded while its reads 
   const polling = timers.shift()();
   await started;
   supersede();
-  const newerRuntime = parseRuntime("sing-box: stopped\nmode=tun\neffective_mode=tun", runtimeDefaults);
+  const newerRuntime = { ...runtimeDefaults, singBoxState: "stopped", singBox: "stopped", transparentMode: "tun", transparentEffectiveMode: "tun" };
   state.runtime = newerRuntime;
   resolveRead();
   await polling;

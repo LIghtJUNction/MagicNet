@@ -117,3 +117,26 @@ test("missing or malformed service snapshots cannot preserve a stale running ind
     assert.equal(parseRuntime({...runtime,...change}),null);
   }
 });
+
+
+test("machine RSS validation replaces the retired human-status parser", () => {
+  for (const rss_kib of [null, 0, 131072]) {
+    const value = parseRuntime({...runtime, core:{sing_box:{...runtime.core.sing_box,rss_kib}}});
+    assert.equal(value.singBoxRssKib, rss_kib);
+  }
+  for (const rss_kib of ["unknown", "", "NaN", -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(parseRuntime({...runtime, core:{sing_box:{...runtime.core.sing_box,rss_kib}}}), null);
+  }
+  const stopped = parseRuntime({...runtime, readiness:{overall:false},
+    core:{sing_box:{process_state:"stopped",running:false,pid_summary:"stopped",rss_kib:131072}}});
+  assert.equal(stopped.singBoxRssKib, null);
+  assert.equal(stopped.singBoxState, "stopped");
+});
+
+test("machine transition states keep pending, stable, rollback and unknown distinct", () => {
+  for (const [transition, expected] of [["candidate-starting","pending"], ["idle","stable"],
+    ["rolling-back","rollback"], ["new-unrecognized-phase","unknown"]]) {
+    const value = parseRuntime({...runtime, transparent:{...runtime.transparent,transition}});
+    assert.equal(value.transparentTransition, expected);
+  }
+});

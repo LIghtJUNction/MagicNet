@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
-  invalidateTransparentRuntime,
   normalizeTransparentMode,
-  parseRuntime,
-  runtimeDefaults,
 } from "./src/composables/parsers.ts";
 import { setTransparentModeAction } from "./src/components/pages/controlDangerActions.ts";
 
@@ -39,79 +36,6 @@ test("transparent mode parser accepts only explicit tun or ebpf", () => {
   ]) {
     assert.equal(normalizeTransparentMode(invalid), null);
   }
-});
-
-test("runtime parser keeps configured and effective dataplane facts separate", () => {
-  const runtime = parseRuntime(
-    `
-MagicNet
-  Transparent: ebpf
-mode=ebpf
-configured_mode=ebpf
-effective_mode=hybrid
-capability=ok
-local_cgroup=attached
-shared_tc=attached
-shared_interfaces=wlan2,usb0
-recent_error=none
-transition=idle
-`,
-    runtimeDefaults,
-  );
-
-  assert.equal(runtime.transparentMode, "ebpf");
-  assert.equal(runtime.transparentEffectiveMode, "hybrid");
-  assert.equal(runtime.transparentCapability, "ok");
-  assert.equal(runtime.transparentLocalCgroup, "attached");
-  assert.equal(runtime.transparentSharedTc, "attached");
-  assert.deepEqual(runtime.transparentSharedInterfaces, ["wlan2", "usb0"]);
-  assert.equal(runtime.transparentRecentError, "");
-  assert.equal(runtime.transparentTransition, "stable");
-  assert.equal(
-    parseRuntime("transition=candidate-starting\n", runtimeDefaults)
-      .transparentTransition,
-    "pending",
-  );
-});
-
-test("runtime parser invalidates missing or malformed transparent status", () => {
-  const previous = parseRuntime(
-    "mode=ebpf\neffective_mode=local\nlocal_cgroup=attached\n",
-    runtimeDefaults,
-  );
-  assert.equal(
-    parseRuntime("mode=proxy\n", previous).transparentMode,
-    "unknown",
-  );
-
-  const invalidated = invalidateTransparentRuntime(previous);
-  assert.equal(invalidated.transparentMode, "unknown");
-  assert.equal(invalidated.transparentEffectiveMode, "unknown");
-  assert.equal(invalidated.transparentLocalCgroup, "unknown");
-  assert.deepEqual(invalidated.transparentSharedInterfaces, []);
-});
-
-test("runtime parser exposes local pending and rollback without guessing attachment", () => {
-  const runtime = parseRuntime(
-    `
-mode=ebpf
-configured_mode=ebpf
-effective_mode=local
-capability=failed
-local_cgroup=unknown
-shared_tc=pending
-shared_interfaces=none
-recent_error=transition to ebpf failed at start
-transition=rollback
-`,
-    runtimeDefaults,
-  );
-
-  assert.equal(runtime.transparentEffectiveMode, "local");
-  assert.equal(runtime.transparentSharedTc, "pending");
-  assert.deepEqual(runtime.transparentSharedInterfaces, []);
-  assert.equal(runtime.transparentTransition, "rollback");
-  assert.match(runtime.transparentRecentError, /failed at start/);
 });
 
 test("mode actions invoke only the strict backend command", () => {
