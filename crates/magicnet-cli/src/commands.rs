@@ -170,10 +170,6 @@ fn state_command(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
-fn sync_service_lifecycle(app: &App) -> Result<(), String> {
-    run_magicnet_function(app, "magicnet_lifecycle_sync")
-}
-
 fn service_command(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map_or("status", String::as_str) {
         "status" => {
@@ -181,10 +177,9 @@ fn service_command(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "logs" => service_logs(app, &prefixed_args("service", args)),
-        _ => {
-            service_cmd(app, args)?;
-            sync_service_lifecycle(app)
-        }
+        // Start/stop own runtime restoration under their lifecycle lock. The
+        // main dispatcher still publishes canonical state after either result.
+        _ => service_cmd(app, args),
     }
 }
 

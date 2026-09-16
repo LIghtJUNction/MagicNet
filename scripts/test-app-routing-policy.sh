@@ -1180,15 +1180,31 @@ assert_ready_start_holds_one_lock_and_stops_failed_generation() (
   magicnet_start_singbox_unlocked() {
     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
     printf '%s\n' core >>"$events"
+    : >"$WORK/core-live"
   }
   magicnet_after_kernel_start_unlocked() {
     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
     printf '%s\n' network >>"$events"
     return 1
   }
+  magicnet_kernel_running() { [ -e "$WORK/core-live" ]; }
+  magicnet_kernel_route_state_capture() {
+    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+    printf '%s\n' capture >>"$events"
+  }
+  magicnet_prepare_network_for_core_stop() {
+    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+    printf '%s\n' detach >>"$events"
+  }
+  magicnet_lifecycle_after_stop() {
+    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+    [ ! -e "$WORK/core-live" ]
+    printf '%s\n' restore >>"$events"
+  }
   import() { :; }
   singbox_stop() {
     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+    rm -f "$WORK/core-live"
     printf '%s\n' stop >>"$events"
   }
   magicnet_warn() { :; }
@@ -1200,8 +1216,11 @@ assert_ready_start_holds_one_lock_and_stops_failed_generation() (
   diff -u - "$events" <<'EOF'
 lock
 core
+capture
 network
+detach
 stop
+restore
 EOF
 )
 

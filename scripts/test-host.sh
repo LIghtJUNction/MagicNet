@@ -119,6 +119,7 @@ check python3 scripts/test-dns-capture-fast-path.py
 check python3 scripts/test-dns-output-order.py
 CI_TEST_FORCE=1 check python3 scripts/test-xtables-registration.py
 check sh scripts/test-startup-network-safety.sh
+check python3 scripts/test-start-stop-rollback.py --all-shells
 check sh scripts/test-kernel-route-lifecycle.sh
 check bash scripts/test-submodule-updates.sh
 check bash scripts/test-subscription-activation-order.sh
