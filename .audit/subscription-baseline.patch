@@ -1,0 +1,288 @@
+diff --git a/scripts/test-host.sh b/scripts/test-host.sh
+index 58a8ae5..8910c78 100755
+--- a/scripts/test-host.sh
++++ b/scripts/test-host.sh
+@@ -97,6 +97,7 @@ check bash scripts/test-transparent-mode-config-safety.sh
+ check bash scripts/test-ebpf-transparent-mode.sh
+ check bash scripts/test-config-permissions.sh
+ check bash scripts/test-config-empty-recovery.sh
++check bash scripts/test-subscription-baseline-safety.sh
+ check bash scripts/test-config-lock-safety.sh
+ check sh scripts/test-runtime-fingerprint-safety.sh
+ check sh scripts/test-runtime-temp-dirs.sh
+diff --git a/scripts/test-subscription-baseline-safety.sh b/scripts/test-subscription-baseline-safety.sh
+new file mode 100644
+index 0000000..82a21e1
+--- /dev/null
++++ b/scripts/test-subscription-baseline-safety.sh
+@@ -0,0 +1,124 @@
++#!/usr/bin/env bash
++set -euo pipefail
++ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++fixture="$(mktemp -d)"
++trap 'rm -rf "$fixture"' EXIT
++export MODDIR="$fixture/module"
++mkdir -p "$MODDIR/bin" "$MODDIR/.config/sing-box" "$MODDIR/.state/sing-box/subscription-work"
++ln -s "$(command -v jq)" "$MODDIR/bin/jq"
++import() { :; }
++info() { :; }
++warn() { :; }
++error() { :; }
++success() { :; }
++. "$ROOT/src/MagicNet/lib/magicnet/common.sh"
++. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/common.sh"
++. "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
++
++# Exercise the production JSON and checkpoint validators, with an explicit
++# fake core that can reject semantically invalid JSON or time out independently.
++cat >"$MODDIR/bin/sing-box" <<'CORE'
++#!/bin/sh
++[ "$1" = check ] && [ "$2" = -c ] || exit 99
++[ ! -f "$MODDIR/reject-check" ] || exit 42
++jq -e '(.invalid != true) and (.inbounds | length > 0) and (.outbounds | length > 0)' "$3" >/dev/null
++CORE
++chmod +x "$MODDIR/bin/sing-box"
++active="$MODDIR/.config/sing-box/config.json"
++checkpoint="$MODDIR/.state/sing-box/last-good-config.json"
++transaction="$MODDIR/.state/sing-box/subscription-transaction"
++source_file="$MODDIR/.config/sing-box/subscription.url"
++printf '%s\n' 'https://example.com/fixture' >"$source_file"
++printf '%s\n' '{"inbounds":[{"type":"tun","tag":"tun-in"}],"outbounds":[{"type":"direct","tag":"direct"}]}' >"$active"
++cp "$active" "$fixture/valid"
++printf 'old-work\n' >"$MODDIR/.state/sing-box/subscription-work/marker"
++magicnet_singbox_save_last_good
++cp "$checkpoint" "$fixture/checkpoint"
++
++begin() {
++  _sub_input_source="$source_file"
++  _sub_source_mode=url
++  _sub_was_running=0
++  _sub_generation_id=baseline-fixture
++  magicnet_singbox_transaction_begin
++}
++no_journal() {
++  test ! -e "$transaction"
++  test -z "$(find "${transaction%/*}" -maxdepth 1 -name 'subscription-transaction.new.*' -print -quit)"
++}
++
++# An empty active file is recovered and validated before being snapshotted.
++: >"$active"
++begin
++magicnet_singbox_recovery_config_valid "$transaction/old-config"
++cmp "$active" "$transaction/old-config"
++test "$(cat "$transaction/old-work/marker")" = old-work
++# Failed/uncommitted generations cannot replace the checkpoint.
++printf '%s\n' '{"inbounds":[{}],"outbounds":[{}],"candidate":true}' >"$active"
++if magicnet_singbox_save_last_good; then exit 1; fi
++cmp "$checkpoint" "$fixture/checkpoint"
++magicnet_singbox_transaction_reconcile
++magicnet_singbox_recovery_config_valid "$active"
++no_journal
++
++# No checkpoint + broken active must fail before staging, fetching or restart.
++for invalid in '' 'null' '[]' '{' '{"inbounds":[],"outbounds":[]}'; do
++  rm -f "$checkpoint"
++  printf '%s' "$invalid" >"$active"
++  cp "$active" "$fixture/before"
++  if begin; then echo 'accepted an invalid rollback baseline' >&2; exit 1; fi
++  cmp "$active" "$fixture/before"
++  no_journal
++  test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = old-work
++done
++
++# Core rejection, timeout and an incompatible checkpoint fail closed as well.
++cp "$fixture/checkpoint" "$checkpoint"
++: >"$active"
++touch "$MODDIR/reject-check"
++if begin; then exit 1; fi
++rm "$MODDIR/reject-check"
++no_journal
++test ! -s "$active"
++timeout() { return 124; }
++if begin; then exit 1; fi
++unset -f timeout
++no_journal
++test ! -s "$active"
++jq '.mode="ebpf"' "$fixture/checkpoint" >"$checkpoint"
++if begin; then exit 1; fi
++no_journal
++test ! -s "$active"
++
++# Structurally valid but core-invalid user edits are not silently overwritten.
++cp "$fixture/checkpoint" "$checkpoint"
++jq '.invalid=true' "$fixture/valid" >"$active"
++cp "$active" "$fixture/before"
++if begin; then exit 1; fi
++cmp "$active" "$fixture/before"
++no_journal
++
++# Check the bytes actually copied, not just the file before the copy.
++cp "$fixture/valid" "$active"
++cp() {
++  case "${*: -1}" in */old-config) : >"${*: -1}" ;; *) command cp "$@" ;; esac
++}
++if begin; then exit 1; fi
++unset -f cp
++cmp "$active" "$fixture/valid"
++no_journal
++
++# An old/damaged journal never destroys a usable active config or work tree.
++mkdir -p "$transaction"
++touch "$transaction/had-config" "$transaction/old-config"
++if magicnet_singbox_transaction_reconcile; then exit 1; fi
++cmp "$active" "$fixture/valid"
++test "$(cat "$MODDIR/.state/sing-box/subscription-work/marker")" = old-work
++test -d "$transaction"
++rm -rf "$transaction"
++
++# A validated commit can advance the checkpoint only after journal removal.
++magicnet_singbox_save_last_good
++magicnet_singbox_recovery_config_valid "$active"
++no_journal
++printf 'Subscription rollback baseline and checkpoint safety passed\n'
+diff --git a/scripts/test-subscription-lifecycle.sh b/scripts/test-subscription-lifecycle.sh
+index d8de5fd..4a44d9c 100644
+--- a/scripts/test-subscription-lifecycle.sh
++++ b/scripts/test-subscription-lifecycle.sh
+@@ -33,6 +33,15 @@ magicnet_json_escape() { printf '%s' "$1"; }
+ . "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
+ . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
+ 
++# This journal-mechanics fixture models core acceptance for named generations.
++# Real JSON validation and failed core checks are covered by baseline-safety.
++magicnet_singbox_recovery_config_valid() {
++  case "$(cat "$1" 2>/dev/null)" in
++  active-config | candidate-config | old-config | stable-config | term-old-config | old-config-without-url-or-work) return 0 ;;
++  *) return 1 ;;
++  esac
++}
++
+ magicnet_proc_reader_test_hook() {
+   local kind="$1" proc_root="$2" pid="$3" argument count stat rest
+   local -a argv=() fields=()
+diff --git a/scripts/test-subscription-transaction-atomicity.sh b/scripts/test-subscription-transaction-atomicity.sh
+index 37ace70..01760c2 100644
+--- a/scripts/test-subscription-transaction-atomicity.sh
++++ b/scripts/test-subscription-transaction-atomicity.sh
+@@ -20,6 +20,15 @@ import() { :; }
+ # shellcheck disable=SC1090
+ . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
+ 
++# This journal-mechanics fixture models core acceptance for named generations.
++# Real JSON validation and failed core checks are covered by baseline-safety.
++magicnet_singbox_recovery_config_valid() {
++  case "$(cat "$1" 2>/dev/null)" in
++  active-config | candidate-config | old-config | stable-config | term-old-config | old-config-without-url-or-work) return 0 ;;
++  *) return 1 ;;
++  esac
++}
++
+ ACTIVE_WORK="$MODDIR/.state/sing-box/subscription-work"
+ TRANSACTION="$MODDIR/.state/sing-box/subscription-transaction"
+ printf '%s\n' current >"$ACTIVE_WORK/marker"
+diff --git a/scripts/test-subscription-transaction-journal-safety.sh b/scripts/test-subscription-transaction-journal-safety.sh
+index 1c3eafa..d53d28d 100644
+--- a/scripts/test-subscription-transaction-journal-safety.sh
++++ b/scripts/test-subscription-transaction-journal-safety.sh
+@@ -33,6 +33,15 @@ printf() {
+ # shellcheck disable=SC1090
+ . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
+ 
++# This journal-mechanics fixture models core acceptance for named generations.
++# Real JSON validation and failed core checks are covered by baseline-safety.
++magicnet_singbox_recovery_config_valid() {
++  case "$(cat "$1" 2>/dev/null)" in
++  active-config | candidate-config | old-config | stable-config | term-old-config | old-config-without-url-or-work) return 0 ;;
++  *) return 1 ;;
++  esac
++}
++
+ printf '%s\n' active-config >"$MODDIR/.config/sing-box/config.json"
+ printf '%s\n' active-url >"$MODDIR/.config/sing-box/subscription.url"
+ printf '%s\n' active-work >"$MODDIR/.state/sing-box/subscription-work/marker"
+diff --git a/src/MagicNet/lib/magicnet/singbox_subscribe/bootstrap.sh b/src/MagicNet/lib/magicnet/singbox_subscribe/bootstrap.sh
+index 3fcd3df..afaa56c 100644
+--- a/src/MagicNet/lib/magicnet/singbox_subscribe/bootstrap.sh
++++ b/src/MagicNet/lib/magicnet/singbox_subscribe/bootstrap.sh
+@@ -104,6 +104,9 @@ magicnet_singbox_recovery_config_valid() (
+ # atomic envelope includes the nodes themselves, so recovery does not depend on
+ # the disposable subscription-work directory or an available subscription URL.
+ magicnet_singbox_save_last_good() (
++    # A ready process inside an uncommitted subscription transaction is not
++    # evidence that its work/source generation can become the recovery point.
++    [ ! -e "${MODDIR}/.state/sing-box/subscription-transaction" ] || return 1
+     _good_config="${MODDIR}/.config/sing-box/config.json"
+     _good_dir="${MODDIR}/.state/sing-box"
+     _good_jq="$(magicnet_jq)" || return 1
+diff --git a/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh b/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh
+index 331692c..95b9335 100644
+--- a/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh
++++ b/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh
+@@ -255,6 +255,11 @@ magicnet_singbox_transaction_reconcile() {
+     _tx_active_work="${MODDIR}/.state/sing-box/subscription-work"
+     _tx_active_url="${MODDIR}/.config/sing-box/subscription.url"
+     _tx_active_local="${MODDIR}/.config/sing-box/subscription.local"
++    # A damaged legacy journal must not overwrite a usable active generation.
++    if [ -f "$_tx_dir/had-config" ] &&
++        ! magicnet_singbox_recovery_config_valid "$_tx_dir/old-config"; then
++        return 1
++    fi
+     _tx_generation=$(sed -n '1p' "$_tx_dir/generation-id" 2>/dev/null || true)
+     _tx_restart_required=0
+     if [ -f "$_tx_dir/was-running" ]; then
+@@ -387,6 +392,20 @@ magicnet_singbox_transaction_begin() {
+         magicnet_singbox_transaction_begin_abort
+         return 1
+     }
++    # Validate the source and the rollback baseline before creating a journal
++    # or touching a live generation. A failed recovery is not a valid baseline.
++    if [ ! -s "$_sub_input_source" ] || [ ! -f "$_sub_input_source" ] ||
++        [ -L "$_sub_input_source" ]; then
++        magicnet_singbox_transaction_begin_abort
++        return 1
++    fi
++    if ! magicnet_singbox_recovery_config_valid "$_tx_active_config"; then
++        if ! magicnet_singbox_restore_last_good ||
++            ! magicnet_singbox_recovery_config_valid "$_tx_active_config"; then
++            magicnet_singbox_transaction_begin_abort
++            return 1
++        fi
++    fi
+     mkdir -p "$_tx_tmp" || {
+         magicnet_singbox_transaction_begin_abort
+         return 1
+@@ -399,7 +418,8 @@ magicnet_singbox_transaction_begin() {
+         }
+         (
+             umask 077
+-            cp -f "$_tx_active_config" "$_tx_tmp/old-config"
++            cp -f "$_tx_active_config" "$_tx_tmp/old-config" &&
++                magicnet_singbox_recovery_config_valid "$_tx_tmp/old-config"
+         ) || {
+             magicnet_singbox_transaction_begin_abort
+             return 1
+@@ -850,9 +870,6 @@ magicnet_singbox_update_subscription_unlocked() {
+         return 2
+         ;;
+     esac
+-    if magicnet_singbox_restore_last_good; then
+-        info "Restored the last validated config before subscription generation."
+-    fi
+     if ! magicnet_singbox_transaction_begin; then
+         rm -rf "$(magicnet_singbox_transaction_dir).new.$$" 2>/dev/null || true
+         magicnet_singbox_update_status prepare failed journal_create_failed || true
+@@ -1068,11 +1085,13 @@ magicnet_singbox_update_subscription_unlocked() {
+     magicnet_singbox_prune_subscription_cache "$_sub_cache_map" ||
+         warn "Subscription cache pruning failed"
+ 
++    # Removing the journal commits config/work/source as one recoverable
++    # generation. Never advance the independent checkpoint before this point.
++    rm -rf "$(magicnet_singbox_transaction_dir)" 2>/dev/null || return 1
+     if [ "$_sub_was_running" -eq 1 ]; then
+         magicnet_singbox_save_last_good ||
+             warn "Could not save the validated sing-box recovery checkpoint"
+     fi
+-    rm -rf "$(magicnet_singbox_transaction_dir)" 2>/dev/null || return 1
+     _sub_success_epoch=$(date +%s)
+     magicnet_singbox_update_status complete success none || true
+     success "sing-box nodes updated: imported ${_imported}, skipped ${_skipped}"
