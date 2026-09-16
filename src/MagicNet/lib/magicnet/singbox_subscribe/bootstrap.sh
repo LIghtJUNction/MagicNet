@@ -104,6 +104,9 @@ magicnet_singbox_recovery_config_valid() (
 # atomic envelope includes the nodes themselves, so recovery does not depend on
 # the disposable subscription-work directory or an available subscription URL.
 magicnet_singbox_save_last_good() (
+    # A ready process inside an uncommitted subscription transaction is not
+    # evidence that its work/source generation can become the recovery point.
+    [ ! -e "${MODDIR}/.state/sing-box/subscription-transaction" ] || return 1
     _good_config="${MODDIR}/.config/sing-box/config.json"
     _good_dir="${MODDIR}/.state/sing-box"
     _good_jq="$(magicnet_jq)" || return 1

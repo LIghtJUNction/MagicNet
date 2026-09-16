@@ -97,6 +97,7 @@ check bash scripts/test-transparent-mode-config-safety.sh
 check bash scripts/test-ebpf-transparent-mode.sh
 check bash scripts/test-config-permissions.sh
 check bash scripts/test-config-empty-recovery.sh
+check bash scripts/test-subscription-baseline-safety.sh
 check bash scripts/test-config-lock-safety.sh
 check sh scripts/test-runtime-fingerprint-safety.sh
 check sh scripts/test-runtime-temp-dirs.sh

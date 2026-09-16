@@ -20,6 +20,15 @@ import() { :; }
 # shellcheck disable=SC1090
 . "$ROOT/src/MagicNet/lib/magicnet/singbox_subscribe/update.sh"
 
+# This journal-mechanics fixture models core acceptance for named generations.
+# Real JSON validation and failed core checks are covered by baseline-safety.
+magicnet_singbox_recovery_config_valid() {
+  case "$(cat "$1" 2>/dev/null)" in
+  active-config | candidate-config | old-config | stable-config | term-old-config | old-config-without-url-or-work) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
 ACTIVE_WORK="$MODDIR/.state/sing-box/subscription-work"
 TRANSACTION="$MODDIR/.state/sing-box/subscription-transaction"
 printf '%s\n' current >"$ACTIVE_WORK/marker"
