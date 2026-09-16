@@ -1,12 +1,9 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Read;
 use std::net::IpAddr;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -77,7 +74,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
         ),
         (
             "MCP",
-            mcp_pid.ne("stopped"),
+            running(&mcp_pid),
             format!("pid={mcp_pid}, url=http://{mcp_bind}:{mcp_port}/mcp"),
         ),
         (
@@ -525,15 +522,10 @@ fn read_only_command_result_with_timeout(
     args: &[&str],
     timeout: Duration,
 ) -> ReadOnlyCommandResult {
-    let mut child = match Command::new(program)
-        .args(args)
-        .process_group(0)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
+    let mut command = Command::new(program);
+    command.args(args);
+    let output = match crate::run_bounded_command(command, timeout, 4096) {
+        Ok(output) => output,
         Err(err) => {
             return ReadOnlyCommandResult {
                 success: false,
@@ -541,68 +533,23 @@ fn read_only_command_result_with_timeout(
             };
         }
     };
-
-    let stdout_reader = child.stdout.take().map(|stdout| {
-        thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stdout.take(4096).read_to_end(&mut bytes);
-            bytes
-        })
-    });
-    let stderr_reader = child.stderr.take().map(|stderr| {
-        thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stderr.take(4096).read_to_end(&mut bytes);
-            bytes
-        })
-    });
-
-    let started = Instant::now();
-    let command_status: Result<ExitStatus, String> = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                if stdout_reader
-                    .as_ref()
-                    .is_some_and(|reader| !reader.is_finished())
-                    || stderr_reader
-                        .as_ref()
-                        .is_some_and(|reader| !reader.is_finished())
-                {
-                    terminate_read_only_process_group(&mut child);
-                }
-                break Ok(status);
-            }
-            Ok(None) if started.elapsed() >= timeout => {
-                terminate_read_only_process_group(&mut child);
-                break Err(format!("{program}=timeout after {}ms", timeout.as_millis()));
-            }
-            Ok(None) => thread::sleep(Duration::from_millis(10)),
-            Err(err) => {
-                terminate_read_only_process_group(&mut child);
-                break Err(format!("{program}=unavailable reason={err}"));
-            }
+    // A successful helper may leave a same-group child holding its pipes.
+    // Preserve fully captured text for the human diagnostic interface,
+    // but never count a missed deadline as a successful health probe.
+    let complete = output.status.is_some_and(|status| status.success()) && !output.truncated;
+    if output.timed_out && !complete {
+        return ReadOnlyCommandResult {
+            success: false,
+            text: format!("{program}=timeout after {}ms", timeout.as_millis()),
+        };
+    }
+    let success = complete && !output.timed_out;
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    if !output.stderr.is_empty() {
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
         }
-    };
-
-    let stdout = stdout_reader
-        .and_then(|reader| reader.join().ok())
-        .unwrap_or_default();
-    let stderr = stderr_reader
-        .and_then(|reader| reader.join().ok())
-        .unwrap_or_default();
-    let status = match command_status {
-        Ok(status) => status,
-        Err(text) => {
-            return ReadOnlyCommandResult {
-                success: false,
-                text,
-            };
-        }
-    };
-
-    let mut text = String::from_utf8_lossy(&stdout).to_string();
-    if !stderr.is_empty() {
-        text.push_str(&String::from_utf8_lossy(&stderr));
+        text.push_str(&String::from_utf8_lossy(&output.stderr));
     }
     text = text
         .lines()
@@ -614,21 +561,13 @@ fn read_only_command_result_with_timeout(
         text = text.chars().take(600).collect();
         text.push_str("\n[truncated]");
     }
-    if text.is_empty() && !status.success() {
-        text = format!("{program}=exit status={status}");
+    if output.truncated {
+        text.push_str("\n[output truncated]");
     }
-    ReadOnlyCommandResult {
-        success: status.success(),
-        text,
+    if text.is_empty() && !success {
+        text = format!("{program}=exit status={:?}", output.status);
     }
-}
-
-fn terminate_read_only_process_group(child: &mut Child) {
-    let process_group = -(child.id() as i32);
-    unsafe {
-        libc::kill(process_group, libc::SIGKILL);
-    }
-    let _ = child.wait();
+    ReadOnlyCommandResult { success, text }
 }
 
 fn subscription_evidence(app: &App) -> String {
@@ -775,7 +714,12 @@ fn print_check(key: &str, ok: &bool, detail: String) {
 }
 
 fn running(core: &str) -> bool {
-    core != "stopped"
+    !core.is_empty()
+        && core.split(',').all(|pid| {
+            !pid.is_empty()
+                && pid.bytes().all(|byte| byte.is_ascii_digit())
+                && pid.parse::<u32>().is_ok_and(|pid| pid > 0)
+        })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2428,3 +2372,7 @@ mod mode_aware_tests {
 #[cfg(test)]
 #[path = "../tests/internal/diagnostics.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../tests/internal/audit_diagnostics.rs"]
+mod audit_regressions;

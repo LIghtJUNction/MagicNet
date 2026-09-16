@@ -5,6 +5,7 @@ import { Copy, FileText, Pause, Play, RefreshCw } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
+import { createVisibilityInterval } from "@/composables/visibilityInterval";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
@@ -30,7 +31,9 @@ const issueCopied = ref(false);
 const lastLabel = ref("");
 const loadedTarget = ref<RuntimeLogTarget>("webui");
 const autoRefresh = ref(false);
-let timer = 0;
+const poller = createVisibilityInterval(() => {
+  if (!isRunning("runtime-logs")) void refreshLogs();
+}, 5000);
 
 const commandPreview = computed(() => {
   const count = normalizedLines();
@@ -77,10 +80,7 @@ async function refreshLogs(): Promise<void> {
 }
 
 function startTimer(): void {
-  stopTimer();
-  timer = window.setInterval(() => {
-    if (!isRunning("runtime-logs")) void refreshLogs();
-  }, 5000);
+  poller.start();
 }
 
 function toggleAutoRefresh(): void {
@@ -128,9 +128,7 @@ function quickFilterActive(filter: typeof quickFilters[number]): boolean {
 }
 
 function stopTimer(): void {
-  if (!timer) return;
-  window.clearInterval(timer);
-  timer = 0;
+  poller.stop();
 }
 
 // Under <KeepAlive> the panel is deactivated (not unmounted) on tab switch, so

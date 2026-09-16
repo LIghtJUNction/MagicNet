@@ -9,6 +9,7 @@ use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use crate::App;
 use http::handle_connection;
@@ -62,12 +63,26 @@ pub(crate) fn serve(app: &App, address: SocketAddr, secret: String) -> Result<()
                     continue;
                 };
                 let server = Arc::clone(&server);
-                thread::spawn(move || {
-                    let _permit = permit;
-                    let _ = handle_connection(stream, &server);
-                });
+                if let Err(error) = thread::Builder::new()
+                    .name("magicnet-mcp".to_string())
+                    .spawn(move || {
+                        let _permit = permit;
+                        let _ = handle_connection(stream, &server);
+                    })
+                {
+                    // A failed spawn drops the closure (and its permit/socket).
+                    // Do not abort the entire server under resource pressure.
+                    eprintln!("MCP worker unavailable: {error}");
+                    thread::sleep(Duration::from_millis(100));
+                }
             }
-            Err(error) => eprintln!("accept failed: {error}"),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => {
+                // EMFILE/ENFILE can fail immediately on every accept. Back off
+                // instead of busy-spinning and filling the log indefinitely.
+                eprintln!("accept failed: {error}");
+                thread::sleep(Duration::from_millis(100));
+            }
         }
     }
     Ok(())

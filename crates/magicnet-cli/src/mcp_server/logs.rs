@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
 
 use crate::files::open_regular_file;
 use crate::{run_cli, Server};
@@ -168,15 +168,7 @@ fn section(name: &str, body: &str) -> String {
 }
 
 fn command_text(program: &str, args: &[&str]) -> String {
-    match Command::new(program).args(args).output() {
-        Ok(output) => {
-            let mut text = String::new();
-            text.push_str(&String::from_utf8_lossy(&output.stdout));
-            text.push_str(&String::from_utf8_lossy(&output.stderr));
-            text
-        }
-        Err(err) => format!("{program} failed: {err}"),
-    }
+    crate::utils::command_text_full_timeout(program, args, Duration::from_secs(3))
 }
 
 fn redact_text(text: &str) -> String {

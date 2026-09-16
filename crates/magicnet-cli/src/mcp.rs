@@ -457,7 +457,8 @@ fn trim_log_file(path: &Path, max_bytes: u64, keep_bytes: u64) -> Result<(), Str
         .seek(SeekFrom::Start(len.saturating_sub(keep_bytes)))
         .map_err(|err| format!("seek MCP log: {err}"))?;
     let mut tail = Vec::with_capacity(keep_bytes as usize);
-    source
+    (&mut source)
+        .take(keep_bytes.min(len))
         .read_to_end(&mut tail)
         .map_err(|err| format!("read MCP log tail: {err}"))?;
     drop(source);
@@ -600,7 +601,13 @@ fn validate_secret(secret: &str) -> Result<&str, String> {
 }
 
 fn port_owner(address: SocketAddr) -> Option<String> {
-    let output = Command::new("ss").arg("-lntp").output().ok()?;
+    let mut command = Command::new("ss");
+    command.arg("-lntp");
+    let output = crate::run_bounded_command(command, Duration::from_secs(3), 64 * 1024).ok()?;
+    if output.timed_out || output.truncated || !output.status.is_some_and(|status| status.success())
+    {
+        return None;
+    }
     let text = String::from_utf8_lossy(&output.stdout);
     let bind = address.ip().to_string();
     let needle = format!(":{}", address.port());
@@ -632,7 +639,7 @@ fn print_log_tail(app: &App, file_name: &str, lines: usize) -> Result<(), String
 }
 
 fn read_bounded_log_tail(path: &Path, max_bytes: u64) -> std::io::Result<String> {
-    let mut source = open_mcp_log_read(path)?;
+    let source = open_mcp_log_read(path)?;
     let metadata = source.metadata()?;
     if !metadata.file_type().is_file() || metadata.nlink() != 1 {
         return Err(std::io::Error::new(
@@ -640,11 +647,18 @@ fn read_bounded_log_tail(path: &Path, max_bytes: u64) -> std::io::Result<String>
             "MCP log is not a regular file",
         ));
     }
-    let length = source.metadata()?.len();
+    read_log_snapshot(source, metadata.len(), max_bytes)
+}
+
+fn read_log_snapshot(
+    mut source: impl Read + Seek,
+    length: u64,
+    max_bytes: u64,
+) -> std::io::Result<String> {
     let start = length.saturating_sub(max_bytes);
     source.seek(SeekFrom::Start(start))?;
     let mut tail = Vec::with_capacity((length - start) as usize);
-    source.read_to_end(&mut tail)?;
+    source.take(length - start).read_to_end(&mut tail)?;
     if start > 0 {
         if let Some(index) = tail.iter().position(|byte| *byte == b'\n') {
             tail.drain(..=index);
@@ -759,5 +773,29 @@ mod tests {
             ],
             target,
         ));
+    }
+}
+
+#[cfg(test)]
+mod log_snapshot_tests {
+    use super::read_log_snapshot;
+    use std::io::Cursor;
+
+    #[test]
+    fn excludes_bytes_written_after_the_log_snapshot() {
+        let source = Cursor::new(b"old\nnew\n".to_vec());
+        assert_eq!(read_log_snapshot(source, 4, 1024).unwrap(), "old\n");
+    }
+
+    #[test]
+    fn respects_tail_budget_and_drops_a_partial_first_line() {
+        let source = Cursor::new(b"first\nsecond\nthird\n".to_vec());
+        assert_eq!(read_log_snapshot(source, 19, 10).unwrap(), "third\n");
+    }
+
+    #[test]
+    fn empty_snapshot_does_not_follow_new_output() {
+        let source = Cursor::new(b"later".to_vec());
+        assert_eq!(read_log_snapshot(source, 0, 1024).unwrap(), "");
     }
 }
