@@ -65,4 +65,21 @@ for name,digest in [('fake-magisk-kernel.py','7d741f55149ef18ad7990025aab5142dac
     dest=root/'scripts'/name
     assert not dest.exists()
     dest.write_bytes(raw)
+p=root/'scripts/fake-magisk-kernel.py'
+s=p.read_text()
+anchor="    if args[:2] == ['route', 'show']:\n"
+assert s.count(anchor)==1
+s=s.replace(anchor,"""    if args == ['-o', 'link', 'show']:
+        for name in ('lo', 'ap0', 'tun0') + (('magicnet0',) if tun(state) else ()):
+            print(f'8: {name}: <UP> mtu 1500 state UNKNOWN')
+        return 0
+    if args[:2] == ['route', 'show']:
+        if 'dev' in args and args[args.index('dev') + 1] in ('ap0', 'wlan0'):
+            name = args[args.index('dev') + 1]
+            print(f'192.168.43.0/24 dev {name} proto kernel scope link src 192.168.43.1')
+            return 0
+""")
+raw=s.encode()
+assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='405853958a54c736e5056c25bd3a15f7ccbebbd6'
+p.write_bytes(raw)
 print('Verified exact old/new fixture source hashes; no production source modified')
