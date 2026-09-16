@@ -29,9 +29,12 @@ check_group() {
         cached rust rust-test cargo test --workspace --all-targets --all-features --locked
         ;;
     shell)
-        cached host source-sanity-tests python3 scripts/test-lint-source.py
-        cached host source-sanity python3 scripts/lint-source.py
-        cached host shell-lint bash scripts/lint-shell.sh
+        # These cheap checks scan the whole repository, not only the host scope.
+        # In particular, WebUI/Rust/docs edits and root kam.sh must never hide
+        # behind a cached host success.
+        python3 scripts/test-lint-source.py
+        python3 scripts/lint-source.py
+        bash scripts/lint-shell.sh
         bash scripts/test-host.sh
         ;;
     components)
@@ -44,7 +47,9 @@ check_group() {
         cached components core-size python3 scripts/test-core-size.py
         cached components release-gates python3 scripts/test-release-gates.py
         cached components component-archive-safety python3 scripts/test-component-archive-safety.py
-        cached components cache-engine python3 scripts/test-ci-test-cache.py
+        # The cache must never attest to its own correctness.
+        python3 scripts/test-ci-test-cache.py
+        python3 scripts/test-ci-quality.py
         ;;
     webui-check)
         # Quality only consumes the pass/fail result. Release/build workflows
