@@ -1,0 +1,143 @@
+name: Validate v1.5.6 Reviewed Patch
+on:
+  push:
+    branches: [audit/v1.5.6-reviewed-patch]
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 792e817ea6a41d9cb0a8a7531b6fda2838a79863
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Apply hash-verified source patches to the exact release base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, subprocess
+          from pathlib import Path
+          repo = 'repos/LIghtJUNction/MagicNet'
+          def blob(sha):
+              data = json.loads(subprocess.check_output(['gh', 'api', repo + '/git/blobs/' + sha], timeout=30))
+              assert data['sha'] == sha and data['encoding'] == 'base64'
+              raw = base64.b64decode(data['content'])
+              assert hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest() == sha
+              return raw
+          parts = ['4c0f99d975f0aba62c3410bf2e232ed5e5a05e35','7bc42d200f634b5a135667e906cd6dbef85b14d8',
+                   '9f8ddd323686aa4826a04e48f6b10cfedb972bab','73844d540b68259028adf4804a1f9e63dfe183a3',
+                   '99920ce736c0aad564c5f2d4c5cb174f626d0129','98281bb26a442b9144ce6f220c56665225257801']
+          compressed = base64.b64decode(b''.join(blob(sha) for sha in parts), validate=True)
+          assert len(compressed) == 27180
+          assert hashlib.sha256(compressed).hexdigest() == '648fe895cec9c67959e353266ae687e519b1aaffe88e6219006395ed3d5e1824'
+          patch = lzma.decompress(compressed)
+          assert len(patch) == 109735
+          assert hashlib.sha256(patch).hexdigest() == 'bee63fbc6becee3f7eb1599bbed59d2a2db3a8e42ff001dfd6337052caccca7b'
+          allowed = set('''crates/magicnet-cli/src/diagnostics.rs
+          crates/magicnet-cli/src/main.rs
+          crates/magicnet-cli/src/network_observation.rs
+          crates/magicnet-cli/src/state.rs
+          scripts/test-app-routing-policy.sh
+          scripts/test-dns-output-order.py
+          scripts/test-host.sh
+          scripts/test-network-ownership.py
+          scripts/test-startup-network-safety.sh
+          src/MagicNet/lib/magicnet/network.sh
+          src/MagicNet/lib/magicnet/routes.sh
+          src/MagicNet/lib/magicnet/runtime_config.sh
+          src/MagicNet/support-detail.sh
+          webui/issue-reporter.test.mjs
+          webui/runtime-log-insights.test.mjs
+          webui/src/components/pages/TailscalePage.vue
+          webui/src/components/pages/runtimeLogInsights.ts
+          webui/src/components/pages/tailscaleSetup.ts
+          webui/src/composables/issueDrafts.ts
+          webui/src/composables/issueReporter.ts
+          webui/src/i18n/catalogs/route-feedback.ts
+          webui/src/i18n/catalogs/tailscale.ts
+          webui/tailscale-setup.test.mjs
+          .github/workflows/android-kernelsu-acceptance.yml
+          scripts/test-android-acceptance-contract.py'''.splitlines())
+          allowed = {p.strip() for p in allowed}
+          out = Path(os.environ['RUNNER_TEMP']) / 'reviewed-patch'
+          out.mkdir()
+          for index, raw in enumerate([patch, blob('3bf0bbf9281c68ce26653e30e0bab6db1f9262f4')]):
+              path = out / f'input-{index}.patch'
+              path.write_bytes(raw)
+              stats = subprocess.check_output(['git','apply','--numstat',str(path)], text=True)
+              paths = {line.split('\t', 2)[2] for line in stats.splitlines()}
+              assert paths and paths <= allowed, paths - allowed
+              subprocess.run(['git','apply','--check','--index',str(path)], check=True)
+              subprocess.run(['git','apply','--index',str(path)], check=True)
+          (out / 'allowed.json').write_text(json.dumps(sorted(allowed)))
+          PY
+      - name: Format and test Rust observation code
+        run: |
+          set -euo pipefail
+          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
+          cargo fmt --all
+          cargo test --workspace --all-targets --all-features --locked
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Test network ownership and AVD contracts
+        run: |
+          set -euo pipefail
+          python3 scripts/test-network-ownership.py
+          python3 scripts/test-dns-output-order.py
+          python3 scripts/test-android-acceptance-contract.py
+          bash scripts/test-app-routing-policy.sh
+          bash scripts/test-hotspot-routing.sh
+          bash scripts/test-startup-network-safety.sh
+          bash scripts/test-kernel-route-lifecycle.sh
+          bash scripts/test-dns-leak-guard-timeout.sh
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Run real WebUI tests, typecheck and production build
+        run: |
+          set -euo pipefail
+          cd webui
+          npm ci
+          npm run check
+      - name: Export validated source tree without moving any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'reviewed-patch'
+          allowed = set(json.loads((out / 'allowed.json').read_text()))
+          changed = subprocess.check_output(['git','diff','HEAD','--name-only'], text=True).splitlines()
+          assert changed and set(changed) <= allowed, set(changed) - allowed
+          subprocess.run(['git','add','--',*changed], check=True)
+          subprocess.run(['git','diff','--cached','--check'], check=True)
+          elements = []
+          for path in changed:
+              row = subprocess.check_output(['git','ls-files','--stage','--',path], text=True)
+              mode = row.split()[0]
+              assert mode in ('100644','100755')
+              elements.append(dict(path=path,mode=mode,type='blob',content=Path(path).read_text()))
+          payload = out / 'tree-input.json'
+          payload.write_text(json.dumps(dict(base_tree='c59b2cb17d18693edfb41ba21e214da8d5324bdf',tree=elements)))
+          result = json.loads(subprocess.check_output(['gh','api','--method','POST',
+              'repos/LIghtJUNction/MagicNet/git/trees','--input',str(payload)], text=True, timeout=60))
+          expected = subprocess.check_output(['git','write-tree'], text=True).strip()
+          assert result['sha'] == expected
+          (out / 'result.json').write_text(json.dumps(dict(tree_sha=expected,
+              base_commit='792e817ea6a41d9cb0a8a7531b6fda2838a79863',paths=changed),indent=2))
+          (out / 'formatted.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--binary','--full-index']))
+          print('Validated source tree:', expected)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: reviewed-v1.5.6-source
+          path: ${{ runner.temp }}/reviewed-patch
+          if-no-files-found: error
+          retention-days: 7
