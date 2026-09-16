@@ -1,0 +1,92 @@
+name: Verify v1.5.6 Public Delivery
+on:
+  push:
+    branches: [audit/network-final-review-20260916]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  verify:
+    if: contains(github.event.head_commit.message, '[delivery]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Read pinned delivery target
+        id: target
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          value=json.loads(Path('.github/delivery-target.json').read_text())
+          assert set(value)=={'sha','tree','run_id'}
+          assert all(re.fullmatch('[a-f0-9]{40}',value[key]) for key in ('sha','tree'))
+          assert type(value['run_id']) is int and value['run_id']>0
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+              out.write('sha='+value['sha']+'\n')
+          with open(os.environ['GITHUB_ENV'],'a') as out:
+              out.write('EXPECTED_RELEASE_SHA='+value['sha']+'\nEXPECTED_RELEASE_TREE='+value['tree']+'\nRELEASE_RUN_ID='+str(value['run_id'])+'\n')
+          PY
+      - name: Require successful signed release run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: timeout --kill-after=5s 1200s gh run watch "$RELEASE_RUN_ID" --repo LIghtJUNction/MagicNet --exit-status --interval 20
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          path: release-candidate
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify anonymous public downloads and exact package sources
+        working-directory: release-candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 "$GITHUB_WORKSPACE/.github/verify-release-delivery.py"
+      - name: Upload verified installable packages and evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: verified-v1.5.6-delivery
+          path: |
+            ${{ runner.temp }}/verified-delivery/verification.json
+            ${{ runner.temp }}/verified-delivery/release.json
+            ${{ runner.temp }}/verified-delivery/SHA256SUMS
+            ${{ runner.temp }}/verified-delivery/magicnet_installer.zip
+            ${{ runner.temp }}/verified-delivery/magicnet_installer.zip.sig
+            ${{ runner.temp }}/verified-delivery/MagicNet-full.zip
+            ${{ runner.temp }}/verified-delivery/MagicNet-full.zip.sig
+          if-no-files-found: error
+          retention-days: 7
+      - name: Append verified delivery and known limitations to release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'verified-delivery'
+          result=json.loads((root/'verification.json').read_text())
+          assert result['status']=='PASS' and result['version']=='v1.5.6'
+          endpoint='repos/LIghtJUNction/MagicNet/releases/'+str(result['release_id'])
+          def get():
+              return json.loads(subprocess.check_output(['gh','api',endpoint],text=True,timeout=30))
+          release=get()
+          assert release['target_commitish']==os.environ['EXPECTED_RELEASE_SHA']
+          assert not release['draft'] and not release['prerelease']
+          marker='<!-- magicnet-v1.5.6-verified-delivery -->'
+          body=release.get('body') or ''
+          if marker not in body:
+              notes=Path('.github/v1.5.6-delivery-notes.md').read_text()
+              notes += '\n发布后实际核验：'+str(len(result['assets']))+'个公开附件、53个SRS规则文件、6个关键网络与卸载源码文件；大小、SHA256、组件与完整包一致。\n'
+              notes += '\n正式签名发布：https://github.com/LIghtJUNction/MagicNet/actions/runs/'+os.environ['RELEASE_RUN_ID']+'\n'
+              notes += '\n公开下载验收：https://github.com/LIghtJUNction/MagicNet/actions/runs/'+os.environ['GITHUB_RUN_ID']+'\n'
+              notes += '\n发布源码：`'+os.environ['EXPECTED_RELEASE_SHA']+'`。\n'
+              payload=json.dumps({'body':body+'\n\n'+marker+'\n'+notes})
+              subprocess.run(['gh','api','--method','PATCH',endpoint,'--input','-','--jq','.html_url'],input=payload,text=True,check=True,timeout=30)
+          after=get()
+          assert marker in after['body']
+          assert [(a['id'],a['digest']) for a in after['assets']]==[(a['id'],a['digest']) for a in release['assets']]
+          print('Release notes updated; source tag and all release assets unchanged')
+          PY
