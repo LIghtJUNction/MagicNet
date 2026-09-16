@@ -1,34 +1,87 @@
-name: Verify exact v1.5.5 candidate
+name: Verify published v1.5.5
 on:
   push:
     branches: [ci/v1.5.5-verification-20260916]
     paths: [.github/workflows/check-v155-release.yml]
 permissions:
   contents: read
-  actions: write
+  actions: read
 jobs:
-  dispatch:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: LIghtJUNction/MagicNet
     steps:
-      - name: Verify candidate and dispatch unchanged Android acceptance
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: LIghtJUNction/MagicNet
+      - name: Require the exact release build to finish successfully
         shell: bash
         run: |
           set -euo pipefail
-          ref=release/v1.5.5-20260916
-          expected=44af6b328bf6fe807e1a0d707108a53d930444ed
-          actual="$(gh api "repos/$GH_REPO/git/ref/heads/$ref" --jq .object.sha)"
-          test "$actual" = "$expected"
-          gh workflow run android-kernelsu-acceptance.yml --ref "$ref" -f proxy_region=US -f rounds=1 -f run_speed=false -f fresh_avd=true
-          mkdir -p "$RUNNER_TEMP/verification"
-          printf '%s\n' "$expected" > "$RUNNER_TEMP/verification/candidate.txt"
-          gh api "repos/$GH_REPO/actions/runs?event=workflow_dispatch&per_page=5" --jq '[.workflow_runs[] | {id,head_sha,status,conclusion,html_url}]' | tee "$RUNNER_TEMP/verification/dispatch.json"
+          mkdir -p audit assets
+          gh run watch 35114714789 --interval 20 --exit-status > audit/watch.log 2>&1
+          gh api repos/$GH_REPO/actions/runs/35114714789 > audit/release-run.json
+          gh api repos/$GH_REPO/actions/runs/35114714789/jobs > audit/release-jobs.json
+          gh run view 35114714789 --log > audit/release-build.log
+          python3 - <<'PY'
+          import json
+          run = json.load(open('audit/release-run.json'))
+          assert run['head_sha'] == '792e817ea6a41d9cb0a8a7531b6fda2838a79863'
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          jobs = json.load(open('audit/release-jobs.json'))['jobs']
+          build = next(job for job in jobs if job['name'] == 'build')
+          steps = {step['name']: step['conclusion'] for step in build['steps']}
+          for name in ('Verify incremental MagicNet installer', 'Sign and verify final release assets', 'Compile release acceptance test APK', 'Release quality gate', 'Create GitHub release'):
+              assert steps[name] == 'success', (name, steps[name])
+          PY
+      - name: Download actual public release and verify API identities and digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/$GH_REPO/releases/tags/v1.5.5 > audit/release.json
+          gh api repos/$GH_REPO/releases/latest > audit/latest.json
+          gh api repos/$GH_REPO/git/ref/tags/v1.5.5 > audit/tag.json
+          gh release download v1.5.5 --dir assets
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess, zipfile
+          release = json.load(open('audit/release.json'))
+          latest = json.load(open('audit/latest.json'))
+          tag = json.load(open('audit/tag.json'))['object']
+          if tag['type'] == 'tag':
+              tag = json.loads(subprocess.check_output(['gh', 'api', 'repos/LIghtJUNction/MagicNet/git/tags/' + tag['sha']], text=True))['object']
+          assert tag['type'] == 'commit' and tag['sha'] == '792e817ea6a41d9cb0a8a7531b6fda2838a79863'
+          assert release['tag_name'] == 'v1.5.5' and not release['draft'] and not release['prerelease']
+          assert latest['id'] == release['id']
+          assets = release['assets']
+          assert len({a['name'] for a in assets}) == len(assets)
+          assert {a['name'] for a in assets} == {p.name for p in pathlib.Path('assets').iterdir()}
+          checked = []
+          for a in assets:
+              p = pathlib.Path('assets') / a['name']
+              assert p.name == a['name'] and p.is_file()
+              sha = hashlib.sha256(p.read_bytes()).hexdigest()
+              assert p.stat().st_size == a['size'] and a['state'] == 'uploaded'
+              assert a.get('digest') == 'sha256:' + sha, a['name']
+              checked.append({'name': a['name'], 'size': a['size'], 'sha256': sha})
+          with zipfile.ZipFile('audit/published-assets.zip', 'w', compression=zipfile.ZIP_STORED) as output:
+              for p in sorted(pathlib.Path('assets').iterdir()):
+                  output.write(p, p.name)
+          pathlib.Path('audit/published-verification.json').write_text(json.dumps({'release': release['html_url'], 'commit': tag['sha'], 'latest': True, 'assets': checked, 'status': 'passed'}, indent=2))
+          PY
+          (cd assets && sha256sum --check --strict SHA256SUMS)
+      - name: Snapshot independent Android acceptance, without promoting pending to success
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          gh api repos/$GH_REPO/actions/runs/35113603153 > audit/android-run.json
+          gh api repos/$GH_REPO/actions/runs/35113603153/jobs > audit/android-jobs.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ always() }}
         with:
-          name: exact-candidate-dispatch
-          path: ${{ runner.temp }}/verification/
+          name: v1.5.5-publication-verification
+          path: audit/
           retention-days: 7
           if-no-files-found: error
+          compression-level: 0
