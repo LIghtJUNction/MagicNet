@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>MagicNet · 谢谢你来过</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, sans-serif; color: #232522; background: #f7f7f3; color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; min-height: 100svh; }
+    header, main, footer { width: min(100% - 48px, 540px); margin-inline: auto; }
+    header { display: flex; justify-content: space-between; align-items: center; padding-top: max(28px, env(safe-area-inset-top)); gap: 20px; }
+    .brand { font-weight: 650; letter-spacing: -.025em; }
+    select { font: inherit; font-size: 13px; background: transparent; color: inherit; border: 1px solid #d7d9d0; border-radius: 10px; padding: 8px; max-width: 48%; }
+    main { padding: clamp(48px, 13vh, 108px) 0 40px; }
+    .mark { display: grid; place-items: center; width: 52px; height: 52px; border: 1px solid #c9cebe; border-radius: 50%; margin-bottom: 28px; font-size: 22px; color: #626e54; }
+    h1 { font-size: clamp(28px, 7vw, 38px); letter-spacing: -.045em; line-height: 1.25; font-weight: 600; margin: 0 0 16px; outline: none; }
+    p { line-height: 1.8; margin: 0; }
+    .intro, .note, footer { color: #6b7067; }
+    .question { margin-top: 36px; font-size: 17px; }
+    .actions { display: flex; gap: 10px; margin: 20px 0 16px; flex-wrap: wrap; }
+    button, .button { font: inherit; text-decoration: none; display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 12px 18px; border: 1px solid #d2d6ca; border-radius: 14px; color: inherit; background: transparent; cursor: pointer; }
+    .primary { background: #343e2e; color: #fff; border-color: #343e2e; }
+    .note { font-size: 13px; line-height: 1.7; }
+    #thanks { margin-top: 30px; padding-top: 26px; border-top: 1px solid #dedfd8; }
+    #status { font-size: 17px; margin-bottom: 12px; }
+    #retry { display: inline-block; margin-top: 16px; color: inherit; text-underline-offset: 4px; }
+    .promise { margin-top: 36px; }
+    footer { padding-bottom: max(28px, env(safe-area-inset-bottom)); font-size: 12px; line-height: 1.7; }
+    #version { display: block; margin-top: 8px; }
+    :focus-visible { outline: 3px solid #80936c; outline-offset: 4px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 360px) { header, main, footer { width: calc(100% - 36px); } .actions > * { flex: 1 1 100%; } }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #181b17; color: #eef0e9; color-scheme: dark; }
+      .intro, .note, footer { color: #b1b8aa; }
+      select, button, .button, #thanks { border-color: #434a3b; }
+      .mark { border-color: #546149; color: #c0ceb3; }
+      .primary { background: #d1dcc5; color: #20271a; border-color: #d1dcc5; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="brand">MagicNet</span>
+    <select id="language" aria-label="Language / 语言 / Язык">
+      <option value="zh">简体中文</option><option value="en">English</option><option value="ru">Русский</option>
+    </select>
+  </header>
+  <main id="farewell">
+    <div class="mark" aria-hidden="true">M</div>
+    <h1 id="heading" tabindex="-1">谢谢你用过 MagicNet。</h1>
+    <p class="intro" id="intro">很遗憾，这次没能一直陪你走下去。谢谢你愿意试一试。</p>
+    <section id="choices" aria-labelledby="question">
+      <p class="question" id="question">离开之前，愿意留下一点反馈吗？</p>
+      <div class="actions">
+        <a class="button primary" id="feedback" href="https://github.com/LIghtJUNction/MagicNet/issues/new?template=uninstall_feedback.md" target="_blank" rel="noopener noreferrer">愿意，写点反馈</a>
+        <button id="decline" type="button">暂时不了</button>
+      </div>
+      <p class="note" id="privacy">会在新标签页打开公开的 GitHub Issue 草稿，只预填模块版本和提纲。由你补充、检查并提交，不会附带订阅、节点或日志。</p>
+    </section>
+    <section id="thanks" aria-live="polite" hidden>
+      <p id="status"></p>
+      <p class="note" id="detail"></p>
+      <a id="retry" href="https://github.com/LIghtJUNction/MagicNet/issues/new?template=uninstall_feedback.md" target="_blank" rel="noopener noreferrer" hidden>没有打开？重新打开反馈草稿</a>
+    </section>
+    <p class="promise" id="promise">我会继续努力，把 MagicNet 做得更好。期待下次再见。<br>— LIghtJUNction</p>
+    <noscript><p class="note">JavaScript 未启用。上方反馈链接仍可打开 GitHub 模板，版本请手动填写；不会自动提交。</p></noscript>
+  </main>
+  <footer><span id="close-note">不用再做什么，按你的习惯关闭这个页面就好。</span><span id="version"></span></footer>
+  <script>
+    'use strict';
+    const copy = {
+      zh: {
+        heading: '谢谢你用过 MagicNet。', intro: '很遗憾，这次没能一直陪你走下去。谢谢你愿意试一试。',
+        question: '离开之前，愿意留下一点反馈吗？', yes: '愿意，写点反馈', no: '暂时不了',
+        privacy: '会在新标签页打开公开的 GitHub Issue 草稿，只预填模块版本和提纲。由你补充、检查并提交，不会附带订阅、节点或日志。',
+        accepted: '谢谢你愿意告诉我。', acceptedDetail: 'GitHub 草稿已请求打开，可能需要先登录。写多写少都可以，确认后由你提交。',
+        declined: '没关系，也谢谢你来过。', declinedDetail: '不会打开反馈页面，也不会再追问。',
+        retry: '没有打开？重新打开反馈草稿', promise: '我会继续努力，把 MagicNet 做得更好。期待下次再见。',
+        close: '不用再做什么，按你的习惯关闭这个页面就好。', unknown: '未知',
+        title: '[卸载反馈] 我使用 MagicNet 的体验',
+        body: version => `## 使用版本\nMagicNet: ${version}\n\n## 为什么卸载\n（请补充，也可以只是暂时不需要。）\n\n## 遇到了什么问题\n（发生了什么？原本期待什么？可选填复现步骤。）\n\n## 希望改进什么\n（请补充。）\n\n> 这是公开反馈。请勿粘贴订阅链接、节点凭据、Token、IP 地址或未经脱敏的日志。\n> 本草稿由卸载告别页在本地预填，只有本人确认提交后才会创建 Issue。`
+      },
+      en: {
+        heading: 'Thanks for trying MagicNet.', intro: 'Sorry it was not the right fit this time. Thank you for giving it a chance.',
+        question: 'Before you go, would you like to leave some feedback?', yes: 'Yes, leave feedback', no: 'Not now',
+        privacy: 'Opens a public GitHub issue draft in a new tab, with only the module version and an outline. You edit, review and submit it. No subscriptions, nodes or logs are attached.',
+        accepted: 'Thank you for sharing.', acceptedDetail: 'The GitHub draft was requested in a new tab. You may need to sign in. Share as much or as little as you like, then review and submit it yourself.',
+        declined: 'No problem. Thanks for stopping by.', declinedDetail: 'No feedback page will open, and we will not ask again here.',
+        retry: 'Did not open? Open the feedback draft again', promise: 'I will keep working to make MagicNet better. Hope to see you again.',
+        close: 'Nothing else to do. Close this page whenever you are ready.', unknown: 'unknown',
+        title: '[Uninstall feedback] My experience with MagicNet',
+        body: version => `## Module version\nMagicNet: ${version}\n\n## Why I uninstalled\n(Please fill in. Not needing it for now is a valid reason.)\n\n## What happened\n(Actual vs. expected behavior; optional steps to reproduce.)\n\n## What could be better\n(Please fill in.)\n\n> This is public. Do not include subscription URLs, node credentials, tokens, IP addresses or unredacted logs.\n> This draft was prepared locally by the farewell page. An issue is created only after I review and submit it.`
+      },
+      ru: {
+        heading: 'Спасибо, что попробовали MagicNet.', intro: 'Жаль, что в этот раз модуль вам не подошёл. Спасибо, что дали ему шанс.',
+        question: 'Перед уходом хотите оставить отзыв?', yes: 'Да, оставить отзыв', no: 'Не сейчас',
+        privacy: 'В новой вкладке откроется публичный черновик Issue на GitHub — только версия модуля и план отзыва. Вы сами дополните, проверите и отправите его. Подписки, узлы и журналы не прикрепляются.',
+        accepted: 'Спасибо, что делитесь опытом.', acceptedDetail: 'Запрошено открытие черновика GitHub в новой вкладке. Возможно, понадобится войти в аккаунт. Дополните и отправьте отзыв самостоятельно.',
+        declined: 'Хорошо. Спасибо, что были с нами.', declinedDetail: 'Страница отзыва не откроется. Больше здесь не спрашиваем.',
+        retry: 'Не открылось? Открыть черновик ещё раз', promise: 'Я продолжу работать, чтобы сделать MagicNet лучше. Надеюсь увидеть вас снова.',
+        close: 'Больше ничего делать не нужно. Закройте эту страницу, когда захотите.', unknown: 'неизвестно',
+        title: '[Uninstall feedback] Мой опыт использования MagicNet',
+        body: version => `## Версия модуля\nMagicNet: ${version}\n\n## Почему удалил\n(Дополните; возможно, модуль пока просто не нужен.)\n\n## Что произошло\n(Результат, ожидания и, при желании, шаги воспроизведения.)\n\n## Что можно улучшить\n(Дополните.)\n\n> Отзыв публичный. Не публикуйте ссылки подписок, данные узлов, токены, IP-адреса и необезличенные журналы.\n> Черновик подготовлен локально. Issue создаётся только после моей проверки и отправки.`
+      }
+    };
+    const byId = id => document.getElementById(id);
+    let version = 'unknown';
+    try {
+      const raw = decodeURIComponent(location.hash.replace(/^#version=/, ''));
+      if (/^[A-Za-z0-9._+-]{1,64}$/.test(raw)) version = raw;
+    } catch (_) { /* Untrusted URL fragments never become markup or code. */ }
+    let choice = null;
+    const preferred = (navigator.language || 'en').toLowerCase();
+    let language = preferred.startsWith('zh') ? 'zh' : preferred.startsWith('ru') ? 'ru' : 'en';
+    function render() {
+      const text = copy[language];
+      document.documentElement.lang = language === 'zh' ? 'zh-CN' : language;
+      document.title = `MagicNet · ${text.heading}`;
+      byId('language').value = language;
+      for (const id of ['heading', 'intro', 'question', 'privacy']) byId(id).textContent = text[id];
+      byId('feedback').textContent = text.yes;
+      byId('decline').textContent = text.no;
+      byId('retry').textContent = text.retry;
+      byId('promise').textContent = `${text.promise} — LIghtJUNction`;
+      byId('close-note').textContent = text.close;
+      byId('version').textContent = `MagicNet · ${version === 'unknown' ? text.unknown : version}`;
+      const draft = new URL('https://github.com/LIghtJUNction/MagicNet/issues/new');
+      draft.searchParams.set('template', 'uninstall_feedback.md');
+      draft.searchParams.set('title', text.title);
+      draft.searchParams.set('body', text.body(version));
+      byId('feedback').href = draft.href;
+      byId('retry').href = draft.href;
+      byId('choices').hidden = choice !== null;
+      byId('thanks').hidden = choice === null;
+      byId('retry').hidden = choice !== 'yes';
+      byId('status').textContent = choice === 'yes' ? text.accepted : text.declined;
+      byId('detail').textContent = choice === 'yes' ? text.acceptedDetail : text.declinedDetail;
+    }
+    byId('language').addEventListener('change', event => {
+      language = Object.prototype.hasOwnProperty.call(copy, event.target.value) ? event.target.value : 'en';
+      render();
+    });
+    byId('feedback').addEventListener('click', () => { choice = 'yes'; render(); byId('heading').focus(); });
+    byId('decline').addEventListener('click', () => { choice = 'no'; render(); byId('heading').focus(); });
+    render();
+  </script>
+</body>
+</html>

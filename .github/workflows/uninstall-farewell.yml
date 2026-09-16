@@ -1,0 +1,61 @@
+name: Uninstall Farewell
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/MagicNet/uninstall.sh'
+      - 'src/MagicNet/lib/magicnet/uninstall.sh'
+      - 'src/MagicNet/lib/magicnet/farewell/**'
+      - 'src/MagicNet/lib/kamfw-web/**'
+      - '.github/ISSUE_TEMPLATE/uninstall_feedback.md'
+      - 'scripts/test-uninstall*.py'
+      - '.github/workflows/uninstall-farewell.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/MagicNet/uninstall.sh'
+      - 'src/MagicNet/lib/magicnet/uninstall.sh'
+      - 'src/MagicNet/lib/magicnet/farewell/**'
+      - 'src/MagicNet/lib/kamfw-web/**'
+      - '.github/ISSUE_TEMPLATE/uninstall_feedback.md'
+      - 'scripts/test-uninstall*.py'
+      - '.github/workflows/uninstall-farewell.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uninstall-farewell-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  uninstall:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox-static shellcheck python3-venv fonts-noto-cjk
+      - name: Lint uninstall shell
+        run: >-
+          shellcheck -s sh -e SC1090,SC1091,SC2015,SC2034,SC2329
+          src/MagicNet/uninstall.sh
+          src/MagicNet/lib/magicnet/uninstall.sh
+      - name: Test cleanup and real temporary BusyBox server
+        timeout-minutes: 2
+        run: python3 scripts/test-uninstall.py
+      - name: Install pinned browser test runner
+        run: |
+          python3 -m venv /tmp/magicnet-farewell-tests
+          /tmp/magicnet-farewell-tests/bin/pip install playwright==1.57.0
+          /tmp/magicnet-farewell-tests/bin/python -m playwright install --with-deps chromium
+      - name: Test consent and intercepted GitHub draft navigation
+        timeout-minutes: 3
+        env:
+          MAGICNET_TEST_OFFLINE: '0'
+        run: /tmp/magicnet-farewell-tests/bin/python scripts/test-uninstall-page.py
