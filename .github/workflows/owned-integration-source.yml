@@ -19,7 +19,7 @@ jobs:
           cp .github/owned-integration.b64 "$RUNNER_TEMP/owned-integration.b64"
           git config user.name LIghtJUNction
           git config user.email lightjunction.me@gmail.com
-          git fetch --no-tags origin 0beee9c6363ce52291c6e8ba25a8eae07993599c c156b2124b0be0a95495725b0bc7610fc14916b5 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
+          git fetch --no-tags origin 0beee578b8cb31ef3438c33b9a4a5ac511b15a77 c156b2124b0be0a95495725b0bc7610fc14916b5 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
           git checkout --detach c156b2124b0be0a95495725b0bc7610fc14916b5
           git merge --no-commit --no-ff 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
           python3 - <<'PY'
@@ -46,7 +46,7 @@ jobs:
               old = path.read_bytes() if path.exists() else b''
               assert (blob(old) if path.exists() else None) == change['before'], 'Concurrent change: ' + name
               if 'seed' in change:
-                  old = subprocess.check_output(['git', 'show', '0beee9c6363ce52291c6e8ba25a8eae07993599c:' + name])
+                  old = subprocess.check_output(['git', 'show', '0beee578b8cb31ef3438c33b9a4a5ac511b15a77:' + name])
                   assert blob(old) == change['seed'], 'Seed mismatch: ' + name
               lines = old.decode().splitlines(keepends=True)
               previous = len(lines) + 1
@@ -82,12 +82,12 @@ jobs:
           set -euo pipefail
           branch=fix/owned-network-state-20260916
           test "$GITHUB_REPOSITORY" = LIghtJUNction/MagicNet
-          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq .object.sha)" = 0beee9c6363ce52291c6e8ba25a8eae07993599c
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq .object.sha)" = 0beee578b8cb31ef3438c33b9a4a5ac511b15a77
           git add -- src/MagicNet/lib/magicnet/core.sh src/MagicNet/lib/magicnet/lifecycle.sh src/MagicNet/lib/magicnet/network.sh src/MagicNet/lib/magicnet/routes.sh src/MagicNet/uninstall.sh crates/magicnet-cli/src/state.rs docs/network-rule-ownership.md scripts/test-app-routing-policy.sh scripts/test-hotspot-routing.sh scripts/test-kernel-route-lifecycle.sh scripts/test-route-ownership-netns.sh scripts/test-route-ownership.py scripts/test-startup-network-safety.sh scripts/test-uninstall.py
           git diff --cached --check
           test -z "$(git diff --name-only)"
           tree="$(git write-tree)"
-          commit="$(printf '%s\n' 'fix(network): integrate verified ownership journals and safe uninstall' | git commit-tree "$tree" -p 0beee9c6363ce52291c6e8ba25a8eae07993599c -p c156b2124b0be0a95495725b0bc7610fc14916b5 -p 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827)"
+          commit="$(printf '%s\n' 'fix(network): integrate verified ownership journals and safe uninstall' | git commit-tree "$tree" -p 0beee578b8cb31ef3438c33b9a4a5ac511b15a77 -p c156b2124b0be0a95495725b0bc7610fc14916b5 -p 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827)"
           gh auth setup-git
           git push origin "$commit:refs/heads/$branch"
           printf 'Verified integration commit: %s\n' "$commit"
