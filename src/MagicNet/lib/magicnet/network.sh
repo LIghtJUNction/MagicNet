@@ -99,6 +99,30 @@ magicnet_xtables_available() {
     return "$_xtables_rc"
 }
 
+# Read the legacy registration list without asking xtables to load a module.
+# 0: table registered; 2: confirmed absent; 1: observation unavailable.
+# The caller supplies the kernel path; an argument keeps fixture tests isolated.
+magicnet_legacy_table_registered() (
+    _registry="$1"
+    _table="$2"
+    if [ ! -e "$_registry" ]; then
+        # A denied parent or dangling link is not evidence of absence.
+        _parent="${_registry%/*}"
+        [ -d "$_parent" ] && [ -r "$_parent" ] && [ -x "$_parent" ] &&
+            [ ! -L "$_registry" ] || return 1
+        return 2
+    fi
+    [ -r "$_registry" ] && [ ! -d "$_registry" ] && [ ! -L "$_registry" ] || return 1
+    # Append a sentinel so command substitution does not hide a truncated list
+    # made of trailing newlines. proc table names are ASCII, bounded tokens.
+    _names="$(head -c 4097 "$_registry" 2>/dev/null; _rc=$?; printf '|'; exit "$_rc")" || return 1
+    [ "${#_names}" -le 4097 ] || return 1
+    _names="${_names%|}"
+    _matched=0
+    printf '%s\n' "$_names" | grep -Fqx "$_table" || _matched=$?
+    case "$_matched" in 0) return 0 ;; 1) return 2 ;; *) return 1 ;; esac
+)
+
 # Probe the table actually used by the caller. A working filter table says
 # nothing about nat support. Return 2 only for a missing binary/table/family;
 # permission errors and lock timeouts are failures, not proof of absence.
@@ -106,16 +130,25 @@ magicnet_xtables_table_probe() (
     _probe_family="$1"
     _probe_table="$2"
     magicnet_cmd_exists "$_probe_family" || return 2
-    # A readable legacy table registry gives a non-mutating answer. In
-    # particular do not ask ip6tables to autoload an absent optional NAT table.
+    # Querying an unloaded legacy NAT table can itself request module loading.
+    # Check the backend and registry first, including when the registry is absent.
     if [ "$_probe_family:$_probe_table" = ip6tables:nat ] &&
-        ! magicnet_xtables_function_defined ip6tables &&
-        [ -r /proc/net/ip6_tables_names ] &&
-        ! grep -Fqx nat /proc/net/ip6_tables_names; then
-        # The proc registry belongs to legacy xtables, not the nft backend.
-        # Version inspection does not create or autoload a kernel table.
+        ! magicnet_xtables_function_defined ip6tables; then
         _probe_version="$(magicnet_ip6tables_cmd --version 2>/dev/null)" || return 1
-        case "$_probe_version" in *"(legacy)"*) return 2 ;; esac
+        case "$_probe_version" in
+        *"(legacy)"*)
+            _registry_rc=0
+            magicnet_legacy_table_registered /proc/net/ip6_tables_names nat || _registry_rc=$?
+            case "$_registry_rc" in
+            0) ;;
+            2) return 2 ;;
+            *)
+                magicnet_warn "IPv6 NAT registration unavailable; table probe not attempted"
+                return 1
+                ;;
+            esac
+            ;;
+        esac
     fi
     _probe_rc=0
     _probe_error="$(LC_ALL=C LANG=C "magicnet_${_probe_family}_cmd" -t "$_probe_table" -L -n 2>&1 >/dev/null)" || _probe_rc=$?

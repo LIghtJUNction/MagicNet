@@ -33,7 +33,7 @@ magicnet_xtables_table_probe() {
 magicnet_transparent_mode() { printf '%s\n' "${MODE:-tun}"; }
 magicnet_ipv6_mode() { printf '%s\n' "${IPV6_MODE:-prefer_ipv4}"; }
 magicnet_dns_profile() { printf '%s\n' "${PROFILE:-default}"; }
-magicnet_dns_capture_singbox_mark() { printf '128\n'; }
+magicnet_dns_capture_singbox_mark() { printf '1073741824\n'; }
 magicnet_dns_capture_singbox_udp_marked() { [ "${MARKED:-1}" = 1 ]; }
 magicnet_warn() { printf '%s\n' "$*" >&2; }
 magicnet_log() { printf '%s\n' "$*"; }
@@ -70,7 +70,11 @@ def xtables(args):
             return 1
         print("-P OUTPUT ACCEPT")
         for rule in chains[name]:
-            print(shlex.join(["-A", name] + rule))
+            emitted = list(rule)
+            if os.environ.get("HEX_MARK") == "1" and "--mark" in emitted:
+                at = emitted.index("--mark") + 1
+                emitted[at] = "/".join(hex(int(value, 0)) for value in emitted[at].split("/"))
+            print(shlex.join(["-A", name] + emitted))
         return 0
     if action == "-N":
         if name in chains:
@@ -215,6 +219,21 @@ class DNSOutputOrder(unittest.TestCase):
             self.assertNotIn(call[3], ("-A", "-D", "-I", "-N", "-F", "-X"), call)
         self.assert_captured(final)
 
+    def test_runtime_high_mark_serialization_does_not_trigger_rewrites(self):
+        for shell in SHELLS:
+            result, state = self.run_installer(initial(), shell)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for family in ("iptables", "ip6tables"):
+                marks = [rule[rule.index("--mark") + 1] for rule in state[family][CHAIN]
+                         if "--mark" in rule]
+                self.assertEqual(marks, ["1073741824/1073741824"])
+            state["calls"] = []
+            result, final = self.run_installer(state, shell, HEX_MARK="1")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for call in final["calls"]:
+                self.assertNotIn(call[3], ("-A", "-D", "-I", "-N", "-F", "-X"), call)
+            self.assert_captured(final)
+
     def test_reapply_repairs_core_reordering_without_duplicates(self):
         for shell in SHELLS:
             result, state = self.run_installer(initial(duplicates=3), shell)
@@ -268,7 +287,7 @@ class DNSOutputOrder(unittest.TestCase):
                     for port in (80, 443, 853):
                         self.assertEqual(packet(state[family], proto, port), "RETURN")
                     self.assertEqual(packet(state[family], proto, uid=10328, chain=CHAIN), "RETURN")
-                    self.assertEqual(packet(state[family], proto, mark=128, chain=CHAIN), "RETURN")
+                    self.assertEqual(packet(state[family], proto, mark=1073741824, chain=CHAIN), "RETURN")
 
     def test_disabled_modes_clean_existing_and_temporary_jumps(self):
         for shell, options in itertools.product(SHELLS, (
