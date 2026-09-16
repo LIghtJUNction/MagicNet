@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Apply exact integrity-checked public source patch
+      - name: Apply exact integrity-checked public source patches
         id: apply
         env:
           GH_TOKEN: ${{ github.token }}
@@ -26,17 +26,24 @@ jobs:
           done
           gzip -dc "$RUNNER_TEMP/readiness.patch.gz" > "$RUNNER_TEMP/readiness.patch"
           printf '%s  %s\n' b934aa1c09e153defe813e80a7c355a05350d36ede309aa8983e6be754e100f0 "$RUNNER_TEMP/readiness.patch" | sha256sum -c
+          gh api repos/LIghtJUNction/MagicNet/git/blobs/95250faa1d6a283b7940415778b4b3878eaffdec --jq .content | base64 -d > "$RUNNER_TEMP/corrections.patch"
+          printf '%s  %s\n' acb4f9f9fa9c590addce651e78785260df799ab7fa3226ad0afdef148b90cfda "$RUNNER_TEMP/corrections.patch" | sha256sum -c
           git apply --check "$RUNNER_TEMP/readiness.patch"
           git apply "$RUNNER_TEMP/readiness.patch"
+          git apply --check "$RUNNER_TEMP/corrections.patch"
+          git apply "$RUNNER_TEMP/corrections.patch"
           python3 - <<'PY'
-          import os, subprocess
-          patch=os.path.join(os.environ['RUNNER_TEMP'], 'readiness.patch')
-          paths=[line.split('\t',2)[2] for line in subprocess.check_output(['git','apply','--numstat',patch],text=True).splitlines()]
-          assert len(paths)==23 and all(p.startswith(('crates/','webui/','docs/')) for p in paths)
-          subprocess.run(['git','add','-N','--',*paths],check=True)
+          import os, subprocess, pathlib, json
+          paths=set()
+          for name in ('readiness.patch','corrections.patch'):
+              patch=os.path.join(os.environ['RUNNER_TEMP'],name)
+              paths.update(line.split('\t',2)[2] for line in subprocess.check_output(['git','apply','--numstat',patch],text=True).splitlines())
+          assert len(paths)==24 and all(p.startswith(('crates/','webui/','docs/')) for p in paths)
+          pathlib.Path('audit/paths.json').write_text(json.dumps(sorted(paths)))
+          subprocess.run(['git','add','-N','--',*sorted(paths)],check=True)
           PY
           git diff --check
-          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
+          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box rules
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
           components: clippy, rustfmt
@@ -77,7 +84,27 @@ jobs:
           npm run check 2>&1 | tee ../audit/webui-check.log
           npx playwright install --with-deps chromium
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
-          npm run test:ui 2>&1 | tee ../audit/browser.log
+          npm run test:ui -- --max-failures=3 2>&1 | tee ../audit/browser.log
+      - name: Verify and export exact newly published rule inputs
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C rules fetch --depth 1 origin 756b843a46e2c2c21f0d5f3013a5384b3b3ca2de
+          git -C rules checkout --detach 756b843a46e2c2c21f0d5f3013a5384b3b3ca2de
+          git -C rules archive --format=tar.gz HEAD > audit/rules-source.tar.gz
+          python3 - <<'PY'
+          import sys, pathlib, hashlib
+          sys.path.insert(0,'rules/scripts')
+          from download_release import fetch,extract_verified,MAX_ARCHIVE
+          tag='rules-20260916-c802d68ca104e3ce'
+          expected='c802d68ca104e3ced497f145dc82f6e7b834d156db8decec7e00bfd8a628433c'
+          data=fetch(f'https://github.com/LIghtJUNction/MagicNetRules/releases/download/{tag}/magicnet-rules.tar.gz',MAX_ARCHIVE)
+          extract_verified(data,expected,pathlib.Path('audit'))
+          pathlib.Path('audit/manifest.sha256').write_text(hashlib.sha256(pathlib.Path('audit/dist/manifest.json').read_bytes()).hexdigest()+'\n')
+          pathlib.Path('audit/rules.tar.gz').write_bytes(data)
+          print(f'Verified {tag} sha256:{expected}')
+          PY
       - name: Publish verified sources to this feature branch only
         env:
           GH_TOKEN: ${{ github.token }}
@@ -87,10 +114,9 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           python3 - <<'PY'
-          import os,subprocess,pathlib,hashlib,json
-          patch=os.path.join(os.environ['RUNNER_TEMP'], 'readiness.patch')
-          paths=[line.split('\t',2)[2] for line in subprocess.check_output(['git','apply','--numstat',patch],text=True).splitlines()]
-          subprocess.run(['git','add','--',*paths],check=True)
+          import subprocess,pathlib,hashlib,json
+          paths=json.loads(pathlib.Path('audit/paths.json').read_text())
+          subprocess.run(['git','add','--',*paths,'rules'],check=True)
           pathlib.Path('audit/source-sha256.json').write_text(json.dumps({p:hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() for p in paths},indent=2))
           PY
           git diff --cached --check
