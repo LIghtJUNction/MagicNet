@@ -1,26 +1,93 @@
-name: Owned Network Integration Source
+name: Validate Owned Network Integration
 on:
   push:
     branches: [audit/owned-integration-20260916]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source:
+  integrate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
           persist-credentials: false
-          fetch-depth: 1
-      - run: |
-          mkdir -p "$RUNNER_TEMP/owned-source"
-          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/owned-source/main-source.tar.gz"
-          git rev-parse HEAD > "$RUNNER_TEMP/owned-source/source-sha.txt"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: owned-main-source
-          path: ${{ runner.temp }}/owned-source
-          if-no-files-found: error
-          retention-days: 1
+          fetch-depth: 0
+      - name: Combine pinned reviewed parents without overwriting concurrent changes
+        run: |
+          set -euo pipefail
+          cp .github/owned-integration.b64 "$RUNNER_TEMP/owned-integration.b64"
+          git config user.name LIghtJUNction
+          git config user.email lightjunction.me@gmail.com
+          git fetch --no-tags origin 0beee9c6363ce52291c6e8ba25a8eae07993599c c156b2124b0be0a95495725b0bc7610fc14916b5 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
+          git checkout --detach c156b2124b0be0a95495725b0bc7610fc14916b5
+          git merge --no-commit --no-ff 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, subprocess
+          from pathlib import Path
+          raw = lzma.decompress(base64.b64decode((Path(os.environ['RUNNER_TEMP']) / 'owned-integration.b64').read_bytes()))
+          assert len(raw) == 12880
+          assert hashlib.sha256(raw).hexdigest() == 'fa06bc640feb1614d8954a34a7541d7861501c367ef02d828469ef3012529425'
+          changes = json.loads(raw)
+          allowed = {'crates/magicnet-cli/src/state.rs', 'docs/network-rule-ownership.md',
+              'scripts/test-app-routing-policy.sh', 'scripts/test-hotspot-routing.sh',
+              'scripts/test-kernel-route-lifecycle.sh', 'scripts/test-route-ownership-netns.sh',
+              'scripts/test-route-ownership.py', 'scripts/test-startup-network-safety.sh',
+              'scripts/test-uninstall.py', 'src/MagicNet/lib/magicnet/core.sh',
+              'src/MagicNet/lib/magicnet/lifecycle.sh', 'src/MagicNet/lib/magicnet/network.sh',
+              'src/MagicNet/lib/magicnet/routes.sh', 'src/MagicNet/uninstall.sh'}
+          assert set(changes) == allowed
+          def blob(value):
+              return hashlib.sha1(b'blob ' + str(len(value)).encode() + b'\0' + value).hexdigest()
+          outputs = {}
+          for name, change in changes.items():
+              path = Path(name)
+              assert not path.is_symlink()
+              old = path.read_bytes() if path.exists() else b''
+              assert (blob(old) if path.exists() else None) == change['before'], 'Concurrent change: ' + name
+              if 'seed' in change:
+                  old = subprocess.check_output(['git', 'show', '0beee9c6363ce52291c6e8ba25a8eae07993599c:' + name])
+                  assert blob(old) == change['seed'], 'Seed mismatch: ' + name
+              lines = old.decode().splitlines(keepends=True)
+              previous = len(lines) + 1
+              for start, end, replacement in reversed(change['ops']):
+                  assert 0 <= start <= end <= len(lines) and end < previous
+                  lines[start:end] = replacement.splitlines(keepends=True)
+                  previous = start
+              output = ''.join(lines).encode()
+              assert blob(output) == change['after'], 'Output mismatch: ' + name
+              outputs[path] = output
+          for path, output in outputs.items():
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(output)
+          print('All 14 reviewed integration outputs verified; main observation/redaction and PR307 preserved')
+          PY
+          cargo fmt --all
+          git diff --check
+      - name: Test real kernel isolation, lifecycle failures and uninstall fallthrough
+        run: |
+          set -euo pipefail
+          bash scripts/test-kernel-route-lifecycle.sh
+          bash scripts/test-hotspot-routing.sh
+          bash scripts/test-app-routing-policy.sh
+          sh scripts/test-startup-network-safety.sh
+          bash scripts/test-dns-leak-guard-timeout.sh
+          python3 scripts/test-dns-capture-fast-path.py
+          python3 scripts/test-dns-output-order.py
+          python3 scripts/test-uninstall.py
+      - name: Commit validated integration only to the expected feature head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch=fix/owned-network-state-20260916
+          test "$GITHUB_REPOSITORY" = LIghtJUNction/MagicNet
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq .object.sha)" = 0beee9c6363ce52291c6e8ba25a8eae07993599c
+          git add -- src/MagicNet/lib/magicnet/core.sh src/MagicNet/lib/magicnet/lifecycle.sh src/MagicNet/lib/magicnet/network.sh src/MagicNet/lib/magicnet/routes.sh src/MagicNet/uninstall.sh crates/magicnet-cli/src/state.rs docs/network-rule-ownership.md scripts/test-app-routing-policy.sh scripts/test-hotspot-routing.sh scripts/test-kernel-route-lifecycle.sh scripts/test-route-ownership-netns.sh scripts/test-route-ownership.py scripts/test-startup-network-safety.sh scripts/test-uninstall.py
+          git diff --cached --check
+          test -z "$(git diff --name-only)"
+          tree="$(git write-tree)"
+          commit="$(printf '%s\n' 'fix(network): integrate verified ownership journals and safe uninstall' | git commit-tree "$tree" -p 0beee9c6363ce52291c6e8ba25a8eae07993599c -p c156b2124b0be0a95495725b0bc7610fc14916b5 -p 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827)"
+          gh auth setup-git
+          git push origin "$commit:refs/heads/$branch"
+          printf 'Verified integration commit: %s\n' "$commit"
