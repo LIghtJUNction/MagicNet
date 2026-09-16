@@ -706,10 +706,12 @@ magicnet_enable_dns_leak_guard() {
     fi
     # Record ownership before the first write, so partial failures remain
     # recoverable. This is private recovery evidence, not canonical success.
+    _dns_guard_families=4
+    [ "$_dns_guard_ipv6_available" -ne 1 ] || _dns_guard_families=4,6
     _dns_guard_state_file="$(magicnet_dns_leak_guard_state_file)"
     _dns_guard_state_tmp="${_dns_guard_state_file}.new.$$"
     if ! mkdir -p "${_dns_guard_state_file%/*}" ||
-        ! (umask 077; printf '%s\n' "$_dns_guard_ifaces" '# magicnet-owned-v2' >"$_dns_guard_state_tmp") ||
+        ! (umask 077; printf '%s\n' "$_dns_guard_ifaces" '# magicnet-owned-v2' "# families=$_dns_guard_families" >"$_dns_guard_state_tmp") ||
         ! mv -f "$_dns_guard_state_tmp" "$_dns_guard_state_file"; then
         rm -f "$_dns_guard_state_tmp" 2>/dev/null || true
         magicnet_warn "DNS guard ownership could not be staged; no rules installed"
@@ -755,8 +757,23 @@ magicnet_disable_dns_leak_guard() (
     fi
     export MAGICNET_DNS_GUARD_LEGACY_IFACES
     _cleanup_result=0
+    _cleanup_families=unknown
+    if [ -f "$_cleanup_state" ]; then
+        _cleanup_families="$(sed -n 's/^# families=//p' "$_cleanup_state")" || return 1
+        # Missing, duplicated or invalid family evidence is not a proof of absence.
+        case "$_cleanup_families" in 4 | 4,6) ;; *) _cleanup_families=unknown ;; esac
+    fi
     for _cleanup_family in iptables ip6tables; do
-        magicnet_cmd_exists "$_cleanup_family" || continue
+        if ! magicnet_cmd_exists "$_cleanup_family"; then
+            if [ -e "$_cleanup_state" ]; then
+                # A newly journaled IPv4-only guard never installed IPv6 rules.
+                # Older journals do not encode families and must be retained.
+                if [ "$_cleanup_family:$_cleanup_families" != ip6tables:4 ]; then
+                    _cleanup_result=1
+                fi
+            fi
+            continue
+        fi
         _cleanup_scan_rc=0
         _cleanup_ifaces="$(magicnet_dns_leak_guard_rule_ifaces "magicnet_${_cleanup_family}_cmd")" || _cleanup_scan_rc=$?
         case "$_cleanup_scan_rc" in

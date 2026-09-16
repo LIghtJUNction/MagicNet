@@ -144,6 +144,32 @@ fi
 [ -s "$MOCK_RULES" ] && [ -e "$state" ] || fail 'failed stop cleanup discarded retry state'
 grep -q 'keeping sing-box running' "$WORK/log" || fail 'stop cleanup failure did not explain fail-open behavior'
 
+# Missing tools cannot erase uncertain family ownership. A recorded IPv4-only
+# guard is allowed to finish without ip6tables, but legacy/dual-family records
+# retain their exact bytes until the missing family can be checked.
+(
+    : >"$MOCK_RULES"
+    magicnet_cmd_exists() { [ "$1" != "${MISSING_TOOL:-none}" ] && command -v "$1" >/dev/null 2>&1; }
+    for MISSING_TOOL in iptables ip6tables; do
+        for evidence in legacy dual malformed; do
+            printf '%s\n' wlan0 '# magicnet-owned-v2' >"$state"
+            case "$evidence" in
+            dual) printf '%s\n' '# families=4,6' >>"$state" ;;
+            malformed) printf '%s\n' '# families=4' '# families=4,6' >>"$state" ;;
+            esac
+            cp "$state" "$WORK/saved-journal"
+            if magicnet_disable_dns_leak_guard; then fail "missing $MISSING_TOOL lost $evidence ownership"; fi
+            cmp "$state" "$WORK/saved-journal" || fail 'uncertain cleanup rewrote ownership'
+        done
+    done
+    MISSING_TOOL=ip6tables
+    printf '%s\n' wlan0 '# magicnet-owned-v2' '# families=4' >"$state"
+    magicnet_disable_dns_leak_guard || fail 'known IPv4-only guard required absent IPv6 tool'
+    test ! -e "$state" || fail 'known clean IPv4 guard kept stale state'
+    # No ownership history and no rules must not create recovery state.
+    magicnet_disable_dns_leak_guard || fail 'no-history cleanup failed with missing optional IPv6 tool'
+)
+
 # The shell action path delegates to the Rust lifecycle owner instead of
 # duplicating stop/rollback semantics.
 (
