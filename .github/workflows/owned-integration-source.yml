@@ -1,93 +1,69 @@
-name: Validate Owned Network Integration
+name: Validate Final Owned Network State
 on:
   push:
     branches: [audit/owned-integration-20260916]
 permissions:
   contents: write
 jobs:
-  integrate:
+  finish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: 7eba2b38e71a6c4da663c88a062e0c23e33c64bf
           persist-credentials: false
-          fetch-depth: 0
-      - name: Combine pinned reviewed parents without overwriting concurrent changes
+          fetch-depth: 1
+      - name: Apply exact reviewed settings-read correction and documentation cleanup
         run: |
           set -euo pipefail
-          cp .github/owned-integration.b64 "$RUNNER_TEMP/owned-integration.b64"
-          git config user.name LIghtJUNction
-          git config user.email lightjunction.me@gmail.com
-          git fetch --no-tags origin 0beee578b8cb31ef3438c33b9a4a5ac511b15a77 c156b2124b0be0a95495725b0bc7610fc14916b5 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
-          git checkout --detach c156b2124b0be0a95495725b0bc7610fc14916b5
-          git merge --no-commit --no-ff 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
           python3 - <<'PY'
-          import base64, hashlib, json, lzma, os, subprocess
+          import base64, hashlib, json, lzma
           from pathlib import Path
-          raw = lzma.decompress(base64.b64decode((Path(os.environ['RUNNER_TEMP']) / 'owned-integration.b64').read_bytes()))
-          assert len(raw) == 12880
-          assert hashlib.sha256(raw).hexdigest() == 'fa06bc640feb1614d8954a34a7541d7861501c367ef02d828469ef3012529425'
+          encoded = '/Td6WFoAAATm1rRGAgAhARYAAAB0L+Wj4A9nBSNdAD2Iimdjkfohd43lSE3cavequUbCLcm9gyfofl+67VjWddu4KHDSgIrznZRRn3QWiwIYYMkhwOCNUm3dVzcTb2vIiZ6btAUaWayKPePTmZvTntojT5zD4ubeNVUYIr7Jd1LBNePUVJPsjL3xwZXVgZaZWRkV50bxuAPMSY6zYiHgvJ5POVt9DfDonlQLH3XP555kTrzhpTUIbQSh8KSMoHM7pf27i2cPnqTH7D8aiOWQixeeNrDcqL1Zb/24lihnVPXULMQtl385O9TyD4RCeqM5x9RKef4pkfR6QKaiiM39fLFiHTwZYF15HUk0HnkKZjHQRnyO9B3Y8jNq71aMrk7g+K9+hb0hKcVVY6wjQBMBkSYXsIw4jpbcjmpm1Yhw+5WyYn+48+z7zDIDZJwjo058yoBiBJVT/60n/HBQlNHs4iNwtOsPybenyl43Nny0mwS/WRFAhP8ut4g4QxD887NP82juvmeJvvKodg95iks0o0NMwWf5hy4+jiwY22sCOg2GpArlW9U7+aYDmgyM/wtsonPN8gRumTUoH6F/0NVgJ6H3m+f2sc3byhL46HITn3XC7m4O8E43FyosQ631bIPfgJHqNr2nEgC1ttANRLrV1ocXVI9jL4x88KxgQY4BM+2SHeJStLw05sILqupD7NgoGmpzDjmimpLzlQJGkEn0BzGILwjHrP4TicwTH17ip2F49Mk8sr7Z/43+Jj12Iol9aUtZaK6NFFdqupJ6p5+/gMLQ42zZakO895KtrS5UGBE444rVe23zXfCsHjGX6XG5w/X9vTjyMtyCfTHzorC8k7Jwtb0EJsR6Jn/9Of2CfBjkiTl/Cl7EMg9r2ovOcwsfCs2EdqMu9MxtRiZsSzLPawMPgM6vwkDThMtNOimChVnd8fl5wqmmUGmJoBUWQs2+r+kgmIUxkG83ovFcPpR3hGaIFg4Al8wBxI8k7dOqAxLbkmeKHD9Db2Y5H/Gb421uECRUE/VjOf8K+d1NJmORaUObjfkyLLDkxbrSQNkczg2ANQJv2oQ7DY4Yr4esaLkzymZDOXYhWCgjgL3w6ld5/D//DA33tuzt5ex8AyhvtLp/+b6hMES9JfH1xDKZiBv/xytXXs1D7NBJTPGXG7Niu/9T7A3o01fjNQTbm8VTGRcy/19dxQF5BcqjTtk9WexkcBC/vy7jonHOxEKtT3ipLMtb6s4/la4qkUFDHnRz6xggsFzBlqrtY/SZgF4VYnqoVPNoBth4qvylgR/8ODyerj4TmDX5R+m0DcV8wUqcyUqmTdqW7CmFw9XgKj+X0AFpdg3hNxlhEO2SzJO1c/O2sR7zdPcxXLyWSi3lPAlDZrHYMMjwhp36NvQ9So9sql1yo4aEtJKdIgRB2vPyPLPM8xqLqIxb2SDVkudxiqSQVGoz1IPsQYtpXd0sSF/kZrTIbBol2xAoDXEI8wIQygVFO8J9nyLENfwFBWmDST+a1pJdoum5HhQW7bPt85OQTcpx8T638cwxNg/7yISpoWoXse4toIZ3iO1eugZhtk+ufLbX10uGbBlCcDp4JVyp9RP7wyxwtI8lPcmqo33U3UGyjhEz0oo1n3I5uoqngyKqRAOJx6ixW0op4ZNuRIUz2kbk6t9HZPgyOXL0FMcVTX+00KzJoxbuNU82xw/gOjzCqejhWKVW751Lp5J7SgSKoixgN4Ie+L7Yryd1nPHEQ5OjLvgG7adLifuD4dqkIVMCKewIHGJm1BFDoo1gCsFOwjAzTQAAAKSvMBRU71RwAAG/CugeAABxigpnscRn+wIAAAAABFla'
+          raw = lzma.decompress(base64.b64decode(encoded))
+          assert hashlib.sha256(raw).hexdigest() == '51e4ff927b27d5178f4ffa51707666bc67b3c53af7da991de61053457cc2d4b3'
           changes = json.loads(raw)
-          allowed = {'crates/magicnet-cli/src/state.rs', 'docs/network-rule-ownership.md',
-              'scripts/test-app-routing-policy.sh', 'scripts/test-hotspot-routing.sh',
-              'scripts/test-kernel-route-lifecycle.sh', 'scripts/test-route-ownership-netns.sh',
-              'scripts/test-route-ownership.py', 'scripts/test-startup-network-safety.sh',
-              'scripts/test-uninstall.py', 'src/MagicNet/lib/magicnet/core.sh',
-              'src/MagicNet/lib/magicnet/lifecycle.sh', 'src/MagicNet/lib/magicnet/network.sh',
-              'src/MagicNet/lib/magicnet/routes.sh', 'src/MagicNet/uninstall.sh'}
-          assert set(changes) == allowed
-          def blob(value):
-              return hashlib.sha1(b'blob ' + str(len(value)).encode() + b'\0' + value).hexdigest()
+          assert set(changes) == {'src/MagicNet/lib/magicnet/routes.sh', 'scripts/test-route-ownership.py', 'docs/network-rule-ownership.md'}
+          def blob(b): return hashlib.sha1(b'blob ' + str(len(b)).encode() + b'\0' + b).hexdigest()
           outputs = {}
           for name, change in changes.items():
               path = Path(name)
               assert not path.is_symlink()
-              old = path.read_bytes() if path.exists() else b''
-              assert (blob(old) if path.exists() else None) == change['before'], 'Concurrent change: ' + name
-              if 'seed' in change:
-                  old = subprocess.check_output(['git', 'show', '0beee578b8cb31ef3438c33b9a4a5ac511b15a77:' + name])
-                  assert blob(old) == change['seed'], 'Seed mismatch: ' + name
+              old = path.read_bytes()
+              assert blob(old) == change['before'], name
               lines = old.decode().splitlines(keepends=True)
-              previous = len(lines) + 1
               for start, end, replacement in reversed(change['ops']):
-                  assert 0 <= start <= end <= len(lines) and end < previous
+                  assert 0 <= start <= end <= len(lines)
                   lines[start:end] = replacement.splitlines(keepends=True)
-                  previous = start
               output = ''.join(lines).encode()
-              assert blob(output) == change['after'], 'Output mismatch: ' + name
+              assert blob(output) == change['after'], name
               outputs[path] = output
-          for path, output in outputs.items():
-              path.parent.mkdir(parents=True, exist_ok=True)
-              path.write_bytes(output)
-          print('All 14 reviewed integration outputs verified; main observation/redaction and PR307 preserved')
+          for path, output in outputs.items(): path.write_bytes(output)
           PY
-          cargo fmt --all
           git diff --check
-      - name: Test real kernel isolation, lifecycle failures and uninstall fallthrough
+          bash -n src/MagicNet/lib/magicnet/routes.sh
+      - name: Execute real helper failure and uninstall regressions
         run: |
           set -euo pipefail
-          bash scripts/test-kernel-route-lifecycle.sh
-          bash scripts/test-hotspot-routing.sh
-          bash scripts/test-app-routing-policy.sh
-          sh scripts/test-startup-network-safety.sh
-          bash scripts/test-dns-leak-guard-timeout.sh
-          python3 scripts/test-dns-capture-fast-path.py
-          python3 scripts/test-dns-output-order.py
+          python3 scripts/test-route-ownership.py
+          MAGICNET_TEST_SHELL=bash python3 scripts/test-route-ownership.py
+          MAGICNET_TEST_SHELL=busybox python3 scripts/test-route-ownership.py
           python3 scripts/test-uninstall.py
-      - name: Commit validated integration only to the expected feature head
+          bash scripts/test-hotspot-routing.sh
+      - name: Commit only on the unchanged feature head
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           branch=fix/owned-network-state-20260916
           test "$GITHUB_REPOSITORY" = LIghtJUNction/MagicNet
-          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq .object.sha)" = 0beee578b8cb31ef3438c33b9a4a5ac511b15a77
-          git add -- src/MagicNet/lib/magicnet/core.sh src/MagicNet/lib/magicnet/lifecycle.sh src/MagicNet/lib/magicnet/network.sh src/MagicNet/lib/magicnet/routes.sh src/MagicNet/uninstall.sh crates/magicnet-cli/src/state.rs docs/network-rule-ownership.md scripts/test-app-routing-policy.sh scripts/test-hotspot-routing.sh scripts/test-kernel-route-lifecycle.sh scripts/test-route-ownership-netns.sh scripts/test-route-ownership.py scripts/test-startup-network-safety.sh scripts/test-uninstall.py
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq .object.sha)" = 7eba2b38e71a6c4da663c88a062e0c23e33c64bf
+          git add -- src/MagicNet/lib/magicnet/routes.sh scripts/test-route-ownership.py docs/network-rule-ownership.md
           git diff --cached --check
           test -z "$(git diff --name-only)"
-          tree="$(git write-tree)"
-          commit="$(printf '%s\n' 'fix(network): integrate verified ownership journals and safe uninstall' | git commit-tree "$tree" -p 0beee578b8cb31ef3438c33b9a4a5ac511b15a77 -p c156b2124b0be0a95495725b0bc7610fc14916b5 -p 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827)"
+          git config user.name LIghtJUNction
+          git config user.email lightjunction.me@gmail.com
+          git commit -m 'fix(network): preserve failed Android settings reads and recovery journals'
           gh auth setup-git
-          git push origin "$commit:refs/heads/$branch"
-          printf 'Verified integration commit: %s\n' "$commit"
+          git push origin "HEAD:refs/heads/$branch"
