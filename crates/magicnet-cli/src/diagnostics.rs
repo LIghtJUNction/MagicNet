@@ -306,6 +306,14 @@ fn support_bundle(app: &App) -> String {
 }
 
 const SUPPORT_CHAIN_TAGS: &[&str] = &[
+    "cn-direct",
+    "lan",
+    "ad-block",
+    "ad-allow",
+    "apple-cn",
+    "microsoft-cn",
+    "icloud",
+    "bing",
     "proxy",
     "chain",
     "chain-hop1",
@@ -782,93 +790,43 @@ fn dns_capture_runtime_check(
         };
     }
 
-    if dns_capture_profile_is_direct_udp(app) {
-        return (true, "profile-direct-udp".to_string());
-    }
-
-    let ipv4 = dns_capture_family_rules("iptables");
-    let (ipv4_ok, ipv4_detail) = match ipv4 {
-        Some(rules) => dns_capture_rule_summary(rules.0, rules.1, rules.2, rules.3),
-        None => (false, "iptables-unavailable"),
+    let config = match read_singbox_config(app) {
+        Ok(config) => config,
+        Err(_) => return (false, "config-unavailable".to_string()),
     };
-    let ipv6 = dns_capture_family_rules("ip6tables");
-    let (ipv6_ok, ipv6_detail) = match ipv6 {
-        Some(rules) => dns_capture_rule_summary(rules.0, rules.1, rules.2, rules.3),
-        None => (true, "unavailable"),
+    let port = config
+        .get("inbounds")
+        .and_then(Value::as_array)
+        .and_then(|inbounds| {
+            inbounds.iter().find(|inbound| {
+                inbound.get("tag").and_then(Value::as_str) == Some("magicnet-dns-in")
+            })
+        })
+        .and_then(|inbound| inbound.get("listen_port").and_then(Value::as_u64))
+        .filter(|port| *port > 0 && *port <= 65535);
+    let Some(port) = port else {
+        return (false, "dns-listener-unavailable".to_string());
     };
+    let check = |program| match crate::network_observation::dns_family(program, port) {
+        Ok(rules) => dns_capture_rule_summary(rules.0, rules.1, rules.2, rules.3),
+        Err(reason) => (false, reason),
+    };
+    // UDP upstream selection never exempts application/netd DNS from capture.
+    // An unavailable IPv6 table is not proof that IPv6 capture is healthy.
+    let (ipv4_ok, ipv4_detail) = check("iptables");
+    let (ipv6_ok, ipv6_detail) =
+        if config.pointer("/dns/strategy").and_then(Value::as_str) == Some("ipv4_only") {
+            (true, "not-required-ipv4-only")
+        } else {
+            ipv6_capture_policy(
+                check("ip6tables"),
+                config.pointer("/dns/strategy").and_then(Value::as_str),
+            )
+        };
     (
         ipv4_ok && ipv6_ok,
         format!("ipv4:{ipv4_detail},ipv6:{ipv6_detail}"),
     )
-}
-
-fn dns_capture_profile_is_direct_udp(app: &App) -> bool {
-    fs::read_to_string(app.moddir.join(".config/magicnet/dns.conf"))
-        .ok()
-        .and_then(|text| {
-            text.lines().find_map(|raw| {
-                let line = raw.trim();
-                let (key, value) = line.split_once('=')?;
-                (key.trim() == "MAGICNET_DNS_PROFILE").then(|| value.trim().to_string())
-            })
-        })
-        .is_some_and(|profile| matches!(profile.as_str(), "cloudflare-udp" | "udp" | "1.1.1.1"))
-}
-
-fn dns_capture_family_rules(program: &str) -> Option<(bool, bool, bool, bool)> {
-    let program = if Path::new(&format!("/system/bin/{program}")).is_file() {
-        format!("/system/bin/{program}")
-    } else {
-        program.to_string()
-    };
-    let rule_exists = |args: &[&str]| {
-        read_only_command_result_with_timeout(&program, args, Duration::from_secs(2)).success
-    };
-    if !rule_exists(&["-t", "nat", "-L"]) {
-        return None;
-    }
-    let uid0_bypass = rule_exists(&[
-        "-t",
-        "nat",
-        "-C",
-        "magicnet-dns-output",
-        "-m",
-        "owner",
-        "--uid-owner",
-        "0",
-        "-j",
-        "RETURN",
-    ]);
-    let output_jump = rule_exists(&["-t", "nat", "-C", "OUTPUT", "-j", "magicnet-dns-output"]);
-    let udp_redirect = rule_exists(&[
-        "-t",
-        "nat",
-        "-C",
-        "magicnet-dns-output",
-        "-p",
-        "udp",
-        "--dport",
-        "53",
-        "-j",
-        "REDIRECT",
-        "--to-ports",
-        "1053",
-    ]);
-    let tcp_redirect = rule_exists(&[
-        "-t",
-        "nat",
-        "-C",
-        "magicnet-dns-output",
-        "-p",
-        "tcp",
-        "--dport",
-        "53",
-        "-j",
-        "REDIRECT",
-        "--to-ports",
-        "1053",
-    ]);
-    Some((uid0_bypass, output_jump, udp_redirect, tcp_redirect))
 }
 
 fn dns_capture_rule_summary(
@@ -2336,3 +2294,47 @@ mod tests;
 #[cfg(all(test, target_os = "linux"))]
 #[path = "../tests/internal/audit_diagnostics.rs"]
 mod audit_regressions;
+
+// Readiness for the configured policy does not claim unsupported
+// IPv6 capture. Permission failures/timeouts are never absence.
+fn ipv6_capture_policy(
+    observed: (bool, &'static str),
+    strategy: Option<&str>,
+) -> (bool, &'static str) {
+    match (strategy, observed) {
+        (Some("prefer_ipv4"), (false, "table-unsupported")) => (true, "unsupported-ipv4-first"),
+        _ => observed,
+    }
+}
+#[cfg(test)]
+mod ipv6_capture_policy_tests {
+    use super::ipv6_capture_policy;
+    #[test]
+    fn optional_absence_is_not_permission_failure_or_required_capture() {
+        assert_eq!(
+            ipv6_capture_policy((false, "table-unsupported"), Some("prefer_ipv4")),
+            (true, "unsupported-ipv4-first")
+        );
+        for strategy in [None, Some("prefer_ipv6")] {
+            assert_eq!(
+                ipv6_capture_policy((false, "table-unsupported"), strategy),
+                (false, "table-unsupported")
+            );
+        }
+        for failure in [
+            "observation-failed",
+            "observation-incomplete",
+            "observation-unavailable",
+            "capture-rule-unrecognized",
+        ] {
+            assert_eq!(
+                ipv6_capture_policy((false, failure), Some("prefer_ipv4")),
+                (false, failure)
+            );
+        }
+        assert_eq!(
+            ipv6_capture_policy((true, "redirected"), Some("prefer_ipv4")),
+            (true, "redirected")
+        );
+    }
+}

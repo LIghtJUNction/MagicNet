@@ -675,12 +675,18 @@ fn hotspot_record(app: &App) -> StateRecord {
     let configured_mode = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
         .remove("MAGICNET_TRANSPARENT_MODE")
         .unwrap_or_else(|| "tun".to_string());
-    let state = if !owned {
+    // The inventory records resources we may need to recover, not proof that
+    // their installation succeeded. Never turn a failed write into "active".
+    let state = if rule_count > 0 {
+        if owned && configured_mode == "tun" {
+            crate::network_observation::hotspot_state(&app.moddir.join(HOTSPOT_TUN_RULES))
+        } else {
+            "pending"
+        }
+    } else if !owned {
         "disabled"
     } else if configured_mode == "ebpf" {
         "shared"
-    } else if rule_count > 0 {
-        "active"
     } else {
         "waiting"
     };
