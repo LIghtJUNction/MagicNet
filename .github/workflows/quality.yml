@@ -303,10 +303,33 @@ jobs:
         with:
           mode: save
 
+  android-probe:
+    name: Android probe contract
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # Probe source lives outside the old host cache scope. Never reuse a pass.
+      - name: Test app request engine and failure accounting
+        run: |
+          python3 scripts/test-android-probe.py
+          python3 scripts/test-android-network-benchmark.py
+          python3 scripts/test-android-tun-proof.py
+          python3 scripts/test-android-adb.py
+
+      - name: Compile actual Android test APK
+        run: |
+          scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/magicnet-network-probe.apk"
+
   quality-gate:
     name: CI Quality Gate
     if: ${{ always() }}
-    needs: [ci, rust, shell, components, webui]
+    needs: [ci, rust, shell, components, webui, android-probe]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
