@@ -1,33 +1,77 @@
-name: Network Final Review Sources
+name: Verify Network Probe Side Effects
 on:
   push:
     branches: [audit/network-final-review-20260916]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Export tracked files at reviewed revisions
+      - name: Apply only the four reviewed source changes
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/network-review"
-          for pair in main:970bcd0ff74422573b7c67fcc6f7a7ed9ed80827 dns:c156b2124b0be0a95495725b0bc7610fc14916b5 owned:0beee578b8cb31ef3438c33b9a4a5ac511b15a77 mark:afe78dd672fa388ba8ed573ce7fd604553a4b7d1; do
-            name=${pair%%:*}; sha=${pair#*:}
-            git fetch --depth=1 origin "$sha"
-            git archive --format=tar "$sha" | gzip > "$RUNNER_TEMP/network-review/$name.tar.gz"
-            git ls-tree -r "$sha" > "$RUNNER_TEMP/network-review/$name-tree.txt"
-            printf '%s %s\n' "$name" "$sha" >> "$RUNNER_TEMP/network-review/revisions.txt"
-          done
+          git fetch --depth=1 origin c156b2124b0be0a95495725b0bc7610fc14916b5
+          git worktree add --detach "$RUNNER_TEMP/candidate" c156b2124b0be0a95495725b0bc7610fc14916b5
+          cd "$RUNNER_TEMP/candidate"
+          git apply --index "$GITHUB_WORKSPACE/.github/nat-probe-review.patch"
+          git diff --cached --check
+      - name: Execute normal and failure-path regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/candidate"
+          python3 scripts/test-xtables-registration.py
+          python3 scripts/test-dns-output-order.py
+          python3 scripts/test-dns-capture-fast-path.py
+          bash scripts/test-dns-leak-guard-timeout.sh
+          sh scripts/test-startup-network-safety.sh
+          bash -n src/MagicNet/lib/magicnet/network.sh
+          shellcheck -s ash -S warning src/MagicNet/lib/magicnet/network.sh
+      - name: Store verified immutable Git objects without moving any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/candidate"
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          repo = 'repos/LIghtJUNction/MagicNet'
+          allowed = {'scripts/test-xtables-registration.py', 'scripts/test-dns-output-order.py',
+                     'scripts/test-host.sh', 'src/MagicNet/lib/magicnet/network.sh'}
+          changed = set(subprocess.check_output(['git','diff','--cached','--name-only'], text=True).splitlines())
+          assert changed == allowed
+          entries = []
+          for path in sorted(allowed):
+              row = subprocess.check_output(['git','ls-files','--stage',path], text=True).split()
+              raw = Path(path).read_bytes()
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == row[1]
+              entries.append(dict(path=path, mode=row[0], type='blob', content=raw.decode()))
+          base = subprocess.check_output(['git','rev-parse','HEAD^{tree}'], text=True).strip()
+          expected = subprocess.check_output(['git','write-tree'], text=True).strip()
+          cp = subprocess.run(['gh','api','--method','POST',repo+'/git/trees','--input','-'],
+                              input=json.dumps(dict(base_tree=base,tree=entries)), text=True,
+                              capture_output=True, check=True, timeout=30)
+          actual = json.loads(cp.stdout)['sha']
+          assert actual == expected
+          out = Path(os.environ['RUNNER_TEMP'])/'verified-probe'
+          out.mkdir()
+          (out/'tree.json').write_text(json.dumps(dict(tree=actual, parent='c156b2124b0be0a95495725b0bc7610fc14916b5',
+                                                     files=sorted(allowed), result='PASS'), indent=2)+'\n')
+          (out/'patch.diff').write_bytes(subprocess.check_output(['git','diff','--cached','--binary']))
+          print('Verified candidate tree: '+actual)
+          PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: network-final-review-sources
-          path: ${{ runner.temp }}/network-review
+          name: verified-network-probe-tree
+          path: ${{ runner.temp }}/verified-probe
           if-no-files-found: error
           retention-days: 1
