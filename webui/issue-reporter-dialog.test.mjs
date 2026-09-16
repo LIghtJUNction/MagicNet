@@ -40,7 +40,7 @@ assert.match(dialog, /trapFocusWithin\(event, dialog\.value\)/);
 
 assert.match(reporter, /kind === "route-feedback"/);
 assert.match(reporter, /runCli\("api conns", "读取路由反馈连接", true\)/);
-assert.match(reporter, /runCli\("network status", "读取路由反馈网络策略", true\)/);
+assert.match(reporter, /runCli\("--json network status", "读取路由反馈网络策略", true\)/);
 assert.match(reporter, /runCli\("service logs sing-box 240", "读取路由反馈错误日志", true\)/);
 assert.match(reporter, /summarizeRoutingFeedback\(connections\)/);
 assert.match(reporter, /sanitizeRoutingFeedbackLog/);
@@ -52,11 +52,11 @@ assert.match(reporter, /commandFailureContext\(operation\)/);
 assert.match(reporter, /state\.operationCapture\.command/);
 assert.match(reporter, /lastCommand: captured\.command/);
 assert.match(reporter, /kind === "subscription-node"/);
-assert.match(reporter, /runCli\("sub status", "读取订阅状态", true\)/);
+assert.match(reporter, /runCli\("--json sub status", "读取订阅状态", true\)/);
 assert.match(reporter, /runCli\("health", "检查订阅相关健康状态", true\)/);
-assert.match(reporter, /runCli\("transparent status", "检查 TUN 状态", true\)/);
+assert.match(reporter, /runCli\("--json transparent status", "检查 TUN 状态", true\)/);
 assert.match(reporter, /kind === "dns-routing"/);
-for (const command of ["health", "dns status", "network status", "transparent status"]) {
+for (const command of ["health", "--json dns status", "--json network status", "--json transparent status"]) {
   assert.match(reporter, new RegExp(`runCli\\("${command}"`));
 }
 
