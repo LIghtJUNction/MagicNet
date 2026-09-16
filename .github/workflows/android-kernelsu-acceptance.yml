@@ -169,11 +169,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo ndk -t x86_64 build --release -p magicnet-cli -p magicnet-mcp-server
+          cargo ndk -t x86_64 build --release --locked -p magicnet-cli
           mkdir -p "$RUNNER_TEMP/magicnet-x86"
           scripts/build-sing-box.sh android amd64 "$RUNNER_TEMP/magicnet-x86/sing-box"
           install -m 0755 target/x86_64-linux-android/release/magicnet-cli "$RUNNER_TEMP/magicnet-x86/magicnet-cli"
-          install -m 0755 target/x86_64-linux-android/release/magicnet-mcp-server "$RUNNER_TEMP/magicnet-x86/magicnet-mcp-server"
           file "$RUNNER_TEMP/magicnet-x86/"* | tee "$RUNNER_TEMP/x86-payloads.txt"
 
       - name: Restore KernelSU AVD assets
@@ -295,7 +294,6 @@ jobs:
         env:
           MAGICNET_KSUD_HOST: ${{ env.KSU_CACHE }}/ksud-x86_64-linux-android
           MAGICNET_X86_CLI: ${{ runner.temp }}/magicnet-x86/magicnet-cli
-          MAGICNET_X86_MCP: ${{ runner.temp }}/magicnet-x86/magicnet-mcp-server
           MAGICNET_X86_SINGBOX: ${{ runner.temp }}/magicnet-x86/sing-box
           MAGICNET_PROXY_REGION: ${{ inputs.proxy_region }}
           MAGICNET_BENCHMARK_ROUNDS: ${{ inputs.rounds }}
