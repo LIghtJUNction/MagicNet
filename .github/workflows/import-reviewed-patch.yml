@@ -46,12 +46,14 @@ jobs:
           scripts/test-dns-output-order.py
           scripts/test-host.sh
           scripts/test-network-ownership.py
+          scripts/test-support-detail.py
           scripts/test-startup-network-safety.sh
           src/MagicNet/lib/magicnet/network.sh
           src/MagicNet/lib/magicnet/routes.sh
           src/MagicNet/lib/magicnet/runtime_config.sh
           src/MagicNet/support-detail.sh
           webui/issue-reporter.test.mjs
+          webui/issue-reporter-dialog.test.mjs
           webui/runtime-log-insights.test.mjs
           webui/src/components/pages/TailscalePage.vue
           webui/src/components/pages/runtimeLogInsights.ts
@@ -66,7 +68,7 @@ jobs:
           allowed = {p.strip() for p in allowed}
           out = Path(os.environ['RUNNER_TEMP']) / 'reviewed-patch'
           out.mkdir()
-          for index, raw in enumerate([patch, blob('3bf0bbf9281c68ce26653e30e0bab6db1f9262f4')]):
+          for index, raw in enumerate([patch, blob('3bf0bbf9281c68ce26653e30e0bab6db1f9262f4'), blob('286869a9ff353f49746628a16850ef9c2d86a68a')]):
               path = out / f'input-{index}.patch'
               path.write_bytes(raw)
               stats = subprocess.check_output(['git','apply','--numstat',str(path)], text=True)
@@ -87,6 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/test-network-ownership.py
+          python3 scripts/test-support-detail.py
           python3 scripts/test-dns-output-order.py
           python3 scripts/test-android-acceptance-contract.py
           bash scripts/test-app-routing-policy.sh
