@@ -42,7 +42,8 @@ magicnet_hotspot_tun_route_table_ready() (
 
     magicnet_iface_exists magicnet0 || return 1
     _route_table="$(magicnet_kernel_route_table)"
-    ip route show table "$_route_table" 2>/dev/null | awk '
+    _route_live="$(ip route show table "$_route_table" 2>/dev/null)" || return 2
+    printf '%s\n' "$_route_live" | awk '
         index($0, "dev magicnet0") > 0 { found = 1 }
         END { exit found ? 0 : 1 }
     '
@@ -52,10 +53,14 @@ magicnet_kernel_route_state_capture() (
     _route_mode="$(magicnet_transparent_mode 2>/dev/null || true)"
     _route_state="$(magicnet_kernel_route_state_file)"
 
-    if [ "$_route_mode" != tun ]; then
-        rm -f "$_route_state" 2>/dev/null || true
-        return 0
-    fi
+    case "$_route_mode" in
+    tun) ;;
+    ebpf)
+        # Mode intent is not proof that old TUN resources were removed.
+        [ ! -e "$_route_state" ] || return 1
+        return 0 ;;
+    *) return 2 ;;
+    esac
 
     if magicnet_kernel_running; then
         _route_kernel_rc=0
@@ -66,10 +71,7 @@ magicnet_kernel_route_state_capture() (
 
     # Do not claim table ownership merely because the process is alive. The
     # table must be materialized by this generation and point at magicnet0.
-    if ! magicnet_hotspot_tun_route_table_ready; then
-        rm -f "$_route_state" 2>/dev/null || true
-        return 1
-    fi
+    magicnet_hotspot_tun_route_table_ready || return $?
 
     _route_state_dir="${_route_state%/*}"
     _route_state_tmp="${_route_state}.new.$$"
@@ -92,8 +94,8 @@ magicnet_kernel_route_rule_present() (
     _route_priority="$2"
     _route_table="$3"
     case "$_route_family" in
-    4) _route_rules="$(ip rule show 2>/dev/null)" || return 1 ;;
-    6) _route_rules="$(ip -6 rule show 2>/dev/null)" || return 1 ;;
+    4) _route_rules="$(ip rule show 2>/dev/null)" || return 2 ;;
+    6) _route_rules="$(ip -6 rule show 2>/dev/null)" || return 2 ;;
     *) return 1 ;;
     esac
     printf '%s\n' "$_route_rules" | awk \
@@ -113,18 +115,21 @@ magicnet_kernel_route_delete_rule_priority() (
     _route_priority="$2"
     _route_table="$3"
     _route_attempt=0
-    while [ "$_route_attempt" -lt 8 ] &&
-        magicnet_kernel_route_rule_present "$_route_family" "$_route_priority" "$_route_table"; do
+    while [ "$_route_attempt" -lt 8 ]; do
+        _route_present_rc=0
+        magicnet_kernel_route_rule_present "$_route_family" "$_route_priority" "$_route_table" || _route_present_rc=$?
+        case "$_route_present_rc" in 0) ;; 1) return 0 ;; *) return 2 ;; esac
         case "$_route_family" in
-        4) ip rule del priority "$_route_priority" lookup "$_route_table" >/dev/null 2>&1 || break ;;
-        6) ip -6 rule del priority "$_route_priority" lookup "$_route_table" >/dev/null 2>&1 || break ;;
+        4) ip rule del priority "$_route_priority" lookup "$_route_table" >/dev/null 2>&1 || return 1 ;;
+        6) ip -6 rule del priority "$_route_priority" lookup "$_route_table" >/dev/null 2>&1 || return 1 ;;
+        *) return 1 ;;
         esac
         _route_attempt=$((_route_attempt + 1))
     done
-    if magicnet_kernel_route_rule_present "$_route_family" "$_route_priority" "$_route_table"; then
-        return 1
-    fi
-    return 0
+    _route_present_rc=0
+    magicnet_kernel_route_rule_present "$_route_family" "$_route_priority" "$_route_table" || _route_present_rc=$?
+    [ "$_route_present_rc" -eq 1 ]
+
 )
 
 magicnet_kernel_route_cleanup_rule_family() (
@@ -135,8 +140,8 @@ magicnet_kernel_route_cleanup_rule_family() (
     _route_fallback="$(magicnet_kernel_route_fallback_rule)"
 
     case "$_route_family" in
-    4) _route_rules="$(ip rule show 2>/dev/null)" || return 0 ;;
-    6) _route_rules="$(ip -6 rule show 2>/dev/null)" || return 0 ;;
+    4) _route_rules="$(ip rule show 2>/dev/null)" || return 2 ;;
+    6) _route_rules="$(ip -6 rule show 2>/dev/null)" || return 2 ;;
     *) return 1 ;;
     esac
 
@@ -171,41 +176,31 @@ EOF
     return "$_route_cleanup_rc"
 )
 
-magicnet_kernel_route_cleanup_orphan_hotspot_rules() (
-    _route_table="$1"
-    _route_rules="$(ip rule show 2>/dev/null)" || return 0
-    printf '%s\n' "$_route_rules" | awk -v expected_table="$_route_table" '
-        $1 ~ /^[0-9]+:$/ {
-            priority = $1
-            sub(/:$/, "", priority)
-            iface = ""
-            table = ""
-            for (i = 2; i <= NF; i++) {
-                if ($i == "iif" && i < NF) iface = $(i + 1)
-                if ($i == "lookup" && i < NF) table = $(i + 1)
-            }
-            if (iface != "" && table == expected_table) print priority "|" iface
-        }
-    ' | while IFS='|' read -r _route_priority _route_iface; do
-        magicnet_hotspot_interface_allowed "$_route_iface" || continue
-        magicnet_hotspot_delete_rule "$_route_priority" "$_route_iface" || exit 1
-    done
+# Return 2 for an unreadable table, not an empty one. Only an explicit
+# kernel "table absent" diagnostic is treated as absence.
+magicnet_kernel_route_read_family() (
+    case "$1" in 4) set -- ip route show table "$2" ;; 6) set -- ip -6 route show table "$2" ;; *) return 2 ;; esac
+    _route_read_rc=0
+    _route_read="$(LC_ALL=C "$@" 2>&1)" || _route_read_rc=$?
+    if [ "$_route_read_rc" -eq 0 ]; then printf '%s\n' "$_route_read"; return 0; fi
+    case "$_route_read" in *"FIB table does not exist"*) return 0 ;; esac
+    return 2
 )
 
 magicnet_kernel_route_flush_family() (
     _route_family="$1"
     _route_table="$2"
+    _route_rows="$(magicnet_kernel_route_read_family "$_route_family" "$_route_table")" || return 2
+    printf '%s\n' "$_route_rows" | grep -Eq '(^| )dev magicnet0( |$)' || return 0
+    # A stale marker never owns foreign routes added to the same table later.
     case "$_route_family" in
-    4)
-        ip route show table "$_route_table" >/dev/null 2>&1 || return 0
-        ip route flush table "$_route_table" >/dev/null 2>&1
-        ;;
-    6)
-        ip -6 route show table "$_route_table" >/dev/null 2>&1 || return 0
-        ip -6 route flush table "$_route_table" >/dev/null 2>&1
-        ;;
+    4) ip route flush table "$_route_table" dev magicnet0 >/dev/null 2>&1 || return 1 ;;
+    6) ip -6 route flush table "$_route_table" dev magicnet0 >/dev/null 2>&1 || return 1 ;;
     *) return 1 ;;
     esac
+    _route_rows="$(magicnet_kernel_route_read_family "$_route_family" "$_route_table")" || return 2
+    if printf '%s\n' "$_route_rows" | grep -Eq '(^| )dev magicnet0( |$)'; then return 1; fi
+    return 0
 )
 
 magicnet_kernel_route_cleanup_after_stop() (
@@ -236,9 +231,19 @@ magicnet_kernel_route_cleanup_after_stop() (
     # The state-file cleanup is the normal path. The orphan scan also catches
     # interrupted state publication without deleting unrelated policy rules.
     magicnet_hotspot_route_cleanup || _route_cleanup_rc=1
-    magicnet_kernel_route_cleanup_orphan_hotspot_rules "$_route_table" || _route_cleanup_rc=1
+    # No speculative orphan deletion: a matching iif/table is not ownership.
 
     if [ "$_route_owned" -eq 1 ]; then
+        for _route_family in 4 6; do
+            _route_rows="$(magicnet_kernel_route_read_family "$_route_family" "$_route_table")" || return 2
+            if printf '%s\n' "$_route_rows" | awk 'NF && $0 !~ /(^| )dev magicnet0( |$)/ { foreign=1 } END { exit foreign ? 0 : 1 }'; then
+                magicnet_warn "Route table contains unowned entries; preserving policy rules and ownership evidence."
+                return 2
+            fi
+        done
+        # Preflight both policy families before any destructive cleanup. A
+        # permission failure must not leave a rule pointing into a flushed table.
+        ip rule show >/dev/null 2>&1 && ip -6 rule show >/dev/null 2>&1 || return 2
         magicnet_kernel_route_cleanup_rule_family 4 "$_route_table" || _route_cleanup_rc=1
         magicnet_kernel_route_cleanup_rule_family 6 "$_route_table" || _route_cleanup_rc=1
         magicnet_kernel_route_flush_family 4 "$_route_table" || _route_cleanup_rc=1
@@ -247,13 +252,13 @@ magicnet_kernel_route_cleanup_after_stop() (
         # Upgrade/crash compatibility: without an ownership marker, only touch
         # routes that still point at MagicNet's own TUN device.
         if magicnet_iface_exists magicnet0; then
-            ip route flush table "$_route_table" dev magicnet0 >/dev/null 2>&1 || _route_cleanup_rc=1
-            ip -6 route flush table "$_route_table" dev magicnet0 >/dev/null 2>&1 || true
+            magicnet_kernel_route_flush_family 4 "$_route_table" || _route_cleanup_rc=1
+            magicnet_kernel_route_flush_family 6 "$_route_table" || _route_cleanup_rc=1
         fi
     fi
 
     if [ "$_route_cleanup_rc" -eq 0 ]; then
-        rm -f "$_route_state" 2>/dev/null || true
+        rm -f "$_route_state" 2>/dev/null || _route_cleanup_rc=1
     fi
     return "$_route_cleanup_rc"
 )

@@ -39,9 +39,9 @@ assert.match(dialog, /@keydown\.esc\.prevent\.stop/);
 assert.match(dialog, /trapFocusWithin\(event, dialog\.value\)/);
 
 assert.match(reporter, /kind === "route-feedback"/);
-assert.match(reporter, /runCli\("api conns", "读取路由反馈连接", true\)/);
-assert.match(reporter, /runCli\("--json network status", "读取路由反馈网络策略", true\)/);
-assert.match(reporter, /runCli\("service logs sing-box 240", "读取路由反馈错误日志", true\)/);
+assert.match(reporter, /safeRead\("api conns", "读取路由反馈连接"\)/);
+assert.match(reporter, /safeRead\("--json network status", "读取路由反馈网络策略"\)/);
+assert.match(reporter, /safeRead\("service logs sing-box 240", "读取路由反馈错误日志"\)/);
 assert.match(reporter, /summarizeRoutingFeedback\(connections\)/);
 assert.match(reporter, /sanitizeRoutingFeedbackLog/);
 assert.match(reporter, /kind === "app-connectivity"/);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from "vue";
 import { ArrowUpRight, Check, Copy, Globe, KeyRound, QrCode, RefreshCw, Trash2, XCircle } from "lucide-vue-next";
 import { t } from "@/i18n";
 import Button from "@/components/ui/Button.vue";
@@ -26,7 +26,11 @@ const hasError = ref(false);
 let attemptedRead = false;
 const loginMessage = ref("");
 const loginUrl = ref("");
-const isOnline = ref(false);
+const isOnline = ref<boolean | null>(null);
+const active = ref(true);
+const confirmRemove = ref(false);
+const restartPending = ref(false);
+let viewGeneration = 0;
 const copied = ref(false);
 let loginTimer: ReturnType<typeof setTimeout> | undefined;
 let loginGeneration = 0;
@@ -45,7 +49,7 @@ function stopLoginPolling(): void {
   clearTimeout(loginTimer);
   loginUrl.value = "";
   loginMessage.value = "";
-  isOnline.value = false;
+  isOnline.value = null;
 }
 
 function cancelLogin(): void {
@@ -66,14 +70,15 @@ async function copyAuthUrl(): Promise<void> {
 
 function startLoginPolling(autoOpen: boolean): void {
   stopLoginPolling();
+  if (!active.value || document.hidden || !snapshot.value?.configured || saving.value || !state.hasKsu) return;
   const generation = loginGeneration;
   let attempts = 0;
   let opened = false;
   async function poll(): Promise<void> {
-    if (generation !== loginGeneration || !snapshot.value) return;
+    if (generation !== loginGeneration || !active.value || document.hidden || !snapshot.value) return;
     try {
       const response = await runPrivateCli(`api tailscale-status ${shellQuote(snapshot.value.tag)}`, t("读取 Tailscale 配置"), "api tailscale-status [private-output]");
-      if (generation !== loginGeneration) return;
+      if (generation !== loginGeneration || !active.value || document.hidden) return;
       if (!response.ok) throw new Error("status");
       const status = parseTailscaleLogin(response.stdout);
       loginUrl.value = status.authUrl;
@@ -91,7 +96,9 @@ function startLoginPolling(autoOpen: boolean): void {
         await openExternal(status.authUrl, "Tailscale", { preferBrowser: false });
       }
     } catch {
-      if (generation !== loginGeneration) return;
+      if (generation !== loginGeneration || !active.value || document.hidden) return;
+      isOnline.value = null;
+      loginUrl.value = "";
       loginMessage.value = t("暂时无法读取 Tailscale 登录状态，请稍后刷新。");
     }
     if (generation === loginGeneration && ++attempts < 60) loginTimer = setTimeout(poll, 2000);
@@ -99,7 +106,7 @@ function startLoginPolling(autoOpen: boolean): void {
   void poll();
 }
 
-const locked = computed(() => loading.value || saving.value || state.busy || !state.hasKsu);
+const locked = computed(() => !active.value || loading.value || saving.value || state.busy || !state.hasKsu);
 const customControl = computed(() => Boolean(snapshot.value && snapshot.value.controlUrl.replace(/\/$/, "") !== "https://controlplane.tailscale.com"));
 const saveDisabled = computed(() => locked.value || !snapshot.value || state.config.dirty || customControl.value);
 
@@ -131,11 +138,15 @@ function resultMessage(result: SaveResult): string {
 
 async function read(): Promise<void> {
   if (locked.value || edited.value) return;
+  if (!active.value || document.hidden) return;
+  const generation = ++viewGeneration;
   attemptedRead = true;
   loading.value = true;
+  stopLoginPolling();
   hasError.value = false;
   try {
     const result = await runPrivateCli("config-editor get sing-box", t("读取 Tailscale 配置"), "config-editor get sing-box [private-output]");
+    if (generation !== viewGeneration || !active.value) return;
     if (!result.ok) throw new TailscaleSetupError("config");
     const current = inspectTailscale(result.stdout);
     snapshot.value = current;
@@ -143,10 +154,11 @@ async function read(): Promise<void> {
     message.value = "";
     if (current.configured) startLoginPolling(false);
   } catch (cause) {
+    if (generation !== viewGeneration || !active.value) return;
     snapshot.value = null;
     hasError.value = true;
     message.value = errorMessage(cause instanceof TailscaleSetupError ? cause.code : undefined);
-  } finally { loading.value = false; }
+  } finally { if (generation === viewGeneration) loading.value = false; }
 }
 
 function privateClient(label: string): TailscaleClient {
@@ -174,6 +186,13 @@ function applySavedSnapshot(result: SaveResult): void {
 
 async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   if (saveDisabled.value || !snapshot.value) return;
+  // Existing, unedited configuration only needs a status/login read. Do not
+  // interrupt every proxied connection merely to open an authorization URL.
+  if (mode === "browser" && snapshot.value.configured && !edited.value && !restartPending.value) {
+    startLoginPolling(true);
+    return;
+  }
+  const generation = viewGeneration;
   saving.value = true;
   hasError.value = false;
   message.value = t("正在校验并接入 Tailscale…");
@@ -182,11 +201,20 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   authKey.value = "";
   try {
     const result = await saveTailscale(privateClient(t("配置 Tailscale")), draft, snapshot.value);
+    if (generation !== viewGeneration || !active.value) {
+      if (result.saved) snapshot.value = null;
+      return;
+    }
     applySavedSnapshot(result);
+    restartPending.value = result.stage === "restart";
     message.value = resultMessage(result);
     hasError.value = result.stage !== "done";
     if (result.stage === "done" || result.stage === "restart") await refreshStatus(undefined, false);
-    if (result.stage === "done") startLoginPolling(mode === "browser");
+    if (generation !== viewGeneration || !active.value) return;
+    if (result.stage === "done") {
+      saving.value = false;
+      startLoginPolling(mode === "browser");
+    }
   } finally {
     draft.authKey = "";
     saving.value = false;
@@ -194,7 +222,9 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
 }
 
 async function disconnectTailscale(): Promise<void> {
-  if (saveDisabled.value || !snapshot.value?.configured) return;
+  if (saveDisabled.value || !snapshot.value?.configured || !confirmRemove.value) return;
+  const generation = viewGeneration;
+  confirmRemove.value = false;
   saving.value = true;
   hasError.value = false;
   message.value = t("正在移除 Tailscale 节点并重启核心…");
@@ -204,7 +234,12 @@ async function disconnectTailscale(): Promise<void> {
     const result = await removeTailscale(privateClient(t("移除 Tailscale")), snapshot.value);
     // Reading here would be skipped by the saving lock. The transaction's
     // confirmed snapshot is authoritative even when the restart fails.
+    if (generation !== viewGeneration || !active.value) {
+      if (result.saved) snapshot.value = null;
+      return;
+    }
     applySavedSnapshot(result);
+    restartPending.value = result.stage === "restart";
     message.value = result.stage === "done"
       ? t("Tailscale 节点已移除，核心已重启。") : resultMessage(result);
     hasError.value = result.stage !== "done";
@@ -213,10 +248,14 @@ async function disconnectTailscale(): Promise<void> {
 }
 
 async function retryRestart(): Promise<void> {
-  if (locked.value) return;
+  if (locked.value || !restartPending.value) return;
+  const generation = viewGeneration;
   saving.value = true;
+  stopLoginPolling();
   try {
     const outcome = await runPrivateCli("service restart sing-box", t("重启核心"), "service restart sing-box");
+    if (generation !== viewGeneration || !active.value) return;
+    restartPending.value = !outcome.ok;
     message.value = resultMessage({ stage: outcome.ok ? "done" : "restart", saved: true });
     hasError.value = !outcome.ok;
     await refreshStatus(undefined, false);
@@ -229,10 +268,33 @@ function discardDraft(): void {
   void read();
 }
 
-onMounted(() => { void read(); });
-watch(() => state.busy, (busy) => { if (!busy && !attemptedRead) void read(); });
-onDeactivated(() => { authKey.value = ""; stopLoginPolling(); });
-onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); });
+function suspend(): void {
+  active.value = false;
+  viewGeneration++;
+  loading.value = false;
+  authKey.value = "";
+  confirmRemove.value = false;
+  stopLoginPolling();
+}
+function visibilityChanged(): void {
+  if (document.hidden) stopLoginPolling();
+  else if (active.value) startLoginPolling(false);
+}
+onMounted(() => {
+  document.addEventListener("visibilitychange", visibilityChanged);
+  void read();
+});
+watch(() => state.busy, (busy) => { if (!busy && active.value && !attemptedRead) void read(); });
+watch(saving, (busy) => { if (!busy && active.value && !snapshot.value) void read(); });
+onDeactivated(suspend);
+onUnmounted(() => { suspend(); document.removeEventListener("visibilitychange", visibilityChanged); });
+onActivated(() => {
+  active.value = true;
+  if (!loading.value && !saving.value) {
+    if (!snapshot.value) void read();
+    else startLoginPolling(false);
+  }
+});
 </script>
 
 <template>
@@ -251,10 +313,10 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
     <div v-if="snapshot" class="rounded-xl border border-[var(--mn-border)] bg-[var(--mn-surface)] p-5 space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-3">
-          <StatusDot :tone="snapshot.configured ? (isOnline ? 'ok' : 'current') : 'unknown'" />
+          <StatusDot :tone="snapshot.configured && isOnline === true ? 'ok' : 'unknown'" />
           <div>
-            <div class="font-semibold text-base flex items-center gap-2">
-              <span>{{ t(snapshot.configured ? (isOnline ? "已连接并在线" : "已配置") : "连接你的设备") }}</span>
+            <div class="font-semibold text-base flex flex-wrap items-center gap-2">
+              <span>{{ t(snapshot.configured ? (isOnline === true ? "已连接并在线" : isOnline === false ? "已配置，等待连接" : "已配置，连接状态未确认") : "连接你的设备") }}</span>
               <span v-if="snapshot.configured" class="text-xs px-2 py-0.5 rounded-full font-mono bg-[var(--mn-surface-elevated)] border border-[var(--mn-border)]">
                 {{ snapshot.hostname }}
               </span>
@@ -264,7 +326,7 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
             </p>
           </div>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <Button v-if="snapshot.configured" variant="ghost" size="sm" :disabled="locked" @click="startLoginPolling(false)">
             <RefreshCw :size="14" aria-hidden="true" />{{ t("刷新登录状态") }}
           </Button>
@@ -277,7 +339,7 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
             size="sm"
             class="text-[var(--mn-danger)] hover:bg-[var(--mn-danger-bg,rgba(239,68,68,0.1))]"
             :disabled="saveDisabled"
-            @click="disconnectTailscale"
+            @click="confirmRemove = true"
           >
             <Trash2 :size="14" aria-hidden="true" />{{ t("断开并移除节点") }}
           </Button>
@@ -292,8 +354,16 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
         </div>
         <div>
           <span class="text-[var(--mn-ink-muted)]">{{ t("控制服务器") }}:</span>
-          <span class="ml-2 font-mono font-medium truncate">{{ snapshot.controlUrl }}</span>
+          <span class="ml-2 font-mono font-medium break-all">{{ snapshot.controlUrl }}</span>
         </div>
+      </div>
+    </div>
+
+    <div v-if="confirmRemove" role="alert" class="rounded-xl border border-[var(--mn-border)] p-4 space-y-3">
+      <p class="text-sm">{{ t("移除节点会修改配置并重启核心，现有连接会短暂中断。确认继续？") }}</p>
+      <div class="flex flex-wrap gap-2">
+        <Button variant="outline" :disabled="saveDisabled" @click="disconnectTailscale">{{ t("确认移除") }}</Button>
+        <Button variant="ghost" :disabled="saving" @click="confirmRemove = false">{{ t("取消") }}</Button>
       </div>
     </div>
 
@@ -304,9 +374,16 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
       {{ errorMessage("custom-control") }}
     </p>
 
+    <div class="max-w-xl space-y-2">
+      <label for="tailscale-hostname" class="block text-sm font-medium">{{ t("设备名称") }}</label>
+      <Input id="tailscale-hostname" v-model="hostname" :disabled="locked || !snapshot || customControl"
+        autocomplete="off" autocapitalize="none" :spellcheck="false" maxlength="63" required @input="edited = true" />
+      <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("已配置时继续登录不会重启核心；更改配置才会重启。") }}</p>
+    </div>
+
     <!-- Method 1: Web Authorization (Recommended) -->
     <div class="rounded-xl border border-[var(--mn-border)] bg-[var(--mn-surface)] p-5 space-y-4">
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 class="font-medium text-base text-[var(--mn-ink)]">{{ t("网页授权登录（推荐）") }}</h3>
           <p class="text-xs text-[var(--mn-ink-muted)] mt-1">
@@ -318,7 +395,7 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
           :loading="saving"
           @click="submit('browser')"
         >
-          {{ t("登录 Tailscale 并自动配置") }}
+          {{ t(snapshot?.configured && !edited ? "继续 Tailscale 登录" : "登录 Tailscale 并自动配置") }}
         </Button>
       </div>
 
@@ -327,13 +404,13 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
         v-if="loginUrl"
         class="rounded-lg border border-[var(--mn-primary,rgba(59,130,246,0.3))] bg-[var(--mn-surface-elevated)] p-4 space-y-4 mt-3"
       >
-        <div class="flex items-center justify-between gap-2 text-sm font-medium">
-          <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
+          <div class="flex flex-wrap items-center gap-2">
             <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
             <span>{{ t("等待 Tailscale 登录授权，请在浏览器完成后返回。") }}</span>
           </div>
           <Button variant="ghost" size="sm" @click="cancelLogin">
-            <XCircle :size="14" aria-hidden="true" />{{ t("取消授权") }}
+            <XCircle :size="14" aria-hidden="true" />{{ t("停止等待") }}
           </Button>
         </div>
 
@@ -402,10 +479,10 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
       </p>
     </div>
 
-    <!-- Method 2: Pre-authenticated Key Form -->
-    <div class="rounded-xl border border-[var(--mn-border)] bg-[var(--mn-surface)] p-5 space-y-4">
+    <!-- Method 2: Optional pre-authenticated key -->
+    <details class="tailscale-key-panel rounded-xl border border-[var(--mn-border)] bg-[var(--mn-surface)] p-5 space-y-4">
+      <summary class="min-h-10 cursor-pointer content-center font-medium">{{ t("Auth Key 密钥接入") }}</summary>
       <div>
-        <h3 class="font-medium text-base text-[var(--mn-ink)]">{{ t("Auth Key 密钥接入") }}</h3>
         <p class="text-xs text-[var(--mn-ink-muted)] mt-1">
           {{ t("也可以直接填入从 Tailscale 控制台生成的预授权 Auth key。") }}
         </p>
@@ -413,10 +490,6 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
 
       <form class="max-w-xl space-y-5" @submit.prevent="submit('key')" @input="edited = true" @change="edited = true">
         <fieldset :disabled="locked || !snapshot || customControl" class="min-w-0 space-y-5">
-          <div class="space-y-2">
-            <label for="tailscale-hostname" class="block text-sm font-medium">{{ t("设备名称") }}</label>
-            <Input id="tailscale-hostname" v-model="hostname" autocomplete="off" autocapitalize="none" :spellcheck="false" maxlength="63" required />
-          </div>
           <div class="space-y-2">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <label for="tailscale-key" class="text-sm font-medium">Auth key</label>
@@ -463,7 +536,7 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
           {{ t("重启会短暂中断现有连接。配置保留在本机。") }}
         </p>
       </form>
-    </div>
+    </details>
 
     <!-- Status and Diagnostic Feedback -->
     <div
@@ -480,9 +553,17 @@ onActivated(() => { if (snapshot.value?.configured) startLoginPolling(false); })
       <Button variant="outline" size="sm" @click="openExternal(TAILSCALE_MACHINES_URL)">
         {{ t("设备后台") }}<ArrowUpRight :size="14" aria-hidden="true" />
       </Button>
-      <Button v-if="snapshot?.configured && !customControl" variant="ghost" size="sm" :disabled="locked" @click="retryRestart">
+      <Button v-if="restartPending && !customControl" variant="ghost" size="sm" :disabled="locked" @click="retryRestart">
         {{ t("重试重启核心") }}
       </Button>
     </div>
   </div>
 </template>
+
+<style scoped>
+.tailscale-page { min-width: 0; overflow-wrap: anywhere; }
+.tailscale-page :deep(button) { white-space: normal; height: auto; min-height: 2.5rem; max-width: 100%; }
+.tailscale-page :deep(input) { min-width: 0; width: 100%; }
+.tailscale-page .flex > div { min-width: 0; }
+.tailscale-key-panel > summary { list-style-position: inside; }
+</style>

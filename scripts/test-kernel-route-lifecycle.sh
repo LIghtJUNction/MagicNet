@@ -75,6 +75,7 @@ ip() {
 
     case "${1:-}:${2:-}" in
     rule:show)
+        [ "${FAIL_RULE_READ:-0}" = 0 ] || return 2
         cat "$rules"
         ;;
     rule:del)
@@ -92,10 +93,13 @@ ip() {
         printf 'rule-del:%s:%s:2022\n' "$family" "$priority" >>"$EVENTS"
         ;;
     route:show)
+        [ "${FAIL_ROUTE_READ:-0}" = 0 ] || return 2
         cat "$routes"
         ;;
     route:flush)
-        : >"$routes"
+        [ "${5:-}" = dev ] && [ "${6:-}" = magicnet0 ] || return 64
+        awk '$0 !~ /(^| )dev magicnet0( |$)/' "$routes" >"$routes.new"
+        mv "$routes.new" "$routes"
         printf 'route-flush:%s:%s\n' "$family" "${4:-}" >>"$EVENTS"
         ;;
     *)
@@ -163,7 +167,7 @@ magicnet_lifecycle_after_stop
 [ ! -s "$ROUTE4" ]
 [ ! -s "$ROUTE6" ]
 [ ! -e "$STATE" ]
-assert_absent '8999:' "$RULE4"
+grep -Fqx '8999: from all iif wlan2 lookup 2022' "$RULE4"
 assert_absent '9000: from all fwmark 0x200000 lookup 2022' "$RULE4"
 assert_absent '9001: from all lookup 2022' "$RULE4"
 assert_absent '32768: from all lookup 2022' "$RULE4"
@@ -173,7 +177,7 @@ assert_absent '9000: from all lookup 2022' "$RULE6"
 assert_absent '32768: from all lookup 2022' "$RULE6"
 grep -Fq '9100: from all lookup 2022' "$RULE6"
 grep -Fqx 'description:stopped' "$EVENTS"
-grep -Fqx 'hotspot-rule-del:8999:wlan2' "$EVENTS"
+assert_absent 'hotspot-rule-del:8999:wlan2' "$EVENTS"
 grep -Fq 'rule-del:4:9000:2022' "$EVENTS"
 grep -Fq 'rule-del:6:9000:2022' "$EVENTS"
 grep -Fq 'route-flush:4:' "$EVENTS"
@@ -189,4 +193,32 @@ if magicnet_kernel_route_cleanup_after_stop; then
 fi
 [ -f "$STATE" ]
 
+# Read failures are not empty tables, and a stale journal never owns another
+# interface. None of these failures may erase the recovery evidence.
+kernel_state=stopped
+printf 'table=2022\ninterface=magicnet0\n' >"$STATE"
+printf 'default dev magicnet0 scope link\n' >"$ROUTE4"
+printf '9000: from all lookup 2022\n' >"$RULE4"
+for failure in rules routes foreign; do
+    : >"$EVENTS"
+    FAIL_RULE_READ=0 FAIL_ROUTE_READ=0
+    case "$failure" in
+    rules) FAIL_RULE_READ=1 ;;
+    routes) FAIL_ROUTE_READ=1 ;;
+    foreign) printf 'default dev wlan0 scope link\n' >"$ROUTE4" ;;
+    esac
+    if magicnet_kernel_route_cleanup_after_stop; then
+        echo "unsafe cleanup accepted $failure" >&2; exit 1
+    fi
+    test -f "$STATE"
+    grep -Fqx '9000: from all lookup 2022' "$RULE4"
+    assert_absent 'rule-del:' "$EVENTS"
+    if [ "$failure" != rules ]; then assert_absent 'route-flush:' "$EVENTS"; fi
+done
+FAIL_RULE_READ=0 FAIL_ROUTE_READ=0
+: >"$ROUTE4"; : >"$ROUTE6"; : >"$RULE4"; : >"$RULE6"; : >"$EVENTS"
+magicnet_kernel_route_cleanup_after_stop
+assert_absent 'route-flush:' "$EVENTS"
+assert_absent 'rule-del:' "$EVENTS"
+test ! -e "$STATE"
 printf 'kernel route lifecycle tests passed\n'

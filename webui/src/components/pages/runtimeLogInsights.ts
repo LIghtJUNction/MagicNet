@@ -27,20 +27,32 @@ export type RuntimeLogAnalysis = Pick<RuntimeLogIssueReportInput,
   "issueLines" | "issueCount" | "warningCount" | "errorCount" | "otherIssueCount"
 >;
 
+function logSeverity(line: string): "warn" | "error" | "other" | "none" {
+  const text = stripTerminalControlSequences(line);
+  // Explicit levels win over message words: [warn] ... failed is ONE warning,
+  // not both a warning and an error. Do not demote unlabelled timeout/denied.
+  const explicit = text.match(/(?:^|[\s◬])\[(warn(?:ing)?|error|fatal|panic|info|debug|trace)\]/i)
+    || text.match(/(?:^|\s)(WARN(?:ING)?|ERROR|FATAL|PANIC|INFO|DEBUG|TRACE)(?:\s|:)/);
+  if (explicit) {
+    const level = explicit[1].toLowerCase();
+    if (level === "warn" || level === "warning") return "warn";
+    if (["error", "fatal", "panic"].includes(level)) return "error";
+    return "none";
+  }
+  if (WARNING_PATTERN.test(text)) return "warn";
+  if (ERROR_PATTERN.test(text)) return "error";
+  return ISSUE_PATTERN.test(text) ? "other" : "none";
+}
+
 export function analyzeRuntimeLogLines(lines: string[]): RuntimeLogAnalysis {
-  const classified = lines.map((line) => ({
-    line,
-    normalized: stripTerminalControlSequences(line),
-  }));
-  const issues = classified.filter(({ normalized }) => ISSUE_PATTERN.test(normalized));
+  const classified = lines.map((line) => ({ line, severity: logSeverity(line) }));
+  const issues = classified.filter(({ severity }) => severity !== "none");
   return {
     issueLines: issues.map(({ line }) => line).slice(-80),
     issueCount: issues.length,
-    warningCount: classified.filter(({ normalized }) => WARNING_PATTERN.test(normalized)).length,
-    errorCount: classified.filter(({ normalized }) => ERROR_PATTERN.test(normalized)).length,
-    otherIssueCount: issues.filter(({ normalized }) => (
-      !WARNING_PATTERN.test(normalized) && !ERROR_PATTERN.test(normalized)
-    )).length,
+    warningCount: classified.filter(({ severity }) => severity === "warn").length,
+    errorCount: classified.filter(({ severity }) => severity === "error").length,
+    otherIssueCount: classified.filter(({ severity }) => severity === "other").length,
   };
 }
 
@@ -50,8 +62,7 @@ export function latestRuntimeLogIssueLines(lines: string[]): string[] {
 
 export function runtimeLogLevelMatches(line: string, level: "all" | "warn" | "error"): boolean {
   if (level === "all") return true;
-  const normalized = stripTerminalControlSequences(line);
-  return level === "warn" ? WARNING_PATTERN.test(normalized) : ERROR_PATTERN.test(normalized);
+  return logSeverity(line) === level;
 }
 
 export function buildRuntimeLogInsight(lines: string[], warningCount: number, errorCount: number, issueLines: string[], issueCount = issueLines.length): RuntimeLogInsight {

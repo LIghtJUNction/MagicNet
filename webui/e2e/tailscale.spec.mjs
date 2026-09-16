@@ -47,6 +47,7 @@ async function mount(page, failure = "") {
 }
 
 async function fill(page) {
+  await page.locator(".tailscale-key-panel > summary").click();
   await page.getByLabel("设备名称", { exact: true }).fill("my-phone");
   await page.getByLabel("Auth key", { exact: true }).fill(authKey);
 }
@@ -76,7 +77,7 @@ test("connects without JSON editing, prevents duplicate submission and keeps sec
   expect(errors).toEqual([]);
 });
 
-test("browser login opens the core authorization URL and confirms Running without a key", async ({page}) => {
+test("browser login opens the core authorization URL and confirms Running without a key", async ({page}, testInfo) => {
   await mount(page, "browser");
   await page.getByRole('button', {name:'登录 Tailscale 并自动配置',exact:true}).click();
   await expect.poll(() => page.evaluate(() => window.__tailscale.loginOpened)).toBe(true);
@@ -86,6 +87,7 @@ test("browser login opens the core authorization URL and confirms Running withou
   await page.evaluate(() => { window.__tailscale.loginState = 'Running'; });
   await expect(page.getByText('Tailscale 已登录，正由 sing-box 连接。配置已自动生效。',{exact:true})).toBeVisible();
   expect(await page.evaluate(() => window.__tailscale.restarts)).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath("tailscale-online.png"), fullPage: true });
 });
 
 test("validation failure does not restart or expose validator output", async ({ page }) => {
@@ -127,7 +129,23 @@ test("unsaved JSON editor work blocks the form instead of being discarded", asyn
     state.config.text = '{"myDraft":true}';
     state.config.dirty = true;
   });
+  await page.locator(".tailscale-key-panel > summary").click();
   await expect(page.getByRole("button", { name: "接入并重启", exact: true })).toBeDisabled();
   await expect(page.getByRole("alert").filter({ hasText: "配置编辑器还有未保存" })).toBeVisible();
   expect(await page.evaluate(() => window.__tailscale.saves)).toBe(0);
+});
+
+
+test("existing login is read-only and removal needs confirmation", async ({ page }) => {
+  await mount(page, "browser");
+  await page.getByRole('button', {name:'登录 Tailscale 并自动配置',exact:true}).click();
+  await expect.poll(() => page.evaluate(() => window.__tailscale.loginOpened)).toBe(true);
+  await page.getByRole('button', {name:'继续 Tailscale 登录',exact:true}).first().click();
+  expect(await page.evaluate(() => [window.__tailscale.saves, window.__tailscale.restarts])).toEqual([1,1]);
+  await page.getByRole('button', {name:'断开并移除节点',exact:true}).click();
+  await expect(page.getByText('移除节点会修改配置并重启核心，现有连接会短暂中断。确认继续？')).toBeVisible();
+  expect(await page.evaluate(() => window.__tailscale.restarts)).toBe(1);
+  await page.getByRole('button', {name:'取消',exact:true}).click();
+  expect(await page.evaluate(() => window.__tailscale.saves)).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false);
 });

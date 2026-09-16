@@ -86,6 +86,42 @@ function deterministicSlice(text: string, limit: number): string {
   return `${normalized.slice(0, head)}\n[deterministically truncated]\n${normalized.slice(-tail)}`;
 }
 
+/** Bound evidence at whole-line/section boundaries; never cut JSON or a route in half. */
+export function boundedEvidence(text: string, limit: number): string {
+  const lines = text.replace(/\r\n/g, "\n").trim().split("\n");
+  const result: string[] = [];
+  let used = 0;
+  let omitted = 0;
+  for (const line of lines) {
+    if (used + line.length + 1 <= limit - 45) {
+      result.push(line); used += line.length + 1;
+    } else omitted++;
+  }
+  if (omitted) result.push(`[omitted_lines=${omitted}; full report has details]`);
+  return result.join("\n");
+}
+
+export function summarizeMachineEvidence(text: string): string {
+  try {
+    const value = JSON.parse(text);
+    if (value?.schema !== 1 || value?.ok !== true || !value.data || typeof value.data !== "object") return "status=unavailable";
+    // Canonical states are token/counter-only. Do not export free-form strings,
+    // paths or arrays from future additions to a machine response.
+    const rows: string[] = [];
+    const visit = (obj: Record<string, unknown>, prefix = "", depth = 0) => {
+      for (const [key, item] of Object.entries(obj)) {
+        if (!/^[a-zA-Z0-9_]+$/.test(key) || /secret|token|password|url|node|ssid|bssid/i.test(key)) continue;
+        const label = prefix + key;
+        if (item === null || typeof item === "boolean" || (typeof item === "number" && Number.isFinite(item))) rows.push(`${label}=${item}`);
+        else if (typeof item === "string" && /^[a-zA-Z0-9_-]{1,48}$/.test(item)) rows.push(`${label}=${item}`);
+        else if (item && typeof item === "object" && !Array.isArray(item) && depth < 2) visit(item as Record<string, unknown>, label + ".", depth + 1);
+      }
+    };
+    visit(value.data);
+    return boundedEvidence(rows.join("\n"), 650);
+  } catch { return "status=unavailable"; }
+}
+
 export function propValue(text: string, key: string): string {
   const prefix = `${key}=`;
   return text
@@ -203,6 +239,14 @@ function compactFeedbackValue(value: string, limit = 160): string {
 
 const SAFE_ROUTE_TAGS = new Set([
   "proxy",
+  "cn-direct",
+  "ad-block",
+  "ad-allow",
+  "lan",
+  "apple-cn",
+  "microsoft-cn",
+  "icloud",
+  "bing",
   "select",
   "final",
   "proxy-rule",
@@ -297,9 +341,11 @@ export function summarizeRoutingFeedback(text: string): string {
     const raw = Array.isArray(root.connections) ? root.connections : null;
     if (!raw) return "active_connections=unavailable";
 
-    const samples: Array<{ signature: string; line: string; count: number }> = [];
+    const samples: Array<{ signature: string; line: string; count: number; priority: number }> = [];
     const seen = new Map<string, number>();
-    for (const value of raw.slice(-80).reverse()) {
+    // API iteration order is not chronological. Scan the bounded snapshot
+    // before capping, so background app noise cannot crowd Play/GMS out.
+    for (const value of raw.slice(0, 512)) {
       if (!value || typeof value !== "object") continue;
       const item = value as Record<string, unknown>;
       const metadata = item.metadata && typeof item.metadata === "object"
@@ -328,6 +374,9 @@ export function summarizeRoutingFeedback(text: string): string {
       samples.push({
         signature,
         count: 1,
+        priority: /(?:^|\.)(?:google(?:apis|usercontent)?\.com|gstatic\.com|gvt[12]\.com)$/.test(domain)
+          || /com\.android\.vending|com\.google\.android\.(?:gms|gsf)/.test(process) ? 2
+          : /block|reject/.test(rule + " " + chain) ? 1 : 0,
         line: [
           process ? `app=${process}` : "",
           domain ? `domain=${domain}` : "domain=[ip-only-or-unavailable]",
@@ -338,15 +387,20 @@ export function summarizeRoutingFeedback(text: string): string {
           chain ? `chain=${chain}` : "",
         ].filter(Boolean).join(" "),
       });
-      if (samples.length >= 24) break;
     }
+    samples.sort((a, b) => b.priority - a.priority || b.count - a.count || a.signature.localeCompare(b.signature));
+    const included = samples.slice(0, 24);
 
     return [
       "privacy_note=explicit route feedback; app package names and destination domains are included",
       "filtered=source/destination IPs, connection IDs, byte counters, credentials, URL paths, subscription node names",
       `active_connection_count=${raw.length}`,
-      `included_unique_routes=${samples.length}`,
-      ...samples.map((sample, index) => `route.${index + 1} seen=${sample.count} ${sample.line}`),
+      "scope=active_connections_only; failed_or_closed_connections=not_captured",
+      `go_retained_bytes=${Number.isSafeInteger(root.memory) && Number(root.memory) >= 0 ? root.memory : "unknown"}`,
+      `included_unique_routes=${included.length}`,
+      `omitted_unique_routes=${Math.max(0, samples.length - included.length)}`,
+      `unscanned_connections=${Math.max(0, raw.length - 512)}`,
+      ...included.map((sample, index) => `route.${index + 1} seen=${sample.count} ${sample.line}`),
     ].join("\n");
   } catch {
     return "active_connections=unavailable\nparse_error=invalid response";
@@ -403,35 +457,43 @@ function issueReportText(report: Partial<IssueReport> = {}): string {
   ].join("\n\n");
 }
 
-export function buildIssueBody(parts: {
-  kind: IssueKind;
-  moduleProp: string;
-  device: string;
-  support: string;
-  focusedContext: string;
-  operation: IssueOperationContext;
-  report?: Partial<IssueReport>;
-}): string {
-  const routeFeedback = parts.kind === "route-feedback";
-  const sections = [
-    "## Problem",
-    "",
-    issueReportText(parts.report),
-    "",
-    t("问题类型：{p0}", { p0: issueKindLabel(parts.kind) }),
-    routeFeedback
-      ? "\nPrivacy: this route-feedback report intentionally contains recent app package names and destination domains; IPs, URL paths, credentials and subscription node names are filtered."
-      : "",
-    "",
-    "## Generated Context",
-    "",
-    issueSection("Focused Context", deterministicSlice(sanitizeDiagnosticText(parts.focusedContext), routeFeedback ? 3000 : 1800)),
-    issueSection("Support Summary", deterministicSlice(sanitizeDiagnosticText(parts.support), routeFeedback ? 650 : 900)),
-    issueSection("Module", deterministicSlice(sanitizeDiagnosticText(parts.moduleProp), 220)),
-    issueSection("Device", deterministicSlice(sanitizeDiagnosticText(parts.device), 220)),
-    issueSection("UI Operation", deterministicSlice(sanitizeDiagnosticText(operationText(parts.operation)), 350)),
+type IssueBodyParts = {
+  kind: IssueKind; moduleProp: string; device: string; support: string;
+  focusedContext: string; operation: IssueOperationContext; report?: Partial<IssueReport>;
+};
+
+function privacyNotice(kind: IssueKind): string {
+  return kind === "route-feedback"
+    ? "Privacy: explicit route feedback includes app packages and destination domains; IPs, URL paths, credentials and node names are filtered."
+    : "Privacy: diagnostic export is sanitized; review before submitting.";
+}
+
+export function buildFullIssueBody(parts: IssueBodyParts): string {
+  return ["# MagicNet diagnostic report", "schema=1", privacyNotice(parts.kind),
+    "## Problem", boundedEvidence(issueReportText(parts.report), 2400),
+    issueSection("Focused Context", boundedEvidence(sanitizeDiagnosticText(parts.focusedContext), 18000)),
+    issueSection("Support Summary", boundedEvidence(sanitizeDiagnosticText(parts.support), 18000)),
+    issueSection("Module", boundedEvidence(sanitizeDiagnosticText(parts.moduleProp), 500)),
+    issueSection("Device", boundedEvidence(sanitizeDiagnosticText(parts.device), 400)),
+    issueSection("UI Operation", boundedEvidence(sanitizeDiagnosticText(operationText(parts.operation)), 500)),
   ].join("\n");
-  return deterministicSlice(sections, MAX_ISSUE_BODY_CHARS);
+}
+
+export function buildIssueBody(parts: IssueBodyParts): string {
+  const module = ["id", "version", "versionCode"].map((key) => `${key}=${propValue(parts.moduleProp, key)}`).join("\n");
+  const prefix = ["## Problem", boundedEvidence(issueReportText(parts.report), 1000),
+    t("问题类型：{p0}", { p0: issueKindLabel(parts.kind) }), privacyNotice(parts.kind),
+    "Attach the downloaded MagicNet diagnostic .txt for the complete sanitized evidence.", "## Generated Context"].join("\n\n");
+  const suffix = [
+    issueSection("Support Summary", boundedEvidence(sanitizeDiagnosticText(parts.support), 700)),
+    issueSection("Module", boundedEvidence(sanitizeDiagnosticText(module), 160)),
+    issueSection("Device", boundedEvidence(sanitizeDiagnosticText(parts.device), 220)),
+    issueSection("UI Operation", boundedEvidence(sanitizeDiagnosticText(operationText(parts.operation)), 300)),
+  ].join("\n");
+  // Reserve headings and closing fences first. No outer head/tail truncation
+  // may discard the whole network section or splice unrelated log fragments.
+  const focusBudget = Math.max(400, MAX_ISSUE_BODY_CHARS - prefix.length - suffix.length - 80);
+  return [prefix, issueSection("Focused Context", boundedEvidence(sanitizeDiagnosticText(parts.focusedContext), focusBudget)), suffix].join("\n");
 }
 
 export function buildIssueUrl(repo: string, title: string, canonicalBody: string): string {

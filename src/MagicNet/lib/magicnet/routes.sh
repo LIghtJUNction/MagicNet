@@ -208,45 +208,39 @@ magicnet_hotspot_startup_snapshot_clear() {
     unset MAGICNET_HOTSPOT_STARTUP_SNAPSHOT
 }
 
-magicnet_hotspot_rule_present() {
+magicnet_hotspot_rule_present() (
     _hotspot_rule_check_priority="$1"
     _hotspot_rule_check_iface="$2"
-    ip rule show 2>/dev/null | awk \
-        -v expected_priority="${_hotspot_rule_check_priority}:" \
-        -v expected_iface="$_hotspot_rule_check_iface" '
-        $1 == expected_priority && index($0, "iif " expected_iface " ") > 0 &&
-            index($0, "lookup 2022") > 0 { found = 1 }
+    _hotspot_rules="$(ip rule show 2>/dev/null)" || return 2
+    printf '%s\n' "$_hotspot_rules" | awk \
+        -v priority="${_hotspot_rule_check_priority}:" -v iface="$_hotspot_rule_check_iface" '
+        $1 == priority {
+            found_iface=found_table=0
+            for (i=2; i<NF; i++) {
+                if ($i == "iif" && $(i+1) == iface) found_iface=1
+                if ($i == "lookup" && $(i+1) == "2022") found_table=1
+            }
+            if (found_iface && found_table) found=1
+        }
         END { exit found ? 0 : 1 }
     '
-    _hotspot_rule_rc=$?
-    unset _hotspot_rule_check_priority _hotspot_rule_check_iface
-    return "$_hotspot_rule_rc"
-}
+)
 
-magicnet_hotspot_delete_rule() {
+magicnet_hotspot_delete_rule() (
     _hotspot_priority="$1"
     _hotspot_iface="$2"
-    magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" || {
-        unset _hotspot_priority _hotspot_iface
-        return 0
-    }
     _hotspot_delete_attempt=0
     while [ "$_hotspot_delete_attempt" -lt 8 ]; do
-        if ip rule del priority "$_hotspot_priority" iif "$_hotspot_iface" lookup 2022 \
-            >/dev/null 2>&1; then
-            _hotspot_delete_attempt=$((_hotspot_delete_attempt + 1))
-        else
-            break
-        fi
-    done
-    if magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface"; then
-        _hotspot_rule_rc=1
-    else
         _hotspot_rule_rc=0
-    fi
-    unset _hotspot_priority _hotspot_iface _hotspot_delete_attempt
-    return "$_hotspot_rule_rc"
-}
+        magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" || _hotspot_rule_rc=$?
+        case "$_hotspot_rule_rc" in 0) ;; 1) return 0 ;; *) return 2 ;; esac
+        ip rule del priority "$_hotspot_priority" iif "$_hotspot_iface" lookup 2022 >/dev/null 2>&1 || return 1
+        _hotspot_delete_attempt=$((_hotspot_delete_attempt + 1))
+    done
+    _hotspot_rule_rc=0
+    magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" || _hotspot_rule_rc=$?
+    [ "$_hotspot_rule_rc" -eq 1 ]
+)
 
 magicnet_hotspot_forward_access() (
     _mode=$1
@@ -299,7 +293,7 @@ magicnet_hotspot_route_cleanup() {
         done <"$_hotspot_state_file"
     fi
     if [ "$_hotspot_cleanup_rc" -eq 0 ]; then
-        rm -f "$_hotspot_state_file" 2>/dev/null || true
+        rm -f "$_hotspot_state_file" 2>/dev/null || _hotspot_cleanup_rc=1
     fi
     _hotspot_cleanup_result="$_hotspot_cleanup_rc"
     unset _hotspot_state_file _hotspot_cleanup_rc _hotspot_priority _hotspot_iface

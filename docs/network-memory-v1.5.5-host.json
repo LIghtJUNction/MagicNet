@@ -1,0 +1,123 @@
+{
+  "scope": "linux_amd64_idle_no_inbound_no_tailscale",
+  "core_commit": "495fb0c8006c99ff37d87136267136022c7ea739",
+  "package": "v1.5.5",
+  "sample_seconds": [
+    3,
+    6,
+    9
+  ],
+  "GOMEMLIMIT": "384MiB",
+  "measurements": [
+    {
+      "name": "minimal",
+      "samples": [
+        {
+          "VmHWM": "54520 kB",
+          "VmRSS": "54376 kB",
+          "RssAnon": "7984 kB",
+          "RssFile": "46392 kB",
+          "Threads": "10"
+        },
+        {
+          "VmHWM": "54520 kB",
+          "VmRSS": "54376 kB",
+          "RssAnon": "7984 kB",
+          "RssFile": "46392 kB",
+          "Threads": "10"
+        },
+        {
+          "VmHWM": "54520 kB",
+          "VmRSS": "54376 kB",
+          "RssAnon": "7984 kB",
+          "RssFile": "46392 kB",
+          "Threads": "10"
+        }
+      ]
+    },
+    {
+      "name": "all_53_rules",
+      "samples": [
+        {
+          "VmHWM": "75364 kB",
+          "VmRSS": "72736 kB",
+          "RssAnon": "24376 kB",
+          "RssFile": "48360 kB",
+          "Threads": "9"
+        },
+        {
+          "VmHWM": "75364 kB",
+          "VmRSS": "72736 kB",
+          "RssAnon": "24376 kB",
+          "RssFile": "48360 kB",
+          "Threads": "9"
+        },
+        {
+          "VmHWM": "75364 kB",
+          "VmRSS": "72736 kB",
+          "RssAnon": "24376 kB",
+          "RssFile": "48360 kB",
+          "Threads": "9"
+        }
+      ]
+    },
+    {
+      "name": "rules_only",
+      "samples": [
+        {
+          "VmHWM": "71876 kB",
+          "VmRSS": "61280 kB",
+          "RssAnon": "14192 kB",
+          "RssFile": "47088 kB",
+          "Threads": "10"
+        },
+        {
+          "VmHWM": "71876 kB",
+          "VmRSS": "61280 kB",
+          "RssAnon": "14192 kB",
+          "RssFile": "47088 kB",
+          "Threads": "10"
+        },
+        {
+          "VmHWM": "71876 kB",
+          "VmRSS": "61280 kB",
+          "RssAnon": "14192 kB",
+          "RssFile": "47088 kB",
+          "Threads": "10"
+        }
+      ]
+    },
+    {
+      "name": "no_rules",
+      "samples": [
+        {
+          "VmHWM": "55864 kB",
+          "VmRSS": "55660 kB",
+          "RssAnon": "9140 kB",
+          "RssFile": "46520 kB",
+          "Threads": "9"
+        },
+        {
+          "VmHWM": "55864 kB",
+          "VmRSS": "55660 kB",
+          "RssAnon": "9140 kB",
+          "RssFile": "46520 kB",
+          "Threads": "9"
+        },
+        {
+          "VmHWM": "55864 kB",
+          "VmRSS": "55660 kB",
+          "RssAnon": "9140 kB",
+          "RssFile": "46520 kB",
+          "Threads": "9"
+        }
+      ]
+    }
+  ],
+  "not_tested": [
+    "Android",
+    "Play_GMS",
+    "long_running_leak",
+    "network_handover"
+  ]
+}

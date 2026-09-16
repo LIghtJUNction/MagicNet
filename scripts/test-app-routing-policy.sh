@@ -393,8 +393,8 @@ EOF
     cat "$dns_capture_log" >&2
     exit 1
   fi
-  if [ "$(grep -c -- '--uid-owner 11001 -j RETURN' "$dns_capture_log")" -ne 4 ]; then
-    printf '%s\n' 'duplicate app-bypass UIDs must produce one check and one append per address family only' >&2
+  if [ "$(grep -c -- '-A magicnet-dns-output -m owner --uid-owner 11001 -j RETURN' "$dns_capture_log")" -ne 2 ]; then
+    printf '%s\n' 'duplicate app-bypass UIDs must produce exactly one append per address family' >&2
     cat "$dns_capture_log" >&2
     exit 1
   fi
@@ -612,8 +612,13 @@ assert_dns_leak_guard_disable_removes_duplicate_rules() (
   dns_guard_count_file="$WORK/dns-leak-guard-duplicate-rules.count"
   printf '%s\n' 2 >"$dns_guard_count_file"
 
+  mkdir -p "$MODDIR/.state"
+  printf '%s\n' wlan0 >"$MODDIR/.state/dns-leak-guard.ifaces"
   iptables() {
     case " $* " in
+    *' -S OUTPUT '*)
+      if [ "$(cat "$dns_guard_count_file")" -gt 0 ]; then printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'; fi
+      return 0 ;;
     *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
       dns_guard_rule_count="$(cat "$dns_guard_count_file")"
       if [ "$dns_guard_rule_count" -gt 0 ]; then
@@ -691,6 +696,9 @@ assert_dns_leak_guard_disable_cleans_previous_interfaces() (
 
   iptables() {
     case " $* " in
+    *' -S OUTPUT '*)
+      if [ "$(cat "$stale_guard_count_file")" -gt 0 ]; then printf '%s\n' '-A OUTPUT -o wlan0 -p udp --dport 53 -j REJECT'; fi
+      return 0 ;;
     *' -D OUTPUT -o wlan0 -p udp --dport 53 -j REJECT '*)
       stale_guard_rule_count="$(cat "$stale_guard_count_file")"
       if [ "$stale_guard_rule_count" -gt 0 ]; then
@@ -751,6 +759,7 @@ assert_dns_leak_guard_ipv4_first_tolerates_missing_ipv6_nat() (
 
   iptables() {
     case " $* " in
+    *' -S OUTPUT '*) return 0 ;;
     *' -D '* | *' -C '*) return 1 ;;
     *' -I '*) return 0 ;;
     *)
@@ -759,7 +768,7 @@ assert_dns_leak_guard_ipv4_first_tolerates_missing_ipv6_nat() (
       ;;
     esac
   }
-  ip6tables() { return 1; }
+  ip6tables() { echo 'Table does not exist' >&2; return 3; }
   magicnet_cmd_exists() { return 0; }
   magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
   magicnet_ipv6_mode() { printf '%s\n' prefer_ipv4; }
@@ -809,7 +818,7 @@ assert_dns_leak_guard_uses_ipv6_filter_without_nat() (
   magicnet_warn() { printf '%s\n' "$*" >>"$guard_log"; }
 
   MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=lo magicnet_enable_dns_leak_guard
-  grep -q '^ip6tables -I OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$guard_log"
+  grep -q '^ip6tables -I OUTPUT -o lo -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT$' "$guard_log"
   if grep -q 'IPv6 DNS leak guard unavailable' "$guard_log"; then
     printf '%s\n' 'IPv6 leak guard must probe the filter table, not the optional nat table' >&2
     exit 1
@@ -986,7 +995,7 @@ assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat() (
   magicnet_disable_dns_capture() { :; }
 
   magicnet_enable_dns_capture
-  grep -q 'IPv6 DNS capture unavailable; continuing with IPv4-first capture' "$dns_capture_log"
+  grep -q 'IPv6 nat unsupported; IPv6 kernel DNS capture not installed' "$dns_capture_log"
 )
 
 assert_ipv4_first_dns_capture_tolerates_missing_ipv6_nat

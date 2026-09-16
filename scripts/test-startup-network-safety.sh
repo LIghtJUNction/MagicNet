@@ -49,7 +49,7 @@ case "$*" in
         exit "$MOCK_DELETE_RC"
     fi
     # All four guard protocols/ports are tried; only this fixture rule exists.
-    case "$*" in *'-o rmnet0 -p udp --dport 53 -j REJECT') : >"$MOCK_RULES" ;; esac
+    case "$*" in *'-o rmnet0 -p udp --dport 53 -j REJECT'|*'-o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT') : >"$MOCK_RULES" ;; esac
     exit 0 ;;
 '-C OUTPUT '*) [ -s "$MOCK_RULES" ]; exit $? ;;
 esac
@@ -105,8 +105,16 @@ magicnet_enable_dns_capture >/dev/null 2>&1 || fail 'IPv4 capture rejected absen
 if MOCK_WRITE_RC=4 magicnet_enable_dns_capture >"$WORK/log" 2>&1; then fail 'write failure hidden'; fi
 grep -q 'fixture write permission denied' "$WORK/log" || fail 'write stderr lost'
 
-# A fresh scan finds a different interface; failed deletion must keep retry state.
+# A lookalike DNS REJECT owned by somebody else must not be adopted or deleted.
 printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
+printf '%s\n' wlan0 '# magicnet-owned-v2' >"$state"
+: >"$MOCK_CALLS"
+magicnet_disable_dns_leak_guard || fail 'foreign rule prevented owned cleanup'
+[ -s "$MOCK_RULES" ] || fail 'foreign DNS REJECT was deleted'
+if grep -q -- '-D OUTPUT' "$MOCK_CALLS"; then fail 'foreign rule prompted speculative deletion'; fi
+
+# A fresh scan finds an explicitly owned rule on another interface; retain retry state on failure.
+printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT' >"$MOCK_RULES"
 printf '%s\n' wlan0 >"$state"
 if MOCK_DELETE_RC=4 magicnet_disable_dns_leak_guard >"$WORK/log" 2>&1; then fail 'delete failure hidden'; fi
 [ -e "$state" ] || fail 'failed cleanup removed retry state'
@@ -118,7 +126,7 @@ grep -q '^ip6tables -w 1 ' "$MOCK_CALLS" || fail 'IPv6 bounded lock wait missing
 
 # A stop retries transient cleanup before terminating the core, but a
 # persistent failure remains visible so the caller can keep the core alive.
-printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
+printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT' >"$MOCK_RULES"
 printf '%s\n' rmnet0 >"$state"
 MOCK_DELETE_FAIL_ONCE_FILE="$WORK/delete-failed-once"
 export MOCK_DELETE_FAIL_ONCE_FILE
@@ -127,7 +135,7 @@ MAGICNET_STOP_CLEANUP_ATTEMPTS=2 MAGICNET_STOP_CLEANUP_DELAY=0 \
 [ -e "$MOCK_DELETE_FAIL_ONCE_FILE" ] || fail 'transient stop cleanup fault was not exercised'
 [ ! -s "$MOCK_RULES" ] && [ ! -e "$state" ] || fail 'retried stop cleanup left DNS policy behind'
 unset MOCK_DELETE_FAIL_ONCE_FILE
-printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
+printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT' >"$MOCK_RULES"
 printf '%s\n' rmnet0 >"$state"
 if MOCK_DELETE_RC=4 MAGICNET_STOP_CLEANUP_ATTEMPTS=2 MAGICNET_STOP_CLEANUP_DELAY=0 \
     magicnet_prepare_network_for_core_stop >"$WORK/log" 2>&1; then

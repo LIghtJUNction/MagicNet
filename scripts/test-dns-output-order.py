@@ -187,6 +187,28 @@ class DNSOutputOrder(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assert_captured(state)
 
+    def test_ipv4_only_removes_old_ipv6_capture_without_rewriting_ipv4(self):
+        result, state = self.run_installer(initial(), ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state["calls"] = []
+        result, final = self.run_installer(state, ["sh"], IPV6_MODE="ipv4_only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(CHAIN, final["ip6tables"])
+        for call in final["calls"]:
+            if call[0] == "iptables":
+                self.assertNotIn(call[3], ("-A", "-D", "-I", "-N", "-F", "-X"), call)
+        self.assert_captured(final, families=("iptables",))
+
+    def test_unchanged_recipe_makes_no_firewall_writes(self):
+        result, state = self.run_installer(initial(), ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state["calls"] = []
+        result, final = self.run_installer(state, ["sh"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for call in final["calls"]:
+            self.assertNotIn(call[3], ("-A", "-D", "-I", "-N", "-F", "-X"), call)
+        self.assert_captured(final)
+
     def test_reapply_repairs_core_reordering_without_duplicates(self):
         for shell in SHELLS:
             result, state = self.run_installer(initial(duplicates=3), shell)
