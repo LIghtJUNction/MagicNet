@@ -1,0 +1,36 @@
+name: Inspect Android acceptance failure
+on:
+  push:
+    branches: [ci/v1.5.5-verification-20260916]
+    paths: [.github/workflows/inspect-avd-result.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Export existing run logs without executing network probes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: LIghtJUNction/MagicNet
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          gh run view 35113603153 --log > audit/android.log
+          gh api repos/$GH_REPO/actions/runs/35113603153/jobs > audit/jobs.json
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('audit/android.log').read_text().splitlines()
+          relevant = [line for line in lines if 'Run Android app-UID acceptance benchmark' in line]
+          Path('audit/benchmark-step.log').write_text('\n'.join(relevant) + '\n')
+          print('\n'.join(relevant[-100:]))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-failure-evidence
+          path: audit/
+          retention-days: 7
+          if-no-files-found: error
