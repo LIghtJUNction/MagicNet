@@ -1,4 +1,4 @@
-name: Verify Fresh DNS Chain Repair
+name: Verify Tailscale State Completion
 on:
   push:
     branches: [audit/play-tools-20260916]
@@ -11,39 +11,36 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 1593c79e4e0f14d706bcdaf9652790c29167405b
           persist-credentials: false
-      - name: Apply exact reviewed correction
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Apply hash-checked asynchronous state guards
         run: |
           set -euo pipefail
+          cp .github/patches/tailscale-state.json "$RUNNER_TEMP/tailscale-state.json"
+          git checkout --detach 89219d53f6224d03ebe510aeb72f3620d8f44dd7
           python3 - <<'PY'
-          import hashlib
+          import hashlib,json,os
           from pathlib import Path
-          p=Path('src/MagicNet/lib/magicnet/network.sh')
-          s=p.read_text()
-          assert hashlib.sha256(s.encode()).hexdigest()=='ad09bf77fa43fe2d5e9b8c434c1a9f0e9b184f44feb623ff99ef2f926b1d10e1'
-          lines=s.splitlines(True)
-          lines[342:342]=['    magicnet_dns_capture_remove_output_jumps "$_install_cmd" || return 1\n']
-          lines[338:339]=['    # nft xtables returns rc=2 for -C/-D referencing an absent target chain.\n    # Create the unhooked empty chain first on fresh installs; existing chains\n    # remain untouched until their jumps have been successfully detached.\n']
-          s=''.join(lines)
-          assert hashlib.sha256(s.encode()).hexdigest()=='081c3a7d4eb67fb8815dd0ff45e3ce53ec76be692cef759fc2b1bc666f6b2a4b'
-          p.write_text(s)
-          p=Path('scripts/test-dns-output-order.py');s=p.read_text()
-          assert hashlib.sha256(s.encode()).hexdigest()=='4803c8a2d96749f1b086b124a1ccf8dd823e9f8db673e6e4fa66985d71c1e590'
-          lines=s.splitlines(True)
-          lines[88:88]=['        # Real nft xtables validates a jump target even for a missing rule.\n        # An absent custom target is rc=2, not the ordinary no-match rc=1.\n        if action in ("-C", "-D") and "-j" in rule:\n            target = rule[rule.index("-j") + 1]\n            if target == CHAIN and target not in chains:\n                return 2\n']
-          s=''.join(lines)
-          assert hashlib.sha256(s.encode()).hexdigest()=='82f1e136c28a7aac961f86d63585a4e5e4db9cc6822ad6acf0f26608517fae7c'
-          p.write_text(s)
+          updates=json.loads((Path(os.environ['RUNNER_TEMP'])/'tailscale-state.json').read_text())
+          assert {u['path'] for u in updates}=={'webui/src/components/pages/TailscalePage.vue','webui/tailscale-page-state.test.mjs'}
+          for u in updates:
+              p=Path(u['path']);old=p.read_bytes() if p.exists() else None
+              assert (hashlib.sha256(old).hexdigest() if old is not None else None)==u['old']
+              lines=old.decode().splitlines(True) if old is not None else []
+              for start,end,text in reversed(u['changes']): lines[start:end]=[text]
+              data=''.join(lines).encode()
+              assert hashlib.sha256(data).hexdigest()==u['new'],u['path']
+              p.write_bytes(data)
           PY
-      - name: Require real isolated DNS and stateful lifecycle checks
+      - name: Execute all frontend unit, type and build checks
+        working-directory: webui
         run: |
-          set -euo pipefail
-          python3 scripts/test-dns-kernel.py --require
-          python3 scripts/test-dns-output-order.py
-          bash scripts/test-startup-network-safety.sh
-          bash scripts/test-kernel-route-lifecycle.sh
-      - name: Export only verified blobs without updating branch refs
+          npm ci
+          npm run check
+      - name: Export tested content blobs without changing refs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -51,18 +48,14 @@ jobs:
           import json,subprocess,os
           from pathlib import Path
           blobs=[]
-          for name in ('src/MagicNet/lib/magicnet/network.sh','scripts/test-dns-output-order.py'):
-              payload=json.dumps({'encoding':'utf-8','content':Path(name).read_text()})
-              value=json.loads(subprocess.check_output(['gh','api','--method','POST',
-                  'repos/LIghtJUNction/MagicNet/git/blobs','--input','-'],input=payload,text=True))
+          for name in ('webui/src/components/pages/TailscalePage.vue','webui/tailscale-page-state.test.mjs'):
+              value=json.loads(subprocess.check_output(['gh','api','--method','POST','repos/LIghtJUNction/MagicNet/git/blobs','--input','-'],input=json.dumps({'encoding':'utf-8','content':Path(name).read_text()}),text=True))
               blobs.append({'path':name,'mode':'100644','type':'blob','sha':value['sha']})
-          path=Path(os.environ['RUNNER_TEMP'])/'verified-network-blobs.json'
-          path.write_text(json.dumps(blobs,indent=2)+'\n')
-          print(path.read_text())
+          p=Path(os.environ['RUNNER_TEMP'])/'verified-tailscale-blobs.json';p.write_text(json.dumps(blobs,indent=2)+'\n');print(p.read_text())
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: verified-network-blobs
-          path: ${{ runner.temp }}/verified-network-blobs.json
+          name: verified-tailscale-blobs
+          path: ${{ runner.temp }}/verified-tailscale-blobs.json
           if-no-files-found: error
           retention-days: 1
