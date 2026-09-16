@@ -12,7 +12,7 @@ import {
   type IssueReportInput,
 } from "@/composables/issueDrafts";
 
-defineProps<{
+const props = defineProps<{
   loading?: boolean;
 }>();
 
@@ -33,7 +33,7 @@ const canConfirm = computed(() => isRouteFeedback.value || summary.value.trim().
 let previousBodyOverflow = "";
 
 function confirm(): void {
-  if (!canConfirm.value) return;
+  if (!canConfirm.value || props.loading) return;
   emit("confirm", {
     kind: selected.value,
     summary: summary.value.trim(),
@@ -67,7 +67,7 @@ onUnmounted(() => {
       class="mn-overlay absolute inset-0 size-full"
       type="button"
       :aria-label="t('取消创建 Issue')"
-      @click="emit('cancel')"
+      @click="!loading && emit('cancel')"
     />
     <section
       ref="dialog"
@@ -78,7 +78,7 @@ onUnmounted(() => {
       aria-describedby="issue-reporter-description"
       tabindex="-1"
       @keydown="trapFocus"
-      @keydown.esc.prevent.stop="emit('cancel')"
+      @keydown.esc.prevent.stop="!loading && emit('cancel')"
     >
       <div class="rounded-[5px] bg-[var(--mn-ivory)] p-4 sm:p-5">
         <div class="flex items-start justify-between gap-4">
@@ -87,12 +87,12 @@ onUnmounted(() => {
               <Bug :size="18" aria-hidden="true" />{{ t("你遇到了哪类问题？") }}</h2>
             <p id="issue-reporter-description" class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("选择一项后，MagicNet 只收集与该问题最相关的诊断上下文，并在打开 GitHub 前完成脱敏。") }}</p>
           </div>
-          <Button variant="ghost" size="icon" :aria-label="t('取消创建 Issue')" @click="emit('cancel')">
+          <Button variant="ghost" size="icon" :aria-label="t('取消创建 Issue')" @click="!loading && emit('cancel')">
             <X :size="18" />
           </Button>
         </div>
 
-        <fieldset class="mt-4 grid gap-2">
+        <fieldset :disabled="loading" class="mt-4 grid gap-2 sm:grid-cols-2">
           <legend class="sr-only">{{ t("问题类型") }}</legend>
           <label
             v-for="option in ISSUE_KIND_OPTIONS"
@@ -122,7 +122,7 @@ onUnmounted(() => {
                 </span>
               </span>
               <span class="mt-0.5 block text-xs leading-5 text-[var(--mn-ink-muted)]">{{ t(option.description) }}</span>
-              <span class="mt-1.5 block text-xs leading-5 text-[var(--mn-ink-soft)]">{{ t("将收集：{value1}", { value1: t(option.context) }) }}
+              <span v-if="selected === option.value" class="mt-1.5 block text-xs leading-5 text-[var(--mn-ink-soft)]">{{ t("将收集：{value1}", { value1: t(option.context) }) }}
               </span>
             </span>
           </label>
@@ -138,6 +138,8 @@ onUnmounted(() => {
 
         <div class="mt-4 grid gap-3 border-t border-[var(--mn-border)] pt-4">
           <template v-if="isRouteFeedback">
+            <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("先复现故障，再立即收集。报告优先保留 Google Play/GMS 路由；没有样本会明确标注，不能代表应用可用。") }}</p>
+            <Button variant="outline" size="sm" :disabled="loading" @click="summary = t('Google Play 商店加载失败')">{{ t("填写 Google Play 故障") }}</Button>
             <Field
               :label="t('补充说明（可选）')"
               :hint="t('不填写也可以直接提交；MagicNet 会自动采集最近的路由样本和错误上下文。')"
@@ -221,7 +223,7 @@ onUnmounted(() => {
               : t("描述和诊断都会脱敏；请勿直接粘贴订阅地址、token、IP、目标域名或本地路径。") }}
           </p>
           <div class="flex gap-2 sm:shrink-0">
-            <Button class="flex-1 sm:flex-none" variant="outline" @click="emit('cancel')">{{ t("取消") }}</Button>
+            <Button class="flex-1 sm:flex-none" variant="outline" @click="!loading && emit('cancel')">{{ t("取消") }}</Button>
             <Button class="flex-1 sm:flex-none" :loading="loading" :disabled="!canConfirm" @click="confirm">
               {{ isRouteFeedback ? t("收集路由并创建") : t("收集并创建") }}
             </Button>

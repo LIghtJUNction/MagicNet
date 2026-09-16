@@ -32,4 +32,13 @@ export default {
     "Automatic routing feedback: recent app / website route samples",
     "Автоматический отзыв о маршрутизации: недавние маршруты приложений / сайтов",
   ],
+  "完整脱敏诊断保留在输出页，可复制补充到 issue。": ["Full redacted evidence is available on the output page to copy into the issue.", "Полные обезличенные данные доступны на странице вывода для добавления в issue."],
+  "本次状态检查已结束，点击刷新登录状态继续。未确认上线。": ["Status checks ended. Refresh login status to continue; online status is not confirmed.", "Проверка завершена. Обновите статус входа; подключение пока не подтверждено."],
+  "仍有自定义规则引用此节点，请先在配置编辑器中处理。": ["Custom rules still reference this endpoint. Resolve them in the config editor first.", "Пользовательские правила всё ещё ссылаются на узел. Сначала измените их в редакторе."],
+  "移除本机 Tailscale 配置？": ["Remove local Tailscale configuration?", "Удалить локальную конфигурацию Tailscale?"],
+  "仅移除本机节点及自动生成的路由；不会注销账号或删除云端设备。": ["Only the local endpoint and generated routes are removed, not your account or cloud device.", "Удаляются только локальный узел и созданные маршруты, не аккаунт и не устройство в облаке."],
+  "确认移除": ["Confirm removal", "Подтвердить удаление"],
+  "先复现故障，再立即收集。报告优先保留 Google Play/GMS 路由；没有样本会明确标注，不能代表应用可用。": ["Reproduce the failure, then collect immediately. Google Play/GMS routes are prioritized; missing samples are marked, not treated as app success.", "Воспроизведите сбой и сразу соберите данные. Маршруты Google Play/GMS имеют приоритет; отсутствие примеров не считается успешной работой."],
+  "Google Play 商店加载失败": ["Google Play Store fails to load", "Не загружается Google Play"],
+  "填写 Google Play 故障": ["Describe a Google Play failure", "Указать сбой Google Play"],
 } as const;
