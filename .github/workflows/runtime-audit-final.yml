@@ -1,0 +1,97 @@
+name: Runtime audit verification
+on:
+  push:
+    branches: [fix/repository-runtime-audit-20260916]
+    paths: [.github/workflows/runtime-audit-final.yml]
+permissions:
+  contents: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/fix/repository-runtime-audit-20260916'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: aarch64-linux-android
+      - name: Correct diagnostic output compatibility
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/runtime-audit-final
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path('crates/magicnet-cli/src/diagnostics.rs')
+          s = p.read_text()
+          old = '    if output.timed_out {\n        return ReadOnlyCommandResult {'
+          new = '''    // A successful helper may leave a same-group child holding its pipes.
+              // Preserve fully captured text for the human diagnostic interface,
+              // but never count a missed deadline as a successful health probe.
+              let complete = output.status.is_some_and(|status| status.success()) && !output.truncated;
+              if output.timed_out && !complete {
+                  return ReadOnlyCommandResult {'''
+          assert s.count(old) == 1
+          s = s.replace(old, new, 1)
+          old = '    let success = output.status.is_some_and(|status| status.success()) && !output.truncated;'
+          assert s.count(old) == 1
+          s = s.replace(old, '    let success = complete && !output.timed_out;', 1)
+          p.write_text(s)
+          p = pathlib.Path('crates/magicnet-cli/tests/internal/audit_diagnostics.rs')
+          s = p.read_text()
+          assert 'diagnostic_pipe_cleanup_keeps_text_without_proving_health' not in s
+          s += '''
+          #[test]
+          fn diagnostic_pipe_cleanup_keeps_text_without_proving_health() {
+              let started = Instant::now();
+              let result = read_only_command_result_with_timeout(
+                  "sh",
+                  &["-c", "sleep 5 & printf ready"],
+                  Duration::from_millis(100),
+              );
+              assert_eq!(result.text, "ready");
+              assert!(!result.success, "deadline cleanup cannot establish health");
+              assert!(started.elapsed() < Duration::from_secs(1));
+          }
+          '''
+          p.write_text(s)
+          PY
+          cargo fmt --all
+          git diff --check
+      - name: Run complete Rust suite with pipeline failure propagation
+        run: |
+          set -euo pipefail
+          cargo test --workspace --all-targets --all-features --locked 2>&1 | tee /tmp/runtime-audit-final/rust-tests.log
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::dbg_macro -D clippy::todo -D clippy::unimplemented 2>&1 | tee /tmp/runtime-audit-final/clippy.log
+          cargo fmt --all -- --check
+          cargo check --locked -p magicnet-cli --target aarch64-linux-android 2>&1 | tee /tmp/runtime-audit-final/android-check.log
+      - name: Repeat diagnostic deadline compatibility tests
+        run: |
+          set -euo pipefail
+          for iteration in {1..10}; do
+            cargo test --locked -p magicnet-cli diagnostics:: -- --test-threads=4 >> /tmp/runtime-audit-final/diagnostic-repeat.log 2>&1
+          done
+      - name: Publish only verified Rust fixes
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/fix/repository-runtime-audit-20260916
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/magicnet-cli/src/diagnostics.rs crates/magicnet-cli/tests/internal/audit_diagnostics.rs
+          git commit -m 'fix: retain complete diagnostic output without overstating health'
+          git push origin HEAD:fix/repository-runtime-audit-20260916
+          git rev-parse HEAD | tee /tmp/runtime-audit-final/tested-commit.txt
+      - name: Export evidence
+        if: always()
+        run: git diff HEAD -- crates > /tmp/runtime-audit-final/worktree.patch
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-audit-final
+          path: /tmp/runtime-audit-final
+          retention-days: 7
