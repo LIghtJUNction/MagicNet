@@ -108,6 +108,10 @@ need env
 HOST_JQ="$(command -v jq)"
 HOST_GETENT="$(command -v getent || true)"
 HOST_ENV="$(command -v env)"
+MAGICNET_FAKE_PYTHON="$(command -v python3)"
+export MAGICNET_FAKE_PYTHON
+export MAGICNET_FAKE_KERNEL="$ROOT/scripts/fake-magisk-kernel.py"
+test -f "$MAGICNET_FAKE_KERNEL"
 
 if [[ -n "$ZIP_PATH" && "$ZIP_PATH" != /* ]]; then
     ZIP_PATH="$ROOT/$ZIP_PATH"
@@ -302,53 +306,14 @@ SH
 
 # shellcheck disable=SC2016
 write_mock ip '
-case "${1:-}" in
-    rule)
-        if [[ "${2:-}" == "show" ]]; then exit 0; fi
-        exit 0
-        ;;
-    route)
-        if [[ "${2:-}" == "show" ]]; then exit 0; fi
-        exit 0
-        ;;
-    -o)
-        if [[ "${2:-}" == "-4" && "${3:-}" == "addr" && "${4:-}" == "show" ]]; then
-            dev="${6:-}"
-            case "$dev" in
-                ap0|wlan0) echo "7: $dev inet 192.168.43.1/24 brd 192.168.43.255 scope global $dev" ;;
-                tun0) echo "9: tun0 inet 10.8.0.2/24 scope global tun0" ;;
-                magicnet0) echo "8: magicnet0 inet 172.19.0.1/30 scope global magicnet0" ;;
-            esac
-            exit 0
-        fi
-        if [[ "${2:-}" == "-6" && "${3:-}" == "addr" && "${4:-}" == "show" ]]; then
-            dev="${6:-}"
-            [[ "$dev" == "tun0" ]] && echo "9: tun0 inet6 fd00::2/64 scope global"
-            exit 0
-        fi
-        ;;
-esac
-exit 0
+exec "$MAGICNET_FAKE_PYTHON" -I "$MAGICNET_FAKE_KERNEL" ip "$@"
 '
 
+# Each read observes the same private fixture state as the preceding mutation.
+# No host route/firewall command is ever invoked by this smoke-model boundary.
 # shellcheck disable=SC2016
 write_mock iptables '
-if [[ "${1:-}" == "-nL" && "${2:-}" == "tetherctrl_FORWARD" ]]; then exit 0; fi
-if [[ "${1:-}" == "-S" && "${2:-}" == "OUTPUT" ]]; then
-    echo "-A OUTPUT -o lo -p udp --dport 53 -j REJECT"
-    exit 0
-fi
-for arg in "$@"; do
-    if [[ "$arg" == "-D" && "${MAGICNET_FAKE_XTABLES_DELETE_FAIL:-0}" == 1 ]]; then
-        echo "fixture xtables delete failure" >&2
-        exit 4
-    fi
-    if [[ "$arg" == "-C" ]]; then
-        [[ "${MAGICNET_FAKE_XTABLES_DELETE_FAIL:-0}" == 1 ]] && exit 0
-        exit 1
-    fi
-done
-exit 0
+exec "$MAGICNET_FAKE_PYTHON" -I "$MAGICNET_FAKE_KERNEL" "${0##*/}" "$@"
 '
 cp "$MOCK_BIN/iptables" "$MOCK_BIN/ip6tables"
 
@@ -439,6 +404,7 @@ case "${1:-}" in
         mkdir -p "${MODDIR:?}/.state"
         echo "$$" >"$MODDIR/.state/fake-sing-box.pid"
         printf "%s" "sing-box" >/proc/$$/comm 2>/dev/null || true
+        "$MAGICNET_FAKE_PYTHON" -I "$MAGICNET_FAKE_KERNEL" core-start "$$" "${3:?}" || exit 1
         while :; do sleep 3600; done
         ;;
 esac
@@ -641,7 +607,7 @@ install_runtime_path_fixtures() {
     local applet host_applet mock
     local applets=(
         awk basename bash cat chmod cksum cp cut date dirname env false find flock grep head id
-        kill ln ls mkdir mkfifo mv nohup printf ps pwd readlink realpath rm sed sh sleep sort
+        kill ln ls mkdir mkfifo mktemp stat cmp mv nohup printf ps pwd readlink realpath rm sed sh sleep sort
         tail timeout touch tr true uname wc whoami xargs
     )
     local mocks=(
@@ -676,6 +642,15 @@ install_runtime_path_fixtures() {
 }
 
 install_runtime_path_fixtures
+
+# Replace only the external /sys fact inside this extracted host fixture. The
+# real lifecycle/ownership algorithms and their return values remain untouched.
+cat >>"$MODDIR/lib/magicnet/network.sh" <<'SH'
+
+magicnet_iface_exists() {
+    magicnet_iface_name_valid "$1" && ip link show dev "$1" >/dev/null 2>&1
+}
+SH
 
 "$HOST_JQ" '.outbounds += [{"type":"vmess","tag":"old-cached-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
     "$MODDIR/.config/sing-box/config.json" >"$TMP/sing-box-config.json"
@@ -796,8 +771,11 @@ start_fake_core() {
 
 assert_dns_cleanup_log() {
     local log_file="$1"
-    rg -q '^iptables -t nat -D OUTPUT -j magicnet-dns-output$' "$log_file"
-    rg -q '^iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$log_file"
+    if rg -q '^iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$log_file"; then
+        echo "cleanup attempted to remove a foreign DNS reject" >&2
+        return 1
+    fi
+    MAGICNET_FAKE_LOG="$log_file" "$MAGICNET_FAKE_PYTHON" -I "$MAGICNET_FAKE_KERNEL" assert-clean
 }
 
 assert_dns_interception_not_enabled() {
@@ -1090,11 +1068,13 @@ python3 - "$MOCK_LOG" <<'PY'
 import sys
 
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
-capture = next((i for i, line in enumerate(lines) if line == "iptables -t nat -D OUTPUT -j magicnet-dns-output"), None)
-guard = next((i for i, line in enumerate(lines) if line == "iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT"), None)
+capture = next((i for i, line in enumerate(lines) if line.startswith("iptables -t nat -L")), None)
+guard = next((i for i, line in enumerate(lines) if line == "iptables -S OUTPUT"), None)
 run = next((i for i, line in enumerate(lines) if line.startswith("sing-box run")), None)
 if capture is None or guard is None or run is None or capture > run or guard > run:
-    raise SystemExit("kernel bootstrap did not clear DNS interception before starting sing-box")
+    raise SystemExit("kernel bootstrap did not inspect existing DNS ownership before starting sing-box")
+if "iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT" in lines:
+    raise SystemExit("kernel bootstrap attempted to remove a foreign DNS reject")
 PY
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
 start_fake_core
