@@ -13,7 +13,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Apply hash-checked local edits to the fix branch only
+      - name: Prepare checked source without writing workflow refs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -52,12 +52,25 @@ jobs:
                   path.write_bytes(content)
                   path.chmod(int(u['mode'],8))
               subprocess.run(['git','add','--',str(path)],check=True)
-          print('All 33 source files match the locally tested content hashes')
+          print('All 33 source files match locally tested content hashes')
+          # Store content blobs only. Updating workflow paths/refs is deliberately
+          # left to the user's separate connector with workflow permission.
+          blobs=[]
+          for name in ('.github/workflows/exec.yml','.github/workflows/quality.yml'):
+              payload=json.dumps({'encoding':'utf-8','content':Path(name).read_text()})
+              result=json.loads(subprocess.check_output(['gh','api','--method','POST',
+                  'repos/LIghtJUNction/MagicNet/git/blobs','--input','-'],input=payload,text=True))
+              blobs.append({'path':name,'mode':'100644','type':'blob','sha':result['sha']})
+          (Path(os.environ['RUNNER_TEMP'])/'play-delta/workflow-blobs.json').write_text(json.dumps(blobs,indent=2))
+          print(json.dumps(blobs))
           PY
           rustup component add rustfmt
           rustfmt --edition 2021 crates/magicnet-cli/src/commands.rs crates/magicnet-cli/src/diagnostics.rs
           git add crates/magicnet-cli/src/commands.rs crates/magicnet-cli/src/diagnostics.rs
+          # GITHUB_TOKEN cannot change workflows; do not request broader credentials.
+          git restore --source="$base" --staged --worktree -- .github/workflows
           git diff --cached --check
+          test -z "$(git diff --cached --name-only -- .github/workflows)"
           git config user.name 'LIghtJUNction'
           git config user.email '106986785+LIghtJUNction@users.noreply.github.com'
           git commit -m 'fix(network): scope route cleanup and repair DNS, diagnostics and Tailscale for v1.5.6'
@@ -66,6 +79,7 @@ jobs:
           git rev-parse HEAD
           git archive HEAD | gzip > "$RUNNER_TEMP/play-delta/verified-source.tar.gz"
           git rev-parse HEAD > "$RUNNER_TEMP/play-delta/head.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/play-delta/tree.txt"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
