@@ -102,6 +102,7 @@ check bash scripts/test-config-permissions.sh
 check bash scripts/test-config-empty-recovery.sh
 check bash scripts/test-subscription-baseline-safety.sh
 check bash scripts/test-config-lock-safety.sh
+check bash scripts/test-config-lock-budget.sh
 check sh scripts/test-runtime-fingerprint-safety.sh
 check sh scripts/test-runtime-temp-dirs.sh
 if [ "$with_routing_assets" -eq 1 ]; then
