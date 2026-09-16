@@ -1,0 +1,34 @@
+name: Verify exact v1.5.5 candidate
+on:
+  push:
+    branches: [ci/v1.5.5-verification-20260916]
+    paths: [.github/workflows/check-v155-release.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify candidate and dispatch unchanged Android acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: LIghtJUNction/MagicNet
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref=release/v1.5.5-20260916
+          expected=44af6b328bf6fe807e1a0d707108a53d930444ed
+          actual="$(gh api "repos/$GH_REPO/git/ref/heads/$ref" --jq .object.sha)"
+          test "$actual" = "$expected"
+          gh workflow run android-kernelsu-acceptance.yml --ref "$ref" -f proxy_region=US -f rounds=1 -f run_speed=false -f fresh_avd=true
+          mkdir -p "$RUNNER_TEMP/verification"
+          printf '%s\n' "$expected" > "$RUNNER_TEMP/verification/candidate.txt"
+          gh api "repos/$GH_REPO/actions/runs?event=workflow_dispatch&per_page=5" --jq '[.workflow_runs[] | {id,head_sha,status,conclusion,html_url}]' | tee "$RUNNER_TEMP/verification/dispatch.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: exact-candidate-dispatch
+          path: ${{ runner.temp }}/verification/
+          retention-days: 7
+          if-no-files-found: error
