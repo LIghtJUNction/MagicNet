@@ -1,4 +1,4 @@
-name: Verify Tailscale State Completion
+name: Verify Guard Journal Preservation
 on:
   push:
     branches: [audit/play-tools-20260916]
@@ -7,55 +7,52 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: '24'
-      - name: Apply hash-checked asynchronous state guards
+      - name: Apply reviewed family ownership and fast-path assertions
         run: |
           set -euo pipefail
-          cp .github/patches/tailscale-state.json "$RUNNER_TEMP/tailscale-state.json"
-          git checkout --detach 89219d53f6224d03ebe510aeb72f3620d8f44dd7
+          cp .github/patches/guard-journal.json "$RUNNER_TEMP/guard-journal.json"
+          git checkout --detach a1f9588dfd5bcaf0c62dcc170363888daad8038e
           python3 - <<'PY'
           import hashlib,json,os
           from pathlib import Path
-          updates=json.loads((Path(os.environ['RUNNER_TEMP'])/'tailscale-state.json').read_text())
-          assert {u['path'] for u in updates}=={'webui/src/components/pages/TailscalePage.vue','webui/tailscale-page-state.test.mjs'}
+          updates=json.loads((Path(os.environ['RUNNER_TEMP'])/'guard-journal.json').read_text())
+          assert len(updates)==3
           for u in updates:
-              p=Path(u['path']);old=p.read_bytes() if p.exists() else None
-              assert (hashlib.sha256(old).hexdigest() if old is not None else None)==u['old']
-              lines=old.decode().splitlines(True) if old is not None else []
+              p=Path(u['path']);old=p.read_bytes()
+              assert hashlib.sha256(old).hexdigest()==u['old']
+              lines=old.decode().splitlines(True)
               for start,end,text in reversed(u['changes']): lines[start:end]=[text]
-              data=''.join(lines).encode()
-              assert hashlib.sha256(data).hexdigest()==u['new'],u['path']
-              p.write_bytes(data)
+              data=''.join(lines).encode();assert hashlib.sha256(data).hexdigest()==u['new'],u['path'];p.write_bytes(data)
           PY
-      - name: Execute all frontend unit, type and build checks
-        working-directory: webui
+      - name: Verify missing-tool ownership and scoped family cleanup
         run: |
-          npm ci
-          npm run check
-      - name: Export tested content blobs without changing refs
+          set -euo pipefail
+          python3 scripts/test-dns-capture-fast-path.py
+          bash scripts/test-startup-network-safety.sh
+          bash scripts/test-kernel-route-lifecycle.sh
+          python3 scripts/test-dns-kernel.py --require
+      - name: Export tested blobs only
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
           import json,subprocess,os
           from pathlib import Path
-          blobs=[]
-          for name in ('webui/src/components/pages/TailscalePage.vue','webui/tailscale-page-state.test.mjs'):
-              value=json.loads(subprocess.check_output(['gh','api','--method','POST','repos/LIghtJUNction/MagicNet/git/blobs','--input','-'],input=json.dumps({'encoding':'utf-8','content':Path(name).read_text()}),text=True))
+          updates=json.loads((Path(os.environ['RUNNER_TEMP'])/'guard-journal.json').read_text());blobs=[]
+          for u in updates:
+              name=u['path'];value=json.loads(subprocess.check_output(['gh','api','--method','POST','repos/LIghtJUNction/MagicNet/git/blobs','--input','-'],input=json.dumps({'encoding':'utf-8','content':Path(name).read_text()}),text=True))
               blobs.append({'path':name,'mode':'100644','type':'blob','sha':value['sha']})
-          p=Path(os.environ['RUNNER_TEMP'])/'verified-tailscale-blobs.json';p.write_text(json.dumps(blobs,indent=2)+'\n');print(p.read_text())
+          p=Path(os.environ['RUNNER_TEMP'])/'verified-guard-blobs.json';p.write_text(json.dumps(blobs,indent=2)+'\n');print(p.read_text())
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: verified-tailscale-blobs
-          path: ${{ runner.temp }}/verified-tailscale-blobs.json
+          name: verified-guard-blobs
+          path: ${{ runner.temp }}/verified-guard-blobs.json
           if-no-files-found: error
           retention-days: 1
