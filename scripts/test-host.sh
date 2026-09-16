@@ -50,7 +50,6 @@ check python3 scripts/test-hook-utils.py
 python3 scripts/ci-test-cache.py host config-json -- jq empty src/MagicNet/.config/sing-box/config.json
 check bash scripts/test-repository-hygiene.sh
 check bash scripts/test-module-entrypoints.sh
-check bash scripts/test-api-endpoint.sh
 check bash scripts/test-config-template-pin.sh
 check python3 src/MagicNet/.config/sing-box/tests/test_config_routing.py
 check bash scripts/test-config-repository-migration.sh
@@ -85,6 +84,7 @@ check bash scripts/test-subscription-usage.sh
 check bash scripts/test-singbox-pid-discovery.sh
 check bash scripts/test-singbox-ownership.sh
 check bash scripts/test-singbox-tristate-safety.sh
+check bash scripts/test-api-endpoint.sh
 check bash scripts/test-singbox-readiness.sh
 check sh scripts/test-singbox-runtime-memory.sh
 check bash scripts/test-supervisor-pid-safety.sh

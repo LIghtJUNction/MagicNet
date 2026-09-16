@@ -164,7 +164,8 @@ subscription_module_root="$elf_tmp/subscription-module"
 mkdir -p "$subscription_module_root"
 unzip -oq "$ZIP_PATH" \
     'lib/magicnet_singbox_subscribe.sh' \
-    'lib/magicnet/primitives.sh' \    'lib/magicnet/api.sh' \
+    'lib/magicnet/primitives.sh' \
+    'lib/magicnet/api.sh' \
     'lib/magicnet/subscribe_bootstrap.sh' \
     'lib/magicnet/chain.sh' \
     'lib/magicnet/jq/*.jq' \
