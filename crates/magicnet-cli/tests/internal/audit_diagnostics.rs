@@ -65,3 +65,16 @@ fn diagnostic_capture_retains_stderr_and_nonzero_exit() {
     assert!(!result.success);
     assert!(result.text.contains("out") && result.text.contains("err"));
 }
+
+#[test]
+fn diagnostic_pipe_cleanup_keeps_text_without_proving_health() {
+    let started = Instant::now();
+    let result = read_only_command_result_with_timeout(
+        "sh",
+        &["-c", "sleep 5 & printf ready"],
+        Duration::from_millis(100),
+    );
+    assert_eq!(result.text, "ready");
+    assert!(!result.success, "deadline cleanup cannot establish health");
+    assert!(started.elapsed() < Duration::from_secs(1));
+}

@@ -533,13 +533,17 @@ fn read_only_command_result_with_timeout(
             };
         }
     };
-    if output.timed_out {
+    // A successful helper may leave a same-group child holding its pipes.
+    // Preserve fully captured text for the human diagnostic interface,
+    // but never count a missed deadline as a successful health probe.
+    let complete = output.status.is_some_and(|status| status.success()) && !output.truncated;
+    if output.timed_out && !complete {
         return ReadOnlyCommandResult {
             success: false,
             text: format!("{program}=timeout after {}ms", timeout.as_millis()),
         };
     }
-    let success = output.status.is_some_and(|status| status.success()) && !output.truncated;
+    let success = complete && !output.timed_out;
     let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
     if !output.stderr.is_empty() {
         if !text.is_empty() && !text.ends_with('\n') {
