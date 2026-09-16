@@ -6,10 +6,6 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
 import InsightChip from "@/components/ui/InsightChip.vue";
-import {
-  decodeMachineData,
-  machineInterfaceUnavailable,
-} from "@/composables/machineStatus";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed } from "@/utils";
@@ -18,7 +14,7 @@ import { dnsStatusTone, formatDnsTestReport, parseDnsTestSummary } from "./dnsTe
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
-const { state, runCli, refreshDns: refreshLegacyDns, shellQuote } = useMagicNet();
+const { state, runCli, refreshDns: refreshDnsStatus, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const testDomain = ref("www.gstatic.com");
 const dnsTestOutput = ref("");
@@ -40,52 +36,6 @@ const dnsProfiles = [
   "cloudflare-udp",
 ] as const;
 const dnsSummary = computed(() => parseDnsTestSummary(dnsTestOutput.value, testedDomain.value));
-
-function applyMachineDnsStatus(text: string): boolean {
-  const data = decodeMachineData<Record<string, unknown>>(text, "dns.status");
-  if (!data) return false;
-  const profile = data.profile;
-  const primary = data.primary;
-  const secondary = data.secondary;
-  const transport = data.transport;
-  if (
-    typeof profile !== "string" ||
-    !dnsProfiles.includes(profile as (typeof dnsProfiles)[number]) ||
-    typeof primary !== "string" ||
-    (secondary !== null && typeof secondary !== "string") ||
-    typeof transport !== "string"
-  ) {
-    return false;
-  }
-  state.dns.profile = profile as (typeof dnsProfiles)[number];
-  state.dns.primary = primary;
-  state.dns.secondary = secondary ?? "";
-  state.dns.transport = transport;
-  return true;
-}
-
-function reportDnsStatusFailure(output: string, protocol = false): void {
-  state.phase = "error";
-  state.notice = protocol
-    ? t("读取 DNS 返回了无效状态")
-    : t("读取 DNS 失败");
-  state.output = output;
-}
-
-async function refreshDnsStatus(silent = false): Promise<boolean> {
-  const label = t("读取 DNS");
-  const machineOutput = await runCli("--json dns status", label, true);
-  if (!execFailed(machineOutput)) {
-    if (applyMachineDnsStatus(machineOutput)) return true;
-    reportDnsStatusFailure(machineOutput, true);
-    return false;
-  }
-  if (!machineInterfaceUnavailable(machineOutput)) {
-    reportDnsStatusFailure(machineOutput);
-    return false;
-  }
-  return refreshLegacyDns(silent);
-}
 
 async function runSetDnsProfile(profile: string): Promise<void> {
   await withAction(`dns-${profile}`, async () => {

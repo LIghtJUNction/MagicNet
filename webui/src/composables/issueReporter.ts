@@ -53,7 +53,7 @@ async function collectFocusedContext(
   if (kind === "route-feedback") {
     const [connections, network, logs] = await Promise.all([
       runCli("api conns", "读取路由反馈连接", true),
-      runCli("network status", "读取路由反馈网络策略", true),
+      runCli("--json network status", "读取路由反馈网络策略", true),
       runCli("service logs sing-box 240", "读取路由反馈错误日志", true),
     ]);
     return [
@@ -90,9 +90,9 @@ async function collectFocusedContext(
   }
   if (kind === "subscription-node") {
     const [status, health, transparent, logs] = await Promise.all([
-      runCli("sub status", "读取订阅状态", true),
+      runCli("--json sub status", "读取订阅状态", true),
       runCli("health", "检查订阅相关健康状态", true),
-      runCli("transparent status", "检查 TUN 状态", true),
+      runCli("--json transparent status", "检查 TUN 状态", true),
       runCli("service logs sing-box 160", "读取订阅与节点日志", true),
     ]);
     return [
@@ -115,9 +115,9 @@ async function collectFocusedContext(
   if (kind === "dns-routing") {
     const [health, dns, network, transparent] = await Promise.all([
       runCli("health", "运行健康检查", true),
-      runCli("dns status", "读取 DNS 状态", true),
-      runCli("network status", "读取网络策略", true),
-      runCli("transparent status", "读取 TUN 状态", true),
+      runCli("--json dns status", "读取 DNS 状态", true),
+      runCli("--json network status", "读取网络策略", true),
+      runCli("--json transparent status", "读取 TUN 状态", true),
     ]);
     return [
       "[health]",
