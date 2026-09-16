@@ -27,6 +27,7 @@ import {
 } from "@/composables/backgroundTasks";
 import { SerialExecQueue } from "@/composables/execQueue";
 import { execAsync, hasAsyncExec } from "@/composables/deviceExec";
+import { decodeDnsStatus, decodeNetworkStatus, machineErrorCode, type NetworkStatus } from "@/composables/machineStatus";
 import { ForegroundUiGate } from "@/composables/foregroundUiGate";
 import {
   beginOperationCapture,
@@ -40,7 +41,6 @@ import {
   mcpDefaults,
   parseApps,
   parseBlock,
-  parseDns,
   parseHealth,
   parseMcp,
   invalidateTransparentRuntime,
@@ -978,33 +978,63 @@ async function refreshMcp(
   return true;
 }
 
+async function refreshMachineStatus<T>(
+  args: string,
+  label: string,
+  decode: (stdout: string) => T | null,
+  apply: (data: T) => void,
+  quiet = false,
+  foregroundTokenOrPreview?: number | string,
+): Promise<boolean> {
+  const inheritedToken = typeof foregroundTokenOrPreview === "number"
+    ? foregroundTokenOrPreview : undefined;
+  const preview = typeof foregroundTokenOrPreview === "string"
+    ? foregroundTokenOrPreview : "";
+  const before = foregroundUiGate.current();
+  const command = `${CLI} --json ${args}`;
+  const pending = quiet && preview
+    ? runTrackedQuietShellOutcome(command, label, preview)
+    : runShellOutcome(command, label, quiet, preview);
+  const after = foregroundUiGate.current();
+  const token = after !== before ? after : (inheritedToken ?? before);
+  const allowBusy = foregroundTokenOrPreview !== undefined;
+  const outcome = await pending;
+  const data = outcome.ok ? decode(outcome.stdout) : null;
+  if (data === null) {
+    if (canUpdateRefreshUi(token, allowBusy)) {
+      const commandName = args.replaceAll(" ", ".");
+      const code = machineErrorCode(outcome.stdout, commandName)
+        || (outcome.ok ? "machine.invalid_response" : "machine.exec_failed");
+      state.phase = "error";
+      state.notice = t("{p0}失败", { p0: t(label) });
+      state.output = JSON.stringify({
+        schema: 1, ok: false, command: commandName,
+        error: { code, message: state.notice },
+      });
+    }
+    return false;
+  }
+  if (canUpdateRefreshUi(token, allowBusy)) apply(data);
+  return true;
+}
+
 async function refreshDns(
   quiet = false,
   foregroundTokenOrPreview?: number | string,
 ): Promise<boolean> {
-  const foregroundToken =
-    typeof foregroundTokenOrPreview === "number"
-      ? foregroundTokenOrPreview
-      : undefined;
-  const previewOverride =
-    typeof foregroundTokenOrPreview === "string"
-      ? foregroundTokenOrPreview
-      : "";
-  const command = startForegroundCommand(
-    "dns status",
-    "读取 DNS",
-    quiet,
-    previewOverride,
-    foregroundToken,
+  return refreshMachineStatus(
+    "dns status", "读取 DNS", decodeDnsStatus,
+    (data) => { state.dns = data; }, quiet, foregroundTokenOrPreview,
   );
-  const uiToken = command.token;
-  const allowBusy = foregroundTokenOrPreview !== undefined;
-  const text = await command.promise;
-  if (markQuietFailure(t("读取 DNS"), text, uiToken, allowBusy)) return false;
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.dns = parseDns(text, state.dns);
-  }
-  return true;
+}
+
+async function refreshNetworkStatus(
+  apply: (data: NetworkStatus) => void,
+  quiet = false,
+): Promise<boolean> {
+  return refreshMachineStatus(
+    "network status", "读取 UDP / IPv6 策略", decodeNetworkStatus, apply, quiet,
+  );
 }
 
 async function refreshWarp(
@@ -1334,6 +1364,7 @@ export function useMagicNet() {
     refreshSubs,
     refreshMcp,
     refreshDns,
+    refreshNetworkStatus,
     refreshWarp,
     refreshWifiPolicy,
     createIssue,

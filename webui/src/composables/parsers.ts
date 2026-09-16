@@ -982,29 +982,6 @@ export function parseMcp(text: string, previous: McpState): McpState {
   return next;
 }
 
-export function parseDns(text: string, previous: DnsState): DnsState {
-  const next = { ...previous };
-  text.split(/\r?\n/).forEach((raw) => {
-    const line = raw.trim();
-    if (line.startsWith("profile=")) {
-      const profile = line.slice(8);
-      if (
-        [
-          "default",
-          "cloudflare-doh",
-          "cloudflare-dot",
-          "cloudflare-udp",
-        ].includes(profile)
-      ) {
-        next.profile = profile as DnsState["profile"];
-      }
-    } else if (line.startsWith("primary=")) next.primary = line.slice(8);
-    else if (line.startsWith("secondary=")) next.secondary = line.slice(10);
-    else if (line.startsWith("transport=")) next.transport = line.slice(10);
-  });
-  return next;
-}
-
 export function parseWarp(text: string, previous: WarpState): WarpState {
   const next = { ...previous };
   text.split(/\r?\n/).forEach((raw) => {

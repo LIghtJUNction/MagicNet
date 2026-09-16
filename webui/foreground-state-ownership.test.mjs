@@ -27,7 +27,6 @@ for (const name of [
   "refreshBlock",
   "refreshSubs",
   "refreshMcp",
-  "refreshDns",
   "refreshWarp",
   "refreshWifiPolicy",
   "refreshPing",
@@ -55,3 +54,10 @@ assert.match(saveConfig, /const stageToken = foregroundUiGate\.current\(\)/);
 assert.match(saveConfig, /if \(!foregroundUiGate\.owns\(uiToken\)\) return/);
 
 console.log("foreground state ownership tests passed");
+
+const machine = functionSource("refreshMachineStatus");
+assert.match(machine, /const before = foregroundUiGate\.current\(\)/);
+assert.match(machine, /canUpdateRefreshUi\(token, allowBusy\)/);
+for (const name of ["refreshDns", "refreshNetworkStatus"]) {
+  assert.match(functionSource(name), /refreshMachineStatus\(/);
+}
