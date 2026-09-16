@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::diagnostics::supervisor_pid;
+use crate::utils::read_json_file_bounded as read_json;
 use crate::{
     clean_module_lines, cmdline_has_script, proc_start_time, read_kv, read_proc_argv,
     read_proc_text_bounded, replace_module_text_files_transactionally, singbox_pid_summary, App,
@@ -133,9 +134,14 @@ fn sanitize_token(value: String) -> String {
 }
 
 pub(crate) fn reconcile(app: &App) -> Result<(), String> {
+    let config = read_json(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024);
+    let wifi_supervisor = supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy");
     let records = [
         (Domain::Service, service_record(app)),
-        (Domain::Transparent, transparent_record(app)),
+        (
+            Domain::Transparent,
+            transparent_record(app, config.as_ref()),
+        ),
         (Domain::Subscription, subscription_record(app)),
         (
             Domain::SubscriptionRefresh,
@@ -143,15 +149,36 @@ pub(crate) fn reconcile(app: &App) -> Result<(), String> {
         ),
         (Domain::Selectors, selectors_record(app)),
         (Domain::AppPolicy, app_policy_record(app)),
-        (Domain::Supervisors, supervisors_record(app)),
-        (Domain::Wifi, wifi_record(app)),
+        (
+            Domain::Supervisors,
+            supervisors_record(app, &wifi_supervisor),
+        ),
+        (
+            Domain::Wifi,
+            wifi_record_with_supervisor(app, &wifi_supervisor),
+        ),
         (Domain::Hotspot, hotspot_record(app)),
         (Domain::Dns, dns_record(app)),
         (Domain::Mcp, mcp_record(app)),
-        (Domain::Tailscale, tailscale_record(app)),
+        (Domain::Tailscale, tailscale_record(app, config.as_ref())),
         (Domain::Transactions, transactions_record(app)),
     ];
 
+    publish_records(app, &records)
+}
+
+pub(crate) fn reconcile_wifi(app: &App) -> Result<(), String> {
+    let supervisor = supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy");
+    publish_records(
+        app,
+        &[
+            (Domain::Wifi, wifi_record_with_supervisor(app, &supervisor)),
+            (Domain::Supervisors, supervisors_record(app, &supervisor)),
+        ],
+    )
+}
+
+fn publish_records(app: &App, records: &[(Domain, StateRecord)]) -> Result<(), String> {
     let mut changed = Vec::new();
     for (domain, record) in records {
         let relative = domain.path();
@@ -222,7 +249,7 @@ fn process_state(summary: &str) -> &'static str {
     }
 }
 
-fn transparent_record(app: &App) -> StateRecord {
+fn transparent_record(app: &App, config: Option<&Value>) -> StateRecord {
     let configured = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
         .remove("MAGICNET_TRANSPARENT_MODE")
         .map(|mode| match mode.as_str() {
@@ -231,7 +258,7 @@ fn transparent_record(app: &App) -> StateRecord {
         })
         .unwrap_or_else(|| "tun".to_string());
     let (effective_type, effective_mode, shared_interfaces) =
-        effective_transparent(app, &configured);
+        effective_transparent(config, &configured);
     let phase = transparent_phase(app);
     let transaction = app.moddir.join(TRANSPARENT_TRANSACTION).is_dir();
     let capability = if effective_type == "ebpf" {
@@ -265,8 +292,8 @@ fn transparent_record(app: &App) -> StateRecord {
         )
 }
 
-fn effective_transparent(app: &App, configured: &str) -> (String, String, usize) {
-    let Some(config) = read_json(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024) else {
+fn effective_transparent(config: Option<&Value>, configured: &str) -> (String, String, usize) {
+    let Some(config) = config else {
         return (configured.to_string(), configured.to_string(), 0);
     };
     let inbound = config
@@ -442,16 +469,13 @@ fn app_policy_record(app: &App) -> StateRecord {
         .field("exclude_uid_count", exclude_count.to_string())
 }
 
-fn supervisors_record(app: &App) -> StateRecord {
+fn supervisors_record(app: &App, wifi_supervisor: &str) -> StateRecord {
     StateRecord::new(Domain::Supervisors)
         .field(
             "fswatch",
             normalize_supervisor_state(&supervisor_pid(app, "fswatch", "magicnet-config")),
         )
-        .field(
-            "wifi_policy",
-            normalize_supervisor_state(&supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy")),
-        )
+        .field("wifi_policy", normalize_supervisor_state(wifi_supervisor))
         .field(
             "kernel_watchdog",
             pidfile_state(&app.moddir.join(".state/watchdog/magicnet-kernel.pid")),
@@ -491,14 +515,13 @@ fn pidfile_state(path: &Path) -> &'static str {
     }
 }
 
-fn wifi_record(app: &App) -> StateRecord {
+fn wifi_record_with_supervisor(app: &App, wifi_supervisor: &str) -> StateRecord {
     let config = read_kv(app.moddir.join(WIFI_POLICY_CONF));
     let last = read_kv(app.moddir.join(WIFI_LAST_STATE));
     let enabled = config
         .get("MAGICNET_WIFI_POLICY_ENABLED")
         .is_some_and(|value| value == "1");
-    let supervisor =
-        normalize_supervisor_state(&supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy"));
+    let supervisor = normalize_supervisor_state(wifi_supervisor);
     let state = if !enabled {
         "disabled"
     } else if supervisor == "running" {
@@ -586,9 +609,9 @@ fn mcp_record(app: &App) -> StateRecord {
         )
 }
 
-fn tailscale_record(app: &App) -> StateRecord {
-    let count = read_json(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024)
-        .and_then(|config| config.get("endpoints").and_then(Value::as_array).cloned())
+fn tailscale_record(app: &App, config: Option<&Value>) -> StateRecord {
+    let count = config
+        .and_then(|config| config.get("endpoints").and_then(Value::as_array))
         .map(|endpoints| {
             endpoints
                 .iter()
@@ -650,14 +673,6 @@ fn read_token(path: PathBuf, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
-fn read_json(path: &Path, max_bytes: u64) -> Option<Value> {
-    let metadata = fs::symlink_metadata(path).ok()?;
-    if !metadata.file_type().is_file() || metadata.len() > max_bytes {
-        return None;
-    }
-    serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
-}
-
 fn regular_nonempty(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .is_ok_and(|metadata| metadata.file_type().is_file() && metadata.len() > 0)
@@ -682,6 +697,14 @@ fn directory_has_entries(path: &Path) -> bool {
         .ok()
         .and_then(|mut entries| entries.next())
         .is_some()
+}
+
+#[cfg(test)]
+fn wifi_record(app: &App) -> StateRecord {
+    wifi_record_with_supervisor(
+        app,
+        &supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy"),
+    )
 }
 
 #[cfg(test)]
@@ -794,5 +817,61 @@ mod tests {
         assert!(text.contains("state=recovery_pending"));
         assert!(text.contains("transaction_pending=1"));
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+    #[test]
+    fn config_records_borrow_the_same_observation() {
+        let (root, app) = fixture();
+        fs::write(root.join(super::SINGBOX_CONFIG), "{}").unwrap();
+        let observed = serde_json::json!({
+            "inbounds": [{"tag":"tun-in", "type":"ebpf", "mode":"shared"}],
+            "endpoints": [{"type":"tailscale", "tag":"private-tailnet"}]
+        });
+        assert!(super::transparent_record(&app, Some(&observed))
+            .encode()
+            .contains("effective_type=ebpf"));
+        let tailnet = super::tailscale_record(&app, Some(&observed)).encode();
+        assert!(tailnet.contains("endpoint_count=1"));
+        assert!(!tailnet.contains("private-tailnet"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn wifi_publication_does_not_touch_unrelated_domains() {
+        let (root, app) = fixture();
+        fs::create_dir_all(root.join(super::STATE_ROOT)).unwrap();
+        let unrelated = root.join(super::STATE_ROOT).join("transparent.state");
+        fs::write(&unrelated, "unchanged-observation\n").unwrap();
+        super::reconcile_wifi(&app).unwrap();
+        assert_eq!(
+            fs::read_to_string(&unrelated).unwrap(),
+            "unchanged-observation\n"
+        );
+        assert!(root.join(super::STATE_ROOT).join("wifi.state").is_file());
+        assert!(root
+            .join(super::STATE_ROOT)
+            .join("supervisors.state")
+            .is_file());
+        assert!(!root
+            .join(super::STATE_ROOT)
+            .join("tailscale.state")
+            .exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn json_observation_rejects_oversized_and_nonregular_sources() {
+        let (root, _) = fixture();
+        let file = root.join("bounded.json");
+        fs::write(&file, "{\"value\":123}").unwrap();
+        assert!(super::read_json(&file, 4).is_none());
+        assert!(super::read_json(&file, 128).is_some());
+        let link = root.join("link.json");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+        assert!(super::read_json(&link, 128).is_none());
+        let fifo = root.join("fifo.json");
+        let name = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        assert!(super::read_json(&fifo, 128).is_none());
+        fs::remove_dir_all(root).unwrap();
     }
 }

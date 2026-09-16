@@ -270,9 +270,8 @@ fn network_status_value(app: &App) -> Value {
             .unwrap_or_default(),
     );
 
-    let effective = fs::read_to_string(app.moddir.join(SINGBOX_CONFIG))
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    let effective =
+        crate::utils::read_json_file_bounded(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024);
     let tun = effective
         .as_ref()
         .and_then(|config| config.get("inbounds"))
