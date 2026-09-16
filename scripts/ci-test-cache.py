@@ -36,6 +36,7 @@ SCOPES = {
     "host": (
         "src", "scripts", "hooks", "installer", ".github", "sing-box",
         "sing-box.version", "README.md", "kam.toml", "update.json", ".gitmodules",
+        "rules", "rules-release.json",
     ),
     # Network regression jobs use production network/DNS policy plus the exact
     # test command operand. Keep UI, packaging, and unrelated Rust edits out.

@@ -24,7 +24,7 @@ function formatEpoch(epoch: number): string {
 }
 
 const resultLabel = computed(() => ({
-  running: t("更新中"), done: t("更新成功"), error: t("更新未完成"), timeout: t("等待确认"), idle: t("尚未更新"), empty: t("尚未添加订阅"),
+  unknown: t("状态未知"), running: t("更新中"), done: t("更新成功"), error: t("更新未完成"), timeout: t("等待确认"), idle: t("尚未更新"), empty: t("尚未添加订阅"),
 }[lifecycleStatus.value]));
 </script>
 

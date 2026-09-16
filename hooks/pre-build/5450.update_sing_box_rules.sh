@@ -68,7 +68,7 @@ main() {
     local project_root="${KAM_PROJECT_ROOT:-$(cd "$KAM_HOOKS_ROOT/.." && pwd)}"
     local bundle_dir="${MAGICNET_RULES_DIR:-$project_root/rules/dist}"
     local downloader="$project_root/rules/scripts/download_release.py"
-    local files file
+    local files file pinned_tag="" manifest_digest="" actual_manifest
 
     [ -f "$CONFIG_FILE" ] || {
         log_warn "sing-box config not found; rule-set update skipped"
@@ -88,14 +88,34 @@ main() {
             return 1
         }
         require_command python3
-        # Resolves latest once or uses MAGICNET_RULES_TAG; no upstream fallback.
-        python3 "$downloader" --output "$bundle_dir" || return 1
+        # A reviewed manifest pins every SRS byte across CI and final packaging.
+        # Never resolve a moving Latest or accept an unreviewed environment tag.
+        pinned_tag=$(jq -er '
+            select(.schema == 1) | .tag
+            | select(type == "string" and test("^rules-[A-Za-z0-9._-]+$"))
+        ' "$project_root/rules-release.json") || return 1
+        manifest_digest=$(jq -er '
+            select(.schema == 1) | .manifest_sha256
+            | select(type == "string" and test("^[0-9a-f]{64}$"))
+        ' "$project_root/rules-release.json") || return 1
+        if [ -n "${MAGICNET_RULES_TAG:-}" ] && [ "$MAGICNET_RULES_TAG" != "$pinned_tag" ]; then
+            log_error "MAGICNET_RULES_TAG conflicts with reviewed rules-release.json"
+            return 1
+        fi
+        MAGICNET_RULES_TAG="$pinned_tag" python3 "$downloader" --output "$bundle_dir" || return 1
     fi
     [ -d "$bundle_dir" ] && [ ! -L "$bundle_dir" ] &&
         [ -f "$bundle_dir/manifest.json" ] && [ ! -L "$bundle_dir/manifest.json" ] || {
         log_error "Missing or unsafe Release bundle manifest"
         return 1
     }
+    if [ -n "$manifest_digest" ]; then
+        actual_manifest=$(sha256sum "$bundle_dir/manifest.json") || return 1
+        if [ "${actual_manifest%% *}" != "$manifest_digest" ]; then
+            log_error "Release manifest differs from reviewed pin; previous module files preserved"
+            return 1
+        fi
+    fi
     # Validate the entire selected inventory before replacing any module file.
     while IFS= read -r file; do
         verify_bundled_rule "$file" "$bundle_dir" || return 1

@@ -1,5 +1,7 @@
-import { runtimeDefaults } from "./parsers.ts";
-import type { DnsState, RuntimeState } from "../types.ts";
+import { runtimeDefaults, subscriptionDefaults, wifiPolicyDefaults } from "./parsers.ts";
+import type { DnsState, RuntimeState, SubscriptionState, WifiPolicyState } from "../types.ts";
+
+import { parseSubscriptionSourceUsage } from "./subscriptionUsage.ts";
 
 export type MachineEnvelope<T extends Record<string, unknown>> = {
   schema: 1;
@@ -168,5 +170,88 @@ export function parseMachineRuntime(text: string): RuntimeState | null {
     transparentTransition: phase,
     api: data.api.url,
     webui: data.api.webui,
+  };
+}
+
+function safeCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+function token(value: unknown): value is string {
+  return typeof value === "string" && /^[a-zA-Z0-9_.-]{1,128}$/.test(value);
+}
+function strings(value: unknown, maxItems: number, maxBytes: number): value is string[] {
+  return Array.isArray(value) && value.length <= maxItems && value.every((item) =>
+    typeof item === "string" && new TextEncoder().encode(item).length <= maxBytes && !/[\u0000-\u001f\u007f]/.test(item));
+}
+function validOwner(owner: unknown, running: unknown): boolean {
+  return owner === "active" ? running === true
+    : owner === "none" || owner === "stale" ? running === false
+      : owner === "unknown" || owner === "pending" ? running === null : false;
+}
+
+/** Explicit private inspector; never use this payload in an issue report or log. */
+export function parseMachineSubscription(text: string): SubscriptionState | null {
+  const data = decodeMachineData(text, "sub.inspect");
+  if (!data || !isRecord(data.source) || !isRecord(data.update) || !isRecord(data.last) ||
+    !isRecord(data.cache) || !isRecord(data.schedule) || !isRecord(data.configuration) || !isRecord(data.refresh)) return null;
+  const { source, update, last, cache, schedule, configuration, refresh } = data;
+  if (!["remote_url", "local_file"].includes(source.mode as string) || !safeCount(source.configured_count) ||
+    !validOwner(update.owner, update.running) || typeof update.transaction_pending !== "boolean" ||
+    !["phase", "result", "generation_id"].every((key) => token(last[key])) || typeof last.has_reason !== "boolean" ||
+    !["attempt_epoch", "success_epoch", "configured_count", "source_count", "imported_count", "skipped_count"].every((key) => safeCount(last[key])) ||
+    !safeCount(cache.source_entries) || !safeCount(cache.provenance_entries) || !token(cache.identity) ||
+    !["off", "12", "24", "48", "72"].includes(schedule.interval_hours as string) ||
+    schedule.enabled !== (schedule.interval_hours !== "off") || !validOwner(schedule.owner, schedule.running) ||
+    !strings(configuration.sing_box_urls, 5, 65536) || !strings(configuration.filters, 32, 64) ||
+    typeof configuration.user_agent !== "string" || new TextEncoder().encode(configuration.user_agent).length > 256 ||
+    /[\u0000-\u001f\u007f]/.test(configuration.user_agent) || !Array.isArray(data.source_usage) ||
+    !safeCount(refresh.event_count) || !safeCount(refresh.error_count)) return null;
+  const ownerValid = schedule.owner === "unknown" ? null : schedule.enabled
+    ? schedule.owner === "active" : schedule.owner === "none";
+  if (schedule.owner_valid !== ownerValid || (source.mode === "remote_url" && source.configured_count !== configuration.sing_box_urls.length) ||
+    (source.mode === "local_file" && source.configured_count !== 1)) return null;
+  return {
+    ...subscriptionDefaults,
+    singBox: configuration.sing_box_urls[0] || "", singBoxUrls: configuration.sing_box_urls.slice(),
+    userAgent: configuration.user_agent, filters: configuration.filters.slice(),
+    sourceMode: source.mode === "local_file" ? "local" : "url", configuredCount: source.configured_count,
+    sourceUsage: source.mode === "local_file" ? [] : parseSubscriptionSourceUsage(JSON.stringify(data.source_usage)),
+    updateRunning: update.running === true, updateLockOwner: update.owner as string,
+    lastPhase: last.phase as string, lastResult: last.result as string,
+    lastAttemptEpoch: last.attempt_epoch as number, lastSuccessEpoch: last.success_epoch as number,
+    lastConfiguredCount: last.configured_count as number, lastSourceCount: last.source_count as number,
+    lastImportedCount: last.imported_count as number, lastSkippedCount: last.skipped_count as number,
+    lastGenerationId: last.generation_id as string,
+    // Do not restore the old raw error channel; the page provides a diagnostic link.
+    lastReason: "none", cacheCount: cache.source_entries,
+    cacheProvenanceCount: cache.provenance_entries, cacheSource: cache.identity as string,
+    scheduleIntervalHours: schedule.interval_hours as SubscriptionState["scheduleIntervalHours"],
+    scheduleEnabled: schedule.enabled as boolean, scheduleRunning: schedule.running === true,
+    scheduleOwner: schedule.owner as string, scheduleOwnerValid: ownerValid === true,
+    refreshEventCount: refresh.event_count, refreshErrorCount: refresh.error_count,
+  };
+}
+
+export function parseMachineWifi(text: string): WifiPolicyState | null {
+  const data = decodeMachineData(text, "wifi.inspect");
+  if (!data || !isRecord(data.policy) || !isRecord(data.network) || !isRecord(data.configuration)) return null;
+  const { policy, network, configuration } = data;
+  if (typeof policy.enabled !== "boolean" || !["blacklist", "whitelist"].includes(policy.mode as string) ||
+    !safeCount(policy.interval_seconds) || policy.interval_seconds < 3 || policy.interval_seconds > 300 ||
+    typeof policy.supervisor !== "string" || !/^(?:stopped|unknown|[1-9][0-9]*(?:,[1-9][0-9]*)*)$/.test(policy.supervisor) ||
+    typeof network.connected !== "boolean" || typeof network.matched !== "boolean" ||
+    !["rule", "direct"].includes(network.desired_mode as string) ||
+    !strings([network.ssid, network.bssid], 2, 1024) || !strings(configuration.ssids, 65536, 65536) ||
+    !strings(configuration.bssids, 65536, 17) ||
+    !configuration.bssids.every((value) => /^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(value)) ||
+    !["rule", "global", "direct", "unavailable"].includes(data.current_mode as string)) return null;
+  return {
+    ...wifiPolicyDefaults, observed: true, enabled: policy.enabled,
+    policyMode: policy.mode as WifiPolicyState["policyMode"], intervalSeconds: policy.interval_seconds,
+    supervisor: policy.supervisor, connected: network.connected, matched: network.matched,
+    ssid: network.ssid as string, bssid: network.bssid as string,
+    desiredMode: network.desired_mode as WifiPolicyState["desiredMode"],
+    currentMode: data.current_mode as WifiPolicyState["currentMode"],
+    ssids: configuration.ssids.slice(), bssids: configuration.bssids.slice(),
   };
 }

@@ -653,6 +653,62 @@ fn write_last_state(
     write_kv(app, Path::new(WIFI_LAST_STATE), &values)
 }
 
+/// Private, explicit editor view. Generic wifi.status remains redacted.
+/// Reuses the same detection/decision primitives as the resident policy loop.
+pub(crate) fn inspect_machine(app: &App) -> Result<serde_json::Value, String> {
+    let config = read_policy_config(app);
+    let read_list =
+        |path| crate::utils::clean_module_lines_bounded(app, Path::new(path), 64 * 1024);
+    let ssids = read_list(WIFI_SSID_LIST)?;
+    let bssids = read_list(WIFI_BSSID_LIST)?
+        .into_iter()
+        .map(|value| normalize_bssid(&value).ok_or_else(|| "invalid configured BSSID".to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let network = detect_wifi()?;
+    let current = current_clash_mode(app).unwrap_or_else(|_| "unavailable".to_string());
+    // A policy edit during the bounded device probe must not be combined with
+    // an old decision. No state is persisted by this inspection.
+    if config != read_policy_config(app)
+        || ssids != read_list(WIFI_SSID_LIST)?
+        || bssids
+            != read_list(WIFI_BSSID_LIST)?
+                .into_iter()
+                .filter_map(|value| normalize_bssid(&value))
+                .collect::<Vec<_>>()
+    {
+        return Err("Wi-Fi configuration changed during observation".to_string());
+    }
+    Ok(inspect_value(
+        &config,
+        &network,
+        &ssids,
+        &bssids,
+        &current,
+        &supervisor_pid(app, "wifi-policy", "magicnet-wifi-policy"),
+    ))
+}
+
+fn inspect_value(
+    config: &PolicyConfig,
+    network: &WifiNetwork,
+    ssids: &[String],
+    bssids: &[String],
+    current: &str,
+    supervisor: &str,
+) -> serde_json::Value {
+    let decision = decide(config, network, ssids, bssids);
+    serde_json::json!({
+        "policy": {"enabled": config.enabled, "mode": config.mode.as_str(),
+                   "interval_seconds": config.interval_seconds, "supervisor": supervisor},
+        "network": {"connected": network.connected, "matched": decision.matched,
+                    "desired_mode": decision.desired_mode,
+                    "ssid": network.ssid.as_deref().unwrap_or(""),
+                    "bssid": network.bssid.as_deref().unwrap_or("")},
+        "current_mode": current,
+        "configuration": {"ssids": ssids, "bssids": bssids},
+    })
+}
+
 fn print_status(app: &App) -> Result<(), String> {
     let config = read_policy_config(app);
     let network = detect_wifi()?;
@@ -696,6 +752,33 @@ mod tests {
             mode,
             interval_seconds: 5,
         }
+    }
+
+    #[test]
+    fn machine_inspector_preserves_editor_lists_and_real_policy_decision() {
+        let config = config(PolicyMode::Blacklist);
+        let network = WifiNetwork {
+            connected: true,
+            ssid: Some("Guest=WiFi".into()),
+            bssid: None,
+        };
+        let ssids = vec!["Guest=WiFi".into(), "Office".into()];
+        let value = inspect_value(&config, &network, &ssids, &[], "rule", "stopped");
+        assert_eq!(value["network"]["ssid"], "Guest=WiFi");
+        assert_eq!(value["network"]["matched"], true);
+        assert_eq!(value["network"]["desired_mode"], "direct");
+        assert_eq!(value["current_mode"], "rule");
+        assert_eq!(value["configuration"]["ssids"], serde_json::json!(ssids));
+        let disconnected = inspect_value(
+            &config,
+            &WifiNetwork::default(),
+            &ssids,
+            &[],
+            "unavailable",
+            "stopped",
+        );
+        assert_eq!(disconnected["network"]["connected"], false);
+        assert_eq!(disconnected["network"]["ssid"], "");
     }
 
     #[test]

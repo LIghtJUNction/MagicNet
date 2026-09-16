@@ -114,6 +114,15 @@ class CacheTests(unittest.TestCase):
         self.run_check(scope='host')
         self.assertEqual(self.count(), 2)
 
+    def test_host_scope_tracks_rule_recipe_and_reviewed_pin(self):
+        self.run_check(scope='host')
+        self.write('rules-release.json', '{"tag":"rules-new"}')
+        self.run_check(scope='host')
+        self.assertEqual(self.count(), 2)
+        self.write('rules/scripts/download_release.py', 'changed recipe')
+        self.run_check(scope='host')
+        self.assertEqual(self.count(), 3)
+
     def test_network_scope_ignores_ui_and_rust_but_tracks_network_inputs(self):
         self.run_check(scope='network')
         self.write('crates/lib.rs', 'changed')

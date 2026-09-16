@@ -5,8 +5,9 @@ import vm from "node:vm";
 import { t } from "./src/i18n/index.ts";
 import ts from "typescript";
 import * as background from "./src/composables/backgroundTasks.ts";
-import { parseSubs, runtimeDefaults, subscriptionDefaults } from "./src/composables/parsers.ts";
-import { parseMachineRuntime, machineFailureText } from "./src/composables/machineStatus.ts";
+import { runtimeDefaults, subscriptionDefaults } from "./src/composables/parsers.ts";
+import { parseMachineRuntime, parseMachineSubscription, parseMachineWifi, machineFailureText } from "./src/composables/machineStatus.ts";
+import { subscriptionSnapshot, subscriptionData, wifiSnapshot } from "./machine-fixtures.mjs";
 import { execFailed } from "./src/utils.ts";
 
 // Execute the production functions with deferred device I/O and manual timers.
@@ -78,7 +79,7 @@ function backgroundFixture() {
     redactedCliPreview: (value) => value,
     runShellOutcome: () => pending,
     runShell: async () => "[launch] id=operation label=restart\n[exit] id=operation status=0",
-    runCli: async () => "status", parseSubs, execFailed, parseMachineRuntime, machineFailureText, runtimeDefaults,
+    runCli: async () => subscriptionSnapshot(), execFailed, parseMachineRuntime, parseMachineSubscription, parseMachineWifi, machineFailureText, runtimeDefaults,
     withAction: async (_, action) => action(),
     refreshApps: async () => true,
     refreshBlock: async () => true, refreshDns: async () => true,
@@ -193,8 +194,8 @@ test("subscription polling failures preserve newer foreground feedback and keep 
   assert.equal(state.phase, "done");
   assert.equal(state.backgroundTask.status, "running");
 
-  context.runCli = async (args) => args === "sub status"
-    ? "last_result=success\nlast_attempt_epoch=2\nlast_generation_id=new-generation"
+  context.runCli = async (args) => args === "--json sub inspect"
+    ? subscriptionSnapshot({last:{...subscriptionData().last,attempt_epoch:2,generation_id:"new-generation"}})
     : "";
   await timers.shift()();
   assert.equal(state.backgroundTask.status, "done");
@@ -215,7 +216,7 @@ test("subscription launch waits for its lifecycle baseline before changing the d
   const launching = context.startBackgroundCli("sub update-all");
   await Promise.resolve();
   assert.equal(launched, false);
-  resolveBaseline("last_attempt_epoch=1\nlast_generation_id=old\nlast_result=success");
+  resolveBaseline(subscriptionSnapshot());
   await launching;
   assert.equal(launched, true);
   assert.equal(state.backgroundTask.subscriptionBaselineKnown, true);
@@ -223,12 +224,12 @@ test("subscription launch waits for its lifecycle baseline before changing the d
   assert.equal(state.backgroundTask.subscriptionBaselineGenerationId, "old");
 });
 
-for (const failedRead of ["sub list", "sub status"]) {
+for (const failedRead of ["malformed snapshot", "execution failure"]) {
   test(`failed ${failedRead} baseline stops the launch and permits a retry`, async () => {
     const { context, state } = backgroundFixture();
     state.backgroundTask.status = "idle";
     let launches = 0;
-    context.runCli = async (args) => args === failedRead ? "[error] errno=1 read failed" : "";
+    context.runCli = async () => failedRead === "execution failure" ? "[error] errno=1 PRIVATE failure" : "{invalid PRIVATE snapshot}";
     context.runShellOutcome = async () => {
       launches += 1;
       return { ok: true, stdout: "[accepted] id=operation", text: "accepted" };
@@ -242,7 +243,7 @@ for (const failedRead of ["sub list", "sub status"]) {
     assert.match(state.notice, /未执行/);
     assert.match(state.output, /重试/);
 
-    context.runCli = async () => "last_attempt_epoch=1\nlast_generation_id=old\nlast_result=success";
+    context.runCli = async () => subscriptionSnapshot();
     await context.startBackgroundCli("sub update-all", "更新订阅");
     assert.equal(launches, 1);
     assert.equal(state.backgroundTask.subscriptionBaselineKnown, true);
@@ -269,8 +270,8 @@ test("ControlPage completion does not begin a foreground refresh over a newer ac
   const { context, state, timers, supersede } = backgroundFixture();
   state.backgroundTask.status = "idle";
   let attempt = 1;
-  context.runCli = async (args) => args === "sub status"
-    ? `last_attempt_epoch=${attempt}\nlast_generation_id=generation-${attempt}\nlast_result=success`
+  context.runCli = async (args) => args === "--json sub inspect"
+    ? subscriptionSnapshot({last:{...subscriptionData().last,attempt_epoch:attempt,generation_id:`generation-${attempt}`}})
     : "";
   context.runShellOutcome = async () => ({ ok: true, stdout: "[accepted] id=operation", text: "accepted" });
   await context.rebuildNodeCache();

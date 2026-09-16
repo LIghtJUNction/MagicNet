@@ -18,6 +18,7 @@ export type TransparentMode = "tun" | "ebpf";
 export type TransparentEffectiveMode = "tun" | "local" | "shared" | "hybrid" | "unknown";
 
 export type WifiPolicyState = {
+  observed: boolean,
   enabled: boolean;
   policyMode: "blacklist" | "whitelist";
   intervalSeconds: number;

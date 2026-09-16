@@ -41,6 +41,7 @@ for (const theme of ["light", "dark"]) {
         configuredCount: 1,
         singBoxUrls: ["https://provider.example/subscription"],
         lastResult: "success",
+        updateLockOwner: "none",
         lastImportedCount: 24,
         sourceUsage: [
           {
@@ -87,6 +88,30 @@ for (const theme of ["light", "dark"]) {
     if (await desktop.isVisible()) await desktop.click();
     else await page.locator('[data-workspace="configure"]:visible').click();
     await expect(page.locator(".subscriptions-page")).toBeVisible();
+    // Navigation performs a fresh read. Without a native bridge the prior
+    // success must be cleared, not silently retained by the display fixture.
+    await expect(page.locator(".update-outcome")).toHaveText("状态未知");
+    await page.evaluate(async () => {
+      const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
+      const { parseMachineSubscription } = await import("/src/composables/machineStatus.ts");
+      const { subscriptionSnapshot } = await import("/machine-fixtures.mjs");
+      state.subscriptions = parseMachineSubscription(subscriptionSnapshot({
+        configuration: { sing_box_urls: ["https://provider.example/subscription"], user_agent: "", filters: [] },
+        source_usage: [{ id: "ac46b9047eaebc40f857f85d6cff32c14307b4892925107d6b93e3f4691a1857", index: 1, hostname: "provider.example", state: "cached",
+          upload_bytes: 1073741824, download_bytes: 2147483648, total_bytes: 107374182400,
+          expire_epoch: null, updated_epoch: 1700000000 }],
+      }));
+    });
+    await expect(page.locator(".update-outcome")).toHaveText("更新成功");
+    await page.evaluate(async () => {
+      const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
+      state.subscriptions.updateLockOwner = "unknown";
+    });
+    await expect(page.locator(".update-outcome")).toHaveText("状态未知");
+    await page.evaluate(async () => {
+      const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
+      state.subscriptions.updateLockOwner = "none";
+    });
     await expect(page.locator(".update-outcome")).toHaveText("更新成功");
     await expect(page.locator(".source-state")).toHaveText("上次用量");
     await fit(page);

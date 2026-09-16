@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - rules
+      - rules-release.json
       - hooks/pre-build/5450.update_sing_box_rules.sh
       - scripts/test-bundled-rules.py
       - scripts/test-rule-hash-retry.sh
@@ -11,6 +12,7 @@ on:
   pull_request:
     paths:
       - rules
+      - rules-release.json
       - hooks/pre-build/5450.update_sing_box_rules.sh
       - scripts/test-bundled-rules.py
       - scripts/test-rule-hash-retry.sh

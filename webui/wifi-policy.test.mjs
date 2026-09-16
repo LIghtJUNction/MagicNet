@@ -1,48 +1,31 @@
 import assert from "node:assert/strict";
-import { parseWifiPolicy } from "./src/composables/parsers.ts";
+import test from "node:test";
+import { parseMachineWifi } from "./src/composables/machineStatus.ts";
+import { envelope, wifiSnapshot, wifiData } from "./machine-fixtures.mjs";
 
-const parsed = parseWifiPolicy(`
-enabled=1
-policy_mode=blacklist
-interval_seconds=5
-supervisor=123
-connected=1
-ssid=Home WiFi
-bssid=aa:bb:cc:dd:ee:ff
-matched=1
-desired_mode=direct
-current_mode=direct
-ssid entries:
-Home WiFi
-Office
-bssid entries:
-aa:bb:cc:dd:ee:ff
-`);
+test("Wi-Fi machine inspector preserves editable lists and observed policy", () => {
+  const parsed = parseMachineWifi(wifiSnapshot());
+  assert.equal(parsed.observed, true);
+  assert.equal(parsed.enabled, true);
+  assert.equal(parsed.policyMode, "blacklist");
+  assert.equal(parsed.connected, true);
+  assert.equal(parsed.ssid, "Home WiFi");
+  assert.equal(parsed.matched, true);
+  assert.equal(parsed.currentMode, "direct");
+  assert.deepEqual(parsed.ssids, ["Home WiFi", "Office"]);
+  assert.deepEqual(parsed.bssids, ["aa:bb:cc:dd:ee:ff"]);
+  const withEquals = parseMachineWifi(wifiSnapshot({configuration: {ssids: ["Guest=WiFi", "Normal"], bssids: ["aa:bb:cc:dd:ee:ff"]}}));
+  assert.deepEqual(withEquals.ssids, ["Guest=WiFi", "Normal"]);
+});
 
-assert.equal(parsed.enabled, true);
-assert.equal(parsed.policyMode, "blacklist");
-assert.equal(parsed.connected, true);
-assert.equal(parsed.ssid, "Home WiFi");
-assert.equal(parsed.matched, true);
-assert.equal(parsed.currentMode, "direct");
-assert.deepEqual(parsed.ssids, ["Home WiFi", "Office"]);
-assert.deepEqual(parsed.bssids, ["aa:bb:cc:dd:ee:ff"]);
-
-const fallback = parseWifiPolicy("current_mode=unexpected\ninterval_seconds=1\n");
-assert.equal(fallback.currentMode, "unavailable");
-assert.equal(fallback.intervalSeconds, 5);
-
-// SSID names may contain "=" — they must not be misparsed as key/value fields,
-// which previously dropped that SSID and every SSID listed after it.
-const withEquals = parseWifiPolicy(`
-enabled=1
-ssid entries:
-Guest=WiFi
-Normal
-bssid entries:
-aa:bb:cc:dd:ee:ff
-`);
-assert.deepEqual(withEquals.ssids, ["Guest=WiFi", "Normal"]);
-assert.deepEqual(withEquals.bssids, ["aa:bb:cc:dd:ee:ff"]);
-
-console.log("Wi-Fi policy parser tests passed");
+test("machine failures are not interpreted as a confirmed Wi-Fi disconnect", () => {
+  for (const text of ["connected=0", envelope("wifi.status",wifiData()), "[error] errno=1\n"+wifiSnapshot(),
+    wifiSnapshot({network:{}}),wifiSnapshot({current_mode:"unexpected"}),
+    wifiSnapshot({policy:{...wifiData().policy,interval_seconds:1}}),
+    wifiSnapshot({configuration:{ssids:[],bssids:["INVALID"]}})]) {
+    assert.equal(parseMachineWifi(text), null);
+  }
+  const disconnected = parseMachineWifi(wifiSnapshot({network:{connected:false,matched:false,desired_mode:"rule",ssid:"",bssid:""}, current_mode:"unavailable"}));
+  assert.equal(disconnected.observed, true);
+  assert.equal(disconnected.connected, false);
+});
