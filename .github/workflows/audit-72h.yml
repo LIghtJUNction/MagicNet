@@ -1,0 +1,65 @@
+name: Isolated 72-hour audit
+on:
+  push:
+    branches: [audit/magicnet-72h-20260916]
+    paths: [.github/workflows/audit-72h.yml]
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Inventory and source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/magicnet-audit
+          main=ff3b5f07a53da92696eb8c33e833de9b1dca5434
+          since=2026-09-13T05:33:45Z
+          base=$(git rev-list -1 --before="$since" "$main")
+          {
+            printf 'HEAD=%s\nBASE=%s\nSINCE=%s\n' "$main" "$base" "$since"
+            printf '\nALL REACHABLE COMMITS\n'
+            git log "$main" --since="$since" --format='%H %cI %s'
+            printf '\nFIRST-PARENT COMMITS\n'
+            git log "$main" --first-parent --since="$since" --format='%H %cI %s' --stat
+            printf '\nNET CHANGE\n'
+            git diff --stat "$base" "$main"
+            printf '\nINSTRUCTIONS\n'
+            git ls-files '*AGENTS.md' '*CONTRIBUTING*'
+          } > /tmp/magicnet-audit/inventory.txt
+          cat /tmp/magicnet-audit/inventory.txt
+          git diff --find-renames "$base" "$main" > /tmp/magicnet-audit/changes.diff
+          git archive --format=tar "$main" > /tmp/magicnet-audit/source.tar
+          git submodule update --init --depth 1 src/MagicNet/.config/sing-box
+          tar -rf /tmp/magicnet-audit/source.tar --exclude=.git src/MagicNet/.config/sing-box
+          gzip /tmp/magicnet-audit/source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magicnet-72h-source
+          path: /tmp/magicnet-audit/
+          retention-days: 7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Baseline Rust checks
+        shell: bash
+        run: |
+          set +e
+          status=0
+          for check in 'cargo fmt --all -- --check' 'cargo test --workspace --locked' 'cargo clippy --workspace --all-targets --locked -- -D warnings' 'cargo check --workspace --locked --target aarch64-linux-android'; do
+            echo "::group::$check"
+            bash -c "$check"
+            rc=$?
+            echo "CHECK_EXIT=$rc COMMAND=$check"
+            echo '::endgroup::'
+            if [ "$rc" -ne 0 ]; then status=1; fi
+          done
+          exit "$status"
