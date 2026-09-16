@@ -30,10 +30,12 @@ for tool in aapt2 d8 zipalign apksigner; do
     test -x "$TOOLS/$tool" || { echo "missing Android build tool: $tool" >&2; exit 1; }
 done
 test -f "$ANDROID_JAR"
+test -f "$TOOLS/core-lambda-stubs.jar"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/classes" "$WORK/dex" "$(dirname "$OUT")"
-javac -encoding UTF-8 -source 8 -target 8 -bootclasspath "$ANDROID_JAR" \
+# SDK compile-only lambda stubs precede android.jar; D8 supplies desugaring.
+javac -encoding UTF-8 -source 8 -target 8 -bootclasspath "$TOOLS/core-lambda-stubs.jar:$ANDROID_JAR" \
     -d "$WORK/classes" "$ROOT"/tests/android-probe/src/best/lmm/magicnet/probe/*.java
 "$TOOLS/d8" --min-api 26 --lib "$ANDROID_JAR" --output "$WORK/dex" \
     "$WORK"/classes/best/lmm/magicnet/probe/*.class
