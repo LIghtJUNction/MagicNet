@@ -14,42 +14,31 @@ jobs:
           ref: 89219d53f6224d03ebe510aeb72f3620d8f44dd7
           persist-credentials: false
           fetch-depth: 1
-      - name: Select validated nonoverlapping source changes
+      - name: Select nonoverlapping observation fixes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import base64, hashlib, json, os, subprocess
+          import base64,hashlib,json,os,subprocess
           from pathlib import Path
-          selected = {
+          selected={
             'crates/magicnet-cli/src/diagnostics.rs':'497ba969250c2fabd62a9d146ca710862221f6f5',
             'crates/magicnet-cli/src/main.rs':'f5dd0ef2de204b1772a3071b0a240b2a91a37114',
             'crates/magicnet-cli/src/network_observation.rs':'eed57a0e22f563bcfb59f09a5a9cff57a700541e',
-            'crates/magicnet-cli/src/state.rs':'c994c905e9feda692025d85868ad41983cf6c978',
-            'src/MagicNet/lib/magicnet/runtime_config.sh':'5cd4f1e19eea21edd5a290fb63ef80d01eeba9d5'}
-          for path, sha in selected.items():
+            'crates/magicnet-cli/src/state.rs':'c994c905e9feda692025d85868ad41983cf6c978'}
+          for path,sha in selected.items():
               data=json.loads(subprocess.check_output(['gh','api','repos/LIghtJUNction/MagicNet/git/blobs/'+sha],timeout=30))
               raw=base64.b64decode(data['content'])
               assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
               Path(path).write_bytes(raw)
-          path=Path('crates/magicnet-cli/src/diagnostics.rs')
-          text=path.read_text()
-          old='''        } else {
-                      check("ip6tables")
-                  };'''
-          new='''        } else {
-                      ipv6_capture_policy(check("ip6tables"), config.pointer("/dns/strategy").and_then(Value::as_str))
-                  };'''
-          # Dedent the YAML/Python literal to the source's eight-space branch.
-          old=old.replace('                      ', '            ').replace('                  ', '        ')
-          new=new.replace('                      ', '            ').replace('                  ', '        ')
-          assert text.count(old)==1
-          text=text.replace(old,new)
+          path=Path('crates/magicnet-cli/src/diagnostics.rs');text=path.read_text()
+          old='        } else {\n            check("ip6tables")\n        };'
+          new='        } else {\n            ipv6_capture_policy(check("ip6tables"), config.pointer("/dns/strategy").and_then(Value::as_str))\n        };'
+          assert text.count(old)==1;text=text.replace(old,new)
           text+='''
-          // This boolean means readiness for the configured policy, not that an
-          // unsupported family was captured. Only an explicit optional-table
-          // absence may be tolerated; permission/timeouts remain failures.
+          // Readiness for the configured policy does not claim unsupported
+          // IPv6 capture. Permission failures/timeouts are never absence.
           fn ipv6_capture_policy(observed: (bool, &'static str), strategy: Option<&str>) -> (bool, &'static str) {
               match (strategy, observed) {
                   (Some("prefer_ipv4"), (false, "table-unsupported")) => (true, "unsupported-ipv4-first"),
@@ -73,10 +62,53 @@ jobs:
           }
           '''
           path.write_text(text)
-          path=Path('crates/magicnet-cli/src/network_observation.rs')
-          text=path.read_text()
-          start=text.index('    let ready = routes.lines().any(')
-          end=text.index('    if !ready {',start)
+          path=Path('crates/magicnet-cli/src/network_observation.rs');text=path.read_text()
+          old='    let text = snapshot(program, &["-t", "nat", "-S"])?;'
+          assert text.count(old)==1
+          text=text.replace(old,'''    if program == "ip6tables" {
+                  let version = snapshot(program, &["--version"])?;
+                  if version.contains("(legacy)") {
+                      // Even a legacy table read can request module loading.
+                      // Inspect the proc registry before asking for nat rules.
+                      let path = Path::new("/proc/net/ip6_tables_names");
+                      let registry = match path.try_exists() {
+                          Ok(false) => Ok(None),
+                          Err(_) => Err("observation-unavailable"),
+                          Ok(true) => crate::read_proc_text_bounded(path, 4096)
+                              .map(Some).map_err(|_| "observation-incomplete"),
+                      };
+                      registered_ipv6_nat(registry.as_deref().map(|v| v.map(String::as_str)).map_err(|e| *e))?;
+                  }
+              }
+          '''+old)
+          # Avoid a borrowed Option<String> conversion; classify owned input directly.
+          text=text.replace('registered_ipv6_nat(registry.as_deref().map(|v| v.map(String::as_str)).map_err(|e| *e))?;',
+                            'registered_ipv6_nat(registry.as_ref().map(|v| v.as_deref()).map_err(|e| *e))?;')
+          text=text.replace('// -S is numeric, non-mutating and reads the chain plus its callers together.',
+                            '// -S avoids hostname resolution and reads the chain plus callers together.')
+          text+='''
+          fn registered_ipv6_nat(registry: Result<Option<&str>, &'static str>) -> Result<(), &'static str> {
+              match registry? {
+                  Some(names) if names.lines().any(|line| line.trim() == "nat") => Ok(()),
+                  _ => Err("table-unsupported"),
+              }
+          }
+          #[cfg(test)]
+          mod registry_tests {
+              use super::registered_ipv6_nat;
+              #[test]
+              fn table_observation_does_not_load_or_guess_legacy_ipv6_nat() {
+                  assert_eq!(registered_ipv6_nat(Ok(Some("filter\\nnat\\n"))),Ok(()));
+                  for names in [None,Some(""),Some("filter\\n"),Some("notnat\\n")] {
+                      assert_eq!(registered_ipv6_nat(Ok(names)),Err("table-unsupported"));
+                  }
+                  for failure in ["observation-unavailable","observation-incomplete"] {
+                      assert_eq!(registered_ipv6_nat(Err(failure)),Err(failure));
+                  }
+              }
+          }
+          '''
+          start=text.index('    let ready = routes.lines().any(');end=text.index('    if !ready {',start)
           text=text[:start]+'''    let prefixes = routes.lines().filter_map(|line| {
                   let words = line.split_whitespace().collect::<Vec<_>>();
                   if words.windows(2).any(|pair| pair == ["dev", "magicnet0"]) {
@@ -97,7 +129,7 @@ jobs:
           out=Path(os.environ['RUNNER_TEMP'])/'reviewed-patch';out.mkdir()
           (out/'allowed.json').write_text(json.dumps(list(selected)))
           PY
-      - name: Format and execute Rust observation regressions
+      - name: Format and execute observation and unchanged Tailscale regressions
         run: |
           set -euo pipefail
           git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
