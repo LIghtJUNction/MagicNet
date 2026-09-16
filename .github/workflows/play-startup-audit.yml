@@ -5,45 +5,122 @@ on:
 permissions:
   contents: read
 jobs:
-  reproduce:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      BASE: f6490fd257d87200396f0e7ec26ab48bf3e9cd34
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-          fetch-depth: 1
-      - name: Load only required pinned public submodules
-        run: git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
-      - name: Install host test tools
-        run: sudo apt-get update -qq && sudo apt-get install -y jq ripgrep shellcheck shfmt
-      - name: Build exact host CLI
+          fetch-depth: 0
+      - name: Verify transport and apply only the reviewed patch
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, os
+          from pathlib import Path
+          # The first transport introduced one duplicated base64 prefix. Restore
+          # those exact bytes, then require the full independently recorded hash.
+          text = base64.b64encode(Path('.ci/play-startup-transport.bin').read_bytes()).decode()
+          old = 'PTgenAObw6AObw6AOCyQcp'
+          assert text.count(old) == 1
+          text = text.replace(old, 'PTgenAObw6AOCyQcp')
+          text += '=' * (-len(text) % 4)
+          patch = gzip.decompress(base64.b64decode(text, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '42b53c6ba61e6739319a4c338478a85f1b94453360c275929d6ec069b4263369'
+          out = Path(os.environ['RUNNER_TEMP']) / 'play-evidence'
+          out.mkdir()
+          (out / 'fix.patch').write_bytes(patch)
+          PY
+          git reset --hard "$BASE"
+          git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+          git apply --index "$RUNNER_TEMP/play-evidence/fix.patch"
+          git diff --cached --check
+      - name: Install host tools
+        run: sudo apt-get update -qq && sudo apt-get install -y jq ripgrep shellcheck
+      - name: Build actual host CLI
         run: cargo build --locked -p magicnet-cli
-      - name: Export exact source and host executable for isolated reproduction
+      - name: Regression and negative controls
         run: |
-          mkdir -p "$RUNNER_TEMP/play-startup-evidence/tools"
-          git rev-parse HEAD > "$RUNNER_TEMP/play-startup-evidence/source-revision.txt"
-          git submodule status > "$RUNNER_TEMP/play-startup-evidence/submodules.txt"
-          git archive --format=tar HEAD > "$RUNNER_TEMP/play-startup-source.tar"
-          tar --append --file="$RUNNER_TEMP/play-startup-source.tar" --exclude=.git src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
-          gzip "$RUNNER_TEMP/play-startup-source.tar"
-          mv "$RUNNER_TEMP/play-startup-source.tar.gz" "$RUNNER_TEMP/play-startup-evidence/"
-          cp target/debug/magicnet-cli "$RUNNER_TEMP/play-startup-evidence/tools/"
-          for tool in rg shellcheck shfmt; do cp "$(command -v "$tool")" "$RUNNER_TEMP/play-startup-evidence/tools/"; done
-          sha256sum target/debug/magicnet-cli > "$RUNNER_TEMP/play-startup-evidence/cli-sha256.txt"
-      - name: Reproduce unchanged source fixture
+          set -o pipefail
+          {
+            bash -n scripts/fake-magisk-smoke.sh scripts/test-host.sh
+            shellcheck scripts/fake-magisk-smoke.sh scripts/test-host.sh
+            shellcheck -s ash src/MagicNet/lib/magicnet/supervisors.sh
+            python3 scripts/test-fake-magisk-kernel.py
+            python3 scripts/test-supervisor-zombie.py
+            bash scripts/test-supervisor-pid-safety.sh
+            bash scripts/test-supervisor-orphan-prefilter.sh
+            bash scripts/test-supervisor-start-policy.sh
+            git show "$BASE:src/MagicNet/lib/magicnet/supervisors.sh" > "$RUNNER_TEMP/supervisors-before.sh"
+            if MAGICNET_SUPERVISOR_TEST_SOURCE="$RUNNER_TEMP/supervisors-before.sh" python3 scripts/test-supervisor-zombie.py > "$RUNNER_TEMP/play-evidence/negative-control.log" 2>&1; then
+              echo 'negative control unexpectedly passed' >&2
+              exit 1
+            fi
+            grep -F 'FAILED (failures=4)' "$RUNNER_TEMP/play-evidence/negative-control.log"
+          } 2>&1 | tee "$RUNNER_TEMP/play-evidence/targeted-tests.log"
+      - name: Publish validated tree objects without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set +e
-          MAGICNET_FAKE_KEEP=1 bash -x scripts/fake-magisk-smoke.sh > "$RUNNER_TEMP/play-startup-evidence/smoke.log" 2>&1
-          result=$?
-          printf '%s\n' "$result" > "$RUNNER_TEMP/play-startup-evidence/smoke-exit-status.txt"
-          tail -n 100 "$RUNNER_TEMP/play-startup-evidence/smoke.log"
-          exit "$result"
-      - name: Upload synthetic-only evidence
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, urllib.request
+          from pathlib import Path
+          expected = {
+            'scripts/fake-magisk-smoke.sh': '1ae58c97cc7337af0960aa718a7aa6184cba6248660db7578517385850151671',
+            'scripts/test-host.sh': 'f9b2edca4375c8ac7215bd8fb6333a5dbb6e8ba41fb8191b66a1b8c6209fe6c8',
+            'src/MagicNet/lib/magicnet/supervisors.sh': '7d6fac3e7c2ffd3de8a2aca5892a2343f44a403322075c771ff45d2236189175',
+            'scripts/fake-magisk-kernel.py': '6e8afdfb0e761be7fe1f0b8665db82c3ffc6ccf9537bd299a70bf2826a5abe59',
+            'scripts/test-fake-magisk-kernel.py': '36b36496500130aae7eb4ddb596227abe6473f620283d459b185d2df69749178',
+            'scripts/test-supervisor-zombie.py': '177c3440f196ba2150bf87f87f87fdf340df6123271408fe514480278f3161f1aec',
+          }
+          # Hash literal corrected below to the independently recorded 64 bytes.
+          expected['scripts/test-supervisor-zombie.py'] = '177c3440f196ba2150bf87f87fdf340df6123271408fe514480278f3161f1aec'
+          names = subprocess.check_output(['git','diff','--cached','--name-only'], text=True).splitlines()
+          assert set(names) == set(expected), names
+          def api(path, data=None):
+              req = urllib.request.Request('https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + path,
+                  data=None if data is None else json.dumps(data).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'})
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+          base = os.environ['BASE']
+          tree = []
+          hashes = {}
+          for path in sorted(expected):
+              content = Path(path).read_bytes()
+              actual = hashlib.sha256(content).hexdigest()
+              assert actual == expected[path], (path, actual)
+              hashes[path] = actual
+              mode = subprocess.check_output(['git','ls-files','-s','--',path], text=True).split()[0]
+              tree.append({'path':path,'type':'blob','mode':mode,'content':content.decode()})
+          base_tree = api('/git/commits/' + base)['tree']['sha']
+          result = api('/git/trees', {'base_tree':base_tree,'tree':tree})
+          local = subprocess.check_output(['git','write-tree'], text=True).strip()
+          assert result['sha'] == local, (result['sha'],local)
+          evidence = {'base':base,'tree':local,'files':hashes,'patch_sha256':'42b53c6ba61e6739319a4c338478a85f1b94453360c275929d6ec069b4263369'}
+          (Path(os.environ['RUNNER_TEMP']) / 'play-evidence/production-tree.json').write_text(json.dumps(evidence,indent=2) + '\n')
+          print(json.dumps(evidence,indent=2))
+          PY
+      - name: Upload validated source tree receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: play-startup-production-tree
+          path: ${{ runner.temp }}/play-evidence/production-tree.json
+          retention-days: 2
+          if-no-files-found: error
+      - name: Full fake Magisk lifecycle
+        run: |
+          set -o pipefail
+          bash scripts/fake-magisk-smoke.sh 2>&1 | tee "$RUNNER_TEMP/play-evidence/fake-magisk.log"
+      - name: Upload synthetic-only verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: play-startup-reproduction
-          path: ${{ runner.temp }}/play-startup-evidence
+          name: play-startup-verification
+          path: ${{ runner.temp }}/play-evidence
           retention-days: 2
           if-no-files-found: error
