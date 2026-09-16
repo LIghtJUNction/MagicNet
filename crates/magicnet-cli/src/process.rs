@@ -901,46 +901,6 @@ fn watchdog_worker_is_live(pid: libc::pid_t) -> bool {
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
-unsafe fn watchdog_close_inherited_fds(keep_a: libc::c_int, keep_b: libc::c_int) {
-    let (low, high) = if keep_a <= keep_b {
-        (keep_a, keep_b)
-    } else {
-        (keep_b, keep_a)
-    };
-    let close_range = |first: libc::c_uint, last: libc::c_uint| {
-        if first > last {
-            0
-        } else {
-            libc::syscall(libc::SYS_close_range, first, last, 0) as libc::c_int
-        }
-    };
-    let closed = close_range(0, low.saturating_sub(1) as libc::c_uint) == 0
-        && close_range(
-            (low + 1) as libc::c_uint,
-            high.saturating_sub(1) as libc::c_uint,
-        ) == 0
-        && close_range((high + 1) as libc::c_uint, libc::c_uint::MAX) == 0;
-    if closed {
-        return;
-    }
-
-    let mut limit = libc::rlimit {
-        rlim_cur: 0,
-        rlim_max: 0,
-    };
-    let max_fd = if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) == 0 {
-        limit.rlim_cur.min(libc::c_int::MAX as libc::rlim_t) as libc::c_int
-    } else {
-        65_536
-    };
-    for fd in 0..max_fd {
-        if fd != keep_a && fd != keep_b {
-            libc::close(fd);
-        }
-    }
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
 unsafe fn watchdog_pidfd_open(pid: libc::pid_t) -> libc::c_int {
     libc::syscall(libc::SYS_pidfd_open, pid, 0) as libc::c_int
 }
@@ -1076,7 +1036,7 @@ impl ParentDeathWatchdog {
             // the two control reads immediately: otherwise a killed CLI can
             // leave stdout/stderr consumers waiting for EOF on this watchdog.
             unsafe {
-                watchdog_close_inherited_fds(control[0], worker_pid_pipe[0]);
+                crate::utils::close_inherited_fds_except(control[0], worker_pid_pipe[0]);
                 let mut worker_pid: libc::pid_t = 0;
                 let worker_pid_size = std::mem::size_of::<libc::pid_t>();
                 let mut worker_pid_read = 0_usize;

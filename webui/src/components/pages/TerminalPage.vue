@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
 import { Check, Copy, Play, RotateCcw, Terminal, Trash2 } from "lucide-vue-next";
 import { t } from "@/i18n";
+import { compactCommand, compactOutput, execFailed } from "@/utils";
 import Button from "@/components/ui/Button.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
@@ -14,7 +15,7 @@ import {
 import {
   appendTerminalHistory,
   clearTerminalHistory,
-  loadTerminalHistory,
+  MAX_TERMINAL_ENTRIES,
 } from "./terminalHistory";
 
 type ExecutedEntry = {
@@ -26,7 +27,7 @@ type ExecutedEntry = {
   time: string;
 };
 
-const { runCli, runShell, shellQuote } = useMagicNet();
+const { runCli, runShell } = useMagicNet();
 
 const inputCommand = ref("");
 const history = ref<string[]>([]);
@@ -36,6 +37,9 @@ const executing = ref(false);
 const executedList = ref<ExecutedEntry[]>([]);
 const copiedAll = ref(false);
 const copiedId = ref<string | null>(null);
+const clearingHistory = ref(false);
+const historyClearFailed = ref(false);
+let sessionRevision = 0;
 
 const inputRef = ref<HTMLInputElement | null>(null);
 const terminalBodyRef = ref<HTMLElement | null>(null);
@@ -107,9 +111,29 @@ function clearScreen(): void {
 }
 
 async function handleClearHistory(): Promise<void> {
-  await clearTerminalHistory(runShell);
+  if (clearingHistory.value || executing.value) return;
+  clearingHistory.value = true;
+  resetSession();
+  const revision = sessionRevision;
+  try {
+    const cleared = await clearTerminalHistory(runShell);
+    if (revision === sessionRevision) historyClearFailed.value = !cleared;
+  } finally {
+    clearingHistory.value = false;
+  }
+}
+
+function resetSession(): void {
+  sessionRevision += 1;
+  inputCommand.value = "";
+  draftInput.value = "";
   history.value = [];
   historyIndex.value = -1;
+  executedList.value = [];
+  copiedAll.value = false;
+  copiedId.value = null;
+  historyClearFailed.value = false;
+  // Keep execution admission locked until an already running command settles.
 }
 
 function handleTab(): void {
@@ -191,13 +215,14 @@ function handleKeyDown(e: KeyboardEvent): void {
 }
 
 async function runCommandDirect(cmd: string): Promise<void> {
+  if (executing.value || clearingHistory.value) return;
   inputCommand.value = cmd;
   await submitCommand();
 }
 
 async function submitCommand(): Promise<void> {
   const trimmed = inputCommand.value.trim();
-  if (!trimmed || executing.value) return;
+  if (!trimmed || executing.value || clearingHistory.value) return;
 
   // Handle local terminal helper commands
   if (trimmed === "clear" || trimmed === "cls") {
@@ -206,19 +231,15 @@ async function submitCommand(): Promise<void> {
     return;
   }
 
-  // Record history
-  history.value = await appendTerminalHistory(
-    trimmed,
-    history.value,
-    runShell,
-    shellQuote,
-  );
+  // Admission must be synchronous: rapid Enter/taps cannot start two writes.
+  executing.value = true;
+  const revision = sessionRevision;
+  history.value = appendTerminalHistory(trimmed, history.value);
   historyIndex.value = -1;
   draftInput.value = "";
 
   const commandToRun = trimmed;
   inputCommand.value = "";
-  executing.value = true;
   scrollToBottom();
 
   const startTime = Date.now();
@@ -230,23 +251,25 @@ async function submitCommand(): Promise<void> {
 
   try {
     outputText = await runCli(cleanArgs, `cli ${cleanArgs}`);
-    success = !outputText.includes("[error]") && !outputText.includes("[exec-timeout]");
+    success = !execFailed(outputText);
   } catch (error) {
     success = false;
     outputText = error instanceof Error ? error.message : String(error);
   } finally {
     const duration = Date.now() - startTime;
-    executedList.value.push({
-      id: `entry_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      command: commandToRun,
-      output: outputText || t("完成"),
-      durationMs: duration,
-      ok: success,
-      time: timeString,
-    });
     executing.value = false;
-    scrollToBottom();
-    void nextTick(focusInput);
+    if (revision === sessionRevision) {
+      executedList.value = [...executedList.value, {
+        id: `entry_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        command: compactCommand(commandToRun),
+        output: compactOutput(outputText || t("完成")),
+        durationMs: duration,
+        ok: success,
+        time: timeString,
+      }].slice(-MAX_TERMINAL_ENTRIES);
+      scrollToBottom();
+      void nextTick(focusInput);
+    }
   }
 }
 
@@ -255,12 +278,9 @@ function formatOutput(text: string): string {
   return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-onMounted(() => {
-  void loadTerminalHistory(runShell).then((loaded) => {
-    history.value = loaded;
-  });
-  focusInput();
-});
+onMounted(focusInput);
+onDeactivated(resetSession);
+onBeforeUnmount(resetSession);
 
 watch(executedList, () => {
   scrollToBottom();
@@ -292,7 +312,7 @@ watch(executedList, () => {
         <Button
           variant="ghost"
           size="sm"
-          :disabled="history.length === 0"
+          :disabled="executing || clearingHistory"
           @click="handleClearHistory"
         >
           <Trash2 :size="14" aria-hidden="true" />
@@ -300,6 +320,9 @@ watch(executedList, () => {
         </Button>
       </div>
     </PageHeader>
+
+    <p class="text-xs text-[var(--mn-ink-muted)]">{{ t("历史仅保留在当前页面，离开后清除；不再写入文件或浏览器存储。") }}</p>
+    <p v-if="historyClearFailed" role="alert" class="text-xs text-red-500">{{ t("旧历史记录未完全清除，请重试。") }}</p>
 
     <!-- Quick Commands Chips -->
     <div class="flex flex-wrap items-center gap-2 pb-1 text-xs">
@@ -419,7 +442,7 @@ watch(executedList, () => {
                 spellcheck="false"
                 autocomplete="off"
                 autocapitalize="none"
-                :disabled="executing"
+                :disabled="executing || clearingHistory"
                 @keydown="handleKeyDown"
               />
             </div>
@@ -429,7 +452,7 @@ watch(executedList, () => {
               variant="ghost"
               size="sm"
               class="h-7 px-2 text-zinc-400 hover:text-white"
-              :disabled="!inputCommand.trim() || executing"
+              :disabled="!inputCommand.trim() || executing || clearingHistory"
               @click.stop="submitCommand"
             >
               <Play :size="13" aria-hidden="true" />

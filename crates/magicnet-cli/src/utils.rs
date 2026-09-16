@@ -47,6 +47,11 @@ pub(crate) fn read_json_file_bounded(path: &Path, max_bytes: u64) -> Option<serd
     serde_json::from_slice(&bytes).ok()
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+mod fd_cleanup;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub(crate) use fd_cleanup::close_inherited_fds_except;
+
 fn close_raw_fd(fd: RawFd) {
     if fd >= 0 {
         unsafe {
@@ -320,11 +325,13 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
     }
 
     if worker_pid == 0 {
-        close_raw_fd(pipe_fds[0]);
         let armed = unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) } == 0;
         if !armed || unsafe { libc::getppid() } != parent_pid {
             unsafe { libc::_exit(PROC_READER_PARENT_EXIT) };
         }
+        // Keep only this worker's result pipe before opening a potentially
+        // blocking source. No unrelated parent descriptor belongs here.
+        unsafe { close_inherited_fds_except(pipe_fds[1], pipe_fds[1]) };
         let source_fd = unsafe {
             libc::open(
                 path_c.as_ptr(),
@@ -2009,3 +2016,11 @@ mod tests;
 #[cfg(test)]
 #[path = "../tests/internal/resource_limits.rs"]
 mod resource_tests;
+
+#[cfg(test)]
+#[path = "../tests/internal/proc_fd_inheritance.rs"]
+mod proc_fd_inheritance_tests;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../tests/internal/fd_cleanup_regression.rs"]
+mod fd_cleanup_regression_tests;

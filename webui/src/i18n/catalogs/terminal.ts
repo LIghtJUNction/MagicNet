@@ -1,4 +1,12 @@
 export default {
+  "历史仅保留在当前页面，离开后清除；不再写入文件或浏览器存储。": [
+    "History stays on this page and clears when you leave; it is not written to files or browser storage.",
+    "История хранится только на этой странице и очищается при уходе; запись в файлы и хранилище браузера отключена."
+  ],
+  "旧历史记录未完全清除，请重试。": [
+    "Some legacy history could not be cleared. Please retry.",
+    "Не удалось полностью удалить старую историю. Повторите попытку."
+  ],
   "终端": [
     "Terminal",
     "Терминал"

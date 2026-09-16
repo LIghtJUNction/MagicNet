@@ -33,3 +33,12 @@ These are host regressions, not Android memory measurements. This change
 does not diagnose the device's sing-box heap or promise a particular RSS.
 CLI observation/dispatch publication policy is addressed separately by
 PR #284; this patch intentionally does not duplicate that change.
+
+On kernels without `close_range`, fork-only descriptor cleanup enumerates
+`/proc/self/fd` using raw `getdents64` and a fixed stack buffer. It closes
+existing handles, including descriptors above a lowered soft limit, rather
+than scanning every unused slot on every proc read. Only unavailable procfs
+falls back to the hard-limit sweep. No allocating directory iterator or
+mutex is used in the fork child. Regression tests force `ENOSYS` for
+`close_range` inside child-only seccomp filters and exercise identical
+keepers, descriptor zero, high descriptors and truncated directory records.
