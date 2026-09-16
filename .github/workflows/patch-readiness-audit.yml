@@ -1,0 +1,50 @@
+name: Patch readiness audit
+on:
+  push:
+    branches: [fix/patch-readiness-20260916]
+    paths: [.github/workflows/patch-readiness-audit.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Export public tracked inputs and review metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          git archive --format=tar.gz HEAD > audit/main.tar.gz
+          git rev-parse HEAD > audit/main-sha.txt
+          git submodule status --recursive > audit/submodules.txt
+          python3 - <<'PY'
+          import pathlib, subprocess
+          root = pathlib.Path.cwd()
+          for line in (root / 'audit/submodules.txt').read_text().splitlines():
+              path = line.split()[1]
+              name = path.replace('/', '__').lstrip('.')
+              with (root / 'audit' / (name + '.tar.gz')).open('wb') as out:
+                  subprocess.run(['git', '-C', path, 'archive', '--format=tar.gz', '--prefix=' + path + '/', 'HEAD'], stdout=out, check=True)
+          PY
+          git clone --depth=1 --branch feat/primary-upstream-expansion https://github.com/LIghtJUNction/MagicNetRules.git "$RUNNER_TEMP/rules-review"
+          git -C "$RUNNER_TEMP/rules-review" archive --format=tar.gz HEAD > audit/rules-pr3.tar.gz
+          git -C "$RUNNER_TEMP/rules-review" rev-parse HEAD > audit/rules-pr3-sha.txt
+          gh api repos/LIghtJUNction/MagicNet/releases/latest > audit/module-release.json
+          gh api repos/LIghtJUNction/MagicNetRules/releases/latest > audit/rules-release.json
+          gh api repos/LIghtJUNction/MagicNet/rulesets > audit/rulesets.json
+          for number in 253 254 261 273 281; do
+            gh api --paginate "repos/LIghtJUNction/MagicNet/issues/$number/comments" > "audit/issue-$number-comments.json"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: patch-readiness-inputs
+          path: audit/
+          retention-days: 3
+          if-no-files-found: error
