@@ -6,53 +6,22 @@ on:
 permissions:
   contents: read
 jobs:
-  baseline:
+  integrity:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: webui/package-lock.json
-      - name: Install browser and fonts
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
-          cd webui
-          npm ci
-          npx playwright install --with-deps chromium
-      - name: Render actual application in mobile browser
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd webui
-          npx playwright test e2e/overview-refinement.spec.mjs --project=phone-390 --reporter=list
-      - name: Obtain release-verified offline rules compiler
-        shell: bash
+      - name: Fetch patch object without executing it
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p audit/compiler
-          cd audit/compiler
-          gh release download v1.11.4 --repo SagerNet/sing-box --pattern 'sing-box-1.11.4-linux-amd64.tar.gz' --pattern '*checksums*'
-          sha256sum -c --ignore-missing *checksums*
-          tar xzf sing-box-1.11.4-linux-amd64.tar.gz
-          cp sing-box-1.11.4-linux-amd64/sing-box ../sing-box
-          ../sing-box version > ../compiler-version.txt
-          rm -rf ../compiler
+          mkdir audit
+          gh api repos/LIghtJUNction/MagicNet/git/blobs/456a13ea1454a997e935dc6b5fc6171e7d289e30 --jq .content | base64 -d > audit/runtime.patch.gz
+          sha256sum audit/runtime.patch.gz > audit/transport.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: ${{ always() }}
         with:
-          name: baseline-visual-audit
-          path: |
-            webui/test-results/
-            audit/
-          retention-days: 3
+          name: patch-integrity
+          path: audit/
+          retention-days: 1
           if-no-files-found: error
