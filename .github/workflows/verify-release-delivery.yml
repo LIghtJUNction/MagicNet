@@ -1,0 +1,148 @@
+name: Verify v1.5.5 Release Delivery
+on:
+  push:
+    branches: [audit/v1.5.5-delivery-20260916]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 792e817ea6a41d9cb0a8a7531b6fda2838a79863
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Require successful signed release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 1200s gh run watch 35114714789 --repo LIghtJUNction/MagicNet --exit-status --interval 20
+      - name: Verify public downloads and package identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-delivery"
+          gh api repos/LIghtJUNction/MagicNet/releases/tags/v1.5.5 > "$RUNNER_TEMP/release-delivery/release.json"
+          gh api repos/LIghtJUNction/MagicNet/releases/latest > "$RUNNER_TEMP/release-delivery/latest.json"
+          gh api repos/LIghtJUNction/MagicNet/git/ref/tags/v1.5.5 > "$RUNNER_TEMP/release-delivery/tag.json"
+          python3 - <<'PY'
+          import concurrent.futures
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import zipfile
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'release-delivery'
+          release = json.loads((root / 'release.json').read_text())
+          latest = json.loads((root / 'latest.json').read_text())
+          tag = json.loads((root / 'tag.json').read_text())['object']
+          expected_sha = '792e817ea6a41d9cb0a8a7531b6fda2838a79863'
+          assert not release['draft'] and not release['prerelease']
+          assert release['tag_name'] == latest['tag_name'] == 'v1.5.5'
+          assert release['id'] == latest['id']
+          assert release['target_commitish'] == expected_sha
+          assert tag['type'] == 'commit' and tag['sha'] == expected_sha
+          assets = release['assets']
+          names = {a['name'] for a in assets}
+          assert len(names) == len(assets) and 1 <= len(assets) <= 250
+          required = {'magicnet_installer.zip', 'MagicNet-core.zip', 'MagicNet-full.zip',
+                      'components.json', 'SHA256SUMS', 'build-submodules.txt'}
+          assert required <= names
+          assert sum(a['size'] for a in assets) <= 512 * 1024 * 1024
+          prefix = 'https://github.com/LIghtJUNction/MagicNet/releases/download/v1.5.5/'
+          def digest(path):
+              with path.open('rb') as handle:
+                  return hashlib.file_digest(handle, 'sha256').hexdigest()
+          def download(asset):
+              name = asset['name']
+              assert re.fullmatch(r'[A-Za-z0-9_.!@-]+', name) and name not in ('.', '..')
+              assert asset['browser_download_url'] == prefix + name
+              assert asset['state'] == 'uploaded' and 0 < asset['size'] < 256 * 1024 * 1024
+              path = root / name
+              # Deliberately no authorization header on public asset downloads.
+              subprocess.run(['curl', '--fail', '--silent', '--show-error', '--location',
+                              '--proto', '=https', '--proto-redir', '=https', '--retry', '2',
+                              '--max-time', '120', '--output', str(path), asset['browser_download_url']],
+                             check=True, timeout=380, env={k:v for k,v in os.environ.items() if k != 'GH_TOKEN'})
+              assert path.stat().st_size == asset['size'], name
+              value = digest(path)
+              assert asset['digest'] == 'sha256:' + value, name
+              return {'name': name, 'size': asset['size'], 'sha256': value}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              downloads = list(pool.map(download, assets))
+          sums = {}
+          for line in (root / 'SHA256SUMS').read_text().splitlines():
+              match = re.fullmatch(r'([a-f0-9]{64})  ([A-Za-z0-9_.!@-]+)', line)
+              assert match, 'Malformed checksum row'
+              value, name = match.groups()
+              assert name in names and name not in sums
+              assert digest(root / name) == value, name
+              sums[name] = value
+          payloads = names - {n for n in names if n.endswith('.sig')} - {'SHA256SUMS'}
+          assert set(sums) == payloads, 'Incomplete checksum coverage'
+          assert {n + '.sig' for n in payloads | {'SHA256SUMS'}} <= names
+          manifest = json.loads((root / 'components.json').read_text())
+          assert manifest['schema'] == 1 and manifest['version'] == 'v1.5.5'
+          rules_pin = json.loads(Path('rules-release.json').read_text())
+          assert rules_pin['tag'] == 'rules-20260916-c802d68ca104e3ce'
+          assert rules_pin['recipe_commit'] in (root / 'build-submodules.txt').read_text()
+          srs_count = 0
+          with zipfile.ZipFile(root / 'MagicNet-full.zip') as full:
+              assert full.testzip() is None
+              props = dict(line.split('=', 1) for line in full.read('module.prop').decode().splitlines()
+                           if '=' in line and not line.startswith('#'))
+              assert props['id'] == 'MagicNet' and props['version'] == 'v1.5.5'
+              assert props['versionCode'] == '1789322930996'
+              for component in manifest['components']:
+                  path = root / component['asset']
+                  assert path.name in names
+                  assert path.stat().st_size == component['size'] and digest(path) == component['sha256']
+                  with zipfile.ZipFile(path) as part:
+                      assert part.testzip() is None
+                      for entry in component['files']:
+                          raw = part.read(entry['path'])
+                          assert len(raw) == entry['size']
+                          assert hashlib.sha256(raw).hexdigest() == entry['sha256']
+                          assert raw == full.read(entry['path']), entry['path']
+                          if entry['path'].endswith('.srs'):
+                              assert raw[:3] == b'SRS', entry['path']
+                              srs_count += 1
+              with zipfile.ZipFile(root / 'magicnet_installer.zip') as installer:
+                  assert installer.read('module.prop') == full.read('module.prop')
+                  assert json.loads(installer.read('components.json')) == manifest
+          assert srs_count == 53, f'Unexpected SRS count: {srs_count}'
+          subprocess.run(['python3', 'scripts/test-downloader-installer.py',
+                          str(root / 'magicnet_installer.zip'), '--core', str(root / 'MagicNet-core.zip')],
+                         check=True, timeout=30)
+          result = {'status': 'PASS', 'version': 'v1.5.5', 'source_commit': expected_sha,
+                    'release_id': release['id'], 'published_at': release['published_at'],
+                    'release_url': release['html_url'], 'verified_assets': downloads,
+                    'rules_pin': rules_pin, 'verified_srs_files': srs_count,
+                    'scope': 'public_download_integrity_and_package_consistency',
+                    'not_tested': ['physical_device', 'Play_GMS', 'network_handover']}
+          (root / 'verification.json').write_text(json.dumps(result, indent=2) + '\n')
+          print(f"Verified published v1.5.5: {len(assets)} public assets, {srs_count} SRS files, exact source and matching installer/full components")
+          PY
+      - name: Upload delivery evidence and installable packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: verified-v1.5.5-delivery
+          path: |
+            ${{ runner.temp }}/release-delivery/verification.json
+            ${{ runner.temp }}/release-delivery/release.json
+            ${{ runner.temp }}/release-delivery/magicnet_installer.zip
+            ${{ runner.temp }}/release-delivery/magicnet_installer.zip.sig
+            ${{ runner.temp }}/release-delivery/MagicNet-full.zip
+            ${{ runner.temp }}/release-delivery/MagicNet-full.zip.sig
+            ${{ runner.temp }}/release-delivery/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
