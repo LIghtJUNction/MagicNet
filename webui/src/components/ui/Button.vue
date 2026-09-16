@@ -68,7 +68,7 @@ const classes = computed(() =>
     :aria-busy="loading ? 'true' : undefined"
   >
     <Loader2 v-if="loading" v-show="size === 'icon'" class="mn-button__spinner motion-safe:animate-spin" :size="18" aria-hidden="true" />
-    <span class="mn-button__content inline-flex min-w-0 items-center justify-center gap-2">
+    <span class="mn-button__content inline-flex min-w-0 flex-wrap items-center justify-center gap-2">
       <slot />
     </span>
   </button>

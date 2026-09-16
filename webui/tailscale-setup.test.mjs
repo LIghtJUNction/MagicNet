@@ -34,7 +34,8 @@ function code(fn, expected) {
 
 test("creates a persistent userspace endpoint without changing unrelated configuration", () => {
   const config = fixture();
-  const { endpoints, ...rest } = config;
+  const { endpoints, experimental, ...rest } = config;
+  assert.match(experimental.clash_api.tailscale_secret, /^[a-f0-9]{64}$/);
   assert.deepEqual(rest, JSON.parse(original()));
   assert.equal(endpoints.length, 1);
   assert.equal(endpoints[0].type, "tailscale");
@@ -208,3 +209,32 @@ for (const [option, expected] of Object.entries({
     }
   });
 }
+
+
+test("removing a materialized endpoint removes only its generated DNS and routes", () => {
+  const config = fixture();
+  const tag = config.endpoints[0].tag;
+  config.dns.servers.push({type:"tailscale",tag:tag+"-dns",endpoint:tag});
+  config.dns.rules = [{domain_suffix:["ts.net"],server:tag+"-dns"}];
+  config.route.rules.unshift(
+    {ip_cidr:["100.64.0.0/10","fd7a:115c:a1e0::/48"],preferred_by:["tailscale"],outbound:tag},
+    {domain_suffix:["ts.net"],outbound:tag});
+  const text = JSON.stringify(config);
+  const result = JSON.parse(removeTailscaleEndpoint(text, inspectTailscale(text)));
+  assert.deepEqual(result.dns, {...JSON.parse(original()).dns, rules:[]});
+  assert.deepEqual(result.route, JSON.parse(original()).route);
+  assert.equal(result.endpoints.length,0);
+  assert.equal(config.route.rules.length,3,"input must remain unchanged");
+});
+
+test("custom references refuse removal rather than deleting user traffic policy", () => {
+  for (const custom of [
+    config => config.route.rules.push({domain:["private.example"],outbound:config.endpoints[0].tag}),
+    config => config.outbounds.push({type:"selector",tag:"custom",outbounds:[config.endpoints[0].tag]}),
+    config => {config.route.final=config.endpoints[0].tag},
+    config => config.dns.servers.push({type:"tailscale",tag:"custom",endpoint:config.endpoints[0].tag,accept_default_resolvers:true}),
+  ]) {
+    const config=fixture(); custom(config); const text=JSON.stringify(config);
+    code(()=>removeTailscaleEndpoint(text,inspectTailscale(text)),"references");
+  }
+});

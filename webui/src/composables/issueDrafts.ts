@@ -1,4 +1,5 @@
 import { t } from "@/i18n";
+import { ROUTE_TAGS, safeRouteHop, safeRouteText, isGoogleEvidence, boundedLines, compactSupport } from "@/composables/networkEvidence";
 const MAX_ISSUE_BODY_CHARS = 5200;
 
 export type IssueKind =
@@ -179,12 +180,15 @@ function safeString(value: unknown): string {
 }
 
 function connectionProcess(metadata: Record<string, unknown>): string {
-  const packageName = safeString(metadata.processPackageName);
+  const packageName = safeString(metadata.processPackageName)
+    || (Array.isArray(metadata.packageNames) ? metadata.packageNames.filter(name => typeof name === "string" && /^[a-zA-Z0-9_.]{1,160}$/.test(name)).join(",") : "");
   if (packageName) return packageName;
   const processName = safeString(metadata.processName);
   if (processName) return processName;
   const processPath = safeString(metadata.processPath);
-  return processPath.split("/").filter(Boolean).at(-1) || "";
+  const fallback = processPath.split("/").filter(Boolean).at(-1) || "";
+  // The core emits app_process64 before package names. Do not label it a package.
+  return /^app_process(?:32|64)?\b/.test(fallback) ? `package-unavailable ${fallback}` : fallback;
 }
 
 function routingFeedbackHost(metadata: Record<string, unknown>): string {
@@ -201,42 +205,7 @@ function compactFeedbackValue(value: string, limit = 160): string {
   return deterministicSlice(sanitizeDiagnosticText(value), limit).replace(/\s+/g, " ").trim();
 }
 
-const SAFE_ROUTE_TAGS = new Set([
-  "proxy",
-  "select",
-  "final",
-  "proxy-rule",
-  "dns-guard",
-  "network-test",
-  "hotspot",
-  "download-direct",
-  "dev-proxy",
-  "social-proxy",
-  "media-proxy",
-  "game-proxy",
-  "telegram-proxy",
-  "google-proxy",
-  "youtube-proxy",
-  "github-proxy",
-  "discord-proxy",
-  "netflix-proxy",
-  "spotify-proxy",
-  "twitter-proxy",
-  "whatsapp-proxy",
-  "ai-proxy",
-  "ai-chatgpt",
-  "ai-gemini",
-  "ai-grok",
-  "ai-claude",
-  "direct",
-  "block",
-  "warp",
-]);
-
-function safeRouteHop(value: unknown): string {
-  const hop = safeString(value);
-  return SAFE_ROUTE_TAGS.has(hop) ? hop : "[selected-node]";
-}
+const SAFE_ROUTE_TAGS = ROUTE_TAGS;
 
 /**
  * Keep routing evidence useful without exporting destinations, source
@@ -291,15 +260,15 @@ export function summarizeConnectionsForIssue(text: string): string {
  * to improve maintained routing rules. IPs, connection IDs, byte counters,
  * credentials and subscription node names are still excluded.
  */
-export function summarizeRoutingFeedback(text: string): string {
+export function summarizeRoutingFeedback(text: string, maxRoutes = 24): string {
   try {
     const root = JSON.parse(text) as Record<string, unknown>;
     const raw = Array.isArray(root.connections) ? root.connections : null;
     if (!raw) return "active_connections=unavailable";
 
-    const samples: Array<{ signature: string; line: string; count: number }> = [];
+    const samples: Array<{ signature: string; line: string; count: number; google: boolean }> = [];
     const seen = new Map<string, number>();
-    for (const value of raw.slice(-80).reverse()) {
+    for (const value of raw.slice(0, 2048)) {
       if (!value || typeof value !== "object") continue;
       const item = value as Record<string, unknown>;
       const metadata = item.metadata && typeof item.metadata === "object"
@@ -312,7 +281,7 @@ export function summarizeRoutingFeedback(text: string): string {
         safeString(item.inbound) || safeString(metadata.inbound) || safeString(metadata.type),
         48,
       );
-      const rule = compactFeedbackValue(safeString(item.rule), 96);
+      const rule = compactFeedbackValue(safeRouteText(safeString(item.rule)), 96);
       const rulePayload = compactFeedbackValue(safeString(item.rulePayload), 120);
       const chain = Array.isArray(item.chains)
         ? item.chains.map(safeRouteHop).filter(Boolean).slice(0, 8).join(" -> ")
@@ -328,6 +297,7 @@ export function summarizeRoutingFeedback(text: string): string {
       samples.push({
         signature,
         count: 1,
+        google: isGoogleEvidence(domain, process, chain),
         line: [
           process ? `app=${process}` : "",
           domain ? `domain=${domain}` : "domain=[ip-only-or-unavailable]",
@@ -338,15 +308,20 @@ export function summarizeRoutingFeedback(text: string): string {
           chain ? `chain=${chain}` : "",
         ].filter(Boolean).join(" "),
       });
-      if (samples.length >= 24) break;
+
     }
 
+    const ordered = [...samples].sort((a, b) => Number(b.google) - Number(a.google)).slice(0, Math.max(1, Math.min(128, maxRoutes)));
     return [
+      `google_related_routes=${samples.filter(sample => sample.google).length}`,
+      "coverage=active_connections_only; failed_short_lived_connections_may_be_missing",
+      "play_app_status=not_tested",
       "privacy_note=explicit route feedback; app package names and destination domains are included",
       "filtered=source/destination IPs, connection IDs, byte counters, credentials, URL paths, subscription node names",
       `active_connection_count=${raw.length}`,
-      `included_unique_routes=${samples.length}`,
-      ...samples.map((sample, index) => `route.${index + 1} seen=${sample.count} ${sample.line}`),
+      `included_unique_routes=${ordered.length}`,
+      `omitted_unique_routes=${samples.length - ordered.length}; uninspected_connections=${Math.max(0, raw.length-2048)}`,
+      ...ordered.map((sample, index) => `route.${index + 1} seen=${sample.count} ${sample.line}`),
     ].join("\n");
   } catch {
     return "active_connections=unavailable\nparse_error=invalid response";
@@ -354,7 +329,7 @@ export function summarizeRoutingFeedback(text: string): string {
 }
 
 export function sanitizeConnectionLog(text: string): string {
-  return sanitizeDiagnosticText(text)
+  return safeRouteText(sanitizeDiagnosticText(text))
     .replace(/\b(to|from)\s+[^\s,;]+/gi, "$1 [filtered-endpoint]")
     .replace(/\b(destination|host|domain|source)(\s*[:=]\s*)[^\s,;]+/gi, "$1$2[filtered-endpoint]")
     .replace(/\b(outbound|selector)(\s*[:=]\s*)([^\s,;]+)/gi, (_match, key, separator, value) => (
@@ -366,7 +341,7 @@ export function sanitizeConnectionLog(text: string): string {
 /** Preserve bare destination domains for opt-in routing feedback while still
  * removing credentials, URLs/paths, IPs and subscription node names. */
 export function sanitizeRoutingFeedbackLog(text: string): string {
-  return sanitizeDiagnosticText(text)
+  return safeRouteText(sanitizeDiagnosticText(text))
     .replace(/\b(outbound|selector)(\s*[:=]\s*)([^\s,;]+)/gi, (_match, key, separator, value) => (
       `${key}${separator}${SAFE_ROUTE_TAGS.has(value) ? value : "[selected-node]"}`
     ))
@@ -395,11 +370,11 @@ function issueReportText(report: Partial<IssueReport> = {}): string {
     return `${label}：\n${sanitized || t("未填写")}`;
   };
   return [
-    field(t("问题概述"), report.summary, 360),
-    field(t("复现步骤"), report.reproduction, 520),
-    field(t("期望结果"), report.expected, 260),
-    field(t("实际结果"), report.actual, 360),
-    field(t("发生频率 / 影响范围"), report.frequency, 220),
+    field(t("问题概述"), report.summary, 220),
+    field(t("复现步骤"), report.reproduction, 320),
+    field(t("期望结果"), report.expected, 160),
+    field(t("实际结果"), report.actual, 220),
+    field(t("发生频率 / 影响范围"), report.frequency, 140),
   ].join("\n\n");
 }
 
@@ -425,8 +400,8 @@ export function buildIssueBody(parts: {
     "",
     "## Generated Context",
     "",
-    issueSection("Focused Context", deterministicSlice(sanitizeDiagnosticText(parts.focusedContext), routeFeedback ? 3000 : 1800)),
-    issueSection("Support Summary", deterministicSlice(sanitizeDiagnosticText(parts.support), routeFeedback ? 650 : 900)),
+    issueSection("Focused Context", routeFeedback ? boundedLines(sanitizeDiagnosticText(parts.focusedContext), 2400) : deterministicSlice(sanitizeDiagnosticText(parts.focusedContext), 1800)),
+    issueSection("Support Summary", routeFeedback ? compactSupport(sanitizeDiagnosticText(parts.support), 600) : deterministicSlice(sanitizeDiagnosticText(parts.support), 900)),
     issueSection("Module", deterministicSlice(sanitizeDiagnosticText(parts.moduleProp), 220)),
     issueSection("Device", deterministicSlice(sanitizeDiagnosticText(parts.device), 220)),
     issueSection("UI Operation", deterministicSlice(sanitizeDiagnosticText(operationText(parts.operation)), 350)),

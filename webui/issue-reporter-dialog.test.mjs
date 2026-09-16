@@ -39,10 +39,13 @@ assert.match(dialog, /@keydown\.esc\.prevent\.stop/);
 assert.match(dialog, /trapFocusWithin\(event, dialog\.value\)/);
 
 assert.match(reporter, /kind === "route-feedback"/);
-assert.match(reporter, /runCli\("api conns", "读取路由反馈连接", true\)/);
-assert.match(reporter, /runCli\("--json network status", "读取路由反馈网络策略", true\)/);
-assert.match(reporter, /runCli\("service logs sing-box 240", "读取路由反馈错误日志", true\)/);
-assert.match(reporter, /summarizeRoutingFeedback\(connections\)/);
+// The collection implementation is exercised with injected transports below.
+assert.match(reporter, /safeRead\("api conns"\)/);
+assert.match(reporter, /safeRead\("api proxies"\)/);
+assert.match(reporter, /safeRead\("--json service status"\)/);
+assert.match(reporter, /safeRead\("service logs sing-box 240"\)/);
+assert.match(reporter, /enrichPlayPackages\(connections, measured\.packages\)/);
+assert.match(reporter, /feedback-snapshot\.sh/);
 assert.match(reporter, /sanitizeRoutingFeedbackLog/);
 assert.match(reporter, /kind === "app-connectivity"/);
 assert.match(reporter, /runCli\("api conns", "读取近期活动连接", true\)/);

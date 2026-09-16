@@ -1,0 +1,93 @@
+name: Network Regression Evidence
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: network-evidence-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Initialize only pinned core and rules sources
+        run: git submodule update --init --depth 1 -- sing-box rules src/MagicNet/.config/sing-box
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.7'
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Compile the exact configured core
+        run: scripts/build-sing-box.sh linux amd64 "$RUNNER_TEMP/core/sing-box"
+      - name: Validate removal with the real core and exercise read-only feedback
+        run: |
+          node --experimental-strip-types scripts/test-tailscale-core.mjs "$RUNNER_TEMP/core/sing-box"
+          python3 scripts/test-feedback-snapshot.py
+      - name: Prepare checksum-verified local rules
+        env:
+          KAM_PROJECT_ROOT: ${{ github.workspace }}
+          KAM_HOOKS_ROOT: ${{ github.workspace }}/hooks
+          KAM_MODULE_ROOT: ${{ github.workspace }}/src/MagicNet
+        run: |
+          bash hooks/pre-build/5450.update_sing_box_rules.sh
+          bash hooks/pre-build/5460.update_chatgpt_voice_rules.sh
+      - name: Measure isolated host memory, not physical-device acceptance
+        run: |
+          python3 scripts/profile-core-memory.py --core "$RUNNER_TEMP/core/sing-box" \
+            --config src/MagicNet/.config/sing-box/config.json --output artifacts/core-memory.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-memory-evidence
+          path: artifacts/core-memory.json
+          if-no-files-found: error
+  visual-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Exercise Tailscale flows and capture actual layouts
+        working-directory: webui
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+          npx playwright test e2e/tailscale.spec.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: tailscale-visual-evidence
+          path: webui/test-results/
+          if-no-files-found: error
+  avd-storage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Execute AVD path and failed-create contracts
+        run: python3 scripts/test-android-avd-storage.py
+      - name: Create and discover a real isolated SDK AVD
+        run: python3 scripts/test-android-avd-storage.py --sdk
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: avd-storage-evidence
+          path: artifacts/avd-storage.json
+          if-no-files-found: error
+          retention-days: 7

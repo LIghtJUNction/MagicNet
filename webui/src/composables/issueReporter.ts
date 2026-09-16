@@ -7,6 +7,7 @@ import {
   issueKindLabel,
   propValue,
   sanitizeConnectionLog,
+  sanitizeDiagnosticText,
   sanitizeRoutingFeedbackLog,
   summarizeConnectionsForIssue,
   summarizeRoutingFeedback,
@@ -14,6 +15,7 @@ import {
   type IssueOperationContext,
   type IssueReportInput,
 } from "@/composables/issueDrafts";
+import { boundedLines, compactService, selectorEvidence, deviceEvidence, enrichPlayPackages } from "@/composables/networkEvidence";
 import { copyText, intentDataQuote, shellQuote } from "@/utils";
 import type { RuntimeState } from "@/types";
 import type { BackgroundTaskState } from "@/composables/backgroundTasks";
@@ -48,28 +50,28 @@ async function collectFocusedContext(
   kind: IssueKind,
   operation: IssueOperationContext,
   runCli: IssueReporterDeps["runCli"],
+  extra: { device: string; full: string },
 ): Promise<string> {
   if (kind === "command-error") return commandFailureContext(operation);
   if (kind === "route-feedback") {
-    const [connections, network, logs] = await Promise.all([
-      runCli("api conns", "读取路由反馈连接", true),
-      runCli("--json network status", "读取路由反馈网络策略", true),
-      runCli("service logs sing-box 240", "读取路由反馈错误日志", true),
+    const safeRead = (args: string) => runCli(args, "读取路由反馈连接", true).catch(() => "unavailable");
+    const [connections, service, proxies, logs] = await Promise.all([
+      safeRead("api conns"), safeRead("--json service status"),
+      safeRead("api proxies"), safeRead("service logs sing-box 240"),
     ]);
-    return [
-      "[route feedback samples]",
-      summarizeRoutingFeedback(connections),
-      "",
-      "[network policy]",
-      network,
-      "",
-      "[routing/error log tail]",
-      sanitizeRoutingFeedbackLog(relevantLogTail(
-        logs,
-        /\b(route|rule|outbound|selector|dns|connect|connection|reject|block|timeout|error|warn|fail|denied)\b/i,
-        60,
-      )),
-    ].join("\n");
+    const measured = deviceEvidence(extra.device);
+    const routes = summarizeRoutingFeedback(enrichPlayPackages(connections, measured.packages), 128);
+    const errors = sanitizeRoutingFeedbackLog(relevantLogTail(logs,
+      /(?:google|gstatic|googleapis|vending|\bgms\b|google-proxy|timeout|tls|certificate|dns.*fail)/i, 8));
+    const sections = [
+      ["core and readiness", compactService(service), 320],
+      ["selector paths", selectorEvidence(proxies), 320],
+      ["memory and configuration", measured.summary, 530],
+      ["route feedback samples", routes.split("\n").filter(line => !/^(privacy_note|filtered)=/.test(line)).join("\n"), 750],
+      ["routing/error log tail", errors, 260],
+    ] as const;
+    extra.full = sections.map(([name, text]) => `[${name}]\n${boundedLines(text,16000)}`).join("\n\n");
+    return sections.map(([name, text, budget]) => `[${name}]\n${boundedLines(text,budget)}`).join("\n");
   }
   if (kind === "app-connectivity") {
     const [connections, logs] = await Promise.all([
@@ -168,14 +170,18 @@ export async function createMagicNetIssue(
   state.busy = true;
   state.phase = "running";
   try {
-    const moduleProp = await runShell(`cat ${shellQuote(`${MODULE_DIR}/module.prop`)}`, "读取模块版本", true);
+    const moduleProp = await runShell(`cat ${shellQuote(`${MODULE_DIR}/module.prop`)}`, "读取模块版本", true).catch(() => "version=unknown");
     const version = propValue(moduleProp, "version") || "unknown";
     const runtimeLabel = state.runtime.singBoxState === "unknown" ? "runtime" : state.runtime.singBoxState;
     const title = `[MagicNet] ${version} ${issueKindLabel(report.kind)} · ${runtimeLabel}`;
+    const extra = { device: "unavailable", full: "" };
+    if (report.kind === "route-feedback") {
+      extra.device = await runShell(`sh ${shellQuote(`${MODULE_DIR}/feedback-snapshot.sh`)}`, "生成支持包", true).catch(() => "unavailable");
+    }
     const [device, support, focusedContext] = await Promise.all([
-      runShell("getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; uname -a", "读取设备信息", true),
-      runCli("support bundle", "生成支持包", true),
-      collectFocusedContext(report.kind, operation, runCli),
+      runShell("getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; uname -a", "读取设备信息", true).catch(() => "device=unavailable"),
+      runCli("support bundle", "生成支持包", true).catch(() => "support=unavailable"),
+      collectFocusedContext(report.kind, operation, runCli, extra),
     ]);
     const body = buildIssueBody({
       kind: report.kind,
@@ -204,6 +210,11 @@ export async function createMagicNetIssue(
         true
       );
     }
+    if (extra.full) state.output = [
+      t("完整脱敏诊断保留在输出页，可复制补充到 issue。"), "",
+      body, "", "## Full focused evidence", "",
+      boundedLines(sanitizeDiagnosticText(`${extra.full}\n\n[full support]\n${support}`), 48000), "", issueUrl,
+    ].join("\n");
     state.phase = "done";
     state.notice = t("GitHub issue 已打开");
   } catch (error) {
