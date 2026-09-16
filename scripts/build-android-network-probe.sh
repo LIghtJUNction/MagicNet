@@ -2,7 +2,27 @@
 # Dependency-free test APK built with the installed, version-pinned Android SDK.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?Android SDK is required}}"
+prepare=0
+if [[ "${1:-}" == --prepare-sdk ]]; then
+    prepare=1
+    shift
+fi
+[[ "$#" == 1 ]] || { echo 'Usage: build-android-network-probe.sh [--prepare-sdk] output.apk' >&2; exit 64; }
+SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+if [[ "$prepare" == 1 ]]; then
+    manager="$SDK/cmdline-tools/latest/bin/sdkmanager"
+    [[ -x "$manager" ]] || { echo 'Android command-line tools are missing from the configured SDK' >&2; exit 1; }
+    timeout --kill-after=5s 180s "$manager" --sdk_root="$SDK" 'platforms;android-35' 'build-tools;35.0.0'
+    # Hosted runners do not necessarily put Android command-line tools on PATH.
+    # Export only the configured SDK for subsequent AVD steps, not an arbitrary
+    # sdkmanager found elsewhere on the runner.
+    if [[ -n "${GITHUB_PATH:-}" ]]; then
+        printf '%s\n' "$SDK/cmdline-tools/latest/bin" "$SDK/platform-tools" "$SDK/emulator" >> "$GITHUB_PATH"
+    fi
+    if [[ -n "${GITHUB_ENV:-}" ]]; then
+        printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\n' "$SDK" "$SDK" >> "$GITHUB_ENV"
+    fi
+fi
 TOOLS="$SDK/build-tools/35.0.0"
 ANDROID_JAR="$SDK/platforms/android-35/android.jar"
 OUT="${1:?Usage: build-android-network-probe.sh output.apk}"

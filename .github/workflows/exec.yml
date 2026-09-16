@@ -370,8 +370,7 @@ jobs:
       - name: Compile release acceptance test APK
         if: ${{ env.RELEASE_REQUESTED == '1' }}
         run: |
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-          scripts/build-android-network-probe.sh "$RUNNER_TEMP/magicnet-network-probe.apk"
+          scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/magicnet-network-probe.apk"
 
       - name: Release quality gate
         id: release_quality

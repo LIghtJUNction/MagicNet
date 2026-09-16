@@ -35,8 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-          scripts/build-android-network-probe.sh "$RUNNER_TEMP/network-audit/magicnet-network-probe.apk"
+          scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/network-audit/magicnet-network-probe.apk"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

@@ -198,8 +198,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-          scripts/build-android-network-probe.sh "$RUNNER_TEMP/magicnet-network-probe.apk"
+          scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/magicnet-network-probe.apk"
 
       - name: Restore KernelSU AVD assets
         id: ksu-cache
