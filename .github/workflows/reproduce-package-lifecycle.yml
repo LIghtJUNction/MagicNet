@@ -1,0 +1,84 @@
+name: Reproduce Packaged Lifecycle
+on:
+  push:
+    branches: [audit/owned-integration-20260916]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 68059da646d7b9227e4931364bc4f3abcc273799
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.7'
+          cache: false
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+      - name: Download the exact previously built package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download 35135151722 --repo LIghtJUNction/MagicNet --name kam-module-artifact --dir dist
+          test -s dist/MagicNet.zip
+      - name: Build host core for unchanged package verification
+        run: |
+          set -euo pipefail
+          command -v jq && command -v rg
+          mkdir -p "$RUNNER_TEMP/core"
+          scripts/build-sing-box.sh linux amd64 "$RUNNER_TEMP/core/sing-box"
+          echo "$RUNNER_TEMP/core" >> "$GITHUB_PATH"
+      - name: Correct only missing isolated fixture applets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          path=Path('scripts/fake-magisk-smoke.sh')
+          assert subprocess.check_output(['git','hash-object',str(path)],text=True).strip()=='abd591500ae35c2861c6be2f87ea6387a1ca3ca5'
+          text=path.read_text()
+          old='kill ln ls mkdir mkfifo mv nohup printf ps pwd readlink realpath rm sed sh sleep sort'
+          assert text.count(old)==1
+          path.write_text(text.replace(old, 'kill ln ls mkdir mkfifo mktemp stat cmp mv nohup printf ps pwd readlink realpath rm sed sh sleep sort'))
+          PY
+          git diff --check
+      - name: Execute the real package lifecycle and retain fixture failure evidence
+        env:
+          MAGICNET_FAKE_KEEP: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/lifecycle
+          timeout --kill-after=5s 600s bash scripts/fake-magisk-smoke.sh dist/MagicNet.zip 2>&1 | tee artifacts/lifecycle/run.log
+      - name: Collect private-fixture diagnostics without dumping arbitrary system state
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/lifecycle
+          git diff -- scripts/fake-magisk-smoke.sh > artifacts/lifecycle/fixture.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          out=Path('artifacts/lifecycle')
+          for index,root in enumerate(Path('/tmp').glob('magicnet-fake-magisk.*')):
+              if not root.is_dir() or root.is_symlink(): continue
+              for rel in ['mock-commands.log', 'runtime-path.log', 'module/.state/transparent-recent-error', 'module/.state/network/kernel-route-table.state']:
+                  path=root/rel
+                  if path.is_file() and not path.is_symlink() and path.stat().st_size<2*1024*1024:
+                      target=out/str(index)/rel
+                      target.parent.mkdir(parents=True,exist_ok=True)
+                      shutil.copyfile(path,target)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: package-lifecycle-reproduction
+          path: artifacts/lifecycle
+          if-no-files-found: error
+          retention-days: 1
