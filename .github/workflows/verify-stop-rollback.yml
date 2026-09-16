@@ -1,0 +1,125 @@
+name: Verify Network Stop and Failed-Start Rollback
+on:
+  push:
+    branches: [audit/stop-rollback-20260916]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI_TEST_FORCE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Apply bounded exact production delta
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, subprocess
+          p=Path('.github/stop-rollback.patch')
+          data=p.read_bytes().replace(b'\n diff --git ',b'\ndiff --git ')
+          # Restore the ten double-backslash bytes collapsed in text transport.
+          # Both before/after digests and every applied blob are fixed below.
+          assert hashlib.sha256(data).hexdigest()=='57f8c833a8193cd4b2ea73bf15cc9d7dbb54bd2e4bd17e8b581e9c2c99edca92'
+          for pos in reversed([4236,5999,7544,7604,7770,9288,11058,11478,12067,12595]):
+              data=data[:pos]+bytes([92])+data[pos:]
+          assert hashlib.sha256(data).hexdigest()=='104dcb0a463e4a9ed95b8efe4571be8fe760628c4754e8995236c1c4cd08b376'
+          p.write_bytes(data)
+          subprocess.run(['git','apply','--index',str(p)],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          PY
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          components: rustfmt, clippy
+      - name: Install test dependencies and pinned config source
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends jq ripgrep busybox shellcheck iproute2 iptables
+          git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
+      - name: Reproduce the reported restoration defects on the previous source
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/stop-rollback
+          git worktree add --detach "$RUNNER_TEMP/before" 1cc2cfc715d6bbadf855c5de1ab09ed2a3e1e309
+          cp scripts/test-start-stop-rollback.py "$RUNNER_TEMP/before/scripts/"
+          if python3 "$RUNNER_TEMP/before/scripts/test-start-stop-rollback.py" -v \
+            StartStopRollback.test_normal_stop_restores_all_original_offload_values \
+            StartStopRollback.test_failed_post_start_removes_interception_before_stopping_listener \
+            > artifacts/stop-rollback/before.log 2>&1; then
+            echo 'Old-source negative control unexpectedly passed' >&2; exit 1
+          fi
+          grep -q '^FAIL: test_normal_stop_restores_all_original_offload_values' artifacts/stop-rollback/before.log
+          grep -q '^FAIL: test_failed_post_start_removes_interception_before_stopping_listener' artifacts/stop-rollback/before.log
+          if grep -q '^ERROR:' artifacts/stop-rollback/before.log; then cat artifacts/stop-rollback/before.log; exit 1; fi
+      - name: Verify Rust formatting, lints and actual compiled tests
+        run: |
+          set -euo pipefail
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked 2>&1 | tee artifacts/stop-rollback/rust.log
+      - name: Execute rollback, ownership and DNS regressions
+        run: |
+          set -euo pipefail
+          exec > >(tee artifacts/stop-rollback/network.log) 2>&1
+          shellcheck -s ash -S warning src/MagicNet/lib/magicnet/core.sh src/MagicNet/lib/magicnet/lifecycle.sh
+          python3 scripts/test-start-stop-rollback.py --all-shells
+          for shell in sh bash busybox; do
+            MAGICNET_TEST_SHELL="$shell" python3 scripts/test-route-ownership.py
+          done
+          python3 scripts/test-xtables-registration.py
+          python3 scripts/test-dns-output-order.py
+          python3 scripts/test-dns-capture-fast-path.py
+          sh scripts/test-startup-network-safety.sh
+          bash scripts/test-app-routing-policy.sh
+          bash scripts/test-hotspot-routing.sh
+          bash scripts/test-kernel-route-lifecycle.sh
+          bash scripts/test-dns-leak-guard-timeout.sh
+          python3 scripts/test-uninstall.py
+          python3 scripts/test-website-probe.py
+          node webui/hotspot-policy.test.mjs
+      - name: Execute actual kernel route namespace regression
+        run: |
+          set -euo pipefail
+          sudo bash scripts/test-route-ownership-netns.sh 2>&1 | tee artifacts/stop-rollback/netns.log
+      - name: Store verified source tree without updating production branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, subprocess
+          expected={
+          'crates/magicnet-cli/src/commands.rs':'27aba6602b80f7eb298cb2fbb776e8a8d0b91567',
+          'crates/magicnet-cli/src/service.rs':'20bb4b620003cd4c25056c72b4af1fedc39275d8',
+          'scripts/test-app-routing-policy.sh':'5c3e5ebd4ac26a493e2b87e19338d596cc33e52c',
+          'scripts/test-host.sh':'20de900b4fc0a4d37821b6dae6accbd84b79e901',
+          'scripts/test-route-ownership.py':'f5653dd0c837e6152aee54904f0520666e4822c3',
+          'scripts/test-start-stop-rollback.py':'4c77038bd5d955bf57f545d4766038310cd967be',
+          'scripts/test-startup-network-safety.sh':'1292ad170e2e268fe18e736a9964b0c5e5452620',
+          'src/MagicNet/lib/magicnet/core.sh':'1530b86fbbb5ce3372a798340cacc0087ae70797',
+          'src/MagicNet/lib/magicnet/lifecycle.sh':'8dc00302e39e159746e1490cc010c015e65969ec'}
+          changed=set(subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines())
+          assert changed==set(expected),changed
+          entries=[]
+          for path,sha in sorted(expected.items()):
+              assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha,path
+              mode,indexsha,*_=subprocess.check_output(['git','ls-files','--stage',path],text=True).split()
+              assert indexsha==sha,path
+              entries.append(dict(path=path,mode=mode,type='blob',content=Path(path).read_text()))
+          cp=subprocess.run(['gh','api','--method','POST','repos/LIghtJUNction/MagicNet/git/trees','--input','-'],input=json.dumps({'base_tree':'f5211b43a841aae75eb8f7413d53129b2a733c3f','tree':entries}),capture_output=True,text=True,check=True,timeout=30)
+          tree=json.loads(cp.stdout)['sha']
+          result=dict(result='PASS',tree=tree,parent='1cc2cfc715d6bbadf855c5de1ab09ed2a3e1e309',files=expected,scope='host_rollback_and_kernel_route_regressions',not_tested=['physical_Android_on_off_restoration','affected_websites'])
+          Path('artifacts/stop-rollback/verified.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: stop-rollback-evidence
+          path: artifacts/stop-rollback
+          if-no-files-found: error
+          retention-days: 7

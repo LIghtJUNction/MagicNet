@@ -1,0 +1,457 @@
+diff --git a/crates/magicnet-cli/src/commands.rs b/crates/magicnet-cli/src/commands.rs
+index bf0dc8a..27aba66 100644
+--- a/crates/magicnet-cli/src/commands.rs
++++ b/crates/magicnet-cli/src/commands.rs
+@@ -170,10 +170,6 @@ fn state_command(app: &App, args: &[String]) -> Result<(), String> {
+     }
+ }
+ 
+-fn sync_service_lifecycle(app: &App) -> Result<(), String> {
+-    run_magicnet_function(app, "magicnet_lifecycle_sync")
+-}
+-
+ fn service_command(app: &App, args: &[String]) -> Result<(), String> {
+     match args.first().map_or("status", String::as_str) {
+         "status" => {
+@@ -181,10 +177,9 @@ fn service_command(app: &App, args: &[String]) -> Result<(), String> {
+             Ok(())
+         }
+         "logs" => service_logs(app, &prefixed_args("service", args)),
+-        _ => {
+-            service_cmd(app, args)?;
+-            sync_service_lifecycle(app)
+-        }
++        // Start/stop own runtime restoration under their lifecycle lock. The
++        // main dispatcher still publishes canonical state after either result.
++        _ => service_cmd(app, args),
+     }
+ }
+ 
+ diff --git a/crates/magicnet-cli/src/service.rs b/crates/magicnet-cli/src/service.rs
+index 1481cf3..20bb4b6 100644
+--- a/crates/magicnet-cli/src/service.rs
++++ b/crates/magicnet-cli/src/service.rs
+@@ -551,7 +551,10 @@ fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String>
+         let _ = run_magicnet_function(app, START_SUPERVISORS_COMMAND);
+         return Err(err);
+     }
+-    Ok(())
++    // Finish before the caller drops its lifecycle lock or starts a replacement
++    // core. Cleanup outside that lock can race a new start and remove its rules.
++    run_magicnet_function(app, "magicnet_lifecycle_after_stop")
++        .map_err(|err| format!("finalize stopped network: {err}"))
+ }
+ 
+ fn transparent_transaction_active(app: &App) -> bool {
+ diff --git a/scripts/test-app-routing-policy.sh b/scripts/test-app-routing-policy.sh
+index 2f30078..5c3e5eb 100755
+--- a/scripts/test-app-routing-policy.sh
++++ b/scripts/test-app-routing-policy.sh
+@@ -1180,15 +1180,31 @@ assert_ready_start_holds_one_lock_and_stops_failed_generation() (
+   magicnet_start_singbox_unlocked() {
+     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+     printf '%s\n' core >>"$events"
++    : >"$WORK/core-live"
+   }
+   magicnet_after_kernel_start_unlocked() {
+     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
+     printf '%s\n' network >>"$events"
+     return 1
+   }
++  magicnet_kernel_running() { [ -e "$WORK/core-live" ]; }
++  magicnet_kernel_route_state_capture() {
++    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
++    printf '%s\n' capture >>"$events"
++  }
++  magicnet_prepare_network_for_core_stop() {
++    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
++    printf '%s\n' detach >>"$events"
++  }
++  magicnet_lifecycle_after_stop() {
++    [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
++    [ ! -e "$WORK/core-live" ]
++    printf '%s\n' restore >>"$events"
++  }
+   import() { :; }
+   singbox_stop() {
+     [ "${MAGICNET_CONFIG_LOCK_HELD:-0}" = 1 ]
++    rm -f "$WORK/core-live"
+     printf '%s\n' stop >>"$events"
+   }
+   magicnet_warn() { :; }
+@@ -1200,8 +1216,11 @@ assert_ready_start_holds_one_lock_and_stops_failed_generation() (
+   diff -u - "$events" <<'EOF'
+ lock
+ core
++capture
+ network
++detach
+ stop
++restore
+ EOF
+ )
+ 
+ diff --git a/scripts/test-host.sh b/scripts/test-host.sh
+index 1a59d67..20de900 100755
+--- a/scripts/test-host.sh
++++ b/scripts/test-host.sh
+@@ -119,6 +119,7 @@ check python3 scripts/test-dns-capture-fast-path.py
+ check python3 scripts/test-dns-output-order.py
+ CI_TEST_FORCE=1 check python3 scripts/test-xtables-registration.py
+ check sh scripts/test-startup-network-safety.sh
++check python3 scripts/test-start-stop-rollback.py --all-shells
+ check sh scripts/test-kernel-route-lifecycle.sh
+ check bash scripts/test-submodule-updates.sh
+ check bash scripts/test-subscription-activation-order.sh
+ diff --git a/scripts/test-route-ownership.py b/scripts/test-route-ownership.py
+index 407945a..f5653dd 100644
+--- a/scripts/test-route-ownership.py
++++ b/scripts/test-route-ownership.py
+@@ -111,6 +111,9 @@ magicnet_transparent_mode() {{ fixture mode; }}
+ magicnet_iface_exists() {{ fixture iface; }}
+ magicnet_warn() {{ printf '%s\n' "$*" >&2; }}
+ magicnet_refresh_status() {{ :; }}
++# DNS has separate stateful tests; this fixture models routes/offload only.
++magicnet_disable_dns_capture() {{ :; }}
++magicnet_disable_dns_leak_guard() {{ :; }}
+ . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/routes.sh'))}
+ . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/lifecycle.sh'))}
+ magicnet_iptables_cmd() {{ fixture iptables "$@"; }}
+ diff --git a/scripts/test-start-stop-rollback.py b/scripts/test-start-stop-rollback.py
+new file mode 100644
+index 0000000..4c77038
+--- /dev/null
++++ b/scripts/test-start-stop-rollback.py
+@@ -0,0 +1,205 @@
++#!/usr/bin/env python3
++"""Execute shipped lifecycle orchestration with fault-injected external effects.
++
++These tests certify ordering and restoration, not Android connectivity. Real
++route/firewall helpers have separate stateful and network-namespace regressions.
++"""
++from __future__ import annotations
++
++import os
++from pathlib import Path
++import shlex
++import shutil
++import sys
++import subprocess
++import tempfile
++import unittest
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++class StartStopRollback(unittest.TestCase):
++    def run_case(self, code: str, expected: int = 0):
++        with tempfile.TemporaryDirectory(prefix="magicnet-rollback-") as work:
++            mod = Path(work) / "module"
++            (mod / ".state/hotspot").mkdir(parents=True)
++            prefix = f'''
++set -eu
++MODDIR={shlex.quote(str(mod))}
++export MODDIR
++. {shlex.quote(str(ROOT / "src/MagicNet/lib/magicnet/network.sh"))}
++. {shlex.quote(str(ROOT / "src/MagicNet/lib/magicnet/routes.sh"))}
++. {shlex.quote(str(ROOT / "src/MagicNet/lib/magicnet/lifecycle.sh"))}
++. {shlex.quote(str(ROOT / "src/MagicNet/lib/magicnet/core.sh"))}
++event() {{ printf '%s\n' "$*" >>"$MODDIR/events"; }}
++magicnet_warn() {{ event "warn:$*"; }}
++magicnet_refresh_status() {{ :; }}
++magicnet_kernel_running() {{
++    [ ! -e "$MODDIR/unknown" ] || return 2
++    [ -e "$MODDIR/core" ]
++}}
++import() {{ :; }}
++magicnet_start_singbox_unlocked() {{
++    event start
++    : >"$MODDIR/core"
++}}
++magicnet_kernel_route_state_capture() {{
++    event capture
++    [ ! -e "$MODDIR/capture-fails" ] || return 2
++    : >"$MODDIR/route-owned"
++}}
++magicnet_after_kernel_start_unlocked() {{
++    event post-start
++    : >"$MODDIR/dns"
++    : >"$MODDIR/guard"
++    : >"$MODDIR/hotspot"
++    return 1
++}}
++magicnet_hotspot_route_cleanup() {{ event hotspot-clean; rm -f "$MODDIR/hotspot"; }}
++magicnet_disable_dns_capture() {{
++    event dns-clean
++    [ ! -e "$MODDIR/delete-fails" ] || return 1
++    rm -f "$MODDIR/dns"
++}}
++magicnet_disable_dns_leak_guard() {{ event guard-clean; rm -f "$MODDIR/guard"; }}
++magicnet_kernel_route_cleanup_after_stop() {{
++    event route-clean
++    [ ! -e "$MODDIR/core" ] || return 2
++    [ ! -e "$MODDIR/route-fails" ] || return 2
++    rm -f "$MODDIR/route-owned"
++}}
++singbox_stop() {{
++    event stop
++    # A stopped listener must not remain a live DNS redirection target.
++    [ ! -e "$MODDIR/dns" ] && [ ! -e "$MODDIR/guard" ] && [ ! -e "$MODDIR/hotspot" ] || return 1
++    rm -f "$MODDIR/core"
++}}
++magicnet_hotspot_offload_value() {{ cat "$MODDIR/offload"; }}
++settings() {{
++    event "settings:$*"
++    [ ! -e "$MODDIR/settings-fails" ] || return 1
++    case "$1" in
++        put) printf '%s\n' "$4" >"$MODDIR/offload" ;;
++        delete) printf 'null\n' >"$MODDIR/offload" ;;
++        *) return 1 ;;
++    esac
++}}
++export MAGICNET_STOP_CLEANUP_ATTEMPTS=1 MAGICNET_STOP_CLEANUP_DELAY=0
++: >"$MODDIR/events"
++printf '1\n' >"$MODDIR/offload"
++'''
++            shell = os.environ.get("MAGICNET_TEST_SHELL", "sh")
++            argv = ["busybox", "sh"] if shell == "busybox" else [shell]
++            cp = subprocess.run(argv + ["-c", prefix + code], capture_output=True,
++                                text=True, timeout=10)
++            events = (mod / "events").read_text()
++            self.assertEqual(cp.returncode, expected, cp.stdout + cp.stderr + events)
++            return events
++
++    def test_stop_finalization_remains_inside_the_locked_service_operation(self):
++        # Contract check complements the executed shell failure tests below.
++        service = (ROOT / "crates/magicnet-cli/src/service.rs").read_text()
++        stop = service.split("fn stop_all_direct(", 1)[1].split(
++            "fn transparent_transaction_active(", 1)[0]
++        self.assertGreater(stop.index('run_magicnet_function(app, "magicnet_lifecycle_after_stop")'),
++                           stop.index("stop_owned_singbox(app, owned_singbox)"))
++        self.assertIn("finalize stopped network: {err}", stop)
++        commands = (ROOT / "crates/magicnet-cli/src/commands.rs").read_text()
++        handler = commands.split("fn service_command(", 1)[1].split("fn api_command(", 1)[0]
++        self.assertNotIn("sync_service_lifecycle", handler)
++        self.assertNotIn("magicnet_lifecycle_sync", handler)
++
++    def test_failed_post_start_removes_interception_before_stopping_listener(self):
++        events = self.run_case('''
++printf 'value=0\n' >"$MODDIR/.state/hotspot/tether-offload.previous"
++if magicnet_start_singbox_ready_unlocked; then exit 20; fi
++for name in core dns guard hotspot route-owned; do [ ! -e "$MODDIR/$name" ] || exit 21; done
++[ "$(cat "$MODDIR/offload")" = 0 ] || exit 22
++[ ! -e "$MODDIR/.state/hotspot/tether-offload.previous" ] || exit 23
++''')
++        self.assertLess(events.index("capture\n"), events.index("post-start\n"))
++        self.assertLess(events.index("dns-clean\n"), events.index("stop\n"))
++        self.assertLess(events.index("guard-clean\n"), events.index("stop\n"))
++        self.assertLess(events.index("stop\n"), events.index("route-clean\n"))
++
++    def test_failed_ownership_capture_rolls_back_without_installing_dns(self):
++        events = self.run_case('''
++: >"$MODDIR/capture-fails"
++if magicnet_start_singbox_ready_unlocked; then exit 20; fi
++[ ! -e "$MODDIR/core" ] || exit 21
++[ ! -e "$MODDIR/dns" ] || exit 22
++''')
++        self.assertNotIn("post-start\n", events)
++        self.assertIn("stop\n", events)
++
++    def test_failed_detach_keeps_listener_and_reports_incomplete_rollback(self):
++        events = self.run_case('''
++: >"$MODDIR/delete-fails"
++rc=0
++magicnet_start_singbox_ready_unlocked || rc=$?
++[ "$rc" = 2 ] || exit 20
++[ -e "$MODDIR/core" ] && [ -e "$MODDIR/dns" ] || exit 21
++[ -e "$MODDIR/.state/transparent-recent-error" ] || exit 22
++''')
++        self.assertNotIn("stop\n", events)
++
++    def test_normal_stop_restores_all_original_offload_values(self):
++        for value in ("0", "1", "unset"):
++            with self.subTest(value=value):
++                record = "unset" if value == "unset" else f"value={value}"
++                expected = "null" if value == "unset" else value
++                self.run_case(f'''
++printf '%s\n' {record} >"$MODDIR/.state/hotspot/tether-offload.previous"
++magicnet_lifecycle_after_stop
++[ "$(cat "$MODDIR/offload")" = {expected} ] || exit 20
++[ ! -e "$MODDIR/.state/hotspot/tether-offload.previous" ] || exit 21
++magicnet_lifecycle_after_stop
++[ "$(cat "$MODDIR/offload")" = {expected} ] || exit 22
++''')
++
++    def test_restore_failure_is_not_a_successful_stop(self):
++        self.run_case('''
++printf 'value=0\n' >"$MODDIR/.state/hotspot/tether-offload.previous"
++: >"$MODDIR/settings-fails"
++if magicnet_lifecycle_after_stop; then exit 20; fi
++[ -e "$MODDIR/.state/hotspot/tether-offload.previous" ] || exit 21
++[ -e "$MODDIR/.state/transparent-recent-error" ] || exit 22
++rm "$MODDIR/settings-fails"
++magicnet_lifecycle_after_stop
++[ ! -e "$MODDIR/.state/hotspot/tether-offload.previous" ] || exit 23
++[ ! -e "$MODDIR/.state/transparent-recent-error" ] || exit 24
++''')
++
++    def test_independent_restoration_continues_after_route_cleanup_error(self):
++        self.run_case('''
++printf 'value=0\n' >"$MODDIR/.state/hotspot/tether-offload.previous"
++: >"$MODDIR/route-fails"
++: >"$MODDIR/dns"
++: >"$MODDIR/guard"
++if magicnet_lifecycle_after_stop; then exit 20; fi
++[ "$(cat "$MODDIR/offload")" = 0 ] || exit 21
++[ ! -e "$MODDIR/dns" ] && [ ! -e "$MODDIR/guard" ] || exit 22
++''')
++
++    def test_unknown_or_live_core_must_not_restore_stopped_state(self):
++        for name in ("unknown", "core"):
++            with self.subTest(name=name):
++                events = self.run_case(f'''
++: >"$MODDIR/{name}"
++printf 'value=0\n' >"$MODDIR/.state/hotspot/tether-offload.previous"
++if magicnet_lifecycle_after_stop; then exit 20; fi
++[ "$(cat "$MODDIR/offload")" = 1 ] || exit 21
++''')
++                self.assertNotIn("dns-clean\n", events)
++                self.assertNotIn("guard-clean\n", events)
++                self.assertNotIn("settings:", events)
++
++
++if __name__ == "__main__":
++    if sys.argv[1:] == ["--all-shells"]:
++        for shell in ("sh", "bash", "busybox"):
++            if shutil.which(shell):
++                subprocess.run([sys.executable, __file__], check=True,
++                               env=dict(os.environ, MAGICNET_TEST_SHELL=shell))
++    else:
++        unittest.main()
+ diff --git a/scripts/test-startup-network-safety.sh b/scripts/test-startup-network-safety.sh
+index ba46763..1292ad1 100644
+--- a/scripts/test-startup-network-safety.sh
++++ b/scripts/test-startup-network-safety.sh
+@@ -245,10 +245,12 @@ SH
+     magicnet_disable_dns_leak_guard() { :; }
+     if magicnet_start_kernel >"$WORK/log" 2>&1; then fail 'failed start reported success'; fi
+     grep -q 'preceding core or network error' "$WORK/log" || fail 'misleading startup diagnostic'
+-    magicnet_start_singbox_unlocked() { :; }
++    magicnet_start_singbox_unlocked() { : >"$WORK/core-live"; }
++    magicnet_kernel_running() { [ -e "$WORK/core-live" ]; }
+     magicnet_after_kernel_start_unlocked() { return 1; }
++    magicnet_lifecycle_after_stop() { [ ! -e "$WORK/core-live" ]; }
+     import() { :; }
+-    singbox_stop() { : >"$WORK/stopped"; }
++    singbox_stop() { rm -f "$WORK/core-live"; : >"$WORK/stopped"; }
+     if magicnet_start_singbox_ready_unlocked >/dev/null 2>&1; then fail 'rollback reported success'; fi
+     [ -f "$WORK/stopped" ] || fail 'genuine post-start failure did not stop the core'
+ )
+ diff --git a/src/MagicNet/lib/magicnet/core.sh b/src/MagicNet/lib/magicnet/core.sh
+index 13c12a5..1530b86 100644
+--- a/src/MagicNet/lib/magicnet/core.sh
++++ b/src/MagicNet/lib/magicnet/core.sh
+@@ -163,28 +163,56 @@ magicnet_start_singbox() {
+     magicnet_with_sub_config_lock magicnet_start_singbox_unlocked
+ }
+ 
++# Caller holds the startup/config lock. Failed initialization must detach our
++# interception before removing its listener; otherwise netd still targets a dead
++# port. If detachment fails, keep the listener and report recovery as incomplete.
++magicnet_rollback_failed_start_unlocked() (
++    if magicnet_kernel_running; then
++        magicnet_prepare_network_for_core_stop || {
++            magicnet_kernel_route_report_result 2 || true
++            return 2
++        }
++        import __singbox__
++        singbox_stop || {
++            magicnet_kernel_route_report_result 2 || true
++            return 2
++        }
++    else
++        _rollback_core_rc=$?
++        [ "$_rollback_core_rc" -eq 1 ] || return 2
++    fi
++    # Also handles a core that already exited during initialization. Final
++    # cleanup verifies stopped identity and attempts every independent resource.
++    magicnet_lifecycle_after_stop
++)
++
+ magicnet_start_singbox_ready_unlocked() {
+-    magicnet_start_singbox_unlocked || return 1
+-    # Keep core materialization, process readiness, and the kernel controls
+-    # that target this exact generation under one lock acquisition.  Releasing
+-    # and reacquiring here let fswatch win the gap and made manual startup wait
+-    # behind a redundant config apply.
+-    if magicnet_after_kernel_start_unlocked; then
+-        # Record this generation before releasing the lifecycle/config lock.
+-        if command -v magicnet_kernel_route_state_capture >/dev/null 2>&1; then
+-            magicnet_kernel_route_state_capture || {
+-                magicnet_kernel_route_report_result 2 || true
+-                magicnet_warn "Core is running but route ownership could not be verified; recovery state retained."
+-                return 2
+-            }
++    if magicnet_start_singbox_unlocked; then
++        :
++    else
++        _ready_start_rc=$?
++        # Unknown identity is not permission to tear down another generation.
++        [ "$_ready_start_rc" -ne 2 ] || return 2
++        magicnet_rollback_failed_start_unlocked || return 2
++        return 1
++    fi
++    # Capture the core's own rules BEFORE hotspot/DNS initialization. A failure
++    # in those later phases must not leave only a prepared, unattributed ledger.
++    if command -v magicnet_kernel_route_state_capture >/dev/null 2>&1; then
++        if ! magicnet_kernel_route_state_capture; then
++            magicnet_kernel_route_report_result 2 || true
++            magicnet_warn "Route ownership could not be verified; rolling back startup."
++            magicnet_rollback_failed_start_unlocked || return 2
++            return 2
+         fi
++    fi
++    if magicnet_after_kernel_start_unlocked; then
+         magicnet_singbox_save_last_good ||
+             magicnet_warn "Could not save the validated sing-box recovery checkpoint."
+         return 0
+     fi
+-    import __singbox__
+-    singbox_stop >/dev/null 2>&1 || true
+     magicnet_warn "sing-box started but post-start network initialization failed"
++    magicnet_rollback_failed_start_unlocked || return 2
+     return 1
+ }
+ 
+ diff --git a/src/MagicNet/lib/magicnet/lifecycle.sh b/src/MagicNet/lib/magicnet/lifecycle.sh
+index 9f06de7..8dc0030 100644
+--- a/src/MagicNet/lib/magicnet/lifecycle.sh
++++ b/src/MagicNet/lib/magicnet/lifecycle.sh
+@@ -301,8 +301,26 @@ magicnet_lifecycle_after_start() (
+ )
+ 
+ magicnet_lifecycle_after_stop() (
++    # No final restoration against a still-live or indeterminate generation.
++    if magicnet_kernel_running; then
++        magicnet_kernel_route_report_result 1 || true
++        return 1
++    else
++        _stopped_rc=$?
++    fi
++    if [ "$_stopped_rc" -ne 1 ]; then
++        magicnet_kernel_route_report_result 2 || true
++        return 2
++    fi
+     _rc=0
+-    magicnet_kernel_route_cleanup_after_stop || _rc=$?
++    # Do not short-circuit independent cleanup when one subsystem fails. A
++    # crashed/failed start may leave DNS capture even without a live core.
++    magicnet_disable_dns_capture || _rc=2
++    magicnet_disable_dns_leak_guard || _rc=2
++    magicnet_kernel_route_cleanup_after_stop || _rc=2
++    # Restoring offload belongs to service stop too, not just hotspot disable.
++    # Keep the user's persisted hotspot selection; replay re-enables it on start.
++    magicnet_hotspot_offload_restore || _rc=2
+     magicnet_kernel_route_report_result "$_rc" || _rc=2
+     [ "$_rc" -eq 0 ] || magicnet_warn "Network cleanup is incomplete; recovery evidence was retained."
+     magicnet_refresh_status || magicnet_warn "Failed to synchronize the module description after core stop."
