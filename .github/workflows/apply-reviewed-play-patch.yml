@@ -1,0 +1,75 @@
+name: Apply Reviewed Play Patch
+on:
+  push:
+    branches: [audit/play-tools-20260916]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Apply hash-checked local edits to the fix branch only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = LIghtJUNction/MagicNet
+          test "$GITHUB_REF_NAME" = audit/play-tools-20260916
+          base=d1e5b7726b0c9e891a3b4db17bd91eb5caa9be09
+          branch=fix/play-routing-feedback-20260916
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq .object.sha)" = "$base"
+          mkdir -p "$RUNNER_TEMP/play-delta"
+          cp .github/patches/play-delta-*.json "$RUNNER_TEMP/play-delta/"
+          git checkout --detach "$base"
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          updates=[]
+          for file in sorted((Path(os.environ['RUNNER_TEMP'])/'play-delta').glob('*.json')):
+              updates.extend(json.loads(file.read_text()))
+          assert len(updates)==33 and len({u['path'] for u in updates})==33
+          for u in updates:
+              path=Path(u['path'])
+              assert not path.is_absolute() and '..' not in path.parts and not path.is_symlink()
+              old=path.read_bytes() if path.exists() else None
+              assert (hashlib.sha256(old).hexdigest() if old is not None else None)==u['old'], ('base mismatch', str(path))
+              if u['new'] is None:
+                  path.unlink()
+              else:
+                  lines=old.decode().splitlines(True) if old is not None else []
+                  for start,end,text in reversed(u['changes']):
+                      assert 0<=start<=end<=len(lines)
+                      lines[start:end]=[text]
+                  content=''.join(lines).encode()
+                  assert hashlib.sha256(content).hexdigest()==u['new'], ('output mismatch',str(path))
+                  path.parent.mkdir(parents=True,exist_ok=True)
+                  path.write_bytes(content)
+                  path.chmod(int(u['mode'],8))
+              subprocess.run(['git','add','--',str(path)],check=True)
+          print('All 33 source files match the locally tested content hashes')
+          PY
+          rustup component add rustfmt
+          rustfmt --edition 2021 crates/magicnet-cli/src/commands.rs crates/magicnet-cli/src/diagnostics.rs
+          git add crates/magicnet-cli/src/commands.rs crates/magicnet-cli/src/diagnostics.rs
+          git diff --cached --check
+          git config user.name 'LIghtJUNction'
+          git config user.email '106986785+LIghtJUNction@users.noreply.github.com'
+          git commit -m 'fix(network): scope route cleanup and repair DNS, diagnostics and Tailscale for v1.5.6'
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "HEAD:refs/heads/$branch"
+          git rev-parse HEAD
+          git archive HEAD | gzip > "$RUNNER_TEMP/play-delta/verified-source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/play-delta/head.txt"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: applied-play-patch-evidence
+          path: ${{ runner.temp }}/play-delta
+          retention-days: 1
+          if-no-files-found: error
