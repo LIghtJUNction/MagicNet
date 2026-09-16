@@ -100,5 +100,70 @@ for package in requested:
         self.assertNotIn("MAGICNET_X86_MCP", env)
 
 
+    def test_sdk_bootstrap_precedes_all_android_consumers(self):
+        names = [step.get("name") for step in self.steps]
+        for consumer in ("Build application-UID network probe", "Create pristine Android 15 AVD", "Boot Android with KernelSU kernel"):
+            self.assertLess(names.index("Locate Android SDK tools"), names.index(consumer))
+
+    def test_sdk_bootstrap_exports_all_tools_without_global_path_assumptions(self):
+        for layout in ("latest", "versioned"):
+            with self.subTest(layout=layout), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                sdk = root / "sdk with spaces"
+                versions = ["latest"] if layout == "latest" else ["9.0", "16.0"]
+                for version in versions:
+                    toolbin = sdk / "cmdline-tools" / version / "bin"
+                    toolbin.mkdir(parents=True)
+                    for tool in ("sdkmanager", "avdmanager"):
+                        file = toolbin / tool
+                        file.write_text("#!/bin/sh\nexit 0\n")
+                        file.chmod(0o755)
+                pathfile = root / "github-path"
+                env = dict(os.environ, ANDROID_SDK_ROOT=str(sdk), ANDROID_HOME="/not/the/sdk", GITHUB_PATH=str(pathfile))
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", self.step("Locate Android SDK tools")["run"]],
+                                        env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(pathfile.read_text().splitlines(), [str(sdk / "cmdline-tools" / versions[-1] / "bin"), str(sdk / "platform-tools"), str(sdk / "emulator")])
+
+    def test_sdk_bootstrap_fails_without_publishing_partial_paths(self):
+        for failure in ("missing-directory", "missing-manager", "missing-avdmanager", "not-executable", "newline"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                sdk = root / ("sdk\ninjected-path" if failure == "newline" else "sdk")
+                tools = sdk / "cmdline-tools/latest/bin"
+                if failure != "missing-directory":
+                    tools.mkdir(parents=True)
+                    for tool in ("sdkmanager", "avdmanager"):
+                        if (failure == "missing-manager" and tool == "sdkmanager") or (failure == "missing-avdmanager" and tool == "avdmanager"):
+                            continue
+                        file = tools / tool
+                        file.write_text("#!/bin/sh\nexit 0\n")
+                        file.chmod(0o644 if failure == "not-executable" else 0o755)
+                pathfile = root / "github-path"
+                env = dict(os.environ, ANDROID_SDK_ROOT=str(sdk), GITHUB_PATH=str(pathfile))
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", self.step("Locate Android SDK tools")["run"]],
+                                        env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertFalse(pathfile.exists(), "invalid SDK must not publish paths")
+
+
+    def test_failed_sdk_install_does_not_publish_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sdk = root / "sdk"
+            tools = sdk / "cmdline-tools/latest/bin"
+            tools.mkdir(parents=True)
+            for tool in ("sdkmanager", "avdmanager"):
+                file = tools / tool
+                file.write_text("#!/bin/sh\nexit 19\n")
+                file.chmod(0o755)
+            pathfile = root / "github-path"
+            env = dict(os.environ, ANDROID_SDK_ROOT=str(sdk), GITHUB_PATH=str(pathfile))
+            result = subprocess.run(["bash", "-euo", "pipefail", "-c", self.step("Locate Android SDK tools")["run"]],
+                                    env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 19, result.stdout + result.stderr)
+            self.assertFalse(pathfile.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

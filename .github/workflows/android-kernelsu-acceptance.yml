@@ -66,6 +66,27 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Locate Android SDK tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$sdk" || ! -d "$sdk/cmdline-tools" || "$sdk" == *$'\n'* || "$sdk" == *$'\r'* ]]; then
+            echo '::error::Android SDK command-line tools directory is missing or invalid' >&2
+            exit 2
+          fi
+          manager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$manager" ]]; then
+            manager="$(find "$sdk/cmdline-tools" -maxdepth 3 -type f -path '*/bin/sdkmanager' -executable | sort -V | tail -n 1)"
+          fi
+          tools="${manager%/sdkmanager}"
+          if [[ ! -x "$manager" || ! -x "$tools/avdmanager" ]]; then
+            echo '::error::Matching sdkmanager and avdmanager executables are required' >&2
+            exit 2
+          fi
+          timeout 600 "$manager" --sdk_root="$sdk" "platform-tools" "emulator"
+          printf '%s\n' "$tools" "$sdk/platform-tools" "$sdk/emulator" >> "$GITHUB_PATH"
+
       - name: Validate acceptance harness
         shell: bash
         run: |
@@ -275,7 +296,7 @@ jobs:
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platform-tools" "emulator" "$SYSTEM_IMAGE"
+          timeout 900 sdkmanager "$SYSTEM_IMAGE"
           rm -rf "$HOME/.android/avd/${AVD_NAME}.avd" "$HOME/.android/avd/${AVD_NAME}.ini"
           echo no | avdmanager create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE"
           cat >>"$HOME/.android/avd/${AVD_NAME}.avd/config.ini" <<'EOF'
