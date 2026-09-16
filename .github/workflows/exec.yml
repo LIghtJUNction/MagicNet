@@ -368,6 +368,8 @@ jobs:
 
       - name: Release quality gate
         id: release_quality
+        env:
+          CI_TEST_FORCE: "1"
         if: ${{ env.RELEASE_REQUESTED == '1' }}
         timeout-minutes: 45
         run: |
