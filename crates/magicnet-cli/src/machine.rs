@@ -8,6 +8,7 @@ use crate::{
     singbox_pid_summary, webui_api::current_clash_mode, App,
 };
 
+mod subscription;
 mod transparent;
 
 const MACHINE_SCHEMA: u64 = 1;
@@ -35,7 +36,9 @@ const MACHINE_COMMANDS: &[&str] = &[
     "dns.status",
     "network.status",
     "sub.status",
+    "sub.inspect",
     "wifi.status",
+    "wifi.inspect",
     "machine.capabilities",
 ];
 
@@ -88,6 +91,17 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
             Ok(network_status_value(app))
         }
         [command, action] if *command == "sub" && *action == "status" => Ok(sub_status_value(app)),
+        [command, action] if *command == "sub" && *action == "inspect" => {
+            subscription::inspect(app)
+        }
+        [command, action] if *command == "wifi" && *action == "inspect" => {
+            crate::wifi::inspect_machine(app)
+                .map(|data| envelope("wifi.inspect", data))
+                .map_err(|_| MachineError {
+                    code: "machine.wifi_observation_failed",
+                    message: "unable to inspect Wi-Fi configuration and live network",
+                })
+        }
         [command, action] if *command == "wifi" && *action == "status" => {
             Ok(wifi_status_value(app))
         }
@@ -141,6 +155,7 @@ fn capabilities_value() -> Value {
                 "privacy_safe_network_identifiers",
                 "readiness_signals"
             ],
+            "private_commands": ["sub.inspect", "wifi.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": true,
         }),
@@ -316,63 +331,79 @@ fn network_status_value(app: &App) -> Value {
 }
 
 fn sub_status_value(app: &App) -> Value {
+    let urls = clean_module_lines(app, Path::new(SUBSCRIPTION_URL)).unwrap_or_default();
+    envelope("sub.status", sub_status_data(app, &urls))
+}
+
+fn sub_status_data(app: &App, urls: &[String]) -> Value {
     let values = read_kv(app.moddir.join(SUBSCRIPTION_STATUS));
     let source_mode = subscription_source_mode(app);
     let configured_count = if source_mode == "local_file" {
         1
     } else {
-        clean_module_lines(app, Path::new(SUBSCRIPTION_URL))
-            .map(|lines| lines.len())
-            .unwrap_or(0)
+        urls.len()
     };
     let reason = values.get("reason").map(String::as_str).unwrap_or("none");
+    let stored_result = status_token(&values, "result", "never");
+    let owner = crate::state::subscription_update_owner_state(app);
+    let result = crate::state::effective_subscription_result(&stored_result, owner);
     let schedule_interval = fs::read_to_string(app.moddir.join(SUBSCRIPTION_REFRESH_HOURS))
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| matches!(value.as_str(), "12" | "24" | "48" | "72"))
         .unwrap_or_else(|| "off".to_string());
     let schedule_enabled = schedule_interval != "off";
-
-    envelope(
-        "sub.status",
-        json!({
-            "source": {
-                "mode": source_mode,
-                "configured_count": configured_count,
+    let schedule_owner = crate::state::refresh_owner_state(app);
+    let cache = app.moddir.join(SUBSCRIPTION_CACHE);
+    let (cache_entries, provenance_entries) = subscription::cache_counts(&cache);
+    let (refresh_events, refresh_errors) = crate::diagnostics::subscription_refresh_counts(
+        &app.log_dir.join("subscription-refresh.log"),
+    );
+    json!({
+        "source": {"mode": source_mode, "configured_count": configured_count},
+        "update": {
+            "lock_present": app.moddir.join(SUBSCRIPTION_UPDATE_LOCK).is_dir(),
+            "transaction_pending": app.moddir.join(SUBSCRIPTION_TRANSACTION).is_dir(),
+            "owner": owner,
+            "running": subscription::owner_running(owner),
+        },
+        "last": {
+            "phase": status_token(&values, "phase", "never"),
+            "result": result,
+            "attempt_epoch": status_u64(&values, "attempt_epoch"),
+            "success_epoch": status_u64(&values, "success_epoch"),
+            "configured_count": status_u64(&values, "configured_count"),
+            "source_count": status_u64(&values, "source_count"),
+            "imported_count": status_u64(&values, "imported_count"),
+            "skipped_count": status_u64(&values, "skipped_count"),
+            "generation_id": status_token(&values, "generation_id", "none"),
+            "has_reason": !reason.is_empty() && reason != "none",
+            "source_mode": status_token(&values, "source_mode", "unknown"),
+            "native_parser": status_token(&values, "native_parser", "unknown"),
+            "native_node_count": status_u64(&values, "native_node_count"),
+            "converter_enabled": status_token(&values, "converter_enabled", "unknown"),
+            "converter_available": status_token(&values, "converter_available", "unknown"),
+            "converter_attempted": status_token(&values, "converter_attempted", "0"),
+            "converter_format": status_token(&values, "converter_format", "none"),
+            "converter_result": status_token(&values, "converter_result", "unknown"),
+        },
+        "cache": {
+            "entries": directory_regular_file_count(&cache),
+            "source_entries": cache_entries,
+            "provenance_entries": provenance_entries,
+            "identity": "url_sha256_identity",
+        },
+        "refresh": {"event_count": refresh_events, "error_count": refresh_errors},
+        "schedule": {
+            "interval_hours": schedule_interval,
+            "enabled": schedule_enabled,
+            "owner": schedule_owner,
+            "running": subscription::owner_running(schedule_owner),
+            "owner_valid": if schedule_owner == "unknown" { None } else {
+                Some(if schedule_enabled { schedule_owner == "active" } else { schedule_owner == "none" })
             },
-            "update": {
-                "lock_present": app.moddir.join(SUBSCRIPTION_UPDATE_LOCK).is_dir(),
-                "transaction_pending": app.moddir.join(SUBSCRIPTION_TRANSACTION).is_dir(),
-            },
-            "last": {
-                "phase": status_token(&values, "phase", "never"),
-                "result": status_token(&values, "result", "never"),
-                "attempt_epoch": status_u64(&values, "attempt_epoch"),
-                "success_epoch": status_u64(&values, "success_epoch"),
-                "configured_count": status_u64(&values, "configured_count"),
-                "source_count": status_u64(&values, "source_count"),
-                "imported_count": status_u64(&values, "imported_count"),
-                "skipped_count": status_u64(&values, "skipped_count"),
-                "generation_id": status_token(&values, "generation_id", "none"),
-                "has_reason": !reason.is_empty() && reason != "none",
-                "source_mode": status_token(&values, "source_mode", "unknown"),
-                "native_parser": status_token(&values, "native_parser", "unknown"),
-                "native_node_count": status_u64(&values, "native_node_count"),
-                "converter_enabled": status_token(&values, "converter_enabled", "unknown"),
-                "converter_available": status_token(&values, "converter_available", "unknown"),
-                "converter_attempted": status_token(&values, "converter_attempted", "0"),
-                "converter_format": status_token(&values, "converter_format", "none"),
-                "converter_result": status_token(&values, "converter_result", "unknown"),
-            },
-            "cache": {
-                "entries": directory_regular_file_count(&app.moddir.join(SUBSCRIPTION_CACHE)),
-            },
-            "schedule": {
-                "interval_hours": schedule_interval,
-                "enabled": schedule_enabled,
-            }
-        }),
-    )
+        }
+    })
 }
 
 fn wifi_status_value(app: &App) -> Value {
@@ -635,7 +666,7 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn fixture() -> (std::path::PathBuf, App) {
+    pub(super) fn fixture() -> (std::path::PathBuf, App) {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock before epoch")
@@ -665,6 +696,10 @@ mod tests {
         assert_eq!(value["command"], "machine.capabilities");
         assert_eq!(value["data"]["machine_schema"], 1);
         assert_eq!(value["data"]["read_only"], true);
+        assert_eq!(
+            value["data"]["private_commands"],
+            serde_json::json!(["sub.inspect", "wifi.inspect"])
+        );
         let commands = value["data"]["commands"]
             .as_array()
             .expect("commands array");

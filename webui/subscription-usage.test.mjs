@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseSubs, subscriptionDefaults } from "./src/composables/parsers.ts";
+import { parseMachineSubscription } from "./src/composables/machineStatus.ts";
+import { subscriptionSnapshot } from "./machine-fixtures.mjs";
 import { buildSubscriptionUsageOverview, parseSubscriptionSourceUsage } from "./src/composables/subscriptionUsage.ts";
 
 const now = 1788600000;
@@ -10,9 +11,9 @@ const source = {
   upload_bytes: gib, download_bytes: 2 * gib, total_bytes: 10 * gib,
   expire_epoch: now + 10 * 86400, updated_epoch: now - 60,
 };
-const list = "sing-box.1=https://different.example/private?token=do-not-display";
-function stateFor(sources, previous = subscriptionDefaults) {
-  return parseSubs(list, `source_mode=url\nsource_usage_json=${JSON.stringify(sources)}`, previous);
+const configuration = {sing_box_urls:["https://different.example/private?token=do-not-display"],user_agent:"",filters:[]};
+function stateFor(sources) {
+  return parseMachineSubscription(subscriptionSnapshot({configuration,source_usage:sources}));
 }
 function rowFor(overrides = {}) {
   return buildSubscriptionUsageOverview(stateFor([{ ...source, ...overrides }]), now)[0];
@@ -39,19 +40,24 @@ test("a concurrently changed URL list cannot relabel provider usage", () => {
   assert.equal(JSON.stringify(row).includes("do-not-display"), false);
 });
 
-test("missing or malformed metadata clears previous values and uses private unknown rows", () => {
+test("missing metadata clears previous values and uses private unknown rows", () => {
   const previous = stateFor([source]);
-  for (const payload of ["", "source_usage_json={", "source_usage_json=null", "source_usage_json={}"]) {
-    const parsed = parseSubs(list, payload, previous);
-    assert.deepEqual(parsed.sourceUsage, []);
-    const row = buildSubscriptionUsageOverview(parsed, now)[0];
-    assert.equal(row.hostname, "different.example");
-    assert.equal(row.usedBytes, null);
-    assert.equal(row.remainingBytes, null);
-    assert.equal(row.progressPercent, null);
-    assert.equal(row.expiryLabel, "未提供到期时间");
-    assert.equal(JSON.stringify(row).includes("private"), false);
-    assert.equal(JSON.stringify(row).includes("do-not-display"), false);
+  assert.equal(previous.sourceUsage.length, 1);
+  const parsed = stateFor([]);
+  assert.deepEqual(parsed.sourceUsage, []);
+  const row = buildSubscriptionUsageOverview(parsed, now)[0];
+  assert.equal(row.hostname, "different.example");
+  assert.equal(row.usedBytes, null);
+  assert.equal(row.remainingBytes, null);
+  assert.equal(row.progressPercent, null);
+  assert.equal(row.expiryLabel, "未提供到期时间");
+  assert.equal(JSON.stringify(row).includes("private"), false);
+  assert.equal(JSON.stringify(row).includes("do-not-display"), false);
+});
+
+test("malformed metadata containers invalidate the inspector rather than reusing old quotas", () => {
+  for (const source_usage of ["", "{", null, {}]) {
+    assert.equal(parseMachineSubscription(subscriptionSnapshot({configuration,source_usage})), null);
   }
 });
 
@@ -108,7 +114,7 @@ test("invalid identities, duplicated records and hostile hostnames are rejected"
 });
 
 test("local imports never inherit remote provider usage", () => {
-  const parsed = parseSubs(list, `source_mode=local\nsource_usage_json=${JSON.stringify([source])}`, stateFor([source]));
+  const parsed = parseMachineSubscription(subscriptionSnapshot({source:{mode:"local_file",configured_count:1}, source_usage:[source]}));
   assert.deepEqual(parsed.sourceUsage, []);
   assert.deepEqual(buildSubscriptionUsageOverview(parsed, now), []);
 });

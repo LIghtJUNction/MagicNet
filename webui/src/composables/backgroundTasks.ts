@@ -186,15 +186,16 @@ export function subscriptionLifecycleRunning(
 
 type SubscriptionLifecycleState = {
   backgroundTask: Pick<BackgroundTaskState, "status" | "args">;
-  subscriptions: { updateRunning: boolean; lastResult: string };
+  subscriptions: { updateRunning: boolean; lastResult: string; updateLockOwner?: string };
 };
 
 export function subscriptionLifecycleStatus(
   state: SubscriptionLifecycleState,
   configured: boolean,
-): BackgroundTaskStatus | "empty" {
+): BackgroundTaskStatus | "empty" | "unknown" {
   if (subscriptionLifecycleRunning(state.backgroundTask, state.subscriptions.updateRunning)) return "running";
   if (state.backgroundTask.status === "timeout" && isSubscriptionBackgroundArgs(state.backgroundTask.args)) return "timeout";
+  if (state.subscriptions.lastResult === "unknown" || ["unknown", "pending"].includes(state.subscriptions.updateLockOwner || "")) return "unknown";
   if (state.subscriptions.lastResult === "success") return "done";
   if (["failed", "interrupted"].includes(state.subscriptions.lastResult)) return "error";
   return configured ? "idle" : "empty";

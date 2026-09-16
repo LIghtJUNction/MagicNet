@@ -34,7 +34,7 @@ import {
   updateOperationCapture,
 } from "@/composables/operationCapture";
 import { refreshAllNotice } from "@/composables/refreshAllState";
-import { machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineRuntime, type NetworkPolicyStatus } from "@/composables/machineStatus";
+import { machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineRuntime, parseMachineSubscription, parseMachineWifi, type NetworkPolicyStatus } from "@/composables/machineStatus";
 import {
   blockDefaults,
   dnsDefaults,
@@ -45,8 +45,6 @@ import {
   parseMcp,
   parsePackages,
   parseConfigValidation,
-  parseSubs,
-  parseWifiPolicy,
   parseWarp,
   runtimeDefaults,
   subscriptionDefaults,
@@ -887,41 +885,26 @@ async function refreshSubs(
   foregroundToken?: number,
   reportFailure = true,
 ): Promise<boolean> {
-  const listCommand = startForegroundCommand(
-    "sub list",
-    "读取订阅列表",
-    quiet,
-    "",
-    foregroundToken,
-  );
-  const statusCommand = startForegroundCommand(
-    "sub status",
-    "读取订阅状态",
-    quiet,
-    "",
-    foregroundToken,
-  );
-  const uiToken = statusCommand.token;
+  // Inspector payloads contain credentials. Quiet reads never enter command
+  // capture, reactive output or diagnostics; show only structured failure codes.
+  const command = startForegroundCommand("--json sub inspect", "读取订阅状态", true, "", foregroundToken);
+  const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
-  const [listText, statusText] = await Promise.all([
-    listCommand.promise,
-    statusCommand.promise,
-  ]);
-  const failed = [
-    execFailed(listText) ? t("订阅列表") : "",
-    execFailed(statusText) ? t("订阅状态") : "",
-  ].filter(Boolean);
-  if (failed.length) {
-    if (reportFailure && canUpdateRefreshUi(uiToken, allowBusy)) {
-      state.phase = "error";
-      state.notice = t("订阅刷新不完整");
-      state.output = t("读取{p0}失败，旧数据已保留。\n\n{p1}", { p0: failed.join(t("和")), p1: [listText, statusText].filter(execFailed).join("\n") });
+  const text = await command.promise;
+  const parsed = execFailed(text) ? null : parseMachineSubscription(text);
+  if (!parsed) {
+    if (canUpdateRefreshUi(uiToken, allowBusy)) {
+      Object.assign(state.subscriptions, { updateRunning: false, updateLockOwner: "unknown",
+        lastResult: "unknown", lastReason: "none", sourceUsage: [], scheduleRunning: false, scheduleOwner: "unknown", scheduleOwnerValid: false });
+      if (reportFailure) {
+        state.phase = "error";
+        state.notice = t("订阅刷新不完整");
+        state.output = machineFailureText(text);
+      }
     }
     return false;
   }
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.subscriptions = parseSubs(listText, statusText, state.subscriptions);
-  }
+  if (canUpdateRefreshUi(uiToken, allowBusy)) state.subscriptions = parsed;
   return true;
 }
 
@@ -1016,21 +999,19 @@ async function refreshWifiPolicy(
   quiet = false,
   foregroundToken?: number,
 ): Promise<boolean> {
-  const command = startForegroundCommand(
-    "wifi status",
-    "读取 Wi-Fi 策略",
-    quiet,
-    "",
-    foregroundToken,
-  );
+  const command = startForegroundCommand("--json wifi inspect", "读取 Wi-Fi 策略", true, "", foregroundToken);
   const uiToken = command.token;
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
-  if (markQuietFailure(t("读取 Wi-Fi 策略"), text, uiToken, allowBusy))
+  const parsed = execFailed(text) ? null : parseMachineWifi(text);
+  if (!parsed) {
+    if (canUpdateRefreshUi(uiToken, allowBusy)) {
+      Object.assign(state.wifiPolicy, { observed: false, ssid: "", bssid: "", currentMode: "unavailable" });
+    }
+    markQuietFailure(t("读取 Wi-Fi 策略"), machineFailureText(text), uiToken, allowBusy);
     return false;
-  if (canUpdateRefreshUi(uiToken, allowBusy)) {
-    state.wifiPolicy = parseWifiPolicy(text);
   }
+  if (canUpdateRefreshUi(uiToken, allowBusy)) state.wifiPolicy = parsed;
   return true;
 }
 

@@ -133,8 +133,8 @@ export function buildSubscriptionUsageOverview(
   nowEpoch = Date.now() / 1000,
 ): SubscriptionUsageRow[] {
   if (state.sourceMode === "local") return [];
-  // list and status are read separately. Keep labels and counters from the same
-  // status snapshot; matching counters to list positions could mix two providers.
+  // Keep provider labels and counters from the same inspected source identity.
+  // Never relabel persisted quotas from a separately edited list position.
   const sources = state.sourceUsage.length ? state.sourceUsage : state.singBoxUrls.map((value, index) => {
     let hostname = "";
     try {

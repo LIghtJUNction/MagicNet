@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{self, Read};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use serde_json::Value;
 
@@ -339,16 +342,22 @@ fn transparent_phase(app: &App) -> String {
 
 fn subscription_record(app: &App) -> StateRecord {
     let values = read_kv(app.moddir.join(SUBSCRIPTION_STATUS));
-    let result = map_value(&values, "result", "never");
+    let stored_result = map_value(&values, "result", "never");
+    let owner = subscription_update_owner_state(app);
+    let result = effective_subscription_result(&stored_result, owner);
     let phase = map_value(&values, "phase", "never");
     let lock_present = app.moddir.join(SUBSCRIPTION_UPDATE_LOCK).is_dir();
     let transaction_pending = app.moddir.join(SUBSCRIPTION_TRANSACTION).is_dir();
-    let state = if lock_present || result == "running" {
+    let state = if owner == "active" {
         "running"
+    } else if owner == "pending" {
+        "pending"
+    } else if owner == "unknown" {
+        "unknown"
     } else if transaction_pending {
         "recovery_pending"
     } else {
-        match result.as_str() {
+        match result {
             "success" => "success",
             "failed" => "failed",
             "interrupted" => "interrupted",
@@ -368,6 +377,7 @@ fn subscription_record(app: &App) -> StateRecord {
         .field("state", state)
         .field("phase", phase)
         .field("result", result)
+        .field("owner", owner)
         .field("source", if local { "local" } else { "url" })
         .field("configured_count", configured_count.to_string())
         .field("generation", map_value(&values, "generation_id", "none"))
@@ -389,49 +399,152 @@ fn subscription_refresh_record(app: &App) -> StateRecord {
         .bool("enabled", schedule != "off")
 }
 
-fn refresh_owner_state(app: &App) -> &'static str {
-    let owner_path = app.moddir.join(SUBSCRIPTION_REFRESH_OWNER);
-    let Ok(owner) = fs::read_to_string(&owner_path) else {
-        return "none";
-    };
-    let owner = owner.trim();
-    let mut fields = owner.split(':');
-    let Some(pid) = fields.next().and_then(|value| value.parse::<u32>().ok()) else {
-        return "stale";
-    };
-    let Some(expected_start) = fields.next() else {
-        return "stale";
-    };
-    if fields.next() != Some("subscription-refresh-v1") || fields.next().is_some() {
-        return "stale";
-    }
-    if !expected_start.bytes().all(|byte| byte.is_ascii_digit()) {
-        return "stale";
-    }
-    let proc_dir = PathBuf::from(format!("/proc/{pid}"));
-    if !proc_dir.is_dir() {
-        return "stale";
-    }
-    let stat_path = proc_dir.join("stat");
-    let stat = match read_proc_text_bounded(&stat_path, MAX_PROC_STAT_BYTES) {
-        Ok(value) => value,
-        Err(_) if !proc_dir.is_dir() => return "stale",
-        Err(_) => return "unknown",
-    };
-    if proc_start_time(&stat).as_deref() != Some(expected_start) {
-        return "stale";
-    }
-    let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
-        Ok(value) => value,
-        Err(_) if !proc_dir.is_dir() => return "stale",
-        Err(_) => return "unknown",
-    };
-    let expected_script = app.moddir.join(SUBSCRIPTION_REFRESH_LOOP);
-    if cmdline_has_script(&argv, &expected_script.to_string_lossy()) {
-        "active"
+/// Stored `running` is not evidence of a live update after a crash.
+pub(crate) fn effective_subscription_result<'a>(stored: &'a str, owner: &str) -> &'a str {
+    if stored == "running" && matches!(owner, "none" | "stale") {
+        "interrupted"
     } else {
-        "stale"
+        stored
     }
+}
+
+/// Observe the existing lock; never remove it or interfere with the flock holder.
+pub(crate) fn subscription_update_owner_state(app: &App) -> &'static str {
+    let lock = app.moddir.join(SUBSCRIPTION_UPDATE_LOCK);
+    let metadata = match fs::symlink_metadata(&lock) {
+        Ok(value) if value.is_dir() => value,
+        Ok(_) => return "stale",
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return "none",
+        Err(_) => return "unknown",
+    };
+    let owner = inspect_process_owner(&lock.join("owner"), None, None, Path::new("/proc"));
+    if owner != "none" {
+        return owner;
+    }
+    // The shell publishes its owner just after mkdir. An in-flight acquisition
+    // is pending, not proven running; after the existing five-second grace the
+    // empty directory is stale. Clock/metadata uncertainty stays unknown.
+    match metadata
+        .modified()
+        .ok()
+        .and_then(|time| SystemTime::now().duration_since(time).ok())
+    {
+        Some(age) if age < Duration::from_secs(5) => "pending",
+        Some(_) => "stale",
+        None => "unknown",
+    }
+}
+
+pub(crate) fn refresh_owner_state(app: &App) -> &'static str {
+    inspect_process_owner(
+        &app.moddir.join(SUBSCRIPTION_REFRESH_OWNER),
+        Some("subscription-refresh-v1"),
+        Some(&app.moddir.join(SUBSCRIPTION_REFRESH_LOOP)),
+        Path::new("/proc"),
+    )
+}
+
+fn read_owner_record(path: &Path) -> io::Result<String> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > 256 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid owner record",
+        ));
+    }
+    let mut text = String::new();
+    file.take(257).read_to_string(&mut text)?;
+    if text.len() > 256 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "oversized owner record",
+        ));
+    }
+    Ok(text)
+}
+
+fn inspect_process_owner(
+    owner_path: &Path,
+    marker: Option<&str>,
+    script: Option<&Path>,
+    proc_root: &Path,
+) -> &'static str {
+    let owner = match read_owner_record(owner_path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return "none",
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => return "stale",
+        Err(_) => return "unknown",
+    };
+    if owner.trim().is_empty() {
+        return "none";
+    }
+    let mut fields = owner.trim().split(':');
+    let Some(pid) = fields
+        .next()
+        .filter(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|pid| *pid > 0)
+    else {
+        return "unknown";
+    };
+    let Some(start) = fields
+        .next()
+        .filter(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+    else {
+        return "unknown";
+    };
+    let Some(token) = fields.next().filter(|value| {
+        !value.is_empty()
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    }) else {
+        return "unknown";
+    };
+    if fields.next().is_some() {
+        return "unknown";
+    }
+    if marker.is_some_and(|expected| token != expected) {
+        return "stale";
+    }
+    let proc_dir = proc_root.join(pid.to_string());
+    match proc_dir.try_exists() {
+        Ok(false) => return "stale",
+        Err(_) => return "unknown",
+        Ok(true) => {}
+    }
+    let stat = match read_proc_text_bounded(&proc_dir.join("stat"), MAX_PROC_STAT_BYTES) {
+        Ok(value) => value,
+        Err(_) if matches!(proc_dir.try_exists(), Ok(false)) => return "stale",
+        Err(_) => return "unknown",
+    };
+    let Some(live_start) = proc_start_time(&stat) else {
+        return "unknown";
+    };
+    if live_start != start {
+        return "stale";
+    }
+    let state = stat
+        .rsplit_once(')')
+        .and_then(|(_, tail)| tail.split_whitespace().next());
+    if matches!(state, Some("Z" | "X")) {
+        return "stale";
+    }
+    if let Some(script) = script {
+        let argv = match read_proc_argv(&proc_dir.join("cmdline")) {
+            Ok(value) => value,
+            Err(_) if matches!(proc_dir.try_exists(), Ok(false)) => return "stale",
+            Err(_) => return "unknown",
+        };
+        if !cmdline_has_script(&argv, &script.to_string_lossy()) {
+            return "stale";
+        }
+    }
+    "active"
 }
 
 fn selectors_record(app: &App) -> StateRecord {
@@ -818,6 +931,92 @@ mod tests {
         assert!(text.contains("transaction_pending=1"));
         fs::remove_dir_all(root).expect("remove fixture");
     }
+    #[test]
+    fn subscription_stale_lock_never_proves_running() {
+        let (root, app) = fixture();
+        let lock = root.join(super::SUBSCRIPTION_UPDATE_LOCK);
+        fs::create_dir_all(&lock).unwrap();
+        fs::write(lock.join("owner"), "4294967295:1:expired\n").unwrap();
+        fs::write(
+            root.join(super::SUBSCRIPTION_STATUS),
+            "result=running\nphase=commit\n",
+        )
+        .unwrap();
+        let text = subscription_record(&app).encode();
+        assert!(text.contains("state=interrupted\n"), "{text}");
+        assert!(text.contains("owner=stale\n"), "{text}");
+        assert!(lock.join("owner").exists());
+        fs::create_dir_all(root.join(super::SUBSCRIPTION_TRANSACTION)).unwrap();
+        assert!(subscription_record(&app)
+            .encode()
+            .contains("state=recovery_pending\n"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn empty_subscription_lock_is_pending_not_running() {
+        let (root, app) = fixture();
+        fs::create_dir_all(root.join(super::SUBSCRIPTION_UPDATE_LOCK)).unwrap();
+        let text = subscription_record(&app).encode();
+        assert!(text.contains("state=pending\n"), "{text}");
+        assert!(!text.contains("state=running\n"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn update_owner_requires_start_time_and_complete_identity() {
+        let (root, app) = fixture();
+        let lock = root.join(super::SUBSCRIPTION_UPDATE_LOCK);
+        fs::create_dir_all(&lock).unwrap();
+        let pid = std::process::id();
+        let start =
+            crate::proc_start_time(&fs::read_to_string(format!("/proc/{pid}/stat")).unwrap())
+                .unwrap();
+        fs::write(lock.join("owner"), format!("{pid}:{start}:test-nonce\n")).unwrap();
+        assert_eq!(super::subscription_update_owner_state(&app), "active");
+        for owner in [
+            format!("{pid}:0:nonce"),
+            format!("{pid}:{start}"),
+            format!("0:{start}:nonce"),
+            format!("{pid}:{start}:nonce:extra"),
+            format!("{pid}::nonce"),
+        ] {
+            fs::write(lock.join("owner"), &owner).unwrap();
+            let expected = if owner == format!("{pid}:0:nonce") {
+                "stale"
+            } else {
+                "unknown"
+            };
+            assert_eq!(super::subscription_update_owner_state(&app), expected);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn process_inspection_failure_is_unknown_and_owner_reads_are_bounded() {
+        let (root, _app) = fixture();
+        let owner = root.join("owner");
+        let proc_root = root.join("fake-proc");
+        fs::create_dir_all(proc_root.join("123")).unwrap();
+        fs::write(&owner, "123:456:nonce").unwrap();
+        assert_eq!(
+            super::inspect_process_owner(&owner, None, None, &proc_root),
+            "unknown"
+        );
+        fs::write(&owner, "x".repeat(257)).unwrap();
+        assert_eq!(
+            super::inspect_process_owner(&owner, None, None, &proc_root),
+            "stale"
+        );
+        fs::remove_file(&owner).unwrap();
+        std::os::unix::fs::symlink(root.join("missing"), &owner).unwrap();
+        assert_eq!(
+            super::inspect_process_owner(&owner, None, None, &proc_root),
+            "unknown"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn config_records_borrow_the_same_observation() {
         let (root, app) = fixture();
