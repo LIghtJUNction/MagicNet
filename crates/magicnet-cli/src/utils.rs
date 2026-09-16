@@ -25,6 +25,48 @@ const PROC_READER_PARENT_EXIT: i32 = 67;
 const PROCESS_REAP_GRACE: Duration = Duration::from_millis(100);
 const PROCESS_REAP_POLL: Duration = Duration::from_millis(10);
 
+// Called only in fork children that will not exec. CLOEXEC alone cannot
+// release inherited pipe writers, executable write handles or file locks.
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub(crate) unsafe fn close_inherited_fds_except(keep_a: libc::c_int, keep_b: libc::c_int) {
+    let (low, high) = if keep_a <= keep_b {
+        (keep_a, keep_b)
+    } else {
+        (keep_b, keep_a)
+    };
+    let close_range = |first: libc::c_uint, last: libc::c_uint| {
+        if first > last {
+            0
+        } else {
+            libc::syscall(libc::SYS_close_range, first, last, 0) as libc::c_int
+        }
+    };
+    let closed = (low == 0 || close_range(0, (low - 1) as libc::c_uint) == 0)
+        && close_range(
+            (low + 1) as libc::c_uint,
+            high.saturating_sub(1) as libc::c_uint,
+        ) == 0
+        && close_range((high + 1) as libc::c_uint, libc::c_uint::MAX) == 0;
+    if closed {
+        return;
+    }
+
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    let max_fd = if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) == 0 {
+        limit.rlim_cur.min(libc::c_int::MAX as libc::rlim_t) as libc::c_int
+    } else {
+        65_536
+    };
+    for fd in 0..max_fd {
+        if fd != keep_a && fd != keep_b {
+            libc::close(fd);
+        }
+    }
+}
+
 fn close_raw_fd(fd: RawFd) {
     if fd >= 0 {
         unsafe {
@@ -298,7 +340,9 @@ pub(crate) fn read_proc_file_bounded_with_timeout(
     }
 
     if worker_pid == 0 {
-        close_raw_fd(pipe_fds[0]);
+        // Keep only this worker's result pipe before opening a potentially
+        // blocking source. No unrelated parent descriptor belongs here.
+        unsafe { close_inherited_fds_except(pipe_fds[1], pipe_fds[1]) };
         let armed = unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) } == 0;
         if !armed || unsafe { libc::getppid() } != parent_pid {
             unsafe { libc::_exit(PROC_READER_PARENT_EXIT) };
@@ -1987,3 +2031,7 @@ mod tests;
 #[cfg(test)]
 #[path = "../tests/internal/resource_limits.rs"]
 mod resource_tests;
+
+#[cfg(test)]
+#[path = "../tests/internal/proc_fd_inheritance.rs"]
+mod proc_fd_inheritance_tests;
