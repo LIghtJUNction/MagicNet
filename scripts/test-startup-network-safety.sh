@@ -245,10 +245,12 @@ SH
     magicnet_disable_dns_leak_guard() { :; }
     if magicnet_start_kernel >"$WORK/log" 2>&1; then fail 'failed start reported success'; fi
     grep -q 'preceding core or network error' "$WORK/log" || fail 'misleading startup diagnostic'
-    magicnet_start_singbox_unlocked() { :; }
+    magicnet_start_singbox_unlocked() { : >"$WORK/core-live"; }
+    magicnet_kernel_running() { [ -e "$WORK/core-live" ]; }
     magicnet_after_kernel_start_unlocked() { return 1; }
+    magicnet_lifecycle_after_stop() { [ ! -e "$WORK/core-live" ]; }
     import() { :; }
-    singbox_stop() { : >"$WORK/stopped"; }
+    singbox_stop() { rm -f "$WORK/core-live"; : >"$WORK/stopped"; }
     if magicnet_start_singbox_ready_unlocked >/dev/null 2>&1; then fail 'rollback reported success'; fi
     [ -f "$WORK/stopped" ] || fail 'genuine post-start failure did not stop the core'
 )

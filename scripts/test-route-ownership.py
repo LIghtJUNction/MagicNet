@@ -111,6 +111,9 @@ magicnet_transparent_mode() {{ fixture mode; }}
 magicnet_iface_exists() {{ fixture iface; }}
 magicnet_warn() {{ printf '%s\\n' "$*" >&2; }}
 magicnet_refresh_status() {{ :; }}
+# DNS has separate stateful tests; this fixture models routes/offload only.
+magicnet_disable_dns_capture() {{ :; }}
+magicnet_disable_dns_leak_guard() {{ :; }}
 . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/routes.sh'))}
 . {shlex.quote(str(ROOT / 'src/MagicNet/lib/magicnet/lifecycle.sh'))}
 magicnet_iptables_cmd() {{ fixture iptables "$@"; }}

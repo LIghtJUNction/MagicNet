@@ -163,28 +163,56 @@ magicnet_start_singbox() {
     magicnet_with_sub_config_lock magicnet_start_singbox_unlocked
 }
 
+# Caller holds the startup/config lock. Failed initialization must detach our
+# interception before removing its listener; otherwise netd still targets a dead
+# port. If detachment fails, keep the listener and report recovery as incomplete.
+magicnet_rollback_failed_start_unlocked() (
+    if magicnet_kernel_running; then
+        magicnet_prepare_network_for_core_stop || {
+            magicnet_kernel_route_report_result 2 || true
+            return 2
+        }
+        import __singbox__
+        singbox_stop || {
+            magicnet_kernel_route_report_result 2 || true
+            return 2
+        }
+    else
+        _rollback_core_rc=$?
+        [ "$_rollback_core_rc" -eq 1 ] || return 2
+    fi
+    # Also handles a core that already exited during initialization. Final
+    # cleanup verifies stopped identity and attempts every independent resource.
+    magicnet_lifecycle_after_stop
+)
+
 magicnet_start_singbox_ready_unlocked() {
-    magicnet_start_singbox_unlocked || return 1
-    # Keep core materialization, process readiness, and the kernel controls
-    # that target this exact generation under one lock acquisition.  Releasing
-    # and reacquiring here let fswatch win the gap and made manual startup wait
-    # behind a redundant config apply.
-    if magicnet_after_kernel_start_unlocked; then
-        # Record this generation before releasing the lifecycle/config lock.
-        if command -v magicnet_kernel_route_state_capture >/dev/null 2>&1; then
-            magicnet_kernel_route_state_capture || {
-                magicnet_kernel_route_report_result 2 || true
-                magicnet_warn "Core is running but route ownership could not be verified; recovery state retained."
-                return 2
-            }
+    if magicnet_start_singbox_unlocked; then
+        :
+    else
+        _ready_start_rc=$?
+        # Unknown identity is not permission to tear down another generation.
+        [ "$_ready_start_rc" -ne 2 ] || return 2
+        magicnet_rollback_failed_start_unlocked || return 2
+        return 1
+    fi
+    # Capture the core's own rules BEFORE hotspot/DNS initialization. A failure
+    # in those later phases must not leave only a prepared, unattributed ledger.
+    if command -v magicnet_kernel_route_state_capture >/dev/null 2>&1; then
+        if ! magicnet_kernel_route_state_capture; then
+            magicnet_kernel_route_report_result 2 || true
+            magicnet_warn "Route ownership could not be verified; rolling back startup."
+            magicnet_rollback_failed_start_unlocked || return 2
+            return 2
         fi
+    fi
+    if magicnet_after_kernel_start_unlocked; then
         magicnet_singbox_save_last_good ||
             magicnet_warn "Could not save the validated sing-box recovery checkpoint."
         return 0
     fi
-    import __singbox__
-    singbox_stop >/dev/null 2>&1 || true
     magicnet_warn "sing-box started but post-start network initialization failed"
+    magicnet_rollback_failed_start_unlocked || return 2
     return 1
 }
 

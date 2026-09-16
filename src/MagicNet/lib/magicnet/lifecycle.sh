@@ -301,8 +301,26 @@ magicnet_lifecycle_after_start() (
 )
 
 magicnet_lifecycle_after_stop() (
+    # No final restoration against a still-live or indeterminate generation.
+    if magicnet_kernel_running; then
+        magicnet_kernel_route_report_result 1 || true
+        return 1
+    else
+        _stopped_rc=$?
+    fi
+    if [ "$_stopped_rc" -ne 1 ]; then
+        magicnet_kernel_route_report_result 2 || true
+        return 2
+    fi
     _rc=0
-    magicnet_kernel_route_cleanup_after_stop || _rc=$?
+    # Do not short-circuit independent cleanup when one subsystem fails. A
+    # crashed/failed start may leave DNS capture even without a live core.
+    magicnet_disable_dns_capture || _rc=2
+    magicnet_disable_dns_leak_guard || _rc=2
+    magicnet_kernel_route_cleanup_after_stop || _rc=2
+    # Restoring offload belongs to service stop too, not just hotspot disable.
+    # Keep the user's persisted hotspot selection; replay re-enables it on start.
+    magicnet_hotspot_offload_restore || _rc=2
     magicnet_kernel_route_report_result "$_rc" || _rc=2
     [ "$_rc" -eq 0 ] || magicnet_warn "Network cleanup is incomplete; recovery evidence was retained."
     magicnet_refresh_status || magicnet_warn "Failed to synchronize the module description after core stop."
