@@ -36,7 +36,7 @@ jobs:
           cp /tmp/machine-status.test.mjs webui/machine-status.test.mjs
           git add scripts/test-google-play-direct-fallback.sh scripts/test-host.sh src/MagicNet/lib/magicnet/jq/google-play-policy.jq src/MagicNet/lib/magicnet/singbox_subscribe/config.sh webui
           git diff --cached --check
-          git submodule update --init --depth 1 src/MagicNet/.config/sing-box
+          git submodule update --init --recursive
           mkdir -p /tmp/final-results
       - name: Install host prerequisites
         run: sudo apt-get update -qq && sudo apt-get install -y ripgrep jq shellcheck shfmt
