@@ -9,6 +9,7 @@ on:
         type: boolean
         default: false
   pull_request:
+  merge_group:
   push:
     branches:
       - main
@@ -25,8 +26,45 @@ env:
   CI_TEST_FORCE: ${{ inputs.force_tests == true && '1' || '0' }}
 
 jobs:
+  ci:
+    name: CI infrastructure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install workflow test dependency
+        run: |
+          if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends python3-yaml
+          fi
+
+      # Never let cached successes validate the cache or its quality gate.
+      - name: Test CI failure propagation and cache invalidation
+        run: |
+          python3 scripts/test-ci-test-cache.py
+          python3 scripts/test-ci-quality.py
+
+      - name: Setup Go for actionlint
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26.7"
+          cache: false
+
+      - name: Validate quality workflow semantics
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          # The shell job owns ShellCheck; this checks Actions expressions and wiring.
+          "$(go env GOPATH)/bin/actionlint" -color -shellcheck= -pyflakes= .github/workflows/quality.yml
+
   rust:
+    needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -77,7 +115,9 @@ jobs:
           mode: save
 
   shell:
+    needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -126,7 +166,9 @@ jobs:
           mode: save
 
   components:
+    needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -169,7 +211,9 @@ jobs:
           mode: save
 
   webui:
+    needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -243,8 +287,56 @@ jobs:
         timeout-minutes: 10
         run: bash scripts/quality-gate.sh webui-browser
 
+      - name: Upload browser failure diagnostics
+        if: ${{ failure() }}
+        timeout-minutes: 3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webui-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: webui/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Save successful per-check results
         if: ${{ always() && !cancelled() }}
         uses: ./.github/actions/test-cache
         with:
           mode: save
+
+  quality-gate:
+    name: CI Quality Gate
+    if: ${{ always() }}
+    needs: [ci, rust, shell, components, webui]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      # No checkout, cache or network: upstream failure must still reach this gate.
+      - name: Require every quality job to succeed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          if not isinstance(needs, dict) or not needs:
+              raise SystemExit("Missing quality job results")
+          failed = []
+          lines = ["## CI quality gate", "", "| Job | Result |", "| --- | --- |"]
+          for name, job in sorted(needs.items()):
+              result = job.get("result") if isinstance(job, dict) else None
+              lines.append(f"| {name} | {result} |")
+              if result != "success":
+                  failed.append(f"{name}={result}")
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          if os.environ.get("GITHUB_STEP_SUMMARY"):
+              with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as stream:
+                  stream.write(summary)
+          if failed:
+              raise SystemExit("Quality gate failed: " + ", ".join(failed))
+          PY
