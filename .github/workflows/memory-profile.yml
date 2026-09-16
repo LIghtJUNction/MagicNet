@@ -1,0 +1,136 @@
+name: Profile v1.5.5 Core Memory
+on:
+  push:
+    branches: [audit/v1.5.6-memory-profile]
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 792e817ea6a41d9cb0a8a7531b6fda2838a79863
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.7'
+          cache: false
+      - name: Build the exact core and fetch public release rules
+        run: |
+          set -euo pipefail
+          git submodule update --init --depth 1 sing-box
+          mkdir -p "$RUNNER_TEMP/memory-profile"
+          scripts/build-sing-box.sh linux amd64 "$RUNNER_TEMP/memory-profile/sing-box"
+          curl --proto '=https' --proto-redir '=https' --fail --location --max-time 180 --retry 2 \
+            https://github.com/LIghtJUNction/MagicNet/releases/download/v1.5.5/MagicNet-full.zip \
+            -o "$RUNNER_TEMP/memory-profile/module.zip"
+          echo "2c4f616103e023ad9ffee8c7583fe3516cac8e840563f6021866cb5ad38875d3  $RUNNER_TEMP/memory-profile/module.zip" | sha256sum --check --strict
+      - name: Measure rule-only memory deltas without TUN or a subscription
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import copy, hashlib, json, os, socket, statistics, subprocess, time, urllib.request, zipfile
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'memory-profile'
+          binary = str(root / 'sing-box')
+          version = subprocess.check_output([binary, 'version'], text=True)
+          assert 'LIghtJUNction.495fb0c8006c' in version
+          with zipfile.ZipFile(root / 'module.zip') as archive:
+              shipped = json.loads(archive.read('.config/sing-box/config.json'))
+              rules = []
+              for entry in shipped['route']['rule_set']:
+                  item = copy.deepcopy(entry)
+                  if item['type'] == 'local':
+                      relative = Path(item['path'])
+                      assert not relative.is_absolute() and '..' not in relative.parts
+                      target = root / relative
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      target.write_bytes(archive.read('.config/sing-box/' + str(relative)))
+                      item['path'] = str(target)
+                  else:
+                      assert item['type'] == 'inline', 'No remote rule fetching in measurement'
+                  rules.append(item)
+          def status(pid):
+              data = {}
+              for line in Path(f'/proc/{pid}/status').read_text().splitlines():
+                  key, _, value = line.partition(':')
+                  words = value.split()
+                  if key in ('VmRSS','RssAnon','RssFile','RssShmem','VmHWM') and len(words) == 2 and words[1] == 'kB':
+                      data[key + '_kib'] = int(words[0])
+              assert 'VmRSS_kib' in data
+              return data
+          profiles = {
+              'no_rules': [],
+              'all_shipped_rules': rules,
+              'without_ad_rules': [r for r in rules if r['tag'] not in ('lyc-geosite-ads','hagezi-light')],
+              'without_secondary_cn_rules': [r for r in rules if r['tag'] not in ('metacubex-geosite-cn','metacubex-geoip-cn','karing-acl4ssr-china-ip','karing-acl4ssr-china-domain')],
+          }
+          results = []
+          for repeat in range(3):
+              for name, selected in profiles.items():
+                  with socket.socket() as sock:
+                      sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
+                  config = {'log': {'level':'error'}, 'outbounds':[{'type':'direct','tag':'direct'}],
+                      'route':{'final':'direct','rule_set':selected,'rules':
+                          [{'rule_set':[r['tag'] for r in selected], 'action':'route','outbound':'direct'}] if selected else []},
+                      'experimental':{'clash_api':{'external_controller':f'127.0.0.1:{port}'}}}
+                  path = root / 'fixture.json'; path.write_text(json.dumps(config))
+                  subprocess.run([binary,'check','-c',str(path)], check=True, timeout=20)
+                  log = root / f'{name}-{repeat}.log'
+                  with log.open('wb') as handle:
+                      process = subprocess.Popen([binary,'run','-c',str(path)],stdout=handle,stderr=handle,
+                          env=dict(os.environ,GOMEMLIMIT='256MiB',GOGC='100'))
+                  try:
+                      ready = False
+                      for _ in range(40):
+                          assert process.poll() is None, log.read_text()
+                          try:
+                              with urllib.request.urlopen(f'http://127.0.0.1:{port}/version', timeout=1) as response:
+                                  assert response.status == 200
+                              ready = True; break
+                          except OSError:
+                              time.sleep(0.25)
+                      assert ready, 'Core did not reach readiness'
+                      time.sleep(3)
+                      # The first /memory event is deliberately zero in this
+                      # fork. Discard it; never mistake it for measured heap.
+                      memory = []
+                      samples = []
+                      with urllib.request.urlopen(f'http://127.0.0.1:{port}/memory', timeout=4) as response:
+                          for index in range(5):
+                              value = json.loads(response.readline(4096))
+                              if index:
+                                  assert type(value['inuse']) is int and value['inuse'] > 0
+                                  memory.append(value['inuse'])
+                                  samples.append(status(process.pid))
+                      results.append({'profile':name,'repeat':repeat,'rule_definitions':len(selected),
+                          'resident_samples':samples,'go_runtime_estimate_bytes':memory})
+                  finally:
+                      process.terminate()
+                      try: process.wait(timeout=5)
+                      except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=5)
+          summary = {}
+          for name in profiles:
+              rows = [r for r in results if r['profile'] == name]
+              summary[name] = {'rss_median_mib':round(statistics.median(s['VmRSS_kib'] for r in rows for s in r['resident_samples']) / 1024,2),
+                  'anon_median_mib':round(statistics.median(s['RssAnon_kib'] for r in rows for s in r['resident_samples']) / 1024,2),
+                  'file_median_mib':round(statistics.median(s['RssFile_kib'] for r in rows for s in r['resident_samples']) / 1024,2),
+                  'go_estimate_median_mib':round(statistics.median(v for r in rows for v in r['go_runtime_estimate_bytes']) / 1048576,2)}
+          report = {'scope':'Linux x86_64 idle rule-loading A/B; NOT the user Android RSS',
+              'core_revision':'495fb0c8006c99ff37d87136267136022c7ea739','source_version':'v1.5.5',
+              'not_included':['TUN stack','DNS cache load','real connections','Tailscale','user subscription'],
+              'no_kernel_route_mutations':True,'summary':summary,'samples':results}
+          (root / 'memory-results.json').write_text(json.dumps(report, indent=2))
+          print(json.dumps(report['summary'],indent=2))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: v1.5.5-core-memory-evidence
+          path: |
+            ${{ runner.temp }}/memory-profile/memory-results.json
+            ${{ runner.temp }}/memory-profile/*.log
+          if-no-files-found: warn
+          retention-days: 7
