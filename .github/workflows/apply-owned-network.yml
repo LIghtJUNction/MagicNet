@@ -24,20 +24,13 @@ jobs:
           assert len(raw) == 69960
           assert hashlib.sha256(raw).hexdigest() == '631fbaed64d49fb62532ea32d7a76e4a78dc20d647c9e7410998558790df1d0a'
           changes = json.loads(raw)
-          allowed = {'crates/magicnet-cli/src/state.rs', 'docs/network-rule-ownership.md',
-              'scripts/test-app-routing-policy.sh', 'scripts/test-dns-output-order.py',
-              'scripts/test-kernel-route-lifecycle.sh', 'scripts/test-route-ownership-netns.sh',
-              'scripts/test-route-ownership.py', 'scripts/test-startup-network-safety.sh',
-              'src/MagicNet/lib/magicnet/core.sh', 'src/MagicNet/lib/magicnet/lifecycle.sh',
-              'src/MagicNet/lib/magicnet/network.sh', 'src/MagicNet/lib/magicnet/routes.sh',
-              'webui/runtime-log-insights.test.mjs', 'webui/src/components/pages/runtimeLogInsights.ts'}
-          assert set(changes) == allowed
+          assert len(changes) == 14
           def blob(value):
               return hashlib.sha1(b'blob ' + str(len(value)).encode() + b'\0' + value).hexdigest()
           outputs = {}
           for name, change in changes.items():
               path = Path(name)
-              assert not path.is_symlink()
+              assert not path.is_symlink() and not path.is_absolute() and '..' not in path.parts
               if change['before'] is None:
                   assert not path.exists(), name
                   old = b''
@@ -56,18 +49,27 @@ jobs:
           for path, output in outputs.items():
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(output)
-          Path('/tmp/magicnet-changed-files').write_text('\n'.join(sorted(allowed)) + '\n')
+          Path('/tmp/magicnet-changed-files').write_text('\n'.join(sorted(changes)) + '\n')
           print('Verified all 14 exact old/new source hashes; no unrelated files changed')
           PY
       - name: Format Rust and check source whitespace
         run: |
           cargo fmt --all
           git diff --check
-      - name: Install missing fixture tools
+      - name: Verify fixture tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends jq busybox iproute2
-      - name: Execute ownership regressions including real isolated kernel rules
+          command -v jq
+          command -v busybox
+          command -v ip
+      - name: Execute real isolated kernel rules with failure trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp scripts/test-route-ownership-netns.sh "$RUNNER_TEMP/original-netns-test"
+          sed -i 's/set -euo pipefail/set -euxo pipefail/' scripts/test-route-ownership-netns.sh
+          sudo -n bash scripts/test-route-ownership-netns.sh
+          cp "$RUNNER_TEMP/original-netns-test" scripts/test-route-ownership-netns.sh
+      - name: Execute ownership regressions
         run: |
           bash scripts/test-kernel-route-lifecycle.sh
           bash scripts/test-hotspot-routing.sh
