@@ -1,10 +1,9 @@
 use std::env;
-use std::fs;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use crate::utils::read_json_file_bounded;
 
 const MODULE_DIR: &str = "/data/adb/modules/MagicNet";
 const DEFAULT_API: &str = "http://127.0.0.1:9090";
@@ -61,8 +60,7 @@ fn local_api(moddir: &Path) -> String {
 }
 
 fn local_api_from_config(moddir: &Path) -> Option<String> {
-    let config = fs::read(moddir.join(SINGBOX_CONFIG)).ok()?;
-    let config: Value = serde_json::from_slice(&config).ok()?;
+    let config = read_json_file_bounded(&moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024)?;
     let controller = config
         .pointer("/experimental/clash_api/external_controller")?
         .as_str()?;
@@ -131,6 +129,7 @@ fn infer_moddir_from_exe(exe: &Path) -> Option<PathBuf> {
 mod tests {
     use super::{
         api_from_controller, infer_moddir_from_exe, is_loopback_http_api, local_api_from_config,
+        SINGBOX_CONFIG,
     };
     use std::env;
     use std::fs;
@@ -220,5 +219,32 @@ mod tests {
             Some("http://127.0.0.1:19090")
         );
         fs::remove_dir_all(root).expect("remove fixture");
+    }
+    #[test]
+    fn controller_observation_rejects_fifo_symlink_and_oversized_config() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::symlink;
+
+        let root = fixture_root();
+        let path = root.join(SINGBOX_CONFIG);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let fifo = CString::new(path.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        assert_eq!(local_api_from_config(&root), None);
+        fs::remove_file(&path).unwrap();
+        let target = root.join("controller.json");
+        fs::write(
+            &target,
+            r#"{"experimental":{"clash_api":{"external_controller":"127.0.0.1:19090"}}}"#,
+        )
+        .unwrap();
+        symlink(&target, &path).unwrap();
+        assert_eq!(local_api_from_config(&root), None);
+        fs::remove_file(&path).unwrap();
+        let oversized = fs::File::create(&path).unwrap();
+        oversized.set_len(4 * 1024 * 1024 + 1).unwrap();
+        assert_eq!(local_api_from_config(&root), None);
+        fs::remove_dir_all(root).unwrap();
     }
 }
