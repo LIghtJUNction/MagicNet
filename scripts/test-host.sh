@@ -117,6 +117,7 @@ fi
 check bash scripts/test-dns-leak-guard-timeout.sh
 check python3 scripts/test-dns-capture-fast-path.py
 check python3 scripts/test-dns-output-order.py
+CI_TEST_FORCE=1 check python3 scripts/test-xtables-registration.py
 check sh scripts/test-startup-network-safety.sh
 check sh scripts/test-kernel-route-lifecycle.sh
 check bash scripts/test-submodule-updates.sh
