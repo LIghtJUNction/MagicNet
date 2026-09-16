@@ -10,6 +10,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
+import { apiCaptureFilter } from "./pcapApiPreset";
 
 const { runShell, runCli, state, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -17,13 +18,16 @@ const pcapIfname = ref("any");
 const pcapFilter = ref("tcp port 443 or udp port 53");
 const copiedCommand = ref("");
 const pendingAction = ref<PendingToolAction | null>(null);
-const pcapPresets = [
-  { label: "HTTPS", filter: "tcp port 443" },
-  { label: "DNS", filter: "udp port 53 or tcp port 53" },
-  { label: "QUIC", filter: "udp port 443" },
-  { label: "TLS DNS", filter: "tcp port 853 or udp port 853" },
-  { label: "代理 API", filter: "tcp port 9090" }
-] as const;
+const pcapPresets = computed(() => {
+  const apiFilter = apiCaptureFilter(state.runtime.api);
+  return [
+    { label: "HTTPS", filter: "tcp port 443" },
+    { label: "DNS", filter: "udp port 53 or tcp port 53" },
+    { label: "QUIC", filter: "udp port 443" },
+    { label: "TLS DNS", filter: "tcp port 853 or udp port 853" },
+    ...(apiFilter ? [{ label: "代理 API", filter: apiFilter }] : []),
+  ];
+});
 const pcapCommandPreview = computed(() => buildPcapCommand(false));
 const pcapPlan = computed(() => buildPcapPlan());
 const commandCopied = computed(() => Boolean(pcapCommandPreview.value && copiedCommand.value === pcapCommandPreview.value));
