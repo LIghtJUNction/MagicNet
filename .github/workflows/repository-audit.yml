@@ -1,0 +1,46 @@
+name: Repository audit
+on:
+  push:
+    branches: [fix/repository-runtime-audit-20260916]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Package tracked source only
+        run: |
+          mkdir -p /tmp/magicnet-audit
+          python3 - <<'PY'
+          import collections, pathlib, subprocess, tarfile
+          paths = subprocess.check_output(['git', 'ls-files', '--recurse-submodules', '-z']).split(b'\0')
+          counts = collections.Counter()
+          with tarfile.open('/tmp/magicnet-audit/source.tar.gz', 'w:gz') as archive:
+              for raw in paths:
+                  if not raw:
+                      continue
+                  path = pathlib.Path(raw.decode())
+                  if '.env' in path.parts or path.name.endswith(('.key', '.pem')):
+                      continue
+                  if not path.is_file() and not path.is_symlink():
+                      continue
+                  counts[path.suffix or '<none>'] += 1
+                  archive.add(path, arcname=str(path), recursive=False)
+          print('TRACKED FILE COUNTS:', dict(counts))
+          print('COMMIT:', subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repository-audit-source
+          path: /tmp/magicnet-audit/source.tar.gz
+          retention-days: 3
+      - name: Rust baseline
+        run: |
+          cargo fmt --all --check
+          cargo test --workspace
+          cargo clippy --workspace --all-targets -- -D warnings
