@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Apply exact integrity-checked public source patches
+      - name: Apply exact integrity-checked source changes
         id: apply
         env:
           GH_TOKEN: ${{ github.token }}
@@ -21,35 +21,34 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p audit
-          for sha in 3b99c76282f8d5af45ce13fc03f54d129827db69 050033c889656685d14d179c3ad5c7bfd585a76c cf03702383c6287f264573d5d8cb33465406c95c 1a31c0c7e45568f1b34223d930a3252ee77a9a81; do
-            gh api "repos/LIghtJUNction/MagicNet/git/blobs/$sha" --jq .content | base64 -d >> "$RUNNER_TEMP/readiness.patch.gz"
-          done
-          gzip -dc "$RUNNER_TEMP/readiness.patch.gz" > "$RUNNER_TEMP/readiness.patch"
-          printf '%s  %s\n' b934aa1c09e153defe813e80a7c355a05350d36ede309aa8983e6be754e100f0 "$RUNNER_TEMP/readiness.patch" | sha256sum -c
-          gh api repos/LIghtJUNction/MagicNet/git/blobs/95250faa1d6a283b7940415778b4b3878eaffdec --jq .content | base64 -d > "$RUNNER_TEMP/corrections.patch"
-          printf '%s  %s\n' acb4f9f9fa9c590addce651e78785260df799ab7fa3226ad0afdef148b90cfda "$RUNNER_TEMP/corrections.patch" | sha256sum -c
-          git apply --check "$RUNNER_TEMP/readiness.patch"
-          git apply "$RUNNER_TEMP/readiness.patch"
-          git apply --check "$RUNNER_TEMP/corrections.patch"
-          git apply "$RUNNER_TEMP/corrections.patch"
           python3 - <<'PY'
-          import os, subprocess, pathlib, json
+          import subprocess,base64,gzip,hashlib,pathlib,os,json
+          chunks=['3b99c76282f8d5af45ce13fc03f54d129827db69','050033c889656685d14d179c3ad5c7bfd585a76c','cf03702383c6287f264573d5d8cb33465406c95c','1a31c0c7e45568f1b34223d930a3252ee77a9a81']
+          def blob(sha):
+              return base64.b64decode(subprocess.check_output(['gh','api',f'repos/LIghtJUNction/MagicNet/git/blobs/{sha}','--jq','.content']))
+          patches=[(gzip.decompress(b''.join(blob(s) for s in chunks)),'b934aa1c09e153defe813e80a7c355a05350d36ede309aa8983e6be754e100f0'),(blob('95250faa1d6a283b7940415778b4b3878eaffdec'),'acb4f9f9fa9c590addce651e78785260df799ab7fa3226ad0afdef148b90cfda'),(gzip.decompress(blob('43d10273d4ae9fba2148b6087032405484d457ed')),'c317e508546dc40a5174bc794b4dede51c4462ac1475bfcb751dc10b7684d99d')]
           paths=set()
-          for name in ('readiness.patch','corrections.patch'):
-              patch=os.path.join(os.environ['RUNNER_TEMP'],name)
-              paths.update(line.split('\t',2)[2] for line in subprocess.check_output(['git','apply','--numstat',patch],text=True).splitlines())
-          assert len(paths)==24 and all(p.startswith(('crates/','webui/','docs/')) for p in paths)
+          for i,(data,digest) in enumerate(patches):
+              assert hashlib.sha256(data).hexdigest()==digest
+              path=pathlib.Path(os.environ['RUNNER_TEMP'])/f'patch-{i}'
+              path.write_bytes(data)
+              subprocess.run(['git','apply','--check',str(path)],check=True)
+              subprocess.run(['git','apply',str(path)],check=True)
+              paths.update(line.split('\t',2)[2] for line in subprocess.check_output(['git','apply','--numstat',str(path)],text=True).splitlines())
+          assert len(paths)==31
+          assert all(p.startswith(('crates/','webui/','docs/','hooks/','scripts/')) or p in ('rules-release.json','.github/workflows/rules-release.yml') for p in paths)
           pathlib.Path('audit/paths.json').write_text(json.dumps(sorted(paths)))
           subprocess.run(['git','add','-N','--',*sorted(paths)],check=True)
           PY
-          git diff --check
           git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box rules
+          git -C rules fetch --depth 1 origin 756b843a46e2c2c21f0d5f3013a5384b3b3ca2de
+          git -C rules checkout --detach 756b843a46e2c2c21f0d5f3013a5384b3b3ca2de
+          git diff --check
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
           components: clippy, rustfmt
           targets: aarch64-linux-android
-      - name: Cache compiler dependencies
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
           path: |
             ~/.cargo/registry
@@ -57,8 +56,7 @@ jobs:
             target
           key: readiness-rust-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**') }}
           restore-keys: readiness-rust-${{ runner.os }}-
-      - name: Format and validate Rust without test-result cache
-        id: rust
+      - name: Rust tests, strict lint and Android target
         shell: bash
         run: |
           set -euo pipefail
@@ -74,7 +72,7 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: webui/package-lock.json
-      - name: Test production WebUI and all browser scenarios
+      - name: WebUI tests and complete browser matrix
         if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         shell: bash
         run: |
@@ -85,26 +83,23 @@ jobs:
           npx playwright install --with-deps chromium
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
           npm run test:ui -- --max-failures=3 2>&1 | tee ../audit/browser.log
-      - name: Verify and export exact newly published rule inputs
+      - name: Verify rule pins, cache invalidation and actual Release install
         if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAM_PROJECT_ROOT: ${{ github.workspace }}
+          KAM_HOOKS_ROOT: ${{ github.workspace }}/hooks
+          KAM_MODULE_ROOT: ${{ runner.temp }}/rule-test-module
         shell: bash
         run: |
           set -euo pipefail
-          git -C rules fetch --depth 1 origin 756b843a46e2c2c21f0d5f3013a5384b3b3ca2de
-          git -C rules checkout --detach 756b843a46e2c2c21f0d5f3013a5384b3b3ca2de
-          git -C rules archive --format=tar.gz HEAD > audit/rules-source.tar.gz
-          python3 - <<'PY'
-          import sys, pathlib, hashlib
-          sys.path.insert(0,'rules/scripts')
-          from download_release import fetch,extract_verified,MAX_ARCHIVE
-          tag='rules-20260916-c802d68ca104e3ce'
-          expected='c802d68ca104e3ced497f145dc82f6e7b834d156db8decec7e00bfd8a628433c'
-          data=fetch(f'https://github.com/LIghtJUNction/MagicNetRules/releases/download/{tag}/magicnet-rules.tar.gz',MAX_ARCHIVE)
-          extract_verified(data,expected,pathlib.Path('audit'))
-          pathlib.Path('audit/manifest.sha256').write_text(hashlib.sha256(pathlib.Path('audit/dist/manifest.json').read_bytes()).hexdigest()+'\n')
-          pathlib.Path('audit/rules.tar.gz').write_bytes(data)
-          print(f'Verified {tag} sha256:{expected}')
-          PY
+          python3 scripts/test-bundled-rules.py -v 2>&1 | tee audit/rules-tests.log
+          python3 scripts/test-ci-test-cache.py 2>&1 | tee audit/cache-tests.log
+          mkdir -p "$KAM_MODULE_ROOT/.config/sing-box"
+          printf '%s\n' '{"route":{"rule_set":[{"type":"local","path":"rules/service-google-play.srs"},{"type":"local","path":"rules/magicnet-cn-domain.srs"}]}}' > "$KAM_MODULE_ROOT/.config/sing-box/config.json"
+          bash hooks/pre-build/5450.update_sing_box_rules.sh 2>&1 | tee audit/rules-install.log
+          cp rules/dist/manifest.json audit/rules-manifest.json
+          python3 scripts/lint-source.py
       - name: Publish verified sources to this feature branch only
         env:
           GH_TOKEN: ${{ github.token }}
@@ -120,7 +115,7 @@ jobs:
           pathlib.Path('audit/source-sha256.json').write_text(json.dumps({p:hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() for p in paths},indent=2))
           PY
           git diff --cached --check
-          git commit -m 'fix: finish private machine inspection and reconcile subscription ownership'
+          git commit -m 'fix: reconcile subscription ownership and finish private machine inspection with pinned rules'
           gh auth setup-git
           git push origin HEAD:refs/heads/fix/patch-readiness-20260916
           git rev-parse HEAD > audit/commit.txt
