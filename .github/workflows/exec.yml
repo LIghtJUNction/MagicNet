@@ -264,6 +264,7 @@ jobs:
           version_output="$(sing-box version)"
           grep -F "LIghtJUNction.${expected_revision:0:12}" <<<"$version_output"
           printf '%s\n' "$version_output"
+          python3 scripts/test-android-tun-proof.py --check-core "$(command -v sing-box)"
 
       - name: Verify tools
         shell: bash
@@ -365,6 +366,11 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk
+
+      - name: Compile release acceptance test APK
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        run: |
+          scripts/build-android-network-probe.sh --prepare-sdk "$RUNNER_TEMP/magicnet-network-probe.apk"
 
       - name: Release quality gate
         id: release_quality

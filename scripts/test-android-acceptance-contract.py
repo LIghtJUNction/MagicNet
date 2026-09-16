@@ -61,6 +61,38 @@ for package in requested:
             self.assertEqual({p.name for p in payloads.iterdir()}, {"magicnet-cli", "sing-box"})
             self.assertTrue(all(os.access(p, os.X_OK) for p in payloads.iterdir()))
 
+    def test_host_core_is_built_and_validated_before_packaging(self):
+        name = "Build host core for package routing checks"
+        names = [step.get("name") for step in self.steps]
+        self.assertLess(names.index(name), names.index("Build current MagicNet module"))
+        for failure in (0, 17):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "scripts").mkdir()
+                builder = root / "scripts/build-sing-box.sh"
+                builder.write_text('#!/bin/sh\nset -eu\n[ "$1" = linux ] && [ "$2" = amd64 ]\n'
+                                   'test "$FAIL_BUILD" = 0 || exit "$FAIL_BUILD"\n'
+                                   'printf "#!/bin/sh\\nexit 0\\n" > "$3"\nchmod 0755 "$3"\n')
+                builder.chmod(0o755)
+                validator = root / "scripts/test-android-tun-proof.py"
+                validator.write_text('import os, pathlib, sys\n'
+                                     'assert sys.argv[1] == "--check-core"\n'
+                                     'assert pathlib.Path(sys.argv[2]).is_file()\n'
+                                     'assert os.access(sys.argv[2], os.X_OK)\n'
+                                     'pathlib.Path("validated").touch()\n')
+                pathfile = root / "github-path"
+                env = dict(os.environ, RUNNER_TEMP=str(root / "runner"),
+                           GITHUB_PATH=str(pathfile), FAIL_BUILD=str(failure))
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", self.step(name)["run"]],
+                                        cwd=root, env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, failure, result.stdout + result.stderr)
+                if failure:
+                    self.assertFalse(pathfile.exists(), "failed core must not reach package checks")
+                    self.assertFalse((root / "validated").exists())
+                else:
+                    self.assertEqual(pathfile.read_text().strip(), str(root / "runner/magicnet-host"))
+                    self.assertTrue((root / "validated").exists())
+
     def test_acceptance_passes_only_the_current_runtime_payloads(self):
         env = self.step("Install and benchmark MagicNet in KernelSU AVD")["env"]
         self.assertIn("MAGICNET_X86_CLI", env)
