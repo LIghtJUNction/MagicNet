@@ -131,3 +131,34 @@ test("unsaved JSON editor work blocks the form instead of being discarded", asyn
   await expect(page.getByRole("alert").filter({ hasText: "配置编辑器还有未保存" })).toBeVisible();
   expect(await page.evaluate(() => window.__tailscale.saves)).toBe(0);
 });
+
+test('resuming configured browser login does not restart the network again', async ({page})=>{
+  await mount(page,'browser');
+  await page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__tailscale.loginOpened)).toBe(true);
+  await page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true}).click();
+  expect(await page.evaluate(()=>window.__tailscale.restarts)).toBe(1);
+});
+test('removal requires confirmation and handles runtime-created references', async ({page})=>{
+  await mount(page);
+  await page.getByRole('button',{name:'登录 Tailscale 并自动配置',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__tailscale.restarts)).toBe(1);
+  await page.evaluate(()=>{
+    const config=window.__tailscale.config,tag=config.endpoints[0].tag;
+    config.dns={servers:[{type:'tailscale',tag:tag+'-dns',endpoint:tag}],rules:[{domain_suffix:['ts.net'],server:tag+'-dns'}]};
+    config.route.rules=[{domain_suffix:['ts.net'],outbound:tag},{ip_cidr:['100.64.0.0/10','fd7a:115c:a1e0::/48'],preferred_by:['tailscale'],outbound:tag}];
+  });
+  await page.getByRole('button',{name:'断开并移除节点',exact:true}).click();
+  expect(await page.evaluate(()=>window.__tailscale.restarts)).toBe(1);
+  await page.getByRole('button',{name:'确认移除',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__tailscale.restarts)).toBe(2);
+  expect(await page.evaluate(()=>window.__tailscale.config.endpoints)).toEqual([]);
+  expect(await page.evaluate(()=>window.__tailscale.config.dns.servers)).toEqual([]);
+  expect(await page.evaluate(()=>window.__tailscale.config.route.rules)).toEqual([]);
+});
+test('Tailscale layout evidence at phone width', async ({page},testInfo)=>{
+  await mount(page);
+  await expect(page.getByLabel('设备名称',{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth > document.documentElement.clientWidth+1)).toBe(false);
+  await page.screenshot({path:testInfo.outputPath('tailscale-layout.png'),fullPage:true});
+});

@@ -336,10 +336,13 @@ magicnet_dns_capture_install_family() (
     esac
     # Detach only our jump before rebuilding; never expose a partially built
     # hooked chain or flush a system chain. Reattach after the recipe succeeds.
-    magicnet_dns_capture_remove_output_jumps "$_install_cmd" || return 1
+    # nft xtables returns rc=2 for -C/-D referencing an absent target chain.
+    # Create the unhooked empty chain first on fresh installs; existing chains
+    # remain untouched until their jumps have been successfully detached.
     if ! "$_install_cmd" -t nat -N magicnet-dns-output >/dev/null 2>&1; then
         magicnet_xtables_require "$_install_cmd" -t nat -L magicnet-dns-output -n || return 1
     fi
+    magicnet_dns_capture_remove_output_jumps "$_install_cmd" || return 1
     magicnet_xtables_require "$_install_cmd" -t nat -F magicnet-dns-output || return 1
     _install_recipe="$(magicnet_dns_capture_expected_rules)" || return 1
     while IFS= read -r _install_rule; do

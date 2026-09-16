@@ -86,6 +86,12 @@ def xtables(args):
         del chains[name]
     else:
         rule = rest[1:]
+        # Real nft xtables validates a jump target even for a missing rule.
+        # An absent custom target is rc=2, not the ordinary no-match rc=1.
+        if action in ("-C", "-D") and "-j" in rule:
+            target = rule[rule.index("-j") + 1]
+            if target == CHAIN and target not in chains:
+                return 2
         if action == "-C":
             return 0 if rule in chains[name] else 1
         if action == "-D":

@@ -95,6 +95,7 @@ jobs:
           python3 scripts/test-android-network-benchmark.py
           python3 scripts/test-android-tun-proof.py
           python3 scripts/test-android-adb.py
+          python3 scripts/test-android-avd-storage.py
           python3 scripts/test-android-probe.py
           python3 scripts/test-kernelsu-installer-lifecycle.py
 
@@ -279,6 +280,14 @@ jobs:
           test -s "$kernel"
           printf 'KSU_KERNEL=%s\n' "$kernel" >> "$GITHUB_ENV"
 
+      - name: Pin Android AVD storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          avd_home="$HOME/.android/avd"
+          mkdir -p "$avd_home"
+          printf 'ANDROID_AVD_HOME=%s\n' "$avd_home" >> "$GITHUB_ENV"
+
       - name: Restore pristine Android AVD
         if: inputs.fresh_avd != true
         id: avd-cache
@@ -288,7 +297,7 @@ jobs:
             ~/.android/avd/MagicNet_API_35.avd
             ~/.android/avd/MagicNet_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v2-api35-google-apis-x86_64
+          key: android-avd-v3-api35-google-apis-x86_64
 
       - name: Create pristine Android 15 AVD
         if: inputs.fresh_avd == true || steps.avd-cache.outputs.cache-hit != 'true'
@@ -298,7 +307,11 @@ jobs:
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           timeout 900 sdkmanager "$SYSTEM_IMAGE"
           rm -rf "$HOME/.android/avd/${AVD_NAME}.avd" "$HOME/.android/avd/${AVD_NAME}.ini"
-          echo no | avdmanager create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE"
+          avd_dir="$HOME/.android/avd/${AVD_NAME}.avd"
+          timeout 300 avdmanager create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --path "$avd_dir" <<<no
+          test -s "$avd_dir/config.ini"
+          test -s "$ANDROID_AVD_HOME/${AVD_NAME}.ini"
+          grep -Fqx "path=$avd_dir" "$ANDROID_AVD_HOME/${AVD_NAME}.ini"
           cat >>"$HOME/.android/avd/${AVD_NAME}.avd/config.ini" <<'EOF'
           hw.cpu.ncore=4
           hw.ramSize=4096
@@ -315,7 +328,7 @@ jobs:
             ~/.android/avd/MagicNet_API_35.avd
             ~/.android/avd/MagicNet_API_35.ini
             /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
-          key: android-avd-v2-api35-google-apis-x86_64
+          key: android-avd-v3-api35-google-apis-x86_64
 
       - name: Enable KVM
         shell: bash
