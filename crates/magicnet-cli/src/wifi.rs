@@ -318,7 +318,8 @@ fn apply_network(
         current.as_str()
     };
     write_last_state(app, network, &decision, current_mode)?;
-    crate::state::reconcile(app).map_err(|err| format!("publish Wi-Fi canonical state: {err}"))?;
+    crate::state::reconcile_wifi(app)
+        .map_err(|err| format!("publish Wi-Fi canonical state: {err}"))?;
     if verbose || changed {
         println!(
             "[info] Wi-Fi policy: connected={} ssid={} bssid={} matched={} mode={}{}",

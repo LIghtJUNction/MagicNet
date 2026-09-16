@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildTailscaleConfig, inspectTailscale, saveTailscale, parseTailscaleLogin, TailscaleSetupError } from "./src/components/pages/tailscaleSetup.ts";
+import { buildTailscaleConfig, inspectTailscale, saveTailscale, removeTailscale, removeTailscaleEndpoint, parseTailscaleLogin, TailscaleSetupError } from "./src/components/pages/tailscaleSetup.ts";
 
 const key = ["tskey", "auth", "fixture-only-not-a-real-key"].join("-");
 const draft = () => ({ hostname: "my-phone", authKey: key });
@@ -114,7 +114,7 @@ function client(options = {}) {
       calls.push(args);
       if (args === "config-editor get sing-box") {
         reads += 1;
-        return { ok: !options.readFailure, stdout: reads > 1 && options.conflict ? `${original()} ` : original() };
+        return { ok: !options.readFailure, stdout: reads > 1 && options.conflict ? `${options.source ?? original()} ` : (options.source ?? original()) };
       }
       if (args.startsWith("config-editor save-file")) return { ok: !options.validationFailure, stdout: options.missingReceipt ? "" : "[info] Saved and validated sing-box config" };
       if (options.restartThrow) throw Error("private output");
@@ -174,3 +174,37 @@ test("page uses the private transport and clears credentials when leaving KeepAl
   const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
   assert.match(app, /tailscale: \(\) => import\("@\/components\/pages\/TailscalePage.vue"\)/);
 });
+
+
+test("removal targets the inspected endpoint and preserves unrelated config", () => {
+  const source = JSON.stringify(fixture());
+  const result = JSON.parse(removeTailscaleEndpoint(source, inspectTailscale(source)));
+  assert.equal(result.endpoints.some(endpoint => endpoint.type === "tailscale"), false);
+  assert.deepEqual(result.route, fixture().route);
+  const changed = fixture();
+  changed.endpoints[0].hostname = "changed-elsewhere";
+  code(() => removeTailscaleEndpoint(JSON.stringify(changed), inspectTailscale(source)), "conflict");
+  changed.endpoints.push({ type: "tailscale", tag: "second" });
+  code(() => removeTailscaleEndpoint(JSON.stringify(changed), inspectTailscale(source)), "multiple");
+});
+
+for (const [option, expected] of Object.entries({
+  success: "done", dirty: "conflict", readFailure: "read", stageFailure: "stage",
+  conflict: "conflict", validationFailure: "validate", missingReceipt: "validate",
+  cleanupFailure: "cleanup", cleanupThrow: "cleanup", restartFailure: "restart", restartThrow: "restart",
+})) {
+  test(`removal ${option} reports the actual transaction stage`, async () => {
+    const source = JSON.stringify(fixture());
+    const transport = client({ source, [option]: true });
+    const result = await removeTailscale(transport, inspectTailscale(source));
+    assert.equal(result.stage, expected);
+    const saved = ["done", "cleanup", "restart"].includes(expected);
+    assert.equal(result.saved, saved);
+    if (saved) assert.equal(result.snapshot.configured, false);
+    assert.equal(transport.calls.includes("service restart sing-box"), ["done", "restart"].includes(expected));
+    assert.equal(JSON.stringify(result).includes(key), false);
+    if (["done", "restart"].includes(expected)) {
+      assert.ok(transport.calls.indexOf("remove tailscale.json") < transport.calls.indexOf("service restart sing-box"));
+    }
+  });
+}

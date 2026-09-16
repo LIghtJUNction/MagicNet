@@ -69,14 +69,7 @@ fn open_config_apply_lock(app: &App) -> Result<File, String> {
 }
 
 fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
-    let file = open_config_apply_lock(app)?;
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-        return Err(format!(
-            "lock config apply: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-    Ok(ConfigApplyGuard(file))
+    config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)
 }
 
 fn config_apply_lock_bounded(app: &App, timeout: Duration) -> Result<ConfigApplyGuard, String> {
@@ -158,22 +151,19 @@ pub(crate) fn service_status(app: &App) {
 pub(crate) fn singbox_webui(app: &App) -> String {
     // `external_ui` is a filesystem directory, not the HTTP route. The Clash
     // API serves whichever dashboard directory is configured at `/ui/`.
-    let (hostname, port) = api_host_port(&app.api);
+    let Some((hostname, port)) = api_host_port(&app.api) else {
+        return String::new();
+    };
     format!("{}/ui/#/setup?hostname={hostname}&port={port}", app.api)
 }
 
-fn api_host_port(api: &str) -> (String, String) {
-    let authority = api.strip_prefix("http://").unwrap_or_default();
-    if let Some(rest) = authority.strip_prefix('[') {
-        if let Some((host, port)) = rest.split_once("]:") {
-            return (host.to_string(), port.to_string());
-        }
-    } else if let Some((host, port)) = authority.rsplit_once(':') {
-        if !host.contains(':') {
-            return (host.to_string(), port.to_string());
-        }
-    }
-    ("127.0.0.1".to_string(), "9090".to_string())
+fn api_host_port(api: &str) -> Option<(String, String)> {
+    let address = api
+        .strip_prefix("http://")?
+        .parse::<std::net::SocketAddr>()
+        .ok()?;
+    (address.ip().is_loopback() && address.port() != 0)
+        .then(|| (address.ip().to_string(), address.port().to_string()))
 }
 
 pub(crate) fn service_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -437,7 +427,8 @@ fn read_bounded_log_tail(path: &Path) -> std::io::Result<String> {
     let start = length.saturating_sub(MAX_SERVICE_LOG_READ_BYTES);
     file.seek(SeekFrom::Start(start))?;
     let mut bytes = Vec::with_capacity((length - start) as usize);
-    file.read_to_end(&mut bytes)?;
+    file.take(MAX_SERVICE_LOG_READ_BYTES)
+        .read_to_end(&mut bytes)?;
     if start > 0 {
         if let Some(index) = bytes.iter().position(|byte| *byte == b'\n') {
             bytes.drain(..=index);

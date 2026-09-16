@@ -1,24 +1,53 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import jsQR from "jsqr";
 import { generateQrMatrix, generateQrSvgPath } from "./src/lib/qrcode.ts";
 
-test("generates valid QR matrix and SVG path for Tailscale auth URLs", () => {
-  const url = "https://login.tailscale.com/a/fixtureAuth";
-  const { matrix, size } = generateQrMatrix(url);
-  assert.ok(size >= 21);
-  assert.equal(matrix.length, size);
-  assert.equal(matrix[0].length, size);
+function decode(matrix) {
+  const scale = 4;
+  const quiet = 4;
+  const width = (matrix.length + quiet * 2) * scale;
+  const pixels = new Uint8ClampedArray(width * width * 4).fill(255);
+  for (let y = 0; y < matrix.length; y++) {
+    for (let x = 0; x < matrix.length; x++) {
+      if (!matrix[y][x]) continue;
+      for (let dy = 0; dy < scale; dy++) {
+        for (let dx = 0; dx < scale; dx++) {
+          const offset = (((y + quiet) * scale + dy) * width + (x + quiet) * scale + dx) * 4;
+          pixels.fill(0, offset, offset + 3);
+        }
+      }
+    }
+  }
+  return jsQR(pixels, width, width, { inversionAttempts: "dontInvert" });
+}
 
-  // Position detection pattern top-left must be 7x7 dark/light pattern
-  assert.equal(matrix[0][0], true);
-  assert.equal(matrix[0][6], true);
-  assert.equal(matrix[6][0], true);
-  assert.equal(matrix[6][6], true);
-  assert.equal(matrix[1][1], false);
-  assert.equal(matrix[3][3], true);
+for (const [name, text] of [
+  ["plain text", "hello"],
+  ["Tailscale login", "https://login.tailscale.com/a/fixtureAuth"],
+  ["UTF-8", "连接 MagicNet — 日本語 🌐"],
+  ["version information", "a".repeat(180)],
+  ["large payload", "a".repeat(500)],
+]) {
+  test(`independent decoder round-trips ${name} without truncation`, () => {
+    const { matrix, size } = generateQrMatrix(text);
+    assert.equal(matrix.length, size);
+    assert.ok(matrix.every(row => row.length === size));
+    assert.equal(decode(matrix)?.data, text);
+    if (text.length >= 180) assert.ok(size >= 45, "exercise version >= 7");
+    const svg = generateQrSvgPath(text);
+    assert.equal(svg.size, size);
+    const modules = [...svg.path.matchAll(/M(\d+) (\d+)h1v1h-1z/g)];
+    assert.equal(modules.length, matrix.flat().filter(Boolean).length);
+    const rendered = Array.from({ length: size }, () => Array(size).fill(false));
+    for (const [, x, y] of modules) rendered[Number(y)][Number(x)] = true;
+    assert.deepEqual(rendered, matrix);
+  });
+}
 
-  const { path, size: svgSize } = generateQrSvgPath(url);
-  assert.equal(svgSize, size);
-  assert.ok(path.length > 50);
-  assert.ok(path.startsWith("M"));
+test("empty and over-capacity input fail without leaking private input", () => {
+  assert.throws(() => generateQrMatrix(""), RangeError);
+  const privateInput = "https://login.tailscale.com/a/" + "secret".repeat(500);
+  assert.throws(() => generateQrSvgPath(privateInput), error =>
+    error instanceof RangeError && !error.message.includes("secret"));
 });

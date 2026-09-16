@@ -48,13 +48,22 @@ magicnet_diag_http() {
     return 0
 }
 
+magicnet_diag_api_endpoint() {
+    "${MODDIR}/cli" api endpoint 2>/dev/null
+}
+
 magicnet_diag_proxy_now() {
     _name="$1"
-    _api=$(curl -sS --max-time 3 "http://127.0.0.1:9090/proxies/${_name}" 2>/dev/null || true)
+    _endpoint="$(magicnet_diag_api_endpoint 2>/dev/null || true)"
+    if [ -n "$_endpoint" ]; then
+        _api=$(curl -sS --max-time 3 "${_endpoint}/proxies/${_name}" 2>/dev/null || true)
+    else
+        _api=''
+    fi
     _now=$(printf '%s' "$_api" | sed -n 's/.*"now":[[:space:]]*"\([^"]*\)".*/\1/p')
     [ -n "$_now" ] || _now="$(i18n MAGICNET_UNAVAILABLE)"
     panel_row "$_name" "$_now"
-    unset _name _api _now
+    unset _name _endpoint _api _now
 }
 
 magicnet_diag_module_version() {
@@ -86,7 +95,13 @@ magicnet_action_diagnose() {
     fi
     _fswatch_pid=$(magicnet_fswatch_status)
     panel_row "fswatch" "$(magicnet_display_status "${_fswatch_pid:-Stopped}")"
-    panel_row "sing-box API" "$(curl -sS --max-time 3 http://127.0.0.1:9090/proxies >/dev/null 2>&1 && printf OK || printf FAIL)"
+    _diag_api="$(magicnet_diag_api_endpoint 2>/dev/null || true)"
+    if [ -n "$_diag_api" ] && curl -sS --max-time 3 "${_diag_api}/proxies" >/dev/null 2>&1; then
+        panel_row "sing-box API" "OK"
+    else
+        panel_row "sing-box API" "FAIL"
+    fi
+    unset _diag_api
     magicnet_diag_proxy_now proxy
     magicnet_diag_proxy_now ai-proxy
     magicnet_diag_proxy_now final
