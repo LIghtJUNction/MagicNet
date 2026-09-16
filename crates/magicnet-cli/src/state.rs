@@ -675,7 +675,14 @@ fn hotspot_record(app: &App) -> StateRecord {
     let configured_mode = read_kv(app.moddir.join(TRANSPARENT_MODE_CONF))
         .remove("MAGICNET_TRANSPARENT_MODE")
         .unwrap_or_else(|| "tun".to_string());
-    let state = if !owned {
+    // A write-ahead record is recovery intent, not proof of installed rules.
+    let pending = app
+        .moddir
+        .join(format!("{HOTSPOT_TUN_RULES}.pending"))
+        .exists();
+    let state = if pending {
+        "pending"
+    } else if !owned {
         "disabled"
     } else if configured_mode == "ebpf" {
         "shared"
@@ -1071,6 +1078,27 @@ mod tests {
         let name = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
         assert!(super::read_json(&fifo, 128).is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn interrupted_hotspot_install_is_not_published_as_active() {
+        let (root, app) = fixture();
+        let rules = root.join(super::HOTSPOT_TUN_RULES);
+        fs::create_dir_all(rules.parent().unwrap()).unwrap();
+        fs::write(root.join(super::HOTSPOT_OFFLOAD_OWNER), "value=0\n").unwrap();
+        fs::write(&rules, "8999|wlan2\n").unwrap();
+        let pending = root.join(format!("{}.pending", super::HOTSPOT_TUN_RULES));
+        fs::write(&pending, "8999|usb0\n").unwrap();
+        let record = super::hotspot_record(&app).encode();
+        assert!(record.contains("state=pending\n"));
+        assert!(!record.contains("state=active\n"));
+        assert!(!record.contains("wlan2"));
+        assert!(!record.contains("usb0"));
+        fs::remove_file(pending).unwrap();
+        assert!(super::hotspot_record(&app)
+            .encode()
+            .contains("state=active\n"));
         fs::remove_dir_all(root).unwrap();
     }
 }

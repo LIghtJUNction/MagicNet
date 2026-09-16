@@ -4,7 +4,20 @@ import { statusToneClasses } from "@/lib/statusTone";
 
 const WARNING_PATTERN = /\b(warn|warning)\b/i;
 const ERROR_PATTERN = /\b(error|fail|failed|fatal|panic|denied|timeout|timed out|not found)\b/i;
-const ISSUE_PATTERN = /\b(warn|warning|fail|failed|error|fatal|panic|denied|timeout|timed out|not found)\b/i;
+// A declared log level wins over words in its message. In particular a
+// capability WARN containing "failed" must not count as both warning and error.
+const EXPLICIT_LEVEL = /^(?:[+-]\d{4}\s+)?(?:\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\s+)?[^\w\s[\]]*\s*(?:\[(trace|debug|info|warn|warning|error|fatal|panic)\]|(trace|debug|info|warn|warning|error|fatal|panic)\b)/i;
+
+function runtimeLogLevel(line: string): "warn" | "error" | null {
+  const normalized = stripTerminalControlSequences(line);
+  const match = normalized.match(EXPLICIT_LEVEL);
+  const declared = (match?.[1] || match?.[2] || "").toLowerCase();
+  if (declared === "warn" || declared === "warning") return "warn";
+  if (["error", "fatal", "panic"].includes(declared)) return "error";
+  if (declared) return null;
+  if (ERROR_PATTERN.test(normalized)) return "error";
+  return WARNING_PATTERN.test(normalized) ? "warn" : null;
+}
 
 export type RuntimeLogInsight = {
   status: "idle" | "ok" | "warning" | "error";
@@ -28,19 +41,14 @@ export type RuntimeLogAnalysis = Pick<RuntimeLogIssueReportInput,
 >;
 
 export function analyzeRuntimeLogLines(lines: string[]): RuntimeLogAnalysis {
-  const classified = lines.map((line) => ({
-    line,
-    normalized: stripTerminalControlSequences(line),
-  }));
-  const issues = classified.filter(({ normalized }) => ISSUE_PATTERN.test(normalized));
+  const classified = lines.map((line) => ({ line, level: runtimeLogLevel(line) }));
+  const issues = classified.filter(({ level }) => level !== null);
   return {
     issueLines: issues.map(({ line }) => line).slice(-80),
     issueCount: issues.length,
-    warningCount: classified.filter(({ normalized }) => WARNING_PATTERN.test(normalized)).length,
-    errorCount: classified.filter(({ normalized }) => ERROR_PATTERN.test(normalized)).length,
-    otherIssueCount: issues.filter(({ normalized }) => (
-      !WARNING_PATTERN.test(normalized) && !ERROR_PATTERN.test(normalized)
-    )).length,
+    warningCount: issues.filter(({ level }) => level === "warn").length,
+    errorCount: issues.filter(({ level }) => level === "error").length,
+    otherIssueCount: 0,
   };
 }
 
@@ -50,8 +58,7 @@ export function latestRuntimeLogIssueLines(lines: string[]): string[] {
 
 export function runtimeLogLevelMatches(line: string, level: "all" | "warn" | "error"): boolean {
   if (level === "all") return true;
-  const normalized = stripTerminalControlSequences(line);
-  return level === "warn" ? WARNING_PATTERN.test(normalized) : ERROR_PATTERN.test(normalized);
+  return runtimeLogLevel(line) === level;
 }
 
 export function buildRuntimeLogInsight(lines: string[], warningCount: number, errorCount: number, issueLines: string[], issueCount = issueLines.length): RuntimeLogInsight {

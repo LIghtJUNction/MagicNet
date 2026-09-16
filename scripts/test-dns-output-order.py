@@ -68,9 +68,13 @@ def xtables(args):
     if action == "-S":
         if name not in chains:
             return 1
-        print("-P OUTPUT ACCEPT")
+        print("-P OUTPUT ACCEPT" if name == "OUTPUT" else "-N " + name)
         for rule in chains[name]:
-            print(shlex.join(["-A", name] + rule))
+            shown = list(rule)
+            if "--mark" in shown:
+                at = shown.index("--mark") + 1
+                shown[at] = "/".join(hex(int(part, 0)) for part in shown[at].split("/"))
+            print(" ".join(["-A", name] + shown))
         return 0
     if action == "-N":
         if name in chains:
@@ -202,6 +206,25 @@ class DNSOutputOrder(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(state["iptables"], again["iptables"])
             self.assertEqual(state["ip6tables"], again["ip6tables"])
+
+    def test_unchanged_reconcile_does_not_write_any_rules(self):
+        for shell in SHELLS:
+            result, state = self.run_installer(initial(False), shell)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            before = len(state["calls"])
+            result, after = self.run_installer(state, shell)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            writes = [call for call in after["calls"][before:]
+                      if any(op in call for op in ("-N", "-F", "-X", "-D", "-A", "-I"))]
+            self.assertEqual(writes, [], writes)
+            self.assert_captured(after)
+
+    def test_absent_cleanup_is_read_only(self):
+        for shell in SHELLS:
+            result, state = self.run_installer(initial(False), shell, ACTION="disable")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(any(op in call for call in state["calls"]
+                                 for op in ("-N", "-F", "-X", "-D", "-A", "-I")))
 
     def test_cloudflare_udp_profile_repairs_core_reordering(self):
         for shell in SHELLS:

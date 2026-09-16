@@ -51,7 +51,9 @@ case "$*" in
     # All four guard protocols/ports are tried; only this fixture rule exists.
     case "$*" in *'-o rmnet0 -p udp --dport 53 -j REJECT') : >"$MOCK_RULES" ;; esac
     exit 0 ;;
-'-C OUTPUT '*) [ -s "$MOCK_RULES" ]; exit $? ;;
+'-C OUTPUT '*)
+    case "$*" in *'--comment magicnet-dns-guard'*) exit 1 ;; esac
+    [ -s "$MOCK_RULES" ]; exit $? ;;
 esac
 exit 0
 MOCK
@@ -107,7 +109,7 @@ grep -q 'fixture write permission denied' "$WORK/log" || fail 'write stderr lost
 
 # A fresh scan finds a different interface; failed deletion must keep retry state.
 printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
-printf '%s\n' wlan0 >"$state"
+printf '%s\n' rmnet0 >"$state"
 if MOCK_DELETE_RC=4 magicnet_disable_dns_leak_guard >"$WORK/log" 2>&1; then fail 'delete failure hidden'; fi
 [ -e "$state" ] || fail 'failed cleanup removed retry state'
 grep -q 'fixture delete permission denied' "$WORK/log" || fail 'delete stderr lost'

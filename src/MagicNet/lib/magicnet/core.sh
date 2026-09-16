@@ -130,6 +130,12 @@ magicnet_start_singbox_unlocked() {
     # Absorb short TUN teardown or eBPF detachment windows inside one user
     # action. The shared launcher cleans a failed PID generation between
     # attempts, and callers can still override the bounded attempt count.
+    if command -v magicnet_kernel_route_state_begin >/dev/null 2>&1; then
+        magicnet_kernel_route_state_begin || {
+            magicnet_kernel_route_report_result 2 || true
+            return 2
+        }
+    fi
     _singbox_gomemlimit="$(magicnet_singbox_runtime_memory_limit)"
     if ! GOMEMLIMIT="$_singbox_gomemlimit" \
         MAGICNET_SINGBOX_START_ATTEMPTS="${MAGICNET_SINGBOX_START_ATTEMPTS:-3}" \
@@ -164,6 +170,14 @@ magicnet_start_singbox_ready_unlocked() {
     # and reacquiring here let fswatch win the gap and made manual startup wait
     # behind a redundant config apply.
     if magicnet_after_kernel_start_unlocked; then
+        # Record this generation before releasing the lifecycle/config lock.
+        if command -v magicnet_kernel_route_state_capture >/dev/null 2>&1; then
+            magicnet_kernel_route_state_capture || {
+                magicnet_kernel_route_report_result 2 || true
+                magicnet_warn "Core is running but route ownership could not be verified; recovery state retained."
+                return 2
+            }
+        fi
         magicnet_singbox_save_last_good ||
             magicnet_warn "Could not save the validated sing-box recovery checkpoint."
         return 0
