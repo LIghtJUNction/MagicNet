@@ -1,0 +1,63 @@
+name: Native policy audit
+on:
+  push:
+    branches: [audit/magicnet-72h-20260916]
+    paths: [.github/workflows/audit-native-policy.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - name: Apply audited delta without rewriting main
+        env:
+          AUDIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git show "$AUDIT_SHA":.audit/google-native.patch > /tmp/google-native.patch
+          git checkout -b audit/native-policy-result-20260916 373a02a46309e1513018a577ce4f82432c8c2906
+          git apply /tmp/google-native.patch
+          git diff --check
+          git submodule update --init --depth 1 src/MagicNet/.config/sing-box
+      - name: Install host test prerequisites
+        run: sudo apt-get update -qq && sudo apt-get install -y ripgrep jq shellcheck
+      - name: Prove the removed behavior fails before the repair
+        run: |
+          set -euo pipefail
+          cp src/MagicNet/lib/magicnet/singbox_subscribe/config.sh /tmp/config-fixed.sh
+          git show HEAD:src/MagicNet/lib/magicnet/singbox_subscribe/config.sh > src/MagicNet/lib/magicnet/singbox_subscribe/config.sh
+          if bash scripts/test-google-play-direct-fallback.sh; then
+            echo 'Expected the unpatched regression to fail' >&2
+            exit 1
+          fi
+          cp /tmp/config-fixed.sh src/MagicNet/lib/magicnet/singbox_subscribe/config.sh
+          bash scripts/test-google-play-direct-fallback.sh
+      - name: Host regressions
+        env:
+          CI_TEST_FORCE: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/native-results
+          shellcheck scripts/test-google-play-direct-fallback.sh
+          bash scripts/test-host.sh 2>&1 | tee /tmp/native-results/host.log
+      - name: Publish verified candidate branch
+        run: |
+          set -euo pipefail
+          git add scripts/test-google-play-direct-fallback.sh scripts/test-host.sh src/MagicNet/lib/magicnet/jq/google-play-policy.jq src/MagicNet/lib/magicnet/singbox_subscribe/config.sh
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(subscription): restore Google Play policy without function overrides'
+          git push origin HEAD:refs/heads/audit/native-policy-result-20260916
+          git rev-parse HEAD | tee /tmp/native-results/sha.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-policy-results
+          path: /tmp/native-results/
+          retention-days: 7
