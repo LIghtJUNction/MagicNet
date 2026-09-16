@@ -1,13 +1,4 @@
 export default {
-  "已请求下载完整诊断；请确认文件已保存，再添加为 issue 附件。": ["Full diagnostic download requested. Confirm it was saved, then attach it to the issue.", "Запрошено скачивание полного отчёта. Проверьте сохранение и прикрепите файл к задаче."],
-  "完整诊断下载未确认，下面保留完整正文。": ["Diagnostic download was not confirmed; the complete report is included below.", "Скачивание отчёта не подтверждено; полный текст приведён ниже."],
-  "已配置，等待连接": ["Configured, waiting to connect", "Настроено, ожидание подключения"],
-  "已配置，连接状态未确认": ["Configured, connection not verified", "Настроено, подключение не подтверждено"],
-  "移除节点会修改配置并重启核心，现有连接会短暂中断。确认继续？": ["Removing this endpoint changes the configuration and restarts the core, briefly interrupting connections. Continue?", "Удаление узла изменит конфигурацию и перезапустит ядро, ненадолго прервав соединения. Продолжить?"],
-  "确认移除": ["Confirm removal", "Подтвердить удаление"],
-  "停止等待": ["Stop waiting", "Остановить ожидание"],
-  "已配置时继续登录不会重启核心；更改配置才会重启。": ["Continuing login with an existing configuration does not restart the core. Saving changes does.", "Продолжение входа не перезапускает ядро. Перезапуск нужен только при сохранении изменений."],
-
   "Tailscale 已登录，正在等待网络上线。": ["Tailscale is logged in; waiting for the network to come online.", "Вход в Tailscale выполнен; ожидание подключения к сети."],
   "登录 Tailscale 并自动配置": ["Log in to Tailscale and configure automatically", "Войти в Tailscale и настроить автоматически"],
   "继续 Tailscale 登录": ["Continue Tailscale login", "Продолжить вход в Tailscale"],

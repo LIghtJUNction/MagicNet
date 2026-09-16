@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import {
   ISSUE_KIND_OPTIONS,
   buildIssueBody,
-  buildFullIssueBody,
-  summarizeMachineEvidence,
   buildIssueUrl,
   classifyOperationCommand,
   commandFailureContext,
@@ -246,23 +244,3 @@ assert.doesNotMatch(commandContext, /^\$\s/m);
 for (const sensitive of canaries) assert.equal(commandContext.includes(sensitive), false, `command context leaked ${sensitive}`);
 
 console.log("issue reporter tests passed");
-
-// A buried Play route must precede a noisy tail of unrelated active connections.
-const crowded = Array.from({length: 100}, (_, i) => ({ metadata: {network:'tcp', type:'tun/tun-in',host:`host${i}.example.invalid`,processPath:'app_process64 (12345)'}, chains:['cn-direct','direct'], rule:'final' }));
-crowded.unshift({metadata:{network:'tcp',type:'tun/tun-in',host:'play.googleapis.com',processPath:'com.android.vending'}, chains:['google-proxy','proxy','NODE-PRIVATE'], rule:'final'});
-const priorityReport = summarizeRoutingFeedback(JSON.stringify({connections:crowded, memory:123456}));
-assert.match(priorityReport, /route.1.*play.googleapis.com/);
-assert.match(priorityReport, /go_retained_bytes=123456/);
-assert.match(priorityReport, /omitted_unique_routes=77/);
-assert.doesNotMatch(priorityReport, /NODE-PRIVATE/);
-const evidenceParts = {...parts, kind:'route-feedback',focusedContext:'network_mode=tun\n'+priorityReport+'\n'+Array.from({length:200}, (_, i) => `evidence_${i}=ok`).join('\n')};
-const boundedBody = buildIssueBody(evidenceParts);
-const fullBody = buildFullIssueBody(evidenceParts);
-assert.ok(boundedBody.length <= 5200);
-assert.match(boundedBody, /network_mode=tun/);
-assert.match(boundedBody, /play.googleapis.com/);
-assert.doesNotMatch(boundedBody, /deterministically truncated/);
-assert.match(fullBody, /evidence_199=ok/);
-for (const canary of canaries) assert.ok(!fullBody.includes(canary));
-assert.match(summarizeMachineEvidence(JSON.stringify({schema:1,ok:true,data:{mode:'tun',ready:null,secret:'CANARY'}})), /ready=null/);
-assert.doesNotMatch(summarizeMachineEvidence(JSON.stringify({schema:1,ok:true,data:{secret:'CANARY'}})), /CANARY/);

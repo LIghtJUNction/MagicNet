@@ -167,8 +167,7 @@ for (const option of ["restartFailure", "restartThrow"]) {
 test("page uses the private transport and clears credentials when leaving KeepAlive", () => {
   const source = readFileSync(new URL("./src/components/pages/TailscalePage.vue", import.meta.url), "utf8");
   assert.match(source, /type="password"/);
-  assert.match(source, /onDeactivated\(suspend\)/);
-  assert.match(source, /function suspend\(\)[\s\S]*?authKey.value = "";/);
+  assert.match(source, /onDeactivated\(\(\) => \{ authKey.value = "";/);
   assert.match(source, /stagePrivatePayload\("tmp"/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|console\.(?:log|error)|v-html|JSON\.parse/);
   assert.match(source, /state\.config\.dirty/);

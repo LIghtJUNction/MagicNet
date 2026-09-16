@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Read;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -242,7 +241,6 @@ fn support_bundle(app: &App) -> String {
         .map(|selection| selection.mode.as_str())
         .unwrap_or("invalid");
     let mut output = String::from("MagicNet canonical support bundle\n");
-    append_support_section(&mut output, "core memory", &core_memory_evidence(app));
     append_support_section(
         &mut output,
         "subscription lifecycle",
@@ -281,8 +279,6 @@ fn support_bundle(app: &App) -> String {
             read_only_command("ip", &["-o", "addr", "show"]),
             read_only_command("ip", &["rule", "show"]),
             read_only_command("ip", &["route", "show", "table", "all"]),
-            read_only_command("ip", &["-6", "rule", "show"]),
-            read_only_command("ip", &["-6", "route", "show", "table", "all"]),
         ]
         .join("\n"),
     );
@@ -307,147 +303,6 @@ fn support_bundle(app: &App) -> String {
         &subscription_refresh_log_counts(app.log_dir.join("subscription-refresh.log")),
     );
     output
-}
-
-// Read-only, bounded process evidence. Never dump environ, maps, command
-// lines, endpoints or keys into support reports, and never force a GC to make
-// the observed RSS look smaller. A missing measurement stays unknown.
-fn bounded_memory_text(path: &Path, limit: u64) -> Option<String> {
-    let mut text = String::new();
-    fs::File::open(path)
-        .ok()?
-        .take(limit + 1)
-        .read_to_string(&mut text)
-        .ok()?;
-    (text.len() as u64 <= limit).then_some(text)
-}
-
-fn memory_counter(text: &str, name: &str, unit: &str) -> Option<u64> {
-    let mut values = text.lines().filter_map(|line| {
-        let (key, value) = line.split_once(':')?;
-        (key == name).then_some(value.trim())
-    });
-    let value = values.next()?;
-    if values.next().is_some() {
-        return None;
-    }
-    let mut fields = value.split_whitespace();
-    let count = fields.next()?;
-    if count.is_empty() || !count.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    let count = count.parse::<u64>().ok()?;
-    if !unit.is_empty() && fields.next()? != unit {
-        return None;
-    }
-    if fields.next().is_some() {
-        return None;
-    }
-    Some(count)
-}
-
-fn process_birth(text: &str) -> Option<&str> {
-    // stat comm may itself contain spaces or parentheses.
-    let birth = text.rsplit_once(") ")?.1.split_whitespace().nth(19)?;
-    birth
-        .bytes()
-        .all(|byte| byte.is_ascii_digit())
-        .then_some(birth)
-}
-
-fn core_memory_evidence(app: &App) -> String {
-    let mut lines = vec![
-        "scope=owned_core_process_snapshot".to_string(),
-        "rss_includes=file_mappings_and_anonymous_memory".to_string(),
-        "leak_diagnosis=not_established_by_single_snapshot".to_string(),
-    ];
-    let pids = match crate::process::owned_singbox_pids(app) {
-        Ok(pids) => pids,
-        Err(_) => {
-            lines.push("process_count=unknown".to_string());
-            return lines.join("\n");
-        }
-    };
-    lines.push(format!("process_count={}", pids.len()));
-    for (index, pid) in pids.iter().take(8).enumerate() {
-        let proc = Path::new("/proc").join(pid);
-        let before = bounded_memory_text(&proc.join("stat"), 8192).unwrap_or_default();
-        let status = bounded_memory_text(&proc.join("status"), 16384).unwrap_or_default();
-        let rollup = bounded_memory_text(&proc.join("smaps_rollup"), 16384).unwrap_or_default();
-        let after = bounded_memory_text(&proc.join("stat"), 8192).unwrap_or_default();
-        let stable =
-            process_birth(&before).is_some() && process_birth(&before) == process_birth(&after);
-        for key in ["VmRSS", "VmHWM", "RssAnon", "RssFile", "RssShmem"] {
-            let value = stable.then(|| memory_counter(&status, key, "kB")).flatten();
-            lines.push(format!(
-                "process.{}.{key}_kb={}",
-                index + 1,
-                value.map_or("unknown".to_string(), |n| n.to_string())
-            ));
-        }
-        for key in ["Pss", "Private_Clean", "Private_Dirty", "Swap"] {
-            let value = stable.then(|| memory_counter(&rollup, key, "kB")).flatten();
-            lines.push(format!(
-                "process.{}.{key}_kb={}",
-                index + 1,
-                value.map_or("unknown".to_string(), |n| n.to_string())
-            ));
-        }
-    }
-    if let Some(config) = bounded_memory_text(
-        &app.moddir.join(".config/sing-box/config.json"),
-        4 * 1024 * 1024,
-    )
-    .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-    {
-        let sets = config.pointer("/route/rule_set").and_then(Value::as_array);
-        let tailscale = config
-            .get("endpoints")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter(|item| item.get("type").and_then(Value::as_str) == Some("tailscale"))
-                    .count()
-            });
-        lines.push(format!("configured_rule_sets={}", sets.map_or(0, Vec::len)));
-        lines.push(format!(
-            "configured_tailscale_endpoints={}",
-            tailscale.unwrap_or(0)
-        ));
-    }
-    lines.join("\n")
-}
-
-#[cfg(test)]
-mod memory_evidence_tests {
-    use super::*;
-    #[test]
-    fn exact_memory_units_and_unknowns() {
-        assert_eq!(
-            memory_counter("VmRSS: 102400 kB\n", "VmRSS", "kB"),
-            Some(102400)
-        );
-        assert_eq!(memory_counter("VmRSS: 0 kB\n", "VmRSS", "kB"), Some(0));
-        for text in [
-            "",
-            "VmRSS: -1 kB",
-            "VmRSS: 42 MB",
-            "VmRSS: 42 kB extra",
-            "VmRSS: 1 kB\nVmRSS: 2 kB",
-        ] {
-            assert_eq!(memory_counter(text, "VmRSS", "kB"), None);
-        }
-    }
-    #[test]
-    fn bounded_private_reads_do_not_export_oversized_files() {
-        let root =
-            std::env::temp_dir().join(format!("magicnet-memory-read-{}", std::process::id()));
-        fs::write(&root, "12345").unwrap();
-        assert!(bounded_memory_text(&root, 4).is_none());
-        assert_eq!(bounded_memory_text(&root, 5).as_deref(), Some("12345"));
-        fs::remove_file(root).unwrap();
-    }
 }
 
 const SUPPORT_CHAIN_TAGS: &[&str] = &[
