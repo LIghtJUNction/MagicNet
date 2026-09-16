@@ -1,0 +1,105 @@
+name: Apply Verified Network Ownership Fix
+on:
+  push:
+    branches: [fix/owned-network-state-20260916]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Verify and apply reviewed source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma
+          from pathlib import Path
+          raw = lzma.decompress(base64.b64decode(Path('.github/owned-network-changes.b64').read_bytes()))
+          assert len(raw) == 69960
+          assert hashlib.sha256(raw).hexdigest() == '631fbaed64d49fb62532ea32d7a76e4a78dc20d647c9e7410998558790df1d0a'
+          changes = json.loads(raw)
+          allowed = {'crates/magicnet-cli/src/state.rs', 'docs/network-rule-ownership.md',
+              'scripts/test-app-routing-policy.sh', 'scripts/test-dns-output-order.py',
+              'scripts/test-kernel-route-lifecycle.sh', 'scripts/test-route-ownership-netns.sh',
+              'scripts/test-route-ownership.py', 'scripts/test-startup-network-safety.sh',
+              'src/MagicNet/lib/magicnet/core.sh', 'src/MagicNet/lib/magicnet/lifecycle.sh',
+              'src/MagicNet/lib/magicnet/network.sh', 'src/MagicNet/lib/magicnet/routes.sh',
+              'webui/runtime-log-insights.test.mjs', 'webui/src/components/pages/runtimeLogInsights.ts'}
+          assert set(changes) == allowed
+          def blob(value):
+              return hashlib.sha1(b'blob ' + str(len(value)).encode() + b'\0' + value).hexdigest()
+          outputs = {}
+          for name, change in changes.items():
+              path = Path(name)
+              assert not path.is_symlink()
+              if change['before'] is None:
+                  assert not path.exists(), name
+                  old = b''
+              else:
+                  old = path.read_bytes()
+                  assert blob(old) == change['before'], 'Concurrent source change: ' + name
+              lines = old.decode().splitlines(keepends=True)
+              previous = len(lines) + 1
+              for start, end, replacement in reversed(change['ops']):
+                  assert 0 <= start <= end <= len(lines) and end < previous
+                  lines[start:end] = replacement.splitlines(keepends=True)
+                  previous = start
+              output = ''.join(lines).encode()
+              assert blob(output) == change['after'], 'New source hash mismatch: ' + name
+              outputs[path] = output
+          for path, output in outputs.items():
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(output)
+          Path('/tmp/magicnet-changed-files').write_text('\n'.join(sorted(allowed)) + '\n')
+          print('Verified all 14 exact old/new source hashes; no unrelated files changed')
+          PY
+      - name: Format Rust and check source whitespace
+        run: |
+          cargo fmt --all
+          git diff --check
+      - name: Install missing fixture tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends jq busybox iproute2
+      - name: Execute ownership regressions including real isolated kernel rules
+        run: |
+          bash scripts/test-kernel-route-lifecycle.sh
+          bash scripts/test-hotspot-routing.sh
+          bash scripts/test-app-routing-policy.sh
+          sh scripts/test-startup-network-safety.sh
+          bash scripts/test-dns-leak-guard-timeout.sh
+          python3 scripts/test-dns-capture-fast-path.py
+          python3 scripts/test-dns-output-order.py
+      - name: Commit verified changes only to the isolated feature branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = LIghtJUNction/MagicNet
+          test "$GITHUB_REF_NAME" = fix/owned-network-state-20260916
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$GITHUB_REF_NAME" --jq .object.sha)"
+          test "$actual" = "$GITHUB_SHA"
+          git rm -- .github/owned-network-changes.b64 .github/workflows/apply-owned-network.yml
+          while IFS= read -r path; do git add -- "$path"; done < /tmp/magicnet-changed-files
+          git diff --cached --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          allowed = set(Path('/tmp/magicnet-changed-files').read_text().splitlines())
+          allowed |= {'.github/owned-network-changes.b64', '.github/workflows/apply-owned-network.yml'}
+          staged = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines())
+          assert staged <= allowed and len(staged) == 16, staged
+          assert not subprocess.check_output(['git', 'diff', '--name-only'], text=True).strip()
+          PY
+          git config user.name LIghtJUNction
+          git config user.email lightjunction.me@gmail.com
+          git commit -m 'fix(network): mutate only verified owned rules and retain truthful recovery state'
+          gh auth setup-git
+          git push origin HEAD:refs/heads/fix/owned-network-state-20260916
