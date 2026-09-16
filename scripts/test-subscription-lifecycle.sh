@@ -33,6 +33,15 @@ magicnet_json_escape() { printf '%s' "$1"; }
 . "$ROOT/src/MagicNet/lib/magicnet/supervisors.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/common.sh"
 
+# This journal-mechanics fixture models core acceptance for named generations.
+# Real JSON validation and failed core checks are covered by baseline-safety.
+magicnet_singbox_recovery_config_valid() {
+  case "$(cat "$1" 2>/dev/null)" in
+  active-config | candidate-config | old-config | stable-config | term-old-config | old-config-without-url-or-work) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
 magicnet_proc_reader_test_hook() {
   local kind="$1" proc_root="$2" pid="$3" argument count stat rest
   local -a argv=() fields=()
