@@ -133,5 +133,6 @@ check python3 scripts/test-release-cache.py
 check python3 scripts/test-ci-submodules.py
 check python3 scripts/test-network-check.py
 CI_TEST_FORCE=1 check python3 scripts/test-feedback-snapshot.py
+CI_TEST_FORCE=1 check python3 scripts/test-android-avd-storage.py
 
 printf 'host regression suite passed\n'
