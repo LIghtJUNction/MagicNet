@@ -11,16 +11,16 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: c156b2124b0be0a95495725b0bc7610fc14916b5
+          ref: 970bcd0ff74422573b7c67fcc6f7a7ed9ed80827
           persist-credentials: false
           fetch-depth: 1
       - run: |
           mkdir -p "$RUNNER_TEMP/owned-source"
-          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/owned-source/parallel-source.tar.gz"
+          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/owned-source/main-source.tar.gz"
           git rev-parse HEAD > "$RUNNER_TEMP/owned-source/source-sha.txt"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: owned-integration-source
+          name: owned-main-source
           path: ${{ runner.temp }}/owned-source
           if-no-files-found: error
           retention-days: 1
