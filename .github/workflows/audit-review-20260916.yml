@@ -11,50 +11,73 @@ env:
   CI_TEST_FORCE: '1'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
-  inventory:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Collect immutable source and history
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          components: rustfmt
+      - name: Assemble reviewed changes on a clean base
         run: |
           set -euo pipefail
-          mkdir -p /tmp/audit
-          base=ff3b5f07a53da92696eb8c33e833de9b1dca5434
-          git archive --format=tar.gz -o /tmp/audit/source.tar.gz "$base"
-          git log --since-as-filter='2026-09-13T05:22:52Z' --format='%H %cI %s' "$base" > /tmp/audit/commits.txt
-          git log --first-parent --since-as-filter='2026-09-13T05:22:52Z' --format='%H %cI %s' --stat "$base" > /tmp/audit/first-parent.txt
-          git log --first-parent --since-as-filter='2026-09-13T05:22:52Z' -p "$base" > /tmp/audit/first-parent.patch
-          git ls-tree -r "$base" > /tmp/audit/tree.txt
-          printf 'ALL ANCESTRY COMMITS: '; wc -l < /tmp/audit/commits.txt
-          printf '\nFIRST-PARENT INVENTORY\n'; cat /tmp/audit/first-parent.txt
-          for pr in 259 263 285 286; do
-            gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq '{number,title,state,draft,head:{ref:.head.ref,sha:.head.sha},base:{ref:.base.ref,sha:.base.sha},mergeable,mergeable_state,changed_files,additions,deletions}' | tee "/tmp/audit/pr-$pr.json"
-            git fetch origin "pull/$pr/head:refs/remotes/origin/audit-pr-$pr"
-            git archive --format=tar.gz -o "/tmp/audit/pr-$pr.tar.gz" "refs/remotes/origin/audit-pr-$pr"
-            git diff "$base...refs/remotes/origin/audit-pr-$pr" > "/tmp/audit/pr-$pr.patch"
-            sha=$(git rev-parse "refs/remotes/origin/audit-pr-$pr")
-            gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100" --jq '[.check_runs[]|{name,status,conclusion,details_url}]' | tee "/tmp/audit/pr-$pr-checks.json"
-          done
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$base&per_page=100" --jq '[.workflow_runs[]|{id,name,status,conclusion,html_url}]' | tee /tmp/audit/main-checks.json
+          cp .audit/prepare.py /tmp/prepare-magicnet.py
+          git checkout -b fix/audit-consolidation-20260916 ff3b5f07a53da92696eb8c33e833de9b1dca5434
+          python3 /tmp/prepare-magicnet.py
+          cargo fmt --all
+      - name: Lock the QR encoder and independent test decoder
+        working-directory: webui
+        run: |
+          npm install --save-exact qrcode-generator@2.0.4
+          npm install --save-dev --save-exact jsqr@1.4.0
+          npm run check
+      - name: Publish candidate only (never main)
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git diff --check
+          test ! -e .audit/prepare.py
+          test ! -e .github/workflows/audit-review-20260916.yml
+          git config user.name 'MagicNet audit'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates scripts src/MagicNet/lib webui
+          git diff --cached --stat
+          git commit -m 'fix: consolidate bounded runtime probes, dynamic API and Tailscale regressions' -m 'Integrate #286 resource handling and #285 state/lock bounds without parallel reapers. Integrate #263 dynamic controller discovery and repair its package smoke fixture. Replace unscannable handwritten QR encoding with an independently decoded library implementation. Unify Tailscale save/remove transactions and report actual cleanup/restart outcomes.'
+          gh auth setup-git
+          git push origin HEAD:refs/heads/fix/audit-consolidation-20260916
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          mkdir -p /tmp/candidate
+          git archive --format=tar.gz -o /tmp/candidate/source.tar.gz HEAD
+          git diff ff3b5f07a53da92696eb8c33e833de9b1dca5434 HEAD > /tmp/candidate/consolidation.patch
+          git ls-tree -r HEAD > /tmp/candidate/tree.txt
+          tar -czf /tmp/candidate/qr-dependencies.tar.gz -C webui/node_modules qrcode-generator jsqr
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: three-day-audit-source
-          path: /tmp/audit/
+          name: reviewed-audit-candidate
+          path: /tmp/candidate/
           retention-days: 7
           if-no-files-found: error
   rust:
+    needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
       - run: git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
@@ -65,17 +88,27 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo check --workspace --locked --target aarch64-linux-android
-  webui:
+  browser:
+    needs: prepare
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '24'
       - run: npm ci
         working-directory: webui
-      - run: npm run check
+      - run: npx playwright install --with-deps chromium
         working-directory: webui
+      - run: npm run test:ui
+        working-directory: webui
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: failure()
+        with:
+          name: audit-browser-failures
+          path: webui/test-results/
+          retention-days: 7
