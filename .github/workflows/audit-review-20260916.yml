@@ -16,99 +16,66 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-    outputs:
-      sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: '24'
-      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
-        with:
-          components: rustfmt
-      - name: Assemble reviewed changes on a clean base
+      - name: Apply the tested rollback-baseline patch on its reviewed base
+        shell: bash
         run: |
           set -euo pipefail
-          cp .audit/prepare.py /tmp/prepare-magicnet.py
-          git checkout -b fix/audit-consolidation-20260916 ff3b5f07a53da92696eb8c33e833de9b1dca5434
-          python3 /tmp/prepare-magicnet.py
-          cargo fmt --all
-      - name: Lock the QR encoder and independent test decoder
-        working-directory: webui
+          cp .audit/subscription-baseline.patch /tmp/subscription-baseline.patch
+          git checkout -b fix/subscription-baseline-20260916 d862c76b55f7a0569daaf5ba456cbfd2c53add45
+          git apply /tmp/subscription-baseline.patch
+          git add scripts src/MagicNet/lib
+          git diff --cached --check
+      - name: Prove the regression fails on the unpatched base
+        shell: bash
         run: |
-          npm install --save-exact qrcode-generator@2.0.4
-          npm install --save-dev --save-exact jsqr@1.4.0
-          npm run check
-      - name: Publish candidate only (never main)
-        id: commit
+          set -euo pipefail
+          git worktree add --detach /tmp/baseline-red d862c76b55f7a0569daaf5ba456cbfd2c53add45
+          cp scripts/test-subscription-baseline-safety.sh /tmp/baseline-red/scripts/
+          if bash /tmp/baseline-red/scripts/test-subscription-baseline-safety.sh > /tmp/baseline-red.log 2>&1; then
+            echo 'Regression unexpectedly passed without the fix' >&2
+            exit 1
+          fi
+          echo 'Unpatched baseline rejected by the behavioral regression as expected'
+      - name: Check shell and transaction regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v shellcheck
+          command -v jq
+          bash scripts/lint-shell.sh
+          bash scripts/test-config-empty-recovery.sh
+          bash scripts/test-subscription-baseline-safety.sh
+          bash scripts/test-subscription-transaction-atomicity.sh
+          bash scripts/test-subscription-transaction-journal-safety.sh
+          bash scripts/test-subscription-lifecycle.sh
+      - name: Publish a clean follow-up branch, never main
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
-          git diff --check
-          test ! -e .audit/prepare.py
+          test ! -e .audit/subscription-baseline.patch
           test ! -e .github/workflows/audit-review-20260916.yml
           git config user.name 'MagicNet audit'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add crates scripts src/MagicNet/lib webui
           git diff --cached --stat
-          git commit -m 'fix: consolidate bounded runtime probes, dynamic API and Tailscale regressions' -m 'Integrate #286 resource handling and #285 state/lock bounds without parallel reapers. Integrate #263 dynamic controller discovery and repair its package smoke fixture. Replace unscannable handwritten QR encoding with an independently decoded library implementation. Unify Tailscale save/remove transactions and report actual cleanup/restart outcomes.'
+          git commit -m 'fix: reject invalid subscription rollback baselines and uncommitted checkpoints'
           gh auth setup-git
-          git push origin HEAD:refs/heads/fix/audit-consolidation-20260916
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git push origin HEAD:refs/heads/fix/subscription-baseline-20260916
           mkdir -p /tmp/candidate
           git archive --format=tar.gz -o /tmp/candidate/source.tar.gz HEAD
-          git diff ff3b5f07a53da92696eb8c33e833de9b1dca5434 HEAD > /tmp/candidate/consolidation.patch
+          git diff d862c76b55f7a0569daaf5ba456cbfd2c53add45 HEAD > /tmp/candidate/subscription-baseline.patch
           git ls-tree -r HEAD > /tmp/candidate/tree.txt
-          tar -czf /tmp/candidate/qr-dependencies.tar.gz -C webui/node_modules qrcode-generator jsqr
+          git rev-parse HEAD | tee /tmp/candidate/commit.txt
+          cp /tmp/baseline-red.log /tmp/candidate/
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: reviewed-audit-candidate
+          name: subscription-baseline-candidate
           path: /tmp/candidate/
           retention-days: 7
           if-no-files-found: error
-  rust:
-    needs: prepare
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          persist-credentials: false
-      - run: git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
-      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
-        with:
-          components: clippy, rustfmt
-          targets: aarch64-linux-android
-      - run: cargo fmt --all -- --check
-      - run: cargo test --workspace --locked
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo check --workspace --locked --target aarch64-linux-android
-  browser:
-    needs: prepare
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: '24'
-      - run: npm ci
-        working-directory: webui
-      - run: npx playwright install --with-deps chromium
-        working-directory: webui
-      - run: npm run test:ui
-        working-directory: webui
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: failure()
-        with:
-          name: audit-browser-failures
-          path: webui/test-results/
-          retention-days: 7
