@@ -1,0 +1,36 @@
+name: Capture Exact Build Failure
+on:
+  push:
+    branches: [audit/owned-integration-20260916]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 68059da646d7b9227e4931364bc4f3abcc273799
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Capture original job logs and verify source identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/failure-evidence"
+          gh api repos/LIghtJUNction/MagicNet/actions/runs/35135151722 > "$RUNNER_TEMP/failure-evidence/run.json"
+          gh api repos/LIghtJUNction/MagicNet/actions/jobs/104925873811 > "$RUNNER_TEMP/failure-evidence/job.json"
+          gh run view 35135151722 --repo LIghtJUNction/MagicNet --log > "$RUNNER_TEMP/failure-evidence/raw-run.log"
+          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/failure-evidence/exact-source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/failure-evidence/source-sha.txt"
+          git hash-object scripts/fake-magisk-smoke.sh src/MagicNet/lib/magicnet/lifecycle.sh src/MagicNet/lib/magicnet/core.sh > "$RUNNER_TEMP/failure-evidence/source-blobs.txt"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: exact-build-failure
+          path: ${{ runner.temp }}/failure-evidence
+          if-no-files-found: error
+          retention-days: 1
