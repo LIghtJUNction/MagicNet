@@ -62,13 +62,6 @@ offload restoration compares the current value, refuses conflicting external
 changes, and keeps its journal until the restored value is read back correctly.
 Repeated enable/restore of the already-correct value does not write settings.
 
-The final uninstall hook stops through this same lifecycle and exits with its
-actual result. No runtime helper appends blind fallback deleters to the hook;
-legacy appended commands cannot run afterward or mask a failed cleanup. Tether
-offload restoration compares the current value, refuses conflicting external
-changes, and keeps its journal until the restored value is read back correctly.
-Repeated enable/restore of the already-correct value does not write settings.
-
 ## Regression evidence and limits
 
 `test-kernel-route-lifecycle.sh` executes stateful netlink/firewall fixtures under

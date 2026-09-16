@@ -548,10 +548,13 @@ magicnet_hotspot_route_status() {
     unset _hotspot_discovery_error _hotspot_expected_rule_count
 }
 
-magicnet_hotspot_offload_value() {
+magicnet_hotspot_offload_value() (
     command -v settings >/dev/null 2>&1 || return 1
-    settings get global tether_offload_disabled 2>/dev/null | tr -d '\r' | sed -n '1p'
-}
+    # Preserve the producer exit status; tr/sed success cannot prove a read.
+    _value="$(settings get global tether_offload_disabled 2>/dev/null)" || return 1
+    _value="$(printf '%s' "$_value" | tr -d '\r')"
+    case "$_value" in '' | null | 0 | 1) printf '%s\n' "$_value" ;; *) return 1 ;; esac
+)
 
 magicnet_hotspot_offload_enable() {
     _hotspot_state="$(magicnet_hotspot_offload_state_file)"
@@ -579,27 +582,33 @@ magicnet_hotspot_offload_enable() {
         if ! (umask 077; printf '%s\n' "$_hotspot_saved" >"$_hotspot_tmp") ||
             ! mv -f "$_hotspot_tmp" "$_hotspot_state"; then
             rm -f "$_hotspot_tmp" 2>/dev/null || true
-            unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
+            unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
             return 1
         fi
         _hotspot_state_created=1
         # The shipped uninstall hook uses the same locked lifecycle cleanup.
         # Never append a second, unverified rule deleter to uninstall.sh.
     fi
-    if [ "$(magicnet_hotspot_offload_value)" = 1 ]; then
-        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
+    _hotspot_current="$(magicnet_hotspot_offload_value)" || {
+        magicnet_warn "Android settings state is unknown; offload was not changed"
+        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
+        return 1
+    }
+    if [ "$_hotspot_current" = 1 ]; then
+        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
         return 0
     fi
     if ! settings put global tether_offload_disabled 1 >/dev/null 2>&1 ||
-        [ "$(magicnet_hotspot_offload_value)" != 1 ]; then
+        ! _hotspot_current="$(magicnet_hotspot_offload_value)" ||
+        [ "$_hotspot_current" != 1 ]; then
         magicnet_warn "Failed to disable Android tether offload"
         if [ "$_hotspot_state_created" -eq 1 ]; then
             magicnet_hotspot_offload_restore >/dev/null 2>&1 || true
         fi
-        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
+        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
         return 1
     fi
-    unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
+    unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
 }
 
 magicnet_hotspot_offload_restore() (
@@ -641,11 +650,14 @@ magicnet_hotspot_offload_restore() (
 )
 
 magicnet_hotspot_offload_status() {
-    _hotspot_value="$(magicnet_hotspot_offload_value 2>/dev/null || true)"
-    case "$_hotspot_value" in
-    1) printf 'offload_disabled=1\n' ;;
-    *) printf 'offload_disabled=0\n' ;;
-    esac
+    if _hotspot_value="$(magicnet_hotspot_offload_value 2>/dev/null)"; then
+        case "$_hotspot_value" in
+        1) printf 'offload_disabled=1\n' ;;
+        *) printf 'offload_disabled=0\n' ;;
+        esac
+    else
+        printf 'offload_disabled=unknown\n'
+    fi
     if [ -f "$(magicnet_hotspot_offload_state_file)" ]; then
         printf 'offload_owned=1\n'
     else

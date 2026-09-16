@@ -456,5 +456,40 @@ magicnet_hotspot_offload_enable
         self.assertFalse((self.mod / 'settings-writes').exists())
 
 
+    def test_failed_settings_read_never_clears_an_unset_journal(self):
+        owner = self.mod / '.state/hotspot/tether-offload.previous'
+        owner.write_text('unset\n')
+        self.run_helper('''
+settings() { case "$1" in get) printf 'null\n'; return 4 ;; *) printf '%s\n' "$*" >>"$MODDIR/settings-writes" ;; esac; }
+magicnet_hotspot_offload_restore
+''', 1)
+        self.assertTrue(owner.exists())
+        self.assertFalse((self.mod / 'settings-writes').exists())
+        self.assertFalse(self.read()['writes'])
+
+    def test_enable_refuses_failed_reads_with_and_without_previous_journal(self):
+        owner = self.mod / '.state/hotspot/tether-offload.previous'
+        for saved in (None, 'value=0\n'):
+            if saved is not None:
+                owner.write_text(saved)
+            self.run_helper('''
+settings() { case "$1" in get) return 4 ;; *) printf '%s\n' "$*" >>"$MODDIR/settings-writes" ;; esac; }
+magicnet_hotspot_offload_enable
+''', 1)
+            self.assertEqual(owner.read_text() if owner.exists() else None, saved)
+            self.assertFalse((self.mod / 'settings-writes').exists())
+
+    def test_settings_multi_line_and_invalid_values_remain_unknown(self):
+        for value in ('1\n0', 'permission denied', '2'):
+            result = self.run_helper('settings() { printf %s ' + shlex.quote(value)
+                                     + '; }; magicnet_hotspot_offload_value', 1)
+            self.assertEqual(result.stdout, '')
+
+    def test_offload_status_never_turns_failed_read_into_disabled_zero(self):
+        result = self.run_helper('settings() { return 4; }; magicnet_hotspot_offload_status')
+        self.assertIn('offload_disabled=unknown', result.stdout)
+        self.assertNotIn('offload_disabled=0', result.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()
