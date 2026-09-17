@@ -1,53 +1,130 @@
-name: Prepare WebUI recovery workspace
+name: Verify mobile WebUI recovery
 on:
   push:
     branches: [audit/webui-recovery-workspace-20260917]
 permissions:
   contents: read
 jobs:
-  workspace:
+  host:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 8f432d81986676304e1e252de4c6aea7f124b383
           persist-credentials: false
-          fetch-depth: 1
-      - name: Load pinned shell and routing dependencies
-        run: git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+          fetch-depth: 0
+      - name: Apply exact reviewed source
+        run: |
+          python3 .ci/webui-recovery/apply.py
+          git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+      - name: Prepare actual host tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq ripgrep shellcheck shfmt busybox iproute2 iptables
+          cargo build --locked -p magicnet-cli
+      - name: Source, startup and download regressions
+        run: |
+          set -o pipefail
+          {
+            bash scripts/lint-shell.sh
+            for shell in sh bash busybox; do
+              MAGICNET_TEST_SHELL="$shell" python3 scripts/test-startup-stages.py
+            done
+            test -z "$(gofmt -l installer/components/*.go)"
+            GO111MODULE=off go vet ./installer/components
+            GO111MODULE=off go test -race ./installer/components
+            bash scripts/test-host.sh
+            bash scripts/fake-magisk-smoke.sh
+          } 2>&1 | tee "$RUNNER_TEMP/webui-recovery-evidence/host.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: webui-recovery-host
+          path: ${{ runner.temp }}/webui-recovery-evidence
+          retention-days: 7
+          if-no-files-found: error
+  webui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Apply exact reviewed source
+        run: python3 .ci/webui-recovery/apply.py
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: webui/package-lock.json
-      - name: Prepare locked frontend and host tools
+      - name: Install locked frontend and browser
         run: |
           npm ci --prefix webui
-          (cd webui && npx playwright install chromium)
-          cargo build --locked -p magicnet-cli
-          sudo apt-get update -qq
-          sudo apt-get install -y jq ripgrep shellcheck shfmt
-      - name: Export public source and tools only
+          cd webui
+          npx playwright install --with-deps chromium
+      - name: Frontend unit, type, build and six-viewport browser tests
         run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/webui-workspace"
-          mkdir -p "$out/tools"
-          git rev-parse HEAD > "$out/source-revision.txt"
-          git ls-tree -r HEAD > "$out/source-tree.txt"
-          git submodule status > "$out/submodules.txt"
-          git archive --format=tar HEAD > "$RUNNER_TEMP/source.tar"
-          tar --append --file="$RUNNER_TEMP/source.tar" --exclude=.git src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
-          gzip "$RUNNER_TEMP/source.tar"
-          mv "$RUNNER_TEMP/source.tar.gz" "$out/"
-          tar -czf "$out/frontend-deps.tar.gz" webui/node_modules
-          tar -czf "$out/chromium.tar.gz" -C "$HOME/.cache" ms-playwright
-          cp target/debug/magicnet-cli "$out/tools/"
-          for tool in node jq rg shellcheck shfmt; do cp "$(command -v "$tool")" "$out/tools/"; done
-          (cd "$out" && sha256sum source.tar.gz frontend-deps.tar.gz chromium.tar.gz tools/* > SHA256SUMS)
+          set -o pipefail
+          cd webui
+          npm run check 2>&1 | tee "$RUNNER_TEMP/webui-recovery-evidence/frontend.log"
+          npm run test:ui 2>&1 | tee "$RUNNER_TEMP/webui-recovery-evidence/browser.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: webui-recovery-browser
+          path: |
+            ${{ runner.temp }}/webui-recovery-evidence
+            webui/test-results
+          retention-days: 7
+          if-no-files-found: error
+  receipt:
+    needs: [host, webui]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Apply exact reviewed source
+        run: python3 .ci/webui-recovery/apply.py
+      - name: Publish verified tree objects, never a branch or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, urllib.request
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'webui-recovery-evidence'
+          files = json.loads((out / 'delta.json').read_text())
+          entries = []
+          for name, item in files.items():
+              if item['after'] is None:
+                  entries.append({'path': name, 'mode': '100644', 'type': 'blob', 'sha': None})
+                  continue
+              data = Path(name).read_bytes()
+              assert hashlib.sha256(data).hexdigest() == item['after'], name
+              entries.append({'path': name, 'mode': item['mode'], 'type': 'blob', 'content': data.decode()})
+          payload = {'base_tree': 'edc609f4c4ea428f1381c55f1f900df5cc5abe01', 'tree': entries}
+          req = urllib.request.Request('https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/git/trees',
+              data=json.dumps(payload).encode(), headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+              'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'})
+          with urllib.request.urlopen(req, timeout=60) as response:
+              result = json.load(response)
+          expected = 'b91f6fe7e0fb2e78e41a404e2dd18935cbd2ddcc'
+          assert result['sha'] == expected
+          assert subprocess.check_output(['git', 'write-tree'], text=True).strip() == expected
+          receipt = json.loads((out / 'source-receipt.json').read_text())
+          receipt.update({'host': 'success', 'webui': 'success', 'audit_run': os.environ['GITHUB_RUN_ID']})
+          (out / 'production-tree.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print(json.dumps(receipt, indent=2))
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: webui-recovery-workspace
-          path: ${{ runner.temp }}/webui-workspace
-          retention-days: 2
+          name: webui-recovery-production-tree
+          path: ${{ runner.temp }}/webui-recovery-evidence/production-tree.json
+          retention-days: 7
           if-no-files-found: error
