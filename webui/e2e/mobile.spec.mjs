@@ -235,7 +235,7 @@ test("device unavailable, stopped, unknown, and failed states remain distinct", 
     transparentEffectiveMode: "unknown",
   });
   await expect(
-    page.getByRole("heading", { name: "状态未知", exact: true }),
+    page.getByRole("heading", { name: "状态待确认", exact: true }),
   ).toBeVisible();
   await seedView(page, {
     transparentRecentError: "Fixture: capability check failed",
