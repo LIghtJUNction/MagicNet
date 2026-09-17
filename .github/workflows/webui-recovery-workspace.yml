@@ -16,11 +16,11 @@ jobs:
       - name: Apply exact reviewed source
         run: |
           python3 .ci/webui-recovery/apply.py
-          git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+          git submodule update --init --recursive
       - name: Prepare actual host tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y jq ripgrep shellcheck shfmt busybox iproute2 iptables
+          sudo apt-get install -y jq ripgrep shellcheck shfmt busybox-static iproute2 iptables
           cargo build --locked -p magicnet-cli
       - name: Source, startup and download regressions
         run: |
