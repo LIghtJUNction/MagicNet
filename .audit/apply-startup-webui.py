@@ -49,12 +49,12 @@ for name, record in records.items():
         lines[start:end] = replacement.splitlines(keepends=True)
     new = "".join(lines).encode()
     assert hashlib.sha256(new).hexdigest() == record["after"], f"result mismatch: {name}"
-    # Browser evidence showed an unrelated hotspot-read failure shares the
-    # notice class. Keep every assertion, but target the startup overview.
+    # Keep all startup assertions and qualify nested title/detail locators too;
+    # a separate hotspot-read alert must remain visible and independent.
     if name == "webui/e2e/startup-readiness.spec.mjs":
         assert record["after"] == "0980239d318f7403afffd41218eb14a8fb9ad2aa1282f0ce3b77931b73df20e5"
-        new = new.replace(b"page.locator('.mn-control-notice')", b"page.locator('.mn-control-hero .mn-control-notice')")
-        assert hashlib.sha256(new).hexdigest() == "d873ba30e1aef0d77d5b306d9f060a6faf0198a5af378c98cb9c47e2ddc563b1"
+        new = new.replace(b"page.locator('.mn-control-notice", b"page.locator('.mn-control-hero .mn-control-notice")
+        assert hashlib.sha256(new).hexdigest() == "db589998f35ddccb642f2d012d56b8331dc9deb13dbcc6066121cb18b9f0e250"
     staged.append((target, new, 0o755 if record["mode"] & 0o111 else 0o644))
 for target, content, mode in staged:
     target.parent.mkdir(parents=True, exist_ok=True)
