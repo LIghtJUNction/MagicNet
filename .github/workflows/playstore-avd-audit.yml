@@ -1,0 +1,25 @@
+name: Play Store AVD audit launcher
+on:
+  push:
+    branches: [audit/playstore-avd-20260917]
+    paths: [.github/workflows/playstore-avd-audit.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      AUDIT_REF: ${{ github.ref_name }}
+      AUDIT_SHA: ${{ github.sha }}
+    steps:
+      - name: Run existing Android acceptance at the audit revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n --arg ref "$AUDIT_REF" '{ref:$ref, inputs:{proxy_region:"US", rounds:"1", run_speed:"false", fresh_avd:"false"}}' |
+            gh api --method POST "repos/$REPOSITORY/actions/workflows/android-kernelsu-acceptance.yml/dispatches" --input -
+          printf 'Requested existing Android KernelSU Acceptance on `%s` (`%s`).\n\nThis dispatch is not a test pass. Inspect the acceptance run and its evidence. The existing anonymous HTTPS benchmark does not validate Play app search or downloads.\n' "$AUDIT_REF" "$AUDIT_SHA" >> "$GITHUB_STEP_SUMMARY"
