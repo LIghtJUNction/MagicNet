@@ -259,6 +259,26 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         self.assertIn('phase=prepared', self.state.read_text())
         self.assertFalse(self.read()['writes'])
 
+    def test_disruptive_recovery_clears_own_half_started_rule_but_keeps_foreign_one(self):
+        # A crashed first start left a rule inside MagicNet's own window that
+        # was never promoted to phase=active. Without the flag this deadlocks
+        # forever (previous test); with the explicit disruptive-recovery
+        # opt-in it must be cleared, while a genuinely pre-existing rule in
+        # the same table is never touched.
+        self.change(rule4=['9002: from 192.0.2.0/24 lookup 2022'])
+        self.run_helper('magicnet_kernel_route_state_begin')
+        self.change(rule4=self.read()['rule4'] + ['9000: from all lookup 2022'])
+        self.run_helper('MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_lifecycle_after_stop')
+        self.assertFalse(self.state.exists())
+        self.assertEqual(self.read()['rule4'], ['9002: from 192.0.2.0/24 lookup 2022'])
+        self.assertFalse(self.error.exists())
+
+    def test_disruptive_recovery_without_new_rules_is_a_plain_success(self):
+        self.run_helper('magicnet_kernel_route_state_begin')
+        self.run_helper('MAGICNET_ALLOW_DISRUPTIVE_RECOVERY=1 magicnet_lifecycle_after_stop')
+        self.assertFalse(self.state.exists())
+        self.assertFalse(self.read()['writes'])
+
     def test_legacy_marker_never_deletes_guessed_rules(self):
         self.state.write_text('table=2022\ninterface=magicnet0\n')
         self.change(rule4=['9000: from all lookup 2022'])
