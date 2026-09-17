@@ -246,8 +246,9 @@ test("device unavailable, stopped, unknown, and failed states remain distinct", 
   await seedView(page, { singBoxState: "stopped", transparentRecentError: "" });
   await page.evaluate(async () => {
     const { useMagicNet } = await import("/src/composables/useMagicNet.ts");
-    useMagicNet().state.output =
-      "No cached sing-box nodes found; run cli sub update sing-box";
+    const { state } = useMagicNet();
+    state.phase = "error";
+    state.output = "No cached sing-box nodes found; run cli sub update sing-box";
   });
   await expect(
     page.getByRole("button", { name: "更新订阅并重建节点" }),
