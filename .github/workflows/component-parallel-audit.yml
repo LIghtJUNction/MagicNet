@@ -1,0 +1,27 @@
+name: Component parallel download audit
+on:
+  push:
+    branches: [audit/component-parallel-20260917]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Export exact reviewed source
+        run: |
+          mkdir -p "$RUNNER_TEMP/source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/source/pr314.tar.gz" 0453f0b68fed6410337c7a5755ba4516b06deb77
+          git rev-parse 0453f0b68fed6410337c7a5755ba4516b06deb77^{tree} > "$RUNNER_TEMP/source/tree.txt"
+          sha256sum "$RUNNER_TEMP/source/pr314.tar.gz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr314-reviewed-source
+          path: ${{ runner.temp }}/source
+          retention-days: 2
+          if-no-files-found: error
