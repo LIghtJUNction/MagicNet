@@ -35,7 +35,7 @@ jobs:
           busybox sh scripts/test-startup-diagnostics.sh
           sh scripts/test-startup-network-safety.sh
           python3 scripts/test-start-stop-rollback.py --all-shells
-          sh scripts/test-app-routing-policy.sh
+          bash scripts/test-app-routing-policy.sh
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '24'
