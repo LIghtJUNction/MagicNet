@@ -1,0 +1,26 @@
+name: Startup and WebUI validation
+on:
+  push:
+    branches: [fix/startup-evidence-webui-20260917]
+    paths:
+      - .github/workflows/startup-webui-validation.yml
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Export tracked source only
+        run: |
+          git archive --format=tar HEAD | gzip > /tmp/magicnet-source.tar.gz
+          git rev-parse HEAD
+          find . -maxdepth 4 -name package.json -not -path '*/node_modules/*' -print
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magicnet-source-workspace
+          path: /tmp/magicnet-source.tar.gz
+          retention-days: 1
