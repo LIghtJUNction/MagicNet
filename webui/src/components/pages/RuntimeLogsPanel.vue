@@ -71,7 +71,8 @@ async function refreshLogs(): Promise<void> {
     supervisors: t("读取监督器日志"),
   }[target.value];
   await withAction("runtime-logs", async () => {
-    output.value = await runCli(command, label);
+    // Reading logs must not replace the failed command we are investigating.
+    output.value = await runCli(command, label, true);
     lastLabel.value = label;
     loadedTarget.value = target.value;
     copied.value = false;

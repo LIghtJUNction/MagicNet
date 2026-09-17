@@ -51,6 +51,10 @@ for (const theme of ['light','dark']) {
     await page.screenshot({path:info.outputPath(`${theme}-failure.png`),fullPage:true});
     await page.locator('.mn-control-hero .mn-control-notice').getByRole('button',{name:'查看输出'}).click();
     await expect(page.locator('.page-surface pre').last()).toContainText('Startup step failed: stage=config-check');
+    // A read-only log refresh may fail without a native bridge, but must not
+    // erase the original startup failure or replace its foreground history.
+    await page.getByRole('button',{name:'刷新',exact:true}).click();
+    await expect(page.locator('.page-surface pre').last()).toContainText('Startup step failed: stage=config-check');
     expect(errors).toEqual([]);
   });
 }
