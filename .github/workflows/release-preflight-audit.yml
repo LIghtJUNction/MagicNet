@@ -56,7 +56,7 @@ jobs:
             shellcheck scripts/fake-magisk-smoke.sh scripts/test-host.sh
             python3 scripts/test-fake-magisk-kernel.py
             python3 scripts/test-supervisor-zombie.py
-            python3 scripts/test-route-ownership.py --all-shells
+            python3 scripts/test-route-ownership.py
             python3 scripts/test-start-stop-rollback.py --all-shells
             python3 scripts/test-xtables-registration.py
             python3 scripts/test-dns-output-order.py
