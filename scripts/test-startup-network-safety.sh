@@ -52,7 +52,8 @@ case "$*" in
     case "$*" in *'-o rmnet0 -p udp --dport 53 -j REJECT'|*'-o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT') : >"$MOCK_RULES" ;; esac
     exit 0 ;;
 '-C OUTPUT '*)
-    grep -Fx -- "-A ${*#-C }" "$MOCK_RULES" >/dev/null; exit $? ;;
+    shift
+    grep -Fx -- "-A $*" "$MOCK_RULES" >/dev/null; exit $? ;;
 esac
 exit 0
 MOCK
