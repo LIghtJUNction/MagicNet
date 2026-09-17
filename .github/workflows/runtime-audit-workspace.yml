@@ -1,0 +1,39 @@
+name: Runtime audit workspace
+on:
+  push:
+    branches: [audit/webui-runtime-20260917]
+    paths: [.github/workflows/runtime-audit-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Capture tracked source only
+        run: |
+          mkdir -p audit-workspace
+          git archive --format=zip --output=audit-workspace/source.zip HEAD
+          git rev-parse HEAD > audit-workspace/revision.txt
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: webui
+      - name: Capture dependency tree for offline testing
+        run: tar -czf audit-workspace/webui-dependencies.tgz -C webui node_modules
+      - name: Validate WebUI
+        run: npm run check
+        working-directory: webui
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: runtime-audit-workspace
+          path: audit-workspace/
+          if-no-files-found: error
+          retention-days: 1
