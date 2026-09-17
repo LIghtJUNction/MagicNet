@@ -1,37 +1,80 @@
-name: Startup WebUI source audit
+name: Startup WebUI regression audit
 on:
   push:
     branches: [work/startup-webui-source-20260917]
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: startup-webui-regression-audit
+  cancel-in-progress: true
 jobs:
-  snapshot:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Read isolated review payload
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          path: audit
           persist-credentials: false
-          ref: 8f432d81986676304e1e252de4c6aea7f124b383
-      - name: Export only tracked base sources
-        run: git archive --format=tar.gz --output=magicnet-base-source.tar.gz HEAD
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - name: Check out exact reviewed base
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          name: magicnet-base-source
-          path: magicnet-base-source.tar.gz
-          retention-days: 1
-          if-no-files-found: error
+          path: source
+          ref: 8f432d81986676304e1e252de4c6aea7f124b383
+          persist-credentials: true
+      - name: Apply and verify every source hash
+        run: |
+          python3 audit/.audit/apply-startup-webui.py source
+          git -C source diff --check
+      - name: Execute startup and rollback regressions
+        working-directory: source
+        run: |
+          sh scripts/test-startup-diagnostics.sh
+          bash scripts/test-startup-diagnostics.sh
+          busybox sh scripts/test-startup-diagnostics.sh
+          sh scripts/test-startup-network-safety.sh
+          python3 scripts/test-startup-rollback.py --all-shells
+          sh scripts/test-app-routing.sh
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '24'
-      - name: Install locked WebUI development dependencies
-        working-directory: webui
-        run: npm ci
-      - name: Pack dependencies for offline validation
-        run: tar -czf webui-dependencies.tar.gz webui/node_modules
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - name: Test, typecheck and build the real WebUI
+        working-directory: source/webui
+        run: |
+          npm ci
+          npm run check
+      - name: Install browser and CJK glyph coverage
+        working-directory: source/webui
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+      - name: Exercise mobile, landscape and desktop views
+        working-directory: source/webui
+        run: npx playwright test e2e/startup-readiness.spec.mjs e2e/overview-refinement.spec.mjs
+      - name: Publish browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: webui-audit-dependencies
-          path: webui-dependencies.tar.gz
-          retention-days: 1
+          name: startup-webui-browser-evidence
+          path: source/webui/test-results/
+          retention-days: 3
+          if-no-files-found: warn
+      - name: Publish WebUI build preview
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: startup-webui-preview
+          path: source/webui/dist/
+          retention-days: 3
           if-no-files-found: error
+      - name: Commit only reviewed production and test files to new branch
+        working-directory: source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c fix/startup-diagnostics-webui-20260917
+          git add -- scripts/test-host.sh scripts/test-startup-diagnostics.sh src/MagicNet/lib/magicnet/core.sh webui/e2e/startup-readiness.spec.mjs webui/frontend-refactor-contract.test.mjs webui/src/App.vue webui/src/components/pages/ControlPage.vue webui/src/components/pages/OutputPage.vue webui/src/components/pages/RuntimeLogsPanel.vue webui/src/components/pages/controlRuntimeInsight.ts webui/src/components/pages/outputDiagnostics.ts webui/src/components/pages/runtimeLogInsights.ts webui/src/components/pages/startupFailure.ts webui/src/i18n/catalogs/control.ts webui/src/lib/servicePresentation.ts webui/startup-log-context.test.mjs webui/startup-readiness.test.mjs
+          git diff --cached --check
+          git commit -m 'fix(startup): preserve failure evidence and rebuild truthful WebUI overview'
+          git push origin HEAD:refs/heads/fix/startup-diagnostics-webui-20260917
+          git rev-parse HEAD
