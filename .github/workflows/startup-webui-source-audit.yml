@@ -12,8 +12,9 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
+          ref: 8f432d81986676304e1e252de4c6aea7f124b383
       - name: Export only tracked base sources
-        run: git archive --format=tar.gz --output=magicnet-base-source.tar.gz 8f432d81986676304e1e252de4c6aea7f124b383
+        run: git archive --format=tar.gz --output=magicnet-base-source.tar.gz HEAD
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: magicnet-base-source
