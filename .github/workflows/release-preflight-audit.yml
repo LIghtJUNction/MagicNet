@@ -1,0 +1,53 @@
+name: Release preparation audit
+on:
+  push:
+    branches: [audit/release-preflight-20260917]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Capture exact integration source trees
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-preparation"
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          refs = {'release': 'bf95c400f8e1341e76f5abf6776bbfc00afc4554', 'repair': '10a7f46024368091338dcf26768fb41d936f5c39'}
+          refs['base'] = git('merge-base', refs['release'], refs['repair'])
+          refs['main'] = git('rev-parse', 'origin/main')
+          out = Path(os.environ['RUNNER_TEMP']) / 'release-preparation'
+          manifest = {}
+          for name, sha in refs.items():
+              subprocess.run(['git', 'archive', '--format=tar.gz', '-o', str(out / (name + '.tar.gz')), sha], check=True)
+              links = []
+              for line in git('ls-tree', '-r', sha).splitlines():
+                  meta, path = line.split('\t', 1)
+                  mode, kind, blob = meta.split()
+                  if mode == '160000':
+                      links.append({'path': path, 'sha': blob, 'mode': mode})
+              manifest[name] = {'sha': sha, 'tree': git('rev-parse', sha + '^{tree}'), 'gitlinks': links}
+          (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          print(json.dumps({k:v['sha'] for k,v in manifest.items()}, indent=2))
+          PY
+          gh run view 35143999558 --repo "$GITHUB_REPOSITORY" --log-failed > "$RUNNER_TEMP/release-preparation/previous-build-failure.log"
+      - name: Upload source and already-public build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v1.5.6-integration-inputs
+          path: ${{ runner.temp }}/release-preparation
+          retention-days: 2
+          if-no-files-found: error
