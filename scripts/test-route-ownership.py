@@ -150,6 +150,19 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         self.assertIn('phase=active', self.state.read_text())
         self.assertNotIn('from 192.0.2.0', self.state.read_text())
 
+    def test_missing_or_unverified_journal_never_authorizes_route_flush(self):
+        self.change(route4=['default dev magicnet0 scope link'])
+        for record in (None, 'table=2022\ninterface=magicnet0\n',
+                       'schema=2\nphase=prepared\nboot=unknown\ntable=2022\ninterface=magicnet0\n'):
+            with self.subTest(record=record):
+                self.state.unlink(missing_ok=True)
+                if record is not None:
+                    self.state.write_text(record)
+                self.run_helper('magicnet_lifecycle_after_stop', 2)
+                self.assertEqual(self.read()['route4'], ['default dev magicnet0 scope link'])
+                self.assertFalse(self.read()['writes'])
+                self.assertEqual(self.error.read_text().strip(), 'network-route-ownership')
+
     def test_baseline_without_kernel_changes_is_read_only(self):
         self.run_helper('magicnet_kernel_route_state_begin')
         self.assertIn('phase=prepared', self.state.read_text())
@@ -387,6 +400,17 @@ magicnet_collect_physical_egress_ifaces() {{ printf 'wlan0\\n'; }}
         self.run_helper(self.guard_code('magicnet_disable_dns_leak_guard'), 1)
         self.assertTrue(journal.exists())
         self.assertFalse(self.read()['writes'])
+
+    def test_unknown_ipv6_guard_scan_prevents_ipv4_mutation(self):
+        journal = self.mod / '.state/dns-leak-guard.ifaces'
+        journal.write_text('wlan0\n# magicnet-owned-v2\n# families=4,6\n')
+        own = 'OUTPUT -o wlan0 -p tcp --dport 853 -m comment --comment magicnet-dns-guard -j REJECT'
+        self.change(forward=[own])
+        code = self.guard_code('magicnet_ip6tables_cmd() { return 4; }; magicnet_disable_dns_leak_guard')
+        self.run_helper(code, 1)
+        self.assertFalse(self.read()['writes'])
+        self.assertEqual(self.read()['forward'], [own])
+        self.assertTrue(journal.exists())
 
     def test_guard_failed_rollback_preserves_write_ahead_journal(self):
         self.change(fail_forward_delete=True)

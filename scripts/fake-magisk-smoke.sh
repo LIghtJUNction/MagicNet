@@ -106,12 +106,13 @@ need unzip
 need env
 
 HOST_JQ="$(command -v jq)"
-HOST_GETENT="$(command -v getent || true)"
-HOST_ENV="$(command -v env)"
 MAGICNET_FAKE_PYTHON="$(command -v python3)"
 export MAGICNET_FAKE_PYTHON
 export MAGICNET_FAKE_KERNEL="$ROOT/scripts/fake-magisk-kernel.py"
 test -f "$MAGICNET_FAKE_KERNEL"
+export MAGICNET_FAKE_NETWORK_STATE="$TMP/kernel-state.json"
+HOST_GETENT="$(command -v getent || true)"
+HOST_ENV="$(command -v env)"
 
 if [[ -n "$ZIP_PATH" && "$ZIP_PATH" != /* ]]; then
     ZIP_PATH="$ROOT/$ZIP_PATH"
@@ -240,6 +241,19 @@ if [ -n "${MAGICNET_FAKE_LOG:-}" ]; then
     }
 fi
 SH
+cat >>"$MODDIR/lib/magicnet/network.sh" <<'SH'
+
+# Host fixture only: the real core tests cover actual Linux interfaces. Here
+# the synthetic TUN exists only while this fixture's exact generation is live.
+magicnet_iface_exists() {
+    magicnet_iface_name_valid "$1" || return 1
+    if [ "$1" = magicnet0 ]; then
+        "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" interface "$1"
+    else
+        [ -d "/sys/class/net/$1" ]
+    fi
+}
+SH
 : >"$MOCK_LOG"
 
 setup_toybox_layer() {
@@ -305,35 +319,30 @@ SH
 }
 
 # shellcheck disable=SC2016
-write_mock ip '
-exec "$MAGICNET_FAKE_PYTHON" -I "$MAGICNET_FAKE_KERNEL" ip "$@"
-'
+write_mock ip 'exec "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" ip "$@"'
+for xtables_mock in iptables ip6tables; do
+    # shellcheck disable=SC2016
+    write_mock "$xtables_mock" 'exec "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" "${0##*/}" "$@"'
+done
 
-# Each read observes the same private fixture state as the preceding mutation.
-# No host route/firewall command is ever invoked by this smoke-model boundary.
-# shellcheck disable=SC2016
-write_mock iptables '
-exec "$MAGICNET_FAKE_PYTHON" -I "$MAGICNET_FAKE_KERNEL" "${0##*/}" "$@"
-'
-cp "$MOCK_BIN/iptables" "$MOCK_BIN/ip6tables"
-
-# Verify both generated executables before running the module lifecycle. A
-# malformed wait must fail; adding a wait must not hide a rule or mutation.
+# Exercise the real generated executables, not a second copy of their model.
 for xtables_mock in iptables ip6tables; do
     fixture_log="$TMP/${xtables_mock}-fixture.log"
-    fixture_rule="$(MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -S OUTPUT)"
-    [[ "$fixture_rule" == '-A OUTPUT -o lo -p udp --dport 53 -j REJECT' ]]
-    MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -I OUTPUT -o lo -p udp --dport 53 -j REJECT
+    fixture_state="$TMP/${xtables_mock}-fixture.json"
+    fixture_rule="$(MAGICNET_FAKE_NETWORK_STATE="$fixture_state" MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -S OUTPUT)"
+    [[ "$fixture_rule" == '-P OUTPUT ACCEPT' ]]
+    MAGICNET_FAKE_NETWORK_STATE="$fixture_state" MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -I OUTPUT -o lo -p udp --dport 53 -j REJECT
     grep -q -- ' -I OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$fixture_log"
-    if MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -C OUTPUT -j REJECT; then
+    MAGICNET_FAKE_NETWORK_STATE="$fixture_state" MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -C OUTPUT -o lo -p udp --dport 53 -j REJECT
+    if MAGICNET_FAKE_NETWORK_STATE="$fixture_state" MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w 1 -C OUTPUT -j REJECT; then
         echo 'xtables fixture accepted an absent rule' >&2
         exit 1
     fi
     fixture_rc=0
-    MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w invalid -S OUTPUT || fixture_rc=$?
+    MAGICNET_FAKE_NETWORK_STATE="$fixture_state" MAGICNET_FAKE_LOG="$fixture_log" "$MOCK_BIN/$xtables_mock" -w invalid -S OUTPUT || fixture_rc=$?
     [[ "$fixture_rc" -eq 2 ]]
 done
-unset xtables_mock fixture_log fixture_rule fixture_rc
+unset xtables_mock fixture_log fixture_rule fixture_state fixture_rc
 
 # shellcheck disable=SC2016
 write_mock getprop '
@@ -403,8 +412,8 @@ case "${1:-}" in
         fi
         mkdir -p "${MODDIR:?}/.state"
         echo "$$" >"$MODDIR/.state/fake-sing-box.pid"
+        "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" core-start "$$" "${3:?}"
         printf "%s" "sing-box" >/proc/$$/comm 2>/dev/null || true
-        "$MAGICNET_FAKE_PYTHON" -I "$MAGICNET_FAKE_KERNEL" core-start "$$" "${3:?}" || exit 1
         while :; do sleep 3600; done
         ;;
 esac
@@ -565,7 +574,7 @@ case "${1:-}" in
         pid_file="${MODDIR:?}/.state/fake-sing-box.pid"
         if [[ -s "$pid_file" ]]; then
             pid="$(cat "$pid_file")"
-            if kill -0 "$pid" 2>/dev/null; then
+            if "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" pid-live "$pid"; then
                 echo "$pid"
                 exit 0
             fi
@@ -606,8 +615,8 @@ ln -s "bin/magicnet-cli-smoke" "$MODDIR/cli"
 install_runtime_path_fixtures() {
     local applet host_applet mock
     local applets=(
-        awk basename bash cat chmod cksum cp cut date dirname env false find flock grep head id
-        kill ln ls mkdir mkfifo mktemp stat cmp mv nohup printf ps pwd readlink realpath rm sed sh sleep sort
+        awk basename bash cat chmod cksum cmp cp cut date dirname env false find flock grep head id
+        kill ln ls mkdir mkfifo mktemp mv nohup printf ps pwd readlink realpath rm sed setsid sh sha256sum sleep sort stat
         tail timeout touch tr true uname wc whoami xargs
     )
     local mocks=(
@@ -643,15 +652,6 @@ install_runtime_path_fixtures() {
 
 install_runtime_path_fixtures
 
-# Replace only the external /sys fact inside this extracted host fixture. The
-# real lifecycle/ownership algorithms and their return values remain untouched.
-cat >>"$MODDIR/lib/magicnet/network.sh" <<'SH'
-
-magicnet_iface_exists() {
-    magicnet_iface_name_valid "$1" && ip link show dev "$1" >/dev/null 2>&1
-}
-SH
-
 "$HOST_JQ" '.outbounds += [{"type":"vmess","tag":"old-cached-node","server":"127.0.0.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","security":"auto"}]' \
     "$MODDIR/.config/sing-box/config.json" >"$TMP/sing-box-config.json"
 mv "$TMP/sing-box-config.json" "$MODDIR/.config/sing-box/config.json"
@@ -661,6 +661,7 @@ export MODPATH="$MODDIR"
 export BOOTMODE=true
 export KAM_LANG=en
 export MAGICNET_FAKE_LOG="$MOCK_LOG"
+export KAM_LOGFILE="$MODDIR/.log/kam.log"
 export MAGICNET_FAKE_SETTINGS_FILE
 export MAGICNET_NOTIFY_ENABLED=0
 export MAGICNET_WATCHDOG_ENABLED=0
@@ -673,6 +674,7 @@ export PATH="$MOCK_BIN:$TOYBOX_APPLET_BIN:$MODDIR/bin:$ORIGINAL_PATH"
 # The host-only CLI test runner keeps its command doubles out of the
 # production trusted PATH and opts into them explicitly here.
 export MAGICNET_TEST_PATH="$PATH"
+"$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" seed-foreign
 
 run() {
     echo "+ $*"
@@ -769,13 +771,21 @@ start_fake_core() {
     }
 }
 
+seed_dns_cleanup_fixture() {
+    "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" seed-cleanup
+    # Keep a separately seeded unlabelled foreign rule outside this ledger.
+    printf '%s\n' lo '# magicnet-owned-v2' '# families=4,6' >"$MODDIR/.state/dns-leak-guard.ifaces"
+}
+
 assert_dns_cleanup_log() {
     local log_file="$1"
+    rg -q '^iptables -t nat -D OUTPUT -j magicnet-dns-output$' "$log_file"
+    rg -q '^iptables -D OUTPUT -o lo -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT$' "$log_file"
     if rg -q '^iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$log_file"; then
-        echo "cleanup attempted to remove a foreign DNS reject" >&2
+        echo 'cleanup attempted to remove a foreign DNS reject' >&2
         return 1
     fi
-    MAGICNET_FAKE_LOG="$log_file" "$MAGICNET_FAKE_PYTHON" -I "$MAGICNET_FAKE_KERNEL" assert-clean
+    "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" assert-clean
 }
 
 assert_dns_interception_not_enabled() {
@@ -1046,6 +1056,7 @@ if [[ "$config_lock_ready" -ne 1 ]]; then
     exit 1
 fi
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
+seed_dns_cleanup_fixture
 : >"$MOCK_LOG"
 # shellcheck disable=SC2016
 run env MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=lo sh -c '
@@ -1056,6 +1067,7 @@ run env MAGIC_DNS_LEAK_GUARD=1 MAGIC_DNS_GUARD_IFACES=lo sh -c '
 '
 assert_dns_cleanup_log "$MOCK_LOG"
 assert_dns_interception_not_enabled "$MOCK_LOG" "stopped runtime config"
+seed_dns_cleanup_fixture
 : >"$MOCK_LOG"
 # shellcheck disable=SC2016
 run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
@@ -1068,16 +1080,17 @@ python3 - "$MOCK_LOG" <<'PY'
 import sys
 
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
-capture = next((i for i, line in enumerate(lines) if line.startswith("iptables -t nat -L")), None)
-guard = next((i for i, line in enumerate(lines) if line == "iptables -S OUTPUT"), None)
+capture = next((i for i, line in enumerate(lines) if line == "iptables -t nat -D OUTPUT -j magicnet-dns-output"), None)
+guard = next((i for i, line in enumerate(lines) if line == "iptables -D OUTPUT -o lo -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT"), None)
 run = next((i for i, line in enumerate(lines) if line.startswith("sing-box run")), None)
 if capture is None or guard is None or run is None or capture > run or guard > run:
-    raise SystemExit("kernel bootstrap did not inspect existing DNS ownership before starting sing-box")
+    raise SystemExit("kernel bootstrap did not clear DNS interception before starting sing-box")
 if "iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT" in lines:
     raise SystemExit("kernel bootstrap attempted to remove a foreign DNS reject")
 PY
 stop_fake_core "$MODDIR/.state/fake-sing-box.pid" "sing-box"
 start_fake_core
+seed_dns_cleanup_fixture
 : >"$MOCK_LOG"
 if run env MAGICNET_FAKE_XTABLES_DELETE_FAIL=1 MAGIC_DNS_GUARD_IFACES=lo \
     "$MODDIR/cli" service stop; then
@@ -1116,9 +1129,11 @@ if run env MAGIC_DNS_GUARD_IFACES=lo sh -c '
 fi
 assert_dns_interception_not_enabled "$MOCK_LOG" "deferred config failure"
 
+seed_dns_cleanup_fixture
 : >"$MOCK_LOG"
 run env MAGIC_DNS_GUARD_IFACES=lo "$MODDIR/cli" service stop
 assert_dns_cleanup_log "$MOCK_LOG"
+seed_dns_cleanup_fixture
 : >"$MOCK_LOG"
 # shellcheck disable=SC2016
 if env MAGIC_SINGBOX=0 MAGIC_DNS_GUARD_IFACES=lo sh -c '

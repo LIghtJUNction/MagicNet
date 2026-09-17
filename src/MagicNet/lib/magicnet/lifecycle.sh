@@ -254,10 +254,16 @@ magicnet_kernel_route_cleanup_after_stop() (
     # query is not an empty table, even if a previous stop left a marker behind.
     for _family in 4 6; do
         magicnet_kernel_route_rules "$_family" >/dev/null || return 2
-        magicnet_kernel_route_table_snapshot "$_family" >/dev/null || return 2
+        _routes="$(magicnet_kernel_route_table_snapshot "$_family")" || return 2
+        if printf '%s\n' "$_routes" | grep -Eq '(^| )dev magicnet0( |$)'; then
+            [ -f "$_state" ] && [ ! -L "$_state" ] || return 2
+            _boot="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)" || return 2
+            grep -Fqx 'schema=2' "$_state" && grep -Fqx 'phase=active' "$_state" &&
+                grep -Fqx "boot=$_boot" "$_state" || return 2
+        fi
     done
     magicnet_hotspot_route_cleanup || return 1
-    if [ -e "$_state" ]; then
+    if [ -e "$_state" ] || [ -L "$_state" ]; then
         [ -f "$_state" ] && [ ! -L "$_state" ] || return 2
         grep -Fqx 'table=2022' "$_state" && grep -Fqx 'interface=magicnet0' "$_state" || return 2
         magicnet_kernel_route_cleanup_rule_family 4 2022 || return 2

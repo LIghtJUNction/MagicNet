@@ -637,7 +637,16 @@ magicnet_dns_leak_guard_state_file() {
 magicnet_dns_leak_guard_delete_rule() (
     _dns_guard_delete_cmd="$1"
     shift
-    magicnet_xtables_delete_rule "$_dns_guard_delete_cmd" "" "$@"
+    # A family scan identifies interfaces, not every protocol/port tuple.
+    # Never issue speculative deletes for an absent rule.
+    _dns_guard_check_rc=0
+    "$_dns_guard_delete_cmd" -C "$@" >/dev/null 2>&1 || _dns_guard_check_rc=$?
+    case "$_dns_guard_check_rc" in
+    0) magicnet_xtables_delete_rule "$_dns_guard_delete_cmd" "" "$@" ;;
+    1) return 0 ;;
+    124 | 137 | 143) return 124 ;;
+    *) return 1 ;;
+    esac
 )
 
 magicnet_dns_leak_guard_delete_family() (
@@ -676,6 +685,7 @@ magicnet_dns_leak_guard_rule_ifaces() (
     _dns_guard_scan_rc=0
     _dns_guard_scan_rules="$(LC_ALL=C "$_dns_guard_scan_cmd" -S OUTPUT 2>&1)" || _dns_guard_scan_rc=$?
     if [ "$_dns_guard_scan_rc" -ne 0 ]; then
+        case "$_dns_guard_scan_rc" in 124 | 137 | 143) return "$_dns_guard_scan_rc" ;; esac
         case "$_dns_guard_scan_rules" in
         *"Table does not exist"* | *"Address family not supported"*) return 76 ;;
         esac
@@ -793,8 +803,8 @@ magicnet_disable_dns_leak_guard() (
     _cleanup_state="$(magicnet_dns_leak_guard_state_file)"
     _cleanup_saved=
     MAGICNET_DNS_GUARD_LEGACY_IFACES=
-    if [ -e "$_cleanup_state" ]; then
-        [ -f "$_cleanup_state" ] && [ -r "$_cleanup_state" ] || return 1
+    if [ -e "$_cleanup_state" ] || [ -L "$_cleanup_state" ]; then
+        [ -f "$_cleanup_state" ] && [ -r "$_cleanup_state" ] && [ ! -L "$_cleanup_state" ] || return 1
         _cleanup_saved="$(awk '/^[[:alnum:]_.-]+$/ { print }' "$_cleanup_state")" || return 1
         if ! grep -Fqx '# magicnet-owned-v2' "$_cleanup_state"; then
             MAGICNET_DNS_GUARD_LEGACY_IFACES="$(printf '%s\n' "$_cleanup_saved" | tr '\n' ' ')"
@@ -805,17 +815,16 @@ magicnet_disable_dns_leak_guard() (
     _cleanup_families=unknown
     if [ -f "$_cleanup_state" ]; then
         _cleanup_families="$(sed -n 's/^# families=//p' "$_cleanup_state")" || return 1
-        # Missing, duplicated or invalid family evidence is not a proof of absence.
         case "$_cleanup_families" in 4 | 4,6) ;; *) _cleanup_families=unknown ;; esac
     fi
+    _cleanup_ipv4=
+    _cleanup_ipv6=
+    # Finish both family observations BEFORE the first mutation. A denied
+    # scan is not an instruction to delete rules from an old interface list.
     for _cleanup_family in iptables ip6tables; do
         if ! magicnet_cmd_exists "$_cleanup_family"; then
-            if [ -e "$_cleanup_state" ]; then
-                # A newly journaled IPv4-only guard never installed IPv6 rules.
-                # Older journals do not encode families and must be retained.
-                if [ "$_cleanup_family:$_cleanup_families" != ip6tables:4 ]; then
-                    _cleanup_result=1
-                fi
+            if [ -e "$_cleanup_state" ] && [ "$_cleanup_family:$_cleanup_families" != ip6tables:4 ]; then
+                return 1
             fi
             continue
         fi
@@ -823,14 +832,20 @@ magicnet_disable_dns_leak_guard() (
         _cleanup_ifaces="$(magicnet_dns_leak_guard_rule_ifaces "magicnet_${_cleanup_family}_cmd")" || _cleanup_scan_rc=$?
         case "$_cleanup_scan_rc" in
         0) ;;
-        76) continue ;; # Explicit absent-filter/family result, not raw exit 3.
-        124 | 137 | 143) return 1 ;;
-        *)
-            # A failed whole-chain inspection is not permission to mutate a
-            # partially observed firewall. Keep the journal and retry later.
-            return 1
-            ;;
+        76) continue ;; # Explicit absent filter/family, never a timeout.
+        *) return 1 ;;
         esac
+        case "$_cleanup_family" in
+        iptables) _cleanup_ipv4="$_cleanup_ifaces" ;;
+        ip6tables) _cleanup_ipv6="$_cleanup_ifaces" ;;
+        esac
+    done
+    for _cleanup_family in iptables ip6tables; do
+        case "$_cleanup_family" in
+        iptables) _cleanup_ifaces="$_cleanup_ipv4" ;;
+        ip6tables) _cleanup_ifaces="$_cleanup_ipv6" ;;
+        esac
+        [ -n "$_cleanup_ifaces" ] || continue
         _cleanup_rc=0
         magicnet_dns_leak_guard_delete_family "magicnet_${_cleanup_family}_cmd" "$_cleanup_ifaces" || _cleanup_rc=$?
         case "$_cleanup_rc" in
@@ -838,9 +853,6 @@ magicnet_disable_dns_leak_guard() (
         0) ;;
         *) _cleanup_result=1 ;;
         esac
-        # If the listing was unreadable, retain the journal for reconciliation
-        # even when individual -C checks suggest the known rules disappeared.
-        [ "$_cleanup_scan_rc" -eq 0 ] || _cleanup_result=1
     done
     [ "$_cleanup_result" -eq 0 ] || return 1
     rm -f "$_cleanup_state" 2>/dev/null

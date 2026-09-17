@@ -1,230 +1,252 @@
 #!/usr/bin/env python3
-"""Private stateful host-fixture boundaries; never used by the shipped module.
+"""Small, stateful kernel double for fake-magisk-smoke; never invokes ip/iptables.
 
-Models only the ip/xtables calls exercised by fake-magisk-smoke. Unknown mutation
-commands fail rather than inventing success. Real namespace tests validate actual
-kernel behavior separately; this model is not Android/network acceptance.
+Only this host fixture uses it. Production scripts are copied without changing
+failure handling, ownership checks or lifecycle ordering.
 """
-from __future__ import annotations
-
+import contextlib
 import fcntl
 import json
 import os
 from pathlib import Path
-import shlex
 import sys
 
-CHAIN = 'magicnet-dns-output'
-FOREIGN = ['-o', 'lo', '-p', 'udp', '--dport', '53', '-j', 'REJECT']
+CHAIN = "magicnet-dns-output"
+FOREIGN = ["-o", "lo", "-p", "udp", "--dport", "53", "-j", "REJECT"]
 
 
 def initial():
-    tables = {}
-    for family in ('iptables', 'ip6tables'):
-        tables[family] = {
-            'filter': {'OUTPUT': [FOREIGN.copy()], 'INPUT': [], 'FORWARD': [], 'tetherctrl_FORWARD': []},
-            'nat': {'OUTPUT': [['-j', CHAIN]], 'POSTROUTING': [], 'PREROUTING': [],
-                    CHAIN: [['-p', p, '--dport', '53', '-j', 'REDIRECT', '--to-ports', '1053']
-                            for p in ('udp', 'tcp')]},
-        }
-    return {'tables': tables, 'rules': {'4': [], '6': []}, 'core': None}
+    return {
+        "tables": {
+            family: {table: {chain: [] for chain in chains}
+                     for table, chains in {
+                         "filter": ("INPUT", "FORWARD", "OUTPUT", "tetherctrl_FORWARD"),
+                         "nat": ("PREROUTING", "INPUT", "OUTPUT", "POSTROUTING"),
+                     }.items()}
+            for family in ("iptables", "ip6tables")
+        },
+        "rules": {"4": [], "6": []},
+        "core": None,
+    }
 
 
-def alive(core):
+def live(core):
     if not core:
         return False
     try:
-        pid = int(core['pid'])
-        os.kill(pid, 0)
-        stat = Path(f'/proc/{pid}/stat').read_text()
-        return stat.rsplit(')', 1)[1].split()[0] != 'Z'
-    except (OSError, ValueError, KeyError):
+        # A terminated but unreaped child is not a live listener.
+        tail = Path(f"/proc/{core['pid']}/stat").read_text().rsplit(") ", 1)[1]
+        fields = tail.split()
+        return fields[0] not in ("Z", "X", "x") and ("start" not in core or fields[19] == core["start"])
+    except (FileNotFoundError, ProcessLookupError):
         return False
 
 
-def tun(state):
-    return alive(state['core']) and state['core']['mode'] == 'tun'
+@contextlib.contextmanager
+def locked_state():
+    path = Path(os.environ["MAGICNET_FAKE_NETWORK_STATE"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with Path(str(path) + ".lock").open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state = json.loads(path.read_text()) if path.exists() else initial()
+        yield state
+        temporary = Path(str(path) + ".new")
+        temporary.write_text(json.dumps(state))
+        temporary.replace(path)
 
 
 def xtables(state, family, args):
-    if args == ['--version']:
-        print(f'{family} v1.8.11 (nf_tables)')
+    if args == ["--version"]:
+        print(f"{family} v1.8.11 (nf_tables)")
         return 0
-    table = 'filter'
-    if args[:1] == ['-t'] and len(args) >= 2:
-        table, args = args[1], args[2:]
-    if table not in state['tables'][family]:
+    args = list(args)
+    table = "filter"
+    if args[:1] == ["-t"]:
+        table = args[1]
+        args = args[2:]
+    if table not in state["tables"][family]:
+        print("Table does not exist", file=sys.stderr)
         return 3
-    chains = state['tables'][family][table]
     if not args:
-        return 2
+        raise ValueError("missing xtables operation")
     action, *rest = args
-    if action == '-nL':
-        action = '-L'
-    name = rest[0] if rest and not rest[0].startswith('-') else None
-    if action == '-L':
+    chains = state["tables"][family][table]
+    name = rest[0] if rest and not rest[0].startswith("-") else None
+    if action in ("-L", "-nL"):
         return 0 if name is None or name in chains else 1
-    if action == '-S':
+    if action == "-S":
         if name is not None and name not in chains:
             return 1
-        for chain in [name] if name else chains:
-            for rule in chains[chain]:
-                print(shlex.join(['-A', chain] + rule))
+        for selected in [name] if name is not None else chains:
+            if selected in ("INPUT", "OUTPUT", "FORWARD", "PREROUTING", "POSTROUTING"):
+                print(f"-P {selected} ACCEPT")
+            else:
+                print(f"-N {selected}")
+            for rule in chains[selected]:
+                # xtables does not quote !; comments here are token-only.
+                print(" ".join(["-A", selected, *rule]))
         return 0
-    if name is None:
-        return 2
-    rule = rest[1:]
-    if action == '-N':
+    if action == "-N":
         if name in chains:
             return 1
         chains[name] = []
         return 0
     if name not in chains:
         return 1
-    if action == '-F':
+    if action == "-F":
         chains[name] = []
-    elif action == '-X':
-        if chains[name] or any(name in r for rs in chains.values() for r in rs):
+        return 0
+    if action == "-X":
+        if chains[name] or any("-j" in r and r[r.index("-j") + 1] == name
+                               for rules in chains.values() for r in rules):
             return 1
         del chains[name]
-    elif action == '-C':
+        return 0
+    rule = rest[1:]
+    position = int(rule.pop(0)) - 1 if action == "-I" and rule and rule[0].isdigit() else 0
+    if "-j" in rule:
+        target = rule[rule.index("-j") + 1]
+        if target not in {"ACCEPT", "DROP", "REJECT", "RETURN", "REDIRECT", "DNAT", "MASQUERADE", "MARK"} and target not in chains:
+            return 2
+    if action == "-C":
         return 0 if rule in chains[name] else 1
-    elif action == '-D':
-        if os.environ.get('MAGICNET_FAKE_XTABLES_DELETE_FAIL') == '1':
-            print('fixture xtables delete failure', file=sys.stderr)
+    if action == "-D":
+        if os.environ.get("MAGICNET_FAKE_XTABLES_DELETE_FAIL") == "1":
+            print("fixture xtables delete failure", file=sys.stderr)
             return 4
         if rule not in chains[name]:
             return 1
         chains[name].remove(rule)
-    elif action == '-I':
-        at = int(rule.pop(0)) - 1 if rule and rule[0].isdigit() else 0
-        if at < 0:
-            return 2
-        chains[name].insert(at, rule)
-    elif action == '-A':
+        return 0
+    if action == "-A":
         chains[name].append(rule)
-    else:
-        print('unsupported fixture xtables operation', file=sys.stderr)
-        return 2
-    return 0
-
-
-def rule_record(args):
-    if len(args) < 2 or args[0] not in ('priority', 'pref') or not args[1].isdigit():
-        raise ValueError('fixture requires an explicit priority')
-    priority, rest = args[1], args[2:]
-    if rest[:1] != ['from']:
-        rest = ['from', 'all'] + rest
-    if len(rest) < 4 or 'lookup' not in rest:
-        raise ValueError('unsupported fixture rule')
-    return priority + ': ' + shlex.join(rest)
+        return 0
+    if action == "-I":
+        chains[name].insert(position, rule)
+        return 0
+    raise ValueError(f"unsupported xtables fixture command: {family} {args}")
 
 
 def ip(state, args):
-    family = '4'
-    if args[:1] in (['-4'], ['-6']):
+    args = list(args)
+    family = "4"
+    if args[:1] in (["-4"], ["-6"]):
         family, args = args[0][1:], args[1:]
-    if args[:2] == ['rule', 'show']:
-        print('0: from all lookup local')
-        for rule in state['rules'][family]:
+    core = state["core"]
+    tun = live(core) and core["mode"] == "tun"
+    if args[:2] == ["rule", "show"]:
+        if tun:
+            print("9000: from all lookup 2022")
+        for rule in state["rules"][family]:
             print(rule)
-        print('32766: from all lookup main\n32767: from all lookup default')
         return 0
-    if args[:2] in (['rule', 'add'], ['rule', 'del']):
-        record = rule_record(args[2:])
-        rules = state['rules'][family]
-        if args[1] == 'add':
-            rules.append(record)
+    if args[:2] in (["rule", "add"], ["rule", "del"]):
+        action, rule = args[1], args[2:]
+        if rule[0] != "priority":
+            raise ValueError(f"fixture requires exact priority: {args}")
+        line = f"{rule[1]}: " + " ".join(rule[2:])
+        if action == "add":
+            state["rules"][family].append(line)
+        elif line in state["rules"][family]:
+            state["rules"][family].remove(line)
         else:
-            if record not in rules:
-                return 2
-            rules.remove(record)
-        return 0
-    if args == ['-o', 'link', 'show']:
-        for name in ('lo', 'ap0', 'tun0') + (('magicnet0',) if tun(state) else ()):
-            print(f'8: {name}: <UP> mtu 1500 state UNKNOWN')
-        return 0
-    if args[:2] == ['route', 'show']:
-        if 'dev' in args and args[args.index('dev') + 1] in ('ap0', 'wlan0'):
-            name = args[args.index('dev') + 1]
-            print(f'192.168.43.0/24 dev {name} proto kernel scope link src 192.168.43.1')
-            return 0
-        if 'table' in args and args[args.index('table') + 1] == '2022' and tun(state):
-            print('default dev magicnet0 scope link')
-        return 0
-    if args[:2] == ['route', 'flush']:
-        if 'dev' not in args or args[args.index('dev') + 1] != 'magicnet0' or tun(state):
             return 2
         return 0
-    if args[:2] == ['link', 'show']:
-        name = args[-1]
-        if name in ('lo', 'ap0', 'wlan0', 'tun0') or (name == 'magicnet0' and tun(state)):
-            print(f'8: {name}: <UP> mtu 1500 state UNKNOWN')
+    if args[:3] == ["link", "show", "dev"] and len(args) == 4:
+        name = args[3]
+        if name in ("lo", "ap0", "wlan0", "tun0") or (name == "magicnet0" and tun):
+            print(f"8: {name}: <UP> mtu 1500 state UNKNOWN")
             return 0
         return 1
-    if args[:1] == ['-o'] and len(args) >= 4 and args[1] in ('-4', '-6'):
-        addr_family, tail = args[1], args[2:]
-        if tail[:2] != ['addr', 'show']:
-            return 2
-        name = tail[-1]
-        if addr_family == '-4':
-            addresses = {'ap0': '192.168.43.1/24', 'wlan0': '192.168.43.1/24',
-                         'tun0': '10.8.0.2/24', 'magicnet0': '172.19.0.1/30'}
-            if name in addresses:
-                print(f'7: {name} inet {addresses[name]} scope global {name}')
-        elif name == 'tun0':
-            print('9: tun0 inet6 fd00::2/64 scope global')
+    if args[:2] == ["route", "show"]:
+        if "dev" in args and args[-1] in ("ap0", "wlan0"):
+            name = args[-1]
+            print(f"192.168.43.0/24 dev {name} proto kernel scope link src 192.168.43.1")
+            return 0
+        if args[2:] == ["table", "2022"] and tun:
+            print("default dev magicnet0 scope link")
         return 0
-    print('unsupported fixture ip operation', file=sys.stderr)
-    return 2
+    if args[:2] == ["route", "flush"]:
+        if args[2:] != ["table", "2022", "dev", "magicnet0"]:
+            raise ValueError(f"unscoped route flush: {args}")
+        if tun:
+            raise ValueError("fixture must not flush a live core's routes")
+        return 0
+    if args[:3] == ["-o", "link", "show"]:
+        print("1: lo: <LOOPBACK,UP>")
+        if tun:
+            print("8: magicnet0: <POINTOPOINT,UP>")
+        return 0
+    if args[:3] == ["-o", "-4", "addr"] and args[3:5] == ["show", "dev"]:
+        dev = args[5]
+        cidrs = {"ap0": "192.168.43.1/24", "wlan0": "192.168.43.1/24", "tun0": "10.8.0.2/24"}
+        if tun:
+            cidrs["magicnet0"] = "172.19.0.1/30"
+        if dev in cidrs:
+            print(f"8: {dev} inet {cidrs[dev]} scope global {dev}")
+        return 0
+    if args[:3] == ["-o", "-6", "addr"] and args[3:5] == ["show", "dev"]:
+        if args[5] == "tun0":
+            print("9: tun0 inet6 fd00::2/64 scope global")
+        return 0
+    raise ValueError(f"unsupported ip fixture command: {args}")
 
 
-def dispatch(state, program, args):
-    if program in ('iptables', 'ip6tables'):
-        return xtables(state, program, args)
-    if program == 'ip':
+def dispatch(state, command, args):
+    if command in ("iptables", "ip6tables"):
+        return xtables(state, command, args)
+    if command == "ip":
         return ip(state, args)
-    if program == 'core-start':
-        pid = int(args[0])
+    if command == "core-start":
         config = json.loads(Path(args[1]).read_text())
-        mode = 'tun' if any(i.get('type') == 'tun' for i in config.get('inbounds', [])) else 'ebpf'
-        state['core'] = {'pid': pid, 'mode': mode}
-        if mode == 'tun':
-            for family in ('4', '6'):
-                rule = '9000: from all lookup 2022'
-                if rule not in state['rules'][family]:
-                    state['rules'][family].append(rule)
+        mode = "tun" if any(i.get("type") == "tun" for i in config.get("inbounds", [])) else "ebpf"
+        fields = Path(f"/proc/{int(args[0])}/stat").read_text().rsplit(") ", 1)[1].split()
+        state["core"] = {"pid": int(args[0]), "mode": mode, "start": fields[19]}
         return 0
-    if program == 'assert-clean':
-        for family in ('iptables', 'ip6tables'):
-            tables = state['tables'][family]
-            if CHAIN in tables['nat'] or any(CHAIN in r for rs in tables['nat'].values() for r in rs):
-                raise ValueError('owned DNS state was not cleaned')
-            if tables['filter']['OUTPUT'] != [FOREIGN]:
-                raise ValueError('foreign filter rule was changed or owned guard remains')
+    if command == "pid-live":
+        return 0 if len(args) == 1 and live({"pid": int(args[0])}) else 1
+    if command == "interface":
+        return 0 if args == ["magicnet0"] and live(state["core"]) and state["core"]["mode"] == "tun" else 1
+    if command == "seed-cleanup":
+        for family in ("iptables", "ip6tables"):
+            nat = state["tables"][family]["nat"]
+            nat["magicnet-dns-output"] = [["-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", "1053"]]
+            nat["OUTPUT"] = [r for r in nat["OUTPUT"] if "magicnet-dns-output" not in r]
+            nat["OUTPUT"].insert(0, ["-j", "magicnet-dns-output"])
+            guard = ["-o", "lo", "-p", "udp", "--dport", "53", "-m", "comment", "--comment", "magicnet-dns-guard", "-j", "REJECT"]
+            output = state["tables"][family]["filter"]["OUTPUT"]
+            if guard not in output:
+                output.append(guard)
         return 0
-    raise ValueError('unsupported fixture command')
+    if command == "seed-foreign":
+        for family in ("iptables", "ip6tables"):
+            output = state["tables"][family]["filter"]["OUTPUT"]
+            if FOREIGN not in output:
+                output.append(FOREIGN.copy())
+        return 0
+    if command == "assert-clean":
+        for family in ("iptables", "ip6tables"):
+            tables = state["tables"][family]
+            if CHAIN in tables["nat"] or any(CHAIN in r for rules in tables["nat"].values() for r in rules):
+                raise ValueError("owned DNS state was not cleaned")
+            if tables["filter"]["OUTPUT"] != [FOREIGN]:
+                raise ValueError("foreign filter rule was changed or owned guard remains")
+        return 0
+    if command == "reset":
+        state.clear()
+        state.update(initial())
+        return 0
+    raise ValueError(f"unsupported fixture command: {command}")
+
+def main(args):
+    command, *args = args
+    with locked_state() as state:
+        return dispatch(state, command, args)
 
 
-def main():
-    log = Path(os.environ['MAGICNET_FAKE_LOG'])
-    # The harness owns this private directory; fixture self-tests use separate
-    # log names, so no self-test mutation leaks into the runtime instance.
-    path = log.with_name(log.name + '.kernel.json')
-    lock = log.with_name(log.name + '.kernel.lock')
-    with lock.open('a') as guard:
-        fcntl.flock(guard, fcntl.LOCK_EX)
-        state = json.loads(path.read_text()) if path.exists() else initial()
-        result = dispatch(state, sys.argv[1], sys.argv[2:])
-        temp = path.with_name(path.name + '.new')
-        temp.write_text(json.dumps(state))
-        os.replace(temp, path)
-        return result
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
-        raise SystemExit(main())
-    except (OSError, ValueError, KeyError, IndexError) as error:
-        print('kernel fixture error: ' + str(error), file=sys.stderr)
-        raise SystemExit(2)
+        sys.exit(main(sys.argv[1:]))
+    except (KeyError, IndexError, ValueError) as exc:
+        print(f"fake kernel: {exc}", file=sys.stderr)
+        sys.exit(64)
