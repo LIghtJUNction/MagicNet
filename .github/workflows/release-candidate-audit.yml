@@ -1,0 +1,64 @@
+name: Release candidate integration audit
+on:
+  push:
+    branches: [audit/release-v1.5.6-20260917]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      RELEASE_BASE: bf95c400f8e1341e76f5abf6776bbfc00afc4554
+      FIX_HEAD: 10a7f46024368091338dcf26768fb41d936f5c39
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Capture prior build failure and integration inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/candidate-evidence"
+          gh run view 35143999558 --repo "$GITHUB_REPOSITORY" --log-failed > "$RUNNER_TEMP/candidate-evidence/previous-build-failure.log"
+          git diff "$RELEASE_BASE" "$FIX_HEAD" --stat > "$RUNNER_TEMP/candidate-evidence/branch-diff-stat.txt"
+          git merge-base "$RELEASE_BASE" "$FIX_HEAD" > "$RUNNER_TEMP/candidate-evidence/merge-base.txt"
+      - name: Dry-run merge and export exact source stages
+        run: |
+          git checkout --detach "$RELEASE_BASE"
+          git config user.name 'Release candidate inspection'
+          git config user.email 'release-inspection@users.noreply.github.com'
+          set +e
+          git merge --no-commit --no-ff "$FIX_HEAD" > "$RUNNER_TEMP/candidate-evidence/merge.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -le 1
+          git status --short > "$RUNNER_TEMP/candidate-evidence/merge-status.txt"
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'candidate-evidence'
+          stages={}
+          for entry in subprocess.check_output(['git','ls-files','-u'],text=True).splitlines():
+              header,path=entry.split('\t',1)
+              mode,sha,stage=header.split()
+              content=subprocess.check_output(['git','cat-file','blob',sha]).decode('utf-8')
+              stages.setdefault(path,{})[stage]={'mode':mode,'sha':sha,'content':content}
+          (out/'conflict-stages.json').write_text(json.dumps(stages,ensure_ascii=False,indent=2)+'\n')
+          print('Conflicted files:', ', '.join(stages) or 'none')
+          PY
+          git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+          tar --exclude=.git --exclude=target --exclude=.cache --exclude=node_modules -czf "$RUNNER_TEMP/candidate-evidence/candidate-source.tar.gz" .
+          cargo build --locked -p magicnet-cli
+          mkdir -p "$RUNNER_TEMP/candidate-evidence/tools"
+          cp target/debug/magicnet-cli "$RUNNER_TEMP/candidate-evidence/tools/"
+      - name: Upload inspection only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-v1.5.6-integration-inputs
+          path: ${{ runner.temp }}/candidate-evidence
+          retention-days: 2
+          if-no-files-found: error
