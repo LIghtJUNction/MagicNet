@@ -1,0 +1,174 @@
+name: PR314 bounded parallel component downloads
+on:
+  push:
+    branches: [fix/github-mirror-throughput-20260917]
+permissions:
+  contents: write
+jobs:
+  patch-test-commit:
+    if: ${{ !contains(github.event.head_commit.message, '[parallel-ready]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.7'
+          cache: false
+      - name: Apply bounded component concurrency
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('installer/components/main.go')
+          s = p.read_text()
+
+          def replace(old, new):
+              global s
+              if s.count(old) != 1:
+                  raise SystemExit(f'expected one match, got {s.count(old)}: {old[:80]!r}')
+              s = s.replace(old, new)
+
+          replace('\t"strings"\n\t"sync/atomic"\n', '\t"strings"\n\t"sync"\n\t"sync/atomic"\n')
+          replace('const maxPayload = int64(512 << 20)\n', '''const (\n\tmaxPayload               = int64(512 << 20)\n\tcomponentDownloadWorkers = 3\n)\n''')
+          replace('var releaseVersion = regexp.MustCompile(`^v[0-9]+\\.[0-9]+\\.[0-9]+$`)\n', '''var releaseVersion = regexp.MustCompile(`^v[0-9]+\\.[0-9]+\\.[0-9]+$`)\n\nvar logWriterMu sync.Mutex\nvar routeHintMu sync.Mutex\n''')
+          replace('''func (o options) printf(format string, args ...any) {\n\tif o.log != nil {\n\t\tfmt.Fprintf(o.log, format+"\\n", args...)\n\t}\n}\n''', '''func (o options) printf(format string, args ...any) {\n\tif o.log != nil {\n\t\tlogWriterMu.Lock()\n\t\tdefer logWriterMu.Unlock()\n\t\tfmt.Fprintf(o.log, format+"\\n", args...)\n\t}\n}\n''')
+
+          marker = 'func (o options) download(c component, direct, destination string) error {\n'
+          helpers = '''func (o options) cachedRoute(c component, direct string) (route, bool) {\n\trouteHintMu.Lock()\n\tdefer routeHintMu.Unlock()\n\tif o.route == nil || !o.route.usable(c) {\n\t\treturn route{}, false\n\t}\n\treturn route{url: o.route.prefix + direct, name: o.route.name, prefix: o.route.prefix}, true\n}\n\nfunc (o options) rememberRoute(candidate route, c component) {\n\tif o.route == nil {\n\t\treturn\n\t}\n\trouteHintMu.Lock()\n\tdefer routeHintMu.Unlock()\n\t*o.route = routeHint{set: true, prefix: candidate.prefix, name: candidate.name,\n\t\tverifiedAt: time.Now(), sampleSize: c.Size}\n}\n\nfunc (o options) invalidateRoute(prefix string) {\n\tif o.route == nil {\n\t\treturn\n\t}\n\trouteHintMu.Lock()\n\tdefer routeHintMu.Unlock()\n\tif o.route.prefix == prefix {\n\t\to.route.set = false\n\t}\n}\n\nfunc (o options) download(c component, direct, destination string) error {\n'''
+          replace(marker, helpers)
+          replace('''\tvar candidates []route\n\tif o.route.usable(c) {\n\t\tcandidates = []route{{url: o.route.prefix + direct, name: o.route.name, prefix: o.route.prefix}}\n\t\to.printf("[route] %s: reusing recently verified route", o.route.name)\n\t} else {\n\t\tcandidates = o.routes(c, direct)\n\t}\n''', '''\tvar candidates []route\n\tif cached, ok := o.cachedRoute(c, direct); ok {\n\t\tcandidates = []route{cached}\n\t\to.printf("[route] %s: reusing recently verified route", cached.name)\n\t} else {\n\t\tcandidates = o.routes(c, direct)\n\t}\n''')
+          replace('''\tremember := func(candidate route) {\n\t\tif o.route != nil {\n\t\t\t*o.route = routeHint{set: true, prefix: candidate.prefix, name: candidate.name,\n\t\t\t\tverifiedAt: time.Now(), sampleSize: c.Size}\n\t\t}\n\t\to.printf("[download] %s: verified via %s", c.ID, candidate.name)\n\t}\n''', '''\tremember := func(candidate route) {\n\t\to.rememberRoute(candidate, c)\n\t\to.printf("[download] %s: verified via %s", c.ID, candidate.name)\n\t}\n''')
+          replace('''\t\tif o.route != nil && candidate.prefix == o.route.prefix {\n\t\t\to.route.set = false\n\t\t}\n''', '''\t\to.invalidateRoute(candidate.prefix)\n''')
+          replace('''\t\t\tif o.route != nil {\n\t\t\t\to.route.set = false\n\t\t\t}\n''', '''\t\t\to.invalidateRoute(slow.prefix)\n''')
+
+          promote_marker = '''// All components are validated in a private staging directory before this\n'''
+          parallel = '''type componentDownload struct {\n\tcomponent   component\n\tdirect      string\n\tdestination string\n}\n\nfunc (o options) downloadComponents(items []componentDownload) error {\n\tif len(items) == 0 {\n\t\treturn nil\n\t}\n\tworkers := min(componentDownloadWorkers, len(items))\n\to.printf("[download] fetching %d components with up to %d parallel transfers", len(items), workers)\n\tjobs := make(chan componentDownload)\n\tvar wg sync.WaitGroup\n\tvar failed atomic.Bool\n\tvar firstErr error\n\tvar first sync.Once\n\tfor i := 0; i < workers; i++ {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tfor item := range jobs {\n\t\t\t\tif failed.Load() {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tif err := o.download(item.component, item.direct, item.destination); err != nil {\n\t\t\t\t\tfirst.Do(func() {\n\t\t\t\t\t\tfirstErr = err\n\t\t\t\t\t\tfailed.Store(true)\n\t\t\t\t\t})\n\t\t\t\t}\n\t\t\t}\n\t\t}()\n\t}\n\tfor _, item := range items {\n\t\tif failed.Load() {\n\t\t\tbreak\n\t\t}\n\t\tjobs <- item\n\t}\n\tclose(jobs)\n\twg.Wait()\n\treturn firstErr\n}\n\n'''
+          replace(promote_marker, parallel + promote_marker)
+
+          old_loop = '''\tvar files []payloadFile\n\twanted := map[string]bool{}\n\tfor _, c := range m.Components {\n\t\tfor _, f := range c.Files {\n\t\t\tfiles = append(files, f)\n\t\t\twanted[f.Path] = true\n\t\t}\n\t\treused := false\n\t\tfor _, root := range []string{o.ModuleDir, o.PreviousDir} {\n\t\t\tok, e := stageLocal(c, root, stage)\n\t\t\tif e != nil {\n\t\t\t\treturn e\n\t\t\t}\n\t\t\tif ok {\n\t\t\t\to.printf("[reuse] %s: installed files match", c.ID)\n\t\t\t\treused = true\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t\tif reused {\n\t\t\tcontinue\n\t\t}\n\t\tif hasFiles(c, entries) {\n\t\t\to.printf("[bundled] %s: verifying offline payload", c.ID)\n\t\t\tif err = stageZip(c, entries, stage, false); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t\tcontinue\n\t\t}\n\t\tcached := filepath.Join(o.CacheDir, c.SHA256+".zip")\n\t\tif !validFile(cached, c.Size, c.SHA256) {\n\t\t\tif err = physical(cached, true); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t\tif o.Offline {\n\t\t\t\treturn fmt.Errorf("%s: required component is unavailable offline", c.ID)\n\t\t\t}\n\t\t\tbase := o.baseURL\n\t\t\tif base == "" {\n\t\t\t\tbase = "https://github.com/" + m.Repository + "/releases/download/" + url.PathEscape(m.Version) + "/"\n\t\t\t}\n\t\t\to.printf("[download] %s: need %s", c.ID, humanBytes(c.Size))\n\t\t\tif err = o.download(c, base+c.Asset, cached); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t} else {\n\t\t\to.printf("[cache] %s: verified cached component", c.ID)\n\t\t}\n\t\tpayload, e := zip.OpenReader(cached)\n\t\tif e != nil {\n\t\t\treturn e\n\t\t}\n\t\tindex, e := zipIndex(&payload.Reader)\n\t\tif e == nil {\n\t\t\te = stageZip(c, index, stage, true)\n\t\t}\n\t\tpayload.Close()\n\t\tif e != nil {\n\t\t\treturn e\n\t\t}\n\t}\n'''
+          new_loop = '''\tvar files []payloadFile\n\twanted := map[string]bool{}\n\ttype cachedComponent struct {\n\t\tcomponent component\n\t\tpath      string\n\t}\n\tvar cachedComponents []cachedComponent\n\tvar downloads []componentDownload\n\tscheduled := map[string]bool{}\n\tbase := o.baseURL\n\tif base == "" {\n\t\tbase = "https://github.com/" + m.Repository + "/releases/download/" + url.PathEscape(m.Version) + "/"\n\t}\n\tfor _, c := range m.Components {\n\t\tfor _, f := range c.Files {\n\t\t\tfiles = append(files, f)\n\t\t\twanted[f.Path] = true\n\t\t}\n\t\treused := false\n\t\tfor _, root := range []string{o.ModuleDir, o.PreviousDir} {\n\t\t\tok, e := stageLocal(c, root, stage)\n\t\t\tif e != nil {\n\t\t\t\treturn e\n\t\t\t}\n\t\t\tif ok {\n\t\t\t\to.printf("[reuse] %s: installed files match", c.ID)\n\t\t\t\treused = true\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t\tif reused {\n\t\t\tcontinue\n\t\t}\n\t\tif hasFiles(c, entries) {\n\t\t\to.printf("[bundled] %s: verifying offline payload", c.ID)\n\t\t\tif err = stageZip(c, entries, stage, false); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t\tcontinue\n\t\t}\n\t\tcached := filepath.Join(o.CacheDir, c.SHA256+".zip")\n\t\tif validFile(cached, c.Size, c.SHA256) {\n\t\t\to.printf("[cache] %s: verified cached component", c.ID)\n\t\t} else {\n\t\t\tif err = physical(cached, true); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t\tif o.Offline {\n\t\t\t\treturn fmt.Errorf("%s: required component is unavailable offline", c.ID)\n\t\t\t}\n\t\t\tif !scheduled[cached] {\n\t\t\t\to.printf("[download] %s: need %s", c.ID, humanBytes(c.Size))\n\t\t\t\tdownloads = append(downloads, componentDownload{component: c, direct: base + c.Asset, destination: cached})\n\t\t\t\tscheduled[cached] = true\n\t\t\t}\n\t\t}\n\t\tcachedComponents = append(cachedComponents, cachedComponent{component: c, path: cached})\n\t}\n\tif err = o.downloadComponents(downloads); err != nil {\n\t\treturn err\n\t}\n\tfor _, item := range cachedComponents {\n\t\tc := item.component\n\t\tif !validFile(item.path, c.Size, c.SHA256) {\n\t\t\treturn fmt.Errorf("%s: cached component failed post-download verification", c.ID)\n\t\t}\n\t\tpayload, e := zip.OpenReader(item.path)\n\t\tif e != nil {\n\t\t\treturn e\n\t\t}\n\t\tindex, e := zipIndex(&payload.Reader)\n\t\tif e == nil {\n\t\t\te = stageZip(c, index, stage, true)\n\t\t}\n\t\tpayload.Close()\n\t\tif e != nil {\n\t\t\treturn e\n\t\t}\n\t}\n'''
+          replace(old_loop, new_loop)
+          p.write_text(s)
+          PY
+          cat > installer/components/parallel_test.go <<'EOF'
+          package main
+
+          import (
+            "bytes"
+            "crypto/sha256"
+            "fmt"
+            "io"
+            "net/http"
+            "net/http/httptest"
+            "path/filepath"
+            "sync/atomic"
+            "testing"
+            "time"
+          )
+
+          func parallelFixture(id string, size int) (component, []byte) {
+            payload := bytes.Repeat([]byte(id), (size+len(id)-1)/len(id))[:size]
+            copy(payload, []byte("PK\x03\x04"))
+            return component{ID: id, Size: int64(size), SHA256: fmt.Sprintf("%x", sha256.Sum256(payload))}, payload
+          }
+
+          func TestComponentDownloadsUseBoundedParallelism(t *testing.T) {
+            const count = 6
+            payloads := map[string][]byte{}
+            components := make([]component, 0, count)
+            for i := 0; i < count; i++ {
+              id := fmt.Sprintf("part-%d", i)
+              c, payload := parallelFixture(id, 64<<10)
+              components = append(components, c)
+              payloads["/"+id] = payload
+            }
+            var active, peak atomic.Int64
+            server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              current := active.Add(1)
+              defer active.Add(-1)
+              for previous := peak.Load(); current > previous; previous = peak.Load() {
+                if peak.CompareAndSwap(previous, current) {
+                  break
+                }
+              }
+              time.Sleep(60 * time.Millisecond)
+              payload := payloads[r.URL.Path]
+              w.Header().Set("Content-Length", fmt.Sprint(len(payload)))
+              _, _ = w.Write(payload)
+            }))
+            defer server.Close()
+
+            cache := t.TempDir()
+            var log bytes.Buffer
+            o := options{client: server.Client(), CacheDir: cache, log: &log, mirrors: []string{},
+              route: &routeHint{set: true, name: "GitHub", sampleSize: routeProbeBytes}}
+            jobs := make([]componentDownload, 0, count)
+            for _, c := range components {
+              jobs = append(jobs, componentDownload{component: c, direct: server.URL + "/" + c.ID,
+                destination: filepath.Join(cache, c.SHA256+".zip")})
+            }
+            if err := o.downloadComponents(jobs); err != nil {
+              t.Fatal(err)
+            }
+            if got := peak.Load(); got < 2 || got > componentDownloadWorkers {
+              t.Fatalf("unexpected component download concurrency: %d", got)
+            }
+            for _, c := range components {
+              if !validFile(filepath.Join(cache, c.SHA256+".zip"), c.Size, c.SHA256) {
+                t.Fatalf("component %s was not verified", c.ID)
+              }
+            }
+            partials, _ := filepath.Glob(filepath.Join(cache, ".download-*"))
+            if len(partials) != 0 {
+              t.Fatalf("partial downloads survived: %v", partials)
+            }
+            if log.Len() == 0 {
+              t.Fatal("parallel download logging disappeared")
+            }
+          }
+
+          func TestComponentDownloadFailureStopsQueueAndCleansPartials(t *testing.T) {
+            good, payload := parallelFixture("good", 32<<10)
+            bad := good
+            bad.ID = "bad"
+            bad.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("different")))
+            server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.Header().Set("Content-Length", fmt.Sprint(len(payload)))
+              _, _ = io.Copy(w, bytes.NewReader(payload))
+            }))
+            defer server.Close()
+            cache := t.TempDir()
+            o := options{client: server.Client(), CacheDir: cache, log: io.Discard, mirrors: []string{},
+              route: &routeHint{set: true, name: "GitHub", sampleSize: routeProbeBytes}}
+            jobs := []componentDownload{
+              {component: bad, direct: server.URL + "/bad", destination: filepath.Join(cache, "bad.zip")},
+              {component: good, direct: server.URL + "/good", destination: filepath.Join(cache, "good.zip")},
+            }
+            if err := o.downloadComponents(jobs); err == nil {
+              t.Fatal("checksum failure was hidden")
+            }
+            partials, _ := filepath.Glob(filepath.Join(cache, ".download-*"))
+            if len(partials) != 0 {
+              t.Fatalf("failed parallel download left partials: %v", partials)
+            }
+          }
+          EOF
+          gofmt -w installer/components/main.go installer/components/parallel_test.go
+      - name: Validate race safety and packaging regressions
+        run: |
+          set -euo pipefail
+          go vet ./installer/components
+          go test -race -count=3 ./installer/components
+          python3 scripts/test-components.py
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -trimpath -o "$RUNNER_TEMP/magicnet-components" ./installer/components
+      - name: Commit only validated production/test changes
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/pr314-parallel-components.yml
+          git add installer/components/main.go installer/components/parallel_test.go
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'perf(installer): download independent components in parallel [parallel-ready]'
+          git push origin HEAD:fix/github-mirror-throughput-20260917
