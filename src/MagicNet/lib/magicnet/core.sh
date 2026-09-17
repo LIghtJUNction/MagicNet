@@ -66,21 +66,36 @@ magicnet_refresh_status() {
     config set override.description "[MagicNet]: No kernel running" 2>/dev/null || true
 }
 
+# Internal, zero-argument startup steps. Keep execution in this shell: several
+# normalizers publish variables needed by later steps. Positional parameters
+# survive nested helpers without shared scratch-variable or subshell races.
+# Only fixed stage names and exit codes are logged, never command arguments,
+# subscription URLs or config/auth contents. This is a diagnostic, not state.
+magicnet_startup_step() {
+    if "$2"; then
+        return 0
+    else
+        set -- "$1" "$?"
+    fi
+    magicnet_warn "Startup step failed: stage=$1 exit=$2" >&2
+    return "$2"
+}
+
 magicnet_prepare_singbox_candidate_unlocked() {
     magicnet_module_disabled && return 1
     [ "${MAGIC_SINGBOX:-1}" -ne 0 ] || return 1
     magicnet_cmd_exists sing-box || return 1
-    magicnet_prepare_singbox_nodes_unlocked || return 1
-    magicnet_singbox_chain_apply || return 1
-    magicnet_singbox_apply_transparent_mode || return 1
-    magicnet_singbox_apply_hotspot_policy || return 1
-    magicnet_dns_apply_unlocked || return 1
-    magicnet_tailscale_apply_unlocked || return 1
-    magicnet_app_policy_apply_unlocked || return 1
-    magicnet_warp_apply_unlocked || return 1
+    magicnet_startup_step subscription magicnet_prepare_singbox_nodes_unlocked || return $?
+    magicnet_startup_step chain magicnet_singbox_chain_apply || return $?
+    magicnet_startup_step transparent magicnet_singbox_apply_transparent_mode || return $?
+    magicnet_startup_step hotspot magicnet_singbox_apply_hotspot_policy || return $?
+    magicnet_startup_step dns magicnet_dns_apply_unlocked || return $?
+    magicnet_startup_step tailscale magicnet_tailscale_apply_unlocked || return $?
+    magicnet_startup_step apps magicnet_app_policy_apply_unlocked || return $?
+    magicnet_startup_step warp magicnet_warp_apply_unlocked || return $?
     magicnet_singbox_apply_zashboard ||
         magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
-    magicnet_validate_singbox_transparent_config
+    magicnet_startup_step config-check magicnet_validate_singbox_transparent_config
 }
 
 magicnet_start_singbox_unlocked() {
@@ -102,48 +117,54 @@ magicnet_start_singbox_unlocked() {
         ;;
     esac
     if [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" != 1 ]; then
-        magicnet_prepare_singbox_nodes_unlocked || return 1
-        magicnet_singbox_chain_apply || return 1
-        magicnet_singbox_apply_transparent_mode || return 1
-        magicnet_singbox_apply_hotspot_policy || return 1
+        magicnet_startup_step subscription magicnet_prepare_singbox_nodes_unlocked || return $?
+        magicnet_startup_step chain magicnet_singbox_chain_apply || return $?
+        magicnet_startup_step transparent magicnet_singbox_apply_transparent_mode || return $?
+        magicnet_startup_step hotspot magicnet_singbox_apply_hotspot_policy || return $?
         # sing-box snapshots DNS servers and WARP endpoints when the process
         # starts. Applying these only in the post-start rewrite made a fresh
         # start report success while the running core still held the old config.
-        magicnet_dns_apply_unlocked || return 1
-        magicnet_tailscale_apply_unlocked || return 1
+        magicnet_startup_step dns magicnet_dns_apply_unlocked || return $?
+        magicnet_startup_step tailscale magicnet_tailscale_apply_unlocked || return $?
         # The preceding normalizers rebuild the managed transparent inbound.
         # Materialize per-app UID boundaries before sing-box snapshots it.
-        magicnet_app_policy_apply_unlocked || return 1
-        magicnet_warp_apply_unlocked || return 1
+        magicnet_startup_step apps magicnet_app_policy_apply_unlocked || return $?
+        magicnet_startup_step warp magicnet_warp_apply_unlocked || return $?
         magicnet_singbox_apply_zashboard ||
             magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
-        magicnet_tailscale_inject_auth_key || return 1
+        magicnet_startup_step auth magicnet_tailscale_inject_auth_key || return $?
     fi
     # A rollback/recovery starts the byte-exact snapshot without rewriting it.
     # The snapshot was already validated while its previous generation ran.
-    magicnet_validate_singbox_transparent_config || {
+    magicnet_startup_step config-check magicnet_validate_singbox_transparent_config || {
+        set -- "$?"
         [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
             magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
-        return 1
+        return "$1"
     }
     import __singbox__
     # Absorb short TUN teardown or eBPF detachment windows inside one user
     # action. The shared launcher cleans a failed PID generation between
     # attempts, and callers can still override the bounded attempt count.
     if command -v magicnet_kernel_route_state_begin >/dev/null 2>&1; then
-        magicnet_kernel_route_state_begin || {
+        magicnet_startup_step route-baseline magicnet_kernel_route_state_begin || {
+            [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
+                magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
             magicnet_kernel_route_report_result 2 || true
             return 2
         }
     fi
     _singbox_gomemlimit="$(magicnet_singbox_runtime_memory_limit)"
-    if ! GOMEMLIMIT="$_singbox_gomemlimit" \
+    if GOMEMLIMIT="$_singbox_gomemlimit" \
         MAGICNET_SINGBOX_START_ATTEMPTS="${MAGICNET_SINGBOX_START_ATTEMPTS:-3}" \
-        singbox_start; then
+        magicnet_startup_step core-launch singbox_start; then
+        :
+    else
+        set -- "$?"
         unset _singbox_gomemlimit
         [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" = 1 ] ||
             magicnet_tailscale_scrub_auth_key >/dev/null 2>&1 || true
-        return 1
+        return "$1"
     fi
     unset _singbox_gomemlimit
     if [ "${MAGICNET_TRANSPARENT_RESTORED_CONFIG:-0}" != 1 ]; then
@@ -199,14 +220,14 @@ magicnet_start_singbox_ready_unlocked() {
     # Capture the core's own rules BEFORE hotspot/DNS initialization. A failure
     # in those later phases must not leave only a prepared, unattributed ledger.
     if command -v magicnet_kernel_route_state_capture >/dev/null 2>&1; then
-        if ! magicnet_kernel_route_state_capture; then
+        if ! magicnet_startup_step route-capture magicnet_kernel_route_state_capture; then
             magicnet_kernel_route_report_result 2 || true
             magicnet_warn "Route ownership could not be verified; rolling back startup."
             magicnet_rollback_failed_start_unlocked || return 2
             return 2
         fi
     fi
-    if magicnet_after_kernel_start_unlocked; then
+    if magicnet_startup_step network-ready magicnet_after_kernel_start_unlocked; then
         magicnet_singbox_save_last_good ||
             magicnet_warn "Could not save the validated sing-box recovery checkpoint."
         return 0
@@ -336,6 +357,8 @@ magicnet_start_kernel() {
         "${MODDIR}/cli" api replay-startup >/dev/null 2>&1 || true
         magicnet_notify "magicnet_guard" "MagicNet" "sing-box started"
         return 0
+    else
+        set -- "$?"
     fi
 
     command -v magicnet_hotspot_startup_snapshot_clear >/dev/null 2>&1 &&
@@ -347,7 +370,7 @@ magicnet_start_kernel() {
     else
         magicnet_warn "sing-box startup failed; see the preceding core or network error."
     fi
-    return 1
+    return "$1"
 }
 
 magicnet_ensure_kernel() {

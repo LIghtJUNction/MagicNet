@@ -1,3 +1,4 @@
+import { sanitizeDiagnosticText } from "@/composables/issueDrafts";
 import { t } from "@/i18n";
 import { statusToneClasses } from "@/lib/statusTone";
 export type OutputDiagnostic = {
@@ -66,7 +67,7 @@ export function outputDiagnosticTone(status: OutputDiagnostic["status"]): string
 }
 
 export function sanitizeOutputText(text: string): string {
-  return text.split(/\r?\n/).map(sanitizeOutputLine).join("\n");
+  return sanitizeDiagnosticText(text).split(/\r?\n/).map(sanitizeOutputLine).join("\n");
 }
 
 function sanitizeOutputLine(line: string): string {

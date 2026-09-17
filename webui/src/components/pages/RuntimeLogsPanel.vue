@@ -71,7 +71,8 @@ async function refreshLogs(): Promise<void> {
     supervisors: t("读取监督器日志"),
   }[target.value];
   await withAction("runtime-logs", async () => {
-    output.value = await runCli(command, label);
+    // Reading logs must not replace the failed command we are investigating.
+    output.value = await runCli(command, label, true);
     lastLabel.value = label;
     loadedTarget.value = target.value;
     copied.value = false;
@@ -94,8 +95,11 @@ function toggleAutoRefresh(): void {
 }
 
 async function copyLogs(): Promise<void> {
-  copied.value = await copyText(sanitizeOutputText(visibleOutput.value || output.value));
-  state.output = copied.value ? t("脱敏运行日志已复制。") : t("剪贴板不可用，运行日志未复制。");
+  const keyword = query.value.trim().toLowerCase();
+  const safeLines = sanitizeOutputText(output.value).split(/\r?\n/);
+  const safeFiltered = safeLines.filter((line) => (!keyword || line.toLowerCase().includes(keyword)) && runtimeLogLevelMatches(line, level.value));
+  copied.value = await copyText(safeFiltered.join("\n"));
+  state.notice = copied.value ? t("脱敏运行日志已复制。") : t("剪贴板不可用，运行日志未复制。");
 }
 
 async function copyIssueSummary(): Promise<void> {
@@ -108,7 +112,7 @@ async function copyIssueSummary(): Promise<void> {
     errorCount: errorCount.value,
     otherIssueCount: logAnalysis.value.otherIssueCount
   }));
-  state.output = issueCopied.value ? t("日志问题摘要已复制。") : t("剪贴板不可用，日志问题摘要未复制。");
+  state.notice = issueCopied.value ? t("日志问题摘要已复制。") : t("剪贴板不可用，日志问题摘要未复制。");
 }
 
 function normalizedLines(): number {

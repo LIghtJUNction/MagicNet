@@ -11,7 +11,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, redactedCliPreview } from "@/utils";
 import RuntimeLogsPanel from "./RuntimeLogsPanel.vue";
 import { buildOutputDiagnostic, outputDiagnosticTone, sanitizeOutputText } from "./outputDiagnostics";
-import { analyzeRuntimeLogLines, latestRuntimeLogIssueLines } from "./runtimeLogInsights";
+import { analyzeRuntimeLogLines, runtimeLogContext } from "./runtimeLogInsights";
 
 const { state, compactOutput, runShell } = useMagicNet();
 const outputQuery = ref("");
@@ -40,9 +40,8 @@ const outputDiagnostic = computed(() => buildOutputDiagnostic({
   issueLines: outputStats.value.issueLines,
   filtered: Boolean(outputQuery.value.trim())
 }));
-const issueSummary = computed(() => latestRuntimeLogIssueLines(
-  outputLines.value.map((line) => line.trim()).filter(Boolean),
-).join("\n"));
+const issueSummary = computed(() => outputStats.value.issueLines
+  ? runtimeLogContext(outputLines.value).join("\n") : "");
 const visibleOutput = computed(() => compactOutput(filteredOutput.value || t("没有匹配的输出行。"), 7000));
 
 watch(outputQuery, () => {
@@ -55,7 +54,11 @@ watch(() => state.output, () => {
 });
 
 async function copyOutput(): Promise<void> {
-  copied.value = await copyText(sanitizeOutputText(filteredOutput.value || state.output));
+  // Filter after whole-document redaction so a search cannot orphan a key's
+  // continuation lines from their sensitive header.
+  const safe = sanitizeOutputText(state.output);
+  const query = outputQuery.value.trim().toLowerCase();
+  copied.value = await copyText(query ? safe.split("\n").filter((line) => line.toLowerCase().includes(query)).join("\n") : safe);
   state.notice = copied.value ? t("脱敏输出已复制。") : t("剪贴板不可用，输出未复制。");
 }
 
