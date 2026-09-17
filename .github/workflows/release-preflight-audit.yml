@@ -13,7 +13,7 @@ jobs:
     env:
       BASE: bf95c400f8e1341e76f5abf6776bbfc00afc4554
       REPAIR: 10a7f46024368091338dcf26768fb41d936f5c39
-      EXPECTED_TREE: 3be3ac6f5c49431e5c3a569fec18f1b295cd15a9
+      EXPECTED_TREE: edc609f4c4ea428f1381c55f1f900df5cc5abe01
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -24,6 +24,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/preflight"
           cp .ci/resolve-v156.py "$RUNNER_TEMP/resolve-v156.py"
+          cp .ci/finalize-v156.py "$RUNNER_TEMP/finalize-v156.py"
           cp .ci/release-v1.5.6.md "$RUNNER_TEMP/release-v1.5.6.md"
           git checkout --detach "$BASE"
           git config user.name 'MagicNet release preparation'
@@ -37,6 +38,7 @@ jobs:
           assert set(files) == {'scripts/fake-magisk-kernel.py','scripts/fake-magisk-smoke.sh','scripts/test-fake-magisk-kernel.py'}, files
           PY
           python3 "$RUNNER_TEMP/resolve-v156.py"
+          python3 "$RUNNER_TEMP/finalize-v156.py"
           cp "$RUNNER_TEMP/release-v1.5.6.md" docs/release-v1.5.6.md
           git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
       - name: Install test tools and verify the exact candidate tree
