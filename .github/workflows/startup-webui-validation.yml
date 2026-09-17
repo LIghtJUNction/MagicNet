@@ -2,28 +2,119 @@ name: Startup and WebUI validation
 on:
   push:
     branches: [fix/startup-evidence-webui-20260917]
-    paths:
-      - .github/workflows/startup-webui-validation.yml
+    paths: [.github/workflows/startup-webui-validation.yml]
 permissions:
   contents: read
+env:
+  BASE: 8f432d81986676304e1e252de4c6aea7f124b383
+  PATCH_SHA256: a943911357c3d0aa2dba57f20c2948c402eda8d504ce679d7b9f3adcf80e67bd
 jobs:
-  source:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    outputs:
+      tree: ${{ steps.candidate.outputs.tree }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Provision exact lockfile and pinned shell dependencies
+          fetch-depth: 0
+      - name: Verify patch and construct pinned candidate
+        id: candidate
         run: |
-          git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
-          npm ci --prefix webui
-          tar --exclude=.git -czf /tmp/magicnet-test-deps.tar.gz webui/node_modules src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
-      - uses: actions/upload-artifact@v4
+          python3 - <<'PY'
+          import base64, hashlib, lzma, os
+          from pathlib import Path
+          data = ''.join(Path(f'.github/validation/startup-console-{i}.txt').read_text().strip() for i in range(3))
+          patch = lzma.decompress(base64.b64decode(data, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == os.environ['PATCH_SHA256']
+          Path('/tmp/startup-console.patch').write_bytes(patch)
+          PY
+          git checkout --detach "$BASE"
+          git apply --index --unidiff-zero /tmp/startup-console.patch
+          git diff --cached --check
+          echo "tree=$(git write-tree)" >> "$GITHUB_OUTPUT"
+          git diff --cached --stat
+          mkdir -p validation-results
+      - name: Prepare pinned shell dependencies
+        run: git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+      - name: Runtime regressions and executable old-source control
+        run: |
+          set -o pipefail
+          for shell in sh bash; do
+            "$shell" scripts/test-startup-diagnostics.sh 2>&1 | tee "validation-results/startup-$shell.log"
+          done
+          git show "$BASE:src/MagicNet/lib/magicnet/core.sh" > /tmp/core-before.sh
+          if CORE_UNDER_TEST=/tmp/core-before.sh sh scripts/test-startup-diagnostics.sh > validation-results/negative-control.log 2>&1; then
+            echo 'ERROR: old source unexpectedly passed' >&2; exit 1
+          fi
+          grep -F 'FAIL: indeterminate launcher returned 1, expected 2' validation-results/negative-control.log
+          for test in test-app-routing-policy test-transparent-mode-config-safety test-singbox-tristate-safety test-config-lock-budget test-config-lock-safety test-subscription-activation-order test-runtime-fingerprint-safety test-config-empty-recovery test-startup-network-safety; do
+            bash "scripts/$test.sh" 2>&1 | tee "validation-results/$test.log"
+          done
+          shellcheck -s sh --severity=error scripts/test-startup-diagnostics.sh src/MagicNet/lib/magicnet/core.sh src/MagicNet/lib/magicnet/transparent.sh
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          name: magicnet-test-dependencies
-          path: /tmp/magicnet-test-deps.tar.gz
-          retention-days: 1
+          node-version: '24'
+      - name: Full WebUI unit, type and production build checks
+        working-directory: webui
+        run: |
+          set -o pipefail
+          npm ci
+          npm run check 2>&1 | tee ../validation-results/webui-check.log
+      - name: Install test browser
+        working-directory: webui
+        run: npx playwright install --with-deps chromium
+      - name: Browser interactions across all configured viewports
+        working-directory: webui
+        run: |
+          set -o pipefail
+          npm run test:ui 2>&1 | tee ../validation-results/browser.log
+      - name: Confirm tested source stayed unchanged
+        run: |
+          git diff --exit-code
+          test "$(git write-tree)" = '${{ steps.candidate.outputs.tree }}'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: startup-console-validation
+          path: |
+            validation-results/
+            webui/test-results/
+            webui/playwright-report/
+            webui/dist/
+          retention-days: 7
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Reconstruct exact tested production tree
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, lzma, os
+          from pathlib import Path
+          data = ''.join(Path(f'.github/validation/startup-console-{i}.txt').read_text().strip() for i in range(3))
+          patch = lzma.decompress(base64.b64decode(data, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == os.environ['PATCH_SHA256']
+          Path('/tmp/startup-console.patch').write_bytes(patch)
+          PY
+          git checkout --detach "$BASE"
+          git apply --index --unidiff-zero /tmp/startup-console.patch
+          git diff --cached --check
+          test "$(git write-tree)" = '${{ needs.verify.outputs.tree }}'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -c core.hooksPath=/dev/null commit -m 'fix: preserve startup evidence and rebuild the WebUI runtime console'
+          git rev-parse HEAD
+      - name: Push clean review branch without force or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git -c credential.helper='!gh auth git-credential' -c core.hooksPath=/dev/null push origin HEAD:refs/heads/fix/startup-console-20260917
