@@ -1,0 +1,38 @@
+name: Runtime refactor workbench
+
+on:
+  push:
+    branches: [refactor/runtime-workbench-20260917]
+    paths: [.github/workflows/runtime-workbench.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Archive tracked source only
+        run: git archive --format=tar.gz --output=/tmp/magicnet-source.tar.gz HEAD
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: magicnet-source
+          path: /tmp/magicnet-source.tar.gz
+          retention-days: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Prepare locked frontend dependencies for offline validation
+        working-directory: webui
+        run: |
+          npm ci
+          tar -czf /tmp/magicnet-webui-deps.tar.gz node_modules
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: magicnet-webui-deps
+          path: /tmp/magicnet-webui-deps.tar.gz
+          retention-days: 1
