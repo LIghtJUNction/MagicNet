@@ -4,29 +4,27 @@ on:
     branches: [audit/release-v1.5.6-20260917]
 permissions:
   contents: read
-  actions: read
 jobs:
-  inspect:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
+    permissions:
+      contents: write
     env:
       RELEASE_BASE: bf95c400f8e1341e76f5abf6776bbfc00afc4554
       FIX_HEAD: 10a7f46024368091338dcf26768fb41d936f5c39
+      CI_TEST_FORCE: '1'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Capture prior build failure and integration inputs
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Integrate the exact parents with reviewed conflict resolution
         run: |
           mkdir -p "$RUNNER_TEMP/candidate-evidence"
-          gh run view 35143999558 --repo "$GITHUB_REPOSITORY" --log-failed > "$RUNNER_TEMP/candidate-evidence/previous-build-failure.log"
-          git diff "$RELEASE_BASE" "$FIX_HEAD" --stat > "$RUNNER_TEMP/candidate-evidence/branch-diff-stat.txt"
-          git merge-base "$RELEASE_BASE" "$FIX_HEAD" > "$RUNNER_TEMP/candidate-evidence/merge-base.txt"
-      - name: Dry-run merge and export exact source stages
-        run: |
+          cp .ci/v156-resolution.patch "$RUNNER_TEMP/resolution.patch"
+          cp .ci/v156-notes.md "$RUNNER_TEMP/release-notes.md"
+          echo '577d252c2def85d3d68437ff0f884846f61d7eced9d14c6878fee52e1578150f  '"$RUNNER_TEMP/resolution.patch" | sha256sum -c -
           git checkout --detach "$RELEASE_BASE"
           git config user.name 'Release candidate inspection'
           git config user.email 'release-inspection@users.noreply.github.com'
@@ -34,31 +32,107 @@ jobs:
           git merge --no-commit --no-ff "$FIX_HEAD" > "$RUNNER_TEMP/candidate-evidence/merge.log" 2>&1
           result=$?
           set -e
-          test "$result" -le 1
-          git status --short > "$RUNNER_TEMP/candidate-evidence/merge-status.txt"
+          test "$result" -eq 1
           python3 - <<'PY'
-          import json, os, subprocess
-          from pathlib import Path
-          out=Path(os.environ['RUNNER_TEMP'])/'candidate-evidence'
-          stages={}
-          for entry in subprocess.check_output(['git','ls-files','-u'],text=True).splitlines():
-              header,path=entry.split('\t',1)
-              mode,sha,stage=header.split()
-              content=subprocess.check_output(['git','cat-file','blob',sha]).decode('utf-8')
-              stages.setdefault(path,{})[stage]={'mode':mode,'sha':sha,'content':content}
-          (out/'conflict-stages.json').write_text(json.dumps(stages,ensure_ascii=False,indent=2)+'\n')
-          print('Conflicted files:', ', '.join(stages) or 'none')
+          import subprocess
+          actual=set(subprocess.check_output(['git','diff','--name-only','--diff-filter=U'],text=True).splitlines())
+          assert actual == {'scripts/fake-magisk-kernel.py','scripts/fake-magisk-smoke.sh','scripts/test-fake-magisk-kernel.py'}, actual
           PY
+          git checkout --theirs -- scripts/fake-magisk-kernel.py scripts/fake-magisk-smoke.sh scripts/test-fake-magisk-kernel.py
+          git apply "$RUNNER_TEMP/resolution.patch"
+          git add scripts/fake-magisk-kernel.py scripts/fake-magisk-smoke.sh scripts/test-fake-magisk-kernel.py
+          mkdir -p docs/releases
+          cp "$RUNNER_TEMP/release-notes.md" docs/releases/v1.5.6.md
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path('CHANGELOG.md')
+          text=path.read_text()
+          assert not text.startswith('# v1.5.6')
+          prefix='''# v1.5.6 (Unreleased)
+
+- Complete dual-stack DNS listeners, exact owned-rule reconciliation and safe
+  cleanup without touching unrelated routes or firewall rules.
+- Preserve startup failure rollback and locked stop finalization; distinguish
+  exited supervisors from unreadable live identities during reconfiguration.
+- Retain Tailscale authorization/removal fixes and privacy-safe Play/GMS and
+  memory diagnostics.
+- Reconcile both release branches without dropping rollback, foreign-rule,
+  process-generation or permission-failure coverage.
+- Keep the existing pinned sing-box core and MagicNetRules release unchanged.
+
+Release notes: [MagicNet v1.5.6](docs/releases/v1.5.6.md).
+Physical-device Play/GMS, handover and Android memory acceptance remain open.
+This entry describes an unpublished candidate, not a completed release.
+
+'''
+          path.write_text(prefix+text)
+          PY
+          git add CHANGELOG.md docs/releases/v1.5.6.md
+          git diff --cached --check
           git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
-          tar --exclude=.git --exclude=target --exclude=.cache --exclude=node_modules -czf "$RUNNER_TEMP/candidate-evidence/candidate-source.tar.gz" .
-          cargo build --locked -p magicnet-cli
-          mkdir -p "$RUNNER_TEMP/candidate-evidence/tools"
-          cp target/debug/magicnet-cli "$RUNNER_TEMP/candidate-evidence/tools/"
-      - name: Upload inspection only
+          python3 scripts/prepare-release.py
+      - name: Install host verification tools
+        run: sudo apt-get update -qq && sudo apt-get install -y jq ripgrep shellcheck busybox python3-yaml
+      - name: Build actual merged host CLI
+        run: cargo build --locked -p magicnet-cli
+      - name: Verify integrated regressions
+        run: |
+          set -o pipefail
+          {
+            bash -n scripts/fake-magisk-smoke.sh scripts/test-host.sh
+            bash scripts/lint-shell.sh
+            python3 scripts/test-fake-magisk-kernel.py
+            python3 scripts/test-supervisor-zombie.py
+            python3 scripts/test-start-stop-rollback.py --all-shells
+            python3 scripts/test-xtables-registration.py
+            python3 scripts/test-route-ownership.py
+            python3 scripts/test-dns-output-order.py
+            bash scripts/test-app-routing-policy.sh
+            bash scripts/test-startup-network-safety.sh
+            bash scripts/test-supervisor-pid-safety.sh
+            python3 scripts/test-release-workflow.py
+            python3 scripts/test-release-gates.py
+            cargo test --locked --workspace
+          } 2>&1 | tee "$RUNNER_TEMP/candidate-evidence/targeted-tests.log"
+      - name: Complete integrated fake-Magisk lifecycle
+        run: |
+          set -o pipefail
+          timeout 600 bash scripts/fake-magisk-smoke.sh 2>&1 | tee "$RUNNER_TEMP/candidate-evidence/fake-magisk.log"
+      - name: Export verified production tree without moving branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess,urllib.request
+          from pathlib import Path
+          def api(path,data=None):
+              req=urllib.request.Request('https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+path,
+                  data=None if data is None else json.dumps(data).encode(),
+                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urllib.request.urlopen(req,timeout=30) as response:return json.load(response)
+          base=os.environ['RELEASE_BASE']
+          names=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          expected={'scripts/fake-magisk-kernel.py','scripts/fake-magisk-smoke.sh','scripts/test-fake-magisk-kernel.py','scripts/test-host.sh','scripts/test-route-ownership.py','scripts/test-supervisor-zombie.py','src/MagicNet/lib/magicnet/lifecycle.sh','src/MagicNet/lib/magicnet/network.sh','src/MagicNet/lib/magicnet/supervisors.sh','CHANGELOG.md','docs/releases/v1.5.6.md'}
+          assert set(names)==expected,names
+          tree=[]; hashes={}
+          for name in names:
+              content=subprocess.check_output(['git','show',':'+name])
+              mode=subprocess.check_output(['git','ls-files','-s','--',name],text=True).split()[0]
+              tree.append({'path':name,'type':'blob','mode':mode,'content':content.decode()})
+              hashes[name]=hashlib.sha256(content).hexdigest()
+          result=api('/git/trees',{'base_tree':api('/git/commits/'+base)['tree']['sha'],'tree':tree})
+          local=subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert result['sha']==local
+          out=Path(os.environ['RUNNER_TEMP'])/'candidate-evidence'
+          receipt={'tree':local,'parents':[base,os.environ['FIX_HEAD']],'files':hashes,'publication':'not_requested'}
+          (out/'production-tree.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          print(json.dumps(receipt,indent=2))
+          PY
+      - name: Upload candidate evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: release-v1.5.6-integration-inputs
+          name: release-v1.5.6-candidate-evidence
           path: ${{ runner.temp }}/candidate-evidence
           retention-days: 2
           if-no-files-found: error

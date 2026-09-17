@@ -1,0 +1,193 @@
+--- a/scripts/fake-magisk-kernel.py
++++ b/scripts/fake-magisk-kernel.py
+@@ -10,6 +10,27 @@
+ import os
+ from pathlib import Path
+ import sys
++
++CHAIN = "magicnet-dns-output"
++FOREIGN = ["-o", "lo", "-p", "tcp", "--dport", "853", "-m", "comment",
++           "--comment", "foreign-owner", "-j", "REJECT"]
++
++
++def rule_record(args):
++    if len(args) < 2 or args[0] not in ("priority", "pref") or not args[1].isdigit():
++        raise ValueError("fixture requires an explicit priority")
++    priority, rest = args[1], args[2:]
++    if rest[:1] != ["from"]:
++        rest = ["from", "all"] + rest
++    if len(rest) < 4 or "lookup" not in rest:
++        raise ValueError("unsupported fixture rule")
++    return priority + ": " + " ".join(rest)
++
++
++def interface_live(state, name):
++    return name in ("lo", "ap0", "wlan0", "tun0") or (
++        name == "magicnet0" and live(state["core"]) and state["core"]["mode"] == "tun"
++    )
+ 
+ 
+ def initial():
+@@ -124,8 +145,8 @@
+ def ip(state, args):
+     args = list(args)
+     family = "4"
+-    if args[:1] == ["-6"]:
+-        family, args = "6", args[1:]
++    if args[:1] in (["-4"], ["-6"]):
++        family, args = args[0][1:], args[1:]
+     core = state["core"]
+     tun = live(core) and core["mode"] == "tun"
+     if args[:2] == ["rule", "show"]:
+@@ -136,9 +157,7 @@
+         return 0
+     if args[:2] in (["rule", "add"], ["rule", "del"]):
+         action, rule = args[1], args[2:]
+-        if rule[0] != "priority":
+-            raise ValueError(f"fixture requires exact priority: {args}")
+-        line = f"{rule[1]}: " + " ".join(rule[2:])
++        line = rule_record(rule)
+         if action == "add":
+             state["rules"][family].append(line)
+         elif line in state["rules"][family]:
+@@ -147,6 +166,10 @@
+             return 2
+         return 0
+     if args[:2] == ["route", "show"]:
++        if "dev" in args and args[args.index("dev") + 1] in ("ap0", "wlan0"):
++            dev = args[args.index("dev") + 1]
++            print(f"192.168.43.0/24 dev {dev} proto kernel scope link src 192.168.43.1")
++            return 0
+         if args[2:] == ["table", "2022"] and tun:
+             print("default dev magicnet0 scope link")
+         return 0
+@@ -156,8 +179,15 @@
+         if tun:
+             raise ValueError("fixture must not flush a live core's routes")
+         return 0
++    if args[:3] == ["link", "show", "dev"] and len(args) == 4:
++        if interface_live(state, args[3]):
++            print(f"8: {args[3]}: <UP> mtu 1500 state UNKNOWN")
++            return 0
++        return 1
+     if args[:3] == ["-o", "link", "show"]:
+         print("1: lo: <LOOPBACK,UP>")
++        print("7: ap0: <UP>")
++        print("9: tun0: <POINTOPOINT,UP>")
+         if tun:
+             print("8: magicnet0: <POINTOPOINT,UP>")
+         return 0
+@@ -192,7 +222,21 @@
+         if command == "pid-live":
+             return 0 if len(args) == 1 and live({"pid": int(args[0])}) else 1
+         if command == "interface":
+-            return 0 if args == ["magicnet0"] and live(state["core"]) and state["core"]["mode"] == "tun" else 1
++            return 0 if len(args) == 1 and interface_live(state, args[0]) else 1
++        if command == "seed-foreign":
++            for family in ("iptables", "ip6tables"):
++                output = state["tables"][family]["filter"]["OUTPUT"]
++                if FOREIGN not in output:
++                    output.append(FOREIGN.copy())
++            return 0
++        if command == "assert-clean":
++            for family in ("iptables", "ip6tables"):
++                tables = state["tables"][family]
++                if CHAIN in tables["nat"] or any(CHAIN in rule for rules in tables["nat"].values() for rule in rules):
++                    raise ValueError("owned DNS state was not cleaned")
++                if tables["filter"]["OUTPUT"] != [FOREIGN]:
++                    raise ValueError("foreign rule changed or owned guard remains")
++            return 0
+         if command == "seed-cleanup":
+             for family in ("iptables", "ip6tables"):
+                 nat = state["tables"][family]["nat"]
+--- a/scripts/fake-magisk-smoke.sh
++++ b/scripts/fake-magisk-smoke.sh
+@@ -246,11 +246,7 @@
+ # the synthetic TUN exists only while this fixture's exact generation is live.
+ magicnet_iface_exists() {
+     magicnet_iface_name_valid "$1" || return 1
+-    if [ "$1" = magicnet0 ]; then
+-        "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" interface "$1"
+-    else
+-        [ -d "/sys/class/net/$1" ]
+-    fi
++    "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" interface "$1"
+ }
+ SH
+ : >"$MOCK_LOG"
+@@ -614,7 +610,7 @@
+ install_runtime_path_fixtures() {
+     local applet host_applet mock
+     local applets=(
+-        awk basename bash cat chmod cksum cp cut date dirname env false find flock grep head id
++        awk basename bash cat chmod cksum cmp cp cut date dirname env false find flock grep head id
+         kill ln ls mkdir mkfifo mktemp mv nohup printf ps pwd readlink realpath rm sed setsid sh sha256sum sleep sort stat
+         tail timeout touch tr true uname wc whoami xargs
+     )
+@@ -779,6 +775,7 @@
+     local log_file="$1"
+     rg -q '^iptables -t nat -D OUTPUT -j magicnet-dns-output$' "$log_file"
+     rg -q '^iptables -D OUTPUT -o lo -p udp --dport 53 -j REJECT$' "$log_file"
++    "$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" assert-clean
+ }
+ 
+ assert_dns_interception_not_enabled() {
+@@ -806,6 +803,8 @@
+ # subscription. Seed the fake subscription before the first lifecycle entrypoint.
+ printf '%s\n' 'https://example.invalid/subscription.yaml' >"$MODDIR/.config/sing-box/subscription.url"
+ 
++# A foreign commented rule must survive every startup, rollback and stop.
++"$MAGICNET_FAKE_PYTHON" -S "$MAGICNET_FAKE_KERNEL" seed-foreign
+ run sh "$MODDIR/service.sh"
+ run sh "$MODDIR/boot-completed.sh"
+ hotspot_policy_ready() {
+--- a/scripts/test-fake-magisk-kernel.py
++++ b/scripts/test-fake-magisk-kernel.py
+@@ -84,6 +84,47 @@
+             kernel.ip(self.state, ["route", "show", "table", "2022"])
+         self.assertEqual(output.getvalue(), "")
+ 
++    def test_release_policy_rule_round_trip_preserves_foreign(self):
++        self.state["rules"]["4"] = ["8888: from all lookup 7777"]
++        args = ["pref", "9000", "lookup", "2022"]
++        self.assertEqual(kernel.ip(self.state, ["rule", "add", *args]), 0)
++        self.assertIn("9000: from all lookup 2022", self.state["rules"]["4"])
++        self.assertEqual(kernel.ip(self.state, ["rule", "del", "priority", "9000", "from", "all", "lookup", "2022"]), 0)
++        self.assertEqual(self.state["rules"]["4"], ["8888: from all lookup 7777"])
++        self.assertNotEqual(kernel.ip(self.state, ["rule", "del", *args]), 0)
++        self.assertEqual(self.state["rules"]["6"], [])
++
++    def test_release_interface_is_generation_bound(self):
++        with contextlib.redirect_stdout(io.StringIO()):
++            self.assertEqual(kernel.ip(self.state, ["link", "show", "dev", "ap0"]), 0)
++            self.assertEqual(kernel.ip(self.state, ["link", "show", "dev", "magicnet0"]), 1)
++            self.state["core"] = {"pid": os.getpid(), "mode": "tun"}
++            self.assertEqual(kernel.ip(self.state, ["link", "show", "dev", "magicnet0"]), 0)
++            self.state["core"]["start"] = "stale-generation"
++            self.assertEqual(kernel.ip(self.state, ["link", "show", "dev", "magicnet0"]), 1)
++
++    def test_release_clean_assertion_protects_foreign_and_requires_owned_cleanup(self):
++        with tempfile.TemporaryDirectory() as temp:
++            path = Path(temp) / "state.json"
++            env = dict(os.environ, MAGICNET_FAKE_NETWORK_STATE=str(path))
++            def run(*args):
++                return subprocess.run([sys.executable, "-S", str(HELPER), *args], env=env, capture_output=True, timeout=5)
++            self.assertNotEqual(run("assert-clean").returncode, 0)
++            self.assertEqual(run("seed-foreign").returncode, 0)
++            self.assertEqual(run("assert-clean").returncode, 0)
++            self.assertEqual(run("seed-cleanup").returncode, 0)
++            self.assertNotEqual(run("assert-clean").returncode, 0)
++            state = json.loads(path.read_text())
++            for family in ("iptables", "ip6tables"):
++                state["tables"][family]["nat"]["OUTPUT"] = []
++                del state["tables"][family]["nat"][kernel.CHAIN]
++                state["tables"][family]["filter"]["OUTPUT"] = [kernel.FOREIGN.copy()]
++            path.write_text(json.dumps(state))
++            self.assertEqual(run("assert-clean").returncode, 0)
++            state["tables"]["iptables"]["filter"]["OUTPUT"] = []
++            path.write_text(json.dumps(state))
++            self.assertNotEqual(run("assert-clean").returncode, 0)
++
+     def test_lock_preserves_parallel_writes(self):
+         with tempfile.TemporaryDirectory() as temp:
+             env = dict(os.environ, MAGICNET_FAKE_NETWORK_STATE=str(Path(temp) / "state.json"))
