@@ -1,0 +1,36 @@
+name: Startup WebUI source audit
+on:
+  push:
+    branches: [work/startup-webui-source-20260917]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Export only tracked base sources
+        run: git archive --format=tar.gz --output=magicnet-base-source.tar.gz 8f432d81986676304e1e252de4c6aea7f124b383
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: magicnet-base-source
+          path: magicnet-base-source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Install locked WebUI development dependencies
+        working-directory: webui
+        run: npm ci
+      - name: Pack dependencies for offline validation
+        run: tar -czf webui-dependencies.tar.gz webui/node_modules
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: webui-audit-dependencies
+          path: webui-dependencies.tar.gz
+          retention-days: 1
+          if-no-files-found: error
