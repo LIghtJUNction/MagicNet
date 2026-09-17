@@ -12,21 +12,39 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Read isolated review payload
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          path: audit
-          persist-credentials: false
-      - name: Check out exact reviewed base
+      - name: Check out the browser-validated fix commit
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           path: source
-          ref: 8f432d81986676304e1e252de4c6aea7f124b383
+          ref: 7dd3de0eac7ac1f6c8cdb397d47120db8be0877b
           persist-credentials: true
-      - name: Apply and verify every source hash
+      - name: Apply hash-verified log-read preservation follow-up
+        working-directory: source
         run: |
-          python3 audit/.audit/apply-startup-webui.py source
-          git -C source diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          def patch(name, before, after, old, new):
+              p = Path(name)
+              text = p.read_text()
+              assert hashlib.sha256(text.encode()).hexdigest() == before, name
+              assert text.count(old) == 1, name
+              text = text.replace(old, new)
+              assert hashlib.sha256(text.encode()).hexdigest() == after, name
+              p.write_text(text)
+              print(name, after)
+          patch('webui/src/components/pages/RuntimeLogsPanel.vue',
+              '6ecba901c3ad6847ae5ad3428b9a11ec2e4f912f0d248fcbde3fa7e3d4b132d9',
+              'd04201cdec5131cd9760f0cd3caf043b3b2e8b26cd646952f065738d26259afd',
+              'output.value = await runCli(command, label);',
+              '// Reading logs must not replace the failed command we are investigating.\n    output.value = await runCli(command, label, true);')
+          patch('webui/e2e/startup-readiness.spec.mjs',
+              'db589998f35ddccb642f2d012d56b8331dc9deb13dbcc6066121cb18b9f0e250',
+              'e9830fe02e2dcdad5576c2a770c7eb16438959b2aefc6115dc818aeab7294762',
+              '    expect(errors).toEqual([]);',
+              "    // A read-only log refresh may fail without a native bridge, but must not\n    // erase the original startup failure or replace its foreground history.\n    await page.getByRole('button',{name:'刷新',exact:true}).click();\n    await expect(page.locator('.page-surface pre').last()).toContainText('Startup step failed: stage=config-check');\n    expect(errors).toEqual([]);")
+          PY
+          git diff --check
       - name: Execute startup and rollback regressions
         working-directory: source
         run: |
@@ -67,14 +85,14 @@ jobs:
           path: source/webui/dist/
           retention-days: 3
           if-no-files-found: error
-      - name: Commit only reviewed production and test files to new branch
+      - name: Append validated follow-up without rewriting branch history
         working-directory: source
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git switch -c fix/startup-diagnostics-webui-20260917
-          git add -- scripts/test-host.sh scripts/test-startup-diagnostics.sh src/MagicNet/lib/magicnet/core.sh webui/e2e/startup-readiness.spec.mjs webui/frontend-refactor-contract.test.mjs webui/src/App.vue webui/src/components/pages/ControlPage.vue webui/src/components/pages/OutputPage.vue webui/src/components/pages/RuntimeLogsPanel.vue webui/src/components/pages/controlRuntimeInsight.ts webui/src/components/pages/outputDiagnostics.ts webui/src/components/pages/runtimeLogInsights.ts webui/src/components/pages/startupFailure.ts webui/src/i18n/catalogs/control.ts webui/src/lib/servicePresentation.ts webui/startup-log-context.test.mjs webui/startup-readiness.test.mjs
+          git add -- webui/src/components/pages/RuntimeLogsPanel.vue webui/e2e/startup-readiness.spec.mjs
           git diff --cached --check
-          git commit -m 'fix(startup): preserve failure evidence and rebuild truthful WebUI overview'
+          git commit -m 'fix(webui): preserve startup output while inspecting runtime logs'
           git push origin HEAD:refs/heads/fix/startup-diagnostics-webui-20260917
           git rev-parse HEAD
