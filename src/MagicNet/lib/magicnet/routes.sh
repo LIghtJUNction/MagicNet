@@ -208,45 +208,53 @@ magicnet_hotspot_startup_snapshot_clear() {
     unset MAGICNET_HOTSPOT_STARTUP_SNAPSHOT
 }
 
-magicnet_hotspot_rule_present() {
-    _hotspot_rule_check_priority="$1"
-    _hotspot_rule_check_iface="$2"
-    ip rule show 2>/dev/null | awk \
-        -v expected_priority="${_hotspot_rule_check_priority}:" \
-        -v expected_iface="$_hotspot_rule_check_iface" '
-        $1 == expected_priority && index($0, "iif " expected_iface " ") > 0 &&
-            index($0, "lookup 2022") > 0 { found = 1 }
-        END { exit found ? 0 : 1 }
+magicnet_hotspot_rule_present() (
+    _check_priority="$1"
+    _check_iface="$2"
+    _check_rules="$(ip rule show 2>/dev/null)" || return 2
+    printf '%s\n' "$_check_rules" | awk \
+        -v expected_priority="${_check_priority}:" -v expected_iface="$_check_iface" '
+        # Match only the exact tuple we install. Extra selectors, a different
+        # table (including 20220), or a reused priority do not prove ownership.
+        NF == 7 && $1 == expected_priority && $2 == "from" && $3 == "all" &&
+            $4 == "iif" && $5 == expected_iface && $6 == "lookup" && $7 == "2022" { found = 1 }
+        END { exit !found }
     '
-    _hotspot_rule_rc=$?
-    unset _hotspot_rule_check_priority _hotspot_rule_check_iface
-    return "$_hotspot_rule_rc"
-}
+)
 
-magicnet_hotspot_delete_rule() {
-    _hotspot_priority="$1"
-    _hotspot_iface="$2"
-    magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" || {
-        unset _hotspot_priority _hotspot_iface
-        return 0
-    }
-    _hotspot_delete_attempt=0
-    while [ "$_hotspot_delete_attempt" -lt 8 ]; do
-        if ip rule del priority "$_hotspot_priority" iif "$_hotspot_iface" lookup 2022 \
-            >/dev/null 2>&1; then
-            _hotspot_delete_attempt=$((_hotspot_delete_attempt + 1))
-        else
-            break
-        fi
+magicnet_hotspot_delete_rule() (
+    _delete_priority="$1"
+    _delete_iface="$2"
+    _delete_attempt=0
+    while [ "$_delete_attempt" -lt 8 ]; do
+        _present_rc=0
+        magicnet_hotspot_rule_present "$_delete_priority" "$_delete_iface" || _present_rc=$?
+        case "$_present_rc" in
+        0) ;;
+        1) return 0 ;;
+        *) return 2 ;;
+        esac
+        _delete_rules="$(ip rule show 2>/dev/null)" || return 2
+        printf '%s\n' "$_delete_rules" | awk -v priority="${_delete_priority}:" -v iface="$_delete_iface" '
+            $1 == priority {
+                iif = table = ""
+                for (i = 2; i < NF; i++) {
+                    if ($i == "iif") iif = $(i + 1)
+                    if ($i == "lookup") table = $(i + 1)
+                }
+                if (iif == iface && table == "2022" &&
+                    !(NF == 7 && $2 == "from" && $3 == "all" && $4 == "iif" && $6 == "lookup")) ambiguous = 1
+            }
+            END { exit ambiguous ? 1 : 0 }
+        ' || return 2
+        ip rule del priority "$_delete_priority" iif "$_delete_iface" lookup 2022 \
+            >/dev/null 2>&1 || return 1
+        _delete_attempt=$((_delete_attempt + 1))
     done
-    if magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface"; then
-        _hotspot_rule_rc=1
-    else
-        _hotspot_rule_rc=0
-    fi
-    unset _hotspot_priority _hotspot_iface _hotspot_delete_attempt
-    return "$_hotspot_rule_rc"
-}
+    _present_rc=0
+    magicnet_hotspot_rule_present "$_delete_priority" "$_delete_iface" || _present_rc=$?
+    [ "$_present_rc" -eq 1 ]
+)
 
 magicnet_hotspot_forward_access() (
     _mode=$1
@@ -264,47 +272,64 @@ magicnet_hotspot_forward_access() (
                 magicnet_hotspot_forward_access cleanup "$_iface" || true
                 return 1
             } ;;
-        status) magicnet_iptables_cmd -C "$@" >/dev/null 2>&1 || return 1 ;;
-        cleanup)
+        status)
             _rc=0
             magicnet_iptables_cmd -C "$@" >/dev/null 2>&1 || _rc=$?
-            case "$_rc" in
-                0) magicnet_iptables_cmd -D "$@" >/dev/null 2>&1 || return 1 ;;
-                1) : ;;
-                *) return 1 ;;
-            esac ;;
+            case "$_rc" in 0) ;; 1) return 1 ;; *) return 2 ;; esac ;;
+        cleanup)
+            _attempt=0
+            while :; do
+                _rc=0
+                magicnet_iptables_cmd -C "$@" >/dev/null 2>&1 || _rc=$?
+                case "$_rc" in 0) ;; 1) break ;; *) return 2 ;; esac
+                [ "$_attempt" -lt 8 ] || return 1
+                magicnet_iptables_cmd -D "$@" >/dev/null 2>&1 || return 1
+                _attempt=$((_attempt + 1))
+            done ;;
         *) return 1 ;;
         esac
     done
 )
 
-magicnet_hotspot_route_cleanup() {
-    _hotspot_state_file="$(magicnet_hotspot_route_state_file)"
-    _hotspot_cleanup_rc=0
-    if [ -f "$_hotspot_state_file" ]; then
-        while IFS='|' read -r _hotspot_priority _hotspot_iface; do
-            case "$_hotspot_priority" in
-            "" | *[!0-9]*)
-                _hotspot_cleanup_rc=1
-                continue
-                ;;
-            esac
-            magicnet_hotspot_interface_allowed "$_hotspot_iface" || {
-                _hotspot_cleanup_rc=1
-                continue
-            }
-            magicnet_hotspot_forward_access cleanup "$_hotspot_iface" || _hotspot_cleanup_rc=1
-            magicnet_hotspot_delete_rule "$_hotspot_priority" "$_hotspot_iface" ||
-                _hotspot_cleanup_rc=1
-        done <"$_hotspot_state_file"
-    fi
-    if [ "$_hotspot_cleanup_rc" -eq 0 ]; then
-        rm -f "$_hotspot_state_file" 2>/dev/null || true
-    fi
-    _hotspot_cleanup_result="$_hotspot_cleanup_rc"
-    unset _hotspot_state_file _hotspot_cleanup_rc _hotspot_priority _hotspot_iface
-    return "$_hotspot_cleanup_result"
+# Private write-ahead journal: publication of tun-rules.list alone is the
+# commit point. Interrupted installs retain .pending and never look active.
+magicnet_hotspot_route_pending_file() {
+    printf '%s.pending\n' "$(magicnet_hotspot_route_state_file)"
 }
+
+magicnet_hotspot_route_cleanup() (
+    _state="$(magicnet_hotspot_route_state_file)"
+    _pending="$(magicnet_hotspot_route_pending_file)"
+    [ -e "$_state" ] || [ -e "$_pending" ] || [ -L "$_state" ] || [ -L "$_pending" ] || return 0
+    # Validate every journal before removing the first resource.
+    for _file in "$_state" "$_pending"; do
+        [ -e "$_file" ] || [ -L "$_file" ] || continue
+        [ -f "$_file" ] && [ ! -L "$_file" ] || return 2
+        while IFS='|' read -r _priority _iface; do
+            case "$_priority" in '' | *[!0-9]*) return 2 ;; esac
+            magicnet_hotspot_interface_allowed "$_iface" || return 2
+        done <"$_file"
+    done
+    # A partial cleanup must stop advertising an earlier installation as active.
+    if [ -f "$_state" ] && [ ! -e "$_pending" ]; then
+        _tmp="${_pending}.new.$$"
+        if ! (umask 077; cat "$_state" >"$_tmp") || ! mv -f "$_tmp" "$_pending"; then
+            rm -f "$_tmp"
+            return 1
+        fi
+    fi
+    ip rule show >/dev/null 2>&1 || return 2
+    _rc=0
+    for _file in "$_state" "$_pending"; do
+        [ -e "$_file" ] || continue
+        while IFS='|' read -r _priority _iface; do
+            magicnet_hotspot_forward_access cleanup "$_iface" || _rc=1
+            magicnet_hotspot_delete_rule "$_priority" "$_iface" || _rc=1
+        done <"$_file"
+    done
+    [ "$_rc" -eq 0 ] || return "$_rc"
+    rm -f "$_state" "$_pending"
+)
 
 magicnet_hotspot_android_tether_priority() {
     _hotspot_iface="$1"
@@ -327,7 +352,7 @@ magicnet_hotspot_choose_rule_priority() {
     '' | *[!0-9]*) _hotspot_upper=8999 ;;
     esac
     _hotspot_candidate="$_hotspot_upper"
-    _hotspot_rules="$(ip rule show 2>/dev/null || true)"
+    _hotspot_rules="$(ip rule show 2>/dev/null)" || return 2
     while [ "$_hotspot_candidate" -gt 0 ]; do
         if ! printf '%s\n' "$_hotspot_rules" | awk -v expected="${_hotspot_candidate}:" \
             '$1 == expected { found = 1 } END { exit found ? 0 : 1 }'; then
@@ -349,6 +374,26 @@ magicnet_hotspot_tun_route_table_ready() {
     '
 }
 
+# A saved file is recovery evidence, not proof that the kernel still matches.
+magicnet_hotspot_routes_current() (
+    _current_pairs="$1"
+    _current_file="$(magicnet_hotspot_route_state_file)"
+    [ ! -e "$(magicnet_hotspot_route_pending_file)" ] || return 1
+    [ -f "$_current_file" ] || return 1
+    _current_saved="$(cat "$_current_file")" || return 2
+    _current_expected="$(printf '%s\n' "$_current_pairs" | awk -F'|' 'NF == 2 {print $1}' | sort -u)"
+    _current_ifaces="$(printf '%s\n' "$_current_saved" | awk -F'|' 'NF == 2 {print $2}' | sort -u)"
+    [ -n "$_current_expected" ] && [ "$_current_ifaces" = "$_current_expected" ] || return 1
+    while IFS='|' read -r _current_priority _current_iface; do
+        case "$_current_priority" in '' | *[!0-9]*) return 1 ;; esac
+        magicnet_hotspot_interface_allowed "$_current_iface" || return 1
+        magicnet_hotspot_rule_present "$_current_priority" "$_current_iface" || return $?
+        magicnet_hotspot_forward_access status "$_current_iface" || return $?
+    done <<EOF
+$_current_saved
+EOF
+)
+
 magicnet_hotspot_reconcile() {
     if ! magicnet_hotspot_proxy_enabled; then
         magicnet_hotspot_route_cleanup
@@ -369,15 +414,28 @@ magicnet_hotspot_reconcile() {
     # is a valid pending state; the post-start pass and the watcher will retry
     # once the TUN route table exists. A present but incomplete TUN is a real
     # failure and must remain visible to the caller/status output.
-    if ! magicnet_hotspot_tun_route_table_ready; then
-        magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
+    _hotspot_ready_rc=0
+    magicnet_hotspot_tun_route_table_ready || _hotspot_ready_rc=$?
+    case "$_hotspot_ready_rc" in
+    0) ;;
+    1)
+        magicnet_hotspot_route_cleanup || return 1
         magicnet_iface_exists magicnet0 || return 0
         magicnet_warn "magicnet0 route table 2022 is unavailable; hotspot forwarding is not intercepted"
         return 1
-    fi
+        ;;
+    *) return 2 ;;
+    esac
 
     _hotspot_pairs="$(magicnet_hotspot_active_networks)" || return 2
     _hotspot_pairs="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF == 2 && !seen[$1]++')"
+    _hotspot_current_rc=0
+    magicnet_hotspot_routes_current "$_hotspot_pairs" || _hotspot_current_rc=$?
+    case "$_hotspot_current_rc" in
+    0) unset _hotspot_pairs; return 0 ;;
+    1) ;;
+    *) unset _hotspot_pairs; return 2 ;;
+    esac
     magicnet_hotspot_route_cleanup || {
         unset _hotspot_pairs
         return 1
@@ -393,59 +451,38 @@ magicnet_hotspot_reconcile() {
         return 1
     }
     _hotspot_state_file="$(magicnet_hotspot_route_state_file)"
-    _hotspot_state_tmp="${_hotspot_state_file}.new.$$"
-    mkdir -p "${_hotspot_state_file%/*}" || {
-        unset _hotspot_pairs _hotspot_first_iface _hotspot_priority _hotspot_state_file _hotspot_state_tmp
+    _hotspot_pending="$(magicnet_hotspot_route_pending_file)"
+    _hotspot_state_tmp="${_hotspot_pending}.new.$$"
+    # Record the exact planned tuples BEFORE either iptables or ip rule writes.
+    if ! mkdir -p "${_hotspot_pending%/*}" || ! (
+        umask 077
+        printf '%s\n' "$_hotspot_pairs" | awk -F'|' -v priority="$_hotspot_priority" \
+            'NF == 2 { print priority "|" $1 }' >"$_hotspot_state_tmp"
+    ) || ! mv -f "$_hotspot_state_tmp" "$_hotspot_pending"; then
+        rm -f "$_hotspot_state_tmp"
         return 1
-    }
-    : >"$_hotspot_state_tmp" || {
-        unset _hotspot_pairs _hotspot_first_iface _hotspot_priority _hotspot_state_file _hotspot_state_tmp
-        return 1
-    }
+    fi
     _hotspot_add_rc=0
-    _hotspot_current_added=0
     while IFS='|' read -r _hotspot_iface _hotspot_cidr; do
         [ -n "$_hotspot_iface" ] || continue
-        if ! magicnet_hotspot_forward_access ensure "$_hotspot_iface"; then
+        if ! magicnet_hotspot_forward_access ensure "$_hotspot_iface" ||
+            ! ip rule add priority "$_hotspot_priority" iif "$_hotspot_iface" lookup 2022 >/dev/null 2>&1 ||
+            ! magicnet_hotspot_rule_present "$_hotspot_priority" "$_hotspot_iface" ||
+            ! magicnet_hotspot_forward_access status "$_hotspot_iface"; then
             _hotspot_add_rc=1
             break
         fi
-        if ! ip rule add priority "$_hotspot_priority" iif "$_hotspot_iface" lookup 2022 \
-            >/dev/null 2>&1; then
-            magicnet_hotspot_forward_access cleanup "$_hotspot_iface" || true
-            _hotspot_add_rc=1
-            break
-        fi
-        _hotspot_current_added=1
-        printf '%s|%s\n' "$_hotspot_priority" "$_hotspot_iface" >>"$_hotspot_state_tmp" || {
-            _hotspot_add_rc=1
-            break
-        }
-        _hotspot_current_added=0
     done <<EOF
 $_hotspot_pairs
 EOF
-    if [ "$_hotspot_add_rc" -ne 0 ] ||
-        ! chmod 600 "$_hotspot_state_tmp" ||
-        ! mv -f "$_hotspot_state_tmp" "$_hotspot_state_file"; then
-        if [ "$_hotspot_current_added" -eq 1 ]; then
-            magicnet_hotspot_forward_access cleanup "$_hotspot_iface" || true
-            magicnet_hotspot_delete_rule "$_hotspot_priority" "$_hotspot_iface" || true
-        fi
-        while IFS='|' read -r _hotspot_cleanup_priority _hotspot_cleanup_iface; do
-            [ -n "$_hotspot_cleanup_priority" ] || continue
-            magicnet_hotspot_forward_access cleanup "$_hotspot_cleanup_iface" || true
-            magicnet_hotspot_delete_rule "$_hotspot_cleanup_priority" "$_hotspot_cleanup_iface" || true
-        done <"$_hotspot_state_tmp" 2>/dev/null || true
-        rm -f "$_hotspot_state_tmp" 2>/dev/null || true
-        unset _hotspot_pairs _hotspot_first_iface _hotspot_priority _hotspot_state_file _hotspot_state_tmp
-        unset _hotspot_add_rc _hotspot_current_added _hotspot_iface _hotspot_cidr
-        unset _hotspot_cleanup_priority _hotspot_cleanup_iface
+    if [ "$_hotspot_add_rc" -ne 0 ] || ! mv -f "$_hotspot_pending" "$_hotspot_state_file"; then
+        # Cleanup deletes the journal ONLY after all recorded resources are
+        # verified absent. Failure is visible and a subsequent stop can retry.
+        magicnet_hotspot_route_cleanup || magicnet_warn "Hotspot rollback incomplete; pending journal retained."
         return 1
     fi
     unset _hotspot_pairs _hotspot_first_iface _hotspot_priority _hotspot_state_file _hotspot_state_tmp
-    unset _hotspot_add_rc _hotspot_current_added _hotspot_iface _hotspot_cidr
-    unset _hotspot_cleanup_priority _hotspot_cleanup_iface
+    unset _hotspot_add_rc _hotspot_pending _hotspot_iface _hotspot_cidr
 }
 
 magicnet_hotspot_route_status() {
@@ -455,11 +492,13 @@ magicnet_hotspot_route_status() {
         return 0
     fi
     _hotspot_state_file="$(magicnet_hotspot_route_state_file)"
-    if magicnet_hotspot_tun_route_table_ready; then
-        printf 'route_table_ready=1\n'
-    else
-        printf 'route_table_ready=0\n'
-    fi
+    _hotspot_ready_rc=0
+    magicnet_hotspot_tun_route_table_ready || _hotspot_ready_rc=$?
+    case "$_hotspot_ready_rc" in
+    0) printf 'route_table_ready=1\n' ;;
+    1) printf 'route_table_ready=0\n' ;;
+    *) printf 'route_table_ready=unknown\n' ;;
+    esac
     _hotspot_discovery_error=0
     _hotspot_pairs="$(magicnet_hotspot_active_networks)" || _hotspot_discovery_error=1
     _hotspot_expected_rule_count="$(printf '%s\n' "$_hotspot_pairs" | awk -F'|' 'NF == 2 && !seen[$1]++ { n++ } END { print n+0 }')"
@@ -490,6 +529,10 @@ magicnet_hotspot_route_status() {
     printf 'policy_rule_missing=%s\n' "$_hotspot_missing_rule_count"
     if ! magicnet_hotspot_proxy_enabled; then
         printf 'route_status=disabled\n'
+    elif [ -e "$(magicnet_hotspot_route_pending_file)" ]; then
+        printf 'route_status=pending\n'
+    elif [ "$_hotspot_ready_rc" -gt 1 ]; then
+        printf 'route_status=unknown\n'
     elif [ "$_hotspot_discovery_error" -ne 0 ]; then
         printf 'route_status=degraded\n'
     elif [ -z "$_hotspot_pairs" ]; then
@@ -505,19 +548,13 @@ magicnet_hotspot_route_status() {
     unset _hotspot_discovery_error _hotspot_expected_rule_count
 }
 
-magicnet_hotspot_offload_value() {
+magicnet_hotspot_offload_value() (
     command -v settings >/dev/null 2>&1 || return 1
-    settings get global tether_offload_disabled 2>/dev/null | tr -d '\r' | sed -n '1p'
-}
-
-magicnet_hotspot_register_offload_rollback() {
-    import prop
-    _hotspot_route_rollback_cmd='_mn_rules="${0%/*}/.state/hotspot/tun-rules.list"; if [ -f "$_mn_rules" ] && command -v ip >/dev/null 2>&1; then while IFS="|" read -r _mn_priority _mn_iface; do case "$_mn_priority" in ""|*[!0-9]*) continue;; esac; case "$_mn_iface" in wlan[0-9]*|softap[0-9]*|ap_br_wlan[0-9]*|ap_br_softap[0-9]*|swlan[0-9]*|rndis[0-9]*|usb[0-9]*|bt-pan|bt-pan[0-9]*|p2p[0-9]*|p2p-*) ;; *) continue;; esac; _mn_attempt=0; while [ "$_mn_attempt" -lt 8 ]; do ip rule del priority "$_mn_priority" iif "$_mn_iface" lookup 2022 >/dev/null 2>&1 || break; _mn_attempt=$((_mn_attempt+1)); done; done <"$_mn_rules"; fi; rm -f "$_mn_rules" 2>/dev/null || true'
-    register_uninstall_cmd "$_hotspot_route_rollback_cmd" "$MODDIR" >/dev/null 2>&1 || true
-    _hotspot_rollback_cmd='_mn_state="${0%/*}/.state/hotspot/tether-offload.previous"; if [ -f "$_mn_state" ]; then _mn_previous="$(sed -n "1p" "$_mn_state" 2>/dev/null)"; if [ "$_mn_previous" = unset ]; then settings delete global tether_offload_disabled >/dev/null 2>&1 || true; else settings put global tether_offload_disabled "${_mn_previous#value=}" >/dev/null 2>&1 || true; fi; rm -f "$_mn_state" 2>/dev/null || true; fi'
-    register_uninstall_cmd "$_hotspot_rollback_cmd" "$MODDIR" >/dev/null 2>&1 || true
-    unset _hotspot_route_rollback_cmd _hotspot_rollback_cmd
-}
+    # Preserve the producer exit status; tr/sed success cannot prove a read.
+    _value="$(settings get global tether_offload_disabled 2>/dev/null)" || return 1
+    _value="$(printf '%s' "$_value" | tr -d '\r')"
+    case "$_value" in '' | null | 0 | 1) printf '%s\n' "$_value" ;; *) return 1 ;; esac
+)
 
 magicnet_hotspot_offload_enable() {
     _hotspot_state="$(magicnet_hotspot_offload_state_file)"
@@ -542,61 +579,85 @@ magicnet_hotspot_offload_enable() {
             return 1
         fi
         _hotspot_tmp="${_hotspot_state}.new.$$"
-        if ! printf '%s\n' "$_hotspot_saved" >"$_hotspot_tmp" ||
+        if ! (umask 077; printf '%s\n' "$_hotspot_saved" >"$_hotspot_tmp") ||
             ! mv -f "$_hotspot_tmp" "$_hotspot_state"; then
             rm -f "$_hotspot_tmp" 2>/dev/null || true
-            unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
+            unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
             return 1
         fi
         _hotspot_state_created=1
-        magicnet_hotspot_register_offload_rollback
+        # The shipped uninstall hook uses the same locked lifecycle cleanup.
+        # Never append a second, unverified rule deleter to uninstall.sh.
+    fi
+    _hotspot_current="$(magicnet_hotspot_offload_value)" || {
+        magicnet_warn "Android settings state is unknown; offload was not changed"
+        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
+        return 1
+    }
+    if [ "$_hotspot_current" = 1 ]; then
+        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
+        return 0
     fi
     if ! settings put global tether_offload_disabled 1 >/dev/null 2>&1 ||
-        [ "$(magicnet_hotspot_offload_value)" != 1 ]; then
+        ! _hotspot_current="$(magicnet_hotspot_offload_value)" ||
+        [ "$_hotspot_current" != 1 ]; then
         magicnet_warn "Failed to disable Android tether offload"
         if [ "$_hotspot_state_created" -eq 1 ]; then
             magicnet_hotspot_offload_restore >/dev/null 2>&1 || true
         fi
-        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
+        unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
         return 1
     fi
-    unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp
+    unset _hotspot_state _hotspot_state_created _hotspot_previous _hotspot_saved _hotspot_tmp _hotspot_current
 }
 
-magicnet_hotspot_offload_restore() {
+magicnet_hotspot_offload_restore() (
     _hotspot_state="$(magicnet_hotspot_offload_state_file)"
-    [ -f "$_hotspot_state" ] || {
-        magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
-        unset _hotspot_state
-        return 0
+    [ ! -L "$_hotspot_state" ] || return 1
+    [ -e "$_hotspot_state" ] || {
+        magicnet_hotspot_route_cleanup
+        return $?
     }
-    _hotspot_previous="$(sed -n '1p' "$_hotspot_state" 2>/dev/null)"
+    [ -f "$_hotspot_state" ] && [ -r "$_hotspot_state" ] || return 1
+    [ "$(wc -c <"$_hotspot_state")" -le 32 ] || return 1
+    _hotspot_previous="$(cat "$_hotspot_state")" || return 1
     case "$_hotspot_previous" in
-    unset) settings delete global tether_offload_disabled >/dev/null 2>&1 ;;
-    value=0 | value=1)
-        settings put global tether_offload_disabled "${_hotspot_previous#value=}" >/dev/null 2>&1
-        ;;
+    unset) _hotspot_expected=null ;;
+    value=0 | value=1) _hotspot_expected="${_hotspot_previous#value=}" ;;
     *)
         magicnet_warn "Invalid saved tether offload state; refusing to restore it"
-        unset _hotspot_state _hotspot_previous
-        return 1
-        ;;
+        return 1 ;;
     esac
-    _hotspot_rc=$?
-    if [ "$_hotspot_rc" -eq 0 ]; then
-        rm -f "$_hotspot_state" 2>/dev/null || true
-        magicnet_hotspot_route_cleanup >/dev/null 2>&1 || true
+    _hotspot_current="$(magicnet_hotspot_offload_value)" || return 1
+    [ -n "$_hotspot_current" ] || _hotspot_current=null
+    # An external writer may have changed the setting while MagicNet ran.
+    # Restore only our installed value, or recognize an already-restored value.
+    if [ "$_hotspot_current" != "$_hotspot_expected" ] && [ "$_hotspot_current" != 1 ]; then
+        magicnet_warn "Tether offload ownership changed; rollback state retained."
+        return 1
     fi
-    unset _hotspot_state _hotspot_previous
-    return "$_hotspot_rc"
-}
+    magicnet_hotspot_route_cleanup || return 1
+    if [ "$_hotspot_current" != "$_hotspot_expected" ]; then
+        case "$_hotspot_previous" in
+        unset) settings delete global tether_offload_disabled >/dev/null 2>&1 || return 1 ;;
+        *) settings put global tether_offload_disabled "$_hotspot_expected" >/dev/null 2>&1 || return 1 ;;
+        esac
+    fi
+    _hotspot_current="$(magicnet_hotspot_offload_value)" || return 1
+    [ -n "$_hotspot_current" ] || _hotspot_current=null
+    [ "$_hotspot_current" = "$_hotspot_expected" ] || return 1
+    rm -f "$_hotspot_state"
+)
 
 magicnet_hotspot_offload_status() {
-    _hotspot_value="$(magicnet_hotspot_offload_value 2>/dev/null || true)"
-    case "$_hotspot_value" in
-    1) printf 'offload_disabled=1\n' ;;
-    *) printf 'offload_disabled=0\n' ;;
-    esac
+    if _hotspot_value="$(magicnet_hotspot_offload_value 2>/dev/null)"; then
+        case "$_hotspot_value" in
+        1) printf 'offload_disabled=1\n' ;;
+        *) printf 'offload_disabled=0\n' ;;
+        esac
+    else
+        printf 'offload_disabled=unknown\n'
+    fi
     if [ -f "$(magicnet_hotspot_offload_state_file)" ]; then
         printf 'offload_owned=1\n'
     else

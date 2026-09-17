@@ -123,7 +123,11 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
         ("node", "list" | "current") => false,
         ("route" | "block", "list") => false,
         ("app", "list" | "packages" | "recommendations") => false,
-        ("api", "endpoint" | "groups" | "proxies" | "conns" | "stats") => false,
+        ("api", "endpoint" | "groups" | "proxies" | "conns" | "stats" | "tailscale-status") => {
+            false
+        }
+        ("support", "bundle") => false,
+        ("sysroute", "list" | "snapshot") => false,
         ("config-editor", "get" | "path") => false,
         ("config-editor", "repo") => !matches!(action, "get" | "get-json"),
         ("sub", "list" | "get" | "status" | "file" | "copy-path" | "resolve-host") => false,
@@ -166,10 +170,6 @@ fn state_command(app: &App, args: &[String]) -> Result<(), String> {
     }
 }
 
-fn sync_service_lifecycle(app: &App) -> Result<(), String> {
-    run_magicnet_function(app, "magicnet_lifecycle_sync")
-}
-
 fn service_command(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map_or("status", String::as_str) {
         "status" => {
@@ -177,10 +177,9 @@ fn service_command(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "logs" => service_logs(app, &prefixed_args("service", args)),
-        _ => {
-            service_cmd(app, args)?;
-            sync_service_lifecycle(app)
-        }
+        // Start/stop own runtime restoration under their lifecycle lock. The
+        // main dispatcher still publishes canonical state after either result.
+        _ => service_cmd(app, args),
     }
 }
 
@@ -304,6 +303,10 @@ mod tests {
             "transparent status",
             "node current",
             "api groups",
+            "api tailscale-status tailscale",
+            "support bundle",
+            "sysroute list",
+            "sysroute snapshot",
             "sub get sing-box",
             "sub schedule status",
             "sub user-agent get",

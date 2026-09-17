@@ -95,6 +95,8 @@ check bash scripts/test-api-endpoint.sh
 check bash scripts/test-singbox-readiness.sh
 check sh scripts/test-singbox-runtime-memory.sh
 check bash scripts/test-supervisor-pid-safety.sh
+check python3 scripts/test-supervisor-zombie.py
+check python3 scripts/test-fake-magisk-kernel.py
 check bash scripts/test-process-cgroup-detach.sh
 check bash scripts/test-supervisor-orphan-prefilter.sh
 check bash scripts/test-supervisor-start-policy.sh
@@ -117,7 +119,9 @@ fi
 check bash scripts/test-dns-leak-guard-timeout.sh
 check python3 scripts/test-dns-capture-fast-path.py
 check python3 scripts/test-dns-output-order.py
+CI_TEST_FORCE=1 check python3 scripts/test-xtables-registration.py
 check sh scripts/test-startup-network-safety.sh
+check python3 scripts/test-start-stop-rollback.py --all-shells
 check sh scripts/test-kernel-route-lifecycle.sh
 check bash scripts/test-submodule-updates.sh
 check bash scripts/test-subscription-activation-order.sh

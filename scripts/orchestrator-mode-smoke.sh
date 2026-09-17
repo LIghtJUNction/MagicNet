@@ -304,7 +304,7 @@ assert_mode() {
         exit 1
     fi
 
-    jq -e '.dns.strategy == "ipv4_only"' "$config" >/dev/null
+    jq -e '.dns.strategy == "ipv4_only" and ([.inbounds[]? | select(.tag == "magicnet-dns6-in")] | length) == 0' "$config" >/dev/null
 }
 
 export MAGICNET_TEST_DNS_STRATEGY=ipv4_only
@@ -333,6 +333,8 @@ assert_dual_stack_policy() {
           or . == {"ip_version": 6, "action": "reject", "no_drop": true}
           or . == {"ip_version": 6, "action": "reject", "method": "default", "no_drop": true};
         .dns.strategy == $strategy
+        and ([.inbounds[]? | select(.tag == "magicnet-dns6-in" and .type == "direct" and .listen == "::1" and .listen_port == 1053)] | length) == 1
+        and ([.route.rules[]? | select(. == {"inbound": ["magicnet-dns-in", "magicnet-dns6-in"], "action": "hijack-dns"})] | length) == 1
         and ([.route.rules[]? | select(managed_guard)] | length) == 0
         and ([.inbounds[]? | select(
           .type == "tun"
@@ -354,6 +356,13 @@ assert_dual_stack_policy() {
 # dual stack must remove it while retaining the IPv6 TUN address.
 assert_dual_stack_policy prefer_ipv4 1400 5m
 assert_dual_stack_policy prefer_ipv6 1280 10m
+# Returning to IPv4-only must remove the IPv6 listener and its hijack reference.
+export MAGICNET_IPV6_MODE=ipv4_only
+"$TMPDIR/harness.sh"
+jq -e '([.inbounds[]? | select(.tag == "magicnet-dns6-in")] | length) == 0 and
+  ([.route.rules[]? | select(.action == "hijack-dns" and .inbound == ["magicnet-dns-in"])] | length) == 1' "$MODDIR/.config/sing-box/config.json" >/dev/null
+assert_singbox_check "$MODDIR/.config/sing-box/config.json" 'dual-stack to IPv4-only'
+
 export MAGICNET_TEST_DNS_STRATEGY=ipv4_only
 export MAGICNET_TEST_TUN_MTU=1400
 export MAGICNET_TEST_UDP_TIMEOUT=5m

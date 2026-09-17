@@ -71,6 +71,7 @@ dumpsys() {
 
 settings() {
   case "${1:-} ${2:-} ${3:-}" in
+  'get global tether_offload_disabled') if [ -f "$WORK/offload" ]; then cat "$WORK/offload"; else printf 'null\n'; fi ;;
   'put global tether_offload_disabled') printf '%s\n' "${4:-}" >"$WORK/offload" ;;
   'delete global tether_offload_disabled') rm -f "$WORK/offload" ;;
   *) return 0 ;;
@@ -227,6 +228,7 @@ magicnet_hotspot_route_status >"$WORK/status"
 grep -Fqx 'route_status=degraded' "$WORK/status"
 HOTSPOT_ROUTE_QUERY_FAIL=0
 
+printf '1\n' >"$WORK/offload"
 magicnet_hotspot_offload_restore
 [ ! -s "$WORK/forward-rules" ]
 [ ! -e "$MODDIR/.state/hotspot/tun-rules.list" ]

@@ -551,7 +551,10 @@ fn stop_all_direct(app: &App, preserve_config_apply: bool) -> Result<(), String>
         let _ = run_magicnet_function(app, START_SUPERVISORS_COMMAND);
         return Err(err);
     }
-    Ok(())
+    // Finish before the caller drops its lifecycle lock or starts a replacement
+    // core. Cleanup outside that lock can race a new start and remove its rules.
+    run_magicnet_function(app, "magicnet_lifecycle_after_stop")
+        .map_err(|err| format!("finalize stopped network: {err}"))
 }
 
 fn transparent_transaction_active(app: &App) -> bool {

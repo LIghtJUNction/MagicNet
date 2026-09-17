@@ -174,14 +174,32 @@ magicnet_supervisor_stop_pidfile() {
     return 0
 }
 
+# kill -0 also succeeds for unreaped zombies. Check the bounded stat reader
+# before cmdline, which is empty after exit; denied/malformed reads stay unknown.
+magicnet_supervisor_pid_live() (
+    _mspl_pid="$1"
+    case "$_mspl_pid" in '' | *[!0-9]* | 0) return 1 ;; esac
+    if _mspl_state=$(magicnet_proc_state "$_mspl_pid" /proc); then
+        case "$_mspl_state" in
+        Z | X | x) return 1 ;;
+        [A-Za-z]) return 0 ;;
+        *) return 2 ;;
+        esac
+    fi
+    [ ! -d "/proc/$_mspl_pid" ] || return 2
+    return 1
+)
+
 magicnet_supervisor_pidfile_matches() (
     _msp_pid_file="$1"
     _msp_pid="$2"
     case "$_msp_pid" in '' | *[!0-9]*) return 1 ;; esac
-    [ -d "/proc/$_msp_pid" ] || {
-        unset _msp_pid_file _msp_pid
-        return 1
-    }
+    if magicnet_supervisor_pid_live "$_msp_pid"; then
+        _msp_live_rc=0
+    else
+        _msp_live_rc=$?
+    fi
+    [ "$_msp_live_rc" -eq 0 ] || return "$_msp_live_rc"
     case "$_msp_pid_file" in
     */.state/watchdog/magicnet-kernel.pid)
         _msp_root=${_msp_pid_file%/.state/watchdog/magicnet-kernel.pid}
@@ -214,7 +232,15 @@ magicnet_supervisor_pidfile_matches() (
     else
         _msp_read_rc=$?
     fi
-    [ "$_msp_read_rc" -eq 0 ] || return "$_msp_read_rc"
+    if [ "$_msp_read_rc" -ne 0 ]; then
+        # The process can exit between stat and cmdline. Only a confirmed exit
+        # resolves this race; a live unreadable identity must still block stop.
+        if magicnet_supervisor_pid_live "$_msp_pid"; then
+            return 2
+        else
+            return $?
+        fi
+    fi
     if awk -v expected="$_msp_expected" -v cli="$_msp_root/cli" \
         -v arg1="$_msp_arg1" -v arg2="$_msp_arg2" '
             function is_shell(value) {

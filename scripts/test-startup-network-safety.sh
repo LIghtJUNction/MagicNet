@@ -49,9 +49,10 @@ case "$*" in
         exit "$MOCK_DELETE_RC"
     fi
     # All four guard protocols/ports are tried; only this fixture rule exists.
-    case "$*" in *'-o rmnet0 -p udp --dport 53 -j REJECT') : >"$MOCK_RULES" ;; esac
+    case "$*" in *'-o rmnet0 -p udp --dport 53 -j REJECT'|*'-o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT') : >"$MOCK_RULES" ;; esac
     exit 0 ;;
-'-C OUTPUT '*) [ -s "$MOCK_RULES" ]; exit $? ;;
+'-C OUTPUT '*)
+    grep -Fx -- "-A ${*#-C }" "$MOCK_RULES" >/dev/null; exit $? ;;
 esac
 exit 0
 MOCK
@@ -105,8 +106,16 @@ magicnet_enable_dns_capture >/dev/null 2>&1 || fail 'IPv4 capture rejected absen
 if MOCK_WRITE_RC=4 magicnet_enable_dns_capture >"$WORK/log" 2>&1; then fail 'write failure hidden'; fi
 grep -q 'fixture write permission denied' "$WORK/log" || fail 'write stderr lost'
 
-# A fresh scan finds a different interface; failed deletion must keep retry state.
+# A lookalike DNS REJECT owned by somebody else must not be adopted or deleted.
 printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
+printf '%s\n' wlan0 '# magicnet-owned-v2' >"$state"
+: >"$MOCK_CALLS"
+magicnet_disable_dns_leak_guard || fail 'foreign rule prevented owned cleanup'
+[ -s "$MOCK_RULES" ] || fail 'foreign DNS REJECT was deleted'
+if grep -q -- '-D OUTPUT' "$MOCK_CALLS"; then fail 'foreign rule prompted speculative deletion'; fi
+
+# A fresh scan finds an explicitly owned rule on another interface; retain retry state on failure.
+printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT' >"$MOCK_RULES"
 printf '%s\n' wlan0 >"$state"
 if MOCK_DELETE_RC=4 magicnet_disable_dns_leak_guard >"$WORK/log" 2>&1; then fail 'delete failure hidden'; fi
 [ -e "$state" ] || fail 'failed cleanup removed retry state'
@@ -118,7 +127,7 @@ grep -q '^ip6tables -w 1 ' "$MOCK_CALLS" || fail 'IPv6 bounded lock wait missing
 
 # A stop retries transient cleanup before terminating the core, but a
 # persistent failure remains visible so the caller can keep the core alive.
-printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
+printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT' >"$MOCK_RULES"
 printf '%s\n' rmnet0 >"$state"
 MOCK_DELETE_FAIL_ONCE_FILE="$WORK/delete-failed-once"
 export MOCK_DELETE_FAIL_ONCE_FILE
@@ -127,7 +136,7 @@ MAGICNET_STOP_CLEANUP_ATTEMPTS=2 MAGICNET_STOP_CLEANUP_DELAY=0 \
 [ -e "$MOCK_DELETE_FAIL_ONCE_FILE" ] || fail 'transient stop cleanup fault was not exercised'
 [ ! -s "$MOCK_RULES" ] && [ ! -e "$state" ] || fail 'retried stop cleanup left DNS policy behind'
 unset MOCK_DELETE_FAIL_ONCE_FILE
-printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -j REJECT' >"$MOCK_RULES"
+printf '%s\n' '-A OUTPUT -o rmnet0 -p udp --dport 53 -m comment --comment magicnet-dns-guard -j REJECT' >"$MOCK_RULES"
 printf '%s\n' rmnet0 >"$state"
 if MOCK_DELETE_RC=4 MAGICNET_STOP_CLEANUP_ATTEMPTS=2 MAGICNET_STOP_CLEANUP_DELAY=0 \
     magicnet_prepare_network_for_core_stop >"$WORK/log" 2>&1; then
@@ -135,6 +144,32 @@ if MOCK_DELETE_RC=4 MAGICNET_STOP_CLEANUP_ATTEMPTS=2 MAGICNET_STOP_CLEANUP_DELAY
 fi
 [ -s "$MOCK_RULES" ] && [ -e "$state" ] || fail 'failed stop cleanup discarded retry state'
 grep -q 'keeping sing-box running' "$WORK/log" || fail 'stop cleanup failure did not explain fail-open behavior'
+
+# Missing tools cannot erase uncertain family ownership. A recorded IPv4-only
+# guard is allowed to finish without ip6tables, but legacy/dual-family records
+# retain their exact bytes until the missing family can be checked.
+(
+    : >"$MOCK_RULES"
+    magicnet_cmd_exists() { [ "$1" != "${MISSING_TOOL:-none}" ] && command -v "$1" >/dev/null 2>&1; }
+    for MISSING_TOOL in iptables ip6tables; do
+        for evidence in legacy dual malformed; do
+            printf '%s\n' wlan0 '# magicnet-owned-v2' >"$state"
+            case "$evidence" in
+            dual) printf '%s\n' '# families=4,6' >>"$state" ;;
+            malformed) printf '%s\n' '# families=4' '# families=4,6' >>"$state" ;;
+            esac
+            cp "$state" "$WORK/saved-journal"
+            if magicnet_disable_dns_leak_guard; then fail "missing $MISSING_TOOL lost $evidence ownership"; fi
+            cmp "$state" "$WORK/saved-journal" || fail 'uncertain cleanup rewrote ownership'
+        done
+    done
+    MISSING_TOOL=ip6tables
+    printf '%s\n' wlan0 '# magicnet-owned-v2' '# families=4' >"$state"
+    magicnet_disable_dns_leak_guard || fail 'known IPv4-only guard required absent IPv6 tool'
+    test ! -e "$state" || fail 'known clean IPv4 guard kept stale state'
+    # No ownership history and no rules must not create recovery state.
+    magicnet_disable_dns_leak_guard || fail 'no-history cleanup failed with missing optional IPv6 tool'
+)
 
 # The shell action path delegates to the Rust lifecycle owner instead of
 # duplicating stop/rollback semantics.
@@ -210,10 +245,12 @@ SH
     magicnet_disable_dns_leak_guard() { :; }
     if magicnet_start_kernel >"$WORK/log" 2>&1; then fail 'failed start reported success'; fi
     grep -q 'preceding core or network error' "$WORK/log" || fail 'misleading startup diagnostic'
-    magicnet_start_singbox_unlocked() { :; }
+    magicnet_start_singbox_unlocked() { : >"$WORK/core-live"; }
+    magicnet_kernel_running() { [ -e "$WORK/core-live" ]; }
     magicnet_after_kernel_start_unlocked() { return 1; }
+    magicnet_lifecycle_after_stop() { [ ! -e "$WORK/core-live" ]; }
     import() { :; }
-    singbox_stop() { : >"$WORK/stopped"; }
+    singbox_stop() { rm -f "$WORK/core-live"; : >"$WORK/stopped"; }
     if magicnet_start_singbox_ready_unlocked >/dev/null 2>&1; then fail 'rollback reported success'; fi
     [ -f "$WORK/stopped" ] || fail 'genuine post-start failure did not stop the core'
 )

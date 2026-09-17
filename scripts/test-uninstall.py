@@ -68,6 +68,20 @@ class UninstallTests(unittest.TestCase):
                 self.assertIn("Some cleanup failed", result.stderr)
                 self.assertEqual(len(self.calls.read_text().splitlines()), 4)
 
+    def test_legacy_appended_commands_never_run_or_hide_failure(self) -> None:
+        hook = self.module / "uninstall.sh"
+        with hook.open("a") as stream:
+            stream.write('printf "blind-delete\\n" >>"$TEST_CALLS"; exit 0\n')
+        for failure in ("", "service stop"):
+            with self.subTest(failure=failure):
+                self.calls.unlink(missing_ok=True)
+                result = subprocess.run([str(BUSYBOX), "ash", str(hook)],
+                    env=dict(self.env, TEST_FAIL=failure, MAGICNET_NONINTERACTIVE="1"),
+                    text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 1 if failure else 0, result.stderr)
+                self.assertNotIn("blind-delete", self.calls.read_text())
+                self.assertEqual(len(self.calls.read_text().splitlines()), 4)
+
     def test_missing_cli_is_not_reported_as_success(self) -> None:
         (self.module / "cli").unlink()
         result = self.run_shell("magicnet_uninstall_cleanup")
