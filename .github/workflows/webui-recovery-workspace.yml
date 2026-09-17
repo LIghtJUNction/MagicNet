@@ -1,0 +1,53 @@
+name: Prepare WebUI recovery workspace
+on:
+  push:
+    branches: [audit/webui-recovery-workspace-20260917]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 8f432d81986676304e1e252de4c6aea7f124b383
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Load pinned shell and routing dependencies
+        run: git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Prepare locked frontend and host tools
+        run: |
+          npm ci --prefix webui
+          (cd webui && npx playwright install chromium)
+          cargo build --locked -p magicnet-cli
+          sudo apt-get update -qq
+          sudo apt-get install -y jq ripgrep shellcheck shfmt
+      - name: Export public source and tools only
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/webui-workspace"
+          mkdir -p "$out/tools"
+          git rev-parse HEAD > "$out/source-revision.txt"
+          git ls-tree -r HEAD > "$out/source-tree.txt"
+          git submodule status > "$out/submodules.txt"
+          git archive --format=tar HEAD > "$RUNNER_TEMP/source.tar"
+          tar --append --file="$RUNNER_TEMP/source.tar" --exclude=.git src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+          gzip "$RUNNER_TEMP/source.tar"
+          mv "$RUNNER_TEMP/source.tar.gz" "$out/"
+          tar -czf "$out/frontend-deps.tar.gz" webui/node_modules
+          tar -czf "$out/chromium.tar.gz" -C "$HOME/.cache" ms-playwright
+          cp target/debug/magicnet-cli "$out/tools/"
+          for tool in node jq rg shellcheck shfmt; do cp "$(command -v "$tool")" "$out/tools/"; done
+          (cd "$out" && sha256sum source.tar.gz frontend-deps.tar.gz chromium.tar.gz tools/* > SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: webui-recovery-workspace
+          path: ${{ runner.temp }}/webui-workspace
+          retention-days: 2
+          if-no-files-found: error
