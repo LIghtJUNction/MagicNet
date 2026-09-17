@@ -14,13 +14,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Export tracked source only
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Provision exact lockfile and pinned shell dependencies
         run: |
-          git archive --format=tar HEAD | gzip > /tmp/magicnet-source.tar.gz
-          git rev-parse HEAD
-          find . -maxdepth 4 -name package.json -not -path '*/node_modules/*' -print
+          git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
+          npm ci --prefix webui
+          tar --exclude=.git -czf /tmp/magicnet-test-deps.tar.gz webui/node_modules src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box
       - uses: actions/upload-artifact@v4
         with:
-          name: magicnet-source-workspace
-          path: /tmp/magicnet-source.tar.gz
+          name: magicnet-test-dependencies
+          path: /tmp/magicnet-test-deps.tar.gz
           retention-days: 1
