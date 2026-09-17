@@ -331,12 +331,17 @@ assert.doesNotMatch(
 assert.match(controlPage, /setTransparentModeAction/);
 assert.match(controlPage, /requestTransparentMode\('tun'/);
 assert.match(controlPage, /requestTransparentMode\('ebpf'/);
-assert.match(controlPage, /const singBoxStatus = computed/);
-assert.match(controlPage, /tone: "neutral"/);
-assert.match(
-  controlPage,
-  /label: !rawState \|\| rawState === "unknown" \? t\("状态未知"\) : rawState/,
-);
+// The shared presenter replaces per-page optimistic PID-only status. Exercise
+// the real helper as well as both call sites, not the old implementation shape.
+assert.match(controlPage, /servicePresentation\(state\.runtime, state\.hasKsu\)/);
+assert.match(app, /servicePresentation\(state\.runtime, state\.hasKsu\)/);
+const { servicePresentation } = await import("./src/lib/servicePresentation.ts");
+for (const serviceReady of [false, null]) {
+  const status = servicePresentation({ singBoxState: "sing-box", serviceReady });
+  assert.notEqual(status.tone, "ok");
+  assert.notEqual(status.routeState, "active");
+}
+assert.notEqual(servicePresentation({ singBoxState: "unknown", serviceReady: true }).tone, "ok");
 assert.doesNotMatch(
   controlPage,
   /singBoxState === 'stopped' \? 'warning' : 'success'/,

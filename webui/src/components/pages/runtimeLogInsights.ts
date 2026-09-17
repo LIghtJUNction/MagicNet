@@ -107,7 +107,33 @@ export function buildRuntimeLogInsight(lines: string[], warningCount: number, er
   };
 }
 
+/** Sanitize the whole document BEFORE selecting context: secrets can span lines. */
+export function runtimeLogContext(lines: string[]): string[] {
+  const safeLines = sanitizeDiagnosticText(lines.join("\n")).split("\n");
+  const issueIndices = safeLines.flatMap((line, index) => logSeverity(line) === "none" ? [] : [index]);
+  const selected = new Set<number>();
+  for (const index of issueIndices.slice(-80)) {
+    for (let adjacent = Math.max(0, index - 3); adjacent <= Math.min(safeLines.length - 1, index + 2); adjacent++) {
+      selected.add(adjacent);
+    }
+  }
+  // Redaction may remove an entire malformed credential-bearing error. Retain
+  // the sanitized tail, never reintroduce raw issueLines to compensate.
+  const indices = selected.size ? [...selected].sort((a, b) => a - b).slice(-80)
+    : safeLines.map((_, index) => index).slice(-80);
+  const excerpt: string[] = [];
+  let remaining = 16_000;
+  for (const index of indices.reverse()) {
+    const line = safeLines[index].length > 1_024 ? `${safeLines[index].slice(0, 1_000)} [line truncated]` : safeLines[index];
+    if (line.length + 1 > remaining) break;
+    excerpt.unshift(line);
+    remaining -= line.length + 1;
+  }
+  return excerpt;
+}
+
 export function formatRuntimeLogIssueReport(input: RuntimeLogIssueReportInput): string {
+  const excerpt = runtimeLogContext(input.lines);
   return [
     `MagicNet ${input.target} log issues`,
     "privacy_note=log lines are sanitized before export",
@@ -116,9 +142,10 @@ export function formatRuntimeLogIssueReport(input: RuntimeLogIssueReportInput): 
     `errors=${input.errorCount}`,
     `other_issues=${input.otherIssueCount}`,
     `issues=${input.issueCount}`,
-    `excerpt_lines=${input.issueLines.length}`,
+    `excerpt_lines=${excerpt.length}`,
+    "excerpt_policy=bounded_context_after_redaction",
     "",
-    ...input.issueLines.map((line) => sanitizeDiagnosticText(line))
+    ...excerpt,
   ].join("\n").trim();
 }
 

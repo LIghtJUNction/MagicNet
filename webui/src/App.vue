@@ -24,6 +24,7 @@ import OnboardingDialog from "@/components/OnboardingDialog.vue";
 import OpenSourceSupportNote from "@/components/OpenSourceSupportNote.vue";
 import Button from "@/components/ui/Button.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
+import { servicePresentation } from "@/lib/servicePresentation";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { setPendingSubscriptionDraft } from "@/components/pages/subscriptionDraft";
 import { useTheme } from "@/composables/useTheme";
@@ -216,26 +217,15 @@ const activeSectionTabs = computed(() =>
 const activeComponent = computed(() => asyncPages[activeTab.value]);
 
 const statusMessage = computed(() => (state.task ? t("正在执行：{task}", { task: t(state.task) }) : t(state.notice)));
-const runtimeStateLabel = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return t("sing-box 运行中");
-  if (state.runtime.singBoxState === "stopped") return t("已停止");
-  return t("状态未知");
-});
-const routeStackState = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "active";
-  if (state.runtime.singBoxState === "stopped") return "stopped";
-  return "unknown";
-});
+const serviceStatus = computed(() => servicePresentation(state.runtime, state.hasKsu));
+const runtimeStateLabel = computed(() => serviceStatus.value.label);
+const routeStackState = computed(() => serviceStatus.value.routeState);
 const transparentRouteData = computed(() => {
   if (state.runtime.transparentMode === "tun") return "magicnet0";
   if (state.runtime.transparentMode === "ebpf") return state.runtime.transparentEffectiveMode;
   return "unknown";
 });
-const statusDotTone = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "ok" as const;
-  if (state.runtime.singBoxState === "stopped") return "stop" as const;
-  return "unknown" as const;
-});
+const statusDotTone = computed(() => serviceStatus.value.tone);
 
 function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
   if (tab !== activeTab.value) {

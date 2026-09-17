@@ -1,5 +1,6 @@
 import { t } from "@/i18n";
 import type { RuntimeState } from "@/types";
+import { startupFailure } from "@/components/pages/startupFailure";
 import { statusToneClasses } from "@/lib/statusTone";
 
 export type ControlRuntimeInsight = {
@@ -57,6 +58,8 @@ export function buildControlRuntimeInsight(
     };
   }
   if (input.phase === "error") {
+    const failure = startupFailure(input.output || "");
+    if (failure) return { status: "danger", ...failure, actions: [t("查看最近输出")] };
     if (
       /No cached sing-box nodes found|run cli sub update sing-box/i.test(
         input.output || "",
@@ -78,6 +81,11 @@ export function buildControlRuntimeInsight(
       actions: [t("查看最近输出"), t("复制控制快照")],
     };
   }
+  if (input.runtime.singBoxState === "unknown") {
+    return { status: "warning", title: t("无法确认核心状态"),
+      detail: t("未能读取进程状态，不会将它当作已停止。先刷新状态或查看诊断。"),
+      actions: [t("刷新状态"), t("查看最近输出")] };
+  }
   if (!running) {
     return {
       status: "danger",
@@ -97,6 +105,14 @@ export function buildControlRuntimeInsight(
         t("无法确认 configured/effective 模式；不会按 TUN 或 eBPF 猜测当前数据面。"),
       actions: [t("刷新状态"), t("查看最近输出")],
     };
+  }
+  if (input.runtime.serviceReady !== true) {
+    return { status: "warning",
+      title: input.runtime.serviceReady === false ? t("服务未就绪") : t("状态待确认"),
+      detail: input.runtime.serviceReady === false
+        ? t("核心进程存在，但服务就绪检查未通过。不要仅凭进程存在判断代理可用。")
+        : t("核心进程存在，但尚未确认服务是否就绪。刷新状态不会重启服务。"),
+      actions: [t("刷新状态"), t("查看最近输出")] };
   }
   if (input.runtime.fswatch === "stopped") {
     return {
