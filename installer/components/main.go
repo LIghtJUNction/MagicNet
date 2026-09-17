@@ -23,17 +23,25 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 )
 
-const maxPayload = int64(512 << 20)
+const (
+	maxPayload               = int64(512 << 20)
+	componentDownloadWorkers = 3
+)
 
 var hexHash = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var componentID = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 var repositoryID = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 var releaseVersion = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+
+var logWriterMu sync.Mutex
+var routeHintMu sync.Mutex
+var routeSelectMu sync.Mutex
 
 type payloadFile struct {
 	Path   string `json:"path"`
@@ -324,6 +332,8 @@ func networkClient() *http.Client {
 }
 func (o options) printf(format string, args ...any) {
 	if o.log != nil {
+		logWriterMu.Lock()
+		defer logWriterMu.Unlock()
 		fmt.Fprintf(o.log, format+"\n", args...)
 	}
 }
@@ -460,22 +470,74 @@ func (o options) downloadAttemptWithPolicy(c component, source, destination stri
 	return os.Rename(tmp.Name(), destination)
 }
 
+func (o options) cachedRoute(c component, direct string) (route, bool) {
+	routeHintMu.Lock()
+	defer routeHintMu.Unlock()
+	if o.route == nil || !o.route.usable(c) {
+		return route{}, false
+	}
+	return route{url: o.route.prefix + direct, name: o.route.name, prefix: o.route.prefix}, true
+}
+
+func (o options) rememberRoute(candidate route, c component) {
+	if o.route == nil {
+		return
+	}
+	routeHintMu.Lock()
+	defer routeHintMu.Unlock()
+	*o.route = routeHint{set: true, prefix: candidate.prefix, name: candidate.name,
+		verifiedAt: time.Now(), sampleSize: c.Size}
+}
+
+func (o options) rememberProbedRoute(candidate route, c component) {
+	if o.route == nil {
+		return
+	}
+	routeHintMu.Lock()
+	defer routeHintMu.Unlock()
+	*o.route = routeHint{set: true, prefix: candidate.prefix, name: candidate.name,
+		verifiedAt: time.Now(), sampleSize: min(c.Size, int64(routeProbeBytes))}
+}
+
+func (o options) invalidateRoute(prefix string) {
+	if o.route == nil {
+		return
+	}
+	routeHintMu.Lock()
+	defer routeHintMu.Unlock()
+	if o.route.prefix == prefix {
+		o.route.set = false
+	}
+}
+
 func (o options) download(c component, direct, destination string) error {
 	var candidates []route
-	if o.route.usable(c) {
-		candidates = []route{{url: o.route.prefix + direct, name: o.route.name, prefix: o.route.prefix}}
-		o.printf("[route] %s: reusing recently verified route", o.route.name)
+	if cached, ok := o.cachedRoute(c, direct); ok {
+		candidates = []route{cached}
+		o.printf("[route] %s: reusing recently selected route", cached.name)
 	} else {
-		candidates = o.routes(c, direct)
+		// Only one component performs route probing at a time. Once a route has
+		// passed the bounded HTTPS/ZIP probe, concurrent components may start
+		// their own full hash-verified downloads through that prefix instead of
+		// duplicating every probe. A failed transfer invalidates the hint and the
+		// existing fallback path ranks alternatives for that component.
+		routeSelectMu.Lock()
+		if cached, ok := o.cachedRoute(c, direct); ok {
+			candidates = []route{cached}
+			o.printf("[route] %s: sharing concurrently selected route", cached.name)
+		} else {
+			candidates = o.routes(c, direct)
+			if len(candidates) > 0 {
+				o.rememberProbedRoute(candidates[0], c)
+			}
+		}
+		routeSelectMu.Unlock()
 	}
 	attempted := map[string]bool{}
 	var slow *route
 	var last error = errors.New("no usable download route")
 	remember := func(candidate route) {
-		if o.route != nil {
-			*o.route = routeHint{set: true, prefix: candidate.prefix, name: candidate.name,
-				verifiedAt: time.Now(), sampleSize: c.Size}
-		}
+		o.rememberRoute(candidate, c)
 		o.printf("[download] %s: verified via %s", c.ID, candidate.name)
 	}
 	for i := 0; i < len(candidates); i++ {
@@ -498,9 +560,7 @@ func (o options) download(c component, direct, destination string) error {
 			slow = &copy
 		}
 		o.printf("[download] %s via %s failed: %v", c.ID, candidate.name, err)
-		if o.route != nil && candidate.prefix == o.route.prefix {
-			o.route.set = false
-		}
+		o.invalidateRoute(candidate.prefix)
 		if len(candidates) == 1 {
 			for _, fallback := range o.rankRoutes(c, direct, attempted) {
 				candidates = append(candidates, fallback)
@@ -513,15 +573,58 @@ func (o options) download(c component, direct, destination string) error {
 		o.printf("[route] alternatives exhausted; retaining slow path %s", slow.name)
 		if err := o.downloadAttempt(c, slow.url, destination); err == nil {
 			remember(*slow)
-			if o.route != nil {
-				o.route.set = false
-			}
+			o.invalidateRoute(slow.prefix)
 			return nil
 		} else {
 			last = err
 		}
 	}
 	return fmt.Errorf("%s: all download routes failed: %w", c.ID, last)
+}
+
+type componentDownload struct {
+	component   component
+	direct      string
+	destination string
+}
+
+func (o options) downloadComponents(items []componentDownload) error {
+	if len(items) == 0 {
+		return nil
+	}
+	workers := min(componentDownloadWorkers, len(items))
+	o.printf("[download] fetching %d components with up to %d parallel transfers", len(items), workers)
+	jobs := make(chan componentDownload)
+	var wg sync.WaitGroup
+	var failed atomic.Bool
+	var firstErr error
+	var first sync.Once
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for item := range jobs {
+				if failed.Load() {
+					continue
+				}
+				if err := o.download(item.component, item.direct, item.destination); err != nil {
+					first.Do(func() {
+						firstErr = err
+						failed.Store(true)
+					})
+				}
+			}
+		}()
+	}
+	for _, item := range items {
+		if failed.Load() {
+			break
+		}
+		jobs <- item
+	}
+	close(jobs)
+	wg.Wait()
+	return firstErr
 }
 
 // All components are validated in a private staging directory before this
@@ -685,6 +788,17 @@ func run(o options) error {
 	}()
 	var files []payloadFile
 	wanted := map[string]bool{}
+	type cachedComponent struct {
+		component component
+		path      string
+	}
+	var cachedComponents []cachedComponent
+	var downloads []componentDownload
+	scheduled := map[string]bool{}
+	base := o.baseURL
+	if base == "" {
+		base = "https://github.com/" + m.Repository + "/releases/download/" + url.PathEscape(m.Version) + "/"
+	}
 	for _, c := range m.Components {
 		for _, f := range c.Files {
 			files = append(files, f)
@@ -713,25 +827,32 @@ func run(o options) error {
 			continue
 		}
 		cached := filepath.Join(o.CacheDir, c.SHA256+".zip")
-		if !validFile(cached, c.Size, c.SHA256) {
+		if validFile(cached, c.Size, c.SHA256) {
+			o.printf("[cache] %s: verified cached component", c.ID)
+		} else {
 			if err = physical(cached, true); err != nil {
 				return err
 			}
 			if o.Offline {
 				return fmt.Errorf("%s: required component is unavailable offline", c.ID)
 			}
-			base := o.baseURL
-			if base == "" {
-				base = "https://github.com/" + m.Repository + "/releases/download/" + url.PathEscape(m.Version) + "/"
+			if !scheduled[cached] {
+				o.printf("[download] %s: need %s", c.ID, humanBytes(c.Size))
+				downloads = append(downloads, componentDownload{component: c, direct: base + c.Asset, destination: cached})
+				scheduled[cached] = true
 			}
-			o.printf("[download] %s: need %s", c.ID, humanBytes(c.Size))
-			if err = o.download(c, base+c.Asset, cached); err != nil {
-				return err
-			}
-		} else {
-			o.printf("[cache] %s: verified cached component", c.ID)
 		}
-		payload, e := zip.OpenReader(cached)
+		cachedComponents = append(cachedComponents, cachedComponent{component: c, path: cached})
+	}
+	if err = o.downloadComponents(downloads); err != nil {
+		return err
+	}
+	for _, item := range cachedComponents {
+		c := item.component
+		if !validFile(item.path, c.Size, c.SHA256) {
+			return fmt.Errorf("%s: cached component failed post-download verification", c.ID)
+		}
+		payload, e := zip.OpenReader(item.path)
 		if e != nil {
 			return e
 		}
