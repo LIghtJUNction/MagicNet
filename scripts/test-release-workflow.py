@@ -66,7 +66,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.git("commit", "-m", "Fixture commit")
         return self.git("rev-parse", "HEAD")
 
-    def run_workflow(self, bump=None, report=False, verify=False, **overrides):
+    def run_workflow(self, bump=None, verify=False, **overrides):
         self.output.unlink(missing_ok=True)
         self.step_output.unlink(missing_ok=True)
         env = dict(os.environ, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
@@ -77,8 +77,6 @@ class ReleaseWorkflowTest(unittest.TestCase):
                    GITHUB_STEP_SUMMARY=str(self.root / "summary"))
         env.update(overrides)
         command = [sys.executable, str(SCRIPT)]
-        if report:
-            command.append("--report-pr")
         if verify:
             command.append("--verify-build")
         if bump is not None:
@@ -344,48 +342,6 @@ class ReleaseWorkflowTest(unittest.TestCase):
             GITHUB_EVENT_NAME="workflow_dispatch", RELEASE_INPUT="true",
             GITHUB_SHA=self.before), "Checkout differs")
 
-    def report_version_pr(self, **overrides):
-        return self.run_workflow(report=True, **{
-            "PR_OUTCOME": "failure", "PR_URL": "", "VERSION": "v1.2.4",
-            "EXPECTED_TREE": self.git("rev-parse", "HEAD^{tree}"),
-            "GITHUB_SHA": self.before, "GITHUB_SERVER_URL": "https://github.com",
-            "GITHUB_REPOSITORY": "example/repo", **overrides,
-        })
-
-    def push_version_branch(self):
-        self.assert_bump(self.run_bump(RELEASE_INPUT="true"), "v1.2.4")
-        self.commit()
-        self.git("push", "origin", "HEAD:refs/heads/automation/release-v1.2.4")
-
-    def test_pr_policy_failure_recovers_verified_branch_without_publishing(self):
-        self.push_version_branch()
-        result = self.report_version_pr()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("::warning::", result.stdout)
-        self.assertIn("/compare/main...automation/release-v1.2.4?expand=1",
-                      (self.root / "summary").read_text())
-        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/main").split()[0], self.before)
-        self.assertFalse(self.output.exists())
-
-    def test_pr_failure_without_pushed_branch_still_fails(self):
-        self.assert_rejected(self.report_version_pr())
-
-    def test_pr_fallback_rejects_changed_branch_content_or_parent(self):
-        self.push_version_branch()
-        for overrides, message in (
-            ({"EXPECTED_TREE": self.git("rev-parse", f"{self.before}^{{tree}}")}, "prepared content"),
-            ({"GITHUB_SHA": "0" * 40}, "different release base"),
-        ):
-            with self.subTest(**overrides):
-                self.assert_rejected(self.report_version_pr(**overrides), message)
-
-    def test_existing_pr_reports_success_without_needing_fallback(self):
-        result = self.report_version_pr(
-            PR_OUTCOME="success", PR_URL="https://github.com/example/repo/pull/1")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn("::warning::", result.stdout)
-        self.assertIn("/pull/1", (self.root / "summary").read_text())
-
     def test_bump_release_requires_signing_key_before_edits(self):
         self.assert_bump_rejected(RELEASE_INPUT="true", KAM_PRIVATE_KEY_AVAILABLE="0")
 
@@ -427,20 +383,22 @@ class ReleaseWorkflowTest(unittest.TestCase):
 
 
 class WorkflowStructureTest(unittest.TestCase):
-    def test_version_bump_uses_reviewed_pr_without_admin_token(self):
+    def test_version_bump_pushes_directly_to_main_without_a_pr(self):
         text = (WORKFLOWS / "exec.yml").read_text()
         workflow = yaml.safe_load(text)
         self.assertEqual(set(workflow["jobs"]), {"version-pr", "build"})
         self.assertNotIn("RELEASE_TOKEN", text)
         version_job = workflow["jobs"]["version-pr"]
-        self.assertEqual(version_job["permissions"]["pull-requests"], "write")
+        self.assertNotIn("pull-requests", version_job["permissions"])
+        self.assertEqual(version_job["permissions"]["contents"], "write")
         self.assertIn("workflow_dispatch", version_job["if"])
         self.assertIn("inputs.bump", version_job["if"])
         version_steps = version_job["steps"]
         self.assertEqual(version_steps[0]["with"]["ref"], "${{ github.sha }}")
-        self.assertTrue(any("create-pull-request@" in step.get("uses", "")
-                            for step in version_steps))
-        self.assertNotIn("git push origin HEAD:refs/heads/main", text)
+        self.assertTrue(version_steps[0]["with"]["persist-credentials"])
+        self.assertFalse(any("create-pull-request@" in step.get("uses", "")
+                             for step in version_steps))
+        self.assertIn("git push origin HEAD:main", text)
         self.assertIn("inputs.bump == 'none'", workflow["jobs"]["build"]["if"])
 
     def test_release_build_keeps_exact_target_and_artifact_checks(self):
