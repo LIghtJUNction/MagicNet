@@ -259,6 +259,25 @@ magicnet_hotspot_proxy_enabled() {{ fixture enabled; }}
         self.assertIn('phase=prepared', self.state.read_text())
         self.assertFalse(self.read()['writes'])
 
+    def test_stale_prepared_state_rebases_foreign_table_before_restart(self):
+        self.run_helper('magicnet_kernel_route_state_begin')
+        foreign = '9002: from all iif Yume lookup 2022'
+        self.change(rule4=[foreign], route4=['default dev Yume'])
+
+        # Android recreated table 2022 without MagicNet's TUN. Rebase the
+        # prepared ledger so the foreign rule is never adopted or deleted.
+        self.run_helper('magicnet_kernel_route_state_begin')
+        self.assertIn('rule4=' + foreign, self.state.read_text())
+        self.assertEqual(self.read()['writes'], [])
+
+        own = '9000: from all fwmark 0x200000 lookup 2022'
+        self.change(kernel=0, rule4=[foreign, own],
+                    route4=['default dev Yume', 'default dev magicnet0'])
+        self.run_helper('magicnet_kernel_route_state_capture')
+        state = self.state.read_text()
+        self.assertNotIn('rule4=' + foreign, state)
+        self.assertIn('rule4=' + own, state)
+
     def test_disruptive_recovery_clears_own_half_started_rule_but_keeps_foreign_one(self):
         # A crashed first start left a rule inside MagicNet's own window that
         # was never promoted to phase=active. Without the flag this deadlocks

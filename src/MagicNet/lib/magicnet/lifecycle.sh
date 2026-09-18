@@ -58,7 +58,27 @@ magicnet_kernel_route_state_begin() (
     [ "$_rc" -eq 1 ] || return 2
     _state="$(magicnet_kernel_route_state_file)"
     if [ -e "$_state" ]; then
-        magicnet_kernel_route_cleanup_after_stop || return 2
+        # A crash can leave a prepared ledger behind after Android (or another
+        # owner) has recreated table 2022.  If the table no longer points at
+        # magicnet0, preserve every observed rule as the new foreign baseline
+        # instead of treating it as MagicNet-owned or blocking every restart.
+        # A live magicnet0 route remains ambiguous and must still go through
+        # the strict cleanup path below.
+        _rebase_prepared=0
+        if grep -Fqx 'schema=2' "$_state" &&
+            grep -Fqx 'phase=prepared' "$_state"; then
+            _routes4="$(magicnet_kernel_route_table_snapshot 4)" || return 2
+            _routes6="$(magicnet_kernel_route_table_snapshot 6)" || return 2
+            if ! printf '%s\n%s\n' "$_routes4" "$_routes6" |
+                grep -Eq '(^|[[:space:]])dev magicnet0([[:space:]]|$)'; then
+                _rules4="$(magicnet_kernel_route_rules 4)" || return 2
+                _rules6="$(magicnet_kernel_route_rules 6)" || return 2
+                magicnet_kernel_route_state_write prepared "$_rules4" "$_rules6" || return 2
+                _rebase_prepared=1
+            fi
+        fi
+        [ "$_rebase_prepared" -eq 1 ] ||
+            magicnet_kernel_route_cleanup_after_stop || return 2
     fi
     [ "$_mode" != ebpf ] || return 0
     _rules4="$(magicnet_kernel_route_rules 4)" || return 2
