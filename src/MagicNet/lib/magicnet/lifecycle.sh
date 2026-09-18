@@ -182,10 +182,24 @@ magicnet_kernel_route_cleanup_rule_family() (
     grep -Fqx "boot=$_boot" "$_state" || return 2
     if grep -Fqx 'phase=prepared' "$_state"; then
         # Startup never proved which generation installed these rules. Report
-        # unresolved state instead of claiming or deleting a newly seen rule.
+        # unresolved state instead of claiming or deleting a newly seen rule
+        # by default. The boot id already matched above, so any rule seen here
+        # that was absent from the pre-start baseline can only have been
+        # installed by this module's own half-finished attempt this boot; an
+        # explicit disruptive-recovery opt-in (the same one `cli repair` uses
+        # elsewhere) may force it to be cleared instead of deadlocking forever.
         _unverified="$(magicnet_kernel_route_new_rules "$_family")" || return 2
-        [ -z "$_unverified" ]
-        return $?
+        if [ -z "$_unverified" ]; then
+            return 0
+        fi
+        [ "${MAGICNET_ALLOW_DISRUPTIVE_RECOVERY:-0}" = 1 ] || return 1
+        while IFS= read -r _record; do
+            [ -n "$_record" ] || continue
+            magicnet_kernel_route_delete_exact_rule "$_family" "$_record" || return $?
+        done <<EOF
+$_unverified
+EOF
+        return 0
     fi
     grep -Fqx 'phase=active' "$_state" || return 2
     _recorded="$(sed -n "s/^rule${_family}=//p" "$_state")" || return 2
