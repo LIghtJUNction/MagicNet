@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     concurrency:
       group: magicnet-version-pr
       cancel-in-progress: false
@@ -85,6 +86,22 @@ jobs:
           git push origin HEAD:main
           printf 'Pushed %s directly to main: %s\n' "$VERSION" "$(git rev-parse HEAD)" \
             >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trigger build for the pushed version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_INPUT: ${{ inputs.release }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          # A GITHUB_TOKEN-authored push does not fire GitHub's push-event
+          # trigger (loop prevention), so the build job would otherwise never
+          # run. workflow_dispatch/repository_dispatch are the documented
+          # exception: an explicit dispatch call still starts a new run even
+          # when made with GITHUB_TOKEN, so dispatch the build against the
+          # commit we just pushed instead of relying on the push event.
+          gh workflow run exec.yml --ref main \
+            -f bump=none -f release="$RELEASE_INPUT" -f prerelease="$PRERELEASE_INPUT"
 
   build:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '' }}
