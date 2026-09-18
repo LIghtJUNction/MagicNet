@@ -357,9 +357,9 @@ magicnet_seed_config_repository() {
   printf '%s\n' \
     '# Managed by MagicNet; edit through the config repository controls.' \
     'MAGICNET_SINGBOX_CONFIG_REPO_URL=https://github.com/LIghtJUNction/MagicSingBox.git' \
-    'MAGICNET_SINGBOX_CONFIG_REPO_REF=ef82670ef9dc687eb1360fcde88405b0b4cd335a' \
+    'MAGICNET_SINGBOX_CONFIG_REPO_REF=7ad4b8af8a6ae0c6b4dfeab4beb4bb61e8cf9737' \
     'MAGICNET_SINGBOX_CONFIG_REPO_PATH=config.json' \
-    'MAGICNET_SINGBOX_CONFIG_REPO_SHA256=35d54f908ccc9cc615fabf06b1037bbfc1f6d1d9712c86ba6c9b5252cc98ae03' >"$_repository_file" || {
+    'MAGICNET_SINGBOX_CONFIG_REPO_SHA256=5b09257f5546c9422b635b75e8a4b3747615e467b9e37d8487ff8750dee01131' >"$_repository_file" || {
     unset _repository_file _repository_parent
     return 1
   }
