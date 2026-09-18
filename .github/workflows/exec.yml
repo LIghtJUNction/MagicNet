@@ -51,7 +51,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     concurrency:
       group: magicnet-version-pr
       cancel-in-progress: false
@@ -60,7 +59,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.sha }}
-          persist-credentials: false
+          persist-credentials: true
           fetch-depth: 0
 
       - name: Prepare version metadata
@@ -71,42 +70,21 @@ jobs:
           PRERELEASE_INPUT: ${{ inputs.prerelease }}
           KAM_PRIVATE_KEY_AVAILABLE: ${{ secrets.KAM_PRIVATE_KEY != '' && '1' || '0' }}
         run: |
-          # Keep the original main checkout as the PR base. A detached checkout
-          # makes the PR action rebase with "theirs" onto a newer remote main.
           git checkout -B main "$GITHUB_SHA"
           python3 scripts/prepare-release.py --bump "$BUMP_KIND"
           git add -- kam.toml src/MagicNet/module.prop update.json .github/release-request
-          printf 'tree=%s\n' "$(git write-tree)" >> "$GITHUB_OUTPUT"
 
-      - name: Create version pull request
-        id: pr
-        continue-on-error: true
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          base: main
-          branch: automation/release-${{ steps.version.outputs.version }}
-          add-paths: |
-            kam.toml
-            src/MagicNet/module.prop
-            update.json
-            .github/release-request
-          commit-message: "chore(release): prepare ${{ steps.version.outputs.version }}"
-          title: "chore(release): prepare ${{ steps.version.outputs.version }}"
-          body: |
-            Prepares ${{ steps.version.outputs.version }} with synchronized module metadata.
-
-            Publish after merge: `${{ inputs.release }}`. Prerelease: `${{ inputs.prerelease }}`.
-            Review and merge this PR into main. Approve any pending workflow runs on the PR page.
-            This automation branch is regenerated when the same version is requested again; avoid editing it directly.
-
-      - name: Report version PR
-        if: ${{ always() && steps.version.outcome == 'success' }}
+      - name: Commit and push version bump
         env:
-          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
-          PR_OUTCOME: ${{ steps.pr.outcome }}
           VERSION: ${{ steps.version.outputs.version }}
-          EXPECTED_TREE: ${{ steps.version.outputs.tree }}
-        run: python3 scripts/prepare-release.py --report-pr
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(release): prepare ${VERSION}"
+          git push origin HEAD:main
+          printf 'Pushed %s directly to main: %s\n' "$VERSION" "$(git rev-parse HEAD)" \
+            >> "$GITHUB_STEP_SUMMARY"
 
   build:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.bump == 'none' || inputs.bump == '' }}
