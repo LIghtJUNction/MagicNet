@@ -35,7 +35,10 @@ for (const theme of ['light','dark']) {
     await expect(page.locator('.mn-control-status h2')).toHaveText('运行中');
     await expect(page.locator('.mn-control-hero .mn-control-notice')).toHaveCount(0);
     await assertFits(page);
-    await page.screenshot({path:info.outputPath(`${theme}-ready.png`),fullPage:true});
+    // Diagnostic capture only (not a correctness assertion): a full-page
+    // screenshot can exceed the shared 5s actionTimeout under loaded/parallel
+    // CI runners, so give it more headroom than interactive actions need.
+    await page.screenshot({path:info.outputPath(`${theme}-ready.png`),fullPage:true,timeout:20_000});
     await setFixture(page,{runtime:{serviceReady:null}});
     await expect(page.locator('.mn-control-status h2')).toHaveText('状态待确认');
     await expect(page.locator('.mn-control-eyebrow .mn-status-dot-ok')).toHaveCount(0);
@@ -48,7 +51,8 @@ for (const theme of ['light','dark']) {
     await expect(page.locator('.mn-control-hero .mn-control-notice h3')).toContainText('配置校验');
     await expect(page.locator('.mn-control-hero .mn-control-notice p')).toBeVisible();
     await assertFits(page);
-    await page.screenshot({path:info.outputPath(`${theme}-failure.png`),fullPage:true});
+    // Same diagnostic-capture rationale as above.
+    await page.screenshot({path:info.outputPath(`${theme}-failure.png`),fullPage:true,timeout:20_000});
     await page.locator('.mn-control-hero .mn-control-notice').getByRole('button',{name:'查看输出'}).click();
     await expect(page.locator('.page-surface pre').last()).toContainText('Startup step failed: stage=config-check');
     // A read-only log refresh may fail without a native bridge, but must not
