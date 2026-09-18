@@ -169,8 +169,8 @@ class ReleaseCacheTest(unittest.TestCase):
 
     def test_version_preparation_is_separate_from_cached_build(self):
         jobs = yaml.safe_load(WORKFLOW.read_text())["jobs"]
-        version_steps = jobs["version-pr"]["steps"]
-        self.assertEqual(version_steps[0]["name"], "Checkout release base")
+        version_steps = jobs["version-bump"]["steps"]
+        self.assertEqual(version_steps[0]["name"], "Checkout main for version bump")
         self.assertEqual(version_steps[1]["name"], "Prepare version metadata")
         self.assertFalse(any("cache" in step.get("uses", "").lower()
                              for step in version_steps))

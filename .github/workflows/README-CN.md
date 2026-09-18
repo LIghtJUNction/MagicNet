@@ -22,7 +22,7 @@ kam check
 `exec.yml` 用于构建模块。触发方式包括 `push`、`pull_request` 和手动
 `workflow_dispatch`。
 
-在 `main` 上手动运行工作流时，可通过 `bump` 自动准备版本 PR：
+在 `main` 上手动运行工作流时，可通过 `bump` 直接提交版本更新：
 
 | 输入 | 行为 |
 | --- | --- |
@@ -32,32 +32,22 @@ kam check
 | `major` | 主版本号加一并清零其余两位，例如 `v1.3.9` → `v2.0.0` |
 
 选择升级时，工作流同步更新 `kam.toml`、`src/MagicNet/module.prop` 和
-`update.json`，将 `versionCode` 加一，然后创建版本 PR，本次运行不执行模块构建。
-同时勾选 `release` 会写入发布请求，PR 合并后自动构建并发布；`prerelease`
-也会保存在请求中，且要求同时勾选 `release`。仅升级版本的 PR 合并后只构建。
+`update.json`，将 `versionCode` 加一，直接提交到 `main`，随后显式触发新提交的构建。
+这是因为 `GITHUB_TOKEN` 推送不会自动触发另一个 `push` 工作流。
+同时勾选 `release` 会写入发布请求，后续构建会发布；`prerelease` 也会保存在请求中，
+且要求同时勾选 `release`。仅升级版本时只构建不发布。
 
-同一目标版本使用固定的 `automation/release-vX.Y.Z` 分支，重复运行会更新
-同一个 PR；不要手动编辑该自动化分支。若主分支已前进，旧运行重跑会拒绝操作，
-请重新从 `main` 发起工作流。版本更新始终通过 PR，不直接推送受保护分支。
-
-自动创建 PR 使用内置 `GITHUB_TOKEN`，需要 `contents: write`、
-`pull-requests: write`（工作流已声明），以及仓库允许 Actions 创建 PR。
-若创建失败，工作流会核对已推送版本分支的完整内容和基准提交。核对通过后，
-摘要提供手动创建 PR 的链接并显示警告；分支缺失、内容或基准不符时仍会失败。
-仓库禁止 Actions 创建 PR 时，可直接用该链接创建 PR，无需修改仓库权限设置。
-此时只准备好了版本分支，合并 PR 后才会按发布请求构建和发布。
-机器人创建的 PR 检查可能等待批准，请由有写权限的成员在 PR 页面批准并正常合并。
-工作流不会自动批准或合并 PR。
+若主分支已前进，旧运行重跑会拒绝操作，请重新从 `main` 发起工作流。
 
 审查后可通过两种方式发布：
 
-- 在版本 PR 中同时添加或更新 `.github/release-request`，首行为精确版本号，
-  例如 `v1.3.9`。合并到 `main` 后，仅当该文件在本次 push 的 `before..sha`
+- 在版本更新提交中同时添加或更新 `.github/release-request`，首行为精确版本号，
+  例如 `v1.3.9`。推送到 `main` 后，仅当该文件在本次 push 的 `before..sha`
   范围内发生变更时，才请求发布。文件会保留在仓库中；后续未修改它的 push
   不会重复请求发布。发布下一版时，将它更新为下一版的精确版本号。
   预发布可增加第二行 `prerelease=true`；省略时为正式发布。
   旧的单行版本标记继续兼容，旧的 `patch` 标记不再支持。
-- 合并版本 PR 后，在 `main` 上手动运行 `exec.yml`，选择 `release=true`。
+- 在 `main` 上手动运行 `exec.yml`，选择 `release=true`。
   手动发布时可选择 `prerelease=true`，将 Release 标记为预发布。
   此时 `bump` 保持 `none`，且当前版本标签必须尚不存在。
 

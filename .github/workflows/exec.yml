@@ -9,7 +9,7 @@ on:
         type: boolean
         default: false
       bump:
-        description: Prepare a version PR (merge it before publishing)
+        description: Commit a version bump directly to main before building
         required: false
         type: choice
         options:
@@ -19,7 +19,7 @@ on:
           - major
         default: none
       release:
-        description: Publish after the version PR merges, or publish current version with bump=none
+        description: Publish after the version bump, or publish current version with bump=none
         required: false
         type: boolean
         default: false
@@ -46,17 +46,17 @@ env:
   CI_TEST_FORCE: ${{ inputs.force_tests == true && '1' || '0' }}
 
 jobs:
-  version-pr:
+  version-bump:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.bump != 'none' && inputs.bump != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: write
     concurrency:
-      group: magicnet-version-pr
+      group: magicnet-version-bump
       cancel-in-progress: false
     steps:
-      - name: Checkout release base
+      - name: Checkout main for version bump
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.sha }}

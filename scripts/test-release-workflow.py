@@ -225,7 +225,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             with self.subTest(prerelease=prerelease):
                 self.git("reset", "--hard", self.before)
                 self.git("clean", "-fd")
-                self.git("checkout", "-B", "version-pr", self.before)
+                self.git("checkout", "-B", "version-bump", self.before)
                 self.assert_bump(self.run_bump(
                     RELEASE_INPUT="true", PRERELEASE_INPUT=str(prerelease).lower()), "v1.2.4")
                 self.assertEqual((self.repo / RELEASE_MARKER).read_text().splitlines(),
@@ -234,16 +234,16 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 self.assert_build_only(self.run_workflow(
                     GITHUB_EVENT_NAME="pull_request", GITHUB_REF="refs/pull/42/merge"))
                 self.git("checkout", "main")
-                self.git("merge", "--no-ff", "version-pr", "-m", "Merge version PR")
+                self.git("merge", "--no-ff", "version-bump", "-m", "Merge version bump")
                 self.assert_release(self.run_workflow(), "v1.2.4", 124, prerelease)
 
     def test_bump_without_release_merges_as_build_only(self):
-        self.git("checkout", "-b", "version-pr")
+        self.git("checkout", "-b", "version-bump")
         self.assert_bump(self.run_bump(), "v1.2.4")
         self.assertFalse((self.repo / RELEASE_MARKER).exists())
         self.commit()
         self.git("checkout", "main")
-        self.git("merge", "--no-ff", "version-pr", "-m", "Merge version PR")
+        self.git("merge", "--no-ff", "version-bump", "-m", "Merge version bump")
         self.assert_build_only(self.run_workflow())
 
     def test_bump_without_release_preserves_previous_release_marker(self):
@@ -386,9 +386,9 @@ class WorkflowStructureTest(unittest.TestCase):
     def test_version_bump_pushes_directly_to_main_without_a_pr(self):
         text = (WORKFLOWS / "exec.yml").read_text()
         workflow = yaml.safe_load(text)
-        self.assertEqual(set(workflow["jobs"]), {"version-pr", "build"})
+        self.assertEqual(set(workflow["jobs"]), {"version-bump", "build"})
         self.assertNotIn("RELEASE_TOKEN", text)
-        version_job = workflow["jobs"]["version-pr"]
+        version_job = workflow["jobs"]["version-bump"]
         self.assertNotIn("pull-requests", version_job["permissions"])
         self.assertEqual(version_job["permissions"]["contents"], "write")
         self.assertIn("workflow_dispatch", version_job["if"])
