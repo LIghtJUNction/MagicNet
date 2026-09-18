@@ -196,16 +196,24 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
 
     # WeChat is latency-sensitive and its dedicated classifier is narrower than
     # either the generic Tencent set or the broad advertising lists. Current DNS
-    # templates intentionally project only WeChat domains instead of importing the
-    # mixed domain+IP SRS (sing-box 1.14 treats included IP CIDRs as legacy DNS
-    # response filters). Move that domain-only rule before ads. Keep the legacy
-    # rule-set move too so upgraded/hand-edited configs remain compatible.
+    # templates use service-wechat-dns, a domain-only SRS. Keep support for the
+    # short-lived explicit-domain projection and legacy mixed Karing tag so
+    # upgraded/hand-edited configs remain compatible.
     if section == "dns":
         rules = _move_before(
             rules,
             lambda rule: rule.get(dispatch_key) == wechat_target
             and _contains(rule, "domain_suffix", "wechat.com")
             and _contains(rule, "domain_suffix", "weixin.com"),
+            lambda rule: _contains(rule, "rule_set", "lyc-geosite-ads"),
+        )
+
+    if section == "dns":
+        rules = _move_rule_set_tag_before(
+            rules,
+            "service-wechat-dns",
+            dispatch_key,
+            wechat_target,
             lambda rule: _contains(rule, "rule_set", "lyc-geosite-ads"),
         )
 
