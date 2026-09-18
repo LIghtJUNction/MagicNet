@@ -24,9 +24,12 @@ def wechat_dns_index(rules):
     return next(
         i
         for i, rule in enumerate(rules)
-        if rule.get("server") == "bootstrap-local-dns"
-        and "wechat.com" in rule.get("domain_suffix", [])
-        and "weixin.com" in rule.get("domain_suffix", [])
+        if "service-wechat-dns" in rule.get("rule_set", [])
+        or (
+            rule.get("server") == "bootstrap-local-dns"
+            and "wechat.com" in rule.get("domain_suffix", [])
+            and "weixin.com" in rule.get("domain_suffix", [])
+        )
     )
 
 
@@ -62,10 +65,7 @@ class RoutingOptimizerTests(unittest.TestCase):
                     },
                     {"rule_set": ["lyc-geosite-ads"], "server": "doh-cloudflare"},
                     {"rule_set": ["meta-tencent"], "server": "bootstrap-local-dns"},
-                    {
-                        "domain_suffix": ["wechat.com", "weixin.com"],
-                        "server": "bootstrap-local-dns",
-                    },
+                    {"rule_set": ["service-wechat-dns"], "server": "bootstrap-local-dns"},
                     {"rule_set": ["r1"], "server": "doh-google"},
                     {"rule_set": ["r2"], "server": "doh-google"},
                 ]
