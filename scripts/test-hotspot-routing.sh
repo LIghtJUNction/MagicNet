@@ -169,6 +169,16 @@ jq -e '
   }]
 ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 magicnet_singbox_hotspot_policy_current
+
+# Route preparation adds this selector field; the hotspot producer must emit
+# it too or every watchdog poll incorrectly schedules config apply.
+jq -e '[.outbounds[] | select(.tag == "hotspot")][0].interrupt_exist_connections == true' "$MODDIR/.config/sing-box/config.json" >/dev/null
+(
+  cp "$MODDIR/.config/sing-box/config.json" "$WORK/pretty-hotspot.json"
+  jq -S -c . "$WORK/pretty-hotspot.json" >"$MODDIR/.config/sing-box/config.json"
+  magicnet_singbox_hotspot_policy_current
+  cp "$WORK/pretty-hotspot.json" "$MODDIR/.config/sing-box/config.json"
+)
 jq -e '
   [.route.rules[] | select(
     .inbound == ["tun-in"]

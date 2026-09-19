@@ -691,7 +691,8 @@ magicnet_singbox_render_hotspot_policy() {
             "type": "selector",
             "tag": "hotspot",
             "outbounds": ["direct", "proxy"],
-            "default": "direct"
+            "default": "direct",
+            "interrupt_exist_connections": true
           };
         def hotspot_rule:
           {
@@ -767,7 +768,15 @@ magicnet_singbox_hotspot_policy_current() (
         _hotspot_policy_rc=0
         magicnet_ebpf_hotspot_config_current || _hotspot_policy_rc=$?
         if [ "$_hotspot_policy_rc" -eq 0 ]; then
-            cmp -s "$_config" "$_tmp" || _hotspot_policy_rc=$?
+            # Config editors and override materialization may use compact JSON
+            # or reorder object keys. Only semantic changes require a restart.
+            _hotspot_compare_jq="$(magicnet_hotspot_jq)"
+            if "$_hotspot_compare_jq" -e -s '.[0] == .[1]' "$_config" "$_tmp" >/dev/null; then
+                _hotspot_policy_rc=0
+            else
+                _hotspot_policy_rc=$?
+                [ "$_hotspot_policy_rc" -eq 1 ] || _hotspot_policy_rc=2
+            fi
         fi
     else
         _hotspot_policy_rc=2

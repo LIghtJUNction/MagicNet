@@ -1241,8 +1241,11 @@ magicnet_subscription_schedule_report() {
 }
 
 magicnet_supervisors_start_detached() {
-    _mssd_timeout="${MAGICNET_SUPERVISOR_START_TIMEOUT:-15}"
-    case "$_mssd_timeout" in '' | *[!0-9]* | 0) _mssd_timeout=15 ;; esac
+    # A cold launcher initializes several supervisors sequentially. Keep the
+    # detached operation bounded without killing a newly started watcher when
+    # the aggregate initialization exceeds the old 15-second budget.
+    _mssd_timeout="${MAGICNET_SUPERVISOR_START_TIMEOUT:-45}"
+    case "$_mssd_timeout" in '' | *[!0-9]* | 0) _mssd_timeout=45 ;; esac
     [ "$_mssd_timeout" -le 60 ] || _mssd_timeout=60
     _mssd_log="${MODDIR}/.log/supervisors.log"
     mkdir -p "${MODDIR}/.log" || return 1

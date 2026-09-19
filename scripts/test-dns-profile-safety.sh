@@ -57,6 +57,9 @@ assert_profile_uses_proxy_detour() {
         | select(.type == $expected_type and .detour == "proxy")
         | select((.server_port // 53) == $expected_port)] | length) == 2
         and .dns.final == "cloudflare-profile-dns"
+        and ([.dns.rules[] | select(.tag == "magicnet-final-dns")] ==
+          [{"action":"evaluate","server":"cloudflare-profile-dns","tag":"magicnet-final-dns"}])
+        and .dns.rules[-1] == {"match_response":"magicnet-final-dns","action":"respond"}
         and ([.dns.servers[] | select(.tag == "bootstrap-local-dns")
           | .type == "https" and .server == "223.5.5.5" and has("detour") | not] | length) == 1
     ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
@@ -73,6 +76,9 @@ assert_profile_uses_proxy_detour cloudflare-doh https 443
 MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
 jq -e '
   .dns.final == "bootstrap-local-dns"
+    and ([.dns.rules[] | select(.tag == "magicnet-final-dns")] ==
+      [{"action":"evaluate","server":"bootstrap-local-dns","tag":"magicnet-final-dns"}])
+    and (.dns.rules | length) == 2
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
     and ([.dns.servers[] | select(.tag == "retained-udp") | .routing_mark] == [1073741824])
     and .dns.timeout == "8s"

@@ -105,6 +105,14 @@ magicnet_dns_apply_singbox() {
       | if $profile == "default" then .dns.final = "bootstrap-local-dns"
         else .dns.final = "cloudflare-profile-dns"
         end
+      # Use the 1.14 response pipeline explicitly. Mixed domain/IP rule sets
+      # above match their domain branches before a response exists; they must
+      # not silently enable deprecated post-query address filtering.
+      | .dns.rules = (((.dns.rules // []) | map(select(
+          ((.action == "evaluate" and .tag == "magicnet-final-dns") or
+           (.action == "respond" and .match_response == "magicnet-final-dns")) | not)))
+          + [{"action":"evaluate","server":.dns.final,"tag":"magicnet-final-dns"},
+             {"match_response":"magicnet-final-dns","action":"respond"}])
       # sing-box 1.14 adds per-query timeout, optimistic DNS caching and DNS
       # cache persistence. Apply conservative defaults only when the user has
       # not made an explicit choice. A disabled cache remains disabled.
