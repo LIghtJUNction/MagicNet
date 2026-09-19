@@ -5,7 +5,7 @@ MagicNet keeps two CLI surfaces on purpose:
 - Human CLI: concise text intended for Termux, recovery and manual debugging.
 - Machine CLI: versioned JSON intended for WebUI, MCP, Android managers and automation.
 
-The machine interface is read-only today. Use either `cli --json <command...>` or `cli <command...> --json`. Clients should query `cli --json capabilities` instead of assuming that every MagicNet version supports the same commands.
+Status commands are read-only. The separately designed `override` family also supports bounded, versioned mutations (see [configuration overrides](config-overrides.md)). Use either `cli --json <command...>` or `cli <command...> --json`. Clients should query `cli --json capabilities` instead of assuming that every MagicNet version supports the same commands.
 
 ## Envelope
 
@@ -182,3 +182,40 @@ and quota displays, and reports unknown rather than keeping an old green state.
 `--json` currently does not make existing mutation commands machine APIs. A request such as `cli --json service start` must fail with a structured `machine.unsupported_command` error and must never fall through to the normal dispatcher.
 
 A future machine mutation API needs its own contract for idempotency, concurrency, validation, rollback and stable error codes before it is added to capabilities.
+
+
+## Configuration override commands
+
+Capabilities now set `read_only=false` and enumerate `mutation_commands`.
+This is not permission to run arbitrary existing CLI writes with `--json`:
+only the override family has machine write semantics. Unsupported JSON requests
+still cannot fall through to the human dispatcher.
+
+```sh
+cli --json override status
+cli --json override inspect
+cli --json override preview-file "$PRIVATE_PAYLOAD_PATH"
+cli --json override set-file "$PRIVATE_PAYLOAD_PATH"
+cli --json override reset-file "$PRIVATE_PAYLOAD_PATH"
+cli --json override apply-file "$PRIVATE_PAYLOAD_PATH"
+```
+
+The payload path must be a private regular file created by `cli webui payload`
+under `.tmp/webui-payload/`. Preview takes `{ "patch": {} }`; set additionally
+requires `expected_revision`; reset and apply take only `expected_revision`.
+The manual `cli --json override apply` shorthand explicitly selects the latest
+saved draft. MCP and WebUI always use the revision-checked form. Payload
+size is bounded to 4 MiB. MCP takes the same JSON properties directly over its
+authenticated endpoint and calls the same implementation.
+
+`override.inspect` is private and contains the patch. Other override responses
+contain only revision numbers, counts and booleans. `running_revision=null`
+means the override interface has no independent process-generation attestation;
+clients must check service readiness and must not equate saved with running.
+`activation_blocked` identifies a failed revision held after rollback. Background
+watchers do not retry that revision; an explicit apply releases the hold.
+
+Mutations publish `.state/machines/overrides.state` after completion or failure.
+Readers remain side-effect free. Unlike the old observation-only contract,
+`--json` itself is no longer a blanket reason to skip reconciliation: the exact
+registered override write commands are recognized.

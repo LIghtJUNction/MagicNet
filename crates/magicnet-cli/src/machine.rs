@@ -40,6 +40,12 @@ const MACHINE_COMMANDS: &[&str] = &[
     "wifi.status",
     "wifi.inspect",
     "machine.capabilities",
+    "override.status",
+    "override.inspect",
+    "override.preview",
+    "override.set",
+    "override.reset",
+    "override.apply",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -73,6 +79,7 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Option<Result<(), String>>
 
 fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
     match command {
+        ["override", rest @ ..] => override_value(app, rest),
         [command] if *command == "capabilities" => Ok(capabilities_value()),
         [command, action] if *command == "service" && *action == "status" => {
             Ok(service_status_value(app))
@@ -110,6 +117,48 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
             message: "unsupported machine command",
         }),
     }
+}
+
+fn override_value(app: &App, args: &[&str]) -> Result<Value, MachineError> {
+    let (command, result) = match args {
+        ["status"] => ("override.status", crate::overrides::status(app)),
+        ["inspect"] => ("override.inspect", crate::overrides::inspect(app)),
+        ["apply"] => ("override.apply", crate::overrides::apply(app, None)),
+        [action @ ("preview-file" | "set-file" | "reset-file" | "apply-file"), path] => {
+            let request = crate::overrides::read_request(app, Path::new(path));
+            match *action {
+                "preview-file" => (
+                    "override.preview",
+                    request.and_then(|value| crate::overrides::preview(app, &value)),
+                ),
+                "apply-file" => (
+                    "override.apply",
+                    request
+                        .and_then(|value| {
+                            value["expected_revision"]
+                                .as_u64()
+                                .ok_or("override.invalid_request")
+                        })
+                        .and_then(|revision| crate::overrides::apply(app, Some(revision))),
+                ),
+                "set-file" => (
+                    "override.set",
+                    request.and_then(|value| crate::overrides::save(app, &value, false)),
+                ),
+                _ => (
+                    "override.reset",
+                    request.and_then(|value| crate::overrides::save(app, &value, true)),
+                ),
+            }
+        }
+        _ => ("override.error", Err("override.invalid_request")),
+    };
+    result
+        .map(|data| envelope(command, data))
+        .map_err(|code| MachineError {
+            code,
+            message: crate::overrides::message(code),
+        })
 }
 
 fn print_machine_value(value: &Value) -> Result<(), String> {
@@ -155,9 +204,12 @@ fn capabilities_value() -> Value {
                 "privacy_safe_network_identifiers",
                 "readiness_signals"
             ],
-            "private_commands": ["sub.inspect", "wifi.inspect"],
+            "private_commands": ["sub.inspect", "wifi.inspect", "override.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
-            "read_only": true,
+            "read_only": false,
+            "mutation_commands": ["override.preview", "override.set", "override.reset", "override.apply"],
+            "override_patch_format": "json-merge-patch",
+            "override_input": "private-payload-file",
         }),
     )
 }
@@ -695,10 +747,11 @@ mod tests {
         assert_eq!(value["schema"], 1);
         assert_eq!(value["command"], "machine.capabilities");
         assert_eq!(value["data"]["machine_schema"], 1);
-        assert_eq!(value["data"]["read_only"], true);
+        assert_eq!(value["data"]["read_only"], false);
+        assert_eq!(value["data"]["mutation_commands"][1], "override.set");
         assert_eq!(
             value["data"]["private_commands"],
-            serde_json::json!(["sub.inspect", "wifi.inspect"])
+            serde_json::json!(["sub.inspect", "wifi.inspect", "override.inspect"])
         );
         let commands = value["data"]["commands"]
             .as_array()

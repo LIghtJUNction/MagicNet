@@ -1,3 +1,4 @@
+pub(crate) mod extended;
 pub(crate) mod files;
 pub(crate) mod http;
 pub(crate) mod logs;

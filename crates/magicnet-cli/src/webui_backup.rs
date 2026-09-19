@@ -265,7 +265,13 @@ fn restore_backup(app: &App, text: &str) -> Result<(), String> {
         // The export format includes empty sections for known files. An
         // absent repository settings file means “use the pinned default”; do
         // not replace that default with an invalid empty file on restore.
-        if rel == ".config/magicnet/singbox-config-repo.conf" && text.trim().is_empty() {
+        if matches!(
+            rel.as_str(),
+            ".config/magicnet/singbox-config-repo.conf"
+                | crate::overrides::INTENT
+                | crate::overrides::ACTIVE_INTENT
+        ) && text.trim().is_empty()
+        {
             continue;
         }
         validate_restore_section(&rel, &text)?;
@@ -289,6 +295,20 @@ fn collect_restore_section(sections: &mut Vec<(String, String)>, rel: Option<Str
 }
 
 fn validate_restore_section(rel: &str, text: &str) -> Result<(), String> {
+    if matches!(
+        rel,
+        crate::overrides::INTENT | crate::overrides::ACTIVE_INTENT
+    ) {
+        let value: serde_json::Value =
+            serde_json::from_str(text).map_err(|_| "invalid override backup".to_string())?;
+        if text.len() > 4 * 1024 * 1024
+            || value["schema"] != 1
+            || value["revision"].as_u64().is_none()
+            || !value["patch"].is_object()
+        {
+            return Err("invalid override backup".to_string());
+        }
+    }
     // `.conf` files are `.`-sourced by the shell library. A shell-inert value
     // alone is not enough: unknown keys such as PATH can still change the
     // runtime environment. Each restored file therefore has its own fixed
@@ -413,6 +433,8 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
 
 fn backup_files() -> &'static [&'static str] {
     &[
+        crate::overrides::INTENT,
+        crate::overrides::ACTIVE_INTENT,
         ".config/sing-box/subscription.url",
         ".config/sing-box/subscription.local",
         ".config/sing-box/subscription.user-agent",

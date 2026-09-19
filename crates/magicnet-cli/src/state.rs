@@ -49,6 +49,7 @@ const MODULE_TRANSACTION_STAGE: &str = ".tmp/magicnet-app-transaction";
 
 #[derive(Clone, Copy)]
 enum Domain {
+    Overrides,
     Service,
     Transparent,
     Subscription,
@@ -67,6 +68,7 @@ enum Domain {
 impl Domain {
     fn name(self) -> &'static str {
         match self {
+            Self::Overrides => "overrides",
             Self::Service => "service",
             Self::Transparent => "transparent",
             Self::Subscription => "subscription",
@@ -165,9 +167,42 @@ pub(crate) fn reconcile(app: &App) -> Result<(), String> {
         (Domain::Mcp, mcp_record(app)),
         (Domain::Tailscale, tailscale_record(app, config.as_ref())),
         (Domain::Transactions, transactions_record(app)),
+        (Domain::Overrides, overrides_record(app)),
     ];
 
     publish_records(app, &records)
+}
+
+fn overrides_record(app: &App) -> StateRecord {
+    let record = StateRecord::new(Domain::Overrides);
+    match crate::overrides::status(app) {
+        Ok(value) => record
+            .field("validity", "valid")
+            .field(
+                "configured_revision",
+                value["configured_revision"]
+                    .as_u64()
+                    .map_or_else(|| "unknown".into(), |n| n.to_string()),
+            )
+            .field(
+                "active_revision",
+                value["active_revision"]
+                    .as_u64()
+                    .map_or_else(|| "unknown".into(), |n| n.to_string()),
+            )
+            .field(
+                "materialized_revision",
+                value["materialized_revision"]
+                    .as_u64()
+                    .map_or_else(|| "unknown".into(), |n| n.to_string()),
+            )
+            .bool("configured", value["configured"] == true)
+            .bool("pending", value["pending"] == true)
+            .bool("activation_blocked", value["activation_blocked"] == true),
+        Err(_) => record
+            .field("validity", "unknown")
+            .field("pending", "unknown"),
+    }
 }
 
 pub(crate) fn reconcile_wifi(app: &App) -> Result<(), String> {

@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import InsightChip from "@/components/ui/InsightChip.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
+import ConfigOverridesCard from "./ConfigOverridesCard.vue";
 import ConfigCodeEditor from "@/components/ConfigCodeEditor.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
@@ -20,6 +21,7 @@ const { isRunning, withAction } = useActionLock();
 const DEFAULT_CONFIG_REPO_URL = "https://github.com/LIghtJUNction/MagicSingBox.git";
 const DEFAULT_CONFIG_REPO_REF = "ef82670ef9dc687eb1360fcde88405b0b4cd335a";
 const DEFAULT_CONFIG_REPO_SHA256 = "35d54f908ccc9cc615fabf06b1037bbfc1f6d1d9712c86ba6c9b5252cc98ae03";
+const configView = ref<"full" | "overrides">("full");
 const pendingConfigAction = ref<PendingToolAction | null>(null);
 const configFileInput = ref<HTMLInputElement | null>(null);
 const localJsonStatus = ref("");
@@ -244,7 +246,7 @@ async function openConfigIssue(): Promise<void> {
 <template>
   <div class="config-page grid gap-4">
     <PageHeader :overline="t('编辑器')" :title="t('配置文件')">
-      <div class="flex flex-wrap items-center gap-2">
+      <div v-show="configView === 'full'" class="flex flex-wrap items-center gap-2">
         <input ref="configFileInput" class="hidden" type="file" accept=".json,application/json" @change="importLocalConfig">
         <Button variant="outline" :loading="isRunning('load-config')" @click="withAction('load-config', loadConfigForEditing)"><RefreshCw :size="17" />{{ isRunning('load-config') ? t("加载中") : t("加载配置") }}</Button>
         <Button :disabled="!state.hasKsu || !state.config.text.trim() || !configSyntaxValid" :loading="isRunning('save-config')" :aria-label="t('校验并保存配置')" @click="requestSaveConfig"><Save :size="17" />{{ isRunning('save-config') ? t("校验中") : t("保存") }}</Button>
@@ -269,6 +271,13 @@ async function openConfigIssue(): Promise<void> {
       @confirm="confirmConfigAction"
     />
 
+    <div class="config-view-switch" :aria-label="t('配置编辑方式')">
+      <Button :variant="configView === 'full' ? 'secondary' : 'ghost'" :aria-pressed="configView === 'full'" @click="configView = 'full'">{{ t("完整配置") }}</Button>
+      <Button :variant="configView === 'overrides' ? 'secondary' : 'ghost'" :aria-pressed="configView === 'overrides'" @click="configView = 'overrides'">{{ t("配置覆写") }}</Button>
+    </div>
+    <KeepAlive><ConfigOverridesCard v-if="configView === 'overrides'" /></KeepAlive>
+
+    <div v-show="configView === 'full'" class="grid gap-4">
     <Card class="config-editor-workspace grid gap-3">
       <div class="config-file-bar flex min-w-0 flex-wrap items-center gap-2 text-sm text-[var(--mn-ink-muted)]">
         <span class="mr-auto font-medium text-[var(--mn-ink)]" :title="state.config.path">sing-box</span>
@@ -384,5 +393,10 @@ async function openConfigIssue(): Promise<void> {
         </div>
       </Card>
     </details>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.config-view-switch { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--mn-border); padding-bottom: 16px; }
+</style>

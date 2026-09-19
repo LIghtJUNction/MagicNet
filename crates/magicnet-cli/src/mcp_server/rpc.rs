@@ -23,11 +23,41 @@ pub(crate) fn handle_jsonrpc(payload: &str, server: &Server) -> String {
     let Some(method) = request.get("method").and_then(Value::as_str) else {
         return rpc_error(&id, -32600, "invalid request");
     };
+    if !request
+        .as_object()
+        .is_some_and(|object| object.contains_key("id"))
+    {
+        // Notifications never receive a JSON-RPC response or execute tools.
+        return String::new();
+    }
     match method {
         "initialize" => rpc_result(
             &id,
-            json!({"protocolVersion":"2025-03-26","serverInfo":{"name":"magicnet","version":"1.0.0"},"capabilities":{"tools":{}}}),
+            json!({"protocolVersion":if request.pointer("/params/protocolVersion").and_then(Value::as_str) == Some("2025-03-26") { "2025-03-26" } else { "2025-06-18" },"serverInfo":{"name":"magicnet","version":"1.1.0"},"capabilities":{"tools":{},"resources":{},"prompts":{}}}),
         ),
+        "ping" => rpc_result(&id, json!({})),
+        "resources/list" => rpc_result(&id, super::extended::resources()),
+        "resources/templates/list" => rpc_result(&id, json!({"resourceTemplates":[]})),
+        "resources/read" => match super::extended::read_resource(
+            server,
+            request
+                .pointer("/params/uri")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        ) {
+            Ok(value) => rpc_result(&id, value),
+            Err(error) => rpc_error(&id, -32002, error),
+        },
+        "prompts/list" => rpc_result(&id, super::extended::prompts()),
+        "prompts/get" => match super::extended::prompt(
+            request
+                .pointer("/params/name")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        ) {
+            Ok(value) => rpc_result(&id, value),
+            Err(error) => rpc_error(&id, -32602, error),
+        },
         "tools/list" => match tool_catalog() {
             Ok(catalog) => rpc_result(&id, catalog.clone()),
             Err(error) => rpc_error(&id, -32603, error),
@@ -51,6 +81,142 @@ pub(crate) fn handle_jsonrpc(payload: &str, server: &Server) -> String {
 
 fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
     match tool {
+        "magicnet_capabilities" => run_cli(server, &["--json", "capabilities"]),
+        "magicnet_transparent_status" => run_cli(server, &["--json", "transparent", "status"]),
+        "magicnet_dns_status" => run_cli(server, &["--json", "dns", "status"]),
+        "magicnet_network_status" => run_cli(server, &["--json", "network", "status"]),
+        "magicnet_subscription_status" => run_cli(server, &["--json", "sub", "status"]),
+        "magicnet_wifi_status" => run_cli(server, &["--json", "wifi", "status"]),
+        "magicnet_node_list" => run_cli(server, &["node", "list"]),
+        "magicnet_node_current" => run_cli(server, &["node", "current"]),
+        "magicnet_override_status" => super::extended::override_tool(server, "status", args),
+        "magicnet_override_inspect" => super::extended::override_tool(server, "inspect", args),
+        "magicnet_override_preview" => super::extended::override_tool(server, "preview", args),
+        "magicnet_override_set" => super::extended::override_tool(server, "set", args),
+        "magicnet_override_reset" => super::extended::override_tool(server, "reset", args),
+        "magicnet_override_apply" => super::extended::override_tool(server, "apply", args),
+        "magicnet_network_set" => run_cli_owned(
+            server,
+            vec![
+                "network".into(),
+                "set".into(),
+                args["ipv6_mode"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["ipv6_mode"].to_string()),
+                args["mtu"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["mtu"].to_string()),
+                args["udp_timeout"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["udp_timeout"].to_string()),
+            ],
+        ),
+        "magicnet_dns_set" => run_cli_owned(
+            server,
+            vec![
+                "dns".into(),
+                "set".into(),
+                args["profile"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["profile"].to_string()),
+            ],
+        ),
+        "magicnet_dns_test" => run_cli_owned(
+            server,
+            vec![
+                "dns".into(),
+                "test".into(),
+                args["domain"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["domain"].to_string()),
+            ],
+        ),
+        "magicnet_node_test" => run_cli_owned(
+            server,
+            vec![
+                "node".into(),
+                "test".into(),
+                args["name"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["name"].to_string()),
+            ],
+        ),
+        "magicnet_selector_select" => run_cli_owned(
+            server,
+            vec![
+                "api".into(),
+                "select".into(),
+                args["group"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["group"].to_string()),
+                args["node"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["node"].to_string()),
+            ],
+        ),
+        "magicnet_connection_close" => run_cli_owned(
+            server,
+            vec![
+                "api".into(),
+                "close".into(),
+                args["id"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["id"].to_string()),
+            ],
+        ),
+        "magicnet_subscription_schedule" => run_cli_owned(
+            server,
+            vec![
+                "sub".into(),
+                "schedule".into(),
+                "set".into(),
+                args["hours"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["hours"].to_string()),
+            ],
+        ),
+        "magicnet_route_domain" => run_cli_owned(
+            server,
+            vec![
+                "route".into(),
+                args["action"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["action"].to_string()),
+                args["target"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["target"].to_string()),
+                args["domain"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["domain"].to_string()),
+            ],
+        ),
+        "magicnet_supervisor_control" => run_cli_owned(
+            server,
+            vec![
+                "supervisor".into(),
+                args["action"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["action"].to_string()),
+                args["target"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| args["target"].to_string()),
+            ],
+        ),
         "magicnet_status" => run_cli(server, &["--json", "service", "status"]),
         "magicnet_cli" => cli_args(server, args),
         "magicnet_service_control" => service_control(server, args),
@@ -350,6 +516,9 @@ fn cli_args(server: &Server, args: &Value) -> String {
 fn service_control(server: &Server, args: &Value) -> String {
     let action = arg(args, "action").unwrap_or_else(|| "status".to_string());
     let target = arg(args, "target");
+    if action == "status" {
+        return run_cli(server, &["--json", "service", "status"]);
+    }
     match target {
         Some(target) if !target.is_empty() => {
             run_cli_owned(server, vec!["service".into(), action, target])
@@ -456,11 +625,22 @@ fn text_content(text: &str) -> Value {
         .and_then(|line| line.strip_prefix("rc="))
         .and_then(|value| value.parse::<i32>().ok())
         .is_some_and(|code| code != 0);
+    let mut result = json!({"content":[{"type":"text","text":text}]});
     if is_error {
-        json!({"content":[{"type":"text","text":text}],"isError":true})
-    } else {
-        json!({"content":[{"type":"text","text":text}]})
+        result["isError"] = Value::Bool(true);
     }
+    let objects = text
+        .lines()
+        .filter(|line| line.starts_with('{'))
+        .collect::<Vec<_>>();
+    if objects.len() == 1 {
+        if let Ok(value) = serde_json::from_str::<Value>(objects[0]) {
+            if value["schema"] == 1 && value["ok"].is_boolean() {
+                result["structuredContent"] = value;
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -472,6 +652,35 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::{handle_jsonrpc, run_cli_with_timeout, Server};
+
+    #[test]
+    fn protocol_discovery_and_notifications_do_not_spawn_cli() {
+        let server = Server {
+            cli: PathBuf::from("/does-not-exist"),
+            moddir: PathBuf::from("/does-not-exist"),
+            secret: "test".into(),
+        };
+        let notification = json!({"jsonrpc":"2.0","method":"tools/call","params":{"name":"magicnet_service_control","arguments":{"action":"stop"}}});
+        assert!(handle_jsonrpc(&notification.to_string(), &server).is_empty());
+        for method in [
+            "ping",
+            "resources/list",
+            "resources/templates/list",
+            "prompts/list",
+        ] {
+            let response: Value = serde_json::from_str(&handle_jsonrpc(
+                &json!({"jsonrpc":"2.0","id":1,"method":method}).to_string(),
+                &server,
+            ))
+            .unwrap();
+            assert!(response.get("result").is_some());
+        }
+        assert!(super::text_content(
+            "{\"schema\":1,\"ok\":true,\"command\":\"service.status\",\"data\":{}}\nrc=0"
+        )
+        .get("structuredContent")
+        .is_some());
+    }
 
     #[test]
     fn status_tool_requests_versioned_machine_output() {

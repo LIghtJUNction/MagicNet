@@ -224,6 +224,15 @@ magicnet_singbox_runtime_fingerprint_matches() {
     return "$1"
 }
 
+magicnet_override_materialize_unlocked() {
+    [ "${MAGICNET_OVERRIDE_SKIP:-0}" != 1 ] || return 0
+    if [ ! -s "$MODDIR/.config/magicnet/config-override-active.json" ] &&
+        [ ! -s "$MODDIR/.state/override-materialization/checkpoint.json" ]; then
+        return 0
+    fi
+    "$MODDIR/bin/magicnet-cli" __override-materialize
+}
+
 magicnet_apply_runtime_config_unlocked() {
     if magicnet_module_disabled; then
         magicnet_supervisors_stop >/dev/null 2>&1 || true
@@ -247,6 +256,7 @@ magicnet_apply_runtime_config_unlocked() {
     # the configuration used by the running core.
     import __singbox__ &&
         singbox_prepare_route_config "$(magicnet_singbox_config_file)" || _runtime_rc=1
+    magicnet_override_materialize_unlocked || _runtime_rc=1
     magicnet_wifi_policy_start || _runtime_rc=1
     if magicnet_kernel_running; then
         magicnet_enable_dns_capture || _runtime_rc=1

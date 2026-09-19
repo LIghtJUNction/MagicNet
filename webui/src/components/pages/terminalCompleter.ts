@@ -7,6 +7,16 @@ export type CommandDoc = {
 
 export const CLI_COMMAND_TREE: readonly CommandDoc[] = [
   {
+    name: "override",
+    syntax: "{status|inspect|apply} --json",
+    description: "持久化 JSON 覆写（需要 --json）",
+    children: [
+      { name: "status", syntax: "--json", description: "查看覆写状态" },
+      { name: "inspect", syntax: "--json", description: "读取私有覆写配置" },
+      { name: "apply", syntax: "--json", description: "应用已保存的覆写" },
+    ],
+  },
+  {
     name: "service",
     syntax: "{status|start|stop|restart|logs...}",
     description: "服务状态与生命周期管理",

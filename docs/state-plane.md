@@ -21,6 +21,7 @@ Canonical machine snapshots live under:
   mcp.state
   tailscale.state
   transactions.state
+  overrides.state
 ```
 
 Each file is a small line-oriented record:
@@ -68,7 +69,7 @@ A persistent user choice must not be hidden in `.state`. Selector choices theref
 
 This is a recoverable multi-file commit, not a claim that every file rename is simultaneously visible to lock-free readers. A reader that needs a cross-domain point-in-time snapshot should use the versioned machine interface rather than independently racing several `.state` files.
 
-At the CLI boundary, known read-only queries, help, and rejected top-level commands do not trigger state publication. Control commands reconcile after dispatch, including failure paths that may have rolled back. There is no unconditional pre-dispatch scan. The explicit `cli state reconcile` command owns its publication and is not wrapped in two additional reconciliations. Internal bounded `/proc` readers bypass reconciliation so discovery cannot recurse. `--json` machine requests remain read-only and do not create or rewrite state files.
+At the CLI boundary, known read-only queries, help, and rejected top-level commands do not trigger state publication. Control commands reconcile after dispatch, including failure paths that may have rolled back. There is no unconditional pre-dispatch scan. The explicit `cli state reconcile` command owns its publication and is not wrapped in two additional reconciliations. Internal bounded `/proc` readers bypass reconciliation so discovery cannot recurse. Machine observations remain read-only and do not create or rewrite state files. The explicitly registered override mutations publish their canonical state after completion.
 
 Long-running producers must publish when their internal observed state changes rather than waiting for process exit. The Wi-Fi watcher does this after each confirmed/reconciled policy application. Other maintenance loops already invoke ordinary CLI commands for each mutation and therefore pass through normal reconciliation.
 
@@ -190,3 +191,17 @@ Background operations that outlive WebUI must have device-side evidence (journal
 7. Long-running producers must republish after internal state changes.
 8. Add regression tests for interrupted transitions, stale owners, unknown process state, migration, and redaction.
 9. Once all producers/consumers for a legacy state path are migrated, delete that compatibility path rather than maintaining two permanent truths.
+
+
+## Configuration overrides
+
+`.config/magicnet/config-override.json` stores the user's versioned draft intent.
+`.config/magicnet/config-override-active.json` stores the explicitly selected
+intent; ordinary watcher reconciliation cannot activate an unsaved selection.
+`.state/override-materialization/checkpoint.json` contains private pre-override
+and effective snapshots for rebase/rollback. It is an internal recovery input,
+not a second public status surface. The only canonical projection is
+`.state/machines/overrides.state`, with validity, configured/materialized
+revisions, pending activation and failed-revision hold state. It contains no
+patch, node information, credentials or raw errors. MCP and WebUI consume the
+machine interface; private editing explicitly uses `override.inspect`.

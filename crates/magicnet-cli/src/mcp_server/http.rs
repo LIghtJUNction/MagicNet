@@ -75,6 +75,10 @@ fn handle_connection_with_timeout(
         }
     };
     let response = handle_jsonrpc(&payload, server);
+    if response.is_empty() {
+        return stream
+            .write_all(b"HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    }
     write_json(&mut stream, &response)
 }
 
