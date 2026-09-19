@@ -183,6 +183,18 @@ pub(crate) fn status(app: &App) -> (String, String, String, String) {
     )
 }
 
+pub(crate) fn health_status(app: &App) -> (bool, String) {
+    let config = match load_checked(app) {
+        Ok(config) => config,
+        Err(_) => return (false, "configuration=invalid".to_string()),
+    };
+    let running = live_pid(app).is_some();
+    (
+        running == config.enabled,
+        format!("configured={}, running={running}", config.enabled),
+    )
+}
+
 fn conf_path(app: &App) -> PathBuf {
     app.moddir.join(MCP_CONF)
 }
@@ -670,6 +682,33 @@ fn read_log_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn health_distinguishes_disabled_missing_and_invalid_configuration() {
+        let root = std::env::temp_dir().join(format!(
+            "magicnet-mcp-health-{}-{}",
+            std::process::id(),
+            UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        fs::create_dir_all(root.join(".config/magicnet")).unwrap();
+        let app = App::for_test(root.clone());
+        assert_eq!(
+            health_status(&app),
+            (true, "configured=false, running=false".into())
+        );
+        fs::write(
+            root.join(MCP_CONF),
+            "MAGICNET_MCP_ENABLED=1\nMAGICNET_MCP_BIND=127.0.0.1\nMAGICNET_MCP_PORT=8766\n",
+        )
+        .unwrap();
+        assert_eq!(
+            health_status(&app),
+            (false, "configured=true, running=false".into())
+        );
+        fs::write(root.join(MCP_CONF), "invalid-private-content").unwrap();
+        assert_eq!(health_status(&app), (false, "configuration=invalid".into()));
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn ipv6_endpoint_uses_a_socket_address_and_bracketed_url() {
