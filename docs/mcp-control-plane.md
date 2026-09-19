@@ -65,3 +65,12 @@ These resources do not expose subscription URLs, SSIDs, node names or patches.
 `diagnose-network` guides evidence-first diagnosis and distinguishes HTTP delay
 from ICMP latency. `edit-config-overrides` describes preview, expected revision,
 conflict handling, application and reset without embedding private configuration.
+
+### Android application network policies
+
+`magicnet_network_access_status` reads redacted OS policy counts through the
+schema-1 machine interface. `magicnet_network_access_inspect` explicitly includes
+installed package names and shared identities; keep this output private.
+Neither tool changes policy or implies that application DNS is working. Missing
+providers and unreadable observations remain unsupported/unknown. Repair is not
+exposed by these tools; see issue #329 for the remaining recovery work.

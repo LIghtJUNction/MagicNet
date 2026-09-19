@@ -84,6 +84,12 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
         "magicnet_capabilities" => run_cli(server, &["--json", "capabilities"]),
         "magicnet_transparent_status" => run_cli(server, &["--json", "transparent", "status"]),
         "magicnet_dns_status" => run_cli(server, &["--json", "dns", "status"]),
+        "magicnet_network_access_status" => {
+            run_cli(server, &["--json", "network-access", "status"])
+        }
+        "magicnet_network_access_inspect" => {
+            run_cli(server, &["--json", "network-access", "inspect"])
+        }
         "magicnet_network_status" => run_cli(server, &["--json", "network", "status"]),
         "magicnet_subscription_status" => run_cli(server, &["--json", "sub", "status"]),
         "magicnet_wifi_status" => run_cli(server, &["--json", "wifi", "status"]),

@@ -65,3 +65,15 @@ git add sing-box
 - ZIP 不包含 `.env`、本地状态、临时文件、TProxy/Redirect 或独立 eBPF helper；`bin/sing-box` 元数据包含 `with_ebpf`。
 - 在 arm64 真机安装并重启后，`cli health` 与 `cli transparent status` 通过；TUN 额外验证 `ip link show magicnet0`，eBPF 则验证 capability、local cgroup 与 shared TC/interface 状态。
 - MCP 若随发布验收启用，必须使用 secret 认证，验收后关闭或轮换 secret。
+
+## Android 网络策略诊断桥接器
+
+模块构建还需要 JDK（提供 `javac`）和 Android SDK Build Tools 的 `d8`。
+构建钩子调用 `scripts/build-network-policy-bridge.sh`，从仓库中的 Java 源码
+生成 `libexec/network-policy-bridge.jar`，不下载或执行第三方修复模块。
+默认查找 PATH、`ANDROID_HOME`、`ANDROID_SDK_ROOT` 下的 Build Tools 36/35；
+其他安装路径可通过 `MAGICNET_D8` 指定。生成的 JAR 不提交到 Git。
+
+桥接器以 API 26 为最低目标，运行时按接口是否存在判断能力，不根据品牌名
+推测成功。缺少桥接器或接口的旧安装会明确报告 unknown/unsupported。
+可单独运行 `python3 scripts/test-network-policy-bridge.py` 验证反射边界和只读契约。

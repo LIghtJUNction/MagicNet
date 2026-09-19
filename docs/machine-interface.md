@@ -53,6 +53,8 @@ supervisor.status
 transparent.status
 dns.status
 network.status
+network-access.status
+network-access.inspect
 sub.status
 wifi.status
 machine.capabilities
@@ -219,3 +221,22 @@ Mutations publish `.state/machines/overrides.state` after completion or failure.
 Readers remain side-effect free. Unlike the old observation-only contract,
 `--json` itself is no longer a blanket reason to skip reconciliation: the exact
 registered override write commands are recognized.
+
+## Application network-policy observations
+
+`cli --json network-access status` reports capability-detected provider counts.
+`cli --json network-access inspect` additionally exposes installed package names
+for configured restrictions and their shared package identity. Treat inspection
+as private device metadata; do not include it in public support bundles.
+
+The Android provider covers explicitly rejected metered-background policies.
+The Oplus provider enumerates the platform networking-control policy list.
+An absent API is `unsupported`; a failed query, missing bridge or malformed
+response is `unknown`, with a null provider count. `known_restriction_count`
+counts only successfully observed entries, not a complete-device verdict.
+`configured` is distinct from `effective=not_probed`: these calls do not prove
+application DNS success, actual packet filtering, or website usability.
+
+Both commands are read-only. `repair_supported=false`; machine mutations are
+rejected before the human dispatcher. Automatic repair, rollback and prevention
+of policy reapplication are tracked in [issue #329](https://github.com/LIghtJUNction/MagicNet/issues/329).

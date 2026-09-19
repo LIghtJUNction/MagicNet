@@ -35,6 +35,8 @@ const MACHINE_COMMANDS: &[&str] = &[
     "transparent.status",
     "dns.status",
     "network.status",
+    "network-access.status",
+    "network-access.inspect",
     "sub.status",
     "sub.inspect",
     "wifi.status",
@@ -80,6 +82,10 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Option<Result<(), String>>
 fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
     match command {
         ["override", rest @ ..] => override_value(app, rest),
+        ["network-access", action @ ("status" | "inspect")] => Ok(envelope(
+            &format!("network-access.{action}"),
+            crate::network_access::inspect(app, *action == "inspect"),
+        )),
         [command] if *command == "capabilities" => Ok(capabilities_value()),
         [command, action] if *command == "service" && *action == "status" => {
             Ok(service_status_value(app))
@@ -204,7 +210,7 @@ fn capabilities_value() -> Value {
                 "privacy_safe_network_identifiers",
                 "readiness_signals"
             ],
-            "private_commands": ["sub.inspect", "wifi.inspect", "override.inspect"],
+            "private_commands": ["sub.inspect", "wifi.inspect", "override.inspect", "network-access.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": false,
             "mutation_commands": ["override.preview", "override.set", "override.reset", "override.apply"],
@@ -742,6 +748,16 @@ mod tests {
     }
 
     #[test]
+    fn network_access_machine_mutations_remain_rejected() {
+        let (root, app) = fixture();
+        for action in ["repair", "allow", "reset"] {
+            let error = machine_value(&app, &["network-access", action]).unwrap_err();
+            assert_eq!(error.code, "machine.unsupported_command");
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn capabilities_advertise_schema_and_supported_commands() {
         let value = capabilities_value();
         assert_eq!(value["schema"], 1);
@@ -751,7 +767,12 @@ mod tests {
         assert_eq!(value["data"]["mutation_commands"][1], "override.set");
         assert_eq!(
             value["data"]["private_commands"],
-            serde_json::json!(["sub.inspect", "wifi.inspect", "override.inspect"])
+            serde_json::json!([
+                "sub.inspect",
+                "wifi.inspect",
+                "override.inspect",
+                "network-access.inspect"
+            ])
         );
         let commands = value["data"]["commands"]
             .as_array()

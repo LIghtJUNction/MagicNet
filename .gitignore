@@ -44,3 +44,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Generated Android framework policy bridge.
+/src/MagicNet/libexec/network-policy-bridge.jar
