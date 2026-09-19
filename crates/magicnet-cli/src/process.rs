@@ -7,6 +7,7 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::os::fd::RawFd;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -384,6 +385,20 @@ fn singbox_executable_owned(proc_dir: &Path, expected_binary: &Path) -> Option<b
         // `sing-box run -c <module-config> -D <module-workdir>` argv fallback.
         return None;
     };
+    // Atomic binary replacement unlinks the old inode while its process keeps
+    // running. /proc retains the exact executable path with this kernel suffix.
+    // The caller already verified comm and the module's config/workdir argv;
+    // never broaden this exception to another module or arbitrary basename.
+    if executable == expected_binary {
+        return Some(true);
+    }
+    if let Some(original) = executable
+        .as_os_str()
+        .as_bytes()
+        .strip_suffix(b" (deleted)")
+    {
+        return Some(Path::new(std::ffi::OsStr::from_bytes(original)) == expected_binary);
+    }
     Some(
         fs::canonicalize(executable)
             .map(|path| path == expected_binary)
@@ -1174,9 +1189,35 @@ fn startup_error(app: &App) -> Option<String> {
 mod path_tests {
     use super::{
         parse_named_process_output, proc_pid_stat_is_live, singbox_commandline_owned,
-        write_named_process_candidates,
+        singbox_executable_owned, write_named_process_candidates,
     };
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn atomic_replacement_preserves_exact_executable_ownership() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!(
+            "magicnet-deleted-exe-{}-{}",
+            std::process::id(),
+            std::time::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let expected = Path::new("/data/adb/modules/MagicNet/bin/sing-box");
+        symlink(
+            "/data/adb/modules/MagicNet/bin/sing-box (deleted)",
+            root.join("exe"),
+        )
+        .unwrap();
+        assert_eq!(singbox_executable_owned(&root, expected), Some(true));
+        std::fs::remove_file(root.join("exe")).unwrap();
+        symlink(
+            "/data/adb/modules/Other/bin/sing-box (deleted)",
+            root.join("exe"),
+        )
+        .unwrap();
+        assert_eq!(singbox_executable_owned(&root, expected), Some(false));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn singbox_ownership_requires_module_binary_and_exact_runtime_paths() {
