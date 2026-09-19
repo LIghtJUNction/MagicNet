@@ -245,11 +245,14 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_singbox_chain_apply || _runtime_rc=1
     magicnet_singbox_apply_zashboard || _runtime_rc=1
     magicnet_dns_apply_unlocked || _runtime_rc=1
+    # Match startup ordering: user route/block materializers precede the
+    # transparent inbound's sniff/DNS rules and per-app boundaries. Otherwise
+    # apply detects a different ordering, restarts, and startup undoes it.
+    magicnet_route_apply_unlocked || _runtime_rc=1
+    magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_transparent_apply_unlocked || _runtime_rc=1
     magicnet_app_policy_apply_unlocked || _runtime_rc=1
     magicnet_warp_apply_unlocked || _runtime_rc=1
-    magicnet_route_apply_unlocked || _runtime_rc=1
-    magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_tailscale_apply_unlocked || _runtime_rc=1
     # Runtime policy writers rebuild selector objects. Normalize route-level
     # sing-box fields afterwards so a no-op apply remains byte-equivalent to

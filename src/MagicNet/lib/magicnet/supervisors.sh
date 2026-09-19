@@ -394,7 +394,9 @@ magicnet_fswatch_start() {
         return "$1"
     fi
     [ -n "$_fswatch_busybox_bin" ] && KAM_FSWATCH_BUSYBOX_BIN="$_fswatch_busybox_bin"
-    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal}" \
+    # These intent files have dedicated controllers. Watching them here would
+    # race explicit activation or restart the core for an unrelated MCP edit.
+    KAM_FSWATCH_PRUNE_NAMES="${MAGICNET_FSWATCH_PRUNE_NAMES:-ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal} mcp.conf config-override.json config-override-active.json selector-selections.json" \
         KAM_FSWATCH_LOG_FILE="${MODDIR}/.log/fswatch.log" \
         fswatch start "$_fswatch_name" "$(magicnet_fswatch_path)" "$(magicnet_fswatch_interval)" "$(magicnet_fswatch_command)"
     _fswatch_rc=$?
