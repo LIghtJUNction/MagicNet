@@ -132,7 +132,9 @@ def _move_rule_set_tag_before(
         return rules
 
     source = rules[source_index]
-    tags = list(source["rule_set"])
+    # sing-box accepts a single tag as well as a list; never split it into characters.
+    value = source["rule_set"]
+    tags = value if isinstance(value, list) else [value]
     remainder = [value for value in tags if value != tag]
     if remainder:
         source = copy.deepcopy(source)
@@ -202,13 +204,12 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
     if section == "dns":
         rules = _move_before(
             rules,
-            lambda rule: rule.get(dispatch_key) == wechat_target
+            lambda rule: set(rule) == {"domain_suffix", dispatch_key}
+            and rule.get(dispatch_key) == wechat_target
             and _contains(rule, "domain_suffix", "wechat.com")
             and _contains(rule, "domain_suffix", "weixin.com"),
             lambda rule: _contains(rule, "rule_set", "lyc-geosite-ads"),
         )
-
-    if section == "dns":
         rules = _move_rule_set_tag_before(
             rules,
             "service-wechat-dns",
