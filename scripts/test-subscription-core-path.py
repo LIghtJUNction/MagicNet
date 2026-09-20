@@ -51,11 +51,11 @@ class RecoveryCorePath(unittest.TestCase):
         )
         path.chmod(0o700)
 
-    def run_shell(self, shell, operation="magicnet_singbox_recovery_config_valid"):
+    def run_shell(self, shell, operation="magicnet_singbox_recovery_config_valid", setup=""):
         self.calls.unlink(missing_ok=True)
         return subprocess.run(
             [*shell, "-c", '. "$1"; magicnet_transparent_mode() { printf "tun\\n"; }; '
-             + operation + ' "$2"', "core-path-test", str(BOOTSTRAP), str(self.config)],
+             + setup + '\n' + operation + ' "$2"', "core-path-test", str(BOOTSTRAP), str(self.config)],
             env=self.env, capture_output=True, text=True, timeout=25, check=False,
         )
 
@@ -110,20 +110,34 @@ class RecoveryCorePath(unittest.TestCase):
     def test_missing_timeout_fails_closed(self):
         self.core(self.module / "bin/sing-box")
         (self.tools / "timeout").unlink()
+        # Standalone ash can resolve applets without PATH entries. Model the
+        # unavailable capability explicitly, and detect any attempted launch.
+        setup = """
+command() {
+    if [ "$1" = -v ] && [ "${2-}" = timeout ]; then return 1; fi
+    (unset -f command; command "$@")
+}
+timeout() { : > "$MODDIR/unexpected-timeout"; return 99; }
+"""
         for name, shell in SHELLS:
             with self.subTest(shell=name):
-                self.assertNotEqual(self.run_shell(shell).returncode, 0)
+                self.assertNotEqual(self.run_shell(shell, setup=setup).returncode, 0)
                 self.assertFalse(self.calls.exists())
+                self.assertFalse((self.module / "unexpected-timeout").exists())
 
     def test_timeout_budget_and_status_preserved(self):
         self.core(self.module / "bin/sing-box")
-        timeout = self.tools / "timeout"
-        timeout.unlink()
-        timeout.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$MODDIR/timeout-args"\nexit 124\n')
-        timeout.chmod(0o700)
+        # A shell function takes precedence over both PATH executables and
+        # BusyBox applets; a fake executable alone does not isolate ash.
+        setup = """
+timeout() {
+    printf '%s\\n' "$@" > "$MODDIR/timeout-args"
+    return 124
+}
+"""
         for name, shell in SHELLS:
             with self.subTest(shell=name):
-                self.assertEqual(self.run_shell(shell).returncode, 124)
+                self.assertEqual(self.run_shell(shell, setup=setup).returncode, 124)
                 self.assertEqual((self.module / "timeout-args").read_text().splitlines(), [
                     "-k", "2", "15", str(self.module / "bin/sing-box"), "check", "-c",
                     str(self.config), "-D", str(self.config.parent)])
