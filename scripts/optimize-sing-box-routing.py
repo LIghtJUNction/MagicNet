@@ -197,10 +197,9 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
     )
 
     # WeChat is latency-sensitive and its dedicated classifier is narrower than
-    # either the generic Tencent set or the broad advertising lists. Current DNS
-    # templates use service-wechat-dns, a domain-only SRS. Keep support for the
-    # short-lived explicit-domain projection and legacy mixed Karing tag so
-    # upgraded/hand-edited configs remain compatible.
+    # either the generic Tencent set or the broad advertising lists. The pinned
+    # DNS template uses explicit domain suffixes; also accept the domain-only
+    # service-wechat-dns SRS and legacy mixed Karing tag for compatibility.
     if section == "dns":
         rules = _move_before(
             rules,
