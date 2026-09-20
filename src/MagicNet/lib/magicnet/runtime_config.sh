@@ -75,7 +75,13 @@ magicnet_tailscale_apply_unlocked() (
               | map(select(managed_tailnet_rule | not))
               | map(select((.outbound == $endpoint.tag and .domain_suffix == ["ts.net"]) | not))) as $rules
           | (([$rules | to_entries[] | select((.value.outbound // "") == "lan") | .key] | first) // ($rules | length)) as $at
-          | .route.rules = ($rules[:$at] + [{"ip_cidr": tailnets, "preferred_by":["tailscale"], "outbound": $endpoint.tag}, {"domain_suffix":["ts.net"], "outbound":$endpoint.tag}] + $rules[$at:])
+          # Explicit route actions keep these rules ahead of LAN/app overrides
+          # when app policy partitions guards. Keep LAN CGNAT fallbacks intact:
+          # preferred_by limits IP routing to peers advertised by this endpoint.
+          | .route.rules = ($rules[:$at] + [
+              {"ip_cidr": tailnets, "preferred_by":[$endpoint.tag], "action":"route", "outbound":$endpoint.tag},
+              {"domain_suffix":["ts.net"], "action":"route", "outbound":$endpoint.tag}
+            ] + $rules[$at:])
         end
     ' "$_config" >"$_tmp" || {
         rm -f "$_tmp" "$_new_auth" "$_merged_auth"
