@@ -3,9 +3,9 @@
 
 The packaged template intentionally contains readable, policy-oriented rules.
 This pass makes the hot path cheaper by prioritizing exact high-frequency
-matches, protecting the narrow WeChat classifier from broad ad lists, removing
-exact duplicates, and coalescing adjacent pure rule-set dispatches that resolve
-to the same target.
+matches, protecting narrow WeChat route/DNS classifiers from broad ad lists,
+removing exact duplicates, and coalescing adjacent pure rule-set dispatches
+that resolve to the same target.
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ def _move_before(
         (i for i, rule in enumerate(rules) if isinstance(rule, dict) and anchor(rule)),
         None,
     )
-    if moving_index is None or anchor_index is None or moving_index < anchor_index:
+    if moving_index is None or anchor_index is None or moving_index <= anchor_index:
         return rules
 
     rule = rules.pop(moving_index)
@@ -128,11 +128,13 @@ def _move_rule_set_tag_before(
         (i for i, rule in enumerate(rules) if isinstance(rule, dict) and anchor(rule)),
         None,
     )
-    if source_index is None or anchor_index is None or source_index < anchor_index:
+    if source_index is None or anchor_index is None or source_index <= anchor_index:
         return rules
 
     source = rules[source_index]
-    tags = list(source["rule_set"])
+    # sing-box accepts a single tag as well as a list; never split it into characters.
+    value = source["rule_set"]
+    tags = value if isinstance(value, list) else [value]
     remainder = [value for value in tags if value != tag]
     if remainder:
         source = copy.deepcopy(source)
@@ -195,9 +197,26 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
     )
 
     # WeChat is latency-sensitive and its dedicated classifier is narrower than
-    # either the generic Tencent set or the broad advertising lists. Generated
-    # DNS can already coalesce Tencent + WeChat, so split only the protected tag
-    # instead of moving the broader Tencent classifier across the ad boundary.
+    # either the generic Tencent set or the broad advertising lists. The pinned
+    # DNS template uses explicit domain suffixes; also accept the domain-only
+    # service-wechat-dns SRS and legacy mixed Karing tag for compatibility.
+    if section == "dns":
+        rules = _move_before(
+            rules,
+            lambda rule: set(rule) == {"domain_suffix", dispatch_key}
+            and rule.get(dispatch_key) == wechat_target
+            and _contains(rule, "domain_suffix", "wechat.com")
+            and _contains(rule, "domain_suffix", "weixin.com"),
+            lambda rule: _contains(rule, "rule_set", "lyc-geosite-ads"),
+        )
+        rules = _move_rule_set_tag_before(
+            rules,
+            "service-wechat-dns",
+            dispatch_key,
+            wechat_target,
+            lambda rule: _contains(rule, "rule_set", "lyc-geosite-ads"),
+        )
+
     rules = _move_rule_set_tag_before(
         rules,
         "karing-acl4ssr-wechat",
@@ -206,8 +225,13 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
         lambda rule: _contains(rule, "rule_set", "lyc-geosite-ads"),
     )
 
-    rules = _compact_adjacent_rule_sets(rules, dispatch_key)
-    return _dedupe_rules(rules)
+    # Removing a duplicate created by compaction can expose another adjacent
+    # pair. Repeat until stable; every changing pass removes at least one rule.
+    while True:
+        compacted = _dedupe_rules(_compact_adjacent_rule_sets(rules, dispatch_key))
+        if compacted == rules:
+            return compacted
+        rules = compacted
 
 
 def optimize_config(config: dict[str, Any]) -> dict[str, Any]:

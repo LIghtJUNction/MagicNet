@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import copy
 import importlib.util
 import json
 import unittest
@@ -18,6 +19,19 @@ def tag_index(rules, tag):
 
 def domain_index(rules, domain):
     return next(i for i, rule in enumerate(rules) if domain in rule.get("domain", []))
+
+
+def wechat_dns_index(rules):
+    return next(
+        i
+        for i, rule in enumerate(rules)
+        if "service-wechat-dns" in rule.get("rule_set", [])
+        or (
+            rule.get("server") == "bootstrap-local-dns"
+            and "wechat.com" in rule.get("domain_suffix", [])
+            and "weixin.com" in rule.get("domain_suffix", [])
+        )
+    )
 
 
 class RoutingOptimizerTests(unittest.TestCase):
@@ -51,10 +65,8 @@ class RoutingOptimizerTests(unittest.TestCase):
                         "server": "doh-google",
                     },
                     {"rule_set": ["lyc-geosite-ads"], "server": "doh-cloudflare"},
-                    {
-                        "rule_set": ["meta-tencent", "karing-acl4ssr-wechat"],
-                        "server": "bootstrap-local-dns",
-                    },
+                    {"rule_set": ["meta-tencent"], "server": "bootstrap-local-dns"},
+                    {"rule_set": ["service-wechat-dns"], "server": "bootstrap-local-dns"},
                     {"rule_set": ["r1"], "server": "doh-google"},
                     {"rule_set": ["r2"], "server": "doh-google"},
                 ]
@@ -72,15 +84,22 @@ class RoutingOptimizerTests(unittest.TestCase):
             domain_index(dns, "android.clients.google.com"),
             tag_index(dns, "meta-google-gemini"),
         )
-        for rules in (route, dns):
-            self.assertLess(
-                tag_index(rules, "karing-acl4ssr-wechat"),
-                tag_index(rules, "lyc-geosite-ads"),
-            )
-            self.assertLess(
-                tag_index(rules, "lyc-geosite-ads"),
-                tag_index(rules, "meta-tencent"),
-            )
+        self.assertLess(
+            tag_index(route, "karing-acl4ssr-wechat"),
+            tag_index(route, "lyc-geosite-ads"),
+        )
+        self.assertLess(
+            tag_index(route, "lyc-geosite-ads"),
+            tag_index(route, "meta-tencent"),
+        )
+        self.assertLess(
+            wechat_dns_index(dns),
+            tag_index(dns, "lyc-geosite-ads"),
+        )
+        self.assertLess(
+            tag_index(dns, "lyc-geosite-ads"),
+            tag_index(dns, "meta-tencent"),
+        )
 
     def test_priorities_deduplication_and_compaction(self):
         optimized = OPTIMIZER.optimize_config(self.fixture())
@@ -114,6 +133,175 @@ class RoutingOptimizerTests(unittest.TestCase):
                 for rule in optimized["route"]["rules"]
             )
         )
+
+    def test_legacy_mixed_wechat_dns_rule_set_stays_supported(self):
+        config = self.fixture()
+        config["dns"]["rules"] = [
+            {"rule_set": ["meta-google-gemini"], "server": "doh-google"},
+            {"domain": ["android.clients.google.com"], "server": "doh-google"},
+            {"rule_set": ["lyc-geosite-ads"], "server": "doh-cloudflare"},
+            {
+                "rule_set": ["meta-tencent", "karing-acl4ssr-wechat"],
+                "server": "bootstrap-local-dns",
+            },
+        ]
+        optimized = OPTIMIZER.optimize_config(config)
+        dns = optimized["dns"]["rules"]
+        self.assertLess(
+            tag_index(dns, "karing-acl4ssr-wechat"),
+            tag_index(dns, "lyc-geosite-ads"),
+        )
+        self.assertLess(
+            tag_index(dns, "lyc-geosite-ads"),
+            tag_index(dns, "meta-tencent"),
+        )
+
+    def test_scalar_wechat_rule_sets_do_not_create_character_tags(self):
+        cases = (
+            ("route", "outbound", "cn-direct", "ad-block", "karing-acl4ssr-wechat"),
+            ("dns", "server", "bootstrap-local-dns", "doh-cloudflare", "service-wechat-dns"),
+            ("dns", "server", "bootstrap-local-dns", "doh-cloudflare", "karing-acl4ssr-wechat"),
+        )
+        for section, key, target, ad_target, tag in cases:
+            with self.subTest(section=section, tag=tag):
+                config = self.fixture()
+                config[section]["rules"] = [
+                    {"rule_set": "lyc-geosite-ads", key: ad_target},
+                    {"rule_set": tag, key: target},
+                ]
+                original = copy.deepcopy(config)
+                optimized = OPTIMIZER.optimize_config(config)
+                self.assertEqual(
+                    optimized[section]["rules"],
+                    [
+                        {"rule_set": [tag], key: target},
+                        {"rule_set": "lyc-geosite-ads", key: ad_target},
+                    ],
+                )
+                self.assertEqual(config, original)
+                self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+
+    def test_merged_domain_only_wechat_keeps_tencent_behind_ads(self):
+        config = self.fixture()
+        config["dns"]["rules"] = [
+            {"rule_set": ["lyc-geosite-ads"], "server": "doh-cloudflare"},
+            {
+                "rule_set": ["meta-tencent", "service-wechat-dns", "service-wechat-dns"],
+                "server": "bootstrap-local-dns",
+            },
+        ]
+        optimized = OPTIMIZER.optimize_config(config)
+        self.assertEqual(
+            optimized["dns"]["rules"],
+            [
+                {"rule_set": ["service-wechat-dns"], "server": "bootstrap-local-dns"},
+                {"rule_set": ["lyc-geosite-ads"], "server": "doh-cloudflare"},
+                {"rule_set": ["meta-tencent"], "server": "bootstrap-local-dns"},
+            ],
+        )
+        self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+
+    def test_explicit_domain_wechat_dns_rule_stays_supported(self):
+        config = self.fixture()
+        wechat_rule = {
+            "domain_suffix": ["wechat.com", "weixin.com", "weixin.qq.com"],
+            "server": "bootstrap-local-dns",
+        }
+        config["dns"]["rules"] = [
+            {"rule_set": ["lyc-geosite-ads"], "server": "doh-cloudflare"},
+            {"rule_set": ["meta-tencent"], "server": "bootstrap-local-dns"},
+            wechat_rule,
+        ]
+        optimized = OPTIMIZER.optimize_config(config)
+        self.assertEqual(optimized["dns"]["rules"][0], wechat_rule)
+        self.assertLess(
+            tag_index(optimized["dns"]["rules"], "lyc-geosite-ads"),
+            tag_index(optimized["dns"]["rules"], "meta-tencent"),
+        )
+        self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+
+    def test_custom_or_scoped_wechat_dns_rules_are_not_reordered(self):
+        for matcher in (
+            {"rule_set": ["service-wechat-dns"]},
+            {"domain_suffix": ["wechat.com", "weixin.com"]},
+        ):
+            for extra in (
+                {"server": "custom-dns"},
+                {"invert": True},
+                {"query_type": ["A"]},
+                {"rule_set": ["lyc-geosite-ads"]},
+            ):
+                with self.subTest(matcher=matcher, extra=extra):
+                    config = self.fixture()
+                    config["dns"]["rules"] = [
+                        {"rule_set": ["lyc-geosite-ads"], "server": "doh-cloudflare"},
+                        {**matcher, "server": "bootstrap-local-dns", **extra},
+                    ]
+                    original = copy.deepcopy(config["dns"]["rules"])
+                    optimized = OPTIMIZER.optimize_config(config)
+                    self.assertEqual(optimized["dns"]["rules"], original)
+                    self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+
+    def test_wechat_rule_without_ad_anchor_is_unchanged(self):
+        config = self.fixture()
+        config["dns"]["rules"] = [
+            {"rule_set": "service-wechat-dns", "server": "bootstrap-local-dns"}
+        ]
+        optimized = OPTIMIZER.optimize_config(config)
+        self.assertEqual(optimized["dns"], config["dns"])
+        self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+
+    def test_deduplication_exposed_neighbors_are_compacted_in_one_run(self):
+        for section, key in (("route", "outbound"), ("dns", "server")):
+            with self.subTest(section=section):
+                config = self.fixture()
+                config[section]["rules"] = [
+                    {"rule_set": ["a", "b"], key: "first-target"},
+                    {"rule_set": ["x"], key: "second-target"},
+                    {"rule_set": ["a"], key: "first-target"},
+                    {"rule_set": ["b"], key: "first-target"},
+                    {"rule_set": ["y"], key: "second-target"},
+                ]
+                original = copy.deepcopy(config)
+                optimized = OPTIMIZER.optimize_config(config)
+                self.assertEqual(
+                    optimized[section]["rules"],
+                    [
+                        {"rule_set": ["a", "b"], key: "first-target"},
+                        {"rule_set": ["x", "y"], key: "second-target"},
+                    ],
+                )
+                self.assertEqual(config, original)
+                self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+
+    def test_priority_rule_that_is_its_own_anchor_stays_unchanged(self):
+        for section, key, target, tag in (
+            ("route", "outbound", "cn-direct", "karing-acl4ssr-wechat"),
+            ("dns", "server", "bootstrap-local-dns", "karing-acl4ssr-wechat"),
+            ("dns", "server", "bootstrap-local-dns", "service-wechat-dns"),
+        ):
+            with self.subTest(section=section, tag=tag):
+                config = self.fixture()
+                rule = {"rule_set": ["other", tag, "lyc-geosite-ads"], key: target}
+                config[section]["rules"] = [rule]
+                optimized = OPTIMIZER.optimize_config(config)
+                self.assertEqual(optimized[section]["rules"], [rule])
+                self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+        for section, key, target in (
+            ("route", "outbound", "google-proxy"),
+            ("dns", "server", "doh-google"),
+        ):
+            with self.subTest(section=section, tag="meta-google-gemini"):
+                config = self.fixture()
+                rule = {
+                    "domain": ["android.clients.google.com"],
+                    "rule_set": ["meta-google-gemini"],
+                    key: target,
+                }
+                config[section]["rules"] = [rule]
+                optimized = OPTIMIZER.optimize_config(config)
+                self.assertEqual(optimized[section]["rules"], [rule])
+                self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
 
     def test_optimizer_is_idempotent(self):
         once = OPTIMIZER.optimize_config(self.fixture())

@@ -2,7 +2,8 @@
 """Check routing contracts and first matches against the actual upstream assets.
 
 The structural mode needs no network/assets; --assets also executes sing-box's
-rule-set matcher, so tests don't duplicate upstream domain/IP lists.
+rule-set matcher. The only service-domain exception is the audited WeChat DNS
+projection; mixed domain/IP rule sets must remain routing-only.
 """
 
 import functools
@@ -25,6 +26,30 @@ definitions = {entry["tag"]: entry for entry in config["route"]["rule_set"]}
 assert len(definitions) == len(config["route"]["rule_set"])
 outbounds = {entry["tag"]: entry for entry in config["outbounds"]}
 
+# MagicSingBox projects only the domain component of the mixed Karing WeChat
+# classifier into DNS. Keep this exception exact: broader Tencent domains, IP
+# matchers, scoped/inverted rules and different resolvers must not pass it.
+WECHAT_ROUTE_TAG = "karing-acl4ssr-wechat"
+WECHAT_DNS_SUFFIXES = [
+    "qlogo.cn",
+    "qpic.cn",
+    "servicewechat.com",
+    "tenpay.com",
+    "wechat.com",
+    "wechatlegal.net",
+    "wechatpay.com",
+    "weixin.com",
+    "weixin.qq.com",
+    "weixinbridge.com",
+    "weixinsxy.com",
+    "wxapp.tc.qq.com",
+]
+WECHAT_DNS_RULE = {
+    "domain_suffix": WECHAT_DNS_SUFFIXES,
+    "server": "bootstrap-local-dns",
+}
+assert dns.count(WECHAT_DNS_RULE) == 1, "expected one exact WeChat DNS domain projection"
+
 
 def values(value):
     return value if isinstance(value, list) else [value]
@@ -34,13 +59,17 @@ def index(tag):
     return next(i for i, rule in enumerate(routes) if tag in rule.get("rule_set", []))
 
 
+assert all(
+    WECHAT_ROUTE_TAG not in values(rule.get("rule_set", [])) for rule in dns
+), "the mixed WeChat domain/IP rule set must not be used in DNS"
+
 for rule in routes + dns:
     for tag in rule.get("rule_set", []):
         assert tag in definitions, tag
     assert "domain_keyword" not in rule, (
         "broad hand-maintained keyword routing returned"
     )
-    if "domain_suffix" in rule:
+    if "domain_suffix" in rule and rule != WECHAT_DNS_RULE:
         assert set(rule["domain_suffix"]) <= {
             "local",
             "home.arpa",
@@ -102,7 +131,8 @@ for tag in ("ai-chatgpt", "ai-gemini", "ai-grok", "ai-claude", "ai-proxy"):
     assert outbounds[tag]["default"] != "direct", tag
 
 # Every domain classifier has the same match conditions and relative order in
-# DNS. Protocol/IP-only routing is deliberately not projected into DNS.
+# DNS. Protocol/IP-only routing is deliberately not projected into DNS. The
+# mixed WeChat classifier maps to its exact domain-only projection below.
 expected = []
 for rule in routes:
     if "outbound" not in rule or any(
@@ -125,9 +155,15 @@ def expand_rule_sets(rules):
     ]
 
 
-assert expand_rule_sets(expected) == expand_rule_sets(
+expected_domains = [
+    {"domain_suffix": WECHAT_DNS_SUFFIXES}
+    if rule == {"rule_set": [WECHAT_ROUTE_TAG]}
+    else rule
+    for rule in expand_rule_sets(expected)
+]
+assert expected_domains == expand_rule_sets(
     [{k: v for k, v in r.items() if k != "server"} for r in dns]
-)
+), "DNS domain classifiers must retain routing order and the WeChat projection"
 
 if "--assets" not in sys.argv:
     print("Maintained routing structural contracts passed")
@@ -222,6 +258,9 @@ cases = [
     ("host.ts.net", "lan", "bootstrap-local-dns"),
     ("mmbiz.qpic.cn", "cn-direct", "bootstrap-local-dns"),
     ("weixin.qq.com", "cn-direct", "bootstrap-local-dns"),
+    ("wechat.com", "cn-direct", "bootstrap-local-dns"),
+    ("www.wechat.com", "cn-direct", "bootstrap-local-dns"),
+    ("servicewechat.com", "cn-direct", "bootstrap-local-dns"),
     ("baidu.com", "cn-direct", "bootstrap-local-dns"),
     ("doubleclick.net", "ad-block", "doh-cloudflare"),
     ("www.icloud.com", "icloud", "bootstrap-local-dns"),
