@@ -81,6 +81,7 @@ CI_TEST_FORCE=1 check python3 scripts/test-android-tun-proof.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-adb.py
 CI_TEST_FORCE=1 check python3 scripts/test-android-probe.py
 check bash scripts/test-tailscale-login.sh
+check python3 scripts/test-tailscale-route-order.py
 check bash scripts/test-chatgpt-voice-rules.sh
 check bash scripts/test-rule-hash-retry.sh
 check python3 scripts/test-bundled-rules.py
@@ -107,6 +108,7 @@ check bash scripts/test-ebpf-transparent-mode.sh
 check bash scripts/test-config-permissions.sh
 check bash scripts/test-config-empty-recovery.sh
 check bash scripts/test-subscription-baseline-safety.sh
+check python3 scripts/test-subscription-core-path.py
 check bash scripts/test-config-lock-safety.sh
 check bash scripts/test-config-lock-budget.sh
 check sh scripts/test-runtime-fingerprint-safety.sh
