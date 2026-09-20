@@ -93,7 +93,7 @@ def _move_before(
         (i for i, rule in enumerate(rules) if isinstance(rule, dict) and anchor(rule)),
         None,
     )
-    if moving_index is None or anchor_index is None or moving_index < anchor_index:
+    if moving_index is None or anchor_index is None or moving_index <= anchor_index:
         return rules
 
     rule = rules.pop(moving_index)
@@ -128,7 +128,7 @@ def _move_rule_set_tag_before(
         (i for i, rule in enumerate(rules) if isinstance(rule, dict) and anchor(rule)),
         None,
     )
-    if source_index is None or anchor_index is None or source_index < anchor_index:
+    if source_index is None or anchor_index is None or source_index <= anchor_index:
         return rules
 
     source = rules[source_index]
@@ -225,8 +225,13 @@ def _optimize_section(section: str, rules: list[Any]) -> list[Any]:
         lambda rule: _contains(rule, "rule_set", "lyc-geosite-ads"),
     )
 
-    rules = _compact_adjacent_rule_sets(rules, dispatch_key)
-    return _dedupe_rules(rules)
+    # Removing a duplicate created by compaction can expose another adjacent
+    # pair. Repeat until stable; every changing pass removes at least one rule.
+    while True:
+        compacted = _dedupe_rules(_compact_adjacent_rule_sets(rules, dispatch_key))
+        if compacted == rules:
+            return compacted
+        rules = compacted
 
 
 def optimize_config(config: dict[str, Any]) -> dict[str, Any]:

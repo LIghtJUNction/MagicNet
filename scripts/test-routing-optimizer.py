@@ -251,6 +251,58 @@ class RoutingOptimizerTests(unittest.TestCase):
         self.assertEqual(optimized["dns"], config["dns"])
         self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
 
+    def test_deduplication_exposed_neighbors_are_compacted_in_one_run(self):
+        for section, key in (("route", "outbound"), ("dns", "server")):
+            with self.subTest(section=section):
+                config = self.fixture()
+                config[section]["rules"] = [
+                    {"rule_set": ["a", "b"], key: "first-target"},
+                    {"rule_set": ["x"], key: "second-target"},
+                    {"rule_set": ["a"], key: "first-target"},
+                    {"rule_set": ["b"], key: "first-target"},
+                    {"rule_set": ["y"], key: "second-target"},
+                ]
+                original = copy.deepcopy(config)
+                optimized = OPTIMIZER.optimize_config(config)
+                self.assertEqual(
+                    optimized[section]["rules"],
+                    [
+                        {"rule_set": ["a", "b"], key: "first-target"},
+                        {"rule_set": ["x", "y"], key: "second-target"},
+                    ],
+                )
+                self.assertEqual(config, original)
+                self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+
+    def test_priority_rule_that_is_its_own_anchor_stays_unchanged(self):
+        for section, key, target, tag in (
+            ("route", "outbound", "cn-direct", "karing-acl4ssr-wechat"),
+            ("dns", "server", "bootstrap-local-dns", "karing-acl4ssr-wechat"),
+            ("dns", "server", "bootstrap-local-dns", "service-wechat-dns"),
+        ):
+            with self.subTest(section=section, tag=tag):
+                config = self.fixture()
+                rule = {"rule_set": ["other", tag, "lyc-geosite-ads"], key: target}
+                config[section]["rules"] = [rule]
+                optimized = OPTIMIZER.optimize_config(config)
+                self.assertEqual(optimized[section]["rules"], [rule])
+                self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+        for section, key, target in (
+            ("route", "outbound", "google-proxy"),
+            ("dns", "server", "doh-google"),
+        ):
+            with self.subTest(section=section, tag="meta-google-gemini"):
+                config = self.fixture()
+                rule = {
+                    "domain": ["android.clients.google.com"],
+                    "rule_set": ["meta-google-gemini"],
+                    key: target,
+                }
+                config[section]["rules"] = [rule]
+                optimized = OPTIMIZER.optimize_config(config)
+                self.assertEqual(optimized[section]["rules"], [rule])
+                self.assertEqual(optimized, OPTIMIZER.optimize_config(optimized))
+
     def test_optimizer_is_idempotent(self):
         once = OPTIMIZER.optimize_config(self.fixture())
         twice = OPTIMIZER.optimize_config(once)
