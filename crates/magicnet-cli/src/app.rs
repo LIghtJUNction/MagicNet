@@ -31,6 +31,10 @@ impl App {
                 .or_else(|_| current_exe_moddir())
                 .unwrap_or_else(|_| PathBuf::from(MODULE_DIR))
         };
+        Self::from_module_root(moddir)
+    }
+
+    pub(crate) fn from_module_root(moddir: PathBuf) -> Self {
         let api = local_api(&moddir);
         Self {
             log_dir: moddir.join(".log"),

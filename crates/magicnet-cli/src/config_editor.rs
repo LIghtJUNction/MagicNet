@@ -28,6 +28,26 @@ const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(20);
 const TEMPLATE_FETCH_TIMEOUT: Duration = Duration::from_secs(45);
 const TEMPLATE_MAX_BYTES: usize = 1024 * 1024;
 const VALIDATOR_OUTPUT_LIMIT: usize = 256 * 1024;
+
+pub(crate) fn read_private_payload(app: &App, path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    let (source, _directory) = open_webui_payload_source(app, path)?;
+    let mut bytes = Vec::new();
+    source
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "read private payload failed".to_string())?;
+    if bytes.len() as u64 > limit {
+        return Err("private payload too large".to_string());
+    }
+    Ok(bytes)
+}
+
+pub(crate) fn validate_override_text(app: &App, text: &str) -> Result<(), String> {
+    with_generated_config_input(app, "override", text.as_bytes(), |source, _directory| {
+        let directory = open_config_destination_directory(app, "sing-box")?;
+        validate_config_from_open_file(app, "sing-box", source, &directory)
+    })
+}
 const CONFIG_REPOSITORY_MAX_BYTES: usize = 16 * 1024;
 const MAGIC_SINGBOX_REPOSITORY: &str = "https://github.com/LIghtJUNction/MagicSingBox.git";
 const MAGIC_SINGBOX_REPOSITORY_REF: &str = "83d53970b51a5819211360168c48e31a6099030e";

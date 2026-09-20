@@ -43,7 +43,7 @@ const LIFECYCLE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const CONFIG_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const MAX_SERVICE_LOG_READ_BYTES: u64 = 1024 * 1024;
 
-struct ConfigApplyGuard(fs::File);
+pub(crate) struct ConfigApplyGuard(fs::File);
 
 impl Drop for ConfigApplyGuard {
     fn drop(&mut self) {
@@ -68,7 +68,7 @@ fn open_config_apply_lock(app: &App) -> Result<File, String> {
         .map_err(|err| format!("open config apply lock: {err}"))
 }
 
-fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
+pub(crate) fn config_apply_lock(app: &App) -> Result<ConfigApplyGuard, String> {
     config_apply_lock_bounded(app, LIFECYCLE_LOCK_TIMEOUT)
 }
 
@@ -256,6 +256,28 @@ pub(crate) fn apply_config(app: &App) -> Result<(), String> {
     // attached to different core generations.
     let _config_apply_guard = config_apply_lock(app)?;
 
+    let snapshot = crate::overrides::runtime_snapshot(app).map_err(str::to_string)?;
+    let result = apply_config_unlocked(app);
+    if result.is_err() {
+        if let Some(snapshot) = snapshot {
+            if !crate::overrides::owns_runtime_change(app, &snapshot).map_err(str::to_string)? {
+                return result;
+            }
+            let was_running = snapshot.was_running;
+            if was_running {
+                stop_all_direct(app, true)?;
+            }
+            crate::overrides::restore_runtime(app, snapshot).map_err(str::to_string)?;
+            if was_running {
+                run_magicnet_function(app, "MAGICNET_TRANSPARENT_RESTORED_CONFIG=1 MAGICNET_OVERRIDE_SKIP=1 MAGICNET_DEFAULT_CORE=sing-box MAGICNET_STRICT_CORE=1 MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached")
+                    .map_err(|_| "override.rollback_failed".to_string())?;
+            }
+        }
+    }
+    result
+}
+
+fn apply_config_unlocked(app: &App) -> Result<(), String> {
     // A killed transparent-mode transition leaves a journal that must be
     // recovered before fswatch can apply another config. A live transition
     // still owns this process lock, so reaching this branch means the journal

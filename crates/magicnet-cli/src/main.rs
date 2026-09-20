@@ -45,9 +45,11 @@ mod machine;
 mod mcp;
 mod mcp_server;
 mod network;
+mod network_access;
 mod network_observation;
 mod node_delay;
 mod nodes;
+mod overrides;
 mod ping;
 mod process;
 mod rules;
@@ -111,6 +113,15 @@ fn main() {
     }
 
     let app = App::from_env();
+    if args.as_slice() == ["__override-materialize"] {
+        let result = overrides::materialize(&app);
+        reconcile_state(&app, "override-materialize");
+        if let Err(code) = result {
+            eprintln!("[error] {code}");
+            std::process::exit(1);
+        }
+        return;
+    }
     // Observations must not become filesystem writers. Publish once after a
     // control command, including failed commands that may have rolled back.
     // Explicit state reconciliation and long-lived producers own publication;

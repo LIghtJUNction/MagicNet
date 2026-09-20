@@ -95,6 +95,9 @@ magicnet_prepare_singbox_candidate_unlocked() {
     magicnet_startup_step warp magicnet_warp_apply_unlocked || return $?
     magicnet_singbox_apply_zashboard ||
         magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
+    if [ -s "$MODDIR/.config/magicnet/config-override-active.json" ] || [ -s "$MODDIR/.state/override-materialization/checkpoint.json" ]; then
+        magicnet_startup_step overrides magicnet_override_materialize_unlocked || return $?
+    fi
     magicnet_startup_step config-check magicnet_validate_singbox_transparent_config
 }
 
@@ -132,6 +135,9 @@ magicnet_start_singbox_unlocked() {
         magicnet_startup_step warp magicnet_warp_apply_unlocked || return $?
         magicnet_singbox_apply_zashboard ||
             magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
+        if [ -s "$MODDIR/.config/magicnet/config-override-active.json" ] || [ -s "$MODDIR/.state/override-materialization/checkpoint.json" ]; then
+            magicnet_startup_step overrides magicnet_override_materialize_unlocked || return $?
+        fi
         magicnet_startup_step auth magicnet_tailscale_inject_auth_key || return $?
     fi
     # A rollback/recovery starts the byte-exact snapshot without rewriting it.

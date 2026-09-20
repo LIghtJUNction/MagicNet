@@ -37,7 +37,7 @@
 
 - 机器接口固定使用 `schema=1` JSON envelope；成功响应至少包含 `schema`、`ok=true`、`command`、`data`，失败响应至少包含 `schema`、`ok=false`、`command`、`error.code`、`error.message`。
 - 机器模式必须显式使用 `--json`。`--json` 一旦出现，请求必须由机器 dispatcher 完整接管；未支持的机器命令返回结构化错误，严禁落回普通 dispatcher 执行写操作。
-- `--json` 当前只允许只读状态接口。新增机器写接口前必须单独设计幂等、错误码、并发和回滚语义，不能简单给现有写命令套 JSON。
+- `--json` 默认只允许只读状态接口；`override` 写接口是经 `docs/config-overrides.md` 单独设计的例外。继续新增机器写接口前必须单独设计幂等、错误码、并发和回滚语义，不能简单给现有写命令套 JSON。
 - stdout 在机器模式下只能包含一个结果 JSON；日志、调试信息和可操作诊断写 stderr。不得在 JSON 前后添加 banner、进度文本或 shell 提示。
 - `cli --json capabilities` 是客户端能力协商事实源。增加、删除、重命名机器命令或改变字段语义时，必须同步 capabilities、测试、MCP/WebUI 消费者和 `docs/machine-interface.md`。
 - 机器状态默认最小披露：不得返回订阅 URL、token、secret、password、失败 reason 原文、SSID/BSSID 原文或其他不必要的设备标识。只返回业务需要的类型、布尔值、计数或规范化状态。

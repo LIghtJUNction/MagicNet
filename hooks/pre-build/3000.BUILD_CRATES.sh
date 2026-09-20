@@ -35,6 +35,11 @@ build_crate() {
 }
 
 build_crate magicnet-cli magicnet-cli
+bash "$PROJECT_ROOT/scripts/build-network-policy-bridge.sh" \
+    "${KAM_MODULE_ROOT}/libexec/network-policy-bridge.jar" || {
+    log_error "Failed to build the Android network policy bridge"
+    exit 1
+}
 
 rm -f "${KAM_MODULE_ROOT}/cli"
 ln -s "bin/magicnet-cli" "${KAM_MODULE_ROOT}/cli"

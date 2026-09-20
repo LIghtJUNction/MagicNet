@@ -16,6 +16,8 @@ need shellcheck
 need jq
 need python3
 need cargo
+need javac
+need java
 
 kam validate
 

@@ -75,7 +75,13 @@ magicnet_tailscale_apply_unlocked() (
               | map(select(managed_tailnet_rule | not))
               | map(select((.outbound == $endpoint.tag and .domain_suffix == ["ts.net"]) | not))) as $rules
           | (([$rules | to_entries[] | select((.value.outbound // "") == "lan") | .key] | first) // ($rules | length)) as $at
-          | .route.rules = ($rules[:$at] + [{"ip_cidr": tailnets, "preferred_by":["tailscale"], "outbound": $endpoint.tag}, {"domain_suffix":["ts.net"], "outbound":$endpoint.tag}] + $rules[$at:])
+          # Explicit route actions keep these rules ahead of LAN/app overrides
+          # when app policy partitions guards. Keep LAN CGNAT fallbacks intact:
+          # preferred_by limits IP routing to peers advertised by this endpoint.
+          | .route.rules = ($rules[:$at] + [
+              {"ip_cidr": tailnets, "preferred_by":[$endpoint.tag], "action":"route", "outbound":$endpoint.tag},
+              {"domain_suffix":["ts.net"], "action":"route", "outbound":$endpoint.tag}
+            ] + $rules[$at:])
         end
     ' "$_config" >"$_tmp" || {
         rm -f "$_tmp" "$_new_auth" "$_merged_auth"
@@ -224,6 +230,15 @@ magicnet_singbox_runtime_fingerprint_matches() {
     return "$1"
 }
 
+magicnet_override_materialize_unlocked() {
+    [ "${MAGICNET_OVERRIDE_SKIP:-0}" != 1 ] || return 0
+    if [ ! -s "$MODDIR/.config/magicnet/config-override-active.json" ] &&
+        [ ! -s "$MODDIR/.state/override-materialization/checkpoint.json" ]; then
+        return 0
+    fi
+    "$MODDIR/bin/magicnet-cli" __override-materialize
+}
+
 magicnet_apply_runtime_config_unlocked() {
     if magicnet_module_disabled; then
         magicnet_supervisors_stop >/dev/null 2>&1 || true
@@ -236,17 +251,21 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_singbox_chain_apply || _runtime_rc=1
     magicnet_singbox_apply_zashboard || _runtime_rc=1
     magicnet_dns_apply_unlocked || _runtime_rc=1
+    # Match startup ordering: user route/block materializers precede the
+    # transparent inbound's sniff/DNS rules and per-app boundaries. Otherwise
+    # apply detects a different ordering, restarts, and startup undoes it.
+    magicnet_route_apply_unlocked || _runtime_rc=1
+    magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_transparent_apply_unlocked || _runtime_rc=1
     magicnet_app_policy_apply_unlocked || _runtime_rc=1
     magicnet_warp_apply_unlocked || _runtime_rc=1
-    magicnet_route_apply_unlocked || _runtime_rc=1
-    magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_tailscale_apply_unlocked || _runtime_rc=1
     # Runtime policy writers rebuild selector objects. Normalize route-level
     # sing-box fields afterwards so a no-op apply remains byte-equivalent to
     # the configuration used by the running core.
     import __singbox__ &&
         singbox_prepare_route_config "$(magicnet_singbox_config_file)" || _runtime_rc=1
+    magicnet_override_materialize_unlocked || _runtime_rc=1
     magicnet_wifi_policy_start || _runtime_rc=1
     if magicnet_kernel_running; then
         magicnet_enable_dns_capture || _runtime_rc=1

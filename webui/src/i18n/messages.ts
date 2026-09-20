@@ -1,3 +1,4 @@
+import overrides from "./catalogs/overrides.ts";
 import shell from "./catalogs/shell.ts";
 import routing from "./catalogs/routing.ts";
 import configuration from "./catalogs/configuration.ts";
@@ -21,4 +22,5 @@ export const messages: Record<string, readonly string[]> = {
   ...machineStatus,
   ...tailscale,
   ...terminal,
+  ...overrides,
 };

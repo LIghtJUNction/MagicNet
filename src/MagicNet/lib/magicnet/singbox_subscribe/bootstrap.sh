@@ -95,9 +95,15 @@ magicnet_singbox_config_shape_valid() (
 # another service process from inside this check while holding the config lock.
 magicnet_singbox_recovery_config_valid() (
     magicnet_singbox_config_shape_valid "$1" || return 1
-    command -v sing-box >/dev/null 2>&1 || return 1
+    # The standalone CLI can load this helper without magicnet.sh's PATH.
+    # Check with the shipped core, not an unrelated system installation.
+    if [ -x "${MODDIR}/bin/sing-box" ]; then
+        _recovery_singbox="${MODDIR}/bin/sing-box"
+    else
+        _recovery_singbox="$(command -v sing-box)" || return 1
+    fi
     command -v timeout >/dev/null 2>&1 || return 1
-    timeout -k 2 15 sing-box check -c "$1" -D "${MODDIR}/.config/sing-box" >/dev/null 2>&1
+    timeout -k 2 15 "$_recovery_singbox" check -c "$1" -D "${MODDIR}/.config/sing-box" >/dev/null 2>&1
 )
 
 # Called under the config lock after successful startup/activation. The single

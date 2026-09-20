@@ -60,8 +60,10 @@ const COMMANDS: &[CommandSpec] = commands! {
     "support" => support, "bundle";
     "setup" => |app, args| setup_subscription(app, args.first().map_or("", String::as_str)), "<subscription-url>";
     "config" => config_cmd, "apply";
+    "override" => |_, _| Err("Use cli --json override {status|inspect|preview-file <payload>|set-file <payload>|reset-file <payload>|apply-file <payload>|apply}".to_string()), "{status|inspect|preview-file <payload>|set-file <payload>|reset-file <payload>|apply-file <payload>|apply} --json";
     "config-editor" => config_editor, "{get|path|validate|save|save-file|sync-template} <sing-box|all> [base64-config|webui-payload-path] | repo {get|get-json|set|set-file|reset} [base64-json|webui-payload-path]";
     "transparent" => transparent_cmd, "{status|set tun|set ebpf|apply}";
+    "network-access" => crate::network_access::command, "{status|inspect}";
     "network" => network_cmd, "{status|set <ipv4_only|prefer_ipv4|prefer_ipv6> <mtu:1280-1500> <udp-timeout:1m|3m|5m|10m|15m|30m>|apply}";
     "core" => core_cmd, "{status|selected|select sing-box}";
     "node" => node_cmd, "{list|current|use|test <name>|test-all [name ...]}";
@@ -100,9 +102,18 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Result<(), String> {
 /// Other registered operations still publish after failure as well as success.
 pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
     let name = args.first().map_or("help", String::as_str);
-    if args.iter().any(|arg| arg == "--json")
-        || !COMMANDS.iter().any(|command| command.name == name)
-    {
+    if args.iter().any(|arg| arg == "--json") {
+        let command = args
+            .iter()
+            .filter(|arg| arg.as_str() != "--json")
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        return matches!(
+            command.as_slice(),
+            ["override", "set-file" | "reset-file" | "apply-file", _] | ["override", "apply"]
+        );
+    }
+    if !COMMANDS.iter().any(|command| command.name == name) {
         return false;
     }
     let sub = args.get(1).map_or("", String::as_str);
@@ -116,6 +127,7 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
             | "dns" | "warp",
             "" | "status",
         ) => false,
+        ("network-access", "" | "status" | "inspect") => false,
         ("core", "selected") => false,
         ("ecapture", "" | "status" | "version" | "help") => false,
         ("mcp", "" | "status" | "logs") => false,

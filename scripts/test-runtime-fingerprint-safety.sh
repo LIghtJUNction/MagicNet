@@ -98,3 +98,31 @@ done
 FAIL_STAGE=''
 magicnet_singbox_runtime_fingerprint_matches
 printf '%s\n' 'runtime fingerprint safety test passed'
+
+# Model the real materializers' non-commuting prepend operations. Startup
+# installs sniff/DNS handling above custom block/route rules; applying the
+# same intent must produce that same ordering, not restart back to it.
+(
+    route_pipeline=''
+    magicnet_module_disabled() { return 1; }
+    magicnet_ipset_lkm_prepare() { :; }
+    magicnet_singbox_chain_apply() { :; }
+    magicnet_singbox_apply_zashboard() { :; }
+    magicnet_dns_apply_unlocked() { :; }
+    magicnet_route_apply_unlocked() { route_pipeline="route${route_pipeline:+ $route_pipeline}"; }
+    magicnet_block_apply_unlocked() { route_pipeline="block${route_pipeline:+ $route_pipeline}"; }
+    magicnet_transparent_apply_unlocked() { route_pipeline="sniff${route_pipeline:+ $route_pipeline}"; }
+    magicnet_app_policy_apply_unlocked() { :; }
+    magicnet_warp_apply_unlocked() { :; }
+    magicnet_tailscale_apply_unlocked() { :; }
+    magicnet_override_materialize_unlocked() { :; }
+    magicnet_wifi_policy_start() { :; }
+    magicnet_kernel_running() { return 1; }
+    magicnet_disable_dns_capture() { :; }
+    magicnet_disable_dns_leak_guard() { :; }
+    magicnet_singbox_config_file() { printf '%s\n' "$config"; }
+    singbox_prepare_route_config() { :; }
+    import() { :; }
+    magicnet_apply_runtime_config_unlocked
+    [ "$route_pipeline" = 'sniff block route' ] || fail 'runtime rules differ from startup ordering'
+)

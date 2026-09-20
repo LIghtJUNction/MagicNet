@@ -42,10 +42,11 @@ with tempfile.TemporaryDirectory() as temp:
     assert output['route']['rules'][0] == config['route']['rules'][0]
     assert output['route']['rules'][1] == {
         'ip_cidr':tailnets,
-        'preferred_by':['tailscale'],
+        'preferred_by':['tailnet'],
+        'action':'route',
         'outbound':'tailnet',
     }
-    assert output['route']['rules'][2] == {'domain_suffix':['ts.net'],'outbound':'tailnet'}
+    assert output['route']['rules'][2] == {'domain_suffix':['ts.net'],'action':'route','outbound':'tailnet'}
     # Capturing the CGNAT range in magicnet0 is required for userspace Tailscale,
     # but non-peer CGNAT destinations must still fall through to the normal LAN
     # path instead of being hijacked into the Tailnet endpoint.

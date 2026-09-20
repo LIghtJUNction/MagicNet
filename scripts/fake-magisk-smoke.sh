@@ -1309,9 +1309,9 @@ _fswatch_first_pid="$(sed -n '1p' "$_fswatch_pid_file")"
 kill -0 "$_fswatch_first_pid"
 test "$(count_exact_script_processes "$_fswatch_loop_file")" -eq 1
 _fswatch_snapshot_file="$MODDIR/.state/fswatch/magicnet-config.snapshot"
-_fswatch_expected_prune_names="ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal"
+_fswatch_expected_prune_names="ui zashboard cache.db cache.db-wal cache.db-shm cache.db-journal mcp.conf config-override.json config-override-active.json selector-selections.json"
 _fswatch_prune_names="$(generated_fswatch_prune_names "$_fswatch_loop_file")"
-for _fswatch_cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal; do
+for _fswatch_cache_name in cache.db cache.db-wal cache.db-shm cache.db-journal mcp.conf config-override.json config-override-active.json selector-selections.json; do
     printf 'runtime-cache\n' >"$MODDIR/.config/sing-box/$_fswatch_cache_name"
     if fswatch_changed_with_prune_names "$_fswatch_prune_names" "$MODDIR/.config" "$_fswatch_snapshot_file"; then
         echo "fswatch detected ignored sing-box runtime cache: $_fswatch_cache_name" >&2

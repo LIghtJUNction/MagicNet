@@ -40,7 +40,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
     let (tailscale_ok, tailscale_detail) = tailscale_check(app, &mode);
     let (loop_guard_ok, loop_guard_detail) = traffic_loop_guard_check(app);
     let (api_ok, api_detail) = api_probe(&app.api);
-    let (_, mcp_bind, mcp_port, mcp_pid) = mcp::status(app);
+    let (mcp_ok, mcp_detail) = mcp::health_status(app);
     vec![
         ("Core", running(&singbox), format!("sing-box={singbox}")),
         ("Dataplane", dataplane_ok, dataplane_detail),
@@ -72,11 +72,7 @@ fn health_items(app: &App) -> Vec<(&'static str, bool, String)> {
                 "subscription config present".to_string()
             },
         ),
-        (
-            "MCP",
-            running(&mcp_pid),
-            format!("pid={mcp_pid}, url=http://{mcp_bind}:{mcp_port}/mcp"),
-        ),
+        ("MCP", mcp_ok, mcp_detail),
         (
             "WebUI",
             app.moddir.join("webroot/index.html").exists(),
