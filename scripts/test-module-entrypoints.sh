@@ -75,4 +75,6 @@ EOF
 magicnet_action_network_acceptance || fail 'network acceptance action failed to launch'
 [[ "$(cat "$fixture/network-check.args")" == '--rounds 1 --jobs 4' ]] || fail 'network acceptance action used unexpected arguments'
 
+python3 "$ROOT/scripts/test-boot-ip-dispatch.py" || fail 'boot ip dispatch regression failed'
+
 printf 'module entrypoint regression passed\n'
