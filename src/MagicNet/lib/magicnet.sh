@@ -4,6 +4,14 @@
 
 export PATH="${MODDIR}/bin:${PATH}"
 
+# Root managers run boot hooks in BusyBox ash standalone mode, where the ip
+# applet wins over PATH and cannot handle all Android iproute2 operations.
+# Shell functions take precedence over applets. Bind only ip, without disabling
+# standalone mode for the other tools or changing host-side PATH/test doubles.
+if [ -x /system/bin/ip ]; then
+    ip() { /system/bin/ip "$@"; }
+fi
+
 _magicnet_lib_dir="${MODDIR}/lib/magicnet"
 . "${_magicnet_lib_dir}/primitives.sh"
 for _magicnet_lib in \
