@@ -4,8 +4,12 @@ use std::os::unix::fs::symlink;
 struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let path = std::env::temp_dir().join(format!("magicnet-access-{}-{nonce}", std::process::id()));
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("magicnet-access-{}-{nonce}", std::process::id()));
         DirBuilder::new().mode(0o700).create(&path).unwrap();
         Self(path)
     }
@@ -33,19 +37,37 @@ fn record(phase: &'static str) -> Record {
 fn explicit_repair_is_idempotent_and_never_reclears_a_reapplied_policy() {
     assert_eq!(decide(&record("new"), 4, false), Ok(Decision::Write));
     assert_eq!(decide(&record("applied"), 0, false), Ok(Decision::Noop));
-    assert_eq!(decide(&record("applied"), 4, false), Err("restriction_reapplied"));
+    assert_eq!(
+        decide(&record("applied"), 4, false),
+        Err("restriction_reapplied")
+    );
     assert_eq!(decide(&record("applied"), 2, false), Err("policy_conflict"));
-    assert_eq!(decide(&record("rolled_back"), 4, false), Ok(Decision::Write));
+    assert_eq!(
+        decide(&record("rolled_back"), 4, false),
+        Ok(Decision::Write)
+    );
 }
 
 #[test]
 fn uncertain_write_requires_reconciliation_or_explicit_rollback() {
-    assert_eq!(decide(&record("prepared"), 0, false), Ok(Decision::Complete));
-    assert_eq!(decide(&record("prepared"), 4, false), Err("interrupted_change"));
+    assert_eq!(
+        decide(&record("prepared"), 0, false),
+        Ok(Decision::Complete)
+    );
+    assert_eq!(
+        decide(&record("prepared"), 4, false),
+        Err("interrupted_change")
+    );
     assert_eq!(decide(&record("prepared"), 4, true), Ok(Decision::Complete));
     assert_eq!(decide(&record("prepared"), 0, true), Ok(Decision::Write));
-    assert_eq!(decide(&record("rollback_prepared"), 0, false), Err("rollback_required"));
-    assert_eq!(decide(&record("rollback_prepared"), 4, true), Ok(Decision::Complete));
+    assert_eq!(
+        decide(&record("rollback_prepared"), 0, false),
+        Err("rollback_required")
+    );
+    assert_eq!(
+        decide(&record("rollback_prepared"), 4, true),
+        Ok(Decision::Complete)
+    );
 }
 
 #[test]
@@ -53,7 +75,10 @@ fn rollback_only_restores_the_original_when_our_value_is_still_present() {
     assert_eq!(decide(&record("applied"), 0, true), Ok(Decision::Write));
     assert_eq!(decide(&record("applied"), 2, true), Err("policy_conflict"));
     assert_eq!(decide(&record("rolled_back"), 4, true), Ok(Decision::Noop));
-    assert_eq!(decide(&record("rolled_back"), 0, true), Err("policy_conflict"));
+    assert_eq!(
+        decide(&record("rolled_back"), 0, true),
+        Err("policy_conflict")
+    );
     let mut android = record("applied");
     android.policy.provider = "android";
     android.policy.value = 5;
@@ -99,7 +124,14 @@ fn inspection_does_not_create_state_and_private_records_are_durable() {
     save(&dir, &saved).unwrap();
     assert_eq!(read(&dir, &token).unwrap().unwrap().phase, "applied");
     assert_eq!(scan(&dir).unwrap().len(), 1);
-    assert_eq!(fs::metadata(dir.join(format!("{token}.json"))).unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(
+        fs::metadata(dir.join(format!("{token}.json")))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
     assert!(saved.public().get("uid").is_none());
     assert!(result(&saved, true).get("packages").is_none());
     assert_eq!(result(&saved, true)["effective_system_dns"], "not_probed");
@@ -145,7 +177,12 @@ fn corrupt_and_oversized_journals_are_not_interpreted_as_absent() {
     let dir = directory(&root.0, true).unwrap().unwrap();
     let token = record("prepared").policy.candidate();
     let path = dir.join(format!("{token}.json"));
-    let mut file = OpenOptions::new().write(true).create_new(true).mode(0o600).open(&path).unwrap();
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .unwrap();
     file.write_all(b"{").unwrap();
     assert!(matches!(read(&dir, &token), Err("invalid_recovery_record")));
     file.set_len(MAX_RECORD + 1).unwrap();

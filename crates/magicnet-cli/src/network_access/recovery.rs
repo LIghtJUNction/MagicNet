@@ -49,7 +49,10 @@ impl Record {
 }
 
 fn valid_token(token: &str) -> bool {
-    token.len() == 64 && token.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    token.len() == 64
+        && token
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn decode(token: &str, value: &Value) -> Result<Record> {
@@ -122,7 +125,11 @@ fn directory(root: &Path, create: bool) -> Result<Option<PathBuf>> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(_) => return Err("recovery_io"),
         };
-        let forbidden = if component == "network-access-recovery" { 0o077 } else { 0o022 };
+        let forbidden = if component == "network-access-recovery" {
+            0o077
+        } else {
+            0o022
+        };
         if !meta.is_dir()
             || meta.uid() != unsafe { libc::geteuid() }
             || meta.permissions().mode() & forbidden != 0
@@ -195,7 +202,9 @@ fn scan(dir: &Path) -> Result<Vec<Record>> {
         if name.starts_with('.') {
             continue;
         }
-        let token = name.strip_suffix(".json").ok_or("invalid_recovery_record")?;
+        let token = name
+            .strip_suffix(".json")
+            .ok_or("invalid_recovery_record")?;
         let record = read(dir, token)?.ok_or("recovery_io")?;
         records.push(record);
         if records.len() > MAX_RECORDS {
@@ -269,7 +278,11 @@ fn decide(record: &Record, current: u32, rollback: bool) -> Result<Decision> {
     let target = record.policy.allowed_target().ok_or("repair_unsupported")?;
     if rollback {
         if current == before {
-            return Ok(if record.phase == "rolled_back" { Decision::Noop } else { Decision::Complete });
+            return Ok(if record.phase == "rolled_back" {
+                Decision::Noop
+            } else {
+                Decision::Complete
+            });
         }
         if current == target && record.phase != "rolled_back" {
             return Ok(Decision::Write);
@@ -324,7 +337,10 @@ pub(super) fn mutate(app: &App, token: &str, rollback: bool) -> Result<Value> {
             if !policy.writable || policy.allowed_target().is_none() {
                 return Err("repair_unsupported");
             }
-            Record { policy, phase: "new" }
+            Record {
+                policy,
+                phase: "new",
+            }
         }
     };
     let (current, writable) = live(app, &record.policy)?;
@@ -336,7 +352,11 @@ pub(super) fn mutate(app: &App, token: &str, rollback: bool) -> Result<Value> {
         if !writable {
             return Err("repair_unsupported");
         }
-        record.phase = if rollback { "rollback_prepared" } else { "prepared" };
+        record.phase = if rollback {
+            "rollback_prepared"
+        } else {
+            "prepared"
+        };
         // Durable write-ahead record precedes every framework change. Failures retain it.
         save(&dir, &record)?;
         let target = if rollback {
@@ -345,10 +365,17 @@ pub(super) fn mutate(app: &App, token: &str, rollback: bool) -> Result<Value> {
             record.policy.allowed_target().ok_or("repair_unsupported")?
         };
         let uid = record.policy.uid.to_string();
-        let value = bridge(app, &[
-            "change", record.policy.provider, &uid, &current.to_string(),
-            &target.to_string(), &record.policy.packages.join(","),
-        ])?;
+        let value = bridge(
+            app,
+            &[
+                "change",
+                record.policy.provider,
+                &uid,
+                &current.to_string(),
+                &target.to_string(),
+                &record.policy.packages.join(","),
+            ],
+        )?;
         if value["provider"] != record.policy.provider
             || value["uid"] != record.policy.uid
             || value["policy"] != target
