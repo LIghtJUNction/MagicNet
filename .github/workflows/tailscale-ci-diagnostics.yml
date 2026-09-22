@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ci-evidence"
           for id in 106824194593 106824557682; do
-            gh api "repos/$GH_REPO/actions/jobs/$id/logs" > "$RUNNER_TEMP/ci-evidence/$id.log"
+            gh api --allow-escape-sequences "repos/$GH_REPO/actions/jobs/$id/logs" > "$RUNNER_TEMP/ci-evidence/$id.log"
           done
           python3 - <<'PY'
           import os, re
@@ -37,6 +37,7 @@ jobs:
               (root / (path.stem + '-summary.txt')).write_text(text)
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ !cancelled() }}
         with:
           name: tailscale-ci-failure-evidence
           path: ${{ runner.temp }}/ci-evidence/
