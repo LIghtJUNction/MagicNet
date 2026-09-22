@@ -28,6 +28,14 @@ jobs:
           node-version: '24'
       - name: Compile the exact configured core
         run: scripts/build-sing-box.sh linux amd64 "$RUNNER_TEMP/core/sing-box"
+      - name: Exercise the exact packaged subscription converter
+        run: |
+          revision=$(sed -n 's/^PINNED_REV="\(.*\)"/\1/p' hooks/pre-build/4910.update_proxylink.sh)
+          test "${#revision}" = 40
+          git clone https://github.com/Fanju6/Proxylink.git "$RUNNER_TEMP/proxylink-source"
+          git -C "$RUNNER_TEMP/proxylink-source" checkout "$revision"
+          (cd "$RUNNER_TEMP/proxylink-source/Proxylink" && CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/proxylink" .)
+          python3 scripts/test-clash-subscriptions.py --converter "$RUNNER_TEMP/proxylink"
       - name: Validate removal with the real core and exercise read-only feedback
         run: |
           node --experimental-strip-types scripts/test-tailscale-core.mjs "$RUNNER_TEMP/core/sing-box"
@@ -61,17 +69,17 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: webui/package-lock.json
-      - name: Exercise Tailscale flows and capture actual layouts
+      - name: Exercise subscription and Tailscale flows and capture every page
         working-directory: webui
         run: |
           npm ci
           npx playwright install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk
-          npx playwright test e2e/tailscale.spec.mjs
+          npx playwright test e2e/tailscale.spec.mjs e2e/page-review.spec.mjs e2e/subscription-sources.spec.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: tailscale-visual-evidence
+          name: webui-page-evidence
           path: webui/test-results/
           if-no-files-found: error
   avd-storage:
