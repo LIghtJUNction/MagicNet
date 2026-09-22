@@ -1,0 +1,37 @@
+name: Inspect pinned Proxylink source
+on:
+  push:
+    branches: [test/proxylink-fixture-source]
+    paths: [.github/workflows/proxylink-source-inspection.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Export only the pinned public dependency source
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision="$(sed -n 's/^PINNED_REV="\([0-9a-f]*\)"$/\1/p' hooks/pre-build/4910.update_proxylink.sh)"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          git init -q "$RUNNER_TEMP/proxylink"
+          git -C "$RUNNER_TEMP/proxylink" remote add origin https://github.com/Fanju6/Proxylink.git
+          timeout 180 git -C "$RUNNER_TEMP/proxylink" fetch -q --depth=1 origin "$revision"
+          git -C "$RUNNER_TEMP/proxylink" checkout -q --detach "$revision"
+          test "$(git -C "$RUNNER_TEMP/proxylink" rev-parse HEAD)" = "$revision"
+          git -C "$RUNNER_TEMP/proxylink" archive --format=tar -o "$RUNNER_TEMP/proxylink-source.tar" HEAD
+          printf '%s\n' "$revision" > "$RUNNER_TEMP/proxylink-revision.txt"
+          find "$RUNNER_TEMP/proxylink" -path '*/common/hex/*' -type f -maxdepth 8 -print
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pinned-proxylink-source
+          path: |
+            ${{ runner.temp }}/proxylink-source.tar
+            ${{ runner.temp }}/proxylink-revision.txt
+          if-no-files-found: error
+          retention-days: 3
