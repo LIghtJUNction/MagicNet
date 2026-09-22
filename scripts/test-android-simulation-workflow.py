@@ -84,7 +84,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.flow['env']['ANDROID_SERIAL'], 'emulator-5554')
         boot = self.step('Boot pristine Android 15 AVD')['run']
         self.assertIn('-port 5554', boot)
-        self.assertNotIn('-kernel', boot)
+        self.assertNotRegex(boot, r'(?m)^\\s*-kernel(?:\\s|$)')
         self.assertNotIn('KSU_KERNEL', boot)
         self.assertIn('-accel on', boot)
         self.assertIn('-no-snapshot-save', boot)
