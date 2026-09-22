@@ -30,12 +30,14 @@ jobs:
           python3 .github/tailscale-review.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A -- crates webui docs .github/tailscale-review.py .github/tailscale-patch
-          git diff --cached --quiet || git commit -m 'fix(tailscale): reversible disable and explicit local logout'
+          git add -A -- crates webui docs .github
+          git diff --cached --quiet || git commit -m 'fix(tailscale): address lifecycle CI regressions'
           git push origin HEAD:fix/tailscale-lifecycle-20260922
       - name: Rust lifecycle regression tests
         if: ${{ !cancelled() && steps.patch.outputs.applied == 'true' }}
-        run: cargo test --package magicnet-cli tailscale_control --locked -- --nocapture
+        run: |
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --package magicnet-cli tailscale_control --locked -- --nocapture
       - name: WebUI tests, types, and production build
         if: ${{ !cancelled() && steps.patch.outputs.applied == 'true' }}
         working-directory: webui
