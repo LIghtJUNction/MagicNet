@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Destructive, offline lifecycle acceptance for a disposable KernelSU x86_64 AVD.
 
-This runs real Android/ksud/module code, not command stubs. The test ZIP differs
-from the production ZIP only in four ABI-specific executables plus a provenance
-record. A local standalone config is seeded *after* the real installer and before
-the first module boot. No public proxy feed or subscription credential is used.
+This runs real Android/ksud/module code, not command stubs. The test ZIP replaces
+four ABI-specific executables and removes the build-only download caches already
+excluded by the production component packager. A provenance record covers both.
+A local standalone config is seeded after installation, before the first module
+boot. No public proxy feed or subscription credential is used.
 """
 from __future__ import annotations
 
@@ -89,7 +90,8 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
     manifest = {'schema': 1, 'scope': 'disposable-x86_64-avd-only',
                 'production_zip_sha256': digest(source),
                 'source_sha': os.environ.get('GITHUB_SHA', 'local'),
-                'payload_sha256': {name: digest(path) for name, path in replacements.items()}}
+                'payload_sha256': {name: digest(path) for name, path in replacements.items()},
+                'excluded_build_cache_sha256': {}}
     # Write atomically; failed fixture preparation must not leave a usable ZIP.
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = destination.with_name(destination.name + '.partial')
@@ -112,6 +114,14 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                 require(not item.flag_bits & 1, 'encrypted ZIP members are unsupported')
                 mode = item.external_attr >> 16
                 data = original.read(item)
+                # Match package-components.py's production cleanup: these are
+                # downloaded build caches, not installed runtime executables.
+                # Validate path/CRC first and record every omitted member. Do
+                # not weaken the foreign-ELF rejection for any runtime path.
+                if item.filename.startswith('.local/state/') and item.filename.endswith(('.asset', '.archive')):
+                    require(stat.S_IFMT(mode) in (0, stat.S_IFREG), 'build cache must be a regular file')
+                    manifest['excluded_build_cache_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
+                    continue
                 if item.filename in replacements:
                     require(not stat.S_ISLNK(mode), 'runtime payload must be a regular file')
                     data = replacements[item.filename].read_bytes()

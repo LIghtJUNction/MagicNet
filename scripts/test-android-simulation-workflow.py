@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Prevent accidental bypasses of automatic Android/KernelSU acceptance."""
 from pathlib import Path
+import hashlib
+import importlib.util
+import json
 import os
 import re
+import stat
+import struct
 import subprocess
+import tempfile
 import unittest
+import zipfile
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -126,6 +133,58 @@ class WorkflowTests(unittest.TestCase):
                     script = re.sub(r'\$\{\{.*?\}\}', 'placeholder', step['run'])
                     result = subprocess.run(['bash', '-n'], input=script, text=True, capture_output=True, timeout=2)
                     self.assertEqual(result.returncode, 0, (name, step.get('name'), result.stderr))
+
+    def test_raw_kam_caches_do_not_block_fixture_or_hide_runtime_elf(self):
+        # CI builds the raw KAM ZIP. Like the production component packager,
+        # fixture preparation must omit build downloads, not execute them.
+        spec = importlib.util.spec_from_file_location('simulation_cache', ROOT / 'scripts/android-device-simulation.py')
+        simulation = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(simulation)
+        host = bytearray(64)
+        host[:6] = b'\x7fELF\x02\x01'
+        struct.pack_into('<HH', host, 16, 3, 62)
+        foreign = bytearray(host)
+        struct.pack_into('<H', foreign, 18, 183)
+        caches = {'.local/state/tools/yq.asset': bytes(foreign),
+                  '.local/state/tools/jq.asset': bytes(foreign),
+                  '.local/state/zashboard.archive': b'cached dashboard'}
+        for extra, kind in ((None, stat.S_IFREG), ('bin/hidden.asset', stat.S_IFREG),
+                            ('.local/state/tools/runtime-helper', stat.S_IFREG),
+                            ('.local/state/tools/link.asset', stat.S_IFLNK),
+                            ('.local/state/../escape.asset', stat.S_IFREG)):
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                source, output = root / 'raw.zip', root / 'fixture.zip'
+                replacements = {}
+                for name in simulation.PAYLOADS:
+                    path = root / name.replace('/', '-')
+                    path.write_bytes(host)
+                    replacements[name] = path
+                entries = {name: bytes(foreign) for name in simulation.PAYLOADS} | caches | {
+                    'module.prop': b'id=MagicNet\n', 'customize.sh': b'export SKIPUNZIP=1\n',
+                    '.local/state/tools/metadata.json': b'{"keep": true}'}
+                if extra:
+                    entries[extra] = bytes(foreign)
+                with zipfile.ZipFile(source, 'w') as z:
+                    for name, data in entries.items():
+                        item = zipfile.ZipInfo(name)
+                        item.external_attr = ((kind if name == extra else stat.S_IFREG) | 0o644) << 16
+                        z.writestr(item, data)
+                before = source.read_bytes()
+                if extra:
+                    with self.assertRaises(RuntimeError):
+                        simulation.prepare_archive(source, output, replacements)
+                    self.assertFalse(output.exists())
+                else:
+                    report = simulation.prepare_archive(source, output, replacements)
+                    self.assertEqual(report['excluded_build_cache_sha256'], {
+                        name: hashlib.sha256(data).hexdigest() for name, data in caches.items()})
+                    with zipfile.ZipFile(output) as z:
+                        self.assertEqual(set(z.namelist()), set(entries) - set(caches) | {simulation.PROVENANCE})
+                        self.assertEqual(z.read('.local/state/tools/metadata.json'), entries['.local/state/tools/metadata.json'])
+                        recorded = json.loads(z.read(simulation.PROVENANCE))
+                        self.assertEqual(recorded['excluded_build_cache_sha256'], report['excluded_build_cache_sha256'])
+                self.assertEqual(source.read_bytes(), before)
 
 
 if __name__ == '__main__':
