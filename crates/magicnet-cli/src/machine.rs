@@ -42,6 +42,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "wifi.status",
     "wifi.inspect",
     "machine.capabilities",
+    "tailscale.status",
     "override.status",
     "override.inspect",
     "override.preview",
@@ -81,6 +82,12 @@ pub(crate) fn dispatch(app: &App, args: &[String]) -> Option<Result<(), String>>
 
 fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
     match command {
+        ["tailscale", "status"] => crate::tailscale_control::status(app)
+            .map(|data| envelope("tailscale.status", data))
+            .map_err(|code| MachineError {
+                code,
+                message: "unable to inspect local Tailscale lifecycle state",
+            }),
         ["override", rest @ ..] => override_value(app, rest),
         ["network-access", action @ ("status" | "inspect")] => Ok(envelope(
             &format!("network-access.{action}"),
@@ -199,6 +206,7 @@ fn envelope(command: &str, data: Value) -> Value {
 fn capabilities_value() -> Value {
     envelope(
         "machine.capabilities",
+        "tailscale.status",
         json!({
             "machine_schema": MACHINE_SCHEMA,
             "commands": MACHINE_COMMANDS,

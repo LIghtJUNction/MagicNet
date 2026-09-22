@@ -134,6 +134,7 @@ fn commit_standalone_config(
     path: &Path,
     text: &str,
 ) -> Result<(), String> {
+    let _lifecycle = crate::service::config_apply_lock(app)?;
     let protected = protect_tailscale_auth_keys(app, text)?;
     commit_config_text(
         app,
@@ -1042,9 +1043,12 @@ fn sync_template_one(app: &App, target: &str) -> Result<(), String> {
     let repository = read_repository_config(app)?.0;
     let url = repository_file_url(&repository)?;
     let template = fetch_template(&url, repository.sha256.as_deref())?;
-    let current = read_current_config(app, target)?.unwrap_or_default();
-    let merged = prepare_template(target, &template, &current)?;
-    commit_config_text(app, target, &path, merged.as_bytes(), "template", None)?;
+    {
+        let _lifecycle = crate::service::config_apply_lock(app)?;
+        let current = read_current_config(app, target)?.unwrap_or_default();
+        let merged = prepare_template(target, &template, &current)?;
+        commit_config_text(app, target, &path, merged.as_bytes(), "template", None)?;
+    }
     apply_config(app)?;
     println!(
         "[info] Synced {target} template from configured Git repository\n[info] Preserved subscription-facing config and re-applied runtime rules."

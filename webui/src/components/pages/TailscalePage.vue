@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
-import { ArrowUpRight, Check, Copy, Globe, KeyRound, QrCode, RefreshCw, Trash2, XCircle } from "lucide-vue-next";
+import { ArrowUpRight, Check, Copy, Globe, KeyRound, QrCode, XCircle } from "lucide-vue-next";
 import { t } from "@/i18n";
 import Button from "@/components/ui/Button.vue";
-import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
+import TailscaleControls from "./TailscaleControls.vue";
+import type { TailscaleControlState } from "./tailscaleControl";
 import SectionDisclosure from "@/components/ui/SectionDisclosure.vue";
 import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
-import StatusDot from "@/components/ui/StatusDot.vue";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { generateQrSvgPath } from "@/lib/qrcode";
 import {
-  inspectTailscale, saveTailscale, removeTailscale, parseTailscaleLogin, TailscaleSetupError,
-  TAILSCALE_KEYS_URL, TAILSCALE_MACHINES_URL,
+  inspectTailscale, saveTailscale, parseTailscaleLogin, TailscaleSetupError,
+  TAILSCALE_KEYS_URL,
   type SaveResult, type SetupErrorCode, type TailscaleSnapshot, type TailscaleClient,
 } from "./tailscaleSetup";
 
@@ -25,7 +25,8 @@ const saving = ref(false);
 const edited = ref(false);
 const message = ref("");
 const hasError = ref(false);
-const confirmRemove = ref(false);
+const controlBusy = ref(false);
+const controlState = ref<TailscaleControlState | null>(null);
 const needsRestart = ref(false);
 let readGeneration = 0;
 let active = true;
@@ -88,10 +89,12 @@ function startLoginPolling(autoOpen: boolean): void {
       if (!response.ok) throw new Error("status");
       const status = parseTailscaleLogin(response.stdout);
       loginUrl.value = status.authUrl;
-      isOnline.value = status.online;
+      isOnline.value = status.state === "Running" && status.online;
       if (status.state === "Running" && status.online) {
         loginUrl.value = "";
         loginMessage.value = t("Tailscale 已登录，正由 sing-box 连接。配置已自动生效。");
+        attempts = 0;
+        loginTimer = setTimeout(poll, 10000);
         return;
       }
       loginMessage.value = status.state === "Running"
@@ -115,9 +118,9 @@ function startLoginPolling(autoOpen: boolean): void {
   void poll();
 }
 
-const locked = computed(() => loading.value || saving.value || state.busy || !state.hasKsu);
+const locked = computed(() => loading.value || saving.value || controlBusy.value || state.busy || !state.hasKsu);
 const customControl = computed(() => Boolean(snapshot.value && snapshot.value.controlUrl.replace(/\/$/, "") !== "https://controlplane.tailscale.com"));
-const saveDisabled = computed(() => locked.value || !snapshot.value || state.config.dirty || customControl.value);
+const saveDisabled = computed(() => locked.value || !snapshot.value || state.config.dirty || customControl.value || !controlState.value || controlState.value.resumable || controlState.value.logout_pending);
 
 function errorMessage(code?: SetupErrorCode): string {
   switch (code) {
@@ -160,7 +163,7 @@ async function read(): Promise<void> {
     snapshot.value = current;
     hostname.value = current.hostname;
     message.value = "";
-    if (current.configured) startLoginPolling(false);
+    if (current.configured && controlState.value?.core !== "stopped") startLoginPolling(false);
   } catch (cause) {
     if (generation !== readGeneration || !active) return;
     snapshot.value = null;
@@ -215,7 +218,6 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
     return;
   }
   const generation = readGeneration;
-  confirmRemove.value = false;
   saving.value = true;
   hasError.value = false;
   message.value = t("正在校验并接入 Tailscale…");
@@ -237,27 +239,13 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   }
 }
 
-async function disconnectTailscale(): Promise<void> {
-  if (saveDisabled.value || !snapshot.value?.configured || !confirmRemove.value) return;
-  const generation = readGeneration;
-  confirmRemove.value = false;
-  saving.value = true;
-  hasError.value = false;
-  message.value = t("正在移除 Tailscale 节点并重启核心…");
-  authKey.value = "";
+function reloadAfterControl(): void {
   stopLoginPolling();
-  try {
-    const result = await removeTailscale(privateClient(t("移除 Tailscale")), snapshot.value);
-    if (!acceptTransactionResult(result, generation)) return;
-    // Reading here would be skipped by the saving lock. The transaction's
-    // confirmed snapshot is authoritative even when the restart fails.
-    applySavedSnapshot(result);
-    message.value = result.stage === "done"
-      ? t("Tailscale 节点已移除，核心已重启。") : resultMessage(result);
-    hasError.value = result.stage !== "done";
-    needsRestart.value = result.stage === "restart";
-    if (result.stage === "done" || result.stage === "restart") await refreshStatus(undefined, false);
-  } finally { saving.value = false; }
+  authKey.value = "";
+  edited.value = false;
+  needsRestart.value = false;
+  message.value = "";
+  void read();
 }
 
 async function retryRestart(): Promise<void> {
@@ -285,7 +273,7 @@ watch(() => state.busy, (busy) => { if (!busy && active && !attemptedRead) void 
 watch(saving, (busy) => { if (!busy && active && !snapshot.value && !edited.value) void read(); });
 onDeactivated(() => { authKey.value = "";
   active = false; readGeneration++; loading.value = false;
-  confirmRemove.value = false; stopLoginPolling();
+  stopLoginPolling();
 });
 onActivated(() => { active = true; if (!edited.value) void read(); });
 </script>
@@ -301,37 +289,15 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
       {{ t("请在支持 KernelSU 异步接口的真机 WebUI 中接入。") }}
     </p>
 
-    <section v-if="snapshot" class="tailscale-panel space-y-4">
-      <div class="flex items-start gap-3">
-        <StatusDot :tone="snapshot.configured ? (isOnline ? 'ok' : 'current') : 'unknown'" />
-        <div class="min-w-0">
-          <h2 class="font-semibold text-base">{{ t(snapshot.configured ? (isOnline ? "已连接并在线" : "已配置") : "连接你的设备") }}</h2>
-          <p class="mt-1 break-all text-sm text-[var(--mn-ink-muted)]">{{ snapshot.configured ? snapshot.hostname : t("使用自己的 Tailscale 账号") }}</p>
-        </div>
-      </div>
-      <div class="tailscale-status-actions flex flex-wrap gap-2">
-        <Button v-if="snapshot.configured" variant="ghost" size="sm" :disabled="locked" @click="startLoginPolling(false)">
-          <RefreshCw :size="14" aria-hidden="true" />{{ t("刷新登录状态") }}
-        </Button>
-        <Button variant="outline" size="sm" @click="openExternal(TAILSCALE_MACHINES_URL)">
-          <Globe :size="14" aria-hidden="true" />{{ t("设备后台") }}<ArrowUpRight :size="13" aria-hidden="true" />
-        </Button>
-        <Button v-if="snapshot.configured && !customControl" variant="ghost" size="sm"
-          class="text-[var(--mn-danger)]" :disabled="saveDisabled" @click="confirmRemove = true">
-          <Trash2 :size="14" aria-hidden="true" />{{ t("断开并移除节点") }}
-        </Button>
-      </div>
-    </section>
-    <ConfirmPanel v-if="confirmRemove" title="移除本机 Tailscale 配置？"
-      detail="仅移除本机节点及自动生成的路由；不会注销账号或删除云端设备。"
-      confirm-label="确认移除" confirm-variant="destructive" :loading="saving"
-      @cancel="confirmRemove = false" @confirm="disconnectTailscale" />
+    <TailscaleControls :disabled="locked || edited || state.config.dirty" :online="isOnline"
+      :hostname="snapshot?.hostname || ''" :refresh-key="snapshot?.endpointRevision || ''"
+      @busy="controlBusy = $event" @observed="controlState = $event" @changed="reloadAfterControl" />
     <p v-if="state.config.dirty" role="alert" class="text-sm text-[var(--mn-warning)]">
       {{ t("配置编辑器还有未保存的修改，请先处理后再接入。") }}
     </p>
     <p v-if="customControl" role="alert" class="text-sm text-[var(--mn-warning)]">{{ errorMessage("custom-control") }}</p>
 
-    <div v-if="snapshot" class="tailscale-setup space-y-6">
+    <div v-if="snapshot && controlState && !controlState.resumable && !controlState.logout_pending" class="tailscale-setup space-y-6">
     <div class="tailscale-device-name space-y-2">
       <label for="tailscale-hostname" class="block text-sm font-medium">{{ t("设备名称") }}</label>
       <Input id="tailscale-hostname" v-model="hostname" :disabled="locked || !snapshot || customControl"
@@ -349,7 +315,7 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
       <div v-if="loginUrl" class="tailscale-auth space-y-4">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <p class="min-w-0 flex-1 text-sm leading-6">{{ t("等待 Tailscale 登录授权，请在浏览器完成后返回。") }}</p>
-          <Button variant="ghost" size="sm" @click="cancelLogin"><XCircle :size="14" aria-hidden="true" />{{ t("取消授权") }}</Button>
+          <Button variant="ghost" size="sm" @click="cancelLogin"><XCircle :size="14" aria-hidden="true" />{{ t("停止等待") }}</Button>
         </div>
         <div class="flex flex-col items-center gap-4 sm:flex-row">
           <div v-if="qrInfo" class="shrink-0 rounded-lg bg-white p-2">
@@ -406,14 +372,13 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
 </template>
 
 <style scoped>
-.tailscale-page { max-width: 832px; margin-inline: auto; }
+.tailscale-page { max-width: 800px; margin-inline: auto; }
 .tailscale-page :deep(button) { overflow-wrap: anywhere; }
 .tailscale-device-name { max-width: 32rem; }
-.tailscale-setup { border-top: 1px solid var(--mn-border); padding-top: 1.5rem; }
-.tailscale-panel { padding: 1.25rem; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-lg); background: var(--mn-surface-raised); }
+.tailscale-setup { padding-top: .25rem; }
+.tailscale-panel { padding: 1.5rem; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-lg); background: var(--mn-surface-raised); }
 .tailscale-auth { border-top: 1px solid var(--mn-border); padding-top: 1rem; }
 .tailscale-method-heading > div { flex: 1 1 16rem; min-width: 0; }
-.tailscale-status-actions { border-top: 1px solid var(--mn-border); padding-top: .75rem; }
 @media (max-width: 480px) {
   .tailscale-method-heading > button { width: 100%; }
   .tailscale-panel { padding: 1rem; }

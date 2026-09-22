@@ -43,3 +43,51 @@ routing policy instead of being forced into the Tailnet endpoint.
 
 Use `cli health` to inspect `state_created`, `tun_ingress`, and `route_linked`. Runtime acceptance
 still uses `cli transparent status`, `cli health`, and the presence of `magicnet0`.
+
+## Disable, resume, and sign out
+
+The WebUI connection card separates **Disable Tailscale** from **Sign out of this
+device**. Disabling removes active Tailscale endpoints and MagicNet-owned DNS and
+routing references from the validated configuration. The endpoint settings are
+kept in the private `.config/sing-box/tailscale-paused.json` file; the protected
+Auth key and local identity are preserved for **Resume connection**. An ordinary
+core restart does not restore the removed endpoint. A stopped core remains stopped.
+
+Signing out first stops the module-owned core and confirms it has stopped, then
+persists a configuration without Tailscale and clears the protected Auth key.
+It removes only MagicNet's dedicated `.state/sing-box/tailscale` identity directory.
+The cloud device record is not revoked or deleted; use the device console to
+remove that record. A custom state directory is never recursively deleted by this
+operation. If cleanup fails, disabled intent and a `logout-pending` phase remain
+on disk, and resume is blocked until cleanup is completed. This is local sign-out,
+not deletion of a Tailscale account.
+
+Commands use the revision returned by `cli --json tailscale status`:
+
+```text
+cli tailscale disable <revision>
+cli tailscale enable <revision>
+cli tailscale logout <revision>
+```
+
+The machine status is an observation-only schema-1 envelope named
+`tailscale.status`. Its data fields are `enabled` (configured intent), `resumable`,
+`logout_pending`, `local_identity` (boolean or null for unknown), `revision`, and
+`core` (`running`, `stopped`, or `unknown`). It creates no state or lock files and
+contains no device name, key, URL, or identity data. Online/login confirmation
+continues to use the authenticated local Tailscale status API, not this intent
+snapshot. The capabilities response advertises `tailscale.status`.
+
+Mutations serialize with the existing core lifecycle lock, re-check the revision
+before committing, validate the candidate configuration, and use recoverable
+multi-file replacement. Custom references are rejected rather than silently
+removed or routed directly. A failed enable rolls back to the disabled settings;
+a failed disable or logout never rolls back into an unwanted login. The UI checks
+the exit status and re-reads the machine snapshot before showing success.
+
+Regression coverage includes enabled → disabled → enabled, local sign-out from
+enabled/paused/legacy-residue states, repeated commands, stopped/unknown runtimes,
+stop and restart failures, custom references and state directories, path symlinks,
+concurrent revisions, pending cleanup, navigation races, double submission, and
+320/360/390/430-pixel, landscape, and desktop WebUI layouts. Browser fixtures do not
+constitute a real-device Tailscale connectivity test.

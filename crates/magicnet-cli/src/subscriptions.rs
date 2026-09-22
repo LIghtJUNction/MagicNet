@@ -109,13 +109,13 @@ pub fn sub_clear(app: &App) -> Result<(), String> {
     Ok(())
 }
 
-struct SubscriptionSourceGuard {
+pub(crate) struct SubscriptionSourceGuard {
     directory: PathBuf,
     owner: String,
 }
 
 impl SubscriptionSourceGuard {
-    fn acquire(app: &App) -> Result<Self, String> {
+    pub(crate) fn acquire(app: &App) -> Result<Self, String> {
         // The bounded reader forks: /proc/self would describe its worker,
         // not the caller whose PID owns this source-edit lock.
         let stat_path = PathBuf::from(format!("/proc/{}/stat", std::process::id()));
