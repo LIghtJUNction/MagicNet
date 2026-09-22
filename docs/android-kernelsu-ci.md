@@ -1,8 +1,10 @@
 # Android KernelSU network checks
 
 The manual **Android KernelSU Acceptance** workflow installs the module into a
-disposable Android 15/API 35 `google_apis` x86_64 emulator with the pinned KernelSU
-kernel. It is not a physical-phone or authenticated Google Play test.
+disposable Android 15/API 35 `google_apis` x86_64 emulator. The AVD keeps its
+stock kernel/vendor modules paired; pinned official KernelSU v3.2.0 is activated
+through its x86_64 late-load LKM path after Android userspace boots. It is not a
+physical-phone, built-in/early-boot KernelSU, or authenticated Google Play test.
 
 ## What changed after the false-positive audit
 
