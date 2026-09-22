@@ -1,8 +1,8 @@
 [prop]
 id = "MagicNet"
 name = "MagicNet"
-version = "v1.5.13"
-versionCode = 1789322931004
+version = "v1.5.14"
+versionCode = 1789322931005
 author = "LIghtJUNction"
 description = "[MagicNet]:Android root network module with magicnet0 TUN, sing-box, WebUI, MCP, and DNS leak guard tools. Built with KAM."
 updateJson = "https://raw.githubusercontent.com/LIghtJUNction/MagicNet/main/update.json"
@@ -14,8 +14,8 @@ license_file = "LICENSE"
 homepage = "https://github.com/LIghtJUNction/MagicNet"
 readme = "https://github.com/LIghtJUNction/MagicNet/blob/main/README.md"
 readme_file = "README.md"
-changelog = "https://github.com/LIghtJUNction/MagicNet/blob/main/docs/releases/v1.5.13.md"
-changelog_file = "docs/releases/v1.5.13.md"
+changelog = "https://github.com/LIghtJUNction/MagicNet/blob/main/docs/releases/v1.5.14.md"
+changelog_file = "docs/releases/v1.5.14.md"
 screenshots = []
 categories = ["tools"]
 keywords = [
