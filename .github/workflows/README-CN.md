@@ -1,21 +1,19 @@
-# Kam Workflows
+# MagicNet 工作流
 
-这里是 Kam 模块仓库共用的 GitHub Actions 基线。
+代码质量、打包和真实 Android 仿真分别执行。仿真阶段、缓存规则和未覆盖范围见
+[Android / KernelSU 仿真说明](../../docs/android-simulation.md)。
 
-## init.yml
+## android-kernelsu-acceptance.yml
 
-`init.yml` 用于验证仓库。触发方式包括 `push`、`pull_request` 和手动
-`workflow_dispatch`。
+每个 PR、合并队列、`main` 推送和手动触发都会运行。先执行不缓存成功结果的
+测试框架回归，再启动 Android 15 / KernelSU x86_64 AVD。默认使用本地测试配置，
+检查真实安装、重启生命周期和普通应用 UID 的 TUN 数据路径。
+`Android Simulation Gate` 对失败或未执行的前置任务报错；仓库的必需检查规则
+仍需单独配置，不能把新增工作流等同于已经修改分支保护。
 
-它会递归 checkout 子模块，使用 `MemDeco-WG/setup-kam@v3` 安装 Kam，然后运行：
-
-```bash
-kam validate
-kam check
-```
-
-同时会对 `hooks/`、`src/` 和顶层 `kam.sh` 中存在的 shell 文件运行
-`shellcheck`。
+原 `init.yml` 已移除，其中 `kam validate`、`kam check`、发布工作流、订阅用量
+和签名测试已迁入 Android 构建任务，位于打包之前。Code Quality 的 shell lint
+继续保留，没有以减少工作流为由删除这些检查。
 
 ## exec.yml
 
@@ -75,9 +73,9 @@ Rust 缓存覆盖 registry/git 依赖与 `target/`；模块构建和质量检查
 打包、签名和冒烟检查照常执行；这些新增缓存不包含最终发布 ZIP 或签名私钥。
 
 setup-kam 只保留 Kam 自身缓存，关闭整个 `~/.rustup` 的恢复，避免旧缓存覆盖
-刚安装的 Rust 工具链。正常安装 Android 标准库，不再先删除工具链目录；
-仅安装模块需要的 `aarch64-linux-android` Rust target。
-新缓存命名空间需要首轮填充，实际加速幅度取决于后续命中情况。
+刚安装的 Rust 工具链。发布构建安装 `aarch64-linux-android` target；AVD 任务另行
+安装 `x86_64-linux-android`。新缓存命名空间需要首轮填充，实际加速幅度取决于
+后续命中情况。
 
 ## quality.yml
 
@@ -91,7 +89,18 @@ setup-kam 只保留 Kam 自身缓存，关闭整个 `~/.rustup` 的恢复，避�
 宿主机 sing-box 和预备规则集的路由/DNS 集成测试。CI 的 fixture 套件不包含这两项；
 真机、打包和安装验证仍需单独执行。
 
+## 按需预览与公网观测
+
+重复自动运行的 `webui.yml` 已替换为仅手动触发的 `webui-preview.yml`，仍可导出
+源码与预览产物；自动 WebUI 检查统一由 Code Quality 执行。
+`network-regression.yml` 的公网观测也改为手动运行；真实 DNS NAT 测试继续保留，
+且每次实际发包，不再复用旧的通过结果。
+
+Android 工作流默认 `public_benchmark=false`。手动启用后，公网代理测试在离线
+验收之后运行，不能替代生命周期和应用 UID 的验证。安装引导、卸载浏览器、
+网络证据和规则发布工作流仍保留各自独有的检查。
+
 ## 本地自定义
 
-共享基线只放通用逻辑。项目自己的 workflow 放到额外文件里；
-`kam sync workflow` 会保留这些额外文件。
+这里是 MagicNet 的项目配置，不再是未修改的共享基线。执行 `kam sync workflow`
+后需要审查差异，避免重新引入已合并的独立校验或重复的自动 WebUI 工作流。

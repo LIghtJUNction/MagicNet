@@ -1,23 +1,20 @@
-# Kam Workflows
+# MagicNet Workflows
 
-This directory contains the shared workflow baseline used by Kam module
-repositories.
+MagicNet keeps code quality, packaging and real-device simulation separate.
+See [Android simulation](../../docs/android-simulation.md) for the acceptance
+phases, safety boundaries, cache policy and remaining coverage limits.
 
-## init.yml
+## android-kernelsu-acceptance.yml
 
-`init.yml` validates the repository. It runs on `push`, `pull_request`, and
-manual `workflow_dispatch`.
+This runs on every pull request, merge group, push to `main` and manual dispatch.
+Uncached harness checks precede an Android 15 / KernelSU x86_64 AVD. The automatic
+path uses a local fixture, real installation/reboots and app-UID TUN controls.
+`Android Simulation Gate` rejects failed or unexecuted jobs. Its required-check
+status in branch protection must be configured separately.
 
-It checks out submodules, installs Kam with `MemDeco-WG/setup-kam@v3`, then
-runs:
-
-```bash
-kam validate
-kam check
-```
-
-It also runs `shellcheck` over shell files under `hooks/`, `src/`, and the
-top-level `kam.sh` when they exist.
+The former `init.yml` was removed. Its `kam validate`, `kam check`, release-workflow,
+subscription-usage and artifact-signature tests now run in the Android build job
+before packaging. The Code Quality shell lint remains in place.
 
 ## exec.yml
 
@@ -84,10 +81,10 @@ manager. Tests, type checks, packaging, signatures, and smoke tests still run.
 No final release ZIP or signing key is included in these new caches.
 
 Only Kam's own cache is enabled in setup-kam. Its whole-`~/.rustup` cache is
-disabled so it cannot overwrite a freshly installed Rust toolchain. Android
-standard libraries are installed normally without deleting toolchain directories;
-only the module's required `aarch64-linux-android` Rust target is installed.
-The first run populates the new namespaces; real speedups depend on later hits.
+disabled so it cannot overwrite a freshly installed Rust toolchain. The release
+build installs its required `aarch64-linux-android` target; the AVD job also
+installs `x86_64-linux-android`. The first run populates the new namespaces;
+real speedups depend on later hits.
 
 ## quality.yml
 
@@ -102,7 +99,20 @@ Local `scripts/pre-commit.sh` reuses these entrypoints and passes
 a host sing-box binary and prepared rule sets. The CI fixture suite excludes
 those two checks. Device, packaging, and installation checks remain separate.
 
-## Local Customization
+## On-demand previews and network observations
 
-Keep this shared baseline generic. Put project-specific workflows in additional
-files; `kam sync workflow` preserves extra workflow files.
+`webui-preview.yml` replaces the duplicate automatic `webui.yml` check. It exports
+source and built preview artifacts on manual dispatch; Code Quality owns automatic
+WebUI tests. Public endpoints in `network-regression.yml` are observed only on
+manual dispatch. Its real DNS NAT packet tests run without cached passes.
+
+`public_benchmark=false` is the default for Android dispatch. Enabling it adds the
+legacy public-proxy observation after offline acceptance; it does not substitute
+for lifecycle or app-UID proof. Installation-onboarding, uninstall-browser,
+network-evidence and rules-release workflows retain their distinct checks.
+
+## Local customization
+
+These are the MagicNet-specific workflows, not an unmodified shared baseline.
+Review `kam sync workflow` changes so it does not reintroduce the removed
+standalone validation or duplicate automatic WebUI jobs.
