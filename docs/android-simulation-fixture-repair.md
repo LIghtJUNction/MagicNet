@@ -15,6 +15,13 @@ is recorded separately in `.ci-fixture.json`; the production ZIP is unchanged.
 Input ZipInfo objects are copied before writing so ZIP entry order cannot corrupt
 subsequent source reads or the alias comparison.
 
+The production module also ships arm64-only `bin/ecapture` and `bin/proxylink`.
+This x86_64 standalone-TUN fixture does not exercise capture or subscription-link
+parsing, so only AArch64 ELF files at those two exact paths are omitted and their
+SHA-256 values are recorded. If either helper becomes x86_64 it is retained; an
+unknown helper or a different architecture still fails fixture preparation. The
+simulation report explicitly lists both helper execution paths as not tested.
+
 ## Upgrade contract
 
 Earlier lifecycle and TUN tests keep their direct-only offline config. Immediately
