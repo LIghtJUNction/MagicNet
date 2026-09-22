@@ -1,0 +1,43 @@
+name: Tailscale CI diagnostics
+on:
+  push:
+    branches: [fix/tailscale-lifecycle-20260922]
+    paths: [.github/workflows/tailscale-ci-diagnostics.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Collect bounded failure context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ci-evidence"
+          for id in 106824194593 106824557682; do
+            gh api "repos/$GH_REPO/actions/jobs/$id/logs" > "$RUNNER_TEMP/ci-evidence/$id.log"
+          done
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'ci-evidence'
+          for path in root.glob('*.log'):
+              lines = path.read_text(errors='replace').splitlines()
+              hits = [i for i, line in enumerate(lines) if re.search(r'(AssertionError|Traceback|##\[error\]|::error::|FAILED|failed:|Error:)', line)]
+              keep = set()
+              for i in hits[-12:]:
+                  keep.update(range(max(0, i-12), min(len(lines), i+10)))
+              text = '\n'.join(f'{i+1}: {lines[i][:1200]}' for i in sorted(keep))
+              print(f'=== {path.name} ===\n{text[-22000:]}')
+              (root / (path.stem + '-summary.txt')).write_text(text)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tailscale-ci-failure-evidence
+          path: ${{ runner.temp }}/ci-evidence/
+          retention-days: 2
