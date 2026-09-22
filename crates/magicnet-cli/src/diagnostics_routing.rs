@@ -220,6 +220,7 @@ fn analyze_config(config: &Value) -> RoutingPolicyStatus {
         &CANONICAL_CN_RULE_SETS
     };
     let mut cn_ip_seen = false;
+    let mut foreign_seen = false;
     for rule in rules {
         let Some(rule) = rule.as_object() else {
             invalid_rules += 1;
@@ -258,20 +259,24 @@ fn analyze_config(config: &Value) -> RoutingPolicyStatus {
             cn_priority = CnPriority::Reordered;
         }
         if let Some(tags) = rule_set_tags.as_ref().filter(|_| maintained) {
-            // Domain-specific services must beat country IP ownership. Only
-            // the generic foreign fallback belongs after the country split.
+            // Domestic domains and named services precede the foreign-domain
+            // fallback, which must itself precede country-IP fallbacks.
             let service = tags
                 .iter()
                 .any(|tag| tag.starts_with("meta-") || *tag == "sukka-chatgpt-voice");
             let proxy_service = outbound.is_some_and(|tag| {
                 PROXY_POLICY_OUTBOUND_TAGS.contains(&tag) || tag.starts_with("ai-") || tag == "bing"
             });
-            if (cn_ip_seen && service && proxy_service)
-                || (tags.contains(&"metacubex-geosite-geolocation-not-cn")
-                    && cn_rule_sets.len() < required_cn.len())
+            let foreign = tags.contains(&"metacubex-geosite-geolocation-not-cn");
+            let domestic_domains_seen = MAINTAINED_CN_RULE_SETS[..3]
+                .iter()
+                .all(|tag| cn_rule_sets.contains(tag));
+            if ((cn_ip_seen || foreign_seen) && service && proxy_service)
+                || (foreign && (cn_ip_seen || !domestic_domains_seen))
             {
                 cn_priority = CnPriority::Reordered;
             }
+            foreign_seen |= foreign;
         }
         if condition == RuleCondition::Unconditional && catchall_target_is_direct(rule, &resolver) {
             catchall_direct += 1;
@@ -820,28 +825,29 @@ mod tests {
         config["route"]["rules"] = json!([
             {"rule_set": ["meta-openai"], "outbound": "proxy"},
             {"rule_set": ["meta-category-dev"], "outbound": "dev-proxy"},
-            {"rule_set": super::MAINTAINED_CN_RULE_SETS, "outbound": "cn-direct"},
-            {"rule_set": ["metacubex-geosite-geolocation-not-cn"], "outbound": "proxy-rule"}
+            {"rule_set": &super::MAINTAINED_CN_RULE_SETS[..3], "outbound": "cn-direct"},
+            {"rule_set": ["metacubex-geosite-geolocation-not-cn"], "outbound": "proxy-rule"},
+            {"rule_set": &super::MAINTAINED_CN_RULE_SETS[3..], "outbound": "cn-direct"}
         ]);
         config
     }
 
     #[test]
-    fn maintained_services_before_country_ip_are_healthy() {
+    fn maintained_domains_before_country_ip_are_healthy() {
         assert!(status(maintained_runtime_config()).ok());
     }
 
     #[test]
     fn maintained_country_ip_before_services_is_rejected() {
         let mut config = maintained_runtime_config();
-        config["route"]["rules"].as_array_mut().unwrap().swap(1, 2);
+        config["route"]["rules"].as_array_mut().unwrap().swap(1, 4);
         assert_eq!(status(config).cn_priority, CnPriority::Reordered);
     }
 
     #[test]
     fn maintained_missing_country_classifier_is_not_healthy() {
         let mut config = maintained_runtime_config();
-        config["route"]["rules"][2]["rule_set"]
+        config["route"]["rules"][4]["rule_set"]
             .as_array_mut()
             .unwrap()
             .pop();
@@ -849,10 +855,33 @@ mod tests {
     }
 
     #[test]
-    fn maintained_foreign_fallback_before_country_split_is_rejected() {
+    fn maintained_foreign_before_domestic_domains_is_rejected() {
         let mut config = maintained_runtime_config();
         config["route"]["rules"].as_array_mut().unwrap().swap(2, 3);
         assert_eq!(status(config).cn_priority, CnPriority::Reordered);
+    }
+
+    #[test]
+    fn maintained_country_ip_before_foreign_domains_is_rejected() {
+        let mut config = maintained_runtime_config();
+        config["route"]["rules"].as_array_mut().unwrap().swap(3, 4);
+        assert_eq!(status(config).cn_priority, CnPriority::Reordered);
+    }
+
+    #[test]
+    fn maintained_foreign_before_named_service_is_rejected() {
+        let mut config = maintained_runtime_config();
+        let rules = config["route"]["rules"].as_array_mut().unwrap();
+        let service = rules.remove(1);
+        rules.insert(3, service);
+        assert_eq!(status(config).cn_priority, CnPriority::Reordered);
+    }
+
+    #[test]
+    fn maintained_scalar_foreign_classifier_keeps_domain_priority() {
+        let mut config = maintained_runtime_config();
+        config["route"]["rules"][3]["rule_set"] = json!("metacubex-geosite-geolocation-not-cn");
+        assert!(status(config).ok());
     }
 
     fn status_with_rule(rule: Value) -> RoutingPolicyStatus {
