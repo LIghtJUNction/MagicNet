@@ -1,0 +1,32 @@
+name: Tailscale lifecycle review
+on:
+  push:
+    branches: [fix/tailscale-lifecycle-20260922]
+    paths: [.github/workflows/tailscale-review.yml, .github/tailscale-review.py]
+permissions:
+  contents: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: fix/tailscale-lifecycle-20260922
+          persist-credentials: true
+      - name: Export tracked source for regression work
+        run: git archive --format=tar.gz --output="$RUNNER_TEMP/magicnet-source.tar.gz" HEAD
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: magicnet-tailscale-source
+          path: ${{ runner.temp }}/magicnet-source.tar.gz
+          retention-days: 2
+      - name: Apply reviewed patch when present
+        if: ${{ hashFiles('.github/tailscale-review.py') != '' }}
+        run: |
+          python3 .github/tailscale-review.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates webui docs .github/tailscale-review.py
+          git diff --cached --quiet || git commit -m 'fix(tailscale): reversible disable and explicit local logout'
+          git push origin HEAD:fix/tailscale-lifecycle-20260922
