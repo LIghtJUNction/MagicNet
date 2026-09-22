@@ -132,6 +132,35 @@ class ArchiveRegressionTests(unittest.TestCase):
     def test_archive_without_optional_cli_alias_still_works(self):
         self.assertEqual(self.build()['compatibility_aliases'], {})
 
+    def test_exact_arm64_optional_helpers_are_excluded_and_attested(self):
+        entries = dict(self.entries)
+        optional = {}
+        for name in SIM.OPTIONAL_ARM64_HELPERS:
+            data = elf(183, name.encode() + b'-arm64-only')
+            entries[name] = (data, stat.S_IFREG | 0o755)
+            optional[name] = data
+        report = self.build(entries)
+        self.assertEqual(report['excluded_optional_arm64_sha256'],
+                         {name: __import__('hashlib').sha256(data).hexdigest()
+                          for name, data in optional.items()})
+        with zipfile.ZipFile(self.output) as z:
+            for name in optional:
+                self.assertNotIn(name, z.namelist())
+
+    def test_x86_optional_helper_is_preserved_not_silently_removed(self):
+        name = SIM.OPTIONAL_ARM64_HELPERS[0]
+        data = elf(62, b'x86-helper')
+        self.build(self.entries | {name: (data, stat.S_IFREG | 0o755)})
+        with zipfile.ZipFile(self.output) as z:
+            self.assertEqual(z.read(name), data)
+
+    def test_unknown_or_wrong_arch_helper_still_fails(self):
+        with self.assertRaisesRegex(RuntimeError, 'unreplaced foreign ELF'):
+            self.build(self.entries | {'bin/other-helper': (elf(183), stat.S_IFREG | 0o755)})
+        with self.assertRaisesRegex(RuntimeError, 'unexpected ELF architecture'):
+            self.build(self.entries | {SIM.OPTIONAL_ARM64_HELPERS[0]:
+                                        (elf(40), stat.S_IFREG | 0o755)})
+
     def test_directory_cannot_masquerade_as_cli_executable(self):
         with self.assertRaisesRegex(RuntimeError, 'differs'):
             self.build(self.entries | {'cli': (self.entries['bin/magicnet-cli'][0], stat.S_IFDIR | 0o755)})
