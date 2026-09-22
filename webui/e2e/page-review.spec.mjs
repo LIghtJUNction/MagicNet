@@ -27,6 +27,9 @@ for (const theme of ["light", "dark"]) {
       const surface = page.locator(`.page-surface[data-page="${id}"]`);
       await expect(surface).toBeVisible();
       await expect(surface.locator("h2").first()).toBeVisible();
+      if (id === "config") {
+        await expect(surface.locator(".json-editor__toolbar [role=status]")).toHaveText("未校验");
+      }
       await page.evaluate(async () => {
         await document.fonts.ready;
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -55,4 +58,30 @@ test("advanced tools retain their native disclosure and keyboard access", async 
     await summary.press("Enter");
     await expect(section).not.toHaveAttribute("open", "");
   }
+});
+
+test("empty configuration never reports valid JSON and recovers after edits", async ({ page }, info) => {
+  await page.addInitScript(() => localStorage.setItem("magicnet.webui.onboarding.v1", "dismissed"));
+  await page.goto("/#/config", { waitUntil: "networkidle" });
+  const editor = page.locator(".json-editor__textarea");
+  const status = page.locator(".json-editor__toolbar [role=status]");
+  await expect(editor).toHaveValue("");
+  await expect(status).toHaveText("未校验");
+  await expect(page.locator(".json-editor__status--valid")).toHaveCount(0);
+
+  await editor.fill('{"outbounds": []}');
+  await expect(status).toHaveText("语法正确");
+  await editor.fill(" \n\t ");
+  await expect(status).toHaveText("未校验");
+  await expect(page.locator(".json-editor__status--valid")).toHaveCount(0);
+
+  await editor.fill("{");
+  await expect(status).toHaveText("发现语法错误");
+  await expect(editor).toHaveAttribute("aria-invalid", "true");
+  await editor.fill("");
+  await expect(status).toHaveText("未校验");
+  await expect(editor).toHaveAttribute("aria-invalid", "false");
+  await expect(page.locator(".json-editor__status--valid, .json-editor__status--error")).toHaveCount(0);
+  await editor.blur();
+  await page.screenshot({ path: info.outputPath("editor-unvalidated.png"), fullPage: true });
 });
