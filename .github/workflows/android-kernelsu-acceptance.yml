@@ -56,7 +56,7 @@ env:
   AVD_NAME: MagicNet_API_35
   AVD_MEMORY: ${{ inputs.memory_mb || '2048' }}
   SYSTEM_IMAGE: system-images;android-35;google_apis;x86_64
-  KSU_RUNTIME: ${{ runner.temp }}/kernelsu-runtime
+  KSU_RUNTIME: ${{ github.workspace }}/.ci/kernelsu-runtime
   KSU_RELEASE: v3.2.0
   KSUD_SHA256: db96b07ef42f6b9a84b5914d19c2f01608b1e10816fc28c0e84f07417d9bc062
   CARGO_NDK_VERSION: "4.1.2"
