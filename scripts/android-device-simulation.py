@@ -35,6 +35,11 @@ KSUD = '/data/adb/ksud'
 BB = '/data/adb/ksu/bin/busybox'
 PROVENANCE = '.ci-fixture.json'
 PAYLOADS = ('bin/magicnet-cli', 'bin/sing-box', 'bin/jq', 'bin/yq')
+# Production ships these as Android arm64-only helper components. They are not
+# used by this standalone TUN lifecycle fixture. Exclude only an exact known
+# path carrying an AArch64 ELF; x86_64 copies are preserved and any other ELF
+# architecture still fails closed below.
+OPTIONAL_ARM64_HELPERS = ('bin/ecapture', 'bin/proxylink')
 PHASES = (
     'environment', 'kernelsu-bootstrap', 'install-before-first-boot',
     'cold-boot', 'app-uid-tun-controls', 'invalid-config-rollback',
@@ -94,6 +99,7 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                 'source_sha': os.environ.get('GITHUB_SHA', 'local'),
                 'payload_sha256': {name: digest(path) for name, path in replacements.items()},
                 'excluded_build_cache_sha256': {},
+                'excluded_optional_arm64_sha256': {},
                 'compatibility_aliases': {}}
     # Write atomically; failed fixture preparation must not leave a usable ZIP.
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -128,6 +134,17 @@ def prepare_archive(source: Path, destination: Path, replacements: dict[str, Pat
                     require(stat.S_IFMT(mode) in (0, stat.S_IFREG), 'build cache must be a regular file')
                     manifest['excluded_build_cache_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
                     continue
+                if item.filename in OPTIONAL_ARM64_HELPERS and data.startswith(b'\x7fELF'):
+                    require(stat.S_IFMT(mode) in (0, stat.S_IFREG),
+                            'optional architecture helper must be a regular file')
+                    require(len(data) >= 64 and data[:6] == b'\x7fELF\x02\x01',
+                            'optional architecture helper has unsupported ELF format')
+                    machine = struct.unpack_from('<H', data, 18)[0]
+                    if machine == 183:  # EM_AARCH64
+                        manifest['excluded_optional_arm64_sha256'][item.filename] = hashlib.sha256(data).hexdigest()
+                        continue
+                    require(machine == 62, 'optional helper has unexpected ELF architecture')
+                    # An x86_64 helper is already runnable in this fixture; keep it.
                 if item.filename == 'cli':
                     # KAM can dereference the tracked cli -> bin/magicnet-cli
                     # symlink in its raw ZIP. Accept only that exact alias,
@@ -334,7 +351,8 @@ class Report:
         data = {'schema': 1, 'status': 'passed' if passed else 'failed',
                 'scope': 'Android-15-KernelSU-x86_64-standalone-TUN-fixture',
                 'not_tested': ['ARM64 execution', 'OEM kernels', 'Play/GMS login/download',
-                               'public proxy quality', 'eBPF dataplane', 'IPv6 packet forwarding'],
+                               'public proxy quality', 'eBPF dataplane', 'IPv6 packet forwarding',
+                               'eCapture execution', 'proxylink subscription parsing'],
                 'provenance': self.provenance, 'cases': rows}
         (self.out / 'simulation.json').write_text(json.dumps(data, indent=2) + '\n')
         suite = ET.Element('testsuite', name='Android KernelSU lifecycle', tests=str(len(rows)),
