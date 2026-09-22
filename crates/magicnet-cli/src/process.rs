@@ -466,27 +466,56 @@ fn singbox_commandline_owned(
         && workdir == Some(expected_workdir.as_ref())
 }
 
+// Android auto_redirect teardown can take several seconds. Give the core time
+// to remove its own firewall rules before considering SIGKILL; module-owned
+// DNS/route cleanup cannot substitute for the core's graceful shutdown.
+const SINGBOX_STOP_GRACE: Duration = Duration::from_secs(10);
+const SINGBOX_KILL_GRACE: Duration = Duration::from_secs(1);
+const SINGBOX_STOP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
 pub(crate) fn stop_owned_singbox(app: &App, initial_pids: Vec<String>) -> Result<(), String> {
-    for pid in &initial_pids {
-        signal_pid(pid, false);
+    stop_singbox_with(
+        &initial_pids,
+        || owned_singbox_pids(app),
+        signal_pid,
+        SINGBOX_STOP_GRACE,
+        SINGBOX_KILL_GRACE,
+        SINGBOX_STOP_POLL_INTERVAL,
+    )
+}
+
+fn stop_singbox_with(
+    initial_pids: &[String],
+    mut discover: impl FnMut() -> Result<Vec<String>, String>,
+    mut signal: impl FnMut(&str, bool),
+    term_grace: Duration,
+    kill_grace: Duration,
+    poll_interval: Duration,
+) -> Result<(), String> {
+    for pid in initial_pids {
+        signal(pid, false);
     }
 
-    // Most cores exit immediately after SIGTERM. Poll instead of charging
-    // every manual stop the full grace period. Any lookup error remains
-    // indeterminate and must block runtime cleanup and a replacement start.
-    let deadline = Instant::now() + Duration::from_secs(1);
-    let mut live = owned_singbox_pids(app)?;
+    // Poll so a fast exit does not pay the full grace period. Discovery errors
+    // remain indeterminate and block both escalation and replacement startup.
+    let deadline = Instant::now() + term_grace;
+    let mut live = discover()?;
     while !live.is_empty() && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(25));
-        live = owned_singbox_pids(app)?;
+        thread::sleep(poll_interval.min(deadline.saturating_duration_since(Instant::now())));
+        live = discover()?;
+    }
+    // A replacement that appeared during the grace period has not received
+    // SIGTERM. Do not immediately kill it using the old generation's deadline.
+    if live.iter().any(|pid| !initial_pids.contains(pid)) {
+        return Err("managed sing-box process set changed during stop".to_string());
     }
     for pid in &live {
-        signal_pid(pid, true);
+        signal(pid, true);
     }
     if !live.is_empty() {
-        let kill_deadline = Instant::now() + Duration::from_secs(1);
+        let kill_deadline = Instant::now() + kill_grace;
         loop {
-            live = owned_singbox_pids(app)?;
+            live = discover()?;
             if live.is_empty() {
                 break;
             }
@@ -496,7 +525,9 @@ pub(crate) fn stop_owned_singbox(app: &App, initial_pids: Vec<String>) -> Result
                     live.join(",")
                 ));
             }
-            thread::sleep(Duration::from_millis(25));
+            thread::sleep(
+                poll_interval.min(kill_deadline.saturating_duration_since(Instant::now())),
+            );
         }
     }
     Ok(())
@@ -1594,3 +1625,6 @@ mod admission_review_tests {
             .success());
     }
 }
+
+#[cfg(test)]
+mod singbox_stop_tests;
