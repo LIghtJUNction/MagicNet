@@ -1,0 +1,172 @@
+name: Prepare configuration integration fixes
+on:
+  push:
+    branches: [fix/singbox-config-routing-20260922]
+    paths: [.github/workflows/config-integration-repair.yml]
+permissions:
+  contents: write
+concurrency:
+  group: config-integration-repair
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'LIghtJUNction/MagicNet' && github.ref == 'refs/heads/fix/singbox-config-routing-20260922'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.ref_name }}
+          persist-credentials: false
+      - name: Initialize exact configuration dependency
+        run: git submodule update --init --depth 1 -- src/MagicNet/.config/sing-box
+      - name: Apply bounded integration corrections
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import subprocess
+          from pathlib import Path
+
+          config = Path('src/MagicNet/.config/sing-box')
+          ref = subprocess.check_output(['git', '-C', str(config), 'rev-parse', 'HEAD'], text=True).strip()
+          assert ref == '7533d101472e934bf22b8be9305720408c343e25', ref
+          digest = hashlib.sha256(subprocess.check_output(['git', '-C', str(config), 'show', 'HEAD:config.json'])).hexdigest()
+          assert digest == '5dc12703fcb8d13da61a6122005eb6520dc67ac9d47cf74204ab2729a6ef07c7'
+          replacements = {
+              '83d53970b51a5819211360168c48e31a6099030e': ref,
+              '462f04e57270fa228c570c45d3dbf442d324663fefc23529a5e772c79092af6d': digest,
+          }
+          edits = {}
+          for filename in (
+              'src/MagicNet/.config/magicnet/singbox-config-repo.conf',
+              'crates/magicnet-cli/src/config_editor.rs',
+              'src/MagicNet/customize.sh',
+              'webui/src/components/pages/ConfigPage.vue',
+          ):
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in replacements.items():
+                  assert text.count(old) == 1, (filename, old, text.count(old))
+                  text = text.replace(old, new)
+              edits[path] = text
+
+          path = Path('crates/magicnet-cli/src/diagnostics_routing.rs')
+          text = path.read_text()
+          def replace_once(old, new):
+              global text
+              assert text.count(old) == 1, (old[:100], text.count(old))
+              text = text.replace(old, new)
+
+          replace_once('    let mut cn_ip_seen = false;\n', '    let mut cn_ip_seen = false;\n    let mut foreign_seen = false;\n')
+          replace_once(
+              '            // Domain-specific services must beat country IP ownership. Only\n'
+              '            // the generic foreign fallback belongs after the country split.\n',
+              '            // Domestic domains and named services precede the foreign-domain\n'
+              '            // fallback, which must itself precede country-IP fallbacks.\n',
+          )
+          replace_once(
+              '            if (cn_ip_seen && service && proxy_service)\n'
+              '                || (tags.contains(&"metacubex-geosite-geolocation-not-cn")\n'
+              '                    && cn_rule_sets.len() < required_cn.len())\n'
+              '            {\n'
+              '                cn_priority = CnPriority::Reordered;\n'
+              '            }\n',
+              '            let foreign = tags.contains(&"metacubex-geosite-geolocation-not-cn");\n'
+              '            let domestic_domains_seen = MAINTAINED_CN_RULE_SETS[..3]\n'
+              '                .iter()\n'
+              '                .all(|tag| cn_rule_sets.contains(tag));\n'
+              '            if ((cn_ip_seen || foreign_seen) && service && proxy_service)\n'
+              '                || (foreign && (cn_ip_seen || !domestic_domains_seen))\n'
+              '            {\n'
+              '                cn_priority = CnPriority::Reordered;\n'
+              '            }\n'
+              '            foreign_seen |= foreign;\n',
+          )
+          start = text.index('    fn maintained_runtime_config() -> Value {')
+          end = text.index('    fn status_with_rule(rule: Value)', start)
+          text = text[:start] + '''    fn maintained_runtime_config() -> Value {
+                  let mut config = runtime_config();
+                  config["route"]["rules"] = json!([
+                      {"rule_set": ["meta-openai"], "outbound": "proxy"},
+                      {"rule_set": ["meta-category-dev"], "outbound": "dev-proxy"},
+                      {"rule_set": &super::MAINTAINED_CN_RULE_SETS[..3], "outbound": "cn-direct"},
+                      {"rule_set": ["metacubex-geosite-geolocation-not-cn"], "outbound": "proxy-rule"},
+                      {"rule_set": &super::MAINTAINED_CN_RULE_SETS[3..], "outbound": "cn-direct"}
+                  ]);
+                  config
+              }
+
+              #[test]
+              fn maintained_domains_before_country_ip_are_healthy() {
+                  assert!(status(maintained_runtime_config()).ok());
+              }
+
+              #[test]
+              fn maintained_country_ip_before_services_is_rejected() {
+                  let mut config = maintained_runtime_config();
+                  config["route"]["rules"].as_array_mut().unwrap().swap(1, 4);
+                  assert_eq!(status(config).cn_priority, CnPriority::Reordered);
+              }
+
+              #[test]
+              fn maintained_missing_country_classifier_is_not_healthy() {
+                  let mut config = maintained_runtime_config();
+                  config["route"]["rules"][4]["rule_set"].as_array_mut().unwrap().pop();
+                  assert!(!status(config).ok());
+              }
+
+              #[test]
+              fn maintained_foreign_before_domestic_domains_is_rejected() {
+                  let mut config = maintained_runtime_config();
+                  config["route"]["rules"].as_array_mut().unwrap().swap(2, 3);
+                  assert_eq!(status(config).cn_priority, CnPriority::Reordered);
+              }
+
+              #[test]
+              fn maintained_country_ip_before_foreign_domains_is_rejected() {
+                  let mut config = maintained_runtime_config();
+                  config["route"]["rules"].as_array_mut().unwrap().swap(3, 4);
+                  assert_eq!(status(config).cn_priority, CnPriority::Reordered);
+              }
+
+              #[test]
+              fn maintained_foreign_before_named_service_is_rejected() {
+                  let mut config = maintained_runtime_config();
+                  let rules = config["route"]["rules"].as_array_mut().unwrap();
+                  let service = rules.remove(1);
+                  rules.insert(3, service);
+                  assert_eq!(status(config).cn_priority, CnPriority::Reordered);
+              }
+
+              #[test]
+              fn maintained_scalar_foreign_classifier_keeps_domain_priority() {
+                  let mut config = maintained_runtime_config();
+                  config["route"]["rules"][3]["rule_set"] = json!("metacubex-geosite-geolocation-not-cn");
+                  assert!(status(config).ok());
+              }
+
+          ''' + text[end:]
+          edits[path] = text
+          for path, text in edits.items():
+              path.write_text(text)
+          PY
+      - name: Check generated pins and Rust diagnostics
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          bash scripts/test-config-template-pin.sh
+          cargo test --locked -p magicnet-cli diagnostics_routing::tests
+          git diff --check
+      - name: Commit only verified integration files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/MagicNet/.config/magicnet/singbox-config-repo.conf crates/magicnet-cli/src/config_editor.rs src/MagicNet/customize.sh webui/src/components/pages/ConfigPage.vue crates/magicnet-cli/src/diagnostics_routing.rs
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(config): synchronize verified template pins and domain-first diagnostics'
+          gh auth setup-git
+          git push origin HEAD:fix/singbox-config-routing-20260922
