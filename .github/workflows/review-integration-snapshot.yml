@@ -1,0 +1,30 @@
+name: Review integration snapshot
+on:
+  push:
+    branches: [fix/android-release-integration]
+    paths: [.github/workflows/review-integration-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export Git objects without local configuration or credentials
+        run: |
+          set -euo pipefail
+          git cat-file -e 7ab929388716108ab431846f6f7fa5568dace753^{commit}
+          git cat-file -e 86a33d6c49038ae2f0cffebe47c59597cda0b01d^{commit}
+          git branch reviewed-347 7ab929388716108ab431846f6f7fa5568dace753
+          git branch reviewed-345 86a33d6c49038ae2f0cffebe47c59597cda0b01d
+          git bundle create "$RUNNER_TEMP/review.bundle" HEAD reviewed-347 reviewed-345
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: reviewed-pr-git-objects
+          path: ${{ runner.temp }}/review.bundle
+          if-no-files-found: error
+          retention-days: 3
