@@ -8,25 +8,22 @@ permissions:
 jobs:
   bundle:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-node@v4
         with:
-          go-version: '1.26'
-          cache: false
-      - name: Prepare exact pinned dependencies
+          node-version: '22'
+      - name: Prepare pinned headless renderer
         run: |
-          git submodule update --init src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box .kam/bases/hooks .kam/bases/workflows
-          mkdir -p /tmp/review-deps
-          git clone https://github.com/Fanju6/Proxylink.git /tmp/proxylink
-          git -C /tmp/proxylink checkout 44929c0984944870297c260dc43a4aa9262f9e1c
-          (cd /tmp/proxylink/Proxylink && CGO_ENABLED=0 go build -trimpath -o /tmp/review-deps/proxylink .)
-          tar -czf /tmp/review-deps/submodules.tar.gz --exclude=.git src/MagicNet/lib/kamfw src/MagicNet/.config/sing-box .kam/bases/hooks .kam/bases/workflows
+          npm ci --prefix webui
+          cd webui
+          npx playwright install --only-shell chromium
+          tar -czf /tmp/magicnet-review-browser.tar.gz -C "$HOME/.cache/ms-playwright" .
       - uses: actions/upload-artifact@v4
         with:
-          name: magicnet-review-dependencies
-          path: /tmp/review-deps/
+          name: magicnet-review-browser
+          path: /tmp/magicnet-review-browser.tar.gz
           retention-days: 1
