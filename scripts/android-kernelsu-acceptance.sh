@@ -69,26 +69,33 @@ adb_root
 arch="$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
 [[ "$arch" == x86_64 ]] || fail "expected x86_64 AVD, got $arch"
 
-log 'installing matching KernelSU userspace'
-adb shell "mkdir -p '$REMOTE_DIR'"
+log 'staging official KernelSU userspace for stock-kernel late-load'
+adb shell "mkdir -p '$REMOTE_DIR' /data/adb"
 adb push "$KSUD_HOST" "$REMOTE_DIR/ksud" >/dev/null
-# /sdcard is staging, not executable storage. Install to the actual userspace
-# destination before execution; do not depend on relaxed/noexec mount behavior.
-adb shell "mkdir -p /data/adb && cp '$REMOTE_DIR/ksud' /data/adb/ksud && chmod 0755 /data/adb/ksud && /data/adb/ksud debug version" | tee "$OUT/kernelsu-kernel.txt"
-adb shell '/data/adb/ksud install'
-adb shell 'test -x /data/adb/ksud && test -x /data/adb/ksu/bin/busybox' || fail 'KernelSU userspace install incomplete'
+# Keep the stock AVD kernel paired with its stock vendor modules. Official
+# KernelSU v3.2.0 embeds an x86_64 KMI-matched LKM in the x86_64 ksud binary.
+adb shell "cp '$REMOTE_DIR/ksud' /data/adb/ksud && chmod 0755 /data/adb/ksud"
 adb shell "rm -f '$REMOTE_DIR/ksud'" || true
+KSU_BIN=/data/adb/ksud
 
-log 'rebooting once so KernelSU init lifecycle owns /data/adb'
-adb reboot >/dev/null
-wait_boot || fail 'Android did not return after KernelSU userspace install'
-adb_root
+late_load_ksu() {
+    local current supported version
+    current="$(adb shell "$KSU_BIN boot-info current-kmi" | tr -d '\r')"
+    supported="$(adb shell "$KSU_BIN boot-info supported-kmis" | tr -d '\r')"
+    printf '%s\n' "$current" >"$OUT/kernelsu-kmi.txt"
+    printf '%s\n' "$supported" >>"$OUT/kernelsu-kmi.txt"
+    grep -Fqx "$current" <<<"$supported" || fail "KernelSU does not embed stock KMI: $current"
+    MAGICNET_ADB_CALL_TIMEOUT=120 adb shell "$KSU_BIN late-load" >"$OUT/kernelsu-late-load.txt" 2>&1 ||
+        fail 'KernelSU late-load failed'
+    version="$(adb shell "$KSU_BIN debug version" | tr -d '\r')"
+    grep -Eq '^Kernel Version: [1-9][0-9]*$' <<<"$version" ||
+        fail "KernelSU interface unavailable after late-load: $version"
+    printf '%s\n' "$version" | tee -a "$OUT/kernelsu-kernel.txt"
+    adb shell 'test -x /data/adb/ksu/bin/busybox' ||
+        fail 'KernelSU late-load did not install userspace'
+}
 
-KSU_BIN=/data/adb/ksu/bin/ksud
-if ! adb shell "test -x $KSU_BIN" >/dev/null 2>&1; then
-    KSU_BIN=/data/adb/ksud
-fi
-adb shell "$KSU_BIN debug version" | tee -a "$OUT/kernelsu-kernel.txt"
+late_load_ksu
 
 log 'installing current MagicNet archive through the real KernelSU module installer'
 adb shell "mkdir -p '$REMOTE_DIR'"
@@ -96,11 +103,12 @@ adb push "$MODULE_ZIP" "$REMOTE_ZIP" >/dev/null
 MAGICNET_ADB_CALL_TIMEOUT=180 adb shell "MAGICNET_NONINTERACTIVE=1 $KSU_BIN module install '$REMOTE_ZIP'" | tee "$OUT/module-install.txt"
 adb shell "rm -f '$REMOTE_ZIP'" || true
 
-log 'rebooting to execute KernelSU post-fs-data/service lifecycle'
+log 'rebooting to execute KernelSU late-load service/boot-completed lifecycle'
 adb reboot >/dev/null
 wait_boot || fail 'Android did not return after MagicNet install'
 adb_root
-adb shell "test -f $MODDIR/module.prop" || fail 'MagicNet module was not activated by KernelSU'
+late_load_ksu
+adb shell "test -f $MODDIR/module.prop" || fail 'MagicNet module was not activated by KernelSU late-load'
 
 # The release archive intentionally contains arm64 Android binaries. AVD tests run
 # x86_64 for hardware acceleration, so replace only executable payloads after the
