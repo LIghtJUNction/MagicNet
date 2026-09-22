@@ -63,6 +63,7 @@ const {
   runPrivateCli,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
+const sourceWriteRunning = computed(() => ["apply-subscriptions", "apply-local-subscription", "clear-subscriptions"].some(isRunning));
 const singBoxText = ref("");
 const editorOpen = ref(false);
 const confirmClear = ref(false);
@@ -153,13 +154,15 @@ async function updateSubscriptions(): Promise<void> {
   await withAction("update-all", () => startBackgroundCli("sub update-all", t("更新订阅"), "", "sub update-all"));
 }
 
-watch(() => state.subscriptions.singBoxUrls, (urls) => {
+watch(() => [state.subscriptions.singBoxUrls, state.subscriptions.sourceMode, state.subscriptions.lastGenerationId] as const, ([urls, sourceMode, generation]) => {
   const snapshot = urls.join("\n");
   const hadPending = pendingApply.value !== null;
   const next = reconcileSubscriptionEditor({
     draft: singBoxText.value,
     lastLoadedSnapshot: lastLoadedSnapshot.value,
     deviceSnapshot: snapshot,
+    deviceSourceMode: sourceMode,
+    deviceGeneration: generation,
     dirty: dirty.value,
     loadedOnce: loadedOnce.value,
     editRevision: editRevision.value,
@@ -180,6 +183,7 @@ watch(() => state.subscriptions.singBoxUrls, (urls) => {
 watch(singBoxText, (value) => {
   summaryCopied.value = false;
   if (!syncingEditor.value) {
+    confirmClear.value = false;
     editRevision.value += 1;
     dirty.value = value !== lastLoadedSnapshot.value;
   }
@@ -188,11 +192,13 @@ watch(singBoxText, (value) => {
 watch(() => state.backgroundTask.status, async (status) => {
   if (!isSubscriptionBackgroundArgs(state.backgroundTask.args)) return;
   if (status === "done") await refreshSubs(true);
-  if (status === "error" || status === "timeout") pendingApply.value = null;
+  // A polling timeout is not proof that the device transaction failed.
+  if (status === "error") pendingApply.value = null;
 });
 
 async function clearSubscriptions(): Promise<void> {
-  if (!confirmClear.value || lifecycleRunning.value || state.busy) return;
+  if (!confirmClear.value || canonicalDraft.value || lifecycleRunning.value || state.busy || sourceWriteRunning.value) return;
+  const attempt: PendingSubscriptionApply = { snapshot: "", revision: editRevision.value, sourceMode: "url", draftAtSubmission: singBoxText.value };
   await withAction("clear-subscriptions", async () => {
     const outcome = await runPrivateCli("sub clear", t("移除所有来源"), "sub clear");
     if (!outcome.ok) {
@@ -200,7 +206,7 @@ async function clearSubscriptions(): Promise<void> {
       return;
     }
     confirmClear.value = false;
-    pendingApply.value = { snapshot: "", revision: editRevision.value };
+    pendingApply.value = attempt;
     const refreshed = await refreshSubs(true);
     showActionMessage(refreshed
       ? t("来源已移除。当前核心配置保持不变。")
@@ -224,24 +230,22 @@ async function stageSubscriptionPayload(snapshot: string) {
 }
 
 async function applySubscriptions(): Promise<void> {
-  if (!canApply.value || lifecycleRunning.value || state.busy) return;
+  if (!canApply.value || lifecycleRunning.value || state.busy || sourceWriteRunning.value) return;
   if (!canonicalDraft.value && configured.value) {
     confirmClear.value = true;
     return;
   }
+  // Capture the clicked intent before any awaited User-Agent/payload I/O.
+  const snapshot = canonicalDraft.value;
+  const attempt: PendingSubscriptionApply = {
+    snapshot, revision: editRevision.value, sourceMode: "url", draftAtSubmission: singBoxText.value,
+  };
   await withAction("apply-subscriptions", async () => {
     actionMessage.value = "";
     if (userAgentCardRef.value?.userAgentChanged && !(await userAgentCardRef.value.persistUserAgent())) {
       showActionMessage(t("请求标识保存失败，请在订阅设置中检查后重试。"));
       return;
     }
-    const snapshot = canonicalDraft.value;
-    if (singBoxText.value !== snapshot) {
-      syncingEditor.value = true;
-      singBoxText.value = snapshot;
-      syncingEditor.value = false;
-    }
-    const attempt = { snapshot, revision: editRevision.value };
     pendingApply.value = attempt;
     const staged = await stageSubscriptionPayload(snapshot);
     if (!staged) {
@@ -286,7 +290,11 @@ async function importLocalSubscriptions(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file) return;
+  if (!file || lifecycleRunning.value || state.busy || sourceWriteRunning.value) return;
+  const attempt: PendingSubscriptionApply = {
+    snapshot: "", revision: editRevision.value, sourceMode: "local",
+    draftAtSubmission: singBoxText.value, previousGeneration: state.subscriptions.lastGenerationId,
+  };
 
   await withAction("apply-local-subscription", async () => {
     actionMessage.value = "";
@@ -308,6 +316,7 @@ async function importLocalSubscriptions(event: Event): Promise<void> {
         showActionMessage(t("文件准备失败，请重试。当前配置没有改变。"));
         return;
       }
+      pendingApply.value = attempt;
       const launch = buildLocalSubscriptionApplyLaunch(staged.basename);
       const result = await startPrivateBackgroundCli(
         launch.args,
@@ -318,12 +327,14 @@ async function importLocalSubscriptions(event: Event): Promise<void> {
       );
       if (execFailed(result)) {
         await removePrivatePayload("subscription", staged.basename, t("本地订阅源"));
+        if (pendingApply.value === attempt) pendingApply.value = null;
         showActionMessage(t("文件未能提交，请重试。"));
         return;
       }
       state.notice = t("本地订阅源已投递");
       showActionMessage(t("已提交 {value} 文件，验证成功后会切换到本地模式。", { value: imported.format }));
     } catch (error) {
+      if (pendingApply.value === attempt) pendingApply.value = null;
       showActionMessage(t("导入错误：{value}", { value: error instanceof Error ? error.message : String(error) }));
     }
   });
@@ -348,7 +359,7 @@ async function copySummary(): Promise<void> {
   <div class="subscriptions-page">
     <PageHeader :title="t('订阅')">
       <template #actions>
-        <Button v-if="configured" ref="manageSourcesButton" variant="outline" :aria-expanded="editorOpen" aria-controls="subscription-editor" :disabled="lifecycleRunning" @click="openEditor">
+        <Button v-if="configured" ref="manageSourcesButton" variant="outline" :aria-expanded="editorOpen" aria-controls="subscription-editor" @click="openEditor">
           <Plus :size="16" />{{ t("管理来源") }} </Button>
         <Button v-if="configured" :loading="lifecycleRunning || isRunning('update-all')" :disabled="state.busy" @click="updateSubscriptions">
           <RefreshCw :size="16" />{{ t("更新订阅") }} </Button>
@@ -398,11 +409,11 @@ async function copySummary(): Promise<void> {
         <input ref="subscriptionFileInput" class="hidden" type="file" accept=".yaml,.yml,.json,.txt,.list,.conf,application/json,application/yaml,text/yaml,text/plain" @change="importLocalSubscriptions">
         <div class="source-import-actions">
           <Button variant="outline" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions"><ClipboardPaste :size="16" />{{ t("粘贴链接") }}</Button>
-          <Button variant="outline" :loading="isRunning('apply-local-subscription')" :disabled="lifecycleRunning" @click="chooseLocalSubscriptions"><FileUp :size="16" />{{ t("导入文件") }}</Button>
+          <Button variant="outline" :loading="isRunning('apply-local-subscription')" :disabled="lifecycleRunning || state.busy || sourceWriteRunning" @click="chooseLocalSubscriptions"><FileUp :size="16" />{{ t("导入文件") }}</Button>
         </div>
         <div class="source-save-actions">
           <Button v-if="configured" variant="ghost" :disabled="lifecycleRunning" @click="cancelEditing">{{ t("取消") }}</Button>
-          <Button :disabled="!canApply || lifecycleRunning || state.busy || !state.hasKsu" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions"><component :is="configured && !canonicalDraft ? Trash2 : Save" :size="16" />{{ applyLabel }}</Button>
+          <Button :disabled="!canApply || lifecycleRunning || state.busy || sourceWriteRunning || !state.hasKsu" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions"><component :is="configured && !canonicalDraft ? Trash2 : Save" :size="16" />{{ applyLabel }}</Button>
         </div>
       </div>
       <details v-if="subscriptionPreview.length" class="source-preview">

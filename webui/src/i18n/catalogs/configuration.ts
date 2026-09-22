@@ -1,4 +1,5 @@
 export default {
+  "最多支持 {value} 个订阅来源，请删减后保存；不会截断链接。": ["Up to {value} subscription sources are supported. Remove extra lines before saving; no links will be truncated.", "Поддерживается до {value} источников. Удалите лишние строки перед сохранением; ссылки не будут обрезаны."],
   "网页登录": ["Sign in with browser", "Войти через браузер"],
   "在浏览器中授权，也可用其他设备扫码。": ["Authorize in your browser, or scan the QR code on another device.", "Подтвердите вход в браузере или отсканируйте QR-код другим устройством."],
   "使用 Auth key 接入": ["Use an auth key instead", "Подключиться с Auth key"],

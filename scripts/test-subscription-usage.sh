@@ -183,12 +183,13 @@ magicnet_singbox_source_usage_report | sed -n 's/^source_usage_json=//p' |
 cat >"$tmp/bin/curl" <<'SH'
 #!/bin/sh
 while [ "$#" -gt 0 ]; do
-  case "$1" in --dump-header) shift; headers=$1 ;; esac
+  case "$1" in --dump-header) shift; headers=$1 ;; -o) shift; body=$1 ;; esac
   shift
 done
 [ "${USAGE_TEST_FAIL:-0}" = 1 ] && exit 1
 printf 'HTTP/2 200\r\nSubscription-Userinfo: upload=10; download=20; total=100\r\nSet-Cookie: SECRET\r\n\r\n' >"$headers"
-printf 'node-data\r\n'
+printf 'node-data\r\n' >"$body"
+printf '200\n\n'
 SH
 chmod +x "$tmp/bin/curl"
 magicnet_singbox_subscription_resolve_public() { printf 'alpha.example.invalid|443|1.1.1.1\n'; }

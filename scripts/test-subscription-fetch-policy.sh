@@ -36,6 +36,13 @@ case " $* " in
     ;;
 esac
 [ "${MAGICNET_FETCH_FAIL:-0}" = 1 ] && exit 1
+while [ "$#" -gt 0 ]; do
+  case "$1" in -o) shift; body=$1 ;; --dump-header) shift; headers=$1 ;; esac
+  shift
+done
+printf 'HTTP/2 200\r\n\r\n' >"$headers"
+printf '200\n\n'
+exec >"$body"
 if [ "${MAGICNET_FETCH_OVERFLOW:-0}" = 1 ]; then
   dd if=/dev/zero bs=8388610 count=1 2>/dev/null
 elif [ "${MAGICNET_FETCH_LARGE:-0}" = 1 ]; then
@@ -130,8 +137,8 @@ http_proxy=http://bad HTTP_PROXY=http://bad all_proxy=http://bad ALL_PROXY=http:
 grep -q '^env=///$' "$tmp/log"
 grep -q 'curl .*--noproxy \*' "$tmp/log"
 grep -q 'curl .*--resolve example.invalid:443:1.1.1.1' "$tmp/log"
-grep -Fq -- '--resolve example.invalid:443:[2606:4700:4700::1111]' "$tmp/log"
-grep -q 'curl .* -o - ' "$tmp/log"
+grep -Fq -- '--resolve example.invalid:443:1.1.1.1,[2606:4700:4700::1111]' "$tmp/log"
+grep -q 'curl -q .* -o .*\.stream ' "$tmp/log"
 if grep -q -- '--proxy' "$tmp/log"; then
   exit 1
 fi

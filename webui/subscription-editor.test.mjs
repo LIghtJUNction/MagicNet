@@ -66,3 +66,48 @@ const previews = buildSubscriptionPreview([
 assert.equal(previews[5].status, "ok", "invalid lines must not consume the subscription limit");
 
 console.log("subscription editor tests passed");
+
+// Every source shape can transition to every other shape; acknowledgements are
+// matched to the submitted intent, never to whatever the user has typed since.
+const shapes = [
+  { name: "empty", snapshot: "", mode: "url" },
+  { name: "one", snapshot: "https://a.invalid/sub", mode: "url" },
+  { name: "many", snapshot: "https://a.invalid/sub\nhttps://b.invalid/sub", mode: "url" },
+  { name: "local", snapshot: "", mode: "local" },
+];
+for (const from of shapes) {
+  for (const to of shapes) {
+    const pending = {
+      snapshot: to.snapshot, revision: 5, sourceMode: to.mode,
+      draftAtSubmission: to.mode === "local" ? from.snapshot : to.snapshot,
+      ...(to.mode === "local" ? { previousGeneration: "before" } : {}),
+    };
+    for (const editedAgain of [false, true]) {
+      const draft = editedAgain ? "https://later.invalid/sub" : pending.draftAtSubmission;
+      const result = reconcileSubscriptionEditor({
+        draft, lastLoadedSnapshot: from.snapshot, deviceSnapshot: to.snapshot,
+        deviceSourceMode: to.mode, deviceGeneration: "after",
+        dirty: true, loadedOnce: true, editRevision: editedAgain ? 6 : 5, pendingApply: pending,
+      });
+      assert.equal(result.draft, editedAgain ? draft : to.snapshot, `${from.name} -> ${to.name}, edited=${editedAgain}`);
+      assert.equal(result.pendingApply, null);
+      assert.equal(result.dirty, editedAgain);
+    }
+  }
+}
+const awaitingLocal = {
+  draft: "https://draft.invalid/sub", lastLoadedSnapshot: "", deviceSnapshot: "", dirty: true,
+  loadedOnce: true, editRevision: 5,
+  pendingApply: { snapshot: "", revision: 5, sourceMode: "local", draftAtSubmission: "https://draft.invalid/sub", previousGeneration: "before" },
+};
+for (const observed of [{ deviceSourceMode: "url", deviceGeneration: "after" }, { deviceSourceMode: "local", deviceGeneration: "before" }]) {
+  const result = reconcileSubscriptionEditor({ ...awaitingLocal, ...observed });
+  assert.equal(result.pendingApply, awaitingLocal.pendingApply, "empty URLs alone cannot acknowledge a file import");
+  assert.equal(result.draft, awaitingLocal.draft);
+}
+const overLimit = buildSubscriptionSavePlan(Array.from({ length: 6 }, (_, i) => `https://${i}.invalid/sub`).join("\n"));
+assert.equal(overLimit.status, "error", "never silently discard a sixth source");
+assert.equal(overLimit.lines.length, 6);
+assert.equal(buildSubscriptionSavePlan("  \r\n \r  ").status, "idle");
+assert.deepEqual(buildSubscriptionSavePlan("https://a.invalid/sub\rhttps://b.invalid/sub").lines, ["https://a.invalid/sub", "https://b.invalid/sub"]);
+console.log("32 source transition/draft interleavings and local-generation guards passed");
