@@ -10,9 +10,12 @@ use sha2::{Digest, Sha256};
 
 use crate::{run_bounded_command, App};
 
+mod recovery;
+
 const BRIDGE: &str = "libexec/network-policy-bridge.jar";
 const LIMIT: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
+const USAGE: &str = "cli network-access {status|inspect|check <candidate>|repair <candidate> --confirm|rollback <candidate> --confirm}";
 
 #[derive(Clone, Debug)]
 struct Policy {
@@ -20,6 +23,7 @@ struct Policy {
     uid: u32,
     value: u32,
     packages: Vec<String>,
+    writable: bool,
 }
 
 impl Policy {
@@ -28,12 +32,24 @@ impl Policy {
         format!("{:x}", Sha256::digest(bytes.as_bytes()))
     }
 
+    fn app_identity(&self) -> bool {
+        (10000..20000).contains(&(self.uid % 100000)) && !self.packages.is_empty()
+    }
+
+    fn allowed_target(&self) -> Option<u32> {
+        if !self.app_identity() {
+            return None;
+        }
+        match (self.provider, self.value) {
+            ("oplus", 1 | 2 | 4) => Some(0),
+            // Preserve the AOSP allow-background bit, never unknown flags.
+            ("android", 1 | 5) => Some(self.value & !1),
+            _ => None,
+        }
+    }
+
     fn known_oem_deny(&self) -> bool {
-        self.provider == "oplus"
-            && self.uid % 100000 >= 10000
-            && self.uid % 100000 < 90000
-            && matches!(self.value, 1 | 2 | 4)
-            && !self.packages.is_empty()
+        self.provider == "oplus" && self.allowed_target().is_some()
     }
 
     fn public(&self) -> Value {
@@ -52,6 +68,7 @@ impl Policy {
             },
             "effective": "not_probed",
             "known_oem_deny": self.known_oem_deny(),
+            "manual_repair_supported": self.writable && self.allowed_target().is_some(),
         })
     }
 }
@@ -66,7 +83,7 @@ fn bridge(app: &App, args: &[&str]) -> Result<Value, &'static str> {
     {
         return Err("bridge_unsafe");
     }
-    let mut command = Command::new("app_process");
+    let mut command = Command::new("/system/bin/app_process");
     command
         .env("CLASSPATH", &path)
         .args(["/system/bin", "io.github.magicnet.NetworkPolicyBridge"])
@@ -85,12 +102,22 @@ fn bridge(app: &App, args: &[&str]) -> Result<Value, &'static str> {
         return Err(match value["error"].as_str() {
             Some("provider_unsupported") => "provider_unsupported",
             Some("policy_conflict") => "policy_conflict",
+            Some("identity_conflict") => "identity_conflict",
+            Some("permission_denied") => "permission_denied",
             Some("repair_not_effective") => "repair_not_effective",
             Some("repair_unsupported") => "repair_unsupported",
             _ => "observation_failed",
         });
     }
     Ok(value)
+}
+
+fn valid_package(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 255
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._".contains(&b))
 }
 
 fn packages_from_text(text: &str) -> Result<BTreeMap<u32, Vec<String>>, &'static str> {
@@ -100,12 +127,7 @@ fn packages_from_text(text: &str) -> Result<BTreeMap<u32, Vec<String>>, &'static
             .strip_prefix("package:")
             .and_then(|line| line.rsplit_once(" uid:"))
             .ok_or("package_inventory_invalid")?;
-        if name.is_empty()
-            || name.len() > 255
-            || !name
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"._".contains(&b))
-        {
+        if !valid_package(name) {
             return Err("package_inventory_invalid");
         }
         let uid = uid
@@ -124,7 +146,7 @@ fn packages_from_text(text: &str) -> Result<BTreeMap<u32, Vec<String>>, &'static
 }
 
 fn package_inventory() -> Result<BTreeMap<u32, Vec<String>>, &'static str> {
-    let mut command = Command::new("cmd");
+    let mut command = Command::new("/system/bin/cmd");
     command.args(["package", "list", "packages", "-U"]);
     let output = run_bounded_command(command, TIMEOUT, LIMIT)
         .map_err(|_| "package_inventory_unavailable")?;
@@ -171,6 +193,7 @@ fn parse_policies(
                 uid,
                 value: policy,
                 packages: packages.get(&uid).cloned().unwrap_or_default(),
+                writable: value["repair_supported"] == true,
             });
         }
     }
@@ -212,7 +235,10 @@ pub(crate) fn inspect(app: &App, private: bool) -> Value {
         "known_oem_deny_count":policies.iter().filter(|p| p.known_oem_deny()).count(),
         "effective_system_dns":"not_probed",
         "coverage":"available_policy_adapters",
+        // Machine mutations remain prohibited. Human CLI writes require a reviewed token.
         "repair_supported":false,
+        "manual_repair_supported":policies.iter().any(|p| p.writable && p.allowed_target().is_some()),
+        "recovery":recovery::summary(app, private),
     });
     if private {
         result["entries"] = policies.iter().map(Policy::public).collect();
@@ -229,7 +255,14 @@ pub(crate) fn command(app: &App, args: &[String]) -> Result<(), String> {
     {
         [] | ["status"] => inspect(app, false),
         ["inspect"] => inspect(app, true),
-        _ => return Err("cli network-access {status|inspect}".to_string()),
+        ["check", candidate] => recovery::check(app, candidate).map_err(str::to_string)?,
+        ["repair", candidate, "--confirm"] => {
+            recovery::mutate(app, candidate, false).map_err(str::to_string)?
+        }
+        ["rollback", candidate, "--confirm"] => {
+            recovery::mutate(app, candidate, true).map_err(str::to_string)?
+        }
+        _ => return Err(USAGE.to_string()),
     };
     println!("{value}");
     Ok(())
@@ -257,6 +290,7 @@ mod tests {
             uid: 10001,
             value: 4,
             packages: vec!["app.one".into()],
+            writable: true,
         };
         let old = p.candidate();
         p.packages.push("app.shared".into());
@@ -267,25 +301,29 @@ mod tests {
     }
 
     #[test]
-    fn repair_rejects_system_isolated_unknown_and_user_data_saver_policies() {
+    fn repair_rejects_system_sandbox_isolated_and_unknown_policies() {
         let mut p = Policy {
             provider: "oplus",
             uid: 10001,
             value: 4,
             packages: vec!["app.one".into()],
+            writable: true,
         };
         assert!(p.known_oem_deny());
-        p.uid = 1000;
-        assert!(!p.known_oem_deny());
-        p.uid = 99001;
-        assert!(!p.known_oem_deny());
+        for uid in [1000, 20000, 99001] {
+            p.uid = uid;
+            assert_eq!(p.allowed_target(), None);
+        }
         p.uid = 110001;
         assert!(p.known_oem_deny());
         p.value = 3;
-        assert!(!p.known_oem_deny());
-        p.value = 4;
+        assert_eq!(p.allowed_target(), None);
         p.provider = "android";
+        p.value = 5;
+        assert_eq!(p.allowed_target(), Some(4));
         assert!(!p.known_oem_deny());
+        p.value = 9;
+        assert_eq!(p.allowed_target(), None);
     }
 
     #[test]
@@ -303,10 +341,12 @@ mod tests {
             uid: 10001,
             value: 4,
             packages: vec!["app.one".into()],
+            writable: false,
         };
         let value = p.public();
         assert_eq!(value["configured"], "reject_all");
         assert_eq!(value["effective"], "not_probed");
+        assert_eq!(value["manual_repair_supported"], false);
         assert!(value.get("uid").is_none());
     }
 }
