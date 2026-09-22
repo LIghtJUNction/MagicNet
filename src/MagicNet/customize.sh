@@ -131,6 +131,7 @@ if [ -d "$MAGICNET_PREV_DIR" ]; then
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \
     ".state/transparent-mode" \
+    ".state/network-access-recovery" \
     ".config/magicnet"; do
     if [ -L "${MAGICNET_PREV_DIR}/${_item}" ]; then
       abort "! refusing unsafe symlink in MagicNet migration data: $_item"
@@ -323,6 +324,7 @@ if [ "$MAGICNET_BACKUP_READY" = 1 ]; then
     ".state/sing-box/subscription-work" \
     ".state/sing-box/selector-selections.json" \
     ".state/transparent-mode" \
+    ".state/network-access-recovery" \
     ".config/magicnet"; do
     if [ -e "${MAGICNET_BACKUP_DIR}/${_item}" ]; then
       mkdir -p "${MODPATH}/${_item%/*}" || abort "! failed to prepare restored MagicNet migration data: $_item"
