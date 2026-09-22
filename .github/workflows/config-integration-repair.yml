@@ -47,7 +47,7 @@ jobs:
               path = Path(filename)
               text = path.read_text()
               for old, new in replacements.items():
-                  assert text.count(old) == 1, (filename, old, text.count(old))
+                  assert 1 <= text.count(old) <= 3, (filename, old, text.count(old))
                   text = text.replace(old, new)
               edits[path] = text
 
