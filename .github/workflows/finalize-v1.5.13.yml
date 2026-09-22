@@ -28,24 +28,21 @@ jobs:
           ref: 566a46dd9832ec38eb0bc5b1fd2fc5978dd5323d
           persist-credentials: false
 
-      - name: Validate immutable release metadata
-        env:
-          GITHUB_REF: refs/heads/main
-          GITHUB_SHA: 566a46dd9832ec38eb0bc5b1fd2fc5978dd5323d
-          RELEASE_COMMIT_SHA: 566a46dd9832ec38eb0bc5b1fd2fc5978dd5323d
+      - name: Validate immutable source metadata before dispatch
         run: |
           set -euo pipefail
           test "$(gh api "repos/$GH_REPO/branches/main" --jq .commit.sha)" = "$EXPECTED_MAIN"
           test "$(gh api "repos/$GH_REPO/git/matching-refs/tags/v1.5.13" --jq 'map(select(.ref == "refs/tags/v1.5.13")) | length')" = 0
-          python3 scripts/prepare-release.py --verify-build
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN"
+          git diff --exit-code HEAD -- kam.toml src/MagicNet/module.prop update.json
           python3 - <<'PY'
           import json
+          import runpy
           import tomllib
           from pathlib import Path
+          assert runpy.run_path('scripts/prepare-release.py')['read_metadata']() == ('v1.5.13', 1789322931004)
           config = tomllib.loads(Path('kam.toml').read_text())
           update = json.loads(Path('update.json').read_text())
-          assert config['prop']['version'] == update['version'] == 'v1.5.13'
-          assert config['prop']['versionCode'] == update['versionCode'] == 1789322931004
           assert config['mmrl']['repo']['changelog'] == update['changelog']
           assert config['mmrl']['repo']['changelog_file'] == 'docs/releases/v1.5.13.md'
           assert Path(config['mmrl']['repo']['changelog_file']).is_file()
