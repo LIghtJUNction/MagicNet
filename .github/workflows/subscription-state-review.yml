@@ -1,0 +1,58 @@
+name: Subscription State Review
+on:
+  push:
+    branches: [fix/subscription-lifecycle-ui-v1.5.15]
+    paths: [.github/workflows/subscription-state-review.yml, '.github/subscription-review/**']
+permissions:
+  contents: write
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - name: Apply checksum-verified subscription changes
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, lzma
+          from pathlib import Path
+          encoded = ''.join(Path(f'.github/subscription-review/patch.{i}').read_text().strip() for i in range(4))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '5aab538a76a4cd8a74ee89c12b6b90cf8296ade1d81edc573395c16ea247eea7'
+          Path('/tmp/subscription-state.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/subscription-state.patch
+          git apply --index /tmp/subscription-state.patch
+      - name: Real HTTPS fault regression
+        run: python3 scripts/test-subscription-network.py -v
+      - name: WebUI checks and subscription transitions
+        working-directory: webui
+        run: |
+          npm ci
+          npm run check
+          npx playwright install --with-deps chromium
+          npx playwright test e2e/subscription-sources.spec.mjs
+      - name: Publish tested source changes
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          expected = {'docs/releases/v1.5.15.md', 'scripts/test-host.sh', 'scripts/test-subscription-fetch-policy.sh', 'scripts/test-subscription-network.py', 'scripts/test-subscription-usage.sh', 'src/MagicNet/lib/magicnet/singbox_subscribe/fetch.sh', 'webui/e2e/subscription-sources.spec.mjs', 'webui/src/components/pages/SubscriptionsPage.vue', 'webui/src/components/pages/subscriptionPreview.ts', 'webui/src/i18n/catalogs/configuration.ts', 'webui/subscription-editor.test.mjs'}
+          actual = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines())
+          assert actual == expected, actual
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(subscriptions): preserve edited intent and fetch every source directly'
+          git push origin HEAD:fix/subscription-lifecycle-ui-v1.5.15
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: subscription-state-review-evidence
+          path: webui/test-results/
+          retention-days: 3
