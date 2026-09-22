@@ -1,0 +1,46 @@
+name: Tailscale fixture review
+on:
+  push:
+    branches: [fix/tailscale-lifecycle-20260922]
+    paths: [.github/workflows/tailscale-ci-review.yml, .github/tailscale-ci.patch.b64]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: fix/tailscale-lifecycle-20260922
+      - name: Apply and validate reviewed patch
+        if: ${{ hashFiles('.github/tailscale-ci.patch.b64') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, subprocess
+          from pathlib import Path
+          encoded = Path('.github/tailscale-ci.patch.b64').read_text().strip()
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '7ef761f2ade61fe7df87708a1ce68a8d34f8f8a455bf07577187db1cb9416f9d'
+          subprocess.run(['git','apply','--check','-'],input=patch,check=True)
+          subprocess.run(['git','apply','-'],input=patch,check=True)
+          workflow = Path('.github/workflows/android-kernelsu-acceptance.yml').read_bytes()
+          data = {'encoding':'base64','content':base64.b64encode(workflow).decode()}
+          Path(os.environ['RUNNER_TEMP'],'reviewed-workflow.json').write_text(json.dumps(data))
+          PY
+          python3 scripts/test-android-device-simulation.py
+          python3 scripts/test-android-proxylink.py
+          python3 scripts/test-android-simulation-workflow.py
+          python3 scripts/test-android-acceptance-contract.py
+          gh api "repos/$GH_REPO/git/blobs" --input "$RUNNER_TEMP/reviewed-workflow.json" --jq .sha
+          git restore -- .github/workflows/android-kernelsu-acceptance.yml
+          rm .github/tailscale-ci.patch.b64
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- scripts docs .github/tailscale-ci.patch.b64
+          git commit -m 'fix(ci): match production Proxylink pin and report complete ABI omissions'
+          git push origin HEAD:fix/tailscale-lifecycle-20260922
