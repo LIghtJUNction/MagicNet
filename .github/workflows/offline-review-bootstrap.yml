@@ -1,0 +1,32 @@
+name: Offline Review Bootstrap
+on:
+  push:
+    branches: [fix/subscription-lifecycle-ui-v1.5.15]
+    paths: [.github/workflows/offline-review-bootstrap.yml]
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked WebUI dependencies
+        run: npm ci --prefix webui
+      - name: Bundle tracked public sources and locked dependencies
+        run: |
+          mkdir -p /tmp/magicnet-review
+          git archive HEAD | tar -x -C /tmp/magicnet-review
+          cp -a webui/node_modules /tmp/magicnet-review/webui/
+          git rev-parse HEAD > /tmp/magicnet-review/REVIEW_HEAD
+          tar -czf /tmp/magicnet-review.tar.gz -C /tmp/magicnet-review .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magicnet-offline-review
+          path: /tmp/magicnet-review.tar.gz
+          retention-days: 1
