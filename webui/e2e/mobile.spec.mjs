@@ -320,7 +320,7 @@ test("keyboard gives the field space and restores navigation after editing", asy
   );
   await navigate(page, "configure", "subs", "订阅");
   const field = page.getByRole("textbox", {
-    name: "sing-box 订阅 URL，每行一个",
+    name: "订阅链接，每行一个",
   });
   const original = page.viewportSize();
   await field.fill("https://example.invalid/subscription");

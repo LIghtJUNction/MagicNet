@@ -87,6 +87,7 @@ check bash scripts/test-chatgpt-voice-rules.sh
 check bash scripts/test-rule-hash-retry.sh
 check python3 scripts/test-bundled-rules.py
 check bash scripts/singbox-subscription-protocol-smoke.sh
+check python3 scripts/test-clash-subscriptions.py
 check bash scripts/test-service-selectors.sh
 check bash scripts/test-subscription-fetch-policy.sh
 check bash scripts/test-subscription-usage.sh

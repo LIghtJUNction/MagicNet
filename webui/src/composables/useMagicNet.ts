@@ -880,11 +880,14 @@ async function refreshBlock(
   return true;
 }
 
+let subscriptionReadSequence = 0;
+
 async function refreshSubs(
   quiet = false,
   foregroundToken?: number,
   reportFailure = true,
 ): Promise<boolean> {
+  const observation = ++subscriptionReadSequence;
   // Inspector payloads contain credentials. Quiet reads never enter command
   // capture, reactive output or diagnostics; show only structured failure codes.
   const command = startForegroundCommand("--json sub inspect", "读取订阅状态", true, "", foregroundToken);
@@ -892,6 +895,7 @@ async function refreshSubs(
   const allowBusy = foregroundToken !== undefined;
   const text = await command.promise;
   const parsed = execFailed(text) ? null : parseMachineSubscription(text);
+  if (observation !== subscriptionReadSequence) return false;
   if (!parsed) {
     if (canUpdateRefreshUi(uiToken, allowBusy)) {
       Object.assign(state.subscriptions, { updateRunning: false, updateLockOwner: "unknown",
@@ -904,7 +908,10 @@ async function refreshSubs(
     }
     return false;
   }
-  if (canUpdateRefreshUi(uiToken, allowBusy)) state.subscriptions = parsed;
+  // A successful inspector response belongs to this resource, not the last
+  // foreground button. Otherwise polling may finish but leave the old sources
+  // on screen whenever a different page/action has taken the output token.
+  state.subscriptions = parsed;
   return true;
 }
 

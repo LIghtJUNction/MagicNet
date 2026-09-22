@@ -47,6 +47,7 @@ async function mount(page, failure = "") {
 }
 
 async function fill(page) {
+  await page.getByText("使用 Auth key 接入", { exact: true }).click();
   await page.getByLabel("设备名称", { exact: true }).fill("my-phone");
   await page.getByLabel("Auth key", { exact: true }).fill(authKey);
 }
@@ -127,6 +128,7 @@ test("unsaved JSON editor work blocks the form instead of being discarded", asyn
     state.config.text = '{"myDraft":true}';
     state.config.dirty = true;
   });
+  await page.getByText("使用 Auth key 接入", { exact: true }).click();
   await expect(page.getByRole("button", { name: "接入并重启", exact: true })).toBeDisabled();
   await expect(page.getByRole("alert").filter({ hasText: "配置编辑器还有未保存" })).toBeVisible();
   expect(await page.evaluate(() => window.__tailscale.saves)).toBe(0);

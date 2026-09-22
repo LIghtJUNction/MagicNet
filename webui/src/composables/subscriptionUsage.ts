@@ -132,7 +132,7 @@ export function buildSubscriptionUsageOverview(
   state: SubscriptionState,
   nowEpoch = Date.now() / 1000,
 ): SubscriptionUsageRow[] {
-  if (state.sourceMode === "local") return [];
+  if (state.sourceMode === "local" || state.singBoxUrls.length === 0) return [];
   // Keep provider labels and counters from the same inspected source identity.
   // Never relabel persisted quotas from a separately edited list position.
   const sources = state.sourceUsage.length ? state.sourceUsage : state.singBoxUrls.map((value, index) => {

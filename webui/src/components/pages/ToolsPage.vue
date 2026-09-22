@@ -3,6 +3,7 @@ import { t } from "@/i18n";
 import { ClipboardPaste, Copy, Download, FileLock, Network, Power, PowerOff, RadioTower, RefreshCw, Upload } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
+import SectionDisclosure from "@/components/ui/SectionDisclosure.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
@@ -323,7 +324,7 @@ function selectWarpGlobal(enabled: boolean): void {
 </script>
 
 <template>
-  <div class="grid gap-4">
+  <div class="tools-page grid gap-4">
     <PageHeader :overline="t('工具')" :title="t('工具')">
       <Button variant="outline" :loading="toolsRefreshing" @click="refreshTools">
         <RefreshCw :size="17" />{{ t("刷新") }}
@@ -338,10 +339,10 @@ function selectWarpGlobal(enabled: boolean): void {
       @confirm="confirmToolAction"
     />
 
-    <div class="grid min-w-0 gap-3 md:grid-cols-2">
-      <NetworkPolicyCard />
-
-      <DnsToolsCard />
+    <div class="tools-sections min-w-0">
+      <SectionDisclosure title="UDP / IPv6"><NetworkPolicyCard /></SectionDisclosure>
+      <SectionDisclosure title="DNS"><DnsToolsCard /></SectionDisclosure>
+      <SectionDisclosure :title="t('WARP 出站')">
 
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> {{ t("WARP 出站") }}</h3>
@@ -372,6 +373,8 @@ addresses={{ state.warp.addresses }}
 allowed_ips={{ state.warp.allowedIps }}</pre>
       </Card>
 
+      </SectionDisclosure>
+      <SectionDisclosure :title="t('配置迁移')">
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><FileLock :size="17" /> {{ t("配置迁移") }}</h3>
         <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("导出会打包订阅、应用名单、黑名单、路由规则等用户配置。安全码可留空；设置后导入时必须填写一致。") }}</p>
@@ -397,13 +400,10 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
         <p class="text-xs leading-5 text-[var(--mn-ink-muted)]">{{ t(state.backup.status) }}</p>
       </Card>
 
-      <EcaptureToolsCard />
-
-    </div>
-
-    <div class="grid min-w-0 gap-3 md:grid-cols-2">
-      <McpToolsCard />
-
+      </SectionDisclosure>
+      <SectionDisclosure title="eCapture"><EcaptureToolsCard /></SectionDisclosure>
+      <SectionDisclosure title="MCP"><McpToolsCard /></SectionDisclosure>
+      <SectionDisclosure :title="t('拓扑 / 路由')">
       <Card>
         <h3 class="mb-2 inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> {{ t("拓扑 / 路由") }}</h3>
         <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("只读网络与路由快照。") }}</p>
@@ -412,8 +412,13 @@ allowed_ips={{ state.warp.allowedIps }}</pre>
           <Button variant="secondary" :loading="isRunning('refresh-sysroute')" @click="withAction('refresh-sysroute', () => refreshSysroute())">{{ t("刷新路由") }}</Button>
         </div>
       </Card>
+      <NetworkSnapshotPanel :topology="state.topology" :sysroute="state.sysroute" />
+      </SectionDisclosure>
     </div>
-
-    <NetworkSnapshotPanel :topology="state.topology" :sysroute="state.sysroute" />
   </div>
 </template>
+
+<style scoped>
+.tools-page { max-width: 832px; margin-inline: auto; }
+.tools-sections { border-top: 1px solid var(--mn-border); }
+</style>

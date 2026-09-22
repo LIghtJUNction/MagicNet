@@ -79,6 +79,7 @@ function backgroundFixture() {
     redactedCliPreview: (value) => value,
     runShellOutcome: () => pending,
     runShell: async () => "[launch] id=operation label=restart\n[exit] id=operation status=0",
+    subscriptionReadSequence: 0,
     runCli: async () => subscriptionSnapshot(), execFailed, parseMachineRuntime, parseMachineSubscription, parseMachineWifi, machineFailureText, runtimeDefaults,
     withAction: async (_, action) => action(),
     refreshApps: async () => true,
@@ -362,4 +363,31 @@ test("malformed service refresh clears stale running state without a human fallb
   assert.deepEqual(calls,["--json service status"]);
   assert.equal(state.runtime.singBoxState,"unknown");
   assert.equal(state.runtime.singBoxRssKib,null);
+});
+
+
+test("resource reads update subscriptions after the foreground output owner changes", async () => {
+  const { context, state, supersede } = backgroundFixture();
+  let resolve;
+  context.runCli = () => new Promise((done) => { resolve = done; });
+  const read = context.refreshSubs(true);
+  supersede();
+  resolve(subscriptionSnapshot({ configuration: { sing_box_urls: ["https://new.example/sub"], user_agent: "", filters: [] } }));
+  assert.equal(await read, true);
+  assert.deepEqual(Array.from(state.subscriptions.singBoxUrls), ["https://new.example/sub"]);
+  assert.equal(state.output, "new foreground output");
+});
+
+test("a late pre-removal inspector cannot resurrect removed subscription URLs", async () => {
+  const { context, state } = backgroundFixture();
+  const pending = [];
+  context.runCli = () => new Promise((resolve) => pending.push(resolve));
+  const before = context.refreshSubs(true);
+  const after = context.refreshSubs(true);
+  pending[1](subscriptionSnapshot({ source: { mode: "remote_url", configured_count: 0 }, configuration: { sing_box_urls: [], user_agent: "", filters: [] } }));
+  assert.equal(await after, true);
+  pending[0](subscriptionSnapshot());
+  assert.equal(await before, false);
+  assert.equal(state.subscriptions.configuredCount, 0);
+  assert.equal(state.subscriptions.singBoxUrls.length, 0);
 });

@@ -90,8 +90,8 @@ magicnet_singbox_run_proxylink_source() {
     if ! magicnet_singbox_proxylink_source_is_singbox_json "$_proxylink_source_file" &&
         magicnet_singbox_proxylink_decode_source "$_proxylink_source_file" "$_proxylink_decoded_file" &&
         { magicnet_singbox_proxylink_source_is_singbox_json "$_proxylink_decoded_file" ||
-            grep -Eq '^[[:space:]]*proxies:[[:space:]]*$|^[[:space:]]*[[:alpha:]][[:alnum:]+.-]*://' \
-                "$_proxylink_decoded_file"; }; then
+            magicnet_singbox_source_is_clash "$_proxylink_decoded_file" ||
+            grep -Eq '^[[:space:]]*[[:alpha:]][[:alnum:]+.-]*://' "$_proxylink_decoded_file"; }; then
         _proxylink_source_for="$_proxylink_decoded_file"
     fi
 
@@ -127,29 +127,28 @@ magicnet_singbox_build_outbounds_with_proxylink() {
     _tmp_config="${_out_file}.proxylink-config.json"
     _tmp_outbounds="${_out_file}.proxylink-outbounds.json"
     _filtered_outbounds="${_out_file}.proxylink-filtered.json"
-    _links_file="${_sources_file%/*}/nodes/links.txt"
     MAGICNET_SUB_CONVERTER_FORMAT=none
-
-    : >"$_tmp_config"
-    if [ -s "$_links_file" ]; then
-        # shellcheck disable=SC2034,SC2209 # consumed by update.sh status metadata
-        MAGICNET_SUB_CONVERTER_FORMAT="file"
-        magicnet_singbox_run_proxylink "$_proxylink" -file "$_links_file" -format singbox -o "$_tmp_config" >/dev/null 2>&1 ||
-            return 1
-    else
-        _first=1
-        while IFS= read -r _source_file || [ -n "$_source_file" ]; do
-            [ -s "$_source_file" ] || continue
-            [ "$_first" -eq 1 ] || return 1
-            magicnet_singbox_run_proxylink_source "$_proxylink" "$_source_file" "$_tmp_config" >/dev/null 2>&1 ||
-                return 1
-            _first=0
-        done <"$_sources_file"
-    fi
-
-    [ -s "$_tmp_config" ] || return 1
     command -v jq >/dev/null 2>&1 || return 1
-    jq -c '.outbounds // []' "$_tmp_config" >"$_tmp_outbounds" || return 1
+    printf '[]\n' >"$_tmp_outbounds" || return 1
+    _source_count=0
+    while IFS= read -r _source_file || [ -n "$_source_file" ]; do
+        [ -n "$_source_file" ] || continue
+        [ -s "$_source_file" ] || return 1
+        # Convert each original source independently. A combined links.txt is
+        # only a native-parser byproduct and omits every YAML/JSON source.
+        : >"$_tmp_config" || return 1
+        magicnet_singbox_run_proxylink_source "$_proxylink" "$_source_file" "$_tmp_config" >/dev/null 2>&1 || return 1
+        jq -e 'type == "object" and (.outbounds | type == "array" and length > 0)' "$_tmp_config" >/dev/null 2>&1 || return 1
+        # A direct-only/unsupported source must not disappear behind another
+        # provider's valid nodes. Keep the active configuration on any failure.
+        jq '.outbounds' "$_tmp_config" >"${_tmp_config}.nodes" || return 1
+        _source_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "${_tmp_config}.nodes") || return 1
+        [ "${_source_valid_count:-0}" -gt 0 ] || return 1
+        jq -s '.[0] + .[1].outbounds' "$_tmp_outbounds" "$_tmp_config" >"${_tmp_outbounds}.next" || return 1
+        mv -f "${_tmp_outbounds}.next" "$_tmp_outbounds" || return 1
+        _source_count=$((_source_count + 1))
+    done <"$_sources_file"
+    [ "$_source_count" -gt 0 ] || return 1
     _raw_count=$(jq 'length' "$_tmp_outbounds" 2>/dev/null || printf '0')
     [ "${_raw_count:-0}" -gt 0 ] || return 1
     _pre_filter_valid_count=$(magicnet_singbox_count_valid_outbounds_nodes "$_tmp_outbounds") || return 1

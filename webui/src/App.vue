@@ -407,6 +407,8 @@ function warmActiveTab(tab: TabKey): void {
 
 onMounted(() => {
   void refreshStatus();
+  // A deep link is already the active tab, so setTab would not warm it.
+  warmActiveTab(activeTab.value);
   document.addEventListener("keydown", handleEscape);
   document.addEventListener("pointerdown", dismissActionMenus);
   window.addEventListener("popstate", syncTabFromLocation);

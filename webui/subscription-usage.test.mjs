@@ -118,3 +118,10 @@ test("local imports never inherit remote provider usage", () => {
   assert.deepEqual(parsed.sourceUsage, []);
   assert.deepEqual(buildSubscriptionUsageOverview(parsed, now), []);
 });
+
+test("removed sources never reappear from retained provider metadata", () => {
+  const state = stateFor([source]);
+  state.singBoxUrls = [];
+  state.configuredCount = 0;
+  assert.deepEqual(buildSubscriptionUsageOverview(state, now), []);
+});

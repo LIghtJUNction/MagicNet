@@ -9,9 +9,11 @@ import {
   ChevronDown,
   Plus,
   Settings2,
+  Trash2,
 } from "lucide-vue-next";
 import { computed, nextTick, ref, shallowRef, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
+import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
@@ -58,10 +60,12 @@ const {
   stagePrivatePayload,
   removePrivatePayload,
   refreshSubs,
+  runPrivateCli,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
 const editorOpen = ref(false);
+const confirmClear = ref(false);
 const editorPanel = ref<HTMLElement | null>(null);
 const manageSourcesButton = ref<InstanceType<typeof Button> | null>(null);
 const actionMessage = ref("");
@@ -95,14 +99,16 @@ const savePlan = computed(() => buildSubscriptionSavePlan(singBoxText.value));
 const configured = computed(() => state.subscriptions.configuredCount > 0 || state.subscriptions.singBoxUrls.length > 0);
 const canonicalDraft = computed(() => savePlan.value.lines.join("\n"));
 const canApply = computed(() => {
-  if (savePlan.value.status === "idle" || savePlan.value.status === "error") return false;
+  if (savePlan.value.status === "idle") return configured.value;
+  if (savePlan.value.status === "error") return false;
   const loadedPlan = buildSubscriptionSavePlan(lastLoadedSnapshot.value);
   const loadedCanonical = loadedPlan.status === "idle" || loadedPlan.status === "error"
     ? lastLoadedSnapshot.value.trim()
     : loadedPlan.lines.join("\n");
   return !configured.value || canonicalDraft.value !== loadedCanonical;
 });
-const applyLabel = computed(() => configured.value ? t("保存并应用") : t("添加并启用"));
+const applyLabel = computed(() => configured.value && !canonicalDraft.value
+  ? t("移除所有来源") : configured.value ? t("保存并应用") : t("添加并启用"));
 const usageRows = computed(() => buildSubscriptionUsageOverview(state.subscriptions));
 const lifecycleRunning = computed(() => subscriptionLifecycleRunning(state.backgroundTask, state.subscriptions.updateRunning));
 const sourceCount = computed(() => state.subscriptions.sourceMode === "local" ? 1 : usageRows.value.length);
@@ -133,6 +139,7 @@ async function closeEditor(): Promise<void> {
 function cancelEditing(): void {
   singBoxText.value = lastLoadedSnapshot.value;
   actionMessage.value = "";
+  confirmClear.value = false;
   void closeEditor();
 }
 
@@ -181,8 +188,25 @@ watch(singBoxText, (value) => {
 watch(() => state.backgroundTask.status, async (status) => {
   if (!isSubscriptionBackgroundArgs(state.backgroundTask.args)) return;
   if (status === "done") await refreshSubs(true);
-  if (status === "error") pendingApply.value = null;
+  if (status === "error" || status === "timeout") pendingApply.value = null;
 });
+
+async function clearSubscriptions(): Promise<void> {
+  if (!confirmClear.value || lifecycleRunning.value || state.busy) return;
+  await withAction("clear-subscriptions", async () => {
+    const outcome = await runPrivateCli("sub clear", t("移除所有来源"), "sub clear");
+    if (!outcome.ok) {
+      showActionMessage(t("来源未移除，请重新读取状态后重试。"));
+      return;
+    }
+    confirmClear.value = false;
+    pendingApply.value = { snapshot: "", revision: editRevision.value };
+    const refreshed = await refreshSubs(true);
+    showActionMessage(refreshed
+      ? t("来源已移除。当前核心配置保持不变。")
+      : t("来源已移除，但状态读取失败，请重新读取。"));
+  });
+}
 
 async function stageSubscriptionPayload(snapshot: string) {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -200,7 +224,11 @@ async function stageSubscriptionPayload(snapshot: string) {
 }
 
 async function applySubscriptions(): Promise<void> {
-  if (!canApply.value) return;
+  if (!canApply.value || lifecycleRunning.value || state.busy) return;
+  if (!canonicalDraft.value && configured.value) {
+    confirmClear.value = true;
+    return;
+  }
   await withAction("apply-subscriptions", async () => {
     actionMessage.value = "";
     if (userAgentCardRef.value?.userAgentChanged && !(await userAgentCardRef.value.persistUserAgent())) {
@@ -320,7 +348,7 @@ async function copySummary(): Promise<void> {
   <div class="subscriptions-page">
     <PageHeader :title="t('订阅')">
       <template #actions>
-        <Button v-if="configured" ref="manageSourcesButton" variant="outline" :aria-expanded="editorOpen" aria-controls="subscription-editor" @click="openEditor">
+        <Button v-if="configured" ref="manageSourcesButton" variant="outline" :aria-expanded="editorOpen" aria-controls="subscription-editor" :disabled="lifecycleRunning" @click="openEditor">
           <Plus :size="16" />{{ t("管理来源") }} </Button>
         <Button v-if="configured" :loading="lifecycleRunning || isRunning('update-all')" :disabled="state.busy" @click="updateSubscriptions">
           <RefreshCw :size="16" />{{ t("更新订阅") }} </Button>
@@ -359,22 +387,22 @@ async function copySummary(): Promise<void> {
         autocorrect="off"
         inputmode="url"
         placeholder="https://example.com/subscription"
-        :aria-label="t('sing-box 订阅 URL，每行一个')"
+        :aria-label="t('订阅链接，每行一个')"
         aria-describedby="subscription-validation"
       />
       <div id="subscription-validation" class="editor-validation" role="status" :data-error="savePlan.status === 'error'">
-        <span>{{ savePlan.status === 'idle' ? t("支持 HTTPS 订阅链接") : savePlan.message }}</span>
+        <span>{{ savePlan.status === 'idle' ? t("支持 Clash / Mihomo、sing-box 与分享链接订阅") : savePlan.message }}</span>
         <span v-if="inputSummary.duplicate || inputSummary.overLimit">{{ t("有效 {value} · 重复 {value2} · 超限 {value3}", { value: inputSummary.valid, value2: inputSummary.duplicate, value3: inputSummary.overLimit }) }}</span>
       </div>
       <div class="editor-actions">
-        <input ref="subscriptionFileInput" class="hidden" type="file" accept=".yaml,.yml,.txt,.list,.conf,application/yaml,text/yaml,text/plain" @change="importLocalSubscriptions">
+        <input ref="subscriptionFileInput" class="hidden" type="file" accept=".yaml,.yml,.json,.txt,.list,.conf,application/json,application/yaml,text/yaml,text/plain" @change="importLocalSubscriptions">
         <div class="source-import-actions">
           <Button variant="outline" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions"><ClipboardPaste :size="16" />{{ t("粘贴链接") }}</Button>
           <Button variant="outline" :loading="isRunning('apply-local-subscription')" :disabled="lifecycleRunning" @click="chooseLocalSubscriptions"><FileUp :size="16" />{{ t("导入文件") }}</Button>
         </div>
         <div class="source-save-actions">
           <Button v-if="configured" variant="ghost" :disabled="lifecycleRunning" @click="cancelEditing">{{ t("取消") }}</Button>
-          <Button :disabled="!canApply || lifecycleRunning" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions"><Save :size="16" />{{ applyLabel }}</Button>
+          <Button :disabled="!canApply || lifecycleRunning || state.busy || !state.hasKsu" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions"><component :is="configured && !canonicalDraft ? Trash2 : Save" :size="16" />{{ applyLabel }}</Button>
         </div>
       </div>
       <details v-if="subscriptionPreview.length" class="source-preview">
@@ -391,6 +419,11 @@ async function copySummary(): Promise<void> {
         </div>
       </details>
     </section>
+
+    <ConfirmPanel v-if="confirmClear" title="移除所有订阅来源？"
+      detail="仅移除来源链接和本地订阅文件，当前核心配置不会删除或重启。"
+      confirm-label="确认移除" confirm-variant="destructive" :loading="isRunning('clear-subscriptions')"
+      @cancel="confirmClear = false" @confirm="clearSubscriptions" />
 
     <div class="subscription-settings">
       <details class="settings-section">
@@ -414,14 +447,14 @@ async function copySummary(): Promise<void> {
 </template>
 
 <style scoped>
-.subscriptions-page { width: 100%; max-width: 880px; min-width: 0; margin: 0 auto; }
+.subscriptions-page { width: 100%; max-width: 832px; min-width: 0; margin: 0 auto; }
 .subscription-summary { display: flex; align-items: center; gap: 12px; margin: 8px 0 14px; color: var(--mn-ink-muted); font-size: .875rem; }
 .subscription-summary > :last-child { margin-left: auto; }
 .unsaved-note { color: var(--mn-warning); }
 .subscription-feedback { margin: 16px 0; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 12px 16px; color: var(--mn-ink-soft); background: var(--mn-surface-sunken); font-size: .875rem; line-height: 1.65; overflow-wrap: anywhere; }
 .subscription-feedback[data-error="true"] { color: var(--mn-warning); }
 .usage-footnote { margin: 0 0 28px; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.6; }
-.source-editor { margin: 24px 0; padding: 24px 0; border-top: 1px solid var(--mn-border); scroll-margin-top: 120px; }
+.source-editor { margin: 24px 0; padding: 24px; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-lg); background: var(--mn-surface); scroll-margin-top: 120px; }
 .editor-heading h3 { margin: 0; font-size: 1rem; font-weight: 600; }
 .editor-heading p { margin: 8px 0 0; color: var(--mn-ink-muted); font-size: .875rem; line-height: 1.65; }
 .source-textarea { margin-top: 20px; min-height: 144px; font-size: max(16px, .875rem); line-height: 1.7; overflow-wrap: anywhere; }
@@ -448,8 +481,8 @@ details[open] > summary > svg:last-child { transform: rotate(180deg); }
 .settings-section > summary > span:first-child > svg { flex: 0 0 auto; }
 .subscription-settings-content { display: grid; gap: 16px; padding-bottom: 20px; }
 @media (max-width: 600px) {
-  .source-editor { padding: 24px 0; }
-  .source-save-actions { order: -1; }
+  .source-editor { padding: 20px 16px; }
+  .source-save-actions { order: 1; }
   .editor-actions { align-items: stretch; gap: 16px; }
   .source-import-actions, .source-save-actions { width: 100%; }
   .source-import-actions > *, .source-save-actions > :last-child { flex: 1; }
